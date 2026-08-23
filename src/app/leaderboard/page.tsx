@@ -1,4 +1,4 @@
-﻿import { LeaderboardPage } from '@/features/leaderboard/LeaderboardPage'
+import { LeaderboardPage } from '@/features/leaderboard/LeaderboardPage'
 
 // Authenticated and URL-filtered: never statically prerendered.
 export const dynamic = 'force-dynamic'

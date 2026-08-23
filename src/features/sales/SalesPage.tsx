@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { keepPreviousData, useQueries } from '@tanstack/react-query'
 

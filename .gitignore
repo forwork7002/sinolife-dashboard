@@ -30,7 +30,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files — secrets never get committed, but the template must be
+# env files ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â secrets never get committed, but the template must be
 .env*
 !.env.example
 
@@ -42,3 +42,11 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# Bitrix24 portal discovery output ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â contains real customer data
+bitrix24-discovery.json
+
+bitrix24-analysis.json
+bitrix24-pipelines.json
+bitrix24-duplication.json
+bitrix24-final-dup.json

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Shared domain vocabulary.
  *
  * These unions mirror the enums in prisma/schema.prisma, but they are declared

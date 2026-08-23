@@ -1,4 +1,4 @@
-﻿import { analyticsQuerySchema } from '@/server/http/queryParams'
+import { analyticsQuerySchema } from '@/server/http/queryParams'
 import { getHandler, periodFrom } from '@/server/http/handler'
 import { ANALYTICS_READ } from '@/server/http/permissions'
 import { AnalyticsService } from '@/server/services/analyticsService'

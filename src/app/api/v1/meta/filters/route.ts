@@ -1,4 +1,4 @@
-﻿import { z } from 'zod'
+import { z } from 'zod'
 
 import { getHandler } from '@/server/http/handler'
 import { referenceRepository } from '@/server/services/container'

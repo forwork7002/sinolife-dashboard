@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Entity sync handlers.
  *
  * Each handler pairs a provider fetch with an idempotent write. Every write is

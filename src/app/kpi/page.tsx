@@ -1,4 +1,4 @@
-﻿import { KpiPage } from '@/features/kpi/KpiPage'
+import { KpiPage } from '@/features/kpi/KpiPage'
 
 // Authenticated and URL-filtered: never statically prerendered.
 export const dynamic = 'force-dynamic'

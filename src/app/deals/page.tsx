@@ -1,4 +1,4 @@
-﻿import { DealsPage } from '@/features/deals/DealsPage'
+import { DealsPage } from '@/features/deals/DealsPage'
 
 // Authenticated and URL-filtered: never statically prerendered.
 export const dynamic = 'force-dynamic'

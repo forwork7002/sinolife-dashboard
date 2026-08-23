@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Authentication.
  *
  * better-auth over the Prisma adapter, using the `user` / `session` / `account`

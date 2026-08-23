@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Uzbek UI strings.
  *
  * Kept in one module rather than inline so a second language is a new file and

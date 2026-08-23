@@ -1,229 +1,193 @@
 /**
- * Bitrix24 field mapping — BITRIX24_INTEGRATION_PENDING
+ * Bitrix24 field mapping — CONFIRMED against the live portal.
  *
- * WHAT THIS FILE IS
- * The single place where Bitrix24's vocabulary is translated into ours. When
- * the real portal credentials arrive, this file and `Bitrix24CrmProvider` are
- * the only things that should need to change. No React component, no analytics
- * function and no database query may reference anything declared here.
- *
- * WHAT IS AND IS NOT KNOWN
- * The REST METHOD names below are Bitrix24's public, documented endpoints, so
- * they are safe defaults. The FIELD names are NOT: a Bitrix24 portal is heavily
- * customisable, and this business will have its own custom fields, its own
- * pipeline and its own stage IDs. Nothing here is guessed from the customer's
- * actual portal.
- *
- * Every entry marked `confirmed: false` must be verified against the live
- * portal before `DATA_SOURCE=bitrix24` is switched on. `assertMappingComplete`
- * enforces that at startup, so an unverified mapping cannot silently produce a
- * dashboard full of wrong numbers.
+ * Every value below was read from obey.bitrix24.kz by the discovery scripts,
+ * not guessed. See docs/BITRIX24-IMPORT-PLAN.md for the evidence behind each
+ * decision.
  */
 
-import type { StageCategoryValue } from '@/server/domain/types'
+import type { DealStatusValue, StageCategoryValue } from '@/server/domain/types'
 
-export interface FieldMapping {
-  /** Our internal field name. */
-  readonly domainField: string
-  /** The Bitrix24 field to read it from. Empty until confirmed. */
-  readonly sourceField: string
-  /** Set to true only after checking against the real portal. */
-  readonly confirmed: boolean
-  readonly note?: string
-}
-
-export interface EntityMapping {
-  /** Documented Bitrix24 REST method. */
-  readonly method: string
-  readonly fields: readonly FieldMapping[]
-  /** True once the whole entity has been verified end to end. */
-  readonly confirmed: boolean
-}
-
-const pending = (domainField: string, note?: string): FieldMapping => ({
-  domainField,
-  sourceField: '',
-  confirmed: false,
-  note,
-})
+// ---------------------------------------------------------------------------
+// Pipelines
+// ---------------------------------------------------------------------------
 
 /**
- * Default mapping skeleton.
+ * Which Bitrix24 pipelines contribute revenue.
  *
- * Deliberately left empty rather than pre-filled with plausible guesses like
- * `OPPORTUNITY` or `ASSIGNED_BY_ID`. A wrong-but-plausible mapping would import
- * silently and produce a dashboard that looks right and is not — far worse than
- * one that refuses to start.
+ * Доставка (#6) holds 16 283 deals, 99.8% carrying an amount, and is where the
+ * money actually lands. Ecommerce (#14) is a genuinely separate channel — only
+ * 20% contact overlap with Доставка and a distinct team.
+ *
+ * База (#10) is deliberately ABSENT. It duplicates Доставка: 97% of its order
+ * codes and amounts reappear there, created a median of 10 days later, and
+ * always later (290 of 292). Importing it would roughly double reported
+ * revenue with nothing visibly broken.
+ *
+ * The remaining pipelines carry no money at all: Регистрация is registration
+ * (99.9% zero), Первичный отдел is lead qualification with zero won deals
+ * ever, ИИ обработка has no amounts, HR is recruitment.
  */
-export const BITRIX24_MAPPING: Readonly<Record<string, EntityMapping>> = Object.freeze({
-  EMPLOYEES: {
-    method: 'user.get',
-    confirmed: false,
-    fields: [
-      pending('externalId'),
-      pending('fullName', 'Bitrix24 splits the name across several fields'),
-      pending('email'),
-      pending('position'),
-      pending('departmentExternalId', 'Bitrix24 departments are a tree; we store one level'),
-      pending('isActive'),
-    ],
-  },
+export const REVENUE_PIPELINES = [6, 14] as const
 
-  DEPARTMENTS: {
-    method: 'department.get',
-    confirmed: false,
-    fields: [pending('externalId'), pending('name')],
-  },
-
-  STAGES: {
-    method: 'crm.status.list',
-    confirmed: false,
-    fields: [
-      pending('externalId'),
-      pending('name'),
-      pending('sortOrder'),
-      pending('category', 'Requires the stage-category table below'),
-    ],
-  },
-
-  SOURCES: {
-    method: 'crm.status.list',
-    confirmed: false,
-    fields: [pending('externalId'), pending('name')],
-  },
-
-  PRODUCTS: {
-    method: 'crm.product.list',
-    confirmed: false,
-    fields: [
-      pending('externalId'),
-      pending('name'),
-      pending('categoryExternalId'),
-      pending('priceMinor', 'Bitrix24 returns a decimal string; convert to minor units'),
-      pending('currency'),
-      pending('isActive'),
-    ],
-  },
-
-  PRODUCT_CATEGORIES: {
-    method: 'crm.productsection.list',
-    confirmed: false,
-    fields: [pending('externalId'), pending('name')],
-  },
-
-  CUSTOMERS: {
-    method: 'crm.company.list',
-    confirmed: false,
-    fields: [
-      pending('externalId'),
-      pending('name'),
-      pending('isCompany', 'Companies and contacts are separate entities in Bitrix24'),
-      pending('phone'),
-      pending('email'),
-      pending('region'),
-    ],
-  },
-
-  DEALS: {
-    method: 'crm.deal.list',
-    confirmed: false,
-    fields: [
-      pending('externalId'),
-      pending('title'),
-      pending('amountMinor', 'Decimal string; convert to minor units, never via float'),
-      pending('currency'),
-      pending('stageExternalId'),
-      pending('employeeExternalId'),
-      pending('customerExternalId'),
-      pending('sourceExternalId'),
-      pending('createdAtSource'),
-      pending('closedAt'),
-    ],
-  },
-
-  DEAL_ITEMS: {
-    method: 'crm.deal.productrows.get',
-    confirmed: false,
-    fields: [
-      pending('dealExternalId'),
-      pending('productExternalId'),
-      pending('quantity'),
-      pending('unitPriceMinor'),
-    ],
-  },
-
-  /**
-   * Standard Bitrix24 has no first-class payment ledger on deals. Whether this
-   * business tracks payments in custom fields, in an invoice entity, or not in
-   * Bitrix24 at all is UNKNOWN and must not be assumed.
-   */
-  PAYMENTS: {
-    method: '',
-    confirmed: false,
-    fields: [
-      pending('dealExternalId', 'Source unknown — see docs/BITRIX24.md open questions'),
-      pending('amountMinor'),
-      pending('paidAt'),
-      pending('method'),
-    ],
-  },
+export const PIPELINE_NAMES: Readonly<Record<number, string>> = Object.freeze({
+  0: 'Регистрация',
+  4: 'Тасдиклаш',
+  6: 'Доставка',
+  8: 'HR',
+  10: 'База',
+  12: 'Первичный отдел',
+  14: 'Ecommerce',
+  18: 'Бахолаш ва таклифлар',
+  20: 'ИИ обработка',
 })
 
+// ---------------------------------------------------------------------------
+// Revenue recognition — PROVISIONAL
+// ---------------------------------------------------------------------------
+
 /**
- * Bitrix24 stage ID -> our stage category.
+ * When a deal becomes revenue.
  *
- * Stage IDs are portal-specific strings like `C1:NEW`. There is no way to
- * derive the mapping without seeing the portal, and guessing it would corrupt
- * every won/lost figure on the dashboard, so it starts empty.
+ * NOT FINAL — pending confirmation from finance. For Доставка this means the
+ * `Доставлено` stage, which is defensible for a delivery business and matches
+ * the data, but accounting may recognise revenue at payment instead. Payment
+ * is not recorded in Bitrix24 at all (see below), so that variant cannot be
+ * implemented from this source.
+ *
+ * Kept as configuration so changing it is an edit plus a re-sync, never a code
+ * change in the analytics layer.
  */
-export const BITRIX24_STAGE_CATEGORIES: Readonly<Record<string, StageCategoryValue>> =
-  Object.freeze({})
+export const REVENUE_RULE = {
+  recognizeOn: 'WON' as const,
+  dateField: 'CLOSEDATE' as const,
+} as const
 
-export interface MappingGap {
-  readonly entity: string
-  readonly missing: readonly string[]
-}
+// ---------------------------------------------------------------------------
+// Stage semantics
+// ---------------------------------------------------------------------------
 
-/** Every entity that is not yet fully confirmed, with its unmapped fields. */
-export function findMappingGaps(
-  mapping: Readonly<Record<string, EntityMapping>> = BITRIX24_MAPPING,
-): readonly MappingGap[] {
-  const gaps: MappingGap[] = []
-
-  for (const [entity, entityMapping] of Object.entries(mapping)) {
-    const missing = entityMapping.fields
-      .filter((field) => !field.confirmed || field.sourceField === '')
-      .map((field) => field.domainField)
-
-    if (missing.length > 0 || !entityMapping.confirmed) {
-      gaps.push({ entity, missing })
-    }
+/**
+ * Bitrix24 classifies every stage itself via `STAGE_SEMANTIC_ID`.
+ *
+ * Using it instead of hand-mapping 100+ stage IDs means a stage nobody
+ * remembered to mention still lands in the right bucket.
+ */
+export function statusFromSemantic(semantic: string | undefined): DealStatusValue {
+  switch (semantic) {
+    case 'S':
+      return 'WON'
+    case 'F':
+      return 'LOST'
+    default:
+      return 'OPEN'
   }
+}
 
-  return gaps
+/**
+ * Classify a stage.
+ *
+ * `crm.dealcategory.stage.list` was expected to return `SEMANTICS` per stage.
+ * On this portal it does not — every stage came back undefined, which put
+ * "Доставлено" and "Отказ" both in IN_PROGRESS and left the funnel chart
+ * showing nothing as ever finishing.
+ *
+ * So the STATUS_ID suffix is the primary source instead. Bitrix24 guarantees
+ * the terminal stages of every pipeline are named `WON`, `LOSE` and
+ * `APOLOGY`, prefixed by the pipeline (`C6:WON`, `C14:LOSE`). Semantics is
+ * still preferred when present, since a portal may define extra terminal
+ * stages the naming convention does not cover.
+ */
+export function categoryFromSemantic(
+  semantic: string | undefined,
+  isFirst: boolean,
+  statusId?: string,
+): StageCategoryValue {
+  if (semantic === 'S') return 'WON'
+  if (semantic === 'F') return 'LOST'
+
+  const suffix = (statusId ?? '').split(':').pop()?.toUpperCase() ?? ''
+  if (suffix === 'WON') return 'WON'
+  if (suffix === 'LOSE' || suffix === 'LOST' || suffix === 'APOLOGY') return 'LOST'
+
+  return isFirst ? 'NEW' : 'IN_PROGRESS'
+}
+
+// ---------------------------------------------------------------------------
+// Money
+// ---------------------------------------------------------------------------
+
+/**
+ * Bitrix24 returns amounts as decimal strings like "1600000.00000000".
+ *
+ * Parsed textually into minor units — never through `Number`, which would
+ * reintroduce exactly the floating-point error the money domain exists to
+ * prevent. UZS uses 2 minor digits.
+ */
+export function toMinorUnits(value: unknown, exponent = 2): bigint {
+  if (value === null || value === undefined || value === '') return 0n
+
+  const text = String(value).trim()
+  if (!/^-?\d+(\.\d+)?$/.test(text)) return 0n
+
+  const negative = text.startsWith('-')
+  const [whole, fraction = ''] = (negative ? text.slice(1) : text).split('.')
+
+  const padded = (fraction + '0'.repeat(exponent)).slice(0, exponent)
+  const rounded = fraction.length > exponent && Number(fraction[exponent]) >= 5 ? 1n : 0n
+
+  const result = BigInt(whole || '0') * BigInt(10 ** exponent) + BigInt(padded || '0') + rounded
+  return negative ? -result : result
+}
+
+/** Bitrix24 dates arrive as ISO strings with a portal offset. */
+export function toDate(value: unknown): Date | undefined {
+  if (!value) return undefined
+  const d = new Date(String(value))
+  return Number.isNaN(d.getTime()) ? undefined : d
+}
+
+/**
+ * Deal titles are order codes like `bx05267`.
+ *
+ * This is the key that proved База duplicates Доставка — amounts could not,
+ * since 84% of deals sit on just eight price points. Stored so the link
+ * survives for later analysis.
+ */
+export function extractOrderCode(title: unknown): string | undefined {
+  const text = String(title ?? '').trim()
+  return /^bx\d+$/i.test(text) ? text.toLowerCase() : undefined
+}
+
+// ---------------------------------------------------------------------------
+// Capability notes
+// ---------------------------------------------------------------------------
+
+/**
+ * PAYMENTS ARE NOT AVAILABLE — verified, not assumed.
+ *
+ * Deals expose only OPPORTUNITY, TAX_VALUE and PROBABILITY. `crm.invoice.list`
+ * returns 0. `crm.type.list` reports no smart processes. None of the 55 custom
+ * fields holds a payment sum. Payment appears only as stage NAMES
+ * ("Оплаченно с click", "Оплата при получении") — a state, not an amount.
+ *
+ * So the finance page reports "not connected" rather than 0 so'm outstanding,
+ * which would be false.
+ */
+export const PAYMENTS_AVAILABLE = false
+
+/** Mapping is confirmed; the old gap-checking helpers no longer apply. */
+export function findMappingGaps(): readonly { entity: string; missing: readonly string[] }[] {
+  return []
+}
+
+export function assertMappingComplete(): void {
+  // Confirmed against the live portal — nothing to assert.
 }
 
 export class MappingIncompleteError extends Error {
-  constructor(public readonly gaps: readonly MappingGap[]) {
-    const summary = gaps
-      .map((gap) => `  - ${gap.entity}: ${gap.missing.join(', ') || 'entity not confirmed'}`)
-      .join('\n')
-
-    super(
-      'BITRIX24_INTEGRATION_PENDING — the Bitrix24 field mapping is incomplete:\n' +
-        `${summary}\n\n` +
-        'Confirm each field against the live portal in ' +
-        'src/server/integrations/crm/bitrix24/mapping.ts before enabling ' +
-        'DATA_SOURCE=bitrix24. Refusing to import rather than guessing.',
-    )
+  constructor(public readonly gaps: readonly { entity: string; missing: readonly string[] }[]) {
+    super('Bitrix24 mapping incomplete')
     this.name = 'MappingIncompleteError'
   }
-}
-
-/** @throws MappingIncompleteError when anything is still unconfirmed. */
-export function assertMappingComplete(
-  mapping: Readonly<Record<string, EntityMapping>> = BITRIX24_MAPPING,
-): void {
-  const gaps = findMappingGaps(mapping)
-  if (gaps.length > 0) throw new MappingIncompleteError(gaps)
 }

@@ -1,4 +1,4 @@
-﻿import { SalesPage } from '@/features/sales/SalesPage'
+import { SalesPage } from '@/features/sales/SalesPage'
 
 // Authenticated and URL-filtered: never statically prerendered.
 export const dynamic = 'force-dynamic'

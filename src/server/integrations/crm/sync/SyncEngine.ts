@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Synchronisation engine.
  *
  * Provider-agnostic orchestration: paging, incremental watermarks, per-record
