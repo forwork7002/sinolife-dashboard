@@ -1,25 +1,25 @@
 # Netlify konfiguratsiyasi.
 #
-# Netlify Next.js'ni o'zi taniydi va kerakli plaginni o'rnatadi; bu yerda
-# faqat o'zi taxmin qila olmaydigan narsalar yozilgan.
+# Netlify Next.js'ni o'zi taniydi va @netlify/plugin-nextjs ni o'rnatadi —
+# u sahifalarni va API yo'llarini serverless funksiyalarga aylantiradi.
+# Bu yerda faqat Netlify o'zi taxmin qila olmaydigan narsalar yozilgan.
 
 [build]
-  # `prisma generate` build skriptining ichida — Prisma klienti git'ga
-  # kirmaydi (u generatsiya qilinadigan kod), shuning uchun toza clone'da
-  # avval uni yaratish kerak. Busiz build "Cannot find module
-  # '@/generated/prisma/client'" xatosi bilan yiqiladi.
+  # `npm run build` ichida `prisma generate` bor. Prisma klienti generatsiya
+  # qilinadigan kod va git'ga kirmaydi, shuning uchun toza clone'da avval uni
+  # yaratish kerak — busiz build "Cannot find module '@/generated/prisma/client'"
+  # xatosi bilan yiqiladi.
   command = "npm run build"
   publish = ".next"
 
 [build.environment]
-  # Loyiha Node 24 da yozilgan. Netlify'ning standart versiyasi eskiroq
-  # bo'lishi mumkin, shuning uchan aniq ko'rsatilgan.
+  # Loyiha Node 24 da yozilgan; Netlify'ning standarti eskiroq bo'lishi mumkin.
   NODE_VERSION = "22"
-  # npm 11 o'rnatish skriptlarini bloklaydi; Prisma engine'lariga ular kerak.
+  # Prisma engine'lari o'rnatish skriptlari orqali yuklanadi.
   NPM_FLAGS = "--foreground-scripts"
 
-# Xavfsizlik sarlavhalari. Panel ichki tizim — qidiruv tizimlariga
-# tushmasligi va boshqa saytga joylashtirilmasligi kerak.
+# Xavfsizlik sarlavhalari next.config.ts da ham bor — bu statik fayllar va
+# funksiyadan o'tmaydigan javoblar uchun ikkinchi qatlam.
 [[headers]]
   for = "/*"
   [headers.values]

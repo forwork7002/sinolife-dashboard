@@ -30,12 +30,25 @@ if (typeof window !== 'undefined') {
 }
 
 function createPrismaClient(): PrismaClient {
+  /**
+   * Pool size depends on where this runs.
+   *
+   * On a single long-lived server, ten connections is comfortable. On Netlify
+   * every request may land in its own function instance, each opening its own
+   * pool — ten of those across a few dozen concurrent instances exhausts
+   * Postgres' 100-connection limit and requests start failing with "too many
+   * clients", which looks like an application bug rather than a config one.
+   *
+   * So serverless gets a small pool and short idle timeout, and should be
+   * pointed at Neon's POOLED connection string (the host containing
+   * `-pooler`), which multiplexes on the database side.
+   */
+  const isServerless = Boolean(process.env.NETLIFY || process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
+
   const pool = new Pool({
     connectionString: env.DATABASE_URL,
-    // Conservative for a single-instance internal tool. Raise only with
-    // evidence: Postgres' own default limit is 100 connections in total.
-    max: 10,
-    idleTimeoutMillis: 30_000,
+    max: isServerless ? 3 : 10,
+    idleTimeoutMillis: isServerless ? 10_000 : 30_000,
     connectionTimeoutMillis: 10_000,
   })
 

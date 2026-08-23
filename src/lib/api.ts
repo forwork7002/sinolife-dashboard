@@ -58,6 +58,77 @@ export class ApiClientError extends Error {
  * An error envelope becomes a typed throw carrying the correlation id, so the
  * UI can show the user something quotable without ever seeing a stack trace.
  */
+/**
+ * Static demo mode.
+ *
+ * When `NEXT_PUBLIC_STATIC_DEMO` is set, the build has no server and no
+ * database: responses are read from JSON frozen at build time by
+ * `npm run demo:snapshot`. Everything above this function — pages, charts,
+ * filters, tables — is unchanged, which is the point: it is the real frontend,
+ * not a mock-up of it.
+ *
+ * Only the parameters that were snapshotted vary. Anything else falls back to
+ * the unfiltered response for that period rather than showing an error, since
+ * a demo that breaks when you touch a filter is worse than one that ignores it.
+ */
+const STATIC_DEMO = process.env.NEXT_PUBLIC_STATIC_DEMO === '1'
+
+/** Must match `snapshotKey` in scripts/snapshotApi.ts. */
+const SNAPSHOT_PARAMS = new Set(['preset', 'metric', 'page', 'pageSize'])
+
+function snapshotKey(path: string, params: Record<string, string>): string {
+  const ordered = Object.keys(params)
+    .sort()
+    .map((k) => `${k}=${params[k]}`)
+    .join('&')
+  return path.replace(/^\//, '').replace(/\//g, '_') + (ordered ? `__${ordered}` : '') + '.json'
+}
+
+/** Where the static files live — respects a subpath deploy. */
+function demoBase(): string {
+  const prefix = process.env.NEXT_PUBLIC_BASE_PATH ?? ''
+  return `${prefix}/demo-api`
+}
+
+async function staticGet<T>(
+  path: string,
+  params: Record<string, string>,
+  signal?: AbortSignal,
+): Promise<ApiSuccess<T>> {
+  const kept: Record<string, string> = {}
+  for (const [k, v] of Object.entries(params)) {
+    if (SNAPSHOT_PARAMS.has(k)) kept[k] = v
+  }
+
+  const attempts = [snapshotKey(path, kept)]
+
+  // Deals were snapshotted on page 1 only; other pages reuse it so paging
+  // still renders instead of failing.
+  if (kept.page && kept.page !== '1') {
+    attempts.push(snapshotKey(path, { ...kept, page: '1' }))
+  }
+
+  for (const key of attempts) {
+    const res = await fetch(`${demoBase()}/${key}`, { signal })
+    if (!res.ok) continue
+
+    const body = (await res.json()) as
+      | ApiSuccess<T>
+      | { error: { code: string; message: string }; meta: ResponseMeta }
+
+    if ('error' in body) {
+      throw new ApiClientError(body.error.code, body.error.message, 501, body.meta.correlationId)
+    }
+    return body
+  }
+
+  throw new ApiClientError(
+    'NOT_FOUND',
+    'Bu koʻrinish demo nusxada saqlanmagan.',
+    404,
+  )
+}
+
 export async function apiGet<T>(
   path: string,
   params: Record<string, string | number | undefined> = {},
@@ -66,6 +137,10 @@ export async function apiGet<T>(
   const search = new URLSearchParams()
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== '') search.set(key, String(value))
+  }
+
+  if (STATIC_DEMO) {
+    return staticGet<T>(path, Object.fromEntries(search.entries()), signal)
   }
 
   const query = search.toString()
