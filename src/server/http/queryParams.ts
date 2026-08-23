@@ -1,0 +1,113 @@
+/**
+ * Shared query contract.
+ *
+ * One schema for every analytics endpoint, so `?from=`/`?employeeIds=` mean the
+ * same thing everywhere and a filter added here becomes available to all of
+ * them at once.
+ *
+ * Validation is not a formality: these values reach SQL. Prisma parameterises
+ * queries, but an unvalidated `pageSize=1000000` is a denial-of-service and an
+ * unvalidated sort column is an information leak. Everything is bounded and
+ * enumerated below.
+ */
+
+import { z } from 'zod'
+
+import { PERIOD_PRESETS } from '@/server/domain/period/period'
+import { DEAL_STATUSES } from '@/server/domain/types'
+
+/** Comma-separated ids -> string[]. Empty entries dropped. */
+const idList = z
+  .string()
+  .optional()
+  .transform((value) =>
+    value
+      ? value
+          .split(',')
+          .map((part) => part.trim())
+          .filter((part) => part.length > 0)
+      : undefined,
+  )
+  .pipe(z.array(z.string().min(1).max(64)).max(200).optional())
+
+/** A calendar date, `YYYY-MM-DD`, interpreted in the app timezone downstream. */
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a date in YYYY-MM-DD format')
+  .transform((value) => new Date(`${value}T00:00:00.000Z`))
+  .refine((date) => !Number.isNaN(date.getTime()), 'Not a valid calendar date')
+
+export const periodQuerySchema = z
+  .object({
+    preset: z.enum(PERIOD_PRESETS).default('this_month'),
+    from: isoDate.optional(),
+    to: isoDate.optional(),
+    /** Whether to compute the previous-equivalent comparison. */
+    compare: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((value) => value === 'true'),
+  })
+  .superRefine((value, ctx) => {
+    if (value.preset === 'custom' && (!value.from || !value.to)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['from'],
+        message: "preset=custom requires both 'from' and 'to'",
+      })
+    }
+    if (value.from && value.to && value.to.getTime() < value.from.getTime()) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['to'],
+        message: "'to' must be on or after 'from'",
+      })
+    }
+  })
+
+export const filterQuerySchema = z.object({
+  employeeIds: idList,
+  departmentIds: idList,
+  stageIds: idList,
+  productIds: idList,
+  sourceIds: idList,
+  status: z.enum(DEAL_STATUSES).optional(),
+  /** Free-text search. Bounded so it cannot become a scan of arbitrary length. */
+  q: z.string().trim().min(1).max(120).optional(),
+})
+
+/** Columns a client may sort by. An allowlist, never the raw parameter. */
+export const DEAL_SORT_FIELDS = [
+  'createdAtSource',
+  'closedAt',
+  'amountMinor',
+  'title',
+  'status',
+] as const
+
+export const paginationQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).max(10_000).default(1),
+  // Capped: without an upper bound, one request could pull the whole table.
+  pageSize: z.coerce.number().int().min(1).max(200).default(25),
+  sort: z.enum(DEAL_SORT_FIELDS).default('createdAtSource'),
+  order: z.enum(['asc', 'desc']).default('desc'),
+})
+
+export const analyticsQuerySchema = periodQuerySchema.and(filterQuerySchema)
+
+export const dealsQuerySchema = periodQuerySchema
+  .and(filterQuerySchema)
+  .and(paginationQuerySchema)
+
+export type PeriodQuery = z.infer<typeof periodQuerySchema>
+export type FilterQuery = z.infer<typeof filterQuerySchema>
+export type PaginationQuery = z.infer<typeof paginationQuerySchema>
+export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>
+export type DealsQuery = z.infer<typeof dealsQuerySchema>
+
+/** Flatten URLSearchParams to a plain object, keeping the last value per key. */
+export function searchParamsToObject(params: URLSearchParams): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const [key, value] of params.entries()) result[key] = value
+  return result
+}

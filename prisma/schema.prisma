@@ -1,0 +1,591 @@
+// SinoLife Sales Intelligence — database schema
+//
+// DESIGN CONTRACT (read before editing):
+//
+// 1. EXTERNAL IDENTITY
+//    Every entity that can originate from an external CRM carries
+//    `externalSource` + `externalId` under a unique composite index.
+//    This is what makes synchronisation idempotent: the sync engine upserts
+//    on that pair, so re-running a full sync never duplicates rows.
+//    Rows created inside this app use externalSource = MANUAL and externalId = null.
+//
+// 2. MONEY
+//    Money is NEVER a float and NEVER a Prisma Decimal.
+//    It is stored as BigInt in MINOR UNITS (see src/server/domain/money).
+//    For UZS the minor unit is 1/100 so'm. Integer arithmetic stays exact
+//    through SUM/AVG aggregation, and it ports across database engines.
+//    Field naming convention: any BigInt money column ends in `Minor`.
+//
+// 3. TIME
+//    `*AtSource` columns hold timestamps as reported by the source CRM.
+//    `createdAt` / `updatedAt` are OUR row lifecycle, not the deal's.
+//    Analytics must use the *AtSource columns — otherwise a re-sync would
+//    silently move every deal into the current reporting period.
+//
+// 4. STAGE SEMANTICS
+//    `DealStage.category` is OUR normalised meaning (NEW/IN_PROGRESS/WON/LOST).
+//    Bitrix24 stage IDs get mapped onto it by configuration, never hardcoded.
+//    Analytics reads `category` and `Deal.status`, never a stage name.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+/// Where a record came from. Drives the "Demo data" badge in the UI and
+/// guarantees demo rows can never be mistaken for live Bitrix24 rows.
+enum ExternalSource {
+  DEMO
+  BITRIX24
+  MANUAL
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  SALES
+}
+
+/// Our normalised stage meaning. Bitrix24 stage IDs map ONTO this.
+enum StageCategory {
+  NEW
+  IN_PROGRESS
+  WON
+  LOST
+}
+
+enum DealStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum KpiMetric {
+  REVENUE
+  DEALS_CREATED
+  DEALS_WON
+  AVERAGE_DEAL
+  CONVERSION_RATE
+}
+
+enum KpiPeriod {
+  MONTH
+  QUARTER
+  YEAR
+}
+
+enum KpiStatus {
+  ACHIEVED
+  ON_TRACK
+  AT_RISK
+  BEHIND
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CARD
+  OTHER
+}
+
+enum SyncEntity {
+  DEPARTMENTS
+  EMPLOYEES
+  PRODUCT_CATEGORIES
+  PRODUCTS
+  STAGES
+  SOURCES
+  CUSTOMERS
+  DEALS
+  DEAL_ITEMS
+  PAYMENTS
+}
+
+enum SyncMode {
+  FULL
+  INCREMENTAL
+}
+
+enum SyncStatus {
+  RUNNING
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Authentication (better-auth owns the shape of these four models)
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+
+  // Application fields (exposed to better-auth via additionalFields)
+  role       Role    @default(SALES)
+  isActive   Boolean @default(true)
+  /// A SALES user is scoped to this employee's own deals. Enforced in the
+  /// repository layer, never by hiding UI.
+  employeeId String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee  Employee?  @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  sessions  Session[]
+  accounts  Account[]
+  auditLogs AuditLog[]
+
+  @@index([role])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("session")
+}
+
+model Account {
+  id        String @id @default(cuid())
+  accountId String
+  /// Authentication method, e.g. "credential".
+  providerId String
+  /// Identity namespace, e.g. "local:credential" for email+password.
+  /// better-auth matches the sign-in account on (issuer, accountId), not on
+  /// providerId alone — an account row without it can never be signed into.
+  issuer                String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  /// Hashed credential for the email/password provider. Never plaintext.
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@index([issuer, accountId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ---------------------------------------------------------------------------
+// Organisation
+// ---------------------------------------------------------------------------
+
+model Department {
+  id             String         @id @default(cuid())
+  externalSource ExternalSource @default(MANUAL)
+  externalId     String?
+  name           String
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  employees Employee[]
+
+  @@unique([externalSource, externalId])
+  @@index([isActive])
+  @@map("department")
+}
+
+model Employee {
+  id             String         @id @default(cuid())
+  externalSource ExternalSource @default(MANUAL)
+  externalId     String?
+  fullName       String
+  email          String?
+  phone          String?
+  position       String?
+  departmentId   String?
+  avatarUrl      String?
+  isActive       Boolean        @default(true)
+  hiredAt        DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  user       User?
+  deals      Deal[]
+  kpis       Kpi[]
+
+  @@unique([externalSource, externalId])
+  @@index([departmentId])
+  @@index([isActive])
+  @@index([fullName])
+  @@map("employee")
+}
+
+// ---------------------------------------------------------------------------
+// Catalogue
+// ---------------------------------------------------------------------------
+
+model ProductCategory {
+  id             String         @id @default(cuid())
+  externalSource ExternalSource @default(MANUAL)
+  externalId     String?
+  name           String
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  products Product[]
+
+  @@unique([externalSource, externalId])
+  @@map("product_category")
+}
+
+model Product {
+  id             String         @id @default(cuid())
+  externalSource ExternalSource @default(MANUAL)
+  externalId     String?
+  name           String
+  sku            String?
+  categoryId     String?
+  /// List price in minor units. Null when the source does not publish one.
+  priceMinor     BigInt?
+  currency       String         @default("UZS") @db.Char(3)
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  category  ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  dealItems DealItem[]
+
+  @@unique([externalSource, externalId])
+  @@index([categoryId])
+  @@index([isActive])
+  @@index([name])
+  @@map("product")
+}
+
+model Customer {
+  id             String         @id @default(cuid())
+  externalSource ExternalSource @default(MANUAL)
+  externalId     String?
+  name           String
+  /// True when the counterparty is a company rather than an individual.
+  isCompany      Boolean        @default(false)
+  email          String?
+  phone          String?
+  region         String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  deals Deal[]
+
+  @@unique([externalSource, externalId])
+  @@index([name])
+  @@map("customer")
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline
+// ---------------------------------------------------------------------------
+
+model DealStage {
+  id             String         @id @default(cuid())
+  externalSource ExternalSource @default(MANUAL)
+  externalId     String?
+  name           String
+  /// Normalised meaning used by every analytics function.
+  category       StageCategory
+  /// Funnel ordering. Lower numbers sit earlier in the pipeline.
+  sortOrder      Int
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  deals Deal[]
+
+  @@unique([externalSource, externalId])
+  @@index([category])
+  @@index([sortOrder])
+  @@map("deal_stage")
+}
+
+model SalesSource {
+  id             String         @id @default(cuid())
+  externalSource ExternalSource @default(MANUAL)
+  externalId     String?
+  name           String
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  deals Deal[]
+
+  @@unique([externalSource, externalId])
+  @@map("sales_source")
+}
+
+model Deal {
+  id             String         @id @default(cuid())
+  externalSource ExternalSource @default(MANUAL)
+  externalId     String?
+
+  title       String
+  /// Deal value in minor units. See money contract at the top of this file.
+  amountMinor BigInt         @default(0)
+  currency    String         @default("UZS") @db.Char(3)
+
+  stageId    String
+  status     DealStatus @default(OPEN)
+  employeeId String
+  customerId String?
+  sourceId   String?
+
+  /// Timestamps as reported by the source CRM. Analytics uses THESE.
+  createdAtSource DateTime
+  updatedAtSource DateTime?
+  closedAt        DateTime?
+
+  /// Source fields we do not model explicitly yet. Populated by the mapping
+  /// layer so no Bitrix24 data is lost before its mapping is confirmed.
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stage    DealStage    @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  employee Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  customer Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  source   SalesSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  items    DealItem[]
+  payments Payment[]
+
+  @@unique([externalSource, externalId])
+  // Composite indexes chosen to match the actual analytics access patterns:
+  // "deals for employee X in period P" and "won deals closed in period P".
+  @@index([employeeId, createdAtSource])
+  @@index([status, closedAt])
+  @@index([createdAtSource])
+  @@index([stageId])
+  @@index([sourceId])
+  @@index([customerId])
+  @@map("deal")
+}
+
+model DealItem {
+  id             String         @id @default(cuid())
+  externalSource ExternalSource @default(MANUAL)
+  externalId     String?
+
+  dealId    String
+  productId String
+  quantity  Int    @default(1)
+  /// Unit price actually charged on this deal, in minor units.
+  unitPriceMinor BigInt
+  /// Denormalised line total. Kept so product analytics can aggregate in SQL
+  /// without recomputing quantity * price per row.
+  totalMinor     BigInt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deal    Deal    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([externalSource, externalId])
+  @@index([dealId])
+  @@index([productId])
+  @@map("deal_item")
+}
+
+// ---------------------------------------------------------------------------
+// Finance
+//
+// BITRIX24_INTEGRATION_PENDING
+// The structure below is our own model of payment tracking. Whether Bitrix24
+// exposes these fields, and under which names, is NOT yet confirmed. Until the
+// real field mapping arrives, the Bitrix24 provider returns no payments and
+// the API reports financial figures as unavailable rather than as zero.
+// See docs/BITRIX24.md.
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id             String         @id @default(cuid())
+  externalSource ExternalSource @default(MANUAL)
+  externalId     String?
+
+  dealId      String
+  amountMinor BigInt
+  currency    String        @default("UZS") @db.Char(3)
+  paidAt      DateTime
+  method      PaymentMethod @default(BANK_TRANSFER)
+  note        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  deal Deal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@unique([externalSource, externalId])
+  @@index([dealId])
+  @@index([paidAt])
+  @@map("payment")
+}
+
+// ---------------------------------------------------------------------------
+// KPI
+// ---------------------------------------------------------------------------
+
+model Kpi {
+  id String @id @default(cuid())
+
+  /// Null means the target belongs to the whole team rather than one person.
+  employeeId String?
+  metric     KpiMetric
+  period     KpiPeriod
+
+  /// Target value. Interpretation depends on `metric`:
+  ///   REVENUE / AVERAGE_DEAL -> minor units
+  ///   DEALS_CREATED / DEALS_WON -> a count
+  ///   CONVERSION_RATE -> basis points (10000 = 100.00%)
+  /// Stored as BigInt so money targets stay exact. See domain/kpi.
+  targetValue BigInt
+
+  periodStart DateTime
+  periodEnd   DateTime
+  isActive    Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee?   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  results  KpiResult[]
+
+  @@unique([employeeId, metric, periodStart, periodEnd])
+  @@index([metric])
+  @@index([periodStart, periodEnd])
+  @@index([isActive])
+  @@map("kpi")
+}
+
+/// A computed snapshot of KPI attainment. The same numbers can be computed
+/// live from deals; this table exists so historical attainment stays stable
+/// after the underlying deals are edited or re-synced.
+model KpiResult {
+  id    String @id @default(cuid())
+  kpiId String
+
+  actualValue BigInt
+  /// Attainment in basis points (10000 = 100.00%). Integer, so no float drift.
+  achievementBp Int
+  status        KpiStatus
+
+  computedAt DateTime @default(now())
+
+  kpi Kpi @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+
+  @@index([kpiId, computedAt])
+  @@map("kpi_result")
+}
+
+// ---------------------------------------------------------------------------
+// Operations
+// ---------------------------------------------------------------------------
+
+/// One row per sync run per entity. The audit trail for every import.
+model SyncLog {
+  id       String         @id @default(cuid())
+  provider ExternalSource
+  entity   SyncEntity
+  mode     SyncMode
+  status   SyncStatus     @default(RUNNING)
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  recordsRead    Int @default(0)
+  recordsCreated Int @default(0)
+  recordsUpdated Int @default(0)
+  recordsSkipped Int @default(0)
+  recordsFailed  Int @default(0)
+
+  /// Safe, already-redacted failure summary. Never a raw provider response:
+  /// those can contain credentials.
+  errorMessage String?
+
+  @@index([provider, entity, startedAt])
+  @@index([status])
+  @@map("sync_log")
+}
+
+/// Incremental sync bookmark: where to resume from per provider+entity.
+model SyncCursor {
+  id       String         @id @default(cuid())
+  provider ExternalSource
+  entity   SyncEntity
+
+  /// Watermark for "give me everything changed since". Compared against the
+  /// source's own updated-at, never against our row timestamps.
+  lastSyncedAt   DateTime?
+  lastExternalId String?
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, entity])
+  @@map("sync_cursor")
+}
+
+model AuditLog {
+  id          String  @id @default(cuid())
+  actorUserId String?
+  action      String
+  entity      String
+  entityId    String?
+  /// Structured before/after diff. Must be redacted before it is written.
+  changes     Json?
+  ipAddress   String?
+  userAgent   String?
+
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId, createdAt])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_log")
+}
