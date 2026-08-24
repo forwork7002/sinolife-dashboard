@@ -72,9 +72,29 @@ const schema = z
      */
     DEMO_SEED: blankAsUndefined(z.coerce.number().int().default(20260101)),
 
+    /**
+     * The one secret with no possible default.
+     *
+     * It signs session cookies, so it has to be unguessable (nothing derived
+     * from public deployment data will do) and stable across instances and
+     * deploys (generating one at startup would sign every visitor out on the
+     * next cold start, at random). Both properties rule out inventing it here.
+     */
     BETTER_AUTH_SECRET: z
-      .string()
-      .min(32, 'BETTER_AUTH_SECRET must be at least 32 characters'),
+      .string({
+        error:
+          'BETTER_AUTH_SECRET is missing. Generate one with:\n' +
+          "      node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
+      })
+      .min(
+        32,
+        'BETTER_AUTH_SECRET must be at least 32 characters. If it looks set, ' +
+          'check it is not an empty value. Generate one with:\n' +
+          "      node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
+      ),
+
+    // Both are filled in from the platform's own deployment URL when blank —
+    // see withPlatformDefaults below. Setting them explicitly still wins.
     BETTER_AUTH_URL: z.url(),
     NEXT_PUBLIC_APP_URL: z.url(),
 
@@ -157,8 +177,68 @@ const schema = z
 
 export type Env = z.infer<typeof schema>
 
+/**
+ * The URL the app is reachable at, as the host platform reports it.
+ *
+ * Vercel and Netlify both know their own deployment URL and expose it. Asking
+ * them beats making a human retype it into a text box: the value is right by
+ * construction, it follows preview deployments (each of which has a different
+ * host), and it cannot be the empty string that a half-filled settings page
+ * produces.
+ *
+ * Vercel's variables carry no protocol; Netlify's do. Everything here is
+ * https, which is what makes better-auth issue Secure cookies — see
+ * `useSecureCookies` in auth.ts.
+ *
+ * Returns undefined when running anywhere else, so local development still
+ * reads the value from .env.
+ */
+function platformUrl(source: NodeJS.ProcessEnv): string | undefined {
+  // Vercel. On a preview deployment the visitor is on the deployment-specific
+  // host, so the auth base URL has to be that one and not the production
+  // domain — otherwise the session cookie is set for a host nobody is on.
+  const vercelHost =
+    source.VERCEL_ENV === 'production'
+      ? (source.VERCEL_PROJECT_PRODUCTION_URL ?? source.VERCEL_URL)
+      : (source.VERCEL_URL ?? source.VERCEL_PROJECT_PRODUCTION_URL)
+
+  if (vercelHost) return `https://${vercelHost}`
+
+  // Netlify. DEPLOY_PRIME_URL is the branch/preview address; URL is the
+  // production one. Both already include the scheme.
+  const netlifyUrl =
+    source.CONTEXT === 'production'
+      ? (source.URL ?? source.DEPLOY_PRIME_URL)
+      : (source.DEPLOY_PRIME_URL ?? source.URL)
+
+  if (netlifyUrl) return netlifyUrl
+
+  return undefined
+}
+
+/**
+ * Fill in what the platform already knows before validating.
+ *
+ * Only ever fills a *blank* variable: an explicitly configured URL always
+ * wins, so a custom domain set in the dashboard is never overridden by the
+ * generated `*.vercel.app` one.
+ */
+function withPlatformDefaults(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const url = platformUrl(source)
+  if (!url) return source
+
+  const filled: NodeJS.ProcessEnv = { ...source }
+
+  for (const key of ['BETTER_AUTH_URL', 'NEXT_PUBLIC_APP_URL'] as const) {
+    if (!filled[key]) filled[key] = url
+  }
+
+  return filled
+}
+
 function load(): Env {
-  const parsed = schema.safeParse(process.env)
+  const source = withPlatformDefaults(process.env)
+  const parsed = schema.safeParse(source)
 
   if (!parsed.success) {
     // Print variable NAMES and messages only. Values are never echoed —
@@ -167,10 +247,17 @@ function load(): Env {
       .map((issue) => `  - ${issue.path.join('.') || '(root)'}: ${issue.message}`)
       .join('\n')
 
-    throw new Error(
-      `Invalid environment configuration:\n${problems}\n\n` +
-        'Compare your .env against .env.example.',
-    )
+    // On a hosting platform there is no .env to compare against, and the
+    // usual cause is a variable added by name with the value left empty —
+    // point at the settings page rather than at a file that isn't there.
+    const where =
+      platformUrl(source) !== undefined
+        ? 'Set these in your hosting dashboard under Environment Variables. ' +
+          'A variable added with an empty value counts as set, and fails here ' +
+          'exactly like this — delete it instead of leaving it blank.'
+        : 'Compare your .env against .env.example.'
+
+    throw new Error(`Invalid environment configuration:\n${problems}\n\n${where}`)
   }
 
   return Object.freeze(parsed.data)
