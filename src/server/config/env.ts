@@ -30,11 +30,24 @@ export const DataSource = {
 
 export type DataSourceValue = (typeof DataSource)[keyof typeof DataSource]
 
+/**
+ * Treat an empty string as absent.
+ *
+ * Hosting dashboards (Vercel, Netlify) store a variable you left blank as `''`,
+ * not as missing. Zod's `.default()` only fires on `undefined`, and
+ * `z.coerce.number()` turns `''` into `0` — so a blank optional variable fails
+ * validation with "expected number to be >0" instead of falling back to its
+ * default. Stripping the empty string first is what makes the default mean
+ * what it says.
+ */
+const blankAsUndefined = <T extends z.ZodType>(inner: T) =>
+  z.preprocess((v) => (v === '' ? undefined : v), inner)
+
 const schema = z
   .object({
-    NODE_ENV: z
-      .enum(['development', 'test', 'production'])
-      .default('development'),
+    NODE_ENV: blankAsUndefined(
+      z.enum(['development', 'test', 'production']).default('development'),
+    ),
 
     DATABASE_URL: z
       .string()
@@ -49,15 +62,15 @@ const schema = z
           'Edit .env and set your real PostgreSQL password.',
       ),
 
-    DATA_SOURCE: z
-      .enum([DataSource.Demo, DataSource.Bitrix24])
-      .default(DataSource.Demo),
+    DATA_SOURCE: blankAsUndefined(
+      z.enum([DataSource.Demo, DataSource.Bitrix24]).default(DataSource.Demo),
+    ),
 
     /**
      * Seed for the deterministic demo generator. Integer so the PRNG is
      * reproducible across machines and platforms.
      */
-    DEMO_SEED: z.coerce.number().int().default(20260101),
+    DEMO_SEED: blankAsUndefined(z.coerce.number().int().default(20260101)),
 
     BETTER_AUTH_SECRET: z
       .string()
@@ -70,27 +83,33 @@ const schema = z
      * Validated against the host's timezone database rather than a hardcoded
      * list, so any valid zone works.
      */
-    APP_TIMEZONE: z
-      .string()
-      .default('Asia/Tashkent')
-      .refine((tz) => {
-        try {
-          new Intl.DateTimeFormat('en-US', { timeZone: tz })
-          return true
-        } catch {
-          return false
-        }
-      }, 'APP_TIMEZONE is not a valid IANA timezone identifier'),
+    APP_TIMEZONE: blankAsUndefined(
+      z
+        .string()
+        .default('Asia/Tashkent')
+        .refine((tz) => {
+          try {
+            new Intl.DateTimeFormat('en-US', { timeZone: tz })
+            return true
+          } catch {
+            return false
+          }
+        }, 'APP_TIMEZONE is not a valid IANA timezone identifier'),
+    ),
 
-    APP_DEFAULT_LOCALE: z.enum(['uz', 'ru', 'en']).default('uz'),
-    APP_DEFAULT_CURRENCY: z
-      .string()
-      .length(3, 'APP_DEFAULT_CURRENCY must be a 3-letter ISO 4217 code')
-      .default('UZS'),
+    APP_DEFAULT_LOCALE: blankAsUndefined(
+      z.enum(['uz', 'ru', 'en']).default('uz'),
+    ),
+    APP_DEFAULT_CURRENCY: blankAsUndefined(
+      z
+        .string()
+        .length(3, 'APP_DEFAULT_CURRENCY must be a 3-letter ISO 4217 code')
+        .default('UZS'),
+    ),
 
-    LOG_LEVEL: z
-      .enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal'])
-      .default('info'),
+    LOG_LEVEL: blankAsUndefined(
+      z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
+    ),
 
     // --- Bitrix24: BITRIX24_INTEGRATION_PENDING -----------------------------
     // Optional while DATA_SOURCE=demo. Required the moment it is bitrix24;
@@ -99,9 +118,15 @@ const schema = z
       .string()
       .optional()
       .transform((v) => (v === '' ? undefined : v)),
-    BITRIX24_RATE_LIMIT_RPS: z.coerce.number().positive().default(2),
-    BITRIX24_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
-    BITRIX24_MAX_RETRIES: z.coerce.number().int().min(0).max(10).default(3),
+    BITRIX24_RATE_LIMIT_RPS: blankAsUndefined(
+      z.coerce.number().positive().default(2),
+    ),
+    BITRIX24_REQUEST_TIMEOUT_MS: blankAsUndefined(
+      z.coerce.number().int().positive().default(15_000),
+    ),
+    BITRIX24_MAX_RETRIES: blankAsUndefined(
+      z.coerce.number().int().min(0).max(10).default(3),
+    ),
   })
   .superRefine((value, ctx) => {
     if (value.DATA_SOURCE !== DataSource.Bitrix24) return
