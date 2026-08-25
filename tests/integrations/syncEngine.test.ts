@@ -271,6 +271,35 @@ describe('incremental sync', () => {
     expect(result.status).toBe('PARTIAL')
     expect(await store.getCursor('DEMO', 'EMPLOYEES')).toBeUndefined()
   })
+
+  it('advances the watermark past records that were deliberately skipped', async () => {
+    /**
+     * A skip is not a loss.
+     *
+     * Stage history always skips a couple of thousand transitions belonging to
+     * deals outside the imported pipelines, or naming stages the portal has
+     * since deleted. They never resolve. Treating that as a reason to hold the
+     * watermark made every incremental run re-read all 191 000 rows — ninety
+     * seconds, every minute, to change nothing.
+     */
+    const table = new FakeTable()
+    const handler = makeHandler('EMPLOYEES', rows(3), table, {
+      async persist(batch) {
+        const kept = batch.filter((row) => row.externalId !== 'r-2')
+        const outcome = table.upsert(kept)
+        return { ...outcome, skipped: batch.length - kept.length }
+      },
+    })
+    const { store, engine } = engineWith([handler])
+
+    const result = await engine.runEntity('EMPLOYEES', 'INCREMENTAL')
+
+    expect(result.recordsSkipped).toBe(1)
+    expect(result.recordsFailed).toBe(0)
+    // Still reported as PARTIAL — the gap stays visible in the sync log.
+    expect(result.status).toBe('PARTIAL')
+    expect(await store.getCursor('DEMO', 'EMPLOYEES')).toBeDefined()
+  })
 })
 
 describe('failure isolation', () => {

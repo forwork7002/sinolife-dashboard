@@ -40,7 +40,14 @@ Verified against the live API, not assumed.
 | Calls | ~286 000 for the last month |
 | Products | 186, of which 22 carry a purchase price |
 
-A full import takes about sixteen minutes. Incremental syncs take a couple.
+A full import takes about sixteen minutes. After that a worker keeps the
+database within about ninety seconds of the portal — it pulls every sixty
+seconds and the browser refetches on the same cadence, so a screen left open
+updates itself.
+
+Any window can be reported on: the six presets, or a specific day, month, year
+or arbitrary range through the date picker. The selection lives in the URL, so
+it survives navigation and a filtered view is a shareable link.
 
 ### Two things the portal does not have
 
@@ -91,11 +98,15 @@ portal.
 ### Everyday commands
 
 ```bash
-npm run verify                        # typecheck + lint + 306 tests
-npm run bitrix:import                 # incremental sync
+npm run verify                        # typecheck + lint + 307 tests
+npm run bitrix:worker                 # continuous sync, one tick a minute
+npm run bitrix:import                 # a single incremental pass
 npm run bitrix:resync -- STAGES DEALS # one entity, after a mapping fix
 npm run db:seed:users -- --reset-password
 ```
+
+The worker is what runs in production. `bitrix:import` is for the first load
+and for catching up by hand.
 
 ---
 

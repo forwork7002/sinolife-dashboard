@@ -1,11 +1,10 @@
 'use client'
 
 import { useQueries } from '@tanstack/react-query'
-import { useState } from 'react'
 
 import { FunnelChart } from '@/components/charts/FunnelChart'
 import { RevenueTrendChart } from '@/components/charts/RevenueTrendChart'
-import { PeriodFilter, type PeriodPreset } from '@/components/layout/PeriodFilter'
+import { PeriodFilter } from '@/components/layout/PeriodFilter'
 import { Shell } from '@/components/layout/Shell'
 import {
   ChartSkeleton,
@@ -31,6 +30,7 @@ import {
 } from '@/lib/api'
 import { NO_VALUE, formatCompactUzs, formatDate, formatNumber, formatPercent, formatUzs } from '@/lib/format'
 import { t } from '@/lib/messages'
+import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 
 interface Loaded {
   overview: OverviewDto
@@ -60,7 +60,19 @@ type State =
   | { status: 'ready'; data: Loaded }
 
 export function OverviewPage() {
-  const [preset, setPreset] = useState<PeriodPreset>('this_month')
+  /**
+   * The period lives in the URL, like every other page.
+   *
+   * This screen used to keep it in local state, which meant navigating to
+   * Logistics and back silently reset the window to "this month" — and a
+   * shared link to the overview never carried the dates the sender was
+   * looking at.
+   */
+  const { filters, setPeriod } = useDashboardFilters()
+  const { preset } = filters
+  const window = { preset, ...(preset === 'custom' && filters.from && filters.to
+    ? { from: filters.from, to: filters.to }
+    : {}) }
 
   /**
    * Three independent reads, issued together and cached per period.
@@ -73,21 +85,21 @@ export function OverviewPage() {
   const [overview, funnel, leaderboard] = useQueries({
     queries: [
       {
-        queryKey: ['overview', preset],
+        queryKey: ['overview', window],
         queryFn: ({ signal }: { signal: AbortSignal }) =>
-          apiGet<OverviewDto>('/dashboard/overview', { preset }, signal),
+          apiGet<OverviewDto>('/dashboard/overview', window, signal),
       },
       {
-        queryKey: ['funnel', preset],
+        queryKey: ['funnel', window],
         queryFn: ({ signal }: { signal: AbortSignal }) =>
-          apiGet<FunnelStepDto[]>('/analytics/funnel', { preset }, signal),
+          apiGet<FunnelStepDto[]>('/analytics/funnel', window, signal),
       },
       {
-        queryKey: ['leaderboard', preset, 'revenue'],
+        queryKey: ['leaderboard', window, 'revenue'],
         queryFn: ({ signal }: { signal: AbortSignal }) =>
           apiGet<LeaderboardRowDto[]>(
             '/analytics/leaderboard',
-            { preset, metric: 'revenue' },
+            { ...window, metric: 'revenue' },
             signal,
           ),
       },
@@ -104,19 +116,19 @@ export function OverviewPage() {
   const [logistics, confirmation, calls] = useQueries({
     queries: [
       {
-        queryKey: ['ops-logistics', preset],
+        queryKey: ['ops-logistics', window],
         queryFn: ({ signal }: { signal: AbortSignal }) =>
-          apiGet<LogisticsDto>('/insights/logistics', { preset }, signal),
+          apiGet<LogisticsDto>('/insights/logistics', window, signal),
       },
       {
-        queryKey: ['ops-confirmation', preset],
+        queryKey: ['ops-confirmation', window],
         queryFn: ({ signal }: { signal: AbortSignal }) =>
-          apiGet<ConfirmationDto>('/insights/confirmations', { preset }, signal),
+          apiGet<ConfirmationDto>('/insights/confirmations', window, signal),
       },
       {
-        queryKey: ['ops-calls', preset],
+        queryKey: ['ops-calls', window],
         queryFn: ({ signal }: { signal: AbortSignal }) =>
-          apiGet<CallActivityDto[]>('/insights/calls', { preset }, signal),
+          apiGet<CallActivityDto[]>('/insights/calls', window, signal),
       },
     ],
   })
@@ -160,7 +172,14 @@ export function OverviewPage() {
     <Shell
       dataSource={ready?.meta.dataSource}
       lastSyncedAt={ready?.overview.lastSyncedAt}
-      toolbar={<PeriodFilter value={preset} onChange={setPreset} />}
+      toolbar={
+        <PeriodFilter
+          value={preset}
+          from={filters.from}
+          to={filters.to}
+          onChange={setPeriod}
+        />
+      }
     >
       <div className="mx-auto max-w-[1400px] space-y-4">
         <PageHeader meta={ready?.meta} />

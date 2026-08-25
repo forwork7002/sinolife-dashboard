@@ -24,12 +24,12 @@ import { t } from '@/lib/messages'
  * never an infinite return.
  */
 export function ChannelsPage() {
-  const { filters } = useDashboardFilters()
+  const { apiParams } = useDashboardFilters()
 
   const query = useQuery({
-    queryKey: ['channels', filters.preset],
+    queryKey: ['channels', apiParams],
     queryFn: ({ signal }) =>
-      apiGet<ChannelDto[]>('/insights/channels', { preset: filters.preset }, signal),
+      apiGet<ChannelDto[]>('/insights/channels', apiParams, signal),
   })
 
   const rows = query.data?.data ?? []

@@ -87,9 +87,39 @@ export class IdResolver {
    *
    * Called after writing an entity so that records created in this run are
    * visible to the entities that reference them.
+   *
+   * Prefer `merge` on the hot path. Discarding the deal map costs a 420 000-row
+   * reload, which is nothing in a one-off import and everything in a worker
+   * that ticks every sixty seconds.
    */
   invalidate(entity: Entity): void {
     this.cache.delete(entity)
+  }
+
+  /**
+   * Fold newly-written ids into the cached map instead of reloading it.
+   *
+   * The long-running sync worker re-reads a handful of changed records per
+   * tick. Invalidating after each write made it reload 318 000 contacts and
+   * 420 000 deals every minute to learn about six new rows — fifty seconds of
+   * a sixty-second budget spent on rows that had not changed.
+   *
+   * Only ever ADDS entries. A cache that has never seen an id resolves it to
+   * undefined, which callers already handle; one that holds a stale id would
+   * write a broken foreign key, so nothing here removes or rewrites.
+   */
+  merge(entity: Entity, rows: readonly { id: string; externalId: string | null }[]): void {
+    const cached = this.cache.get(entity)
+    if (!cached) return
+
+    for (const row of rows) {
+      if (row.externalId) cached.set(row.externalId, row.id)
+    }
+  }
+
+  /** True when a map is already loaded, so a caller can pick merge over reload. */
+  isCached(entity: Entity): boolean {
+    return this.cache.has(entity)
   }
 
   private async query(

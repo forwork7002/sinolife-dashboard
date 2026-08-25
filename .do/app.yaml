@@ -96,6 +96,67 @@ services:
       - key: LOG_LEVEL
         value: info
 
+workers:
+  # Keeps the database within a minute of the portal.
+  #
+  # A worker rather than a scheduled job: a job pays Node and Prisma startup on
+  # every run, which at a one-minute cadence is most of the minute. This holds
+  # one process, one connection pool and one warm rate limiter.
+  #
+  # Exactly ONE instance. The worker takes a Postgres advisory lock and a
+  # second copy exits immediately, but scaling this to two would simply leave
+  # one idle — and spend the portal's rate limit twice over if the lock were
+  # ever removed.
+  - name: sync
+    instance_size_slug: basic-xxs
+    instance_count: 1
+
+    github:
+      repo: CHANGE_ME/sinolife-dashboard
+      branch: main
+      deploy_on_push: true
+
+    build_command: npm ci && npx prisma generate
+    run_command: npm run bitrix:worker
+
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        value: ${db.DATABASE_URL}
+      - key: DATA_SOURCE
+        value: bitrix24
+      - key: BITRIX24_WEBHOOK_URL
+        type: SECRET
+        value: CHANGE_ME
+      - key: BITRIX24_RATE_LIMIT_RPS
+        value: "2"
+      - key: BITRIX24_REQUEST_TIMEOUT_MS
+        value: "30000"
+      - key: BITRIX24_CALL_MONTHS
+        value: "1"
+      # Seconds between ticks, and how many ticks between reference-data reads.
+      - key: SYNC_INTERVAL_SEC
+        value: "60"
+      - key: SYNC_REFERENCE_EVERY
+        value: "30"
+      - key: APP_TIMEZONE
+        value: Asia/Tashkent
+      - key: APP_DEFAULT_LOCALE
+        value: uz
+      - key: APP_DEFAULT_CURRENCY
+        value: UZS
+      - key: LOG_LEVEL
+        value: info
+      # Unused by the worker but validated at boot by src/server/config/env.ts.
+      - key: BETTER_AUTH_SECRET
+        type: SECRET
+        value: CHANGE_ME
+      - key: BETTER_AUTH_URL
+        value: ${APP_URL}
+      - key: NEXT_PUBLIC_APP_URL
+        scope: RUN_AND_BUILD_TIME
+        value: ${APP_URL}
+
 jobs:
   # Schema first, on every deploy, before the new code serves traffic.
   - name: migrate
@@ -160,13 +221,12 @@ databases:
     production: true
     cluster_name: sinolife-db
 
-# The Bitrix24 import is NOT a job here.
+# The FIRST import is not a job here.
 #
-# The first full read takes roughly twenty-five minutes and every incremental
-# one takes a few — neither belongs in a deploy step that would block the
-# release, and the first one exceeds what a PRE_DEPLOY job should hold up.
-# Run it once by hand after the first deploy:
+# It takes about sixteen minutes, which is longer than a deploy step should
+# hold up a release. Run it once by hand after the first deploy:
 #
 #     doctl apps run <app-id> --command "npm run bitrix:import -- --full"
 #
-# and schedule the incremental afterwards. See docs/DEPLOY.md.
+# Everything after that is the `sync` worker above, which keeps the database
+# within a minute of the portal on its own. See docs/DEPLOY.md.

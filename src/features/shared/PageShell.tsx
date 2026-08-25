@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
-import { PeriodFilter, type PeriodPreset } from '@/components/layout/PeriodFilter'
+import { PeriodFilter } from '@/components/layout/PeriodFilter'
 import { Shell } from '@/components/layout/Shell'
 import { MultiSelect, SearchInput } from '@/components/ui/Controls'
 import { apiGet, type ResponseMeta } from '@/lib/api'
@@ -75,7 +75,7 @@ export function PageShell({
   actions?: ReactNode
   children: ReactNode
 }) {
-  const { filters, update, reset, activeCount } = useDashboardFilters()
+  const { filters, update, setPeriod, reset, activeCount } = useDashboardFilters()
   const options = useFilterOptions()
   const data = options.data?.data
 
@@ -90,7 +90,9 @@ export function PageShell({
       toolbar={
         <PeriodFilter
           value={filters.preset}
-          onChange={(preset: PeriodPreset) => update({ preset })}
+          from={filters.from}
+          to={filters.to}
+          onChange={setPeriod}
         />
       }
     >

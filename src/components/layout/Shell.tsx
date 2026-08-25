@@ -2,8 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useQueryClient } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import { useIsFetching, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState, type ReactNode } from 'react'
 
 import { sessionUser, signOut, useSession } from '@/lib/authClient'
 import { formatDateTime } from '@/lib/format'
@@ -169,16 +169,7 @@ export function Shell({
           })}
         </nav>
 
-        {lastSyncedAt && (
-          <div className="border-t px-5 py-3" style={{ borderColor: 'var(--border)' }}>
-            <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-              {t.badge.lastSync}
-            </p>
-            <p className="tabular text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-              {formatDateTime(lastSyncedAt)}
-            </p>
-          </div>
-        )}
+        <FreshnessPanel lastSyncedAt={lastSyncedAt} />
 
         {user && (
           <div className="border-t px-4 py-3" style={{ borderColor: 'var(--border)' }}>
@@ -286,6 +277,69 @@ export function Shell({
       </div>
     </div>
   )
+}
+
+/**
+ * How current the numbers are, stated continuously.
+ *
+ * A dashboard that refreshes itself has to say when it last succeeded,
+ * otherwise a stalled sync and a quiet hour look identical — and the quiet
+ * hour is the one people assume. The relative time ticks on its own so a
+ * screen left open overnight cannot show "just now" at 6am.
+ *
+ * Past five minutes the dot turns amber: the worker runs every sixty seconds,
+ * so five missed ticks is a fault rather than a slow one.
+ */
+function FreshnessPanel({ lastSyncedAt }: { lastSyncedAt?: string | null }) {
+  const fetching = useIsFetching() > 0
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 15_000)
+    return () => clearInterval(timer)
+  }, [])
+
+  if (!lastSyncedAt) return null
+
+  const ageMs = now - new Date(lastSyncedAt).getTime()
+  const minutes = Math.max(0, Math.floor(ageMs / 60_000))
+  const stale = minutes >= 5
+
+  return (
+    <div className="border-t px-5 py-3" style={{ borderColor: 'var(--border)' }}>
+      <div className="flex items-center gap-1.5">
+        <span
+          aria-hidden="true"
+          className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+          style={{
+            background: stale ? 'var(--status-warning)' : 'var(--status-good)',
+            // Only while a request is genuinely in flight — a permanent pulse
+            // stops meaning anything within a day.
+            animation: fetching ? 'pulse 1.2s ease-in-out infinite' : undefined,
+          }}
+        />
+        <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+          {t.badge.lastSync}
+        </p>
+      </div>
+      <p
+        className="tabular text-[11px]"
+        style={{ color: stale ? 'var(--status-warning)' : 'var(--ink-secondary)' }}
+        title={formatDateTime(lastSyncedAt)}
+      >
+        {relativeMinutes(minutes)}
+      </p>
+    </div>
+  )
+}
+
+/** "hozir" / "3 daqiqa oldin" / "2 soat oldin". */
+function relativeMinutes(minutes: number): string {
+  if (minutes < 1) return t.badge.justNow
+  if (minutes < 60) return `${minutes} ${t.badge.minutesAgo}`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} ${t.badge.hoursAgo}`
+  return `${Math.floor(hours / 24)} ${t.badge.daysAgo}`
 }
 
 /**

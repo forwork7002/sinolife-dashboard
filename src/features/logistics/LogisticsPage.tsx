@@ -26,12 +26,12 @@ import { t } from '@/lib/messages'
  * take three days to deliver.
  */
 export function LogisticsPage() {
-  const { filters } = useDashboardFilters()
+  const { apiParams } = useDashboardFilters()
 
   const query = useQuery({
-    queryKey: ['logistics', filters.preset],
+    queryKey: ['logistics', apiParams],
     queryFn: ({ signal }) =>
-      apiGet<LogisticsDto>('/insights/logistics', { preset: filters.preset }, signal),
+      apiGet<LogisticsDto>('/insights/logistics', apiParams, signal),
   })
 
   const data = query.data?.data

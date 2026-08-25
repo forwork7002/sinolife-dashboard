@@ -48,7 +48,7 @@ import type {
 } from '@/server/integrations/crm/CrmProvider'
 
 import { type ColumnSpec, bulkUpsert, rowId } from './bulkUpsert'
-import { IdResolver } from './idResolver'
+import { type Entity, IdResolver } from './idResolver'
 import type { BatchOutcome, EntitySyncHandler } from './SyncEngine'
 
 /** Split a batch into ids that already exist and ids that do not. */
@@ -76,6 +76,25 @@ function classify(
 function link(map: ReadonlyMap<string, string>, externalId: string | undefined): string | null {
   if (!externalId) return null
   return map.get(externalId) ?? null
+}
+
+/**
+ * Teach the resolver about what a bulk write just produced.
+ *
+ * `bulkUpsert` cannot report the ids it wrote — `ON CONFLICT DO UPDATE` keeps
+ * the existing one — so they are read back for this batch only. That is an
+ * indexed lookup over a few thousand external ids, against a full reload of
+ * the table, which for deals is 420 000 rows.
+ *
+ * When the map is not cached yet there is nothing to keep current, and the
+ * next `map()` call will load it complete.
+ */
+async function rememberWritten(
+  resolver: IdResolver,
+  entity: Entity,
+  rows: readonly { id: string; externalId: string | null }[],
+): Promise<void> {
+  if (resolver.isCached(entity)) resolver.merge(entity, rows)
 }
 
 /** UTC instant as a string Postgres reads back unchanged. See the header. */
@@ -487,7 +506,15 @@ export function createSyncHandlers(
         ]),
       })
 
-      resolver.invalidate('customer')
+      await rememberWritten(
+        resolver,
+        'customer',
+        await prisma.customer.findMany({
+          where: { externalSource: source, externalId: { in: ids(batch) } },
+          select: { id: true, externalId: true },
+        }),
+      )
+
       return { ...classify(batch, existing), skipped: 0 }
     },
 
@@ -622,7 +649,15 @@ export function createSyncHandlers(
         rows,
       })
 
-      resolver.invalidate('deal')
+      await rememberWritten(
+        resolver,
+        'deal',
+        await prisma.deal.findMany({
+          where: { externalSource: source, externalId: { in: ids(batch) } },
+          select: { id: true, externalId: true },
+        }),
+      )
+
       const counts = classify(
         batch.filter((r) => stageMap.has(r.stageExternalId) && employeeMap.has(r.employeeExternalId)),
         existing,

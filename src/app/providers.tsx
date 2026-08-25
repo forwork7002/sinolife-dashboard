@@ -20,14 +20,44 @@ export function Providers({ children }: { children: ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Analytics reflect a database that only changes on sync, so a
-            // short stale window avoids refetching on every tab focus while
-            // keeping the numbers current.
-            staleTime: 30_000,
-            refetchOnWindowFocus: false,
+            /**
+             * The dashboard keeps itself current.
+             *
+             * A sync worker pulls from Bitrix24 every minute, so the browser
+             * asks again on the same cadence. Someone watching the screen sees
+             * today's orders arrive without touching anything, which is the
+             * whole point of leaving it open on a wall.
+             *
+             * `staleTime` sits just under the interval so a navigation between
+             * pages reuses the cache instead of re-issuing every query, while
+             * the timer still fires on schedule.
+             */
+            refetchInterval: 60_000,
+            staleTime: 55_000,
+
+            /**
+             * Not while the tab is hidden.
+             *
+             * A dashboard left open in a background tab for a week would
+             * otherwise issue ten thousand queries nobody reads. Focus brings
+             * it straight back up to date.
+             */
+            refetchIntervalInBackground: false,
+            refetchOnWindowFocus: true,
+
             // A 400 from validation will fail identically on retry; only
             // retry once, for genuine transport blips.
             retry: 1,
+
+            /**
+             * Keep the previous period's numbers on screen while the next
+             * ones load.
+             *
+             * Without it, every period change blanks the page to skeletons for
+             * a moment — which on a one-minute refresh cycle means the screen
+             * flickers on its own.
+             */
+            placeholderData: <T,>(previous: T) => previous,
           },
         },
       }),

@@ -294,9 +294,24 @@ export class SyncEngine {
       }
     }
 
-    // Only advance the watermark when nothing was lost. Advancing past a
-    // failed record would make the next incremental run skip it forever.
-    if (status === 'SUCCESS') {
+    /**
+     * Advance the watermark when nothing FAILED — skips do not block it.
+     *
+     * The distinction matters more than it looks. A failure is a record we
+     * wanted and did not get, so the next run must see it again. A skip is a
+     * record we deliberately dropped: a stage transition belonging to a deal
+     * outside the imported pipelines, or naming a stage the portal has since
+     * deleted. Those never resolve, however many times they are re-read.
+     *
+     * Blocking on skips made the watermark permanently stuck. Stage history
+     * finishes PARTIAL on every run — 2 346 of its 193 344 rows point at
+     * things that no longer exist — so the minute-by-minute sync re-read all
+     * 191 000 transitions every tick, taking ninety seconds to change nothing.
+     *
+     * A fatal error still blocks it, and so does any record that genuinely
+     * failed to write.
+     */
+    if (!fatal && failed === 0) {
       await this.store.setCursor(this.provider.source, entity, startedAt)
     }
 

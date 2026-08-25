@@ -28,7 +28,8 @@
     "bitrix:import:test": "tsx scripts/importBitrix24Test.ts",
     "bitrix:resync": "tsx scripts/resyncEntity.ts",
     "verify": "npm run typecheck && npm run lint && npm run test",
-    "bitrix:import": "tsx scripts/import.ts"
+    "bitrix:import": "tsx scripts/import.ts",
+    "bitrix:worker": "tsx scripts/syncWorker.ts"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",

@@ -21,12 +21,12 @@ import { t } from '@/lib/messages'
  * reports is not mistaken for one running a team of forty.
  */
 export function StructurePage() {
-  const { filters } = useDashboardFilters()
+  const { apiParams } = useDashboardFilters()
 
   const query = useQuery({
-    queryKey: ['structure', filters.preset],
+    queryKey: ['structure', apiParams],
     queryFn: ({ signal }) =>
-      apiGet<StructureDto[]>('/insights/structure', { preset: filters.preset }, signal),
+      apiGet<StructureDto[]>('/insights/structure', apiParams, signal),
   })
 
   const roots = query.data?.data ?? []

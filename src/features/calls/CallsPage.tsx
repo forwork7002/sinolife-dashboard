@@ -22,12 +22,12 @@ import { formatNumber } from '@/lib/format'
  * day one exists.
  */
 export function CallsPage() {
-  const { filters } = useDashboardFilters()
+  const { apiParams } = useDashboardFilters()
 
   const query = useQuery({
-    queryKey: ['calls', filters.preset],
+    queryKey: ['calls', apiParams],
     queryFn: ({ signal }) =>
-      apiGet<CallActivityDto[]>('/insights/calls', { preset: filters.preset }, signal),
+      apiGet<CallActivityDto[]>('/insights/calls', apiParams, signal),
   })
 
   const rows = query.data?.data ?? []

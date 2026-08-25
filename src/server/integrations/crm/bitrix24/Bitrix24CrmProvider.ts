@@ -1109,8 +1109,23 @@ export class Bitrix24CrmProvider implements CrmProvider {
     // Skip empty days rather than returning an empty page for each, which the
     // sync engine would read as the end of the data.
     for (let day = startDay; day < days; day++) {
-      const windowStart = new Date(from.getTime() + day * DAY_MS)
-      const windowEnd = new Date(windowStart.getTime() + DAY_MS)
+      const dayStart = new Date(from.getTime() + day * DAY_MS)
+      const windowEnd = new Date(dayStart.getTime() + DAY_MS)
+
+      /**
+       * On an incremental run, start at the watermark instant — not at
+       * midnight of the day it falls in.
+       *
+       * Day windows exist to keep offsets shallow, not to define the query.
+       * Flooring to midnight made every minute-by-minute sync re-read the
+       * whole day: 10 000 rows and forty seconds to find the handful of calls
+       * that were actually new.
+       */
+      const windowStart =
+        options.updatedSince && day === startDay && options.updatedSince > dayStart
+          ? options.updatedSince
+          : dayStart
+
       const afterId = day === startDay ? (afterText ?? '0') : '0'
 
       const { rows, done } = await this.batchWalk<{
@@ -1151,7 +1166,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
           dealExternalId: r.CRM_ENTITY_TYPE === 'DEAL' ? nonEmpty(r.CRM_ENTITY_ID) : undefined,
           direction: callDirection(r.CALL_CATEGORY, r.CALL_TYPE),
           phoneNumber: r.PHONE_NUMBER || undefined,
-          startedAt: toDate(r.CALL_START_DATE) ?? windowStart,
+          startedAt: toDate(r.CALL_START_DATE) ?? dayStart,
           durationSec: Number(r.CALL_DURATION ?? 0),
           // 200 is the portal's success code; anything else is a failed leg,
           // and the reason is kept so "nobody answered" reads differently
@@ -1164,7 +1179,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
 
       this.callsRead += rows.length
       this.progress(
-        `  calls: ${this.callsRead} (${windowStart.toISOString().slice(0, 10)}, kun ${day + 1}/${days})`,
+        `  calls: ${this.callsRead} (${dayStart.toISOString().slice(0, 10)}, kun ${day + 1}/${days})`,
       )
 
       const lastId = rows[rows.length - 1]?.ID

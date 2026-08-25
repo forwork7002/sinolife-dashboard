@@ -23,12 +23,12 @@ import { t } from '@/lib/messages'
  * would report 100% margin on it and quietly lift the company average.
  */
 export function MarginPage() {
-  const { filters } = useDashboardFilters()
+  const { apiParams } = useDashboardFilters()
 
   const query = useQuery({
-    queryKey: ['margin', filters.preset],
+    queryKey: ['margin', apiParams],
     queryFn: ({ signal }) =>
-      apiGet<MarginDto>('/insights/margin', { preset: filters.preset }, signal),
+      apiGet<MarginDto>('/insights/margin', apiParams, signal),
   })
 
   const data = query.data?.data

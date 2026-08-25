@@ -116,19 +116,45 @@ revenue figure is roughly double the truth.
 
 ---
 
-## 5. Keep it current
+## 5. Staying current
 
-Incremental syncs read only what changed and take a couple of minutes.
-Add a scheduled job in the dashboard (**Create → Job → on a schedule**) or run
-it from anywhere with cron:
+The `sync` worker in the spec handles this. It runs continuously, pulls the
+changed records every sixty seconds, and re-reads reference data — employees,
+products, pipelines — every thirtieth tick. A typical tick moves a dozen rows
+in about thirty-five seconds, so the dashboard is never more than about ninety
+seconds behind the portal. The browser refetches on the same cadence, so a
+screen left open on a wall updates itself.
+
+A worker rather than a scheduled job on purpose: a job pays Node and Prisma
+startup on every run, which at a one-minute cadence is most of the minute.
+
+**Exactly one instance.** The worker takes a Postgres advisory lock and a
+second copy exits immediately with a message rather than racing the first —
+two of them produced foreign-key rejections on call records and spent the
+portal's rate limit twice for no extra freshness.
+
+Watch it:
 
 ```bash
-doctl apps run "$APP" --command "npm run bitrix:import"
+doctl apps logs "$APP" --type run --follow sync
 ```
 
-Every fifteen minutes is comfortable. The sync is idempotent — two overlapping
-runs cannot double anything, because every write is an upsert on the source
-record's own id.
+It is quiet by design: a tick that changed nothing prints nothing, so what you
+see in the log is what actually moved.
+
+To pause it — during a migration, say — scale it to zero in the dashboard
+rather than deleting it.
+
+### Tuning
+
+| Variable | Default | Effect |
+|---|---|---|
+| `SYNC_INTERVAL_SEC` | 60 | Seconds between ticks |
+| `SYNC_REFERENCE_EVERY` | 30 | Ticks between reference-data refreshes |
+| `BITRIX24_CALL_MONTHS` | 1 | How much telephony history the first import reads |
+
+Going below about thirty seconds is not useful: a tick already takes half a
+minute, most of it waiting on the portal's two-requests-per-second limit.
 
 ---
 

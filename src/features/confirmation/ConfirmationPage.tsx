@@ -25,12 +25,12 @@ import { t } from '@/lib/messages'
  * 40% delivered is not performing well, and no single column would say so.
  */
 export function ConfirmationPage() {
-  const { filters } = useDashboardFilters()
+  const { apiParams } = useDashboardFilters()
 
   const query = useQuery({
-    queryKey: ['confirmations', filters.preset],
+    queryKey: ['confirmations', apiParams],
     queryFn: ({ signal }) =>
-      apiGet<ConfirmationDto>('/insights/confirmations', { preset: filters.preset }, signal),
+      apiGet<ConfirmationDto>('/insights/confirmations', apiParams, signal),
   })
 
   const data = query.data?.data

@@ -316,3 +316,21 @@ body {
     transform: none;
   }
 }
+
+/**
+ * The live-data pulse.
+ *
+ * Shown only while a request is genuinely in flight. A dot that pulses
+ * permanently stops carrying information within about a day, so the component
+ * turns the animation off between fetches rather than leaving it running.
+ */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+  }
+}

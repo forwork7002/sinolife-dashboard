@@ -25,12 +25,12 @@ import { t } from '@/lib/messages'
  * point delivers reliably, and where parcels come back.
  */
 export function WarehousePage() {
-  const { filters } = useDashboardFilters()
+  const { apiParams } = useDashboardFilters()
 
   const query = useQuery({
-    queryKey: ['dispatch', filters.preset],
+    queryKey: ['dispatch', apiParams],
     queryFn: ({ signal }) =>
-      apiGet<DispatchDto[]>('/insights/dispatch', { preset: filters.preset }, signal),
+      apiGet<DispatchDto[]>('/insights/dispatch', apiParams, signal),
   })
 
   const rows = query.data?.data ?? []
