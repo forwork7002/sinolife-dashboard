@@ -55,6 +55,7 @@ export function PageShell({
   description,
   meta,
   filters: enabled = {},
+  accent,
   actions,
   children,
 }: {
@@ -62,6 +63,15 @@ export function PageShell({
   description?: string
   meta?: ResponseMeta
   filters?: FilterToggles
+  /**
+   * Page identity, as a CSS colour.
+   *
+   * Sets `--accent` for the subtree, which the rule under the title, the
+   * active nav marker and any meter set to `tone="accent"` read from. It is
+   * never used by a mark that encodes a value — series colour has to stay
+   * stable across pages or the same bar means two things in two places.
+   */
+  accent?: string
   actions?: ReactNode
   children: ReactNode
 }) {
@@ -84,17 +94,21 @@ export function PageShell({
         />
       }
     >
-      <div className="mx-auto max-w-[1400px] space-y-4">
+      <div
+        className="mx-auto max-w-[1400px] space-y-4"
+        style={accent ? ({ '--accent': accent } as React.CSSProperties) : undefined}
+      >
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
+            {accent && <div className="accent-rule mb-2.5" aria-hidden="true" />}
             <h1
-              className="text-lg font-semibold tracking-tight"
+              className="text-xl font-semibold tracking-tight"
               style={{ color: 'var(--ink-primary)' }}
             >
               {title}
             </h1>
             {(description || meta?.period) && (
-              <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-muted)' }}>
+              <p className="mt-1 max-w-2xl text-xs" style={{ color: 'var(--ink-muted)' }}>
                 {description}
                 {description && meta?.period && <span className="mx-1.5">·</span>}
                 {meta?.period && (

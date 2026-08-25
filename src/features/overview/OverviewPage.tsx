@@ -13,17 +13,23 @@ import {
   ErrorState,
   LoadingSkeleton,
 } from '@/components/states/States'
-import { Card, ChartCard, KpiCard } from '@/components/ui/Card'
+import { Sparkline } from '@/components/charts/Sparkline'
+import { Card, ChartCard } from '@/components/ui/Card'
+import { Meter, RankBadge, StatTile } from '@/components/ui/Stat'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import {
   ApiClientError,
+  type CallActivityDto,
+  type ConfirmationDto,
   type FunnelStepDto,
+  type KpiCardDto,
   type LeaderboardRowDto,
+  type LogisticsDto,
   type OverviewDto,
   type ResponseMeta,
   apiGet,
 } from '@/lib/api'
-import { formatCompactUzs, formatDate, formatNumber, formatPercent } from '@/lib/format'
+import { NO_VALUE, formatCompactUzs, formatDate, formatNumber, formatPercent, formatUzs } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 interface Loaded {
@@ -31,6 +37,21 @@ interface Loaded {
   funnel: readonly FunnelStepDto[]
   leaderboard: readonly LeaderboardRowDto[]
   meta: ResponseMeta
+}
+
+/**
+ * The operational row.
+ *
+ * Loaded separately from the sales figures and allowed to be missing. These
+ * three reads are each an indexed aggregate over a different table, and the
+ * page is worth showing the moment revenue is known — waiting for delivery
+ * timings before rendering the headline would make the whole screen as slow as
+ * its slowest question.
+ */
+interface Operations {
+  logistics?: LogisticsDto
+  confirmation?: ConfirmationDto
+  calls?: readonly CallActivityDto[]
 }
 
 type State =
@@ -72,6 +93,39 @@ export function OverviewPage() {
       },
     ],
   })
+
+  /**
+   * Operational reads, deliberately outside the readiness gate.
+   *
+   * If delivery or telephony is slow or empty, the sales half of the page
+   * still renders. Each tile below reports its own absence rather than
+   * blocking the others.
+   */
+  const [logistics, confirmation, calls] = useQueries({
+    queries: [
+      {
+        queryKey: ['ops-logistics', preset],
+        queryFn: ({ signal }: { signal: AbortSignal }) =>
+          apiGet<LogisticsDto>('/insights/logistics', { preset }, signal),
+      },
+      {
+        queryKey: ['ops-confirmation', preset],
+        queryFn: ({ signal }: { signal: AbortSignal }) =>
+          apiGet<ConfirmationDto>('/insights/confirmations', { preset }, signal),
+      },
+      {
+        queryKey: ['ops-calls', preset],
+        queryFn: ({ signal }: { signal: AbortSignal }) =>
+          apiGet<CallActivityDto[]>('/insights/calls', { preset }, signal),
+      },
+    ],
+  })
+
+  const operations: Operations = {
+    logistics: logistics.data?.data,
+    confirmation: confirmation.data?.data,
+    calls: calls.data?.data,
+  }
 
   const queries = [overview, funnel, leaderboard]
   const firstError = queries.find((q) => q.isError)?.error
@@ -123,6 +177,8 @@ export function OverviewPage() {
           <>
             <KpiRow overview={ready?.overview} loading={state.status === 'loading'} />
 
+            <OperationsRow operations={operations} />
+
             <div className="grid gap-4 lg:grid-cols-3">
               <ChartCard
                 title={t.chart.revenueTrend}
@@ -149,13 +205,16 @@ export function OverviewPage() {
               </ChartCard>
             </div>
 
-            <ChartCard title={t.chart.leaderboard} hint={t.metric.revenue}>
+            <ChartCard
+              title={t.chart.leaderboard}
+              hint="Tushum boʻyicha. Ustunlar birinchi oʻrinning ulushiga nisbatan."
+            >
               {!ready ? (
                 <LoadingSkeleton rows={5} />
               ) : ready.leaderboard.length === 0 ? (
                 <EmptyState />
               ) : (
-                <LeaderboardTable rows={ready.leaderboard.slice(0, 8)} />
+                <LeaderboardTable rows={ready.leaderboard.slice(0, 10)} />
               )}
             </ChartCard>
           </>
@@ -207,6 +266,13 @@ const CARD_LABELS: Record<string, string> = {
   pipeline: t.cards.pipeline,
 }
 
+/**
+ * The headline row.
+ *
+ * Revenue is given a wider tile and its own trend line, because it is the
+ * number the page exists to state and the six beside it are context for it.
+ * Everything else keeps a delta, so no figure sits without a reference point.
+ */
 function KpiRow({ overview, loading }: { overview?: OverviewDto; loading: boolean }) {
   if (loading || !overview) {
     return (
@@ -220,11 +286,140 @@ function KpiRow({ overview, loading }: { overview?: OverviewDto; loading: boolea
     )
   }
 
+  const revenue = overview.cards.find((c) => c.key === 'revenue')
+  const rest = overview.cards.filter((c) => c.key !== 'revenue')
+  const trend = overview.trend.map((point) => point.revenue)
+
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-      {overview.cards.map((card) => (
-        <KpiCard key={card.key} card={card} label={CARD_LABELS[card.key] ?? card.key} />
-      ))}
+    <div className="grid gap-3 lg:grid-cols-3 xl:grid-cols-4">
+      {revenue && <HeroCard card={revenue} trend={trend} />}
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:col-span-2 lg:grid-cols-3 xl:col-span-3">
+        {rest.map((card) => (
+          <StatTile
+            key={card.key}
+            label={CARD_LABELS[card.key] ?? card.key}
+            value={card.value}
+            unit={card.unit === 'money' ? 'money' : card.unit === 'percent' ? 'percent' : 'count'}
+            context={<TrendIndicator delta={card.delta} />}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** Revenue, at the size the number deserves, with the period's shape beneath. */
+function HeroCard({ card, trend }: { card: KpiCardDto; trend: readonly number[] }) {
+  return (
+    <div
+      className="rise flex flex-col justify-between rounded-[var(--radius-lg)] border p-5"
+      style={{
+        background: 'var(--surface)',
+        borderColor: 'var(--border)',
+        boxShadow: 'var(--shadow-raised)',
+      }}
+    >
+      <div>
+        <p
+          className="text-[11px] font-medium tracking-wide uppercase"
+          style={{ color: 'var(--ink-muted)' }}
+        >
+          {t.cards.revenue}
+        </p>
+        <p
+          className="figure mt-2 text-[38px] leading-none font-semibold"
+          style={{ color: 'var(--ink-primary)' }}
+          title={card.money ? formatUzs(card.money.amount) : undefined}
+        >
+          {card.money ? formatCompactUzs(card.money.amount) : NO_VALUE}
+          <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
+            soʻm
+          </span>
+        </p>
+        <div className="mt-2 flex items-center gap-2">
+          <TrendIndicator delta={card.delta} />
+          <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            {t.period.comparedTo}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <Sparkline values={trend} color="var(--series-1)" height={40} label="Davr boʻyicha tushum" />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * How the work went, next to how much it earned.
+ *
+ * Revenue alone does not say whether the orders arrived, whether operators
+ * reached anyone, or how much of the team's day was spent talking to
+ * customers. These four are the operational half of the same question, and
+ * each reports "not connected" independently rather than showing a zero for a
+ * source that has not been read yet.
+ */
+function OperationsRow({ operations }: { operations: Operations }) {
+  const { logistics, confirmation, calls } = operations
+
+  const totalTalkHours =
+    calls === undefined
+      ? null
+      : Math.round(calls.reduce((sum, row) => sum + row.talkSeconds, 0) / 3600)
+
+  const activeCallers = calls?.filter((row) => row.connected > 0).length ?? null
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <StatTile
+        label="Yetkazish darajasi"
+        value={logistics?.totals.deliveryRate ?? null}
+        unit="percent"
+        hint={
+          logistics
+            ? `${formatNumber(logistics.totals.delivered)} / ${formatNumber(logistics.totals.orders)} buyurtma`
+            : 'yuklanmoqda'
+        }
+        tone={
+          logistics === undefined
+            ? 'neutral'
+            : logistics.totals.deliveryRate >= 85
+              ? 'good'
+              : logistics.totals.deliveryRate >= 60
+                ? 'warning'
+                : 'critical'
+        }
+        context={<Meter value={logistics?.totals.deliveryRate ?? null} />}
+      />
+      <StatTile
+        label="Tasdiqlash darajasi"
+        value={confirmation?.totals.confirmRate ?? null}
+        unit="percent"
+        hint={
+          confirmation
+            ? `${formatNumber(confirmation.totals.confirmed)} tasdiqlangan`
+            : 'yuklanmoqda'
+        }
+        context={<Meter value={confirmation?.totals.confirmRate ?? null} tone="neutral" />}
+      />
+      <StatTile
+        label="Mijoz bilan suhbat"
+        value={totalTalkHours}
+        unit="hours"
+        hint={
+          calls
+            ? `${formatNumber(calls.reduce((sum, r) => sum + r.connected, 0))} ta ulangan qoʻngʻiroq`
+            : 'yuklanmoqda'
+        }
+      />
+      <StatTile
+        label="Qoʻngʻiroq qilgan xodim"
+        value={activeCallers}
+        unit="count"
+        hint="Davr davomida kamida bitta ulangan qoʻngʻiroq"
+      />
     </div>
   )
 }
@@ -250,8 +445,8 @@ function LeaderboardTable({ rows }: { rows: readonly LeaderboardRowDto[] }) {
         <tbody>
           {rows.map((row) => (
             <tr key={row.employeeId} className="border-t" style={{ borderColor: 'var(--border)' }}>
-              <Td className="tabular text-right" style={{ color: 'var(--ink-muted)' }}>
-                {row.rank}
+              <Td className="text-right">
+                <RankBadge rank={row.rank} />
               </Td>
               <Td>
                 <span className="font-medium" style={{ color: 'var(--ink-primary)' }}>

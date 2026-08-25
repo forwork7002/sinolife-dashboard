@@ -24,7 +24,7 @@ import type { Prisma, PrismaClient } from '@/generated/prisma/client'
 import type { AnalyticsDeal, AnalyticsDealItem } from '@/server/domain/analytics/sales'
 import type { FunnelStageDefinition } from '@/server/domain/analytics/sales'
 import type { Period } from '@/server/domain/period/period'
-import type { DealStatusValue } from '@/server/domain/types'
+import type { DealStatusValue, PipelineRoleValue } from '@/server/domain/types'
 
 export interface DealFilters {
   readonly employeeIds?: readonly string[]
@@ -32,8 +32,21 @@ export interface DealFilters {
   readonly stageIds?: readonly string[]
   readonly sourceIds?: readonly string[]
   readonly productIds?: readonly string[]
+  readonly pipelineIds?: readonly string[]
+  readonly regions?: readonly string[]
   readonly status?: DealStatusValue
   readonly q?: string
+  /**
+   * Restrict to deals that may contribute money.
+   *
+   * Defaults to TRUE for every analysis query and FALSE for the browsable
+   * deal list. The portal records the same order twice — once in Доставка,
+   * once in База ten days later, same code, same amount, 97% of the time — so
+   * an unfiltered revenue total is roughly double the truth and looks
+   * entirely plausible. The browsable list still shows both, because a user
+   * looking up an order needs to find it wherever it lives.
+   */
+  readonly revenueOnly?: boolean
   /**
    * Authorisation scope. When set, only this employee's deals are visible.
    * Applied HERE rather than in the UI so it cannot be bypassed by calling the
@@ -96,6 +109,15 @@ export class DealRepository {
     if (filters.sourceIds?.length) {
       and.push({ sourceId: { in: [...filters.sourceIds] } })
     }
+    if (filters.pipelineIds?.length) {
+      and.push({ pipelineId: { in: [...filters.pipelineIds] } })
+    }
+    if (filters.regions?.length) {
+      and.push({ region: { in: [...filters.regions] } })
+    }
+    if (filters.revenueOnly) {
+      and.push({ countsAsRevenue: true })
+    }
     if (filters.productIds?.length) {
       and.push({ items: { some: { productId: { in: [...filters.productIds] } } } })
     }
@@ -131,7 +153,9 @@ export class DealRepository {
     const end = new Date(Math.max(...periods.map((p) => p.end.getTime())))
 
     const rows = await this.prisma.deal.findMany({
-      where: this.where(filters, { start, end }),
+      // Revenue-only unless the caller says otherwise. Analysis is what feeds
+      // every money figure, so this is the default that has to be safe.
+      where: this.where({ revenueOnly: true, ...filters }, { start, end }),
       select: ANALYTICS_SELECT,
     })
 
@@ -213,10 +237,22 @@ export class DealRepository {
     })
   }
 
-  /** Stage definitions for the funnel, in pipeline order. */
-  async findStages(): Promise<FunnelStageDefinition[]> {
+  /**
+   * Stage definitions for the funnel, in pipeline order.
+   *
+   * Scoped to revenue pipelines by default. The portal defines 108 stages
+   * across nine pipelines, and a funnel listing all of them is not a funnel —
+   * it is a five-thousand-pixel column in which the twelve rows that matter
+   * are invisible. Registration, triage and HR have their own stages and no
+   * business being on a sales funnel.
+   */
+  async findStages(
+    options: { pipelineRoles?: readonly PipelineRoleValue[] } = {},
+  ): Promise<FunnelStageDefinition[]> {
+    const roles = options.pipelineRoles ?? ['REVENUE']
+
     const rows = await this.prisma.dealStage.findMany({
-      where: { isActive: true },
+      where: { isActive: true, pipeline: { role: { in: [...roles] } } },
       orderBy: { sortOrder: 'asc' },
       select: { id: true, name: true, sortOrder: true, category: true },
     })

@@ -17,12 +17,16 @@
 import type { $Enums } from '@/generated/prisma/client'
 
 import type {
+  CallDirectionValue,
+  ConfirmStatusValue,
   DealStatusValue,
   ExternalSourceValue,
   KpiMetricValue,
   KpiPeriodValue,
   KpiStatusValue,
+  LogisticsRoleValue,
   PaymentMethodValue,
+  PipelineRoleValue,
   RoleValue,
   StageCategoryValue,
   SyncEntityValue,
@@ -42,6 +46,10 @@ type AssertEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : ne
 const _externalSource: AssertEqual<ExternalSourceValue, $Enums.ExternalSource> = true
 const _role: AssertEqual<RoleValue, $Enums.Role> = true
 const _stageCategory: AssertEqual<StageCategoryValue, $Enums.StageCategory> = true
+const _pipelineRole: AssertEqual<PipelineRoleValue, $Enums.PipelineRole> = true
+const _logisticsRole: AssertEqual<LogisticsRoleValue, $Enums.LogisticsRole> = true
+const _confirmStatus: AssertEqual<ConfirmStatusValue, $Enums.ConfirmStatus> = true
+const _callDirection: AssertEqual<CallDirectionValue, $Enums.CallDirection> = true
 const _dealStatus: AssertEqual<DealStatusValue, $Enums.DealStatus> = true
 const _kpiMetric: AssertEqual<KpiMetricValue, $Enums.KpiMetric> = true
 const _kpiPeriod: AssertEqual<KpiPeriodValue, $Enums.KpiPeriod> = true

@@ -65,9 +65,29 @@ export function TrendIndicator({
     <span
       className={`tabular inline-flex items-center gap-0.5 text-xs font-medium ${className}`}
       style={{ color }}
+      title={`${formatPercent(Math.abs(delta.percent))} oldingi davrga nisbatan`}
     >
       <span aria-hidden="true">{arrow}</span>
-      {formatPercent(Math.abs(delta.percent))}
+      {formatChange(Math.abs(delta.percent))}
     </span>
   )
+}
+
+/**
+ * A change, at a size a person can read.
+ *
+ * Past roughly threefold, a percentage stops informing: "+15 157.8%" takes a
+ * moment of arithmetic to become "about 150 times", and the precision is
+ * spurious anyway when the baseline was a handful of deals. So large changes
+ * are stated as a multiple, which is how anyone would say it out loud.
+ *
+ * The exact percentage stays in the tooltip, because it is still the number
+ * the calculation produced.
+ */
+function formatChange(percent: number): string {
+  if (percent >= 300) {
+    const multiple = 1 + percent / 100
+    return `×${multiple >= 10 ? Math.round(multiple) : Math.round(multiple * 10) / 10}`
+  }
+  return formatPercent(percent)
 }

@@ -137,22 +137,18 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div
-          className="mt-4 rounded-xl border px-4 py-3 text-xs"
-          style={{ borderColor: 'var(--border)', color: 'var(--ink-secondary)' }}
-        >
-          <p className="font-medium" style={{ color: 'var(--ink-primary)' }}>
-            Demo hisoblar
-          </p>
-          <ul className="mt-1.5 space-y-0.5">
-            <li>admin@sinolife.uz — Administrator</li>
-            <li>manager@sinolife.uz — Menejer</li>
-            <li>sales@sinolife.uz — Savdo xodimi</li>
-          </ul>
-          <p className="mt-1.5" style={{ color: 'var(--ink-muted)' }}>
-            Parol: demo1234
-          </p>
-        </div>
+        {/*
+          No credential hint.
+
+          The demo accounts this box used to advertise are gone: the
+          deployment provisions one administrator from environment variables.
+          Printing any address here would hand an attacker a valid username
+          for free, which is the same reason the error above never says which
+          of the two fields was wrong.
+        */}
+        <p className="mt-4 text-center text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+          Kirish maʼlumotlari administrator tomonidan beriladi.
+        </p>
       </div>
     </main>
   )

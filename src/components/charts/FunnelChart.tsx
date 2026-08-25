@@ -43,14 +43,29 @@ function colorFor(
 }
 
 export function FunnelChart({ steps }: { steps: readonly FunnelStepDto[] }) {
-  const pipelineSteps = steps.filter(
+  /**
+   * Empty stages are dropped, except the terminal ones.
+   *
+   * A pipeline carries stages that nothing is sitting in this month — a
+   * regional hub with no dispatches, a chase queue that stayed empty. Printing
+   * every one of them at zero buries the dozen rows that have anything in them
+   * under thirty that do not.
+   *
+   * Won and lost stay whatever their count, because "nothing was refused" is
+   * itself a result and its absence would read as missing data.
+   */
+  const visible = steps.filter(
+    (step) => step.dealCount > 0 || step.category === 'WON' || step.category === 'LOST',
+  )
+
+  const pipelineSteps = visible.filter(
     (s) => s.category === 'NEW' || s.category === 'IN_PROGRESS',
   )
-  const max = Math.max(1, ...steps.map((s) => s.dealCount))
+  const max = Math.max(1, ...visible.map((s) => s.dealCount))
 
   return (
     <ul className="space-y-2.5">
-      {steps.map((step) => {
+      {visible.map((step) => {
         const width = (step.dealCount / max) * 100
         const color = colorFor(step, pipelineSteps.indexOf(step), pipelineSteps.length)
 
@@ -58,6 +73,7 @@ export function FunnelChart({ steps }: { steps: readonly FunnelStepDto[] }) {
           <li key={step.stageId}>
             <div className="flex items-baseline justify-between gap-3">
               <span
+                title={step.stageName}
                 className="truncate text-xs font-medium"
                 style={{ color: 'var(--ink-primary)' }}
               >

@@ -1,162 +1,124 @@
 # SinoLife Sales Intelligence
 
-Internal sales analytics and management dashboard.
+Sales, delivery and team analytics for the `obey.bitrix24.kz` portal.
 
-Runs today on **deterministic demo data** in PostgreSQL. Designed so that
-connecting the real Bitrix24 account later is an integration task, not a
-rewrite — the frontend, the analytics engine and the database schema do not
-change.
-
-UI language is Uzbek. Currency is UZS. All reporting periods are computed in
-`Asia/Tashkent`.
+Runs on **live Bitrix24 data**. UI language is Uzbek, currency UZS, every
+reporting period computed in `Asia/Tashkent`. One administrator account; public
+sign-up is disabled in code.
 
 ---
 
-## Status
+## What it reports
 
-| Area | State |
+| Screen | Question it answers |
 |---|---|
-| Architecture, scaffold | Done |
-| Database schema + migrations | Done — 19 tables, 70 indexes |
-| Domain layer (money, periods, analytics, KPI, finance) | Done |
-| CRM abstraction + deterministic demo provider | Done |
-| Synchronisation engine (idempotent, incremental, sweep) | Done |
-| Repositories, services, REST API | Done — 13 endpoints |
-| Authentication + RBAC | Done — 3 roles, scoping enforced in SQL |
-| Dashboard UI | Done — 8 pages + employee drill-down |
-| Tests | 285 |
-| **Bitrix24 provider** | **Implemented and verified against the live portal** |
-| Reports / export page | Not built |
-| Admin sync screen | Not built (`sync:run` API and permission exist) |
+| **Umumiy koʻrinish** | How much did we sell, did it arrive, who is working |
+| **Savdo tahlili** | Revenue over time, by product, by seller, by stage |
+| **Kanallar** | What each of the 25 sources brings in, and what it converts at |
+| **Kogorta** | Do customers come back, and what is repeat business worth |
+| **Marja** | Gross margin per product, and how much of revenue it covers |
+| **Logistika** | Which hub and carrier delivered, how fast, and where parcels came back |
+| **Tasdiqlash** | Did the operator confirm the order — and did the confirmation hold |
+| **Sklad** | What each warehouse, courier and marketplace shipped |
+| **Reyting / Xodimlar / Struktura** | Who sold what, and where they sit in the company |
+| **Qoʻngʻiroqlar** | Who actually spoke to customers, for how long |
+| **Bitimlar** | Every deal, filterable, across all nine pipelines |
 
-## Bitrix24 — test import completed
+---
 
-The provider is written and a full test import has run against the real portal
-into a **separate** database. The live dashboard still serves demo data.
+## What the portal actually holds
+
+Verified against the live API, not assumed.
 
 | | |
 |---|---|
-| Imported | 16 480 deals — `Доставка` (#6) + `Ecommerce` (#14) |
-| Revenue | 16 261 849 917 UZS across 11 550 won deals |
-| Also | 288 employees · 14 248 customers · 57 products |
-| Duration | 11.1 minutes |
+| Deals | 419 717 across nine pipelines |
+| Revenue | 16.28 bn UZS from 11 561 won deals |
+| Contacts | 317 839 |
+| Employees | 288, in a 20-department tree |
+| Stage transitions | ~191 000 |
+| Calls | ~286 000 for the last month |
+| Products | 186, of which 22 carry a purchase price |
 
-**`База` (#10) is deliberately excluded.** It duplicates `Доставка`: 97% of its
-order codes (`bx05267`-style) and amounts reappear there, created a median of
-10 days later, 290 of 292 always later. Importing it would roughly double
-reported revenue with nothing visibly broken.
+A full import takes about sixteen minutes. Incremental syncs take a couple.
 
-Payments are **not** imported — the portal has no payment amount anywhere
-(`crm.invoice.list` returns 0, no smart processes, none of the 55 custom fields
-holds a sum). Payment exists only as stage names. The finance page therefore
-reports "not connected" rather than 0 outstanding, which would be false.
+### Two things the portal does not have
 
-Still open: revenue recognition at `Доставлено` needs finance sign-off, the
-`department` scope is missing from the webhook, and 77% of product rows
-reference products outside `crm.product.list` (likely the trade catalogue —
-needs the `catalog` scope).
+**Payments.** No payment amount exists anywhere: `crm.invoice.list` returns
+nothing, there are no smart processes, and none of the 55 custom fields holds a
+sum. Payment appears only as stage names. The finance page therefore reports
+"not connected" rather than 0 soʻm outstanding, which would be false.
 
-Full detail: [BITRIX24-IMPORT-PLAN.md](docs/BITRIX24-IMPORT-PLAN.md).
+**Stock balances.** Four stores are defined and every one is empty —
+`catalog.storeproduct.list` returns zero rows and there are no inventory
+documents. The warehouse page reports dispatch by fulfilment point, which the
+portal *does* record, and says plainly that on-hand quantity is not maintained.
 
 ---
 
-## Requirements
+## The one rule that matters
 
-- Node.js 20+ (developed on 24)
-- PostgreSQL 16 or 17
-- npm 10+
+The portal records the same order twice. `#10 База` mirrors `#6 Доставка`: 97%
+of its order codes and amounts reappear there, created a median of ten days
+later, and always later.
 
-## Setup
+So every deal carries `countsAsRevenue`, set from its pipeline's role, and
+**every query that touches money names it explicitly**. Without that filter,
+reported revenue is roughly 5 bn UZS too high — about 30% — and nothing looks
+broken.
+
+The import prints the excluded total on every run. If it is ever zero, the
+guard has stopped working.
+
+---
+
+## Getting started
 
 ```bash
-npm install
-cp .env.example .env          # then set DATABASE_URL
-npm run db:migrate            # create the schema
-npm run db:seed               # demo data, through the real sync engine
-npm run db:seed:users         # demo accounts
+cp .env.example .env          # fill in DATABASE_URL, BITRIX24_WEBHOOK_URL,
+                              # BETTER_AUTH_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD
+npm ci
+npm run db:deploy             # migrations
+npm run bitrix:import -- --full --reset
+npm run db:seed:users         # the single administrator
 npm run dev
 ```
 
-The app refuses to start if `.env` is incomplete — including while
-`DATABASE_URL` still contains the `CHANGE_ME` placeholder. That is deliberate:
-a misconfigured deployment should fail loudly rather than serve a dashboard
-full of zeros.
+`--reset` removes demo-sourced rows before importing. Demo data is retired; the
+generator survives only as a test fixture so the analytics suite runs without a
+portal.
 
-## Demo accounts
+### Everyday commands
 
-| Email | Role | Sees |
-|---|---|---|
-| `admin@sinolife.uz` | Administrator | Everything, including sync and users |
-| `manager@sinolife.uz` | Manager | All analytics; no admin operations |
-| `sales@sinolife.uz` | Sales | Own deals and KPI only; no finance |
+```bash
+npm run verify                        # typecheck + lint + 306 tests
+npm run bitrix:import                 # incremental sync
+npm run bitrix:resync -- STAGES DEALS # one entity, after a mapping fix
+npm run db:seed:users -- --reset-password
+```
 
-Password: `demo1234`
-
-> **Replace these before any deployment reachable from outside.** They are
-> created by `prisma/seedUsers.ts`. Public sign-up is disabled; accounts are
-> provisioned server-side through `src/server/auth/provisioning.ts`.
-
-## Scripts
-
-| Command | Purpose |
-|---|---|
-| `npm run dev` | Development server |
-| `npm run build` / `start` | Production build and serve |
-| `npm run verify` | **typecheck + lint + tests.** The gate; green before any phase is done |
-| `npm test` / `test:watch` / `test:coverage` | Tests |
-| `npm run db:migrate` | Create and apply a migration |
-| `npm run db:deploy` | Apply migrations (production) |
-| `npm run db:seed` | Load demo data |
-| `npm run db:seed:users` | Create/refresh demo accounts |
-| `npm run db:check` | **Data integrity checks** — 11 invariants, CI-usable |
-| `npm run db:studio` | Browse the database |
-| `npm run db:reset` | **Destructive.** Drops and recreates the database |
-
-## Pages
-
-`/` overview · `/analytics/sales` · `/products` · `/finance` · `/employees` ·
-`/employees/:id` · `/leaderboard` · `/deals` · `/kpi` · `/login`
-
-Filters live in the URL, so a filtered view is a shareable link, the back
-button steps through filter changes, and the reporting period carries across
-navigation.
-
-## Demo vs live data
-
-Every API response carries `meta.dataSource` (`DEMO` or `BITRIX24`), and the UI
-badge reads that field and nothing else — so no screen can present generated
-numbers as if they came from the live CRM.
-
-Demo data is generated from a fixed seed (`DEMO_SEED`), so the same seed always
-produces the same employees, deals and revenue.
+---
 
 ## Documentation
 
-| Document | Contents |
+| | |
 |---|---|
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, boundaries, and why lint enforces them |
-| [DATABASE.md](docs/DATABASE.md) | Schema, money representation, indexes |
-| [API.md](docs/API.md) | Endpoints, envelope, auth, filters, errors |
-| [BITRIX24.md](docs/BITRIX24.md) | Integration background and open business questions |
-| [BITRIX24-IMPORT-PLAN.md](docs/BITRIX24-IMPORT-PLAN.md) | Scope, mapping and duplicate rules for the import |
-| [DEPLOY.md](docs/DEPLOY.md) | Putting it online — GitHub, Neon, Vercel |
-| [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Conventions, testing, troubleshooting |
+| [SUPERDASHBOARD.md](docs/SUPERDASHBOARD.md) | What each module measures and why, with the portal evidence behind it |
+| [BITRIX24-IMPORT-PLAN.md](docs/BITRIX24-IMPORT-PLAN.md) | Field mapping, duplicate analysis, revenue recognition |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers and the rules between them |
+| [DATABASE.md](docs/DATABASE.md) | Schema and the money/time contracts |
+| [API.md](docs/API.md) | Endpoints and the response envelope |
+| [DEPLOY.md](docs/DEPLOY.md) | DigitalOcean App Platform, step by step |
+| [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup and conventions |
 
-## Bitrix24 tooling
+---
 
-Read-only investigation scripts. None of them writes to the portal.
+## Still open
 
-| Command | Purpose |
-|---|---|
-| `npm run bitrix:discover` | Dump the portal's fields, pipelines, stages, volumes |
-| `npm run bitrix:analyze` | Pipeline sizes, payment-field search, sample deal |
-| `npm run bitrix:compare` | Relationship between Доставка / База / Ecommerce |
-| `npm run bitrix:titles` | Order-code overlap — the duplicate proof |
-| `npm run bitrix:import:test` | Full import into `BITRIX24_TEST_DB_URL` |
-| `npm run bitrix:resync -- STAGES` | Re-sync one entity after a mapping fix |
-
-Their JSON output is gitignored: it contains real customer data.
-
-## Licence
-
-Proprietary — internal use.
+| # | Item | Blocks |
+|---|---|---|
+| 1 | Purchase prices for the other 164 products | Margin covers only 27% of revenue |
+| 2 | Ad spend per channel per month | ROI, CPO and CAC on the channels page |
+| 3 | `task` and `timeman` scopes are granted but not yet imported | Workload and attendance |
+| 4 | Confirm revenue is recognised at `Доставлено`, not at payment | The revenue rule |
+| 5 | Call quality scoring | Recordings are stored; no rubric agreed |

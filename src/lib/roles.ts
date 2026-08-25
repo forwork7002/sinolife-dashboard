@@ -23,11 +23,47 @@ export const ROLE_LABELS: Readonly<Record<RoleValue, string>> = {
  * A convenience for the UI, not a security boundary — the server rejects any
  * request the role is not entitled to regardless of what is rendered.
  */
+const ALL_ROUTES = [
+  '/',
+  '/analytics/sales',
+  '/analytics/channels',
+  '/analytics/cohort',
+  '/products',
+  '/margin',
+  '/logistics',
+  '/confirmation',
+  '/warehouse',
+  '/leaderboard',
+  '/employees',
+  '/structure',
+  '/calls',
+  '/kpi',
+  '/deals',
+  '/finance',
+] as const
+
 export const ROLE_NAV: Readonly<Record<RoleValue, readonly string[]>> = {
-  ADMIN: ['/', '/analytics/sales', '/products', '/finance', '/employees', '/leaderboard', '/deals', '/kpi'],
-  MANAGER: ['/', '/analytics/sales', '/products', '/finance', '/employees', '/leaderboard', '/deals', '/kpi'],
-  // A salesperson gets their own numbers and the standings; no finance.
-  SALES: ['/', '/analytics/sales', '/products', '/leaderboard', '/deals', '/kpi'],
+  ADMIN: ALL_ROUTES,
+  MANAGER: ALL_ROUTES,
+  /**
+   * A salesperson gets their own numbers and the standings.
+   *
+   * Withheld: finance, margin and the org chart — cost prices and other
+   * people's headcount are not theirs to read. The deals and analytics they do
+   * see are scoped to their own records in SQL, so the narrowing is real and
+   * not just a hidden link.
+   */
+  SALES: [
+    '/',
+    '/analytics/sales',
+    '/products',
+    '/leaderboard',
+    '/deals',
+    '/kpi',
+    '/calls',
+    '/logistics',
+    '/confirmation',
+  ],
 }
 
 export function canSee(role: RoleValue, href: string): boolean {

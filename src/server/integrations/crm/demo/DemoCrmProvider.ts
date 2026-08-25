@@ -94,22 +94,36 @@ export class DemoCrmProvider implements CrmProvider {
   readonly source: ExternalSourceValue = 'DEMO'
 
   /**
-   * The demo provider supplies everything, INCLUDING payments — which the
-   * Bitrix24 provider deliberately does not until its field mapping is
-   * confirmed. That asymmetry is intentional: it exercises the capability
-   * mechanism during development rather than on the day of the real cutover.
+   * The demo provider is a TEST FIXTURE, not a data source.
+   *
+   * Production runs on Bitrix24 and nothing else. What survives here is the
+   * generator the sync-engine and analytics tests run against, so those tests
+   * keep working without a portal or a network.
+   *
+   * It supplies payments, which the Bitrix24 provider deliberately does not.
+   * That asymmetry is the point: it exercises the capability mechanism in the
+   * test suite rather than on the day of a cutover.
+   *
+   * The entities added for the superdashboard modules — pipelines, stage
+   * history, calls, stores, stock — are declared FALSE. Generating plausible
+   * delivery timings would let a test pass against data no portal produced.
    */
   readonly capabilities: ProviderCapabilities = Object.freeze({
     DEPARTMENTS: true,
     EMPLOYEES: true,
     PRODUCT_CATEGORIES: true,
     PRODUCTS: true,
+    PIPELINES: false,
     STAGES: true,
     SOURCES: true,
     CUSTOMERS: true,
     DEALS: true,
     DEAL_ITEMS: true,
     PAYMENTS: true,
+    STAGE_HISTORY: false,
+    CALLS: false,
+    STORES: false,
+    STOCK: false,
   })
 
   private readonly options: Required<DemoProviderOptions>
@@ -160,6 +174,15 @@ export class DemoCrmProvider implements CrmProvider {
   async fetchDeals(o?: FetchOptions) { return this.page(this.dataset().deals, o) }
   async fetchDealItems(o?: FetchOptions) { return this.page(this.dataset().dealItems, o) }
   async fetchPayments(o?: FetchOptions) { return this.page(this.dataset().payments, o) }
+
+  // Declared unsupported above, so the sync engine never calls these. They
+  // exist to satisfy the interface, and returning an empty page is honest:
+  // this provider genuinely has no delivery timings or call recordings.
+  async fetchPipelines(_o?: FetchOptions) { return this.page([], _o) }
+  async fetchStageHistory(_o?: FetchOptions) { return this.page([], _o) }
+  async fetchCalls(_o?: FetchOptions) { return this.page([], _o) }
+  async fetchStores(_o?: FetchOptions) { return this.page([], _o) }
+  async fetchStockLevels(_o?: FetchOptions) { return this.page([], _o) }
 
   /**
    * Slice a collection into a page.
@@ -489,6 +512,10 @@ export class DemoCrmProvider implements CrmProvider {
         employeeExternalId: employee.externalId,
         customerExternalId: customer.externalId,
         sourceExternalId: rng.weighted(sourceWeights),
+        // The demo provider models a single sales pipeline, so every deal it
+        // generates is revenue. The flag still has to be set explicitly —
+        // defaulting it would defeat the guard it exists to be.
+        countsAsRevenue: true,
         createdAtSource,
         closedAt,
         updatedAtSource: closedAt ?? createdAtSource,

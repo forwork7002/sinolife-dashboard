@@ -1,0 +1,199 @@
+'use client'
+
+import { useQuery } from '@tanstack/react-query'
+
+import { ChartCard } from '@/components/ui/Card'
+import { DataTable, type Column } from '@/components/ui/DataTable'
+import { Meter, StatTile } from '@/components/ui/Stat'
+import { PageShell } from '@/features/shared/PageShell'
+import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
+import { type MarginDto, type MarginRowDto, apiGet } from '@/lib/api'
+import { NO_VALUE, formatCompactUzs, formatNumber, formatPercent } from '@/lib/format'
+import { t } from '@/lib/messages'
+
+/**
+ * Gross margin, with its own coverage stated.
+ *
+ * Only some of the catalogue carries a purchase price in Bitrix24, so the
+ * margin figure describes part of the business. The coverage bar says how
+ * much — without it a 42% margin over a fifth of revenue reads exactly like a
+ * 42% margin over all of it, and only one of those is worth acting on.
+ *
+ * Products with no cost show a dash. Treating an unpriced product as free
+ * would report 100% margin on it and quietly lift the company average.
+ */
+export function MarginPage() {
+  const { filters } = useDashboardFilters()
+
+  const query = useQuery({
+    queryKey: ['margin', filters.preset],
+    queryFn: ({ signal }) =>
+      apiGet<MarginDto>('/insights/margin', { preset: filters.preset }, signal),
+  })
+
+  const data = query.data?.data
+  const discountTotal = data?.rows.reduce((sum, r) => sum + r.discount.amount, 0) ?? null
+
+  const columns: Column<MarginRowDto>[] = [
+    {
+      key: 'name',
+      header: 'Mahsulot',
+      render: (row) => (
+        <span className="font-medium" style={{ color: 'var(--ink-primary)' }}>
+          {row.productName}
+        </span>
+      ),
+    },
+    {
+      key: 'units',
+      header: 'Dona',
+      align: 'right',
+      numeric: true,
+      render: (row) => formatNumber(row.units),
+    },
+    {
+      key: 'revenue',
+      header: 'Tushum',
+      align: 'right',
+      numeric: true,
+      render: (row) => formatCompactUzs(row.revenue.amount),
+    },
+    {
+      key: 'cost',
+      header: 'Tannarx',
+      align: 'right',
+      numeric: true,
+      render: (row) =>
+        row.cost === null ? (
+          <span style={{ color: 'var(--ink-muted)' }} title="Bitrix24 katalogida tannarx yoʻq">
+            {NO_VALUE}
+          </span>
+        ) : (
+          formatCompactUzs(row.cost.amount)
+        ),
+    },
+    {
+      key: 'gross',
+      header: 'Yalpi foyda',
+      align: 'right',
+      numeric: true,
+      render: (row) =>
+        row.gross === null ? (
+          <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
+        ) : (
+          <span
+            style={{
+              color: row.gross.amount >= 0 ? 'var(--ink-primary)' : 'var(--status-critical)',
+            }}
+          >
+            {formatCompactUzs(row.gross.amount)}
+          </span>
+        ),
+    },
+    {
+      key: 'margin',
+      header: 'Marja',
+      width: '150px',
+      render: (row) =>
+        row.margin === null ? (
+          <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+            tannarx yoʻq
+          </span>
+        ) : (
+          <Meter value={row.margin} tone="neutral" label={row.productName} />
+        ),
+    },
+    {
+      key: 'discount',
+      header: 'Chegirma',
+      align: 'right',
+      numeric: true,
+      render: (row) =>
+        row.discount.amount === 0 ? (
+          <span style={{ color: 'var(--ink-muted)' }}>0</span>
+        ) : (
+          <span style={{ color: 'var(--status-serious)' }}>
+            {formatCompactUzs(row.discount.amount)}
+          </span>
+        ),
+    },
+  ]
+
+  return (
+    <PageShell
+      title={t.modules.margin.title}
+      description={t.modules.margin.lead}
+      accent="var(--series-2)"
+      meta={query.data?.meta}
+    >
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatTile label="Tushum" value={data?.revenue.amount ?? null} unit="money" />
+        <StatTile
+          label="Yalpi foyda"
+          value={data?.gross.amount ?? null}
+          unit="money"
+          hint="Faqat tannarxi maʼlum mahsulotlar"
+        />
+        <StatTile
+          label="Marja"
+          value={data?.margin ?? null}
+          unit="percent"
+          tone={
+            data === undefined
+              ? 'neutral'
+              : data.margin >= 40
+                ? 'good'
+                : data.margin >= 20
+                  ? 'warning'
+                  : 'critical'
+          }
+          context={<Meter value={data?.margin ?? null} tone="accent" />}
+        />
+        <StatTile
+          label="Berilgan chegirma"
+          value={discountTotal}
+          unit="money"
+          tone={discountTotal && discountTotal > 0 ? 'warning' : 'neutral'}
+          hint="Toʻgʻridan-toʻgʻri marjadan chiqadi"
+        />
+      </div>
+
+      {data && data.coverage < 99 && (
+        <div
+          className="rounded-[var(--radius)] border px-4 py-3 text-xs"
+          style={{
+            background: 'color-mix(in srgb, var(--status-warning) 8%, var(--surface))',
+            borderColor: 'color-mix(in srgb, var(--status-warning) 30%, transparent)',
+            color: 'var(--ink-secondary)',
+          }}
+        >
+          <strong style={{ color: 'var(--ink-primary)' }}>
+            Marja tushumning {formatPercent(data.coverage)} qismi boʻyicha hisoblandi.
+          </strong>{' '}
+          Qolgan mahsulotlarda Bitrix24 katalogida tannarx (закупочная цена) koʻrsatilmagan. Ularni
+          katalogda toʻldirsangiz, marja avtomatik toʻliq boʻladi — nol tannarx yozilmaydi, chunki u
+          100% foyda boʻlib koʻrinardi.
+          <div className="mt-2 max-w-md">
+            <Meter value={data.coverage} tone="accent" label="Qamrov" />
+          </div>
+        </div>
+      )}
+
+      <ChartCard
+        title="Mahsulotlar"
+        hint="Tushum boʻyicha tartiblangan. Chegirma ustuni — sotuvda berilgan yon berish; u toʻgʻridan-toʻgʻri foydadan ketadi."
+      >
+        <DataTable
+          columns={columns}
+          rows={data?.rows ?? []}
+          rowKey={(row) => row.productId}
+          status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
+          errorMessage={(query.error as Error | null)?.message}
+          onRetry={() => void query.refetch()}
+          emptyTitle="Bu davrda sotuv yoʻq"
+          minWidth={940}
+        />
+      </ChartCard>
+    </PageShell>
+  )
+}

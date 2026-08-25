@@ -18,6 +18,51 @@ export const ROLES = ['ADMIN', 'MANAGER', 'SALES'] as const
 export type RoleValue = (typeof ROLES)[number]
 
 /**
+ * What a pipeline is FOR.
+ *
+ * The portal runs nine pipelines and only two of them are sales. Naming the
+ * role lets an analytics module say "the retention pipeline" instead of
+ * hardcoding a category id, and lets a pipeline be reclassified in data.
+ */
+export const PIPELINE_ROLES = [
+  'REVENUE',
+  'RETENTION',
+  'CONFIRMATION',
+  'QUALIFICATION',
+  'LEAD',
+  'AI_TRIAGE',
+  'IGNORED',
+] as const
+export type PipelineRoleValue = (typeof PIPELINE_ROLES)[number]
+
+/**
+ * A stage's place in the delivery ladder.
+ *
+ * CANCELLED_EARLY and REFUSED are deliberately separate: one is a customer who
+ * changed their mind before anything shipped, the other is a parcel that
+ * travelled and came back. Merging them hides the expensive half.
+ */
+export const LOGISTICS_ROLES = [
+  'PREPARING',
+  'WAREHOUSE',
+  'CONFIRMED',
+  'IN_TRANSIT',
+  'REGIONAL_HUB',
+  'CARRIER',
+  'CHASING',
+  'DELIVERED',
+  'REFUSED',
+  'CANCELLED_EARLY',
+] as const
+export type LogisticsRoleValue = (typeof LOGISTICS_ROLES)[number]
+
+export const CONFIRM_STATUSES = ['CONFIRMED', 'UNREACHABLE'] as const
+export type ConfirmStatusValue = (typeof CONFIRM_STATUSES)[number]
+
+export const CALL_DIRECTIONS = ['INBOUND', 'OUTBOUND', 'CALLBACK'] as const
+export type CallDirectionValue = (typeof CALL_DIRECTIONS)[number]
+
+/**
  * Our normalised meaning of a pipeline stage. Bitrix24 stage IDs are mapped
  * onto these by configuration; no analytics code ever reads a stage name.
  */
@@ -50,12 +95,17 @@ export const SYNC_ENTITIES = [
   'EMPLOYEES',
   'PRODUCT_CATEGORIES',
   'PRODUCTS',
+  'PIPELINES',
   'STAGES',
   'SOURCES',
   'CUSTOMERS',
   'DEALS',
   'DEAL_ITEMS',
   'PAYMENTS',
+  'STAGE_HISTORY',
+  'CALLS',
+  'STORES',
+  'STOCK',
 ] as const
 export type SyncEntityValue = (typeof SYNC_ENTITIES)[number]
 
@@ -65,8 +115,32 @@ export type SyncEntityValue = (typeof SYNC_ENTITIES)[number]
  * Deals reference stages, employees, customers and sources, so those must
  * already exist when deals are written. Running the entities in this order is
  * what keeps foreign keys satisfiable on a cold database.
+ *
+ * STAGE_HISTORY, CALLS and STOCK come last: they reference deals, employees
+ * and products, and they are the slowest steps, so a failure there leaves
+ * everything cheaper already committed.
+ *
+ * A deal whose customer is nonetheless missing still imports — the link is
+ * nullable and the customer pass has a backfill for it — because losing a
+ * deal's revenue over an unresolvable contact would be the worse trade.
  */
-export const SYNC_ORDER: readonly SyncEntityValue[] = SYNC_ENTITIES
+export const SYNC_ORDER: readonly SyncEntityValue[] = [
+  'DEPARTMENTS',
+  'EMPLOYEES',
+  'PRODUCT_CATEGORIES',
+  'PRODUCTS',
+  'PIPELINES',
+  'STAGES',
+  'SOURCES',
+  'STORES',
+  'CUSTOMERS',
+  'DEALS',
+  'DEAL_ITEMS',
+  'PAYMENTS',
+  'STOCK',
+  'STAGE_HISTORY',
+  'CALLS',
+]
 
 export const SYNC_MODES = ['FULL', 'INCREMENTAL'] as const
 export type SyncModeValue = (typeof SYNC_MODES)[number]

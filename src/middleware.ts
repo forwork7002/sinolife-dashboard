@@ -10,7 +10,7 @@ import { AUTH_COOKIE_PREFIX } from '@/server/auth/cookiePrefix'
  * cookie so a signed-out visitor is redirected to /login instead of watching a
  * dashboard shell flash and then fail every request.
  *
- * It is NOT the authorisation boundary. The cookie is not verified here â€”
+ * It is NOT the authorisation boundary. The cookie is not verified here —
  * middleware runs on the edge without database access, and validating a session
  * per navigation would mean a database round trip on every page. Every API
  * route independently resolves and verifies the session and asserts a

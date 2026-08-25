@@ -9,16 +9,20 @@
 
 import { prisma } from '@/server/db/prisma'
 import { DealRepository } from '@/server/repositories/dealRepository'
+import { InsightsRepository } from '@/server/repositories/insightsRepository'
 import { FinanceRepository } from '@/server/repositories/financeRepository'
 import { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import { AnalyticsService } from './analyticsService'
+import { InsightsService } from './insightsService'
 import { FinanceService } from './financeService'
 import { KpiService } from './kpiService'
 
 export const dealRepository = new DealRepository(prisma)
 export const financeRepository = new FinanceRepository(prisma)
 export const referenceRepository = new ReferenceRepository(prisma)
+export const insightsRepository = new InsightsRepository(prisma)
 
 export const analyticsService = new AnalyticsService(dealRepository, referenceRepository)
 export const financeService = new FinanceService(financeRepository, referenceRepository)
 export const kpiService = new KpiService(dealRepository, referenceRepository)
+export const insightsService = new InsightsService(insightsRepository)

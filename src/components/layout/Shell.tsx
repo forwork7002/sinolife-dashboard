@@ -10,16 +10,62 @@ import { formatDateTime } from '@/lib/format'
 import { ROLE_LABELS, canSee } from '@/lib/roles'
 import { t } from '@/lib/messages'
 
-const NAV = [
-  { href: '/', label: t.nav.overview, icon: GridIcon },
-  { href: '/analytics/sales', label: t.nav.sales, icon: ChartIcon },
-  { href: '/products', label: t.nav.products, icon: BoxIcon },
-  { href: '/finance', label: t.nav.finance, icon: WalletIcon },
-  { href: '/employees', label: t.nav.employees, icon: PeopleIcon },
-  { href: '/leaderboard', label: t.nav.leaderboard, icon: TrophyIcon },
-  { href: '/deals', label: t.nav.deals, icon: ListIcon },
-  { href: '/kpi', label: t.nav.kpi, icon: TargetIcon },
-] as const
+/**
+ * Navigation, grouped by the question each screen answers.
+ *
+ * Fourteen destinations in one flat list is a wall. Grouped by intent — how
+ * much did we sell, did it arrive, who did it — the reader finds a screen by
+ * remembering what they wanted to know rather than what it was called.
+ */
+interface NavItem {
+  readonly href: string
+  readonly label: string
+  readonly icon: () => React.JSX.Element
+}
+
+const NAV_GROUPS: readonly { readonly label: string | null; readonly items: readonly NavItem[] }[] = [
+  {
+    label: null,
+    items: [{ href: '/', label: t.nav.overview, icon: GridIcon }],
+  },
+  {
+    label: 'Savdo',
+    items: [
+      { href: '/analytics/sales', label: t.nav.sales, icon: ChartIcon },
+      { href: '/analytics/channels', label: t.nav.channels, icon: SignalIcon },
+      { href: '/analytics/cohort', label: t.nav.cohort, icon: LayersIcon },
+      { href: '/products', label: t.nav.products, icon: BoxIcon },
+      { href: '/margin', label: t.nav.margin, icon: CoinIcon },
+    ],
+  },
+  {
+    label: 'Bajarish',
+    items: [
+      { href: '/logistics', label: t.nav.logistics, icon: TruckIcon },
+      { href: '/confirmation', label: t.nav.confirmation, icon: CheckIcon },
+      { href: '/warehouse', label: t.nav.warehouse, icon: WarehouseIcon },
+    ],
+  },
+  {
+    label: 'Jamoa',
+    items: [
+      { href: '/leaderboard', label: t.nav.leaderboard, icon: TrophyIcon },
+      { href: '/employees', label: t.nav.employees, icon: PeopleIcon },
+      { href: '/structure', label: t.nav.structure, icon: TreeIcon },
+      { href: '/calls', label: t.nav.calls, icon: PhoneIcon },
+      { href: '/kpi', label: t.nav.kpi, icon: TargetIcon },
+    ],
+  },
+  {
+    label: 'Maʼlumot',
+    items: [
+      { href: '/deals', label: t.nav.deals, icon: ListIcon },
+      { href: '/finance', label: t.nav.finance, icon: WalletIcon },
+    ],
+  },
+]
+
+const NAV = NAV_GROUPS.flatMap((group) => group.items)
 
 export function Shell({
   children,
@@ -41,7 +87,7 @@ export function Shell({
   /**
    * Hide destinations the role cannot use.
    *
-   * Presentation only â€” the server rejects any request the role is not
+   * Presentation only — the server rejects any request the role is not
    * entitled to regardless of what is rendered here. Hiding a link the user
    * would only get a 403 from is a courtesy, not the boundary.
    */
@@ -73,31 +119,54 @@ export function Shell({
           </div>
         </div>
 
-        <nav className="flex-1 px-2.5 py-1">
-          <ul className="space-y-0.5">
-            {visibleNav.map((item) => {
-              const active =
-                item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
-              const Icon = item.icon
+        <nav className="flex-1 overflow-y-auto px-2.5 py-1">
+          {NAV_GROUPS.map((group) => {
+            const items = group.items.filter((item) => !user || canSee(user.role, item.href))
+            if (items.length === 0) return null
 
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    aria-current={active ? 'page' : undefined}
-                    className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors"
-                    style={{
-                      background: active ? 'var(--grid)' : 'transparent',
-                      color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-                    }}
+            return (
+              <div key={group.label ?? 'root'} className="mb-2">
+                {group.label && (
+                  <p
+                    className="px-2.5 pt-2.5 pb-1 text-[10px] font-semibold tracking-wider uppercase"
+                    style={{ color: 'var(--ink-muted)' }}
                   >
-                    <Icon />
-                    {item.label}
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
+                    {group.label}
+                  </p>
+                )}
+                <ul className="space-y-0.5">
+                  {items.map((item) => {
+                    const active = isActive(pathname, item.href)
+                    const Icon = item.icon
+
+                    return (
+                      <li key={item.href}>
+                        <Link
+                          href={item.href}
+                          aria-current={active ? 'page' : undefined}
+                          className="focusable relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors"
+                          style={{
+                            background: active ? 'var(--grid)' : 'transparent',
+                            color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
+                          }}
+                        >
+                          {active && (
+                            <span
+                              aria-hidden="true"
+                              className="absolute top-1.5 bottom-1.5 -left-2.5 w-0.5 rounded-full"
+                              style={{ background: 'var(--accent)' }}
+                            />
+                          )}
+                          <Icon />
+                          {item.label}
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )
+          })}
         </nav>
 
         {lastSyncedAt && (
@@ -193,8 +262,7 @@ export function Shell({
           <nav className="overflow-x-auto border-t px-3 lg:hidden" style={{ borderColor: 'var(--border)' }}>
             <ul className="flex gap-1 py-1.5">
               {visibleNav.map((item) => {
-                const active =
-                  item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
+                const active = isActive(pathname, item.href)
                 return (
                   <li key={item.href}>
                     <Link
@@ -218,6 +286,18 @@ export function Shell({
       </div>
     </div>
   )
+}
+
+/**
+ * Which link is current.
+ *
+ * A prefix match alone makes `/` match every route, and `/analytics/sales`
+ * match `/analytics/sales-forecast`. Exact-or-followed-by-a-slash is the rule
+ * that gets both right.
+ */
+function isActive(pathname: string, href: string): boolean {
+  if (href === '/') return pathname === '/'
+  return pathname === href || pathname.startsWith(`${href}/`)
 }
 
 /**
@@ -325,6 +405,86 @@ function TargetIcon() {
       <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.7" />
       <circle cx="12" cy="12" r="4.5" stroke="currentColor" strokeWidth="1.7" />
       <circle cx="12" cy="12" r="1.4" fill="currentColor" />
+    </svg>
+  )
+}
+
+function SignalIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M5 18v-4M9.5 18v-8M14 18v-6M18.5 18V6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function LayersIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 3l8.5 4.5L12 12 3.5 7.5 12 3z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+      <path d="M4 12.5L12 17l8-4.5M4 17L12 21.5 20 17" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function TruckIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M2 7.5h11v9H2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+      <path d="M13 11h4l3 3v2.5h-7z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+      <circle cx="6" cy="18" r="1.7" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="17" cy="18" r="1.7" stroke="currentColor" strokeWidth="1.7" />
+    </svg>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M8.5 12.3l2.4 2.4 4.6-5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function WarehouseIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M3 10l9-5 9 5v10H3V10z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+      <path d="M8 20v-6h8v6" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function CoinIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <ellipse cx="12" cy="6.5" rx="7.5" ry="3" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M4.5 6.5v11c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-11" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3" stroke="currentColor" strokeWidth="1.7" />
+    </svg>
+  )
+}
+
+function TreeIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="4.5" rx="1.2" stroke="currentColor" strokeWidth="1.7" />
+      <rect x="3" y="16.5" width="6" height="4.5" rx="1.2" stroke="currentColor" strokeWidth="1.7" />
+      <rect x="15" y="16.5" width="6" height="4.5" rx="1.2" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M12 7.5v4.5M6 16.5V12h12v4.5" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function PhoneIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M7 3.5h2.5l1.4 3.6-1.9 1.3a11 11 0 005.6 5.6l1.3-1.9 3.6 1.4V16c0 1.9-1.6 3.3-3.4 3A15.5 15.5 0 014 6.9C3.7 5.1 5.1 3.5 7 3.5z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }

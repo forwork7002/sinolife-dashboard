@@ -1,0 +1,172 @@
+# DigitalOcean App Platform specification.
+#
+#   doctl apps create --spec .do/app.yaml
+#   doctl apps update <app-id> --spec .do/app.yaml
+#
+# App Platform runs the app as a LONG-LIVED Node server, not as serverless
+# functions. That matters: the Prisma pool in src/server/db/prisma.ts sizes
+# itself down when it detects a serverless host, and here it should not — one
+# process holding ten connections is the correct shape.
+#
+# Every secret below is set in the DigitalOcean dashboard or with
+# `doctl apps update --spec`, and none of them belongs in this file. The
+# placeholders are markers, not values.
+
+name: sinolife-dashboard
+region: fra
+
+services:
+  - name: web
+    instance_size_slug: basic-xs
+    instance_count: 1
+    http_port: 3000
+
+    github:
+      # Replace with the repository this deploys from.
+      repo: CHANGE_ME/sinolife-dashboard
+      branch: main
+      deploy_on_push: true
+
+    # `npm run build` runs `prisma generate` first. The generated client is not
+    # committed, so a clean checkout cannot build without it.
+    build_command: npm ci && npm run build
+    run_command: npm run start
+
+    health_check:
+      # Any authenticated route redirects; the login page is the cheapest
+      # thing that answers 200 without a session.
+      http_path: /login
+      initial_delay_seconds: 20
+      period_seconds: 30
+      failure_threshold: 3
+
+    envs:
+      - key: NODE_ENV
+        value: production
+
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        value: ${db.DATABASE_URL}
+
+      - key: DATA_SOURCE
+        value: bitrix24
+
+      # The URLs the platform already knows. Bound rather than typed, so
+      # attaching a custom domain updates them without an edit.
+      - key: BETTER_AUTH_URL
+        value: ${APP_URL}
+      - key: NEXT_PUBLIC_APP_URL
+        scope: RUN_AND_BUILD_TIME
+        value: ${APP_URL}
+
+      # Session signing key. Rotating it signs everyone out.
+      #   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      - key: BETTER_AUTH_SECRET
+        type: SECRET
+        value: CHANGE_ME
+
+      # The webhook URL embeds an access token to the whole portal.
+      - key: BITRIX24_WEBHOOK_URL
+        type: SECRET
+        value: CHANGE_ME
+
+      - key: BITRIX24_RATE_LIMIT_RPS
+        value: "2"
+      - key: BITRIX24_REQUEST_TIMEOUT_MS
+        value: "30000"
+      - key: BITRIX24_CALL_MONTHS
+        value: "1"
+
+      # The single administrator account, created by the post-deploy job.
+      - key: ADMIN_NAME
+        value: Administrator
+      - key: ADMIN_EMAIL
+        type: SECRET
+        value: CHANGE_ME
+      - key: ADMIN_PASSWORD
+        type: SECRET
+        value: CHANGE_ME
+
+      - key: APP_TIMEZONE
+        value: Asia/Tashkent
+      - key: APP_DEFAULT_LOCALE
+        value: uz
+      - key: APP_DEFAULT_CURRENCY
+        value: UZS
+      - key: LOG_LEVEL
+        value: info
+
+jobs:
+  # Schema first, on every deploy, before the new code serves traffic.
+  - name: migrate
+    kind: PRE_DEPLOY
+    instance_size_slug: basic-xxs
+    github:
+      repo: CHANGE_ME/sinolife-dashboard
+      branch: main
+    build_command: npm ci
+    run_command: npm run db:deploy
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        value: ${db.DATABASE_URL}
+
+  # The administrator account. Idempotent — it converges rather than resets,
+  # so running it on every deploy cannot overwrite a password that works.
+  - name: provision-admin
+    kind: POST_DEPLOY
+    instance_size_slug: basic-xxs
+    github:
+      repo: CHANGE_ME/sinolife-dashboard
+      branch: main
+    build_command: npm ci && npx prisma generate
+    run_command: npm run db:seed:users
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        value: ${db.DATABASE_URL}
+      - key: BETTER_AUTH_SECRET
+        type: SECRET
+        value: CHANGE_ME
+      - key: BETTER_AUTH_URL
+        value: ${APP_URL}
+      - key: NEXT_PUBLIC_APP_URL
+        scope: RUN_AND_BUILD_TIME
+        value: ${APP_URL}
+      - key: DATA_SOURCE
+        value: bitrix24
+      - key: BITRIX24_WEBHOOK_URL
+        type: SECRET
+        value: CHANGE_ME
+      - key: ADMIN_NAME
+        value: Administrator
+      - key: ADMIN_EMAIL
+        type: SECRET
+        value: CHANGE_ME
+      - key: ADMIN_PASSWORD
+        type: SECRET
+        value: CHANGE_ME
+      - key: APP_TIMEZONE
+        value: Asia/Tashkent
+      - key: APP_DEFAULT_LOCALE
+        value: uz
+      - key: APP_DEFAULT_CURRENCY
+        value: UZS
+
+databases:
+  - name: db
+    engine: PG
+    version: "16"
+    production: true
+    cluster_name: sinolife-db
+
+# The Bitrix24 import is NOT a job here.
+#
+# The first full read takes roughly twenty-five minutes and every incremental
+# one takes a few — neither belongs in a deploy step that would block the
+# release, and the first one exceeds what a PRE_DEPLOY job should hold up.
+# Run it once by hand after the first deploy:
+#
+#     doctl apps run <app-id> --command "npm run bitrix:import -- --full"
+#
+# and schedule the incremental afterwards. See docs/DEPLOY.md.

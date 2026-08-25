@@ -2,7 +2,7 @@
  * Authentication.
  *
  * better-auth over the Prisma adapter, using the `user` / `session` / `account`
- * / `verification` models already in the schema â€” those four were designed to
+ * / `verification` models already in the schema — those four were designed to
  * better-auth's shape from the start, so no adapter-side mapping is needed.
  *
  * Email + password only. No social providers: this is an internal tool where
@@ -53,7 +53,7 @@ export const auth = betterAuth({
      * Keying this off NODE_ENV looks right and breaks in a specific way:
      * `next start` on http://localhost sets NODE_ENV=production, so the cookie
      * is issued with `Secure`, the browser refuses to send it back over plain
-     * http, and every request is silently unauthenticated â€” while sign-in
+     * http, and every request is silently unauthenticated — while sign-in
      * itself still returns 200. The symptom is a dashboard that redirects to
      * login forever with no error anywhere.
      *
@@ -67,7 +67,7 @@ export const auth = betterAuth({
   /**
    * Application fields exposed on the session user.
    *
-   * `input: false` means a client can never set them â€” role escalation by
+   * `input: false` means a client can never set them — role escalation by
    * posting a JSON body is the failure mode this prevents.
    */
   user: {

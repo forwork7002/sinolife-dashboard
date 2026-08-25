@@ -244,3 +244,162 @@ export interface DealsPageDto {
   readonly items: readonly DealRowDto[]
   readonly pagination: PaginationDto
 }
+
+// ---------------------------------------------------------------------------
+// Superdashboard modules
+//
+// Mirrors the DTOs in `src/server/services/insightsService.ts`. Declared here
+// rather than imported so the client bundle never reaches into `@/server/*` —
+// the boundary that keeps database types and secrets out of the browser.
+// ---------------------------------------------------------------------------
+
+export interface CohortDto {
+  readonly cohort: string
+  readonly size: number
+  /** Percentage of the cohort still buying, by month offset. Null = not yet reachable. */
+  readonly retention: readonly (number | null)[]
+  readonly revenue: readonly MoneyDto[]
+  readonly maxOffset: number
+}
+
+export interface CohortSummaryDto {
+  readonly rows: readonly CohortDto[]
+  readonly stages: readonly { readonly stage: string; readonly customers: number }[]
+  readonly repeatRevenueShare: number
+  readonly repeatCustomers: number
+  readonly totalCustomers: number
+}
+
+export interface LogisticsRowDto {
+  readonly label: string
+  readonly orders: number
+  readonly delivered: number
+  readonly refused: number
+  readonly cancelledEarly: number
+  readonly inFlight: number
+  readonly revenue: MoneyDto
+  readonly deliveryRate: number
+  readonly medianHours: number | null
+  readonly p90Hours: number | null
+}
+
+export interface LogisticsDto {
+  readonly routes: readonly LogisticsRowDto[]
+  readonly regions: readonly LogisticsRowDto[]
+  readonly reasons: readonly {
+    readonly reason: string
+    readonly orders: number
+    readonly lost: MoneyDto
+  }[]
+  readonly totals: {
+    readonly orders: number
+    readonly delivered: number
+    readonly refused: number
+    readonly cancelledEarly: number
+    /** Still moving. Excluded from the delivery rate rather than counted against it. */
+    readonly inFlight: number
+    readonly deliveryRate: number
+    readonly medianHours: number | null
+  }
+}
+
+export interface ConfirmationRowDto {
+  readonly employeeId: string
+  readonly employeeName: string
+  readonly orders: number
+  readonly confirmed: number
+  readonly unreachable: number
+  readonly undecided: number
+  readonly confirmRate: number
+  /** Share of this operator's orders that went through the confirmation stage. */
+  readonly coverage: number
+  /** How many confirmed orders actually reached the customer. */
+  readonly stickRate: number
+  readonly deliveredAfterConfirm: number
+  readonly refusedAfterConfirm: number
+  readonly delivered: number
+  readonly failed: number
+  /** Delivered as a share of this operator's resolved orders. */
+  readonly deliveryRate: number
+}
+
+export interface ConfirmationDto {
+  readonly rows: readonly ConfirmationRowDto[]
+  readonly totals: {
+    readonly orders: number
+    readonly confirmed: number
+    readonly unreachable: number
+    readonly undecided: number
+    readonly confirmRate: number
+    /** Share of orders the confirmation step covers at all. */
+    readonly coverage: number
+    /** Of confirmed orders, how many reached the customer. */
+    readonly stickRate: number
+  }
+}
+
+export interface ChannelDto {
+  readonly sourceId: string
+  readonly sourceName: string
+  readonly leads: number
+  readonly deals: number
+  readonly won: number
+  readonly revenue: MoneyDto
+  readonly spend: MoneyDto | null
+  readonly conversion: number
+  readonly averageCheque: MoneyDto
+  readonly roas: number | null
+  readonly costPerOrder: MoneyDto | null
+}
+
+export interface MarginRowDto {
+  readonly productId: string
+  readonly productName: string
+  readonly units: number
+  readonly revenue: MoneyDto
+  readonly discount: MoneyDto
+  readonly cost: MoneyDto | null
+  readonly gross: MoneyDto | null
+  readonly margin: number | null
+}
+
+export interface MarginDto {
+  readonly rows: readonly MarginRowDto[]
+  readonly revenue: MoneyDto
+  readonly gross: MoneyDto
+  readonly margin: number
+  /** Percentage of revenue whose product has a known purchase price. */
+  readonly coverage: number
+}
+
+export interface CallActivityDto {
+  readonly employeeId: string
+  readonly employeeName: string
+  readonly calls: number
+  readonly connected: number
+  readonly talkSeconds: number
+  readonly connectRateBp: number
+  readonly averageTalkSeconds: number
+}
+
+export interface DispatchDto {
+  readonly point: string
+  readonly orders: number
+  readonly delivered: number
+  readonly refused: number
+  readonly revenue: MoneyDto
+  readonly deliveryRate: number
+}
+
+export interface StructureDto {
+  readonly id: string
+  readonly name: string
+  readonly depth: number
+  readonly headName: string | null
+  readonly ownHeadcount: number
+  readonly activeHeadcount: number
+  readonly headcount: number
+  readonly deals: number
+  readonly revenue: MoneyDto
+  readonly children: readonly StructureDto[]
+}

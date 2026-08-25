@@ -3,7 +3,7 @@
  *
  * Provider-agnostic orchestration: paging, incremental watermarks, per-record
  * error isolation, retry, counting and audit logging. It knows nothing about
- * Bitrix24 and nothing about Prisma â€” both sit behind the seams below, which
+ * Bitrix24 and nothing about Prisma — both sit behind the seams below, which
  * is what lets the whole engine be tested with in-memory fakes.
  *
  * IDEMPOTENCE IS THE WHOLE POINT
@@ -16,7 +16,7 @@
  * One malformed record must not abandon the run. Records are persisted in
  * batches; a batch that fails is retried once record-by-record so the bad row
  * is isolated and counted, and the rest still land. A run that skipped records
- * finishes as PARTIAL, never SUCCESS â€” a green light over incomplete data is
+ * finishes as PARTIAL, never SUCCESS — a green light over incomplete data is
  * worse than a visible warning.
  */
 
@@ -56,15 +56,28 @@ export interface EntitySyncHandler<T = unknown> {
   /**
    * Remove rows whose source record no longer exists.
    *
-   * Optional, and only ever called after a CLEAN full sync â€” see
+   * Optional, and only ever called after a CLEAN full sync — see
    * `runEntity`. A handler that omits it keeps every row it has ever seen.
    *
    * BITRIX24_INTEGRATION_PENDING: whether a deal deleted in Bitrix24 should
    * disappear from the dashboard or be retained for historical accuracy is an
-   * open business question (docs/BITRIX24.md Â§10). Sweeping is therefore
+   * open business question (docs/BITRIX24.md §10). Sweeping is therefore
    * opt-in per run rather than automatic.
    */
   deleteMissing?(seenExternalIds: ReadonlySet<string>): Promise<number>
+
+  /**
+   * Derive whatever can only be computed once every page has landed.
+   *
+   * Optional, and called only when the run read everything without a fatal
+   * error — a derivation over half the rows would be worse than none.
+   *
+   * Stage history is the reason this exists: the portal reports when a deal
+   * ENTERED a stage and never when it left, so the duration of each stay is
+   * the gap to the next entry. That is a window function over the finished
+   * table, not something a page-at-a-time writer can know.
+   */
+  finalize?(): Promise<void>
 }
 
 export interface SyncRunRecord {
@@ -237,14 +250,34 @@ export class SyncEngine {
       this.log.error({ entity, error: fatal }, 'sync failed')
     }
 
+    /**
+     * Derive what only the finished table can answer.
+     *
+     * Skipped when the read failed: a window function over half the rows would
+     * produce confidently wrong durations, which is worse than none at all.
+     *
+     * A failure here degrades the run to PARTIAL rather than FAILED. The rows
+     * are written and correct; one computed column is stale, and the log says
+     * which — so the next run fixes it without re-reading the portal.
+     */
+    let derivationFailed = false
+    if (!fatal && handler.finalize) {
+      try {
+        await handler.finalize()
+      } catch (error) {
+        derivationFailed = true
+        this.log.warn({ entity, error: String(error) }, 'finalize failed')
+      }
+    }
+
     const status: SyncStatusValue = fatal
       ? 'FAILED'
-      : failed > 0 || skipped > 0
+      : failed > 0 || skipped > 0 || derivationFailed
         ? 'PARTIAL'
         : 'SUCCESS'
 
     /**
-     * Sweep upstream deletions â€” but ONLY after a completely clean run.
+     * Sweep upstream deletions — but ONLY after a completely clean run.
      *
      * If any page failed to fetch, `seen` is missing records that do exist
      * upstream, and deleting on that basis would destroy live data because of
@@ -342,7 +375,7 @@ export class SyncEngine {
    *
    * Sequential on purpose: deals reference employees, stages and customers, so
    * running them concurrently would produce unresolvable foreign keys on a cold
-   * database. Throughput is not the constraint here â€” correctness is.
+   * database. Throughput is not the constraint here — correctness is.
    */
   async runAll(
     entities: readonly SyncEntityValue[],

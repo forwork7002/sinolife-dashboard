@@ -54,6 +54,73 @@ enum Role {
   SALES
 }
 
+/// What a pipeline is FOR. Only REVENUE contributes to money figures.
+///
+/// The portal runs nine pipelines and only two of them are sales. Naming the
+/// role explicitly means an analytics module can say "the retention pipeline"
+/// instead of hardcoding CATEGORY_ID = 10, and a pipeline can be reclassified
+/// with one UPDATE instead of a redeploy.
+enum PipelineRole {
+  /// Доставка (#6), Ecommerce (#14). Counts toward revenue, conversion, KPI.
+  REVENUE
+  /// База (#10) — repeat-contact cycle. A confirmed duplicate of Доставка's
+  /// money, so it is imported and browsable but never counted.
+  RETENTION
+  /// Тасдиклаш (#4) — order confirmation calls.
+  CONFIRMATION
+  /// Первичный отдел (#12) — lead qualification.
+  QUALIFICATION
+  /// Регистрация (#0) — raw inbound registration.
+  LEAD
+  /// ИИ обработка (#20) — automated triage.
+  AI_TRIAGE
+  /// HR (#8), Бахолаш (#18). Present for reference, in no aggregate.
+  IGNORED
+}
+
+/// A stage's place in the delivery ladder of the Доставка pipeline.
+///
+/// Bitrix24 returns SEMANTICS only for WON and LOSE; the other sixteen stages
+/// come back null. This is our classification of them, and it is what the
+/// logistics module measures. Assigned in the provider's mapping file.
+enum LogisticsRole {
+  /// Подготовка товара, Обработка заказов.
+  PREPARING
+  /// Заказ в мой склад.
+  WAREHOUSE
+  /// Успешно заказ — the operator reached the customer and confirmed.
+  CONFIRMED
+  /// В пути.
+  IN_TRANSIT
+  /// TOSHKENT-1, NAVOIY, VODIY, QASHQADARYO, SURXONDARYO.
+  REGIONAL_HUB
+  /// CARAVAN, OSON POCHTA, BEK POCHTA.
+  CARRIER
+  /// Юрист смс, Пропущенный.
+  CHASING
+  /// Доставлено.
+  DELIVERED
+  /// Отказ — refused after dispatch.
+  REFUSED
+  /// Отказ предварительно — cancelled before dispatch. A different number
+  /// from REFUSED and must never be merged with it.
+  CANCELLED_EARLY
+}
+
+/// Operator confirmation outcome — UF_CRM_1777879395123 on the deal.
+enum ConfirmStatus {
+  /// Тастикланган
+  CONFIRMED
+  /// Недозвон булиб чикарилган
+  UNREACHABLE
+}
+
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+  CALLBACK
+}
+
 /// Our normalised stage meaning. Bitrix24 stage IDs map ONTO this.
 enum StageCategory {
   NEW
@@ -101,12 +168,17 @@ enum SyncEntity {
   EMPLOYEES
   PRODUCT_CATEGORIES
   PRODUCTS
+  PIPELINES
   STAGES
   SOURCES
   CUSTOMERS
   DEALS
   DEAL_ITEMS
   PAYMENTS
+  STAGE_HISTORY
+  CALLS
+  STORES
+  STOCK
 }
 
 enum SyncMode {
@@ -126,10 +198,10 @@ enum SyncStatus {
 // ---------------------------------------------------------------------------
 
 model User {
-  id            String   @id @default(cuid())
+  id            String  @id @default(cuid())
   name          String
-  email         String   @unique
-  emailVerified Boolean  @default(false)
+  email         String  @unique
+  emailVerified Boolean @default(false)
   image         String?
 
   // Application fields (exposed to better-auth via additionalFields)
@@ -169,10 +241,10 @@ model Session {
 }
 
 model Account {
-  id        String @id @default(cuid())
-  accountId String
+  id                    String    @id @default(cuid())
+  accountId             String
   /// Authentication method, e.g. "credential".
-  providerId String
+  providerId            String
   /// Identity namespace, e.g. "local:credential" for email+password.
   /// better-auth matches the sign-in account on (issuer, accountId), not on
   /// providerId alone — an account row without it can never be signed into.
@@ -213,19 +285,33 @@ model Verification {
 // Organisation
 // ---------------------------------------------------------------------------
 
+/// The company tree, as Bitrix24 reports it via department.get.
+///
+/// The portal's structure is three deep — NEWGEN → region → ROP group — and
+/// the org chart is unusable flattened, so the parent link is modelled rather
+/// than kept in metadata. `headId` is resolved from UF_HEAD in a second pass,
+/// because a department's head is an employee whose own department may not
+/// exist yet on the first pass.
 model Department {
   id             String         @id @default(cuid())
   externalSource ExternalSource @default(MANUAL)
   externalId     String?
   name           String
+  parentId       String?
+  headId         String?
+  sortOrder      Int            @default(0)
   isActive       Boolean        @default(true)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
+  parent    Department?  @relation("DepartmentTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Department[] @relation("DepartmentTree")
+  head      Employee?    @relation("DepartmentHead", fields: [headId], references: [id], onDelete: SetNull)
   employees Employee[]
 
   @@unique([externalSource, externalId])
   @@index([isActive])
+  @@index([parentId])
   @@map("department")
 }
 
@@ -244,10 +330,12 @@ model Employee {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
-  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  department Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   user       User?
   deals      Deal[]
   kpis       Kpi[]
+  calls      CallRecord[]
+  heads      Department[] @relation("DepartmentHead")
 
   @@unique([externalSource, externalId])
   @@index([departmentId])
@@ -284,6 +372,13 @@ model Product {
   categoryId     String?
   /// List price in minor units. Null when the source does not publish one.
   priceMinor     BigInt?
+  /// Purchase price in minor units — the COGS basis for gross margin.
+  ///
+  /// Null until the `catalog` scope is granted on the webhook. Null means
+  /// UNKNOWN, never zero: a margin computed against a zero cost reads as 100%
+  /// and is worse than no margin at all. Every margin query must exclude rows
+  /// where this is null and report the excluded share.
+  costMinor      BigInt?
   currency       String         @default("UZS") @db.Char(3)
   isActive       Boolean        @default(true)
   createdAt      DateTime       @default(now())
@@ -291,6 +386,7 @@ model Product {
 
   category  ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   dealItems DealItem[]
+  stock     StockLevel[]
 
   @@unique([externalSource, externalId])
   @@index([categoryId])
@@ -313,6 +409,7 @@ model Customer {
   updatedAt      DateTime       @updatedAt
 
   deals Deal[]
+  calls CallRecord[]
 
   @@unique([externalSource, externalId])
   @@index([name])
@@ -323,6 +420,28 @@ model Customer {
 // Pipeline
 // ---------------------------------------------------------------------------
 
+/// A Bitrix24 deal category (воронка). Nine of them exist.
+///
+/// Which ones count as revenue is a business decision, so it lives in DATA.
+/// Reclassifying Доставка is one UPDATE plus a re-sync — not a code change.
+model Pipeline {
+  id             String         @id @default(cuid())
+  externalSource ExternalSource @default(MANUAL)
+  externalId     String?
+  name           String
+  role           PipelineRole   @default(IGNORED)
+  sortOrder      Int            @default(0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  deals  Deal[]
+  stages DealStage[]
+
+  @@unique([externalSource, externalId])
+  @@index([role])
+  @@map("pipeline")
+}
+
 model DealStage {
   id             String         @id @default(cuid())
   externalSource ExternalSource @default(MANUAL)
@@ -330,17 +449,27 @@ model DealStage {
   name           String
   /// Normalised meaning used by every analytics function.
   category       StageCategory
+  /// Which funnel this stage belongs to. Stage IDs repeat across pipelines
+  /// (C6:WON and C14:WON are different stages), so a stage without its
+  /// pipeline is ambiguous.
+  pipelineId     String?
+  /// Place in the delivery ladder. Set only for Доставка stages.
+  logisticsRole  LogisticsRole?
   /// Funnel ordering. Lower numbers sit earlier in the pipeline.
   sortOrder      Int
   isActive       Boolean        @default(true)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
-  deals Deal[]
+  pipeline Pipeline?          @relation(fields: [pipelineId], references: [id], onDelete: SetNull)
+  deals    Deal[]
+  history  DealStageHistory[]
 
   @@unique([externalSource, externalId])
   @@index([category])
   @@index([sortOrder])
+  @@index([pipelineId])
+  @@index([logisticsRole])
   @@map("deal_stage")
 }
 
@@ -353,7 +482,8 @@ model SalesSource {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
-  deals Deal[]
+  deals   Deal[]
+  adSpend AdSpend[]
 
   @@unique([externalSource, externalId])
   @@map("sales_source")
@@ -366,14 +496,49 @@ model Deal {
 
   title       String
   /// Deal value in minor units. See money contract at the top of this file.
-  amountMinor BigInt         @default(0)
-  currency    String         @default("UZS") @db.Char(3)
+  amountMinor BigInt @default(0)
+  currency    String @default("UZS") @db.Char(3)
 
   stageId    String
   status     DealStatus @default(OPEN)
   employeeId String
   customerId String?
   sourceId   String?
+  pipelineId String?
+
+  /// Order code parsed from TITLE when it matches ^bx\d+$.
+  ///
+  /// This is the key that proved База duplicates Доставка, and the only way to
+  /// link a delivered order to its retention copy afterwards.
+  orderCode String?
+
+  /// Denormalised from the pipeline's role at import time.
+  ///
+  /// Deliberately redundant with pipeline.role, and the redundancy IS the
+  /// point: a forgotten join silently pulls 13 474 duplicate База deals into
+  /// revenue and the result looks entirely plausible. A column every analytics
+  /// query must name explicitly fails loudly instead.
+  countsAsRevenue Boolean @default(false)
+
+  // -- Bitrix24 custom fields, promoted out of `metadata` because analytics
+  //    filters on them. Null always means the portal left them empty.
+
+  /// UF_CRM_1747975214161 — one of 14 regions.
+  region           String?
+  /// UF_CRM_1756494336 — warehouse, courier or marketplace that fulfils it.
+  fulfilmentPoint  String?
+  /// UF_CRM_1777879395123 — operator confirmation outcome.
+  confirmStatus    ConfirmStatus?
+  /// UF_CRM_1770109073790 — why the customer refused.
+  refusalReason    String?
+  /// UF_CRM_1747979729184 — карта / накд / консультация, as the operator set it.
+  paymentMethodRaw String?
+  /// UF_CRM_1750413928942 — Collagen Marine / Zextra sure / Sinolife collagen.
+  productLine      String?
+  /// UF_CRM_1747979663403 — A / B / C grade.
+  customerGrade    String?
+  /// IS_RETURN_CUSTOMER — Bitrix24's own repeat-purchase flag.
+  isReturnCustomer Boolean        @default(false)
 
   /// Timestamps as reported by the source CRM. Analytics uses THESE.
   createdAtSource DateTime
@@ -387,12 +552,15 @@ model Deal {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  stage    DealStage    @relation(fields: [stageId], references: [id], onDelete: Restrict)
-  employee Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  customer Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  source   SalesSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
-  items    DealItem[]
-  payments Payment[]
+  stage        DealStage          @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  pipeline     Pipeline?          @relation(fields: [pipelineId], references: [id], onDelete: SetNull)
+  employee     Employee           @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  customer     Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  source       SalesSource?       @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  items        DealItem[]
+  payments     Payment[]
+  stageHistory DealStageHistory[]
+  calls        CallRecord[]
 
   @@unique([externalSource, externalId])
   // Composite indexes chosen to match the actual analytics access patterns:
@@ -403,7 +571,77 @@ model Deal {
   @@index([stageId])
   @@index([sourceId])
   @@index([customerId])
+  @@index([pipelineId])
+  @@index([orderCode])
+  // Every revenue query names countsAsRevenue first, so it leads the index.
+  @@index([countsAsRevenue, status, closedAt])
+  @@index([countsAsRevenue, region, closedAt])
+  @@index([confirmStatus, createdAtSource])
   @@map("deal")
+}
+
+/// One row per stage transition, from crm.stagehistory.list.
+///
+/// The basis for every duration in the product: delivery SLA, time to
+/// confirmation, time in each hub. Durations are NEVER computed by subtracting
+/// a deal's create date from its close date — that answers a different
+/// question and is wrong for anything that moved through more than one stage.
+model DealStageHistory {
+  id             String         @id @default(cuid())
+  externalSource ExternalSource @default(BITRIX24)
+  externalId     String
+  dealId         String
+  stageId        String
+  enteredAt      DateTime
+  /// Filled from the deal's NEXT transition when the history is written.
+  /// Null means the deal is still sitting in this stage.
+  leftAt         DateTime?
+  createdAt      DateTime       @default(now())
+
+  deal  Deal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  stage DealStage @relation(fields: [stageId], references: [id], onDelete: Restrict)
+
+  @@unique([externalSource, externalId])
+  @@index([dealId, enteredAt])
+  @@index([stageId, enteredAt])
+  @@map("deal_stage_history")
+}
+
+/// Telephony, from voximplant.statistic.get.
+///
+/// `transcript` and `score` exist and stay null. Call quality scoring is not
+/// built, but the recordings it would need are collected from day one, so
+/// adding a scorer later is a job that reads this table rather than a
+/// twelve-month gap in the data.
+model CallRecord {
+  id             String         @id @default(cuid())
+  externalSource ExternalSource @default(BITRIX24)
+  externalId     String
+  employeeId     String?
+  customerId     String?
+  dealId         String?
+  direction      CallDirection
+  phoneNumber    String?
+  startedAt      DateTime
+  durationSec    Int            @default(0)
+  /// A call that actually connected. Bitrix24 reports 200 in CALL_FAILED_CODE
+  /// for these; anything else is a failure with the code kept below.
+  connected      Boolean        @default(false)
+  failedCode     String?
+  recordUrl      String?
+  transcript     String?
+  score          Int?
+  createdAt      DateTime       @default(now())
+
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  deal     Deal?     @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  @@unique([externalSource, externalId])
+  @@index([employeeId, startedAt])
+  @@index([dealId])
+  @@index([startedAt])
+  @@map("call_record")
 }
 
 model DealItem {
@@ -411,14 +649,22 @@ model DealItem {
   externalSource ExternalSource @default(MANUAL)
   externalId     String?
 
-  dealId    String
-  productId String
-  quantity  Int    @default(1)
+  dealId         String
+  productId      String
+  quantity       Int    @default(1)
   /// Unit price actually charged on this deal, in minor units.
   unitPriceMinor BigInt
   /// Denormalised line total. Kept so product analytics can aggregate in SQL
   /// without recomputing quantity * price per row.
   totalMinor     BigInt
+  /// Discount given away on this line, in minor units.
+  ///
+  /// Some rows in the portal carry DISCOUNT_RATE 100 — a full giveaway. Those
+  /// destroy margin silently unless they are visible, so the discount is a
+  /// column rather than something reconstructed from price differences.
+  discountMinor  BigInt @default(0)
+  /// Discount rate in basis points. 10.11% arrives as 1011.
+  discountRateBp Int    @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -467,6 +713,84 @@ model Payment {
 }
 
 // ---------------------------------------------------------------------------
+// Warehouse
+//
+// Fed by catalog.store.list and catalog.storeproduct.list, which need the
+// `catalog` scope on the webhook. Until it is granted these tables stay empty
+// and the warehouse endpoint reports the missing scope rather than showing an
+// empty shelf, which would read as "we have nothing in stock".
+// ---------------------------------------------------------------------------
+
+model Store {
+  id             String         @id @default(cuid())
+  externalSource ExternalSource @default(MANUAL)
+  externalId     String?
+  name           String
+  address        String?
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  stock StockLevel[]
+
+  @@unique([externalSource, externalId])
+  @@index([isActive])
+  @@map("store")
+}
+
+/// On-hand quantity for one product in one store.
+///
+/// Quantity is Decimal, not BigInt-minor: this is a count of physical units,
+/// not money, and the portal reports fractional quantities for weighed goods.
+/// The money contract at the top of this file applies to money only.
+model StockLevel {
+  id        String   @id @default(cuid())
+  storeId   String
+  productId String
+  quantity  Decimal  @default(0) @db.Decimal(14, 3)
+  reserved  Decimal  @default(0) @db.Decimal(14, 3)
+  /// When this row was last refreshed from the portal. Stock is a snapshot,
+  /// not a history, so a stale row must be visibly stale.
+  syncedAt  DateTime @default(now())
+
+  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, productId])
+  @@index([productId])
+  @@map("stock_level")
+}
+
+// ---------------------------------------------------------------------------
+// Marketing
+// ---------------------------------------------------------------------------
+
+/// Advertising spend per channel per month, entered by hand.
+///
+/// The portal knows where a deal came from but not what it cost to get it, and
+/// there is no Roistat account to ask. This table is the only writable
+/// business data in the application: with a row, the channel page reports CPL,
+/// CPO, CAC and ROI; without one it reports volume and conversion and says the
+/// spend is not entered. It never guesses a cost.
+model AdSpend {
+  id          String   @id @default(cuid())
+  sourceId    String
+  /// First day of the month the spend belongs to, in Asia/Tashkent.
+  periodStart DateTime @db.Date
+  amountMinor BigInt
+  currency    String   @default("UZS") @db.Char(3)
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  source SalesSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, periodStart])
+  @@index([periodStart])
+  @@map("ad_spend")
+}
+
+// ---------------------------------------------------------------------------
 // KPI
 // ---------------------------------------------------------------------------
 
@@ -509,7 +833,7 @@ model KpiResult {
   id    String @id @default(cuid())
   kpiId String
 
-  actualValue BigInt
+  actualValue   BigInt
   /// Attainment in basis points (10000 = 100.00%). Integer, so no float drift.
   achievementBp Int
   status        KpiStatus

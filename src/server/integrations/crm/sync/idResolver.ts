@@ -7,7 +7,10 @@
  * naively: for 1 600 deals with four references each, over 6 000 round trips.
  *
  * This loads each entity's id map once per sync run and keeps it in memory.
- * Maps are small (thousands of short strings) and the run is short-lived.
+ * Most maps are small and the run is short-lived. The two that are not —
+ * `deal` at 415 591 rows and `customer` at ~250 000 — cost roughly 60 MB of
+ * strings together, which is the right trade against a quarter of a million
+ * extra round trips.
  *
  * Unresolvable references are reported, not silently nulled. A deal whose
  * employee cannot be found is a data problem worth surfacing — quietly dropping
@@ -17,15 +20,17 @@
 import type { PrismaClient } from '@/generated/prisma/client'
 import type { ExternalSourceValue } from '@/server/domain/types'
 
-type Entity =
+export type Entity =
   | 'department'
   | 'employee'
   | 'productCategory'
   | 'product'
+  | 'pipeline'
   | 'dealStage'
   | 'salesSource'
   | 'customer'
   | 'deal'
+  | 'store'
 
 export class IdResolver {
   private readonly cache = new Map<Entity, Map<string, string>>()
@@ -102,6 +107,10 @@ export class IdResolver {
         return this.prisma.productCategory.findMany({ where, select })
       case 'product':
         return this.prisma.product.findMany({ where, select })
+      case 'pipeline':
+        return this.prisma.pipeline.findMany({ where, select })
+      case 'store':
+        return this.prisma.store.findMany({ where, select })
       case 'dealStage':
         return this.prisma.dealStage.findMany({ where, select })
       case 'salesSource':
