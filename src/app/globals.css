@@ -192,7 +192,11 @@
     --status-critical: #f0524e;
 
     --delta-up: #2fb862;
-    --delta-down: #f0524e;
+    /* Lighter than --status-critical on purpose: delta text sits ON a 12%
+       tint of itself, which raises the backdrop above the bare card — #f0524e
+       measured 4.11:1 there, under the 4.5:1 text minimum. Same hue, 4.73:1
+       on the tint, 5.57:1 on the card. */
+    --delta-down: #f56b62;
 
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
     --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px -8px rgba(0, 0, 0, 0.7);
@@ -239,7 +243,7 @@
   --status-critical: #f0524e;
 
   --delta-up: #2fb862;
-  --delta-down: #f0524e;
+  --delta-down: #f56b62;
 
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px -8px rgba(0, 0, 0, 0.7);
@@ -294,9 +298,12 @@
   border-color: var(--border);
 }
 
-html {
-  /* Anchor links and programmatic scrolls glide instead of jumping. */
-  scroll-behavior: smooth;
+/* Anchor links and programmatic scrolls glide instead of jumping — but a
+   glide IS motion, so it honours the same preference everything else does. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
 /**
@@ -887,7 +894,11 @@ body {
  */
 @keyframes value-flash {
   0% {
-    background: color-mix(in oklab, var(--accent) 22%, transparent);
+    /* Ink, not accent: the flash sits UNDER a figure, and even a chrome-ish
+       tint that tracked page identity would make the same update look
+       different on different screens. A neutral bloom reads as "changed"
+       everywhere. */
+    background: color-mix(in oklab, var(--ink-primary) 14%, transparent);
   }
   100% {
     background: transparent;
@@ -936,19 +947,19 @@ body {
 }
 
 /**
- * Line glow.
+ * Line glow — SCOPED, never app-wide.
  *
  * A faint halo under the data line, from the line's own colour. It is what
  * makes a chart read as luminous rather than drawn — most visible in dark
  * mode, where a bare 2px stroke on a near-black card looks like a wire.
- * The colour never changes meaning: the glow is the series colour at low
- * opacity, not a new hue.
+ *
+ * The scope class is the rule: an unscoped `.recharts-area-curve` selector
+ * would hand a series-1 blue halo to every future Area drawn in any other
+ * slot — a colour-follows-entity violation waiting to fire. Each chart opts
+ * in with the class that names its own series. (The sparkline glows via an
+ * inline drop-shadow from its own colour prop, the same pattern.)
  */
-.line-glow {
-  filter: drop-shadow(0 1px 6px color-mix(in oklab, var(--series-1) 55%, transparent));
-}
-
-.recharts-area-curve {
+.glow-series-1 .recharts-area-curve {
   filter: drop-shadow(0 2px 8px color-mix(in oklab, var(--series-1) 45%, transparent));
 }
 

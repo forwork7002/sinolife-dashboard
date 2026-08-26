@@ -73,7 +73,10 @@ export function StatTile({
       </div>
 
       {status === 'loading' ? (
-        <div className="skeleton mt-2 h-[26px] w-2/3" aria-label="Yuklanmoqda" />
+        // role="status", because aria-label on a bare div names nothing.
+        <div className="skeleton mt-2 h-[26px] w-2/3" role="status">
+          <span className="sr-only">Yuklanmoqda</span>
+        </div>
       ) : (
         <p
           className="figure mt-2 text-[26px] leading-none font-semibold"
@@ -305,9 +308,15 @@ export function GaugeTile({
 
       <div className="mt-2 flex items-center gap-3.5">
         {status === 'loading' ? (
-          <div className="skeleton h-[74px] w-[74px] rounded-full" aria-label="Yuklanmoqda" />
+          <div className="skeleton h-[74px] w-[74px] rounded-full" role="status">
+            <span className="sr-only">Yuklanmoqda</span>
+          </div>
         ) : status === 'error' ? (
-          <span className="text-base font-medium" style={{ color: 'var(--status-critical)' }}>
+          <span
+            className="text-base font-medium"
+            style={{ color: 'var(--status-critical)' }}
+            title="Maʼlumot olinmadi"
+          >
             Olinmadi
           </span>
         ) : (

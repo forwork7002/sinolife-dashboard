@@ -13,6 +13,7 @@ import {
 import type { TrendPointDto } from '@/lib/api'
 import { formatCompactUzs, formatDateShort, formatNumber, formatUzs } from '@/lib/format'
 import { t } from '@/lib/messages'
+import { useReducedMotion } from '@/lib/useReducedMotion'
 
 /**
  * Revenue over time.
@@ -40,6 +41,11 @@ export function RevenueTrendChart({
    */
   height?: number
 }) {
+  // Recharts drives its draw-in from JS, out of reach of the CSS media
+  // guards every other animation sits behind — so it asks the same question
+  // in component code.
+  const reducedMotion = useReducedMotion()
+
   const points = data.map((point) => ({
     ...point,
     label: formatDateShort(point.date),
@@ -59,6 +65,7 @@ export function RevenueTrendChart({
       the real rectangle, in a flex parent and a plain card alike.
     */
     <div
+      className="glow-series-1"
       style={{ position: 'relative', width: '100%', height: height ?? '100%', minHeight: 260 }}
     >
       <div style={{ position: 'absolute', inset: 0 }}>
@@ -116,7 +123,7 @@ export function RevenueTrendChart({
               stroke: 'var(--surface)',
               strokeWidth: 2,
             }}
-            isAnimationActive
+            isAnimationActive={!reducedMotion}
             animationDuration={520}
             animationEasing="ease-out"
           />

@@ -15,7 +15,7 @@ export const viewport: Viewport = {
   // The palette ships light and dark steps; let the browser chrome follow.
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#f6f7f9' },
-    { media: '(prefers-color-scheme: dark)', color: '#08090c' },
+    { media: '(prefers-color-scheme: dark)', color: '#050609' },
   ],
 }
 

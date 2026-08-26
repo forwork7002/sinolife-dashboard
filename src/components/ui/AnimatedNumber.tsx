@@ -74,15 +74,22 @@ export function AnimatedNumber({
     return () => cancelAnimationFrame(frame.current)
   }, [value, duration])
 
+  /*
+    Real text for assistive tech, not aria-label.
+
+    ARIA prohibits naming a generic <span>, and screen readers that honour
+    that drop the label — which would leave the visible digits aria-hidden and
+    the value announced as NOTHING. A visually-hidden span holding the final
+    formatted value is plain text: every reader speaks it, copy-paste sees it,
+    and the counting stays presentation-only beside it.
+  */
   return (
     <span
       // Keyed by change count, so each live update restarts the flash.
       key={flash}
       className={flash > 0 ? 'value-flash' : undefined}
-      // The EXACT value for assistive tech and copy-paste; the counting is
-      // presentation only.
-      aria-label={format(value)}
     >
+      <span className="sr-only">{format(value)}</span>
       <span aria-hidden="true">{format(display)}</span>
     </span>
   )

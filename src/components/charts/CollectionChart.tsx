@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 
 import { formatCompactUzs, formatDateShort, formatUzs } from '@/lib/format'
+import { useReducedMotion } from '@/lib/useReducedMotion'
 
 export interface CollectionPointDto {
   readonly date: string
@@ -31,6 +32,7 @@ export interface CollectionPointDto {
  * by position.
  */
 export function CollectionChart({ data }: { data: readonly CollectionPointDto[] }) {
+  const reducedMotion = useReducedMotion()
   const points = data.map((point) => ({ ...point, label: formatDateShort(point.date) }))
 
   return (
@@ -66,7 +68,7 @@ export function CollectionChart({ data }: { data: readonly CollectionPointDto[] 
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4, fill: 'var(--series-1)', stroke: 'var(--surface)', strokeWidth: 2 }}
-            isAnimationActive
+            isAnimationActive={!reducedMotion}
             animationDuration={520}
             animationEasing="ease-out"
           />
@@ -78,7 +80,7 @@ export function CollectionChart({ data }: { data: readonly CollectionPointDto[] 
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4, fill: 'var(--series-2)', stroke: 'var(--surface)', strokeWidth: 2 }}
-            isAnimationActive
+            isAnimationActive={!reducedMotion}
             animationDuration={520}
             animationEasing="ease-out"
           />
