@@ -21,6 +21,7 @@ import { Pool } from 'pg'
 
 import { PrismaClient } from '@/generated/prisma/client'
 import { env } from '@/server/config/env'
+import { caCertFromEnv, poolConfig } from '@/server/db/poolConfig'
 
 if (typeof window !== 'undefined') {
   throw new Error(
@@ -42,15 +43,24 @@ function createPrismaClient(): PrismaClient {
    * So serverless gets a small pool and short idle timeout, and should be
    * pointed at Neon's POOLED connection string (the host containing
    * `-pooler`), which multiplexes on the database side.
+   *
+   * EIGHT, not ten, on a long-lived server. DigitalOcean's smallest managed
+   * Postgres allows 22 client connections. The sync worker holds five of them
+   * plus one for its advisory lock, and a deploy briefly runs two jobs on top.
+   * Eight leaves that whole set room; ten does not, and the failure shows up
+   * as `too many clients` during a deploy rather than under load.
    */
   const isServerless = Boolean(process.env.NETLIFY || process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
 
-  const pool = new Pool({
-    connectionString: env.DATABASE_URL,
-    max: isServerless ? 3 : 10,
-    idleTimeoutMillis: isServerless ? 10_000 : 30_000,
-    connectionTimeoutMillis: 10_000,
-  })
+  const pool = new Pool(
+    poolConfig(env.DATABASE_URL, {
+      caCert: caCertFromEnv(),
+      max: isServerless ? 3 : 8,
+      idleTimeoutMillis: isServerless ? 10_000 : 30_000,
+      connectionTimeoutMillis: 10_000,
+      statementTimeoutMs: 20_000,
+    }),
+  )
 
   const adapter = new PrismaPg(pool)
 

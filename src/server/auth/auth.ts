@@ -17,6 +17,7 @@ import { env } from '@/server/config/env'
 import { prisma } from '@/server/db/prisma'
 import { AUTH_COOKIE_PREFIX } from './cookiePrefix'
 import { resolveTrustedOrigins } from './trustedOrigins'
+import { resolveTrustedProxies } from './trustedProxies'
 
 /**
  * Origins allowed to post to the auth endpoints.
@@ -29,6 +30,13 @@ export const TRUSTED_ORIGINS = resolveTrustedOrigins(
   env.BETTER_AUTH_URL,
   process.env.APP_TRUSTED_ORIGINS,
 )
+
+/**
+ * The proxies whose forwarded client IP may be believed. See
+ * `trustedProxies.ts` — without this, anyone can pick their own rate-limit
+ * bucket by writing an X-Forwarded-For header.
+ */
+export const TRUSTED_PROXIES = resolveTrustedProxies(process.env.APP_TRUSTED_PROXIES)
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
@@ -45,6 +53,29 @@ export const auth = betterAuth({
     disableSignUp: true,
     minPasswordLength: 8,
     maxPasswordLength: 128,
+  },
+
+  /**
+   * Rate limiting.
+   *
+   * On by default in production; declared here so it is on wherever this
+   * runs, and so sign-in gets a rule of its own. The general budget is
+   * generous — one open dashboard refetching every minute makes a lot of
+   * legitimate requests — while the password endpoint gets ten attempts a
+   * minute, which no human types and no guesser can work with.
+   *
+   * Memory storage, because the spec runs exactly one web instance. A second
+   * instance would need `storage: 'database'` to share the counters, or each
+   * would enforce the limit on its own and the effective ceiling would double.
+   */
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 200,
+    customRules: {
+      '/sign-in/email': { window: 60, max: 10 },
+      '/forget-password': { window: 60, max: 5 },
+    },
   },
 
   session: {
@@ -76,6 +107,10 @@ export const auth = betterAuth({
      * anyone having to remember a flag.
      */
     useSecureCookies: env.BETTER_AUTH_URL.startsWith('https://'),
+
+    ipAddress: {
+      trustedProxies: TRUSTED_PROXIES,
+    },
   },
 
   /**

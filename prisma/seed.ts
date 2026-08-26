@@ -20,6 +20,8 @@ import 'dotenv/config'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 
+import { caCertFromEnv, poolConfig } from '../src/server/db/poolConfig'
+
 import { PrismaClient } from '../src/generated/prisma/client'
 import { SYNC_ORDER } from '../src/server/domain/types'
 import { DemoCrmProvider } from '../src/server/integrations/crm/demo/DemoCrmProvider'
@@ -33,6 +35,9 @@ if (!DATABASE_URL) {
   throw new Error('DATABASE_URL is not set. Copy .env.example to .env first.')
 }
 
+/** Narrowed once, so the guard above holds inside every function below. */
+const dbUrl: string = DATABASE_URL
+
 const seed = Number(process.env.DEMO_SEED ?? 20260101)
 const currency = process.env.APP_DEFAULT_CURRENCY ?? 'UZS'
 const timeZone = process.env.APP_TIMEZONE ?? 'Asia/Tashkent'
@@ -44,7 +49,7 @@ const consoleLogger = {
 }
 
 async function main() {
-  const pool = new Pool({ connectionString: DATABASE_URL })
+  const pool = new Pool(poolConfig(dbUrl, { caCert: caCertFromEnv() }))
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) })
 
   const startedAt = Date.now()

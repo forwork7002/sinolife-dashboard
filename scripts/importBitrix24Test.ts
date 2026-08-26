@@ -17,6 +17,8 @@ import 'dotenv/config'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 
+import { caCertFromEnv, poolConfig } from '../src/server/db/poolConfig'
+
 import { PrismaClient } from '../src/generated/prisma/client'
 import type { SyncEntityValue } from '../src/server/domain/types'
 import { Bitrix24CrmProvider } from '../src/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
@@ -73,7 +75,7 @@ const ORDER: SyncEntityValue[] = [
 
 async function main() {
   const started = Date.now()
-  const pool = new Pool({ connectionString: TARGET_DB })
+  const pool = new Pool(poolConfig(TARGET_DB, { caCert: caCertFromEnv() }))
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) })
 
   const logger = {

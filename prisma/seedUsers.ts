@@ -22,6 +22,8 @@ import 'dotenv/config'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 
+import { caCertFromEnv, poolConfig } from '../src/server/db/poolConfig'
+
 import { PrismaClient } from '../src/generated/prisma/client'
 import { provisionUser, setPassword } from '../src/server/auth/provisioning'
 
@@ -31,6 +33,9 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
 const ADMIN_NAME = process.env.ADMIN_NAME ?? 'Administrator'
 
 if (!DATABASE_URL) throw new Error('DATABASE_URL is not set.')
+
+/** Narrowed once, so the guard above holds inside every function below. */
+const dbUrl: string = DATABASE_URL
 
 if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
   console.error('\n  ADMIN_EMAIL va ADMIN_PASSWORD .env da boʻlishi kerak.\n')
@@ -53,7 +58,7 @@ const email: string = ADMIN_EMAIL
 const password: string = ADMIN_PASSWORD
 
 async function main() {
-  const pool = new Pool({ connectionString: DATABASE_URL })
+  const pool = new Pool(poolConfig(dbUrl, { caCert: caCertFromEnv() }))
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) })
 
   try {

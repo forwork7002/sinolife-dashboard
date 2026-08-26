@@ -16,6 +16,8 @@ import 'dotenv/config'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 
+import { caCertFromEnv, poolConfig } from '../src/server/db/poolConfig'
+
 import { PrismaClient } from '../src/generated/prisma/client'
 import { SYNC_ENTITIES, type SyncEntityValue } from '../src/server/domain/types'
 import { Bitrix24CrmProvider } from '../src/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
@@ -44,7 +46,7 @@ const DATABASE_URL: string = url
 const WEBHOOK_URL: string = webhook
 
 async function main() {
-  const pool = new Pool({ connectionString: DATABASE_URL })
+  const pool = new Pool(poolConfig(DATABASE_URL, { caCert: caCertFromEnv() }))
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) })
 
   try {

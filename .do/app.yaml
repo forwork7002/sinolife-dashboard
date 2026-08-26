@@ -1,19 +1,139 @@
 # DigitalOcean App Platform specification.
 #
 #   doctl apps create --spec .do/app.yaml
-#   doctl apps update <app-id> --spec .do/app.yaml
+#
+# READ THIS BEFORE RE-APPLYING THE SPEC
+# `doctl apps update --spec` REPLACES the whole app spec. The secrets below say
+# CHANGE_ME, so applying this file as-committed over a running app overwrites
+# every real secret with that literal string and the app stops at its next
+# boot. To change something after creation, take the LIVE spec, edit it, and
+# apply that — the live copy carries the secrets back as encrypted `EV[1:...]`
+# values, which re-apply unchanged:
+#
+#   doctl apps spec get <app-id> > /tmp/live.yaml
+#   $EDITOR /tmp/live.yaml
+#   doctl apps update <app-id> --spec /tmp/live.yaml
 #
 # App Platform runs the app as a LONG-LIVED Node server, not as serverless
 # functions. That matters: the Prisma pool in src/server/db/prisma.ts sizes
 # itself down when it detects a serverless host, and here it should not — one
 # process holding ten connections is the correct shape.
-#
-# Every secret below is set in the DigitalOcean dashboard or with
-# `doctl apps update --spec`, and none of them belongs in this file. The
-# placeholders are markers, not values.
 
 name: sinolife-dashboard
 region: fra
+
+# ---------------------------------------------------------------------------
+# App-level environment
+#
+# Declared ONCE here and inherited by the web service, the worker and both
+# jobs. The previous shape repeated each secret in all four components, and a
+# component-level value silently overrides the app-level one — so a real secret
+# set in the dashboard kept losing to a CHANGE_ME left behind in a component.
+# One declaration cannot disagree with itself.
+# ---------------------------------------------------------------------------
+envs:
+  - key: DATABASE_URL
+    scope: RUN_AND_BUILD_TIME
+    value: ${db.DATABASE_URL}
+
+  # DigitalOcean signs its database clusters with its own CA, and `pg` (unlike
+  # libpq) verifies `sslmode=require` against the system trust store — so every
+  # connection is refused until either this is set or verification is dropped.
+  # Download it from the database page: Connection details → CA certificate.
+  # Left unset, src/server/db/poolConfig.ts encrypts without verifying, which
+  # is what sslmode=require means everywhere else.
+  - key: DATABASE_CA_CERT
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: CHANGE_ME
+
+  - key: DATA_SOURCE
+    scope: RUN_AND_BUILD_TIME
+    value: bitrix24
+
+  # The URLs the platform already knows. Bound rather than typed, so attaching
+  # a custom domain updates them without an edit.
+  #
+  # ${APP_URL} follows the PRIMARY domain. Once a custom domain is primary, the
+  # original *.ondigitalocean.app address is no longer the auth origin and
+  # signing in there returns 403 — add it to APP_TRUSTED_ORIGINS below if
+  # anyone still uses it.
+  - key: BETTER_AUTH_URL
+    scope: RUN_AND_BUILD_TIME
+    value: ${APP_URL}
+  - key: NEXT_PUBLIC_APP_URL
+    scope: RUN_AND_BUILD_TIME
+    value: ${APP_URL}
+
+  # Comma-separated extra origins allowed to post to the auth endpoints.
+  # Empty is correct for a single domain — see src/server/auth/trustedOrigins.ts.
+  - key: APP_TRUSTED_ORIGINS
+    scope: RUN_TIME
+    value: ""
+
+  # Which forwarding hops may set the client IP that rate limiting is keyed on.
+  # Empty means "private address space", which is where App Platform's load
+  # balancer connects from. See src/server/auth/trustedProxies.ts.
+  - key: APP_TRUSTED_PROXIES
+    scope: RUN_TIME
+    value: ""
+
+  # Session signing key. Rotating it signs everyone out.
+  #   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  - key: BETTER_AUTH_SECRET
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: CHANGE_ME
+
+  # The webhook URL embeds an access token to the whole portal.
+  - key: BITRIX24_WEBHOOK_URL
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+    value: CHANGE_ME
+
+  - key: BITRIX24_RATE_LIMIT_RPS
+    scope: RUN_TIME
+    value: "2"
+  - key: BITRIX24_REQUEST_TIMEOUT_MS
+    scope: RUN_TIME
+    value: "30000"
+  - key: BITRIX24_CALL_MONTHS
+    scope: RUN_TIME
+    value: "1"
+
+  # Seconds between sync ticks, and how many ticks between reference-data reads.
+  - key: SYNC_INTERVAL_SEC
+    scope: RUN_TIME
+    value: "60"
+  - key: SYNC_REFERENCE_EVERY
+    scope: RUN_TIME
+    value: "30"
+
+  # The single administrator account, created by the post-deploy job.
+  - key: ADMIN_NAME
+    scope: RUN_TIME
+    value: Administrator
+  - key: ADMIN_EMAIL
+    scope: RUN_TIME
+    type: SECRET
+    value: CHANGE_ME
+  - key: ADMIN_PASSWORD
+    scope: RUN_TIME
+    type: SECRET
+    value: CHANGE_ME
+
+  - key: APP_TIMEZONE
+    scope: RUN_AND_BUILD_TIME
+    value: Asia/Tashkent
+  - key: APP_DEFAULT_LOCALE
+    scope: RUN_AND_BUILD_TIME
+    value: uz
+  - key: APP_DEFAULT_CURRENCY
+    scope: RUN_AND_BUILD_TIME
+    value: UZS
+  - key: LOG_LEVEL
+    scope: RUN_TIME
+    value: info
 
 services:
   - name: web
@@ -33,68 +153,26 @@ services:
     run_command: npm run start
 
     health_check:
-      # Any authenticated route redirects; the login page is the cheapest
-      # thing that answers 200 without a session.
-      http_path: /login
-      initial_delay_seconds: 20
+      # /api/health opens a database connection. The login page was the check
+      # before, and it answers 200 out of the build output with the database
+      # gone — a green light over an app that cannot serve a single number.
+      http_path: /api/health
+      initial_delay_seconds: 30
       period_seconds: 30
+      timeout_seconds: 10
       failure_threshold: 3
 
     envs:
+      # RUN_TIME only, and this is the important part.
+      #
+      # Scoped to build time as well, `npm ci` obeys it and installs no
+      # devDependencies — so `next build` cannot resolve @tailwindcss/postcss
+      # and the build fails before it starts. Next sets NODE_ENV=production for
+      # `next build` and `next start` on its own; the variable is here purely
+      # so anything else that reads it at run time agrees.
       - key: NODE_ENV
+        scope: RUN_TIME
         value: production
-
-      - key: DATABASE_URL
-        scope: RUN_AND_BUILD_TIME
-        value: ${db.DATABASE_URL}
-
-      - key: DATA_SOURCE
-        value: bitrix24
-
-      # The URLs the platform already knows. Bound rather than typed, so
-      # attaching a custom domain updates them without an edit.
-      - key: BETTER_AUTH_URL
-        value: ${APP_URL}
-      - key: NEXT_PUBLIC_APP_URL
-        scope: RUN_AND_BUILD_TIME
-        value: ${APP_URL}
-
-      # Session signing key. Rotating it signs everyone out.
-      #   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-      - key: BETTER_AUTH_SECRET
-        type: SECRET
-        value: CHANGE_ME
-
-      # The webhook URL embeds an access token to the whole portal.
-      - key: BITRIX24_WEBHOOK_URL
-        type: SECRET
-        value: CHANGE_ME
-
-      - key: BITRIX24_RATE_LIMIT_RPS
-        value: "2"
-      - key: BITRIX24_REQUEST_TIMEOUT_MS
-        value: "30000"
-      - key: BITRIX24_CALL_MONTHS
-        value: "1"
-
-      # The single administrator account, created by the post-deploy job.
-      - key: ADMIN_NAME
-        value: Administrator
-      - key: ADMIN_EMAIL
-        type: SECRET
-        value: CHANGE_ME
-      - key: ADMIN_PASSWORD
-        type: SECRET
-        value: CHANGE_ME
-
-      - key: APP_TIMEZONE
-        value: Asia/Tashkent
-      - key: APP_DEFAULT_LOCALE
-        value: uz
-      - key: APP_DEFAULT_CURRENCY
-        value: UZS
-      - key: LOG_LEVEL
-        value: info
 
 workers:
   # Keeps the database within a minute of the portal.
@@ -103,10 +181,15 @@ workers:
   # every run, which at a one-minute cadence is most of the minute. This holds
   # one process, one connection pool and one warm rate limiter.
   #
-  # Exactly ONE instance. The worker takes a Postgres advisory lock and a
-  # second copy exits immediately, but scaling this to two would simply leave
-  # one idle — and spend the portal's rate limit twice over if the lock were
-  # ever removed.
+  # Exactly ONE instance. The worker holds a Postgres advisory lock on a
+  # dedicated connection and a second copy waits rather than racing it, so
+  # scaling this to two would simply leave one idle — and spend the portal's
+  # rate limit twice over if the lock were ever removed.
+  #
+  # This worker also performs the FIRST import. On an empty database no entity
+  # has a watermark yet, so the first tick reads everything — about sixteen
+  # minutes — and every tick after it reads only what changed. Nothing has to
+  # be run by hand.
   - name: sync
     instance_size_slug: basic-xxs
     instance_count: 1
@@ -117,45 +200,19 @@ workers:
       deploy_on_push: true
 
     build_command: npm ci && npx prisma generate
+
+    # `npm run bitrix:worker` is `node --import tsx scripts/syncWorker.ts`,
+    # deliberately without the `tsx` shim. The shim is a shell wrapper, and
+    # `sh -c` does not forward SIGTERM to its child — so a stop signal reached
+    # the wrapper, the wrapper died, and Node kept syncing until the platform
+    # killed it thirty seconds later, mid-write. Straight to Node, the handler
+    # in syncWorker.ts runs and the lock is released for the replacement.
     run_command: npm run bitrix:worker
 
     envs:
-      - key: DATABASE_URL
-        scope: RUN_AND_BUILD_TIME
-        value: ${db.DATABASE_URL}
-      - key: DATA_SOURCE
-        value: bitrix24
-      - key: BITRIX24_WEBHOOK_URL
-        type: SECRET
-        value: CHANGE_ME
-      - key: BITRIX24_RATE_LIMIT_RPS
-        value: "2"
-      - key: BITRIX24_REQUEST_TIMEOUT_MS
-        value: "30000"
-      - key: BITRIX24_CALL_MONTHS
-        value: "1"
-      # Seconds between ticks, and how many ticks between reference-data reads.
-      - key: SYNC_INTERVAL_SEC
-        value: "60"
-      - key: SYNC_REFERENCE_EVERY
-        value: "30"
-      - key: APP_TIMEZONE
-        value: Asia/Tashkent
-      - key: APP_DEFAULT_LOCALE
-        value: uz
-      - key: APP_DEFAULT_CURRENCY
-        value: UZS
-      - key: LOG_LEVEL
-        value: info
-      # Unused by the worker but validated at boot by src/server/config/env.ts.
-      - key: BETTER_AUTH_SECRET
-        type: SECRET
-        value: CHANGE_ME
-      - key: BETTER_AUTH_URL
-        value: ${APP_URL}
-      - key: NEXT_PUBLIC_APP_URL
-        scope: RUN_AND_BUILD_TIME
-        value: ${APP_URL}
+      - key: NODE_ENV
+        scope: RUN_TIME
+        value: production
 
 jobs:
   # Schema first, on every deploy, before the new code serves traffic.
@@ -167,10 +224,6 @@ jobs:
       branch: main
     build_command: npm ci
     run_command: npm run db:deploy
-    envs:
-      - key: DATABASE_URL
-        scope: RUN_AND_BUILD_TIME
-        value: ${db.DATABASE_URL}
 
   # The administrator account. Idempotent — it converges rather than resets,
   # so running it on every deploy cannot overwrite a password that works.
@@ -182,37 +235,6 @@ jobs:
       branch: main
     build_command: npm ci && npx prisma generate
     run_command: npm run db:seed:users
-    envs:
-      - key: DATABASE_URL
-        scope: RUN_AND_BUILD_TIME
-        value: ${db.DATABASE_URL}
-      - key: BETTER_AUTH_SECRET
-        type: SECRET
-        value: CHANGE_ME
-      - key: BETTER_AUTH_URL
-        value: ${APP_URL}
-      - key: NEXT_PUBLIC_APP_URL
-        scope: RUN_AND_BUILD_TIME
-        value: ${APP_URL}
-      - key: DATA_SOURCE
-        value: bitrix24
-      - key: BITRIX24_WEBHOOK_URL
-        type: SECRET
-        value: CHANGE_ME
-      - key: ADMIN_NAME
-        value: Administrator
-      - key: ADMIN_EMAIL
-        type: SECRET
-        value: CHANGE_ME
-      - key: ADMIN_PASSWORD
-        type: SECRET
-        value: CHANGE_ME
-      - key: APP_TIMEZONE
-        value: Asia/Tashkent
-      - key: APP_DEFAULT_LOCALE
-        value: uz
-      - key: APP_DEFAULT_CURRENCY
-        value: UZS
 
 databases:
   - name: db
@@ -220,13 +242,3 @@ databases:
     version: "16"
     production: true
     cluster_name: sinolife-db
-
-# The FIRST import is not a job here.
-#
-# It takes about sixteen minutes, which is longer than a deploy step should
-# hold up a release. Run it once by hand after the first deploy:
-#
-#     doctl apps run <app-id> --command "npm run bitrix:import -- --full"
-#
-# Everything after that is the `sync` worker above, which keeps the database
-# within a minute of the portal on its own. See docs/DEPLOY.md.

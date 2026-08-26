@@ -22,17 +22,31 @@
  * window next time rather than skipping it.
  *
  * ONE AT A TIME
- * A Postgres advisory lock makes a second worker refuse to start rather than
+ * A Postgres advisory lock keeps a second worker out rather than letting it
  * race the first. Two running at once produced foreign-key rejections on call
- * records and spent twice the portal's rate limit for no extra freshness. The
- * lock is held by the connection, so it releases automatically if the process
- * dies without cleaning up — the case a flag column in a table gets wrong.
+ * records and spent twice the portal's rate limit for no extra freshness.
+ *
+ * The lock lives on a connection held open for the life of the process, NOT on
+ * a pooled one — a pooled connection goes back to the pool the moment the
+ * query returns and Postgres drops the lock with it, which looks like it works
+ * and enforces nothing. Holding it on a dedicated client also means it
+ * releases by itself if the process dies without cleaning up, the case a flag
+ * column in a table gets wrong.
+ *
+ * A second copy WAITS instead of exiting. On a rolling redeploy the new worker
+ * starts before the old one has finished its tick, and a worker that exits is
+ * a worker the platform restarts — so exiting here would produce a restart
+ * loop until the old process happened to go away. Waiting turns the same
+ * situation into a few quiet seconds of overlap.
  */
 
 import 'dotenv/config'
 
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
+import type { PoolClient } from 'pg'
+
+import { caCertFromEnv, poolConfig } from '../src/server/db/poolConfig'
 
 import { PrismaClient } from '../src/generated/prisma/client'
 import type { SyncEntityValue } from '../src/server/domain/types'
@@ -77,7 +91,27 @@ function stamp(): string {
   return new Date().toISOString().slice(11, 19)
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+/**
+ * Interruptible sleep.
+ *
+ * A plain setTimeout would hold SIGTERM for as long as the wait — up to six
+ * minutes once backoff is in play — and the platform kills a container that
+ * takes longer than thirty seconds to stop. `wake` is called by the signal
+ * handler so shutdown is immediate whenever a tick is not in flight.
+ */
+let wake: () => void = () => {}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(finish, ms)
+    wake = finish
+    function finish() {
+      clearTimeout(timer)
+      wake = () => {}
+      resolve()
+    }
+  })
+}
 
 /**
  * Arbitrary but fixed. Advisory locks are namespaced only by this number, so
@@ -86,24 +120,59 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
  */
 const LOCK_ID = 8_872_601
 
+/** Seconds between attempts while another worker still holds the lock. */
+const LOCK_RETRY_SEC = 10
+
+/**
+ * Take the single-worker lock, waiting for it if someone else has it.
+ *
+ * Returns the client the lock is held on. Keeping a reference matters: the
+ * lock lives as long as that connection and not a moment longer.
+ */
+async function acquireLock(pool: Pool): Promise<PoolClient> {
+  const client = await pool.connect()
+
+  // Postgres cannot tell us the lock was lost, so if this connection breaks
+  // we are no longer the only worker and must not keep writing.
+  client.on('error', (error) => {
+    console.error(`\n  ${stamp()} ✗ blokirovka ulanishi uzildi:`, error, '\n')
+    process.exit(1)
+  })
+
+  let waited = false
+
+  for (;;) {
+    const { rows } = await client.query<{ locked: boolean }>(
+      'SELECT pg_try_advisory_lock($1) AS locked',
+      [LOCK_ID],
+    )
+
+    if (rows[0]?.locked) {
+      if (waited) console.log(`  ${stamp()} blokirovka olindi — ishga tushdi.`)
+      return client
+    }
+
+    if (!waited) {
+      waited = true
+      console.log(
+        `\n  ${stamp()} boshqa worker ishlayapti — u toʻxtaguncha kutilmoqda.` +
+          `\n  (Ikkitasi bir vaqtda ishlasa portal limitini ikki barobar sarflaydi.)\n`,
+      )
+    }
+
+    await sleep(LOCK_RETRY_SEC * 1000)
+  }
+}
+
 async function main() {
-  const pool = new Pool({ connectionString: url })
+  // Five: one is checked out permanently to hold the advisory lock, and the
+  // sync engine runs one query at a time, so the rest is headroom. The point
+  // of the cap is the managed database's 22-connection ceiling, which the web
+  // service and the deploy jobs also draw on.
+  const pool = new Pool(poolConfig(url, { caCert: caCertFromEnv(), max: 5 }))
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) })
 
-  const [lock] = await prisma.$queryRawUnsafe<{ locked: boolean }[]>(
-    'SELECT pg_try_advisory_lock($1) AS locked',
-    LOCK_ID,
-  )
-
-  if (!lock?.locked) {
-    console.error(
-      '\n  Boshqa worker allaqachon ishlayapti — bu nusxa toʻxtatildi.' +
-        '\n  Ikkitasi bir vaqtda ishlasa portal limitini ikki barobar sarflaydi.\n',
-    )
-    await prisma.$disconnect()
-    await pool.end()
-    process.exit(0)
-  }
+  const lockClient = await acquireLock(pool)
 
   const provider = new Bitrix24CrmProvider({
     webhookUrl: webhook,
@@ -134,9 +203,11 @@ async function main() {
   let stopping = false
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => {
-      // Finish the tick in flight rather than leaving a half-written batch.
+      // Finish the tick in flight rather than leaving a half-written batch,
+      // but cut short any wait — the platform allows thirty seconds to stop.
       console.log(`\n  ${stamp()} toʻxtatilmoqda…`)
       stopping = true
+      wake()
     })
   }
 
@@ -199,6 +270,10 @@ async function main() {
     if (remaining > 0 && !stopping) await sleep(remaining)
   }
 
+  // Releasing the lock explicitly lets a replacement worker start at once
+  // instead of waiting out the connection's own timeout.
+  await lockClient.query('SELECT pg_advisory_unlock($1)', [LOCK_ID])
+  lockClient.release()
   await prisma.$disconnect()
   await pool.end()
   console.log(`  ${stamp()} toʻxtadi.\n`)
