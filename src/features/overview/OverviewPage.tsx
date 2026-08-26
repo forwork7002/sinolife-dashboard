@@ -14,7 +14,7 @@ import {
 } from '@/components/states/States'
 import { Sparkline } from '@/components/charts/Sparkline'
 import { Card, ChartCard } from '@/components/ui/Card'
-import { Meter, RankBadge, StatTile } from '@/components/ui/Stat'
+import { GaugeTile, Meter, RankBadge, StatTile } from '@/components/ui/Stat'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import {
   ApiClientError,
@@ -28,6 +28,7 @@ import {
   type ResponseMeta,
   apiGet,
 } from '@/lib/api'
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { NO_VALUE, formatCompactUzs, formatDate, formatNumber, formatPercent, formatUzs } from '@/lib/format'
 import { t } from '@/lib/messages'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -371,9 +372,17 @@ function HeroCard({ card, trend }: { card: KpiCardDto; trend: readonly number[] 
       className="card flex flex-col justify-between px-5 pt-3.5 pb-5"
       style={{
         // The one card that is deliberately more raised than the rest: it
-        // carries the number the whole screen exists to show.
+        // carries the number the whole screen exists to show. The wash at the
+        // top is the REVENUE SERIES hue, not the page accent — the same blue
+        // the trend line below is drawn in, so the tint and the data are one
+        // entity rather than decoration.
         borderRadius: 'var(--radius-panel-lg)',
         boxShadow: 'var(--shadow-raised), var(--edge-highlight)',
+        background: `linear-gradient(
+          180deg,
+          color-mix(in oklab, var(--series-1) 7%, var(--surface-raised)),
+          var(--surface-raised) 62%
+        )`,
       }}
     >
       <div>
@@ -388,7 +397,11 @@ function HeroCard({ card, trend }: { card: KpiCardDto; trend: readonly number[] 
           style={{ color: 'var(--ink-primary)' }}
           title={card.money ? formatUzs(card.money.amount) : undefined}
         >
-          {card.money ? formatCompactUzs(card.money.amount) : NO_VALUE}
+          {card.money ? (
+            <AnimatedNumber value={card.money.amount} format={formatCompactUzs} duration={900} />
+          ) : (
+            NO_VALUE
+          )}
           <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
             soʻm
           </span>
@@ -435,21 +448,22 @@ function OperationsRow({ operations }: { operations: Operations }) {
 
   return (
     <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <StatTile
+      {/*
+        A ring, and NEUTRAL, deliberately.
+        
+        The hint states the fraction the rate is actually computed from —
+        resolved orders, because an order still in transit has not failed to
+        arrive. (It once printed `898 / 2,191`, which is 41%, under a headline
+        of 91.6%.) And the ring stays in the sequential hue rather than status
+        green: this tile sits two rows under the revenue hero, and a saturated
+        green there pulled the eye before the number the page exists to state.
+        The logistics page grades the same figure.
+      */}
+      <GaugeTile
         status={tileStatus}
         label="Yetkazish darajasi"
         value={logistics?.totals.deliveryRate ?? null}
-        unit="percent"
-        /**
-         * The fraction the rate is ACTUALLY computed from.
-         *
-         * This used to print `delivered / orders` — 898 / 2,191 — under a
-         * headline of 91.6%. That fraction is 41.0%. The rate divides by
-         * RESOLVED orders (delivered + refused + cancelled), because an order
-         * still in transit has not failed to arrive; the hint divided by every
-         * order in the window, including the 1,211 still moving. Two numbers
-         * that cannot both be right, printed one above the other.
-         */
+        tone="neutral"
         hint={
           logistics
             ? `${formatNumber(logistics.totals.delivered)} / ${formatNumber(
@@ -459,15 +473,6 @@ function OperationsRow({ operations }: { operations: Operations }) {
               )} yakunlangan · ${formatNumber(logistics.totals.inFlight)} yoʻlda`
             : 'yuklanmoqda'
         }
-        /*
-          Deliberately ungraded HERE, though the same figure is graded on the
-          logistics page. This tile sat two rows under the revenue hero as the
-          only saturated colour in the top third of the screen, so the eye
-          landed on a delivery rate before it landed on the number the page
-          exists to state. The meter below carries the same judgement without
-          competing for the reader's first fixation.
-        */
-        context={<Meter value={logistics?.totals.deliveryRate ?? null} />}
       />
       {/*
         Coverage, not "confirmation rate".
@@ -480,11 +485,11 @@ function OperationsRow({ operations }: { operations: Operations }) {
         score. Coverage is the thing that varies, and it is the same figure the
         Tasdiqlash page headlines, so the two pages now agree.
       */}
-      <StatTile
+      <GaugeTile
         status={tileStatus}
         label="Tasdiqlash qamrovi"
         value={confirmation?.totals.coverage ?? null}
-        unit="percent"
+        tone="neutral"
         hint={
           confirmation
             ? `${formatNumber(confirmation.totals.confirmed)} / ${formatNumber(
@@ -492,7 +497,6 @@ function OperationsRow({ operations }: { operations: Operations }) {
               )} navbatdan`
             : 'yuklanmoqda'
         }
-        context={<Meter value={confirmation?.totals.coverage ?? null} tone="neutral" />}
       />
       {/*
         These two carry a `context` slot like their neighbours.

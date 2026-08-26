@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { ChartCard } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/ui/DataTable'
-import { Meter, StatTile } from '@/components/ui/Stat'
+import { GaugeTile, Meter, StatTile } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type MarginDto, type MarginRowDto, apiGet } from '@/lib/api'
@@ -178,18 +178,19 @@ export function MarginPage() {
           unit="money"
           hint="Faqat tannarxi maʼlum mahsulotlar · satr boʻyicha"
         />
-        <StatTile
+        <GaugeTile
           status={tileStatus}
           label="Marja"
           value={data?.margin ?? null}
-          unit="percent"
           /**
            * Neutral while coverage is thin.
            *
            * A 57% margin measured over a quarter of revenue is not a good
            * result, it is an unknown one — and painting it green tells the
            * reader the opposite. Grading resumes once most of the catalogue
-           * carries a purchase price.
+           * carries a purchase price — with the page's own 40/20 thresholds,
+           * because a supplement margin is judged on a different scale from a
+           * delivery rate.
            */
           tone={
             data === undefined || data.coverage < 50
@@ -200,7 +201,7 @@ export function MarginPage() {
                   ? 'warning'
                   : 'critical'
           }
-          context={<Meter value={data?.margin ?? null} tone="neutral" />}
+          hint="Tannarxi maʼlum tushumga nisbatan"
         />
         <StatTile
           status={tileStatus}

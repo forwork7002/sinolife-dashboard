@@ -44,7 +44,9 @@ export function ChartCard({
   fill?: boolean
 }) {
   return (
-    <Card className={`${fill ? 'flex flex-col' : ''} ${className}`}>
+    // `.reveal` rises the card as it scrolls into view — scroll-driven CSS,
+    // no observers. A card already visible at load renders settled.
+    <Card className={`reveal ${fill ? 'flex flex-col' : ''} ${className}`}>
       <header className="flex items-start justify-between gap-4 px-5 pt-4 pb-3">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>

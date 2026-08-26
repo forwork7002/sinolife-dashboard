@@ -1,5 +1,7 @@
 'use client'
 
+import { useId } from 'react'
+
 import { NO_VALUE, formatNumber } from '@/lib/format'
 
 /**
@@ -25,6 +27,11 @@ export function Sparkline({
   height?: number
   label?: string
 }) {
+  // Unique per instance: two sparklines sharing one gradient id would both
+  // paint whichever <defs> happened to render first. Above the early return,
+  // because hooks must run on every render path.
+  const gradientId = `spark-${useId().replace(/[^a-zA-Z0-9]/g, '')}`
+
   // Two points is the minimum that can express a direction. One is a dot with
   // no story, and drawing it would imply a trend that was never measured.
   if (values.length < 2) {
@@ -77,9 +84,20 @@ export function Sparkline({
           `Trend: ${formatNumber(values[0]!)} dan ${formatNumber(values[values.length - 1]!)} gacha, ${rising ? 'oʻsish' : 'pasayish'}`
         }
       >
-        <path d={area} fill={color} opacity={0.1} />
+        <defs>
+          {/* The fill fades to nothing rather than sitting as a flat tint —
+              the line reads as lit from above, and the baseline stays clean. */}
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.28} />
+            <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <path d={area} fill={`url(#${gradientId})`} />
         <path
           className="draw-in"
+          style={{
+            filter: `drop-shadow(0 1px 5px color-mix(in oklab, ${color} 50%, transparent))`,
+          }}
           pathLength={1}
           d={path}
           fill="none"

@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { ChartCard } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/ui/DataTable'
-import { Meter, StatTile } from '@/components/ui/Stat'
+import { GaugeTile, Meter, StatTile } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type ChannelDto, apiGet } from '@/lib/api'
@@ -142,17 +142,12 @@ export function ChannelsPage() {
         <StatTile status={tileStatus} label="Murojaatlar" value={totalLeads || null} unit="count" />
         <StatTile status={tileStatus} label="Sotuvlar" value={totalWon || null} unit="count" />
         <StatTile status={tileStatus} label="Tushum" value={totalRevenue || null} unit="money" />
-        <StatTile
+        <GaugeTile
           status={tileStatus}
           label="Umumiy konversiya"
           value={totalLeads === 0 ? null : Math.round((totalWon / totalLeads) * 1000) / 10}
-          unit="percent"
-          context={
-            <Meter
-              value={totalLeads === 0 ? null : (totalWon / totalLeads) * 100}
-              tone="neutral"
-            />
-          }
+          tone="neutral"
+          hint={`${formatNumber(totalWon)} savdo / ${formatNumber(totalLeads)} murojaat`}
         />
       </div>
 

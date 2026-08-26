@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { CohortHeatmap } from '@/components/charts/Heatmap'
 import { ChartCard } from '@/components/ui/Card'
-import { Meter, StatTile } from '@/components/ui/Stat'
+import { GaugeTile, StatTile } from '@/components/ui/Stat'
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { PageShell } from '@/features/shared/PageShell'
 import { type CohortSummaryDto, apiGet } from '@/lib/api'
@@ -44,12 +44,10 @@ export function CohortPage() {
       meta={query.data?.meta}
     >
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile
+        <GaugeTile
           status={tileStatus}
           label="Takroriy tushum ulushi"
           value={data?.repeatRevenueShare ?? null}
-          unit="percent"
-          hint="Birinchi xariddan keyingi savdolar"
           /*
             Deliberately uncoloured.
             
@@ -58,7 +56,8 @@ export function CohortPage() {
             judgement it cannot support. The number and its trend are the
             finding; the reader supplies the target.
           */
-          context={<Meter value={data?.repeatRevenueShare ?? null} tone="neutral" />}
+          tone="neutral"
+          hint="Birinchi xariddan keyingi savdolar"
         />
         <StatTile
           status={tileStatus}

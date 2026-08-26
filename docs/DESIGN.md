@@ -154,6 +154,40 @@ flash — the opacity handover is gentler than no animation at all.
 
 ---
 
+## Analysis indicators
+
+**Tiles wear rings, table rows wear bars.** A headline rate renders as a
+`RingGauge` — a conic gradient swept by a registered `@property`, so the fill
+animates as pure CSS with no per-frame JavaScript. Twenty rings in a table
+would be noise, which is why `Meter` still exists and neither replaces the
+other. Ring colour follows the same rules as every mark: `auto` grades against
+the house thresholds, `neutral` states magnitude in the sequential hue, and a
+page that grades with its own thresholds resolves the tone itself and the ring
+just wears it. Never the page accent.
+
+**Numbers arrive, they do not appear.** Every stat counts up on first paint
+and glides when a live refresh moves it (`AnimatedNumber`), with a brief tint
+flash so the change is noticed. The formatted string sits in tabular figures,
+so a rolling digit never shifts layout; the server renders the final value, so
+no crawler or test ever sees a half-counted number; reduced motion renders
+instantly and keeps only the flash.
+
+**Deltas are pills.** A 12% tint of the delta's own colour under full
+text-grade ink — findable before it is read, contrast untouched, arrow kept
+for colourblind readers.
+
+**Cards below the fold rise as they scroll into view** — `animation-timeline:
+view()`, composited by the browser, nothing on the main thread. Print disables
+it (a scroll-driven animation would freeze unseen cards at opacity 0 on
+paper), and so does reduced motion.
+
+**Lines glow, faintly.** A `drop-shadow` of the series' own colour under the
+data line — the same hue at low opacity, never a new colour. It is most of
+the difference between a chart that reads as luminous and a wire on a dark
+card.
+
+---
+
 ## What a screen owes the reader
 
 1. **One thing first.** The hero number is bigger than everything else on the

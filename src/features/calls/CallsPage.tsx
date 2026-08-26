@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { ChartCard } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/ui/DataTable'
-import { Meter, RankBadge, StatTile } from '@/components/ui/Stat'
+import { GaugeTile, Meter, RankBadge, StatTile } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type CallActivityDto, type CallsDto, apiGet } from '@/lib/api'
@@ -121,42 +121,31 @@ export function CallsPage() {
         nowhere at all.
       */}
       <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile
+        <GaugeTile
           status={tileStatus}
           label="Chiquvchi — ulandi"
           value={outbound ? rate(outbound.connected, outbound.calls) : null}
-          unit="percent"
-          hint={
-            outbound
-              ? `${formatNumber(outbound.connected)} / ${formatNumber(outbound.calls)} terilgan`
-              : undefined
-          }
           /*
             Neutral, not graded. Two thirds of dials connecting is ordinary for
             this kind of calling and nobody has set a target; painting it red
             would be the dashboard asserting a standard that does not exist.
           */
-          context={
-            <Meter
-              value={outbound ? rate(outbound.connected, outbound.calls) : null}
-              tone="neutral"
-            />
+          tone="neutral"
+          hint={
+            outbound
+              ? `${formatNumber(outbound.connected)} / ${formatNumber(outbound.calls)} terilgan`
+              : undefined
           }
         />
-        <StatTile
+        <GaugeTile
           status={tileStatus}
           label="Kiruvchi — javob berildi"
           value={inbound ? rate(inbound.connected, inbound.calls) : null}
-          unit="percent"
-          hint={
-            inbound
-              ? `${formatNumber(inbound.calls - inbound.connected)} ta javobsiz qoldi`
-              : undefined
-          }
           /*
-            Graded, unlike outbound. A customer who called and got no answer is
-            a loss in a way an unanswered dial is not, so this one HAS an
-            agreed direction even without a target.
+            Graded, unlike outbound — with the page's own 80/50 thresholds
+            rather than the house 85/60. A customer who called and got no
+            answer is a loss in a way an unanswered dial is not, so this one
+            HAS an agreed direction even without a target.
           */
           tone={
             inbound === undefined
@@ -167,8 +156,10 @@ export function CallsPage() {
                   ? 'warning'
                   : 'critical'
           }
-          context={
-            <Meter value={inbound ? rate(inbound.connected, inbound.calls) : null} tone="neutral" />
+          hint={
+            inbound
+              ? `${formatNumber(inbound.calls - inbound.connected)} ta javobsiz qoldi`
+              : undefined
           }
         />
         <StatTile

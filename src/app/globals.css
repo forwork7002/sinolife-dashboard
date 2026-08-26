@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+/**
+ * Registered custom properties.
+ *
+ * `@property` is what lets a CSS variable interpolate. An unregistered
+ * variable changes in one step — the browser has no idea it is a percentage —
+ * so a conic-gradient ring driven by a plain variable would snap to its value
+ * instead of sweeping to it. Registering the syntax turns the same variable
+ * into something `transition` understands, and the ring animates with zero
+ * JavaScript.
+ */
+@property --gauge-sweep {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
 /* ===========================================================================
  * DESIGN TOKENS
  *
@@ -821,3 +837,144 @@ body {
     opacity: 0;
   }
 }
+
+/* ===========================================================================
+ * ANALYSIS INDICATORS
+ * ======================================================================== */
+
+/**
+ * The ring gauge.
+ *
+ * A conic gradient swept by the registered `--gauge-sweep` property, cut into
+ * a ring with a mask. The sweep TRANSITIONS from 0% to its value on first
+ * paint (the component sets the variable after mount), and to any new value on
+ * a live refresh — pure CSS interpolation, no animation frames.
+ *
+ * The track is `--grid`, the same recessive tone every meter uses, so a ring
+ * and a bar read as the same system drawn in different shapes: tiles wear
+ * rings, table rows wear bars.
+ */
+.gauge {
+  /* No `position` here. This stylesheet is unlayered and Tailwind's utilities
+     live in a layer, so anything declared here BEATS the `absolute` the
+     component sets — a stray `position: relative` collapsed the ring to zero
+     height. Positioning belongs to the call site. */
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--gauge-color, var(--seq-450)) var(--gauge-sweep),
+    var(--grid) var(--gauge-sweep)
+  );
+  mask: radial-gradient(
+    closest-side,
+    transparent calc(100% - var(--gauge-thickness, 8px)),
+    #000 calc(100% - var(--gauge-thickness, 8px) + 0.5px)
+  );
+  transition: --gauge-sweep 900ms var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gauge {
+    transition: none;
+  }
+}
+
+/**
+ * A number that just changed, saying so.
+ *
+ * A soft tint that blooms and fades under the figure when a live refresh
+ * moves it. Background only — the digits stay in ink — and gone in under a
+ * second, so a wall of tiles never strobes.
+ */
+@keyframes value-flash {
+  0% {
+    background: color-mix(in oklab, var(--accent) 22%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.value-flash {
+  border-radius: 6px;
+  animation: value-flash 900ms var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .value-flash {
+    animation-duration: 1400ms;
+  }
+}
+
+/**
+ * Scroll-driven reveal.
+ *
+ * `animation-timeline: view()` binds the animation to the element's own
+ * journey across the viewport — no observers, no scroll listeners, and the
+ * browser composits it. A card below the fold rises as it scrolls into view;
+ * one already visible at load computes as past its range and renders settled,
+ * which is exactly the right behaviour for the top of the page.
+ *
+ * Progressive enhancement in the strict sense: outside the @supports block
+ * nothing happens and the card is simply there.
+ */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      animation: rise linear both;
+      animation-timeline: view();
+      animation-range: entry 5% entry 35%;
+    }
+  }
+}
+
+/* Print never scrolls, so a scroll-driven animation would freeze every
+   below-the-fold card at opacity 0 — a printed report with blank pages. */
+@media print {
+  .reveal {
+    animation: none;
+  }
+}
+
+/**
+ * Line glow.
+ *
+ * A faint halo under the data line, from the line's own colour. It is what
+ * makes a chart read as luminous rather than drawn — most visible in dark
+ * mode, where a bare 2px stroke on a near-black card looks like a wire.
+ * The colour never changes meaning: the glow is the series colour at low
+ * opacity, not a new hue.
+ */
+.line-glow {
+  filter: drop-shadow(0 1px 6px color-mix(in oklab, var(--series-1) 55%, transparent));
+}
+
+.recharts-area-curve {
+  filter: drop-shadow(0 2px 8px color-mix(in oklab, var(--series-1) 45%, transparent));
+}
+
+/* Heatmap cells lift slightly under the pointer, so the eye keeps its place
+   in a dense grid. Transform only — no repaint of neighbours. */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  td[data-heat] {
+    transition: transform 140ms var(--ease-out), box-shadow 140ms var(--ease-out);
+  }
+
+  td[data-heat]:hover {
+    transform: scale(1.12);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18), 0 0 0 1.5px var(--surface);
+    position: relative;
+    z-index: 1;
+  }
+}
+
+/* Headings break evenly instead of orphaning one word; body copy avoids
+   single-word last lines. One line of CSS each — free typography. */
+h1,
+h2 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+

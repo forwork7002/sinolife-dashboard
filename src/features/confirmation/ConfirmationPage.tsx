@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { ChartCard } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/ui/DataTable'
-import { Meter, StatTile, StatusChip } from '@/components/ui/Stat'
+import { GaugeTile, Meter, StatTile, StatusChip } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type ConfirmationDto, type ConfirmationRowDto, apiGet } from '@/lib/api'
@@ -168,38 +168,19 @@ export function ConfirmationPage() {
           unit="count"
           tone={totals && totals.unreachable > 0 ? 'warning' : 'neutral'}
         />
-        <StatTile
+        <GaugeTile
           status={tileStatus}
-          /*
-            Coverage, not the confirmation rate.
-
-            The rate is 100% for every operator every month — almost nobody
-            records a failed attempt, so the denominator is the numerator. How
-            much of the order flow goes through the step at all runs 20–60%
-            and is the number that separates one operator from another.
-          */
           label="Tasdiqlash qamrovi"
           value={totals?.coverage ?? null}
-          unit="percent"
+          tone="neutral"
           hint="Navbatga tushganlarning qanchasi tasdiqlangan"
-          context={<Meter value={totals?.coverage ?? null} tone="neutral" />}
         />
-        <StatTile
+        <GaugeTile
           status={tileStatus}
           label="Tasdiqdan keyin yetkazildi"
           value={totals?.stickRate ?? null}
-          unit="percent"
+          tone="auto"
           hint="Tasdiq haqiqatan ish berdimi"
-          tone={
-            totals === undefined
-              ? 'neutral'
-              : totals.stickRate >= 85
-                ? 'good'
-                : totals.stickRate >= 60
-                  ? 'warning'
-                  : 'critical'
-          }
-          context={<Meter value={totals?.stickRate ?? null} />}
         />
       </div>
 

@@ -75,10 +75,22 @@ export function TrendIndicator({
   const color = isGood ? 'var(--delta-up)' : 'var(--delta-down)'
   const arrow = delta.direction === 'up' ? '↑' : '↓'
 
+  /*
+    A pill, not bare coloured text.
+    
+    The 12% tint of the delta's own colour gives the change a shape the eye
+    can find in a row of tiles before reading anything — and the text keeps
+    its full text-grade colour on top of it, so contrast is untouched. The
+    arrow still carries direction alongside the colour for colourblind
+    readers and forced-colors mode.
+  */
   return (
     <span
-      className={`tabular inline-flex items-center gap-0.5 text-xs font-medium ${className}`}
-      style={{ color }}
+      className={`tabular inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${className}`}
+      style={{
+        color,
+        background: `color-mix(in oklab, ${color} 12%, transparent)`,
+      }}
       title={`${formatPercent(Math.abs(delta.percent))} oldingi davrga nisbatan`}
     >
       <span aria-hidden="true">{arrow}</span>

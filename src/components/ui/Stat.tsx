@@ -1,5 +1,8 @@
-import type { ReactNode } from 'react'
+'use client'
 
+import { useEffect, useState, type ReactNode } from 'react'
+
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { NO_VALUE, formatCompactUzs, formatNumber, formatPercent, formatUzs } from '@/lib/format'
 
 /**
@@ -119,29 +122,35 @@ export function StatValue({
 }) {
   if (value === null) return <>{NO_VALUE}</>
 
+  // Every figure counts up on first paint and glides when a live refresh
+  // moves it — see AnimatedNumber. The unit suffix stays static: only the
+  // number is data.
   switch (unit) {
     case 'money':
       return (
         <>
-          {formatCompactUzs(value)}
+          <AnimatedNumber value={value} format={formatCompactUzs} />
           <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
             soʻm
           </span>
         </>
       )
     case 'percent':
-      return <>{formatPercent(value)}</>
+      return <AnimatedNumber value={value} format={(v) => formatPercent(v)} />
     case 'hours':
       return (
         <>
-          {formatNumber(Math.round(value * 10) / 10)}
+          <AnimatedNumber
+            value={value}
+            format={(v) => formatNumber(Math.round(v * 10) / 10)}
+          />
           <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
             soat
           </span>
         </>
       )
     case 'count':
-      return <>{formatNumber(value)}</>
+      return <AnimatedNumber value={value} format={(v) => formatNumber(Math.round(v))} />
     case 'raw':
       return <>{value}</>
   }
@@ -156,6 +165,168 @@ export function StatValue({
  * length, and the track keeps its full width whatever the value — a bar that
  * shrinks its own track cannot be compared to the row above it.
  */
+/**
+ * A rate, drawn as a ring.
+ *
+ * The system: TILES wear rings, table ROWS wear bars. A ring gives a headline
+ * rate a shape the eye finds before it reads anything, and twenty of them in a
+ * table would be noise — which is why Meter still exists and neither replaces
+ * the other.
+ *
+ * The sweep is a conic gradient driven by a registered `@property`, so the
+ * fill ANIMATES as pure CSS: the component mounts at 0% and sets the real
+ * value a frame later, and the browser interpolates the sweep with no
+ * JavaScript per frame. A live refresh that changes the value glides the same
+ * way. See `.gauge` in globals.css.
+ *
+ * Colour comes from the same rules as Meter: `auto` grades against the
+ * house thresholds, `neutral` states magnitude in the sequential hue. Never
+ * the page accent — a mark that encodes a value may not wear page identity.
+ */
+type GaugeTone = 'auto' | 'neutral' | 'good' | 'warning' | 'critical'
+
+export function RingGauge({
+  value,
+  size = 74,
+  thickness = 8,
+  tone = 'auto',
+  label,
+}: {
+  value: number | null
+  size?: number
+  thickness?: number
+  /**
+   * `auto` grades against the house thresholds (85 / 60); `neutral` states
+   * the magnitude in the sequential hue. The explicit statuses exist for the
+   * pages that grade with their OWN thresholds — the margin tile that stays
+   * neutral until cost coverage is credible, the inbound-call rate graded at
+   * 80/50 — so the judgement is made where the domain knowledge lives and the
+   * ring just wears it.
+   */
+  tone?: GaugeTone
+  label?: string
+}) {
+  // Mount at zero, then set the real value: the transition on --gauge-sweep
+  // turns that first update into the entrance sweep.
+  const [sweep, setSweep] = useState(0)
+
+  useEffect(() => {
+    const target = value === null ? 0 : Math.max(0, Math.min(100, value))
+    // A frame after mount, so the 0% initial value has actually painted and
+    // there is something to transition FROM.
+    const raf = requestAnimationFrame(() => setSweep(target))
+    return () => cancelAnimationFrame(raf)
+  }, [value])
+
+  if (value === null) {
+    return (
+      <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+        {NO_VALUE}
+      </span>
+    )
+  }
+
+  const clamped = Math.max(0, Math.min(100, value))
+  const color =
+    tone === 'neutral'
+      ? 'var(--seq-450)'
+      : tone === 'good'
+        ? 'var(--status-good)'
+        : tone === 'warning'
+          ? 'var(--status-warning)'
+          : tone === 'critical'
+            ? 'var(--status-critical)'
+            : clamped >= 85
+              ? 'var(--status-good)'
+              : clamped >= 60
+                ? 'var(--status-warning)'
+                : 'var(--status-critical)'
+
+  return (
+    <div
+      className="relative shrink-0"
+      style={{ width: size, height: size }}
+      role="img"
+      aria-label={`${label ? `${label}: ` : ''}${formatPercent(value)}`}
+    >
+      <div
+        className="gauge absolute inset-0"
+        style={
+          {
+            '--gauge-sweep': `${sweep}%`,
+            '--gauge-color': color,
+            '--gauge-thickness': `${thickness}px`,
+          } as React.CSSProperties
+        }
+        aria-hidden="true"
+      />
+      <div className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
+        <span
+          className="figure font-semibold"
+          style={{ fontSize: size * 0.24, color: 'var(--ink-primary)' }}
+        >
+          <AnimatedNumber value={value} format={(v) => formatPercent(v, value >= 100 ? 0 : 1)} />
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A headline rate: ring on the left, meaning on the right.
+ *
+ * The composition StatTile cannot make — the percentage lives INSIDE the
+ * ring, so the number and its proportion are one mark, and the space to the
+ * right carries the label, the fraction it came from, and any judgement chip.
+ */
+export function GaugeTile({
+  label,
+  value,
+  hint,
+  tone = 'auto',
+  status = 'ready',
+  context,
+}: {
+  label: string
+  value: number | null
+  hint?: string
+  tone?: GaugeTone
+  status?: 'loading' | 'error' | 'ready'
+  context?: ReactNode
+}) {
+  return (
+    <div className="card flex flex-col px-4 py-3.5">
+      <p
+        className="truncate text-[11px] font-medium tracking-wide uppercase"
+        style={{ color: 'var(--ink-muted)' }}
+      >
+        {label}
+      </p>
+
+      <div className="mt-2 flex items-center gap-3.5">
+        {status === 'loading' ? (
+          <div className="skeleton h-[74px] w-[74px] rounded-full" aria-label="Yuklanmoqda" />
+        ) : status === 'error' ? (
+          <span className="text-base font-medium" style={{ color: 'var(--status-critical)' }}>
+            Olinmadi
+          </span>
+        ) : (
+          <RingGauge value={value} tone={tone} label={label} />
+        )}
+
+        <div className="min-w-0 flex-1">
+          {hint && (
+            <p className="text-[11px] leading-snug" style={{ color: 'var(--ink-muted)' }}>
+              {hint}
+            </p>
+          )}
+          {context && <div className="mt-1.5">{context}</div>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Meter({
   value,
   tone = 'auto',

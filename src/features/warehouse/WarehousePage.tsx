@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { ChartCard } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/ui/DataTable'
-import { Meter, StatTile } from '@/components/ui/Stat'
+import { GaugeTile, Meter, StatTile } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type DispatchDto, apiGet } from '@/lib/api'
@@ -107,14 +107,12 @@ export function WarehousePage() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile status={tileStatus} label="Joʻnatilgan buyurtma" value={totalOrders || null} unit="count" />
         <StatTile status={tileStatus} label="Nuqtalar" value={known.length || null} unit="count" hint="Sklad, kuryer, marketpleys" />
-        <StatTile
+        <GaugeTile
           status={tileStatus}
           label="Yetkazish darajasi"
           value={totalOrders === 0 ? null : Math.round((totalDelivered / totalOrders) * 1000) / 10}
-          unit="percent"
-          context={
-            <Meter value={totalOrders === 0 ? null : (totalDelivered / totalOrders) * 100} />
-          }
+          tone="auto"
+          hint={`${formatNumber(totalDelivered)} / ${formatNumber(totalOrders)} joʻnatilgan`}
         />
         <StatTile status={tileStatus} label="Tushum" value={totalRevenue || null} unit="money" />
       </div>

@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { ChartCard } from '@/components/ui/Card'
-import { Meter, StatTile } from '@/components/ui/Stat'
+import { GaugeTile, Meter, StatTile } from '@/components/ui/Stat'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { PageShell } from '@/features/shared/PageShell'
@@ -162,22 +162,12 @@ export function LogisticsPage() {
           hint={totals ? `${formatNumber(totals.inFlight)} tasi hali yoʻlda` : undefined}
         />
         <StatTile status={tileStatus} label="Yetkazildi" value={totals?.delivered ?? null} unit="count" tone="good" />
-        <StatTile
+        <GaugeTile
           status={tileStatus}
           label="Yetkazish darajasi"
           value={totals?.deliveryRate ?? null}
-          unit="percent"
+          tone="auto"
           hint="Yakunlangan buyurtmalar ichida"
-          tone={
-            totals === undefined
-              ? 'neutral'
-              : totals.deliveryRate >= 85
-                ? 'good'
-                : totals.deliveryRate >= 60
-                  ? 'warning'
-                  : 'critical'
-          }
-          context={<Meter value={totals?.deliveryRate ?? null} />}
         />
         <StatTile
           status={tileStatus}

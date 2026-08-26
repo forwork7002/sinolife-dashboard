@@ -126,6 +126,7 @@ function HeatCell({ value }: { value: number | null }) {
 
   return (
     <td
+      data-heat=""
       className="tabular rounded px-1 py-1 text-center text-[11px] font-medium"
       style={{
         background: backgrounds[step],
