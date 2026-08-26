@@ -16,12 +16,26 @@ import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { env } from '@/server/config/env'
 import { prisma } from '@/server/db/prisma'
 import { AUTH_COOKIE_PREFIX } from './cookiePrefix'
+import { resolveTrustedOrigins } from './trustedOrigins'
+
+/**
+ * Origins allowed to post to the auth endpoints.
+ *
+ * See `trustedOrigins.ts` for why the configured URL alone is not enough — the
+ * short version is that the same server reached at 127.0.0.1 or by LAN address
+ * answered 403 and looked exactly like a wrong password.
+ */
+export const TRUSTED_ORIGINS = resolveTrustedOrigins(
+  env.BETTER_AUTH_URL,
+  process.env.APP_TRUSTED_ORIGINS,
+)
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
 
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,
+  trustedOrigins: TRUSTED_ORIGINS,
 
   emailAndPassword: {
     enabled: true,

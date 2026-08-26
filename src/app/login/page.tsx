@@ -1,12 +1,49 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useState } from 'react'
 
 import { signIn } from '@/lib/authClient'
 
+/**
+ * Turn a sign-in failure into something the reader can act on.
+ *
+ * Wrong credentials stay deliberately vague — naming which of the two was
+ * wrong tells an attacker which addresses are real accounts.
+ *
+ * Everything else must NOT wear that message. An origin rejection reported as
+ * "wrong password" is how a working password came to look broken: the app is
+ * reachable at several addresses, better-auth trusts only the configured one,
+ * and the resulting 403 was rendered as a credential problem. The person
+ * retyped the password for twenty minutes.
+ */
+function describe(error: { status?: number; code?: string; message?: string }): string {
+  if (error.code === 'INVALID_ORIGIN' || error.status === 403) {
+    return `Bu manzildan kirish mumkin emas. Ilovani ${process.env.NEXT_PUBLIC_APP_URL ?? 'toʻgʻri manzil'} orqali oching.`
+  }
+  if (error.status === 401 || error.status === 400) {
+    return 'Email yoki parol notoʻgʻri.'
+  }
+  if (error.status && error.status >= 500) {
+    return 'Server javob bermadi. Birozdan soʻng qayta urinib koʻring.'
+  }
+  return error.message
+    ? `Kirish amalga oshmadi: ${error.message}`
+    : 'Kirish amalga oshmadi. Internet aloqasini tekshiring.'
+}
+
 export default function LoginPage() {
+  return (
+    // useSearchParams needs a Suspense boundary during prerender.
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  )
+}
+
+function LoginForm() {
   const router = useRouter()
+  const params = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -17,17 +54,35 @@ export default function LoginPage() {
     setPending(true)
     setError(null)
 
-    const result = await signIn.email({ email, password })
+    try {
+      const result = await signIn.email({ email, password })
 
-    if (result.error) {
-      // Deliberately generic: naming which of the two was wrong tells an
-      // attacker which addresses are real accounts.
-      setError('Email yoki parol notoʻgʻri.')
+      if (result.error) {
+        setError(describe(result.error))
+        setPending(false)
+        return
+      }
+    } catch (cause) {
+      // A rejected promise here is the network, not the credentials.
+      setError(cause instanceof Error ? `Kirish amalga oshmadi: ${cause.message}` : 'Kirish amalga oshmadi.')
       setPending(false)
       return
     }
 
-    router.push('/')
+    /**
+     * Return them to where they were heading.
+     *
+     * The middleware records it as `?next=`. Sending everyone to the home page
+     * instead means clicking Logistika, signing in, and landing somewhere
+     * else — small, but it reads as the app losing your place.
+     *
+     * Only a same-site path is accepted: an absolute URL here would make the
+     * login page an open redirect.
+     */
+    const next = params.get('next')
+    const destination = next && /^\/(?!\/)/.test(next) ? next : '/'
+
+    router.push(destination)
     router.refresh()
   }
 
