@@ -91,9 +91,14 @@ export class ReferenceRepository {
     })
   }
 
-  async findProducts(): Promise<NamedRef[]> {
+  async findProducts(options: { includeInactive?: boolean } = {}): Promise<NamedRef[]> {
     return this.prisma.product.findMany({
-      where: { isActive: true },
+      // A deleted product's NAME is still its name. Filter dropdowns pass
+      // nothing and see only the active catalogue; the analytics name map
+      // includes everything, because a revenue row for a product the portal
+      // has since deleted was rendering its internal id — a cuid — as if it
+      // were a product called "cmt8mor9z0…".
+      where: options.includeInactive ? undefined : { isActive: true },
       orderBy: { name: 'asc' },
       select: { id: true, name: true },
     })

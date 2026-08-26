@@ -244,7 +244,7 @@ export class AnalyticsService {
     const all = await this.load(ctx)
     const [items, catalogue] = await Promise.all([
       this.deals.findItemsForDeals(all.map((d) => d.id)),
-      this.reference.findProducts(),
+      this.reference.findProducts({ includeInactive: true }),
     ])
 
     const nameById = new Map(catalogue.map((p) => [p.id, p.name]))
@@ -272,7 +272,9 @@ export class AnalyticsService {
 
     return current.map((row) => ({
       productId: row.key,
-      name: nameById.get(row.key) ?? row.key,
+      // Never the raw id: an unresolvable product is stated as such rather
+      // than leaking an internal identifier into a business report.
+      name: nameById.get(row.key) ?? 'Oʻchirilgan mahsulot',
       revenue: toMoneyDto(row.revenue),
       dealsWon: row.dealsWon,
       units: unitsById.get(row.key) ?? 0,

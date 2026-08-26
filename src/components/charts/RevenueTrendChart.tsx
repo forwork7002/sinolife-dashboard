@@ -46,8 +46,23 @@ export function RevenueTrendChart({
   }))
 
   return (
-    <div style={{ width: '100%', height: height ?? '100%', minHeight: 260 }}>
-      <ResponsiveContainer width="100%" height="100%">
+    /*
+      The absolute-fill sandwich, and why it exists.
+
+      `height: 100%` resolves against the parent's HEIGHT PROPERTY, and when
+      that is `auto` — any plain ChartCard — the percentage resolves to auto,
+      the chart's box computes to zero, and Recharts draws nothing. min-height
+      raises the USED height, but percentage resolution never looks at used
+      heights, so the sales page rendered a 260px card with an empty chart in
+      it. An absolutely-positioned child, by contrast, resolves inset against
+      the used padding box — min-height included — so the measurer always sees
+      the real rectangle, in a flex parent and a plain card alike.
+    */
+    <div
+      style={{ position: 'relative', width: '100%', height: height ?? '100%', minHeight: 260 }}
+    >
+      <div style={{ position: 'absolute', inset: 0 }}>
+        <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
@@ -106,7 +121,8 @@ export function RevenueTrendChart({
             animationEasing="ease-out"
           />
         </AreaChart>
-      </ResponsiveContainer>
+        </ResponsiveContainer>
+      </div>
     </div>
   )
 }

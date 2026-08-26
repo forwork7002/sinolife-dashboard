@@ -148,10 +148,19 @@ function StageLadder({
           </span>
           <div className="h-4 flex-1 overflow-hidden rounded" style={{ background: 'var(--grid)' }}>
             <div
-              className="h-full rounded"
+              className="grow-x h-full rounded"
               style={{
                 width: `${(stage.customers / max) * 100}%`,
-                background: 'var(--series-7)',
+                /*
+                  Sequential, not series-7.
+                  
+                  This is one quantitative measure, so it takes the magnitude
+                  hue every other single-measure bar uses. series-7 also
+                  happens to be THIS page's accent — so the bars were wearing
+                  what looked exactly like page identity, the one thing a
+                  value-encoding mark must never do, even by coincidence.
+                */
+                background: 'var(--seq-450)',
               }}
             />
           </div>

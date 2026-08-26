@@ -87,15 +87,22 @@ function LoginForm() {
   }
 
   return (
-    <main
-      className="flex min-h-screen items-center justify-center px-4 py-10"
-      style={{ background: 'var(--page)' }}
-    >
-      <div className="w-full max-w-sm">
+    /*
+      The first screen anyone sees, so it carries the same light as the app:
+      two faint accent pools behind a raised card, the brand mark washed in
+      the revenue hue. `background` on main would flatten the ambient
+      gradients painted on <html>, so it stays transparent.
+    */
+    <main className="flex min-h-screen items-center justify-center px-4 py-10">
+      <div className="rise w-full max-w-sm">
         <div className="mb-6 flex items-center gap-3">
           <span
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-base font-bold"
-            style={{ background: 'var(--series-1)', color: 'var(--ink-on-series)' }}
+            className="flex h-11 w-11 items-center justify-center rounded-xl text-base font-bold"
+            style={{
+              background: `linear-gradient(135deg, var(--series-1), color-mix(in oklab, var(--series-1) 55%, var(--series-7)))`,
+              color: 'var(--ink-on-series)',
+              boxShadow: '0 4px 14px -4px color-mix(in oklab, var(--series-1) 55%, transparent)',
+            }}
             aria-hidden="true"
           >
             S
@@ -114,9 +121,9 @@ function LoginForm() {
           onSubmit={onSubmit}
           className="rounded-2xl border p-6"
           style={{
-            background: 'var(--surface)',
+            background: 'var(--surface-raised)',
             borderColor: 'var(--border)',
-            boxShadow: 'var(--shadow-card)',
+            boxShadow: 'var(--shadow-raised), var(--edge-highlight)',
           }}
         >
           <h1 className="text-lg font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>

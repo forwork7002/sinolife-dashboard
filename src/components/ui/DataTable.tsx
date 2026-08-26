@@ -186,8 +186,18 @@ export function DataTable<T>({
                     }
                   : undefined
               }
+              /*
+                Every row highlights under the pointer, clickable or not.
+                
+                In a 25-column-wide table the eye tracks a row across half a
+                metre of screen; the wash under the cursor is what keeps the
+                reading position. Clickable rows get the stronger grid tone so
+                affordance still reads as affordance.
+              */
               className={`focusable border-t transition-colors ${
-                onRowClick ? 'cursor-pointer hover:bg-[var(--grid)]' : ''
+                onRowClick
+                  ? 'cursor-pointer hover:bg-[var(--grid)]'
+                  : 'hover:bg-[var(--surface-sunken)]'
               }`}
               style={{ borderColor: 'var(--border)' }}
             >
