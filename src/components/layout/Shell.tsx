@@ -9,6 +9,7 @@ import { sessionUser, signOut, useSession } from '@/lib/authClient'
 import { formatDateTime } from '@/lib/format'
 import { ROLE_LABELS, canSee } from '@/lib/roles'
 import { t } from '@/lib/messages'
+import { RouteTransitions } from './RouteTransitions'
 
 /**
  * Navigation, grouped by the question each screen answers.
@@ -95,11 +96,21 @@ export function Shell({
 
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--page)' }}>
+      <RouteTransitions />
       {/* Sidebar: hidden below lg, where the top nav takes over. Desktop is the
           primary management experience, so it keeps the persistent rail. */}
+      {/* `viewTransitionName` pins this in place across navigations: the
+          browser sees the same named element in both snapshots and, with the
+          animation suppressed in globals.css, leaves it alone entirely. Without
+          it the sidebar crossfades along with the content and the whole screen
+          appears to flicker. */}
       <aside
         className="hidden w-56 shrink-0 border-r lg:flex lg:flex-col"
-        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+        style={{
+          background: 'var(--surface)',
+          borderColor: 'var(--border)',
+          viewTransitionName: 'app-sidebar',
+        }}
       >
         <div className="flex items-center gap-2.5 px-5 py-5">
           <span
@@ -226,10 +237,17 @@ export function Shell({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header
-          className="sticky top-0 z-20 border-b backdrop-blur"
+          className="sticky top-0 z-20 border-b"
           style={{
-            background: 'color-mix(in srgb, var(--surface) 88%, transparent)',
+            /* Glass: a translucent surface plus a real backdrop blur, so the
+               content scrolling underneath reads as behind rather than as
+               clipped. Saturation is raised because blurring alone desaturates
+               what shows through and the accent bar below goes grey. */
+            background: 'color-mix(in oklab, var(--surface) 72%, transparent)',
+            backdropFilter: 'blur(12px) saturate(1.6)',
+            WebkitBackdropFilter: 'blur(12px) saturate(1.6)',
             borderColor: 'var(--border)',
+            viewTransitionName: 'app-header',
           }}
         >
           <div className="flex flex-wrap items-center gap-3 px-4 py-3 lg:px-6">
@@ -273,7 +291,20 @@ export function Shell({
           </nav>
         </header>
 
-        <main className="flex-1 px-4 py-5 lg:px-6 lg:py-6">{children}</main>
+        {/*
+          The name the transition animates.
+
+          `viewTransitionName` on the element the browser should treat as its
+          own layer: the sidebar and header carry theirs too and have their
+          animation suppressed in globals.css, so this is the only thing that
+          actually moves. Content changed; the application did not.
+        */}
+        <main
+          className="flex-1 px-4 py-5 lg:px-6 lg:py-6"
+          style={{ viewTransitionName: 'page-body' }}
+        >
+          {children}
+        </main>
       </div>
     </div>
   )
