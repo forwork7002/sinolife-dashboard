@@ -49,12 +49,16 @@ export function SearchInput({
         <circle cx="11" cy="11" r="6.5" stroke="var(--ink-muted)" strokeWidth="1.8" />
         <path d="M16 16l4 4" stroke="var(--ink-muted)" strokeWidth="1.8" strokeLinecap="round" />
       </svg>
+      {/* The placeholder is not an accessible name — it disappears the moment
+          anyone types. `outline-none` with no replacement removed the only
+          focus indicator; `focusable` puts the house ring back. */}
       <input
         type="search"
         value={local}
         onChange={(e) => setLocal(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-lg border py-1.5 pr-2.5 pl-8 text-xs outline-none"
+        aria-label={placeholder}
+        className="focusable w-full rounded-lg border py-1.5 pr-2.5 pl-8 text-xs outline-none"
         style={{
           background: 'var(--surface-raised)',
           borderColor: 'var(--border-strong)',
@@ -126,8 +130,11 @@ export function MultiSelect({
         disabled={disabled || options.length === 0}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        aria-controls={id}
-        className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors disabled:opacity-50"
+        // Only while the panel exists. Pointing at an id that is not in the
+        // document is a dangling reference, not a relationship.
+        aria-controls={open ? id : undefined}
+        aria-haspopup="listbox"
+        className="focusable flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors disabled:opacity-50"
         style={{
           background: selected.length ? 'var(--grid)' : 'var(--surface-raised)',
           borderColor: 'var(--border-strong)',
@@ -138,7 +145,7 @@ export function MultiSelect({
         {selected.length > 0 && (
           <span
             className="tabular rounded-full px-1.5 text-[10px]"
-            style={{ background: 'var(--series-1)', color: '#fff' }}
+            style={{ background: 'var(--series-1)', color: 'var(--ink-on-series)' }}
           >
             {selected.length}
           </span>
@@ -151,14 +158,21 @@ export function MultiSelect({
       {open && (
         <div
           id={id}
-          className="absolute z-30 mt-1 max-h-72 w-60 overflow-y-auto rounded-xl border p-1 shadow-lg"
-          style={{ background: 'var(--surface-raised)', borderColor: 'var(--border-strong)' }}
+          role="listbox"
+          aria-multiselectable="true"
+          aria-label={label}
+          className="absolute z-30 mt-1 max-h-72 w-60 overflow-y-auto rounded-[var(--radius-panel)] border p-1"
+          style={{
+            background: 'var(--surface-raised)',
+            borderColor: 'var(--border-strong)',
+            boxShadow: 'var(--shadow-float)',
+          }}
         >
           {selected.length > 0 && (
             <button
               type="button"
               onClick={() => onChange([])}
-              className="mb-1 w-full rounded-md px-2 py-1.5 text-left text-xs"
+              className="focusable mb-1 w-full rounded-md px-2 py-1.5 text-left text-xs"
               style={{ color: 'var(--ink-muted)' }}
             >
               Tozalash
@@ -167,6 +181,8 @@ export function MultiSelect({
           {options.map((option) => (
             <label
               key={option.id}
+              role="option"
+              aria-selected={selected.includes(option.id)}
               className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-[var(--grid)]"
               style={{ color: 'var(--ink-primary)' }}
             >
@@ -284,47 +300,47 @@ export function StatusBadge({ status }: { status: string }) {
   const palette: Record<string, { bg: string; dot: string; label: string }> = {
     OPEN: { bg: 'var(--grid)', dot: 'var(--seq-350)', label: t.status.OPEN },
     WON: {
-      bg: 'color-mix(in srgb, var(--status-good) 14%, transparent)',
+      bg: 'color-mix(in oklab, var(--status-good) 14%, transparent)',
       dot: 'var(--status-good)',
       label: t.status.WON,
     },
     LOST: {
-      bg: 'color-mix(in srgb, var(--status-critical) 12%, transparent)',
+      bg: 'color-mix(in oklab, var(--status-critical) 12%, transparent)',
       dot: 'var(--status-critical)',
       label: t.status.LOST,
     },
     PAID: {
-      bg: 'color-mix(in srgb, var(--status-good) 14%, transparent)',
+      bg: 'color-mix(in oklab, var(--status-good) 14%, transparent)',
       dot: 'var(--status-good)',
       label: 'Toʻlangan',
     },
     PARTIAL: {
-      bg: 'color-mix(in srgb, var(--status-warning) 18%, transparent)',
+      bg: 'color-mix(in oklab, var(--status-warning) 18%, transparent)',
       dot: 'var(--status-warning)',
       label: 'Qisman',
     },
     UNPAID: {
-      bg: 'color-mix(in srgb, var(--status-critical) 12%, transparent)',
+      bg: 'color-mix(in oklab, var(--status-critical) 12%, transparent)',
       dot: 'var(--status-critical)',
       label: 'Toʻlanmagan',
     },
     ACHIEVED: {
-      bg: 'color-mix(in srgb, var(--status-good) 14%, transparent)',
+      bg: 'color-mix(in oklab, var(--status-good) 14%, transparent)',
       dot: 'var(--status-good)',
       label: t.kpiStatus.ACHIEVED,
     },
     ON_TRACK: {
-      bg: 'color-mix(in srgb, var(--status-good) 10%, transparent)',
+      bg: 'color-mix(in oklab, var(--status-good) 10%, transparent)',
       dot: 'var(--status-good)',
       label: t.kpiStatus.ON_TRACK,
     },
     AT_RISK: {
-      bg: 'color-mix(in srgb, var(--status-warning) 18%, transparent)',
+      bg: 'color-mix(in oklab, var(--status-warning) 18%, transparent)',
       dot: 'var(--status-warning)',
       label: t.kpiStatus.AT_RISK,
     },
     BEHIND: {
-      bg: 'color-mix(in srgb, var(--status-critical) 12%, transparent)',
+      bg: 'color-mix(in oklab, var(--status-critical) 12%, transparent)',
       dot: 'var(--status-critical)',
       label: t.kpiStatus.BEHIND,
     },

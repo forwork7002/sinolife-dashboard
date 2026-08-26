@@ -484,35 +484,48 @@ export class InsightsRepository {
   /**
    * Why orders were lost, split by WHEN they were lost.
    *
-   * The two are not the same event and must not share a bar. A parcel that
-   * travelled to the customer and came back cost the delivery, the handling
-   * and the return leg; an order cancelled before anything shipped cost a
-   * phone call. Merged under one heading called "return reasons", 81 of the 82
-   * losses in a month were pre-dispatch cancellations, and 135.5 mln soʻm of
-   * goods that never moved were reported as lost value.
+   * THREE STAGES, AND THEY ARE NOT COMPARABLE
+   *   RETURNED  — the parcel travelled and came back. Cost the delivery, the
+   *               handling and the return leg.
+   *   CANCELLED — killed in the delivery pipeline before anything shipped.
+   *               Cost a phone call.
+   *   PRE_SALE  — never became an order at all. Lost in the qualification
+   *               funnel.
    *
-   * `stage` carries the terminal role so the caller can label each series for
-   * what it is rather than guessing from the reason text.
+   * WHERE THE REASONS ACTUALLY ARE
+   * This is the part that made the old card useless. It filtered on
+   * `countsAsRevenue`, and on this portal EVERY loss carrying a real reason
+   * sits in a pipeline that flag excludes — 442 "олиш нияти ёк", 208 "5
+   * уринишда богланиб болмади", 142 "пулидан муамоси бор". The rows that
+   * survived the filter were 82 deals whose reason is null. So a card titled
+   * "why orders come back" could only ever render one full-width bar reading
+   * "reason not given", and 883 recorded reasons were invisible.
+   *
+   * MONEY IS NULL FOR PRE_SALE, deliberately. `countsAsRevenue` exists because
+   * the same order appears in several pipelines; summing amounts across the
+   * excluded ones would double-count. A count of reasons has no such problem —
+   * which is exactly why the filter belongs on the money and not on the rows.
    */
   async refusalReasons(
     period: Period,
-  ): Promise<{ stage: string; reason: string; orders: number; lostMinor: bigint }[]> {
+  ): Promise<{ stage: string; reason: string; orders: number; lostMinor: bigint | null }[]> {
     const rows = await this.prisma.$queryRawUnsafe<
-      { stage: string; reason: string; orders: bigint; lost: MoneyText }[]
+      { stage: string; reason: string | null; orders: bigint; lost: MoneyText }[]
     >(
       `
       SELECT
-        CASE cur."logisticsRole"
-          WHEN 'REFUSED' THEN 'RETURNED'
-          WHEN 'CANCELLED_EARLY' THEN 'CANCELLED'
+        CASE
+          WHEN NOT d."countsAsRevenue" THEN 'PRE_SALE'
+          WHEN cur."logisticsRole" = 'REFUSED' THEN 'RETURNED'
+          WHEN cur."logisticsRole" = 'CANCELLED_EARLY' THEN 'CANCELLED'
           ELSE 'OTHER'
         END AS stage,
-        COALESCE(d."refusalReason", 'Sabab koʻrsatilmagan') AS reason,
+        d."refusalReason" AS reason,
         count(*)::bigint AS orders,
-        sum(d."amountMinor")::text AS lost
+        sum(d."amountMinor") FILTER (WHERE d."countsAsRevenue")::text AS lost
       FROM "deal" d
       JOIN "deal_stage" cur ON cur."id" = d."stageId"
-      WHERE d."countsAsRevenue" AND d."status" = 'LOST'
+      WHERE d."status" = 'LOST'
         AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
       GROUP BY 1, 2
       ORDER BY orders DESC
@@ -522,9 +535,11 @@ export class InsightsRepository {
     )
     return rows.map((r) => ({
       stage: r.stage,
-      reason: r.reason,
+      reason: r.reason ?? 'Sabab koʻrsatilmagan',
       orders: int(r.orders),
-      lostMinor: money(r.lost),
+      // Null, not zero: "no money was lost" and "we do not count money here"
+      // are different claims.
+      lostMinor: r.lost === null ? null : money(r.lost),
     }))
   }
 
@@ -1043,43 +1058,65 @@ export class InsightsRepository {
       }[]
     >(
       `
+      /*
+        Two independent aggregates joined on the department, NOT one query with
+        both a per-employee LATERAL and a deal join.
+        
+        That earlier shape took 52 seconds and was cancelled by the statement
+        timeout — the page simply never loaded. The reason is a fan-out: the
+        deal join multiplies each employee row by their deal count, and the
+        correlated subqueries then ran once per multiplied row, 24,367 index
+        searches deep. Aggregating each side to one row per department first
+        means every table is touched exactly once.
+      */
+      WITH active AS (
+        SELECT DISTINCT "employeeId" AS id
+          FROM "call_record"
+         WHERE "startedAt" >= $1 AND "startedAt" < $2
+         UNION
+        SELECT DISTINCT "employeeId" AS id
+          FROM "deal"
+         WHERE "countsAsRevenue" AND "status" = 'WON'
+           AND "closedAt" >= $1 AND "closedAt" < $2
+      ),
+      people AS (
+        SELECT
+          e."departmentId" AS dep_id,
+          count(*)::bigint AS headcount,
+          count(*) FILTER (WHERE e."isActive")::bigint AS active_headcount,
+          -- On the roster, marked active, and produced something. The gap
+          -- between this and active_headcount is "who is here and who is not".
+          count(*) FILTER (WHERE e."isActive" AND a.id IS NOT NULL)::bigint AS working_headcount
+        FROM "employee" e
+        LEFT JOIN active a ON a.id = e."id"
+        WHERE e."departmentId" IS NOT NULL
+        GROUP BY e."departmentId"
+      ),
+      sales AS (
+        SELECT
+          e."departmentId" AS dep_id,
+          count(d."id") FILTER (WHERE d."countsAsRevenue" AND d."status" = 'WON')::bigint AS deals,
+          sum(d."amountMinor") FILTER (WHERE d."countsAsRevenue" AND d."status" = 'WON')::text AS revenue
+        FROM "deal" d
+        JOIN "employee" e ON e."id" = d."employeeId"
+        WHERE d."closedAt" >= $1 AND d."closedAt" < $2
+          AND e."departmentId" IS NOT NULL
+        GROUP BY e."departmentId"
+      )
       SELECT
         dep."id",
         dep."name",
         dep."parentId" AS parent_id,
         head."fullName" AS head_name,
-        count(DISTINCT e."id")::bigint AS headcount,
-        count(DISTINCT e."id") FILTER (WHERE e."isActive")::bigint AS active_headcount,
-        /*
-          Who was actually working.
-          
-          "Kim bor, kim yoʻq" cannot be answered by the Bitrix isActive flag
-          alone: every deactivated person is also silent, so the flag finds
-          nobody the roster does not already show. The question people are
-          asking is who is on the roster, marked active, and produced NOTHING
-          this period — 58 of 206 active staff, invisible until now.
-        */
-        count(DISTINCT e."id") FILTER (
-          WHERE e."isActive" AND (act.calls > 0 OR act.wins > 0)
-        )::bigint AS working_headcount,
-        count(d."id") FILTER (WHERE d."countsAsRevenue" AND d."status" = 'WON')::bigint AS deals,
-        sum(d."amountMinor") FILTER (WHERE d."countsAsRevenue" AND d."status" = 'WON')::text AS revenue
+        COALESCE(p.headcount, 0)::bigint AS headcount,
+        COALESCE(p.active_headcount, 0)::bigint AS active_headcount,
+        COALESCE(p.working_headcount, 0)::bigint AS working_headcount,
+        COALESCE(s.deals, 0)::bigint AS deals,
+        s.revenue AS revenue
       FROM "department" dep
       LEFT JOIN "employee" head ON head."id" = dep."headId"
-      LEFT JOIN "employee" e ON e."departmentId" = dep."id"
-      LEFT JOIN LATERAL (
-        SELECT
-          (SELECT count(*) FROM "call_record" c
-            WHERE c."employeeId" = e."id"
-              AND c."startedAt" >= $1 AND c."startedAt" < $2) AS calls,
-          (SELECT count(*) FROM "deal" w
-            WHERE w."employeeId" = e."id" AND w."countsAsRevenue" AND w."status" = 'WON'
-              AND w."closedAt" >= $1 AND w."closedAt" < $2) AS wins
-      ) act ON TRUE
-      LEFT JOIN "deal" d
-        ON d."employeeId" = e."id"
-       AND d."closedAt" >= $1 AND d."closedAt" < $2
-      GROUP BY dep."id", dep."name", dep."parentId", head."fullName", dep."sortOrder"
+      LEFT JOIN people p ON p.dep_id = dep."id"
+      LEFT JOIN sales s ON s.dep_id = dep."id"
       ORDER BY dep."sortOrder", dep."name"
       `,
       period.start,

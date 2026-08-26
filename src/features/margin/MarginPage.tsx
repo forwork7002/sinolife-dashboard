@@ -31,6 +31,11 @@ export function MarginPage() {
       apiGet<MarginDto>('/insights/margin', apiParams, signal),
   })
 
+  /** One derivation, so no tile can disagree with its own page. */
+
+  const tileStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
+
+
   const data = query.data?.data
   // Both totals come from the server, already split by sign. Summing the
   // rows here would net a giveaway against a markup and report neither.
@@ -40,6 +45,8 @@ export function MarginPage() {
   const columns: Column<MarginRowDto>[] = [
     {
       key: 'name',
+      // The row's name: what a screen reader announces the row BY.
+      rowHeader: true,
       header: 'Mahsulot',
       render: (row) => (
         <span className="font-medium" style={{ color: 'var(--ink-primary)' }}>
@@ -154,6 +161,7 @@ export function MarginPage() {
           The hint states the base so the three tiles reconcile.
         */}
         <StatTile
+          status={tileStatus}
           label="Tushum"
           value={data?.revenue.amount ?? null}
           unit="money"
@@ -164,12 +172,14 @@ export function MarginPage() {
           }
         />
         <StatTile
+          status={tileStatus}
           label="Yalpi foyda"
           value={data?.gross.amount ?? null}
           unit="money"
           hint="Faqat tannarxi maʼlum mahsulotlar"
         />
         <StatTile
+          status={tileStatus}
           label="Marja"
           value={data?.margin ?? null}
           unit="percent"
@@ -193,6 +203,7 @@ export function MarginPage() {
           context={<Meter value={data?.margin ?? null} tone="neutral" />}
         />
         <StatTile
+          status={tileStatus}
           label="Berilgan chegirma"
           value={discountTotal}
           unit="money"
@@ -209,8 +220,19 @@ export function MarginPage() {
         <div
           className="rounded-[var(--radius-panel)] border px-4 py-3 text-xs"
           style={{
-            background: 'color-mix(in srgb, var(--status-warning) 8%, var(--surface))',
-            borderColor: 'color-mix(in srgb, var(--status-warning) 30%, transparent)',
+            /*
+              A rule down the edge, not a wash across the panel.
+              
+              8% of a saturated amber mixed into a near-black surface is a
+              muddy brown at 1.12:1 — it neither reads as a warning nor stays
+              out of the way. A full-strength bar on the leading edge is
+              unambiguous at any surface lightness, and the panel itself keeps
+              the ordinary card colour.
+            */
+            background: 'var(--surface-raised)',
+            borderColor: 'var(--border)',
+            borderInlineStartWidth: 3,
+            borderInlineStartColor: 'var(--status-warning)',
             color: 'var(--ink-secondary)',
           }}
         >

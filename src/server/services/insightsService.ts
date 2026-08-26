@@ -73,7 +73,8 @@ export interface LogisticsDto {
     stage: string
     reason: string
     orders: number
-    lost: MoneyDto
+    /** Null where the rows are excluded from revenue and cannot be summed. */
+    lost: MoneyDto | null
   }[]
   readonly totals: {
     readonly orders: number
@@ -309,7 +310,10 @@ export class InsightsService {
         stage: r.stage,
         reason: r.reason,
         orders: r.orders,
-        lost: toMoneyDto(money(r.lostMinor, currency)),
+        // Null for pre-sale losses: those rows are excluded from revenue
+        // because the same order appears in several pipelines, so their
+        // amounts cannot be summed without double-counting.
+        lost: r.lostMinor === null ? null : toMoneyDto(money(r.lostMinor, currency)),
       })),
       totals: {
         orders,

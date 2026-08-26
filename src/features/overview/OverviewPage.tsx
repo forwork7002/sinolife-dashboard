@@ -52,6 +52,15 @@ interface Operations {
   logistics?: LogisticsDto
   confirmation?: ConfirmationDto
   calls?: CallsDto
+  /**
+   * How the three reads went.
+   *
+   * These load independently of the headline, so a tile here can be waiting,
+   * failed, or genuinely empty while the rest of the page is finished. All
+   * three rendered as the same em dash until now, which reads as "no data" —
+   * a confident answer to a question nobody got a reply to.
+   */
+  status: 'loading' | 'error' | 'ready'
 }
 
 type State =
@@ -134,6 +143,11 @@ export function OverviewPage() {
   })
 
   const operations: Operations = {
+    status: [logistics, confirmation, calls].some((q) => q.isError)
+      ? ('error' as const)
+      : [logistics, confirmation, calls].some((q) => q.isPending)
+        ? ('loading' as const)
+        : ('ready' as const),
     logistics: logistics.data?.data,
     confirmation: confirmation.data?.data,
     calls: calls.data?.data,
@@ -203,6 +217,7 @@ export function OverviewPage() {
                 title={t.chart.revenueTrend}
                 hint={t.chart.revenueTrendHint}
                 className="lg:col-span-2"
+                fill
               >
                 {!ready ? (
                   <ChartSkeleton height={280} />
@@ -326,6 +341,9 @@ function KpiRow({ overview, loading }: { overview?: OverviewDto; loading: boolea
       <div className="stagger grid gap-3 sm:grid-cols-2 lg:col-span-2 lg:grid-cols-3 xl:col-span-3">
         {rest.map((card) => (
           <StatTile
+            // This row renders only once `overview` has resolved — KpiRow
+            // returns skeletons otherwise — so the state here is always ready.
+            status="ready"
             key={card.key}
             label={CARD_LABELS[card.key] ?? card.key}
             value={card.value}
@@ -392,7 +410,7 @@ function HeroCard({ card, trend }: { card: KpiCardDto; trend: readonly number[] 
  * source that has not been read yet.
  */
 function OperationsRow({ operations }: { operations: Operations }) {
-  const { logistics, confirmation, calls } = operations
+  const { logistics, confirmation, calls, status: tileStatus } = operations
 
   const totalTalkHours =
     calls === undefined
@@ -406,6 +424,7 @@ function OperationsRow({ operations }: { operations: Operations }) {
   return (
     <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <StatTile
+        status={tileStatus}
         label="Yetkazish darajasi"
         value={logistics?.totals.deliveryRate ?? null}
         unit="percent"
@@ -450,6 +469,7 @@ function OperationsRow({ operations }: { operations: Operations }) {
         Tasdiqlash page headlines, so the two pages now agree.
       */}
       <StatTile
+        status={tileStatus}
         label="Tasdiqlash qamrovi"
         value={confirmation?.totals.coverage ?? null}
         unit="percent"
@@ -472,6 +492,7 @@ function OperationsRow({ operations }: { operations: Operations }) {
         connected, and the share of the team that called anyone.
       */}
       <StatTile
+        status={tileStatus}
         label="Mijoz bilan suhbat"
         value={totalTalkHours}
         unit="hours"
@@ -488,6 +509,7 @@ function OperationsRow({ operations }: { operations: Operations }) {
         }
       />
       <StatTile
+        status={tileStatus}
         label="Qoʻngʻiroq qilgan xodim"
         value={activeCallers}
         unit="count"

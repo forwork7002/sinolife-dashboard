@@ -33,15 +33,18 @@ export function ChartCard({
   action,
   children,
   className = '',
+  fill = false,
 }: {
   title: string
   hint?: string
   action?: ReactNode
   children: ReactNode
   className?: string
+  /** Stretch the body to the card's height, for a card in an equal-height row. */
+  fill?: boolean
 }) {
   return (
-    <Card className={className}>
+    <Card className={`${fill ? 'flex flex-col' : ''} ${className}`}>
       <header className="flex items-start justify-between gap-4 px-5 pt-4 pb-3">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
@@ -55,7 +58,9 @@ export function ChartCard({
         </div>
         {action}
       </header>
-      <div className="px-5 pb-5">{children}</div>
+      <div className={`px-5 pb-5 ${fill ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
+        {fill ? <div className="min-h-0 flex-1">{children}</div> : children}
+      </div>
     </Card>
   )
 }

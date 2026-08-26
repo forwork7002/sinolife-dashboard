@@ -97,6 +97,9 @@ export function Shell({
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--page)' }}>
       <RouteTransitions />
+      <a href="#main" className="skip-link">
+        Asosiy qismga oʻtish
+      </a>
       {/* Sidebar: hidden below lg, where the top nav takes over. Desktop is the
           primary management experience, so it keeps the persistent rail. */}
       {/* `viewTransitionName` pins this in place across navigations: the
@@ -114,8 +117,8 @@ export function Shell({
       >
         <div className="flex items-center gap-2.5 px-5 py-5">
           <span
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white"
-            style={{ background: 'var(--series-1)' }}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold"
+            style={{ background: 'var(--series-1)', color: 'var(--ink-on-series)' }}
             aria-hidden="true"
           >
             S
@@ -130,7 +133,7 @@ export function Shell({
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-2.5 py-1">
+        <nav aria-label="Asosiy menyu" className="flex-1 overflow-y-auto px-2.5 py-1">
           {NAV_GROUPS.map((group) => {
             const items = group.items.filter((item) => !user || canSee(user.role, item.href))
             if (items.length === 0) return null
@@ -263,8 +266,8 @@ export function Shell({
           <div className="flex flex-wrap items-center gap-3 px-4 py-3 lg:px-6">
             <div className="flex min-w-0 items-center gap-2 lg:hidden">
               <span
-                className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold text-white"
-                style={{ background: 'var(--series-1)' }}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold"
+                style={{ background: 'var(--series-1)', color: 'var(--ink-on-series)' }}
                 aria-hidden="true"
               >
                 S
@@ -278,7 +281,11 @@ export function Shell({
           </div>
 
           {/* Mobile nav */}
-          <nav className="overflow-x-auto border-t px-3 lg:hidden" style={{ borderColor: 'var(--border)' }}>
+          <nav
+            aria-label="Mobil menyu"
+            className="overflow-x-auto border-t px-3 lg:hidden"
+            style={{ borderColor: 'var(--border)' }}
+          >
             <ul className="flex gap-1 py-1.5">
               {visibleNav.map((item) => {
                 const active = isActive(pathname, item.href)
@@ -310,6 +317,7 @@ export function Shell({
           actually moves. Content changed; the application did not.
         */}
         <main
+          id="main"
           className="flex-1 px-4 py-5 lg:px-6 lg:py-6"
           style={{ viewTransitionName: 'page-body' }}
         >
@@ -363,12 +371,17 @@ function FreshnessPanel({ lastSyncedAt }: { lastSyncedAt?: string | null }) {
           {t.badge.lastSync}
         </p>
       </div>
+      {/* The word matters, not only the tint. The worker runs every sixty
+          seconds, so five missed ticks is a fault — and a fault signalled by
+          colour alone reaches nobody who cannot see the colour. */}
       <p
         className="tabular text-[11px]"
         style={{ color: stale ? 'var(--status-warning)' : 'var(--ink-secondary)' }}
         title={formatDateTime(lastSyncedAt)}
+        aria-live="polite"
       >
         {relativeMinutes(minutes)}
+        {stale && <span className="ml-1 font-medium">· eskirgan</span>}
       </p>
     </div>
   )
@@ -408,7 +421,7 @@ function DataSourceBadge({ source }: { source: 'DEMO' | 'BITRIX24' | 'MANUAL' })
     <span
       className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
       style={{
-        background: isDemo ? 'color-mix(in srgb, var(--status-warning) 18%, transparent)' : 'var(--grid)',
+        background: isDemo ? 'color-mix(in oklab, var(--status-warning) 18%, transparent)' : 'var(--grid)',
         color: 'var(--ink-primary)',
       }}
       title={isDemo ? t.badge.demoHint : undefined}

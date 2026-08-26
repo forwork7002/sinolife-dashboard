@@ -9,6 +9,7 @@ import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type CallActivityDto, type CallsDto, apiGet } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
+import { t } from '@/lib/messages'
 
 /**
  * Who actually spoke to customers.
@@ -30,6 +31,11 @@ export function CallsPage() {
       apiGet<CallsDto>('/insights/calls', apiParams, signal),
   })
 
+  /** One derivation, so no tile can disagree with its own page. */
+
+  const tileStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
+
+
   const rows = query.data?.data.rows ?? []
   const outbound = query.data?.data.outbound
   const inbound = query.data?.data.inbound
@@ -47,6 +53,8 @@ export function CallsPage() {
     },
     {
       key: 'name',
+      // The row's name: what a screen reader announces the row BY.
+      rowHeader: true,
       header: 'Xodim',
       render: (row) => (
         <span className="font-medium" style={{ color: 'var(--ink-primary)' }}>
@@ -96,9 +104,11 @@ export function CallsPage() {
 
   return (
     <PageShell
-      title="Qoʻngʻiroqlar"
-      description="Kim mijoz bilan qancha gaplashgani. Gaplashgan vaqt — faqat ulangan qoʻngʻiroqlar."
-      accent="var(--series-1)"
+      title={t.modules.calls.title}
+      description={t.modules.calls.lead}
+      // Not series-1: that is the app default AND the colour --seq-450 sits
+      // next to, so page identity, rank and every rate bar were the same blue.
+      accent="var(--series-7)"
       meta={query.data?.meta}
     >
       {/*
@@ -112,6 +122,7 @@ export function CallsPage() {
       */}
       <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
+          status={tileStatus}
           label="Chiquvchi — ulandi"
           value={outbound ? rate(outbound.connected, outbound.calls) : null}
           unit="percent"
@@ -133,6 +144,7 @@ export function CallsPage() {
           }
         />
         <StatTile
+          status={tileStatus}
           label="Kiruvchi — javob berildi"
           value={inbound ? rate(inbound.connected, inbound.calls) : null}
           unit="percent"
@@ -160,6 +172,7 @@ export function CallsPage() {
           }
         />
         <StatTile
+          status={tileStatus}
           label="Qoʻngʻiroqlar"
           value={outbound && inbound ? outbound.calls + inbound.calls || null : null}
           unit="count"
@@ -170,6 +183,7 @@ export function CallsPage() {
           }
         />
         <StatTile
+          status={tileStatus}
           label="Jami suhbat"
           value={totalTalk === 0 ? null : Math.round(totalTalk / 3600)}
           unit="hours"
@@ -185,6 +199,9 @@ export function CallsPage() {
           columns={columns}
           rows={rows.map((row, index) => ({ ...row, rank: index + 1 }))}
           rowKey={(row) => row.employeeId}
+          // 144 and 92 rows made these pages 6,919px and 4,457px tall.
+          initialRows={25}
+          moreLabel={(hidden) => `Yana ${hidden} ta xodimni koʻrsatish`}
           status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
           errorMessage={(query.error as Error | null)?.message}
           onRetry={() => void query.refetch()}

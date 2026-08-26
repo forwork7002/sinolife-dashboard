@@ -61,12 +61,23 @@ export function FunnelChart({ steps }: { steps: readonly FunnelStepDto[] }) {
   const pipelineSteps = visible.filter(
     (s) => s.category === 'NEW' || s.category === 'IN_PROGRESS',
   )
-  const max = Math.max(1, ...visible.map((s) => s.dealCount))
-
   return (
     <ul className="space-y-2.5">
       {visible.map((step) => {
-        const width = (step.dealCount / max) * 100
+        /**
+         * The bar and the number state the SAME quantity.
+         *
+         * The bar used to be `dealCount / max` — share of the largest stage —
+         * while the percentage beside it was `reachedPercent`, share of the
+         * whole funnel. Two different measures in one row, and the bar is the
+         * one the eye reads: "В пути" drew at 71% of the track above a label
+         * saying 31%, and "Доставлено" filled the track above a label saying
+         * 41%. Every row overstated itself by roughly 2.3×.
+         *
+         * `reachedPercent` wins because it is the one the label already
+         * claims and the one a funnel is asking about.
+         */
+        const width = step.reachedPercent ?? 0
         const color = colorFor(step, pipelineSteps.indexOf(step), pipelineSteps.length)
 
         return (
@@ -95,7 +106,9 @@ export function FunnelChart({ steps }: { steps: readonly FunnelStepDto[] }) {
               className="mt-1 h-2 w-full overflow-hidden rounded-full"
               style={{ background: 'var(--grid)' }}
               role="img"
-              aria-label={`${step.stageName}: ${step.dealCount} ta bitim`}
+              aria-label={`${step.stageName}: ${step.dealCount} ta bitim${
+                step.reachedPercent === null ? '' : `, jamining ${formatPercent(step.reachedPercent, 0)}`
+              }`}
             >
               <div
                 className="grow-x h-full rounded-full"

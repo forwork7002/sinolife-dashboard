@@ -290,12 +290,20 @@ export interface LogisticsRowDto {
 export interface LogisticsDto {
   readonly routes: readonly LogisticsRowDto[]
   readonly regions: readonly LogisticsRowDto[]
-  /** Losses split by `stage`: 'RETURNED' travelled and came back; 'CANCELLED' never shipped. */
+  /**
+   * Losses split by `stage`:
+   *   RETURNED  — travelled to the customer and came back
+   *   CANCELLED — killed in the delivery pipeline before dispatch
+   *   PRE_SALE  — never became an order; lost in qualification
+   *
+   * `lost` is null for PRE_SALE, whose rows are excluded from revenue because
+   * the same order appears in several pipelines.
+   */
   readonly reasons: readonly {
     readonly stage: string
     readonly reason: string
     readonly orders: number
-    readonly lost: MoneyDto
+    readonly lost: MoneyDto | null
   }[]
   readonly totals: {
     readonly orders: number

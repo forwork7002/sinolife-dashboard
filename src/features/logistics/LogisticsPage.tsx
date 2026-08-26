@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChartCard } from '@/components/ui/Card'
 import { Meter, StatTile } from '@/components/ui/Stat'
 import { DataTable, type Column } from '@/components/ui/DataTable'
-import { ChartSkeleton, EmptyState } from '@/components/states/States'
+import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type LogisticsDto, type LogisticsRowDto, apiGet } from '@/lib/api'
@@ -34,16 +34,40 @@ export function LogisticsPage() {
       apiGet<LogisticsDto>('/insights/logistics', apiParams, signal),
   })
 
+  /** One derivation, so no tile can disagree with its own page. */
+
+  const tileStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
+
+
   const data = query.data?.data
 
   const returned = data?.reasons.filter((r) => r.stage === 'RETURNED') ?? []
 
-  const cancelled = data?.reasons.filter((r) => r.stage !== 'RETURNED') ?? []
+  const cancelled = data?.reasons.filter((r) => r.stage === 'CANCELLED') ?? []
+  /**
+   * Losses before the order existed — where every recorded reason actually is.
+   *
+   * On this portal the delivery pipeline records no reason at all (82 losses,
+   * all null) while the qualification funnel records 883. A page asking "why
+   * did we lose them" that showed only the first was showing the only part
+   * with no answer.
+   */
+  const preSale = data?.reasons.filter((r) => r.stage === 'PRE_SALE') ?? []
+
+  /** Failures as a share of RESOLVED orders — the delivery rate's own base. */
+  const failureRate = (() => {
+    if (!data) return null
+    const { delivered, refused, cancelledEarly } = data.totals
+    const resolved = delivered + refused + cancelledEarly
+    return resolved === 0 ? null : ((refused + cancelledEarly) / resolved) * 100
+  })()
   const totals = data?.totals
 
   const columns: Column<LogisticsRowDto>[] = [
     {
       key: 'label',
+      // The row's name: what a screen reader announces the row BY.
+      rowHeader: true,
       header: 'Yoʻnalish',
       render: (row) => (
         <span
@@ -80,19 +104,17 @@ export function LogisticsPage() {
       header: 'Qaytdi',
       align: 'right',
       numeric: true,
-      render: (row) =>
-        row.refused === 0 ? (
-          <span style={{ color: 'var(--ink-muted)' }}>0</span>
-        ) : (
-          <span style={{ color: 'var(--status-critical)' }}>{formatNumber(row.refused)}</span>
-        ),
+      // Both failure columns are emphasised the same way. Marking only
+      // `refused` in critical red made one returned parcel louder than eighty
+      // cancellations sitting in plain ink in the next column.
+      render: (row) => <Failures count={row.refused} />,
     },
     {
       key: 'cancelled',
       header: 'Joʻnatilmay bekor',
       align: 'right',
       numeric: true,
-      render: (row) => formatNumber(row.cancelledEarly),
+      render: (row) => <Failures count={row.cancelledEarly} />,
     },
     {
       key: 'inFlight',
@@ -133,13 +155,15 @@ export function LogisticsPage() {
     >
       <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatTile
+          status={tileStatus}
           label="Buyurtmalar"
           value={totals?.orders ?? null}
           unit="count"
           hint={totals ? `${formatNumber(totals.inFlight)} tasi hali yoʻlda` : undefined}
         />
-        <StatTile label="Yetkazildi" value={totals?.delivered ?? null} unit="count" tone="good" />
+        <StatTile status={tileStatus} label="Yetkazildi" value={totals?.delivered ?? null} unit="count" tone="good" />
         <StatTile
+          status={tileStatus}
           label="Yetkazish darajasi"
           value={totals?.deliveryRate ?? null}
           unit="percent"
@@ -156,6 +180,7 @@ export function LogisticsPage() {
           context={<Meter value={totals?.deliveryRate ?? null} />}
         />
         <StatTile
+          status={tileStatus}
           label="Qaytdi / bekor"
           value={totals ? totals.refused + totals.cancelledEarly : null}
           unit="count"
@@ -164,9 +189,27 @@ export function LogisticsPage() {
               ? `${formatNumber(totals.refused)} yoʻldan qaytdi, ${formatNumber(totals.cancelledEarly)} joʻnatilmay bekor`
               : undefined
           }
-          tone={totals && totals.refused > 0 ? 'critical' : 'neutral'}
+          /*
+            Graded on the RATE, not on whether any failure exists at all.
+            
+            `refused > 0` turned the tile critical red for a single returned
+            parcel out of 2,191 orders, while the 81 cancellations it also
+            counts sat in plain ink. A threshold that trips on one is not a
+            threshold. Against resolved orders — the same denominator the
+            delivery rate uses — the two agree instead of contradicting.
+          */
+          tone={
+            totals === undefined
+              ? 'neutral'
+              : failureRate === null || failureRate < 5
+                ? 'neutral'
+                : failureRate < 15
+                  ? 'warning'
+                  : 'critical'
+          }
         />
         <StatTile
+          status={tileStatus}
           label="Median yetkazish"
           value={totals?.medianHours ?? null}
           unit="hours"
@@ -199,6 +242,10 @@ export function LogisticsPage() {
           rows={data?.routes ?? []}
           rowKey={(row) => row.label}
           status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
+          // It rendered the error state with no way out of it: no message and
+          // no retry, unlike the identical table directly above.
+          errorMessage={(query.error as Error | null)?.message}
+          onRetry={() => void query.refetch()}
           emptyTitle="Yoʻnalish maʼlumoti yoʻq"
           emptyBody="Bosqichlar tarixi hali import qilinmagan boʻlishi mumkin."
           minWidth={980}
@@ -219,7 +266,13 @@ export function LogisticsPage() {
         hint="Yoʻlga chiqib, mijozga yetmagan yoki qaytarilgan buyurtmalar. Yoʻqotilgan summa — real yetkazish xarajati bilan birga."
       >
         {query.isPending && <ChartSkeleton height={140} />}
-        {data && returned.length === 0 && (
+        {query.isError && (
+          <ErrorState
+            message={(query.error as Error).message}
+            onRetry={() => void query.refetch()}
+          />
+        )}
+        {data && !query.isError && returned.length === 0 && (
           <EmptyState
             title="Qaytgan buyurtma yoʻq"
             body="Bu davrda yoʻlga chiqqan birorta buyurtma qaytmagan."
@@ -233,7 +286,13 @@ export function LogisticsPage() {
         hint="Ombordan chiqmasdan bekor qilingan buyurtmalar. Tovar qimirlamagani uchun bu yoʻqotilgan tushum emas, oʻtkazib yuborilgan savdo."
       >
         {query.isPending && <ChartSkeleton height={140} />}
-        {data && cancelled.length === 0 && (
+        {query.isError && (
+          <ErrorState
+            message={(query.error as Error).message}
+            onRetry={() => void query.refetch()}
+          />
+        )}
+        {data && !query.isError && cancelled.length === 0 && (
           <EmptyState
             title="Bekor qilingan buyurtma yoʻq"
             body="Bu davrda hech bir buyurtma joʻnatishdan oldin bekor qilinmagan."
@@ -241,7 +300,36 @@ export function LogisticsPage() {
         )}
         {cancelled.length > 0 && <ReasonList reasons={cancelled} />}
       </ChartCard>
+
+      <ChartCard
+        title="Buyurtmagacha yoʻqotilganlar"
+        hint="Buyurtmaga aylanmay, kvalifikatsiya bosqichida yoʻqolganlar. Operator koʻrsatgan sabab shu yerda yoziladi — yetkazish bosqichida sabab umuman qayd etilmaydi."
+      >
+        {query.isPending && <ChartSkeleton height={140} />}
+        {query.isError && (
+          <ErrorState
+            message={(query.error as Error).message}
+            onRetry={() => void query.refetch()}
+          />
+        )}
+        {data && !query.isError && preSale.length === 0 && (
+          <EmptyState
+            title="Yoʻqotish yoʻq"
+            body="Bu davrda buyurtmagacha bosqichda hech narsa yoʻqolmagan."
+          />
+        )}
+        {preSale.length > 0 && <ReasonList reasons={preSale} />}
+      </ChartCard>
     </PageShell>
+  )
+}
+
+/** A failure count: zero recedes, anything else is stated in ink. */
+function Failures({ count }: { count: number }) {
+  return (
+    <span style={{ color: count === 0 ? 'var(--ink-muted)' : 'var(--ink-primary)' }}>
+      {formatNumber(count)}
+    </span>
   )
 }
 
@@ -273,7 +361,7 @@ function ReasonList({
     readonly stage: string
     readonly reason: string
     readonly orders: number
-    readonly lost: { readonly amount: number }
+    readonly lost: { readonly amount: number } | null
   }[]
 }) {
   const max = Math.max(...reasons.map((r) => r.orders), 1)
@@ -294,9 +382,16 @@ function ReasonList({
               className="h-full rounded"
               style={{
                 width: `${(reason.orders / max) * 100}%`,
-                // The top reason is the one being acted on; the rest are
-                // context, so they recede rather than competing for attention.
-                background: index === 0 ? 'var(--status-critical)' : 'var(--status-serious)',
+                /*
+                  An ordinal ramp, not status colours.
+                  
+                  These bars used to be --status-critical for the top reason
+                  and --status-serious for the rest, which says "this reason is
+                  a crisis and the others are serious problems" — a judgement
+                  nobody made. Reserved status colours mean a STATE; rank is
+                  not a state. One hue, darkest first, is what an ordinal is.
+                */
+                background: index === 0 ? 'var(--seq-550)' : index === 1 ? 'var(--seq-450)' : 'var(--seq-350)',
               }}
             />
           </div>
@@ -309,8 +404,9 @@ function ReasonList({
           <span
             className="tabular w-24 shrink-0 text-right text-xs"
             style={{ color: 'var(--ink-muted)' }}
+            title={reason.lost === null ? 'Bu bosqichda summa hisoblanmaydi' : undefined}
           >
-            {formatCompactUzs(reason.lost.amount)}
+            {reason.lost === null ? NO_VALUE : formatCompactUzs(reason.lost.amount)}
           </span>
         </li>
       ))}

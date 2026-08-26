@@ -66,7 +66,9 @@ export function CollectionChart({ data }: { data: readonly CollectionPointDto[] 
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4, fill: 'var(--series-1)', stroke: 'var(--surface)', strokeWidth: 2 }}
-            isAnimationActive={false}
+            isAnimationActive
+            animationDuration={520}
+            animationEasing="ease-out"
           />
           <Line
             type="monotone"
@@ -76,7 +78,9 @@ export function CollectionChart({ data }: { data: readonly CollectionPointDto[] 
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4, fill: 'var(--series-2)', stroke: 'var(--surface)', strokeWidth: 2 }}
-            isAnimationActive={false}
+            isAnimationActive
+            animationDuration={520}
+            animationEasing="ease-out"
           />
         </LineChart>
       </ResponsiveContainer>

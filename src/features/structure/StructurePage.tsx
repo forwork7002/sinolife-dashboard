@@ -29,6 +29,8 @@ export function StructurePage() {
       apiGet<StructureDto[]>('/insights/structure', apiParams, signal),
   })
 
+  /** One derivation, so no tile can disagree with its own page. */
+  const tileStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
   const roots = query.data?.data ?? []
   const flat = flatten(roots)
   // All three now roll up in the service, so the roots carry inclusive totals.
@@ -43,12 +45,14 @@ export function StructurePage() {
     <PageShell
       title={t.modules.structure.title}
       description={t.modules.structure.lead}
-      accent="var(--series-8)"
+      // Not series-8: it is 4.1 ΔE from --status-critical in light mode, so a
+      // page accented with it makes red mean two things at once.
+      accent="var(--series-6)"
       meta={query.data?.meta}
     >
       <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile label="Boʻlimlar" value={flat.length || null} unit="count" />
-        <StatTile label="Xodimlar" value={totalPeople || null} unit="count" />
+        <StatTile status={tileStatus} label="Boʻlimlar" value={flat.length || null} unit="count" />
+        <StatTile status={tileStatus} label="Xodimlar" value={totalPeople || null} unit="count" />
         {/*
           "Kim bor, kim yoʻq" — the question this page exists to answer.
           
@@ -59,6 +63,7 @@ export function StructurePage() {
           with no page saying so.
         */}
         <StatTile
+          status={tileStatus}
           label="Ishlagan xodimlar"
           value={workingPeople || null}
           unit="count"
@@ -77,7 +82,7 @@ export function StructurePage() {
             />
           }
         />
-        <StatTile label="Tushum" value={totalRevenue || null} unit="money" />
+        <StatTile status={tileStatus} label="Tushum" value={totalRevenue || null} unit="money" />
       </div>
 
       <ChartCard
@@ -91,13 +96,16 @@ export function StructurePage() {
             onRetry={() => void query.refetch()}
           />
         )}
-        {!query.isPending && roots.length === 0 && (
+        {/* `!isError` too: a failed request rendered the error AND "the
+            structure is empty" one under the other, which are contradictory
+            claims — the second one is a guess about data nobody received. */}
+        {!query.isPending && !query.isError && roots.length === 0 && (
           <EmptyState
             title="Tuzilma boʻsh"
             body="Bitrix24 kompaniya strukturasi import qilinmagan."
           />
         )}
-        {roots.length > 0 && <Tree nodes={roots} maxRevenue={Math.max(totalRevenue, 1)} />}
+        {roots.length > 0 && <Tree nodes={roots} />}
       </ChartCard>
     </PageShell>
   )
@@ -107,13 +115,9 @@ function flatten(nodes: readonly StructureDto[]): StructureDto[] {
   return nodes.flatMap((node) => [node, ...flatten(node.children)])
 }
 
-function Tree({
-  nodes,
-  maxRevenue,
-}: {
-  readonly nodes: readonly StructureDto[]
-  maxRevenue: number
-}) {
+function Tree({ nodes }: { readonly nodes: readonly StructureDto[] }) {
+  const siblingMax = Math.max(1, ...nodes.map((n) => n.revenue.amount))
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm" style={{ minWidth: 760 }}>
@@ -133,7 +137,7 @@ function Tree({
         </thead>
         <tbody className="divide-rows">
           {nodes.map((node) => (
-            <Branch key={node.id} node={node} maxRevenue={maxRevenue} />
+            <Branch key={node.id} node={node} siblingMax={siblingMax} />
           ))}
         </tbody>
       </table>
@@ -141,10 +145,27 @@ function Tree({
   )
 }
 
-function Branch({ node, maxRevenue }: { node: StructureDto; maxRevenue: number }) {
+/**
+ * One unit and its children.
+ *
+ * `siblingMax` is the largest revenue among THIS node's siblings, so the bar
+ * answers "how does this unit compare with the ones beside it" — the question
+ * a reader of a tree is asking. Normalised to the company total instead, the
+ * root was always full and every leaf a sliver.
+ */
+function Branch({ node, siblingMax }: { node: StructureDto; siblingMax: number }) {
+  /** The children compare against each other, not against their parent. */
+  const childMax = Math.max(1, ...node.children.map((c) => c.revenue.amount))
   // Roots start open; deeper branches start closed, so the first paint is the
   // shape of the company rather than a wall of every team at once.
-  const [open, setOpen] = useState(node.depth < 1)
+  /**
+   * Open by default down to depth 2.
+   *
+   * At `depth < 1` the tree showed 5 of 20 departments on first paint and left
+   * roughly 430px of the card empty — a page that renders a quarter of its own
+   * content and looks finished. Two levels is the whole company here.
+   */
+  const [open, setOpen] = useState(node.depth < 2)
   const hasChildren = node.children.length > 0
 
   return (
@@ -233,8 +254,20 @@ function Branch({ node, maxRevenue }: { node: StructureDto; maxRevenue: number }
             <div
               className="h-full rounded-full"
               style={{
-                width: `${Math.min(100, (node.revenue.amount / maxRevenue) * 100)}%`,
-                background: 'var(--series-8)',
+                width: `${Math.min(100, (node.revenue.amount / siblingMax) * 100)}%`,
+                /*
+                  Sequential, and normalised to the SIBLING group.
+                  
+                  Against the company total the root branch was always full and
+                  every leaf was a sliver — the bar carried no information at
+                  any depth but the first. Comparing a unit to its own siblings
+                  is the comparison a reader of a tree is actually making.
+                  
+                  One hue, because this is a single quantity. It used to be
+                  --series-8, a red the eye cannot separate from
+                  --status-critical.
+                */
+                background: 'var(--seq-450)',
               }}
             />
           </div>
@@ -242,7 +275,7 @@ function Branch({ node, maxRevenue }: { node: StructureDto; maxRevenue: number }
       </tr>
       {open &&
         node.children.map((child) => (
-          <Branch key={child.id} node={child} maxRevenue={maxRevenue} />
+          <Branch key={child.id} node={child} siblingMax={childMax} />
         ))}
     </>
   )

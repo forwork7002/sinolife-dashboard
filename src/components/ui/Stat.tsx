@@ -22,6 +22,7 @@ export function StatTile({
   context,
   tone = 'neutral',
   accent,
+  status = 'ready',
 }: {
   label: string
   value: number | null
@@ -31,6 +32,15 @@ export function StatTile({
   tone?: 'neutral' | 'good' | 'warning' | 'critical'
   /** Optional leading colour chip, for tiles that belong to a named series. */
   accent?: string
+  /**
+   * Where the request stands.
+   *
+   * Without it, loading, failure and a genuine null all rendered the same em
+   * dash — so a page whose API had just returned 500 read as "no data", a
+   * calm and confident statement of something nobody knew. Three states, three
+   * renderings.
+   */
+  status?: 'loading' | 'error' | 'ready'
 }) {
   const toneColor =
     tone === 'good'
@@ -59,13 +69,27 @@ export function StatTile({
         </p>
       </div>
 
-      <p
-        className="figure mt-2 text-[26px] leading-none font-semibold"
-        style={{ color: toneColor }}
-        title={unit === 'money' && value !== null ? formatUzs(value) : undefined}
-      >
-        <StatValue value={value} unit={unit} />
-      </p>
+      {status === 'loading' ? (
+        <div className="skeleton mt-2 h-[26px] w-2/3" aria-label="Yuklanmoqda" />
+      ) : (
+        <p
+          className="figure mt-2 text-[26px] leading-none font-semibold"
+          style={{ color: status === 'error' ? 'var(--status-critical)' : toneColor }}
+          title={
+            status === 'error'
+              ? 'Maʼlumot olinmadi'
+              : unit === 'money' && value !== null
+                ? formatUzs(value)
+                : undefined
+          }
+        >
+          {status === 'error' ? (
+            <span className="text-base font-medium">Olinmadi</span>
+          ) : (
+            <StatValue value={value} unit={unit} />
+          )}
+        </p>
+      )}
 
       {hint && (
         <p className="mt-1 truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
@@ -210,7 +234,13 @@ export function Meter({
       >
         <div
           className="h-full rounded-full"
-          style={{ width: `${clamped}%`, background: color, transition: 'width 240ms ease-out' }}
+          style={{
+            width: `${clamped}%`,
+            background: color,
+            // The tokens, not a repeat of their values — a duration written
+            // out here is one a change to the design system cannot reach.
+            transition: 'width var(--duration-enter) var(--ease-out)',
+          }}
         />
       </div>
       <span
@@ -287,7 +317,7 @@ export function StatusChip({
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap"
-      style={{ background: `color-mix(in srgb, ${color} 12%, transparent)`, color }}
+      style={{ background: `color-mix(in oklab, ${color} 12%, transparent)`, color }}
     >
       <span aria-hidden="true">{glyph}</span>
       {children}

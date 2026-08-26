@@ -8,7 +8,7 @@ import { Meter, StatTile, StatusChip } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type ConfirmationDto, type ConfirmationRowDto, apiGet } from '@/lib/api'
-import { formatNumber } from '@/lib/format'
+import { formatNumber, formatPercent } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 /**
@@ -33,12 +33,19 @@ export function ConfirmationPage() {
       apiGet<ConfirmationDto>('/insights/confirmations', apiParams, signal),
   })
 
+  /** One derivation, so no tile can disagree with its own page. */
+
+  const tileStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
+
+
   const data = query.data?.data
   const totals = data?.totals
 
   const columns: Column<ConfirmationRowDto>[] = [
     {
       key: 'name',
+      // The row's name: what a screen reader announces the row BY.
+      rowHeader: true,
       header: 'Operator',
       render: (row) => (
         <span className="font-medium" style={{ color: 'var(--ink-primary)' }}>
@@ -94,14 +101,32 @@ export function ConfirmationPage() {
     {
       key: 'stickRate',
       header: 'Tasdiqdan keyin',
-      width: '150px',
+      align: 'right',
+      numeric: true,
+      width: '110px',
+      /*
+        A number, not a meter.
+        
+        This column is exactly 100.0% in 89 of 92 rows, so 150px of the table
+        was a wall of identical full green bars — a bar chart of a constant.
+        The three rows that deviate are the entire point of the column, and a
+        number makes them findable where a meter buried them. The meter stays
+        on Qamrov, which runs 19.5% to 66.7% and genuinely varies.
+      */
       render: (row) =>
         row.confirmed === 0 ? (
           <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
             tasdiq yoʻq
           </span>
         ) : (
-          <Meter value={row.stickRate} label={row.employeeName} />
+          <span
+            style={{
+              color: row.stickRate >= 99.95 ? 'var(--ink-muted)' : 'var(--status-warning)',
+              fontWeight: row.stickRate >= 99.95 ? 400 : 600,
+            }}
+          >
+            {formatPercent(row.stickRate)}
+          </span>
         ),
     },
     {
@@ -119,20 +144,23 @@ export function ConfirmationPage() {
       meta={query.data?.meta}
     >
       <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <StatTile label="Jami buyurtma" value={totals?.orders ?? null} unit="count" />
+        <StatTile status={tileStatus} label="Jami buyurtma" value={totals?.orders ?? null} unit="count" />
         <StatTile
+          status={tileStatus}
           label="Tasdiqlangan"
           value={totals?.confirmed ?? null}
           unit="count"
           tone="good"
         />
         <StatTile
+          status={tileStatus}
           label="Bogʻlanilmadi"
           value={totals?.unreachable ?? null}
           unit="count"
           tone={totals && totals.unreachable > 0 ? 'warning' : 'neutral'}
         />
         <StatTile
+          status={tileStatus}
           /*
             Coverage, not the confirmation rate.
 
@@ -148,6 +176,7 @@ export function ConfirmationPage() {
           context={<Meter value={totals?.coverage ?? null} tone="neutral" />}
         />
         <StatTile
+          status={tileStatus}
           label="Tasdiqdan keyin yetkazildi"
           value={totals?.stickRate ?? null}
           unit="percent"
@@ -213,6 +242,9 @@ export function ConfirmationPage() {
           columns={columns}
           rows={data?.rows ?? []}
           rowKey={(row) => row.employeeId}
+          // 144 and 92 rows made these pages 6,919px and 4,457px tall.
+          initialRows={25}
+          moreLabel={(hidden) => `Yana ${hidden} ta operatorni koʻrsatish`}
           status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
           errorMessage={(query.error as Error | null)?.message}
           onRetry={() => void query.refetch()}

@@ -117,8 +117,8 @@ function HeatCell({ value }: { value: number | null }) {
     value >= 12 ? 4 : value >= 7 ? 3 : value >= 4 ? 2 : value >= 2 ? 1 : 0
 
   const backgrounds = [
-    'color-mix(in srgb, var(--seq-250) 22%, var(--surface))',
-    'color-mix(in srgb, var(--seq-250) 55%, var(--surface))',
+    'color-mix(in oklab, var(--seq-250) 22%, var(--surface))',
+    'color-mix(in oklab, var(--seq-250) 55%, var(--surface))',
     'var(--seq-350)',
     'var(--seq-550)',
     'var(--seq-650)',
@@ -129,7 +129,16 @@ function HeatCell({ value }: { value: number | null }) {
       className="tabular rounded px-1 py-1 text-center text-[11px] font-medium"
       style={{
         background: backgrounds[step],
-        color: step >= 2 ? '#ffffff' : 'var(--ink-primary)',
+        /*
+          The ink flips at step 3, not step 2.
+          
+          White on --seq-350 is 2.83:1 — under the 3:1 floor for any text. Dark
+          ink on that same step is 7.4:1, so the later flip is better on both
+          sides of the boundary. `--surface` rather than a literal white, so
+          the pale ink follows the theme instead of staying white on a light
+          card in dark mode.
+        */
+        color: step >= 3 ? 'var(--surface)' : 'var(--ink-primary)',
         minWidth: 40,
       }}
       title={formatPercent(value)}

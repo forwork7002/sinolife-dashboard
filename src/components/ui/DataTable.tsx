@@ -25,6 +25,14 @@ export interface Column<T> {
   /** Numbers that must line up vertically get tabular figures. */
   readonly numeric?: boolean
   readonly width?: string
+  /**
+   * Render this column as `<th scope="row">`.
+   *
+   * A table of 144 rows where every cell is a `<td>` has nothing to announce a
+   * row BY — a screen reader reads "576 mln" with no idea whose it is. One
+   * column per table should be the row's name.
+   */
+  readonly rowHeader?: boolean
   readonly render: (row: T) => ReactNode
 }
 
@@ -158,29 +166,46 @@ export function DataTable<T>({
               key={rowKey(row)}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
               tabIndex={onRowClick ? 0 : undefined}
+              /*
+                A clickable row has to say so.
+                
+                It was reachable by Tab and operable by Enter, but announced as
+                a plain table row — so a screen-reader user landed on something
+                focusable with no indication of what it was or that Space would
+                do anything. Space is what a control is expected to answer to,
+                and it has to be prevented from scrolling the page first.
+              */
+              role={onRowClick ? 'button' : undefined}
               onKeyDown={
                 onRowClick
                   ? (event) => {
-                      if (event.key === 'Enter') onRowClick(row)
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        onRowClick(row)
+                      }
                     }
                   : undefined
               }
-              className={`border-t transition-colors ${
+              className={`focusable border-t transition-colors ${
                 onRowClick ? 'cursor-pointer hover:bg-[var(--grid)]' : ''
               }`}
               style={{ borderColor: 'var(--border)' }}
             >
-              {columns.map((column) => (
-                <td
-                  key={column.key}
-                  className={`px-2 py-2.5 ${column.align === 'right' ? 'text-right' : ''} ${
-                    column.numeric ? 'tabular' : ''
-                  }`}
-                  style={{ color: 'var(--ink-secondary)' }}
-                >
-                  {column.render(row)}
-                </td>
-              ))}
+              {columns.map((column) => {
+                const Cell = column.rowHeader ? 'th' : 'td'
+                return (
+                  <Cell
+                    key={column.key}
+                    scope={column.rowHeader ? 'row' : undefined}
+                    className={`px-2 py-2.5 font-normal ${
+                      column.align === 'right' ? 'text-right' : 'text-left'
+                    } ${column.numeric ? 'tabular' : ''}`}
+                    style={{ color: 'var(--ink-secondary)' }}
+                  >
+                    {column.render(row)}
+                  </Cell>
+                )
+              })}
             </tr>
           ))}
         </tbody>

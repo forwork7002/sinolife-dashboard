@@ -94,6 +94,8 @@ export function LeaderboardPage() {
     },
     {
       key: 'name',
+      // The row's name: what a screen reader announces the row BY.
+      rowHeader: true,
       header: t.table.employee,
       render: (row) => (
         <div className="min-w-0">

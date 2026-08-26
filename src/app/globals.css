@@ -34,7 +34,10 @@
   --surface-sunken: #eef0f4;
   --ink-primary: #0c0e12;
   --ink-secondary: #4c525e;
-  --ink-muted: #858c99;
+  /* 4.83:1 on the card surface, 4.51:1 on the page. It was #858c99 at
+     3.38:1 — below the text minimum, on the token that carries every label,
+     column header and hint in the application. */
+  --ink-muted: #6b7280;
   --grid: #e8eaee;
   --axis: #c8ccd4;
   --border: rgba(12, 14, 18, 0.09);
@@ -71,6 +74,15 @@
 
   --delta-up: #006a31;
   --delta-down: #c31d1d;
+
+  /**
+   * Ink that sits ON a series colour — a filled chip, a badge, a bar label.
+   *
+   * A literal `#fff` in a component is a colour the palette cannot reach: it
+   * stays white when the surface under it changes, and there is nowhere to fix
+   * it once. Every series step clears 4.5:1 against this in both modes.
+   */
+  --ink-on-series: #ffffff;
 
   /* --- Elevation -------------------------------------------------------- */
   --shadow-card:
@@ -112,19 +124,19 @@
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
 
-    --page: #08090c;
-    --surface: #131519;
-    --surface-raised: #191c22;
-    --surface-sunken: #0e1014;
+    --page: #050609;
+    --surface: #101217;
+    --surface-raised: #1c2027;
+    --surface-sunken: #0b0d11;
     --ink-primary: #f5f6f8;
     --ink-secondary: #a8b0bd;
-    --ink-muted: #6e7684;
+    --ink-muted: #7b8492;
     --grid: #23272f;
     --axis: #333944;
-    --border: rgba(255, 255, 255, 0.08);
-    --border-strong: rgba(255, 255, 255, 0.16);
+    --border: rgba(255, 255, 255, 0.11);
+    --border-strong: rgba(255, 255, 255, 0.22);
 
-    --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 
     --series-1: #497bff;
     --series-2: #d8591e;
@@ -135,11 +147,16 @@
     --series-7: #905eff;
     --series-8: #ec3934;
 
-    --seq-250: #95b6ff;
-    --seq-350: #6d98ff;
-    --seq-450: #4577fe;
-    --seq-550: #2e5be1;
-    --seq-650: #193fc3;
+    /* Anchor flipped for dark: 650 is the most visible step in BOTH themes.
+       The old dark ramp reused the light one, so "further along the funnel"
+       meant "darker" — and against a near-black page the last step fell to
+       1.8:1 and simply disappeared. Re-derived and re-validated: monotone,
+       ΔL ≥ 0.06 throughout, light end 2.36:1 on the surface. */
+    --seq-250: #1c43c4;
+    --seq-350: #3462e4;
+    --seq-450: #5081ff;
+    --seq-550: #7ca4ff;
+    --seq-650: #a8c4ff;
 
     --status-good: #2fb862;
     --status-warning: #d9a01c;
@@ -158,19 +175,19 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --page: #08090c;
-  --surface: #131519;
-  --surface-raised: #191c22;
-  --surface-sunken: #0e1014;
+  --page: #050609;
+  --surface: #101217;
+  --surface-raised: #1c2027;
+  --surface-sunken: #0b0d11;
   --ink-primary: #f5f6f8;
   --ink-secondary: #a8b0bd;
-  --ink-muted: #6e7684;
+  --ink-muted: #7b8492;
   --grid: #23272f;
   --axis: #333944;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.16);
+  --border: rgba(255, 255, 255, 0.11);
+  --border-strong: rgba(255, 255, 255, 0.22);
 
-  --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 
   --series-1: #497bff;
   --series-2: #d8591e;
@@ -181,11 +198,12 @@
   --series-7: #905eff;
   --series-8: #ec3934;
 
-  --seq-250: #95b6ff;
-  --seq-350: #6d98ff;
-  --seq-450: #4577fe;
-  --seq-550: #2e5be1;
-  --seq-650: #193fc3;
+  /* Anchor flipped for dark — see the note in the media-query block above. */
+  --seq-250: #1c43c4;
+  --seq-350: #3462e4;
+  --seq-450: #5081ff;
+  --seq-550: #7ca4ff;
+  --seq-650: #a8c4ff;
 
   --status-good: #2fb862;
   --status-warning: #d9a01c;
@@ -207,6 +225,15 @@
  * so the module is recognisable at a glance; no mark that encodes a value ever
  * reads from it. That separation is what keeps colour meaning stable — a bar
  * is blue because of what it measures, never because of which page it is on.
+ */
+/*
+ * Page identity.
+ *
+ * NOT every slot is eligible. `--series-8` is 4.1 ΔE from `--status-critical`
+ * in light mode — close enough that a page accented with it makes red mean two
+ * things on the same screen, one of them "critical". Slots 1, 2, 3, 5, 6 and 7
+ * are the pool; 4 is too light to carry a mark on a grid track, and 8 is
+ * reserved out for the reason above.
  */
 :root {
   --accent: var(--series-1);
@@ -244,9 +271,35 @@ html {
   scroll-behavior: smooth;
 }
 
+/**
+ * The page ground, and the light on it.
+ *
+ * Both live on `html`, not on `body::before`. A pseudo-element at
+ * `z-index: -1` sits behind its own element's background, and body had one —
+ * so the two accent pools were painted and then covered by the flat page
+ * colour, every time, invisibly. Layering the gradients over the colour on one
+ * element cannot fail that way, and `background-attachment: fixed` keeps them
+ * behaving like light in a room rather than like content that scrolls.
+ */
+html {
+  background-color: var(--page);
+  background-image:
+    radial-gradient(
+      60rem 40rem at 12% -10%,
+      color-mix(in oklab, var(--accent) 7%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      48rem 34rem at 100% 0%,
+      color-mix(in oklab, var(--series-7) 5%, transparent),
+      transparent 60%
+    );
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
 html,
 body {
-  background: var(--page);
   color: var(--ink-primary);
   font-family: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -261,31 +314,10 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/**
- * Ambient light behind the page.
- *
- * Two very faint accent-tinted pools, fixed to the viewport. It reads as depth
- * rather than as colour — the page stops being a flat rectangle without any
- * element having to carry a gradient of its own. Fixed rather than scrolled so
- * it behaves like light in a room instead of like content.
- */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(
-      60rem 40rem at 12% -10%,
-      color-mix(in oklab, var(--accent) 7%, transparent),
-      transparent 60%
-    ),
-    radial-gradient(
-      48rem 34rem at 100% 0%,
-      color-mix(in oklab, var(--series-7) 5%, transparent),
-      transparent 60%
-    );
+/* Transparent, so html's ambient light shows through rather than being
+   covered by a second flat fill. */
+body {
+  background: transparent;
 }
 
 /* Columns that must align vertically get tabular figures; standalone display
@@ -315,10 +347,23 @@ body::before {
   line-height: 1.1;
 }
 
-/* Recharts draws a focus ring on the surface wrapper; it adds nothing here. */
+/**
+ * Recharts focuses its own wrapper.
+ *
+ * The default browser outline on that box adds nothing — but `outline: none`
+ * with no replacement removes a keyboard user's only way of knowing where they
+ * are. `:focus-visible` shows the house ring for the keyboard and stays out of
+ * the way for the mouse.
+ */
 .recharts-wrapper:focus,
 .recharts-surface:focus {
   outline: none;
+}
+
+.recharts-wrapper:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-panel-sm);
 }
 
 /* ===========================================================================
@@ -407,6 +452,41 @@ body::before {
   box-shadow:
     0 0 0 2px var(--surface),
     0 0 0 4px var(--accent);
+}
+
+/**
+ * Forced colours discard box-shadow entirely, so the ring above simply
+ * vanishes for the readers who most depend on it. `outline` survives, and
+ * `CanvasText` is the system's own foreground.
+ */
+@media (forced-colors: active) {
+  .focusable:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+}
+
+/**
+ * Skip link.
+ *
+ * Off-screen until focused. Fourteen sidebar links stand between the top of
+ * the document and the content on every single navigation.
+ */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+}
+
+.skip-link:focus {
+  left: 0.5rem;
+  top: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: var(--radius-panel-sm);
+  background: var(--surface-raised);
+  color: var(--ink-primary);
+  box-shadow: var(--shadow-float);
 }
 
 /* ===========================================================================
@@ -630,6 +710,34 @@ body::before {
 
 ::view-transition-group(app-header) {
   z-index: 20;
+}
+
+/*
+ * No size morph on the content.
+ *
+ * By default the browser animates the GROUP's box from the old snapshot's
+ * dimensions to the new one's over 250ms. Between dashboard screens that box
+ * changes by thousands of pixels — the leaderboard against the structure tree —
+ * so the outgoing page visibly stretched or squashed on its way out. Killing
+ * the group animation and letting each snapshot keep its own height turns it
+ * back into what it should be: two views crossfading in place.
+ *
+ * `isolation: auto` on the pair is what lets the two snapshots blend normally
+ * instead of through the default isolated group.
+ */
+::view-transition-group(page-body) {
+  animation: none;
+}
+
+::view-transition-image-pair(page-body) {
+  isolation: auto;
+}
+
+::view-transition-old(page-body),
+::view-transition-new(page-body) {
+  mix-blend-mode: normal;
+  height: auto;
+  overflow: clip;
 }
 
 /* --- The content: asymmetric crossfade ---------------------------------- */

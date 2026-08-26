@@ -53,7 +53,7 @@ export const t = {
       lead: 'Buyurtma qaysi hudud va tashuvchi orqali ketgani, qancha vaqtda yetgani va qayerda qaytgani.',
     },
     confirmation: {
-      title: 'Tasdiqlash otchyoti',
+      title: 'Tasdiqlash hisoboti',
       lead: 'Operator buyurtmani tasdiqladimi — va tasdiqlangani yetkazib berilganmi.',
     },
     channels: {
@@ -61,8 +61,12 @@ export const t = {
       lead: 'Har bir manba qancha murojaat, qancha savdo va qancha pul keltirgani.',
     },
     margin: {
-      title: 'Valovaya marja',
+      title: 'Yalpi marja',
       lead: 'Mahsulot boʻyicha tushum, tannarx va yalpi foyda.',
+    },
+    calls: {
+      title: 'Qoʻngʻiroqlar',
+      lead: 'Kim mijoz bilan qancha gaplashgani. Gaplashgan vaqt — faqat ulangan qoʻngʻiroqlar.',
     },
     warehouse: {
       title: 'Sklad va joʻnatish',

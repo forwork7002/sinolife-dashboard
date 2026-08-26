@@ -33,6 +33,11 @@ export function WarehousePage() {
       apiGet<DispatchDto[]>('/insights/dispatch', apiParams, signal),
   })
 
+  /** One derivation, so no tile can disagree with its own page. */
+
+  const tileStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
+
+
   const rows = query.data?.data ?? []
   const known = rows.filter((r) => r.point !== 'Belgilanmagan')
   const unknown = rows.find((r) => r.point === 'Belgilanmagan')
@@ -100,9 +105,10 @@ export function WarehousePage() {
       meta={query.data?.meta}
     >
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile label="Joʻnatilgan buyurtma" value={totalOrders || null} unit="count" />
-        <StatTile label="Nuqtalar" value={known.length || null} unit="count" hint="Sklad, kuryer, marketpleys" />
+        <StatTile status={tileStatus} label="Joʻnatilgan buyurtma" value={totalOrders || null} unit="count" />
+        <StatTile status={tileStatus} label="Nuqtalar" value={known.length || null} unit="count" hint="Sklad, kuryer, marketpleys" />
         <StatTile
+          status={tileStatus}
           label="Yetkazish darajasi"
           value={totalOrders === 0 ? null : Math.round((totalDelivered / totalOrders) * 1000) / 10}
           unit="percent"
@@ -110,7 +116,7 @@ export function WarehousePage() {
             <Meter value={totalOrders === 0 ? null : (totalDelivered / totalOrders) * 100} />
           }
         />
-        <StatTile label="Tushum" value={totalRevenue || null} unit="money" />
+        <StatTile status={tileStatus} label="Tushum" value={totalRevenue || null} unit="money" />
       </div>
 
       <div

@@ -108,6 +108,8 @@ export function EmployeesPage() {
   const columns: Column<EmployeeRow>[] = [
     {
       key: 'name',
+      // The row's name: what a screen reader announces the row BY.
+      rowHeader: true,
       header: t.table.employee,
       sortKey: 'name',
       render: (row) => (

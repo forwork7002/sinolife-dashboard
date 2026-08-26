@@ -29,6 +29,11 @@ export function CohortPage() {
     queryFn: ({ signal }) => apiGet<CohortSummaryDto>('/insights/cohorts', { months: 18 }, signal),
   })
 
+  /** One derivation, so no tile can disagree with its own page. */
+
+  const tileStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
+
+
   const data = query.data?.data
 
   return (
@@ -40,6 +45,7 @@ export function CohortPage() {
     >
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
+          status={tileStatus}
           label="Takroriy tushum ulushi"
           value={data?.repeatRevenueShare ?? null}
           unit="percent"
@@ -55,6 +61,7 @@ export function CohortPage() {
           context={<Meter value={data?.repeatRevenueShare ?? null} tone="neutral" />}
         />
         <StatTile
+          status={tileStatus}
           label="Qaytgan mijozlar"
           value={data?.repeatCustomers ?? null}
           unit="count"
@@ -63,12 +70,14 @@ export function CohortPage() {
           }
         />
         <StatTile
+          status={tileStatus}
           label="Jami mijozlar"
           value={data?.totalCustomers ?? null}
           unit="count"
           hint="Kamida bitta yetkazilgan buyurtma"
         />
         <StatTile
+          status={tileStatus}
           label="Faol bazada"
           value={
             data ? data.stages.reduce((sum, s) => sum + s.customers, 0) : null

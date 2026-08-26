@@ -94,8 +94,8 @@ function LoginForm() {
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center gap-3">
           <span
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-base font-bold text-white"
-            style={{ background: 'var(--series-1)' }}
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-base font-bold"
+            style={{ background: 'var(--series-1)', color: 'var(--ink-on-series)' }}
             aria-hidden="true"
           >
             S
@@ -169,7 +169,7 @@ function LoginForm() {
               role="alert"
               className="mt-3 flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs"
               style={{
-                background: 'color-mix(in srgb, var(--status-critical) 12%, transparent)',
+                background: 'color-mix(in oklab, var(--status-critical) 12%, transparent)',
                 color: 'var(--ink-primary)',
               }}
             >

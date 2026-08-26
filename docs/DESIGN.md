@@ -167,3 +167,51 @@ flash — the opacity handover is gentler than no animation at all.
    screen left open overnight cannot claim "just now" at 6am.
 5. **Say where the data is from.** `DataSourceBadge` reads `meta.dataSource`
    and nothing else, so no screen can present generated numbers as live.
+
+---
+
+## What the August 2026 audit changed
+
+Seven lanes read every screen against the database and the portal; every
+finding was reproduced by a second agent whose instructions were to refute it.
+Forty-one survived. The design rules that came out of it, beyond what is
+already stated above:
+
+**Never name a token Tailwind already owns.** `--radius-sm` / `--radius-lg` are
+Tailwind v4's, declared inside `@layer theme`, and an unlayered `:root` beats a
+layer — so redefining them silently changed every `rounded-lg` in the
+application from 8px to 18px, on elements that had never asked for a house
+radius. House tokens are `--radius-panel-*`.
+
+**A bar and the number beside it state the same quantity.** The funnel drew
+`count / max` next to a label reading share-of-total; every row overstated
+itself by roughly 2.3×, and the bar is the half the eye reads.
+
+**A rate prints the fraction it was computed from.** `91.6%` над
+`898 / 2,191` is a lie — that fraction is 41%. If the denominator is
+inconvenient, the fix is a better label, not a different denominator.
+
+**Reserved colours stay reserved.** Status steps are a state, never a rank: a
+list ranked with `--status-critical` and `--status-serious` says the top item
+is a crisis and the rest are serious problems, a judgement nobody made. Rank
+takes an ordinal ramp or nothing.
+
+**`--series-8` may not be a page accent.** It is 4.1 ΔE from
+`--status-critical` in light mode, so a page accented with it makes red mean
+two things on the same screen. The accent pool is slots 1, 2, 3, 5, 6, 7.
+
+**Dark mode is not a darker light mode.** The sequential ramp has to flip its
+anchor: 650 is the most visible step in both themes. Reusing the light ramp put
+the funnel's last stage at 1.8:1 against a near-black page. Elevation flips
+too — a black shadow on a near-black surface is invisible, so depth comes from
+the border and the lit top edge.
+
+**Loading, failure and a genuine null are three renderings.** They were one em
+dash, so a page whose API had just returned 500 read as "no data" — a
+confident statement about something nobody knew.
+
+**A cap on every table whose length comes from the data.** The leaderboard was
+17,400px and the employee list 16,605px because nothing bounded them.
+
+**`--ink-muted` carries almost every label, so it clears 4.5:1.** It was
+3.38:1.

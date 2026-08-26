@@ -25,14 +25,28 @@ import { t } from '@/lib/messages'
  *
  * Grid and axes are recessive; the data is the only thing with weight.
  */
-export function RevenueTrendChart({ data }: { data: readonly TrendPointDto[] }) {
+export function RevenueTrendChart({
+  data,
+  height,
+}: {
+  data: readonly TrendPointDto[]
+  /**
+   * Fixed height, or omit to fill the container.
+   *
+   * It was hard-coded at 280px, which is fine on its own and wrong beside a
+   * taller neighbour: in the overview's two-column row the funnel next to it
+   * ran to 628px and left 348px of empty card under the chart. A trend line
+   * with twice the vertical resolution is worth more than that whitespace.
+   */
+  height?: number
+}) {
   const points = data.map((point) => ({
     ...point,
     label: formatDateShort(point.date),
   }))
 
   return (
-    <div style={{ width: '100%', height: 280 }}>
+    <div style={{ width: '100%', height: height ?? '100%', minHeight: 260 }}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <defs>
@@ -87,7 +101,9 @@ export function RevenueTrendChart({ data }: { data: readonly TrendPointDto[] }) 
               stroke: 'var(--surface)',
               strokeWidth: 2,
             }}
-            isAnimationActive={false}
+            isAnimationActive
+            animationDuration={520}
+            animationEasing="ease-out"
           />
         </AreaChart>
       </ResponsiveContainer>

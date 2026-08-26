@@ -32,6 +32,11 @@ export function ChannelsPage() {
       apiGet<ChannelDto[]>('/insights/channels', apiParams, signal),
   })
 
+  /** One derivation, so no tile can disagree with its own page. */
+
+  const tileStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
+
+
   const rows = query.data?.data ?? []
   const totalLeads = rows.reduce((sum, r) => sum + r.leads, 0)
   const totalWon = rows.reduce((sum, r) => sum + r.won, 0)
@@ -134,10 +139,11 @@ export function ChannelsPage() {
       meta={query.data?.meta}
     >
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile label="Murojaatlar" value={totalLeads || null} unit="count" />
-        <StatTile label="Sotuvlar" value={totalWon || null} unit="count" />
-        <StatTile label="Tushum" value={totalRevenue || null} unit="money" />
+        <StatTile status={tileStatus} label="Murojaatlar" value={totalLeads || null} unit="count" />
+        <StatTile status={tileStatus} label="Sotuvlar" value={totalWon || null} unit="count" />
+        <StatTile status={tileStatus} label="Tushum" value={totalRevenue || null} unit="money" />
         <StatTile
+          status={tileStatus}
           label="Umumiy konversiya"
           value={totalLeads === 0 ? null : Math.round((totalWon / totalLeads) * 1000) / 10}
           unit="percent"
@@ -154,8 +160,19 @@ export function ChannelsPage() {
         <div
           className="rounded-[var(--radius-panel)] border px-4 py-3 text-xs"
           style={{
-            background: 'color-mix(in srgb, var(--status-warning) 8%, var(--surface))',
-            borderColor: 'color-mix(in srgb, var(--status-warning) 30%, transparent)',
+            /*
+              A rule down the edge, not a wash across the panel.
+              
+              8% of a saturated amber mixed into a near-black surface is a
+              muddy brown at 1.12:1 — it neither reads as a warning nor stays
+              out of the way. A full-strength bar on the leading edge is
+              unambiguous at any surface lightness, and the panel itself keeps
+              the ordinary card colour.
+            */
+            background: 'var(--surface-raised)',
+            borderColor: 'var(--border)',
+            borderInlineStartWidth: 3,
+            borderInlineStartColor: 'var(--status-warning)',
             color: 'var(--ink-secondary)',
           }}
         >
