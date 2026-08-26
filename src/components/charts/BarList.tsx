@@ -80,7 +80,7 @@ export function BarList({
 
             <div
               className="mt-1 h-2 w-full overflow-hidden rounded-full"
-              style={{ background: 'var(--grid)' }}
+              style={{ background: 'var(--track)' }}
               role="img"
               aria-label={`${item.label}: ${valueFormatter(item.value)}`}
             >

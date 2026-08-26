@@ -590,7 +590,7 @@ function LeaderboardTable({ rows }: { rows: readonly LeaderboardRowDto[] }) {
                 {/* One measure, one hue — this is a magnitude bar, not a series. */}
                 <div
                   className="h-1.5 w-full overflow-hidden rounded-full"
-                  style={{ background: 'var(--grid)' }}
+                  style={{ background: 'var(--track)' }}
                   aria-hidden="true"
                 >
                   <div

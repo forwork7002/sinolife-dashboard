@@ -414,7 +414,7 @@ export function Meter({
     <div className="flex items-center gap-2">
       <div
         className={`h-1.5 ${width} overflow-hidden rounded-full`}
-        style={{ background: 'var(--grid)' }}
+        style={{ background: 'var(--track)' }}
         role="img"
         aria-label={`${label ? `${label}: ` : ''}${formatPercent(clamped)}`}
       >

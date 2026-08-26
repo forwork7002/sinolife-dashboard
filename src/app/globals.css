@@ -864,9 +864,10 @@ body {
  * paint (the component sets the variable after mount), and to any new value on
  * a live refresh — pure CSS interpolation, no animation frames.
  *
- * The track is `--grid`, the same recessive tone every meter uses, so a ring
- * and a bar read as the same system drawn in different shapes: tiles wear
- * rings, table rows wear bars.
+ * The track is `--track` — minted because `--grid` on a dark raised card
+ * measured 1.07:1 and a ring's remainder simply vanished. Every meter, bar
+ * list and funnel track reads the same token, so a ring and a bar read as one
+ * system drawn in different shapes: tiles wear rings, table rows wear bars.
  */
 .gauge {
   /* No `position` here. This stylesheet is unlayered and Tailwind's utilities
@@ -940,7 +941,12 @@ body {
     .reveal {
       animation: rise linear both;
       animation-timeline: view();
-      animation-range: entry 5% entry 35%;
+      /* entry 0–20%, so any card even a fifth revealed at load computes as
+         PAST the range and renders settled — the old 5–35% left a card
+         straddling the fold at a third of its opacity until the first
+         scroll. The animation only plays for cards genuinely below the
+         fold, which is the whole point. */
+      animation-range: entry 0% entry 20%;
     }
   }
 }

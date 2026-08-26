@@ -5,7 +5,7 @@ import { keepPreviousData, useQueries } from '@tanstack/react-query'
 import { BarList } from '@/components/charts/BarList'
 import { FunnelChart } from '@/components/charts/FunnelChart'
 import { RevenueTrendChart } from '@/components/charts/RevenueTrendChart'
-import { ChartSkeleton } from '@/components/states/States'
+import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { Card, ChartCard } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
@@ -145,15 +145,36 @@ export function SalesPage() {
       meta={sales.data?.meta}
       filters={{ employees: true, departments: true, products: true, sources: true, stages: true }}
     >
+      {/*
+        Three states, not one.
+        
+        The old guard covered only isPending, so an API failure — or an empty
+        payload — rendered a Recharts area with no data: a silent 300px blank
+        card with no message and no way to retry, while every other card on
+        the page carried its own error state. The overview guards this same
+        chart properly; now both do.
+      */}
       <ChartCard title={t.chart.revenueTrend} hint={t.chart.revenueTrendHint}>
         {sales.isPending ? (
           <ChartSkeleton />
+        ) : sales.isError ? (
+          <ErrorState
+            message={(sales.error as Error | null)?.message}
+            onRetry={() => void sales.refetch()}
+          />
+        ) : trend.length === 0 ? (
+          <EmptyState
+            title="Bu davrda tushum yoʻq"
+            body="Tanlangan davr ichida yopilgan bitim topilmadi."
+          />
         ) : (
           <RevenueTrendChart data={trend} />
         )}
       </ChartCard>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      {/* items-start: the funnel is the tallest card and the equal-height
+          stretch left ~280px of blank card under eight product rows. */}
+      <div className="grid items-start gap-4 lg:grid-cols-3">
         <ChartCard title={t.chart.funnel} hint={t.chart.funnelHint}>
           {funnel.isPending ? <ChartSkeleton height={200} /> : <FunnelChart steps={funnelSteps} />}
         </ChartCard>

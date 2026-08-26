@@ -115,7 +115,7 @@ export function FunnelChart({ steps }: { steps: readonly FunnelStepDto[] }) {
 
             <div
               className="mt-1 h-2 w-full overflow-hidden rounded-full"
-              style={{ background: 'var(--grid)' }}
+              style={{ background: 'var(--track)' }}
               role="img"
               aria-label={`${step.stageName}: ${step.dealCount} ta bitim${
                 step.reachedPercent === null ? '' : `, jamining ${formatPercent(step.reachedPercent, 0)}`

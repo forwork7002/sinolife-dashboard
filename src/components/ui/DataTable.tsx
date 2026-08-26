@@ -105,6 +105,31 @@ export function DataTable<T>({
   const visible = capped ? rows.slice(0, initialRows) : rows
   const hidden = rows.length - visible.length
 
+  /*
+    Collapsed to nothing means SHOW nothing but the disclosure.
+    
+    The zero-rows-visible cap (the unranked-employees card) rendered a full
+    column header row above a lone button — eight headings describing no data,
+    which reads as a table that failed to load rather than one waiting to be
+    asked.
+  */
+  if (capped && visible.length === 0) {
+    return (
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        className="focusable w-full rounded-[var(--radius-panel-sm)] border py-2 text-xs font-medium transition-colors"
+        style={{
+          borderColor: 'var(--border)',
+          color: 'var(--ink-secondary)',
+          background: 'var(--surface-sunken)',
+        }}
+      >
+        {moreLabel(hidden)}
+      </button>
+    )
+  }
+
   return (
     <>
     <div className="-mx-1 overflow-x-auto">

@@ -148,9 +148,9 @@ function StageLadder({
           >
             {stage.stage.replace(/^.*·\s*/, '')}
           </span>
-          <div className="h-4 flex-1 overflow-hidden rounded" style={{ background: 'var(--grid)' }}>
+          <div className="h-2 flex-1 overflow-hidden rounded-full" style={{ background: 'var(--track)' }}>
             <div
-              className="grow-x h-full rounded"
+              className="grow-x h-full rounded-full"
               style={{
                 width: `${(stage.customers / max) * 100}%`,
                 /*

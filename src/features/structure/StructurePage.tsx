@@ -260,7 +260,7 @@ function Branch({ node, siblingMax }: { node: StructureDto; siblingMax: number }
         <td className="px-3 py-1.5" style={{ width: 120 }}>
           {/* Share of the company total, so branches compare at a glance
               without the reader converting nine-digit figures in their head. */}
-          <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ background: 'var(--grid)' }}>
+          <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ background: 'var(--track)' }}>
             <div
               className="h-full rounded-full"
               style={{
