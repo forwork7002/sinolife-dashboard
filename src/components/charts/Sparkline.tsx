@@ -54,30 +54,57 @@ export function Sparkline({
   const rising = values[values.length - 1]! >= values[0]!
 
   return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      width="100%"
-      height={height}
-      preserveAspectRatio="none"
-      role="img"
-      aria-label={
-        label ??
-        `Trend: ${formatNumber(values[0]!)} dan ${formatNumber(values[values.length - 1]!)} gacha, ${rising ? 'oʻsish' : 'pasayish'}`
-      }
-    >
-      <path d={area} fill={color} opacity={0.1} />
-      <path
-        d={path}
-        fill="none"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
+    /*
+      The marker lives OUTSIDE the svg, and that is the whole point.
+
+      `preserveAspectRatio="none"` stretches a 100-unit viewBox across whatever
+      width the tile happens to be — typically 380px — so one x-unit is nearly
+      four pixels while one y-unit stays one. The line survives that because
+      `non-scaling-stroke` exempts its stroke, but a <circle> has no such
+      escape: r=2.5 rendered as a 19×2.5 pixel ellipse, a smear rather than a
+      dot. Positioning it in the layout instead means it is round at every
+      width, with no aspect ratio to compensate for.
+    */
+    <span className="relative block" style={{ height }}>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width="100%"
+        height={height}
+        preserveAspectRatio="none"
+        role="img"
+        aria-label={
+          label ??
+          `Trend: ${formatNumber(values[0]!)} dan ${formatNumber(values[values.length - 1]!)} gacha, ${rising ? 'oʻsish' : 'pasayish'}`
+        }
+      >
+        <path d={area} fill={color} opacity={0.1} />
+        <path
+          className="draw-in"
+          pathLength={1}
+          d={path}
+          fill="none"
+          stroke={color}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
       {/* A surface-coloured ring keeps the end marker legible where it
           overlaps the line's own fill. */}
-      <circle cx={last[0]} cy={last[1]} r={2.5} fill={color} stroke="var(--surface)" strokeWidth={1.5} />
-    </svg>
+      <span
+        aria-hidden="true"
+        className="absolute block rounded-full"
+        style={{
+          width: 5,
+          height: 5,
+          background: color,
+          boxShadow: '0 0 0 1.5px var(--surface-raised)',
+          left: `${(last[0] / width) * 100}%`,
+          top: last[1],
+          transform: 'translate(-50%, -50%)',
+        }}
+      />
+    </span>
   )
 }

@@ -35,6 +35,10 @@ export function LogisticsPage() {
   })
 
   const data = query.data?.data
+
+  const returned = data?.reasons.filter((r) => r.stage === 'RETURNED') ?? []
+
+  const cancelled = data?.reasons.filter((r) => r.stage !== 'RETURNED') ?? []
   const totals = data?.totals
 
   const columns: Column<LogisticsRowDto>[] = [
@@ -127,7 +131,7 @@ export function LogisticsPage() {
       accent="var(--series-3)"
       meta={query.data?.meta}
     >
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatTile
           label="Buyurtmalar"
           value={totals?.orders ?? null}
@@ -201,15 +205,41 @@ export function LogisticsPage() {
         />
       </ChartCard>
 
+      {/*
+        Two cards, because a return and a cancellation are different events.
+        
+        A parcel that travelled and came back cost the delivery, the handling
+        and the return leg. An order killed before anything shipped cost a
+        phone call. Merged, 81 of one month's 82 losses were cancellations, and
+        135.5 mln soʻm of goods that never moved were reported as lost value
+        under a heading about returns.
+      */}
       <ChartCard
-        title="Qaytish sabablari"
-        hint="Operator koʻrsatgan sabab. Yoʻqotilgan summa — shu buyurtmalarning qiymati."
+        title="Qaytgan buyurtmalar"
+        hint="Yoʻlga chiqib, mijozga yetmagan yoki qaytarilgan buyurtmalar. Yoʻqotilgan summa — real yetkazish xarajati bilan birga."
       >
-        {query.isPending && <ChartSkeleton height={180} />}
-        {data && data.reasons.length === 0 && (
-          <EmptyState title="Qaytgan buyurtma yoʻq" body="Bu davrda hech bir buyurtma rad etilmagan." />
+        {query.isPending && <ChartSkeleton height={140} />}
+        {data && returned.length === 0 && (
+          <EmptyState
+            title="Qaytgan buyurtma yoʻq"
+            body="Bu davrda yoʻlga chiqqan birorta buyurtma qaytmagan."
+          />
         )}
-        {data && data.reasons.length > 0 && <ReasonList reasons={data.reasons} />}
+        {returned.length > 0 && <ReasonList reasons={returned} />}
+      </ChartCard>
+
+      <ChartCard
+        title="Joʻnatilmay bekor qilinganlar"
+        hint="Ombordan chiqmasdan bekor qilingan buyurtmalar. Tovar qimirlamagani uchun bu yoʻqotilgan tushum emas, oʻtkazib yuborilgan savdo."
+      >
+        {query.isPending && <ChartSkeleton height={140} />}
+        {data && cancelled.length === 0 && (
+          <EmptyState
+            title="Bekor qilingan buyurtma yoʻq"
+            body="Bu davrda hech bir buyurtma joʻnatishdan oldin bekor qilinmagan."
+          />
+        )}
+        {cancelled.length > 0 && <ReasonList reasons={cancelled} />}
       </ChartCard>
     </PageShell>
   )
@@ -240,6 +270,7 @@ function ReasonList({
   reasons,
 }: {
   readonly reasons: readonly {
+    readonly stage: string
     readonly reason: string
     readonly orders: number
     readonly lost: { readonly amount: number }
@@ -250,7 +281,7 @@ function ReasonList({
   return (
     <ul className="space-y-2">
       {reasons.map((reason, index) => (
-        <li key={reason.reason} className="flex items-center gap-3">
+        <li key={`${reason.stage}-${reason.reason}`} className="flex items-center gap-3">
           <span
             className="w-56 shrink-0 truncate text-xs"
             style={{ color: 'var(--ink-secondary)' }}

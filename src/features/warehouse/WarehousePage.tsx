@@ -114,7 +114,7 @@ export function WarehousePage() {
       </div>
 
       <div
-        className="rounded-[var(--radius)] border px-4 py-3 text-xs"
+        className="rounded-[var(--radius-panel)] border px-4 py-3 text-xs"
         style={{
           background: 'var(--surface)',
           borderColor: 'var(--border)',

@@ -222,6 +222,9 @@ export function EmployeesPage() {
         <DataTable
           columns={columns}
           rows={rows}
+          // 288 people rendered a 16,605px page. The rest are one click away.
+          initialRows={30}
+          moreLabel={(hidden) => `Yana ${hidden} ta xodimni koʻrsatish`}
           rowKey={(row) => row.employeeId}
           status={query.isError ? 'error' : query.isPending ? 'loading' : 'ready'}
           errorMessage={query.error instanceof ApiClientError ? query.error.message : undefined}

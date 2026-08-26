@@ -50,7 +50,23 @@ export interface AnalyticsContext {
 
 export interface KpiCardDto {
   readonly key: string
+
+  /**
+   * The number to DISPLAY, in the unit the card names.
+   *
+   * Money is in soʻm, not tiyin. That is worth stating because it used to be
+   * the other way round — `value` carried minor units while `money.amount`
+   * carried major, and the two overview tiles that formatted `value` rendered
+   * every amount a hundred times too large. The average won deal read 158 mln
+   * where the truth was 1.58 mln, and the open pipeline read 759 mlrd against
+   * a real 7.59 mlrd. Both looked plausible enough to go unchallenged.
+   *
+   * One rule now: `value` is always what the reader should see. Anything that
+   * needs exactness reads `money.amountMinor`, which is still a string of
+   * minor units and still the only lossless form.
+   */
   readonly value: number | null
+
   readonly money?: MoneyDto
   readonly unit: 'money' | 'count' | 'percent'
   readonly delta: DeltaDto
@@ -78,10 +94,14 @@ function moneyCard(
   const now = pick(current)
   const then = pick(previous)
 
+  const dto = now ? toMoneyDto(now) : undefined
+
   return {
     key,
-    value: now ? Number(now.amountMinor) : null,
-    money: now ? toMoneyDto(now) : undefined,
+    // Major units — see the note on KpiCardDto.value. The delta below still
+    // compares minor units, where the division is exact.
+    value: dto ? dto.amount : null,
+    money: dto,
     unit: 'money',
     delta: toDeltaDto(growth(now?.amountMinor ?? null, then?.amountMinor ?? null)),
   }

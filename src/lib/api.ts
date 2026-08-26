@@ -15,6 +15,8 @@ export type DeltaDto =
   | { readonly kind: 'change'; readonly percent: number; readonly direction: 'up' | 'down' }
   | { readonly kind: 'unchanged' }
   | { readonly kind: 'no_baseline' }
+  /** Baseline too thin to divide by; both sides travel so the UI states the pair. */
+  | { readonly kind: 'small_base'; readonly current: number; readonly previous: number }
   | { readonly kind: 'no_data' }
 
 export interface PeriodDto {
@@ -172,7 +174,9 @@ export async function apiGet<T>(
 
 export interface KpiCardDto {
   readonly key: string
+  /** The number to display, in the unit `unit` names. Money is in soʻm. */
   readonly value: number | null
+  /** Money only. `amountMinor` is the lossless form; `amount` equals `value`. */
   readonly money?: MoneyDto
   readonly unit: 'money' | 'count' | 'percent'
   readonly delta: DeltaDto
@@ -286,7 +290,9 @@ export interface LogisticsRowDto {
 export interface LogisticsDto {
   readonly routes: readonly LogisticsRowDto[]
   readonly regions: readonly LogisticsRowDto[]
+  /** Losses split by `stage`: 'RETURNED' travelled and came back; 'CANCELLED' never shipped. */
   readonly reasons: readonly {
+    readonly stage: string
     readonly reason: string
     readonly orders: number
     readonly lost: MoneyDto
@@ -326,12 +332,24 @@ export interface ConfirmationRowDto {
 export interface ConfirmationDto {
   readonly rows: readonly ConfirmationRowDto[]
   readonly totals: {
+    /** Every revenue order created in the window. */
     readonly orders: number
+    /** Orders belonging to operators who appear in `rows`. */
+    readonly coveredByRows: number
+    /** Unconfirmed and still moving — not yet at the step, rather than skipped. */
+    readonly unconfirmedOpen: number
+    /** Unconfirmed and already resolved — genuinely skipped. */
+    readonly unconfirmedClosed: number
     readonly confirmed: number
     readonly unreachable: number
     readonly undecided: number
-    readonly confirmRate: number
-    /** Share of orders the confirmation step covers at all. */
+    /**
+     * Share of orders the confirmation step covers at all.
+     *
+     * The headline. It replaced a confirmed/(confirmed+unreachable) rate that
+     * read 100.0% for everyone in every period, because the portal records the
+     * confirmed outcome and never the unreachable one.
+     */
     readonly coverage: number
     /** Of confirmed orders, how many reached the customer. */
     readonly stickRate: number
@@ -357,19 +375,50 @@ export interface MarginRowDto {
   readonly productName: string
   readonly units: number
   readonly revenue: MoneyDto
+  /** Given away — sold below list. Never negative. */
   readonly discount: MoneyDto
+  /** Sold above list. Never negative. Kept apart so neither cancels the other. */
+  readonly overList: MoneyDto
   readonly cost: MoneyDto | null
   readonly gross: MoneyDto | null
+  /** Null only when no purchase price is recorded. -100 = given away. */
   readonly margin: number | null
 }
 
 export interface MarginDto {
   readonly rows: readonly MarginRowDto[]
   readonly revenue: MoneyDto
+  /** Revenue from products whose purchase price is known — the margin's base. */
+  readonly costedRevenue: MoneyDto
   readonly gross: MoneyDto
+  readonly discount: MoneyDto
+  readonly overList: MoneyDto
   readonly margin: number
   /** Percentage of revenue whose product has a known purchase price. */
   readonly coverage: number
+}
+
+/**
+ * Call activity, with the two directions kept apart.
+ *
+ * They are different questions wearing the same word. Outbound asks how often
+ * a dial reaches someone; inbound asks how many customers calling this company
+ * got an answer. Blended into one "connection rate" on a log that is 92%
+ * inbound, the result was mostly the second reported as the first — and it hid
+ * 159,722 unanswered customer calls in a month.
+ */
+export interface CallsDto {
+  readonly rows: readonly CallActivityDto[]
+  readonly outbound: CallDirectionDto
+  readonly inbound: CallDirectionDto
+}
+
+/** Totals for one call direction. */
+export interface CallDirectionDto {
+  readonly direction: string
+  readonly calls: number
+  readonly connected: number
+  readonly talkSeconds: number
 }
 
 export interface CallActivityDto {
@@ -396,9 +445,14 @@ export interface StructureDto {
   readonly name: string
   readonly depth: number
   readonly headName: string | null
+  /** People attached directly to this unit. */
   readonly ownHeadcount: number
-  readonly activeHeadcount: number
+  /** This unit plus everything beneath it. All three roll up together. */
   readonly headcount: number
+  /** Of those, marked active in Bitrix24. */
+  readonly activeHeadcount: number
+  /** Of the active, those who made a call or won a deal this period. */
+  readonly workingHeadcount: number
   readonly deals: number
   readonly revenue: MoneyDto
   readonly children: readonly StructureDto[]

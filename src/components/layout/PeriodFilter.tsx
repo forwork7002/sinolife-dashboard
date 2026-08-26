@@ -188,7 +188,7 @@ function PeriodPicker({
     <div
       role="dialog"
       aria-label={t.period.pick}
-      className="absolute top-full right-0 z-50 mt-2 w-72 rounded-[var(--radius)] border p-3"
+      className="absolute top-full right-0 z-50 mt-2 w-72 rounded-[var(--radius-panel)] border p-3"
       style={{
         background: 'var(--surface-raised)',
         borderColor: 'var(--border-strong)',
@@ -286,22 +286,22 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-[11px] font-medium" style={{ color: 'var(--ink-muted)' }}>
         {label}
       </span>
+      {/*
+        No `display: contents` wrapper between this div and the input.
+        
+        `[&>*]` compiles to a direct-child selector, and `display: contents`
+        removes an element's BOX but not the element — so the wrapper still
+        matched the selector, silently absorbed every style meant for the
+        input, and painted nothing. The date fields rendered completely
+        unstyled: no border, no radius, no padding, browser default size.
+      */}
       <div
-        className="mt-1 [&>*]:w-full [&>*]:rounded-lg [&>*]:border [&>*]:px-2.5 [&>*]:py-1.5 [&>*]:text-xs [&>*]:outline-none"
-        style={
-          {
-            '--tw-border-opacity': 1,
-            colorScheme: 'light dark',
-          } as React.CSSProperties
-        }
+        className="mt-1 [&>*]:w-full [&>*]:rounded-[var(--radius-panel-sm)] [&>*]:border [&>*]:px-2.5 [&>*]:py-1.5 [&>*]:text-xs [&>*]:outline-none"
+        style={{
+          colorScheme: 'light dark',
+        }}
       >
-        <div
-          style={{
-            display: 'contents',
-          }}
-        >
-          {children}
-        </div>
+        {children}
       </div>
     </label>
   )

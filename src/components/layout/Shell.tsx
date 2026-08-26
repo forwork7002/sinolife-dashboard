@@ -162,10 +162,20 @@ export function Shell({
                           }}
                         >
                           {active && (
+                            /*
+                              Chrome, not page identity.
+                              
+                              This marker is rendered above every page, so it
+                              cannot see the --accent a PageShell sets on its
+                              own subtree — it resolved the :root value and was
+                              always series-1 regardless. Naming the series
+                              slot says what it actually is instead of implying
+                              a link that does not exist.
+                            */
                             <span
                               aria-hidden="true"
                               className="absolute top-1.5 bottom-1.5 -left-2.5 w-0.5 rounded-full"
-                              style={{ background: 'var(--accent)' }}
+                              style={{ background: 'var(--series-1)' }}
                             />
                           )}
                           <Icon />

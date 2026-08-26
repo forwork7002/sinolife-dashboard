@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/states/States'
 
@@ -42,6 +42,20 @@ interface DataTableProps<T> {
   readonly emptyTitle?: string
   readonly emptyBody?: string
   readonly minWidth?: number
+  /**
+   * Rows shown before the rest go behind a disclosure.
+   *
+   * A table with no cap is a table that trusts its data source to be small.
+   * The leaderboard's was not: 288 employees produced a 17,400-pixel page —
+   * seventeen metres of scroll on a ranking screen — and 162 of those rows
+   * were all zeros. The employee list was 16,605px for the same reason.
+   *
+   * Undefined means no cap, which is right for a table whose length is bounded
+   * by something real (twenty regions, nine pipelines).
+   */
+  readonly initialRows?: number
+  /** Label for the disclosure, given the number of rows it hides. */
+  readonly moreLabel?: (hidden: number) => string
 }
 
 export function DataTable<T>({
@@ -58,7 +72,11 @@ export function DataTable<T>({
   emptyTitle,
   emptyBody,
   minWidth = 720,
+  initialRows,
+  moreLabel = (hidden) => `Yana ${hidden} ta qatorni koʻrsatish`,
 }: DataTableProps<T>) {
+  const [expanded, setExpanded] = useState(false)
+
   if (status === 'error') {
     return <ErrorState message={errorMessage} onRetry={onRetry} />
   }
@@ -75,11 +93,18 @@ export function DataTable<T>({
     return <EmptyState title={emptyTitle} body={emptyBody} />
   }
 
+  const capped = initialRows !== undefined && !expanded && rows.length > initialRows
+  const visible = capped ? rows.slice(0, initialRows) : rows
+  const hidden = rows.length - visible.length
+
   return (
+    <>
     <div className="-mx-1 overflow-x-auto">
       <table className="w-full border-collapse text-sm" style={{ minWidth }}>
         <thead>
-          <tr style={{ color: 'var(--ink-muted)' }}>
+          {/* Sunken, so a long table's header stays distinct from its rows
+              without a heavier rule under it. */}
+          <tr style={{ color: 'var(--ink-muted)', background: 'var(--surface-sunken)' }}>
             {columns.map((column) => {
               const sortable = Boolean(column.sortKey && onSort)
               const active = column.sortKey && sort === column.sortKey
@@ -128,7 +153,7 @@ export function DataTable<T>({
         </thead>
 
         <tbody>
-          {rows.map((row) => (
+          {visible.map((row) => (
             <tr
               key={rowKey(row)}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
@@ -161,5 +186,21 @@ export function DataTable<T>({
         </tbody>
       </table>
     </div>
+
+    {hidden > 0 && (
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        className="focusable mt-2 w-full rounded-[var(--radius-panel-sm)] border py-2 text-xs font-medium transition-colors"
+        style={{
+          borderColor: 'var(--border)',
+          color: 'var(--ink-secondary)',
+          background: 'var(--surface-sunken)',
+        }}
+      >
+        {moreLabel(hidden)}
+      </button>
+    )}
+    </>
   )
 }

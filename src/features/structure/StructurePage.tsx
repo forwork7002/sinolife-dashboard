@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { ChartCard } from '@/components/ui/Card'
-import { StatTile } from '@/components/ui/Stat'
+import { Meter, StatTile } from '@/components/ui/Stat'
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -31,8 +31,12 @@ export function StructurePage() {
 
   const roots = query.data?.data ?? []
   const flat = flatten(roots)
+  // All three now roll up in the service, so the roots carry inclusive totals.
+  // Summing the FLATTENED list would double-count every parent.
   const totalPeople = roots.reduce((sum, r) => sum + r.headcount, 0)
-  const activePeople = flat.reduce((sum, n) => sum + n.activeHeadcount, 0)
+  const activePeople = roots.reduce((sum, r) => sum + r.activeHeadcount, 0)
+  const workingPeople = roots.reduce((sum, r) => sum + r.workingHeadcount, 0)
+  const silentPeople = activePeople - workingPeople
   const totalRevenue = roots.reduce((sum, r) => sum + r.revenue.amount, 0)
 
   return (
@@ -42,20 +46,35 @@ export function StructurePage() {
       accent="var(--series-8)"
       meta={query.data?.meta}
     >
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile label="Boʻlimlar" value={flat.length || null} unit="count" />
         <StatTile label="Xodimlar" value={totalPeople || null} unit="count" />
+        {/*
+          "Kim bor, kim yoʻq" — the question this page exists to answer.
+          
+          The Bitrix isActive flag alone cannot answer it: every deactivated
+          person is also silent, so the flag finds nobody the roster does not
+          already show. What management is asking is who is ON the roster,
+          marked active, and produced nothing — and that was 58 of 206 people
+          with no page saying so.
+        */}
         <StatTile
-          label="Faol xodimlar"
-          value={activePeople || null}
+          label="Ishlagan xodimlar"
+          value={workingPeople || null}
           unit="count"
           hint={
-            totalPeople > 0
-              ? `${formatNumber(totalPeople - activePeople)} nafari faol emas`
+            activePeople > 0
+              ? `${formatNumber(activePeople)} faoldan · ${formatNumber(silentPeople)} nafari jim`
               : undefined
           }
           tone={
-            totalPeople > 0 && activePeople / totalPeople < 0.7 ? 'warning' : 'neutral'
+            activePeople > 0 && workingPeople / activePeople < 0.7 ? 'warning' : 'neutral'
+          }
+          context={
+            <Meter
+              value={activePeople === 0 ? null : (workingPeople / activePeople) * 100}
+              tone="neutral"
+            />
           }
         />
         <StatTile label="Tushum" value={totalRevenue || null} unit="money" />
@@ -100,7 +119,7 @@ function Tree({
       <table className="w-full text-sm" style={{ minWidth: 760 }}>
         <thead>
           <tr>
-            {['Boʻlim', 'Rahbar', 'Xodim', 'Oʻzida', 'Sotuv', 'Tushum', ''].map((header, i) => (
+            {['Boʻlim', 'Rahbar', 'Xodim', 'Ishlagan', 'Oʻzida', 'Sotuv', 'Tushum', ''].map((header, i) => (
               <th
                 key={header || i}
                 scope="col"
@@ -170,8 +189,29 @@ function Branch({ node, maxRevenue }: { node: StructureDto; maxRevenue: number }
         <td className="px-3 py-1.5 text-xs" style={{ color: 'var(--ink-secondary)' }}>
           {node.headName ?? <span style={{ color: 'var(--ink-muted)' }}>—</span>}
         </td>
-        <td className="tabular px-3 py-1.5 text-right text-xs" style={{ color: 'var(--ink-primary)' }}>
-          {formatNumber(node.headcount)}
+        <td
+          className="tabular px-3 py-1.5 text-right text-xs"
+          style={{ color: 'var(--ink-primary)' }}
+          title={`${formatNumber(node.activeHeadcount)} faol · ${formatNumber(
+            node.headcount - node.activeHeadcount,
+          )} oʻchirilgan`}
+        >
+          {/* Active of total. A branch reading "109" was counting 34 people
+              Bitrix24 had already deactivated. */}
+          {formatNumber(node.activeHeadcount)}
+          <span style={{ color: 'var(--ink-muted)' }}> / {formatNumber(node.headcount)}</span>
+        </td>
+        <td
+          className="tabular px-3 py-1.5 text-right text-xs"
+          style={{
+            color:
+              node.activeHeadcount > 0 && node.workingHeadcount === 0
+                ? 'var(--status-critical)'
+                : 'var(--ink-secondary)',
+          }}
+          title="Davr ichida kamida bitta qoʻngʻiroq yoki sotuv qilganlar"
+        >
+          {formatNumber(node.workingHeadcount)}
         </td>
         <td className="tabular px-3 py-1.5 text-right text-xs" style={{ color: 'var(--ink-muted)' }}>
           {formatNumber(node.ownHeadcount)}

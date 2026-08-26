@@ -7,7 +7,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable'
 import { Meter, RankBadge, StatTile } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
-import { type CallActivityDto, apiGet } from '@/lib/api'
+import { type CallActivityDto, type CallsDto, apiGet } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
 
 /**
@@ -27,13 +27,16 @@ export function CallsPage() {
   const query = useQuery({
     queryKey: ['calls', apiParams],
     queryFn: ({ signal }) =>
-      apiGet<CallActivityDto[]>('/insights/calls', apiParams, signal),
+      apiGet<CallsDto>('/insights/calls', apiParams, signal),
   })
 
-  const rows = query.data?.data ?? []
-  const totalCalls = rows.reduce((sum, r) => sum + r.calls, 0)
-  const totalConnected = rows.reduce((sum, r) => sum + r.connected, 0)
+  const rows = query.data?.data.rows ?? []
+  const outbound = query.data?.data.outbound
+  const inbound = query.data?.data.inbound
   const totalTalk = rows.reduce((sum, r) => sum + r.talkSeconds, 0)
+
+  const rate = (part: number, whole: number) =>
+    whole === 0 ? null : Math.round((part / whole) * 1000) / 10
 
   const columns: Column<CallActivityDto & { rank: number }>[] = [
     {
@@ -98,27 +101,72 @@ export function CallsPage() {
       accent="var(--series-1)"
       meta={query.data?.meta}
     >
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile label="Qoʻngʻiroqlar" value={totalCalls || null} unit="count" />
-        <StatTile label="Ulangan" value={totalConnected || null} unit="count" tone="good" />
+      {/*
+        Two directions, two tiles, because they are two different questions.
+        
+        A single blended "connection rate" read 31.5% on a log that is 92%
+        inbound, under a hint about dialled numbers — so it described outbound
+        performance using, almost entirely, inbound data. The missed-call count
+        below is the most actionable number in this dataset and it appeared
+        nowhere at all.
+      */}
+      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile
-          label="Ulanish darajasi"
-          value={totalCalls === 0 ? null : Math.round((totalConnected / totalCalls) * 1000) / 10}
+          label="Chiquvchi — ulandi"
+          value={outbound ? rate(outbound.connected, outbound.calls) : null}
           unit="percent"
-          hint="Terilgan raqamlardan javob berganlari"
+          hint={
+            outbound
+              ? `${formatNumber(outbound.connected)} / ${formatNumber(outbound.calls)} terilgan`
+              : undefined
+          }
           /*
-            Neutral, not graded.
-
-            A third of outbound calls connecting is ordinary for this kind of
-            dialling, and there is no agreed target to grade it against.
-            Painting it red would be the dashboard asserting a standard nobody
-            set.
+            Neutral, not graded. Two thirds of dials connecting is ordinary for
+            this kind of calling and nobody has set a target; painting it red
+            would be the dashboard asserting a standard that does not exist.
           */
           context={
             <Meter
-              value={totalCalls === 0 ? null : (totalConnected / totalCalls) * 100}
+              value={outbound ? rate(outbound.connected, outbound.calls) : null}
               tone="neutral"
             />
+          }
+        />
+        <StatTile
+          label="Kiruvchi — javob berildi"
+          value={inbound ? rate(inbound.connected, inbound.calls) : null}
+          unit="percent"
+          hint={
+            inbound
+              ? `${formatNumber(inbound.calls - inbound.connected)} ta javobsiz qoldi`
+              : undefined
+          }
+          /*
+            Graded, unlike outbound. A customer who called and got no answer is
+            a loss in a way an unanswered dial is not, so this one HAS an
+            agreed direction even without a target.
+          */
+          tone={
+            inbound === undefined
+              ? 'neutral'
+              : (rate(inbound.connected, inbound.calls) ?? 0) >= 80
+                ? 'good'
+                : (rate(inbound.connected, inbound.calls) ?? 0) >= 50
+                  ? 'warning'
+                  : 'critical'
+          }
+          context={
+            <Meter value={inbound ? rate(inbound.connected, inbound.calls) : null} tone="neutral" />
+          }
+        />
+        <StatTile
+          label="Qoʻngʻiroqlar"
+          value={outbound && inbound ? outbound.calls + inbound.calls || null : null}
+          unit="count"
+          hint={
+            outbound && inbound
+              ? `${formatNumber(inbound.calls)} kiruvchi · ${formatNumber(outbound.calls)} chiquvchi`
+              : undefined
           }
         />
         <StatTile

@@ -52,7 +52,7 @@ export function CohortPage() {
             judgement it cannot support. The number and its trend are the
             finding; the reader supplies the target.
           */
-          context={<Meter value={data?.repeatRevenueShare ?? null} tone="accent" />}
+          context={<Meter value={data?.repeatRevenueShare ?? null} tone="neutral" />}
         />
         <StatTile
           label="Qaytgan mijozlar"

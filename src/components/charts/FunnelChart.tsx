@@ -98,7 +98,7 @@ export function FunnelChart({ steps }: { steps: readonly FunnelStepDto[] }) {
               aria-label={`${step.stageName}: ${step.dealCount} ta bitim`}
             >
               <div
-                className="h-full rounded-full"
+                className="grow-x h-full rounded-full"
                 style={{
                   width: `${Math.max(width, step.dealCount > 0 ? 1.5 : 0)}%`,
                   background: color,

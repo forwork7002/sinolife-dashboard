@@ -13,6 +13,7 @@ import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import type { Period } from '@/server/domain/period/period'
 import type {
   CallActivityRow,
+  CallDirectionRow,
   ChannelRow,
   ConfirmationRow,
   DispatchRow,
@@ -61,7 +62,19 @@ export interface LogisticsRowDto {
 export interface LogisticsDto {
   readonly routes: readonly LogisticsRowDto[]
   readonly regions: readonly LogisticsRowDto[]
-  readonly reasons: readonly { reason: string; orders: number; lost: MoneyDto }[]
+  /**
+   * Losses, split by whether the goods had already been dispatched.
+   *
+   * `stage` is 'RETURNED' (travelled and came back) or 'CANCELLED' (killed
+   * before anything shipped). They cost completely different amounts and used
+   * to share one bar labelled "return reasons".
+   */
+  readonly reasons: readonly {
+    stage: string
+    reason: string
+    orders: number
+    lost: MoneyDto
+  }[]
   readonly totals: {
     readonly orders: number
     readonly delivered: number
@@ -84,11 +97,17 @@ export interface ConfirmationDto {
     readonly deliveryRate: number
   })[]
   readonly totals: {
+    /** Every revenue order created in the window. */
     readonly orders: number
+    /** Orders belonging to operators who appear in `rows`. */
+    readonly coveredByRows: number
+    /** Unconfirmed and still moving — not yet at the step, rather than skipped. */
+    readonly unconfirmedOpen: number
+    /** Unconfirmed and already resolved — genuinely skipped. */
+    readonly unconfirmedClosed: number
     readonly confirmed: number
     readonly unreachable: number
     readonly undecided: number
-    readonly confirmRate: number
     readonly coverage: number
     readonly stickRate: number
   }
@@ -109,19 +128,39 @@ export interface ChannelDto {
   readonly costPerOrder: MoneyDto | null
 }
 
+/**
+ * Call activity, with the two directions kept apart.
+ *
+ * Blending them produces a single "connection rate" that answers neither
+ * question: this log is 92% inbound, so a blended rate is mostly the share of
+ * CUSTOMERS who got an answer, presented under a label about dialling.
+ */
+export interface CallsDto {
+  readonly rows: readonly CallActivityRow[]
+  readonly outbound: CallDirectionRow
+  readonly inbound: CallDirectionRow
+}
+
 export interface MarginDto {
   readonly rows: readonly {
     readonly productId: string
     readonly productName: string
     readonly units: number
     readonly revenue: MoneyDto
+    /** Given away — sold below list. Never negative. */
     readonly discount: MoneyDto
+    /** Sold above list. Never negative. Kept apart so neither cancels the other. */
+    readonly overList: MoneyDto
     readonly cost: MoneyDto | null
     readonly gross: MoneyDto | null
     readonly margin: number | null
   }[]
   readonly revenue: MoneyDto
+  /** Revenue from products whose purchase price is known — the margin's base. */
+  readonly costedRevenue: MoneyDto
   readonly gross: MoneyDto
+  readonly discount: MoneyDto
+  readonly overList: MoneyDto
   readonly margin: number
   /** Percentage of revenue whose product has a known purchase price. */
   readonly coverage: number
@@ -134,9 +173,12 @@ export interface StructureDto {
   readonly headName: string | null
   /** People attached directly to this unit. */
   readonly ownHeadcount: number
-  readonly activeHeadcount: number
-  /** This unit plus everything beneath it. */
+  /** This unit plus everything beneath it. All three roll up together. */
   readonly headcount: number
+  /** Of those, marked active in Bitrix24. */
+  readonly activeHeadcount: number
+  /** Of the active, those who made a call or won a deal this period. */
+  readonly workingHeadcount: number
   readonly deals: number
   readonly revenue: MoneyDto
   readonly children: readonly StructureDto[]
@@ -264,6 +306,7 @@ export class InsightsService {
       routes: routes.map(toRow),
       regions: regions.map(toRow),
       reasons: reasons.map((r) => ({
+        stage: r.stage,
         reason: r.reason,
         orders: r.orders,
         lost: toMoneyDto(money(r.lostMinor, currency)),
@@ -281,7 +324,10 @@ export class InsightsService {
   }
 
   async confirmations(period: Period): Promise<ConfirmationDto> {
-    const rows = await this.repository.confirmations(period)
+    const [rows, windowOrders] = await Promise.all([
+      this.repository.confirmations(period),
+      this.repository.confirmationWindowOrders(period),
+    ])
 
     const mapped = rows.map((r: ConfirmationRow) => {
       const { confirmRateBp, ...rest } = r
@@ -321,30 +367,42 @@ export class InsightsService {
     const sum = (pick: (r: ConfirmationRow) => number) => rows.reduce((s, r) => s + pick(r), 0)
     const confirmed = sum((r) => r.confirmed)
     const unreachable = sum((r) => r.unreachable)
-    const orders = sum((r) => r.orders)
     const delivered = sum((r) => r.deliveredAfterConfirm)
     const refusedAfter = sum((r) => r.refusedAfterConfirm)
+
+    /**
+     * Every order in the window — NOT the sum of the rows.
+     *
+     * The row list is filtered to operators who used the confirmation stage,
+     * so summing it drops the operators with no coverage at all. Coverage
+     * divided by that sum answers "among the people who use the stage, how
+     * much do they cover", which is a different and much flattering question.
+     */
+    const orders = windowOrders.orders
+    const coveredByRows = sum((r) => r.orders)
 
     return {
       rows: mapped,
       totals: {
         orders,
+        /** Orders belonging to operators who appear in `rows`. */
+        coveredByRows,
+        unconfirmedOpen: windowOrders.unconfirmedOpen,
+        unconfirmedClosed: windowOrders.unconfirmedClosed,
         confirmed,
         unreachable,
         undecided: sum((r) => r.undecided),
         /**
-         * Of the orders that needed a confirmation call, how many got one.
+         * How much of the order flow the confirmation step actually covers.
          *
-         * Orders that went straight to delivery are excluded from both sides:
-         * the confirmation stage is optional on this portal — about a quarter
-         * of orders pass through it — so counting the other three quarters as
-         * failed confirmations would describe a process nobody runs.
+         * This is the headline, and it replaced a "confirmation rate" of
+         * confirmed / (confirmed + unreachable). That ratio read 100.0% for
+         * every operator and every period, because this portal records the
+         * confirmed outcome and never the unreachable one — the denominator
+         * could not differ from the numerator. A rate that cannot fall is not
+         * a measurement, and it sat on the overview looking like a perfect
+         * score.
          */
-        confirmRate:
-          confirmed + unreachable === 0
-            ? 0
-            : Math.round((confirmed / (confirmed + unreachable)) * 1000) / 10,
-        /** How much of the order flow the confirmation step actually covers. */
         coverage: orders === 0 ? 0 : Math.round((confirmed / orders) * 1000) / 10,
         stickRate:
           delivered + refusedAfter === 0
@@ -390,19 +448,36 @@ export class InsightsService {
         units: r.units,
         revenue: toMoneyDto(money(r.revenueMinor, currency)),
         discount: toMoneyDto(money(r.discountMinor, currency)),
+        overList: toMoneyDto(money(r.overListMinor, currency)),
         cost: r.costMinor === null ? null : toMoneyDto(money(r.costMinor, currency)),
         gross: r.grossMinor === null ? null : toMoneyDto(money(r.grossMinor, currency)),
         margin: pct(r.marginBp),
       })),
       revenue: toMoneyDto(money(summary.revenueMinor, currency)),
+      costedRevenue: toMoneyDto(money(summary.costedRevenueMinor, currency)),
       gross: toMoneyDto(money(summary.grossMinor, currency)),
+      discount: toMoneyDto(money(summary.discountMinor, currency)),
+      overList: toMoneyDto(money(summary.overListMinor, currency)),
       margin: pct(summary.marginBp) ?? 0,
       coverage: pct(summary.coverageBp) ?? 0,
     }
   }
 
-  async callActivity(period: Period): Promise<CallActivityRow[]> {
-    return this.repository.callActivity(period)
+  async callActivity(period: Period): Promise<CallsDto> {
+    const [rows, directions] = await Promise.all([
+      this.repository.callActivity(period),
+      this.repository.callDirections(period),
+    ])
+
+    const of = (direction: string) =>
+      directions.find((d) => d.direction === direction) ?? {
+        direction,
+        calls: 0,
+        connected: 0,
+        talkSeconds: 0,
+      }
+
+    return { rows, outbound: of('OUTBOUND'), inbound: of('INBOUND') }
   }
 
   async dispatch(period: Period, currency: string) {
@@ -438,13 +513,29 @@ export class InsightsService {
     const build = (node: StructureNode, depth: number): StructureDto => {
       const kids = (children.get(node.id) ?? []).map((child) => build(child, depth + 1))
 
+      /**
+       * All three headcounts roll up together.
+       *
+       * `activeHeadcount` used to stay own-only while `headcount` was rolled,
+       * so a branch showing 109 people was quietly comparing an inclusive
+       * total against its own direct reports. The two agreed at the root by
+       * coincidence and nowhere else.
+       */
       const rolled = kids.reduce(
         (acc, kid) => ({
           headcount: acc.headcount + kid.headcount,
+          activeHeadcount: acc.activeHeadcount + kid.activeHeadcount,
+          workingHeadcount: acc.workingHeadcount + kid.workingHeadcount,
           deals: acc.deals + kid.deals,
           revenueMinor: acc.revenueMinor + BigInt(kid.revenue.amountMinor),
         }),
-        { headcount: node.headcount, deals: node.deals, revenueMinor: node.revenueMinor },
+        {
+          headcount: node.headcount,
+          activeHeadcount: node.activeHeadcount,
+          workingHeadcount: node.workingHeadcount,
+          deals: node.deals,
+          revenueMinor: node.revenueMinor,
+        },
       )
 
       return {
@@ -453,8 +544,9 @@ export class InsightsService {
         depth,
         headName: node.headName,
         ownHeadcount: node.headcount,
-        activeHeadcount: node.activeHeadcount,
         headcount: rolled.headcount,
+        activeHeadcount: rolled.activeHeadcount,
+        workingHeadcount: rolled.workingHeadcount,
         deals: rolled.deals,
         revenue: toMoneyDto(money(rolled.revenueMinor, currency)),
         children: kids,

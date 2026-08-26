@@ -66,10 +66,16 @@ export function PageShell({
   /**
    * Page identity, as a CSS colour.
    *
-   * Sets `--accent` for the subtree, which the rule under the title, the
-   * active nav marker and any meter set to `tone="accent"` read from. It is
-   * never used by a mark that encodes a value — series colour has to stay
-   * stable across pages or the same bar means two things in two places.
+   * Sets `--accent` for this subtree. Exactly two things read it: the rule
+   * under the title and the focus ring. Nothing that encodes a value does —
+   * series colour has to stay stable across pages, or the same bar means two
+   * things in two places.
+   *
+   * The sidebar's active marker is NOT in this subtree and never was. It sits
+   * in Shell, above every page, so it resolved --accent from :root and was
+   * permanently series-1 blue while this comment claimed otherwise. It is
+   * chrome rather than page identity, and it is now explicitly coloured as
+   * such rather than appearing to follow something it cannot see.
    */
   accent?: string
   actions?: ReactNode

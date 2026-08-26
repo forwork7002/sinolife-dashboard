@@ -144,7 +144,7 @@ export function ChannelsPage() {
           context={
             <Meter
               value={totalLeads === 0 ? null : (totalWon / totalLeads) * 100}
-              tone="accent"
+              tone="neutral"
             />
           }
         />
@@ -152,7 +152,7 @@ export function ChannelsPage() {
 
       {rows.length > 0 && withSpend.length === 0 && (
         <div
-          className="rounded-[var(--radius)] border px-4 py-3 text-xs"
+          className="rounded-[var(--radius-panel)] border px-4 py-3 text-xs"
           style={{
             background: 'color-mix(in srgb, var(--status-warning) 8%, var(--surface))',
             borderColor: 'color-mix(in srgb, var(--status-warning) 30%, transparent)',

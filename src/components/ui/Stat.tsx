@@ -42,14 +42,7 @@ export function StatTile({
           : 'var(--ink-primary)'
 
   return (
-    <div
-      className="rise flex flex-col rounded-[var(--radius)] border px-4 py-3.5"
-      style={{
-        background: 'var(--surface)',
-        borderColor: 'var(--border)',
-        boxShadow: 'var(--shadow-card)',
-      }}
-    >
+    <div className="card flex flex-col px-4 py-3.5">
       <div className="flex items-center gap-1.5">
         {accent && (
           <span
@@ -147,7 +140,18 @@ export function Meter({
 }: {
   /** Percentage, 0–100. */
   value: number | null
-  tone?: 'auto' | 'neutral' | 'accent'
+  /**
+   * `auto` grades against the thresholds below; `neutral` states the magnitude
+   * without judging it.
+   *
+   * There used to be an `accent` variant that painted the bar from --accent —
+   * the page-identity colour. A bar's width encodes a value, so that made the
+   * same proportion render orange on one screen and blue on another, and the
+   * design contract exists precisely to stop that: colour follows the entity,
+   * never the page it happens to be on. `neutral` is what those call sites
+   * wanted — a magnitude drawn from the sequential ramp.
+   */
+  tone?: 'auto' | 'neutral'
   label?: string
   width?: string
 }) {
@@ -188,15 +192,13 @@ export function Meter({
    * the bad rows, not to grade anyone precisely — the number does that.
    */
   const color =
-    tone === 'accent'
-      ? 'var(--accent)'
-      : tone === 'neutral'
-        ? 'var(--seq-450)'
-        : clamped >= 85
-          ? 'var(--status-good)'
-          : clamped >= 60
-            ? 'var(--status-warning)'
-            : 'var(--status-critical)'
+    tone === 'neutral'
+      ? 'var(--seq-450)'
+      : clamped >= 85
+        ? 'var(--status-good)'
+        : clamped >= 60
+          ? 'var(--status-warning)'
+          : 'var(--status-critical)'
 
   return (
     <div className="flex items-center gap-2">
@@ -232,13 +234,26 @@ export function Meter({
 export function RankBadge({ rank }: { rank: number }) {
   const medal = rank <= 3
 
+  /**
+   * Weight and a ring, never hue.
+   *
+   * The top three used to be filled from `--accent`, which is page identity —
+   * so on the leaderboard, where no accent is set, they came out the same blue
+   * as the revenue trend line and the share bars in the next column. A mark
+   * that says "top three" was reading the token that says "which page you are
+   * on", and wearing the colour of a series that means something else.
+   *
+   * Rank is an ordinal, and the numeral already states it exactly. All the
+   * badge has to do is make the first three findable.
+   */
   return (
     <span
-      className="tabular inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
+      className="tabular inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px]"
       style={{
-        background: medal ? 'var(--accent-soft)' : 'var(--grid)',
-        color: medal ? 'var(--accent)' : 'var(--ink-secondary)',
-        boxShadow: medal ? 'inset 0 0 0 1px var(--accent-line)' : 'none',
+        background: medal ? 'var(--grid)' : 'transparent',
+        color: medal ? 'var(--ink-primary)' : 'var(--ink-secondary)',
+        fontWeight: medal ? 700 : 500,
+        boxShadow: medal ? 'inset 0 0 0 1px var(--border-strong)' : 'none',
       }}
       aria-label={`${rank}-oʻrin`}
     >

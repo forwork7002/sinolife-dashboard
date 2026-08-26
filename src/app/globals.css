@@ -83,9 +83,19 @@
     0 2px 4px rgba(12, 14, 18, 0.05),
     0 16px 40px -12px rgba(12, 14, 18, 0.16);
 
-  --radius-sm: 10px;
-  --radius: 14px;
-  --radius-lg: 18px;
+  /**
+   * House radii, deliberately NOT named --radius-sm / --radius-lg.
+   *
+   * Tailwind v4 ships its own --radius-sm/md/lg/xl inside `@layer theme`, and
+   * an unlayered :root block beats a layer — so declaring those names here
+   * silently redefined every `rounded-lg` in the app from 8px to 18px, on
+   * elements that had never asked for a house radius. The prefix is the fix:
+   * these are ours, Tailwind's scale is untouched, and the two cannot collide
+   * again.
+   */
+  --radius-panel-sm: 10px;
+  --radius-panel: 14px;
+  --radius-panel-lg: 18px;
 
   /* --- Motion ----------------------------------------------------------- */
   /* One easing curve for the whole app. `--ease-out` is a decelerating curve:
@@ -217,7 +227,7 @@
   --color-axis: var(--axis);
   --color-hairline: var(--border);
   --color-accent: var(--accent);
-  --radius-card: var(--radius);
+  --radius-card: var(--radius-panel);
   --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
@@ -326,7 +336,7 @@ body::before {
 .card {
   background: var(--surface-raised);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-panel);
   box-shadow: var(--shadow-card), var(--edge-highlight);
 }
 
@@ -397,7 +407,6 @@ body::before {
   box-shadow:
     0 0 0 2px var(--surface),
     0 0 0 4px var(--accent);
-  border-radius: var(--radius-sm);
 }
 
 /* ===========================================================================
@@ -427,15 +436,28 @@ body::before {
   /**
    * Staggered entrance.
    *
-   * Set `--i` on each child and the row arrives left to right instead of all
-   * at once. The cap at 8 matters: past about 300ms of accumulated delay the
-   * last tile reads as late rather than as sequenced, and on a KPI row that
-   * looks like the data is still loading.
+   * The row arrives left to right instead of all at once. Indexed by
+   * `nth-child` rather than by a `--i` custom property on every child, so
+   * adding the class to a container is the whole change and no call site can
+   * forget to number its tiles.
+   *
+   * It stops at the eighth. Past about 280ms of accumulated delay the last
+   * tile reads as late rather than as sequenced, and on a KPI row that looks
+   * like the data is still loading — the opposite of what the animation is
+   * for. Everything beyond the eighth arrives with the eighth.
    */
   .stagger > * {
     animation: rise var(--duration-enter) var(--ease-out) both;
-    animation-delay: calc(min(var(--i, 0), 8) * 35ms);
+    animation-delay: 280ms;
   }
+
+  .stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger > *:nth-child(2) { animation-delay: 40ms; }
+  .stagger > *:nth-child(3) { animation-delay: 80ms; }
+  .stagger > *:nth-child(4) { animation-delay: 120ms; }
+  .stagger > *:nth-child(5) { animation-delay: 160ms; }
+  .stagger > *:nth-child(6) { animation-delay: 200ms; }
+  .stagger > *:nth-child(7) { animation-delay: 240ms; }
 }
 
 /**
@@ -474,7 +496,7 @@ body::before {
   position: relative;
   overflow: hidden;
   background: var(--grid);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-panel-sm);
 }
 
 .skeleton::after {
@@ -500,14 +522,18 @@ body::before {
 /**
  * Chart draw-in.
  *
- * A line that draws itself from left to right, once, on first paint. The
- * dash-offset trick needs the path length, which the component measures and
- * sets as `--len` — without it the animation is silently a no-op rather than
- * wrong.
+ * A line that draws itself left to right, once, on first paint.
+ *
+ * The element MUST carry `pathLength="1"`. That attribute renormalises the
+ * path's own length to 1 for every length-based property, which is what lets
+ * a dash animation work without anyone measuring the geometry in JavaScript.
+ * The alternative — a `--len` custom property the component sets from
+ * `getTotalLength()` — fails silently when it is forgotten: no error, just a
+ * line that never appears or never animates.
  */
 @keyframes draw {
   from {
-    stroke-dashoffset: var(--len, 1000);
+    stroke-dashoffset: 1;
   }
   to {
     stroke-dashoffset: 0;
@@ -516,8 +542,8 @@ body::before {
 
 @media (prefers-reduced-motion: no-preference) {
   .draw-in {
-    stroke-dasharray: var(--len, 1000);
-    animation: draw 900ms var(--ease-out) both;
+    stroke-dasharray: 1;
+    animation: draw 800ms var(--ease-out) both;
   }
 }
 
@@ -540,8 +566,28 @@ body::before {
   .grow-x {
     transform-origin: left center;
     animation: grow-x 520ms var(--ease-out) both;
-    animation-delay: calc(min(var(--i, 0), 12) * 25ms);
   }
+
+  /*
+   * Bars in a list arrive top to bottom.
+   *
+   * Indexed from the row rather than the bar, because the bar is nested and
+   * `nth-child` only sees its own siblings. `:has()` is what makes that
+   * reachable from CSS at all; without it every bar would need a `--i` prop
+   * threaded down from whatever rendered the list.
+   */
+  li:nth-child(2) .grow-x,
+  tr:nth-child(2) .grow-x { animation-delay: 30ms; }
+  li:nth-child(3) .grow-x,
+  tr:nth-child(3) .grow-x { animation-delay: 60ms; }
+  li:nth-child(4) .grow-x,
+  tr:nth-child(4) .grow-x { animation-delay: 90ms; }
+  li:nth-child(5) .grow-x,
+  tr:nth-child(5) .grow-x { animation-delay: 120ms; }
+  li:nth-child(6) .grow-x,
+  tr:nth-child(6) .grow-x { animation-delay: 150ms; }
+  li:nth-child(n + 7) .grow-x,
+  tr:nth-child(n + 7) .grow-x { animation-delay: 180ms; }
 }
 
 /* ===========================================================================

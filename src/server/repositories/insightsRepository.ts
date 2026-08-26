@@ -115,6 +115,17 @@ export interface ConfirmationRow {
   readonly failed: number
 }
 
+/** Window-wide order counts for the confirmation coverage denominator. */
+export interface ConfirmationWindow {
+  /** Every revenue order created in the window. */
+  readonly orders: number
+  /** Never reached the confirmation stage and is still moving. */
+  readonly unconfirmedOpen: number
+  /** Never reached it and is already resolved — genuinely skipped. */
+  readonly unconfirmedClosed: number
+}
+
+
 export interface ChannelRow {
   readonly sourceId: string
   readonly sourceName: string
@@ -132,9 +143,13 @@ export interface MarginRow {
   readonly productName: string
   readonly units: number
   readonly revenueMinor: bigint
+  /** Given away — sold BELOW the catalogue price. Never negative. */
   readonly discountMinor: bigint
+  /** Sold ABOVE the catalogue price. Never negative. The mirror of the above. */
+  readonly overListMinor: bigint
   readonly costMinor: bigint | null
   readonly grossMinor: bigint | null
+  /** Null only when no purchase price is recorded. -10000 = given away. */
   readonly marginBp: number | null
 }
 
@@ -143,9 +158,21 @@ export interface MarginSummary {
   readonly revenueMinor: bigint
   readonly costedRevenueMinor: bigint
   readonly grossMinor: bigint
+  /** Total given away. Positive, and never netted against markups. */
+  readonly discountMinor: bigint
+  /** Total sold above list. Positive. */
+  readonly overListMinor: bigint
   readonly marginBp: number
   /** Share of revenue whose product has a purchase price, in basis points. */
   readonly coverageBp: number
+}
+
+/** Call totals for one direction. */
+export interface CallDirectionRow {
+  readonly direction: string
+  readonly calls: number
+  readonly connected: number
+  readonly talkSeconds: number
 }
 
 export interface CallActivityRow {
@@ -172,8 +199,18 @@ export interface StructureNode {
   readonly name: string
   readonly parentId: string | null
   readonly headName: string | null
+  /** Everyone on the roster, active or not. */
   readonly headcount: number
+  /** Marked active in Bitrix24. */
   readonly activeHeadcount: number
+  /**
+   * Active AND produced something this period — a call or a won deal.
+   *
+   * The difference between this and `activeHeadcount` is the answer to "who is
+   * here and who is not": people the roster says are working and the data says
+   * are silent.
+   */
+  readonly workingHeadcount: number
   readonly deals: number
   readonly revenueMinor: bigint
 }
@@ -444,26 +481,47 @@ export class InsightsRepository {
     })
   }
 
-  /** Why customers refuse, in their own recorded words. */
-  async refusalReasons(period: Period): Promise<{ reason: string; orders: number; lostMinor: bigint }[]> {
+  /**
+   * Why orders were lost, split by WHEN they were lost.
+   *
+   * The two are not the same event and must not share a bar. A parcel that
+   * travelled to the customer and came back cost the delivery, the handling
+   * and the return leg; an order cancelled before anything shipped cost a
+   * phone call. Merged under one heading called "return reasons", 81 of the 82
+   * losses in a month were pre-dispatch cancellations, and 135.5 mln soʻm of
+   * goods that never moved were reported as lost value.
+   *
+   * `stage` carries the terminal role so the caller can label each series for
+   * what it is rather than guessing from the reason text.
+   */
+  async refusalReasons(
+    period: Period,
+  ): Promise<{ stage: string; reason: string; orders: number; lostMinor: bigint }[]> {
     const rows = await this.prisma.$queryRawUnsafe<
-      { reason: string; orders: bigint; lost: MoneyText }[]
+      { stage: string; reason: string; orders: bigint; lost: MoneyText }[]
     >(
       `
       SELECT
+        CASE cur."logisticsRole"
+          WHEN 'REFUSED' THEN 'RETURNED'
+          WHEN 'CANCELLED_EARLY' THEN 'CANCELLED'
+          ELSE 'OTHER'
+        END AS stage,
         COALESCE(d."refusalReason", 'Sabab koʻrsatilmagan') AS reason,
         count(*)::bigint AS orders,
         sum(d."amountMinor")::text AS lost
       FROM "deal" d
+      JOIN "deal_stage" cur ON cur."id" = d."stageId"
       WHERE d."countsAsRevenue" AND d."status" = 'LOST'
         AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
-      GROUP BY 1
+      GROUP BY 1, 2
       ORDER BY orders DESC
       `,
       period.start,
       period.end,
     )
     return rows.map((r) => ({
+      stage: r.stage,
       reason: r.reason,
       orders: int(r.orders),
       lostMinor: money(r.lost),
@@ -553,6 +611,9 @@ export class InsightsRepository {
       WHERE d."countsAsRevenue"
         AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
       GROUP BY e."id", e."fullName"
+      -- Operators who never touched the stage have nothing to report per-row.
+      -- They still count in the coverage denominator — see windowOrders below,
+      -- which deliberately does NOT carry this filter.
       HAVING count(*) FILTER (WHERE t.reached_confirmed OR t.reached_chasing) > 0
       ORDER BY orders DESC
       `,
@@ -576,6 +637,57 @@ export class InsightsRepository {
         failed: int(r.failed),
       }
     })
+  }
+
+  /**
+   * Every revenue order created in the window, regardless of operator.
+   *
+   * This is the denominator coverage needs, and the reason it cannot come from
+   * summing the rows above: those are filtered to operators who used the
+   * confirmation stage at least once, so summing them silently excludes the
+   * operators with ZERO coverage — precisely the population a coverage metric
+   * exists to find. It made the Tasdiqlash page report 2,129 orders for a
+   * window in which Logistika and the overview both reported 2,191, and
+   * inflated coverage from 41.2% to 42.4%.
+   */
+  async confirmationWindowOrders(period: Period): Promise<ConfirmationWindow> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { orders: bigint; unconfirmed_open: bigint; unconfirmed_closed: bigint }[]
+    >(
+      `
+      WITH reached AS (
+        SELECT DISTINCT h."dealId" AS deal_id
+          FROM "deal_stage_history" h
+          JOIN "deal_stage" s ON s."id" = h."stageId"
+         WHERE s."logisticsRole" = 'CONFIRMED'
+      )
+      SELECT count(*)::bigint AS orders,
+             -- Why coverage is not 100%: an order still in transit has not
+             -- skipped the step, it has not reached it yet. Separating the two
+             -- is the difference between "operators are not confirming" and
+             -- "the month is not over".
+             count(*) FILTER (
+               WHERE r.deal_id IS NULL AND d."status" = 'OPEN'
+             )::bigint AS unconfirmed_open,
+             count(*) FILTER (
+               WHERE r.deal_id IS NULL AND d."status" <> 'OPEN'
+             )::bigint AS unconfirmed_closed
+        FROM "deal" d
+        LEFT JOIN reached r ON r.deal_id = d."id"
+       WHERE d."countsAsRevenue"
+         AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
+      `,
+      period.start,
+      period.end,
+    )
+
+    const row = rows[0]
+
+    return {
+      orders: int(row?.orders ?? 0n),
+      unconfirmedOpen: int(row?.unconfirmed_open ?? 0n),
+      unconfirmedClosed: int(row?.unconfirmed_closed ?? 0n),
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -670,6 +782,7 @@ export class InsightsRepository {
         units: bigint
         revenue: MoneyText
         discount: MoneyText
+        over_list: MoneyText
         cost: MoneyText
         has_cost: boolean
       }[]
@@ -680,7 +793,15 @@ export class InsightsRepository {
         p."name" AS product_name,
         sum(i."quantity")::bigint AS units,
         sum(i."totalMinor")::text AS revenue,
-        sum(i."discountMinor")::text AS discount,
+        -- Split by sign rather than netted.
+        --
+        -- A negative discountMinor is a price ABOVE the catalogue list, not a
+        -- giveaway, and netting the two under one heading called "discount
+        -- given" cancels real money against real money. In one month 406 lines
+        -- carried a markup and they were quietly reducing the reported
+        -- giveaway. They are different facts and get different columns.
+        sum(i."discountMinor") FILTER (WHERE i."discountMinor" > 0)::text AS discount,
+        sum(-i."discountMinor") FILTER (WHERE i."discountMinor" < 0)::text AS over_list,
         CASE WHEN p."costMinor" IS NULL THEN NULL
              ELSE sum(i."quantity" * p."costMinor")::text END AS cost,
         (p."costMinor" IS NOT NULL) AS has_cost
@@ -706,10 +827,26 @@ export class InsightsRepository {
         units: int(r.units),
         revenueMinor: revenue,
         discountMinor: money(r.discount),
+        overListMinor: money(r.over_list),
         costMinor: cost,
         grossMinor: gross,
+        /**
+         * Null means ONE thing: no purchase price is recorded.
+         *
+         * It used to mean two — that, or revenue of zero — and the page
+         * rendered both as the words "tannarx yoʻq" (no cost), so a product
+         * whose cost was sitting in the column beside it was labelled as
+         * having none. A line given away entirely has a known cost and a
+         * margin of -100%, which is a fact worth seeing, not a blank.
+         */
         marginBp:
-          gross === null || revenue === 0n ? null : Number((gross * 10_000n) / revenue),
+          gross === null
+            ? null
+            : revenue === 0n
+              ? cost === 0n
+                ? 0
+                : -10_000
+              : Number((gross * 10_000n) / revenue),
       }
     })
 
@@ -723,6 +860,8 @@ export class InsightsRepository {
       revenueMinor,
       costedRevenueMinor: costedRevenue,
       grossMinor: gross,
+      discountMinor: mapped.reduce((sum, r) => sum + r.discountMinor, 0n),
+      overListMinor: mapped.reduce((sum, r) => sum + r.overListMinor, 0n),
       marginBp: costedRevenue === 0n ? 0 : Number((gross * 10_000n) / costedRevenue),
       coverageBp: revenueMinor === 0n ? 0 : Number((costedRevenue * 10_000n) / revenueMinor),
     }
@@ -739,6 +878,46 @@ export class InsightsRepository {
    * reward dialling over conversation, which is the opposite of what the
    * number is for.
    */
+  /**
+   * The same call log, split by who dialled.
+   *
+   * The two directions are different questions wearing the same word. Outbound
+   * asks how often a dial reaches someone — a third to two thirds is ordinary
+   * and nobody has set a target. Inbound asks how many CUSTOMERS calling this
+   * company got an answer, and that has an obvious direction: every miss is a
+   * person who wanted to buy and did not get through.
+   *
+   * Blended, they had been reported as one 31.5% "dial success" rate on a log
+   * that is 92% inbound, which hid 159,722 unanswered customer calls behind a
+   * number labelled as something else entirely.
+   */
+  async callDirections(period: Period): Promise<CallDirectionRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { direction: string; calls: bigint; connected: bigint; talk_seconds: bigint }[]
+    >(
+      `
+      SELECT
+        c."direction"::text AS direction,
+        count(*)::bigint AS calls,
+        count(*) FILTER (WHERE c."connected")::bigint AS connected,
+        COALESCE(sum(c."durationSec") FILTER (WHERE c."connected"), 0)::bigint AS talk_seconds
+      FROM "call_record" c
+      WHERE c."startedAt" >= $1 AND c."startedAt" < $2
+      GROUP BY c."direction"
+      ORDER BY calls DESC
+      `,
+      period.start,
+      period.end,
+    )
+
+    return rows.map((r) => ({
+      direction: r.direction,
+      calls: int(r.calls),
+      connected: int(r.connected),
+      talkSeconds: int(r.talk_seconds),
+    }))
+  }
+
   async callActivity(period: Period): Promise<CallActivityRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<
       {
@@ -858,6 +1037,7 @@ export class InsightsRepository {
         head_name: string | null
         headcount: bigint
         active_headcount: bigint
+        working_headcount: bigint
         deals: bigint
         revenue: MoneyText
       }[]
@@ -870,11 +1050,32 @@ export class InsightsRepository {
         head."fullName" AS head_name,
         count(DISTINCT e."id")::bigint AS headcount,
         count(DISTINCT e."id") FILTER (WHERE e."isActive")::bigint AS active_headcount,
+        /*
+          Who was actually working.
+          
+          "Kim bor, kim yoʻq" cannot be answered by the Bitrix isActive flag
+          alone: every deactivated person is also silent, so the flag finds
+          nobody the roster does not already show. The question people are
+          asking is who is on the roster, marked active, and produced NOTHING
+          this period — 58 of 206 active staff, invisible until now.
+        */
+        count(DISTINCT e."id") FILTER (
+          WHERE e."isActive" AND (act.calls > 0 OR act.wins > 0)
+        )::bigint AS working_headcount,
         count(d."id") FILTER (WHERE d."countsAsRevenue" AND d."status" = 'WON')::bigint AS deals,
         sum(d."amountMinor") FILTER (WHERE d."countsAsRevenue" AND d."status" = 'WON')::text AS revenue
       FROM "department" dep
       LEFT JOIN "employee" head ON head."id" = dep."headId"
       LEFT JOIN "employee" e ON e."departmentId" = dep."id"
+      LEFT JOIN LATERAL (
+        SELECT
+          (SELECT count(*) FROM "call_record" c
+            WHERE c."employeeId" = e."id"
+              AND c."startedAt" >= $1 AND c."startedAt" < $2) AS calls,
+          (SELECT count(*) FROM "deal" w
+            WHERE w."employeeId" = e."id" AND w."countsAsRevenue" AND w."status" = 'WON'
+              AND w."closedAt" >= $1 AND w."closedAt" < $2) AS wins
+      ) act ON TRUE
       LEFT JOIN "deal" d
         ON d."employeeId" = e."id"
        AND d."closedAt" >= $1 AND d."closedAt" < $2
@@ -892,6 +1093,7 @@ export class InsightsRepository {
       headName: r.head_name,
       headcount: int(r.headcount),
       activeHeadcount: int(r.active_headcount),
+      workingHeadcount: int(r.working_headcount),
       deals: int(r.deals),
       revenueMinor: money(r.revenue),
     }))

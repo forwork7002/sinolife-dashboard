@@ -156,7 +156,12 @@ export const t = {
   },
 
   delta: {
-    no_baseline: 'yangi',
+    // NOT 'yangi'. On an employee leaderboard that word means "new hire", and
+    // it was shown for 51 of 126 people — including staff hired five months
+    // earlier with 498 orders behind them. It means "the baseline period was
+    // empty", which is a statement about the comparison, not about the person.
+    no_baseline: 'baza yoʻq',
+    small_base: 'baza kichik',
     no_data: 'maʼlumot yoʻq',
     unchanged: 'oʻzgarishsiz',
   },

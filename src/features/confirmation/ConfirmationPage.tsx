@@ -118,7 +118,7 @@ export function ConfirmationPage() {
       accent="var(--series-4)"
       meta={query.data?.meta}
     >
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatTile label="Jami buyurtma" value={totals?.orders ?? null} unit="count" />
         <StatTile
           label="Tasdiqlangan"
@@ -145,7 +145,7 @@ export function ConfirmationPage() {
           value={totals?.coverage ?? null}
           unit="percent"
           hint="Buyurtmalarning qanchasi bosqichdan oʻtgan"
-          context={<Meter value={totals?.coverage ?? null} tone="accent" />}
+          context={<Meter value={totals?.coverage ?? null} tone="neutral" />}
         />
         <StatTile
           label="Tasdiqdan keyin yetkazildi"
@@ -165,9 +165,22 @@ export function ConfirmationPage() {
         />
       </div>
 
+      {/*
+        Why coverage is short, split into the two reasons it can be.
+
+        The banner this replaced said the uncovered orders "went straight to
+        delivery without passing the confirmation stage". They did not: almost
+        all of them are still in transit and have not REACHED the stage yet.
+        The sentence read as an indictment of the operators for something the
+        calendar was doing, and it moved in the wrong direction — the further
+        into a month you looked, the worse it made the team appear.
+
+        Both numbers come from the same query as the denominator, so the
+        sentence cannot drift away from the figure above it.
+      */}
       {totals && totals.coverage < 90 && totals.orders > 0 && (
         <div
-          className="rounded-[var(--radius)] border px-4 py-3 text-xs"
+          className="rounded-[var(--radius-panel)] border px-4 py-3 text-xs"
           style={{
             background: 'var(--surface)',
             borderColor: 'var(--border)',
@@ -175,11 +188,20 @@ export function ConfirmationPage() {
           }}
         >
           <strong style={{ color: 'var(--ink-primary)' }}>
-            Tasdiqlash bosqichi buyurtmalarning {totals.coverage}% qismida ishlatilgan.
+            Buyurtmalarning {totals.coverage}% qismi tasdiqlash bosqichidan oʻtgan.
           </strong>{' '}
-          Qolganlari «Успешно заказ» bosqichidan oʻtmay toʻgʻridan-toʻgʻri yetkazishga ketgan. Shuning
-          uchun tasdiqlash foizi barcha buyurtmalarga emas, faqat qoʻngʻiroq qilinganlariga nisbatan
-          hisoblanadi — aks holda jarayon buzilgandek koʻrinardi.
+          {totals.unconfirmedOpen > 0 && (
+            <>
+              Qolganlaridan {formatNumber(totals.unconfirmedOpen)} tasi hali yoʻlda — ular bosqichga
+              yetib bormagan, oʻtkazib yuborilmagan.{' '}
+            </>
+          )}
+          {totals.unconfirmedClosed > 0 && (
+            <>
+              {formatNumber(totals.unconfirmedClosed)} tasi esa bosqichdan oʻtmay yakunlangan —
+              haqiqiy qamrov boʻshligʻi shu.
+            </>
+          )}
         </div>
       )}
 

@@ -18,7 +18,7 @@ import { Meter, RankBadge, StatTile } from '@/components/ui/Stat'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import {
   ApiClientError,
-  type CallActivityDto,
+  type CallsDto,
   type ConfirmationDto,
   type FunnelStepDto,
   type KpiCardDto,
@@ -51,7 +51,7 @@ interface Loaded {
 interface Operations {
   logistics?: LogisticsDto
   confirmation?: ConfirmationDto
-  calls?: readonly CallActivityDto[]
+  calls?: CallsDto
 }
 
 type State =
@@ -128,7 +128,7 @@ export function OverviewPage() {
       {
         queryKey: ['ops-calls', window],
         queryFn: ({ signal }: { signal: AbortSignal }) =>
-          apiGet<CallActivityDto[]>('/insights/calls', window, signal),
+          apiGet<CallsDto>('/insights/calls', window, signal),
       },
     ],
   })
@@ -243,14 +243,24 @@ export function OverviewPage() {
   )
 }
 
+/**
+ * The same header every other screen has.
+ *
+ * It used to be 18px with the period range right-aligned on its own row, while
+ * every PageShell page is 20px with the range under the title. The overview is
+ * the screen people arrive on, so being the odd one out cost more here than
+ * anywhere else — and the smaller title made the page look like a section of
+ * something rather than the top of it.
+ */
 function PageHeader({ meta }: { meta?: ResponseMeta }) {
   return (
-    <div className="flex flex-wrap items-baseline justify-between gap-2">
-      <h1 className="text-lg font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
+    <header className="min-w-0">
+      <div className="accent-rule mb-2.5" aria-hidden="true" />
+      <h1 className="text-xl font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
         {t.nav.overview}
       </h1>
       {meta?.period && meta.comparisonPeriod && (
-        <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+        <p className="mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
           {formatDate(meta.period.start)} – {formatDate(shiftBack(meta.period.end))}
           <span className="mx-1.5">·</span>
           {formatDate(meta.comparisonPeriod.start)} –{' '}
@@ -266,7 +276,7 @@ function PageHeader({ meta }: { meta?: ResponseMeta }) {
           )}
         </p>
       )}
-    </div>
+    </header>
   )
 }
 
@@ -313,7 +323,7 @@ function KpiRow({ overview, loading }: { overview?: OverviewDto; loading: boolea
     <div className="grid gap-3 lg:grid-cols-3 xl:grid-cols-4">
       {revenue && <HeroCard card={revenue} trend={trend} />}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:col-span-2 lg:grid-cols-3 xl:col-span-3">
+      <div className="stagger grid gap-3 sm:grid-cols-2 lg:col-span-2 lg:grid-cols-3 xl:col-span-3">
         {rest.map((card) => (
           <StatTile
             key={card.key}
@@ -332,11 +342,12 @@ function KpiRow({ overview, loading }: { overview?: OverviewDto; loading: boolea
 function HeroCard({ card, trend }: { card: KpiCardDto; trend: readonly number[] }) {
   return (
     <div
-      className="rise flex flex-col justify-between rounded-[var(--radius-lg)] border p-5"
+      className="card flex flex-col justify-between p-5"
       style={{
-        background: 'var(--surface)',
-        borderColor: 'var(--border)',
-        boxShadow: 'var(--shadow-raised)',
+        // The one card that is deliberately more raised than the rest: it
+        // carries the number the whole screen exists to show.
+        borderRadius: 'var(--radius-panel-lg)',
+        boxShadow: 'var(--shadow-raised), var(--edge-highlight)',
       }}
     >
       <div>
@@ -347,7 +358,7 @@ function HeroCard({ card, trend }: { card: KpiCardDto; trend: readonly number[] 
           {t.cards.revenue}
         </p>
         <p
-          className="figure mt-2 text-[38px] leading-none font-semibold"
+          className="figure display mt-2 text-[46px] leading-none font-semibold"
           style={{ color: 'var(--ink-primary)' }}
           title={card.money ? formatUzs(card.money.amount) : undefined}
         >
@@ -386,51 +397,94 @@ function OperationsRow({ operations }: { operations: Operations }) {
   const totalTalkHours =
     calls === undefined
       ? null
-      : Math.round(calls.reduce((sum, row) => sum + row.talkSeconds, 0) / 3600)
+      : Math.round(calls.rows.reduce((sum, row) => sum + row.talkSeconds, 0) / 3600)
 
-  const activeCallers = calls?.filter((row) => row.connected > 0).length ?? null
+  const activeCallers = calls?.rows.filter((row) => row.connected > 0).length ?? null
+  const connectedCalls = calls ? calls.inbound.connected + calls.outbound.connected : 0
+  const totalAttempts = calls ? calls.inbound.calls + calls.outbound.calls : 0
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <StatTile
         label="Yetkazish darajasi"
         value={logistics?.totals.deliveryRate ?? null}
         unit="percent"
+        /**
+         * The fraction the rate is ACTUALLY computed from.
+         *
+         * This used to print `delivered / orders` — 898 / 2,191 — under a
+         * headline of 91.6%. That fraction is 41.0%. The rate divides by
+         * RESOLVED orders (delivered + refused + cancelled), because an order
+         * still in transit has not failed to arrive; the hint divided by every
+         * order in the window, including the 1,211 still moving. Two numbers
+         * that cannot both be right, printed one above the other.
+         */
         hint={
           logistics
-            ? `${formatNumber(logistics.totals.delivered)} / ${formatNumber(logistics.totals.orders)} buyurtma`
+            ? `${formatNumber(logistics.totals.delivered)} / ${formatNumber(
+                logistics.totals.delivered +
+                  logistics.totals.refused +
+                  logistics.totals.cancelledEarly,
+              )} yakunlangan · ${formatNumber(logistics.totals.inFlight)} yoʻlda`
             : 'yuklanmoqda'
         }
-        tone={
-          logistics === undefined
-            ? 'neutral'
-            : logistics.totals.deliveryRate >= 85
-              ? 'good'
-              : logistics.totals.deliveryRate >= 60
-                ? 'warning'
-                : 'critical'
-        }
+        /*
+          Deliberately ungraded HERE, though the same figure is graded on the
+          logistics page. This tile sat two rows under the revenue hero as the
+          only saturated colour in the top third of the screen, so the eye
+          landed on a delivery rate before it landed on the number the page
+          exists to state. The meter below carries the same judgement without
+          competing for the reader's first fixation.
+        */
         context={<Meter value={logistics?.totals.deliveryRate ?? null} />}
       />
+      {/*
+        Coverage, not "confirmation rate".
+        
+        The rate this tile used to show was confirmed / (confirmed +
+        unreachable), and it read 100.0% in every period — the portal records
+        the confirmed outcome and never the unreachable one, so the denominator
+        could not differ from the numerator. A quarter of the operations row
+        was spent on a number that could not move, presented as a perfect
+        score. Coverage is the thing that varies, and it is the same figure the
+        Tasdiqlash page headlines, so the two pages now agree.
+      */}
       <StatTile
-        label="Tasdiqlash darajasi"
-        value={confirmation?.totals.confirmRate ?? null}
+        label="Tasdiqlash qamrovi"
+        value={confirmation?.totals.coverage ?? null}
         unit="percent"
         hint={
           confirmation
-            ? `${formatNumber(confirmation.totals.confirmed)} tasdiqlangan`
+            ? `${formatNumber(confirmation.totals.confirmed)} / ${formatNumber(
+                confirmation.totals.orders,
+              )} buyurtma`
             : 'yuklanmoqda'
         }
-        context={<Meter value={confirmation?.totals.confirmRate ?? null} tone="neutral" />}
+        context={<Meter value={confirmation?.totals.coverage ?? null} tone="neutral" />}
       />
+      {/*
+        These two carry a `context` slot like their neighbours.
+        
+        Without one the row ended ragged: the two left-hand tiles ran 24px
+        taller because a Meter sat under their value, leaving 44px of empty
+        card on the right against 20px on the left. The proportions below are
+        the ones each tile already implies — the share of attempts that
+        connected, and the share of the team that called anyone.
+      */}
       <StatTile
         label="Mijoz bilan suhbat"
         value={totalTalkHours}
         unit="hours"
         hint={
           calls
-            ? `${formatNumber(calls.reduce((sum, r) => sum + r.connected, 0))} ta ulangan qoʻngʻiroq`
+            ? `${formatNumber(connectedCalls)} ulangan · ${formatNumber(totalAttempts)} urinishdan`
             : 'yuklanmoqda'
+        }
+        context={
+          <Meter
+            value={totalAttempts > 0 ? (connectedCalls / totalAttempts) * 100 : null}
+            tone="neutral"
+          />
         }
       />
       <StatTile
@@ -438,6 +492,16 @@ function OperationsRow({ operations }: { operations: Operations }) {
         value={activeCallers}
         unit="count"
         hint="Davr davomida kamida bitta ulangan qoʻngʻiroq"
+        context={
+          <Meter
+            value={
+              activeCallers !== null && calls && calls.rows.length > 0
+                ? (activeCallers / calls.rows.length) * 100
+                : null
+            }
+            tone="neutral"
+          />
+        }
       />
     </div>
   )

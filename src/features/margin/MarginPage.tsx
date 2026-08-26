@@ -32,7 +32,10 @@ export function MarginPage() {
   })
 
   const data = query.data?.data
-  const discountTotal = data?.rows.reduce((sum, r) => sum + r.discount.amount, 0) ?? null
+  // Both totals come from the server, already split by sign. Summing the
+  // rows here would net a giveaway against a markup and report neither.
+  const discountTotal = data?.discount.amount ?? null
+  const overListTotal = data?.overList.amount ?? null
 
   const columns: Column<MarginRowDto>[] = [
     {
@@ -99,6 +102,13 @@ export function MarginPage() {
           <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
             tannarx yoʻq
           </span>
+        ) : row.revenue.amount === 0 ? (
+          // A known cost and no revenue: given away outright. The old code
+          // reported this as "tannarx yoʻq" while printing the cost in the
+          // column beside it.
+          <span className="text-xs" style={{ color: 'var(--status-critical)' }}>
+            butunlay chegirma
+          </span>
         ) : (
           <Meter value={row.margin} tone="neutral" label={row.productName} />
         ),
@@ -109,11 +119,21 @@ export function MarginPage() {
       align: 'right',
       numeric: true,
       render: (row) =>
-        row.discount.amount === 0 ? (
+        row.discount.amount === 0 && row.overList.amount === 0 ? (
           <span style={{ color: 'var(--ink-muted)' }}>0</span>
-        ) : (
+        ) : row.discount.amount > 0 ? (
           <span style={{ color: 'var(--status-serious)' }}>
             {formatCompactUzs(row.discount.amount)}
+          </span>
+        ) : (
+          // Sold ABOVE the catalogue price. This used to render in the same
+          // warning orange as a giveaway, with a minus sign as the only clue —
+          // so money earned and money surrendered looked identical.
+          <span
+            style={{ color: 'var(--ink-secondary)' }}
+            title="Narx katalog narxidan yuqori — chegirma emas, ustama"
+          >
+            +{formatCompactUzs(row.overList.amount)}
           </span>
         ),
     },
@@ -126,8 +146,23 @@ export function MarginPage() {
       accent="var(--series-2)"
       meta={query.data?.meta}
     >
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile label="Tushum" value={data?.revenue.amount ?? null} unit="money" />
+      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {/*
+          Tushum is ALL revenue; Yalpi foyda is the profit on the fraction with
+          a known cost. Side by side and unlabelled they invite the reader to
+          divide one by the other and get 15%, next to a Marja tile saying 57%.
+          The hint states the base so the three tiles reconcile.
+        */}
+        <StatTile
+          label="Tushum"
+          value={data?.revenue.amount ?? null}
+          unit="money"
+          hint={
+            data
+              ? `${formatCompactUzs(data.costedRevenue.amount)} soʻmda tannarx maʼlum`
+              : undefined
+          }
+        />
         <StatTile
           label="Yalpi foyda"
           value={data?.gross.amount ?? null}
@@ -138,8 +173,16 @@ export function MarginPage() {
           label="Marja"
           value={data?.margin ?? null}
           unit="percent"
+          /**
+           * Neutral while coverage is thin.
+           *
+           * A 57% margin measured over a quarter of revenue is not a good
+           * result, it is an unknown one — and painting it green tells the
+           * reader the opposite. Grading resumes once most of the catalogue
+           * carries a purchase price.
+           */
           tone={
-            data === undefined
+            data === undefined || data.coverage < 50
               ? 'neutral'
               : data.margin >= 40
                 ? 'good'
@@ -147,20 +190,24 @@ export function MarginPage() {
                   ? 'warning'
                   : 'critical'
           }
-          context={<Meter value={data?.margin ?? null} tone="accent" />}
+          context={<Meter value={data?.margin ?? null} tone="neutral" />}
         />
         <StatTile
           label="Berilgan chegirma"
           value={discountTotal}
           unit="money"
           tone={discountTotal && discountTotal > 0 ? 'warning' : 'neutral'}
-          hint="Toʻgʻridan-toʻgʻri marjadan chiqadi"
+          hint={
+            overListTotal && overListTotal > 0
+              ? `Toʻgʻridan-toʻgʻri marjadan chiqadi · ${formatCompactUzs(overListTotal)} ustama alohida`
+              : 'Toʻgʻridan-toʻgʻri marjadan chiqadi'
+          }
         />
       </div>
 
       {data && data.coverage < 99 && (
         <div
-          className="rounded-[var(--radius)] border px-4 py-3 text-xs"
+          className="rounded-[var(--radius-panel)] border px-4 py-3 text-xs"
           style={{
             background: 'color-mix(in srgb, var(--status-warning) 8%, var(--surface))',
             borderColor: 'color-mix(in srgb, var(--status-warning) 30%, transparent)',
@@ -174,7 +221,7 @@ export function MarginPage() {
           katalogda toʻldirsangiz, marja avtomatik toʻliq boʻladi — nol tannarx yozilmaydi, chunki u
           100% foyda boʻlib koʻrinardi.
           <div className="mt-2 max-w-md">
-            <Meter value={data.coverage} tone="accent" label="Qamrov" />
+            <Meter value={data.coverage} tone="neutral" label="Qamrov" />
           </div>
         </div>
       )}

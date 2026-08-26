@@ -38,6 +38,43 @@ describe('growth', () => {
   it('distinguishes missing data from a value of zero', () => {
     expect(growth(null, 100)).toEqual({ kind: 'no_data' })
     expect(growth(100, null)).toEqual({ kind: 'no_data' })
+  })
+
+  /**
+   * The bug these lock in.
+   *
+   * `growth()` had no floor on the baseline, so any non-zero previous period
+   * produced a ratio however tiny it was. On the leaderboard, 43 of the 60
+   * rows showing a multiple had a baseline of three deals or fewer and 25 had
+   * exactly one — one 900,000 soʻm deal last month printed «↑×153» and sorted
+   * that person above everyone who actually sells.
+   */
+  it('suppresses a ratio when the baseline is a twentieth of the current value', () => {
+    expect(growth(137_300_000, 900_000)).toEqual({
+      kind: 'small_base',
+      current: 137_300_000,
+      previous: 900_000,
+    })
+  })
+
+  it('keeps real growth that clears the floor', () => {
+    const delta = growth(510, 100)
+    expect(delta.kind).toBe('change')
+  })
+
+  it('reports a fall from a large base rather than suppressing it', () => {
+    // A collapse has a big denominator by definition, and it is exactly the
+    // signal nobody wants hidden.
+    const delta = growth(1, 1000)
+    expect(delta).toMatchObject({ kind: 'change', direction: 'down' })
+  })
+
+  it('does not treat an exactly-20× jump as measurable growth', () => {
+    expect(growth(2000, 100).kind).toBe('small_base')
+  })
+
+  it('leaves the zero baseline as no_baseline, not small_base', () => {
+    expect(growth(50_000, 0)).toEqual({ kind: 'no_baseline', current: 50_000 })
     expect(growth(undefined, undefined)).toEqual({ kind: 'no_data' })
     // ...whereas a real zero is a real measurement:
     expect(growth(0, 100)).toEqual({ kind: 'change', percent: -100, direction: 'down' })

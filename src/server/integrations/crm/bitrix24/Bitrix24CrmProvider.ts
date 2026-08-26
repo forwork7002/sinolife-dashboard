@@ -1000,9 +1000,26 @@ export class Bitrix24CrmProvider implements CrmProvider {
           unitPriceMinor: unit,
           totalMinor: unit * BigInt(quantity),
           productName: row.PRODUCT_NAME || row.ORIGINAL_PRODUCT_NAME || undefined,
-          discountMinor: toMinorUnits(row.DISCOUNT_SUM),
-          // A rate of 100 means the line was given away. Kept visible because
-          // giveaways destroy margin silently otherwise.
+          /**
+           * PER UNIT, times the quantity.
+           *
+           * Bitrix24 names this field DISCOUNT_SUM, which reads like a line
+           * total. It is not. The portal's own arithmetic is
+           * `PRICE + DISCOUNT_SUM = list price` — per unit — and the database
+           * proves it: across a month, at every quantity above one, the
+           * per-unit identity matches and the per-line one never does
+           * (qty 2: 469 of 475 lines match per-unit, 0 per-line; qty 4: 171 of
+           * 172 against 0).
+           *
+           * Stored per line, as the schema promises, so multiply here rather
+           * than at every read. Left unmultiplied it understated the month's
+           * discounts by 389 mln soʻm — a quarter of the total — and silently,
+           * because a discount that is too small makes margin look better.
+           */
+          discountMinor: toMinorUnits(row.DISCOUNT_SUM) * BigInt(quantity),
+          // A rate is scale-free, so this one needs no quantity. 100 means the
+          // line was given away outright; those destroy margin silently unless
+          // they are visible.
           discountRateBp: Math.round(Number(row.DISCOUNT_RATE ?? 0) * 100),
         })
       }

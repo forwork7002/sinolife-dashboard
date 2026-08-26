@@ -85,7 +85,7 @@ export function BarList({
               aria-label={`${item.label}: ${valueFormatter(item.value)}`}
             >
               <div
-                className="h-full rounded-full"
+                className="grow-x h-full rounded-full"
                 style={{
                   width: `${Math.max(width, item.value > 0 ? 1.5 : 0)}%`,
                   background: 'var(--series-1)',

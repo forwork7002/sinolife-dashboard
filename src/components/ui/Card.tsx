@@ -13,17 +13,17 @@ export function Card({
   className?: string
   as?: 'section' | 'div' | 'article'
 }) {
+  /**
+   * One class, one definition — see `.card` in globals.css.
+   *
+   * This used to hand-roll the same thing inline and got two of the three
+   * values wrong: `--surface` instead of `--surface-raised`, so in dark mode a
+   * card was pixel-identical to the sidebar and to the page behind it, and
+   * `rounded-xl` (12px) instead of the house radius. The 1px lit top edge was
+   * missing entirely, which is most of what makes a card read as raised.
+   */
   return (
-    <Tag
-      className={`rounded-xl border ${className}`}
-      style={{
-        background: 'var(--surface)',
-        borderColor: 'var(--border)',
-        boxShadow: 'var(--shadow-card)',
-      }}
-    >
-      {children}
-    </Tag>
+    <Tag className={`card ${className}`}>{children}</Tag>
   )
 }
 

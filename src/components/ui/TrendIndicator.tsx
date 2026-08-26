@@ -1,5 +1,5 @@
 import type { DeltaDto } from '@/lib/api'
-import { formatPercent } from '@/lib/format'
+import { formatNumber, formatPercent } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 /**
@@ -8,9 +8,11 @@ import { t } from '@/lib/messages'
  * Renders every case the domain layer can produce, and renders them
  * differently on purpose:
  *
- *   change      -> a signed percentage with an arrow
+ *   change      -> a signed percentage with an arrow, or a multiple past ×2
  *   unchanged   -> "no change", not "0%"
- *   no_baseline -> "new", because a percentage against zero is undefined
+ *   no_baseline -> "no baseline", because a percentage against zero is undefined
+ *   small_base  -> "small base" with the pair, because a ratio off one deal
+ *                  is arithmetic rather than information
  *   no_data     -> an em dash
  *
  * The arrow glyph carries the direction alongside the colour, so the meaning
@@ -45,6 +47,18 @@ export function TrendIndicator({
     )
   }
 
+  if (delta.kind === 'small_base') {
+    return (
+      <span
+        className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${className}`}
+        style={{ background: 'var(--grid)', color: 'var(--ink-secondary)' }}
+        title={`Oldingi davr juda kichik: ${formatNumber(delta.previous)} → ${formatNumber(delta.current)}`}
+      >
+        {t.delta.small_base}
+      </span>
+    )
+  }
+
   if (delta.kind === 'no_baseline') {
     return (
       <span
@@ -74,18 +88,23 @@ export function TrendIndicator({
 }
 
 /**
- * A change, at a size a person can read.
+ * A change, at a size a person can read — and in a way a column can be scanned.
  *
- * Past roughly threefold, a percentage stops informing: "+15 157.8%" takes a
- * moment of arithmetic to become "about 150 times", and the precision is
- * spurious anyway when the baseline was a handful of deals. So large changes
- * are stated as a multiple, which is how anyone would say it out loud.
+ * The switch is at 100%, not 300%, and the reason is legibility rather than
+ * arithmetic. With the old threshold a column could hold «292.7%» beside
+ * «×5.1»: the first is the SMALLER growth and prints the bigger numeral, and
+ * both wore the same arrow and colour. A reader ranking the column by eye got
+ * it backwards.
+ *
+ * At 100% the two forms no longer overlap in meaning. Every «%» is a change
+ * under a doubling; every «×» is at least a doubling. Whatever the digits, a
+ * row with × outgrew a row with %.
  *
  * The exact percentage stays in the tooltip, because it is still the number
  * the calculation produced.
  */
 function formatChange(percent: number): string {
-  if (percent >= 300) {
+  if (percent >= 100) {
     const multiple = 1 + percent / 100
     return `×${multiple >= 10 ? Math.round(multiple) : Math.round(multiple * 10) / 10}`
   }

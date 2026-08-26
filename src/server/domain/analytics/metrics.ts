@@ -26,6 +26,20 @@ export type Delta =
    * "new" rather than a number.
    */
   | { readonly kind: 'no_baseline'; readonly current: number }
+  /**
+   * The baseline was non-zero but too small to divide by meaningfully.
+   *
+   * On a 288-person leaderboard, 43 of the 60 rows rendering as a multiple had
+   * a baseline of three closed deals or fewer, and 25 of exactly one. One
+   * 900,000 soʻm deal last month against a normal month this month printed
+   * «↑×153» and sorted that person above everyone who actually sells. The
+   * ratio was arithmetically correct and told the reader nothing except that
+   * the denominator was small.
+   *
+   * Both sides travel so the UI can show the pair instead of a number that
+   * only looks like a measurement.
+   */
+  | { readonly kind: 'small_base'; readonly current: number; readonly previous: number }
   /** One or both periods have no data at all. Distinct from a value of zero. */
   | { readonly kind: 'no_data' }
 
@@ -41,6 +55,18 @@ function toNumber(value: Numeric): number {
  * The denominator is |previous|, so a recovery from -100 to -50 reads as an
  * improvement rather than as a decline.
  */
+/**
+ * Below this, a baseline is treated as too thin to divide by.
+ *
+ * Expressed as a fraction of the CURRENT value rather than an absolute, so it
+ * works for soʻm and for deal counts without a unit-specific threshold: if the
+ * previous period is under a twentieth of this one, the resulting ratio is
+ * driven by how small the denominator was, not by how much the numerator grew.
+ * Twenty is a round number chosen to sit above the ×5 range that real growth
+ * reaches and below the ×20+ range that only tiny baselines produce.
+ */
+const SMALL_BASE_RATIO = 20
+
 export function growth(
   current: Numeric | null | undefined,
   previous: Numeric | null | undefined,
@@ -58,6 +84,12 @@ export function growth(
   }
 
   if (c === p) return { kind: 'unchanged' }
+
+  // Growth only. A shrinking value has a large denominator by definition, and
+  // a fall from a big base is exactly the signal nobody wants suppressed.
+  if (c > 0 && p > 0 && c / p >= SMALL_BASE_RATIO) {
+    return { kind: 'small_base', current: c, previous: p }
+  }
 
   const percent = ((c - p) / Math.abs(p)) * 100
 
@@ -130,6 +162,8 @@ export type DeltaDto =
   | { readonly kind: 'change'; readonly percent: number; readonly direction: 'up' | 'down' }
   | { readonly kind: 'unchanged' }
   | { readonly kind: 'no_baseline' }
+  /** Ratio suppressed; both sides travel so the UI can state the pair. */
+  | { readonly kind: 'small_base'; readonly current: number; readonly previous: number }
   | { readonly kind: 'no_data' }
 
 export function toDeltaDto(delta: Delta): DeltaDto {
@@ -144,6 +178,8 @@ export function toDeltaDto(delta: Delta): DeltaDto {
       return { kind: 'unchanged' }
     case 'no_baseline':
       return { kind: 'no_baseline' }
+    case 'small_base':
+      return { kind: 'small_base', current: delta.current, previous: delta.previous }
     case 'no_data':
       return { kind: 'no_data' }
   }
