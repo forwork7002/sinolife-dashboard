@@ -129,7 +129,13 @@ export function MarginPage() {
         row.discount.amount === 0 && row.overList.amount === 0 ? (
           <span style={{ color: 'var(--ink-muted)' }}>0</span>
         ) : row.discount.amount > 0 ? (
-          <span style={{ color: 'var(--status-serious)' }}>
+          /*
+            Ink. Every product carries some discount, so painting the column
+            --status-serious made 100% of rows orange — and a colour that is
+            on every row informs on none, while quietly spending a reserved
+            status hue on an ordinary fact. The TILE above grades the total.
+          */
+          <span style={{ color: 'var(--ink-secondary)' }}>
             {formatCompactUzs(row.discount.amount)}
           </span>
         ) : (

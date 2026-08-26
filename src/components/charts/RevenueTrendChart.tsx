@@ -98,7 +98,9 @@ export function RevenueTrendChart({
           <YAxis
             tickLine={false}
             axisLine={false}
-            width={56}
+            // 64, because '900 mln' at 56 wrapped into two stacked lines on
+            // every gridline of the mlrd-scale charts.
+            width={64}
             tick={{ fill: 'var(--ink-muted)', fontSize: 11 }}
             tickFormatter={(value: number) => formatCompactUzs(value)}
           />

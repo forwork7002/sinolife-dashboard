@@ -247,7 +247,21 @@ export function LeaderboardPage() {
                 are relational facts a table of independent rows cannot show.
               */}
               <div className="mt-3">
-                <Meter value={share(row)} tone="neutral" label={row.fullName} />
+                {/*
+                  Normalised to the LEADER, not to the team total. The top
+                  seller holds ~14% of a 126-person team's revenue, so a
+                  team-share bar rendered the podium as three nearly-empty
+                  tracks — and the overview's identical-looking bars are
+                  leader-normalised, so the same mark read two ways. The text
+                  below still states the team share exactly.
+                */}
+                <Meter
+                  value={
+                    share(podium[0]!) ? ((share(row) ?? 0) / (share(podium[0]!) ?? 1)) * 100 : null
+                  }
+                  tone="neutral"
+                  label={row.fullName}
+                />
                 <p className="mt-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
                   {index === 0
                     ? `Jamoaning ${formatPercent(share(row))} ulushi`

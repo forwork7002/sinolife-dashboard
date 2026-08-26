@@ -138,7 +138,7 @@ export function ChannelsPage() {
       accent="var(--series-5)"
       meta={query.data?.meta}
     >
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile status={tileStatus} label="Murojaatlar" value={totalLeads || null} unit="count" />
         <StatTile status={tileStatus} label="Sotuvlar" value={totalWon || null} unit="count" />
         <StatTile status={tileStatus} label="Tushum" value={totalRevenue || null} unit="money" />
@@ -222,7 +222,6 @@ function ShareBars({
   total: number
 }) {
   if (rows.length === 0 || total === 0) return null
-  const max = Math.max(...rows.map((r) => r.value))
 
   return (
     <ul className="space-y-1.5">
@@ -235,10 +234,21 @@ function ShareBars({
           >
             {row.label}
           </span>
-          <div className="h-4 flex-1 overflow-hidden rounded" style={{ background: 'var(--grid)' }}>
+          <div
+            className="h-2 flex-1 overflow-hidden rounded-full"
+            style={{ background: 'var(--track)' }}
+          >
             <div
-              className="h-full rounded"
-              style={{ width: `${(row.value / max) * 100}%`, background: 'var(--series-5)' }}
+              className="grow-x h-full rounded-full"
+              /*
+                Share of TOTAL, because that is what the number beside the bar
+                states — a max-normalised bar under a share label overstated
+                every row below the top one. And the sequential hue, not
+                series-5: that slot is this page's accent, and a value-encoding
+                mark must not wear page identity even by coincidence. House bar
+                geometry while we are here, so one list language exists.
+              */
+              style={{ width: `${(row.value / total) * 100}%`, background: 'var(--seq-450)' }}
             />
           </div>
           <span

@@ -43,7 +43,7 @@ export function CohortPage() {
       accent="var(--series-7)"
       meta={query.data?.meta}
     >
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <GaugeTile
           status={tileStatus}
           label="Takroriy tushum ulushi"
@@ -105,7 +105,9 @@ export function CohortPage() {
 
       <ChartCard
         title="База — mijozlar hozir qayerda"
-        hint="Takroriy aloqa sikli: 1 kun, 3 kun, 7 kun, 14 kun, 21 kun. Bu tarixiy egri chiziq emas, bugungi holat."
+        // The stage names in the data are 1/3/10/20/30 kun — the copy used to
+        // promise a 7/14/21 cycle the portal does not run.
+        hint="Takroriy aloqa sikli: 1 kun, 3 kun, 10 kun, 20 kun, 30 kun. Bu tarixiy egri chiziq emas, bugungi holat."
       >
         {query.isPending && <ChartSkeleton height={200} />}
         {data && data.stages.length === 0 && (

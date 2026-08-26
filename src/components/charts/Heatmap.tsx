@@ -45,7 +45,7 @@ export function CohortHeatmap({
             <th
               scope="col"
               className="sticky left-0 z-10 px-2 py-1.5 text-left text-[11px] font-medium"
-              style={{ background: 'var(--surface)', color: 'var(--ink-muted)' }}
+              style={{ background: 'var(--surface-raised)', color: 'var(--ink-muted)' }}
             >
               Kogorta
             </th>
@@ -74,7 +74,7 @@ export function CohortHeatmap({
               <th
                 scope="row"
                 className="tabular sticky left-0 z-10 px-2 py-1 text-left text-xs font-medium whitespace-nowrap"
-                style={{ background: 'var(--surface)', color: 'var(--ink-secondary)' }}
+                style={{ background: 'var(--surface-raised)', color: 'var(--ink-secondary)' }}
               >
                 {row.cohort.slice(0, 7)}
               </th>

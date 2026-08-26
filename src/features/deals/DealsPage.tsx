@@ -142,6 +142,7 @@ export function DealsPage() {
   return (
     <PageShell
       title={t.nav.deals}
+      accent="var(--series-1)"
       meta={query.data?.meta}
       filters={{
         search: true,

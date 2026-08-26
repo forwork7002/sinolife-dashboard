@@ -231,6 +231,9 @@ export function EmployeesPage() {
   return (
     <PageShell
       title={t.nav.employees}
+      // The team family shares the leaderboard's slot — same people, same
+      // stripe.
+      accent="var(--series-5)"
       meta={query.data?.meta}
       filters={{ employees: true, departments: true }}
     >

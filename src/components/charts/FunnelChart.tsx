@@ -44,18 +44,29 @@ function colorFor(
 
 export function FunnelChart({ steps }: { steps: readonly FunnelStepDto[] }) {
   /**
-   * Empty stages are dropped, except the terminal ones.
+   * Empty stages are dropped, except terminal ones in a LIVE pipeline.
    *
    * A pipeline carries stages that nothing is sitting in this month — a
    * regional hub with no dispatches, a chase queue that stayed empty. Printing
    * every one of them at zero buries the dozen rows that have anything in them
    * under thirty that do not.
    *
-   * Won and lost stay whatever their count, because "nothing was refused" is
-   * itself a result and its absence would read as missing data.
+   * Won and lost stay at zero because "nothing was refused" is itself a
+   * result — but only where the pipeline did anything at all. Ecommerce moved
+   * nothing this window, and its three terminal rows printed «0 · 0%» at the
+   * bottom of every funnel: not a result, just the shape of an idle pipeline.
+   * The pipeline is the prefix on the stage name.
    */
+  const pipelineOf = (name: string) => name.split(' · ')[0] ?? name
+  const activePipelines = new Set(
+    steps.filter((s) => s.dealCount > 0).map((s) => pipelineOf(s.stageName)),
+  )
+
   const visible = steps.filter(
-    (step) => step.dealCount > 0 || step.category === 'WON' || step.category === 'LOST',
+    (step) =>
+      step.dealCount > 0 ||
+      ((step.category === 'WON' || step.category === 'LOST') &&
+        activePipelines.has(pipelineOf(step.stageName))),
   )
 
   const pipelineSteps = visible.filter(

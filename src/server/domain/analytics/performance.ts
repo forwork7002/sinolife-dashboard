@@ -92,7 +92,8 @@ export interface LeaderboardEntry {
   readonly rank: number
   readonly employeeId: string
   readonly value: number | null
-  readonly display: Money | number | null
+  /** The revenue object for the money metric, the bare value otherwise. */
+  readonly display: { readonly amountMinor: bigint | string } | number | null
   /** True when this entry ties with the one above it. */
   readonly tied: boolean
 }
@@ -110,12 +111,29 @@ export interface LeaderboardEntry {
  * direction: "no data" is not an achievement and must not top the board.
  * Equal values receive the SAME rank, standard competition style (1, 2, 2, 4).
  */
-export function buildLeaderboard(
-  performance: readonly EmployeePerformance[],
+/**
+ * The slice of a performance row a leaderboard actually reads.
+ *
+ * Structural rather than `EmployeePerformance`, because the service layer now
+ * ranks DTO rows whose `amountMinor` is a string — the JSON form of the same
+ * bigint. `Number()` accepts both, and typing the minimum keeps this function
+ * usable on either side of the serialisation boundary.
+ */
+export interface RankableRow {
+  readonly employeeId: string
+  readonly current: {
+    readonly revenue: { readonly amountMinor: bigint | string }
+    readonly dealsWon: number
+    readonly conversionRatePercent: number | null
+  }
+}
+
+export function buildLeaderboard<T extends RankableRow>(
+  performance: readonly T[],
   metric: LeaderboardMetric,
   kpiAchievementByEmployee?: ReadonlyMap<string, number | null>,
 ): LeaderboardEntry[] {
-  const valueOf = (row: EmployeePerformance): number | null => {
+  const valueOf = (row: T): number | null => {
     switch (metric) {
       case 'revenue':
         return Number(row.current.revenue.amountMinor)
@@ -128,7 +146,7 @@ export function buildLeaderboard(
     }
   }
 
-  const displayOf = (row: EmployeePerformance, value: number | null): Money | number | null => {
+  const displayOf = (row: T, value: number | null) => {
     if (metric === 'revenue') return row.current.revenue
     return value
   }

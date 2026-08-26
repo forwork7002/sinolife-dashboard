@@ -1,7 +1,7 @@
 import { canViewEmployee } from '@/server/auth/rbac'
 import { requirePermission } from '@/server/auth/session'
 import { getCrmProvider } from '@/server/config/providerFactory'
-import { toMoneyDto } from '@/server/domain/money/money'
+import {  } from '@/server/domain/money/money'
 import { toDeltaDto } from '@/server/domain/analytics/metrics'
 import { revenueTrend } from '@/server/domain/analytics/sales'
 import { ApiError, toApiError } from '@/server/http/errors'
@@ -73,10 +73,12 @@ export async function GET(
     const body = success(
       {
         employee,
+        // employees() now crosses money and the revenue delta into DTO form
+        // itself — converting again here would double-wrap.
         current: {
-          revenue: toMoneyDto(row.current.revenue),
-          pipeline: toMoneyDto(row.current.pipelineValue),
-          averageDeal: row.current.averageDeal ? toMoneyDto(row.current.averageDeal) : null,
+          revenue: row.current.revenue,
+          pipeline: row.current.pipelineValue,
+          averageDeal: row.current.averageDeal,
           dealsWon: row.current.dealsWon,
           dealsLost: row.current.dealsLost,
           dealsCreated: row.current.dealsCreated,
@@ -84,7 +86,7 @@ export async function GET(
           conversionPercent: row.current.conversionRatePercent,
         },
         deltas: {
-          revenue: toDeltaDto(row.revenueDelta),
+          revenue: row.revenueDelta,
           dealsWon: toDeltaDto(row.dealsWonDelta),
         },
         teamSharePercent: row.teamSharePercent,

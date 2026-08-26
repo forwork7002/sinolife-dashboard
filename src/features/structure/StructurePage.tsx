@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { ChartCard } from '@/components/ui/Card'
-import { Meter, StatTile } from '@/components/ui/Stat'
+import { GaugeTile, StatTile } from '@/components/ui/Stat'
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -62,24 +62,26 @@ export function StructurePage() {
           marked active, and produced nothing — and that was 58 of 206 people
           with no page saying so.
         */}
-        <StatTile
+        <GaugeTile
           status={tileStatus}
           label="Ishlagan xodimlar"
-          value={workingPeople || null}
-          unit="count"
-          hint={
-            activePeople > 0
-              ? `${formatNumber(activePeople)} faoldan · ${formatNumber(silentPeople)} nafari jim`
-              : undefined
-          }
+          /*
+            The question is a RATE — what share of the active roster produced
+            anything — so the tile wears the ring every other headline rate
+            wears. The counts move to the hint, where 148 / 206 / 58 reads as
+            the fraction the ring is drawn from. Page-resolved tone: below 70%
+            working is worth amber here, whatever the house thresholds say.
+          */
+          value={activePeople === 0 ? null : (workingPeople / activePeople) * 100}
           tone={
             activePeople > 0 && workingPeople / activePeople < 0.7 ? 'warning' : 'neutral'
           }
-          context={
-            <Meter
-              value={activePeople === 0 ? null : (workingPeople / activePeople) * 100}
-              tone="neutral"
-            />
+          hint={
+            activePeople > 0
+              ? `${formatNumber(workingPeople)} / ${formatNumber(activePeople)} faol · ${formatNumber(
+                  silentPeople,
+                )} nafari jim`
+              : undefined
           }
         />
         <StatTile status={tileStatus} label="Tushum" value={totalRevenue || null} unit="money" />
@@ -170,7 +172,10 @@ function Branch({ node, siblingMax }: { node: StructureDto; siblingMax: number }
 
   return (
     <>
-      <tr>
+      {/* The same reading hover DataTable rows carry — this table is
+          hand-rolled, and a row read across ten columns needs the wash under
+          the cursor just as much. */}
+      <tr className="transition-colors hover:bg-[var(--surface-sunken)]">
         {/* The department name is what a screen reader announces the row BY. */}
         <th
           scope="row"

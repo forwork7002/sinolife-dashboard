@@ -100,10 +100,12 @@ export function ConfirmationPage() {
     },
     {
       key: 'stickRate',
-      header: 'Tasdiqdan keyin',
+      // One word longer than the column was wide — the only wrapped header in
+      // the table put its baseline a line below every neighbour's.
+      header: 'Tasdiqdan soʻng',
       align: 'right',
       numeric: true,
-      width: '110px',
+      width: '132px',
       /*
         A number, not a meter.
         
@@ -120,9 +122,23 @@ export function ConfirmationPage() {
           </span>
         ) : (
           <span
+            /*
+              Plain ink until the house threshold actually trips.
+              
+              The old branch was written when this column was a constant 100%
+              and anything else was an anomaly worth amber. On the real
+              confirmation ladder the column varies — and it was painting a
+              93% stick rate as a warning, 22 of the first 25 rows amber. A
+              rate is ordinary until it is genuinely low.
+            */
             style={{
-              color: row.stickRate >= 99.95 ? 'var(--ink-muted)' : 'var(--status-warning)',
-              fontWeight: row.stickRate >= 99.95 ? 400 : 600,
+              color:
+                row.stickRate < 60
+                  ? 'var(--status-critical)'
+                  : row.stickRate < 85
+                    ? 'var(--status-warning)'
+                    : 'var(--ink-secondary)',
+              fontWeight: row.stickRate < 85 ? 600 : 400,
             }}
           >
             {formatPercent(row.stickRate)}
@@ -154,12 +170,13 @@ export function ConfirmationPage() {
           unit="count"
           hint="Tasdiqlash bosqichiga kirgan buyurtmalar"
         />
+        {/* A count is a fact, not a judgement — the coverage ring beside it
+            carries the evaluation. */}
         <StatTile
           status={tileStatus}
           label="Tasdiqlangan"
           value={totals?.confirmed ?? null}
           unit="count"
-          tone="good"
         />
         <StatTile
           status={tileStatus}

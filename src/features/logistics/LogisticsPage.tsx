@@ -161,7 +161,9 @@ export function LogisticsPage() {
           unit="count"
           hint={totals ? `${formatNumber(totals.inFlight)} tasi hali yoʻlda` : undefined}
         />
-        <StatTile status={tileStatus} label="Yetkazildi" value={totals?.delivered ?? null} unit="count" tone="good" />
+        {/* A count is a fact, not a judgement — a permanently green number
+            spends the status hue on nothing. */}
+        <StatTile status={tileStatus} label="Yetkazildi" value={totals?.delivered ?? null} unit="count" />
         <GaugeTile
           status={tileStatus}
           label="Yetkazish darajasi"
@@ -337,6 +339,15 @@ function routeName(label: string): string {
 }
 
 /**
+ * The portal prefixes reason labels with pictographs — "✅ олиш нияти ёк".
+ * A green checkmark in front of a LOSS reason reads as approval, so the
+ * decoration is stripped for display; the raw string stays in the title.
+ */
+function reasonLabel(reason: string): string {
+  return reason.replace(/^[\p{Extended_Pictographic}\uFE0F\s]+/u, '') || reason
+}
+
+/**
  * Refusal reasons, ranked.
  *
  * Ordered by order count rather than by lost money on purpose: the top reason
@@ -356,35 +367,48 @@ function ReasonList({
 }) {
   const max = Math.max(...reasons.map((r) => r.orders), 1)
 
+  /*
+    No bar for a list of one.
+    
+    These bars are normalised to the largest row, so a lone row is ALWAYS
+    full-width — one returned parcel drew exactly the same mark as eighty-one
+    cancellations in the card above it. A comparison chart with nothing to
+    compare is decoration wearing a data costume; the count says everything.
+  */
+  const comparable = reasons.length > 1
+
   return (
     <ul className="space-y-2">
-      {reasons.map((reason, index) => (
+      {reasons.map((reason) => (
         <li key={`${reason.stage}-${reason.reason}`} className="flex items-center gap-3">
           <span
             className="w-56 shrink-0 truncate text-xs"
             style={{ color: 'var(--ink-secondary)' }}
             title={reason.reason}
           >
-            {reason.reason}
+            {reasonLabel(reason.reason)}
           </span>
-          <div className="h-4 flex-1 overflow-hidden rounded" style={{ background: 'var(--grid)' }}>
+          {comparable && (
+            /*
+              House bar geometry — the same height, radius and single
+              magnitude hue as BarList, so the app speaks one bar language.
+              The previous ordinal ramp restated what row order already says,
+              and its lightest step fell under the 3:1 mark floor in light
+              mode.
+            */
             <div
-              className="h-full rounded"
-              style={{
-                width: `${(reason.orders / max) * 100}%`,
-                /*
-                  An ordinal ramp, not status colours.
-                  
-                  These bars used to be --status-critical for the top reason
-                  and --status-serious for the rest, which says "this reason is
-                  a crisis and the others are serious problems" — a judgement
-                  nobody made. Reserved status colours mean a STATE; rank is
-                  not a state. One hue, darkest first, is what an ordinal is.
-                */
-                background: index === 0 ? 'var(--seq-550)' : index === 1 ? 'var(--seq-450)' : 'var(--seq-350)',
-              }}
-            />
-          </div>
+              className="h-2 flex-1 overflow-hidden rounded-full"
+              style={{ background: 'var(--track)' }}
+            >
+              <div
+                className="grow-x h-full rounded-full"
+                style={{
+                  width: `${(reason.orders / max) * 100}%`,
+                  background: 'var(--seq-450)',
+                }}
+              />
+            </div>
+          )}
           <span
             className="tabular w-14 shrink-0 text-right text-xs font-medium"
             style={{ color: 'var(--ink-primary)' }}

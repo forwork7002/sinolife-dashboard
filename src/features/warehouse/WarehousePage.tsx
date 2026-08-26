@@ -44,6 +44,19 @@ export function WarehousePage() {
 
   const totalOrders = rows.reduce((sum, r) => sum + r.orders, 0)
   const totalDelivered = rows.reduce((sum, r) => sum + r.delivered, 0)
+  const totalRefused = rows.reduce((sum, r) => sum + r.refused, 0)
+  /**
+   * Delivered over RESOLVED, not over everything shipped this window.
+   *
+   * The tile used delivered/orders and rendered a critical-red 40.5% ring
+   * directly above a table whose every row graded 91–100% green — the same
+   * mid-month mistake the repository's own comment warns about: dividing by
+   * orders still in transit "reported 42% for a business that actually
+   * delivers 93%". Same rate, same denominator, everywhere.
+   */
+  const resolved = totalDelivered + totalRefused
+  const deliveryRate = resolved === 0 ? null : Math.round((totalDelivered / resolved) * 1000) / 10
+  const inFlight = totalOrders - resolved
   const totalRevenue = rows.reduce((sum, r) => sum + r.revenue.amount, 0)
 
   const columns: Column<DispatchDto>[] = [
@@ -104,15 +117,17 @@ export function WarehousePage() {
       accent="var(--series-6)"
       meta={query.data?.meta}
     >
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile status={tileStatus} label="Joʻnatilgan buyurtma" value={totalOrders || null} unit="count" />
         <StatTile status={tileStatus} label="Nuqtalar" value={known.length || null} unit="count" hint="Sklad, kuryer, marketpleys" />
         <GaugeTile
           status={tileStatus}
           label="Yetkazish darajasi"
-          value={totalOrders === 0 ? null : Math.round((totalDelivered / totalOrders) * 1000) / 10}
+          value={deliveryRate}
           tone="auto"
-          hint={`${formatNumber(totalDelivered)} / ${formatNumber(totalOrders)} joʻnatilgan`}
+          hint={`${formatNumber(totalDelivered)} / ${formatNumber(resolved)} yakunlangan · ${formatNumber(
+            inFlight,
+          )} yoʻlda`}
         />
         <StatTile status={tileStatus} label="Tushum" value={totalRevenue || null} unit="money" />
       </div>

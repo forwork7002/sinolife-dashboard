@@ -190,8 +190,8 @@ type GaugeTone = 'auto' | 'neutral' | 'good' | 'warning' | 'critical'
 
 export function RingGauge({
   value,
-  size = 74,
-  thickness = 8,
+  size = 68,
+  thickness = 7,
   tone = 'auto',
   label,
 }: {
@@ -266,7 +266,13 @@ export function RingGauge({
       <div className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
         <span
           className="figure font-semibold"
-          style={{ fontSize: size * 0.24, color: 'var(--ink-primary)' }}
+          /*
+            0.2, not 0.24: at the old ratio "92.8%" cleared the stroke by
+            three pixels and read as squeezed into the ring rather than held
+            by it. The exact value always travels in the sr-only text and the
+            tile hint, so the inside of the ring only has to be LEGIBLE.
+          */
+          style={{ fontSize: size * 0.2, color: 'var(--ink-primary)' }}
         >
           <AnimatedNumber value={value} format={(v) => formatPercent(v, value >= 100 ? 0 : 1)} />
         </span>
@@ -308,7 +314,7 @@ export function GaugeTile({
 
       <div className="mt-2 flex items-center gap-3.5">
         {status === 'loading' ? (
-          <div className="skeleton h-[74px] w-[74px] rounded-full" role="status">
+          <div className="skeleton h-[68px] w-[68px] rounded-full" role="status">
             <span className="sr-only">Yuklanmoqda</span>
           </div>
         ) : status === 'error' ? (

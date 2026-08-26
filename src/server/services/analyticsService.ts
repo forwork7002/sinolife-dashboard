@@ -48,6 +48,18 @@ export interface AnalyticsContext {
 // DTOs
 // ---------------------------------------------------------------------------
 
+/** A SalesSummary with the money crossed into display form. */
+export interface SalesSummaryDto {
+  readonly revenue: MoneyDto
+  readonly pipelineValue: MoneyDto
+  readonly averageDeal: MoneyDto | null
+  readonly dealsCreated: number
+  readonly dealsWon: number
+  readonly dealsLost: number
+  readonly dealsOpen: number
+  readonly conversionRatePercent: number | null
+}
+
 export interface KpiCardDto {
   readonly key: string
 
@@ -321,7 +333,10 @@ export class AnalyticsService {
     ctx: AnalyticsContext,
     restrictToEmployeeId?: string,
   ): Promise<{
-    rows: readonly (EmployeePerformance & {
+    rows: readonly (Omit<EmployeePerformance, 'current' | 'previous' | 'revenueDelta'> & {
+      current: SalesSummaryDto
+      previous: SalesSummaryDto
+      revenueDelta: DeltaDto
       fullName: string
       position: string | null
       departmentName: string | null
@@ -389,11 +404,37 @@ export class AnalyticsService {
 
     const meta = new Map(scoped.map((e) => [e.id, e]))
 
+    /**
+     * Domain money crosses to the client HERE, or it does not cross at all.
+     *
+     * `SalesSummary` carries `Money` — a bigint in minor units — and the JSON
+     * layer serialises that bigint as a string with no `amount` field. This
+     * method used to spread the row as-is, so the employees table called
+     * `formatCompactUzs(revenue.amount)` on undefined and printed a literal
+     * "NaN" in every money cell of all 288 rows, in both themes, with all the
+     * share bars at zero width. Structure and the leaderboard already mapped
+     * through `toMoneyDto`; this was the one path that forgot.
+     */
+    const summaryDto = (s: SalesSummary) => ({
+      revenue: toMoneyDto(s.revenue),
+      pipelineValue: toMoneyDto(s.pipelineValue),
+      averageDeal: s.averageDeal === null ? null : toMoneyDto(s.averageDeal),
+      dealsCreated: s.dealsCreated,
+      dealsWon: s.dealsWon,
+      dealsLost: s.dealsLost,
+      dealsOpen: s.dealsOpen,
+      conversionRatePercent:
+        s.conversionRatePercent === null ? null : roundPercent(s.conversionRatePercent),
+    })
+
     return {
       rows: performance.map((row) => {
         const employee = meta.get(row.employeeId)!
         return {
           ...row,
+          current: summaryDto(row.current),
+          previous: summaryDto(row.previous),
+          revenueDelta: toDeltaDto(row.revenueDelta),
           fullName: employee.fullName,
           position: employee.position,
           departmentName: employee.departmentName,
@@ -424,7 +465,8 @@ export class AnalyticsService {
         employeeId: entry.employeeId,
         fullName: row.fullName,
         departmentName: row.departmentName,
-        revenue: toMoneyDto(row.current.revenue),
+        // Already DTO form — employees() crossed it.
+        revenue: row.current.revenue,
         dealsWon: row.current.dealsWon,
         conversionPercent:
           row.current.conversionRatePercent === null
@@ -432,7 +474,7 @@ export class AnalyticsService {
             : roundPercent(row.current.conversionRatePercent),
         kpiAchievementPercent:
           row.kpiAchievementPercent === null ? null : roundPercent(row.kpiAchievementPercent),
-        delta: toDeltaDto(row.revenueDelta),
+        delta: row.revenueDelta,
         value: entry.value,
       }
     })

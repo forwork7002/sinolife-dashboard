@@ -64,6 +64,11 @@
    */
   --ink-muted: #636d79;
   --grid: #e8eaee;
+  /* What an empty track is drawn in. Same as --grid in light; dark needs its
+     own step because --grid on a raised card measured 1.07:1 there — a ring's
+     remainder simply vanished and a 29% arc floated with nothing saying what
+     it was 29% OF. */
+  --track: #e8eaee;
   --axis: #c8ccd4;
   --border: rgba(12, 14, 18, 0.09);
   --border-strong: rgba(12, 14, 18, 0.16);
@@ -160,6 +165,7 @@
        cleared only 4.32:1 there. */
     --ink-muted: #8891a0;
     --grid: #23272f;
+    --track: #313845;
     --axis: #333944;
     --border: rgba(255, 255, 255, 0.11);
     --border-strong: rgba(255, 255, 255, 0.22);
@@ -215,6 +221,7 @@
   --ink-secondary: #a8b0bd;
   --ink-muted: #8891a0;
   --grid: #23272f;
+  --track: #313845;
   --axis: #333944;
   --border: rgba(255, 255, 255, 0.11);
   --border-strong: rgba(255, 255, 255, 0.22);
@@ -869,7 +876,7 @@ body {
   border-radius: 50%;
   background: conic-gradient(
     var(--gauge-color, var(--seq-450)) var(--gauge-sweep),
-    var(--grid) var(--gauge-sweep)
+    var(--track) var(--gauge-sweep)
   );
   mask: radial-gradient(
     closest-side,
