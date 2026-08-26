@@ -159,9 +159,15 @@ export function LeaderboardPage() {
     },
     {
       key: 'growth',
+      // Closed-date basis, and the median order closes 25 days after it is
+      // sold — so this column moves with fulfilment as much as with selling.
       header: t.table.growth,
       align: 'right',
-      render: (row) => <TrendIndicator delta={row.delta} />,
+      render: (row) => (
+        <span title={t.period.closedBasis}>
+          <TrendIndicator delta={row.delta} />
+        </span>
+      ),
     },
     // A column of 288 em dashes costs width and teaches the reader to skip it.
   ] as Column<LeaderboardRowDto>[]).filter((column) => column.key !== 'kpi' || hasKpiTargets)

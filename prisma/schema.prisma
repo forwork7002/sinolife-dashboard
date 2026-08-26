@@ -88,8 +88,15 @@ enum LogisticsRole {
   PREPARING
   /// Заказ в мой склад.
   WAREHOUSE
-  /// Успешно заказ — the operator reached the customer and confirmed.
+  /// Тасдиклаш · Заказ тасдиклаш — in the confirmation queue, not yet worked.
+  PENDING_CONFIRM
+  /// Тасдиклаш · Сделка успешна — an operator reached the customer and confirmed.
   CONFIRMED
+  /// Доставка · Успешно заказ — a post-delivery settlement stamp, NOT a
+  /// confirmation. It is written by automation within five seconds of
+  /// Доставлено in two thirds of cases; treating it as CONFIRMED made the
+  /// whole confirmation module a second copy of the delivery rate.
+  SETTLED
   /// В пути.
   IN_TRANSIT
   /// TOSHKENT-1, NAVOIY, VODIY, QASHQADARYO, SURXONDARYO.

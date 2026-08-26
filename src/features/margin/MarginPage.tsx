@@ -176,7 +176,7 @@ export function MarginPage() {
           label="Yalpi foyda"
           value={data?.gross.amount ?? null}
           unit="money"
-          hint="Faqat tannarxi maʼlum mahsulotlar"
+          hint="Faqat tannarxi maʼlum mahsulotlar · satr boʻyicha"
         />
         <StatTile
           status={tileStatus}

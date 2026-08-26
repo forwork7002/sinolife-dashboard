@@ -296,7 +296,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
         unstyled: no border, no radius, no padding, browser default size.
       */}
       <div
-        className="mt-1 [&>*]:w-full [&>*]:rounded-[var(--radius-panel-sm)] [&>*]:border [&>*]:px-2.5 [&>*]:py-1.5 [&>*]:text-xs [&>*]:outline-none"
+        className="mt-1 [&>*]:w-full [&>*]:rounded-[var(--radius-panel-sm)] [&>*]:border [&>*]:px-2.5 [&>*]:py-1.5 [&>*]:text-xs [&>*]:outline-none [&>*]:focusable"
         style={{
           colorScheme: 'light dark',
         }}

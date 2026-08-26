@@ -45,7 +45,12 @@ export type PipelineRoleValue = (typeof PIPELINE_ROLES)[number]
 export const LOGISTICS_ROLES = [
   'PREPARING',
   'WAREHOUSE',
+  /** In the confirmation queue, nobody has worked it yet. */
+  'PENDING_CONFIRM',
+  /** An operator reached the customer and confirmed. Тасдиклаш · Сделка успешна. */
   'CONFIRMED',
+  /** A post-delivery or payment stamp. NOT an operator reaching anyone. */
+  'SETTLED',
   'IN_TRANSIT',
   'REGIONAL_HUB',
   'CARRIER',

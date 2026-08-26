@@ -189,3 +189,57 @@ describe('provider construction', () => {
     expect(provider.capabilities.DEALS).toBe(true)
   })
 })
+
+/**
+ * The confirmation module measured the wrong pipeline for months.
+ *
+ * `Доставка · Успешно заказ` reads like an operator confirming an order and is
+ * not: it is stamped within five seconds of `Доставлено` in 2,869 of the 4,335
+ * deals reaching both, a median of 244 hours after creation. Mapping it to
+ * CONFIRMED made the whole Tasdiqlash page a second copy of the delivery rate,
+ * with a confirmation rate of 100% in every month the database holds.
+ *
+ * The real ladder is the Тасдиклаш (C4) pipeline: median queue-to-confirmed is
+ * 85 minutes, the shape of someone picking up a phone.
+ */
+describe('confirmation stage roles', () => {
+  it('does not treat the post-delivery settlement stamp as a confirmation', () => {
+    expect(logisticsRole('C6:UC_YUKVF1')).toBe('SETTLED')
+  })
+
+  it('maps the Тасдиклаш ladder, which is where confirmation actually happens', () => {
+    expect(logisticsRole('C4:NEW')).toBe('PENDING_CONFIRM')
+    expect(logisticsRole('C4:WON')).toBe('CONFIRMED')
+  })
+
+  it('treats every no-answer stage as chasing, including both SMS variants', () => {
+    for (const stage of [
+      'C4:UC_JQR9F1', // Недозвон смс
+      'C4:FINAL_INVOICE', // Пропущенный
+      'C4:UC_GYMGQS', // Смс коллаген тастиклаш
+      'C4:PREPAYMENT_INVOICE', // Смс zextra тастиклаш
+    ]) {
+      expect(logisticsRole(stage)).toBe('CHASING')
+    }
+  })
+
+  it('counts a confirmation failure as a pre-dispatch cancellation, not a return', () => {
+    // Nothing shipped, so it did not cost a delivery.
+    expect(logisticsRole('C4:LOSE')).toBe('CANCELLED_EARLY')
+    expect(logisticsRole('C4:UC_V4JJIW')).toBe('CANCELLED_EARLY')
+  })
+
+  it('keeps payment stamps out of the call metric', () => {
+    // Paid is a settlement fact, not an operator reaching anyone.
+    for (const stage of ['C14:PREPAYMENT_INVOIC', 'C14:EXECUTING', 'C14:FINAL_INVOICE']) {
+      expect(logisticsRole(stage)).toBe('SETTLED')
+    }
+  })
+
+  it('leaves the delivery ladder alone', () => {
+    expect(logisticsRole('C6:WON')).toBe('DELIVERED')
+    expect(logisticsRole('C6:LOSE')).toBe('REFUSED')
+    expect(logisticsRole('C6:UC_3U7025')).toBe('CANCELLED_EARLY')
+  })
+})
+

@@ -378,10 +378,16 @@ function FreshnessPanel({ lastSyncedAt }: { lastSyncedAt?: string | null }) {
         className="tabular text-[11px]"
         style={{ color: stale ? 'var(--status-warning)' : 'var(--ink-secondary)' }}
         title={formatDateTime(lastSyncedAt)}
-        aria-live="polite"
       >
         {relativeMinutes(minutes)}
-        {stale && <span className="ml-1 font-medium">· eskirgan</span>}
+        {/* A glyph as well as the word, matching StatusChip's ● ▲ ■ — and NO
+            aria-live: this panel re-renders every fifteen seconds, so a live
+            region would announce a ticking clock forever. */}
+        {stale && (
+          <span className="ml-1 font-medium">
+            <span aria-hidden="true">▲</span> eskirgan
+          </span>
+        )}
       </p>
     </div>
   )

@@ -107,11 +107,11 @@ export function ConfirmationPage() {
       /*
         A number, not a meter.
         
-        This column is exactly 100.0% in 89 of 92 rows, so 150px of the table
-        was a wall of identical full green bars — a bar chart of a constant.
-        The three rows that deviate are the entire point of the column, and a
-        number makes them findable where a meter buried them. The meter stays
-        on Qamrov, which runs 19.5% to 66.7% and genuinely varies.
+        This column used to be exactly 100.0% in 89 of 92 rows — a bar chart of
+        a constant, 150px of identical full green bars. The rows that deviate
+        are the entire point of the column, and a number makes them findable
+        where a meter buried them. The meter stays on Qamrov, which genuinely
+        varies from operator to operator.
       */
       render: (row) =>
         row.confirmed === 0 ? (
@@ -144,7 +144,16 @@ export function ConfirmationPage() {
       meta={query.data?.meta}
     >
       <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <StatTile status={tileStatus} label="Jami buyurtma" value={totals?.orders ?? null} unit="count" />
+        <StatTile
+          status={tileStatus}
+          // Not "all orders": the cohort is what entered the confirmation
+          // queue in this window, which is the only denominator a confirmation
+          // rate can honestly divide by.
+          label="Navbatga tushdi"
+          value={totals?.orders ?? null}
+          unit="count"
+          hint="Tasdiqlash bosqichiga kirgan buyurtmalar"
+        />
         <StatTile
           status={tileStatus}
           label="Tasdiqlangan"
@@ -172,7 +181,7 @@ export function ConfirmationPage() {
           label="Tasdiqlash qamrovi"
           value={totals?.coverage ?? null}
           unit="percent"
-          hint="Buyurtmalarning qanchasi bosqichdan oʻtgan"
+          hint="Navbatga tushganlarning qanchasi tasdiqlangan"
           context={<Meter value={totals?.coverage ?? null} tone="neutral" />}
         />
         <StatTile
@@ -197,12 +206,11 @@ export function ConfirmationPage() {
       {/*
         Why coverage is short, split into the two reasons it can be.
 
-        The banner this replaced said the uncovered orders "went straight to
-        delivery without passing the confirmation stage". They did not: almost
-        all of them are still in transit and have not REACHED the stage yet.
-        The sentence read as an indictment of the operators for something the
-        calendar was doing, and it moved in the wrong direction — the further
-        into a month you looked, the worse it made the team appear.
+        An order still sitting in the queue has not been SKIPPED, it has not
+        been worked yet; one that left the queue unconfirmed is the real gap.
+        Merged, the sentence read as an indictment of the operators for
+        something the calendar was doing, and it got worse the further into a
+        month you looked.
 
         Both numbers come from the same query as the denominator, so the
         sentence cannot drift away from the figure above it.
@@ -217,17 +225,17 @@ export function ConfirmationPage() {
           }}
         >
           <strong style={{ color: 'var(--ink-primary)' }}>
-            Buyurtmalarning {totals.coverage}% qismi tasdiqlash bosqichidan oʻtgan.
+            Navbatga tushgan buyurtmalarning {totals.coverage}% qismi tasdiqlangan.
           </strong>{' '}
           {totals.unconfirmedOpen > 0 && (
             <>
-              Qolganlaridan {formatNumber(totals.unconfirmedOpen)} tasi hali yoʻlda — ular bosqichga
-              yetib bormagan, oʻtkazib yuborilmagan.{' '}
+              Qolganlaridan {formatNumber(totals.unconfirmedOpen)} tasi hali navbatda — ular
+              oʻtkazib yuborilmagan, hali ishlanmagan.{' '}
             </>
           )}
           {totals.unconfirmedClosed > 0 && (
             <>
-              {formatNumber(totals.unconfirmedClosed)} tasi esa bosqichdan oʻtmay yakunlangan —
+              {formatNumber(totals.unconfirmedClosed)} tasi esa tasdiqlanmay yakunlangan —
               haqiqiy qamrov boʻshligʻi shu.
             </>
           )}

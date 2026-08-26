@@ -360,7 +360,15 @@ function KpiRow({ overview, loading }: { overview?: OverviewDto; loading: boolea
 function HeroCard({ card, trend }: { card: KpiCardDto; trend: readonly number[] }) {
   return (
     <div
-      className="card flex flex-col justify-between p-5"
+      /*
+        `pt-3.5` matches StatTile, not `p-5`.
+        
+        All four cards in this row start at the same y, and the hero's label is
+        the same 11px uppercase type as its three neighbours' — but 20px of top
+        padding against their 14px put identical labels on two baselines, 6px
+        apart, in a single row. The generous padding stays everywhere else.
+      */
+      className="card flex flex-col justify-between px-5 pt-3.5 pb-5"
       style={{
         // The one card that is deliberately more raised than the rest: it
         // carries the number the whole screen exists to show.
@@ -387,7 +395,11 @@ function HeroCard({ card, trend }: { card: KpiCardDto; trend: readonly number[] 
         </p>
         <div className="mt-2 flex items-center gap-2">
           <TrendIndicator delta={card.delta} />
-          <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+          <span
+            className="text-[11px]"
+            style={{ color: 'var(--ink-muted)' }}
+            title={t.period.closedBasis}
+          >
             {t.period.comparedTo}
           </span>
         </div>
@@ -477,7 +489,7 @@ function OperationsRow({ operations }: { operations: Operations }) {
           confirmation
             ? `${formatNumber(confirmation.totals.confirmed)} / ${formatNumber(
                 confirmation.totals.orders,
-              )} buyurtma`
+              )} navbatdan`
             : 'yuklanmoqda'
         }
         context={<Meter value={confirmation?.totals.coverage ?? null} tone="neutral" />}
@@ -531,6 +543,10 @@ function OperationsRow({ operations }: { operations: Operations }) {
 
 function LeaderboardTable({ rows }: { rows: readonly LeaderboardRowDto[] }) {
   const max = Math.max(1, ...rows.map((r) => r.revenue.amount))
+  // The kpi table is empty on this portal, so the column is em dashes all the
+  // way down — costing width and teaching the reader to skip a column that
+  // will matter the day targets are loaded.
+  const hasKpiTargets = rows.some((r) => r.kpiAchievementPercent !== null)
 
   return (
     <div className="-mx-1 overflow-x-auto">
@@ -543,7 +559,7 @@ function LeaderboardTable({ rows }: { rows: readonly LeaderboardRowDto[] }) {
             <Th className="w-32">{t.table.share}</Th>
             <Th className="text-right">{t.table.dealsWon}</Th>
             <Th className="text-right">{t.table.conversion}</Th>
-            <Th className="text-right">{t.table.kpi}</Th>
+            {hasKpiTargets && <Th className="text-right">{t.table.kpi}</Th>}
             <Th className="text-right">{t.table.growth}</Th>
           </tr>
         </thead>
@@ -584,9 +600,11 @@ function LeaderboardTable({ rows }: { rows: readonly LeaderboardRowDto[] }) {
               </Td>
               <Td className="tabular text-right">{formatNumber(row.dealsWon)}</Td>
               <Td className="tabular text-right">{formatPercent(row.conversionPercent)}</Td>
-              <Td className="tabular text-right">
-                {formatPercent(row.kpiAchievementPercent, 0)}
-              </Td>
+              {hasKpiTargets && (
+                <Td className="tabular text-right">
+                  {formatPercent(row.kpiAchievementPercent, 0)}
+                </Td>
+              )}
               <Td className="text-right">
                 <TrendIndicator delta={row.delta} />
               </Td>

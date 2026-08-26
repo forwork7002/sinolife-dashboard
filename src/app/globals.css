@@ -34,10 +34,19 @@
   --surface-sunken: #eef0f4;
   --ink-primary: #0c0e12;
   --ink-secondary: #4c525e;
-  /* 4.83:1 on the card surface, 4.51:1 on the page. It was #858c99 at
-     3.38:1 — below the text minimum, on the token that carries every label,
-     column header and hint in the application. */
-  --ink-muted: #6b7280;
+  /**
+   * Chosen against the WORST surface it lands on, not against white.
+   *
+   * It carries every label, column header and hint in the application, and it
+   * appears on three light surfaces. Picked against `--surface` alone it
+   * cleared 4.83:1 there and 4.24:1 on `--surface-sunken`, which is the table
+   * header — the place a column label most needs to be legible.
+   *
+   *   on --surface #ffffff        5.26:1
+   *   on --page    #f6f7f9        4.90:1
+   *   on --sunken  #eef0f4        4.61:1   ← the one that decides the value
+   */
+  --ink-muted: #636d79;
   --grid: #e8eaee;
   --axis: #c8ccd4;
   --border: rgba(12, 14, 18, 0.09);
@@ -130,7 +139,10 @@
     --surface-sunken: #0b0d11;
     --ink-primary: #f5f6f8;
     --ink-secondary: #a8b0bd;
-    --ink-muted: #7b8492;
+    /* 5.89 surface · 5.14 raised · 6.12 sunken · 6.37 page. Raised decides it:
+       a card in dark mode is the lightest surface, and the previous value
+       cleared only 4.32:1 there. */
+    --ink-muted: #8891a0;
     --grid: #23272f;
     --axis: #333944;
     --border: rgba(255, 255, 255, 0.11);
@@ -181,7 +193,7 @@
   --surface-sunken: #0b0d11;
   --ink-primary: #f5f6f8;
   --ink-secondary: #a8b0bd;
-  --ink-muted: #7b8492;
+  --ink-muted: #8891a0;
   --grid: #23272f;
   --axis: #333944;
   --border: rgba(255, 255, 255, 0.11);

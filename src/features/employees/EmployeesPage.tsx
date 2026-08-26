@@ -58,6 +58,11 @@ export function EmployeesPage() {
    * nothing. The deals table sorts server-side because it is paginated and the
    * client only ever holds one page.
    */
+  /** Does the kpi table hold anything for this period? */
+  const hasKpiTargets = (query.data?.data.rows ?? []).some(
+    (row) => row.kpiAchievementPercent !== null,
+  )
+
   const rows = useMemo(() => {
     const list = [...(query.data?.data.rows ?? [])]
     const direction = order === 'asc' ? 1 : -1
@@ -105,7 +110,7 @@ export function EmployeesPage() {
 
   const teamRevenue = rows.reduce((sum, row) => sum + row.current.revenue.amount, 0)
 
-  const columns: Column<EmployeeRow>[] = [
+  const columns: Column<EmployeeRow>[] = ([
     {
       key: 'name',
       // The row's name: what a screen reader announces the row BY.
@@ -201,7 +206,11 @@ export function EmployeesPage() {
     {
       key: 'kpi',
       header: t.table.kpi,
-      sortKey: 'kpi',
+      // Sortable only when there is something to sort. The `kpi` table is
+      // empty on this portal, so every row is null — and sorting on a column
+      // of nulls fell through to alphabetical order, which looks like a broken
+      // sort rather than an absent metric.
+      sortKey: hasKpiTargets ? 'kpi' : undefined,
       align: 'right',
       numeric: true,
       render: (row) => formatPercent(row.kpiAchievementPercent, 0),
@@ -210,9 +219,14 @@ export function EmployeesPage() {
       key: 'growth',
       header: t.table.growth,
       align: 'right',
-      render: (row) => <TrendIndicator delta={row.revenueDelta} />,
+      render: (row) => (
+        <span title={t.period.closedBasis}>
+          <TrendIndicator delta={row.revenueDelta} />
+        </span>
+      ),
     },
-  ]
+    // A column of 288 em dashes costs width and teaches the reader to skip it.
+  ] as Column<EmployeeRow>[]).filter((column) => column.key !== 'kpi' || hasKpiTargets)
 
   return (
     <PageShell

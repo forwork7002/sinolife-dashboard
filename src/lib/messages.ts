@@ -100,6 +100,16 @@ export const t = {
     to: 'Tugash',
     apply: 'Qoʻllash',
     comparedTo: 'oldingi davrga nisbatan',
+    /*
+      The basis, stated where the delta is.
+
+      Revenue is recognised at Доставлено, and the median order takes 25 days
+      to get there — so a to-date monthly comparison is measuring warehouse
+      throughput as much as selling. Only 898 of August's 3,574 wins were
+      CREATED in August; the rest came from June and July. Saying so is the
+      honest fix; changing the basis would break the portal reconciliation.
+    */
+    closedBasis: 'Yopilgan sana boʻyicha — buyurtma oʻrtacha 25 kunda yopiladi',
     truncated: 'Taqqoslash davri qisqartirildi',
   },
 

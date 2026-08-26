@@ -270,8 +270,10 @@ export function groupRevenue(
 /**
  * Product revenue, from line items rather than deal totals.
  *
- * Only items belonging to deals WON in the period count, so product revenue
- * reconciles exactly with headline revenue.
+ * Only items belonging to deals WON in the period count — but this is a
+ * LINE-ITEM basis and the headline is a deal-amount one, and the portal's two
+ * records do not always agree. Over a month they differ by 5.5 mln soʻm across
+ * 143 of 3,574 deals. See the note on AnalyticsService.products.
  */
 export function productRevenue(
   deals: readonly AnalyticsDeal[],

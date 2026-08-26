@@ -99,7 +99,21 @@ export const DELIVERY_STAGE_ROLES: Readonly<Record<string, LogisticsRoleValue>> 
   'C6:NEW': 'PREPARING',                  // Подготовка товара
   'C6:EXECUTING': 'PREPARING',            // Обработка заказов
   'C6:UC_IAU4Q5': 'WAREHOUSE',            // Заказ в мой склад
-  'C6:UC_YUKVF1': 'CONFIRMED',            // Успешно заказ
+  /*
+    NOT 'CONFIRMED'.
+
+    "Успешно заказ" sounds like an operator confirming an order, and the whole
+    Тасдиклаш module was built on that reading. The data says otherwise: it is
+    stamped within FIVE SECONDS of Доставлено in 2,869 of the 4,335 deals that
+    reach both, a median of 244 hours after the order was created, and 858 of
+    896 deals carrying it are already closed. It is a settlement stamp written
+    by automation after the parcel arrives.
+
+    The consequence was that every number on the confirmation page was the
+    delivery rate wearing a different label, and per-operator "confirmed"
+    equalled "delivered" in 85 of 92 rows.
+  */
+  'C6:UC_YUKVF1': 'SETTLED',              // Успешно заказ — post-delivery
   'C6:UC_4UD7I9': 'IN_TRANSIT',           // В пути
   'C6:PREPARATION': 'REGIONAL_HUB',       // TOSHKENT-1
   'C6:UC_32AOK8': 'REGIONAL_HUB',         // NAVOIY
@@ -115,12 +129,31 @@ export const DELIVERY_STAGE_ROLES: Readonly<Record<string, LogisticsRoleValue>> 
   'C6:LOSE': 'REFUSED',                   // Отказ
   'C6:UC_3U7025': 'CANCELLED_EARLY',      // Отказ предварительно
 
+  /*
+    Тасдиклаш (C4) is the REAL confirmation ladder.
+
+    Its stages carry no logistics role at all until now, which is why the
+    module reached for C6 in the first place. Median C4:NEW → C4:WON is 85
+    minutes — the shape of someone picking up a phone, against the 244 hours
+    of the stage it replaces.
+  */
+  'C4:NEW': 'PENDING_CONFIRM',            // Заказ тасдиклаш — in the queue
+  'C4:WON': 'CONFIRMED',                  // Сделка успешна — reached and confirmed
+  'C4:UC_GYMGQS': 'CHASING',              // Смс коллаген тастиклаш
+  'C4:PREPAYMENT_INVOICE': 'CHASING',     // Смс zextra тастиклаш
+  'C4:UC_JQR9F1': 'CHASING',              // Недозвон смс — no answer, SMS sent
+  'C4:FINAL_INVOICE': 'CHASING',          // Пропущенный — missed call
+  'C4:LOSE': 'CANCELLED_EARLY',           // Ошибка первичный отдел
+  'C4:UC_V4JJIW': 'CANCELLED_EARLY',      // UTECHKA — lost before dispatch
+
   // Ecommerce runs its own shorter ladder.
   'C14:NEW': 'PREPARING',                 // Новая заявка
   'C14:PREPARATION': 'PREPARING',         // В обработке
-  'C14:PREPAYMENT_INVOIC': 'CONFIRMED',   // Оплаченно с click
-  'C14:EXECUTING': 'CONFIRMED',           // Оплаченно с payme
-  'C14:FINAL_INVOICE': 'CONFIRMED',       // Оплата при получении
+  // Paid, which is a settlement fact rather than an operator reaching anyone.
+  // Grouping these under CONFIRMED put payment events into a call metric.
+  'C14:PREPAYMENT_INVOIC': 'SETTLED',     // Оплаченно с click
+  'C14:EXECUTING': 'SETTLED',             // Оплаченно с payme
+  'C14:FINAL_INVOICE': 'SETTLED',         // Оплата при получении
   'C14:UC_T2UAZ7': 'IN_TRANSIT',          // В пути
   'C14:UC_EW3SZA': 'CHASING',             // Ожидания и нд
   'C14:UC_WFN8MP': 'DELIVERED',           // Доставлено

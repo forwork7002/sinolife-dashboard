@@ -395,7 +395,16 @@ export class InsightsService {
         unconfirmedClosed: windowOrders.unconfirmedClosed,
         confirmed,
         unreachable,
-        undecided: sum((r) => r.undecided),
+        /*
+          Derived from the window, not summed from the rows.
+          
+          `undecided` rode the same filtered row list as `orders` did, so it
+          reported 1,227 where the window holds 1,289 — the 62 orders belonging
+          to operators who never touched the stage are undecided by definition,
+          and dropping them understated exactly the population the number is
+          about.
+        */
+        undecided: windowOrders.unconfirmedOpen + windowOrders.unconfirmedClosed,
         /**
          * How much of the order flow the confirmation step actually covers.
          *

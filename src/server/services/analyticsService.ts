@@ -227,9 +227,18 @@ export class AnalyticsService {
   /**
    * Product performance, with names resolved.
    *
-   * Product revenue is built from line items belonging to won deals, so it
-   * reconciles exactly with headline revenue rather than being a second,
-   * slightly different number for the same thing.
+   * A LINE-ITEM basis, which is not the same number as the headline.
+   *
+   * Both count only deals won in the period, but they add up different things:
+   * the headline sums `deal.amountMinor`, this sums `deal_item.totalMinor`.
+   * Across one month they differ by 5.5 mln soʻm over 143 of 3,574 deals —
+   * mostly one-tiyin roundings, plus six real Bitrix24 mismatches including a
+   * 1.5 mln deal carrying no line items at all.
+   *
+   * Both compact-format to "5.7 mlrd", so the gap is invisible on screen and
+   * appears the moment someone exports. Stating the basis is the fix; forcing
+   * them equal would mean choosing which of the portal's two records to
+   * disbelieve.
    */
   async products(ctx: AnalyticsContext) {
     const all = await this.load(ctx)
@@ -323,11 +332,27 @@ export class AnalyticsService {
       this.reference.findEmployees(),
     ])
 
-    // Authorisation scope wins over the requested filter: a SALES caller sees
-    // exactly one row regardless of what they asked for.
-    const requested = ctx.filters.employeeIds?.length
+    /**
+     * Narrow the roster by BOTH filters the caller can set.
+     *
+     * The department filter was ignored here, and the leaderboard's only
+     * filter is a department one: choosing a 27-person team still returned all
+     * 288 employees, 276 of them zeros, with the podium and the ranking
+     * computed against the whole company. The control appeared to do nothing,
+     * which is worse than not offering it.
+     *
+     * Authorisation scope still wins over both: a SALES caller sees exactly
+     * one row regardless of what they asked for.
+     */
+    const pickedEmployees = ctx.filters.employeeIds?.length
       ? roster.filter((e) => ctx.filters.employeeIds!.includes(e.id))
       : roster
+
+    const requested = ctx.filters.departmentIds?.length
+      ? pickedEmployees.filter(
+          (e) => e.departmentId !== null && ctx.filters.departmentIds!.includes(e.departmentId),
+        )
+      : pickedEmployees
 
     const scoped = restrictToEmployeeId
       ? requested.filter((e) => e.id === restrictToEmployeeId)

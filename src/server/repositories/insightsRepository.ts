@@ -550,18 +550,36 @@ export class InsightsRepository {
   /**
    * Order confirmation, per operator.
    *
-   * WHERE THIS COMES FROM
-   * Not from the confirmation FIELD. The portal has a "Тастиклаш анализ"
-   * enumeration and it is filled on 17 deals out of 16 618 — building a report
-   * on it would produce an empty screen that looks like an outage. Nor from
-   * the `Тасдиклаш` pipeline, which holds 164 deals and has never won or lost
-   * one.
+   * WHERE THIS COMES FROM — AND WHERE IT USED TO COME FROM
+   * Not from the confirmation FIELD: the portal's "Тастиклаш анализ"
+   * enumeration is filled on 17 deals out of 16 618, and a report on it would
+   * be an empty screen that looks like an outage.
    *
-   * The confirmation that actually happens is a STAGE: an operator moves the
-   * order to `Успешно заказ` once they have reached the customer and the order
-   * is agreed. 4 339 deals have passed through it. `Пропущенный` and
-   * `Юрист смс` are the other side — the customer could not be reached. Both
-   * are read from stage history, because a delivered order left those stages
+   * It used to come from `Доставка · Успешно заказ`, on the reading that an
+   * operator moves an order there once they have reached the customer. That
+   * reading was wrong, and it made this entire module a second copy of the
+   * delivery rate. The stage is stamped within FIVE SECONDS of `Доставлено` in
+   * 2 869 of the 4 335 deals reaching both, a median of 244 hours after the
+   * order is created — automation, after the parcel has already arrived.
+   * Per-operator "confirmed" equalled "delivered" in 85 of 92 rows, and the
+   * confirmation rate was 100% in every month the database holds.
+   *
+   * The real ladder is the `Тасдиклаш` pipeline, whose stages carried no
+   * logistics role at all — which is why the module reached elsewhere for one.
+   * Median `Заказ тасдиклаш` → `Сделка успешна` is 85 minutes: the shape of
+   * someone picking up a phone.
+   *
+   *   PENDING_CONFIRM  Заказ тасдиклаш          the queue, and the cohort
+   *   CONFIRMED        Сделка успешна           reached and agreed
+   *   CHASING          Недозвон смс, Пропущенный, the SMS stages
+   *   CANCELLED_EARLY  Ошибка первичный отдел, UTECHKA
+   *
+   * THE COHORT IS ENTRY INTO THE QUEUE, not "orders created in the window".
+   * Anything that reached Доставка got there through `Сделка успешна`, so a
+   * delivery-based denominator makes confirmed ≡ entered and the rate 100%
+   * again in new clothes. Counting from the queue is what lets it fall.
+   *
+   * Everything is read from stage HISTORY: a delivered order left these stages
    * long ago and its current stage cannot say it was ever there.
    *
    * The last two columns are the point of the report. A high confirmation rate
@@ -585,13 +603,24 @@ export class InsightsRepository {
       }[]
     >(
       `
-      WITH touched AS (
+      WITH queued AS (
+        -- The cohort: orders that ENTERED the confirmation queue in the window.
+        -- Not "orders created in the window" — see the note above this method.
+        SELECT h."dealId" AS deal_id, min(h."enteredAt") AS queued_at
+          FROM "deal_stage_history" h
+          JOIN "deal_stage" s ON s."id" = h."stageId"
+         WHERE s."logisticsRole" = 'PENDING_CONFIRM'
+         GROUP BY h."dealId"
+        HAVING min(h."enteredAt") >= $1 AND min(h."enteredAt") < $2
+      ),
+      touched AS (
         SELECT
           h."dealId" AS deal_id,
           bool_or(s."logisticsRole" = 'CONFIRMED') AS reached_confirmed,
           bool_or(s."logisticsRole" = 'CHASING')   AS reached_chasing
         FROM "deal_stage_history" h
         JOIN "deal_stage" s ON s."id" = h."stageId"
+        JOIN queued q ON q.deal_id = h."dealId"
         GROUP BY h."dealId"
       )
       SELECT
@@ -622,14 +651,15 @@ export class InsightsRepository {
       FROM "deal" d
       JOIN "employee" e ON e."id" = d."employeeId"
       JOIN "deal_stage" cur ON cur."id" = d."stageId"
+      JOIN queued q ON q.deal_id = d."id"
       LEFT JOIN touched t ON t.deal_id = d."id"
-      WHERE d."countsAsRevenue"
-        AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
+      -- No countsAsRevenue here: the confirmation queue is a pipeline of its
+      -- own, and the guard exists to stop the same order being counted twice
+      -- for MONEY. Applying it to a stage cohort would drop the whole cohort.
       GROUP BY e."id", e."fullName"
-      -- Operators who never touched the stage have nothing to report per-row.
-      -- They still count in the coverage denominator — see windowOrders below,
-      -- which deliberately does NOT carry this filter.
-      HAVING count(*) FILTER (WHERE t.reached_confirmed OR t.reached_chasing) > 0
+      -- No HAVING. Every row here is an operator with orders IN the queue, so
+      -- one who confirmed none of them is the most interesting row on the page
+      -- rather than one to hide.
       ORDER BY orders DESC
       `,
       period.start,
@@ -670,27 +700,34 @@ export class InsightsRepository {
       { orders: bigint; unconfirmed_open: bigint; unconfirmed_closed: bigint }[]
     >(
       `
-      WITH reached AS (
+      WITH queued AS (
+        SELECT h."dealId" AS deal_id, min(h."enteredAt") AS queued_at
+          FROM "deal_stage_history" h
+          JOIN "deal_stage" s ON s."id" = h."stageId"
+         WHERE s."logisticsRole" = 'PENDING_CONFIRM'
+         GROUP BY h."dealId"
+        HAVING min(h."enteredAt") >= $1 AND min(h."enteredAt") < $2
+      ),
+      reached AS (
         SELECT DISTINCT h."dealId" AS deal_id
           FROM "deal_stage_history" h
           JOIN "deal_stage" s ON s."id" = h."stageId"
          WHERE s."logisticsRole" = 'CONFIRMED'
       )
       SELECT count(*)::bigint AS orders,
-             -- Why coverage is not 100%: an order still in transit has not
-             -- skipped the step, it has not reached it yet. Separating the two
-             -- is the difference between "operators are not confirming" and
-             -- "the month is not over".
+             -- Why coverage is not 100%: an order still sitting in the queue
+             -- has not been skipped, it has not been WORKED yet. Separating
+             -- the two is the difference between "operators are not
+             -- confirming" and "the month is not over".
              count(*) FILTER (
                WHERE r.deal_id IS NULL AND d."status" = 'OPEN'
              )::bigint AS unconfirmed_open,
              count(*) FILTER (
                WHERE r.deal_id IS NULL AND d."status" <> 'OPEN'
              )::bigint AS unconfirmed_closed
-        FROM "deal" d
+        FROM queued q
+        JOIN "deal" d ON d."id" = q.deal_id
         LEFT JOIN reached r ON r.deal_id = d."id"
-       WHERE d."countsAsRevenue"
-         AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
       `,
       period.start,
       period.end,

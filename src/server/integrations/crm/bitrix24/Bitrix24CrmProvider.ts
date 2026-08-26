@@ -1016,7 +1016,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
            * discounts by 389 mln soʻm — a quarter of the total — and silently,
            * because a discount that is too small makes margin look better.
            */
-          discountMinor: toMinorUnits(row.DISCOUNT_SUM) * BigInt(quantity),
+          discountMinor: discountOf(row, unit, quantity),
           // A rate is scale-free, so this one needs no quantity. 100 means the
           // line was given away outright; those destroy margin silently unless
           // they are visible.
@@ -1389,3 +1389,32 @@ export function redact(error: unknown): string {
     .replace(/https:\/\/[^\s/]+\/rest\/\d+\/[^\s/]+/gi, 'https://<portal>/rest/<redacted>')
     .replace(/\b[a-z0-9]{20,}\b/gi, '<redacted>')
 }
+
+/**
+ * A line's discount, per line, with the impossible rows rejected.
+ *
+ * QUANTITY: Bitrix24's DISCOUNT_SUM is per UNIT despite the name — the
+ * portal's own arithmetic is `PRICE + DISCOUNT_SUM = list price`, and the
+ * database confirms it at every quantity above one.
+ *
+ * THE REJECTED ROWS: 33 lines carry `DISCOUNT_SUM = -PRICE` with
+ * `DISCOUNT_RATE = 0`. Read literally that says the catalogue price was
+ * exactly zero and the customer was charged a markup of the entire sale — a
+ * rate of zero and an amount of everything cannot both be true. They are a
+ * parse artefact worth 22.6 mln soʻm of phantom markup, and reporting them as
+ * "sold above list" would be inventing a fact. Zero is the honest value: no
+ * discount is recorded for these lines, because none was.
+ */
+function discountOf(
+  row: { DISCOUNT_SUM?: string; DISCOUNT_RATE?: string },
+  unitPriceMinor: bigint,
+  quantity: number,
+): bigint {
+  const perUnit = toMinorUnits(row.DISCOUNT_SUM)
+  const rateBp = Math.round(Number(row.DISCOUNT_RATE ?? 0) * 100)
+
+  if (rateBp === 0 && perUnit === -unitPriceMinor && perUnit !== 0n) return 0n
+
+  return perUnit * BigInt(quantity)
+}
+

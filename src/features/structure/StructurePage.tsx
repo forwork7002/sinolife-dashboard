@@ -171,7 +171,12 @@ function Branch({ node, siblingMax }: { node: StructureDto; siblingMax: number }
   return (
     <>
       <tr>
-        <td className="px-3 py-1.5" style={{ paddingLeft: 12 + node.depth * 18 }}>
+        {/* The department name is what a screen reader announces the row BY. */}
+        <th
+          scope="row"
+          className="px-3 py-1.5 text-left font-normal"
+          style={{ paddingLeft: 12 + node.depth * 18 }}
+        >
           <div className="flex items-center gap-1.5">
             {hasChildren ? (
               <button
@@ -206,7 +211,7 @@ function Branch({ node, siblingMax }: { node: StructureDto; siblingMax: number }
               {node.name}
             </span>
           </div>
-        </td>
+        </th>
         <td className="px-3 py-1.5 text-xs" style={{ color: 'var(--ink-secondary)' }}>
           {node.headName ?? <span style={{ color: 'var(--ink-muted)' }}>—</span>}
         </td>
