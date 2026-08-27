@@ -70,27 +70,39 @@ export function formatPercent(value: number | null, digits = 1): string {
   return `${percentFormat(digits).format(value)}%`
 }
 
+/**
+ * Month names are a table, not a locale lookup.
+ *
+ * `Intl.DateTimeFormat('uz-UZ', { month: 'short' })` is only as good as the
+ * browser's ICU build, and several real builds (including the Chromium this
+ * dashboard is read in) ship no abbreviated Uzbek months at all — the CLDR
+ * fallback renders the literal pattern "M08", so every axis tick and period
+ * line read "2026 M08 01". Node's full ICU hid the bug on the server and it
+ * appeared only after hydration. Twelve strings cost nothing and render the
+ * same in every browser.
+ */
+const UZ_MONTHS_SHORT = [
+  'yan', 'fev', 'mar', 'apr', 'may', 'iyn',
+  'iyl', 'avg', 'sen', 'okt', 'noy', 'dek',
+] as const
+
+/** Local time zone on purpose — identical semantics to the Intl calls this
+ *  replaced, which also carried no explicit timeZone. */
 export function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat(LOCALE, {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(iso))
+  const d = new Date(iso)
+  return `${d.getDate()}-${UZ_MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`
 }
 
 export function formatDateShort(iso: string): string {
-  return new Intl.DateTimeFormat(LOCALE, { day: '2-digit', month: 'short' }).format(
-    new Date(iso),
-  )
+  const d = new Date(iso)
+  return `${d.getDate()}-${UZ_MONTHS_SHORT[d.getMonth()]}`
 }
 
 export function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat(LOCALE, {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(iso))
+  const d = new Date(iso)
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${d.getDate()}-${UZ_MONTHS_SHORT[d.getMonth()]}, ${hh}:${mm}`
 }
 
 /** Em dash for "no value". Deliberately distinct from a zero. */

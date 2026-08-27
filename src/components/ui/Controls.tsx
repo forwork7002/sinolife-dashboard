@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react'
 
+import { Button } from '@/components/ui/Button'
 import { formatNumber } from '@/lib/format'
 import { t } from '@/lib/messages'
 
@@ -169,14 +170,11 @@ export function MultiSelect({
           }}
         >
           {selected.length > 0 && (
-            <button
-              type="button"
-              onClick={() => onChange([])}
-              className="focusable mb-1 w-full rounded-md px-2 py-1.5 text-left text-xs"
-              style={{ color: 'var(--ink-muted)' }}
-            >
+            // The button kit's ghost: quiet until hovered, so clearing never
+            // competes with the options it clears.
+            <Button variant="ghost" size="sm" className="mb-1 w-full" onClick={() => onChange([])}>
               Tozalash
-            </button>
+            </Button>
           )}
           {options.map((option) => (
             <label
@@ -201,7 +199,19 @@ export function MultiSelect({
   )
 }
 
-/** Single-choice segmented control. */
+/**
+ * Single-choice segmented control.
+ *
+ * The active segment is a raised chip — `--surface-raised` with the card
+ * shadow — sitting in a `--grid` well, the same recipe the period picker's
+ * tablist already used. The previous solid-ink block was the heaviest mark
+ * on any toolbar it appeared in, which handed the strongest ink on the
+ * screen to a CONTROL; the chip says "you are here" with elevation instead
+ * of weight, and the well provides the boundary the border used to.
+ *
+ * Semantics stay native: real buttons with `aria-pressed`, so Tab reaches
+ * every option and Space/Enter work for free.
+ */
 export function SegmentedControl<T extends string>({
   value,
   options,
@@ -217,8 +227,8 @@ export function SegmentedControl<T extends string>({
     <div
       role="group"
       aria-label={ariaLabel}
-      className="flex items-center gap-0.5 rounded-lg border p-0.5"
-      style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
+      className="flex items-center gap-0.5 rounded-lg p-0.5"
+      style={{ background: 'var(--grid)' }}
     >
       {options.map((option) => {
         const active = option.value === value
@@ -228,10 +238,11 @@ export function SegmentedControl<T extends string>({
             type="button"
             aria-pressed={active}
             onClick={() => onChange(option.value)}
-            className="rounded-md px-2.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors"
+            className="focusable rounded-md px-2.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors"
             style={{
-              background: active ? 'var(--ink-primary)' : 'transparent',
-              color: active ? 'var(--surface)' : 'var(--ink-secondary)',
+              background: active ? 'var(--surface-raised)' : 'transparent',
+              boxShadow: active ? 'var(--shadow-card)' : 'none',
+              color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
             }}
           >
             {option.label}
@@ -273,6 +284,11 @@ export function Pagination({
   )
 }
 
+/*
+  A thin alias over the button kit. Paging is a workhorse action, so it wears
+  `secondary` — the ad-hoc bordered rectangle this used to be was the kit's
+  reason to exist.
+*/
 function PageButton({
   disabled,
   onClick,
@@ -283,15 +299,9 @@ function PageButton({
   label: string
 }) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="rounded-md border px-2.5 py-1.5 text-xs font-medium transition-opacity disabled:opacity-40"
-      style={{ borderColor: 'var(--border-strong)', color: 'var(--ink-primary)' }}
-    >
+    <Button variant="secondary" size="sm" disabled={disabled} onClick={onClick}>
       {label}
-    </button>
+    </Button>
   )
 }
 

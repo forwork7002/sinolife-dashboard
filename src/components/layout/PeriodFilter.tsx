@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 
+import { Button } from '@/components/ui/Button'
 import { t } from '@/lib/messages'
 
 /**
@@ -59,7 +60,11 @@ export function PeriodFilter({
       if (!container.current?.contains(event.target as Node)) setOpen(false)
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
+      // `defaultPrevented` is the layering contract with the ⌘K palette: its
+      // Escape is preventDefault-ed before this document-level listener runs
+      // (React's delegated handlers were registered first), so one keypress
+      // closes the palette without also folding this popover underneath it.
+      if (event.key === 'Escape' && !event.defaultPrevented) setOpen(false)
     }
 
     document.addEventListener('mousedown', onPointerDown)
@@ -268,14 +273,12 @@ function PeriodPicker({
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={apply}
-        className="focusable mt-3 w-full rounded-lg px-3 py-2 text-xs font-medium"
-        style={{ background: 'var(--ink-primary)', color: 'var(--surface)' }}
-      >
+      {/* The kit's primary — the popover's ONE leading action. The old
+          hand-rolled ink fill was the same idea minus the hover, active and
+          press states the kit standardises. */}
+      <Button variant="primary" onClick={apply} className="mt-3 w-full">
         {t.period.apply}
-      </button>
+      </Button>
     </div>
   )
 }

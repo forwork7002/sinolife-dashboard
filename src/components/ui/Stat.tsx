@@ -3,6 +3,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
+import { DotGlyph, RingGlyph, SquareGlyph, TriangleGlyph } from '@/components/ui/Icons'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { NO_VALUE, formatCompactUzs, formatNumber, formatPercent, formatUzs } from '@/lib/format'
 
 /**
@@ -64,9 +66,13 @@ export function StatTile({
             style={{ background: accent }}
           />
         )}
+        {/* One label voice across every KPI tile: 12.5px sentence case,
+            medium, secondary ink. The uppercase-tracked micro-label was a
+            second dialect for the same object — and uppercase now survives
+            only in table headers. */}
         <p
-          className="truncate text-[11px] font-medium tracking-wide uppercase"
-          style={{ color: 'var(--ink-muted)' }}
+          className="truncate text-[12.5px] font-medium"
+          style={{ color: 'var(--ink-secondary)' }}
         >
           {label}
         </p>
@@ -74,26 +80,44 @@ export function StatTile({
 
       {status === 'loading' ? (
         // role="status", because aria-label on a bare div names nothing.
-        <div className="skeleton mt-2 h-[26px] w-2/3" role="status">
+        // Sized to the 30px figure below, so ready never reflows loading.
+        <div className="skeleton mt-2 h-[30px] w-2/3" role="status">
           <span className="sr-only">Yuklanmoqda</span>
+        </div>
+      ) : status === 'error' ? (
+        <p
+          className="figure mt-2 text-[30px] leading-none font-semibold"
+          style={{ color: 'var(--status-critical)' }}
+          // Decorative title — it only repeats the visible word, so it may
+          // stay native. Data-carrying titles ride the Tooltip primitive.
+          title="Maʼlumot olinmadi"
+        >
+          <span className="text-base font-medium">Olinmadi</span>
+        </p>
+      ) : unit === 'money' && value !== null ? (
+        /*
+          The exact soʻm amount rides the Tooltip primitive, not a native
+          `title`: hover, focus AND touch. The figure is a tab stop — a
+          handful per screen, and the full number is otherwise unreachable
+          without a mouse.
+        */
+        <div className="mt-2">
+          <Tooltip content={<span className="tabular">{formatUzs(value)}</span>}>
+            <span
+              tabIndex={0}
+              className="focusable figure block rounded-[var(--radius-panel-sm)] text-[30px] leading-none font-semibold"
+              style={{ color: toneColor }}
+            >
+              <StatValue value={value} unit={unit} />
+            </span>
+          </Tooltip>
         </div>
       ) : (
         <p
-          className="figure mt-2 text-[26px] leading-none font-semibold"
-          style={{ color: status === 'error' ? 'var(--status-critical)' : toneColor }}
-          title={
-            status === 'error'
-              ? 'Maʼlumot olinmadi'
-              : unit === 'money' && value !== null
-                ? formatUzs(value)
-                : undefined
-          }
+          className="figure mt-2 text-[30px] leading-none font-semibold"
+          style={{ color: toneColor }}
         >
-          {status === 'error' ? (
-            <span className="text-base font-medium">Olinmadi</span>
-          ) : (
-            <StatValue value={value} unit={unit} />
-          )}
+          <StatValue value={value} unit={unit} />
         </p>
       )}
 
@@ -305,9 +329,11 @@ export function GaugeTile({
 }) {
   return (
     <div className="card flex flex-col px-4 py-3.5">
+      {/* Same label voice as StatTile/KpiCard — one treatment for the whole
+          KPI family. */}
       <p
-        className="truncate text-[11px] font-medium tracking-wide uppercase"
-        style={{ color: 'var(--ink-muted)' }}
+        className="truncate text-[12.5px] font-medium"
+        style={{ color: 'var(--ink-secondary)' }}
       >
         {label}
       </p>
@@ -481,8 +507,12 @@ export function RankBadge({ rank }: { rank: number }) {
 /**
  * A labelled state.
  *
- * Status carries an icon glyph as well as a colour, so the meaning survives
- * for a colourblind reader, in forced-colors mode, and in print.
+ * Status carries a glyph as well as a colour, so the meaning survives for a
+ * colourblind reader, in forced-colors mode, and in print. The glyphs are the
+ * drawn set from Icons.tsx, not the ● ▲ ■ ○ characters — those shifted size
+ * and baseline with the font, and ▲ rendered as an emoji on some platforms.
+ * Dot / triangle / square keep DIFFERENT silhouettes per tone on purpose:
+ * shape is the channel that remains when colour goes.
  */
 export function StatusChip({
   tone,
@@ -492,20 +522,20 @@ export function StatusChip({
   children: ReactNode
 }) {
   const map = {
-    good: { color: 'var(--status-good)', glyph: '●' },
-    warning: { color: 'var(--status-warning)', glyph: '▲' },
-    critical: { color: 'var(--status-critical)', glyph: '■' },
-    neutral: { color: 'var(--ink-muted)', glyph: '○' },
+    good: { color: 'var(--status-good)', Glyph: DotGlyph },
+    warning: { color: 'var(--status-warning)', Glyph: TriangleGlyph },
+    critical: { color: 'var(--status-critical)', Glyph: SquareGlyph },
+    neutral: { color: 'var(--ink-muted)', Glyph: RingGlyph },
   } as const
 
-  const { color, glyph } = map[tone]
+  const { color, Glyph } = map[tone]
 
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap"
       style={{ background: `color-mix(in oklab, ${color} 12%, transparent)`, color }}
     >
-      <span aria-hidden="true">{glyph}</span>
+      <Glyph size={10} className="shrink-0" />
       {children}
     </span>
   )

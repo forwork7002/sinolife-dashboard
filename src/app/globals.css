@@ -76,6 +76,26 @@
   /* The 1px light along a card's top edge. Real elevation, not a shadow. */
   --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 
+  /**
+   * The hero card's hairline, as two gradient stops.
+   *
+   * Mixed from --ink-primary rather than written as literal alphas, and that
+   * is what lets ONE definition serve both themes: ink is near-black here, so
+   * the stops are a dark hairline that is crisper along the top edge — and in
+   * dark mode ink flips to near-white, so the very same mix becomes the
+   * white-alpha gradient (18% → 8%) that Linear paints its raised cards with,
+   * in the same family as --edge-highlight's 8% white. No dark-mode override
+   * to forget, no way for the two themes to drift apart.
+   */
+  --edge-hero-top: color-mix(in oklab, var(--ink-primary) 18%, transparent);
+  --edge-hero-bottom: color-mix(in oklab, var(--ink-primary) 8%, transparent);
+
+  /* A keycap's bottom edge. It is a SHADOW under the key, so unlike the hero
+     stops it cannot mix from ink — ink turns white in dark mode, and a white
+     bottom edge reads as a key lit from below. Dark overrides it with a
+     black alpha instead. */
+  --kbd-edge: inset 0 -1px 0 color-mix(in oklab, var(--ink-primary) 16%, transparent);
+
   /* --- Categorical series, in fixed slot order -------------------------- */
   --series-1: #3d6df4; /* blue */
   --series-2: #ca4c07; /* orange */
@@ -125,6 +145,45 @@
     0 2px 4px rgba(12, 14, 18, 0.05),
     0 16px 40px -12px rgba(12, 14, 18, 0.16);
 
+  /* --- Atmosphere — the observatory layer -------------------------------- */
+  /**
+   * Zero-offset ambient shadow for floating chrome.
+   *
+   * In light it ALIASES the float stack: daylight has a direction, and the
+   * existing shadows already encode it. Dark overrides it with two offset-free
+   * black halos — a night room has no sun, so a directional shadow under a
+   * popover reads as a rendering artefact there, while an even occlusion
+   * reads as depth. A component reads this ONE token and each theme keeps the
+   * physics it believes in.
+   */
+  --shadow-ambient: var(--shadow-float);
+
+  /**
+   * Aurora strengths — mix PERCENTAGES, deliberately not finished colours.
+   *
+   * The colours cannot be minted here: --accent is set per page on
+   * PageShell's subtree, and a colour token derived on :root would freeze to
+   * series-1 for every page (PageShell documents exactly this trap for the
+   * sidebar). So the tokens carry only the strength, and
+   * .page-atmosphere::before performs the color-mix where the page's real
+   * accent is in scope. Light is barely-there on purpose: daylight does not
+   * need an aurora, it needs the hint of one. 5% is also load-bearing — the
+   * contrast check on .page-atmosphere::before fails at higher mixes.
+   */
+  --atmos-mix-accent: 5%;
+  --atmos-mix-violet: 5%;
+
+  /* Film grain strength. Doubled in dark, where a flat hex wall is most
+     visibly flat. 2% is a ceiling, not a taste: the worst-case contrast
+     check on .page-atmosphere::before folds the grain in and lands exactly
+     on --ink-muted's 4.5:1 floor. Raising this re-opens that check. */
+  --grain-alpha: 0.02;
+
+  /* Hero-number glow strength — 0% in light: a glow in daylight is smudge,
+     not atmosphere. Dark raises it to a whisper. Read in exactly one place:
+     .card-hero .figure-hero. */
+  --glow-hero-mix: 0%;
+
   /**
    * House radii, deliberately NOT named --radius-sm / --radius-lg.
    *
@@ -171,6 +230,12 @@
     --border-strong: rgba(255, 255, 255, 0.22);
 
     --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    /* Black, not an ink mix — a keycap's shadow falls below the key in both
+       themes; see the light-mode note on the token. The [data-theme="dark"]
+       block always carried this override; the system-preference path had
+       silently missed it and served night users the ink mix — which is white
+       in dark, i.e. a key lit from below. */
+    --kbd-edge: inset 0 -1px 0 rgba(0, 0, 0, 0.55);
 
     --series-1: #497bff;
     --series-2: #d8591e;
@@ -207,6 +272,16 @@
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
     --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px -8px rgba(0, 0, 0, 0.7);
     --shadow-float: 0 2px 4px rgba(0, 0, 0, 0.5), 0 20px 44px -12px rgba(0, 0, 0, 0.8);
+
+    /* Night physics: no sun, so floating chrome swaps its directional stack
+       for an even occlusion; the aurora and grain step up because a dark
+       canvas is where a flat hex wall is most visibly flat; the hero number
+       gains its whisper of glow. See the light block for what each does. */
+    --shadow-ambient: 0 0 15px rgba(0, 0, 0, 0.35), 0 0 3px rgba(0, 0, 0, 0.5);
+    --atmos-mix-accent: 12%;
+    --atmos-mix-violet: 11%;
+    --grain-alpha: 0.04;
+    --glow-hero-mix: 18%;
   }
 }
 
@@ -227,6 +302,10 @@
   --border-strong: rgba(255, 255, 255, 0.22);
 
   --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  /* Black, not an ink mix — see the light-mode note: a keycap's bottom edge
+     is a shadow in both themes. (--edge-hero-* needs no override; it mixes
+     from ink and flips by construction.) */
+  --kbd-edge: inset 0 -1px 0 rgba(0, 0, 0, 0.55);
 
   --series-1: #497bff;
   --series-2: #d8591e;
@@ -255,6 +334,13 @@
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px -8px rgba(0, 0, 0, 0.7);
   --shadow-float: 0 2px 4px rgba(0, 0, 0, 0.5), 0 20px 44px -12px rgba(0, 0, 0, 0.8);
+
+  /* Night physics — kept in lockstep with the media-query block above. */
+  --shadow-ambient: 0 0 15px rgba(0, 0, 0, 0.35), 0 0 3px rgba(0, 0, 0, 0.5);
+  --atmos-mix-accent: 12%;
+  --atmos-mix-violet: 11%;
+  --grain-alpha: 0.04;
+  --glow-hero-mix: 18%;
 }
 
 /**
@@ -351,8 +437,16 @@ body {
      spacing and a smaller x-height without a second font file. */
   font-optical-sizing: auto;
   /* cv05: lowercase l with a tail, so l / I / 1 stay distinguishable in a
-     column of figures. ss03 fixes the curly-quote shapes Uzbek needs for oʻ. */
-  font-feature-settings: "cv05" 1, "ss03" 1;
+     column of figures. ss03 fixes the curly-quote shapes Uzbek needs for oʻ.
+     The cv01/cv03/cv04/cv11 quartet completes the disambiguation set: a base
+     serif on the 1 so it cannot be read as l or I, open 6 and 9 (the two
+     digits that close up into 8 and 0 at small sizes), and the single-storey
+     a that stays open at 11px. On a screen made of figures, any glyph that
+     CAN be misread as another digit eventually will be.
+     NOTE: font-feature-settings does not merge across the cascade — a rule
+     that declares it REPLACES this whole list, so the number classes below
+     restate the quartet instead of inheriting it. */
+  font-feature-settings: "cv01" 1, "cv03" 1, "cv04" 1, "cv05" 1, "cv11" 1, "ss03" 1;
   text-rendering: optimizeLegibility;
 }
 
@@ -366,14 +460,41 @@ body {
    numbers keep proportional figures. */
 .tabular {
   font-variant-numeric: tabular-nums lining-nums;
-  font-feature-settings: "tnum" 1, "lnum" 1, "cv05" 1;
+  font-feature-settings: "tnum" 1, "lnum" 1, "cv01" 1, "cv03" 1, "cv04" 1, "cv05" 1, "cv11" 1;
 }
 
 /** A hero figure: large, tight, and never wrapped. */
 .figure {
   font-variant-numeric: tabular-nums lining-nums;
-  font-feature-settings: "tnum" 1, "lnum" 1, "cv05" 1;
+  font-feature-settings: "tnum" 1, "lnum" 1, "cv01" 1, "cv03" 1, "cv04" 1, "cv05" 1, "cv11" 1;
   letter-spacing: -0.025em;
+  white-space: nowrap;
+}
+
+/**
+ * THE hero figure — the one number a screen leads with.
+ *
+ * `.figure` sets the behaviour (tabular, tight, unwrappable); this adds the
+ * size. 34px on a narrow viewport rising to 40px at the lg breakpoint, on a
+ * slope rather than a step — 24px + 1.5625vw passes 34px at 640 and 40px at
+ * 1024 — so the number never snaps between two sizes at an arbitrary width.
+ *
+ * Weight 600, not 700: Inter's counters stay open at semibold, and at this
+ * size bold reads heavier without reading clearer. Line-height 1, because
+ * the figure is a single line by construction (`nowrap`) and every pixel of
+ * leading pushes the label away from the number it belongs to.
+ *
+ * The size exists for the RATIO. The most important number on a screen
+ * should differ from a body figure by roughly 4x, not 2x — which also means
+ * at most one of these per screen, or the hierarchy it creates cancels out.
+ */
+.figure-hero {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1, "cv01" 1, "cv03" 1, "cv04" 1, "cv05" 1, "cv11" 1;
+  font-size: clamp(34px, 24px + 1.5625vw, 40px);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1;
   white-space: nowrap;
 }
 
@@ -383,6 +504,11 @@ body {
  * Negative tracking at large sizes only. Inter is drawn for tight setting
  * above about 24px and looks loose without it; the same tracking at body size
  * would close the letters up and cost legibility.
+ *
+ * `.display` is for TITLES — the page name, a section heading — and takes
+ * its size from the call site (24–26px for a page title). The hero NUMBER is
+ * `.figure-hero` above, which carries its own size; the two are different
+ * jobs and neither substitutes for the other.
  */
 .display {
   letter-spacing: -0.03em;
@@ -409,6 +535,246 @@ body {
 }
 
 /* ===========================================================================
+ * ATMOSPHERE — the observatory layer
+ *
+ * Everything in this section is LIGHT, never content: an aurora behind the
+ * page header, film grain on the canvas, registration marks on the one
+ * flagship panel. All of it is STATIC — this is a work tool, and the sky
+ * must not drift while someone reads a number — and all of it paints in the
+ * negative z phase, so it cannot cover a figure, intercept a click, or tint
+ * a plot area. Opaque surfaces (cards, tables, tooltips) stack above it by
+ * construction.
+ * ======================================================================== */
+
+/**
+ * The aurora band.
+ *
+ * Mounts inside PageShell's accent subtree, behind the title area — which is
+ * what lets the blob below read the PAGE's accent rather than :root's.
+ * Contract with the call site: the PARENT is position:relative +
+ * overflow:hidden and spans the title band only; `.page-atmosphere-fade` is
+ * mounted as a CHILD of this element.
+ *
+ * z-index -1 keeps the layer behind in-flow content with no cooperation
+ * needed from that content: the title never has to position itself just to
+ * sit above its own backdrop.
+ */
+.page-atmosphere {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/**
+ * The two blobs — chrome light, never data.
+ *
+ * Mixed from --accent and --series-7 AT THE ELEMENT, not on :root, so each
+ * page's aurora follows its own accent (strengths live in --atmos-mix-*, and
+ * the note there says why the split exists). Series-7 is chrome here in the
+ * same sense the html backdrop already uses it: nothing that encodes a value
+ * reads either colour. The peaks sit ABOVE the canvas edge, like the html
+ * backdrop's own pools, so the tint under the actual title line is already
+ * decaying — and the -80px overdraw gives the 70px blur material past the
+ * clip, so the band cannot vignette against its own edges.
+ *
+ * CONTRAST, checked rather than assumed — the title block sits on this.
+ * Worst realistic backdrop = one blob's full on-canvas peak + the other's
+ * cross-residual (opposite corners never fully coincide) + the grain's mean
+ * contribution, composited over --page:
+ *
+ *   light (≈#EBEEF9 at the accent peak):
+ *     --ink-primary 16.7:1 · --ink-secondary 6.8:1 · --ink-muted 4.5:1
+ *   dark  (≈#1C1C3E at the accent peak):
+ *     --ink-primary 15.1:1 · --ink-secondary 7.5:1 · --ink-muted 5.1:1
+ *
+ * Every ink holds its 4.5:1 floor. Light-mode muted is the tight one — it
+ * lands where its own token comment already lives (4.61 on --surface-sunken),
+ * so the aurora never becomes a new worst backdrop — and that margin is why
+ * --atmos-mix-* light stays at 5% and the light grain at 2%. Anyone raising
+ * either re-runs this arithmetic.
+ */
+.page-atmosphere::before {
+  content: "";
+  position: absolute;
+  inset: -80px;
+  /* Same negative phase as the fade below: the two paint in tree order
+     (blobs first, fade over them) wherever the fade is mounted. */
+  z-index: -1;
+  background-image:
+    radial-gradient(
+      48rem 30rem at 16% -18%,
+      color-mix(in oklab, var(--accent) var(--atmos-mix-accent), transparent),
+      transparent 62%
+    ),
+    radial-gradient(
+      40rem 26rem at 84% -32%,
+      color-mix(in oklab, var(--series-7) var(--atmos-mix-violet), transparent),
+      transparent 60%
+    );
+  filter: blur(70px) saturate(1.3);
+}
+
+/**
+ * The fade — the aurora's hard promise to the data below it.
+ *
+ * Solid --page from 60% of the band's height down: whatever the parent grows
+ * to, the bottom 40% is already clean canvas, so the atmosphere is dead WELL
+ * before the first chart or table. Not a soft opinion — an opaque paint.
+ */
+.page-atmosphere-fade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 15%, var(--page) 60%);
+}
+
+/**
+ * Film grain — the canvas stops being a flat hex wall.
+ *
+ * A tiled feTurbulence texture over the page ground, at an opacity low
+ * enough to read as paper rather than noise. z-index -1 is the safety: the
+ * grain paints UNDER every piece of in-flow content — cards, tables, text,
+ * plots — so it can neither cover an interactive element (pointer-events
+ * none besides) nor dirty a plot area. Cards are opaque surface tokens and
+ * simply blot it out.
+ *
+ * Known occlusion, deliberate here: Shell's root div paints its own opaque
+ * --page background inline, which currently sits over this layer (and over
+ * html's ambient pools, which that background has been silently covering all
+ * along). The grain is correct and safe regardless; it becomes VISIBLE the
+ * moment the chrome owner drops that inline background — html already paints
+ * --page underneath.
+ */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='128' height='128' filter='url(%23g)'/%3E%3C/svg%3E");
+  opacity: var(--grain-alpha);
+}
+
+/**
+ * Registration brackets — the flagship panel's instrument marks.
+ *
+ * Two 12px L-corners in the strong hairline at opposing corners, 6px inside
+ * the edge: the calibration-mark language of an instrument that has been
+ * aligned. Used ONCE per page at most, on the lead .card-hero — a second
+ * pair on the same screen demotes both to decoration.
+ *
+ * position:relative for the same documented reason as .glow-track: the
+ * corners need this box as their containing block, and this unlayered file
+ * outranks a Tailwind position utility — wrap the card if it must be
+ * positioned some other way. Do NOT stack .brackets with .glow-track on one
+ * element: both claim ::after, and the cascade would weld the two rules into
+ * one broken pseudo. Put the glow on the card and the brackets on a wrapper
+ * (or vice versa) if a panel ever needs both.
+ */
+.brackets {
+  position: relative;
+}
+
+.brackets::before,
+.brackets::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+}
+
+.brackets::before {
+  top: 6px;
+  left: 6px;
+  border-top: 1px solid var(--border-strong);
+  border-left: 1px solid var(--border-strong);
+}
+
+.brackets::after {
+  right: 6px;
+  bottom: 6px;
+  border-right: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+/**
+ * The eyebrow — THE one positive-tracked style in the application.
+ *
+ * Uppercase with open tracking is a flavour that stops meaning anything the
+ * moment it is everywhere, so it is rationed to exactly two places: section
+ * headers and table headers. KPI and stat labels stay 12.5px sentence case
+ * per the type scale — a label is a name, not a department sign. Weight 550
+ * is a variable-font cut: 500 goes grey at 11px uppercase, 600 starts to
+ * shout.
+ */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 550;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+/**
+ * The hero number's glow — dark only, hero band only.
+ *
+ * A 24px halo mixed from the page's accent at --glow-hero-mix, which is 0%
+ * in light (the mix collapses to transparent — no rule to un-set, no theme
+ * drift). The digits themselves stay in ink: the glow is the panel's
+ * backlight leaking around the figure, not a colour channel — it is constant,
+ * so it cannot encode anything, and at 18% it is a whisper. Neon is the
+ * gallery cliché this file explicitly refuses.
+ */
+.card-hero .figure-hero {
+  text-shadow: 0 0 24px
+    color-mix(in oklab, var(--accent) var(--glow-hero-mix, 0%), transparent);
+}
+
+/**
+ * Crosshair glide + active-dot pop — the instrument's needle.
+ *
+ * The Recharts cursor line eases to the hovered index instead of teleporting,
+ * and the active dot swells into place: the TradingView feel, delivered in
+ * two transitions with no scripting. 90ms tracks the hand closely enough to
+ * feel attached; the dot gets 120ms because r animates area, which reads
+ * faster than it is. SVG geometry attributes are CSS-transitionable in
+ * modern engines; where an engine disagrees, the cursor snaps — exactly the
+ * behaviour reduced-motion gets on purpose, since both rules live inside the
+ * guard and a gliding crosshair is precisely the chased motion the
+ * preference asks to stop.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .recharts-tooltip-cursor {
+    transition: x1 90ms var(--ease-out), x2 90ms var(--ease-out);
+  }
+
+  .recharts-active-dot circle {
+    transition: r 120ms var(--ease-out);
+  }
+}
+
+/* The atmosphere degrades to nothing, never to less-legible. A translucent
+   wash is the one thing reduced-transparency is about; forced colours
+   flattens the palette the aurora is mixed from; contrast-more asks for the
+   cleanest possible ground. In every case the canvas is simply --page again
+   and the check above becomes moot rather than marginal. */
+@media (prefers-reduced-transparency: reduce) {
+  .page-atmosphere::before {
+    display: none;
+  }
+}
+
+@media (prefers-contrast: more), (forced-colors: active) {
+  body::after,
+  .page-atmosphere::before {
+    display: none;
+  }
+}
+
+/* ===========================================================================
  * SURFACE PRIMITIVES
  * ======================================================================== */
 
@@ -425,6 +791,35 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-panel);
   box-shadow: var(--shadow-card), var(--edge-highlight);
+}
+
+/**
+ * The lead instrument — at most ONE per screen.
+ *
+ * A hero band is a card that outranks its neighbours three ways: the larger
+ * radius, the raised shadow, and a hairline painted as a GRADIENT so the top
+ * edge is visibly brighter than the bottom — the strongest "this surface is
+ * nearest the light" cue a 1px line can give.
+ *
+ * A border cannot take a gradient directly (border-image discards
+ * border-radius), so the gradient rides in as the second of two stacked
+ * backgrounds: an opaque surface fill clipped to the padding box, the
+ * gradient clipped to the border box, and a transparent 1px border between
+ * them leaving exactly that much of the gradient visible. The stops are
+ * --edge-hero-*, which flip with the theme by construction — see the token.
+ *
+ * Declared after .card ON PURPOSE: a call site may stack the two classes,
+ * and source order is what lets this one win every property they share.
+ * Two of these on a screen is not two heroes — it is none; the treatment
+ * only ranks the card because nothing else wears it.
+ */
+.card-hero {
+  border: 1px solid transparent;
+  border-radius: var(--radius-panel-lg);
+  background:
+    linear-gradient(var(--surface-raised), var(--surface-raised)) padding-box,
+    linear-gradient(180deg, var(--edge-hero-top), var(--edge-hero-bottom)) border-box;
+  box-shadow: var(--shadow-raised), var(--edge-highlight);
 }
 
 /**
@@ -450,6 +845,56 @@ body {
   .card-interactive:active {
     transform: translateY(0);
     transition-duration: 60ms;
+  }
+}
+
+/**
+ * The mouse-tracked hover glow — interactive cards only.
+ *
+ * Linear's recipe: a radial highlight that follows the pointer across the
+ * card, so the card answers the hand before it is clicked. The component
+ * feeds --mx/--my from mousemove; this file only paints. Ink at 5%, never
+ * the accent — a glow that changed hue per page would make the same gesture
+ * look like a different affordance on different screens — and 5% is enough
+ * to register while staying far too faint to compete with the figures the
+ * card exists to show.
+ *
+ * The whole effect sits behind (hover: hover) AND no-preference: on touch
+ * there is no pointer to track, and a highlight that chases the hand is
+ * exactly the motion the preference asks us not to make. Outside the guard
+ * the pseudo-element is never created at all.
+ *
+ * `position: relative` here knowingly breaks the .gauge rule ("positioning
+ * belongs to the call site"): the glow needs a containing block, or inset:0
+ * quietly sizes it to some positioned ancestor instead of the card. This
+ * stylesheet is unlayered and beats Tailwind's utilities, so a call site
+ * that needs the card itself positioned differently wraps it — the wrapper
+ * takes the position, the card keeps the glow.
+ */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .glow-track {
+    position: relative;
+  }
+
+  .glow-track::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    /* Light ON the card, never a layer IN FRONT of it: clicks, hovers and
+       text selection pass straight through. */
+    pointer-events: none;
+    background: radial-gradient(
+      480px circle at var(--mx, 50%) var(--my, 50%),
+      color-mix(in oklab, var(--ink-primary) 5%, transparent),
+      transparent 40%
+    );
+    opacity: 0;
+    transition: opacity 300ms var(--ease-out);
+  }
+
+  .glow-track:hover::after {
+    opacity: 1;
   }
 }
 
@@ -529,6 +974,208 @@ body {
   background: var(--surface-raised);
   color: var(--ink-primary);
   box-shadow: var(--shadow-float);
+}
+
+/**
+ * Sticky table header.
+ *
+ * Applied to the header cells (or the header row) inside the table's own
+ * scroll container. The opaque sunken background is not decoration: a sticky
+ * header with no background lets rows show through the instant they slide
+ * underneath, which is worse than not sticking at all.
+ *
+ * The hairline that normally sits under the header belongs to the first row,
+ * so it scrolls away with it. `.is-scrolled` — set by the container's scroll
+ * handler — puts one back as a shadow and adds the card shadow under it, so
+ * the header reads as floating over the rows, which is what it is now
+ * actually doing.
+ */
+.thead-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-sunken);
+}
+
+.thead-sticky.is-scrolled {
+  box-shadow: 0 1px 0 var(--border-strong), var(--shadow-card);
+}
+
+/* The shadow fades in rather than popping at scroll pixel one — but a fade
+   is motion, so it honours the preference. Reduced motion still GETS the
+   shadow; it just arrives in a step. */
+@media (prefers-reduced-motion: no-preference) {
+  .thead-sticky {
+    transition: box-shadow 150ms var(--ease-out);
+  }
+}
+
+/**
+ * Empty and error states hold the grid's rhythm.
+ *
+ * A tile whose fetch failed must not collapse into a caption-height sliver:
+ * the layout jumping between loading, failure and data is itself a claim —
+ * "something structural changed" — that nobody made. 200px keeps the tile at
+ * short-card height, and the flex centring puts the message where the
+ * missing number would have been.
+ */
+.state-well {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  text-align: center;
+}
+
+/* ===========================================================================
+ * COMMAND CHROME — keycaps, tooltip, palette scrim
+ *
+ * The keyboard layer of the interface. Everything in this section is chrome,
+ * never data: it may borrow the elevation system, and it must never borrow a
+ * series or status colour. Its two animations carry `reduce` overrides via
+ * keyframe redefinition, same pattern as `pulse` below.
+ * ======================================================================== */
+
+/**
+ * A keycap chip — the ⌘K hint in the header, shortcut suffixes in menu rows.
+ *
+ * The physical cue is the bottom edge: a key catches its shadow BELOW, so
+ * --kbd-edge darkens only that edge and the chip reads as pressable at 11px
+ * with nothing else added. Sunken background for the same reason — a key
+ * sits IN the surface, not on it.
+ *
+ * `font-family: inherit` matters on a real <kbd> element, whose browser
+ * default is monospace: one monospace K in a sans-serif row reads as a typo.
+ * min-width keeps a single letter square instead of postage-stamp narrow.
+ */
+.kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 2px 5px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  text-align: center;
+  color: var(--ink-secondary);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: var(--kbd-edge);
+}
+
+/**
+ * The tooltip primitive.
+ *
+ * One surface for every tooltip that carries data — replacing the native
+ * `title`, which cannot be styled, ignores touch and focus, and takes a
+ * second to appear. Raised surface with the STRONG border: a tooltip lands
+ * over arbitrary content, and the default hairline vanishes against half of
+ * it. Positioning, the show delay and z-index stay with the component — only
+ * the call site knows where the tip goes and what it must clear.
+ *
+ * The entrance is a 2px rise over 120ms — enough that the tip reads as
+ * arriving at the pointer rather than blinking into existence. Under reduced
+ * motion the keyframes are redefined to a plain fade: the arrival cue goes,
+ * the gentle appearance stays.
+ */
+@keyframes tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes tip-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+.tip {
+  padding: 6px 9px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--ink-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-panel-sm);
+  /* Ambient, not float: identical to the float stack in light (the token
+     aliases it) and an offset-free halo in dark, where floating chrome has
+     no sun to cast a directional shadow — see --shadow-ambient. */
+  box-shadow: var(--shadow-ambient);
+  animation: tip-in 120ms var(--ease-out) both;
+}
+
+/**
+ * The scrim behind the command palette.
+ *
+ * Tinted from --page, not black: a black scrim in light mode turns the app
+ * into a different, darker room for the duration of a search, while a
+ * page-coloured frost dims WITHOUT changing the room. In dark mode --page is
+ * near-black and the very same mix is the conventional dim. The 2px blur
+ * softens content just enough to say "inactive" while the layout stays
+ * recognisable underneath — which is what makes the palette feel like a
+ * layer of the app rather than a modal interruption.
+ *
+ * `prefers-reduced-transparency` trades the blur for opacity: the same
+ * separation, delivered without the see-through effect the preference asks
+ * to avoid.
+ */
+.backdrop-dim {
+  background: color-mix(in oklab, var(--page) 60%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .backdrop-dim {
+    backdrop-filter: none;
+    background: color-mix(in oklab, var(--page) 85%, transparent);
+  }
+}
+
+/**
+ * Command-palette entrance.
+ *
+ * Scale 0.98 → 1 with a fade, 150ms: the palette must feel FASTER than a
+ * page — it is what you reach for INSTEAD of navigating — so it gets less
+ * than the page's 220ms and no translate, only the settle. Under reduced
+ * motion the keyframes drop the scale and the fade alone remains.
+ */
+@keyframes palette-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes palette-enter {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+.palette-enter {
+  animation: palette-enter 150ms var(--ease-out) both;
 }
 
 /* ===========================================================================

@@ -1,3 +1,5 @@
+import { ArrowDownGlyph, ArrowUpGlyph } from '@/components/ui/Icons'
+import { Tooltip } from '@/components/ui/Tooltip'
 import type { DeltaDto } from '@/lib/api'
 import { formatNumber, formatPercent } from '@/lib/format'
 import { t } from '@/lib/messages'
@@ -15,8 +17,17 @@ import { t } from '@/lib/messages'
  *                  is arithmetic rather than information
  *   no_data     -> an em dash
  *
- * The arrow glyph carries the direction alongside the colour, so the meaning
- * survives for a colourblind reader and in forced-colors mode.
+ * The arrow is a drawn glyph from Icons.tsx, not the ↑/↓ characters — those
+ * shifted weight and baseline with the font. It still carries the direction
+ * alongside the colour, so the meaning survives for a colourblind reader and
+ * in forced-colors mode.
+ *
+ * The exact figures behind a pill (the un-rounded percentage, the previous →
+ * current pair) travel in the Tooltip primitive rather than a native `title`:
+ * hover, touch and the tip's own styling included. The pills are NOT tab
+ * stops — a table renders hundreds of them, and a keyboard user who had to
+ * Tab through every delta to reach the next control would pay for a nicety
+ * the visible text already states.
  *
  * `inverted` is for metrics where up is bad. Nothing uses it yet; it exists so
  * that when a "lost deals" card appears, the fix is a prop rather than a
@@ -49,53 +60,75 @@ export function TrendIndicator({
 
   if (delta.kind === 'small_base') {
     return (
-      <span
-        className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${className}`}
-        style={{ background: 'var(--grid)', color: 'var(--ink-secondary)' }}
-        title={`Oldingi davr juda kichik: ${formatNumber(delta.previous)} → ${formatNumber(delta.current)}`}
+      <Tooltip
+        className={className}
+        content={
+          <span className="tabular">
+            Oldingi davr juda kichik: {formatNumber(delta.previous)} →{' '}
+            {formatNumber(delta.current)}
+          </span>
+        }
       >
-        {t.delta.small_base}
-      </span>
+        <span
+          className="rounded px-1.5 py-0.5 text-[11px] font-medium"
+          style={{ background: 'var(--grid)', color: 'var(--ink-secondary)' }}
+        >
+          {t.delta.small_base}
+        </span>
+      </Tooltip>
     )
   }
 
   if (delta.kind === 'no_baseline') {
     return (
-      <span
-        className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${className}`}
-        style={{ background: 'var(--grid)', color: 'var(--ink-secondary)' }}
-        title="Oldingi davrda maʼlumot boʻlmagan"
-      >
-        {t.delta.no_baseline}
-      </span>
+      <Tooltip className={className} content="Oldingi davrda maʼlumot boʻlmagan">
+        <span
+          className="rounded px-1.5 py-0.5 text-[11px] font-medium"
+          style={{ background: 'var(--grid)', color: 'var(--ink-secondary)' }}
+        >
+          {t.delta.no_baseline}
+        </span>
+      </Tooltip>
     )
   }
 
   const isGood = inverted ? delta.direction === 'down' : delta.direction === 'up'
   const color = isGood ? 'var(--delta-up)' : 'var(--delta-down)'
-  const arrow = delta.direction === 'up' ? '↑' : '↓'
+  const Arrow = delta.direction === 'up' ? ArrowUpGlyph : ArrowDownGlyph
 
   /*
     A pill, not bare coloured text.
-    
+
     The 12% tint of the delta's own colour gives the change a shape the eye
     can find in a row of tiles before reading anything — and the text keeps
     its full text-grade colour on top of it, so contrast is untouched. The
-    arrow still carries direction alongside the colour for colourblind
+    arrow glyph still carries direction alongside the colour for colourblind
     readers and forced-colors mode.
+
+    The tooltip names the window — "oldingi davrga nisbatan" — which is the
+    comparison caption's job wherever a delta renders, and states the exact
+    percentage even when the pill shows the ×N form.
   */
   return (
-    <span
-      className={`tabular inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${className}`}
-      style={{
-        color,
-        background: `color-mix(in oklab, ${color} 12%, transparent)`,
-      }}
-      title={`${formatPercent(Math.abs(delta.percent))} oldingi davrga nisbatan`}
+    <Tooltip
+      className={className}
+      content={
+        <span className="tabular">
+          {formatPercent(Math.abs(delta.percent))} oldingi davrga nisbatan
+        </span>
+      }
     >
-      <span aria-hidden="true">{arrow}</span>
-      {formatChange(Math.abs(delta.percent))}
-    </span>
+      <span
+        className="tabular inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold"
+        style={{
+          color,
+          background: `color-mix(in oklab, ${color} 12%, transparent)`,
+        }}
+      >
+        <Arrow size={11} className="shrink-0" />
+        {formatChange(Math.abs(delta.percent))}
+      </span>
+    </Tooltip>
   )
 }
 

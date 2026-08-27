@@ -1,8 +1,10 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useState, type ReactNode, type UIEvent } from 'react'
 
 import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/states/States'
+import { Button } from '@/components/ui/Button'
+import { SortCaretGlyph } from '@/components/ui/Icons'
 
 /**
  * Generic data table.
@@ -31,6 +33,10 @@ export interface Column<T> {
    * A table of 144 rows where every cell is a `<td>` has nothing to announce a
    * row BY — a screen reader reads "576 mln" with no idea whose it is. One
    * column per table should be the row's name.
+   *
+   * The same column leads visually too: primary ink, medium weight. Row
+   * identity is what the eye returns to after every number, so it gets the
+   * strongest text in the row body.
    */
   readonly rowHeader?: boolean
   readonly render: (row: T) => ReactNode
@@ -64,6 +70,15 @@ interface DataTableProps<T> {
   readonly initialRows?: number
   /** Label for the disclosure, given the number of rows it hides. */
   readonly moreLabel?: (hidden: number) => string
+  /**
+   * Cap the table's height and scroll the rows INSIDE the container.
+   *
+   * Only with a bounded height does the sticky header have anything to stick
+   * to — the header cells pin to the container's top edge and the rows slide
+   * under them. Undefined keeps today's behaviour: the table grows and the
+   * page scrolls, which is right wherever `initialRows` already bounds it.
+   */
+  readonly maxHeight?: number
 }
 
 export function DataTable<T>({
@@ -82,8 +97,22 @@ export function DataTable<T>({
   minWidth = 720,
   initialRows,
   moreLabel = (hidden) => `Yana ${hidden} ta qatorni koʻrsatish`,
+  maxHeight,
 }: DataTableProps<T>) {
   const [expanded, setExpanded] = useState(false)
+  /*
+    Whether the rows have moved under the header. The hairline under a resting
+    header belongs to the first row and scrolls away with it; `.is-scrolled`
+    puts one back as a shadow so the header reads as floating — which is what
+    it is then actually doing. State, not a class toggle by hand, so React
+    owns the DOM as usual.
+  */
+  const [scrolled, setScrolled] = useState(false)
+
+  const onScroll = (event: UIEvent<HTMLDivElement>) => {
+    const isScrolled = event.currentTarget.scrollTop > 0
+    if (isScrolled !== scrolled) setScrolled(isScrolled)
+  }
 
   if (status === 'error') {
     return <ErrorState message={errorMessage} onRetry={onRetry} />
@@ -107,7 +136,7 @@ export function DataTable<T>({
 
   /*
     Collapsed to nothing means SHOW nothing but the disclosure.
-    
+
     The zero-rows-visible cap (the unranked-employees card) rendered a full
     column header row above a lone button — eight headings describing no data,
     which reads as a table that failed to load rather than one waiting to be
@@ -115,29 +144,29 @@ export function DataTable<T>({
   */
   if (capped && visible.length === 0) {
     return (
-      <button
-        type="button"
-        onClick={() => setExpanded(true)}
-        className="focusable w-full rounded-[var(--radius-panel-sm)] border py-2 text-xs font-medium transition-colors"
-        style={{
-          borderColor: 'var(--border)',
-          color: 'var(--ink-secondary)',
-          background: 'var(--surface-sunken)',
-        }}
-      >
+      <Button variant="secondary" size="sm" className="w-full" onClick={() => setExpanded(true)}>
         {moreLabel(hidden)}
-      </button>
+      </Button>
     )
   }
 
+  const headerGlyphDirection: 'asc' | 'desc' = order === 'asc' ? 'asc' : 'desc'
+
   return (
     <>
-    <div className="-mx-1 overflow-x-auto">
+    <div
+      className="-mx-1 overflow-x-auto"
+      style={maxHeight !== undefined ? { maxHeight, overflowY: 'auto' } : undefined}
+      onScroll={onScroll}
+    >
       <table className="w-full border-collapse text-sm" style={{ minWidth }}>
         <thead>
-          {/* Sunken, so a long table's header stays distinct from its rows
-              without a heavier rule under it. */}
-          <tr style={{ color: 'var(--ink-muted)', background: 'var(--surface-sunken)' }}>
+          {/* `.thead-sticky` sits on the CELLS, not the row: sticky rendering
+              on <tr> is still uneven across engines, while cells pin
+              everywhere and their contiguous backgrounds read as one band.
+              The sunken background keeps a long table's header distinct from
+              its rows — and opaque, so rows cannot show through mid-scroll. */}
+          <tr style={{ color: 'var(--ink-muted)' }}>
             {columns.map((column) => {
               const sortable = Boolean(column.sortKey && onSort)
               const active = column.sortKey && sort === column.sortKey
@@ -158,7 +187,7 @@ export function DataTable<T>({
                         : 'none'
                       : undefined
                   }
-                  className={`px-2 pb-2 text-[11px] font-medium tracking-wide uppercase ${
+                  className={`thead-sticky ${scrolled ? 'is-scrolled' : ''} px-2 py-2 text-[11px] font-medium tracking-wide uppercase ${
                     column.align === 'right' ? 'text-right' : 'text-left'
                   }`}
                 >
@@ -166,14 +195,21 @@ export function DataTable<T>({
                     <button
                       type="button"
                       onClick={() => onSort!(column.sortKey!)}
-                      className="inline-flex items-center gap-1 transition-colors hover:opacity-80"
+                      className="focusable inline-flex items-center gap-1 rounded transition-colors hover:opacity-80"
                       style={{ color: active ? 'var(--ink-primary)' : 'inherit' }}
                     >
                       {column.header}
                       {/* The caret is only rendered for the active column;
-                          showing one on every header is visual noise. */}
+                          showing one on every header is visual noise. It is
+                          ONE chevron that turns over when the direction flips
+                          — see SortCaretGlyph — so re-sorting reads as a
+                          change of direction, not a swap of icons. */}
                       {active && (
-                        <span aria-hidden="true">{order === 'asc' ? '↑' : '↓'}</span>
+                        <SortCaretGlyph
+                          direction={headerGlyphDirection}
+                          size={11}
+                          className="shrink-0"
+                        />
                       )}
                     </button>
                   ) : (
@@ -193,7 +229,7 @@ export function DataTable<T>({
               tabIndex={onRowClick ? 0 : undefined}
               /*
                 A clickable row has to say so.
-                
+
                 It was reachable by Tab and operable by Enter, but announced as
                 a plain table row — so a screen-reader user landed on something
                 focusable with no indication of what it was or that Space would
@@ -213,7 +249,7 @@ export function DataTable<T>({
               }
               /*
                 Every row highlights under the pointer, clickable or not.
-                
+
                 In a 25-column-wide table the eye tracks a row across half a
                 metre of screen; the wash under the cursor is what keeps the
                 reading position. Clickable rows get the stronger grid tone so
@@ -232,10 +268,16 @@ export function DataTable<T>({
                   <Cell
                     key={column.key}
                     scope={column.rowHeader ? 'row' : undefined}
-                    className={`px-2 py-2.5 font-normal ${
-                      column.align === 'right' ? 'text-right' : 'text-left'
-                    } ${column.numeric ? 'tabular' : ''}`}
-                    style={{ color: 'var(--ink-secondary)' }}
+                    className={`px-2 py-2.5 ${
+                      column.rowHeader ? 'font-medium' : 'font-normal'
+                    } ${column.align === 'right' ? 'text-right' : 'text-left'} ${
+                      column.numeric ? 'tabular' : ''
+                    }`}
+                    // Row identity leads: the name column in primary ink, the
+                    // figures beside it a step quieter.
+                    style={{
+                      color: column.rowHeader ? 'var(--ink-primary)' : 'var(--ink-secondary)',
+                    }}
                   >
                     {column.render(row)}
                   </Cell>
@@ -248,19 +290,43 @@ export function DataTable<T>({
     </div>
 
     {hidden > 0 && (
-      <button
-        type="button"
+      <Button
+        variant="secondary"
+        size="sm"
+        className="mt-2 w-full"
         onClick={() => setExpanded(true)}
-        className="focusable mt-2 w-full rounded-[var(--radius-panel-sm)] border py-2 text-xs font-medium transition-colors"
-        style={{
-          borderColor: 'var(--border)',
-          color: 'var(--ink-secondary)',
-          background: 'var(--surface-sunken)',
-        }}
       >
         {moreLabel(hidden)}
-      </button>
+      </Button>
     )}
     </>
+  )
+}
+
+/**
+ * The 24px initial chip for people tables.
+ *
+ * A name column of bare text rows gives the eye nothing to land on; a chip
+ * per person anchors each row the way an avatar would, without pretending we
+ * have photographs. Neutral chrome tones on purpose — a person is not a
+ * series, and colouring initials from the palette would invent categories.
+ *
+ * `aria-hidden`: the chip repeats the first letter of the name printed right
+ * beside it, so for a screen reader it is decoration.
+ */
+export function InitialChip({ name, className = '' }: { name: string; className?: string }) {
+  const chars = [...name.trim()]
+  // Uzbek initials: oʻ / gʻ are one letter spelled with U+02BB — keep the
+  // modifier with its base so "Oʻktam" chips as "Oʻ", not a bare "O".
+  const initial = ((chars[0] ?? '·') + (chars[1] === 'ʻ' ? 'ʻ' : '')).toUpperCase()
+
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${className}`}
+      style={{ background: 'var(--grid)', color: 'var(--ink-secondary)' }}
+    >
+      {initial}
+    </span>
   )
 }

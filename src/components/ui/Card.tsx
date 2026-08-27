@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 
+import { Tooltip } from '@/components/ui/Tooltip'
 import type { KpiCardDto } from '@/lib/api'
 import { NO_VALUE, formatCompactUzs, formatNumber, formatPercent, formatUzs } from '@/lib/format'
 import { TrendIndicator } from './TrendIndicator'
@@ -94,23 +95,57 @@ export function KpiCard({ card, label }: { card: KpiCardDto; label: string }) {
   const exact =
     card.unit === 'money' && card.money ? formatUzs(card.money.amount) : undefined
 
+  /*
+    One label voice for every KPI tile — 12.5px sentence case, medium,
+    secondary ink. StatTile speaks the same; uppercase-with-tracking now
+    lives only in table headers, where it earns its keep.
+
+    The value is a 28px `.figure`: a step below StatTile's 30 on purpose,
+    because a KpiCard always carries its delta pill and the two together
+    already outweigh a bare tile.
+  */
+  const value = (
+    <>
+      {display()}
+      {card.unit === 'money' && card.value !== null && (
+        <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
+          soʻm
+        </span>
+      )}
+    </>
+  )
+
   return (
     <Card className="px-4 py-3.5">
-      <p className="truncate text-xs font-medium" style={{ color: 'var(--ink-secondary)' }}>
+      <p className="truncate text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
         {label}
       </p>
-      <p
-        className="mt-1.5 text-2xl leading-none font-semibold tracking-tight"
-        style={{ color: 'var(--ink-primary)' }}
-        title={exact}
-      >
-        {display()}
-        {card.unit === 'money' && card.value !== null && (
-          <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
-            soʻm
+      <div className="mt-1.5">
+        {exact ? (
+          /*
+            The exact soʻm amount rides the Tooltip primitive, not a native
+            `title`: it reaches touch and keyboard too. The figure is a tab
+            stop — one or two per screen, and the full number is otherwise
+            unreachable without a mouse.
+          */
+          <Tooltip content={<span className="tabular">{exact}</span>}>
+            <span
+              tabIndex={0}
+              className="focusable figure block rounded-[var(--radius-panel-sm)] text-[28px] leading-none font-semibold"
+              style={{ color: 'var(--ink-primary)' }}
+            >
+              {value}
+            </span>
+          </Tooltip>
+        ) : (
+          <span
+            className="figure block text-[28px] leading-none font-semibold"
+            style={{ color: 'var(--ink-primary)' }}
+          >
+            {value}
           </span>
         )}
-      </p>
+      </div>
       <div className="mt-2">
         <TrendIndicator delta={card.delta} />
       </div>

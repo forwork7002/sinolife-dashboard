@@ -3,12 +3,19 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useIsFetching, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 
+import { Button } from '@/components/ui/Button'
+import { CommandPalette, useCommandK, type CommandGroup } from '@/components/ui/CommandPalette'
+import { SearchGlyph, TriangleGlyph } from '@/components/ui/Icons'
+import { Kbd } from '@/components/ui/Kbd'
+import { Tooltip } from '@/components/ui/Tooltip'
+import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { sessionUser, signOut, useSession } from '@/lib/authClient'
 import { formatDateTime } from '@/lib/format'
 import { ROLE_LABELS, canSee } from '@/lib/roles'
 import { t } from '@/lib/messages'
+import { PERIOD_PRESETS } from './PeriodFilter'
 import { RouteTransitions } from './RouteTransitions'
 
 /**
@@ -86,16 +93,84 @@ export function Shell({
   const user = sessionUser(session?.user)
 
   /**
+   * The reporting window, read here for the palette's "Davr" group.
+   *
+   * Reusing the SAME hook every page uses — not a re-implementation — is what
+   * guarantees a preset chosen from the palette lands in the URL exactly the
+   * way PeriodFilter's own buttons put it there: preset set, stale from/to
+   * cleared, page number dropped. Shell only renders inside pages that already
+   * sit under a Suspense boundary (useSearchParams demands one), so reading it
+   * here costs nothing new.
+   */
+  const { filters, setPeriod } = useDashboardFilters()
+
+  /**
+   * The ⌘K palette. Closed means UNMOUNTED (the primitive returns null), so
+   * its Escape handling cannot linger and fight PeriodFilter's popover — while
+   * it IS open, its Escape is preventDefault-ed and PeriodFilter stands down.
+   */
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const openPalette = useCallback(() => setPaletteOpen(true), [])
+  const closePalette = useCallback(() => setPaletteOpen(false), [])
+  useCommandK(openPalette)
+
+  const role = user?.role
+
+  /**
    * Hide destinations the role cannot use.
    *
    * Presentation only — the server rejects any request the role is not
    * entitled to regardless of what is rendered here. Hiding a link the user
    * would only get a 403 from is a courtesy, not the boundary.
    */
-  const visibleNav = NAV.filter((item) => !user || canSee(user.role, item.href))
+  const visibleNav = NAV.filter((item) => !role || canSee(role, item.href))
+
+  /**
+   * What the palette knows: every screen this role can see, then the six
+   * period presets. The same canSee gate as the sidebar — a palette that
+   * offers a route the rail hides would just be a faster way to find a 403.
+   * Navigation goes through router.push with the bare href, exactly like the
+   * sidebar's links; period changes go through setPeriod, exactly like the
+   * toolbar's buttons. The palette adds no third semantics of its own.
+   *
+   * Built plainly, no useMemo: the React Compiler memoizes it (a manual memo
+   * here is flagged by react-hooks/preserve-manual-memoization), and twenty
+   * rows would be cheap even if it did not.
+   */
+  const paletteGroups: readonly CommandGroup[] = [
+    {
+      label: t.palette.sections,
+      items: visibleNav.map((item) => {
+        const Icon = item.icon
+        return {
+          id: item.href,
+          label: item.label,
+          icon: <Icon />,
+          onSelect: () => router.push(item.href),
+        }
+      }),
+    },
+    {
+      label: t.period.label,
+      items: PERIOD_PRESETS.map((preset) => ({
+        id: `davr-${preset}`,
+        label: t.period[preset],
+        // Say which window is already on screen, so re-choosing it reads as
+        // the no-op it is rather than a change that silently did nothing.
+        hint: preset === filters.preset ? t.palette.currentPeriod : undefined,
+        onSelect: () => setPeriod({ preset }),
+      })),
+    },
+  ]
 
   return (
-    <div className="flex min-h-screen" style={{ background: 'var(--page)' }}>
+    /*
+      No background here on purpose. `html` already paints `--page` plus the two
+      ambient accent pools, and the film grain lives on `body::after` at z:-1 —
+      an opaque fill on this wrapper was silently covering all three. The shell
+      stays transparent so the atmosphere the stylesheet paints can reach the eye.
+    */
+    <div className="flex min-h-screen">
       <RouteTransitions />
       <a href="#main" className="skip-link">
         Asosiy qismga oʻtish
@@ -116,15 +191,12 @@ export function Shell({
         }}
       >
         <div className="flex items-center gap-2.5 px-5 py-5">
-          <span
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold"
-            style={{ background: 'var(--series-1)', color: 'var(--ink-on-series)' }}
-            aria-hidden="true"
-          >
-            S
-          </span>
+          <WordmarkBadge />
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold" style={{ color: 'var(--ink-primary)' }}>
+            <p
+              className="truncate text-sm font-semibold tracking-tight"
+              style={{ color: 'var(--ink-primary)' }}
+            >
               {t.app.name}
             </p>
             <p className="truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
@@ -141,10 +213,15 @@ export function Shell({
             return (
               <div key={group.label ?? 'root'} className="mb-2">
                 {group.label && (
-                  <p
-                    className="px-2.5 pt-2.5 pb-1 text-[10px] font-semibold tracking-wider uppercase"
-                    style={{ color: 'var(--ink-muted)' }}
-                  >
+                  /*
+                    `.eyebrow` — the ONE positive-tracked style in the system,
+                    reserved for section headers like this. The utility classes
+                    behind it are the same treatment spelled by hand, so the
+                    label renders correctly even before globals.css defines the
+                    class; once it exists, the unlayered rule wins over the
+                    layered Tailwind utilities and the two cannot drift.
+                  */
+                  <p className="eyebrow px-2.5 pt-2.5 pb-1 text-[10px] font-semibold tracking-wider uppercase text-[var(--ink-muted)]">
                     {group.label}
                   </p>
                 )}
@@ -158,9 +235,18 @@ export function Shell({
                         <Link
                           href={item.href}
                           aria-current={active ? 'page' : undefined}
-                          className="focusable relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors"
+                          className="focusable relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13.5px] font-medium transition-colors"
                           style={{
-                            background: active ? 'var(--grid)' : 'transparent',
+                            /*
+                              A soft series-1 wash rather than the neutral
+                              --grid: the active screen shares a hue with the
+                              2px bar beside it and the S mark above — one
+                              chrome identity, still nowhere near strong
+                              enough to read as data.
+                            */
+                            background: active
+                              ? 'color-mix(in oklab, var(--series-1) 9%, transparent)'
+                              : 'transparent',
                             color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
                           }}
                         >
@@ -216,6 +302,10 @@ export function Shell({
                   {ROLE_LABELS[user.role]}
                 </p>
               </div>
+              {/* The Tooltip primitive, not a native title: an icon-only
+                  button whose label arrives after a second of hovering and
+                  never on focus or touch is unlabelled for most people. */}
+              <Tooltip content="Chiqish">
               <button
                 type="button"
                 onClick={() => {
@@ -228,9 +318,8 @@ export function Shell({
                     router.refresh()
                   })
                 }}
-                title="Chiqish"
                 aria-label="Chiqish"
-                className="rounded-md p-1.5 transition-colors hover:bg-[var(--grid)]"
+                className="focusable rounded-md p-1.5 transition-colors hover:bg-[var(--grid)]"
                 style={{ color: 'var(--ink-muted)' }}
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -243,6 +332,7 @@ export function Shell({
                   />
                 </svg>
               </button>
+              </Tooltip>
             </div>
           </div>
         )}
@@ -265,19 +355,33 @@ export function Shell({
         >
           <div className="flex flex-wrap items-center gap-3 px-4 py-3 lg:px-6">
             <div className="flex min-w-0 items-center gap-2 lg:hidden">
-              <span
-                className="flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold"
-                style={{ background: 'var(--series-1)', color: 'var(--ink-on-series)' }}
-                aria-hidden="true"
-              >
-                S
-              </span>
+              <WordmarkBadge small />
               <span className="text-sm font-semibold">{t.app.name}</span>
             </div>
 
             {dataSource && <DataSourceBadge source={dataSource} />}
 
-            <div className="ml-auto flex items-center gap-2">{toolbar}</div>
+            <div className="ml-auto flex items-center gap-2">
+              {/*
+                The ⌘K chip. A ghost button, because it must sit beside the
+                period control without competing with it — the keycaps do the
+                explaining. On a phone the label and caps fold away (there is
+                no ⌘K to teach) and the chip is just a search button; the
+                aria-label keeps it named either way.
+              */}
+              <Button
+                variant="ghost"
+                icon={<SearchGlyph size={14} />}
+                onClick={openPalette}
+                aria-label={t.palette.search}
+              >
+                <span className="hidden sm:inline">{t.palette.search}</span>
+                <span className="hidden sm:inline-flex">
+                  <Kbd keys={['mod', 'K']} />
+                </span>
+              </Button>
+              {toolbar}
+            </div>
           </div>
 
           {/* Mobile nav */}
@@ -324,7 +428,43 @@ export function Shell({
           {children}
         </main>
       </div>
+
+      {/* Portalled to document.body by the primitive; mounted here so the
+          shortcut, the chip and the dialog ship as one unit on every page.
+          Closed is unmounted — its Escape and focus trap cannot outlive it. */}
+      <CommandPalette open={paletteOpen} onClose={closePalette} groups={paletteGroups} />
     </div>
+  )
+}
+
+/**
+ * The S mark — chrome, deliberately series-1.
+ *
+ * The one place the interface signs its own name, so it gets the finishing a
+ * flat fill lacks: a whisper of gradient toward the light and an inset
+ * hairline highlight, both mixed from tokens the themes already own. It is
+ * NOT page identity and never follows --accent; the sidebar's active bar
+ * shares this hue precisely because both are chrome.
+ */
+function WordmarkBadge({ small = false }: { small?: boolean }) {
+  return (
+    <span
+      className={
+        small
+          ? 'flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-bold'
+          : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold'
+      }
+      style={{
+        background:
+          'linear-gradient(180deg, color-mix(in oklab, var(--series-1) 86%, var(--ink-on-series)) 0%, var(--series-1) 65%)',
+        color: 'var(--ink-on-series)',
+        boxShadow:
+          'inset 0 1px 0 color-mix(in oklab, var(--ink-on-series) 30%, transparent), var(--shadow-card)',
+      }}
+      aria-hidden="true"
+    >
+      S
+    </span>
   )
 }
 
@@ -374,21 +514,26 @@ function FreshnessPanel({ lastSyncedAt }: { lastSyncedAt?: string | null }) {
       {/* The word matters, not only the tint. The worker runs every sixty
           seconds, so five missed ticks is a fault — and a fault signalled by
           colour alone reaches nobody who cannot see the colour. */}
-      <p
-        className="tabular text-[11px]"
-        style={{ color: stale ? 'var(--status-warning)' : 'var(--ink-secondary)' }}
-        title={formatDateTime(lastSyncedAt)}
-      >
-        {relativeMinutes(minutes)}
-        {/* A glyph as well as the word, matching StatusChip's ● ▲ ■ — and NO
-            aria-live: this panel re-renders every fifteen seconds, so a live
-            region would announce a ticking clock forever. */}
-        {stale && (
-          <span className="ml-1 font-medium">
-            <span aria-hidden="true">▲</span> eskirgan
-          </span>
-        )}
-      </p>
+      {/* The exact timestamp is data, so it travels by the Tooltip primitive
+          rather than a native title — visible on focus and touch, not only to
+          a patient mouse. The trigger is a tab stop for the same reason. */}
+      <Tooltip content={formatDateTime(lastSyncedAt)}>
+        <p
+          tabIndex={0}
+          className="focusable tabular rounded text-[11px]"
+          style={{ color: stale ? 'var(--status-warning)' : 'var(--ink-secondary)' }}
+        >
+          {relativeMinutes(minutes)}
+          {/* A drawn glyph as well as the word, matching StatusChip's set —
+              and NO aria-live: this panel re-renders every fifteen seconds,
+              so a live region would announce a ticking clock forever. */}
+          {stale && (
+            <span className="ml-1 inline-flex items-center gap-1 font-medium">
+              <TriangleGlyph size={10} /> eskirgan
+            </span>
+          )}
+        </p>
+      </Tooltip>
     </div>
   )
 }
@@ -423,14 +568,18 @@ function isActive(pathname: string, href: string): boolean {
 function DataSourceBadge({ source }: { source: 'DEMO' | 'BITRIX24' | 'MANUAL' }) {
   const isDemo = source !== 'BITRIX24'
 
-  return (
+  const badge = (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
+      // The hint ("these numbers are generated") is worth reading, so the
+      // demo badge is a tab stop and its explanation a real Tooltip — a
+      // native title reaches neither keyboards nor touch. The live badge
+      // explains nothing and stays out of the tab order.
+      tabIndex={isDemo ? 0 : undefined}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${isDemo ? 'focusable' : ''}`}
       style={{
         background: isDemo ? 'color-mix(in oklab, var(--status-warning) 18%, transparent)' : 'var(--grid)',
         color: 'var(--ink-primary)',
       }}
-      title={isDemo ? t.badge.demoHint : undefined}
     >
       <span
         aria-hidden="true"
@@ -440,6 +589,8 @@ function DataSourceBadge({ source }: { source: 'DEMO' | 'BITRIX24' | 'MANUAL' })
       {isDemo ? t.badge.demo : t.badge.live}
     </span>
   )
+
+  return isDemo ? <Tooltip content={t.badge.demoHint}>{badge}</Tooltip> : badge
 }
 
 function GridIcon() {

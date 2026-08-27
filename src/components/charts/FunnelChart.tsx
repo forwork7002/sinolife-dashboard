@@ -28,6 +28,9 @@ const ORDINAL_RAMP = [
   'var(--seq-650)',
 ]
 
+/** Real minus (U+2212), not a hyphen: hyphens jitter in tabular columns. */
+const MINUS = '−'
+
 function colorFor(
   step: FunnelStepDto,
   pipelineIndex: number,
@@ -72,6 +75,31 @@ export function FunnelChart({ steps }: { steps: readonly FunnelStepDto[] }) {
   const pipelineSteps = visible.filter(
     (s) => s.category === 'NEW' || s.category === 'IN_PROGRESS',
   )
+
+  /**
+   * Each pipeline stage remembers the stage BEFORE it — in the same pipeline.
+   *
+   * That predecessor is what the ghost region and the drop-off annotation are
+   * measured against (the Amplitude trick: the pale remainder above a funnel
+   * bar is the previous step's reach, so drop-off is visible as unfilled
+   * track rather than deduced by mental subtraction). The pairing must stay
+   * inside one pipeline: the funnel interleaves several, and "previous row"
+   * across a pipeline boundary would compare unrelated processes.
+   *
+   * WON/LOST rows get no ghost — LOST *is* the drop-off, and painting a
+   * remainder over a reserved status colour would dilute exactly the two hues
+   * the app promises never to touch.
+   */
+  const prevStageById = new Map<string, FunnelStepDto>()
+  let prev: FunnelStepDto | null = null
+  let prevPipeline: string | null = null
+  for (const step of pipelineSteps) {
+    const pipeline = pipelineOf(step.stageName)
+    if (prev && pipeline === prevPipeline) prevStageById.set(step.stageId, prev)
+    prev = step
+    prevPipeline = pipeline
+  }
+
   return (
     <ul className="space-y-2.5">
       {visible.map((step) => {
@@ -90,6 +118,28 @@ export function FunnelChart({ steps }: { steps: readonly FunnelStepDto[] }) {
          */
         const width = step.reachedPercent ?? 0
         const color = colorFor(step, pipelineSteps.indexOf(step), pipelineSteps.length)
+
+        /**
+         * Ghost + drop-off, only where they mean something.
+         *
+         * The ghost is the previous stage drawn in the SAME hue at low alpha
+         * — same measure as the bar (reachedPercent), so the bar/label
+         * honesty rule holds for it too. It only appears when the previous
+         * stage was LARGER: this funnel is a snapshot of where deals sit
+         * now, so a later stage can legitimately hold more deals, and a
+         * ghost smaller than the bar would just vanish underneath it.
+         *
+         * The annotation is suppressed for tiny predecessors: a drop from
+         * 3 to 2 prints as −33%, a precision the sample cannot carry. Five
+         * is the floor where a percentage stops being coin-flip noise.
+         */
+        const prevStep = prevStageById.get(step.stageId)
+        const ghostWidth = prevStep?.reachedPercent ?? null
+        const drop = prevStep ? prevStep.dealCount - step.dealCount : 0
+        const dropPercent =
+          prevStep && prevStep.dealCount >= 5 && drop > 0
+            ? (drop / prevStep.dealCount) * 100
+            : null
 
         return (
           <li key={step.stageId}>
@@ -110,19 +160,44 @@ export function FunnelChart({ steps }: { steps: readonly FunnelStepDto[] }) {
                 <span className="ml-1.5" style={{ color: 'var(--ink-muted)' }}>
                   {step.reachedPercent === null ? '—' : formatPercent(step.reachedPercent, 0)}
                 </span>
+                {dropPercent !== null && (
+                  <span className="ml-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                    {MINUS}
+                    {formatNumber(drop)} · {MINUS}
+                    {formatPercent(dropPercent, 0)}
+                  </span>
+                )}
               </span>
             </div>
 
             <div
-              className="mt-1 h-2 w-full overflow-hidden rounded-full"
+              className="relative mt-1 h-2 w-full overflow-hidden rounded-full"
               style={{ background: 'var(--track)' }}
               role="img"
               aria-label={`${step.stageName}: ${step.dealCount} ta bitim${
                 step.reachedPercent === null ? '' : `, jamining ${formatPercent(step.reachedPercent, 0)}`
+              }${
+                dropPercent === null
+                  ? ''
+                  : `, oldingi bosqichdan ${MINUS}${formatNumber(drop)} (${MINUS}${formatPercent(dropPercent, 0)})`
               }`}
             >
+              {/* The ghost: previous stage's reach, same hue at low alpha.
+                  Absolute and first, so the solid bar (position: relative,
+                  later in DOM order) always paints over it. Not animated —
+                  the context appears settled, only the data grows in. */}
+              {ghostWidth !== null && ghostWidth > width && (
+                <div
+                  aria-hidden="true"
+                  className="absolute inset-y-0 left-0 rounded-full"
+                  style={{
+                    width: `${ghostWidth}%`,
+                    background: `color-mix(in oklab, ${color} 18%, transparent)`,
+                  }}
+                />
+              )}
               <div
-                className="grow-x h-full rounded-full"
+                className="grow-x relative h-full rounded-full"
                 style={{
                   width: `${Math.max(width, step.dealCount > 0 ? 1.5 : 0)}%`,
                   background: color,

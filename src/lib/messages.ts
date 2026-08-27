@@ -113,6 +113,22 @@ export const t = {
     truncated: 'Taqqoslash davri qisqartirildi',
   },
 
+  /**
+   * The ⌘K command palette and its header trigger.
+   *
+   * Footer strings (↑↓ tanlash · ↵ ochish · Esc yopish) and the placeholder
+   * live inside the CommandPalette primitive itself; only what Shell wires —
+   * the trigger chip and the group headings — belongs here. "Davr" is not
+   * duplicated: the period group reuses t.period.label.
+   */
+  palette: {
+    search: 'Qidiruv',
+    sections: 'Boʻlimlar',
+    // Beside the preset the page is already showing — so choosing it again
+    // reads as a no-op before it is one.
+    currentPeriod: 'joriy',
+  },
+
   cards: {
     revenue: 'Tushum',
     dealsWon: 'Yopilgan bitimlar',

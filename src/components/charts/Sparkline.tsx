@@ -21,11 +21,23 @@ export function Sparkline({
   color = 'var(--seq-450)',
   height = 26,
   label,
+  baseline,
 }: {
   readonly values: readonly number[]
   color?: string
   height?: number
   label?: string
+  /**
+   * Optional reference value — a dashed hairline at e.g. the previous
+   * period's average, so the shape answers "above or below the bar?" without
+   * growing axes. The domain STRETCHES to include it: clamping a baseline
+   * that sits outside the data would draw it pinned to an edge, claiming a
+   * proximity that is not true.
+   *
+   * The time window the values cover stays the caller's job to state, as
+   * before — a sparkline has no x-axis to say it.
+   */
+  baseline?: number
 }) {
   // Unique per instance: two sparklines sharing one gradient id would both
   // paint whichever <defs> happened to render first. Above the early return,
@@ -43,8 +55,8 @@ export function Sparkline({
   }
 
   const width = 100
-  const min = Math.min(...values)
-  const max = Math.max(...values)
+  const min = Math.min(...values, ...(baseline !== undefined ? [baseline] : []))
+  const max = Math.max(...values, ...(baseline !== undefined ? [baseline] : []))
   const span = max - min || 1
 
   const points = values.map((v, i) => {
@@ -92,6 +104,22 @@ export function Sparkline({
             <stop offset="100%" stopColor={color} stopOpacity={0.02} />
           </linearGradient>
         </defs>
+        {/* Before the data paths: SVG paints in document order, and a
+            reference must sit behind the line, not across it. Dashes and
+            stroke width stay in screen pixels via non-scaling-stroke — the
+            stretched viewBox would otherwise pull each dash four ways. */}
+        {baseline !== undefined && (
+          <line
+            x1={0}
+            x2={width}
+            y1={height - 2 - ((baseline - min) / span) * (height - 4)}
+            y2={height - 2 - ((baseline - min) / span) * (height - 4)}
+            stroke="var(--axis)"
+            strokeWidth={1}
+            strokeDasharray="3 3"
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
         <path d={area} fill={`url(#${gradientId})`} />
         <path
           className="draw-in"
@@ -109,7 +137,9 @@ export function Sparkline({
         />
       </svg>
       {/* A surface-coloured ring keeps the end marker legible where it
-          overlaps the line's own fill. */}
+          overlaps the line's own fill. Ring width 2px, matching the Recharts
+          charts' endpoint dots — one marker language across every trend the
+          app draws, tile-sized or full-sized. */}
       <span
         aria-hidden="true"
         className="absolute block rounded-full"
@@ -117,7 +147,7 @@ export function Sparkline({
           width: 5,
           height: 5,
           background: color,
-          boxShadow: '0 0 0 1.5px var(--surface-raised)',
+          boxShadow: '0 0 0 2px var(--surface-raised)',
           left: `${(last[0] / width) * 100}%`,
           top: last[1],
           transform: 'translate(-50%, -50%)',

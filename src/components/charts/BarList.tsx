@@ -31,11 +31,21 @@ export function BarList({
   max,
   valueFormatter = formatCompactUzs,
   emptyLabel = 'Maʼlumot yoʻq',
+  deltaSlot,
 }: {
   items: readonly BarListItem[]
   max?: number
   valueFormatter?: (value: number) => string
   emptyLabel?: string
+  /**
+   * Optional per-row delta, rendered right after the value.
+   *
+   * A render-prop rather than a `delta` field on the item: the pages own
+   * what a delta means for their measure — signed percent, absolute so'm,
+   * a TrendIndicator — and BarList should not grow an opinion about any of
+   * them. It hands the item back and draws whatever comes.
+   */
+  deltaSlot?: (item: BarListItem) => ReactNode
 }) {
   if (items.length === 0) {
     return (
@@ -67,6 +77,7 @@ export function BarList({
                 <span className="tabular text-xs font-medium" style={{ color: 'var(--ink-primary)' }}>
                   {valueFormatter(item.value)}
                 </span>
+                {deltaSlot?.(item)}
                 {item.sharePercent !== undefined && (
                   <span
                     className="tabular w-11 text-right text-[11px]"
