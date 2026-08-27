@@ -465,3 +465,245 @@ export interface StructureDto {
   readonly revenue: MoneyDto
   readonly children: readonly StructureDto[]
 }
+
+// ---------------------------------------------------------------------------
+// Pulse & flow — `/insights/pulse`, `/insights/flow`.
+// Mirrors the DTOs in `src/server/services/pulseService.ts`.
+// ---------------------------------------------------------------------------
+
+export interface PulseVelocityDto {
+  /** Open revenue deals right now — point-in-time, not period-bound. */
+  readonly openDeals: number
+  readonly openValue: MoneyDto
+  /** Count-based win rate over deals closed in the period, 0-100. */
+  readonly winRatePercent: number | null
+  readonly avgWonAmount: MoneyDto | null
+  readonly medianCycleDays: number | null
+  /**
+   * "Savdo tezligi", soʻm per day. Null whenever ANY component above is null
+   * — render an em dash, never a zero, and the components say which leg of
+   * the formula is missing.
+   */
+  readonly salesVelocityPerDay: MoneyDto | null
+}
+
+export interface PulseForecastDto {
+  /** Revenue won so far in the period. */
+  readonly periodToDate: MoneyDto
+  /** How much of the FULL calendar unit has elapsed, 0-100. */
+  readonly elapsedPercent: number
+  /** Run-rate projection to the unit's end. Null while under 2% elapsed. */
+  readonly projected: MoneyDto | null
+  /** The previous FULL unit's revenue — what the projection is read against. */
+  readonly previousFull: MoneyDto
+  /** projected vs previousFull. */
+  readonly delta: DeltaDto
+}
+
+export interface PulseCycleDto {
+  readonly p50Days: number | null
+  readonly p75Days: number | null
+  readonly p90Days: number | null
+  /** How many won deals the percentiles were computed from. */
+  readonly wonCount: number
+}
+
+export interface PulseWinRateDto {
+  /** won / (won + lost) by deal count, 0-100. Null when nothing closed. */
+  readonly countPercent: number | null
+  /** The same rate weighted by deal value. */
+  readonly valuePercent: number | null
+  readonly wonCount: number
+  readonly lostCount: number
+  readonly countDelta: DeltaDto
+  readonly valueDelta: DeltaDto
+}
+
+export interface PulseDto {
+  readonly velocity: PulseVelocityDto
+  readonly forecast: PulseForecastDto
+  readonly cycle: PulseCycleDto
+  readonly winRate: PulseWinRateDto
+}
+
+export interface StageConversionRowDto {
+  readonly stageId: string
+  readonly stageName: string
+  readonly pipelineName: string
+  readonly category: string
+  readonly logisticsRole: string | null
+  readonly sortOrder: number
+  /** Distinct cohort deals that EVER entered this stage. */
+  readonly dealCount: number
+  /** vs the previous stage of the same pipeline. Null for the first stage. */
+  readonly conversionFromPreviousPercent: number | null
+}
+
+export interface FlowConversionDto {
+  /**
+   * The honest denominator: deals CREATED in the period, revenue pipelines.
+   * Captions must say "davrda yaratilgan bitimlar boʻyicha".
+   */
+  readonly basis: 'created_in_period'
+  readonly stages: readonly StageConversionRowDto[]
+}
+
+export interface StageAgingRowDto {
+  readonly stageId: string
+  readonly stageName: string
+  readonly pipelineName: string
+  readonly category: string
+  readonly logisticsRole: string | null
+  readonly sortOrder: number
+  readonly openCount: number
+  readonly openValue: MoneyDto
+  /** Current dwell of open deals in this stage, hours. */
+  readonly dwellP50Hours: number | null
+  readonly dwellP90Hours: number | null
+  /** All-time median over completed visits — the stuck baseline. Null = none. */
+  readonly historicalP50Hours: number | null
+  /** Deals dwelling longer than 2x the historical median. */
+  readonly stuckCount: number
+  readonly stuckValue: MoneyDto
+}
+
+export interface FlowAgingDto {
+  readonly stages: readonly StageAgingRowDto[]
+  readonly totals: {
+    readonly openCount: number
+    readonly openValue: MoneyDto
+    readonly stuckCount: number
+    readonly stuckValue: MoneyDto
+  }
+}
+
+export interface FlowDto {
+  readonly stageConversion: FlowConversionDto
+  readonly aging: FlowAgingDto
+}
+
+// ---------------------------------------------------------------------------
+// Concentration — `/insights/concentration`.
+// Mirrors the DTOs in `src/server/services/concentrationService.ts`.
+// ---------------------------------------------------------------------------
+
+export interface ConcentrationParetoDto {
+  /** Share of period revenue held by the 5 / 10 largest customers, 0-100. */
+  readonly top5SharePercent: number | null
+  readonly top10SharePercent: number | null
+  /** How few customers cover 80% of the period's revenue. */
+  readonly customersFor80Percent: number | null
+  /** Customers with a won revenue deal in the period. */
+  readonly totalCustomers: number
+  /**
+   * Share of period revenue booked with NO customer attached. The shares
+   * above cover identified customers only — this is the disclosed blind spot.
+   */
+  readonly nullCustomerSharePercent: number | null
+}
+
+export type HhiBand = 'concentrated' | 'moderate' | 'diversified'
+
+export interface HhiCutDto {
+  /** Herfindahl–Hirschman index, 0-10000. Null when the cut has no revenue. */
+  readonly hhi: number | null
+  /** >=2500 concentrated, >=1500 moderate, else diversified. */
+  readonly band: HhiBand | null
+  /** Groups with revenue that entered the index. */
+  readonly groups: number
+  /** Revenue share of the null (unset) group, excluded from the index. */
+  readonly nullSharePercent: number | null
+}
+
+export interface ConcentrationHhiDto {
+  readonly bySource: HhiCutDto
+  readonly byRegion: HhiCutDto
+}
+
+export interface ConcentrationRepeatDto {
+  /** First → second purchase interval, days, over pairs completed in the period. */
+  readonly medianDaysBetweenFirstAndSecond: number | null
+  readonly p90Days: number | null
+  /** How many second purchases the interval percentiles rest on. */
+  readonly pairsMeasured: number
+  /**
+   * Of first-time buyers with a COMPLETE 90-day horizon (first purchase in
+   * the period shifted back 90 days), the share who bought again in time.
+   */
+  readonly repurchaseWithin90Percent: number | null
+  readonly cohortSize: number
+  /** Share of period revenue from deals that are not the customer's first win. */
+  readonly repeatRevenueSharePercent: number | null
+  /**
+   * The same claim from Bitrix24's own `isReturnCustomer` flag. Divergence
+   * from the row above is a data-quality signal — show both, reconcile neither.
+   */
+  readonly bitrixFlagSharePercent: number | null
+}
+
+export interface ConcentrationDto {
+  readonly pareto: ConcentrationParetoDto
+  readonly hhi: ConcentrationHhiDto
+  readonly repeat: ConcentrationRepeatDto
+}
+
+// ---------------------------------------------------------------------------
+// Response — `/insights/response`.
+// Mirrors the DTOs in `src/server/services/responseService.ts`.
+// ---------------------------------------------------------------------------
+
+export interface ResponseFirstTouchDto {
+  /** Creation → first outbound call, minutes, over deals that WERE called. */
+  readonly p50Minutes: number | null
+  readonly p90Minutes: number | null
+  /** First-called within 15 / 60 minutes, as a share of ALL cohort deals. */
+  readonly calledWithin15MinPercent: number | null
+  readonly calledWithin60MinPercent: number | null
+  /**
+   * Deals with no outbound call at all. Excluded from the percentiles —
+   * "never" is not a large number of minutes — and disclosed here instead.
+   */
+  readonly noCallSharePercent: number | null
+  /** Revenue deals created in the period — the honest denominator. */
+  readonly deals: number
+}
+
+export interface ResponseAttemptsDto {
+  /** Dials up to and including the first connect; 1 = reached first try. */
+  readonly medianAttemptsToConnect: number | null
+  /** Dialling targets never connected after 5+ dials, share of all targets. */
+  readonly neverConnectedAfter5Percent: number | null
+  /** Dialling targets in the period: a deal, or customer+day without one. */
+  readonly groups: number
+}
+
+/** Average call effort behind one closed deal, per outcome. */
+export interface ResponseOutcomeDto {
+  readonly deals: number
+  readonly avgCalls: number | null
+  /** Connected talk-seconds only — dialling is not conversation. */
+  readonly avgTalkSeconds: number | null
+}
+
+export interface ResponseEmployeeDto {
+  readonly employeeId: string
+  readonly fullName: string
+  readonly revenue: MoneyDto
+  readonly talkHours: number
+  readonly revenuePerTalkHour: MoneyDto
+}
+
+export interface ResponseEfficiencyDto {
+  readonly won: ResponseOutcomeDto
+  readonly lost: ResponseOutcomeDto
+  /** Period revenue over period connected talk time. Null under one talk-hour. */
+  readonly revenuePerTalkHour: MoneyDto | null
+  /** Best ratios, employees over the one-talk-hour floor only. */
+  readonly topEmployees: readonly ResponseEmployeeDto[]
+}
+
+export interface ResponseDto {
+  readonly firstTouch: ResponseFirstTouchDto
+  readonly attempts: ResponseAttemptsDto
+  readonly efficiency: ResponseEfficiencyDto
+}
