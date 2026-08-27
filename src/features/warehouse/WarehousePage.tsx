@@ -2,13 +2,15 @@
 
 import { useQuery } from '@tanstack/react-query'
 
+import { ErrorState } from '@/components/states/States'
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { ChartCard } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/ui/DataTable'
-import { GaugeTile, Meter, StatTile } from '@/components/ui/Stat'
+import { Meter, RingGauge, StatTile } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type DispatchDto, apiGet } from '@/lib/api'
-import { formatCompactUzs, formatNumber } from '@/lib/format'
+import { NO_VALUE, formatCompactUzs, formatNumber } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 /**
@@ -117,18 +119,87 @@ export function WarehousePage() {
       accent="var(--series-6)"
       meta={query.data?.meta}
     >
-      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {/*
+        The lead instrument — the page's one hero, wearing the registration
+        brackets alone.
+
+        Fulfilment has exactly one headline claim: of the parcels whose story
+        is over, how many reached a customer. The ring carries that rate, the
+        hero figure carries the fraction it came from — a rate without its
+        denominator is an opinion — and the in-flight count is named beside
+        them as the number this rate deliberately leaves out. The tiles below
+        stay subordinate: they are volume and money, not the verdict.
+      */}
+      <section className="card-hero brackets reveal px-5 py-5 sm:px-6" aria-label="Yetkazish darajasi">
+        {query.isError ? (
+          <ErrorState
+            message={(query.error as Error).message}
+            onRetry={() => void query.refetch()}
+          />
+        ) : (
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
+            {query.isPending ? (
+              <div className="skeleton h-[116px] w-[116px] shrink-0 rounded-full" role="status">
+                <span className="sr-only">Yuklanmoqda</span>
+              </div>
+            ) : (
+              <RingGauge
+                value={deliveryRate}
+                size={116}
+                thickness={9}
+                tone="auto"
+                label="Yetkazish darajasi"
+              />
+            )}
+
+            <div className="min-w-0 flex-1">
+              <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                Yetkazish darajasi
+              </p>
+
+              {query.isPending ? (
+                // Sized to the hero figure below, so ready never reflows loading.
+                <div className="skeleton mt-2 h-[38px] w-44" role="status">
+                  <span className="sr-only">Yuklanmoqda</span>
+                </div>
+              ) : resolved > 0 ? (
+                /*
+                  The fraction, not a second copy of the percentage — the ring
+                  already states that. Numbers only inside the nowrap hero
+                  line, so no long Uzbek word can push it off a narrow screen.
+                */
+                <p className="figure-hero mt-2" style={{ color: 'var(--ink-primary)' }}>
+                  <AnimatedNumber
+                    value={totalDelivered}
+                    format={(v) => formatNumber(Math.round(v))}
+                  />
+                  <span className="text-lg font-normal" style={{ color: 'var(--ink-muted)' }}>
+                    {' '}/ {formatNumber(resolved)}
+                  </span>
+                </p>
+              ) : (
+                // Genuine null: nothing has resolved. An em dash, never 0 —
+                // "no outcome yet" is not "nothing arrived".
+                <p className="figure-hero mt-2" style={{ color: 'var(--ink-primary)' }}>
+                  {NO_VALUE}
+                </p>
+              )}
+
+              {!query.isPending && (
+                <p className="mt-2 text-[11px] leading-snug" style={{ color: 'var(--ink-muted)' }}>
+                  {resolved > 0
+                    ? `Yakunlangan joʻnatmalardan yetkazilgani · ${formatNumber(inFlight)} tasi hali yoʻlda — ular darajaga kirmaydi`
+                    : 'Bu davrda birorta joʻnatma hali yakunlanmagan — daraja yakun chiqqanda paydo boʻladi'}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      <div className="stagger grid gap-3 sm:grid-cols-3">
         <StatTile status={tileStatus} label="Joʻnatilgan buyurtma" value={totalOrders || null} unit="count" />
         <StatTile status={tileStatus} label="Nuqtalar" value={known.length || null} unit="count" hint="Sklad, kuryer, marketpleys" />
-        <GaugeTile
-          status={tileStatus}
-          label="Yetkazish darajasi"
-          value={deliveryRate}
-          tone="auto"
-          hint={`${formatNumber(totalDelivered)} / ${formatNumber(resolved)} yakunlangan · ${formatNumber(
-            inFlight,
-          )} yoʻlda`}
-        />
         <StatTile status={tileStatus} label="Tushum" value={totalRevenue || null} unit="money" />
       </div>
 
@@ -166,6 +237,9 @@ export function WarehousePage() {
           onRetry={() => void query.refetch()}
           emptyTitle="Bu davrda joʻnatma yoʻq"
           minWidth={820}
+          // Bounded so the sticky header engages if the point list ever grows
+          // past a screen; today's handful of rows never reaches the cap.
+          maxHeight={560}
         />
       </ChartCard>
     </PageShell>

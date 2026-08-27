@@ -1,15 +1,17 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, type UIEvent } from 'react'
 
-import { ChartCard } from '@/components/ui/Card'
-import { GaugeTile, StatTile } from '@/components/ui/Stat'
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
+import { ChartCard } from '@/components/ui/Card'
+import { InitialChip } from '@/components/ui/DataTable'
+import { RingGauge, StatTile } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type StructureDto, apiGet } from '@/lib/api'
-import { formatCompactUzs, formatNumber } from '@/lib/format'
+import { NO_VALUE, formatCompactUzs, formatNumber } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 /**
@@ -50,40 +52,98 @@ export function StructurePage() {
       accent="var(--series-6)"
       meta={query.data?.meta}
     >
-      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {/*
+        The lead instrument — the page's one hero, the only panel wearing the
+        registration brackets.
+
+        "Kim bor, kim yoʻq" — the question this page exists to answer.
+
+        The Bitrix isActive flag alone cannot answer it: every deactivated
+        person is also silent, so the flag finds nobody the roster does not
+        already show. What management is asking is who is ON the roster,
+        marked active, and produced nothing — and that was 58 of 206 people
+        with no page saying so. That rate leads the page: the ring carries
+        it, the hero figure carries the fraction it is drawn from — a rate
+        without its denominator is an opinion — and the silent count stands
+        in the caption because it is the number the rate exists to expose.
+        Page-resolved tone: below 70% working is worth amber here, whatever
+        the house thresholds say.
+      */}
+      <section className="card-hero brackets reveal px-5 py-5 sm:px-6" aria-label="Ishlagan xodimlar">
+        {query.isError ? (
+          <ErrorState
+            message={(query.error as Error).message}
+            onRetry={() => void query.refetch()}
+          />
+        ) : (
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
+            {query.isPending ? (
+              <div className="skeleton h-[116px] w-[116px] shrink-0 rounded-full" role="status">
+                <span className="sr-only">Yuklanmoqda</span>
+              </div>
+            ) : (
+              <RingGauge
+                value={activePeople === 0 ? null : (workingPeople / activePeople) * 100}
+                size={116}
+                thickness={9}
+                tone={
+                  activePeople > 0 && workingPeople / activePeople < 0.7 ? 'warning' : 'neutral'
+                }
+                label="Ishlagan xodimlar"
+              />
+            )}
+
+            <div className="min-w-0 flex-1">
+              <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                Ishlagan xodimlar
+              </p>
+
+              {query.isPending ? (
+                // Sized to the hero figure below, so ready never reflows loading.
+                <div className="skeleton mt-2 h-[38px] w-44" role="status">
+                  <span className="sr-only">Yuklanmoqda</span>
+                </div>
+              ) : activePeople > 0 ? (
+                /*
+                  The fraction, not a second copy of the percentage — the ring
+                  already states that. Working people lead at hero size; the
+                  active roster sits beside them a register quieter, numbers
+                  only, so the nowrap hero line cannot overflow a narrow
+                  screen with a long Uzbek word.
+                */
+                <p className="figure-hero mt-2" style={{ color: 'var(--ink-primary)' }}>
+                  <AnimatedNumber
+                    value={workingPeople}
+                    format={(v) => formatNumber(Math.round(v))}
+                  />
+                  <span className="text-lg font-normal" style={{ color: 'var(--ink-muted)' }}>
+                    {' '}/ {formatNumber(activePeople)}
+                  </span>
+                </p>
+              ) : (
+                // Genuine null: no active roster imported. An em dash, never
+                // 0 — "nobody worked" is a different fact from "nobody is
+                // on the roster to measure".
+                <p className="figure-hero mt-2" style={{ color: 'var(--ink-primary)' }}>
+                  {NO_VALUE}
+                </p>
+              )}
+
+              {!query.isPending && (
+                <p className="mt-2 text-[11px] leading-snug" style={{ color: 'var(--ink-muted)' }}>
+                  {activePeople > 0
+                    ? `Davr ichida kamida bitta qoʻngʻiroq yoki sotuv qilganlar · ${formatNumber(silentPeople)} nafari jim`
+                    : 'Faol xodimlar roʻyxati boʻsh — Bitrix24 strukturasi import qilinmagan'}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      <div className="stagger grid gap-3 sm:grid-cols-3">
         <StatTile status={tileStatus} label="Boʻlimlar" value={flat.length || null} unit="count" />
         <StatTile status={tileStatus} label="Xodimlar" value={totalPeople || null} unit="count" />
-        {/*
-          "Kim bor, kim yoʻq" — the question this page exists to answer.
-          
-          The Bitrix isActive flag alone cannot answer it: every deactivated
-          person is also silent, so the flag finds nobody the roster does not
-          already show. What management is asking is who is ON the roster,
-          marked active, and produced nothing — and that was 58 of 206 people
-          with no page saying so.
-        */}
-        <GaugeTile
-          status={tileStatus}
-          label="Ishlagan xodimlar"
-          /*
-            The question is a RATE — what share of the active roster produced
-            anything — so the tile wears the ring every other headline rate
-            wears. The counts move to the hint, where 148 / 206 / 58 reads as
-            the fraction the ring is drawn from. Page-resolved tone: below 70%
-            working is worth amber here, whatever the house thresholds say.
-          */
-          value={activePeople === 0 ? null : (workingPeople / activePeople) * 100}
-          tone={
-            activePeople > 0 && workingPeople / activePeople < 0.7 ? 'warning' : 'neutral'
-          }
-          hint={
-            activePeople > 0
-              ? `${formatNumber(workingPeople)} / ${formatNumber(activePeople)} faol · ${formatNumber(
-                  silentPeople,
-                )} nafari jim`
-              : undefined
-          }
-        />
         <StatTile status={tileStatus} label="Tushum" value={totalRevenue || null} unit="money" />
       </div>
 
@@ -120,8 +180,27 @@ function flatten(nodes: readonly StructureDto[]): StructureDto[] {
 function Tree({ nodes }: { readonly nodes: readonly StructureDto[] }) {
   const siblingMax = Math.max(1, ...nodes.map((n) => n.revenue.amount))
 
+  /*
+    Same contract as DataTable's sticky header, hand-rolled because this
+    table is: the hairline under a resting header belongs to the first row
+    and scrolls away with it; `.is-scrolled` puts one back as a shadow so
+    the header reads as floating — which is what it is then actually doing.
+  */
+  const [scrolled, setScrolled] = useState(false)
+
+  const onScroll = (event: UIEvent<HTMLDivElement>) => {
+    const isScrolled = event.currentTarget.scrollTop > 0
+    if (isScrolled !== scrolled) setScrolled(isScrolled)
+  }
+
   return (
-    <div className="overflow-x-auto">
+    /*
+      Bounded, so the sticky header has something to stick to: a fully open
+      tree runs past twenty departments, and without the cap the column names
+      leave the screen exactly when the reader is deepest in the branches.
+      Short trees never reach the cap and behave as before.
+    */
+    <div className="overflow-x-auto" style={{ maxHeight: 560, overflowY: 'auto' }} onScroll={onScroll}>
       <table className="w-full text-sm" style={{ minWidth: 760 }}>
         <thead>
           <tr>
@@ -129,7 +208,11 @@ function Tree({ nodes }: { readonly nodes: readonly StructureDto[] }) {
               <th
                 key={header || i}
                 scope="col"
-                className={`px-3 py-2 text-[11px] font-medium ${i >= 2 && i <= 5 ? 'text-right' : 'text-left'}`}
+                /* `.thead-sticky` on the CELLS, not the row — sticky <tr>
+                   rendering is still uneven across engines, while cells pin
+                   everywhere and their contiguous sunken backgrounds read as
+                   one opaque band the rows slide under. */
+                className={`thead-sticky ${scrolled ? 'is-scrolled' : ''} px-3 py-2 text-[11px] font-medium ${i >= 2 && i <= 5 ? 'text-right' : 'text-left'}`}
                 style={{ color: 'var(--ink-muted)', borderBottom: '1px solid var(--border)' }}
               >
                 {header}
@@ -218,7 +301,19 @@ function Branch({ node, siblingMax }: { node: StructureDto; siblingMax: number }
           </div>
         </th>
         <td className="px-3 py-1.5 text-xs" style={{ color: 'var(--ink-secondary)' }}>
-          {node.headName ?? <span style={{ color: 'var(--ink-muted)' }}>—</span>}
+          {node.headName ? (
+            /* The chip anchors the eye the way an avatar would; it is
+               aria-hidden inside InitialChip because it only repeats the
+               first letter of the name printed right beside it. The name
+               truncates rather than wrapping under the chip — a long Uzbek
+               full name must survive the column, not reshape it. */
+            <span className="flex items-center gap-2">
+              <InitialChip name={node.headName} />
+              <span className="truncate">{node.headName}</span>
+            </span>
+          ) : (
+            <span style={{ color: 'var(--ink-muted)' }}>—</span>
+          )}
         </td>
         <td
           className="tabular px-3 py-1.5 text-right text-xs"

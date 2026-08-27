@@ -59,6 +59,35 @@ the lightest step and the matrix would read as blank.
 **The headline** is second-order revenue share — what proportion of money comes
 from customers buying again. It is not visible anywhere in Bitrix24 itself.
 
+### Added August 2026 — concentration and the repeat interval
+
+From `/insights/concentration`, on the same screen:
+
+- **Top-10 mijoz ulushi** — the share of the period's revenue held by the ten
+  largest customers (top-5 beside it), and the number of customers covering
+  80% of revenue. Formula: rank customers by won revenue in the period
+  (`countsAsRevenue`, `closedAt` in window), cumulate shares.
+- **Takroriy xarid oraligʻi** — p50/p90 days between a customer's first and
+  second purchase, over pairs whose *second* purchase falls in the period
+  (conditioning on the second avoids censoring bias), with the pair count
+  printed beside the percentile.
+- **90 kunda qaytish** — the share of first-time buyers who bought again
+  within 90 days. The cohort is first purchases in the period **shifted back
+  90 days**, so every member has a complete horizon; a cohort cut at the
+  period edge would flatter recent months by dropping the buyers who have not
+  had time to return.
+- **Takroriy tushum ulushi, stated twice** — once computed
+  (`row_number() OVER (PARTITION BY customer ORDER BY closedAt) > 1`), once
+  from Bitrix24's own `IS_RETURN_CUSTOMER` flag. When the two diverge, that
+  divergence is itself the finding — a data-quality signal, shown, not
+  reconciled.
+
+**Caveats stated on the page.** `customerId` is nullable, so every share above
+covers identified customers only and the revenue booked with *no* customer
+attached is disclosed beside them. A customer's "first purchase" is derived as
+`min(closedAt)` of won revenue deals — the portal keeps no
+customer-created-at-source date to prefer.
+
 ---
 
 ## 2. Logistika — did it arrive, and how fast
@@ -180,6 +209,39 @@ year-long gap.
 connecting is ordinary for this kind of dialling and there is no agreed target
 to grade against.
 
+### Added August 2026 — response speed and what an hour of talk returns
+
+From `/insights/response`, which joins calls to deal creation — a join the
+call analytics never made before:
+
+- **Birinchi qoʻngʻiroqqacha** — p50/p90 minutes from a revenue deal's
+  `createdAtSource` to its first OUTBOUND call, matched by `dealId` with a
+  fallback to the same `customerId`. The percentiles run over deals that
+  *were* called; the share never called at all is a separate disclosed number,
+  because "never" is not a large number of minutes.
+- **15 daqiqada aloqa** — the share of *all* deals created in the period that
+  were first-called within 15 minutes (60-minute rate beside it). The
+  denominator is every cohort deal, not the called subset — the honest one.
+- **Urinishlar soni** — median outbound dials up to and including the first
+  connect (1 = reached first try), per dialling target (a deal, or a
+  customer+Tashkent-day when no deal is linked), and the share of targets
+  never connected after 5+ attempts — the "5 уринишда богланиб болмади"
+  refusal, made measurable.
+- **Bir bitimga ketgan mehnat** — average calls and *connected* talk-seconds
+  behind one closed deal, WON and LOST side by side, because either column
+  alone invites the wrong reading.
+- **Suhbat soatiga daromad** — period revenue ÷ connected talk-hours, overall
+  and a top-5 list per employee. Null under one connected talk-hour, and the
+  per-employee list applies the same floor: a spectacular soʻm/soat built on
+  seventy minutes of talk is a different fact from one built on sixty hours.
+
+**Caveats.** The deal cohort is `countsAsRevenue` only, so a retention-copy of
+an order cannot count the same phone call twice. "Connected" is the portal's
+own flag (failure code 200). And one month of calls is imported by default
+(`BITRIX24_CALL_MONTHS`) — a reporting window older than the imported call
+history undercounts first-touch and attempts, silently, so periods should stay
+inside it.
+
 ---
 
 ## 7. Struktura — who is where
@@ -241,6 +303,79 @@ reader would otherwise assume one is wrong.
 **ROI is null until spend is entered.** The `ad_spend` table takes a monthly
 figure per channel; with one, the page reports CPL, CPO, CAC and ROI. Without
 one it shows a dash, never a zero cost and never an infinite return.
+
+### Added August 2026 — how concentrated the mix is
+
+Two Herfindahl–Hirschman indices from `/insights/concentration`, shown as
+verdict chips: revenue concentration **by source** and **by region**. Formula:
+each group's revenue share in basis points, squared and summed — 0 to 10,000 —
+banded at the DOJ thresholds (≥2500 concentrated, ≥1500 moderate, else
+diversified, with the boundary reading as the more alarming band). A single
+scalar that says whether the business rests on one channel, trended period
+over period.
+
+**Caveat.** `sourceId` and `region` are nullable fields; deals without one are
+excluded from the index and their revenue share is disclosed beside it, per
+the sparse-field rule. An index quietly computed over the labelled half of
+revenue would be a confident claim about the whole.
+
+---
+
+## 10. Puls va oqim — how fast the machine turns, and where it jams
+
+Two endpoints added August 2026, feeding the overview's hero band and the
+sales page. Neither invents a new source: every input already existed in the
+schema, computed separately and never combined.
+
+**Savdo tezligi (soʻm/kun).** Open revenue deals × win rate × average won
+amount ÷ median cycle days — the one number that trends pipeline health. The
+UI prints the formula's four legs under the figure, and the composite is
+**null the moment any leg is null**, with the em dash landing on the missing
+leg. A velocity with an invented zero in one leg would be a confident number
+about nothing.
+
+**Davr prognozi.** Period-to-date revenue ÷ the elapsed fraction of the *full*
+calendar unit, read against the previous **complete** unit — not the to-date
+comparison the rest of the dashboard uses, because a run rate divided by a
+to-date window is always ~100% elapsed and projects nothing. Null under 2%
+elapsed. The elapsed share is drawn as a meter next to the projection: a
+forecast from 8% of a month deserves visible scepticism.
+
+**Aylanish davri.** p50/p75/p90 days over won revenue deals, `closedAt −
+createdAtSource` — the one whole-deal duration the data-model rules sanction
+(anything stage-to-stage comes from `DealStageHistory` instead). Rows where
+`closedAt` precedes `createdAtSource` — sync artefacts — are excluded rather
+than averaged in as negative days. The won-deal count is printed beside the
+percentiles.
+
+**Yutish darajasi, stated both ways.** won / (won + lost) by deal count *and*
+value-weighted, side by side, because the two diverge exactly when a few large
+deals are carrying the period — and that divergence is worth seeing, not
+averaging away.
+
+**Bosqich konversiyasi (ever-reached).** The old funnel showed where the
+period's deals *currently sit* — a snapshot the overview still carries. This
+ladder answers the question a sales screen actually asks: of deals **created
+in the period** (revenue pipelines), how many ever *reached* each stage, from
+`DealStageHistory`, with conversion against the previous stage of the same
+pipeline. The basis travels in the payload (`created_in_period`) and the page
+caption repeats it — "davrda yaratilgan bitimlar boʻyicha" — because the two
+funnels have different denominators and an unlabelled number would invite
+reconciling them from memory.
+
+**Qotib qolgan bitimlar.** Point-in-time WIP aging over open revenue deals:
+current dwell is `now − enteredAt` of the open stage-history row, and a deal
+is *stuck* when its dwell exceeds **2× that stage's own historical median**
+from completed visits — the stage judged against itself, because a week in
+prepayment is normal and a week in "collecting the order" is a problem. The
+panel shows the stuck count and the money standing still, then the worst
+stages each with its current median dwell against the usual one, so the claim
+"stuck" is checkable from the row itself.
+
+**Caveats.** Every money aggregate names `countsAsRevenue`; all timestamps are
+`*AtSource` / `closedAt`, bucketed Asia/Tashkent. Pulse and flow honour the
+employee, department and source filters (and the caller's scope); product and
+stage filters do not apply, and the pages say so next to the numbers.
 
 ---
 

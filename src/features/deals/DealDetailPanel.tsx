@@ -4,7 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
 import { ErrorState, LoadingSkeleton } from '@/components/states/States'
+import { Button } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/Controls'
+import { MultiplyGlyph } from '@/components/ui/Icons'
 import { ApiClientError, apiGet, type MoneyDto } from '@/lib/api'
 import { NO_VALUE, formatDate, formatNumber, formatUzs } from '@/lib/format'
 import { t } from '@/lib/messages'
@@ -88,19 +90,34 @@ export function DealDetailPanel({
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
+      {/*
+        House scrim, not an ad-hoc black wash: `.backdrop-dim` tints from
+        --page so the dimming matches the theme (a black veil over a light
+        theme read as a different app), and it degrades per
+        prefers-reduced-transparency in one place for every overlay.
+      */}
       <button
         type="button"
         aria-label="Yopish"
         onClick={onClose}
-        className="absolute inset-0 bg-black/30 backdrop-blur-[1px]"
+        className="backdrop-dim absolute inset-0"
       />
 
       <aside
         role="dialog"
         aria-modal="true"
         aria-label={t.table.deal}
-        className="relative flex h-full w-full max-w-lg flex-col overflow-y-auto border-l shadow-2xl"
-        style={{ background: 'var(--surface)', borderColor: 'var(--border-strong)' }}
+        className="relative flex h-full w-full max-w-lg flex-col overflow-y-auto border-l"
+        /*
+          --shadow-ambient, not a Tailwind shadow: in light it is the house
+          float stack, in dark it swaps to the zero-offset halo — floating
+          chrome in a room with no sun to cast a directional shadow.
+        */
+        style={{
+          background: 'var(--surface)',
+          borderColor: 'var(--border-strong)',
+          boxShadow: 'var(--shadow-ambient)',
+        }}
       >
         <header
           className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b px-5 py-4"
@@ -120,17 +137,12 @@ export function DealDetailPanel({
               </p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Yopish"
-            className="rounded-md p-1.5 hover:bg-[var(--grid)]"
-            style={{ color: 'var(--ink-muted)' }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </button>
+          {/* The kit's ghost button, not a hand-rolled one — same height,
+              radius, hover and focus ring as every other quiet action. The
+              glyph is the drawn ×, which inherits the button's ink. */}
+          <Button variant="ghost" size="sm" aria-label="Yopish" onClick={onClose}>
+            <MultiplyGlyph size={14} />
+          </Button>
         </header>
 
         <div className="flex-1 px-5 py-4">
@@ -144,8 +156,10 @@ export function DealDetailPanel({
           ) : (
             <div className="space-y-5">
               <div className="flex items-baseline justify-between gap-3">
+                {/* `.figure` for tabular, lining digits — the panel's headline
+                    amount speaks the same numeral voice as every tile. */}
                 <p
-                  className="text-2xl font-semibold tracking-tight"
+                  className="figure text-2xl font-semibold tracking-tight"
                   style={{ color: 'var(--ink-primary)' }}
                 >
                   {formatUzs(deal.amount.amount)}
@@ -242,12 +256,10 @@ export function DealDetailPanel({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section>
-      <h3
-        className="mb-2 text-[11px] font-medium tracking-wide uppercase"
-        style={{ color: 'var(--ink-muted)' }}
-      >
-        {title}
-      </h3>
+      {/* `.eyebrow` — the ONE positive-tracked style, rationed to section and
+          table headers. This is a section header, so it wears the class
+          instead of a hand-tuned copy of it drifting out of sync. */}
+      <h3 className="eyebrow mb-2">{title}</h3>
       {children}
     </section>
   )

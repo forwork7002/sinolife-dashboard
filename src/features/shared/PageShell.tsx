@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 
 import { PeriodFilter } from '@/components/layout/PeriodFilter'
 import { Shell } from '@/components/layout/Shell'
+import { Button } from '@/components/ui/Button'
 import { MultiSelect, SearchInput } from '@/components/ui/Controls'
 import { apiGet, type ResponseMeta } from '@/lib/api'
 import { formatDate } from '@/lib/format'
@@ -106,99 +107,122 @@ export function PageShell({
         className="mx-auto max-w-[1400px] space-y-4"
         style={accent ? ({ '--accent': accent } as React.CSSProperties) : undefined}
       >
-        <header className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            {accent && <div className="accent-rule mb-2.5" aria-hidden="true" />}
-            <h1
-              className="text-xl font-semibold tracking-tight"
-              style={{ color: 'var(--ink-primary)' }}
-            >
-              {title}
-            </h1>
-            {(description || meta?.period) && (
-              <p className="mt-1 max-w-2xl text-xs" style={{ color: 'var(--ink-muted)' }}>
-                {description}
-                {description && meta?.period && <span className="mx-1.5">·</span>}
-                {meta?.period && (
-                  <>
-                    {formatDate(meta.period.start)} –{' '}
-                    {formatDate(new Date(new Date(meta.period.end).getTime() - 1).toISOString())}
-                  </>
-                )}
-                {meta?.comparisonTruncated && (
-                  <span
-                    className="ml-2 rounded px-1.5 py-0.5"
-                    style={{ background: 'var(--grid)', color: 'var(--ink-secondary)' }}
-                  >
-                    {t.period.truncated}
-                  </span>
-                )}
-              </p>
-            )}
-          </div>
-          {actions}
-        </header>
+        {/*
+          The header zone carries the aurora — title, description and filters
+          sit over it; data never does.
 
-        {anyFilter && (
-          <div className="flex flex-wrap items-center gap-2">
-            {enabled.search && (
-              <SearchInput
-                value={filters.q ?? ''}
-                onChange={(q) => update({ q: q || undefined })}
-              />
-            )}
-            {enabled.employees && (
-              <MultiSelect
-                label="Xodim"
-                options={(data?.employees ?? []).map((e) => ({ id: e.id, label: e.fullName }))}
-                selected={filters.employeeIds}
-                onChange={(employeeIds) => update({ employeeIds })}
-              />
-            )}
-            {enabled.departments && (
-              <MultiSelect
-                label="Boʻlim"
-                options={(data?.departments ?? []).map((d) => ({ id: d.id, label: d.name }))}
-                selected={filters.departmentIds}
-                onChange={(departmentIds) => update({ departmentIds })}
-              />
-            )}
-            {enabled.stages && (
-              <MultiSelect
-                label="Bosqich"
-                options={(data?.stages ?? []).map((s) => ({ id: s.id, label: s.name }))}
-                selected={filters.stageIds}
-                onChange={(stageIds) => update({ stageIds })}
-              />
-            )}
-            {enabled.products && (
-              <MultiSelect
-                label="Mahsulot"
-                options={(data?.products ?? []).map((p) => ({ id: p.id, label: p.name }))}
-                selected={filters.productIds}
-                onChange={(productIds) => update({ productIds })}
-              />
-            )}
-            {enabled.sources && (
-              <MultiSelect
-                label="Manba"
-                options={(data?.sources ?? []).map((s) => ({ id: s.id, label: s.name }))}
-                selected={filters.sourceIds}
-                onChange={(sourceIds) => update({ sourceIds })}
-              />
-            )}
-            {activeCount > 0 && (
-              <button
-                type="button"
-                onClick={reset}
-                className="rounded-lg px-2.5 py-1.5 text-xs font-medium"
-                style={{ color: 'var(--ink-muted)' }}
-              >
-                Filtrlarni tozalash ({activeCount})
-              </button>
+          `.page-atmosphere` + `.page-atmosphere-fade` (globals.css) paint two
+          blurred chrome-tint blobs and a gradient to --page over the bottom of
+          the band, so the atmosphere dies before the first chart. Both live in
+          their own absolutely-positioned, overflow-hidden layer rather than
+          putting overflow-hidden on the content: the MultiSelect popovers in
+          the filter row open downward past this box and must not be clipped.
+          The layer bleeds up into main's padding so the glow starts at the
+          top of the page, not 20px into it. pointer-events-none because
+          scenery must never intercept a click meant for the controls over it.
+        */}
+        <div className="relative">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 -top-5 bottom-0 overflow-hidden lg:-top-6"
+          >
+            <div className="page-atmosphere" />
+            <div className="page-atmosphere-fade" />
+          </div>
+
+          <div className="relative space-y-4">
+            <header className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                {accent && <div className="accent-rule mb-2.5" aria-hidden="true" />}
+                {/* `.display` (tight tracking for large sizes) at 24px — the page
+                    title's one job is to outrank every section heading below it. */}
+                <h1
+                  className="display text-2xl font-semibold"
+                  style={{ color: 'var(--ink-primary)' }}
+                >
+                  {title}
+                </h1>
+                {(description || meta?.period) && (
+                  <p className="mt-1 max-w-2xl text-xs" style={{ color: 'var(--ink-muted)' }}>
+                    {description}
+                    {description && meta?.period && <span className="mx-1.5">·</span>}
+                    {meta?.period && (
+                      <>
+                        {formatDate(meta.period.start)} –{' '}
+                        {formatDate(new Date(new Date(meta.period.end).getTime() - 1).toISOString())}
+                      </>
+                    )}
+                    {meta?.comparisonTruncated && (
+                      <span
+                        className="ml-2 rounded px-1.5 py-0.5"
+                        style={{ background: 'var(--grid)', color: 'var(--ink-secondary)' }}
+                      >
+                        {t.period.truncated}
+                      </span>
+                    )}
+                  </p>
+                )}
+              </div>
+              {actions}
+            </header>
+
+            {anyFilter && (
+              <div className="flex flex-wrap items-center gap-2">
+                {enabled.search && (
+                  <SearchInput
+                    value={filters.q ?? ''}
+                    onChange={(q) => update({ q: q || undefined })}
+                  />
+                )}
+                {enabled.employees && (
+                  <MultiSelect
+                    label="Xodim"
+                    options={(data?.employees ?? []).map((e) => ({ id: e.id, label: e.fullName }))}
+                    selected={filters.employeeIds}
+                    onChange={(employeeIds) => update({ employeeIds })}
+                  />
+                )}
+                {enabled.departments && (
+                  <MultiSelect
+                    label="Boʻlim"
+                    options={(data?.departments ?? []).map((d) => ({ id: d.id, label: d.name }))}
+                    selected={filters.departmentIds}
+                    onChange={(departmentIds) => update({ departmentIds })}
+                  />
+                )}
+                {enabled.stages && (
+                  <MultiSelect
+                    label="Bosqich"
+                    options={(data?.stages ?? []).map((s) => ({ id: s.id, label: s.name }))}
+                    selected={filters.stageIds}
+                    onChange={(stageIds) => update({ stageIds })}
+                  />
+                )}
+                {enabled.products && (
+                  <MultiSelect
+                    label="Mahsulot"
+                    options={(data?.products ?? []).map((p) => ({ id: p.id, label: p.name }))}
+                    selected={filters.productIds}
+                    onChange={(productIds) => update({ productIds })}
+                  />
+                )}
+                {enabled.sources && (
+                  <MultiSelect
+                    label="Manba"
+                    options={(data?.sources ?? []).map((s) => ({ id: s.id, label: s.name }))}
+                    selected={filters.sourceIds}
+                    onChange={(sourceIds) => update({ sourceIds })}
+                  />
+                )}
+                {activeCount > 0 && (
+                  <Button variant="ghost" size="sm" onClick={reset}>
+                    Filtrlarni tozalash ({activeCount})
+                  </Button>
+                )}
+              </div>
             )}
           </div>
-        )}
+        </div>
 
         {children}
       </div>

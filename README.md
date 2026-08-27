@@ -12,16 +12,16 @@ sign-up is disabled in code.
 
 | Screen | Question it answers |
 |---|---|
-| **Umumiy koʻrinish** | How much did we sell, did it arrive, who is working |
-| **Savdo tahlili** | Revenue over time, by product, by seller, by stage |
-| **Kanallar** | What each of the 25 sources brings in, and what it converts at |
-| **Kogorta** | Do customers come back, and what is repeat business worth |
+| **Umumiy koʻrinish** | How much did we sell, where the period is heading, how fast the pipeline turns, and which deals are stuck |
+| **Savdo tahlili** | Revenue over time, by product, by seller — and how far deals created in the period actually got |
+| **Kanallar** | What each of the 25 sources brings in, what it converts at, and how concentrated the mix is |
+| **Kogorta** | Do customers come back, how soon, what repeat business is worth — and how much revenue rests on the top ten customers |
 | **Marja** | Gross margin per product, and how much of revenue it covers |
 | **Logistika** | Which hub and carrier delivered, how fast, and where parcels came back |
 | **Tasdiqlash** | Did the operator confirm the order — and did the confirmation hold |
 | **Sklad** | What each warehouse, courier and marketplace shipped |
 | **Reyting / Xodimlar / Struktura** | Who sold what, and where they sit in the company |
-| **Qoʻngʻiroqlar** | Who actually spoke to customers, for how long |
+| **Qoʻngʻiroqlar** | Who actually spoke to customers, how fast a new deal gets its first call, and what an hour of talk returns |
 | **Bitimlar** | Every deal, filterable, across all nine pipelines |
 
 ---

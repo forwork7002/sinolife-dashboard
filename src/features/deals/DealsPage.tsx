@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Pagination, SegmentedControl, StatusBadge } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { ApiClientError, apiGet, type DealRowDto, type DealsPageDto } from '@/lib/api'
@@ -80,9 +81,16 @@ export function DealsPage() {
       align: 'right',
       numeric: true,
       render: (row) => (
-        <span style={{ color: 'var(--ink-primary)' }} title={formatUzs(row.amount.amount)}>
-          {formatCompactUzs(row.amount.amount)}
-        </span>
+        /*
+          The exact soʻm amount rides the Tooltip primitive, not a native
+          title — hover, focus AND touch, in the house panel style. Not a tab
+          stop: fifty rows per page, and the row itself is already focusable.
+        */
+        <Tooltip content={<span className="tabular">{formatUzs(row.amount.amount)}</span>}>
+          <span style={{ color: 'var(--ink-primary)' }}>
+            {formatCompactUzs(row.amount.amount)}
+          </span>
+        </Tooltip>
       ),
     },
     {
@@ -108,12 +116,17 @@ export function DealsPage() {
         row.products.length === 0 ? (
           NO_VALUE
         ) : (
-          <span className="truncate" title={row.products.join(', ')}>
-            {row.products[0]}
-            {row.products.length > 1 && (
-              <span style={{ color: 'var(--ink-muted)' }}> +{row.products.length - 1}</span>
-            )}
-          </span>
+          // The full product list is data the "+N" hides — it moves from a
+          // native title to the Tooltip primitive so touch and keyboard see
+          // it too. max-w keeps a ten-product deal from becoming a banner.
+          <Tooltip content={<span className="block max-w-72">{row.products.join(', ')}</span>}>
+            <span className="truncate">
+              {row.products[0]}
+              {row.products.length > 1 && (
+                <span style={{ color: 'var(--ink-muted)' }}> +{row.products.length - 1}</span>
+              )}
+            </span>
+          </Tooltip>
         ),
     },
     {
@@ -161,7 +174,15 @@ export function DealsPage() {
         />
       }
     >
-      <Card className="px-4 py-4">
+      {/*
+        The registry IS this page's lead instrument, so the one card wears the
+        hero surface and the registration brackets. There is no hero NUMBER on
+        purpose: a paginated operational list has no single honest headline
+        figure, and inventing one (a page-sum of fifty arbitrary rows) would
+        put a number in the flagship slot that means nothing. One hero per
+        page still holds — this is it.
+      */}
+      <Card className="card-hero brackets px-4 py-4">
         <DataTable
           columns={columns}
           rows={page?.items ?? []}
@@ -176,6 +197,13 @@ export function DealsPage() {
           order={filters.order}
           onSort={onSort}
           minWidth={980}
+          /*
+            Bounded, so the header row pins while fifty deals scroll under it —
+            without the cap the container grows with the page and sticky has
+            nothing to stick to. Pagination stays visible below the cap too,
+            instead of a full page-height away.
+          */
+          maxHeight={640}
         />
 
         {page && (

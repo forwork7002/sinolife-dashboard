@@ -89,7 +89,28 @@ the entire reason the check exists.
   without a second download.
 
 `cv05` is on globally: it gives lowercase `l` a tail, so `l`, `I` and `1` stay
-distinguishable in a figure.
+distinguishable in a figure. The August 2026 pass completed the set with
+`cv01`, `cv03`, `cv04` and `cv11` — a serifed 1, open 6 and 9, the
+single-storey `a` — because on a screen made of figures, any glyph that *can*
+be misread as another digit eventually will be. One trap the stylesheet
+documents: `font-feature-settings` does not merge across the cascade, so
+`.tabular`, `.figure` and `.figure-hero` restate the whole list rather than
+inheriting it.
+
+Two sizes carry the hierarchy. `.display` is for **titles** — the page name at
+24–26px, tracked −0.03em. `.figure-hero` is for **the one number a screen
+leads with**: `clamp(34px, 24px + 1.5625vw, 40px)`, weight 600, tracking
+−0.025em, line-height 1, tabular and unwrappable. The clamp is a slope, not a
+step, so the number never snaps between sizes at an arbitrary width. The size
+exists for the *ratio* — the most important number differs from a body figure
+by roughly 4×, not 2× — which is also why there is at most one per screen:
+two heroes cancel the hierarchy both were meant to create.
+
+`.eyebrow` is **the one positive-tracked style in the application**: 11px,
+weight 550, +0.045em, uppercase, `--ink-muted`. Uppercase with open tracking
+stops meaning anything the moment it is everywhere, so it is rationed to
+exactly two places — section headers and table headers. KPI and stat labels
+stay 12.5px sentence case: a label is a name, not a department sign.
 
 Self-hosted rather than `next/font/google` for two reasons that are both about
 deployment, not taste: the CSP allows `font-src 'self'` and nothing else, and a
@@ -115,6 +136,140 @@ than it reads a shadow.
 `body::before` paints two very faint accent-tinted pools, fixed to the viewport.
 Fixed rather than scrolled, so it behaves like light in a room instead of like
 content.
+
+---
+
+## The signature layer — "Tungi rasadxona"
+
+The August 2026 pass gave the dashboard one identity: an instrument panel in a
+night observatory. Everything in this layer is **light, never content** — it
+paints in the negative z phase, takes no pointer events, and none of it may
+carry a value. The colour contract above is untouched: every tint here is
+mixed from chrome-eligible colours, and no mark that encodes data reads any of
+them.
+
+### The aurora
+
+`.page-atmosphere` paints two blurred radial pools — the page's own `--accent`
+and `--series-7`, mixed at `--atmos-mix-*` strengths (5% both in light,
+12%/11% in dark), blur 70px — behind the page title. It mounts in **exactly
+one place**: PageShell's title band, inside the accent subtree. Mixing at the
+element rather than on `:root` is what lets each page's aurora follow its own
+accent; a token derived on `:root` would freeze to series-1 for every page.
+
+Where it may **not** appear: behind a chart, a table, a card, or any figure.
+That is enforced, not hoped for — the mandatory `.page-atmosphere-fade` child
+paints solid `--page` from 60% of the band's height down, so the bottom 40% is
+clean canvas before the first data pixel. The sky is also **static**: this is
+a work tool, and the sky must not drift while someone reads a number.
+
+The strengths are load-bearing, not taste. The worst-case backdrop — one
+blob's on-canvas peak, the other's cross-residual, the grain's mean
+contribution — keeps every ink at its 4.5:1 floor, with light-mode
+`--ink-muted` the tight one. Raising `--atmos-mix-*` or `--grain-alpha`
+re-runs that arithmetic or does not happen. Under
+`prefers-reduced-transparency`, `prefers-contrast: more` and forced colours
+the atmosphere degrades to nothing, never to less-legible.
+
+### Film grain
+
+`body::after` tiles an SVG `feTurbulence` texture over the page ground at
+`--grain-alpha` — 2% light, 4% dark, where a flat hex wall is most visibly
+flat. It sits at z −1 with `pointer-events: none`, and cards are opaque
+surface tokens, so plot areas stay clean by construction: the grain is on the
+canvas, never on the data.
+
+### The lead instrument
+
+`.card-hero` is a card that outranks its neighbours three ways: the larger
+`--radius-panel-lg`, the raised shadow, and a hairline painted as a
+**gradient** (`--edge-hero-top` → `--edge-hero-bottom`, riding in as a second
+background clipped to the border box) so the top edge is visibly brighter than
+the bottom. At most **one per page** — two of these on a screen is not two
+heroes, it is none. Its number is the page's single `.figure-hero`.
+
+`.brackets` draws two 12px L-corners in `--border-strong` at opposing corners,
+6px inside the edge — the registration marks of an instrument that has been
+aligned. Once per page at most, on the lead instrument; a second pair demotes
+both to decoration. Both `.brackets` and `.glow-track` draw with `::after`, so
+they never stack on one element: glow on the card, brackets on a wrapper.
+
+In dark mode the hero figure carries a 24px halo of the page accent at
+`--glow-hero-mix` (18% dark, 0% light — the mix collapses to transparent, so
+there is no rule to un-set). The digits stay in ink; the glow is the panel's
+backlight leaking around the figure, constant and therefore unable to encode
+anything. A whisper, not neon — glow-on-every-card is the gallery cliché this
+layer exists to refuse.
+
+**No blank stat tiles on a hero band.** Every big number there carries a
+sparkline, a meter, or the fraction it was computed from. A hero that is only
+a number is a poster, not an instrument.
+
+### The hover glow
+
+`.glow-track` is the mouse-tracked radial on interactive cards: ink at 5%,
+480px, following `--mx`/`--my` custom properties that **the component sets
+from `mousemove`** (pixels from the card's rect; 50%/50% default). Ink, never
+the accent — a glow that changed hue per page would make the same gesture look
+like a different affordance on different screens. The entire rule lives inside
+`(hover: hover) and (prefers-reduced-motion: no-preference)`; outside the
+guard the pseudo-element is never created. It sets `position: relative` on the
+card (the glow needs a containing block); a call site that needs the card
+positioned otherwise wraps it.
+
+### The keyboard layer
+
+Chrome, never data: it borrows the elevation system and may never borrow a
+series or status colour.
+
+| Piece | What it is |
+|---|---|
+| `.kbd` + `Kbd` | keycap chip — 11px, inherited family (a `<kbd>` defaults to monospace), `--surface-sunken`, darkened **bottom** edge via `--kbd-edge` so it reads as pressable |
+| `.tip` + `Tooltip` | the tooltip primitive — raised surface, `--border-strong`, `--radius-panel-sm`, 12px text, 120ms fade+2px rise (fade only under reduced motion) |
+| `.palette-enter`, `.backdrop-dim` + `CommandPalette` | ⌘K / Ctrl+K — 600px panel in the top third, 150ms scale 0.98→1, page-tinted scrim with a 2px blur |
+
+The **tooltip primitive replaces every native `title` that carries data**: a
+`title` cannot be styled, ignores touch and keyboard focus, and takes a second
+to appear. `Tooltip` works on hover (~150ms delay), focus and tap, gains
+`aria-describedby`, and stays opaque — glass never sits over data. Its shadow
+is `--shadow-ambient`: the directional float stack in light, an offset-free
+halo in dark, because a night room has no sun and a directional shadow there
+reads as a rendering artefact. Decorative `title`s that only repeat the
+visible word may stay.
+
+The palette scrim is tinted from `--page`, not black: a black scrim in light
+mode turns the app into a different, darker room for the duration of a search,
+while a page-coloured frost dims without changing the room.
+`prefers-reduced-transparency` trades the blur for opacity; reduced motion
+reduces both entrances to fades by keyframe redefinition.
+
+### The button kit
+
+One `Button` component, three variants, and every ad-hoc button swept onto it:
+**primary** (ink-primary fill, inverted text — one per view, the action the
+screen is for), **secondary** (bordered surface, the default), **ghost**
+(borderless, for actions that repeat in every row). Two heights — 28px `sm`,
+32px `md` — radius `--radius-panel-sm`, hover/active as token-mixed background
+shifts, `.focusable` ring. `href` renders the same treatment on a `next/link`.
+
+### Drawn glyphs
+
+`Icons.tsx` replaces the text glyphs `↑↓●▲■○` with drawn 12px marks: 24-unit
+grid, stroke 1.7 held literal by `vector-effect: non-scaling-stroke`,
+`currentColor`, `aria-hidden`. Text glyphs came from the UI font at the whim
+of the platform; a drawn mark weighs the same everywhere. Every glyph is
+decoration beside a word or an accessible name — the glyph+word rule stands,
+colour is never the only channel, and the glyph is never the only channel
+either.
+
+### The crosshair glides
+
+Two transitions give charts the instrument feel with no scripting: the
+Recharts cursor line eases to the hovered index over 90ms instead of
+teleporting, and the active dot swells into place over 120ms. Both live inside
+the reduced-motion guard — a gliding crosshair is precisely the chased motion
+the preference asks to stop, and where an engine cannot transition SVG
+geometry the cursor simply snaps, which is the same honest fallback.
 
 ---
 

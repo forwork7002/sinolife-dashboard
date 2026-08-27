@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 
 import { Card } from '@/components/ui/Card'
-import { DataTable, type Column } from '@/components/ui/DataTable'
+import { DataTable, InitialChip, type Column } from '@/components/ui/DataTable'
+import { Meter, StatTile } from '@/components/ui/Stat'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -110,6 +111,38 @@ export function EmployeesPage() {
 
   const teamRevenue = rows.reduce((sum, row) => sum + row.current.revenue.amount, 0)
 
+  /*
+    The KPI header, derived from the SAME rows the table renders — no second
+    fetch, so the tiles and the table can never disagree, and both answer to
+    the same period and department/employee filters.
+
+    - "producing" counts people with revenue > 0: the header's headcount is
+      honest only with its denominator beside it, because "288 xodim" alone
+      hides that 162 of them sold nothing this period.
+    - conversion is POOLED — total won over total closed — not the mean of the
+      row percentages. An average of rates would let an employee with 2 deals
+      weigh as much as one with 200 and drift the figure away from anything
+      the business experienced. The fraction is printed on the tile so the
+      derivation is checkable at a glance.
+    - a revenue DELTA is deliberately absent: each row carries only a percent
+      delta, and percents do not sum. Claiming a team-level delta from them
+      would be arithmetic theatre.
+  */
+  const producing = rows.filter((row) => row.current.revenue.amount > 0).length
+  const wonTotal = rows.reduce((sum, row) => sum + row.current.dealsWon, 0)
+  const closedTotal = rows.reduce(
+    (sum, row) => sum + row.current.dealsWon + row.current.dealsLost,
+    0,
+  )
+  const teamConversion = closedTotal > 0 ? (wonTotal / closedTotal) * 100 : null
+  const topEarner = rows.reduce<EmployeeRow | null>(
+    (best, row) =>
+      best === null || row.current.revenue.amount > best.current.revenue.amount ? row : best,
+    null,
+  )
+
+  const status = query.isError ? 'error' : query.isPending ? 'loading' : 'ready'
+
   const columns: Column<EmployeeRow>[] = ([
     {
       key: 'name',
@@ -118,22 +151,27 @@ export function EmployeesPage() {
       header: t.table.employee,
       sortKey: 'name',
       render: (row) => (
-        <div className="min-w-0">
-          <p className="truncate font-medium" style={{ color: 'var(--ink-primary)' }}>
-            {row.fullName}
-            {!row.isActive && (
-              <span
-                className="ml-2 rounded px-1.5 py-0.5 text-[10px]"
-                style={{ background: 'var(--grid)', color: 'var(--ink-muted)' }}
-              >
-                Faol emas
-              </span>
-            )}
-          </p>
-          <p className="truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-            {row.position ?? NO_VALUE}
-            {row.departmentName && ` · ${row.departmentName}`}
-          </p>
+        // The chip anchors the row the way an avatar would — see InitialChip.
+        // aria-hidden there, so the announced name is not stuttered.
+        <div className="flex min-w-0 items-center gap-2.5">
+          <InitialChip name={row.fullName} />
+          <div className="min-w-0">
+            <p className="truncate font-medium" style={{ color: 'var(--ink-primary)' }}>
+              {row.fullName}
+              {!row.isActive && (
+                <span
+                  className="ml-2 rounded px-1.5 py-0.5 text-[10px]"
+                  style={{ background: 'var(--grid)', color: 'var(--ink-muted)' }}
+                >
+                  Faol emas
+                </span>
+              )}
+            </p>
+            <p className="truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              {row.position ?? NO_VALUE}
+              {row.departmentName && ` · ${row.departmentName}`}
+            </p>
+          </div>
         </div>
       ),
     },
@@ -237,6 +275,64 @@ export function EmployeesPage() {
       meta={query.data?.meta}
       filters={{ employees: true, departments: true }}
     >
+      {/*
+        Three subordinate tiles, no hero: the table IS this page's lead. A
+        hero-sized figure over a client-side sum would claim an importance the
+        derivation does not carry — the tiles orient, the rows answer.
+      */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <StatTile
+          label="Jami xodimlar"
+          value={status === 'ready' ? rows.length : null}
+          unit="count"
+          status={status}
+          hint={
+            status === 'ready' && rows.length > 0
+              ? `${formatNumber(producing)} / ${formatNumber(rows.length)} xodim tushum keltirgan`
+              : undefined
+          }
+          context={
+            status === 'ready' && rows.length > 0 ? (
+              <Meter
+                value={(producing / rows.length) * 100}
+                tone="neutral"
+                label="Tushum keltirgan xodimlar ulushi"
+              />
+            ) : undefined
+          }
+        />
+        <StatTile
+          label="Jami tushum"
+          value={status === 'ready' ? teamRevenue : null}
+          unit="money"
+          status={status}
+          hint="Roʻyxatdagi xodimlar boʻyicha yigʻindi"
+          context={
+            // Concentration is the context a bare sum needs: the same total
+            // means different things when one person holds a seventh of it.
+            topEarner && teamRevenue > 0 ? (
+              <p className="truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                {`Eng katta ulush: ${topEarner.fullName} · ${formatPercent(
+                  (topEarner.current.revenue.amount / teamRevenue) * 100,
+                )}`}
+              </p>
+            ) : undefined
+          }
+        />
+        <StatTile
+          label="Oʻrtacha konversiya"
+          value={status === 'ready' ? teamConversion : null}
+          unit="percent"
+          status={status}
+          // A rate states its fraction — the tile carries its own denominator.
+          hint={
+            status === 'ready' && closedTotal > 0
+              ? `${formatNumber(wonTotal)} yutilgan / ${formatNumber(closedTotal)} yakunlangan bitim`
+              : undefined
+          }
+        />
+      </div>
+
       <Card className="px-4 py-4">
         <DataTable
           columns={columns}
@@ -245,7 +341,7 @@ export function EmployeesPage() {
           initialRows={30}
           moreLabel={(hidden) => `Yana ${hidden} ta xodimni koʻrsatish`}
           rowKey={(row) => row.employeeId}
-          status={query.isError ? 'error' : query.isPending ? 'loading' : 'ready'}
+          status={status}
           errorMessage={query.error instanceof ApiClientError ? query.error.message : undefined}
           onRetry={() => void query.refetch()}
           onRowClick={(row) => router.push(`/employees/${row.employeeId}`)}
@@ -254,6 +350,9 @@ export function EmployeesPage() {
           onSort={onSort}
           emptyBody="Tanlangan davr va filtrlar boʻyicha xodim topilmadi."
           minWidth={980}
+          // Bounded height so the header has something to stick to: the rows
+          // slide under the sunken header band instead of taking it away.
+          maxHeight={620}
         />
       </Card>
     </PageShell>

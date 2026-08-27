@@ -2,6 +2,8 @@
 
 import { useQuery } from '@tanstack/react-query'
 
+import { ErrorState } from '@/components/states/States'
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Card, ChartCard } from '@/components/ui/Card'
 import { StatusBadge } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
@@ -118,22 +120,74 @@ export function KpiPage() {
       meta={query.data?.meta}
       filters={{ employees: true, departments: true }}
     >
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <Card className="px-4 py-3.5">
-          <p className="text-xs font-medium" style={{ color: 'var(--ink-secondary)' }}>
-            {t.cards.kpiAchievement}
-          </p>
-          <p
-            className="mt-1.5 text-2xl leading-none font-semibold tracking-tight"
-            style={{ color: 'var(--ink-primary)' }}
-          >
-            {formatPercent(data?.overallPercent ?? null, 0)}
-          </p>
-          <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-            Kutilgan: {formatPercent(data?.elapsedPercent ?? null, 0)}
-          </p>
-        </Card>
+      {/*
+        The lead instrument — the page's one hero, the only panel wearing the
+        registration brackets.
 
+        An achievement percentage is meaningless without the clock: 40% on
+        the 12th is ahead, on the 28th it is a problem. So the hero states
+        the comparison in one breath — elapsed beside achieved — and draws it
+        as the same pace bar every table row below carries, at hero width.
+        When the portal's KPI table is empty (it is, today) the figure is an
+        em dash, never a confident zero: "no plans set" is a different fact
+        from "nothing achieved".
+      */}
+      <section
+        className="card-hero brackets reveal px-5 py-5 sm:px-6"
+        aria-label={t.cards.kpiAchievement}
+      >
+        {!data && query.isError ? (
+          <ErrorState
+            message={query.error instanceof ApiClientError ? query.error.message : undefined}
+            onRetry={() => void query.refetch()}
+          />
+        ) : (
+          <>
+            <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+              {t.cards.kpiAchievement}
+            </p>
+
+            {!data ? (
+              // Sized to the hero figure below, so ready never reflows loading.
+              <div className="skeleton mt-2 h-[40px] w-40" role="status">
+                <span className="sr-only">Yuklanmoqda</span>
+              </div>
+            ) : data.overallPercent !== null ? (
+              <p className="figure-hero mt-2" style={{ color: 'var(--ink-primary)' }}>
+                <AnimatedNumber
+                  value={data.overallPercent}
+                  format={(v) => formatPercent(v, 0)}
+                  duration={900}
+                />
+              </p>
+            ) : (
+              <p className="figure-hero mt-2" style={{ color: 'var(--ink-primary)' }}>
+                {NO_VALUE}
+              </p>
+            )}
+
+            {data && (
+              /*
+                The pace comparison, stated as words before it is drawn as a
+                bar: the two percentages share a sentence so the reader never
+                has to carry one across the panel to reach the other.
+              */
+              <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                davr oʻtishi {formatPercent(data.elapsedPercent, 0)} · bajarilish{' '}
+                {formatPercent(data.overallPercent, 0)}
+              </p>
+            )}
+
+            {data && data.overallPercent !== null && (
+              <div className="mt-3 max-w-md">
+                <ProgressBar percent={data.overallPercent} expected={data.elapsedPercent} />
+              </div>
+            )}
+          </>
+        )}
+      </section>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <CountCard label={t.kpiStatus.ACHIEVED} value={data?.counts.achieved} tone="good" />
         <CountCard label={t.kpiStatus.ON_TRACK} value={data?.counts.onTrack} tone="good" />
         <CountCard label={t.kpiStatus.AT_RISK} value={data?.counts.atRisk} tone="warning" />

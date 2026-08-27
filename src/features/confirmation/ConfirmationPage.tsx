@@ -3,8 +3,8 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { ChartCard } from '@/components/ui/Card'
-import { DataTable, type Column } from '@/components/ui/DataTable'
-import { GaugeTile, Meter, StatTile, StatusChip } from '@/components/ui/Stat'
+import { DataTable, InitialChip, type Column } from '@/components/ui/DataTable'
+import { GaugeTile, Meter, RingGauge, StatTile, StatusChip } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type ConfirmationDto, type ConfirmationRowDto, apiGet } from '@/lib/api'
@@ -47,9 +47,15 @@ export function ConfirmationPage() {
       // The row's name: what a screen reader announces the row BY.
       rowHeader: true,
       header: 'Operator',
+      // The chip anchors each row the way an avatar would — 92 rows of bare
+      // names give the scanning eye nothing to land on. aria-hidden inside
+      // the chip: the visible name right beside it is the accessible text.
       render: (row) => (
-        <span className="font-medium" style={{ color: 'var(--ink-primary)' }}>
-          {row.employeeName}
+        <span className="flex items-center gap-2">
+          <InitialChip name={row.employeeName} />
+          <span className="font-medium" style={{ color: 'var(--ink-primary)' }}>
+            {row.employeeName}
+          </span>
         </span>
       ),
     },
@@ -159,46 +165,114 @@ export function ConfirmationPage() {
       accent="var(--series-4)"
       meta={query.data?.meta}
     >
-      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <StatTile
-          status={tileStatus}
-          // Not "all orders": the cohort is what entered the confirmation
-          // queue in this window, which is the only denominator a confirmation
-          // rate can honestly divide by.
-          label="Navbatga tushdi"
-          value={totals?.orders ?? null}
-          unit="count"
-          hint="Tasdiqlash bosqichiga kirgan buyurtmalar"
-        />
-        {/* A count is a fact, not a judgement — the coverage ring beside it
-            carries the evaluation. */}
-        <StatTile
-          status={tileStatus}
-          label="Tasdiqlangan"
-          value={totals?.confirmed ?? null}
-          unit="count"
-        />
-        <StatTile
-          status={tileStatus}
-          label="Bogʻlanilmadi"
-          value={totals?.unreachable ?? null}
-          unit="count"
-          tone={totals && totals.unreachable > 0 ? 'warning' : 'neutral'}
-        />
-        <GaugeTile
-          status={tileStatus}
-          label="Tasdiqlash qamrovi"
-          value={totals?.coverage ?? null}
-          tone="neutral"
-          hint="Navbatga tushganlarning qanchasi tasdiqlangan"
-        />
-        <GaugeTile
-          status={tileStatus}
-          label="Tasdiqdan keyin yetkazildi"
-          value={totals?.stickRate ?? null}
-          tone="auto"
-          hint="Tasdiq haqiqatan ish berdimi"
-        />
+      {/*
+        The coverage ring is the page's lead instrument.
+
+        Coverage is the number this team owns end to end — every other figure
+        on the row is either its numerator, its leftover, or what happened
+        after it. So it wears the one hero treatment (.card-hero + .brackets,
+        once per page) at ring size 104, and the four supporting tiles sit in
+        a subordinate 2×2 to its right. Datadog rule: the hero is never a bare
+        number — the confirmed/orders fraction it divides is printed beside
+        the ring, from the same payload, so the two cannot drift apart.
+      */}
+      <div className="stagger grid gap-3 lg:grid-cols-3">
+        <article className="card-hero brackets flex flex-col px-5 py-4">
+          <p
+            className="text-[12.5px] font-medium"
+            style={{ color: 'var(--ink-secondary)' }}
+          >
+            Tasdiqlash qamrovi
+          </p>
+
+          <div className="mt-3 flex flex-1 items-center gap-5">
+            {tileStatus === 'loading' ? (
+              // Sized to the ring, so ready never reflows loading.
+              <div className="skeleton h-[104px] w-[104px] shrink-0 rounded-full" role="status">
+                <span className="sr-only">Yuklanmoqda</span>
+              </div>
+            ) : tileStatus === 'error' ? (
+              <span
+                className="text-base font-medium"
+                style={{ color: 'var(--status-critical)' }}
+                // Decorative — it only repeats the visible word.
+                title="Maʼlumot olinmadi"
+              >
+                Olinmadi
+              </span>
+            ) : (
+              <RingGauge
+                value={totals?.coverage ?? null}
+                size={104}
+                thickness={8}
+                /*
+                  Neutral, as the old tile was: nobody has agreed what share
+                  of the queue OUGHT to be worked, and the banner below
+                  already splits the shortfall into "not yet" vs "skipped".
+                  Grading it would assert a target that does not exist.
+                */
+                tone="neutral"
+                label="Tasdiqlash qamrovi"
+              />
+            )}
+
+            <div className="min-w-0">
+              {tileStatus === 'ready' && totals && (
+                <p
+                  className="figure tabular text-lg font-semibold"
+                  style={{ color: 'var(--ink-primary)' }}
+                >
+                  {formatNumber(totals.confirmed)}
+                  <span className="font-normal" style={{ color: 'var(--ink-muted)' }}>
+                    {' '}
+                    / {formatNumber(totals.orders)}
+                  </span>
+                </p>
+              )}
+              <p
+                className="mt-0.5 text-[11px] leading-snug"
+                style={{ color: 'var(--ink-muted)' }}
+              >
+                Navbatga tushgan buyurtmalardan tasdiqlangani
+              </p>
+            </div>
+          </div>
+        </article>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:col-span-2">
+          <StatTile
+            status={tileStatus}
+            // Not "all orders": the cohort is what entered the confirmation
+            // queue in this window, which is the only denominator a confirmation
+            // rate can honestly divide by.
+            label="Navbatga tushdi"
+            value={totals?.orders ?? null}
+            unit="count"
+            hint="Tasdiqlash bosqichiga kirgan buyurtmalar"
+          />
+          {/* A count is a fact, not a judgement — the coverage ring beside it
+              carries the evaluation. */}
+          <StatTile
+            status={tileStatus}
+            label="Tasdiqlangan"
+            value={totals?.confirmed ?? null}
+            unit="count"
+          />
+          <StatTile
+            status={tileStatus}
+            label="Bogʻlanilmadi"
+            value={totals?.unreachable ?? null}
+            unit="count"
+            tone={totals && totals.unreachable > 0 ? 'warning' : 'neutral'}
+          />
+          <GaugeTile
+            status={tileStatus}
+            label="Tasdiqdan keyin yetkazildi"
+            value={totals?.stickRate ?? null}
+            tone="auto"
+            hint="Tasdiq haqiqatan ish berdimi"
+          />
+        </div>
       </div>
 
       {/*
@@ -248,9 +322,17 @@ export function ConfirmationPage() {
           columns={columns}
           rows={data?.rows ?? []}
           rowKey={(row) => row.employeeId}
-          // 144 and 92 rows made these pages 6,919px and 4,457px tall.
-          initialRows={25}
-          moreLabel={(hidden) => `Yana ${hidden} ta operatorni koʻrsatish`}
+          /*
+            A bounded scroll container instead of the 25-row disclosure.
+
+            The cap existed because 92 rows made this page 4,457px tall; a
+            640px container solves the same problem while keeping every
+            operator reachable by scroll instead of behind a click — and it
+            is what lets the sticky header engage: the column names pin to
+            the container's top edge while the rows slide under them, so row
+            60 is still labelled.
+          */
+          maxHeight={640}
           status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
           errorMessage={(query.error as Error | null)?.message}
           onRetry={() => void query.refetch()}

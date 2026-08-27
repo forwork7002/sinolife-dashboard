@@ -4,10 +4,13 @@ import { useQuery } from '@tanstack/react-query'
 
 import { BarList } from '@/components/charts/BarList'
 import { CollectionChart, type CollectionPointDto } from '@/components/charts/CollectionChart'
-import { ChartSkeleton, UnavailableState } from '@/components/states/States'
+import { ChartSkeleton, ErrorState, UnavailableState } from '@/components/states/States'
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Card, ChartCard } from '@/components/ui/Card'
 import { StatusBadge } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
+import { Meter } from '@/components/ui/Stat'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -157,12 +160,102 @@ export function FinancePage() {
       meta={query.data?.meta}
       filters={{ employees: true, departments: true, sources: true }}
     >
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <MoneyCard
-          label="Hisoblangan"
-          money={data?.summary.invoiced}
-          delta={data?.deltas.invoiced}
-        />
+      {/*
+        The lead instrument — the page's one hero, the only panel wearing the
+        registration brackets.
+
+        Finance starts from what was BILLED: every other number on the page —
+        collected, outstanding, the rate — is a fate of that figure. So
+        invoiced takes the hero size, and the panel's context strip states how
+        much of it came back as a drawn fraction, because a hero number with
+        no reference beside it is a poster, not an instrument. The remaining
+        cards stand below at tile size, each keeping its own delta.
+      */}
+      <section className="card-hero brackets reveal px-5 py-5 sm:px-6" aria-label="Hisoblangan">
+        {!data && query.isError ? (
+          <ErrorState
+            message={query.error instanceof ApiClientError ? query.error.message : undefined}
+            onRetry={() => void query.refetch()}
+          />
+        ) : (
+          <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
+            <div className="min-w-0">
+              <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                Hisoblangan
+              </p>
+
+              {!data ? (
+                // Sized to the hero figure below, so ready never reflows loading.
+                <div className="skeleton mt-2 h-[40px] w-64" role="status">
+                  <span className="sr-only">Yuklanmoqda</span>
+                </div>
+              ) : (
+                /*
+                  The exact soʻm amount rides the Tooltip primitive, not a
+                  native `title`: hover, focus AND touch. The figure is a tab
+                  stop — the full ten-digit number is otherwise unreachable
+                  without a mouse.
+                */
+                <div className="mt-2">
+                  <Tooltip
+                    content={<span className="tabular">{formatUzs(data.summary.invoiced.amount)}</span>}
+                  >
+                    <span
+                      tabIndex={0}
+                      className="focusable figure-hero block w-fit rounded-[var(--radius-panel-sm)]"
+                      style={{ color: 'var(--ink-primary)' }}
+                    >
+                      <AnimatedNumber
+                        value={data.summary.invoiced.amount}
+                        format={formatCompactUzs}
+                        duration={900}
+                      />
+                      <span
+                        className="ml-1.5 text-sm font-normal"
+                        style={{ color: 'var(--ink-muted)' }}
+                      >
+                        soʻm
+                      </span>
+                    </span>
+                  </Tooltip>
+                </div>
+              )}
+
+              {data && (
+                <div className="mt-2.5 flex items-center gap-2">
+                  <TrendIndicator delta={data.deltas.invoiced} />
+                  <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                    oldingi davrga nisbatan
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/*
+              The context the hero owes its reader: of what was billed, how
+              much is in hand. The meter draws the same rate the "Yigʻilish
+              darajasi" tile below grades with its delta — one quantity, one
+              caption naming both sides of the fraction.
+            */}
+            {data && (
+              <div className="w-full sm:max-w-xs">
+                <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                  Yigʻilgan: {formatCompactUzs(data.summary.collected.amount)} soʻm
+                </p>
+                <div className="mt-1.5">
+                  <Meter
+                    value={data.summary.collectionRatePercent}
+                    tone="neutral"
+                    label="Yigʻilish darajasi"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      <div className="grid gap-3 sm:grid-cols-3">
         <MoneyCard
           label="Yigʻilgan"
           money={data?.summary.collected}
@@ -199,8 +292,19 @@ export function FinancePage() {
         <Stat label="Qarzdor bitimlar" value={data?.summary.debtorCount} />
       </div>
 
-      <ChartCard title="Hisoblangan va yigʻilgan" hint="Bir oʻlchovda, bir oʻqda">
-        {!data ? <ChartSkeleton /> : <CollectionChart data={data.trend} />}
+      {/*
+        `fill` + a heightless CollectionChart: the chart measures its card the
+        same way Overview's revenue trend does (absolute-fill sandwich, 280px
+        floor), so the two flagship trend cards sit at the same height across
+        pages instead of each page hard-coding its own. The "Farq" band
+        between the lines arrives from the chart kit itself.
+      */}
+      <ChartCard
+        title="Hisoblangan va yigʻilgan"
+        hint="Bir oʻlchovda, bir oʻqda — chiziqlar orasi hali yigʻilmagan pul"
+        fill
+      >
+        {!data ? <ChartSkeleton height={280} /> : <CollectionChart data={data.trend} />}
       </ChartCard>
 
       <div className="grid gap-4 lg:grid-cols-3">

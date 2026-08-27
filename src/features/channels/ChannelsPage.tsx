@@ -4,10 +4,16 @@ import { useQuery } from '@tanstack/react-query'
 
 import { ChartCard } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/ui/DataTable'
-import { GaugeTile, Meter, StatTile } from '@/components/ui/Stat'
+import { GaugeTile, Meter, StatTile, StatusChip } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
-import { type ChannelDto, apiGet } from '@/lib/api'
+import {
+  type ChannelDto,
+  type ConcentrationDto,
+  type HhiBand,
+  type HhiCutDto,
+  apiGet,
+} from '@/lib/api'
 import { NO_VALUE, formatCompactUzs, formatNumber, formatPercent } from '@/lib/format'
 import { t } from '@/lib/messages'
 
@@ -32,10 +38,28 @@ export function ChannelsPage() {
       apiGet<ChannelDto[]>('/insights/channels', apiParams, signal),
   })
 
+  /*
+   * How lopsided the mix is — the same endpoint the cohort page reads, under
+   * the same cache key, so the two pages share one fetch per window. The
+   * endpoint honours the period and ignores people/source filters
+   * server-side (insights style); apiParams still keys the cache honestly.
+   */
+  const concentration = useQuery({
+    queryKey: ['concentration', apiParams],
+    queryFn: ({ signal }) =>
+      apiGet<ConcentrationDto>('/insights/concentration', apiParams, signal),
+  })
+
   /** One derivation, so no tile can disagree with its own page. */
 
   const tileStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
 
+  const concStatus = concentration.isPending
+    ? 'loading'
+    : concentration.isError
+      ? 'error'
+      : 'ready'
+  const hhi = concentration.data?.data.hhi
 
   const rows = query.data?.data ?? []
   const totalLeads = rows.reduce((sum, r) => sum + r.leads, 0)
@@ -138,7 +162,13 @@ export function ChannelsPage() {
       accent="var(--series-5)"
       meta={query.data?.meta}
     >
-      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {/*
+        Six tiles, two rows of three: volume and outcome on the first row,
+        the judgement pieces — the conversion gauge and the two HHI verdicts
+        — together on the second, so "how healthy is the mix" reads as one
+        line instead of being split across a fold.
+      */}
+      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <StatTile status={tileStatus} label="Murojaatlar" value={totalLeads || null} unit="count" />
         <StatTile status={tileStatus} label="Sotuvlar" value={totalWon || null} unit="count" />
         <StatTile status={tileStatus} label="Tushum" value={totalRevenue || null} unit="money" />
@@ -148,6 +178,18 @@ export function ChannelsPage() {
           value={totalLeads === 0 ? null : Math.round((totalWon / totalLeads) * 1000) / 10}
           tone="neutral"
           hint={`${formatNumber(totalWon)} savdo / ${formatNumber(totalLeads)} murojaat`}
+        />
+        <HhiTile
+          status={concStatus}
+          label="Manbalar kontsentratsiyasi"
+          cut={hhi?.bySource}
+          nullNote="manba kiritilmagan"
+        />
+        <HhiTile
+          status={concStatus}
+          label="Hududlar kontsentratsiyasi"
+          cut={hhi?.byRegion}
+          nullNote="hudud kiritilmagan"
         />
       </div>
 
@@ -178,8 +220,16 @@ export function ChannelsPage() {
         </div>
       )}
 
+      {/*
+        The lead instrument. This table IS the channels page — every tile
+        above it is a summary of a column in it — so it wears the hero
+        surface and the registration brackets: once per page, and only here.
+        The share bars below stay an ordinary card on purpose; the treatment
+        ranks the panel because nothing else wears it.
+      */}
       <ChartCard
         title="Kanallar"
+        className="card-hero brackets"
         hint="Davr ichida YARATILGAN bitimlar boʻyicha — kanal shu oyda nima olib kelganini koʻrsatadi. Bosh sahifadagi tushum esa yopilgan sana boʻyicha, shuning uchun ikki raqam bir xil boʻlmaydi."
       >
         <DataTable
@@ -266,5 +316,107 @@ function ShareBars({
         </li>
       ))}
     </ul>
+  )
+}
+
+/*
+ * The Uzbek reading of each HHI band, with its tone.
+ *
+ * Tone direction is the CHANNEL reading, not the antitrust one: for a merger
+ * regulator a concentrated market is someone else's problem, but a business
+ * whose enquiries all come from one source is one algorithm change away from
+ * silence. So concentrated wears critical, diversified wears good — the
+ * inverse of how a monopolist would paint the same number.
+ */
+const HHI_BANDS: Record<HhiBand, { word: string; tone: 'good' | 'warning' | 'critical' }> = {
+  concentrated: { word: 'Kontsentratsiyalangan', tone: 'critical' },
+  moderate: { word: 'Oʻrtacha', tone: 'warning' },
+  diversified: { word: 'Diversifikatsiyalangan', tone: 'good' },
+}
+
+/**
+ * Herfindahl–Hirschman concentration, as a verdict with the number behind it.
+ *
+ * The raw index (0–10000) means nothing to anyone who has not read merger
+ * guidelines, so the tile leads with the band WORD and keeps the number in
+ * the hint for whoever wants the instrument reading. The thresholds are
+ * applied server-side (≥2500 kontsentratsiyalangan, ≥1500 oʻrtacha — the
+ * DOJ cutoffs, boundary reading as the more alarming band) and arrive as
+ * `band`, so this tile never re-derives the judgement it displays.
+ *
+ * The word is a StatusChip, not a coloured figure: shape + word + colour is
+ * the house rule for a verdict, and the chip's glyph keeps the meaning when
+ * colour goes. Revenue with no source/region recorded is EXCLUDED from the
+ * index, so its share is disclosed right beside the number it weakens.
+ */
+function HhiTile({
+  label,
+  status,
+  cut,
+  nullNote,
+}: {
+  readonly label: string
+  readonly status: 'loading' | 'error' | 'ready'
+  readonly cut: HhiCutDto | undefined
+  /** What an unset group means in THIS cut, for the null-share disclosure. */
+  readonly nullNote: string
+}) {
+  const band = cut?.band ?? null
+
+  const hint =
+    status === 'ready' && cut && cut.hhi !== null
+      ? [
+          `HHI: ${formatNumber(cut.hhi)} · ${formatNumber(cut.groups)} ta guruh`,
+          cut.nullSharePercent !== null && cut.nullSharePercent > 0
+            ? `tushumning ${formatPercent(cut.nullSharePercent)} qismida ${nullNote}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')
+      : // The window named even before the data lands — the index is built
+        // from the period's won revenue, not from the created-in-period rows
+        // the table below counts.
+        'Davrda yutilgan tushum ulushlari boʻyicha'
+
+  return (
+    <div className="card flex flex-col px-4 py-3.5">
+      <p className="truncate text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+        {label}
+      </p>
+
+      {status === 'loading' ? (
+        // Sized to the chip it will become, so ready never reflows loading.
+        <div className="skeleton mt-2.5 h-[22px] w-2/3 rounded-full" role="status">
+          <span className="sr-only">Yuklanmoqda</span>
+        </div>
+      ) : status === 'error' ? (
+        <p
+          className="mt-2 text-base font-medium"
+          style={{ color: 'var(--status-critical)' }}
+          // Decorative title — it only repeats the visible word (Stat.tsx
+          // precedent); data-carrying titles ride the Tooltip primitive.
+          title="Maʼlumot olinmadi"
+        >
+          Olinmadi
+        </p>
+      ) : band !== null ? (
+        <div className="mt-2.5">
+          <StatusChip tone={HHI_BANDS[band].tone}>{HHI_BANDS[band].word}</StatusChip>
+        </div>
+      ) : (
+        // A genuine null — no revenue in the cut — is an em dash, never a
+        // reassuring "diversified" or an alarming zero.
+        <p
+          className="figure mt-2 text-[30px] leading-none font-semibold"
+          style={{ color: 'var(--ink-primary)' }}
+        >
+          {NO_VALUE}
+        </p>
+      )}
+
+      <p className="mt-1.5 text-[11px] leading-snug" style={{ color: 'var(--ink-muted)' }}>
+        {hint}
+      </p>
+    </div>
   )
 }

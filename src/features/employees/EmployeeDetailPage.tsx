@@ -1,11 +1,17 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import Link from 'next/link'
+import type { ReactNode } from 'react'
 
 import { RevenueTrendChart } from '@/components/charts/RevenueTrendChart'
+import { Sparkline } from '@/components/charts/Sparkline'
 import { ChartSkeleton, ErrorState } from '@/components/states/States'
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
+import { Button } from '@/components/ui/Button'
 import { Card, ChartCard } from '@/components/ui/Card'
+import { ChevronRightGlyph } from '@/components/ui/Icons'
+import { StatTile } from '@/components/ui/Stat'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -57,10 +63,16 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
   })
 
   const data = query.data?.data
+  const loading = query.isPending
+  const tileStatus = loading ? 'loading' : 'ready'
+  const closedDeals = data ? data.current.dealsWon + data.current.dealsLost : 0
 
   return (
     <PageShell
       title={data?.employee.fullName ?? t.nav.employees}
+      // The team family shares the leaderboard's slot — one person is still
+      // the same family of screens, and the stripe should say so.
+      accent="var(--series-5)"
       description={
         data
           ? [data.employee.position, data.employee.departmentName].filter(Boolean).join(' · ')
@@ -68,13 +80,13 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
       }
       meta={query.data?.meta}
       actions={
-        <Link
+        <Button
           href="/employees"
-          className="rounded-lg border px-2.5 py-1.5 text-xs font-medium"
-          style={{ borderColor: 'var(--border-strong)', color: 'var(--ink-primary)' }}
+          variant="secondary"
+          icon={<ChevronRightGlyph className="rotate-180" />}
         >
-          ← {t.nav.employees}
-        </Link>
+          {t.nav.employees}
+        </Button>
       }
     >
       {query.isError ? (
@@ -90,41 +102,187 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
         </Card>
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Metric
-              label={t.cards.revenue}
-              value={data ? `${formatCompactUzs(data.current.revenue.amount)} soʻm` : NO_VALUE}
-              title={data ? formatUzs(data.current.revenue.amount) : undefined}
-              delta={data?.deltas.revenue}
-            />
-            <Metric
+          {/*
+            The lead instrument: what this person EARNED, at hero size, with
+            the period's shape beside it. Everything else on the screen is a
+            supporting tile — the deal counts explain the revenue, never the
+            other way round, and the sizes now say so (~40px vs 30 vs 18).
+
+            Brackets on the wrapper, hero surface on the card — `.brackets`
+            and `.glow-track` both claim ::after, and although only one of the
+            two is used here, the wrapper split keeps the pattern uniform with
+            the leaderboard's hero.
+          */}
+          <div className="brackets">
+            <section className="card-hero flex flex-col gap-4 px-5 py-4 md:flex-row md:items-end md:justify-between">
+              <div className="min-w-0">
+                <p
+                  className="truncate text-[12.5px] font-medium"
+                  style={{ color: 'var(--ink-secondary)' }}
+                >
+                  {t.cards.revenue}
+                </p>
+                {loading ? (
+                  // Sized to the hero figure below, so ready never reflows
+                  // loading — and a skeleton, never an em dash: "still
+                  // fetching" and "genuinely nothing" are different claims.
+                  <div className="skeleton mt-2 h-[38px] w-56" role="status">
+                    <span className="sr-only">Yuklanmoqda</span>
+                  </div>
+                ) : (
+                  /*
+                    The exact soʻm amount rides the Tooltip primitive — hover,
+                    focus AND touch — because the compact figure is a summary
+                    and the full number is otherwise unreachable here.
+                  */
+                  <div className="mt-2">
+                    <Tooltip
+                      content={
+                        <span className="tabular">
+                          {data ? formatUzs(data.current.revenue.amount) : NO_VALUE}
+                        </span>
+                      }
+                    >
+                      <span
+                        tabIndex={0}
+                        className="focusable figure-hero block w-fit rounded-[var(--radius-panel-sm)]"
+                        style={{ color: 'var(--ink-primary)' }}
+                      >
+                        {data ? (
+                          <AnimatedNumber
+                            value={data.current.revenue.amount}
+                            format={formatCompactUzs}
+                            duration={900}
+                          />
+                        ) : (
+                          NO_VALUE
+                        )}
+                        <span
+                          className="ml-1.5 text-sm font-normal"
+                          style={{ color: 'var(--ink-muted)' }}
+                        >
+                          soʻm
+                        </span>
+                      </span>
+                    </Tooltip>
+                  </div>
+                )}
+                <div className="mt-2.5 flex items-center gap-2">
+                  {data && <TrendIndicator delta={data.deltas.revenue} />}
+                  {/* The comparison names its window; the title names its
+                      basis — closed-date, like every money figure here. */}
+                  <span
+                    className="text-[11px]"
+                    style={{ color: 'var(--ink-muted)' }}
+                    title={t.period.closedBasis}
+                  >
+                    {t.period.comparedTo}
+                  </span>
+                </div>
+              </div>
+
+              {/*
+                Not a blank hero: the period's own shape rides beside the
+                figure, in the revenue series' hue — the same line the big
+                chart below draws, so tint and data stay one entity. Fewer
+                than two buckets and the Sparkline itself declines to imply a
+                trend that was never measured.
+              */}
+              <div className="w-full shrink-0 md:w-64 lg:w-80">
+                {loading ? (
+                  <div className="skeleton h-[44px] w-full" role="status">
+                    <span className="sr-only">Yuklanmoqda</span>
+                  </div>
+                ) : (
+                  <Sparkline
+                    values={(data?.trend ?? []).map((point) => point.revenue)}
+                    color="var(--series-1)"
+                    height={44}
+                    label="Davr boʻyicha tushum"
+                  />
+                )}
+              </div>
+            </section>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <StatTile
               label={t.cards.dealsWon}
-              value={data ? formatNumber(data.current.dealsWon) : NO_VALUE}
-              delta={data?.deltas.dealsWon}
-            />
-            <Metric
-              label={t.cards.averageDeal}
-              value={
-                data?.current.averageDeal
-                  ? `${formatCompactUzs(data.current.averageDeal.amount)} soʻm`
-                  : NO_VALUE
+              value={data ? data.current.dealsWon : null}
+              unit="count"
+              status={tileStatus}
+              context={
+                data ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <TrendIndicator delta={data.deltas.dealsWon} />
+                    {/* Neutral hue on purpose: a deals count is a magnitude,
+                        not a named series on this screen. */}
+                    <span className="w-24 min-w-0">
+                      <Sparkline
+                        values={data.trend.map((point) => point.dealsWon)}
+                        height={22}
+                        label="Davr boʻyicha yopilgan bitimlar"
+                      />
+                    </span>
+                  </div>
+                ) : undefined
               }
             />
-            <Metric
+            <StatTile
+              label={t.cards.averageDeal}
+              value={data ? (data.current.averageDeal?.amount ?? null) : null}
+              unit="money"
+              status={tileStatus}
+            />
+            <StatTile
               label={t.cards.conversion}
-              value={formatPercent(data?.current.conversionPercent ?? null)}
+              value={data ? data.current.conversionPercent : null}
+              unit="percent"
+              status={tileStatus}
+              // A rate states its fraction — the denominator is closed deals,
+              // and printing it is what makes 50% from 2 deals readable as
+              // exactly that.
+              hint={
+                data && closedDeals > 0
+                  ? `${formatNumber(data.current.dealsWon)} yutilgan / ${formatNumber(closedDeals)} yakunlangan bitim`
+                  : undefined
+              }
             />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Metric label={t.cards.dealsCreated} value={data ? formatNumber(data.current.dealsCreated) : NO_VALUE} small />
-            <Metric label={t.cards.dealsOpen} value={data ? formatNumber(data.current.dealsOpen) : NO_VALUE} small />
+            <Metric
+              label={t.cards.dealsCreated}
+              value={data ? formatNumber(data.current.dealsCreated) : NO_VALUE}
+              loading={loading}
+            />
+            <Metric
+              label={t.cards.dealsOpen}
+              value={data ? formatNumber(data.current.dealsOpen) : NO_VALUE}
+              loading={loading}
+            />
             <Metric
               label={t.cards.pipeline}
-              value={data ? `${formatCompactUzs(data.current.pipeline.amount)} soʻm` : NO_VALUE}
-              small
+              value={
+                data ? (
+                  <>
+                    {formatCompactUzs(data.current.pipeline.amount)}
+                    <span className="ml-1 text-[11px] font-normal" style={{ color: 'var(--ink-muted)' }}>
+                      soʻm
+                    </span>
+                  </>
+                ) : (
+                  NO_VALUE
+                )
+              }
+              exact={data ? formatUzs(data.current.pipeline.amount) : undefined}
+              loading={loading}
             />
-            <Metric label={t.cards.kpiAchievement} value={formatPercent(data?.kpiAchievementPercent ?? null, 0)} small />
+            <Metric
+              label={t.cards.kpiAchievement}
+              value={formatPercent(data?.kpiAchievementPercent ?? null, 0)}
+              loading={loading}
+            />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-3">
@@ -158,35 +316,53 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
   )
 }
 
+/**
+ * The quiet tier: 18px figures under the same 12.5px label voice as every
+ * tile in the app. These four are context for the hero and the 30px row
+ * above, and their size is the statement that they are.
+ *
+ * Money passes `exact`, and the full amount rides the Tooltip primitive —
+ * a native `title` reaches neither keyboard nor touch. Loading renders a
+ * skeleton, never the em dash: a dash is a CLAIM (measured: nothing), and
+ * while the request is in flight nothing has been measured yet.
+ */
 function Metric({
   label,
   value,
-  delta,
-  title,
-  small,
+  exact,
+  loading,
 }: {
   label: string
-  value: string
-  delta?: DeltaDto
-  title?: string
-  small?: boolean
+  value: ReactNode
+  exact?: string
+  loading?: boolean
 }) {
   return (
     <Card className="px-4 py-3.5">
-      <p className="truncate text-xs font-medium" style={{ color: 'var(--ink-secondary)' }}>
+      <p className="truncate text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
         {label}
       </p>
-      <p
-        className={`mt-1.5 leading-none font-semibold tracking-tight ${small ? 'text-lg' : 'text-2xl'}`}
-        style={{ color: 'var(--ink-primary)' }}
-        title={title}
-      >
-        {value}
-      </p>
-      {delta && (
-        <div className="mt-2">
-          <TrendIndicator delta={delta} />
+      {loading ? (
+        <div className="skeleton mt-1.5 h-[18px] w-1/2" role="status">
+          <span className="sr-only">Yuklanmoqda</span>
         </div>
+      ) : exact ? (
+        <Tooltip content={<span className="tabular">{exact}</span>}>
+          <p
+            tabIndex={0}
+            className="focusable figure mt-1.5 w-fit rounded-[var(--radius-panel-sm)] text-lg leading-none font-semibold"
+            style={{ color: 'var(--ink-primary)' }}
+          >
+            {value}
+          </p>
+        </Tooltip>
+      ) : (
+        <p
+          className="figure mt-1.5 text-lg leading-none font-semibold"
+          style={{ color: 'var(--ink-primary)' }}
+        >
+          {value}
+        </p>
       )}
     </Card>
   )

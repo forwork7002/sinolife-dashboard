@@ -2,8 +2,10 @@
 
 import { useQuery } from '@tanstack/react-query'
 
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { ChartCard } from '@/components/ui/Card'
-import { GaugeTile, Meter, StatTile } from '@/components/ui/Stat'
+import { Meter, RingGauge, StatTile } from '@/components/ui/Stat'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { PageShell } from '@/features/shared/PageShell'
@@ -54,14 +56,23 @@ export function LogisticsPage() {
    */
   const preSale = data?.reasons.filter((r) => r.stage === 'PRE_SALE') ?? []
 
-  /** Failures as a share of RESOLVED orders — the delivery rate's own base. */
-  const failureRate = (() => {
-    if (!data) return null
-    const { delivered, refused, cancelledEarly } = data.totals
-    const resolved = delivered + refused + cancelledEarly
-    return resolved === 0 ? null : ((refused + cancelledEarly) / resolved) * 100
-  })()
   const totals = data?.totals
+
+  /**
+   * Resolved = the delivery rate's own denominator, computed ONCE.
+   *
+   * The hero states its fraction from this and the failure tile grades
+   * against it, so the two can never quote different bases for "the same"
+   * rate. In-flight orders are excluded rather than counted against anyone —
+   * a parcel still moving has not failed.
+   */
+  const resolved = totals ? totals.delivered + totals.refused + totals.cancelledEarly : null
+
+  /** Failures as a share of RESOLVED orders — the delivery rate's own base. */
+  const failureRate =
+    totals === undefined || resolved === null || resolved === 0
+      ? null
+      : ((totals.refused + totals.cancelledEarly) / resolved) * 100
 
   const columns: Column<LogisticsRowDto>[] = [
     {
@@ -69,15 +80,19 @@ export function LogisticsPage() {
       // The row's name: what a screen reader announces the row BY.
       rowHeader: true,
       header: 'Yoʻnalish',
-      render: (row) => (
-        <span
-          className="font-medium"
-          style={{ color: 'var(--ink-primary)' }}
-          title={row.label}
-        >
-          {routeName(row.label)}
-        </span>
-      ),
+      render: (row) => {
+        const short = routeName(row.label)
+        const cell = (
+          <span className="font-medium" style={{ color: 'var(--ink-primary)' }}>
+            {short}
+          </span>
+        )
+        // The full pipeline-prefixed label is data — it rides the Tooltip
+        // primitive (hover, focus AND touch), not a native title. Only when
+        // something was actually dropped: a tip that repeats its own trigger
+        // is noise.
+        return short === row.label ? cell : <Tooltip content={row.label}>{cell}</Tooltip>
+      },
     },
     {
       key: 'orders',
@@ -153,23 +168,94 @@ export function LogisticsPage() {
       accent="var(--series-3)"
       meta={query.data?.meta}
     >
-      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      {/*
+        The lead instrument — the page's one hero, and the only panel wearing
+        the registration brackets.
+
+        Logistics is judged by a single rate: of the orders that REACHED an
+        outcome, how many arrived. The ring carries the rate, the hero figure
+        carries the fraction it came from — a rate without its denominator is
+        an opinion — and the in-flight count stands beside them because it is
+        the number this rate deliberately refuses to include. Everything else
+        on the page is detail under this one claim, so the tiles below and the
+        tables after them stay visually subordinate.
+      */}
+      <section className="card-hero brackets reveal px-5 py-5 sm:px-6" aria-label="Yetkazish darajasi">
+        {query.isError ? (
+          <ErrorState
+            message={(query.error as Error).message}
+            onRetry={() => void query.refetch()}
+          />
+        ) : (
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
+            {query.isPending ? (
+              <div className="skeleton h-[116px] w-[116px] shrink-0 rounded-full" role="status">
+                <span className="sr-only">Yuklanmoqda</span>
+              </div>
+            ) : (
+              <RingGauge
+                value={totals?.deliveryRate ?? null}
+                size={116}
+                thickness={9}
+                tone="auto"
+                label="Yetkazish darajasi"
+              />
+            )}
+
+            <div className="min-w-0 flex-1">
+              <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                Yetkazish darajasi
+              </p>
+
+              {query.isPending ? (
+                // Sized to the hero figure below, so ready never reflows loading.
+                <div className="skeleton mt-2 h-[38px] w-44" role="status">
+                  <span className="sr-only">Yuklanmoqda</span>
+                </div>
+              ) : resolved !== null && resolved > 0 && totals ? (
+                /*
+                  The fraction, not a second copy of the percentage — the ring
+                  already states that. Delivered leads at hero size; the
+                  denominator sits beside it a register quieter, numbers only,
+                  so the nowrap hero line cannot overflow a narrow screen with
+                  a long Uzbek word.
+                */
+                <p className="figure-hero mt-2" style={{ color: 'var(--ink-primary)' }}>
+                  <AnimatedNumber
+                    value={totals.delivered}
+                    format={(v) => formatNumber(Math.round(v))}
+                  />
+                  <span className="text-lg font-normal" style={{ color: 'var(--ink-muted)' }}>
+                    {' '}/ {formatNumber(resolved)}
+                  </span>
+                </p>
+              ) : (
+                // Genuine null: nothing has resolved yet. An em dash, never 0 —
+                // "no outcome yet" is a different fact from "nothing arrived".
+                <p className="figure-hero mt-2" style={{ color: 'var(--ink-primary)' }}>
+                  {NO_VALUE}
+                </p>
+              )}
+
+              {!query.isPending && (
+                <p className="mt-2 text-[11px] leading-snug" style={{ color: 'var(--ink-muted)' }}>
+                  {resolved !== null && resolved > 0 && totals
+                    ? `Yakunlangan buyurtmalardan yetkazilgani · ${formatNumber(totals.inFlight)} tasi hali yoʻlda — ular darajaga kirmaydi`
+                    : 'Bu davrda birorta buyurtma hali yakunlanmagan — daraja yakun chiqqanda paydo boʻladi'}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      <div className="stagger grid gap-3 sm:grid-cols-3">
         <StatTile
           status={tileStatus}
           label="Buyurtmalar"
           value={totals?.orders ?? null}
           unit="count"
           hint={totals ? `${formatNumber(totals.inFlight)} tasi hali yoʻlda` : undefined}
-        />
-        {/* A count is a fact, not a judgement — a permanently green number
-            spends the status hue on nothing. */}
-        <StatTile status={tileStatus} label="Yetkazildi" value={totals?.delivered ?? null} unit="count" />
-        <GaugeTile
-          status={tileStatus}
-          label="Yetkazish darajasi"
-          value={totals?.deliveryRate ?? null}
-          tone="auto"
-          hint="Yakunlangan buyurtmalar ichida"
         />
         <StatTile
           status={tileStatus}
@@ -222,6 +308,12 @@ export function LogisticsPage() {
           onRetry={() => void query.refetch()}
           emptyTitle="Bu davrda buyurtma yoʻq"
           minWidth={980}
+          /*
+            Bounded, so the sticky header has something to stick to: twenty
+            regions of ten columns each read with the column names pinned in
+            view, instead of a headerless sea of numbers by row twelve.
+          */
+          maxHeight={560}
         />
       </ChartCard>
 
@@ -241,6 +333,7 @@ export function LogisticsPage() {
           emptyTitle="Yoʻnalish maʼlumoti yoʻq"
           emptyBody="Bosqichlar tarixi hali import qilinmagan boʻlishi mumkin."
           minWidth={980}
+          maxHeight={560}
         />
       </ChartCard>
 
@@ -331,7 +424,7 @@ function Failures({ count }: { count: number }) {
  * The prefix earns its place in a filter list, where stage ids repeat across
  * pipelines and the name alone is ambiguous. On a page whose title is already
  * "Logistika" it is thirteen characters of noise repeated down every row, so
- * it is dropped here and kept in the tooltip.
+ * it is dropped here and kept in the row's tooltip.
  */
 function routeName(label: string): string {
   const separator = label.indexOf(' · ')
@@ -341,7 +434,8 @@ function routeName(label: string): string {
 /**
  * The portal prefixes reason labels with pictographs — "✅ олиш нияти ёк".
  * A green checkmark in front of a LOSS reason reads as approval, so the
- * decoration is stripped for display; the raw string stays in the title.
+ * decoration is stripped for display; the raw string stays reachable in the
+ * row's tooltip, which also rescues labels the fixed column truncates.
  */
 function reasonLabel(reason: string): string {
   return reason.replace(/^[\p{Extended_Pictographic}\uFE0F\s]+/u, '') || reason
@@ -381,13 +475,14 @@ function ReasonList({
     <ul className="space-y-2">
       {reasons.map((reason) => (
         <li key={`${reason.stage}-${reason.reason}`} className="flex items-center gap-3">
-          <span
-            className="w-56 shrink-0 truncate text-xs"
-            style={{ color: 'var(--ink-secondary)' }}
-            title={reason.reason}
-          >
-            {reasonLabel(reason.reason)}
-          </span>
+          <Tooltip content={<span className="block max-w-72">{reason.reason}</span>}>
+            <span
+              className="w-56 shrink-0 truncate text-xs"
+              style={{ color: 'var(--ink-secondary)' }}
+            >
+              {reasonLabel(reason.reason)}
+            </span>
+          </Tooltip>
           {comparable && (
             /*
               House bar geometry — the same height, radius and single
@@ -415,13 +510,28 @@ function ReasonList({
           >
             {formatNumber(reason.orders)}
           </span>
-          <span
-            className="tabular w-24 shrink-0 text-right text-xs"
-            style={{ color: 'var(--ink-muted)' }}
-            title={reason.lost === null ? 'Bu bosqichda summa hisoblanmaydi' : undefined}
-          >
-            {reason.lost === null ? NO_VALUE : formatCompactUzs(reason.lost.amount)}
-          </span>
+          {reason.lost === null ? (
+            /*
+              The em dash EXPLAINS itself on demand: why this row has no lost
+              money is data, so it rides the Tooltip primitive rather than a
+              native title only a patient mouse ever saw.
+            */
+            <Tooltip content="Bu bosqichda summa hisoblanmaydi">
+              <span
+                className="tabular w-24 shrink-0 text-right text-xs"
+                style={{ color: 'var(--ink-muted)' }}
+              >
+                {NO_VALUE}
+              </span>
+            </Tooltip>
+          ) : (
+            <span
+              className="tabular w-24 shrink-0 text-right text-xs"
+              style={{ color: 'var(--ink-muted)' }}
+            >
+              {formatCompactUzs(reason.lost.amount)}
+            </span>
+          )}
         </li>
       ))}
     </ul>
