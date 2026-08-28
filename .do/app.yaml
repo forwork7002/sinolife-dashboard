@@ -310,24 +310,17 @@ jobs:
     build_command: npm ci && npx prisma generate
     run_command: npm run db:seed:users
 
-  # The marketing ledger's first fill.
+  # The marketing ledger is filled by hand, NOT by the deploy.
   #
-  # POST_DEPLOY rather than PRE_DEPLOY because it needs the schema the migrate
-  # job has just applied, and idempotent by construction (the importer replaces
-  # the rows for the dates it covers and refuses a blob that shrank), so running
-  # it on every deploy is safe. It is NOT the ongoing refresh: the source page
-  # is republished by hand, and re-importing on a timer would spend a request a
-  # minute on a file that changes once a day. Re-run it from a console session
-  # — `npm run roistat:import` — when the client republishes, or attach it to a
-  # scheduled trigger if that becomes tedious.
-  - name: import-marketing
-    kind: POST_DEPLOY
-    instance_size_slug: basic-xxs
-    github:
-      repo: forwork7002/sinolife-dashboard
-      branch: main
-    build_command: npm ci && npx prisma generate
-    run_command: npm run roistat:import
+  # It used to be a POST_DEPLOY job, and that made a data refresh able to fail
+  # a deployment: the importer downloads a 5.5 MB page and parses ~25k rows,
+  # which a 512 MB job container did not survive, so a perfectly good release
+  # was rolled back over a marketing table. A deploy should fail for broken
+  # code, never for a second system's data.
+  #
+  # Run it from a console session when the client republishes their page:
+  #     npm run roistat:import
+  # It is idempotent and refuses a blob that shrank, so re-running is safe.
 
 databases:
   - name: db
