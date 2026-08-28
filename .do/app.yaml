@@ -19,7 +19,18 @@
 # itself down when it detects a serverless host, and here it should not — one
 # process holding ten connections is the correct shape.
 
-name: sinolife-dashboard
+# The public hostname comes from this name: <name>-xxxxx.ondigitalocean.app.
+#
+# It is deliberately neutral. The name appears in DNS and in public
+# certificate-transparency logs the moment TLS is issued, so anyone scanning
+# those logs sees it — "sinolife-dashboard" would have announced both the
+# company and what the site is. A neutral word plus a random suffix says
+# neither.
+#
+# Be honest about the limit: this reduces casual discovery, it is NOT access
+# control. The real boundary is the password policy, two-factor, the sign-in
+# lockout and the rate limit.
+name: meridian-61c3bf
 region: fra
 
 # ---------------------------------------------------------------------------
@@ -272,4 +283,4 @@ databases:
     engine: PG
     version: "16"
     production: true
-    cluster_name: sinolife-db
+    cluster_name: meridian-61c3bf-db
