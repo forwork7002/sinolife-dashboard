@@ -718,8 +718,24 @@ export function LeaderboardPage() {
             Quiet by design: muted, 11px, below the table rather than above it.
             The rule belongs in the description; the count belongs here.
           */}
-          {scope && (
+          {branchScope && (
             <p className="mt-3 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              {branchScope.branch === null ? (
+                <>Barcha filiallar boʻyicha.</>
+              ) : (
+                <>
+                  «{branchScope.branch}» filiali boʻyicha —{' '}
+                  <span className="tabular">{formatNumber(branchScope.employees)}</span> xodim.
+                  Boshqa filiallar va sotuvdan tashqari boʻlimlardan{' '}
+                  <span className="tabular">{formatNumber(branchScope.excluded.total)}</span>{' '}
+                  xodim bu sahifada yoʻq.
+                </>
+              )}
+            </p>
+          )}
+
+          {scope && (
+            <p className="mt-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
               <span className="tabular">{formatNumber(scope.sellers)}</span> ta sotuvchi
               tartiblandi.{' '}
               <span className="tabular">{formatNumber(scope.excludedManagers)}</span> ta boʻlim

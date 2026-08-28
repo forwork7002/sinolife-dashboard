@@ -7,7 +7,16 @@ App Platform rather than a Droplet: TLS, the domain, deploys and database
 backups come with it, and Next.js needs no special handling. A Droplet would
 mean owning nginx, certbot and systemd for no benefit at this size.
 
-The spec lives in [`.do/app.yaml`](../.do/app.yaml).
+The spec lives in [`.do/app.yaml`](../.do/app.yaml). What protects the
+deployment once it is up — and what does not — is [SECURITY.md](SECURITY.md).
+
+The app is called **`meridian-61c3bf`**, so its default address is
+`meridian-61c3bf-xxxxx.ondigitalocean.app`. The name is deliberately neutral:
+an app name becomes a DNS record and lands in public certificate-transparency
+logs the moment TLS is issued, and `sinolife-dashboard` would have announced
+both the company and the purpose to anyone reading those logs. It buys
+obscurity and nothing else — the boundary is the password, the second factor
+and the lockout, not the hostname.
 
 > **Do not blindly re-apply the committed spec.** `doctl apps update --spec`
 > replaces the whole spec, and the committed one says `CHANGE_ME` where the
@@ -41,19 +50,28 @@ derived from anything else:
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-Rotating it later signs everyone out. That is the only consequence.
+Rotating it later signs everyone out — and, once two-factor is armed, makes
+every enrolled authenticator unreadable, because the TOTP seeds and the backup
+codes are encrypted under this same value. A rotation is therefore always
+followed by "sign in with the password, arm 2FA again" (§5). That is the whole
+consequence, and it is a manageable one; it is not a reason to avoid rotating
+after a suspected compromise.
 
 ---
 
 ## 2. Create the app
 
 ```bash
-# Point the spec at your repository first.
-sed -i 's|CHANGE_ME/sinolife-dashboard|<your-github-user>/<repo>|g' .do/app.yaml
+# Point the spec at your repository first — five github: blocks, one owner/name.
+sed -i 's|forwork7002/sinolife-dashboard|<your-github-user>/<repo>|g' .do/app.yaml
 
 doctl apps create --spec .do/app.yaml
-APP=$(doctl apps list --format ID,Spec.Name --no-header | grep sinolife | cut -f1)
+APP=$(doctl apps list --format ID,Spec.Name --no-header | grep meridian | cut -f1)
 ```
+
+The repository name is **not** the hostname and does not need renaming to match
+the app: a private repository's name appears in no public log. Only `name:` at
+the top of the spec becomes DNS.
 
 The first deploy **will fail**: every secret still says `CHANGE_ME`, and
 `src/server/config/env.ts` refuses to start rather than run half-configured.
@@ -150,12 +168,58 @@ Then open the dashboard and check the **overview total against the portal**.
 The one number that matters is revenue: the `countsAsRevenue` guard keeps about
 4.97 billion so'm of База duplicates out of it, and if that guard ever stops
 working every revenue figure is roughly double the truth. `npm run bitrix:import`
-prints the excluded total explicitly — run it from a console session (§7) if
+prints the excluded total explicitly — run it from a console session (§8) if
 you want the number rather than the comparison.
 
 ---
 
-## 5. Staying current
+## 5. First sign-in: the password, then two-factor
+
+Open the dashboard and sign in as `ADMIN_EMAIL` with `ADMIN_PASSWORD`. Then,
+in this order, on `/account`:
+
+**1. Change the password.** The value in the platform's secret store was typed
+into a web form and is now sitting in the deploy history; the password the
+owner actually uses should never have been anywhere but their head and their
+password manager. The house policy applies — twelve characters, three of four
+character classes, nothing built around the company's own words — and the
+password is also checked against the Have I Been Pwned corpus, which never
+sees the password itself (only a five-character hash prefix; see
+[SECURITY.md](SECURITY.md#the-breach-check)).
+
+**2. Arm two-factor.** This is part of first-run, not an optional extra. Until
+it is done, one password is the only thing between the whole commercial
+position of the company and anyone who guesses or phishes it.
+
+- **Setup → scan the QR code** with an authenticator app (Google
+  Authenticator, Aegis, 1Password — any TOTP app).
+- **Type a live code back in.** Nothing is armed until this succeeds: the
+  enrolment and the arming are two separate steps precisely so that walking
+  away halfway leaves the account exactly as it was.
+- If the code is rejected repeatedly, check the **phone's clock**. TOTP is
+  arithmetic over the time of day, and a handset a minute out of sync produces
+  wrong codes indefinitely. "Set time automatically" fixes it.
+
+> ### Write the ten backup codes down. On paper.
+>
+> They are shown **once**, at setup, and they are the only recovery path there
+> is. There is no administrator, no reset email and no support desk — this is
+> one account with nobody behind it.
+>
+> Storing them in the password manager on the same laptop as the browser is not
+> a backup; it is the same basket. Paper, in a different place.
+>
+> Lose both the phone and the codes and the only way back in is a **database
+> edit** by whoever holds `DATABASE_URL` — the exact SQL is in
+> [SECURITY.md](SECURITY.md#if-the-phone-and-the-codes-are-both-gone). It
+> works, and it is not something to be relying on.
+
+Rotating `BETTER_AUTH_SECRET` later invalidates the enrolment and the codes
+together. After any rotation, repeat step 2 and write down the new codes.
+
+---
+
+## 6. Staying current
 
 The `sync` worker pulls changed records every sixty seconds and re-reads
 reference data — employees, products, pipelines — every thirtieth tick. A
@@ -203,7 +267,7 @@ minute, most of it waiting on the portal's two-requests-per-second limit.
 
 ---
 
-## 6. Health and backups
+## 7. Health and backups
 
 `/api/health` opens a database connection and returns 503 if it cannot. The
 platform's health check points at it. The login page was the check before, and
@@ -216,7 +280,7 @@ recovery, on by default. Nothing to configure; check it exists under
 
 ---
 
-## 7. Running a command against the deployment
+## 8. Running a command against the deployment
 
 There is no `doctl apps run`. Open a shell in a running component instead:
 
@@ -236,6 +300,11 @@ npm run db:seed:users
 # Data sanity: row counts, revenue totals, the duplicate guard.
 npm run db:check
 ```
+
+Disarming a lost second factor is a database edit rather than a script — there
+is deliberately no `npm run` that turns 2FA off, because a command that removes
+the second factor is a second way past it. The SQL is in
+[SECURITY.md](SECURITY.md#if-the-phone-and-the-codes-are-both-gone).
 
 `tsx`, `prisma` and `dotenv` are runtime dependencies rather than dev ones
 precisely so these work in a deployed container — a production install prunes
@@ -258,6 +327,10 @@ doctl apps logs "$APP" --type run migrate
 | Everything answers 503; the log says `self-signed certificate in certificate chain` | `DATABASE_CA_CERT` is unset **and** something re-enabled verification. See §2 |
 | App boots then dies with `Invalid environment configuration` | A secret is still `CHANGE_ME`, or was added with an empty value. An empty value counts as set and fails exactly like this — delete the variable rather than blanking it |
 | Login succeeds, then redirects back to login | The host in the address bar is not the auth origin. Either it is not the primary domain, or it needs to be in `APP_TRUSTED_ORIGINS` |
+| "Juda koʻp muvaffaqiyatsiz urinish…" and sign-in refuses a password you are sure of | The sign-in lockout, after five consecutive failures. Wait the stated minutes out — it expires on its own, and there is nothing to reset. It escalates to a one-hour ceiling if the budget is spent again |
+| The authenticator's code is always rejected | The phone's clock, not the app. TOTP is computed from the time of day; turn on automatic time sync |
+| Phone lost, backup codes lost | A database edit against `two_factor`, by whoever holds `DATABASE_URL`. See [SECURITY.md](SECURITY.md#if-the-phone-and-the-codes-are-both-gone) |
+| Signed out everywhere and the authenticator no longer works | `BETTER_AUTH_SECRET` was rotated. Expected: sign in with the password alone, then re-arm 2FA (§5) |
 | `too many clients already` during a deploy | The pools exceed the cluster's 22 connections. Web holds 8, the worker 5 plus one for its lock, and a deploy briefly adds two jobs |
 | Import stops with `OPERATION_TIME_LIMIT` | The portal blocked a method for ~10 minutes. The worker backs off on its own and resumes from its cursor; nothing to do |
 | Revenue looks about double | The `countsAsRevenue` guard was bypassed. Compare against `npm run db:check` |

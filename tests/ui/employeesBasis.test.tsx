@@ -1,7 +1,15 @@
 /**
  * @vitest-environment jsdom
  *
- * SCRATCH PROBE — deleted after running.
+ * The two bases on the roster and on one person's page.
+ *
+ * The third test is the one worth keeping longest. `/employees/{id}` builds its
+ * response field by field and does not yet copy `closedCount` / `closedValue`
+ * out of the row it already holds, so EmployeeDetailPage falls back to
+ * `/analytics/employees` narrowed to that employee. These pin both halves of
+ * that shim: it fires when the fields are missing, and it does NOT fire once
+ * they arrive — so the day the route is fixed, this file says the fallback is
+ * dead code and can go.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'

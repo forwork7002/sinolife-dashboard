@@ -386,9 +386,14 @@ export function EmployeesPage() {
       filters={{ employees: true, departments: true }}
     >
       {/*
-        Three subordinate tiles, no hero: the table IS this page's lead. A
+        Four subordinate tiles, no hero: the table IS this page's lead. A
         hero-sized figure over a client-side sum would claim an importance the
         derivation does not carry — the tiles orient, the rows answer.
+
+        The two money tiles sit side by side and at equal weight because they
+        are the comparison this page now exists to make. Neither is the
+        headline; a reader who takes one of them as "the" number has misread
+        the screen, and size is how a screen says which reading it intends.
       */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile

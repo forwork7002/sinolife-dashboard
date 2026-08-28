@@ -252,8 +252,55 @@ function withPlatformDefaults(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return filled
 }
 
+/**
+ * Placeholders the platform has not substituted yet.
+ *
+ * App Platform writes bindings like `${db.DATABASE_URL}` into the environment
+ * and resolves them when the process STARTS. During `next build` there is no
+ * running app and no attached database, so the variable still holds the
+ * literal binding text — and `next build` evaluates route modules to collect
+ * their config, which reaches this file.
+ *
+ * Validating a connection string that cannot exist yet fails a build that is
+ * otherwise correct: the deploy dies with "DATABASE_URL must be a PostgreSQL
+ * connection string" while the binding it is complaining about is exactly
+ * right. So an unresolved binding is treated as ABSENT rather than as
+ * malformed, and only during the build phase — at run time the same value
+ * would be a genuine misconfiguration and still fails loudly.
+ */
+const UNRESOLVED_BINDING = /^\$\{[A-Za-z0-9_.-]+\}$/
+
+/**
+ * True while `next build` is collecting page data.
+ *
+ * Next sets this itself; we never set it. Keying on the phase rather than on
+ * NODE_ENV matters, because the build runs with NODE_ENV=production and so
+ * does the server that must NOT be allowed to start without a database.
+ */
+function isBuildPhase(source: NodeJS.ProcessEnv): boolean {
+  return source.NEXT_PHASE === 'phase-production-build'
+}
+
 function load(): Env {
-  const source = withPlatformDefaults(process.env)
+  let source = withPlatformDefaults(process.env)
+
+  if (isBuildPhase(source)) {
+    const cleaned: NodeJS.ProcessEnv = { ...source }
+    for (const [key, value] of Object.entries(cleaned)) {
+      if (typeof value === 'string' && UNRESOLVED_BINDING.test(value.trim())) {
+        delete cleaned[key]
+      }
+    }
+    // A build needs a syntactically valid URL to satisfy the schema; it never
+    // opens a connection with it. Naming the host `build-phase.invalid` makes
+    // an accidental runtime use obvious in a stack trace instead of quietly
+    // pointing somewhere real.
+    if (!cleaned.DATABASE_URL) {
+      cleaned.DATABASE_URL = 'postgresql://build:build@build-phase.invalid:5432/build'
+    }
+    source = cleaned
+  }
+
   const parsed = schema.safeParse(source)
 
   if (!parsed.success) {

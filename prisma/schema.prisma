@@ -230,7 +230,7 @@ enum MarketingDimension {
 }
 
 // ---------------------------------------------------------------------------
-// Authentication (better-auth owns the shape of these four models)
+// Authentication (better-auth owns the shape of these six models)
 // ---------------------------------------------------------------------------
 
 model User {
@@ -239,6 +239,14 @@ model User {
   email         String  @unique
   emailVerified Boolean @default(false)
   image         String?
+
+  /// Owned by the two-factor plugin, not by us.
+  ///
+  /// False until a TOTP secret has been enrolled AND proved with a live code,
+  /// which is what keeps 2FA opt-in: every existing account carries the
+  /// default and signs in exactly as it did before the plugin arrived. The
+  /// plugin declares it `input: false`, so no request body can set it.
+  twoFactorEnabled Boolean @default(false)
 
   // Application fields (exposed to better-auth via additionalFields)
   role       Role    @default(SALES)
@@ -250,9 +258,10 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  employee  Employee?  @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  employee  Employee?   @relation(fields: [employeeId], references: [id], onDelete: SetNull)
   sessions  Session[]
   accounts  Account[]
+  twoFactor TwoFactor[]
   auditLogs AuditLog[]
 
   @@index([role])
@@ -315,6 +324,103 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+/// The second factor. One row per user who has enrolled an authenticator app.
+///
+/// Shape dictated by better-auth's `twoFactor` plugin
+/// (node_modules/better-auth/dist/plugins/two-factor/schema.mjs); the field
+/// names must match or the adapter writes to columns that do not exist.
+///
+/// A ROW EXISTING IS NOT THE SAME AS 2FA BEING ON. `/two-factor/enable`
+/// creates this row with `verified = false` and leaves `user.twoFactorEnabled`
+/// alone. Only a correct code posted to `/two-factor/verify-totp` flips both.
+/// That gap is the whole safety of the enrolment flow: the backup codes are
+/// handed over in the enable response, and if the person walks away without
+/// saving them, nothing has been armed and they can still sign in with the
+/// password alone.
+///
+/// `onDelete: Cascade` — deleting the user must not leave an orphaned secret.
+model TwoFactor {
+  id String @id @default(cuid())
+
+  /// The TOTP seed, AES-encrypted under BETTER_AUTH_SECRET before it is
+  /// written. A database dump therefore does not hand over the second factor;
+  /// rotating BETTER_AUTH_SECRET, on the other hand, makes every enrolled
+  /// authenticator unreadable and forces a re-enrolment.
+  ///
+  /// The plugin's schema marks this `index: true`. We deliberately do not
+  /// index it: nothing ever queries by secret (every lookup is by `userId`),
+  /// so the index would buy nothing and put a searchable structure over the
+  /// most sensitive column in the database.
+  secret String
+
+  /// The remaining single-use recovery codes, as an encrypted JSON array.
+  /// Verifying one rewrites this column with that code removed.
+  backupCodes String
+
+  userId String
+
+  /// False between "enable" and the first correct code. A sign-in challenge
+  /// refuses an unverified secret, so a half-finished enrolment can never
+  /// become the thing standing between the owner and their data.
+  verified Boolean @default(true)
+
+  /// Consecutive failed second-factor verifications, and the lock they earn.
+  /// Enforced inside the plugin (`accountLockout`), stored here so a deploy —
+  /// which restarts the process — does not reset an attacker's budget.
+  failedVerificationCount Int       @default(0)
+  lockedUntil             DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("two_factor")
+}
+
+/// Sign-in failure budget, keyed by a hash of the email that was tried.
+///
+/// Rate limiting caps how FAST someone can guess. It does nothing about how
+/// LONG they are willing to guess: five attempts a minute, kept up quietly for
+/// a week, is fifty thousand tries. This table is the second half of the
+/// answer — after `MAX_FAILED_SIGN_INS` consecutive failures the account stops
+/// answering at all for a while, and the wait grows each time the budget is
+/// spent again.
+///
+/// WHY THE KEY IS A HASH OF THE EMAIL, NOT A USER ID.
+/// Two reasons, and the first one is the important one:
+///
+///  1. An address with no account has to be able to lock too. If only real
+///     users could be locked, then "too many attempts" would be a yes/no
+///     oracle for "does this address have an account here" — the exact
+///     disclosure the login page's deliberately vague error avoids.
+///  2. This table is then not a list of who has an account. A dump of it
+///     yields opaque digests, not a target list.
+///
+/// Rows for addresses nobody will ever try again are pruned on write (see
+/// `lockout.ts`), so a guesser cycling through addresses cannot grow the table
+/// without bound.
+model SignInLockout {
+  /// SHA-256 (hex) of the lowercased, trimmed email. Never the email itself.
+  emailHash String @id
+
+  /// Consecutive failures. Reset to zero by a successful sign-in, and treated
+  /// as zero once `lastFailedAt` is older than the decay window.
+  failedCount Int @default(0)
+
+  /// While this is in the future, sign-in is refused before the password is
+  /// even checked.
+  lockedUntil DateTime?
+
+  lastFailedAt DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  /// Pruning scans by age, not by key.
+  @@index([lastFailedAt])
+  @@map("sign_in_lockout")
 }
 
 // ---------------------------------------------------------------------------

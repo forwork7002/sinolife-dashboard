@@ -1,8 +1,23 @@
 /**
  * @vitest-environment jsdom
  *
- * SCRATCH PROBE — deleted after running. Mounts the real LeaderboardPage
- * against a stubbed apiGet to check the two bases render, switch and refuse.
+ * The Reyting board's two bases.
+ *
+ * These are not render smoke tests. Every assertion here stands for a way the
+ * page could go on looking correct while telling a manager something false:
+ *
+ *  - a caption that does not change when the metric does, so a delivered-money
+ *    ranking is read as the seller's own work (and vice versa);
+ *  - a "natijasiz" disclosure that hides the seller who closed nine deals and
+ *    has had none delivered yet — 1 646 of last August's closes were in that
+ *    state, so the case is the common one, not the corner;
+ *  - a board that ranks by a basis the portal could not resolve, which
+ *    `buildLeaderboard` renders as ranks 1..n in employee-id order: a ranking
+ *    shaped exactly like a real one, with nothing in it.
+ *
+ * The stubbed `apiGet` returns the DTO shape `/analytics/leaderboard` documents
+ * in `src/lib/api.ts`; the ranking itself is tested in
+ * `tests/domain/sellerClose.test.ts`, and is deliberately not re-tested here.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'

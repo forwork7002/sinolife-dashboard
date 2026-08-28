@@ -28,8 +28,14 @@
 # neither.
 #
 # Be honest about the limit: this reduces casual discovery, it is NOT access
-# control. The real boundary is the password policy, two-factor, the sign-in
-# lockout and the rate limit.
+# control. Anyone who is handed the URL is exactly as close to the data as they
+# were before, and a scanner walking the whole ondigitalocean.app namespace
+# finds this as easily as it would have found any other name. The real boundary
+# is the password policy, two-factor, the sign-in lockout and the rate limit —
+# docs/SECURITY.md is the full list, and this line is not on it.
+#
+# Change it in one place and the hostname changes with it; the database cluster
+# below carries the same word so the two stay recognisably one deployment.
 name: meridian-61c3bf
 region: fra
 
@@ -89,12 +95,48 @@ envs:
     scope: RUN_TIME
     value: ""
 
-  # Session signing key. Rotating it signs everyone out.
+  # Session signing key — and, since two-factor arrived, the key the TOTP seeds
+  # and the backup codes in `two_factor` are encrypted under.
+  #
   #   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  #
+  # Rotating it signs everyone out. That used to be the entire consequence and
+  # it is not any more: every enrolled authenticator becomes undecryptable at
+  # the same instant, so after a rotation the owner signs in with the password
+  # alone and has to arm 2FA again from /account. That is the correct order —
+  # rotate, sign in, re-enrol — and it is also why rotation is a real step in
+  # the compromise procedure rather than a formality. See docs/SECURITY.md.
   - key: BETTER_AUTH_SECRET
     scope: RUN_AND_BUILD_TIME
     type: SECRET
     value: CHANGE_ME
+
+  # --- Two-factor and the sign-in lockout -----------------------------------
+  #
+  # Neither one adds a variable here, and the absence is a decision rather than
+  # an omission:
+  #
+  #  * The second factor keeps its state in the database (`two_factor`),
+  #    encrypted under BETTER_AUTH_SECRET above. TOTP is arithmetic over a
+  #    shared seed, so there is no provider to configure — no SMS gateway, no
+  #    mail sender, no third-party account, nothing to pay for and nothing that
+  #    can be down.
+  #  * The lockout thresholds — five failures, fifteen minutes doubling to a
+  #    one-hour ceiling — are constants in src/server/auth/lockout.ts, with
+  #    tests over the escalation. As env they would be the one limit that
+  #    bounds a patient guesser, editable in a web form, with no diff, no
+  #    review and no test run behind the edit.
+  #  * The lockout COUNTER is in Postgres for a related reason: rate-limit
+  #    counters live in this process's memory, and this app redeploys. A
+  #    counter a deploy clears is a lock an attacker only has to outwait.
+  #
+  # One environment requirement is real and invisible. The web component must
+  # be able to reach api.pwnedpasswords.com over HTTPS — that is the breach
+  # check refusing a password that already appears in a public dump, and it
+  # sends a five-character hash prefix, never the password. App Platform allows
+  # outbound HTTPS by default. If that ever stops being true the check fails
+  # OPEN on purpose (nobody else's outage may stand between the owner and a
+  # password change), so the symptom is silence rather than an error.
 
   # The webhook URL embeds an access token to the whole portal.
   - key: BITRIX24_WEBHOOK_URL
@@ -166,6 +208,11 @@ services:
     http_port: 3000
 
     github:
+      # The REPOSITORY name is not the hostname and does not need renaming.
+      # Only `name:` at the top of this file becomes DNS and a certificate; a
+      # private repository's name appears in no public log (keeping it private
+      # is step 1 of docs/DEPLOY.md, and is what that relies on). If it is ever
+      # renamed on GitHub, all five of these blocks change together.
       repo: forwork7002/sinolife-dashboard
       branch: main
       deploy_on_push: true
@@ -250,6 +297,10 @@ jobs:
 
   # The administrator account. Idempotent — it converges rather than resets,
   # so running it on every deploy cannot overwrite a password that works.
+  #
+  # It also cannot touch two-factor: enrolment is a `two_factor` row the owner
+  # created from the browser, and this job neither reads nor writes it. A
+  # redeploy therefore never disarms the second factor.
   - name: provision-admin
     kind: POST_DEPLOY
     instance_size_slug: basic-xxs
