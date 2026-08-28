@@ -13,7 +13,9 @@ import { Tooltip } from '@/components/ui/Tooltip'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { sessionUser, signOut, useSession } from '@/lib/authClient'
 import { formatDateTime } from '@/lib/format'
-import { ROLE_LABELS, canSee } from '@/lib/roles'
+import { ROLE_LABELS, canSeeHref } from '@/lib/roles'
+import { sectionSpec, type SectionValue } from '@/lib/sections'
+import { useFilterOptions } from '@/features/shared/PageShell'
 import { t } from '@/lib/messages'
 import { PERIOD_PRESETS } from './PeriodFilter'
 import { RouteTransitions } from './RouteTransitions'
@@ -27,6 +29,13 @@ import { RouteTransitions } from './RouteTransitions'
  */
 interface NavItem {
   readonly href: string
+  /**
+   * Shown only to an account that holds `users:manage`.
+   *
+   * Outside the section system on purpose — see `requireUserAdmin`. The page
+   * itself refuses entry regardless of what renders here.
+   */
+  readonly adminOnly?: boolean
   readonly label: string
   readonly icon: () => React.JSX.Element
 }
@@ -84,6 +93,7 @@ const NAV_GROUPS: readonly { readonly label: string | null; readonly items: read
     items: [
       { href: '/deals', label: t.nav.deals, icon: ListIcon },
       { href: '/finance', label: t.nav.finance, icon: WalletIcon },
+      { href: '/users', label: 'Foydalanuvchilar', icon: PeopleIcon, adminOnly: true },
     ],
   },
 ]
@@ -131,14 +141,35 @@ export function Shell({
 
   const role = user?.role
 
+  /*
+    The viewer's granted sections, from the filters payload every page already
+    fetches. Shares react-query's cache with PageShell, so this costs no extra
+    request.
+  */
+  const viewer = useFilterOptions().data?.data.viewer
+  const grantedRoutes = viewer
+    ? viewer.sections
+        .map((id: SectionValue) => sectionSpec(id)?.route)
+        .filter((route): route is string => route !== undefined)
+    : undefined
+
   /**
-   * Hide destinations the role cannot use.
+   * Hide destinations this ACCOUNT was not given.
    *
-   * Presentation only — the server rejects any request the role is not
-   * entitled to regardless of what is rendered here. Hiding a link the user
-   * would only get a 403 from is a courtesy, not the boundary.
+   * Presentation only — `requireSection` on each page and the permission on
+   * each endpoint are what actually refuse access. Hiding a link the user
+   * would only be redirected away from is a courtesy, not the boundary.
+   *
+   * While the viewer payload loads, the role default stands in, so the
+   * sidebar does not render a full menu and then visibly shrink.
    */
-  const visibleNav = NAV.filter((item) => !role || canSee(role, item.href))
+  const canOpen = (item: NavItem) => {
+    if (item.adminOnly) return viewer?.canManageUsers === true
+    if (!role) return true
+    return canSeeHref(role, grantedRoutes, item.href)
+  }
+
+  const visibleNav = NAV.filter(canOpen)
 
   /**
    * What the palette knows: every screen this role can see, then the six
@@ -222,7 +253,7 @@ export function Shell({
 
         <nav aria-label="Asosiy menyu" className="flex-1 overflow-y-auto px-2.5 py-1">
           {NAV_GROUPS.map((group) => {
-            const items = group.items.filter((item) => !user || canSee(user.role, item.href))
+            const items = group.items.filter((item) => !user || canOpen(item))
             if (items.length === 0) return null
 
             return (

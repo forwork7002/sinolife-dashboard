@@ -16,6 +16,7 @@ const sales: Principal = {
   role: 'SALES',
   isActive: true,
   employeeId: 'emp-own',
+  sections: [],
 }
 
 const manager: Principal = {
@@ -23,6 +24,7 @@ const manager: Principal = {
   role: 'MANAGER',
   isActive: true,
   employeeId: null,
+  sections: [],
 }
 
 /** Mirrors what every route handler does: parsed query, then scope on top. */

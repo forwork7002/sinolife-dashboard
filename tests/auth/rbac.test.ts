@@ -9,10 +9,23 @@ import {
   dealScopeFor,
   permissionsFor,
 } from '@/server/auth/rbac'
+import { defaultSectionsFor } from '@/lib/sections'
 
-const admin: Principal = { userId: 'u1', role: 'ADMIN', isActive: true, employeeId: null }
-const manager: Principal = { userId: 'u2', role: 'MANAGER', isActive: true, employeeId: null }
-const sales: Principal = { userId: 'u3', role: 'SALES', isActive: true, employeeId: 'emp-1' }
+// Sections carry the role default, which is what an account that nobody has
+// configured actually holds — a fixture with an empty list would be a user who
+// can open nothing, and no such user exists.
+const admin: Principal = {
+  userId: 'u1', role: 'ADMIN', isActive: true, employeeId: null,
+  sections: defaultSectionsFor('ADMIN'),
+}
+const manager: Principal = {
+  userId: 'u2', role: 'MANAGER', isActive: true, employeeId: null,
+  sections: defaultSectionsFor('MANAGER'),
+}
+const sales: Principal = {
+  userId: 'u3', role: 'SALES', isActive: true, employeeId: 'emp-1',
+  sections: defaultSectionsFor('SALES'),
+}
 
 describe('the permission matrix', () => {
   it('gives ADMIN everything', () => {

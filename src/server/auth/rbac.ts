@@ -9,6 +9,7 @@
  * Framework-free and pure, so the whole matrix is unit testable.
  */
 
+import { effectiveSections, type SectionValue } from '@/lib/sections'
 import type { RoleValue } from '@/server/domain/types'
 
 export const PERMISSIONS = [
@@ -95,6 +96,38 @@ export interface Principal {
   readonly isActive: boolean
   /** Set when the login is linked to a salesperson. Drives own-data scoping. */
   readonly employeeId: string | null
+  /**
+   * The sections this account may open, already resolved.
+   *
+   * Resolved rather than raw: `effectiveSections` has already applied the
+   * "empty means role default" rule and dropped unknown ids, so every consumer
+   * reads one list and none of them can implement the fallback differently.
+   */
+  readonly sections: readonly SectionValue[]
+}
+
+/**
+ * Whether this account may open a section.
+ *
+ * The SECOND gate. `can()` decides whether the role is allowed the capability
+ * at all; this decides whether this particular account was given that screen.
+ * A request has to pass both, so granting someone the Moliya section cannot
+ * hand a salesperson finance data their role never permitted.
+ *
+ * A deactivated account sees nothing, for the same reason it holds no
+ * permissions: disabling someone must take effect without deleting them.
+ */
+export function canSeeSection(principal: Principal, section: SectionValue): boolean {
+  if (!principal.isActive) return false
+  return principal.sections.includes(section)
+}
+
+/** Resolve a role and a stored list into the sections an account really has. */
+export function sectionsFor(
+  role: RoleValue,
+  stored: readonly string[] | null | undefined,
+): readonly SectionValue[] {
+  return effectiveSections(role, stored)
 }
 
 export function can(principal: Principal, permission: Permission): boolean {

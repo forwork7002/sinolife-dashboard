@@ -13,6 +13,7 @@ import { ZodError, type ZodType } from 'zod'
 
 import { type Permission, type Principal, dealScopeFor } from '@/server/auth/rbac'
 import { requirePermission } from '@/server/auth/session'
+import { TRUSTED_ORIGINS } from '@/server/auth/auth'
 import { env } from '@/server/config/env'
 import { getCrmProvider } from '@/server/config/providerFactory'
 import { resolvePeriod, type Period } from '@/server/domain/period/period'
@@ -138,6 +139,95 @@ export function getHandler<Q>(
         )
       } else {
         log.warn({ correlationId, code: apiError.code }, 'request rejected')
+      }
+
+      return jsonResponse(failure(apiError, meta), apiError.status)
+    }
+  }
+}
+
+/**
+ * Build a POST/PATCH handler.
+ *
+ * Everything `getHandler` guarantees, plus the two things a WRITE needs.
+ *
+ * ORIGIN, BECAUSE THIS API IS COOKIE-AUTHENTICATED. A browser attaches the
+ * session cookie to a cross-site form post as readily as to our own fetch, so
+ * without this check any page the user visits while signed in could create an
+ * administrator on their behalf. better-auth applies the same rule to its own
+ * endpoints; these are ours, so we apply it here. A request with no Origin at
+ * all is refused rather than waved through: every browser sends one on a
+ * cross-origin write, so its absence is either a non-browser client — which
+ * should be using a token, not a cookie — or an attempt to skip the check.
+ *
+ * THE BODY IS JSON AND IS VALIDATED. A malformed body is a 400 with field
+ * detail, never a 500, and never a partially-applied write.
+ */
+export function mutationHandler<B>(
+  permission: Permission | readonly Permission[],
+  schema: ZodType<B>,
+  handle: (
+    ctx: Omit<HandlerContext<never>, 'query'> & { body: B; request: Request },
+  ) => Promise<{ data: unknown; meta?: Partial<ResponseMeta> }>,
+) {
+  return async function POST(request: Request): Promise<NextResponse> {
+    const correlationId = newCorrelationId()
+    const meta = baseMeta(correlationId)
+
+    try {
+      const origin = request.headers.get('origin')
+      if (!origin || !TRUSTED_ORIGINS.includes(origin)) {
+        log.warn({ correlationId, origin }, 'write rejected: untrusted origin')
+        throw ApiError.forbidden('Soʻrov ishonchsiz manzildan keldi.')
+      }
+
+      const principal = await requirePermission(request, permission)
+
+      let raw: unknown
+      try {
+        raw = await request.json()
+      } catch {
+        throw ApiError.validation('Soʻrov tanasi JSON boʻlishi kerak.', [])
+      }
+
+      let body: B
+      try {
+        body = schema.parse(raw)
+      } catch (error) {
+        if (error instanceof ZodError) {
+          throw ApiError.validation(
+            'Soʻrov maydonlari notoʻgʻri.',
+            error.issues.map((issue) => ({
+              path: issue.path.join('.') || '(body)',
+              message: issue.message,
+            })),
+          )
+        }
+        throw error
+      }
+
+      const result = await handle({
+        body,
+        request,
+        correlationId,
+        currency: env.APP_DEFAULT_CURRENCY,
+        timeZone: env.APP_TIMEZONE,
+        now: new Date(),
+        principal,
+        scope: dealScopeFor(principal),
+      })
+
+      return jsonResponse(success(result.data, { ...meta, ...result.meta }), 200)
+    } catch (error) {
+      const apiError = toApiError(error)
+
+      if (apiError.status >= 500) {
+        log.error(
+          { correlationId, code: apiError.code, cause: String(apiError.cause ?? apiError.message) },
+          'write failed',
+        )
+      } else {
+        log.warn({ correlationId, code: apiError.code }, 'write rejected')
       }
 
       return jsonResponse(failure(apiError, meta), apiError.status)

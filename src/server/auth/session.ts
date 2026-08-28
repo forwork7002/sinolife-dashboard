@@ -5,10 +5,11 @@
  * Route handlers never inspect cookies or roles themselves.
  */
 
+import { prisma } from '@/server/db/prisma'
 import { ROLES, type RoleValue } from '@/server/domain/types'
 import { ApiError } from '@/server/http/errors'
 import { auth } from './auth'
-import { type Permission, type Principal, can } from './rbac'
+import { type Permission, type Principal, can, sectionsFor } from './rbac'
 
 /**
  * Resolve the caller, or throw UNAUTHENTICATED.
@@ -32,15 +33,35 @@ export async function requirePrincipal(request: Request): Promise<Principal> {
     employeeId?: string | null
   }
 
-  const role: RoleValue = ROLES.includes(user.role as RoleValue)
-    ? (user.role as RoleValue)
+  /*
+    THE AUTHORITATIVE ROW, not the session's copy of it.
+
+    better-auth caches role and isActive into the session, so an administrator
+    who revokes someone's access would not be obeyed until that session next
+    refreshed — the revoked user keeps working for as long as their cookie
+    lives. For a screen whose whole purpose is "the admin decides who sees
+    what", that lag is the feature failing. One primary-key lookup per request
+    makes every change take effect on the caller's very next action.
+
+    A missing row falls back to the session values and the least-privileged
+    role: a user deleted mid-session must not gain anything from the gap.
+  */
+  const live = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { role: true, isActive: true, employeeId: true, sections: true },
+  })
+
+  const rawRole = live?.role ?? user.role
+  const role: RoleValue = ROLES.includes(rawRole as RoleValue)
+    ? (rawRole as RoleValue)
     : 'SALES'
 
   const principal: Principal = {
     userId: user.id,
     role,
-    isActive: user.isActive !== false,
-    employeeId: user.employeeId ?? null,
+    isActive: live ? live.isActive : user.isActive !== false,
+    employeeId: live?.employeeId ?? user.employeeId ?? null,
+    sections: sectionsFor(role, live?.sections),
   }
 
   if (!principal.isActive) {

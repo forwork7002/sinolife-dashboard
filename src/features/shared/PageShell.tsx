@@ -8,6 +8,8 @@ import { Shell } from '@/components/layout/Shell'
 import { Button } from '@/components/ui/Button'
 import { MultiSelect, SearchInput } from '@/components/ui/Controls'
 import { apiGet, type ResponseMeta } from '@/lib/api'
+import type { RoleValue } from '@/lib/roles'
+import type { SectionValue } from '@/lib/sections'
 import { formatDate } from '@/lib/format'
 import { t } from '@/lib/messages'
 import { useDashboardFilters } from './useDashboardFilters'
@@ -19,6 +21,12 @@ export interface FilterOptions {
   readonly sources: readonly { id: string; name: string }[]
   readonly stages: readonly { id: string; name: string }[]
   readonly lastSyncedAt: string | null
+  /** Who is looking. Drives which nav entries render. */
+  readonly viewer?: {
+    readonly role: RoleValue
+    readonly sections: readonly SectionValue[]
+    readonly canManageUsers: boolean
+  }
 }
 
 /**

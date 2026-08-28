@@ -69,3 +69,19 @@ export const ROLE_NAV: Readonly<Record<RoleValue, readonly string[]>> = {
 export function canSee(role: RoleValue, href: string): boolean {
   return ROLE_NAV[role].includes(href)
 }
+
+/**
+ * Whether a nav destination should render for this viewer.
+ *
+ * Prefers the account's granted sections and falls back to the role while the
+ * viewer payload is still loading, so the sidebar does not flash a set of
+ * links and then take half of them away. Presentation only: `requireSection`
+ * on the page is what actually refuses entry.
+ */
+export function canSeeHref(
+  role: RoleValue,
+  grantedRoutes: readonly string[] | undefined,
+  href: string,
+): boolean {
+  return grantedRoutes ? grantedRoutes.includes(href) : canSee(role, href)
+}

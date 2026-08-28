@@ -29,6 +29,19 @@ export const GET = getHandler('employees:read', z.object({}), async (ctx) => {
       stages,
       lastSyncedAt: lastSyncedAt?.toISOString() ?? null,
       permissions: ctx.principal.role,
+      /*
+        The viewer, so the sidebar can hide what this account was not given.
+
+        It rides THIS response rather than a new endpoint because every page
+        already fetches it once per session. Presentation only — the page guard
+        and the route permissions are what actually refuse access, and both
+        read the database rather than this payload.
+      */
+      viewer: {
+        role: ctx.principal.role,
+        sections: ctx.principal.sections,
+        canManageUsers: ctx.principal.role === 'ADMIN',
+      },
     },
   }
 })
