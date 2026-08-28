@@ -11,11 +11,17 @@
  */
 
 import { betterAuth } from 'better-auth'
+import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 
 import { env } from '@/server/config/env'
 import { prisma } from '@/server/db/prisma'
 import { AUTH_COOKIE_PREFIX } from './cookiePrefix'
+import {
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  checkPassword,
+} from '@/lib/passwordPolicy'
 import { resolveTrustedOrigins } from './trustedOrigins'
 import { resolveTrustedProxies } from './trustedProxies'
 
@@ -51,8 +57,56 @@ export const auth = betterAuth({
     // internal sales dashboard would let anyone who finds the URL create
     // themselves an account.
     disableSignUp: true,
-    minPasswordLength: 8,
-    maxPasswordLength: 128,
+    minPasswordLength: MIN_PASSWORD_LENGTH,
+    maxPasswordLength: MAX_PASSWORD_LENGTH,
+
+    /**
+     * Changing a password signs every OTHER device out.
+     *
+     * The reason someone changes a password is usually that they think
+     * somebody else has it. Leaving the other sessions alive would mean the
+     * change accomplished nothing: the intruder's cookie keeps working for the
+     * rest of the week. The device doing the change keeps its session, so the
+     * person is not thrown out of the screen they are standing on.
+     */
+    revokeSessionsOnPasswordReset: true,
+  },
+
+  /**
+   * Password rules, applied before better-auth hashes anything.
+   *
+   * `before` on the change-password and set-password endpoints is the only
+   * point every password-setting path shares. Identity-based rules (do not
+   * reuse your email or name) need the account, which is why this lives in a
+   * hook rather than in a Zod schema on one route.
+   */
+  hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      const path = ctx.path
+      if (path !== '/change-password' && path !== '/reset-password' && path !== '/sign-up/email') {
+        return
+      }
+
+      const body = (ctx.body ?? {}) as Record<string, unknown>
+      const candidate = body.newPassword ?? body.password
+      if (typeof candidate !== 'string') return
+
+      const session = ctx.context.session?.user as
+        | { email?: string | null; name?: string | null }
+        | undefined
+
+      const { ok, problems } = checkPassword(candidate, {
+        email: session?.email ?? (typeof body.email === 'string' ? body.email : null),
+        name: session?.name ?? null,
+      })
+
+      if (!ok) {
+        throw new APIError('BAD_REQUEST', {
+          code: 'WEAK_PASSWORD',
+          message: problems.join(' '),
+        })
+      }
+    }),
   },
 
   /**

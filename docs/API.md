@@ -148,7 +148,7 @@ counterpart in February — it is capped at the shorter month and
 | `GET` | `/dashboard/overview` | analytics | KPI cards, deltas, trend, KPI attainment |
 | `GET` | `/analytics/sales` | analytics | Revenue trend, sources, products, summary |
 | `GET` | `/analytics/employees` | analytics | Per-employee performance + KPI |
-| `GET` | `/analytics/leaderboard` | `leaderboard:read` | Ranking; `metric=revenue\|deals_won\|conversion\|kpi_achievement` |
+| `GET` | `/analytics/leaderboard` | `leaderboard:read` | Ranking on one of **two bases**; `metric=revenue\|deals_won\|conversion\|kpi_achievement\|closed_deals\|closed_value` |
 | `GET` | `/analytics/products` | analytics | Product revenue, units, share, delta |
 | `GET` | `/analytics/sources` | analytics | Revenue and conversion by lead source |
 | `GET` | `/analytics/funnel` | analytics | Stage distribution for the period cohort |
@@ -309,11 +309,32 @@ over minutes of talk is noise wearing a currency, so the API withholds it
 rather than letting a spectacular number rest on seventy minutes. The same
 one-hour floor gates `topEmployees` (max 10).
 
-### Leaderboard ranks by one metric
+### Leaderboard ranks by one metric, on one of two bases
 
 `metric` selects a single measure. There is deliberately no blended "score":
 the weights would be arbitrary, nobody could explain their position, and the
 ranking would stop being actionable.
+
+Six values, and the difference between the two groups is not cosmetic:
+
+| `metric` | Basis | Ranks by |
+|---|---|---|
+| `revenue` *(default)* | Delivered | `countsAsRevenue`, status `WON`, bucketed by `closedAt` |
+| `deals_won` | Delivered | count of the same |
+| `conversion` | Delivered | won ÷ total, in the period cohort |
+| `kpi_achievement` | Delivered | attainment against the employee's target |
+| `closed_deals` | **Seller-close** | distinct deals entering a seller pipeline's `WON` stage |
+| `closed_value` | **Seller-close** | those deals' amounts, summed |
+
+The delivered metrics rank what **arrived**; the seller-close metrics rank what
+the **seller closed**. Last August those two sets of deals overlapped in 1 152
+of 5 375 — see [SUPERDASHBOARD.md](SUPERDASHBOARD.md) §3. The default stays
+`revenue`, so no existing link changes meaning.
+
+Nothing averages, falls back or substitutes. A request for a seller-close
+ranking that cannot be measured comes back with null values and
+`meta.sellerCloseBasis.resolved = false` — never as a delivered-revenue board
+wearing the other label.
 
 Ties share a rank, competition style (1, 2, 2, 4). Employees with no measurable
 value sort **last** regardless of direction — "no data" is not an achievement.
@@ -321,6 +342,78 @@ value sort **last** regardless of direction — "no data" is not an achievement.
 The leaderboard is company-wide for every role, `SALES` included: a ranking
 each person can only see themselves in is not a ranking. Only aggregate
 per-employee figures are exposed; no individual deals.
+
+#### Both bases on every row
+
+Two fields were added to each row, and they are present **whichever** `metric`
+is active — deliberately not gated on it. A reader comparing "5.7 mlrd
+delivered" against "4.1 mlrd closed" learns something real about the month, and
+a board that could only ever show one of the two would invite the assumption
+that they are the same number seen from two angles.
+
+The shape (values illustrative; the revenue figure is the real top seller's
+217.6 mln for the last thirty days):
+
+```jsonc
+{
+  "rank": 1, "tied": false,
+  "employeeId": "…", "fullName": "…", "departmentName": "Lola(ROP)",
+  "revenue": { "amountMinor": "21760000000", "amount": 217600000, "currency": "UZS" },
+  "dealsWon": …,
+  "conversionPercent": …,
+  "kpiAchievementPercent": …,
+  "closedCount": …,                                                      // NEW
+  "closedValue": { "amountMinor": "…", "amount": …, "currency": "UZS" }, // NEW
+  "delta": { /* still the DELIVERED-revenue delta, on every metric */ },
+  "value": 21760000000
+}
+```
+
+`value` is the active metric's ranking number. For `revenue` and `closed_value`
+it is **minor units** — note that this differs from `KpiCardDto.value`, which is
+major units because a card renders it directly.
+
+`closedCount` and `closedValue` are `null` when the basis could not be
+resolved. **Null is unmeasured, never zero** — a seller who closed nothing gets
+`0`, and the two states must render differently.
+
+`delta` remains the delivered-revenue delta on every metric. The comparison
+window carries no seller-close delta yet, and inventing one from a different
+basis would be exactly the blend this endpoint refuses.
+
+#### `meta.sellerCloseBasis` — how those two fields were arrived at
+
+The basis is a **choice**, not a fact of the data, so every response states it:
+
+```jsonc
+"sellerCloseBasis": {
+  "resolved": true,
+  "pipelineRoles": ["QUALIFICATION"],
+  "stages": [{ "id": "…", "name": "Сделка успешна", "externalId": "C12:WON", "pipelineName": "Первичный отдел" }],
+  "amountBasis": "deal_current_amount"
+}
+```
+
+- **`resolved`** is `false` when no `WON` stage exists in any seller pipeline —
+  a reconfigured portal, a role reassigned, a funnel retired. Every
+  `closedCount` and `closedValue` on the response is then `null`, and a page is
+  expected to read this flag before presenting standings at all.
+- **`pipelineRoles`** is how the stage was found. The stage is resolved by
+  **role**, never matched on the literal `C12:WON`; `externalId` is reported
+  back for the reader, not used as a key.
+- **`amountBasis`** is the honest caveat, and it has only one value today:
+
+  > **`deal_current_amount`** — `closedValue` sums the deal's amount **as it
+  > stands now**, not the amount it carried at the moment the seller closed it.
+  > `deal_stage_history` carries no amount column, so if an operator later
+  > edits the sum — a discount, a corrected quantity — this figure follows the
+  > edit and moves. There is no column that would let it be otherwise. The
+  > response says so rather than letting the number imply a precision it does
+  > not have.
+
+An empty board (`data: []`, no seller matched the filters) still carries a
+resolved `sellerCloseBasis`: "no seller matched" and "the seller stage no longer
+exists" are different failures and a page must be able to tell them apart.
 
 ### Finance is capability-gated
 

@@ -56,7 +56,16 @@ export function WarehousePage() {
    * orders still in transit "reported 42% for a business that actually
    * delivers 93%". Same rate, same denominator, everywhere.
    */
-  const resolved = totalDelivered + totalRefused
+  /*
+    Cancelled-before-dispatch orders belong in the denominator.
+  
+    They were missing here while the Logistics page counted them, so the same
+    orders produced a higher rate on this screen than on that one under the
+    identical heading. A customer who cancelled before anything shipped is not
+    still on its way anywhere; leaving them out flatters the figure forever.
+  */
+  const totalCancelledEarly = rows.reduce((sum, r) => sum + r.cancelledEarly, 0)
+  const resolved = totalDelivered + totalRefused + totalCancelledEarly
   const deliveryRate = resolved === 0 ? null : Math.round((totalDelivered / resolved) * 1000) / 10
   const inFlight = totalOrders - resolved
   const totalRevenue = rows.reduce((sum, r) => sum + r.revenue.amount, 0)
@@ -84,6 +93,23 @@ export function WarehousePage() {
       align: 'right',
       numeric: true,
       render: (row) => formatNumber(row.delivered),
+    },
+    {
+      key: 'cancelledEarly',
+      header: 'Bekor qilingan',
+      align: 'right',
+      numeric: true,
+      // In the rate's denominator, so it is shown beside it rather than
+      // implied. Zero renders muted: nothing cancelled is good news, not a
+      // number that needs attention.
+      render: (row) =>
+        row.cancelledEarly === 0 ? (
+          <span style={{ color: 'var(--ink-muted)' }}>0</span>
+        ) : (
+          <span style={{ color: 'var(--status-warning)' }}>
+            {formatNumber(row.cancelledEarly)}
+          </span>
+        ),
     },
     {
       key: 'refused',

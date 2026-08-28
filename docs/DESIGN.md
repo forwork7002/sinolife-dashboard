@@ -356,6 +356,19 @@ card.
    screen left open overnight cannot claim "just now" at 6am.
 5. **Say where the data is from.** `DataSourceBadge` reads `meta.dataSource`
    and nothing else, so no screen can present generated numbers as live.
+6. **A number names its basis when a sibling screen computes one differently.**
+   The Reyting page and the home screen's leaderboard card rank the same
+   sellers from the same endpoint, but the API serves two bases: `revenue`
+   ranks what was **delivered**, `closed_value` ranks what the **seller
+   closed**. Last August those sets of deals overlapped in 1 152 of 5 375, so a
+   name can top one board and not the other with no bug anywhere. Two screens
+   showing different orderings under the same word "Reyting" reads as a defect;
+   a caption saying *yetkazilgan tushum boʻyicha* makes it a fact. The caption
+   names the **scope** in the same breath — these rows are the branch's
+   sellers, not the company — because "who is missing" is the other half of
+   what a ranking means. The rule generalises past this one board: the basis
+   goes in the caption wherever the reader could reach a sibling screen and get
+   a different answer to what sounds like the same question.
 
 ---
 

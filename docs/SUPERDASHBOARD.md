@@ -146,6 +146,72 @@ the two reads.
 The portal closes orders in batches: 646 on 7 August, 559 on 20 August. The
 spikes in the trend chart are real operational behaviour, not an artefact.
 
+### Added August 2026 — the two sales bases
+
+Everything above measures **delivered** revenue: `countsAsRevenue`, status
+`WON`, bucketed by `closedAt`. That is money that actually landed, and it is the
+right number for the company. It is **not** the seller's own act, and the portal
+says so out loud.
+
+August 2026, measured live on the 28th:
+
+| | Deals |
+|---|---|
+| Entered the seller's won stage (`C12:WON`, Первичный отдел) | **2 798** |
+| Entered Доставка's won stage (`C6:WON`) | **3 729** |
+| Both — closed by a seller *and* delivered in the month | **1 152** |
+| Closed by a seller, not yet delivered | **1 646** |
+| Delivered without ever passing a seller's stage | **2 577** |
+| Union — deals touched by either basis | 5 375 |
+
+So on a delivered-revenue board those 2 577 are credited to whoever is assigned
+— База repeat orders, AI triage, deals typed straight into Доставка — and the
+seller who closed the other 1 646 is credited with nothing until the parcel
+arrives, which is a median 25 days later.
+
+**The seller's won stage holds zero deals at rest.** A robot moves the deal into
+pipeline 6 (Доставка) within seconds of it landing in `C12:WON` — the **same
+deal id**, not a copy. Reading `Deal.stageId` to count seller closes therefore
+returns zero every time, and zero is a number a dashboard prints without
+complaint. The only surviving trace of the sale is the `DealStageHistory` row,
+which is what the seller-close basis counts.
+
+**The stage is resolved by pipeline role, never by the literal `C12:WON`.** The
+repository asks Postgres for the `WON`-category stages of the pipelines carrying
+the `QUALIFICATION` role. A hardcoded external id is the thing most likely to
+break silently when the portal is reconfigured: it would simply stop matching
+and every seller would score zero. An unresolved role is reported as
+`resolved: false` and null figures — unmeasured, not zero.
+
+**The assignee does not change when the robot moves the deal.** 11 of 11 sampled
+Доставка deals were still assigned to a seller on a `(ROP)` team; none to
+logistics. So crediting `Deal.employeeId` credits the person who closed it, and
+the seller roster, the branch scope and the `SALES` authorisation restriction
+all narrow that same column.
+
+**Each deal counts once.** A deal pushed back into the funnel and re-won writes a
+second history row; that is one sale, not two. The earliest event inside the
+window wins. Dedup is per window, not global — a deal re-won in September is a
+September close as well as an August one.
+
+**Which basis to use**
+
+| Question | Basis | Metric |
+|---|---|---|
+| What did we earn this month? | Delivered | `revenue`, `deals_won` |
+| Did this seller do their job this month? | Seller-close | `closed_value`, `closed_deals` |
+| Is the delivery pipeline keeping up? | Both, compared | the gap between them |
+
+They must never be blended, averaged or quietly substituted. Each is its own
+metric, and every leaderboard row carries **both**, so a reader can see the gap
+rather than be handed whichever one flatters the page.
+
+**The limitation, stated rather than hidden.** `deal_stage_history` carries no
+amount, so `closedValue` sums the deal's **current** `amountMinor`, not the
+amount it carried when the seller closed it. An operator's later discount or
+corrected quantity moves the figure. No column would let it be otherwise; the
+response says so on every payload via `meta.sellerCloseBasis.amountBasis`.
+
 ---
 
 ## 4. Tasdiqlash — did the operator confirm the order

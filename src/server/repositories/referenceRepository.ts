@@ -5,8 +5,19 @@
  * analytics results human-readable labels.
  */
 
-import type { PrismaClient } from '@/generated/prisma/client'
+import { Prisma, type PrismaClient } from '@/generated/prisma/client'
 import type { KpiDefinition } from '@/server/domain/analytics/performance'
+import {
+  type BranchGraph,
+  type BranchRequest,
+  type BranchSnapshot,
+  type BranchSummary,
+  BranchDirectory,
+  type ResolvedBranchScope,
+  UnknownBranchError,
+  branchKey,
+  resolveBranchScope,
+} from '@/server/domain/employees/branches'
 import { type Period, asOfInstant } from '@/server/domain/period/period'
 
 export interface EmployeeSummary {
@@ -24,7 +35,59 @@ export interface NamedRef {
   readonly name: string
 }
 
+/**
+ * Every department, stamped with the branch its subtree hangs from.
+ *
+ * WHY A RECURSIVE CTE AND NOT `parent.name`
+ * The branch is the ancestor whose parent IS the root, and "ancestor" is the
+ * whole point: the portal files most people two levels down (in a team) but
+ * seven of them one level down (directly in Тошкент онлайн). A single-level
+ * `parent` lookup labels those seven "NEWGEN" and quietly moves them out of
+ * their own branch — the error the first measurement of this data made. Walking
+ * the tree gets both depths right, and gets a fourth level right for free on
+ * the day the portal grows one.
+ *
+ * The recursion seeds at the root (`parentId IS NULL`) and stamps each child:
+ * `COALESCE(t.branch_id, c.id)` means "inherit my parent's branch, unless my
+ * parent is the root, in which case I AM the branch". `depth < 32` is a
+ * cycle guard — Postgres will happily recurse forever on a self-referencing
+ * `parentId`, and a hung dashboard is a worse failure than a truncated tree.
+ */
+const BRANCH_TREE_CTE = Prisma.sql`
+  WITH RECURSIVE tree AS (
+    SELECT
+      d."id",
+      d."name",
+      NULL::text AS branch_id,
+      NULL::text AS branch_name,
+      0          AS depth
+    FROM "department" d
+    WHERE d."parentId" IS NULL
+
+    UNION ALL
+
+    SELECT
+      c."id",
+      c."name",
+      COALESCE(t.branch_id, c."id")     AS branch_id,
+      COALESCE(t.branch_name, c."name") AS branch_name,
+      t.depth + 1                       AS depth
+    FROM "department" c
+    JOIN tree t ON c."parentId" = t."id" AND t.depth < 32
+  )
+`
+
 export class ReferenceRepository {
+  /**
+   * The branch resolver, cached.
+   *
+   * Held here rather than in the container because the cache must be shared by
+   * everything that asks — and everything asks, on every request. The loader is
+   * an arrow so it closes over `this` lazily; nothing runs until the first
+   * `snapshot()`.
+   */
+  private readonly branches = new BranchDirectory(() => this.loadBranchGraph())
+
   constructor(private readonly prisma: PrismaClient) {}
 
   async findEmployees(options: { includeInactive?: boolean } = {}): Promise<EmployeeSummary[]> {
@@ -152,6 +215,117 @@ export class ReferenceRepository {
     })
 
     return rows
+  }
+
+  // -------------------------------------------------------------------------
+  // Filial (branch) scope
+  // -------------------------------------------------------------------------
+
+  /**
+   * The two rows the resolver needs: departments and their people.
+   *
+   * Two queries rather than one join, because the department side must include
+   * a unit with nobody in it (a team can be created before it is staffed) and
+   * the employee side must include somebody with no department at all. An inner
+   * join would drop both, and both are exactly the cases the partition has to
+   * account for.
+   *
+   * 19 departments and 288 employees today; the caller runs this behind a
+   * five-minute cache, so the cost per request is nothing.
+   */
+  private async loadBranchGraph(): Promise<BranchGraph> {
+    const [departments, employees] = await Promise.all([
+      this.prisma.$queryRaw<
+        { id: string; name: string; branchId: string | null; branchName: string | null }[]
+      >`
+        ${BRANCH_TREE_CTE}
+        SELECT t."id", t."name", t.branch_id AS "branchId", t.branch_name AS "branchName"
+        FROM tree t
+      `,
+      this.prisma.$queryRaw<
+        {
+          id: string
+          departmentId: string | null
+          departmentName: string | null
+          branchId: string | null
+          branchName: string | null
+          sitsInRoot: boolean
+          isDepartmentHead: boolean
+        }[]
+      >`
+        ${BRANCH_TREE_CTE}
+        SELECT
+          e."id",
+          e."departmentId"                        AS "departmentId",
+          d."name"                                AS "departmentName",
+          t.branch_id                             AS "branchId",
+          t.branch_name                           AS "branchName",
+          (d."id" IS NOT NULL AND d."parentId" IS NULL)
+                                                  AS "sitsInRoot",
+          EXISTS (SELECT 1 FROM "department" h WHERE h."headId" = e."id")
+                                                  AS "isDepartmentHead"
+        FROM "employee" e
+        LEFT JOIN "department" d ON d."id" = e."departmentId"
+        LEFT JOIN tree t ON t."id" = e."departmentId"
+      `,
+    ])
+
+    return { departments, employees }
+  }
+
+  /** The cached snapshot. Everything below reads through it. */
+  branchSnapshot(): Promise<BranchSnapshot> {
+    return this.branches.snapshot()
+  }
+
+  /** Forget the cached tree. For the importer, once it has rewritten it. */
+  invalidateBranches(): void {
+    this.branches.invalidate()
+  }
+
+  /**
+   * The filial list for the branch switcher.
+   *
+   * Only real branches — a top-level unit with sales teams under it. Операцион
+   * and Регистрация are top-level too and are not places to switch to; they are
+   * named in `meta.branchScope.excluded` instead, which is where a reader needs
+   * to see them.
+   */
+  async listBranches(): Promise<readonly BranchSummary[]> {
+    return (await this.branches.snapshot()).branches
+  }
+
+  /**
+   * Everyone under one branch, at any depth.
+   *
+   * @throws UnknownBranchError so a typo becomes a 400 rather than a silent
+   *         full-company answer wearing a branch label.
+   */
+  async employeeIdsForBranch(name: string): Promise<readonly string[]> {
+    const snapshot = await this.branches.snapshot()
+    const ids = snapshot.employeeIdsByBranch.get(branchKey(name))
+    if (!ids) {
+      throw new UnknownBranchError(
+        name,
+        snapshot.branches.map((b) => b.name),
+      )
+    }
+    return ids
+  }
+
+  /**
+   * The full scope: ids to filter by, plus the block the response prints.
+   *
+   * `restrictToEmployeeId` is the caller's authorisation scope and is
+   * INTERSECTED here — see `intersectEmployeeScope`. Passing it through this
+   * one door is what lets a repository honour a single `restrictToEmployeeIds`
+   * list and still be correct for a SALES user.
+   */
+  async resolveBranchScope(
+    request: BranchRequest,
+    restrictToEmployeeId?: string,
+  ): Promise<ResolvedBranchScope> {
+    return resolveBranchScope(await this.branches.snapshot(), request, restrictToEmployeeId)
   }
 
   /** Most recent sync runs, for the admin screen. */

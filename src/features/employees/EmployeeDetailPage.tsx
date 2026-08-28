@@ -20,6 +20,7 @@ import {
   apiGet,
   type DeltaDto,
   type MoneyDto,
+  type SellerCloseBasisDto,
   type TrendPointDto,
 } from '@/lib/api'
 import { NO_VALUE, formatCompactUzs, formatNumber, formatPercent, formatUzs } from '@/lib/format'
@@ -48,6 +49,34 @@ interface EmployeeDetail {
   readonly versusTeamAveragePercent: number | null
   readonly kpiAchievementPercent: number | null
   readonly trend: readonly TrendPointDto[]
+  /**
+   * The SELLER-CLOSE basis — what this person moved into the won stage of the
+   * sellers' own pipeline, as against `current.revenue`, which is what was
+   * DELIVERED. Different deals: last August the two sets overlapped in 1 152
+   * of 5 375, so one figure is not a rounding of the other.
+   *
+   * OPTIONAL, and the `?` is load-bearing. `/employees/{id}` builds its
+   * response field by field from the row `analyticsService.employees()`
+   * returns, and that row already carries both — but the route does not copy
+   * them across yet, so on today's server these arrive `undefined`. Three
+   * states, and the page must not merge them:
+   *
+   *   undefined  the endpoint did not send it  -> ask /analytics/employees
+   *   null       the stage could not resolve   -> unmeasured, an em dash
+   *   number     measured                      -> print it
+   */
+  readonly closedCount?: number | null
+  readonly closedValue?: MoneyDto | null
+}
+
+/** The one row `/analytics/employees` is asked for when the shim below runs. */
+interface CloseFallback {
+  readonly rows: readonly {
+    readonly employeeId: string
+    readonly closedCount: number | null
+    readonly closedValue: MoneyDto | null
+  }[]
+  readonly sellerCloseBasis?: SellerCloseBasisDto
 }
 
 export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
@@ -66,6 +95,66 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
   const loading = query.isPending
   const tileStatus = loading ? 'loading' : 'ready'
   const closedDeals = data ? data.current.dealsWon + data.current.dealsLost : 0
+
+  /**
+   * A SHIM, and one that switches itself off.
+   *
+   * `/employees/{id}` already computes this person's seller-close totals — it
+   * calls `analyticsService.employees(ctx, id)` and the row it reads back
+   * carries `closedCount` and `closedValue` — but its handler enumerates the
+   * response fields by hand and does not copy those two across. Until it does,
+   * the figures are reachable only from `/analytics/employees` narrowed to
+   * this one employee, which runs the identical service call under the
+   * identical filters, so the numbers cannot disagree with the detail
+   * response beside them.
+   *
+   * `enabled` is the whole point: the moment the detail route sends the two
+   * fields, `closedCount` stops being `undefined`, this query never runs
+   * again, and deleting the shim is a diff with no behaviour in it.
+   *
+   * `undefined` and `null` are NOT collapsed here. "The endpoint did not send
+   * it" is a gap in this codebase; "the stage did not resolve" is a fact about
+   * the portal. Only the first is worth a second request.
+   */
+  const needsCloseFallback = data !== undefined && data.closedCount === undefined
+
+  const closeQuery = useQuery({
+    queryKey: ['employee-close', employeeId, apiParams],
+    queryFn: ({ signal }) =>
+      apiGet<CloseFallback>(
+        '/analytics/employees',
+        { ...apiParams, employeeIds: employeeId },
+        signal,
+      ),
+    enabled: needsCloseFallback,
+    placeholderData: (previous) => previous,
+  })
+
+  /** Whichever response actually carried the basis. */
+  const closeBasis = query.data?.meta.sellerCloseBasis ?? closeQuery.data?.data.sellerCloseBasis
+  const closeSource = needsCloseFallback ? closeQuery.data?.data.rows[0] : data
+  const closedCount = closeSource?.closedCount ?? null
+  const closedValue = closeSource?.closedValue ?? null
+
+  /**
+   * A skeleton while the figure is in flight, an em dash only once nothing
+   * came back. The two are different claims and the tile renders them apart.
+   */
+  const closeStatus = loading || (needsCloseFallback && closeQuery.isPending)
+    ? 'loading'
+    : needsCloseFallback && closeQuery.isError
+      ? 'error'
+      : 'ready'
+
+  /**
+   * The stage the portal named, read back rather than written out — the server
+   * resolves it by pipeline ROLE precisely so a caption cannot go on asserting
+   * a stage that was renamed or removed.
+   */
+  const stageName =
+    closeBasis?.resolved && closeBasis.stages.length > 0
+      ? closeBasis.stages.map((stage) => stage.name).join(' / ')
+      : t.basis.stageFallback
 
   return (
     <PageShell
@@ -120,7 +209,10 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
                   className="truncate text-[12.5px] font-medium"
                   style={{ color: 'var(--ink-secondary)' }}
                 >
-                  {t.cards.revenue}
+                  {/* "Tushum" until a second money figure appeared directly
+                      beneath it. Two sums a reader is meant to compare must
+                      not share a name. */}
+                  {t.basis.deliveredRevenueColumn}
                 </p>
                 {loading ? (
                   // Sized to the hero figure below, so ready never reflows
@@ -204,6 +296,67 @@ export function EmployeeDetailPage({ employeeId }: { employeeId: string }) {
               </div>
             </section>
           </div>
+
+          {/*
+            The OTHER basis, immediately under the hero and at tile size.
+
+            Placement is the argument. The hero is what this person's orders
+            DELIVERED; these two are what they CLOSED, and the two answer
+            different questions about the same month — last August 2 798 deals
+            entered the seller's won stage, 3 729 entered Доставка's, and 1 152
+            were in both. Putting them anywhere else on the page would let a
+            reader take the hero as the whole account of the person, which is
+            exactly the misreading the pair exists to prevent.
+
+            One row of two rather than folded into the three tiles below: those
+            three (bitimlar, oʻrtacha, konversiya) are all the delivered basis,
+            and mixing a second basis into that row would hide the boundary
+            this page is trying to draw.
+          */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <StatTile
+              label={t.basis.closedValueLabel}
+              value={closedValue ? closedValue.amount : null}
+              unit="money"
+              status={closeStatus}
+              // StatTile truncates its hint to one line, so the hint carries
+              // the count and the caption below carries the mechanism. A
+              // clipped caption states half a basis, which is worse than none.
+              hint={
+                closeBasis === undefined
+                  ? undefined
+                  : closeBasis.resolved
+                    ? `${formatNumber(closedCount ?? 0)} ta yopilgan bitim`
+                    : t.basis.unmeasuredShort
+              }
+            />
+            <StatTile
+              label={t.basis.closedDealsLabel}
+              value={closedCount}
+              unit="count"
+              status={closeStatus}
+              hint={
+                closeBasis === undefined
+                  ? undefined
+                  : closeBasis.resolved
+                    ? undefined
+                    : t.basis.unmeasuredShort
+              }
+            />
+          </div>
+
+          {/*
+            The caption the pair owes, once per page: what the figures counted,
+            in the stage's own name, plus the one caveat the summed value
+            carries. Same strings as Reyting and Xodimlar — three screens
+            describing one mechanism three ways is how a reader concludes the
+            dashboard is guessing.
+          */}
+          {closeBasis?.resolved && (
+            <p className="-mt-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              {t.basis.closedValue(stageName)} {t.basis.amountCaveat} {t.basis.explainer}
+            </p>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-3">
             <StatTile

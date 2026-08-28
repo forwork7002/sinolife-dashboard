@@ -46,9 +46,19 @@ function int(value: unknown): number {
   return Number(value ?? 0)
 }
 
-/** Basis points, guarding the zero denominator every rate here can meet. */
-function rateBp(numerator: number, denominator: number): number {
-  return denominator === 0 ? 0 : Math.round((numerator / denominator) * 10_000)
+/**
+ * Basis points, or NULL when there is nothing to divide by.
+ *
+ * Null, not zero. A carrier whose every order is still in transit has no
+ * delivery rate yet; returning 0 states that it delivers nothing, which is a
+ * confident claim about something nobody knows. The same applies to an
+ * operator with no decided orders and a channel with no leads. The DTO layer
+ * carries the null through and the Meter renders an em dash, which is the
+ * whole point of having three renderings for loading, failure and a genuine
+ * absence — a zero manufactured this deep made the third one unreachable.
+ */
+function rateBp(numerator: number, denominator: number): number | null {
+  return denominator === 0 ? null : Math.round((numerator / denominator) * 10_000)
 }
 
 /**
@@ -65,7 +75,11 @@ function rateBp(numerator: number, denominator: number): number {
  * anywhere, and leaving them in the denominator's numerator-free middle would
  * flatter the figure indefinitely.
  */
-function deliveryRateBp(delivered: number, refused: number, cancelledEarly: number): number {
+function deliveryRateBp(
+  delivered: number,
+  refused: number,
+  cancelledEarly: number,
+): number | null {
   return rateBp(delivered, delivered + refused + cancelledEarly)
 }
 
@@ -95,7 +109,7 @@ export interface LogisticsRouteRow {
   readonly cancelledEarly: number
   readonly inFlight: number
   readonly revenueMinor: bigint
-  readonly deliveryRateBp: number
+  readonly deliveryRateBp: number | null
   readonly medianHours: number | null
   readonly p90Hours: number | null
 }
@@ -107,7 +121,7 @@ export interface ConfirmationRow {
   readonly confirmed: number
   readonly unreachable: number
   readonly undecided: number
-  readonly confirmRateBp: number
+  readonly confirmRateBp: number | null
   readonly deliveredAfterConfirm: number
   readonly refusedAfterConfirm: number
   /** Outcome across ALL of this operator's orders, not just confirmed ones. */
@@ -134,8 +148,9 @@ export interface ChannelRow {
   readonly won: number
   readonly revenueMinor: bigint
   readonly spendMinor: bigint | null
-  readonly conversionBp: number
-  readonly averageChequeMinor: bigint
+  readonly conversionBp: number | null
+  readonly funnelRateBp: number | null
+  readonly averageChequeMinor: bigint | null
 }
 
 export interface MarginRow {
@@ -181,7 +196,7 @@ export interface CallActivityRow {
   readonly calls: number
   readonly connected: number
   readonly talkSeconds: number
-  readonly connectRateBp: number
+  readonly connectRateBp: number | null
   readonly averageTalkSeconds: number
 }
 
@@ -190,8 +205,9 @@ export interface DispatchRow {
   readonly orders: number
   readonly delivered: number
   readonly refused: number
+  readonly cancelledEarly: number
   readonly revenueMinor: bigint
-  readonly deliveryRateBp: number
+  readonly deliveryRateBp: number | null
 }
 
 export interface StructureNode {
@@ -749,11 +765,24 @@ export class InsightsRepository {
   /**
    * What each acquisition channel produces.
    *
-   * `leads` counts every deal the channel created in ANY pipeline, including
-   * the registration and qualification funnels — that is the top of the funnel
-   * and the honest denominator. `deals` and `revenue` count only the pipelines
-   * that can produce money, so the conversion rate reads "of everything this
-   * channel brought in, how much turned into a paid order".
+   * TWO CONVERSION RATES, because one number cannot answer both questions and
+   * pretending otherwise is how this method used to lie.
+   *
+   * `leads` counts the deals a channel created in pipelines that represent a
+   * human enquiry — registration, qualification, confirmation, and the money
+   * pipelines themselves. It deliberately EXCLUDES the AI-triage bucket and the
+   * ignored pipelines (HR candidates, complaints). Measured on the portal in
+   * August 2026, one source produced 22,864 rows of which 17,728 — 78% — were
+   * AI-triage records; dividing wins by that total printed a 0.6% conversion
+   * for a channel that closes 44.7% of the orders it actually gets. A
+   * denominator three quarters full of machine bookkeeping is not the top of a
+   * funnel, and HR applicants are not leads at all.
+   *
+   * `deals` counts only what can produce money. So:
+   *   conversionBp    = won / leads  — "of enquiries, how many paid"
+   *   funnelRateBp    = won / deals  — "of real orders, how many closed"
+   * Both ship, both are labelled with their own fraction on screen, and neither
+   * is presented as "the" conversion.
    *
    * Spend is joined from the manual table and left null when nobody entered it.
    * Null is not zero: a channel with no spend row has unknown ROI, and
@@ -775,7 +804,7 @@ export class InsightsRepository {
       SELECT
         s."id" AS source_id,
         s."name" AS source_name,
-        count(d."id")::bigint AS leads,
+        count(d."id") FILTER (WHERE p."role" NOT IN ('AI_TRIAGE', 'IGNORED'))::bigint AS leads,
         count(d."id") FILTER (WHERE d."countsAsRevenue")::bigint AS deals,
         count(d."id") FILTER (WHERE d."countsAsRevenue" AND d."status" = 'WON')::bigint AS won,
         sum(d."amountMinor") FILTER (WHERE d."countsAsRevenue" AND d."status" = 'WON')::text AS revenue,
@@ -788,9 +817,24 @@ export class InsightsRepository {
       LEFT JOIN "deal" d
         ON d."sourceId" = s."id"
        AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
+      LEFT JOIN "pipeline" p ON p."id" = d."pipelineId"
       GROUP BY s."id", s."name"
-      HAVING count(d."id") > 0
-      ORDER BY revenue DESC NULLS LAST, leads DESC
+      -- Keep a source that produced only AI-triage rows out of the table
+      -- entirely rather than listing it with a zero it never earned.
+      HAVING count(d."id") FILTER (WHERE p."role" NOT IN ('AI_TRIAGE', 'IGNORED')) > 0
+      -- Order by the AGGREGATE, never by the output alias.
+      --
+      -- The revenue column is sum(...)::text, because BigInt totals exceed
+      -- 2^53 and have to cross the driver as text. Postgres lets ORDER BY name
+      -- an output column, and that column is TEXT -- so ordering by the alias
+      -- sorted lexicographically: "9000000000" (9 mln) ranked above
+      -- "120000000000" (1.2 bln), because the digit 9 sorts after 1. The table
+      -- was mis-ranked, and the share list's top-12 cut then dropped whichever
+      -- large channel happened to begin with a low digit. Naming the
+      -- expression sorts the numeric value the text was made from.
+      ORDER BY sum(d."amountMinor") FILTER (WHERE d."countsAsRevenue" AND d."status" = 'WON')
+                 DESC NULLS LAST,
+               leads DESC
       `,
       period.start,
       period.end,
@@ -809,7 +853,21 @@ export class InsightsRepository {
         revenueMinor: revenue,
         spendMinor: r.spend === null ? null : money(r.spend),
         conversionBp: rateBp(won, leads),
-        averageChequeMinor: won === 0 ? 0n : revenue / BigInt(won),
+        // Of the orders that reached a money pipeline, how many closed. The
+        // number a channel manager can actually act on; the one above answers
+        // the different question of how much of the traffic was worth having.
+        funnelRateBp: rateBp(won, int(r.deals)),
+        /*
+          Null, not zero, when nothing was won.
+    
+          An average over an empty set does not exist. Zero states that this
+          channel's orders are worth nothing, which is a claim about orders it
+          never had — the same mistake the roas field below already refuses to
+          make. Division rounds half away from zero rather than truncating, to
+          agree with divideMoney everywhere else.
+        */
+        averageChequeMinor:
+          won === 0 ? null : (revenue + BigInt(won) / 2n) / BigInt(won),
       }
     })
   }
@@ -1034,6 +1092,7 @@ export class InsightsRepository {
         orders: bigint
         delivered: bigint
         refused: bigint
+        cancelled_early: bigint
         revenue: MoneyText
       }[]
     >(
@@ -1041,10 +1100,12 @@ export class InsightsRepository {
       SELECT
         COALESCE(d."fulfilmentPoint", 'Belgilanmagan') AS point,
         count(*)::bigint AS orders,
-        count(*) FILTER (WHERE d."status" = 'WON')::bigint AS delivered,
-        count(*) FILTER (WHERE d."status" = 'LOST')::bigint AS refused,
+        count(*) FILTER (WHERE cur."logisticsRole" = 'DELIVERED')::bigint AS delivered,
+        count(*) FILTER (WHERE cur."logisticsRole" = 'REFUSED')::bigint AS refused,
+        count(*) FILTER (WHERE cur."logisticsRole" = 'CANCELLED_EARLY')::bigint AS cancelled_early,
         sum(d."amountMinor") FILTER (WHERE d."status" = 'WON')::text AS revenue
       FROM "deal" d
+      JOIN "deal_stage" cur ON cur."id" = d."stageId"
       WHERE d."countsAsRevenue"
         AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
       GROUP BY 1
@@ -1057,13 +1118,24 @@ export class InsightsRepository {
     return rows.map((r) => {
       const delivered = int(r.delivered)
       const refused = int(r.refused)
+      /*
+        Classified exactly as logisticsRoutes and logisticsRegions classify.
+    
+        This used to read status WON / LOST and pass 0 for cancelledEarly, so
+        the same orders produced a HIGHER delivery rate here than on the
+        Logistics page — the gap being precisely the cancelled-before-dispatch
+        share, which vanished from the denominator. Two screens, one column
+        heading, two quantities. One definition, in one helper, is the fix.
+      */
+      const cancelledEarly = int(r.cancelled_early)
       return {
         point: r.point,
         orders: int(r.orders),
         delivered,
         refused,
+        cancelledEarly,
         revenueMinor: money(r.revenue),
-        deliveryRateBp: deliveryRateBp(delivered, refused, 0),
+        deliveryRateBp: deliveryRateBp(delivered, refused, cancelledEarly),
       }
     })
   }

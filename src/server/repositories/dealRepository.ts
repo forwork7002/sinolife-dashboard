@@ -20,9 +20,15 @@
  * At the current scale (1 600 deals over 18 months) that is far off.
  */
 
-import type { Prisma, PrismaClient } from '@/generated/prisma/client'
+import { Prisma, type PrismaClient } from '@/generated/prisma/client'
 import type { AnalyticsDeal, AnalyticsDealItem } from '@/server/domain/analytics/sales'
 import type { FunnelStageDefinition } from '@/server/domain/analytics/sales'
+import { SALES_TEAM_NAME_LIKE } from '@/server/domain/employees/roles'
+import {
+  SELLER_PIPELINE_ROLES,
+  type SellerCloseEvent,
+  type SellerWonStage,
+} from '@/server/domain/analytics/sellerClose'
 import type { Period } from '@/server/domain/period/period'
 import type { DealStatusValue, PipelineRoleValue } from '@/server/domain/types'
 
@@ -258,6 +264,253 @@ export class DealRepository {
     })
     return rows
   }
+
+  /**
+   * The people the leaderboard is allowed to rank: SELLERS ONLY.
+   *
+   * WHY THIS QUERY IS RAW SQL AND LIVES HERE
+   * The rule itself is in `@/server/domain/employees/roles` and is documented
+   * there. This is its Postgres mirror, and it has to be Postgres: the ranking
+   * must be computed on the filtered set, so the filter has to happen before
+   * a single row reaches the ranking code. Filtering afterwards is what leaves
+   * a leaderboard reading 1, 3, 4, 7 — every removed ROP punching a hole in the
+   * standings — and it is why the roster crosses the boundary already narrowed
+   * rather than tagged.
+   *
+   * The two facts the rule needs are computed as columns rather than as a role
+   * string, so the WHERE clause below reads as the rule itself:
+   *   in_sales_team — the department name ends with the (ROP) suffix, matched
+   *                   case- and whitespace-tolerantly (the names are hand-typed)
+   *                   through `SALES_TEAM_NAME_LIKE`, never a literal here.
+   *   is_head       — the employee heads SOME department. Broader than "heads
+   *                   their own", deliberately: see EmployeeRoleInput.
+   *
+   * INACTIVE EMPLOYEES STAY IN, matching `findEmployees`. A seller who left in
+   * March still closed March's deals, and hiding them makes March stop adding
+   * up. The leaderboard's own zero-row disclosure handles the quiet ones.
+   *
+   * The excluded counts ride along from the same CTE so the page can state what
+   * it left out — "203 sotuvchi; 17 rahbar hisobga olinmadi" is a fact the
+   * reader needs, and a second round trip to learn it would be wasteful. They
+   * are counted BEFORE the seller filter, which is why they cannot be a window
+   * function over the result: windows run after WHERE. `counts` is a single row
+   * LEFT JOINed to the sellers, so the counts survive even when the filters
+   * leave no seller at all.
+   */
+  async findLeaderboardRoster(
+    filters: {
+      readonly departmentIds?: readonly string[]
+      readonly employeeIds?: readonly string[]
+    } = {},
+  ): Promise<LeaderboardRoster> {
+    // Scope narrowing lives in the CTE so the excluded counts describe what the
+    // user asked for: pick one department and the footnote names that team's
+    // ROP, not all seventeen managers in the company.
+    const departmentIds = [...(filters.departmentIds ?? [])]
+    const employeeIds = [...(filters.employeeIds ?? [])]
+
+    const scope = Prisma.join(
+      [
+        Prisma.sql`TRUE`,
+        ...(departmentIds.length > 0
+          ? [Prisma.sql`e."departmentId" = ANY(${departmentIds}::text[])`]
+          : []),
+        ...(employeeIds.length > 0 ? [Prisma.sql`e."id" = ANY(${employeeIds}::text[])`] : []),
+      ],
+      ' AND ',
+    )
+
+    const rows = await this.prisma.$queryRaw<LeaderboardRosterQueryRow[]>`
+      WITH classified AS (
+        SELECT
+          e."id"                AS employee_id,
+          e."fullName"          AS full_name,
+          e."departmentId"      AS department_id,
+          d."name"              AS department_name,
+          (d."name" IS NOT NULL AND lower(btrim(d."name")) LIKE ${SALES_TEAM_NAME_LIKE})
+                                AS in_sales_team,
+          EXISTS (SELECT 1 FROM "department" h WHERE h."headId" = e."id")
+                                AS is_head
+        FROM "employee" e
+        LEFT JOIN "department" d ON d."id" = e."departmentId"
+        WHERE ${scope}
+      ),
+      counts AS (
+        SELECT
+          count(*) FILTER (WHERE is_head)::int                          AS managers,
+          count(*) FILTER (WHERE NOT is_head AND NOT in_sales_team)::int AS other
+        FROM classified
+      )
+      SELECT
+        c.employee_id     AS "employeeId",
+        c.full_name       AS "fullName",
+        c.department_id   AS "departmentId",
+        c.department_name AS "departmentName",
+        n.managers        AS "excludedManagers",
+        n.other           AS "excludedOther"
+      FROM counts n
+      LEFT JOIN classified c ON c.in_sales_team AND NOT c.is_head
+      ORDER BY c.full_name ASC
+    `
+
+    // The LEFT JOIN guarantees at least one row; when there are no sellers it
+    // is a row of nulls carrying only the counts.
+    const first = rows[0]
+
+    return {
+      sellers: rows
+        .filter((row) => row.employeeId !== null)
+        .map((row) => ({
+          id: row.employeeId as string,
+          fullName: row.fullName as string,
+          departmentId: row.departmentId,
+          departmentName: row.departmentName,
+        })),
+      excludedManagers: first?.excludedManagers ?? 0,
+      excludedOther: first?.excludedOther ?? 0,
+    }
+  }
+
+  /**
+   * The WON stage(s) of the sellers' own pipeline, resolved from the schema.
+   *
+   * NOT `C12:WON`. The portal's stage id is read back and reported, never
+   * matched on: the query asks for `category = 'WON'` inside the pipelines
+   * whose `role` is in `SELLER_PIPELINE_ROLES`, both of which are OUR
+   * normalisation and both of which survive a portal reconfiguration that
+   * renames or renumbers the stage. When the portal genuinely stops having such
+   * a stage this returns an empty list, and the caller reports the basis as
+   * unresolved rather than reporting everybody's closes as zero.
+   *
+   * Inactive stages stay IN. A stage retired in June still holds June's
+   * history, and excluding it would make June stop adding up — the same reason
+   * `findLeaderboardRoster` keeps employees who have left.
+   */
+  async findSellerWonStages(): Promise<SellerWonStage[]> {
+    const rows = await this.prisma.dealStage.findMany({
+      where: {
+        category: 'WON',
+        pipeline: { role: { in: [...SELLER_PIPELINE_ROLES] } },
+      },
+      orderBy: [{ pipeline: { sortOrder: 'asc' } }, { sortOrder: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        externalId: true,
+        pipeline: { select: { name: true } },
+      },
+    })
+
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      externalId: row.externalId,
+      pipelineName: row.pipeline?.name ?? null,
+    }))
+  }
+
+  /**
+   * Every entry into a seller-won stage across the given windows.
+   *
+   * WHY HISTORY AND NOT THE DEAL
+   * The seller's won stage holds zero deals at rest — a robot moves the deal,
+   * the SAME deal id, into Доставка within seconds. `deal_stage_history` is the
+   * only surviving trace of the sale, so this reads the history table and joins
+   * back to the deal for the assignee and the amount.
+   *
+   * WHY `revenueOnly` IS NOT DEFAULTED ON HERE
+   * `findForAnalysis` forces `countsAsRevenue = true` because it feeds money
+   * totals and the portal records every Доставка order a second time in База.
+   * This basis counts a seller's ACT, deduplicated by deal id, so the
+   * double-count that filter exists to stop cannot arise from the same deal
+   * twice. Defaulting it on would instead silently drop any seller close whose
+   * deal later landed outside a revenue pipeline — which is a real close, and
+   * dropping it is the failure mode this whole module was written to remove.
+   * A caller that wants the intersection can still pass `revenueOnly: true`.
+   * UNVERIFIED (the local database was unreachable when this was written): that
+   * no База deal carries a seller-won history row of its own. If one ever does,
+   * its value would be counted here and again under its Доставка twin.
+   *
+   * WHY THE STAGE IDS ARE RESOLVED FIRST
+   * Two round trips instead of one join, on purpose. `deal_stage_history` is
+   * indexed on `(stageId, enteredAt)`, which is exactly this query once the ids
+   * are literal; expressed as a join through `pipeline.role` the planner has to
+   * discover that set first. The stage list is also what the response meta
+   * needs, so the second trip is not spent solely on speed.
+   *
+   * Both the current and comparison windows arrive in one call, and the union
+   * window is barely wider than either — the same trade `findForAnalysis`
+   * makes. Bucketing each event into its own window is the domain layer's job
+   * (`tallySellerCloses`), because that is where it can be unit tested.
+   */
+  async findSellerCloses(
+    periods: readonly Period[],
+    filters: DealFilters = {},
+  ): Promise<{ stages: SellerWonStage[]; events: SellerCloseEvent[] }> {
+    const stages = await this.findSellerWonStages()
+    if (stages.length === 0 || periods.length === 0) return { stages, events: [] }
+
+    const start = new Date(Math.min(...periods.map((p) => p.start.getTime())))
+    const end = new Date(Math.max(...periods.map((p) => p.end.getTime())))
+
+    const rows = await this.prisma.dealStageHistory.findMany({
+      where: {
+        stageId: { in: stages.map((s) => s.id) },
+        // Half-open, matching `Period` and `containsInstant`. The instants are
+        // already Asia/Tashkent boundaries — `resolvePeriod` did that.
+        enteredAt: { gte: start, lt: end },
+        // Every deal filter the rest of analytics honours, reused rather than
+        // restated: employee, department, branch scope, the SALES caller's
+        // `restrictToEmployeeId`, stage, source, pipeline, region, status, q.
+        deal: this.where(filters),
+      },
+      select: {
+        dealId: true,
+        enteredAt: true,
+        deal: { select: { employeeId: true, amountMinor: true, currency: true } },
+      },
+    })
+
+    return {
+      stages,
+      events: rows.map((row) => ({
+        dealId: row.dealId,
+        employeeId: row.deal.employeeId,
+        enteredAt: row.enteredAt,
+        // The deal's CURRENT amount. History rows carry none; see the
+        // limitation stated in `domain/analytics/sellerClose`.
+        amountMinor: row.deal.amountMinor,
+        currency: row.deal.currency,
+      })),
+    }
+  }
+}
+
+/** One seller, as the leaderboard roster query returns them. */
+export interface LeaderboardRosterEntry {
+  readonly id: string
+  readonly fullName: string
+  readonly departmentId: string | null
+  readonly departmentName: string | null
+}
+
+export interface LeaderboardRoster {
+  /** Everyone the board may rank, in name order. */
+  readonly sellers: readonly LeaderboardRosterEntry[]
+  /** Department heads left out — ROPs and the heads of the other departments. */
+  readonly excludedManagers: number
+  /** Staff outside the sales teams left out: registration, operations, NEWGEN. */
+  readonly excludedOther: number
+}
+
+/** The raw shape, before the null row of a seller-less result is dropped. */
+interface LeaderboardRosterQueryRow {
+  readonly employeeId: string | null
+  readonly fullName: string | null
+  readonly departmentId: string | null
+  readonly departmentName: string | null
+  readonly excludedManagers: number
+  readonly excludedOther: number
 }
 
 function toAnalyticsDeal(row: {

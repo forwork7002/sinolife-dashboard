@@ -10,7 +10,13 @@ import { Meter, StatTile } from '@/components/ui/Stat'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
-import { ApiClientError, apiGet, type DeltaDto, type MoneyDto } from '@/lib/api'
+import {
+  ApiClientError,
+  apiGet,
+  type DeltaDto,
+  type MoneyDto,
+  type SellerCloseBasisDto,
+} from '@/lib/api'
 import { NO_VALUE, formatCompactUzs, formatNumber, formatPercent, formatUzs } from '@/lib/format'
 import { t } from '@/lib/messages'
 
@@ -34,9 +40,27 @@ interface EmployeeRow {
     readonly dealsOpen: number
     readonly conversionRatePercent: number | null
   }
+  /**
+   * The SELLER-CLOSE basis, alongside `current.revenue` and never folded into
+   * it: `current` is the DELIVERED summary, and these two count entries into
+   * the won stage of the sellers' own pipeline instead. Different deals — last
+   * August the two sets overlapped in 1 152 of 5 375 — so they sit outside
+   * `current` for the same reason the server puts them there.
+   *
+   * Null means the stage could not be resolved: UNMEASURED, never zero.
+   */
+  readonly closedCount: number | null
+  readonly closedValue: MoneyDto | null
 }
 
-type SortKey = 'revenue' | 'dealsWon' | 'conversion' | 'kpi' | 'name'
+type SortKey =
+  | 'revenue'
+  | 'dealsWon'
+  | 'conversion'
+  | 'kpi'
+  | 'name'
+  | 'closedValue'
+  | 'closedDeals'
 
 export function EmployeesPage() {
   const { apiParams } = useDashboardFilters()
@@ -47,7 +71,16 @@ export function EmployeesPage() {
   const query = useQuery({
     queryKey: ['employees', apiParams],
     queryFn: ({ signal }) =>
-      apiGet<{ rows: readonly EmployeeRow[] }>('/analytics/employees', apiParams, signal),
+      apiGet<{
+        readonly rows: readonly EmployeeRow[]
+        /**
+         * How `closedCount` / `closedValue` were arrived at. This endpoint
+         * carries it in `data`, not in `meta` — the leaderboard is the one
+         * that puts it in `meta`, so the two are read from different places
+         * on purpose rather than by oversight.
+         */
+        readonly sellerCloseBasis?: SellerCloseBasisDto
+      }>('/analytics/employees', apiParams, signal),
     placeholderData: (previous) => previous,
   })
 
@@ -78,6 +111,12 @@ export function EmployeesPage() {
           return row.current.conversionRatePercent
         case 'kpi':
           return row.kpiAchievementPercent
+        // Undefined on a response predating this basis; null when the stage
+        // could not be resolved. Both sort last, like every other "no data".
+        case 'closedValue':
+          return row.closedValue ? row.closedValue.amount : null
+        case 'closedDeals':
+          return typeof row.closedCount === 'number' ? row.closedCount : null
         case 'name':
           return row.fullName
       }
@@ -141,6 +180,27 @@ export function EmployeesPage() {
     null,
   )
 
+  /**
+   * The seller-close basis, and the team totals on it.
+   *
+   * Summed from the SAME rows the table renders, exactly like `teamRevenue`
+   * above, so the tile and the column it summarises can never disagree.
+   *
+   * Both totals go null the moment the basis did not resolve: a partial sum
+   * over rows that were never measured would print a smaller number with the
+   * same confidence as a real one. `undefined` (a response from before this
+   * basis existed) lands in the same branch and prints the same em dash, but
+   * without the hint that names a failure nobody has actually observed.
+   */
+  const basis = query.data?.data.sellerCloseBasis
+  const hasCloseBasis = basis?.resolved === true
+  const teamClosedValue = hasCloseBasis
+    ? rows.reduce((sum, row) => sum + (row.closedValue?.amount ?? 0), 0)
+    : null
+  const teamClosedCount = hasCloseBasis
+    ? rows.reduce((sum, row) => sum + (row.closedCount ?? 0), 0)
+    : null
+
   const status = query.isError ? 'error' : query.isPending ? 'loading' : 'ready'
 
   const columns: Column<EmployeeRow>[] = ([
@@ -177,7 +237,10 @@ export function EmployeesPage() {
     },
     {
       key: 'revenue',
-      header: t.table.revenue,
+      // Not the bare "Tushum" this table used to carry: a second money column
+      // now sits two cells away, and an unqualified heading is the confusion
+      // the whole seller-close basis exists to remove.
+      header: t.basis.deliveredRevenueColumn,
       sortKey: 'revenue',
       align: 'right',
       numeric: true,
@@ -187,6 +250,28 @@ export function EmployeesPage() {
           title={formatUzs(row.current.revenue.amount)}
         >
           {formatCompactUzs(row.current.revenue.amount)}
+        </span>
+      ),
+    },
+    {
+      /*
+        Paired BY UNIT with the column above, not tucked at the end of the row.
+        The comparison a manager makes is delivered money against closed money;
+        putting a deal count between them turns a glance into arithmetic.
+
+        `?` rather than `!== null`, here and below: the contract says
+        `number | null`, but a static-demo snapshot frozen before this basis
+        existed carries no key at all, and `undefined.amount` is a crash where
+        an em dash was wanted.
+      */
+      key: 'closedValue',
+      header: t.basis.closedValueColumn,
+      sortKey: 'closedValue',
+      align: 'right',
+      numeric: true,
+      render: (row) => (
+        <span title={row.closedValue ? formatUzs(row.closedValue.amount) : undefined}>
+          {row.closedValue ? formatCompactUzs(row.closedValue.amount) : NO_VALUE}
         </span>
       ),
     },
@@ -212,11 +297,20 @@ export function EmployeesPage() {
     },
     {
       key: 'dealsWon',
-      header: t.table.dealsWon,
+      header: t.basis.deliveredDealsColumn,
       sortKey: 'dealsWon',
       align: 'right',
       numeric: true,
       render: (row) => formatNumber(row.current.dealsWon),
+    },
+    {
+      key: 'closedCount',
+      header: t.basis.closedDealsColumn,
+      sortKey: 'closedDeals',
+      align: 'right',
+      numeric: true,
+      render: (row) =>
+        typeof row.closedCount === 'number' ? formatNumber(row.closedCount) : NO_VALUE,
     },
     {
       key: 'open',
@@ -264,7 +358,15 @@ export function EmployeesPage() {
       ),
     },
     // A column of 288 em dashes costs width and teaches the reader to skip it.
-  ] as Column<EmployeeRow>[]).filter((column) => column.key !== 'kpi' || hasKpiTargets)
+    // The same rule retires the two close columns when the seller stage
+    // resolved to nothing: they are not a quiet zero, they are not there.
+  ] as Column<EmployeeRow>[]).filter((column) => {
+    if (column.key === 'kpi') return hasKpiTargets
+    if (column.key === 'closedValue' || column.key === 'closedCount') {
+      return basis === undefined || basis.resolved
+    }
+    return true
+  })
 
   return (
     <PageShell
@@ -272,6 +374,14 @@ export function EmployeesPage() {
       // The team family shares the leaderboard's slot — same people, same
       // stripe.
       accent="var(--series-5)"
+      /*
+        Both bases named before either is shown, and PageShell prints the
+        reporting window straight after this sentence — so the header reads
+        "<what the two columns count> · 1-avg 2026 – 28-avg 2026". Reyting
+        states the same distinction in the same words; a reader moving between
+        the two screens must not have to work out that they agree.
+      */
+      description="Har bir xodim ikki oʻlchovda: yetkazib berilgan tushum va sotuvchining oʻzi yopgan bitimlar."
       meta={query.data?.meta}
       filters={{ employees: true, departments: true }}
     >
@@ -280,7 +390,7 @@ export function EmployeesPage() {
         hero-sized figure over a client-side sum would claim an importance the
         derivation does not carry — the tiles orient, the rows answer.
       */}
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           label="Jami xodimlar"
           value={status === 'ready' ? rows.length : null}
@@ -302,7 +412,9 @@ export function EmployeesPage() {
           }
         />
         <StatTile
-          label="Jami tushum"
+          // "Jami tushum" until a second money total joined it on the same
+          // row. Two sums a manager is meant to compare must not share a name.
+          label={t.basis.deliveredRevenueColumn}
           value={status === 'ready' ? teamRevenue : null}
           unit="money"
           status={status}
@@ -317,6 +429,31 @@ export function EmployeesPage() {
                 )}`}
               </p>
             ) : undefined
+          }
+        />
+        {/*
+          The other basis, at the same size as the one beside it.
+
+          Delivered money and closed money are the comparison this page now
+          exists to make, so they are two tiles of equal weight rather than a
+          headline and a footnote. Where the pair diverges for the whole team,
+          it diverges hardest for individuals — which is what the two columns
+          in the table below are for.
+        */}
+        <StatTile
+          label={t.basis.closedValueLabel}
+          value={status === 'ready' ? teamClosedValue : null}
+          unit="money"
+          status={status}
+          // Short by necessity: StatTile truncates its hint to one line. The
+          // amount caveat and the mechanism ride the explainer under the table
+          // instead, where they have room to be read rather than clipped.
+          hint={
+            basis === undefined
+              ? undefined
+              : basis.resolved
+                ? `${formatNumber(teamClosedCount ?? 0)} ta yopilgan bitim`
+                : t.basis.unmeasuredShort
           }
         />
         <StatTile
@@ -349,11 +486,26 @@ export function EmployeesPage() {
           order={order}
           onSort={onSort}
           emptyBody="Tanlangan davr va filtrlar boʻyicha xodim topilmadi."
-          minWidth={980}
+          // Two more numeric columns than this table carried before.
+          minWidth={1180}
           // Bounded height so the header has something to stick to: the rows
           // slide under the sunken header band instead of taking it away.
           maxHeight={620}
         />
+
+        {/*
+          The explainer, once per page — the same sentence Reyting prints, from
+          the same string, because two screens describing one mechanism two
+          ways is how a reader decides the dashboard is guessing.
+
+          It states what makes the two columns disagree and stops. Which figure
+          a manager should manage by is not a decision a footnote gets to make.
+        */}
+        {hasCloseBasis && (
+          <p className="mt-3 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            {t.basis.explainer} {t.basis.amountCaveat}
+          </p>
+        )}
       </Card>
     </PageShell>
   )

@@ -200,6 +200,35 @@ enum SyncStatus {
   FAILED
 }
 
+/// The twelve slices the Roistat blob publishes, one array each.
+///
+/// These are OUR names for the source's own tab ids, and the mapping is
+/// one-to-one and case-only — lowercase the enum value and you have the id the
+/// published page uses in `D.dims`, `D.tabs[].id` and the module's `?dimension=`
+/// query parameter:
+///
+///   CAMP camp · ADSET adset · CREATIVE creative · TARGETOLOG targetolog
+///   FORM form · SOURCE source · PRODUCT product · REGION region · ROP rop
+///   SELLER seller · REGISTRATOR registrator · DAYS days
+///
+/// CAMP → ADSET → CREATIVE is the only nesting: an ADSET row's `parent` is its
+/// campaign key, a CREATIVE row's `parent` is its adset key. Every other
+/// dimension is flat and stores an empty parent.
+enum MarketingDimension {
+  CAMP
+  ADSET
+  CREATIVE
+  TARGETOLOG
+  FORM
+  SOURCE
+  PRODUCT
+  REGION
+  ROP
+  SELLER
+  REGISTRATOR
+  DAYS
+}
+
 // ---------------------------------------------------------------------------
 // Authentication (better-auth owns the shape of these four models)
 // ---------------------------------------------------------------------------
@@ -795,6 +824,191 @@ model AdSpend {
   @@unique([sourceId, periodStart])
   @@index([periodStart])
   @@map("ad_spend")
+}
+
+// ---------------------------------------------------------------------------
+// Marketing · Roistat
+//
+// A SECOND LEDGER, DELIBERATELY NOT JOINED TO THE FIRST.
+//
+// Everything above this block comes from Bitrix24. These two tables do not.
+// A live probe of the portal (2026-08-27) found no Roistat fields, sources,
+// apps or smart processes at all: the client's marketing numbers live in their
+// own Google Sheets (working + archive) plus Meta Ads, published as a static
+// `var D = {...}` blob on a GitHub Pages dashboard, and `scripts/importRoistat`
+// copies that blob in verbatim.
+//
+// So there is no relation from MarketingDaily to Deal, Employee, Product or
+// SalesSource, and there must never be one. The two systems measure overlapping
+// things by different rules — Roistat attributes collected money to the LEAD's
+// date, Bitrix24 books a won deal on its close date — and a foreign key would
+// invite exactly the join that turns one company's revenue into two. Where the
+// numbers can be compared they are compared side by side and the divergence is
+// shown, by `scripts/verifyRoistat.ts` and the module's cross-check panel.
+//
+// CURRENCY, WHICH IS NOT UNIFORM HERE.
+// The source mixes two currencies in one row and so do we, because converting
+// on import would freeze today's rate into history:
+//   - `spendMicroUsd` is USD in MICRO units (1e6 per dollar). It is the one
+//     BigInt money column in this schema that does not end in `Minor`, and the
+//     name says why: ad spend arrives with cents (80.36) from Meta, and the
+//     module divides it by leads, by sales, by 1000 impressions. Micro keeps
+//     those quotients honest and the `MicroUsd` suffix makes a wrong unit a
+//     compile-time-visible mistake rather than a silent 1 000 000x.
+//   - `orderedMinor`, `soldMinor`, `metaRevenueMinor` are UZS minor units
+//     (1/100 soʻm), the same contract as every other `Minor` column.
+// ROAS therefore reads (soldMinor / 100 / rate) / (spendMicroUsd / 1e6) — the
+// UZS side is converted first, never the USD side. Getting that backwards is
+// the single easiest way to be wrong about this data.
+// ---------------------------------------------------------------------------
+
+/// One dimension value, on one day, with the sixteen additive counters the
+/// published blob carries for it. One row per `{d, k, p}` tuple in `D.dims`.
+///
+/// Every column here is ADDITIVE: the whole module aggregates by plain
+/// summation and derives its rates afterwards (qual, CPL, buyout, ROAS…).
+/// Nothing pre-averaged is stored, because a stored average cannot be re-summed
+/// over a different window without lying.
+///
+/// The dimensions do not share a date range and that gap is real data, not a
+/// defect to paper over: camp/adset/creative/days run to the blob's `today`
+/// while the sheet-fed dimensions stop days earlier. The importer replaces only
+/// the range each dimension actually covers, so a short dimension never wipes
+/// the days a longer one still holds.
+model MarketingDaily {
+  id String @id @default(cuid())
+
+  /// The reporting day, as the source states it. A bare date, not an instant:
+  /// the blob has no times and no timezone, and widening it to a timestamp
+  /// would invent an hour that would then get bucketed in Asia/Tashkent and
+  /// shift the row.
+  date      DateTime           @db.Date
+  dimension MarketingDimension
+  /// The dimension value verbatim from the sheet — a campaign name, a region,
+  /// a seller's name, or for DAYS the ISO date repeated. Never normalised on
+  /// import: these are the strings the client typed, and the cross-check with
+  /// Bitrix24 needs to see them exactly as they were typed to report honestly
+  /// on which ones failed to match.
+  key       String
+  /// Parent value for the drill-down chain, EMPTY STRING when there is none.
+  ///
+  /// Not nullable, on purpose. Postgres treats NULLs as distinct inside a
+  /// unique index, so a nullable parent would let the same
+  /// {dimension, date, key} land twice and quietly break both the upsert and
+  /// the idempotency of the import. The source blob already writes `p: ""` for
+  /// flat dimensions, so the empty string is its own convention, not ours.
+  parent    String             @default("")
+
+  // -- Lead funnel (counts) -------------------------------------------------
+  /// `leads` — leads received.
+  leads        Int @default(0)
+  /// `clean` — "чистые": leads left after junk is removed. Numerator of Sifat.
+  clean        Int @default(0)
+  /// `kval` — qualified leads. Numerator of QL %.
+  kval         Int @default(0)
+  /// `orders` — order count. Its money counterpart is `orderedMinor`.
+  orders       Int @default(0)
+  /// `sold` — completed sales count. Its money counterpart is `soldMinor`.
+  sold         Int @default(0)
+  /// `newc` — new customers, the denominator of CAC.
+  newCustomers Int @default(0)
+
+  // -- Money ---------------------------------------------------------------
+  /// `spend` — ad spend in USD micro units (1e6 per dollar). See the block
+  /// comment above: this is the only non-`Minor` money column in the schema.
+  spendMicroUsd    BigInt @default(0)
+  /// `fact1` — amount ORDERED ("Заказы"), UZS minor units.
+  orderedMinor     BigInt @default(0)
+  /// `fact2` — amount SOLD/collected ("Продажи"), UZS minor units. This is the
+  /// revenue ROAS, buyout rate, average cheque and ARPL are all built on.
+  soldMinor        BigInt @default(0)
+  /// `mrev` — the slice of `soldMinor` Meta claims attribution for, UZS minor.
+  metaRevenueMinor BigInt @default(0)
+
+  // -- Deal time -----------------------------------------------------------
+  /// `dsum` / `dcnt` — day-sum and count behind "Deal Time" (lead → sale).
+  /// Both are zero in every row the source publishes today, which is why the
+  /// tile renders an em dash rather than 0 kun. Stored anyway: the day the
+  /// sheet starts filling them the module needs no migration.
+  dealDaysSum Int @default(0)
+  dealCount   Int @default(0)
+
+  // -- Meta Ads delivery ---------------------------------------------------
+  /// BigInt, not Int: impressions run to 46 million over eight weeks on this
+  /// account alone and a yearly window has room to pass 2^31.
+  impressions BigInt @default(0)
+  reach       BigInt @default(0)
+  clicks      BigInt @default(0)
+  /// `mleads` — leads as META counts them, which is not what `leads` counts.
+  /// Kept separate so the discrepancy stays visible.
+  metaLeads   Int    @default(0)
+
+  /// When this row was last written by the importer. The blob's own freshness
+  /// lives on MarketingSnapshot; this is our row lifecycle.
+  importedAt DateTime @default(now())
+
+  /// The import key. Delete-then-insert per covered range makes the import
+  /// idempotent, and this constraint is what guarantees the blob cannot
+  /// contribute the same cell twice.
+  @@unique([dimension, date, key, parent])
+  /// The drill-down read: adsets of one campaign, creatives of one adset, over
+  /// a window. The unique index above already serves plain
+  /// (dimension, date) filtering as its own prefix, so no second index for that.
+  @@index([dimension, parent, date])
+  @@map("marketing_daily")
+}
+
+/// Provenance for the whole import. Exactly one row, id = 'roistat'.
+///
+/// Every marketing screen has to say where its numbers came from and how stale
+/// they are, and it must quote the BLOB's stamp rather than our Bitrix24 sync
+/// stamp — they are different systems refreshed on different clocks, and
+/// showing the wrong one is how a dashboard claims to be fresh while serving
+/// three-day-old ad spend.
+model MarketingSnapshot {
+  /// Constant 'roistat'. One published dashboard, one row, no history table:
+  /// the blob is a full replacement each time, not an increment.
+  id        String @id
+  sourceUrl String
+
+  /// UZS per USD in micro units (1e6 per soʻm), as the blob states it:
+  /// 11 823.69 is stored as 11 823 690 000.
+  ///
+  /// Micro rather than a Decimal because every UZS→USD figure on the module is
+  /// derived from this one number, and a float rate applied to a BigInt total
+  /// reintroduces exactly the drift the money contract exists to prevent.
+  usdRateMicro BigInt
+  /// The day that rate was taken, from `D.rateDate` ("27.08.2026").
+  rateDate     DateTime @db.Date
+
+  /// `D.updated` verbatim — "27.08.2026 14:11". A LABEL, not an instant.
+  /// The blob names no timezone, so parsing it into a DateTime would force us
+  /// to guess one and then render the guess as fact. The screens print the
+  /// string the source printed.
+  updatedLabel String
+
+  /// `D.today` — the source's own idea of today, which is what its "Bugun"
+  /// preset means. Not our clock: on a stale blob they differ, and the period
+  /// control must clamp to the data, not to the wall.
+  today     DateTime @db.Date
+  /// `D.minDate` / `D.maxDate` — the clamp for every custom range.
+  minDate   DateTime @db.Date
+  maxDate   DateTime @db.Date
+  /// `D.dailyFrom` — before this day the DAYS dimension holds monthly buckets,
+  /// not days. The table renders those rows as "Iyul 2026 (oy)".
+  dailyFrom DateTime @db.Date
+  /// `D.freshFrom` — from this day the numbers are still settling (sales and
+  /// cash close later), so the module shows the incomplete-period warning and
+  /// marks those rows. A low ROAS there is normal, not a problem.
+  freshFrom DateTime @db.Date
+
+  /// Our clock: when the importer last ran successfully.
+  importedAt DateTime @default(now())
+  /// Rows written across all twelve dimensions in that run. The loud sanity
+  /// check — a blob that suddenly carries a fraction of this is refused.
+  rowCount   Int
+
+  @@map("marketing_snapshot")
 }
 
 // ---------------------------------------------------------------------------

@@ -20,7 +20,7 @@ sign-up is disabled in code.
 | **Logistika** | Which hub and carrier delivered, how fast, and where parcels came back |
 | **Tasdiqlash** | Did the operator confirm the order — and did the confirmation hold |
 | **Sklad** | What each warehouse, courier and marketplace shipped |
-| **Reyting / Xodimlar / Struktura** | Who sold what, and where they sit in the company |
+| **Reyting / Xodimlar / Struktura** | Who sold what — the branch's sellers only, ROPs excluded, ranked on **delivered** revenue — and where everyone sits in the company. The seller-close basis (what was *closed* rather than *delivered*) ships on the API today, not yet in this screen's metric picker |
 | **Qoʻngʻiroqlar** | Who actually spoke to customers, how fast a new deal gets its first call, and what an hour of talk returns |
 | **Bitimlar** | Every deal, filterable, across all nine pipelines |
 

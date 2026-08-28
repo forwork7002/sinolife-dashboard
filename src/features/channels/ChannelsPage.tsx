@@ -99,10 +99,25 @@ export function ChannelsPage() {
       render: (row) => formatNumber(row.won),
     },
     {
+      /*
+        Two rates, each naming its own fraction in the header.
+    
+        "Konversiya" alone sat between three visible count columns and could
+        have meant any of three fractions. It meant won/murojaat — a number
+        the AI-triage bucket used to drown: one source read 0.6% while closing
+        44.7% of the orders that actually reached it. Now both are printed and
+        the header says which pair each one came from.
+      */
       key: 'conversion',
-      header: 'Konversiya',
-      width: '140px',
+      header: 'Murojaat → sotuv',
+      width: '132px',
       render: (row) => <Meter value={row.conversion} tone="neutral" label={row.sourceName} />,
+    },
+    {
+      key: 'funnelRate',
+      header: 'Voronka → sotuv',
+      width: '132px',
+      render: (row) => <Meter value={row.funnelRate} tone="neutral" label={row.sourceName} />,
     },
     {
       key: 'revenue',
@@ -118,7 +133,10 @@ export function ChannelsPage() {
       header: 'Oʻrtacha chek',
       align: 'right',
       numeric: true,
-      render: (row) => formatCompactUzs(row.averageCheque.amount),
+      // Null when the channel won nothing: there is no average over an empty
+      // set, and a dash says that where "0 soʻm" would price orders it never had.
+      render: (row) =>
+        row.averageCheque === null ? NO_VALUE : formatCompactUzs(row.averageCheque.amount),
     },
     {
       key: 'spend',
@@ -174,10 +192,10 @@ export function ChannelsPage() {
         <StatTile status={tileStatus} label="Tushum" value={totalRevenue || null} unit="money" />
         <GaugeTile
           status={tileStatus}
-          label="Umumiy konversiya"
+          label="Murojaatdan sotuvgacha"
           value={totalLeads === 0 ? null : Math.round((totalWon / totalLeads) * 1000) / 10}
           tone="neutral"
-          hint={`${formatNumber(totalWon)} savdo / ${formatNumber(totalLeads)} murojaat`}
+          hint={`${formatNumber(totalWon)} savdo / ${formatNumber(totalLeads)} murojaat · sunʼiy intellekt saralash buketi hisobga olinmaydi`}
         />
         <HhiTile
           status={concStatus}

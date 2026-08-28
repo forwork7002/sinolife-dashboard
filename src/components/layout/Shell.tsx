@@ -46,6 +46,21 @@ const NAV_GROUPS: readonly { readonly label: string | null; readonly items: read
       { href: '/margin', label: t.nav.margin, icon: CoinIcon },
     ],
   },
+  /**
+   * The second ledger, kept in its own group on purpose.
+   *
+   * Every other destination in this rail reads Bitrix24. This one does not —
+   * it reads the client's Google Sheets plus Meta Ads, imported from their
+   * published Roistat page (docs/SUPERDASHBOARD.md §11). Filing it under
+   * "Savdo" beside the Bitrix24 analytics would invite the exact mistake the
+   * module exists to prevent: adding the two revenue figures together. A group
+   * of its own is the cheapest way to say "different system" before the reader
+   * opens anything.
+   */
+  {
+    label: 'Marketing',
+    items: [{ href: '/marketing', label: t.nav.marketing, icon: MegaphoneIcon }],
+  },
   {
     label: 'Bajarish',
     items: [
@@ -291,7 +306,15 @@ export function Shell({
               >
                 {user.name.slice(0, 1).toUpperCase()}
               </span>
-              <div className="min-w-0 flex-1">
+              {/* The whole identity block is the way into the account screen —
+                  a separate "settings" icon would be a second target for the
+                  same thing, and this is where a reader already looks to check
+                  who they are signed in as. */}
+              <Link
+                href="/account"
+                className="focusable min-w-0 flex-1 rounded-md px-1 py-0.5 -mx-1 transition-colors hover:bg-[var(--grid)]"
+                aria-label="Hisob va parol"
+              >
                 <p
                   className="truncate text-xs font-medium"
                   style={{ color: 'var(--ink-primary)' }}
@@ -301,7 +324,7 @@ export function Shell({
                 <p className="truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
                   {ROLE_LABELS[user.role]}
                 </p>
-              </div>
+              </Link>
               {/* The Tooltip primitive, not a native title: an icon-only
                   button whose label arrives after a second of hovering and
                   never on focus or touch is unlabelled for most people. */}
@@ -670,6 +693,40 @@ function TargetIcon() {
       <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.7" />
       <circle cx="12" cy="12" r="4.5" stroke="currentColor" strokeWidth="1.7" />
       <circle cx="12" cy="12" r="1.4" fill="currentColor" />
+    </svg>
+  )
+}
+
+/**
+ * Marketing — a megaphone, at 15px.
+ *
+ * Deliberately not another ring or another bar chart. `TargetIcon` (concentric
+ * circles, KPI) and `SignalIcon` (four risers, Kanallar) already sit in this
+ * rail, and at 15px an icon has roughly nine legible pixels across: a target
+ * with one more ring, or a bar chart with one more bar, would read as a
+ * mis-drawn version of the neighbour rather than as a new destination.
+ *
+ * So the silhouette does the work — a horn pointing right, its cone widening
+ * from a semicircular cap, plus ONE emission arc. A second arc was drawn and
+ * removed: nested arcs land about 1.6px apart at this size and merge into a
+ * smudge. Same 24-unit viewBox, 1.7 stroke, currentColor and round joins as
+ * every icon above, so it inherits the active/inactive ink like the rest.
+ */
+function MegaphoneIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M14 5L7.5 9.5H4.5a2.5 2.5 0 0 0 0 5h3L14 19V5z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M17.5 9a5 5 0 0 1 0 6"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
     </svg>
   )
 }

@@ -15,6 +15,22 @@ export class FinanceRepository {
 
   private where(filters: DealFilters, window: { start: Date; end: Date }): Prisma.DealWhereInput {
     const and: Prisma.DealWhereInput[] = [
+      /*
+        The duplicate guard, first and non-negotiable.
+    
+        The portal records the same physical order twice — once in Доставка,
+        then again in База about ten days later with the same orderCode and the
+        same amount, 97% of the time. Both copies are status WON with a
+        closedAt, so a receivables query that names only those two conditions
+        counts every debt twice: invoiced, collected, outstanding, the ageing
+        buckets and the debtors table all roughly double, and each customer
+        appears twice at full balance.
+    
+        This is currently masked — /finance/overview answers 501 because the
+        Bitrix24 provider supplies no payments — which is exactly why it had to
+        be fixed now rather than on the day payments are switched on.
+      */
+      { countsAsRevenue: true },
       // Only WON deals are receivables. An open deal is a hope, not money owed.
       { status: 'WON' },
       { closedAt: { gte: window.start, lt: window.end } },

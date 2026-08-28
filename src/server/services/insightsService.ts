@@ -9,6 +9,11 @@
  * repository's SQL or in `src/server/domain`, where it can be tested.
  */
 
+import {
+  type EmployeeScopeFilter,
+  type ScopedPeriod,
+  scopedPeriod,
+} from '@/server/domain/employees/branches'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import type { Period } from '@/server/domain/period/period'
 import type {
@@ -54,7 +59,7 @@ export interface LogisticsRowDto {
   readonly cancelledEarly: number
   readonly inFlight: number
   readonly revenue: MoneyDto
-  readonly deliveryRate: number
+  readonly deliveryRate: number | null
   readonly medianHours: number | null
   readonly p90Hours: number | null
 }
@@ -83,19 +88,19 @@ export interface LogisticsDto {
     readonly cancelledEarly: number
     /** Still moving. Excluded from the delivery rate rather than counted against it. */
     readonly inFlight: number
-    readonly deliveryRate: number
+    readonly deliveryRate: number | null
     readonly medianHours: number | null
   }
 }
 
 export interface ConfirmationDto {
   readonly rows: readonly (Omit<ConfirmationRow, 'confirmRateBp'> & {
-    readonly confirmRate: number
+    readonly confirmRate: number | null
     /** Share of this operator's orders that went through the confirmation stage. */
     readonly coverage: number
     readonly stickRate: number
     /** Delivered as a share of this operator's RESOLVED orders. */
-    readonly deliveryRate: number
+    readonly deliveryRate: number | null
   })[]
   readonly totals: {
     /** Every revenue order created in the window. */
@@ -122,8 +127,11 @@ export interface ChannelDto {
   readonly won: number
   readonly revenue: MoneyDto
   readonly spend: MoneyDto | null
-  readonly conversion: number
-  readonly averageCheque: MoneyDto
+  /** won / leads — of enquiries, how many paid. */
+  readonly conversion: number | null
+  /** won / deals — of orders that reached a money pipeline, how many closed. */
+  readonly funnelRate: number | null
+  readonly averageCheque: MoneyDto | null
   /** Return on ad spend as a multiple. Null when spend is not entered. */
   readonly roas: number | null
   readonly costPerOrder: MoneyDto | null
@@ -182,11 +190,45 @@ export interface StructureDto {
   readonly workingHeadcount: number
   readonly deals: number
   readonly revenue: MoneyDto
+  /**
+   * Is this unit inside the active filial?
+   *
+   * The org chart is the MAP of the company, so it keeps showing every unit
+   * even when the rest of the dashboard shows one branch — a map with half the
+   * country cut off is not a map. Marking the subtree instead is how the page
+   * stays honest about which part of it the other screens are counting. True
+   * everywhere when no branch is active.
+   */
+  readonly inScope: boolean
   readonly children: readonly StructureDto[]
+}
+
+/**
+ * The FILIAL scope, as this service receives it.
+ *
+ * Resolved by `ReferenceRepository.resolveBranchScope` and already intersected
+ * with the caller's authorisation scope, so one list carries both. The default
+ * — an empty object — means unrestricted, which is what an endpoint that has
+ * not been wired to the branch control yet still gets.
+ */
+export interface InsightsScope extends EmployeeScopeFilter {
+  /** The branch's own department id, for the tree that marks its subtree. */
+  readonly branchDepartmentId?: string | null
 }
 
 export class InsightsService {
   constructor(private readonly repository: InsightsRepository) {}
+
+  /**
+   * Fold the scope into the window every query already takes.
+   *
+   * See `ScopedPeriod`: this is the single door the employee restriction walks
+   * through on its way into the insights SQL. A query that ignores it is a
+   * whole-company answer with a branch label on it.
+   */
+  private window(period: Period, scope: EmployeeScopeFilter): ScopedPeriod {
+    return scopedPeriod(period, scope)
+  }
 
   /**
    * Cohort retention.
@@ -197,9 +239,20 @@ export class InsightsService {
    * finding. Null is reserved for offsets that have not happened yet, which is
    * a different statement entirely.
    */
-  async cohorts(currency: string, months = 18): Promise<CohortSummaryDto> {
+  async cohorts(
+    currency: string,
+    months = 18,
+    scope: EmployeeScopeFilter = {},
+  ): Promise<CohortSummaryDto> {
+    // A cohort is a set of CUSTOMERS, but every purchase in it belongs to an
+    // employee, so the branch narrows it like everything else.
+    const options: { months: number } & EmployeeScopeFilter = {
+      months,
+      restrictToEmployeeIds: scope.restrictToEmployeeIds ?? null,
+    }
+
     const [rows, stages] = await Promise.all([
-      this.repository.cohorts({ months }),
+      this.repository.cohorts(options),
       this.repository.retentionStages(),
     ])
 
@@ -257,11 +310,17 @@ export class InsightsService {
     }
   }
 
-  async logistics(period: Period, currency: string): Promise<LogisticsDto> {
+  async logistics(
+    period: Period,
+    currency: string,
+    scope: EmployeeScopeFilter = {},
+  ): Promise<LogisticsDto> {
+    const window = this.window(period, scope)
+
     const [routes, regions, reasons] = await Promise.all([
-      this.repository.logisticsRoutes(period),
-      this.repository.logisticsRegions(period),
-      this.repository.refusalReasons(period),
+      this.repository.logisticsRoutes(window),
+      this.repository.logisticsRegions(window),
+      this.repository.refusalReasons(window),
     ])
 
     const toRow = (r: LogisticsRouteRow): LogisticsRowDto => ({
@@ -272,7 +331,7 @@ export class InsightsService {
       cancelledEarly: r.cancelledEarly,
       inFlight: r.inFlight,
       revenue: toMoneyDto(money(r.revenueMinor, currency)),
-      deliveryRate: pct(r.deliveryRateBp) ?? 0,
+      deliveryRate: pct(r.deliveryRateBp),
       medianHours: r.medianHours === null ? null : Math.round(r.medianHours * 10) / 10,
       p90Hours: r.p90Hours === null ? null : Math.round(r.p90Hours * 10) / 10,
     })
@@ -327,10 +386,12 @@ export class InsightsService {
     }
   }
 
-  async confirmations(period: Period): Promise<ConfirmationDto> {
+  async confirmations(period: Period, scope: EmployeeScopeFilter = {}): Promise<ConfirmationDto> {
+    const window = this.window(period, scope)
+
     const [rows, windowOrders] = await Promise.all([
-      this.repository.confirmations(period),
-      this.repository.confirmationWindowOrders(period),
+      this.repository.confirmations(window),
+      this.repository.confirmationWindowOrders(window),
     ])
 
     const mapped = rows.map((r: ConfirmationRow) => {
@@ -339,7 +400,7 @@ export class InsightsService {
 
       return {
         ...rest,
-        confirmRate: pct(confirmRateBp) ?? 0,
+        confirmRate: pct(confirmRateBp),
         /**
          * The rate that actually varies.
          *
@@ -425,8 +486,12 @@ export class InsightsService {
     }
   }
 
-  async channels(period: Period, currency: string): Promise<ChannelDto[]> {
-    const rows = await this.repository.channels(period)
+  async channels(
+    period: Period,
+    currency: string,
+    scope: EmployeeScopeFilter = {},
+  ): Promise<ChannelDto[]> {
+    const rows = await this.repository.channels(this.window(period, scope))
 
     return rows.map((r: ChannelRow) => ({
       sourceId: r.sourceId,
@@ -436,8 +501,12 @@ export class InsightsService {
       won: r.won,
       revenue: toMoneyDto(money(r.revenueMinor, currency)),
       spend: r.spendMinor === null ? null : toMoneyDto(money(r.spendMinor, currency)),
-      conversion: pct(r.conversionBp) ?? 0,
-      averageCheque: toMoneyDto(money(r.averageChequeMinor, currency)),
+      conversion: pct(r.conversionBp),
+      funnelRate: pct(r.funnelRateBp),
+      averageCheque:
+        r.averageChequeMinor === null
+          ? null
+          : toMoneyDto(money(r.averageChequeMinor, currency)),
       // Null, never Infinity: a channel with no spend recorded has unknown
       // return, and a dash says that where "∞×" would look like a triumph.
       roas:
@@ -451,8 +520,12 @@ export class InsightsService {
     }))
   }
 
-  async margin(period: Period, currency: string): Promise<MarginDto> {
-    const summary: MarginSummary = await this.repository.margin(period)
+  async margin(
+    period: Period,
+    currency: string,
+    scope: EmployeeScopeFilter = {},
+  ): Promise<MarginDto> {
+    const summary: MarginSummary = await this.repository.margin(this.window(period, scope))
 
     return {
       rows: summary.rows.map((r) => ({
@@ -476,10 +549,12 @@ export class InsightsService {
     }
   }
 
-  async callActivity(period: Period): Promise<CallsDto> {
+  async callActivity(period: Period, scope: EmployeeScopeFilter = {}): Promise<CallsDto> {
+    const window = this.window(period, scope)
+
     const [rows, directions] = await Promise.all([
-      this.repository.callActivity(period),
-      this.repository.callDirections(period),
+      this.repository.callActivity(window),
+      this.repository.callDirections(window),
     ])
 
     const of = (direction: string) =>
@@ -493,15 +568,18 @@ export class InsightsService {
     return { rows, outbound: of('OUTBOUND'), inbound: of('INBOUND') }
   }
 
-  async dispatch(period: Period, currency: string) {
-    const rows = await this.repository.dispatchPoints(period)
+  async dispatch(period: Period, currency: string, scope: EmployeeScopeFilter = {}) {
+    const rows = await this.repository.dispatchPoints(this.window(period, scope))
     return rows.map((r: DispatchRow) => ({
       point: r.point,
       orders: r.orders,
       delivered: r.delivered,
       refused: r.refused,
+      // In the denominator of the rate above, so it has to be visible beside
+      // it — a rate whose fraction the screen cannot show is unreadable.
+      cancelledEarly: r.cancelledEarly,
       revenue: toMoneyDto(money(r.revenueMinor, currency)),
-      deliveryRate: pct(r.deliveryRateBp) ?? 0,
+      deliveryRate: pct(r.deliveryRateBp),
     }))
   }
 
@@ -513,7 +591,11 @@ export class InsightsService {
    * the database should not have to guess whether the caller wants own or
    * inclusive figures.
    */
-  async structure(period: Period, currency: string) {
+  async structure(period: Period, currency: string, scope: InsightsScope = {}) {
+    // Deliberately UNSCOPED as data: the tree keeps every unit and every
+    // number, and `inScope` marks which subtree the branch-scoped screens are
+    // counting. Filtering the map would leave the reader unable to see that
+    // Операцион exists at all, let alone that it closed 12.6% of last month.
     const nodes = await this.repository.structure(period)
     const children = new Map<string | null, StructureNode[]>()
 
@@ -523,8 +605,15 @@ export class InsightsService {
       children.set(node.parentId, siblings)
     }
 
-    const build = (node: StructureNode, depth: number): StructureDto => {
-      const kids = (children.get(node.id) ?? []).map((child) => build(child, depth + 1))
+    // No branch active -> the whole company is in scope, which is the truth
+    // rather than a shrug: `filial=all` really does count every unit.
+    const branchId = scope.branchDepartmentId ?? null
+
+    const build = (node: StructureNode, depth: number, inherited: boolean): StructureDto => {
+      const inScope = branchId === null || inherited || node.id === branchId
+      const kids = (children.get(node.id) ?? []).map((child) =>
+        build(child, depth + 1, inScope),
+      )
 
       /**
        * All three headcounts roll up together.
@@ -562,10 +651,11 @@ export class InsightsService {
         workingHeadcount: rolled.workingHeadcount,
         deals: rolled.deals,
         revenue: toMoneyDto(money(rolled.revenueMinor, currency)),
+        inScope,
         children: kids,
       }
     }
 
-    return (children.get(null) ?? []).map((root) => build(root, 0))
+    return (children.get(null) ?? []).map((root) => build(root, 0, false))
   }
 }

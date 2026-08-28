@@ -27,6 +27,116 @@ export interface PeriodDto {
   readonly days: number
 }
 
+/**
+ * Who a leaderboard response actually ranked.
+ *
+ * The board ranks SALESPEOPLE only — a department head carries their whole
+ * team's closed deals, so leaving the managers in put the head of an operations
+ * department at number one and pushed the best seller to third. The rule lives
+ * server-side (`server/domain/employees/roles`); this block is how the response
+ * admits what it dropped, so the page can print it rather than let the reader
+ * assume the ranking covers everyone.
+ */
+export interface LeaderboardScopeDto {
+  readonly scope: 'sellers'
+  readonly sellers: number
+  readonly excludedManagers: number
+  readonly excludedOther: number
+}
+
+/**
+ * How a response's SELLER-CLOSE figures were arrived at.
+ *
+ * The dashboard measures a seller two ways and they are not the same number.
+ * `revenue` is DELIVERED money — `countsAsRevenue`, status WON, by `closedAt`.
+ * `closedValue` / `closedCount` are what the seller actually CLOSED: entries
+ * into the won stage of the sellers' own pipeline, which a robot empties within
+ * seconds by moving the deal to Доставка, so the stage history is the only
+ * trace left. Last August 2 798 deals passed the seller's stage and 3 729 were
+ * delivered, with 1 152 in both — 1 646 sold-but-not-yet-delivered on one side,
+ * 2 577 delivered-without-a-seller (repeat orders, AI triage, direct entry) on
+ * the other.
+ *
+ * Neither is the "real" figure and neither may be substituted for the other.
+ * The page shows both and this block says how the second was obtained, so a
+ * disagreement between the columns reads as the fact it is rather than as a
+ * bug. See `server/domain/analytics/sellerClose`.
+ */
+export interface SellerCloseBasisDto {
+  /**
+   * False when the seller pipeline's won stage could not be resolved. Every
+   * `closedCount` / `closedValue` is then null: UNMEASURED, not zero. Render
+   * the column as unavailable, never as a row of zeros.
+   */
+  readonly resolved: boolean
+  /** The pipeline roles searched, e.g. `["QUALIFICATION"]`. */
+  readonly pipelineRoles: readonly string[]
+  /** The stages that matched. `externalId` is for display only. */
+  readonly stages: readonly {
+    readonly id: string
+    readonly name: string
+    readonly externalId: string | null
+    readonly pipelineName: string | null
+  }[]
+  /**
+   * `deal_current_amount` — the value is summed from the deal's amount TODAY,
+   * because the stage history carries none. An amount edited after the sale
+   * moves this figure. Worth a footnote wherever the figure is exported.
+   */
+  readonly amountBasis: 'deal_current_amount'
+}
+
+/**
+ * One filial, as the branch switcher lists it.
+ *
+ * A branch is a top-level unit with sales teams under it: Навоий (6 teams, 109
+ * people, 103 of them sellers) and Тошкент онлайн (9 / 116 / 100). Операцион
+ * and Регистрация sit at the same level of the tree and are NOT branches —
+ * they are departments, and they appear in `BranchScopeDto.excluded` instead.
+ */
+export interface BranchOptionDto {
+  readonly id: string
+  readonly name: string
+  /** Sales teams — the "(ROP)" departments — beneath it. */
+  readonly teamCount: number
+  readonly headcount: number
+  /** Of those, sellers: team members who are not the team's ROP. */
+  readonly sellerCount: number
+}
+
+/**
+ * Which filial produced the numbers in this response, and who that leaves out.
+ *
+ * Every screen states this, because the branch scope is not a small filter: on
+ * last month's data, scoping to Навоий removes 59% of the company's revenue —
+ * Тошкент онлайн's 46% and Операцион's 12.6%. A reader who does not know that
+ * will conclude the dashboard is broken.
+ *
+ * `employees` plus the five `excluded` buckets sum to the whole roster, so the
+ * block answers "where did the other people go" rather than merely asserting a
+ * branch. It describes the BRANCH partition only: a SALES user additionally
+ * sees just their own row, which is true on every screen and is not counted
+ * here.
+ */
+export interface BranchScopeDto {
+  /** The active branch, or null when the caller asked for every branch. */
+  readonly branch: string | null
+  /** People the branch admits. The whole roster when `branch` is null. */
+  readonly employees: number
+  readonly excluded: {
+    /** The other filial — Тошкент онлайн when Навоий is active. */
+    readonly otherBranches: number
+    readonly operations: number
+    readonly registration: number
+    /** Filed directly in the NEWGEN root — "markaz". */
+    readonly centre: number
+    /** Anything the four above do not name. Zero today. */
+    readonly other: number
+    /** The five buckets summed. `employees + excluded.total` is the roster. */
+    readonly total: number
+  }
+}
+
 export interface ResponseMeta {
   readonly dataSource: 'DEMO' | 'BITRIX24' | 'MANUAL'
   readonly generatedAt: string
@@ -35,6 +145,12 @@ export interface ResponseMeta {
   readonly comparisonTruncated?: boolean
   readonly correlationId?: string
   readonly unavailable?: readonly string[]
+  /** Present on /analytics/leaderboard only. */
+  readonly leaderboardScope?: LeaderboardScopeDto
+  /** Present wherever `closedCount` / `closedValue` are. */
+  readonly sellerCloseBasis?: SellerCloseBasisDto
+  /** Present on every branch-scoped endpoint. Absent means nothing was scoped. */
+  readonly branchScope?: BranchScopeDto
 }
 
 export interface ApiSuccess<T> {
@@ -207,18 +323,50 @@ export interface FunnelStepDto {
   readonly reachedPercent: number | null
 }
 
+/**
+ * One ranked SELLER. Never a ROP, never an operations head — see
+ * `LeaderboardScopeDto` for what the endpoint excludes and why.
+ */
 export interface LeaderboardRowDto {
   readonly rank: number
   readonly tied: boolean
   readonly employeeId: string
   readonly fullName: string
   readonly departmentName: string | null
+  /** DELIVERED money in the period — the basis every other screen uses. */
   readonly revenue: MoneyDto
   readonly dealsWon: number
   readonly conversionPercent: number | null
   readonly kpiAchievementPercent: number | null
+  /**
+   * The SELLER-CLOSE basis, present on every row whatever `?metric=` ranked by,
+   * so a page can show both columns side by side. Null means unmeasured — see
+   * `SellerCloseBasisDto.resolved` — and must print as an em dash, never 0.
+   */
+  readonly closedCount: number | null
+  readonly closedValue: MoneyDto | null
+  /** Always the DELIVERED-revenue delta; the close basis has no comparison yet. */
   readonly delta: DeltaDto
+  /** The value of the ACTIVE metric, whichever basis that came from. */
   readonly value: number | null
+}
+
+/** Every value `?metric=` accepts on /analytics/leaderboard. */
+export const LEADERBOARD_METRICS = [
+  'revenue',
+  'deals_won',
+  'conversion',
+  'kpi_achievement',
+  /** Seller-close basis — see `SellerCloseBasisDto`. */
+  'closed_deals',
+  'closed_value',
+] as const
+
+export type LeaderboardMetricValue = (typeof LEADERBOARD_METRICS)[number]
+
+/** True for the metrics that rank the seller-close basis rather than delivery. */
+export function isSellerCloseMetric(metric: string): boolean {
+  return metric === 'closed_deals' || metric === 'closed_value'
 }
 
 export interface DealRowDto {
@@ -282,7 +430,7 @@ export interface LogisticsRowDto {
   readonly cancelledEarly: number
   readonly inFlight: number
   readonly revenue: MoneyDto
-  readonly deliveryRate: number
+  readonly deliveryRate: number | null
   readonly medianHours: number | null
   readonly p90Hours: number | null
 }
@@ -312,7 +460,7 @@ export interface LogisticsDto {
     readonly cancelledEarly: number
     /** Still moving. Excluded from the delivery rate rather than counted against it. */
     readonly inFlight: number
-    readonly deliveryRate: number
+    readonly deliveryRate: number | null
     readonly medianHours: number | null
   }
 }
@@ -324,7 +472,7 @@ export interface ConfirmationRowDto {
   readonly confirmed: number
   readonly unreachable: number
   readonly undecided: number
-  readonly confirmRate: number
+  readonly confirmRate: number | null
   /** Share of this operator's orders that went through the confirmation stage. */
   readonly coverage: number
   /** How many confirmed orders actually reached the customer. */
@@ -334,7 +482,7 @@ export interface ConfirmationRowDto {
   readonly delivered: number
   readonly failed: number
   /** Delivered as a share of this operator's resolved orders. */
-  readonly deliveryRate: number
+  readonly deliveryRate: number | null
 }
 
 export interface ConfirmationDto {
@@ -372,8 +520,11 @@ export interface ChannelDto {
   readonly won: number
   readonly revenue: MoneyDto
   readonly spend: MoneyDto | null
-  readonly conversion: number
-  readonly averageCheque: MoneyDto
+  /** won / leads — of enquiries, how many paid. */
+  readonly conversion: number | null
+  /** won / deals — of orders that reached a money pipeline, how many closed. */
+  readonly funnelRate: number | null
+  readonly averageCheque: MoneyDto | null
   readonly roas: number | null
   readonly costPerOrder: MoneyDto | null
 }
@@ -444,8 +595,10 @@ export interface DispatchDto {
   readonly orders: number
   readonly delivered: number
   readonly refused: number
+  /** Counted against the delivery rate; shown so the fraction is checkable. */
+  readonly cancelledEarly: number
   readonly revenue: MoneyDto
-  readonly deliveryRate: number
+  readonly deliveryRate: number | null
 }
 
 export interface StructureDto {
@@ -463,6 +616,15 @@ export interface StructureDto {
   readonly workingHeadcount: number
   readonly deals: number
   readonly revenue: MoneyDto
+  /**
+   * Is this unit inside the active filial?
+   *
+   * The org chart keeps every unit even when the rest of the dashboard shows
+   * one branch — a map with half the country cut off is not a map — so this is
+   * how the page marks which subtree the other screens are counting. True
+   * everywhere when `filial=all`.
+   */
+  readonly inScope: boolean
   readonly children: readonly StructureDto[]
 }
 

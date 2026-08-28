@@ -117,6 +117,22 @@ const schema = z
         }, 'APP_TIMEZONE is not a valid IANA timezone identifier'),
     ),
 
+    /**
+     * The filial every screen defaults to.
+     *
+     * The company runs two branches and asked for one of them: "barcha
+     * malumotlar navoiy filiali uchundir … keyinchalik kerak bo'lsa toshkentni
+     * ham qo'sharmiz". That is a default, not a deletion — Тошкент онлайн stays
+     * in the database and stays selectable through `?filial=` — so it belongs
+     * in configuration, where moving the company's focus later is one line and
+     * not a search through twenty screens.
+     *
+     * Matched against the department tree case- and whitespace-tolerantly; a
+     * value that names no branch fails the first request with a 400 listing the
+     * branches that do exist, rather than silently showing the whole company.
+     */
+    DASHBOARD_DEFAULT_BRANCH: blankAsUndefined(z.string().trim().min(1).default('Навоий')),
+
     APP_DEFAULT_LOCALE: blankAsUndefined(
       z.enum(['uz', 'ru', 'en']).default('uz'),
     ),
@@ -267,3 +283,11 @@ export const env: Env = load()
 
 /** True when the app is serving generated demo data rather than live CRM data. */
 export const isDemoMode = env.DATA_SOURCE === DataSource.Demo
+
+/**
+ * The branch every screen shows unless the URL says otherwise.
+ *
+ * Exported as its own constant so callers read an intention rather than an
+ * environment variable, and so the one place that decides it stays one place.
+ */
+export const DEFAULT_BRANCH: string = env.DASHBOARD_DEFAULT_BRANCH

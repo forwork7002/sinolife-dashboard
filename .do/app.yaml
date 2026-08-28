@@ -135,6 +135,19 @@ envs:
     scope: RUN_TIME
     value: info
 
+  # --- The marketing ledger -------------------------------------------------
+  #
+  # A SECOND source, deliberately configured apart from the Bitrix24 block
+  # above. These figures come from the client's published Roistat page (their
+  # Google Sheets plus Meta Ads) and are imported by `npm run roistat:import`.
+  # Nothing here talks to the portal, and the two ledgers are never summed.
+  #
+  # Point this at a different URL and the module follows it; leave it unset and
+  # the importer uses its built-in default.
+  - key: ROISTAT_SOURCE_URL
+    scope: RUN_TIME
+    value: https://rustamov0277-cmd.github.io/roistat/
+
 services:
   - name: web
     instance_size_slug: basic-xs
@@ -142,8 +155,7 @@ services:
     http_port: 3000
 
     github:
-      # Replace with the repository this deploys from.
-      repo: CHANGE_ME/sinolife-dashboard
+      repo: forwork7002/sinolife-dashboard
       branch: main
       deploy_on_push: true
 
@@ -195,7 +207,7 @@ workers:
     instance_count: 1
 
     github:
-      repo: CHANGE_ME/sinolife-dashboard
+      repo: forwork7002/sinolife-dashboard
       branch: main
       deploy_on_push: true
 
@@ -220,7 +232,7 @@ jobs:
     kind: PRE_DEPLOY
     instance_size_slug: basic-xxs
     github:
-      repo: CHANGE_ME/sinolife-dashboard
+      repo: forwork7002/sinolife-dashboard
       branch: main
     build_command: npm ci
     run_command: npm run db:deploy
@@ -231,10 +243,29 @@ jobs:
     kind: POST_DEPLOY
     instance_size_slug: basic-xxs
     github:
-      repo: CHANGE_ME/sinolife-dashboard
+      repo: forwork7002/sinolife-dashboard
       branch: main
     build_command: npm ci && npx prisma generate
     run_command: npm run db:seed:users
+
+  # The marketing ledger's first fill.
+  #
+  # POST_DEPLOY rather than PRE_DEPLOY because it needs the schema the migrate
+  # job has just applied, and idempotent by construction (the importer replaces
+  # the rows for the dates it covers and refuses a blob that shrank), so running
+  # it on every deploy is safe. It is NOT the ongoing refresh: the source page
+  # is republished by hand, and re-importing on a timer would spend a request a
+  # minute on a file that changes once a day. Re-run it from a console session
+  # — `npm run roistat:import` — when the client republishes, or attach it to a
+  # scheduled trigger if that becomes tedious.
+  - name: import-marketing
+    kind: POST_DEPLOY
+    instance_size_slug: basic-xxs
+    github:
+      repo: forwork7002/sinolife-dashboard
+      branch: main
+    build_command: npm ci && npx prisma generate
+    run_command: npm run roistat:import
 
 databases:
   - name: db

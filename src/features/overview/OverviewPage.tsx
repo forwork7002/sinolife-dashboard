@@ -323,9 +323,28 @@ export function OverviewPage() {
               </ChartCard>
             </div>
 
+            {/*
+              THE CAPTION NAMES ITS BASIS BECAUSE A SIBLING SCREEN USES ANOTHER.
+
+              This card and the Reyting page rank the same people from the same
+              endpoint, but the API now serves TWO bases: `revenue` ranks what
+              was DELIVERED (countsAsRevenue, status WON, bucketed by closedAt),
+              while `closed_deals` / `closed_value` rank what the SELLER CLOSED,
+              counted from the history row the seller's won stage leaves behind.
+              Last August those two sets overlapped in 1 152 of 5 375 deals — so
+              a name can top one board and not the other, honestly, with no bug
+              anywhere. This card asks for `metric: 'revenue'` (see the query
+              above) and must say so, or the home screen reads as a verdict on
+              who sold the most rather than on what arrived.
+
+              The scope is stated for the same reason: the rows are the branch's
+              SELLERS, not the company and not the roster. ROPs are excluded on
+              purpose — the standings used to be led by an operations head with
+              575.7 mln who does not sell (see domain/employees/roles).
+            */}
             <ChartCard
               title={t.chart.leaderboard}
-              hint="Tushum boʻyicha. Ustunlar birinchi oʻrinning ulushiga nisbatan."
+              hint="Yetkazilgan tushum boʻyicha, faqat filial sotuvchilari — ROP va boshqa boʻlimlar hisobga olinmaydi. Ustunlar birinchi oʻrinning ulushiga nisbatan."
             >
               {!ready ? (
                 <LoadingSkeleton rows={5} />

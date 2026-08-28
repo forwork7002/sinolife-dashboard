@@ -74,6 +74,22 @@ export const filterQuerySchema = z.object({
   status: z.enum(DEAL_STATUSES).optional(),
   /** Free-text search. Bounded so it cannot become a scan of arbitrary length. */
   q: z.string().trim().min(1).max(120).optional(),
+  /**
+   * FILIAL — the branch scope, and the one filter with a non-empty default.
+   *
+   * Absent means DEFAULT_BRANCH (Навоий), not "everything": this product's
+   * default reality is one branch, and a link that loses a query parameter must
+   * not quietly widen to a company total while the page still says "Навоий
+   * filiali". `filial=all` is how a caller asks for every branch, on purpose
+   * and in the URL where it is visible and shareable.
+   *
+   * Only the SHAPE is checked here. Whether the name exists is a question about
+   * the live department tree, which this schema cannot reach — the resolver
+   * answers it (`ReferenceRepository.resolveBranchScope`) and an unknown name
+   * comes back as a 400 listing the branches that do exist. Validating it here
+   * against a hardcoded list would be a second copy of the org chart.
+   */
+  filial: z.string().trim().min(1).max(64).optional(),
 })
 
 /** Columns a client may sort by. An allowlist, never the raw parameter. */

@@ -358,7 +358,12 @@ export function ConfirmationPage() {
 function Verdict({ row }: { row: ConfirmationRowDto }) {
   // Fewer than ten resolved orders is not a pattern, and labelling it as one
   // would put someone on a list because of a slow week.
-  if (row.delivered + row.failed < 10) {
+  //
+  // A NULL delivery rate lands here too, and must: null means nothing this
+  // operator touched has resolved yet, so there is no outcome to judge. Every
+  // comparison below would read false against null and quietly award them
+  // "Oʻrtacha" — a verdict about a person, invented from an absence.
+  if (row.deliveryRate === null || row.delivered + row.failed < 10) {
     return <StatusChip tone="neutral">Maʼlumot kam</StatusChip>
   }
 

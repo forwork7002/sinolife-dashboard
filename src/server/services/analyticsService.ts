@@ -27,21 +27,56 @@ import {
 import {
   type EmployeePerformance,
   type KpiEvaluation,
-  type LeaderboardMetric,
   buildLeaderboard,
   evaluateKpi,
   overallAchievementPercent,
 } from '@/server/domain/analytics/performance'
+import {
+  type AnyLeaderboardMetric,
+  SELLER_PIPELINE_ROLES,
+  type SellerWonStage,
+  emptySellerCloseTotals,
+  isSellerCloseMetric,
+  rankBySellerClose,
+  tallySellerCloses,
+} from '@/server/domain/analytics/sellerClose'
+import {
+  type BranchScopeDto,
+  type EmployeeScopeFilter,
+  UnknownBranchError,
+  branchRequestFrom,
+  narrowEmployeeIds,
+} from '@/server/domain/employees/branches'
 import { type Period, previousEquivalent, toPeriodDto } from '@/server/domain/period/period'
+import { DEFAULT_BRANCH } from '@/server/config/env'
+import { ApiError } from '@/server/http/errors'
 import type { DealRepository, DealFilters } from '@/server/repositories/dealRepository'
 import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
+
+/**
+ * Deal filters plus the resolved FILIAL scope.
+ *
+ * `restrictToEmployeeIds` is branch ∩ authorisation, already intersected — one
+ * list that carries both restrictions, so a repository honouring this single
+ * field is automatically correct for a SALES caller too. Null means
+ * unrestricted; it is never an empty array, because every repository tests id
+ * lists with `?.length` and an empty one would read as "no filter" and widen
+ * the query to the whole company. See `NO_EMPLOYEE_IN_SCOPE`.
+ */
+export interface AnalyticsFilters extends DealFilters, EmployeeScopeFilter {}
 
 export interface AnalyticsContext {
   readonly period: Period
   readonly comparison: Period & { readonly isTruncated: boolean }
   readonly currency: string
-  readonly filters: DealFilters
+  readonly filters: AnalyticsFilters
   readonly now: Date
+}
+
+/** A context together with the scope block its response must print. */
+export interface ScopedAnalyticsContext {
+  readonly context: AnalyticsContext
+  readonly branchScope: BranchScopeDto
 }
 
 // ---------------------------------------------------------------------------
@@ -82,6 +117,91 @@ export interface KpiCardDto {
   readonly money?: MoneyDto
   readonly unit: 'money' | 'count' | 'percent'
   readonly delta: DeltaDto
+}
+
+/**
+ * One row of the standings.
+ *
+ * Named here rather than inferred so the sellers-only contract has a place to
+ * be read: every row of this type is a salesperson, never a ROP.
+ */
+export interface LeaderboardRowDto {
+  readonly rank: number
+  readonly tied: boolean
+  readonly employeeId: string
+  readonly fullName: string
+  readonly departmentName: string | null
+  readonly revenue: MoneyDto
+  readonly dealsWon: number
+  readonly conversionPercent: number | null
+  readonly kpiAchievementPercent: number | null
+  /**
+   * The SELLER-CLOSE basis, on EVERY row whichever metric is active.
+   *
+   * Deliberately not gated on `?metric=`: a reader comparing "5.7 mlrd
+   * delivered" against "4.1 mlrd closed" learns something real about the month,
+   * and a page that could only ever show one of the two would invite the reader
+   * to assume they are the same number seen from two angles. They are not — see
+   * `domain/analytics/sellerClose`.
+   *
+   * NULL means the seller pipeline's won stage could not be resolved, so
+   * nothing was measured. It never means zero. `meta.sellerCloseBasis.resolved`
+   * carries the same fact once, for the page as a whole.
+   */
+  readonly closedCount: number | null
+  readonly closedValue: MoneyDto | null
+  readonly delta: DeltaDto
+  readonly value: number | null
+}
+
+/**
+ * How the seller-close figures on this response were arrived at.
+ *
+ * Printed because the basis is a CHOICE, not a fact of the data: it counts
+ * entries into a stage resolved by pipeline ROLE, and it values them at the
+ * deal's amount as it stands today. Both of those can be wrong in ways a bare
+ * number would hide — a reconfigured portal resolving to no stage at all, an
+ * amount edited after the sale — so both are stated on every response instead
+ * of living only in a comment.
+ */
+export interface SellerCloseBasisDto {
+  /**
+   * False when no WON stage exists in any seller pipeline. Every `closedCount`
+   * and `closedValue` on the response is then null: unmeasured, not zero.
+   */
+  readonly resolved: boolean
+  /** The pipeline roles searched — how the stage was found, in one field. */
+  readonly pipelineRoles: readonly string[]
+  /** The stages that matched. `externalId` is reported, never matched on. */
+  readonly stages: readonly {
+    readonly id: string
+    readonly name: string
+    readonly externalId: string | null
+    readonly pipelineName: string | null
+  }[]
+  /**
+   * Which amount `closedValue` sums. `deal_current_amount` is the deal's value
+   * TODAY: `deal_stage_history` carries no amount, so an amount edited after
+   * the seller closed the deal moves this figure. There is no column that would
+   * let it be otherwise.
+   */
+  readonly amountBasis: 'deal_current_amount'
+}
+
+/**
+ * What the board left out, so the page can say so instead of implying it ranks
+ * everyone. A leaderboard that quietly drops 85 of 288 people and does not
+ * mention it is not more honest than one that ranks the wrong people.
+ */
+export interface LeaderboardScopeDto {
+  /** Literal, not a boolean: a future board may rank another population. */
+  readonly scope: 'sellers'
+  /** How many sellers were ranked, zeros included. */
+  readonly sellers: number
+  /** Department heads excluded — the ROPs and the other departments' heads. */
+  readonly excludedManagers: number
+  /** Everyone else excluded: registration, operations, NEWGEN, Тошкент онлайн. */
+  readonly excludedOther: number
 }
 
 export interface OverviewDto {
@@ -145,6 +265,30 @@ function percentCard(
   }
 }
 
+/**
+ * Describe the seller-close basis for the response meta.
+ *
+ * `resolved` is `stages.length > 0` and nothing subtler: the repository asked
+ * for the WON stages of the pipelines carrying `SELLER_PIPELINE_ROLES`, and an
+ * empty answer means the portal no longer has one — a reconfiguration, a role
+ * reassigned, a funnel retired. Every closed figure on the response is null in
+ * that state, so this flag is how a page knows to say "oʻlchab boʻlmadi"
+ * instead of drawing a row of zeros.
+ */
+function toSellerCloseBasisDto(stages: readonly SellerWonStage[]): SellerCloseBasisDto {
+  return {
+    resolved: stages.length > 0,
+    pipelineRoles: [...SELLER_PIPELINE_ROLES],
+    stages: stages.map((stage) => ({
+      id: stage.id,
+      name: stage.name,
+      externalId: stage.externalId,
+      pipelineName: stage.pipelineName,
+    })),
+    amountBasis: 'deal_current_amount',
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 export class AnalyticsService {
@@ -157,10 +301,62 @@ export class AnalyticsService {
   static context(
     period: Period,
     currency: string,
-    filters: DealFilters,
+    filters: AnalyticsFilters,
     now: Date,
   ): AnalyticsContext {
     return { period, comparison: previousEquivalent(period), currency, filters, now }
+  }
+
+  /**
+   * The same context, with the FILIAL scope resolved into it.
+   *
+   * This is what a route should call. It does three things a route must not be
+   * trusted to remember:
+   *
+   *  1. Applies the DEFAULT branch when `?filial=` is absent. Absent is not
+   *     "all" — see the schema note in `http/queryParams`.
+   *  2. INTERSECTS the branch with the caller's authorisation scope. Two
+   *     restrictions narrow; they never widen. A SALES user opening the Навоий
+   *     view sees themselves inside Навоий, and a Тошкент salesperson opening
+   *     it sees nothing — not their own numbers under someone else's heading.
+   *     `scope` is still spread AFTER the query, so a hand-written query string
+   *     cannot dislodge `restrictToEmployeeId` either.
+   *  3. Turns an unknown branch name into a 400 that lists the real ones,
+   *     rather than a full-company answer labelled with a branch that does not
+   *     exist.
+   */
+  async scopedContext(
+    period: Period,
+    currency: string,
+    query: DealFilters & { readonly filial?: string },
+    scope: { readonly restrictToEmployeeId?: string },
+    now: Date,
+  ): Promise<ScopedAnalyticsContext> {
+    const request = branchRequestFrom(query.filial, DEFAULT_BRANCH)
+
+    const resolved = await this.reference
+      .resolveBranchScope(request, scope.restrictToEmployeeId)
+      .catch((error: unknown) => {
+        if (error instanceof UnknownBranchError) {
+          throw ApiError.validation('Bunday filial yoʻq.', [
+            {
+              path: 'filial',
+              message: `Mavjud filiallar: ${error.known.join(', ')} yoki "all".`,
+            },
+          ])
+        }
+        throw error
+      })
+
+    return {
+      context: AnalyticsService.context(
+        period,
+        currency,
+        { ...query, ...scope, restrictToEmployeeIds: resolved.employeeIds },
+        now,
+      ),
+      branchScope: resolved.meta,
+    }
   }
 
   /** One query covering both the current and comparison windows. */
@@ -178,7 +374,17 @@ export class AnalyticsService {
     const current = summarizeDeals(all, ctx.period, ctx.currency)
     const previous = summarizeDeals(all, ctx.comparison, ctx.currency)
 
-    const kpis = await this.reference.findKpisForPeriod(ctx.period)
+    /**
+     * Targets follow the scope, or the headline scores one branch's results
+     * against two branches' quotas. `findKpisForPeriod` narrows in SQL when
+     * given ids; a company-wide target (`employeeId: null`) is not a branch
+     * target and drops out with them. The table holds no rows at all today, so
+     * this is the shape being right rather than a number changing.
+     */
+    const kpis = await this.reference.findKpisForPeriod(
+      ctx.period,
+      ctx.filters.restrictToEmployeeIds ?? undefined,
+    )
     const evaluations = kpis.map((kpi) =>
       evaluateKpi(
         kpi,
@@ -213,7 +419,15 @@ export class AnalyticsService {
       ],
       trend,
       kpiAchievementPercent: overallAchievementPercent(evaluations),
-      activeEmployees: employees.filter((e) => e.isActive).length,
+      // In-scope headcount, not company headcount: this tile sits beside
+      // branch-scoped revenue and would otherwise count 288 people against
+      // 109 people's numbers.
+      activeEmployees: employees.filter(
+        (e) =>
+          e.isActive &&
+          (!ctx.filters.restrictToEmployeeIds ||
+            ctx.filters.restrictToEmployeeIds.includes(e.id)),
+      ).length,
       lastSyncedAt: lastSyncedAt?.toISOString() ?? null,
     }
   }
@@ -342,12 +556,38 @@ export class AnalyticsService {
       departmentName: string | null
       isActive: boolean
       kpiAchievementPercent: number | null
+      /**
+       * Deals this employee CLOSED in the period, and their value.
+       *
+       * A second basis alongside `current.revenue`, never a replacement for it:
+       * revenue is what was delivered, this is what the seller closed, and last
+       * August the two sets overlapped in only 1 152 of 5 375 deals. Null means
+       * the basis could not be resolved — see `sellerCloseBasis` below.
+       *
+       * Current period only, and top-level rather than inside `current`, because
+       * `SalesSummary` is the delivered-revenue summary and folding a different
+       * basis into it is exactly the silent blend this work exists to prevent.
+       */
+      closedCount: number | null
+      closedValue: MoneyDto | null
     })[]
+    /** How the two fields above were arrived at. Printed on every response. */
+    sellerCloseBasis: SellerCloseBasisDto
   }> {
-    const [all, roster] = await Promise.all([
+    const [all, roster, closes] = await Promise.all([
       this.load(ctx),
       this.reference.findEmployees(),
+      /**
+       * The seller-close basis rides the SAME filters as the deal load, so the
+       * branch scope, the department filter and a SALES caller's own-row
+       * restriction narrow both bases identically. A figure that honoured one
+       * filter and not the other would be worse than no figure.
+       */
+      this.deals.findSellerCloses([ctx.period, ctx.comparison], ctx.filters),
     ])
+
+    const sellerCloseBasis = toSellerCloseBasisDto(closes.stages)
+    const closedByEmployee = tallySellerCloses(closes.events, ctx.period, ctx.currency)
 
     /**
      * Narrow the roster by BOTH filters the caller can set.
@@ -371,9 +611,22 @@ export class AnalyticsService {
         )
       : pickedEmployees
 
-    const scoped = restrictToEmployeeId
-      ? requested.filter((e) => e.id === restrictToEmployeeId)
+    /**
+     * The FILIAL narrows the roster too, not only the deals.
+     *
+     * The deal query is scoped in SQL, so an out-of-branch person would already
+     * carry no revenue — but they would still be a ROW, and a table of 288
+     * people with 179 zeros under a heading that says "Навоий filiali" is a
+     * different lie from the one the scope was built to stop. Null means
+     * unrestricted; a non-null list is never empty.
+     */
+    const inBranch = ctx.filters.restrictToEmployeeIds
+      ? requested.filter((e) => ctx.filters.restrictToEmployeeIds!.includes(e.id))
       : requested
+
+    const scoped = restrictToEmployeeId
+      ? inBranch.filter((e) => e.id === restrictToEmployeeId)
+      : inBranch
 
     const { employeePerformance } = await import('@/server/domain/analytics/performance')
     const performance = employeePerformance(
@@ -430,6 +683,16 @@ export class AnalyticsService {
     return {
       rows: performance.map((row) => {
         const employee = meta.get(row.employeeId)!
+        /**
+         * Absent from the tally is a real zero — this seller closed nothing in
+         * the window — but only once the basis resolved. An UNRESOLVED basis
+         * measured nobody, and printing zero for all of them would read as a
+         * company that stopped selling.
+         */
+        const closed = sellerCloseBasis.resolved
+          ? (closedByEmployee.get(row.employeeId) ?? emptySellerCloseTotals(ctx.currency))
+          : null
+
         return {
           ...row,
           current: summaryDto(row.current),
@@ -442,42 +705,187 @@ export class AnalyticsService {
           kpiAchievementPercent: overallAchievementPercent(
             byEmployee.get(row.employeeId) ?? [],
           ),
+          closedCount: closed === null ? null : closed.closedCount,
+          closedValue: closed === null ? null : toMoneyDto(closed.closedValue),
         }
       }),
+      sellerCloseBasis,
     }
   }
 
-  async leaderboard(ctx: AnalyticsContext, metric: LeaderboardMetric) {
-    const { rows } = await this.employees(ctx)
+  /**
+   * The standings — SELLERS ONLY.
+   *
+   * WHAT THIS FIXES
+   * The board used to rank the entire 288-person roster, and the entire roster
+   * is not a sales force. First place over the last thirty days was the head of
+   * Операцион with 575.7 mln and second was a ROP with 235.3 mln; the best
+   * seller on the page, 154 Marjona Xayrullayeva with 217.6 mln, was third on a
+   * ranking that exists to find her. Managers carry their team's closed deals,
+   * so on any revenue metric they will always outrank the people who did the
+   * selling. The rule that excludes them is documented in
+   * `@/server/domain/employees/roles`.
+   *
+   * WHY THE ROSTER IS FETCHED FIRST
+   * `employees()` already narrows by `filters.employeeIds`, so handing it the
+   * seller ids narrows both the roster AND the deal query — Postgres stops
+   * loading deals belonging to people who cannot appear. Everything downstream
+   * then works on sellers only: `buildLeaderboard` numbers 1..n with no holes,
+   * ties keep sharing a rank, and `teamSharePercent` becomes a share of what
+   * the SELLERS earned rather than of a total inflated by their managers.
+   */
+  async leaderboard(
+    ctx: AnalyticsContext,
+    metric: AnyLeaderboardMetric,
+  ): Promise<{
+    rows: readonly LeaderboardRowDto[]
+    scope: LeaderboardScopeDto
+    sellerCloseBasis: SellerCloseBasisDto
+  }> {
+    /**
+     * The board ranks the BRANCH, not the company.
+     *
+     * The scope is folded into the roster's own id filter rather than applied
+     * afterwards, for the same reason the seller rule is: rank after filtering,
+     * or the standings read 1, 3, 4, 7 with a hole wherever an out-of-branch
+     * name was removed. It also makes the excluded counts describe the branch —
+     * "103 sotuvchi, 6 rahbar" is about Навоий, not about all seventeen ROPs.
+     */
+    const roster = await this.deals.findLeaderboardRoster({
+      departmentIds: ctx.filters.departmentIds,
+      employeeIds: narrowEmployeeIds(
+        ctx.filters.employeeIds,
+        ctx.filters.restrictToEmployeeIds ?? null,
+      ),
+    })
+
+    const scope: LeaderboardScopeDto = {
+      scope: 'sellers',
+      sellers: roster.sellers.length,
+      excludedManagers: roster.excludedManagers,
+      excludedOther: roster.excludedOther,
+    }
+
+    // An empty id list would mean "no employee filter" to employees(), which
+    // would rank the whole company — the exact bug this method removes. A
+    // filter that matches nobody must produce nobody.
+    //
+    // The basis is still resolved and still reported on the empty board: "no
+    // seller matched these filters" and "the seller stage no longer exists" are
+    // different failures and the page has to be able to tell them apart.
+    if (roster.sellers.length === 0) {
+      return {
+        rows: [],
+        scope,
+        sellerCloseBasis: toSellerCloseBasisDto(await this.deals.findSellerWonStages()),
+      }
+    }
+
+    const { rows, sellerCloseBasis } = await this.employees({
+      ...ctx,
+      filters: { ...ctx.filters, employeeIds: roster.sellers.map((s) => s.id) },
+    })
 
     const achievement = new Map<string, number | null>(
       rows.map((r) => [r.employeeId, r.kpiAchievementPercent]),
     )
 
-    const board = buildLeaderboard(rows, metric, achievement)
+    /**
+     * ONE metric, and the two bases are ranked by their own code paths.
+     *
+     * `closed_deals` / `closed_value` rank what the SELLER CLOSED; the other
+     * four rank what was DELIVERED. Nothing here averages, falls back or
+     * substitutes: a request for a seller-close ranking that cannot be measured
+     * comes back with null values and `sellerCloseBasis.resolved = false`,
+     * never as a delivered-revenue board wearing the other label.
+     */
+    const board = isSellerCloseMetric(metric)
+      ? rankBySellerClose(rows, metric)
+      : buildLeaderboard(rows, metric, achievement)
+
     const names = new Map(rows.map((r) => [r.employeeId, r]))
 
-    return board.map((entry) => {
-      const row = names.get(entry.employeeId)!
-      return {
-        rank: entry.rank,
-        tied: entry.tied,
-        employeeId: entry.employeeId,
-        fullName: row.fullName,
-        departmentName: row.departmentName,
-        // Already DTO form — employees() crossed it.
-        revenue: row.current.revenue,
-        dealsWon: row.current.dealsWon,
-        conversionPercent:
-          row.current.conversionRatePercent === null
-            ? null
-            : roundPercent(row.current.conversionRatePercent),
-        kpiAchievementPercent:
-          row.kpiAchievementPercent === null ? null : roundPercent(row.kpiAchievementPercent),
-        delta: row.revenueDelta,
-        value: entry.value,
-      }
-    })
+    return {
+      rows: board.map((entry) => {
+        const row = names.get(entry.employeeId)!
+        return {
+          rank: entry.rank,
+          tied: entry.tied,
+          employeeId: entry.employeeId,
+          fullName: row.fullName,
+          departmentName: row.departmentName,
+          // Already DTO form — employees() crossed it.
+          revenue: row.current.revenue,
+          dealsWon: row.current.dealsWon,
+          conversionPercent:
+            row.current.conversionRatePercent === null
+              ? null
+              : roundPercent(row.current.conversionRatePercent),
+          kpiAchievementPercent:
+            row.kpiAchievementPercent === null ? null : roundPercent(row.kpiAchievementPercent),
+          // Both bases on every row, whichever one `metric` ranked by.
+          closedCount: row.closedCount,
+          closedValue: row.closedValue,
+          // Still the DELIVERED-revenue delta, on every metric. The comparison
+          // window has no seller-close delta yet; inventing one from a
+          // different basis would be the blend this module refuses.
+          delta: row.revenueDelta,
+          value: entry.value,
+        }
+      }),
+      scope,
+      sellerCloseBasis,
+    }
+  }
+
+  /**
+   * The scope facts, shaped for `meta` rather than for `data`.
+   *
+   * `data` stays a bare array of rows because the overview page reads this same
+   * endpoint as `LeaderboardRowDto[]` and slices it — wrapping the rows in an
+   * object to make room for the scope would break that page at runtime while
+   * typechecking cleanly. `meta` is where a response describes itself, and the
+   * envelope already carries the period the same way.
+   *
+   * Returned as its own object so the route can SPREAD it into the handler's
+   * `Partial<ResponseMeta>`: `ResponseMeta` in `server/http/envelope.ts` does
+   * not yet declare `leaderboardScope`, and only a spread gets an undeclared
+   * key past the excess-property check. The client mirror in `lib/api.ts` does
+   * declare it, so the UI reads it typed. Adding the same optional line to the
+   * server interface would close the gap and let this be a plain literal.
+   */
+  static leaderboardScopeMeta(scope: LeaderboardScopeDto) {
+    return { leaderboardScope: scope }
+  }
+
+  /**
+   * The FILIAL facts, shaped for `meta` — spread, for the same reason.
+   *
+   * Every scoped response carries this, because the scope removes ~59% of last
+   * month's revenue from every total and a reader who does not know that will
+   * conclude the dashboard is broken. `employees` plus the five `excluded`
+   * buckets sum to the whole roster, so the block answers "where did the other
+   * 179 people go" rather than merely asserting a branch.
+   *
+   * `ResponseMeta` in `server/http/envelope.ts` does not declare
+   * `branchScope` — only a spread gets an undeclared key past the
+   * excess-property check — while the client mirror in `lib/api.ts` does, so
+   * the UI reads it typed. Adding the optional line to the server interface
+   * would close the gap for both this and `leaderboardScope`.
+   */
+  static branchScopeMeta(scope: BranchScopeDto) {
+    return { branchScope: scope }
+  }
+
+  /**
+   * The seller-close basis, shaped for `meta` — spread, for the same reason.
+   *
+   * It belongs in meta rather than on the rows because it describes the whole
+   * response: which stage was resolved, from which pipeline role, and which
+   * amount was summed. A row can only say "null"; this says why.
+   */
+  static sellerCloseBasisMeta(basis: SellerCloseBasisDto) {
+    return { sellerCloseBasis: basis }
   }
 
   /** Serialisable period metadata for the response envelope. */
