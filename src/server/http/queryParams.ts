@@ -14,7 +14,11 @@
 import { z } from 'zod'
 
 import { PERIOD_PRESETS } from '@/server/domain/period/period'
-import { DEAL_STATUSES } from '@/server/domain/types'
+import {
+  CONFIRMATION_ORDER_SORTS,
+  CONFIRMATION_OUTCOMES,
+  DEAL_STATUSES,
+} from '@/server/domain/types'
 
 /** Comma-separated ids -> string[]. Empty entries dropped. */
 const idList = z
@@ -115,11 +119,52 @@ export const dealsQuerySchema = periodQuerySchema
   .and(filterQuerySchema)
   .and(paginationQuerySchema)
 
+/**
+ * The confirmation queue's own page contract.
+ *
+ * It cannot ride `paginationQuerySchema`: that one's sort allowlist is the
+ * deal table's columns, and this list is ordered by when an order entered the
+ * queue — a column no deal query has.
+ */
+export const confirmationOrdersQuerySchema = periodQuerySchema
+  .and(filterQuerySchema)
+  .and(
+    z.object({
+      page: z.coerce.number().int().min(1).max(10_000).default(1),
+      pageSize: z.coerce.number().int().min(1).max(200).default(25),
+      sort: z.enum(CONFIRMATION_ORDER_SORTS).default('queuedAt'),
+      order: z.enum(['asc', 'desc']).default('desc'),
+      /**
+       * Any subset of the five states, comma-separated. Absent means all.
+       *
+       * A list rather than one value because the states are read in
+       * combinations on the floor — "everything that did not get through" is
+       * three of them at once, and making that three separate page loads is
+       * making the reader do the union in their head.
+       */
+      outcomes: z
+        .string()
+        .optional()
+        .transform((value) =>
+          value
+            ? value
+                .split(',')
+                .map((part) => part.trim())
+                .filter((part) => part.length > 0)
+            : undefined,
+        )
+        .pipe(z.array(z.enum(CONFIRMATION_OUTCOMES)).min(1).max(5).optional()),
+      /** A single ROP group by name. Bounded: it reaches SQL as a parameter. */
+      rop: z.string().trim().min(1).max(64).optional(),
+    }),
+  )
+
 export type PeriodQuery = z.infer<typeof periodQuerySchema>
 export type FilterQuery = z.infer<typeof filterQuerySchema>
 export type PaginationQuery = z.infer<typeof paginationQuerySchema>
 export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>
 export type DealsQuery = z.infer<typeof dealsQuerySchema>
+export type ConfirmationOrdersQuery = z.infer<typeof confirmationOrdersQuerySchema>
 
 /** Flatten URLSearchParams to a plain object, keeping the last value per key. */
 export function searchParamsToObject(params: URLSearchParams): Record<string, string> {

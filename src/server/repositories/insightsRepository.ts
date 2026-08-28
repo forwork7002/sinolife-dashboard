@@ -34,6 +34,11 @@
 import type { PrismaClient } from '@/generated/prisma/client'
 import { env } from '@/server/config/env'
 import type { Period } from '@/server/domain/period/period'
+import {
+  CONFIRMATION_OUTCOMES,
+  type ConfirmationOrderSortValue,
+  type ConfirmationOutcomeValue,
+} from '@/server/domain/types'
 
 /** A money column as Postgres returns it: text, to survive the driver. */
 type MoneyText = string | null
@@ -137,6 +142,64 @@ export interface ConfirmationWindow {
   readonly unconfirmedOpen: number
   /** Never reached it and is already resolved — genuinely skipped. */
   readonly unconfirmedClosed: number
+}
+
+/** One order in the Тасдиклаш queue, in the column order the floor reads. */
+export interface ConfirmationOrderRow {
+  readonly dealId: string
+  /** РОП — the sales group, as the team names it: "Sevinch", "Lola", "Baza". */
+  readonly rop: string | null
+  /** № — the order's place in ITS ROP's day. Restarts at 1 each morning. */
+  readonly dailyNo: number
+  /** Id сделки — the Bitrix24 deal id, the key both systems look an order up by. */
+  readonly bitrixId: string | null
+  /** `bx…` code parsed from the title, where the title carries one. */
+  readonly orderCode: string | null
+  readonly title: string
+  readonly customerName: string | null
+  readonly customerPhone: string | null
+  readonly employeeName: string
+  /** Продукт — one entry per line item, "name - N ta". */
+  readonly products: readonly string[]
+  readonly region: string | null
+  readonly deliveryAddress: string | null
+  readonly amountMinor: bigint
+  readonly currency: string
+  /** The stage the deal sits in NOW, which is what the outcome was read from. */
+  readonly stageName: string
+  readonly outcome: ConfirmationOutcomeValue
+  readonly queuedAt: Date
+  /** When it left the queue. Null while it is still in one. */
+  readonly decidedAt: Date | null
+  /** Queue time in hours, one decimal. Null while it is still waiting. */
+  readonly hoursToDecide: number | null
+}
+
+/** How many orders ended in each of the five states. */
+export type ConfirmationOutcomeTotals = Readonly<Record<ConfirmationOutcomeValue, number>>
+
+/** One ROP group's slice of the queue — the Статистика panel's row. */
+export interface ConfirmationRopRow {
+  readonly rop: string
+  readonly orders: number
+  readonly confirmed: number
+  readonly noAnswer: number
+  readonly rejected: number
+  readonly pending: number
+  readonly unconfirmedShipped: number
+}
+
+export interface ConfirmationOrderQuery {
+  /** Any subset of the five states. Undefined or empty means all of them. */
+  readonly outcomes?: readonly ConfirmationOutcomeValue[]
+  /** A single ROP group ("Sevinch"), or undefined for all of them. */
+  readonly rop?: string
+  /** Free text over name, phone, product, Bitrix id, order code and title. */
+  readonly q?: string
+  readonly page: number
+  readonly pageSize: number
+  readonly sort: ConfirmationOrderSortValue
+  readonly order: 'asc' | 'desc'
 }
 
 
@@ -755,6 +818,401 @@ export class InsightsRepository {
       orders: int(row?.orders ?? 0n),
       unconfirmedOpen: int(row?.unconfirmed_open ?? 0n),
       unconfirmedClosed: int(row?.unconfirmed_closed ?? 0n),
+    }
+  }
+
+  /**
+   * Every order that entered the Тасдиклаш queue, one row each.
+   *
+   * The queue read as a LIST rather than as a per-operator scorecard. Both
+   * answer real questions, and they are different questions: the scorecard
+   * asks who works their queue, this asks what happened to the orders.
+   *
+   * THE COHORT IS ENTRY INTO THE QUEUE. `Заказ тасдиклаш` (C4:NEW) is the
+   * starting point of the process, exactly as the Telegram bot treats it, so
+   * an order belongs to the window in which it was QUEUED — not the window in
+   * which it happened to be delivered weeks later.
+   *
+   * HOW EACH STATE IS DECIDED, and why from history rather than from the
+   * deal's current stage alone: a delivered order left these stages months
+   * ago, and its stage today says nothing about what the operator did.
+   *
+   *   ✅ CONFIRMED            the deal reached a revenue pipeline (Доставка)
+   *                           or the queue's own `Сделка успешна`. Arrival in
+   *                           Доставка is what the bot treats as confirmed,
+   *                           because that is the move an operator makes once
+   *                           the customer has said yes.
+   *   🟣 UNCONFIRMED_SHIPPED  the same, but `Тастиклаш анализ` on the deal
+   *                           says `Недозвон булиб чикарилган` — it shipped
+   *                           without anyone reaching the customer. It also
+   *                           catches orders that left the queue in no
+   *                           recognised direction, which says the same thing.
+   *   ❌ REJECTED             the deal hit `Ошибка первичный отдел`. Read from
+   *                           history on purpose: Bitrix24 immediately moves
+   *                           such a deal into Первичный отдел, so its CURRENT
+   *                           stage never admits to it.
+   *   🕔 CONFIRM_NEW          still sitting in `Заказ тасдиклаш`.
+   *   🟡 NO_ANSWER            still on a chase stage — `Недозвон смс`,
+   *                           `Пропущенный`, the SMS stages.
+   *
+   * THE LAST MOVE WINS, and this cost two percentage points to get right.
+   * The precedence used to be "an outcome the order actually reached beats
+   * where it is parked now", so an order that went to Доставка and was later
+   * stamped `Ошибка первичный отдел` still read as confirmed. The client's bot
+   * keys on MOVED_TIME and takes the latest stage change instead, and the bot
+   * is right: of the 56 August orders where the two rules disagreed, NONE was
+   * ever delivered — 49 sat open and 7 were lost. Against the client's own
+   * dashboard for 26.08.2026 (116 orders, 100 confirmed, 16 rejected) the old
+   * rule produced 101 confirmed and 14 rejected; this one produces 99 and 16.
+   *
+   * № AND РОП COME FROM HERE TOO, because they are properties of the queue
+   * rather than of the deal. The client's floor numbers orders per ROP per
+   * day — Sevinch's 21st order of the 26th — which is why the window function
+   * partitions by both, in Tashkent time and not UTC.
+   */
+  private static readonly QUEUE_SQL = `
+    WITH queued AS (
+      SELECT h."dealId" AS deal_id, min(h."enteredAt") AS queued_at
+        FROM "deal_stage_history" h
+        JOIN "deal_stage" s ON s."id" = h."stageId"
+        JOIN "pipeline" p ON p."id" = s."pipelineId"
+       WHERE s."logisticsRole" = 'PENDING_CONFIRM' AND p."role" = 'CONFIRMATION'
+       GROUP BY h."dealId"
+      HAVING min(h."enteredAt") >= $1 AND min(h."enteredAt") < $2
+    ),
+    trail AS (
+      SELECT
+        h."dealId" AS deal_id,
+        bool_or(p."role" = 'REVENUE') AS shipped,
+        bool_or(p."role" = 'CONFIRMATION' AND s."logisticsRole" = 'CONFIRMED') AS said_yes,
+        bool_or(p."role" = 'CONFIRMATION' AND s."logisticsRole" = 'CANCELLED_EARLY') AS killed,
+        -- The two timestamps the precedence turns on: the last time the order
+        -- moved TOWARDS delivery, and the last time it was killed in the queue.
+        max(h."enteredAt") FILTER (
+          WHERE p."role" = 'REVENUE'
+             OR (p."role" = 'CONFIRMATION' AND s."logisticsRole" = 'CONFIRMED')
+        ) AS last_yes_at,
+        max(h."enteredAt") FILTER (
+          WHERE p."role" = 'CONFIRMATION' AND s."logisticsRole" = 'CANCELLED_EARLY'
+        ) AS last_kill_at,
+        -- When it left the queue. Only moves at or after the queue entry
+        -- count: an order that was already in Доставка once and came BACK
+        -- would otherwise report a negative waiting time.
+        min(h."enteredAt") FILTER (
+          WHERE h."enteredAt" >= q.queued_at
+            AND (
+              p."role" = 'REVENUE'
+              OR (p."role" = 'CONFIRMATION' AND s."logisticsRole" IN ('CONFIRMED', 'CANCELLED_EARLY'))
+            )
+        ) AS left_queue_at
+      FROM "deal_stage_history" h
+      JOIN "deal_stage" s ON s."id" = h."stageId"
+      LEFT JOIN "pipeline" p ON p."id" = s."pipelineId"
+      JOIN queued q ON q.deal_id = h."dealId"
+      GROUP BY h."dealId"
+    ),
+    classified AS (
+      SELECT
+        d."id" AS deal_id,
+        q.queued_at,
+        t.left_queue_at AS decided_at,
+        /*
+          РОП is the department's OWN name with the marker stripped, not its
+          head's full name. The client's dashboards print "Sevinch", and the
+          head of Sevinch(ROP) is "Usmonova 199 Sevinch" — a different string,
+          and the one nobody on the floor uses.
+        */
+        NULLIF(btrim(replace(dep."name", '(ROP)', '')), '') AS rop,
+        CASE
+          WHEN COALESCE(t.killed, false)
+               AND (t.last_yes_at IS NULL OR t.last_kill_at > t.last_yes_at)  THEN 'REJECTED'
+          WHEN (COALESCE(t.shipped, false) OR COALESCE(t.said_yes, false))
+               AND d."confirmStatus" = 'UNREACHABLE'                          THEN 'UNCONFIRMED_SHIPPED'
+          WHEN COALESCE(t.shipped, false) OR COALESCE(t.said_yes, false)      THEN 'CONFIRMED'
+          WHEN COALESCE(t.killed, false)                                      THEN 'REJECTED'
+          WHEN curp."role" = 'CONFIRMATION'
+               AND cur."logisticsRole" = 'PENDING_CONFIRM'                    THEN 'CONFIRM_NEW'
+          WHEN curp."role" = 'CONFIRMATION'
+               AND cur."logisticsRole" = 'CHASING'                            THEN 'NO_ANSWER'
+          ELSE 'UNCONFIRMED_SHIPPED'
+        END AS outcome
+      FROM queued q
+      JOIN "deal" d ON d."id" = q.deal_id
+      JOIN "employee" e ON e."id" = d."employeeId"
+      LEFT JOIN "department" dep ON dep."id" = e."departmentId"
+      JOIN "deal_stage" cur ON cur."id" = d."stageId"
+      LEFT JOIN "pipeline" curp ON curp."id" = cur."pipelineId"
+      LEFT JOIN trail t ON t.deal_id = d."id"
+    ),
+    numbered AS (
+      SELECT
+        c.*,
+        -- Tashkent, not UTC: the working day is the thing being counted, and
+        -- five hours of it would otherwise be numbered into yesterday.
+        row_number() OVER (
+          PARTITION BY c.rop, (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date
+          ORDER BY c.queued_at ASC, c.deal_id ASC
+        )::int AS daily_no
+      FROM classified c
+    )
+  `
+
+  /** How the window's queue split across the five states. */
+  async confirmationOutcomes(
+    period: Period,
+    filter: { rop?: string; q?: string } = {},
+  ): Promise<ConfirmationOutcomeTotals> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { outcome: ConfirmationOutcomeValue; orders: bigint }[]
+    >(
+      `${InsightsRepository.QUEUE_SQL}
+       SELECT c.outcome, count(*)::bigint AS orders
+         FROM numbered c
+         JOIN "deal" d ON d."id" = c.deal_id
+         LEFT JOIN "customer" cust ON cust."id" = d."customerId"
+        WHERE ($3::text IS NULL OR c.rop = $3)
+          ${InsightsRepository.SEARCH_SQL('$4')}
+        GROUP BY c.outcome`,
+      period.start,
+      period.end,
+      filter.rop ?? null,
+      filter.q ?? null,
+    )
+
+    // Every state is present with a zero rather than absent. A state missing
+    // from the payload would render as an em dash — "not measured" — when the
+    // truth is "measured, and none".
+    const totals = Object.fromEntries(
+      CONFIRMATION_OUTCOMES.map((outcome) => [outcome, 0]),
+    ) as Record<ConfirmationOutcomeValue, number>
+
+    for (const row of rows) totals[row.outcome] = int(row.orders)
+
+    return totals
+  }
+
+  /**
+   * The search box, as one predicate.
+   *
+   * Shared verbatim between the list and its tiles so a search can never
+   * narrow the rows and leave the counts above them describing a wider set.
+   * The product term needs its own EXISTS: a deal carries up to four line
+   * items and joining them in would multiply the row.
+   */
+  private static SEARCH_SQL(param: string): string {
+    return `
+          AND (
+            ${param}::text IS NULL
+            OR d."title" ILIKE '%' || ${param} || '%'
+            OR d."orderCode" ILIKE '%' || ${param} || '%'
+            OR d."externalId" ILIKE '%' || ${param} || '%'
+            OR d."deliveryAddress" ILIKE '%' || ${param} || '%'
+            OR cust."name" ILIKE '%' || ${param} || '%'
+            OR cust."phone" ILIKE '%' || ${param} || '%'
+            OR EXISTS (
+              SELECT 1 FROM "deal_item" di
+                JOIN "product" pr ON pr."id" = di."productId"
+               WHERE di."dealId" = d."id" AND pr."name" ILIKE '%' || ${param} || '%'
+            )
+          )`
+  }
+
+  /**
+   * The queue broken down by ROP group.
+   *
+   * The one cut this page cannot make from the row list: a ROP's rate is a
+   * statement about their whole day, and the table in front of the reader is
+   * twenty-five rows of it. Follows the search box and the state filter is
+   * deliberately NOT applied — the panel exists to compare states across
+   * groups, which a state filter would collapse.
+   */
+  async confirmationByRop(
+    period: Period,
+    filter: { q?: string } = {},
+  ): Promise<ConfirmationRopRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        rop: string | null
+        orders: bigint
+        confirmed: bigint
+        no_answer: bigint
+        rejected: bigint
+        pending: bigint
+        unconfirmed_shipped: bigint
+      }[]
+    >(
+      `${InsightsRepository.QUEUE_SQL}
+       SELECT
+         c.rop AS rop,
+         count(*)::bigint AS orders,
+         count(*) FILTER (WHERE c.outcome = 'CONFIRMED')::bigint AS confirmed,
+         count(*) FILTER (WHERE c.outcome = 'NO_ANSWER')::bigint AS no_answer,
+         count(*) FILTER (WHERE c.outcome = 'REJECTED')::bigint AS rejected,
+         count(*) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::bigint AS pending,
+         count(*) FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::bigint AS unconfirmed_shipped
+       FROM numbered c
+       JOIN "deal" d ON d."id" = c.deal_id
+       LEFT JOIN "customer" cust ON cust."id" = d."customerId"
+      WHERE c.rop IS NOT NULL
+        ${InsightsRepository.SEARCH_SQL('$3')}
+      GROUP BY c.rop
+      ORDER BY orders DESC`,
+      period.start,
+      period.end,
+      filter.q ?? null,
+    )
+
+    return rows
+      .filter((r): r is typeof r & { rop: string } => r.rop !== null)
+      .map((r) => ({
+        rop: r.rop,
+        orders: int(r.orders),
+        confirmed: int(r.confirmed),
+        noAnswer: int(r.no_answer),
+        rejected: int(r.rejected),
+        pending: int(r.pending),
+        unconfirmedShipped: int(r.unconfirmed_shipped),
+      }))
+  }
+
+  /** Every ROP group that has orders in the window, for the filter. */
+  async confirmationRops(period: Period): Promise<string[]> {
+    const rows = await this.prisma.$queryRawUnsafe<{ rop: string | null }[]>(
+      `${InsightsRepository.QUEUE_SQL}
+       SELECT DISTINCT c.rop FROM numbered c WHERE c.rop IS NOT NULL ORDER BY c.rop`,
+      period.start,
+      period.end,
+    )
+
+    return rows.map((r) => r.rop).filter((r): r is string => r !== null)
+  }
+
+  /** One page of the queue, newest first by default. */
+  async confirmationOrders(
+    period: Period,
+    query: ConfirmationOrderQuery,
+  ): Promise<{ totalItems: number; rows: ConfirmationOrderRow[] }> {
+    // Allowlisted, never interpolated from the request: this reaches SQL.
+    const sortColumn: Record<ConfirmationOrderSortValue, string> = {
+      queuedAt: 'c.queued_at',
+      decidedAt: 'c.decided_at',
+      amountMinor: 'd."amountMinor"',
+      title: 'd."title"',
+    }
+    const direction = query.order === 'asc' ? 'ASC' : 'DESC'
+    const offset = (query.page - 1) * query.pageSize
+
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        deal_id: string
+        rop: string | null
+        daily_no: number
+        bitrix_id: string | null
+        order_code: string | null
+        title: string
+        customer_name: string | null
+        customer_phone: string | null
+        employee_name: string
+        products: string | null
+        region: string | null
+        delivery_address: string | null
+        amount_minor: MoneyText
+        currency: string
+        stage_name: string
+        outcome: ConfirmationOutcomeValue
+        queued_at: Date
+        decided_at: Date | null
+        total_items: bigint
+      }[]
+    >(
+      `${InsightsRepository.QUEUE_SQL}
+       SELECT
+         d."id" AS deal_id,
+         c.rop AS rop,
+         c.daily_no AS daily_no,
+         d."externalId" AS bitrix_id,
+         d."orderCode" AS order_code,
+         d."title" AS title,
+         cust."name" AS customer_name,
+         cust."phone" AS customer_phone,
+         e."fullName" AS employee_name,
+         items.products AS products,
+         d."region" AS region,
+         d."deliveryAddress" AS delivery_address,
+         d."amountMinor"::text AS amount_minor,
+         d."currency" AS currency,
+         st."name" AS stage_name,
+         c.outcome AS outcome,
+         c.queued_at AS queued_at,
+         c.decided_at AS decided_at,
+         -- The unpaged count, carried on the rows themselves. A second
+         -- COUNT query would run this whole CTE twice.
+         (count(*) OVER ())::bigint AS total_items
+       FROM numbered c
+       JOIN "deal" d ON d."id" = c.deal_id
+       JOIN "employee" e ON e."id" = d."employeeId"
+       JOIN "deal_stage" st ON st."id" = d."stageId"
+       LEFT JOIN "customer" cust ON cust."id" = d."customerId"
+       -- LATERAL, not a join: four line items would otherwise become four rows
+       -- and the pager would count the same order four times.
+       LEFT JOIN LATERAL (
+         SELECT string_agg(pr."name" || ' - ' || di."quantity"::text || ' ta', E'\\n' ORDER BY pr."name") AS products
+           FROM "deal_item" di
+           JOIN "product" pr ON pr."id" = di."productId"
+          WHERE di."dealId" = d."id"
+       ) items ON true
+      -- NULL, not an empty array: ANY over an empty array is false for every
+      -- row, so an empty selection would render an empty table rather than
+      -- the whole queue.
+      WHERE ($3::text[] IS NULL OR c.outcome = ANY($3::text[]))
+        AND ($5::text IS NULL OR c.rop = $5)
+        ${InsightsRepository.SEARCH_SQL('$4')}
+      -- The deal id breaks ties, so paging cannot show one order twice and
+      -- skip another when a thousand rows share a sort value.
+      ORDER BY ${sortColumn[query.sort]} ${direction} NULLS LAST, d."id" ASC
+      LIMIT $6 OFFSET $7`,
+      period.start,
+      period.end,
+      query.outcomes && query.outcomes.length > 0 ? [...query.outcomes] : null,
+      query.q ?? null,
+      query.rop ?? null,
+      query.pageSize,
+      offset,
+    )
+
+    return {
+      totalItems: rows.length === 0 ? 0 : int(rows[0]!.total_items),
+      rows: rows.map((r) => {
+        const queuedAt = new Date(r.queued_at)
+        const decidedAt = r.decided_at === null ? null : new Date(r.decided_at)
+
+        return {
+          dealId: r.deal_id,
+          rop: r.rop,
+          dailyNo: int(r.daily_no),
+          bitrixId: r.bitrix_id,
+          orderCode: r.order_code,
+          title: r.title,
+          customerName: r.customer_name,
+          customerPhone: r.customer_phone,
+          employeeName: r.employee_name,
+          // string_agg rather than array_agg: a text array's shape depends on
+          // the driver, a delimiter does not.
+          products: r.products === null ? [] : r.products.split('\n'),
+          region: r.region,
+          deliveryAddress: r.delivery_address,
+          amountMinor: money(r.amount_minor),
+          currency: r.currency,
+          stageName: r.stage_name,
+          outcome: r.outcome,
+          queuedAt,
+          decidedAt,
+          hoursToDecide:
+            decidedAt === null
+              ? null
+              : Math.round(((decidedAt.getTime() - queuedAt.getTime()) / 3_600_000) * 10) / 10,
+        }
+      }),
     }
   }
 

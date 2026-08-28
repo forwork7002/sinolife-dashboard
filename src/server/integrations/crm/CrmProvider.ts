@@ -173,6 +173,8 @@ export interface RawDeal extends ExternalRecord {
   // them. Absent always means the source left the field empty.
   readonly region?: string
   readonly fulfilmentPoint?: string
+  /** Delivery address, free text as the operator typed it. */
+  readonly deliveryAddress?: string
   readonly confirmStatus?: ConfirmStatusValue
   readonly refusalReason?: string
   readonly paymentMethodRaw?: string

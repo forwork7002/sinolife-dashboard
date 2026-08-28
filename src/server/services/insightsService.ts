@@ -20,6 +20,10 @@ import type {
   CallActivityRow,
   CallDirectionRow,
   ChannelRow,
+  ConfirmationOrderQuery,
+  ConfirmationOrderRow,
+  ConfirmationOutcomeTotals,
+  ConfirmationRopRow,
   ConfirmationRow,
   DispatchRow,
   InsightsRepository,
@@ -27,6 +31,7 @@ import type {
   MarginSummary,
   StructureNode,
 } from '@/server/repositories/insightsRepository'
+import type { ConfirmationOutcomeValue } from '@/server/domain/types'
 
 /** Basis points as a percentage, to one decimal. */
 function pct(bp: number | null): number | null {
@@ -116,6 +121,53 @@ export interface ConfirmationDto {
     readonly undecided: number
     readonly coverage: number
     readonly stickRate: number
+  }
+}
+
+/** One order in the Тасдиклаш queue, in the column order the floor reads. */
+export interface ConfirmationOrderDto {
+  readonly dealId: string
+  /** РОП */
+  readonly rop: string | null
+  /** № — position in this ROP's day, restarting each morning. */
+  readonly dailyNo: number
+  /** Id сделки — the Bitrix24 id, the key both systems look an order up by. */
+  readonly bitrixId: string | null
+  readonly orderCode: string | null
+  readonly title: string
+  readonly customerName: string | null
+  readonly customerPhone: string | null
+  readonly employeeName: string
+  readonly products: readonly string[]
+  readonly region: string | null
+  readonly deliveryAddress: string | null
+  readonly amount: MoneyDto
+  readonly stageName: string
+  readonly outcome: ConfirmationOutcomeValue
+  readonly queuedAt: string
+  readonly decidedAt: string | null
+  readonly hoursToDecide: number | null
+}
+
+export interface ConfirmationQueueDto {
+  readonly items: readonly ConfirmationOrderDto[]
+  readonly totalItems: number
+  /** Every ROP group with orders in the window — the filter's options. */
+  readonly rops: readonly string[]
+  /** The Статистика panel: one row per ROP group. */
+  readonly byRop: readonly ConfirmationRopRow[]
+  readonly totals: {
+    /** Orders that entered the queue in the window. The denominator. */
+    readonly orders: number
+    readonly byOutcome: ConfirmationOutcomeTotals
+    /**
+     * `Тасдиқланиш %` — confirmed over everything that entered the queue.
+     *
+     * The same definition the team's own РОП dashboards use, so the two
+     * screens cannot quote different figures for one word. Null on an empty
+     * window: no orders is not a zero percent confirmation rate.
+     */
+    readonly confirmedRate: number | null
   }
 }
 
@@ -482,6 +534,75 @@ export class InsightsService {
           delivered + refusedAfter === 0
             ? 0
             : Math.round((delivered / (delivered + refusedAfter)) * 1000) / 10,
+      },
+    }
+  }
+
+  /**
+   * The confirmation queue read as ORDERS rather than as operators.
+   *
+   * Two round trips on purpose. The five totals are a statement about the
+   * whole window and must not move when someone filters the list to one
+   * state — a band whose numbers change to match its own filter cannot be
+   * used to compare states, which is the only reason to put five of them
+   * side by side.
+   */
+  async confirmationQueue(
+    period: Period,
+    query: ConfirmationOrderQuery,
+    scope: EmployeeScopeFilter = {},
+  ): Promise<ConfirmationQueueDto> {
+    const window = this.window(period, scope)
+
+    const [page, byOutcome, byRop] = await Promise.all([
+      this.repository.confirmationOrders(window, query),
+      /*
+        The tiles follow the ROP and the search box, but NOT the state filter.
+        A band whose numbers changed to match its own selection could not be
+        used to compare one state against another, which is the only reason to
+        put five of them side by side.
+      */
+      this.repository.confirmationOutcomes(window, { rop: query.rop, q: query.q }),
+      this.repository.confirmationByRop(window, { q: query.q }),
+    ])
+
+    // The filter's options come from the breakdown rather than a third query:
+    // the two would otherwise be able to disagree about which ROPs exist.
+    const rops = byRop.map((r) => r.rop).sort((a, b) => a.localeCompare(b))
+
+    const orders = Object.values(byOutcome).reduce((sum, count) => sum + count, 0)
+
+    return {
+      items: page.rows.map((r: ConfirmationOrderRow) => ({
+        dealId: r.dealId,
+        rop: r.rop,
+        dailyNo: r.dailyNo,
+        bitrixId: r.bitrixId,
+        orderCode: r.orderCode,
+        title: r.title,
+        customerName: r.customerName,
+        customerPhone: r.customerPhone,
+        employeeName: r.employeeName,
+        products: r.products,
+        region: r.region,
+        deliveryAddress: r.deliveryAddress,
+        // The deal's OWN currency, not the app default: an order is worth what
+        // it was written in, and converting it here would invent a rate.
+        amount: toMoneyDto(money(r.amountMinor, r.currency)),
+        stageName: r.stageName,
+        outcome: r.outcome,
+        queuedAt: r.queuedAt.toISOString(),
+        decidedAt: r.decidedAt?.toISOString() ?? null,
+        hoursToDecide: r.hoursToDecide,
+      })),
+      totalItems: page.totalItems,
+      rops,
+      byRop,
+      totals: {
+        orders,
+        byOutcome,
+        confirmedRate:
+          orders === 0 ? null : Math.round((byOutcome.CONFIRMED / orders) * 1000) / 10,
       },
     }
   }

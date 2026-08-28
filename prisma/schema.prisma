@@ -251,6 +251,16 @@ model User {
   // Application fields (exposed to better-auth via additionalFields)
   role       Role    @default(SALES)
   isActive   Boolean @default(true)
+  /// Which dashboard sections this account may open, by section id.
+  ///
+  /// EMPTY MEANS "not configured", never "denied everything" — the account
+  /// falls back to its role's default set, so every user that predates this
+  /// column keeps exactly the access it had. See src/lib/sections.ts.
+  ///
+  /// Sections only ever NARROW the role: a SALES account granted `finance`
+  /// still cannot read finance, because the endpoint checks the role's
+  /// permission first and SALES has none.
+  sections   String[] @default([])
   /// A SALES user is scoped to this employee's own deals. Enforced in the
   /// repository layer, never by hiding UI.
   employeeId String? @unique
@@ -669,6 +679,8 @@ model Deal {
   region           String?
   /// UF_CRM_1756494336 — warehouse, courier or marketplace that fulfils it.
   fulfilmentPoint  String?
+  /// UF_CRM_1748964117765 — delivery address, free text as the operator typed it.
+  deliveryAddress  String?
   /// UF_CRM_1777879395123 — operator confirmation outcome.
   confirmStatus    ConfirmStatus?
   /// UF_CRM_1770109073790 — why the customer refused.

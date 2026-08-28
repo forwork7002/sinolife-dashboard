@@ -4,6 +4,7 @@ import { useCallback, useMemo } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 import type { PeriodPreset, PeriodSelection } from '@/components/layout/PeriodFilter'
+import type { ConfirmationOutcome } from '@/lib/api'
 
 /**
  * Dashboard filter state, held in the URL.
@@ -26,6 +27,20 @@ export interface DashboardFilters {
   readonly productIds: readonly string[]
   readonly sourceIds: readonly string[]
   readonly status?: 'OPEN' | 'WON' | 'LOST'
+  /**
+   * Which of the five confirmation states the queue is narrowed to.
+   *
+   * A LIST: the floor reads these in combinations, so more than one can be
+   * selected at once. Empty means all of them, which is why it is an array
+   * with a default rather than an optional value.
+   *
+   * Page-specific, like `status` and `sort` beside it: the hook holds the
+   * whole dashboard's URL vocabulary in one place so a filter survives a
+   * refresh and a shared link, wherever it is read.
+   */
+  readonly outcomes: readonly ConfirmationOutcome[]
+  /** Which ROP group the confirmation queue is narrowed to. */
+  readonly rop?: string
   readonly q?: string
   readonly page: number
   readonly pageSize: number
@@ -40,6 +55,7 @@ const DEFAULTS: DashboardFilters = {
   stageIds: [],
   productIds: [],
   sourceIds: [],
+  outcomes: [],
   page: 1,
   pageSize: 25,
   sort: 'createdAtSource',
@@ -66,6 +82,8 @@ export function useDashboardFilters() {
       productIds: list(params.get('productIds')),
       sourceIds: list(params.get('sourceIds')),
       status: (params.get('status') as DashboardFilters['status']) ?? undefined,
+      outcomes: list(params.get('outcomes')) as ConfirmationOutcome[],
+      rop: params.get('rop') ?? undefined,
       q: params.get('q') ?? undefined,
       page: Number(params.get('page') ?? DEFAULTS.page),
       pageSize: Number(params.get('pageSize') ?? DEFAULTS.pageSize),
@@ -133,6 +151,8 @@ export function useDashboardFilters() {
     if (filters.productIds.length) out.productIds = filters.productIds.join(',')
     if (filters.sourceIds.length) out.sourceIds = filters.sourceIds.join(',')
     if (filters.status) out.status = filters.status
+    if (filters.outcomes.length) out.outcomes = filters.outcomes.join(',')
+    if (filters.rop) out.rop = filters.rop
     if (filters.q) out.q = filters.q
     return out
   }, [filters])
@@ -144,6 +164,8 @@ export function useDashboardFilters() {
     filters.productIds.length +
     filters.sourceIds.length +
     (filters.status ? 1 : 0) +
+    filters.outcomes.length +
+    (filters.rop ? 1 : 0) +
     (filters.q ? 1 : 0)
 
   return { filters, update, setPeriod, reset, apiParams, activeCount }

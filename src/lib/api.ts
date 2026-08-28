@@ -284,6 +284,88 @@ export async function apiGet<T>(
   return body
 }
 
+/**
+ * A write.
+ *
+ * Sends the Origin the browser attaches by default — `mutationHandler` refuses
+ * a write without one, and refuses one it does not recognise. Nothing extra is
+ * needed here: a same-origin fetch already carries it, and a hand-rolled CSRF
+ * token would be a second mechanism guarding the same door.
+ */
+export async function apiWrite<T>(
+  method: 'POST' | 'PATCH',
+  path: string,
+  body: unknown,
+  signal?: AbortSignal,
+): Promise<ApiSuccess<T>> {
+  const response = await fetch(`/api/v1${path}`, {
+    method,
+    signal,
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+  const payload = (await response.json()) as
+    | ApiSuccess<T>
+    | {
+        error: {
+          code: string
+          message: string
+          details?: readonly { path: string; message: string }[]
+        }
+        meta: ResponseMeta
+      }
+
+  if (!response.ok || 'error' in payload) {
+    const error =
+      'error' in payload ? payload.error : { code: 'UNKNOWN', message: 'Unknown error' }
+    /*
+      Field detail is folded into the message on purpose.
+
+      A validation failure here is almost always one rule on one field — a
+      password too short, an email already taken — and a caller that has to
+      walk a details array to surface it will show "Soʻrov maydonlari
+      notoʻgʻri" instead, which tells the person nothing about what to fix.
+    */
+    const detail =
+      'error' in payload && payload.error.details?.length
+        ? payload.error.details.map((d) => d.message).join(' ')
+        : ''
+
+    throw new ApiClientError(
+      error.code,
+      detail ? `${error.message} ${detail}` : error.message,
+      response.status,
+      'meta' in payload ? payload.meta.correlationId : undefined,
+    )
+  }
+
+  return payload
+}
+
+/** One account, as the administration screen renders it. */
+export interface UserRowDto {
+  readonly id: string
+  readonly name: string
+  readonly email: string
+  readonly role: 'ADMIN' | 'MANAGER' | 'SALES'
+  readonly isActive: boolean
+  /**
+   * The sections STORED on the account, which is not the same as the sections
+   * it can open: an empty list means "not configured" and the account follows
+   * its role. The screen has to show that difference, so it gets the raw value.
+   */
+  readonly sections: readonly string[]
+  readonly employeeId: string | null
+  readonly employeeName: string | null
+  readonly twoFactorEnabled: boolean
+  readonly createdAt: string
+}
+
+export interface UsersPageDto {
+  readonly items: readonly UserRowDto[]
+}
+
 // ---------------------------------------------------------------------------
 // Endpoint payload shapes
 // ---------------------------------------------------------------------------
@@ -483,6 +565,73 @@ export interface ConfirmationRowDto {
   readonly failed: number
   /** Delivered as a share of this operator's resolved orders. */
   readonly deliveryRate: number | null
+}
+
+/**
+ * Where an order stands in the Тасдиклаш queue.
+ *
+ * The keys mirror the status keys the Telegram bot and the РОП dashboards
+ * already use, so all three screens name one process the same way. Mirrors
+ * `CONFIRMATION_OUTCOMES` in `@/server/domain/types`.
+ */
+export const CONFIRMATION_OUTCOMES = [
+  'CONFIRM_NEW',
+  'CONFIRMED',
+  'NO_ANSWER',
+  'REJECTED',
+  'UNCONFIRMED_SHIPPED',
+] as const
+export type ConfirmationOutcome = (typeof CONFIRMATION_OUTCOMES)[number]
+
+export interface ConfirmationOrderDto {
+  readonly dealId: string
+  /** РОП — the sales group, as the floor names it: "Sevinch", "Lola", "Baza". */
+  readonly rop: string | null
+  /** № — the order's place in ITS ROP's day, restarting each morning. */
+  readonly dailyNo: number
+  /** Id сделки — the Bitrix24 deal id. */
+  readonly bitrixId: string | null
+  /** `bx…` order code parsed from the title, when the title carries one. */
+  readonly orderCode: string | null
+  readonly title: string
+  readonly customerName: string | null
+  readonly customerPhone: string | null
+  readonly employeeName: string
+  /** Продукт — one entry per line item, already formatted "name - N ta". */
+  readonly products: readonly string[]
+  readonly region: string | null
+  readonly deliveryAddress: string | null
+  readonly amount: MoneyDto
+  /** The stage the deal sits in now — the evidence behind the outcome. */
+  readonly stageName: string
+  readonly outcome: ConfirmationOutcome
+  readonly queuedAt: string
+  /** When it left the queue. Null while it is still in one. */
+  readonly decidedAt: string | null
+  readonly hoursToDecide: number | null
+}
+
+export interface ConfirmationQueueDto {
+  readonly items: readonly ConfirmationOrderDto[]
+  readonly pagination: PaginationDto
+  /** Every ROP group with orders in the window — the filter's options. */
+  readonly rops: readonly string[]
+  /** The Статистика panel: one row per ROP group. */
+  readonly byRop: readonly {
+    readonly rop: string
+    readonly orders: number
+    readonly confirmed: number
+    readonly noAnswer: number
+    readonly rejected: number
+    readonly pending: number
+    readonly unconfirmedShipped: number
+  }[]
+  readonly totals: {
+    readonly orders: number
+    readonly byOutcome: Readonly<Record<ConfirmationOutcome, number>>
+    /** `Тасдиқланиш %` — confirmed over everything that entered the queue. */
+    readonly confirmedRate: number | null
+  }
 }
 
 export interface ConfirmationDto {

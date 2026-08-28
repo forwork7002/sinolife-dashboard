@@ -64,6 +64,37 @@ export type LogisticsRoleValue = (typeof LOGISTICS_ROLES)[number]
 export const CONFIRM_STATUSES = ['CONFIRMED', 'UNREACHABLE'] as const
 export type ConfirmStatusValue = (typeof CONFIRM_STATUSES)[number]
 
+/**
+ * Where an order stands in the Тасдиклаш queue — the five states the team
+ * already reads on the floor, in their own vocabulary:
+ *
+ *   CONFIRM_NEW          🕔 Тасдиқлаш            in the queue, nobody has worked it
+ *   CONFIRMED            ✅ Тасдиқланди          reached the customer, order goes out
+ *   NO_ANSWER            🟡 Кутармади (нд)       phone not picked up, still chasing
+ *   REJECTED             ❌ Тасдиқланмади        the order was killed in the queue
+ *   UNCONFIRMED_SHIPPED  🟣 Тасдиқланмай чиқди   it left the queue without a yes
+ *
+ * The keys are the Telegram bot's own status keys (`sinolifesalesadmin_v2`
+ * `poller.py`), spelled the same way on purpose. The bot, its РОП dashboards
+ * and this screen describe one process, and a second private vocabulary for it
+ * would mean two teams comparing numbers that are not the same numbers.
+ *
+ * There is no Prisma enum behind this: it is derived per order from stage
+ * history, so it is deliberately absent from `enumParity.ts`.
+ */
+export const CONFIRMATION_OUTCOMES = [
+  'CONFIRM_NEW',
+  'CONFIRMED',
+  'NO_ANSWER',
+  'REJECTED',
+  'UNCONFIRMED_SHIPPED',
+] as const
+export type ConfirmationOutcomeValue = (typeof CONFIRMATION_OUTCOMES)[number]
+
+/** Columns the confirmation queue may be ordered by. An allowlist: it reaches SQL. */
+export const CONFIRMATION_ORDER_SORTS = ['queuedAt', 'decidedAt', 'amountMinor', 'title'] as const
+export type ConfirmationOrderSortValue = (typeof CONFIRMATION_ORDER_SORTS)[number]
+
 export const CALL_DIRECTIONS = ['INBOUND', 'OUTBOUND', 'CALLBACK'] as const
 export type CallDirectionValue = (typeof CALL_DIRECTIONS)[number]
 

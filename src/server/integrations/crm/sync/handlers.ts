@@ -556,6 +556,7 @@ export function createSyncHandlers(
     { name: 'countsAsRevenue' },
     { name: 'region' },
     { name: 'fulfilmentPoint' },
+    { name: 'deliveryAddress' },
     { name: 'confirmStatus', cast: '"ConfirmStatus"' },
     { name: 'refusalReason' },
     { name: 'paymentMethodRaw' },
@@ -585,7 +586,11 @@ export function createSyncHandlers(
 
       const stageMap = await resolver.map('dealStage')
       const employeeMap = await resolver.map('employee')
-      const customerMap = await resolver.map('customer')
+      // Batch-scoped: 322 000 customers do not fit in the worker's heap.
+      const customerMap = await resolver.mapFor(
+        'customer',
+        batch.map((r) => r.customerExternalId),
+      )
       const sourceMap = await resolver.map('salesSource')
       const pipelineMap = await resolver.map('pipeline')
 
@@ -626,6 +631,7 @@ export function createSyncHandlers(
           record.countsAsRevenue,
           record.region ?? null,
           record.fulfilmentPoint ?? null,
+          record.deliveryAddress ?? null,
           record.confirmStatus ?? null,
           record.refusalReason ?? null,
           record.paymentMethodRaw ?? null,
@@ -692,7 +698,8 @@ export function createSyncHandlers(
         ).map((r) => r.externalId!),
       )
 
-      const dealMap = await resolver.map('deal')
+      // Batch-scoped: 426 000 deals do not fit in the worker's heap.
+      const dealMap = await resolver.mapFor('deal', batch.map((r) => r.dealExternalId))
       const productMap = await resolver.map('product')
 
       /**
@@ -862,7 +869,9 @@ export function createSyncHandlers(
         ).map((r) => r.externalId),
       )
 
-      const dealMap = await resolver.map('deal')
+      // Batch-scoped: 426 000 deals do not fit in the worker's heap. This is
+      // the call that killed the production sync worker.
+      const dealMap = await resolver.mapFor('deal', batch.map((r) => r.dealExternalId))
       const stageMap = await resolver.map('dealStage')
 
       const now = new Date().toISOString()
@@ -959,8 +968,11 @@ export function createSyncHandlers(
       )
 
       const employeeMap = await resolver.map('employee')
-      const customerMap = await resolver.map('customer')
-      const dealMap = await resolver.map('deal')
+      const customerMap = await resolver.mapFor(
+        'customer',
+        batch.map((r) => r.customerExternalId),
+      )
+      const dealMap = await resolver.mapFor('deal', batch.map((r) => r.dealExternalId))
 
       const now = new Date().toISOString()
 

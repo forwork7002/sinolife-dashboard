@@ -56,7 +56,7 @@ export const t = {
     },
     confirmation: {
       title: 'Tasdiqlash hisoboti',
-      lead: 'Operator buyurtmani tasdiqladimi — va tasdiqlangani yetkazib berilganmi.',
+      lead: 'Tasdiqlash navbatiga tushgan har bir buyurtma qaysi holatda yakunlangani.',
     },
     channels: {
       title: 'Kanal analitikasi',

@@ -847,6 +847,9 @@ export class Bitrix24CrmProvider implements CrmProvider {
         countsAsRevenue: role === 'REVENUE',
         region: this.label(UF.REGION, d[UF.REGION]),
         fulfilmentPoint: this.label(UF.FULFILMENT_POINT, d[UF.FULFILMENT_POINT]),
+        // Raw, NOT through label(): it is free text, and label() would return
+        // undefined for every value that is not an enumeration item id.
+        deliveryAddress: nonEmpty(d[UF.ADDRESS]),
         confirmStatus: confirmStatusFromLabel(this.label(UF.CONFIRM_STATUS, d[UF.CONFIRM_STATUS])),
         refusalReason: this.label(UF.REFUSAL_REASON, d[UF.REFUSAL_REASON]),
         paymentMethodRaw: this.label(UF.PAYMENT_METHOD, d[UF.PAYMENT_METHOD]),

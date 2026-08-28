@@ -205,6 +205,14 @@ export const UF = Object.freeze({
   REGION: 'UF_CRM_1747975214161',
   /** Warehouse / courier / marketplace that fulfils the order — 15 items. */
   FULFILMENT_POINT: 'UF_CRM_1756494336',
+  /**
+   * Адрес — where the parcel goes. A FREE-TEXT string, not an enumeration.
+   *
+   * It must be read raw. `label()` resolves enumeration item ids and returns
+   * undefined for anything it cannot find in `crm.deal.fields`, so putting a
+   * text field through it silently discards every address.
+   */
+  ADDRESS: 'UF_CRM_1748964117765',
   /** Тастиклаш анализ — Тастикланган / Недозвон булиб чикарилган. */
   CONFIRM_STATUS: 'UF_CRM_1777879395123',
   /** Why the customer refused — 4 items. */
