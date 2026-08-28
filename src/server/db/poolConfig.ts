@@ -28,6 +28,22 @@ import type { PoolConfig } from 'pg'
 /** SSL modes where `pg` verifies but libpq would not. The gap this closes. */
 const UNVERIFIED_MODES = new Set(['require', 'prefer', 'allow', 'verify-ca'])
 
+/**
+ * The same URL with `sslmode` removed.
+ *
+ * Returned unchanged if it will not parse — a caller with an odd DSN gets the
+ * old behaviour rather than a thrown error at connection time.
+ */
+function withoutSslMode(connectionString: string): string {
+  try {
+    const url = new URL(connectionString)
+    url.searchParams.delete('sslmode')
+    return url.toString()
+  } catch {
+    return connectionString
+  }
+}
+
 function sslMode(connectionString: string): string | undefined {
   try {
     const value = new URL(connectionString).searchParams.get('sslmode')
@@ -80,12 +96,33 @@ export function poolConfig(
   const ca = caCert?.trim().replace(/\\n/g, '\n')
 
   if (ca) {
-    // Verify for real, against the CA that actually signed the cluster.
-    return { ...config, ssl: { ca, rejectUnauthorized: true } }
+    /*
+      Verify for real, against the CA that actually signed the cluster — and
+      take `sslmode` OUT of the URL to do it.
+
+      `pg` parses the connection string itself, and a `sslmode=require` there
+      builds its own ssl settings that win over the object passed beside it.
+      The managed cluster's URL ends in `?sslmode=require`, so the CA below was
+      silently discarded and every connection died with "self-signed
+      certificate in certificate chain" — while the CA was correct all along
+      and `openssl verify` said so. The symptom is a deploy whose health check
+      never passes, with a TLS error that reads like a bad certificate rather
+      than an ignored one.
+
+      Removing the parameter leaves exactly one place that decides TLS: this
+      object. Verification is STRICTER than before, not weaker — the chain is
+      checked against the cluster's own CA and the hostname must match.
+    */
+    return { ...config, connectionString: withoutSslMode(connectionString), ssl: { ca, rejectUnauthorized: true } }
   }
 
   if (UNVERIFIED_MODES.has(mode)) {
-    return { ...config, ssl: { rejectUnauthorized: false } }
+    // Same reason as above: the explicit object must be the only authority.
+    return {
+      ...config,
+      connectionString: withoutSslMode(connectionString),
+      ssl: { rejectUnauthorized: false },
+    }
   }
 
   // verify-full, or something unrecognised. `pg` handles it.

@@ -321,4 +321,166 @@ export const t = {
      */
     unmeasuredShort: 'Oʻlchanmadi — bosqich aniqlanmadi',
   },
+
+  /**
+   * Kirish, va hisobning ikkinchi qulfi.
+   *
+   * WHY THESE ARE HERE AND NOT INLINE. Two screens say some of the same
+   * things — /login asks for a code, /account confirms the first one — and the
+   * sentence that must never drift between them is the one about what happens
+   * when the phone and the backup codes are both gone. A string written twice
+   * is a string that will eventually mean two different things.
+   *
+   * These are also the only strings in the app a person reads while LOCKED
+   * OUT, which is the worst moment to be vague. Every refusal below says what
+   * happened and what to do next, and none of them says anything about whether
+   * an account exists.
+   */
+  auth: {
+    signIn: {
+      title: 'Tizimga kirish',
+      lead: 'Hisobingiz bilan davom eting.',
+      email: 'Email',
+      password: 'Parol',
+      submit: 'Kirish',
+      submitting: 'Kirilmoqda…',
+      adminNote: 'Kirish maʼlumotlari administrator tomonidan beriladi.',
+
+      /*
+        Deliberately vague, and only here. Naming which of the two fields was
+        wrong turns the form into an oracle for which addresses are real.
+      */
+      wrongCredentials: 'Email yoki parol notoʻgʻri.',
+
+      /*
+        Everything below must NOT wear that message. An origin rejection shown
+        as "wrong password" is how a working password came to look broken: the
+        app answers on several addresses, better-auth trusts one, and the
+        resulting 403 was rendered as a credential problem for twenty minutes
+        of retyping.
+      */
+      wrongOrigin: (url: string) =>
+        `Bu manzildan kirish mumkin emas. Ilovani ${url} orqali oching.`,
+      serverDown: 'Server javob bermadi. Birozdan soʻng qayta urinib koʻring.',
+      offline: 'Kirish amalga oshmadi. Internet aloqasini tekshiring.',
+      failed: (detail: string) => `Kirish amalga oshmadi: ${detail}`,
+
+      /*
+        better-auth's own per-minute throttle, which is a different thing from
+        the account lockout: it clears on its own within the rate-limit window
+        (60 seconds, `rateLimit.window` in server/auth/auth.ts) and counts
+        requests from this address rather than failures against this account.
+        The account lockout arrives with its own message, in minutes, and is
+        shown as the server wrote it.
+      */
+      throttled: 'Juda koʻp soʻrov. Bir daqiqadan soʻng qayta urinib koʻring.',
+    },
+
+    /** The second step, after the password was right. */
+    challenge: {
+      title: 'Tasdiqlash kodi',
+      lead: 'Autentifikator ilovangizdagi 6 xonali kodni kiriting.',
+      leadBackup: 'Zaxira kodlaringizdan birini kiriting. Har bir kod bir marta ishlaydi.',
+      codeLabel: 'Kod',
+      backupLabel: 'Zaxira kod',
+      backupHint: 'Koʻrinishi: xxxxx-xxxxx',
+      submit: 'Tasdiqlash',
+      submitting: 'Tekshirilmoqda…',
+      useBackup: 'Zaxira kodni ishlatish',
+      useCode: 'Ilova kodiga qaytish',
+
+      /*
+        "Notoʻgʻri yoki eskirgan" — both, because the reader cannot tell them
+        apart and the fix differs: a wrong code is retyped, a stale one is
+        waited out. It says nothing else; a code rejected for an account that
+        does not exist reads identically.
+      */
+      invalidCode: 'Kod notoʻgʻri yoki eskirgan.',
+      invalidBackup: 'Zaxira kod notoʻgʻri yoki allaqachon ishlatilgan.',
+
+      /*
+        The challenge itself is spent — five wrong codes inside one sign-in, or
+        a challenge cookie that expired. The password step has to be walked
+        again, so the message says so rather than leaving a dead form on
+        screen.
+      */
+      expired: 'Tasdiqlash muddati tugadi. Emailingiz va parolingiz bilan qaytadan kiring.',
+
+      /*
+        The plugin's own account-level lock. FIFTEEN MINUTES MIRRORS
+        `accountLockout.durationSeconds: 900` in server/auth/auth.ts — the
+        plugin's refusal carries no remaining time, only an English sentence,
+        so the number is repeated here. If that config changes, this changes.
+      */
+      locked:
+        'Koʻp marta notoʻgʻri kod kiritildi. Tasdiqlash 15 daqiqaga toʻxtatildi — shundan soʻng qayta urinib koʻring.',
+      restart: 'Qaytadan kirish',
+    },
+
+    /** Enrolment, on /account. */
+    twoFactor: {
+      title: 'Ikki bosqichli himoya',
+      lead: 'Parolga qoʻshimcha qulf: kirishda telefoningizdagi ilova bergan 6 xonali kod ham soʻraladi.',
+      armed: 'Yoqilgan',
+      notArmed: 'Yoqilmagan',
+      armedBody: 'Kirishda parol va autentifikator kodi soʻraladi.',
+      notArmedBody: 'Hozir kirish uchun faqat parol yetarli.',
+
+      /*
+        The one line that must be on the screen and not only in a comment.
+        There is one user and no administrator behind them: losing the phone
+        and the codes together means a database edit by whoever holds the
+        connection string. Muted, one sentence, next to the thing it describes
+        — a red banner would be read once and then ignored forever.
+      */
+      recovery:
+        'Telefon ham, zaxira kodlar ham yoʻqolsa, hisobga kirishning boshqa yoʻli qolmaydi.',
+
+      start: 'Yoqish',
+      passwordLabel: 'Joriy parol',
+      passwordHint: 'Sozlashni boshlash uchun parolingizni tasdiqlang.',
+      begin: 'Davom etish',
+      preparing: 'Tayyorlanmoqda…',
+      cancel: 'Bekor qilish',
+
+      stepScan: 'QR kodni skanerlang',
+      stepScanBody:
+        'Autentifikator ilovangizda (Google Authenticator, Aegis, 1Password va boshqalar) yangi hisob qoʻshing va shu kodni skanerlang.',
+      qrAlt: 'Autentifikator ilova uchun QR kod',
+      qrUnavailable: 'QR kod chizilmadi — quyidagi kalitni qoʻlda kiriting.',
+      secretLabel: 'Yoki kalitni qoʻlda kiriting',
+      secretHint: 'Baʼzi ilovalar kamera ishlatmaydi — kalitni matn sifatida kiritish mumkin.',
+      copySecret: 'Kalitdan nusxa olish',
+
+      stepCodes: 'Zaxira kodlarni saqlang',
+      stepCodesBody:
+        'Bu kodlar faqat hozir koʻrsatiladi. Har biri bir marta ishlaydi va telefon yoʻqolganda kirishning yagona yoʻli boʻlib qoladi.',
+      codesWhere:
+        'Qogʻozga koʻchiring va brauzerdan tashqarida saqlang — shu noutbukdagi parol menejeri zaxira emas.',
+      copyCodes: 'Kodlardan nusxa olish',
+      copied: 'Nusxa olindi',
+      copyFailed: 'Nusxa olinmadi — matnni belgilab, qoʻlda koʻchiring.',
+      savedCheckbox: 'Kodlarni saqladim',
+
+      stepConfirm: 'Birinchi kodni kiriting',
+      stepConfirmBody: 'Ilova kod bera olishiga ishonch hosil qilgach, himoya yoqiladi.',
+      confirmLabel: 'Ilovadagi kod',
+      confirmHint: 'Kod har 30 soniyada yangilanadi.',
+      arm: 'Yoqish',
+      arming: 'Yoqilmoqda…',
+      armedNow: 'Yoqildi',
+      needCodesSaved: 'Avval zaxira kodlarni saqlang va belgini qoʻying.',
+
+      disable: 'Oʻchirish',
+      disableBody:
+        'Oʻchirilgandan soʻng kirish uchun yana faqat parol yetarli boʻladi, zaxira kodlar esa bekor qilinadi.',
+      disabling: 'Oʻchirilmoqda…',
+      disabledNow: 'Oʻchirildi',
+
+      wrongPassword: 'Joriy parol notoʻgʻri.',
+      codeRejected: 'Kod notoʻgʻri yoki eskirgan. Ilovadagi joriy kodni kiriting.',
+      throttled: 'Juda tez — bir necha soniyadan soʻng qayta urinib koʻring.',
+      generic: 'Amal bajarilmadi. Qayta urinib koʻring.',
+    },
+  },
 } as const

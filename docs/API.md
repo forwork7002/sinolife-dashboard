@@ -4,11 +4,93 @@ Base path `/api/v1`. JSON only. **Every endpoint requires authentication.**
 
 ## Authentication
 
-better-auth, email + password, session cookie. Endpoints live under
-`/api/auth/*` (`sign-in/email`, `sign-out`, `get-session`).
+better-auth, email + password, session cookie, optional TOTP second factor.
+Endpoints live under `/api/auth/*` (`sign-in/email`, `sign-out`,
+`get-session`, `change-password`, `two-factor/*`).
 
 Public sign-up is **disabled**. Accounts are provisioned server-side via
 `provisionUser()`; see `prisma/seedUsers.ts`.
+
+> `/api/auth/*` speaks **better-auth's** response shape — `{ "message": …,
+> "code": … }` on error — not the `{ data, meta }` envelope below. The envelope
+> is the `/api/v1` contract; the auth routes are the library's and are
+> documented here as they actually answer.
+
+The full rationale for every rule in this section — and an equally explicit
+list of what is *not* protected — is in [SECURITY.md](SECURITY.md).
+
+### Signing in
+
+`POST /api/auth/sign-in/email` with `{ email, password }`. Three outcomes:
+
+| Outcome | Response |
+|---|---|
+| Correct, 2FA off | 200, session cookie set |
+| Correct, 2FA armed | **200 with `{ "twoFactorRedirect": true }` and no session.** The password was right and the sign-in is not finished |
+| Wrong password, unknown address, or no credential | 401. Deliberately the same answer for all three — which address exists is not disclosed |
+| Locked out | **429**, code `ACCOUNT_LOCKED_OUT`, with the remaining minutes in the message |
+
+`twoFactorRedirect` is a flag, not a redirect: the client plugin is configured
+without `twoFactorPage` and without `onTwoFactorRedirect`, so nothing navigates
+and the login form swaps its own fields for a code prompt, keeping the
+in-flight state and the `?next=` target it already holds.
+
+Finish with **one** of:
+
+- `POST /api/auth/two-factor/verify-totp` — `{ code, trustDevice? }`
+- `POST /api/auth/two-factor/verify-backup-code` — `{ code }`, single use
+
+### Arming the second factor
+
+Two steps, and the gap between them is the point: the backup codes are in the
+owner's hands before anything is armed, so an abandoned setup leaves the
+account signing in exactly as it did.
+
+| Endpoint | Body | Effect |
+|---|---|---|
+| `POST /api/auth/two-factor/enable` | `{ password }` | Returns `totpURI` **and ten backup codes**. Creates an *unverified* `two_factor` row. Changes nothing about sign-in |
+| `POST /api/auth/two-factor/verify-totp` | `{ code }` | First correct code flips `user.twoFactorEnabled`. Only now is 2FA real |
+| `POST /api/auth/two-factor/disable` | `{ password }` | Turns it off. The password is required, so a stolen session alone cannot remove the factor |
+
+`twoFactorEnabled` is exposed on the session user for rendering only. It is
+contributed by the plugin's own schema with `input: false`, so no request body
+can set it.
+
+### Lockout and rate limits
+
+| Route | Budget |
+|---|---|
+| `/api/auth/*` | 200 / minute |
+| `/sign-in/email` | 5 / minute |
+| `/forget-password` | 5 / minute — the route exists in the library; **no mail sender is configured**, so it sends nothing |
+| `/two-factor/*` | 3 / 10 seconds |
+
+On top of the throttle, a **per-account lockout** counted in Postgres
+(`sign_in_lockout`): five consecutive failures buy 15 minutes, doubling on each
+further five to a one-hour ceiling, cleared by a correct password or by 24
+hours of not trying. Rate limiting bounds how fast someone guesses; only the
+lockout bounds how many times in total — and unlike the in-memory rate
+counters, it survives a redeploy.
+
+The row is keyed by **SHA-256 of the email**, never the email: an address with
+no account has to be lockable too, or "too many attempts" would answer the
+question of which addresses exist.
+
+### Setting a password
+
+`/sign-up/email`, `/change-password` and `/reset-password` run two checks
+before better-auth hashes anything:
+
+1. The house policy (`src/lib/passwordPolicy.ts`) — 12+ characters, 3 of 4
+   character classes, no banned fragment, no keyboard run, not the email or the
+   name. Returns 400 with every failed rule, not just the first.
+2. A breach check against Have I Been Pwned — `PASSWORD_COMPROMISED` if the
+   password is in a public dump. It sends a five-character hash prefix, never
+   the password, and **fails open**: a network failure lets the change through
+   rather than blocking the one action a worried owner needs.
+
+A successful change revokes every **other** session immediately
+(`revokeSessionsOnPasswordReset`).
 
 Two details that are easy to get wrong and were:
 
@@ -98,6 +180,7 @@ it exact:
 | `NOT_FOUND` | 404 | No such record, or not visible to this role |
 | `CONFLICT` | 409 | Concurrent modification |
 | `RATE_LIMITED` | 429 | Too many requests |
+| `ACCOUNT_LOCKED_OUT` | 429 | Sign-in only, and on `/api/auth/*` rather than in this envelope. The failure budget for this address is spent; the message says for how long |
 | `INTEGRATION_PENDING` | 501 | Feature works, data source not connected |
 | `DATA_SOURCE_UNAVAILABLE` | 503 | Upstream CRM unreachable |
 | `INTERNAL_ERROR` | 500 | Unexpected; quote `correlationId` |

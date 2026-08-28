@@ -13,6 +13,7 @@ import {
   checkPassword,
   passwordStrength,
 } from '@/lib/passwordPolicy'
+import { TwoFactorSection } from './TwoFactorSection'
 
 /**
  * The account screen: who you are, and how to change your password.
@@ -29,6 +30,12 @@ import {
  * The form deliberately asks for the current password. better-auth requires it
  * anyway, and it is what makes a stolen, still-warm session unable to lock the
  * real owner out of their own account.
+ *
+ * The second factor lives in its own component below the password. Order is
+ * intentional: the password is the credential this page has always changed and
+ * the one someone arrives here to rotate, while arming 2FA is a deliberate,
+ * once-ever act that needs a phone in hand. Putting the longer, rarer flow
+ * first would push the routine one below the fold.
  */
 export function AccountPage() {
   const { data: session } = useSession()
@@ -97,7 +104,7 @@ export function AccountPage() {
             Hisob
           </h1>
           <p className="mt-1 text-sm" style={{ color: 'var(--ink-secondary)' }}>
-            Kirish maʼlumotlaringiz va parol.
+            Kirish maʼlumotlaringiz, parol va ikki bosqichli himoya.
           </p>
         </header>
 
@@ -198,6 +205,16 @@ export function AccountPage() {
             </div>
           </form>
         </Card>
+
+        {/*
+          Armed state is read from the SESSION, not from anything this page
+          remembers. The two-factor plugin rewrites the session cookie the
+          moment `twoFactorEnabled` moves, so a reload always shows the truth
+          and the section cannot get stuck claiming a lock that is not on.
+          (It briefly prefers its own just-confirmed answer while that refetch
+          lands — see the `confirmed` comment in TwoFactorSection.)
+        */}
+        <TwoFactorSection enabled={user?.twoFactorEnabled ?? false} />
       </div>
     </Shell>
   )

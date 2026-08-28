@@ -238,9 +238,15 @@ an attacker working one address exhausts the account's five-failure budget in
 the same minute the throttle starts refusing them. Nobody who knows their own
 password types it wrong five times in sixty seconds.
 
+`/forget-password` has a budget and nothing behind it: **no mail sender is
+configured**, so the endpoint cannot send a reset link. That is deliberate (see
+section 10) and the limit stays as a guard on a route that exists in the
+library whether we use it or not.
+
 Counters are in memory, which is correct for **exactly one web instance**.
 Scaling the web service to two would silently double the effective ceiling —
-that would need `storage: 'database'`.
+that would need `storage: 'database'`. The lockout, being in Postgres, would
+not have that problem.
 
 ---
 
@@ -361,10 +367,10 @@ boundary is sections 1–6 of this document. This section is not on that list.
 In order. Each step is useful on its own, so do them in sequence rather than
 waiting until you are sure.
 
-1. **Change the password**, from `/account`. This is first because it is also
-   step 2: `revokeSessionsOnPasswordReset` means every other session — every
-   other browser, every other device, anyone holding a stolen cookie — is dead
-   the moment the change lands. Your current browser stays signed in.
+1. **Change the password**, from `/account`. It is first because it does two
+   things at once: `revokeSessionsOnPasswordReset` means every other session —
+   every other browser, every other device, anyone holding a stolen cookie —
+   dies the moment the change lands. Your current browser stays signed in.
 2. **Confirm the other sessions are gone** by checking that a second browser
    you were signed into is back at the login page.
 3. **Rotate `BETTER_AUTH_SECRET`** if a *server-side* compromise is plausible —
@@ -448,6 +454,9 @@ the browser session compromises the highest privilege level. Given one user,
 splitting it would be ceremony rather than defence — but it does mean the blast
 radius of a session compromise is total.
 
-**A second web instance would halve the rate limit's effect.** The counters are
-in memory. If the app is ever scaled out, `rateLimit.storage` must move to the
-database in the same change.
+**A second web instance would double the effective rate limit.** The counters
+are in memory, so each instance would enforce the ceiling on its own and an
+attacker would get both budgets. If the app is ever scaled out,
+`rateLimit.storage` must move to the database in the same change — and the
+`sign_in_lockout` table already works correctly under any number of instances,
+because it is in Postgres.

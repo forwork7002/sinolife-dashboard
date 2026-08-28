@@ -4,6 +4,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useState } from 'react'
 
 import { signIn } from '@/lib/authClient'
+import { t } from '@/lib/messages'
+import { ChallengeForm } from './ChallengeForm'
 
 /**
  * Turn a sign-in failure into something the reader can act on.
@@ -16,20 +18,39 @@ import { signIn } from '@/lib/authClient'
  * reachable at several addresses, better-auth trusts only the configured one,
  * and the resulting 403 was rendered as a credential problem. The person
  * retyped the password for twenty minutes.
+ *
+ * THE LOCKOUT IS THE NEWEST BRANCH AND THE ONE THAT MATTERS MOST HERE.
+ * `hooks.before` in server/auth/auth.ts refuses a locked address with 429 and
+ * `ACCOUNT_LOCKED_OUT`, and its message — written by `lockoutMessage` in
+ * server/auth/lockout.ts — already carries the wait in whole minutes, in
+ * Uzbek. It is shown verbatim rather than rewritten, because the number is the
+ * whole value of the message and this side has no way to compute it. Falling
+ * through to the generic branch below is what produced "Kirish amalga oshmadi:
+ * Juda koʻp muvaffaqiyatsiz urinish…", a refusal wearing a failure's clothes.
+ *
+ * A 429 WITHOUT that code is better-auth's per-minute request throttle, which
+ * is not about this account at all and clears itself inside the rate-limit
+ * window.
  */
 function describe(error: { status?: number; code?: string; message?: string }): string {
+  if (error.code === 'ACCOUNT_LOCKED_OUT') {
+    return error.message ?? t.auth.signIn.throttled
+  }
+  if (error.status === 429) {
+    return t.auth.signIn.throttled
+  }
   if (error.code === 'INVALID_ORIGIN' || error.status === 403) {
-    return `Bu manzildan kirish mumkin emas. Ilovani ${process.env.NEXT_PUBLIC_APP_URL ?? 'toʻgʻri manzil'} orqali oching.`
+    return t.auth.signIn.wrongOrigin(
+      process.env.NEXT_PUBLIC_APP_URL ?? 'toʻgʻri manzil',
+    )
   }
   if (error.status === 401 || error.status === 400) {
-    return 'Email yoki parol notoʻgʻri.'
+    return t.auth.signIn.wrongCredentials
   }
   if (error.status && error.status >= 500) {
-    return 'Server javob bermadi. Birozdan soʻng qayta urinib koʻring.'
+    return t.auth.signIn.serverDown
   }
-  return error.message
-    ? `Kirish amalga oshmadi: ${error.message}`
-    : 'Kirish amalga oshmadi. Internet aloqasini tekshiring.'
+  return error.message ? t.auth.signIn.failed(error.message) : t.auth.signIn.offline
 }
 
 export default function LoginPage() {
@@ -48,6 +69,33 @@ function LoginForm() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  /**
+   * Whether the password was accepted and a second factor is outstanding.
+   *
+   * This is the only thing that has to be carried across the two steps. The
+   * password is dropped the moment the challenge appears: the pending
+   * challenge is a signed cookie the server issued, so there is no reason to
+   * keep a credential alive in memory while somebody unlocks their phone.
+   */
+  const [challenge, setChallenge] = useState(false)
+
+  /**
+   * Return them to where they were heading.
+   *
+   * The middleware records it as `?next=`. Sending everyone to the home page
+   * instead means clicking Logistika, signing in, and landing somewhere
+   * else — small, but it reads as the app losing your place.
+   *
+   * Only a same-site path is accepted: an absolute URL here would make the
+   * login page an open redirect.
+   */
+  function proceed() {
+    const next = params.get('next')
+    const destination = next && /^\/(?!\/)/.test(next) ? next : '/'
+
+    router.push(destination)
+    router.refresh()
+  }
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -62,28 +110,31 @@ function LoginForm() {
         setPending(false)
         return
       }
+
+      /**
+       * 200, but no session: the second factor is still outstanding.
+       *
+       * better-auth signals this with `twoFactorRedirect` on the body rather
+       * than an error, and the distinction is easy to miss — treating it as
+       * success is a redirect to a dashboard that immediately bounces back to
+       * /login with no message at all.
+       */
+      if (result.data && 'twoFactorRedirect' in result.data && result.data.twoFactorRedirect) {
+        setPassword('')
+        setPending(false)
+        setChallenge(true)
+        return
+      }
     } catch (cause) {
       // A rejected promise here is the network, not the credentials.
-      setError(cause instanceof Error ? `Kirish amalga oshmadi: ${cause.message}` : 'Kirish amalga oshmadi.')
+      setError(
+        cause instanceof Error ? t.auth.signIn.failed(cause.message) : t.auth.signIn.offline,
+      )
       setPending(false)
       return
     }
 
-    /**
-     * Return them to where they were heading.
-     *
-     * The middleware records it as `?next=`. Sending everyone to the home page
-     * instead means clicking Logistika, signing in, and landing somewhere
-     * else — small, but it reads as the app losing your place.
-     *
-     * Only a same-site path is accepted: an absolute URL here would make the
-     * login page an open redirect.
-     */
-    const next = params.get('next')
-    const destination = next && /^\/(?!\/)/.test(next) ? next : '/'
-
-    router.push(destination)
-    router.refresh()
+    proceed()
   }
 
   return (
@@ -109,7 +160,7 @@ function LoginForm() {
           </span>
           <div>
             <p className="text-base font-semibold" style={{ color: 'var(--ink-primary)' }}>
-              SinoLife
+              {t.app.name}
             </p>
             <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
               Savdo tahlili paneli
@@ -117,87 +168,117 @@ function LoginForm() {
           </div>
         </div>
 
-        <form
-          onSubmit={onSubmit}
-          className="rounded-2xl border p-6"
-          style={{
-            background: 'var(--surface-raised)',
-            borderColor: 'var(--border)',
-            boxShadow: 'var(--shadow-raised), var(--edge-highlight)',
-          }}
-        >
-          <h1 className="text-lg font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
-            Tizimga kirish
-          </h1>
-          <p className="mt-1 text-xs" style={{ color: 'var(--ink-secondary)' }}>
-            Hisobingiz bilan davom eting.
-          </p>
-
-          <label className="mt-5 block">
-            <span className="text-xs font-medium" style={{ color: 'var(--ink-secondary)' }}>
-              Email
-            </span>
-            <input
-              type="email"
-              required
-              autoComplete="username"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focusable outline-none"
-              style={{
-                background: 'var(--surface-raised)',
-                borderColor: 'var(--border-strong)',
-                color: 'var(--ink-primary)',
-              }}
-            />
-          </label>
-
-          <label className="mt-3 block">
-            <span className="text-xs font-medium" style={{ color: 'var(--ink-secondary)' }}>
-              Parol
-            </span>
-            <input
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focusable outline-none"
-              style={{
-                background: 'var(--surface-raised)',
-                borderColor: 'var(--border-strong)',
-                color: 'var(--ink-primary)',
-              }}
-            />
-          </label>
-
-          {error && (
-            <p
-              role="alert"
-              className="mt-3 flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs"
-              style={{
-                background: 'color-mix(in oklab, var(--status-critical) 12%, transparent)',
-                color: 'var(--ink-primary)',
-              }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <circle cx="12" cy="12" r="9" stroke="var(--status-critical)" strokeWidth="2" />
-                <path d="M12 7v6" stroke="var(--status-critical)" strokeWidth="2" strokeLinecap="round" />
-                <circle cx="12" cy="16.5" r="1" fill="var(--status-critical)" />
-              </svg>
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={pending}
-            className="mt-5 w-full rounded-lg px-3 py-2.5 text-sm font-medium transition-opacity disabled:opacity-60"
-            style={{ background: 'var(--ink-primary)', color: 'var(--surface)' }}
+        {challenge ? (
+          <ChallengeForm
+            onVerified={proceed}
+            /*
+              Back to the password, with the fields empty. Reached only when
+              the challenge is spent — a fresh one has to be issued by
+              /sign-in/email, so there is nothing to preserve.
+            */
+            onRestart={() => {
+              setChallenge(false)
+              setEmail('')
+              setPassword('')
+              setError(null)
+            }}
+          />
+        ) : (
+          <form
+            onSubmit={onSubmit}
+            className="rounded-2xl border p-6"
+            style={{
+              background: 'var(--surface-raised)',
+              borderColor: 'var(--border)',
+              boxShadow: 'var(--shadow-raised), var(--edge-highlight)',
+            }}
           >
-            {pending ? 'Kirilmoqda…' : 'Kirish'}
-          </button>
-        </form>
+            <h1
+              className="text-lg font-semibold tracking-tight"
+              style={{ color: 'var(--ink-primary)' }}
+            >
+              {t.auth.signIn.title}
+            </h1>
+            <p className="mt-1 text-xs" style={{ color: 'var(--ink-secondary)' }}>
+              {t.auth.signIn.lead}
+            </p>
+
+            <label className="mt-5 block">
+              <span className="text-xs font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                {t.auth.signIn.email}
+              </span>
+              <input
+                type="email"
+                required
+                autoComplete="username"
+                inputMode="email"
+                autoCapitalize="off"
+                autoCorrect="off"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focusable outline-none"
+                style={{
+                  background: 'var(--surface-raised)',
+                  borderColor: 'var(--border-strong)',
+                  color: 'var(--ink-primary)',
+                }}
+              />
+            </label>
+
+            <label className="mt-3 block">
+              <span className="text-xs font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                {t.auth.signIn.password}
+              </span>
+              <input
+                type="password"
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focusable outline-none"
+                style={{
+                  background: 'var(--surface-raised)',
+                  borderColor: 'var(--border-strong)',
+                  color: 'var(--ink-primary)',
+                }}
+              />
+            </label>
+
+            {error && (
+              <p
+                role="alert"
+                className="mt-3 flex items-start gap-1.5 rounded-lg px-3 py-2 text-xs"
+                style={{
+                  background: 'color-mix(in oklab, var(--status-critical) 12%, transparent)',
+                  color: 'var(--ink-primary)',
+                }}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                  className="mt-px shrink-0"
+                >
+                  <circle cx="12" cy="12" r="9" stroke="var(--status-critical)" strokeWidth="2" />
+                  <path d="M12 7v6" stroke="var(--status-critical)" strokeWidth="2" strokeLinecap="round" />
+                  <circle cx="12" cy="16.5" r="1" fill="var(--status-critical)" />
+                </svg>
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={pending}
+              className="focusable mt-5 w-full rounded-lg px-3 py-2.5 text-sm font-medium transition-opacity disabled:opacity-60"
+              style={{ background: 'var(--ink-primary)', color: 'var(--surface)' }}
+            >
+              {pending ? t.auth.signIn.submitting : t.auth.signIn.submit}
+            </button>
+          </form>
+        )}
 
         {/*
           No credential hint.
@@ -209,7 +290,7 @@ function LoginForm() {
           of the two fields was wrong.
         */}
         <p className="mt-4 text-center text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          Kirish maʼlumotlari administrator tomonidan beriladi.
+          {t.auth.signIn.adminNote}
         </p>
       </div>
     </main>

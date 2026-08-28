@@ -4,7 +4,10 @@ Sales, delivery and team analytics for the `obey.bitrix24.kz` portal.
 
 Runs on **live Bitrix24 data**. UI language is Uzbek, currency UZS, every
 reporting period computed in `Asia/Tashkent`. One administrator account; public
-sign-up is disabled in code.
+sign-up is disabled in code, the password is held to a house policy and checked
+against known breaches, an optional TOTP second factor can be armed from
+`/account`, and five wrong passwords lock sign-in for fifteen minutes. What
+that does and does not protect: [SECURITY.md](docs/SECURITY.md).
 
 ---
 
@@ -91,6 +94,11 @@ npm run db:seed:users         # the single administrator
 npm run dev
 ```
 
+Then sign in, change the password from `/account`, and arm two-factor while you
+are there — **the ten backup codes are shown once and are the only recovery
+path there is.** Write them on paper, not into the password manager on the same
+laptop.
+
 `--reset` removes demo-sourced rows before importing. Demo data is retired; the
 generator survives only as a test fixture so the analytics suite runs without a
 portal.
@@ -98,7 +106,7 @@ portal.
 ### Everyday commands
 
 ```bash
-npm run verify                        # typecheck + lint + 307 tests
+npm run verify                        # typecheck + lint + the whole test suite
 npm run bitrix:worker                 # continuous sync, one tick a minute
 npm run bitrix:import                 # a single incremental pass
 npm run bitrix:resync -- STAGES DEALS # one entity, after a mapping fix
@@ -120,6 +128,7 @@ and for catching up by hand.
 | [DATABASE.md](docs/DATABASE.md) | Schema and the money/time contracts |
 | [API.md](docs/API.md) | Endpoints and the response envelope |
 | [DEPLOY.md](docs/DEPLOY.md) | DigitalOcean App Platform, step by step |
+| [SECURITY.md](docs/SECURITY.md) | What protects the dashboard, what does not, and what to do if you suspect a compromise |
 | [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup and conventions |
 
 ---
