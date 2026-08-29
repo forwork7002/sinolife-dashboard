@@ -11,6 +11,7 @@ import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type CommandCentreDto, type DeltaDto, apiGet } from '@/lib/api'
 import { formatCompactUzs, formatNumber, formatPercent } from '@/lib/format'
+import { t } from '@/lib/messages'
 
 
 /**
@@ -46,7 +47,7 @@ export function CommandCentrePage() {
 
   return (
     <PageShell
-      title="Boshqaruv markazi"
+      title={t.nav.overview}
       description="Kompaniya bir ekranda — nima kirdi, nima nosoz, nima ustida turibdi"
       meta={query.data?.meta}
       accent="var(--series-1)"

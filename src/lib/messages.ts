@@ -29,15 +29,15 @@ export const t = {
    */
   nav: {
     overview: 'Boshqaruv markazi',
-    cohort: 'Kogorta tahlili',
-    logistics: 'Logistika %',
-    sales: 'Summa — vizual',
-    confirmation: 'Tasdiqlash hisobotlari',
-    warehouse: 'Sklad qoldiqlari',
-    kpi: 'Yanovskiy tizimi bahosi',
-    structure: 'Struktura — kim bor, kim yoʻq',
+    cohort: 'Mijoz qaytishi',
+    logistics: 'Logistika natijasi',
+    sales: 'Savdo dinamikasi',
+    confirmation: 'Tasdiqlash navbati',
+    warehouse: 'Joʻnatish nuqtalari',
+    kpi: 'KPI rejalari',
+    structure: 'Kadrlar tuzilmasi',
     margin: 'Yalpi marja',
-    marketing: 'Roistat analitikasi',
+    marketing: 'Reklama samarasi',
     /** Not one of the nine: account administration, shown only to an admin. */
     users: 'Foydalanuvchilar',
   },
@@ -53,15 +53,15 @@ export const t = {
    */
   modules: {
     cohort: {
-      title: 'Kogorta tahlili',
-      lead: 'Har oy birinchi marta xarid qilgan mijozlarning qanchasi keyingi oylarda qaytgani.',
+      title: 'Mijoz qaytishi',
+      lead: 'Har oy birinchi marta xarid qilgan mijozlarning qanchasi keyingi oylarda qaytgani — kogorta tahlili.',
     },
     logistics: {
-      title: 'Logistika %',
+      title: 'Logistika natijasi',
       lead: 'Buyurtma qaysi hudud va tashuvchi orqali ketgani, qancha vaqtda yetgani va qayerda qaytgani.',
     },
     confirmation: {
-      title: 'Tasdiqlash hisobotlari',
+      title: 'Tasdiqlash navbati',
       lead: 'Tasdiqlash navbatiga tushgan har bir buyurtma qaysi holatda yakunlangani.',
     },
     margin: {
@@ -69,7 +69,7 @@ export const t = {
       lead: 'Mahsulot boʻyicha tushum, tannarx va yalpi foyda.',
     },
     warehouse: {
-      title: 'Sklad qoldiqlari',
+      title: 'Joʻnatish nuqtalari',
       lead: 'Buyurtmalarni qaysi sklad, kuryer yoki marketpleys bajargani.',
     },
     team: {
@@ -77,7 +77,7 @@ export const t = {
       lead: 'Kim qancha sotdi, kim qancha gaplashdi, kim qayerda turibdi.',
     },
     structure: {
-      title: 'Struktura — kim bor, kim yoʻq',
+      title: 'Kadrlar tuzilmasi',
       lead: 'Boʻlimlar, rahbarlar va har bir boʻlimning natijasi.',
     },
   },

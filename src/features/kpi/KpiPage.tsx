@@ -114,8 +114,19 @@ export function KpiPage() {
   return (
     <PageShell
       title={t.nav.kpi}
+      /*
+        The methodology is named HERE, not in the nav label.
+
+        The section used to be called "Yanovskiy tizimi bahosi". The label lost
+        the surname — a nav rail is for finding a screen, and a person's name
+        tells an operator nothing about what is on it — but the client calls
+        the method that, so it has to survive somewhere a reader can connect it
+        to the numbers. This line is that place.
+      */
       description={
-        data ? `Davrning ${formatPercent(data.elapsedPercent, 0)} qismi oʻtdi` : undefined
+        data
+          ? `Yanovskiy tizimi boʻyicha baholash · davrning ${formatPercent(data.elapsedPercent, 0)} qismi oʻtdi`
+          : 'Yanovskiy tizimi boʻyicha baholash'
       }
       meta={query.data?.meta}
       filters={{ employees: true, departments: true }}

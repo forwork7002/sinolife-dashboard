@@ -42,15 +42,15 @@ export const SECTIONS = [
     first thing every role that holds it should see.
   */
   { id: 'overview', route: '/', label: 'Boshqaruv markazi', group: 'Asosiy' },
-  { id: 'cohort', route: '/analytics/cohort', label: 'Kogorta tahlili', group: 'Tahlil' },
-  { id: 'sales', route: '/analytics/sales', label: 'Summa — vizual', group: 'Tahlil' },
+  { id: 'cohort', route: '/analytics/cohort', label: 'Mijoz qaytishi', group: 'Tahlil' },
+  { id: 'sales', route: '/analytics/sales', label: 'Savdo dinamikasi', group: 'Tahlil' },
   { id: 'margin', route: '/margin', label: 'Yalpi marja', group: 'Tahlil' },
-  { id: 'confirmation', route: '/confirmation', label: 'Tasdiqlash hisobotlari', group: 'Bajarish' },
-  { id: 'logistics', route: '/logistics', label: 'Logistika %', group: 'Bajarish' },
-  { id: 'warehouse', route: '/warehouse', label: 'Sklad qoldiqlari', group: 'Bajarish' },
-  { id: 'kpi', route: '/kpi', label: 'Yanovskiy tizimi bahosi', group: 'Jamoa' },
-  { id: 'structure', route: '/structure', label: 'Struktura — kim bor, kim yoʻq', group: 'Jamoa' },
-  { id: 'marketing', route: '/marketing', label: 'Roistat analitikasi', group: 'Marketing' },
+  { id: 'confirmation', route: '/confirmation', label: 'Tasdiqlash navbati', group: 'Bajarish' },
+  { id: 'logistics', route: '/logistics', label: 'Logistika natijasi', group: 'Bajarish' },
+  { id: 'warehouse', route: '/warehouse', label: 'Joʻnatish nuqtalari', group: 'Bajarish' },
+  { id: 'kpi', route: '/kpi', label: 'KPI rejalari', group: 'Jamoa' },
+  { id: 'structure', route: '/structure', label: 'Kadrlar tuzilmasi', group: 'Jamoa' },
+  { id: 'marketing', route: '/marketing', label: 'Reklama samarasi', group: 'Marketing' },
 ] as const satisfies readonly {
   id: string
   route: string
