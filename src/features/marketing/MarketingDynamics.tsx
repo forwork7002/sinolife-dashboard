@@ -27,6 +27,8 @@ import {
   moneyFromUzs,
   ratio,
 } from './marketingFormat'
+import { ROAS_THRESHOLDS } from './marketingFormat'
+import { TriangleGlyph } from '@/components/ui/Icons'
 
 /**
  * Daily spend and daily ROAS — as TWO PANELS, not one dual-axis chart.
@@ -86,14 +88,47 @@ export function MarketingDynamics({
 
   const spendUnit = mode === 'usd' ? 'Xarajat, $' : 'Xarajat, soʻm'
 
+  /*
+    The ROAS scale is capped, and the cap is the honest choice, not a cosmetic
+    one. This ledger contains days where real revenue lands on near-zero
+    recorded spend — measured here, one day printed ~14,000× — and an axis
+    stretched to hold that point flattens EVERY other day and both of the
+    client's thresholds into one unreadable pixel row. So the axis runs to
+    TWICE THE 75th PERCENTILE (never below twice the "good" line): measured on
+    this ledger the daily ratio sits at 8–25× with a median of 16, while the
+    broken tail runs 600–13,000 — a p95-based cap still landed at 841 and
+    flattened everything, which is why the quartile is the anchor. Days above
+    the cap are drawn AT it as up-pointing triangles — visibly "off the
+    scale", not silently rounded down — and the tooltip states the exact
+    ratio. Nothing is hidden; the scale just refuses to let a few broken
+    attributions erase thirty readable days.
+  */
+  const roasValues = points
+    .map((point) => point.roas)
+    .filter((value): value is number => value !== null && Number.isFinite(value))
+  const sortedRoas = [...roasValues].sort((a, b) => a - b)
+  // Nearest-rank percentile: rank ceil(0.75n), index rank-1. The floor form
+  // picked one element too high and, at n=4, the maximum itself — a cap of
+  // twice the outlier it exists to exclude.
+  const p75 =
+    sortedRoas.length === 0
+      ? 0
+      : sortedRoas[Math.max(0, Math.ceil(sortedRoas.length * 0.75) - 1)]!
+  const roasCap = Math.max(ROAS_THRESHOLDS.good * 2, Math.ceil(p75 * 2))
+  const clippedDays = points.filter((point) => point.roas !== null && point.roas > roasCap).length
+  const plotted = points.map((point) => ({
+    ...point,
+    roasPlot: point.roas === null ? null : Math.min(point.roas, roasCap),
+  }))
+
   return (
     <div className="space-y-1">
       {/* Economist finishing: the unit is stated ONCE at the top-left of the
           plot instead of rotated up the y-axis, where nobody reads it. */}
       <PanelLabel>{spendUnit}</PanelLabel>
-      <div style={{ width: '100%', height: 148 }}>
+      <div style={{ width: '100%', height: 176 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={points} margin={MARGIN}>
+          <BarChart data={plotted} margin={MARGIN}>
             <CartesianGrid vertical={false} stroke="var(--grid)" strokeDasharray="0" />
             {/* The axis exists (it is what positions the bars) but prints
                 nothing: the lower panel carries the dates for both. */}
@@ -114,10 +149,14 @@ export function MarketingDynamics({
             />
             <Bar
               dataKey="spend"
-              // series-1, not the page accent: a mark that encodes a value may
-              // never wear page identity. Radius only on the top corners —
+              // series-2, and not by accident twice over: never the page
+              // accent (a mark that encodes a value may not wear page
+              // identity), and no longer series-1 — the hero panel above now
+              // draws REVENUE in series-1, the slot revenue holds on every
+              // other screen, so spend takes the next slot and each hue means
+              // one measure on this page. Radius only on the top corners —
               // a bar sits ON the baseline.
-              fill="var(--series-1)"
+              fill="var(--series-2)"
               radius={[3, 3, 0, 0]}
               maxBarSize={16}
               isAnimationActive={!reducedMotion}
@@ -128,10 +167,22 @@ export function MarketingDynamics({
         </ResponsiveContainer>
       </div>
 
-      <PanelLabel>ROAS, ×</PanelLabel>
-      <div style={{ width: '100%', height: 132 }}>
+      <PanelLabel>
+        ROAS, ×
+        {clippedDays > 0 && (
+          <span style={{ color: 'var(--ink-muted)' }}>
+            {' '}· shkala {roasCap}× da kesilgan — {clippedDays} kun undan yuqori{' '}
+            {/* The glyph and its clause stay one unit, or the SVG wraps onto
+                its own line and the sentence reads as three fragments. */}
+            <span className="inline-flex items-center gap-1 whitespace-nowrap">
+              (<TriangleGlyph size={10} /> belgi, aniq qiymat tooltipda)
+            </span>
+          </span>
+        )}
+      </PanelLabel>
+      <div style={{ width: '100%', height: 156 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={points} margin={MARGIN}>
+          <LineChart data={plotted} margin={MARGIN}>
             <CartesianGrid vertical={false} stroke="var(--grid)" strokeDasharray="0" />
             <XAxis
               dataKey="label"
@@ -145,6 +196,7 @@ export function MarketingDynamics({
               tickLine={false}
               axisLine={false}
               width={AXIS_WIDTH}
+              domain={[0, roasCap]}
               tick={{ fill: 'var(--ink-muted)', fontSize: 11 }}
               tickFormatter={(value: number) => ratio(value, 1)}
             />
@@ -190,14 +242,47 @@ export function MarketingDynamics({
 
             <Line
               type="monotone"
-              dataKey="roas"
+              dataKey="roasPlot"
               stroke="var(--series-3)"
               strokeWidth={2}
               // No dots at rest — at sixty points they merge into a dotted
-              // line. `connectNulls={false}` so a day with no spend leaves a
-              // GAP: ROAS is undefined there, and a line drawn straight
-              // through would invent a value for it.
-              dot={false}
+              // line — EXCEPT the days sitting on the cap, which get an
+              // up-pointing triangle: "the real value is above this edge".
+              // `connectNulls={false}` so a day with no spend leaves a GAP:
+              // ROAS is undefined there, and a line drawn straight through
+              // would invent a value for it.
+              dot={(props: { cx?: unknown; cy?: unknown; payload?: unknown }) => {
+                const cx = props.cx
+                const cy = props.cy
+                const day = props.payload as { roas: number | null } | undefined
+                if (typeof cx !== 'number' || typeof cy !== 'number' || !day || day.roas === null)
+                  return <g />
+                // A single measured day draws no line segment, and replacing
+                // `dot={false}` with a renderer also replaced Recharts' own
+                // single-point fallback — so the one reading must be drawn
+                // here or the "Bugun" preset shows an empty panel.
+                if (sortedRoas.length === 1) {
+                  return (
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={4}
+                      fill="var(--series-3)"
+                      stroke="var(--surface-raised)"
+                      strokeWidth={2}
+                    />
+                  )
+                }
+                if (day.roas <= roasCap) return <g />
+                return (
+                  <path
+                    d={`M ${cx} ${cy - 5} L ${cx + 4.5} ${cy + 3} L ${cx - 4.5} ${cy + 3} Z`}
+                    fill="var(--series-3)"
+                    stroke="var(--surface-raised)"
+                    strokeWidth={1.5}
+                  />
+                )
+              }}
               connectNulls={false}
               activeDot={{
                 r: 4,
@@ -258,7 +343,7 @@ function DynamicsTooltip({
       header={dayLabel(point.date)}
       rows={[
         {
-          swatch: 'var(--series-1)',
+          swatch: 'var(--series-2)',
           label: 'Xarajat',
           value: moneyFromUsd(point.spendUsd, mode, rate, 'unit'),
         },

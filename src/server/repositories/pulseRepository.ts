@@ -70,6 +70,30 @@ export interface OpenSnapshot {
   readonly openValueMinor: bigint
 }
 
+/**
+ * What the period's revenue is actually MADE OF.
+ *
+ * Revenue is bucketed by `closedAt`, and the median order on this portal takes
+ * three weeks to close — so a month's revenue is mostly the PREVIOUS months'
+ * orders arriving. Measured on August 2026: of 5.68 bn so'm closed, only
+ * 1.68 bn (29%) came from orders created in August; 2.42 bn came from July's
+ * and 1.25 bn from June's. Without this split a reader sees revenue quintuple
+ * while intake is flat and concludes the company grew 5x, which it did not.
+ *
+ * `openFromPeriod` is the other half of the same fact: what this period took
+ * in that has NOT closed yet, and will therefore land in a later month's
+ * revenue. Scoped to the period on the creation clock, unlike `openSnapshot`,
+ * which is every open deal in the company at this instant.
+ */
+export interface RevenueComposition {
+  readonly ownDeals: number
+  readonly ownAmountMinor: bigint
+  readonly carriedDeals: number
+  readonly carriedAmountMinor: bigint
+  readonly openFromPeriodDeals: number
+  readonly openFromPeriodMinor: bigint
+}
+
 export interface StageReachRow {
   readonly stageId: string
   readonly stageName: string
@@ -79,6 +103,16 @@ export interface StageReachRow {
   readonly pipelineId: string
   readonly pipelineName: string
   readonly dealCount: number
+  /**
+   * The pipeline's whole cohort — every deal created in the period that
+   * belongs to it, whether or not it ever entered any stage.
+   *
+   * This is the ONE denominator every stage of the pipeline is measured
+   * against. It is not the first stage's count: a deal can be created and
+   * closed without a single history row, and dividing by a stage would make
+   * the denominator depend on which stage happened to be first.
+   */
+  readonly cohortDeals: number
 }
 
 export interface StageAgingRow {
@@ -251,6 +285,75 @@ export class PulseRepository {
     }
   }
 
+  /**
+   * The period's revenue split by WHEN the order was created, plus what the
+   * period took in and has not closed.
+   *
+   * One query for three reads: the two revenue halves share a scan and the
+   * open leg is a separate FILTER over the same table, so the three figures
+   * can never come from three different instants.
+   */
+  async revenueComposition(
+    period: Period,
+    filters: PulseDealFilters,
+  ): Promise<RevenueComposition> {
+    const params: unknown[] = [period.start, period.end]
+    const filterClause = this.filterSql(filters, params, 'd')
+
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        own_deals: bigint
+        own_amount: MoneyText
+        carried_deals: bigint
+        carried_amount: MoneyText
+        open_deals: bigint
+        open_amount: MoneyText
+      }[]
+    >(
+      `
+      SELECT
+        count(*) FILTER (
+          WHERE d."status" = 'WON' AND d."closedAt" >= $1 AND d."closedAt" < $2
+            AND d."createdAtSource" >= $1
+        )::bigint AS own_deals,
+        sum(d."amountMinor") FILTER (
+          WHERE d."status" = 'WON' AND d."closedAt" >= $1 AND d."closedAt" < $2
+            AND d."createdAtSource" >= $1
+        )::text AS own_amount,
+        count(*) FILTER (
+          WHERE d."status" = 'WON' AND d."closedAt" >= $1 AND d."closedAt" < $2
+            AND d."createdAtSource" < $1
+        )::bigint AS carried_deals,
+        sum(d."amountMinor") FILTER (
+          WHERE d."status" = 'WON' AND d."closedAt" >= $1 AND d."closedAt" < $2
+            AND d."createdAtSource" < $1
+        )::text AS carried_amount,
+        count(*) FILTER (
+          WHERE d."status" = 'OPEN'
+            AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
+        )::bigint AS open_deals,
+        sum(d."amountMinor") FILTER (
+          WHERE d."status" = 'OPEN'
+            AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
+        )::text AS open_amount
+      FROM "deal" d
+      WHERE d."countsAsRevenue"
+        ${filterClause}
+      `,
+      ...params,
+    )
+
+    const row = rows[0]
+    return {
+      ownDeals: int(row?.own_deals ?? 0n),
+      ownAmountMinor: money(row?.own_amount ?? null),
+      carriedDeals: int(row?.carried_deals ?? 0n),
+      carriedAmountMinor: money(row?.carried_amount ?? null),
+      openFromPeriodDeals: int(row?.open_deals ?? 0n),
+      openFromPeriodMinor: money(row?.open_amount ?? null),
+    }
+  }
+
   /** Revenue won inside one window. Used for period-to-date AND the previous full unit. */
   async wonRevenueInWindow(window: Period, filters: PulseDealFilters): Promise<bigint> {
     const params: unknown[] = [window.start, window.end]
@@ -300,21 +403,36 @@ export class PulseRepository {
         pipeline_id: string
         pipeline_name: string
         deal_count: bigint
+        cohort_deals: bigint
       }[]
     >(
       `
       WITH cohort AS (
-        SELECT d."id"
+        SELECT d."id", d."pipelineId" AS pipeline_id
         FROM "deal" d
         JOIN "pipeline" pl ON pl."id" = d."pipelineId"
         WHERE pl."role" = 'REVENUE'
           AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
           ${filterClause}
       ),
+      cohort_size AS (
+        SELECT pipeline_id, count(*)::bigint AS cohort_deals
+        FROM cohort GROUP BY 1
+      ),
       reached AS (
+        /*
+          The numerator is scoped to the STAGE'S OWN PIPELINE, and it has to
+          be. cohort_size buckets each deal by the pipeline it is in now, so
+          a deal that moved between two revenue pipelines would otherwise land
+          in one pipeline's denominator and the other's numerator — and a
+          stage could then report more deals than its pipeline's whole cohort.
+          Deals with history in both Доставка and Ecommerce exist in this
+          database, so this is a real path, not a hypothetical one.
+        */
         SELECT h."stageId" AS stage_id, count(DISTINCT h."dealId")::bigint AS deal_count
         FROM "deal_stage_history" h
-        JOIN cohort c ON c."id" = h."dealId"
+        JOIN "deal_stage" st ON st."id" = h."stageId"
+        JOIN cohort c ON c."id" = h."dealId" AND c.pipeline_id = st."pipelineId"
         GROUP BY 1
       )
       SELECT
@@ -325,10 +443,12 @@ export class PulseRepository {
         s."sortOrder" AS sort_order,
         pl."id" AS pipeline_id,
         pl."name" AS pipeline_name,
-        COALESCE(r.deal_count, 0)::bigint AS deal_count
+        COALESCE(r.deal_count, 0)::bigint AS deal_count,
+        COALESCE(cs.cohort_deals, 0)::bigint AS cohort_deals
       FROM "deal_stage" s
       JOIN "pipeline" pl ON pl."id" = s."pipelineId" AND pl."role" = 'REVENUE'
       LEFT JOIN reached r ON r.stage_id = s."id"
+      LEFT JOIN cohort_size cs ON cs.pipeline_id = pl."id"
       ORDER BY pl."sortOrder", pl."name", s."sortOrder"
       `,
       ...params,
@@ -343,6 +463,7 @@ export class PulseRepository {
       pipelineId: r.pipeline_id,
       pipelineName: r.pipeline_name,
       dealCount: int(r.deal_count),
+      cohortDeals: int(r.cohort_deals),
     }))
   }
 

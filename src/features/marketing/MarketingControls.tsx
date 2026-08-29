@@ -273,6 +273,42 @@ export function FormulaHint({ snapshot }: { snapshot: MarketingSnapshotDto }) {
   )
 }
 
+/**
+ * The two feeds stopped on different days, and the window crosses the gap.
+ *
+ * This is a stronger statement than FreshnessWarning below, and a different
+ * one. That one says the newest rows are still filling up — the source's own
+ * `freshFrom` signal. This says something the source does not signal at all:
+ * ad delivery and money come from two publishers (Meta Ads and the client's
+ * sheet) that stop on different dates, so between those dates the window has
+ * revenue with NO spend beside it. Every ratio built from both feeds — ROAS,
+ * CPO, CAC, ARPL, liddan-sotuvgacha konversiya — is then computed over two
+ * different spans and flatters in a predictable direction.
+ *
+ * Measured on the 2026-08-29 import: ads through 31 July, sales through 10
+ * August, and the default window's ROAS read 19.82x where July alone — the
+ * span both feeds cover — read 15.62x.
+ */
+export function FeedGapWarning({
+  adsThrough,
+  salesThrough,
+}: {
+  adsThrough: string
+  salesThrough: string
+}) {
+  return (
+    <Note tone="warning">
+      <strong style={{ color: 'var(--ink-primary)' }}>
+        Ikki manba turli sanada toʻxtagan.
+      </strong>{' '}
+      Reklama maʼlumoti (lid va xarajat) {dayLabel(adsThrough)} gacha, sotuv va tushum esa{' '}
+      {dayLabel(salesThrough)} gacha yozilgan. Oradagi kunlarda tushum bor, xarajat yoʻq — shuning
+      uchun ROAS, CPO, CAC, ARPL va konversiya haqiqatdan yaxshiroq koʻrinadi. Toʻgʻri
+      taqqoslash uchun davrni {dayLabel(adsThrough)} bilan yakunlang.
+    </Note>
+  )
+}
+
 /** "The last seven days are not closed yet" — shown only when the window reaches them. */
 export function FreshnessWarning({ snapshot }: { snapshot: MarketingSnapshotDto }) {
   return (

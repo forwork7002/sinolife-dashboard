@@ -132,7 +132,7 @@ export function PageShell({
           `.page-atmosphere` (globals.css) paints two blurred chrome-tint
           blobs and masks them away over the bottom of the band, so the
           atmosphere dies before the first chart. It lives in
-          their own absolutely-positioned, overflow-hidden layer rather than
+          its own absolutely-positioned, overflow-hidden layer rather than
           putting overflow-hidden on the content: the MultiSelect popovers in
           the filter row open downward past this box and must not be clipped.
           The layer bleeds up into main's padding so the glow starts at the

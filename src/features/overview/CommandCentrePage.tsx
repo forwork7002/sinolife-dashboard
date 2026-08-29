@@ -4,9 +4,14 @@ import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
 import { BarList } from '@/components/charts/BarList'
+import { Sparkline } from '@/components/charts/Sparkline'
+import { ChartSkeleton } from '@/components/states/States'
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Card } from '@/components/ui/Card'
-import { Meter, SectionHeader, StatTile, StatusChip } from '@/components/ui/Stat'
+import { GaugeTile, Meter, RingGauge, SectionHeader, StatTile, StatusChip } from '@/components/ui/Stat'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
+import { IntakeTrendChart } from '@/features/overview/IntakeTrendChart'
+import { RejectionControlChart } from '@/features/overview/RejectionControlChart'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type CommandCentreDto, type DeltaDto, apiGet } from '@/lib/api'
@@ -29,6 +34,13 @@ import { t } from '@/lib/messages'
  * whose intake FELL. Revenue is still shown, because it is what the company
  * earned; it is shown without a growth arrow, next to the lag that explains
  * why it cannot have one.
+ *
+ * THE AUGUST 2026 REDESIGN made the screen instrumental rather than tabular:
+ * the headline leads a hero panel whose daily intake chart is the same count
+ * spread over its days, the rejection alarm grew from a one-day bar into the
+ * full control chart it was always graded on, and every headline rate wears
+ * the ring the design system prescribes for tiles. No number changed meaning;
+ * each got the shape that lets a reader judge it without reading it.
  */
 export function CommandCentrePage() {
   const { apiParams } = useDashboardFilters()
@@ -52,13 +64,15 @@ export function CommandCentrePage() {
       meta={query.data?.meta}
       accent="var(--series-1)"
     >
-      <IntakeBand data={d} status={status} />
-      <AlarmStrip data={d} status={status} />
+      <HeroBand data={d} status={status} />
+      <MoneyTiles data={d} status={status} />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-        <CohortCard data={d} status={status} />
-        <ExecutionCard data={d} status={status} />
+      <div className="grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+        <AlarmCard data={d} status={status} />
+        <GaugeColumn data={d} status={status} />
       </div>
+
+      <CohortCard data={d} status={status} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <ProductRiskCard data={d} status={status} />
@@ -82,96 +96,192 @@ interface BlockProps {
 }
 
 // ---------------------------------------------------------------------------
-// 1 — What came in
+// 1 — What came in: the hero panel
 // ---------------------------------------------------------------------------
 
-function IntakeBand({ data, status }: BlockProps) {
+/**
+ * The lead instrument: the period's order count above the daily series it is
+ * the sum of. Figure and chart are one panel, so the number is never a blank
+ * tile and the chart is never an unheadlined plot — the hero-band rule.
+ * `.card-hero` + `.brackets` mark it as the flagship; nothing else on this
+ * page wears either class.
+ */
+function HeroBand({ data, status }: BlockProps) {
   const intake = data?.intake
-  const revenue = data?.revenue
+  const daily = intake?.daily ?? []
 
   return (
-    <section className="space-y-2.5">
-      <SectionHeader
-        title="Bu davrda nima kirdi"
-        hint="Buyurtma OLINGAN sana boʻyicha — ikkala oy ham toʻliq, shuning uchun taqqoslash haqiqatni aytadi"
-      />
+    <Card className="card-hero brackets reveal" as="section">
+      <header className="flex items-start justify-between gap-4 px-5 pt-4">
+        <div className="min-w-0">
+          <h2
+            className="text-sm font-semibold tracking-tight"
+            style={{ color: 'var(--ink-primary)' }}
+          >
+            Buyurtma oqimi
+          </h2>
+          <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-muted)' }}>
+            Buyurtma OLINGAN sana boʻyicha — ikkala davr ham toʻliq, shuning uchun taqqoslash
+            haqiqatni aytadi
+          </p>
+        </div>
+      </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <StatTile
-          label="Buyurtma olindi"
-          value={intake?.orders.value ?? null}
-          unit="count"
-          status={status}
-          context={<Delta delta={intake?.orders.delta} />}
-          hint="Yaratilgan sana boʻyicha, takroriy База yozuvlarisiz"
-        />
-        <StatTile
-          label="Bron qilingan summa"
-          value={intake ? Number(intake.booked.amount) : null}
-          unit="money"
-          status={status}
-          context={<Delta delta={intake?.bookedDelta} />}
-          hint="Shu buyurtmalarning umumiy qiymati"
-        />
-        <StatTile
-          label="Oʻrtacha buyurtma"
-          value={intake ? Number(intake.averageOrder.amount) : null}
-          unit="money"
-          status={status}
-          context={<Delta delta={intake?.averageOrderDelta} />}
-          hint="Eng barqaror pul koʻrsatkichi — u qimirlasa, sabab bor"
-        />
-        {/*
-          Deliberately arrow-free.
+      <div className="grid gap-x-8 gap-y-4 px-5 pt-3 pb-5 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
+        <div className="min-w-0">
+          <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+            Buyurtma olindi
+          </p>
 
-          Every other tile in this row carries a delta because its clock is the
-          creation date and both windows are complete. This one is bucketed by
-          close date, so its previous-period figure is a different population,
-          not a baseline. The lag is printed instead of a percentage: it is the
-          honest version of the number people want.
-        */}
-        <StatTile
-          label="Yopilgan daromad"
-          value={revenue ? Number(revenue.delivered.amount) : null}
-          unit="money"
-          status={status}
-          hint="Yopilgan sana boʻyicha"
-          context={
-            revenue?.closeLagDays != null ? (
-              <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                oʻrtacha {formatNumber(revenue.closeLagDays)} kundan keyin yopiladi — shuning
-                uchun oʻsish foizi koʻrsatilmaydi
-              </span>
-            ) : undefined
-          }
-        />
-        {/*
-          The counterweight, and — like the revenue tile beside it — with no
-          arrow. An older window has had longer to drain, so it always shows
-          less still open: August against July reads "+186%" for that reason
-          alone. Same survivorship artifact as the close lag, different hat.
-        */}
-        <StatTile
-          label="Hali yoʻlda"
-          value={intake?.open ?? null}
-          unit="count"
-          status={status}
-          hint="Shu davrda olingan, hali yopilmagan buyurtmalar"
-          context={
-            revenue ? (
-              <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                {formatCompactUzs(Number(revenue.openPipeline.amount))} soʻm hali yoʻlda
-              </span>
-            ) : undefined
-          }
-        />
+          {status === 'loading' ? (
+            <div className="skeleton mt-1.5 h-10 w-40" role="status">
+              <span className="sr-only">Yuklanmoqda</span>
+            </div>
+          ) : status === 'error' ? (
+            <p className="mt-1.5 text-base font-medium" style={{ color: 'var(--status-critical)' }}>
+              Olinmadi
+            </p>
+          ) : intake ? (
+            <>
+              <p className="figure-hero mt-1.5" style={{ color: 'var(--ink-primary)' }}>
+                <AnimatedNumber value={intake.orders.value} format={formatNumber} duration={900} />
+                <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
+                  ta
+                </span>
+              </p>
+
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Delta delta={intake.orders.delta} />
+                {intake.orders.previous !== null && (
+                  <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                    oʻtgan davrda {formatNumber(intake.orders.previous)} ta
+                  </span>
+                )}
+              </div>
+
+              {/* The hero-band rule: a big number carries the thing it was
+                  computed beside — here, what the same orders are worth. */}
+              <p className="mt-3 text-xs" style={{ color: 'var(--ink-secondary)' }}>
+                {formatCompactUzs(Number(intake.booked.amount))} soʻm bron qilindi
+              </p>
+              <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                takroriy База yozuvlarisiz
+              </p>
+            </>
+          ) : null}
+        </div>
+
+        <div className="min-w-0">
+          {status === 'loading' ? (
+            <ChartSkeleton height={240} />
+          ) : status === 'error' ? (
+            <p className="py-16 text-center text-xs" style={{ color: 'var(--ink-muted)' }}>
+              Grafik uchun maʼlumot olinmadi
+            </p>
+          ) : daily.length >= 2 ? (
+            <IntakeTrendChart
+              data={daily}
+              previousDailyOrders={intake?.previousDailyOrders ?? null}
+              height={240}
+            />
+          ) : (
+            <p className="py-16 text-center text-xs" style={{ color: 'var(--ink-muted)' }}>
+              Bu davr hali grafik chizishga yetarli kun koʻrmadi
+            </p>
+          )}
+        </div>
       </div>
-    </section>
+    </Card>
   )
 }
 
 // ---------------------------------------------------------------------------
-// 2 — Is anything wrong right now
+// 2 — The money the intake carries
+// ---------------------------------------------------------------------------
+
+function MoneyTiles({ data, status }: BlockProps) {
+  const intake = data?.intake
+  const revenue = data?.revenue
+  const daily = intake?.daily ?? []
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <StatTile
+        label="Bron qilingan summa"
+        value={intake ? Number(intake.booked.amount) : null}
+        unit="money"
+        status={status}
+        hint="Shu davrda olingan buyurtmalarning umumiy qiymati"
+        context={
+          <div className="space-y-1.5">
+            <Delta delta={intake?.bookedDelta} />
+            {daily.length >= 2 && (
+              <Sparkline
+                values={daily.map((d) => d.booked)}
+                label="Kunlik bron summa"
+              />
+            )}
+          </div>
+        }
+      />
+      <StatTile
+        label="Oʻrtacha buyurtma"
+        value={intake ? Number(intake.averageOrder.amount) : null}
+        unit="money"
+        status={status}
+        context={<Delta delta={intake?.averageOrderDelta} />}
+        hint="Eng barqaror pul koʻrsatkichi — u qimirlasa, sabab bor"
+      />
+      {/*
+        Deliberately arrow-free.
+
+        The tiles above carry deltas because their clock is the creation date
+        and both windows are complete. This one is bucketed by close date, so
+        its previous-period figure is a different population, not a baseline.
+        The lag is printed instead of a percentage: it is the honest version
+        of the number people want.
+      */}
+      <StatTile
+        label="Yopilgan daromad"
+        value={revenue ? Number(revenue.delivered.amount) : null}
+        unit="money"
+        status={status}
+        hint="Yopilgan sana boʻyicha"
+        context={
+          revenue?.closeLagDays != null ? (
+            <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              oʻrtacha {formatNumber(revenue.closeLagDays)} kundan keyin yopiladi — shuning
+              uchun oʻsish foizi koʻrsatilmaydi
+            </span>
+          ) : undefined
+        }
+      />
+      {/*
+        The counterweight, and — like the revenue tile beside it — with no
+        arrow. An older window has had longer to drain, so it always shows
+        less still open: August against July reads "+186%" for that reason
+        alone. Same survivorship artifact as the close lag, different hat.
+      */}
+      <StatTile
+        label="Hali yoʻlda"
+        value={intake?.open ?? null}
+        unit="count"
+        status={status}
+        hint="Shu davrda olingan, hali yopilmagan buyurtmalar"
+        context={
+          revenue ? (
+            <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              {formatCompactUzs(Number(revenue.openPipeline.amount))} soʻm hali yoʻlda
+            </span>
+          ) : undefined
+        }
+      />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 3 — Is anything wrong right now
 // ---------------------------------------------------------------------------
 
 /**
@@ -185,64 +295,185 @@ function IntakeBand({ data, status }: BlockProps) {
  * that fires on 4% of days is an alarm; one that fires every afternoon is
  * furniture.
  *
- * Sundays are out of the baseline, not out of the reading. Sunday takes a
- * third of a weekday's orders and swings twice as widely; blended in, every
- * Sunday trips the alarm and the alarm stops meaning anything.
+ * Sundays are out of the baseline, not out of the reading — the chart draws
+ * them hollow. Sunday takes a third of a weekday's orders and swings twice as
+ * widely; blended in, every Sunday trips the alarm and the alarm stops
+ * meaning anything.
  */
-function AlarmStrip({ data, status }: BlockProps) {
+function AlarmCard({ data, status }: BlockProps) {
   const c = data?.confirmation
   const today = c?.rejectionToday ?? null
   const limit = c?.rejectionLimit ?? 0
+  const series = c?.days ?? []
 
-  const breached = today !== null && limit > 0 && today > limit
+  /*
+    Sunday cannot breach. The limit is computed WITHOUT Sundays — a different
+    regime with a third of the orders and twice the spread — so grading a
+    Sunday reading against it is exactly the false alarm the baseline
+    exclusion exists to prevent, and the chart below already refuses it
+    (hollow dot, no red). The headline follows the same rule or the two
+    halves of one card contradict each other.
+  */
+  const todayIsSunday = series.at(-1)?.sunday === true
+  const breached = today !== null && limit > 0 && !todayIsSunday && today > limit
   const tone = status !== 'ready' ? 'neutral' : breached ? 'critical' : 'good'
 
   return (
-    <Card>
-      <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3.5">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2.5">
-            <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-              Rad etish ulushi — bugun
-            </p>
-            {status === 'ready' && (
-              <StatusChip tone={tone}>
-                {breached ? 'Meʼyordan yuqori' : 'Meʼyorda'}
-              </StatusChip>
+    <Card className="reveal">
+      <div className="flex h-full flex-col px-4 py-3.5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2.5">
+              <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                Rad etish ulushi — kunlik nazorat
+              </p>
+              {/* Only while a norm EXISTS: under five working days the limit
+                  is 0 and "Meʼyorda" would assert a norm the footnote below
+                  says was never computed. Sunday gets its own words — inside
+                  or outside the band, the band was not built for it. */}
+              {status === 'ready' && today !== null && limit > 0 && (
+                todayIsSunday ? (
+                  <StatusChip tone="neutral">Yakshanba — baza tashqarisida</StatusChip>
+                ) : (
+                  <StatusChip tone={tone}>
+                    {breached ? 'Meʼyordan yuqori' : 'Meʼyorda'}
+                  </StatusChip>
+                )
+              )}
+            </div>
+            {/* Loading, failure and a genuine null are THREE renderings —
+                an em dash during a 500 would state "no data", a claim nobody
+                measured. The genuine null is real here: a stale sync leaves
+                today without a reading until the worker catches up. */}
+            {status === 'loading' ? (
+              <div className="skeleton mt-1.5 h-8 w-28" role="status">
+                <span className="sr-only">Yuklanmoqda</span>
+              </div>
+            ) : status === 'error' ? (
+              <p className="mt-1 text-base font-medium" style={{ color: 'var(--status-critical)' }}>
+                Olinmadi
+              </p>
+            ) : (
+              <p className="mt-1 flex items-baseline gap-2">
+                <span
+                  className="display text-2xl font-semibold"
+                  style={{
+                    color: breached ? 'var(--status-critical)' : 'var(--ink-primary)',
+                  }}
+                >
+                  {today === null ? '—' : formatPercent(today)}
+                </span>
+                <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+                  {today === null
+                    ? 'bugungi oʻlchov hali tushmagan'
+                    : `bugun · ${c?.rejectionDays ?? 0} ish kunidan oʻlchangan`}
+                </span>
+              </p>
             )}
           </div>
-
-          <p className="mt-1 flex items-baseline gap-2">
-            <span
-              className="display text-2xl font-semibold tabular-nums"
-              style={{
-                color: breached ? 'var(--status-critical)' : 'var(--ink-primary)',
-              }}
-            >
-              {today === null ? '—' : formatPercent(today)}
-            </span>
-            <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-              {c?.rejectionDays ?? 0} ish kunidan oʻlchangan
-            </span>
-          </p>
-
-          <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-            Chegara — shu davrning oʻz oʻrtachasi + 2σ, {c?.rejectionDays ?? 0} ish kuni boʻyicha.
-            Yakshanba bazadan chiqarilgan: u kuni buyurtma uch barobar kam va tarqalish ikki
-            barobar keng.
-          </p>
         </div>
 
-        <div className="w-full max-w-[340px] shrink-0">
-          <ControlBar value={today} mean={c?.rejectionMean ?? 0} limit={limit} />
+        <div className="mt-3">
+          {status === 'loading' ? (
+            <ChartSkeleton height={240} />
+          ) : status === 'error' ? (
+            <p className="py-16 text-center text-xs" style={{ color: 'var(--ink-muted)' }}>
+              Grafik uchun maʼlumot olinmadi
+            </p>
+          ) : series.length >= 2 && limit > 0 ? (
+            <RejectionControlChart
+              data={series}
+              mean={c?.rejectionMean ?? 0}
+              limit={limit}
+              height={240}
+            />
+          ) : (
+            <p className="py-16 text-center text-xs" style={{ color: 'var(--ink-muted)' }}>
+              Chegara chizishga hali ish kuni yetarli emas
+            </p>
+          )}
         </div>
+
+        <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+          Chegara — shu davrning oʻz oʻrtachasi + 2σ, {c?.rejectionDays ?? 0} ish kuni boʻyicha.
+          Yakshanba (boʻsh nuqtalar) bazadan chiqarilgan: u kuni buyurtma uch barobar kam va
+          tarqalish ikki barobar keng.
+        </p>
       </div>
     </Card>
   )
 }
 
+/**
+ * The headline rates, each drawn as the ring the design system prescribes
+ * for tiles — and each stating the fraction it was computed from, because a
+ * rate without its fraction is a claim, not a measurement.
+ *
+ * Confirmation and returning-customer share wear NEUTRAL rings: the house
+ * 85/60 thresholds describe delivery-grade rates, and nobody has set a norm
+ * for how much of a queue should confirm or how many customers should come
+ * back — a ring that painted 55% critical would be a judgement nobody made.
+ * Delivery keeps the graded ring; that scale is what the thresholds are for.
+ */
+function GaugeColumn({ data, status }: BlockProps) {
+  const c = data?.confirmation
+  const l = data?.logistics
+  const cust = data?.customers
+
+  return (
+    <div className="grid content-start gap-3">
+      <GaugeTile
+        label="Tasdiqlash ulushi"
+        value={c?.confirmedRate ?? null}
+        tone="neutral"
+        status={status}
+        hint={c ? `${formatNumber(c.confirmed)} / ${formatNumber(c.orders)} navbatdan` : undefined}
+        context={
+          c ? (
+            <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              Rad etilgan: {formatNumber(c.rejected)} ta
+            </p>
+          ) : undefined
+        }
+      />
+      <GaugeTile
+        label="Yetkazish ulushi"
+        value={l?.deliveryRate ?? null}
+        tone="auto"
+        status={status}
+        hint={
+          l ? `${formatNumber(l.delivered)} / ${formatNumber(l.resolved)} hal boʻlganidan` : undefined
+        }
+        context={
+          l ? (
+            <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              Yoʻlda {formatNumber(l.inFlight)} · erta bekor {formatNumber(l.cancelledEarly)}
+            </p>
+          ) : undefined
+        }
+      />
+      <GaugeTile
+        label="Qaytgan mijozlar ulushi"
+        value={cust?.returningSharePercent ?? null}
+        tone="neutral"
+        status={status}
+        hint={
+          cust
+            ? `${formatNumber(cust.returning)} / ${formatNumber(cust.ordering.value)} mijozdan`
+            : undefined
+        }
+        context={
+          <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            Yangilar «Mijozlar» kartasida
+          </p>
+        }
+      />
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
-// 3 — Where the cohort got to
+// 4 — Where the cohort got to
 // ---------------------------------------------------------------------------
 
 /** The HHI band, in the interface's own language rather than the domain's. */
@@ -275,7 +506,7 @@ function CohortCard({ data, status }: BlockProps) {
   const created = steps[0]?.orders ?? 0
 
   return (
-    <Card>
+    <Card className="reveal">
       <div className="space-y-3 px-4 py-3.5">
         <SectionHeader
           title="Shu davr buyurtmalari qayergacha yetdi"
@@ -326,48 +557,6 @@ function CohortCard({ data, status }: BlockProps) {
 }
 
 // ---------------------------------------------------------------------------
-// 4 — Execution health
-// ---------------------------------------------------------------------------
-
-function ExecutionCard({ data, status }: BlockProps) {
-  const c = data?.confirmation
-  const l = data?.logistics
-
-  return (
-    <Card>
-      <div className="space-y-3 px-4 py-3.5">
-        <SectionHeader title="Bajarish holati" hint="Tasdiqlash va logistika" />
-
-        <dl className="space-y-2.5">
-          <Row
-            label="Tasdiqlash ulushi"
-            value={status === 'ready' ? formatPercent(c?.confirmedRate ?? null) : '…'}
-            meta={c ? `${formatNumber(c.orders)} ta navbatdan` : undefined}
-          />
-          <Row
-            label="Rad etilgan"
-            value={status === 'ready' ? formatNumber(c?.rejected ?? 0) : '…'}
-          />
-          <Row
-            label="Yetkazish ulushi"
-            value={status === 'ready' ? formatPercent(l?.deliveryRate ?? null) : '…'}
-            meta="hal boʻlgan buyurtmalardan"
-          />
-          <Row
-            label="Yoʻlda"
-            value={status === 'ready' ? formatNumber(l?.inFlight ?? 0) : '…'}
-          />
-          <Row
-            label="Erta bekor qilingan"
-            value={status === 'ready' ? formatNumber(l?.cancelledEarly ?? 0) : '…'}
-          />
-        </dl>
-      </div>
-    </Card>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // 5 — What the business rests on
 // ---------------------------------------------------------------------------
 
@@ -388,7 +577,7 @@ function ProductRiskCard({ data, status }: BlockProps) {
   const top = p?.topSharePercent ?? null
 
   return (
-    <Card>
+    <Card className="reveal">
       <div className="space-y-3 px-4 py-3.5">
         <SectionHeader
           title="Daromad nimaga tayanadi"
@@ -431,7 +620,7 @@ function RegionCard({ data, status }: BlockProps) {
   const regions = data?.logistics.regions ?? []
 
   return (
-    <Card>
+    <Card className="reveal">
       <div className="space-y-3 px-4 py-3.5">
         <SectionHeader
           title="Hududlar"
@@ -469,7 +658,7 @@ function CustomerCard({ data, status }: BlockProps) {
   const conc = data?.concentration
 
   return (
-    <Card>
+    <Card className="reveal">
       <div className="space-y-3 px-4 py-3.5">
         <SectionHeader title="Mijozlar" hint="Birinchi xaridi shu davrga tushganlar — yangi" />
 
@@ -491,14 +680,11 @@ function CustomerCard({ data, status }: BlockProps) {
         </div>
 
         <dl className="space-y-2.5">
+          {/* The share itself is the ring in the gauge column — this row
+              carries the count, so the two never state the same number twice. */}
           <Row
             label="Qaytgan mijozlar"
             value={status === 'ready' ? formatNumber(c?.returning ?? 0) : '…'}
-            meta={
-              c?.returningSharePercent != null
-                ? `${formatPercent(c.returningSharePercent)} ulush`
-                : undefined
-            }
           />
           <Row
             label="Ikkinchi xaridgacha"
@@ -522,11 +708,57 @@ function CustomerCard({ data, status }: BlockProps) {
 
 function TeamCard({ data, status }: BlockProps) {
   const team = data?.team
+  const workingShare =
+    team && team.active > 0 ? Math.round((team.working / team.active) * 1000) / 10 : null
 
   return (
-    <Card>
+    <Card className="reveal">
       <div className="space-y-3 px-4 py-3.5">
         <SectionHeader title="Jamoa" hint="Bitrix24 dagi tuzilma boʻyicha" />
+
+        {/*
+          The number worth a director's attention, drawn as the ring tiles
+          get: how many of the people marked active actually made a call or
+          won a deal in the window. Headcount alone never moves; this does.
+          Graded with the page's own judgement — under 60% earns the warning —
+          because the house 85/60 scale was written for delivery rates, not
+          for how much of a payroll works in any given window.
+        */}
+        <div className="flex items-center gap-3.5">
+          {status === 'loading' ? (
+            <div className="skeleton h-[68px] w-[68px] shrink-0 rounded-full" role="status">
+              <span className="sr-only">Yuklanmoqda</span>
+            </div>
+          ) : status === 'error' ? (
+            // Not a null ring: an em dash here would file a failed fetch
+            // under "no active employees", a confident claim nobody measured.
+            <span
+              className="text-base font-medium"
+              style={{ color: 'var(--status-critical)' }}
+              title="Maʼlumot olinmadi"
+            >
+              Olinmadi
+            </span>
+          ) : (
+            <RingGauge
+              value={workingShare}
+              tone={workingShare !== null && workingShare < 60 ? 'warning' : 'neutral'}
+              label="Ishlaganlar ulushi"
+            />
+          )}
+          <div className="min-w-0">
+            <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+              Ishlaganlar ulushi
+            </p>
+            {status === 'ready' && (
+              <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                {team && team.active > 0
+                  ? `${formatNumber(team.active)} faol xodimdan ${formatNumber(team.working)} tasi shu davrda qoʻngʻiroq qildi yoki bitim yopdi`
+                  : 'Faol xodimlar topilmadi'}
+              </p>
+            )}
+          </div>
+        </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <StatTile
@@ -536,54 +768,18 @@ function TeamCard({ data, status }: BlockProps) {
             status={status}
             hint={team ? `${formatNumber(team.departments)} ta boʻlim` : undefined}
           />
-          {/*
-            The number worth a director's attention, and the reason this card
-            is not just a headcount: how many of the people marked active
-            actually made a call or won a deal in the window. Headcount alone
-            never moves; this does.
-          */}
           <StatTile
-            label="Shu davrda ishlagan"
-            value={team?.working ?? null}
+            label="Faol xodimlar"
+            value={team?.active ?? null}
             unit="count"
             status={status}
             hint={
-              team && team.active > 0
-                ? `${formatNumber(team.active)} faol xodimdan`
-                : undefined
-            }
-            tone={
-              team && team.active > 0 && team.working / team.active < 0.6
-                ? 'warning'
-                : 'neutral'
-            }
-          />
-        </div>
-
-        <dl className="space-y-2.5">
-          <Row
-            label="Faol xodimlar"
-            value={status === 'ready' ? formatNumber(team?.active ?? 0) : '…'}
-            meta={
               team && team.employees > 0
                 ? `${formatPercent((team.active / team.employees) * 100)} roʻyxatdan`
                 : undefined
             }
           />
-          <Row
-            label="Ishlaganlar ulushi"
-            value={
-              status === 'ready' && team && team.active > 0
-                ? formatPercent((team.working / team.active) * 100)
-                : '—'
-            }
-            meta="faol xodimlardan"
-          />
-          <Row
-            label="Boʻlimlar"
-            value={status === 'ready' ? formatNumber(team?.departments ?? 0) : '…'}
-          />
-        </dl>
+        </div>
       </div>
     </Card>
   )
@@ -648,82 +844,6 @@ function NotConnected({ data }: { data: CommandCentreDto | undefined }) {
  * claim nobody made. TrendIndicator itself already handles the awkward cases
  * the domain models: no baseline, unchanged, and a base too small to divide.
  */
-/**
- * Today's reading against its own control band.
- *
- * Purpose-built rather than a `Meter`, because a meter draws a value against a
- * fixed 0–100 track and the whole question here is where the value falls
- * relative to two moving landmarks — the mean and the 2-sigma limit. Those are
- * marks on the track, not the track itself, and no existing component can draw
- * them.
- *
- * The scale runs to a quarter past the limit rather than to 100: a rejection
- * share lives between 5% and 20%, and a 0–100 track would compress the entire
- * interesting range into its first fifth.
- */
-function ControlBar({
-  value,
-  mean,
-  limit,
-}: {
-  value: number | null
-  mean: number
-  limit: number
-}) {
-  if (value === null || limit <= 0) {
-    return (
-      <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-        Maʼlumot yetarli emas
-      </span>
-    )
-  }
-
-  const scale = Math.max(limit * 1.25, value * 1.1)
-  const pct = (n: number) => `${Math.min(100, (n / scale) * 100)}%`
-  const breached = value > limit
-
-  return (
-    <div className="space-y-1.5">
-      <div
-        className="relative h-2 w-full overflow-hidden rounded-full"
-        style={{ background: 'var(--track)' }}
-        role="img"
-        aria-label={`Bugun ${formatPercent(value)}, chegara ${formatPercent(limit)}`}
-      >
-        {/* The normal band — everything up to the limit — as a calm ground the
-            reading sits on, so "inside the band" is visible without reading a
-            number. */}
-        <div
-          className="absolute inset-y-0 left-0 rounded-full"
-          style={{
-            width: pct(limit),
-            background: 'color-mix(in oklab, var(--status-good) 18%, transparent)',
-          }}
-        />
-        <div
-          className="absolute inset-y-0 left-0 rounded-full"
-          style={{
-            width: pct(value),
-            background: breached ? 'var(--status-critical)' : 'var(--seq-450)',
-            transition: 'width var(--duration-enter) var(--ease-out)',
-          }}
-        />
-        {/* The limit itself, drawn as a hard tick. A band with no edge is just
-            a gradient, and the edge is the entire decision. */}
-        <div
-          className="absolute inset-y-0 w-0.5"
-          style={{ left: pct(limit), background: 'var(--ink-secondary)' }}
-        />
-      </div>
-
-      <div className="flex justify-between text-[10px]" style={{ color: 'var(--ink-muted)' }}>
-        <span>odatda {formatPercent(mean)}</span>
-        <span>chegara {formatPercent(limit)}</span>
-      </div>
-    </div>
-  )
-}
-
 function Delta({ delta }: { delta: DeltaDto | undefined }) {
   if (!delta) return null
   return <TrendIndicator delta={delta} />

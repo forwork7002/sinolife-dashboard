@@ -50,6 +50,7 @@ export const SECTIONS = [
   { id: 'warehouse', route: '/warehouse', label: 'Joʻnatish nuqtalari', group: 'Bajarish' },
   { id: 'kpi', route: '/kpi', label: 'KPI rejalari', group: 'Jamoa' },
   { id: 'structure', route: '/structure', label: 'Kadrlar tuzilmasi', group: 'Jamoa' },
+  { id: 'sellers', route: '/sellers', label: 'Sotuvchilar reytingi', group: 'Jamoa' },
   { id: 'marketing', route: '/marketing', label: 'Reklama samarasi', group: 'Marketing' },
 ] as const satisfies readonly {
   id: string

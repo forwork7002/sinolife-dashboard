@@ -32,6 +32,7 @@ const ALL_ROUTES = [
   '/warehouse',
   '/kpi',
   '/structure',
+  '/sellers',
   '/margin',
   '/marketing',
 ] as const
@@ -52,6 +53,10 @@ export const ROLE_NAV: Readonly<Record<RoleValue, readonly string[]>> = {
     '/confirmation',
     '/logistics',
     '/kpi',
+    // The standings, deliberately. A board a salesperson cannot see is a
+    // board that cannot motivate one, and it exposes only aggregate
+    // per-seller figures — no deals, no costs, no headcount.
+    '/sellers',
   ],
 }
 

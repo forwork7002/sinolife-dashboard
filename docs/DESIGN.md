@@ -133,9 +133,10 @@ edge. That highlight is what separates a raised surface from a flat rectangle
 with a blur under it — the eye reads a lit top edge as depth far more readily
 than it reads a shadow.
 
-`body::before` paints two very faint accent-tinted pools, fixed to the viewport.
-Fixed rather than scrolled, so it behaves like light in a room instead of like
-content.
+`html` paints two very faint accent-tinted pools, fixed to the viewport (layered
+over its own `--page` fill on one element — a `z-index: -1` pseudo-element would
+paint them behind the flat colour and lose them). Fixed rather than scrolled, so
+it behaves like light in a room instead of like content.
 
 ---
 
@@ -158,10 +159,13 @@ element rather than on `:root` is what lets each page's aurora follow its own
 accent; a token derived on `:root` would freeze to series-1 for every page.
 
 Where it may **not** appear: behind a chart, a table, a card, or any figure.
-That is enforced, not hoped for — the mandatory `.page-atmosphere-fade` child
-paints solid `--page` from 60% of the band's height down, so the bottom 40% is
-clean canvas before the first data pixel. The sky is also **static**: this is
-a work tool, and the sky must not drift while someone reads a number.
+That is enforced, not hoped for — a mask on `.page-atmosphere` fades the aurora
+itself to nothing by 60% of the band's height, so the bottom 40% is clean canvas
+before the first data pixel. A mask rather than an opaque `--page` overlay,
+because the overlay also deleted `html`'s ambient pools inside its own bounds
+and read as a darker box on any viewport wider than the container. The sky is
+also **static**: this is a work tool, and the sky must not drift while someone
+reads a number.
 
 The strengths are load-bearing, not taste. The worst-case backdrop — one
 blob's on-canvas peak, the other's cross-residual, the grain's mean

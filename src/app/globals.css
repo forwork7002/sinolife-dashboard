@@ -540,10 +540,11 @@ body {
  * Everything in this section is LIGHT, never content: an aurora behind the
  * page header, film grain on the canvas, registration marks on the one
  * flagship panel. All of it is STATIC — this is a work tool, and the sky
- * must not drift while someone reads a number — and all of it paints in the
- * negative z phase, so it cannot cover a figure, intercept a click, or tint
- * a plot area. Opaque surfaces (cards, tables, tooltips) stack above it by
- * construction.
+ * must not drift while someone reads a number — and none of it may cover a
+ * figure, intercept a click, or tint a plot area. The aurora and the grain
+ * enforce that by painting in the negative z phase, under every opaque
+ * surface; the brackets paint above their panel but are four pointer-inert
+ * hairlines pinned 6px into its padding, where no content sits.
  * ======================================================================== */
 
 /**
@@ -551,9 +552,10 @@ body {
  *
  * Mounts inside PageShell's accent subtree, behind the title area — which is
  * what lets the blob below read the PAGE's accent rather than :root's.
- * Contract with the call site: the PARENT is position:relative +
- * overflow:hidden and spans the title band only. The band masks its own
- * aurora away below 60% — see the mask on .page-atmosphere.
+ * Contract with the call site: the PARENT is absolutely positioned with
+ * overflow:hidden, spans the title band only, and sits in a
+ * position:relative wrapper. The band masks its own aurora away below
+ * 60% — see the mask on .page-atmosphere.
  *
  * z-index -1 keeps the layer behind in-flow content with no cooperation
  * needed from that content: the title never has to position itself just to
@@ -582,15 +584,14 @@ body {
    * than covered up. The promise is now stricter than the paint ever was, and
    * the html pools run through the band uninterrupted.
    *
-   * no-repeat is load-bearing: the default would tile the gradient outside
-   * the box and make the blobs reappear above the band.
+   * The initial mask-clip/mask-origin of border-box is what makes the
+   * ::before's -80px overdraw safe: everything the element paints is confined
+   * to this border box regardless, so the blobs cannot reappear above the
+   * band. A gradient has no intrinsic size, so it fills that box; the two
+   * image declarations are the whole mask.
    */
   -webkit-mask-image: linear-gradient(180deg, #000 15%, transparent 60%);
   mask-image: linear-gradient(180deg, #000 15%, transparent 60%);
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-size: 100% 100%;
-  mask-size: 100% 100%;
 }
 
 /**
@@ -625,9 +626,6 @@ body {
   content: "";
   position: absolute;
   inset: -80px;
-  /* Same negative phase as the fade below: the two paint in tree order
-     (blobs first, fade over them) wherever the fade is mounted. */
-  z-index: -1;
   background-image:
     radial-gradient(
       48rem 30rem at 16% -18%,
@@ -652,12 +650,11 @@ body {
  * none besides) nor dirty a plot area. Cards are opaque surface tokens and
  * simply blot it out.
  *
- * Known occlusion, deliberate here: Shell's root div paints its own opaque
- * --page background inline, which currently sits over this layer (and over
- * html's ambient pools, which that background has been silently covering all
- * along). The grain is correct and safe regardless; it becomes VISIBLE the
- * moment the chrome owner drops that inline background — html already paints
- * --page underneath.
+ * Visible by agreement with the chrome: Shell's root div deliberately
+ * paints NO background of its own (see the comment on its root element) —
+ * an opaque fill there was silently covering this layer and html's ambient
+ * pools both. html paints --page underneath, so dropping that fill cost
+ * nothing and let the canvas breathe.
  */
 body::after {
   content: "";

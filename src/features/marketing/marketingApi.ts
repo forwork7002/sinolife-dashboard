@@ -250,6 +250,9 @@ export interface MarketingDayDto {
   /** UZS-native. */
   readonly revenue: MoneyDto
   readonly roas: number | null
+  /** Same-day counters, for the KPI tiles' sparklines. */
+  readonly leads: number
+  readonly sold: number
 }
 
 /** How far each dimension's data actually reaches. Gaps are real; we show them. */
@@ -257,6 +260,28 @@ export interface MarketingCoverageDto {
   readonly dimension: MarketingDimension
   readonly from: string
   readonly to: string
+}
+
+/**
+ * Where each of the source's TWO feeds actually stops.
+ *
+ * The blob is not one dataset: ad delivery (leads, spend) comes from Meta Ads
+ * and the money comes from the client's Google Sheets. They are published
+ * together and they stop on DIFFERENT DAYS — on the 2026-08-29 import the ads
+ * feed's last real day was 2026-07-31 while the sheet ran to 2026-08-10, and
+ * every later day is zero padding.
+ *
+ * Any ratio that divides one feed by the other changes meaning across that
+ * gap. Over 2026-07-01…08-11 ROAS read 19.82x against 15.62x for July alone,
+ * because 894 mln so'm of August revenue was divided by July's spend and
+ * nothing else. CPO, CAC, ARPL and the lead→sale conversion drift the same
+ * way. Stated on screen so the reader can discount it.
+ */
+export interface MarketingFeedCoverageDto {
+  /** Last day carrying real ad delivery — leads or spend. Null if none. */
+  readonly adsThrough: string | null
+  /** Last day carrying real money — orders, sales or collected amount. */
+  readonly salesThrough: string | null
 }
 
 export interface MarketingOverviewDto {
@@ -275,6 +300,8 @@ export interface MarketingOverviewDto {
   /** Daily rows inside the window, oldest first, capped at the last 62. */
   readonly daily: readonly MarketingDayDto[]
   readonly coverage: readonly MarketingCoverageDto[]
+  /** Where each source feed stops — the two dates are NOT the same. */
+  readonly feedCoverage: MarketingFeedCoverageDto
 }
 
 export interface MarketingBreakdownRowDto {

@@ -70,8 +70,10 @@ const nextConfig: NextConfig = {
    * surfaced — the docs are explicit that turning the indicator off does not
    * silence them. Development only; production never rendered it.
    *
-   * In this major the sub-options (`appIsrStatus`, `buildActivity`,
-   * `buildActivityPosition`) were REMOVED, so `false` is the whole switch.
+   * In this major the `appIsrStatus`, `buildActivity` and
+   * `buildActivityPosition` sub-options were REMOVED; what survives is
+   * `position` — and with every corner occupied there is no good value for
+   * it, so the switch is off rather than aimed elsewhere.
    */
   devIndicators: false,
 

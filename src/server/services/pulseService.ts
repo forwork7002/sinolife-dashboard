@@ -67,6 +67,29 @@ export interface PulseForecastDto {
   readonly delta: DeltaDto
 }
 
+/**
+ * What the period's revenue is made of, and what it is still owed.
+ *
+ * The single most misread thing on a revenue screen: money is booked on the
+ * CLOSE date, so a month's revenue is mostly earlier months' orders arriving.
+ * Measured on August 2026 — 5.68 bn closed, of which only 1.68 bn (29%) came
+ * from orders August itself took in. A reader without this split sees revenue
+ * quintuple against a flat intake and reads it as growth.
+ */
+export interface PulseCompositionDto {
+  /** Closed in the period AND created in it — the period's own work. */
+  readonly own: MoneyDto
+  readonly ownDeals: number
+  /** Closed in the period but created before it — carried in from earlier. */
+  readonly carried: MoneyDto
+  readonly carriedDeals: number
+  /** own / (own + carried), 0-100. Null when nothing closed. */
+  readonly ownSharePercent: number | null
+  /** Taken in this period and still open — lands in a LATER period's revenue. */
+  readonly openFromPeriod: MoneyDto
+  readonly openFromPeriodDeals: number
+}
+
 export interface PulseCycleDto {
   readonly p50Days: number | null
   readonly p75Days: number | null
@@ -90,6 +113,7 @@ export interface PulseWinRateDto {
 export interface PulseDto {
   readonly velocity: PulseVelocityDto
   readonly forecast: PulseForecastDto
+  readonly composition: PulseCompositionDto
   readonly cycle: PulseCycleDto
   readonly winRate: PulseWinRateDto
 }
@@ -103,7 +127,31 @@ export interface StageConversionRowDto {
   readonly sortOrder: number
   /** Distinct deals from the cohort that EVER entered this stage. */
   readonly dealCount: number
-  /** vs the previous stage of the same pipeline. Null for the first stage. */
+  /**
+   * dealCount over the PIPELINE'S WHOLE COHORT — one shared denominator for
+   * every stage, so the figures compose and none can exceed 100%.
+   *
+   * This replaced consecutive-stage conversion on the reading side, and the
+   * reason is in the data rather than in taste: the Доставка pipeline's
+   * middle is not a sequence. Stages 6040–6080 are REGIONAL_HUB (TOSHKENT-1,
+   * NAVOIY, VODIY, QASHQADARYO, SURXONDARYO) and 6090–6110 are CARRIER — a
+   * deal enters ONE of each, not all of them in order. Dividing a stage by
+   * its `sortOrder` predecessor therefore compared two parallel branches and
+   * printed VODIY/NAVOIY = 671.8%, CARAVAN/SURXONDARYO = 672.0% and
+   * Доставлено/Отказ-предварительно = 961.1% — arithmetic, not conversion.
+   *
+   * The share is null only when the pipeline's cohort is empty.
+   */
+  readonly cohortSharePercent: number | null
+  /** How many deals the share is OF — the denominator, stated. */
+  readonly cohortDeals: number
+  /**
+   * vs the previous stage of the same pipeline. Null for the first stage.
+   *
+   * Kept in the payload because it is meaningful for a genuinely linear
+   * pipeline (Ecommerce is one), but no longer the reading the screen leads
+   * with — see `cohortSharePercent`.
+   */
   readonly conversionFromPreviousPercent: number | null
 }
 
@@ -182,9 +230,10 @@ export class PulseService {
     // read against all of July, or every mid-month glance shows fake growth.
     const previousFull = previousEquivalent(fullUnitWindow(ctx.period))
 
-    const [closed, open, periodToDateMinor, previousFullMinor] = await Promise.all([
+    const [closed, open, composition, periodToDateMinor, previousFullMinor] = await Promise.all([
       this.repo.closedDealStats(ctx.period, ctx.comparison, filters),
       this.repo.openSnapshot(filters),
+      this.repo.revenueComposition(ctx.period, filters),
       this.repo.wonRevenueInWindow(ctx.period, filters),
       this.repo.wonRevenueInWindow(previousFull, filters),
     ])
@@ -238,6 +287,19 @@ export class PulseService {
         previousFull: toMoneyDto(money(previousFullMinor, ctx.currency)),
         delta: toDeltaDto(growth(projectedMinor, previousFullMinor)),
       },
+      composition: {
+        own: toMoneyDto(money(composition.ownAmountMinor, ctx.currency)),
+        ownDeals: composition.ownDeals,
+        carried: toMoneyDto(money(composition.carriedAmountMinor, ctx.currency)),
+        carriedDeals: composition.carriedDeals,
+        ownSharePercent: (() => {
+          const total = composition.ownAmountMinor + composition.carriedAmountMinor
+          const share = ratePercent(composition.ownAmountMinor, total)
+          return share === null ? null : roundPercent(share)
+        })(),
+        openFromPeriod: toMoneyDto(money(composition.openFromPeriodMinor, ctx.currency)),
+        openFromPeriodDeals: composition.openFromPeriodDeals,
+      },
       cycle: {
         p50Days: current.cycleP50Days === null ? null : round1(current.cycleP50Days),
         p75Days: current.cycleP75Days === null ? null : round1(current.cycleP75Days),
@@ -271,6 +333,11 @@ export class PulseService {
       logisticsRole: row.logisticsRole,
       sortOrder: row.sortOrder,
       dealCount: row.dealCount,
+      cohortDeals: row.cohortDeals,
+      cohortSharePercent: (() => {
+        const share = ratePercent(row.dealCount, row.cohortDeals)
+        return share === null ? null : roundPercent(share)
+      })(),
       conversionFromPreviousPercent:
         row.conversionFromPreviousPercent === null
           ? null

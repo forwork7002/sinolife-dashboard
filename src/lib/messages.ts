@@ -36,6 +36,7 @@ export const t = {
     warehouse: 'Joʻnatish nuqtalari',
     kpi: 'KPI rejalari',
     structure: 'Kadrlar tuzilmasi',
+    sellers: 'Sotuvchilar reytingi',
     margin: 'Yalpi marja',
     marketing: 'Reklama samarasi',
     /** Not one of the nine: account administration, shown only to an admin. */
@@ -131,7 +132,14 @@ export const t = {
 
   cards: {
     revenue: 'Tushum',
-    dealsWon: 'Yopilgan bitimlar',
+    /*
+      "Yutilgan", not "Yopilgan". Both call sites count WON deals only, but a
+      LOST deal is closed too — and on the sales page the tile printed 3,588
+      under "Yopilgan bitimlar" while its own conversion neighbour divided by
+      3,701 closed deals. Two numbers for one word on one screen. The tile's
+      own hints already said "yutilgan bitim"; the label now agrees with them.
+    */
+    dealsWon: 'Yutilgan bitimlar',
     dealsCreated: 'Yangi bitimlar',
     averageDeal: 'Oʻrtacha bitim',
     conversion: 'Konversiya',

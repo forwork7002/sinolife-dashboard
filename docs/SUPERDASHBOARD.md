@@ -389,8 +389,9 @@ revenue would be a confident claim about the whole.
 
 ## 10. Puls va oqim — how fast the machine turns, and where it jams
 
-Two endpoints added August 2026, feeding the overview's hero band and the
-sales page. Neither invents a new source: every input already existed in the
+Two endpoints added August 2026, feeding the sales page. (The front page's
+own hero band draws from `/dashboard/command` instead — order intake with its
+daily series — not from these.) Neither invents a new source: every input already existed in the
 schema, computed separately and never combined.
 
 **Savdo tezligi (soʻm/kun).** Open revenue deals × win rate × average won

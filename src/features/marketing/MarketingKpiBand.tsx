@@ -2,18 +2,26 @@
 
 import type { ReactNode } from 'react'
 
+import { Sparkline } from '@/components/charts/Sparkline'
+import { GaugeTile } from '@/components/ui/Stat'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import type { DeltaDto } from '@/lib/api'
 import { NO_VALUE } from '@/lib/format'
 import {
   amountOf,
+  type MarketingDayDto,
   type MarketingMetricsDto,
 } from './marketingApi'
 import {
+  BUYOUT_THRESHOLDS,
+  QL_THRESHOLDS,
+  QUALITY_THRESHOLDS,
   type CurrencyMode,
+  type Thresholds,
   count,
   deltaOf,
+  gradeOf,
   moneyFromUsd,
   moneyFromUzs,
   percent,
@@ -21,33 +29,40 @@ import {
 } from './marketingFormat'
 
 /**
- * The twelve-tile band, in the source's own order.
+ * The KPI band, in the source's own order — now eleven tiles, not twelve.
  *
  * The order is not ours to improve: a reader who checks the published page and
  * this screen in the same minute is comparing tile against tile, and a band
  * re-sequenced "better" turns that comparison into a hunt. Spend first, the
- * funnel's counts and costs through the middle, revenue last — the money goes
- * out at the top-left and comes back at the bottom-right.
+ * funnel's counts and costs through the middle — and the money still comes
+ * back at the end, where "Tushum" now stands as the page's hero PANEL
+ * (MarketingHero) rather than as the band's last cell. The sequence a source
+ * reader knows is intact; the twelfth stop simply grew into an instrument.
  *
- * Four of the twelve are INVERTED: CPL, CPO, CAC and Deal Time are costs, and
- * a cost that fell is good news. The arrow still points the way the number
- * moved — TrendIndicator's `inverted` changes the colour, not the direction —
- * because an arrow that lies about the direction of travel is worse than no
- * arrow at all.
+ * Four tiles are INVERTED: CPL, CPO, CAC and Deal Time are costs, and a cost
+ * that fell is good news. The arrow still points the way the number moved —
+ * TrendIndicator's `inverted` changes the colour, not the direction — because
+ * an arrow that lies about the direction of travel is worse than no arrow.
  *
- * "Tushum" is this page's ONE hero: `.card-hero` + `.figure-hero`, with ROAS
- * and Meta's share of it in the hint so the biggest number on the screen never
- * stands there unqualified.
+ * Three tiles carry sparklines from the same daily rows the dynamics panels
+ * plot — spend, leads, sales are the counters the sheet actually fills daily.
+ * The shape ties each headline to its days without claiming a y-scale; the
+ * spend sparkline wears the spend series' own hue so tile and bars read as one
+ * measure. QL and buyout no longer ride other tiles as text hints: each is a
+ * graded ring below the band (MarketingRateRings), where the client's own
+ * thresholds can actually be seen instead of read.
  */
 export function MarketingKpiBand({
   current,
   previous,
+  daily,
   mode,
   rate,
   status,
 }: {
   current: MarketingMetricsDto | undefined
   previous: MarketingMetricsDto | undefined
+  daily: readonly MarketingDayDto[]
   mode: CurrencyMode
   rate: number
   status: 'loading' | 'error' | 'ready'
@@ -66,9 +81,10 @@ export function MarketingKpiBand({
   const uzsExact = (value: number | null) => moneyFromUzs(value, mode, rate, 'unit')
 
   const spend = c ? c.spend.amount : null
-  const revenue = c ? c.revenue.amount : null
   const cheque = c ? amountOf(c.averageCheque) : null
   const arpl = c ? amountOf(c.arpl) : null
+
+  const sparkable = daily.length >= 2
 
   return (
     <div className="stagger grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
@@ -78,6 +94,11 @@ export function MarketingKpiBand({
         value={usd(spend)}
         exact={usdExact(spend)}
         delta={d((m) => m.spend.amount)}
+        spark={sparkable ? daily.map((day) => day.spend.amount) : undefined}
+        // The spend series' own hue (the bars in the dynamics panel), so the
+        // tile and the chart below read as one measure at two sizes.
+        sparkColor="var(--series-2)"
+        sparkLabel="Kunlik xarajat"
       />
       <Tile
         status={status}
@@ -85,6 +106,8 @@ export function MarketingKpiBand({
         value={count(c ? c.leads : null)}
         hint={c ? `toza: ${count(c.clean)}` : undefined}
         delta={d((m) => m.leads)}
+        spark={sparkable ? daily.map((day) => day.leads) : undefined}
+        sparkLabel="Kunlik lidlar"
       />
       <Tile
         status={status}
@@ -99,15 +122,15 @@ export function MarketingKpiBand({
         status={status}
         label="Kvalifikatsiya"
         value={count(c ? c.kval : null)}
-        hint={c ? `QL ${percent(c.qlPercent)}` : undefined}
         delta={d((m) => m.kval)}
       />
       <Tile
         status={status}
         label="Sotuvlar"
         value={count(c ? c.sold : null)}
-        hint={c ? `sotib olish ${percent(c.buyoutPercent)}` : undefined}
         delta={d((m) => m.sold)}
+        spark={sparkable ? daily.map((day) => day.sold) : undefined}
+        sparkLabel="Kunlik sotuvlar"
       />
       <Tile
         status={status}
@@ -165,23 +188,110 @@ export function MarketingKpiBand({
         delta={d((m) => m.dealTimeDays)}
         inverted
       />
-      <Tile
+    </div>
+  )
+}
+
+/**
+ * The four graded rates, drawn as the rings the design system prescribes for
+ * tiles — and graded with the CLIENT's thresholds (`bd()` in logic.js), not
+ * the house 85/60: Sifat and buyout at 80/60, QL at 30/15. Meta's share of
+ * revenue has no client threshold, so its ring states magnitude in the
+ * sequential hue and judges nothing.
+ *
+ * Each ring prints the fraction it was computed from — a rate without its
+ * fraction is a claim, not a measurement — and carries the period-over-period
+ * delta the flat hints never had room for.
+ */
+export function MarketingRateRings({
+  current,
+  previous,
+  mode,
+  rate,
+  status,
+}: {
+  current: MarketingMetricsDto | undefined
+  previous: MarketingMetricsDto | undefined
+  mode: CurrencyMode
+  rate: number
+  status: 'loading' | 'error' | 'ready'
+}) {
+  const c = current
+  const p = previous
+
+  const graded = (value: number | null, thresholds: Thresholds) => {
+    const grade = gradeOf(value, thresholds)
+    return grade ?? 'neutral'
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <GaugeTile
+        label="Sifat"
+        value={c?.qualityPercent ?? null}
+        tone={graded(c?.qualityPercent ?? null, QUALITY_THRESHOLDS)}
         status={status}
-        hero
-        label="Tushum"
-        value={uzs(revenue)}
-        exact={uzsExact(revenue)}
-        hint={
-          c ? (
-            <>
-              ROAS {c.roas === null ? NO_VALUE : `${ratio(c.roas)}×`}
-              {c.metaSharePercent !== null && (
-                <> · {percent(c.metaSharePercent, 0)} Meta</>
-              )}
-            </>
-          ) : undefined
+        hint={c ? `${count(c.clean)} / ${count(c.leads)} lid toza chiqdi` : undefined}
+        context={
+          <TrendIndicator
+            delta={deltaOf(c?.qualityPercent ?? null, p?.qualityPercent ?? null)}
+          />
         }
-        delta={d((m) => m.revenue.amount)}
+      />
+      <GaugeTile
+        label="QL — kvalifikatsiya ulushi"
+        value={c?.qlPercent ?? null}
+        tone={graded(c?.qlPercent ?? null, QL_THRESHOLDS)}
+        status={status}
+        hint={c ? `${count(c.kval)} / ${count(c.leads)} liddan` : undefined}
+        context={
+          <TrendIndicator delta={deltaOf(c?.qlPercent ?? null, p?.qlPercent ?? null)} />
+        }
+      />
+      <GaugeTile
+        label="Sotib olish"
+        value={c?.buyoutPercent ?? null}
+        tone={graded(c?.buyoutPercent ?? null, BUYOUT_THRESHOLDS)}
+        status={status}
+        hint={
+          // Only while the rate itself exists: with nothing ordered the ring
+          // shows an em dash, and a "X / 0 soʻm" fraction beside it would
+          // state the division the module just refused to perform.
+          c && c.buyoutPercent !== null
+            ? `${moneyFromUzs(c.revenue.amount, mode, rate, 'compact')} / ${moneyFromUzs(
+                c.ordered.amount,
+                mode,
+                rate,
+                'compact',
+              )} buyurtmadan`
+            : undefined
+        }
+        context={
+          <TrendIndicator
+            delta={deltaOf(c?.buyoutPercent ?? null, p?.buyoutPercent ?? null)}
+          />
+        }
+      />
+      <GaugeTile
+        label="Meta ulushi"
+        value={c?.metaSharePercent ?? null}
+        tone="neutral"
+        status={status}
+        hint={
+          c && c.metaSharePercent !== null
+            ? `${moneyFromUzs(c.metaRevenue.amount, mode, rate, 'compact')} / ${moneyFromUzs(
+                c.revenue.amount,
+                mode,
+                rate,
+                'compact',
+              )} tushumdan`
+            : undefined
+        }
+        context={
+          <TrendIndicator
+            delta={deltaOf(c?.metaSharePercent ?? null, p?.metaSharePercent ?? null)}
+          />
+        }
       />
     </div>
   )
@@ -192,8 +302,7 @@ export function MarketingKpiBand({
  *
  * Not `StatTile`: that component formats money itself, and it only knows how
  * to say soʻm. This screen has a currency toggle, so the caller formats and
- * the tile only draws — which also lets "Deal Time" print its own unit and the
- * hero print a two-part hint.
+ * the tile only draws — which also lets "Deal Time" print its own unit.
  *
  * Loading, failure and a genuine null are three renderings, as everywhere: a
  * skeleton, the word "Olinmadi" in critical ink, and an em dash.
@@ -205,7 +314,9 @@ function Tile({
   hint,
   delta,
   inverted = false,
-  hero = false,
+  spark,
+  sparkColor,
+  sparkLabel,
   status,
 }: {
   label: string
@@ -215,19 +326,18 @@ function Tile({
   hint?: ReactNode
   delta: DeltaDto
   inverted?: boolean
-  hero?: boolean
+  /** Daily values behind the headline — rendered as a sparkline, shape only. */
+  spark?: readonly number[]
+  sparkColor?: string
+  /** Accessible name for the sparkline; required whenever `spark` is passed. */
+  sparkLabel?: string
   status: 'loading' | 'error' | 'ready'
 }) {
-  const figureClass = hero
-    ? 'figure-hero block'
-    : 'figure block text-[26px] leading-none font-semibold'
+  const figureClass = 'figure block text-[26px] leading-none font-semibold'
 
   const figure =
     status === 'loading' ? (
-      <div
-        className={`skeleton mt-2 w-2/3 ${hero ? 'h-[40px]' : 'h-[26px]'}`}
-        role="status"
-      >
+      <div className="skeleton mt-2 h-[26px] w-2/3" role="status">
         <span className="sr-only">Yuklanmoqda</span>
       </div>
     ) : status === 'error' ? (
@@ -263,7 +373,7 @@ function Tile({
     )
 
   return (
-    <div className={`flex flex-col px-4 py-3.5 ${hero ? 'card-hero' : 'card'}`}>
+    <div className="card flex flex-col px-4 py-3.5">
       <p
         className="truncate text-[12.5px] font-medium"
         style={{ color: 'var(--ink-secondary)' }}
@@ -275,12 +385,17 @@ function Tile({
       {figure}
 
       {/* The Datadog rule: no bare big number. Every tile that has context
-          prints it directly under the figure, and the hero's context is the
-          two ratios that judge it — ROAS and how much of it Meta claims. */}
+          prints it directly under the figure. */}
       {hint && (
         <p className="mt-1 truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
           {hint}
         </p>
+      )}
+
+      {status === 'ready' && spark && spark.length >= 2 && (
+        <div className="mt-1.5">
+          <Sparkline values={spark} color={sparkColor} label={sparkLabel} height={22} />
+        </div>
       )}
 
       <div className="mt-auto pt-2.5">

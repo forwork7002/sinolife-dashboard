@@ -27,8 +27,8 @@
 import { concentrationService, insightsService } from './container'
 import type { StructureDto } from './insightsService'
 import type { Period } from '@/server/domain/period/period'
-import { previousEquivalent } from '@/server/domain/period/period'
-import { money, toMoneyDto } from '@/server/domain/money/money'
+import { periodLengthInDays, previousEquivalent } from '@/server/domain/period/period'
+import { money, toMajorNumber, toMoneyDto } from '@/server/domain/money/money'
 import { growth, ratePercent, roundPercent, toDeltaDto } from '@/server/domain/analytics/metrics'
 import type { CommandCentreDto, TrendedDto, UnavailableDto } from '@/lib/api'
 
@@ -82,6 +82,7 @@ export class CommandCentreService {
     const [
       intake,
       intakePrev,
+      intakeDaily,
       revenue,
       customers,
       customersPrev,
@@ -95,6 +96,7 @@ export class CommandCentreService {
     ] = await Promise.all([
       this.repository.commandIntake(period),
       this.repository.commandIntake(comparison),
+      this.repository.commandIntakeDaily(period),
       this.repository.commandRevenue(period),
       this.repository.commandCustomers(period),
       this.repository.commandCustomers(comparison),
@@ -119,6 +121,14 @@ export class CommandCentreService {
 
     const created = funnel[0]?.orders ?? 0
 
+    /*
+      The comparison window's intake as a per-day rate, for the chart's
+      reference line. Calendar days, not working days: the daily series it
+      sits against is drawn on calendar days too, and mixing the two clocks
+      would shift the line ~15% up for no reason a reader could see.
+    */
+    const comparisonDays = Math.max(1, periodLengthInDays(comparison))
+
     return {
       intake: {
         orders: trended(intake.orders, intakePrev.orders),
@@ -128,6 +138,15 @@ export class CommandCentreService {
         averageOrder: toMoneyDto(money(averageMinor, currency)),
         averageOrderDelta: toDeltaDto(growth(Number(averageMinor), Number(averagePrevMinor))),
         open: intake.open,
+        daily: intakeDaily.map((d) => ({
+          date: d.day,
+          orders: d.orders,
+          booked: toMajorNumber(money(d.bookedMinor, currency)),
+        })),
+        previousDailyOrders:
+          intakePrev.orders === 0
+            ? null
+            : Math.round((intakePrev.orders / comparisonDays) * 10) / 10,
       },
       revenue: {
         delivered: toMoneyDto(money(revenue.deliveredMinor, currency)),
@@ -145,15 +164,27 @@ export class CommandCentreService {
       confirmation: {
         orders: confirmation.totals.orders,
         confirmedRate: confirmation.totals.confirmedRate,
+        confirmed: confirmation.totals.byOutcome.CONFIRMED,
         rejected: confirmation.totals.byOutcome.REJECTED,
         rejectionToday: band.today === null ? null : Math.round(band.today * 10) / 10,
         rejectionMean: band.mean,
         rejectionLimit: band.limit,
         rejectionDays: band.days,
+        days: band.series.map((d) => ({
+          date: d.day,
+          sharePercent: d.share === null ? null : Math.round(d.share * 10) / 10,
+          rejected: d.rejected,
+          orders: d.orders,
+          sunday: d.dow === 0,
+        })),
       },
       logistics: {
         orders: logistics.totals.orders,
         delivered: logistics.totals.delivered,
+        resolved:
+          logistics.totals.delivered +
+          logistics.totals.refused +
+          logistics.totals.cancelledEarly,
         deliveryRate: logistics.totals.deliveryRate,
         inFlight: logistics.totals.inFlight,
         cancelledEarly: logistics.totals.cancelledEarly,

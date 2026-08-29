@@ -15,6 +15,7 @@ import { ConcentrationRepository } from '@/server/repositories/concentrationRepo
 import { ResponseRepository } from '@/server/repositories/responseRepository'
 import { FinanceRepository } from '@/server/repositories/financeRepository'
 import { MarketingRepository } from '@/server/repositories/marketingRepository'
+import { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import { AnalyticsService } from './analyticsService'
 import { InsightsService } from './insightsService'
@@ -25,6 +26,7 @@ import { CommandCentreService } from './commandCentreService'
 import { ConcentrationService } from './concentrationService'
 import { ResponseService } from './responseService'
 import { MarketingService } from './marketingService'
+import { SellerBoardService } from './sellerBoardService'
 
 export const dealRepository = new DealRepository(prisma)
 export const financeRepository = new FinanceRepository(prisma)
@@ -42,6 +44,7 @@ export const responseRepository = new ResponseRepository(prisma)
  * feeds it, and its figures are never added to a Bitrix24 total.
  */
 export const marketingRepository = new MarketingRepository(prisma)
+export const sellerBoardRepository = new SellerBoardRepository(prisma)
 
 export const analyticsService = new AnalyticsService(dealRepository, referenceRepository)
 export const financeService = new FinanceService(financeRepository, referenceRepository)
@@ -52,3 +55,4 @@ export const concentrationService = new ConcentrationService(concentrationReposi
 export const commandCentreService = new CommandCentreService(insightsRepository)
 export const responseService = new ResponseService(responseRepository)
 export const marketingService = new MarketingService(marketingRepository)
+export const sellerBoardService = new SellerBoardService(sellerBoardRepository)

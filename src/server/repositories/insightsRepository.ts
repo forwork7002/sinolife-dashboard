@@ -1405,6 +1405,63 @@ export class InsightsRepository {
   }
 
   /**
+   * The intake, day by day — the shape behind the headline number.
+   *
+   * Same clock and same filter as `commandIntake`, so the area under this
+   * series IS the tile beside it; a chart that filtered differently from its
+   * own headline would disagree with it by Friday. Days with no orders come
+   * back as zeros rather than being absent: on a time axis a missing day
+   * reads as "not measured", and a working day that took nothing in is a
+   * measurement. The series is capped at TODAY in Tashkent — a period that
+   * runs to the end of the month must not draw a zero tail through days that
+   * have not happened yet.
+   */
+  async commandIntakeDaily(
+    period: Period,
+  ): Promise<{ day: string; orders: number; bookedMinor: bigint }[]> {
+    const tz = env.APP_TIMEZONE
+    const rows = await this.prisma.$queryRawUnsafe<
+      { day: string; orders: bigint; booked: MoneyText }[]
+    >(
+      `
+      WITH days AS (
+        SELECT generate_series(
+                 ($1::timestamp AT TIME ZONE 'UTC' AT TIME ZONE '${tz}')::date,
+                 LEAST(
+                   (($2::timestamp - interval '1 millisecond') AT TIME ZONE 'UTC' AT TIME ZONE '${tz}')::date,
+                   (now() AT TIME ZONE '${tz}')::date
+                 ),
+                 interval '1 day'
+               )::date AS day
+      ),
+      taken AS (
+        SELECT (d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE '${tz}')::date AS day,
+               count(*)::bigint AS orders,
+               sum(d."amountMinor")::text AS booked
+          FROM "deal" d
+         WHERE d."countsAsRevenue"
+           AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
+         GROUP BY 1
+      )
+      SELECT days.day::text AS day,
+             COALESCE(taken.orders, 0)::bigint AS orders,
+             taken.booked AS booked
+        FROM days
+        LEFT JOIN taken ON taken.day = days.day
+       ORDER BY days.day
+      `,
+      period.start,
+      period.end,
+    )
+
+    return rows.map((r) => ({
+      day: r.day,
+      orders: int(r.orders),
+      bookedMinor: money(r.booked ?? null),
+    }))
+  }
+
+  /**
    * Money that actually closed, money still open, and the lag between them.
    *
    * `closeLagDays` is the point of this method. It is the median days from
@@ -1586,29 +1643,67 @@ export class InsightsRepository {
    */
   async commandRejectionBand(
     period: Period,
-  ): Promise<{ today: number | null; mean: number; sd: number; limit: number; days: number }> {
+  ): Promise<{
+    today: number | null
+    mean: number
+    sd: number
+    limit: number
+    days: number
+    /** Every day of the window up to today — the control chart's raw series. */
+    series: { day: string; share: number | null; orders: number; rejected: number; dow: number }[]
+  }> {
     const tz = env.APP_TIMEZONE
+    /*
+      Gap-filled the same way the intake series is: a day with no queue
+      traffic comes back with share NULL rather than being absent, so the
+      chart can draw an honest gap ("not measured") instead of silently
+      splicing Thursday onto Saturday. The series is capped at today for the
+      same reason the intake series is.
+    */
     const rows = await this.prisma.$queryRawUnsafe<
-      { day: string; share: number; dow: number }[]
+      { day: string; share: number | null; orders: number; rejected: number; dow: number }[]
     >(
-      `${InsightsRepository.QUEUE_SQL}
-       SELECT (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${tz}')::date::text AS day,
-              (count(*) FILTER (WHERE c.outcome = 'REJECTED')::float
-                 / NULLIF(count(*), 0)::float * 100)::float AS share,
-              EXTRACT(DOW FROM (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${tz}'))::int AS dow
-         FROM numbered c
-        GROUP BY 1, 3
-        ORDER BY 1`,
+      `${InsightsRepository.QUEUE_SQL},
+       perday AS (
+         SELECT (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${tz}')::date AS day,
+                (count(*) FILTER (WHERE c.outcome = 'REJECTED')::float
+                   / NULLIF(count(*), 0)::float * 100)::float AS share,
+                count(*)::int AS orders,
+                count(*) FILTER (WHERE c.outcome = 'REJECTED')::int AS rejected
+           FROM numbered c
+          GROUP BY 1
+       ),
+       days AS (
+         SELECT generate_series(
+                  ($1::timestamp AT TIME ZONE 'UTC' AT TIME ZONE '${tz}')::date,
+                  LEAST(
+                    (($2::timestamp - interval '1 millisecond') AT TIME ZONE 'UTC' AT TIME ZONE '${tz}')::date,
+                    (now() AT TIME ZONE '${tz}')::date
+                  ),
+                  interval '1 day'
+                )::date AS day
+       )
+       SELECT days.day::text AS day,
+              perday.share AS share,
+              COALESCE(perday.orders, 0)::int AS orders,
+              COALESCE(perday.rejected, 0)::int AS rejected,
+              EXTRACT(DOW FROM days.day)::int AS dow
+         FROM days
+         LEFT JOIN perday ON perday.day = days.day
+        ORDER BY days.day`,
       period.start,
       period.end,
     )
 
-    // Sunday is its own regime; it informs nobody about a Tuesday.
-    const working = rows.filter((r) => r.dow !== 0).map((r) => r.share)
+    // Sunday is its own regime; it informs nobody about a Tuesday. Empty
+    // days carry no reading at all, so they cannot inform the baseline either.
+    const working = rows
+      .filter((r) => r.dow !== 0 && r.share !== null)
+      .map((r) => r.share as number)
     const days = working.length
 
     if (days < 5) {
-      return { today: rows.at(-1)?.share ?? null, mean: 0, sd: 0, limit: 0, days }
+      return { today: rows.at(-1)?.share ?? null, mean: 0, sd: 0, limit: 0, days, series: rows }
     }
 
     const mean = working.reduce((a, b) => a + b, 0) / days
@@ -1621,6 +1716,7 @@ export class InsightsRepository {
       sd: Math.round(sd * 10) / 10,
       limit: Math.round((mean + 2 * sd) * 10) / 10,
       days,
+      series: rows,
     }
   }
 

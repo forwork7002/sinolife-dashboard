@@ -1,5 +1,7 @@
 'use client'
 
+import * as React from 'react'
+
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useIsFetching, useQueryClient } from '@tanstack/react-query'
@@ -20,8 +22,35 @@ import { ROLE_LABELS, canSeeHref } from '@/lib/roles'
 import { sectionSpec, type SectionValue } from '@/lib/sections'
 import { useFilterOptions } from '@/features/shared/PageShell'
 import { t } from '@/lib/messages'
+
+/**
+ * React's <ViewTransition>, taken from whatever React the framework vendors.
+ *
+ * The stable `react` package (19.2) does not export it, so its TYPES do not
+ * know the name — but Next aliases `react` to its own canary build in the App
+ * Router, and THAT build does export it (verified in
+ * node_modules/next/dist/compiled/react). The cast bridges the two truths.
+ *
+ * This replaces a hand-rolled document.startViewTransition interception that
+ * wrapped router.push in the transition's update callback. Measured with a
+ * driven browser, that shape deadlocked against the router on EVERY click:
+ * the commit the promise waited for never arrived until the interception's
+ * own 1-second backstop fired, so every section change cost ~1.1s of frozen
+ * screen before the crossfade even began. The component integrates with the
+ * router's own transition, commits immediately, and the same globals.css
+ * keyframes apply — same look, none of the wait. If a future React channel
+ * drops the export, the page renders unwrapped and navigation is simply
+ * instant: the fallback is the fast path, never a broken one.
+ */
+const ViewTransition = (
+  React as unknown as {
+    ViewTransition?: React.ComponentType<{
+      children?: React.ReactNode
+      name?: string
+    }>
+  }
+).ViewTransition
 import { PERIOD_PRESETS } from './PeriodFilter'
-import { RouteTransitions } from './RouteTransitions'
 
 /**
  * Navigation, grouped by the question each screen answers.
@@ -74,6 +103,7 @@ const NAV_GROUPS: readonly { readonly label: string | null; readonly items: read
     label: 'Jamoa',
     items: [
       { href: '/kpi', label: t.nav.kpi, icon: TargetIcon },
+      { href: '/sellers', label: t.nav.sellers, icon: TrophyIcon },
       { href: '/structure', label: t.nav.structure, icon: TreeIcon },
     ],
   },
@@ -208,7 +238,6 @@ export function Shell({
       stays transparent so the atmosphere the stylesheet paints can reach the eye.
     */
     <div className="flex min-h-screen">
-      <RouteTransitions />
       <a href="#main" className="skip-link">
         Asosiy qismga oʻtish
       </a>
@@ -242,7 +271,18 @@ export function Shell({
           </div>
         </div>
 
-        <nav aria-label="Asosiy menyu" className="flex-1 overflow-y-auto px-2.5 py-1">
+        {/*
+          One scroll area for the menu AND its freshness footer.
+
+          The sync status belongs to the buttons above it — it says how fresh
+          the numbers behind those sections are — and pinning it to the rail's
+          bottom let a half-empty sidebar open a 200px void between the two.
+          Inside the flow it sits just under the last button today and simply
+          moves down as sections are added; scrolling stays honest because the
+          whole unit scrolls together. Only the account row keeps the bottom.
+        */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <nav aria-label="Asosiy menyu" className="px-2.5 py-1">
           {NAV_GROUPS.map((group, index) => {
             const items = group.items.filter((item) => !user || canOpen(item))
             if (items.length === 0) return null
@@ -343,6 +383,7 @@ export function Shell({
         </nav>
 
         <FreshnessPanel lastSyncedAt={lastSyncedAt} />
+        </div>
 
         {user && (
           <div className="border-t px-4 py-3" style={{ borderColor: 'var(--border)' }}>
@@ -491,13 +532,17 @@ export function Shell({
           animation suppressed in globals.css, so this is the only thing that
           actually moves. Content changed; the application did not.
         */}
-        <main
-          id="main"
-          className="flex-1 px-4 py-5 lg:px-6 lg:py-6"
-          style={{ viewTransitionName: 'page-body' }}
-        >
-          {children}
-        </main>
+        {ViewTransition ? (
+          <ViewTransition name="page-body">
+            <main id="main" className="flex-1 px-4 py-5 lg:px-6 lg:py-6">
+              {children}
+            </main>
+          </ViewTransition>
+        ) : (
+          <main id="main" className="flex-1 px-4 py-5 lg:px-6 lg:py-6">
+            {children}
+          </main>
+        )}
       </div>
 
       {/* Portalled to document.body by the primitive; mounted here so the
@@ -566,7 +611,7 @@ function FreshnessPanel({ lastSyncedAt }: { lastSyncedAt?: string | null }) {
   const stale = minutes >= 5
 
   return (
-    <div className="border-t px-5 py-3" style={{ borderColor: 'var(--border)' }}>
+    <div className="mt-1.5 border-t px-5 py-3" style={{ borderColor: 'var(--border)' }}>
       <div className="flex items-center gap-1.5">
         <span
           aria-hidden="true"
@@ -680,6 +725,23 @@ function PeopleIcon() {
       <circle cx="9" cy="8" r="3" stroke="currentColor" strokeWidth="1.7" />
       <path d="M3.5 19a5.5 5.5 0 0111 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
       <path d="M16 6.5a3 3 0 010 5.9M17.5 19a5.5 5.5 0 00-2-4.2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+/**
+ * The sellers' board — a podium, at 15px.
+ *
+ * Three bars of unequal height rather than a trophy cup: the section ranks
+ * people against each other, and a podium says "standings" where a cup says
+ * "prize". It also stays legible at 15px, which a cup's handles do not.
+ */
+function TrophyIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="9.5" y="6" width="5" height="13" rx="1" stroke="currentColor" strokeWidth="1.7" />
+      <rect x="3" y="11" width="5" height="8" rx="1" stroke="currentColor" strokeWidth="1.7" />
+      <rect x="16" y="9" width="5" height="10" rx="1" stroke="currentColor" strokeWidth="1.7" />
     </svg>
   )
 }

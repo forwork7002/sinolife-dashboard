@@ -279,6 +279,45 @@ export function SalesPage() {
               </Tooltip>
             </div>
           ) : null}
+
+          {/*
+            WHAT THAT NUMBER IS MADE OF — the single most misread fact on a
+            revenue screen, and it was missing.
+
+            Revenue is booked on the CLOSE date while the median order takes
+            three weeks to close, so a month's revenue is mostly the previous
+            months' orders arriving. Measured on August 2026: of 5.68 mlrd
+            closed, only 1.68 mlrd (29%) came from orders August itself took
+            in — 2.42 mlrd was July's and 1.25 mlrd June's. Without this line
+            a reader sees revenue quintuple against a flat intake (2,616 →
+            2,393 orders) and reads five-fold growth that did not happen.
+          */}
+          {/*
+            Gated on the HERO's own state as well as the pulse's, and on the
+            filters: a breakdown printed under a skeleton describes a number
+            nobody has fetched, and `/insights/pulse` cannot honour the product
+            and stage filters `/analytics/sales` applies — so under those
+            filters the parts would not be parts of this whole.
+          */}
+          {salesStatus === 'ready' &&
+            summary &&
+            !insightsIgnoreFilters &&
+            pulseStatus === 'ready' &&
+            pulseData &&
+            pulseData.composition.ownSharePercent !== null && (
+              <p className="mt-2 text-[11px] leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
+                Shundan{' '}
+                <span style={{ color: 'var(--ink-secondary)' }}>
+                  {formatPercent(pulseData.composition.ownSharePercent, 0)}
+                </span>{' '}
+                — shu davrda olingan buyurtmalardan (
+                {formatCompactUzs(pulseData.composition.own.amount)} soʻm,{' '}
+                {formatNumber(pulseData.composition.ownDeals)} ta); qolgani oldingi davrlarda
+                olinib, shu davrda yopildi (
+                {formatCompactUzs(pulseData.composition.carried.amount)} soʻm,{' '}
+                {formatNumber(pulseData.composition.carriedDeals)} ta).
+              </p>
+            )}
         </div>
 
         {/*
@@ -318,7 +357,27 @@ export function SalesPage() {
         The summary DTO carries no deltas, so none are invented here; the
         period-over-period story lives on the pulse band's win-rate pills.
       */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-labelledby="sales-band-heading" className="space-y-3">
+        {/*
+          The band draws from TWO endpoints — the first four tiles from
+          /analytics/sales, which honours every filter, and the last two from
+          /insights/pulse, which cannot honour product or stage. One uniform
+          row of six may not hide that: with a product filter active the
+          reader would otherwise compare a filtered count against an
+          unfiltered amount and find the second larger than the first.
+        */}
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h2 id="sales-band-heading" className="eyebrow">
+            Davr koʻrsatkichlari
+          </h2>
+          {insightsIgnoreFilters && (
+            <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              Oxirgi ikki plitka mahsulot va bosqich filtrlarini hisobga olmaydi
+            </p>
+          )}
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatTile
           label={t.cards.dealsWon}
           value={summary?.dealsWon ?? null}
@@ -374,7 +433,58 @@ export function SalesPage() {
           status={salesStatus}
           hint={summary ? `${formatNumber(summary.dealsWon)} ta yutilgan bitim boʻyicha` : undefined}
         />
-      </div>
+
+        {/*
+          The counterweight to the hero, and it was missing entirely.
+
+          Revenue says what CLOSED; this says what the same period took in
+          and has NOT closed — money that will land in a later month's
+          revenue. Without it the page can only ever show the past. Scoped to
+          the period on the creation clock, which is why it differs from the
+          velocity tile's company-wide open snapshot.
+        */}
+        <StatTile
+          label="Bu davrdan yoʻlda"
+          value={pulseData ? pulseData.composition.openFromPeriod.amount : null}
+          unit="money"
+          status={pulseStatus}
+          hint={
+            pulseData
+              ? `${formatNumber(
+                  pulseData.composition.openFromPeriodDeals,
+                )} ta buyurtma hali yopilmagan`
+              : undefined
+          }
+        />
+
+        {/*
+          The run-rate projection, and DELIBERATELY WITHOUT ITS DELTA.
+
+          The API also returns `forecast.delta` — projection against the
+          previous full month — and on this data it reads +523.6%, which is
+          not growth: July closed only 983 mln because July's orders were
+          still in transit and closed in August instead. That is the same
+          close-date artifact the composition line above explains, so the
+          comparison is dropped and only the projection itself is shown.
+
+          Rendered only while the period is still RUNNING: once it is over
+          the projection is defined to equal the actual, and calling a
+          finished total a forecast would be a second name for the hero.
+        */}
+        {pulseData && pulseData.forecast.elapsedPercent < 100 && (
+          <StatTile
+            label="Davr yakuni prognozi"
+            value={pulseData.forecast.projected ? pulseData.forecast.projected.amount : null}
+            unit="money"
+            status={pulseStatus}
+            hint={`Davrning ${formatPercent(
+              pulseData.forecast.elapsedPercent,
+              0,
+            )} qismi oʻtdi — shu surʼatda davom etsa`}
+          />
+        )}
+        </div>
+      </section>
 
       {/*
         Savdo pulsi — how fast the machine turns, from /insights/pulse.
@@ -444,7 +554,9 @@ export function SalesPage() {
             */
             hint={
               pulseData
-                ? `Ochiq ${formatNumber(pulseData.velocity.openDeals)} ta · yutish ${formatPercent(
+                ? `Ochiq ${formatNumber(pulseData.velocity.openDeals)} ta (${formatCompactUzs(
+                    pulseData.velocity.openValue.amount,
+                  )} soʻm, butun quvur — davrga bogʻliq emas) · yutish ${formatPercent(
                     pulseData.velocity.winRatePercent,
                   )} · aylanish ${
                     pulseData.velocity.medianCycleDays !== null
@@ -525,10 +637,13 @@ export function SalesPage() {
       <div className="grid items-start gap-4 lg:grid-cols-3">
         <ChartCard
           className="lg:col-span-2"
-          title="Bosqich konversiyasi"
+          // "Qamrov", not "konversiya": the rows are shares of one cohort, not
+          // pass-through between steps. The command centre names the same
+          // reading the same way, so one word means one thing across screens.
+          title="Bosqichlar qamrovi"
           // The basis, stated where the numbers are — this ladder counts
           // deals CREATED in the period, not deals currently sitting anywhere.
-          hint={`Davrda yaratilgan bitimlar boʻyicha — har bosqichga yetib borganlar${
+          hint={`Davrda yaratilgan bitimlardan har bosqichga yetib borganlar — ulush har voronkaning oʻz jamisidan${
             insightsIgnoreFilters ? ' · mahsulot va bosqich filtrlarisiz' : ''
           }`}
         >
@@ -646,10 +761,25 @@ function InsightTile({
 }
 
 /**
- * The conversion ladder: per pipeline, each stage with the count of cohort
- * deals that ever entered it and the pass-through from the previous stage as
- * a neutral meter — magnitude, not judgement, because a "good" pass-through
- * rate differs per stage and the grading thresholds would lie here.
+ * The reach ladder: per pipeline, each stage with the count of cohort deals
+ * that ever entered it, drawn against ONE shared denominator — the pipeline's
+ * whole cohort of deals created in the period.
+ *
+ * IT USED TO DRAW CONSECUTIVE-STAGE CONVERSION, AND THAT WAS WRONG HERE. The
+ * Доставка pipeline's middle is not a sequence: stages 6040–6080 are
+ * REGIONAL_HUB (TOSHKENT-1, NAVOIY, VODIY, QASHQADARYO, SURXONDARYO) and
+ * 6090–6110 are CARRIER — an order enters ONE region and ONE carrier, not
+ * each in turn. Dividing a stage by its sortOrder predecessor therefore
+ * divided one parallel branch by another and printed VODIY/NAVOIY = 671.8%,
+ * CARAVAN/SURXONDARYO = 672.0% and Доставлено/Отказ-предварительно = 961.1%.
+ * A reader cannot un-see "961% conversion", and there is no honest reading
+ * of it, because those two stages have no sequence between them.
+ *
+ * The shared denominator is what the command centre's cohort card already
+ * uses for the same reason ("bu voronka emas, qamrov"), and it composes: a
+ * share cannot exceed 100%, parallel branches simply add up to the whole, and
+ * the same eye can compare any two rows on the page. Magnitude, not
+ * judgement — a "good" reach differs per stage, so the meter stays neutral.
  */
 function StageLadder({ stages }: { stages: readonly StageConversionRowDto[] }) {
   // Map preserves the server's pipeline order; stages re-sorted defensively.
@@ -668,6 +798,13 @@ function StageLadder({ stages }: { stages: readonly StageConversionRowDto[] }) {
           <div key={pipelineName}>
             <p className="text-xs font-semibold" style={{ color: 'var(--ink-primary)' }}>
               {pipelineName}
+              {/* The denominator, beside the rows it divides — a share whose
+                  base is off-screen is a number nobody can check. */}
+              {ordered[0] !== undefined && ordered[0].cohortDeals > 0 && (
+                <span className="ml-2 font-normal" style={{ color: 'var(--ink-muted)' }}>
+                  {formatNumber(ordered[0].cohortDeals)} ta bitimdan
+                </span>
+              )}
             </p>
             <ul className="mt-2 space-y-2">
               {ordered.map((row) => (
@@ -689,30 +826,13 @@ function StageLadder({ stages }: { stages: readonly StageConversionRowDto[] }) {
                   >
                     {formatNumber(row.dealCount)} ta
                   </span>
-                  {row.conversionFromPreviousPercent !== null &&
-                  row.conversionFromPreviousPercent > 100 ? (
-                    /*
-                      Over 100% is a real value here — deals can enter a stage
-                      without ever visiting its predecessor — and Meter clamps
-                      its printed number to the clamped bar. Printing "100%"
-                      for 128% would break the bar-states-its-number rule, so
-                      past the track's ceiling the exact figure stands alone.
-                    */
-                    <span
-                      className="tabular text-xs font-medium"
-                      style={{ color: 'var(--ink-secondary)' }}
-                    >
-                      {formatPercent(row.conversionFromPreviousPercent)}
-                    </span>
-                  ) : (
-                    // Null (a pipeline's first stage) renders Meter's em dash:
-                    // there is no previous stage to convert from.
-                    <Meter
-                      value={row.conversionFromPreviousPercent}
-                      tone="neutral"
-                      label={`${row.stageName}: oldingi bosqichdan oʻtish`}
-                    />
-                  )}
+                  {/* One denominator for every row, so the meter can never
+                      overflow its own track and two rows are comparable. */}
+                  <Meter
+                    value={row.cohortSharePercent}
+                    tone="neutral"
+                    label={`${row.stageName}: shu bosqichga yetib borganlar`}
+                  />
                 </li>
               ))}
             </ul>

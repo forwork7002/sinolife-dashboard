@@ -20,6 +20,7 @@ import {
 import {
   CurrencyToggle,
   FormulaHint,
+  FeedGapWarning,
   FreshnessWarning,
   MarketingPeriodControl,
   Note,
@@ -29,7 +30,8 @@ import {
 } from './MarketingControls'
 import { MarketingDynamics } from './MarketingDynamics'
 import { MarketingFunnel } from './MarketingFunnel'
-import { MarketingKpiBand } from './MarketingKpiBand'
+import { MarketingHero } from './MarketingHero'
+import { MarketingKpiBand, MarketingRateRings } from './MarketingKpiBand'
 import { MarketingTable, defaultSort, type TableSort } from './MarketingTable'
 import { MarketingVerify } from './MarketingVerify'
 import type { CurrencyMode } from './marketingFormat'
@@ -184,11 +186,53 @@ export function MarketingPage() {
               </div>
             )}
 
+            {/*
+              The feed gap first: it explains a distortion that is already in
+              the numbers on screen, while the freshness note below explains
+              rows that are still arriving. Shown only when the window
+              actually reaches past where the ad feed stops — inside that span
+              the two feeds agree and there is nothing to warn about.
+            */}
+            {(() => {
+              const feed = overview.data?.data.feedCoverage
+              if (!window || !feed?.adsThrough || !feed.salesThrough) return null
+              if (feed.salesThrough <= feed.adsThrough) return null
+              if (window.to <= feed.adsThrough) return null
+              return (
+                <FeedGapWarning adsThrough={feed.adsThrough} salesThrough={feed.salesThrough} />
+              )
+            })()}
+
             {snapshot && window && window.to >= snapshot.freshFrom && (
               <FreshnessWarning snapshot={snapshot} />
             )}
 
             <MarketingKpiBand
+              current={overview.data?.data.current}
+              previous={overview.data?.data.previous}
+              daily={overview.data?.data.daily ?? []}
+              mode={mode}
+              rate={snapshot?.usdRate ?? 1}
+              status={status}
+            />
+
+            {/* The twelfth stop of the band, grown into the page's lead
+                instrument: revenue above its own daily series. Still last in
+                the reading order — the money still comes back at the end. */}
+            <MarketingHero
+              current={overview.data?.data.current}
+              previous={overview.data?.data.previous}
+              daily={overview.data?.data.daily ?? []}
+              previousWindow={overview.data?.data.previousWindow}
+              dailyFrom={snapshot?.dailyFrom ?? ''}
+              mode={mode}
+              rate={snapshot?.usdRate ?? 1}
+              status={status}
+            />
+
+            {/* The client's own four graded rates, as rings — their 80/60 and
+                30/15 thresholds, our instrument. */}
+            <MarketingRateRings
               current={overview.data?.data.current}
               previous={overview.data?.data.previous}
               mode={mode}

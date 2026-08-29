@@ -421,6 +421,42 @@ export class MarketingRepository {
   }
 
   /**
+   * Where each of the source's TWO feeds actually stops.
+   *
+   * The blob is not one dataset. Ad delivery (leads, spend, impressions) comes
+   * from Meta Ads; orders and collected money come from the client's Google
+   * Sheets. They are published together and they stop on DIFFERENT DAYS —
+   * measured on the 2026-08-29 import, the ads feed's last real day was
+   * 2026-07-31 while the sheet ran to 2026-08-10, and every day after that is
+   * zero padding out to the blob's own `today`.
+   *
+   * That gap is not cosmetic: every ratio that divides one feed by the other
+   * silently changes meaning across it. Over 2026-07-01…08-11 the page's ROAS
+   * read 19.82x against 15.62x for July alone, because 894 mln so'm of August
+   * revenue was divided by July's spend and nothing else. CPO, CAC, ARPL and
+   * the lead→sale conversion drift the same way, each in the direction that
+   * flatters. So the two cut-offs are measured here and stated on screen; a
+   * reader who can see them can discount them, and one who cannot, cannot.
+   */
+  async feedCoverage(): Promise<{ adsThrough: string | null; salesThrough: string | null }> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { ads_through: string | null; sales_through: string | null }[]
+    >(`
+      SELECT
+        max("date") FILTER (WHERE "leads" > 0 OR "spendMicroUsd" > 0)::text AS ads_through,
+        max("date") FILTER (WHERE "sold" > 0 OR "soldMinor" > 0 OR "orders" > 0)::text
+          AS sales_through
+      FROM "marketing_daily"
+      WHERE "dimension" = 'DAYS'
+    `)
+    const row = rows[0]
+    return {
+      adsThrough: row?.ads_through ?? null,
+      salesThrough: row?.sales_through ?? null,
+    }
+  }
+
+  /**
    * Roistat's side of the cross-check: orders, sales and collected money by key.
    *
    * The DAYS dimension is keyed by its own date so it lines up with the

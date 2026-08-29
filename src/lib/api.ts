@@ -816,6 +816,27 @@ export interface PulseForecastDto {
   readonly delta: DeltaDto
 }
 
+/**
+ * What the period's revenue is made of, and what it is still owed.
+ *
+ * Revenue is booked on the CLOSE date and the median order takes weeks to
+ * close, so a month's revenue is largely earlier months' orders arriving.
+ * This split says how much of it the period actually earned itself.
+ */
+export interface PulseCompositionDto {
+  /** Closed in the period AND created in it — the period's own work. */
+  readonly own: MoneyDto
+  readonly ownDeals: number
+  /** Closed in the period but created before it — carried in from earlier. */
+  readonly carried: MoneyDto
+  readonly carriedDeals: number
+  /** own / (own + carried), 0-100. Null when nothing closed. */
+  readonly ownSharePercent: number | null
+  /** Taken in this period and still open — lands in a LATER period's revenue. */
+  readonly openFromPeriod: MoneyDto
+  readonly openFromPeriodDeals: number
+}
+
 export interface PulseCycleDto {
   readonly p50Days: number | null
   readonly p75Days: number | null
@@ -838,8 +859,100 @@ export interface PulseWinRateDto {
 export interface PulseDto {
   readonly velocity: PulseVelocityDto
   readonly forecast: PulseForecastDto
+  readonly composition: PulseCompositionDto
   readonly cycle: PulseCycleDto
   readonly winRate: PulseWinRateDto
+}
+
+// ---------------------------------------------------------------------------
+// Sotuvchilar reytingi — the sellers' board, on the order-intake clock
+// ---------------------------------------------------------------------------
+
+/**
+ * The client's own bonus ladder, as it stands for one seller.
+ *
+ * Quoted from their published sellers dashboard rather than invented here:
+ * 45 mln so'm of won intake earns 1 mln, 60 mln earns 1.5 mln, 70 mln earns
+ * 2 mln. `toNext` is the only actionable number on the row.
+ */
+export interface SellerBonusDto {
+  readonly earned: MoneyDto
+  readonly nextFloor: MoneyDto | null
+  readonly nextBonus: MoneyDto | null
+  readonly toNext: MoneyDto | null
+  readonly toNextPercent: number | null
+}
+
+export interface SellerBoardRowDto {
+  readonly rank: number
+  readonly employeeId: string
+  readonly fullName: string
+  /** The ROP's own name — the team. Null when the seller is off every team. */
+  readonly rop: string | null
+  /** Orders taken in the period, cancellations excluded. */
+  readonly orders: number
+  /** Their value. */
+  readonly ordered: MoneyDto
+  /** Of those, the ones won — what rank and bonus read. */
+  readonly won: MoneyDto
+  readonly wonOrders: number
+  /** Still open, already inside `ordered`. */
+  readonly open: MoneyDto
+  readonly openOrders: number
+  readonly lostOrders: number
+  /** Won over RESOLVED orders, 0-100. Open orders are not counted against. */
+  readonly conversionPercent: number | null
+  readonly sharePercent: number | null
+  readonly bonus: SellerBonusDto
+}
+
+export interface SellerTeamRowDto {
+  readonly rank: number
+  readonly rop: string
+  readonly sellers: number
+  readonly orders: number
+  readonly ordered: MoneyDto
+  readonly won: MoneyDto
+  readonly wonOrders: number
+  readonly open: MoneyDto
+  readonly conversionPercent: number | null
+  readonly sharePercent: number | null
+}
+
+export interface SellerBoardTotalsDto {
+  readonly sellers: number
+  readonly teams: number
+  readonly orders: number
+  readonly ordered: MoneyDto
+  readonly won: MoneyDto
+  readonly wonOrders: number
+  readonly open: MoneyDto
+  readonly conversionPercent: number | null
+  readonly wonDelta: DeltaDto
+  readonly bonusPayable: MoneyDto
+  readonly sellersInBonus: number
+}
+
+export interface SellerBoardForecastDto {
+  readonly elapsedPercent: number
+  readonly projected: MoneyDto | null
+}
+
+export interface SellerBoardDto {
+  readonly rows: readonly SellerBoardRowDto[]
+  readonly teams: readonly SellerTeamRowDto[]
+  readonly totals: SellerBoardTotalsDto
+  readonly forecast: SellerBoardForecastDto
+  /** Every figure here is bucketed by the day the ORDER WAS TAKEN. */
+  readonly basis: 'created_in_period'
+}
+
+/** One day of one seller's intake. */
+export interface SellerDayDto {
+  readonly date: string
+  readonly orders: number
+  readonly ordered: MoneyDto
+  readonly won: MoneyDto
 }
 
 export interface StageConversionRowDto {
@@ -851,6 +964,15 @@ export interface StageConversionRowDto {
   readonly sortOrder: number
   /** Distinct cohort deals that EVER entered this stage. */
   readonly dealCount: number
+  /**
+   * dealCount over the pipeline's whole cohort — one shared denominator for
+   * every stage. This is the reading the ladder draws: the Доставка pipeline
+   * has parallel REGIONAL_HUB and CARRIER branches, so a stage-to-stage
+   * conversion there compares two branches and reads past 900%.
+   */
+  readonly cohortSharePercent: number | null
+  /** How many deals the share is OF — the denominator, stated. */
+  readonly cohortDeals: number
   /** vs the previous stage of the same pipeline. Null for the first stage. */
   readonly conversionFromPreviousPercent: number | null
 }
@@ -1050,6 +1172,25 @@ export interface UnavailableDto {
   readonly needed: string
 }
 
+/** One day of order intake — the same clock and filter as the intake tiles. */
+export interface IntakeDayDto {
+  readonly date: string
+  readonly orders: number
+  /** Booked value that day, in major units. Zero days are present, not absent. */
+  readonly booked: number
+}
+
+/** One day of the confirmation queue, for the rejection control chart. */
+export interface RejectionDayDto {
+  readonly date: string
+  /** Null when nothing entered the queue that day — a gap, not a zero. */
+  readonly sharePercent: number | null
+  readonly rejected: number
+  readonly orders: number
+  /** Sundays are drawn but excluded from the control band's baseline. */
+  readonly sunday: boolean
+}
+
 export interface CommandCentreDto {
   readonly intake: {
     readonly orders: TrendedDto
@@ -1060,6 +1201,14 @@ export interface CommandCentreDto {
     readonly averageOrderDelta: DeltaDto
     /** Of those orders, how many are still open. Their value is under revenue. */
     readonly open: number
+    /** Orders and booked value per day, zero-filled, capped at today. */
+    readonly daily: readonly IntakeDayDto[]
+    /**
+     * The previous window's intake as orders-per-day, for the chart's
+     * reference line. Null when the previous window took nothing in — a
+     * dashed line at zero would claim a baseline nobody measured.
+     */
+    readonly previousDailyOrders: number | null
   }
   readonly revenue: {
     readonly delivered: MoneyDto
@@ -1085,16 +1234,22 @@ export interface CommandCentreDto {
   readonly confirmation: {
     readonly orders: number
     readonly confirmedRate: number | null
+    /** The rate's own numerator, so the fraction can be printed beside it. */
+    readonly confirmed: number
     readonly rejected: number
     /** Today's rejection share against a 2-sigma band on working days. */
     readonly rejectionToday: number | null
     readonly rejectionMean: number
     readonly rejectionLimit: number
     readonly rejectionDays: number
+    /** The full daily series the band was graded on — the control chart. */
+    readonly days: readonly RejectionDayDto[]
   }
   readonly logistics: {
     readonly orders: number
     readonly delivered: number
+    /** delivered + refused + cancelledEarly — the delivery rate's own denominator. */
+    readonly resolved: number
     readonly deliveryRate: number | null
     readonly inFlight: number
     readonly cancelledEarly: number

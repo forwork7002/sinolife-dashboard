@@ -6,7 +6,57 @@
  * into text and must not be used to compute anything.
  */
 
-const LOCALE = 'uz-UZ'
+/**
+ * Numbers are formatted from FIXED separators, not from a locale's CLDR data.
+ *
+ * `Intl.NumberFormat('uz-UZ')` does not agree with itself across the two
+ * engines this application runs in. Measured on this machine, the same call
+ * with the same input returns:
+ *
+ *   Node 24 (the server)   1 234 567,8   — space groups, comma decimal
+ *   Chromium (the client)  1,234,567.8   — comma groups, dot decimal
+ *
+ * Both resolve the locale to `uz-UZ` and then ship different data for it. Any
+ * number rendered on the server and hydrated on the client therefore mismatches
+ * — React discards that subtree and re-renders it, and the console fills with
+ * hydration errors. It stayed invisible only because every figure on every page
+ * arrives from a client-side query, so the server had nothing but skeletons to
+ * render; the first server-rendered constant surfaced it immediately.
+ *
+ * So the separators are stated here rather than looked up. `en-US` is the
+ * carrier locale — not a language choice, a choice of the ONE grouping both
+ * engines agree on — and it is what every reader of this dashboard has been
+ * seeing all along, so nothing on screen moves.
+ *
+ * (The strict Uzbek convention is a space group and a comma decimal, which is
+ * what the client's own published dashboards print. Switching to it is a
+ * one-line change to GROUP_SEPARATOR/DECIMAL_SEPARATOR below — a deliberate,
+ * visible decision, not something a CLDR update should make on its own.)
+ */
+const LOCALE = 'en-US'
+
+/** What every formatted number groups and separates with, in every engine. */
+const GROUP_SEPARATOR = ','
+const DECIMAL_SEPARATOR = '.'
+
+/**
+ * Apply the house separators to an `en-US` rendering.
+ *
+ * The substitution runs even when the two match `en-US`'s own, which is the
+ * point: it is what makes the constants above the single place the appearance
+ * is decided, so a future switch to the Uzbek convention cannot be undone by
+ * a CLDR update, and no call site has to know which locale carried the digits.
+ *
+ * Two passes through a sentinel rather than two `replace` calls: replacing the
+ * group separator first would then let the second pass rewrite the commas it
+ * just wrote.
+ */
+function separators(text: string): string {
+  return text
+    .replaceAll(',', '\u0000')
+    .replaceAll('.', DECIMAL_SEPARATOR)
+    .replaceAll('\u0000', GROUP_SEPARATOR)
+}
 
 /**
  * One formatter per shape, built once.
@@ -53,21 +103,21 @@ export function formatCompactUzs(amount: number): string {
 
 function trim(value: number): string {
   const rounded = Math.abs(value) >= 100 ? Math.round(value) : Math.round(value * 10) / 10
-  return trimFormat.format(rounded)
+  return separators(trimFormat.format(rounded))
 }
 
 /** Full so'm with thousands separators. Used in tables and tooltips. */
 export function formatUzs(amount: number): string {
-  return `${integerFormat.format(amount)} soʻm`
+  return `${separators(integerFormat.format(amount))} soʻm`
 }
 
 export function formatNumber(value: number): string {
-  return numberFormat.format(value)
+  return separators(numberFormat.format(value))
 }
 
 export function formatPercent(value: number | null, digits = 1): string {
   if (value === null || !Number.isFinite(value)) return '—'
-  return `${percentFormat(digits).format(value)}%`
+  return `${separators(percentFormat(digits).format(value))}%`
 }
 
 /**
