@@ -35,23 +35,15 @@ export interface SectionSpec {
 }
 
 export const SECTIONS = [
-  { id: 'overview', route: '/', label: 'Umumiy koʻrinish', group: 'Asosiy' },
-  { id: 'sales', route: '/analytics/sales', label: 'Savdo tahlili', group: 'Savdo' },
-  { id: 'channels', route: '/analytics/channels', label: 'Kanal analitikasi', group: 'Savdo' },
-  { id: 'cohort', route: '/analytics/cohort', label: 'Kogorta tahlili', group: 'Savdo' },
-  { id: 'products', route: '/products', label: 'Mahsulotlar', group: 'Savdo' },
-  { id: 'margin', route: '/margin', label: 'Marja', group: 'Savdo' },
-  { id: 'marketing', route: '/marketing', label: 'Marketing', group: 'Marketing' },
-  { id: 'logistics', route: '/logistics', label: 'Logistika', group: 'Bajarish' },
-  { id: 'confirmation', route: '/confirmation', label: 'Tasdiqlash', group: 'Bajarish' },
-  { id: 'warehouse', route: '/warehouse', label: 'Sklad', group: 'Bajarish' },
-  { id: 'leaderboard', route: '/leaderboard', label: 'Reyting', group: 'Jamoa' },
-  { id: 'employees', route: '/employees', label: 'Xodimlar', group: 'Jamoa' },
-  { id: 'structure', route: '/structure', label: 'Struktura', group: 'Jamoa' },
-  { id: 'calls', route: '/calls', label: 'Qoʻngʻiroqlar', group: 'Jamoa' },
-  { id: 'kpi', route: '/kpi', label: 'KPI', group: 'Jamoa' },
-  { id: 'deals', route: '/deals', label: 'Bitimlar', group: 'Maʼlumot' },
-  { id: 'finance', route: '/finance', label: 'Moliya', group: 'Maʼlumot' },
+  { id: 'cohort', route: '/analytics/cohort', label: 'Kogorta tahlili', group: 'Tahlil' },
+  { id: 'sales', route: '/analytics/sales', label: 'Summa — vizual', group: 'Tahlil' },
+  { id: 'margin', route: '/margin', label: 'Yalpi marja', group: 'Tahlil' },
+  { id: 'confirmation', route: '/confirmation', label: 'Tasdiqlash hisobotlari', group: 'Bajarish' },
+  { id: 'logistics', route: '/logistics', label: 'Logistika %', group: 'Bajarish' },
+  { id: 'warehouse', route: '/warehouse', label: 'Sklad qoldiqlari', group: 'Bajarish' },
+  { id: 'kpi', route: '/kpi', label: 'Yanovskiy tizimi bahosi', group: 'Jamoa' },
+  { id: 'structure', route: '/structure', label: 'Struktura — kim bor, kim yoʻq', group: 'Jamoa' },
+  { id: 'marketing', route: '/marketing', label: 'Roistat analitikasi', group: 'Marketing' },
 ] as const satisfies readonly {
   id: string
   route: string

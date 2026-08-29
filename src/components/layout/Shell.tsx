@@ -7,7 +7,10 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { CommandPalette, useCommandK, type CommandGroup } from '@/components/ui/CommandPalette'
-import { SearchGlyph, TriangleGlyph } from '@/components/ui/Icons'
+import {
+  SearchGlyph,
+  TriangleGlyph,
+} from '@/components/ui/Icons'
 import { Kbd } from '@/components/ui/Kbd'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -41,59 +44,43 @@ interface NavItem {
 }
 
 const NAV_GROUPS: readonly { readonly label: string | null; readonly items: readonly NavItem[] }[] = [
+  /*
+    The nine sections the client asked for, in their own words, and nothing
+    else. Overview, channels, products, leaderboard, employees, calls, deals
+    and finance were removed on instruction — the pages are gone, not hidden,
+    so nothing renders a link to a screen that no longer exists.
+  */
   {
-    label: null,
-    items: [{ href: '/', label: t.nav.overview, icon: GridIcon }],
-  },
-  {
-    label: 'Savdo',
+    label: 'Tahlil',
     items: [
-      { href: '/analytics/sales', label: t.nav.sales, icon: ChartIcon },
-      { href: '/analytics/channels', label: t.nav.channels, icon: SignalIcon },
       { href: '/analytics/cohort', label: t.nav.cohort, icon: LayersIcon },
-      { href: '/products', label: t.nav.products, icon: BoxIcon },
+      { href: '/analytics/sales', label: t.nav.sales, icon: ChartIcon },
       { href: '/margin', label: t.nav.margin, icon: CoinIcon },
     ],
-  },
-  /**
-   * The second ledger, kept in its own group on purpose.
-   *
-   * Every other destination in this rail reads Bitrix24. This one does not —
-   * it reads the client's Google Sheets plus Meta Ads, imported from their
-   * published Roistat page (docs/SUPERDASHBOARD.md §11). Filing it under
-   * "Savdo" beside the Bitrix24 analytics would invite the exact mistake the
-   * module exists to prevent: adding the two revenue figures together. A group
-   * of its own is the cheapest way to say "different system" before the reader
-   * opens anything.
-   */
-  {
-    label: 'Marketing',
-    items: [{ href: '/marketing', label: t.nav.marketing, icon: MegaphoneIcon }],
   },
   {
     label: 'Bajarish',
     items: [
-      { href: '/logistics', label: t.nav.logistics, icon: TruckIcon },
       { href: '/confirmation', label: t.nav.confirmation, icon: CheckIcon },
+      { href: '/logistics', label: t.nav.logistics, icon: TruckIcon },
       { href: '/warehouse', label: t.nav.warehouse, icon: WarehouseIcon },
     ],
   },
   {
     label: 'Jamoa',
     items: [
-      { href: '/leaderboard', label: t.nav.leaderboard, icon: TrophyIcon },
-      { href: '/employees', label: t.nav.employees, icon: PeopleIcon },
-      { href: '/structure', label: t.nav.structure, icon: TreeIcon },
-      { href: '/calls', label: t.nav.calls, icon: PhoneIcon },
       { href: '/kpi', label: t.nav.kpi, icon: TargetIcon },
+      { href: '/structure', label: t.nav.structure, icon: TreeIcon },
     ],
   },
   {
-    label: 'Maʼlumot',
+    label: 'Marketing',
+    items: [{ href: '/marketing', label: t.nav.marketing, icon: MegaphoneIcon }],
+  },
+  {
+    label: null,
     items: [
-      { href: '/deals', label: t.nav.deals, icon: ListIcon },
-      { href: '/finance', label: t.nav.finance, icon: WalletIcon },
-      { href: '/users', label: 'Foydalanuvchilar', icon: PeopleIcon, adminOnly: true },
+      { href: '/users', label: t.nav.users, icon: PeopleIcon, adminOnly: true },
     ],
   },
 ]
@@ -647,17 +634,6 @@ function DataSourceBadge({ source }: { source: 'DEMO' | 'BITRIX24' | 'MANUAL' })
   return isDemo ? <Tooltip content={t.badge.demoHint}>{badge}</Tooltip> : badge
 }
 
-function GridIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7" />
-      <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7" />
-      <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7" />
-      <rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7" />
-    </svg>
-  )
-}
-
 function ChartIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -674,46 +650,6 @@ function PeopleIcon() {
       <circle cx="9" cy="8" r="3" stroke="currentColor" strokeWidth="1.7" />
       <path d="M3.5 19a5.5 5.5 0 0111 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
       <path d="M16 6.5a3 3 0 010 5.9M17.5 19a5.5 5.5 0 00-2-4.2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function TrophyIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M7 4h10v5a5 5 0 01-10 0V4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
-      <path d="M7 6H4.5v1A3.5 3.5 0 007 10.4M17 6h2.5v1a3.5 3.5 0 01-2.5 3.4" stroke="currentColor" strokeWidth="1.7" />
-      <path d="M12 14v3M9 20h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function ListIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M8 6h12M8 12h12M8 18h12" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-      <circle cx="4" cy="6" r="1.2" fill="currentColor" />
-      <circle cx="4" cy="12" r="1.2" fill="currentColor" />
-      <circle cx="4" cy="18" r="1.2" fill="currentColor" />
-    </svg>
-  )
-}
-
-function BoxIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M21 8l-9-5-9 5v8l9 5 9-5V8z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
-      <path d="M3 8l9 5 9-5M12 13v8" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function WalletIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="3" y="6" width="18" height="13" rx="2.5" stroke="currentColor" strokeWidth="1.7" />
-      <path d="M3 10h18" stroke="currentColor" strokeWidth="1.7" />
-      <circle cx="17" cy="14.5" r="1.2" fill="currentColor" />
     </svg>
   )
 }
@@ -758,14 +694,6 @@ function MegaphoneIcon() {
         strokeWidth="1.7"
         strokeLinecap="round"
       />
-    </svg>
-  )
-}
-
-function SignalIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M5 18v-4M9.5 18v-8M14 18v-6M18.5 18V6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
     </svg>
   )
 }
@@ -825,19 +753,6 @@ function TreeIcon() {
       <rect x="3" y="16.5" width="6" height="4.5" rx="1.2" stroke="currentColor" strokeWidth="1.7" />
       <rect x="15" y="16.5" width="6" height="4.5" rx="1.2" stroke="currentColor" strokeWidth="1.7" />
       <path d="M12 7.5v4.5M6 16.5V12h12v4.5" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function PhoneIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M7 3.5h2.5l1.4 3.6-1.9 1.3a11 11 0 005.6 5.6l1.3-1.9 3.6 1.4V16c0 1.9-1.6 3.3-3.4 3A15.5 15.5 0 014 6.9C3.7 5.1 5.1 3.5 7 3.5z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-      />
     </svg>
   )
 }

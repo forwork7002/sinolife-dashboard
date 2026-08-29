@@ -23,7 +23,7 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 
-import { SECTIONS, type SectionValue, sectionSpec } from '@/lib/sections'
+import { SECTIONS, type SectionSpec, type SectionValue, sectionSpec } from '@/lib/sections'
 import { optionalPrincipal } from './session'
 import { can, canSeeSection } from './rbac'
 
@@ -58,6 +58,22 @@ export async function requireUserAdmin(): Promise<void> {
 
   if (!principal) redirect('/login')
   if (!can(principal, 'users:manage')) redirect('/')
+}
+
+/**
+ * The first section this account may open, or null when it holds none.
+ *
+ * The root page uses it to send someone somewhere they are actually allowed
+ * to be. Returns null rather than throwing for a signed-out caller: the
+ * middleware has already dealt with that case, and the root page's own
+ * fallback is a better answer than an exception on a redirect.
+ */
+export async function firstSectionFor(): Promise<SectionSpec | null> {
+  const principal = await optionalPrincipal(
+    new Request('https://guard.invalid/', { headers: await headers() }),
+  )
+  if (!principal) return null
+  return SECTIONS.find((spec) => canSeeSection(principal, spec.id)) ?? null
 }
 
 /** The label of a section, for a page that wants to name what it is. */

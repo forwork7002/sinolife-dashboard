@@ -13,27 +13,32 @@ export const t = {
     subtitle: 'Savdo tahlili',
   },
 
+  /**
+   * The nine sections, named exactly as the client's director listed them.
+   *
+   * Cyrillic and untranslated on purpose: this is the vocabulary the request
+   * arrived in, and a dashboard whose menu says something slightly different
+   * from what was asked for is a dashboard nobody is sure they received.
+   */
+  /**
+   * The nine sections, in the order and wording the client asked for.
+   *
+   * Latin Uzbek, matching every other label in the product — the request
+   * arrived in Cyrillic and the client confirmed Latin was fine, so the menu
+   * reads in one script rather than two.
+   */
   nav: {
-    overview: 'Umumiy koʻrinish',
-    sales: 'Savdo tahlili',
-    channels: 'Kanallar',
-    cohort: 'Kogorta',
-    logistics: 'Logistika',
-    confirmation: 'Tasdiqlash',
-    warehouse: 'Sklad',
-    margin: 'Marja',
-    // The Roistat ledger. Its own nav group, because it is not Bitrix24 data.
-    marketing: 'Marketing',
-    team: 'Jamoa',
-    structure: 'Struktura',
-    calls: 'Qoʻngʻiroqlar',
-    employees: 'Xodimlar',
-    leaderboard: 'Reyting',
-    deals: 'Bitimlar',
-    kpi: 'KPI',
-    reports: 'Hisobotlar',
-    products: 'Mahsulotlar',
-    finance: 'Moliya',
+    cohort: 'Kogorta tahlili',
+    logistics: 'Logistika %',
+    sales: 'Summa — vizual',
+    confirmation: 'Tasdiqlash hisobotlari',
+    warehouse: 'Sklad qoldiqlari',
+    kpi: 'Yanovskiy tizimi bahosi',
+    structure: 'Struktura — kim bor, kim yoʻq',
+    margin: 'Yalpi marja',
+    marketing: 'Roistat analitikasi',
+    /** Not one of the nine: account administration, shown only to an admin. */
+    users: 'Foydalanuvchilar',
   },
 
   /**
@@ -51,27 +56,19 @@ export const t = {
       lead: 'Har oy birinchi marta xarid qilgan mijozlarning qanchasi keyingi oylarda qaytgani.',
     },
     logistics: {
-      title: 'Logistika',
+      title: 'Logistika %',
       lead: 'Buyurtma qaysi hudud va tashuvchi orqali ketgani, qancha vaqtda yetgani va qayerda qaytgani.',
     },
     confirmation: {
-      title: 'Tasdiqlash hisoboti',
+      title: 'Tasdiqlash hisobotlari',
       lead: 'Tasdiqlash navbatiga tushgan har bir buyurtma qaysi holatda yakunlangani.',
-    },
-    channels: {
-      title: 'Kanal analitikasi',
-      lead: 'Har bir manba qancha murojaat, qancha savdo va qancha pul keltirgani.',
     },
     margin: {
       title: 'Yalpi marja',
       lead: 'Mahsulot boʻyicha tushum, tannarx va yalpi foyda.',
     },
-    calls: {
-      title: 'Qoʻngʻiroqlar',
-      lead: 'Kim mijoz bilan qancha gaplashgani. Gaplashgan vaqt — faqat ulangan qoʻngʻiroqlar.',
-    },
     warehouse: {
-      title: 'Sklad va joʻnatish',
+      title: 'Sklad qoldiqlari',
       lead: 'Buyurtmalarni qaysi sklad, kuryer yoki marketpleys bajargani.',
     },
     team: {
@@ -79,7 +76,7 @@ export const t = {
       lead: 'Kim qancha sotdi, kim qancha gaplashdi, kim qayerda turibdi.',
     },
     structure: {
-      title: 'Kompaniya strukturasi',
+      title: 'Struktura — kim bor, kim yoʻq',
       lead: 'Boʻlimlar, rahbarlar va har bir boʻlimning natijasi.',
     },
   },

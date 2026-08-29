@@ -24,22 +24,15 @@ export const ROLE_LABELS: Readonly<Record<RoleValue, string>> = {
  * request the role is not entitled to regardless of what is rendered.
  */
 const ALL_ROUTES = [
-  '/',
-  '/analytics/sales',
-  '/analytics/channels',
   '/analytics/cohort',
-  '/products',
-  '/margin',
   '/logistics',
+  '/analytics/sales',
   '/confirmation',
   '/warehouse',
-  '/leaderboard',
-  '/employees',
-  '/structure',
-  '/calls',
   '/kpi',
-  '/deals',
-  '/finance',
+  '/structure',
+  '/margin',
+  '/marketing',
 ] as const
 
 export const ROLE_NAV: Readonly<Record<RoleValue, readonly string[]>> = {
@@ -54,15 +47,9 @@ export const ROLE_NAV: Readonly<Record<RoleValue, readonly string[]>> = {
    * not just a hidden link.
    */
   SALES: [
-    '/',
-    '/analytics/sales',
-    '/products',
-    '/leaderboard',
-    '/deals',
-    '/kpi',
-    '/calls',
-    '/logistics',
     '/confirmation',
+    '/logistics',
+    '/kpi',
   ],
 }
 

@@ -33,6 +33,7 @@ import { MarketingKpiBand } from './MarketingKpiBand'
 import { MarketingTable, defaultSort, type TableSort } from './MarketingTable'
 import { MarketingVerify } from './MarketingVerify'
 import type { CurrencyMode } from './marketingFormat'
+import { t } from '@/lib/messages'
 
 /**
  * The Marketing screen — the client's Roistat dashboard, rebuilt on our stack.
@@ -138,7 +139,8 @@ export function MarketingPage() {
         <header>
           <div className="accent-rule" aria-hidden="true" />
           <h1 className="display mt-2.5 text-2xl font-semibold" style={{ color: 'var(--ink-primary)' }}>
-            Marketing
+            {/* One name per section: the heading reads exactly as the menu. */}
+            {t.nav.marketing}
           </h1>
           <p className="mt-1 text-sm" style={{ color: 'var(--ink-secondary)' }}>
             Reklama xarajati, lidlar va ROAS — kampaniyadan sotuvchigacha.
