@@ -71,6 +71,32 @@ export function configuredOrigins(value: string | undefined): string[] {
     .filter(Boolean)
 }
 
+/**
+ * The deployment's OWN origin, which must always be trusted.
+ *
+ * better-auth trusts `baseURL` implicitly, so sign-in worked on the deployed
+ * app while every WRITE was refused — `mutationHandler` checks this list and
+ * this list alone, and for an https deployment `selfOrigins` returns nothing
+ * by design. With no APP_TRUSTED_ORIGINS set, the list was empty and the app
+ * rejected requests from its own pages: creating an account, changing a
+ * password, arming 2FA and editing a user all answered 403 "Soʻrov ishonchsiz
+ * manzildan keldi", from the address the browser was actually on.
+ *
+ * It presents as the product being broken rather than as a misconfiguration,
+ * which is why the base URL is no longer something a deployment has to
+ * remember to repeat into a second variable. Nothing is widened: this is the
+ * one origin better-auth already trusted.
+ */
+function baseOrigin(baseUrl: string): string[] {
+  try {
+    return [new URL(baseUrl).origin]
+  } catch {
+    // A malformed BETTER_AUTH_URL is env.ts's problem to report, not a reason
+    // to throw from a list builder that runs at module load.
+    return []
+  }
+}
+
 export function resolveTrustedOrigins(
   baseUrl: string,
   extra: string | undefined,
@@ -78,5 +104,11 @@ export function resolveTrustedOrigins(
 ): string[] {
   // A Set because better-auth logs the list on a rejection, and a duplicate
   // entry there sends whoever is debugging looking for a second cause.
-  return [...new Set([...selfOrigins(baseUrl, interfaces), ...configuredOrigins(extra)])]
+  return [
+    ...new Set([
+      ...baseOrigin(baseUrl),
+      ...selfOrigins(baseUrl, interfaces),
+      ...configuredOrigins(extra),
+    ]),
+  ]
 }

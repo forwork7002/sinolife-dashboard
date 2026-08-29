@@ -95,6 +95,31 @@ describe('resolveTrustedOrigins', () => {
   it('lets a production domain be added to an https deployment', () => {
     expect(
       resolveTrustedOrigins('https://dash.example.uz', 'https://www.example.uz', interfaces),
-    ).toEqual(['https://www.example.uz'])
+    ).toEqual(['https://dash.example.uz', 'https://www.example.uz'])
+  })
+
+  /**
+   * The regression this list exists to prevent, and it reached production.
+   *
+   * `selfOrigins` returns nothing for https on purpose, so an https deployment
+   * with no APP_TRUSTED_ORIGINS produced an EMPTY list. better-auth trusts its
+   * own `baseURL` implicitly and signed people in; `mutationHandler` checks
+   * this list and nothing else, so every write from the app's own pages came
+   * back 403 — changing a password, arming 2FA, creating an account. The
+   * product looked broken from the address the browser was on.
+   */
+  it('always trusts the deployment its own base URL names', () => {
+    expect(resolveTrustedOrigins('https://dash.example.uz', undefined, interfaces)).toEqual([
+      'https://dash.example.uz',
+    ])
+  })
+
+  it('trusts the base origin without its path, and only once', () => {
+    const origins = resolveTrustedOrigins(
+      'https://dash.example.uz/app',
+      'https://dash.example.uz',
+      interfaces,
+    )
+    expect(origins).toEqual(['https://dash.example.uz'])
   })
 })
