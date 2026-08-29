@@ -28,6 +28,7 @@ export const t = {
    * reads in one script rather than two.
    */
   nav: {
+    overview: 'Boshqaruv markazi',
     cohort: 'Kogorta tahlili',
     logistics: 'Logistika %',
     sales: 'Summa — vizual',

@@ -21,6 +21,7 @@ import { InsightsService } from './insightsService'
 import { FinanceService } from './financeService'
 import { KpiService } from './kpiService'
 import { PulseService } from './pulseService'
+import { CommandCentreService } from './commandCentreService'
 import { ConcentrationService } from './concentrationService'
 import { ResponseService } from './responseService'
 import { MarketingService } from './marketingService'
@@ -48,5 +49,6 @@ export const kpiService = new KpiService(dealRepository, referenceRepository)
 export const insightsService = new InsightsService(insightsRepository)
 export const pulseService = new PulseService(pulseRepository)
 export const concentrationService = new ConcentrationService(concentrationRepository)
+export const commandCentreService = new CommandCentreService(insightsRepository)
 export const responseService = new ResponseService(responseRepository)
 export const marketingService = new MarketingService(marketingRepository)

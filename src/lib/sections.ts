@@ -35,6 +35,13 @@ export interface SectionSpec {
 }
 
 export const SECTIONS = [
+  /*
+    The command centre. Not one of the director's nine — it is the screen ABOVE
+    them: the summary that answers "what is happening" and hands off to the
+    module that answers "why". First, because it is where `/` lands and the
+    first thing every role that holds it should see.
+  */
+  { id: 'overview', route: '/', label: 'Boshqaruv markazi', group: 'Asosiy' },
   { id: 'cohort', route: '/analytics/cohort', label: 'Kogorta tahlili', group: 'Tahlil' },
   { id: 'sales', route: '/analytics/sales', label: 'Summa — vizual', group: 'Tahlil' },
   { id: 'margin', route: '/margin', label: 'Yalpi marja', group: 'Tahlil' },

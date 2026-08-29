@@ -51,6 +51,10 @@ const NAV_GROUPS: readonly { readonly label: string | null; readonly items: read
     so nothing renders a link to a screen that no longer exists.
   */
   {
+    label: null,
+    items: [{ href: '/', label: t.nav.overview, icon: PulseIcon }],
+  },
+  {
     label: 'Tahlil',
     items: [
       { href: '/analytics/cohort', label: t.nav.cohort, icon: LayersIcon },
@@ -239,12 +243,38 @@ export function Shell({
         </div>
 
         <nav aria-label="Asosiy menyu" className="flex-1 overflow-y-auto px-2.5 py-1">
-          {NAV_GROUPS.map((group) => {
+          {NAV_GROUPS.map((group, index) => {
             const items = group.items.filter((item) => !user || canOpen(item))
             if (items.length === 0) return null
 
             return (
-              <div key={group.label ?? 'root'} className="mb-2">
+              /*
+                Keyed by POSITION, not by label. Two groups are deliberately
+                unlabelled — the overview at the top and the admin block at the
+                bottom — so a `label ?? 'root'` fallback gave both the same key
+                and React warned about it on every page. NAV_GROUPS is a
+                module-level constant that never reorders or filters, which is
+                exactly the case where an index key is the correct one.
+              */
+              <div
+                key={index}
+                /*
+                  An unlabelled group that is not the first needs its own
+                  separator. The admin block carries no heading, so without a
+                  rule it reads as the tail of whichever group precedes it —
+                  "Foydalanuvchilar" appeared to sit under MARKETING.
+                */
+                className={
+                  group.label === null && index > 0
+                    ? 'mt-3 mb-2 border-t pt-2.5'
+                    : 'mb-2'
+                }
+                style={
+                  group.label === null && index > 0
+                    ? { borderColor: 'var(--border)' }
+                    : undefined
+                }
+              >
                 {group.label && (
                   /*
                     `.eyebrow` — the ONE positive-tracked style in the system,
@@ -693,6 +723,22 @@ function MegaphoneIcon() {
         stroke="currentColor"
         strokeWidth="1.7"
         strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+function PulseIcon() {
+  // The command centre: a heartbeat line, for the one screen that reads the
+  // whole business at a glance.
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M3 12h4l2.5-6 4 13 2.5-7H21"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   )

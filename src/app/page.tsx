@@ -1,24 +1,41 @@
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 
-import { SECTIONS } from '@/lib/sections'
+import { CommandCentrePage } from '@/features/overview/CommandCentrePage'
 import { firstSectionFor } from '@/server/auth/pageGuard'
 
 // Authenticated and account-dependent: never statically prerendered.
 export const dynamic = 'force-dynamic'
 
 /**
- * The root is a signpost, not a screen.
+ * The root is the command centre — for the accounts that hold it.
  *
- * There is no overview page any more — the product is the nine sections the
- * client asked for and nothing else. Something still has to answer `/`,
- * because it is what a bookmark, the logo and the post-login redirect all
- * point at, and a 404 there reads as a broken deployment.
+ * It is BOTH a screen and a signpost, because `/` is what a bookmark, the logo
+ * and the post-login redirect all point at, and those requests arrive from
+ * every kind of account. An operator granted only Tasdiqlash must not land on
+ * an overview they cannot open and be bounced again, so this resolves the
+ * first section the account actually holds and forwards them there.
  *
- * It sends each account to the first section IT holds rather than to a fixed
- * page: an operator granted only Тасдиклаш would otherwise land on a screen
- * they are not allowed to open and be bounced again.
+ * `requireSection` is deliberately NOT used: it redirects to a refusal, which
+ * is the right answer for a page someone navigated to on purpose and the wrong
+ * one for the address every login lands on.
+ *
+ * THE FALLBACK IS `/account`, NOT `SECTIONS[0]`. Overview is now the first
+ * entry in SECTIONS and its route is this page, so sending a sectionless
+ * account there would bounce it off itself forever. Anyone who holds nothing
+ * still has an account screen, and that is a destination rather than a loop.
  */
 export default async function Page() {
   const section = await firstSectionFor()
-  redirect(section ? section.route : (SECTIONS[0]?.route ?? '/account'))
+
+  if (section?.id === 'overview') {
+    return (
+      // URL filtrlari klientda oʻqiladi; Suspense prerender paytida qobiqni chiqaradi.
+      <Suspense fallback={null}>
+        <CommandCentrePage />
+      </Suspense>
+    )
+  }
+
+  redirect(section ? section.route : '/account')
 }

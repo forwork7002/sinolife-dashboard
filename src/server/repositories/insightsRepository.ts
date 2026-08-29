@@ -1353,6 +1353,337 @@ export class InsightsRepository {
   }
 
   // -------------------------------------------------------------------------
+  // 5 — The command centre
+  // -------------------------------------------------------------------------
+
+  /**
+   * What the company took in, on the clock that is not distorted by delivery.
+   *
+   * THE TRAP THIS EXISTS TO AVOID. Revenue is bucketed by `closedAt`, and the
+   * median order takes 20.5 days to close (p90 61.5). So a month-over-month
+   * revenue comparison reads August's closed deals against July's — most of
+   * July's are still open. Measured on this portal, that produced a headline
+   * of +478% "growth" in a month whose order intake actually FELL 8.5%.
+   *
+   * Intake is counted on `createdAtSource`, so both months are complete on the
+   * same basis and the comparison means what it says. `countsAsRevenue` is
+   * named explicitly: База duplicates Доставка's orders a median of ten days
+   * later, and without the guard this figure is roughly double.
+   */
+  async commandIntake(period: Period): Promise<{
+    orders: number
+    bookedMinor: bigint
+    won: number
+    lost: number
+    open: number
+  }> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { orders: bigint; booked: MoneyText; won: bigint; lost: bigint; open: bigint }[]
+    >(
+      `
+      SELECT count(*)::bigint AS orders,
+             sum(d."amountMinor")::text AS booked,
+             count(*) FILTER (WHERE d."status" = 'WON')::bigint  AS won,
+             count(*) FILTER (WHERE d."status" = 'LOST')::bigint AS lost,
+             count(*) FILTER (WHERE d."status" = 'OPEN')::bigint AS open
+        FROM "deal" d
+       WHERE d."countsAsRevenue"
+         AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
+      `,
+      period.start,
+      period.end,
+    )
+
+    const r = rows[0]
+    return {
+      orders: int(r?.orders ?? 0n),
+      bookedMinor: money(r?.booked ?? null),
+      won: int(r?.won ?? 0n),
+      lost: int(r?.lost ?? 0n),
+      open: int(r?.open ?? 0n),
+    }
+  }
+
+  /**
+   * Money that actually closed, money still open, and the lag between them.
+   *
+   * `closeLagDays` is the point of this method. It is the median days from
+   * order created to closed, and it is what licenses the screen to show
+   * delivered revenue WITHOUT a growth arrow: at a 20-day median, this month's
+   * closed column is mostly last month's orders, so comparing it to last
+   * month's compares two overlapping sets and calls the overlap growth.
+   *
+   * Open pipeline is the honest counterweight, and it is scoped to orders
+   * CREATED in the window rather than to every open deal in the company. A
+   * company-wide snapshot is the same number in every window, so it cannot be
+   * compared to anything; scoped this way it answers "of what we took in, how
+   * much is still in flight" — which is complete on the creation clock and so
+   * is comparable month to month. A falling pipeline against rising closures
+   * is exactly the picture a 20-day lag produces on the way down.
+   */
+  async commandRevenue(period: Period): Promise<{
+    deliveredMinor: bigint
+    openMinor: bigint
+    closeLagDays: number | null
+  }> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { delivered: MoneyText; open_now: MoneyText; lag: number | null }[]
+    >(
+      `
+      SELECT
+        (SELECT sum(d."amountMinor")::text
+           FROM "deal" d
+          WHERE d."countsAsRevenue" AND d."status" = 'WON'
+            AND d."closedAt" >= $1 AND d."closedAt" < $2)                  AS delivered,
+        (SELECT sum(d."amountMinor")::text
+           FROM "deal" d
+          WHERE d."countsAsRevenue" AND d."status" = 'OPEN'
+            AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2)    AS open_now,
+        (SELECT percentile_cont(0.5) WITHIN GROUP (
+                  ORDER BY EXTRACT(EPOCH FROM (d."closedAt" - d."createdAtSource")) / 86400.0)
+           FROM "deal" d
+          WHERE d."countsAsRevenue" AND d."status" = 'WON'
+            AND d."closedAt" >= $1 AND d."closedAt" < $2
+            AND d."closedAt" > d."createdAtSource")::float                 AS lag
+      `,
+      period.start,
+      period.end,
+    )
+
+    const r = rows[0]
+    return {
+      deliveredMinor: money(r?.delivered ?? null),
+      openMinor: money(r?.open_now ?? null),
+      closeLagDays: r?.lag == null ? null : Math.round(r.lag * 10) / 10,
+    }
+  }
+
+  /**
+   * Customers whose FIRST order was created in the window, and who came back.
+   *
+   * On the creation clock for the same reason intake is: a first purchase
+   * bucketed by `closedAt` lands in whichever month the parcel happened to
+   * arrive, which is not when the customer was won.
+   */
+  async commandCustomers(period: Period): Promise<{ ordering: number; fresh: number }> {
+    const rows = await this.prisma.$queryRawUnsafe<{ ordering: bigint; fresh: bigint }[]>(
+      `
+      WITH first_order AS (
+        SELECT d."customerId" AS customer_id, min(d."createdAtSource") AS first_at
+          FROM "deal" d
+         WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
+         GROUP BY d."customerId"
+      ),
+      ordered AS (
+        SELECT DISTINCT d."customerId" AS customer_id
+          FROM "deal" d
+         WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
+           AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
+      )
+      SELECT count(*)::bigint AS ordering,
+             count(*) FILTER (WHERE f.first_at >= $1 AND f.first_at < $2)::bigint AS fresh
+        FROM ordered o JOIN first_order f ON f.customer_id = o.customer_id
+      `,
+      period.start,
+      period.end,
+    )
+
+    const r = rows[0]
+    return { ordering: int(r?.ordering ?? 0n), fresh: int(r?.fresh ?? 0n) }
+  }
+
+  /**
+   * How much of the month's revenue rests on how few products.
+   *
+   * The largest single business risk visible in this database, and the one cut
+   * the concentration module does not make — it indexes by source and by
+   * region, not by product. Measured here: the top product is 68.5% of the
+   * month's revenue and the top two are 95.8%. A director who does not know
+   * that cannot weigh a supply interruption.
+   *
+   * Line items rather than deal totals, because a deal can carry several
+   * products and splitting its amount across them is the only way the shares
+   * add to the whole.
+   */
+  async commandProducts(period: Period, limit = 4): Promise<{
+    rows: { label: string; revenueMinor: bigint; sharePercent: number }[]
+    topSharePercent: number | null
+    coveragePercent: number | null
+  }> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { label: string; revenue: MoneyText; total: MoneyText; booked: MoneyText }[]
+    >(
+      `
+      WITH won AS (
+        SELECT d."id", d."amountMinor"
+          FROM "deal" d
+         WHERE d."countsAsRevenue" AND d."status" = 'WON'
+           AND d."closedAt" >= $1 AND d."closedAt" < $2
+      ),
+      lines AS (
+        SELECT COALESCE(p."name", 'Nomsiz') AS label,
+               li."totalMinor" AS amount
+          FROM "deal_item" li
+          JOIN won ON won."id" = li."dealId"
+          LEFT JOIN "product" p ON p."id" = li."productId"
+      )
+      SELECT label,
+             sum(amount)::text AS revenue,
+             (SELECT sum(amount) FROM lines)::text          AS total,
+             (SELECT sum("amountMinor") FROM won)::text     AS booked
+        FROM lines
+       GROUP BY label
+       ORDER BY sum(amount) DESC
+      `,
+      period.start,
+      period.end,
+    )
+
+    const total = money(rows[0]?.total ?? null)
+    if (total === 0n) return { rows: [], topSharePercent: null, coveragePercent: null }
+
+    const share = (minor: bigint): number =>
+      Math.round((Number(minor) / Number(total)) * 1000) / 10
+
+    const top = rows.slice(0, limit).map((r) => {
+      const revenueMinor = money(r.revenue)
+      return { label: r.label, revenueMinor, sharePercent: share(revenueMinor) }
+    })
+
+    // Everything past the cut, as one honest remainder rather than a dropped
+    // tail — the shares have to add to 100 or the reader cannot trust them.
+    const rest = rows.slice(limit).reduce((a, r) => a + money(r.revenue), 0n)
+    if (rest > 0n) {
+      top.push({ label: 'Boshqalar', revenueMinor: rest, sharePercent: share(rest) })
+    }
+
+    // What share of the period's WON revenue carries line items at all. The
+    // shares above are of THAT, not of total revenue, and saying so is the
+    // difference between a fact and a guess — a product that is 68% of the
+    // itemised half is not 68% of the business unless the halves match.
+    const booked = money(rows[0]?.booked ?? null)
+
+    return {
+      rows: top,
+      topSharePercent: top[0]?.sharePercent ?? null,
+      coveragePercent:
+        booked === 0n ? null : Math.round((Number(total) / Number(booked)) * 1000) / 10,
+    }
+  }
+
+  /**
+   * The confirmation queue's daily rejection share, and its own control band.
+   *
+   * The one operational number that is daily, complete the same day, and
+   * attached to money. Measured over 51 working days on this portal it runs a
+   * mean of 10.98% with sd 4.56, and mean+2sd was breached on 2 of them — a
+   * 3.9% alarm rate, which is what a usable control limit looks like rather
+   * than one that cries every afternoon.
+   *
+   * SUNDAYS ARE EXCLUDED FROM THE BASELINE, not from the reading. Sunday takes
+   * 31 orders against a weekday 110 and its share swings twice as widely (sd
+   * 8.12 vs 4.56); blended into one baseline, every Sunday trips the alarm.
+   */
+  async commandRejectionBand(
+    period: Period,
+  ): Promise<{ today: number | null; mean: number; sd: number; limit: number; days: number }> {
+    const tz = env.APP_TIMEZONE
+    const rows = await this.prisma.$queryRawUnsafe<
+      { day: string; share: number; dow: number }[]
+    >(
+      `${InsightsRepository.QUEUE_SQL}
+       SELECT (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${tz}')::date::text AS day,
+              (count(*) FILTER (WHERE c.outcome = 'REJECTED')::float
+                 / NULLIF(count(*), 0)::float * 100)::float AS share,
+              EXTRACT(DOW FROM (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${tz}'))::int AS dow
+         FROM numbered c
+        GROUP BY 1, 3
+        ORDER BY 1`,
+      period.start,
+      period.end,
+    )
+
+    // Sunday is its own regime; it informs nobody about a Tuesday.
+    const working = rows.filter((r) => r.dow !== 0).map((r) => r.share)
+    const days = working.length
+
+    if (days < 5) {
+      return { today: rows.at(-1)?.share ?? null, mean: 0, sd: 0, limit: 0, days }
+    }
+
+    const mean = working.reduce((a, b) => a + b, 0) / days
+    const variance = working.reduce((a, b) => a + (b - mean) ** 2, 0) / days
+    const sd = Math.sqrt(variance)
+
+    return {
+      today: rows.at(-1)?.share ?? null,
+      mean: Math.round(mean * 10) / 10,
+      sd: Math.round(sd * 10) / 10,
+      limit: Math.round((mean + 2 * sd) * 10) / 10,
+      days,
+    }
+  }
+
+  /**
+   * One cohort of orders, followed through the company.
+   *
+   * Every step shares a denominator — the orders CREATED in the window — so
+   * the percentages compose. That is the difference between this and the
+   * stage-conversion figure the flow service returns, which divides adjacent
+   * rows in sort order and is arithmetic rather than a funnel: a deal can skip
+   * a stage, and stages that never see each other still appear to convert.
+   *
+   * Marketing is deliberately absent from the top. Roistat is a separate
+   * ledger with its own definition of an order and a 42-day history; splicing
+   * it on would produce a funnel whose first step cannot be reconciled with
+   * its second.
+   */
+  async commandFunnel(period: Period): Promise<
+    { key: string; orders: number }[]
+  > {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { created: bigint; queued: bigint; confirmed: bigint; shipped: bigint; delivered: bigint }[]
+    >(
+      `
+      WITH cohort AS (
+        SELECT d."id"
+          FROM "deal" d
+         WHERE d."countsAsRevenue"
+           AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
+      ),
+      trail AS (
+        SELECT h."dealId" AS deal_id,
+               bool_or(s."logisticsRole" = 'PENDING_CONFIRM') AS queued,
+               bool_or(s."logisticsRole" = 'CONFIRMED')       AS confirmed,
+               bool_or(s."logisticsRole" IN ('IN_TRANSIT', 'REGIONAL_HUB', 'CARRIER')) AS shipped,
+               bool_or(s."logisticsRole" = 'DELIVERED')       AS delivered
+          FROM "deal_stage_history" h
+          JOIN "deal_stage" s ON s."id" = h."stageId"
+          JOIN cohort c ON c."id" = h."dealId"
+         GROUP BY h."dealId"
+      )
+      SELECT count(*)::bigint AS created,
+             count(*) FILTER (WHERE t.queued)::bigint    AS queued,
+             count(*) FILTER (WHERE t.confirmed)::bigint AS confirmed,
+             count(*) FILTER (WHERE t.shipped)::bigint   AS shipped,
+             count(*) FILTER (WHERE t.delivered)::bigint AS delivered
+        FROM cohort c LEFT JOIN trail t ON t.deal_id = c."id"
+      `,
+      period.start,
+      period.end,
+    )
+
+    const r = rows[0]
+    return [
+      { key: 'created', orders: int(r?.created ?? 0n) },
+      { key: 'queued', orders: int(r?.queued ?? 0n) },
+      { key: 'confirmed', orders: int(r?.confirmed ?? 0n) },
+      { key: 'shipped', orders: int(r?.shipped ?? 0n) },
+      { key: 'delivered', orders: int(r?.delivered ?? 0n) },
+    ]
+  }
+
+  // -------------------------------------------------------------------------
   // 9 — Channels
   // -------------------------------------------------------------------------
 

@@ -1023,3 +1023,103 @@ export interface ResponseDto {
   readonly attempts: ResponseAttemptsDto
   readonly efficiency: ResponseEfficiencyDto
 }
+
+// ---------------------------------------------------------------------------
+// Boshqaruv markazi — the command centre
+// ---------------------------------------------------------------------------
+
+/**
+ * A number with its own previous-period reading.
+ *
+ * The delta is the house `Delta`, not a hand-rolled percentage: it already
+ * distinguishes "no baseline" from "unchanged" from "the baseline was too
+ * small to divide by", and a second definition of growth on this page would
+ * eventually disagree with the one on every other page.
+ */
+export interface TrendedDto {
+  readonly value: number
+  readonly previous: number | null
+  readonly delta: DeltaDto
+}
+
+export interface UnavailableDto {
+  readonly key: string
+  readonly label: string
+  /** What is missing, in one sentence a director can act on. */
+  readonly reason: string
+  readonly needed: string
+}
+
+export interface CommandCentreDto {
+  readonly intake: {
+    readonly orders: TrendedDto
+    readonly booked: MoneyDto
+    readonly bookedPrevious: MoneyDto
+    readonly bookedDelta: DeltaDto
+    readonly averageOrder: MoneyDto
+    readonly averageOrderDelta: DeltaDto
+    /** Of those orders, how many are still open. Their value is under revenue. */
+    readonly open: number
+  }
+  readonly revenue: {
+    readonly delivered: MoneyDto
+    /**
+     * Value of this window's orders that are still open.
+     *
+     * Carries NO period-over-period delta, and the omission is the point. An
+     * older window has had longer to drain, so it always shows less still
+     * open — measured here, August against July reads "+186%" purely because
+     * July's orders have had an extra month to close. It is the same
+     * survivorship artifact as the close lag, wearing a different hat.
+     */
+    readonly openPipeline: MoneyDto
+    /** Median days from order created to closed. Why revenue carries no arrow. */
+    readonly closeLagDays: number | null
+  }
+  readonly customers: {
+    readonly ordering: TrendedDto
+    readonly fresh: TrendedDto
+    readonly returning: number
+    readonly returningSharePercent: number | null
+  }
+  readonly confirmation: {
+    readonly orders: number
+    readonly confirmedRate: number | null
+    readonly rejected: number
+    /** Today's rejection share against a 2-sigma band on working days. */
+    readonly rejectionToday: number | null
+    readonly rejectionMean: number
+    readonly rejectionLimit: number
+    readonly rejectionDays: number
+  }
+  readonly logistics: {
+    readonly orders: number
+    readonly delivered: number
+    readonly deliveryRate: number | null
+    readonly inFlight: number
+    readonly cancelledEarly: number
+    readonly regions: readonly { label: string; orders: number; deliveryRate: number | null }[]
+  }
+  readonly funnel: readonly { key: string; orders: number; sharePercent: number }[]
+  readonly team: {
+    readonly employees: number
+    readonly active: number
+    /** Of the active, those who actually made a call or won a deal this period. */
+    readonly working: number
+    readonly departments: number
+  }
+  readonly products: {
+    readonly rows: readonly { label: string; revenue: MoneyDto; sharePercent: number }[]
+    /** Share of period revenue resting on the single largest product. */
+    readonly topSharePercent: number | null
+    /** How much of that revenue is itemised at all — the shares are of THIS. */
+    readonly coveragePercent: number | null
+  }
+  readonly concentration: {
+    /** Herfindahl index over acquisition sources, and its band. */
+    readonly sourceHhi: number | null
+    readonly sourceBand: string | null
+    readonly repeatMedianDays: number | null
+  }
+  readonly unavailable: readonly UnavailableDto[]
+}
