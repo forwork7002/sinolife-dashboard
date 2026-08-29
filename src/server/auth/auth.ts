@@ -26,7 +26,6 @@
 import { betterAuth } from 'better-auth'
 import { APIError, createAuthMiddleware, isAPIError } from 'better-auth/api'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
-import { haveIBeenPwned } from 'better-auth/plugins/haveibeenpwned'
 import { twoFactor } from 'better-auth/plugins/two-factor'
 import { username } from 'better-auth/plugins/username'
 
@@ -121,11 +120,8 @@ const TOTP_ISSUER = 'SinoLife'
  * times the API's normal response and short enough that a failure still reads
  * as "that was slow", not "the app is broken".
  */
-const BREACH_CHECK_TIMEOUT_MS = 4_000
 
 /** Uzbek, because this reaches the owner as-is on the account page. */
-const BREACH_MESSAGE =
-  'Bu parol sizib chiqqan parollar roʻyxatida topildi. Boshqa parol tanlang.'
 
 /**
  * The paths the check guards.
@@ -137,64 +133,20 @@ const BREACH_MESSAGE =
  * other. `/set-password` is absent because better-auth marks it server-only:
  * it has no HTTP route to guard.
  */
-const PASSWORD_SETTING_PATHS = ['/sign-up/email', '/change-password', '/reset-password']
 
-const pwnedCheck = haveIBeenPwned({
-  customPasswordCompromisedMessage: BREACH_MESSAGE,
-  paths: PASSWORD_SETTING_PATHS,
-})
+/*
+  THE BREACHED-PASSWORD CHECK IS GONE, on the owner's instruction.
 
-/** Did this error come from the corpus lookup saying "yes, it is in there"? */
-function isCompromisedPassword(error: unknown): boolean {
-  return isAPIError(error) && error.body?.code === 'PASSWORD_COMPROMISED'
-}
+  `haveIBeenPwned` refused any password that has appeared in a public breach —
+  which is most short, memorable ones, and was therefore the rule that made a
+  simple password impossible in practice. The wrapper around it existed to make
+  it fail OPEN when the service was unreachable, so removing the check removes
+  that wrapper and its timeout with it.
 
-const breachCheck: typeof pwnedCheck = {
-  ...pwnedCheck,
-  init(ctx) {
-    const checkedHash = pwnedCheck.init(ctx).context.password.hash
-    const plainHash = ctx.password.hash
-
-    return {
-      context: {
-        password: {
-          // Spread first: `runPluginInit` does `Object.assign(context, ...)`,
-          // so whatever is returned here REPLACES `context.password` wholesale.
-          // Dropping `verify` or `checkPassword` would break sign-in.
-          ...ctx.password,
-          async hash(password: string) {
-            let timer: ReturnType<typeof setTimeout> | undefined
-
-            try {
-              const outcome = await Promise.race([
-                // Both branches are settled into a value, never a rejection:
-                // a rejection racing a timeout is an unhandled rejection when
-                // the timeout wins.
-                checkedHash(password).then(
-                  (hash) => ({ kind: 'hashed' as const, hash }),
-                  (error: unknown) => ({ kind: 'failed' as const, error }),
-                ),
-                new Promise<{ kind: 'timeout' }>((resolve) => {
-                  timer = setTimeout(() => resolve({ kind: 'timeout' }), BREACH_CHECK_TIMEOUT_MS)
-                }),
-              ])
-
-              if (outcome.kind === 'hashed') return outcome.hash
-              if (outcome.kind === 'failed' && isCompromisedPassword(outcome.error)) {
-                throw outcome.error
-              }
-              // Fail open. The password is still subject to the house policy,
-              // which ran before this and does not need the network.
-              return plainHash(password)
-            } finally {
-              clearTimeout(timer)
-            }
-          },
-        },
-      },
-    }
-  },
-}
+  The password policy was reduced to a length of eight at the same time and for
+  the same reason; see `src/lib/passwordPolicy.ts` for what still protects an
+  account, and for the risk this accepts.
+*/
 
 /**
  * The single key both credential paths lock on.
@@ -371,7 +323,6 @@ export const auth = betterAuth({
       trustDeviceMaxAge: SESSION_TTL_SECONDS,
     }),
 
-    breachCheck,
   ],
 
   emailAndPassword: {
