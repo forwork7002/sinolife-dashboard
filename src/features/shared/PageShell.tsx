@@ -129,9 +129,9 @@ export function PageShell({
           The header zone carries the aurora — title, description and filters
           sit over it; data never does.
 
-          `.page-atmosphere` + `.page-atmosphere-fade` (globals.css) paint two
-          blurred chrome-tint blobs and a gradient to --page over the bottom of
-          the band, so the atmosphere dies before the first chart. Both live in
+          `.page-atmosphere` (globals.css) paints two blurred chrome-tint
+          blobs and masks them away over the bottom of the band, so the
+          atmosphere dies before the first chart. It lives in
           their own absolutely-positioned, overflow-hidden layer rather than
           putting overflow-hidden on the content: the MultiSelect popovers in
           the filter row open downward past this box and must not be clipped.
@@ -145,7 +145,6 @@ export function PageShell({
             className="pointer-events-none absolute inset-x-0 -top-5 bottom-0 overflow-hidden lg:-top-6"
           >
             <div className="page-atmosphere" />
-            <div className="page-atmosphere-fade" />
           </div>
 
           <div className="relative space-y-4">

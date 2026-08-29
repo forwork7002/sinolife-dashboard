@@ -57,6 +57,25 @@ const csp = [
 
 const nextConfig: NextConfig = {
   /**
+   * No floating "N" badge over the sidebar in development.
+   *
+   * Next draws its route indicator at bottom-left, which is exactly where
+   * this app puts the signed-in user — so the badge sat on top of the
+   * account row and looked like part of the product.
+   *
+   * `false` rather than a different `position`: every corner of this layout
+   * is occupied, and the indicator answers a question (is this route static
+   * or dynamic) that the build output answers better and that nobody working
+   * on this dashboard is asking. Compile and runtime errors are still
+   * surfaced — the docs are explicit that turning the indicator off does not
+   * silence them. Development only; production never rendered it.
+   *
+   * In this major the sub-options (`appIsrStatus`, `buildActivity`,
+   * `buildActivityPosition`) were REMOVED, so `false` is the whole switch.
+   */
+  devIndicators: false,
+
+  /**
    * Prisma must not be bundled into the serverless function.
    *
    * The generated client loads its schema and adapter at runtime; bundling it

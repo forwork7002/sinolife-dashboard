@@ -552,8 +552,8 @@ body {
  * Mounts inside PageShell's accent subtree, behind the title area — which is
  * what lets the blob below read the PAGE's accent rather than :root's.
  * Contract with the call site: the PARENT is position:relative +
- * overflow:hidden and spans the title band only; `.page-atmosphere-fade` is
- * mounted as a CHILD of this element.
+ * overflow:hidden and spans the title band only. The band masks its own
+ * aurora away below 60% — see the mask on .page-atmosphere.
  *
  * z-index -1 keeps the layer behind in-flow content with no cooperation
  * needed from that content: the title never has to position itself just to
@@ -564,6 +564,33 @@ body {
   inset: 0;
   z-index: -1;
   pointer-events: none;
+
+  /*
+   * The aurora fades ITSELF out. Nothing paints over the page.
+   *
+   * This used to be a sibling element filled with opaque --page from 60% of
+   * the band down — "not a soft opinion, an opaque paint". It kept its
+   * promise to the data and broke a different one: html paints two ambient
+   * pools at the top of the viewport, and an opaque --page rectangle 1400px
+   * wide DELETED them inside its own bounds. Measured in dark mode, the band
+   * read (5,6,9) against a surround of (13,12,21) — a visibly darker box with
+   * hard edges wherever the viewport was wider than the container, which is
+   * every screen over ~1650px.
+   *
+   * A mask on the wrapper reaches the ::before blobs (masks apply to an
+   * element and everything it paints), so the aurora is GONE by 60% rather
+   * than covered up. The promise is now stricter than the paint ever was, and
+   * the html pools run through the band uninterrupted.
+   *
+   * no-repeat is load-bearing: the default would tile the gradient outside
+   * the box and make the blobs reappear above the band.
+   */
+  -webkit-mask-image: linear-gradient(180deg, #000 15%, transparent 60%);
+  mask-image: linear-gradient(180deg, #000 15%, transparent 60%);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
 }
 
 /**
@@ -613,21 +640,6 @@ body {
       transparent 60%
     );
   filter: blur(70px) saturate(1.3);
-}
-
-/**
- * The fade — the aurora's hard promise to the data below it.
- *
- * Solid --page from 60% of the band's height down: whatever the parent grows
- * to, the bottom 40% is already clean canvas, so the atmosphere is dead WELL
- * before the first chart or table. Not a soft opinion — an opaque paint.
- */
-.page-atmosphere-fade {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background: linear-gradient(180deg, transparent 15%, var(--page) 60%);
 }
 
 /**
