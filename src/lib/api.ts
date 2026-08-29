@@ -597,7 +597,8 @@ export interface ConfirmationOrderDto {
   readonly orderCode: string | null
   readonly title: string
   readonly customerName: string | null
-  readonly customerPhone: string | null
+  /** Every number on the contact. Empty when the portal holds none. */
+  readonly customerPhones: readonly string[]
   readonly employeeName: string
   /** Продукт — one entry per line item, already formatted "name - N ta". */
   readonly products: readonly string[]

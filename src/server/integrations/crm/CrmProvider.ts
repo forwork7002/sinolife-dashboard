@@ -149,7 +149,10 @@ export interface RawCustomer extends ExternalRecord {
   readonly name: string
   readonly isCompany: boolean
   readonly email?: string
+  /** The first number. Kept because every existing query reads it. */
   readonly phone?: string
+  /** Every number the source holds, in its own order. */
+  readonly phones?: readonly string[]
   readonly region?: string
 }
 

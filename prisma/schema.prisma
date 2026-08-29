@@ -570,7 +570,15 @@ model Customer {
   /// True when the counterparty is a company rather than an individual.
   isCompany      Boolean        @default(false)
   email          String?
+  /// The first number, kept as the one every existing query already reads.
   phone          String?
+  /// EVERY number Bitrix24 holds for this contact, in the portal's own order.
+  ///
+  /// A contact routinely carries two — a mobile and a landline, or the buyer
+  /// and whoever actually answers. Importing only PHONE[0] meant an operator
+  /// looking at the queue saw one number and had no idea a second existed,
+  /// which on a confirmation desk is a call that never gets made.
+  phones         String[]       @default([])
   region         String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt

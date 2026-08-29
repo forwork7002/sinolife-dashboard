@@ -163,7 +163,21 @@ export class Bitrix24CrmProvider implements CrmProvider {
   private readonly progress: (m: string) => void
 
   /** Deals in a REVENUE pipeline — the only ones whose line items are read. */
-  private revenueDealIds: string[] = []
+  /**
+   * Deals whose product rows are worth fetching.
+   *
+   * It used to be the REVENUE pipelines alone, which quietly emptied the
+   * Продукт column for every order that had left them — a confirmation queue
+   * order killed in Первичный отдел showed no products at all, on 10% of the
+   * cohort, while the client's own dashboard showed them.
+   *
+   * The rule is now "the deal carries money", which is the honest signal that
+   * it has products. Measured on the portal: it adds ~16 000 deals to the
+   * ~16 700 already walked, because the two pipelines holding almost every
+   * deal — ИИ обработка (116 399) and Регистрация (184 580) — carry an amount
+   * on 0 and 226 of them respectively and are therefore still skipped.
+   */
+  private itemDealIds: string[] = []
 
   // Running totals, for progress output only. The walk is stateless — every
   // page is addressed by the id it starts after — so these carry no meaning
@@ -806,7 +820,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
     await this.loadEnumLabels()
 
     const afterId = options.cursor ?? '0'
-    if (afterId === '0') this.revenueDealIds = []
+    if (afterId === '0') this.itemDealIds = []
 
     const filter: Record<string, unknown> = { CATEGORY_ID: [...this.pipelines] }
     if (options.updatedSince) {
@@ -827,7 +841,8 @@ export class Bitrix24CrmProvider implements CrmProvider {
       const role = pipelineRole(categoryId)
       const status = dealStatus(d.STAGE_SEMANTIC_ID, d.STAGE_ID)
 
-      if (role === 'REVENUE') this.revenueDealIds.push(id)
+      // Money, not pipeline: see `itemDealIds`.
+      if (toMinorUnits(d.OPPORTUNITY) > 0n) this.itemDealIds.push(id)
 
       deals.push({
         externalId: id,
@@ -939,10 +954,33 @@ export class Bitrix24CrmProvider implements CrmProvider {
 
     const customers: RawCustomer[] = rows.map((c) => ({
       externalId: String(c.ID),
-      name:
-        [c.LAST_NAME, c.NAME, c.SECOND_NAME].filter(Boolean).join(' ').trim() || `Kontakt ${c.ID}`,
+      /*
+        NAME and LAST_NAME only — SECOND_NAME is a scratchpad on this portal.
+
+        The floor types birthdates, ages, a lone dot and lead-capture
+        timestamps into it, so concatenating all three produced customer names
+        like `ig Gulrux Xuddiyeva 2025-07-30T14:58:02.000Z`. Measured against
+        the client's own board: 61 of 1 666 names, 3.7% of the column, carried
+        a date or a full ISO timestamp. A patronymic is worth less than a name
+        that reads as a name.
+      */
+      name: [c.LAST_NAME, c.NAME].filter(Boolean).join(' ').trim() || `Kontakt ${c.ID}`,
       isCompany: false,
       phone: c.PHONE?.[0]?.VALUE,
+      /*
+        All of them, deduplicated and blank-stripped.
+
+        `crm.contact.list` returns PHONE as an array and a contact routinely
+        has two. Taking [0] alone lost the rest silently — the queue showed one
+        number and the operator had no way to know another existed.
+      */
+      phones: [
+        ...new Set(
+          (c.PHONE ?? [])
+            .map((entry) => entry?.VALUE?.trim())
+            .filter((value): value is string => !!value),
+        ),
+      ],
       email: c.EMAIL?.[0]?.VALUE,
       region: c.ADDRESS_CITY || undefined,
       updatedAtSource: toDate(c.DATE_MODIFY),
@@ -965,10 +1003,10 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * funnels carry no products. The 16 500 deals that produce money do.
    */
   async fetchDealItems(_o?: FetchOptions): Promise<Page<RawDealItem>> {
-    if (this.revenueDealIds.length === 0) return this.page([])
+    if (this.itemDealIds.length === 0) return this.page([])
 
     const commands: Record<string, string> = {}
-    for (const id of this.revenueDealIds) {
+    for (const id of this.itemDealIds) {
       commands[`d${id}`] = `crm.deal.productrows.get?id=${id}`
     }
 
@@ -991,7 +1029,17 @@ export class Bitrix24CrmProvider implements CrmProvider {
       for (const [index, row] of (rows ?? []).entries()) {
         if (!row?.PRODUCT_ID) continue
         const unit = toMinorUnits(row.PRICE)
-        const quantity = Math.max(1, Math.round(Number(row.QUANTITY ?? 1)))
+        /*
+          Zero is a real quantity here: a gift line, priced at nothing and
+          shipped with the order. The old `Math.max(1, …)` clamp rewrote it to
+          1, so our line total stopped reconciling against the deal's own
+          amount — caught on deal 850490, where their board shows
+          `Sedana Sinolife - 0 ta` and ours claimed one.
+
+          Negative is still refused: that is a data error, not a giveaway.
+        */
+        const raw = Number(row.QUANTITY ?? 1)
+        const quantity = Number.isFinite(raw) ? Math.max(0, Math.round(raw)) : 1
 
         items.push({
           // Bitrix24 gives product rows no stable id, so one is composed from

@@ -468,6 +468,7 @@ export function createSyncHandlers(
     { name: 'isCompany' },
     { name: 'email' },
     { name: 'phone' },
+    { name: 'phones', cast: 'text[]' },
     { name: 'region' },
     ...lifecycleColumns(),
   ]
@@ -500,6 +501,7 @@ export function createSyncHandlers(
           r.isCompany,
           r.email ?? null,
           r.phone ?? null,
+          r.phones ? [...r.phones] : [],
           r.region ?? null,
           now,
           now,

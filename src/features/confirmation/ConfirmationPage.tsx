@@ -261,7 +261,7 @@ export function ConfirmationPage() {
       key: 'phone',
       header: 'ТЕЛЕФОН',
       width: '170px',
-      render: (row) => <PhoneCell phone={row.customerPhone} />,
+      render: (row) => <PhoneCell phones={row.customerPhones} />,
     },
     {
       key: 'operator',
@@ -709,38 +709,48 @@ function OutcomeTile({
 }
 
 /**
- * A phone, masked until asked for.
+ * EVERY number on the contact, each masked until asked for.
  *
- * The reference dashboard masks it because it is published on GitHub Pages;
- * this one is behind a login, so the reason here is narrower and still real —
- * a queue is read over someone's shoulder in an open office, and a screen of
- * full customer numbers is a screen that cannot be shown to a visitor.
+ * A contact routinely carries two — a mobile and a landline, or the buyer and
+ * whoever actually answers — and the importer used to keep only the first, so
+ * an operator saw one number and had no way to know another existed. On a
+ * confirmation desk that is a call nobody makes.
+ *
+ * Masked by default, and one toggle reveals all of them: they belong to the
+ * same person, so hiding half of a row tells nobody anything. The reference
+ * dashboard masks because it is published on GitHub Pages; this one is behind
+ * a login, so the reason here is narrower and still real — a queue is read
+ * over someone's shoulder in an open office.
  */
-function PhoneCell({ phone }: { phone: string | null }) {
+function PhoneCell({ phones }: { phones: readonly string[] }) {
   const [shown, setShown] = useState(false)
 
-  if (!phone) return <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
+  if (phones.length === 0) return <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
 
   return (
-    <span className="flex items-center gap-1.5">
-      <span className="tabular" style={{ color: 'var(--ink-secondary)' }}>
-        {shown ? phone : mask(phone)}
-      </span>
-      <button
-        type="button"
-        onClick={(event) => {
-          // The row is itself clickable on some tables; revealing a number is
-          // not a row activation.
-          event.stopPropagation()
-          setShown((value) => !value)
-        }}
-        aria-label={shown ? 'Raqamni yashirish' : 'Raqamni koʻrsatish'}
-        aria-pressed={shown}
-        className="focusable rounded px-1 py-0.5 transition-opacity hover:opacity-70"
-        style={{ color: shown ? 'var(--ink-secondary)' : 'var(--ink-muted)' }}
-      >
-        {shown ? <EyeOffGlyph size={13} /> : <EyeGlyph size={13} />}
-      </button>
+    <span className="flex flex-col gap-0.5">
+      {phones.map((phone) => (
+        <span key={phone} className="flex items-center gap-1.5">
+          <span className="tabular" style={{ color: 'var(--ink-secondary)' }}>
+            {shown ? phone : mask(phone)}
+          </span>
+          <button
+            type="button"
+            onClick={(event) => {
+              // The row is itself clickable on some tables; revealing a number
+              // is not a row activation.
+              event.stopPropagation()
+              setShown((value) => !value)
+            }}
+            aria-label={shown ? 'Raqamlarni yashirish' : 'Raqamlarni koʻrsatish'}
+            aria-pressed={shown}
+            className="focusable rounded px-1 py-0.5 transition-opacity hover:opacity-70"
+            style={{ color: shown ? 'var(--ink-secondary)' : 'var(--ink-muted)' }}
+          >
+            {shown ? <EyeOffGlyph size={13} /> : <EyeGlyph size={13} />}
+          </button>
+        </span>
+      ))}
     </span>
   )
 }

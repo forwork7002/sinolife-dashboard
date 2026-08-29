@@ -136,7 +136,7 @@ export interface ConfirmationOrderDto {
   readonly orderCode: string | null
   readonly title: string
   readonly customerName: string | null
-  readonly customerPhone: string | null
+  readonly customerPhones: readonly string[]
   readonly employeeName: string
   readonly products: readonly string[]
   readonly region: string | null
@@ -601,7 +601,7 @@ export class InsightsService {
         orderCode: r.orderCode,
         title: r.title,
         customerName: r.customerName,
-        customerPhone: r.customerPhone,
+        customerPhones: r.customerPhones,
         employeeName: r.employeeName,
         products: r.products,
         region: r.region,

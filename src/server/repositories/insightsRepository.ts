@@ -157,7 +157,8 @@ export interface ConfirmationOrderRow {
   readonly orderCode: string | null
   readonly title: string
   readonly customerName: string | null
-  readonly customerPhone: string | null
+  /** Every number on the contact, in the portal's order. May be empty. */
+  readonly customerPhones: readonly string[]
   readonly employeeName: string
   /** Продукт — one entry per line item, "name - N ta". */
   readonly products: readonly string[]
@@ -908,6 +909,11 @@ export class InsightsRepository {
         max(h."enteredAt") FILTER (
           WHERE p."role" = 'CONFIRMATION' AND s."logisticsRole" = 'CANCELLED_EARLY'
         ) AS last_kill_at,
+        -- The last time it came BACK into the queue. A kill that predates this
+        -- is a finished attempt, not the order's current state.
+        max(h."enteredAt") FILTER (
+          WHERE p."role" = 'CONFIRMATION' AND s."logisticsRole" = 'PENDING_CONFIRM'
+        ) AS last_queued_at,
         -- When it left the queue. Only moves at or after the queue entry
         -- count: an order that was already in Доставка once and came BACK
         -- would otherwise report a negative waiting time.
@@ -935,10 +941,35 @@ export class InsightsRepository {
           head of Sevinch(ROP) is "Usmonova 199 Sevinch" — a different string,
           and the one nobody on the floor uses.
         */
-        NULLIF(btrim(replace(dep."name", '(ROP)', '')), '') AS rop,
+        /*
+          A department is only a ROP if it says so.
+
+          Stripping '(ROP)' unconditionally printed the raw name of any other
+          department into a column headed РОП — Регистрация and Операцион, the
+          two back-office units, leaked onto 25 orders and into the ROP filter
+          list. They are not sales groups and naming them as ones invites a
+          manager to compare them against real ones.
+        */
         CASE
+          WHEN dep."name" ILIKE '%(ROP)%'
+            THEN NULLIF(btrim(replace(dep."name", '(ROP)', '')), '')
+          ELSE NULL
+        END AS rop,
+        CASE
+          /*
+            Killed, and nothing has happened since.
+
+            The comparison used to look only at the last move TOWARDS delivery,
+            so an order killed on Monday and pushed back into the queue on
+            Wednesday still read as rejected while it sat waiting to be worked
+            — caught on deal 909770. A return to the queue is an event too, and
+            a kill older than it describes a finished attempt rather than where
+            the order stands now.
+          */
           WHEN COALESCE(t.killed, false)
-               AND (t.last_yes_at IS NULL OR t.last_kill_at > t.last_yes_at)  THEN 'REJECTED'
+               AND (t.last_yes_at IS NULL OR t.last_kill_at > t.last_yes_at)
+               AND (t.last_queued_at IS NULL OR t.last_kill_at > t.last_queued_at)
+                                                                            THEN 'REJECTED'
           WHEN (COALESCE(t.shipped, false) OR COALESCE(t.said_yes, false))
                AND d."confirmStatus" = 'UNREACHABLE'                          THEN 'UNCONFIRMED_SHIPPED'
           WHEN COALESCE(t.shipped, false) OR COALESCE(t.said_yes, false)      THEN 'CONFIRMED'
@@ -1063,7 +1094,10 @@ export class InsightsRepository {
             OR (
               ${digits} <> ''
               AND (
-                regexp_replace(COALESCE(cust."phone", ''), '[^0-9]', '', 'g') LIKE '%' || ${digits} || '%'
+                regexp_replace(
+                  COALESCE(array_to_string(cust."phones", ' '), '') || ' ' || COALESCE(cust."phone", ''),
+                  '[^0-9]', '', 'g'
+                ) LIKE '%' || ${digits} || '%'
                 OR (d."amountMinor" / 100)::text LIKE '%' || ${digits} || '%'
               )
             )
@@ -1080,8 +1114,18 @@ export class InsightsRepository {
               ${param} LIKE '%*%'
               AND ${head} <> ''
               AND ${tail} <> ''
-              AND regexp_replace(COALESCE(cust."phone", ''), '[^0-9]', '', 'g') LIKE ${head} || '%'
-              AND regexp_replace(COALESCE(cust."phone", ''), '[^0-9]', '', 'g') LIKE '%' || ${tail}
+              AND EXISTS (
+                SELECT 1
+                  FROM unnest(
+                    CASE
+                      WHEN cust."phones" IS NOT NULL AND array_length(cust."phones", 1) > 0
+                        THEN cust."phones"
+                      ELSE ARRAY[COALESCE(cust."phone", '')]
+                    END
+                  ) AS one(num)
+                 WHERE regexp_replace(one.num, '[^0-9]', '', 'g') LIKE ${head} || '%'
+                   AND regexp_replace(one.num, '[^0-9]', '', 'g') LIKE '%' || ${tail}
+              )
             )
           )`
   }
@@ -1188,7 +1232,7 @@ export class InsightsRepository {
         order_code: string | null
         title: string
         customer_name: string | null
-        customer_phone: string | null
+        customer_phones: string | null
         employee_name: string
         products: string | null
         region: string | null
@@ -1212,7 +1256,15 @@ export class InsightsRepository {
          d."orderCode" AS order_code,
          d."title" AS title,
          cust."name" AS customer_name,
-         cust."phone" AS customer_phone,
+         -- Joined to text and split in TS: a text[] round-trips differently
+         -- depending on the driver, a delimiter does not.
+         array_to_string(
+           CASE
+             WHEN cust."phones" IS NOT NULL AND array_length(cust."phones", 1) > 0
+               THEN cust."phones"
+             WHEN cust."phone" IS NOT NULL THEN ARRAY[cust."phone"]
+             ELSE ARRAY[]::text[]
+           END, E'\n') AS customer_phones,
          e."fullName" AS employee_name,
          items.products AS products,
          d."region" AS region,
@@ -1274,7 +1326,10 @@ export class InsightsRepository {
           orderCode: r.order_code,
           title: r.title,
           customerName: r.customer_name,
-          customerPhone: r.customer_phone,
+          customerPhones:
+            r.customer_phones === null || r.customer_phones === ''
+              ? []
+              : r.customer_phones.split('\n'),
           employeeName: r.employee_name,
           // string_agg rather than array_agg: a text array's shape depends on
           // the driver, a delimiter does not.
