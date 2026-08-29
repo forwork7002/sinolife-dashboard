@@ -6,13 +6,20 @@ import { ROLES } from '@/server/domain/types'
 import { ApiError } from '@/server/http/errors'
 import { mutationHandler } from '@/server/http/handler'
 import { auditContext } from '@/server/http/auditContext'
-import { updateUser } from '@/server/services/userAdminService'
+import { deleteUser, updateUser } from '@/server/services/userAdminService'
 
 export const dynamic = 'force-dynamic'
 
 const updateSchema = z
   .object({
     name: z.string().trim().min(2).max(120).optional(),
+    username: z
+      .string()
+      .trim()
+      .min(3)
+      .max(32)
+      .regex(/^[a-zA-Z0-9._-]+$/, 'Faqat harf, raqam, nuqta, chiziqcha va pastki chiziq.')
+      .optional(),
     role: z.enum(ROLES).optional(),
     isActive: z.boolean().optional(),
     sections: z.array(z.enum(SECTION_IDS as unknown as [string, ...string[]])).max(50).optional(),
@@ -44,4 +51,17 @@ export const PATCH = mutationHandler('users:manage', updateSchema, async (ctx) =
     ctx.body,
     auditContext(ctx.request),
   ),
+}))
+
+/**
+ * Delete, as a POST-shaped write.
+ *
+ * `mutationHandler` builds one kind of handler and Next exports it under the
+ * verb name, so DELETE gets the identical treatment every other write does —
+ * the Origin check above all, which is the whole reason not to hand-roll a
+ * second path here. The body is an empty object because there is nothing to
+ * say beyond the id already in the path.
+ */
+export const DELETE = mutationHandler('users:manage', z.object({}).optional(), async (ctx) => ({
+  data: await deleteUser(ctx.principal.userId, targetIdFrom(ctx.request), auditContext(ctx.request)),
 }))

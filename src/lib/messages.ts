@@ -340,7 +340,7 @@ export const t = {
     signIn: {
       title: 'Tizimga kirish',
       lead: 'Hisobingiz bilan davom eting.',
-      email: 'Email',
+      email: 'Login',
       password: 'Parol',
       submit: 'Kirish',
       submitting: 'Kirilmoqda…',

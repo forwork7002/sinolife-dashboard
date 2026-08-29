@@ -236,6 +236,21 @@ enum MarketingDimension {
 model User {
   id            String  @id @default(cuid())
   name          String
+  /// Login name, set by an administrator. What people actually type.
+  ///
+  /// Normalised to lower case by the username plugin; `displayUsername` keeps
+  /// the casing the administrator typed. Nullable because the founding
+  /// administrator predates this column and still signs in by email.
+  username        String? @unique
+  displayUsername String?
+  /**
+   * Still the account's unique key inside better-auth, and still required.
+   *
+   * For an account created by login name there is no real mailbox, so one is
+   * synthesised as `<login>@sinolife.local`. Nobody sees it or types it — it
+   * exists because better-auth's user table demands a unique email and because
+   * a future password-reset flow would need somewhere to put a real address.
+   */
   email         String  @unique
   emailVerified Boolean @default(false)
   image         String?

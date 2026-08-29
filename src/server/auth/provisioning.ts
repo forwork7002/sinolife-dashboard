@@ -19,6 +19,11 @@ import type { RoleValue } from '@/server/domain/types'
 export interface ProvisionInput {
   readonly name: string
   readonly email: string
+  /**
+   * The login this person actually types. Absent for the founding account,
+   * which predates login names and signs in by email.
+   */
+  readonly username?: string | null
   readonly password: string
   readonly role: RoleValue
   /** Links a SALES login to a salesperson, enabling own-data scoping. */
@@ -103,6 +108,12 @@ export async function provisionUser(input: ProvisionInput): Promise<ProvisionRes
       role: input.role,
       isActive: true,
       employeeId: input.employeeId ?? null,
+      // Normalised here rather than left to the plugin: the plugin normalises
+      // what arrives through ITS endpoints, and this account is being created
+      // administratively, around them.
+      ...(input.username
+        ? { username: input.username.toLowerCase(), displayUsername: input.username }
+        : {}),
     },
     select: { id: true, email: true, role: true, employeeId: true },
   })

@@ -21,7 +21,20 @@ export const GET = getHandler('users:manage', z.object({}), async () => ({
 
 const createSchema = z.object({
   name: z.string().trim().min(2).max(120),
-  email: z.string().trim().email().max(200),
+  /*
+    The login, not an email address.
+
+    Same character set the username plugin validates with, restated here so a
+    bad value is a 400 with a field message rather than a plugin error the
+    form cannot attach to an input. '@' is excluded on purpose: the sign-in
+    form accepts either a login or an email and tells them apart by '@'.
+  */
+  username: z
+    .string()
+    .trim()
+    .min(3)
+    .max(32)
+    .regex(/^[a-zA-Z0-9._-]+$/, 'Faqat harf, raqam, nuqta, chiziqcha va pastki chiziq.'),
   /*
     Bounded here AND checked against the policy in the service.
 

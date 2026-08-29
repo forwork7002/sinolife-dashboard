@@ -1,7 +1,7 @@
 'use client'
 
 import { createAuthClient } from 'better-auth/react'
-import { twoFactorClient } from 'better-auth/client/plugins'
+import { twoFactorClient, usernameClient } from 'better-auth/client/plugins'
 
 import type { RoleValue } from '@/lib/roles'
 
@@ -35,7 +35,7 @@ export const authClient = createAuthClient({
    * swaps its own fields for the code prompt. See `sessionUser` below for what
    * the finished session then looks like.
    */
-  plugins: [twoFactorClient()],
+  plugins: [twoFactorClient(), usernameClient()],
 })
 
 export const { signIn, signOut, useSession, twoFactor } = authClient

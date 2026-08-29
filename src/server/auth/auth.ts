@@ -28,6 +28,7 @@ import { APIError, createAuthMiddleware, isAPIError } from 'better-auth/api'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { haveIBeenPwned } from 'better-auth/plugins/haveibeenpwned'
 import { twoFactor } from 'better-auth/plugins/two-factor'
+import { username } from 'better-auth/plugins/username'
 
 import { env } from '@/server/config/env'
 import { prisma } from '@/server/db/prisma'
@@ -195,6 +196,44 @@ const breachCheck: typeof pwnedCheck = {
   },
 }
 
+/**
+ * The single key both credential paths lock on.
+ *
+ * WHY IT HAS TO BE SHARED. The lockout used to be wired to `/sign-in/email`
+ * alone. When sign-in by login name arrived, an account locked out on one path
+ * could still be signed into through the other — verified against a running
+ * build: five wrong passwords on the email path armed the lock and returned
+ * 429 to the correct password, and twelve seconds later that same correct
+ * password succeeded on the username path. The lock was decorative.
+ *
+ * A login name resolves to the account's REAL email so both paths land in the
+ * same bucket. An unknown login has no account to resolve, and falls back to a
+ * deterministic stand-in rather than skipping the lockout: an identifier that
+ * cannot be locked is an identifier an attacker can guess against for free,
+ * and one that locks only when it EXISTS is an oracle telling them which
+ * logins are real.
+ */
+async function lockoutIdentifier(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<string | null> {
+  if (path === '/sign-in/email') {
+    const email = body.email
+    return typeof email === 'string' && email.trim() !== '' ? email : null
+  }
+
+  const raw = body.username
+  if (typeof raw !== 'string' || raw.trim() === '') return null
+
+  const login = raw.trim().toLowerCase()
+  const owner = await prisma.user.findUnique({
+    where: { username: login },
+    select: { email: true },
+  })
+
+  return owner?.email ?? `${login}@unknown.invalid`
+}
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
 
@@ -246,6 +285,27 @@ export const auth = betterAuth({
    * =========================================================================
    */
   plugins: [
+    /**
+     * SIGN IN BY LOGIN NAME, not by email address.
+     *
+     * This is an internal dashboard for a call centre: operators are given a
+     * login by their administrator, and most of them have no work mailbox at
+     * all. Asking them for an email address is asking for something that does
+     * not exist.
+     *
+     * Email sign-in is deliberately LEFT ENABLED alongside it. The founding
+     * administrator account was created with a real address before this
+     * existed, and removing that path would have locked the only account that
+     * can create the others out of the product.
+     */
+    username({
+      minUsernameLength: 3,
+      maxUsernameLength: 32,
+      // Letters, digits, dot, dash and underscore. Deliberately no spaces and
+      // no '@': a login containing '@' would be indistinguishable from an
+      // email address on the sign-in form, which accepts either.
+      usernameValidator: (value) => /^[a-zA-Z0-9._-]+$/.test(value),
+    }),
     twoFactor({
       issuer: TOTP_ISSUER,
       // Two steps to arm. See the block above; this is the load-bearing line.
@@ -350,11 +410,25 @@ export const auth = betterAuth({
       const path = ctx.path
       const body = (ctx.body ?? {}) as Record<string, unknown>
 
-      if (path === '/sign-in/email') {
-        const email = body.email
-        if (typeof email !== 'string' || email.trim() === '') return
+      /*
+        The username plugin mounts this, and nothing in the product calls it.
 
-        const remainingMs = await checkSignInLockout(email)
+        It answers "does this login exist?" to anyone who can reach the
+        deployment — unauthenticated, no Origin required, and on its own
+        rate-limit budget because the path does not start with /sign-in. On a
+        call centre whose logins are first names that is the staff roster, and
+        the sign-in endpoints are deliberately silent about which half of a
+        credential was wrong precisely so it cannot be asked.
+      */
+      if (path === '/is-username-available') {
+        throw new APIError('NOT_FOUND')
+      }
+
+      if (path === '/sign-in/email' || path === '/sign-in/username') {
+        const identifier = await lockoutIdentifier(path, body)
+        if (identifier === null) return
+
+        const remainingMs = await checkSignInLockout(identifier)
         if (remainingMs > 0) {
           /**
            * 429, not 401.
@@ -423,19 +497,22 @@ export const auth = betterAuth({
      * they are separate factors with separate budgets.
      */
     after: createAuthMiddleware(async (ctx) => {
-      if (ctx.path !== '/sign-in/email') return
+      if (ctx.path !== '/sign-in/email' && ctx.path !== '/sign-in/username') return
 
-      const email = (ctx.body as Record<string, unknown> | undefined)?.email
-      if (typeof email !== 'string' || email.trim() === '') return
+      const identifier = await lockoutIdentifier(
+        ctx.path,
+        (ctx.body ?? {}) as Record<string, unknown>,
+      )
+      if (identifier === null) return
 
       const returned: unknown = ctx.context.returned
 
       if (isAPIError(returned)) {
-        if (returned.statusCode === 401) await recordFailedSignIn(email)
+        if (returned.statusCode === 401) await recordFailedSignIn(identifier)
         return
       }
 
-      await clearSignInFailures(email)
+      await clearSignInFailures(identifier)
     }),
   },
 
@@ -473,6 +550,9 @@ export const auth = betterAuth({
     max: 200,
     customRules: {
       '/sign-in/email': { window: 60, max: 5 },
+      // The path every login-name account uses. Without its own rule it fell
+      // under the general 200-per-minute budget.
+      '/sign-in/username': { window: 60, max: 5 },
       '/forget-password': { window: 60, max: 5 },
     },
   },

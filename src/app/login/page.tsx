@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useState } from 'react'
 
-import { signIn } from '@/lib/authClient'
+import { authClient } from '@/lib/authClient'
 import { t } from '@/lib/messages'
 import { ChallengeForm } from './ChallengeForm'
 
@@ -103,7 +103,23 @@ function LoginForm() {
     setError(null)
 
     try {
-      const result = await signIn.email({ email, password })
+      /*
+        LOGIN NAME ONLY. No email.
+
+        This is an internal dashboard for a call centre: an operator is given a
+        login by their administrator, and most of them have no work mailbox at
+        all. Asking for an email address asked for something that does not
+        exist, so the field is a login and the request is always the login
+        endpoint — including for the administrator, who was given one too.
+
+        `/sign-in/email` stays mounted server-side as a recovery door, sharing
+        the same lockout bucket and the same rate limit as this path, but
+        nothing in the product points at it.
+      */
+      const result = await authClient.signIn.username({
+        username: email.trim(),
+        password,
+      })
 
       if (result.error) {
         setError(describe(result.error))
@@ -208,12 +224,12 @@ function LoginForm() {
                 {t.auth.signIn.email}
               </span>
               <input
-                type="email"
+                type="text"
                 required
                 autoComplete="username"
-                inputMode="email"
                 autoCapitalize="off"
                 autoCorrect="off"
+                spellCheck={false}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focusable outline-none"

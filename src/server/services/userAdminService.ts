@@ -29,6 +29,8 @@ import { provisionUser, setPassword } from '@/server/auth/provisioning'
 export interface UserRow {
   readonly id: string
   readonly name: string
+  /** What this person types to sign in. Null on the founding email account. */
+  readonly username: string | null
   readonly email: string
   readonly role: RoleValue
   readonly isActive: boolean
@@ -42,6 +44,8 @@ export interface UserRow {
 const SELECT = {
   id: true,
   name: true,
+  username: true,
+  displayUsername: true,
   email: true,
   role: true,
   isActive: true,
@@ -55,6 +59,8 @@ const SELECT = {
 function toRow(u: {
   id: string
   name: string
+  username: string | null
+  displayUsername: string | null
   email: string
   role: RoleValue
   isActive: boolean
@@ -67,6 +73,9 @@ function toRow(u: {
   return {
     id: u.id,
     name: u.name,
+    // The administrator's own casing, so a login typed "Dilnoza" reads back
+    // that way even though it matches case-insensitively.
+    username: u.displayUsername ?? u.username,
     email: u.email,
     role: u.role,
     isActive: u.isActive,
@@ -114,9 +123,19 @@ function cleanSections(sections: readonly string[] | undefined): string[] {
   return [...new Set(sections.filter((s) => (SECTION_IDS as readonly string[]).includes(s)))]
 }
 
+/**
+ * The domain synthesised emails hang off.
+ *
+ * `.local` is reserved and unroutable by design — nothing can ever be
+ * delivered to these addresses, which is the point: they exist to satisfy
+ * better-auth's unique-email column, not to be written to.
+ */
+const SYNTHETIC_EMAIL_DOMAIN = 'sinolife.local'
+
 export interface CreateInput {
   readonly name: string
-  readonly email: string
+  /** The login the person will type. */
+  readonly username: string
   readonly password: string
   readonly role: RoleValue
   readonly sections?: readonly string[]
@@ -128,19 +147,25 @@ export async function createUser(
   input: CreateInput,
   audit: { ip: string | null; userAgent: string | null },
 ): Promise<UserRow> {
-  assertPassword(input.password, input.email, input.name)
+  const username = input.username.trim()
+  const key = username.toLowerCase()
+  assertPassword(input.password, username, input.name)
 
-  const email = input.email.toLowerCase()
-  const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } })
+  const email = `${key}@${SYNTHETIC_EMAIL_DOMAIN}`
+  const existing = await prisma.user.findFirst({
+    where: { OR: [{ username: key }, { email }] },
+    select: { id: true },
+  })
   if (existing) {
-    throw ApiError.validation('Bu email allaqachon band.', [
-      { path: 'email', message: 'Bunday hisob mavjud.' },
+    throw ApiError.validation('Bu login allaqachon band.', [
+      { path: 'username', message: 'Boshqa login tanlang.' },
     ])
   }
 
   const result = await provisionUser({
     name: input.name,
     email,
+    username,
     password: input.password,
     role: input.role,
     employeeId: input.employeeId ?? null,
@@ -162,7 +187,7 @@ export async function createUser(
       // credentials is a credential store nobody meant to build.
       changes: {
         after: {
-          email: saved.email,
+          username: saved.username,
           role: saved.role,
           sections: saved.sections,
           employeeId: saved.employeeId,
@@ -178,6 +203,8 @@ export async function createUser(
 
 export interface UpdateInput {
   readonly name?: string
+  /** A new login. Changing it changes what this person types to sign in. */
+  readonly username?: string
   readonly role?: RoleValue
   readonly isActive?: boolean
   readonly sections?: readonly string[]
@@ -216,8 +243,47 @@ export async function updateUser(
     )
   }
 
+  /*
+    A NEW LOGIN, which is a bigger change than it looks.
+
+    It is what the person types to sign in, so it has to stay unique, and the
+    synthesised email has to follow it — an account created as
+    `dilnoza@sinolife.local` whose login became `dilnozak` would keep an email
+    that no longer names it, and the next admin reading the table would not be
+    able to tell which was current.
+
+    A REAL email is left alone. The founding administrator signs in with a
+    genuine address; rewriting it to `<login>@sinolife.local` would break the
+    one account that can create the others.
+  */
+  let nextEmail: string | undefined
+  if (input.username !== undefined) {
+    const username = input.username.trim()
+    const key = username.toLowerCase()
+
+    if (!/^[a-zA-Z0-9._-]+$/.test(username) || key.length < 3 || key.length > 32) {
+      throw ApiError.validation('Login notoʻgʻri.', [
+        { path: 'username', message: '3–32 belgi; harf, raqam, nuqta, chiziqcha.' },
+      ])
+    }
+
+    const clash = await prisma.user.findFirst({
+      where: { username: key, NOT: { id: targetId } },
+      select: { id: true },
+    })
+    if (clash) {
+      throw ApiError.validation('Bu login allaqachon band.', [
+        { path: 'username', message: 'Boshqa login tanlang.' },
+      ])
+    }
+
+    if (before.email.endsWith(`@${SYNTHETIC_EMAIL_DOMAIN}`)) {
+      nextEmail = `${key}@${SYNTHETIC_EMAIL_DOMAIN}`
+    }
+  }
+
   if (input.password !== undefined) {
-    assertPassword(input.password, before.email, input.name ?? before.name)
+    assertPassword(input.password, input.username ?? before.username ?? before.email, input.name ?? before.name)
     await setPassword(targetId, input.password)
   }
 
@@ -225,6 +291,13 @@ export async function updateUser(
     where: { id: targetId },
     data: {
       ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.username !== undefined
+        ? {
+            username: input.username.trim().toLowerCase(),
+            displayUsername: input.username.trim(),
+          }
+        : {}),
+      ...(nextEmail !== undefined ? { email: nextEmail } : {}),
       ...(input.role !== undefined ? { role: input.role } : {}),
       ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
       ...(input.sections !== undefined ? { sections: cleanSections(input.sections) } : {}),
@@ -242,6 +315,7 @@ export async function updateUser(
       changes: {
         before: {
           name: before.name,
+          username: before.username,
           role: before.role,
           isActive: before.isActive,
           sections: before.sections,
@@ -249,6 +323,7 @@ export async function updateUser(
         },
         after: {
           name: after.name,
+          username: after.username,
           role: after.role,
           isActive: after.isActive,
           sections: after.sections,
@@ -263,4 +338,68 @@ export async function updateUser(
   })
 
   return toRow(after)
+}
+
+/**
+ * Remove an account for good.
+ *
+ * Deactivating is still the gentler default and stays the recommended move —
+ * it revokes every permission immediately while leaving the person's history
+ * legible. Deletion exists for the case deactivation cannot serve: an account
+ * created by mistake, or a login that must stop existing rather than merely
+ * stop working.
+ *
+ * The same two lockout guards apply as for demotion, for the same reason:
+ * there is no way back into user management from inside the product once the
+ * last administrator is gone.
+ *
+ * Sessions and credentials go with it — `session` and `account` cascade on the
+ * user, so a deleted person cannot keep browsing on a live cookie. The audit
+ * trail does NOT: `auditLog.actorUserId` is ON DELETE SET NULL, so what they
+ * did remains recorded even though who they were no longer resolves. Losing
+ * the record of a change because the account that made it was removed would
+ * make the log worthless precisely when it matters.
+ */
+export async function deleteUser(
+  actorUserId: string,
+  targetId: string,
+  audit: { ip: string | null; userAgent: string | null },
+): Promise<{ id: string }> {
+  const before = await prisma.user.findUnique({ where: { id: targetId }, select: SELECT })
+  if (!before) throw ApiError.notFound('Bunday hisob topilmadi.')
+
+  if (targetId === actorUserId) {
+    throw ApiError.forbidden('Oʻz hisobingizni oʻchira olmaysiz.')
+  }
+  if (before.role === 'ADMIN' && before.isActive && (await activeAdminCount()) <= 1) {
+    throw ApiError.forbidden(
+      'Bu yagona faol administrator. Avval boshqa birovga administrator huquqini bering.',
+    )
+  }
+
+  // Written BEFORE the delete: afterwards the row is gone and there is nothing
+  // left to describe.
+  await prisma.auditLog.create({
+    data: {
+      actorUserId,
+      action: 'user.delete',
+      entity: 'user',
+      entityId: targetId,
+      changes: {
+        before: {
+          name: before.name,
+          username: before.username,
+          role: before.role,
+          isActive: before.isActive,
+          sections: before.sections,
+        },
+      },
+      ipAddress: audit.ip,
+      userAgent: audit.userAgent,
+    },
+  })
+
+  await prisma.user.delete({ where: { id: targetId } })
+
+  return { id: targetId }
 }

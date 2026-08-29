@@ -43,25 +43,32 @@ export async function requirePrincipal(request: Request): Promise<Principal> {
     what", that lag is the feature failing. One primary-key lookup per request
     makes every change take effect on the caller's very next action.
 
-    A missing row falls back to the session values and the least-privileged
-    role: a user deleted mid-session must not gain anything from the gap.
+    A MISSING ROW IS A REFUSAL, not a fallback. Deleting an account has to end
+    its sessions, and the cookie alone cannot be trusted to say otherwise —
+    falling back to the values cached in the session let a deleted user keep
+    working until their cookie happened to expire, which is the whole point of
+    deletion failing to happen. Caught by the deletion test: the account was
+    gone, sign-in returned 401, and the old tab carried on regardless.
   */
   const live = await prisma.user.findUnique({
     where: { id: user.id },
     select: { role: true, isActive: true, employeeId: true, sections: true },
   })
 
-  const rawRole = live?.role ?? user.role
-  const role: RoleValue = ROLES.includes(rawRole as RoleValue)
-    ? (rawRole as RoleValue)
+  if (!live) {
+    throw ApiError.unauthenticated()
+  }
+
+  const role: RoleValue = ROLES.includes(live.role as RoleValue)
+    ? (live.role as RoleValue)
     : 'SALES'
 
   const principal: Principal = {
     userId: user.id,
     role,
-    isActive: live ? live.isActive : user.isActive !== false,
-    employeeId: live?.employeeId ?? user.employeeId ?? null,
-    sections: sectionsFor(role, live?.sections),
+    isActive: live.isActive,
+    employeeId: live.employeeId,
+    sections: sectionsFor(role, live.sections),
   }
 
   if (!principal.isActive) {
