@@ -38,6 +38,9 @@ export const GET = getHandler('employees:read', z.object({}), async (ctx) => {
         read the database rather than this payload.
       */
       viewer: {
+        // The viewer's own id, so the admin screen can refuse to offer an
+        // action the server would reject anyway — deleting yourself.
+        userId: ctx.principal.userId,
         role: ctx.principal.role,
         sections: ctx.principal.sections,
         canManageUsers: ctx.principal.role === 'ADMIN',

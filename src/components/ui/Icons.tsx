@@ -232,3 +232,133 @@ export function InfoGlyph(props: GlyphProps) {
     </Glyph>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Confirmation states
+//
+// Five marks for the five states of the Тасдиклаш queue, drawn rather than
+// borrowed from the emoji the Telegram bot uses. The bot's 🕔 🟡 ✅ ❌ 🟣 stay
+// the floor's vocabulary and keep the LABELS company in Telegram; as marks
+// they were wrong for this surface — an emoji renders in the platform's own
+// palette rather than `currentColor`, so it cannot take the state's colour,
+// and it lands four different ways across Windows, macOS, Android and Linux.
+//
+// THEY ARE DRAWN FOR 12px, WHICH IS THE ONLY SIZE THAT MATTERS HERE.
+// The first attempt put a tick and a cross each inside a circle, and rendered
+// at 12px they were two identical smudges: an 8.5-unit circle with a 1.7-unit
+// non-scaling stroke leaves barely three pixels of interior for the mark that
+// carries the meaning. A missed-call handset fared worse — at 12px it was a
+// blob. So the enclosing circle is gone from the three that do not need it,
+// and what is left is the silhouette itself, drawn at stroke 2.
+//
+// The five are five DIFFERENT OUTLINES — clock, barred circle, tick, cross,
+// arrow — not five colours of one disc. That is what keeps them apart for a
+// colourblind reader, in greyscale print and in forced-colors mode, which is
+// the same rule StatusChip already follows.
+// ---------------------------------------------------------------------------
+
+/** Heavier than the 1.7 of the text glyphs: these carry meaning at 12px. */
+const mark = { ...stroke, strokeWidth: 2 } as const
+
+/** In the queue, waiting to be worked. */
+export function ClockGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <circle cx="12" cy="12" r="8.6" {...mark} />
+      <path d="M12 7.2V12l3.4 2.2" {...mark} />
+    </Glyph>
+  )
+}
+
+/**
+ * Called, not picked up.
+ *
+ * A barred circle rather than a handset: "could not reach" is the meaning, and
+ * the universal prohibition mark survives 12px where a telephone does not.
+ */
+export function PhoneMissedGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <circle cx="12" cy="12" r="8.6" {...mark} />
+      <path d="M6 6l12 12" {...mark} />
+    </Glyph>
+  )
+}
+
+/** Reached the customer and confirmed. */
+export function CheckCircleGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M4.5 12.8 9.5 17.8 19.5 6.6" {...mark} />
+    </Glyph>
+  )
+}
+
+/** Killed in the queue. */
+export function CrossCircleGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M6 6l12 12M18 6L6 18" {...mark} />
+    </Glyph>
+  )
+}
+
+/** Left the queue without a yes. */
+export function ArrowOutGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M4 12h13" {...mark} />
+      <path d="m12.5 6.5 6 5.5-6 5.5" {...mark} />
+    </Glyph>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------
+
+/** Reveal. Pairs with EyeOffGlyph on a single toggle. */
+export function EyeGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M2.6 12S6.2 6 12 6s9.4 6 9.4 6-3.6 6-9.4 6-9.4-6-9.4-6Z" {...mark} />
+      <circle cx="12" cy="12" r="2.6" fill="currentColor" />
+    </Glyph>
+  )
+}
+
+/**
+ * Hide.
+ *
+ * The same eye with one straight bar through it. The version that broke the
+ * outline into two arcs around the slash turned into a scribble at 12px; a
+ * whole shape crossed by a single line stays legible.
+ */
+export function EyeOffGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M2.6 12S6.2 6 12 6s9.4 6 9.4 6-3.6 6-9.4 6-9.4-6-9.4-6Z" {...mark} />
+      <path d="M4 4l16 16" {...mark} />
+    </Glyph>
+  )
+}
+
+/** The statistics panel. Three bars, ranked — what the panel actually shows. */
+export function BarsGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M4 20h16" {...mark} />
+      <path d="M8 20v-6M12 20V7.5M16 20v-9" {...mark} />
+    </Glyph>
+  )
+}
+
+/** Remove for good. A bin, for the one irreversible action on the screen. */
+export function TrashGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M5 6.5h14M10 6.5V4.6h4v1.9" {...mark} />
+      <path d="M7 6.5 7.9 19.4h8.2L17 6.5" {...mark} />
+    </Glyph>
+  )
+}

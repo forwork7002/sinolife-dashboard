@@ -5,6 +5,17 @@ import { useState } from 'react'
 
 import { Card, ChartCard } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import {
+  ArrowOutGlyph,
+  BarsGlyph,
+  CheckCircleGlyph,
+  ClockGlyph,
+  CrossCircleGlyph,
+  EyeGlyph,
+  EyeOffGlyph,
+  PhoneMissedGlyph,
+  type GlyphProps,
+} from '@/components/ui/Icons'
 import { MultiSelect, Pagination } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { Tooltip } from '@/components/ui/Tooltip'
@@ -47,7 +58,17 @@ import { t } from '@/lib/messages'
 
 interface OutcomeSpec {
   readonly key: ConfirmationOutcome
-  readonly emoji: string
+  /**
+   * A drawn mark, not the bot's emoji.
+   *
+   * The emoji stay the floor's vocabulary and the LABELS keep them company in
+   * Telegram; on this screen they were the wrong material. An emoji renders in
+   * the platform's palette rather than `currentColor`, so it cannot take the
+   * state's own colour, and it lands four different ways across Windows,
+   * macOS, Android and Linux. Each glyph here is a different SILHOUETTE, so
+   * the five stay apart without colour at all.
+   */
+  readonly Glyph: (props: GlyphProps) => React.ReactElement
   /** Verbatim from Bitrix24 and the bot. Not translated — see above. */
   readonly label: string
   readonly color: string
@@ -55,13 +76,23 @@ interface OutcomeSpec {
 
 /** In the reference's order: the queue, then the two ways it stalls, then the outcomes. */
 const OUTCOMES: readonly OutcomeSpec[] = [
-  { key: 'CONFIRM_NEW', emoji: '🕔', label: 'Тасдиқлаш', color: 'var(--series-1)' },
-  { key: 'NO_ANSWER', emoji: '🟡', label: 'Кутармади (нд)', color: 'var(--status-warning)' },
-  { key: 'CONFIRMED', emoji: '✅', label: 'Тасдиқланди', color: 'var(--status-good)' },
-  { key: 'REJECTED', emoji: '❌', label: 'Тасдиқланмади', color: 'var(--status-critical)' },
+  { key: 'CONFIRM_NEW', Glyph: ClockGlyph, label: 'Тасдиқлаш', color: 'var(--series-1)' },
+  {
+    key: 'NO_ANSWER',
+    Glyph: PhoneMissedGlyph,
+    label: 'Кутармади (нд)',
+    color: 'var(--status-warning)',
+  },
+  { key: 'CONFIRMED', Glyph: CheckCircleGlyph, label: 'Тасдиқланди', color: 'var(--status-good)' },
+  {
+    key: 'REJECTED',
+    Glyph: CrossCircleGlyph,
+    label: 'Тасдиқланмади',
+    color: 'var(--status-critical)',
+  },
   {
     key: 'UNCONFIRMED_SHIPPED',
-    emoji: '🟣',
+    Glyph: ArrowOutGlyph,
     label: 'Тасдиқланмай чиқди',
     color: 'var(--series-7)',
   },
@@ -147,12 +178,30 @@ export function ConfirmationPage() {
     {
       key: 'rop',
       header: 'РОП',
-      width: '110px',
-      render: (row) => (
-        <span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
-          {row.rop ?? NO_VALUE}
-        </span>
-      ),
+      width: '116px',
+      /*
+        A pill, not bold text.
+
+        РОП is a GROUP an order belongs to, and it repeats down the column in
+        runs — as bold ink it competed with the customer name for the eye. A
+        bordered token reads as a label rather than a name, and the repetition
+        stops looking like emphasis.
+      */
+      render: (row) =>
+        row.rop === null ? (
+          <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
+        ) : (
+          <span
+            className="inline-flex max-w-full items-center truncate rounded-md border px-1.5 py-0.5 text-[11.5px] font-medium"
+            style={{
+              borderColor: 'var(--border)',
+              background: 'var(--grid)',
+              color: 'var(--ink-primary)',
+            }}
+          >
+            {row.rop}
+          </span>
+        ),
     },
     {
       key: 'no',
@@ -163,7 +212,7 @@ export function ConfirmationPage() {
       // the day's Nth order, not a quantity, so it never gets a thousands
       // separator and never changes when the table is re-sorted.
       render: (row) => (
-        <span style={{ color: 'var(--ink-muted)' }}>
+        <span className="tabular text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
           {String(row.dailyNo).padStart(3, '0')}
         </span>
       ),
@@ -193,7 +242,7 @@ export function ConfirmationPage() {
       width: '96px',
       numeric: true,
       render: (row) => (
-        <span className="tabular" style={{ color: 'var(--ink-secondary)' }}>
+        <span className="tabular text-[11.5px]" style={{ color: 'var(--ink-secondary)' }}>
           {row.bitrixId ?? NO_VALUE}
         </span>
       ),
@@ -218,7 +267,11 @@ export function ConfirmationPage() {
       key: 'operator',
       header: 'ОПЕРАТОР',
       width: '180px',
-      render: (row) => <span className="truncate">{row.employeeName}</span>,
+      render: (row) => (
+        <span className="block truncate" style={{ color: 'var(--ink-secondary)' }}>
+          {row.employeeName}
+        </span>
+      ),
     },
     {
       key: 'products',
@@ -228,12 +281,16 @@ export function ConfirmationPage() {
         row.products.length === 0 ? (
           <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
         ) : (
-          <ul className="space-y-0.5">
+          <ul className="space-y-1">
             {row.products.map((product) => (
-              <li key={product} className="flex gap-1.5 text-[11px] leading-snug">
-                <span aria-hidden="true" style={{ color: 'var(--ink-muted)' }}>
-                  •
-                </span>
+              <li key={product} className="flex items-start gap-1.5 text-[11px] leading-snug">
+                {/* A drawn dot, not the • character: the glyph's size and
+                    baseline follow the font and drifted against the text. */}
+                <span
+                  aria-hidden="true"
+                  className="mt-[5px] h-[3px] w-[3px] shrink-0 rounded-full"
+                  style={{ background: 'var(--ink-muted)' }}
+                />
                 <span className="truncate" style={{ color: 'var(--ink-secondary)' }}>
                   {product}
                 </span>
@@ -252,14 +309,18 @@ export function ConfirmationPage() {
       // The full figure, spaced — not compacted. This is an order list, and an
       // operator reconciling it against Bitrix24 needs the exact so'm.
       render: (row) => (
-        <span style={{ color: 'var(--ink-primary)' }}>{formatNumber(row.amount.amount)}</span>
+        <span className="tabular font-medium" style={{ color: 'var(--ink-primary)' }}>
+          {formatNumber(row.amount.amount)}
+        </span>
       ),
     },
     {
       key: 'region',
       header: 'РЕГИОН',
       width: '120px',
-      render: (row) => row.region ?? NO_VALUE,
+      render: (row) => (
+        <span style={{ color: 'var(--ink-secondary)' }}>{row.region ?? NO_VALUE}</span>
+      ),
     },
     {
       key: 'address',
@@ -289,6 +350,19 @@ export function ConfirmationPage() {
       width: '180px',
       render: (row) => <OutcomeChip outcome={row.outcome} />,
     },
+    {
+      key: 'source',
+      // Last, as on the dashboard this mirrors: it answers "where did this
+      // order come from", which is the question you ask AFTER you know what
+      // happened to it.
+      header: 'ИСТОЧНИК',
+      width: '130px',
+      render: (row) => (
+        <span className="block truncate" style={{ color: 'var(--ink-secondary)' }}>
+          {row.sourceName ?? NO_VALUE}
+        </span>
+      ),
+    },
   ]
 
   const shown = data?.pagination.totalItems ?? null
@@ -299,17 +373,24 @@ export function ConfirmationPage() {
       description={t.modules.confirmation.lead}
       accent="var(--series-4)"
       meta={query.data?.meta}
-      filters={{ search: true }}
+      filters={{
+        search: true,
+        // Every column the table shows is searchable, so the box says so —
+        // including the phone in the masked form it is displayed in.
+        searchPlaceholder: 'ID, mijoz, telefon, operator, ROP, mahsulot, summa, region, manba…',
+      }}
       actions={
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant={filters.preset === 'today' ? 'primary' : 'secondary'}
-            size="sm"
-            onClick={() => update({ preset: 'today', from: undefined, to: undefined })}
-          >
-            Бугун
-          </Button>
+        /*
+          No "Бугун" button here.
 
+          The period control in the page toolbar already owns the reporting
+          window and carries its own Bugun / Kecha / Shu hafta row. A second
+          one beside the ROP filter set the same URL parameter from a second
+          place, so the two could disagree on screen about which day was
+          selected — and a filter bar that contradicts the control above it is
+          worse than one button fewer.
+        */
+        <div className="flex flex-wrap items-center gap-2">
           <Select
             label="Барча РОП"
             value={filters.rop ?? ''}
@@ -326,7 +407,7 @@ export function ConfirmationPage() {
             label="Барча статус"
             options={OUTCOMES.map((spec) => ({
               id: spec.key,
-              label: `${spec.emoji} ${spec.label}`,
+              label: spec.label,
             }))}
             selected={filters.outcomes}
             onChange={(outcomes) => update({ outcomes: outcomes as ConfirmationOutcome[] })}
@@ -337,7 +418,10 @@ export function ConfirmationPage() {
             size="sm"
             onClick={() => setStatsOpen((open) => !open)}
           >
-            📊 Статистика
+            <span className="inline-flex items-center gap-1.5">
+              <BarsGlyph size={13} />
+              Статистика
+            </span>
           </Button>
         </div>
       }
@@ -365,7 +449,7 @@ export function ConfirmationPage() {
         {OUTCOMES.map((spec) => (
           <OutcomeTile
             key={spec.key}
-            emoji={spec.emoji}
+            Glyph={spec.Glyph}
             label={spec.label}
             status={tileStatus}
             count={totals?.byOutcome[spec.key] ?? null}
@@ -417,7 +501,7 @@ export function ConfirmationPage() {
             it — and so the pager stays a glance away rather than a screen.
           */
           maxHeight={640}
-          minWidth={1720}
+          minWidth={1860}
           emptyTitle="Buyurtma topilmadi"
           emptyBody={
             filters.outcomes.length > 0 || filters.rop || filters.q
@@ -477,7 +561,7 @@ function RopPanel({
     },
     ...OUTCOMES.map((spec) => ({
       key: spec.key,
-      header: `${spec.emoji} ${spec.label}`,
+      header: spec.label,
       align: 'right' as const,
       numeric: true,
       render: (row: ConfirmationQueueDto['byRop'][number]) => {
@@ -564,7 +648,7 @@ function countFor(
  * legible without seeing the border change.
  */
 function OutcomeTile({
-  emoji,
+  Glyph,
   label,
   count,
   color,
@@ -572,7 +656,7 @@ function OutcomeTile({
   active,
   onSelect,
 }: {
-  emoji?: string
+  Glyph?: (props: GlyphProps) => React.ReactElement
   label: string
   count: number | null
   color: string
@@ -605,11 +689,12 @@ function OutcomeTile({
         </p>
       )}
 
-      <div className="mt-2 flex items-center gap-1">
-        {/* Decorative: the label right beside it is the accessible text. */}
-        {emoji && (
-          <span aria-hidden="true" className="text-[11px] leading-none">
-            {emoji}
+      <div className="mt-2 flex items-center gap-1.5">
+        {/* Decorative, and inheriting the state's colour: the label right
+            beside it is the accessible text. */}
+        {Glyph && (
+          <span className="shrink-0" style={{ color }}>
+            <Glyph size={12} />
           </span>
         )}
         <span
@@ -651,10 +736,10 @@ function PhoneCell({ phone }: { phone: string | null }) {
         }}
         aria-label={shown ? 'Raqamni yashirish' : 'Raqamni koʻrsatish'}
         aria-pressed={shown}
-        className="focusable rounded px-1 text-[11px] transition-opacity hover:opacity-70"
-        style={{ color: 'var(--ink-muted)' }}
+        className="focusable rounded px-1 py-0.5 transition-opacity hover:opacity-70"
+        style={{ color: shown ? 'var(--ink-secondary)' : 'var(--ink-muted)' }}
       >
-        {shown ? '🙈' : '👁'}
+        {shown ? <EyeOffGlyph size={13} /> : <EyeGlyph size={13} />}
       </button>
     </span>
   )
@@ -666,7 +751,7 @@ function mask(phone: string): string {
   return `${phone.slice(0, phone.length - 7)}***${phone.slice(-4)}`
 }
 
-/** The state as it appears on a row — same emoji, same colour, same words. */
+/** The state as it appears on a row — same mark, same colour, same words. */
 function OutcomeChip({ outcome }: { outcome: ConfirmationOutcome }) {
   const spec = SPEC_BY_KEY.get(outcome)
 
@@ -678,13 +763,16 @@ function OutcomeChip({ outcome }: { outcome: ConfirmationOutcome }) {
 
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap"
+      className="inline-flex items-center gap-1.5 rounded-full py-1 pr-2.5 pl-2 text-[11px] font-medium whitespace-nowrap"
       style={{
-        background: `color-mix(in oklab, ${spec.color} 12%, transparent)`,
+        background: `color-mix(in oklab, ${spec.color} 11%, transparent)`,
+        // A hairline of the state's own colour. The tint alone reads as a
+        // wash at 11%; the ring is what makes it a deliberate object.
+        boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${spec.color} 26%, transparent)`,
         color: spec.color,
       }}
     >
-      <span aria-hidden="true">{spec.emoji}</span>
+      <spec.Glyph size={12} className="shrink-0" />
       {spec.label}
     </span>
   )

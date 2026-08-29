@@ -141,6 +141,8 @@ export interface ConfirmationOrderDto {
   readonly products: readonly string[]
   readonly region: string | null
   readonly deliveryAddress: string | null
+  /** Источник — the acquisition channel. */
+  readonly sourceName: string | null
   readonly amount: MoneyDto
   readonly stageName: string
   readonly outcome: ConfirmationOutcomeValue
@@ -554,21 +556,39 @@ export class InsightsService {
   ): Promise<ConfirmationQueueDto> {
     const window = this.window(period, scope)
 
-    const [page, byOutcome, byRop] = await Promise.all([
+    /*
+      TWO ROUND TRIPS, NOT THREE.
+
+      Each one rebuilds the whole cohort CTE, and on the production database
+      that is about two seconds of work — so a third query was two seconds
+      spent re-deriving numbers the second one already had. The tiles are the
+      ROP breakdown summed down its columns, so they are computed here instead.
+
+      The tiles still follow the ROP filter and the search box but NOT the
+      state filter: a band whose numbers changed to match its own selection
+      could not be used to compare one state against another, which is the only
+      reason to put five of them side by side.
+    */
+    const [page, byRop] = await Promise.all([
       this.repository.confirmationOrders(window, query),
-      /*
-        The tiles follow the ROP and the search box, but NOT the state filter.
-        A band whose numbers changed to match its own selection could not be
-        used to compare one state against another, which is the only reason to
-        put five of them side by side.
-      */
-      this.repository.confirmationOutcomes(window, { rop: query.rop, q: query.q }),
       this.repository.confirmationByRop(window, { q: query.q }),
     ])
 
+    const scoped = query.rop ? byRop.filter((r) => r.rop === query.rop) : byRop
+    const byOutcome: ConfirmationOutcomeTotals = {
+      CONFIRM_NEW: scoped.reduce((n, r) => n + r.pending, 0),
+      CONFIRMED: scoped.reduce((n, r) => n + r.confirmed, 0),
+      NO_ANSWER: scoped.reduce((n, r) => n + r.noAnswer, 0),
+      REJECTED: scoped.reduce((n, r) => n + r.rejected, 0),
+      UNCONFIRMED_SHIPPED: scoped.reduce((n, r) => n + r.unconfirmedShipped, 0),
+    }
+
     // The filter's options come from the breakdown rather than a third query:
     // the two would otherwise be able to disagree about which ROPs exist.
-    const rops = byRop.map((r) => r.rop).sort((a, b) => a.localeCompare(b))
+    const rops = byRop
+      .map((r) => r.rop)
+      .filter((rop) => rop !== '(ROP yoʻq)')
+      .sort((a, b) => a.localeCompare(b))
 
     const orders = Object.values(byOutcome).reduce((sum, count) => sum + count, 0)
 
@@ -586,6 +606,7 @@ export class InsightsService {
         products: r.products,
         region: r.region,
         deliveryAddress: r.deliveryAddress,
+        sourceName: r.sourceName,
         // The deal's OWN currency, not the app default: an order is worth what
         // it was written in, and converting it here would invent a rate.
         amount: toMoneyDto(money(r.amountMinor, r.currency)),

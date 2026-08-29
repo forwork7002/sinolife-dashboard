@@ -163,6 +163,8 @@ export interface ConfirmationOrderRow {
   readonly products: readonly string[]
   readonly region: string | null
   readonly deliveryAddress: string | null
+  /** Источник — the acquisition channel the order came in through. */
+  readonly sourceName: string | null
   readonly amountMinor: bigint
   readonly currency: string
   /** The stage the deal sits in NOW, which is what the outcome was read from. */
@@ -877,8 +879,19 @@ export class InsightsRepository {
         JOIN "deal_stage" s ON s."id" = h."stageId"
         JOIN "pipeline" p ON p."id" = s."pipelineId"
        WHERE s."logisticsRole" = 'PENDING_CONFIRM' AND p."role" = 'CONFIRMATION'
+         /*
+           Prunes the future, and lets the (stageId, enteredAt) index range-scan
+           instead of reading every queue entry ever recorded.
+
+           Safe because it cannot change the answer: the HAVING needs
+           min(enteredAt) < $2, and a group whose rows are ALL at or after $2
+           has a min at or after $2, so it was going to be discarded anyway.
+           Rows before $1 must still be read — they are what proves a deal was
+           first queued earlier and does not belong to this window.
+         */
+         AND h."enteredAt" < $2
        GROUP BY h."dealId"
-      HAVING min(h."enteredAt") >= $1 AND min(h."enteredAt") < $2
+      HAVING min(h."enteredAt") >= $1
     ),
     trail AS (
       SELECT
@@ -1000,19 +1013,75 @@ export class InsightsRepository {
    * items and joining them in would multiply the row.
    */
   private static SEARCH_SQL(param: string): string {
+    /*
+      Every column the table shows, searchable from the one box.
+
+      WHAT IT HAS TO WORK OVER. The three queries that use this predicate join
+      different things — the tiles and the ROP panel join only `deal` and
+      `customer`, the list also joins employee, stage and source. So the
+      predicate may only depend on what ALL THREE have: the `numbered` CTE
+      aliased `c`, `d` and `cust`. Everything else is reached by a correlated
+      EXISTS rather than an outer join, which keeps one definition of "search"
+      instead of three that can drift apart.
+
+      TWO KINDS OF MATCH. Text columns match on a plain substring. Phone and
+      amount cannot: the phone is displayed masked and formatted (+99894***0037)
+      while the column holds +998944340037, and the amount is displayed
+      "1 600 000" while the column holds minor units. Both are compared on
+      DIGITS ONLY, so what a person reads on screen and types back finds the
+      row. The digits branch is guarded — a query with no digits in it would
+      otherwise reduce to '%%' and match every row in the table.
+    */
+    const digits = `regexp_replace(${param}, '[^0-9]', '', 'g')`
+    // The digits before the first '*' and after the last one.
+    const head = `regexp_replace(split_part(${param}, '*', 1), '[^0-9]', '', 'g')`
+    const tail = `regexp_replace(reverse(split_part(reverse(${param}), '*', 1)), '[^0-9]', '', 'g')`
+
     return `
           AND (
             ${param}::text IS NULL
             OR d."title" ILIKE '%' || ${param} || '%'
             OR d."orderCode" ILIKE '%' || ${param} || '%'
             OR d."externalId" ILIKE '%' || ${param} || '%'
+            OR d."region" ILIKE '%' || ${param} || '%'
             OR d."deliveryAddress" ILIKE '%' || ${param} || '%'
+            OR c.rop ILIKE '%' || ${param} || '%'
             OR cust."name" ILIKE '%' || ${param} || '%'
-            OR cust."phone" ILIKE '%' || ${param} || '%'
+            OR EXISTS (
+              SELECT 1 FROM "employee" emp
+               WHERE emp."id" = d."employeeId" AND emp."fullName" ILIKE '%' || ${param} || '%'
+            )
+            OR EXISTS (
+              SELECT 1 FROM "sales_source" ss
+               WHERE ss."id" = d."sourceId" AND ss."name" ILIKE '%' || ${param} || '%'
+            )
             OR EXISTS (
               SELECT 1 FROM "deal_item" di
                 JOIN "product" pr ON pr."id" = di."productId"
                WHERE di."dealId" = d."id" AND pr."name" ILIKE '%' || ${param} || '%'
+            )
+            OR (
+              ${digits} <> ''
+              AND (
+                regexp_replace(COALESCE(cust."phone", ''), '[^0-9]', '', 'g') LIKE '%' || ${digits} || '%'
+                OR (d."amountMinor" / 100)::text LIKE '%' || ${digits} || '%'
+              )
+            )
+            /*
+              The MASKED phone, as it appears on screen.
+
+              The column shows +99894***0037 and people search by copying what
+              they can see. Digits-only turns that into 998940037, a sequence
+              that exists in no phone number, so the obvious search silently
+              found nothing. Matched as head AND tail instead — both required
+              and both non-empty, or a lone '*' would match every row.
+            */
+            OR (
+              ${param} LIKE '%*%'
+              AND ${head} <> ''
+              AND ${tail} <> ''
+              AND regexp_replace(COALESCE(cust."phone", ''), '[^0-9]', '', 'g') LIKE ${head} || '%'
+              AND regexp_replace(COALESCE(cust."phone", ''), '[^0-9]', '', 'g') LIKE '%' || ${tail}
             )
           )`
   }
@@ -1022,7 +1091,7 @@ export class InsightsRepository {
    *
    * The one cut this page cannot make from the row list: a ROP's rate is a
    * statement about their whole day, and the table in front of the reader is
-   * twenty-five rows of it. Follows the search box and the state filter is
+   * twenty-five rows of it. Follows the search box; the state filter is
    * deliberately NOT applied — the panel exists to compare states across
    * groups, which a state filter would collapse.
    */
@@ -1053,7 +1122,15 @@ export class InsightsRepository {
        FROM numbered c
        JOIN "deal" d ON d."id" = c.deal_id
        LEFT JOIN "customer" cust ON cust."id" = d."customerId"
-      WHERE c.rop IS NOT NULL
+      /*
+        NULL rops are KEPT, and dropped by the caller instead.
+
+        The tiles are this breakdown summed down its columns, so a row excluded
+        here is an order missing from the headline total — and the one
+        population most likely to have no ROP is exactly the one worth
+        noticing. The filter list drops them; the arithmetic does not.
+      */
+      WHERE TRUE
         ${InsightsRepository.SEARCH_SQL('$3')}
       GROUP BY c.rop
       ORDER BY orders DESC`,
@@ -1062,17 +1139,17 @@ export class InsightsRepository {
       filter.q ?? null,
     )
 
-    return rows
-      .filter((r): r is typeof r & { rop: string } => r.rop !== null)
-      .map((r) => ({
-        rop: r.rop,
+    return rows.map((r) => ({
+        // A group with no ROP is labelled rather than hidden: it still has to
+        // be countable, and "(ROP yoʻq)" is a finding, not a gap.
+        rop: r.rop ?? '(ROP yoʻq)',
         orders: int(r.orders),
         confirmed: int(r.confirmed),
         noAnswer: int(r.no_answer),
         rejected: int(r.rejected),
         pending: int(r.pending),
         unconfirmedShipped: int(r.unconfirmed_shipped),
-      }))
+    }))
   }
 
   /** Every ROP group that has orders in the window, for the filter. */
@@ -1116,6 +1193,7 @@ export class InsightsRepository {
         products: string | null
         region: string | null
         delivery_address: string | null
+        source_name: string | null
         amount_minor: MoneyText
         currency: string
         stage_name: string
@@ -1139,6 +1217,7 @@ export class InsightsRepository {
          items.products AS products,
          d."region" AS region,
          d."deliveryAddress" AS delivery_address,
+         src."name" AS source_name,
          d."amountMinor"::text AS amount_minor,
          d."currency" AS currency,
          st."name" AS stage_name,
@@ -1155,6 +1234,7 @@ export class InsightsRepository {
        LEFT JOIN "customer" cust ON cust."id" = d."customerId"
        -- LATERAL, not a join: four line items would otherwise become four rows
        -- and the pager would count the same order four times.
+       LEFT JOIN "sales_source" src ON src."id" = d."sourceId"
        LEFT JOIN LATERAL (
          SELECT string_agg(pr."name" || ' - ' || di."quantity"::text || ' ta', E'\\n' ORDER BY pr."name") AS products
            FROM "deal_item" di
@@ -1201,6 +1281,7 @@ export class InsightsRepository {
           products: r.products === null ? [] : r.products.split('\n'),
           region: r.region,
           deliveryAddress: r.delivery_address,
+          sourceName: r.source_name,
           amountMinor: money(r.amount_minor),
           currency: r.currency,
           stageName: r.stage_name,

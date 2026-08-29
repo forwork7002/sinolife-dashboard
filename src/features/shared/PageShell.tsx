@@ -23,6 +23,7 @@ export interface FilterOptions {
   readonly lastSyncedAt: string | null
   /** Who is looking. Drives which nav entries render. */
   readonly viewer?: {
+    readonly userId: string
     readonly role: RoleValue
     readonly sections: readonly SectionValue[]
     readonly canManageUsers: boolean
@@ -45,6 +46,15 @@ export function useFilterOptions() {
 }
 
 export interface FilterToggles {
+  /**
+   * What the search box says it searches.
+   *
+   * The default is a bare "Qidirish…", which is honest on a page whose search
+   * covers a title and nothing else. Where the box genuinely spans a whole
+   * table, saying so is the difference between someone typing a phone number
+   * and someone assuming it will not work.
+   */
+  readonly searchPlaceholder?: string
   readonly employees?: boolean
   readonly departments?: boolean
   readonly stages?: boolean
@@ -180,6 +190,7 @@ export function PageShell({
                   <SearchInput
                     value={filters.q ?? ''}
                     onChange={(q) => update({ q: q || undefined })}
+                    placeholder={enabled.searchPlaceholder}
                   />
                 )}
                 {enabled.employees && (

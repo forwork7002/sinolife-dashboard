@@ -6,8 +6,15 @@ import { useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { DataTable, InitialChip, type Column } from '@/components/ui/DataTable'
+import {
+  CheckCircleGlyph,
+  DashGlyph,
+  EyeGlyph,
+  EyeOffGlyph,
+  TrashGlyph,
+} from '@/components/ui/Icons'
 import { StatusChip } from '@/components/ui/Stat'
-import { PageShell } from '@/features/shared/PageShell'
+import { PageShell, useFilterOptions } from '@/features/shared/PageShell'
 import { apiGet, apiWrite, type UserRowDto, type UsersPageDto } from '@/lib/api'
 import { formatDate } from '@/lib/format'
 import { ROLE_LABELS, ROLE_VALUES, type RoleValue } from '@/lib/roles'
@@ -32,6 +39,8 @@ import { SECTIONS, defaultSectionsFor } from '@/lib/sections'
  */
 export function UsersPage() {
   const queryClient = useQueryClient()
+  // Shares react-query's cache with PageShell, so this costs no extra request.
+  const viewerId = useFilterOptions().data?.data.viewer?.userId
   const [editing, setEditing] = useState<UserRowDto | null>(null)
   const [creating, setCreating] = useState(false)
 
@@ -60,7 +69,7 @@ export function UsersPage() {
               {row.name}
             </span>
             <span className="block truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-              {row.email}
+              {row.username ?? row.email}
             </span>
           </span>
         </span>
@@ -99,7 +108,11 @@ export function UsersPage() {
       key: 'twoFactor',
       header: '2FA',
       width: '80px',
-      render: (row) => (row.twoFactorEnabled ? '✅' : '—'),
+      render: (row) => (
+        <span style={{ color: row.twoFactorEnabled ? 'var(--status-good)' : 'var(--ink-muted)' }}>
+          {row.twoFactorEnabled ? <CheckCircleGlyph size={13} /> : <DashGlyph size={13} />}
+        </span>
+      ),
     },
     {
       key: 'isActive',
@@ -162,6 +175,7 @@ export function UsersPage() {
         <UserDialog
           title={editing.name}
           user={editing}
+          isSelf={editing.id === viewerId}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)
@@ -185,20 +199,27 @@ export function UsersPage() {
 function UserDialog({
   title,
   user,
+  isSelf = false,
   onClose,
   onSaved,
 }: {
   title: string
   user?: UserRowDto
+  /** Your own account. Deletion is not offered on it. */
+  isSelf?: boolean
   onClose: () => void
   onSaved: () => void
 }) {
   const editing = user !== undefined
 
   const [name, setName] = useState(user?.name ?? '')
-  const [email, setEmail] = useState(user?.email ?? '')
+  const [username, setUsername] = useState(user?.username ?? '')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
+  // One toggle for both password fields: they must match, so reading one
+  // without the other tells you nothing about why they do not.
+  const [showPassword, setShowPassword] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [role, setRole] = useState<RoleValue>(user?.role ?? 'SALES')
   const [isActive, setIsActive] = useState(user?.isActive ?? true)
   const [sections, setSections] = useState<string[]>([...(user?.sections ?? [])])
@@ -214,17 +235,28 @@ function UserDialog({
           role,
           isActive,
           sections,
+          // Only when it actually changed: sending the same login back would
+          // still rewrite the synthesised email and write an audit entry
+          // describing a change that did not happen.
+          ...(username.trim() && username.trim() !== (user.username ?? '')
+            ? { username: username.trim() }
+            : {}),
           ...(password ? { password } : {}),
         })
       }
       return apiWrite<UserRowDto>('POST', '/users', {
         name,
-        email,
+        username,
         password,
         role,
         sections,
       })
     },
+    onSuccess: onSaved,
+  })
+
+  const remove = useMutation({
+    mutationFn: () => apiWrite<{ id: string }>('DELETE', `/users/${user!.id}`, {}),
     onSuccess: onSaved,
   })
 
@@ -257,7 +289,7 @@ function UserDialog({
             </h2>
             {editing && (
               <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-muted)' }}>
-                {user.email}
+                {user.username ?? user.email}
               </p>
             )}
           </div>
@@ -280,53 +312,56 @@ function UserDialog({
             />
           </Field>
 
-          <Field label="Email">
+          <Field label="Login">
             <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              // Fixed once issued: the email IS the login, and changing it
-              // silently would strand the person at a password prompt that no
-              // longer matches anything they were told.
-              disabled={editing}
-              type="email"
-              autoComplete="off"
-              className="focusable w-full rounded-lg border px-2.5 py-1.5 text-sm disabled:opacity-60"
-              style={{
-                background: 'var(--surface)',
-                borderColor: 'var(--border)',
-                color: 'var(--ink-primary)',
-              }}
-            />
-          </Field>
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              /*
+                Editable, including your own.
 
-          <Field label={editing ? 'Yangi parol (ixtiyoriy)' : 'Parol'}>
-            <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type="password"
-              autoComplete="new-password"
-              placeholder={editing ? 'Oʻzgartirmasangiz boʻsh qoldiring' : 'Kamida 12 ta belgi'}
+                It is what the person types to sign in, so changing it strands
+                them until they are told the new one — which is why the hint
+                below says so rather than the field being locked. An
+                administrator who has to keep a login they typed wrong has no
+                way to fix it, and that is the worse failure.
+              */
+              type="text"
+              autoComplete="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              placeholder={editing && !user.username ? user.email : 'masalan: dilnoza'}
               className="focusable w-full rounded-lg border px-2.5 py-1.5 text-sm"
               style={{
                 background: 'var(--surface)',
                 borderColor: 'var(--border)',
                 color: 'var(--ink-primary)',
               }}
+            />
+            {editing && (
+              <span className="mt-1 block text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
+                {user.username
+                  ? 'Oʻzgartirsangiz, xodim yangi login bilan kiradi — unga aytishni unutmang.'
+                  : `Hozir email bilan kiradi (${user.email}). Login qoʻysangiz, ikkalasi ham ishlaydi.`}
+              </span>
+            )}
+          </Field>
+
+          <Field label={editing ? 'Yangi parol (ixtiyoriy)' : 'Parol'}>
+            <PasswordInput
+              value={password}
+              onChange={setPassword}
+              shown={showPassword}
+              onToggle={() => setShowPassword((v) => !v)}
+              placeholder={editing ? 'Oʻzgartirmasangiz boʻsh qoldiring' : 'Kamida 12 ta belgi'}
             />
           </Field>
 
           <Field label="Parolni takrorlang">
-            <input
+            <PasswordInput
               value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              type="password"
-              autoComplete="new-password"
-              className="focusable w-full rounded-lg border px-2.5 py-1.5 text-sm"
-              style={{
-                background: 'var(--surface)',
-                borderColor: 'var(--border)',
-                color: 'var(--ink-primary)',
-              }}
+              onChange={setConfirm}
+              shown={showPassword}
+              onToggle={() => setShowPassword((v) => !v)}
             />
           </Field>
 
@@ -424,14 +459,73 @@ function UserDialog({
           </p>
         )}
 
-        <footer className="mt-5 flex justify-end gap-2">
+        {remove.isError && (
+          <p className="mt-2 text-xs" style={{ color: 'var(--status-critical)' }}>
+            {(remove.error as Error).message}
+          </p>
+        )}
+
+        <footer className="mt-5 flex flex-wrap items-center justify-end gap-2">
+          {/*
+            Delete sits apart from Save, on the other side of the footer.
+
+            Deactivating is the gentler move and is one checkbox away above;
+            this is here for the account that should not exist at all. Two
+            clicks, because the first is easy to make by accident and there is
+            no undo — the row and its credentials go, and only the audit trail
+            of what they did remains.
+          */}
+          {/*
+            Never on your own account.
+
+            The server refuses it either way, but an administrator who can SEE
+            "Hisobni oʻchirish" under their own name has to think about it
+            every time they open their own row. The action that cannot be
+            undone should not be the one sitting under the cursor.
+          */}
+          {editing && !isSelf && (
+            <span className="mr-auto">
+              {confirmDelete ? (
+                <span className="flex items-center gap-2">
+                  <span className="text-xs" style={{ color: 'var(--status-critical)' }}>
+                    Butunlay oʻchirilsinmi?
+                  </span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={remove.isPending}
+                    onClick={() => remove.mutate()}
+                  >
+                    {remove.isPending ? 'Oʻchirilmoqda…' : 'Ha, oʻchir'}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
+                    Yoʻq
+                  </Button>
+                </span>
+              ) : (
+                <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)}>
+                  <span
+                    className="inline-flex items-center gap-1.5"
+                    style={{ color: 'var(--status-critical)' }}
+                  >
+                    <TrashGlyph size={13} />
+                    Hisobni oʻchirish
+                  </span>
+                </Button>
+              )}
+            </span>
+          )}
           <Button variant="ghost" size="sm" onClick={onClose}>
             Bekor
           </Button>
           <Button
             variant="primary"
             size="sm"
-            disabled={save.isPending || name.trim().length < 2 || (!editing && !password)}
+            disabled={
+              save.isPending ||
+              name.trim().length < 2 ||
+              (!editing && (!password || username.trim().length < 3))
+            }
             onClick={() => save.mutate()}
           >
             {save.isPending ? 'Saqlanmoqda…' : editing ? 'Saqlash' : 'Yaratish'}
@@ -439,6 +533,57 @@ function UserDialog({
         </footer>
       </Card>
     </div>
+  )
+}
+
+/**
+ * A password field with an eye.
+ *
+ * The administrator is typing a credential they have to read aloud or write
+ * down for somebody else, so hiding it helps nobody — a mistyped password
+ * they cannot see becomes a person who cannot sign in and an admin who does
+ * not know why. Masked by default all the same, because this screen gets
+ * opened in an open office.
+ */
+function PasswordInput({
+  value,
+  onChange,
+  shown,
+  onToggle,
+  placeholder,
+}: {
+  value: string
+  onChange: (value: string) => void
+  shown: boolean
+  onToggle: () => void
+  placeholder?: string
+}) {
+  return (
+    <span className="relative block">
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        type={shown ? 'text' : 'password'}
+        autoComplete="new-password"
+        placeholder={placeholder}
+        className="focusable w-full rounded-lg border py-1.5 pr-9 pl-2.5 text-sm"
+        style={{
+          background: 'var(--surface)',
+          borderColor: 'var(--border)',
+          color: 'var(--ink-primary)',
+        }}
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label={shown ? 'Parolni yashirish' : 'Parolni koʻrsatish'}
+        aria-pressed={shown}
+        className="focusable absolute top-1/2 right-1.5 -translate-y-1/2 rounded px-1 py-0.5 transition-opacity hover:opacity-70"
+        style={{ color: shown ? 'var(--ink-secondary)' : 'var(--ink-muted)' }}
+      >
+        {shown ? <EyeOffGlyph size={14} /> : <EyeGlyph size={14} />}
+      </button>
+    </span>
   )
 }
 

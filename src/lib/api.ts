@@ -293,7 +293,7 @@ export async function apiGet<T>(
  * token would be a second mechanism guarding the same door.
  */
 export async function apiWrite<T>(
-  method: 'POST' | 'PATCH',
+  method: 'POST' | 'PATCH' | 'DELETE',
   path: string,
   body: unknown,
   signal?: AbortSignal,
@@ -347,6 +347,8 @@ export async function apiWrite<T>(
 export interface UserRowDto {
   readonly id: string
   readonly name: string
+  /** What this person types to sign in. Null on the founding email account. */
+  readonly username: string | null
   readonly email: string
   readonly role: 'ADMIN' | 'MANAGER' | 'SALES'
   readonly isActive: boolean
@@ -601,6 +603,8 @@ export interface ConfirmationOrderDto {
   readonly products: readonly string[]
   readonly region: string | null
   readonly deliveryAddress: string | null
+  /** Источник — the acquisition channel the order came in through. */
+  readonly sourceName: string | null
   readonly amount: MoneyDto
   /** The stage the deal sits in now — the evidence behind the outcome. */
   readonly stageName: string
