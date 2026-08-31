@@ -396,10 +396,14 @@ function AlarmCard({ data, status }: BlockProps) {
           )}
         </div>
 
+        {/* Which orders, on which day — the chart buckets by the day an
+            order ENTERED the queue, so its column will not add up to the
+            tile above, which counts every rejection in the window. */}
         <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          Chegara — shu davrning oʻz oʻrtachasi + 2σ, {c?.rejectionDays ?? 0} ish kuni boʻyicha.
-          Yakshanba (boʻsh nuqtalar) bazadan chiqarilgan: u kuni buyurtma uch barobar kam va
-          tarqalish ikki barobar keng.
+          Navbatga tushgan kuni boʻyicha — yigʻindisi tepadagi «Rad etilgan» soniga teng
+          boʻlmaydi. Chegara — shu davrning oʻz oʻrtachasi + 2σ, {c?.rejectionDays ?? 0} ish kuni
+          boʻyicha. Yakshanba (boʻsh nuqtalar) bazadan chiqarilgan: u kuni buyurtma uch barobar
+          kam va tarqalish ikki barobar keng.
         </p>
       </div>
     </Card>
