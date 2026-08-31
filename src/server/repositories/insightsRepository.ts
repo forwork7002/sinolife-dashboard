@@ -1259,7 +1259,43 @@ export class InsightsRepository {
         total_items: bigint
       }[]
     >(
-      `${InsightsRepository.QUEUE_SQL}
+      `${InsightsRepository.QUEUE_SQL},
+       /*
+         PAGE FIRST, DECORATE AFTERWARDS.
+
+         The filter, the sort and the LIMIT run over the bare cohort — deal id,
+         ROP, outcome, four timestamps — and only the fifty rows that survive
+         are joined to their customer, operator, stage, source and line items.
+         It used to be the other way round: every row in the window was fully
+         dressed, including a LATERAL over deal_item per row, and then all but
+         fifty thrown away. For a month that was three thousand decorated rows
+         for a page of fifty; for a year, eighteen thousand, which put the
+         request past the twenty-second statement timeout and made «Shu yil»
+         a 500 on this screen.
+
+         The search predicate only ever needed the cohort, the deal and the
+         customer, so it runs here in full; the total rides on the page rows
+         as a window count, computed before the LIMIT cuts them.
+       */
+       page AS (
+         SELECT
+           c.deal_id, c.rop, c.daily_no, c.outcome,
+           c.created_at, c.moved_at, c.queued_at, c.decided_at,
+           (count(*) OVER ())::bigint AS total_items
+         FROM numbered c
+         JOIN "deal" d ON d."id" = c.deal_id
+         LEFT JOIN "customer" cust ON cust."id" = d."customerId"
+        -- NULL, not an empty array: ANY over an empty array is false for every
+        -- row, so an empty selection would render an empty table rather than
+        -- the whole queue.
+        WHERE ($3::text[] IS NULL OR c.outcome = ANY($3::text[]))
+          AND ($5::text IS NULL OR c.rop = $5)
+          ${InsightsRepository.SEARCH_SQL('$4')}
+        -- The deal id breaks ties, so paging cannot show one order twice and
+        -- skip another when a thousand rows share a sort value.
+        ORDER BY ${sortColumn[query.sort]} ${direction} NULLS LAST, d."id" ASC
+        LIMIT $6 OFFSET $7
+       )
        SELECT
          d."id" AS deal_id,
          c.rop AS rop,
@@ -1290,33 +1326,23 @@ export class InsightsRepository {
          c.moved_at AS moved_at,
          c.queued_at AS queued_at,
          c.decided_at AS decided_at,
-         -- The unpaged count, carried on the rows themselves. A second
-         -- COUNT query would run this whole CTE twice.
-         (count(*) OVER ())::bigint AS total_items
-       FROM numbered c
+         c.total_items AS total_items
+       FROM page c
        JOIN "deal" d ON d."id" = c.deal_id
        JOIN "employee" e ON e."id" = d."employeeId"
        JOIN "deal_stage" st ON st."id" = d."stageId"
        LEFT JOIN "customer" cust ON cust."id" = d."customerId"
+       LEFT JOIN "sales_source" src ON src."id" = d."sourceId"
        -- LATERAL, not a join: four line items would otherwise become four rows
        -- and the pager would count the same order four times.
-       LEFT JOIN "sales_source" src ON src."id" = d."sourceId"
        LEFT JOIN LATERAL (
          SELECT string_agg(pr."name" || ' - ' || di."quantity"::text || ' ta', E'\\n' ORDER BY pr."name") AS products
            FROM "deal_item" di
            JOIN "product" pr ON pr."id" = di."productId"
           WHERE di."dealId" = d."id"
        ) items ON true
-      -- NULL, not an empty array: ANY over an empty array is false for every
-      -- row, so an empty selection would render an empty table rather than
-      -- the whole queue.
-      WHERE ($3::text[] IS NULL OR c.outcome = ANY($3::text[]))
-        AND ($5::text IS NULL OR c.rop = $5)
-        ${InsightsRepository.SEARCH_SQL('$4')}
-      -- The deal id breaks ties, so paging cannot show one order twice and
-      -- skip another when a thousand rows share a sort value.
-      ORDER BY ${sortColumn[query.sort]} ${direction} NULLS LAST, d."id" ASC
-      LIMIT $6 OFFSET $7`,
+      -- The same order the page was cut in; a join does not promise to keep it.
+      ORDER BY ${sortColumn[query.sort]} ${direction} NULLS LAST, d."id" ASC`,
       period.start,
       period.end,
       query.outcomes && query.outcomes.length > 0 ? [...query.outcomes] : null,

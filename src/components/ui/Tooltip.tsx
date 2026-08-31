@@ -52,8 +52,20 @@ const GAP = 8
 interface TipPosition {
   readonly top: number
   readonly left: number
-  readonly placement: 'top' | 'bottom'
+  readonly placement: 'top' | 'bottom' | 'right'
 }
+
+/**
+ * Where the tip prefers to open.
+ *
+ * `auto` is above-unless-cramped, which is right almost everywhere. `right`
+ * exists for one place: the folded sidebar, a 64px column against the left
+ * edge of the screen. A tip centred above an icon there is clamped against
+ * that edge and lands half over the icon it names; to the right it sits in
+ * open content, beside the thing it describes, the way every icon rail does
+ * it.
+ */
+export type TipSide = 'auto' | 'right'
 
 /*
   useLayoutEffect on the server is a React warning; the wrapper renders
@@ -75,6 +87,7 @@ function useTipPosition(
   open: boolean,
   anchorRef: RefObject<HTMLElement | null>,
   tipRef: RefObject<HTMLElement | null>,
+  side: TipSide = 'auto',
 ): TipPosition | null {
   const [position, setPosition] = useState<TipPosition | null>(null)
 
@@ -85,6 +98,19 @@ function useTipPosition(
 
     const a = anchor.getBoundingClientRect()
     const t = tip.getBoundingClientRect()
+
+    if (side === 'right') {
+      // Beside the trigger, vertically centred on it, kept inside the viewport
+      // top and bottom. Falls back to the normal flow only when there is no
+      // room at all to the right, which a rail never lacks.
+      const leftIfRight = a.right + GAP
+      if (leftIfRight + t.width <= window.innerWidth - GAP) {
+        const centredTop = a.top + a.height / 2 - t.height / 2
+        const top = Math.min(Math.max(centredTop, GAP), window.innerHeight - t.height - GAP)
+        setPosition({ top, left: leftIfRight, placement: 'right' })
+        return
+      }
+    }
 
     // Above unless there is no room above; below is the fallback, and if
     // neither fits the reader is on a very small screen where "below" at
@@ -98,7 +124,7 @@ function useTipPosition(
     const left = Math.min(Math.max(centered, GAP), window.innerWidth - t.width - GAP)
 
     setPosition({ top, left, placement })
-  }, [anchorRef, tipRef])
+  }, [anchorRef, tipRef, side])
 
   useIsomorphicLayoutEffect(() => {
     if (!open) {
@@ -123,13 +149,15 @@ export interface TooltipProps {
   /** What the tip says. Values worth a tooltip are worth tabular figures. */
   readonly content: ReactNode
   /** A single element; it gains aria-describedby while the tip is open. */
-  readonly children: ReactElement<{ 'aria-describedby'?: string }>
+  readonly children: ReactElement<{ 'aria-describedby'?: string   /** Which side to open on. See TipSide. */
+  readonly side?: TipSide
+}>
   /** Hover delay, ms. Focus and touch never wait. */
   readonly delay?: number
   readonly className?: string
 }
 
-export function Tooltip({ content, children, delay = 150, className = '' }: TooltipProps) {
+export function Tooltip({ content, children, delay = 150, className = '', side = 'auto' }: TooltipProps) {
   const [open, setOpen] = useState(false)
   const anchorRef = useRef<HTMLSpanElement>(null)
   const tipRef = useRef<HTMLDivElement>(null)
@@ -141,7 +169,7 @@ export function Tooltip({ content, children, delay = 150, className = '' }: Tool
   const id = useId()
   const tipId = `${id}-tip`
 
-  const position = useTipPosition(open, anchorRef, tipRef)
+  const position = useTipPosition(open, anchorRef, tipRef, side)
 
   /*
     NOTHING TO SAY, NOTHING TO WRAP.

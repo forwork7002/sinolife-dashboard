@@ -432,14 +432,27 @@ export function Shell({
           account block is the rail's floor, which is where every desktop
           application the floor already uses puts it.
         */}
+        {/*
+          THE FOLD TOGGLE LIVES UP HERE, beside the brand, not down by the
+          account. Two reasons. It is a control on the rail itself, and the
+          top corner is where every desktop application the floor uses puts
+          that control — Linear, Notion, Slack. And down in the footer it was
+          the third 36px button in a 240px row, which left the person's own
+          name room for "Administr…". Folded, it sits under the mark, so the
+          way back out is the first thing in the column.
+        */}
         <div
-          className={`flex h-16 shrink-0 items-center ${collapsed ? 'justify-center' : 'gap-3 px-4'}`}
+          className={
+            collapsed
+              ? 'flex shrink-0 flex-col items-center gap-1.5 pt-4 pb-2'
+              : 'flex h-16 shrink-0 items-center gap-3 pr-2 pl-4'
+          }
         >
           <WordmarkBadge />
           {/* Removed rather than hidden: a truncated name in a 64px rail is
               three letters and an ellipsis, which reads as a rendering fault. */}
           {!collapsed && (
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p
                 className="truncate text-sm font-semibold tracking-tight"
                 style={{ color: 'var(--ink-primary)' }}
@@ -451,6 +464,17 @@ export function Shell({
               </p>
             </div>
           )}
+          <Tooltip content={collapsed ? 'Panelni ochish' : 'Panelni yigʻish'} side="right">
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed(!collapsed)}
+              aria-label={collapsed ? 'Panelni ochish' : 'Panelni yigʻish'}
+              aria-expanded={!collapsed}
+              className="rail-item rail-button focusable flex h-8 w-8 items-center justify-center rounded-lg"
+            >
+              <PanelIcon open={!collapsed} />
+            </button>
+          </Tooltip>
         </div>
 
         <nav
@@ -549,7 +573,7 @@ export function Shell({
                           empty dark pill on every hover — the "black round
                           thing" the client saw.
                         */}
-                        {collapsed ? <Tooltip content={item.label}>{link}</Tooltip> : link}
+                        {collapsed ? <Tooltip content={item.label} side="right">{link}</Tooltip> : link}
                       </li>
                     )
                   })}
@@ -562,10 +586,9 @@ export function Shell({
         {/*
           The account block — the rail's floor.
 
-          Who is signed in, the two things done TO the rail (sign out, fold),
-          and above them the one line that says how fresh the numbers are. The
-          toggle renders whether or not anybody is signed in: it belongs to the
-          rail rather than to the account.
+          Who is signed in and the way out, with the one line that says how
+          fresh the numbers are above them. The fold toggle is up in the
+          header — it belongs to the rail, not to the account.
         */}
         <div className="shrink-0 border-t" style={{ borderColor: 'var(--border)' }}>
           {!collapsed && <FreshnessPanel lastSyncedAt={lastSyncedAt} />}
@@ -578,7 +601,7 @@ export function Shell({
             }
           >
             {user && (
-              <Tooltip content={collapsed ? `${user.name} · ${ROLE_LABELS[user.role]}` : ''}>
+              <Tooltip content={collapsed ? `${user.name} · ${ROLE_LABELS[user.role]}` : ''} side="right">
                 {/* The identity block is the way into the account screen — a
                     separate "settings" icon would be a second target for the
                     same thing, and this is where a reader already looks to
@@ -632,7 +655,7 @@ export function Shell({
               /* The Tooltip primitive, not a native title: an icon-only button
                  whose label arrives after a second of hovering and never on
                  focus or touch is unlabelled for most people. */
-              <Tooltip content="Chiqish">
+              <Tooltip content="Chiqish" side={collapsed ? 'right' : 'auto'}>
                 <button
                   type="button"
                   onClick={() => {
@@ -653,17 +676,6 @@ export function Shell({
               </Tooltip>
             )}
 
-            <Tooltip content={collapsed ? 'Panelni ochish' : 'Panelni yigʻish'}>
-              <button
-                type="button"
-                onClick={() => setSidebarCollapsed(!collapsed)}
-                aria-label={collapsed ? 'Panelni ochish' : 'Panelni yigʻish'}
-                aria-expanded={!collapsed}
-                className="rail-item rail-button focusable flex h-9 w-9 items-center justify-center rounded-lg"
-              >
-                <PanelIcon open={!collapsed} />
-              </button>
-            </Tooltip>
           </div>
         </div>
       </aside>
