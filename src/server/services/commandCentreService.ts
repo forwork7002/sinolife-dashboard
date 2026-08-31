@@ -102,8 +102,7 @@ export class CommandCentreService {
       intakePrev,
       intakeDaily,
       revenue,
-      customers,
-      customersPrev,
+      customerPair,
       confirmation,
       band,
       logistics,
@@ -116,8 +115,13 @@ export class CommandCentreService {
       this.repository.commandIntake(comparison),
       this.repository.commandIntakeDaily(period),
       this.repository.commandRevenue(period),
-      this.repository.commandCustomers(period),
-      this.repository.commandCustomers(comparison),
+      /*
+        Both windows in one query. `first_order` inside it has no date bound —
+        "was this their FIRST order" is a question about a customer's whole
+        history — so it walks every revenue deal, and asking twice for two
+        numbers printed side by side paid for that walk twice.
+      */
+      this.repository.commandCustomersPair(period, comparison),
       /*
         The five counts, and not the queue behind them.
 
@@ -136,6 +140,9 @@ export class CommandCentreService {
       this.repository.commandHeadcount(period),
       concentrationService.concentration(period),
     ])
+
+    const customers = customerPair.now
+    const customersPrev = customerPair.previous
 
     // The five states sum to the window's orders: every order the board holds
     // is in exactly one of them, so there is nothing to fetch separately.

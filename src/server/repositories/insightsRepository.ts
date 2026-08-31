@@ -1886,7 +1886,39 @@ export class InsightsRepository {
    * arrive, which is not when the customer was won.
    */
   async commandCustomers(period: Period): Promise<{ ordering: number; fresh: number }> {
-    const rows = await this.prisma.$queryRawUnsafe<{ ordering: bigint; fresh: bigint }[]>(
+    const both = await this.commandCustomersPair(period, period)
+    return both.now
+  }
+
+  /**
+   * Both windows in one pass, because the expensive half is the same in each.
+   *
+   * `first_order` has no date bound — it cannot have one, since "was this
+   * customer's FIRST order in the window" is a question about their whole
+   * history — so it walks every revenue deal and groups by customer. Asked
+   * twice, once for the period and once for the comparison beside it, that
+   * scan was paid for twice on a screen that shows both numbers side by side.
+   *
+   * The two windows are adjacent for every calendar-anchored preset (a
+   * comparison ends exactly where its period begins), so bounding the second
+   * CTE by the outer edges of the pair reads no row the two calls read
+   * separately.
+   */
+  async commandCustomersPair(
+    period: Period,
+    comparison: Period,
+  ): Promise<{
+    now: { ordering: number; fresh: number }
+    previous: { ordering: number; fresh: number }
+  }> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        ordering_now: bigint
+        fresh_now: bigint
+        ordering_prev: bigint
+        fresh_prev: bigint
+      }[]
+    >(
       `
       WITH first_order AS (
         SELECT d."customerId" AS customer_id, min(d."createdAtSource") AS first_at
@@ -1895,21 +1927,36 @@ export class InsightsRepository {
          GROUP BY d."customerId"
       ),
       ordered AS (
-        SELECT DISTINCT d."customerId" AS customer_id
+        SELECT d."customerId" AS customer_id,
+               bool_or(d."createdAtSource" >= $1 AND d."createdAtSource" < $2) AS in_now,
+               bool_or(d."createdAtSource" >= $3 AND d."createdAtSource" < $4) AS in_prev
           FROM "deal" d
          WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
-           AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
+           AND d."createdAtSource" >= LEAST($1, $3)
+           AND d."createdAtSource" <  GREATEST($2, $4)
+         GROUP BY d."customerId"
       )
-      SELECT count(*)::bigint AS ordering,
-             count(*) FILTER (WHERE f.first_at >= $1 AND f.first_at < $2)::bigint AS fresh
-        FROM ordered o JOIN first_order f ON f.customer_id = o.customer_id
+      SELECT
+        count(*) FILTER (WHERE o.in_now)::bigint AS ordering_now,
+        count(*) FILTER (WHERE o.in_now AND f.first_at >= $1 AND f.first_at < $2)::bigint
+          AS fresh_now,
+        count(*) FILTER (WHERE o.in_prev)::bigint AS ordering_prev,
+        count(*) FILTER (WHERE o.in_prev AND f.first_at >= $3 AND f.first_at < $4)::bigint
+          AS fresh_prev
+      FROM ordered o
+      JOIN first_order f ON f.customer_id = o.customer_id
       `,
       period.start,
       period.end,
+      comparison.start,
+      comparison.end,
     )
 
     const r = rows[0]
-    return { ordering: int(r?.ordering ?? 0n), fresh: int(r?.fresh ?? 0n) }
+    return {
+      now: { ordering: int(r?.ordering_now ?? 0n), fresh: int(r?.fresh_now ?? 0n) },
+      previous: { ordering: int(r?.ordering_prev ?? 0n), fresh: int(r?.fresh_prev ?? 0n) },
+    }
   }
 
   /**
