@@ -3,7 +3,7 @@
 import * as React from 'react'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useIsFetching, useQueryClient } from '@tanstack/react-query'
 import {
   useCallback,
@@ -144,8 +144,20 @@ export function Shell({
   children,
   dataSource,
   lastSyncedAt,
+  periodAware = false,
 }: {
   children: ReactNode
+  /**
+   * Whether the open page HAS a reporting window.
+   *
+   * False by default, and true only from PageShell. Marketing and the account
+   * screen render this shell directly — marketing keeps its own period control
+   * and the account screen has no dates at all — so offering the six presets
+   * in the palette there wrote a window nothing on the page reads, pinned it
+   * into the address and the sidebar link, and left no control anywhere to
+   * clear it again.
+   */
+  periodAware?: boolean
   dataSource?: 'DEMO' | 'BITRIX24' | 'MANUAL'
   lastSyncedAt?: string | null
 }) {
@@ -204,6 +216,30 @@ export function Shell({
     () => Object.fromEntries(NAV.map((item) => [item.href, periodQuery(item.href, periodMemory)])),
     [periodMemory],
   )
+
+  /*
+    Where a nav entry actually goes.
+
+    THE SECTION YOU ARE ALREADY ON IS A SPECIAL CASE. Its link carries the
+    window it was last LEFT in, which is not necessarily the one on screen —
+    somebody who opens a shared link and then clicks the highlighted entry
+    beside it would have their dates changed by a link marked "you are here".
+    So the current section links to the current address, and every other one
+    links to the window it was left in.
+
+    Used by the rail, by the strip below the header on a phone, and by the
+    palette — all three navigate, and a window carried by only one of them is
+    the double round trip this exists to avoid, on the other two.
+  */
+  const search = useSearchParams()
+  const hrefFor = useCallback(
+    (href: string) => {
+      if (!isActive(pathname, href)) return `${href}${sectionQuery[href] ?? ''}`
+      const query = search.toString()
+      return query ? `${pathname}?${query}` : pathname
+    },
+    [pathname, search, sectionQuery],
+  )
   const openPalette = useCallback(() => setPaletteOpen(true), [])
   const closePalette = useCallback(() => setPaletteOpen(false), [])
   useCommandK(openPalette)
@@ -244,11 +280,12 @@ export function Shell({
    * What the palette knows: every screen this role can see, then the six
    * period presets. The same canSee gate as the sidebar — a palette that
    * offers a route the rail hides would just be a faster way to find a 403.
-   * Navigation goes through router.push with the bare href, exactly like the
-   * sidebar's links; period changes go through setPeriod, exactly like the
-   * control on the open page — and land on that page, since setPeriod writes
-   * the window of whatever route is current. The palette adds no third
-   * semantics of its own.
+   * Navigation goes through router.push, exactly like the
+   * sidebar's links — through the same `hrefFor`, so a section opens on the
+   * window it was left in from here too; period changes go through setPeriod,
+   * exactly like the control on the open page, and land on that page since
+   * setPeriod writes the window of whatever route is current. The palette adds
+   * no third semantics of its own.
    *
    * Built plainly, no useMemo: the React Compiler memoizes it (a manual memo
    * here is flagged by react-hooks/preserve-manual-memoization), and twenty
@@ -263,21 +300,28 @@ export function Shell({
           id: item.href,
           label: item.label,
           icon: <Icon />,
-          onSelect: () => router.push(item.href),
+          onSelect: () => router.push(hrefFor(item.href)),
         }
       }),
     },
-    {
-      label: t.period.label,
-      items: PERIOD_PRESETS.map((preset) => ({
-        id: `davr-${preset}`,
-        label: t.period[preset],
-        // Say which window is already on screen, so re-choosing it reads as
-        // the no-op it is rather than a change that silently did nothing.
-        hint: preset === filters.preset ? t.palette.currentPeriod : undefined,
-        onSelect: () => setPeriod({ preset }),
-      })),
-    },
+    // Only where there ARE dates. Marketing keeps its own period control and
+    // the account screen has none, so on those two the presets wrote a window
+    // nothing reads and left no control anywhere to clear it again.
+    ...(periodAware
+      ? [
+          {
+            label: t.period.label,
+            items: PERIOD_PRESETS.map((preset) => ({
+              id: `davr-${preset}`,
+              label: t.period[preset],
+              // Say which window is already on screen, so re-choosing it reads
+              // as the no-op it is rather than a change that did nothing.
+              hint: preset === filters.preset ? t.palette.currentPeriod : undefined,
+              onSelect: () => setPeriod({ preset }),
+            })),
+          },
+        ]
+      : []),
   ]
 
   return (
@@ -395,7 +439,7 @@ export function Shell({
                       <li key={item.href}>
                         <Tooltip content={collapsed ? item.label : ''}>
                         <Link
-                          href={`${item.href}${sectionQuery[item.href] ?? ''}`}
+                          href={hrefFor(item.href)}
                           aria-current={active ? 'page' : undefined}
                           aria-label={collapsed ? item.label : undefined}
                           className={`focusable relative flex items-center rounded-lg py-1.5 text-[13.5px] font-medium transition-colors ${
@@ -611,7 +655,7 @@ export function Shell({
                 return (
                   <li key={item.href}>
                     <Link
-                      href={item.href}
+                      href={hrefFor(item.href)}
                       className="block rounded-md px-2.5 py-1.5 text-xs font-medium whitespace-nowrap"
                       style={{
                         background: active ? 'var(--grid)' : 'transparent',

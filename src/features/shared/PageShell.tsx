@@ -13,7 +13,7 @@ import type { SectionValue } from '@/lib/sections'
 import { formatDate } from '@/lib/format'
 import { t } from '@/lib/messages'
 import type { DataScopeValue } from '@/lib/dataScope'
-import { useDashboardFilters } from './useDashboardFilters'
+import { useDashboardFilters, useRestoreSectionPeriod } from './useDashboardFilters'
 
 export interface FilterOptions {
   readonly employees: readonly { id: string; fullName: string }[]
@@ -104,6 +104,9 @@ export function PageShell({
   children: ReactNode
 }) {
   const { filters, update, setPeriod, reset, activeCount } = useDashboardFilters()
+  // Once per page: see the hook's own note on why it does not live in
+  // useDashboardFilters, which a dozen components call.
+  useRestoreSectionPeriod()
   const options = useFilterOptions()
   const data = options.data?.data
 
@@ -115,6 +118,8 @@ export function PageShell({
     <Shell
       dataSource={meta?.dataSource ?? options.data?.meta.dataSource}
       lastSyncedAt={data?.lastSyncedAt ?? null}
+      // Every page built on this shell renders the window control below.
+      periodAware
     >
       <div
         className="mx-auto max-w-[1400px] space-y-4"

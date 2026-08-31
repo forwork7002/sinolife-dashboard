@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
-import { forgetPeriod, rememberPeriod, rememberedPeriod } from './periodMemory'
+import { rememberPeriod, rememberedPeriod } from './periodMemory'
 
 import type { PeriodPreset, PeriodSelection } from '@/components/layout/PeriodFilter'
 import type { ConfirmationOutcome } from '@/lib/api'
@@ -147,41 +147,22 @@ export function useDashboardFilters() {
     [pathname, update],
   )
 
+  /**
+   * Clear the FILTERS, and only the filters.
+   *
+   * The button counts what it will clear — "Filtrlarni tozalash (3)" — and the
+   * reporting window has never been in that count. Wiping the dates too made
+   * the number a lie and threw away a choice the person had not asked to undo.
+   */
   const reset = useCallback(() => {
-    forgetPeriod(pathname)
-    router.replace(pathname, { scroll: false })
-  }, [pathname, router])
-
-  /*
-    Restore this section's window when the address bar carries none.
-
-    Runs once per route rather than on every render: `update` rewrites the
-    query string, which re-runs this effect, and without the guard a stored
-    window would fight a person who then picks a different one.
-
-    `replace`, never `push`. Restoring is not a navigation somebody made, and
-    a back button that steps through it would appear stuck.
-  */
-  const restored = useRef<string | null>(null)
-  const hasPreset = params.get('preset') !== null
-
-  useEffect(() => {
-    if (restored.current === pathname) return
-    restored.current = pathname
-
-    if (hasPreset) return
-
-    const stored = rememberedPeriod(pathname)
-    if (!stored) return
-
-    const next = new URLSearchParams(params.toString())
-    next.set('preset', stored.preset)
-    if (stored.preset === 'custom' && stored.from && stored.to) {
-      next.set('from', stored.from)
-      next.set('to', stored.to)
+    const kept = new URLSearchParams()
+    for (const key of ['preset', 'from', 'to'] as const) {
+      const value = params.get(key)
+      if (value !== null) kept.set(key, value)
     }
-    router.replace(`${pathname}?${next.toString()}`, { scroll: false })
-  }, [pathname, hasPreset, params, router])
+    const query = kept.toString()
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+  }, [params, pathname, router])
 
   /** Query-string params for the API, omitting empties. */
   const apiParams = useMemo(() => {
@@ -214,4 +195,66 @@ export function useDashboardFilters() {
     (filters.q ? 1 : 0)
 
   return { filters, update, setPeriod, reset, apiParams, activeCount }
+}
+
+/**
+ * Put this section's remembered window back when the address bar carries none.
+ *
+ * CALLED ONCE PER PAGE, from PageShell, and deliberately not from
+ * `useDashboardFilters` — a dozen components call that hook and each instance
+ * would run this effect and fire its own `router.replace` for the same
+ * navigation.
+ *
+ * `replace`, never `push`: restoring is not a navigation anybody made, and a
+ * back button that stepped through it would appear stuck.
+ *
+ * It only ever fires on an address with NOTHING in it, so there is nothing to
+ * carry forward and nothing — a page number least of all — to drop.
+ */
+export function useRestoreSectionPeriod(): void {
+  const router = useRouter()
+  const pathname = usePathname()
+  const params = useSearchParams()
+
+  /*
+    A BARE address, not merely one without dates.
+
+    "No preset" and "this_month" look identical in a URL, so a link somebody
+    copied off a rendered page — /confirmation?rop=Sevinch, reading this month
+    — would arrive at the recipient with their own remembered window applied to
+    somebody else's filter, and the two would compare different numbers under
+    the same link. If the address says anything at all, it is honoured whole.
+  */
+  const bare = params.toString() === ''
+  const restored = useRef<string | null>(null)
+
+  useEffect(() => {
+    /*
+      The guard tracks a restore IN FLIGHT, not a route already visited.
+
+      Setting it before this check meant a section that had once been opened
+      with dates in the URL would never restore afterwards: arriving at
+      /confirmation?preset=today marked the route done, and arriving at bare
+      /confirmation later — from the mobile nav, or the palette — found the
+      guard already closed and left the window on the default.
+    */
+    if (!bare) {
+      restored.current = null
+      return
+    }
+    if (restored.current === pathname) return
+
+    const stored = rememberedPeriod(pathname)
+    if (!stored) return
+
+    restored.current = pathname
+
+    const next = new URLSearchParams({ preset: stored.preset })
+    if (stored.preset === 'custom' && stored.from && stored.to) {
+      next.set('from', stored.from)
+      next.set('to', stored.to)
+    }
+
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false })
+  }, [bare, pathname, router])
 }
