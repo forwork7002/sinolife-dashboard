@@ -171,7 +171,15 @@ export interface ConfirmationOrderRow {
   /** The stage the deal sits in NOW, which is what the outcome was read from. */
   readonly stageName: string
   readonly outcome: ConfirmationOutcomeValue
-  readonly queuedAt: Date
+  /** The stage move this row is dated by — the client's `MOVED_TIME`. */
+  readonly movedAt: Date
+  /**
+   * When the order entered the queue this state belongs to.
+   *
+   * Null for an order refused without ever being queued, which the client's
+   * bot counts and so does this.
+   */
+  readonly queuedAt: Date | null
   /** When it left the queue. Null while it is still in one. */
   readonly decidedAt: Date | null
   /** Queue time in hours, one decimal. Null while it is still waiting. */
@@ -825,168 +833,145 @@ export class InsightsRepository {
   }
 
   /**
-   * Every order that entered the Тасдиклаш queue, one row each.
+   * The Тасдиклаш board, one row per order.
    *
-   * The queue read as a LIST rather than as a per-operator scorecard. Both
-   * answer real questions, and they are different questions: the scorecard
-   * asks who works their queue, this asks what happened to the orders.
+   * BUILT TO THE CLIENT'S OWN SPECIFICATION, not to ours. They run a Telegram
+   * bot that watches Bitrix and a published dashboard built from its output;
+   * the floor reads those numbers every day. Two documents of theirs define
+   * the rules exactly — which stages mean what, and which are ignored — so a
+   * second, reasonable-looking definition here would not be a variant, it
+   * would be a contradiction of the figures the company already works to.
    *
-   * THE COHORT IS ENTRY INTO THE QUEUE. `Заказ тасдиклаш` (C4:NEW) is the
-   * starting point of the process, exactly as the Telegram bot treats it, so
-   * an order belongs to the window in which it was QUEUED — not the window in
-   * which it happened to be delivered weeks later.
+   * THE WINDOW SELECTS ON THE LAST SIGNIFICANT MOVE. An order belongs to the
+   * period in which its confirmation last changed. Their bot keys on
+   * `MOVED_TIME` and deliberately not on `DATE_MODIFY`, which any edit bumps —
+   * «шунинг учун ойлар олдин рад этилган сделкалар "янги воқеа" деб хабар
+   * қилинарди».
    *
-   * HOW EACH STATE IS DECIDED, and why from history rather than from the
-   * deal's current stage alone: a delivered order left these stages months
-   * ago, and its stage today says nothing about what the operator did.
+   * FIVE STAGES SPEAK; THE REST ARE SILENT:
    *
-   *   ✅ CONFIRMED            the deal reached a revenue pipeline (Доставка)
-   *                           or the queue's own `Сделка успешна`. Arrival in
-   *                           Доставка is what the bot treats as confirmed,
-   *                           because that is the move an operator makes once
-   *                           the customer has said yes.
-   *   🟣 UNCONFIRMED_SHIPPED  the same, but `Тастиклаш анализ` on the deal
-   *                           says `Недозвон булиб чикарилган` — it shipped
-   *                           without anyone reaching the customer. It also
-   *                           catches orders that left the queue in no
-   *                           recognised direction, which says the same thing.
-   *   ❌ REJECTED             the deal hit `Ошибка первичный отдел`. Read from
-   *                           history on purpose: Bitrix24 immediately moves
-   *                           such a deal into Первичный отдел, so its CURRENT
-   *                           stage never admits to it.
-   *   🕔 CONFIRM_NEW          still sitting in `Заказ тасдиклаш`.
-   *   🟡 NO_ANSWER            still on a chase stage — `Недозвон смс`,
-   *                           `Пропущенный`, the SMS stages.
+   *   🕔 CONFIRM_NEW          `C4:NEW` — in the queue, nobody has worked it.
+   *   🟡 NO_ANSWER            `C4:UC_JQR9F1` — reached for, no answer.
+   *   ❌ REJECTED             `C4:LOSE`, and `C12:UC_1OM8B2` where Bitrix
+   *                           actually files the refusal.
+   *   ✅ CONFIRMED            `C6:NEW` — moved to Доставка, which is the move
+   *                           an operator makes once the customer says yes.
+   *   🟣 UNCONFIRMED_SHIPPED  the same move, but the deal's «Тастиклаш анализ»
+   *                           says the customer was never reached.
    *
-   * THE LAST MOVE WINS, and this cost two percentage points to get right.
-   * The precedence used to be "an outcome the order actually reached beats
-   * where it is parked now", so an order that went to Доставка and was later
-   * stamped `Ошибка первичный отдел` still read as confirmed. The client's bot
-   * keys on MOVED_TIME and takes the latest stage change instead, and the bot
-   * is right: of the 56 August orders where the two rules disagreed, NONE was
-   * ever delivered — 49 sat open and 7 were lost. Against the client's own
-   * dashboard for 26.08.2026 (116 orders, 100 confirmed, 16 rejected) the old
-   * rule produced 101 confirmed and 14 rejected; this one produces 99 and 16.
+   * «Пропущенный», the two SMS stages, `C4:WON` and UTECHKA say nothing: an
+   * order parked in one of them has neither been reached nor refused, and is
+   * still whatever it was. See CONFIRMATION_SIGNAL_STAGES for why each.
    *
-   * № AND РОП COME FROM HERE TOO, because they are properties of the queue
-   * rather than of the deal. The client's floor numbers orders per ROP per
-   * day — Sevinch's 21st order of the 26th — which is why the window function
-   * partitions by both, in Tashkent time and not UTC.
+   * № AND РОП COME FROM HERE, because they are properties of the board rather
+   * than of the deal. The floor numbers orders per ROP per day — Sevinch's
+   * 21st of the 26th — which is why the window function partitions by both, in
+   * Tashkent time and not UTC.
    */
   private static readonly QUEUE_SQL = `
-    WITH queued AS (
-      SELECT h."dealId" AS deal_id, min(h."enteredAt") AS queued_at
+    /*
+      Every stage move that says something about a confirmation.
+
+      Five stages carry a signal and the rest carry none — see
+      ConfirmationSignal in the schema. Reading the column rather than a list
+      of Bitrix ids keeps this query free of portal vocabulary and lets the
+      index do the narrowing: about 95 000 signal moves out of 216 000 rows.
+
+      Bounded by $2 so the window can be read as of its end rather than as of
+      now — a report on last week must show what last week looked like, not
+      what has happened to those orders since.
+    */
+    WITH moves AS (
+      SELECT h."dealId" AS deal_id,
+             h."enteredAt" AS moved_at,
+             s."confirmationSignal" AS signal
         FROM "deal_stage_history" h
         JOIN "deal_stage" s ON s."id" = h."stageId"
-        JOIN "pipeline" p ON p."id" = s."pipelineId"
-       WHERE s."logisticsRole" = 'PENDING_CONFIRM' AND p."role" = 'CONFIRMATION'
-         /*
-           Prunes the future, and lets the (stageId, enteredAt) index range-scan
-           instead of reading every queue entry ever recorded.
-
-           Safe because it cannot change the answer: the HAVING needs
-           min(enteredAt) < $2, and a group whose rows are ALL at or after $2
-           has a min at or after $2, so it was going to be discarded anyway.
-           Rows before $1 must still be read — they are what proves a deal was
-           first queued earlier and does not belong to this window.
-         */
+       WHERE s."confirmationSignal" IS NOT NULL
          AND h."enteredAt" < $2
-       GROUP BY h."dealId"
-      HAVING min(h."enteredAt") >= $1
     ),
-    trail AS (
-      SELECT
-        h."dealId" AS deal_id,
-        bool_or(p."role" = 'REVENUE') AS shipped,
-        bool_or(p."role" = 'CONFIRMATION' AND s."logisticsRole" = 'CONFIRMED') AS said_yes,
-        bool_or(p."role" = 'CONFIRMATION' AND s."logisticsRole" = 'CANCELLED_EARLY') AS killed,
-        -- The two timestamps the precedence turns on: the last time the order
-        -- moved TOWARDS delivery, and the last time it was killed in the queue.
-        max(h."enteredAt") FILTER (
-          WHERE p."role" = 'REVENUE'
-             OR (p."role" = 'CONFIRMATION' AND s."logisticsRole" = 'CONFIRMED')
-        ) AS last_yes_at,
-        max(h."enteredAt") FILTER (
-          WHERE p."role" = 'CONFIRMATION' AND s."logisticsRole" = 'CANCELLED_EARLY'
-        ) AS last_kill_at,
-        -- The last time it came BACK into the queue. A kill that predates this
-        -- is a finished attempt, not the order's current state.
-        max(h."enteredAt") FILTER (
-          WHERE p."role" = 'CONFIRMATION' AND s."logisticsRole" = 'PENDING_CONFIRM'
-        ) AS last_queued_at,
-        -- When it left the queue. Only moves at or after the queue entry
-        -- count: an order that was already in Доставка once and came BACK
-        -- would otherwise report a negative waiting time.
-        min(h."enteredAt") FILTER (
-          WHERE h."enteredAt" >= q.queued_at
-            AND (
-              p."role" = 'REVENUE'
-              OR (p."role" = 'CONFIRMATION' AND s."logisticsRole" IN ('CONFIRMED', 'CANCELLED_EARLY'))
-            )
-        ) AS left_queue_at
-      FROM "deal_stage_history" h
-      JOIN "deal_stage" s ON s."id" = h."stageId"
-      LEFT JOIN "pipeline" p ON p."id" = s."pipelineId"
-      JOIN queued q ON q.deal_id = h."dealId"
-      GROUP BY h."dealId"
+    /*
+      One row per order, at its latest signal.
+
+      THE ORDER IS THE UNIT, not the visit. An order that was queued, refused,
+      re-queued and confirmed is one line showing where it stands — which is
+      how the floor reads it, and how the client's own board is built. Counting
+      each visit separately would have the same order appear three times in a
+      month and make «тасдиқланиш %» exceed the number of orders.
+    */
+    latest AS (
+      SELECT DISTINCT ON (deal_id) deal_id, moved_at, signal
+        FROM moves
+       ORDER BY deal_id, moved_at DESC, signal
+    ),
+    dated AS (
+      SELECT * FROM latest WHERE moved_at >= $1
+    ),
+    /*
+      The queue arrival the current state belongs to.
+
+      Not the first arrival ever: an order that came back into the queue is
+      being worked from the moment it came back, so a waiting time measured
+      from a visit that ended weeks ago describes nothing that happened.
+    */
+    arrival AS (
+      SELECT w.deal_id, max(m.moved_at) AS queued_at
+        FROM dated w
+        JOIN moves m
+          ON m.deal_id = w.deal_id
+         AND m.signal = 'CONFIRM_NEW'
+         AND m.moved_at <= w.moved_at
+       GROUP BY w.deal_id
     ),
     classified AS (
       SELECT
         d."id" AS deal_id,
-        q.queued_at,
-        t.left_queue_at AS decided_at,
+        w.moved_at,
+        /*
+          Null when the order never passed through the queue at all.
+
+          It happens: a refusal recorded straight in Первичный отдел ·
+          Тасдикланмаган has no arrival behind it. The client's bot counts it
+          all the same — a filter requiring the refusal to arrive FROM the
+          queue was tried on their side and removed, because Bitrix's
+          automation does not route it consistently.
+        */
+        a.queued_at,
+        CASE WHEN w.signal = 'CONFIRM_NEW' THEN NULL ELSE w.moved_at END AS decided_at,
         /*
           РОП is the department's OWN name with the marker stripped, not its
           head's full name. The client's dashboards print "Sevinch", and the
           head of Sevinch(ROP) is "Usmonova 199 Sevinch" — a different string,
           and the one nobody on the floor uses.
-        */
-        /*
-          A department is only a ROP if it says so.
 
-          Stripping '(ROP)' unconditionally printed the raw name of any other
-          department into a column headed РОП — Регистрация and Операцион, the
-          two back-office units, leaked onto 25 orders and into the ROP filter
-          list. They are not sales groups and naming them as ones invites a
-          manager to compare them against real ones.
+          A department is only a ROP if it says so. Stripping '(ROP)'
+          unconditionally printed the raw name of any other department into a
+          column headed РОП — Регистрация and Операцион, the two back-office
+          units, leaked onto 25 orders and into the ROP filter list.
         */
         CASE
           WHEN dep."name" ILIKE '%(ROP)%'
             THEN NULLIF(btrim(replace(dep."name", '(ROP)', '')), '')
           ELSE NULL
         END AS rop,
-        CASE
-          /*
-            Killed, and nothing has happened since.
+        /*
+          Shipped without anyone reaching the customer.
 
-            The comparison used to look only at the last move TOWARDS delivery,
-            so an order killed on Monday and pushed back into the queue on
-            Wednesday still read as rejected while it sat waiting to be worked
-            — caught on deal 909770. A return to the queue is an event too, and
-            a kill older than it describes a finished attempt rather than where
-            the order stands now.
-          */
-          WHEN COALESCE(t.killed, false)
-               AND (t.last_yes_at IS NULL OR t.last_kill_at > t.last_yes_at)
-               AND (t.last_queued_at IS NULL OR t.last_kill_at > t.last_queued_at)
-                                                                            THEN 'REJECTED'
-          WHEN (COALESCE(t.shipped, false) OR COALESCE(t.said_yes, false))
-               AND d."confirmStatus" = 'UNREACHABLE'                          THEN 'UNCONFIRMED_SHIPPED'
-          WHEN COALESCE(t.shipped, false) OR COALESCE(t.said_yes, false)      THEN 'CONFIRMED'
-          WHEN COALESCE(t.killed, false)                                      THEN 'REJECTED'
-          WHEN curp."role" = 'CONFIRMATION'
-               AND cur."logisticsRole" = 'PENDING_CONFIRM'                    THEN 'CONFIRM_NEW'
-          WHEN curp."role" = 'CONFIRMATION'
-               AND cur."logisticsRole" = 'CHASING'                            THEN 'NO_ANSWER'
-          ELSE 'UNCONFIRMED_SHIPPED'
+          Arriving in Доставка is a confirmation unless the deal's «Тастиклаш
+          анализ» field says «Недозвон булиб чикарилган», which is a fact about
+          the deal rather than about the stage — so it refines the signal here
+          instead of being a sixth signal nothing could ever set.
+        */
+        CASE
+          WHEN w.signal = 'CONFIRMED' AND d."confirmStatus" = 'UNREACHABLE'
+            THEN 'UNCONFIRMED_SHIPPED'
+          ELSE w.signal::text
         END AS outcome
-      FROM queued q
-      JOIN "deal" d ON d."id" = q.deal_id
+      FROM dated w
+      JOIN "deal" d ON d."id" = w.deal_id
       JOIN "employee" e ON e."id" = d."employeeId"
       LEFT JOIN "department" dep ON dep."id" = e."departmentId"
-      JOIN "deal_stage" cur ON cur."id" = d."stageId"
-      LEFT JOIN "pipeline" curp ON curp."id" = cur."pipelineId"
-      LEFT JOIN trail t ON t.deal_id = d."id"
+      LEFT JOIN arrival a ON a.deal_id = w.deal_id
     ),
     numbered AS (
       SELECT
@@ -994,8 +979,8 @@ export class InsightsRepository {
         -- Tashkent, not UTC: the working day is the thing being counted, and
         -- five hours of it would otherwise be numbered into yesterday.
         row_number() OVER (
-          PARTITION BY c.rop, (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date
-          ORDER BY c.queued_at ASC, c.deal_id ASC
+          PARTITION BY c.rop, (c.moved_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date
+          ORDER BY c.moved_at ASC, c.deal_id ASC
         )::int AS daily_no
       FROM classified c
     )
@@ -1215,6 +1200,7 @@ export class InsightsRepository {
   ): Promise<{ totalItems: number; rows: ConfirmationOrderRow[] }> {
     // Allowlisted, never interpolated from the request: this reaches SQL.
     const sortColumn: Record<ConfirmationOrderSortValue, string> = {
+      movedAt: 'c.moved_at',
       queuedAt: 'c.queued_at',
       decidedAt: 'c.decided_at',
       amountMinor: 'd."amountMinor"',
@@ -1242,7 +1228,8 @@ export class InsightsRepository {
         currency: string
         stage_name: string
         outcome: ConfirmationOutcomeValue
-        queued_at: Date
+        moved_at: Date
+        queued_at: Date | null
         decided_at: Date | null
         total_items: bigint
       }[]
@@ -1274,6 +1261,7 @@ export class InsightsRepository {
          d."currency" AS currency,
          st."name" AS stage_name,
          c.outcome AS outcome,
+         c.moved_at AS moved_at,
          c.queued_at AS queued_at,
          c.decided_at AS decided_at,
          -- The unpaged count, carried on the rows themselves. A second
@@ -1315,7 +1303,7 @@ export class InsightsRepository {
     return {
       totalItems: rows.length === 0 ? 0 : int(rows[0]!.total_items),
       rows: rows.map((r) => {
-        const queuedAt = new Date(r.queued_at)
+        const queuedAt = r.queued_at === null ? null : new Date(r.queued_at)
         const decidedAt = r.decided_at === null ? null : new Date(r.decided_at)
 
         return {
@@ -1341,10 +1329,13 @@ export class InsightsRepository {
           currency: r.currency,
           stageName: r.stage_name,
           outcome: r.outcome,
+          movedAt: new Date(r.moved_at),
           queuedAt,
           decidedAt,
+          // Both ends or nothing: an order refused without ever being queued
+          // has no waiting time, and zero would read as "decided instantly".
           hoursToDecide:
-            decidedAt === null
+            decidedAt === null || queuedAt === null
               ? null
               : Math.round(((decidedAt.getTime() - queuedAt.getTime()) / 3_600_000) * 10) / 10,
         }

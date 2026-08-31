@@ -132,7 +132,7 @@ export const confirmationOrdersQuerySchema = periodQuerySchema
     z.object({
       page: z.coerce.number().int().min(1).max(10_000).default(1),
       pageSize: z.coerce.number().int().min(1).max(200).default(25),
-      sort: z.enum(CONFIRMATION_ORDER_SORTS).default('queuedAt'),
+      sort: z.enum(CONFIRMATION_ORDER_SORTS).default('movedAt'),
       order: z.enum(['asc', 'desc']).default('desc'),
       /**
        * Any subset of the five states, comma-separated. Absent means all.

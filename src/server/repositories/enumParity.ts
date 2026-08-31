@@ -19,6 +19,7 @@ import type { $Enums } from '@/generated/prisma/client'
 import type {
   CallDirectionValue,
   ConfirmStatusValue,
+  ConfirmationSignalValue,
   DataScopeValue,
   DealStatusValue,
   ExternalSourceValue,
@@ -51,6 +52,7 @@ const _stageCategory: AssertEqual<StageCategoryValue, $Enums.StageCategory> = tr
 const _pipelineRole: AssertEqual<PipelineRoleValue, $Enums.PipelineRole> = true
 const _logisticsRole: AssertEqual<LogisticsRoleValue, $Enums.LogisticsRole> = true
 const _confirmStatus: AssertEqual<ConfirmStatusValue, $Enums.ConfirmStatus> = true
+const _confirmationSignal: AssertEqual<ConfirmationSignalValue, $Enums.ConfirmationSignal> = true
 const _callDirection: AssertEqual<CallDirectionValue, $Enums.CallDirection> = true
 const _dealStatus: AssertEqual<DealStatusValue, $Enums.DealStatus> = true
 const _kpiMetric: AssertEqual<KpiMetricValue, $Enums.KpiMetric> = true

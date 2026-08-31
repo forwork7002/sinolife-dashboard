@@ -100,8 +100,25 @@ export const CONFIRMATION_OUTCOMES = [
 ] as const
 export type ConfirmationOutcomeValue = (typeof CONFIRMATION_OUTCOMES)[number]
 
+/**
+ * What a single stage move says about an order's confirmation.
+ *
+ * The outcomes above are what an ORDER ends up in; these are what a STAGE
+ * says. They differ by one member: `UNCONFIRMED_SHIPPED` is not something a
+ * stage can mean, only something a deal's «Тастиклаш анализ» field can turn a
+ * CONFIRMED move into.
+ */
+export const CONFIRMATION_SIGNALS = ['CONFIRM_NEW', 'NO_ANSWER', 'REJECTED', 'CONFIRMED'] as const
+export type ConfirmationSignalValue = (typeof CONFIRMATION_SIGNALS)[number]
+
 /** Columns the confirmation queue may be ordered by. An allowlist: it reaches SQL. */
-export const CONFIRMATION_ORDER_SORTS = ['queuedAt', 'decidedAt', 'amountMinor', 'title'] as const
+export const CONFIRMATION_ORDER_SORTS = [
+  'movedAt',
+  'queuedAt',
+  'decidedAt',
+  'amountMinor',
+  'title',
+] as const
 export type ConfirmationOrderSortValue = (typeof CONFIRMATION_ORDER_SORTS)[number]
 
 export const CALL_DIRECTIONS = ['INBOUND', 'OUTBOUND', 'CALLBACK'] as const

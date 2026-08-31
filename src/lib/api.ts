@@ -614,7 +614,10 @@ export interface ConfirmationOrderDto {
   /** The stage the deal sits in now — the evidence behind the outcome. */
   readonly stageName: string
   readonly outcome: ConfirmationOutcome
-  readonly queuedAt: string
+  /** The stage move this row is dated by — what САНА shows. */
+  readonly movedAt: string
+  /** When it entered the queue. Null when it was refused without ever being in one. */
+  readonly queuedAt: string | null
   /** When it left the queue. Null while it is still in one. */
   readonly decidedAt: string | null
   readonly hoursToDecide: number | null

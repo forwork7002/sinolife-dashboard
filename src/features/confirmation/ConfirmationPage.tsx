@@ -101,7 +101,7 @@ const OUTCOMES: readonly OutcomeSpec[] = [
 const SPEC_BY_KEY = new Map(OUTCOMES.map((spec) => [spec.key, spec]))
 
 /** The queue's own sort columns. The URL may carry another page's default. */
-const SORTS = ['queuedAt', 'decidedAt', 'amountMinor', 'title'] as const
+const SORTS = ['movedAt', 'queuedAt', 'decidedAt', 'amountMinor', 'title'] as const
 
 export function ConfirmationPage() {
   const { filters, update, apiParams } = useDashboardFilters()
@@ -114,7 +114,7 @@ export function ConfirmationPage() {
     which is the ordinary case on first load, and the only thing standing
     between a bookmarked link from another screen and an empty page.
   */
-  const sort = (SORTS as readonly string[]).includes(filters.sort) ? filters.sort : 'queuedAt'
+  const sort = (SORTS as readonly string[]).includes(filters.sort) ? filters.sort : 'movedAt'
 
   const query = useQuery({
     queryKey: ['confirmation-queue', apiParams, filters.page, filters.pageSize, sort, filters.order],
@@ -223,15 +223,15 @@ export function ConfirmationPage() {
       // only column that is unique per row without being an opaque id.
       rowHeader: true,
       header: 'САНА',
-      sortKey: 'queuedAt',
+      sortKey: 'movedAt',
       width: '112px',
       render: (row) => (
         <div className="whitespace-nowrap">
           <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
-            {tashkentDate(row.queuedAt)}
+            {tashkentDate(row.movedAt)}
           </span>
           <span className="tabular block text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-            {tashkentTime(row.queuedAt)}
+            {tashkentTime(row.movedAt)}
           </span>
         </div>
       ),

@@ -20,6 +20,7 @@
 import type {
   CallDirectionValue,
   ConfirmStatusValue,
+  ConfirmationSignalValue,
   DealStatusValue,
   ExternalSourceValue,
   LogisticsRoleValue,
@@ -129,6 +130,14 @@ export interface RawStage extends ExternalRecord {
   readonly pipelineExternalId?: string
   /** Place in the delivery ladder. Set only for logistics pipelines. */
   readonly logisticsRole?: LogisticsRoleValue
+  /**
+   * What entering this stage says about the order's confirmation.
+   *
+   * Set for the five stages the client's bot reacts to and left undefined for
+   * every other, which is the meaningful part: an undefined signal is "this
+   * move changes nothing", not "we could not classify it".
+   */
+  readonly confirmationSignal?: ConfirmationSignalValue
   /**
    * Already mapped to OUR semantics by the provider's mapping configuration.
    * A provider that cannot classify a stage must fail loudly rather than

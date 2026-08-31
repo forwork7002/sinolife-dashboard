@@ -54,6 +54,7 @@ import {
   callDirection,
   categoryFromSemantic,
   confirmStatusFromLabel,
+  confirmationSignal,
   dealStatus,
   extractOrderCode,
   logisticsRole,
@@ -803,6 +804,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
           pipelineExternalId: String(pipelineId),
           category: categoryFromSemantic(s.SEMANTICS, index === 0, s.STATUS_ID),
           logisticsRole: logisticsRole(s.STATUS_ID),
+          confirmationSignal: confirmationSignal(s.STATUS_ID),
           sortOrder: pipelineId * 1000 + Number(s.SORT ?? index),
           isActive: true,
         })

@@ -377,6 +377,7 @@ export function createSyncHandlers(
           sortOrder: record.sortOrder,
           isActive: record.isActive,
           logisticsRole: record.logisticsRole ?? null,
+          confirmationSignal: record.confirmationSignal ?? null,
           pipelineId: (await resolver.optional('pipeline', record.pipelineExternalId)) ?? null,
         }
 

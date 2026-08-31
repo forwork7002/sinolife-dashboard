@@ -103,7 +103,7 @@ export class CommandCentreService {
       insightsService.confirmationQueue(period, {
         page: 1,
         pageSize: 1,
-        sort: 'queuedAt',
+        sort: 'movedAt',
         order: 'desc',
       }),
       this.repository.commandRejectionBand(period),

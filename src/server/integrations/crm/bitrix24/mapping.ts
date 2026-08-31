@@ -7,6 +7,7 @@
  */
 
 import type {
+  ConfirmationSignalValue,
   CallDirectionValue,
   ConfirmStatusValue,
   DealStatusValue,
@@ -183,16 +184,56 @@ export function logisticsRole(stageId: string): LogisticsRoleValue | undefined {
 }
 
 /**
- * Stages that record a confirmation refusal but sit outside the confirmation
- * funnel, so their history has to be fetched by stage rather than by pipeline.
+ * The five stage moves that change an order's confirmation status.
  *
- * One entry today. It is a list because the portal has moved this state once
- * already, and a second landing place would otherwise mean editing a filter
- * in the provider rather than the table that documents what the stage means.
+ * TAKEN FROM THE CLIENT'S OWN INFRASTRUCTURE DOCUMENT, which lists exactly
+ * these and marks every other stage in the three tracked funnels IGNORED —
+ * «статус ўзгармайди». Their bot has run on this table for months and their
+ * published dashboard is built from its output, so matching it is not a
+ * preference: any other reading disagrees with the numbers the floor uses.
+ *
+ * WHAT IS DELIBERATELY ABSENT, because each omission looks like a mistake:
+ *
+ *   C4:FINAL_INVOICE «Пропущенный», C4:PREPAYMENT_INVOICE and C4:UC_GYMGQS
+ *     (the two SMS stages) — an order parked in one of these has not been
+ *     reached AND has not refused. It is still whatever it was, which is why
+ *     the bot leaves the status alone. Reading them as «кутармади» would move
+ *     orders into a state no operator put them in.
+ *   C4:WON «Сделка успешна» — Bitrix moves it straight on to C6:NEW, and the
+ *     arrival there is the confirmation. Counting both double-counts.
+ *   C4:UC_V4JJIW «UTECHKA» — a leak, tracked by nobody.
+ *
+ * The refusal appears twice on purpose. Picking «Ошибка первичный отдел» does
+ * not leave a deal in C4:LOSE — Bitrix moves it to Первичный отдел ·
+ * Тасдикланмаган, and their document is explicit that the real refusal is
+ * held there. A filter that accepted C12:UC_1OM8B2 only when it arrived FROM
+ * C4:LOSE was tried on their side and removed: «жуда қаттиқ бўлиб чиқди,
+ * Bitrix автоматикаси ҳар доим бир хил қолдирмайди». Both are accepted here
+ * for the same reason.
  */
-export const CONFIRMATION_REFUSAL_STAGES: readonly string[] = Object.freeze([
-  'C12:UC_1OM8B2',
-])
+export const CONFIRMATION_SIGNAL_STAGES: Readonly<Record<string, ConfirmationSignalValue>> =
+  Object.freeze({
+    'C4:NEW': 'CONFIRM_NEW',          // Заказ тасдиклаш — the starting point
+    'C4:UC_JQR9F1': 'NO_ANSWER',      // Недозвон смс
+    'C4:LOSE': 'REJECTED',            // Ошибка первичный отдел
+    'C12:UC_1OM8B2': 'REJECTED',      // Первичный отдел · Тасдикланмаган
+    'C6:NEW': 'CONFIRMED',            // Доставка · Подготовка товара
+  })
+
+export function confirmationSignal(stageId: string): ConfirmationSignalValue | undefined {
+  return CONFIRMATION_SIGNAL_STAGES[stageId]
+}
+
+/**
+ * Signal stages that sit OUTSIDE the pipelines whose history is read, so their
+ * transitions have to be fetched by stage id instead.
+ *
+ * Derived rather than restated: adding a signal stage from another funnel
+ * should not also require remembering to widen a fetch filter.
+ */
+export const CONFIRMATION_REFUSAL_STAGES: readonly string[] = Object.freeze(
+  Object.keys(CONFIRMATION_SIGNAL_STAGES).filter((id) => id.startsWith('C12:')),
+)
 
 /**
  * The hub or carrier a delivery stage represents, by its display name.

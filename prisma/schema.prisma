@@ -130,6 +130,24 @@ enum LogisticsRole {
 }
 
 /// Operator confirmation outcome — UF_CRM_1777879395123 on the deal.
+/// What a stage move tells the confirmation queue, and nothing else.
+///
+/// The client's bot reacts to exactly five stages; every other stage in the
+/// three tracked funnels leaves the order's confirmation status untouched.
+/// Their infrastructure document is explicit about it ("IGNORED: ... статус
+/// ўзгармайди"), and the distinction matters: an order parked in «Пропущенный»
+/// has not been reached and has not refused — it is still whatever it was.
+///
+/// UNCONFIRMED_SHIPPED is absent on purpose. It is not a property of a stage:
+/// arriving in `C6:NEW` is CONFIRMED unless the deal's «Тастиклаш анализ»
+/// field says the customer was never reached, which is a fact about the deal.
+enum ConfirmationSignal {
+  CONFIRM_NEW
+  NO_ANSWER
+  REJECTED
+  CONFIRMED
+}
+
 enum ConfirmStatus {
   /// Тастикланган
   CONFIRMED
@@ -656,6 +674,10 @@ model DealStage {
   pipelineId     String?
   /// Place in the delivery ladder. Set only for Доставка stages.
   logisticsRole  LogisticsRole?
+  /// What entering this stage says about the order's confirmation.
+  ///
+  /// Null for all but five stages, which is the point — see ConfirmationSignal.
+  confirmationSignal ConfirmationSignal?
   /// Funnel ordering. Lower numbers sit earlier in the pipeline.
   sortOrder      Int
   isActive       Boolean        @default(true)
@@ -671,6 +693,7 @@ model DealStage {
   @@index([sortOrder])
   @@index([pipelineId])
   @@index([logisticsRole])
+  @@index([confirmationSignal])
   @@map("deal_stage")
 }
 
