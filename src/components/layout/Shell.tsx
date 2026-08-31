@@ -383,7 +383,27 @@ export function Shell({
       an opaque fill on this wrapper was silently covering all three. The shell
       stays transparent so the atmosphere the stylesheet paints can reach the eye.
     */
-    <div className="flex min-h-screen">
+    /*
+      THE APPLICATION IS EXACTLY ONE SCREEN TALL, and the browser never
+      scrolls it.
+
+      It was `min-h-screen`, which stretches to the CONTENT — so a page with a
+      three-thousand-pixel table made the rail three thousand pixels tall too,
+      and the account row went with it to the bottom of that. Scrolling down a
+      long table, the menu stayed at the top of the page and the person's own
+      name appeared a screenful later, under an expanse of nothing. That is the
+      "big empty space", and it was never a spacing bug: the rail was simply as
+      tall as the table beside it.
+
+      Fixed at the viewport, the rail is a screen tall whatever the page holds,
+      its footer sits at its bottom edge and stays there, and the scrolling
+      moves into the two places it belongs — the menu, and the content.
+
+      `100dvh` rather than `100vh`: on a phone `vh` is the height WITHOUT the
+      browser's own chrome, so a fixed-height app is taller than the window and
+      the bottom of it can never be reached.
+    */
+    <div className="flex overflow-hidden" style={{ height: '100dvh' }}>
       <a href="#main" className="skip-link">
         Asosiy qismga oʻtish
       </a>
@@ -405,7 +425,9 @@ export function Shell({
         }}
       >
         <div
-          className={`flex items-center gap-2.5 py-5 ${collapsed ? 'justify-center px-0' : 'px-5'}`}
+          className={`flex shrink-0 items-center gap-2.5 py-5 ${
+            collapsed ? 'justify-center px-0' : 'px-5'
+          }`}
         >
           <WordmarkBadge />
           {/* Removed rather than hidden: a truncated name in a 60px rail is
@@ -560,7 +582,7 @@ export function Shell({
           the rail rather than to the account.
         */}
         <div
-          className={`border-t py-2 ${collapsed ? 'px-0' : 'px-2.5'}`}
+          className={`shrink-0 border-t py-2.5 ${collapsed ? 'px-0' : 'px-2.5'}`}
           style={{ borderColor: 'var(--border)' }}
         >
           <div
@@ -594,10 +616,16 @@ export function Shell({
                       style={{ color: 'var(--ink-primary)' }}
                     >
                       {user.name}
-                      <span style={{ color: 'var(--ink-muted)' }}>
-                        {' · '}
-                        {ROLE_LABELS[user.role]}
-                      </span>
+                      {/* The founding account is literally called
+                          "Administrator" and holds the ADMIN role, so the row
+                          read "Administrator · Administrator" — which says one
+                          thing twice and looks like a bug. */}
+                      {user.name !== ROLE_LABELS[user.role] && (
+                        <span style={{ color: 'var(--ink-muted)' }}>
+                          {' · '}
+                          {ROLE_LABELS[user.role]}
+                        </span>
+                      )}
                     </span>
                   )}
                 </Link>
@@ -646,14 +674,19 @@ export function Shell({
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header
-          className="sticky top-0 z-20 border-b"
+          className="z-20 shrink-0 border-b"
           style={{
-            /* Glass: a translucent surface plus a real backdrop blur, so the
-               content scrolling underneath reads as behind rather than as
-               clipped. Saturation is raised because blurring alone desaturates
-               what shows through and the accent bar below goes grey. */
+            /* Glass: a translucent surface over a real backdrop blur, so the
+               ambient wash the stylesheet paints on `html` shows through the
+               bar rather than being cut off by it. Saturation is raised
+               because blurring alone desaturates what comes through and the
+               accent bar below goes grey.
+
+               It no longer needs `sticky`: the bar is a row of a column that
+               is exactly the viewport tall, so it cannot be scrolled away from
+               — the scrolling happens under it, inside `main`. */
             background: 'color-mix(in oklab, var(--surface) 72%, transparent)',
             backdropFilter: 'blur(12px) saturate(1.6)',
             WebkitBackdropFilter: 'blur(12px) saturate(1.6)',
@@ -733,12 +766,24 @@ export function Shell({
         */}
         {ViewTransition ? (
           <ViewTransition name="page-body">
-            <main id="main" className="flex-1 px-4 py-5 lg:px-6 lg:py-6">
+            <main
+              id="main"
+              className="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6 lg:py-6"
+            >
               {children}
             </main>
           </ViewTransition>
         ) : (
-          <main id="main" className="flex-1 px-4 py-5 lg:px-6 lg:py-6">
+          /*
+            `min-h-0` is the load-bearing half of this pair.
+
+            A flex child's default `min-height: auto` refuses to shrink below
+            its content, so `overflow-y-auto` on its own would have nothing to
+            scroll — the box would simply grow and push the column past the
+            screen it is pinned to. The two together are what put the scrollbar
+            on the content instead of on the window.
+          */
+          <main id="main" className="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6 lg:py-6">
             {children}
           </main>
         )}
