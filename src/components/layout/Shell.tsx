@@ -18,13 +18,15 @@ import {
 import { Button } from '@/components/ui/Button'
 import { CommandPalette, useCommandK, type CommandGroup } from '@/components/ui/CommandPalette'
 import {
+  BellGlyph,
+  RefreshGlyph,
   SearchGlyph,
   TriangleGlyph,
 } from '@/components/ui/Icons'
 import { Kbd } from '@/components/ui/Kbd'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
-import { apiGet, type SearchDto } from '@/lib/api'
+import { apiGet, type AlertsDto, type SearchDto } from '@/lib/api'
 import { sessionUser, signOut, useSession } from '@/lib/authClient'
 import { formatCompactUzs, formatDateTime } from '@/lib/format'
 import { ROLE_LABELS, canSeeHref, type RoleValue } from '@/lib/roles'
@@ -145,7 +147,6 @@ const NAV = NAV_GROUPS.flatMap((group) => group.items)
 export function Shell({
   children,
   dataSource,
-  lastSyncedAt,
   periodAware = false,
 }: {
   children: ReactNode
@@ -161,7 +162,6 @@ export function Shell({
    */
   periodAware?: boolean
   dataSource?: 'DEMO' | 'BITRIX24' | 'MANUAL'
-  lastSyncedAt?: string | null
 }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -180,6 +180,27 @@ export function Shell({
    * here costs nothing new.
    */
   const { filters, setPeriod } = useDashboardFilters()
+
+  /*
+    The header's three facts: how fresh, what is waiting, what is wrong.
+
+    ONE request a minute for the whole application, not one per page — the key
+    is constant, so react-query hands every screen the same cached answer and
+    refetches on its own clock. `refetchInterval` rather than a timer of our
+    own so it pauses with the tab: a laptop asleep in a bag must not wake to
+    sixty queued requests.
+  */
+  const alertsQuery = useQuery({
+    queryKey: ['meta', 'alerts'],
+    queryFn: ({ signal }) => apiGet<AlertsDto>('/meta/alerts', {}, signal),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+  const alerts = alertsQuery.data?.data
+  const pending = alerts?.queue?.pending ?? 0
+  const overdue = alerts?.queue?.overdue ?? 0
+  const alertCount = alerts?.alerts.length ?? 0
+  const busy = useIsFetching() > 0
 
   /**
    * The ⌘K palette. Closed means UNMOUNTED (the primitive returns null), so
@@ -480,7 +501,6 @@ export function Shell({
           onToggleCollapse={() => setSidebarCollapsed(!collapsed)}
           groups={railGroups}
           user={user}
-          lastSyncedAt={lastSyncedAt}
           onSignOut={handleSignOut}
         />
       </aside>
@@ -529,8 +549,7 @@ export function Shell({
               onNavigate={closeMenu}
               groups={railGroups}
               user={user}
-              lastSyncedAt={lastSyncedAt}
-              onSignOut={handleSignOut}
+                  onSignOut={handleSignOut}
             />
           </div>
         </div>
@@ -582,7 +601,7 @@ export function Shell({
 
             {dataSource && (
               <span className="hidden min-[400px]:inline-flex">
-                <DataSourceBadge source={dataSource} />
+                <DataSourceBadge source={dataSource} syncedAt={alerts?.syncedAt ?? null} />
               </span>
             )}
 
@@ -609,6 +628,58 @@ export function Shell({
                   <Kbd keys={['mod', 'K']} />
                 </span>
               </Button>
+
+              {/*
+                The bell counts what is WAITING, the triangle what is WRONG.
+
+                Two questions, so two controls: work to do is not the same as
+                something broken, and one badge merging them would be a number
+                nobody could act on. Each hides itself at zero — a permanent 0
+                is noise, and the bell's absence is already the message.
+              */}
+              {pending > 0 && (
+                <Tooltip content={`${pending} ta buyurtma tasdiqlashni kutmoqda`}>
+                  <Link
+                    href="/confirmation?preset=today&outcomes=CONFIRM_NEW"
+                    aria-label={`${pending} ta buyurtma navbatda`}
+                    className="rail-item focusable relative flex h-9 w-9 items-center justify-center rounded-lg"
+                  >
+                    <BellGlyph />
+                    <span
+                      aria-hidden="true"
+                      className="absolute top-0.5 right-0.5 min-w-[15px] rounded-full px-1 text-center text-[10px] leading-[15px] font-semibold"
+                      style={{
+                        background: overdue > 0 ? 'var(--status-warning)' : 'var(--series-1)',
+                        color: 'var(--ink-on-series)',
+                      }}
+                    >
+                      {pending > 99 ? '99+' : pending}
+                    </span>
+                  </Link>
+                </Tooltip>
+              )}
+
+              {alertCount > 0 && <AlertsMenu alerts={alerts?.alerts ?? []} />}
+
+              {/*
+                Refresh, for the person who will not wait sixty seconds.
+
+                It invalidates the cache rather than reloading the page: the
+                window, the filters and the scroll position are state this
+                screen holds, and a reload would throw them away to fetch the
+                same rows. It turns only while something is genuinely in
+                flight — an arrow that always spins says nothing.
+              */}
+              <Tooltip content="Maʼlumotni yangilash">
+                <button
+                  type="button"
+                  onClick={() => void queryClient.invalidateQueries()}
+                  aria-label="Maʼlumotni yangilash"
+                  className="rail-item focusable flex h-9 w-9 items-center justify-center rounded-lg"
+                >
+                  <RefreshGlyph spinning={busy} />
+                </button>
+              </Tooltip>
             </div>
           </div>
 
@@ -747,7 +818,6 @@ function RailBody({
   onNavigate,
   groups,
   user,
-  lastSyncedAt,
   onSignOut,
 }: {
   variant: 'rail' | 'drawer'
@@ -757,7 +827,6 @@ function RailBody({
   onNavigate?: () => void
   groups: readonly RailGroup[]
   user: { name: string; role: RoleValue } | null
-  lastSyncedAt?: string | null
   onSignOut: () => void
 }) {
   const closeRef = useRef<HTMLButtonElement>(null)
@@ -935,7 +1004,6 @@ function RailBody({
         fresh the numbers are above them.
       */}
       <div className="shrink-0 border-t" style={{ borderColor: 'var(--border)' }}>
-        {!collapsed && <FreshnessPanel lastSyncedAt={lastSyncedAt} />}
 
         <div
           className={
@@ -1092,61 +1160,6 @@ function PanelIcon({ open }: { open: boolean }) {
   )
 }
 
-function FreshnessPanel({ lastSyncedAt }: { lastSyncedAt?: string | null }) {
-  const fetching = useIsFetching() > 0
-  const [now, setNow] = useState(() => Date.now())
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 15_000)
-    return () => clearInterval(timer)
-  }, [])
-
-  if (!lastSyncedAt) return null
-
-  const ageMs = now - new Date(lastSyncedAt).getTime()
-  const minutes = Math.max(0, Math.floor(ageMs / 60_000))
-  const stale = minutes >= 5
-
-  return (
-    <div className="flex items-center gap-2 px-4 pt-2.5 pb-1">
-      <span
-        aria-hidden="true"
-        className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
-        style={{
-          background: stale ? 'var(--status-warning)' : 'var(--status-good)',
-          // Only while a request is genuinely in flight — a permanent pulse
-          // stops meaning anything within a day.
-          animation: fetching ? 'pulse 1.2s ease-in-out infinite' : undefined,
-        }}
-      />
-      {/* The exact timestamp is data, so it travels by the Tooltip primitive
-          rather than a native title — visible on focus and touch, not only to
-          a patient mouse. The trigger is a tab stop for the same reason. */}
-      <Tooltip content={formatDateTime(lastSyncedAt)}>
-        <p
-          tabIndex={0}
-          className="focusable tabular min-w-0 truncate rounded text-[11px]"
-          style={{ color: 'var(--ink-muted)' }}
-        >
-          {t.badge.lastSync}
-          <span className="mx-1">·</span>
-          {/* The word matters, not only the tint. The worker runs every
-              sixty seconds, so five missed ticks is a fault — and a fault
-              signalled by colour alone reaches nobody who cannot see it. */}
-          <span style={{ color: stale ? 'var(--status-warning)' : 'var(--ink-secondary)' }}>
-            {relativeMinutes(minutes)}
-            {stale && (
-              <span className="ml-1 inline-flex items-center gap-1 font-medium">
-                <TriangleGlyph size={10} /> eskirgan
-              </span>
-            )}
-          </span>
-        </p>
-      </Tooltip>
-    </div>
-  )
-}
-
 function relativeMinutes(minutes: number): string {
   if (minutes < 1) return t.badge.justNow
   if (minutes < 60) return `${minutes} ${t.badge.minutesAgo}`
@@ -1173,33 +1186,209 @@ function isActive(pathname: string, href: string): boolean {
  * Reads `meta.dataSource` and nothing else, so no screen can present generated
  * numbers as if they came from the live CRM.
  */
-function DataSourceBadge({ source }: { source: 'DEMO' | 'BITRIX24' | 'MANUAL' }) {
+function DataSourceBadge({
+  source,
+  syncedAt,
+}: {
+  source: 'DEMO' | 'BITRIX24' | 'MANUAL'
+  /** When the numbers last landed. Null until the first payload arrives. */
+  syncedAt?: string | null
+}) {
   const isDemo = source !== 'BITRIX24'
+
+  /*
+    THE SOURCE AND ITS FRESHNESS ARE ONE FACT, so they are one chip.
+
+    "Bitrix24" alone says where the numbers come from and nothing about
+    whether they are current; the freshness note used to say the second half
+    three hundred pixels away, at the foot of the sidebar. Together they read
+    as one sentence — this is the source, this is when it last spoke — and one
+    dot colours the whole statement.
+  */
+  const sync = useSyncFreshness(syncedAt)
 
   const badge = (
     <span
-      // The hint ("these numbers are generated") is worth reading, so the
-      // demo badge is a tab stop and its explanation a real Tooltip — a
-      // native title reaches neither keyboards nor touch. The live badge
-      // explains nothing and stays out of the tab order.
-      tabIndex={isDemo ? 0 : undefined}
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${isDemo ? 'focusable' : ''}`}
+      // The hint is worth reading, so the chip is a tab stop and its
+      // explanation a real Tooltip — a native title reaches neither keyboards
+      // nor touch.
+      tabIndex={0}
+      className="focusable inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium whitespace-nowrap"
       style={{
-        background: isDemo ? 'color-mix(in oklab, var(--status-warning) 18%, transparent)' : 'var(--grid)',
+        background: isDemo
+          ? 'color-mix(in oklab, var(--status-warning) 18%, transparent)'
+          : 'var(--grid)',
         color: 'var(--ink-primary)',
       }}
     >
       <span
         aria-hidden="true"
-        className="inline-block h-1.5 w-1.5 rounded-full"
-        style={{ background: isDemo ? 'var(--status-warning)' : 'var(--status-good)' }}
+        className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+        style={{
+          background: isDemo || sync.stale ? 'var(--status-warning)' : 'var(--status-good)',
+        }}
       />
       {isDemo ? t.badge.demo : t.badge.live}
+      {!isDemo && sync.label && (
+        <>
+          <span aria-hidden="true" style={{ color: 'var(--ink-muted)' }}>
+            ·
+          </span>
+          <span
+            className="tabular"
+            style={{ color: sync.stale ? 'var(--status-warning)' : 'var(--ink-secondary)' }}
+          >
+            {sync.label}
+          </span>
+        </>
+      )}
     </span>
   )
 
-  return isDemo ? <Tooltip content={t.badge.demoHint}>{badge}</Tooltip> : badge
+  const hint = isDemo
+    ? t.badge.demoHint
+    : syncedAt
+      ? `${t.badge.lastSync}: ${formatDateTime(syncedAt)}`
+      : t.badge.live
+
+  return <Tooltip content={hint}>{badge}</Tooltip>
 }
+
+/**
+ * How long ago the numbers landed, ticking on its own.
+ *
+ * The clock has to keep moving or a screen left open overnight still reads
+ * "hozirgina" at six in the morning. Fifteen seconds is fine: the unit shown
+ * is minutes, so nothing finer would ever be visible.
+ */
+function useSyncFreshness(syncedAt?: string | null): { label: string | null; stale: boolean } {
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 15_000)
+    return () => clearInterval(timer)
+  }, [])
+
+  if (!syncedAt) return { label: null, stale: false }
+
+  const minutes = Math.max(0, Math.floor((now - new Date(syncedAt).getTime()) / 60_000))
+  // The worker ticks every sixty seconds, so five missed ticks is a fault.
+  return { label: relativeMinutes(minutes), stale: minutes >= 5 }
+}
+
+/**
+ * What is wrong, as a menu rather than a badge.
+ *
+ * A count alone tells somebody there is a problem and nothing about which —
+ * so the triangle opens the list, and every line with a screen behind it is a
+ * link to that screen. A critical alert colours the trigger red; a warning
+ * leaves it amber.
+ */
+function AlertsMenu({
+  alerts,
+}: {
+  alerts: readonly {
+    readonly key: string
+    readonly severity: 'warning' | 'critical'
+    readonly label: string
+    readonly href?: string
+  }[]
+}) {
+  const [open, setOpen] = useState(false)
+  const container = useRef<HTMLDivElement>(null)
+  const critical = alerts.some((alert) => alert.severity === 'critical')
+  const tone = critical ? 'var(--status-critical)' : 'var(--status-warning)'
+
+  // Dismiss on an outside click or Escape — a popover that can only be closed
+  // by re-clicking its own trigger is a trap on a dense bar.
+  useEffect(() => {
+    if (!open) return
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (!container.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  return (
+    <div ref={container} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-label={`${alerts.length} ta ogohlantirish`}
+        aria-expanded={open}
+        className="rail-item focusable relative flex h-9 w-9 items-center justify-center rounded-lg"
+        style={{ color: tone }}
+      >
+        <TriangleGlyph size={16} />
+        <span
+          aria-hidden="true"
+          className="absolute top-0.5 right-0.5 min-w-[15px] rounded-full px-1 text-center text-[10px] leading-[15px] font-semibold"
+          style={{ background: tone, color: 'var(--ink-on-series)' }}
+        >
+          {alerts.length}
+        </span>
+      </button>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Ogohlantirishlar"
+          className="absolute right-0 z-30 mt-1.5 w-[min(21rem,calc(100vw-2rem))] overflow-hidden border p-1"
+          style={{
+            background: 'var(--surface)',
+            borderColor: 'var(--border)',
+            borderRadius: 'var(--radius-panel)',
+            boxShadow: 'var(--shadow-float)',
+          }}
+        >
+          {alerts.map((alert) => {
+            const body = (
+              <span className="flex items-start gap-2">
+                <span
+                  aria-hidden="true"
+                  className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{
+                    background:
+                      alert.severity === 'critical'
+                        ? 'var(--status-critical)'
+                        : 'var(--status-warning)',
+                  }}
+                />
+                <span className="text-[12.5px] leading-snug">{alert.label}</span>
+              </span>
+            )
+
+            return alert.href ? (
+              <Link
+                key={alert.key}
+                href={alert.href}
+                onClick={() => setOpen(false)}
+                className="rail-item focusable block rounded-lg px-2.5 py-2"
+              >
+                {body}
+              </Link>
+            ) : (
+              <p key={alert.key} className="px-2.5 py-2" style={{ color: 'var(--ink-secondary)' }}>
+                {body}
+              </p>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 
 function ChartIcon() {
   return (

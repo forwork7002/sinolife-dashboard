@@ -125,9 +125,15 @@ export function PageShell({
     enabled.sources || enabled.search
 
   return (
+    /*
+      The sync time is no longer threaded through here. It used to be read
+      from the filters payload and handed down for the rail's footer; the
+      header fetches it from `/meta/alerts` itself, beside the two other facts
+      it states, so no page has to carry a fact about the application in a
+      prop any more.
+    */
     <Shell
       dataSource={meta?.dataSource ?? options.data?.meta.dataSource}
-      lastSyncedAt={data?.lastSyncedAt ?? null}
       periodAware={period}
     >
       <div
