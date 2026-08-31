@@ -12,6 +12,10 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  // The shell paints edge to edge and pads its own bar and floor with the
+  // safe-area insets; without `cover` a notched phone letterboxes the app
+  // in white above the header instead.
+  viewportFit: 'cover',
   // The palette ships light and dark steps; let the browser chrome follow.
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#f6f7f9' },

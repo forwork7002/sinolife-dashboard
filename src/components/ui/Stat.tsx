@@ -80,13 +80,13 @@ export function StatTile({
 
       {status === 'loading' ? (
         // role="status", because aria-label on a bare div names nothing.
-        // Sized to the 30px figure below, so ready never reflows loading.
-        <div className="skeleton mt-2 h-[30px] w-2/3" role="status">
+        // Sized to the figure below at each breakpoint, so ready never reflows loading.
+        <div className="skeleton mt-2 h-[26px] w-2/3 sm:h-[30px]" role="status">
           <span className="sr-only">Yuklanmoqda</span>
         </div>
       ) : status === 'error' ? (
         <p
-          className="figure mt-2 text-[30px] leading-none font-semibold"
+          className="figure mt-2 text-[26px] sm:text-[30px] leading-none font-semibold"
           style={{ color: 'var(--status-critical)' }}
           // Decorative title — it only repeats the visible word, so it may
           // stay native. Data-carrying titles ride the Tooltip primitive.
@@ -105,7 +105,7 @@ export function StatTile({
           <Tooltip content={<span className="tabular">{formatUzs(value)}</span>}>
             <span
               tabIndex={0}
-              className="focusable figure block rounded-[var(--radius-panel-sm)] text-[30px] leading-none font-semibold"
+              className="focusable figure block rounded-[var(--radius-panel-sm)] text-[26px] sm:text-[30px] leading-none font-semibold"
               style={{ color: toneColor }}
             >
               <StatValue value={value} unit={unit} />
@@ -114,7 +114,7 @@ export function StatTile({
         </div>
       ) : (
         <p
-          className="figure mt-2 text-[30px] leading-none font-semibold"
+          className="figure mt-2 text-[26px] sm:text-[30px] leading-none font-semibold"
           style={{ color: toneColor }}
         >
           <StatValue value={value} unit={unit} />

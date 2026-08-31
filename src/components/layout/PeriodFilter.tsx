@@ -76,9 +76,24 @@ export function PeriodFilter({
   }, [open])
 
   return (
-    <div ref={container} className="relative flex items-center gap-1.5">
+    /*
+      FULL WIDTH ON A PHONE, ITS OWN WIDTH ON A DESK.
+
+      Seven presets and the picker are ~470px laid out flat, and a phone's
+      content column is ~360. Flat, they ran 114px past the edge of every
+      page and the whole page could be dragged sideways to reach "Shu yil".
+      Below sm the row scrolls inside itself instead, edge to edge — the
+      negative margin lets it run under the page's own padding so the first
+      and last buttons sit flush with the content when scrolled to either end,
+      and the scrollbar is hidden because a thumb does not need one.
+
+      The picker popover hangs off THIS wrapper, not the scroller: a popover
+      inside an overflow container is clipped by it.
+    */
+    <div ref={container} className="relative w-full sm:w-auto">
+      <div className="no-scrollbar -mx-4 flex items-center gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0">
       <div
-        className="flex items-center gap-0.5 rounded-lg border p-0.5"
+        className="flex shrink-0 items-center gap-0.5 rounded-lg border p-0.5"
         style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
         role="group"
         aria-label={t.period.label}
@@ -91,7 +106,9 @@ export function PeriodFilter({
               type="button"
               onClick={() => onChange({ preset })}
               aria-pressed={active}
-              className="focusable rounded-md px-2.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors"
+              // Taller under a thumb than under a pointer: 36px on a phone is the
+              // smallest target that is reliably hit, 28px is right for a mouse.
+              className="focusable rounded-md px-2.5 py-2 text-[13px] font-medium whitespace-nowrap transition-colors sm:py-1.5 sm:text-xs"
               style={{
                 background: active ? 'var(--ink-primary)' : 'transparent',
                 color: active ? 'var(--surface)' : 'var(--ink-secondary)',
@@ -109,7 +126,7 @@ export function PeriodFilter({
         aria-expanded={open}
         aria-haspopup="dialog"
         title={t.period.pick}
-        className="focusable flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium whitespace-nowrap transition-colors"
+        className="focusable flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors sm:py-2 sm:text-xs"
         style={{
           borderColor: value === 'custom' ? 'var(--accent)' : 'var(--border)',
           background: value === 'custom' ? 'var(--accent-soft)' : 'var(--surface-raised)',
@@ -119,6 +136,7 @@ export function PeriodFilter({
         <CalendarIcon />
         {value === 'custom' && from ? shortRange(from, to) : t.period.pick}
       </button>
+      </div>
 
       {open && (
         <PeriodPicker
@@ -193,7 +211,9 @@ function PeriodPicker({
     <div
       role="dialog"
       aria-label={t.period.pick}
-      className="absolute top-full right-0 z-50 mt-2 w-72 rounded-[var(--radius-panel)] border p-3"
+      // Spans the row on a phone — anchored right on a desk it would hang off
+      // the left edge of a 360px screen and lose its first field.
+      className="absolute top-full right-0 left-0 z-50 mt-2 rounded-[var(--radius-panel)] border p-3 sm:left-auto sm:w-72"
       style={{
         background: 'var(--surface-raised)',
         borderColor: 'var(--border-strong)',

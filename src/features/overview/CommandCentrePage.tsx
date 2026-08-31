@@ -205,7 +205,7 @@ function MoneyTiles({ data, status }: BlockProps) {
   const daily = intake?.daily ?? []
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
       <StatTile
         label="Bron qilingan summa"
         value={intake ? Number(intake.booked.amount) : null}
@@ -809,7 +809,7 @@ function NotConnected({ data }: { data: CommandCentreDto | undefined }) {
         hint="Bu raqamlar nol emas — ular hali mavjud emas"
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         {items.map((item) => (
           <div key={item.key} className="card flex flex-col gap-1.5 px-4 py-3.5">
             <div className="flex items-center gap-2">

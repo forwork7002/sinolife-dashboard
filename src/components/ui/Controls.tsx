@@ -38,7 +38,7 @@ export function SearchInput({
   }, [local, onChange])
 
   return (
-    <div className="relative">
+    <div className="relative w-full sm:w-auto">
       <svg
         width="14"
         height="14"
@@ -59,12 +59,11 @@ export function SearchInput({
         onChange={(e) => setLocal(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="focusable w-full rounded-lg border py-1.5 pr-2.5 pl-8 text-xs outline-none"
+        className="focusable w-full rounded-lg border py-2 pr-2.5 pl-8 text-[13px] outline-none sm:min-w-[200px] sm:py-1.5 sm:text-xs"
         style={{
           background: 'var(--surface-raised)',
           borderColor: 'var(--border-strong)',
           color: 'var(--ink-primary)',
-          minWidth: 200,
         }}
       />
     </div>

@@ -9,6 +9,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -26,7 +27,7 @@ import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { apiGet, type SearchDto } from '@/lib/api'
 import { sessionUser, signOut, useSession } from '@/lib/authClient'
 import { formatCompactUzs, formatDateTime } from '@/lib/format'
-import { ROLE_LABELS, canSeeHref } from '@/lib/roles'
+import { ROLE_LABELS, canSeeHref, type RoleValue } from '@/lib/roles'
 import { sectionSpec, type SectionValue } from '@/lib/sections'
 import { useFilterOptions } from '@/features/shared/PageShell'
 import { t } from '@/lib/messages'
@@ -188,6 +189,26 @@ export function Shell({
   const [paletteOpen, setPaletteOpen] = useState(false)
 
   /*
+    The phone drawer. Closed on Escape here; closed on navigation and on the
+    backdrop by the handlers that own those events — no effect watches the
+    pathname, because a state write inside an effect body is the pattern the
+    lint forbids and the click that navigates already knows it did.
+  */
+  const [menuOpen, setMenuOpen] = useState(false)
+  // A plain function: the React Compiler memoizes it, and a hand-written
+  // useCallback with `[]` disagreed with the dependency it infers.
+  const closeMenu = () => setMenuOpen(false)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [menuOpen])
+
+  /*
     What is being typed in the palette, and what the server makes of it.
 
     DEBOUNCED, not throttled, and only from three characters. Every keystroke
@@ -307,6 +328,35 @@ export function Shell({
 
   const visibleNav = NAV.filter(canOpen)
 
+  /*
+    The menu, resolved: which groups this account may see, where each entry
+    goes, and which one is the current screen. Computed here once so the rail
+    and the drawer render the same list from the same facts.
+  */
+  const railGroups: readonly RailGroup[] = NAV_GROUPS.map((group) => ({
+    label: group.label,
+    items: group.items
+      .filter((item) => !user || canOpen(item))
+      .map((item) => ({
+        key: item.href,
+        label: item.label,
+        icon: item.icon,
+        href: hrefFor(item.href),
+        active: isActive(pathname, item.href),
+      })),
+  })).filter((group) => group.items.length > 0)
+
+  const handleSignOut = useCallback(() => {
+    void signOut().then(() => {
+      // Clear the query cache as well as the session: cached analytics from
+      // the previous user must not be readable by whoever signs in next on
+      // this browser.
+      queryClient.clear()
+      router.push('/login')
+      router.refresh()
+    })
+  }, [queryClient, router])
+
   /**
    * What the palette knows: every screen this role can see, then the six
    * period presets. The same canSee gate as the sidebar — a palette that
@@ -424,261 +474,67 @@ export function Shell({
           viewTransitionName: 'app-sidebar',
         }}
       >
-        {/*
-          THREE BANDS: identity, menu, account. The menu is the only one that
-          scrolls, so on a short screen the person's own name and the way out
-          never leave the screen, and on a tall one the space falls between
-          the menu and the account block rather than below everything — the
-          account block is the rail's floor, which is where every desktop
-          application the floor already uses puts it.
-        */}
-        {/*
-          THE FOLD TOGGLE LIVES UP HERE, beside the brand, not down by the
-          account. Two reasons. It is a control on the rail itself, and the
-          top corner is where every desktop application the floor uses puts
-          that control — Linear, Notion, Slack. And down in the footer it was
-          the third 36px button in a 240px row, which left the person's own
-          name room for "Administr…". Folded, it sits under the mark, so the
-          way back out is the first thing in the column.
-        */}
+        <RailBody
+          variant="rail"
+          collapsed={collapsed}
+          onToggleCollapse={() => setSidebarCollapsed(!collapsed)}
+          groups={railGroups}
+          user={user}
+          lastSyncedAt={lastSyncedAt}
+          onSignOut={handleSignOut}
+        />
+      </aside>
+
+      {/*
+        THE SAME RAIL, AS A DRAWER, below lg.
+
+        A phone used to get a strip of section names under the header and
+        nothing else: no account, no way to sign out, no word on how fresh the
+        numbers were — all of that lived in a sidebar the phone never rendered.
+        The drawer IS that sidebar, drawn by the same component with the same
+        groups, so the two cannot drift and a person who knows one knows the
+        other. It closes on a tap outside, on Escape, and on choosing a section,
+        since the section is what they came for.
+
+        Rendered only while open. Closed means unmounted, which is also what
+        resets its scroll position and keeps its links out of the tab order.
+      */}
+      {menuOpen && (
         <div
-          className={
-            collapsed
-              ? 'flex shrink-0 flex-col items-center gap-1.5 pt-4 pb-2'
-              : 'flex h-16 shrink-0 items-center gap-3 pr-2 pl-4'
-          }
+          className="fixed inset-0 z-40 flex lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Menyu"
         >
-          <WordmarkBadge />
-          {/* Removed rather than hidden: a truncated name in a 64px rail is
-              three letters and an ellipsis, which reads as a rendering fault. */}
-          {!collapsed && (
-            <div className="min-w-0 flex-1">
-              <p
-                className="truncate text-sm font-semibold tracking-tight"
-                style={{ color: 'var(--ink-primary)' }}
-              >
-                {t.app.name}
-              </p>
-              <p className="truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                {t.app.subtitle}
-              </p>
-            </div>
-          )}
-          <Tooltip content={collapsed ? 'Panelni ochish' : 'Panelni yigʻish'} side="right">
-            <button
-              type="button"
-              onClick={() => setSidebarCollapsed(!collapsed)}
-              aria-label={collapsed ? 'Panelni ochish' : 'Panelni yigʻish'}
-              aria-expanded={!collapsed}
-              className="rail-item rail-button focusable flex h-8 w-8 items-center justify-center rounded-lg"
-            >
-              <PanelIcon open={!collapsed} />
-            </button>
-          </Tooltip>
-        </div>
-
-        <nav
-          aria-label="Asosiy menyu"
-          className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-1 ${collapsed ? 'px-3' : 'px-3'}`}
-        >
-          {NAV_GROUPS.map((group, index) => {
-            const items = group.items.filter((item) => !user || canOpen(item))
-            if (items.length === 0) return null
-
-            return (
-              /*
-                Keyed by POSITION, not by label. Two groups are deliberately
-                unlabelled — the overview at the top and the admin block at the
-                bottom — so a `label ?? 'root'` fallback gave both the same key
-                and React warned about it on every page. NAV_GROUPS is a
-                module-level constant that never reorders or filters, which is
-                exactly the case where an index key is the correct one.
-              */
-              <div
-                key={index}
-                className={
-                  // An unlabelled group that is not the first needs its own
-                  // separator, or "Foydalanuvchilar" reads as the tail of
-                  // MARKETING. Folded, every group gets a short rule instead
-                  // of a heading — the icons alone do not show where one
-                  // family of screens ends and the next begins.
-                  collapsed
-                    ? index > 0 ? 'mt-2 pt-2' : ''
-                    : group.label === null && index > 0
-                      ? 'mt-3 mb-1 border-t pt-2.5'
-                      : 'mb-1'
-                }
-                style={
-                  !collapsed && group.label === null && index > 0
-                    ? { borderColor: 'var(--border)' }
-                    : undefined
-                }
-              >
-                {collapsed && index > 0 && (
-                  <div
-                    aria-hidden="true"
-                    className="mx-auto mb-2 h-px w-5"
-                    style={{ background: 'var(--border)' }}
-                  />
-                )}
-                {group.label && !collapsed && (
-                  /*
-                    `.eyebrow` — the ONE positive-tracked style in the system,
-                    reserved for section headers like this.
-                  */
-                  <p className="eyebrow px-2.5 pt-3 pb-1.5 text-[10px] font-semibold tracking-wider uppercase text-[var(--ink-muted)]">
-                    {group.label}
-                  </p>
-                )}
-                <ul className="space-y-0.5">
-                  {items.map((item) => {
-                    const active = isActive(pathname, item.href)
-                    const Icon = item.icon
-
-                    const link = (
-                      <Link
-                        href={hrefFor(item.href)}
-                        aria-current={active ? 'page' : undefined}
-                        aria-label={collapsed ? item.label : undefined}
-                        className={`rail-item focusable relative flex items-center rounded-lg font-medium ${
-                          collapsed
-                            ? 'rail-item--folded mx-auto h-10 w-10 justify-center'
-                            : 'h-9 gap-3 px-2.5 text-[13.5px]'
-                        }`}
-                      >
-                        {active && (
-                          /*
-                            Chrome, not page identity. Rendered above every
-                            page, so it cannot see a PageShell's --accent —
-                            named as the series slot it actually is.
-                          */
-                          <span
-                            aria-hidden="true"
-                            className="absolute top-2 bottom-2 -left-3 w-0.5 rounded-full"
-                            style={{ background: 'var(--series-1)' }}
-                          />
-                        )}
-                        <span className="rail-icon" aria-hidden="true">
-                          <Icon />
-                        </span>
-                        {!collapsed && <span className="truncate">{item.label}</span>}
-                      </Link>
-                    )
-
-                    return (
-                      <li key={item.href}>
-                        {/*
-                          A tooltip ONLY when the label is gone. Wrapping the
-                          open-rail link too, with empty content, rendered an
-                          empty dark pill on every hover — the "black round
-                          thing" the client saw.
-                        */}
-                        {collapsed ? <Tooltip content={item.label} side="right">{link}</Tooltip> : link}
-                      </li>
-                    )
-                  })}
-                </ul>
-              </div>
-            )
-          })}
-        </nav>
-
-        {/*
-          The account block — the rail's floor.
-
-          Who is signed in and the way out, with the one line that says how
-          fresh the numbers are above them. The fold toggle is up in the
-          header — it belongs to the rail, not to the account.
-        */}
-        <div className="shrink-0 border-t" style={{ borderColor: 'var(--border)' }}>
-          {!collapsed && <FreshnessPanel lastSyncedAt={lastSyncedAt} />}
-
+          <button
+            type="button"
+            aria-label="Menyuni yopish"
+            className="backdrop-dim drawer-backdrop-enter absolute inset-0"
+            onClick={closeMenu}
+          />
           <div
-            className={
-              collapsed
-                ? 'flex flex-col items-center gap-1.5 px-0 pt-2 pb-3'
-                : 'flex items-center gap-1 px-3 pt-1.5 pb-3'
-            }
+            className="drawer-enter relative flex h-full w-[min(19rem,86vw)] flex-col border-r"
+            style={{
+              background: 'var(--surface)',
+              borderColor: 'var(--border)',
+              paddingTop: 'env(safe-area-inset-top)',
+              paddingBottom: 'env(safe-area-inset-bottom)',
+              paddingLeft: 'env(safe-area-inset-left)',
+            }}
           >
-            {user && (
-              <Tooltip content={collapsed ? `${user.name} · ${ROLE_LABELS[user.role]}` : ''} side="right">
-                {/* The identity block is the way into the account screen — a
-                    separate "settings" icon would be a second target for the
-                    same thing, and this is where a reader already looks to
-                    check who they are signed in as. */}
-                <Link
-                  href="/account"
-                  aria-label="Hisob va parol"
-                  className={`rail-item focusable flex items-center rounded-lg ${
-                    collapsed ? 'h-10 w-10 justify-center' : 'min-w-0 flex-1 gap-2.5 px-2 py-1.5'
-                  }`}
-                >
-                  <span
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold"
-                    style={{
-                      background:
-                        'linear-gradient(135deg, color-mix(in oklab, var(--series-1) 30%, var(--grid)), var(--grid))',
-                      color: 'var(--ink-primary)',
-                      boxShadow: 'inset 0 0 0 1px color-mix(in oklab, var(--series-1) 25%, transparent)',
-                    }}
-                    aria-hidden="true"
-                  >
-                    {user.name.slice(0, 1).toUpperCase()}
-                  </span>
-                  {!collapsed && (
-                    <span className="min-w-0">
-                      <span
-                        className="block truncate text-[13px] font-semibold"
-                        style={{ color: 'var(--ink-primary)' }}
-                      >
-                        {user.name}
-                      </span>
-                      {/* The founding account is literally called
-                          "Administrator" and holds the ADMIN role, so the row
-                          read "Administrator · Administrator" — which says one
-                          thing twice and looks like a bug. */}
-                      {user.name !== ROLE_LABELS[user.role] && (
-                        <span
-                          className="block truncate text-[11px]"
-                          style={{ color: 'var(--ink-muted)' }}
-                        >
-                          {ROLE_LABELS[user.role]}
-                        </span>
-                      )}
-                    </span>
-                  )}
-                </Link>
-              </Tooltip>
-            )}
-
-            {user && (
-              /* The Tooltip primitive, not a native title: an icon-only button
-                 whose label arrives after a second of hovering and never on
-                 focus or touch is unlabelled for most people. */
-              <Tooltip content="Chiqish" side={collapsed ? 'right' : 'auto'}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void signOut().then(() => {
-                      // Clear the query cache as well as the session: cached
-                      // analytics from the previous user must not be readable
-                      // by whoever signs in next on this browser.
-                      queryClient.clear()
-                      router.push('/login')
-                      router.refresh()
-                    })
-                  }}
-                  aria-label="Chiqish"
-                  className="rail-item rail-button focusable flex h-9 w-9 items-center justify-center rounded-lg"
-                >
-                  <SignOutIcon />
-                </button>
-              </Tooltip>
-            )}
-
+            <RailBody
+              variant="drawer"
+              collapsed={false}
+              onClose={closeMenu}
+              onNavigate={closeMenu}
+              groups={railGroups}
+              user={user}
+              lastSyncedAt={lastSyncedAt}
+              onSignOut={handleSignOut}
+            />
           </div>
         </div>
-      </aside>
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header
@@ -698,15 +554,37 @@ export function Shell({
             WebkitBackdropFilter: 'blur(12px) saturate(1.6)',
             borderColor: 'var(--border)',
             viewTransitionName: 'app-header',
+            // Under a notch or a status bar the bar's content starts below it,
+            // and the glass runs up behind it — which is what `viewport-fit:
+            // cover` in the layout is asking for.
+            paddingTop: 'env(safe-area-inset-top)',
           }}
         >
-          <div className="flex flex-wrap items-center gap-3 px-4 py-3 lg:px-6">
+          <div className="flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3 lg:px-6">
+            {/*
+              The way into the drawer, first thing on the bar and 40px square:
+              a thumb's target, not a pointer's. Hidden from lg up, where the
+              rail is always on screen and there is nothing to open.
+            */}
+            <button
+              type="button"
+              onClick={() => setMenuOpen(true)}
+              aria-label="Menyuni ochish"
+              aria-expanded={menuOpen}
+              className="rail-item focusable -ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg lg:hidden"
+            >
+              <MenuIcon />
+            </button>
             <div className="flex min-w-0 items-center gap-2 lg:hidden">
               <WordmarkBadge small />
-              <span className="text-sm font-semibold">{t.app.name}</span>
+              <span className="truncate text-sm font-semibold">{t.app.name}</span>
             </div>
 
-            {dataSource && <DataSourceBadge source={dataSource} />}
+            {dataSource && (
+              <span className="hidden min-[400px]:inline-flex">
+                <DataSourceBadge source={dataSource} />
+              </span>
+            )}
 
             <div className="ml-auto flex items-center gap-2">
               {/*
@@ -734,32 +612,6 @@ export function Shell({
             </div>
           </div>
 
-          {/* Mobile nav */}
-          <nav
-            aria-label="Mobil menyu"
-            className="overflow-x-auto border-t px-3 lg:hidden"
-            style={{ borderColor: 'var(--border)' }}
-          >
-            <ul className="flex gap-1 py-1.5">
-              {visibleNav.map((item) => {
-                const active = isActive(pathname, item.href)
-                return (
-                  <li key={item.href}>
-                    <Link
-                      href={hrefFor(item.href)}
-                      className="block rounded-md px-2.5 py-1.5 text-xs font-medium whitespace-nowrap"
-                      style={{
-                        background: active ? 'var(--grid)' : 'transparent',
-                        color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-                      }}
-                    >
-                      {item.label}
-                    </Link>
-                  </li>
-                )
-              })}
-            </ul>
-          </nav>
         </header>
 
         {/*
@@ -774,7 +626,8 @@ export function Shell({
           <ViewTransition name="page-body">
             <main
               id="main"
-              className="relative min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6 lg:py-6"
+              className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4 sm:py-5 lg:px-6 lg:py-6"
+              style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
             >
               {children}
             </main>
@@ -800,7 +653,8 @@ export function Shell({
           */
           <main
             id="main"
-            className="relative min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6 lg:py-6"
+            className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4 sm:py-5 lg:px-6 lg:py-6"
+            style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
           >
             {children}
           </main>
@@ -864,6 +718,334 @@ function WordmarkBadge({ small = false }: { small?: boolean }) {
  * Past five minutes the dot turns amber: the worker runs every sixty seconds,
  * so five missed ticks is a fault rather than a slow one.
  */
+interface RailGroup {
+  readonly label: string | null
+  readonly items: readonly {
+    readonly key: string
+    readonly label: string
+    readonly icon: NavItem['icon']
+    readonly href: string
+    readonly active: boolean
+  }[]
+}
+
+/**
+ * The sidebar's contents — identity, menu, account — for both places they
+ * are drawn: the desktop rail and the phone drawer.
+ *
+ * One component rather than two copies, because the two would drift: a group
+ * added to the rail and forgotten in the drawer is a section a phone cannot
+ * reach. `variant` decides only the corner control — fold on the rail, close
+ * on the drawer — and whether choosing a section should also dismiss the
+ * container it was chosen from.
+ */
+function RailBody({
+  variant,
+  collapsed,
+  onToggleCollapse,
+  onClose,
+  onNavigate,
+  groups,
+  user,
+  lastSyncedAt,
+  onSignOut,
+}: {
+  variant: 'rail' | 'drawer'
+  collapsed: boolean
+  onToggleCollapse?: () => void
+  onClose?: () => void
+  onNavigate?: () => void
+  groups: readonly RailGroup[]
+  user: { name: string; role: RoleValue } | null
+  lastSyncedAt?: string | null
+  onSignOut: () => void
+}) {
+  const closeRef = useRef<HTMLButtonElement>(null)
+
+  // The drawer opens over the page; keyboard and screen-reader focus must
+  // come with it, and the close button is the one thing every drawer has.
+  useEffect(() => {
+    if (variant === 'drawer') closeRef.current?.focus()
+  }, [variant])
+
+  return (
+    <>
+      {/*
+        THREE BANDS: identity, menu, account. The menu is the only one that
+        scrolls, so on a short screen the person's own name and the way out
+        never leave the screen, and on a tall one the space falls between the
+        menu and the account block rather than below everything — the account
+        block is the rail's floor, which is where every desktop application
+        the floor already uses puts it.
+
+        THE CORNER CONTROL LIVES UP HERE, beside the brand, not down by the
+        account. It is a control on the rail itself, and the top corner is
+        where every desktop application the floor uses puts that control —
+        Linear, Notion, Slack. Folded, it sits under the mark, so the way back
+        out is the first thing in the column.
+      */}
+      <div
+        className={
+          collapsed
+            ? 'flex shrink-0 flex-col items-center gap-1.5 pt-4 pb-2'
+            : 'flex h-16 shrink-0 items-center gap-3 pr-2 pl-4'
+        }
+      >
+        <WordmarkBadge />
+        {/* Removed rather than hidden: a truncated name in a 64px rail is
+            three letters and an ellipsis, which reads as a rendering fault. */}
+        {!collapsed && (
+          <div className="min-w-0 flex-1">
+            <p
+              className="truncate text-sm font-semibold tracking-tight"
+              style={{ color: 'var(--ink-primary)' }}
+            >
+              {t.app.name}
+            </p>
+            <p className="truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              {t.app.subtitle}
+            </p>
+          </div>
+        )}
+        {variant === 'rail' ? (
+          <Tooltip content={collapsed ? 'Panelni ochish' : 'Panelni yigʻish'} side="right">
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              aria-label={collapsed ? 'Panelni ochish' : 'Panelni yigʻish'}
+              aria-expanded={!collapsed}
+              className="rail-item rail-button focusable flex h-8 w-8 items-center justify-center rounded-lg"
+            >
+              <PanelIcon open={!collapsed} />
+            </button>
+          </Tooltip>
+        ) : (
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            aria-label="Menyuni yopish"
+            className="rail-item rail-button focusable flex h-10 w-10 items-center justify-center rounded-lg"
+          >
+            <CloseIcon />
+          </button>
+        )}
+      </div>
+
+      <nav
+        aria-label="Asosiy menyu"
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-1"
+      >
+        {groups.map((group, index) => (
+          /*
+            Keyed by POSITION, not by label. Two groups are deliberately
+            unlabelled — the overview at the top and the admin block at the
+            bottom — so a `label ?? 'root'` fallback gave both the same key
+            and React warned about it on every page. The list is derived from
+            a module-level constant that never reorders, which is exactly the
+            case where an index key is the correct one.
+          */
+          <div
+            key={index}
+            className={
+              // An unlabelled group that is not the first needs its own
+              // separator, or "Foydalanuvchilar" reads as the tail of
+              // MARKETING. Folded, every group gets a short rule instead of a
+              // heading — the icons alone do not show where one family of
+              // screens ends and the next begins.
+              collapsed
+                ? index > 0 ? 'mt-2 pt-2' : ''
+                : group.label === null && index > 0
+                  ? 'mt-3 mb-1 border-t pt-2.5'
+                  : 'mb-1'
+            }
+            style={
+              !collapsed && group.label === null && index > 0
+                ? { borderColor: 'var(--border)' }
+                : undefined
+            }
+          >
+            {collapsed && index > 0 && (
+              <div
+                aria-hidden="true"
+                className="mx-auto mb-2 h-px w-5"
+                style={{ background: 'var(--border)' }}
+              />
+            )}
+            {group.label && !collapsed && (
+              /* `.eyebrow` — the ONE positive-tracked style in the system,
+                 reserved for section headers like this. */
+              <p className="eyebrow px-2.5 pt-3 pb-1.5 text-[10px] font-semibold tracking-wider uppercase text-[var(--ink-muted)]">
+                {group.label}
+              </p>
+            )}
+            <ul className="space-y-0.5">
+              {group.items.map((item) => {
+                const Icon = item.icon
+
+                const link = (
+                  <Link
+                    href={item.href}
+                    onClick={onNavigate}
+                    aria-current={item.active ? 'page' : undefined}
+                    aria-label={collapsed ? item.label : undefined}
+                    className={`rail-item focusable relative flex items-center rounded-lg font-medium ${
+                      collapsed
+                        ? 'rail-item--folded mx-auto h-10 w-10 justify-center'
+                        : variant === 'drawer'
+                          ? 'h-11 gap-3 px-2.5 text-[14px]'
+                          : 'h-9 gap-3 px-2.5 text-[13.5px]'
+                    }`}
+                  >
+                    {item.active && (
+                      /* Chrome, not page identity. Rendered above every page,
+                         so it cannot see a PageShell's --accent — named as the
+                         series slot it actually is. */
+                      <span
+                        aria-hidden="true"
+                        className="absolute top-2 bottom-2 -left-3 w-0.5 rounded-full"
+                        style={{ background: 'var(--series-1)' }}
+                      />
+                    )}
+                    <span className="rail-icon" aria-hidden="true">
+                      <Icon />
+                    </span>
+                    {!collapsed && <span className="truncate">{item.label}</span>}
+                  </Link>
+                )
+
+                return (
+                  <li key={item.key}>
+                    {/* A tooltip ONLY when the label is gone. Wrapping the
+                        open-rail link too, with empty content, rendered an
+                        empty dark pill on every hover. */}
+                    {collapsed ? <Tooltip content={item.label} side="right">{link}</Tooltip> : link}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        ))}
+      </nav>
+
+      {/*
+        The account block — the rail's floor.
+
+        Who is signed in and the way out, with the one line that says how
+        fresh the numbers are above them.
+      */}
+      <div className="shrink-0 border-t" style={{ borderColor: 'var(--border)' }}>
+        {!collapsed && <FreshnessPanel lastSyncedAt={lastSyncedAt} />}
+
+        <div
+          className={
+            collapsed
+              ? 'flex flex-col items-center gap-1.5 px-0 pt-2 pb-3'
+              : 'flex items-center gap-1 px-3 pt-1.5 pb-3'
+          }
+        >
+          {user && (
+            <Tooltip content={collapsed ? `${user.name} · ${ROLE_LABELS[user.role]}` : ''} side="right">
+              {/* The identity block is the way into the account screen — a
+                  separate "settings" icon would be a second target for the
+                  same thing, and this is where a reader already looks to check
+                  who they are signed in as. */}
+              <Link
+                href="/account"
+                onClick={onNavigate}
+                aria-label="Hisob va parol"
+                className={`rail-item focusable flex items-center rounded-lg ${
+                  collapsed ? 'h-10 w-10 justify-center' : 'min-w-0 flex-1 gap-2.5 px-2 py-1.5'
+                }`}
+              >
+                <span
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold"
+                  style={{
+                    background:
+                      'linear-gradient(135deg, color-mix(in oklab, var(--series-1) 30%, var(--grid)), var(--grid))',
+                    color: 'var(--ink-primary)',
+                    boxShadow: 'inset 0 0 0 1px color-mix(in oklab, var(--series-1) 25%, transparent)',
+                  }}
+                  aria-hidden="true"
+                >
+                  {user.name.slice(0, 1).toUpperCase()}
+                </span>
+                {!collapsed && (
+                  <span className="min-w-0">
+                    <span
+                      className="block truncate text-[13px] font-semibold"
+                      style={{ color: 'var(--ink-primary)' }}
+                    >
+                      {user.name}
+                    </span>
+                    {/* The founding account is literally called
+                        "Administrator" and holds the ADMIN role, so the row
+                        read "Administrator · Administrator" — which says one
+                        thing twice and looks like a bug. */}
+                    {user.name !== ROLE_LABELS[user.role] && (
+                      <span
+                        className="block truncate text-[11px]"
+                        style={{ color: 'var(--ink-muted)' }}
+                      >
+                        {ROLE_LABELS[user.role]}
+                      </span>
+                    )}
+                  </span>
+                )}
+              </Link>
+            </Tooltip>
+          )}
+
+          {user && (
+            /* The Tooltip primitive, not a native title: an icon-only button
+               whose label arrives after a second of hovering and never on
+               focus or touch is unlabelled for most people. */
+            <Tooltip content="Chiqish" side={collapsed ? 'right' : 'auto'}>
+              <button
+                type="button"
+                onClick={onSignOut}
+                aria-label="Chiqish"
+                className={`rail-item rail-button focusable flex items-center justify-center rounded-lg ${
+                  variant === 'drawer' ? 'h-10 w-10' : 'h-9 w-9'
+                }`}
+              >
+                <SignOutIcon />
+              </button>
+            </Tooltip>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+/** Three lines — the one glyph every phone user already reads as "menu". */
+function MenuIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 7h16M4 12h16M4 17h16"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+function CloseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M6 6l12 12M18 6L6 18"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 /** Sign out — a door with an arrow leaving through it. */
 function SignOutIcon() {
   return (

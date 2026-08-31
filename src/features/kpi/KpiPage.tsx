@@ -198,7 +198,7 @@ export function KpiPage() {
         )}
       </section>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <CountCard label={t.kpiStatus.ACHIEVED} value={data?.counts.achieved} tone="good" />
         <CountCard label={t.kpiStatus.ON_TRACK} value={data?.counts.onTrack} tone="good" />
         <CountCard label={t.kpiStatus.AT_RISK} value={data?.counts.atRisk} tone="warning" />

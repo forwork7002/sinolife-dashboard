@@ -119,7 +119,7 @@ export function CohortPage() {
       accent="var(--series-7)"
       meta={query.data?.meta}
     >
-      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="stagger grid grid-cols-2 gap-3 xl:grid-cols-4">
         <GaugeTile
           status={tileStatus}
           label="Takroriy tushum ulushi"
@@ -214,7 +214,7 @@ export function CohortPage() {
       */}
       <SectionHeader title="Mijozlar kontsentratsiyasi" hint={concentrationCaption} />
 
-      <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="stagger grid grid-cols-2 gap-3 xl:grid-cols-4">
         <GaugeTile
           status={concStatus}
           label="Top-10 mijoz ulushi"

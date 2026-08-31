@@ -1744,3 +1744,62 @@ p {
   width: 17px;
   height: 17px;
 }
+
+
+/*
+  The phone drawer.
+
+  Slides in from the edge it lives on, 220ms on the house curve; the backdrop
+  fades over the same span so the two read as one motion. Under reduced
+  motion both simply appear — the drawer's job is to be there, not to arrive.
+*/
+.drawer-enter {
+  animation: drawer-in 220ms var(--ease-out) both;
+}
+.drawer-backdrop-enter {
+  animation: drawer-backdrop-in 200ms ease-out both;
+}
+@keyframes drawer-in {
+  from { transform: translateX(-100%); }
+  to { transform: none; }
+}
+@keyframes drawer-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drawer-enter,
+  .drawer-backdrop-enter {
+    animation: none;
+  }
+}
+
+/*
+  A scroller a thumb drives needs no bar. Used only where the content itself
+  makes the overflow obvious — a row of buttons cut at the screen's edge.
+*/
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * The refresh arrow, while a fetch is genuinely in flight.
+ *
+ * Motion-safe: a spinner turning in the corner of the eye is exactly what a
+ * reduced-motion preference asks us not to do, and the button stays labelled
+ * and works either way.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .spin {
+    animation: spin 900ms linear infinite;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

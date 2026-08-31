@@ -259,7 +259,7 @@ function PaletteDialog({
 
   return (
     <div
-      className="backdrop-dim fixed inset-0 z-50 flex items-start justify-center px-4 pt-[15vh]"
+      className="backdrop-dim fixed inset-0 z-50 flex items-start justify-center px-3 pt-[max(env(safe-area-inset-top),6vh)] sm:px-4 sm:pt-[15vh]"
       // Backdrop click closes — but only the backdrop itself: a click inside
       // the panel bubbles here too, and target === currentTarget tells them apart.
       onMouseDown={(event) => {
@@ -327,7 +327,7 @@ function PaletteDialog({
           id={listId}
           role="listbox"
           aria-label="Buyruqlar"
-          className="max-h-[min(400px,50vh)] overflow-y-auto overscroll-contain p-1.5"
+          className="max-h-[min(400px,45dvh)] overflow-y-auto overscroll-contain p-1.5"
         >
           {flat.length === 0 ? (
             <div className="px-4 py-10 text-center">

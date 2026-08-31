@@ -342,11 +342,12 @@ function Tile({
   sparkLabel?: string
   status: 'loading' | 'error' | 'ready'
 }) {
-  const figureClass = 'figure block text-[26px] leading-none font-semibold'
+  // 22px in a phone's 171px tile: «16.8 ming soʻm» is ~205px at 26.
+  const figureClass = 'figure block text-[22px] leading-none font-semibold sm:text-[26px]'
 
   const figure =
     status === 'loading' ? (
-      <div className="skeleton mt-2 h-[26px] w-2/3" role="status">
+      <div className="skeleton mt-2 h-[22px] w-2/3 sm:h-[26px]" role="status">
         <span className="sr-only">Yuklanmoqda</span>
       </div>
     ) : status === 'error' ? (
