@@ -25,7 +25,6 @@
  */
 
 import { concentrationService, insightsService } from './container'
-import type { StructureDto } from './insightsService'
 import type { Period } from '@/server/domain/period/period'
 import { periodLengthInDays, previousEquivalent } from '@/server/domain/period/period'
 import { money, toMajorNumber, toMoneyDto } from '@/server/domain/money/money'
@@ -37,32 +36,6 @@ import type { InsightsRepository } from '@/server/repositories/insightsRepositor
 
 function trended(value: number, previous: number | null): TrendedDto {
   return { value, previous, delta: toDeltaDto(growth(value, previous)) }
-}
-
-/**
- * The org chart, added up.
- *
- * `structure` returns the tree rather than totals, and each node's headcount
- * already includes its subtree — so this sums the ROOTS and counts nodes for
- * departments. Summing every node would count each person once per level of
- * management above them.
- */
-function rollUp(
-  roots: readonly StructureDto[],
-): { employees: number; active: number; working: number; departments: number } {
-  let departments = 0
-  const walk = (node: StructureDto): void => {
-    departments += 1
-    node.children.forEach(walk)
-  }
-  roots.forEach(walk)
-
-  return {
-    employees: roots.reduce((a, n) => a + n.headcount, 0),
-    active: roots.reduce((a, n) => a + n.activeHeadcount, 0),
-    working: roots.reduce((a, n) => a + n.workingHeadcount, 0),
-    departments,
-  }
 }
 
 export class CommandCentreService {
@@ -100,19 +73,28 @@ export class CommandCentreService {
       this.repository.commandRevenue(period),
       this.repository.commandCustomers(period),
       this.repository.commandCustomers(comparison),
-      insightsService.confirmationQueue(period, {
-        page: 1,
-        pageSize: 1,
-        sort: 'movedAt',
-        order: 'desc',
-      }),
+      /*
+        The five counts, and not the queue behind them.
+
+        This used to call `confirmationQueue`, which builds the whole cohort
+        THREE times — once for the page, once for the per-ROP panel, once for
+        the tiles — and then decorated three thousand rows to hand back a page
+        of one. Measured at 6.0 s, half the endpoint's database time, for four
+        numbers. `confirmationOutcomes` is the third of those queries on its
+        own.
+      */
+      this.repository.confirmationOutcomes(period),
       this.repository.commandRejectionBand(period),
-      insightsService.logistics(period, currency),
+      insightsService.logistics(period, currency, {}, { withReasons: false }),
       this.repository.commandProducts(period),
       this.repository.commandFunnel(period),
-      insightsService.structure(period, currency),
+      this.repository.commandHeadcount(period),
       concentrationService.concentration(period),
     ])
+
+    // The five states sum to the window's orders: every order the board holds
+    // is in exactly one of them, so there is nothing to fetch separately.
+    const confirmationOrders = Object.values(confirmation).reduce((a, n) => a + n, 0)
 
     const averageMinor =
       intake.orders === 0 ? 0n : intake.bookedMinor / BigInt(intake.orders)
@@ -162,10 +144,13 @@ export class CommandCentreService {
         ),
       },
       confirmation: {
-        orders: confirmation.totals.orders,
-        confirmedRate: confirmation.totals.confirmedRate,
-        confirmed: confirmation.totals.byOutcome.CONFIRMED,
-        rejected: confirmation.totals.byOutcome.REJECTED,
+        orders: confirmationOrders,
+        confirmedRate:
+          confirmationOrders === 0
+            ? null
+            : Math.round((confirmation.CONFIRMED / confirmationOrders) * 1000) / 10,
+        confirmed: confirmation.CONFIRMED,
+        rejected: confirmation.REJECTED,
         rejectionToday: band.today === null ? null : Math.round(band.today * 10) / 10,
         rejectionMean: band.mean,
         rejectionLimit: band.limit,
@@ -205,7 +190,7 @@ export class CommandCentreService {
         topSharePercent: products.topSharePercent,
         coveragePercent: products.coveragePercent,
       },
-      team: rollUp(structure),
+      team: structure,
       concentration: {
         sourceHhi: concentration.hhi.bySource.hhi,
         sourceBand: concentration.hhi.bySource.band,

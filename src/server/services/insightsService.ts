@@ -367,17 +367,26 @@ export class InsightsService {
     }
   }
 
+  /**
+   * @param options.withReasons Fetch the refusal breakdown. The logistics
+   *   SCREEN draws it; the command centre reads only the totals and the
+   *   regions, and that third query is 0.7 s it would spend on a chart it
+   *   never renders.
+   */
   async logistics(
     period: Period,
     currency: string,
     scope: EmployeeScopeFilter = {},
+    options: { withReasons?: boolean } = {},
   ): Promise<LogisticsDto> {
     const window = this.window(period, scope)
 
     const [routes, regions, reasons] = await Promise.all([
       this.repository.logisticsRoutes(window),
       this.repository.logisticsRegions(window),
-      this.repository.refusalReasons(window),
+      options.withReasons === false
+        ? Promise.resolve([] as Awaited<ReturnType<typeof this.repository.refusalReasons>>)
+        : this.repository.refusalReasons(window),
     ])
 
     const toRow = (r: LogisticsRouteRow): LogisticsRowDto => ({

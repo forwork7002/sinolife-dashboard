@@ -2185,6 +2185,65 @@ export class InsightsRepository {
    * count sub-departments, and that is a display decision rather than a
    * database one.
    */
+  /**
+   * Headcount alone, for the screen that prints only headcount.
+   *
+   * The command centre shows four numbers off the org chart — on the roster,
+   * marked active, produced something, and how many units. `structure()`
+   * answers that too, but it also aggregates every WON deal's money per
+   * department to draw the chart's revenue column, and that half was measured
+   * at 3.4 of its 3.5 seconds. Asking a cheaper question is the fix; making
+   * the expensive one faster would still be paying for an answer nobody on
+   * this screen reads.
+   *
+   * The employee side is unchanged, deliberately — same `active` union over
+   * calls and won deals, same three counts — so the two screens cannot drift
+   * into reporting different headcounts for the same day.
+   */
+  async commandHeadcount(period: Period): Promise<{
+    employees: number
+    active: number
+    working: number
+    departments: number
+  }> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { employees: bigint; active: bigint; working: bigint; departments: bigint }[]
+    >(
+      `
+      WITH active AS (
+        SELECT DISTINCT "employeeId" AS id
+          FROM "call_record"
+         WHERE "startedAt" >= $1 AND "startedAt" < $2
+         UNION
+        SELECT DISTINCT "employeeId" AS id
+          FROM "deal"
+         WHERE "countsAsRevenue" AND "status" = 'WON'
+           AND "closedAt" >= $1 AND "closedAt" < $2
+      )
+      SELECT
+        count(*)::bigint AS employees,
+        count(*) FILTER (WHERE e."isActive")::bigint AS active,
+        -- On the roster, marked active, and produced something. The gap
+        -- between this and the count above is "who is here and who is not".
+        count(*) FILTER (WHERE e."isActive" AND a.id IS NOT NULL)::bigint AS working,
+        (SELECT count(*) FROM "department")::bigint AS departments
+      FROM "employee" e
+      LEFT JOIN active a ON a.id = e."id"
+      WHERE e."departmentId" IS NOT NULL
+      `,
+      period.start,
+      period.end,
+    )
+
+    const row = rows[0]
+    return {
+      employees: int(row?.employees ?? 0n),
+      active: int(row?.active ?? 0n),
+      working: int(row?.working ?? 0n),
+      departments: int(row?.departments ?? 0n),
+    }
+  }
+
   async structure(period: Period): Promise<StructureNode[]> {
     const rows = await this.prisma.$queryRawUnsafe<
       {
