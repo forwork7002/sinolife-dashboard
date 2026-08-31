@@ -243,3 +243,112 @@ describe('confirmation stage roles', () => {
   })
 })
 
+
+/**
+ * The refusal that lives in another funnel.
+ *
+ * The client's reference says «Ошибка первичный отдел» does not leave a deal
+ * in `C4:LOSE` — Bitrix moves it to `C12:UC_1OM8B2`, which is where the real
+ * "тасдиқланмади" is recorded. Funnel 12 as a whole is 995 551 transitions
+ * against this deployment's 199 152-row history table; that one stage is
+ * 17 242. So the walk reads the funnels, then the stage, and the pass it is on
+ * rides in the cursor — Bitrix ANDs the members of a filter and cannot be
+ * asked for both at once.
+ */
+describe('stage history walk', () => {
+  const NO_ROWS = { c0: { items: [] } }
+
+  /**
+   * A batch answer the walk reads as "there is more".
+   *
+   * Every one of the 50 chained commands comes back full, which is the only
+   * shape that leaves the walk mid-pass — a short batch means the funnel ran
+   * out, and the cursor question this exercises never arises.
+   */
+  const FULL_BATCH = Object.fromEntries(
+    Array.from({ length: 50 }, (_, cmd) => [
+      `c${cmd}`,
+      {
+        items: Array.from({ length: 50 }, (_, row) => ({
+          ID: cmd * 50 + row + 1,
+          OWNER_ID: 900,
+          STAGE_ID: 'C4:NEW',
+          CREATED_TIME: '2026-08-31T09:09:00+05:00',
+        })),
+      },
+    ]),
+  )
+
+  /** The batch command the walk actually sent, decoded. */
+  function reader(result: unknown = NO_ROWS, options: { stages?: readonly string[] } = {}) {
+    const sent: string[] = []
+
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? '{}')) as { cmd?: Record<string, string> }
+      sent.push(decodeURIComponent(body.cmd?.c0 ?? ''))
+      return new Response(JSON.stringify({ result: { result } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }) as unknown as typeof fetch
+
+    return {
+      sent,
+      provider: new Bitrix24CrmProvider({
+        webhookUrl: 'https://portal/rest/1/tok/',
+        fetchImpl,
+        historyPipelines: [6, 4],
+        historyStages: options.stages ?? ['C12:UC_1OM8B2'],
+      }),
+    }
+  }
+
+  it('starts on the funnels', async () => {
+    const { provider, sent } = reader()
+    await provider.fetchStageHistory()
+
+    expect(sent[0]).toContain('filter[CATEGORY_ID][0]=6')
+    expect(sent[0]).toContain('filter[CATEGORY_ID][1]=4')
+  })
+
+  it('hands over to the stage pass instead of ending the walk', async () => {
+    // undefined here would end the sync having never read the refusal stage,
+    // which is the whole reason the second pass exists.
+    expect((await reader().provider.fetchStageHistory()).nextCursor).toBe('1:0')
+  })
+
+  it('asks for the refusal stage on the second pass, and only for it', async () => {
+    const { provider, sent } = reader()
+    await provider.fetchStageHistory({ cursor: '1:0' })
+
+    expect(sent[0]).toContain('filter[STAGE_ID][0]=C12:UC_1OM8B2')
+    expect(sent[0]).not.toContain('CATEGORY_ID')
+  })
+
+  it('ends the walk after the last pass', async () => {
+    const page = await reader().provider.fetchStageHistory({ cursor: '1:0' })
+    expect(page.nextCursor).toBeUndefined()
+  })
+
+  it('keeps the pass in the cursor while that pass is still running', async () => {
+    const page = await reader(FULL_BATCH).provider.fetchStageHistory({ cursor: '1:0' })
+
+    // '2500' rather than '1:2500' would send the next call back to the funnels
+    // and walk their 87 000 rows again on every tick.
+    expect(page.nextCursor).toBe('1:2500')
+    expect(page.items).toHaveLength(2500)
+  })
+
+  it('reads a cursor written before the second pass existed as pass 0', async () => {
+    const { provider, sent } = reader()
+    await provider.fetchStageHistory({ cursor: '8842' })
+
+    expect(sent[0]).toContain('filter[CATEGORY_ID][0]=6')
+    expect(sent[0]).toContain('filter[>ID]=8842')
+  })
+
+  it('does not invent a pass when no stages are configured', async () => {
+    const page = await reader(NO_ROWS, { stages: [] }).provider.fetchStageHistory()
+    expect(page.nextCursor).toBeUndefined()
+  })
+})

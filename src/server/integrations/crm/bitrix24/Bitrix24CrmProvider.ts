@@ -46,6 +46,7 @@ import type { ExternalSourceValue } from '@/server/domain/types'
 
 import {
   ALL_PIPELINES,
+  CONFIRMATION_REFUSAL_STAGES,
   DELIVERY_ROUTE_NAMES,
   PIPELINE_NAMES,
   UF,
@@ -77,6 +78,21 @@ export interface Bitrix24ProviderOptions {
    * how long a registration record sat in a stage.
    */
   readonly historyPipelines?: readonly number[]
+  /**
+   * Individual stages read regardless of which pipeline they sit in.
+   *
+   * WHY THIS EXISTS. The client's own reference (BITRIX_REFERENCE.md) tracks
+   * three funnels — 4 Тасдиқлаш, 12 Первичный отдел, 6 Доставка — and says the
+   * REAL "тасдиқланмади" state is held in `C12:UC_1OM8B2`, because selecting
+   * «Ошибка первичный отдел» makes Bitrix move the deal there automatically
+   * rather than leaving it in `C4:LOSE`.
+   *
+   * Funnel 12 as a whole is 995 551 transitions — five times this deployment's
+   * entire history table, on a 1 GB database. The one stage that carries the
+   * refusal is 17 242. Reading the stage instead of the funnel buys the
+   * documented signal for 1.7% of the rows.
+   */
+  readonly historyStages?: readonly string[]
   /**
    * How far back to read telephony. Defaults to 1 month.
    *
@@ -159,6 +175,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
   private readonly fetchImpl: typeof fetch
   private readonly pipelines: readonly number[]
   private readonly historyPipelines: readonly number[]
+  private readonly historyStages: readonly string[]
   private readonly callHistoryMonths: number
   private readonly progress: (m: string) => void
 
@@ -204,6 +221,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
     this.fetchImpl = options.fetchImpl ?? fetch
     this.pipelines = options.pipelines ?? ALL_PIPELINES
     this.historyPipelines = options.historyPipelines ?? [6, 14, 10, 4]
+    this.historyStages = options.historyStages ?? [...CONFIRMATION_REFUSAL_STAGES]
     this.callHistoryMonths = options.callHistoryMonths ?? 1
     this.progress = options.onProgress ?? (() => {})
   }
@@ -1101,9 +1119,24 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * method — hence the unwrap.
    */
   async fetchStageHistory(options: FetchOptions = {}): Promise<Page<RawStageHistory>> {
-    const afterId = options.cursor ?? '0'
+    /*
+      TWO PASSES BEHIND ONE CURSOR.
 
-    const filter: Record<string, unknown> = { CATEGORY_ID: [...this.historyPipelines] }
+      Bitrix ANDs the members of a filter, so "these funnels, plus this one
+      stage from another funnel" cannot be asked in a single call. The walk is
+      therefore a pass per filter, with the pass index carried in the cursor —
+      `"<pass>:<afterId>"` — so the sync handler keeps driving one paged fetch
+      and knows nothing about it. A bare cursor left over from a run that
+      predates the second pass reads as pass 0, which is what it was.
+    */
+    const { pass, afterId } = parseHistoryCursor(options.cursor)
+    const passes = this.historyFilters()
+
+    // Nothing left to walk. Reachable when `historyStages` is empty and the
+    // caller hands back the cursor that ended pass 0.
+    if (pass >= passes.length) return { items: [], nextCursor: undefined }
+
+    const filter: Record<string, unknown> = { ...passes[pass] }
     if (options.updatedSince) {
       filter['>CREATED_TIME'] = isoLocal(options.updatedSince)
     }
@@ -1135,10 +1168,41 @@ export class Bitrix24CrmProvider implements CrmProvider {
     this.historyRead += rows.length
     this.progress(`  stage history: ${this.historyRead}`)
 
+    /*
+      A finished pass hands over to the next one rather than ending the walk.
+
+      The ids of the two passes are unrelated, so the next pass restarts from
+      zero; it is a different query over the same table, not a continuation.
+    */
+    if (done) {
+      const next = pass + 1
+      return {
+        items: history,
+        nextCursor: next < passes.length ? `${next}:0` : undefined,
+      }
+    }
+
     return {
       items: history,
-      nextCursor: done ? undefined : String(rows[rows.length - 1]?.ID ?? ''),
+      nextCursor: `${pass}:${String(rows[rows.length - 1]?.ID ?? '')}`,
     }
+  }
+
+  /**
+   * The filters the history walk applies, in order.
+   *
+   * The pipelines first because they are the bulk of the rows and the ones
+   * every duration module reads; the individual stages after, because they
+   * exist to add a signal the pipelines do not carry.
+   */
+  private historyFilters(): Record<string, unknown>[] {
+    const filters: Record<string, unknown>[] = [
+      { CATEGORY_ID: [...this.historyPipelines] },
+    ]
+    if (this.historyStages.length > 0) {
+      filters.push({ STAGE_ID: [...this.historyStages] })
+    }
+    return filters
   }
 
   // -------------------------------------------------------------------------
@@ -1350,6 +1414,26 @@ export function nonEmpty(value: unknown): string | undefined {
   if (value === null || value === undefined) return undefined
   const text = String(value).trim()
   return text === '' ? undefined : text
+}
+
+/**
+ * Split a stage-history cursor into its pass and its position.
+ *
+ * `"1:8842"` is pass 1, after id 8842. A bare `"8842"` predates the second
+ * pass and means pass 0, so a sync interrupted by the deploy that introduced
+ * this resumes where it stopped instead of walking the funnels again.
+ */
+function parseHistoryCursor(cursor: string | undefined): { pass: number; afterId: string } {
+  if (!cursor) return { pass: 0, afterId: '0' }
+
+  const split = cursor.indexOf(':')
+  if (split < 0) return { pass: 0, afterId: cursor }
+
+  const pass = Number.parseInt(cursor.slice(0, split), 10)
+  return {
+    pass: Number.isFinite(pass) && pass >= 0 ? pass : 0,
+    afterId: cursor.slice(split + 1) || '0',
+  }
 }
 
 /** A list method that returns a bare array. */

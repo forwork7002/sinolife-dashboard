@@ -146,6 +146,22 @@ export const DELIVERY_STAGE_ROLES: Readonly<Record<string, LogisticsRoleValue>> 
   'C4:LOSE': 'CANCELLED_EARLY',           // Ошибка первичный отдел
   'C4:UC_V4JJIW': 'CANCELLED_EARLY',      // UTECHKA — lost before dispatch
 
+  /*
+    Where a refusal actually comes to rest.
+
+    Picking «Ошибка первичный отдел» in the confirmation funnel does not leave
+    the deal in C4:LOSE — Bitrix moves it straight into Первичный отдел ·
+    Тасдикланмаган, and the client's own reference says so in as many words.
+    Measured on this portal: C4:LOSE carries 2 559 transitions, C12:UC_1OM8B2
+    carries 17 242. Reading only the first sees one refusal in seven.
+
+    It is the ONE stage of funnel 12 with a logistics role. The rest of that
+    funnel is lead triage — a record sitting in «Исходный база» has not been
+    refused, it has not been worked yet, and calling that LOST would write off
+    25 602 live leads.
+  */
+  'C12:UC_1OM8B2': 'CANCELLED_EARLY',     // Первичный отдел · Тасдикланмаган
+
   // Ecommerce runs its own shorter ladder.
   'C14:NEW': 'PREPARING',                 // Новая заявка
   'C14:PREPARATION': 'PREPARING',         // В обработке
@@ -165,6 +181,18 @@ export const DELIVERY_STAGE_ROLES: Readonly<Record<string, LogisticsRoleValue>> 
 export function logisticsRole(stageId: string): LogisticsRoleValue | undefined {
   return DELIVERY_STAGE_ROLES[stageId]
 }
+
+/**
+ * Stages that record a confirmation refusal but sit outside the confirmation
+ * funnel, so their history has to be fetched by stage rather than by pipeline.
+ *
+ * One entry today. It is a list because the portal has moved this state once
+ * already, and a second landing place would otherwise mean editing a filter
+ * in the provider rather than the table that documents what the stage means.
+ */
+export const CONFIRMATION_REFUSAL_STAGES: readonly string[] = Object.freeze([
+  'C12:UC_1OM8B2',
+])
 
 /**
  * The hub or carrier a delivery stage represents, by its display name.
