@@ -775,7 +775,7 @@ export function Shell({
           <ViewTransition name="page-body">
             <main
               id="main"
-              className="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6 lg:py-6"
+              className="relative min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6 lg:py-6"
             >
               {children}
             </main>
@@ -789,8 +789,20 @@ export function Shell({
             scroll — the box would simply grow and push the column past the
             screen it is pinned to. The two together are what put the scrollbar
             on the content instead of on the window.
+
+            `relative` is the third thing, and it was found by measurement. A
+            page's screen-reader-only text is `position: absolute`, and with
+            no positioned ancestor it is placed against the BODY — outside this
+            box's clipping, so the document grew to wherever the last hidden
+            span landed and the window could be wheeled down into nothing. Two
+            hundred pixels on the sales screen. Making `main` the containing
+            block keeps every absolutely-positioned thing a page renders inside
+            the page.
           */
-          <main id="main" className="min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6 lg:py-6">
+          <main
+            id="main"
+            className="relative min-h-0 flex-1 overflow-y-auto px-4 py-5 lg:px-6 lg:py-6"
+          >
             {children}
           </main>
         )}

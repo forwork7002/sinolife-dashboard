@@ -281,7 +281,12 @@ function SellerTable({
   const ceiling = Math.max(...rows.map((r) => r.won.amount), 1)
 
   return (
-    <div className="overflow-x-auto">
+    /*
+      Sixty percent of the screen, then the rows scroll under a pinned header —
+      the same bound every DataTable carries. A hundred and ten sellers is six
+      thousand pixels, and the application never scrolls as a page.
+    */
+    <div className="max-h-[60dvh] overflow-auto">
       <table className="w-full" style={{ minWidth: 860 }}>
         <thead>
           <tr>
@@ -297,8 +302,8 @@ function SellerTable({
             ].map(([label, align]) => (
               <th
                 key={label}
-                className="eyebrow px-2 pb-2 whitespace-nowrap"
-                style={{ textAlign: align as 'left' | 'right' }}
+                className="eyebrow sticky top-0 z-[1] px-2 pt-1 pb-2 whitespace-nowrap"
+                style={{ textAlign: align as 'left' | 'right', background: 'var(--surface)' }}
               >
                 {label}
               </th>
@@ -598,7 +603,7 @@ function TeamTable({ rows }: { rows: readonly SellerTeamRowDto[] }) {
   const ceiling = Math.max(...rows.map((r) => r.won.amount), 1)
 
   return (
-    <div className="overflow-x-auto">
+    <div className="max-h-[60dvh] overflow-auto">
       <table className="w-full" style={{ minWidth: 720 }}>
         <thead>
           <tr>
@@ -613,8 +618,8 @@ function TeamTable({ rows }: { rows: readonly SellerTeamRowDto[] }) {
             ].map(([label, align]) => (
               <th
                 key={label}
-                className="eyebrow px-2 pb-2 whitespace-nowrap"
-                style={{ textAlign: align as 'left' | 'right' }}
+                className="eyebrow sticky top-0 z-[1] px-2 pt-1 pb-2 whitespace-nowrap"
+                style={{ textAlign: align as 'left' | 'right', background: 'var(--surface)' }}
               >
                 {label}
               </th>

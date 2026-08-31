@@ -90,7 +90,12 @@ export function AnimatedNumber({
       className={flash > 0 ? 'value-flash' : undefined}
     >
       <span className="sr-only">{format(value)}</span>
-      <span aria-hidden="true">{format(display)}</span>
+      {/* The tween passes through fractions on its way; a count of orders
+          must never print one. Rounded when the target is whole, left alone
+          for a rate that genuinely carries decimals. */}
+      <span aria-hidden="true">
+        {format(Number.isInteger(value) ? Math.round(display) : display)}
+      </span>
     </span>
   )
 }
