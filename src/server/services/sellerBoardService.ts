@@ -176,8 +176,29 @@ export class SellerBoardService {
         a.employeeId.localeCompare(b.employeeId),
     )
 
+    /*
+      COMPETITION RANKING: equal money, equal rank, and the next rank skips.
+
+      Position in the sorted list was the rank, so two sellers who had won the
+      same amount — common at the start of a window, universal when nobody has
+      won anything yet — were told one outranked the other, and the deciding
+      factor was an internal id. `/analytics/leaderboard` already ranks the
+      same people 1, 2, 2, 4; two boards of the same floor disagreeing about
+      who is second is the kind of thing a bonus argument starts over.
+
+      The id still decides DISPLAY order, so the table does not reshuffle
+      between two refreshes of the same screen.
+    */
+    const rankOf = ordered.map((row, index) => {
+      const previous = index > 0 ? ordered[index - 1] : undefined
+      return previous && previous.wonMinor === row.wonMinor ? -1 : index + 1
+    })
+    for (let i = 1; i < rankOf.length; i++) {
+      if (rankOf[i] === -1) rankOf[i] = rankOf[i - 1]!
+    }
+
     const boardRows = ordered.map<SellerBoardRowDto>((row, index) => ({
-      rank: index + 1,
+      rank: rankOf[index]!,
       employeeId: row.employeeId,
       fullName: row.fullName,
       rop: row.rop,

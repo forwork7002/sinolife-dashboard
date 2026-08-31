@@ -473,7 +473,9 @@ export function ConfirmationPage() {
             Барча буюртмалар
           </h2>
           <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-            {shown === null ? '' : `Кўрсатилмоқда: ${formatNumber(shown)} та`}
+            {/* Жами, not "being shown": the table renders one page of fifty
+                and this number is the whole window. */}
+            {shown === null ? '' : `Жами: ${formatNumber(shown)} та`}
             {totals && totals.confirmedRate !== null && (
               <>
                 {' · '}

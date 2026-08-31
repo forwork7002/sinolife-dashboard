@@ -80,10 +80,12 @@ export function BarList({
                 {deltaSlot?.(item)}
                 {item.sharePercent !== undefined && (
                   <span
-                    className="tabular w-11 text-right text-[11px]"
+                    className="tabular w-14 text-right text-[11px]"
                     style={{ color: 'var(--ink-muted)' }}
                   >
-                    {item.sharePercent === null ? '—' : formatPercent(item.sharePercent, 0)}
+                    {/* One decimal, not none. Whole percents printed "0%"
+                        against bars worth billions — see formatPercent. */}
+                    {item.sharePercent === null ? '—' : formatPercent(item.sharePercent, 1)}
                   </span>
                 )}
               </span>

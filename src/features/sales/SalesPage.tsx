@@ -187,7 +187,8 @@ export function SalesPage() {
     },
     {
       key: 'deals',
-      header: t.table.dealsWon,
+      // The cell reads "won / closed"; the header used to name only the second.
+      header: `${t.table.dealsWon} / yopilgan`,
       align: 'right',
       numeric: true,
       render: (row) => `${formatNumber(row.dealsWon)} / ${formatNumber(row.dealsTotal)}`,
@@ -308,7 +309,10 @@ export function SalesPage() {
               <p className="mt-2 text-[11px] leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
                 Shundan{' '}
                 <span style={{ color: 'var(--ink-secondary)' }}>
-                  {formatPercent(pulseData.composition.ownSharePercent, 0)}
+                  {/* One decimal: the server has already rounded to one, and
+                      rounding again to none moved 33.5 across a boundary and
+                      printed 34. */}
+                  {formatPercent(pulseData.composition.ownSharePercent, 1)}
                 </span>{' '}
                 — shu davrda olingan buyurtmalardan (
                 {formatCompactUzs(pulseData.composition.own.amount)} soʻm,{' '}

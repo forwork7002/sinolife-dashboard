@@ -115,8 +115,29 @@ export function formatNumber(value: number): string {
   return separators(numberFormat.format(value))
 }
 
+/**
+ * A percentage, and never a zero for something that is not zero.
+ *
+ * Rounding to the requested digits turned real values into "0%" all over the
+ * dashboard: a product line worth 1.1 bn soʻm printed 0% beside a visibly
+ * non-zero bar, six sellers who had won money shared "0.0%" with eight who had
+ * won none, and nine cohort cells with returning customers printed the same
+ * digit as the cells where nobody came back. A reader takes 0% as "none", so
+ * the rounding was not an approximation — it was a different fact.
+ *
+ * Below the smallest value the requested precision can show, the figure is
+ * printed as "<0.1%" instead. Exact zero still prints "0%", which is the one
+ * case where the digit is true.
+ */
 export function formatPercent(value: number | null, digits = 1): string {
   if (value === null || !Number.isFinite(value)) return '—'
+
+  const smallest = 0.5 / 10 ** digits
+  if (value !== 0 && Math.abs(value) < smallest) {
+    const floor = separators(percentFormat(digits).format(smallest * 2))
+    return `${value < 0 ? '>-' : '<'}${floor}%`
+  }
+
   return `${separators(percentFormat(digits).format(value))}%`
 }
 

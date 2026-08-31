@@ -224,7 +224,10 @@ export function WarehousePage() {
       </section>
 
       <div className="stagger grid gap-3 sm:grid-cols-3">
-        <StatTile status={tileStatus} label="Joʻnatilgan buyurtma" value={totalOrders || null} unit="count" />
+        {/* "Buyurtmalar", not "joʻnatilgan": the number is every order
+            created in the window, including the ones cancelled before any
+            dispatch point took them. */}
+        <StatTile status={tileStatus} label="Buyurtmalar" value={totalOrders || null} unit="count" />
         <StatTile status={tileStatus} label="Nuqtalar" value={known.length || null} unit="count" hint="Sklad, kuryer, marketpleys" />
         <StatTile status={tileStatus} label="Tushum" value={totalRevenue || null} unit="money" />
       </div>

@@ -222,15 +222,31 @@ function TotalsBand({
 
 // ---------------------------------------------------------------------------
 
-/** 🥇🥈🥉 for the podium, the plain figure below it. */
-function Rank({ rank }: { rank: number }) {
-  const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : null
+/**
+ * 🥇🥈🥉 for the podium, the plain figure below it — and nothing at all when
+ * the podium would be decided by the tie-break.
+ *
+ * A medal claims to follow won money. On a short window where nobody has won
+ * anything yet — the first hours of a day, "today" before noon — every row
+ * held zero and the top three were whoever the internal id sorted first, so
+ * the page handed out gold, silver and bronze for nothing. `ranked` is false
+ * for those rows and the column prints a dash.
+ */
+function Rank({ rank, ranked = true }: { rank: number; ranked?: boolean }) {
+  const medal = ranked && rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : null
+
   return (
     <span
       className="tabular inline-flex w-9 shrink-0 justify-end text-xs font-semibold"
-      style={{ color: rank <= 3 ? 'var(--ink-primary)' : 'var(--ink-muted)' }}
+      style={{ color: ranked && rank <= 3 ? 'var(--ink-primary)' : 'var(--ink-muted)' }}
     >
-      {medal ? <span aria-label={`${rank}-oʻrin`}>{medal}</span> : rank}
+      {!ranked ? (
+        <span aria-label="Hali yutilgan puli yoʻq">—</span>
+      ) : medal ? (
+        <span aria-label={`${rank}-oʻrin`}>{medal}</span>
+      ) : (
+        rank
+      )}
     </span>
   )
 }
@@ -350,7 +366,7 @@ function SellerRows({
         style={{ borderColor: 'var(--grid)' }}
       >
         <td className="px-2 py-2">
-          <Rank rank={row.rank} />
+          <Rank rank={row.rank} ranked={row.won.amount > 0} />
         </td>
         <td className="px-2 py-2">
           {/*
@@ -630,7 +646,7 @@ function TeamTable({ rows }: { rows: readonly SellerTeamRowDto[] }) {
           {rows.map((row) => (
             <tr key={row.rop} className="border-b" style={{ borderColor: 'var(--grid)' }}>
               <td className="px-2 py-2">
-                <Rank rank={row.rank} />
+                <Rank rank={row.rank} ranked={row.won.amount > 0} />
               </td>
               <td className="px-2 py-2">
                 <span className="text-[12.5px] font-medium" style={{ color: 'var(--ink-primary)' }}>

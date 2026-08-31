@@ -449,7 +449,16 @@ export class InsightsService {
         refused,
         cancelledEarly: cancelled,
         inFlight,
-        deliveryRate: resolved === 0 ? 0 : Math.round((delivered / resolved) * 1000) / 10,
+        /*
+          Null, not zero, when nothing has resolved yet.
+
+          A window whose orders are all still travelling — the first days of a
+          month, "today", "this week" on a Monday — showed a critical-red 0.0%
+          ring beside its own text saying no order had resolved. `rateBp` in
+          the repository already returns null for exactly this; these two
+          hand-written rates did not.
+        */
+        deliveryRate: resolved === 0 ? null : Math.round((delivered / resolved) * 1000) / 10,
         medianHours,
       },
     }
@@ -480,7 +489,7 @@ export class InsightsService {
          * difference in how people work.
          */
         coverage: r.orders === 0 ? 0 : Math.round((r.confirmed / r.orders) * 1000) / 10,
-        deliveryRate: resolved === 0 ? 0 : Math.round((r.delivered / resolved) * 1000) / 10,
+        deliveryRate: resolved === 0 ? null : Math.round((r.delivered / resolved) * 1000) / 10,
         /**
          * How many confirmations survived to delivery.
          *

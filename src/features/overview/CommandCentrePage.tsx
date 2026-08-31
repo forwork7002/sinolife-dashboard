@@ -250,7 +250,9 @@ function MoneyTiles({ data, status }: BlockProps) {
         context={
           revenue?.closeLagDays != null ? (
             <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-              oʻrtacha {formatNumber(revenue.closeLagDays)} kundan keyin yopiladi — shuning
+              {/* «oʻrtacha» is the arithmetic mean everywhere else on this
+                  screen; this figure is a median, and ten days shorter. */}
+              mediana {formatNumber(revenue.closeLagDays)} kundan keyin yopiladi — shuning
               uchun oʻsish foizi koʻrsatilmaydi
             </span>
           ) : undefined

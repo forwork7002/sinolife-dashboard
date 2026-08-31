@@ -144,7 +144,14 @@ function HeatCell({ value }: { value: number | null }) {
       }}
       title={formatPercent(value)}
     >
-      {value === 0 ? '·' : Math.round(value)}
+      {/*
+        A middot for a true zero, "<1" for a cohort that did come back but
+        rounds below one percent, the whole number otherwise. Math.round alone
+        printed "0" for nine cells with real returning customers — the same
+        glyph a reader uses to mean nobody, one column away from cells that
+        genuinely were nobody.
+      */}
+      {value === 0 ? '·' : value < 1 ? '<1' : Math.round(value)}
     </td>
   )
 }
