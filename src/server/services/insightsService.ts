@@ -146,7 +146,9 @@ export interface ConfirmationOrderDto {
   readonly amount: MoneyDto
   readonly stageName: string
   readonly outcome: ConfirmationOutcomeValue
-  /** The stage move this row is dated by — the client's `MOVED_TIME`. */
+  /** Дата создания — when the order was placed. What the window selects on. */
+  readonly createdAt: string
+  /** The order's last confirmation move, which is where its status comes from. */
   readonly movedAt: string
   /** When it entered the queue. Null when it was refused without ever being in one. */
   readonly queuedAt: string | null
@@ -624,6 +626,7 @@ export class InsightsService {
         amount: toMoneyDto(money(r.amountMinor, r.currency)),
         stageName: r.stageName,
         outcome: r.outcome,
+        createdAt: r.createdAt.toISOString(),
         movedAt: r.movedAt.toISOString(),
         queuedAt: r.queuedAt?.toISOString() ?? null,
         decidedAt: r.decidedAt?.toISOString() ?? null,

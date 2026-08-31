@@ -171,7 +171,9 @@ export interface ConfirmationOrderRow {
   /** The stage the deal sits in NOW, which is what the outcome was read from. */
   readonly stageName: string
   readonly outcome: ConfirmationOutcomeValue
-  /** The stage move this row is dated by — the client's `MOVED_TIME`. */
+  /** Дата создания — when the order was placed. What the window selects on. */
+  readonly createdAt: Date
+  /** The order's last confirmation move, which is where its status comes from. */
   readonly movedAt: Date
   /**
    * When the order entered the queue this state belongs to.
@@ -887,11 +889,11 @@ export class InsightsRepository {
     /*
       Orders whose confirmation moved at all inside the window.
 
-      A superset of the answer and a cheap one: an order can only have its
-      LATEST move in the window if it has SOME move in the window, so this
-      narrows 216 000 rows to a few thousand deals before anything expensive
-      runs. The window is closed on the right so a report on last week shows
-      what last week looked like, not what has happened since.
+      Not the answer, but a cheap frame for it: an order CREATED in the window
+      cannot have a confirmation move before it existed, so if it reached the
+      queue at all its moves are in this same window. That makes this a
+      superset, and it narrows 216 000 history rows to a few thousand deals
+      through five index range scans before anything expensive runs.
     */
     touched AS (
       SELECT DISTINCT h."dealId" AS deal_id
@@ -902,31 +904,57 @@ export class InsightsRepository {
          AND h."enteredAt" <  $2
     ),
     /*
+      THE WINDOW IS THE ORDER'S OWN DATE — Дата создания in Bitrix.
+
+      Picking "today" has to mean today's orders, because that is the question
+      being asked and because it is the one an operator can check: open the
+      deal in Bitrix, read Дата создания, and it agrees. Dating the board by
+      the last status change instead put yesterday's order on today's list the
+      moment somebody touched it — deal 923458 was created on the 30th at
+      13:55, moved on the 31st, and appeared under the 31st while Bitrix said
+      «вчера». Of the 70 orders that board showed for one day, 41 had been
+      created earlier.
+
+      That is a DIFFERENT question from the one the client's Telegram bot
+      answers. Its board is dated by MOVED_TIME and lists what moved; this one
+      lists what came in. Both are honest; only one can be on this screen, and
+      the one an owner counts by is the intake.
+
+      Orders that never reached the queue are absent rather than pending: this
+      is the confirmation board, and a record still sitting in Регистрация has
+      not arrived on it yet.
+    */
+    born AS (
+      SELECT t.deal_id, d."createdAtSource" AS created_at
+        FROM touched t
+        JOIN "deal" d ON d."id" = t.deal_id
+       WHERE d."createdAtSource" >= $1
+         AND d."createdAtSource" <  $2
+    ),
+    /*
       One row per order, at its latest signal.
 
       THE ORDER IS THE UNIT, not the visit. An order that was queued, refused,
-      re-queued and confirmed is one line showing where it stands — which is
-      how the floor reads it, and how the client's own board is built. Counting
+      re-queued and confirmed is one line showing where it stands. Counting
       each visit separately would put the same order in a month three times
       and let «тасдиқланиш %» exceed the number of orders.
 
-      The WHERE drops the orders whose last word was spoken before the window:
-      they moved inside it, but not last.
+      Read up to the window's end rather than to now, so a report on last week
+      shows what last week looked like.
     */
     dated AS (
-      SELECT t.deal_id, m.moved_at, m.signal
-        FROM touched t
+      SELECT b.deal_id, b.created_at, m.moved_at, m.signal
+        FROM born b
         CROSS JOIN LATERAL (
           SELECT h."enteredAt" AS moved_at, s."confirmationSignal" AS signal
             FROM "deal_stage_history" h
             JOIN "deal_stage" s ON s."id" = h."stageId"
-           WHERE h."dealId" = t.deal_id
+           WHERE h."dealId" = b.deal_id
              AND s."confirmationSignal" IS NOT NULL
              AND h."enteredAt" < $2
            ORDER BY h."enteredAt" DESC
            LIMIT 1
         ) m
-       WHERE m.moved_at >= $1
     ),
     /*
       The queue arrival the current state belongs to.
@@ -947,6 +975,7 @@ export class InsightsRepository {
     classified AS (
       SELECT
         d."id" AS deal_id,
+        w.created_at,
         w.moved_at,
         /*
           Null when the order never passed through the queue at all.
@@ -1000,8 +1029,8 @@ export class InsightsRepository {
         -- Tashkent, not UTC: the working day is the thing being counted, and
         -- five hours of it would otherwise be numbered into yesterday.
         row_number() OVER (
-          PARTITION BY c.rop, (c.moved_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date
-          ORDER BY c.moved_at ASC, c.deal_id ASC
+          PARTITION BY c.rop, (c.created_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date
+          ORDER BY c.created_at ASC, c.deal_id ASC
         )::int AS daily_no
       FROM classified c
     )
@@ -1221,6 +1250,7 @@ export class InsightsRepository {
   ): Promise<{ totalItems: number; rows: ConfirmationOrderRow[] }> {
     // Allowlisted, never interpolated from the request: this reaches SQL.
     const sortColumn: Record<ConfirmationOrderSortValue, string> = {
+      createdAt: 'c.created_at',
       movedAt: 'c.moved_at',
       queuedAt: 'c.queued_at',
       decidedAt: 'c.decided_at',
@@ -1249,6 +1279,7 @@ export class InsightsRepository {
         currency: string
         stage_name: string
         outcome: ConfirmationOutcomeValue
+        created_at: Date
         moved_at: Date
         queued_at: Date | null
         decided_at: Date | null
@@ -1282,6 +1313,7 @@ export class InsightsRepository {
          d."currency" AS currency,
          st."name" AS stage_name,
          c.outcome AS outcome,
+         c.created_at AS created_at,
          c.moved_at AS moved_at,
          c.queued_at AS queued_at,
          c.decided_at AS decided_at,
@@ -1350,6 +1382,7 @@ export class InsightsRepository {
           currency: r.currency,
           stageName: r.stage_name,
           outcome: r.outcome,
+          createdAt: new Date(r.created_at),
           movedAt: new Date(r.moved_at),
           queuedAt,
           decidedAt,

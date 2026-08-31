@@ -46,14 +46,19 @@ import { t } from '@/lib/messages'
  * distinct glyph survives a colourblind reader and a greyscale print where
  * colour alone does not. The surrounding copy stays in the dashboard's voice.
  *
+ * WHAT THE PERIOD SELECTS, and why it is not what the reference selects.
+ * "Today" here means the orders PLACED today — Дата создания in Bitrix, so a
+ * row can be checked by opening the deal and reading that field. The
+ * reference board is dated by the last status change instead, which puts
+ * yesterday's order on today's list as soon as anyone touches it. Both are
+ * honest questions; an owner counting the day's intake is asking this one.
+ *
  * WHERE THIS SCREEN IS DELIBERATELY BETTER THAN THE ONE IT MIRRORS
  * The reference renders from `deal_state.json`, which the bot builds by
  * polling and never prunes — so its rate is lifetime-to-date, and it can only
  * hold orders whose ROP has a mapped Telegram channel. This one runs on the
  * imported stage history, so it has a real reporting window, it sees every
- * ROP, and САНА is the actual stage-entry time rather than the moment a
- * two-minute poll noticed it (which is why our clock reads a minute earlier
- * than theirs, consistently).
+ * ROP, and it catches transitions that happen between two of the bot's polls.
  */
 
 interface OutcomeSpec {
@@ -101,7 +106,7 @@ const OUTCOMES: readonly OutcomeSpec[] = [
 const SPEC_BY_KEY = new Map(OUTCOMES.map((spec) => [spec.key, spec]))
 
 /** The queue's own sort columns. The URL may carry another page's default. */
-const SORTS = ['movedAt', 'queuedAt', 'decidedAt', 'amountMinor', 'title'] as const
+const SORTS = ['createdAt', 'movedAt', 'queuedAt', 'decidedAt', 'amountMinor', 'title'] as const
 
 export function ConfirmationPage() {
   const { filters, update, apiParams } = useDashboardFilters()
@@ -114,7 +119,7 @@ export function ConfirmationPage() {
     which is the ordinary case on first load, and the only thing standing
     between a bookmarked link from another screen and an empty page.
   */
-  const sort = (SORTS as readonly string[]).includes(filters.sort) ? filters.sort : 'movedAt'
+  const sort = (SORTS as readonly string[]).includes(filters.sort) ? filters.sort : 'createdAt'
 
   const query = useQuery({
     queryKey: ['confirmation-queue', apiParams, filters.page, filters.pageSize, sort, filters.order],
@@ -223,15 +228,15 @@ export function ConfirmationPage() {
       // only column that is unique per row without being an opaque id.
       rowHeader: true,
       header: 'САНА',
-      sortKey: 'movedAt',
+      sortKey: 'createdAt',
       width: '112px',
       render: (row) => (
         <div className="whitespace-nowrap">
           <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
-            {tashkentDate(row.movedAt)}
+            {tashkentDate(row.createdAt)}
           </span>
           <span className="tabular block text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-            {tashkentTime(row.movedAt)}
+            {tashkentTime(row.createdAt)}
           </span>
         </div>
       ),

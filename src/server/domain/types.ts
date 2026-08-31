@@ -113,6 +113,7 @@ export type ConfirmationSignalValue = (typeof CONFIRMATION_SIGNALS)[number]
 
 /** Columns the confirmation queue may be ordered by. An allowlist: it reaches SQL. */
 export const CONFIRMATION_ORDER_SORTS = [
+  'createdAt',
   'movedAt',
   'queuedAt',
   'decidedAt',
