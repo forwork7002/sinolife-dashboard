@@ -44,25 +44,32 @@ function createPrismaClient(): PrismaClient {
    * pointed at Neon's POOLED connection string (the host containing
    * `-pooler`), which multiplexes on the database side.
    *
-   * FOURTEEN on a long-lived server, counted against the cluster rather than
-   * guessed. The managed instance reports max_connections = 25. The sync
-   * worker holds five plus one for its advisory lock, and a deploy briefly
-   * runs two jobs on top: 14 + 6 + 2 = 22, three short of the limit.
+   * EIGHT on a long-lived server, and the arithmetic has to include the
+   * deploy. The managed instance reports max_connections = 25. The sync
+   * worker holds five plus one for its advisory lock; a deploy runs two jobs
+   * on top; and for the length of a rolling deploy the OLD web container and
+   * the NEW one are both alive, each with a full pool. 2 × 8 + 6 + 2 = 24.
    *
-   * It was eight, and eight was too few for the one screen that fans out
-   * sixteen queries at once — two readers together queued thirty-two of them
-   * behind eight connections and the tail died on the ten-second connect
-   * timeout. More connections do not make a one-core database faster, but
-   * they stop a queue forming in front of it while it is waiting on disk.
+   * It was raised to fourteen for one screen that fans out sixteen queries at
+   * once, on the sum 14 + 6 + 2 = 22 — which forgot the second container.
+   * 2 × 14 + 8 = 36, and the next deploy's post-deploy job died on
+   * TooManyConnections and rolled the release back. Fourteen was solving the
+   * wrong problem anyway: that screen now shares one build across readers and
+   * its heaviest queries are gone, so eight is enough again.
+   *
+   * The connect timeout is twenty seconds rather than ten for the same
+   * reason more connections were wanted: a burst should QUEUE in front of
+   * the pool and drain, not fail. On a one-core database a queue is the
+   * honest state; an error is a page that shows nothing.
    */
   const isServerless = Boolean(process.env.NETLIFY || process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
 
   const pool = new Pool(
     poolConfig(env.DATABASE_URL, {
       caCert: caCertFromEnv(),
-      max: isServerless ? 3 : 14,
+      max: isServerless ? 3 : 8,
       idleTimeoutMillis: isServerless ? 10_000 : 30_000,
-      connectionTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 20_000,
       statementTimeoutMs: 20_000,
     }),
   )
