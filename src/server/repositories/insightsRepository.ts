@@ -610,6 +610,12 @@ export class InsightsRepository {
         WHERE s."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER')
         ORDER BY h."dealId", h."enteredAt" DESC
       ),
+      dispatched AS (
+        SELECT DISTINCT h."dealId" AS deal_id
+        FROM "deal_stage_history" h
+        JOIN "deal_stage" s ON s."id" = h."stageId"
+        WHERE s."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER', 'IN_TRANSIT')
+      ),
       delivered AS (
         SELECT DISTINCT ON (h."dealId")
           h."dealId"    AS deal_id,
@@ -621,10 +627,11 @@ export class InsightsRepository {
       ),
       scoped AS (
         SELECT
-          r.route AS route,
+          COALESCE(r.route, 'Hub belgilanmagan') AS route,
           d."status"   AS status,
           d."amountMinor" AS amount_minor,
           cur."logisticsRole" AS stage_role,
+          (dp.deal_id IS NOT NULL) AS dispatched,
           CASE
             WHEN cur."logisticsRole" = 'DELIVERED' AND dv.delivered_at >= d."createdAtSource"
             THEN EXTRACT(EPOCH FROM (dv.delivered_at - d."createdAtSource")) / 86400
@@ -632,7 +639,8 @@ export class InsightsRepository {
         FROM "deal" d
         JOIN "deal_stage" cur ON cur."id" = d."stageId"
         LEFT JOIN delivered dv ON dv.deal_id = d."id"
-        JOIN routed r ON r.deal_id = d."id"
+        LEFT JOIN dispatched dp ON dp.deal_id = d."id"
+        LEFT JOIN routed r ON r.deal_id = d."id"
         WHERE d."countsAsRevenue"
           AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
       )
@@ -641,8 +649,8 @@ export class InsightsRepository {
         GROUPING(route)::int AS is_total,
         count(*)::bigint AS orders,
         count(*) FILTER (WHERE stage_role = 'DELIVERED')::bigint AS delivered,
-        count(*) FILTER (WHERE stage_role = 'REFUSED')::bigint AS refused,
-        count(*) FILTER (WHERE stage_role = 'CANCELLED_EARLY')::bigint AS cancelled_early,
+        count(*) FILTER (WHERE stage_role IN ('REFUSED', 'CANCELLED_EARLY') AND dispatched)::bigint AS refused,
+        count(*) FILTER (WHERE stage_role IN ('REFUSED', 'CANCELLED_EARLY') AND NOT dispatched)::bigint AS cancelled_early,
         count(*) FILTER (WHERE status = 'OPEN')::bigint AS in_flight,
         sum(amount_minor) FILTER (WHERE status = 'WON')::text AS revenue,
         percentile_cont(0.5) WITHIN GROUP (ORDER BY pace_days) AS median_days,
@@ -698,6 +706,12 @@ export class InsightsRepository {
         WHERE s."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER')
         ORDER BY h."dealId", h."enteredAt" DESC
       ),
+      dispatched AS (
+        SELECT DISTINCT h."dealId" AS deal_id
+        FROM "deal_stage_history" h
+        JOIN "deal_stage" s ON s."id" = h."stageId"
+        WHERE s."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER', 'IN_TRANSIT')
+      ),
       delivered AS (
         SELECT DISTINCT ON (h."dealId")
           h."dealId"    AS deal_id,
@@ -713,6 +727,7 @@ export class InsightsRepository {
           d."status"   AS status,
           d."amountMinor" AS amount_minor,
           cur."logisticsRole" AS stage_role,
+          (dp.deal_id IS NOT NULL) AS dispatched,
           CASE
             WHEN cur."logisticsRole" = 'DELIVERED' AND dv.delivered_at >= d."createdAtSource"
             THEN EXTRACT(EPOCH FROM (dv.delivered_at - d."createdAtSource")) / 86400
@@ -720,6 +735,7 @@ export class InsightsRepository {
         FROM "deal" d
         JOIN "deal_stage" cur ON cur."id" = d."stageId"
         LEFT JOIN delivered dv ON dv.deal_id = d."id"
+        LEFT JOIN dispatched dp ON dp.deal_id = d."id"
         LEFT JOIN routed r ON r.deal_id = d."id"
         WHERE d."countsAsRevenue"
           AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
@@ -729,8 +745,8 @@ export class InsightsRepository {
         GROUPING(route)::int AS is_total,
         count(*)::bigint AS orders,
         count(*) FILTER (WHERE stage_role = 'DELIVERED')::bigint AS delivered,
-        count(*) FILTER (WHERE stage_role = 'REFUSED')::bigint AS refused,
-        count(*) FILTER (WHERE stage_role = 'CANCELLED_EARLY')::bigint AS cancelled_early,
+        count(*) FILTER (WHERE stage_role IN ('REFUSED', 'CANCELLED_EARLY') AND dispatched)::bigint AS refused,
+        count(*) FILTER (WHERE stage_role IN ('REFUSED', 'CANCELLED_EARLY') AND NOT dispatched)::bigint AS cancelled_early,
         count(*) FILTER (WHERE status = 'OPEN')::bigint AS in_flight,
         sum(amount_minor) FILTER (WHERE status = 'WON')::text AS revenue,
         percentile_cont(0.5) WITHIN GROUP (ORDER BY pace_days) AS median_days,
@@ -781,8 +797,21 @@ export class InsightsRepository {
       SELECT
         CASE
           WHEN NOT d."countsAsRevenue" THEN 'PRE_SALE'
-          WHEN cur."logisticsRole" = 'REFUSED' THEN 'RETURNED'
-          WHEN cur."logisticsRole" = 'CANCELLED_EARLY' THEN 'CANCELLED'
+          -- Split on whether the parcel actually travelled, not on which of
+          -- the two refusal stages the portal happens to park it in. Since
+          -- June this portal writes every refusal to
+          -- "Отказ предварительно" — all 150 of August's, every one of which
+          -- had reached a hub, a carrier or "В пути" first. Read from the
+          -- stage alone the screen said nothing came back and 150 orders
+          -- never left the warehouse; both were the opposite of the truth.
+          WHEN cur."logisticsRole" IN ('REFUSED', 'CANCELLED_EARLY')
+            AND EXISTS (
+              SELECT 1 FROM "deal_stage_history" hh
+              JOIN "deal_stage" ss ON ss."id" = hh."stageId"
+              WHERE hh."dealId" = d."id"
+                AND ss."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER', 'IN_TRANSIT')
+            ) THEN 'RETURNED'
+          WHEN cur."logisticsRole" IN ('REFUSED', 'CANCELLED_EARLY') THEN 'CANCELLED'
           ELSE 'OTHER'
         END AS stage,
         d."refusalReason" AS reason,
