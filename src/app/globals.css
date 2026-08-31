@@ -1658,3 +1658,22 @@ p {
   text-wrap: pretty;
 }
 
+
+/*
+  The palette's magnifier, while a lookup is in flight.
+
+  A pulse on the glyph already on screen rather than a spinner beside it: the
+  row does not reflow, and the thing that is working is the thing that is
+  marked. Motion-safe, because a heartbeat in the corner of the eye is exactly
+  what a reduced-motion preference is asking us not to do.
+*/
+@media (prefers-reduced-motion: no-preference) {
+  .palette-busy {
+    animation: palette-busy-pulse 1.1s ease-in-out infinite;
+  }
+}
+
+@keyframes palette-busy-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}

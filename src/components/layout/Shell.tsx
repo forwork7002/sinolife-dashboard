@@ -4,7 +4,7 @@ import * as React from 'react'
 
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useIsFetching, useQueryClient } from '@tanstack/react-query'
+import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   useCallback,
   useEffect,
@@ -23,8 +23,9 @@ import {
 import { Kbd } from '@/components/ui/Kbd'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
+import { apiGet, type SearchDto } from '@/lib/api'
 import { sessionUser, signOut, useSession } from '@/lib/authClient'
-import { formatDateTime } from '@/lib/format'
+import { formatCompactUzs, formatDateTime } from '@/lib/format'
 import { ROLE_LABELS, canSeeHref } from '@/lib/roles'
 import { sectionSpec, type SectionValue } from '@/lib/sections'
 import { useFilterOptions } from '@/features/shared/PageShell'
@@ -187,6 +188,36 @@ export function Shell({
   const [paletteOpen, setPaletteOpen] = useState(false)
 
   /*
+    What is being typed in the palette, and what the server makes of it.
+
+    DEBOUNCED, not throttled, and only from three characters. Every keystroke
+    is six indexed lookups on a one-core database; firing them per character
+    would queue five requests to answer the sixth. 220ms is under the gap
+    between keystrokes for anyone typing a phone number and above the noise of
+    correcting one.
+
+    `keepPreviousData` is what stops the list emptying between a term and its
+    successor — without it the palette blinks to "nothing found" on every pause
+    and reads as broken.
+  */
+  const [typed, setTyped] = useState('')
+  const [lookup, setLookup] = useState('')
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setLookup(typed.trim()), 220)
+    return () => window.clearTimeout(timer)
+  }, [typed])
+
+  const searchable = lookup.length >= 3
+  const results = useQuery({
+    queryKey: ['search', lookup],
+    queryFn: ({ signal }) => apiGet<SearchDto>('/search', { q: lookup }, signal),
+    enabled: paletteOpen && searchable,
+    placeholderData: (previous) => previous,
+    staleTime: 30_000,
+  })
+
+  /*
     Nav links carry the window each section was last read in.
 
     Read through `useSyncExternalStore` rather than in an effect: browser
@@ -304,6 +335,27 @@ export function Shell({
         }
       }),
     },
+    /*
+      What the server found, above the static lists.
+
+      `prefiltered` because it has already matched — on a phone number inside
+      an array, or a customer's name on an order titled something else, neither
+      of which is in the label the palette would filter against.
+
+      Ordered first: somebody who typed a phone number is looking for that
+      customer, not for a section whose name happens to share three letters.
+    */
+    ...(results.data?.data.groups ?? []).map((group) => ({
+      label: group.label,
+      prefiltered: true,
+      items: group.items.map((hit) => ({
+        id: hit.id,
+        label: hit.label,
+        hint: hit.amount ? `${hit.hint} · ${formatCompactUzs(hit.amount.amount)}` : hit.hint,
+        onSelect: () => router.push(hit.href),
+      })),
+    })),
+
     // Only where there ARE dates. Marketing keeps its own period control and
     // the account screen has none, so on those two the presets wrote a window
     // nothing reads and left no control anywhere to clear it again.
@@ -695,7 +747,14 @@ export function Shell({
       {/* Portalled to document.body by the primitive; mounted here so the
           shortcut, the chip and the dialog ship as one unit on every page.
           Closed is unmounted — its Escape and focus trap cannot outlive it. */}
-      <CommandPalette open={paletteOpen} onClose={closePalette} groups={paletteGroups} />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={closePalette}
+        groups={paletteGroups}
+        onQueryChange={setTyped}
+        busy={searchable && (results.isFetching || lookup !== typed.trim())}
+        placeholder="Telefon, ID, mijoz, mahsulot yoki boʻlim…"
+      />
     </div>
   )
 }

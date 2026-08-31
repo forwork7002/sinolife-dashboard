@@ -368,6 +368,28 @@ export interface UserRowDto {
   readonly createdAt: string
 }
 
+/** One row in the global search, already told where it goes. */
+export interface SearchHitDto {
+  readonly id: string
+  readonly label: string
+  readonly hint: string
+  readonly href: string
+  readonly amount?: MoneyDto
+}
+
+export interface SearchGroupDto {
+  readonly key: 'deals' | 'customers' | 'employees' | 'products' | 'sources'
+  readonly label: string
+  readonly items: readonly SearchHitDto[]
+}
+
+export interface SearchDto {
+  readonly query: string
+  readonly groups: readonly SearchGroupDto[]
+  /** The term was too short to look anything up. */
+  readonly tooShort: boolean
+}
+
 export interface UsersPageDto {
   readonly items: readonly UserRowDto[]
 }

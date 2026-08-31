@@ -77,6 +77,10 @@ describe('every v1 endpoint declares its access', () => {
         meta/filters  the roster and period options every page loads. It is
                       already narrowed to the caller's own employee when the
                       account is OWN-scoped.
+        search        the one box that looks across every screen. It gates each
+                      GROUP it returns on a section the caller holds and
+                      narrows the rows to their data scope, so it can reach
+                      nothing navigation could not.
         users         account administration, which is a permission and
                       deliberately not a section — see `pageGuard`.
     */
@@ -85,6 +89,6 @@ describe('every v1 endpoint declares its access', () => {
       .map((r) => r.relative.replace('src/app/api/v1/', '').replace('/route.ts', ''))
       .sort()
 
-    expect(ungated).toEqual(['meta/filters', 'users', 'users/[id]'])
+    expect(ungated).toEqual(['meta/filters', 'search', 'users', 'users/[id]'])
   })
 })

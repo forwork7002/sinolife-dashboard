@@ -45,6 +45,16 @@ export interface CommandItem {
 export interface CommandGroup {
   readonly label: string
   readonly items: readonly CommandItem[]
+  /**
+   * Items already matched elsewhere — skip the local filter.
+   *
+   * The static groups are a fixed list this widget narrows as you type. A
+   * group of search results is the opposite: the server has already decided
+   * these match, and the words it matched on — a phone number inside an array,
+   * a customer's name on an order titled something else — are not necessarily
+   * in the label. Filtering them again would hide rows that genuinely match.
+   */
+  readonly prefiltered?: boolean
 }
 
 /**
@@ -66,11 +76,24 @@ export function CommandPalette({
   onClose,
   groups,
   placeholder,
+  onQueryChange,
+  busy,
 }: {
   readonly open: boolean
   readonly onClose: () => void
   readonly groups: readonly CommandGroup[]
   readonly placeholder?: string
+  /**
+   * Told what is being typed, so a caller can look it up.
+   *
+   * The palette keeps owning the input — it is transient state that dies with
+   * the dialog — and merely reports it. A caller that lifted the value would
+   * have to reset it on close, which is the effect this design exists to
+   * avoid.
+   */
+  readonly onQueryChange?: (query: string) => void
+  /** A lookup is in flight; say so rather than showing "nothing found". */
+  readonly busy?: boolean
 }) {
   /*
     Closed means UNMOUNTED, not hidden. The dialog below holds its transient
@@ -82,7 +105,13 @@ export function CommandPalette({
   if (!open) return null
 
   return createPortal(
-    <PaletteDialog groups={groups} onClose={onClose} placeholder={placeholder} />,
+    <PaletteDialog
+      groups={groups}
+      onClose={onClose}
+      placeholder={placeholder}
+      onQueryChange={onQueryChange}
+      busy={busy}
+    />,
     document.body,
   )
 }
@@ -91,10 +120,14 @@ function PaletteDialog({
   groups,
   onClose,
   placeholder = 'Qidirish yoki buyruq…',
+  onQueryChange,
+  busy = false,
 }: {
   readonly groups: readonly CommandGroup[]
   readonly onClose: () => void
   readonly placeholder?: string
+  readonly onQueryChange?: (query: string) => void
+  readonly busy?: boolean
 }) {
   const [query, setQuery] = useState('')
   /*
@@ -125,7 +158,13 @@ function PaletteDialog({
     for (const group of groups) {
       const rows: { item: CommandItem; index: number }[] = []
       for (const item of group.items) {
-        if (needle && !normalize(`${item.label} ${item.hint ?? ''}`).includes(needle)) continue
+        if (
+          !group.prefiltered &&
+          needle &&
+          !normalize(`${item.label} ${item.hint ?? ''}`).includes(needle)
+        ) {
+          continue
+        }
         rows.push({ item, index: flat.length })
         flat.push(item)
       }
@@ -245,14 +284,21 @@ function PaletteDialog({
           className="flex items-center gap-2.5 border-b px-4"
           style={{ borderColor: 'var(--border)' }}
         >
-          <span aria-hidden="true" style={{ color: 'var(--ink-muted)' }}>
+          <span
+            aria-hidden="true"
+            className={busy ? 'palette-busy' : undefined}
+            style={{ color: busy ? 'var(--ink-secondary)' : 'var(--ink-muted)' }}
+          >
             <SearchGlyph size={15} />
           </span>
           <input
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              onQueryChange?.(event.target.value)
+            }}
             onKeyDown={onKeyDown}
             placeholder={placeholder}
             aria-label={placeholder}
@@ -285,11 +331,13 @@ function PaletteDialog({
         >
           {flat.length === 0 ? (
             <div className="px-4 py-10 text-center">
+              {/* "Nothing found" while the lookup is still running is a lie
+                  that arrives before the truth and is read first. */}
               <p className="text-[13px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-                Hech narsa topilmadi
+                {busy ? 'Qidirilmoqda…' : 'Hech narsa topilmadi'}
               </p>
               <p className="mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
-                Boshqa soʻz bilan urinib koʻring
+                {busy ? 'Bir soniya' : 'Telefon raqam, ID yoki ism bilan urinib koʻring'}
               </p>
             </div>
           ) : (

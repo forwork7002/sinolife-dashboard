@@ -15,6 +15,8 @@ import { ConcentrationRepository } from '@/server/repositories/concentrationRepo
 import { ResponseRepository } from '@/server/repositories/responseRepository'
 import { FinanceRepository } from '@/server/repositories/financeRepository'
 import { MarketingRepository } from '@/server/repositories/marketingRepository'
+import { SearchRepository } from '@/server/repositories/searchRepository'
+import { SearchService } from '@/server/services/searchService'
 import { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import { AnalyticsService } from './analyticsService'
@@ -45,12 +47,14 @@ export const responseRepository = new ResponseRepository(prisma)
  */
 export const marketingRepository = new MarketingRepository(prisma)
 export const sellerBoardRepository = new SellerBoardRepository(prisma)
+export const searchRepository = new SearchRepository(prisma)
 
 export const analyticsService = new AnalyticsService(dealRepository, referenceRepository)
 export const financeService = new FinanceService(financeRepository, referenceRepository)
 export const kpiService = new KpiService(dealRepository, referenceRepository)
 export const insightsService = new InsightsService(insightsRepository)
 export const pulseService = new PulseService(pulseRepository)
+export const searchService = new SearchService(searchRepository)
 export const concentrationService = new ConcentrationService(concentrationRepository)
 export const commandCentreService = new CommandCentreService(insightsRepository)
 export const responseService = new ResponseService(responseRepository)
