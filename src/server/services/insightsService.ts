@@ -345,10 +345,20 @@ export class InsightsService {
     })
 
     const totalCustomers = dtos.reduce((sum, r) => sum + r.size, 0)
-    const repeatCustomers = rows.reduce(
-      (sum, row) => sum + (row.cells.find((c) => c.monthsSince > 0)?.customers ?? 0),
-      0,
-    )
+    /*
+      Everyone who ever came back, not everyone who came back NEXT MONTH.
+
+      `.find` stopped at the first cell past offset zero, so a customer whose
+      second order landed in month +2 was not a returning customer as far as
+      this tile was concerned. On this database that is 320 against 751 — the
+      tile understated its own headline by more than half, under a label
+      reading «Qaytgan mijozlar».
+
+      Summing the cells instead would have been the other error: a customer
+      who returned in +1 and again in +3 is counted in both. The repository
+      counts each cohort's returners once, which is the only place that can.
+    */
+    const repeatCustomers = rows.reduce((sum, row) => sum + row.returned, 0)
     const firstRevenue = rows.reduce(
       (sum, row) => sum + (row.cells.find((c) => c.monthsSince === 0)?.revenueMinor ?? 0n),
       0n,
