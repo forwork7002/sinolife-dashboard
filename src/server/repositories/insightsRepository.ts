@@ -249,9 +249,16 @@ export interface ConfirmationRow {
 export interface ConfirmationWindow {
   /** Every revenue order created in the window. */
   readonly orders: number
-  /** Never reached the confirmation stage and is still moving. */
+  /**
+   * Reached NO decision — neither confirmed nor chased — and is still moving.
+   *
+   * "Chased" counts as reached. Looking only for CONFIRMED put the 174 orders
+   * an operator rang and could not reach into this bucket as well as into
+   * `unreachable`, so the screen's three states summed to 174 more than the
+   * orders they were dividing.
+   */
   readonly unconfirmedOpen: number
-  /** Never reached it and is already resolved — genuinely skipped. */
+  /** Reached no decision and is already resolved — genuinely skipped. */
   readonly unconfirmedClosed: number
 }
 
@@ -550,19 +557,44 @@ export class InsightsRepository {
    * the live headcount per stage answers "how many customers are still being
    * worked" in the team's own vocabulary, which the cohort matrix cannot.
    */
-  async retentionStages(): Promise<RetentionStage[]> {
-    const rows = await this.prisma.$queryRawUnsafe<{ stage: string; customers: bigint }[]>(
+  async retentionStages(): Promise<{
+    readonly stages: RetentionStage[]
+    /**
+     * Distinct customers on an OPEN retention deal — the ones actually being
+     * worked, counted once each.
+     *
+     * NOT the sum of the rows. A customer with deals on two stages is in two
+     * of them, so adding the column up counted 1,660 people twice and
+     * produced a "base" larger than the whole customer list. It also swept in
+     * Активный, Неактивные and Недозвоны, which are where the cadence ENDS.
+     */
+    readonly workedCustomers: number
+  }> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { stage: string | null; is_total: number; customers: bigint; open_customers: bigint }[]
+    >(
       `
-      SELECT s."name" AS stage, count(DISTINCT d."customerId")::bigint AS customers
+      SELECT
+        s."name" AS stage,
+        GROUPING(s."name")::int AS is_total,
+        count(DISTINCT d."customerId")::bigint AS customers,
+        count(DISTINCT d."customerId") FILTER (WHERE d."status" = 'OPEN')::bigint
+          AS open_customers
       FROM "deal" d
       JOIN "deal_stage" s ON s."id" = d."stageId"
       JOIN "pipeline" p ON p."id" = d."pipelineId"
       WHERE p."role" = 'RETENTION' AND d."customerId" IS NOT NULL
-      GROUP BY s."name", s."sortOrder"
-      ORDER BY s."sortOrder"
+      GROUP BY GROUPING SETS ((s."name", s."sortOrder"), ())
+      ORDER BY is_total, min(s."sortOrder")
       `,
     )
-    return rows.map((r) => ({ stage: r.stage, customers: int(r.customers) }))
+
+    return {
+      stages: rows
+        .filter((r) => r.is_total === 0)
+        .map((r) => ({ stage: r.stage ?? '', customers: int(r.customers) })),
+      workedCustomers: int(rows.find((r) => r.is_total === 1)?.open_customers ?? 0n),
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -1009,7 +1041,7 @@ export class InsightsRepository {
         SELECT DISTINCT h."dealId" AS deal_id
           FROM "deal_stage_history" h
           JOIN "deal_stage" s ON s."id" = h."stageId"
-         WHERE s."logisticsRole" = 'CONFIRMED'
+         WHERE s."logisticsRole" IN ('CONFIRMED', 'CHASING')
       )
       SELECT count(*)::bigint AS orders,
              -- Why coverage is not 100%: an order still sitting in the queue

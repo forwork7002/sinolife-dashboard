@@ -51,6 +51,8 @@ export interface CohortDto {
 export interface CohortSummaryDto {
   readonly rows: readonly CohortDto[]
   readonly stages: readonly { stage: string; customers: number }[]
+  /** Distinct customers on an open retention deal. Never the sum of `stages`. */
+  readonly workedCustomers: number
   /** Share of revenue that came from customers buying a second time or later. */
   readonly repeatRevenueShare: number
   readonly repeatCustomers: number
@@ -311,7 +313,7 @@ export class InsightsService {
       restrictToEmployeeIds: scope.restrictToEmployeeIds ?? null,
     }
 
-    const [rows, stages] = await Promise.all([
+    const [rows, base] = await Promise.all([
       this.repository.cohorts(options),
       this.repository.retentionStages(),
     ])
@@ -372,7 +374,8 @@ export class InsightsService {
 
     return {
       rows: dtos,
-      stages,
+      stages: base.stages,
+      workedCustomers: base.workedCustomers,
       repeatRevenueShare:
         total === 0n ? 0 : Math.round(Number((laterRevenue * 1000n) / total)) / 10,
       repeatCustomers,

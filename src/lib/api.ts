@@ -534,6 +534,8 @@ export interface CohortDto {
 export interface CohortSummaryDto {
   readonly rows: readonly CohortDto[]
   readonly stages: readonly { readonly stage: string; readonly customers: number }[]
+  /** Distinct customers on an open retention deal. Never the sum of `stages`. */
+  readonly workedCustomers: number
   readonly repeatRevenueShare: number
   readonly repeatCustomers: number
   readonly totalCustomers: number

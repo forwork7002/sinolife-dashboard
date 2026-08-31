@@ -154,11 +154,12 @@ export function CohortPage() {
         <StatTile
           status={tileStatus}
           label="Faol bazada"
-          value={
-            data ? data.stages.reduce((sum, s) => sum + s.customers, 0) : null
-          }
+          /* Counted once each by the database. Adding the stage column up
+             counted anyone with two open deals twice, and swept in the three
+             stages where the cadence ends. */
+          value={data?.workedCustomers ?? null}
           unit="count"
-          hint="База voronkasida ishlanmoqda"
+          hint="База da ochiq bitimi bor mijozlar"
         />
       </div>
 
