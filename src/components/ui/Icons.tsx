@@ -362,3 +362,40 @@ export function TrashGlyph(props: GlyphProps) {
     </Glyph>
   )
 }
+
+/**
+ * A bell, for work that is waiting.
+ *
+ * Drawn rather than borrowed from an emoji font: 🔔 renders at a different
+ * weight and baseline on every platform, and this one has to sit level with a
+ * count badge pinned to its corner.
+ */
+export function BellGlyph(props: GlyphProps) {
+  return (
+    <Glyph size={16} {...props}>
+      <path
+        d="M6 9a6 6 0 0 1 12 0c0 3.2.7 4.7 1.4 5.6.4.5 0 1.4-.7 1.4H5.3c-.7 0-1.1-.9-.7-1.4C5.3 13.7 6 12.2 6 9z"
+        {...stroke}
+      />
+      <path d="M10 19a2 2 0 0 0 4 0" {...stroke} />
+    </Glyph>
+  )
+}
+
+/**
+ * A refresh arrow that turns only while something is in flight.
+ *
+ * The spin is the state, so it is driven by a prop rather than by a hover or
+ * a permanent animation — a dashboard whose refresh icon always turns says
+ * nothing about whether it is actually working.
+ */
+export function RefreshGlyph({ spinning = false, ...props }: GlyphProps & { spinning?: boolean }) {
+  return (
+    <span className={spinning ? 'spin' : undefined} style={{ display: 'inline-flex' }}>
+      <Glyph size={16} {...props}>
+        <path d="M20 12a8 8 0 1 1-2.6-5.9" {...stroke} />
+        <path d="M20 4v4.5h-4.5" {...stroke} />
+      </Glyph>
+    </span>
+  )
+}

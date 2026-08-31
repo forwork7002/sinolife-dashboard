@@ -342,6 +342,26 @@ export class ReferenceRepository {
    * Shown in the UI so a stale dashboard is visibly stale rather than silently
    * wrong.
    */
+  /**
+   * The most recent tick of any entity, including a failed one.
+   *
+   * `findLastSuccessfulSync` deliberately looks past failures to answer "how
+   * old are the numbers"; this answers the other question, "did the last
+   * attempt work", which a green freshness dot cannot.
+   */
+  async findLastSyncOutcome(): Promise<{
+    status: 'RUNNING' | 'SUCCESS' | 'PARTIAL' | 'FAILED'
+    entity: string
+    finishedAt: Date | null
+  } | null> {
+    const row = await this.prisma.syncLog.findFirst({
+      where: { finishedAt: { not: null } },
+      orderBy: { finishedAt: 'desc' },
+      select: { status: true, entity: true, finishedAt: true },
+    })
+    return row ? { status: row.status, entity: row.entity, finishedAt: row.finishedAt } : null
+  }
+
   async findLastSuccessfulSync(): Promise<Date | null> {
     const row = await this.prisma.syncLog.findFirst({
       where: { status: { in: ['SUCCESS', 'PARTIAL'] }, finishedAt: { not: null } },

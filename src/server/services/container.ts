@@ -16,6 +16,7 @@ import { ResponseRepository } from '@/server/repositories/responseRepository'
 import { FinanceRepository } from '@/server/repositories/financeRepository'
 import { MarketingRepository } from '@/server/repositories/marketingRepository'
 import { SearchRepository } from '@/server/repositories/searchRepository'
+import { AlertsService } from '@/server/services/alertsService'
 import { SearchService } from '@/server/services/searchService'
 import { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import { ReferenceRepository } from '@/server/repositories/referenceRepository'
@@ -55,6 +56,7 @@ export const kpiService = new KpiService(dealRepository, referenceRepository)
 export const insightsService = new InsightsService(insightsRepository)
 export const pulseService = new PulseService(pulseRepository)
 export const searchService = new SearchService(searchRepository)
+export const alertsService = new AlertsService(insightsRepository, referenceRepository, marketingRepository)
 export const concentrationService = new ConcentrationService(concentrationRepository)
 export const commandCentreService = new CommandCentreService(insightsRepository)
 export const responseService = new ResponseService(responseRepository)

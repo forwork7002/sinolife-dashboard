@@ -149,12 +149,12 @@ export interface TooltipProps {
   /** What the tip says. Values worth a tooltip are worth tabular figures. */
   readonly content: ReactNode
   /** A single element; it gains aria-describedby while the tip is open. */
-  readonly children: ReactElement<{ 'aria-describedby'?: string   /** Which side to open on. See TipSide. */
-  readonly side?: TipSide
-}>
+  readonly children: ReactElement<{ 'aria-describedby'?: string }>
   /** Hover delay, ms. Focus and touch never wait. */
   readonly delay?: number
   readonly className?: string
+  /** Which side to open on. See TipSide. */
+  readonly side?: TipSide
 }
 
 export function Tooltip({ content, children, delay = 150, className = '', side = 'auto' }: TooltipProps) {

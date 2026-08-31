@@ -226,6 +226,13 @@ export const t = {
     minutesAgo: 'daqiqa oldin',
     hoursAgo: 'soat oldin',
     daysAgo: 'kun oldin',
+    synced: 'Sinxronlangan',
+    stale: 'eskirgan',
+    pending: 'Navbatda kutmoqda · bugun',
+    alerts: 'Ogohlantirishlar',
+    noAlerts: 'Hammasi joyida',
+    refresh: 'Yangilash',
+    refreshing: 'Yangilanmoqda…',
   },
 
   /**

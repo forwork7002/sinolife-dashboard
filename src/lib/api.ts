@@ -368,6 +368,19 @@ export interface UserRowDto {
   readonly createdAt: string
 }
 
+/** The header's three facts: how fresh, what is waiting, what is wrong. */
+export interface AlertsDto {
+  readonly syncedAt: string | null
+  readonly syncAgeMinutes: number | null
+  readonly queue: { readonly pending: number; readonly overdue: number } | null
+  readonly alerts: readonly {
+    readonly key: string
+    readonly severity: 'warning' | 'critical'
+    readonly label: string
+    readonly href?: string
+  }[]
+}
+
 /** One row in the global search, already told where it goes. */
 export interface SearchHitDto {
   readonly id: string
