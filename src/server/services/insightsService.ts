@@ -16,6 +16,7 @@ import {
 } from '@/server/domain/employees/branches'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import type { Period } from '@/server/domain/period/period'
+import { periodLengthInDays } from '@/server/domain/period/period'
 import type {
   CallActivityRow,
   CallDirectionRow,
@@ -583,10 +584,31 @@ export class InsightsService {
       could not be used to compare one state against another, which is the only
       reason to put five of them side by side.
     */
-    const [page, byRop] = await Promise.all([
-      this.repository.confirmationOrders(window, query),
-      this.repository.confirmationByRop(window, { q: query.q }),
-    ])
+    /*
+      TWO SHAPES, CHOSEN BY THE WINDOW'S LENGTH — measured, not preferred.
+
+      Up to two months the page and the panel run as two statements side by
+      side, each building the cohort itself; Postgres gives each its own
+      parallel workers, and on production the pair returns a month in 2–3 s.
+      Past that, the same pair ran the one core against itself and «Shu yil»
+      died on the twenty-second statement timeout — in a fair trial the pair
+      did not return a year inside ninety seconds. The single statement builds
+      the cohort once and cannot use parallel workers across its materialised
+      CTE, so it is slower for a month (a steady ~4.6 s) and the only thing
+      that finishes for a year (~5 s). Same rows either way, checked row for
+      row on production.
+    */
+    const LONG_WINDOW_DAYS = 62
+    const { page, byRop } =
+      periodLengthInDays(window) > LONG_WINDOW_DAYS
+        ? await this.repository.confirmationBoard(window, query).then((board) => ({
+            page: { rows: board.rows, totalItems: board.totalItems },
+            byRop: board.byRop,
+          }))
+        : await Promise.all([
+            this.repository.confirmationOrders(window, query),
+            this.repository.confirmationByRop(window, { q: query.q }),
+          ]).then(([page, byRop]) => ({ page, byRop }))
 
     const scoped = query.rop ? byRop.filter((r) => r.rop === query.rop) : byRop
     const byOutcome: ConfirmationOutcomeTotals = {
