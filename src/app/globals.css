@@ -1677,3 +1677,70 @@ p {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
+
+
+/*
+ * The sidebar's items — hover, active, folded — in one place.
+ *
+ * Inline styles cannot express :hover, and the rail had none: a pointer over a
+ * section changed nothing until the click landed. Here the whole grammar sits
+ * together. Colour and background ease over 150ms; the press is a 2% scale so
+ * the click is felt as well as seen; the active screen carries a series-1 wash
+ * and its icon takes the series colour, which is the one place in the rail
+ * that hue is allowed to speak.
+ */
+.rail-item {
+  color: var(--ink-secondary);
+  background: transparent;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out,
+    transform 120ms ease-out;
+}
+.rail-item:hover {
+  color: var(--ink-primary);
+  background: var(--grid);
+}
+.rail-item:active {
+  transform: scale(0.98);
+}
+.rail-item[aria-current='page'] {
+  color: var(--ink-primary);
+  background: color-mix(in oklab, var(--series-1) 10%, transparent);
+}
+.rail-item[aria-current='page']:hover {
+  background: color-mix(in oklab, var(--series-1) 14%, transparent);
+}
+
+.rail-icon {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  transition: color 150ms ease-out, transform 150ms ease-out;
+}
+.rail-item:hover .rail-icon {
+  color: var(--ink-primary);
+}
+.rail-item[aria-current='page'] .rail-icon {
+  color: var(--series-1);
+}
+
+/* Folded to icons: the glyph grows from 15px to 18px so a 40px square does
+   not read as a mostly-empty box, and the active icon sits on its wash. */
+.rail-item--folded .rail-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* The two buttons beside the account: same grammar, muted until touched. */
+.rail-button {
+  color: var(--ink-muted);
+}
+.rail-button svg {
+  width: 17px;
+  height: 17px;
+}

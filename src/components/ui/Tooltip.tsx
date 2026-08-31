@@ -143,6 +143,24 @@ export function Tooltip({ content, children, delay = 150, className = '' }: Tool
 
   const position = useTipPosition(open, anchorRef, tipRef)
 
+  /*
+    NOTHING TO SAY, NOTHING TO WRAP.
+
+    A caller that computes its content — `content={collapsed ? label : ''}` —
+    otherwise got the whole apparatus for an empty string: hovering opened a
+    bubble with no text in it, which reads as a small dark box torn out of
+    whatever it covered. It also wrapped the child in an `inline-flex` span,
+    so a nav link that was meant to fill the rail shrank to its own text and
+    the row's highlight stopped short of the edge.
+
+    Returning the child untouched removes both. It is the honest reading of
+    "no content": there is no tip here, so there is no anchor either.
+  */
+  const hasContent =
+    typeof content === 'string' || typeof content === 'number'
+      ? String(content).trim().length > 0
+      : content !== null && content !== undefined && content !== false
+
   const clearTimer = () => window.clearTimeout(timer.current)
 
   const show = () => {
@@ -199,6 +217,8 @@ export function Tooltip({ content, children, delay = 150, className = '' }: Tool
   const trigger = isValidElement(children)
     ? cloneElement(children, { 'aria-describedby': open ? tipId : undefined })
     : children
+
+  if (!hasContent) return <>{children}</>
 
   return (
     <span

@@ -415,8 +415,8 @@ export function Shell({
           it the sidebar crossfades along with the content and the whole screen
           appears to flicker. */}
       <aside
-        className={`hidden shrink-0 border-r transition-[width] duration-200 lg:flex lg:flex-col ${
-          collapsed ? 'w-[3.75rem]' : 'w-60'
+        className={`hidden shrink-0 border-r transition-[width] duration-200 ease-out lg:flex lg:flex-col ${
+          collapsed ? 'w-16' : 'w-60'
         }`}
         style={{
           background: 'var(--surface)',
@@ -424,13 +424,19 @@ export function Shell({
           viewTransitionName: 'app-sidebar',
         }}
       >
+        {/*
+          THREE BANDS: identity, menu, account. The menu is the only one that
+          scrolls, so on a short screen the person's own name and the way out
+          never leave the screen, and on a tall one the space falls between
+          the menu and the account block rather than below everything — the
+          account block is the rail's floor, which is where every desktop
+          application the floor already uses puts it.
+        */}
         <div
-          className={`flex shrink-0 items-center gap-2.5 py-5 ${
-            collapsed ? 'justify-center px-0' : 'px-5'
-          }`}
+          className={`flex h-16 shrink-0 items-center ${collapsed ? 'justify-center' : 'gap-3 px-4'}`}
         >
           <WordmarkBadge />
-          {/* Removed rather than hidden: a truncated name in a 60px rail is
+          {/* Removed rather than hidden: a truncated name in a 64px rail is
               three letters and an ellipsis, which reads as a rendering fault. */}
           {!collapsed && (
             <div className="min-w-0">
@@ -447,18 +453,10 @@ export function Shell({
           )}
         </div>
 
-        {/*
-          One scroll area for the menu AND its freshness footer.
-
-          The sync status belongs to the buttons above it — it says how fresh
-          the numbers behind those sections are — and pinning it to the rail's
-          bottom let a half-empty sidebar open a 200px void between the two.
-          Inside the flow it sits just under the last button today and simply
-          moves down as sections are added; scrolling stays honest because the
-          whole unit scrolls together. Only the account row keeps the bottom.
-        */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <nav aria-label="Asosiy menyu" className="px-2.5 py-1">
+        <nav
+          aria-label="Asosiy menyu"
+          className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-1 ${collapsed ? 'px-3' : 'px-3'}`}
+        >
           {NAV_GROUPS.map((group, index) => {
             const items = group.items.filter((item) => !user || canOpen(item))
             if (items.length === 0) return null
@@ -474,33 +472,37 @@ export function Shell({
               */
               <div
                 key={index}
-                /*
-                  An unlabelled group that is not the first needs its own
-                  separator. The admin block carries no heading, so without a
-                  rule it reads as the tail of whichever group precedes it —
-                  "Foydalanuvchilar" appeared to sit under MARKETING.
-                */
                 className={
-                  group.label === null && index > 0
-                    ? 'mt-3 mb-2 border-t pt-2.5'
-                    : 'mb-2'
+                  // An unlabelled group that is not the first needs its own
+                  // separator, or "Foydalanuvchilar" reads as the tail of
+                  // MARKETING. Folded, every group gets a short rule instead
+                  // of a heading — the icons alone do not show where one
+                  // family of screens ends and the next begins.
+                  collapsed
+                    ? index > 0 ? 'mt-2 pt-2' : ''
+                    : group.label === null && index > 0
+                      ? 'mt-3 mb-1 border-t pt-2.5'
+                      : 'mb-1'
                 }
                 style={
-                  group.label === null && index > 0
+                  !collapsed && group.label === null && index > 0
                     ? { borderColor: 'var(--border)' }
                     : undefined
                 }
               >
+                {collapsed && index > 0 && (
+                  <div
+                    aria-hidden="true"
+                    className="mx-auto mb-2 h-px w-5"
+                    style={{ background: 'var(--border)' }}
+                  />
+                )}
                 {group.label && !collapsed && (
                   /*
                     `.eyebrow` — the ONE positive-tracked style in the system,
-                    reserved for section headers like this. The utility classes
-                    behind it are the same treatment spelled by hand, so the
-                    label renders correctly even before globals.css defines the
-                    class; once it exists, the unlayered rule wins over the
-                    layered Tailwind utilities and the two cannot drift.
+                    reserved for section headers like this.
                   */
-                  <p className="eyebrow px-2.5 pt-2.5 pb-1 text-[10px] font-semibold tracking-wider uppercase text-[var(--ink-muted)]">
+                  <p className="eyebrow px-2.5 pt-3 pb-1.5 text-[10px] font-semibold tracking-wider uppercase text-[var(--ink-muted)]">
                     {group.label}
                   </p>
                 )}
@@ -509,51 +511,45 @@ export function Shell({
                     const active = isActive(pathname, item.href)
                     const Icon = item.icon
 
+                    const link = (
+                      <Link
+                        href={hrefFor(item.href)}
+                        aria-current={active ? 'page' : undefined}
+                        aria-label={collapsed ? item.label : undefined}
+                        className={`rail-item focusable relative flex items-center rounded-lg font-medium ${
+                          collapsed
+                            ? 'rail-item--folded mx-auto h-10 w-10 justify-center'
+                            : 'h-9 gap-3 px-2.5 text-[13.5px]'
+                        }`}
+                      >
+                        {active && (
+                          /*
+                            Chrome, not page identity. Rendered above every
+                            page, so it cannot see a PageShell's --accent —
+                            named as the series slot it actually is.
+                          */
+                          <span
+                            aria-hidden="true"
+                            className="absolute top-2 bottom-2 -left-3 w-0.5 rounded-full"
+                            style={{ background: 'var(--series-1)' }}
+                          />
+                        )}
+                        <span className="rail-icon" aria-hidden="true">
+                          <Icon />
+                        </span>
+                        {!collapsed && <span className="truncate">{item.label}</span>}
+                      </Link>
+                    )
+
                     return (
                       <li key={item.href}>
-                        <Tooltip content={collapsed ? item.label : ''}>
-                        <Link
-                          href={hrefFor(item.href)}
-                          aria-current={active ? 'page' : undefined}
-                          aria-label={collapsed ? item.label : undefined}
-                          className={`focusable relative flex items-center rounded-lg py-1.5 text-[13.5px] font-medium transition-colors ${
-                            collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5'
-                          }`}
-                          style={{
-                            /*
-                              A soft series-1 wash rather than the neutral
-                              --grid: the active screen shares a hue with the
-                              2px bar beside it and the S mark above — one
-                              chrome identity, still nowhere near strong
-                              enough to read as data.
-                            */
-                            background: active
-                              ? 'color-mix(in oklab, var(--series-1) 9%, transparent)'
-                              : 'transparent',
-                            color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-                          }}
-                        >
-                          {active && (
-                            /*
-                              Chrome, not page identity.
-                              
-                              This marker is rendered above every page, so it
-                              cannot see the --accent a PageShell sets on its
-                              own subtree — it resolved the :root value and was
-                              always series-1 regardless. Naming the series
-                              slot says what it actually is instead of implying
-                              a link that does not exist.
-                            */
-                            <span
-                              aria-hidden="true"
-                              className="absolute top-1.5 bottom-1.5 -left-2.5 w-0.5 rounded-full"
-                              style={{ background: 'var(--series-1)' }}
-                            />
-                          )}
-                          <Icon />
-                          {!collapsed && item.label}
-                        </Link>
-                        </Tooltip>
+                        {/*
+                          A tooltip ONLY when the label is gone. Wrapping the
+                          open-rail link too, with empty content, rendered an
+                          empty dark pill on every hover — the "black round
+                          thing" the client saw.
+                        */}
+                        {collapsed ? <Tooltip content={item.label}>{link}</Tooltip> : link}
                       </li>
                     )
                   })}
@@ -564,31 +560,21 @@ export function Shell({
         </nav>
 
         {/*
-          The account row, IN THE FLOW — directly under the last menu entry.
+          The account block — the rail's floor.
 
-          It was pinned to the rail's bottom edge, and on any screen taller
-          than the menu that opened a void between "Foydalanuvchilar" and the
-          person's own name — the rail read as two things, a menu and a
-          footer, with nothing between them. The client asked for one
-          continuous panel, and a row that follows the menu is one. On a short
-          screen the whole column scrolls as a unit, so it never disappears;
-          on a tall one the empty space falls BELOW everything, where empty
-          space belongs.
-
-          Who is signed in on the left, the two things done TO the rail on the
-          right — sign out, and fold it away. Name and role on one line; the
-          role is dropped when it merely repeats the name.
-
-          The toggle renders whether or not anybody is signed in: it belongs to
-          the rail rather than to the account.
+          Who is signed in, the two things done TO the rail (sign out, fold),
+          and above them the one line that says how fresh the numbers are. The
+          toggle renders whether or not anybody is signed in: it belongs to the
+          rail rather than to the account.
         */}
-        <div
-          className={`mt-1 border-t py-2.5 ${collapsed ? 'px-0' : 'px-2.5'}`}
-          style={{ borderColor: 'var(--border)' }}
-        >
+        <div className="shrink-0 border-t" style={{ borderColor: 'var(--border)' }}>
+          {!collapsed && <FreshnessPanel lastSyncedAt={lastSyncedAt} />}
+
           <div
             className={
-              collapsed ? 'flex flex-col items-center gap-1' : 'flex items-center gap-0.5'
+              collapsed
+                ? 'flex flex-col items-center gap-1.5 px-0 pt-2 pb-3'
+                : 'flex items-center gap-1 px-3 pt-1.5 pb-3'
             }
           >
             {user && (
@@ -600,30 +586,39 @@ export function Shell({
                 <Link
                   href="/account"
                   aria-label="Hisob va parol"
-                  className={`focusable flex items-center rounded-md transition-colors hover:bg-[var(--grid)] ${
-                    collapsed ? 'p-1' : 'min-w-0 flex-1 gap-2 px-1 py-1'
+                  className={`rail-item focusable flex items-center rounded-lg ${
+                    collapsed ? 'h-10 w-10 justify-center' : 'min-w-0 flex-1 gap-2.5 px-2 py-1.5'
                   }`}
                 >
                   <span
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold"
-                    style={{ background: 'var(--grid)', color: 'var(--ink-primary)' }}
+                    style={{
+                      background:
+                        'linear-gradient(135deg, color-mix(in oklab, var(--series-1) 30%, var(--grid)), var(--grid))',
+                      color: 'var(--ink-primary)',
+                      boxShadow: 'inset 0 0 0 1px color-mix(in oklab, var(--series-1) 25%, transparent)',
+                    }}
                     aria-hidden="true"
                   >
                     {user.name.slice(0, 1).toUpperCase()}
                   </span>
                   {!collapsed && (
-                    <span
-                      className="truncate text-[13px] font-medium"
-                      style={{ color: 'var(--ink-primary)' }}
-                    >
-                      {user.name}
+                    <span className="min-w-0">
+                      <span
+                        className="block truncate text-[13px] font-semibold"
+                        style={{ color: 'var(--ink-primary)' }}
+                      >
+                        {user.name}
+                      </span>
                       {/* The founding account is literally called
                           "Administrator" and holds the ADMIN role, so the row
                           read "Administrator · Administrator" — which says one
                           thing twice and looks like a bug. */}
                       {user.name !== ROLE_LABELS[user.role] && (
-                        <span style={{ color: 'var(--ink-muted)' }}>
-                          {' · '}
+                        <span
+                          className="block truncate text-[11px]"
+                          style={{ color: 'var(--ink-muted)' }}
+                        >
                           {ROLE_LABELS[user.role]}
                         </span>
                       )}
@@ -651,8 +646,7 @@ export function Shell({
                     })
                   }}
                   aria-label="Chiqish"
-                  className="focusable rounded-md p-1.5 transition-colors hover:bg-[var(--grid)]"
-                  style={{ color: 'var(--ink-muted)' }}
+                  className="rail-item rail-button focusable flex h-9 w-9 items-center justify-center rounded-lg"
                 >
                   <SignOutIcon />
                 </button>
@@ -665,20 +659,13 @@ export function Shell({
                 onClick={() => setSidebarCollapsed(!collapsed)}
                 aria-label={collapsed ? 'Panelni ochish' : 'Panelni yigʻish'}
                 aria-expanded={!collapsed}
-                className="focusable rounded-md p-1.5 transition-colors hover:bg-[var(--grid)]"
-                style={{ color: 'var(--ink-muted)' }}
+                className="rail-item rail-button focusable flex h-9 w-9 items-center justify-center rounded-lg"
               >
                 <PanelIcon open={!collapsed} />
               </button>
             </Tooltip>
           </div>
         </div>
-
-        {/* Nothing legible fits in the rail, and a bare dot saying "fresh"
-            without saying since when is worse than not saying it. */}
-        {!collapsed && <FreshnessPanel lastSyncedAt={lastSyncedAt} />}
-        </div>
-
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -927,50 +914,45 @@ function FreshnessPanel({ lastSyncedAt }: { lastSyncedAt?: string | null }) {
   const stale = minutes >= 5
 
   return (
-    <div className="mt-1.5 border-t px-5 py-3" style={{ borderColor: 'var(--border)' }}>
-      <div className="flex items-center gap-1.5">
-        <span
-          aria-hidden="true"
-          className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
-          style={{
-            background: stale ? 'var(--status-warning)' : 'var(--status-good)',
-            // Only while a request is genuinely in flight — a permanent pulse
-            // stops meaning anything within a day.
-            animation: fetching ? 'pulse 1.2s ease-in-out infinite' : undefined,
-          }}
-        />
-        <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          {t.badge.lastSync}
-        </p>
-      </div>
-      {/* The word matters, not only the tint. The worker runs every sixty
-          seconds, so five missed ticks is a fault — and a fault signalled by
-          colour alone reaches nobody who cannot see the colour. */}
+    <div className="flex items-center gap-2 px-4 pt-2.5 pb-1">
+      <span
+        aria-hidden="true"
+        className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+        style={{
+          background: stale ? 'var(--status-warning)' : 'var(--status-good)',
+          // Only while a request is genuinely in flight — a permanent pulse
+          // stops meaning anything within a day.
+          animation: fetching ? 'pulse 1.2s ease-in-out infinite' : undefined,
+        }}
+      />
       {/* The exact timestamp is data, so it travels by the Tooltip primitive
           rather than a native title — visible on focus and touch, not only to
           a patient mouse. The trigger is a tab stop for the same reason. */}
       <Tooltip content={formatDateTime(lastSyncedAt)}>
         <p
           tabIndex={0}
-          className="focusable tabular rounded text-[11px]"
-          style={{ color: stale ? 'var(--status-warning)' : 'var(--ink-secondary)' }}
+          className="focusable tabular min-w-0 truncate rounded text-[11px]"
+          style={{ color: 'var(--ink-muted)' }}
         >
-          {relativeMinutes(minutes)}
-          {/* A drawn glyph as well as the word, matching StatusChip's set —
-              and NO aria-live: this panel re-renders every fifteen seconds,
-              so a live region would announce a ticking clock forever. */}
-          {stale && (
-            <span className="ml-1 inline-flex items-center gap-1 font-medium">
-              <TriangleGlyph size={10} /> eskirgan
-            </span>
-          )}
+          {t.badge.lastSync}
+          <span className="mx-1">·</span>
+          {/* The word matters, not only the tint. The worker runs every
+              sixty seconds, so five missed ticks is a fault — and a fault
+              signalled by colour alone reaches nobody who cannot see it. */}
+          <span style={{ color: stale ? 'var(--status-warning)' : 'var(--ink-secondary)' }}>
+            {relativeMinutes(minutes)}
+            {stale && (
+              <span className="ml-1 inline-flex items-center gap-1 font-medium">
+                <TriangleGlyph size={10} /> eskirgan
+              </span>
+            )}
+          </span>
         </p>
       </Tooltip>
     </div>
   )
 }
 
-/** "hozir" / "3 daqiqa oldin" / "2 soat oldin". */
 function relativeMinutes(minutes: number): string {
   if (minutes < 1) return t.badge.justNow
   if (minutes < 60) return `${minutes} ${t.badge.minutesAgo}`

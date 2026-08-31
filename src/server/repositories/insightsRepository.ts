@@ -877,31 +877,59 @@ export class InsightsRepository {
       MATERIALIZED is load-bearing, not decoration. Inlined, the planner
       estimates the join badly and picks a parallel sequential scan over all
       216 000 history rows; pinned, it drives five index range scans on
-      (stageId, enteredAt) instead. Measured on production: 1 881 ms against
-      206 ms for the same rows.
+      (stageId, enteredAt). Measured on production: 1 881 ms against 206 ms
+      for the same rows.
     */
     WITH signal_stage AS MATERIALIZED (
-      SELECT "id" FROM "deal_stage" WHERE "confirmationSignal" IS NOT NULL
-    ),
-    queue_stage AS MATERIALIZED (
-      SELECT "id" FROM "deal_stage" WHERE "confirmationSignal" = 'CONFIRM_NEW'
+      SELECT "id", "confirmationSignal" AS signal
+        FROM "deal_stage"
+       WHERE "confirmationSignal" IS NOT NULL
     ),
     /*
-      Orders whose confirmation moved at all inside the window.
+      Every confirmation move INSIDE the window — and that is the whole
+      history this board needs.
 
-      Not the answer, but a cheap frame for it: an order CREATED in the window
-      cannot have a confirmation move before it existed, so if it reached the
-      queue at all its moves are in this same window. That makes this a
-      superset, and it narrows 216 000 history rows to a few thousand deals
-      through five index range scans before anything expensive runs.
+      An order placed in the window cannot have moved before it existed, so
+      for every order the board can hold, all of its moves are in [$1, $2).
+      Reading only that slice loses nothing and is what makes a year cheap:
+      the previous shape looked each candidate up again with a LATERAL, one
+      index probe per order, and a year of orders put it past the twenty-
+      second statement timeout — «Shu yil» was a 500 on this screen and on
+      the command centre behind it. Measured: 3.4 s for the year, 0.4 s for a
+      month, and row-for-row identical to the old answer on three windows.
+
+      Closed on the right so a report on last week shows what last week
+      looked like, not what has happened since.
     */
-    touched AS (
-      SELECT DISTINCT h."dealId" AS deal_id
+    moves AS (
+      SELECT h."dealId" AS deal_id, h."enteredAt" AS moved_at, ss.signal
         FROM signal_stage ss
         JOIN "deal_stage_history" h
           ON h."stageId" = ss."id"
          AND h."enteredAt" >= $1
          AND h."enteredAt" <  $2
+    ),
+    /*
+      One row per order, at its latest signal.
+
+      THE ORDER IS THE UNIT, not the visit. An order that was queued, refused,
+      re-queued and confirmed is one line showing where it stands. Counting
+      each visit separately would put the same order in a month three times
+      and let «тасдиқланиш %» exceed the number of orders.
+
+      The queue arrival is the LAST one, not the first: an order that came
+      back into the queue is being worked from the moment it came back, and a
+      waiting time measured from a visit that ended weeks ago describes
+      nothing that happened. Null when it was refused without ever being
+      queued — which happens, and which the client's bot counts too.
+    */
+    agg AS (
+      SELECT deal_id,
+             max(moved_at) AS moved_at,
+             max(moved_at) FILTER (WHERE signal = 'CONFIRM_NEW') AS queued_at,
+             (array_agg(signal ORDER BY moved_at DESC, signal))[1] AS signal
+        FROM moves
+       GROUP BY deal_id
     ),
     /*
       THE WINDOW IS THE ORDER'S OWN DATE — Дата создания in Bitrix.
@@ -919,74 +947,20 @@ export class InsightsRepository {
       answers. Its board is dated by MOVED_TIME and lists what moved; this one
       lists what came in. Both are honest; only one can be on this screen, and
       the one an owner counts by is the intake.
-
-      Orders that never reached the queue are absent rather than pending: this
-      is the confirmation board, and a record still sitting in Регистрация has
-      not arrived on it yet.
-    */
-    born AS (
-      SELECT t.deal_id, d."createdAtSource" AS created_at
-        FROM touched t
-        JOIN "deal" d ON d."id" = t.deal_id
-       WHERE d."createdAtSource" >= $1
-         AND d."createdAtSource" <  $2
-    ),
-    /*
-      One row per order, at its latest signal.
-
-      THE ORDER IS THE UNIT, not the visit. An order that was queued, refused,
-      re-queued and confirmed is one line showing where it stands. Counting
-      each visit separately would put the same order in a month three times
-      and let «тасдиқланиш %» exceed the number of orders.
-
-      Read up to the window's end rather than to now, so a report on last week
-      shows what last week looked like.
     */
     dated AS (
-      SELECT b.deal_id, b.created_at, m.moved_at, m.signal
-        FROM born b
-        CROSS JOIN LATERAL (
-          SELECT h."enteredAt" AS moved_at, s."confirmationSignal" AS signal
-            FROM "deal_stage_history" h
-            JOIN "deal_stage" s ON s."id" = h."stageId"
-           WHERE h."dealId" = b.deal_id
-             AND s."confirmationSignal" IS NOT NULL
-             AND h."enteredAt" < $2
-           ORDER BY h."enteredAt" DESC
-           LIMIT 1
-        ) m
-    ),
-    /*
-      The queue arrival the current state belongs to.
-
-      Not the first arrival ever: an order that came back into the queue is
-      being worked from the moment it came back, so a waiting time measured
-      from a visit that ended weeks ago describes nothing that happened.
-    */
-    arrival AS (
-      SELECT DISTINCT ON (w.deal_id) w.deal_id, h."enteredAt" AS queued_at
-        FROM dated w
-        JOIN "deal_stage_history" h
-          ON h."dealId" = w.deal_id
-         AND h."enteredAt" <= w.moved_at
-        JOIN queue_stage qs ON qs."id" = h."stageId"
-       ORDER BY w.deal_id, h."enteredAt" DESC
+      SELECT a.deal_id, d."createdAtSource" AS created_at, a.moved_at, a.queued_at, a.signal
+        FROM agg a
+        JOIN "deal" d ON d."id" = a.deal_id
+       WHERE d."createdAtSource" >= $1
+         AND d."createdAtSource" <  $2
     ),
     classified AS (
       SELECT
         d."id" AS deal_id,
         w.created_at,
         w.moved_at,
-        /*
-          Null when the order never passed through the queue at all.
-
-          It happens: a refusal recorded straight in Первичный отдел ·
-          Тасдикланмаган has no arrival behind it. The client's bot counts it
-          all the same — a filter requiring the refusal to arrive FROM the
-          queue was tried on their side and removed, because Bitrix's
-          automation does not route it consistently.
-        */
-        a.queued_at,
+        w.queued_at,
         CASE WHEN w.signal = 'CONFIRM_NEW' THEN NULL ELSE w.moved_at END AS decided_at,
         /*
           РОП is the department's OWN name with the marker stripped, not its
@@ -1021,7 +995,6 @@ export class InsightsRepository {
       JOIN "deal" d ON d."id" = w.deal_id
       JOIN "employee" e ON e."id" = d."employeeId"
       LEFT JOIN "department" dep ON dep."id" = e."departmentId"
-      LEFT JOIN arrival a ON a.deal_id = w.deal_id
     ),
     numbered AS (
       SELECT
