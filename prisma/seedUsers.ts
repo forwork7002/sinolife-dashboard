@@ -57,17 +57,52 @@ if (ADMIN_PASSWORD.length < 12) {
 const email: string = ADMIN_EMAIL
 const password: string = ADMIN_PASSWORD
 
+/**
+ * Wait for a connection slot rather than fail the deployment over one.
+ *
+ * This runs as a POST_DEPLOY job, which is the one moment the database is
+ * busiest: the outgoing web container still holds its pool while the new one
+ * fills its own, the sync worker holds six, and the managed instance allows
+ * twenty-two. Deploy 9915de8 built cleanly and was rolled back because this
+ * script hit "remaining connection slots are reserved" once, at 12:05:54,
+ * and exited — for an account that already existed.
+ *
+ * The old container drains within a minute or two; twelve tries ten seconds
+ * apart outlast that. Anything that is NOT a connection shortage is rethrown
+ * at once: a wrong password policy or a schema mismatch must still fail loudly.
+ */
+async function whenASlotFrees<T>(run: () => Promise<T>): Promise<T> {
+  const attempts = 12
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run()
+    } catch (error) {
+      const code = (error as { code?: string }).code
+      const message = String((error as Error).message ?? '')
+      const tooMany =
+        code === 'P2037' || /too many (database )?connections|connection slots/i.test(message)
+      if (!tooMany || attempt >= attempts) throw error
+      console.log(`  baza band (${attempt}/${attempts}) — 10 soniyadan keyin qayta urinaman`)
+      await new Promise((resolve) => setTimeout(resolve, 10_000))
+    }
+  }
+}
+
 async function main() {
-  const pool = new Pool(poolConfig(dbUrl, { caCert: caCertFromEnv() }))
+  // ONE connection. A one-shot script has no business holding a pool of ten
+  // on an instance that allows twenty-two, least of all during a deploy.
+  const pool = new Pool(poolConfig(dbUrl, { caCert: caCertFromEnv(), max: 1 }))
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) })
 
   try {
-    const result = await provisionUser({
-      name: ADMIN_NAME,
-      email,
-      password,
-      role: 'ADMIN',
-    })
+    const result = await whenASlotFrees(() =>
+      provisionUser({
+        name: ADMIN_NAME,
+        email,
+        password,
+        role: 'ADMIN',
+      }),
+    )
 
     if (process.argv.includes('--reset-password')) {
       await setPassword(result.id, password)
