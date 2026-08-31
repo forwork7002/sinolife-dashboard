@@ -211,7 +211,7 @@ export function useDashboardFilters() {
  * It only ever fires on an address with NOTHING in it, so there is nothing to
  * carry forward and nothing — a page number least of all — to drop.
  */
-export function useRestoreSectionPeriod(): void {
+export function useRestoreSectionPeriod(enabled = true): void {
   const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
@@ -229,6 +229,9 @@ export function useRestoreSectionPeriod(): void {
   const restored = useRef<string | null>(null)
 
   useEffect(() => {
+    // A page with no reporting window has nothing to restore into.
+    if (!enabled) return
+
     /*
       The guard tracks a restore IN FLIGHT, not a route already visited.
 
@@ -256,5 +259,5 @@ export function useRestoreSectionPeriod(): void {
     }
 
     router.replace(`${pathname}?${next.toString()}`, { scroll: false })
-  }, [bare, pathname, router])
+  }, [bare, enabled, pathname, router])
 }

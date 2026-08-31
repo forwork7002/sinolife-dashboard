@@ -80,6 +80,7 @@ export function PageShell({
   accent,
   actions,
   children,
+  period = true,
 }: {
   title: string
   description?: string
@@ -102,11 +103,20 @@ export function PageShell({
   accent?: string
   actions?: ReactNode
   children: ReactNode
+  /**
+   * Whether this page is read in a reporting window at all.
+   *
+   * Almost every page is. Account administration is not: a list of who may
+   * sign in has no "this month", and a date control over it would be a
+   * control that does nothing — which is worse than no control, because a
+   * reader assumes it must be filtering something.
+   */
+  period?: boolean
 }) {
   const { filters, update, setPeriod, reset, activeCount } = useDashboardFilters()
   // Once per page: see the hook's own note on why it does not live in
   // useDashboardFilters, which a dozen components call.
-  useRestoreSectionPeriod()
+  useRestoreSectionPeriod(period)
   const options = useFilterOptions()
   const data = options.data?.data
 
@@ -118,8 +128,7 @@ export function PageShell({
     <Shell
       dataSource={meta?.dataSource ?? options.data?.meta.dataSource}
       lastSyncedAt={data?.lastSyncedAt ?? null}
-      // Every page built on this shell renders the window control below.
-      periodAware
+      periodAware={period}
     >
       <div
         className="mx-auto max-w-[1400px] space-y-4"
@@ -196,17 +205,21 @@ export function PageShell({
               The header keeps the search, which genuinely is global — it looks
               across every screen at once.
 
-              The row renders even when a page has no other filters: the window
-              is not optional, so a screen without it would simply have no way
-              to change its dates.
+              The row renders even when a page has no other filters, because
+              the window is not optional on a page that has one — a screen
+              without the control would have no way to change its dates. The
+              one page that has no window (`period={false}`) gets no row.
             */}
+            {(period || anyFilter) && (
             <div className="flex flex-wrap items-center gap-2">
-              <PeriodFilter
-                value={filters.preset}
-                from={filters.from}
-                to={filters.to}
-                onChange={setPeriod}
-              />
+              {period && (
+                <PeriodFilter
+                  value={filters.preset}
+                  from={filters.from}
+                  to={filters.to}
+                  onChange={setPeriod}
+                />
+              )}
               {anyFilter && (
                 <>
                 {enabled.search && (
@@ -264,6 +277,7 @@ export function PageShell({
                 </>
               )}
             </div>
+            )}
           </div>
         </div>
 

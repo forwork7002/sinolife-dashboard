@@ -346,7 +346,6 @@ export function MarginPage() {
             reader mid-list; short result sets keep today's behaviour — the
             cap only exists when there is something to cap.
           */
-          maxHeight={data && data.rows.length > 15 ? 560 : undefined}
         />
       </ChartCard>
     </PageShell>

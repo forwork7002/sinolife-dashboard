@@ -75,10 +75,20 @@ interface DataTableProps<T> {
    *
    * Only with a bounded height does the sticky header have anything to stick
    * to — the header cells pin to the container's top edge and the rows slide
-   * under them. Undefined keeps today's behaviour: the table grows and the
-   * page scrolls, which is right wherever `initialRows` already bounds it.
+   * under them.
+   *
+   * DEFAULTS TO 60% OF THE SCREEN. The application is exactly one viewport
+   * tall and never scrolls as a page, so a table taller than the screen has to
+   * scroll inside its own card or its bottom rows can only be reached by
+   * scrolling the whole content column past the card's own heading. Sixty
+   * percent leaves the page title, the period control and the table's own
+   * header on screen while the rows move under them. A short table is
+   * unaffected — a cap on a box that is already smaller than it does nothing.
+   *
+   * A number is pixels; a string is any CSS length, for a caller that wants a
+   * different relation to the viewport.
    */
-  readonly maxHeight?: number
+  readonly maxHeight?: number | string
 }
 
 export function DataTable<T>({
@@ -97,7 +107,7 @@ export function DataTable<T>({
   minWidth = 720,
   initialRows,
   moreLabel = (hidden) => `Yana ${hidden} ta qatorni koʻrsatish`,
-  maxHeight,
+  maxHeight = '60dvh',
 }: DataTableProps<T>) {
   const [expanded, setExpanded] = useState(false)
   /*
@@ -156,7 +166,7 @@ export function DataTable<T>({
     <>
     <div
       className="-mx-1 overflow-x-auto"
-      style={maxHeight !== undefined ? { maxHeight, overflowY: 'auto' } : undefined}
+      style={{ maxHeight, overflowY: 'auto' }}
       onScroll={onScroll}
     >
       <table className="w-full border-collapse text-sm" style={{ minWidth }}>

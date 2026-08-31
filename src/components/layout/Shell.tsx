@@ -416,7 +416,7 @@ export function Shell({
           appears to flicker. */}
       <aside
         className={`hidden shrink-0 border-r transition-[width] duration-200 lg:flex lg:flex-col ${
-          collapsed ? 'w-[3.75rem]' : 'w-56'
+          collapsed ? 'w-[3.75rem]' : 'w-60'
         }`}
         style={{
           background: 'var(--surface)',
@@ -563,26 +563,27 @@ export function Shell({
           })}
         </nav>
 
-        {/* Nothing legible fits in the rail, and a bare dot saying "fresh"
-            without saying since when is worse than not saying it. */}
-        {!collapsed && <FreshnessPanel lastSyncedAt={lastSyncedAt} />}
-        </div>
-
         {/*
-          The rail's footer, one row.
+          The account row, IN THE FLOW — directly under the last menu entry.
+
+          It was pinned to the rail's bottom edge, and on any screen taller
+          than the menu that opened a void between "Foydalanuvchilar" and the
+          person's own name — the rail read as two things, a menu and a
+          footer, with nothing between them. The client asked for one
+          continuous panel, and a row that follows the menu is one. On a short
+          screen the whole column scrolls as a unit, so it never disappears;
+          on a tall one the empty space falls BELOW everything, where empty
+          space belongs.
 
           Who is signed in on the left, the two things done TO the rail on the
-          right — sign out, and fold it away. It used to be a two-line block
-          with the role under the name; at 224px wide that is a third of the
-          sidebar's height spent on a fact that does not change, and it pushed
-          everything above it up against the top. One line with a middle dot
-          says the same thing in a third of the space.
+          right — sign out, and fold it away. Name and role on one line; the
+          role is dropped when it merely repeats the name.
 
           The toggle renders whether or not anybody is signed in: it belongs to
           the rail rather than to the account.
         */}
         <div
-          className={`shrink-0 border-t py-2.5 ${collapsed ? 'px-0' : 'px-2.5'}`}
+          className={`mt-1 border-t py-2.5 ${collapsed ? 'px-0' : 'px-2.5'}`}
           style={{ borderColor: 'var(--border)' }}
         >
           <div
@@ -604,7 +605,7 @@ export function Shell({
                   }`}
                 >
                   <span
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold"
                     style={{ background: 'var(--grid)', color: 'var(--ink-primary)' }}
                     aria-hidden="true"
                   >
@@ -612,7 +613,7 @@ export function Shell({
                   </span>
                   {!collapsed && (
                     <span
-                      className="truncate text-[12px] font-medium"
+                      className="truncate text-[13px] font-medium"
                       style={{ color: 'var(--ink-primary)' }}
                     >
                       {user.name}
@@ -672,6 +673,12 @@ export function Shell({
             </Tooltip>
           </div>
         </div>
+
+        {/* Nothing legible fits in the rail, and a bare dot saying "fresh"
+            without saying since when is worse than not saying it. */}
+        {!collapsed && <FreshnessPanel lastSyncedAt={lastSyncedAt} />}
+        </div>
+
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">

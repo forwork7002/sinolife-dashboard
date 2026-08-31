@@ -164,6 +164,7 @@ export function UsersPage() {
 
   return (
     <PageShell
+      period={false}
       title="Foydalanuvchilar"
       description="Kim kira oladi, qaysi boʻlimlarni ochadi va har birida qancha maʼlumot koʻradi."
       accent="var(--series-7)"
