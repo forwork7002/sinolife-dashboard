@@ -754,8 +754,15 @@ function TeamCard({ data, status }: BlockProps) {
             </p>
             {status === 'ready' && (
               <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                {/* The 207 is named, and so is the gap to the 289 the
+                    structure screen shows: a reader who has seen both should
+                    not have to guess where the other 82 went. */}
                 {team && team.active > 0
-                  ? `${formatNumber(team.active)} faol xodimdan ${formatNumber(team.working)} tasi shu davrda qoʻngʻiroq qildi yoki bitim yopdi`
+                  ? `${formatNumber(team.active)} faol xodimdan ${formatNumber(team.working)} tasi shu davrda qoʻngʻiroq qildi yoki bitim yopdi${
+                      team.employees > team.active
+                        ? ` · yana ${formatNumber(team.employees - team.active)} tasi Bitrix24da oʻchirilgan`
+                        : ''
+                    }`
                   : 'Faol xodimlar topilmadi'}
               </p>
             )}

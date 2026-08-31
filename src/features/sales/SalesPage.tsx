@@ -608,7 +608,17 @@ export function SalesPage() {
                   )} yakunlangan bitim`
                 : undefined
             }
-            context={pulseData ? <TrendIndicator delta={pulseData.winRate.countDelta} /> : undefined}
+            context={
+              pulseData ? (
+                <TrendIndicator
+                  delta={pulseData.winRate.countDelta}
+                  points={{
+                    current: pulseData.winRate.countPercent,
+                    previous: pulseData.winRate.previousCountPercent,
+                  }}
+                />
+              ) : undefined
+            }
           />
 
           <StatTile
@@ -619,7 +629,17 @@ export function SalesPage() {
             // What "value-weighted" means, in the reader's language: a big
             // deal moves this rate more than a small one.
             hint="Katta bitimlar koʻproq vazn oladi"
-            context={pulseData ? <TrendIndicator delta={pulseData.winRate.valueDelta} /> : undefined}
+            context={
+              pulseData ? (
+                <TrendIndicator
+                  delta={pulseData.winRate.valueDelta}
+                  points={{
+                    current: pulseData.winRate.valuePercent,
+                    previous: pulseData.winRate.previousValuePercent,
+                  }}
+                />
+              ) : undefined
+            }
           />
         </div>
       </section>

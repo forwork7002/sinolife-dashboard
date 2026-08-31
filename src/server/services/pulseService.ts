@@ -109,6 +109,16 @@ export interface PulseWinRateDto {
   readonly countPercent: number | null
   /** won / (won + lost), weighted by deal value. */
   readonly valuePercent: number | null
+  /**
+   * The same two rates in the comparison window.
+   *
+   * Shipped so the screen can state the change in PERCENTAGE POINTS. A delta
+   * on a rate is a relative change — 85.1% to 96.0% is "+12.8%" — and beside
+   * a value of 96.0% that reads as a previous of 83.2%. The move was 10.9
+   * points.
+   */
+  readonly previousCountPercent: number | null
+  readonly previousValuePercent: number | null
   readonly wonCount: number
   readonly lostCount: number
   /** vs the comparison window, growth() union — never a bare division. */
@@ -315,6 +325,10 @@ export class PulseService {
       winRate: {
         countPercent: winRatePercent === null ? null : roundPercent(winRatePercent),
         valuePercent: valuePercent === null ? null : roundPercent(valuePercent),
+        previousCountPercent:
+          previousWinRatePercent === null ? null : roundPercent(previousWinRatePercent),
+        previousValuePercent:
+          previousValuePercent === null ? null : roundPercent(previousValuePercent),
         wonCount: current.wonCount,
         lostCount: current.lostCount,
         countDelta: toDeltaDto(growth(winRatePercent, previousWinRatePercent)),

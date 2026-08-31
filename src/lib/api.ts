@@ -892,6 +892,9 @@ export interface PulseWinRateDto {
   readonly countPercent: number | null
   /** The same rate weighted by deal value. */
   readonly valuePercent: number | null
+  /** Both rates last period, so a change can be stated in percentage points. */
+  readonly previousCountPercent: number | null
+  readonly previousValuePercent: number | null
   readonly wonCount: number
   readonly lostCount: number
   readonly countDelta: DeltaDto

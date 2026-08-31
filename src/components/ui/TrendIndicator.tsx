@@ -29,16 +29,23 @@ import { t } from '@/lib/messages'
  * Tab through every delta to reach the next control would pay for a nicety
  * the visible text already states.
  *
+ * `points` is for a metric that IS a percentage. A delta on a rate is a
+ * relative change, and "↑12.8%" beside a value of 96.0% reads as a previous
+ * of 83.2% — the rate had actually moved from 85.1%, which is 10.9 points.
+ * Given the pair, the pill states the point difference instead.
+ *
  * `inverted` is for metrics where up is bad. Nothing uses it yet; it exists so
  * that when a "lost deals" card appears, the fix is a prop rather than a
  * special case wired through the component.
  */
 export function TrendIndicator({
   delta,
+  points,
   inverted = false,
   className = '',
 }: {
   delta: DeltaDto
+  points?: { current: number | null; previous: number | null }
   inverted?: boolean
   className?: string
 }) {
@@ -92,6 +99,11 @@ export function TrendIndicator({
     )
   }
 
+  const pointChange =
+    points && points.current !== null && points.previous !== null
+      ? Math.round((points.current - points.previous) * 10) / 10
+      : null
+
   const isGood = inverted ? delta.direction === 'down' : delta.direction === 'up'
   const color = isGood ? 'var(--delta-up)' : 'var(--delta-down)'
   const Arrow = delta.direction === 'up' ? ArrowUpGlyph : ArrowDownGlyph
@@ -114,7 +126,9 @@ export function TrendIndicator({
       className={className}
       content={
         <span className="tabular">
-          {formatPercent(Math.abs(delta.percent))} oldingi davrga nisbatan
+          {pointChange === null
+            ? `${formatPercent(Math.abs(delta.percent))} oldingi davrga nisbatan`
+            : `${formatPercent(points?.previous ?? null)} → ${formatPercent(points?.current ?? null)}`}
         </span>
       }
     >
@@ -126,7 +140,9 @@ export function TrendIndicator({
         }}
       >
         <Arrow size={11} className="shrink-0" />
-        {formatChange(Math.abs(delta.percent))}
+        {pointChange === null
+          ? formatChange(Math.abs(delta.percent))
+          : `${formatNumber(Math.abs(pointChange))} pp`}
       </span>
     </Tooltip>
   )
