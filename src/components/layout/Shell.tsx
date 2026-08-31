@@ -5,7 +5,14 @@ import * as React from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useIsFetching, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { CommandPalette, useCommandK, type CommandGroup } from '@/components/ui/CommandPalette'
@@ -51,6 +58,12 @@ const ViewTransition = (
   }
 ).ViewTransition
 import { PERIOD_PRESETS } from './PeriodFilter'
+import {
+  periodMemorySnapshot,
+  periodMemoryServerSnapshot,
+  periodQuery,
+  subscribePeriodMemory,
+} from '@/features/shared/periodMemory'
 
 /**
  * Navigation, grouped by the question each screen answers.
@@ -156,6 +169,31 @@ export function Shell({
    * it IS open, its Escape is preventDefault-ed and PeriodFilter stands down.
    */
   const [paletteOpen, setPaletteOpen] = useState(false)
+
+  /*
+    Nav links carry the window each section was last read in.
+
+    Read through `useSyncExternalStore` rather than in an effect: browser
+    storage is exactly the kind of outside-React state it exists for, it gives
+    the server a matching empty snapshot so hydration does not complain about
+    every entry in the sidebar, and it re-renders the links the moment somebody
+    changes a window — including in another tab.
+
+    Without this the restore would live only in an effect on the destination
+    page, which means the page renders once on the default window, fetches for
+    it, and fetches again for the real one — two round trips on a database that
+    has one core.
+  */
+  const periodMemory = useSyncExternalStore(
+    subscribePeriodMemory,
+    periodMemorySnapshot,
+    periodMemoryServerSnapshot,
+  )
+
+  const sectionQuery = useMemo(
+    () => Object.fromEntries(NAV.map((item) => [item.href, periodQuery(item.href, periodMemory)])),
+    [periodMemory],
+  )
   const openPalette = useCallback(() => setPaletteOpen(true), [])
   const closePalette = useCallback(() => setPaletteOpen(false), [])
   useCommandK(openPalette)
@@ -336,7 +374,7 @@ export function Shell({
                     return (
                       <li key={item.href}>
                         <Link
-                          href={item.href}
+                          href={`${item.href}${sectionQuery[item.href] ?? ''}`}
                           aria-current={active ? 'page' : undefined}
                           className="focusable relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13.5px] font-medium transition-colors"
                           style={{

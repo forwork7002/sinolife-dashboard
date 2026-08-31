@@ -1,7 +1,9 @@
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+
+import { forgetPeriod, rememberPeriod, rememberedPeriod } from './periodMemory'
 
 import type { PeriodPreset, PeriodSelection } from '@/components/layout/PeriodFilter'
 import type { ConfirmationOutcome } from '@/lib/api'
@@ -12,8 +14,15 @@ import type { ConfirmationOutcome } from '@/lib/api'
  * The URL is the single source of truth rather than component state, which
  * buys three things a `useState` cannot: a filtered view is a shareable link,
  * the back button steps through filter changes, and a page refresh keeps the
- * view. It also means the period survives navigation between pages, so moving
- * from Overview to Deals does not silently reset the reporting window.
+ * view.
+ *
+ * THE REPORTING WINDOW IS PER SECTION, and remembered. Each screen is read in
+ * its own window — the confirmation queue for today, the sales chart for the
+ * month — so the window lives in the URL of the page it belongs to and is
+ * kept, per browser, against that page's route. Arriving without one in the
+ * address bar restores the last one chosen here; arriving WITH one honours it,
+ * so a link somebody pastes into Telegram still opens on the dates it was
+ * copied on. See `periodMemory`.
  */
 
 export interface DashboardFilters {
@@ -125,18 +134,54 @@ export function useDashboardFilters() {
    */
   const setPeriod = useCallback(
     (selection: PeriodSelection) => {
+      // Remembered only when a PERSON picks one. Writing it on every render
+      // would also store the default, and this section would then be pinned to
+      // whatever it happened to open on the first time.
+      rememberPeriod(pathname, selection)
       update({
         preset: selection.preset,
         from: selection.preset === 'custom' ? selection.from : undefined,
         to: selection.preset === 'custom' ? selection.to : undefined,
       })
     },
-    [update],
+    [pathname, update],
   )
 
   const reset = useCallback(() => {
+    forgetPeriod(pathname)
     router.replace(pathname, { scroll: false })
   }, [pathname, router])
+
+  /*
+    Restore this section's window when the address bar carries none.
+
+    Runs once per route rather than on every render: `update` rewrites the
+    query string, which re-runs this effect, and without the guard a stored
+    window would fight a person who then picks a different one.
+
+    `replace`, never `push`. Restoring is not a navigation somebody made, and
+    a back button that steps through it would appear stuck.
+  */
+  const restored = useRef<string | null>(null)
+  const hasPreset = params.get('preset') !== null
+
+  useEffect(() => {
+    if (restored.current === pathname) return
+    restored.current = pathname
+
+    if (hasPreset) return
+
+    const stored = rememberedPeriod(pathname)
+    if (!stored) return
+
+    const next = new URLSearchParams(params.toString())
+    next.set('preset', stored.preset)
+    if (stored.preset === 'custom' && stored.from && stored.to) {
+      next.set('from', stored.from)
+      next.set('to', stored.to)
+    }
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false })
+  }, [pathname, hasPreset, params, router])
 
   /** Query-string params for the API, omitting empties. */
   const apiParams = useMemo(() => {
