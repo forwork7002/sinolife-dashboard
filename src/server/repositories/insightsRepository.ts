@@ -2211,14 +2211,19 @@ export class InsightsRepository {
     >(
       `
       WITH active AS (
-        SELECT DISTINCT "employeeId" AS id
-          FROM "call_record"
-         WHERE "startedAt" >= $1 AND "startedAt" < $2
-         UNION
-        SELECT DISTINCT "employeeId" AS id
-          FROM "deal"
-         WHERE "countsAsRevenue" AND "status" = 'WON'
-           AND "closedAt" >= $1 AND "closedAt" < $2
+        SELECT e."id" AS id
+          FROM "employee" e
+         WHERE EXISTS (
+                 SELECT 1 FROM "call_record" c
+                  WHERE c."employeeId" = e."id"
+                    AND c."startedAt" >= $1 AND c."startedAt" < $2
+               )
+            OR EXISTS (
+                 SELECT 1 FROM "deal" d
+                  WHERE d."employeeId" = e."id"
+                    AND d."countsAsRevenue" AND d."status" = 'WON'
+                    AND d."closedAt" >= $1 AND d."closedAt" < $2
+               )
       )
       SELECT
         count(*)::bigint AS employees,
@@ -2270,15 +2275,30 @@ export class InsightsRepository {
         searches deep. Aggregating each side to one row per department first
         means every table is touched exactly once.
       */
+      /*
+        Asked of the ROSTER, not of the call log.
+
+        This used to union two DISTINCTs, which made Postgres materialise
+        every call row in the window and de-duplicate it — 281 818 of
+        call_record's 299 141 rows, correctly seq-scanned because 94% of the
+        table matches, to learn which of 289 employees did something. Anchored
+        on employee instead, it is 289 index-only probes that stop at the
+        first hit. Measured: 800-1 800 ms against 93-158 ms, same 146 ids.
+      */
       WITH active AS (
-        SELECT DISTINCT "employeeId" AS id
-          FROM "call_record"
-         WHERE "startedAt" >= $1 AND "startedAt" < $2
-         UNION
-        SELECT DISTINCT "employeeId" AS id
-          FROM "deal"
-         WHERE "countsAsRevenue" AND "status" = 'WON'
-           AND "closedAt" >= $1 AND "closedAt" < $2
+        SELECT e."id" AS id
+          FROM "employee" e
+         WHERE EXISTS (
+                 SELECT 1 FROM "call_record" c
+                  WHERE c."employeeId" = e."id"
+                    AND c."startedAt" >= $1 AND c."startedAt" < $2
+               )
+            OR EXISTS (
+                 SELECT 1 FROM "deal" d
+                  WHERE d."employeeId" = e."id"
+                    AND d."countsAsRevenue" AND d."status" = 'WON'
+                    AND d."closedAt" >= $1 AND d."closedAt" < $2
+               )
       ),
       people AS (
         SELECT
@@ -2293,14 +2313,26 @@ export class InsightsRepository {
         WHERE e."departmentId" IS NOT NULL
         GROUP BY e."departmentId"
       ),
+      /*
+        The two conditions belong in the WHERE, not in the FILTER.
+
+        They are the leading columns of deal_countsAsRevenue_status_closedAt_idx.
+        Left in the aggregate FILTER they are unbound at scan time, so Postgres
+        walked the whole index and heap-fetched 28 449 rows to keep 3 890.
+        Moving them changes no answer — a department with no won deals still
+        arrives through the LEFT JOIN below and is COALESCEd to zero, which was
+        checked column by column across all 20 departments. Measured on the
+        whole query: 3 527 ms against 992 ms.
+      */
       sales AS (
         SELECT
           e."departmentId" AS dep_id,
-          count(d."id") FILTER (WHERE d."countsAsRevenue" AND d."status" = 'WON')::bigint AS deals,
-          sum(d."amountMinor") FILTER (WHERE d."countsAsRevenue" AND d."status" = 'WON')::text AS revenue
+          count(d."id")::bigint AS deals,
+          sum(d."amountMinor")::text AS revenue
         FROM "deal" d
         JOIN "employee" e ON e."id" = d."employeeId"
-        WHERE d."closedAt" >= $1 AND d."closedAt" < $2
+        WHERE d."countsAsRevenue" AND d."status" = 'WON'
+          AND d."closedAt" >= $1 AND d."closedAt" < $2
           AND e."departmentId" IS NOT NULL
         GROUP BY e."departmentId"
       )
