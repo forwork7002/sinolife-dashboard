@@ -940,6 +940,24 @@ function RailBody({
                 const link = (
                   <Link
                     href={item.href}
+                    /*
+                      PREFETCHED, EXPLICITLY.
+
+                      Every screen here is `force-dynamic` and none has a
+                      `loading.tsx`, and that combination is why a click used
+                      to hang: Next's default `prefetch` fetches a dynamic
+                      route only as far as its loading state, so with no
+                      loading state it fetches nothing, and the navigation then
+                      blocks on the server render — 320 to 725ms of a page that
+                      simply does not respond, measured on production.
+
+                      `prefetch` on its own asks for the whole RSC payload
+                      ahead of the click, while the pointer is still travelling
+                      to the link. It costs one small request per visible
+                      entry, cached for the router's lifetime; the guard each
+                      one runs is a primary-key lookup against a two-row table.
+                    */
+                    prefetch
                     onClick={onNavigate}
                     aria-current={item.active ? 'page' : undefined}
                     aria-label={collapsed ? item.label : undefined}
