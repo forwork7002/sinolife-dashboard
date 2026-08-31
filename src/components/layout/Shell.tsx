@@ -59,6 +59,12 @@ const ViewTransition = (
 ).ViewTransition
 import { PERIOD_PRESETS } from './PeriodFilter'
 import {
+  setSidebarCollapsed,
+  sidebarCollapsedServerSnapshot,
+  sidebarCollapsedSnapshot,
+  subscribeSidebarCollapsed,
+} from './sidebarCollapsed'
+import {
   periodMemorySnapshot,
   periodMemoryServerSnapshot,
   periodQuery,
@@ -136,12 +142,10 @@ const NAV = NAV_GROUPS.flatMap((group) => group.items)
 
 export function Shell({
   children,
-  toolbar,
   dataSource,
   lastSyncedAt,
 }: {
   children: ReactNode
-  toolbar?: ReactNode
   dataSource?: 'DEMO' | 'BITRIX24' | 'MANUAL'
   lastSyncedAt?: string | null
 }) {
@@ -190,6 +194,12 @@ export function Shell({
     periodMemoryServerSnapshot,
   )
 
+  const collapsed = useSyncExternalStore(
+    subscribeSidebarCollapsed,
+    sidebarCollapsedSnapshot,
+    sidebarCollapsedServerSnapshot,
+  )
+
   const sectionQuery = useMemo(
     () => Object.fromEntries(NAV.map((item) => [item.href, periodQuery(item.href, periodMemory)])),
     [periodMemory],
@@ -236,7 +246,9 @@ export function Shell({
    * offers a route the rail hides would just be a faster way to find a 403.
    * Navigation goes through router.push with the bare href, exactly like the
    * sidebar's links; period changes go through setPeriod, exactly like the
-   * toolbar's buttons. The palette adds no third semantics of its own.
+   * control on the open page — and land on that page, since setPeriod writes
+   * the window of whatever route is current. The palette adds no third
+   * semantics of its own.
    *
    * Built plainly, no useMemo: the React Compiler memoizes it (a manual memo
    * here is flagged by react-hooks/preserve-manual-memoization), and twenty
@@ -287,26 +299,34 @@ export function Shell({
           it the sidebar crossfades along with the content and the whole screen
           appears to flicker. */}
       <aside
-        className="hidden w-56 shrink-0 border-r lg:flex lg:flex-col"
+        className={`hidden shrink-0 border-r transition-[width] duration-200 lg:flex lg:flex-col ${
+          collapsed ? 'w-[3.75rem]' : 'w-56'
+        }`}
         style={{
           background: 'var(--surface)',
           borderColor: 'var(--border)',
           viewTransitionName: 'app-sidebar',
         }}
       >
-        <div className="flex items-center gap-2.5 px-5 py-5">
+        <div
+          className={`flex items-center gap-2.5 py-5 ${collapsed ? 'justify-center px-0' : 'px-5'}`}
+        >
           <WordmarkBadge />
-          <div className="min-w-0">
-            <p
-              className="truncate text-sm font-semibold tracking-tight"
-              style={{ color: 'var(--ink-primary)' }}
-            >
-              {t.app.name}
-            </p>
-            <p className="truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-              {t.app.subtitle}
-            </p>
-          </div>
+          {/* Removed rather than hidden: a truncated name in a 60px rail is
+              three letters and an ellipsis, which reads as a rendering fault. */}
+          {!collapsed && (
+            <div className="min-w-0">
+              <p
+                className="truncate text-sm font-semibold tracking-tight"
+                style={{ color: 'var(--ink-primary)' }}
+              >
+                {t.app.name}
+              </p>
+              <p className="truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                {t.app.subtitle}
+              </p>
+            </div>
+          )}
         </div>
 
         {/*
@@ -353,7 +373,7 @@ export function Shell({
                     : undefined
                 }
               >
-                {group.label && (
+                {group.label && !collapsed && (
                   /*
                     `.eyebrow` — the ONE positive-tracked style in the system,
                     reserved for section headers like this. The utility classes
@@ -373,10 +393,14 @@ export function Shell({
 
                     return (
                       <li key={item.href}>
+                        <Tooltip content={collapsed ? item.label : ''}>
                         <Link
                           href={`${item.href}${sectionQuery[item.href] ?? ''}`}
                           aria-current={active ? 'page' : undefined}
-                          className="focusable relative flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13.5px] font-medium transition-colors"
+                          aria-label={collapsed ? item.label : undefined}
+                          className={`focusable relative flex items-center rounded-lg py-1.5 text-[13.5px] font-medium transition-colors ${
+                            collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5'
+                          }`}
                           style={{
                             /*
                               A soft series-1 wash rather than the neutral
@@ -409,8 +433,9 @@ export function Shell({
                             />
                           )}
                           <Icon />
-                          {item.label}
+                          {!collapsed && item.label}
                         </Link>
+                        </Tooltip>
                       </li>
                     )
                   })}
@@ -420,72 +445,109 @@ export function Shell({
           })}
         </nav>
 
-        <FreshnessPanel lastSyncedAt={lastSyncedAt} />
+        {/* Nothing legible fits in the rail, and a bare dot saying "fresh"
+            without saying since when is worse than not saying it. */}
+        {!collapsed && <FreshnessPanel lastSyncedAt={lastSyncedAt} />}
         </div>
 
-        {user && (
-          <div className="border-t px-4 py-3" style={{ borderColor: 'var(--border)' }}>
-            <div className="flex items-center gap-2.5">
-              <span
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
-                style={{ background: 'var(--grid)', color: 'var(--ink-primary)' }}
-                aria-hidden="true"
-              >
-                {user.name.slice(0, 1).toUpperCase()}
-              </span>
-              {/* The whole identity block is the way into the account screen —
-                  a separate "settings" icon would be a second target for the
-                  same thing, and this is where a reader already looks to check
-                  who they are signed in as. */}
-              <Link
-                href="/account"
-                className="focusable min-w-0 flex-1 rounded-md px-1 py-0.5 -mx-1 transition-colors hover:bg-[var(--grid)]"
-                aria-label="Hisob va parol"
-              >
-                <p
-                  className="truncate text-xs font-medium"
-                  style={{ color: 'var(--ink-primary)' }}
+        {/*
+          The rail's footer, one row.
+
+          Who is signed in on the left, the two things done TO the rail on the
+          right — sign out, and fold it away. It used to be a two-line block
+          with the role under the name; at 224px wide that is a third of the
+          sidebar's height spent on a fact that does not change, and it pushed
+          everything above it up against the top. One line with a middle dot
+          says the same thing in a third of the space.
+
+          The toggle renders whether or not anybody is signed in: it belongs to
+          the rail rather than to the account.
+        */}
+        <div
+          className={`border-t py-2 ${collapsed ? 'px-0' : 'px-2.5'}`}
+          style={{ borderColor: 'var(--border)' }}
+        >
+          <div
+            className={
+              collapsed ? 'flex flex-col items-center gap-1' : 'flex items-center gap-0.5'
+            }
+          >
+            {user && (
+              <Tooltip content={collapsed ? `${user.name} · ${ROLE_LABELS[user.role]}` : ''}>
+                {/* The identity block is the way into the account screen — a
+                    separate "settings" icon would be a second target for the
+                    same thing, and this is where a reader already looks to
+                    check who they are signed in as. */}
+                <Link
+                  href="/account"
+                  aria-label="Hisob va parol"
+                  className={`focusable flex items-center rounded-md transition-colors hover:bg-[var(--grid)] ${
+                    collapsed ? 'p-1' : 'min-w-0 flex-1 gap-2 px-1 py-1'
+                  }`}
                 >
-                  {user.name}
-                </p>
-                <p className="truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                  {ROLE_LABELS[user.role]}
-                </p>
-              </Link>
-              {/* The Tooltip primitive, not a native title: an icon-only
-                  button whose label arrives after a second of hovering and
-                  never on focus or touch is unlabelled for most people. */}
+                  <span
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
+                    style={{ background: 'var(--grid)', color: 'var(--ink-primary)' }}
+                    aria-hidden="true"
+                  >
+                    {user.name.slice(0, 1).toUpperCase()}
+                  </span>
+                  {!collapsed && (
+                    <span
+                      className="truncate text-[12px] font-medium"
+                      style={{ color: 'var(--ink-primary)' }}
+                    >
+                      {user.name}
+                      <span style={{ color: 'var(--ink-muted)' }}>
+                        {' · '}
+                        {ROLE_LABELS[user.role]}
+                      </span>
+                    </span>
+                  )}
+                </Link>
+              </Tooltip>
+            )}
+
+            {user && (
+              /* The Tooltip primitive, not a native title: an icon-only button
+                 whose label arrives after a second of hovering and never on
+                 focus or touch is unlabelled for most people. */
               <Tooltip content="Chiqish">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void signOut().then(() => {
+                      // Clear the query cache as well as the session: cached
+                      // analytics from the previous user must not be readable
+                      // by whoever signs in next on this browser.
+                      queryClient.clear()
+                      router.push('/login')
+                      router.refresh()
+                    })
+                  }}
+                  aria-label="Chiqish"
+                  className="focusable rounded-md p-1.5 transition-colors hover:bg-[var(--grid)]"
+                  style={{ color: 'var(--ink-muted)' }}
+                >
+                  <SignOutIcon />
+                </button>
+              </Tooltip>
+            )}
+
+            <Tooltip content={collapsed ? 'Panelni ochish' : 'Panelni yigʻish'}>
               <button
                 type="button"
-                onClick={() => {
-                  void signOut().then(() => {
-                    // Clear the query cache as well as the session: cached
-                    // analytics from the previous user must not be readable
-                    // by whoever signs in next on this browser.
-                    queryClient.clear()
-                    router.push('/login')
-                    router.refresh()
-                  })
-                }}
-                aria-label="Chiqish"
+                onClick={() => setSidebarCollapsed(!collapsed)}
+                aria-label={collapsed ? 'Panelni ochish' : 'Panelni yigʻish'}
+                aria-expanded={!collapsed}
                 className="focusable rounded-md p-1.5 transition-colors hover:bg-[var(--grid)]"
                 style={{ color: 'var(--ink-muted)' }}
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path
-                    d="M15 17l5-5-5-5M20 12H9M12 20H6a2 2 0 01-2-2V6a2 2 0 012-2h6"
-                    stroke="currentColor"
-                    strokeWidth="1.7"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <PanelIcon open={!collapsed} />
               </button>
-              </Tooltip>
-            </div>
+            </Tooltip>
           </div>
-        )}
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -513,11 +575,15 @@ export function Shell({
 
             <div className="ml-auto flex items-center gap-2">
               {/*
-                The ⌘K chip. A ghost button, because it must sit beside the
-                period control without competing with it — the keycaps do the
-                explaining. On a phone the label and caps fold away (there is
-                no ⌘K to teach) and the chip is just a search button; the
-                aria-label keeps it named either way.
+                The ⌘K chip, and now the only control up here.
+
+                Search is the one thing on this bar that is genuinely global:
+                it looks across every section at once — a phone number, a deal
+                id, a customer — while the reporting window belongs to whatever
+                page is open and lives on that page. A ghost button because the
+                keycaps do the explaining. On a phone the label and caps fold
+                away (there is no ⌘K to teach) and the chip is just a search
+                button; the aria-label keeps it named either way.
               */}
               <Button
                 variant="ghost"
@@ -530,7 +596,6 @@ export function Shell({
                   <Kbd keys={['mod', 'K']} />
                 </span>
               </Button>
-              {toolbar}
             </div>
           </div>
 
@@ -633,6 +698,52 @@ function WordmarkBadge({ small = false }: { small?: boolean }) {
  * Past five minutes the dot turns amber: the worker runs every sixty seconds,
  * so five missed ticks is a fault rather than a slow one.
  */
+/** Sign out — a door with an arrow leaving through it. */
+function SignOutIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M15 17l5-5-5-5M20 12H9M12 20H6a2 2 0 01-2-2V6a2 2 0 012-2h6"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/**
+ * The rail itself, as a glyph: a pane with its left column marked.
+ *
+ * The column is FILLED when the rail is open and hollow when it is folded, so
+ * the icon shows the current state rather than the action. An icon that showed
+ * the action would have to flip its arrow, and an arrow next to a pane reads
+ * as "move" rather than "fold".
+ */
+function PanelIcon({ open }: { open: boolean }) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect
+        x="3"
+        y="4.5"
+        width="18"
+        height="15"
+        rx="2.5"
+        stroke="currentColor"
+        strokeWidth="1.7"
+      />
+      <path
+        d="M9.5 4.5v15"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+      {open && <rect x="3.9" y="5.4" width="4.7" height="13.2" rx="1.6" fill="currentColor" />}
+    </svg>
+  )
+}
+
 function FreshnessPanel({ lastSyncedAt }: { lastSyncedAt?: string | null }) {
   const fetching = useIsFetching() > 0
   const [now, setNow] = useState(() => Date.now())

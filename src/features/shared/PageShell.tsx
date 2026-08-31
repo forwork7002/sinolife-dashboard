@@ -115,14 +115,6 @@ export function PageShell({
     <Shell
       dataSource={meta?.dataSource ?? options.data?.meta.dataSource}
       lastSyncedAt={data?.lastSyncedAt ?? null}
-      toolbar={
-        <PeriodFilter
-          value={filters.preset}
-          from={filters.from}
-          to={filters.to}
-          onChange={setPeriod}
-        />
-      }
     >
       <div
         className="mx-auto max-w-[1400px] space-y-4"
@@ -186,8 +178,32 @@ export function PageShell({
               {actions}
             </header>
 
-            {anyFilter && (
-              <div className="flex flex-wrap items-center gap-2">
+            {/*
+              THE REPORTING WINDOW BELONGS TO THE PAGE, not to the chrome.
+
+              It used to sit in the app header, above every screen, which said
+              it was one setting for the whole dashboard — and it never was:
+              each section is read in its own window, and each keeps it. A
+              control rendered over the top bar cannot say that. Down here it
+              sits with the section's other filters, under the section's title,
+              and reads as what it is: this page's dates.
+
+              The header keeps the search, which genuinely is global — it looks
+              across every screen at once.
+
+              The row renders even when a page has no other filters: the window
+              is not optional, so a screen without it would simply have no way
+              to change its dates.
+            */}
+            <div className="flex flex-wrap items-center gap-2">
+              <PeriodFilter
+                value={filters.preset}
+                from={filters.from}
+                to={filters.to}
+                onChange={setPeriod}
+              />
+              {anyFilter && (
+                <>
                 {enabled.search && (
                   <SearchInput
                     value={filters.q ?? ''}
@@ -240,8 +256,9 @@ export function PageShell({
                     Filtrlarni tozalash ({activeCount})
                   </Button>
                 )}
-              </div>
-            )}
+                </>
+              )}
+            </div>
           </div>
         </div>
 
