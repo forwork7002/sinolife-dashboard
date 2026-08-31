@@ -12,6 +12,7 @@ import {
   type Delta,
   type DeltaDto,
   growth,
+  SHARE_DECIMALS,
   roundPercent,
   toDeltaDto,
 } from '@/server/domain/analytics/metrics'
@@ -504,7 +505,8 @@ export class AnalyticsService {
       revenue: toMoneyDto(row.revenue),
       dealsWon: row.dealsWon,
       units: unitsById.get(row.key) ?? 0,
-      sharePercent: row.sharePercent === null ? null : roundPercent(row.sharePercent),
+      sharePercent:
+        row.sharePercent === null ? null : roundPercent(row.sharePercent, SHARE_DECIMALS),
       delta: toDeltaDto(growth(row.revenue.amountMinor, previousById.get(row.key) ?? null)),
     }))
   }
@@ -524,7 +526,8 @@ export class AnalyticsService {
       revenue: toMoneyDto(row.revenue),
       dealsWon: row.dealsWon,
       dealsTotal: row.dealsTotal,
-      sharePercent: row.sharePercent === null ? null : roundPercent(row.sharePercent),
+      sharePercent:
+        row.sharePercent === null ? null : roundPercent(row.sharePercent, SHARE_DECIMALS),
       conversionPercent:
         row.dealsTotal === 0 ? null : roundPercent((row.dealsWon / row.dealsTotal) * 100),
       delta: toDeltaDto(growth(row.revenue.amountMinor, previousById.get(row.key) ?? null)),

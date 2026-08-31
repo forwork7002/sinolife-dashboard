@@ -63,7 +63,10 @@ function int(value: unknown): number {
  * absence — a zero manufactured this deep made the third one unreachable.
  */
 function rateBp(numerator: number, denominator: number): number | null {
-  return denominator === 0 ? null : Math.round((numerator / denominator) * 10_000)
+  // Deliberately NOT rounded to whole basis points. `pct` rounds it again for
+  // display, and rounding twice moved Namangan's 86/101 from 85.1% to 85.2% —
+  // small, except the tone thresholds sit at 85 and 60.
+  return denominator === 0 ? null : (numerator / denominator) * 10_000
 }
 
 /**

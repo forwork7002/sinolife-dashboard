@@ -60,6 +60,14 @@ export interface ClosedDealStats {
   readonly wonAmountMinor: bigint
   readonly lostAmountMinor: bigint
   /** closedAt - createdAtSource percentiles over WON deals, in days. */
+  /**
+   * How many deals the percentiles beside this were actually taken over.
+   *
+   * Not `wonCount`: the percentiles exclude deals whose `closedAt` precedes
+   * their creation, so the hint that named `wonCount` was crediting the median
+   * to nine more deals than went into it.
+   */
+  readonly cycleCount: number
   readonly cycleP50Days: number | null
   readonly cycleP75Days: number | null
   readonly cycleP90Days: number | null
@@ -137,6 +145,7 @@ const EMPTY_CLOSED: ClosedDealStats = {
   lostCount: 0,
   wonAmountMinor: 0n,
   lostAmountMinor: 0n,
+  cycleCount: 0,
   cycleP50Days: null,
   cycleP75Days: null,
   cycleP90Days: null,
@@ -207,6 +216,7 @@ export class PulseRepository {
         lost: bigint
         won_amount: MoneyText
         lost_amount: MoneyText
+        cycle_count: bigint
         p50_days: number | null
         p75_days: number | null
         p90_days: number | null
@@ -220,6 +230,9 @@ export class PulseRepository {
         count(*) FILTER (WHERE d."status" = 'LOST')::bigint AS lost,
         sum(d."amountMinor") FILTER (WHERE d."status" = 'WON')::text AS won_amount,
         sum(d."amountMinor") FILTER (WHERE d."status" = 'LOST')::text AS lost_amount,
+        count(*) FILTER (
+          WHERE d."status" = 'WON' AND d."closedAt" >= d."createdAtSource"
+        )::bigint AS cycle_count,
         percentile_cont(0.5) WITHIN GROUP (
           ORDER BY EXTRACT(EPOCH FROM (d."closedAt" - d."createdAtSource")) / 86400
         ) FILTER (WHERE d."status" = 'WON' AND d."closedAt" >= d."createdAtSource") AS p50_days,
@@ -252,6 +265,7 @@ export class PulseRepository {
         lostCount: int(row.lost),
         wonAmountMinor: money(row.won_amount),
         lostAmountMinor: money(row.lost_amount),
+        cycleCount: int(row.cycle_count),
         cycleP50Days: floatOrNull(row.p50_days),
         cycleP75Days: floatOrNull(row.p75_days),
         cycleP90Days: floatOrNull(row.p90_days),

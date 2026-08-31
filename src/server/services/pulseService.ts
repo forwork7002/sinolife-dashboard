@@ -94,7 +94,13 @@ export interface PulseCycleDto {
   readonly p50Days: number | null
   readonly p75Days: number | null
   readonly p90Days: number | null
-  /** How many won deals the percentiles were computed from. */
+  /**
+   * How many won deals the percentiles were computed from.
+   *
+   * Smaller than the window's won count by however many deals Bitrix24 closed
+   * before it created them; those are excluded from the percentiles, so
+   * naming the won count here credited the median to deals it never saw.
+   */
   readonly wonCount: number
 }
 
@@ -304,7 +310,7 @@ export class PulseService {
         p50Days: current.cycleP50Days === null ? null : round1(current.cycleP50Days),
         p75Days: current.cycleP75Days === null ? null : round1(current.cycleP75Days),
         p90Days: current.cycleP90Days === null ? null : round1(current.cycleP90Days),
-        wonCount: current.wonCount,
+        wonCount: current.cycleCount,
       },
       winRate: {
         countPercent: winRatePercent === null ? null : roundPercent(winRatePercent),

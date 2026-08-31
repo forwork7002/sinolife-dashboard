@@ -152,6 +152,18 @@ export function fromBasisPoints(bp: number | null): number | null {
  * Round a percentage for display. Keeps one decimal, which is the most
  * precision a period-over-period figure can honestly carry.
  */
+/**
+ * Round a percentage for transport.
+ *
+ * `SHARE_DECIMALS` rather than one, for anything that is a share of a whole:
+ * a product worth 1.6 mln of 6.1 bn is 0.026%, and rounding that to one
+ * decimal on the server hands the client an exact zero — so `formatPercent`,
+ * which knows to print "<0.1%" for a small non-zero value, sees nothing to
+ * print it for. Four decimals is still a tidy JSON number and the client
+ * rounds once, at the point where the number becomes text.
+ */
+export const SHARE_DECIMALS = 4
+
 export function roundPercent(value: number, decimals = 1): number {
   const factor = 10 ** decimals
   return Math.round(value * factor) / factor

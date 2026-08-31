@@ -22,7 +22,13 @@
  * rather than showing a column of nothing.
  */
 
-import { growth, ratePercent, roundPercent, toDeltaDto } from '@/server/domain/analytics/metrics'
+import {
+  SHARE_DECIMALS,
+  growth,
+  ratePercent,
+  roundPercent,
+  toDeltaDto,
+} from '@/server/domain/analytics/metrics'
 import { periodElapsedFraction } from '@/server/domain/analytics/performance'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import type { DeltaDto } from '@/lib/api'
@@ -369,6 +375,12 @@ function sum<T>(rows: readonly T[], pick: (row: T) => bigint): bigint {
   return rows.reduce((total, row) => total + pick(row), 0n)
 }
 
+/**
+ * A share of the board, kept precise enough to say it is not zero.
+ *
+ * Six sellers who had genuinely won money read "0.0%" beside the eight who had
+ * won none — see SHARE_DECIMALS.
+ */
 function roundOrNull(value: number | null): number | null {
-  return value === null ? null : roundPercent(value)
+  return value === null ? null : roundPercent(value, SHARE_DECIMALS)
 }
