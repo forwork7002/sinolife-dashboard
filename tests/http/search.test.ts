@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { defaultSectionsFor } from '@/lib/sections'
 import type { Principal } from '@/server/auth/rbac'
 import type { SearchRepository, SearchResults } from '@/server/repositories/searchRepository'
+import { commandCentreCacheKey } from '@/server/services/commandCentreCacheKey'
 import { SearchService } from '@/server/services/searchService'
 
 /**
@@ -187,5 +188,43 @@ describe('a term too short to look up', () => {
     const dto = await serviceReturning(EMPTY).search(principal(), '', 'UZS')
 
     expect(dto.tooShort).toBe(false)
+  })
+})
+
+/**
+ * The command centre's build cache.
+ *
+ * The bug this holds down: two presets can resolve to the SAME window and
+ * still want different comparisons. Every Monday "today" and "this week" are
+ * both [Mon 00:00, Tue 00:00), but one looks back a day and the other a week.
+ * Keyed on the window alone they shared an entry, and whichever was asked
+ * first served the other its neighbour's "previous period" figures.
+ */
+describe('the command centre cache key', () => {
+  const window = {
+    start: new Date('2026-08-30T19:00:00.000Z'),
+    end: new Date('2026-08-31T19:00:00.000Z'),
+    timeZone: 'Asia/Tashkent',
+  }
+
+  it('separates two presets that resolve to the same days', () => {
+    const today = commandCentreCacheKey({ ...window, preset: 'today' }, 'UZS')
+    const week = commandCentreCacheKey({ ...window, preset: 'this_week' }, 'UZS')
+
+    expect(today).not.toBe(week)
+  })
+
+  it('still shares one entry for the same preset and window', () => {
+    // The whole point of the cache: six people opening the same screen inside
+    // 45 seconds must not each run sixteen queries.
+    expect(commandCentreCacheKey({ ...window, preset: 'today' }, 'UZS')).toBe(
+      commandCentreCacheKey({ ...window, preset: 'today' }, 'UZS'),
+    )
+  })
+
+  it('separates currencies, which change every money figure on the screen', () => {
+    expect(commandCentreCacheKey({ ...window, preset: 'today' }, 'UZS')).not.toBe(
+      commandCentreCacheKey({ ...window, preset: 'today' }, 'USD'),
+    )
   })
 })

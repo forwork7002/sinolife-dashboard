@@ -26,6 +26,7 @@
 
 import { concentrationService, insightsService } from './container'
 import type { Period } from '@/server/domain/period/period'
+import { commandCentreCacheKey } from './commandCentreCacheKey'
 import { periodLengthInDays, previousEquivalent } from '@/server/domain/period/period'
 import { money, toMajorNumber, toMoneyDto } from '@/server/domain/money/money'
 import { growth, ratePercent, roundPercent, toDeltaDto } from '@/server/domain/analytics/metrics'
@@ -58,15 +59,11 @@ function trended(value: number, previous: number | null): TrendedDto {
 const CACHE_TTL_MS = 45_000
 const cache = new Map<string, { at: number; value: Promise<CommandCentreDto> }>()
 
-function cacheKey(period: Period, currency: string): string {
-  return `${period.start.toISOString()}|${period.end.toISOString()}|${currency}`
-}
-
 export class CommandCentreService {
   constructor(private readonly repository: InsightsRepository) {}
 
   async load(period: Period, currency: string): Promise<CommandCentreDto> {
-    const key = cacheKey(period, currency)
+    const key = commandCentreCacheKey(period, currency)
     const now = Date.now()
 
     const hit = cache.get(key)
