@@ -87,7 +87,7 @@ export function MarketingKpiBand({
   const sparkable = daily.length >= 2
 
   return (
-    {/*
+    /*
       Four across at 1440px, six only from 1536px.
 
       Six across a 1176px content column leaves each tile ~180px, and a value
@@ -95,7 +95,7 @@ export function MarketingKpiBand({
       tile's right edge on every "ming soʻm" tile. Shrinking the figure would
       make this band the one place on the dashboard where the same number is
       set smaller than everywhere else; a fourth row of tiles costs nothing.
-    */}
+    */
     <div className="stagger grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6">
       <Tile
         status={status}
