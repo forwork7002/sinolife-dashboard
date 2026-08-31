@@ -292,6 +292,14 @@ export class InsightsService {
     return scopedPeriod(period, scope)
   }
 
+  /** Whole months between two `YYYY-MM-DD` cohort keys. */
+  private static monthsApart(from: string, to: string): number {
+    const [fy, fm] = from.split('-').map(Number)
+    const [ty, tm] = to.split('-').map(Number)
+    if (!fy || !fm || !ty || !tm) return 0
+    return Math.max(0, (ty - fy) * 12 + (tm - fm))
+  }
+
   /**
    * Cohort retention.
    *
@@ -323,13 +331,28 @@ export class InsightsService {
       0,
     )
 
+    // The repository returns one row per month up to the current one, so the
+    // latest key IS this month — no clock needed, and no chance of the grid
+    // disagreeing with the rows it was built from.
+    const newestCohort = rows.reduce((latest, row) => (row.cohort > latest ? row.cohort : latest), '')
+
     const dtos = rows.map((row) => {
       const retention: (number | null)[] = []
       const revenue: MoneyDto[] = []
       const byOffset = new Map(row.cells.map((c) => [c.monthsSince, c]))
 
-      // A cohort from three months ago cannot have a twelve-month column.
-      const reachable = Math.max(0, ...row.cells.map((c) => c.monthsSince))
+      /*
+        How many months this cohort has actually LIVED — from the calendar,
+        not from where its own returns happen to stop.
+
+        Taken from the cells, a cohort that never came back after its first
+        month reported one reachable column and fourteen empty ones, so the
+        June 2025 row rendered fourteen months of nobody returning as
+        fourteen months of "not measured". That is the opposite of the
+        finding, and it is the row a reader most needs to see. Null belongs
+        only to months that have not happened yet.
+      */
+      const reachable = InsightsService.monthsApart(row.cohort, newestCohort)
 
       for (let offset = 0; offset <= maxOffset; offset++) {
         const cell = byOffset.get(offset)
