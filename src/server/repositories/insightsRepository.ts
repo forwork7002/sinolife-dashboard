@@ -886,20 +886,26 @@ export class InsightsRepository {
        WHERE "confirmationSignal" IS NOT NULL
     ),
     /*
-      Every confirmation move INSIDE the window — and that is the whole
-      history this board needs.
+      Every confirmation move from the window's start onwards.
 
-      An order placed in the window cannot have moved before it existed, so
-      for every order the board can hold, all of its moves are in [$1, $2).
-      Reading only that slice loses nothing and is what makes a year cheap:
-      the previous shape looked each candidate up again with a LATERAL, one
-      index probe per order, and a year of orders put it past the twenty-
-      second statement timeout — «Shu yil» was a 500 on this screen and on
-      the command centre behind it. Measured: 3.4 s for the year, 0.4 s for a
-      month, and row-for-row identical to the old answer on three windows.
+      OPEN ON THE RIGHT, and that one condition was a real bug. It used to
+      close at $2, reasoning that an order created inside the window is also
+      worked inside it. Orders do not oblige: one placed at 23:50 is queued
+      the next morning, and one placed on the 31st is worked in the new month.
+      Every CLOSED window silently dropped them — «Kecha» showed 96 orders
+      against a true 101, and «Oʻtgan oy» 2 970 against 3 103. «Shu oy» hid it
+      completely, because its end is tomorrow and nothing can fall past it.
 
-      Closed on the right so a report on last week shows what last week
-      looked like, not what has happened since.
+      The consequence is deliberate: an order's status is its status NOW, not
+      the one it happened to hold at midnight on the window's last day. A board
+      that answers "what came in last month, and where does each stand" has to
+      say where they stand — freezing an order as «kutilmoqda» because that is
+      what it was six weeks ago describes nothing anybody can act on.
+
+      Left bound only, still cheap: an order created in the window cannot have
+      moved before it existed, so nothing before $1 can belong here. Measured
+      against the closed form on three windows — 152 ms for a day, 1.2 s for a
+      month, 3.7 s for a year, all three faster than the shape it replaces.
     */
     moves AS (
       SELECT h."dealId" AS deal_id, h."enteredAt" AS moved_at, ss.signal
@@ -907,7 +913,6 @@ export class InsightsRepository {
         JOIN "deal_stage_history" h
           ON h."stageId" = ss."id"
          AND h."enteredAt" >= $1
-         AND h."enteredAt" <  $2
     ),
     /*
       One row per order, at its latest signal.
@@ -1008,6 +1013,40 @@ export class InsightsRepository {
       FROM classified c
     )
   `
+
+  /**
+   * What the header's bell counts: still waiting, and waiting too long.
+   *
+   * Built on the SAME cohort the board is, so the bell and the screen it
+   * links to can never disagree — a header that says three and a page that
+   * shows two is worse than no header. Today's window only, which is what
+   * makes it cheap enough to fetch from every page every minute.
+   *
+   * `overdue` is measured from the order's own arrival in the queue, not from
+   * the start of the day: an order that arrived ten minutes ago has not been
+   * waiting since midnight.
+   */
+  async queuePressure(
+    period: Period,
+    overdueAfterMinutes = 120,
+  ): Promise<{ pending: number; overdue: number }> {
+    const rows = await this.prisma.$queryRawUnsafe<{ pending: bigint; overdue: bigint }[]>(
+      `${InsightsRepository.QUEUE_SQL}
+       SELECT
+         count(*) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::bigint AS pending,
+         count(*) FILTER (
+           WHERE c.outcome = 'CONFIRM_NEW'
+             AND c.queued_at IS NOT NULL
+             AND c.queued_at < $3
+         )::bigint AS overdue
+       FROM numbered c`,
+      period.start,
+      period.end,
+      new Date(Date.now() - overdueAfterMinutes * 60_000),
+    )
+
+    return { pending: int(rows[0]?.pending), overdue: int(rows[0]?.overdue) }
+  }
 
   /** How the window's queue split across the five states. */
   async confirmationOutcomes(
