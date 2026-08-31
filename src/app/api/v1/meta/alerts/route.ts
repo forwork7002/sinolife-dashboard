@@ -6,12 +6,12 @@ import { alertsService } from '@/server/services/container'
 export const dynamic = 'force-dynamic'
 
 /**
- * The header's three facts: how fresh, what is waiting, what is wrong.
+ * The header's two facts: how fresh the numbers are, and what is waiting.
  *
  * `section: null` because the header is on every screen. Not a hole: the
- * service gates the queue count and the marketing warning on the sections
- * the caller actually holds, so an account barred from the queue gets no
- * bell rather than a number it may not open.
+ * service gates the queue count on the section the caller actually holds, so
+ * an account barred from the queue gets no bell rather than a number it may
+ * not open.
  */
 const ACCESS = { permission: 'analytics:read:own', section: null } as const
 

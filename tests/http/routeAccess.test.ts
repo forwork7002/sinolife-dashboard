@@ -77,9 +77,8 @@ describe('every v1 endpoint declares its access', () => {
         meta/filters  the roster and period options every page loads. It is
                       already narrowed to the caller's own employee when the
                       account is OWN-scoped.
-        meta/alerts   the header's freshness, bell and warnings. The service
-                      gates the queue count and the marketing warning on the
-                      sections the caller holds.
+        meta/alerts   the header's freshness and its bell. The service gates
+                      the queue count on the section the caller holds.
         search        the one box that looks across every screen. It gates each
                       GROUP it returns on a section the caller holds and
                       narrows the rows to their data scope, so it can reach

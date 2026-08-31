@@ -21,7 +21,6 @@ import {
   BellGlyph,
   RefreshGlyph,
   SearchGlyph,
-  TriangleGlyph,
 } from '@/components/ui/Icons'
 import { Kbd } from '@/components/ui/Kbd'
 import { Tooltip } from '@/components/ui/Tooltip'
@@ -199,7 +198,6 @@ export function Shell({
   const alerts = alertsQuery.data?.data
   const pending = alerts?.queue?.pending ?? 0
   const overdue = alerts?.queue?.overdue ?? 0
-  const alertCount = alerts?.alerts.length ?? 0
   const busy = useIsFetching() > 0
 
   /**
@@ -658,8 +656,6 @@ export function Shell({
                   </Link>
                 </Tooltip>
               )}
-
-              {alertCount > 0 && <AlertsMenu alerts={alerts?.alerts ?? []} />}
 
               {/*
                 Refresh, for the person who will not wait sixty seconds.
@@ -1275,120 +1271,6 @@ function useSyncFreshness(syncedAt?: string | null): { label: string | null; sta
   // The worker ticks every sixty seconds, so five missed ticks is a fault.
   return { label: relativeMinutes(minutes), stale: minutes >= 5 }
 }
-
-/**
- * What is wrong, as a menu rather than a badge.
- *
- * A count alone tells somebody there is a problem and nothing about which —
- * so the triangle opens the list, and every line with a screen behind it is a
- * link to that screen. A critical alert colours the trigger red; a warning
- * leaves it amber.
- */
-function AlertsMenu({
-  alerts,
-}: {
-  alerts: readonly {
-    readonly key: string
-    readonly severity: 'warning' | 'critical'
-    readonly label: string
-    readonly href?: string
-  }[]
-}) {
-  const [open, setOpen] = useState(false)
-  const container = useRef<HTMLDivElement>(null)
-  const critical = alerts.some((alert) => alert.severity === 'critical')
-  const tone = critical ? 'var(--status-critical)' : 'var(--status-warning)'
-
-  // Dismiss on an outside click or Escape — a popover that can only be closed
-  // by re-clicking its own trigger is a trap on a dense bar.
-  useEffect(() => {
-    if (!open) return
-
-    const onPointerDown = (event: MouseEvent) => {
-      if (!container.current?.contains(event.target as Node)) setOpen(false)
-    }
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-
-    document.addEventListener('mousedown', onPointerDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open])
-
-  return (
-    <div ref={container} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-label={`${alerts.length} ta ogohlantirish`}
-        aria-expanded={open}
-        className="rail-item focusable relative flex h-9 w-9 items-center justify-center rounded-lg"
-        style={{ color: tone }}
-      >
-        <TriangleGlyph size={16} />
-        <span
-          aria-hidden="true"
-          className="absolute top-0.5 right-0.5 min-w-[15px] rounded-full px-1 text-center text-[10px] leading-[15px] font-semibold"
-          style={{ background: tone, color: 'var(--ink-on-series)' }}
-        >
-          {alerts.length}
-        </span>
-      </button>
-
-      {open && (
-        <div
-          role="dialog"
-          aria-label="Ogohlantirishlar"
-          className="absolute right-0 z-30 mt-1.5 w-[min(21rem,calc(100vw-2rem))] overflow-hidden border p-1"
-          style={{
-            background: 'var(--surface)',
-            borderColor: 'var(--border)',
-            borderRadius: 'var(--radius-panel)',
-            boxShadow: 'var(--shadow-float)',
-          }}
-        >
-          {alerts.map((alert) => {
-            const body = (
-              <span className="flex items-start gap-2">
-                <span
-                  aria-hidden="true"
-                  className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full"
-                  style={{
-                    background:
-                      alert.severity === 'critical'
-                        ? 'var(--status-critical)'
-                        : 'var(--status-warning)',
-                  }}
-                />
-                <span className="text-[12.5px] leading-snug">{alert.label}</span>
-              </span>
-            )
-
-            return alert.href ? (
-              <Link
-                key={alert.key}
-                href={alert.href}
-                onClick={() => setOpen(false)}
-                className="rail-item focusable block rounded-lg px-2.5 py-2"
-              >
-                {body}
-              </Link>
-            ) : (
-              <p key={alert.key} className="px-2.5 py-2" style={{ color: 'var(--ink-secondary)' }}>
-                {body}
-              </p>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
 
 function ChartIcon() {
   return (
