@@ -113,6 +113,14 @@ export interface SellerTeamRowDto {
 export interface SellerBoardTotalsDto {
   readonly sellers: number
   readonly teams: number
+  /**
+   * Sellers with no ROP, and so on no team row.
+   *
+   * The teams tab divides by the WHOLE board, so without this the reader has
+   * no way to see that the shares do not add to a hundred — six sellers and
+   * 40.9 mln of intake were sitting outside every row on the screen.
+   */
+  readonly teamlessSellers: number
   readonly orders: number
   readonly ordered: MoneyDto
   readonly won: MoneyDto
@@ -231,6 +239,7 @@ export class SellerBoardService {
       totals: {
         sellers: rows.length,
         teams: new Set(rows.map((r) => r.rop).filter((r): r is string => r !== null)).size,
+        teamlessSellers: rows.filter((r) => r.rop === null).length,
         orders: rows.reduce((a, r) => a + r.orders, 0),
         ordered: toMoneyDto(money(sum(rows, (r) => r.orderedMinor), ctx.currency)),
         won: toMoneyDto(money(totalWonMinor, ctx.currency)),

@@ -123,7 +123,9 @@ export function SellersPage() {
             <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
               {tab === 'sellers'
                 ? `${formatNumber(data.totals.sellers)} ta sotuvchi — davrda buyurtma olganlar`
-                : `${formatNumber(data.totals.teams)} ta komanda`}
+                : data.totals.teamlessSellers > 0
+                  ? `${formatNumber(data.totals.teams)} ta komanda · ${formatNumber(data.totals.teamlessSellers)} ta sotuvchi komandasiz, ulushlar ularsiz`
+                  : `${formatNumber(data.totals.teams)} ta komanda`}
             </p>
           )}
         </div>

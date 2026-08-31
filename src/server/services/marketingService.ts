@@ -431,13 +431,34 @@ function usdMoney(micro: bigint): MoneyDto {
   return toMoneyDto(money(centsFromMicroUsd(micro), USD))
 }
 
+/**
+ * A UNIT cost, which is where the cent is too coarse to round to.
+ *
+ * `amountMinor` stays whole cents, because that is what minor units are and
+ * the dollar column prints them. `amount` carries the exact dollars instead of
+ * the rounded ones, because the screen's soʻm mode multiplies THAT by the rate:
+ * a click costing $0.0461 rounded to five cents and multiplied by 11,801 was
+ * printing 590 soʻm for a click that cost 544, and calling it exact in the
+ * tooltip. Every per-unit cost on the screen — CPL, CPO, CAC, CPC, CPM — had
+ * the same 8% of nothing in it.
+ *
+ * Totals keep `usdMoney`: those are real sums of real cents, and giving them
+ * fractional cents would say a precision the ledger does not have.
+ */
+function usdUnitCost(micro: bigint): MoneyDto {
+  return {
+    ...toMoneyDto(money(centsFromMicroUsd(micro), USD)),
+    amount: Number(micro) / 1_000_000,
+  }
+}
+
 function uzsMoney(minor: bigint): MoneyDto {
   return toMoneyDto(money(minor, UZS))
 }
 
 /** Null in, null out: an undefined cost is an em dash, never a zero. */
 function usdMoneyOrNull(micro: bigint | null): MoneyDto | null {
-  return micro === null ? null : usdMoney(micro)
+  return micro === null ? null : usdUnitCost(micro)
 }
 
 function uzsMoneyOrNull(minor: bigint | null): MoneyDto | null {

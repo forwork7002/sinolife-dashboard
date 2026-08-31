@@ -444,7 +444,10 @@ export class MarketingRepository {
     >(`
       SELECT
         max("date") FILTER (WHERE "leads" > 0 OR "spendMicroUsd" > 0)::text AS ads_through,
-        max("date") FILTER (WHERE "sold" > 0 OR "soldMinor" > 0 OR "orders" > 0)::text
+        -- Not "orders > 0": a day can carry orders with nothing sold on it
+        -- yet, and counting those made the banner name a date one day past
+        -- the last day sales and revenue were actually written.
+        max("date") FILTER (WHERE "sold" > 0 OR "soldMinor" > 0)::text
           AS sales_through
       FROM "marketing_daily"
       WHERE "dimension" = 'DAYS'

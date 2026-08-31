@@ -967,6 +967,8 @@ export interface SellerTeamRowDto {
 export interface SellerBoardTotalsDto {
   readonly sellers: number
   readonly teams: number
+  /** Sellers with no ROP, so on no team row. The team shares exclude them. */
+  readonly teamlessSellers: number
   readonly orders: number
   readonly ordered: MoneyDto
   readonly won: MoneyDto
