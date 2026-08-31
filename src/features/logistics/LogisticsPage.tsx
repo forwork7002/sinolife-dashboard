@@ -22,10 +22,14 @@ import { t } from '@/lib/messages'
  * we run, the other about the geography we serve, and a parcel from Tashkent
  * can travel through any of the hubs.
  *
- * Timings come from stage history, so "median hours" means from entering the
- * hub to being marked delivered, not from the order being created. The
- * distinction matters: an order that sat unconfirmed for three days did not
- * take three days to deliver.
+ * Timings run from the order being created to its `Доставлено` stage stamp,
+ * and BOTH tables measure that — the region cut used to measure something
+ * else entirely under the identical column header.
+ *
+ * It would be better to time the delivery leg alone; this portal does not
+ * record one. The hub stamp is written when the parcel is closed out, so
+ * hub-to-delivered has a median of nought hours, and the robot dispatches a
+ * confirmed order within minutes anyway. See `LogisticsRouteRow.medianDays`.
  */
 export function LogisticsPage() {
   const { apiParams } = useDashboardFilters()
@@ -140,17 +144,17 @@ export function LogisticsPage() {
     },
     {
       key: 'median',
-      header: 'Median soat',
+      header: 'Median kun',
       align: 'right',
       numeric: true,
-      render: (row) => (row.medianHours === null ? NO_VALUE : formatNumber(row.medianHours)),
+      render: (row) => (row.medianDays === null ? NO_VALUE : formatNumber(row.medianDays)),
     },
     {
       key: 'p90',
-      header: 'p90 soat',
+      header: 'p90 kun',
       align: 'right',
       numeric: true,
-      render: (row) => (row.p90Hours === null ? NO_VALUE : formatNumber(row.p90Hours)),
+      render: (row) => (row.p90Days === null ? NO_VALUE : formatNumber(row.p90Days)),
     },
     {
       key: 'revenue',
@@ -289,9 +293,9 @@ export function LogisticsPage() {
         <StatTile
           status={tileStatus}
           label="Median yetkazish"
-          value={totals?.medianHours ?? null}
-          unit="hours"
-          hint="Buyurtmadan yopilishgacha"
+          value={totals?.medianDays ?? null}
+          unit="days"
+          hint="Buyurtmadan «Доставлено» belgisigacha"
         />
       </div>
 

@@ -66,8 +66,8 @@ export interface LogisticsRowDto {
   readonly inFlight: number
   readonly revenue: MoneyDto
   readonly deliveryRate: number | null
-  readonly medianHours: number | null
-  readonly p90Hours: number | null
+  readonly medianDays: number | null
+  readonly p90Days: number | null
 }
 
 export interface LogisticsDto {
@@ -95,7 +95,7 @@ export interface LogisticsDto {
     /** Still moving. Excluded from the delivery rate rather than counted against it. */
     readonly inFlight: number
     readonly deliveryRate: number | null
-    readonly medianHours: number | null
+    readonly medianDays: number | null
   }
 }
 
@@ -394,7 +394,7 @@ export class InsightsService {
   ): Promise<LogisticsDto> {
     const window = this.window(period, scope)
 
-    const [routes, regions, reasons] = await Promise.all([
+    const [routeCut, regionCut, reasons] = await Promise.all([
       this.repository.logisticsRoutes(window),
       this.repository.logisticsRegions(window),
       options.withReasons === false
@@ -411,15 +411,21 @@ export class InsightsService {
       inFlight: r.inFlight,
       revenue: toMoneyDto(money(r.revenueMinor, currency)),
       deliveryRate: pct(r.deliveryRateBp),
-      medianHours: r.medianHours === null ? null : Math.round(r.medianHours * 10) / 10,
-      p90Hours: r.p90Hours === null ? null : Math.round(r.p90Hours * 10) / 10,
+      medianDays: r.medianDays === null ? null : Math.round(r.medianDays * 10) / 10,
+      p90Days: r.p90Days === null ? null : Math.round(r.p90Days * 10) / 10,
     })
 
-    const orders = regions.reduce((sum, r) => sum + r.orders, 0)
-    const delivered = regions.reduce((sum, r) => sum + r.delivered, 0)
-    const refused = regions.reduce((sum, r) => sum + r.refused, 0)
-    const cancelled = regions.reduce((sum, r) => sum + r.cancelledEarly, 0)
-    const inFlight = regions.reduce((sum, r) => sum + r.inFlight, 0)
+    /*
+      The totals come from the QUERY, not from adding the rows up here.
+
+      Counts would survive a summation; the pace would not. The median used to
+      be a weighted mean of each region's median, which is not a median of
+      anything — and it was weighted by every order in the region while the
+      median itself covered only the delivered ones, so a region that shipped
+      nine of nine hundred pulled the company figure by nine hundred. Against
+      the true median over August it read 197.5 where the answer was 87.4.
+    */
+    const { orders, delivered, refused, cancelledEarly: cancelled, inFlight } = regionCut.total
 
     /**
      * Resolved orders only — the same denominator the per-row rate uses.
@@ -430,20 +436,12 @@ export class InsightsService {
      */
     const resolved = delivered + refused + cancelled
 
-    // Weighted by order count, because a region with nine orders should not
-    // move the company median as far as one with nine hundred.
-    const timed = regions.filter((r) => r.medianHours !== null)
-    const weight = timed.reduce((sum, r) => sum + r.orders, 0)
-    const medianHours =
-      weight === 0
-        ? null
-        : Math.round(
-            (timed.reduce((sum, r) => sum + (r.medianHours ?? 0) * r.orders, 0) / weight) * 10,
-          ) / 10
+    const medianDays =
+      regionCut.total.medianDays === null ? null : Math.round(regionCut.total.medianDays * 10) / 10
 
     return {
-      routes: routes.map(toRow),
-      regions: regions.map(toRow),
+      routes: routeCut.rows.map(toRow),
+      regions: regionCut.rows.map(toRow),
       reasons: reasons.map((r) => ({
         stage: r.stage,
         reason: r.reason,
@@ -469,7 +467,7 @@ export class InsightsService {
           hand-written rates did not.
         */
         deliveryRate: resolved === 0 ? null : Math.round((delivered / resolved) * 1000) / 10,
-        medianHours,
+        medianDays,
       },
     }
   }

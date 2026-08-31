@@ -548,8 +548,9 @@ export interface LogisticsRowDto {
   readonly inFlight: number
   readonly revenue: MoneyDto
   readonly deliveryRate: number | null
-  readonly medianHours: number | null
-  readonly p90Hours: number | null
+  /** Days from the order being created to its `Доставлено` stamp. */
+  readonly medianDays: number | null
+  readonly p90Days: number | null
 }
 
 export interface LogisticsDto {
@@ -578,7 +579,8 @@ export interface LogisticsDto {
     /** Still moving. Excluded from the delivery rate rather than counted against it. */
     readonly inFlight: number
     readonly deliveryRate: number | null
-    readonly medianHours: number | null
+    /** True median over every delivered order, not an average of the rows. */
+    readonly medianDays: number | null
   }
 }
 

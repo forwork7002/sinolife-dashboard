@@ -843,16 +843,17 @@ function RailBody({
         block is the rail's floor, which is where every desktop application
         the floor already uses puts it.
 
-        THE CORNER CONTROL LIVES UP HERE, beside the brand, not down by the
-        account. It is a control on the rail itself, and the top corner is
-        where every desktop application the floor uses puts that control —
-        Linear, Notion, Slack. Folded, it sits under the mark, so the way back
-        out is the first thing in the column.
+        THE FOLD CONTROL IS THE LAST ROW, at the rail's very bottom edge —
+        below the account block, not up beside the brand. It is chrome for the
+        rail rather than a place to go, so it belongs out of the reading path,
+        under everything the rail is actually for. The drawer keeps its close
+        button at the top: that one dismisses a sheet covering the page, and a
+        dismiss control that is not where a thumb arrives is a trap.
       */}
       <div
         className={
           collapsed
-            ? 'flex shrink-0 flex-col items-center gap-1.5 pt-4 pb-2'
+            ? 'flex shrink-0 flex-col items-center pt-4 pb-3'
             : 'flex h-16 shrink-0 items-center gap-3 pr-2 pl-4'
         }
       >
@@ -872,19 +873,7 @@ function RailBody({
             </p>
           </div>
         )}
-        {variant === 'rail' ? (
-          <Tooltip content={collapsed ? 'Panelni ochish' : 'Panelni yigʻish'} side="right">
-            <button
-              type="button"
-              onClick={onToggleCollapse}
-              aria-label={collapsed ? 'Panelni ochish' : 'Panelni yigʻish'}
-              aria-expanded={!collapsed}
-              className="rail-item rail-button focusable flex h-8 w-8 items-center justify-center rounded-lg"
-            >
-              <PanelIcon open={!collapsed} />
-            </button>
-          </Tooltip>
-        ) : (
+        {variant === 'drawer' && (
           <button
             ref={closeRef}
             type="button"
@@ -1078,6 +1067,31 @@ function RailBody({
             </Tooltip>
           )}
         </div>
+
+        {variant === 'rail' && (
+          /*
+            Its own rule above it, so the fold reads as a property of the panel
+            and not as a third thing in the account row. Folded, it centres
+            under the avatar; open, it sits at the right edge, which is the
+            edge it moves.
+          */
+          <div
+            className={`flex border-t py-1.5 ${collapsed ? 'justify-center px-0' : 'justify-end px-3'}`}
+            style={{ borderColor: 'var(--border)' }}
+          >
+            <Tooltip content={collapsed ? 'Panelni ochish' : 'Panelni yigʻish'} side="right">
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                aria-label={collapsed ? 'Panelni ochish' : 'Panelni yigʻish'}
+                aria-expanded={!collapsed}
+                className="rail-item rail-button focusable flex h-9 w-9 items-center justify-center rounded-lg"
+              >
+                <PanelIcon open={!collapsed} />
+              </button>
+            </Tooltip>
+          </div>
+        )}
       </div>
     </>
   )

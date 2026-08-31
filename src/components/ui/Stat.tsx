@@ -31,7 +31,7 @@ export function StatTile({
 }: {
   label: string
   value: number | null
-  unit: 'money' | 'count' | 'percent' | 'hours' | 'raw'
+  unit: 'money' | 'count' | 'percent' | 'hours' | 'days' | 'raw'
   hint?: string
   context?: ReactNode
   tone?: 'neutral' | 'good' | 'warning' | 'critical'
@@ -145,7 +145,7 @@ export function StatValue({
   unit,
 }: {
   value: number | null
-  unit: 'money' | 'count' | 'percent' | 'hours' | 'raw'
+  unit: 'money' | 'count' | 'percent' | 'hours' | 'days' | 'raw'
 }) {
   if (value === null) return <>{NO_VALUE}</>
 
@@ -165,6 +165,7 @@ export function StatValue({
     case 'percent':
       return <AnimatedNumber value={value} format={(v) => formatPercent(v)} />
     case 'hours':
+    case 'days':
       return (
         <>
           <AnimatedNumber
@@ -172,7 +173,7 @@ export function StatValue({
             format={(v) => formatNumber(Math.round(v * 10) / 10)}
           />
           <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
-            soat
+            {unit === 'days' ? 'kun' : 'soat'}
           </span>
         </>
       )

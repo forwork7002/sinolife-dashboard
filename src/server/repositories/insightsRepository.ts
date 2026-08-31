@@ -88,6 +88,68 @@ function deliveryRateBp(
   return rateBp(delivered, delivered + refused + cancelledEarly)
 }
 
+/**
+ * Peel the `GROUPING SETS` grand total off the bottom of a delivery cut.
+ *
+ * Both cuts of the logistics table are grouped over `((route), ())`, so the
+ * one row where `GROUPING(route)` is 1 is the whole window aggregated by the
+ * database — including a median taken over every deal at once, which is the
+ * only way to get a real one. An empty window still yields that row, so the
+ * total is never undefined.
+ */
+function splitTotals(
+  rows: readonly {
+    route: string | null
+    is_total: number
+    orders: bigint
+    delivered: bigint
+    refused: bigint
+    cancelled_early: bigint
+    in_flight: bigint
+    revenue: MoneyText
+    median_days: number | null
+    p90_days: number | null
+  }[],
+): LogisticsBreakdown {
+  const toRow = (r: (typeof rows)[number]): LogisticsRouteRow => {
+    const delivered = int(r.delivered)
+    const refused = int(r.refused)
+    const cancelledEarly = int(r.cancelled_early)
+    return {
+      route: r.route ?? 'Jami',
+      orders: int(r.orders),
+      delivered,
+      refused,
+      cancelledEarly,
+      inFlight: int(r.in_flight),
+      revenueMinor: money(r.revenue),
+      deliveryRateBp: deliveryRateBp(delivered, refused, cancelledEarly),
+      medianDays: r.median_days === null ? null : Number(r.median_days),
+      p90Days: r.p90_days === null ? null : Number(r.p90_days),
+    }
+  }
+
+  const totalRow = rows.find((r) => r.is_total === 1)
+
+  return {
+    rows: rows.filter((r) => r.is_total === 0).map(toRow),
+    total: totalRow
+      ? toRow(totalRow)
+      : {
+          route: 'Jami',
+          orders: 0,
+          delivered: 0,
+          refused: 0,
+          cancelledEarly: 0,
+          inFlight: 0,
+          revenueMinor: 0n,
+          deliveryRateBp: null,
+          medianDays: null,
+          p90Days: null,
+        },
+  }
+}
+
 export interface CohortCell {
   readonly monthsSince: number
   readonly customers: number
@@ -123,8 +185,46 @@ export interface LogisticsRouteRow {
   readonly inFlight: number
   readonly revenueMinor: bigint
   readonly deliveryRateBp: number | null
-  readonly medianHours: number | null
-  readonly p90Hours: number | null
+  /**
+   * Days from the order being created to the `Доставлено` stamp.
+   *
+   * NOT from the hub, and not to `closedAt`. Both of those were tried and both
+   * lie on this portal:
+   *
+   *   `closedAt` is a DATE — every closed deal lands on UTC midnight, all
+   *   105,693 of them — so an hour figure taken against it reports the time of
+   *   day the OTHER end happened and calls it precision. Worse, a parcel
+   *   delivered the same afternoon it reached the hub had `closedAt` BEFORE
+   *   the hub stamp, and the guard that dropped those threw away 52% of every
+   *   month's deliveries without saying so.
+   *
+   *   The hub stamp is not a checkpoint. Measured against the delivered
+   *   stamp its median is 0.0 hours: the route is written down when the
+   *   parcel is closed out, not when it is picked up.
+   *
+   * The `Доставлено` stage entry, on the other hand, is a real timestamp on
+   * every one of the delivered orders. Measured from creation it covers all of
+   * them with nothing dropped — and on this portal the robot moves a confirmed
+   * order to `В пути` within minutes, so creation and dispatch are six hours
+   * apart in the median. There is no honest in-network clock to prefer.
+   */
+  readonly medianDays: number | null
+  readonly p90Days: number | null
+}
+
+/** A cut of the delivery table plus the true totals row beneath it. */
+export interface LogisticsBreakdown {
+  readonly rows: readonly LogisticsRouteRow[]
+  /**
+   * The whole window in one row, aggregated by the DATABASE.
+   *
+   * Not summable in the service: a median of medians is not a median, and
+   * weighting per-route medians by order count made it worse still — the
+   * weight counted every order while the median covered only the delivered
+   * ones. `GROUPING SETS` costs one extra pass over rows already in memory
+   * and returns the real thing.
+   */
+  readonly total: LogisticsRouteRow
 }
 
 export interface ConfirmationRow {
@@ -474,143 +574,176 @@ export class InsightsRepository {
    * order sits on `Доставлено` and has long since left `NAVOIY`, so the
    * current stage cannot tell you which hub handled it.
    *
-   * Timings are the hours between entering that route stage and the deal being
-   * won. Median and p90 rather than a mean: delivery times have a long tail of
-   * chased orders, and an average lets three disasters hide a hundred normal
-   * days.
+   * Timings are the CALENDAR DAYS between entering that route stage and the
+   * deal being closed — see `LogisticsRouteRow.medianDays` for why days and
+   * not hours. Median and p90 rather than a mean: delivery times have a long
+   * tail of chased orders, and an average lets three disasters hide a hundred
+   * normal days.
    *
    * `refused` and `cancelledEarly` stay apart. One is a parcel that travelled
    * and came back, the other a customer who changed their mind before
    * dispatch; only the first cost anything to move.
    */
-  async logisticsRoutes(period: Period): Promise<LogisticsRouteRow[]> {
+  async logisticsRoutes(period: Period): Promise<LogisticsBreakdown> {
     const rows = await this.prisma.$queryRawUnsafe<
       {
-        route: string
+        route: string | null
+        is_total: number
         orders: bigint
         delivered: bigint
         refused: bigint
         cancelled_early: bigint
         in_flight: bigint
         revenue: MoneyText
-        median_hours: number | null
-        p90_hours: number | null
+        median_days: number | null
+        p90_days: number | null
       }[]
     >(
       `
       WITH routed AS (
         SELECT DISTINCT ON (h."dealId")
-          h."dealId"   AS deal_id,
-          s."name"     AS route,
+          h."dealId"    AS deal_id,
+          s."name"      AS route,
           h."enteredAt" AS entered_at
         FROM "deal_stage_history" h
         JOIN "deal_stage" s ON s."id" = h."stageId"
         WHERE s."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER')
         ORDER BY h."dealId", h."enteredAt" DESC
+      ),
+      delivered AS (
+        SELECT DISTINCT ON (h."dealId")
+          h."dealId"    AS deal_id,
+          h."enteredAt" AS delivered_at
+        FROM "deal_stage_history" h
+        JOIN "deal_stage" s ON s."id" = h."stageId"
+        WHERE s."logisticsRole" = 'DELIVERED'
+        ORDER BY h."dealId", h."enteredAt" ASC
+      ),
+      scoped AS (
+        SELECT
+          r.route AS route,
+          d."status"   AS status,
+          d."amountMinor" AS amount_minor,
+          cur."logisticsRole" AS stage_role,
+          CASE
+            WHEN cur."logisticsRole" = 'DELIVERED' AND dv.delivered_at >= d."createdAtSource"
+            THEN EXTRACT(EPOCH FROM (dv.delivered_at - d."createdAtSource")) / 86400
+          END AS pace_days
+        FROM "deal" d
+        JOIN "deal_stage" cur ON cur."id" = d."stageId"
+        LEFT JOIN delivered dv ON dv.deal_id = d."id"
+        JOIN routed r ON r.deal_id = d."id"
+        WHERE d."countsAsRevenue"
+          AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
       )
       SELECT
-        r.route,
+        route,
+        GROUPING(route)::int AS is_total,
         count(*)::bigint AS orders,
-        count(*) FILTER (WHERE cur."logisticsRole" = 'DELIVERED')::bigint AS delivered,
-        count(*) FILTER (WHERE cur."logisticsRole" = 'REFUSED')::bigint AS refused,
-        count(*) FILTER (WHERE cur."logisticsRole" = 'CANCELLED_EARLY')::bigint AS cancelled_early,
-        count(*) FILTER (WHERE d."status" = 'OPEN')::bigint AS in_flight,
-        sum(d."amountMinor") FILTER (WHERE d."status" = 'WON')::text AS revenue,
-        percentile_cont(0.5) WITHIN GROUP (
-          ORDER BY EXTRACT(EPOCH FROM (d."closedAt" - r.entered_at)) / 3600
-        ) FILTER (WHERE d."status" = 'WON' AND d."closedAt" > r.entered_at) AS median_hours,
-        percentile_cont(0.9) WITHIN GROUP (
-          ORDER BY EXTRACT(EPOCH FROM (d."closedAt" - r.entered_at)) / 3600
-        ) FILTER (WHERE d."status" = 'WON' AND d."closedAt" > r.entered_at) AS p90_hours
-      FROM routed r
-      JOIN "deal" d ON d."id" = r.deal_id
-      JOIN "deal_stage" cur ON cur."id" = d."stageId"
-      WHERE d."countsAsRevenue"
-        AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
-      GROUP BY r.route
-      ORDER BY orders DESC
+        count(*) FILTER (WHERE stage_role = 'DELIVERED')::bigint AS delivered,
+        count(*) FILTER (WHERE stage_role = 'REFUSED')::bigint AS refused,
+        count(*) FILTER (WHERE stage_role = 'CANCELLED_EARLY')::bigint AS cancelled_early,
+        count(*) FILTER (WHERE status = 'OPEN')::bigint AS in_flight,
+        sum(amount_minor) FILTER (WHERE status = 'WON')::text AS revenue,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY pace_days) AS median_days,
+        percentile_cont(0.9) WITHIN GROUP (ORDER BY pace_days) AS p90_days
+      FROM scoped
+      GROUP BY GROUPING SETS ((route), ())
+      ORDER BY is_total, orders DESC
       `,
       period.start,
       period.end,
     )
 
-    return rows.map((r) => {
-      const delivered = int(r.delivered)
-      const refused = int(r.refused)
-      const cancelledEarly = int(r.cancelled_early)
-      return {
-        route: r.route,
-        orders: int(r.orders),
-        delivered,
-        refused,
-        cancelledEarly,
-        inFlight: int(r.in_flight),
-        revenueMinor: money(r.revenue),
-        deliveryRateBp: deliveryRateBp(delivered, refused, cancelledEarly),
-        medianHours: r.median_hours === null ? null : Number(r.median_hours),
-        p90Hours: r.p90_hours === null ? null : Number(r.p90_hours),
-      }
-    })
+    return splitTotals(rows)
   }
 
-  /** The same shape, cut by the customer's region rather than the route. */
-  async logisticsRegions(period: Period): Promise<LogisticsRouteRow[]> {
+  /**
+   * The same shape, cut by the customer's region rather than the route.
+   *
+   * MEASURES THE SAME LEG AS `logisticsRoutes`. It used to measure
+   * `closedAt - createdAtSource` — the order's whole life, qualification and
+   * confirmation included — while the route table beside it measured the
+   * delivery leg, both under one column header. That is how the page's
+   * headline came to say delivery took 197 hours when the delivery leg's own
+   * median was 87: an order that sat unconfirmed for three days did not take
+   * three days to deliver, exactly as this module's header says.
+   *
+   * The join is LEFT, so a region whose orders never reached a hub keeps its
+   * counts and reports a null pace rather than vanishing from the table.
+   */
+  async logisticsRegions(period: Period): Promise<LogisticsBreakdown> {
     const rows = await this.prisma.$queryRawUnsafe<
       {
-        route: string
+        route: string | null
+        is_total: number
         orders: bigint
         delivered: bigint
         refused: bigint
         cancelled_early: bigint
         in_flight: bigint
         revenue: MoneyText
-        median_hours: number | null
-        p90_hours: number | null
+        median_days: number | null
+        p90_days: number | null
       }[]
     >(
       `
+      WITH routed AS (
+        SELECT DISTINCT ON (h."dealId")
+          h."dealId"    AS deal_id,
+          s."name"      AS route,
+          h."enteredAt" AS entered_at
+        FROM "deal_stage_history" h
+        JOIN "deal_stage" s ON s."id" = h."stageId"
+        WHERE s."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER')
+        ORDER BY h."dealId", h."enteredAt" DESC
+      ),
+      delivered AS (
+        SELECT DISTINCT ON (h."dealId")
+          h."dealId"    AS deal_id,
+          h."enteredAt" AS delivered_at
+        FROM "deal_stage_history" h
+        JOIN "deal_stage" s ON s."id" = h."stageId"
+        WHERE s."logisticsRole" = 'DELIVERED'
+        ORDER BY h."dealId", h."enteredAt" ASC
+      ),
+      scoped AS (
+        SELECT
+          COALESCE(d."region", 'Nomaʼlum') AS route,
+          d."status"   AS status,
+          d."amountMinor" AS amount_minor,
+          cur."logisticsRole" AS stage_role,
+          CASE
+            WHEN cur."logisticsRole" = 'DELIVERED' AND dv.delivered_at >= d."createdAtSource"
+            THEN EXTRACT(EPOCH FROM (dv.delivered_at - d."createdAtSource")) / 86400
+          END AS pace_days
+        FROM "deal" d
+        JOIN "deal_stage" cur ON cur."id" = d."stageId"
+        LEFT JOIN delivered dv ON dv.deal_id = d."id"
+        LEFT JOIN routed r ON r.deal_id = d."id"
+        WHERE d."countsAsRevenue"
+          AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
+      )
       SELECT
-        COALESCE(d."region", 'Nomaʼlum') AS route,
+        route,
+        GROUPING(route)::int AS is_total,
         count(*)::bigint AS orders,
-        count(*) FILTER (WHERE cur."logisticsRole" = 'DELIVERED')::bigint AS delivered,
-        count(*) FILTER (WHERE cur."logisticsRole" = 'REFUSED')::bigint AS refused,
-        count(*) FILTER (WHERE cur."logisticsRole" = 'CANCELLED_EARLY')::bigint AS cancelled_early,
-        count(*) FILTER (WHERE d."status" = 'OPEN')::bigint AS in_flight,
-        sum(d."amountMinor") FILTER (WHERE d."status" = 'WON')::text AS revenue,
-        percentile_cont(0.5) WITHIN GROUP (
-          ORDER BY EXTRACT(EPOCH FROM (d."closedAt" - d."createdAtSource")) / 3600
-        ) FILTER (WHERE d."status" = 'WON') AS median_hours,
-        percentile_cont(0.9) WITHIN GROUP (
-          ORDER BY EXTRACT(EPOCH FROM (d."closedAt" - d."createdAtSource")) / 3600
-        ) FILTER (WHERE d."status" = 'WON') AS p90_hours
-      FROM "deal" d
-      JOIN "deal_stage" cur ON cur."id" = d."stageId"
-      WHERE d."countsAsRevenue"
-        AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
-      GROUP BY 1
-      ORDER BY orders DESC
+        count(*) FILTER (WHERE stage_role = 'DELIVERED')::bigint AS delivered,
+        count(*) FILTER (WHERE stage_role = 'REFUSED')::bigint AS refused,
+        count(*) FILTER (WHERE stage_role = 'CANCELLED_EARLY')::bigint AS cancelled_early,
+        count(*) FILTER (WHERE status = 'OPEN')::bigint AS in_flight,
+        sum(amount_minor) FILTER (WHERE status = 'WON')::text AS revenue,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY pace_days) AS median_days,
+        percentile_cont(0.9) WITHIN GROUP (ORDER BY pace_days) AS p90_days
+      FROM scoped
+      GROUP BY GROUPING SETS ((route), ())
+      ORDER BY is_total, orders DESC
       `,
       period.start,
       period.end,
     )
 
-    return rows.map((r) => {
-      const delivered = int(r.delivered)
-      const refused = int(r.refused)
-      const cancelledEarly = int(r.cancelled_early)
-      return {
-        route: r.route,
-        orders: int(r.orders),
-        delivered,
-        refused,
-        cancelledEarly,
-        inFlight: int(r.in_flight),
-        revenueMinor: money(r.revenue),
-        deliveryRateBp: deliveryRateBp(delivered, refused, cancelledEarly),
-        medianHours: r.median_hours === null ? null : Number(r.median_hours),
-        p90Hours: r.p90_hours === null ? null : Number(r.p90_hours),
-      }
-    })
+    return splitTotals(rows)
   }
 
   /**
