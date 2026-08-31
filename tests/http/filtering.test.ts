@@ -16,6 +16,7 @@ const sales: Principal = {
   role: 'SALES',
   isActive: true,
   employeeId: 'emp-own',
+  dataScope: 'OWN',
   sections: [],
 }
 
@@ -24,6 +25,7 @@ const manager: Principal = {
   role: 'MANAGER',
   isActive: true,
   employeeId: null,
+  dataScope: 'ALL',
   sections: [],
 }
 
@@ -36,7 +38,7 @@ function buildFilters(queryString: string, principal: Principal) {
 }
 
 describe('scope composition in route handlers', () => {
-  it('pins a SALES caller to their own employee id', () => {
+  it('pins an OWN-scoped caller to their own employee id', () => {
     const filters = buildFilters('preset=this_month', sales)
     expect(filters.restrictToEmployeeId).toBe('emp-own')
   })
@@ -51,13 +53,13 @@ describe('scope composition in route handlers', () => {
     expect(filters.employeeIds).toEqual(['emp-other', 'emp-third'])
   })
 
-  it('leaves a MANAGER unrestricted', () => {
+  it('leaves a company-wide caller unrestricted', () => {
     const filters = buildFilters('employeeIds=emp-other', manager)
     expect(filters.restrictToEmployeeId).toBeUndefined()
     expect(filters.employeeIds).toEqual(['emp-other'])
   })
 
-  it('restricts a deactivated MANAGER to nothing', () => {
+  it('restricts a deactivated caller to nothing', () => {
     const filters = buildFilters('', { ...manager, isActive: false })
     expect(filters.restrictToEmployeeId).toBeDefined()
   })

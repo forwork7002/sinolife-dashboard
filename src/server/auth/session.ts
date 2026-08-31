@@ -6,7 +6,7 @@
  */
 
 import { prisma } from '@/server/db/prisma'
-import { ROLES, type RoleValue } from '@/server/domain/types'
+import { DATA_SCOPES, ROLES, type DataScopeValue, type RoleValue } from '@/server/domain/types'
 import { ApiError } from '@/server/http/errors'
 import { auth } from './auth'
 import { type Permission, type Principal, can, sectionsFor } from './rbac'
@@ -52,7 +52,13 @@ export async function requirePrincipal(request: Request): Promise<Principal> {
   */
   const live = await prisma.user.findUnique({
     where: { id: user.id },
-    select: { role: true, isActive: true, employeeId: true, sections: true },
+    select: {
+      role: true,
+      isActive: true,
+      employeeId: true,
+      dataScope: true,
+      sections: true,
+    },
   })
 
   if (!live) {
@@ -63,11 +69,19 @@ export async function requirePrincipal(request: Request): Promise<Principal> {
     ? (live.role as RoleValue)
     : 'SALES'
 
+  // Same reasoning as the role above, pointed the other way: an unrecognised
+  // scope degrades to the NARROWER of the two, so a corrupted column can only
+  // ever show less than it should, never more.
+  const dataScope: DataScopeValue = DATA_SCOPES.includes(live.dataScope as DataScopeValue)
+    ? (live.dataScope as DataScopeValue)
+    : 'OWN'
+
   const principal: Principal = {
     userId: user.id,
     role,
     isActive: live.isActive,
     employeeId: live.employeeId,
+    dataScope,
     sections: sectionsFor(role, live.sections),
   }
 

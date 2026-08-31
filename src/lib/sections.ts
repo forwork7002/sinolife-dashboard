@@ -14,10 +14,13 @@
  * locking the person out of everything — an empty list is "not configured",
  * never "denied everything".
  *
- * THE ROLE STILL BINDS. Sections can only ever NARROW what a role allows: a
- * SALES account granted the Moliya section still cannot read finance, because
- * the role has no `finance:read` permission and the endpoint checks that
- * first. Sections are the second gate, not a way around the first.
+ * SECTIONS ARE THE REACH BOUNDARY, end to end. The page guard redirects and
+ * `getHandler` refuses, so a screen that was never ticked cannot be opened by
+ * typing its URL or reached by calling its endpoint. What a granted screen
+ * then SHOWS is the account's `dataScope`: the whole company, or one linked
+ * salesperson's records. A screen that only exists company-wide is named in
+ * COMPANY_WIDE below and refuses an OWN-scoped account rather than drawing
+ * itself blank.
  *
  * Client-safe: no server imports. `src/server/auth/sections.ts` re-exports
  * these for the enforcement side so the two lists cannot drift.
@@ -66,12 +69,40 @@ export const SECTION_IDS: readonly SectionValue[] = SECTIONS.map((s) => s.id)
 const BY_ROUTE = new Map<string, SectionValue>(SECTIONS.map((s) => [s.route, s.id]))
 const BY_ID = new Map<string, SectionSpec>(SECTIONS.map((s) => [s.id, s]))
 
+/**
+ * The screens that only exist company-wide.
+ *
+ * Their endpoints aggregate across everyone — a confirmation queue, a
+ * logistics funnel, a margin ladder — and take no employee filter, so there is
+ * no honest answer to give an account scoped to one salesperson: the company's
+ * figures would leak, and a blank page would lie. Those endpoints ask for
+ * `analytics:read:all`, which an OWN-scoped account does not hold, and refuse.
+ *
+ * PRESENTATION ONLY, and a mirror rather than the rule — the refusal happens
+ * at the endpoint. Naming them here is what lets the admin screen say so
+ * BEFORE the account is saved, instead of the administrator hearing it from a
+ * colleague who cannot open a page they were told they had.
+ */
+const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
+  'overview',
+  'cohort',
+  'margin',
+  'confirmation',
+  'logistics',
+  'warehouse',
+])
+
 export function sectionForRoute(route: string): SectionValue | undefined {
   return BY_ROUTE.get(route)
 }
 
 export function sectionSpec(id: SectionValue): SectionSpec | undefined {
   return BY_ID.get(id)
+}
+
+/** The sections an OWN-scoped account cannot be served. */
+export function companyWideSections(ids: readonly string[]): readonly SectionSpec[] {
+  return SECTIONS.filter((spec) => COMPANY_WIDE.has(spec.id) && ids.includes(spec.id))
 }
 
 /**

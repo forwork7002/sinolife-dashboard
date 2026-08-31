@@ -8,7 +8,10 @@ import { dealRepository } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
 
-export const GET = getHandler(DEALS_READ, dealsQuerySchema, async (ctx) => {
+/** Who reaches this endpoint: the capability, then the screen it feeds. */
+const ACCESS = { permission: DEALS_READ, section: 'sales' } as const
+
+export const GET = getHandler(ACCESS, dealsQuerySchema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
 
   const { totalItems, rows } = await dealRepository.findPage({

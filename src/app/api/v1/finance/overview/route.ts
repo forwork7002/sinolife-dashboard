@@ -8,6 +8,9 @@ import { financeService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
 
+/** Who reaches this endpoint: the capability, then the screen it feeds. */
+const ACCESS = { permission: 'finance:read', section: 'margin' } as const
+
 /**
  * Financial overview.
  *
@@ -21,7 +24,7 @@ export const dynamic = 'force-dynamic'
  * outstanding" are very different claims to put in front of a finance team,
  * and only one of them is true.
  */
-export const GET = getHandler('finance:read', analyticsQuerySchema, async (ctx) => {
+export const GET = getHandler(ACCESS, analyticsQuerySchema, async (ctx) => {
   const provider = getCrmProvider()
 
   if (!supports(provider.capabilities, 'PAYMENTS')) {

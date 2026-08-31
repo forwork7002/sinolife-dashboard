@@ -5,6 +5,9 @@ import { insightsService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
 
+/** Who reaches this endpoint: the capability, then the screen it feeds. */
+const ACCESS = { permission: 'analytics:read:all', section: 'cohort' } as const
+
 /**
  * Cohorts ignore the period filter on purpose.
  *
@@ -15,7 +18,7 @@ export const dynamic = 'force-dynamic'
  */
 const schema = z.object({ months: z.coerce.number().int().min(3).max(36).default(18) })
 
-export const GET = getHandler('analytics:read:all', schema, async (ctx) => {
+export const GET = getHandler(ACCESS, schema, async (ctx) => {
   const data = await insightsService.cohorts(ctx.currency, ctx.query.months)
   return { data }
 })

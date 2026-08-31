@@ -17,20 +17,35 @@ import { StatusChip } from '@/components/ui/Stat'
 import { PageShell, useFilterOptions } from '@/features/shared/PageShell'
 import { apiGet, apiWrite, type UserRowDto, type UsersPageDto } from '@/lib/api'
 import { formatDate } from '@/lib/format'
-import { ROLE_LABELS, ROLE_VALUES, type RoleValue } from '@/lib/roles'
-import { SECTIONS, defaultSectionsFor } from '@/lib/sections'
+import {
+  DATA_SCOPE_HINTS,
+  DATA_SCOPE_LABELS,
+  DATA_SCOPE_VALUES,
+  type DataScopeValue,
+} from '@/lib/dataScope'
+import { ROLE_HINTS, ROLE_LABELS, ROLE_VALUES, type RoleValue } from '@/lib/roles'
+import { SECTIONS, companyWideSections, defaultSectionsFor } from '@/lib/sections'
 
 /**
  * Account administration.
  *
  * WHAT AN ADMINISTRATOR DECIDES HERE, in the order the screen asks it:
- *   1. WHO — name, email, and a password they hand over themselves.
- *   2. WHAT KIND — the role, which decides what the account may DO. A
- *      salesperson sees only their own deals whatever else is ticked, because
- *      the narrowing happens in SQL and not in this form.
- *   3. WHICH SCREENS — the section ticks. These NARROW the role and can never
- *      widen it: granting Moliya to a salesperson shows them a page whose
- *      endpoint still refuses their role.
+ *   1. WHO — name, login, and a password they hand over themselves.
+ *   2. WHAT THEY MAY CHANGE — the role. Administering accounts, editing KPI
+ *      plans. It says nothing about what they READ.
+ *   3. WHICH SCREENS — the section ticks. This is the reach boundary: the page
+ *      redirects and the endpoint refuses, so an unticked screen cannot be
+ *      opened by typing its URL either.
+ *   4. HOW MUCH OF EACH — the data scope. The whole company, or one linked
+ *      salesperson's own records.
+ *
+ * WHY 2 AND 4 ARE SEPARATE QUESTIONS. They used to be one, and the answer was
+ * the role: the only account that saw the company's numbers was one that could
+ * also administer the company. So an administrator would create a salesperson,
+ * tick six sections, hand over the password — and the person would open all
+ * six screens and find every figure blank or refused, with nothing on this
+ * form to explain why. Splitting the two makes "read-only, whole company" a
+ * thing this screen can express, and it is now the default.
  *
  * WHY "not configured" IS A STATE AND NOT AN EMPTY SET. An account with no
  * ticks follows its role's defaults, so every account that predates this
@@ -100,9 +115,22 @@ export function UsersPage() {
         ),
     },
     {
+      key: 'dataScope',
+      header: 'Maʼlumot doirasi',
+      width: '150px',
+      render: (row) => (
+        <span className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+          {DATA_SCOPE_LABELS[row.dataScope]}
+        </span>
+      ),
+    },
+    {
       key: 'employee',
       header: 'Bogʻlangan xodim',
-      render: (row) => row.employeeName ?? '—',
+      render: (row) =>
+        row.employeeName ?? (
+          <span style={{ color: 'var(--ink-muted)' }}>—</span>
+        ),
     },
     {
       key: 'twoFactor',
@@ -137,7 +165,7 @@ export function UsersPage() {
   return (
     <PageShell
       title="Foydalanuvchilar"
-      description="Kim tizimga kira oladi, qaysi rol bilan va qaysi boʻlimlarni koʻradi."
+      description="Kim kira oladi, qaysi boʻlimlarni ochadi va har birida qancha maʼlumot koʻradi."
       accent="var(--series-7)"
       actions={
         <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
@@ -154,7 +182,7 @@ export function UsersPage() {
           errorMessage={(query.error as Error | null)?.message}
           onRetry={() => void query.refetch()}
           onRowClick={(row) => setEditing(row)}
-          minWidth={980}
+          minWidth={1120}
           emptyTitle="Hisob yoʻq"
           emptyBody="Hali hech kimga hisob ochilmagan."
         />
@@ -221,8 +249,20 @@ function UserDialog({
   const [showPassword, setShowPassword] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [role, setRole] = useState<RoleValue>(user?.role ?? 'SALES')
+  /*
+    ALL on a new account, deliberately.
+
+    An administrator opening this form is handing someone screens; the useful
+    default is that those screens have numbers on them. OWN is the narrower,
+    rarer intent and has to be chosen — along with the person it narrows to.
+  */
+  const [dataScope, setDataScope] = useState<DataScopeValue>(user?.dataScope ?? 'ALL')
+  const [employeeId, setEmployeeId] = useState<string>(user?.employeeId ?? '')
   const [isActive, setIsActive] = useState(user?.isActive ?? true)
   const [sections, setSections] = useState<string[]>([...(user?.sections ?? [])])
+
+  // The roster the filter bar already loaded, reused rather than refetched.
+  const employees = useFilterOptions().data?.data.employees ?? []
 
   const save = useMutation({
     mutationFn: async () => {
@@ -235,6 +275,10 @@ function UserDialog({
           role,
           isActive,
           sections,
+          dataScope,
+          // Empty means "no link", which is a legitimate state for a
+          // company-wide account and is stored as null rather than ''.
+          employeeId: employeeId === '' ? null : employeeId,
           // Only when it actually changed: sending the same login back would
           // still rewrite the synthesised email and write an audit entry
           // describing a change that did not happen.
@@ -250,6 +294,8 @@ function UserDialog({
         password,
         role,
         sections,
+        dataScope,
+        employeeId: employeeId === '' ? null : employeeId,
       })
     },
     onSuccess: onSaved,
@@ -267,6 +313,11 @@ function UserDialog({
 
   const groups = [...new Set(SECTIONS.map((s) => s.group))]
   const roleDefaults = defaultSectionsFor(role)
+  // What the ticks resolve to: an empty list follows the role, and the
+  // warning has to judge what the account will ACTUALLY hold.
+  const effective = sections.length > 0 ? sections : roleDefaults
+  const blockedByScope = companyWideSections(effective)
+  const scopeNeedsEmployee = dataScope === 'OWN' && employeeId === ''
 
   return (
     // A modal, because this is a decision that should not be half-made while
@@ -382,6 +433,73 @@ function UserDialog({
                 </option>
               ))}
             </select>
+            {/*
+              What the role does, spelled out under it.
+
+              It no longer decides what anybody SEES, and an administrator who
+              still reads it that way picks the wrong one and then wonders why
+              the ticks below did not take effect.
+            */}
+            <span className="mt-1 block text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
+              {ROLE_HINTS[role]}
+            </span>
+          </Field>
+
+          <Field label="Maʼlumot doirasi">
+            <select
+              value={dataScope}
+              onChange={(e) => setDataScope(e.target.value as DataScopeValue)}
+              className="focusable w-full rounded-lg border px-2.5 py-1.5 text-sm"
+              style={{
+                background: 'var(--surface)',
+                borderColor: 'var(--border)',
+                color: 'var(--ink-primary)',
+              }}
+            >
+              {DATA_SCOPE_VALUES.map((value) => (
+                <option key={value} value={value}>
+                  {DATA_SCOPE_LABELS[value]}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
+              {DATA_SCOPE_HINTS[dataScope]}
+            </span>
+          </Field>
+
+          <Field label="Bogʻlangan xodim">
+            <select
+              value={employeeId}
+              onChange={(e) => setEmployeeId(e.target.value)}
+              className="focusable w-full rounded-lg border px-2.5 py-1.5 text-sm"
+              style={{
+                background: 'var(--surface)',
+                borderColor: 'var(--border)',
+                color: 'var(--ink-primary)',
+              }}
+            >
+              <option value="">Bogʻlanmagan</option>
+              {employees.map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.fullName}
+                </option>
+              ))}
+            </select>
+            {/*
+              Stated as a consequence, not as a red field.
+
+              The server refuses this combination outright, so the form's job
+              is to say what the choice will do while it is still a choice.
+            */}
+            {dataScope === 'OWN' && employeeId === '' && (
+              <span
+                className="mt-1 block text-[10.5px]"
+                style={{ color: 'var(--status-warning)' }}
+              >
+                «Faqat oʻz natijalari» uchun xodim tanlanishi shart — aks holda hisob
+                hech qanday raqam koʻrmaydi.
+              </span>
+            )}
           </Field>
 
           {editing && (
@@ -451,6 +569,28 @@ function UserDialog({
               </div>
             ))}
           </div>
+
+          {/*
+            The one combination that ticks a box and delivers nothing.
+
+            These screens aggregate across the whole company and take no
+            employee filter, so an OWN-scoped account is refused rather than
+            shown a blank page. Said here, next to the ticks, because the
+            administrator is looking at the ticks when they make the mistake.
+          */}
+          {dataScope === 'OWN' && blockedByScope.length > 0 && (
+            <p
+              className="mt-3 rounded-lg px-3 py-2 text-[11.5px]"
+              style={{
+                background: 'color-mix(in oklab, var(--status-warning) 12%, transparent)',
+                color: 'var(--status-warning)',
+              }}
+            >
+              Bu boʻlimlar faqat kompaniya boʻyicha hisoblanadi va «Faqat oʻz natijalari»
+              doirasida ochilmaydi: {blockedByScope.map((spec) => spec.label).join(', ')}.
+              Yo doirani «Butun kompaniya» qiling, yo bu boʻlimlarni olib tashlang.
+            </p>
+          )}
         </section>
 
         {save.isError && (
@@ -524,6 +664,7 @@ function UserDialog({
             disabled={
               save.isPending ||
               name.trim().length < 2 ||
+              scopeNeedsEmployee ||
               (!editing && (!password || username.trim().length < 3))
             }
             onClick={() => save.mutate()}

@@ -5,6 +5,9 @@ import { commandCentreService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
 
+/** Who reaches this endpoint: the capability, then the screen it feeds. */
+const ACCESS = { permission: 'analytics:read:all', section: 'overview' } as const
+
 /**
  * The whole home screen in one round trip.
  *
@@ -12,7 +15,7 @@ export const dynamic = 'force-dynamic'
  * ten requests spends its budget on handshakes, and any one of them failing
  * leaves the screen half-drawn with no way to say so.
  */
-export const GET = getHandler('analytics:read:all', analyticsQuerySchema, async (ctx) => {
+export const GET = getHandler(ACCESS, analyticsQuerySchema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
   const data = await commandCentreService.load(period, ctx.currency)
   return { data, meta: { period: toPeriodDto(period) } }

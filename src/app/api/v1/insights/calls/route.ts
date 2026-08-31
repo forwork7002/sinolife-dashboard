@@ -5,7 +5,10 @@ import { insightsService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
 
-export const GET = getHandler('analytics:read:all', analyticsQuerySchema, async (ctx) => {
+/** Who reaches this endpoint: the capability, then the screen it feeds. */
+const ACCESS = { permission: 'analytics:read:all', section: ['confirmation', 'overview'] } as const
+
+export const GET = getHandler(ACCESS, analyticsQuerySchema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
   const data = await insightsService.callActivity(period)
   return { data, meta: { period: toPeriodDto(period) } }

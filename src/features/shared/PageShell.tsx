@@ -12,6 +12,7 @@ import type { RoleValue } from '@/lib/roles'
 import type { SectionValue } from '@/lib/sections'
 import { formatDate } from '@/lib/format'
 import { t } from '@/lib/messages'
+import type { DataScopeValue } from '@/lib/dataScope'
 import { useDashboardFilters } from './useDashboardFilters'
 
 export interface FilterOptions {
@@ -26,6 +27,8 @@ export interface FilterOptions {
     readonly userId: string
     readonly role: RoleValue
     readonly sections: readonly SectionValue[]
+    /** ALL or OWN — how much of each granted screen this account reads. */
+    readonly dataScope: DataScopeValue
     readonly canManageUsers: boolean
   }
 }

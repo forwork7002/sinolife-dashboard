@@ -5,8 +5,11 @@ import { referenceRepository } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
 
+/** Who reaches this endpoint: the capability, then the screen it feeds. */
+const ACCESS = { permission: 'employees:read', section: null } as const
+
 /** Populates every filter dropdown in one round trip. */
-export const GET = getHandler('employees:read', z.object({}), async (ctx) => {
+export const GET = getHandler(ACCESS, z.object({}), async (ctx) => {
   const [employees, departments, products, sources, stages, lastSyncedAt] =
     await Promise.all([
       referenceRepository.findEmployees(),
@@ -19,7 +22,7 @@ export const GET = getHandler('employees:read', z.object({}), async (ctx) => {
 
   return {
     data: {
-      // A salesperson only ever filters by themselves.
+      // An OWN-scoped account only ever filters by itself.
       employees: ctx.scope.restrictToEmployeeId
         ? employees.filter((e) => e.id === ctx.scope.restrictToEmployeeId)
         : employees,
@@ -43,6 +46,7 @@ export const GET = getHandler('employees:read', z.object({}), async (ctx) => {
         userId: ctx.principal.userId,
         role: ctx.principal.role,
         sections: ctx.principal.sections,
+        dataScope: ctx.principal.dataScope,
         canManageUsers: ctx.principal.role === 'ADMIN',
       },
     },

@@ -5,6 +5,9 @@ import { marketingService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
 
+/** Who reaches this endpoint: the capability, then the screen it feeds. */
+const ACCESS = { permission: ANALYTICS_READ, section: 'marketing' } as const
+
 /**
  * The marketing band: KPIs, funnel and the daily series.
  *
@@ -23,7 +26,7 @@ export const dynamic = 'force-dynamic'
  * department tree would be a fabrication, so the parameter is ignored and
  * `meta.ledger` tells the client why.
  */
-export const GET = getHandler(ANALYTICS_READ, marketingWindowSchema, async (ctx) => {
+export const GET = getHandler(ACCESS, marketingWindowSchema, async (ctx) => {
   const data = await marketingService.overview(ctx.query, ctx.timeZone, ctx.now)
   return { data, meta: { ledger: 'ROISTAT' as const } }
 })

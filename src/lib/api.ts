@@ -5,6 +5,8 @@
  * `@/server/*` — enforced by lint — so this module is the whole boundary.
  */
 
+import type { DataScopeValue } from './dataScope'
+
 export interface MoneyDto {
   readonly amountMinor: string
   readonly currency: string
@@ -358,6 +360,8 @@ export interface UserRowDto {
    * its role. The screen has to show that difference, so it gets the raw value.
    */
   readonly sections: readonly string[]
+  /** How much of each granted section this account reads. */
+  readonly dataScope: DataScopeValue
   readonly employeeId: string | null
   readonly employeeName: string | null
   readonly twoFactorEnabled: boolean

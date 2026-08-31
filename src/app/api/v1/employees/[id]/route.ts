@@ -6,7 +6,7 @@ import { toDeltaDto } from '@/server/domain/analytics/metrics'
 import { revenueTrend } from '@/server/domain/analytics/sales'
 import { ApiError, toApiError } from '@/server/http/errors'
 import { failure, serialise, success } from '@/server/http/envelope'
-import { periodFrom } from '@/server/http/handler'
+import { assertSection, periodFrom } from '@/server/http/handler'
 import { analyticsQuerySchema, searchParamsToObject } from '@/server/http/queryParams'
 import { newCorrelationId } from '@/server/logging/logger'
 import { AnalyticsService } from '@/server/services/analyticsService'
@@ -41,6 +41,7 @@ export async function GET(
 
   try {
     const principal = await requirePermission(request, 'employees:read')
+    assertSection(principal, 'structure')
     const { id } = await context.params
 
     if (!canViewEmployee(principal, id)) {

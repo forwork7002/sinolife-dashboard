@@ -6,11 +6,31 @@
  * a component or a route handler is exactly how permissions drift apart, and
  * how a rule gets tightened in one place and forgotten in three others.
  *
+ * THREE QUESTIONS, THREE FIELDS. They used to be two, and the missing one was
+ * the bug: `role` answered both "what may this account change" and "how much
+ * data does it see", so an administrator who created an account, ticked six
+ * sections and handed over the password got an account that opened all six
+ * screens and found every one of them blank or refused. There was no way to
+ * say "read-only, but the whole company" — the only account that saw the
+ * company was one that could also edit it.
+ *
+ *   ROLE      what this account may CHANGE. Administering users, running a
+ *             sync, editing KPI plans. Nothing to do with reading.
+ *   SECTIONS  which SCREENS it may open — and, since `getHandler` asserts it
+ *             too, which endpoints it may call. The admin's ticks are the
+ *             reach boundary, end to end.
+ *   DATASCOPE how much of each granted screen it reads: the whole company, or
+ *             one linked salesperson's own records.
+ *
+ * Reading is therefore granted to every active account and narrowed twice —
+ * by section and by scope — instead of being withheld by role. That is what
+ * makes "give this person Logistika and nothing else" expressible.
+ *
  * Framework-free and pure, so the whole matrix is unit testable.
  */
 
 import { effectiveSections, type SectionValue } from '@/lib/sections'
-import type { RoleValue } from '@/server/domain/types'
+import type { DataScopeValue, RoleValue } from '@/server/domain/types'
 
 export const PERMISSIONS = [
   /** Read analytics across the whole company. */
@@ -34,61 +54,67 @@ export const PERMISSIONS = [
 export type Permission = (typeof PERMISSIONS)[number]
 
 /**
- * The matrix.
+ * What each role may CHANGE.
  *
  * Deliberately written out per role rather than derived by inheritance. A
  * MANAGER is not "an ADMIN minus some things" — the difference is a policy
  * decision, and spelling it out makes each grant visible to review rather than
  * implied by a chain.
+ *
+ * Only write-shaped capabilities live here. Read permissions are not a role
+ * question any more; see READ_ANY and READ_SCOPED below.
  */
 const ROLE_PERMISSIONS: Readonly<Record<RoleValue, readonly Permission[]>> = Object.freeze({
-  // The `:own` variants are granted alongside the `:all` ones on purpose.
-  // They are a LESSER capability, so withholding them from a superior role
-  // creates a trap: an endpoint that asks only for `analytics:read:own` would
-  // reject an administrator. Holding the superset removes that whole class of
-  // bug, and changes nothing about data scoping — `dealScopeFor` keys off the
-  // `:all` permission, so an ADMIN is still unrestricted.
-  ADMIN: [
-    'analytics:read:all',
-    'analytics:read:own',
-    'deals:read:all',
-    'deals:read:own',
-    'employees:read',
-    'employees:read:detail',
-    'leaderboard:read',
-    'kpi:read:all',
-    'kpi:read:own',
-    'kpi:manage',
-    'finance:read',
-    'sync:run',
-    'sync:read',
-    'users:manage',
-  ],
+  ADMIN: ['users:manage', 'sync:run', 'kpi:manage', 'employees:read:detail'],
 
-  MANAGER: [
-    'analytics:read:all',
-    'analytics:read:own',
-    'deals:read:all',
-    'deals:read:own',
-    'employees:read',
-    'employees:read:detail',
-    'leaderboard:read',
-    'kpi:read:all',
-    'kpi:read:own',
-    'finance:read',
-    'sync:read',
-  ],
+  // A manager owns the KPI plans and may look a colleague up by name. They
+  // cannot create accounts or force a sync — those two are how the deployment
+  // itself is administered.
+  MANAGER: ['kpi:manage', 'employees:read:detail'],
 
-  // A salesperson sees their own numbers, plus the leaderboard — that one is
-  // company-wide by design, since a ranking nobody can see is not a ranking.
-  SALES: [
-    'analytics:read:own',
-    'deals:read:own',
-    'employees:read',
-    'leaderboard:read',
-    'kpi:read:own',
-  ],
+  // Read-only. Which screens, and how much of each, is decided per account by
+  // its sections and its data scope — not by this list being short.
+  SALES: [],
 })
+
+/**
+ * Reads any active account holds, whatever its scope.
+ *
+ * The `:own` variants are here rather than in the scoped list on purpose: they
+ * are a LESSER capability, so withholding them from a company-wide account
+ * creates a trap — an endpoint asking only for `analytics:read:own` would
+ * reject an administrator. Holding the superset changes nothing about data
+ * scoping, because `dealScopeFor` keys off `dataScope` and not off these.
+ *
+ * `employees:read` is in this list because every page's filter bar needs the
+ * roster to render at all; `meta/filters` already narrows it to the one
+ * employee an OWN-scoped account is allowed to name.
+ */
+const READ_ANY: readonly Permission[] = Object.freeze([
+  'analytics:read:own',
+  'deals:read:own',
+  'kpi:read:own',
+  'employees:read',
+  'leaderboard:read',
+  'sync:read',
+])
+
+/**
+ * Reads that only a company-wide account holds.
+ *
+ * These gate the endpoints that CANNOT narrow their rows — the confirmation
+ * queue, logistics, margin, the command centre. They aggregate across the
+ * whole company by construction, so there is no honest way to serve them to
+ * an account scoped to one salesperson: the answer would either be the
+ * company's, which leaks, or silently blank, which lies. Refusing is the third
+ * option and the correct one.
+ */
+const READ_SCOPED: readonly Permission[] = Object.freeze([
+  'analytics:read:all',
+  'deals:read:all',
+  'kpi:read:all',
+  'finance:read',
+])
 
 export interface Principal {
   readonly userId: string
@@ -96,6 +122,8 @@ export interface Principal {
   readonly isActive: boolean
   /** Set when the login is linked to a salesperson. Drives own-data scoping. */
   readonly employeeId: string | null
+  /** How much of each granted section this account reads. */
+  readonly dataScope: DataScopeValue
   /**
    * The sections this account may open, already resolved.
    *
@@ -109,10 +137,11 @@ export interface Principal {
 /**
  * Whether this account may open a section.
  *
- * The SECOND gate. `can()` decides whether the role is allowed the capability
- * at all; this decides whether this particular account was given that screen.
- * A request has to pass both, so granting someone the Moliya section cannot
- * hand a salesperson finance data their role never permitted.
+ * The SECOND gate, and the one the administrator actually operates. `can()`
+ * decides whether the account holds the capability at all; this decides
+ * whether it was given this particular screen. Both the page and the endpoint
+ * behind it ask, so a section that was never ticked cannot be reached by
+ * typing the URL or by calling the API directly.
  *
  * A deactivated account sees nothing, for the same reason it holds no
  * permissions: disabling someone must take effect without deleting them.
@@ -134,11 +163,30 @@ export function can(principal: Principal, permission: Permission): boolean {
   // A deactivated account keeps its role but loses every permission, so
   // disabling a user takes effect without deleting anything.
   if (!principal.isActive) return false
-  return ROLE_PERMISSIONS[principal.role].includes(permission)
+
+  if (ROLE_PERMISSIONS[principal.role].includes(permission)) return true
+  if (READ_ANY.includes(permission)) return true
+  return principal.dataScope === 'ALL' && READ_SCOPED.includes(permission)
 }
 
-export function permissionsFor(role: RoleValue): readonly Permission[] {
-  return ROLE_PERMISSIONS[role]
+/**
+ * Every permission an account with this role and scope would hold.
+ *
+ * Takes both because neither alone decides it any more.
+ */
+export function permissionsFor(
+  role: RoleValue,
+  dataScope: DataScopeValue = 'ALL',
+): readonly Permission[] {
+  const probe: Principal = {
+    userId: '',
+    role,
+    isActive: true,
+    employeeId: null,
+    dataScope,
+    sections: [],
+  }
+  return PERMISSIONS.filter((permission) => can(probe, permission))
 }
 
 /**
@@ -148,12 +196,17 @@ export function permissionsFor(role: RoleValue): readonly Permission[] {
  * the returned value as a WHERE clause, so scoping happens in SQL and cannot
  * be bypassed by calling the API directly.
  *
- * A SALES user with no linked employee record sees NOTHING rather than
- * everything — failing closed. An unlinked account is a provisioning mistake,
- * and the safe reading of "we do not know whose deals these are" is "none".
+ * An OWN-scoped account with no linked employee record sees NOTHING rather
+ * than everything — failing closed. It is a provisioning mistake the admin
+ * screen refuses to create, and the safe reading of "we do not know whose
+ * deals these are" is "none".
  */
 export function dealScopeFor(principal: Principal): { restrictToEmployeeId?: string } {
-  if (can(principal, 'deals:read:all')) return {}
+  // `isActive` is asked here as well as in `can()`. A deactivated caller never
+  // reaches a handler — `requirePrincipal` refuses first — but a scoping rule
+  // that WIDENS when the caller is disabled is the wrong shape to leave lying
+  // around for the next person who calls it from somewhere new.
+  if (principal.isActive && principal.dataScope === 'ALL') return {}
 
   return {
     restrictToEmployeeId: principal.employeeId ?? '__no_employee_linked__',

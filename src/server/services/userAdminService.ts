@@ -6,6 +6,9 @@
  * rather than once per route:
  *
  *   - a password must pass the same policy the sign-in path enforces;
+ *   - a data scope must be one an account can actually be served: OWN needs a
+ *     linked employee that exists, or the account opens every screen it was
+ *     given and finds all of them empty;
  *   - nobody may change their OWN role or disable themselves, because an
  *     administrator who does it by accident locks the whole company out of
  *     user management and there is no second door;
@@ -22,7 +25,7 @@
 import { checkPassword } from '@/lib/passwordPolicy'
 import { SECTION_IDS, type SectionValue } from '@/lib/sections'
 import { prisma } from '@/server/db/prisma'
-import type { RoleValue } from '@/server/domain/types'
+import type { DataScopeValue, RoleValue } from '@/server/domain/types'
 import { ApiError } from '@/server/http/errors'
 import { provisionUser, setPassword } from '@/server/auth/provisioning'
 
@@ -35,6 +38,8 @@ export interface UserRow {
   readonly role: RoleValue
   readonly isActive: boolean
   readonly sections: readonly SectionValue[]
+  /** How much of each granted section this account reads. */
+  readonly dataScope: DataScopeValue
   readonly employeeId: string | null
   readonly employeeName: string | null
   readonly twoFactorEnabled: boolean
@@ -50,6 +55,7 @@ const SELECT = {
   role: true,
   isActive: true,
   sections: true,
+  dataScope: true,
   employeeId: true,
   twoFactorEnabled: true,
   createdAt: true,
@@ -65,6 +71,7 @@ function toRow(u: {
   role: RoleValue
   isActive: boolean
   sections: string[]
+  dataScope: DataScopeValue
   employeeId: string | null
   twoFactorEnabled: boolean
   createdAt: Date
@@ -86,6 +93,7 @@ function toRow(u: {
     sections: u.sections.filter((s): s is SectionValue =>
       (SECTION_IDS as readonly string[]).includes(s),
     ),
+    dataScope: u.dataScope,
     employeeId: u.employeeId,
     employeeName: u.employee?.fullName ?? null,
     twoFactorEnabled: u.twoFactorEnabled,
@@ -124,6 +132,46 @@ function cleanSections(sections: readonly string[] | undefined): string[] {
 }
 
 /**
+ * A scope that resolves to nothing is a mistake, not a setting.
+ *
+ * OWN means "this person's own records", which needs a person. Stored without
+ * one it produces exactly the failure this whole field was added to remove:
+ * an account that opens every screen it was given and finds all of them
+ * blank. Refusing at the door, with the field named, is the only version of
+ * this the administrator can act on.
+ *
+ * The employee is also checked to EXIST. A stale id pasted from somewhere
+ * else would otherwise sail through the foreign key as `SetNull` on delete
+ * and leave the same silent blank behind.
+ */
+async function assertScopeIsUsable(
+  dataScope: DataScopeValue,
+  employeeId: string | null,
+): Promise<void> {
+  if (dataScope !== 'OWN') return
+
+  if (!employeeId) {
+    throw ApiError.validation('Bu doira uchun xodim bogʻlanishi kerak.', [
+      {
+        path: 'employeeId',
+        message:
+          '«Faqat oʻz natijalari» uchun xodimni tanlang — aks holda hisob hech nima koʻrmaydi.',
+      },
+    ])
+  }
+
+  const employee = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    select: { id: true },
+  })
+  if (!employee) {
+    throw ApiError.validation('Bunday xodim topilmadi.', [
+      { path: 'employeeId', message: 'Roʻyxatdan xodim tanlang.' },
+    ])
+  }
+}
+
+/**
  * The domain synthesised emails hang off.
  *
  * `.local` is reserved and unroutable by design — nothing can ever be
@@ -139,6 +187,8 @@ export interface CreateInput {
   readonly password: string
   readonly role: RoleValue
   readonly sections?: readonly string[]
+  /** Defaults to ALL — a new account is meant to see what it was given. */
+  readonly dataScope?: DataScopeValue
   readonly employeeId?: string | null
 }
 
@@ -150,6 +200,9 @@ export async function createUser(
   const username = input.username.trim()
   const key = username.toLowerCase()
   assertPassword(input.password, username, input.name)
+
+  const dataScope: DataScopeValue = input.dataScope ?? 'ALL'
+  await assertScopeIsUsable(dataScope, input.employeeId ?? null)
 
   const email = `${key}@${SYNTHETIC_EMAIL_DOMAIN}`
   const existing = await prisma.user.findFirst({
@@ -173,7 +226,7 @@ export async function createUser(
 
   const saved = await prisma.user.update({
     where: { id: result.id },
-    data: { sections: cleanSections(input.sections) },
+    data: { sections: cleanSections(input.sections), dataScope },
     select: SELECT,
   })
 
@@ -190,6 +243,7 @@ export async function createUser(
           username: saved.username,
           role: saved.role,
           sections: saved.sections,
+          dataScope: saved.dataScope,
           employeeId: saved.employeeId,
         },
       },
@@ -208,6 +262,7 @@ export interface UpdateInput {
   readonly role?: RoleValue
   readonly isActive?: boolean
   readonly sections?: readonly string[]
+  readonly dataScope?: DataScopeValue
   readonly employeeId?: string | null
   readonly password?: string
 }
@@ -282,6 +337,19 @@ export async function updateUser(
     }
   }
 
+  /*
+    Validated against the RESULT of the patch, not the request.
+
+    A body that only flips the scope to OWN still has to be judged with the
+    employee link already on the row, and a body that only clears the link has
+    to be judged against the scope already stored. Checking either field on its
+    own lets the pair drift into the unusable combination one edit at a time.
+  */
+  await assertScopeIsUsable(
+    input.dataScope ?? before.dataScope,
+    input.employeeId !== undefined ? input.employeeId : before.employeeId,
+  )
+
   if (input.password !== undefined) {
     assertPassword(input.password, input.username ?? before.username ?? before.email, input.name ?? before.name)
     await setPassword(targetId, input.password)
@@ -301,6 +369,7 @@ export async function updateUser(
       ...(input.role !== undefined ? { role: input.role } : {}),
       ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
       ...(input.sections !== undefined ? { sections: cleanSections(input.sections) } : {}),
+      ...(input.dataScope !== undefined ? { dataScope: input.dataScope } : {}),
       ...(input.employeeId !== undefined ? { employeeId: input.employeeId } : {}),
     },
     select: SELECT,
@@ -319,6 +388,7 @@ export async function updateUser(
           role: before.role,
           isActive: before.isActive,
           sections: before.sections,
+          dataScope: before.dataScope,
           employeeId: before.employeeId,
         },
         after: {
@@ -327,6 +397,7 @@ export async function updateUser(
           role: after.role,
           isActive: after.isActive,
           sections: after.sections,
+          dataScope: after.dataScope,
           employeeId: after.employeeId,
         },
         // Recorded as a fact, never as a value.
@@ -392,6 +463,7 @@ export async function deleteUser(
           role: before.role,
           isActive: before.isActive,
           sections: before.sections,
+          dataScope: before.dataScope,
         },
       },
       ipAddress: audit.ip,

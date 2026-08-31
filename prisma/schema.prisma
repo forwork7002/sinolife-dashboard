@@ -54,6 +54,21 @@ enum Role {
   SALES
 }
 
+/// How many rows an account may read, independently of which screens it holds.
+///
+/// The two questions used to be answered by one field. `role` said both "may
+/// this person administer anything" and "how much data do they see", so the
+/// only way to give somebody the whole company's numbers was to make them a
+/// manager, and the only way to make them read-only was to blind them. This
+/// splits them: `role` is what an account may CHANGE, `sections` is which
+/// screens it may open, `dataScope` is how much of each it may read.
+enum DataScope {
+  /// Everything the granted sections cover, company-wide.
+  ALL
+  /// Only the linked employee's own records. Requires `employeeId`.
+  OWN
+}
+
 /// What a pipeline is FOR. Only REVENUE contributes to money figures.
 ///
 /// The portal runs nine pipelines and only two of them are sales. Naming the
@@ -276,8 +291,19 @@ model User {
   /// still cannot read finance, because the endpoint checks the role's
   /// permission first and SALES has none.
   sections   String[] @default([])
-  /// A SALES user is scoped to this employee's own deals. Enforced in the
-  /// repository layer, never by hiding UI.
+  /// How much of each granted section this account reads.
+  ///
+  /// ALL by default, because an account an administrator has just created and
+  /// handed screens to is meant to SEE those screens. The previous default
+  /// was implied by the role, and it silently produced accounts that opened
+  /// every page they were given and found every figure blank.
+  ///
+  /// OWN is only meaningful with `employeeId` set; the service refuses the
+  /// combination without it rather than storing a scope that resolves to
+  /// nothing.
+  dataScope  DataScope @default(ALL)
+  /// The salesperson this login belongs to. Required for `dataScope = OWN`,
+  /// where it is enforced in the repository layer, never by hiding UI.
   employeeId String? @unique
 
   createdAt DateTime @default(now())

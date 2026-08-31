@@ -11,7 +11,8 @@
 import { NextResponse } from 'next/server'
 import { ZodError, type ZodType } from 'zod'
 
-import { type Permission, type Principal, dealScopeFor } from '@/server/auth/rbac'
+import type { SectionValue } from '@/lib/sections'
+import { type Permission, type Principal, canSeeSection, dealScopeFor } from '@/server/auth/rbac'
 import { requirePermission } from '@/server/auth/session'
 import { TRUSTED_ORIGINS } from '@/server/auth/auth'
 import { env } from '@/server/config/env'
@@ -58,6 +59,47 @@ function baseMeta(correlationId: string): ResponseMeta {
   }
 }
 
+/**
+ * What an endpoint requires of its caller.
+ *
+ * TWO GATES, ASKED TOGETHER. `permission` is the capability — whether an
+ * account of this kind and scope may perform this sort of read at all.
+ * `section` is the reach — whether THIS account was handed the screen this
+ * endpoint feeds. Both must pass.
+ *
+ * The section gate is what makes an administrator's ticks mean something
+ * beyond the sidebar. Without it, sections hid links while the API answered
+ * anyone who typed the URL, so "give this person Logistika and nothing else"
+ * was a presentation choice rather than a boundary.
+ *
+ * `section: null` is for the handful of endpoints that belong to no screen —
+ * the shared filter payload every page loads, and account administration,
+ * which is a permission and deliberately not a section (see `pageGuard`). It
+ * has to be written out rather than omitted so that adding an endpoint is a
+ * decision about who reaches it, never an oversight.
+ */
+export interface Access {
+  readonly permission: Permission | readonly Permission[]
+  readonly section: SectionValue | readonly SectionValue[] | null
+}
+
+/**
+ * Assert the section gate.
+ *
+ * An endpoint listing several sections is reachable from ANY of them: the
+ * sales screen draws its funnel from the same source the command centre does,
+ * and an account given one of the two should not be refused because it lacks
+ * the other.
+ */
+export function assertSection(principal: Principal, section: Access['section']): void {
+  if (section === null) return
+
+  const wanted = Array.isArray(section) ? section : [section as SectionValue]
+  if (wanted.some((id) => canSeeSection(principal, id))) return
+
+  throw ApiError.forbidden('Bu boʻlim sizga berilmagan.')
+}
+
 export interface HandlerContext<Q> {
   readonly query: Q
   readonly correlationId: string
@@ -67,8 +109,9 @@ export interface HandlerContext<Q> {
   /** The authenticated caller. Always present — handlers cannot opt out. */
   readonly principal: Principal
   /**
-   * Data-scoping filter derived from the caller's role. Spread into every
-   * repository call so a SALES user's queries are narrowed in SQL.
+   * Data-scoping filter derived from the caller's data scope. Spread into
+   * every repository call so an OWN-scoped account's queries are narrowed in
+   * SQL rather than in the page that renders them.
    */
   readonly scope: { restrictToEmployeeId?: string }
 }
@@ -77,17 +120,18 @@ export interface HandlerContext<Q> {
  * Build a GET handler.
  *
  * Authentication is NOT optional and not a per-route decision: every handler
- * built here resolves a principal first and asserts `permission`. Making it a
- * required argument means a new endpoint cannot be shipped unprotected by
- * forgetting a middleware line — there is no code path that skips the check.
+ * built here resolves a principal first, asserts `access.permission` and then
+ * `access.section`. Making both required arguments means a new endpoint cannot
+ * be shipped unprotected by forgetting a middleware line — there is no code
+ * path that skips either check.
  *
- * @param permission The capability the caller must hold.
+ * @param access The capability and the section this endpoint requires.
  * @param schema Validates the query string. Rejection becomes a 400 with
  *               field-level detail rather than a 500.
  * @param handle Receives validated input; returns data and optional extra meta.
  */
 export function getHandler<Q>(
-  permission: Permission | readonly Permission[],
+  access: Access,
   schema: ZodType<Q>,
   handle: (ctx: HandlerContext<Q>) => Promise<{ data: unknown; meta?: Partial<ResponseMeta> }>,
 ) {
@@ -96,7 +140,9 @@ export function getHandler<Q>(
     const meta = baseMeta(correlationId)
 
     try {
-      const principal = await requirePermission(request, permission)
+      const principal = await requirePermission(request, access.permission)
+      assertSection(principal, access.section)
+
       const url = new URL(request.url)
       const raw = searchParamsToObject(url.searchParams)
 
@@ -164,7 +210,7 @@ export function getHandler<Q>(
  * detail, never a 500, and never a partially-applied write.
  */
 export function mutationHandler<B>(
-  permission: Permission | readonly Permission[],
+  access: Access,
   schema: ZodType<B>,
   handle: (
     ctx: Omit<HandlerContext<never>, 'query'> & { body: B; request: Request },
@@ -181,7 +227,8 @@ export function mutationHandler<B>(
         throw ApiError.forbidden('Soʻrov ishonchsiz manzildan keldi.')
       }
 
-      const principal = await requirePermission(request, permission)
+      const principal = await requirePermission(request, access.permission)
+      assertSection(principal, access.section)
 
       let raw: unknown
       try {

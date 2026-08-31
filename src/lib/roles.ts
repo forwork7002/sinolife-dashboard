@@ -5,6 +5,10 @@
  * `@/server/*`, so the union is restated here. It is small and stable, and the
  * server enum-parity assertion covers the database side.
  *
+ * WHAT A ROLE IS, since it used to be more: what this account may CHANGE.
+ * Which screens it opens is `sections`; how much of each it reads is
+ * `dataScope`. See `src/server/auth/rbac.ts`.
+ *
  * These labels drive presentation only. Authorisation is decided server-side.
  */
 
@@ -17,11 +21,20 @@ export const ROLE_LABELS: Readonly<Record<RoleValue, string>> = {
   SALES: 'Savdo xodimi',
 }
 
+/** What each role may change, in the words the admin screen needs. */
+export const ROLE_HINTS: Readonly<Record<RoleValue, string>> = {
+  ADMIN:
+    'Hisoblarni ochadi va oʻchiradi, sinxronizatsiyani boshlaydi, KPI rejalarini tahrirlaydi.',
+  MANAGER: 'KPI rejalarini tahrirlaydi va xodim kartochkasini ochadi. Hisoblarni boshqara olmaydi.',
+  SALES: 'Faqat oʻqiydi — hech narsani oʻzgartira olmaydi.',
+}
+
 /**
- * Which nav destinations a role should see.
+ * Which nav destinations a role should see when NOTHING has been ticked.
  *
- * A convenience for the UI, not a security boundary — the server rejects any
- * request the role is not entitled to regardless of what is rendered.
+ * A starting point for an unconfigured account, not a security boundary — the
+ * account's granted sections are what the server actually enforces, on the
+ * page and at the endpoint alike.
  */
 const ALL_ROUTES = [
   '/',
@@ -41,12 +54,13 @@ export const ROLE_NAV: Readonly<Record<RoleValue, readonly string[]>> = {
   ADMIN: ALL_ROUTES,
   MANAGER: ALL_ROUTES,
   /**
-   * A salesperson gets their own numbers and the standings.
+   * A salesperson's starting set, until an administrator ticks otherwise.
    *
-   * Withheld: finance, margin and the org chart — cost prices and other
-   * people's headcount are not theirs to read. The deals and analytics they do
-   * see are scoped to their own records in SQL, so the narrowing is real and
-   * not just a hidden link.
+   * Withheld by default: finance, margin and the org chart — cost prices and
+   * other people's headcount are not something to hand out without deciding
+   * to. An administrator who wants any of them grants it per account, and the
+   * account's data scope then decides whether it reads the company's figures
+   * or only its own.
    */
   SALES: [
     '/',

@@ -9,11 +9,14 @@
  * page.
  *
  * WHAT THIS IS AND IS NOT. This decides which SCREENS an account was given.
- * Data authorisation is still the role's job: every API route asserts a
- * permission and narrows rows by `dealScopeFor`, exactly as before. Granting
- * someone the Moliya section therefore cannot hand a salesperson finance
- * figures — their role has no `finance:read`, and the endpoint refuses.
- * Sections narrow a role; they never widen one.
+ * It is the same check `getHandler` makes on the endpoints behind them, so a
+ * redirect here is a courtesy rather than the boundary — a user who types the
+ * URL past this guard still gets nothing back from the API.
+ *
+ * How much of a granted screen an account then READS is `dataScope`, applied
+ * as a WHERE clause by `dealScopeFor`. The screens that only exist
+ * company-wide refuse an OWN-scoped account outright rather than drawing
+ * themselves blank; see `companyWide` in src/lib/sections.ts.
  *
  * A denied user is redirected to the first section they DO hold rather than
  * shown a wall. Landing on "access denied" after clicking your own bookmark is

@@ -5,6 +5,9 @@ import { marketingService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
 
+/** Who reaches this endpoint: the capability, then the screen it feeds. */
+const ACCESS = { permission: ANALYTICS_READ, section: 'marketing' } as const
+
 /**
  * One dimension's rows, plus the JAMI totals.
  *
@@ -16,7 +19,7 @@ export const dynamic = 'force-dynamic'
  *
  * Ledger and period semantics are the module's own; see the overview route.
  */
-export const GET = getHandler(ANALYTICS_READ, marketingBreakdownSchema, async (ctx) => {
+export const GET = getHandler(ACCESS, marketingBreakdownSchema, async (ctx) => {
   const data = await marketingService.breakdown(ctx.query)
   return { data, meta: { ledger: 'ROISTAT' as const } }
 })

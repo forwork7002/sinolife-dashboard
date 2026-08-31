@@ -19,6 +19,7 @@ import type { $Enums } from '@/generated/prisma/client'
 import type {
   CallDirectionValue,
   ConfirmStatusValue,
+  DataScopeValue,
   DealStatusValue,
   ExternalSourceValue,
   KpiMetricValue,
@@ -45,6 +46,7 @@ type AssertEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : ne
 // intentionally unused (see the lint config).
 const _externalSource: AssertEqual<ExternalSourceValue, $Enums.ExternalSource> = true
 const _role: AssertEqual<RoleValue, $Enums.Role> = true
+const _dataScope: AssertEqual<DataScopeValue, $Enums.DataScope> = true
 const _stageCategory: AssertEqual<StageCategoryValue, $Enums.StageCategory> = true
 const _pipelineRole: AssertEqual<PipelineRoleValue, $Enums.PipelineRole> = true
 const _logisticsRole: AssertEqual<LogisticsRoleValue, $Enums.LogisticsRole> = true

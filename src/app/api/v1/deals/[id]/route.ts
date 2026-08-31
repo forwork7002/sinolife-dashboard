@@ -4,6 +4,7 @@ import { getCrmProvider } from '@/server/config/providerFactory'
 import { money, toMoneyDto } from '@/server/domain/money/money'
 import { ApiError, toApiError } from '@/server/http/errors'
 import { failure, serialise, success } from '@/server/http/envelope'
+import { assertSection } from '@/server/http/handler'
 import { DEALS_READ } from '@/server/http/permissions'
 import { newCorrelationId } from '@/server/logging/logger'
 import { dealRepository } from '@/server/services/container'
@@ -33,6 +34,7 @@ export async function GET(
 
   try {
     const principal = await requirePermission(request, DEALS_READ)
+    assertSection(principal, 'sales')
     const { id } = await context.params
 
     const deal = await dealRepository.findById(id, dealScopeFor(principal))

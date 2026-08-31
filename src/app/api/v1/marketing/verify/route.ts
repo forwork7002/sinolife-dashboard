@@ -5,6 +5,9 @@ import { marketingService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
 
+/** Who reaches this endpoint: the capability, then the screen it feeds. */
+const ACCESS = { permission: ANALYTICS_READ, section: 'marketing' } as const
+
 /**
  * The two books, side by side.
  *
@@ -16,7 +19,7 @@ export const dynamic = 'force-dynamic'
  * them, because a reconciled figure would be a third number that neither
  * system believes.
  */
-export const GET = getHandler(ANALYTICS_READ, marketingWindowSchema, async (ctx) => {
+export const GET = getHandler(ACCESS, marketingWindowSchema, async (ctx) => {
   const data = await marketingService.verify(ctx.query, ctx.timeZone, ctx.now)
   return { data, meta: { ledger: 'ROISTAT' as const } }
 })

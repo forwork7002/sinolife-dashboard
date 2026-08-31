@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic'
  * them together would have broken the overview to save a route file.
  */
 export const GET = getHandler(
-  'analytics:read:all',
+  { permission: 'analytics:read:all', section: 'confirmation' },
   confirmationOrdersQuerySchema,
   async (ctx) => {
     const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)

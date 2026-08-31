@@ -18,6 +18,15 @@ export const ROLES = ['ADMIN', 'MANAGER', 'SALES'] as const
 export type RoleValue = (typeof ROLES)[number]
 
 /**
+ * How much of a granted screen an account reads.
+ *
+ * Separate from the role because they answer different questions. See the
+ * `DataScope` enum in prisma/schema.prisma for why they were split.
+ */
+export const DATA_SCOPES = ['ALL', 'OWN'] as const
+export type DataScopeValue = (typeof DATA_SCOPES)[number]
+
+/**
  * What a pipeline is FOR.
  *
  * The portal runs nine pipelines and only two of them are sales. Naming the

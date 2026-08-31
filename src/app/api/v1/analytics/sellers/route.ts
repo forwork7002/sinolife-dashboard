@@ -7,6 +7,9 @@ import { sellerBoardService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
 
+/** Who reaches this endpoint: the capability, then the screen it feeds. */
+const ACCESS = { permission: 'leaderboard:read', section: 'sellers' } as const
+
 const schema = analyticsQuerySchema.and(
   z.object({
     /**
@@ -35,7 +38,7 @@ const schema = analyticsQuerySchema.and(
  * typical month, so `data.basis` travels with the payload and the screen
  * prints it.
  */
-export const GET = getHandler('leaderboard:read', schema, async (ctx) => {
+export const GET = getHandler(ACCESS, schema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
   const context = AnalyticsService.context(period, ctx.currency, ctx.query, ctx.now)
 

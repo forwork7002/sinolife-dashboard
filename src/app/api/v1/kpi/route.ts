@@ -6,7 +6,10 @@ import { kpiService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
 
-export const GET = getHandler(KPI_READ, analyticsQuerySchema, async (ctx) => {
+/** Who reaches this endpoint: the capability, then the screen it feeds. */
+const ACCESS = { permission: KPI_READ, section: 'kpi' } as const
+
+export const GET = getHandler(ACCESS, analyticsQuerySchema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
   const context = AnalyticsService.context(
     period,

@@ -5,7 +5,10 @@ import { concentrationService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
 
-export const GET = getHandler('analytics:read:all', analyticsQuerySchema, async (ctx) => {
+/** Who reaches this endpoint: the capability, then the screen it feeds. */
+const ACCESS = { permission: 'analytics:read:all', section: 'cohort' } as const
+
+export const GET = getHandler(ACCESS, analyticsQuerySchema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
   const data = await concentrationService.concentration(period)
   return { data, meta: { period: toPeriodDto(period) } }
