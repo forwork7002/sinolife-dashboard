@@ -1256,6 +1256,246 @@ export class InsightsRepository {
   }
 
   /** One page of the queue, newest first by default. */
+  /**
+   * The whole board in one statement: the page, its total, and the ROP panel.
+   *
+   * WHY ONE STATEMENT. The page and the panel used to be two queries fired
+   * together, and each rebuilt the cohort — every order in the window, its
+   * latest signal, its number in the day — from scratch. For a month that was
+   * two seconds of duplicated work; for a year, where the cohort is eighteen
+   * thousand orders, the two ran the single core against each other and the
+   * request died on the twenty-second statement timeout. «Shu yil» was a 500.
+   *
+   * Here `numbered` is referenced twice inside one statement, which Postgres
+   * materialises exactly once, and both readings are taken from it. Measured
+   * on production against the two-query shape: [see commit].
+   *
+   * THE TWO READINGS DIFFER ON PURPOSE. The page obeys every filter — state,
+   * ROP, search. The panel obeys the search and nothing else: it is what the
+   * five tiles above the table are summed from, and a band whose numbers
+   * changed to match its own selection could not be used to compare one
+   * state against another, which is the only reason to put five of them side
+   * by side.
+   *
+   * The page is cut BEFORE it is dressed: filter, sort and LIMIT run over the
+   * bare cohort, and only the fifty survivors are joined to their customer,
+   * operator, stage, source and line items. Both readings come back as JSON
+   * so a single row can carry two differently-shaped lists; timestamps arrive
+   * as ISO text without a zone and are read back as the UTC they are.
+   */
+  async confirmationBoard(
+    period: Period,
+    query: ConfirmationOrderQuery,
+  ): Promise<{ totalItems: number; rows: ConfirmationOrderRow[]; byRop: ConfirmationRopRow[] }> {
+    // Allowlisted, never interpolated from the request: this reaches SQL.
+    // Columns of `filtered`, which carries the two deal fields a sort may need.
+    const sortColumn: Record<ConfirmationOrderSortValue, string> = {
+      createdAt: 'created_at',
+      movedAt: 'moved_at',
+      queuedAt: 'queued_at',
+      decidedAt: 'decided_at',
+      amountMinor: 'amount_minor_sort',
+      title: 'title_sort',
+    }
+    const direction = query.order === 'asc' ? 'ASC' : 'DESC'
+    const offset = (query.page - 1) * query.pageSize
+    // The deal id breaks ties, so paging cannot show one order twice and skip
+    // another when a thousand rows share a sort value.
+    const order = `${sortColumn[query.sort]} ${direction} NULLS LAST, deal_id ASC`
+
+    type PageJson = {
+      pos: number
+      deal_id: string
+      rop: string | null
+      daily_no: number
+      bitrix_id: string | null
+      order_code: string | null
+      title: string
+      customer_name: string | null
+      customer_phones: string | null
+      employee_name: string
+      products: string | null
+      region: string | null
+      delivery_address: string | null
+      source_name: string | null
+      amount_minor: MoneyText
+      currency: string
+      stage_name: string
+      outcome: ConfirmationOutcomeValue
+      created_at: string
+      moved_at: string
+      queued_at: string | null
+      decided_at: string | null
+    }
+    type RopJson = {
+      rop: string | null
+      orders: number
+      confirmed: number
+      no_answer: number
+      rejected: number
+      pending: number
+      unconfirmed_shipped: number
+    }
+
+    const rows = await this.prisma.$queryRawUnsafe<
+      { total_items: bigint; page: PageJson[]; by_rop: RopJson[] }[]
+    >(
+      `${InsightsRepository.QUEUE_SQL},
+       filtered AS (
+         SELECT
+           c.deal_id, c.rop, c.daily_no, c.outcome,
+           c.created_at, c.moved_at, c.queued_at, c.decided_at,
+           d."amountMinor" AS amount_minor_sort,
+           d."title" AS title_sort
+         FROM numbered c
+         JOIN "deal" d ON d."id" = c.deal_id
+         LEFT JOIN "customer" cust ON cust."id" = d."customerId"
+        -- NULL, not an empty array: ANY over an empty array is false for every
+        -- row, so an empty selection would render an empty table rather than
+        -- the whole queue.
+        WHERE ($3::text[] IS NULL OR c.outcome = ANY($3::text[]))
+          AND ($5::text IS NULL OR c.rop = $5)
+          ${InsightsRepository.SEARCH_SQL('$4')}
+       ),
+       page AS (
+         SELECT f.*, row_number() OVER (ORDER BY ${order})::int AS pos
+           FROM filtered f
+          ORDER BY ${order}
+          LIMIT $6 OFFSET $7
+       ),
+       decorated AS (
+         SELECT
+           p.pos,
+           d."id" AS deal_id,
+           p.rop,
+           p.daily_no,
+           d."externalId" AS bitrix_id,
+           d."orderCode" AS order_code,
+           d."title" AS title,
+           cust."name" AS customer_name,
+           -- Joined to text and split in TS: a text[] round-trips differently
+           -- depending on the driver, a delimiter does not.
+           array_to_string(
+             CASE
+               WHEN cust."phones" IS NOT NULL AND array_length(cust."phones", 1) > 0
+                 THEN cust."phones"
+               WHEN cust."phone" IS NOT NULL THEN ARRAY[cust."phone"]
+               ELSE ARRAY[]::text[]
+             END, E'\n') AS customer_phones,
+           e."fullName" AS employee_name,
+           items.products AS products,
+           d."region" AS region,
+           d."deliveryAddress" AS delivery_address,
+           src."name" AS source_name,
+           d."amountMinor"::text AS amount_minor,
+           d."currency" AS currency,
+           st."name" AS stage_name,
+           p.outcome,
+           p.created_at, p.moved_at, p.queued_at, p.decided_at
+         FROM page p
+         JOIN "deal" d ON d."id" = p.deal_id
+         JOIN "employee" e ON e."id" = d."employeeId"
+         JOIN "deal_stage" st ON st."id" = d."stageId"
+         LEFT JOIN "customer" cust ON cust."id" = d."customerId"
+         LEFT JOIN "sales_source" src ON src."id" = d."sourceId"
+         -- LATERAL, not a join: four line items would otherwise become four
+         -- rows and the pager would count the same order four times.
+         LEFT JOIN LATERAL (
+           SELECT string_agg(pr."name" || ' - ' || di."quantity"::text || ' ta', E'\\n' ORDER BY pr."name") AS products
+             FROM "deal_item" di
+             JOIN "product" pr ON pr."id" = di."productId"
+            WHERE di."dealId" = d."id"
+         ) items ON true
+       ),
+       by_rop AS (
+         SELECT
+           c.rop,
+           count(*)::int AS orders,
+           count(*) FILTER (WHERE c.outcome = 'CONFIRMED')::int AS confirmed,
+           count(*) FILTER (WHERE c.outcome = 'NO_ANSWER')::int AS no_answer,
+           count(*) FILTER (WHERE c.outcome = 'REJECTED')::int AS rejected,
+           count(*) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::int AS pending,
+           count(*) FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::int AS unconfirmed_shipped
+         FROM numbered c
+         JOIN "deal" d ON d."id" = c.deal_id
+         LEFT JOIN "customer" cust ON cust."id" = d."customerId"
+        -- NULL rops are KEPT and dropped by the caller: the tiles are this
+        -- breakdown summed down its columns, so a row excluded here is an
+        -- order missing from the headline total.
+        WHERE TRUE
+          ${InsightsRepository.SEARCH_SQL('$4')}
+        GROUP BY c.rop
+       )
+       SELECT
+         (SELECT count(*) FROM filtered)::bigint AS total_items,
+         (SELECT coalesce(json_agg(x ORDER BY x.pos), '[]'::json) FROM decorated x) AS page,
+         (SELECT coalesce(json_agg(r ORDER BY r.orders DESC), '[]'::json) FROM by_rop r) AS by_rop`,
+      period.start,
+      period.end,
+      query.outcomes && query.outcomes.length > 0 ? [...query.outcomes] : null,
+      query.q ?? null,
+      query.rop ?? null,
+      query.pageSize,
+      offset,
+    )
+
+    const row = rows[0]
+    // JSON carries timestamps as ISO text without a zone; they are UTC.
+    const utc = (text: string | null): Date | null =>
+      text === null ? null : new Date(text.endsWith('Z') ? text : `${text}Z`)
+
+    return {
+      totalItems: int(row?.total_items ?? 0n),
+      rows: (row?.page ?? []).map((r) => {
+        const queuedAt = utc(r.queued_at)
+        const decidedAt = utc(r.decided_at)
+        return {
+          dealId: r.deal_id,
+          rop: r.rop,
+          dailyNo: r.daily_no,
+          bitrixId: r.bitrix_id,
+          orderCode: r.order_code,
+          title: r.title,
+          customerName: r.customer_name,
+          customerPhones:
+            r.customer_phones === null || r.customer_phones === ''
+              ? []
+              : r.customer_phones.split('\n'),
+          employeeName: r.employee_name,
+          products: r.products === null ? [] : r.products.split('\n'),
+          region: r.region,
+          deliveryAddress: r.delivery_address,
+          sourceName: r.source_name,
+          amountMinor: money(r.amount_minor),
+          currency: r.currency,
+          stageName: r.stage_name,
+          outcome: r.outcome,
+          createdAt: utc(r.created_at)!,
+          movedAt: utc(r.moved_at)!,
+          queuedAt,
+          decidedAt,
+          // Both ends or nothing: an order refused without ever being queued
+          // has no waiting time, and zero would read as "decided instantly".
+          hoursToDecide:
+            decidedAt === null || queuedAt === null
+              ? null
+              : Math.round(((decidedAt.getTime() - queuedAt.getTime()) / 3_600_000) * 10) / 10,
+        }
+      }),
+      byRop: (row?.by_rop ?? []).map((r) => ({
+        // A group with no ROP is labelled rather than hidden: it still has to
+        // be countable, and "(ROP yoʻq)" is a finding, not a gap.
+        rop: r.rop ?? '(ROP yoʻq)',
+        orders: r.orders,
+        confirmed: r.confirmed,
+        noAnswer: r.no_answer,
+        rejected: r.rejected,
+        pending: r.pending,
+        unconfirmedShipped: r.unconfirmed_shipped,
+      })),
+    }
+  }
+
   async confirmationOrders(
     period: Period,
     query: ConfirmationOrderQuery,
