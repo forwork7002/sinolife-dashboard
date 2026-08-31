@@ -870,25 +870,36 @@ export class InsightsRepository {
    */
   private static readonly QUEUE_SQL = `
     /*
-      Every stage move that says something about a confirmation.
+      The five stages that speak, resolved once.
 
-      Five stages carry a signal and the rest carry none — see
-      ConfirmationSignal in the schema. Reading the column rather than a list
-      of Bitrix ids keeps this query free of portal vocabulary and lets the
-      index do the narrowing: about 95 000 signal moves out of 216 000 rows.
-
-      Bounded by $2 so the window can be read as of its end rather than as of
-      now — a report on last week must show what last week looked like, not
-      what has happened to those orders since.
+      MATERIALIZED is load-bearing, not decoration. Inlined, the planner
+      estimates the join badly and picks a parallel sequential scan over all
+      216 000 history rows; pinned, it drives five index range scans on
+      (stageId, enteredAt) instead. Measured on production: 1 881 ms against
+      206 ms for the same rows.
     */
-    WITH moves AS (
-      SELECT h."dealId" AS deal_id,
-             h."enteredAt" AS moved_at,
-             s."confirmationSignal" AS signal
-        FROM "deal_stage_history" h
-        JOIN "deal_stage" s ON s."id" = h."stageId"
-       WHERE s."confirmationSignal" IS NOT NULL
-         AND h."enteredAt" < $2
+    WITH signal_stage AS MATERIALIZED (
+      SELECT "id" FROM "deal_stage" WHERE "confirmationSignal" IS NOT NULL
+    ),
+    queue_stage AS MATERIALIZED (
+      SELECT "id" FROM "deal_stage" WHERE "confirmationSignal" = 'CONFIRM_NEW'
+    ),
+    /*
+      Orders whose confirmation moved at all inside the window.
+
+      A superset of the answer and a cheap one: an order can only have its
+      LATEST move in the window if it has SOME move in the window, so this
+      narrows 216 000 rows to a few thousand deals before anything expensive
+      runs. The window is closed on the right so a report on last week shows
+      what last week looked like, not what has happened since.
+    */
+    touched AS (
+      SELECT DISTINCT h."dealId" AS deal_id
+        FROM signal_stage ss
+        JOIN "deal_stage_history" h
+          ON h."stageId" = ss."id"
+         AND h."enteredAt" >= $1
+         AND h."enteredAt" <  $2
     ),
     /*
       One row per order, at its latest signal.
@@ -896,16 +907,26 @@ export class InsightsRepository {
       THE ORDER IS THE UNIT, not the visit. An order that was queued, refused,
       re-queued and confirmed is one line showing where it stands — which is
       how the floor reads it, and how the client's own board is built. Counting
-      each visit separately would have the same order appear three times in a
-      month and make «тасдиқланиш %» exceed the number of orders.
+      each visit separately would put the same order in a month three times
+      and let «тасдиқланиш %» exceed the number of orders.
+
+      The WHERE drops the orders whose last word was spoken before the window:
+      they moved inside it, but not last.
     */
-    latest AS (
-      SELECT DISTINCT ON (deal_id) deal_id, moved_at, signal
-        FROM moves
-       ORDER BY deal_id, moved_at DESC, signal
-    ),
     dated AS (
-      SELECT * FROM latest WHERE moved_at >= $1
+      SELECT t.deal_id, m.moved_at, m.signal
+        FROM touched t
+        CROSS JOIN LATERAL (
+          SELECT h."enteredAt" AS moved_at, s."confirmationSignal" AS signal
+            FROM "deal_stage_history" h
+            JOIN "deal_stage" s ON s."id" = h."stageId"
+           WHERE h."dealId" = t.deal_id
+             AND s."confirmationSignal" IS NOT NULL
+             AND h."enteredAt" < $2
+           ORDER BY h."enteredAt" DESC
+           LIMIT 1
+        ) m
+       WHERE m.moved_at >= $1
     ),
     /*
       The queue arrival the current state belongs to.
@@ -915,13 +936,13 @@ export class InsightsRepository {
       from a visit that ended weeks ago describes nothing that happened.
     */
     arrival AS (
-      SELECT w.deal_id, max(m.moved_at) AS queued_at
+      SELECT DISTINCT ON (w.deal_id) w.deal_id, h."enteredAt" AS queued_at
         FROM dated w
-        JOIN moves m
-          ON m.deal_id = w.deal_id
-         AND m.signal = 'CONFIRM_NEW'
-         AND m.moved_at <= w.moved_at
-       GROUP BY w.deal_id
+        JOIN "deal_stage_history" h
+          ON h."dealId" = w.deal_id
+         AND h."enteredAt" <= w.moved_at
+        JOIN queue_stage qs ON qs."id" = h."stageId"
+       ORDER BY w.deal_id, h."enteredAt" DESC
     ),
     classified AS (
       SELECT
