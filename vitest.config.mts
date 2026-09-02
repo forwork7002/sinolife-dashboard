@@ -8,11 +8,6 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
     globals: true,
-    coverage: {
-      provider: 'v8',
-      include: ['src/server/domain/**/*.ts'],
-      reporter: ['text', 'html'],
-    },
   },
   resolve: {
     alias: {

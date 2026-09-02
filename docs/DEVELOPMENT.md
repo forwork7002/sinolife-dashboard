@@ -11,7 +11,11 @@ npm run db:check    # 11 data-integrity invariants
 All three must be green before a phase is called done. Not "should work" — run
 them.
 
-Currently: **285 tests, 0 lint errors, 0 type errors, 11/11 integrity checks.**
+Currently: **628 tests, 0 lint errors, 0 type errors.**
+
+A count in prose goes stale the moment somebody adds a test, so treat it as a
+floor rather than a fact: `npm run verify` is what actually answers the
+question. This line said 285 for long enough that it stopped being read.
 
 ## Conventions
 
@@ -72,7 +76,7 @@ empty collections, month boundaries, February, and scope escalation.
 | 7–10. Dashboard, employees, KPI, deals | Done |
 | 11. Auth / RBAC | Done |
 | 12–14. Tests, performance, polish | Done for current scope |
-| 15. Bitrix24 readiness | Transport done; mapping pending credentials |
+| 15. Bitrix24 integration | Live — mapping confirmed, sync worker in production |
 
 **Not built:** reports/export page, admin sync screen.
 

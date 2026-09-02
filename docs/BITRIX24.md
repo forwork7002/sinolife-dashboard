@@ -1,7 +1,15 @@
 # Bitrix24 integration
 
-**Status: `BITRIX24_INTEGRATION_PENDING`.** No credentials have been supplied,
-and no connection to a real portal has been attempted.
+**Status: LIVE.** The portal is `obey.bitrix24.kz`, the webhook is configured,
+`DATA_SOURCE=bitrix24`, and the sync worker runs in production — `.do/app.yaml`
+starts it as the `sync` service (`npm run bitrix:worker`). The field mapping was
+confirmed against the live portal; see the header of
+`src/server/integrations/crm/bitrix24/mapping.ts`.
+
+This file used to open "no credentials have been supplied, and no connection to
+a real portal has been attempted", and the table below still listed the mapping
+as not done, long after both had shipped. A status line that is wrong is worse
+than no status line: it is the first thing a reader believes.
 
 ## What already works
 
@@ -16,27 +24,25 @@ and no connection to a real portal has been attempted.
 | Credential redaction in errors and logs | Done |
 | Sync engine: idempotent upsert, watermarks, audit log | Done |
 | Deletion sweep (opt-in, guarded) | Done — policy decision pending, see §10 |
-| **Field mapping** | **Not done — needs the live portal** |
-| **Stage ID → category mapping** | **Not done — needs the live portal** |
+| Field mapping | Done — confirmed against the live portal |
+| Stage ID → category mapping | Done — confirmed against the live portal |
 
-The transport is finished. What is missing is the translation between Bitrix24's
-vocabulary and ours, and that genuinely cannot be written without seeing the
-portal.
+## Why the mapping was never guessed
 
-## Why the mapping is empty rather than guessed
+`src/server/integrations/crm/bitrix24/mapping.ts` shipped with every field
+declared `sourceField: ''` and `confirmed: false`, and stayed that way until
+somebody had read the actual portal.
 
-`src/server/integrations/crm/bitrix24/mapping.ts` declares every field with
-`sourceField: ''` and `confirmed: false`.
+Pre-filling plausible guesses like `OPPORTUNITY` or `ASSIGNED_BY_ID` would have
+been worse than leaving it blank. A Bitrix24 portal is heavily customised: this
+business has its own pipelines, its own stage IDs and its own custom fields. A
+wrong-but-plausible mapping imports silently and produces a dashboard that looks
+authoritative and is wrong. An empty mapping refuses to run.
 
-Pre-filling plausible guesses like `OPPORTUNITY` or `ASSIGNED_BY_ID` would be
-worse than leaving it blank. A Bitrix24 portal is heavily customised: this
-business will have its own pipeline, its own stage IDs and its own custom
-fields. A wrong-but-plausible mapping imports silently and produces a dashboard
-that looks authoritative and is wrong. An empty mapping refuses to run.
-
-`assertMappingComplete()` enforces this at startup. Enabling
+`assertMappingComplete()` still enforces this at startup: enabling
 `DATA_SOURCE=bitrix24` with an unconfirmed mapping fails with the exact list of
-unmapped fields.
+unmapped fields. It is the reason the integration could only ever go live
+against a portal somebody had actually looked at.
 
 ## Steps to finish
 
