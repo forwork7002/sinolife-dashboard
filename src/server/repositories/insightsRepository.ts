@@ -39,7 +39,26 @@ import {
   type ConfirmationOrderSortValue,
   type ConfirmationOutcomeValue,
   type ConfirmationQueueMode,
+  type ConfirmationSignalValue,
 } from '@/server/domain/types'
+import type { EmployeeScopeFilter } from '@/server/domain/employees/branches'
+
+/** One recorded move of an order through the Тасдиклаш stages. */
+export interface ConfirmationTraceRow {
+  readonly enteredAt: Date
+  /** Null while the order is still sitting in this stage. */
+  readonly leftAt: Date | null
+  readonly stageName: string
+  readonly signal: ConfirmationSignalValue
+  /**
+   * The deal's «Тастиклаш анализ» reads «Недозвон булиб чикарилган» TODAY.
+   *
+   * A fact about the deal, not about the move, so it qualifies only the last
+   * CONFIRMED step — the caller decides what to do with it rather than having
+   * history silently rewritten.
+   */
+  readonly unreachable: boolean
+}
 
 /** A money column as Postgres returns it: text, to survive the driver. */
 type MoneyText = string | null
@@ -1810,6 +1829,77 @@ export class InsightsRepository {
         unconfirmedShipped: r.unconfirmed_shipped,
       })),
     }
+  }
+
+  /**
+   * ONE ORDER'S TRACE THROUGH ТАСДИКЛАШ — every move, in the order it happened.
+   *
+   * The board collapses each order to where it stands NOW, which is the right
+   * answer to "what is the state of my queue" and no answer at all to "what
+   * happened to this one". An order that was confirmed in Bitrix and then
+   * pulled back out reads on the board exactly like an order that was never
+   * confirmed: same single row, same current state, and nothing anywhere
+   * saying a confirmation was given and withdrawn.
+   *
+   * This returns the rows that collapse was performed over. Each one is a real
+   * transition recorded by the sync from Bitrix's own stage history, so the
+   * timestamps are the portal's, not ours — `enteredAt` is when the deal
+   * arrived in that stage.
+   *
+   * ONLY THE FIVE SIGNAL-BEARING STAGES. A deal passes through stages that say
+   * nothing about confirmation, and listing them would bury the two or three
+   * moves the reader came for. `confirmationSignal` is null on all but those,
+   * which is exactly the filter.
+   *
+   * The UNREACHABLE refinement travels as a flag rather than as a sixth
+   * signal, for the same reason the board does it that way: «Тастиклаш анализ»
+   * is a fact about the deal as it stands today, not about the move — so it
+   * can only ever qualify the LAST confirmation, and the caller is told which
+   * one that is rather than having it silently rewritten mid-history.
+   */
+  async confirmationTrace(
+    dealId: string,
+    scope: EmployeeScopeFilter = {},
+  ): Promise<ConfirmationTraceRow[]> {
+    const ids = scope.restrictToEmployeeIds?.length ? [...scope.restrictToEmployeeIds] : null
+
+    const rows = await this.prisma.$queryRaw<
+      {
+        entered_at: Date
+        left_at: Date | null
+        stage_name: string
+        signal: ConfirmationSignalValue
+        unreachable: boolean
+      }[]
+    >`
+      SELECT h."enteredAt"   AS entered_at,
+             h."leftAt"      AS left_at,
+             s."name"        AS stage_name,
+             s."confirmationSignal" AS signal,
+             (d."confirmStatus" = 'UNREACHABLE') AS unreachable
+        FROM "deal_stage_history" h
+        JOIN "deal_stage" s ON s."id" = h."stageId"
+        JOIN "deal" d       ON d."id" = h."dealId"
+       WHERE h."dealId" = ${dealId}
+         AND s."confirmationSignal" IS NOT NULL
+         /*
+           The caller's data scope reaches SQL, not the page that renders it.
+
+           An empty array would read as "no filter" and widen this to the whole
+           company, which is why every repository here tests id lists for
+           length first — see NO_EMPLOYEE_IN_SCOPE in domain/employees/branches.
+         */
+         AND (${ids === null}::boolean OR d."employeeId" = ANY(${ids ?? []}::text[]))
+       ORDER BY h."enteredAt" ASC, h."id" ASC
+    `
+
+    return rows.map((r) => ({
+      enteredAt: r.entered_at,
+      leftAt: r.left_at,
+      stageName: r.stage_name,
+      signal: r.signal,
+      unreachable: r.unreachable,
+    }))
   }
 
   async confirmationOrders(

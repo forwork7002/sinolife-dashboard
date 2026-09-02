@@ -658,7 +658,7 @@ export function Shell({
                   }
                 >
                   <Link
-                    href="/confirmation?queue=backlog"
+                    href="/confirmation?outcomes=CONFIRM_NEW"
                     aria-label={`${pending} ta buyurtma navbatda`}
                     className="rail-item focusable relative flex h-9 w-9 items-center justify-center rounded-lg"
                   >

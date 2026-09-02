@@ -50,15 +50,6 @@ export interface DashboardFilters {
   readonly outcomes: readonly ConfirmationOutcome[]
   /** Which ROP group the confirmation queue is narrowed to. */
   readonly rop?: string
-  /**
-   * Which question the confirmation board answers.
-   *
-   * 'window' reads the reporting period, 'backlog' ignores it and lists what
-   * is waiting right now. It lives in the URL like every other filter so the
-   * header bell can link straight to the backlog and a shared link opens on
-   * the same view it was copied from.
-   */
-  readonly queue: 'window' | 'backlog'
   readonly q?: string
   readonly page: number
   readonly pageSize: number
@@ -74,7 +65,6 @@ const DEFAULTS: DashboardFilters = {
   productIds: [],
   sourceIds: [],
   outcomes: [],
-  queue: 'window',
   page: 1,
   pageSize: 25,
   sort: 'createdAtSource',
@@ -155,7 +145,6 @@ export function useDashboardFilters() {
         (CONFIRMATION_OUTCOMES as readonly string[]).includes(value),
       ),
       rop: params.get('rop') ?? undefined,
-      queue: params.get('queue') === 'backlog' ? 'backlog' : DEFAULTS.queue,
       q: params.get('q') ?? undefined,
       page: counted(params.get('page'), DEFAULTS.page, 10_000),
       pageSize: counted(params.get('pageSize'), DEFAULTS.pageSize, 200),
@@ -244,7 +233,6 @@ export function useDashboardFilters() {
     if (filters.rop) out.rop = filters.rop
     // Only when it is not the default: every other screen's requests stay
     // byte-identical, so their react-query caches are untouched by this.
-    if (filters.queue === 'backlog') out.queue = filters.queue
     if (filters.q) out.q = filters.q
     return out
   }, [filters])

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 
 import { Card, ChartCard } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { EmptyState, ErrorState } from '@/components/states/States'
 import {
   ArrowOutGlyph,
   BarsGlyph,
@@ -25,6 +26,7 @@ import {
   type ConfirmationOrderDto,
   type ConfirmationOutcome,
   type ConfirmationQueueDto,
+  type ConfirmationTraceDto,
   apiGet,
 } from '@/lib/api'
 import { APP_TIME_ZONE, NO_VALUE, formatNumber } from '@/lib/format'
@@ -122,6 +124,8 @@ const SORTS = ['createdAt', 'movedAt', 'queuedAt', 'decidedAt', 'amountMinor', '
 export function ConfirmationPage() {
   const { filters, update, apiParams } = useDashboardFilters()
   const [statsOpen, setStatsOpen] = useState(false)
+  /** The order whose trace is open, by deal id. Null when none is. */
+  const [traceOf, setTraceOf] = useState<string | null>(null)
 
   /*
     `sort` is shared URL state, and its dashboard-wide default is a deal
@@ -428,9 +432,6 @@ export function ConfirmationPage() {
    */
   const narrowed = filters.outcomes.length > 0
 
-  /** True while the board is answering "what is waiting", not "what came in". */
-  const backlog = filters.queue === 'backlog'
-
   /** The ROP list, with the current selection guaranteed present. */
   const ropOptions = (() => {
     const names = data?.rops ?? []
@@ -442,23 +443,9 @@ export function ConfirmationPage() {
   return (
     <PageShell
       title={t.modules.confirmation.title}
-      /*
-        IN BACKLOG MODE THE PERIOD DOES NOT APPLY, so it is not offered.
-
-        `period={false}` takes away the six presets and the date line under the
-        title, both of which would otherwise describe a window this view
-        ignores — a date control over a list that does not read it is worse
-        than no control, because a reader assumes it must be filtering
-        something. The description says which question is on screen.
-      */
-      description={
-        backlog
-          ? 'Ҳозир тасдиқлашни кутаётган барча буюртмалар — қачон келганидан қатъи назар. Давр бу рўйхатга таъсир қилмайди.'
-          : t.modules.confirmation.lead
-      }
-      period={!backlog}
+      description={t.modules.confirmation.lead}
       accent="var(--series-4)"
-      meta={backlog ? undefined : query.data?.meta}
+      meta={query.data?.meta}
       filters={{
         search: true,
         // Every column the table shows is searchable, so the box says so —
@@ -500,7 +487,6 @@ export function ConfirmationPage() {
             combinations. The house MultiSelect is what every other filter on
             the dashboard uses, so the checkbox affordance is already familiar.
           */}
-          {!backlog && (
           <MultiSelect
             label="Барча статус"
             options={OUTCOMES.map((spec) => ({
@@ -510,51 +496,6 @@ export function ConfirmationPage() {
             selected={filters.outcomes}
             onChange={(outcomes) => update({ outcomes: outcomes as ConfirmationOutcome[] })}
           />
-          )}
-
-          {/*
-            THE ONE CONTROL THAT CHANGES THE QUESTION, not just the filter.
-
-            «Давр бўйича» is the board the client specified: what came in
-            during the selected period, and where each order stands. «Ҳозир
-            навбатда» ignores the period and lists what is actually waiting —
-            the orders whose latest signal is still «Заказ тасдиклаш» and whose
-            deal is still open, whenever they arrived. The first cannot answer
-            the second: the oldest unworked order on this portal predates every
-            preset, so a queue dated by intake reported nothing to do while
-            hundreds sat unworked. The header bell counts the backlog and links
-            here with it selected.
-          */}
-          <div
-            className="flex shrink-0 items-center gap-0.5 rounded-lg border p-0.5"
-            style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
-            role="group"
-            aria-label="Навбат кўриниши"
-          >
-            {(
-              [
-                { id: 'window', label: 'Давр бўйича' },
-                { id: 'backlog', label: 'Ҳозир навбатда' },
-              ] as const
-            ).map((option) => {
-              const active = filters.queue === option.id
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => update({ queue: option.id })}
-                  aria-pressed={active}
-                  className="focusable rounded-md px-2.5 py-2 text-[13px] font-medium whitespace-nowrap transition-colors sm:py-1.5 sm:text-xs"
-                  style={{
-                    background: active ? 'var(--ink-primary)' : 'transparent',
-                    color: active ? 'var(--surface)' : 'var(--ink-secondary)',
-                  }}
-                >
-                  {option.label}
-                </button>
-              )
-            })}
-          </div>
 
           <Button
             variant={statsOpen ? 'primary' : 'secondary'}
@@ -580,29 +521,16 @@ export function ConfirmationPage() {
         could not be used to compare one state against another, which is the
         only reason to put five of them side by side.
       */}
-      {/*
-        ONE TILE IN BACKLOG MODE, because every row in it is «Кутилмоқда».
-
-        Rendering the five-state band over a single-state list would put four
-        zeros on screen and invite the reader to click them for an empty table.
-      */}
-      <div
-        className={
-          backlog
-            ? 'stagger grid grid-cols-2 gap-3'
-            : 'stagger grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'
-        }
-      >
+      <div className="stagger grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
         <OutcomeTile
-          label={backlog ? 'ҲОЗИР НАВБАТДА' : 'ЖАМИ'}
+          label="ЖАМИ"
           status={tileStatus}
           count={totals?.orders ?? null}
           color="var(--ink-primary)"
           active={filters.outcomes.length === 0}
           onSelect={() => update({ outcomes: [] })}
         />
-        {!backlog &&
-          OUTCOMES.map((spec) => (
+        {OUTCOMES.map((spec) => (
           <OutcomeTile
             key={spec.key}
             Glyph={spec.Glyph}
@@ -696,6 +624,12 @@ export function ConfirmationPage() {
           columns={columns}
           rows={data?.items ?? []}
           rowKey={(row) => row.dealId}
+          /*
+            A row opens its own trace. Clicking the open one closes it, so the
+            same gesture is both directions and nothing on screen has to carry
+            a close button of its own.
+          */
+          onRowClick={(row) => setTraceOf((open) => (open === row.dealId ? null : row.dealId))}
           status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
           errorMessage={(query.error as Error | null)?.message}
           onRetry={() => void query.refetch()}
@@ -715,6 +649,10 @@ export function ConfirmationPage() {
               : 'Bu davrda hech bir buyurtma tasdiqlash navbatiga tushmagan.'
           }
         />
+
+        {traceOf && (
+          <TracePanel dealId={traceOf} onClose={() => setTraceOf(null)} />
+        )}
 
         {data && (
           <Pagination
@@ -740,6 +678,115 @@ export function ConfirmationPage() {
  * and one refusal is not the worst ROP on the floor, and rate-sorting would
  * put them at the top of a list managers act on.
  */
+/**
+ * ИЗ — one order's whole passage through Тасдиклаш.
+ *
+ * The board above shows where each order stands NOW, which is what a queue is
+ * for and which cannot answer "what happened to this one". An order confirmed
+ * in Bitrix and then pulled back out reads on the board exactly like an order
+ * that was never confirmed — same row, same current state — and that is the
+ * case this panel exists for. When it finds one it says so at the top rather
+ * than leaving the reader to spot it in the list.
+ *
+ * Fetched when a row is opened, not with the board: 25 rows load at a time and
+ * most are never opened, so joining the history in would be twenty-four
+ * queries nobody reads.
+ */
+function TracePanel({ dealId, onClose }: { dealId: string; onClose: () => void }) {
+  const query = useQuery({
+    queryKey: ['confirmation-trace', dealId],
+    queryFn: ({ signal }) =>
+      apiGet<ConfirmationTraceDto>('/insights/confirmations/trace', { dealId }, signal),
+    // The history of a closed transition does not change; only a live order
+    // gains steps, and the board's own poll is what surfaces that.
+    staleTime: 120_000,
+  })
+
+  const data = query.data?.data
+  const steps = data?.steps ?? []
+
+  return (
+    <div
+      className="mt-3 rounded-[var(--radius-panel)] border p-4"
+      style={{ borderColor: 'var(--border-strong)', background: 'var(--surface-raised)' }}
+    >
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-primary)' }}>
+            Из — {dealId}
+          </p>
+          {data?.withdrawn && (
+            <p className="mt-0.5 text-[11px]" style={{ color: 'var(--status-warning)' }}>
+              Тасдиқланган, кейин тасдиқлашдан олиб ташланган
+            </p>
+          )}
+        </div>
+        <Button variant="secondary" size="sm" onClick={onClose}>
+          Ёпиш
+        </Button>
+      </div>
+
+      {query.isPending && <div className="skeleton h-16 w-full rounded-md" role="status" />}
+      {query.isError && (
+        <ErrorState
+          message={(query.error as Error).message}
+          onRetry={() => void query.refetch()}
+        />
+      )}
+      {!query.isPending && !query.isError && steps.length === 0 && (
+        <EmptyState
+          title="Из йўқ"
+          body="Бу буюртма учун Bitrix24да тасдиқлаш босқичлари тарихи ёзилмаган."
+        />
+      )}
+
+      {steps.length > 0 && (
+        <ol className="space-y-0">
+          {steps.map((step, index) => {
+            const spec = OUTCOMES.find((o) => o.key === step.outcome)
+            const last = index === steps.length - 1
+            return (
+              <li key={`${step.at}-${index}`} className="flex gap-3">
+                {/* The rail: a dot per step, joined by a line that stops at the
+                    last one so the trace reads as ended rather than cut off. */}
+                <div className="flex flex-col items-center pt-1.5">
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ background: spec?.color ?? 'var(--ink-muted)' }}
+                  />
+                  {!last && (
+                    <span
+                      className="w-px flex-1"
+                      style={{ background: 'var(--border)' }}
+                      aria-hidden="true"
+                    />
+                  )}
+                </div>
+
+                <div className={last ? 'pb-0' : 'pb-4'}>
+                  <p className="text-xs font-medium" style={{ color: spec?.color ?? 'var(--ink-primary)' }}>
+                    {spec?.label ?? step.signal}
+                  </p>
+                  <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                    {tashkentDate(step.at)} {tashkentTime(step.at)}
+                    {step.until && ` — ${tashkentDate(step.until)} ${tashkentTime(step.until)}`}
+                    {!step.until && ' — ҳозиргача'}
+                  </p>
+                  {/* The portal's own stage name, so the step can be matched
+                      against the deal in Bitrix without translating it. */}
+                  <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                    {step.stage}
+                  </p>
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+      )}
+    </div>
+  )
+}
+
 function RopPanel({
   rows,
   status,
