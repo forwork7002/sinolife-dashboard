@@ -24,7 +24,6 @@ import {
 } from '@/components/ui/Icons'
 import { Kbd } from '@/components/ui/Kbd'
 import { Tooltip } from '@/components/ui/Tooltip'
-import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { apiGet, type AlertsDto, type SearchDto } from '@/lib/api'
 import { sessionUser, signOut, useSession } from '@/lib/authClient'
 import { formatCompactUzs, formatDateTime } from '@/lib/format'
@@ -32,6 +31,8 @@ import { ROLE_LABELS, canSeeHref, type RoleValue } from '@/lib/roles'
 import { sectionSpec, type SectionValue } from '@/lib/sections'
 import { useFilterOptions } from '@/features/shared/PageShell'
 import { t } from '@/lib/messages'
+import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
+import { VISIBLE_PRESETS } from './PeriodFilter'
 
 /**
  * React's <ViewTransition>, taken from whatever React the framework vendors.
@@ -60,7 +61,6 @@ const ViewTransition = (
     }>
   }
 ).ViewTransition
-import { PERIOD_PRESETS } from './PeriodFilter'
 import {
   setSidebarCollapsed,
   sidebarCollapsedServerSnapshot,
@@ -152,34 +152,31 @@ export function Shell({
   /**
    * Whether the open page HAS a reporting window.
    *
-   * False by default, and true only from PageShell. Marketing and the account
+   * False by default, true only from PageShell. Marketing and the account
    * screen render this shell directly — marketing keeps its own period control
-   * and the account screen has no dates at all — so offering the six presets
-   * in the palette there wrote a window nothing on the page reads, pinned it
-   * into the address and the sidebar link, and left no control anywhere to
-   * clear it again.
+   * and the account screen has no dates at all — so offering presets in the
+   * palette there wrote a window nothing on the page reads and left no control
+   * anywhere to clear it again.
    */
   periodAware?: boolean
   dataSource?: 'DEMO' | 'BITRIX24' | 'MANUAL'
 }) {
   const pathname = usePathname()
+  /*
+    The reporting window, read here for the palette's "Davr" group.
+
+    Reusing the SAME hook every page uses — not a re-implementation — is what
+    guarantees a preset chosen from the palette lands in the URL exactly the
+    way the control's own buttons put it there: preset set, stale from/to
+    cleared, page number dropped.
+  */
+  const { filters, setPeriod } = useDashboardFilters()
   const router = useRouter()
   const queryClient = useQueryClient()
   const { data: session } = useSession()
   const user = sessionUser(session?.user)
 
   /**
-   * The reporting window, read here for the palette's "Davr" group.
-   *
-   * Reusing the SAME hook every page uses — not a re-implementation — is what
-   * guarantees a preset chosen from the palette lands in the URL exactly the
-   * way PeriodFilter's own buttons put it there: preset set, stale from/to
-   * cleared, page number dropped. Shell only renders inside pages that already
-   * sit under a Suspense boundary (useSearchParams demands one), so reading it
-   * here costs nothing new.
-   */
-  const { filters, setPeriod } = useDashboardFilters()
-
   /*
     The header's three facts: how fresh, what is waiting, what is wrong.
 
@@ -425,14 +422,19 @@ export function Shell({
       })),
     })),
 
-    // Only where there ARE dates. Marketing keeps its own period control and
-    // the account screen has none, so on those two the presets wrote a window
-    // nothing reads and left no control anywhere to clear it again.
+    /*
+      The same three presets the page's own control shows, from the same list.
+
+      Only where there ARE dates. Marketing keeps its own period control and
+      the account screen has none, so on those two a preset chosen here wrote a
+      window nothing on the page reads, pinned it into the address and the
+      sidebar link, and left no control anywhere to clear it again.
+    */
     ...(periodAware
       ? [
           {
             label: t.period.label,
-            items: PERIOD_PRESETS.map((preset) => ({
+            items: VISIBLE_PRESETS.map((preset) => ({
               id: `davr-${preset}`,
               label: t.period[preset],
               // Say which window is already on screen, so re-choosing it reads
@@ -635,10 +637,28 @@ export function Shell({
                 nobody could act on. Each hides itself at zero — a permanent 0
                 is noise, and the bell's absence is already the message.
               */}
+              {/*
+                THE WHOLE BACKLOG, and the link opens exactly it.
+
+                This used to count orders CREATED today that were still
+                waiting, and link to `?preset=today&outcomes=CONFIRM_NEW`. On a
+                portal whose oldest unworked order is a year old, that read
+                zero every morning while hundreds sat in the queue — the one
+                number an owner glances at said there was nothing to do.
+                `alertsService` now asks for the backlog cohort and this link
+                opens the board in the same mode, so the header and the rows
+                behind it are the same set.
+              */}
               {pending > 0 && (
-                <Tooltip content={`${pending} ta buyurtma tasdiqlashni kutmoqda`}>
+                <Tooltip
+                  content={
+                    overdue > 0
+                      ? `${pending} ta buyurtma tasdiqlashni kutmoqda · ${overdue} tasi 2 soatdan ortiq`
+                      : `${pending} ta buyurtma tasdiqlashni kutmoqda`
+                  }
+                >
                   <Link
-                    href="/confirmation?preset=today&outcomes=CONFIRM_NEW"
+                    href="/confirmation?queue=backlog"
                     aria-label={`${pending} ta buyurtma navbatda`}
                     className="rail-item focusable relative flex h-9 w-9 items-center justify-center rounded-lg"
                   >

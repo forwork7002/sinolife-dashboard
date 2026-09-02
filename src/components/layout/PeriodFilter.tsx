@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
+import { APP_TIME_ZONE } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 /**
@@ -29,6 +30,24 @@ export const PERIOD_PRESETS = [
 
 export type PeriodPreset = (typeof PERIOD_PRESETS)[number] | 'custom'
 
+/**
+ * The presets that get a BUTTON. A subset, deliberately.
+ *
+ * All six above remain valid windows — the API resolves them, links carry
+ * them, and `?preset=this_year` typed by hand still works. What changed is
+ * how many of them earn a permanent place on every page.
+ *
+ * The three here are the ones asked for many times a day. The three dropped
+ * — shu hafta, oʻtgan oy, shu yil — are each one selection away in the picker
+ * (Kun · Oy · Yil · Oraliq), and keeping them cost a row that ran about 470px
+ * and scrolled sideways on a phone.
+ *
+ * ONE LIST, read by both surfaces that offer presets: this control and the
+ * command palette. Two lists drift, and the drift is invisible until somebody
+ * reaches for a window on one surface that the other has stopped offering.
+ */
+export const VISIBLE_PRESETS = ['today', 'yesterday', 'this_month'] as const
+
 export interface PeriodSelection {
   readonly preset: PeriodPreset
   /** `YYYY-MM-DD`, inclusive. Present only when preset is 'custom'. */
@@ -50,6 +69,26 @@ export function PeriodFilter({
 }) {
   const [open, setOpen] = useState(false)
   const container = useRef<HTMLDivElement>(null)
+
+  /*
+    What the one remaining control says it is showing.
+
+    A custom window reads as its dates; every other window reads as its name.
+    The `from` guard matters: `preset=custom` with no bounds is a URL somebody
+    typed, and `useDashboardFilters` already falls back to the default for it,
+    so this only has to avoid printing an empty range on the way past.
+  */
+  const label =
+    value === 'custom'
+      ? from
+        ? shortRange(from, to)
+        : t.period.pick
+      : // A window with no button of its own — arrived by link, or chosen in
+        // the picker's Oy/Yil mode — is named here, or nothing on the row
+        // would say what is on screen.
+        (VISIBLE_PRESETS as readonly string[]).includes(value)
+        ? t.period.pick
+        : t.period[value]
 
   // Dismiss on an outside click or Escape — a popover that can only be closed
   // by re-clicking its own trigger is a trap on a dense page.
@@ -91,51 +130,61 @@ export function PeriodFilter({
       inside an overflow container is clipped by it.
     */
     <div ref={container} className="relative w-full sm:w-auto">
-      <div className="no-scrollbar -mx-4 flex items-center gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0">
-      <div
-        className="flex shrink-0 items-center gap-0.5 rounded-lg border p-0.5"
-        style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
-        role="group"
-        aria-label={t.period.label}
-      >
-        {PERIOD_PRESETS.map((preset) => {
-          const active = preset === value
-          return (
-            <button
-              key={preset}
-              type="button"
-              onClick={() => onChange({ preset })}
-              aria-pressed={active}
-              // Taller under a thumb than under a pointer: 36px on a phone is the
-              // smallest target that is reliably hit, 28px is right for a mouse.
-              className="focusable rounded-md px-2.5 py-2 text-[13px] font-medium whitespace-nowrap transition-colors sm:py-1.5 sm:text-xs"
-              style={{
-                background: active ? 'var(--ink-primary)' : 'transparent',
-                color: active ? 'var(--surface)' : 'var(--ink-secondary)',
-              }}
-            >
-              {t.period[preset]}
-            </button>
-          )
-        })}
-      </div>
+      <div className="flex w-full items-center gap-1.5 sm:w-auto">
+        <div
+          className="flex shrink-0 items-center gap-0.5 rounded-lg border p-0.5"
+          style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
+          role="group"
+          aria-label={t.period.label}
+        >
+          {VISIBLE_PRESETS.map((preset) => {
+            const active = preset === value
+            return (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => onChange({ preset })}
+                aria-pressed={active}
+                // Taller under a thumb than under a pointer: 36px on a phone is
+                // the smallest target that is reliably hit, 28px suits a mouse.
+                className="focusable rounded-md px-2.5 py-2 text-[13px] font-medium whitespace-nowrap transition-colors sm:py-1.5 sm:text-xs"
+                style={{
+                  background: active ? 'var(--ink-primary)' : 'transparent',
+                  color: active ? 'var(--surface)' : 'var(--ink-secondary)',
+                }}
+              >
+                {t.period[preset]}
+              </button>
+            )
+          })}
+        </div>
 
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        title={t.period.pick}
-        className="focusable flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors sm:py-2 sm:text-xs"
-        style={{
-          borderColor: value === 'custom' ? 'var(--accent)' : 'var(--border)',
-          background: value === 'custom' ? 'var(--accent-soft)' : 'var(--surface-raised)',
-          color: value === 'custom' ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-        }}
-      >
-        <CalendarIcon />
-        {value === 'custom' && from ? shortRange(from, to) : t.period.pick}
-      </button>
+        {/*
+          The picker, and the name of any window the three buttons cannot show.
+
+          It used to read a flat "Sana" whenever the preset was not custom,
+          which was safe while all six presets had a button lit beside it. With
+          three, a window like "Shu yil" — reachable by link, or through the
+          picker's own Yil mode — would otherwise leave nothing on this row
+          saying what is on screen.
+        */}
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          aria-label={`${t.period.label}: ${label}`}
+          title={t.period.pick}
+          className="focusable flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors sm:py-2 sm:text-xs"
+          style={{
+            borderColor: value === 'custom' ? 'var(--accent)' : 'var(--border)',
+            background: value === 'custom' ? 'var(--accent-soft)' : 'var(--surface-raised)',
+            color: value === 'custom' ? 'var(--ink-primary)' : 'var(--ink-secondary)',
+          }}
+        >
+          <CalendarIcon />
+          {label}
+        </button>
       </div>
 
       {open && (
@@ -178,17 +227,43 @@ function PeriodPicker({
   const [rangeFrom, setRangeFrom] = useState(from ?? todayIso())
   const [rangeTo, setRangeTo] = useState(to ?? todayIso())
 
-  const thisYear = new Date().getFullYear()
+  // From the app's calendar, like every other bound in this picker.
+  const thisYear = Number(todayIso().slice(0, 4))
   const years = Array.from({ length: 6 }, (_, i) => thisYear - i)
 
   const apply = () => {
+    /*
+      NEVER PAST TODAY.
+
+      "Oy → Sentabr" on the 2nd used to resolve to 1–30 September: twenty-eight
+      days that have not happened yet, sitting in the window. The totals were
+      unchanged — there is no data in the future — but the comparison is a
+      window of equal LENGTH immediately before, so two days of September were
+      measured against a full thirty days of August and every card on the page
+      reported a collapse of ninety per cent. The same trap sat under
+      "Yil → 2026", against eight months of 2025.
+
+      The day and range inputs have carried `max={todayIso()}` all along; these
+      two modes generate their bounds instead of reading them off an input, so
+      the clamp has to be applied here.
+    */
+    const notFuture = (iso: string) => (iso > todayIso() ? todayIso() : iso)
+
     switch (mode) {
       case 'day':
         return onPick({ preset: 'custom', from: day, to: day })
       case 'month':
-        return onPick({ preset: 'custom', from: `${month}-01`, to: lastDayOfMonth(month) })
+        return onPick({
+          preset: 'custom',
+          from: `${month}-01`,
+          to: notFuture(lastDayOfMonth(month)),
+        })
       case 'year':
-        return onPick({ preset: 'custom', from: `${year}-01-01`, to: `${year}-12-31` })
+        return onPick({
+          preset: 'custom',
+          from: `${year}-01-01`,
+          to: notFuture(`${year}-12-31`),
+        })
       case 'range':
         // Swap rather than reject: someone who picks the end first meant a
         // range, and refusing it teaches them to distrust the control.
@@ -330,11 +405,23 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-/** Today in the browser's own calendar, as `YYYY-MM-DD`. */
+/**
+ * Today in the APPLICATION's calendar, as `YYYY-MM-DD`.
+ *
+ * Not the device's. The server resolves every window in `APP_TIME_ZONE`, so a
+ * phone left on UTC offered a picker whose "today" was yesterday between
+ * midnight and 05:00 Tashkent — and capped the date inputs there too, putting
+ * the current day out of reach on the one screen built to select it.
+ */
 function todayIso(): string {
-  const now = new Date()
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000)
-  return local.toISOString().slice(0, 10)
+  // `en-CA` is ISO order, which is what the date inputs and this comparison
+  // both want; the zone is what actually matters here.
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: APP_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
 }
 
 function lastDayOfMonth(month: string): string {
