@@ -288,10 +288,18 @@ async function main() {
     callHistoryMonths: Number(process.env.BITRIX24_CALL_MONTHS ?? 1),
   })
 
+  /*
+    Held in a const, not inlined into the SyncEngine, because the deletion
+    sweep below calls `deleteMissing` on the DEALS handler directly rather
+    than going through the engine. See the sweep block for why.
+  */
+  const handlers = createSyncHandlers(prisma, 'BITRIX24')
+  const dealsHandler = handlers.find((h) => h.entity === 'DEALS')
+
   const engine = new SyncEngine({
     provider,
     store: new PrismaSyncStore(prisma),
-    handlers: createSyncHandlers(prisma, 'BITRIX24'),
+    handlers,
     logger: {
       info: () => {},
       warn: (o, m) => console.warn(`  ${stamp()} ! ${m ?? ''}`, o ?? ''),
@@ -382,17 +390,39 @@ async function main() {
       `stage_history` have no sweeper at all and a FULL run over their 200-300
       thousand rows would be work with nothing to show for it.
 
-      Cheap, because `fetchDeals` walks 2 500 rows per batch and filters to the
-      configured pipelines rather than the portal's 433 000 deals. Guarded,
-      because `sweepByAntiJoin` refuses to delete anything when the source
-      returns nothing at all — a failed read must never empty the table.
+      IDS ONLY, AND NEVER THROUGH THE ENGINE.
+
+      This used to run `engine.runAll(['DEALS'], 'FULL', {sweepDeleted: true})`,
+      and a FULL engine run does not just collect ids — it re-upserts every row
+      it walks. That was 432 000 deals rewritten to answer a question the ID
+      column alone answers: thirty to sixty minutes of write traffic on a
+      1-vCPU database, with this loop blocked for all of it and no incremental
+      tick running. `listDealIds` walks the same pipelines selecting only ID —
+      a couple of minutes, zero writes — and `deleteMissing` is called
+      directly, so the DEALS watermark is never touched by a sweep.
+
+      NOT AT TICK 0. `tick` starts at zero and `0 % N === 0`, so this fired on
+      the first tick after every start, restart and redeploy. With deploys
+      landing more often than the old sweep could finish, the worker spent its
+      whole life sweeping and the dashboard never saw a second minute-tick.
+      Reference data still loads at tick 0 by design; this must not.
+
+      Guarded, because `sweepByAntiJoin` refuses to delete anything when the
+      source returns nothing at all, and `listDealIds` throws rather than
+      returning a short read — a failed read must never empty the table.
     */
-    if (SWEEP_EVERY > 0 && tick % SWEEP_EVERY === 0 && !stopping) {
+    if (SWEEP_EVERY > 0 && tick > 0 && tick % SWEEP_EVERY === 0 && !stopping && dealsHandler) {
+      const sweepStarted = Date.now()
       try {
-        const [swept] = await engine.runAll(['DEALS'], 'FULL', { sweepDeleted: true })
-        if (swept && swept.recordsDeleted > 0) {
-          console.log(`  ${stamp()} ${swept.recordsDeleted} ta oʻchirilgan bitim tozalandi`)
-        }
+        const live = await provider.listDealIds()
+        const deleted = (await dealsHandler.deleteMissing?.(live)) ?? 0
+        // Logged unconditionally, including the zero. The old code logged only
+        // when something was deleted, so a sweep that silently deleted nothing
+        // for months was indistinguishable from one that had nothing to do.
+        console.log(
+          `  ${stamp()} tozalash: portalda ${live.size} bitim, ${deleted} ta oʻchirildi` +
+            `  (${((Date.now() - sweepStarted) / 1000).toFixed(1)}s)`,
+        )
       } catch (error) {
         // Never fatal: a failed sweep leaves stale rows, which is the state we
         // were already in. Losing the tick loop over it would be worse.
@@ -403,8 +433,12 @@ async function main() {
     /*
       After the Bitrix tick, never instead of it: the portal sync is what the
       dashboard is judged on, and an hourly page fetch must not delay it.
+
+      `tick > 0` for the same reason as the sweep: a five-megabyte page fetch
+      on the first tick after every redeploy delays the first real sync for
+      nothing — the source changes a few times a day.
     */
-    if (ROISTAT_EVERY > 0 && tick % ROISTAT_EVERY === 0 && !stopping) {
+    if (ROISTAT_EVERY > 0 && tick > 0 && tick % ROISTAT_EVERY === 0 && !stopping) {
       await runRoistatImport()
     }
 
@@ -416,8 +450,20 @@ async function main() {
      * A tick that took forty seconds should be followed by twenty, not sixty —
      * otherwise the effective cadence drifts with how much work there was.
      */
+    /*
+      Backoff is a FLOOR, not an addend.
+
+      Added to `remaining` it disappeared exactly when it was needed: a tick
+      failing slowly — thirty-second portal timeouts, five entities — already
+      overruns the interval, so `remaining` was negative and the sum stayed
+      negative. The worker skipped its sleep entirely and hammered a portal
+      that blocks an expensive method for about ten minutes, which is the one
+      situation backoff exists to defuse. As a floor, a failing worker always
+      waits at least its backoff; a long but SUCCESSFUL tick still starts the
+      next one immediately, because `backoff` is zero when nothing failed.
+    */
     const backoff = Math.min(failures, 5) * INTERVAL_SEC * 1000
-    const remaining = INTERVAL_SEC * 1000 - (Date.now() - started) + backoff
+    const remaining = Math.max(INTERVAL_SEC * 1000 - (Date.now() - started), backoff)
 
     if (remaining > 0 && !stopping) await sleep(remaining)
   }

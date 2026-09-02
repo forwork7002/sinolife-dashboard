@@ -1094,32 +1094,58 @@ export function createSyncHandlers(
       if (seen.size === 0) return 0
 
       const live = [...seen]
-      await prisma.$executeRawUnsafe(
-        `CREATE TEMP TABLE IF NOT EXISTS "sync_live_ids" ("externalId" TEXT PRIMARY KEY) ON COMMIT DROP`,
+
+      /*
+        ONE TRANSACTION, AND THIS IS NOT A STYLE CHOICE.
+
+        Every `$executeRawUnsafe` outside a transaction is its own autocommit
+        transaction, and `ON COMMIT DROP` means exactly what it says: the temp
+        table was destroyed the instant the CREATE committed, so the TRUNCATE
+        on the next line hit a table that no longer existed. Postgres raised
+        42P01, SyncEngine caught it as a failed sweep and logged a warning
+        nobody read — so for as long as this code has existed, NOTHING has ever
+        been deleted. The dashboard kept showing deals removed in the portal,
+        which is the very bug the sweep was written to fix.
+
+        Holding one interactive transaction pins one connection, keeps the temp
+        table alive across all the statements that need it, and lets ON COMMIT
+        DROP finally do its job. The explicit DROP below is now belt-and-braces.
+
+        The timeout is explicit because Prisma's interactive default is five
+        seconds and this does roughly eighty chunked inserts of 400 000+ ids
+        followed by an anti-join delete over the whole table.
+      */
+      return prisma.$transaction(
+        async (tx) => {
+          await tx.$executeRawUnsafe(
+            `CREATE TEMP TABLE IF NOT EXISTS "sync_live_ids" ("externalId" TEXT PRIMARY KEY) ON COMMIT DROP`,
+          )
+          await tx.$executeRawUnsafe(`TRUNCATE "sync_live_ids"`)
+
+          const CHUNK = 5_000
+          for (let i = 0; i < live.length; i += CHUNK) {
+            const chunk = live.slice(i, i + CHUNK)
+            const placeholders = chunk.map((_, k) => `($${k + 1})`).join(', ')
+            await tx.$executeRawUnsafe(
+              `INSERT INTO "sync_live_ids" ("externalId") VALUES ${placeholders} ON CONFLICT DO NOTHING`,
+              ...chunk,
+            )
+          }
+
+          const deleted = await tx.$executeRawUnsafe(
+            `DELETE FROM "${table}" AS t
+             WHERE t."externalSource" = $1::"ExternalSource"
+               AND t."externalId" IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM "sync_live_ids" l WHERE l."externalId" = t."externalId")
+               ${extraCondition}`,
+            source,
+          )
+
+          await tx.$executeRawUnsafe(`DROP TABLE IF EXISTS "sync_live_ids"`)
+          return deleted
+        },
+        { timeout: 600_000, maxWait: 30_000 },
       )
-      await prisma.$executeRawUnsafe(`TRUNCATE "sync_live_ids"`)
-
-      const CHUNK = 5_000
-      for (let i = 0; i < live.length; i += CHUNK) {
-        const chunk = live.slice(i, i + CHUNK)
-        const placeholders = chunk.map((_, k) => `($${k + 1})`).join(', ')
-        await prisma.$executeRawUnsafe(
-          `INSERT INTO "sync_live_ids" ("externalId") VALUES ${placeholders} ON CONFLICT DO NOTHING`,
-          ...chunk,
-        )
-      }
-
-      const deleted = await prisma.$executeRawUnsafe(
-        `DELETE FROM "${table}" AS t
-         WHERE t."externalSource" = $1::"ExternalSource"
-           AND t."externalId" IS NOT NULL
-           AND NOT EXISTS (SELECT 1 FROM "sync_live_ids" l WHERE l."externalId" = t."externalId")
-           ${extraCondition}`,
-        source,
-      )
-
-      await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS "sync_live_ids"`)
-      return deleted
     }
 
   const sweepers: Partial<Record<string, (seen: ReadonlySet<string>) => Promise<number>>> = {

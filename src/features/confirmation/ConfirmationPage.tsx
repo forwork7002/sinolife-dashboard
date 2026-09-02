@@ -111,13 +111,20 @@ const OUTCOMES: readonly OutcomeSpec[] = [
     Glyph: ArrowOutGlyph,
     label: 'Тасдиқланмай чиқди',
     /*
-      A STATUS colour, not a series one. This state is a problem — the parcel
-      left without anyone reaching the customer — and it wore --series-7, the
-      violet that also paints every page's atmosphere, so the one alarming
-      state on the board was dressed as scenery. --status-serious existed for
-      exactly this register and was used nowhere.
+      Pink, and the only tile on this board wearing it.
+
+      This state is a problem — the parcel left without anyone reaching the
+      customer — so it first wore --status-serious, the orange that says
+      "attention". But the board already spends orange on Кутармади (нд) and
+      red on Тасдиқланмади, and three warm tiles in a row stopped separating:
+      the eye read one alarm zone instead of three distinct outcomes.
+
+      --series-5 is the pink the spec's 🟣 marks this state with in
+      src/server/domain/types.ts, it is unused elsewhere on this page, and
+      unlike --series-7 it is not the violet that paints every page's
+      atmosphere — so it reads as a state, not as scenery.
     */
-    color: 'var(--status-serious)',
+    color: 'var(--series-5)',
   },
 ]
 
@@ -364,7 +371,16 @@ export function ConfirmationPage() {
       table, and the URL holds every filter, so nothing the reader set is lost
       when the data comes back.
     */
-    refetchInterval: 120_000,
+    /*
+      The global minute clock (src/app/providers.tsx), not a slower local one.
+
+      This screen overrode the default with two minutes, and the worker behind
+      it was itself stalled — so a confirmation that arrived in Bitrix could
+      take four minutes to appear here, on the one screen whose whole job is
+      showing what just arrived. The override bought nothing the default does
+      not already give: `refetchIntervalInBackground` is false, so a hidden
+      tab still costs nothing.
+    */
     refetchOnWindowFocus: true,
   })
 

@@ -504,7 +504,15 @@ async function main(): Promise<void> {
   const DATABASE_URL = process.env.DATABASE_URL
   if (!DATABASE_URL) throw new Error('DATABASE_URL .env da yoʻq.')
 
-  const pool = new Pool(poolConfig(DATABASE_URL, { caCert: caCertFromEnv() }))
+  /*
+    Two connections, not `pg`'s default ten.
+
+    The sync worker spawns this as a child process, so its pool is invisible to
+    the worker's own budget and both draw on the managed cluster's 22-connection
+    ceiling alongside the web service. The import runs one sequential
+    transaction; ten connections were reserved to leave nine idle.
+  */
+  const pool = new Pool(poolConfig(DATABASE_URL, { caCert: caCertFromEnv(), max: 2 }))
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) })
 
   try {

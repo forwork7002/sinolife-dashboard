@@ -836,6 +836,47 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * honouring a smaller request would multiply the number of round trips by an
    * order of magnitude for no benefit.
    */
+  /**
+   * Every deal id the portal currently holds, for the deletion sweep.
+   *
+   * WHY THIS EXISTS SEPARATELY FROM `fetchDeals`
+   * The sweep needs one thing — the set of ids that still exist — and used to
+   * get it by running a FULL `fetchDeals` pass, which reads twenty-three
+   * fields for 432 000 deals and re-upserts every one of them. On a 1-vCPU
+   * database that is thirty to sixty minutes of pure write traffic to learn
+   * something the ID column alone answers, and the worker's tick loop was
+   * blocked for all of it. Selecting only ID makes the same walk cost a
+   * couple of minutes and not a single write.
+   *
+   * The filter is built from `this.pipelines` exactly as `fetchDeals` does.
+   * A filter that diverged would mark deals in the excluded pipelines as
+   * missing and delete rows the portal still has.
+   *
+   * Throws rather than returning a partial set. A half-read walk handed to the
+   * sweep would look like "these deals are gone" — the caller must be able to
+   * tell a short read from a small portal.
+   */
+  async listDealIds(): Promise<Set<string>> {
+    const filter: Record<string, unknown> = { CATEGORY_ID: [...this.pipelines] }
+    const ids = new Set<string>()
+
+    let afterId = '0'
+    for (;;) {
+      const { rows, done } = await this.batchWalk<Record<string, string>>(
+        'crm.deal.list',
+        { filter, select: ['ID'] },
+        afterId,
+      )
+
+      for (const row of rows) ids.add(String(row.ID))
+
+      if (done || rows.length === 0) break
+      afterId = String(rows[rows.length - 1]!.ID)
+    }
+
+    return ids
+  }
+
   async fetchDeals(options: FetchOptions = {}): Promise<Page<RawDeal>> {
     await this.loadEnumLabels()
 

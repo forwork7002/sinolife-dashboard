@@ -48,10 +48,11 @@ export function CommandCentrePage() {
   const query = useQuery({
     queryKey: ['command', apiParams],
     queryFn: ({ signal }) => apiGet<CommandCentreDto>('/dashboard/command', apiParams, signal),
-    // The confirmation queue moves during the working day and this is the
-    // screen left open on a wall. Two minutes is slow enough not to thrash
-    // ten queries and fast enough that the alarm strip means something.
-    refetchInterval: 120_000,
+    // Left on the global minute clock (src/app/providers.tsx). Two minutes was
+    // chosen here to spare a database that was, it turned out, being flattened
+    // hourly by a 432 000-row re-upsert; with that gone the headroom exists,
+    // and the alarm strip on a wall display should not be a minute stale on
+    // top of the sync's own minute.
   })
 
   const d = query.data?.data
