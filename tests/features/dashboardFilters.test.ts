@@ -21,12 +21,12 @@ describe('resolvePresetParam', () => {
   })
 
   it('falls back to the default when the parameter is absent', () => {
-    expect(resolvePresetParam(null, null, null)).toBe('this_month')
+    expect(resolvePresetParam(null, null, null)).toBe('today')
   })
 
   it('falls back rather than forwarding a value the API would reject', () => {
-    for (const bad of ['garbage', 'last_decade', 'THIS_MONTH', '', 'this_month ']) {
-      expect(resolvePresetParam(bad, null, null)).toBe('this_month')
+    for (const bad of ['garbage', 'last_decade', 'TODAY', '', 'today ']) {
+      expect(resolvePresetParam(bad, null, null)).toBe('today')
     }
   })
 
@@ -35,8 +35,8 @@ describe('resolvePresetParam', () => {
   })
 
   it('refuses a custom range missing a bound, which the API also refuses', () => {
-    expect(resolvePresetParam('custom', '2026-08-01', null)).toBe('this_month')
-    expect(resolvePresetParam('custom', null, '2026-08-23')).toBe('this_month')
-    expect(resolvePresetParam('custom', null, null)).toBe('this_month')
+    expect(resolvePresetParam('custom', '2026-08-01', null)).toBe('today')
+    expect(resolvePresetParam('custom', null, '2026-08-23')).toBe('today')
+    expect(resolvePresetParam('custom', null, null)).toBe('today')
   })
 })

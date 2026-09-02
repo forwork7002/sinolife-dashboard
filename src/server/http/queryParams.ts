@@ -47,7 +47,8 @@ const MAX_CUSTOM_RANGE_MS = 10 * 366 * 24 * 60 * 60 * 1000
 
 export const periodQuerySchema = z
   .object({
-    preset: z.enum(PERIOD_PRESETS).default('this_month'),
+    // Matches the client's default in useDashboardFilters — see the note there.
+    preset: z.enum(PERIOD_PRESETS).default('today'),
     from: isoDate.optional(),
     to: isoDate.optional(),
     /** Whether to compute the previous-equivalent comparison. */

@@ -119,9 +119,9 @@ describe('pagination meta', () => {
 })
 
 describe('period query validation', () => {
-  it('defaults to this_month with comparison enabled', () => {
+  it('defaults to today with comparison enabled', () => {
     const parsed = periodQuerySchema.parse({})
-    expect(parsed.preset).toBe('this_month')
+    expect(parsed.preset).toBe('today')
     expect(parsed.compare).toBe(true)
   })
 

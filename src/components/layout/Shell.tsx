@@ -281,7 +281,7 @@ export function Shell({
   )
 
   const sectionQuery = useMemo(
-    () => Object.fromEntries(NAV.map((item) => [item.href, periodQuery(item.href, periodMemory)])),
+    () => Object.fromEntries(NAV.map((item) => [item.href, periodQuery(periodMemory)])),
     [periodMemory],
   )
 

@@ -3,13 +3,15 @@
 import type { PeriodSelection } from '@/components/layout/PeriodFilter'
 
 /**
- * Each section's own reporting window, remembered per browser.
+ * THE reporting window, remembered per browser and shared by every screen.
  *
- * WHY A SECTION KEEPS ITS OWN. The windows people work in are not the same
- * from screen to screen: the confirmation queue is read for today, the sales
- * chart for the month, the margin ladder for last month. One window shared by
- * every screen means every move between them is also a re-selection, and the
- * screen that resets is the one somebody was mid-thought on.
+ * ONE WINDOW, NOT ONE PER SECTION. It used to be per route, on the reasoning
+ * that the confirmation queue is read for today and the sales chart for the
+ * month — but in practice a reader moves between screens asking the SAME
+ * question of each, and having every screen answer for a different day made
+ * the numbers on two of them impossible to compare. Whoever wants a different
+ * window on a screen changes it there; what they must not have to do is
+ * remember which window each screen happens to be sitting in.
  *
  * THE URL STILL WINS. `useDashboardFilters` holds the window in the query
  * string, and that stays the source of truth — a link somebody pastes into
@@ -27,9 +29,9 @@ import type { PeriodSelection } from '@/components/layout/PeriodFilter'
  * not render is not.
  */
 
-const KEY = 'sinolife.section-period.v1'
+const KEY = 'sinolife.period.v2'
 
-type Stored = Record<string, PeriodSelection>
+type Stored = { window?: PeriodSelection }
 
 /*
   A subscribable snapshot, so the sidebar can render from this without
@@ -92,10 +94,10 @@ function readAll(): Stored {
   }
 }
 
-/** The window this section was last read in, or null for "never chosen". */
-export function rememberedPeriod(route: string): PeriodSelection | null {
+/** The window last chosen, or null for "never chosen". */
+export function rememberedPeriod(): PeriodSelection | null {
   if (typeof window === 'undefined') return null
-  return usable(readAll()[route])
+  return usable(readAll().window)
 }
 
 /**
@@ -110,13 +112,11 @@ function usable(stored: PeriodSelection | undefined): PeriodSelection | null {
   return stored
 }
 
-export function rememberPeriod(route: string, selection: PeriodSelection): void {
+export function rememberPeriod(selection: PeriodSelection): void {
   if (typeof window === 'undefined') return
 
   try {
-    const all = readAll()
-    all[route] = selection
-    window.localStorage.setItem(KEY, JSON.stringify(all))
+    window.localStorage.setItem(KEY, JSON.stringify({ window: selection }))
     refresh()
   } catch {
     // Nothing to do and nothing worth telling the reader: the dates on screen
@@ -124,25 +124,23 @@ export function rememberPeriod(route: string, selection: PeriodSelection): void 
   }
 }
 
-/** Drop one section's memory, so "clear filters" really clears them. */
-export function forgetPeriod(route: string): void {
+/** Drop the remembered window, so "clear filters" really clears it. */
+export function forgetPeriod(): void {
   if (typeof window === 'undefined') return
 
   try {
-    const all = readAll()
-    delete all[route]
-    window.localStorage.setItem(KEY, JSON.stringify(all))
+    window.localStorage.removeItem(KEY)
     refresh()
   } catch {
     /* see rememberPeriod */
   }
 }
 
-/** The query string a nav link should carry to reopen a section as it was left. */
-export function periodQuery(route: string, memory?: string): string {
+/** The query string every nav link carries, so the window survives a move. */
+export function periodQuery(memory?: string): string {
   const stored = memory === undefined
-    ? rememberedPeriod(route)
-    : usable((JSON.parse(memory) as Stored)[route])
+    ? rememberedPeriod()
+    : usable((JSON.parse(memory) as Stored).window)
   if (!stored) return ''
 
   const params = new URLSearchParams({ preset: stored.preset })

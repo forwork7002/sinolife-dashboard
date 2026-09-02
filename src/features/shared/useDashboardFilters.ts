@@ -58,7 +58,16 @@ export interface DashboardFilters {
 }
 
 const DEFAULTS: DashboardFilters = {
-  preset: 'this_month',
+  /*
+    BUGUN, not this month.
+
+    Two reasons. The dashboard is read to answer "what is happening today" far
+    more often than anything else, so the window somebody lands on should be
+    the one they were going to pick. And "Shu oy" as the default made its own
+    button look broken: it was already lit on every fresh page, so pressing it
+    wrote the value that was already there and nothing on screen moved.
+  */
+  preset: 'today',
   employeeIds: [],
   departmentIds: [],
   stageIds: [],
@@ -187,16 +196,17 @@ export function useDashboardFilters() {
   const setPeriod = useCallback(
     (selection: PeriodSelection) => {
       // Remembered only when a PERSON picks one. Writing it on every render
-      // would also store the default, and this section would then be pinned to
-      // whatever it happened to open on the first time.
-      rememberPeriod(pathname, selection)
+      // would store the default too, and the dashboard would then be pinned to
+      // whatever window it happened to open on the first time.
+      rememberPeriod(selection)
       update({
         preset: selection.preset,
         from: selection.preset === 'custom' ? selection.from : undefined,
         to: selection.preset === 'custom' ? selection.to : undefined,
       })
     },
-    [pathname, update],
+    // No `pathname`: the window is the dashboard's, not this route's.
+    [update],
   )
 
   /**
@@ -252,7 +262,7 @@ export function useDashboardFilters() {
 }
 
 /**
- * Put this section's remembered window back when the address bar carries none.
+ * Put the remembered window back when the address bar carries none.
  *
  * CALLED ONCE PER PAGE, from PageShell, and deliberately not from
  * `useDashboardFilters` — a dozen components call that hook and each instance
@@ -265,7 +275,7 @@ export function useDashboardFilters() {
  * It only ever fires on an address with NOTHING in it, so there is nothing to
  * carry forward and nothing — a page number least of all — to drop.
  */
-export function useRestoreSectionPeriod(enabled = true): void {
+export function useRestoreRememberedPeriod(enabled = true): void {
   const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
@@ -301,7 +311,7 @@ export function useRestoreSectionPeriod(enabled = true): void {
     }
     if (restored.current === pathname) return
 
-    const stored = rememberedPeriod(pathname)
+    const stored = rememberedPeriod()
     if (!stored) return
 
     restored.current = pathname

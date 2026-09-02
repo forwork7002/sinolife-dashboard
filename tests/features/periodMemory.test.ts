@@ -11,7 +11,7 @@ import {
 } from '@/features/shared/periodMemory'
 
 /**
- * The window each section is read in, remembered per browser.
+ * THE reporting window, remembered per browser and shared by every screen.
  *
  * The cases that matter are the ones where storage misbehaves: it is the
  * thing here most likely to be missing or to throw, and a dashboard that
@@ -39,45 +39,46 @@ function install(storage: Storage): void {
 beforeEach(() => install(fakeStorage()))
 afterEach(() => vi.unstubAllGlobals())
 
-describe('remembering a section window', () => {
-  it('gives nothing back for a section nobody has chosen one for', () => {
-    expect(rememberedPeriod('/confirmation')).toBeNull()
-    expect(periodQuery('/confirmation')).toBe('')
+describe('remembering the window', () => {
+  it('gives nothing back before anybody has chosen one', () => {
+    expect(rememberedPeriod()).toBeNull()
+    expect(periodQuery()).toBe('')
   })
 
-  it('keeps each section apart', () => {
-    rememberPeriod('/confirmation', { preset: 'today' })
-    rememberPeriod('/analytics/sales', { preset: 'previous_month' })
+  it('holds ONE window for the whole dashboard', () => {
+    /*
+      The property this replaced a per-route store to get. Two screens asking
+      the same question of different days cannot be compared, and a reader
+      should not have to remember which window each screen is sitting in.
+    */
+    rememberPeriod({ preset: 'today' })
+    expect(rememberedPeriod()?.preset).toBe('today')
 
-    expect(rememberedPeriod('/confirmation')?.preset).toBe('today')
-    expect(rememberedPeriod('/analytics/sales')?.preset).toBe('previous_month')
-    // The whole point: one screen's window is not the other's.
-    expect(rememberedPeriod('/margin')).toBeNull()
+    rememberPeriod({ preset: 'previous_month' })
+    expect(rememberedPeriod()?.preset).toBe('previous_month')
   })
 
   it('carries a custom range with both of its bounds', () => {
-    rememberPeriod('/margin', { preset: 'custom', from: '2026-08-01', to: '2026-08-15' })
+    rememberPeriod({ preset: 'custom', from: '2026-08-01', to: '2026-08-15' })
 
-    expect(periodQuery('/margin')).toBe('?preset=custom&from=2026-08-01&to=2026-08-15')
+    expect(periodQuery()).toBe('?preset=custom&from=2026-08-01&to=2026-08-15')
   })
 
   it('refuses a custom range that lost a bound', () => {
     // Unresolvable, so it is treated as never chosen rather than rendered as
     // a window with one end.
-    rememberPeriod('/margin', { preset: 'custom', from: '2026-08-01' })
+    rememberPeriod({ preset: 'custom', from: '2026-08-01' })
 
-    expect(rememberedPeriod('/margin')).toBeNull()
-    expect(periodQuery('/margin')).toBe('')
+    expect(rememberedPeriod()).toBeNull()
+    expect(periodQuery()).toBe('')
   })
 
-  it('forgets one section without touching the others', () => {
-    rememberPeriod('/confirmation', { preset: 'today' })
-    rememberPeriod('/logistics', { preset: 'this_week' })
+  it('forgets it, so "clear filters" really clears it', () => {
+    rememberPeriod({ preset: 'this_week' })
 
-    forgetPeriod('/confirmation')
+    forgetPeriod()
 
-    expect(rememberedPeriod('/confirmation')).toBeNull()
-    expect(rememberedPeriod('/logistics')?.preset).toBe('this_week')
+    expect(rememberedPeriod()).toBeNull()
   })
 })
 
@@ -88,7 +89,7 @@ describe('when storage will not cooperate', () => {
       setItem: () => {},
     } as unknown as Storage)
 
-    expect(rememberedPeriod('/confirmation')).toBeNull()
+    expect(rememberedPeriod()).toBeNull()
   })
 
   it('carries on when the quota is full', () => {
@@ -99,20 +100,20 @@ describe('when storage will not cooperate', () => {
 
     // The dates on screen are correct either way; they just will not be there
     // next time. Nothing may propagate to the render.
-    expect(() => rememberPeriod('/confirmation', { preset: 'today' })).not.toThrow()
-    expect(() => forgetPeriod('/confirmation')).not.toThrow()
+    expect(() => rememberPeriod({ preset: 'today' })).not.toThrow()
+    expect(() => forgetPeriod()).not.toThrow()
   })
 
   it('ignores a stored value that is not an object', () => {
-    install(fakeStorage({ 'sinolife.section-period.v1': '"kim yozdi buni"' }))
+    install(fakeStorage({ 'sinolife.period.v2': '"kim yozdi buni"' }))
 
-    expect(rememberedPeriod('/confirmation')).toBeNull()
+    expect(rememberedPeriod()).toBeNull()
   })
 
   it('ignores unparseable storage', () => {
-    install(fakeStorage({ 'sinolife.section-period.v1': '{oops' }))
+    install(fakeStorage({ 'sinolife.period.v2': '{oops' }))
 
-    expect(rememberedPeriod('/confirmation')).toBeNull()
+    expect(rememberedPeriod()).toBeNull()
   })
 })
 
@@ -122,7 +123,7 @@ describe('the snapshot the sidebar renders from', () => {
   })
 
   it('returns the same value twice, or useSyncExternalStore would loop', () => {
-    rememberPeriod('/confirmation', { preset: 'today' })
+    rememberPeriod({ preset: 'today' })
 
     expect(periodMemorySnapshot()).toBe(periodMemorySnapshot())
   })
@@ -131,18 +132,16 @@ describe('the snapshot the sidebar renders from', () => {
     const seen = vi.fn()
     const stop = subscribePeriodMemory(seen)
 
-    rememberPeriod('/confirmation', { preset: 'yesterday' })
+    rememberPeriod({ preset: 'yesterday' })
     expect(seen).toHaveBeenCalled()
 
     stop()
-    rememberPeriod('/logistics', { preset: 'today' })
+    rememberPeriod({ preset: 'today' })
     expect(seen).toHaveBeenCalledTimes(1)
   })
 
-  it('answers a section from the snapshot without re-reading storage', () => {
-    const memory = JSON.stringify({ '/kpi': { preset: 'this_year' } })
-
-    expect(periodQuery('/kpi', memory)).toBe('?preset=this_year')
-    expect(periodQuery('/margin', memory)).toBe('')
+  it('answers from the snapshot without re-reading storage', () => {
+    expect(periodQuery(JSON.stringify({ window: { preset: 'this_year' } }))).toBe('?preset=this_year')
+    expect(periodQuery('{}')).toBe('')
   })
 })

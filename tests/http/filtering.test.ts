@@ -111,7 +111,7 @@ describe('filter parsing end to end', () => {
 
   it('applies defaults for an empty query string', () => {
     const filters = buildFilters('', manager)
-    expect(filters.preset).toBe('this_month')
+    expect(filters.preset).toBe('today')
     expect(filters.page).toBe(1)
     expect(filters.pageSize).toBe(25)
     expect(filters.order).toBe('desc')

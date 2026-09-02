@@ -416,7 +416,9 @@ function PodiumStep({
         </p>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           {name}
-          <TeamBadge rop={row.rop} />
+          {/* Inline beside a name, an absent team is silence, not a dash — the
+              placeholder belongs to the table column, where alignment needs it. */}
+          {row.rop && <TeamBadge rop={row.rop} />}
         </div>
         <div className="mt-2">
           <Tooltip content={<span className="tabular">{formatUzs(row.won.amount)}</span>}>
@@ -473,7 +475,7 @@ function PodiumStep({
       </p>
       <div className="mt-0.5 flex flex-wrap items-center gap-2">
         {name}
-        <TeamBadge rop={row.rop} />
+        {row.rop && <TeamBadge rop={row.rop} />}
       </div>
       <p className="mt-1.5">
         <Tooltip content={<span className="tabular">{formatUzs(row.won.amount)}</span>}>
@@ -1119,18 +1121,15 @@ function SellerDetail({
 
           {row.bonus.nextFloor !== null && row.bonus.toNextPercent !== null && (
             <div>
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-                  Keyingi daraja {formatCompactUzs(row.bonus.nextFloor.amount)}: yana{' '}
-                  {row.bonus.toNext ? `+${formatCompactUzs(row.bonus.toNext.amount)}` : NO_VALUE} kerak
-                  {row.bonus.nextBonus && (
-                    <> → {formatCompactUzs(row.bonus.nextBonus.amount)} bonus</>
-                  )}
-                </span>
-                <span className="tabular text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                  {formatPercent(row.bonus.toNextPercent, 0)}
-                </span>
-              </div>
+              {/* The meter prints the percentage itself — a second copy of the
+                  same figure at a different rounding would read as two facts. */}
+              <span className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+                Keyingi daraja {formatCompactUzs(row.bonus.nextFloor.amount)}: yana{' '}
+                {row.bonus.toNext ? `+${formatCompactUzs(row.bonus.toNext.amount)}` : NO_VALUE} kerak
+                {row.bonus.nextBonus && (
+                  <> → {formatCompactUzs(row.bonus.nextBonus.amount)} bonus</>
+                )}
+              </span>
               <div className="mt-1">
                 <Meter value={row.bonus.toNextPercent} tone="neutral" label="Keyingi darajaga" />
               </div>

@@ -13,7 +13,7 @@ import type { SectionValue } from '@/lib/sections'
 import { formatDate } from '@/lib/format'
 import { t } from '@/lib/messages'
 import type { DataScopeValue } from '@/lib/dataScope'
-import { useDashboardFilters, useRestoreSectionPeriod } from './useDashboardFilters'
+import { useDashboardFilters, useRestoreRememberedPeriod } from './useDashboardFilters'
 
 export interface FilterOptions {
   readonly employees: readonly { id: string; fullName: string }[]
@@ -116,7 +116,7 @@ export function PageShell({
   const { filters, update, setPeriod, reset, activeCount } = useDashboardFilters()
   // Once per page: see the hook's own note on why it does not live in
   // useDashboardFilters, which a dozen components call.
-  useRestoreSectionPeriod(period)
+  useRestoreRememberedPeriod(period)
   const options = useFilterOptions()
   const data = options.data?.data
 
