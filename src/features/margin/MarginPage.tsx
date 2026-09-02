@@ -178,6 +178,7 @@ export function MarginPage() {
       description={t.modules.margin.lead}
       accent="var(--series-2)"
       meta={query.data?.meta}
+      stale={query.isPlaceholderData}
     >
       {/*
         The lead instrument — the page's one hero, the only panel wearing the

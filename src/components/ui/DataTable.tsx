@@ -2,7 +2,8 @@
 
 import { useState, type ReactNode, type UIEvent } from 'react'
 
-import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/states/States'
+import { EmptyState, ErrorState } from '@/components/states/States'
+import { t } from '@/lib/messages'
 import { Button } from '@/components/ui/Button'
 import { SortCaretGlyph } from '@/components/ui/Icons'
 
@@ -129,9 +130,20 @@ export function DataTable<T>({
   }
 
   if (status === 'loading') {
+    /*
+      SHAPED LIKE THE TABLE IT STANDS FOR. The generic LoadingSkeleton is six
+      16px text lines — about 150px standing in for a 300px+ table, so every
+      table page jumped when data landed. A header bar plus six row-height
+      bars occupies what the loaded table will, and the ready swap stops
+      moving the page.
+    */
     return (
-      <div className="px-1 py-2">
-        <LoadingSkeleton rows={6} />
+      <div className="px-1 py-2" role="status" aria-label={t.state.loading}>
+        <div className="skeleton h-[30px] w-full" />
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="skeleton mt-2 h-[34px]" style={{ width: `${100 - i * 4}%` }} />
+        ))}
+        <span className="sr-only">{t.state.loading}</span>
       </div>
     )
   }

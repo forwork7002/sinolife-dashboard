@@ -33,7 +33,15 @@ export const inter = localFont({
   style: 'normal',
   display: 'swap',
   variable: '--font-inter',
-  // Metric-matched to the fallback, so the swap does not shift the layout.
-  adjustFontFallback: false,
+  /*
+    The metric-matched fallback stays ON (the default synthesises an
+    'Arial'-based face with size-adjust so the swap barely moves the layout).
+    This line used to read `adjustFontFallback: false` under a comment claiming
+    the opposite — the one deliberate opt-out in the file was of the exact
+    feature the comment said it had, and every cold load reflowed on swap.
+    'Arial' is the default; written out so nobody reads absence as another
+    opt-out.
+  */
+  adjustFontFallback: 'Arial',
   fallback: ['system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
 })

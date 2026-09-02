@@ -355,7 +355,7 @@ function UserDialog({
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="focusable w-full rounded-lg border px-2.5 py-1.5 text-sm"
+              className="focusable w-full rounded-[var(--radius-panel-sm)] border px-2.5 py-1.5 text-sm"
               style={{
                 background: 'var(--surface)',
                 borderColor: 'var(--border)',
@@ -382,7 +382,7 @@ function UserDialog({
               autoCapitalize="off"
               spellCheck={false}
               placeholder={editing && !user.username ? user.email : 'masalan: dilnoza'}
-              className="focusable w-full rounded-lg border px-2.5 py-1.5 text-sm"
+              className="focusable w-full rounded-[var(--radius-panel-sm)] border px-2.5 py-1.5 text-sm"
               style={{
                 background: 'var(--surface)',
                 borderColor: 'var(--border)',
@@ -421,7 +421,7 @@ function UserDialog({
             <select
               value={role}
               onChange={(e) => setRole(e.target.value as RoleValue)}
-              className="focusable w-full rounded-lg border px-2.5 py-1.5 text-sm"
+              className="focusable w-full rounded-[var(--radius-panel-sm)] border px-2.5 py-1.5 text-sm"
               style={{
                 background: 'var(--surface)',
                 borderColor: 'var(--border)',
@@ -450,7 +450,7 @@ function UserDialog({
             <select
               value={dataScope}
               onChange={(e) => setDataScope(e.target.value as DataScopeValue)}
-              className="focusable w-full rounded-lg border px-2.5 py-1.5 text-sm"
+              className="focusable w-full rounded-[var(--radius-panel-sm)] border px-2.5 py-1.5 text-sm"
               style={{
                 background: 'var(--surface)',
                 borderColor: 'var(--border)',
@@ -472,7 +472,7 @@ function UserDialog({
             <select
               value={employeeId}
               onChange={(e) => setEmployeeId(e.target.value)}
-              className="focusable w-full rounded-lg border px-2.5 py-1.5 text-sm"
+              className="focusable w-full rounded-[var(--radius-panel-sm)] border px-2.5 py-1.5 text-sm"
               style={{
                 background: 'var(--surface)',
                 borderColor: 'var(--border)',
@@ -708,7 +708,7 @@ function PasswordInput({
         type={shown ? 'text' : 'password'}
         autoComplete="new-password"
         placeholder={placeholder}
-        className="focusable w-full rounded-lg border py-1.5 pr-9 pl-2.5 text-sm"
+        className="focusable w-full rounded-[var(--radius-panel-sm)] border py-1.5 pr-9 pl-2.5 text-sm"
         style={{
           background: 'var(--surface)',
           borderColor: 'var(--border)',

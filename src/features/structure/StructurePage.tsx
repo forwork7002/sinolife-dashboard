@@ -51,6 +51,7 @@ export function StructurePage() {
       // page accented with it makes red mean two things at once.
       accent="var(--series-6)"
       meta={query.data?.meta}
+      stale={query.isPlaceholderData}
     >
       {/*
         The lead instrument — the page's one hero, the only panel wearing the

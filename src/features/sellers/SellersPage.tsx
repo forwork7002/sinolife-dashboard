@@ -106,6 +106,7 @@ export function SellersPage() {
       title={t.nav.sellers}
       description="Kim qancha buyurtma olib keldi — buyurtma OLINGAN sana boʻyicha"
       meta={board.data?.meta}
+      stale={board.isPlaceholderData}
       accent="var(--series-5)"
     >
       <PodiumHero

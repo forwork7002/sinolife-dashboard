@@ -352,6 +352,22 @@ export class PulseRepository {
         )::text AS open_amount
       FROM "deal" d
       WHERE d."countsAsRevenue"
+        /*
+          THE SCAN IS BOUND HERE, NOT ONLY IN THE FILTERS.
+
+          Every aggregate above admits a row only when it closed in the window
+          or was created in it, so this disjunction changes no answer — but
+          without it the WHERE was just countsAsRevenue and the query walked
+          the whole deal table on every pulse read. This is the same mistake
+          the structure() query documents ("3 527 ms against 992 ms"), in a
+          more extreme form: no date bound reached the scan at all. Both
+          halves ride an index — (countsAsRevenue, status, closedAt) and
+          (createdAtSource) — which Postgres combines as a bitmap OR.
+        */
+        AND (
+          (d."closedAt" >= $1 AND d."closedAt" < $2)
+          OR (d."createdAtSource" >= $1 AND d."createdAtSource" < $2)
+        )
         ${filterClause}
       `,
       ...params,

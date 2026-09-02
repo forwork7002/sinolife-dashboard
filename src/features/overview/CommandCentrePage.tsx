@@ -62,6 +62,7 @@ export function CommandCentrePage() {
       title={t.nav.overview}
       description="Kompaniya bir ekranda — nima kirdi, nima nosoz, nima ustida turibdi"
       meta={query.data?.meta}
+      stale={query.isPlaceholderData}
       accent="var(--series-1)"
     >
       <HeroBand data={d} status={status} />

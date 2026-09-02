@@ -79,6 +79,7 @@ export function PageShell({
   filters: enabled = {},
   accent,
   actions,
+  stale = false,
   children,
   period = true,
 }: {
@@ -102,6 +103,17 @@ export function PageShell({
    */
   accent?: string
   actions?: ReactNode
+  /**
+   * True while the numbers on screen still belong to the PREVIOUS window.
+   *
+   * The query client keeps old data on a key change (placeholderData), which
+   * is what stops a preset switch collapsing the page to skeletons — but it
+   * also means the screen shows one window's figures under another window's
+   * control for a moment, marked "ready". Wire this to `isPlaceholderData`
+   * and the content dims until the honest numbers land. Background refetches
+   * of the SAME window never set it, so the page stays still on the poll.
+   */
+  stale?: boolean
   children: ReactNode
   /**
    * Whether this page is read in a reporting window at all.
@@ -138,7 +150,14 @@ export function PageShell({
     >
       <div
         className="mx-auto max-w-[1400px] space-y-4"
-        style={accent ? ({ '--accent': accent } as React.CSSProperties) : undefined}
+        style={{
+          ...(accent ? ({ '--accent': accent } as React.CSSProperties) : undefined),
+          // A dimmed page is data awaiting replacement; opacity is cheap to
+          // composite and the transition keeps the change from flickering.
+          opacity: stale ? 0.6 : 1,
+          transition: 'opacity 150ms var(--ease-out)',
+        }}
+        aria-busy={stale || undefined}
       >
         {/*
           The header zone carries the aurora — title, description and filters
@@ -174,15 +193,27 @@ export function PageShell({
                 >
                   {title}
                 </h1>
-                {(description || meta?.period) && (
+                {/*
+                  `period` reserves the line BEFORE the first response arrives.
+
+                  The dates come from the response's meta, so on a page with no
+                  description the whole line used to pop in a beat after the
+                  header rendered and push the filter row and every card down
+                  one line. A page that WILL print dates claims the height from
+                  the start; the text simply arrives into space already held.
+                */}
+                {(description || period || meta?.period) && (
                   <p className="mt-1 max-w-2xl text-xs" style={{ color: 'var(--ink-muted)' }}>
                     {description}
                     {description && meta?.period && <span className="mx-1.5">·</span>}
-                    {meta?.period && (
+                    {meta?.period ? (
                       <>
                         {formatDate(meta.period.start)} –{' '}
                         {formatDate(new Date(new Date(meta.period.end).getTime() - 1).toISOString())}
                       </>
+                    ) : (
+                      // Occupies the line while the dates are in flight.
+                      period && !description && <span aria-hidden="true">&nbsp;</span>
                     )}
                     {meta?.comparisonTruncated && (
                       <span

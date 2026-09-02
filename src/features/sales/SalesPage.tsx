@@ -246,6 +246,7 @@ export function SalesPage() {
     <PageShell
       title={t.nav.sales}
       meta={sales.data?.meta}
+      stale={[sales, sources, products, pulse, flow].some((q) => q.isPlaceholderData)}
       filters={{ employees: true, departments: true, products: true, sources: true, stages: true }}
     >
       {/*
@@ -735,14 +736,27 @@ export function SalesPage() {
         </ChartCard>
 
         <ChartCard title={t.chart.byProduct} hint="Eng yaxshi 8 ta">
-          <BarList
-            items={productRows.slice(0, 8).map((row) => ({
-              id: row.productId,
-              label: row.name,
-              value: row.revenue.amount,
-              sharePercent: row.sharePercent,
-            }))}
-          />
+          {/* Three states, like every card on the page. This one fed BarList
+              directly, and BarList answers an empty list with "Maʼlumot yoʻq"
+              — so the card claimed no data while the data was still loading,
+              and said the same thing about a failed request, with no retry. */}
+          {products.isPending ? (
+            <ChartSkeleton height={240} />
+          ) : products.isError ? (
+            <ErrorState
+              message={products.error instanceof ApiClientError ? products.error.message : undefined}
+              onRetry={() => void products.refetch()}
+            />
+          ) : (
+            <BarList
+              items={productRows.slice(0, 8).map((row) => ({
+                id: row.productId,
+                label: row.name,
+                value: row.revenue.amount,
+                sharePercent: row.sharePercent,
+              }))}
+            />
+          )}
         </ChartCard>
       </div>
 

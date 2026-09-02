@@ -151,6 +151,7 @@ export function KpiPage() {
           : 'Yanovskiy tizimi boʻyicha baholash'
       }
       meta={query.data?.meta}
+      stale={query.isPlaceholderData}
       filters={{ employees: true, departments: true }}
     >
       {/*
@@ -221,10 +222,34 @@ export function KpiPage() {
       </section>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <CountCard label={t.kpiStatus.ACHIEVED} value={data?.counts.achieved} tone="good" />
-        <CountCard label={t.kpiStatus.ON_TRACK} value={data?.counts.onTrack} tone="good" />
-        <CountCard label={t.kpiStatus.AT_RISK} value={data?.counts.atRisk} tone="warning" />
-        <CountCard label={t.kpiStatus.BEHIND} value={data?.counts.behind} tone="critical" />
+        <CountCard
+          label={t.kpiStatus.ACHIEVED}
+          value={data?.counts.achieved}
+          tone="good"
+          loading={query.isPending}
+          failed={query.isError}
+        />
+        <CountCard
+          label={t.kpiStatus.ON_TRACK}
+          value={data?.counts.onTrack}
+          tone="good"
+          loading={query.isPending}
+          failed={query.isError}
+        />
+        <CountCard
+          label={t.kpiStatus.AT_RISK}
+          value={data?.counts.atRisk}
+          tone="warning"
+          loading={query.isPending}
+          failed={query.isError}
+        />
+        <CountCard
+          label={t.kpiStatus.BEHIND}
+          value={data?.counts.behind}
+          tone="critical"
+          loading={query.isPending}
+          failed={query.isError}
+        />
       </div>
 
       <ChartCard
@@ -250,10 +275,16 @@ function CountCard({
   label,
   value,
   tone,
+  loading = false,
+  failed = false,
 }: {
   label: string
   value?: number
   tone: 'good' | 'warning' | 'critical'
+  /** The em dash means "no plans set" — it must not also mean "still loading". */
+  loading?: boolean
+  /** Nor may it mean "the request failed" — that is a third fact. */
+  failed?: boolean
 }) {
   const color =
     tone === 'good'
@@ -275,12 +306,25 @@ function CountCard({
         />
         {label}
       </p>
-      <p
-        className="mt-1.5 text-2xl leading-none font-semibold tracking-tight"
-        style={{ color: 'var(--ink-primary)' }}
-      >
-        {value === undefined ? NO_VALUE : formatNumber(value)}
-      </p>
+      {loading ? (
+        <div className="skeleton mt-1.5 h-6 w-10" role="status">
+          <span className="sr-only">Yuklanmoqda</span>
+        </div>
+      ) : failed ? (
+        <p className="mt-1.5 text-base font-medium" style={{ color: 'var(--status-critical)' }}>
+          Olinmadi
+        </p>
+      ) : (
+        /* .tabular, like every other counting tile: four of these sit in one
+           row, and proportional figures let the same digit count come out at
+           four different widths. */
+        <p
+          className="tabular mt-1.5 text-2xl leading-none font-semibold tracking-tight"
+          style={{ color: 'var(--ink-primary)' }}
+        >
+          {value === undefined ? NO_VALUE : formatNumber(value)}
+        </p>
+      )}
     </Card>
   )
 }

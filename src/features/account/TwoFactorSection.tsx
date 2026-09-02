@@ -486,7 +486,9 @@ function ErrorNote({ message }: { message: string | null }) {
       className="rounded-[var(--radius-panel-sm)] px-3 py-2 text-xs"
       style={{
         background: 'color-mix(in oklab, var(--status-critical) 12%, transparent)',
-        color: 'var(--status-critical)',
+        // --delta-down: the contrast-tuned cut for text on this very tint —
+        // see the note beside its definition in globals.css.
+        color: 'var(--delta-down)',
       }}
     >
       {message}

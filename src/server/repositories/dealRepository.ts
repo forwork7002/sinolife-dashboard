@@ -158,27 +158,77 @@ export class DealRepository {
     const start = new Date(Math.min(...periods.map((p) => p.start.getTime())))
     const end = new Date(Math.max(...periods.map((p) => p.end.getTime())))
 
-    const rows = await this.prisma.deal.findMany({
-      // Revenue-only unless the caller says otherwise. Analysis is what feeds
-      // every money figure, so this is the default that has to be safe.
-      where: this.where({ revenueOnly: true, ...filters }, { start, end }),
-      select: ANALYTICS_SELECT,
-    })
+    // Revenue-only unless the caller says otherwise. Analysis is what feeds
+    // every money figure, so this is the default that has to be safe.
+    const where = this.where({ revenueOnly: true, ...filters }, { start, end })
 
-    return rows.map(toAnalyticsDeal)
+    /*
+      IDENTICAL CONCURRENT READS SHARE ONE QUERY.
+
+      Opening the sales screen fires five endpoints at once, and three of them
+      — sales, products, sources — need exactly this fetch with exactly these
+      arguments. Three separate HTTP requests land in the same Node process
+      within milliseconds, and each one walked the same tens of thousands of
+      rows on a database with one vCPU. Under this map the first builds the
+      promise and the other two await it.
+
+      IN-FLIGHT ONLY, NOT A CACHE. The entry is deleted the moment the promise
+      settles, so nothing is ever served stale — the sharing window is the
+      query's own duration. And the KEY IS THE WHERE CLAUSE ITSELF, serialised:
+      whatever narrows the SQL — the window, the filters, the caller's
+      authorisation scope — narrows the key with it, so two differently-scoped
+      callers can never share a result by construction rather than by a list
+      of fields somebody has to keep complete.
+
+      Each caller gets its own top-level array (`slice`), because a shared
+      array handed to independent consumers is a mutation race waiting for the
+      first `.sort` without a spread. The elements are readonly-typed and
+      shared deliberately.
+    */
+    const key = JSON.stringify(where)
+    const inFlight = this.analysisInFlight.get(key)
+    if (inFlight) return inFlight.then((rows) => rows.slice())
+
+    const load = this.prisma.deal
+      .findMany({ where, select: ANALYTICS_SELECT })
+      .then((rows) => rows.map(toAnalyticsDeal))
+      .finally(() => this.analysisInFlight.delete(key))
+
+    this.analysisInFlight.set(key, load)
+    return load.then((rows) => rows.slice())
   }
 
-  /** Line items for the given deals. Used by product analytics. */
+  /** See findForAnalysis. Keyed by the serialised where clause. */
+  private readonly analysisInFlight = new Map<string, Promise<AnalyticsDeal[]>>()
+
+  /**
+   * Line items for the given deals. Used by product analytics.
+   *
+   * Coalesced exactly like findForAnalysis, because it is fetched by the same
+   * burst: the sales screen's products and pulse endpoints ask for the items
+   * of the same deal list at the same moment. The id list rides the key, so
+   * only byte-identical requests share.
+   */
   async findItemsForDeals(dealIds: readonly string[]): Promise<AnalyticsDealItem[]> {
     if (dealIds.length === 0) return []
 
-    const rows = await this.prisma.dealItem.findMany({
-      where: { dealId: { in: [...dealIds] } },
-      select: { dealId: true, productId: true, quantity: true, totalMinor: true },
-    })
+    const key = dealIds.join('\u0000')
+    const inFlight = this.itemsInFlight.get(key)
+    if (inFlight) return inFlight.then((rows) => rows.slice())
 
-    return rows
+    const load = this.prisma.dealItem
+      .findMany({
+        where: { dealId: { in: [...dealIds] } },
+        select: { dealId: true, productId: true, quantity: true, totalMinor: true },
+      })
+      .finally(() => this.itemsInFlight.delete(key))
+
+    this.itemsInFlight.set(key, load)
+    return load.then((rows) => rows.slice())
   }
+
+  /** See findItemsForDeals. */
+  private readonly itemsInFlight = new Map<string, Promise<AnalyticsDealItem[]>>()
 
   /**
    * Paginated deal list for the table.

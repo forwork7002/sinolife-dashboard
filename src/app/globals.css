@@ -456,6 +456,18 @@ body {
   background: transparent;
 }
 
+/*
+  Chart axis ticks are columns too. Recharts draws them as SVG text, so no
+  component can reach them with a className — one selector here gives every
+  axis on every chart the same tabular figures the tables use, and a Y axis
+  of amounts stops wobbling as the window changes.
+*/
+.recharts-cartesian-axis-tick-value,
+.recharts-polar-angle-axis-tick-value {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
 /* Columns that must align vertically get tabular figures; standalone display
    numbers keep proportional figures. */
 .tabular {

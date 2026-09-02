@@ -110,7 +110,14 @@ const OUTCOMES: readonly OutcomeSpec[] = [
     key: 'UNCONFIRMED_SHIPPED',
     Glyph: ArrowOutGlyph,
     label: 'Тасдиқланмай чиқди',
-    color: 'var(--series-7)',
+    /*
+      A STATUS colour, not a series one. This state is a problem — the parcel
+      left without anyone reaching the customer — and it wore --series-7, the
+      violet that also paints every page's atmosphere, so the one alarming
+      state on the board was dressed as scenery. --status-serious existed for
+      exactly this register and was used nowhere.
+    */
+    color: 'var(--status-serious)',
   },
 ]
 
@@ -118,6 +125,205 @@ const SPEC_BY_KEY = new Map(OUTCOMES.map((spec) => [spec.key, spec]))
 
 /** The queue's own sort columns. The URL may carry another page's default. */
 const SORTS = ['createdAt', 'movedAt', 'queuedAt', 'decidedAt', 'amountMinor', 'title'] as const
+
+/**
+ * The queue table, one definition for the life of the module.
+ *
+ * Thirteen columns and fourteen render closures were rebuilt on every
+ * render of a page that re-renders on a two-minute poll and on every
+ * keystroke of the search box. Nothing in them reads component state —
+ * proved by the move compiling — so the allocation bought nothing.
+ */
+const QUEUE_COLUMNS: Column<ConfirmationOrderDto>[] = [
+  {
+    key: 'rop',
+    header: 'РОП',
+    width: '116px',
+    /*
+      A pill, not bold text.
+
+      РОП is a GROUP an order belongs to, and it repeats down the column in
+      runs — as bold ink it competed with the customer name for the eye. A
+      bordered token reads as a label rather than a name, and the repetition
+      stops looking like emphasis.
+    */
+    render: (row) =>
+      row.rop === null ? (
+        <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
+      ) : (
+        <span
+          className="inline-flex max-w-full items-center truncate rounded-md border px-1.5 py-0.5 text-[11.5px] font-medium"
+          style={{
+            borderColor: 'var(--border)',
+            background: 'var(--grid)',
+            color: 'var(--ink-primary)',
+          }}
+        >
+          {row.rop}
+        </span>
+      ),
+  },
+  {
+    key: 'no',
+    header: '№',
+    width: '58px',
+    numeric: true,
+    // Zero-padded to three, as the floor writes it. It is an identifier for
+    // the day's Nth order, not a quantity, so it never gets a thousands
+    // separator and never changes when the table is re-sorted.
+    render: (row) => (
+      <span className="tabular text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+        {String(row.dailyNo).padStart(3, '0')}
+      </span>
+    ),
+  },
+  {
+    key: 'date',
+    // The row's name: what a screen reader announces the row BY, and the
+    // only column that is unique per row without being an opaque id.
+    rowHeader: true,
+    header: 'САНА',
+    sortKey: 'createdAt',
+    width: '112px',
+    render: (row) => (
+      <div className="whitespace-nowrap">
+        <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
+          {tashkentDate(row.createdAt)}
+        </span>
+        <span className="tabular block text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+          {tashkentTime(row.createdAt)}
+        </span>
+      </div>
+    ),
+  },
+  {
+    key: 'bitrixId',
+    header: 'ID СДЕЛКИ',
+    width: '96px',
+    numeric: true,
+    render: (row) => (
+      <span className="tabular text-[11.5px]" style={{ color: 'var(--ink-secondary)' }}>
+        {row.bitrixId ?? NO_VALUE}
+      </span>
+    ),
+  },
+  {
+    key: 'customer',
+    header: 'МИЖОЗ',
+    width: '140px',
+    render: (row) => (
+      <span className="truncate" style={{ color: 'var(--ink-primary)' }}>
+        {row.customerName ?? NO_VALUE}
+      </span>
+    ),
+  },
+  {
+    key: 'phone',
+    header: 'ТЕЛЕФОН',
+    width: '170px',
+    render: (row) => <PhoneCell phones={row.customerPhones} />,
+  },
+  {
+    key: 'operator',
+    header: 'ОПЕРАТОР',
+    width: '180px',
+    render: (row) => (
+      <span className="block truncate" style={{ color: 'var(--ink-secondary)' }}>
+        {row.employeeName}
+      </span>
+    ),
+  },
+  {
+    key: 'products',
+    header: 'ПРОДУКТ',
+    width: '230px',
+    render: (row) =>
+      row.products.length === 0 ? (
+        <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
+      ) : (
+        <ul className="space-y-1">
+          {row.products.map((product) => (
+            <li key={product} className="flex items-start gap-1.5 text-[11px] leading-snug">
+              {/* A drawn dot, not the • character: the glyph's size and
+                  baseline follow the font and drifted against the text. */}
+              <span
+                aria-hidden="true"
+                className="mt-[5px] h-[3px] w-[3px] shrink-0 rounded-full"
+                style={{ background: 'var(--ink-muted)' }}
+              />
+              <span className="truncate" style={{ color: 'var(--ink-secondary)' }}>
+                {product}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ),
+  },
+  {
+    key: 'amount',
+    header: 'СУММА',
+    sortKey: 'amountMinor',
+    align: 'right',
+    numeric: true,
+    width: '110px',
+    // The full figure, spaced — not compacted. This is an order list, and an
+    // operator reconciling it against Bitrix24 needs the exact so'm.
+    render: (row) => (
+      <span className="tabular font-medium" style={{ color: 'var(--ink-primary)' }}>
+        {formatNumber(row.amount.amount)}
+      </span>
+    ),
+  },
+  {
+    key: 'region',
+    header: 'РЕГИОН',
+    width: '120px',
+    render: (row) => (
+      <span style={{ color: 'var(--ink-secondary)' }}>{row.region ?? NO_VALUE}</span>
+    ),
+  },
+  {
+    key: 'address',
+    header: 'АДРЕС',
+    width: '200px',
+    /*
+      Truncated with the full text on hover, focus and touch.
+
+      Null until the Bitrix24 field UF_CRM_1748964117765 has been synced —
+      it was never imported before this release, so historic rows carry an
+      em dash and fill in as the resync walks them.
+    */
+    render: (row) =>
+      row.deliveryAddress === null ? (
+        <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
+      ) : (
+        <Tooltip content={<span className="block max-w-80">{row.deliveryAddress}</span>}>
+          <span className="block truncate" style={{ color: 'var(--ink-secondary)' }}>
+            {row.deliveryAddress}
+          </span>
+        </Tooltip>
+      ),
+  },
+  {
+    key: 'outcome',
+    header: 'СТАТУС',
+    width: '180px',
+    render: (row) => <OutcomeChip outcome={row.outcome} />,
+  },
+  {
+    key: 'source',
+    // Last, as on the dashboard this mirrors: it answers "where did this
+    // order come from", which is the question you ask AFTER you know what
+    // happened to it.
+    header: 'ИСТОЧНИК',
+    width: '130px',
+    render: (row) => (
+      <span className="block truncate" style={{ color: 'var(--ink-secondary)' }}>
+        {row.sourceName ?? NO_VALUE}
+      </span>
+    ),
+  },
+]
 
 export function ConfirmationPage() {
   const { filters, update, apiParams } = useDashboardFilters()
@@ -223,196 +429,6 @@ export function ConfirmationPage() {
     )
   }
 
-  const columns: Column<ConfirmationOrderDto>[] = [
-    {
-      key: 'rop',
-      header: 'РОП',
-      width: '116px',
-      /*
-        A pill, not bold text.
-
-        РОП is a GROUP an order belongs to, and it repeats down the column in
-        runs — as bold ink it competed with the customer name for the eye. A
-        bordered token reads as a label rather than a name, and the repetition
-        stops looking like emphasis.
-      */
-      render: (row) =>
-        row.rop === null ? (
-          <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
-        ) : (
-          <span
-            className="inline-flex max-w-full items-center truncate rounded-md border px-1.5 py-0.5 text-[11.5px] font-medium"
-            style={{
-              borderColor: 'var(--border)',
-              background: 'var(--grid)',
-              color: 'var(--ink-primary)',
-            }}
-          >
-            {row.rop}
-          </span>
-        ),
-    },
-    {
-      key: 'no',
-      header: '№',
-      width: '58px',
-      numeric: true,
-      // Zero-padded to three, as the floor writes it. It is an identifier for
-      // the day's Nth order, not a quantity, so it never gets a thousands
-      // separator and never changes when the table is re-sorted.
-      render: (row) => (
-        <span className="tabular text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
-          {String(row.dailyNo).padStart(3, '0')}
-        </span>
-      ),
-    },
-    {
-      key: 'date',
-      // The row's name: what a screen reader announces the row BY, and the
-      // only column that is unique per row without being an opaque id.
-      rowHeader: true,
-      header: 'САНА',
-      sortKey: 'createdAt',
-      width: '112px',
-      render: (row) => (
-        <div className="whitespace-nowrap">
-          <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
-            {tashkentDate(row.createdAt)}
-          </span>
-          <span className="tabular block text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-            {tashkentTime(row.createdAt)}
-          </span>
-        </div>
-      ),
-    },
-    {
-      key: 'bitrixId',
-      header: 'ID СДЕЛКИ',
-      width: '96px',
-      numeric: true,
-      render: (row) => (
-        <span className="tabular text-[11.5px]" style={{ color: 'var(--ink-secondary)' }}>
-          {row.bitrixId ?? NO_VALUE}
-        </span>
-      ),
-    },
-    {
-      key: 'customer',
-      header: 'МИЖОЗ',
-      width: '140px',
-      render: (row) => (
-        <span className="truncate" style={{ color: 'var(--ink-primary)' }}>
-          {row.customerName ?? NO_VALUE}
-        </span>
-      ),
-    },
-    {
-      key: 'phone',
-      header: 'ТЕЛЕФОН',
-      width: '170px',
-      render: (row) => <PhoneCell phones={row.customerPhones} />,
-    },
-    {
-      key: 'operator',
-      header: 'ОПЕРАТОР',
-      width: '180px',
-      render: (row) => (
-        <span className="block truncate" style={{ color: 'var(--ink-secondary)' }}>
-          {row.employeeName}
-        </span>
-      ),
-    },
-    {
-      key: 'products',
-      header: 'ПРОДУКТ',
-      width: '230px',
-      render: (row) =>
-        row.products.length === 0 ? (
-          <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
-        ) : (
-          <ul className="space-y-1">
-            {row.products.map((product) => (
-              <li key={product} className="flex items-start gap-1.5 text-[11px] leading-snug">
-                {/* A drawn dot, not the • character: the glyph's size and
-                    baseline follow the font and drifted against the text. */}
-                <span
-                  aria-hidden="true"
-                  className="mt-[5px] h-[3px] w-[3px] shrink-0 rounded-full"
-                  style={{ background: 'var(--ink-muted)' }}
-                />
-                <span className="truncate" style={{ color: 'var(--ink-secondary)' }}>
-                  {product}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ),
-    },
-    {
-      key: 'amount',
-      header: 'СУММА',
-      sortKey: 'amountMinor',
-      align: 'right',
-      numeric: true,
-      width: '110px',
-      // The full figure, spaced — not compacted. This is an order list, and an
-      // operator reconciling it against Bitrix24 needs the exact so'm.
-      render: (row) => (
-        <span className="tabular font-medium" style={{ color: 'var(--ink-primary)' }}>
-          {formatNumber(row.amount.amount)}
-        </span>
-      ),
-    },
-    {
-      key: 'region',
-      header: 'РЕГИОН',
-      width: '120px',
-      render: (row) => (
-        <span style={{ color: 'var(--ink-secondary)' }}>{row.region ?? NO_VALUE}</span>
-      ),
-    },
-    {
-      key: 'address',
-      header: 'АДРЕС',
-      width: '200px',
-      /*
-        Truncated with the full text on hover, focus and touch.
-
-        Null until the Bitrix24 field UF_CRM_1748964117765 has been synced —
-        it was never imported before this release, so historic rows carry an
-        em dash and fill in as the resync walks them.
-      */
-      render: (row) =>
-        row.deliveryAddress === null ? (
-          <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
-        ) : (
-          <Tooltip content={<span className="block max-w-80">{row.deliveryAddress}</span>}>
-            <span className="block truncate" style={{ color: 'var(--ink-secondary)' }}>
-              {row.deliveryAddress}
-            </span>
-          </Tooltip>
-        ),
-    },
-    {
-      key: 'outcome',
-      header: 'СТАТУС',
-      width: '180px',
-      render: (row) => <OutcomeChip outcome={row.outcome} />,
-    },
-    {
-      key: 'source',
-      // Last, as on the dashboard this mirrors: it answers "where did this
-      // order come from", which is the question you ask AFTER you know what
-      // happened to it.
-      header: 'ИСТОЧНИК',
-      width: '130px',
-      render: (row) => (
-        <span className="block truncate" style={{ color: 'var(--ink-secondary)' }}>
-          {row.sourceName ?? NO_VALUE}
-        </span>
-      ),
-    },
-  ]
 
   const shown = data?.pagination.totalItems ?? null
 
@@ -442,6 +458,7 @@ export function ConfirmationPage() {
       description={t.modules.confirmation.lead}
       accent="var(--series-4)"
       meta={query.data?.meta}
+      stale={query.isPlaceholderData}
       filters={{
         search: true,
         // Every column the table shows is searchable, so the box says so —
@@ -617,7 +634,7 @@ export function ConfirmationPage() {
         </header>
 
         <DataTable
-          columns={columns}
+          columns={QUEUE_COLUMNS}
           rows={data?.items ?? []}
           rowKey={(row) => row.dealId}
           status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
@@ -920,10 +937,18 @@ function OutcomeChip({ outcome }: { outcome: ConfirmationOutcome }) {
         // A hairline of the state's own colour. The tint alone reads as a
         // wash at 11%; the ring is what makes it a deliberate object.
         boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${spec.color} 26%, transparent)`,
-        color: spec.color,
+        /*
+          The WORDS are ink; only the mark wears the state's colour — the
+          StatusBadge idiom. Status-coloured 11px text on an 11% self-tint
+          measured ~4.0:1 in dark, under the AA floor, and the colour is not
+          the information anyway: the glyph and the label are.
+        */
+        color: 'var(--ink-primary)',
       }}
     >
-      <spec.Glyph size={12} className="shrink-0" />
+      <span aria-hidden="true" className="inline-flex shrink-0" style={{ color: spec.color }}>
+        <spec.Glyph size={12} />
+      </span>
       {spec.label}
     </span>
   )

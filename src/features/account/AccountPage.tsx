@@ -187,7 +187,13 @@ export function AccountPage() {
                 className="rounded-[var(--radius-panel-sm)] px-3 py-2 text-xs"
                 style={{
                   background: 'color-mix(in oklab, var(--status-critical) 12%, transparent)',
-                  color: 'var(--status-critical)',
+                  /*
+                    --delta-down, not --status-critical: text ON a 12% tint of
+                    the critical hue. globals.css measured the bare token at
+                    4.11:1 there in dark — under the 4.5:1 floor — and minted
+                    this lighter cut of the same hue for exactly this seat.
+                  */
+                  color: 'var(--delta-down)',
                 }}
                 role="alert"
               >

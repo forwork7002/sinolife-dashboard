@@ -144,6 +144,7 @@ export function WarehousePage() {
       description={t.modules.warehouse.lead}
       accent="var(--series-6)"
       meta={query.data?.meta}
+      stale={query.isPlaceholderData}
     >
       {/*
         The lead instrument — the page's one hero, wearing the registration

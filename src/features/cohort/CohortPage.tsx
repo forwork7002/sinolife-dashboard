@@ -155,6 +155,7 @@ export function CohortPage() {
       description={t.modules.cohort.lead}
       accent="var(--series-7)"
       meta={query.data?.meta}
+      stale={concentration.isPlaceholderData}
     >
       {/*
         THE PERIOD CONTROL GOVERNS THE BOTTOM OF THIS PAGE, NOT THE TOP.
