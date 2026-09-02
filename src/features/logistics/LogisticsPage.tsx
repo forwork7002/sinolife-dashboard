@@ -323,7 +323,7 @@ export function LogisticsPage() {
 
       <ChartCard
         title="Sklad va tashuvchi boʻyicha"
-        hint="Buyurtma qaysi hudud omboridan yoki qaysi pochta orqali ketgani — bosqichlar tarixidan olingan."
+        hint="Davr ichida yaratilgan buyurtmalar boʻyicha. Buyurtma qaysi hudud omboridan yoki qaysi pochta orqali ketgani — bosqichlar tarixidan olingan."
       >
         <DataTable
           columns={columns}
@@ -334,8 +334,20 @@ export function LogisticsPage() {
           // no retry, unlike the identical table directly above.
           errorMessage={(query.error as Error | null)?.message}
           onRetry={() => void query.refetch()}
-          emptyTitle="Yoʻnalish maʼlumoti yoʻq"
-          emptyBody="Bosqichlar tarixi hali import qilinmagan boʻlishi mumkin."
+          /*
+            THE WINDOW FIRST, the import second.
+
+            This table and the one above it are the same query grouped two
+            ways, so they empty and fill together — and this one used to answer
+            an empty «Bugun» with "the stage history may not be imported yet"
+            while the identical table above it correctly said there were no
+            orders in the period. One of the two was always wrong. The import
+            is still a genuine second explanation for THIS grouping, which
+            reads the stage history where the regions do not, so it stays —
+            behind the reason that is true far more often.
+          */
+          emptyTitle="Bu davrda buyurtma yoʻq"
+          emptyBody="Yoki bosqichlar tarixi hali import qilinmagan."
           minWidth={980}
           maxHeight={560}
         />

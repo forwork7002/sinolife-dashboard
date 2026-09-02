@@ -211,7 +211,21 @@ export class ReferenceRepository {
         periodEnd: { gt: asOf },
         ...(employeeIds?.length ? { employeeId: { in: [...employeeIds] } } : {}),
       },
-      select: { id: true, employeeId: true, metric: true, targetValue: true },
+      /*
+        The plan's own dates travel with it.
+
+        Without them every consumer scored the target against whatever window
+        the reader had selected — see `kpiWindow` in domain/analytics/performance
+        for the two wrong numbers that produced.
+      */
+      select: {
+        id: true,
+        employeeId: true,
+        metric: true,
+        targetValue: true,
+        periodStart: true,
+        periodEnd: true,
+      },
     })
 
     return rows

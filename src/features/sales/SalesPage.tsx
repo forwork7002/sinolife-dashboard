@@ -154,6 +154,40 @@ export function SalesPage() {
       ? trend.reduce((sum, point) => sum + point.revenue, 0) / trend.length
       : undefined
 
+  /**
+   * What one point on the hero chart actually is.
+   *
+   * READ OFF THE DATA, not off the preset. The server widens the bucket as the
+   * window grows — daily up to about two months, then weekly, then monthly —
+   * and the payload carries no granularity field, so the honest way to caption
+   * the chart is to measure the gap between the points it is drawing. Nothing
+   * to measure under two points, and then the caption drops the claim rather
+   * than guessing.
+   */
+  const bucketLabel = (() => {
+    if (trend.length < 2) return null
+
+    const days =
+      (new Date(trend[1]!.date).getTime() - new Date(trend[0]!.date).getTime()) / 86_400_000
+
+    if (days <= 2) return t.chart.buckets.day
+    if (days <= 10) return t.chart.buckets.week
+    return t.chart.buckets.month
+  })()
+
+  /**
+   * The calendar unit the forecast projects to the end of.
+   *
+   * `fullUnitWindow` in domain/analytics/pulse widens the reporting window to
+   * this unit before projecting, so the tile beside it has to name the same
+   * thing. The presets not listed are complete windows — the forecast hides
+   * itself on those, so 'Davr' is a fallback nobody should see.
+   */
+  const unitName =
+    { today: 'Kun', this_week: 'Hafta', this_month: 'Oy', this_year: 'Yil' }[
+      filters.preset as string
+    ] ?? 'Davr'
+
   const wonSpark = trend.map((point) => point.dealsWon)
   const createdSpark = trend.map((point) => point.dealsCreated)
 
@@ -233,7 +267,8 @@ export function SalesPage() {
               {t.chart.revenueTrend}
             </h2>
             <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-muted)' }}>
-              {t.chart.revenueTrendHint}
+              {t.chart.revenueTrendBasis}
+              {bucketLabel && `, ${bucketLabel}`}
             </p>
           </div>
         </header>
@@ -477,11 +512,22 @@ export function SalesPage() {
         */}
         {pulseData && pulseData.forecast.elapsedPercent < 100 && (
           <StatTile
-            label="Davr yakuni prognozi"
+            label={`${unitName} yakuni prognozi`}
             value={pulseData.forecast.projected ? pulseData.forecast.projected.amount : null}
             unit="money"
             status={pulseStatus}
-            hint={`Davrning ${formatPercent(
+            /*
+              THE CALENDAR UNIT, NOT "THE PERIOD".
+
+              `forecast.elapsedPercent` measures the FULL unit — a projection
+              for all of September has to be read against how much of September
+              has gone. The window this page prints under its title is
+              month-to-DATE, which ends at midnight tonight and is therefore
+              always about to be finished. Calling the same figure "davrning"
+              set the two against each other: the header said 1–2 September and
+              the tile said six per cent of it had elapsed.
+            */
+            hint={`${unitName}ning ${formatPercent(
               pulseData.forecast.elapsedPercent,
               0,
             )} qismi oʻtdi — shu surʼatda davom etsa`}

@@ -17,7 +17,7 @@ import {
   type ConcentrationRepeatDto,
   apiGet,
 } from '@/lib/api'
-import { NO_VALUE, formatNumber, formatPercent } from '@/lib/format'
+import { NO_VALUE, formatDate, formatNumber, formatPercent } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 /**
@@ -94,10 +94,47 @@ export function CohortPage() {
    * never read as covering everything.
    */
   const nullCustomerShare = conc?.pareto.nullCustomerSharePercent ?? null
-  const concentrationCaption =
+  /*
+    The window is NAMED here rather than under the page title.
+
+    PageShell prints the resolved dates beside the description, and the
+    description on this page belongs to the cohort matrix — which has no
+    window. So the dates are stated where they actually apply: on the one band
+    the period control drives.
+  */
+  const concentrationWindow = concentration.data?.meta.period
+  const concentrationCaption = [
+    concentrationWindow
+      ? `${formatDate(concentrationWindow.start)} – ${formatDate(
+          new Date(new Date(concentrationWindow.end).getTime() - 1).toISOString(),
+        )} oraligʻida yutilgan bitimlar boʻyicha.`
+      : 'Davrda yutilgan bitimlar boʻyicha.',
     nullCustomerShare !== null && nullCustomerShare > 0
-      ? `Davrda yutilgan bitimlar boʻyicha. Tushumning ${formatPercent(nullCustomerShare)} qismi mijozga bogʻlanmagan — ulushlar faqat aniqlangan mijozlarni hisoblaydi.`
-      : 'Davrda yutilgan bitimlar boʻyicha.'
+      ? `Tushumning ${formatPercent(nullCustomerShare)} qismi mijozga bogʻlanmagan — ulushlar faqat aniqlangan mijozlarni hisoblaydi.`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  /*
+    WHICH FIRST BUYERS, and when they bought.
+
+    This gauge cannot use the window the rest of the band uses. Giving every
+    buyer a full ninety days to come back means the cohort has to be drawn
+    from ninety days EARLIER — a first purchase made yesterday cannot have had
+    its horizon yet, and counting it would flatter the rate. The repository
+    does exactly that (`horizon` in concentrationRepository), and the hint said
+    only "toʻliq 90 kunlik ufq berilgan" while the caption above the band named
+    the unshifted window. Two different spans, one of them unnamed.
+  */
+  const horizonWindow = (() => {
+    if (!concentrationWindow) return null
+
+    const shift = 90 * 86_400_000
+    const from = new Date(new Date(concentrationWindow.start).getTime() - shift)
+    const to = new Date(new Date(concentrationWindow.end).getTime() - shift - 1)
+    return `${formatDate(from.toISOString())} – ${formatDate(to.toISOString())}`
+  })()
 
   /* p90 beside the median, and the honest denominator: percentile claims on
      a dozen pairs and on a thousand read very differently. */
@@ -119,6 +156,25 @@ export function CohortPage() {
       accent="var(--series-7)"
       meta={query.data?.meta}
     >
+      {/*
+        THE PERIOD CONTROL GOVERNS THE BOTTOM OF THIS PAGE, NOT THE TOP.
+
+        Everything down to the ladder is a statement about the whole customer
+        history — "how many of March's buyers came back" only means something
+        if every month since is counted, so `/insights/cohorts` takes no
+        window and none of it moves when the presets are clicked. The
+        concentration band below IS period-scoped.
+
+        A control that visibly changes half a screen and leaves the other half
+        still is the reader's problem to solve unless the screen says which
+        half is which. This header says it, and the band's own caption below
+        states the window it is read in.
+      */}
+      <SectionHeader
+        title="Kogorta tahlili"
+        hint="Butun tarix boʻyicha hisoblanadi — tanlangan davr bu blokka taʼsir qilmaydi."
+      />
+
       <div className="stagger grid grid-cols-2 gap-3 xl:grid-cols-4">
         <GaugeTile
           status={tileStatus}
@@ -290,7 +346,9 @@ export function CohortPage() {
           tone="neutral"
           hint={
             conc
-              ? `Kohorta: ${formatNumber(conc.repeat.cohortSize)} ta birinchi xaridor, har biriga toʻliq 90 kunlik ufq berilgan`
+              ? `Kohorta: ${formatNumber(conc.repeat.cohortSize)} ta birinchi xaridor${
+                  horizonWindow ? ` (${horizonWindow})` : ''
+                }, har biriga toʻliq 90 kunlik ufq berilgan`
               : undefined
           }
         />

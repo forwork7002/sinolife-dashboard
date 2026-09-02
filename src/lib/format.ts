@@ -157,23 +157,76 @@ const UZ_MONTHS_SHORT = [
   'iyl', 'avg', 'sen', 'okt', 'noy', 'dek',
 ] as const
 
-/** Local time zone on purpose — identical semantics to the Intl calls this
- *  replaced, which also carried no explicit timeZone. */
+/**
+ * THE ZONE EVERY DATE ON SCREEN IS READ IN.
+ *
+ * Mirrors the server's `APP_TIMEZONE`, and it has to be STATED rather than
+ * left to the browser. Every dated value that reaches this file was computed
+ * in Tashkent on the server and travels as a UTC instant: the reporting
+ * window's bounds, the trend buckets, the daily order numbering. Rendering
+ * those with `getDate()` asked the reader's own machine where the day starts,
+ * so a laptop left on UTC printed the period line "1-sen – 2-sen" as
+ * "31-avg – 2-sen" and drew every chart point one day early, while a browser
+ * east of us printed one day late.
+ *
+ * It also removes a hydration hazard that was only hidden by everyone sitting
+ * in the same office: the server renders in UTC and the browser in local time,
+ * so the two disagreed about every date until React re-rendered.
+ *
+ * The confirmation queue already pinned its САНА column here for exactly this
+ * reason. This is that fix, once, for everything dated.
+ */
+export const APP_TIME_ZONE = 'Asia/Tashkent'
+
+/*
+  `h23` rather than `hour12: false`: several ICU builds render midnight as
+  "24" under the latter, which would print a sync stamp of "24:05".
+*/
+const APP_ZONE_PARTS = new Intl.DateTimeFormat('en-GB', {
+  timeZone: APP_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
+
+/** An instant broken into the wall-clock fields a Tashkent reader would see. */
+function appZoneParts(iso: string): {
+  day: number
+  month: number
+  year: number
+  hour: string
+  minute: string
+} {
+  const parts = APP_ZONE_PARTS.formatToParts(new Date(iso))
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? '00'
+
+  return {
+    day: Number(value('day')),
+    // Intl months are 1-based; UZ_MONTHS_SHORT is indexed from zero.
+    month: Number(value('month')) - 1,
+    year: Number(value('year')),
+    hour: value('hour'),
+    minute: value('minute'),
+  }
+}
+
 export function formatDate(iso: string): string {
-  const d = new Date(iso)
-  return `${d.getDate()}-${UZ_MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`
+  const { day, month, year } = appZoneParts(iso)
+  return `${day}-${UZ_MONTHS_SHORT[month]} ${year}`
 }
 
 export function formatDateShort(iso: string): string {
-  const d = new Date(iso)
-  return `${d.getDate()}-${UZ_MONTHS_SHORT[d.getMonth()]}`
+  const { day, month } = appZoneParts(iso)
+  return `${day}-${UZ_MONTHS_SHORT[month]}`
 }
 
 export function formatDateTime(iso: string): string {
-  const d = new Date(iso)
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mm = String(d.getMinutes()).padStart(2, '0')
-  return `${d.getDate()}-${UZ_MONTHS_SHORT[d.getMonth()]}, ${hh}:${mm}`
+  const { day, month, hour, minute } = appZoneParts(iso)
+  return `${day}-${UZ_MONTHS_SHORT[month]}, ${hour}:${minute}`
 }
 
 /** Em dash for "no value". Deliberately distinct from a zero. */

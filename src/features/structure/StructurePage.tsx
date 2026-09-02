@@ -141,10 +141,38 @@ export function StructurePage() {
         )}
       </section>
 
+      {/*
+        TWO OF THESE THREE DO NOT MOVE WITH THE PRESET.
+
+        The org chart is a fact about today — how many departments exist, how
+        many people are on the roster — and no window makes it a different
+        number. Revenue beside them is period-scoped. Three tiles in one row
+        read as three answers to one question, so the two that are not say so
+        rather than leaving a reader to click through the presets and wonder
+        why only the third one changes.
+      */}
       <div className="stagger grid gap-3 sm:grid-cols-3">
-        <StatTile status={tileStatus} label="Boʻlimlar" value={flat.length || null} unit="count" />
-        <StatTile status={tileStatus} label="Xodimlar" value={totalPeople || null} unit="count" />
-        <StatTile status={tileStatus} label="Tushum" value={totalRevenue || null} unit="money" />
+        <StatTile
+          status={tileStatus}
+          label="Boʻlimlar"
+          value={flat.length || null}
+          unit="count"
+          hint="Hozirgi holat"
+        />
+        <StatTile
+          status={tileStatus}
+          label="Xodimlar"
+          value={totalPeople || null}
+          unit="count"
+          hint="Hozirgi holat"
+        />
+        <StatTile
+          status={tileStatus}
+          label="Tushum"
+          value={totalRevenue || null}
+          unit="money"
+          hint="Davr ichida yopilgan bitimlar"
+        />
       </div>
 
       <ChartCard

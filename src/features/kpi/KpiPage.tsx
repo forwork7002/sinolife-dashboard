@@ -9,8 +9,8 @@ import { StatusBadge } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
-import { ApiClientError, apiGet, type MoneyDto } from '@/lib/api'
-import { NO_VALUE, formatCompactUzs, formatNumber, formatPercent } from '@/lib/format'
+import { ApiClientError, apiGet, type MoneyDto, type PeriodDto } from '@/lib/api'
+import { NO_VALUE, formatCompactUzs, formatDate, formatNumber, formatPercent } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 interface KpiItem {
@@ -28,6 +28,16 @@ interface KpiItem {
 }
 
 interface KpiPayload {
+  /**
+   * The span every figure here is measured over: the PLAN's period, not the
+   * window in the address bar.
+   *
+   * Null when no targets are set, which is the portal's state today. The
+   * preset above still chooses which plan is in view — it picks the plan whose
+   * period contains the window's last day — but it does not slice it, because
+   * a month's target says nothing about a Tuesday.
+   */
+  readonly planPeriod: PeriodDto | null
   readonly elapsedPercent: number
   readonly overallPercent: number | null
   readonly counts: {
@@ -123,9 +133,21 @@ export function KpiPage() {
         the method that, so it has to survive somewhere a reader can connect it
         to the numbers. This line is that place.
       */
+      /*
+        THE PLAN'S DATES, NOT THE ADDRESS BAR'S.
+
+        The pace figure beside them is the plan's own clock. Both used to come
+        from the report window, which is to-date — so on the 2nd of a 30-day
+        month this line read "79% qismi oʻtdi" and every target below it was
+        graded BEHIND against a month that was six per cent gone.
+      */
       description={
-        data
-          ? `Yanovskiy tizimi boʻyicha baholash · davrning ${formatPercent(data.elapsedPercent, 0)} qismi oʻtdi`
+        data?.planPeriod
+          ? `Yanovskiy tizimi boʻyicha baholash · ${formatDate(
+              data.planPeriod.start,
+            )} – ${formatDate(
+              new Date(new Date(data.planPeriod.end).getTime() - 1).toISOString(),
+            )} rejasi · ${formatPercent(data.elapsedPercent, 0)} qismi oʻtdi`
           : 'Yanovskiy tizimi boʻyicha baholash'
       }
       meta={query.data?.meta}
@@ -184,7 +206,7 @@ export function KpiPage() {
                 has to carry one across the panel to reach the other.
               */
               <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                davr oʻtishi {formatPercent(data.elapsedPercent, 0)} · bajarilish{' '}
+                reja oʻtishi {formatPercent(data.elapsedPercent, 0)} · bajarilish{' '}
                 {formatPercent(data.overallPercent, 0)}
               </p>
             )}
@@ -205,7 +227,10 @@ export function KpiPage() {
         <CountCard label={t.kpiStatus.BEHIND} value={data?.counts.behind} tone="critical" />
       </div>
 
-      <ChartCard title="KPI rejalari" hint="Davr ichida oʻtgan vaqtga nisbatan baholanadi">
+      <ChartCard
+        title="KPI rejalari"
+        hint="Har bir reja oʻz davri boʻyicha — rejadan oʻtgan vaqtga nisbatan baholanadi"
+      >
         <DataTable
           columns={columns}
           rows={data?.items ?? []}

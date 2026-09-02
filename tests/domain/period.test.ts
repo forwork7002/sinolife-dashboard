@@ -1,3 +1,4 @@
+import { TZDate } from '@date-fns/tz'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -177,8 +178,8 @@ describe('previousEquivalent', () => {
     expect(periodLengthInDays(previous)).toBe(periodLengthInDays(current))
   })
 
-  it('caps at the month end when the previous month is shorter', () => {
-    // Whole of March (31 days) has no 31-day counterpart in February.
+  it('compares a whole month against the whole month before it', () => {
+    // Whole of March (31 days) against the whole of February (28).
     const march = resolvePeriod('previous_month', {
       timeZone: TZ,
       now: new Date('2026-04-15T09:00:00.000Z'),
@@ -189,8 +190,109 @@ describe('previousEquivalent', () => {
     expect(inTashkent(february.start)).toBe('2026-02-01 00:00:00')
     expect(inTashkent(february.end)).toBe('2026-03-01 00:00:00')
     expect(periodLengthInDays(february)).toBe(28)
-    // Flagged, so the UI can disclose that the windows differ in length.
+    // Nothing was shortened: months differ in length, and comparing one whole
+    // month against the whole month before it is what this preset means.
+    expect(february.isTruncated).toBe(false)
+  })
+
+  it('does not clip the comparison when the earlier month is LONGER', () => {
+    /*
+      The regression this locks. February (28 days) used to be compared
+      against the first 28 days of January, because the comparison was built
+      by giving the previous month the same DAY COUNT as the current one.
+      Three days of January's revenue went missing from the denominator and
+      every "Oʻtgan oy" delta on every screen read about ten per cent high.
+    */
+    const february = resolvePeriod('previous_month', {
+      timeZone: TZ,
+      now: new Date('2026-03-15T09:00:00.000Z'),
+    })
+    expect(periodLengthInDays(february)).toBe(28)
+
+    const january = previousEquivalent(february)
+    expect(inTashkent(january.start)).toBe('2026-01-01 00:00:00')
+    expect(inTashkent(january.end)).toBe('2026-02-01 00:00:00')
+    expect(periodLengthInDays(january)).toBe(31)
+    expect(january.isTruncated).toBe(false)
+  })
+
+  it('compares each whole month against the whole month before it, all year', () => {
+    // Every month of 2026, so a calendar quirk cannot hide in one pair.
+    for (let month = 1; month <= 12; month += 1) {
+      const now = new Date(Date.UTC(2026, month, 15, 9, 0, 0))
+      const period = resolvePeriod('previous_month', { timeZone: TZ, now })
+      const previous = previousEquivalent(period)
+
+      // The comparison ends exactly where the period begins: no gap, no overlap.
+      expect(previous.end.getTime()).toBe(period.start.getTime())
+      // And it starts a whole month earlier, never a day-count earlier.
+      const startedAt = new TZDate(previous.start.getTime(), TZ)
+      expect(startedAt.getDate()).toBe(1)
+      expect(previous.isTruncated).toBe(false)
+    }
+  })
+
+  it('keeps month-to-date anchored to the same days, and flags a short month', () => {
+    // 1-30 March: to-date, so the comparison is anchored — and February cannot
+    // supply thirty days, so it is capped at the month end and says so.
+    const march = resolvePeriod('this_month', {
+      timeZone: TZ,
+      now: new Date('2026-03-30T09:00:00.000Z'),
+    })
+    expect(periodLengthInDays(march)).toBe(30)
+
+    const february = previousEquivalent(march)
+    expect(inTashkent(february.start)).toBe('2026-02-01 00:00:00')
+    expect(inTashkent(february.end)).toBe('2026-03-01 00:00:00')
     expect(february.isTruncated).toBe(true)
+  })
+
+  it('compares a month-to-date window that fills its month against the whole month before', () => {
+    /*
+      On the last day of the month the to-date window IS the whole month, and
+      its counterpart has to be the whole month before it. Anchoring by day
+      count would hand September the first thirty days of August and quietly
+      drop the 31st.
+
+      The pulse forecast depends on this: it widens the window to the full
+      calendar unit before asking for a reference, because a projection for all
+      of September must be read against all of August.
+    */
+    const march = resolvePeriod('this_month', {
+      timeZone: TZ,
+      now: new Date('2026-03-31T09:00:00.000Z'),
+    })
+    expect(periodLengthInDays(march)).toBe(31)
+
+    const february = previousEquivalent(march)
+    expect(inTashkent(february.start)).toBe('2026-02-01 00:00:00')
+    expect(inTashkent(february.end)).toBe('2026-03-01 00:00:00')
+    // Nothing was shortened — February is simply a shorter month.
+    expect(february.isTruncated).toBe(false)
+  })
+
+  it('compares a full year against the whole year before it, leap day included', () => {
+    // 31 December: "shu yil" covers the whole of 2025, and 2024 is a leap year.
+    const year = resolvePeriod('this_year', {
+      timeZone: TZ,
+      now: new Date('2025-12-31T09:00:00.000Z'),
+    })
+    expect(periodLengthInDays(year)).toBe(365)
+
+    const previous = previousEquivalent(year)
+    expect(inTashkent(previous.start)).toBe('2024-01-01 00:00:00')
+    expect(inTashkent(previous.end)).toBe('2025-01-01 00:00:00')
+    expect(periodLengthInDays(previous)).toBe(366)
+    expect(previous.isTruncated).toBe(false)
+  })
+
+  it('still anchors year-to-date to the same days a year earlier', () => {
+    const yearToDate = resolvePeriod('this_year', { timeZone: TZ, now: NOW })
+    const previous = previousEquivalent(yearToDate)
+
+    expect(inTashkent(previous.start)).toBe('2025-01-01 00:00:00')
+    expect(inTashkent(previous.end)).toBe('2025-08-24 00:00:00')
+    expect(periodLengthInDays(previous)).toBe(periodLengthInDays(yearToDate))
   })
 
   it('shifts today back exactly one day', () => {

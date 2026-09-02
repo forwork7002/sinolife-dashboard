@@ -10,6 +10,7 @@ import {
   classifyKpi,
   employeePerformance,
   evaluateKpi,
+  kpiWindow,
   overallAchievementPercent,
   periodElapsedFraction,
 } from '@/server/domain/analytics/performance'
@@ -229,7 +230,18 @@ describe('classifyKpi', () => {
 
 describe('evaluateKpi', () => {
   const deals = [won('a', 300_000_00n, '2026-08-10T06:00:00.000Z', 'emp-1')]
-  const summary = summarizeDeals(deals, august, UZS)
+
+  /*
+    THE PLAN'S OWN WINDOW: the whole of August, not the report's month-to-date.
+
+    A target is a contract for a stated span, so both the actual and the
+    expected pace are read over the plan — which is why the definition carries
+    its dates and `evaluateKpi` no longer accepts a period at all.
+  */
+  const PLAN_START = new Date('2026-07-31T19:00:00.000Z') // 1 Aug, Tashkent
+  const PLAN_END = new Date('2026-08-31T19:00:00.000Z') // 1 Sep, Tashkent
+  const plan = { periodStart: PLAN_START, periodEnd: PLAN_END }
+  const summary = summarizeDeals(deals, kpiWindow({ ...plan } as KpiDefinition, TZ), UZS)
 
   it('measures a revenue target in minor units', () => {
     const definition: KpiDefinition = {
@@ -237,8 +249,9 @@ describe('evaluateKpi', () => {
       employeeId: 'emp-1',
       metric: 'REVENUE',
       targetValue: 600_000_00n,
+      ...plan,
     }
-    const result = evaluateKpi(definition, summary, august, NOW)
+    const result = evaluateKpi(definition, summary, TZ, NOW)
     expect(result.actualValue).toBe(300_000_00n)
     expect(result.achievementBp).toBe(5_000) // 50.00%
   })
@@ -249,8 +262,9 @@ describe('evaluateKpi', () => {
       employeeId: 'emp-1',
       metric: 'DEALS_WON',
       targetValue: 4n,
+      ...plan,
     }
-    expect(evaluateKpi(definition, summary, august, NOW).achievementBp).toBe(2_500)
+    expect(evaluateKpi(definition, summary, TZ, NOW).achievementBp).toBe(2_500)
   })
 
   it('returns null attainment for a zero target rather than infinity', () => {
@@ -259,8 +273,9 @@ describe('evaluateKpi', () => {
       employeeId: 'emp-1',
       metric: 'REVENUE',
       targetValue: 0n,
+      ...plan,
     }
-    const result = evaluateKpi(definition, summary, august, NOW)
+    const result = evaluateKpi(definition, summary, TZ, NOW)
     expect(result.achievementBp).toBeNull()
     expect(result.status).toBe('AT_RISK')
   })
@@ -271,8 +286,49 @@ describe('evaluateKpi', () => {
       employeeId: 'emp-1',
       metric: 'REVENUE',
       targetValue: 100_000_00n,
+      ...plan,
     }
-    expect(evaluateKpi(definition, summary, august, NOW).status).toBe('ACHIEVED')
+    expect(evaluateKpi(definition, summary, TZ, NOW).status).toBe('ACHIEVED')
+  })
+
+  it('grades pace against the PLAN, not against a to-date report window', () => {
+    /*
+      THE REGRESSION THIS LOCKS.
+
+      A to-date window is ~100% elapsed by construction: on 23 August "Shu oy"
+      runs 1–24 August and ends at midnight tonight, so 98% of it has passed
+      while only 73% of August has. Pace was read off that window, so the page
+      announced "davrning 98% qismi oʻtdi" on the 23rd — and on the 2nd, when
+      6% of the month was gone, it announced 79%.
+
+      At 70% attained the two answers differ in the grade, not just the words:
+      70/73 is AT_RISK, 70/98 is BEHIND.
+    */
+    const reportWindow = resolvePeriod('this_month', { timeZone: TZ, now: NOW })
+    const reportElapsed = periodElapsedFraction(reportWindow, NOW)
+    expect(reportElapsed).toBeGreaterThan(0.97)
+
+    const definition: KpiDefinition = {
+      id: 'kpi-5',
+      employeeId: 'emp-1',
+      metric: 'REVENUE',
+      // 300k banked against this reads 69.99% — basis points are integers and
+      // the division truncates, which is the contract, not a rounding slip.
+      targetValue: 428_571_43n,
+      ...plan,
+    }
+
+    const planElapsed = periodElapsedFraction(kpiWindow(definition, TZ), NOW)
+    expect(planElapsed).toBeGreaterThan(0.72)
+    expect(planElapsed).toBeLessThan(0.74)
+
+    const evaluation = evaluateKpi(definition, summary, TZ, NOW)
+    expect(evaluation.achievementBp).toBe(6_999)
+    expect(evaluation.status).toBe('AT_RISK')
+
+    // And the grade the old code produced, kept here so the difference is
+    // visible rather than asserted only as an absence.
+    expect(classifyKpi(evaluation.achievementBp, reportElapsed)).toBe('BEHIND')
   })
 })
 

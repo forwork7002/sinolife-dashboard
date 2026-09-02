@@ -5,8 +5,8 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 import { rememberPeriod, rememberedPeriod } from './periodMemory'
 
-import type { PeriodPreset, PeriodSelection } from '@/components/layout/PeriodFilter'
-import type { ConfirmationOutcome } from '@/lib/api'
+import { PERIOD_PRESETS, type PeriodPreset, type PeriodSelection } from '@/components/layout/PeriodFilter'
+import { CONFIRMATION_OUTCOMES, type ConfirmationOutcome } from '@/lib/api'
 
 /**
  * Dashboard filter state, held in the URL.
@@ -50,6 +50,15 @@ export interface DashboardFilters {
   readonly outcomes: readonly ConfirmationOutcome[]
   /** Which ROP group the confirmation queue is narrowed to. */
   readonly rop?: string
+  /**
+   * Which question the confirmation board answers.
+   *
+   * 'window' reads the reporting period, 'backlog' ignores it and lists what
+   * is waiting right now. It lives in the URL like every other filter so the
+   * header bell can link straight to the backlog and a shared link opens on
+   * the same view it was copied from.
+   */
+  readonly queue: 'window' | 'backlog'
   readonly q?: string
   readonly page: number
   readonly pageSize: number
@@ -65,6 +74,7 @@ const DEFAULTS: DashboardFilters = {
   productIds: [],
   sourceIds: [],
   outcomes: [],
+  queue: 'window',
   page: 1,
   pageSize: 25,
   sort: 'createdAtSource',
@@ -75,6 +85,50 @@ function list(value: string | null): string[] {
   return value ? value.split(',').filter(Boolean) : []
 }
 
+/**
+ * A preset the application actually has.
+ *
+ * The URL is user-editable and arrives from links pasted between phones, so
+ * `?preset=` is not a value this hook may trust. It used to be cast straight to
+ * `PeriodPreset`: a typo, a truncated link or a preset removed in a later
+ * release reached the API, which rejected it, and every card on the page went
+ * to an error state while the control lit no button — leaving nothing on
+ * screen to click that would put it right.
+ *
+ * An unreadable window falls back to the default, which is the one behaviour
+ * that leaves the reader with a working page and a control they can steer.
+ * 'custom' is only honoured with both bounds, for the same reason: the API
+ * rejects it without them.
+ */
+/**
+ * A bounded whole number, or the default.
+ *
+ * Same reasoning as `resolvePresetParam`: the address bar is not a value this
+ * hook may trust. `Number('abc')` is NaN and `?page=-3` is a negative offset —
+ * both used to reach the API, which rejected them, and every card on the page
+ * went to an error state with nothing on screen able to put it right. The
+ * ceilings match the server's own (`paginationQuerySchema`,
+ * `confirmationOrdersQuerySchema`) so a value this accepts is never one the
+ * API refuses.
+ */
+function counted(value: string | null, fallback: number, max: number): number {
+  if (value === null) return fallback
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > max) return fallback
+  return parsed
+}
+
+export function resolvePresetParam(
+  value: string | null,
+  from: string | null,
+  to: string | null,
+): PeriodPreset {
+  if (value === 'custom') return from && to ? 'custom' : DEFAULTS.preset
+  return (PERIOD_PRESETS as readonly string[]).includes(value ?? '')
+    ? (value as PeriodPreset)
+    : DEFAULTS.preset
+}
+
 export function useDashboardFilters() {
   const router = useRouter()
   const pathname = usePathname()
@@ -82,7 +136,7 @@ export function useDashboardFilters() {
 
   const filters = useMemo<DashboardFilters>(
     () => ({
-      preset: (params.get('preset') as PeriodPreset) ?? DEFAULTS.preset,
+      preset: resolvePresetParam(params.get('preset'), params.get('from'), params.get('to')),
       from: params.get('from') ?? undefined,
       to: params.get('to') ?? undefined,
       employeeIds: list(params.get('employeeIds')),
@@ -91,13 +145,22 @@ export function useDashboardFilters() {
       productIds: list(params.get('productIds')),
       sourceIds: list(params.get('sourceIds')),
       status: (params.get('status') as DashboardFilters['status']) ?? undefined,
-      outcomes: list(params.get('outcomes')) as ConfirmationOutcome[],
+      /*
+        Only states this application has. An unknown one is a 400 from the API
+        and an empty screen with a filter chip nobody can clear — see
+        `resolvePresetParam`. Dropping it leaves the rest of the selection
+        working, which is what a reader following a slightly stale link wants.
+      */
+      outcomes: list(params.get('outcomes')).filter((value): value is ConfirmationOutcome =>
+        (CONFIRMATION_OUTCOMES as readonly string[]).includes(value),
+      ),
       rop: params.get('rop') ?? undefined,
+      queue: params.get('queue') === 'backlog' ? 'backlog' : DEFAULTS.queue,
       q: params.get('q') ?? undefined,
-      page: Number(params.get('page') ?? DEFAULTS.page),
-      pageSize: Number(params.get('pageSize') ?? DEFAULTS.pageSize),
+      page: counted(params.get('page'), DEFAULTS.page, 10_000),
+      pageSize: counted(params.get('pageSize'), DEFAULTS.pageSize, 200),
       sort: params.get('sort') ?? DEFAULTS.sort,
-      order: (params.get('order') as 'asc' | 'desc') ?? DEFAULTS.order,
+      order: params.get('order') === 'asc' ? 'asc' : DEFAULTS.order,
     }),
     [params],
   )
@@ -179,6 +242,9 @@ export function useDashboardFilters() {
     if (filters.status) out.status = filters.status
     if (filters.outcomes.length) out.outcomes = filters.outcomes.join(',')
     if (filters.rop) out.rop = filters.rop
+    // Only when it is not the default: every other screen's requests stay
+    // byte-identical, so their react-query caches are untouched by this.
+    if (filters.queue === 'backlog') out.queue = filters.queue
     if (filters.q) out.q = filters.q
     return out
   }, [filters])

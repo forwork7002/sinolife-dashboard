@@ -57,13 +57,39 @@ export const t = {
       title: 'Mijoz qaytishi',
       lead: 'Har oy birinchi marta xarid qilgan mijozlarning qanchasi keyingi oylarda qaytgani — kogorta tahlili.',
     },
+    /*
+      WHICH DATE THE WINDOW IS APPLIED TO, on the three screens that disagree.
+
+      "Tushum" is one word for two different measurements here. Logistics and
+      the dispatch points window on the day an order was TAKEN and then report
+      what became of it; the structure screen windows on the day a deal was
+      CLOSED. Both are right for their own question — a courier is judged on
+      the parcels handed to it, a department on the money it banked — but the
+      median order takes 25 days to travel between the two, so the same preset
+      gives the two screens genuinely different totals.
+
+      A reader comparing them has no way to know that unless it is written
+      down. `t.period.closedBasis` already says this beside the deltas that
+      need it; these leads say it where a whole page needs it.
+    */
     logistics: {
       title: 'Logistika natijasi',
-      lead: 'Buyurtma qaysi hudud va tashuvchi orqali ketgani, qancha vaqtda yetgani va qayerda qaytgani.',
+      lead: 'Buyurtma qaysi hudud va tashuvchi orqali ketgani, qancha vaqtda yetgani va qayerda qaytgani. Davr buyurtma OLINGAN sana boʻyicha.',
     },
+    /*
+      THE TWO FACTS AN OWNER NEEDS TO RECONCILE THIS SCREEN WITH BITRIX.
+
+      Which orders are on the board — only those that reached a confirmation
+      stage, so an order parked in «Пропущенный» or an SMS stage is on neither
+      this board nor its ЖАМИ — and which date the window is applied to, which
+      is the order's own Дата создания. Without the second one a reader
+      comparing "bugun" against the portal has no way to know whether they are
+      counting the same day, and without the first the ЖАМИ tile reads as
+      every order taken rather than every order queued.
+    */
     confirmation: {
       title: 'Tasdiqlash navbati',
-      lead: 'Tasdiqlash navbatiga tushgan har bir buyurtma qaysi holatda yakunlangani.',
+      lead: 'Tasdiqlash bosqichiga tushgan har bir buyurtma qaysi holatda ekani. Davr buyurtmaning oʻz sanasi (Дата создания) boʻyicha.',
     },
     margin: {
       title: 'Yalpi marja',
@@ -71,7 +97,7 @@ export const t = {
     },
     warehouse: {
       title: 'Joʻnatish nuqtalari',
-      lead: 'Buyurtmalarni qaysi sklad, kuryer yoki marketpleys bajargani.',
+      lead: 'Buyurtmalarni qaysi sklad, kuryer yoki marketpleys bajargani. Davr buyurtma OLINGAN sana boʻyicha.',
     },
     team: {
       title: 'Jamoa',
@@ -79,7 +105,7 @@ export const t = {
     },
     structure: {
       title: 'Kadrlar tuzilmasi',
-      lead: 'Boʻlimlar, rahbarlar va har bir boʻlimning natijasi.',
+      lead: 'Boʻlimlar, rahbarlar va har bir boʻlimning natijasi. Davr bitim YOPILGAN sana boʻyicha.',
     },
   },
 
@@ -151,7 +177,20 @@ export const t = {
 
   chart: {
     revenueTrend: 'Tushum dinamikasi',
-    revenueTrendHint: 'Yopilgan bitimlar boʻyicha, kunlar kesimida',
+    /*
+      The basis and the bucket are two separate facts, so they are two strings.
+
+      The bucket is NOT fixed: the server widens it as the window grows —
+      daily up to about two months, then weekly, then monthly — so a single
+      hint reading "kunlar kesimida" was a plain misstatement on «Shu yil»,
+      where each point is a week and each label is that week's first day.
+    */
+    revenueTrendBasis: 'Yopilgan bitimlar boʻyicha',
+    buckets: {
+      day: 'kunlar kesimida',
+      week: 'haftalar kesimida',
+      month: 'oylar kesimida',
+    },
     funnel: 'Savdo voronkasi',
     funnelHint: 'Davrda yaratilgan bitimlarning joriy bosqichi',
     bySource: 'Manbalar boʻyicha',

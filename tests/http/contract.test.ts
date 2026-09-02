@@ -227,3 +227,28 @@ describe('searchParamsToObject', () => {
     expect(parsed.pageSize).toBe(10)
   })
 })
+
+/**
+ * A custom range is the one window a caller can make arbitrarily large.
+ *
+ * Every other bound in this schema exists because the value reaches SQL, and
+ * this one is no different: an unbounded span asks every analytics endpoint to
+ * scan the whole deal table and bucket the result, which arrives as a timeout
+ * rather than as the rejection it is.
+ */
+describe('custom range span', () => {
+  it('accepts a range inside the cap', () => {
+    const parsed = periodQuerySchema.parse({
+      preset: 'custom',
+      from: '2020-01-01',
+      to: '2026-08-23',
+    })
+    expect(parsed.preset).toBe('custom')
+  })
+
+  it('rejects a range no question needs', () => {
+    expect(() =>
+      periodQuerySchema.parse({ preset: 'custom', from: '1900-01-01', to: '2100-01-01' }),
+    ).toThrow()
+  })
+})

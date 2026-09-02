@@ -30,6 +30,7 @@ import {
   type KpiEvaluation,
   buildLeaderboard,
   evaluateKpi,
+  kpiWindow,
   overallAchievementPercent,
 } from '@/server/domain/analytics/performance'
 import {
@@ -360,14 +361,40 @@ export class AnalyticsService {
     }
   }
 
-  /** One query covering both the current and comparison windows. */
-  private load(ctx: AnalyticsContext): Promise<AnalyticsDeal[]> {
-    return this.deals.findForAnalysis([ctx.period, ctx.comparison], ctx.filters)
+  /**
+   * One query covering the current and comparison windows.
+   *
+   * `extra` widens it to any further span the caller must summarise over —
+   * today that is the KPI plan windows, which are not slices of the report
+   * window and would otherwise be summed over deals that were never fetched.
+   */
+  private load(
+    ctx: AnalyticsContext,
+    extra: readonly Period[] = [],
+  ): Promise<AnalyticsDeal[]> {
+    return this.deals.findForAnalysis([ctx.period, ctx.comparison, ...extra], ctx.filters)
   }
 
   async overview(ctx: AnalyticsContext): Promise<OverviewDto> {
+    /**
+     * Targets follow the scope, or the headline scores one branch's results
+     * against two branches' quotas. `findKpisForPeriod` narrows in SQL when
+     * given ids; a company-wide target (`employeeId: null`) is not a branch
+     * target and drops out with them. The table holds no rows at all today, so
+     * this is the shape being right rather than a number changing.
+     *
+     * READ FIRST, because the deal query has to be wide enough to cover the
+     * PLAN windows as well as the report window: a target is scored over its
+     * own period, never over whatever the reader selected. See `kpiWindow`.
+     */
+    const kpis = await this.reference.findKpisForPeriod(
+      ctx.period,
+      ctx.filters.restrictToEmployeeIds ?? undefined,
+    )
+    const kpiWindows = kpis.map((kpi) => kpiWindow(kpi, ctx.period.timeZone))
+
     const [all, employees, lastSyncedAt] = await Promise.all([
-      this.load(ctx),
+      this.load(ctx, kpiWindows),
       this.reference.findEmployees(),
       this.reference.findLastSuccessfulSync(),
     ])
@@ -375,28 +402,15 @@ export class AnalyticsService {
     const current = summarizeDeals(all, ctx.period, ctx.currency)
     const previous = summarizeDeals(all, ctx.comparison, ctx.currency)
 
-    /**
-     * Targets follow the scope, or the headline scores one branch's results
-     * against two branches' quotas. `findKpisForPeriod` narrows in SQL when
-     * given ids; a company-wide target (`employeeId: null`) is not a branch
-     * target and drops out with them. The table holds no rows at all today, so
-     * this is the shape being right rather than a number changing.
-     */
-    const kpis = await this.reference.findKpisForPeriod(
-      ctx.period,
-      ctx.filters.restrictToEmployeeIds ?? undefined,
-    )
-    const evaluations = kpis.map((kpi) =>
+    const evaluations = kpis.map((kpi, index) =>
       evaluateKpi(
         kpi,
-        kpi.employeeId
-          ? summarizeDeals(
-              all.filter((d) => d.employeeId === kpi.employeeId),
-              ctx.period,
-              ctx.currency,
-            )
-          : current,
-        ctx.period,
+        summarizeDeals(
+          kpi.employeeId ? all.filter((d) => d.employeeId === kpi.employeeId) : all,
+          kpiWindows[index]!,
+          ctx.currency,
+        ),
+        ctx.period.timeZone,
         ctx.now,
       ),
     )
@@ -645,18 +659,32 @@ export class AnalyticsService {
       scoped.map((e) => e.id),
     )
 
+    /*
+      A target is scored over ITS OWN period, not the report window — see
+      `kpiWindow`. That span is not necessarily inside `all`, which was fetched
+      for the report and comparison windows, so the plan's deals are read
+      separately rather than summed over rows that were never loaded.
+
+      A second query only when there are targets to score. There are none in
+      the portal today, so this normally costs nothing at all.
+    */
+    const kpiWindows = kpis.map((kpi) => kpiWindow(kpi, ctx.period.timeZone))
+    const kpiDeals = kpiWindows.length
+      ? await this.deals.findForAnalysis(kpiWindows, ctx.filters)
+      : []
+
     const byEmployee = new Map<string, KpiEvaluation[]>()
-    for (const kpi of kpis) {
-      if (!kpi.employeeId) continue
+    kpis.forEach((kpi, index) => {
+      if (!kpi.employeeId) return
       const summary = summarizeDeals(
-        all.filter((d) => d.employeeId === kpi.employeeId),
-        ctx.period,
+        kpiDeals.filter((d) => d.employeeId === kpi.employeeId),
+        kpiWindows[index]!,
         ctx.currency,
       )
       const list = byEmployee.get(kpi.employeeId) ?? []
-      list.push(evaluateKpi(kpi, summary, ctx.period, ctx.now))
+      list.push(evaluateKpi(kpi, summary, ctx.period.timeZone, ctx.now))
       byEmployee.set(kpi.employeeId, list)
-    }
+    })
 
     const meta = new Map(scoped.map((e) => [e.id, e]))
 

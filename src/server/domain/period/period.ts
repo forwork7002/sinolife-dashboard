@@ -212,13 +212,67 @@ export function previousEquivalent(period: Period): Period & { readonly isTrunca
     case 'this_week':
       return build(addWeeks(zonedStart, -1), addWeeks(zonedEnd, -1), false)
 
-    case 'this_month':
-    case 'previous_month':
-      // cap = this window's own start, which is the previous month's end.
-      return anchored(startOfMonth(addMonths(zonedStart, -1)), zonedStart)
+    case 'this_month': {
+      /*
+        A COMPLETE UNIT COMPARES AGAINST A COMPLETE UNIT; a to-date one does not.
 
-    case 'this_year':
-      return anchored(startOfYear(addYears(zonedStart, -1)), zonedStart)
+        On most days this window is month-to-date and `anchored` is exactly
+        right — 1–23 August against 1–23 July. On the last day of the month it
+        covers the whole month, and so must its counterpart: giving September
+        (30 days) the first 30 days of August drops the 31st.
+
+        The pulse forecast leans on this directly. It widens the window to the
+        full calendar unit before asking for a reference, because "August is
+        projected to finish at X" has to be read against ALL of July — and it
+        was being read against 30 or 29 days of it, which is the fake growth
+        the widening exists to prevent.
+      */
+      const unitEnd = startOfMonth(addMonths(zonedStart, 1))
+      const previousUnitStart = startOfMonth(addMonths(zonedStart, -1))
+
+      return zonedEnd.getTime() >= unitEnd.getTime()
+        ? build(previousUnitStart, zonedStart, false)
+        : // cap = this window's own start, which is the previous month's end.
+          anchored(previousUnitStart, zonedStart)
+    }
+
+    case 'previous_month':
+      /*
+        A WHOLE MONTH IS COMPARED AGAINST A WHOLE MONTH.
+
+        Unlike `this_month`, this preset is not to-date: its window is an
+        entire calendar month, so its counterpart is the entire month before
+        it — 1–28 February against ALL of January, not against 1–28 January.
+
+        It used to share the `anchored` branch above, which gives the previous
+        window the same NUMBER OF DAYS as the current one. That is exactly
+        right for a to-date window and wrong here. February (28 days) was
+        measured against the first 28 days of January, so three days of
+        January's revenue were missing from the denominator and every
+        "Oʻtgan oy" delta on every screen read about ten per cent too high.
+        Five month pairs a year are affected — Feb/Jan worst, then Apr, Jun,
+        Sep and Nov, each short by one day.
+
+        The reverse case was already right, but by accident: March against
+        February hit the cap, came back as the whole of February, and was
+        flagged truncated. It is no longer flagged, because nothing was
+        shortened — months differ in length by the calendar's own doing, and
+        that is what a month-over-month comparison means. `isTruncated` is for
+        "we could not give you the window you asked for"; here we can.
+      */
+      return build(startOfMonth(addMonths(zonedStart, -1)), zonedStart, false)
+
+    case 'this_year': {
+      // Same rule as this_month: a year-to-date window is anchored to the same
+      // days a year earlier, a window covering the whole year to the whole
+      // year before it — which is what keeps a leap day from going missing.
+      const unitEnd = startOfYear(addYears(zonedStart, 1))
+      const previousUnitStart = startOfYear(addYears(zonedStart, -1))
+
+      return zonedEnd.getTime() >= unitEnd.getTime()
+        ? build(previousUnitStart, zonedStart, false)
+        : anchored(previousUnitStart, zonedStart)
+    }
 
     case 'custom': {
       // No calendar anchor to honour, so use the window immediately before.
@@ -226,6 +280,28 @@ export function previousEquivalent(period: Period): Period & { readonly isTrunca
       return build(new Date(start.getTime() - durationMs), start, false)
     }
   }
+}
+
+/**
+ * A span that excludes nothing.
+ *
+ * For the readings that are NOT about a reporting period — the confirmation
+ * backlog is chosen by state, not by date — but whose queries still bind two
+ * date parameters. Giving them a real all-time span keeps one query shape for
+ * both modes rather than two that could drift apart in how they classify a
+ * row. 1970 precedes the portal's first record and 2100 outlasts anything it
+ * will hold.
+ *
+ * Not a preset, and deliberately not offered as one: nothing on a dashboard
+ * should quietly report on all of history under a date control.
+ */
+export function allTime(timeZone: string): Period {
+  return Object.freeze({
+    start: new Date(0),
+    end: new Date(Date.UTC(2100, 0, 1)),
+    timeZone,
+    preset: 'custom',
+  })
 }
 
 /** Whether an instant falls inside the half-open period. */

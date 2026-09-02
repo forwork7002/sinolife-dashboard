@@ -198,6 +198,54 @@ export interface KpiDefinition {
   readonly metric: KpiMetricValue
   /** Interpretation depends on `metric`; see prisma/schema.prisma. */
   readonly targetValue: bigint
+  /**
+   * THE PLAN'S OWN WINDOW — the one a target means anything inside.
+   *
+   * A target is a contract for a stated span: 300M in September. It is not a
+   * rate that can be sliced to whatever window the reader happens to have
+   * selected, and it is not comparable to a different span's takings.
+   *
+   * These two fields travel with the definition so that no caller can score a
+   * target against the report window by accident. They used to be dropped at
+   * the repository, and every consumer then reached for the only window it
+   * had — see `kpiWindow` below for what that cost.
+   */
+  readonly periodStart: Date
+  /** Exclusive, like every other end instant in the application. */
+  readonly periodEnd: Date
+}
+
+/**
+ * The window a KPI is scored in, and the reason this function exists.
+ *
+ * EVERY figure on a KPI row — the actual, the attainment, the expected pace —
+ * must be measured over the PLAN's period, never over the dashboard's. The two
+ * are different questions and mixing them produced two wrong answers at once:
+ *
+ *  1. Pace. `periodElapsedFraction` was handed the report window, which for
+ *     the default preset ("Shu oy") is TO-DATE — it ends at midnight tonight.
+ *     A to-date window is by construction almost entirely elapsed, so on the
+ *     2nd of a 30-day month the page announced "davrning 79% qismi oʻtdi" and
+ *     graded every target BEHIND against a month that was 6% gone. On the 20th
+ *     it said 95%. The number was wrong every day of every month.
+ *
+ *  2. Attainment. The target picked is the one live at the window's last
+ *     instant, but the actual was summed over the window itself. "Bugun"
+ *     therefore measured one day's takings against a whole month's target
+ *     (~3%), and "Shu yil" measured eight months' takings against the same
+ *     one month's target (~800%). Neither number meant anything.
+ *
+ * The preset still chooses WHICH plan is in view — that is what the window's
+ * last instant is for. It does not change what the plan is measured over.
+ */
+export function kpiWindow(definition: KpiDefinition, timeZone: string): Period {
+  return Object.freeze({
+    start: definition.periodStart,
+    end: definition.periodEnd,
+    timeZone,
+    // Not a dashboard preset: an explicit span, which is what 'custom' means.
+    preset: 'custom' as const,
+  })
 }
 
 export interface KpiEvaluation {
@@ -266,10 +314,17 @@ export function actualForMetric(summary: SalesSummary, metric: KpiMetricValue): 
   }
 }
 
+/**
+ * Score one target.
+ *
+ * `summary` MUST have been built over `kpiWindow(definition, ...)`. The window
+ * is no longer a parameter precisely so that a caller cannot pass the report
+ * period by mistake, which is what all three call sites used to do.
+ */
 export function evaluateKpi(
   definition: KpiDefinition,
   summary: SalesSummary,
-  period: Period,
+  timeZone: string,
   now: Date,
 ): KpiEvaluation {
   const actualValue = actualForMetric(summary, definition.metric)
@@ -288,7 +343,10 @@ export function evaluateKpi(
     targetValue: definition.targetValue,
     actualValue,
     achievementBp,
-    status: classifyKpi(achievementBp, periodElapsedFraction(period, now)),
+    status: classifyKpi(
+      achievementBp,
+      periodElapsedFraction(kpiWindow(definition, timeZone), now),
+    ),
   }
 }
 

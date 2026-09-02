@@ -18,5 +18,18 @@ export const GET = getHandler(ACCESS, analyticsQuerySchema, async (ctx) => {
     ctx.now,
   )
   const data = await kpiService.list(context, ctx.scope.restrictToEmployeeId)
-  return { data, meta: AnalyticsService.periodMeta(context) }
+
+  /*
+    NO PERIOD META ON THIS ONE, on purpose.
+
+    `periodMeta` carries the report window, its comparison and a
+    "comparison truncated" flag — and this screen shows no comparison at all,
+    so the badge PageShell renders from that flag was a warning about a
+    calculation nobody was looking at. The window itself is no more use here:
+    the preset picks WHICH plan is in view and then every figure is measured
+    over that plan's own dates, which travel in `data.planPeriod` and are
+    printed under the page title. Two date ranges on one screen, one of which
+    nothing on the page is measured over, is worse than none.
+  */
+  return { data }
 })

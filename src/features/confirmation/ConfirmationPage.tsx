@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Card, ChartCard } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -27,7 +27,7 @@ import {
   type ConfirmationQueueDto,
   apiGet,
 } from '@/lib/api'
-import { NO_VALUE, formatNumber } from '@/lib/format'
+import { APP_TIME_ZONE, NO_VALUE, formatNumber } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 /**
@@ -81,7 +81,18 @@ interface OutcomeSpec {
 
 /** In the reference's order: the queue, then the two ways it stalls, then the outcomes. */
 const OUTCOMES: readonly OutcomeSpec[] = [
-  { key: 'CONFIRM_NEW', Glyph: ClockGlyph, label: 'Тасдиқлаш', color: 'var(--series-1)' },
+  /*
+    "КУТИЛМОҚДА", not "Тасдиқлаш".
+
+    This tile is the state an order is WAITING in, and it sat first in a row
+    that then reads Тасдиқланди / Тасдиқланмади / Тасдиқланмай чиқди. A reader
+    scanning five labels that all begin "Тасдиқлан-" cannot tell which one is
+    the queue and which is the outcome, and the one that named the ACTION
+    rather than the state read as if it were the total of confirmations. The
+    bell in the header already calls this population "тасдиқлашни кутмоқда";
+    the tile now agrees with it.
+  */
+  { key: 'CONFIRM_NEW', Glyph: ClockGlyph, label: 'Кутилмоқда', color: 'var(--series-1)' },
   {
     key: 'NO_ANSWER',
     Glyph: PhoneMissedGlyph,
@@ -151,9 +162,42 @@ export function ConfirmationPage() {
     refetchOnWindowFocus: true,
   })
 
-  const tileStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
+  /*
+    PLACEHOLDER DATA IS NOT AN ANSWER TO THE NEW QUESTION.
+
+    `placeholderData: previous` keeps the table steady while the next page
+    loads, which is right for paging — but on a PERIOD change it also left the
+    five tiles showing last window's counts with no sign they were stale, so
+    «Бугун» wore «Шу ой»'s numbers until the request came back. Placeholder
+    rows read as loading, because that is what they are.
+  */
+  const tileStatus = query.isPending
+    ? 'loading'
+    : query.isError
+      ? 'error'
+      : query.isPlaceholderData
+        ? 'loading'
+        : 'ready'
   const data = query.data?.data
   const totals = data?.totals
+
+  /*
+    A PAGE NUMBER PAST THE END OF A SHORTER WINDOW.
+
+    Filter changes already drop the page — `useDashboardFilters.update` deletes
+    it unless it is being set — but a pasted link can carry one, and the queue
+    for «Bugun» is a fraction of the length it is for «Shu oy». The response
+    for an out-of-range page comes back with no rows AND `totalItems: 0`,
+    because the count travels on the rows: the pager then reported an empty
+    queue that plainly is not empty, with no control on screen to get back to
+    it. Stepping to the first page is the one move that always shows real
+    rows if there are any, and it cannot loop — page 1 is not out of range.
+  */
+  useEffect(() => {
+    if (query.isSuccess && filters.page > 1 && data?.items.length === 0) {
+      update({ page: 1 })
+    }
+  }, [query.isSuccess, filters.page, data?.items.length, update])
 
   /**
    * Clicking a state adds it to the selection; clicking it again removes it.
@@ -372,12 +416,49 @@ export function ConfirmationPage() {
 
   const shown = data?.pagination.totalItems ?? null
 
+  /**
+   * Whether the table's count can differ from the tile band's.
+   *
+   * ONLY THE STATE FILTER SEPARATES THEM. The ROP filter and the search box
+   * narrow both — `confirmationQueue` scopes the breakdown by ROP and
+   * `confirmationByRop` applies the same search predicate the page does — so
+   * treating them as narrowing printed the same figure twice under two names,
+   * one of them «Жами», which is how a reader ends up taking one group's
+   * thirty-seven orders for the day's whole intake.
+   */
+  const narrowed = filters.outcomes.length > 0
+
+  /** True while the board is answering "what is waiting", not "what came in". */
+  const backlog = filters.queue === 'backlog'
+
+  /** The ROP list, with the current selection guaranteed present. */
+  const ropOptions = (() => {
+    const names = data?.rops ?? []
+    const withSelection =
+      filters.rop && !names.includes(filters.rop) ? [...names, filters.rop].sort() : names
+    return withSelection.map((rop) => ({ value: rop, label: rop }))
+  })()
+
   return (
     <PageShell
       title={t.modules.confirmation.title}
-      description={t.modules.confirmation.lead}
+      /*
+        IN BACKLOG MODE THE PERIOD DOES NOT APPLY, so it is not offered.
+
+        `period={false}` takes away the six presets and the date line under the
+        title, both of which would otherwise describe a window this view
+        ignores — a date control over a list that does not read it is worse
+        than no control, because a reader assumes it must be filtering
+        something. The description says which question is on screen.
+      */
+      description={
+        backlog
+          ? 'Ҳозир тасдиқлашни кутаётган барча буюртмалар — қачон келганидан қатъи назар. Давр бу рўйхатга таъсир қилмайди.'
+          : t.modules.confirmation.lead
+      }
+      period={!backlog}
       accent="var(--series-4)"
-      meta={query.data?.meta}
+      meta={backlog ? undefined : query.data?.meta}
       filters={{
         search: true,
         // Every column the table shows is searchable, so the box says so —
@@ -396,10 +477,21 @@ export function ConfirmationPage() {
           worse than one button fewer.
         */
         <div className="flex flex-wrap items-center gap-2">
+          {/*
+            THE SELECTED ROP IS ALWAYS AN OPTION, even when the search hides it.
+
+            `rops` is derived from the per-ROP breakdown, which obeys the search
+            box — so typing a term that no order of the selected group matches
+            removed that group from the list while the filter stayed applied.
+            The control then showed blank over a table narrowed to a group the
+            reader could no longer see, and the only way out was to clear the
+            search first. Carrying the current value keeps the control able to
+            describe its own state.
+          */}
           <Select
             label="Барча РОП"
             value={filters.rop ?? ''}
-            options={(data?.rops ?? []).map((rop) => ({ value: rop, label: rop }))}
+            options={ropOptions}
             onChange={(rop) => update({ rop: rop || undefined })}
           />
 
@@ -408,6 +500,7 @@ export function ConfirmationPage() {
             combinations. The house MultiSelect is what every other filter on
             the dashboard uses, so the checkbox affordance is already familiar.
           */}
+          {!backlog && (
           <MultiSelect
             label="Барча статус"
             options={OUTCOMES.map((spec) => ({
@@ -417,6 +510,51 @@ export function ConfirmationPage() {
             selected={filters.outcomes}
             onChange={(outcomes) => update({ outcomes: outcomes as ConfirmationOutcome[] })}
           />
+          )}
+
+          {/*
+            THE ONE CONTROL THAT CHANGES THE QUESTION, not just the filter.
+
+            «Давр бўйича» is the board the client specified: what came in
+            during the selected period, and where each order stands. «Ҳозир
+            навбатда» ignores the period and lists what is actually waiting —
+            the orders whose latest signal is still «Заказ тасдиклаш» and whose
+            deal is still open, whenever they arrived. The first cannot answer
+            the second: the oldest unworked order on this portal predates every
+            preset, so a queue dated by intake reported nothing to do while
+            hundreds sat unworked. The header bell counts the backlog and links
+            here with it selected.
+          */}
+          <div
+            className="flex shrink-0 items-center gap-0.5 rounded-lg border p-0.5"
+            style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
+            role="group"
+            aria-label="Навбат кўриниши"
+          >
+            {(
+              [
+                { id: 'window', label: 'Давр бўйича' },
+                { id: 'backlog', label: 'Ҳозир навбатда' },
+              ] as const
+            ).map((option) => {
+              const active = filters.queue === option.id
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => update({ queue: option.id })}
+                  aria-pressed={active}
+                  className="focusable rounded-md px-2.5 py-2 text-[13px] font-medium whitespace-nowrap transition-colors sm:py-1.5 sm:text-xs"
+                  style={{
+                    background: active ? 'var(--ink-primary)' : 'transparent',
+                    color: active ? 'var(--surface)' : 'var(--ink-secondary)',
+                  }}
+                >
+                  {option.label}
+                </button>
+              )
+            })}
+          </div>
 
           <Button
             variant={statsOpen ? 'primary' : 'secondary'}
@@ -442,16 +580,29 @@ export function ConfirmationPage() {
         could not be used to compare one state against another, which is the
         only reason to put five of them side by side.
       */}
-      <div className="stagger grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+      {/*
+        ONE TILE IN BACKLOG MODE, because every row in it is «Кутилмоқда».
+
+        Rendering the five-state band over a single-state list would put four
+        zeros on screen and invite the reader to click them for an empty table.
+      */}
+      <div
+        className={
+          backlog
+            ? 'stagger grid grid-cols-2 gap-3'
+            : 'stagger grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'
+        }
+      >
         <OutcomeTile
-          label="ЖАМИ"
+          label={backlog ? 'ҲОЗИР НАВБАТДА' : 'ЖАМИ'}
           status={tileStatus}
           count={totals?.orders ?? null}
           color="var(--ink-primary)"
           active={filters.outcomes.length === 0}
           onSelect={() => update({ outcomes: [] })}
         />
-        {OUTCOMES.map((spec) => (
+        {!backlog &&
+          OUTCOMES.map((spec) => (
           <OutcomeTile
             key={spec.key}
             Glyph={spec.Glyph}
@@ -462,7 +613,7 @@ export function ConfirmationPage() {
             active={filters.outcomes.includes(spec.key)}
             onSelect={() => toggleOutcome(spec.key)}
           />
-        ))}
+          ))}
       </div>
 
       {statsOpen && <RopPanel rows={data?.byRop ?? []} status={tileStatus} />}
@@ -473,19 +624,67 @@ export function ConfirmationPage() {
             Барча буюртмалар
           </h2>
           <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-            {/* Жами, not "being shown": the table renders one page of fifty
-                and this number is the whole window. */}
-            {shown === null ? '' : `Жами: ${formatNumber(shown)} та`}
+            {/*
+              TWO NUMBERS, TWO NAMES.
+
+              This count obeys every filter — state, ROP, search — while the
+              ЖАМИ tile above obeys none of them, because a band whose figures
+              moved with its own selection could not be used to compare one
+              state against another. Both were labelled «Жами», so picking
+              «Кутилмоқда» put 1 289 in the tile and «Жами: 37 та» directly
+              under it, and the screen contradicted itself. The filtered count
+              is now named as filtered, and the window's own total is printed
+              beside it so the reader can see both at once.
+            */}
+            {shown === null
+              ? ''
+              : narrowed
+                ? `Танланган: ${formatNumber(shown)} та`
+                : `Жами: ${formatNumber(shown)} та`}
+            {/*
+              THE COMPARISON IS "ALL STATES", NOT "THE WHOLE WINDOW".
+
+              `totals.orders` is the same ROP and the same search as the line
+              beside it, summed across all five states — so it differs from the
+              count above ONLY when a state is selected, and calling it «Жами»
+              while a ROP was also applied printed the filtered figure twice
+              under two names. It is named for what it is, and shown only when
+              it has something to add.
+            */}
+            {narrowed && totals && (
+              <>
+                {' · '}
+                Барча ҳолатлар: <span className="tabular">{formatNumber(totals.orders)}</span> та
+              </>
+            )}
             {totals && totals.confirmedRate !== null && (
               <>
                 {' · '}
-                Тасдиқланиш: <span className="tabular">{totals.confirmedRate}%</span>
+                {/*
+                  The denominator is every order in this ROP and search across
+                  all five states — INCLUDING the ones still waiting, which is
+                  the client's own definition of Тасдиқланиш %. It is not the
+                  selection's rate: filtering to «Тасдиқланди» would otherwise
+                  report 100% every time. The label says which denominator it
+                  is so nobody has to guess.
+                */}
+                Тасдиқланиш (барча ҳолатлардан):{' '}
+                <span className="tabular">{totals.confirmedRate}%</span>
               </>
             )}
             {query.dataUpdatedAt > 0 && (
               <>
                 {' · '}
-                Янгиланди:{' '}
+                {/*
+                  THE PAGE'S CLOCK, NOT THE DATA'S.
+
+                  `dataUpdatedAt` is when this browser last fetched, which is
+                  not how old the numbers are — that is the Bitrix sync time,
+                  and the header states it a few centimetres away. A bare
+                  «Янгиланди» over the fetch clock claimed the figures were
+                  minutes old on a morning the sync had been stuck for hours.
+                */}
+                Саҳифа янгиланди:{' '}
                 <span className="tabular">{tashkentTime(new Date(query.dataUpdatedAt).toISOString())}</span>
                 {' (ҳар 2 дақиқада)'}
               </>
@@ -613,7 +812,18 @@ function RopPanel({
   return (
     <ChartCard
       title="Статистика — РОП кесимида"
-      hint="Танланган давр ва қидирув бўйича. Ҳолат филтри бу панелга таъсир қилмайди — у гуруҳларни солиштириш учун."
+      /*
+        The ROP filter belongs on this list too.
+
+        The hint named the state filter and stopped there, but a ROP selection
+        does not reach this panel either — while it DOES narrow the five tiles
+        above it. So picking one ROP left the tiles showing that group and this
+        table still showing every group, with nothing saying why the two
+        disagreed. Both exclusions are deliberate and for the same reason: a
+        comparison table that narrowed to the one row you selected would have
+        nothing left to compare.
+      */
+      hint="Танланган давр ва қидирув бўйича, барча РОПлар. Ҳолат ва РОП филтрлари бу панелга таъсир қилмайди — у гуруҳларни солиштириш учун."
     >
       <DataTable
         columns={columns}
@@ -838,24 +1048,26 @@ function Select({
 /*
   САНА is stamped in Tashkent, always.
 
-  `formatDate` in lib/format renders in the BROWSER's zone, which is right for
-  a dashboard read from one office and wrong for this column: the whole point
-  of the daily № beside it is that both agree on where the working day starts.
-  A manager opening this from Istanbul would otherwise see an order numbered
-  into a day the date column disagrees with.
+  These two exist beside `lib/format` rather than inside it because the shapes
+  differ — this column is `YYYY-MM-DD` and a bare `HH:mm`, not the Uzbek
+  `1-sen 2026` the rest of the dashboard reads. The ZONE is the shared fact,
+  and it is imported so there is one statement of it: the whole point of the
+  daily № beside this column is that both agree on where the working day
+  starts, and a manager opening this from Istanbul must not see an order
+  numbered into a day the date column disagrees with.
 */
 const TASHKENT_DATE = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Asia/Tashkent',
+  timeZone: APP_TIME_ZONE,
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
 })
 
 const TASHKENT_TIME = new Intl.DateTimeFormat('en-GB', {
-  timeZone: 'Asia/Tashkent',
+  timeZone: APP_TIME_ZONE,
   hour: '2-digit',
   minute: '2-digit',
-  hour12: false,
+  hourCycle: 'h23',
 })
 
 function tashkentDate(iso: string): string {

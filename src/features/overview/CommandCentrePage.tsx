@@ -15,7 +15,7 @@ import { RejectionControlChart } from '@/features/overview/RejectionControlChart
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type CommandCentreDto, type DeltaDto, apiGet } from '@/lib/api'
-import { formatCompactUzs, formatNumber, formatPercent } from '@/lib/format'
+import { formatCompactUzs, formatDateShort, formatNumber, formatPercent } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 
@@ -120,9 +120,20 @@ function HeroBand({ data, status }: BlockProps) {
           >
             Buyurtma oqimi
           </h2>
+          {/*
+            The basis, and the shape of the comparison — not a claim about its
+            completeness.
+
+            This used to assert "ikkala davr ham toʻliq" (both windows are
+            complete) for every preset. On «Bugun» the current window is a few
+            hours old, and on the 31st of a month «Shu oy» is compared against
+            a February that cannot supply as many days — the response says so
+            in `comparisonTruncated`, and PageShell prints the badge. What is
+            true on every preset is that the two windows are the same span,
+            anchored to the same point in the previous calendar unit.
+          */}
           <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-muted)' }}>
-            Buyurtma OLINGAN sana boʻyicha — ikkala davr ham toʻliq, shuning uchun taqqoslash
-            haqiqatni aytadi
+            Buyurtma OLINGAN sana boʻyicha — taqqoslash oldingi davrning aynan shu kunlari bilan
           </p>
         </div>
       </header>
@@ -316,7 +327,18 @@ function AlarmCard({ data, status }: BlockProps) {
     (hollow dot, no red). The headline follows the same rule or the two
     halves of one card contradict each other.
   */
-  const todayIsSunday = series.at(-1)?.sunday === true
+  /*
+    WHICH DAY THIS READING IS FOR.
+
+    `rejectionToday` is the LAST point of the series, and the series covers the
+    selected window — so on «Kecha» it is yesterday, on «Oʻtgan oy» it is 31
+    August, and on a picked day it is that day. The label said "bugun"
+    regardless, which made the headline percentage and the «Meʼyorda /
+    Meʼyordan yuqori» chip beside it read as a statement about today on four of
+    the six presets. It names the day instead.
+  */
+  const lastDay = series.at(-1)
+  const todayIsSunday = lastDay?.sunday === true
   const breached = today !== null && limit > 0 && !todayIsSunday && today > limit
   const tone = status !== 'ready' ? 'neutral' : breached ? 'critical' : 'good'
 
@@ -367,8 +389,10 @@ function AlarmCard({ data, status }: BlockProps) {
                 </span>
                 <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
                   {today === null
-                    ? 'bugungi oʻlchov hali tushmagan'
-                    : `bugun · ${c?.rejectionDays ?? 0} ish kunidan oʻlchangan`}
+                    ? 'oxirgi kun uchun oʻlchov hali tushmagan'
+                    : `${lastDay ? formatDateShort(lastDay.date) : 'oxirgi kun'} · ${
+                        c?.rejectionDays ?? 0
+                      } ish kunidan oʻlchangan`}
                 </span>
               </p>
             )}
@@ -433,7 +457,24 @@ function GaugeColumn({ data, status }: BlockProps) {
         value={c?.confirmedRate ?? null}
         tone="neutral"
         status={status}
-        hint={c ? `${formatNumber(c.confirmed)} / ${formatNumber(c.orders)} navbatdan` : undefined}
+        /*
+          THE DENOMINATOR IS THE QUEUE'S, NOT THE HERO'S.
+
+          Three populations sit on this one screen and used to be described in
+          the same words. The hero counts orders that count as revenue (2 670
+          for August); the funnel card prints that same figure as its stated
+          denominator; this gauge counts every order that reached the
+          confirmation queue, which includes the Первичный отдел rejections
+          that never became revenue (3 049). Both are right for their own
+          question, and a reader given "2 670 taken" above "2 669 / 3 049
+          navbatdan" cannot make the two meet. The hint now names its own
+          population instead of leaving the reader to derive it.
+        */
+        hint={
+          c
+            ? `${formatNumber(c.confirmed)} / ${formatNumber(c.orders)} navbatga tushgan buyurtmadan — rad etilganlari bilan`
+            : undefined
+        }
         context={
           c ? (
             <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
@@ -773,13 +814,23 @@ function TeamCard({ data, status }: BlockProps) {
           </div>
         </div>
 
+        {/*
+          THE ROSTER IS A SNAPSHOT; the share above it is not.
+
+          "Ishlaganlar ulushi" counts who worked IN the window, and says so.
+          These two count who is on the books right now, and no preset changes
+          them — so the hints name the basis rather than letting three numbers
+          in one card imply one clock.
+        */}
         <div className="grid gap-3 sm:grid-cols-2">
           <StatTile
             label="Xodimlar"
             value={team?.employees ?? null}
             unit="count"
             status={status}
-            hint={team ? `${formatNumber(team.departments)} ta boʻlim` : undefined}
+            hint={
+              team ? `${formatNumber(team.departments)} ta boʻlim · hozirgi holat` : undefined
+            }
           />
           <StatTile
             label="Faol xodimlar"
@@ -788,7 +839,7 @@ function TeamCard({ data, status }: BlockProps) {
             status={status}
             hint={
               team && team.employees > 0
-                ? `${formatPercent((team.active / team.employees) * 100)} roʻyxatdan`
+                ? `${formatPercent((team.active / team.employees) * 100)} roʻyxatdan · hozirgi holat`
                 : undefined
             }
           />

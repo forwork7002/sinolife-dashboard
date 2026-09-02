@@ -17,6 +17,7 @@ import { PERIOD_PRESETS } from '@/server/domain/period/period'
 import {
   CONFIRMATION_ORDER_SORTS,
   CONFIRMATION_OUTCOMES,
+  CONFIRMATION_QUEUE_MODES,
   DEAL_STATUSES,
 } from '@/server/domain/types'
 
@@ -40,6 +41,9 @@ const isoDate = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a date in YYYY-MM-DD format')
   .transform((value) => new Date(`${value}T00:00:00.000Z`))
   .refine((date) => !Number.isNaN(date.getTime()), 'Not a valid calendar date')
+
+/** Ten years, in milliseconds. See the span check in `periodQuerySchema`. */
+const MAX_CUSTOM_RANGE_MS = 10 * 366 * 24 * 60 * 60 * 1000
 
 export const periodQuerySchema = z
   .object({
@@ -65,6 +69,22 @@ export const periodQuerySchema = z
         code: 'custom',
         path: ['to'],
         message: "'to' must be on or after 'from'",
+      })
+    }
+    /*
+      A CEILING ON THE SPAN, for the same reason `pageSize` has one.
+
+      Nothing else bounded a custom range, so `?from=1900-01-01&to=2100-01-01`
+      was a single request asking every analytics endpoint to scan the whole
+      deal table and bucket two centuries of it — which arrives as a timeout or
+      a 500 rather than as the 400 it is. The portal's history starts in May
+      2025; ten years is far past any real question and still a bound.
+    */
+    if (value.from && value.to && value.to.getTime() - value.from.getTime() > MAX_CUSTOM_RANGE_MS) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['to'],
+        message: 'Tanlangan oraliq juda uzun — koʻpi bilan 10 yil.',
       })
     }
   })
@@ -154,8 +174,26 @@ export const confirmationOrdersQuerySchema = periodQuerySchema
             : undefined,
         )
         .pipe(z.array(z.enum(CONFIRMATION_OUTCOMES)).min(1).max(5).optional()),
-      /** A single ROP group by name. Bounded: it reaches SQL as a parameter. */
-      rop: z.string().trim().min(1).max(64).optional(),
+      /**
+       * Which question the board answers — see `ConfirmationQueueMode`.
+       *
+       * 'window' (the default) keeps every existing link working: the board is
+       * dated by the order's own Дата создания. 'backlog' ignores the period
+       * entirely and lists what is waiting right now, which is the one
+       * question a queue dated by intake cannot answer — the oldest unworked
+       * order is older than any preset.
+       */
+      queue: z.enum(CONFIRMATION_QUEUE_MODES).default('window'),
+      /**
+       * A single ROP group by name. Bounded: it reaches SQL as a parameter.
+       *
+       * 200, not 64. The value is a DEPARTMENT NAME with the "(ROP)" marker
+       * stripped, and department names on this portal run long — the dropdown
+       * offered one of 69 characters, which the old cap turned into a 400 on
+       * the whole page the moment it was picked. The ceiling matches the
+       * column it comes from rather than a guess about how long a name is.
+       */
+      rop: z.string().trim().min(1).max(200).optional(),
     }),
   )
 

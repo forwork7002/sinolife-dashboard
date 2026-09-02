@@ -1,4 +1,4 @@
-import { toPeriodDto } from '@/server/domain/period/period'
+import { previousEquivalent, toPeriodDto } from '@/server/domain/period/period'
 import { analyticsQuerySchema } from '@/server/http/queryParams'
 import { getHandler, periodFrom } from '@/server/http/handler'
 import { commandCentreService } from '@/server/services/container'
@@ -17,6 +17,24 @@ const ACCESS = { permission: 'analytics:read:all', section: 'overview' } as cons
  */
 export const GET = getHandler(ACCESS, analyticsQuerySchema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
+  const comparison = previousEquivalent(period)
   const data = await commandCentreService.load(period, ctx.currency)
-  return { data, meta: { period: toPeriodDto(period) } }
+
+  /*
+    The comparison window travels too.
+
+    Every card on this screen states a change against the previous period, and
+    PageShell already renders a "Taqqoslash davri qisqartirildi" badge from
+    `comparisonTruncated` — it just never had one to render here, because this
+    route sent the period alone. On the 31st of a month, the home screen was
+    the one page comparing against a shorter February without saying so.
+  */
+  return {
+    data,
+    meta: {
+      period: toPeriodDto(period),
+      comparisonPeriod: toPeriodDto(comparison),
+      comparisonTruncated: comparison.isTruncated,
+    },
+  }
 })
