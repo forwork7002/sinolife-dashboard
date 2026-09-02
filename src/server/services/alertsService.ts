@@ -20,8 +20,8 @@
  */
 
 import type { Principal } from '@/server/auth/rbac'
-import { canSeeSection } from '@/server/auth/rbac'
-import { resolvePeriod } from '@/server/domain/period/period'
+import { can, canSeeSection } from '@/server/auth/rbac'
+import { allTime } from '@/server/domain/period/period'
 import type { InsightsRepository } from '@/server/repositories/insightsRepository'
 import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 
@@ -43,8 +43,31 @@ export class AlertsService {
   async load(principal: Principal, now: Date, timeZone: string): Promise<AlertsDto> {
     const [syncedAt, queue] = await Promise.all([
       this.reference.findLastSuccessfulSync(),
-      canSeeSection(principal, 'confirmation')
-        ? this.insights.queuePressure(resolvePeriod('today', { timeZone, now }))
+      /*
+        THE SAME TWO GATES THE QUEUE ITSELF ASKS FOR.
+
+        The section alone was not enough. `/insights/confirmations/orders`
+        declares `permission: 'analytics:read:all'` and does NOT narrow its
+        rows to the caller — the queue is company-wide by construction — so an
+        account holding the Tasdiqlash section on an OWN data scope was shown a
+        bell it could not open: clicking it produced a 403 and an error state
+        where a number had promised work. A bell is an invitation, and one
+        that leads to a refusal is worse than no bell.
+      */
+      canSeeSection(principal, 'confirmation') && can(principal, 'analytics:read:all')
+        ? /*
+             THE BACKLOG, NOT TODAY'S ARRIVALS.
+
+             This counted orders CREATED today that were still waiting, which
+             is not what a bell is for: on a portal with 265 unworked orders —
+             the oldest from a year ago, 149 of them parked in the silent
+             «Пропущенный» stage — the header read zero every morning and the
+             one number an owner glances at said there was nothing to do. It
+             now counts every still-open order whose latest confirmation
+             signal is CONFIRM_NEW, whenever it arrived, which is what the
+             page shows behind the link.
+          */
+          this.insights.queuePressure(allTime(timeZone), 120, 'backlog')
         : Promise.resolve(null),
     ])
 

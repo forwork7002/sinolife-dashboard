@@ -38,6 +38,7 @@ import {
   CONFIRMATION_OUTCOMES,
   type ConfirmationOrderSortValue,
   type ConfirmationOutcomeValue,
+  type ConfirmationQueueMode,
 } from '@/server/domain/types'
 
 /** A money column as Postgres returns it: text, to survive the driver. */
@@ -1107,7 +1108,77 @@ export class InsightsRepository {
    * 21st of the 26th — which is why the window function partitions by both, in
    * Tashkent time and not UTC.
    */
-  private static readonly QUEUE_SQL = `
+  /**
+   * The label for orders whose department is not a ROP group.
+   *
+   * IT IS A REAL FILTER VALUE, not a display string. The breakdown keeps NULL
+   * rops so the tiles can total every order, and it labels them with this — so
+   * the label has to be something the WHERE clause understands too. It did
+   * not: the page compared `c.rop = $5`, which is NULL for exactly these rows
+   * and therefore matches none of them, while the tiles were filtered in
+   * TypeScript by string equality and matched all of them. Selecting the group
+   * showed 40 in the band and an empty table under it.
+   *
+   * Every predicate on the ROP now compares `coalesce(c.rop, SENTINEL)`, and
+   * the group is offered in the dropdown like any other — the 83 orders on
+   * this portal whose seller sits outside a ROP department were otherwise
+   * countable but unreachable.
+   */
+  static readonly NO_ROP = '(ROP yoʻq)'
+
+  /** The ROP predicate, written once so the three readings cannot drift. */
+  private static ropMatch(param: string): string {
+    return `(${param}::text IS NULL OR coalesce(c.rop, '${InsightsRepository.NO_ROP}') = ${param})`
+  }
+
+  /**
+   * The board answers two questions, and they are not the same question.
+   *
+   *   'window'  — WHAT CAME IN, AND WHERE DOES IT STAND. Orders whose own
+   *               Дата создания falls in the reporting window, at whatever
+   *               state they have reached by now. This is the client's own
+   *               specification and the one an operator can check by opening
+   *               the deal in Bitrix.
+   *
+   *   'backlog' — WHAT IS WAITING, RIGHT NOW. Every still-open order whose
+   *               latest confirmation signal is CONFIRM_NEW, whenever it
+   *               arrived. The window does not apply, and must not: a queue
+   *               that only listed today's arrivals reported nothing to do on
+   *               a morning with 265 orders unworked, because the oldest of
+   *               them came in a year ago and no preset shorter than «Shu
+   *               yil» could reach it. The bell counts this, so the number in
+   *               the header and the rows behind it are the same set.
+   *
+   * ONE DEFINITION, TWO COHORTS. Everything below the cohort — the latest
+   * signal, the UNCONFIRMED_SHIPPED refinement, the ROP name, the Tashkent
+   * daily number — is shared, so the two readings can never drift apart in
+   * how they classify an order. Only which orders enter differs.
+   */
+  private static queueSql(mode: ConfirmationQueueMode = 'window'): string {
+    /*
+      Backlog mode narrows the history scan to LIVE orders before aggregating.
+
+      Without a window there is no cheap bound on `moves`, and the signal
+      history is six figures of rows. Open deals are a small fraction of the
+      table and `deal(status, closedAt)` leads on the column, so this is what
+      keeps the bell affordable enough to poll from every screen.
+    */
+    const liveOnly =
+      mode === 'backlog' ? `JOIN "deal" d0 ON d0."id" = h."dealId" AND d0."status" = 'OPEN'` : ''
+
+    /*
+      The cohort predicate. Both forms still read $1 and $2 — the caller binds
+      an all-time span for the backlog — so the parameter positions every
+      reading below depends on stay identical in either mode.
+    */
+    const cohort =
+      mode === 'backlog'
+        ? `WHERE a.signal = 'CONFIRM_NEW'
+         AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2`
+        : `WHERE d."createdAtSource" >= $1
+         AND d."createdAtSource" <  $2`
+
+    return `
     /*
       The five stages that speak, resolved once.
 
@@ -1150,6 +1221,7 @@ export class InsightsRepository {
         JOIN "deal_stage_history" h
           ON h."stageId" = ss."id"
          AND h."enteredAt" >= $1
+        ${liveOnly}
     ),
     /*
       One row per order, at its latest signal.
@@ -1194,8 +1266,7 @@ export class InsightsRepository {
       SELECT a.deal_id, d."createdAtSource" AS created_at, a.moved_at, a.queued_at, a.signal
         FROM agg a
         JOIN "deal" d ON d."id" = a.deal_id
-       WHERE d."createdAtSource" >= $1
-         AND d."createdAtSource" <  $2
+       ${cohort}
     ),
     classified AS (
       SELECT
@@ -1250,6 +1321,7 @@ export class InsightsRepository {
       FROM classified c
     )
   `
+  }
 
   /**
    * What the header's bell counts: still waiting, and waiting too long.
@@ -1266,9 +1338,10 @@ export class InsightsRepository {
   async queuePressure(
     period: Period,
     overdueAfterMinutes = 120,
+    mode: ConfirmationQueueMode = 'window',
   ): Promise<{ pending: number; overdue: number }> {
     const rows = await this.prisma.$queryRawUnsafe<{ pending: bigint; overdue: bigint }[]>(
-      `${InsightsRepository.QUEUE_SQL}
+      `${InsightsRepository.queueSql(mode)}
        SELECT
          count(*) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::bigint AS pending,
          count(*) FILTER (
@@ -1289,16 +1362,17 @@ export class InsightsRepository {
   async confirmationOutcomes(
     period: Period,
     filter: { rop?: string; q?: string } = {},
+    mode: ConfirmationQueueMode = 'window',
   ): Promise<ConfirmationOutcomeTotals> {
     const rows = await this.prisma.$queryRawUnsafe<
       { outcome: ConfirmationOutcomeValue; orders: bigint }[]
     >(
-      `${InsightsRepository.QUEUE_SQL}
+      `${InsightsRepository.queueSql(mode)}
        SELECT c.outcome, count(*)::bigint AS orders
          FROM numbered c
          JOIN "deal" d ON d."id" = c.deal_id
          LEFT JOIN "customer" cust ON cust."id" = d."customerId"
-        WHERE ($3::text IS NULL OR c.rop = $3)
+        WHERE ${InsightsRepository.ropMatch('$3')}
           ${InsightsRepository.SEARCH_SQL('$4')}
         GROUP BY c.outcome`,
       period.start,
@@ -1426,6 +1500,7 @@ export class InsightsRepository {
   async confirmationByRop(
     period: Period,
     filter: { q?: string } = {},
+    mode: ConfirmationQueueMode = 'window',
   ): Promise<ConfirmationRopRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<
       {
@@ -1438,7 +1513,7 @@ export class InsightsRepository {
         unconfirmed_shipped: bigint
       }[]
     >(
-      `${InsightsRepository.QUEUE_SQL}
+      `${InsightsRepository.queueSql(mode)}
        SELECT
          c.rop AS rop,
          count(*)::bigint AS orders,
@@ -1470,7 +1545,7 @@ export class InsightsRepository {
     return rows.map((r) => ({
         // A group with no ROP is labelled rather than hidden: it still has to
         // be countable, and "(ROP yoʻq)" is a finding, not a gap.
-        rop: r.rop ?? '(ROP yoʻq)',
+        rop: r.rop ?? InsightsRepository.NO_ROP,
         orders: int(r.orders),
         confirmed: int(r.confirmed),
         noAnswer: int(r.no_answer),
@@ -1481,9 +1556,12 @@ export class InsightsRepository {
   }
 
   /** Every ROP group that has orders in the window, for the filter. */
-  async confirmationRops(period: Period): Promise<string[]> {
+  async confirmationRops(
+    period: Period,
+    mode: ConfirmationQueueMode = 'window',
+  ): Promise<string[]> {
     const rows = await this.prisma.$queryRawUnsafe<{ rop: string | null }[]>(
-      `${InsightsRepository.QUEUE_SQL}
+      `${InsightsRepository.queueSql(mode)}
        SELECT DISTINCT c.rop FROM numbered c WHERE c.rop IS NOT NULL ORDER BY c.rop`,
       period.start,
       period.end,
@@ -1523,6 +1601,7 @@ export class InsightsRepository {
   async confirmationBoard(
     period: Period,
     query: ConfirmationOrderQuery,
+    mode: ConfirmationQueueMode = 'window',
   ): Promise<{ totalItems: number; rows: ConfirmationOrderRow[]; byRop: ConfirmationRopRow[] }> {
     // Allowlisted, never interpolated from the request: this reaches SQL.
     // Columns of `filtered`, which carries the two deal fields a sort may need.
@@ -1577,7 +1656,7 @@ export class InsightsRepository {
     const rows = await this.prisma.$queryRawUnsafe<
       { total_items: bigint; page: PageJson[]; by_rop: RopJson[] }[]
     >(
-      `${InsightsRepository.QUEUE_SQL},
+      `${InsightsRepository.queueSql(mode)},
        filtered AS (
          SELECT
            c.deal_id, c.rop, c.daily_no, c.outcome,
@@ -1591,7 +1670,7 @@ export class InsightsRepository {
         -- row, so an empty selection would render an empty table rather than
         -- the whole queue.
         WHERE ($3::text[] IS NULL OR c.outcome = ANY($3::text[]))
-          AND ($5::text IS NULL OR c.rop = $5)
+          AND ${InsightsRepository.ropMatch('$5')}
           ${InsightsRepository.SEARCH_SQL('$4')}
        ),
        page AS (
@@ -1722,7 +1801,7 @@ export class InsightsRepository {
       byRop: (row?.by_rop ?? []).map((r) => ({
         // A group with no ROP is labelled rather than hidden: it still has to
         // be countable, and "(ROP yoʻq)" is a finding, not a gap.
-        rop: r.rop ?? '(ROP yoʻq)',
+        rop: r.rop ?? InsightsRepository.NO_ROP,
         orders: r.orders,
         confirmed: r.confirmed,
         noAnswer: r.no_answer,
@@ -1736,6 +1815,7 @@ export class InsightsRepository {
   async confirmationOrders(
     period: Period,
     query: ConfirmationOrderQuery,
+    mode: ConfirmationQueueMode = 'window',
   ): Promise<{ totalItems: number; rows: ConfirmationOrderRow[] }> {
     // Allowlisted, never interpolated from the request: this reaches SQL.
     const sortColumn: Record<ConfirmationOrderSortValue, string> = {
@@ -1775,7 +1855,7 @@ export class InsightsRepository {
         total_items: bigint
       }[]
     >(
-      `${InsightsRepository.QUEUE_SQL},
+      `${InsightsRepository.queueSql(mode)},
        /*
          PAGE FIRST, DECORATE AFTERWARDS.
 
@@ -1805,7 +1885,7 @@ export class InsightsRepository {
         -- row, so an empty selection would render an empty table rather than
         -- the whole queue.
         WHERE ($3::text[] IS NULL OR c.outcome = ANY($3::text[]))
-          AND ($5::text IS NULL OR c.rop = $5)
+          AND ${InsightsRepository.ropMatch('$5')}
           ${InsightsRepository.SEARCH_SQL('$4')}
         -- The deal id breaks ties, so paging cannot show one order twice and
         -- skip another when a thousand rows share a sort value.
@@ -2270,7 +2350,9 @@ export class InsightsRepository {
     const rows = await this.prisma.$queryRawUnsafe<
       { day: string; share: number | null; orders: number; rejected: number; dow: number }[]
     >(
-      `${InsightsRepository.QUEUE_SQL},
+      // Always the window cohort: this is a daily control chart, and a backlog
+      // has no days to plot.
+      `${InsightsRepository.queueSql('window')},
        perday AS (
          SELECT (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${tz}')::date AS day,
                 (count(*) FILTER (WHERE c.outcome = 'REJECTED')::float

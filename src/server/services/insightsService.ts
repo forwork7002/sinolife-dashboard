@@ -16,7 +16,7 @@ import {
 } from '@/server/domain/employees/branches'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import type { Period } from '@/server/domain/period/period'
-import { periodLengthInDays } from '@/server/domain/period/period'
+import { allTime, periodLengthInDays } from '@/server/domain/period/period'
 import type {
   CallActivityRow,
   CallDirectionRow,
@@ -32,7 +32,7 @@ import type {
   MarginSummary,
   StructureNode,
 } from '@/server/repositories/insightsRepository'
-import type { ConfirmationOutcomeValue } from '@/server/domain/types'
+import type { ConfirmationOutcomeValue, ConfirmationQueueMode } from '@/server/domain/types'
 
 /** Basis points as a percentage, to one decimal. */
 function pct(bp: number | null): number | null {
@@ -611,8 +611,17 @@ export class InsightsService {
     period: Period,
     query: ConfirmationOrderQuery,
     scope: EmployeeScopeFilter = {},
+    mode: ConfirmationQueueMode = 'window',
   ): Promise<ConfirmationQueueDto> {
-    const window = this.window(period, scope)
+    /*
+      THE BACKLOG HAS NO WINDOW, and says so by asking for all of time.
+
+      Every reading below binds $1 and $2, so the span still has to be a real
+      one — the cohort predicate in backlog mode is `signal = CONFIRM_NEW` and
+      the dates are left deliberately vacuous rather than removed, which keeps
+      one set of parameter positions across both modes.
+    */
+    const window = mode === 'backlog' ? allTime(period.timeZone) : this.window(period, scope)
 
     /*
       TWO ROUND TRIPS, NOT THREE.
@@ -644,13 +653,13 @@ export class InsightsService {
     const LONG_WINDOW_DAYS = 62
     const { page, byRop } =
       periodLengthInDays(window) > LONG_WINDOW_DAYS
-        ? await this.repository.confirmationBoard(window, query).then((board) => ({
+        ? await this.repository.confirmationBoard(window, query, mode).then((board) => ({
             page: { rows: board.rows, totalItems: board.totalItems },
             byRop: board.byRop,
           }))
         : await Promise.all([
-            this.repository.confirmationOrders(window, query),
-            this.repository.confirmationByRop(window, { q: query.q }),
+            this.repository.confirmationOrders(window, query, mode),
+            this.repository.confirmationByRop(window, { q: query.q }, mode),
           ]).then(([page, byRop]) => ({ page, byRop }))
 
     const scoped = query.rop ? byRop.filter((r) => r.rop === query.rop) : byRop
@@ -666,7 +675,17 @@ export class InsightsService {
     // the two would otherwise be able to disagree about which ROPs exist.
     const rops = byRop
       .map((r) => r.rop)
-      .filter((rop) => rop !== '(ROP yoʻq)')
+      /*
+        The no-ROP group is OFFERED now, not hidden.
+
+        It used to be dropped from the dropdown because the page's WHERE clause
+        could not match it — `c.rop` is NULL for these rows — so the only way
+        to select it was to type it into the address bar, and doing that showed
+        a populated tile band over an empty table. The predicate understands
+        the label now (`InsightsRepository.ropMatch`), which makes the group
+        selectable, and the orders it holds are worth looking at: a seller
+        outside every ROP department is a finding about the org chart.
+      */
       .sort((a, b) => a.localeCompare(b))
 
     const orders = Object.values(byOutcome).reduce((sum, count) => sum + count, 0)

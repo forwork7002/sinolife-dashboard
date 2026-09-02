@@ -101,6 +101,22 @@ export const CONFIRMATION_OUTCOMES = [
 export type ConfirmationOutcomeValue = (typeof CONFIRMATION_OUTCOMES)[number]
 
 /**
+ * Which question the Тасдиклаш board is being asked.
+ *
+ * 'window'  — what came in during the reporting period, and where each order
+ *             stands now. Dated by the order's own Дата создания, which is
+ *             the client's specification and the one an operator can verify
+ *             against Bitrix.
+ * 'backlog' — what is waiting right now: every still-open order whose latest
+ *             confirmation signal is CONFIRM_NEW, whenever it arrived. The
+ *             reporting window does not apply. A queue dated by intake cannot
+ *             answer this — the oldest unworked order is older than any
+ *             preset — which is why it is a mode and not a filter.
+ */
+export const CONFIRMATION_QUEUE_MODES = ['window', 'backlog'] as const
+export type ConfirmationQueueMode = (typeof CONFIRMATION_QUEUE_MODES)[number]
+
+/**
  * What a single stage move says about an order's confirmation.
  *
  * The outcomes above are what an ORDER ends up in; these are what a STAGE
