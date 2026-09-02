@@ -91,6 +91,18 @@ const REFERENCE_EVERY = Number(process.env.SYNC_REFERENCE_EVERY ?? 30)
  */
 const ROISTAT_EVERY = Number(process.env.SYNC_ROISTAT_EVERY ?? 60)
 
+/**
+ * How many ticks between deletion sweeps. Default: 60 = hourly.
+ *
+ * A deletion is rare and a stale row is quiet — nobody notices until they go
+ * looking for an order they removed and find it still counted. Hourly is
+ * often enough that a test deal does not survive the afternoon, and rare
+ * enough that the FULL pass it needs is not competing with the minute tick.
+ *
+ * Set to 0 to switch it off.
+ */
+const SWEEP_EVERY = Number(process.env.SYNC_SWEEP_EVERY ?? 60)
+
 /** Read on every tick. */
 const HOT: SyncEntityValue[] = ['CUSTOMERS', 'DEALS', 'DEAL_ITEMS', 'STAGE_HISTORY', 'CALLS']
 
@@ -294,6 +306,9 @@ async function main() {
   console.log(
     `  Sinxronizatsiya har ${INTERVAL_SEC}s. Maʼlumotnomalar har ${REFERENCE_EVERY} tsiklda.` +
       (ROISTAT_EVERY > 0 ? ` Roistat har ${ROISTAT_EVERY} tsiklda.` : ' Roistat oʻchirilgan.') +
+      (SWEEP_EVERY > 0
+        ? ` Oʻchirilganlarni tozalash har ${SWEEP_EVERY} tsiklda.`
+        : ' Tozalash oʻchirilgan.') +
       '\n',
   )
 
@@ -351,6 +366,38 @@ async function main() {
     } catch (error) {
       failures += 1
       console.error(`  ${stamp()} ✗ tsikl xatosi:`, error)
+    }
+
+    /*
+      DELETED IN BITRIX, DELETED HERE.
+
+      An incremental run cannot do this and says so: it fetches only what
+      changed since the watermark, so "not returned" means "not touched", not
+      "gone". The sweep therefore needs a FULL pass, which is why it has its
+      own, much slower clock — and why the dashboard showed a deal for as long
+      as it existed, even after somebody deleted it in the portal.
+
+      DEALS ALONE. `deal_item` and `deal_stage_history` are `onDelete: Cascade`
+      on the deal, so they follow without a pass of their own; `calls` and
+      `stage_history` have no sweeper at all and a FULL run over their 200-300
+      thousand rows would be work with nothing to show for it.
+
+      Cheap, because `fetchDeals` walks 2 500 rows per batch and filters to the
+      configured pipelines rather than the portal's 433 000 deals. Guarded,
+      because `sweepByAntiJoin` refuses to delete anything when the source
+      returns nothing at all — a failed read must never empty the table.
+    */
+    if (SWEEP_EVERY > 0 && tick % SWEEP_EVERY === 0 && !stopping) {
+      try {
+        const [swept] = await engine.runAll(['DEALS'], 'FULL', { sweepDeleted: true })
+        if (swept && swept.recordsDeleted > 0) {
+          console.log(`  ${stamp()} ${swept.recordsDeleted} ta oʻchirilgan bitim tozalandi`)
+        }
+      } catch (error) {
+        // Never fatal: a failed sweep leaves stale rows, which is the state we
+        // were already in. Losing the tick loop over it would be worse.
+        console.warn(`  ${stamp()} tozalash muvaffaqiyatsiz: ${(error as Error).message}`)
+      }
     }
 
     /*

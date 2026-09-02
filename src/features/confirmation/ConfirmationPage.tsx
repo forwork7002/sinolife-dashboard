@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react'
 
 import { Card, ChartCard } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { EmptyState, ErrorState } from '@/components/states/States'
 import {
   ArrowOutGlyph,
   BarsGlyph,
@@ -26,7 +25,6 @@ import {
   type ConfirmationOrderDto,
   type ConfirmationOutcome,
   type ConfirmationQueueDto,
-  type ConfirmationTraceDto,
   apiGet,
 } from '@/lib/api'
 import { APP_TIME_ZONE, NO_VALUE, formatNumber } from '@/lib/format'
@@ -124,8 +122,6 @@ const SORTS = ['createdAt', 'movedAt', 'queuedAt', 'decidedAt', 'amountMinor', '
 export function ConfirmationPage() {
   const { filters, update, apiParams } = useDashboardFilters()
   const [statsOpen, setStatsOpen] = useState(false)
-  /** The order whose trace is open, by deal id. Null when none is. */
-  const [traceOf, setTraceOf] = useState<string | null>(null)
 
   /*
     `sort` is shared URL state, and its dashboard-wide default is a deal
@@ -624,12 +620,6 @@ export function ConfirmationPage() {
           columns={columns}
           rows={data?.items ?? []}
           rowKey={(row) => row.dealId}
-          /*
-            A row opens its own trace. Clicking the open one closes it, so the
-            same gesture is both directions and nothing on screen has to carry
-            a close button of its own.
-          */
-          onRowClick={(row) => setTraceOf((open) => (open === row.dealId ? null : row.dealId))}
           status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
           errorMessage={(query.error as Error | null)?.message}
           onRetry={() => void query.refetch()}
@@ -649,10 +639,6 @@ export function ConfirmationPage() {
               : 'Bu davrda hech bir buyurtma tasdiqlash navbatiga tushmagan.'
           }
         />
-
-        {traceOf && (
-          <TracePanel dealId={traceOf} onClose={() => setTraceOf(null)} />
-        )}
 
         {data && (
           <Pagination
@@ -678,115 +664,6 @@ export function ConfirmationPage() {
  * and one refusal is not the worst ROP on the floor, and rate-sorting would
  * put them at the top of a list managers act on.
  */
-/**
- * ИЗ — one order's whole passage through Тасдиклаш.
- *
- * The board above shows where each order stands NOW, which is what a queue is
- * for and which cannot answer "what happened to this one". An order confirmed
- * in Bitrix and then pulled back out reads on the board exactly like an order
- * that was never confirmed — same row, same current state — and that is the
- * case this panel exists for. When it finds one it says so at the top rather
- * than leaving the reader to spot it in the list.
- *
- * Fetched when a row is opened, not with the board: 25 rows load at a time and
- * most are never opened, so joining the history in would be twenty-four
- * queries nobody reads.
- */
-function TracePanel({ dealId, onClose }: { dealId: string; onClose: () => void }) {
-  const query = useQuery({
-    queryKey: ['confirmation-trace', dealId],
-    queryFn: ({ signal }) =>
-      apiGet<ConfirmationTraceDto>('/insights/confirmations/trace', { dealId }, signal),
-    // The history of a closed transition does not change; only a live order
-    // gains steps, and the board's own poll is what surfaces that.
-    staleTime: 120_000,
-  })
-
-  const data = query.data?.data
-  const steps = data?.steps ?? []
-
-  return (
-    <div
-      className="mt-3 rounded-[var(--radius-panel)] border p-4"
-      style={{ borderColor: 'var(--border-strong)', background: 'var(--surface-raised)' }}
-    >
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-primary)' }}>
-            Из — {dealId}
-          </p>
-          {data?.withdrawn && (
-            <p className="mt-0.5 text-[11px]" style={{ color: 'var(--status-warning)' }}>
-              Тасдиқланган, кейин тасдиқлашдан олиб ташланган
-            </p>
-          )}
-        </div>
-        <Button variant="secondary" size="sm" onClick={onClose}>
-          Ёпиш
-        </Button>
-      </div>
-
-      {query.isPending && <div className="skeleton h-16 w-full rounded-md" role="status" />}
-      {query.isError && (
-        <ErrorState
-          message={(query.error as Error).message}
-          onRetry={() => void query.refetch()}
-        />
-      )}
-      {!query.isPending && !query.isError && steps.length === 0 && (
-        <EmptyState
-          title="Из йўқ"
-          body="Бу буюртма учун Bitrix24да тасдиқлаш босқичлари тарихи ёзилмаган."
-        />
-      )}
-
-      {steps.length > 0 && (
-        <ol className="space-y-0">
-          {steps.map((step, index) => {
-            const spec = OUTCOMES.find((o) => o.key === step.outcome)
-            const last = index === steps.length - 1
-            return (
-              <li key={`${step.at}-${index}`} className="flex gap-3">
-                {/* The rail: a dot per step, joined by a line that stops at the
-                    last one so the trace reads as ended rather than cut off. */}
-                <div className="flex flex-col items-center pt-1.5">
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ background: spec?.color ?? 'var(--ink-muted)' }}
-                  />
-                  {!last && (
-                    <span
-                      className="w-px flex-1"
-                      style={{ background: 'var(--border)' }}
-                      aria-hidden="true"
-                    />
-                  )}
-                </div>
-
-                <div className={last ? 'pb-0' : 'pb-4'}>
-                  <p className="text-xs font-medium" style={{ color: spec?.color ?? 'var(--ink-primary)' }}>
-                    {spec?.label ?? step.signal}
-                  </p>
-                  <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                    {tashkentDate(step.at)} {tashkentTime(step.at)}
-                    {step.until && ` — ${tashkentDate(step.until)} ${tashkentTime(step.until)}`}
-                    {!step.until && ' — ҳозиргача'}
-                  </p>
-                  {/* The portal's own stage name, so the step can be matched
-                      against the deal in Bitrix without translating it. */}
-                  <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                    {step.stage}
-                  </p>
-                </div>
-              </li>
-            )
-          })}
-        </ol>
-      )}
-    </div>
-  )
-}
-
 function RopPanel({
   rows,
   status,

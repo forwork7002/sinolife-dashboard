@@ -23,7 +23,7 @@ than no status line: it is the first thing a reader believes.
 | Cursor pagination (`start` / `next`) | Done |
 | Credential redaction in errors and logs | Done |
 | Sync engine: idempotent upsert, watermarks, audit log | Done |
-| Deletion sweep (opt-in, guarded) | Done — policy decision pending, see §10 |
+| Deletion sweep (guarded) | Done — runs hourly, `SYNC_SWEEP_EVERY` |
 | Field mapping | Done — confirmed against the live portal |
 | Stage ID → category mapping | Done — confirmed against the live portal |
 

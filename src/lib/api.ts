@@ -658,29 +658,6 @@ export interface ConfirmationOrderDto {
   readonly hoursToDecide: number | null
 }
 
-/**
- * One step of an order's trace through Тасдиклаш.
- *
- * Mirrors ConfirmationTraceStepDto in server/services/insightsService.
- */
-export interface ConfirmationTraceStepDto {
-  /** When the order ARRIVED in this stage, as Bitrix recorded it. */
-  readonly at: string
-  /** When it left. Null while it is still there. */
-  readonly until: string | null
-  /** The portal's own stage name, so an operator can match it in Bitrix. */
-  readonly stage: string
-  readonly signal: 'CONFIRM_NEW' | 'NO_ANSWER' | 'REJECTED' | 'CONFIRMED'
-  /** The signal as the board shows it — CONFIRMED may refine to shipped-unreached. */
-  readonly outcome: ConfirmationOutcome
-}
-
-export interface ConfirmationTraceDto {
-  readonly steps: readonly ConfirmationTraceStepDto[]
-  /** A confirmation was given and the order then moved on to something else. */
-  readonly withdrawn: boolean
-}
-
 export interface ConfirmationQueueDto {
   readonly items: readonly ConfirmationOrderDto[]
   readonly pagination: PaginationDto

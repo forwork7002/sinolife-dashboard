@@ -127,25 +127,6 @@ export interface ConfirmationDto {
   }
 }
 
-/** One step of an order's trace through the Тасдиклаш stages. */
-export interface ConfirmationTraceStepDto {
-  /** When the order ARRIVED in this stage, as Bitrix recorded it. */
-  readonly at: string
-  /** When it left. Null while it is still there. */
-  readonly until: string | null
-  /** The portal's own stage name, so an operator can match it in Bitrix. */
-  readonly stage: string
-  readonly signal: 'CONFIRM_NEW' | 'NO_ANSWER' | 'REJECTED' | 'CONFIRMED'
-  /** The signal as the board would show it — CONFIRMED may refine to shipped-unreached. */
-  readonly outcome: ConfirmationOutcomeValue
-}
-
-export interface ConfirmationTraceDto {
-  readonly steps: readonly ConfirmationTraceStepDto[]
-  /** A confirmation was given and the order then moved on to something else. */
-  readonly withdrawn: boolean
-}
-
 /** One order in the Тасдиклаш queue, in the column order the floor reads. */
 export interface ConfirmationOrderDto {
   readonly dealId: string
@@ -614,62 +595,6 @@ export class InsightsService {
             ? 0
             : Math.round((delivered / (delivered + refusedAfter)) * 1000) / 10,
       },
-    }
-  }
-
-  /**
-   * One order's trace through Тасдиклаш — «из».
-   *
-   * The board answers where every order stands now. This answers what happened
-   * to one of them, which is a different question and the one nobody could ask
-   * before: an order confirmed in Bitrix and then pulled back out looked
-   * identical to an order that was never confirmed, because both collapse to
-   * the same current state and nothing recorded that a confirmation had been
-   * given and withdrawn.
-   *
-   * The steps are Bitrix's own — the sync copies its stage history — so the
-   * times are the portal's and an operator can check any of them against the
-   * deal. Fetched per order, on demand, rather than joined into the board:
-   * the board pages 25 rows at a time and most of them are never opened.
-   */
-  async confirmationTrace(
-    dealId: string,
-    scope: EmployeeScopeFilter = {},
-  ): Promise<ConfirmationTraceDto> {
-    const steps = await this.repository.confirmationTrace(dealId, scope)
-
-    /*
-      «Тастиклаш анализ» qualifies the LAST confirmation and nothing else.
-
-      It is a field on the deal as it stands today, so applying it to every
-      CONFIRMED step in the history would claim the portal recorded something
-      it never did — an order confirmed twice would show both as unreachable
-      because of a value set once, after the fact.
-    */
-    const lastConfirmed = steps.map((step) => step.signal).lastIndexOf('CONFIRMED')
-
-    return {
-      steps: steps.map((step, index) => ({
-        at: step.enteredAt.toISOString(),
-        until: step.leftAt?.toISOString() ?? null,
-        stage: step.stageName,
-        signal: step.signal,
-        outcome:
-          step.signal === 'CONFIRMED' && index === lastConfirmed && step.unreachable
-            ? ('UNCONFIRMED_SHIPPED' as const)
-            : step.signal,
-      })),
-      /*
-        Was a confirmation given and then taken back?
-
-        True when a CONFIRMED step is followed by any later step at all — the
-        order left the confirmed stage for something else. This is the fact the
-        board cannot show and the reason this endpoint exists, so it is stated
-        rather than left for the reader to infer from the list.
-      */
-      withdrawn: steps.some(
-        (step, index) => step.signal === 'CONFIRMED' && index < steps.length - 1,
-      ),
     }
   }
 
