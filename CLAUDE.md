@@ -295,6 +295,27 @@ the pair together.
   finishes `PARTIAL` on every run (2 346 of 193 344 rows point at things that no
   longer exist), and blocking on skips left the cursor permanently stuck,
   re-reading 191 000 transitions every tick to change nothing.
+- **…but a run that skipped rewinds 35 minutes, for `DEALS` and
+  `STAGE_HISTORY`.** Not every skip is permanent. The hot entities run in
+  sequence, each capturing its own start, so a deal created between the DEALS
+  read and the STAGE_HISTORY read has its arrival in `C4:NEW` skipped for an
+  unresolvable `dealId` — and `>CREATED_TIME` then means that arrival is never
+  offered again, which leaves the order off the confirmation board with nothing
+  reporting a gap. Measured 2026-09-03: portal 44, the client's own bot board
+  44, ours 43 (deal 935632), and 1–4 a day over the preceding days.
+  `SKIP_LOOKBACK_MS` in `SyncEngine.ts` — applied only after a run that skipped,
+  and always derived from that run's own start, so it advances every tick
+  regardless.
+- **The upsert may not rewrite a row's primary key.** `rowId()` mints a fresh
+  id per batch and the conflict target is the EXTERNAL key, so `id` has to be
+  `insertOnly` — without it the update set carried `"id" = EXCLUDED."id"` and
+  every re-import gave an existing row a new identity (proved on production:
+  the one deal of nineteen the sync touched in 100 s came back under a new id).
+  Children followed it — `deal_item` and `deal_stage_history` cascade on update
+  — and `/deals/[id]` plus the confirmation trace panel address a deal by that
+  column, so links went stale within a minute.
+  `tests/integrations/bulkUpsert.test.ts` pins it, including for tables added
+  later.
 - **Only a FULL run may delete**, and only from `SUCCESS`. An incremental run
   sees just the changed records, so "not seen" says nothing about existence.
 - **The production sweep bypasses the SyncEngine on purpose** — it collects ids

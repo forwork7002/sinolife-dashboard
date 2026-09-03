@@ -8,6 +8,7 @@ import {
   type SyncStore,
   SyncEngine,
   isCleanRun,
+  nextWatermark,
 } from '@/server/integrations/crm/sync/SyncEngine'
 
 // ---------------------------------------------------------------------------
@@ -570,5 +571,93 @@ describe('runAll', () => {
     expect(results[0]!.status).toBe('FAILED')
     expect(results[1]!.status).toBe('SUCCESS')
     expect(isCleanRun(results)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+
+/**
+ * A SKIP CAN BE TRANSIENT, AND ONE KIND OF IT COST THE CONFIRMATION BOARD
+ * ORDERS.
+ *
+ * The hot entities run in sequence inside one tick, each capturing its own
+ * start time. A deal created between the DEALS read and the STAGE_HISTORY read
+ * is not in the database yet while its arrival in `C4:NEW` is already in the
+ * portal's history — so that row is skipped for an unresolvable deal, the
+ * watermark advances past it, and `>CREATED_TIME` means it is never offered
+ * again. The deal lands a minute later with its later transitions and no
+ * arrival: the order is simply not on the board, and no count anywhere says so.
+ *
+ * Production, 2026-09-03: portal 44 orders, the client's own bot board 44,
+ * this database 43. Deal 935632 — arrival 11:28:30, deal row 11:29:39.
+ */
+describe('watermark after a run that skipped records', () => {
+  it('rewinds far enough for the skipped record to be offered again', () => {
+    // Stage history waits on a deal that lands in the very next tick.
+    expect(nextWatermark('STAGE_HISTORY', NOW, 1).getTime()).toBe(NOW.getTime() - 35 * 60_000)
+    /*
+      Deals wait on reference data instead, which reloads every thirty TICKS —
+      and a tick has no ceiling, so the window has to allow for slow ones. It
+      is affordable because it almost never fires: over five hours of
+      production DEALS skipped on none of its 293 runs.
+    */
+    expect(nextWatermark('DEALS', NOW, 1).getTime()).toBe(NOW.getTime() - 95 * 60_000)
+  })
+
+  it('does not rewind a clean run, so the common case is unchanged', () => {
+    expect(nextWatermark('STAGE_HISTORY', NOW, 0)).toEqual(NOW)
+  })
+
+  it('leaves entities that cannot lose the race exactly where they were', () => {
+    // DEAL_ITEMS reads the state the DEALS pass left in this process rather
+    // than a watermark, and CALLS links its deal optionally instead of
+    // skipping. Rewinding either would be cost with nothing to buy.
+    for (const entity of ['EMPLOYEES', 'CUSTOMERS', 'DEAL_ITEMS', 'CALLS'] as const) {
+      expect(nextWatermark(entity, NOW, 5)).toEqual(NOW)
+    }
+  })
+
+  it('always moves forward, however many runs keep skipping', () => {
+    // The value is derived from THIS run's start, never from the stored
+    // cursor, so it cannot creep backwards or stall — which is what blocking
+    // the watermark on skips did, leaving 191 000 transitions re-read a minute.
+    const later = new Date(NOW.getTime() + 60_000)
+    expect(nextWatermark('STAGE_HISTORY', later, 3).getTime()).toBeGreaterThan(
+      nextWatermark('STAGE_HISTORY', NOW, 3).getTime(),
+    )
+  })
+
+  it('re-reads a record whose foreign key resolved a tick later', async () => {
+    const history = rows(3, 'h')
+    const table = new FakeTable()
+
+    // Stands in for the deal that has not been imported yet: 'h-1' cannot be
+    // written on the first run and can be on the second.
+    let dealArrived = false
+
+    const handler = makeHandler('STAGE_HISTORY', history, table, {
+      async persist(batch: readonly Row[]) {
+        const writable = batch.filter((r) => dealArrived || r.externalId !== 'h-1')
+        const outcome = table.upsert(writable)
+        return { ...outcome, skipped: batch.length - writable.length }
+      },
+    })
+
+    const { engine, store } = engineWith([handler], new FakeStore(), { STAGE_HISTORY: true })
+
+    const first = await engine.runEntity('STAGE_HISTORY', 'INCREMENTAL')
+    expect(first.recordsSkipped).toBe(1)
+    expect(first.status).toBe('PARTIAL')
+    expect(table.rows.has('h-1')).toBe(false)
+
+    // The deal lands in the next tick's DEALS pass.
+    dealArrived = true
+
+    await engine.runEntity('STAGE_HISTORY', 'INCREMENTAL')
+
+    // THE POINT: the arrival is on the board, without a full re-read of the
+    // history table and without the watermark ever standing still.
+    expect(table.rows.has('h-1')).toBe(true)
+    expect((await store.getCursor('DEMO', 'STAGE_HISTORY'))!.getTime()).toBe(NOW.getTime())
   })
 })

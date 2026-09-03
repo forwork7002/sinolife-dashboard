@@ -107,7 +107,29 @@ const SOURCE_CAST = '"ExternalSource"'
 /** Columns every externally-sourced table shares. */
 function identityColumns(): ColumnSpec[] {
   return [
-    { name: 'id' },
+    /*
+      INSERT-ONLY, or the row changes identity every time the portal touches it.
+
+      `rowId()` mints a fresh id for every row in every batch, and the upsert
+      conflicts on `(externalSource, externalId)` — so without this the update
+      set carried `"id" = EXCLUDED."id"` and an ordinary re-import REPLACED the
+      primary key of a row that already existed. Measured on production
+      2026-09-03: of nineteen deals watched over a hundred seconds, the one the
+      sync touched came back under a new id.
+
+      Two things followed. Every child row was dragged along with it —
+      `deal_item` and `deal_stage_history` relate to the deal with the default
+      `onUpdate: Cascade`, so re-importing one deal rewrote the foreign key of
+      each of its transitions, on a one-vCPU database. And every URL holding an
+      internal id went stale within a minute: `/deals/[id]` and the
+      confirmation queue's own trace panel both address a deal by this column,
+      so a row opened after its deal had been re-synced asked for an id that no
+      longer existed.
+
+      The external key is the identity here. Ours is a local name for it, and a
+      name is not something an import may change.
+    */
+    { name: 'id', insertOnly: true },
     { name: 'externalSource', cast: SOURCE_CAST },
     { name: 'externalId' },
   ]
@@ -1020,7 +1042,10 @@ export function createSyncHandlers(
   // -------------------------------------------------------------------------
 
   const STOCK_COLUMNS: ColumnSpec[] = [
-    { name: 'id' },
+    // Insert-only for the same reason as `identityColumns` — this table's key
+    // is (storeId, productId), so a fresh `rowId()` on a conflict would move
+    // the row's id every time the shelf count is restated.
+    { name: 'id', insertOnly: true },
     { name: 'storeId' },
     { name: 'productId' },
     { name: 'quantity', cast: 'decimal' },

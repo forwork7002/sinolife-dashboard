@@ -27,6 +27,79 @@ import type {
 } from '@/server/domain/types'
 import type { CrmProvider, FetchOptions, Page } from '@/server/integrations/crm/CrmProvider'
 
+/**
+ * How far back an entity re-reads after a run that SKIPPED something.
+ *
+ * NOT EVERY SKIP IS PERMANENT, and treating them all as if they were lost
+ * orders off the Тасдиклаш board. The watermark deliberately advances past a
+ * skipped record — see `setCursor` at the end of `runEntity` — because most
+ * skips can never resolve: a transition belonging to a deal outside the
+ * imported pipelines, or naming a stage the portal has since deleted. One kind
+ * resolves within a minute, and it was being thrown away with the rest.
+ *
+ * THE RACE IS INSIDE A SINGLE TICK. The worker runs the hot entities in
+ * sequence — CUSTOMERS, DEALS, DEAL_ITEMS, STAGE_HISTORY, CALLS — and each
+ * captures its own `startedAt` when its own run begins, twenty or thirty
+ * seconds apart. A deal created between the DEALS read and the STAGE_HISTORY
+ * read is therefore not in our database yet, while its arrival in `C4:NEW`
+ * already exists in the portal's history. That row is skipped for an
+ * unresolvable `dealId`, the watermark moves past it, and the next run asks
+ * for `>CREATED_TIME` — so the arrival is never read again. The deal lands a
+ * minute later carrying its LATER transitions and no arrival, which is exactly
+ * the row the confirmation queue is cohorted by: the order is not on the board
+ * at all, and nothing anywhere reports a gap.
+ *
+ * Measured on production, 2026-09-03: the portal and the client's own bot
+ * board both held 44 orders for the day and this database held 43. The missing
+ * one was deal 935632 — arrival at 11:28:30, skipped in the tick that read
+ * history at 11:28:4x, deal row imported at 11:29:39 — and the same gap ran at
+ * one to four orders a day over the four days before it.
+ *
+ * DEALS HAS THE SAME SHAPE against a different reference: it drops a deal whose
+ * employee or stage it cannot resolve, and reference data reloads only every 30
+ * TICKS. A tick is at least the interval and has no ceiling — a slow one runs
+ * long and the next starts immediately — so "thirty ticks" is not thirty
+ * minutes and a lookback sized to the clock has to allow for that. Ninety-five
+ * minutes covers thirty ticks averaging three, and it costs nothing to be
+ * generous here: over five hours of production, DEALS skipped on none of its
+ * 293 runs, so this is insurance that almost never fires. STAGE_HISTORY, which
+ * fires on about one run in ten, keeps the tighter window its race actually
+ * needs — the deal it is waiting for lands in the very next tick.
+ *
+ * DEAL_ITEMS is absent on purpose: it reads the in-process state the DEALS pass
+ * just left behind rather than a watermark, so it cannot lose this race. CALLS
+ * is absent because it LINKS its deal optionally instead of skipping.
+ *
+ * The cost is paid only by a run that actually skipped something, and it is
+ * minutes of changes rather than the whole table — not the 191 000-row re-read
+ * that blocking the watermark on skips produced. Re-reading is cheap in the
+ * first place only because the upsert no longer rewrites a row's primary key;
+ * see `identityColumns` in handlers.ts.
+ */
+const SKIP_LOOKBACK_MS: Partial<Record<SyncEntityValue, number>> = {
+  DEALS: 95 * 60_000,
+  STAGE_HISTORY: 35 * 60_000,
+}
+
+/**
+ * Where the next incremental run starts reading.
+ *
+ * `startedAt`, moved back by this entity's lookback when the run dropped
+ * anything — and only then, so a clean run costs nothing and the common case
+ * is unchanged. It can never stall: the value is always derived from THIS
+ * run's start, so it advances by a whole tick every tick however many records
+ * keep being skipped, which is the property blocking on skips did not have.
+ */
+export function nextWatermark(
+  entity: SyncEntityValue,
+  startedAt: Date,
+  skipped: number,
+): Date {
+  const lookback = SKIP_LOOKBACK_MS[entity] ?? 0
+  if (skipped === 0 || lookback === 0) return startedAt
+  return new Date(startedAt.getTime() - lookback)
+}
+
 // ---------------------------------------------------------------------------
 // Seams
 // ---------------------------------------------------------------------------
@@ -312,7 +385,11 @@ export class SyncEngine {
      * failed to write.
      */
     if (!fatal && failed === 0) {
-      await this.store.setCursor(this.provider.source, entity, startedAt)
+      await this.store.setCursor(
+        this.provider.source,
+        entity,
+        nextWatermark(entity, startedAt, skipped),
+      )
     }
 
     await this.store.finishRun({
