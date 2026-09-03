@@ -104,6 +104,56 @@ function ts(date: Date | null | undefined): string | null {
 
 const SOURCE_CAST = '"ExternalSource"'
 
+/**
+ * Close each transition with the start of the next one.
+ *
+ * The portal reports only when a deal ENTERED a stage. How long it stayed
+ * there is the difference between consecutive entries, and that cannot be
+ * computed while rows are still arriving out of order across pages — so it
+ * runs once, at the end of the run, as one set-based update. A row with
+ * `leftAt` still null afterwards is a deal sitting in that stage right now,
+ * which is exactly what the in-transit figures count.
+ *
+ * SCOPED TO THE DEALS THE RUN ACTUALLY TOUCHED, and that is not a
+ * micro-optimisation. Unscoped, this was the most expensive statement on the
+ * production database by a factor of four: 21.6% of all execution time,
+ * 7 472 calls at a mean of 1 745 ms and a worst case of 67 SECONDS, for a
+ * lifetime total of 178 379 updated rows — twenty-four rows per call. It ran
+ * every minute, computing a window function over all 222 600 history rows to
+ * close about two dozen of them, on the one vCPU that also has to answer every
+ * page the dashboard serves. That is most of what "the dashboard is slow" was.
+ *
+ * Scoping by DEAL is exactly right rather than merely cheaper: `leftAt` on a
+ * row is decided by the next row OF THE SAME DEAL, so a deal whose history did
+ * not change this run cannot have a new answer. Deals nobody touched are
+ * skipped because there is nothing to recompute, not because it is faster.
+ */
+export function historyLeftAtSql(scoped: boolean): string {
+  return `
+        UPDATE "deal_stage_history" AS h
+        SET "leftAt" = next."enteredAt"
+        FROM (
+          SELECT
+            "id",
+            LEAD("enteredAt") OVER (PARTITION BY "dealId" ORDER BY "enteredAt", "id") AS "enteredAt"
+          FROM "deal_stage_history"
+          ${scoped ? 'WHERE "dealId" = ANY($1::text[])' : ''}
+        ) AS next
+        WHERE h."id" = next."id"
+          AND h."leftAt" IS DISTINCT FROM next."enteredAt"
+      `
+}
+
+/**
+ * Above this many deals, close the whole table in one pass instead.
+ *
+ * A FULL run touches every deal there is, and handing a hundred thousand ids
+ * to `= ANY($1)` is slower than the sequential pass it was trying to avoid —
+ * the unscoped form is the right shape for that case and always was. The cap
+ * is what keeps an incremental tick cheap without making a full import worse.
+ */
+const FINALIZE_SCOPE_MAX = 20_000
+
 /** Columns every externally-sourced table shares. */
 function identityColumns(): ColumnSpec[] {
   return [
@@ -880,6 +930,15 @@ export function createSyncHandlers(
     { name: 'createdAt', cast: 'timestamp', insertOnly: true },
   ]
 
+  /**
+   * The deals whose transitions this run wrote, for `finalize` to close.
+   *
+   * In-process and per handler set, like the DEAL_ITEMS pass above: the engine
+   * has no seam for "state that lives for one run", and inventing one for a
+   * single string set would be a larger change than the thing it carries.
+   */
+  const touchedDeals = new Set<string>()
+
   const stageHistory: EntitySyncHandler<RawStageHistory> = {
     entity: 'STAGE_HISTORY',
     externalIdOf: (record) => record.externalId,
@@ -915,6 +974,13 @@ export function createSyncHandlers(
         }
 
         rows.push([rowId(), source, record.externalId, dealId, stageId, ts(record.enteredAt), now])
+        /*
+          Remembered for `finalize` below, which closes only these deals'
+          transitions. Accumulated across the run's pages, cleared when the
+          run ends — a run that fails before finalizing leaves them here, and
+          the next run closes them, which is what should happen.
+        */
+        touchedDeals.add(dealId)
       }
 
       await bulkUpsert({
@@ -932,30 +998,17 @@ export function createSyncHandlers(
       return { ...counts, skipped }
     },
 
-    /**
-     * Close each transition with the start of the next one.
-     *
-     * The portal reports only when a deal ENTERED a stage. How long it stayed
-     * there is the difference between consecutive entries, and that cannot be
-     * computed while the rows are still arriving out of order across pages —
-     * so it runs once, at the end, as a single set-based update.
-     *
-     * A row with `leftAt` still null after this is a deal sitting in that stage
-     * right now, which is exactly what the in-transit figures count.
-     */
+    /** See `historyLeftAtSql` — why it closes these deals and not the table. */
     async finalize() {
-      await prisma.$executeRawUnsafe(`
-        UPDATE "deal_stage_history" AS h
-        SET "leftAt" = next."enteredAt"
-        FROM (
-          SELECT
-            "id",
-            LEAD("enteredAt") OVER (PARTITION BY "dealId" ORDER BY "enteredAt", "id") AS "enteredAt"
-          FROM "deal_stage_history"
-        ) AS next
-        WHERE h."id" = next."id"
-          AND h."leftAt" IS DISTINCT FROM next."enteredAt"
-      `)
+      const ids = [...touchedDeals]
+      touchedDeals.clear()
+
+      // Nothing arrived, so nothing can have a new neighbour. The old form
+      // still recomputed the entire table on a tick that wrote no rows at all.
+      if (ids.length === 0) return
+
+      const scoped = ids.length <= FINALIZE_SCOPE_MAX
+      await prisma.$executeRawUnsafe(historyLeftAtSql(scoped), ...(scoped ? [ids] : []))
     },
   }
 
