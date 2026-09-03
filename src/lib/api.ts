@@ -1009,8 +1009,12 @@ export interface SellerBoardDto {
   readonly teams: readonly SellerTeamRowDto[]
   readonly totals: SellerBoardTotalsDto
   readonly forecast: SellerBoardForecastDto
-  /** Every figure here is bucketed by the day the ORDER WAS TAKEN. */
-  readonly basis: 'created_in_period'
+  /**
+   * 'confirmation_queue' — FAKT 1 / FAKT 2 on the arrival in C4:NEW.
+   * 'created_in_period' — the original reading, bucketed by the day the
+   * ORDER WAS TAKEN. See `?basis=` on `/analytics/sellers`.
+   */
+  readonly basis: 'confirmation_queue' | 'created_in_period'
 }
 
 /** One day of one seller's intake. */

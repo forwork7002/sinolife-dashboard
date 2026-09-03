@@ -61,4 +61,4 @@ export const concentrationService = new ConcentrationService(concentrationReposi
 export const commandCentreService = new CommandCentreService(insightsRepository)
 export const responseService = new ResponseService(responseRepository)
 export const marketingService = new MarketingService(marketingRepository)
-export const sellerBoardService = new SellerBoardService(sellerBoardRepository)
+export const sellerBoardService = new SellerBoardService(sellerBoardRepository, insightsRepository)

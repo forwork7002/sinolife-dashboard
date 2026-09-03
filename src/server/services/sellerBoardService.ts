@@ -31,13 +31,22 @@ import {
 } from '@/server/domain/analytics/metrics'
 import { periodElapsedFraction } from '@/server/domain/analytics/performance'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
+import type { Period } from '@/server/domain/period/period'
 import type { DeltaDto } from '@/lib/api'
+import type { InsightsRepository } from '@/server/repositories/insightsRepository'
 import type {
   SellerBoardFilters,
   SellerBoardRepository,
   SellerBoardRow,
 } from '@/server/repositories/sellerBoardRepository'
 import type { AnalyticsContext } from './analyticsService'
+
+/**
+ * Which clock the board reads. See `SellerBoardDto.basis` for what each
+ * value means to the reader; this is the API-level switch that picks it.
+ */
+export const SELLER_BOARD_BASES = ['queue', 'intake'] as const
+export type SellerBoardBasisValue = (typeof SELLER_BOARD_BASES)[number]
 
 // ---------------------------------------------------------------------------
 // The client's bonus ladder, quoted
@@ -148,9 +157,15 @@ export interface SellerBoardDto {
   readonly forecast: SellerBoardForecastDto
   /**
    * The basis, stated in the payload so the screen cannot forget to print it.
-   * Everything here is bucketed by the day the ORDER WAS TAKEN.
+   *
+   * 'confirmation_queue' — FAKT 1 / FAKT 2, the floor's own vocabulary.
+   *   `ordered` is Тасдиқланди (confirmed into Доставка), `won` is
+   *   Доставланди (C6:WON), and everything is dated by the order's OWN
+   *   arrival in C4:NEW — see `InsightsRepository.confirmationSellerRating`.
+   * 'created_in_period' — the original reading, dated by the day the ORDER
+   *   WAS TAKEN (`createdAtSource`) — see `SellerBoardRepository`.
    */
-  readonly basis: 'created_in_period'
+  readonly basis: 'confirmation_queue' | 'created_in_period'
 }
 
 export interface SellerDayDto {
@@ -163,16 +178,19 @@ export interface SellerDayDto {
 // ---------------------------------------------------------------------------
 
 export class SellerBoardService {
-  constructor(private readonly repo: SellerBoardRepository) {}
+  constructor(
+    private readonly repo: SellerBoardRepository,
+    private readonly insights: InsightsRepository,
+  ) {}
 
-  async board(ctx: AnalyticsContext): Promise<SellerBoardDto> {
+  async board(ctx: AnalyticsContext, basis: SellerBoardBasisValue = 'queue'): Promise<SellerBoardDto> {
     const filters = boardFilters(ctx)
 
     // Both windows in parallel: the comparison exists only to give the total
     // a delta, and a second round trip could straddle a sync.
     const [rows, previous] = await Promise.all([
-      this.repo.board(ctx.period, filters),
-      this.repo.board(ctx.comparison, filters),
+      this.rowsFor(ctx.period, basis, filters),
+      this.rowsFor(ctx.comparison, basis, filters),
     ])
 
     const totalWonMinor = sum(rows, (r) => r.wonMinor)
@@ -261,11 +279,25 @@ export class SellerBoardService {
         sellersInBonus: boardRows.filter((r) => r.bonus.earned.amount > 0).length,
       },
       forecast: forecastOf(totalWonMinor, ctx),
-      basis: 'created_in_period',
+      basis: basis === 'queue' ? 'confirmation_queue' : 'created_in_period',
     }
   }
 
-  async sellerDays(ctx: AnalyticsContext, employeeId: string): Promise<readonly SellerDayDto[]> {
+  async sellerDays(
+    ctx: AnalyticsContext,
+    employeeId: string,
+    basis: SellerBoardBasisValue = 'queue',
+  ): Promise<readonly SellerDayDto[]> {
+    if (basis === 'queue') {
+      const days = await this.insights.confirmationSellerRatingDays(ctx.period, employeeId)
+      return days.map((d) => ({
+        date: d.date,
+        orders: d.orders,
+        ordered: toMoneyDto(money(d.confirmedMinor, ctx.currency)),
+        won: toMoneyDto(money(d.deliveredMinor, ctx.currency)),
+      }))
+    }
+
     const days = await this.repo.sellerDays(ctx.period, employeeId, boardFilters(ctx))
     return days.map((d) => ({
       date: d.date,
@@ -273,6 +305,34 @@ export class SellerBoardService {
       ordered: toMoneyDto(money(d.orderedMinor, ctx.currency)),
       won: toMoneyDto(money(d.wonMinor, ctx.currency)),
     }))
+  }
+
+  /** One row per operator, on whichever clock `basis` names. */
+  private async rowsFor(
+    period: Period,
+    basis: SellerBoardBasisValue,
+    filters: SellerBoardFilters,
+  ): Promise<SellerBoardRow[]> {
+    if (basis === 'intake') return this.repo.board(period, filters)
+
+    const rows = await this.insights.confirmationSellerRating(period, filters)
+    return rows.map(
+      (r): SellerBoardRow => ({
+        employeeId: r.employeeId,
+        fullName: r.fullName,
+        rop: r.rop,
+        // Not carried: the confirmation-queue cohort already resolves `rop`
+        // from the department name, and nothing downstream reads this field.
+        departmentName: null,
+        orders: r.confirmedOrders,
+        orderedMinor: r.confirmedMinor,
+        wonOrders: r.deliveredOrders,
+        wonMinor: r.deliveredMinor,
+        openOrders: r.inTransitOrders,
+        openMinor: r.inTransitMinor,
+        lostOrders: r.rejectedOrders,
+      }),
+    )
   }
 }
 

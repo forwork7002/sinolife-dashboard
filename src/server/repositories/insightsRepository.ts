@@ -375,6 +375,52 @@ export interface ConfirmationOrderQuery {
   readonly order: 'asc' | 'desc'
 }
 
+/** The same shape `SellerBoardFilters` carries, kept local so the two repositories stay independent. */
+export interface ConfirmationSellerRatingFilters {
+  readonly employeeIds?: readonly string[]
+  readonly departmentIds?: readonly string[]
+  readonly sourceIds?: readonly string[]
+  readonly restrictToEmployeeId?: string
+}
+
+/**
+ * One operator's standing on the confirmation-queue cohort.
+ *
+ * THE TWO FACTS ARE THE CLIENT'S OWN, NAMED «FAKT 1» AND «FAKT 2» ON THE
+ * FLOOR. FAKT 1 is Тасдиқланди — the order reached the customer and moved
+ * into Доставка (`outcome = 'CONFIRMED'`). FAKT 2 is Доставланди — of those,
+ * the ones the carrier actually delivered (`deal.status = 'WON'` on a
+ * Доставка-pipeline deal, i.e. C6:WON).
+ *
+ * «Успешно заказ» (C6:UC_YUKVF1) was considered and rejected for FAKT 1: see
+ * `DELIVERY_STAGE_ROLES['C6:UC_YUKVF1']` in `mapping.ts` — it is a settlement
+ * stamp automation writes within five seconds of Доставлено in most cases,
+ * not an operator's own act, and using it collapsed FAKT 1 into FAKT 2.
+ *
+ * confirmedOrders is a SUPERSET of deliveredOrders: `moves` never records a
+ * C6:WON visit (WON is not in `CONFIRMATION_SIGNAL_STAGES`), so an order's
+ * `outcome` freezes at 'CONFIRMED' the moment it arrives in C6:NEW and stays
+ * there through delivery. openOrders is therefore "confirmed, still on the
+ * way" rather than a separate population.
+ */
+export interface ConfirmationSellerRatingRow {
+  readonly employeeId: string
+  readonly fullName: string
+  /** The ROP's own name — see `queueSql`'s `classified.rop`. Null off a team. */
+  readonly rop: string | null
+  /** FAKT 1: Тасдиқланди — confirmed orders, this operator's book. */
+  readonly confirmedOrders: number
+  readonly confirmedMinor: bigint
+  /** FAKT 2: Доставланди — of those, delivered (C6:WON). */
+  readonly deliveredOrders: number
+  readonly deliveredMinor: bigint
+  /** Confirmed but not yet delivered — still inside FAKT 1, shown apart. */
+  readonly inTransitOrders: number
+  readonly inTransitMinor: bigint
+  /** Тасдиқланмади — refused in the queue. Outside FAKT 1, shown so the exclusion is visible. */
+  readonly rejectedOrders: number
+}
+
 
 export interface ChannelRow {
   readonly sourceId: string
@@ -1668,6 +1714,158 @@ export class InsightsRepository {
         rejected: int(r.rejected),
         pending: int(r.pending),
         unconfirmedShipped: int(r.unconfirmed_shipped),
+    }))
+  }
+
+  /**
+   * The SELECT this rating runs over `classified`, isolated so its predicates
+   * can be pinned by a SQL-shape test without a database — see `queueSql`.
+   */
+  private static ratingSql(filterClause: string): string {
+    return `
+       SELECT
+         e."id" AS employee_id,
+         e."fullName" AS full_name,
+         c.rop AS rop,
+         count(*) FILTER (WHERE c.outcome = 'CONFIRMED')::bigint AS confirmed_orders,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRMED')::text AS confirmed,
+         count(*) FILTER (WHERE d."status" = 'WON')::bigint AS delivered_orders,
+         sum(d."amountMinor") FILTER (WHERE d."status" = 'WON')::text AS delivered,
+         count(*) FILTER (WHERE c.outcome = 'CONFIRMED' AND d."status" <> 'WON')::bigint AS in_transit_orders,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRMED' AND d."status" <> 'WON')::text AS in_transit,
+         count(*) FILTER (WHERE c.outcome = 'REJECTED')::bigint AS rejected_orders
+       FROM classified c
+       JOIN "deal" d ON d."id" = c.deal_id
+       JOIN "employee" e ON e."id" = d."employeeId"
+       WHERE TRUE
+         ${filterClause}
+       GROUP BY e."id", e."fullName", c.rop
+       HAVING count(*) FILTER (WHERE c.outcome = 'CONFIRMED') > 0
+       ORDER BY delivered DESC NULLS LAST`
+  }
+
+  /**
+   * The same filter grammar `SellerBoardRepository` speaks, reimplemented
+   * rather than imported: the two repositories stay independent, and this is
+   * four conditions, not a framework.
+   */
+  private static ratingFilterSql(filters: ConfirmationSellerRatingFilters, params: unknown[]): string {
+    const conditions: string[] = []
+
+    if (filters.restrictToEmployeeId) {
+      params.push(filters.restrictToEmployeeId)
+      conditions.push(`e."id" = $${params.length}`)
+    }
+    if (filters.employeeIds?.length) {
+      params.push(filters.employeeIds.join(','))
+      conditions.push(`e."id" = ANY(string_to_array($${params.length}, ','))`)
+    }
+    if (filters.departmentIds?.length) {
+      params.push(filters.departmentIds.join(','))
+      conditions.push(`e."departmentId" = ANY(string_to_array($${params.length}, ','))`)
+    }
+    if (filters.sourceIds?.length) {
+      params.push(filters.sourceIds.join(','))
+      conditions.push(`d."sourceId" = ANY(string_to_array($${params.length}, ','))`)
+    }
+
+    return conditions.length === 0 ? '' : ` AND ${conditions.join(' AND ')}`
+  }
+
+  /**
+   * Sotuvchilar reytingi, rebuilt on the confirmation queue instead of order
+   * intake — one row per operator, FAKT 1 and FAKT 2 as the floor names them.
+   *
+   * SAME COHORT AS THE QUEUE, on purpose: `SellerBoardService` calls this and
+   * `confirmationOrders`/`confirmationBoard` for the SAME period and they must
+   * count the same orders, or the rating and the board it is drawn from would
+   * disagree about who is even in it.
+   *
+   * `countsAsRevenue` is DELIBERATELY NOT NAMED HERE, unlike every other money
+   * query in this file. It would not change the total: every deal that reaches
+   * this cohort arrived via a confirmation-signal stage in pipeline 4, 6 or
+   * 12, none of which is «#10 База» — the duplicate the flag exists to
+   * exclude is a separate deal row Bitrix creates later and that row never
+   * touches a signal stage, so it can never enter `classified`. What the flag
+   * WOULD do here is wrong: pipelines 4 and 12 are not revenue pipelines, so
+   * filtering on it would silently drop every still-queued and every refused
+   * order — the two states «barcha buyurtmalar» exists to show.
+   */
+  async confirmationSellerRating(
+    period: Period,
+    filters: ConfirmationSellerRatingFilters = {},
+  ): Promise<ConfirmationSellerRatingRow[]> {
+    const params: unknown[] = [period.start, period.end]
+    const filterClause = InsightsRepository.ratingFilterSql(filters, params)
+
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        employee_id: string
+        full_name: string
+        rop: string | null
+        confirmed_orders: bigint
+        confirmed: MoneyText
+        delivered_orders: bigint
+        delivered: MoneyText
+        in_transit_orders: bigint
+        in_transit: MoneyText
+        rejected_orders: bigint
+      }[]
+    >(
+      `${InsightsRepository.queueSql('window')}${InsightsRepository.ratingSql(filterClause)}`,
+      ...params,
+    )
+
+    return rows.map((r) => ({
+      employeeId: r.employee_id,
+      fullName: r.full_name,
+      rop: r.rop,
+      confirmedOrders: int(r.confirmed_orders),
+      confirmedMinor: money(r.confirmed),
+      deliveredOrders: int(r.delivered_orders),
+      deliveredMinor: money(r.delivered),
+      inTransitOrders: int(r.in_transit_orders),
+      inTransitMinor: money(r.in_transit),
+      rejectedOrders: int(r.rejected_orders),
+    }))
+  }
+
+  /**
+   * One operator's daily arrivals into the confirmation queue — the queue
+   * basis's counterpart to `SellerBoardRepository.sellerDays`.
+   *
+   * Dated by `queued_at`, not `createdAtSource`: see `queueSql` for why the
+   * arrival in C4:NEW is the only date that tracks the client's own board.
+   */
+  async confirmationSellerRatingDays(
+    period: Period,
+    employeeId: string,
+  ): Promise<{ date: string; confirmedMinor: bigint; deliveredMinor: bigint; orders: number }[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { date: string; confirmed: MoneyText; delivered: MoneyText; orders: bigint }[]
+    >(
+      `${InsightsRepository.queueSql('window')}
+       SELECT
+         (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS date,
+         count(*) FILTER (WHERE c.outcome = 'CONFIRMED')::bigint AS orders,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRMED')::text AS confirmed,
+         sum(d."amountMinor") FILTER (WHERE d."status" = 'WON')::text AS delivered
+       FROM classified c
+       JOIN "deal" d ON d."id" = c.deal_id
+       WHERE d."employeeId" = $3
+       GROUP BY 1
+       HAVING count(*) FILTER (WHERE c.outcome = 'CONFIRMED') > 0
+       ORDER BY 1`,
+      period.start,
+      period.end,
+      employeeId,
+    )
+
+    return rows.map((r) => ({
+      date: r.date,
+      orders: int(r.orders),
+      confirmedMinor: money(r.confirmed),
+      deliveredMinor: money(r.delivered),
     }))
   }
 

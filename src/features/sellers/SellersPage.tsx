@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
@@ -69,9 +69,19 @@ import { t } from '@/lib/messages'
  * the screen, not the shiniest.
  */
 export function SellersPage() {
-  const { apiParams } = useDashboardFilters()
+  const { apiParams: filterParams } = useDashboardFilters()
   const [tab, setTab] = useState<'sellers' | 'teams'>('sellers')
   const [openSeller, setOpenSeller] = useState<string | null>(null)
+  /**
+   * Which clock the board reads — see `?basis=` on `/analytics/sellers`.
+   *
+   * A page-local toggle, not a `useDashboardFilters` entry: the basis is a
+   * question this screen alone asks, not a window every screen shares, and
+   * `reset()` clearing it back to the floor's own definition is the right
+   * behaviour rather than a bug to route around.
+   */
+  const [basis, setBasis] = useState<'queue' | 'intake'>('queue')
+  const apiParams = useMemo(() => ({ ...filterParams, basis }), [filterParams, basis])
 
   const board = useQuery({
     queryKey: ['sellers', 'board', apiParams],
@@ -104,10 +114,51 @@ export function SellersPage() {
   return (
     <PageShell
       title={t.nav.sellers}
-      description="Kim qancha buyurtma olib keldi — buyurtma OLINGAN sana boʻyicha"
+      description={
+        basis === 'queue'
+          ? 'Kim qancha buyurtma olib keldi — FAKT 1 / FAKT 2, navbatga tushgan sana boʻyicha'
+          : 'Kim qancha buyurtma olib keldi — buyurtma OLINGAN sana boʻyicha'
+      }
       meta={board.data?.meta}
       stale={board.isPlaceholderData}
       accent="var(--series-5)"
+      actions={
+        /*
+          TWO CLOCKS, ONE TOGGLE. «Navbat» is the floor's own FAKT 1 / FAKT 2 —
+          Тасдиқланди / Доставланди, dated by the arrival in C4:NEW. «Yaratilgan
+          sana» is the original reading this screen shipped with, kept as the
+          one figure measured against the client's own published dashboard
+          (see `sellerBoardRepository`) — the oracle a «Navbat» regression gets
+          checked against, not a second board anyone is meant to keep reading.
+        */
+        <div className="flex gap-1" role="group" aria-label="Hisoblash asosi">
+          {(
+            [
+              ['queue', 'Navbat (FAKT 1/2)'],
+              ['intake', 'Yaratilgan sana'],
+            ] as const
+          ).map(([id, label]) => {
+            const active = basis === id
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setBasis(id)}
+                aria-pressed={active}
+                className="focusable rounded-lg px-2.5 py-1.5 text-[12px] font-medium whitespace-nowrap transition-colors"
+                style={{
+                  background: active ? 'var(--surface-raised)' : 'transparent',
+                  color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
+                  boxShadow: active ? 'var(--shadow-card)' : 'none',
+                  border: `1px solid ${active ? 'var(--border-strong)' : 'transparent'}`,
+                }}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+      }
     >
       <PodiumHero
         data={data}
@@ -121,15 +172,32 @@ export function SellersPage() {
 
       {/*
         The basis, stated once and prominently. It is the single fact that
-        stops this page and Savdo dinamikasi from looking like a bug.
+        stops this page and Savdo dinamikasi — and the two readings of this
+        very page — from looking like a bug.
       */}
       <p className="text-[11px] leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
-        Bu sahifadagi barcha raqamlar <strong style={{ color: 'var(--ink-secondary)' }}>buyurtma
-        olingan sana</strong> boʻyicha — mijozning oʻz dashboardi ham shunday sanaydi. «Savdo
-        dinamikasi» esa tushumni <strong style={{ color: 'var(--ink-secondary)' }}>yopilgan
-        sana</strong> boʻyicha koʻrsatadi, shuning uchun ikkala sahifaning jamlari bir xil
-        boʻlmaydi — ikkalasi ham toʻgʻri, savoli boshqa. Bekor qilingan buyurtmalar
-        «Buyurtma puli»ga kirmaydi.
+        {basis === 'queue' ? (
+          <>
+            Bu sahifadagi raqamlar <strong style={{ color: 'var(--ink-secondary)' }}>
+            tasdiqlash navbatiga tushgan sana</strong> (C4:NEW) boʻyicha. «Buyurtma puli» —
+            FAKT 1, <strong style={{ color: 'var(--ink-secondary)' }}>Тасдиқланди</strong> (mijozga
+            yetib, Доставка ga oʻtgan buyurtmalar). «Yutilgan puli» — FAKT 2, shundan{' '}
+            <strong style={{ color: 'var(--ink-secondary)' }}>Доставланди</strong> boʻlgani. Iyul
+            oyida jonatilib avgustda yetkazilgan buyurtma FAKT 2 ga avgustda emas, iyulning oʻzida
+            qoʻshiladi va oy yopilgandan keyin ham oʻsishda davom etishi mumkin — chunki sana
+            buyurtma navbatga TUSHGAN kunni bildiradi, YETKAZILGAN kunni emas. Тасдиқланмаган va
+            rad etilgan buyurtmalar «Buyurtma puli»ga kirmaydi.
+          </>
+        ) : (
+          <>
+            Bu sahifadagi barcha raqamlar <strong style={{ color: 'var(--ink-secondary)' }}>buyurtma
+            olingan sana</strong> boʻyicha — mijozning oʻz dashboardi ham shunday sanaydi. «Savdo
+            dinamikasi» esa tushumni <strong style={{ color: 'var(--ink-secondary)' }}>yopilgan
+            sana</strong> boʻyicha koʻrsatadi, shuning uchun ikkala sahifaning jamlari bir xil
+            boʻlmaydi — ikkalasi ham toʻgʻri, savoli boshqa. Bekor qilingan buyurtmalar
+            «Buyurtma puli»ga kirmaydi.
+          </>
+        )}
       </p>
 
       <section className="space-y-3">
