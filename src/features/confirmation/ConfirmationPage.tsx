@@ -111,20 +111,26 @@ const OUTCOMES: readonly OutcomeSpec[] = [
     Glyph: ArrowOutGlyph,
     label: 'Тасдиқланмай чиқди',
     /*
-      Pink, and the only tile on this board wearing it.
+      Violet — the 🟣 the spec marks this state with, not an approximation.
 
       This state is a problem — the parcel left without anyone reaching the
       customer — so it first wore --status-serious, the orange that says
       "attention". But the board already spends orange on Кутармади (нд) and
       red on Тасдиқланмади, and three warm tiles in a row stopped separating:
-      the eye read one alarm zone instead of three distinct outcomes.
+      the eye read one alarm zone instead of three distinct outcomes. A cool
+      colour is what keeps this one out of that zone.
 
-      --series-5 is the pink the spec's 🟣 marks this state with in
-      src/server/domain/types.ts, it is unused elsewhere on this page, and
-      unlike --series-7 it is not the violet that paints every page's
-      atmosphere — so it reads as a state, not as scenery.
+      It then spent a while on --series-5, the pink, on the argument that
+      --series-7 is the violet washed behind every page. That wash is an 11%
+      mix UNDER the cards; a 28px semibold figure sitting on one is not
+      mistaken for it. The spec in src/server/domain/types.ts names this state
+      🟣, so the tile now says what the spec says — and it reads better for it:
+      --series-7 clears 4.8:1 on the light card where the pink managed 3.9:1,
+      and it stands 33 ΔE from the --series-1 of Кутилмоқда, the only other
+      cool tile in the row. Unused elsewhere on this screen, whose own page
+      accent is --series-4.
     */
-    color: 'var(--series-5)',
+    color: 'var(--series-7)',
   },
 ]
 

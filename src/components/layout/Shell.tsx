@@ -194,7 +194,6 @@ export function Shell({
   })
   const alerts = alertsQuery.data?.data
   const pending = alerts?.queue?.pending ?? 0
-  const overdue = alerts?.queue?.overdue ?? 0
   const busy = useIsFetching() > 0
 
   /**
@@ -630,12 +629,16 @@ export function Shell({
               </Button>
 
               {/*
-                The bell counts what is WAITING, the triangle what is WRONG.
+                ONE QUESTION, ONE NUMBER: how many orders await confirmation.
 
-                Two questions, so two controls: work to do is not the same as
-                something broken, and one badge merging them would be a number
-                nobody could act on. Each hides itself at zero — a permanent 0
-                is noise, and the bell's absence is already the message.
+                It used to answer two at once — the count, and how much of it
+                had aged past two hours — by turning the badge amber and
+                appending «N tasi 2 soatdan ortiq» to the tooltip. Two facts on
+                one badge is a colour a reader has to decode before they can
+                read the digit, and the second fact was not one this header was
+                asked to carry. The badge is now the queue's own colour at all
+                times and says only what it counts. It still hides itself at
+                zero — a permanent 0 is noise, and its absence is the message.
               */}
               {/*
                 THE WHOLE BACKLOG, and the link opens exactly it.
@@ -650,13 +653,7 @@ export function Shell({
                 behind it are the same set.
               */}
               {pending > 0 && (
-                <Tooltip
-                  content={
-                    overdue > 0
-                      ? `${pending} ta buyurtma tasdiqlashni kutmoqda · ${overdue} tasi 2 soatdan ortiq`
-                      : `${pending} ta buyurtma tasdiqlashni kutmoqda`
-                  }
-                >
+                <Tooltip content={`${pending} ta buyurtma tasdiqlashni kutmoqda`}>
                   <Link
                     href="/confirmation?outcomes=CONFIRM_NEW"
                     aria-label={`${pending} ta buyurtma navbatda`}
@@ -667,7 +664,7 @@ export function Shell({
                       aria-hidden="true"
                       className="absolute top-0.5 right-0.5 min-w-[15px] rounded-full px-1 text-center text-[10px] leading-[15px] font-semibold"
                       style={{
-                        background: overdue > 0 ? 'var(--status-warning)' : 'var(--series-1)',
+                        background: 'var(--series-1)',
                         color: 'var(--ink-on-series)',
                       }}
                     >
