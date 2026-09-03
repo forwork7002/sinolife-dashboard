@@ -126,6 +126,19 @@
   --delta-down: #c31d1d;
 
   /**
+   * Medal metals — the sellers podium's chrome. The client's own ask
+   * (2026-09-03): the board the floor opens every morning must crown its top
+   * three visibly. CHROME ONLY, by contract: rims, washes, avatar rings and
+   * the pedestal numerals — never text that must be read, never a mark that
+   * encodes a value, never a series or status role. Gold sits near --series-4
+   * and --status-warning by nature; tolerable only because these tokens are
+   * barred from ever carrying data. See the PODIUM section below.
+   */
+  --medal-gold: #b3860e;
+  --medal-silver: #798294;
+  --medal-bronze: #a5663a;
+
+  /**
    * Ink that sits ON a series colour — a filled chip, a badge, a bar label.
    *
    * A literal `#fff` in a component is a colour the palette cannot reach: it
@@ -269,6 +282,11 @@
        on the tint, 5.57:1 on the card. */
     --delta-down: #f56b62;
 
+    /* Medal chrome, re-anchored for the dark surface — see the light block. */
+    --medal-gold: #e8c256;
+    --medal-silver: #bac4d3;
+    --medal-bronze: #d89a68;
+
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
     --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px -8px rgba(0, 0, 0, 0.7);
     --shadow-float: 0 2px 4px rgba(0, 0, 0, 0.5), 0 20px 44px -12px rgba(0, 0, 0, 0.8);
@@ -330,6 +348,11 @@
 
   --delta-up: #2fb862;
   --delta-down: #f56b62;
+
+  /* Medal chrome — kept in lockstep with the media-query block above. */
+  --medal-gold: #e8c256;
+  --medal-silver: #bac4d3;
+  --medal-bronze: #d89a68;
 
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px -8px rgba(0, 0, 0, 0.7);
@@ -1822,5 +1845,160 @@ p {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* ===========================================================================
+ * PODIUM — the sellers board's ceremony layer
+ *
+ * The one screen whose audience is the sellers themselves, and the client's
+ * explicit ask: first place must be unmistakable from across the room. The
+ * three medal metals (--medal-*) are chrome here in the same sense the kbd
+ * chip and the scrim are chrome — they may borrow elevation and tint, and
+ * they may never encode a value. Rank itself still travels on the licensed
+ * channels (size, elevation, position, the ordinal, the emoji medals); the
+ * metal is varnish over that, so a colourblind reader loses nothing.
+ *
+ * --metal is set by the COLUMN (.podium-col--*), not the card, because the
+ * pedestal is the card's sibling and both read it.
+ * ======================================================================== */
+
+.podium-col--gold { --metal: var(--medal-gold); }
+.podium-col--silver { --metal: var(--medal-silver); }
+.podium-col--bronze { --metal: var(--medal-bronze); }
+
+/**
+ * The ceremony card. A raised surface with a metal-tinted crown-light washing
+ * down from the top edge and a metal hairline — this page's answer to
+ * .card-hero's gradient rim, scoped to its own metal.
+ *
+ * position: relative is load-bearing (the .podium-shine child needs this box
+ * as its containing block) and this unlayered file beats a Tailwind position
+ * utility — wrap the card if a call site ever needs it positioned otherwise.
+ * No `display` here on purpose: the call site's responsive utilities keep
+ * that decision (the same reason .podium-step declares none).
+ */
+.podium-card {
+  position: relative;
+  border: 1px solid color-mix(in oklab, var(--metal) 42%, var(--border));
+  border-radius: var(--radius-panel);
+  background:
+    radial-gradient(
+      130% 85% at 50% -25%,
+      color-mix(in oklab, var(--metal) 13%, transparent),
+      transparent 58%
+    ),
+    var(--surface-raised);
+  box-shadow: var(--shadow-card), var(--edge-highlight);
+}
+
+/* The champion outranks the flankers in elevation too. */
+.podium-col--gold .podium-card {
+  box-shadow: var(--shadow-raised), var(--edge-highlight);
+}
+
+/** The place plaque: medal emoji + ordinal on a soft metal tint. The words
+    stay in primary ink — the metal may not carry text. */
+.podium-plaque {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-primary);
+  background: color-mix(in oklab, var(--metal) 14%, transparent);
+  border: 1px solid color-mix(in oklab, var(--metal) 40%, transparent);
+}
+
+/**
+ * The avatar's metal ring — a conic sweep through lighter and darker cuts of
+ * the same metal, which is what reads as metallic without a single literal
+ * hex per theme. The halo underneath is the ring's own light, not elevation.
+ */
+.medal-ring {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 9999px;
+  background: conic-gradient(
+    from 220deg,
+    var(--metal),
+    color-mix(in oklab, var(--metal) 45%, #fff) 22%,
+    var(--metal) 47%,
+    color-mix(in oklab, var(--metal) 55%, #000) 72%,
+    var(--metal)
+  );
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--metal) 24%, transparent),
+    0 6px 18px -8px color-mix(in oklab, var(--metal) 60%, transparent);
+}
+
+/**
+ * The pedestal the card stands on. Heights come from the call site — they ARE
+ * the ranking; the metal top edge is the step's lit rim. The call site shows
+ * it at sm+ only: stacked vertically on a phone the heights would rank
+ * nothing, so no `display` is declared here (an unlayered `flex` would beat
+ * the responsive `hidden`).
+ */
+.podium-step {
+  align-items: center;
+  justify-content: center;
+  margin-top: 6px;
+  border-radius: var(--radius-panel-sm);
+  border: 1px solid color-mix(in oklab, var(--metal) 36%, var(--border));
+  border-top: 2px solid color-mix(in oklab, var(--metal) 60%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--metal) 16%, var(--surface-raised)),
+    color-mix(in oklab, var(--metal) 3%, var(--surface-raised))
+  );
+}
+
+/* The step's numeral — decorative (aria-hidden at the call site), so it may
+   wear the metal itself. */
+.podium-num {
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--metal);
+}
+
+/**
+ * One pass of light across the champion's card on arrival — the ceremony's
+ * camera flash: 1.1s, once, after the stagger has seated everyone. A child
+ * layer rather than ::after on the card itself, so the card never needs
+ * overflow:hidden (the wash and rim must not be clipped, and the layer clips
+ * only its own streak). Motion-guarded: under reduced motion the streak is
+ * never painted at all.
+ */
+.podium-shine {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .podium-shine::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      115deg,
+      transparent 38%,
+      color-mix(in oklab, var(--metal) 22%, transparent) 50%,
+      transparent 62%
+    );
+    transform: translateX(-140%);
+    animation: podium-shine 1100ms var(--ease-out) 600ms both;
+  }
+}
+
+@keyframes podium-shine {
+  to {
+    transform: translateX(140%);
   }
 }

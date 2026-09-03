@@ -62,11 +62,18 @@ import { t } from '@/lib/messages'
  * thing the palette rule forbids outright. The team rides as a text badge
  * instead: unlimited, readable, and legible to everyone.
  *
- * RANK WEARS NO HUE ANYWHERE. Gold, silver and bronze fills are the first
- * thing a leaderboard reaches for and the design contract forbids them: rank
- * takes weight, size, elevation, the emoji medals and the ordinal ramp — and
- * nothing else. First place is made desirable by being the biggest thing on
- * the screen, not the shiniest.
+ * RANK WEARS METAL — AS CHROME, NEVER AS A CHANNEL. The first cut of this
+ * screen kept rank hueless (weight, size, elevation, the emoji medals and
+ * nothing else), and the client overruled it on 2026-09-03: this is the page
+ * the sellers themselves open, and it must feel like a ceremony — three
+ * unmistakable cards, gold on top. The compromise that keeps the palette
+ * honest lives in the --medal-* tokens and the PODIUM section of globals.css:
+ * the metals touch rims, washes, avatar rings and the pedestal numerals —
+ * chrome — and never text that must be read, never a mark that encodes a
+ * value (the closeness bars stay on the sequential ramp), never a series or
+ * status role. They also stop at the three places the medal emoji already
+ * paint, so a colourblind reader loses nothing: size, elevation, position
+ * and the ordinal still carry the rank entirely on their own.
  */
 export function SellersPage() {
   const { apiParams: filterParams } = useDashboardFilters()
@@ -292,16 +299,18 @@ function sellersCaption(data: SellerBoardDto): string {
 // ---------------------------------------------------------------------------
 
 /**
- * The morning ceremony: the top three, on steps.
+ * The morning ceremony: the top three, on real steps.
  *
- * One `.card-hero`, one `.figure-hero` — the leader's won money, which is THE
- * number this page exists to make people want. Rank is encoded exactly three
- * ways, all licensed: size (the leader's figure is the hero, the flankers get
- * 20px), elevation (the leader stands on the hero surface, the flankers on
- * sunken steps), and the emoji medals the table already hands out. DOM order
- * is 1-2-3 for reading and for the stagger — gold arrives first — while CSS
- * `order` seats second place on the left and third on the right, so the three
- * cells literally form a podium on wide screens.
+ * One `.card-hero` (the hall), one `.figure-hero` — the leader's won money,
+ * which is THE number this page exists to make people want. Inside the hall
+ * stand three ceremony cards, each on a pedestal whose HEIGHT is the rank:
+ * gold's block is the tallest and carries the biggest numeral, so who is
+ * first and who is second is legible from across the room, before a single
+ * word is read. Size, elevation and position carry the ranking; the medal
+ * metals varnish it (see the header contract — chrome, never a channel). DOM
+ * order is 1-2-3 for reading and for the stagger — gold arrives first —
+ * while CSS `order` seats second place on the left and third on the right,
+ * so the three columns literally form a podium on wide screens.
  *
  * MEDALS ONLY FOR WON MONEY — the table's `ranked` rule, enforced here by
  * construction: the podium renders only rows with `won.amount > 0`, so a
@@ -339,6 +348,7 @@ function PodiumHero({
               className="text-sm font-semibold tracking-tight"
               style={{ color: 'var(--ink-primary)' }}
             >
+              <span aria-hidden="true" className="mr-1.5">🏆</span>
               Davr peshqadamlari
             </h2>
             <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
@@ -348,11 +358,11 @@ function PodiumHero({
 
           {status === 'loading' ? (
             /* Sized to the ready layout, so ready never reflows loading. */
-            <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1.3fr_1fr] sm:items-end" role="status">
+            <div className="mt-4 grid gap-3 sm:gap-4 sm:grid-cols-[1fr_1.3fr_1fr] sm:items-end" role="status">
               <span className="sr-only">Yuklanmoqda</span>
-              <div className="skeleton h-28" aria-hidden="true" />
-              <div className="skeleton h-44" aria-hidden="true" />
-              <div className="skeleton h-28" aria-hidden="true" />
+              <div className="skeleton h-64" aria-hidden="true" />
+              <div className="skeleton h-[380px]" aria-hidden="true" />
+              <div className="skeleton h-64" aria-hidden="true" />
             </div>
           ) : status === 'error' ? (
             <ErrorState message={errorMessage} onRetry={onRetry} />
@@ -373,6 +383,7 @@ function PodiumHero({
             */
             <div className="mt-3">
               <p className="text-sm font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                <span aria-hidden="true" className="mr-1">🏁</span>
                 Podium hali boʻsh — oʻrinlar hammaga ochiq
               </p>
               <p className="mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
@@ -399,12 +410,12 @@ function PodiumHero({
           ) : (
             <>
               <div
-                className={`stagger mt-4 grid gap-3 ${
+                className={`stagger mt-4 grid gap-3 sm:gap-4 ${
                   winners.length === 3
                     ? 'sm:grid-cols-[1fr_1.3fr_1fr] sm:items-end'
                     : winners.length === 2
                       ? 'sm:grid-cols-[1.3fr_1fr] sm:items-end'
-                      : 'sm:max-w-md'
+                      : 'sm:mx-auto sm:w-full sm:max-w-md'
                 }`}
               >
                 {winners.map((row, index) => (
@@ -430,15 +441,98 @@ function PodiumHero({
 }
 
 /**
- * One step of the podium.
+ * The three seats' chrome, by place: metal column class, medal glyph, avatar
+ * and pedestal sizes. The pedestal heights ARE the ranking made physical —
+ * 72/48/30 px of block under gold, silver and bronze — and the numeral steps
+ * down with them.
+ */
+const PODIUM_SEATS = [
+  { col: 'podium-col--gold', medal: '🥇', avatar: 60, stepHeight: 72, numSize: 32 },
+  { col: 'podium-col--silver', medal: '🥈', avatar: 46, stepHeight: 48, numSize: 26 },
+  { col: 'podium-col--bronze', medal: '🥉', avatar: 46, stepHeight: 30, numSize: 22 },
+] as const
+
+/**
+ * The metal chrome tokens by place, for the table rows that echo the podium.
+ * Chrome only — see the header contract: a wash and a stripe, never a mark.
+ */
+const MEDAL_TOKENS = [
+  'var(--medal-gold)',
+  'var(--medal-silver)',
+  'var(--medal-bronze)',
+] as const
+
+/** «Aziza Karimova» → «AK» — the first letters of the first two words. */
+function initials(fullName: string): string {
+  const words = fullName.trim().split(/\s+/)
+  const letters = (words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')
+  return letters ? letters.toUpperCase() : '•'
+}
+
+/**
+ * The face of a ceremony card. The CRM carries no portraits, so two initials
+ * in the seat's metal ring do the "person, not row" work — and the champion
+ * wears the crown, because the floor should recognise its leader before it
+ * reads a name. All of it decorative: the name itself is the button beside it.
+ */
+function PodiumAvatar({
+  name,
+  size,
+  crowned = false,
+}: {
+  name: string
+  size: number
+  crowned?: boolean
+}) {
+  return (
+    <span className="relative inline-flex" aria-hidden="true">
+      {crowned && (
+        <span
+          className="absolute z-[1] leading-none"
+          style={{
+            top: -15,
+            left: '50%',
+            transform: 'translateX(-50%) rotate(-12deg)',
+            fontSize: 18,
+          }}
+        >
+          👑
+        </span>
+      )}
+      <span className="medal-ring">
+        <span
+          className="flex items-center justify-center rounded-full font-semibold"
+          style={{
+            width: size,
+            height: size,
+            background: 'var(--surface-raised)',
+            color: 'var(--ink-primary)',
+            fontSize: Math.round(size * 0.32),
+            letterSpacing: '0.03em',
+          }}
+        >
+          {initials(name)}
+        </span>
+      </span>
+    </span>
+  )
+}
+
+/**
+ * One column of the podium: the ceremony card standing on its pedestal.
  *
- * The leader stands directly on the hero surface and carries the page's one
- * `.figure-hero`; second and third stand on sunken inset panels — a step DOWN
- * in elevation, which is the podium metaphor drawn with surface tokens
- * instead of paint. Each flanker's one motivating fact is the gap to the top:
- * a soʻm distance and a bar against the leader's total, in the sequential
- * hue, because "how close" is a magnitude and magnitude is what the ramp is
- * for.
+ * The three cards share one anatomy — plaque, ringed avatar, name, the won
+ * money, then the card's one motivating fact — so the eye compares people,
+ * not layouts. What separates the places is the licensed rank grammar plus
+ * the metal chrome: the champion's card is the largest, carries the page's
+ * one `.figure-hero`, the crown and the one-time shine pass; the flankers
+ * step down in size and stand on shorter blocks. Each flanker's motivating
+ * fact is the gap to the top — a soʻm distance and a closeness bar drawn on
+ * the sequential ramp, because "how close" is a magnitude and the metal is
+ * not licensed to say it.
+ *
+ * The pedestals render at sm+ only: stacked vertically on a phone their
+ * heights would rank nothing, and there the plaque alone carries the place.
  */
 function PodiumStep({
   row,
@@ -456,18 +550,21 @@ function PodiumStep({
   onOpen: () => void
 }) {
   const isLeader = place === 1
-  const medal = ['🥇', '🥈', '🥉'][place - 1]
+  const seatSpec = place === 1 ? PODIUM_SEATS[0] : place === 2 ? PODIUM_SEATS[1] : PODIUM_SEATS[2]
   // Visual seating on wide screens: silver left of gold, bronze to the right.
   // DOM order stays 1-2-3, so reading order and the stagger keep the ranking.
   const seat =
     winnersCount === 3 ? (place === 2 ? 'sm:order-first' : place === 3 ? 'sm:order-last' : '') : ''
 
+  const gap = leader.won.amount - row.won.amount
+  const closeness = leader.won.amount > 0 ? (row.won.amount / leader.won.amount) * 100 : 0
+
   const name = (
     <button
       type="button"
       onClick={onOpen}
-      className={`focusable rounded text-left underline-offset-2 hover:underline ${
-        isLeader ? 'text-[17px] font-semibold' : 'text-[13px] font-medium'
+      className={`focusable rounded text-center underline-offset-2 hover:underline ${
+        isLeader ? 'text-[17px] font-semibold' : 'text-[13.5px] font-semibold'
       }`}
       style={{ color: 'var(--ink-primary)' }}
     >
@@ -475,109 +572,139 @@ function PodiumStep({
     </button>
   )
 
-  if (isLeader) {
-    return (
-      <div className={seat}>
-        <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-          <span aria-hidden="true">{medal}</span>
-          <span className="sr-only">1-oʻrin:</span>
-          <span className="ml-1.5">1-oʻrin</span>
+  return (
+    <div className={`flex flex-col ${seatSpec.col} ${seat}`}>
+      <div
+        className={`podium-card flex flex-col items-center text-center ${
+          isLeader ? 'px-5 pt-5 pb-5' : 'px-4 pt-4 pb-4'
+        }`}
+      >
+        <p className="podium-plaque">
+          <span aria-hidden="true">{seatSpec.medal}</span>
+          <span className="sr-only">{place}-oʻrin:</span>
+          <span aria-hidden="true">{place}-oʻrin</span>
         </p>
-        <div className="mt-1 flex flex-wrap items-center gap-2">
+
+        <div className={isLeader ? 'mt-5' : 'mt-3'}>
+          <PodiumAvatar name={row.fullName} size={seatSpec.avatar} crowned={isLeader} />
+        </div>
+
+        <div className="mt-2.5 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
           {name}
           {/* Inline beside a name, an absent team is silence, not a dash — the
               placeholder belongs to the table column, where alignment needs it. */}
           {row.rop && <TeamBadge rop={row.rop} />}
         </div>
-        <div className="mt-2">
+
+        <div className={isLeader ? 'mt-3' : 'mt-2'}>
           <Tooltip content={<span className="tabular">{formatUzs(row.won.amount)}</span>}>
-            <span
-              tabIndex={0}
-              className="focusable figure-hero inline-block rounded-[var(--radius-panel-sm)]"
-              style={{ color: 'var(--ink-primary)' }}
-            >
-              <AnimatedNumber value={row.won.amount} format={formatCompactUzs} duration={900} />
-              <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
-                soʻm
+            {isLeader ? (
+              <span
+                tabIndex={0}
+                className="focusable figure-hero inline-block rounded-[var(--radius-panel-sm)]"
+                style={{ color: 'var(--ink-primary)' }}
+              >
+                <AnimatedNumber value={row.won.amount} format={formatCompactUzs} duration={900} />
+                <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
+                  soʻm
+                </span>
               </span>
-            </span>
+            ) : (
+              <span
+                tabIndex={0}
+                className="focusable figure inline-block rounded text-[22px] leading-none font-semibold"
+                style={{ color: 'var(--ink-primary)' }}
+              >
+                {formatCompactUzs(row.won.amount)}
+                <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
+                  soʻm
+                </span>
+              </span>
+            )}
           </Tooltip>
         </div>
-        {/* A hero number is never blank: the share it holds of the whole
-            floor's winnings, and the fraction it was earned from. */}
-        {row.sharePercent !== null && totalWon > 0 && (
-          <div className="mt-2.5 max-w-[260px]">
-            <Meter value={row.sharePercent} tone="neutral" label="Jami yutuqdagi ulushi" />
-          </div>
+
+        {isLeader ? (
+          <>
+            {/* A hero number is never blank: the share it holds of the whole
+                floor's winnings, and the fraction it was earned from. */}
+            {row.sharePercent !== null && totalWon > 0 && (
+              <div className="mx-auto mt-3 w-full max-w-[250px]">
+                <Meter value={row.sharePercent} tone="neutral" label="Jami yutuqdagi ulushi" />
+              </div>
+            )}
+            <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              {formatNumber(row.wonOrders)} / {formatNumber(row.orders)} ta buyurtma
+              {row.conversionPercent !== null && (
+                <> · konversiya {formatPercent(row.conversionPercent)}</>
+              )}
+            </p>
+            <div className="mt-2">
+              {row.bonus.earned.amount > 0 ? (
+                <StatusChip tone="good">
+                  {formatCompactUzs(row.bonus.earned.amount)} soʻm bonus
+                </StatusChip>
+              ) : row.bonus.toNext !== null ? (
+                <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                  Bonusgacha +{formatCompactUzs(row.bonus.toNext.amount)} kerak
+                </span>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* The chase, stated as a distance — the one number a runner-up
+                can act on — and drawn as closeness to the leader on the
+                shared track. */}
+            {gap === 0 ? (
+              <p
+                className="mt-2.5 text-[11px] font-medium"
+                style={{ color: 'var(--ink-secondary)' }}
+              >
+                Lider bilan teng — bitta yutuq hal qiladi
+              </p>
+            ) : (
+              <p
+                className="mt-2.5 text-[11px] font-medium"
+                style={{ color: 'var(--ink-secondary)' }}
+              >
+                Marragacha{' '}
+                <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
+                  +{formatCompactUzs(gap)}
+                </span>{' '}
+                soʻm
+              </p>
+            )}
+            <div
+              className="mt-2 h-1 w-full overflow-hidden rounded-full"
+              style={{ background: 'var(--track)' }}
+              aria-hidden="true"
+            >
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${Math.max(1, closeness)}%`,
+                  background: 'var(--seq-550)',
+                  transition: 'width var(--duration-enter) var(--ease-out)',
+                }}
+              />
+            </div>
+          </>
         )}
-        <p className="mt-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          {formatNumber(row.wonOrders)} / {formatNumber(row.orders)} ta buyurtma
-          {row.conversionPercent !== null && (
-            <> · konversiya {formatPercent(row.conversionPercent)}</>
-          )}
-        </p>
-        <div className="mt-2">
-          {row.bonus.earned.amount > 0 ? (
-            <StatusChip tone="good">{formatCompactUzs(row.bonus.earned.amount)} soʻm bonus</StatusChip>
-          ) : row.bonus.toNext !== null ? (
-            <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-              Bonusgacha +{formatCompactUzs(row.bonus.toNext.amount)} kerak
-            </span>
-          ) : null}
-        </div>
-      </div>
-    )
-  }
 
-  const gap = leader.won.amount - row.won.amount
-  const closeness = leader.won.amount > 0 ? (row.won.amount / leader.won.amount) * 100 : 0
-
-  return (
-    <div
-      className={`rounded-[var(--radius-panel-sm)] px-4 py-3 ${seat}`}
-      style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border)' }}
-    >
-      <p className="text-[11px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-        <span aria-hidden="true">{medal}</span>
-        <span className="sr-only">{place}-oʻrin:</span>
-        <span className="ml-1.5">{place}-oʻrin</span>
-      </p>
-      <div className="mt-0.5 flex flex-wrap items-center gap-2">
-        {name}
-        {row.rop && <TeamBadge rop={row.rop} />}
+        {/* Last child, so the streak passes over the whole card. */}
+        {isLeader && <div className="podium-shine" aria-hidden="true" />}
       </div>
-      <p className="mt-1.5">
-        <Tooltip content={<span className="tabular">{formatUzs(row.won.amount)}</span>}>
-          <span
-            tabIndex={0}
-            className="focusable figure inline-block rounded text-[20px] leading-none font-semibold"
-            style={{ color: 'var(--ink-primary)' }}
-          >
-            {formatCompactUzs(row.won.amount)}
-            <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
-              soʻm
-            </span>
-          </span>
-        </Tooltip>
-      </p>
-      {/* The chase, stated as a distance — the one number a runner-up can act
-          on — and drawn as closeness to the leader on the shared track. */}
-      <p className="mt-1.5 text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-        Marragacha +{formatCompactUzs(gap)} soʻm
-      </p>
+
+      {/* The step itself: height by place, numeral in the metal. */}
       <div
-        className="mt-1.5 h-1 w-full overflow-hidden rounded-full"
-        style={{ background: 'var(--track)' }}
+        className="podium-step hidden sm:flex"
+        style={{ height: seatSpec.stepHeight }}
         aria-hidden="true"
       >
-        <div
-          className="h-full rounded-full"
-          style={{
-            width: `${Math.max(1, closeness)}%`,
-            background: 'var(--seq-550)',
-            transition: 'width var(--duration-enter) var(--ease-out)',
-          }}
-        />
+        <span className="podium-num" style={{ fontSize: seatSpec.numSize }}>
+          {place}
+        </span>
       </div>
     </div>
   )
@@ -931,6 +1058,13 @@ function SellerRows({
   apiParams: Record<string, string | number>
 }) {
   const podium = row.rank <= 3 && row.won.amount > 0
+  const metal = !podium
+    ? null
+    : row.rank === 1
+      ? MEDAL_TOKENS[0]
+      : row.rank === 2
+        ? MEDAL_TOKENS[1]
+        : MEDAL_TOKENS[2]
 
   return (
     <>
@@ -940,19 +1074,23 @@ function SellerRows({
         style={{
           borderColor: 'var(--grid)',
           /*
-            Elevation for rank, never hue: the podium rows sit on a faint
-            sunken wash so the top of the table reads as continuous with the
-            podium above it. The open drill-down row takes the full token, so
-            a click that arrived from the podium visibly lands somewhere.
+            The podium rows echo the podium above them: a faint wash of their
+            own metal plus a stripe on the rank cell — chrome, per the header
+            contract, layered over the medal the cell already shows. The open
+            drill-down row takes the sunken token instead, so a click that
+            arrived from the podium visibly lands somewhere.
           */
           background: open
             ? 'var(--surface-sunken)'
-            : podium
-              ? 'color-mix(in oklab, var(--surface-sunken) 55%, transparent)'
+            : metal
+              ? `color-mix(in oklab, ${metal} 8%, transparent)`
               : undefined,
         }}
       >
-        <td className="px-2 py-2">
+        <td
+          className="px-2 py-2"
+          style={metal ? { boxShadow: `inset 3px 0 0 ${metal}` } : undefined}
+        >
           <Rank rank={row.rank} ranked={row.won.amount > 0} />
         </td>
         <td className="px-2 py-2">
@@ -1333,18 +1471,29 @@ function TeamTable({ rows }: { rows: readonly SellerTeamRowDto[] }) {
           <tbody>
             {rows.map((row) => {
               const podium = row.rank <= 3 && row.won.amount > 0
+              // The same metal echo as the sellers' table — chrome only.
+              const metal = !podium
+                ? null
+                : row.rank === 1
+                  ? MEDAL_TOKENS[0]
+                  : row.rank === 2
+                    ? MEDAL_TOKENS[1]
+                    : MEDAL_TOKENS[2]
               return (
                 <tr
                   key={row.rop}
                   className="border-b"
                   style={{
                     borderColor: 'var(--grid)',
-                    background: podium
-                      ? 'color-mix(in oklab, var(--surface-sunken) 55%, transparent)'
+                    background: metal
+                      ? `color-mix(in oklab, ${metal} 8%, transparent)`
                       : undefined,
                   }}
                 >
-                  <td className="px-2 py-2">
+                  <td
+                    className="px-2 py-2"
+                    style={metal ? { boxShadow: `inset 3px 0 0 ${metal}` } : undefined}
+                  >
                     <Rank rank={row.rank} ranked={row.won.amount > 0} />
                   </td>
                   <td className="px-2 py-2">
@@ -1431,10 +1580,15 @@ function BonusLadder({
   data: SellerBoardDto | undefined
   status: 'loading' | 'error' | 'ready'
 }) {
+  /*
+    The glyphs are the climb's own story — aim, take off, arrive — and stay
+    decorative (aria-hidden): the rail already states each rung's magnitude,
+    and the emoji vocabulary is the one the medals established.
+  */
   const tiers = [
-    { floor: 45_000_000, bonus: 1_000_000, rail: 'var(--seq-250)' },
-    { floor: 60_000_000, bonus: 1_500_000, rail: 'var(--seq-450)' },
-    { floor: 70_000_000, bonus: 2_000_000, rail: 'var(--seq-650)' },
+    { floor: 45_000_000, bonus: 1_000_000, rail: 'var(--seq-250)', glyph: '🎯' },
+    { floor: 60_000_000, bonus: 1_500_000, rail: 'var(--seq-450)', glyph: '🚀' },
+    { floor: 70_000_000, bonus: 2_000_000, rail: 'var(--seq-650)', glyph: '💎' },
   ]
 
   const ready = status === 'ready' && data
@@ -1475,6 +1629,7 @@ function BonusLadder({
               />
               <div className="flex flex-col gap-1 px-4 pt-2.5 pb-3.5">
                 <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                  <span aria-hidden="true" className="mr-1.5">{tier.glyph}</span>
                   {formatCompactUzs(tier.floor)} soʻmdan
                 </p>
                 {/*
