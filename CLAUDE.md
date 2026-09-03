@@ -167,7 +167,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Kanallar | `/marketing` | `marketing/MarketingPage` | `/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` | `/insights/logistics` | Insights → Insights, Reference | `createdAtSource`, uniformly in all three queries |
-| Tasdiqlash navbati | `/confirmation` | `confirmation/ConfirmationPage` | `/insights/confirmations/orders` | Insights → Insights | **the arrival in `C4:NEW`** — the latest `deal_stage_history` row whose stage signals `CONFIRM_NEW` |
+| Tasdiqlash navbati | `/confirmation` | `confirmation/ConfirmationPage` | `/insights/confirmations/orders` | Insights → Insights | **the arrival in `C4:NEW`** — the latest `deal_stage_history` row whose stage signals `CONFIRM_NEW`; `?queue=backlog` (where the bell lands) drops the window entirely |
 | Joʻnatish nuqtalari | `/warehouse` | `warehouse/WarehousePage` | `/insights/dispatch` | Insights → Insights | `createdAtSource` — a creation cohort graded by the deal's **current** stage |
 | Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | `createdAtSource` — order intake, same column for board, drill-down and comparison |
 | KPI rejalari | `/kpi` | `kpi/KpiPage` | `/kpi` | Kpi, Analytics → Reference, Deal | **the plan's own `periodStart`/`periodEnd`** — the dashboard window only *selects* which plan is live |
@@ -262,6 +262,17 @@ stage leaves the status alone. An order joins the board the moment it reaches
 no arrival (~52 that appear straight in `C6:NEW`) is not on the board at all.
 `tests/http/confirmationQueueSql.test.ts` pins the cohort, the `numbered`
 partition key, the never-queued exclusion and the left-only history bound.
+
+**The header bell counts the BACKLOG, so its link must carry `queue=backlog`.**
+One SQL definition answers two questions: `window` — what arrived in the
+selected period, and where each of those stands — and `backlog` — what is
+waiting right now, whenever it arrived. `alertsService` asks for
+`queuePressure(allTime, 120, 'backlog')`, so a link without that mode opens a
+board counting a different population: the badge read 44 over a page reading 1,
+both correct, nothing on screen saying they answered different questions. The
+mode rides the URL through `useDashboardFilters` (`reset()` keeps it — it is a
+question, not a filter), and `tests/features/confirmationBacklog.test.tsx` pins
+the pair together.
 
 ---
 

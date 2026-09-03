@@ -1362,8 +1362,15 @@ export class InsightsRepository {
    *
    * Built on the SAME cohort the board is, so the bell and the screen it
    * links to can never disagree — a header that says three and a page that
-   * shows two is worse than no header. Today's window only, which is what
-   * makes it cheap enough to fetch from every page every minute.
+   * shows two is worse than no header. That is not a hypothetical: the bell
+   * was left counting `mode: 'backlog'` over an all-time span while its link
+   * opened the board on its own window, and the header read 7 over a page
+   * that read 2 for a fortnight.
+   *
+   * NOT TODAY'S WINDOW. `alertsService` passes an all-time span in backlog
+   * mode, and what keeps that affordable to fetch from every page every
+   * minute is the join to open deals inside `queueSql` — not a narrow date
+   * bound, which backlog mode by definition does not have.
    *
    * `overdue` is measured from the order's own arrival in the queue, not from
    * the start of the day: an order that arrived ten minutes ago has not been

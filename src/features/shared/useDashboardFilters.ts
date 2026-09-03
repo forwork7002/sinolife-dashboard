@@ -50,6 +50,22 @@ export interface DashboardFilters {
   readonly outcomes: readonly ConfirmationOutcome[]
   /** Which ROP group the confirmation queue is narrowed to. */
   readonly rop?: string
+  /**
+   * Which QUESTION the confirmation board answers — not which rows it keeps.
+   *
+   * 'window' reads the reporting period: what arrived in the queue during it,
+   * and where each of those orders stands. 'backlog' ignores the period and
+   * lists what is waiting right now, whenever it arrived — the one question a
+   * windowed board cannot answer, because the oldest unworked order on this
+   * portal predates every preset.
+   *
+   * It lives in the URL like every filter beside it so the header bell can
+   * link straight to the set it counts, and so a link somebody pastes into
+   * Telegram opens on the view it was copied from. It is deliberately NOT in
+   * `activeCount`: the "Filtrlarni tozalash (3)" button counts what it will
+   * clear, and this is not something clearing filters may take away.
+   */
+  readonly queue: 'window' | 'backlog'
   readonly q?: string
   readonly page: number
   readonly pageSize: number
@@ -74,6 +90,7 @@ const DEFAULTS: DashboardFilters = {
   productIds: [],
   sourceIds: [],
   outcomes: [],
+  queue: 'window',
   page: 1,
   pageSize: 25,
   sort: 'createdAtSource',
@@ -154,6 +171,13 @@ export function useDashboardFilters() {
         (CONFIRMATION_OUTCOMES as readonly string[]).includes(value),
       ),
       rop: params.get('rop') ?? undefined,
+      /*
+        One value is honoured, everything else is the default — same reasoning
+        as `resolvePresetParam` above. An unknown mode reaching the API is a
+        400 on the whole page, and the only mode that is worth typing by hand
+        is the one the bell links to.
+      */
+      queue: params.get('queue') === 'backlog' ? 'backlog' : DEFAULTS.queue,
       q: params.get('q') ?? undefined,
       page: counted(params.get('page'), DEFAULTS.page, 10_000),
       pageSize: counted(params.get('pageSize'), DEFAULTS.pageSize, 200),
@@ -218,7 +242,15 @@ export function useDashboardFilters() {
    */
   const reset = useCallback(() => {
     const kept = new URLSearchParams()
-    for (const key of ['preset', 'from', 'to'] as const) {
+    /*
+      `queue` is kept for the same reason the window is: it is not a filter.
+      It chooses WHICH BOARD is on screen, so dropping it here would answer
+      "clear the filters" by silently swapping the backlog somebody opened
+      from the bell for a board dated by today — the rows would change, the
+      count would change, and the button that did it said it was only
+      clearing filters.
+    */
+    for (const key of ['preset', 'from', 'to', 'queue'] as const) {
       const value = params.get(key)
       if (value !== null) kept.set(key, value)
     }
@@ -243,6 +275,7 @@ export function useDashboardFilters() {
     if (filters.rop) out.rop = filters.rop
     // Only when it is not the default: every other screen's requests stay
     // byte-identical, so their react-query caches are untouched by this.
+    if (filters.queue === 'backlog') out.queue = filters.queue
     if (filters.q) out.q = filters.q
     return out
   }, [filters])

@@ -648,15 +648,27 @@ export function Shell({
                 portal whose oldest unworked order is a year old, that read
                 zero every morning while hundreds sat in the queue — the one
                 number an owner glances at said there was nothing to do.
-                `alertsService` now asks for the backlog cohort and this link
-                opens the board in the same mode, so the header and the rows
-                behind it are the same set.
+                `alertsService` asks for the backlog cohort instead.
+
+                `?queue=backlog` IS THE HALF THAT WENT MISSING. When the mode
+                switch was dropped the link became `?outcomes=CONFIRM_NEW`,
+                which narrows the STATE but leaves the board on its own
+                reporting window — so the badge counted every order still
+                waiting while the page behind it counted only the ones that
+                arrived today. The header said 7 over a board that said 2, and
+                neither number was wrong, which is the worst version of this:
+                nothing on either screen said they were answering different
+                questions. Badge and board read one cohort again, and
+                `tests/features/confirmationBacklog.test.tsx` is what keeps them
+                together the next time one side is edited alone.
               */}
               {pending > 0 && (
-                <Tooltip content={`${pending} ta buyurtma tasdiqlashni kutmoqda`}>
+                <Tooltip
+                  content={`${pending} ta buyurtma tasdiqlashni kutmoqda — barcha kunlar boʻyicha`}
+                >
                   <Link
-                    href="/confirmation?outcomes=CONFIRM_NEW"
-                    aria-label={`${pending} ta buyurtma navbatda`}
+                    href="/confirmation?queue=backlog"
+                    aria-label={`${pending} ta buyurtma tasdiqlashni kutmoqda`}
                     className="rail-item focusable relative flex h-9 w-9 items-center justify-center rounded-lg"
                   >
                     <BellGlyph />

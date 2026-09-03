@@ -488,6 +488,17 @@ export function ConfirmationPage() {
    */
   const narrowed = filters.outcomes.length > 0
 
+  /**
+   * Which question is on screen — the period's arrivals, or what is waiting.
+   *
+   * Reached from the header bell, which counts the backlog: the badge and this
+   * board have to be the same set or the header is lying about the page it
+   * links to. Everything the mode changes below — the description, the absent
+   * period control, the single tile, the banner that says so — exists because
+   * a board that ignores the window must not look like one that reads it.
+   */
+  const backlog = filters.queue === 'backlog'
+
   /** The ROP list, with the current selection guaranteed present. */
   const ropOptions = (() => {
     const names = data?.rops ?? []
@@ -499,9 +510,24 @@ export function ConfirmationPage() {
   return (
     <PageShell
       title={t.modules.confirmation.title}
-      description={t.modules.confirmation.lead}
+      /*
+        IN BACKLOG MODE THE PERIOD DOES NOT APPLY, so it is not offered.
+
+        `period={false}` takes away the preset row and the date line under the
+        title, both of which would otherwise describe a window this view
+        ignores — a date control over a list that does not read it is worse
+        than no control, because a reader assumes it must be filtering
+        something. The description says which question is on screen instead,
+        and the banner above the tile repeats it where the eye actually lands.
+      */
+      description={
+        backlog
+          ? 'Hozir tasdiqlashni kutayotgan barcha buyurtmalar — qachon kelganidan qatʼi nazar. Davr bu roʻyxatga taʼsir qilmaydi.'
+          : t.modules.confirmation.lead
+      }
+      period={!backlog}
       accent="var(--series-4)"
-      meta={query.data?.meta}
+      meta={backlog ? undefined : query.data?.meta}
       stale={query.isPlaceholderData}
       filters={{
         search: true,
@@ -543,16 +569,22 @@ export function ConfirmationPage() {
             Multi-select, not a single choice: the states are read in
             combinations. The house MultiSelect is what every other filter on
             the dashboard uses, so the checkbox affordance is already familiar.
+
+            NOT IN BACKLOG MODE, where every row is «Кутилмоқда» by
+            construction — the cohort there IS the state — so the control could
+            only ever narrow the board to itself or to nothing.
           */}
-          <MultiSelect
-            label="Барча статус"
-            options={OUTCOMES.map((spec) => ({
-              id: spec.key,
-              label: spec.label,
-            }))}
-            selected={filters.outcomes}
-            onChange={(outcomes) => update({ outcomes: outcomes as ConfirmationOutcome[] })}
-          />
+          {!backlog && (
+            <MultiSelect
+              label="Барча статус"
+              options={OUTCOMES.map((spec) => ({
+                id: spec.key,
+                label: spec.label,
+              }))}
+              selected={filters.outcomes}
+              onChange={(outcomes) => update({ outcomes: outcomes as ConfirmationOutcome[] })}
+            />
+          )}
 
           <Button
             variant={statsOpen ? 'primary' : 'secondary'}
@@ -568,6 +600,56 @@ export function ConfirmationPage() {
       }
     >
       {/*
+        THE WAY BACK, and the sentence that says where you are.
+
+        The mode used to be a two-button switch living among the filters. It
+        was dropped because a chip in a filter row changed the QUESTION rather
+        than the selection, and nothing on screen said so. It returns here
+        instead: visible only in the mode it describes, next to the sentence
+        that names what is on screen, so the control and its meaning arrive
+        together. Without it, arriving from the header bell is a one-way trip —
+        the period control is gone (it does not apply) and there is nothing
+        left to click that gets back to the client's own board.
+      */}
+      {backlog && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5"
+          style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
+        >
+          <p
+            className="flex items-start gap-2 text-[13px] leading-snug"
+            style={{ color: 'var(--ink-secondary)' }}
+          >
+            <span className="mt-0.5 shrink-0" style={{ color: 'var(--series-1)' }}>
+              <ClockGlyph size={14} />
+            </span>
+            <span>
+              <span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                Hozir kutilmoqda
+              </span>
+              {' — '}
+              yuqoridagi qoʻngʻiroq sanaydigan buyurtmalar: qachon kelganidan qatʼi
+              nazar hali tasdiqlanmaganlari. Davr tanlovi bu roʻyxatga taʼsir qilmaydi.
+            </span>
+          </p>
+          {/*
+            DROPPED, not set to 'window'.
+
+            `update` deletes a key whose value is undefined and writes every
+            other one, so `queue: 'window'` would leave `?queue=window` in an
+            otherwise empty address — and `useRestoreRememberedPeriod` only
+            restores into an address with NOTHING in it. The dead parameter
+            would have cost the reader the window this section was last read
+            in, landing them on «Bugun» on the way back from a bell they only
+            clicked to look at the backlog.
+          */}
+          <Button variant="secondary" size="sm" onClick={() => update({ queue: undefined })}>
+            Davr boʻyicha koʻrish
+          </Button>
+        </div>
+      )}
+
+      {/*
         The state band, in the reference's own order: the queue, the two ways
         it stalls, then the two outcomes.
 
@@ -577,31 +659,57 @@ export function ConfirmationPage() {
         state filter: a band whose numbers changed to match its own selection
         could not be used to compare one state against another, which is the
         only reason to put five of them side by side.
+
+        ONE TILE IN BACKLOG MODE, because every row in it is «Кутилмоқда» by
+        construction. Rendering the five-state band over a single-state list
+        would put four zeros on screen and invite the reader to click them for
+        an empty table.
       */}
-      <div className="stagger grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+      <div
+        className={
+          backlog
+            ? // One tile takes the whole row on a phone rather than half of it
+              // with a hole beside it, and a third of the width where there is
+              // room — it is this board's headline figure, not one of six.
+              'stagger grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3'
+            : 'stagger grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'
+        }
+      >
         <OutcomeTile
-          label="ЖАМИ"
+          Glyph={backlog ? ClockGlyph : undefined}
+          label={backlog ? 'ҲОЗИР КУТИЛМОҚДА' : 'ЖАМИ'}
           status={tileStatus}
           count={totals?.orders ?? null}
-          color="var(--ink-primary)"
+          /*
+            The bell's own colour in backlog mode: this figure IS the badge,
+            and a reader who clicked a blue 7 should land on a blue 7. In the
+            windowed band it stays ink, because there it is the total the five
+            states are read against rather than a state of its own.
+          */
+          color={backlog ? 'var(--series-1)' : 'var(--ink-primary)'}
           active={filters.outcomes.length === 0}
+          /*
+            Also the only way to clear a stale `?outcomes=` that arrived on an
+            older bell link, now that the status control is hidden here.
+          */
           onSelect={() => update({ outcomes: [] })}
         />
-        {OUTCOMES.map((spec) => (
-          <OutcomeTile
-            key={spec.key}
-            Glyph={spec.Glyph}
-            label={spec.label}
-            status={tileStatus}
-            count={totals?.byOutcome[spec.key] ?? null}
-            color={spec.color}
-            active={filters.outcomes.includes(spec.key)}
-            onSelect={() => toggleOutcome(spec.key)}
-          />
+        {!backlog &&
+          OUTCOMES.map((spec) => (
+            <OutcomeTile
+              key={spec.key}
+              Glyph={spec.Glyph}
+              label={spec.label}
+              status={tileStatus}
+              count={totals?.byOutcome[spec.key] ?? null}
+              color={spec.color}
+              active={filters.outcomes.includes(spec.key)}
+              onSelect={() => toggleOutcome(spec.key)}
+            />
           ))}
       </div>
 
-      {statsOpen && <RopPanel rows={data?.byRop ?? []} status={tileStatus} />}
+      {statsOpen && <RopPanel rows={data?.byRop ?? []} status={tileStatus} backlog={backlog} />}
 
       <Card className="card-hero brackets px-4 py-4">
         <header className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
@@ -642,7 +750,19 @@ export function ConfirmationPage() {
                 Барча ҳолатлар: <span className="tabular">{formatNumber(totals.orders)}</span> та
               </>
             )}
-            {totals && totals.confirmedRate !== null && (
+            {/*
+              NOT IN BACKLOG MODE, where the numerator is zero by construction.
+
+              That cohort is «every order whose latest signal is still
+              CONFIRM_NEW», so CONFIRMED cannot occur in it and the rate comes
+              back a hard 0 — non-null, because the DENOMINATOR is not empty,
+              so `rateBp`'s own null-for-no-data guard has nothing to catch.
+              Printed, «Тасдиқланиш (барча ҳолатлардан): 0%» under a list of
+              44 waiting orders reads as "this company confirmed nothing",
+              which is a verdict rather than a measurement — the same reason
+              the four other state tiles are not rendered here.
+            */}
+            {!backlog && totals && totals.confirmedRate !== null && (
               <>
                 {' · '}
                 {/*
@@ -697,7 +817,11 @@ export function ConfirmationPage() {
           emptyBody={
             filters.outcomes.length > 0 || filters.rop || filters.q
               ? 'Bu filtrlar boʻyicha buyurtma yoʻq. Filtrlarni tozalab koʻring.'
-              : 'Bu davrda hech bir buyurtma tasdiqlash navbatiga tushmagan.'
+              : backlog
+                ? // An empty backlog is the good news, and «bu davrda» would be
+                  // a sentence about a window this board does not read.
+                  'Hozir tasdiqlashni kutayotgan buyurtma yoʻq — navbat boʻsh.'
+                : 'Bu davrda hech bir buyurtma tasdiqlash navbatiga tushmagan.'
           }
         />
 
@@ -728,9 +852,22 @@ export function ConfirmationPage() {
 function RopPanel({
   rows,
   status,
+  backlog,
 }: {
   rows: readonly ConfirmationQueueDto['byRop'][number][]
   status: 'loading' | 'error' | 'ready'
+  /**
+   * Whether the board behind this panel is the backlog.
+   *
+   * IT CHANGES WHICH COLUMNS ARE HONEST, not just their labels. Every backlog
+   * row is CONFIRM_NEW by construction, so the four other state columns are
+   * zero for every group and ТАСДИҚЛАНИШ % is `confirmed / orders` = 0 —
+   * which this panel then paints `--status-critical` and semibold, putting a
+   * red verdict on every ROP on the floor for a rate that could not have been
+   * anything else. What survives is the one cut that still says something
+   * here: who is sitting on the most unworked orders.
+   */
+  backlog: boolean
 }) {
   const columns: Column<ConfirmationQueueDto['byRop'][number]>[] = [
     {
@@ -745,12 +882,17 @@ function RopPanel({
     },
     {
       key: 'orders',
-      header: 'ЖАМИ',
+      header: backlog ? 'ҲОЗИР КУТИЛМОҚДА' : 'ЖАМИ',
       align: 'right',
       numeric: true,
       render: (row) => formatNumber(row.orders),
     },
-    ...OUTCOMES.map((spec) => ({
+    /*
+      The four other states are zero for every group in backlog mode, so the
+      columns are dropped rather than filled with zeros: a table of zeros
+      invites the reader to look for the difference between them.
+    */
+    ...(backlog ? [] : OUTCOMES).map((spec: OutcomeSpec) => ({
       key: spec.key,
       header: spec.label,
       align: 'right' as const,
@@ -764,7 +906,10 @@ function RopPanel({
         )
       },
     })),
-    {
+  ]
+
+  if (!backlog)
+    columns.push({
       key: 'rate',
       header: 'ТАСДИҚЛАНИШ %',
       align: 'right',
@@ -791,8 +936,7 @@ function RopPanel({
           </span>
         )
       },
-    },
-  ]
+    })
 
   return (
     <ChartCard
@@ -808,16 +952,24 @@ function RopPanel({
         comparison table that narrowed to the one row you selected would have
         nothing left to compare.
       */
-      hint="Танланган давр ва қидирув бўйича, барча РОПлар. Ҳолат ва РОП филтрлари бу панелга таъсир қилмайди — у гуруҳларни солиштириш учун."
+      hint={
+        backlog
+          ? 'Қидирув бўйича, барча РОПлар — ким энг кўп ишланмаган буюртма устида ўтирганини кўрсатади. Давр бу панелга ҳам таъсир қилмайди.'
+          : 'Танланган давр ва қидирув бўйича, барча РОПлар. Ҳолат ва РОП филтрлари бу панелга таъсир қилмайди — у гуруҳларни солиштириш учун.'
+      }
     >
       <DataTable
         columns={columns}
         rows={rows}
         rowKey={(row) => row.rop}
         status={status}
-        minWidth={900}
+        // Two columns in backlog mode, seven in the windowed one: a fixed 900
+        // would scroll a two-column table sideways for no reason.
+        minWidth={backlog ? 320 : 900}
         emptyTitle="РОП маълумоти йўқ"
-        emptyBody="Бу даврда навбатга тушган буюртма йўқ."
+        emptyBody={
+          backlog ? 'Ҳозир кутаётган буюртма йўқ.' : 'Бу даврда навбатга тушган буюртма йўқ.'
+        }
       />
     </ChartCard>
   )
