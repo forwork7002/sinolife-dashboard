@@ -304,6 +304,34 @@ export interface ConfirmationOrderRow {
   readonly decidedAt: Date | null
   /** Queue time in hours, one decimal. Null while it is still waiting. */
   readonly hoursToDecide: number | null
+  /**
+   * How many times this order has reached Тасдиклаш — over its WHOLE life,
+   * not over the reporting window.
+   *
+   * «🔁 ҚАЙТА ТУШДИ» on the board. The client's bot marks this by remembering
+   * each deal's previous stage in `deal_state.json` and noticing the move back
+   * into `C4:NEW`; that memory is the bot's, and a dashboard that reads the
+   * portal once has no "what it was before". The same fact IS in Bitrix
+   * though, as a row per entry in the stage history: an order that entered
+   * `C4:NEW` more than once came back. This counts those entries.
+   *
+   * ALL TIME, DELIBERATELY. The cohort's own scan is bounded by the window —
+   * it has to be, or the queue query is a sequential pass over the history
+   * table — so a return that happened this morning to an order first queued
+   * last month would look like a first arrival. The count is taken separately,
+   * for the page's rows only, where the (dealId, enteredAt) index makes it one
+   * scan per row rather than a second pass over the cohort.
+   */
+  readonly queueEntries: number
+  /**
+   * The arrival BEFORE the one this row is dated by. Null the first time round.
+   *
+   * What turns the mark into something actionable: an order that came back
+   * three minutes after it was confirmed is somebody correcting a misclick,
+   * and one that came back four days later is a customer who was reached
+   * again. The badge cannot tell them apart; the date beside it can.
+   */
+  readonly previousQueuedAt: Date | null
 }
 
 /** How many orders ended in each of the five states. */
@@ -1440,6 +1468,35 @@ export class InsightsRepository {
   }
 
   /**
+   * «🔁 ҚАЙТА ТУШДИ» — has this order been in the queue before?
+   *
+   * ONE SCAN PER ROW, ON THE PAGE ONLY. It runs in the decorating join, after
+   * the LIMIT, so it costs twenty-five index lookups on (dealId, enteredAt)
+   * rather than a second pass over a cohort that can be eighteen thousand
+   * orders. Putting it in `queueSql` would also make the tiles and the header
+   * bell pay for a fact only the table shows.
+   *
+   * UNBOUNDED BY THE WINDOW, unlike everything else on the board. `moves` is
+   * cut at the window's start because the history table is six figures of
+   * rows; here the deal is already known, so the whole of its own history is
+   * one index range. It has to be: an order first queued in July and returned
+   * this morning is a return, and a window that starts today cannot see that.
+   *
+   * `[2]` is the arrival before the current one — the array is ordered newest
+   * first and `queued_at` is the newest, so the second element is the previous
+   * visit. NULL for an order that has only ever been queued once, which is
+   * also exactly when the badge does not render.
+   */
+  private static readonly REPEAT_SQL = `
+       LEFT JOIN LATERAL (
+         SELECT count(*)::int AS entries,
+                (array_agg(h."enteredAt" ORDER BY h."enteredAt" DESC))[2] AS previous_at
+           FROM "deal_stage_history" h
+           JOIN signal_stage ss ON ss."id" = h."stageId"
+          WHERE h."dealId" = d."id" AND ss.signal = 'CONFIRM_NEW'
+       ) rep ON true`
+
+  /**
    * The search box, as one predicate.
    *
    * Shared verbatim between the list and its tiles so a search can never
@@ -1688,6 +1745,8 @@ export class InsightsRepository {
       moved_at: string
       queued_at: string | null
       decided_at: string | null
+      queue_entries: number
+      previous_queued_at: string | null
     }
     type RopJson = {
       rop: string | null
@@ -1753,7 +1812,9 @@ export class InsightsRepository {
            d."currency" AS currency,
            st."name" AS stage_name,
            p.outcome,
-           p.created_at, p.moved_at, p.queued_at, p.decided_at
+           p.created_at, p.moved_at, p.queued_at, p.decided_at,
+           rep.entries AS queue_entries,
+           rep.previous_at AS previous_queued_at
          FROM page p
          JOIN "deal" d ON d."id" = p.deal_id
          JOIN "employee" e ON e."id" = d."employeeId"
@@ -1768,6 +1829,7 @@ export class InsightsRepository {
              JOIN "product" pr ON pr."id" = di."productId"
             WHERE di."dealId" = d."id"
          ) items ON true
+         ${InsightsRepository.REPEAT_SQL}
        ),
        by_rop AS (
          SELECT
@@ -1836,6 +1898,8 @@ export class InsightsRepository {
           movedAt: utc(r.moved_at)!,
           queuedAt,
           decidedAt,
+          queueEntries: r.queue_entries,
+          previousQueuedAt: utc(r.previous_queued_at),
           // Both ends or nothing: an order refused without ever being queued
           // has no waiting time, and zero would read as "decided instantly".
           hoursToDecide:
@@ -1898,6 +1962,8 @@ export class InsightsRepository {
         moved_at: Date
         queued_at: Date | null
         decided_at: Date | null
+        queue_entries: number
+        previous_queued_at: Date | null
         total_items: bigint
       }[]
     >(
@@ -1968,6 +2034,8 @@ export class InsightsRepository {
          c.moved_at AS moved_at,
          c.queued_at AS queued_at,
          c.decided_at AS decided_at,
+         rep.entries AS queue_entries,
+         rep.previous_at AS previous_queued_at,
          c.total_items AS total_items
        FROM page c
        JOIN "deal" d ON d."id" = c.deal_id
@@ -1983,6 +2051,7 @@ export class InsightsRepository {
            JOIN "product" pr ON pr."id" = di."productId"
           WHERE di."dealId" = d."id"
        ) items ON true
+       ${InsightsRepository.REPEAT_SQL}
       -- The same order the page was cut in; a join does not promise to keep it.
       ORDER BY ${sortColumn[query.sort]} ${direction} NULLS LAST, d."id" ASC`,
       period.start,
@@ -2027,6 +2096,8 @@ export class InsightsRepository {
           movedAt: new Date(r.moved_at),
           queuedAt,
           decidedAt,
+          queueEntries: int(r.queue_entries),
+          previousQueuedAt: r.previous_queued_at === null ? null : new Date(r.previous_queued_at),
           // Both ends or nothing: an order refused without ever being queued
           // has no waiting time, and zero would read as "decided instantly".
           hoursToDecide:

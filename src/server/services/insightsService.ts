@@ -157,6 +157,17 @@ export interface ConfirmationOrderDto {
   readonly queuedAt: string | null
   readonly decidedAt: string | null
   readonly hoursToDecide: number | null
+  /**
+   * How many times the order has reached Тасдиклаш, over its whole life.
+   *
+   * More than one is «🔁 ҚАЙТА ТУШДИ» — the mark the floor already knows from
+   * the bot's Telegram messages. The bot derives it by remembering each deal's
+   * previous stage; this reads the same fact out of Bitrix's own stage
+   * history, where every entry into `C4:NEW` is a row.
+   */
+  readonly queueEntries: number
+  /** The arrival before this one. Null the first time an order is queued. */
+  readonly previousQueuedAt: string | null
 }
 
 export interface ConfirmationQueueDto {
@@ -715,6 +726,8 @@ export class InsightsService {
         queuedAt: r.queuedAt?.toISOString() ?? null,
         decidedAt: r.decidedAt?.toISOString() ?? null,
         hoursToDecide: r.hoursToDecide,
+        queueEntries: r.queueEntries,
+        previousQueuedAt: r.previousQueuedAt?.toISOString() ?? null,
       })),
       totalItems: page.totalItems,
       rops,

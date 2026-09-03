@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { describe, expect, it } from 'vitest'
 
 /*
@@ -190,5 +192,62 @@ describe('confirmation queue SQL', () => {
 
     expect(tail(WINDOW)).toBe(tail(BACKLOG))
     expect(tail(WINDOW).length).toBeGreaterThan(500)
+  })
+})
+
+/**
+ * «🔁 ҚАЙТА ТУШДИ» — the mark the floor already reads in Telegram.
+ *
+ * The bot derives it from its own memory: it keeps each deal's previous stage
+ * in `deal_state.json` and notices the move back into `C4:NEW`. A dashboard
+ * that reads the portal has no "what it was before" — but Bitrix does keep the
+ * fact, as one stage-history row per entry, so an order that entered `C4:NEW`
+ * more than once came back. That is what this fragment counts.
+ *
+ * IT MUST NOT BE BOUNDED BY THE WINDOW. Everything else on the board is: the
+ * history table is six figures of rows and the cohort's scan has to start
+ * somewhere. This one already knows the deal, so it reads that deal's own
+ * history end to end — and it has to, because an order first queued in July
+ * and returned this morning is a return, and a window opening today cannot see
+ * the July arrival to compare against.
+ */
+const repeatSql = (
+  InsightsRepository as unknown as { REPEAT_SQL: string }
+).REPEAT_SQL
+const REPEAT = bare(repeatSql)
+
+describe('the repeat mark', () => {
+  it('counts entries into the queue stage, and nothing else', () => {
+    expect(REPEAT).toContain(`ss.signal = 'CONFIRM_NEW'`)
+    expect(REPEAT).toContain('count(*)::int AS entries')
+    // Correlated on the row's own deal: this runs after the page is cut, so it
+    // is one index lookup per rendered row rather than a pass over the cohort.
+    expect(REPEAT).toContain(`h."dealId" = d."id"`)
+    expect(REPEAT).toContain('LEFT JOIN LATERAL')
+  })
+
+  it('reads the whole of that deal\'s history, not the window', () => {
+    expect(REPEAT).not.toContain('$1')
+    expect(REPEAT).not.toContain('$2')
+    expect(REPEAT).not.toContain('enteredAt" >=')
+  })
+
+  it('takes the arrival BEFORE the current one as the previous visit', () => {
+    // Newest first, so [2] is the one before the arrival the row is dated by —
+    // and NULL for an order that has only ever been queued once, which is
+    // exactly when no mark is drawn.
+    expect(REPEAT).toContain(`(array_agg(h."enteredAt" ORDER BY h."enteredAt" DESC))[2]`)
+  })
+
+  it('is used by BOTH row queries, which are chosen by the window length', () => {
+    /*
+      The board switches shape at 62 days — two statements below it, one above.
+      A mark added to only one of them would appear and disappear as somebody
+      widened the period, which is the kind of fault nobody reports because it
+      looks like the data changed.
+    */
+    const source = readFileSync('src/server/repositories/insightsRepository.ts', 'utf8')
+    const uses = source.match(/InsightsRepository\.REPEAT_SQL/g) ?? []
+    expect(uses).toHaveLength(2)
   })
 })

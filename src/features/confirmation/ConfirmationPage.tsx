@@ -221,8 +221,12 @@ const QUEUE_COLUMNS: Column<ConfirmationOrderDto>[] = [
         <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
           {tashkentDate(row.queuedAt ?? row.createdAt)}
         </span>
-        <span className="tabular block text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+        <span
+          className="tabular flex items-center gap-1 text-[11px]"
+          style={{ color: 'var(--ink-muted)' }}
+        >
           {tashkentTime(row.queuedAt ?? row.createdAt)}
+          <RepeatMark row={row} />
         </span>
       </div>
     ),
@@ -972,6 +976,53 @@ function RopPanel({
         }
       />
     </ChartCard>
+  )
+}
+
+/**
+ * «🔁 ҚАЙТА ТУШДИ» — this order has been in the queue before.
+ *
+ * THE FLOOR'S OWN MARK, and deliberately the bot's emoji rather than a drawn
+ * glyph. The five state tiles gave their emoji up because they are a SET that
+ * has to be told apart by silhouette and take the state's own colour; this is
+ * one mark that means one thing, and the operators already read it in the
+ * Telegram messages under exactly this symbol. Anything else here would be a
+ * second vocabulary for a fact they already have a word for.
+ *
+ * ON THE TIME LINE, not beside the date: САНА is 112px and the date fills it,
+ * while the time below leaves room. It sits where the eye is already going
+ * when it asks "when did this arrive" — which is the question the mark
+ * qualifies.
+ *
+ * The tooltip carries what the badge cannot. An order that came back three
+ * minutes after it was confirmed is somebody undoing a misclick; one that came
+ * back four days later is a customer reached again. Same badge, and only the
+ * previous arrival separates them — so the previous arrival is what it says.
+ */
+function RepeatMark({ row }: { row: ConfirmationOrderDto }) {
+  if (row.queueEntries <= 1) return null
+
+  const previous =
+    row.previousQueuedAt === null
+      ? null
+      : `${tashkentDate(row.previousQueuedAt)} ${tashkentTime(row.previousQueuedAt)}`
+
+  return (
+    <Tooltip
+      content={
+        <span className="block">
+          ҚАЙТА ТУШДИ — {row.queueEntries}-марта навбатда.
+          {previous === null ? '' : ` Аввалгиси: ${previous}`}
+        </span>
+      }
+    >
+      <span
+        aria-label={`Қайта тушган, ${row.queueEntries}-марта${previous === null ? '' : `, аввалгиси ${previous}`}`}
+        className="cursor-default leading-none"
+      >
+        🔁
+      </span>
+    </Tooltip>
   )
 }
 

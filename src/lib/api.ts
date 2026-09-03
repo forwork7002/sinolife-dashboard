@@ -660,6 +660,16 @@ export interface ConfirmationOrderDto {
   /** When it left the queue. Null while it is still in one. */
   readonly decidedAt: string | null
   readonly hoursToDecide: number | null
+  /**
+   * How many times the order has reached Тасдиклаш, over its whole life.
+   *
+   * More than one is «🔁 ҚАЙТА ТУШДИ», the mark the floor already knows from
+   * the bot's messages. Mirrored by hand from `ConfirmationOrderDto` in
+   * `@/server/services/insightsService` — nothing checks the mirror.
+   */
+  readonly queueEntries: number
+  /** The arrival before this one. Null the first time an order is queued. */
+  readonly previousQueuedAt: string | null
 }
 
 export interface ConfirmationQueueDto {
