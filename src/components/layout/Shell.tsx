@@ -190,7 +190,18 @@ export function Shell({
     queryKey: ['meta', 'alerts'],
     queryFn: ({ signal }) => apiGet<AlertsDto>('/meta/alerts', {}, signal),
     refetchInterval: 60_000,
-    staleTime: 30_000,
+    /*
+      EQUAL TO THE INTERVAL, NOT HALF OF IT.
+
+      `Shell` is rendered by `PageShell`, not by a layout — there is no
+      dashboard `layout.tsx` — so it unmounts and remounts on every navigation,
+      and a fresh observer refetches anything older than its staleTime. At 30 s
+      that meant a full `/meta/alerts` on nearly every page change: the all-time
+      backlog cohort over the whole stage history, measured at ~4 s on
+      production, for a number whose own promise is only ever "a minute old".
+      Matched to the interval, the timer is the only thing that fires it.
+    */
+    staleTime: 60_000,
   })
   const alerts = alertsQuery.data?.data
   const pending = alerts?.queue?.pending ?? 0
@@ -668,6 +679,16 @@ export function Shell({
                 >
                   <Link
                     href="/confirmation?queue=backlog"
+                    /*
+                      Prefetched like every rail link, and for the reason
+                      recorded there: without it a force-dynamic route with no
+                      loading state fetches nothing ahead of the click and the
+                      navigation blocks on the server render — 320 to 725 ms of
+                      a page that does not respond, measured on production. The
+                      bell is one of the two most-clicked destinations in the
+                      chrome and was one of the two without it.
+                    */
+                    prefetch
                     aria-label={`${pending} ta buyurtma tasdiqlashni kutmoqda`}
                     className="rail-item focusable relative flex h-9 w-9 items-center justify-center rounded-lg"
                   >
@@ -1077,6 +1098,8 @@ function RailBody({
                   who they are signed in as. */}
               <Link
                 href="/account"
+                // Prefetched for the same measured reason as the rail's links.
+                prefetch
                 onClick={onNavigate}
                 aria-label="Hisob va parol"
                 className={`rail-item focusable flex items-center rounded-lg ${

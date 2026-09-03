@@ -1331,6 +1331,12 @@ export class InsightsRepository {
       LEFT JOIN "department" dep ON dep."id" = e."departmentId"
     ),
     numbered AS (
+      /*
+        READ BY TWO CALLERS, NOT SIX. The number is only ever shown on the
+        board's own rows, so confirmationOrders and confirmationBoard take
+        their rows from here and everything else reads classified above —
+        a window function nobody selects is still sorted and computed.
+      */
       SELECT
         c.*,
         -- Numbered on the SAME clock the cohort is chosen by. Partitioning
@@ -1387,7 +1393,18 @@ export class InsightsRepository {
              AND c.queued_at IS NOT NULL
              AND c.queued_at < $3
          )::bigint AS overdue
-       FROM numbered c`,
+       /*
+         classified, NOT numbered — this reading never shows the day's number.
+
+         numbered adds a row_number() partitioned by ROP and Tashkent day,
+         which is a Sort plus a WindowAgg over the whole cohort. Postgres does
+         not prune a window function nobody selected, so every reader that took
+         its rows from numbered paid for the ordering whether or not it showed
+         it. Only the board's own row list and the one-statement board need the
+         number; the tiles, the ROP panel, the ROP options, the header bell and
+         the rejection chart do not.
+       */
+       FROM classified c`,
       period.start,
       period.end,
       new Date(Date.now() - overdueAfterMinutes * 60_000),
@@ -1407,7 +1424,7 @@ export class InsightsRepository {
     >(
       `${InsightsRepository.queueSql(mode)}
        SELECT c.outcome, count(*)::bigint AS orders
-         FROM numbered c
+         FROM classified c
          JOIN "deal" d ON d."id" = c.deal_id
          LEFT JOIN "customer" cust ON cust."id" = d."customerId"
         WHERE ${InsightsRepository.ropMatch('$3')}
@@ -1621,7 +1638,7 @@ export class InsightsRepository {
          count(*) FILTER (WHERE c.outcome = 'REJECTED')::bigint AS rejected,
          count(*) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::bigint AS pending,
          count(*) FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::bigint AS unconfirmed_shipped
-       FROM numbered c
+       FROM classified c
        JOIN "deal" d ON d."id" = c.deal_id
        LEFT JOIN "customer" cust ON cust."id" = d."customerId"
       /*
@@ -1661,7 +1678,7 @@ export class InsightsRepository {
   ): Promise<string[]> {
     const rows = await this.prisma.$queryRawUnsafe<{ rop: string | null }[]>(
       `${InsightsRepository.queueSql(mode)}
-       SELECT DISTINCT c.rop FROM numbered c WHERE c.rop IS NOT NULL ORDER BY c.rop`,
+       SELECT DISTINCT c.rop FROM classified c WHERE c.rop IS NOT NULL ORDER BY c.rop`,
       period.start,
       period.end,
     )
@@ -2478,7 +2495,7 @@ export class InsightsRepository {
                    / NULLIF(count(*), 0)::float * 100)::float AS share,
                 count(*)::int AS orders,
                 count(*) FILTER (WHERE c.outcome = 'REJECTED')::int AS rejected
-           FROM numbered c
+           FROM classified c
           GROUP BY 1
        ),
        days AS (

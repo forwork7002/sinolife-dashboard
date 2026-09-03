@@ -447,10 +447,24 @@ export class AnalyticsService {
     }
   }
 
+  /**
+   * The trend and the summary. Nothing else, because nothing else is read.
+   *
+   * It also returned `bySource` and `byProduct` — two more full passes over the
+   * analysis set, and a `findItemsForDeals` for the second — while the caller's
+   * own contract declares two keys: `interface SalesPayload { trend; summary }`
+   * in SalesPage. Those two cuts are served by `/analytics/sources` and
+   * `/analytics/products`, which the same screen already asks for separately
+   * and does render. This endpoint was computing them a second time and putting
+   * them in a payload nothing unpacked.
+   *
+   * The line-item read went with them. It is shared with `/analytics/products`
+   * through the in-flight map, so the database saves nothing here — the saving
+   * is a pass and an allocation on the one web core, which is the core the next
+   * navigation's server render has to wait for.
+   */
   async sales(ctx: AnalyticsContext) {
     const all = await this.load(ctx)
-    const dealIds = all.map((d) => d.id)
-    const items = await this.deals.findItemsForDeals(dealIds)
 
     return {
       trend: revenueTrend(all, ctx.period, ctx.currency).map((p) => ({
@@ -459,8 +473,6 @@ export class AnalyticsService {
         dealsWon: p.dealsWon,
         dealsCreated: p.dealsCreated,
       })),
-      bySource: groupRevenue(all, ctx.period, ctx.currency, (d) => d.sourceId),
-      byProduct: productRevenue(all, items, ctx.period, ctx.currency),
       summary: summarizeDeals(all, ctx.period, ctx.currency),
     }
   }
@@ -490,9 +502,17 @@ export class AnalyticsService {
 
     const nameById = new Map(catalogue.map((p) => [p.id, p.name]))
 
+    /*
+      NO COMPARISON PASS. `ProductRow` on the page carries productId, name,
+      revenue, units and sharePercent — no delta, and the table renders exactly
+      those. The second `productRevenue` over the same set, plus the map built
+      from it, answered a column that does not exist.
+
+      `/analytics/sources` beside this one is the contrast: `SourceRow` DOES
+      declare a delta and the table draws it as the «growth» column, so that
+      endpoint keeps its comparison. The cost is earned there and was not here.
+    */
     const current = productRevenue(all, items, ctx.period, ctx.currency)
-    const previous = productRevenue(all, items, ctx.comparison, ctx.currency)
-    const previousById = new Map(previous.map((row) => [row.key, row.revenue.amountMinor]))
 
     const unitsById = new Map<string, number>()
     const wonIds = new Set(
@@ -521,7 +541,6 @@ export class AnalyticsService {
       units: unitsById.get(row.key) ?? 0,
       sharePercent:
         row.sharePercent === null ? null : roundPercent(row.sharePercent, SHARE_DECIMALS),
-      delta: toDeltaDto(growth(row.revenue.amountMinor, previousById.get(row.key) ?? null)),
     }))
   }
 

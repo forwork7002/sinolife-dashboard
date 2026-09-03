@@ -337,12 +337,35 @@ export class PulseService {
     }
   }
 
-  async flow(ctx: AnalyticsContext): Promise<FlowDto> {
+  /**
+   * The funnel. The ageing block is computed only when it is asked for.
+   *
+   * `stageAging` is the most expensive read on this endpoint by a distance: a
+   * `percentile_cont` over every closed transition of every revenue-pipeline
+   * deal in the stage history, with no date bound — an ordered-set aggregate,
+   * so it cannot hash-aggregate and sorts most of a 222 000-row table. The
+   * all-time basis is deliberate and must stay (an open row must not feed the
+   * threshold it is judged against); its FREQUENCY was the problem.
+   *
+   * Nothing renders it. The only caller of this endpoint is the sales screen,
+   * which reads `stageConversion.stages` and nothing else, and it asked for the
+   * ageing block once a minute per open tab. The precedent for the flag is two
+   * services away and identical: `insightsService.logistics` takes
+   * `{ withReasons: false }` from the command centre, whose comment reads "that
+   * third query is 0.7 s it would spend on a chart it never renders".
+   *
+   * The block stays in `FlowDto`, empty, so the shape does not change under a
+   * client that may yet grow a use for it — and so turning it back on is one
+   * argument, not a schema change.
+   */
+  async flow(ctx: AnalyticsContext, options: { withAging?: boolean } = {}): Promise<FlowDto> {
     const filters = pulseFilters(ctx)
 
     const [reach, aging] = await Promise.all([
       this.repo.stageReach(ctx.period, filters),
-      this.repo.stageAging(filters, ctx.now),
+      options.withAging === true
+        ? this.repo.stageAging(filters, ctx.now)
+        : Promise.resolve([] as Awaited<ReturnType<typeof this.repo.stageAging>>),
     ])
 
     const stages = conversionFromPrevious(reach).map<StageConversionRowDto>((row) => ({
