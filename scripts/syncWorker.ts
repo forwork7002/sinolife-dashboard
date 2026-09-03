@@ -56,6 +56,7 @@ import { Bitrix24CrmProvider } from '../src/server/integrations/crm/bitrix24/Bit
 import { createSyncHandlers } from '../src/server/integrations/crm/sync/handlers'
 import { PrismaSyncStore } from '../src/server/integrations/crm/sync/PrismaSyncStore'
 import { SyncEngine } from '../src/server/integrations/crm/sync/SyncEngine'
+import { historyBackfillCursor } from '../src/server/integrations/crm/sync/backfill'
 
 const DATABASE_URL = process.env.DATABASE_URL
 const WEBHOOK_URL = process.env.BITRIX24_WEBHOOK_URL
@@ -102,6 +103,37 @@ const ROISTAT_EVERY = Number(process.env.SYNC_ROISTAT_EVERY ?? 60)
  * Set to 0 to switch it off.
  */
 const SWEEP_EVERY = Number(process.env.SYNC_SWEEP_EVERY ?? 60)
+
+/**
+ * How far back the stage history is re-read once, at startup. Default: 45 days.
+ *
+ * A LOST ARRIVAL ROW TAKES AN ORDER OFF THE BOARD AND SAYS NOTHING. The
+ * Тасдиклаш queue is cohorted on the deal's entry into `C4:NEW`, so that one
+ * row IS the order's membership — and until the watermark learned to rewind
+ * after a skipped run (`SKIP_LOOKBACK_MS` in SyncEngine.ts), a row whose deal
+ * had not been imported yet was dropped and never offered again. Measured
+ * against the client's own board on 2026-09-03: 927148 and 928094 both reached
+ * the queue on 31 August, both are absent from this database, and the deals
+ * themselves are here — only their arrivals are missing.
+ *
+ * The engine fix stops new gaps. It cannot close the old ones, because the
+ * portal is only ever asked for rows newer than the cursor. So the cursor is
+ * wound back once per start, and the ordinary incremental pass repairs
+ * whatever it finds — every write is the same idempotent upsert, so re-reading
+ * a row that is already correct costs a write and changes nothing.
+ *
+ * FORTY-FIVE DAYS IS SIZED, NOT GUESSED. It is 76 000 of this portal's 222 000
+ * history rows: about thirty batched round trips, a few seconds of reading and
+ * one pass of chunked upserts. Compare the deletion sweep, which is why tick 0
+ * is otherwise kept clear — that one walked 434 000 deals and took thirty
+ * minutes, and with deploys landing several times a day the worker spent its
+ * life in it. This is under a minute, once, and it is also a standing net: any
+ * gap inside the window heals at the next restart even if some future skip
+ * escapes the lookback.
+ *
+ * Set to 0 to switch it off.
+ */
+const HISTORY_BACKFILL_DAYS = Number(process.env.SYNC_HISTORY_BACKFILL_DAYS ?? 45)
 
 /** Read on every tick. */
 const HOT: SyncEntityValue[] = ['CUSTOMERS', 'DEALS', 'DEAL_ITEMS', 'STAGE_HISTORY', 'CALLS']
@@ -296,9 +328,11 @@ async function main() {
   const handlers = createSyncHandlers(prisma, 'BITRIX24')
   const dealsHandler = handlers.find((h) => h.entity === 'DEALS')
 
+  const store = new PrismaSyncStore(prisma)
+
   const engine = new SyncEngine({
     provider,
-    store: new PrismaSyncStore(prisma),
+    store,
     handlers,
     logger: {
       info: () => {},
@@ -310,6 +344,37 @@ async function main() {
   const health = await provider.healthCheck()
   console.log(`\n  ${health.ok ? '✓' : '✗'} ${health.detail}`)
   if (!health.ok) process.exit(1)
+
+  /*
+    WIND THE HISTORY CURSOR BACK, ONCE, BEFORE THE FIRST TICK.
+
+    See `HISTORY_BACKFILL_DAYS`. The first ordinary incremental pass then
+    re-reads the window and upserts whatever it finds, which is what repairs an
+    arrival row that was skipped before the watermark learned to rewind.
+
+    ONLY EVER BACKWARDS. A cursor already older than the window — after an
+    outage, or on a database that has never synced — is left where it is:
+    moving it forward here would skip everything between, which is the one
+    thing this must not do.
+
+    Failure is not fatal. A worker that cannot reach the cursor table has
+    bigger problems than a backfill, and the tick loop below reports them
+    properly; refusing to start over a repair would turn a degraded sync into
+    no sync at all.
+  */
+  try {
+    const cursor = await store.getCursor(provider.source, 'STAGE_HISTORY')
+    const from = historyBackfillCursor(cursor, new Date(), HISTORY_BACKFILL_DAYS)
+    if (from !== null) {
+      await store.setCursor(provider.source, 'STAGE_HISTORY', from)
+      console.log(
+        `  ${stamp()} bosqich tarixi ${HISTORY_BACKFILL_DAYS} kunga qaytarildi —` +
+          ' yoʻqolgan yozuvlar shu tsiklda tiklanadi.',
+      )
+    }
+  } catch (error) {
+    console.warn(`  ${stamp()} ! tarixni qaytarib boʻlmadi:`, error)
+  }
 
   console.log(
     `  Sinxronizatsiya har ${INTERVAL_SEC}s. Maʼlumotnomalar har ${REFERENCE_EVERY} tsiklda.` +

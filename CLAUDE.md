@@ -357,7 +357,12 @@ the pair together.
   and is spawned as a child process, hourly.
 
 Worker cadence lives in `scripts/syncWorker.ts`: `SYNC_INTERVAL_SEC` 60,
-reference data every 30 ticks, sweep and Roistat every 60. Backoff is a
+reference data every 30 ticks, sweep and Roistat every 60, and
+`SYNC_HISTORY_BACKFILL_DAYS` 45 — the stage-history cursor is wound back once
+at startup so the ordinary incremental pass repairs arrival rows lost before
+the watermark learned to rewind (`historyBackfillCursor`; it never writes a
+cursor where there is none, and never moves one forward). 76 000 of 222 000
+rows, under a minute, once per start. Backoff is a
 **floor**, not an addend — as an addend it disappeared exactly when it was
 needed.
 
