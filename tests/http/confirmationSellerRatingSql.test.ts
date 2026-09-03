@@ -88,9 +88,20 @@ describe('confirmation seller rating SQL', () => {
     expect(BARE_SQL).not.toContain('countsAsRevenue')
   })
 
-  it('groups by operator and by their ROP, and drops operators with nothing confirmed', () => {
+  it('groups by operator and by their ROP', () => {
     expect(BARE_SQL).toContain('GROUP BY e."id", e."fullName", c.rop')
-    expect(BARE_SQL).toContain("HAVING count(*) FILTER (WHERE c.outcome = 'CONFIRMED') > 0")
+  })
+
+  it('keeps an operator whose only money was delivered without a confirmation', () => {
+    /*
+      FAKT 2 spans the whole cohort — "har bir buyurtma" is the client's own
+      wording — so a book of Тасдиқланмай чиқди orders that the carrier
+      delivered must stay on the board. A confirmed-only HAVING erased it.
+      Books that are all pending or all refused stay off: work done ranks.
+    */
+    const having = BARE_SQL.slice(BARE_SQL.indexOf('HAVING'))
+    expect(having).toContain("count(*) FILTER (WHERE c.outcome = 'CONFIRMED') > 0")
+    expect(having).toContain(`OR count(*) FILTER (WHERE d."status" = 'WON') > 0`)
   })
 
   it('joins the operator by the deal\'s employeeId, not by a stage-history actor', () => {

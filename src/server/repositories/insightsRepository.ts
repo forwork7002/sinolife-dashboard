@@ -397,11 +397,14 @@ export interface ConfirmationSellerRatingFilters {
  * stamp automation writes within five seconds of Доставлено in most cases,
  * not an operator's own act, and using it collapsed FAKT 1 into FAKT 2.
  *
- * confirmedOrders is a SUPERSET of deliveredOrders: `moves` never records a
- * C6:WON visit (WON is not in `CONFIRMATION_SIGNAL_STAGES`), so an order's
- * `outcome` freezes at 'CONFIRMED' the moment it arrives in C6:NEW and stays
- * there through delivery. openOrders is therefore "confirmed, still on the
- * way" rather than a separate population.
+ * FAKT 2 IS NOT A SUBSET OF FAKT 1, and the client's definition is why:
+ * "har bir buyurtma" — EVERY cohort order that reached delivery counts,
+ * including one shipped as Тасдиқланмай чиқди (outcome UNCONFIRMED_SHIPPED,
+ * so outside FAKT 1) that the carrier then delivered. For the ordinary order
+ * the two do nest — `moves` never records a C6:WON visit (WON is not in
+ * `CONFIRMATION_SIGNAL_STAGES`), so a confirmed order's `outcome` stays
+ * 'CONFIRMED' through delivery — which is what makes inTransit ("confirmed,
+ * still on the way") a meaningful remainder.
  */
 export interface ConfirmationSellerRatingRow {
   readonly employeeId: string
@@ -1740,8 +1743,14 @@ export class InsightsRepository {
        WHERE TRUE
          ${filterClause}
        GROUP BY e."id", e."fullName", c.rop
+       -- Confirmed OR delivered, not confirmed alone. FAKT 2 spans the whole
+       -- cohort ("har bir buyurtma"), so an operator whose only deliveries
+       -- rode out as Тасдиқланмай чиқди still holds real FAKT 2 money — a
+       -- confirmed-only gate silently erased it from the board. Books that
+       -- are all pending or all refused stay off: the board ranks work done.
        HAVING count(*) FILTER (WHERE c.outcome = 'CONFIRMED') > 0
-       ORDER BY delivered DESC NULLS LAST`
+           OR count(*) FILTER (WHERE d."status" = 'WON') > 0
+       ORDER BY sum(d."amountMinor") FILTER (WHERE d."status" = 'WON') DESC NULLS LAST`
   }
 
   /**
@@ -1854,7 +1863,10 @@ export class InsightsRepository {
        JOIN "deal" d ON d."id" = c.deal_id
        WHERE d."employeeId" = $3
        GROUP BY 1
+       -- The same gate as the board: a day whose only money was delivered
+       -- without a confirmation still belongs to FAKT 2's series.
        HAVING count(*) FILTER (WHERE c.outcome = 'CONFIRMED') > 0
+           OR count(*) FILTER (WHERE d."status" = 'WON') > 0
        ORDER BY 1`,
       period.start,
       period.end,

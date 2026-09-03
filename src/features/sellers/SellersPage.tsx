@@ -40,20 +40,18 @@ import { t } from '@/lib/messages'
  * never ordinals: "+2,1 mln kerak" is something a seller can act on today,
  * "siz 47-siz" is something they can only feel bad about.
  *
- * THE CLOCK IS ORDER INTAKE, and the whole page depends on saying so. Every
- * figure is bucketed by the day the ORDER WAS TAKEN, not the day it was
- * delivered — which is how the client scores their floor and pays bonuses,
- * and which is why this board's totals are nothing like the Savdo dinamikasi
- * page's. Measured on July 2026: 3.89 bn so'm of intake here against 0.98 bn
- * of delivered revenue there, the same month, the same deals, two clocks. The
- * caption states the basis, because a reader who reaches both screens will
- * otherwise reconcile two true numbers and conclude one is broken.
- *
- * THE DEFINITIONS WERE MEASURED, NOT GUESSED. Their page's three money
- * columns carry no published formula; each was reproduced against this
- * database until it matched July 2026 to within half a percent — see
- * `sellerBoardRepository`. That is what licenses this screen to use their
- * column names.
+ * TWO CLOCKS, QUEUE FIRST. The default reading is the floor's own FAKT 1 /
+ * FAKT 2 — Тасдиқланди and Доставланди, every figure dated by the order's
+ * arrival in the confirmation queue (C4:NEW), the same cohort the Tasdiqlash
+ * board runs on. The client stated these definitions directly on 2026-09-03.
+ * The original intake reading (dated by the day the ORDER WAS TAKEN) stays
+ * behind the «Yaratilgan sana» toggle as the one figure measured against
+ * their published dashboard to 0.1% (see `sellerBoardRepository`) — the
+ * oracle a queue regression gets checked against, not the default anyone
+ * reads. Either way this board's totals are nothing like Savdo dinamikasi's
+ * delivered revenue (3.89 bn of July intake vs 0.98 bn delivered, same month,
+ * same deals), so the caption under the totals states the basis in force —
+ * a reader reconciling two true numbers must not conclude one is broken.
  *
  * NO ROP COLOUR CODING, and that is a deliberate departure. Their page paints
  * each ROP its own hue from a thirteen-colour map; this design system caps
@@ -98,6 +96,20 @@ export function SellersPage() {
 
   const data = board.data?.data
   const status = board.isPending ? 'loading' : board.isError ? 'error' : 'ready'
+
+  /*
+    The per-row Prognoz divisor — the client's own `forecast()` carried over
+    from their published page, where it is a COLUMN, not just a footer line.
+    One divisor for the whole board (elapsed fraction of the period), gated by
+    the same nulls the service applies to the global projection: no forecast
+    once the period is over, none below the 2% floor where one early order
+    multiplies into a fantasy. Division happens on the lossy display amount
+    because a projection is an estimate by construction — see MoneyDto.
+  */
+  const projectionDivisor =
+    data && data.forecast.projected !== null && data.forecast.elapsedPercent > 0
+      ? data.forecast.elapsedPercent / 100
+      : null
 
   /**
    * A podium card is a door, not a poster: clicking a name lands on that
@@ -267,9 +279,10 @@ export function SellersPage() {
               openSeller={openSeller}
               onToggle={(id) => setOpenSeller((current) => (current === id ? null : id))}
               apiParams={apiParams}
+              projectionDivisor={projectionDivisor}
             />
           ) : (
-            <TeamTable rows={data.teams} />
+            <TeamTable rows={data.teams} projectionDivisor={projectionDivisor} />
           )}
         </Card>
       </section>
@@ -904,11 +917,14 @@ function SellerTable({
   openSeller,
   onToggle,
   apiParams,
+  projectionDivisor,
 }: {
   rows: readonly SellerBoardRowDto[]
   openSeller: string | null
   onToggle: (employeeId: string) => void
   apiParams: Record<string, string | number>
+  /** Elapsed fraction of the period, or null when no projection is honest. */
+  projectionDivisor: number | null
 }) {
   /**
    * The bar's ceiling is the biggest intake on the board, so every row's two
@@ -927,7 +943,7 @@ function SellerTable({
         thousand pixels, and the application never scrolls as a page.
       */}
       <div className="max-h-[60dvh] overflow-auto">
-        <table className="w-full" style={{ minWidth: 940 }}>
+        <table className="w-full" style={{ minWidth: 1020 }}>
           <thead>
             <tr>
               {[
@@ -939,6 +955,7 @@ function SellerTable({
                 ['Buyurtma puli', 'right'],
                 ['Yutilgan puli', 'right'],
                 ['Konversiya', 'right'],
+                ['Prognoz', 'right'],
                 ['Bonus', 'right'],
               ].map(([label, align]) => (
                 <th
@@ -964,6 +981,7 @@ function SellerTable({
                   open={open}
                   onToggle={() => onToggle(row.employeeId)}
                   apiParams={apiParams}
+                  projectionDivisor={projectionDivisor}
                 />
               )
             })}
@@ -972,7 +990,8 @@ function SellerTable({
       </div>
       <p className="mt-2.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
         Och chiziq — olingan buyurtma puli, toʻq chiziq — shundan yutilgani.
-        Quvish — oldingi oʻrindagiga yetish uchun kerak summa.
+        Quvish — oldingi oʻrindagiga yetish uchun kerak summa. Prognoz — shu
+        surʼatda davr oxirida yutiladigan pul.
       </p>
     </>
   )
@@ -1048,6 +1067,7 @@ function SellerRows({
   open,
   onToggle,
   apiParams,
+  projectionDivisor,
 }: {
   row: SellerBoardRowDto
   ahead: SellerBoardRowDto | null
@@ -1056,6 +1076,7 @@ function SellerRows({
   open: boolean
   onToggle: () => void
   apiParams: Record<string, string | number>
+  projectionDivisor: number | null
 }) {
   const podium = row.rank <= 3 && row.won.amount > 0
   const metal = !podium
@@ -1177,13 +1198,16 @@ function SellerRows({
           {row.conversionPercent === null ? NO_VALUE : formatPercent(row.conversionPercent)}
         </td>
         <td className="px-2 py-2 text-right">
+          <ForecastCell wonAmount={row.won.amount} projectionDivisor={projectionDivisor} />
+        </td>
+        <td className="px-2 py-2 text-right">
           <BonusCell bonus={row.bonus} />
         </td>
       </tr>
 
       {open && (
         <tr>
-          <td colSpan={9} className="px-2 pt-1 pb-4">
+          <td colSpan={10} className="px-2 pt-1 pb-4">
             <SellerDetail
               employeeId={row.employeeId}
               row={row}
@@ -1204,6 +1228,49 @@ function SellerRows({
  * is what the client's ladder actually offers. Within reach (85%+ of the way)
  * the line steps up in ink and weight — proximity emphasis, never a hue.
  */
+/**
+ * The row's own end-of-period projection — the client's `forecast()` column.
+ *
+ * Straight-line: won so far over the elapsed fraction, the same arithmetic
+ * as the global ForecastStrip, so the column and the strip can never state
+ * two different paces. A dash for a row with nothing won (zero projected to
+ * zero is not a forecast) and for every window where the strip itself would
+ * refuse — the period is over, or too little of it has elapsed to divide by.
+ */
+function ForecastCell({
+  wonAmount,
+  projectionDivisor,
+}: {
+  wonAmount: number
+  projectionDivisor: number | null
+}) {
+  if (projectionDivisor === null || wonAmount <= 0) {
+    return (
+      <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+        {NO_VALUE}
+      </span>
+    )
+  }
+  const projected = wonAmount / projectionDivisor
+  return (
+    <Tooltip
+      content={
+        <span className="tabular">
+          Shu surʼatda davr oxirida ≈ {formatUzs(Math.round(projected))}
+        </span>
+      }
+    >
+      <span
+        tabIndex={0}
+        className="tabular focusable rounded text-xs whitespace-nowrap"
+        style={{ color: 'var(--ink-secondary)' }}
+      >
+        ≈{formatCompactUzs(projected)}
+      </span>
+    </Tooltip>
+  )
+}
+
 function BonusCell({ bonus }: { bonus: SellerBoardRowDto['bonus'] }) {
   if (bonus.earned.amount > 0) {
     return (
@@ -1430,7 +1497,13 @@ function SellerDetail({
 
 // ---------------------------------------------------------------------------
 
-function TeamTable({ rows }: { rows: readonly SellerTeamRowDto[] }) {
+function TeamTable({
+  rows,
+  projectionDivisor,
+}: {
+  rows: readonly SellerTeamRowDto[]
+  projectionDivisor: number | null
+}) {
   if (rows.length === 0) {
     return (
       <EmptyState
@@ -1446,7 +1519,7 @@ function TeamTable({ rows }: { rows: readonly SellerTeamRowDto[] }) {
   return (
     <>
       <div className="max-h-[60dvh] overflow-auto">
-        <table className="w-full" style={{ minWidth: 720 }}>
+        <table className="w-full" style={{ minWidth: 800 }}>
           <thead>
             <tr>
               {[
@@ -1457,6 +1530,7 @@ function TeamTable({ rows }: { rows: readonly SellerTeamRowDto[] }) {
                 ['Buyurtma puli', 'right'],
                 ['Yutilgan puli', 'right'],
                 ['Konversiya', 'right'],
+                ['Prognoz', 'right'],
               ].map(([label, align]) => (
                 <th
                   key={label}
@@ -1546,6 +1620,9 @@ function TeamTable({ rows }: { rows: readonly SellerTeamRowDto[] }) {
                   <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
                     {row.conversionPercent === null ? NO_VALUE : formatPercent(row.conversionPercent)}
                   </td>
+                  <td className="px-2 py-2 text-right">
+                    <ForecastCell wonAmount={row.won.amount} projectionDivisor={projectionDivisor} />
+                  </td>
                 </tr>
               )
             })}
@@ -1554,6 +1631,7 @@ function TeamTable({ rows }: { rows: readonly SellerTeamRowDto[] }) {
       </div>
       <p className="mt-2.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
         Och chiziq — olingan buyurtma puli, toʻq chiziq — shundan yutilgani.
+        Prognoz — shu surʼatda davr oxirida yutiladigan pul.
       </p>
     </>
   )
