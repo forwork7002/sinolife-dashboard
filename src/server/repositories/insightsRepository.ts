@@ -1081,11 +1081,20 @@ export class InsightsRepository {
    * second, reasonable-looking definition here would not be a variant, it
    * would be a contradiction of the figures the company already works to.
    *
-   * THE WINDOW SELECTS ON THE LAST SIGNIFICANT MOVE. An order belongs to the
-   * period in which its confirmation last changed. Their bot keys on
-   * `MOVED_TIME` and deliberately not on `DATE_MODIFY`, which any edit bumps —
-   * «шунинг учун ойлар олдин рад этилган сделкалар "янги воқеа" деб хабар
-   * қилинарди».
+   * THE WINDOW SELECTS ON THE ARRIVAL IN `C4:NEW`. An order belongs to the day
+   * it entered the confirmation queue — «БОШЛАНИШ НУҚТАСИ» in their own words —
+   * because that is the day their bot announced it and the day it has carried
+   * on their board ever since. The bot keys on the stage move (`MOVED_TIME`)
+   * and deliberately not on `DATE_MODIFY`, which any edit bumps: «шунинг учун
+   * ойлар олдин рад этилган сделкалар "янги воқеа" деб хабар қилинарди».
+   *
+   * NOT Дата создания, which is what this used to select on and what made the
+   * board disagree with the floor. Registration («Регистрация», pipeline 0)
+   * holds a deal for as long as it takes to reach the customer, and only the
+   * move to «Сделка успешна» hands it to Тасдиклаш as `C4:NEW`. Measured
+   * against the portal on 2026-09-03: one order had arrived, their bot showed
+   * one, and this board showed four — three of them created that morning but
+   * still sitting in Регистрация, unannounced and unworkable.
    *
    * FIVE STAGES SPEAK; THE REST ARE SILENT:
    *
@@ -1173,9 +1182,9 @@ export class InsightsRepository {
     const cohort =
       mode === 'backlog'
         ? `WHERE a.signal = 'CONFIRM_NEW'
-         AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2`
-        : `WHERE d."createdAtSource" >= $1
-         AND d."createdAtSource" <  $2`
+         AND a.queued_at >= $1 AND a.queued_at < $2`
+        : `WHERE a.queued_at >= $1
+         AND a.queued_at <  $2`
 
     return `
     /*
@@ -1195,13 +1204,13 @@ export class InsightsRepository {
     /*
       Every confirmation move from the window's start onwards.
 
-      OPEN ON THE RIGHT, and that one condition was a real bug. It used to
-      close at $2, reasoning that an order created inside the window is also
-      worked inside it. Orders do not oblige: one placed at 23:50 is queued
-      the next morning, and one placed on the 31st is worked in the new month.
-      Every CLOSED window silently dropped them — «Kecha» showed 96 orders
-      against a true 101, and «Oʻtgan oy» 2 970 against 3 103. «Shu oy» hid it
-      completely, because its end is tomorrow and nothing can fall past it.
+      OPEN ON THE RIGHT, and that is what lets the board show a status rather
+      than a snapshot. An order that arrived at 23:50 is worked the next
+      morning, and one that arrived on the 31st is decided in the new month;
+      closing this at $2 would freeze both as «kutilmoqda». Measured when it
+      was closed: «Kecha» showed 96 orders against a true 101, «Oʻtgan oy»
+      2 970 against 3 103, and «Shu oy» hid the fault entirely because its end
+      is tomorrow and nothing can fall past it.
 
       The consequence is deliberate: an order's status is its status NOW, not
       the one it happened to hold at midnight on the window's last day. A board
@@ -1209,10 +1218,13 @@ export class InsightsRepository {
       say where they stand — freezing an order as «kutilmoqda» because that is
       what it was six weeks ago describes nothing anybody can act on.
 
-      Left bound only, still cheap: an order created in the window cannot have
-      moved before it existed, so nothing before $1 can belong here. Measured
-      against the closed form on three windows — 152 ms for a day, 1.2 s for a
-      month, 3.7 s for a year, all three faster than the shape it replaces.
+      LEFT BOUND ONLY, AND IT IS WHAT MAKES queued_at HONEST. The cohort
+      below keeps orders whose arrival falls inside the window, so the arrival
+      itself is at or after $1 and no scan earlier than $1 can change which
+      order enters. Nor can it change the state: every move before $1 is older
+      than that arrival, so none of them can win max(moved_at). What the
+      bound buys is the whole reason this query is affordable — (stageId,
+      enteredAt) range scans instead of a sequential pass over the history.
     */
     moves AS (
       SELECT h."dealId" AS deal_id, h."enteredAt" AS moved_at, ss.signal
@@ -1245,21 +1257,39 @@ export class InsightsRepository {
        GROUP BY deal_id
     ),
     /*
-      THE WINDOW IS THE ORDER'S OWN DATE — Дата создания in Bitrix.
+      THE WINDOW IS THE ARRIVAL IN THE QUEUE — a.queued_at.
 
-      Picking "today" has to mean today's orders, because that is the question
-      being asked and because it is the one an operator can check: open the
-      deal in Bitrix, read Дата создания, and it agrees. Dating the board by
-      the last status change instead put yesterday's order on today's list the
-      moment somebody touched it — deal 923458 was created on the 30th at
-      13:55, moved on the 31st, and appeared under the 31st while Bitrix said
-      «вчера». Of the 70 orders that board showed for one day, 41 had been
-      created earlier.
+      Picking "today" means the orders that reached Тасдиклаш today, which is
+      the same set their bot posted to the ROP channels today and the same set
+      their own board still shows under today. Verified against the portal
+      over three weeks, Tashkent days, distinct deals:
 
-      That is a DIFFERENT question from the one the client's Telegram bot
-      answers. Its board is dated by MOVED_TIME and lists what moved; this one
-      lists what came in. Both are honest; only one can be on this screen, and
-      the one an owner counts by is the intake.
+                  Дата создания   last move   arrival    portal (C4:NEW)
+        08-31            99          157        125           135 visits
+        09-01             1            1          1             1 visit
+        09-02            80           93         93            96 visits
+        09-03             4            6          1             1 visit
+
+      Only the arrival column tracks the portal. Дата создания undercounts
+      because a deal can sit in Регистрация for days before anyone can work
+      it; the last move overcounts because it drags every order that merely
+      CHANGED today onto today — six deals reached Доставка on 09-03, all of
+      them yesterday's orders.
+
+      NOT NULL BY CONSTRUCTION, and that is a second fix riding along. An
+      order that never touched C4:NEW has no arrival, so the predicate drops
+      it — the ~52 deals that appear straight in C6:NEW, which the bot never
+      announced and which their board has never listed. They used to be
+      counted here purely because they had a creation date.
+
+      THE LAST ARRIVAL, not the first: an order that comes back into the queue
+      is being worked from the day it came back, and their bot agrees — it
+      keeps one entry per deal and re-posts under 🔁 ҚАЙТА ТУШДИ. Their board
+      carries 2 211 rows for 2 211 distinct deals, never a deal twice.
+
+      created_at stays selected. It is still Дата создания, still shown on
+      the row, and still sortable — it just no longer decides who is on the
+      board.
     */
     dated AS (
       SELECT a.deal_id, d."createdAtSource" AS created_at, a.moved_at, a.queued_at, a.signal
@@ -1311,11 +1341,16 @@ export class InsightsRepository {
     numbered AS (
       SELECT
         c.*,
+        -- Numbered on the SAME clock the cohort is chosen by. Partitioning
+        -- this by the creation day while the board is dated by the arrival
+        -- would put two «001»s under one ROP on one screen, because a single
+        -- queue day holds arrivals created across several days.
+        --
         -- Tashkent, not UTC: the working day is the thing being counted, and
         -- five hours of it would otherwise be numbered into yesterday.
         row_number() OVER (
-          PARTITION BY c.rop, (c.created_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date
-          ORDER BY c.created_at ASC, c.deal_id ASC
+          PARTITION BY c.rop, (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date
+          ORDER BY c.queued_at ASC, c.deal_id ASC
         )::int AS daily_no
       FROM classified c
     )
@@ -1333,6 +1368,11 @@ export class InsightsRepository {
    * `overdue` is measured from the order's own arrival in the queue, not from
    * the start of the day: an order that arrived ten minutes ago has not been
    * waiting since midnight.
+   *
+   * The `queued_at IS NOT NULL` guard below is now implied by the cohort — an
+   * order with no arrival is not on the board at all — and it is kept because
+   * the comparison beneath it is what the count means, and a reader should
+   * not have to prove the null case away before trusting the number.
    */
   async queuePressure(
     period: Period,

@@ -82,14 +82,15 @@ export const t = {
       Which orders are on the board — only those that reached a confirmation
       stage, so an order parked in «Пропущенный» or an SMS stage is on neither
       this board nor its ЖАМИ — and which date the window is applied to, which
-      is the order's own Дата создания. Without the second one a reader
-      comparing "bugun" against the portal has no way to know whether they are
-      counting the same day, and without the first the ЖАМИ tile reads as
-      every order taken rather than every order queued.
+      is the day the order ARRIVED in Тасдиклаш, not its Дата создания.
+      Without the second one a reader comparing "bugun" against the portal has
+      no way to know whether they are counting the same day, and without the
+      first the ЖАМИ tile reads as every order taken rather than every order
+      queued.
     */
     confirmation: {
       title: 'Tasdiqlash navbati',
-      lead: 'Tasdiqlash bosqichiga tushgan har bir buyurtma qaysi holatda ekani. Davr buyurtmaning oʻz sanasi (Дата создания) boʻyicha.',
+      lead: 'Tasdiqlash bosqichiga tushgan har bir buyurtma qaysi holatda ekani. Davr buyurtma navbatga kelgan kun (C4:NEW) boʻyicha.',
     },
     margin: {
       title: 'Yalpi marja',

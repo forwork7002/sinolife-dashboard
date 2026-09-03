@@ -626,7 +626,7 @@ export interface ConfirmationOrderDto {
   readonly dealId: string
   /** РОП — the sales group, as the floor names it: "Sevinch", "Lola", "Baza". */
   readonly rop: string | null
-  /** № — the order's place in ITS ROP's day, restarting each morning. */
+  /** № — the order's place in ITS ROP's queue day, restarting each morning. */
   readonly dailyNo: number
   /** Id сделки — the Bitrix24 deal id. */
   readonly bitrixId: string | null
@@ -647,11 +647,15 @@ export interface ConfirmationOrderDto {
   /** The stage the deal sits in now — the evidence behind the outcome. */
   readonly stageName: string
   readonly outcome: ConfirmationOutcome
-  /** Дата создания — when the order was placed. What САНА shows. */
+  /** Дата создания — when the order was placed. Shown in САНА's tooltip. */
   readonly createdAt: string
   /** The order's last confirmation move, which is where its status comes from. */
   readonly movedAt: string
-  /** When it entered the queue. Null when it was refused without ever being in one. */
+  /**
+   * When it entered `C4:NEW`. What САНА shows, what the window selects on,
+   * and the day № restarts on. Null only in principle — an order with no
+   * arrival is not on the board.
+   */
   readonly queuedAt: string | null
   /** When it left the queue. Null while it is still in one. */
   readonly decidedAt: string | null

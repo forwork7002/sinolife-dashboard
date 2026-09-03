@@ -17,11 +17,18 @@ const { InsightsRepository } = await import('@/server/repositories/insightsRepos
 /**
  * The Тасдиклаш board answers two questions from one definition.
  *
- * `window` is the client's own board — what came in during the period, dated
- * by the order's own Дата создания. `backlog` is what is waiting right now,
- * whenever it arrived, because a queue dated by intake cannot answer that: the
- * oldest unworked order on this portal predates every preset, so the tile and
- * the header bell both read zero while hundreds sat unworked.
+ * `window` is the client's own board — what ARRIVED in the confirmation queue
+ * during the period. `backlog` is what is waiting right now, whenever it
+ * arrived, because a windowed queue cannot answer that: the oldest unworked
+ * order on this portal predates every preset, so the tile and the header bell
+ * both read zero while hundreds sat unworked.
+ *
+ * BOTH ARE DATED BY THE ARRIVAL IN `C4:NEW`, and these tests are what keeps
+ * that true. The board used to select on Дата создания, which counts a deal on
+ * the day it was registered rather than the day it reached Тасдиклаш — on
+ * 2026-09-03 that showed four orders where the portal and the client's own bot
+ * both had one. The distance between the two dates is days, not minutes, so a
+ * silent regression here is not a rounding difference.
  *
  * Everything BELOW the cohort — the latest signal, the UNCONFIRMED_SHIPPED
  * refinement, the ROP name, the Tashkent daily number — is shared, and these
@@ -35,6 +42,20 @@ const queueSql = (
 
 const WINDOW = queueSql('window')
 const BACKLOG = queueSql('backlog')
+
+/*
+  Negative assertions run against the SQL with its prose stripped.
+
+  The builder carries some forty lines of comment explaining why each cohort
+  is what it is, and those comments name the very columns the `not.toContain`
+  checks below forbid. Asserted against the raw string, "this mode does not
+  select on createdAtSource" would fail the moment somebody EXPLAINED that it
+  does not — the test would be measuring the documentation.
+*/
+const bare = (sql: string) => sql.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '')
+
+const WINDOW_SQL = bare(WINDOW)
+const BACKLOG_SQL = bare(BACKLOG)
 
 describe('confirmation queue SQL', () => {
   it('builds the same CTE chain in both modes', () => {
@@ -60,18 +81,87 @@ describe('confirmation queue SQL', () => {
     }
   })
 
-  it('selects the window cohort by the order’s own date', () => {
-    expect(WINDOW).toContain('d."createdAtSource" >= $1')
-    expect(WINDOW).not.toContain("a.signal = 'CONFIRM_NEW'")
+  it('dates the window cohort by the arrival in the queue, not by Дата создания', () => {
+    expect(WINDOW_SQL).toContain('a.queued_at >= $1')
+    expect(WINDOW_SQL).toContain('a.queued_at <  $2')
+    // The rule this replaced. It counted a deal on the day it was registered
+    // in «Регистрация», which can be days before anyone may work it.
+    expect(WINDOW_SQL).not.toContain('d."createdAtSource" >= $1')
+    expect(WINDOW_SQL).not.toContain('d."createdAtSource" <')
+    // The window asks who arrived, not who is still waiting.
+    expect(WINDOW_SQL).not.toContain("a.signal = 'CONFIRM_NEW'")
     // Nothing narrows the history scan: the window already bounds it.
-    expect(WINDOW).not.toContain('d0."status"')
+    expect(WINDOW_SQL).not.toContain('d0."status"')
   })
 
-  it('selects the backlog cohort by state, and narrows the scan to live orders', () => {
-    expect(BACKLOG).toContain("a.signal = 'CONFIRM_NEW'")
+  it('dates the backlog cohort the same way, and narrows the scan to live orders', () => {
+    expect(BACKLOG_SQL).toContain("a.signal = 'CONFIRM_NEW'")
+    // Same cohort key as the window, so the bell and the board can never
+    // disagree about WHICH day an order belongs to — only about which orders.
+    expect(BACKLOG_SQL).toContain('a.queued_at >= $1')
+    expect(BACKLOG_SQL).toContain('a.queued_at < $2')
+    expect(BACKLOG_SQL).not.toContain('d."createdAtSource" >= $1')
     // Without a window there is no cheap bound on the history scan, so the
     // join to open deals is what keeps the bell affordable to poll.
-    expect(BACKLOG).toContain(`d0."status" = 'OPEN'`)
+    expect(BACKLOG_SQL).toContain(`d0."status" = 'OPEN'`)
+  })
+
+  it('keeps an order that never reached the queue off the board, in both modes', () => {
+    /*
+      There is no explicit IS NOT NULL anywhere, and there must not need to be.
+      `queued_at` is `max(moved_at) FILTER (WHERE signal = 'CONFIRM_NEW')`, so
+      it is NULL for a deal that appeared straight in `C6:NEW` — some fifty of
+      them on this portal — and a NULL fails both comparisons. Those orders
+      were never announced by the bot and have never been on the client's
+      board; under the old creation-date cohort they were on ours.
+
+      What this pins is that the cohort compares the FILTERed aggregate and
+      nothing else. Swap it for `moved_at` and the fifty come back silently.
+    */
+    expect(WINDOW_SQL).toContain(`max(moved_at) FILTER (WHERE signal = 'CONFIRM_NEW') AS queued_at`)
+    for (const sql of [WINDOW_SQL, BACKLOG_SQL]) {
+      expect(sql).toMatch(/WHERE[\s\S]{0,80}a\.queued_at >= \$1/)
+      expect(sql).not.toMatch(/WHERE[^)]*a\.moved_at >= \$1/)
+    }
+  })
+
+  it('restarts the daily № on the day the cohort is dated by', () => {
+    /*
+      The number and the САНА beside it have to name the same day. Partition
+      this by the creation date while the board is dated by the arrival and a
+      single ROP shows two «001»s on one screen, because one queue day holds
+      arrivals created across several days.
+    */
+    for (const sql of [WINDOW_SQL, BACKLOG_SQL]) {
+      expect(sql).toContain(
+        `PARTITION BY c.rop, (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Tashkent')::date`,
+      )
+      expect(sql).toContain('ORDER BY c.queued_at ASC, c.deal_id ASC')
+      expect(sql).not.toContain('PARTITION BY c.rop, (c.created_at')
+    }
+  })
+
+  it('bounds the history scan on the left only', () => {
+    /*
+      This is what makes the arrival cohort both correct and affordable. The
+      left bound cannot change the answer — the arrival it selects on is at or
+      after $1, and every move older than that arrival loses `max(moved_at)`
+      anyway — while a right bound WOULD: it would freeze an order at the
+      status it held at midnight on the window's last day. «Kecha» showed 96
+      orders against a true 101 when this closed at $2.
+    */
+    for (const sql of [WINDOW_SQL, BACKLOG_SQL]) {
+      expect(sql).toContain('AND h."enteredAt" >= $1')
+      expect(sql).not.toContain('h."enteredAt" <')
+    }
+  })
+
+  it('still exposes Дата создания as a column, without dating anything by it', () => {
+    // It is what the САНА tooltip shows and what the `createdAt` sort reads,
+    // so the projection stays even though the cohort no longer touches it.
+    for (const sql of [WINDOW_SQL, BACKLOG_SQL]) {
+      expect(sql).toContain('d."createdAtSource" AS created_at')
+    }
   })
 
   it('classifies an order identically in both modes', () => {
@@ -87,5 +177,18 @@ describe('confirmation queue SQL', () => {
       expect(WINDOW).toContain(fragment)
       expect(BACKLOG).toContain(fragment)
     }
+  })
+
+  it('shares every line below the cohort between the two modes', () => {
+    /*
+      The four fragments above are hand-picked, and a hand-picked list is only
+      ever as good as the last person to extend it. Everything from `classified`
+      onward is built from one template with no mode branch, so it can be
+      compared whole — and then a divergence nobody thought to name still fails.
+    */
+    const tail = (sql: string) => sql.slice(sql.indexOf('classified AS ('))
+
+    expect(tail(WINDOW)).toBe(tail(BACKLOG))
+    expect(tail(WINDOW).length).toBeGreaterThan(500)
   })
 })

@@ -46,12 +46,16 @@ import { t } from '@/lib/messages'
  * distinct glyph survives a colourblind reader and a greyscale print where
  * colour alone does not. The surrounding copy stays in the dashboard's voice.
  *
- * WHAT THE PERIOD SELECTS, and why it is not what the reference selects.
- * "Today" here means the orders PLACED today — Дата создания in Bitrix, so a
- * row can be checked by opening the deal and reading that field. The
- * reference board is dated by the last status change instead, which puts
- * yesterday's order on today's list as soon as anyone touches it. Both are
- * honest questions; an owner counting the day's intake is asking this one.
+ * WHAT THE PERIOD SELECTS: the orders that REACHED the queue in it.
+ * "Today" means every deal that arrived in `C4:NEW` today — the move out of
+ * «Регистрация» / «Сделка успешна» that hands an order to Тасдиклаш, and the
+ * moment the bot posts it to the ROP channel. It is the same date the
+ * reference board carries, so the two can be read side by side.
+ *
+ * It is NOT Дата создания, which this screen used to select on. A deal can
+ * sit in Регистрация for days before anyone can work it, so intake and
+ * arrival are different days for a large minority of orders: on 2026-09-03
+ * one order had arrived and four had been created.
  *
  * WHERE THIS SCREEN IS DELIBERATELY BETTER THAN THE ONE IT MIRRORS
  * The reference renders from `deal_state.json`, which the bot builds by
@@ -196,15 +200,29 @@ const QUEUE_COLUMNS: Column<ConfirmationOrderDto>[] = [
     // only column that is unique per row without being an opaque id.
     rowHeader: true,
     header: 'САНА',
-    sortKey: 'createdAt',
+    sortKey: 'queuedAt',
     width: '112px',
+    // The arrival in the queue, which is what the window selects on and what
+    // the daily № restarts on — the three have to name the same instant or
+    // the row is numbered into a day its own date denies.
+    //
+    // `queuedAt` is typed nullable for the DTO's sake; the cohort cannot
+    // admit a row without one, and the fallback is here so a future reader
+    // that can never sees an epoch date instead of a blank.
+    //
+    // Дата создания rides along in the tooltip. It is still worth reaching —
+    // it is the field an operator sees first in Bitrix — but it decides
+    // nothing on this board any more.
     render: (row) => (
-      <div className="whitespace-nowrap">
+      <div
+        className="whitespace-nowrap"
+        title={`Яратилган: ${tashkentDate(row.createdAt)} ${tashkentTime(row.createdAt)}`}
+      >
         <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
-          {tashkentDate(row.createdAt)}
+          {tashkentDate(row.queuedAt ?? row.createdAt)}
         </span>
         <span className="tabular block text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          {tashkentTime(row.createdAt)}
+          {tashkentTime(row.queuedAt ?? row.createdAt)}
         </span>
       </div>
     ),
@@ -348,8 +366,12 @@ export function ConfirmationPage() {
     400. So an unrecognised value falls back to this page's own default —
     which is the ordinary case on first load, and the only thing standing
     between a bookmarked link from another screen and an empty page.
+
+    That default is `queuedAt`, the column САНА shows. It has to be: the
+    server's own default is only ever consulted by direct API callers,
+    because this page always sends `sort` explicitly.
   */
-  const sort = (SORTS as readonly string[]).includes(filters.sort) ? filters.sort : 'createdAt'
+  const sort = (SORTS as readonly string[]).includes(filters.sort) ? filters.sort : 'queuedAt'
 
   const query = useQuery({
     queryKey: ['confirmation-queue', apiParams, filters.page, filters.pageSize, sort, filters.order],
