@@ -147,6 +147,63 @@ changes on sync), and the ⌘K search.
 
 ---
 
+## The eleven screens, and what each one dates by
+
+Every page is a thin shell under `src/app/`, the UI lives in
+`src/features/<dir>/<Name>Page.tsx`, and each page calls
+`requireSection('<id>')` — a courtesy redirect, not the boundary; the real gate
+is the route's `ACCESS`. All of them also inherit `/meta/filters`,
+`/meta/alerts` and the ⌘K `/search` from the shell.
+
+**The last column is the one to check before writing a query.** A screen's
+reporting window does not mean the same thing on every screen, and picking the
+wrong basis is the mistake that produces plausible, wrong numbers.
+
+| Screen | URL | Feature | Endpoint(s) | Service → Repository | Window filters on |
+|---|---|---|---|---|---|
+| Boshqaruv markazi | `/` | `overview/CommandCentrePage` | `/dashboard/command` | CommandCentre, Insights, Concentration → Insights, Concentration | **mixed, 3 clocks** — `createdAtSource` (intake, funnel, logistics), `closedAt` (delivered revenue, products, headcount), `queued_at` (confirmation + rejection band) |
+| Savdo tahlili | `/analytics/sales` | `sales/SalesPage` | `/analytics/sales`, `/analytics/sources`, `/analytics/products`, `/insights/pulse`, `/insights/flow` | Analytics, Pulse → Deal, Reference, Pulse | **mixed** — a permissive pre-filter admits anything touching the window, then each measure picks its own basis |
+| Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` | `/insights/cohorts`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | `closedAt`, on revenue-bearing WON deals only — nothing here reads `createdAtSource` |
+| Kanallar | `/marketing` | `marketing/MarketingPage` | `/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
+| Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
+| Logistika | `/logistics` | `logistics/LogisticsPage` | `/insights/logistics` | Insights → Insights, Reference | `createdAtSource`, uniformly in all three queries |
+| Tasdiqlash navbati | `/confirmation` | `confirmation/ConfirmationPage` | `/insights/confirmations/orders` | Insights → Insights | **the arrival in `C4:NEW`** — the latest `deal_stage_history` row whose stage signals `CONFIRM_NEW` |
+| Joʻnatish nuqtalari | `/warehouse` | `warehouse/WarehousePage` | `/insights/dispatch` | Insights → Insights | `createdAtSource` — a creation cohort graded by the deal's **current** stage |
+| Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | `createdAtSource` — order intake, same column for board, drill-down and comparison |
+| KPI rejalari | `/kpi` | `kpi/KpiPage` | `/kpi` | Kpi, Analytics → Reference, Deal | **the plan's own `periodStart`/`periodEnd`** — the dashboard window only *selects* which plan is live |
+| Struktura | `/structure` | `structure/StructurePage` | `/insights/structure` | Insights → Insights | **mixed** — money columns on `closedAt`, others undated |
+
+`/` is the one page with **no** `requireSection`: it calls `firstSectionFor()`
+and forwards, because it is where every login and every bookmark lands, and a
+guard there would bounce the user off their own home page. Its section id is
+enforced at the API instead (`dashboard/command/route.ts`).
+
+Per-screen traps worth knowing before you touch one:
+
+- **Boshqaruv markazi** — the 45-second in-process cache key carries the
+  *preset*, not just the window. Dropping it served «Shu hafta» the numbers for
+  «Bugun» (78 where 103 was right, and the reverse).
+- **Savdo tahlili** — the only endpoint whose money does not pass through
+  `toMoneyDto`.
+- **Mijoz qaytishi** — «Faol bazada» is a separate DISTINCT-customer total, not
+  the sum of the ladder bars.
+- **Kanallar** — the dashboard-wide `preset` and `filial` do **not** reach this
+  screen; it resolves its own window from `from`/`to`/`today`.
+- **Yalpi marja** — discounts are split by sign in SQL; never net them or
+  re-sum them client-side.
+- **Logistika** — `refused` vs `cancelledEarly` is decided by whether the deal
+  ever has a dispatch-role stage-history row, not by its current stage.
+- **Joʻnatish nuqtalari** — delivery rate's denominator is *resolved* orders;
+  in-flight is excluded and reported separately.
+- **Sotuvchilar reytingi** — company-wide on purpose: the route passes
+  `ctx.query` and never `ctx.scope`.
+- **KPI rejalari** — the preset picks the plan but does not slice it. «Bugun»
+  and «Shu oy» give identical numbers inside one plan.
+- **Struktura** — totals must be summed over the tree's roots; children are
+  already rolled into every parent, so flattening double-counts.
+
+---
+
 ## Invariants that break things quietly
 
 **`countsAsRevenue` — name it in every query that touches money.** The portal

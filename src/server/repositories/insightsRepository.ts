@@ -1142,17 +1142,17 @@ export class InsightsRepository {
   /**
    * The board answers two questions, and they are not the same question.
    *
-   *   'window'  — WHAT CAME IN, AND WHERE DOES IT STAND. Orders whose own
-   *               Дата создания falls in the reporting window, at whatever
-   *               state they have reached by now. This is the client's own
-   *               specification and the one an operator can check by opening
-   *               the deal in Bitrix.
+   *   'window'  — WHAT CAME IN, AND WHERE DOES IT STAND. Orders that ARRIVED
+   *               in `C4:NEW` during the reporting window, at whatever state
+   *               they have reached by now. This is the client's own
+   *               specification, the day their bot announced the order, and
+   *               the day their board still carries it.
    *
    *   'backlog' — WHAT IS WAITING, RIGHT NOW. Every still-open order whose
    *               latest confirmation signal is CONFIRM_NEW, whenever it
-   *               arrived. The window does not apply, and must not: a queue
-   *               that only listed today's arrivals reported nothing to do on
-   *               a morning with 265 orders unworked, because the oldest of
+   *               arrived. The window is opened to all time, and must be: a
+   *               queue that only listed today's arrivals reported nothing to
+   *               do on a morning with 265 orders unworked, because the oldest of
    *               them came in a year ago and no preset shorter than «Shu
    *               yil» could reach it. The bell counts this, so the number in
    *               the header and the rows behind it are the same set.
