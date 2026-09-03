@@ -661,9 +661,51 @@ export class InsightsRepository {
    * and came back, the other a customer who changed their mind before
    * dispatch; only the first cost anything to move.
    */
-  async logisticsRoutes(period: Period): Promise<LogisticsBreakdown> {
+  /**
+   * BOTH LOGISTICS CUTS FROM ONE PASS — by route and by customer region.
+   *
+   * They were two methods issuing two statements that differed by ONE LINE:
+   * `COALESCE(r.route, …)` against `COALESCE(d."region", …)`. Everything above
+   * that — the three unbounded CTEs over the whole stage history, the DISTINCT
+   * ON sorts, the join back to every revenue deal in the window — was computed
+   * twice to answer one card. Measured on production: 2 212 ms and 1 361 ms,
+   * side by side in a Promise.all, for a single request. And the command centre
+   * pays it too, because its logistics module fans out to the same pair.
+   *
+   * `scoped` is MATERIALIZED and read twice, so the expensive half runs once
+   * and only the grouping is repeated. Postgres would materialise a CTE with
+   * two references anyway; saying so keeps it true if a later edit leaves one.
+   *
+   * MEASURES THE DELIVERY LEG, both ways. It used to measure `closedAt -
+   * createdAtSource` — the order's whole life, qualification and confirmation
+   * included — while the route table beside it measured the delivery leg, both
+   * under one column header. That is how the page's headline came to say
+   * delivery took 197 hours when the delivery leg's own median was 87.
+   *
+   * The joins stay LEFT, so a region or a route whose orders never reached a
+   * hub keeps its counts and reports a null pace rather than vanishing.
+   */
+  async logisticsCuts(
+    period: Period,
+  ): Promise<{ routes: LogisticsBreakdown; regions: LogisticsBreakdown }> {
+    /*
+      One list, read by both cuts. Written twice, the two halves of this card
+      could drift into counting different things under the same column names —
+      which is the fault the module header records, arriving by another door.
+    */
+    const AGGREGATES = `
+        count(*)::bigint AS orders,
+        count(*) FILTER (WHERE stage_role = 'DELIVERED')::bigint AS delivered,
+        count(*) FILTER (WHERE stage_role IN ('REFUSED', 'CANCELLED_EARLY') AND dispatched)::bigint AS refused,
+        count(*) FILTER (WHERE stage_role IN ('REFUSED', 'CANCELLED_EARLY') AND NOT dispatched)::bigint AS cancelled_early,
+        count(*) FILTER (WHERE status = 'OPEN')::bigint AS in_flight,
+        sum(amount_minor) FILTER (WHERE status = 'WON')::text AS revenue,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY pace_days) AS median_days,
+        percentile_cont(0.9) WITHIN GROUP (ORDER BY pace_days) AS p90_days`
+
     const rows = await this.prisma.$queryRawUnsafe<
       {
+        cut: 'route' | 'region'
         route: string | null
         is_total: number
         orders: bigint
@@ -702,9 +744,10 @@ export class InsightsRepository {
         WHERE s."logisticsRole" = 'DELIVERED'
         ORDER BY h."dealId", h."enteredAt" ASC
       ),
-      scoped AS (
+      scoped AS MATERIALIZED (
         SELECT
           COALESCE(r.route, 'Hub belgilanmagan') AS route,
+          COALESCE(d."region", 'Nomaʼlum')       AS region,
           d."status"   AS status,
           d."amountMinor" AS amount_minor,
           cur."logisticsRole" AS stage_role,
@@ -720,124 +763,31 @@ export class InsightsRepository {
         LEFT JOIN routed r ON r.deal_id = d."id"
         WHERE d."countsAsRevenue"
           AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
+      ),
+      by_route AS (
+        SELECT 'route'::text AS cut, route AS bucket, GROUPING(route)::int AS is_total,${AGGREGATES}
+        FROM scoped
+        GROUP BY GROUPING SETS ((route), ())
+      ),
+      by_region AS (
+        SELECT 'region'::text AS cut, region AS bucket, GROUPING(region)::int AS is_total,${AGGREGATES}
+        FROM scoped
+        GROUP BY GROUPING SETS ((region), ())
       )
-      SELECT
-        route,
-        GROUPING(route)::int AS is_total,
-        count(*)::bigint AS orders,
-        count(*) FILTER (WHERE stage_role = 'DELIVERED')::bigint AS delivered,
-        count(*) FILTER (WHERE stage_role IN ('REFUSED', 'CANCELLED_EARLY') AND dispatched)::bigint AS refused,
-        count(*) FILTER (WHERE stage_role IN ('REFUSED', 'CANCELLED_EARLY') AND NOT dispatched)::bigint AS cancelled_early,
-        count(*) FILTER (WHERE status = 'OPEN')::bigint AS in_flight,
-        sum(amount_minor) FILTER (WHERE status = 'WON')::text AS revenue,
-        percentile_cont(0.5) WITHIN GROUP (ORDER BY pace_days) AS median_days,
-        percentile_cont(0.9) WITHIN GROUP (ORDER BY pace_days) AS p90_days
-      FROM scoped
-      GROUP BY GROUPING SETS ((route), ())
-      ORDER BY is_total, orders DESC
+      SELECT cut, bucket AS route, is_total, orders, delivered, refused, cancelled_early,
+             in_flight, revenue, median_days, p90_days
+        FROM (SELECT * FROM by_route UNION ALL SELECT * FROM by_region) cuts
+       ORDER BY cut, is_total, orders DESC
       `,
       period.start,
       period.end,
     )
 
-    return splitTotals(rows)
+    const cut = (name: 'route' | 'region') => splitTotals(rows.filter((r) => r.cut === name))
+
+    return { routes: cut('route'), regions: cut('region') }
   }
 
-  /**
-   * The same shape, cut by the customer's region rather than the route.
-   *
-   * MEASURES THE SAME LEG AS `logisticsRoutes`. It used to measure
-   * `closedAt - createdAtSource` — the order's whole life, qualification and
-   * confirmation included — while the route table beside it measured the
-   * delivery leg, both under one column header. That is how the page's
-   * headline came to say delivery took 197 hours when the delivery leg's own
-   * median was 87: an order that sat unconfirmed for three days did not take
-   * three days to deliver, exactly as this module's header says.
-   *
-   * The join is LEFT, so a region whose orders never reached a hub keeps its
-   * counts and reports a null pace rather than vanishing from the table.
-   */
-  async logisticsRegions(period: Period): Promise<LogisticsBreakdown> {
-    const rows = await this.prisma.$queryRawUnsafe<
-      {
-        route: string | null
-        is_total: number
-        orders: bigint
-        delivered: bigint
-        refused: bigint
-        cancelled_early: bigint
-        in_flight: bigint
-        revenue: MoneyText
-        median_days: number | null
-        p90_days: number | null
-      }[]
-    >(
-      `
-      WITH routed AS (
-        SELECT DISTINCT ON (h."dealId")
-          h."dealId"    AS deal_id,
-          s."name"      AS route,
-          h."enteredAt" AS entered_at
-        FROM "deal_stage_history" h
-        JOIN "deal_stage" s ON s."id" = h."stageId"
-        WHERE s."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER')
-        ORDER BY h."dealId", h."enteredAt" DESC
-      ),
-      dispatched AS (
-        SELECT DISTINCT h."dealId" AS deal_id
-        FROM "deal_stage_history" h
-        JOIN "deal_stage" s ON s."id" = h."stageId"
-        WHERE s."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER', 'IN_TRANSIT')
-      ),
-      delivered AS (
-        SELECT DISTINCT ON (h."dealId")
-          h."dealId"    AS deal_id,
-          h."enteredAt" AS delivered_at
-        FROM "deal_stage_history" h
-        JOIN "deal_stage" s ON s."id" = h."stageId"
-        WHERE s."logisticsRole" = 'DELIVERED'
-        ORDER BY h."dealId", h."enteredAt" ASC
-      ),
-      scoped AS (
-        SELECT
-          COALESCE(d."region", 'Nomaʼlum') AS route,
-          d."status"   AS status,
-          d."amountMinor" AS amount_minor,
-          cur."logisticsRole" AS stage_role,
-          (dp.deal_id IS NOT NULL) AS dispatched,
-          CASE
-            WHEN cur."logisticsRole" = 'DELIVERED' AND dv.delivered_at >= d."createdAtSource"
-            THEN EXTRACT(EPOCH FROM (dv.delivered_at - d."createdAtSource")) / 86400
-          END AS pace_days
-        FROM "deal" d
-        JOIN "deal_stage" cur ON cur."id" = d."stageId"
-        LEFT JOIN delivered dv ON dv.deal_id = d."id"
-        LEFT JOIN dispatched dp ON dp.deal_id = d."id"
-        LEFT JOIN routed r ON r.deal_id = d."id"
-        WHERE d."countsAsRevenue"
-          AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
-      )
-      SELECT
-        route,
-        GROUPING(route)::int AS is_total,
-        count(*)::bigint AS orders,
-        count(*) FILTER (WHERE stage_role = 'DELIVERED')::bigint AS delivered,
-        count(*) FILTER (WHERE stage_role IN ('REFUSED', 'CANCELLED_EARLY') AND dispatched)::bigint AS refused,
-        count(*) FILTER (WHERE stage_role IN ('REFUSED', 'CANCELLED_EARLY') AND NOT dispatched)::bigint AS cancelled_early,
-        count(*) FILTER (WHERE status = 'OPEN')::bigint AS in_flight,
-        sum(amount_minor) FILTER (WHERE status = 'WON')::text AS revenue,
-        percentile_cont(0.5) WITHIN GROUP (ORDER BY pace_days) AS median_days,
-        percentile_cont(0.9) WITHIN GROUP (ORDER BY pace_days) AS p90_days
-      FROM scoped
-      GROUP BY GROUPING SETS ((route), ())
-      ORDER BY is_total, orders DESC
-      `,
-      period.start,
-      period.end,
-    )
-
-    return splitTotals(rows)
-  }
 
   /**
    * Why orders were lost, split by WHEN they were lost.

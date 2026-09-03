@@ -44,7 +44,19 @@ export function useFilterOptions() {
   return useQuery({
     queryKey: ['filters'],
     queryFn: ({ signal }) => apiGet<FilterOptions>('/meta/filters', {}, signal),
+    /*
+      BOTH, BECAUSE `staleTime` DOES NOT GATE THE TIMER.
+
+      `refetchInterval` fires on its own clock and never asks whether the data
+      is stale (query-core's `#updateRefetchInterval` calls `#executeFetch`
+      directly), so this query inherited the global one-minute poll and the
+      five minutes above bought nothing at all. Six statements — employees,
+      departments, products, sources, stages, last sync — for five dropdowns
+      whose contents change when the sync writes, once a minute, on every open
+      tab, in front of a single database core.
+    */
     staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
   })
 }
 

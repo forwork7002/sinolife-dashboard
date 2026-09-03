@@ -40,6 +40,22 @@ export function CohortPage() {
   const query = useQuery({
     queryKey: ['cohorts'],
     queryFn: ({ signal }) => apiGet<CohortSummaryDto>('/insights/cohorts', { months: 18 }, signal),
+    /*
+      EIGHTEEN MONTHS DO NOT MOVE IN A MINUTE.
+
+      This read is deliberately unkeyed by the period — the matrix needs the
+      whole history to be a matrix — and it is two of the most expensive scans
+      in the application: `first_win` groups every won revenue deal by customer
+      with no date bound, and `retentionStages` counts distinct customers over
+      the entire Baza pipeline. On the global one-minute clock that pair ran
+      sixty times an hour, per open tab, to redraw a matrix in which a single
+      cell can move once a day.
+
+      `refetchInterval` as well as `staleTime`, because the timer does not
+      consult staleness — see `useFilterOptions`.
+    */
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
   })
 
   const { apiParams } = useDashboardFilters()

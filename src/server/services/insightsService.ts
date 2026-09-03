@@ -439,13 +439,19 @@ export class InsightsService {
   ): Promise<LogisticsDto> {
     const window = this.window(period, scope)
 
-    const [routeCut, regionCut, reasons] = await Promise.all([
-      this.repository.logisticsRoutes(window),
-      this.repository.logisticsRegions(window),
+    /*
+      ONE STATEMENT FOR BOTH CUTS. They used to be two, differing by a single
+      projected column, each rebuilding three unbounded history CTEs — 2 212 ms
+      and 1 361 ms measured side by side for one card, and the command centre
+      pays the same pair. See `logisticsCuts`.
+    */
+    const [cuts, reasons] = await Promise.all([
+      this.repository.logisticsCuts(window),
       options.withReasons === false
         ? Promise.resolve([] as Awaited<ReturnType<typeof this.repository.refusalReasons>>)
         : this.repository.refusalReasons(window),
     ])
+    const { routes: routeCut, regions: regionCut } = cuts
 
     const toRow = (r: LogisticsRouteRow): LogisticsRowDto => ({
       label: r.route,
