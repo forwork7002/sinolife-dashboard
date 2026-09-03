@@ -39,11 +39,29 @@ export function Providers({ children }: { children: ReactNode }) {
              * Not while the tab is hidden.
              *
              * A dashboard left open in a background tab for a week would
-             * otherwise issue ten thousand queries nobody reads. Focus brings
-             * it straight back up to date.
+             * otherwise issue ten thousand queries nobody reads.
              */
             refetchIntervalInBackground: false,
-            refetchOnWindowFocus: true,
+
+            /**
+             * AND NOT ON FOCUS EITHER.
+             *
+             * This used to be true, on the argument that coming back to the
+             * tab should bring the screen straight up to date. In use it did
+             * something else: this dashboard is read BESIDE Bitrix24, so the
+             * tab is left and returned to every few seconds, and each return
+             * reissued every query on the page. The screen reloaded under the
+             * reader's hands for no reason they had given it — which is how a
+             * refresh stops reading as "fresh data" and starts reading as
+             * "this thing is unstable".
+             *
+             * Nothing is lost. The minute tick above is the freshness promise
+             * and it keeps running while the tab is visible; the worst case is
+             * a screen up to a minute old on return, which is the same worst
+             * case it has while you are looking at it. The header's refresh
+             * button is there for anyone who will not wait.
+             */
+            refetchOnWindowFocus: false,
 
             // A 400 from validation will fail identically on retry; only
             // retry once, for genuine transport blips.

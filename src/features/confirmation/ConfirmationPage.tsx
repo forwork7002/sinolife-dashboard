@@ -21,6 +21,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
+import { boardSummaryKey } from './summaryKey'
 import {
   type ConfirmationOrderDto,
   type ConfirmationOutcome,
@@ -377,10 +378,18 @@ export function ConfirmationPage() {
   */
   const sort = (SORTS as readonly string[]).includes(filters.sort) ? filters.sort : 'queuedAt'
 
+  /*
+    What the tiles, the ROP panel and the ROP options actually read — see
+    `boardSummaryKey`. Stamped onto the answer so the page can tell an answer
+    that is merely from another PAGE or another STATE selection, and therefore
+    still correct above the table, from one that belongs to another window.
+  */
+  const summaryKey = boardSummaryKey(apiParams)
+
   const query = useQuery({
     queryKey: ['confirmation-queue', apiParams, filters.page, filters.pageSize, sort, filters.order],
-    queryFn: ({ signal }) =>
-      apiGet<ConfirmationQueueDto>(
+    queryFn: async ({ signal }) => {
+      const answer = await apiGet<ConfirmationQueueDto>(
         '/insights/confirmations/orders',
         {
           ...apiParams,
@@ -390,7 +399,9 @@ export function ConfirmationPage() {
           order: filters.order,
         },
         signal,
-      ),
+      )
+      return { ...answer, askedFor: summaryKey, askedOutcomes: apiParams.outcomes ?? '' }
+    },
     // The table keeps the page it has while the next one loads, instead of
     // collapsing to a skeleton on every click of the pager.
     placeholderData: (previous) => previous,
@@ -412,8 +423,14 @@ export function ConfirmationPage() {
       showing what just arrived. The override bought nothing the default does
       not already give: `refetchIntervalInBackground` is false, so a hidden
       tab still costs nothing.
+
+      NO WINDOW-FOCUS OVERRIDE EITHER. It used to force one on top of the
+      global setting, so every return to the tab reloaded the board — a screen
+      people leave open beside Bitrix and come back to constantly. The minute
+      tick already covers freshness and the header's refresh button covers
+      impatience; see the provider for why the global default went the same
+      way.
     */
-    refetchOnWindowFocus: true,
   })
 
   /*
@@ -425,13 +442,38 @@ export function ConfirmationPage() {
     «Бугун» wore «Шу ой»'s numbers until the request came back. Placeholder
     rows read as loading, because that is what they are.
   */
+  /**
+   * Whether what is on screen answers the question now being asked ABOVE the
+   * table — the window, the ROP, the search box.
+   *
+   * A response from another page, another sort or another state selection
+   * still holds for the tiles and the ROP panel, because none of those three
+   * read any of it.
+   */
+  const summaryIsCurrent = query.data?.askedFor === summaryKey
+
+  /**
+   * THE ROWS FOLLOW WHAT THE TILES DO NOT.
+   *
+   * The state selection, the page and the sort cannot move a tile — which is
+   * why `summaryKey` drops them — but they are exactly what cuts and orders the
+   * rows. So while a click on «Кутилмоқда» is in flight, the table below still
+   * holds the answer to the previous selection, and saying nothing about that
+   * presents one selection's rows as though they were another's.
+   *
+   * ANDed with `summaryIsCurrent` so the two never stack: when the WINDOW
+   * moved, PageShell already dims the whole page, and 0.6 × 0.7 reads as
+   * disabled rather than as loading.
+   */
+  const rowsStale = query.isPlaceholderData && summaryIsCurrent
+
   const tileStatus = query.isPending
     ? 'loading'
     : query.isError
       ? 'error'
-      : query.isPlaceholderData
-        ? 'loading'
-        : 'ready'
+      : summaryIsCurrent
+        ? 'ready'
+        : 'loading'
   const data = query.data?.data
   const totals = data?.totals
 
@@ -490,7 +532,16 @@ export function ConfirmationPage() {
    * one of them «Жами», which is how a reader ends up taking one group's
    * thirty-seven orders for the day's whole intake.
    */
-  const narrowed = filters.outcomes.length > 0
+  /*
+    READ FROM THE ANSWER, NOT FROM THE URL.
+
+    `shown` and the pager come from the response; `filters.outcomes` flips the
+    instant the tile is clicked. Reading the label and the number it labels off
+    two different clocks printed «Жами: 37 та» under the unfiltered count for
+    the whole of the fetch — the same self-contradiction the comment over the
+    count line records as a production bug, arriving by another door.
+  */
+  const narrowed = Boolean(query.data?.askedOutcomes)
 
   /**
    * Which question is on screen — the period's arrivals, or what is waiting.
@@ -532,7 +583,14 @@ export function ConfirmationPage() {
       period={!backlog}
       accent="var(--series-4)"
       meta={backlog ? undefined : query.data?.meta}
-      stale={query.isPlaceholderData}
+      /*
+        Dimmed only when the numbers genuinely belong to another question. It
+        used to dim on `isPlaceholderData`, which is also true while the next
+        PAGE of the same window loads and on every click of a state tile — so
+        the header greyed itself on interactions that could not change a single
+        figure under it.
+      */
+      stale={query.isSuccess && !summaryIsCurrent}
       filters={{
         search: true,
         // Every column the table shows is searchable, so the box says so —
@@ -715,7 +773,20 @@ export function ConfirmationPage() {
 
       {statsOpen && <RopPanel rows={data?.byRop ?? []} status={tileStatus} backlog={backlog} />}
 
-      <Card className="card-hero brackets px-4 py-4">
+      {/*
+        The rows, their count and the pager — the three things a state
+        selection actually changes — fade while they are being replaced.
+
+        Not a skeleton, and not the whole page: the tiles above are correct
+        throughout and must not move. This is the smallest honest signal that
+        the table is one selection behind, and it costs no layout, so nothing
+        jumps under the pointer.
+      */}
+      <Card
+        className="card-hero brackets px-4 py-4"
+        style={{ opacity: rowsStale ? 0.7 : 1, transition: 'opacity 150ms var(--ease-out)' }}
+        aria-busy={rowsStale || undefined}
+      >
         <header className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
             Барча буюртмалар

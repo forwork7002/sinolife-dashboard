@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 
 import { Tooltip } from '@/components/ui/Tooltip'
 import type { KpiCardDto } from '@/lib/api'
@@ -9,10 +9,22 @@ export function Card({
   children,
   className = '',
   as: Tag = 'section',
+  style,
+  'aria-busy': ariaBusy,
 }: {
   children: ReactNode
   className?: string
   as?: 'section' | 'div' | 'article'
+  /**
+   * Escape hatch for a state the class system does not carry.
+   *
+   * Exactly one caller uses it: the confirmation queue fades its results card
+   * while the rows are being replaced by another selection. Kept this narrow
+   * on purpose — a card that takes arbitrary style is a card that stops being
+   * one definition, which is the fault the comment below records.
+   */
+  style?: CSSProperties
+  'aria-busy'?: boolean
 }) {
   /**
    * One class, one definition — see `.card` in globals.css.
@@ -24,7 +36,9 @@ export function Card({
    * missing entirely, which is most of what makes a card read as raised.
    */
   return (
-    <Tag className={`card ${className}`}>{children}</Tag>
+    <Tag className={`card ${className}`} style={style} aria-busy={ariaBusy}>
+      {children}
+    </Tag>
   )
 }
 
