@@ -315,6 +315,10 @@ export interface ConfirmationOrderRow {
    * though, as a row per entry in the stage history: an order that entered
    * `C4:NEW` more than once came back. This counts those entries.
    *
+   * NOT WHAT DRAWS THE MARK — `queueReturns` is. An order can enter twice in
+   * fifteen minutes because one person confirmed it, spotted a mistake and
+   * pulled it back; that is two entries and no return.
+   *
    * ALL TIME, DELIBERATELY. The cohort's own scan is bounded by the window —
    * it has to be, or the queue query is a sequential pass over the history
    * table — so a return that happened this morning to an order first queued
@@ -324,7 +328,17 @@ export interface ConfirmationOrderRow {
    */
   readonly queueEntries: number
   /**
-   * The arrival BEFORE the one this row is dated by. Null the first time round.
+   * How many of those entries were real RETURNS — the mark's own count.
+   *
+   * A return is an arrival at least `REPEAT_GAP_HOURS` after the previous one,
+   * which is the bot's own rule and therefore the one the floor already reads
+   * in Telegram. Zero means no mark, however many times the order bounced
+   * through the stage in a single afternoon.
+   */
+  readonly queueReturns: number
+  /**
+   * The arrival before the last RETURN — when the order was last in the queue
+   * before it came back. Null when it has never come back.
    *
    * What turns the mark into something actionable: an order that came back
    * three minutes after it was confirmed is somebody correcting a misclick,
@@ -1468,6 +1482,24 @@ export class InsightsRepository {
   }
 
   /**
+   * How long an order must have been OUT of the queue for its return to count.
+   *
+   * SIX HOURS, BECAUSE THAT IS WHAT THE FLOOR READS. The bot marks a return
+   * only when its last message about the deal is at least this old, and the
+   * mark on this board has to mean what the mark in Telegram means or the two
+   * contradict each other in front of the same operator.
+   *
+   * It is also the right rule on its own terms. Deal 319494 on 2026-09-03
+   * entered the queue at 14:40, was confirmed at 14:49, came back at 14:55 and
+   * was confirmed again at 14:56 — one person correcting themselves inside a
+   * quarter of an hour, which is not a customer who had to be reached twice.
+   * Without the threshold this board marked it 🔁 and the bot did not, and the
+   * board was the one that was wrong. Thirty days of production hold 220
+   * re-entries: 11 inside five minutes, 143 inside six hours, and 66 beyond it.
+   */
+  private static readonly REPEAT_GAP_HOURS = 6
+
+  /**
    * «🔁 ҚАЙТА ТУШДИ» — has this order been in the queue before?
    *
    * ONE SCAN PER ROW, ON THE PAGE ONLY. It runs in the decorating join, after
@@ -1482,18 +1514,32 @@ export class InsightsRepository {
    * one index range. It has to be: an order first queued in July and returned
    * this morning is a return, and a window that starts today cannot see that.
    *
-   * `[2]` is the arrival before the current one — the array is ordered newest
-   * first and `queued_at` is the newest, so the second element is the previous
-   * visit. NULL for an order that has only ever been queued once, which is
-   * also exactly when the badge does not render.
+   * IT COUNTS GAPS, NOT VISITS. `entries` is every arrival and is what the
+   * tooltip reports; `returns` is how many of the gaps between consecutive
+   * arrivals are long enough to be a real return, and that is what draws the
+   * mark. `previous_at` is the arrival before the LAST qualifying return —
+   * the moment the order was last in the queue before it came back — so the
+   * tooltip names the visit the mark is actually about rather than whatever
+   * happened most recently.
    */
   private static readonly REPEAT_SQL = `
        LEFT JOIN LATERAL (
-         SELECT count(*)::int AS entries,
-                (array_agg(h."enteredAt" ORDER BY h."enteredAt" DESC))[2] AS previous_at
-           FROM "deal_stage_history" h
-           JOIN signal_stage ss ON ss."id" = h."stageId"
-          WHERE h."dealId" = d."id" AND ss.signal = 'CONFIRM_NEW'
+         SELECT
+           count(*)::int AS entries,
+           count(*) FILTER (
+             WHERE gap >= interval '${InsightsRepository.REPEAT_GAP_HOURS} hours'
+           )::int AS returns,
+           max(prev) FILTER (
+             WHERE gap >= interval '${InsightsRepository.REPEAT_GAP_HOURS} hours'
+           ) AS previous_at
+         FROM (
+           SELECT
+             lag(h."enteredAt") OVER (ORDER BY h."enteredAt") AS prev,
+             h."enteredAt" - lag(h."enteredAt") OVER (ORDER BY h."enteredAt") AS gap
+             FROM "deal_stage_history" h
+             JOIN signal_stage ss ON ss."id" = h."stageId"
+            WHERE h."dealId" = d."id" AND ss.signal = 'CONFIRM_NEW'
+         ) visits
        ) rep ON true`
 
   /**
@@ -1746,6 +1792,7 @@ export class InsightsRepository {
       queued_at: string | null
       decided_at: string | null
       queue_entries: number
+      queue_returns: number
       previous_queued_at: string | null
     }
     type RopJson = {
@@ -1814,6 +1861,7 @@ export class InsightsRepository {
            p.outcome,
            p.created_at, p.moved_at, p.queued_at, p.decided_at,
            rep.entries AS queue_entries,
+           rep.returns AS queue_returns,
            rep.previous_at AS previous_queued_at
          FROM page p
          JOIN "deal" d ON d."id" = p.deal_id
@@ -1899,6 +1947,7 @@ export class InsightsRepository {
           queuedAt,
           decidedAt,
           queueEntries: r.queue_entries,
+          queueReturns: r.queue_returns,
           previousQueuedAt: utc(r.previous_queued_at),
           // Both ends or nothing: an order refused without ever being queued
           // has no waiting time, and zero would read as "decided instantly".
@@ -1963,6 +2012,7 @@ export class InsightsRepository {
         queued_at: Date | null
         decided_at: Date | null
         queue_entries: number
+        queue_returns: number
         previous_queued_at: Date | null
         total_items: bigint
       }[]
@@ -2035,6 +2085,7 @@ export class InsightsRepository {
          c.queued_at AS queued_at,
          c.decided_at AS decided_at,
          rep.entries AS queue_entries,
+         rep.returns AS queue_returns,
          rep.previous_at AS previous_queued_at,
          c.total_items AS total_items
        FROM page c
@@ -2097,6 +2148,7 @@ export class InsightsRepository {
           queuedAt,
           decidedAt,
           queueEntries: int(r.queue_entries),
+          queueReturns: int(r.queue_returns),
           previousQueuedAt: r.previous_queued_at === null ? null : new Date(r.previous_queued_at),
           // Both ends or nothing: an order refused without ever being queued
           // has no waiting time, and zero would read as "decided instantly".

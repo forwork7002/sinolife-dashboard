@@ -232,11 +232,26 @@ describe('the repeat mark', () => {
     expect(REPEAT).not.toContain('enteredAt" >=')
   })
 
-  it('takes the arrival BEFORE the current one as the previous visit', () => {
-    // Newest first, so [2] is the one before the arrival the row is dated by —
-    // and NULL for an order that has only ever been queued once, which is
-    // exactly when no mark is drawn.
-    expect(REPEAT).toContain(`(array_agg(h."enteredAt" ORDER BY h."enteredAt" DESC))[2]`)
+  it('draws the mark on GAPS, not on entries', () => {
+    /*
+      Deal 319494 on 2026-09-03: queued 14:40, confirmed 14:49, back at 14:55,
+      confirmed again 14:56. Two entries — and one person correcting a mistake
+      inside a quarter of an hour, which the bot does not announce and this
+      board should not mark. The rule is the bot's: at least six hours since
+      the previous arrival.
+    */
+    expect(REPEAT).toContain("interval '6 hours'")
+    expect(REPEAT).toContain('AS returns')
+    // The gap is between CONSECUTIVE arrivals, so a long-dormant order that
+    // bounces twice today is one return and not two.
+    expect(REPEAT).toContain('lag(h."enteredAt") OVER (ORDER BY h."enteredAt")')
+  })
+
+  it('names the visit the mark is about, not merely the latest one', () => {
+    // `previous_at` is the arrival before the last QUALIFYING return, so the
+    // tooltip cannot report a fifteen-minute bounce as the reason for a badge
+    // drawn because of something that happened four days ago.
+    expect(REPEAT).toContain('max(prev) FILTER')
   })
 
   it('is used by BOTH row queries, which are chosen by the window length', () => {

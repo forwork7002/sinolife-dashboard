@@ -263,6 +263,17 @@ no arrival (~52 that appear straight in `C6:NEW`) is not on the board at all.
 `tests/http/confirmationQueueSql.test.ts` pins the cohort, the `numbered`
 partition key, the never-queued exclusion and the left-only history bound.
 
+**«🔁 ҚАЙТА ТУШДИ» counts GAPS, not entries, and the gap is six hours.** The
+bot marks a return by remembering each deal's previous stage; we read the same
+fact from the stage history, where every entry into `C4:NEW` is a row. But an
+order can enter twice in fifteen minutes because one person confirmed it, saw a
+mistake and pulled it back — deal 319494 on 2026-09-03 did exactly that, wore
+the mark here and correctly did not in Telegram. `REPEAT_GAP_HOURS` is the
+bot's own threshold, so the two surfaces cannot contradict each other in front
+of the same operator. The lookup is unbounded by the window (a return in
+September against a July arrival is still a return) and runs after the page's
+LIMIT, so it costs 25 index lookups rather than a second pass over the cohort.
+
 **The header bell counts the BACKLOG, so its link must carry `queue=backlog`.**
 One SQL definition answers two questions: `window` — what arrived in the
 selected period, and where each of those stands — and `backlog` — what is

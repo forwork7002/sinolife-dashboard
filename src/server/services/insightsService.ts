@@ -160,13 +160,21 @@ export interface ConfirmationOrderDto {
   /**
    * How many times the order has reached Тасдиклаш, over its whole life.
    *
-   * More than one is «🔁 ҚАЙТА ТУШДИ» — the mark the floor already knows from
-   * the bot's Telegram messages. The bot derives it by remembering each deal's
-   * previous stage; this reads the same fact out of Bitrix's own stage
-   * history, where every entry into `C4:NEW` is a row.
+   * Reported by the tooltip, and NOT what draws the mark: an order can enter
+   * twice in a quarter of an hour because one person confirmed it, saw a
+   * mistake and pulled it back.
    */
   readonly queueEntries: number
-  /** The arrival before this one. Null the first time an order is queued. */
+  /**
+   * How many of those were real returns — six hours or more after the previous
+   * arrival, which is the rule the bot's «🔁 ҚАЙТА ТУШДИ» already follows.
+   * More than zero draws the mark.
+   */
+  readonly queueReturns: number
+  /**
+   * When the order was last in the queue before it came back. Null when it
+   * never has.
+   */
   readonly previousQueuedAt: string | null
 }
 
@@ -727,6 +735,7 @@ export class InsightsService {
         decidedAt: r.decidedAt?.toISOString() ?? null,
         hoursToDecide: r.hoursToDecide,
         queueEntries: r.queueEntries,
+        queueReturns: r.queueReturns,
         previousQueuedAt: r.previousQueuedAt?.toISOString() ?? null,
       })),
       totalItems: page.totalItems,

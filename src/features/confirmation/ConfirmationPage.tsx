@@ -1000,7 +1000,14 @@ function RopPanel({
  * previous arrival separates them — so the previous arrival is what it says.
  */
 function RepeatMark({ row }: { row: ConfirmationOrderDto }) {
-  if (row.queueEntries <= 1) return null
+  /*
+    RETURNS, NOT ENTRIES. Deal 319494 entered the queue at 14:40, was confirmed
+    at 14:49, came back at 14:55 and was confirmed again at 14:56 — two entries
+    and one person correcting themselves. It wore the mark here while the bot,
+    which requires six hours since its last message, correctly did not. The two
+    say the same thing now.
+  */
+  if (row.queueReturns < 1) return null
 
   const previous =
     row.previousQueuedAt === null
@@ -1011,7 +1018,7 @@ function RepeatMark({ row }: { row: ConfirmationOrderDto }) {
     <Tooltip
       content={
         <span className="block">
-          ҚАЙТА ТУШДИ — {row.queueEntries}-марта навбатда.
+          ҚАЙТА ТУШДИ — {row.queueEntries}-марта навбатга тушган.
           {previous === null ? '' : ` Аввалгиси: ${previous}`}
         </span>
       }

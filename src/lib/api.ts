@@ -663,12 +663,17 @@ export interface ConfirmationOrderDto {
   /**
    * How many times the order has reached Тасдиклаш, over its whole life.
    *
-   * More than one is «🔁 ҚАЙТА ТУШДИ», the mark the floor already knows from
-   * the bot's messages. Mirrored by hand from `ConfirmationOrderDto` in
-   * `@/server/services/insightsService` — nothing checks the mirror.
+   * Reported by the tooltip, and NOT what draws «🔁 ҚАЙТА ТУШДИ» — see
+   * `queueReturns`. Mirrored by hand from `ConfirmationOrderDto` in
+   * `@/server/services/insightsService`; nothing checks the mirror.
    */
   readonly queueEntries: number
-  /** The arrival before this one. Null the first time an order is queued. */
+  /**
+   * How many of those were real returns — six hours or more apart, the bot's
+   * own rule. More than zero draws the mark.
+   */
+  readonly queueReturns: number
+  /** When the order was last in the queue before it came back. */
   readonly previousQueuedAt: string | null
 }
 
