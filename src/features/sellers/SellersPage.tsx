@@ -790,6 +790,9 @@ function ChampionBanner({
         </div>
 
         <div className="relative shrink-0">
+          {/* The ring's own light pooling behind it — static, like the halo
+              on the ring itself; see .podium-aura for why it never pulses. */}
+          <span className="podium-aura" aria-hidden="true" />
           <PodiumAvatar place={1} size={76} crowned />
         </div>
 
@@ -805,7 +808,7 @@ function ChampionBanner({
             {row.rop && <TeamBadge rop={row.rop} />}
           </div>
           <div className="mt-1.5">
-            <PodiumName fullName={row.fullName} onOpen={onOpen} className="text-[18px] sm:text-[20px]" />
+            <PodiumName fullName={row.fullName} onOpen={onOpen} className="text-[19px] sm:text-[22px]" />
           </div>
           <div className="mt-1">
             {/* THE WHOLE SUM — no tooltip, no tab stop; the digits ARE the
@@ -819,10 +822,14 @@ function ChampionBanner({
                 soʻm
               </span>
             </span>
+            {/* The stand under the number: a short gold rule, the banner's
+                one flourish that is pure metal — licensed because the figure
+                above it already states the value in ink. */}
+            <div className="podium-gold-rule mx-auto mt-2 sm:mx-0" aria-hidden="true" />
             {/* Which of the two put them here. Silent on the delivered
                 reading — the one every other label on the page assumes. */}
             {!onDelivered && (
-              <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              <p className="mt-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
                 FAKT 1 · tasdiqlangan
               </p>
             )}
@@ -831,8 +838,10 @@ function ChampionBanner({
 
         {/* The story column: what the number is made of, and what is still
             ahead of them — a champion with nothing left to chase is a page
-            that stops motivating exactly at the top. */}
-        <div className="relative w-full shrink-0 sm:w-[230px]">
+            that stops motivating exactly at the top. A metal hairline seats
+            it as its own panel: left of the column from sm, above it when
+            the banner stacks on a phone. */}
+        <div className="podium-story relative w-full shrink-0 sm:w-[230px]">
           {row.sharePercent !== null && totalWon > 0 && (
             <div>
               <p className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
@@ -986,23 +995,35 @@ function RunnerCard({
               </>
             )}
           </div>
-          <div
-            className="mt-2 h-1.5 w-full overflow-hidden rounded-full"
-            style={{ background: 'var(--track)' }}
-            aria-hidden="true"
-          >
+          {/* The bar states its own reading — "you are at N% of the leader"
+              — so the proportion never has to be estimated from a length.
+              Same composition as Meter: track flex-1, figure beside it. */}
+          <div className="mt-2 flex items-center gap-2">
             <div
-              className="h-full rounded-full"
-              style={{
-                width: `${Math.max(2, closeness)}%`,
-                // A lighter-to-full sweep, mixed toward the card's own
-                // surface rather than a literal white, so it reads correctly
-                // whichever theme's --seq-550 it is given.
-                background:
-                  'linear-gradient(90deg, color-mix(in oklab, var(--seq-550) 45%, var(--surface-raised)), var(--seq-550))',
-                transition: 'width var(--duration-enter) var(--ease-out)',
-              }}
-            />
+              className="h-1.5 flex-1 overflow-hidden rounded-full"
+              style={{ background: 'var(--track)' }}
+              aria-hidden="true"
+            >
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${Math.max(2, closeness)}%`,
+                  // A lighter-to-full sweep, mixed toward the card's own
+                  // surface rather than a literal white, so it reads correctly
+                  // whichever theme's --seq-550 it is given.
+                  background:
+                    'linear-gradient(90deg, color-mix(in oklab, var(--seq-550) 45%, var(--surface-raised)), var(--seq-550))',
+                  transition: 'width var(--duration-enter) var(--ease-out)',
+                }}
+              />
+            </div>
+            <span
+              className="tabular shrink-0 text-[10.5px] font-medium"
+              style={{ color: 'var(--ink-muted)' }}
+              aria-label="Liderga nisbatan"
+            >
+              {formatPercent(closeness, 0)}
+            </span>
           </div>
         </div>
       </div>

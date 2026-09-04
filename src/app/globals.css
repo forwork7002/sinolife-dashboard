@@ -2227,6 +2227,60 @@ p {
 }
 
 /**
+ * The champion ring's light, pooled behind it. Static on purpose — the same
+ * reasoning as .medal-ring--crowned: a glow that pulsed all day would stop
+ * being seen by the second hour. It reads under the ring because the ring's
+ * own halo shadow paints over it, so together they make one light source.
+ */
+.podium-aura {
+  position: absolute;
+  inset: -24px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--metal) 24%, transparent),
+    transparent 68%
+  );
+  pointer-events: none;
+}
+
+/**
+ * The stand under the champion's figure: a short rule fading out to the
+ * right, pure metal. Licensed exactly because it carries NO value — the
+ * digits above it already state everything; this is the plinth they sit on.
+ */
+.podium-gold-rule {
+  height: 3px;
+  width: 120px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--metal),
+    color-mix(in oklab, var(--metal) 15%, transparent)
+  );
+}
+
+/**
+ * The banner's story column, seated as its own panel by a metal hairline:
+ * left of the column from sm, above it when the banner stacks on a phone.
+ * A border, not a background — a filled plate inside the gold wash would
+ * compete with the ghost numeral living in the same corner.
+ */
+.podium-story {
+  border-top: 1px solid color-mix(in oklab, var(--metal) 30%, transparent);
+  padding-top: 12px;
+}
+
+@media (min-width: 640px) {
+  .podium-story {
+    border-top: 0;
+    padding-top: 0;
+    border-left: 1px solid color-mix(in oklab, var(--metal) 30%, transparent);
+    padding-left: 20px;
+  }
+}
+
+/**
  * One pass of light across the champion's card on arrival — the ceremony's
  * camera flash: 1.1s, once, after the stagger has seated everyone. A child
  * layer rather than ::after on the card itself, so the card never needs
