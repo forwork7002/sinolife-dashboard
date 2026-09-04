@@ -16,12 +16,13 @@ const { InsightsRepository } = await import('@/server/repositories/insightsRepos
  * Sotuvchilar reytingi, rebuilt on the confirmation queue — FAKT 1 / FAKT 2
  * as the floor names them, not as a screenshot of their site's formulas.
  *
- * FAKT 1 IS Тасдиқланди, NOT «Успешно заказ». The latter (C6:UC_YUKVF1) was
- * the client's own first answer and was rejected after measurement:
- * `mapping.ts` documents it as a settlement stamp automation writes within
- * five seconds of Доставлено in most cases, not an operator's act. Using it
- * would have collapsed FAKT 1 into FAKT 2 — these tests are what keeps that
- * regression out.
+ * FAKT 1 IS WHAT LEFT THE QUEUE AS AN ORDER — Тасдиқланди AND Тасдиқланмай
+ * чиқди, the two states the client's own board prints side by side — and
+ * NEVER «Успешно заказ». The latter (C6:UC_YUKVF1) was the client's own first
+ * answer and was rejected after measurement: `mapping.ts` documents it as a
+ * settlement stamp automation writes within five seconds of Доставлено in
+ * most cases, not an operator's act. Using it would have collapsed FAKT 1
+ * into FAKT 2 — these tests are what keeps that regression out.
  *
  * SAME COHORT AS THE QUEUE BOARD (`classified`, dated by `queued_at`), so an
  * operator's rating and the «barcha buyurtmalar» table it is drawn from can
@@ -58,10 +59,29 @@ describe('confirmation seller rating SQL', () => {
     expect(BARE_SQL).not.toContain('FROM numbered')
   })
 
-  it('grades FAKT 1 on Тасдиқланди, not on «Успешно заказ»', () => {
-    expect(BARE_SQL).toContain("WHERE c.outcome = 'CONFIRMED'")
+  it('grades FAKT 1 on the two outcomes that left the queue, not on «Успешно заказ»', () => {
+    /*
+      2026-09-04, the client's own instruction: «тасдиқланмай чиқди» belongs in
+      FAKT 1 too. It is not a refusal — the operator never reached the customer
+      (`confirmStatus = 'UNREACHABLE'`) and the order was dispatched anyway, so
+      the goods and the money moved exactly as a confirmed order's do. Their
+      board showed 91 ✅ beside 3 🟣 on that day and FAKT 1 owes the floor
+      both.
+    */
+    expect(BARE_SQL).toContain("c.outcome IN ('CONFIRMED', 'UNCONFIRMED_SHIPPED')")
+    expect(BARE_SQL).not.toContain("WHERE c.outcome = 'CONFIRMED'")
     expect(BARE_SQL).not.toContain('UC_YUKVF1')
     expect(BARE_SQL).not.toContain('SETTLED')
+  })
+
+  it('measures FAKT 1, «yoʻlda» and «bekor» over the SAME population', () => {
+    /*
+      Four filters, one predicate. If the money widened and the breakdown did
+      not, a row would carry FAKT 1 soʻm that neither «yoʻlda» nor «chiqqach
+      bekor» nor FAKT 2 could account for — a gap nothing on screen explains.
+    */
+    const fakt1 = BARE_SQL.split("c.outcome IN ('CONFIRMED', 'UNCONFIRMED_SHIPPED')").length - 1
+    expect(fakt1).toBe(6)
   })
 
   it('grades FAKT 2 on a DELIVERY stage, never on a bare WON status', () => {
@@ -103,7 +123,13 @@ describe('confirmation seller rating SQL', () => {
   })
 
   it('shows refused orders without folding them into FAKT 1', () => {
+    /*
+      ❌ Тасдиқланмади is the one decided state that stays OUT — the order was
+      killed in the queue and nothing was sent. It keeps its own count so the
+      exclusion is visible on the row rather than implied by a subtraction.
+    */
     expect(BARE_SQL).toContain("WHERE c.outcome = 'REJECTED'")
+    expect(BARE_SQL).not.toContain("'CONFIRMED', 'UNCONFIRMED_SHIPPED', 'REJECTED'")
   })
 
   it('does not name countsAsRevenue', () => {

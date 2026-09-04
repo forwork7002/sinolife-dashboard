@@ -44,7 +44,8 @@ const schema = analyticsQuerySchema.and(
  *
  * TWO CLOCKS, PICKED BY `?basis=`. The default, 'queue', dates every figure
  * by the order's own arrival in the confirmation queue (C4:NEW) — FAKT 1 is
- * Тасдиқланди, FAKT 2 is Доставланди, the floor's own vocabulary. 'intake'
+ * Тасдиқланди plus Тасдиқланмай чиқди (everything that left the queue as an
+ * order), FAKT 2 is Доставланди, the floor's own vocabulary. 'intake'
  * dates by the day the order was TAKEN instead, which is how the client's
  * published dashboard originally scored the floor. `/analytics/leaderboard`
  * answers a third, related question (delivered revenue on `closedAt`) and its

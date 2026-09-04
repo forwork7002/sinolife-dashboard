@@ -87,7 +87,7 @@ import { t } from '@/lib/messages'
  * "siz 47-siz" is something they can only feel bad about.
  *
  * TWO CLOCKS, QUEUE FIRST. The default reading is the floor's own FAKT 1 /
- * FAKT 2 — Тасдиқланди and Доставланди, every figure dated by the order's
+ * FAKT 2 — (Тасдиқланди + Тасдиқланмай чиқди) and Доставланди, every figure dated by the order's
  * arrival in the confirmation queue (C4:NEW), the same cohort the Tasdiqlash
  * board runs on. The client stated these definitions directly on 2026-09-03.
  * The original intake reading (dated by the day the ORDER WAS TAKEN) stays
@@ -147,7 +147,8 @@ export function SellersPage() {
    */
   /*
     ONE CLOCK ON SCREEN. The board reads the floor's own FAKT 1 / FAKT 2 —
-    Тасдиқланди and Доставланди, dated by the arrival in C4:NEW — and there is
+    Тасдиқланди + Тасдиқланмай чиқди and Доставланди, dated by the arrival in
+    C4:NEW — and there is
     no longer a control to change it. The 'intake' reading still exists behind
     `?basis=intake` because it is the figure measured against the client's own
     published dashboard and so the oracle a regression gets checked against;
@@ -258,8 +259,10 @@ export function SellersPage() {
             Bu sahifadagi raqamlar <strong style={{ color: 'var(--ink-secondary)' }}>
             tasdiqlash navbatiga tushgan sana</strong> (C4:NEW) boʻyicha.{' '}
             <strong style={{ color: 'var(--ink-secondary)' }}>FAKT 1</strong> —{' '}
-            <strong style={{ color: 'var(--ink-secondary)' }}>Тасдиқланди</strong>: mijozga yetib,
-            Доставка ga oʻtgan buyurtmalar puli.{' '}
+            <strong style={{ color: 'var(--ink-secondary)' }}>Тасдиқланди</strong> va{' '}
+            <strong style={{ color: 'var(--ink-secondary)' }}>Тасдиқланмай чиқди</strong>:
+            navbatdan chiqib Доставка ga oʻtgan buyurtmalar puli — mijozga yetib tasdiqlanganlari
+            ham, mijozga yetib boʻlmay, lekin baribir joʻnatilganlari ham.{' '}
             <strong style={{ color: 'var(--ink-secondary)' }}>FAKT 2</strong> —{' '}
             <strong style={{ color: 'var(--ink-secondary)' }}>Доставланди</strong>: yetkazib
             berilganlari.{' '}
@@ -268,15 +271,20 @@ export function SellersPage() {
               is the one that has to say so. The page previously read «FAKT 2,
               shundan Доставланди» — "of which" — and then printed 57.6 mln
               beside 58.8 mln, which reads as a broken page rather than as the
-              fact it is: an order shipped Тасдиқланмай чиқди never entered
-              FAKT 1 and still delivers into FAKT 2.
+              fact it is.
+
+              The example the sentence used to give — an order shipped
+              Тасдиқланмай чиқди — is now INSIDE FAKT 1 (see `FAKT1_OUTCOMES`),
+              so it names the case that is still outside: an order refused in
+              the queue and revived afterwards.
             */}
-            FAKT 2 — FAKT 1 ning bir qismi emas: тасдиқланмай chiqib ketgan buyurtma FAKT 1 ga
-            kirmaydi, lekin yetkazilsa FAKT 2 ga tushadi, shuning uchun FAKT 2 baʼzan FAKT 1 dan
-            katta boʻlishi mumkin. Iyul oyida jonatilib avgustda yetkazilgan buyurtma FAKT 2 ga
+            FAKT 2 — FAKT 1 ning bir qismi emas: navbatda rad etilgan buyurtma keyin tiklanib
+            yetkazilsa FAKT 2 ga tushadi-yu, FAKT 1 ga kirmaydi, shuning uchun FAKT 2 baʼzan
+            FAKT 1 dan katta boʻlishi mumkin. Iyul oyida jonatilib avgustda yetkazilgan buyurtma FAKT 2 ga
             avgustda emas, iyulning oʻzida qoʻshiladi va oy yopilgandan keyin ham oʻsishda davom
             etishi mumkin — chunki sana buyurtma navbatga TUSHGAN kunni bildiradi, YETKAZILGAN
-            kunni emas. Тасдиқланмаган va rad etilgan buyurtmalar FAKT 1 ga kirmaydi.
+            kunni emas. Rad etilgan (Тасдиқланмади), hali navbatda turgan va koʻtarmagan
+            buyurtmalar FAKT 1 ga kirmaydi.
           </>
         ) : (
           <>
@@ -985,16 +993,21 @@ function TotalsBand({
         status={status}
         /*
           BOTH COUNTS, because the two screens print both and neither used to
-          say so. `orders` is the confirmed part — what FAKT 1's money is made
-          of — while `cohortOrders` is every order that reached the queue in
-          this window, which is the number Tasdiqlash navbati shows. August:
-          2 874 against 3 228. A reader comparing the two pages was left with
-          two true figures 354 apart and nothing to reconcile them.
+          say so. `orders` is the part that left the queue as an order —
+          Тасдиқланди plus Тасдиқланмай чиқди, exactly what FAKT 1's money is
+          made of — while `cohortOrders` is every order that reached the queue
+          in this window, which is the number Tasdiqlash navbati shows.
+          August: 2 874 against 3 228. A reader comparing the two pages was
+          left with two true figures 354 apart and nothing to reconcile them.
+
+          «navbatdan chiqdi», not «tasdiqlangan»: the count covers two of the
+          board's states now, and naming it after one of them would send a
+          reader looking for the difference on the wrong tile.
         */
         hint={
           totals
             ? totals.cohortOrders > totals.orders
-              ? `${formatNumber(totals.orders)} ta tasdiqlangan · navbatda jami ${formatNumber(totals.cohortOrders)} ta`
+              ? `${formatNumber(totals.orders)} ta navbatdan chiqdi · navbatda jami ${formatNumber(totals.cohortOrders)} ta`
               : `${formatNumber(totals.orders)} ta buyurtma`
             : undefined
         }
@@ -1509,7 +1522,7 @@ function SellerRows({
             </span>
           )}
         </td>
-        {/* FAKT 1 — Тасдиқланди. */}
+        {/* FAKT 1 — Тасдиқланди + Тасдиқланмай чиқди. See `FAKT1_OUTCOMES`. */}
         <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
           {formatFullUzs(row.ordered.amount)}
         </td>
@@ -1811,7 +1824,7 @@ function SellerDetail({
           FAKT 2 {formatFullUzs(row.won.amount)} · yoʻlda{' '}
           {formatFullUzs(row.open.amount)} ({formatNumber(row.openOrders)} ta)
           {row.lostAfterConfirmOrders > 0 && (
-            <> · tasdiqlangach bekor {formatNumber(row.lostAfterConfirmOrders)} ta</>
+            <> · chiqqach bekor {formatNumber(row.lostAfterConfirmOrders)} ta</>
           )}
           {' '}· navbatda rad {formatNumber(row.lostOrders - row.lostAfterConfirmOrders)} ta
           {row.cohortOrders > row.orders && (

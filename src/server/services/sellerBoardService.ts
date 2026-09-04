@@ -262,9 +262,10 @@ export interface SellerBoardDto {
    * The basis, stated in the payload so the screen cannot forget to print it.
    *
    * 'confirmation_queue' — FAKT 1 / FAKT 2, the floor's own vocabulary.
-   *   `ordered` is Тасдиқланди (confirmed into Доставка), `won` is
-   *   Доставланди (C6:WON), and everything is dated by the order's OWN
-   *   arrival in C4:NEW — see `InsightsRepository.confirmationSellerRating`.
+   *   `ordered` is FAKT 1 — Тасдиқланди AND Тасдиқланмай чиқди, everything
+   *   that left the queue as an order — `won` is Доставланди (C6:WON), and
+   *   everything is dated by the order's OWN arrival in C4:NEW. See
+   *   `InsightsRepository.FAKT1_OUTCOMES` and `confirmationSellerRating`.
    * 'created_in_period' — the original reading, dated by the day the ORDER
    *   WAS TAKEN (`createdAtSource`) — see `SellerBoardRepository`.
    */

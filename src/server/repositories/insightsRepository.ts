@@ -455,24 +455,28 @@ export interface ConfirmationSellerRatingFilters {
  * One operator's standing on the confirmation-queue cohort.
  *
  * THE TWO FACTS ARE THE CLIENT'S OWN, NAMED «FAKT 1» AND «FAKT 2» ON THE
- * FLOOR. FAKT 1 is Тасдиқланди — the order reached the customer and moved
- * into Доставка (`outcome = 'CONFIRMED'`). FAKT 2 is Доставланди — of those,
- * the ones the carrier actually delivered (`deal.status = 'WON'` on a
- * Доставка-pipeline deal, i.e. C6:WON).
+ * FLOOR. FAKT 1 is what left the queue as an order — Тасдиқланди AND
+ * Тасдиқланмай чиқди, the two states their board prints side by side; see
+ * `FAKT1_OUTCOMES` for why the second one's money is on the road exactly like
+ * the first one's. FAKT 2 is Доставланди — of those, the ones the carrier
+ * actually delivered (`deal.status = 'WON'` on a Доставка-pipeline deal,
+ * i.e. C6:WON).
  *
  * «Успешно заказ» (C6:UC_YUKVF1) was considered and rejected for FAKT 1: see
  * `DELIVERY_STAGE_ROLES['C6:UC_YUKVF1']` in `mapping.ts` — it is a settlement
  * stamp automation writes within five seconds of Доставлено in most cases,
  * not an operator's own act, and using it collapsed FAKT 1 into FAKT 2.
  *
- * FAKT 2 IS NOT A SUBSET OF FAKT 1, and the client's definition is why:
- * "har bir buyurtma" — EVERY cohort order that reached delivery counts,
- * including one shipped as Тасдиқланмай чиқди (outcome UNCONFIRMED_SHIPPED,
- * so outside FAKT 1) that the carrier then delivered. For the ordinary order
- * the two do nest — `moves` never records a C6:WON visit (WON is not in
- * `CONFIRMATION_SIGNAL_STAGES`), so a confirmed order's `outcome` stays
- * 'CONFIRMED' through delivery — which is what makes inTransit ("confirmed,
- * still on the way") a meaningful remainder.
+ * FAKT 2 IS STILL NOT A SUBSET OF FAKT 1, and the client's definition is
+ * why: "har bir buyurtma" — EVERY cohort order that reached delivery counts,
+ * including one that was refused in the queue (❌ Тасдиқланмади) and revived
+ * afterwards. Тасдиқланмай чиқди used to be the common case of that gap and
+ * is now inside FAKT 1, so the two nearly nest; they are still two measures
+ * and the page must not print one as a share of the other. For the ordinary
+ * order they do nest — `moves` never records a C6:WON visit (WON is not in
+ * `CONFIRMATION_SIGNAL_STAGES`), so an order's `outcome` survives delivery —
+ * which is what makes inTransit ("out of the queue, still on the way") a
+ * meaningful remainder.
  */
 export interface ConfirmationSellerRatingRow {
   readonly employeeId: string
@@ -481,24 +485,29 @@ export interface ConfirmationSellerRatingRow {
   readonly rop: string | null
   /**
    * EVERY order this operator has in the cohort — the count the confirmation
-   * queue shows for the same period. FAKT 1 counts only the confirmed ones,
-   * so the two differ and the screen has to be able to say by how much.
+   * queue shows for the same period. FAKT 1 counts only the ones that left
+   * the queue as an order, so the two differ and the screen has to be able to
+   * say by how much.
    */
   readonly cohortOrders: number
-  /** FAKT 1: Тасдиқланди — confirmed orders, this operator's book. */
+  /**
+   * FAKT 1: Тасдиқланди + Тасдиқланмай чиқди — what this operator sent out.
+   * See `FAKT1_OUTCOMES`; the name stays `confirmed*` because FAKT 1 is what
+   * the floor calls it and every consumer downstream reads it as that.
+   */
   readonly confirmedOrders: number
   readonly confirmedMinor: bigint
   /** FAKT 2: Доставланди — the deal's CURRENT stage is a delivery stage. */
   readonly deliveredOrders: number
   readonly deliveredMinor: bigint
-  /** Confirmed, not delivered, still OPEN — genuinely on the road. */
+  /** In FAKT 1, not delivered, still OPEN — genuinely on the road. */
   readonly inTransitOrders: number
   readonly inTransitMinor: bigint
   /**
-   * Confirmed, then LOST before delivery — «Отказ предварительно» and its
+   * In FAKT 1, then LOST before delivery — «Отказ предварительно» and its
    * kind. Not in-transit (nothing is moving) and not a queue refusal (the
-   * operator DID reach the customer). Its own measure, or a fifth of the
-   * in-transit money is a fiction.
+   * order DID leave the queue). Its own measure, or a fifth of the in-transit
+   * money is a fiction.
    */
   readonly lostAfterConfirmOrders: number
   readonly lostAfterConfirmMinor: bigint
@@ -1963,6 +1972,31 @@ export class InsightsRepository {
    * The SELECT this rating runs over `classified`, isolated so its predicates
    * can be pinned by a SQL-shape test without a database — see `queueSql`.
    */
+  /**
+   * WHAT FAKT 1 IS MADE OF — every cohort order that left the queue WITH an
+   * order, which is two of the five states and not one.
+   *
+   * The floor's own board prints them side by side: ✅ ТАСДИҚЛАНДИ and
+   * 🟣 ТАСДИҚЛАНМАЙ ЧИҚДИ (91 and 3 on 2026-09-04). The second is not a
+   * refusal — it is `outcome = 'CONFIRMED'` refined by the deal's «Тастиклаш
+   * анализ» field reading «Недозвон булиб чикарилган» (see `queueSql`): the
+   * operator never reached the customer and the order was dispatched anyway.
+   * The goods went out and the money is on the road exactly as the confirmed
+   * one's is, so the client counts both in FAKT 1. Only ❌ ТАСДИҚЛАНМАДИ is a
+   * loss and it stays outside, with 🕔 Тасдиқлаш and 🟡 Кутармади, which have
+   * not left the queue at all.
+   *
+   * STATED ONCE AND READ SIX TIMES. FAKT 1's money, its order count, «yoʻlda»
+   * and «bekor qilindi» all describe the same population from different
+   * angles; if one of them still read `= 'CONFIRMED'` the row would carry
+   * money no other column on it could account for.
+   *
+   * The Тасдиқлаш board itself keeps the five states apart — that screen is
+   * where an operator reads what happened to one order, and this one is where
+   * a manager reads what the floor sold.
+   */
+  private static readonly FAKT1_OUTCOMES = `c.outcome IN ('CONFIRMED', 'UNCONFIRMED_SHIPPED')`
+
   private static ratingSql(filterClause: string): string {
     return `
        SELECT
@@ -1980,8 +2014,8 @@ export class InsightsRepository {
            confirmed ones.
          */
          count(*)::bigint AS cohort_orders,
-         count(*) FILTER (WHERE c.outcome = 'CONFIRMED')::bigint AS confirmed_orders,
-         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRMED')::text AS confirmed,
+         count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS confirmed_orders,
+         sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::text AS confirmed,
          /*
            FAKT 2 IS A DELIVERY, NOT ANY WON.
 
@@ -2022,19 +2056,19 @@ export class InsightsRepository {
            second one is a loss.
          */
          count(*) FILTER (
-           WHERE c.outcome = 'CONFIRMED' AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
+           WHERE ${InsightsRepository.FAKT1_OUTCOMES} AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
              AND d."status" = 'OPEN'
          )::bigint AS in_transit_orders,
          sum(d."amountMinor") FILTER (
-           WHERE c.outcome = 'CONFIRMED' AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
+           WHERE ${InsightsRepository.FAKT1_OUTCOMES} AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
              AND d."status" = 'OPEN'
          )::text AS in_transit,
          count(*) FILTER (
-           WHERE c.outcome = 'CONFIRMED' AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
+           WHERE ${InsightsRepository.FAKT1_OUTCOMES} AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
              AND d."status" = 'LOST'
          )::bigint AS lost_after_confirm_orders,
          sum(d."amountMinor") FILTER (
-           WHERE c.outcome = 'CONFIRMED' AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
+           WHERE ${InsightsRepository.FAKT1_OUTCOMES} AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
              AND d."status" = 'LOST'
          )::text AS lost_after_confirm,
          count(*) FILTER (WHERE c.outcome = 'REJECTED')::bigint AS rejected_orders
@@ -2171,8 +2205,8 @@ export class InsightsRepository {
       `${InsightsRepository.queueSql('window')}
        SELECT
          (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS date,
-         count(*) FILTER (WHERE c.outcome = 'CONFIRMED')::bigint AS orders,
-         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRMED')::text AS confirmed,
+         count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS orders,
+         sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::text AS confirmed,
          sum(d."amountMinor") FILTER (WHERE d."status" = 'WON')::text AS delivered
        FROM classified c
        JOIN "deal" d ON d."id" = c.deal_id
@@ -2180,7 +2214,7 @@ export class InsightsRepository {
        GROUP BY 1
        -- The same gate as the board: a day whose only money was delivered
        -- without a confirmation still belongs to FAKT 2's series.
-       HAVING count(*) FILTER (WHERE c.outcome = 'CONFIRMED') > 0
+       HAVING count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}) > 0
            OR count(*) FILTER (WHERE d."status" = 'WON') > 0
        ORDER BY 1`,
       period.start,
