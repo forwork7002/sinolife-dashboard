@@ -622,6 +622,21 @@ export const CONFIRMATION_OUTCOMES = [
 ] as const
 export type ConfirmationOutcome = (typeof CONFIRMATION_OUTCOMES)[number]
 
+/**
+ * One visit to Тасдиклаш on an order's row: when it arrived, how it ended.
+ *
+ * Mirrored by hand from `ConfirmationVisitDto` in
+ * `@/server/services/insightsService`; nothing checks the mirror.
+ */
+export interface ConfirmationVisitDto {
+  /** 1 for the first arrival in the order's life, counting up. */
+  readonly no: number
+  readonly queuedAt: string
+  readonly outcome: ConfirmationOutcome
+  /** When the visit ended. Null while the order is still in the queue. */
+  readonly decidedAt: string | null
+}
+
 export interface ConfirmationOrderDto {
   readonly dealId: string
   /** РОП — the sales group, as the floor names it: "Sevinch", "Lola", "Baza". */
@@ -675,6 +690,16 @@ export interface ConfirmationOrderDto {
   readonly queueReturns: number
   /** When the order was last in the queue before it came back. */
   readonly previousQueuedAt: string | null
+  /**
+   * Every visit the order has made to Тасдиклаш, NEWEST FIRST.
+   *
+   * The board keeps ONE ROW PER ORDER and dates it by the last arrival, so an
+   * order confirmed on the 29th and pulled back on the 31st is on the 31st.
+   * This is what the СТАТУС column draws the chain from, and `[0]` is always
+   * `outcome` — the state the tiles, the ROP panel and the state filter count
+   * it under. The rest are history and are counted nowhere.
+   */
+  readonly queueHistory: readonly ConfirmationVisitDto[]
 }
 
 export interface ConfirmationQueueDto {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 
 import { Card, ChartCard } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -26,6 +26,7 @@ import {
   type ConfirmationOrderDto,
   type ConfirmationOutcome,
   type ConfirmationQueueDto,
+  type ConfirmationVisitDto,
   apiGet,
 } from '@/lib/api'
 import { APP_TIME_ZONE, NO_VALUE, formatNumber } from '@/lib/format'
@@ -344,7 +345,7 @@ const QUEUE_COLUMNS: Column<ConfirmationOrderDto>[] = [
     key: 'outcome',
     header: 'СТАТУС',
     width: '180px',
-    render: (row) => <OutcomeChip outcome={row.outcome} />,
+    render: (row) => <OutcomeCell row={row} />,
   },
   {
     key: 'source',
@@ -1242,6 +1243,151 @@ function PhoneCell({ phones }: { phones: readonly string[] }) {
 function mask(phone: string): string {
   if (phone.length <= 8) return phone
   return `${phone.slice(0, phone.length - 7)}***${phone.slice(-4)}`
+}
+
+/**
+ * СТАТУС — where the order stands, and where it stood before that.
+ *
+ * THE ROW IS THE ORDER, AND IT IS DATED BY ITS LAST ARRIVAL. An order
+ * confirmed on the 29th and pulled back into Тасдиклаш on the 31st is a row
+ * on the 31st, so the 29th loses it — deal 834920 did exactly that, and the
+ * operator who had watched their Telegram channel announce it that morning
+ * found it simply gone. Six of the 127 orders that arrived on 2026-08-29
+ * moved off the day the same way.
+ *
+ * Splitting the row per visit was the alternative and it is the wrong trade:
+ * their bot and their board both keep one entry per deal, and a board that
+ * counted visits would let «тасдиқланиш %» exceed the orders it divides. So
+ * the row stays one and carries its own past down the cell — the state now as
+ * the chip it always was, and every earlier visit beneath it, joined to it,
+ * each with the day it happened.
+ *
+ * NOTHING HERE IS COUNTED. The five tiles, the Статистика panel, the state
+ * filter and the header bell all read `outcome`, which is `queueHistory[0]`.
+ * An order confirmed in August and refused in September is one order, refused.
+ *
+ * ONE VISIT RENDERS EXACTLY AS BEFORE — a single chip, no chain, no dates.
+ * That is 121 of those 127 rows, and a table that grew a second line on every
+ * row to serve six of them would have made the exception invisible by
+ * charging the whole board for it.
+ *
+ * Exported for `tests/features/confirmationHistory.test.tsx` alone. What that
+ * test guards is arithmetic, not layout: the moment an earlier visit reads as
+ * a state of its own, one order is two.
+ */
+export function OutcomeCell({ row }: { row: ConfirmationOrderDto }) {
+  /*
+    `queueHistory[0]` IS `row.outcome` — same visit, same refinement, pinned
+    server-side. The fallback is for a client that somehow received neither:
+    the chip is the load-bearing half and it should not vanish because a list
+    arrived empty.
+  */
+  const [current, ...earlier] = row.queueHistory
+
+  if (earlier.length === 0) return <OutcomeChip outcome={current?.outcome ?? row.outcome} />
+
+  return (
+    <div className="flex flex-col items-start">
+      <OutcomeChip outcome={current?.outcome ?? row.outcome} />
+      {earlier.map((visit) => (
+        <Fragment key={visit.no}>
+          {/*
+            The link between two states, and the reason this reads as one
+            history rather than two labels that happen to share a cell. It
+            sits at the chip's own glyph centre — pl-2 plus half of a 12px
+            mark — which is where the glyph below it sits too, so the whole
+            chain hangs off one vertical line.
+          */}
+          <span
+            aria-hidden="true"
+            className="ml-[13px] h-2 w-px shrink-0"
+            style={{ background: 'var(--border-strong)' }}
+          />
+          <EarlierVisit visit={visit} />
+        </Fragment>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * One visit the order has already finished, under the state it is in now.
+ *
+ * QUIETER THAN THE CHIP, DELIBERATELY. It wears no pill and no tint: the
+ * chip above it is the answer to "what is this order", and a second object of
+ * equal weight would make the cell a list of two equals rather than a state
+ * with a history. Only the mark keeps the state's colour, which is the same
+ * rule the chip follows and the reason the pair can be told apart at a glance.
+ *
+ * THE DATE IS THE POINT, and it is the only thing that separates a misclick
+ * corrected in three minutes from a customer reached again four days later.
+ *
+ * «🔁 ҚАЙТА ТУШДИ» in САНА answers a NARROWER question — did a customer have
+ * to be reached twice — and is gated on six hours, so it is silent on plenty
+ * of rows that still carry a chain. It has to be: the threshold is elapsed
+ * time and the board is cut into Tashkent days, so an order confirmed at 23:00
+ * and back at 01:00 wears no mark and still leaves yesterday for today. The
+ * chain is what the operator reading yesterday has left.
+ */
+function EarlierVisit({ visit }: { visit: ConfirmationVisitDto }) {
+  const spec = SPEC_BY_KEY.get(visit.outcome)
+  const when = `${tashkentDate(visit.queuedAt)} ${tashkentTime(visit.queuedAt)}`
+
+  /*
+    A FINISHED VISIT CANNOT BE «КУТИЛМОҚДА», WHATEVER THE SIGNAL SAYS.
+
+    Only five stages speak; every other one leaves the status alone. So an
+    order that went C4:NEW → «Счёт» → C4:NEW reached no signal inside its first
+    visit and the repository reports that visit as CONFIRM_NEW, which is true
+    of the signal and false of the world: the order is not waiting in a queue
+    it demonstrably left. Measured over a month, 19 of the 192 orders that came
+    back have at least one such visit — deal 838632 has three.
+
+    The label says what happened instead. It is NOT a sixth state: nothing
+    counts it, no tile carries it, and the repository still reports the signal
+    it read. It is this cell declining to repeat a present-tense word in the
+    past tense.
+  */
+  const undecided = visit.outcome === 'CONFIRM_NEW'
+  const label = undecided ? 'Ҳал бўлмаган' : (spec?.label ?? visit.outcome)
+
+  return (
+    <span className="flex flex-col pl-2 leading-tight">
+      {/*
+        SPOKEN, NOT ONLY DRAWN. Sighted readers get the hierarchy from the
+        pill above and the hairline between — a screen reader gets neither,
+        and heard the СТАТУС cell as «Тасдиқланмади Тасдиқланди 1-марта …»:
+        two state names in the one column an operator reads the row's state
+        from. The prefix is what the chip's shape says visually.
+
+        It also replaces a native `title` that carried this same sentence.
+        The attribute reached nobody on a keyboard or a touchscreen, and for
+        a mouse it repeated after a second what was already on the line.
+      */}
+      <span className="sr-only">Аввалги ҳолат: </span>
+      <span
+        className="inline-flex items-center gap-1.5 text-[11px] whitespace-nowrap"
+        style={{ color: 'var(--ink-secondary)' }}
+      >
+        <span
+          aria-hidden="true"
+          className="inline-flex shrink-0"
+          style={{ color: undecided ? 'var(--ink-muted)' : (spec?.color ?? 'var(--ink-muted)') }}
+        >
+          {spec ? <spec.Glyph size={12} /> : null}
+        </span>
+        {label}
+      </span>
+      {/* Indented under the label, not under the mark: the mark is 12px and
+          the gap 6, so the date starts where the word above it does. */}
+      <span
+        className="tabular pl-[18px] text-[10px] whitespace-nowrap"
+        style={{ color: 'var(--ink-muted)' }}
+      >
+        {visit.no}-марта · {when}
+      </span>
+    </span>
+  )
 }
 
 /** The state as it appears on a row — same mark, same colour, same words. */

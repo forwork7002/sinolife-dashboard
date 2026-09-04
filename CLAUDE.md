@@ -274,6 +274,21 @@ of the same operator. The lookup is unbounded by the window (a return in
 September against a July arrival is still a return) and runs after the page's
 LIMIT, so it costs 25 index lookups rather than a second pass over the cohort.
 
+**The LAST arrival dates the row, so the row has to carry the earlier ones.**
+One order is one row — their bot and their board keep one entry per deal, and
+counting visits would let «тасдиқланиш %» exceed the orders it divides — but
+that means an order confirmed on the 29th and pulled back into Тасдиклаш on the
+31st leaves the 29th. Deal 834920 did exactly that, and six of the 127 orders
+that arrived on 2026-08-29 did; the operator reading the 29th found an order
+their Telegram channel had announced that morning simply gone. `QUEUE_HISTORY_SQL`
+(the same LATERAL that draws 🔁) therefore returns every visit as JSON, newest
+first, and the СТАТУС column draws them as a chain under the current chip.
+**It is shown and never summed** — the tiles, the Статистика panel, the state
+filter and the header bell all read the single `classified.outcome`, and
+`queueHistory[0]` IS that outcome, which is why the UNCONFIRMED_SHIPPED
+refinement is confined to the last visit. Production holds at most three
+visits per order. Pinned by `tests/features/confirmationHistory.test.tsx`.
+
 **The header bell counts the BACKLOG, so its link must carry `queue=backlog`.**
 One SQL definition answers two questions: `window` — what arrived in the
 selected period, and where each of those stands — and `backlog` — what is

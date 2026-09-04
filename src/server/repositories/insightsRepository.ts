@@ -52,6 +52,43 @@ function int(value: unknown): number {
 }
 
 /**
+ * A timestamp that travelled inside JSON.
+ *
+ * `json_build_object` renders a `timestamp` as ISO text with NO zone, and
+ * `new Date()` reads a zoneless string as LOCAL time — which on a Tashkent
+ * laptop moved every queue visit five hours. Every column in this file is
+ * stored UTC, so the Z is what the text was always missing.
+ */
+function utcText(value: string | null | undefined): Date | null {
+  if (value === null || value === undefined) return null
+  return new Date(value.endsWith('Z') ? value : `${value}Z`)
+}
+
+/** The queue-history JSON as `json_build_object` shapes it. */
+type VisitJson = {
+  no: number
+  queuedAt: string
+  outcome: ConfirmationOutcomeValue
+  decidedAt: string | null
+}
+
+/**
+ * The visit list, newest first — the order SQL already put it in.
+ *
+ * Null when a row somehow reached the page with no arrival at all. The cohort
+ * cannot admit one, and an empty list is what the table already renders for
+ * the single-visit majority, so this stays a fallback rather than a branch.
+ */
+function visits(rows: VisitJson[] | null | undefined): ConfirmationVisit[] {
+  return (rows ?? []).map((v) => ({
+    no: int(v.no),
+    queuedAt: utcText(v.queuedAt)!,
+    outcome: v.outcome,
+    decidedAt: utcText(v.decidedAt),
+  }))
+}
+
+/**
  * Basis points, or NULL when there is nothing to divide by.
  *
  * Null, not zero. A carrier whose every order is still in transit has no
@@ -262,6 +299,24 @@ export interface ConfirmationWindow {
   readonly unconfirmedClosed: number
 }
 
+/**
+ * One visit to Тасдиклаш: when the order arrived, and how that visit ended.
+ *
+ * The order is the unit on this board — one row per deal, dated by its LAST
+ * arrival — so an order that came back is filed under the day it came back
+ * and its earlier visits would otherwise be invisible. They ride on the row
+ * instead of splitting it, and they are never counted anywhere.
+ */
+export interface ConfirmationVisit {
+  /** 1 for the first arrival in the order's life, counting up. */
+  readonly no: number
+  readonly queuedAt: Date
+  /** The visit's last signal. `CONFIRM_NEW` while the visit is still open. */
+  readonly outcome: ConfirmationOutcomeValue
+  /** When the visit ended. Null while the order is still in the queue. */
+  readonly decidedAt: Date | null
+}
+
 /** One order in the Тасдиклаш queue, in the column order the floor reads. */
 export interface ConfirmationOrderRow {
   readonly dealId: string
@@ -346,6 +401,19 @@ export interface ConfirmationOrderRow {
    * again. The badge cannot tell them apart; the date beside it can.
    */
   readonly previousQueuedAt: Date | null
+  /**
+   * Every visit this order has made to Тасдиклаш, NEWEST FIRST.
+   *
+   * `[0]` is the visit the row is filed under — same arrival as `queuedAt`,
+   * same state as `outcome` — and the ones after it are what the board used
+   * to lose when an order came back and took its row to a later day. A
+   * single-visit order carries a one-element list, and the table renders
+   * those exactly as before: one chip, no chain.
+   *
+   * SHOWN, NEVER SUMMED. The five tiles, the ROP panel, the state filter and
+   * the header bell all read `outcome` alone.
+   */
+  readonly queueHistory: readonly ConfirmationVisit[]
 }
 
 /** How many orders ended in each of the five states. */
@@ -1539,29 +1607,43 @@ export class InsightsRepository {
   private static readonly REPEAT_GAP_HOURS = 6
 
   /**
-   * «🔁 ҚАЙТА ТУШДИ» — has this order been in the queue before?
+   * The order's WHOLE life in the queue — every visit, and how each one ended.
    *
-   * ONE SCAN PER ROW, ON THE PAGE ONLY. It runs in the decorating join, after
-   * the LIMIT, so it costs twenty-five index lookups on (dealId, enteredAt)
-   * rather than a second pass over a cohort that can be eighteen thousand
-   * orders. Putting it in `queueSql` would also make the tiles and the header
-   * bell pay for a fact only the table shows.
+   * ONE ORDER IS STILL ONE ROW. The board is dated by the LAST arrival, so an
+   * order confirmed on the 29th and pulled back into Тасдиклаш on the 31st
+   * leaves the 29th and lands on the 31st. Deal 834920 did exactly that, and
+   * the operator reading the 29th found an order their Telegram channel had
+   * announced that morning simply gone — six of the 127 orders that arrived
+   * that day moved off it the same way. Splitting the row per visit was the
+   * other option and it is the wrong one: their bot and their board both keep
+   * one entry per deal, and counting visits would let «тасдиқланиш %» exceed
+   * the orders it divides. So the row stays one and carries its own past.
    *
-   * UNBOUNDED BY THE WINDOW, unlike everything else on the board. `moves` is
-   * cut at the window's start because the history table is six figures of
-   * rows; here the deal is already known, so the whole of its own history is
-   * one index range. It has to be: an order first queued in July and returned
-   * this morning is a return, and a window that starts today cannot see that.
+   * IT DECIDES NOTHING, IT ONLY SHOWS. The tiles, the ROP panel, the state
+   * filter and the header bell all read `classified.outcome` — the latest
+   * signal, unchanged. This list is rendered, never summed: an order
+   * confirmed in August and refused in September counts once, as refused.
+   * `visits[0]` IS that latest state by construction, which is the invariant
+   * the chain in the UI is drawn on and which the SQL test pins.
    *
-   * IT COUNTS GAPS, NOT VISITS. `entries` is every arrival and is what the
-   * tooltip reports; `returns` is how many of the gaps between consecutive
-   * arrivals are long enough to be a real return, and that is what draws the
-   * mark. `previous_at` is the arrival before the LAST qualifying return —
-   * the moment the order was last in the queue before it came back — so the
-   * tooltip names the visit the mark is actually about rather than whatever
-   * happened most recently.
+   * ONE SCAN, NOT TWO. «🔁 ҚАЙТА ТУШДИ» rides along, because a visit list
+   * already knows it: `entries` is how many visits there are, `returns` is
+   * how many of the gaps between consecutive arrivals clear
+   * `REPEAT_GAP_HOURS`, and `previous_at` is the arrival before the last
+   * qualifying return — so the tooltip names the visit the mark is about
+   * rather than whatever happened most recently. Those three used to be their
+   * own LATERAL over the same index range.
+   *
+   * ON THE PAGE ONLY, and UNBOUNDED BY THE WINDOW — both for the reasons the
+   * mark always had. It runs in the decorating join, after the LIMIT, so it
+   * costs twenty-five index lookups on (dealId, enteredAt) rather than a
+   * second pass over a cohort that can be eighteen thousand orders; and the
+   * deal is already known here, so its history is read end to end. It has to
+   * be: an order first queued in July and returned this morning is a return,
+   * and a window that starts today cannot see the July arrival to compare
+   * against — nor show it under the row it now dates.
    */
-  private static readonly REPEAT_SQL = `
+  private static readonly QUEUE_HISTORY_SQL = `
        LEFT JOIN LATERAL (
          SELECT
            count(*)::int AS entries,
@@ -1570,14 +1652,113 @@ export class InsightsRepository {
            )::int AS returns,
            max(prev) FILTER (
              WHERE gap >= interval '${InsightsRepository.REPEAT_GAP_HOURS} hours'
-           ) AS previous_at
+           ) AS previous_at,
+           /*
+             NEWEST FIRST, so the UI renders the chain top-down without having
+             to reverse it — and so visits[0] is the state the row is filed
+             under everywhere else on the screen.
+
+             EVERY VISIT, NOT ONLY THE ONES 🔁 CALLS RETURNS. That filter was
+             written and reverted, and the reason is worth keeping.
+
+             The tempting rule is «show only what the mark counts», so the two
+             surfaces on one row can never say different things. It is wrong,
+             because REPEAT_GAP_HOURS measures ELAPSED TIME while this board is
+             cut into Tashkent days. An order that arrives at 22:00, is
+             confirmed at 23:00 and comes back at 01:00 has a two-hour gap and
+             no mark — and its row still leaves yesterday for today, because
+             the cohort dates it by the last arrival. Filtering on the gap
+             hands that operator the bare chip this column exists to replace.
+
+             Nor are two close arrivals always the same state twice. Refused at
+             09:00, back at 12:00, waiting now: three hours, no mark, and the
+             chain is the only place that refusal — the one the ROP's Telegram
+             channel announced that morning — is still readable.
+
+             The mark and the list answer different questions. 🔁 asks whether a
+             customer had to be reached twice, which a misclick corrected in
+             fifteen minutes did not. The list says where the order stood.
+             RepeatMark's own tooltip already prints the raw entry count beside
+             the returns-gated mark, so the board has always shown both.
+           */
+           json_agg(
+             json_build_object(
+               'no', visit_no,
+               'queuedAt', queued_at,
+               /*
+                 The UNCONFIRMED_SHIPPED refinement applies to the LAST visit
+                 alone. «Тастиклаш анализ» is a field on the DEAL describing
+                 where it stands now, not something the portal keeps per
+                 visit, so reading it onto an August visit would be inventing
+                 a fact. Confining it here is also what keeps visits[0]
+                 identical to classified.outcome.
+               */
+               'outcome',
+               CASE
+                 WHEN outcome = 'CONFIRMED' AND is_last AND d."confirmStatus" = 'UNREACHABLE'
+                   THEN 'UNCONFIRMED_SHIPPED'
+                 ELSE outcome::text
+               END,
+               'decidedAt', decided_at
+             ) ORDER BY visit_no DESC
+           ) AS visits
          FROM (
            SELECT
-             lag(h."enteredAt") OVER (ORDER BY h."enteredAt") AS prev,
-             h."enteredAt" - lag(h."enteredAt") OVER (ORDER BY h."enteredAt") AS gap
-             FROM "deal_stage_history" h
-             JOIN signal_stage ss ON ss."id" = h."stageId"
-            WHERE h."dealId" = d."id" AND ss.signal = 'CONFIRM_NEW'
+             v.visit_no, v.queued_at, v.outcome, v.decided_at,
+             -- The gap is between CONSECUTIVE arrivals, so a long-dormant
+             -- order that bounces twice today is one return and not two.
+             lag(v.queued_at) OVER (ORDER BY v.visit_no) AS prev,
+             v.queued_at - lag(v.queued_at) OVER (ORDER BY v.visit_no) AS gap,
+             -- Nothing came after it, so it is the visit the deal's own
+             -- «Тастиклаш анализ» is allowed to refine.
+             lead(v.queued_at) OVER (ORDER BY v.visit_no) IS NULL AS is_last
+           FROM (
+             SELECT
+               m.visit_no,
+               min(m.entered_at) FILTER (WHERE m.signal = 'CONFIRM_NEW') AS queued_at,
+               -- The visit's last word, tie-broken exactly as agg breaks it,
+               -- so the newest visit and the row's own outcome cannot differ.
+               (array_agg(m.signal ORDER BY m.entered_at DESC, m.signal))[1] AS outcome,
+               max(m.entered_at) FILTER (WHERE m.signal <> 'CONFIRM_NEW') AS decided_at
+             FROM (
+               /*
+                 A VISIT IS AN ARRIVAL AND EVERYTHING UNTIL THE NEXT ONE, so
+                 the running count of arrivals is the visit number.
+
+                 THE ARRIVAL SORTS LAST WITHIN ONE INSTANT, and that is what
+                 decides the only genuinely ambiguous case. Two signal moves
+                 stamped in the same second are common — 123 pairs in a month
+                 — and in two of them one was an arrival and the other a
+                 decision (deals 828090 and 847980, both «Кутармади» landing
+                 in the same second as the deal bounced back into the queue).
+                 Ordering the arrival after the decision files that decision
+                 under the visit it ENDED, rather than under a visit that had
+                 not begun. Without the term the answer came from the cuid,
+                 which is to say from nothing.
+
+                 The row id keeps the order total after that, so the frame
+                 below never has peers to argue about; ROWS is written out
+                 because the intent is a running count of rows, and a reader
+                 should not have to prove the RANGE default harmless.
+
+                 Rows before the first arrival are visit 0 and are dropped:
+                 the ~52 orders that appear straight in C6:NEW have a signal
+                 and no queue visit, and the cohort does not carry them either.
+               */
+               SELECT
+                 h."enteredAt" AS entered_at,
+                 ss.signal,
+                 count(*) FILTER (WHERE ss.signal = 'CONFIRM_NEW') OVER (
+                   ORDER BY h."enteredAt", (ss.signal = 'CONFIRM_NEW'), h."id"
+                   ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                 ) AS visit_no
+               FROM "deal_stage_history" h
+               JOIN signal_stage ss ON ss."id" = h."stageId"
+              WHERE h."dealId" = d."id"
+             ) m
+            WHERE m.visit_no > 0
+            GROUP BY m.visit_no
+           ) v
          ) visits
        ) rep ON true`
 
@@ -1994,6 +2175,7 @@ export class InsightsRepository {
       queue_entries: number
       queue_returns: number
       previous_queued_at: string | null
+      visits: VisitJson[] | null
     }
     type RopJson = {
       rop: string | null
@@ -2062,7 +2244,8 @@ export class InsightsRepository {
            p.created_at, p.moved_at, p.queued_at, p.decided_at,
            rep.entries AS queue_entries,
            rep.returns AS queue_returns,
-           rep.previous_at AS previous_queued_at
+           rep.previous_at AS previous_queued_at,
+           rep.visits AS visits
          FROM page p
          JOIN "deal" d ON d."id" = p.deal_id
          JOIN "employee" e ON e."id" = d."employeeId"
@@ -2077,7 +2260,7 @@ export class InsightsRepository {
              JOIN "product" pr ON pr."id" = di."productId"
             WHERE di."dealId" = d."id"
          ) items ON true
-         ${InsightsRepository.REPEAT_SQL}
+         ${InsightsRepository.QUEUE_HISTORY_SQL}
        ),
        by_rop AS (
          SELECT
@@ -2112,15 +2295,12 @@ export class InsightsRepository {
     )
 
     const row = rows[0]
-    // JSON carries timestamps as ISO text without a zone; they are UTC.
-    const utc = (text: string | null): Date | null =>
-      text === null ? null : new Date(text.endsWith('Z') ? text : `${text}Z`)
 
     return {
       totalItems: int(row?.total_items ?? 0n),
       rows: (row?.page ?? []).map((r) => {
-        const queuedAt = utc(r.queued_at)
-        const decidedAt = utc(r.decided_at)
+        const queuedAt = utcText(r.queued_at)
+        const decidedAt = utcText(r.decided_at)
         return {
           dealId: r.deal_id,
           rop: r.rop,
@@ -2142,13 +2322,14 @@ export class InsightsRepository {
           currency: r.currency,
           stageName: r.stage_name,
           outcome: r.outcome,
-          createdAt: utc(r.created_at)!,
-          movedAt: utc(r.moved_at)!,
+          createdAt: utcText(r.created_at)!,
+          movedAt: utcText(r.moved_at)!,
           queuedAt,
           decidedAt,
           queueEntries: r.queue_entries,
           queueReturns: r.queue_returns,
-          previousQueuedAt: utc(r.previous_queued_at),
+          previousQueuedAt: utcText(r.previous_queued_at),
+          queueHistory: visits(r.visits),
           // Both ends or nothing: an order refused without ever being queued
           // has no waiting time, and zero would read as "decided instantly".
           hoursToDecide:
@@ -2214,6 +2395,7 @@ export class InsightsRepository {
         queue_entries: number
         queue_returns: number
         previous_queued_at: Date | null
+        visits: VisitJson[] | null
         total_items: bigint
       }[]
     >(
@@ -2287,6 +2469,7 @@ export class InsightsRepository {
          rep.entries AS queue_entries,
          rep.returns AS queue_returns,
          rep.previous_at AS previous_queued_at,
+         rep.visits AS visits,
          c.total_items AS total_items
        FROM page c
        JOIN "deal" d ON d."id" = c.deal_id
@@ -2302,7 +2485,7 @@ export class InsightsRepository {
            JOIN "product" pr ON pr."id" = di."productId"
           WHERE di."dealId" = d."id"
        ) items ON true
-       ${InsightsRepository.REPEAT_SQL}
+       ${InsightsRepository.QUEUE_HISTORY_SQL}
       -- The same order the page was cut in; a join does not promise to keep it.
       ORDER BY ${sortColumn[query.sort]} ${direction} NULLS LAST, d."id" ASC`,
       period.start,
@@ -2350,6 +2533,7 @@ export class InsightsRepository {
           queueEntries: int(r.queue_entries),
           queueReturns: int(r.queue_returns),
           previousQueuedAt: r.previous_queued_at === null ? null : new Date(r.previous_queued_at),
+          queueHistory: visits(r.visits),
           // Both ends or nothing: an order refused without ever being queued
           // has no waiting time, and zero would read as "decided instantly".
           hoursToDecide:

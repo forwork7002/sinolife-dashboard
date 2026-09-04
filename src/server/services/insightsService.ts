@@ -127,6 +127,21 @@ export interface ConfirmationDto {
   }
 }
 
+/**
+ * One visit to Тасдиклаш on an order's row: when it arrived, how it ended.
+ *
+ * The board keeps one row per order and dates it by the LAST arrival, so an
+ * order that came back moves to the day it came back. This is what the day it
+ * left still gets to show.
+ */
+export interface ConfirmationVisitDto {
+  /** 1 for the first arrival in the order's life, counting up. */
+  readonly no: number
+  readonly queuedAt: string
+  readonly outcome: ConfirmationOutcomeValue
+  readonly decidedAt: string | null
+}
+
 /** One order in the Тасдиклаш queue, in the column order the floor reads. */
 export interface ConfirmationOrderDto {
   readonly dealId: string
@@ -176,6 +191,15 @@ export interface ConfirmationOrderDto {
    * never has.
    */
   readonly previousQueuedAt: string | null
+  /**
+   * Every visit the order has made to Тасдиклаш, NEWEST FIRST.
+   *
+   * `[0]` is the state this row is filed under everywhere else on the screen.
+   * SHOWN, NEVER SUMMED — `totals`, `byRop` and the state filter all read
+   * `outcome` alone, so an order confirmed in August and refused in September
+   * still counts once, as refused.
+   */
+  readonly queueHistory: readonly ConfirmationVisitDto[]
 }
 
 export interface ConfirmationQueueDto {
@@ -743,6 +767,12 @@ export class InsightsService {
         queueEntries: r.queueEntries,
         queueReturns: r.queueReturns,
         previousQueuedAt: r.previousQueuedAt?.toISOString() ?? null,
+        queueHistory: r.queueHistory.map((v) => ({
+          no: v.no,
+          queuedAt: v.queuedAt.toISOString(),
+          outcome: v.outcome,
+          decidedAt: v.decidedAt?.toISOString() ?? null,
+        })),
       })),
       totalItems: page.totalItems,
       rops,

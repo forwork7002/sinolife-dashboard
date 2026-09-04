@@ -241,10 +241,10 @@ describe('confirmation queue SQL', () => {
  * and returned this morning is a return, and a window opening today cannot see
  * the July arrival to compare against.
  */
-const repeatSql = (
-  InsightsRepository as unknown as { REPEAT_SQL: string }
-).REPEAT_SQL
-const REPEAT = bare(repeatSql)
+const historySql = (
+  InsightsRepository as unknown as { QUEUE_HISTORY_SQL: string }
+).QUEUE_HISTORY_SQL
+const REPEAT = bare(historySql)
 
 describe('the repeat mark', () => {
   it('counts entries into the queue stage, and nothing else', () => {
@@ -272,9 +272,14 @@ describe('the repeat mark', () => {
     */
     expect(REPEAT).toContain("interval '6 hours'")
     expect(REPEAT).toContain('AS returns')
-    // The gap is between CONSECUTIVE arrivals, so a long-dormant order that
-    // bounces twice today is one return and not two.
-    expect(REPEAT).toContain('lag(h."enteredAt") OVER (ORDER BY h."enteredAt")')
+    /*
+      The gap is between CONSECUTIVE arrivals, so a long-dormant order that
+      bounces twice today is one return and not two. It is measured over the
+      VISIT list now rather than over the raw arrival rows — the visit list is
+      one row per arrival, in arrival order, so the sequence is the same one
+      the old `lag` over `enteredAt` walked.
+    */
+    expect(REPEAT).toContain('lag(v.queued_at) OVER (ORDER BY v.visit_no)')
   })
 
   it('names the visit the mark is about, not merely the latest one', () => {
@@ -292,7 +297,131 @@ describe('the repeat mark', () => {
       looks like the data changed.
     */
     const source = readFileSync('src/server/repositories/insightsRepository.ts', 'utf8')
-    const uses = source.match(/InsightsRepository\.REPEAT_SQL/g) ?? []
+    const uses = source.match(/InsightsRepository\.QUEUE_HISTORY_SQL/g) ?? []
     expect(uses).toHaveLength(2)
+  })
+})
+
+/**
+ * THE ROW CARRIES ITS OWN PAST, AND COUNTS ONLY ITS PRESENT.
+ *
+ * The board is one row per order dated by its LAST arrival, so an order
+ * confirmed on the 29th and pulled back into Тасдиклаш on the 31st is a row on
+ * the 31st and the 29th loses it. Deal 834920 did that, and six of the 127
+ * orders that arrived on 2026-08-29 did. The СТАТУС column now shows the
+ * earlier visits under the current one so the day it left is still readable
+ * from the row it landed on.
+ *
+ * The danger in that is arithmetic, not layout: the moment an earlier visit
+ * can be counted, one order is two and «тасдиқланиш %» can exceed the orders
+ * it divides. These tests are the fence — the visit list exists only in the
+ * two ROW queries, and every number on the screen still comes from the single
+ * `outcome` the cohort already agreed on.
+ */
+describe('the queue history on a row', () => {
+  it('splits the deal into visits, one per arrival', () => {
+    // The running count of arrivals IS the visit number.
+    expect(REPEAT).toContain(`count(*) FILTER (WHERE ss.signal = 'CONFIRM_NEW') OVER (`)
+    expect(REPEAT).toContain('AS visit_no')
+    // Each visit's last word, tie-broken exactly as `agg` breaks it.
+    expect(REPEAT).toContain('(array_agg(m.signal ORDER BY m.entered_at DESC, m.signal))[1]')
+    expect(REPEAT).toContain('GROUP BY m.visit_no')
+  })
+
+  it('files a same-instant decision under the visit it ended', () => {
+    /*
+      Two signal moves stamped in the same second are ordinary — 123 pairs in
+      a month on this portal — and in two of them one was an arrival and the
+      other a decision: deals 828090 and 847980, both «Кутармади» landing in
+      the same second the deal bounced back into the queue. Sorting the
+      arrival LAST within an instant files that decision under the visit it
+      ended rather than under one that had not begun. Without the term the
+      answer came from the row's cuid, which is to say from nothing.
+    */
+    expect(REPEAT).toContain(`ORDER BY h."enteredAt", (ss.signal = 'CONFIRM_NEW'), h."id"`)
+  })
+
+  it('frames the running count by ROWS, not by the default RANGE', () => {
+    /*
+      Under RANGE, every move sharing an instant with an arrival becomes its
+      peer and is pulled into the visit that arrival OPENS — so a refusal
+      stamped in the same second as the next arrival would be filed under a
+      visit that had not started yet. Deal 834920 has two moves inside one
+      second on 2026-08-31, which is not rare enough to leave to chance.
+    */
+    expect(REPEAT).toContain('ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW')
+  })
+
+  it('drops the moves that happened before any arrival', () => {
+    /*
+      The ~52 orders that appear straight in C6:NEW have a confirmation signal
+      and no queue visit. The cohort does not carry them, and neither does
+      this — a visit numbered 0 is a signal with no arrival to belong to.
+    */
+    expect(REPEAT).toContain('WHERE m.visit_no > 0')
+  })
+
+  it('hands the list back newest first', () => {
+    // So `visits[0]` is the state the row is filed under, and the UI renders
+    // the chain top-down without reversing it.
+    expect(REPEAT).toContain('ORDER BY visit_no DESC')
+  })
+
+  it('refines UNCONFIRMED_SHIPPED on the LAST visit only', () => {
+    /*
+      «Тастиклаш анализ» is a field on the DEAL describing where it stands now,
+      not something the portal keeps per visit. Reading it onto an August visit
+      would invent a fact; confining it to the last visit is also what keeps
+      `visits[0]` identical to `classified.outcome`, which is the invariant the
+      whole cell is drawn on.
+    */
+    expect(REPEAT).toContain(`WHEN outcome = 'CONFIRMED' AND is_last AND d."confirmStatus" = 'UNREACHABLE'`)
+    // Derived from the same `lead` that decides which visits are shown, so the
+    // two can never disagree about which visit is the newest.
+    expect(REPEAT).toContain('lead(v.queued_at) OVER (ORDER BY v.visit_no) IS NULL AS is_last')
+  })
+
+  /**
+   * THE LIST IS NOT GATED ON REPEAT_GAP_HOURS, AND THAT IS DELIBERATE.
+   *
+   * The tempting rule is «show only the visits 🔁 calls returns», so the mark
+   * and the chain can never say different things on one row. It was written,
+   * measured and reverted: `REPEAT_GAP_HOURS` is ELAPSED TIME while this board
+   * is cut into Tashkent days, and the two do not line up. An order arriving
+   * 22:00, confirmed 23:00 and back at 01:00 has a two-hour gap and no mark —
+   * and its row still leaves yesterday for today, because the cohort dates it
+   * by the LAST arrival. Gating the list on the gap hands that operator the
+   * bare chip this whole column exists to replace, which is deal 834920's
+   * failure wearing a different clock.
+   *
+   * Two close arrivals are not always the same state twice either: refused at
+   * 09:00, back at 12:00, waiting now is three hours, no mark, and the chain
+   * is the only place that refusal is still readable.
+   */
+  it('carries every visit, not only the ones the mark counts', () => {
+    // No forward-gap anywhere, and no FILTER between json_agg and its alias —
+    // the inner min()/max() FILTERs that build a visit are a different thing.
+    expect(REPEAT).not.toContain('next_gap')
+    const aggregate = REPEAT.slice(REPEAT.indexOf('json_agg('), REPEAT.indexOf('AS visits'))
+    expect(aggregate).not.toContain('FILTER')
+  })
+
+  it('is selected by both row queries and by nothing else', () => {
+    const source = readFileSync('src/server/repositories/insightsRepository.ts', 'utf8')
+    // Once in confirmationBoard's `decorated`, once in confirmationOrders.
+    expect(source.match(/rep\.visits AS visits/g) ?? []).toHaveLength(2)
+  })
+
+  it('never reaches the cohort, so nothing can count a visit twice', () => {
+    /*
+      The five tiles, the Статистика panel, the state filter and the header
+      bell are all built on `queueSql` — `classified.outcome`, one state per
+      order. A visit list inside the cohort is the shape in which an order
+      confirmed in August and refused in September becomes two orders.
+    */
+    for (const sql of [WINDOW_SQL, BACKLOG_SQL]) {
+      expect(sql).not.toContain('visit_no')
+      expect(sql).not.toContain('json_agg')
+    }
   })
 })
