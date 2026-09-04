@@ -297,14 +297,27 @@ export function SellersPage() {
         {basis === 'queue' ? (
           <>
             Bu sahifadagi raqamlar <strong style={{ color: 'var(--ink-secondary)' }}>
-            tasdiqlash navbatiga tushgan sana</strong> (C4:NEW) boʻyicha. «Buyurtma puli» —
-            FAKT 1, <strong style={{ color: 'var(--ink-secondary)' }}>Тасдиқланди</strong> (mijozga
-            yetib, Доставка ga oʻtgan buyurtmalar). «Yutilgan puli» — FAKT 2, shundan{' '}
-            <strong style={{ color: 'var(--ink-secondary)' }}>Доставланди</strong> boʻlgani. Iyul
-            oyida jonatilib avgustda yetkazilgan buyurtma FAKT 2 ga avgustda emas, iyulning oʻzida
-            qoʻshiladi va oy yopilgandan keyin ham oʻsishda davom etishi mumkin — chunki sana
-            buyurtma navbatga TUSHGAN kunni bildiradi, YETKAZILGAN kunni emas. Тасдиқланмаган va
-            rad etilgan buyurtmalar «Buyurtma puli»ga kirmaydi.
+            tasdiqlash navbatiga tushgan sana</strong> (C4:NEW) boʻyicha.{' '}
+            <strong style={{ color: 'var(--ink-secondary)' }}>FAKT 1</strong> —{' '}
+            <strong style={{ color: 'var(--ink-secondary)' }}>Тасдиқланди</strong>: mijozga yetib,
+            Доставка ga oʻtgan buyurtmalar puli.{' '}
+            <strong style={{ color: 'var(--ink-secondary)' }}>FAKT 2</strong> —{' '}
+            <strong style={{ color: 'var(--ink-secondary)' }}>Доставланди</strong>: yetkazib
+            berilganlari.{' '}
+            {/*
+              THE TWO ARE SIBLINGS, NOT A WHOLE AND ITS PART, and this sentence
+              is the one that has to say so. The page previously read «FAKT 2,
+              shundan Доставланди» — "of which" — and then printed 57.6 mln
+              beside 58.8 mln, which reads as a broken page rather than as the
+              fact it is: an order shipped Тасдиқланмай чиқди never entered
+              FAKT 1 and still delivers into FAKT 2.
+            */}
+            FAKT 2 — FAKT 1 ning bir qismi emas: тасдиқланмай chiqib ketgan buyurtma FAKT 1 ga
+            kirmaydi, lekin yetkazilsa FAKT 2 ga tushadi, shuning uchun FAKT 2 baʼzan FAKT 1 dan
+            katta boʻlishi mumkin. Iyul oyida jonatilib avgustda yetkazilgan buyurtma FAKT 2 ga
+            avgustda emas, iyulning oʻzida qoʻshiladi va oy yopilgandan keyin ham oʻsishda davom
+            etishi mumkin — chunki sana buyurtma navbatga TUSHGAN kunni bildiradi, YETKAZILGAN
+            kunni emas. Тасдиқланмаган va rad etilgan buyurtmalar FAKT 1 ga kirmaydi.
           </>
         ) : (
           <>
@@ -1082,14 +1095,27 @@ function TotalsBand({
   return (
     <div className="stagger grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
       <StatTile
-        label="Olingan buyurtma puli"
+        label="FAKT 1 · tasdiqlangan"
         value={totals ? totals.ordered.amount : null}
         unit="money"
         status={status}
         hint={totals ? `${formatNumber(totals.orders)} ta buyurtma` : undefined}
       />
+      {/*
+        «FAKT 2», NOT «shundan yutilgani» — the word was a lie about the
+        arithmetic.
+
+        On the queue basis FAKT 2 is not a subset of FAKT 1: an order that
+        went out Тасдиқланмай чиқди was never confirmed, so it is outside
+        FAKT 1 and still delivers real money into FAKT 2. The tiles therefore
+        cross over — 57.6 mln confirmed beside 58.8 mln delivered is a state
+        this board reaches — and a tile reading "of which" above a number
+        larger than the one above it reads as a broken page. The two are
+        siblings, and the labels now say so; `sellerBoardService` and the
+        HAVING gate in `confirmationSellerRating` carry the reason.
+      */}
       <StatTile
-        label="Shundan yutilgani"
+        label="FAKT 2 · yetkazilgan"
         value={totals ? totals.won.amount : null}
         unit="money"
         status={status}
@@ -1301,9 +1327,10 @@ function SellerTable({
         </table>
       </div>
       <p className="mt-2.5 text-[11px] leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
-        Och chiziq — tasdiqlangan buyurtma puli (FAKT 1), toʻq chiziq — shundan
-        yetkazilgani (FAKT 2). Prognoz — shu surʼatda davr oxirida yetkaziladigan
-        pul. Oldingi oʻringacha qancha qolgani — sotuvchi nomini bosing.
+        Och chiziq — FAKT 1 (tasdiqlangan), toʻq chiziq — FAKT 2 (yetkazilgan);
+        ikkisi ikki oʻlchov, biri ikkinchisining ichida emas. Prognoz — shu
+        surʼatda davr oxirida yetkaziladigan pul. Oldingi oʻringacha qancha
+        qolgani — sotuvchi nomini bosing.
         <br />
         <strong style={{ color: 'var(--ink-secondary)' }}>Konv. (lid)</strong> — mijoz
         dashboardidagi konversiya: buyurtma / lid. <strong style={{ color: 'var(--ink-secondary)' }}>
@@ -1809,7 +1836,7 @@ function SellerDetail({
           </span>
         </p>
         <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          Yutilgan {formatCompactUzs(row.won.amount)} · yoʻlda{' '}
+          FAKT 2 {formatCompactUzs(row.won.amount)} · yoʻlda{' '}
           {formatCompactUzs(row.open.amount)} ({formatNumber(row.openOrders)} ta) · bekor{' '}
           {formatNumber(row.lostOrders)} ta
         </p>
@@ -2141,8 +2168,8 @@ function TeamTable({
         </table>
       </div>
       <p className="mt-2.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-        Och chiziq — olingan buyurtma puli, toʻq chiziq — shundan yutilgani.
-        Prognoz — shu surʼatda davr oxirida yutiladigan pul.
+        Och chiziq — FAKT 1 (tasdiqlangan), toʻq chiziq — FAKT 2 (yetkazilgan).
+        Prognoz — shu surʼatda davr oxirida yetkaziladigan pul.
       </p>
     </>
   )
