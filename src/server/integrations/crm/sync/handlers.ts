@@ -27,6 +27,7 @@
 
 import type { PrismaClient } from '@/generated/prisma/client'
 import type { ExternalSourceValue } from '@/server/domain/types'
+import { floorNumberOf, indexByFloorNumber } from '@/server/domain/employees/floorNumber'
 import type {
   CrmProvider,
   FetchOptions,
@@ -199,6 +200,22 @@ export function createSyncHandlers(
   resolver: IdResolver = new IdResolver(prisma, source),
 ): EntitySyncHandler[] {
   const ids = (batch: readonly { externalId: string }[]) => batch.map((r) => r.externalId)
+
+  /**
+   * Floor badge to employee, read once and kept for the run.
+   *
+   * The roster is ~290 rows and every DEALS batch needs the same map, so
+   * fetching it per batch would be 175 identical queries on a full pass. It is
+   * deliberately NOT cached across runs: a resync after a hiring change must
+   * see the new people.
+   */
+  let operatorIndex: Map<number, string> | null = null
+  const floorNumberIndex = async (): Promise<Map<number, string>> => {
+    if (operatorIndex) return operatorIndex
+    const roster = await prisma.employee.findMany({ select: { id: true, fullName: true } })
+    operatorIndex = indexByFloorNumber(roster, (person) => person)
+    return operatorIndex
+  }
 
   /**
    * Department heads, waiting for their employee to exist.
@@ -637,6 +654,9 @@ export function createSyncHandlers(
     { name: 'paymentMethodRaw' },
     { name: 'productLine' },
     { name: 'customerGrade' },
+    { name: 'operatorNameSource' },
+    { name: 'operatorTeamSource' },
+    { name: 'operatorEmployeeId' },
     { name: 'isReturnCustomer' },
     { name: 'createdAtSource', cast: 'timestamp' },
     { name: 'updatedAtSource', cast: 'timestamp' },
@@ -661,6 +681,7 @@ export function createSyncHandlers(
 
       const stageMap = await resolver.map('dealStage')
       const employeeMap = await resolver.map('employee')
+      const operatorMap = await floorNumberIndex()
       // Batch-scoped: 322 000 customers do not fit in the worker's heap.
       const customerMap = await resolver.mapFor(
         'customer',
@@ -676,6 +697,26 @@ export function createSyncHandlers(
       for (const record of batch) {
         const stageId = stageMap.get(record.stageExternalId)
         const employeeId = employeeMap.get(record.employeeExternalId)
+
+        /*
+          WHO ACTUALLY SOLD IT, when the portal recorded it.
+
+          `employeeId` above is ASSIGNED_BY_ID — the deal's owner today — and
+          this portal moves deals to back office while they are processed. In
+          July 2026 that put 556 orders on the head of Операцион and made him
+          the sellers board's number one. The portal's own snapshot names the
+          real seller, and the only thing the two spellings share is the floor
+          badge, so resolution happens here rather than in every query.
+
+          Null is normal, not an error: the field was added in May 2026, so
+          older cohorts are 20% empty and August is 10%. Readers COALESCE onto
+          `employeeId`, which is why this is resolved but not required.
+        */
+        const operatorBadge = record.operatorNameSource
+          ? floorNumberOf(record.operatorNameSource)
+          : null
+        const operatorEmployeeId =
+          operatorBadge === null ? null : (operatorMap.get(operatorBadge) ?? null)
 
         /**
          * Both are required foreign keys, so a deal missing either is dropped
@@ -712,6 +753,9 @@ export function createSyncHandlers(
           record.paymentMethodRaw ?? null,
           record.productLine ?? null,
           record.customerGrade ?? null,
+          record.operatorNameSource ?? null,
+          record.operatorTeamSource ?? null,
+          operatorEmployeeId,
           record.isReturnCustomer ?? false,
           ts(record.createdAtSource),
           ts(record.updatedAtSource),

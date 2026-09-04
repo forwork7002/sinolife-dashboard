@@ -292,6 +292,35 @@ export const UF = Object.freeze({
   PRODUCT_LINE: 'UF_CRM_1750413928942',
   /** A / B / C customer grade. */
   CUSTOMER_GRADE: 'UF_CRM_1747979663403',
+  /**
+   * «Фамилия имя ответсвенный (не удалять)» — THE SELLER, snapshotted.
+   *
+   * FREE TEXT, so it must be read raw; `label()` would discard every value.
+   * It holds the operator's name in the client's own spelling, e.g.
+   * «Davlatbek Sirojov 115», written by their automation at the moment of the
+   * sale and never rewritten afterwards.
+   *
+   * WHY IT EXISTS AND WHY WE NEED IT. `ASSIGNED_BY_ID` is the deal's CURRENT
+   * owner, and this portal reassigns deals to back office during processing —
+   * so the person the board would otherwise credit is whoever happens to hold
+   * the row today. Measured 2026-07: 556 orders sat on `Fazliddinov Bunyodjon`,
+   * head of Операцион, making him the board's number one with 4.2× the client's
+   * own leader. Twelve of twelve sampled deals name a DIFFERENT, real seller in
+   * this field. The client's published board ranks by this, not by the
+   * assignee, which is why their totals and ours never lined up.
+   */
+  OPERATOR_NAME: 'UF_CRM_1778416910',
+  /**
+   * «Организация сотрудника (не удалять)» — that operator's ROP team, e.g.
+   * «Sevinch(ROP)», also a snapshot. Free text, read raw.
+   *
+   * It is the TEAM AT THE TIME OF SALE, which is the whole point: one sampled
+   * July row reads «Husniddin(ROP)», a department that no longer exists on the
+   * portal but does appear in the client's own colour map. Reading the team
+   * off the operator's CURRENT department instead moves a seller's whole
+   * history to whichever team they sit in today.
+   */
+  OPERATOR_TEAM: 'UF_CRM_1778416806',
 } as const)
 
 export const UF_FIELDS: readonly string[] = Object.freeze(Object.values(UF))

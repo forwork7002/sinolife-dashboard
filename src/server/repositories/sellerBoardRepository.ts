@@ -66,6 +66,16 @@ export interface SellerBoardRow {
   readonly openMinor: bigint
   /** Cancelled by the customer. Outside fact1, shown so the exclusion is visible. */
   readonly lostOrders: number
+  /**
+   * EVERY order this operator has in the window, whatever became of it.
+   *
+   * On the queue basis that is the count the Тасдиқлаш navbati page shows for
+   * the same period, and it is bigger than `orders` — which counts only the
+   * confirmed ones. Two true numbers 354 apart for one August is a support
+   * ticket unless the board can print both. On the intake basis the two are
+   * the same figure and this simply repeats it.
+   */
+  readonly cohortOrders: number
 }
 
 /** One day of one seller's intake, for the per-seller detail. */
@@ -137,6 +147,12 @@ export class SellerBoardRepository {
       rop: ropOf(r.department_name),
       departmentName: r.department_name,
       orders: int(r.orders),
+      /*
+        On this basis the two are one figure: the intake query's cohort IS its
+        `orders` (LOST rows are excluded by the same predicate), so there is no
+        second population for the screen to reconcile against.
+      */
+      cohortOrders: int(r.orders),
       orderedMinor: money(r.ordered),
       wonOrders: int(r.won_orders),
       wonMinor: money(r.won),

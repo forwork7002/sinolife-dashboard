@@ -978,11 +978,20 @@ export interface SellerBonusDto {
   readonly eligible: boolean
 }
 
-/** A target and the progress against it. Both null when no target is set. */
+/**
+ * «Plan bajarish», and which question it answers.
+ *
+ * The client's board switches silently between two: FAKT 2 against a target
+ * where one exists, FAKT 2 against FAKT 1 where none does. We carry both and
+ * say which is on the row.
+ */
 export interface SellerPlanDto {
+  /** The target from `kpi`, when set. Null on the delivery reading. */
   readonly amount: MoneyDto | null
-  /** Won intake over the target, 0-100+. Uncapped: 112% reads as 112%. */
+  /** 0-100+, uncapped: 112% reads as 112%. */
   readonly percent: number | null
+  /** 'target' | 'delivery' | null — nothing to divide by. */
+  readonly basis: 'target' | 'delivery' | null
 }
 
 export interface SellerBoardRowDto {

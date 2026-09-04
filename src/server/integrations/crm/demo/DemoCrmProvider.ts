@@ -264,6 +264,18 @@ export class DemoCrmProvider implements CrmProvider {
       externalId: s.externalId,
       name: s.name,
       category: s.category as StageCategoryValue,
+      /*
+        The demo's won stage IS its delivery.
+
+        FAKT 2 on the sellers board is graded on the DELIVERED logistics role
+        rather than on a bare WON status, because on the real portal nine
+        stages across nine pipelines carry WON and only one of them means a
+        courier arrived. The demo models a single pipeline, so its won stage
+        is that one — and without saying so, demo mode renders the whole
+        sellers board with FAKT 2 at zero, which reads as a broken screen
+        rather than as a provider that never mentioned delivery.
+      */
+      logisticsRole: s.category === 'WON' ? 'DELIVERED' : undefined,
       sortOrder: s.sortOrder,
       isActive: true,
       updatedAtSource: referenceDate,
@@ -510,6 +522,14 @@ export class DemoCrmProvider implements CrmProvider {
         stageExternalId,
         status,
         employeeExternalId: employee.externalId,
+        /*
+          The demo has no back-office reassignment, so the snapshot is simply
+          the assignee. It is set rather than left undefined on purpose: a
+          screen that groups by the snapshot must have something to group by
+          in demo mode, or the whole sellers board renders empty there.
+        */
+        operatorNameSource: employee.fullName,
+        operatorTeamSource: employee.departmentExternalId,
         customerExternalId: customer.externalId,
         sourceExternalId: rng.weighted(sourceWeights),
         // The demo provider models a single sales pipeline, so every deal it

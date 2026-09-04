@@ -84,15 +84,31 @@ export interface SellerBonusDto {
 }
 
 /**
- * One seller's target for the period, and how far through it they are.
+ * «Plan bajarish» — and WHICH question it is answering.
  *
- * `amount` is the target the `kpi` table holds for this operator; `percent`
- * is won intake over that target. Both null together — a plan nobody set is
- * not a plan of zero, and a percentage of nothing is not 0%.
+ * The client's own board answers two, and switches between them silently:
+ * where a target exists it prints FAKT 2 against the target, and where none
+ * does it prints FAKT 2 against FAKT 1 — the share of confirmed orders that
+ * actually got delivered. Verified against their published July board on
+ * 2026-09-04: 86 of 93 rows are FAKT 2 / FAKT 1 to the percent (Marjona
+ * Shahtiyarovna 197 reads 84% on 199 318 000 of 237 118 000), and all seven
+ * exceptions are rows their own generator left at zero.
+ *
+ * We carry the same two readings and, unlike them, say which one is on the
+ * row. A column that means one thing here and another there is only
+ * defensible if the screen admits it.
  */
 export interface SellerPlanDto {
+  /** The target from `kpi`, when one is set. Null on the delivery reading. */
   readonly amount: MoneyDto | null
+  /** 0-100+, uncapped — a seller at 112% reads 112%. */
   readonly percent: number | null
+  /**
+   * 'target'   — FAKT 2 against a target somebody set.
+   * 'delivery' — FAKT 2 against FAKT 1, the client's fallback and ours.
+   * null       — nothing to divide by: no target and no confirmed money.
+   */
+  readonly basis: 'target' | 'delivery' | null
 }
 
 export interface SellerBoardRowDto {
@@ -342,7 +358,12 @@ export class SellerBoardService {
       */
       conversionPercent: roundOrNull(ratePercent(row.wonOrders, row.wonOrders + row.lostOrders)),
       sharePercent: roundOrNull(ratePercent(row.wonMinor, totalWonMinor)),
-      plan: planFor(plans.byEmployee.get(row.employeeId) ?? null, row.wonMinor, ctx.currency),
+      plan: planFor(
+        plans.byEmployee.get(row.employeeId) ?? null,
+        row.wonMinor,
+        row.orderedMinor,
+        ctx.currency,
+      ),
       // No source in this database — see each field's own comment.
       leads: null,
       leadConversionPercent: null,
@@ -382,7 +403,12 @@ export class SellerBoardService {
         ),
         sellersInBonus: boardRows.filter((r) => r.bonus.earned.amount > 0).length,
         sellersEligibleForBonus: boardRows.filter((r) => r.bonus.eligible).length,
-        plan: planFor(plans.byEmployee.size > 0 ? plannedMinor : null, totalWonMinor, ctx.currency),
+        plan: planFor(
+          plans.byEmployee.size > 0 ? plannedMinor : null,
+          totalWonMinor,
+          sum(rows, (r) => r.orderedMinor),
+          ctx.currency,
+        ),
         sellersWithPlan: rows.filter((r) => plans.byEmployee.has(r.employeeId)).length,
         leads: null,
         leadConversionPercent: null,
@@ -442,7 +468,16 @@ export class SellerBoardService {
         wonMinor: r.deliveredMinor,
         openOrders: r.inTransitOrders,
         openMinor: r.inTransitMinor,
-        lostOrders: r.rejectedOrders,
+        /*
+          BOTH KINDS OF LOSS, because the conversion rate divides by them.
+
+          A refusal in the queue and an order confirmed then cancelled before
+          dispatch are different events, but they are both resolved and both
+          belong in the denominator. Counting only the first flattered July's
+          board by 3.4 points — 84.1% where the truth is 80.7%.
+        */
+        lostOrders: r.rejectedOrders + r.lostAfterConfirmOrders,
+        cohortOrders: r.cohortOrders,
       }),
     )
   }
@@ -503,20 +538,41 @@ function revenueTargets(kpis: readonly KpiDefinition[]): {
 }
 
 /**
- * A target and the progress against it — or two nulls.
+ * The target when there is one, the delivery share when there is not.
  *
- * Never a zero on either half. A plan nobody set is not a plan of zero soʻm,
- * and 0% attainment is a claim about performance rather than about data. The
- * whole reason this column can exist honestly is that it can say nothing.
+ * A TARGET WINS. Somebody setting 300 mln for September is a contract, and
+ * scoring against it is a different and stronger statement than "84% of what
+ * you confirmed arrived". The `kpi` table is empty today, so in practice every
+ * row reads the delivery share — which is exactly what the client's own board
+ * prints, and it is a real measurement rather than the em dash this column
+ * used to be.
+ *
+ * Still never a zero out of nothing: a seller with no target AND no confirmed
+ * money divides by nothing, and that is null, not 0%.
  */
-function planFor(targetMinor: bigint | null, wonMinor: bigint, currency: string): SellerPlanDto {
-  if (targetMinor === null || targetMinor <= 0n) return { amount: null, percent: null }
-  return {
-    amount: toMoneyDto(money(targetMinor, currency)),
-    // Deliberately uncapped: their bar clamps the WIDTH at 100%, but the
-    // number beside it keeps counting, and a seller at 112% should read 112%.
-    percent: roundPercent(ratePercent(wonMinor, targetMinor) ?? 0),
+function planFor(
+  targetMinor: bigint | null,
+  wonMinor: bigint,
+  orderedMinor: bigint,
+  currency: string,
+): SellerPlanDto {
+  if (targetMinor !== null && targetMinor > 0n) {
+    return {
+      amount: toMoneyDto(money(targetMinor, currency)),
+      // Deliberately uncapped: their bar clamps the WIDTH at 100%, but the
+      // number beside it keeps counting, and a seller at 112% reads 112%.
+      percent: roundPercent(ratePercent(wonMinor, targetMinor) ?? 0),
+      basis: 'target',
+    }
   }
+  if (orderedMinor > 0n) {
+    return {
+      amount: null,
+      percent: roundPercent(ratePercent(wonMinor, orderedMinor) ?? 0),
+      basis: 'delivery',
+    }
+  }
+  return { amount: null, percent: null, basis: null }
 }
 
 /**
@@ -618,6 +674,7 @@ function teamRows(
               )
             : null,
           team.wonMinor,
+          sum(team.members, (m) => m.orderedMinor),
           currency,
         ),
         leads: null,

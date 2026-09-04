@@ -931,6 +931,10 @@ export class Bitrix24CrmProvider implements CrmProvider {
         paymentMethodRaw: this.label(UF.PAYMENT_METHOD, d[UF.PAYMENT_METHOD]),
         productLine: this.label(UF.PRODUCT_LINE, d[UF.PRODUCT_LINE]),
         customerGrade: this.label(UF.CUSTOMER_GRADE, d[UF.CUSTOMER_GRADE]),
+        // Free text, so raw — `label()` resolves enumeration ids and would
+        // return undefined for every one of these. Same trap as ADDRESS.
+        operatorNameSource: nonEmpty(d[UF.OPERATOR_NAME]),
+        operatorTeamSource: nonEmpty(d[UF.OPERATOR_TEAM]),
         isReturnCustomer: d.IS_RETURN_CUSTOMER === 'Y',
         createdAtSource: toDate(d.DATE_CREATE) ?? new Date(),
         updatedAtSource: toDate(d.DATE_MODIFY),

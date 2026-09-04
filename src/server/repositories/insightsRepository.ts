@@ -479,15 +479,29 @@ export interface ConfirmationSellerRatingRow {
   readonly fullName: string
   /** The ROP's own name — see `queueSql`'s `classified.rop`. Null off a team. */
   readonly rop: string | null
+  /**
+   * EVERY order this operator has in the cohort — the count the confirmation
+   * queue shows for the same period. FAKT 1 counts only the confirmed ones,
+   * so the two differ and the screen has to be able to say by how much.
+   */
+  readonly cohortOrders: number
   /** FAKT 1: Тасдиқланди — confirmed orders, this operator's book. */
   readonly confirmedOrders: number
   readonly confirmedMinor: bigint
-  /** FAKT 2: Доставланди — of those, delivered (C6:WON). */
+  /** FAKT 2: Доставланди — the deal's CURRENT stage is a delivery stage. */
   readonly deliveredOrders: number
   readonly deliveredMinor: bigint
-  /** Confirmed but not yet delivered — still inside FAKT 1, shown apart. */
+  /** Confirmed, not delivered, still OPEN — genuinely on the road. */
   readonly inTransitOrders: number
   readonly inTransitMinor: bigint
+  /**
+   * Confirmed, then LOST before delivery — «Отказ предварительно» and its
+   * kind. Not in-transit (nothing is moving) and not a queue refusal (the
+   * operator DID reach the customer). Its own measure, or a fifth of the
+   * in-transit money is a fiction.
+   */
+  readonly lostAfterConfirmOrders: number
+  readonly lostAfterConfirmMinor: bigint
   /** Тасдиқланмади — refused in the queue. Outside FAKT 1, shown so the exclusion is visible. */
   readonly rejectedOrders: number
 }
@@ -1087,7 +1101,7 @@ export class InsightsRepository {
         count(*) FILTER (WHERE d."status" = 'WON')::bigint AS delivered,
         count(*) FILTER (WHERE d."status" = 'LOST')::bigint AS failed
       FROM "deal" d
-      JOIN "employee" e ON e."id" = d."employeeId"
+      JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
       JOIN "deal_stage" cur ON cur."id" = d."stageId"
       JOIN queued q ON q.deal_id = d."id"
       LEFT JOIN touched t ON t.deal_id = d."id"
@@ -1467,7 +1481,28 @@ export class InsightsRepository {
         END AS outcome
       FROM dated w
       JOIN "deal" d ON d."id" = w.deal_id
-      JOIN "employee" e ON e."id" = d."employeeId"
+      /*
+        ОПЕРАТОР IS WHO SOLD IT, NOT WHO HOLDS THE ROW TODAY.
+
+        The client's definition of the sellers board is «Тасдиқлаш навбати ->
+        barcha buyurtmalar, and the ОПЕРАТОР on the row IS the seller». The
+        deal's assignee is not that person: this portal moves deals to back
+        office while they are processed, so ASSIGNED_BY_ID drifts. Measured on
+        July 2026 — 556 orders sat on the head of Операцион, making him the
+        board's number one with 4.2x the client's own leader, and twelve of
+        twelve sampled deals named a different, real seller in the portal's own
+        snapshot field.
+
+        The operatorEmployeeId column is that snapshot resolved to one of our
+        people at import (see domain/employees/floorNumber). COALESCE, because
+        the field was added in May 2026 and older cohorts are ~20% empty — a
+        deal without it keeps the assignee rather than leaving the board.
+
+        The join lives in the classified CTE, so the confirmation queue and the
+        sellers board name the same person for the same order. They are one
+        cohort and must not disagree about whose order it is.
+      */
+      JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
       LEFT JOIN "department" dep ON dep."id" = e."departmentId"
     ),
     numbered AS (
@@ -1934,27 +1969,97 @@ export class InsightsRepository {
          e."id" AS employee_id,
          e."fullName" AS full_name,
          c.rop AS rop,
+         /*
+           EVERY ORDER THIS OPERATOR HAS IN THE COHORT.
+
+           The client's definition of this board is «Тасдиқлаш навбати ->
+           BARCHA BUYURTMALAR, and the ОПЕРАТОР on the row is the seller», so
+           the board owes the reader the same population the queue page shows.
+           Without this column the two screens print 2 874 and 3 228 for one
+           August with nothing on either saying the first counts only the
+           confirmed ones.
+         */
+         count(*)::bigint AS cohort_orders,
          count(*) FILTER (WHERE c.outcome = 'CONFIRMED')::bigint AS confirmed_orders,
          sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRMED')::text AS confirmed,
-         count(*) FILTER (WHERE d."status" = 'WON')::bigint AS delivered_orders,
-         sum(d."amountMinor") FILTER (WHERE d."status" = 'WON')::text AS delivered,
-         count(*) FILTER (WHERE c.outcome = 'CONFIRMED' AND d."status" <> 'WON')::bigint AS in_transit_orders,
-         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRMED' AND d."status" <> 'WON')::text AS in_transit,
+         /*
+           FAKT 2 IS A DELIVERY, NOT ANY WON.
+
+           The client's words: "if that order has moved to «Завершить сделку»,
+           it is entered as FAKT 2". «Завершить сделку» is the Доставка
+           kanban's end drop-zone, and dropping a deal there lands it in
+           C6:WON «Доставлено» — verified against the portal with
+           crm.dealcategory.stage.list.
+
+           A plain WON status is NOT that. Nine stages across nine pipelines
+           carry category WON, and two of them hold real deals that never went
+           near a courier: «База · Успешно» (C10:WON, the retention kanban's
+           own success, 1 707 deals) and «Регистрация · Сделка успешна», the
+           automation stamp that HANDS a lead to Тасдиқлаш — the opposite end
+           of the funnel. Measured over this cohort all-time: 41 База rows
+           worth 56 900 000 soʻm and 33 Регистрация rows worth nothing but
+           inflating the delivered COUNT, which drives conversion. August
+           alone carried 3 (6 300 000 soʻm) and April 26 (33 550 000).
+
+           The DELIVERED logistics role is the mapping's own name for the
+           three stages that mean a courier arrived — C6:WON, C14:WON and
+           C14:UC_WFN8MP — and it is read from the deal's CURRENT stage, the
+           way their kanban is read. An order delivered and then bounced back
+           out is not delivered money today: of 19 such orders in August, 7
+           had gone to «Отказ предварительно» and 11 back to a hub.
+         */
+         count(*) FILTER (WHERE ds."logisticsRole" = 'DELIVERED')::bigint AS delivered_orders,
+         sum(d."amountMinor") FILTER (WHERE ds."logisticsRole" = 'DELIVERED')::text AS delivered,
+         /*
+           «Yoʻlda» MEANS STILL MOVING, so a dead order may not sit in it.
+
+           The predicate used to be "confirmed and not won", which counts a
+           deal the seller confirmed and then LOST as live work the seller is
+           carrying. In July that was 102 orders and 176 230 000 soʻm — a
+           fifth of the money the screen labelled in-transit. The two are now
+           separate measures, because "still on the road" and "confirmed, then
+           refused" are different facts about a seller's month and only the
+           second one is a loss.
+         */
+         count(*) FILTER (
+           WHERE c.outcome = 'CONFIRMED' AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
+             AND d."status" = 'OPEN'
+         )::bigint AS in_transit_orders,
+         sum(d."amountMinor") FILTER (
+           WHERE c.outcome = 'CONFIRMED' AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
+             AND d."status" = 'OPEN'
+         )::text AS in_transit,
+         count(*) FILTER (
+           WHERE c.outcome = 'CONFIRMED' AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
+             AND d."status" = 'LOST'
+         )::bigint AS lost_after_confirm_orders,
+         sum(d."amountMinor") FILTER (
+           WHERE c.outcome = 'CONFIRMED' AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
+             AND d."status" = 'LOST'
+         )::text AS lost_after_confirm,
          count(*) FILTER (WHERE c.outcome = 'REJECTED')::bigint AS rejected_orders
        FROM classified c
        JOIN "deal" d ON d."id" = c.deal_id
-       JOIN "employee" e ON e."id" = d."employeeId"
+       JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
+       LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
        WHERE TRUE
          ${filterClause}
        GROUP BY e."id", e."fullName", c.rop
-       -- Confirmed OR delivered, not confirmed alone. FAKT 2 spans the whole
-       -- cohort ("har bir buyurtma"), so an operator whose only deliveries
-       -- rode out as Тасдиқланмай чиқди still holds real FAKT 2 money — a
-       -- confirmed-only gate silently erased it from the board. Books that
-       -- are all pending or all refused stay off: the board ranks work done.
-       HAVING count(*) FILTER (WHERE c.outcome = 'CONFIRMED') > 0
-           OR count(*) FILTER (WHERE d."status" = 'WON') > 0
-       ORDER BY sum(d."amountMinor") FILTER (WHERE d."status" = 'WON') DESC NULLS LAST`
+       /*
+         EVERY OPERATOR IN THE COHORT, including one whose whole month was
+         refusals.
+
+         The gate used to be "confirmed > 0 OR delivered > 0", which is what
+         the client's own published page does (it drops rows with no FAKT 2).
+         Their stated model does not: the ОПЕРАТОР on a «barcha buyurtmalar»
+         row IS the seller, and a seller who took nine orders in July and had
+         all nine refused is exactly the row a floor manager needs. Seven
+         operators and 29 orders were invisible that month, four of them in
+         real (ROP) sales teams — and their 28 refusals were also missing from
+         the conversion rate's denominator, flattering the whole board.
+       */
+       HAVING count(*) > 0
+       ORDER BY sum(d."amountMinor") FILTER (WHERE ds."logisticsRole" = 'DELIVERED') DESC NULLS LAST`
   }
 
   /**
@@ -2016,12 +2121,15 @@ export class InsightsRepository {
         employee_id: string
         full_name: string
         rop: string | null
+        cohort_orders: bigint
         confirmed_orders: bigint
         confirmed: MoneyText
         delivered_orders: bigint
         delivered: MoneyText
         in_transit_orders: bigint
         in_transit: MoneyText
+        lost_after_confirm_orders: bigint
+        lost_after_confirm: MoneyText
         rejected_orders: bigint
       }[]
     >(
@@ -2033,12 +2141,15 @@ export class InsightsRepository {
       employeeId: r.employee_id,
       fullName: r.full_name,
       rop: r.rop,
+      cohortOrders: int(r.cohort_orders),
       confirmedOrders: int(r.confirmed_orders),
       confirmedMinor: money(r.confirmed),
       deliveredOrders: int(r.delivered_orders),
       deliveredMinor: money(r.delivered),
       inTransitOrders: int(r.in_transit_orders),
       inTransitMinor: money(r.in_transit),
+      lostAfterConfirmOrders: int(r.lost_after_confirm_orders),
+      lostAfterConfirmMinor: money(r.lost_after_confirm),
       rejectedOrders: int(r.rejected_orders),
     }))
   }
@@ -2248,7 +2359,7 @@ export class InsightsRepository {
            rep.visits AS visits
          FROM page p
          JOIN "deal" d ON d."id" = p.deal_id
-         JOIN "employee" e ON e."id" = d."employeeId"
+         JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
          JOIN "deal_stage" st ON st."id" = d."stageId"
          LEFT JOIN "customer" cust ON cust."id" = d."customerId"
          LEFT JOIN "sales_source" src ON src."id" = d."sourceId"
@@ -2473,7 +2584,7 @@ export class InsightsRepository {
          c.total_items AS total_items
        FROM page c
        JOIN "deal" d ON d."id" = c.deal_id
-       JOIN "employee" e ON e."id" = d."employeeId"
+       JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
        JOIN "deal_stage" st ON st."id" = d."stageId"
        LEFT JOIN "customer" cust ON cust."id" = d."customerId"
        LEFT JOIN "sales_source" src ON src."id" = d."sourceId"

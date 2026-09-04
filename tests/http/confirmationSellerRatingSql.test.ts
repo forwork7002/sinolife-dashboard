@@ -64,12 +64,42 @@ describe('confirmation seller rating SQL', () => {
     expect(BARE_SQL).not.toContain('SETTLED')
   })
 
-  it('grades FAKT 2 on delivery, C6:WON via deal.status', () => {
-    expect(BARE_SQL).toContain(`WHERE d."status" = 'WON'`)
+  it('grades FAKT 2 on a DELIVERY stage, never on a bare WON status', () => {
+    /*
+      The client's rule is «moved to Завершить сделку» — the Доставка kanban's
+      end drop-zone, which lands a deal in C6:WON «Доставлено». A WON STATUS is
+      not that: nine stages across nine pipelines carry category WON, and two
+      of them hold real deals that never met a courier — «База · Успешно»
+      (C10:WON, the retention kanban) and «Регистрация · Сделка успешна», the
+      automation stamp that HANDS a lead to Тасдиқлаш. Measured over this
+      cohort all-time: 41 База rows worth 56 900 000 soʻm plus 33 Регистрация
+      rows that inflate the delivered COUNT and so the conversion rate.
+    */
+    expect(BARE_SQL).toContain(`WHERE ds."logisticsRole" = 'DELIVERED'`)
+    expect(BARE_SQL).not.toContain(`FILTER (WHERE d."status" = 'WON')`)
+    expect(BARE_SQL).toContain(`LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"`)
   })
 
-  it('reports orders confirmed but not yet delivered as their own bucket', () => {
-    expect(BARE_SQL).toContain(`WHERE c.outcome = 'CONFIRMED' AND d."status" <> 'WON'`)
+  it('keeps a dead order out of «yoʻlda»', () => {
+    /*
+      In-transit used to mean "confirmed and not won", which files an order the
+      seller confirmed and then LOST as live work they are still carrying. In
+      July that was 102 orders and 176 230 000 soʻm — a fifth of the money the
+      screen labelled in-transit. The two are separate measures now.
+    */
+    expect(BARE_SQL).toContain(`AND d."status" = 'OPEN'`)
+    expect(BARE_SQL).toContain('lost_after_confirm_orders')
+    expect(BARE_SQL).not.toContain(`d."status" <> 'WON'`)
+  })
+
+  it('carries the operator\'s whole cohort, not only the confirmed part', () => {
+    /*
+      «barcha buyurtmalar» is the client's own name for the population. Without
+      this column the queue page says 3 228 for August and this board says
+      2 874, with nothing on either explaining that the second counts only the
+      confirmed ones.
+    */
+    expect(BARE_SQL).toContain('count(*)::bigint AS cohort_orders')
   })
 
   it('shows refused orders without folding them into FAKT 1', () => {
@@ -92,20 +122,40 @@ describe('confirmation seller rating SQL', () => {
     expect(BARE_SQL).toContain('GROUP BY e."id", e."fullName", c.rop')
   })
 
-  it('keeps an operator whose only money was delivered without a confirmation', () => {
+  it('keeps every operator that appears in «barcha buyurtmalar»', () => {
     /*
-      FAKT 2 spans the whole cohort — "har bir buyurtma" is the client's own
-      wording — so a book of Тасдиқланмай чиқди orders that the carrier
-      delivered must stay on the board. A confirmed-only HAVING erased it.
-      Books that are all pending or all refused stay off: work done ranks.
+      The client's model: the ОПЕРАТОР on a «barcha buyurtmalar» row IS the
+      seller. So a seller whose whole July was refusals — seven operators and
+      29 orders that month, four of them in real (ROP) teams — belongs on the
+      board with FAKT 1 and FAKT 2 at zero, and their 28 refusals belong in the
+      conversion rate's denominator, which they were silently missing from.
+
+      This is a deliberate departure from the client's PUBLISHED page, which
+      drops rows with no FAKT 2. Their stated model wins over their old HTML.
     */
     const having = BARE_SQL.slice(BARE_SQL.indexOf('HAVING'))
-    expect(having).toContain("count(*) FILTER (WHERE c.outcome = 'CONFIRMED') > 0")
-    expect(having).toContain(`OR count(*) FILTER (WHERE d."status" = 'WON') > 0`)
+    expect(having).toContain('HAVING count(*) > 0')
   })
 
-  it('joins the operator by the deal\'s employeeId, not by a stage-history actor', () => {
-    expect(BARE_SQL).toContain(`JOIN "employee" e ON e."id" = d."employeeId"`)
+  it('credits the operator who SOLD it, falling back to the assignee', () => {
+    /*
+      The client's model: the ОПЕРАТОР on a «barcha buyurtmalar» row IS the
+      seller. `ASSIGNED_BY_ID` is not that person — this portal moves deals to
+      back office during processing, and in July 2026 that put 556 orders on
+      the head of Операцион and made him the board's number one, at 4.2x the
+      client's own leader. Twelve of twelve sampled deals named a different,
+      real seller in the portal's own snapshot field.
+
+      COALESCE and not a bare join: the snapshot was added in May 2026, so the
+      July cohort is 20% empty and August 10%. A deal without it keeps the
+      assignee rather than dropping off the board.
+
+      Still not a stage-history actor — that column does not exist.
+    */
+    expect(BARE_SQL).toContain(
+      `JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")`,
+    )
+    expect(BARE_SQL).not.toContain(`e."id" = d."employeeId"`)
   })
 
   it('balances its parentheses', () => {

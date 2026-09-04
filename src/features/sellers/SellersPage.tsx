@@ -1278,7 +1278,7 @@ function SellerTable({
         letting the closed table run away with the viewport.
       */}
       <div className={`${openSeller ? 'max-h-[80dvh]' : 'max-h-[60dvh]'} overflow-auto`}>
-        <table className="w-full" style={{ minWidth: 1320 }}>
+        <table className="w-full" style={{ minWidth: 1220 }}>
           <thead>
             <tr>
               {[
@@ -1289,8 +1289,7 @@ function SellerTable({
                 ['FAKT 1 · tasdiqlangan', 'right'],
                 ['Tranz.', 'right'],
                 ['Lid', 'right'],
-                ['Konv. (lid)', 'right'],
-                ['Konversiya', 'right'],
+                ['Konv.', 'right'],
                 ['Plan bajarish', 'right'],
                 ['Prognoz', 'right'],
                 ['Bonus', 'right'],
@@ -1332,13 +1331,12 @@ function SellerTable({
         surʼatda davr oxirida yetkaziladigan pul. Oldingi oʻringacha qancha
         qolgani — sotuvchi nomini bosing.
         <br />
-        <strong style={{ color: 'var(--ink-secondary)' }}>Konv. (lid)</strong> — mijoz
-        dashboardidagi konversiya: buyurtma / lid. <strong style={{ color: 'var(--ink-secondary)' }}>
-        Konversiya</strong> — bizniki: yutilgan / hal boʻlgan buyurtma. Ikkalasi ham
-        toʻgʻri, savoli boshqa. <strong style={{ color: 'var(--ink-secondary)' }}>Bonus</strong>{' '}
+        <strong style={{ color: 'var(--ink-secondary)' }}>Konv.</strong> — yetkazilgan / hal
+        boʻlgan buyurtma. Mijozning taxtasi bu ustunni buyurtma / lid deb sanaydi; lid manbasi
+        ulanganda ikkinchi oʻlchov ham qoʻshiladi. <strong style={{ color: 'var(--ink-secondary)' }}>Bonus</strong>{' '}
         faqat 107–147 raqamli sotuvchilarga toʻlanadi — boshqalarda katak boʻsh turadi.{' '}
         <span className="inline-flex items-center gap-1">
-          Lid va Plan ustunlari hozircha boʻsh
+          Lid ustuni hozircha boʻsh
           <InfoTip content={<span>{NO_LEAD_SOURCE}</span>} label="Lid nega boʻsh" />
         </span>
       </p>
@@ -1558,9 +1556,6 @@ function SellerRows({
         <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
           <LeadCell leads={row.leads} />
         </td>
-        <td className="px-2 py-2 text-right">
-          <LeadConversionCell percent={row.leadConversionPercent} />
-        </td>
         <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
           {row.conversionPercent === null ? NO_VALUE : formatPercent(row.conversionPercent)}
         </td>
@@ -1577,7 +1572,7 @@ function SellerRows({
 
       {open && (
         <tr>
-          <td colSpan={12} className="px-2 pt-1 pb-4">
+          <td colSpan={11} className="px-2 pt-1 pb-4">
             <SellerDetail
               employeeId={row.employeeId}
               row={row}
@@ -1668,27 +1663,6 @@ function LeadCell({ leads }: { leads: number | null }) {
 }
 
 /**
- * Their `Konv.` — orders over LEADS, with their own three thresholds.
- *
- * The 40 / 25 grading is theirs, transcribed from `rankTable()`, and it is
- * mapped onto the status tokens rather than their raw hex: a threshold IS a
- * judgement, which is the one thing the status palette exists for. Null while
- * there are no leads, because a rate with no denominator is not zero.
- */
-function LeadConversionCell({ percent }: { percent: number | null }) {
-  if (percent === null) {
-    return (
-      <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-        {NO_VALUE}
-      </span>
-    )
-  }
-  const tone =
-    percent >= 40 ? 'good' : percent >= 25 ? 'warning' : 'critical'
-  return <StatusChip tone={tone}>{formatPercent(percent)}</StatusChip>
-}
-
-/**
  * Their `Plan bajarish` — the bar, and the percentage beside it.
  *
  * THE BAR CLAMPS AT 100 AND THE NUMBER DOES NOT. That is their behaviour and
@@ -1700,7 +1674,13 @@ function LeadConversionCell({ percent }: { percent: number | null }) {
  * is a claim that the seller missed something; there is nothing to miss.
  */
 function PlanCell({ plan }: { plan: SellerPlanDto }) {
-  if (plan.percent === null || plan.amount === null) {
+  /*
+    Null only when there is nothing to divide by — no target AND no confirmed
+    money. With FAKT 1 on the row the column always has something true to say:
+    the share of it that arrived, which is what the client's own board prints
+    wherever no target exists.
+  */
+  if (plan.percent === null) {
     return (
       <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
         {NO_VALUE}
@@ -1719,7 +1699,9 @@ function PlanCell({ plan }: { plan: SellerPlanDto }) {
     <Tooltip
       content={
         <span className="tabular">
-          Reja {formatUzs(plan.amount.amount)} — bajarilgani {formatPercent(plan.percent)}
+          {plan.amount
+            ? `Reja ${formatUzs(plan.amount.amount)} — bajarilgani ${formatPercent(plan.percent)}`
+            : `FAKT 1 ning ${formatPercent(plan.percent)} i yetkazilgan`}
         </span>
       }
     >
@@ -1890,7 +1872,7 @@ function SellerDetail({
           hint="yutilgan / hal boʻlgan buyurtma"
           context={
             <p className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-              Konv. (lid):{' '}
+              Lid boʻyicha:{' '}
               {row.leadConversionPercent === null
                 ? NO_VALUE
                 : formatPercent(row.leadConversionPercent)}
@@ -1902,7 +1884,13 @@ function SellerDetail({
           value={row.plan.percent}
           tone="neutral"
           status="ready"
-          hint={row.plan.percent === null ? 'Reja belgilanmagan' : 'yetkazilgan / reja'}
+          hint={
+            row.plan.percent === null
+              ? 'Hisoblash uchun maʼlumot yoʻq'
+              : row.plan.basis === 'target'
+                ? 'yetkazilgan / reja'
+                : 'FAKT 2 / FAKT 1 — tasdiqlanganning qanchasi yetkazilgani'
+          }
         />
         <StatTile
           label="FOT (ish haqi)"
@@ -2045,7 +2033,7 @@ function TeamTable({
         {/* The same columns as the sellers' table, in the same order and the
             same words — their ROP tab and their seller tab are one function
             called twice, and a reader who learns one has learned both. */}
-        <table className="w-full" style={{ minWidth: 1180 }}>
+        <table className="w-full" style={{ minWidth: 1080 }}>
           <thead>
             <tr>
               {[
@@ -2056,8 +2044,7 @@ function TeamTable({
                 ['FAKT 1 · tasdiqlangan', 'right'],
                 ['Tranz.', 'right'],
                 ['Lid', 'right'],
-                ['Konv. (lid)', 'right'],
-                ['Konversiya', 'right'],
+                ['Konv.', 'right'],
                 ['Plan bajarish', 'right'],
                 ['Prognoz', 'right'],
               ].map(([label, align]) => (
@@ -2148,9 +2135,6 @@ function TeamTable({
                   </td>
                   <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
                     <LeadCell leads={row.leads} />
-                  </td>
-                  <td className="px-2 py-2 text-right">
-                    <LeadConversionCell percent={row.leadConversionPercent} />
                   </td>
                   <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
                     {row.conversionPercent === null ? NO_VALUE : formatPercent(row.conversionPercent)}

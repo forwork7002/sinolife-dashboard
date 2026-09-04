@@ -544,6 +544,9 @@ model Employee {
   department Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   user       User?
   deals      Deal[]
+  /// Deals this person SOLD, as the portal's own snapshot names them — which is
+  /// not the same set as `deals`, the ones they own today. See Deal.operatorEmployeeId.
+  soldDeals  Deal[]      @relation("DealOperator")
   kpis       Kpi[]
   calls      CallRecord[]
   heads      Department[] @relation("DepartmentHead")
@@ -763,6 +766,23 @@ model Deal {
   productLine      String?
   /// UF_CRM_1747979663403 — A / B / C grade.
   customerGrade    String?
+  /// UF_CRM_1778416910 «Фамилия имя ответсвенный» — THE SELLER, as the portal's
+  /// own automation stamped them at the moment of sale, e.g. «Davlatbek Sirojov
+  /// 115». NOT the same person as `employeeId`, which is the deal's owner TODAY:
+  /// this portal reassigns deals to back office during processing, and in July
+  /// 2026 that put 556 orders on the head of Операцион and made him the sellers
+  /// board's number one. The client's own board ranks by this field.
+  operatorNameSource String?
+  /// UF_CRM_1778416806 «Организация сотрудника» — that operator's ROP team at
+  /// the TIME OF SALE, e.g. «Sevinch(ROP)». Deliberately historic: one July row
+  /// reads «Husniddin(ROP)», a department the portal no longer has.
+  operatorTeamSource String?
+  /// `operatorNameSource` resolved to one of our people at import, by the floor
+  /// number both spellings share — «Davlatbek Sirojov 115» in the portal is
+  /// «Sirojov 115 Davlatbek» here. NULL when the field was empty (July 20%,
+  /// August 10%) or the badge is ambiguous, and every reader must then fall
+  /// back to `employeeId`. See domain/employees/floorNumber.
+  operatorEmployeeId String?
   /// IS_RETURN_CUSTOMER — Bitrix24's own repeat-purchase flag.
   isReturnCustomer Boolean        @default(false)
 
@@ -781,6 +801,9 @@ model Deal {
   stage        DealStage          @relation(fields: [stageId], references: [id], onDelete: Restrict)
   pipeline     Pipeline?          @relation(fields: [pipelineId], references: [id], onDelete: SetNull)
   employee     Employee           @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  /// SetNull, not Restrict: this is a denormalised convenience, and a deleted
+  /// employee must not block the delete of a row that still has a real owner.
+  operatorEmployee Employee?       @relation("DealOperator", fields: [operatorEmployeeId], references: [id], onDelete: SetNull)
   customer     Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
   source       SalesSource?       @relation(fields: [sourceId], references: [id], onDelete: SetNull)
   items        DealItem[]
@@ -792,6 +815,9 @@ model Deal {
   // Composite indexes chosen to match the actual analytics access patterns:
   // "deals for employee X in period P" and "won deals closed in period P".
   @@index([employeeId, createdAtSource])
+  /// The sellers board and the confirmation queue both group by the resolved
+  /// operator, so it is looked up per cohort row.
+  @@index([operatorEmployeeId])
   @@index([status, closedAt])
   @@index([createdAtSource])
   @@index([stageId])

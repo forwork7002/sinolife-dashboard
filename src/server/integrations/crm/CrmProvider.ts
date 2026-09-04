@@ -192,6 +192,16 @@ export interface RawDeal extends ExternalRecord {
   readonly paymentMethodRaw?: string
   readonly productLine?: string
   readonly customerGrade?: string
+  /**
+   * The seller as the SOURCE recorded them at the time of sale, free text.
+   *
+   * Distinct from `employeeExternalId`, which is whoever owns the deal now.
+   * See `UF.OPERATOR_NAME` for the 556-order reason the two are not the same
+   * person. Absent when the source left the field empty.
+   */
+  readonly operatorNameSource?: string
+  /** That operator's team at the time of sale, e.g. «Sevinch(ROP)». */
+  readonly operatorTeamSource?: string
   readonly isReturnCustomer?: boolean
   /** When the deal was created in the SOURCE system, not when we imported it. */
   readonly createdAtSource: Date
