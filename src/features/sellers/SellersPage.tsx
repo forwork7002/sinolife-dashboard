@@ -292,7 +292,7 @@ export function SellersPage() {
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex gap-1.5">
+          <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
             {(
               [
                 ['sellers', 'Sotuvchilar'],
@@ -319,9 +319,17 @@ export function SellersPage() {
               )
             })}
 
-            {/* Their per-person tab strip, as one box. See `query`. */}
+            {/*
+              Their per-person tab strip, as one box. See `query`.
+
+              Full width on its own line below sm, 192px beside the two tabs
+              from there up. Fixed at 192px it was the widest thing on the
+              page at 360px: the row ran 61px past main, which clips rather
+              than scrolls, so on a phone the seller search was not narrow —
+              it was off the screen entirely.
+            */}
             {tab === 'sellers' && (
-              <div className="ml-1 w-48">
+              <div className="w-full sm:ml-1 sm:w-48">
                 <SearchInput
                   value={query}
                   onChange={setQuery}

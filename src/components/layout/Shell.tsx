@@ -589,7 +589,7 @@ export function Shell({
             paddingTop: 'env(safe-area-inset-top)',
           }}
         >
-          <div className="flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3 lg:px-6">
+          <div className="flex items-center gap-2 px-4 py-2.5 sm:gap-3 sm:py-3">
             {/*
               The way into the drawer, first thing on the bar and 40px square:
               a thumb's target, not a pointer's. Hidden from lg up, where the
@@ -732,6 +732,27 @@ export function Shell({
         </header>
 
         {/*
+          ONE gutter, 16px, at every width — phone, tablet and desktop alike.
+
+          It used to widen to 24px from lg up, on the reasoning that a big
+          screen can afford a bigger margin. It cannot: the rail already takes
+          240px out of the same row, so past lg the margin is not breathing
+          room, it is the last thing standing between the data and the edge it
+          is allowed to use. The client asked for it back on a 1920px display
+          — «bo'shliqni kamaytiramiz, juda ham emas» — and 16px is the "not
+          too much": the same gutter the phone has always had, which nobody
+          has ever called cramped, so the two layouts now share one number
+          instead of disagreeing about it. Measured on that display, content
+          went from 1617px to 1633px.
+
+          The bar above carries the same 16px for the same reason plus one
+          more: it did not, and its content sat 12px in on a phone and 24px in
+          on a desktop while the page under it sat at 16px both times. The
+          search box and the page title were never on the same vertical line
+          at any width. Now they are.
+
+          Vertical padding is untouched — it is not competing with anything.
+
           The name the transition animates.
 
           `viewTransitionName` on the element the browser should treat as its
@@ -743,7 +764,7 @@ export function Shell({
           <ViewTransition name="page-body">
             <main
               id="main"
-              className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4 sm:py-5 lg:px-6 lg:py-6"
+              className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4 sm:py-5 lg:py-6"
               style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
             >
               {children}
@@ -770,7 +791,7 @@ export function Shell({
           */
           <main
             id="main"
-            className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4 sm:py-5 lg:px-6 lg:py-6"
+            className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4 sm:py-5 lg:py-6"
             style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
           >
             {children}

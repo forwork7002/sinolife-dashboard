@@ -586,8 +586,8 @@ body {
  *
  * So the cap is now wide enough that every ordinary display fills edge to
  * edge, and it exists only as a guard for the ultrawide case. Measured, with
- * the rail open and main's own 24px gutters: 1920 leaves 1617px of content,
- * 2560 leaves 2257px — both under the cap, so both fill completely — while
+ * the rail open and main's own 16px gutters: 1920 leaves 1633px of content,
+ * 2560 leaves 2273px — both under the cap, so both fill completely — while
  * 3440 would give a three-card row cards 1000px wide with one 24px figure
  * alone in the middle of each. That is the only case the number is for.
  *

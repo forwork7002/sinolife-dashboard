@@ -811,22 +811,32 @@ function InsightTile({
       </p>
 
       {status === 'loading' ? (
-        // Sized to the 30px figure below, so ready never reflows loading.
-        <div className="skeleton mt-2 h-[30px] w-2/3" role="status">
+        // Sized to the figure below at each breakpoint, so ready never
+        // reflows loading.
+        <div className="skeleton mt-2 h-[26px] w-2/3 sm:h-[30px]" role="status">
           <span className="sr-only">Yuklanmoqda</span>
         </div>
       ) : status === 'error' ? (
         <p
-          className="figure mt-2 text-[30px] leading-none font-semibold"
+          className="figure mt-2 text-[26px] leading-none font-semibold sm:text-[30px]"
           style={{ color: 'var(--status-critical)' }}
           title="Maʼlumot olinmadi"
         >
           <span className="text-base font-medium">Olinmadi</span>
         </p>
       ) : (
-        // A div, not a p: the velocity tile nests its Tooltip trigger here.
+        /*
+          A div, not a p: the velocity tile nests its Tooltip trigger here.
+
+          26px on a phone, 30px from sm up — the same two steps StatTile has
+          always had, and this tile was the one member of the KPI family that
+          skipped them. Four of these sit two-across at 360px, and «47.8 mln
+          soʻm/kun» at a flat 30px ran 13px past the card into main's
+          overflow-x-hidden, so the tile did not scroll — it simply lost the
+          end of its own unit.
+        */
         <div
-          className="figure mt-2 text-[30px] leading-none font-semibold"
+          className="figure mt-2 text-[26px] leading-none font-semibold sm:text-[30px]"
           style={{ color: 'var(--ink-primary)' }}
         >
           {children}
