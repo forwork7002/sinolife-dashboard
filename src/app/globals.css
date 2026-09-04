@@ -211,6 +211,31 @@
   --radius-panel: 14px;
   --radius-panel-lg: 18px;
 
+  /**
+   * The size of a soʻm figure printed to the last digit.
+   *
+   * A compact figure is four characters wide whatever it says, so one size
+   * fits every tile. A full one is not: «40,123,456,789» is 7.48em of tabular
+   * Inter — MEASURED, not estimated — and the tile that has to hold it is
+   * 139px wide on a phone and 206px wide on a 1280 desktop, where the band
+   * turns four across behind a 240px sidebar. Those are the two binding
+   * cases; everything between them has room to spare.
+   *
+   * Measured inner widths of one tile in that band (2026-09-04, this page):
+   *
+   *   390  139     900  392    1280  206    1920  366
+   *   640  262    1024  334    1440  246
+   *
+   * so the size follows the VIEWPORT below xl, where the tile grows with it,
+   * and switches to a second, lower ramp at xl, where the tile suddenly
+   * halves. The 30px ceiling is the compact figure's own size, so the two
+   * readings never disagree about how loud a KPI is.
+   *
+   * Read in two places that must not drift — `.figure-sum` and the skeleton
+   * StatTile reflows out of — hence a token rather than a literal.
+   */
+  --figure-sum-size: clamp(14px, 3.6vw, 30px);
+
   /* --- Motion ----------------------------------------------------------- */
   /* One easing curve for the whole app. `--ease-out` is a decelerating curve:
      things arrive quickly and settle, which is what makes an interface feel
@@ -531,6 +556,69 @@ body {
   letter-spacing: -0.025em;
   line-height: 1;
   white-space: nowrap;
+}
+
+/**
+ * A figure printed to the last digit — size only; pair it with `.figure`.
+ *
+ * See --figure-sum-size for the measurements. The tighter tracking is not
+ * decoration: fourteen grouped digits at -0.025em run about a character wider
+ * than the compact reading they replace, and the tile has none to spare.
+ */
+.figure-sum {
+  font-size: var(--figure-sum-size);
+  letter-spacing: -0.03em;
+}
+
+/*
+  The band turns four across at xl and the tile halves — 412px at 1180,
+  206px at 1280 — so the ramp has to break there. A single vw slope cannot:
+  it is still climbing at exactly the width where the box collapses.
+*/
+@media (min-width: 1280px) {
+  :root {
+    --figure-sum-size: clamp(20px, 1.55vw, 28px);
+  }
+}
+
+/**
+ * THE PODIUM, PRINTED IN FULL — the leader's figure and the two beside it.
+ *
+ * `.figure-hero` is sized for «7.9 mln» and overruns here: the podium is
+ * three across from sm, and its 1.3fr / 1fr tracks measure (leader / runner,
+ * content width, 2026-09-04):
+ *
+ *   390  274 / 282   (stacked — every card is the full width)
+ *   640  186 / 121    1024  249 / 156    1440  386 / 295
+ *   768  216 / 164    1180  283 / 216    1920  575 / 441
+ *
+ * The dip at 1024 is the sidebar arriving, not a mistake. Below sm the cards
+ * stack and take a fixed size; from sm they follow the viewport, floored at
+ * the width the 640 column can actually hold — «4,081,234,567» is 6.86em
+ * plus a 36px unit, so the leader's 186px track tops out near 21px.
+ *
+ * The runner-up stays visibly smaller than the leader at every width. That
+ * ordering is the point of a podium, so it is a constraint on these two
+ * numbers, not a coincidence of them.
+ */
+.figure-sum-hero {
+  font-size: 32px;
+  letter-spacing: -0.03em;
+}
+
+.figure-sum-runner {
+  font-size: 17px;
+  letter-spacing: -0.03em;
+}
+
+@media (min-width: 640px) {
+  .figure-sum-hero {
+    font-size: clamp(20px, calc(2.4vw + 4px), 40px);
+  }
+
+  .figure-sum-runner {
+    font-size: clamp(13px, 1.6vw, 22px);
+  }
 }
 
 /**

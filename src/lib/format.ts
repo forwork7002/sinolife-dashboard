@@ -106,9 +106,30 @@ function trim(value: number): string {
   return separators(trimFormat.format(rounded))
 }
 
-/** Full so'm with thousands separators. Used in tables and tooltips. */
+/**
+ * Full soʻm, to the last digit, with no unit — the sellers board's reading.
+ *
+ * `formatCompactUzs` defers precision to a tooltip, and that trade is wrong on
+ * a screen whose numbers are checked against another screen. The floor reads
+ * FAKT 1 and FAKT 2 beside their own Bitrix24 board and their own Telegram
+ * channel, both of which print the sum out in full; «106 mln» beside
+ * «106,432,000» is not the same figure being read twice, it is a figure that
+ * cannot be reconciled without opening a tooltip on every row.
+ *
+ * No « soʻm » suffix, unlike `formatUzs`: every call site that leads with a
+ * figure sets the unit in its own muted span, at its own size, so the digits
+ * and the word are never the same weight.
+ *
+ * Rounding is the formatter's own (`maximumFractionDigits: 0`). Money arrives
+ * exact and integral; a projection does not, and half a soʻm has no reader.
+ */
+export function formatFullUzs(amount: number): string {
+  return separators(integerFormat.format(amount))
+}
+
+/** The same digits, carrying their unit. Used in tooltips and in prose. */
 export function formatUzs(amount: number): string {
-  return `${separators(integerFormat.format(amount))} soʻm`
+  return `${formatFullUzs(amount)} soʻm`
 }
 
 export function formatNumber(value: number): string {

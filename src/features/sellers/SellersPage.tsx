@@ -23,7 +23,7 @@ import {
 } from '@/lib/api'
 import {
   NO_VALUE,
-  formatCompactUzs,
+  formatFullUzs,
   formatDate,
   formatNumber,
   formatPercent,
@@ -411,7 +411,7 @@ function sellersCaption(data: SellerBoardDto): string {
   */
   if (data.totals.won.amount === 0) {
     return data.totals.ordered.amount > 0
-      ? `${base} — ${formatCompactUzs(data.totals.ordered.amount)} soʻm tasdiqlangan, hali hech biri yetkazilmagan. Reyting FAKT 2 toʻlgani sayin shakllanadi.`
+      ? `${base} — ${formatFullUzs(data.totals.ordered.amount)} soʻm tasdiqlangan, hali hech biri yetkazilmagan. Reyting FAKT 2 toʻlgani sayin shakllanadi.`
       : `${base} — bu davrda hali harakat yoʻq.`
   }
 
@@ -534,18 +534,17 @@ function PodiumHero({
                 Birinchi yutilgan buyurtma podiumni yoqadi. Hozircha olingan buyurtma puli:
               </p>
               <div className="mt-2.5">
-                <Tooltip content={<span className="tabular">{formatUzs(data.totals.ordered.amount)}</span>}>
-                  <span
-                    tabIndex={0}
-                    className="focusable figure-hero inline-block rounded-[var(--radius-panel-sm)]"
-                    style={{ color: 'var(--ink-primary)' }}
-                  >
-                    <AnimatedNumber value={data.totals.ordered.amount} format={formatCompactUzs} />
-                    <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
-                      soʻm
-                    </span>
+                {/* No tooltip and no tab stop: the figure IS the exact soʻm —
+                    see `formatFullUzs`. */}
+                <span
+                  className="figure-hero figure-sum-hero inline-block"
+                  style={{ color: 'var(--ink-primary)' }}
+                >
+                  <AnimatedNumber value={data.totals.ordered.amount} format={formatFullUzs} />
+                  <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
+                    soʻm
                   </span>
-                </Tooltip>
+                </span>
               </div>
               <p className="mt-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
                 {formatNumber(data.totals.orders)} ta buyurtma olingan — gʻolib hali aniqlanmagan
@@ -763,31 +762,38 @@ function PodiumStep({
         </div>
 
         <div className={isLeader ? 'mt-3' : 'mt-2'}>
-          <Tooltip content={<span className="tabular">{formatUzs(figure)}</span>}>
-            {isLeader ? (
-              <span
-                tabIndex={0}
-                className="focusable figure-hero inline-block rounded-[var(--radius-panel-sm)]"
-                style={{ color: 'var(--ink-primary)' }}
-              >
-                <AnimatedNumber value={figure} format={formatCompactUzs} duration={900} />
-                <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
-                  soʻm
-                </span>
+          {/*
+            THE WHOLE SUM, so the card can be read against the floor's own
+            board — and therefore no tooltip and no tab stop, which existed
+            only to reveal the digits the compact reading hid.
+
+            Both sizes live in globals.css (`.figure-sum-hero`,
+            `.figure-sum-runner`) against the podium's measured tracks: a
+            runner-up's column is 1fr beside the leader's 1.3fr, which is
+            121px wide at the sm breakpoint — thirteen digits at the old 22px
+            overran it by half a card.
+          */}
+          {isLeader ? (
+            <span
+              className="figure-hero figure-sum-hero inline-block"
+              style={{ color: 'var(--ink-primary)' }}
+            >
+              <AnimatedNumber value={figure} format={formatFullUzs} duration={900} />
+              <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
+                soʻm
               </span>
-            ) : (
-              <span
-                tabIndex={0}
-                className="focusable figure inline-block rounded text-[22px] leading-none font-semibold"
-                style={{ color: 'var(--ink-primary)' }}
-              >
-                {formatCompactUzs(figure)}
-                <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
-                  soʻm
-                </span>
+            </span>
+          ) : (
+            <span
+              className="figure figure-sum-runner inline-block leading-none font-semibold"
+              style={{ color: 'var(--ink-primary)' }}
+            >
+              {formatFullUzs(figure)}
+              <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
+                soʻm
               </span>
-            )}
-          </Tooltip>
+            </span>
+          )}
           {/* Which of the two put them here. Silent on the delivered reading,
               because that is the one the page's every other label assumes. */}
           {!onDelivered && (
@@ -815,11 +821,11 @@ function PodiumStep({
             <div className="mt-2">
               {row.bonus.earned.amount > 0 ? (
                 <StatusChip tone="good">
-                  {formatCompactUzs(row.bonus.earned.amount)} soʻm bonus
+                  {formatFullUzs(row.bonus.earned.amount)} soʻm bonus
                 </StatusChip>
               ) : row.bonus.toNext !== null ? (
                 <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                  Bonusgacha +{formatCompactUzs(row.bonus.toNext.amount)} kerak
+                  Bonusgacha +{formatFullUzs(row.bonus.toNext.amount)} kerak
                 </span>
               ) : null}
             </div>
@@ -843,7 +849,7 @@ function PodiumStep({
               >
                 Marragacha{' '}
                 <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
-                  +{formatCompactUzs(gap)}
+                  +{formatFullUzs(gap)}
                 </span>{' '}
                 soʻm
               </p>
@@ -911,15 +917,9 @@ function ForecastStrip({ data }: { data: SellerBoardDto }) {
         {forecast.projected !== null ? (
           <>
             Shu surʼatda davr oxirida ≈{' '}
-            <Tooltip content={<span className="tabular">{formatUzs(forecast.projected.amount)}</span>}>
-              <strong
-                tabIndex={0}
-                className="tabular focusable rounded font-medium"
-                style={{ color: 'var(--ink-primary)' }}
-              >
-                {formatCompactUzs(forecast.projected.amount)}
-              </strong>
-            </Tooltip>{' '}
+            <strong className="tabular font-medium" style={{ color: 'var(--ink-primary)' }}>
+              {formatFullUzs(forecast.projected.amount)}
+            </strong>{' '}
             soʻm yutiladi
           </>
         ) : forecast.elapsedPercent >= 100 ? (
@@ -971,6 +971,17 @@ function TotalsBand({
         label="FAKT 1 · tasdiqlangan"
         value={totals ? totals.ordered.amount : null}
         unit="money"
+        /*
+          THE SUM, TO THE LAST DIGIT, everywhere on this board.
+
+          The floor does not scan these two tiles, it reconciles them: against
+          the Тасдиқлаш kanban, against the bot's own Telegram totals, against
+          the client's published page. «106 mln» cannot be compared with
+          «106 432 000» without opening a tooltip, and this is the screen where
+          that comparison is the whole point. `money="full"` carries the
+          format, the size and the dropped tooltip together — see StatTile.
+        */
+        money="full"
         status={status}
         /*
           BOTH COUNTS, because the two screens print both and neither used to
@@ -1005,6 +1016,7 @@ function TotalsBand({
         label="FAKT 2 · yetkazilgan"
         value={totals ? totals.won.amount : null}
         unit="money"
+        money="full"
         status={status}
         hint={
           totals ? `${formatNumber(totals.wonOrders)} ta yakunlangan buyurtma` : undefined
@@ -1038,6 +1050,7 @@ function TotalsBand({
         label="Bonus jamgʻarmasi"
         value={totals ? totals.bonusPayable.amount : null}
         unit="money"
+        money="full"
         status={status}
         hint={
           totals
@@ -1347,7 +1360,7 @@ function ChaseCell({
         className={`tabular focusable rounded text-[11px] whitespace-nowrap ${near ? 'font-medium' : ''}`}
         style={{ color: near ? 'var(--ink-primary)' : 'var(--ink-secondary)' }}
       >
-        +{formatCompactUzs(gap)}
+        +{formatFullUzs(gap)}
       </span>
     </Tooltip>
   )
@@ -1489,11 +1502,7 @@ function SellerRows({
           }`}
           style={{ color: 'var(--ink-primary)' }}
         >
-          <Tooltip content={<span className="tabular">{formatUzs(row.won.amount)}</span>}>
-            <span tabIndex={0} className="focusable rounded">
-              {formatCompactUzs(row.won.amount)}
-            </span>
-          </Tooltip>
+          {formatFullUzs(row.won.amount)}
           {row.sharePercent !== null && (
             <span className="ml-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
               {formatPercent(row.sharePercent, 1)}
@@ -1502,11 +1511,7 @@ function SellerRows({
         </td>
         {/* FAKT 1 — Тасдиқланди. */}
         <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
-          <Tooltip content={<span className="tabular">{formatUzs(row.ordered.amount)}</span>}>
-            <span tabIndex={0} className="focusable rounded">
-              {formatCompactUzs(row.ordered.amount)}
-            </span>
-          </Tooltip>
+          {formatFullUzs(row.ordered.amount)}
         </td>
         <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-primary)' }}>
           {formatNumber(row.orders)}
@@ -1602,7 +1607,7 @@ function ForecastCell({
         className="tabular focusable rounded text-xs whitespace-nowrap"
         style={{ color: 'var(--ink-secondary)' }}
       >
-        ≈{formatCompactUzs(projected)}
+        ≈{formatFullUzs(projected)}
       </span>
     </Tooltip>
   )
@@ -1728,7 +1733,7 @@ function BonusCell({ bonus }: { bonus: SellerBoardRowDto['bonus'] }) {
   }
   if (bonus.earned.amount > 0) {
     return (
-      <StatusChip tone="good">{formatCompactUzs(bonus.earned.amount)}</StatusChip>
+      <StatusChip tone="good">{formatFullUzs(bonus.earned.amount)}</StatusChip>
     )
   }
   if (bonus.toNext === null) {
@@ -1744,8 +1749,8 @@ function BonusCell({ bonus }: { bonus: SellerBoardRowDto['bonus'] }) {
       className={`text-[11px] whitespace-nowrap ${near ? 'font-medium' : ''}`}
       style={{ color: near ? 'var(--ink-secondary)' : 'var(--ink-muted)' }}
     >
-      +{formatCompactUzs(bonus.toNext.amount)}
-      {bonus.nextBonus !== null && <> → {formatCompactUzs(bonus.nextBonus.amount)}</>}
+      +{formatFullUzs(bonus.toNext.amount)}
+      {bonus.nextBonus !== null && <> → {formatFullUzs(bonus.nextBonus.amount)}</>}
     </span>
   )
 }
@@ -1803,8 +1808,8 @@ function SellerDetail({
             carrying. It has its own clause now, and the queue refusals keep
             theirs.
           */}
-          FAKT 2 {formatCompactUzs(row.won.amount)} · yoʻlda{' '}
-          {formatCompactUzs(row.open.amount)} ({formatNumber(row.openOrders)} ta)
+          FAKT 2 {formatFullUzs(row.won.amount)} · yoʻlda{' '}
+          {formatFullUzs(row.open.amount)} ({formatNumber(row.openOrders)} ta)
           {row.lostAfterConfirmOrders > 0 && (
             <> · tasdiqlangach bekor {formatNumber(row.lostAfterConfirmOrders)} ta</>
           )}
@@ -1839,6 +1844,7 @@ function SellerDetail({
           label="FAKT 2 · yetkazilgan"
           value={row.won.amount}
           unit="money"
+          money="full"
           status="ready"
           hint={`${formatNumber(row.wonOrders)} ta buyurtma`}
         />
@@ -1846,12 +1852,14 @@ function SellerDetail({
           label="FAKT 1 · tasdiqlangan"
           value={row.ordered.amount}
           unit="money"
+          money="full"
           status="ready"
         />
         <StatTile
           label="Plan"
           value={row.plan.amount?.amount ?? null}
           unit="money"
+          money="full"
           status="ready"
           hint={row.plan.amount === null ? 'Reja belgilanmagan' : planWindowHint}
         />
@@ -1887,6 +1895,7 @@ function SellerDetail({
           label="FOT (ish haqi)"
           value={row.fot?.amount ?? null}
           unit="money"
+          money="full"
           status="ready"
           hint={row.fot === null ? 'Bazada maosh maʼlumoti yoʻq' : undefined}
         />
@@ -1910,7 +1919,7 @@ function SellerDetail({
                     <>teng, bitta yutuq hal qiladi</>
                   ) : (
                     <strong className="tabular font-medium" style={{ color: 'var(--ink-primary)' }}>
-                      +{formatCompactUzs(ahead.won.amount - row.won.amount)}
+                      +{formatFullUzs(ahead.won.amount - row.won.amount)}
                     </strong>
                   )}
                 </span>
@@ -1932,7 +1941,7 @@ function SellerDetail({
                 <>
                   {' '}— 2-oʻrin{' '}
                   <strong className="tabular font-medium" style={{ color: 'var(--ink-primary)' }}>
-                    {formatCompactUzs(row.won.amount - chaser.won.amount)}
+                    {formatFullUzs(row.won.amount - chaser.won.amount)}
                   </strong>{' '}
                   orqada
                 </>
@@ -1945,10 +1954,10 @@ function SellerDetail({
               {/* The meter prints the percentage itself — a second copy of the
                   same figure at a different rounding would read as two facts. */}
               <span className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-                Keyingi daraja {formatCompactUzs(row.bonus.nextFloor.amount)}: yana{' '}
-                {row.bonus.toNext ? `+${formatCompactUzs(row.bonus.toNext.amount)}` : NO_VALUE} kerak
+                Keyingi daraja {formatFullUzs(row.bonus.nextFloor.amount)}: yana{' '}
+                {row.bonus.toNext ? `+${formatFullUzs(row.bonus.toNext.amount)}` : NO_VALUE} kerak
                 {row.bonus.nextBonus && (
-                  <> → {formatCompactUzs(row.bonus.nextBonus.amount)} bonus</>
+                  <> → {formatFullUzs(row.bonus.nextBonus.amount)} bonus</>
                 )}
               </span>
               <div className="mt-1">
@@ -1959,7 +1968,7 @@ function SellerDetail({
           {/* Past the top rung: the ladder is climbed, and that is a state. */}
           {row.bonus.nextFloor === null && row.bonus.earned.amount > 0 && (
             <StatusChip tone="good">
-              Eng yuqori daraja — {formatCompactUzs(row.bonus.earned.amount)} soʻm bonus
+              Eng yuqori daraja — {formatFullUzs(row.bonus.earned.amount)} soʻm bonus
             </StatusChip>
           )}
         </div>
@@ -2115,7 +2124,7 @@ function TeamTable({
                     {formatNumber(row.sellers)}
                   </td>
                   <td className="tabular px-2 py-2 text-right text-xs font-medium" style={{ color: 'var(--ink-primary)' }}>
-                    {formatCompactUzs(row.won.amount)}
+                    {formatFullUzs(row.won.amount)}
                     {row.sharePercent !== null && (
                       <span className="ml-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
                         {formatPercent(row.sharePercent, 1)}
@@ -2123,7 +2132,7 @@ function TeamTable({
                     )}
                   </td>
                   <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
-                    {formatCompactUzs(row.ordered.amount)}
+                    {formatFullUzs(row.ordered.amount)}
                   </td>
                   <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-primary)' }}>
                     {formatNumber(row.orders)}
@@ -2236,7 +2245,7 @@ function BonusLadder({
               <div className="flex flex-col gap-1 px-4 pt-2.5 pb-3.5">
                 <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
                   <span aria-hidden="true" className="mr-1.5">{tier.glyph}</span>
-                  {formatCompactUzs(tier.floor)} soʻmdan
+                  {formatFullUzs(tier.floor)} soʻmdan
                 </p>
                 {/*
                   Plain text, NOT AnimatedNumber, and the reason is both
@@ -2244,12 +2253,14 @@ function BonusLadder({
                   not arrive from a query, so there is nothing to count up to,
                   and animating it would imply a figure that moves. It also
                   broke hydration: this is the one number on the page the server
-                  renders, and `formatCompactUzs` resolves uz-UZ differently in
-                  Node than in the browser ("1,5 mln" against "1.5 mln"), so the
-                  SSR text and the client text disagreed on first paint.
+                  renders, and a formatter that resolved uz-UZ per engine gave
+                  Node and the browser different separators ("1,5 mln" against
+                  "1.5 mln"), so the SSR text and the client text disagreed on
+                  first paint. `format.ts` states the separators now, and the
+                  full reading goes through the same two constants.
                 */}
                 <p className="figure text-[22px] leading-none font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                  {formatCompactUzs(tier.bonus)}
+                  {formatFullUzs(tier.bonus)}
                   <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
                     soʻm bonus
                   </span>
@@ -2266,7 +2277,7 @@ function BonusLadder({
                   <p className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
                     Eng yaqini: {contender.fullName} —{' '}
                     <span className="tabular font-medium" style={{ color: 'var(--ink-primary)' }}>
-                      +{formatCompactUzs(tier.floor - contender.won.amount)}
+                      +{formatFullUzs(tier.floor - contender.won.amount)}
                     </span>{' '}
                     kerak
                   </p>

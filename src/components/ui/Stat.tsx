@@ -5,7 +5,14 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { DotGlyph, RingGlyph, SquareGlyph, TriangleGlyph } from '@/components/ui/Icons'
 import { Tooltip } from '@/components/ui/Tooltip'
-import { NO_VALUE, formatCompactUzs, formatNumber, formatPercent, formatUzs } from '@/lib/format'
+import {
+  NO_VALUE,
+  formatCompactUzs,
+  formatFullUzs,
+  formatNumber,
+  formatPercent,
+  formatUzs,
+} from '@/lib/format'
 
 /**
  * The headline tile.
@@ -27,6 +34,7 @@ export function StatTile({
   context,
   tone = 'neutral',
   accent,
+  money = 'compact',
   status = 'ready',
 }: {
   label: string
@@ -35,6 +43,19 @@ export function StatTile({
   hint?: string
   context?: ReactNode
   tone?: 'neutral' | 'good' | 'warning' | 'critical'
+  /**
+   * How much of a soʻm figure the tile prints.
+   *
+   * Compact everywhere by default — a KPI band is read at a glance and
+   * «340 mln» is read faster than ten digits. `full` is for the screens whose
+   * numbers are reconciled against another screen rather than scanned: the
+   * sellers board's FAKT 1 / FAKT 2 are compared against the client's own
+   * Bitrix24 board and their Telegram channel, both of which print the sum
+   * out in full. It changes three things together — the format, the size
+   * (the digits have to fit a tile that also holds «7,900,000»), and the
+   * tooltip, which has nothing left to reveal once the figure is complete.
+   */
+  money?: 'compact' | 'full'
   /** Optional leading colour chip, for tiles that belong to a named series. */
   accent?: string
   /**
@@ -81,7 +102,13 @@ export function StatTile({
       {status === 'loading' ? (
         // role="status", because aria-label on a bare div names nothing.
         // Sized to the figure below at each breakpoint, so ready never reflows loading.
-        <div className="skeleton mt-2 h-[26px] w-2/3 sm:h-[30px]" role="status">
+        <div
+          className="skeleton mt-2 h-[26px] w-2/3 sm:h-[30px]"
+          /* The full reading is smaller on a narrow tile, so the placeholder
+             it reflows into has to shrink with it — same token, one source. */
+          style={unit === 'money' && money === 'full' ? { height: 'var(--figure-sum-size)' } : undefined}
+          role="status"
+        >
           <span className="sr-only">Yuklanmoqda</span>
         </div>
       ) : status === 'error' ? (
@@ -94,12 +121,17 @@ export function StatTile({
         >
           <span className="text-base font-medium">Olinmadi</span>
         </p>
-      ) : unit === 'money' && value !== null ? (
+      ) : unit === 'money' && value !== null && money === 'compact' ? (
         /*
           The exact soʻm amount rides the Tooltip primitive, not a native
           `title`: hover, focus AND touch. The figure is a tab stop — a
           handful per screen, and the full number is otherwise unreachable
           without a mouse.
+
+          COMPACT ONLY. Under `money="full"` the tooltip would repeat the text
+          directly under the cursor, and the tab stop would cost a keyboard
+          reader one stop per tile to reveal nothing — so the full reading
+          falls through to the plain figure below.
         */
         <div className="mt-2">
           <Tooltip content={<span className="tabular">{formatUzs(value)}</span>}>
@@ -114,10 +146,12 @@ export function StatTile({
         </div>
       ) : (
         <p
-          className="figure mt-2 text-[26px] sm:text-[30px] leading-none font-semibold"
+          className={`figure mt-2 leading-none font-semibold ${
+            unit === 'money' && money === 'full' ? 'figure-sum' : 'text-[26px] sm:text-[30px]'
+          }`}
           style={{ color: toneColor }}
         >
-          <StatValue value={value} unit={unit} />
+          <StatValue value={value} unit={unit} money={money} />
         </p>
       )}
 
@@ -143,9 +177,11 @@ export function StatTile({
 export function StatValue({
   value,
   unit,
+  money = 'compact',
 }: {
   value: number | null
   unit: 'money' | 'count' | 'percent' | 'hours' | 'days' | 'raw'
+  money?: 'compact' | 'full'
 }) {
   if (value === null) return <>{NO_VALUE}</>
 
@@ -156,7 +192,10 @@ export function StatValue({
     case 'money':
       return (
         <>
-          <AnimatedNumber value={value} format={formatCompactUzs} />
+          <AnimatedNumber
+            value={value}
+            format={money === 'full' ? formatFullUzs : formatCompactUzs}
+          />
           <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
             soʻm
           </span>

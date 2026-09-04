@@ -15,7 +15,7 @@ import {
 import { ChartTooltipPanel } from '@/components/charts/chartTooltip'
 import { UnavailableState } from '@/components/states/States'
 import type { SellerDayDto } from '@/lib/api'
-import { formatCompactUzs, formatDateShort, formatNumber, formatUzs } from '@/lib/format'
+import { formatDateShort, formatFullUzs, formatNumber, formatUzs } from '@/lib/format'
 import { useReducedMotion } from '@/lib/useReducedMotion'
 
 /**
@@ -37,13 +37,22 @@ import { useReducedMotion } from '@/lib/useReducedMotion'
  * THE X AXIS IS SHARED FOR REAL, not by eye: both panels take the same array,
  * the same margins and the same FIXED y-axis width, so day N sits at the same
  * pixel in both. `width="auto"` — what every other chart in the app uses — is
- * exactly wrong here: it would measure «213 mln» in one panel and «41» in the
- * other and offset the plots by thirty pixels. Only the lower panel prints
+ * exactly wrong here: it would measure «213,000,000» in one panel and «41» in
+ * the other and offset the plots by sixty pixels. Only the lower panel prints
  * tick labels; a repeated date row between two panels reads as two charts.
  */
 
-/** The plot geometry both panels must agree on, or the axis is not shared. */
-const AXIS_WIDTH = 62
+/**
+ * The plot geometry both panels must agree on, or the axis is not shared.
+ *
+ * 84, not 62: this page prints soʻm to the last digit everywhere else
+ * (`formatFullUzs`), and an axis still reading «60 mln» directly under a tile
+ * reading «62,015,744» is the mismatch the full reading exists to remove.
+ * «200,000,000» is 62px at 11px tabular — exactly the old width, with nothing
+ * left for the gap — and a day can carry a billion. The lower panel's counts
+ * do not need the room and take it anyway: a shared axis is shared.
+ */
+const AXIS_WIDTH = 84
 const MARGIN = { top: 8, right: 12, left: 0, bottom: 0 } as const
 
 interface Point {
@@ -88,7 +97,7 @@ export function SellerDaysChart({ days }: { days: readonly SellerDayDto[] }) {
               axisLine={false}
               width={AXIS_WIDTH}
               tick={{ fill: 'var(--ink-muted)', fontSize: 11 }}
-              tickFormatter={(value: number) => formatCompactUzs(value)}
+              tickFormatter={(value: number) => formatFullUzs(value)}
             />
             <Tooltip
               cursor={{ fill: 'color-mix(in oklab, var(--ink-primary) 6%, transparent)' }}
