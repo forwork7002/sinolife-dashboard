@@ -2189,6 +2189,51 @@ export class InsightsRepository {
   }
 
   /**
+   * The per-day series, isolated for the same reason `ratingSql` is: it has to
+   * be pinned against the board's own predicates without a database.
+   *
+   * IT IS THE SAME TWO FACTS, SPREAD OVER DAYS — so it has to be measured the
+   * same way, and it was not. The chart under an expanded row graded FAKT 2 on
+   * `d."status" = 'WON'` while the row above it graded on the deal's CURRENT
+   * stage carrying the DELIVERED logistics role, and it named the operator
+   * with a bare `d."employeeId"` while the row was minted by
+   * `COALESCE(d."operatorEmployeeId", d."employeeId")`. Two definitions of one
+   * column and two definitions of one person, on one screen.
+   *
+   * Neither divergence is theoretical. `status = 'WON'` admits «База · Успешно»
+   * (C10:WON) and the «Регистрация · Сделка успешна» stamp — nine stages across
+   * nine pipelines carry WON and only three mean a courier arrived — and it
+   * keeps an order that was delivered and then bounced back out. The operator
+   * column drifts because this portal moves deals to back office while they
+   * are processed. Measured on production 2026-09-04 over «Oʻtgan oy», the two
+   * agreed for 18 of the top 19 sellers and disagreed for one — Sirojov 115
+   * Davlatbek, 1 000 000 soʻm of FAKT 1 the chart could not see, because the
+   * order sat on somebody else's row. On the local fixtures, where deals are
+   * OPEN inside a delivered stage, the whole FAKT 2 series read flat zero.
+   *
+   * A chart that quietly answers a different question than the row it hangs
+   * under is worse than no chart: nobody reconciles what they cannot see.
+   */
+  private static ratingDaysSql(): string {
+    return `
+       SELECT
+         (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS date,
+         count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS orders,
+         sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::text AS confirmed,
+         sum(d."amountMinor") FILTER (WHERE ds."logisticsRole" = 'DELIVERED')::text AS delivered
+       FROM classified c
+       JOIN "deal" d ON d."id" = c.deal_id
+       LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
+       WHERE COALESCE(d."operatorEmployeeId", d."employeeId") = $3
+       GROUP BY 1
+       -- The same gate as the board: a day whose only money was delivered
+       -- without a confirmation still belongs to FAKT 2's series.
+       HAVING count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}) > 0
+           OR count(*) FILTER (WHERE ds."logisticsRole" = 'DELIVERED') > 0
+       ORDER BY 1`
+  }
+
+  /**
    * One operator's daily arrivals into the confirmation queue — the queue
    * basis's counterpart to `SellerBoardRepository.sellerDays`.
    *
@@ -2202,21 +2247,7 @@ export class InsightsRepository {
     const rows = await this.prisma.$queryRawUnsafe<
       { date: string; confirmed: MoneyText; delivered: MoneyText; orders: bigint }[]
     >(
-      `${InsightsRepository.queueSql('window')}
-       SELECT
-         (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS date,
-         count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS orders,
-         sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::text AS confirmed,
-         sum(d."amountMinor") FILTER (WHERE d."status" = 'WON')::text AS delivered
-       FROM classified c
-       JOIN "deal" d ON d."id" = c.deal_id
-       WHERE d."employeeId" = $3
-       GROUP BY 1
-       -- The same gate as the board: a day whose only money was delivered
-       -- without a confirmation still belongs to FAKT 2's series.
-       HAVING count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}) > 0
-           OR count(*) FILTER (WHERE d."status" = 'WON') > 0
-       ORDER BY 1`,
+      `${InsightsRepository.queueSql('window')}${InsightsRepository.ratingDaysSql()}`,
       period.start,
       period.end,
       employeeId,
