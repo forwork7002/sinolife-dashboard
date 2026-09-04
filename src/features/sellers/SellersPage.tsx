@@ -598,42 +598,36 @@ const MEDAL_TOKENS = [
   'var(--medal-bronze)',
 ] as const
 
-/** «Aziza Karimova» → «AK» — the first letters of the first two words. */
-export function initials(fullName: string): string {
-  /*
-    THE FLOOR BADGE IS NOT A NAME, so it may not become an initial.
-
-    Every seller here is badged with a number and it sits wherever the
-    spelling puts it — «Sirojov 115 Davlatbek», «118 Aziza Vafoqulova». Taking
-    the first character of the first two whitespace tokens therefore produced
-    «S1» and «1A» for 227 of 289 production names, on the podium cards and on
-    the ranked rows where the ring is meant to make a person recognisable.
-
-    Split on anything that is not a letter — «130-Salomat Shoimova» is a real
-    row — and keep only tokens that start with one.
-  */
-  const words = fullName
-    .split(/[^\p{L}]+/u)
-    .filter((word) => word.length > 0)
-  const letters = (words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')
-  return letters ? letters.toUpperCase() : '•'
-}
-
 /**
- * The face of a ceremony card. The CRM carries no portraits, so two initials
- * in the seat's metal ring do the "person, not row" work — and the champion
- * wears the crown, because the floor should recognise its leader before it
- * reads a name. All of it decorative: the name itself is the button beside it.
+ * The face of a ceremony card: the seat's number in its own metal ring, and
+ * a crown on the champion — the floor should see WHICH PLACE it is looking at
+ * before it reads a name, and the name is written in full immediately below.
+ * All of it decorative; see the note inside for what carries the rank.
  */
 function PodiumAvatar({
-  name,
+  place,
   size,
   crowned = false,
 }: {
-  name: string
+  place: number
   size: number
   crowned?: boolean
 }) {
+  /*
+    THE RING HOLDS THE PLACE, NOT THE PERSON.
+
+    It used to hold two initials, and the client's note on 2026-09-04 is the
+    right reading of it: the name is written in full immediately below, so the
+    letters said nothing the card had not already said, and on this portal
+    they were often wrong anyway — the floor badge is a number, so
+    «Sirojov 115 Davlatbek» came out «S1». The one fact the seat has that the
+    name does not is WHICH SEAT IT IS, and that is now what it shows, set in
+    the seat's own metal.
+
+    Still decorative: the plaque above spells «1-oʻrin» for a screen reader and
+    the pedestal below repeats the numeral, so nothing here is the only carrier
+    of the rank.
+  */
   return (
     <span className="relative inline-flex" aria-hidden="true">
       {crowned && (
@@ -651,17 +645,18 @@ function PodiumAvatar({
       )}
       <span className="medal-ring">
         <span
-          className="flex items-center justify-center rounded-full font-semibold"
+          className="tabular flex items-center justify-center rounded-full font-extrabold"
           style={{
             width: size,
             height: size,
             background: 'var(--surface-raised)',
-            color: 'var(--ink-primary)',
-            fontSize: Math.round(size * 0.32),
-            letterSpacing: '0.03em',
+            color: 'var(--metal)',
+            fontSize: Math.round(size * 0.52),
+            letterSpacing: '-0.02em',
+            lineHeight: 1,
           }}
         >
-          {initials(name)}
+          {place}
         </span>
       </span>
     </span>
@@ -749,7 +744,7 @@ function PodiumStep({
         </p>
 
         <div className={isLeader ? 'mt-5' : 'mt-3'}>
-          <PodiumAvatar name={row.fullName} size={seatSpec.avatar} crowned={isLeader} />
+          <PodiumAvatar place={place} size={seatSpec.avatar} crowned={isLeader} />
         </div>
 
         <div className="mt-2.5 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
@@ -1415,26 +1410,13 @@ function SellerRows({
         <td className={podium ? 'px-2 py-3' : 'px-2 py-2'}>
           {/*
             The name is the disclosure trigger — one target, not a name plus a
-            separate chevron, so the row has a single obvious action. On a
-            ranked row it wears the same metal-ringed initials the podium card
-            does, so the person is recognisable in both places at a glance.
+            separate chevron, so the row has a single obvious action.
           */}
+          {/* No ring here. The # column beside it already carries the medal
+              and the ordinal in the row's metal; a second mark on the same
+              row repeats the place instead of adding anything, and initials
+              would repeat the name it sits next to. */}
           <span className="flex items-center gap-2">
-            {podium && (
-              <span className="medal-ring shrink-0" aria-hidden="true">
-                <span
-                  className="flex items-center justify-center rounded-full text-[10px] font-semibold"
-                  style={{
-                    width: 22,
-                    height: 22,
-                    background: 'var(--surface-raised)',
-                    color: 'var(--ink-primary)',
-                  }}
-                >
-                  {initials(row.fullName)}
-                </span>
-              </span>
-            )}
             <button
               type="button"
               onClick={onToggle}
