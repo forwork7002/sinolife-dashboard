@@ -499,9 +499,19 @@ function ReasonList({
             phone actually has, so the row ran off the card and took the
             money column with it.
           */}
-          <Tooltip content={<span className="block max-w-72">{reason.reason}</span>}>
+          <Tooltip
+            content={<span className="block max-w-72">{reason.reason}</span>}
+            /*
+              The width belongs on the TOOLTIP, not on the span inside it.
+              Tooltip renders its own `inline-flex` wrapper, so that wrapper is
+              the flex item this row lays out — sizing the child instead let
+              every wrapper shrink to its own label and the count and money
+              columns came out at a different x on every row.
+            */
+            className="min-w-0 flex-1 sm:w-56 sm:flex-none"
+          >
             <span
-              className="min-w-0 flex-1 truncate text-xs sm:w-56 sm:flex-none"
+              className="min-w-0 flex-1 truncate text-xs"
               style={{ color: 'var(--ink-secondary)' }}
             >
               {reasonLabel(reason.reason)}
