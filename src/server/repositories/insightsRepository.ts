@@ -1367,10 +1367,21 @@ export class InsightsRepository {
           both bases. Every ROP department on this portal writes «(ROP)» in
           capitals today, so this is a divergence waiting on a rename rather
           than a wrong number on screen; the two rules still have to agree.
+
+          THE BACKSLASHES ARE DOUBLED BECAUSE THIS IS A TEMPLATE LITERAL.
+          A lone backslash before a parenthesis is not a JavaScript escape, so
+          it collapses and Postgres receives a bare capture group round the
+          three letters ROP — which matches the letters and leaves the
+          parentheses exactly where they were, printing «Sevinch()» on every
+          ROP. This very comment must therefore avoid both a backtick and a
+          lone backslash, or it terminates the literal it documents. Pinned in
+          confirmationQueueSql.test.ts by an assertion on the BUILT string,
+          since every other check in that file reads the source and would have
+          passed either way.
         */
         CASE
           WHEN dep."name" ILIKE '%(ROP)%'
-            THEN NULLIF(btrim(regexp_replace(dep."name", '\(ROP\)', '', 'gi')), '')
+            THEN NULLIF(btrim(regexp_replace(dep."name", '\\(ROP\\)', '', 'gi')), '')
           ELSE NULL
         END AS rop,
         /*

@@ -77,6 +77,36 @@ describe('confirmation queue SQL', () => {
     }
   })
 
+  /**
+   * THE ROP STRIP IS A REGEX INSIDE A TEMPLATE LITERAL, WHICH EATS ONE LAYER.
+   *
+   * The strip moved from `replace()` to `regexp_replace(…, 'gi')` so that a
+   * department written «Charos(rop)» is handled like the ILIKE guard above it
+   * already handles it. But `\(` is not a JavaScript escape, so a single
+   * backslash collapsed to a bare `(` and Postgres received '(ROP)' — a
+   * capture group matching the three letters, which leaves the parentheses
+   * exactly where they were. Every РОП on the Тасдиклаш board, in the ROP
+   * filter dropdown, in the Статистика panel and in the sellers board's ROP
+   * column would have read «Sevinch()». Measured against Postgres:
+   *
+   *     regexp_replace('Sevinch(ROP)', '(ROP)',   '', 'gi')  ->  Sevinch()
+   *     regexp_replace('Sevinch(ROP)', '\(ROP\)', '', 'gi')  ->  Sevinch
+   *
+   * ASSERTED ON THE BUILT STRING, NOT ON THE SOURCE. Every other check in this
+   * file reads SQL text that would have looked correct either way — the fault
+   * was precisely the difference between what the source says and what the
+   * template literal evaluates to, so this is the one assertion that has to be
+   * made on the value.
+   */
+  it('escapes the parentheses the ROP strip is supposed to remove', () => {
+    for (const sql of [WINDOW, BACKLOG]) {
+      // The evaluated string must carry a backslash before each paren.
+      expect(sql).toContain("regexp_replace(dep.\"name\", '\\(ROP\\)', '', 'gi')")
+      // And must not carry the unescaped form, which is a capture group.
+      expect(sql).not.toContain("regexp_replace(dep.\"name\", '(ROP)', '', 'gi')")
+    }
+  })
+
   it('balances its parentheses in both modes', () => {
     for (const sql of [WINDOW, BACKLOG]) {
       expect((sql.match(/\(/g) ?? []).length).toBe((sql.match(/\)/g) ?? []).length)
