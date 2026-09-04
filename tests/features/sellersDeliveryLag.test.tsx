@@ -46,7 +46,7 @@ window.matchMedia = ((query: string) => ({
   dispatchEvent: () => false,
 })) as unknown as typeof window.matchMedia
 
-const { TotalsBand } = await import('@/features/sellers/SellersPage')
+const { TotalsBand, PodiumHero } = await import('@/features/sellers/SellersPage')
 
 function money(amount: number) {
   return { amountMinor: String(Math.round(amount * 100)), currency: 'UZS', amount }
@@ -74,8 +74,35 @@ function board(over: {
       wonDelta: { kind: 'unchanged' },
       bonusPayable: money(0),
       sellersInBonus: 0,
+      plan: { amount: null, percent: null, basis: null },
     },
+    // `PodiumHero` closes with the forecast strip; only these three are read.
+    forecast: { elapsedPercent: 77.8, projected: null },
   } as unknown as SellerBoardDto
+}
+
+/** Only the fields the three podium cards read. */
+function seller(fullName: string, won: number, ordered: number) {
+  return {
+    employeeId: fullName,
+    fullName,
+    rop: null,
+    orders: 3,
+    wonOrders: won > 0 ? 2 : 0,
+    ordered: money(ordered),
+    won: money(won),
+    sharePercent: null,
+    conversionPercent: null,
+    bonus: { earned: money(0), toNext: null, toNextPercent: null, eligible: false },
+  }
+}
+
+/** A board with a podium on it — `PodiumHero` reads `rows`, `TotalsBand` does not. */
+function withRows(
+  base: SellerBoardDto,
+  rows: ReturnType<typeof seller>[],
+): SellerBoardDto {
+  return { ...base, rows } as unknown as SellerBoardDto
 }
 
 /* «Bugun» on production, 2026-09-04: everything confirmed, nothing landed. */
@@ -134,5 +161,75 @@ describe('FAKT 2 once the couriers have arrived', () => {
     expect(screen.getByText('73 ta yakunlangan buyurtma')).toBeDefined()
     expect(screen.getByText(/oʻzgarishsiz/)).toBeDefined()
     expect(screen.queryByText(/yoʻlda/)).toBeNull()
+  })
+})
+
+/**
+ * THE PODIUM CHANGES ITS UNIT, SO IT HAS TO CHANGE ITS LABEL WITH IT.
+ *
+ * Places are decided by FAKT 2 and fall back to FAKT 1 when nobody has any,
+ * and the banner prints whichever figure earned the place. Production
+ * 2026-09-04: «Bugun» had no FAKT 2 at all and printed 12 900 000 of confirmed
+ * money; «Shu oy», four days wide, had 32 000 000 delivered and printed
+ * 3 300 000. Same slot, same type, two different quantities — and the month
+ * read as though it had sold less than the day inside it. Only the fallback
+ * was labelled, so nothing on screen said the unit had changed. This is the
+ * question the screen was actually asked.
+ */
+const PODIUM_PROPS = { status: 'ready' as const, onRetry: () => {}, onOpenSeller: () => {} }
+
+/* «Shu oy» on 2026-09-04: 22 of 263 orders delivered, so 8% decides the rank. */
+const THIN = withRows(board({ ordered: 427_170_000, orders: 263, won: 32_000_000, wonOrders: 22, open: 395_170_000 }), [
+  seller('Sotuvchi 156', 3_300_000, 4_300_000),
+  seller('164 Sotuvchi', 3_200_000, 12_500_000),
+  seller('Axtamova 177 Sabina', 3_100_000, 7_800_000),
+])
+
+/* «Bugun»: nothing delivered, so the places fall back to confirmed money. */
+const FALLBACK = withRows(YOUNG, [
+  seller('Saparboyeva 110 Farida', 0, 12_900_000),
+  seller('Ashrafova 172 Marjona', 0, 9_000_000),
+])
+
+/* «Oʻtgan oy»: 73 of 99 delivered — the ranking rests on the majority. */
+const RIPE = withRows(MATURE, [
+  seller('154 Marjona Xayrullayeva', 126_950_000, 154_350_000),
+  seller('Saparboyeva 110 Farida', 108_000_000, 144_500_000),
+])
+
+describe('what the podium says it is ranking on', () => {
+  it('names FAKT 2 when the places were decided by deliveries', () => {
+    render(<PodiumHero data={THIN} {...PODIUM_PROPS} />)
+
+    expect(screen.getAllByText('FAKT 2 · yetkazilgan').length).toBe(3)
+    expect(screen.queryByText('FAKT 1 · tasdiqlangan')).toBeNull()
+  })
+
+  it('names FAKT 1 when nobody has delivered yet', () => {
+    render(<PodiumHero data={FALLBACK} {...PODIUM_PROPS} />)
+
+    expect(screen.getAllByText('FAKT 1 · tasdiqlangan').length).toBe(2)
+    expect(screen.queryByText('FAKT 2 · yetkazilgan')).toBeNull()
+  })
+
+  it('says how few orders the rank rests on when most are still moving', () => {
+    render(<PodiumHero data={THIN} {...PODIUM_PROPS} />)
+
+    expect(
+      screen.getByText(/263 tadan 22 tasi yetkazilgan — reyting shu 22 tasi boʻyicha/),
+    ).toBeDefined()
+  })
+
+  it('stays quiet once the majority has been delivered', () => {
+    render(<PodiumHero data={RIPE} {...PODIUM_PROPS} />)
+
+    expect(screen.getAllByText('FAKT 2 · yetkazilgan').length).toBe(2)
+    expect(screen.queryByText(/reyting shu/)).toBeNull()
+  })
+
+  it('never adds the note to the FAKT 1 fallback — there is no share to state', () => {
+    render(<PodiumHero data={FALLBACK} {...PODIUM_PROPS} />)
+
+    expect(screen.queryByText(/reyting shu/)).toBeNull()
   })
 })

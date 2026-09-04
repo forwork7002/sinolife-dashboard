@@ -463,7 +463,8 @@ function sellersCaption(data: SellerBoardDto): string {
  * fetched and never showed. "At this pace the floor finishes at X" is the
  * one line that makes a mid-month podium mean something.
  */
-function PodiumHero({
+/** Exported for `tests/features/sellersDeliveryLag.test.tsx`, like `TotalsBand`. */
+export function PodiumHero({
   data,
   status,
   errorMessage,
@@ -488,6 +489,12 @@ function PodiumHero({
   const winners = data
     ? data.rows.filter((r) => r.won.amount > 0 || r.ordered.amount > 0).slice(0, 3)
     : []
+
+  /*
+    WHICH FACT DECIDED THE PLACES — computed once, as the cards' own comment
+    already promised, and previously written out twice.
+  */
+  const onDelivered = winners.length > 0 && winners[0]!.won.amount > 0
 
   return (
     <section className="rise" aria-label="Davr peshqadamlari">
@@ -579,7 +586,9 @@ function PodiumHero({
                 <ChampionBanner
                   row={winners[0]}
                   totalWon={data.totals.won.amount}
-                  onDelivered={winners[0].won.amount > 0}
+                  onDelivered={onDelivered}
+                  wonOrders={data.totals.wonOrders}
+                  orders={data.totals.orders}
                   onOpen={() => onOpenSeller(winners[0].employeeId)}
                 />
                 {winners.length > 1 && (
@@ -594,7 +603,7 @@ function PodiumHero({
                         row={row}
                         place={index + 2}
                         leader={winners[0]}
-                        onDelivered={winners[0].won.amount > 0}
+                        onDelivered={onDelivered}
                         onOpen={() => onOpenSeller(row.employeeId)}
                       />
                     ))}
@@ -760,10 +769,32 @@ function PodiumName({
  * the one-time shine still crosses on arrival, and the thickest base rail of
  * the three closes the bottom edge like the top step of a real podium.
  */
+/**
+ * WHICH OF THE TWO FACTS THE FIGURE ABOVE IT IS.
+ *
+ * Both readings say so now. It used to name only FAKT 1, on the reasoning
+ * that the delivered reading is the one every other label on the page
+ * assumes — and the silence is exactly what made the podium unreadable:
+ * «Bugun» has no FAKT 2 at all, so it falls back and prints 12 900 000 of
+ * confirmed money, while «Shu oy» has some and prints 3 300 000 of delivered.
+ * The same slot, the same type, two different quantities, four days apart —
+ * and the month looked like it had sold less than the day inside it. Measured
+ * on production 2026-09-04; it is the question this screen was asked.
+ */
+function PodiumBasis({ onDelivered, className }: { onDelivered: boolean; className: string }) {
+  return (
+    <p className={`text-[11px] ${className}`} style={{ color: 'var(--ink-muted)' }}>
+      {onDelivered ? 'FAKT 2 · yetkazilgan' : 'FAKT 1 · tasdiqlangan'}
+    </p>
+  )
+}
+
 function ChampionBanner({
   row,
   totalWon,
   onDelivered,
+  wonOrders,
+  orders,
   onOpen,
 }: {
   row: SellerBoardRowDto
@@ -776,9 +807,31 @@ function ChampionBanner({
     Computed once in PodiumHero so the three cards can never disagree on it.
   */
   onDelivered: boolean
+  /** The window's own two counts, for the note below — see `thinlyRanked`. */
+  readonly wonOrders: number
+  readonly orders: number
   onOpen: () => void
 }) {
   const figure = onDelivered ? row.won.amount : row.ordered.amount
+
+  /*
+    HOW MUCH OF THE WINDOW THE RANKING ACTUALLY SAW.
+
+    The places are decided by delivered money, and on a window younger than
+    the delivery only a sliver of it has been delivered — so the champion is
+    chosen by a minority of the very orders the window is counting. «Shu oy»
+    on 2026-09-04: 22 of 263 orders delivered, 8%, and the ranking rests on
+    those 22. Saparboyeva 110 Farida had confirmed 24 600 000 soʻm that month
+    — by far the most on the floor — and was not on the podium at all, while
+    the champion had confirmed 4 300 000. Both facts are correct and the board
+    said neither.
+
+    Half is the line: below it the leader was picked by fewer orders than the
+    window left unjudged, which is a fact about the ranking rather than about
+    the seller. «Oʻtgan oy» sits at 72% and says nothing; «Shu hafta» at 27%
+    and «Shu oy» at 8% both speak.
+  */
+  const thinlyRanked = onDelivered && orders > 0 && wonOrders * 2 < orders
 
   return (
     <div className="podium-col--gold">
@@ -826,11 +879,12 @@ function ChampionBanner({
                 one flourish that is pure metal — licensed because the figure
                 above it already states the value in ink. */}
             <div className="podium-gold-rule mx-auto mt-2 sm:mx-0" aria-hidden="true" />
-            {/* Which of the two put them here. Silent on the delivered
-                reading — the one every other label on the page assumes. */}
-            {!onDelivered && (
-              <p className="mt-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                FAKT 1 · tasdiqlangan
+            {/* Which of the two put them here — see PodiumBasis. */}
+            <PodiumBasis onDelivered={onDelivered} className="mt-1.5" />
+            {thinlyRanked && (
+              <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                {formatNumber(orders)} tadan {formatNumber(wonOrders)} tasi yetkazilgan — reyting
+                shu {formatNumber(wonOrders)} tasi boʻyicha
               </p>
             )}
           </div>
@@ -972,11 +1026,7 @@ function RunnerCard({
                 soʻm
               </span>
             </span>
-            {!onDelivered && (
-              <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                FAKT 1 · tasdiqlangan
-              </p>
-            )}
+            <PodiumBasis onDelivered={onDelivered} className="mt-0.5" />
           </div>
 
           {/*
