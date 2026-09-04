@@ -1089,7 +1089,8 @@ function ForecastStrip({ data }: { data: SellerBoardDto }) {
 
 // ---------------------------------------------------------------------------
 
-function TotalsBand({
+/** Exported for `tests/features/sellersDeliveryLag.test.tsx`, like `OutcomeCell`. */
+export function TotalsBand({
   data,
   status,
 }: {
@@ -1159,6 +1160,31 @@ function TotalsBand({
         siblings, and the labels now say so; `sellerBoardService` and the
         HAVING gate in `confirmationSellerRating` carry the reason.
       */}
+      {/*
+        A ZERO HERE IS A DATE, NOT A FAULT — so the tile has to say which.
+
+        FAKT 2 asks where the cohort stands NOW, and the cohort is dated by its
+        arrival in C4:NEW, so on a young window the answer is legitimately
+        nothing: delivery takes days. Measured on production 2026-09-04, by
+        arrival day — 04-sen 79 confirmed / 0 delivered, 03-sen 94 / 0, 02-sen
+        80 / 20, 31-avg 99 / 73, 29-avg 101 / 87. The portal agrees: of the 111
+        orders that reached C4:NEW that morning not one was in C6:WON, while 34
+        of 50 sampled from 10-avgust were. Nothing lands for about two days,
+        and the board opens on «Bugun».
+
+        What the tile printed for that state was «0 ta yakunlangan buyurtma»
+        over «oʻzgarishsiz» — two true statements that together read as a dead
+        screen, and it was read as one. The money is not missing, it is on the
+        road, so the hint names the road; `sellersCaption` says the same thing
+        above the table and the two must not disagree.
+
+        THE TREND GOES WITH IT. `wonDelta` compares this window's delivered
+        money with the previous one's, and when this one is zero the comparison
+        is zero against zero — «oʻzgarishsiz» is arithmetically right and tells
+        the reader nothing, next to the very figure they are questioning.
+        Keyed on `wonOrders`, not on the money: an order delivered for nothing
+        is still a delivery, and the tile must not call that an empty window.
+      */}
       <StatTile
         label="FAKT 2 · yetkazilgan"
         value={totals ? totals.won.amount : null}
@@ -1166,9 +1192,17 @@ function TotalsBand({
         money="full"
         status={status}
         hint={
-          totals ? `${formatNumber(totals.wonOrders)} ta yakunlangan buyurtma` : undefined
+          totals
+            ? totals.wonOrders > 0
+              ? `${formatNumber(totals.wonOrders)} ta yakunlangan buyurtma`
+              : totals.open.amount > 0
+                ? `hali yetkazilmagan — ${formatFullUzs(totals.open.amount)} soʻm yoʻlda`
+                : 'bu davrda yetkazilgan buyurtma yoʻq'
+            : undefined
         }
-        context={totals ? <TrendIndicator delta={totals.wonDelta} /> : undefined}
+        context={
+          totals && totals.wonOrders > 0 ? <TrendIndicator delta={totals.wonDelta} /> : undefined
+        }
       />
       {/*
         Tiles wear rings, table rows wear bars — the one headline rate on this
