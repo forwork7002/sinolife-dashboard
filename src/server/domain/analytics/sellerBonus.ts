@@ -37,12 +37,15 @@ export const BONUS_TIERS: readonly { readonly floorMinor: bigint; readonly bonus
 /**
  * The floor-number band the client's ladder actually pays, inclusive.
  *
- * Their `idInRange()` reads the number trailing the seller's name and pays
- * nothing outside 107–147. On this portal that number is real and it is on
- * every operator: Bitrix24 `user.get` returns names like «Davlatbek Sirojov
- * 115» and «Bonu Umidovna 117», and the same number appears on their board.
- * It is a floor badge, not a Bitrix id — the Bitrix ids for those two people
- * are 6886 and 6890.
+ * Their `idInRange()` reads the seller's floor number and pays nothing
+ * outside 107–147. On this portal that number is real: Bitrix24 `user.get`
+ * returns names like «Davlatbek Sirojov 115» and «Bonu Umidovna 117», and the
+ * same number appears on their board. It is a floor badge, not a Bitrix id —
+ * the Bitrix ids for those two people are 6886 and 6890. Where the number
+ * sits inside OUR `fullName` is a separate question; see `floorNumberOf`.
+ *
+ * Measured on production 2026-09-04: 237 of 289 employees carry a floor
+ * number and 55 of them fall inside the band.
  *
  * WHY THIS MATTERS ENOUGH TO CARRY. Without the gate this board pays a bonus
  * to people the client's own page pays nothing, and the ones it invents are
@@ -54,16 +57,34 @@ export const BONUS_TIERS: readonly { readonly floorMinor: bigint; readonly bonus
 export const BONUS_BAND = Object.freeze({ from: 107, to: 147 })
 
 /**
- * The floor number trailing an operator's name, or null when there is none.
+ * The floor number somewhere in an operator's name, or null when there is none.
  *
- * Two to four digits at the end of the string, exactly as their `idInRange()`
- * matches it. Trailing whitespace is tolerated because the portal's own data
- * carries it — `«Sardorbek Abdimurodov 198 »` is a real row.
+ * ANYWHERE, NOT AT THE END, and the difference is the whole rule. Their
+ * `idInRange()` anchors at the end because their board prints «Marjona
+ * Xayrullayeva 154» — Bitrix24's `NAME` then `LAST_NAME`, and the portal
+ * keeps the number on the LAST_NAME. This application composes `fullName` the
+ * other way round, so the very same person is stored «Xayrullayeva 154
+ * Marjona» and the number lands in the MIDDLE. Measured on production
+ * 2026-09-04 over all 289 employees: 90 names carry it first, 16 last, 237
+ * carry it somewhere, and an end-anchored regex matched 16 — which gated all
+ * but three people out of a bonus they are owed.
+ *
+ * EXACTLY ONE standalone 2–4 digit token, or nothing. That is the rule
+ * `marketingService.employeeCode()` already uses to pair these same people
+ * against the Roistat sheet, proven there against a 24 541-row import; two
+ * numbers in one name is an ambiguity, not a match, and today there are none.
+ *
+ * Separators are not always spaces — «130-Salomat Shoimova» is a real row —
+ * so anything that is not a letter or a digit splits.
  */
 export function floorNumberOf(fullName: string): number | null {
-  const match = /(\d{2,4})\s*$/.exec(fullName)
-  if (!match) return null
-  const value = Number.parseInt(match[1]!, 10)
+  const digits = fullName
+    .replace(/[^0-9\p{L}]+/gu, ' ')
+    .split(' ')
+    .filter((token) => /^\d{2,4}$/.test(token))
+
+  if (digits.length !== 1) return null
+  const value = Number.parseInt(digits[0]!, 10)
   return Number.isFinite(value) ? value : null
 }
 

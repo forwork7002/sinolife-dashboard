@@ -18,12 +18,34 @@ import {
  * none of whom the client's page pays anything.
  */
 
-describe('the floor number trailing an operator name', () => {
-  it('reads the number Bitrix24 puts at the end of the name', () => {
-    // Real rows from `user.get` on this portal.
+describe('the floor number inside an operator name', () => {
+  /*
+    THE NUMBER MOVES, AND THAT IS THE BUG THIS PINS.
+
+    Bitrix24 keeps the floor badge on LAST_NAME, so `user.get` reads
+    «Davlatbek Sirojov 115» and the client's board prints it at the end. This
+    application composes `fullName` the other way round, so the SAME person is
+    stored «Sirojov 115 Davlatbek» — the number in the middle. Every string
+    below is a real production row (2026-09-04).
+  */
+  it('reads it in the middle, which is where this database puts it', () => {
+    expect(floorNumberOf("Murodov 109 Ma'ruf")).toBe(109)
+    expect(floorNumberOf('Karimova 173 Feruza')).toBe(173)
+    expect(floorNumberOf('Ahatovich 200 Azizbek')).toBe(200)
+  })
+
+  it('reads it first — 90 of 289 production rows look like this', () => {
+    expect(floorNumberOf('118 Aziza Vafoqulova')).toBe(118)
+    expect(floorNumberOf('292 Sotuvchi')).toBe(292)
+  })
+
+  it('reads it last, the way their own board prints it', () => {
     expect(floorNumberOf('Davlatbek Sirojov 115')).toBe(115)
-    expect(floorNumberOf('Bonu Umidovna 117')).toBe(117)
-    expect(floorNumberOf('Nazarova Shirin 107')).toBe(107)
+    expect(floorNumberOf('Stojor 179')).toBe(179)
+  })
+
+  it('splits on a hyphen, because one row really is written that way', () => {
+    expect(floorNumberOf('130-Salomat Shoimova')).toBe(130)
   })
 
   it('tolerates the trailing space the portal actually stores', () => {
@@ -31,13 +53,20 @@ describe('the floor number trailing an operator name', () => {
   })
 
   it('is null when the name carries no number', () => {
-    expect(floorNumberOf('Абдурахимов Жавохирбек')).toBeNull()
+    expect(floorNumberOf('Abdullayeva Sevinchxon')).toBeNull()
     expect(floorNumberOf('Админ')).toBeNull()
   })
 
-  it('ignores a number that is not at the end', () => {
-    // Their regex anchors at the end; a number mid-name is not a floor badge.
-    expect(floorNumberOf('107 Shahzod Muxtorov')).toBeNull()
+  it('refuses two numbers rather than guessing which is the badge', () => {
+    // The rule `marketingService.employeeCode()` already applies: an
+    // ambiguity is not a match. No production row has two today.
+    expect(floorNumberOf('Karimova 173 Feruza 118')).toBeNull()
+  })
+
+  it('ignores digits that are not a standalone 2-4 digit token', () => {
+    expect(floorNumberOf('Aziza7 Karimova')).toBeNull()
+    expect(floorNumberOf('Aziza 7 Karimova')).toBeNull()
+    expect(floorNumberOf('Aziza 12345 Karimova')).toBeNull()
   })
 })
 
@@ -63,10 +92,21 @@ describe('the band the ladder pays', () => {
     expect(bonusEligible('Azizbek Ahatovich 169')).toBe(false)
   })
 
+  it('pays the same people however the name is spelled', () => {
+    /*
+      The regression that shipped and had to be fixed within the hour: an
+      end-anchored read found the badge in 16 of 289 production names and put
+      three people in the band, so the bonus column went dark for a floor that
+      has 55. These two strings are one person.
+    */
+    expect(bonusEligible('Murodov 109 Ma’ruf')).toBe(true)
+    expect(bonusEligible('Ma’ruf Murodov 109')).toBe(true)
+  })
+
   it('withholds rather than invents when the name has no number', () => {
     // Their `idInRange()` returns false on a regex miss, and withholding a
     // badge is a smaller error than promising money nobody will pay.
-    expect(bonusEligible('Абдурахимов Жавохирбек')).toBe(false)
+    expect(bonusEligible('Abdullayeva Sevinchxon')).toBe(false)
   })
 
   it('states the band the screen prints', () => {
