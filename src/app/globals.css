@@ -612,24 +612,17 @@ body {
 }
 
 /**
- * THE PODIUM, PRINTED IN FULL — the leader's figure and the two beside it.
+ * THE PODIUM, PRINTED IN FULL — the champion's figure and the two under it.
  *
- * `.figure-hero` is sized for «7.9 mln» and overruns here: the podium is
- * three across from sm, and its 1.3fr / 1fr tracks measure (leader / runner,
- * content width, 2026-09-04):
+ * `.figure-hero` is sized for «7.9 mln» and overruns on thirteen grouped
+ * digits. The champion's figure now lives in a full-width banner (its track
+ * is the hall minus a 76px ring and a 230px story column), so it can climb
+ * well past the old three-column cap; the runners each hold half the hall
+ * from sm and step down one notch further for bronze.
  *
- *   390  274 / 282   (stacked — every card is the full width)
- *   640  186 / 121    1024  249 / 156    1440  386 / 295
- *   768  216 / 164    1180  283 / 216    1920  575 / 441
- *
- * The dip at 1024 is the sidebar arriving, not a mistake. Below sm the cards
- * stack and take a fixed size; from sm they follow the viewport, floored at
- * the width the 640 column can actually hold — «4,081,234,567» is 6.86em
- * plus a 36px unit, so the leader's 186px track tops out near 21px.
- *
- * The runner-up stays visibly smaller than the leader at every width. That
- * ordering is the point of a podium, so it is a constraint on these two
- * numbers, not a coincidence of them.
+ * A runner stays visibly smaller than the champion at every width, and
+ * bronze stays visibly smaller than silver. That ordering is the point of a
+ * podium, so it is a constraint on these numbers, not a coincidence of them.
  */
 .figure-sum-hero {
   font-size: 32px;
@@ -637,17 +630,25 @@ body {
 }
 
 .figure-sum-runner {
-  font-size: 17px;
+  font-size: 18px;
   letter-spacing: -0.03em;
+}
+
+.figure-sum-runner--bronze {
+  font-size: 16px;
 }
 
 @media (min-width: 640px) {
   .figure-sum-hero {
-    font-size: clamp(20px, calc(2.4vw + 4px), 40px);
+    font-size: clamp(24px, calc(2.6vw + 4px), 44px);
   }
 
   .figure-sum-runner {
-    font-size: clamp(13px, 1.6vw, 22px);
+    font-size: clamp(16px, 1.8vw, 26px);
+  }
+
+  .figure-sum-runner--bronze {
+    font-size: clamp(14px, 1.6vw, 22px);
   }
 }
 
@@ -2018,8 +2019,9 @@ p {
  * channels (size, elevation, position, the ordinal, the emoji medals); the
  * metal is varnish over that, so a colourblind reader loses nothing.
  *
- * --metal is set by the COLUMN (.podium-col--*), not the card, because the
- * pedestal is the card's sibling and both read it.
+ * --metal is set by the WRAPPER (.podium-col--*), not the card, so the seat
+ * assigns its metal once and everything inside — card, ring, plaque, ghost
+ * numeral, base rail — reads the same token.
  * ======================================================================== */
 
 .podium-col--gold { --metal: var(--medal-gold); }
@@ -2031,11 +2033,11 @@ p {
  * down from the top edge and a metal hairline — this page's answer to
  * .card-hero's gradient rim, scoped to its own metal.
  *
- * position: relative is load-bearing (the .podium-shine child needs this box
- * as its containing block) and this unlayered file beats a Tailwind position
- * utility — wrap the card if a call site ever needs it positioned otherwise.
- * No `display` here on purpose: the call site's responsive utilities keep
- * that decision (the same reason .podium-step declares none).
+ * position: relative is load-bearing (the .podium-shine and .podium-ghost
+ * children need this box as their containing block) and this unlayered file
+ * beats a Tailwind position utility — wrap the card if a call site ever
+ * needs it positioned otherwise. No `display` here on purpose: the call
+ * site's responsive utilities keep that decision.
  */
 .podium-card {
   position: relative;
@@ -2162,33 +2164,66 @@ p {
 }
 
 /**
- * The pedestal the card stands on. Heights come from the call site — they ARE
- * the ranking; the metal top edge is the step's lit rim. The call site shows
- * it at sm+ only: stacked vertically on a phone the heights would rank
- * nothing, so no `display` is declared here (an unlayered `flex` would beat
- * the responsive `hidden`).
+ * The base rail — the podium's steps, folded into the cards' own bottom
+ * edges. 4px under gold, 3 under silver, 2 under bronze: the staircase
+ * survives the banner layout as a thickness the eye reads without naming,
+ * and unlike the old free-standing pedestals it costs no vertical space and
+ * ranks correctly even when the cards stack on a phone.
  */
-.podium-step {
-  align-items: center;
-  justify-content: center;
-  margin-top: 6px;
-  border-radius: var(--radius-panel-sm);
-  border: 1px solid color-mix(in oklab, var(--metal) 36%, var(--border));
-  border-top: 2px solid color-mix(in oklab, var(--metal) 60%, transparent);
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--metal) 16%, var(--surface-raised)),
-    color-mix(in oklab, var(--metal) 3%, var(--surface-raised))
-  );
+.podium-banner {
+  border-bottom: 4px solid color-mix(in oklab, var(--metal) 62%, var(--border));
 }
 
-/* The step's numeral — decorative (aria-hidden at the call site), so it may
-   wear the metal itself. */
-.podium-num {
+.podium-col--silver .podium-card {
+  border-bottom: 3px solid color-mix(in oklab, var(--metal) 55%, var(--border));
+}
+
+.podium-col--bronze .podium-card {
+  border-bottom: 2px solid color-mix(in oklab, var(--metal) 50%, var(--border));
+}
+
+/* The banner's own track is the hall, not a grid column — let its figure
+   climb past the runner scale. Sized in the figure block above; this is only
+   the context override. */
+.podium-banner .figure-sum-hero {
+  font-size: 34px;
+}
+
+@media (min-width: 640px) {
+  .podium-banner .figure-sum-hero {
+    font-size: clamp(28px, calc(2.8vw + 6px), 48px);
+  }
+}
+
+/**
+ * The ghost numeral — the place, restated at architectural scale in the
+ * card's quiet corner. Painted at 15% metal so it is texture, not text
+ * (the plaque and the ring already state the ordinal legibly), and clipped
+ * by its own layer for the same reason .podium-shine is: the card must not
+ * carry overflow:hidden.
+ */
+.podium-ghost {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.podium-ghost-num {
+  position: absolute;
+  right: 12px;
+  bottom: -0.2em;
   font-weight: 800;
   line-height: 1;
-  letter-spacing: -0.02em;
-  color: var(--metal);
+  letter-spacing: -0.05em;
+  font-size: clamp(96px, 11vw, 150px);
+  color: color-mix(in oklab, var(--metal) 15%, transparent);
+  user-select: none;
+}
+
+.podium-ghost-num--runner {
+  font-size: clamp(72px, 8vw, 112px);
 }
 
 /**

@@ -439,18 +439,18 @@ function sellersCaption(data: SellerBoardDto): string {
 // ---------------------------------------------------------------------------
 
 /**
- * The morning ceremony: the top three, on real steps.
+ * The morning ceremony: the champion across the hall, the chasers beneath.
  *
  * One `.card-hero` (the hall), one `.figure-hero` — the leader's won money,
- * which is THE number this page exists to make people want. Inside the hall
- * stand three ceremony cards, each on a pedestal whose HEIGHT is the rank:
- * gold's block is the tallest and carries the biggest numeral, so who is
- * first and who is second is legible from across the room, before a single
- * word is read. Size, elevation and position carry the ranking; the medal
+ * which is THE number this page exists to make people want. First place is a
+ * full-width BANNER, a shape nothing else on the page has, so it is found by
+ * form before a single word is read; second and third stand under it as two
+ * smaller horizontal cards. Rank travels on scale (avatar, name, figure all
+ * step down), position (above vs below, left vs right), the ordinal in the
+ * ring, the ghost numeral, and the base rail thinning 4→3→2px; the medal
  * metals varnish it (see the header contract — chrome, never a channel). DOM
- * order is 1-2-3 for reading and for the stagger — gold arrives first —
- * while CSS `order` seats second place on the left and third on the right,
- * so the three columns literally form a podium on wide screens.
+ * order is 1-2-3 with no CSS re-seating, so reading order, the stagger and
+ * the visual order agree.
  *
  * MEDALS ONLY FOR WON MONEY — the table's `ranked` rule, enforced here by
  * construction: a row with neither FAKT 2 nor FAKT 1 has done nothing to
@@ -509,12 +509,15 @@ function PodiumHero({
           </header>
 
           {status === 'loading' ? (
-            /* Sized to the ready layout, so ready never reflows loading. */
-            <div className="mt-4 grid gap-3 sm:gap-4 sm:grid-cols-[1fr_1.3fr_1fr] sm:items-end" role="status">
+            /* Sized to the ready layout, so ready never reflows loading:
+               one banner-height block, then the two runner cards. */
+            <div className="mt-4 grid gap-3 sm:gap-4" role="status">
               <span className="sr-only">Yuklanmoqda</span>
-              <div className="skeleton h-64" aria-hidden="true" />
-              <div className="skeleton h-[380px]" aria-hidden="true" />
-              <div className="skeleton h-64" aria-hidden="true" />
+              <div className="skeleton h-48 sm:h-40" aria-hidden="true" />
+              <div className="grid gap-3 sm:gap-4 sm:grid-cols-2" aria-hidden="true">
+                <div className="skeleton h-44" />
+                <div className="skeleton h-44" />
+              </div>
             </div>
           ) : status === 'error' ? (
             <ErrorState message={errorMessage} onRetry={onRetry} />
@@ -560,26 +563,43 @@ function PodiumHero({
             </div>
           ) : (
             <>
-              <div
-                className={`stagger mt-4 grid gap-3 sm:gap-4 ${
-                  winners.length === 3
-                    ? 'sm:grid-cols-[1fr_1.3fr_1fr] sm:items-end'
-                    : winners.length === 2
-                      ? 'sm:grid-cols-[1.3fr_1fr] sm:items-end'
-                      : 'sm:mx-auto sm:w-full sm:max-w-md'
-                }`}
-              >
-                {winners.map((row, index) => (
-                  <PodiumStep
-                    key={row.employeeId}
-                    row={row}
-                    place={index + 1}
-                    winnersCount={winners.length}
-                    leader={winners[0]}
-                    totalWon={data.totals.won.amount}
-                    onOpen={() => onOpenSeller(row.employeeId)}
-                  />
-                ))}
+              {/*
+                THE CHAMPION IS A BANNER, THE CHASERS ARE CARDS.
+
+                Three near-identical columns asked the reader to compare
+                heights to find first place; now the three places have three
+                different FORMS. Gold spans the whole hall in its own
+                horizontal banner — nothing else on the page has that shape —
+                and silver and bronze stand under it as two cards whose size,
+                metal and giant ghost numeral each restate their rank. DOM
+                order is 1-2-3 with no CSS re-seating: the reading order, the
+                stagger and the visual order finally agree.
+              */}
+              <div className="stagger mt-4 grid gap-3 sm:gap-4">
+                <ChampionBanner
+                  row={winners[0]}
+                  totalWon={data.totals.won.amount}
+                  onDelivered={winners[0].won.amount > 0}
+                  onOpen={() => onOpenSeller(winners[0].employeeId)}
+                />
+                {winners.length > 1 && (
+                  <div
+                    className={`grid gap-3 sm:gap-4 ${
+                      winners.length === 3 ? 'sm:grid-cols-2' : 'sm:mx-auto sm:w-full sm:max-w-md'
+                    }`}
+                  >
+                    {winners.slice(1).map((row, index) => (
+                      <RunnerCard
+                        key={row.employeeId}
+                        row={row}
+                        place={index + 2}
+                        leader={winners[0]}
+                        onDelivered={winners[0].won.amount > 0}
+                        onOpen={() => onOpenSeller(row.employeeId)}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
 
               <ForecastStrip data={data} />
@@ -592,15 +612,27 @@ function PodiumHero({
 }
 
 /**
- * The three seats' chrome, by place: metal column class, medal glyph, avatar
- * and pedestal sizes. The pedestal heights ARE the ranking made physical —
- * 72/48/30 px of block under gold, silver and bronze — and the numeral steps
- * down with them.
+ * The chasing seats' chrome, by place. Gold has no row here on purpose: the
+ * champion is a different FORM — the full-width banner — not the big end of
+ * this scale, so reading rank never requires comparing near-equals. Between
+ * silver and bronze the scale still steps: avatar, name and figure all
+ * shrink one notch, and the base rail under the card loses a pixel.
  */
-const PODIUM_SEATS = [
-  { col: 'podium-col--gold', medal: '🥇', avatar: 60, stepHeight: 72, numSize: 32 },
-  { col: 'podium-col--silver', medal: '🥈', avatar: 46, stepHeight: 48, numSize: 26 },
-  { col: 'podium-col--bronze', medal: '🥉', avatar: 46, stepHeight: 30, numSize: 22 },
+const RUNNER_SEATS = [
+  {
+    col: 'podium-col--silver',
+    medal: '🥈',
+    avatar: 50,
+    nameClass: 'text-[14.5px]',
+    figureClass: '',
+  },
+  {
+    col: 'podium-col--bronze',
+    medal: '🥉',
+    avatar: 42,
+    nameClass: 'text-[13px]',
+    figureClass: 'figure-sum-runner--bronze',
+  },
 ] as const
 
 /**
@@ -639,9 +671,9 @@ function PodiumAvatar({
     name does not is WHICH SEAT IT IS, and that is now what it shows, set in
     the seat's own metal.
 
-    Still decorative: the plaque above spells «1-oʻrin» for a screen reader and
-    the pedestal below repeats the numeral, so nothing here is the only carrier
-    of the rank.
+    Still decorative: the plaque beside it spells «N-oʻrin» for a screen
+    reader and the ghost numeral repeats it, so nothing here is the only
+    carrier of the rank.
   */
   return (
     <span className="relative inline-flex" aria-hidden="true">
@@ -687,118 +719,97 @@ function PodiumAvatar({
 }
 
 /**
- * One column of the podium: the ceremony card standing on its pedestal.
+ * A seller's name as the card's one action.
  *
- * The three cards share one anatomy — plaque, ringed avatar, name, the won
- * money, then the card's one motivating fact — so the eye compares people,
- * not layouts. What separates the places is the licensed rank grammar plus
- * the metal chrome: the champion's card is the largest, carries the page's
- * one `.figure-hero`, the crown and the one-time shine pass; the flankers
- * step down in size and stand on shorter blocks. Each flanker's motivating
- * fact is the gap to the top — a soʻm distance and a closeness bar drawn on
- * the sequential ramp, because "how close" is a magnitude and the metal is
- * not licensed to say it.
- *
- * The pedestals render at sm+ only: stacked vertically on a phone their
- * heights would rank nothing, and there the plaque alone carries the place.
+ * `podium-name` is a hit-slop hook, not a style: `.podium-name::before` pads
+ * the tap target a good ten pixels past the text on every side with an
+ * absolutely-positioned layer, so a thumb aiming just off the letters still
+ * opens the drill-down. `position: relative` is load-bearing for that
+ * overlay. It also doubles as the hook the CARD lifts on — see
+ * `.podium-card:has(.podium-name:hover)`.
  */
-function PodiumStep({
-  row,
-  place,
-  winnersCount,
-  leader,
-  totalWon,
+function PodiumName({
+  fullName,
   onOpen,
+  className,
 }: {
-  row: SellerBoardRowDto
-  place: number
-  winnersCount: number
-  leader: SellerBoardRowDto
-  totalWon: number
+  fullName: string
   onOpen: () => void
+  className: string
 }) {
-  const isLeader = place === 1
-  const seatSpec = place === 1 ? PODIUM_SEATS[0] : place === 2 ? PODIUM_SEATS[1] : PODIUM_SEATS[2]
-  // Visual seating on wide screens: silver left of gold, bronze to the right.
-  // DOM order stays 1-2-3, so reading order and the stagger keep the ranking.
-  const seat =
-    winnersCount === 3 ? (place === 2 ? 'sm:order-first' : place === 3 ? 'sm:order-last' : '') : ''
-
-  /*
-    THE CARD SHOWS THE FIGURE THAT EARNED THE PLACE.
-
-    Ranking reads FAKT 2 first and FAKT 1 second, so for most of a working
-    day — before the first courier arrives — the places are decided by FAKT 1
-    and a card leading with «0 soʻm» would be reporting the wrong number about
-    the right person. `basis` picks the one that is actually ordering the
-    board right now, and the caption under it says which.
-  */
-  const onDelivered = leader.won.amount > 0
-  const figure = onDelivered ? row.won.amount : row.ordered.amount
-  const leaderFigure = onDelivered ? leader.won.amount : leader.ordered.amount
-
-  const gap = leaderFigure - figure
-  const closeness = leaderFigure > 0 ? (figure / leaderFigure) * 100 : 0
-
-  const name = (
+  return (
     <button
       type="button"
       onClick={onOpen}
-      /*
-        `podium-name` is a hit-slop hook, not a style: `.podium-name::before`
-        pads the tap target a good ten pixels past this text on every side
-        with an absolutely-positioned layer, so a thumb aiming just off the
-        letters still opens the drill-down. `position: relative` here is
-        load-bearing for that overlay, same reason `.podium-card` carries it
-        for `.podium-shine`. It also doubles as the hook the CARD lifts on —
-        see `.podium-card:has(.podium-name:hover)`.
-      */
-      className={`podium-name focusable relative rounded text-center underline-offset-2 hover:underline ${
-        isLeader ? 'text-[17px] font-semibold' : 'text-[13.5px] font-semibold'
-      }`}
+      className={`podium-name focusable relative rounded font-semibold underline-offset-2 hover:underline ${className}`}
       style={{ color: 'var(--ink-primary)' }}
     >
-      {row.fullName}
+      {fullName}
     </button>
   )
+}
+
+/**
+ * First place, as a banner across the whole hall.
+ *
+ * Nothing else on the page has this shape, which is the point: the champion
+ * is found by FORM before any label is read. Ring and crown on the left, the
+ * name and the full-digit sum in the middle at the page's largest reading,
+ * and the story of the win — share, orders, bonus — in its own column on the
+ * right. A giant ghost «1» in the card's own metal fills the quiet corner,
+ * the one-time shine still crosses on arrival, and the thickest base rail of
+ * the three closes the bottom edge like the top step of a real podium.
+ */
+function ChampionBanner({
+  row,
+  totalWon,
+  onDelivered,
+  onOpen,
+}: {
+  row: SellerBoardRowDto
+  totalWon: number
+  /*
+    THE CARD SHOWS THE FIGURE THAT EARNED THE PLACE. Ranking reads FAKT 2
+    first and FAKT 1 second, so for most of a working day — before the first
+    courier arrives — the places are decided by FAKT 1, and a banner leading
+    with «0 soʻm» would be reporting the wrong number about the right person.
+    Computed once in PodiumHero so the three cards can never disagree on it.
+  */
+  onDelivered: boolean
+  onOpen: () => void
+}) {
+  const figure = onDelivered ? row.won.amount : row.ordered.amount
 
   return (
-    <div className={`flex flex-col ${seatSpec.col} ${seat}`}>
-      <div
-        className={`podium-card flex flex-col items-center text-center ${
-          isLeader ? 'px-5 pt-5 pb-5' : 'px-4 pt-4 pb-4'
-        }`}
-      >
-        <p className="podium-plaque">
-          <span aria-hidden="true">{seatSpec.medal}</span>
-          <span className="sr-only">{place}-oʻrin:</span>
-          <span aria-hidden="true">{place}-oʻrin</span>
-        </p>
-
-        <div className={isLeader ? 'mt-5' : 'mt-3'}>
-          <PodiumAvatar place={place} size={seatSpec.avatar} crowned={isLeader} />
+    <div className="podium-col--gold">
+      <div className="podium-card podium-banner flex flex-col items-center gap-4 px-5 py-5 text-center sm:flex-row sm:gap-6 sm:px-7 sm:text-left">
+        {/* The ghost numeral, clipped by its own layer so the card never
+            needs overflow:hidden — same construction as .podium-shine. */}
+        <div className="podium-ghost" aria-hidden="true">
+          <span className="podium-ghost-num">1</span>
         </div>
 
-        <div className="mt-2.5 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
-          {name}
-          {/* Inline beside a name, an absent team is silence, not a dash — the
-              placeholder belongs to the table column, where alignment needs it. */}
-          {row.rop && <TeamBadge rop={row.rop} />}
+        <div className="relative shrink-0">
+          <PodiumAvatar place={1} size={76} crowned />
         </div>
 
-        <div className={isLeader ? 'mt-3' : 'mt-2'}>
-          {/*
-            THE WHOLE SUM, so the card can be read against the floor's own
-            board — and therefore no tooltip and no tab stop, which existed
-            only to reveal the digits the compact reading hid.
-
-            Both sizes live in globals.css (`.figure-sum-hero`,
-            `.figure-sum-runner`) against the podium's measured tracks: a
-            runner-up's column is 1fr beside the leader's 1.3fr, which is
-            121px wide at the sm breakpoint — thirteen digits at the old 22px
-            overran it by half a card.
-          */}
-          {isLeader ? (
+        <div className="relative min-w-0 flex-1">
+          <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 sm:justify-start">
+            <p className="podium-plaque">
+              <span aria-hidden="true">🥇</span>
+              <span className="sr-only">1-oʻrin:</span>
+              <span aria-hidden="true">1-oʻrin · Chempion</span>
+            </p>
+            {/* Inline beside a name, an absent team is silence, not a dash —
+                the placeholder belongs to the table column. */}
+            {row.rop && <TeamBadge rop={row.rop} />}
+          </div>
+          <div className="mt-1.5">
+            <PodiumName fullName={row.fullName} onOpen={onOpen} className="text-[18px] sm:text-[20px]" />
+          </div>
+          <div className="mt-1">
+            {/* THE WHOLE SUM — no tooltip, no tab stop; the digits ARE the
+                reading this board reconciles against the floor's own. */}
             <span
               className="figure-hero figure-sum-hero inline-block"
               style={{ color: 'var(--ink-primary)' }}
@@ -808,9 +819,143 @@ function PodiumStep({
                 soʻm
               </span>
             </span>
-          ) : (
+            {/* Which of the two put them here. Silent on the delivered
+                reading — the one every other label on the page assumes. */}
+            {!onDelivered && (
+              <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                FAKT 1 · tasdiqlangan
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* The story column: what the number is made of, and what is still
+            ahead of them — a champion with nothing left to chase is a page
+            that stops motivating exactly at the top. */}
+        <div className="relative w-full shrink-0 sm:w-[230px]">
+          {row.sharePercent !== null && totalWon > 0 && (
+            <div>
+              <p className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+                Jami yutuqdagi ulushi
+              </p>
+              <div className="mt-1">
+                <Meter value={row.sharePercent} tone="neutral" label="Jami yutuqdagi ulushi" />
+              </div>
+            </div>
+          )}
+          <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            {formatNumber(row.wonOrders)} / {formatNumber(row.orders)} ta buyurtma
+            {row.conversionPercent !== null && (
+              <> · konversiya {formatPercent(row.conversionPercent)}</>
+            )}
+          </p>
+          <div className="mt-2">
+            {row.bonus.earned.amount > 0 ? (
+              <StatusChip tone="good">
+                {formatFullUzs(row.bonus.earned.amount)} soʻm bonus
+              </StatusChip>
+            ) : row.bonus.toNext !== null ? (
+              /*
+                THE SAME "how close" GRAMMAR AS THE RUNNERS' CHASE BAR, one
+                rung up: they read distance to the leader, the leader reads
+                distance to the next reward. `toNextPercent` is the service's
+                own figure (`sellerBonus.ts`), so the fill can never disagree
+                with the soʻm caption beside it.
+              */
+              <div>
+                <p className="text-[11px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                  <span aria-hidden="true">🎁</span> Bonusgacha{' '}
+                  <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
+                    +{formatFullUzs(row.bonus.toNext.amount)}
+                  </span>
+                </p>
+                {row.bonus.toNextPercent !== null && (
+                  <div
+                    className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full"
+                    style={{ background: 'var(--track)' }}
+                    aria-hidden="true"
+                  >
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.max(2, row.bonus.toNextPercent)}%`,
+                        background: 'var(--metal)',
+                        transition: 'width var(--duration-enter) var(--ease-out)',
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Last child, so the streak passes over the whole banner. */}
+        <div className="podium-shine" aria-hidden="true" />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Second and third place: one horizontal card each, under the banner.
+ *
+ * The same anatomy at a smaller scale — ring, plaque, name, the full-digit
+ * sum — then the card's one motivating fact: the gap to the top as a tinted
+ * chip and a closeness bar on the sequential ramp, because "how close" is a
+ * magnitude and the metal is not licensed to say it. Silver and bronze are
+ * separated the same way gold is separated from both: scale (avatar, name,
+ * figure all one notch down), the metal chrome, the ghost numeral, and a
+ * base rail one pixel thinner.
+ */
+function RunnerCard({
+  row,
+  place,
+  leader,
+  onDelivered,
+  onOpen,
+}: {
+  row: SellerBoardRowDto
+  place: number
+  leader: SellerBoardRowDto
+  onDelivered: boolean
+  onOpen: () => void
+}) {
+  const spec = place === 2 ? RUNNER_SEATS[0] : RUNNER_SEATS[1]
+  const figure = onDelivered ? row.won.amount : row.ordered.amount
+  const leaderFigure = onDelivered ? leader.won.amount : leader.ordered.amount
+
+  const gap = leaderFigure - figure
+  const closeness = leaderFigure > 0 ? (figure / leaderFigure) * 100 : 0
+
+  return (
+    <div className={spec.col}>
+      <div className="podium-card flex items-center gap-4 px-4 py-4">
+        <div className="podium-ghost" aria-hidden="true">
+          <span className="podium-ghost-num podium-ghost-num--runner">{place}</span>
+        </div>
+
+        <div className="relative shrink-0">
+          <PodiumAvatar place={place} size={spec.avatar} />
+        </div>
+
+        <div className="relative min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="podium-plaque">
+              <span aria-hidden="true">{spec.medal}</span>
+              <span className="sr-only">{place}-oʻrin:</span>
+              <span aria-hidden="true">{place}-oʻrin</span>
+            </p>
+            {row.rop && <TeamBadge rop={row.rop} />}
+          </div>
+
+          <div className="mt-1.5">
+            <PodiumName fullName={row.fullName} onOpen={onOpen} className={spec.nameClass} />
+          </div>
+
+          <div className="mt-1">
             <span
-              className="figure figure-sum-runner inline-block leading-none font-semibold"
+              className={`figure figure-sum-runner ${spec.figureClass} inline-block leading-none font-semibold`}
               style={{ color: 'var(--ink-primary)' }}
             >
               {formatFullUzs(figure)}
@@ -818,128 +963,48 @@ function PodiumStep({
                 soʻm
               </span>
             </span>
-          )}
-          {/* Which of the two put them here. Silent on the delivered reading,
-              because that is the one the page's every other label assumes. */}
-          {!onDelivered && (
-            <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-              FAKT 1 · tasdiqlangan
-            </p>
-          )}
-        </div>
-
-        {isLeader ? (
-          <>
-            {/* A hero number is never blank: the share it holds of the whole
-                floor's winnings, and the fraction it was earned from. */}
-            {row.sharePercent !== null && totalWon > 0 && (
-              <div className="mx-auto mt-3 w-full max-w-[250px]">
-                <Meter value={row.sharePercent} tone="neutral" label="Jami yutuqdagi ulushi" />
-              </div>
+            {!onDelivered && (
+              <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                FAKT 1 · tasdiqlangan
+              </p>
             )}
-            <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-              {formatNumber(row.wonOrders)} / {formatNumber(row.orders)} ta buyurtma
-              {row.conversionPercent !== null && (
-                <> · konversiya {formatPercent(row.conversionPercent)}</>
-              )}
-            </p>
-            <div className="mt-2">
-              {row.bonus.earned.amount > 0 ? (
-                <StatusChip tone="good">
-                  {formatFullUzs(row.bonus.earned.amount)} soʻm bonus
-                </StatusChip>
-              ) : row.bonus.toNext !== null ? (
-                /*
-                  THE SAME "how close" GRAMMAR AS THE CHASE BAR, one rung up:
-                  a runner-up reads distance to the leader, the leader reads
-                  distance to their own next reward — neither card is ever
-                  just a number with nothing left to reach for. `toNextPercent`
-                  is the service's own figure (`sellerBonus.ts`), not computed
-                  here, so the fill can never disagree with the soʻm caption.
-                */
-                <div className="mx-auto w-full max-w-[220px]">
-                  <p className="text-[11px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-                    <span aria-hidden="true">🎁</span> Bonusgacha{' '}
-                    <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
-                      +{formatFullUzs(row.bonus.toNext.amount)}
-                    </span>
-                  </p>
-                  {row.bonus.toNextPercent !== null && (
-                    <div
-                      className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full"
-                      style={{ background: 'var(--track)' }}
-                      aria-hidden="true"
-                    >
-                      <div
-                        className="h-full rounded-full"
-                        style={{
-                          width: `${Math.max(2, row.bonus.toNextPercent)}%`,
-                          background: 'var(--metal)',
-                          transition: 'width var(--duration-enter) var(--ease-out)',
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-              ) : null}
-            </div>
-          </>
-        ) : (
-          <>
-            {/*
-              The chase, stated as a distance — the one number a runner-up
-              can act on — in a tinted pill rather than a plain line, because
-              this is the card's one call to action and used to read exactly
-              like the caption above it. Still no colour outside the licensed
-              sequential ramp: the pill borrows `--seq-550`, the same hue the
-              track fill already carried, so nothing new is being asked of
-              the chrome-not-channel rule.
-            */}
-            <div className="chase-chip mt-2.5 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold">
-              <span aria-hidden="true">{gap === 0 ? '🔥' : '🎯'}</span>
-              {gap === 0 ? (
-                'Lider bilan teng — bitta yutuq hal qiladi'
-              ) : (
-                <>
-                  Liderga{' '}
-                  <span className="tabular">+{formatFullUzs(gap)}</span> soʻm
-                </>
-              )}
-            </div>
+          </div>
+
+          {/*
+            The chase — the one number a runner-up can act on — in a tinted
+            pill so the card's call to action does not read like a caption.
+            The pill borrows `--seq-550`, the hue the closeness bar under it
+            already carries: no colour outside the licensed ramp.
+          */}
+          <div className="chase-chip mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold">
+            <span aria-hidden="true">{gap === 0 ? '🔥' : '🎯'}</span>
+            {gap === 0 ? (
+              'Lider bilan teng — bitta yutuq hal qiladi'
+            ) : (
+              <>
+                Liderga <span className="tabular">+{formatFullUzs(gap)}</span> soʻm
+              </>
+            )}
+          </div>
+          <div
+            className="mt-2 h-1.5 w-full overflow-hidden rounded-full"
+            style={{ background: 'var(--track)' }}
+            aria-hidden="true"
+          >
             <div
-              className="mt-2 h-1.5 w-full overflow-hidden rounded-full"
-              style={{ background: 'var(--track)' }}
-              aria-hidden="true"
-            >
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${Math.max(2, closeness)}%`,
-                  // A lighter-to-full sweep rather than a flat fill — mixed
-                  // toward the card's own surface, not a literal white, so it
-                  // reads correctly whichever theme's --seq-550 it is given.
-                  background:
-                    'linear-gradient(90deg, color-mix(in oklab, var(--seq-550) 45%, var(--surface-raised)), var(--seq-550))',
-                  transition: 'width var(--duration-enter) var(--ease-out)',
-                }}
-              />
-            </div>
-          </>
-        )}
-
-        {/* Last child, so the streak passes over the whole card. */}
-        {isLeader && <div className="podium-shine" aria-hidden="true" />}
-      </div>
-
-      {/* The step itself: height by place, numeral in the metal. */}
-      <div
-        className="podium-step hidden sm:flex"
-        style={{ height: seatSpec.stepHeight }}
-        aria-hidden="true"
-      >
-        <span className="podium-num" style={{ fontSize: seatSpec.numSize }}>
-          {place}
-        </span>
+              className="h-full rounded-full"
+              style={{
+                width: `${Math.max(2, closeness)}%`,
+                // A lighter-to-full sweep, mixed toward the card's own
+                // surface rather than a literal white, so it reads correctly
+                // whichever theme's --seq-550 it is given.
+                background:
+                  'linear-gradient(90deg, color-mix(in oklab, var(--seq-550) 45%, var(--surface-raised)), var(--seq-550))',
+                transition: 'width var(--duration-enter) var(--ease-out)',
+              }}
+            />
+          </div>
+        </div>
       </div>
     </div>
   )
