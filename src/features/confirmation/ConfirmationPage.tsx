@@ -7,6 +7,7 @@ import { Card, ChartCard } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import {
   ArrowOutGlyph,
+  ArrowUpGlyph,
   BarsGlyph,
   CheckCircleGlyph,
   ClockGlyph,
@@ -1246,7 +1247,7 @@ function mask(phone: string): string {
 }
 
 /**
- * СТАТУС — where the order stands, and where it stood before that.
+ * СТАТУС — where the order stands, and how it got there.
  *
  * THE ROW IS THE ORDER, AND IT IS DATED BY ITS LAST ARRIVAL. An order
  * confirmed on the 29th and pulled back into Тасдиклаш on the 31st is a row
@@ -1258,18 +1259,28 @@ function mask(phone: string): string {
  * Splitting the row per visit was the alternative and it is the wrong trade:
  * their bot and their board both keep one entry per deal, and a board that
  * counted visits would let «тасдиқланиш %» exceed the orders it divides. So
- * the row stays one and carries its own past down the cell — the state now as
- * the chip it always was, and every earlier visit beneath it, joined to it,
- * each with the day it happened.
+ * the row stays one and reads as a chain — the state now, then an arrow up
+ * from where it came, one step per visit.
+ *
+ * ONLY THE LAST STATE IS LIT. The chip, with its tint and its ring, is the
+ * order's answer; every state above which it arrived is plain text. That is
+ * the whole visual grammar of the cell, and it is why the chip stays on top:
+ * the eye lands on the state the row is filed under everywhere else.
+ *
+ * EVERY STEP CARRIES ITS OWN DATE, including the chip's. It did not, once,
+ * because САНА two columns to the left already showed it — and on a table
+ * this wide САНА is often scrolled off, which left the lit state as the only
+ * undated thing in the cell and made it look like the OLDER one. A reader had
+ * to know the rule to read the order. Now the dates say it.
  *
  * NOTHING HERE IS COUNTED. The five tiles, the Статистика panel, the state
  * filter and the header bell all read `outcome`, which is `queueHistory[0]`.
  * An order confirmed in August and refused in September is one order, refused.
  *
- * ONE VISIT RENDERS EXACTLY AS BEFORE — a single chip, no chain, no dates.
- * That is 121 of those 127 rows, and a table that grew a second line on every
- * row to serve six of them would have made the exception invisible by
- * charging the whole board for it.
+ * ONE VISIT RENDERS EXACTLY AS BEFORE — a single chip, no chain, no date.
+ * That is 3 077 of the 3 269 orders that arrived in a month, and a table that
+ * grew three lines on every row to serve the rest would have made the
+ * exception invisible by charging the whole board for it.
  *
  * Exported for `tests/features/confirmationHistory.test.tsx` alone. What that
  * test guards is arithmetic, not layout: the moment an earlier visit reads as
@@ -1287,22 +1298,29 @@ export function OutcomeCell({ row }: { row: ConfirmationOrderDto }) {
   if (earlier.length === 0) return <OutcomeChip outcome={current?.outcome ?? row.outcome} />
 
   return (
-    <div className="flex flex-col items-start">
+    <div className="flex flex-col items-start gap-0.5">
       <OutcomeChip outcome={current?.outcome ?? row.outcome} />
+      <VisitDate at={current?.queuedAt ?? row.queuedAt} />
       {earlier.map((visit) => (
         <Fragment key={visit.no}>
           {/*
-            The link between two states, and the reason this reads as one
-            history rather than two labels that happen to share a cell. It
-            sits at the chip's own glyph centre — pl-2 plus half of a 12px
-            mark — which is where the glyph below it sits too, so the whole
-            chain hangs off one vertical line.
+            The step, and the direction it was taken in. It points UP, at the
+            state this one became — which is the state wearing the chip. A
+            plain rule between them said only "there is more here"; the arrow
+            says which way to read it, and that was the whole ask.
+
+            It sits in the glyph column so the marks, the labels and the arrow
+            hang off one vertical line.
           */}
           <span
             aria-hidden="true"
-            className="ml-[13px] h-2 w-px shrink-0"
-            style={{ background: 'var(--border-strong)' }}
-          />
+            className="inline-flex pl-2 leading-none"
+            // As visible as the dates it sits between. At --border-strong it
+            // read as a smudge rather than a direction.
+            style={{ color: 'var(--ink-muted)' }}
+          >
+            <ArrowUpGlyph size={11} />
+          </span>
           <EarlierVisit visit={visit} />
         </Fragment>
       ))}
@@ -1311,27 +1329,35 @@ export function OutcomeCell({ row }: { row: ConfirmationOrderDto }) {
 }
 
 /**
+ * When a step happened, under the state it belongs to.
+ *
+ * Tashkent, and the same `YYYY-MM-DD HH:mm` the САНА column uses, so a reader
+ * comparing the two is comparing like with like.
+ */
+function VisitDate({ at }: { at: string | null }) {
+  if (at === null) return null
+
+  return (
+    <span
+      className="tabular pl-[26px] text-[10px] leading-tight whitespace-nowrap"
+      style={{ color: 'var(--ink-muted)' }}
+    >
+      {tashkentDate(at)} {tashkentTime(at)}
+    </span>
+  )
+}
+
+/**
  * One visit the order has already finished, under the state it is in now.
  *
- * QUIETER THAN THE CHIP, DELIBERATELY. It wears no pill and no tint: the
- * chip above it is the answer to "what is this order", and a second object of
- * equal weight would make the cell a list of two equals rather than a state
- * with a history. Only the mark keeps the state's colour, which is the same
- * rule the chip follows and the reason the pair can be told apart at a glance.
- *
- * THE DATE IS THE POINT, and it is the only thing that separates a misclick
- * corrected in three minutes from a customer reached again four days later.
- *
- * «🔁 ҚАЙТА ТУШДИ» in САНА answers a NARROWER question — did a customer have
- * to be reached twice — and is gated on six hours, so it is silent on plenty
- * of rows that still carry a chain. It has to be: the threshold is elapsed
- * time and the board is cut into Tashkent days, so an order confirmed at 23:00
- * and back at 01:00 wears no mark and still leaves yesterday for today. The
- * chain is what the operator reading yesterday has left.
+ * QUIETER THAN THE CHIP, DELIBERATELY. It wears no pill and no tint: the chip
+ * above it is the answer to "what is this order", and a second object of equal
+ * weight would make the cell a list of two equals rather than a state with a
+ * history. Only the mark keeps the state's colour, which is the same rule the
+ * chip follows and the reason the pair can be told apart at a glance.
  */
 function EarlierVisit({ visit }: { visit: ConfirmationVisitDto }) {
   const spec = SPEC_BY_KEY.get(visit.outcome)
-  const when = `${tashkentDate(visit.queuedAt)} ${tashkentTime(visit.queuedAt)}`
 
   /*
     A FINISHED VISIT CANNOT BE «КУТИЛМОҚДА», WHATEVER THE SIGNAL SAYS.
@@ -1349,26 +1375,20 @@ function EarlierVisit({ visit }: { visit: ConfirmationVisitDto }) {
     past tense.
   */
   const undecided = visit.outcome === 'CONFIRM_NEW'
-  const label = undecided ? 'Ҳал бўлмаган' : (spec?.label ?? visit.outcome)
 
   return (
-    <span className="flex flex-col pl-2 leading-tight">
-      {/*
-        SPOKEN, NOT ONLY DRAWN. Sighted readers get the hierarchy from the
-        pill above and the hairline between — a screen reader gets neither,
-        and heard the СТАТУС cell as «Тасдиқланмади Тасдиқланди 1-марта …»:
-        two state names in the one column an operator reads the row's state
-        from. The prefix is what the chip's shape says visually.
-
-        It also replaces a native `title` that carried this same sentence.
-        The attribute reached nobody on a keyboard or a touchscreen, and for
-        a mouse it repeated after a second what was already on the line.
-      */}
-      <span className="sr-only">Аввалги ҳолат: </span>
+    <>
       <span
-        className="inline-flex items-center gap-1.5 text-[11px] whitespace-nowrap"
+        className="inline-flex items-center gap-1.5 pl-2 text-[11px] leading-tight whitespace-nowrap"
         style={{ color: 'var(--ink-secondary)' }}
       >
+        {/*
+          SPOKEN, NOT ONLY DRAWN. Sighted readers get the hierarchy from the
+          pill above and the arrow between — a screen reader gets neither, and
+          heard the cell as «Тасдиқланмади Тасдиқланди …»: two state names in
+          the one column an operator reads the row's state from.
+        */}
+        <span className="sr-only">Аввалги ҳолат: </span>
         <span
           aria-hidden="true"
           className="inline-flex shrink-0"
@@ -1376,17 +1396,10 @@ function EarlierVisit({ visit }: { visit: ConfirmationVisitDto }) {
         >
           {spec ? <spec.Glyph size={12} /> : null}
         </span>
-        {label}
+        {undecided ? 'Ҳал бўлмаган' : (spec?.label ?? visit.outcome)}
       </span>
-      {/* Indented under the label, not under the mark: the mark is 12px and
-          the gap 6, so the date starts where the word above it does. */}
-      <span
-        className="tabular pl-[18px] text-[10px] whitespace-nowrap"
-        style={{ color: 'var(--ink-muted)' }}
-      >
-        {visit.no}-марта · {when}
-      </span>
-    </span>
+      <VisitDate at={visit.queuedAt} />
+    </>
   )
 }
 

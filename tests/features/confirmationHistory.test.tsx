@@ -47,6 +47,8 @@ function visit(over: Partial<ConfirmationVisitDto> & { no: number }): Confirmati
 function row(queueHistory: ConfirmationVisitDto[]): ConfirmationOrderDto {
   return {
     outcome: queueHistory[0]?.outcome ?? 'CONFIRM_NEW',
+    // Same instant as `queueHistory[0]`, exactly as the repository builds it.
+    queuedAt: queueHistory[0]?.queuedAt ?? null,
     queueHistory,
   } as unknown as ConfirmationOrderDto
 }
@@ -70,7 +72,6 @@ describe('the СТАТУС cell', () => {
     render(<OutcomeCell row={row([visit({ no: 1, outcome: 'CONFIRMED' })])} />)
 
     expect(screen.getByText('Тасдиқланди')).toBeDefined()
-    expect(screen.queryByText(/1-марта/)).toBeNull()
     expect(screen.queryByText(/2026-08-29/)).toBeNull()
   })
 
@@ -81,7 +82,14 @@ describe('the СТАТУС cell', () => {
     expect(screen.getByText('Тасдиқланмади')).toBeDefined()
     // Where it stood on the day it left, which is the fact that was lost.
     expect(screen.getByText('Тасдиқланди')).toBeDefined()
-    expect(screen.getByText(/1-марта · 2026-08-29 17:05/)).toBeDefined()
+    /*
+      BOTH STEPS CARRY A DATE, and that is what makes the cell readable on its
+      own. САНА is two columns to the left and routinely scrolled off a table
+      this wide; with only the earlier step dated, the lit chip was the one
+      undated thing in the cell and read as the OLDER of the two.
+    */
+    expect(screen.getByText('2026-08-31 18:18')).toBeDefined()
+    expect(screen.getByText('2026-08-29 17:05')).toBeDefined()
   })
 
   it('puts the current state FIRST, so the cell reads as a state with a past', () => {
@@ -128,7 +136,7 @@ describe('the СТАТУС cell', () => {
 
     // Tashkent is UTC+5: 18:00Z is 23:00 on the 2nd, 20:00Z is 01:00 on the 3rd.
     expect(screen.getByText('Кутилмоқда')).toBeDefined()
-    expect(screen.getByText(/1-марта · 2026-09-02 23:00/)).toBeDefined()
+    expect(screen.getByText('2026-09-02 23:00')).toBeDefined()
   })
 
   it('does not call a finished visit «Кутилмоқда»', () => {

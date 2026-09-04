@@ -282,7 +282,10 @@ that means an order confirmed on the 29th and pulled back into Тасдикла�
 that arrived on 2026-08-29 did; the operator reading the 29th found an order
 their Telegram channel had announced that morning simply gone. `QUEUE_HISTORY_SQL`
 (the same LATERAL that draws 🔁) therefore returns every visit as JSON, newest
-first, and the СТАТУС column draws them as a chain under the current chip.
+first, and the СТАТУС column draws them as a chain: only the last state is
+lit as a chip, an arrow points up from each earlier one, and every step
+carries its own date — the chip's included, because САНА is two columns away
+and routinely scrolled off, which left the lit state looking like the older.
 **It is shown and never summed** — the tiles, the Статистика panel, the state
 filter and the header bell all read the single `classified.outcome`, and
 `queueHistory[0]` IS that outcome, which is why the UNCONFIRMED_SHIPPED
