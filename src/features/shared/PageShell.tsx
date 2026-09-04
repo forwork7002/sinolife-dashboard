@@ -161,7 +161,7 @@ export function PageShell({
       periodAware={period}
     >
       <div
-        className="mx-auto max-w-[1400px] space-y-4"
+        className="page-container space-y-4"
         style={{
           ...(accent ? ({ '--accent': accent } as React.CSSProperties) : undefined),
           // A dimmed page is data awaiting replacement; opacity is cheap to

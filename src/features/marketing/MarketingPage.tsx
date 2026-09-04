@@ -137,7 +137,7 @@ export function MarketingPage() {
 
   return (
     <Shell>
-      <div className="mx-auto flex max-w-[1400px] flex-col gap-5">
+      <div className="page-container flex flex-col gap-5">
         <header>
           <div className="accent-rule" aria-hidden="true" />
           <h1 className="display mt-2.5 text-2xl font-semibold" style={{ color: 'var(--ink-primary)' }}>
