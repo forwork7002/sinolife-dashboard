@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
@@ -23,10 +23,8 @@ import {
 } from '@/lib/api'
 import {
   NO_VALUE,
-  APP_TIME_ZONE,
   formatCompactUzs,
   formatDate,
-  formatMonthLabel,
   formatNumber,
   formatPercent,
   formatUzs,
@@ -122,7 +120,7 @@ import { t } from '@/lib/messages'
  * and the ordinal still carry the rank entirely on their own.
  */
 export function SellersPage() {
-  const { filters, setPeriod, apiParams: filterParams } = useDashboardFilters()
+  const { apiParams: filterParams } = useDashboardFilters()
   const [tab, setTab] = useState<'sellers' | 'teams'>('sellers')
   const [openSeller, setOpenSeller] = useState<string | null>(null)
   /**
@@ -147,7 +145,16 @@ export function SellersPage() {
    * `reset()` clearing it back to the floor's own definition is the right
    * behaviour rather than a bug to route around.
    */
-  const [basis, setBasis] = useState<'queue' | 'intake'>('queue')
+  /*
+    ONE CLOCK ON SCREEN. The board reads the floor's own FAKT 1 / FAKT 2 —
+    Тасдиқланди and Доставланди, dated by the arrival in C4:NEW — and there is
+    no longer a control to change it. The 'intake' reading still exists behind
+    `?basis=intake` because it is the figure measured against the client's own
+    published dashboard and so the oracle a regression gets checked against;
+    it is not a second board the floor was ever meant to read, and a toggle
+    offering it invited exactly that.
+  */
+  const basis = 'queue' as const
   const apiParams = useMemo(() => ({ ...filterParams, basis }), [filterParams, basis])
 
   const board = useQuery({
@@ -225,59 +232,11 @@ export function SellersPage() {
   return (
     <PageShell
       title={t.nav.sellers}
-      description={
-        basis === 'queue'
-          ? 'Kim qancha buyurtma olib keldi — FAKT 1 / FAKT 2, navbatga tushgan sana boʻyicha'
-          : 'Kim qancha buyurtma olib keldi — buyurtma OLINGAN sana boʻyicha'
-      }
+      description="Kim qancha sotdi — FAKT 1 / FAKT 2, navbatga tushgan sana boʻyicha"
       meta={board.data?.meta}
       stale={board.isPlaceholderData}
       accent="var(--series-5)"
-      actions={
-        /*
-          TWO CLOCKS, ONE TOGGLE. «Navbat» is the floor's own FAKT 1 / FAKT 2 —
-          Тасдиқланди / Доставланди, dated by the arrival in C4:NEW. «Yaratilgan
-          sana» is the original reading this screen shipped with, kept as the
-          one figure measured against the client's own published dashboard
-          (see `sellerBoardRepository`) — the oracle a «Navbat» regression gets
-          checked against, not a second board anyone is meant to keep reading.
-        */
-        <div className="flex gap-1" role="group" aria-label="Hisoblash asosi">
-          {(
-            [
-              ['queue', 'Navbat (FAKT 1/2)'],
-              ['intake', 'Yaratilgan sana'],
-            ] as const
-          ).map(([id, label]) => {
-            const active = basis === id
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setBasis(id)}
-                aria-pressed={active}
-                className="focusable rounded-lg px-2.5 py-1.5 text-[12px] font-medium whitespace-nowrap transition-colors"
-                style={{
-                  background: active ? 'var(--surface-raised)' : 'transparent',
-                  color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-                  boxShadow: active ? 'var(--shadow-card)' : 'none',
-                  border: `1px solid ${active ? 'var(--border-strong)' : 'transparent'}`,
-                }}
-              >
-                {label}
-              </button>
-            )
-          })}
-        </div>
-      }
     >
-      <MonthBar
-        preset={filters.preset}
-        from={filters.from}
-        to={filters.to}
-        onPick={(from, to) => setPeriod({ preset: 'custom', from, to })}
-      />
-
       <PodiumHero
         data={data}
         status={status}
@@ -431,167 +390,32 @@ export function SellersPage() {
  * as "who is about to cost me money", the floor reads it as "it can be done".
  */
 function sellersCaption(data: SellerBoardDto): string {
+  const base = `${formatNumber(data.totals.sellers)} ta sotuvchi`
+
+  /*
+    THE YOUNG-WINDOW STATE, SAID OUT LOUD.
+
+    Delivery takes days, so on «Bugun» — and on any window opened before the
+    first courier arrives — every row holds zero FAKT 2, the ranking has
+    nothing to sort on and the whole rank column is em dashes. That is correct
+    and it looks broken. Naming it turns a dead-looking board into a board
+    that is waiting, which is what it actually is.
+  */
+  if (data.totals.won.amount === 0) {
+    return data.totals.ordered.amount > 0
+      ? `${base} — ${formatCompactUzs(data.totals.ordered.amount)} soʻm tasdiqlangan, hali hech biri yetkazilmagan. Reyting FAKT 2 toʻlgani sayin shakllanadi.`
+      : `${base} — bu davrda hali harakat yoʻq.`
+  }
+
   const near = data.rows.filter(
     (r) => r.bonus.toNextPercent !== null && r.bonus.toNextPercent >= 90,
   ).length
-  const base = `${formatNumber(data.totals.sellers)} ta sotuvchi — davrda buyurtma olganlar`
+  const withMoney = data.rows.filter((r) => r.won.amount > 0).length
+
+  const body = `${base} · ${formatNumber(withMoney)} tasida FAKT 2 bor`
   return near > 0
-    ? `${base} · ${formatNumber(near)} tasi bonus darajasiga 90%+ yaqin`
-    : base
-}
-
-// ---------------------------------------------------------------------------
-// The month bar — the client's `moybar`
-// ---------------------------------------------------------------------------
-
-/** How many months back the bar offers. Their page publishes three. */
-const MONTH_CHOICES = 4
-
-interface MonthChoice {
-  readonly label: string
-  /** `YYYY-MM-DD`, the first of the month. */
-  readonly from: string
-  /** `YYYY-MM-DD`, the last day — INCLUSIVE, as `setPeriod` expects. */
-  readonly to: string
-}
-
-/**
- * The client's `moybar`, carried over — and pointed at the shared control
- * rather than at a private copy of the window.
- *
- * Their page holds its own months and nothing else on their site moves when
- * you press one. Here a month button writes the DASHBOARD's window
- * (`preset=custom` with explicit bounds, which the period picker already
- * speaks), so pressing «Iyul 2026» is the same act as choosing that range in
- * the picker: it lands in the URL, survives a refresh, and can be pasted into
- * Telegram. The bar is a shortcut to the control, not a second opinion about
- * what "now" means — which is the one thing the page's header comment says
- * this port must not introduce.
- *
- * MOUNTED-ONLY, on purpose. "Which month is this" is answered from the
- * clock, and the server's clock and the reader's are not required to agree
- * about it — at 00:00 on the first of a month they differ, and the mismatch
- * would be a hydration error on the one night nobody is watching. The row
- * keeps its height while it is empty so nothing below it jumps.
- */
-function MonthBar({
-  preset,
-  from,
-  to,
-  onPick,
-}: {
-  preset: string
-  from?: string
-  to?: string
-  onPick: (from: string, to: string) => void
-}) {
-  const months = useSyncExternalStore(subscribeNever, monthsSnapshot, serverMonths)
-
-  return (
-    <div className="flex min-h-[30px] flex-wrap items-center gap-1.5" role="group" aria-label="Oy tanlash">
-      {months.map((month) => {
-        const active = preset === 'custom' && from === month.from && to === month.to
-        return (
-          <button
-            key={month.from}
-            type="button"
-            onClick={() => onPick(month.from, month.to)}
-            aria-pressed={active}
-            className="focusable rounded-lg px-2.5 py-1 text-[12px] font-medium whitespace-nowrap transition-colors"
-            style={{
-              background: active ? 'var(--surface-raised)' : 'transparent',
-              color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-              boxShadow: active ? 'var(--shadow-card)' : 'none',
-              border: `1px solid ${active ? 'var(--border-strong)' : 'var(--border)'}`,
-            }}
-          >
-            {month.label}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-/*
-  The month list is a CLIENT-ONLY value, served through useSyncExternalStore.
-
-  "Which month is this" is answered from the clock, and the server's clock and
-  the reader's are not required to agree about it: at 00:00 on the first of a
-  month they name different months, and rendering one on the server and the
-  other in the browser is a hydration error on the one night nobody is
-  watching. `getServerSnapshot` returns nothing, so the row ships empty and
-  the browser fills it on the first paint — and the row holds its height while
-  it is empty, so nothing below it jumps.
-
-  The snapshot must be referentially stable or React re-renders forever, so
-  the list is cached and rebuilt only when the current month actually changes
-  — which also lets a tab left open overnight pick up the new month.
-*/
-const NO_MONTHS: readonly MonthChoice[] = Object.freeze([])
-
-let monthCache: { key: string; value: readonly MonthChoice[] } | null = null
-
-function subscribeNever(): () => void {
-  return () => {}
-}
-
-function serverMonths(): readonly MonthChoice[] {
-  return NO_MONTHS
-}
-
-function monthsSnapshot(): readonly MonthChoice[] {
-  const key = appZoneMonthKey()
-  if (!monthCache || monthCache.key !== key) {
-    monthCache = { key, value: recentMonths(MONTH_CHOICES) }
-  }
-  return monthCache.value
-}
-
-/** `YYYY-MM` as the application's zone reads it right now. */
-function appZoneMonthKey(): string {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: APP_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(new Date())
-  const year = parts.find((p) => p.type === 'year')?.value ?? '1970'
-  const month = parts.find((p) => p.type === 'month')?.value ?? '01'
-  return `${year}-${month}`
-}
-
-/**
- * The last `count` calendar months, newest first, in the application's zone.
- *
- * Built from the zone's own wall-clock fields rather than from the browser's:
- * a reader in Tashkent and a reader abroad must be offered the same months,
- * and `new Date().getMonth()` would give them different ones for several
- * hours a day. `Date.UTC` then does the month arithmetic on plain integers,
- * so the 31st rolling back into a 30-day month cannot overflow.
- */
-function recentMonths(count: number): MonthChoice[] {
-  const [yearText, monthText] = appZoneMonthKey().split('-')
-  const year = Number(yearText)
-  const month = Number(monthText) - 1
-
-  const out: MonthChoice[] = []
-  for (let back = 0; back < count; back++) {
-    const start = new Date(Date.UTC(year, month - back, 1))
-    // Day zero of the NEXT month is the last day of this one, in every month
-    // length and every leap year, without a table.
-    const end = new Date(Date.UTC(year, month - back + 1, 0))
-    out.push({
-      label: formatMonthLabel(start.getUTCFullYear(), start.getUTCMonth()),
-      from: isoDay(start),
-      to: isoDay(end),
-    })
-  }
-  return out
-}
-
-/** `YYYY-MM-DD` from a UTC-constructed calendar date. */
-function isoDay(date: Date): string {
-  return date.toISOString().slice(0, 10)
+    ? `${body} · ${formatNumber(near)} tasi bonus darajasiga 90%+ yaqin`
+    : body
 }
 
 // ---------------------------------------------------------------------------
@@ -1177,18 +1001,47 @@ function TotalsBand({
 function Rank({ rank, ranked = true }: { rank: number; ranked?: boolean }) {
   const medal = ranked && rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : null
 
+  /*
+    THE PLACE, AT THE SIZE A PLACE DESERVES.
+
+    On the podium rows the ordinal is set in the row's own metal at 19px — the
+    same varnish the rail and the avatar ring wear, and decorative by the same
+    contract: the medal glyph sits beside it and the aria-label spells the
+    place out, so the rank survives with the colour gone. Everyone else keeps
+    the quiet tabular figure, which is what makes the top three read as
+    somewhere to get to.
+  */
+  if (!ranked) {
+    return (
+      <span
+        className="tabular inline-flex w-10 shrink-0 justify-end text-xs"
+        style={{ color: 'var(--ink-muted)' }}
+        aria-label="Hali yetkazilgan puli yoʻq"
+      >
+        —
+      </span>
+    )
+  }
+
+  if (medal) {
+    return (
+      <span className="inline-flex w-10 shrink-0 items-center justify-end gap-1">
+        <span aria-hidden="true" className="text-[13px] leading-none">
+          {medal}
+        </span>
+        <span className="rank-num" aria-label={`${rank}-oʻrin`}>
+          {rank}
+        </span>
+      </span>
+    )
+  }
+
   return (
     <span
-      className="tabular inline-flex w-9 shrink-0 justify-end text-xs font-semibold"
-      style={{ color: ranked && rank <= 3 ? 'var(--ink-primary)' : 'var(--ink-muted)' }}
+      className="tabular inline-flex w-10 shrink-0 justify-end text-xs font-medium"
+      style={{ color: 'var(--ink-secondary)' }}
     >
-      {!ranked ? (
-        <span aria-label="Hali yutilgan puli yoʻq">—</span>
-      ) : medal ? (
-        <span aria-label={`${rank}-oʻrin`}>{medal}</span>
-      ) : (
-        rank
-      )}
+      {rank}
     </span>
   )
 }
@@ -1427,58 +1280,77 @@ function SellerRows({
   projectionDivisor: number | null
   planWindowHint?: string
 }) {
+  /*
+    A PLACE IS ONLY A PLACE ONCE SOMETHING HAS BEEN DELIVERED.
+
+    On a young window — «Bugun» before the first courier arrives — every row
+    holds zero FAKT 2 and the order is decided by a tie-break, so nobody wears
+    metal. The table says «—» in the rank column instead of handing out gold
+    for nothing, and the caption above explains why.
+  */
   const podium = row.rank <= 3 && row.won.amount > 0
-  const metal = !podium
-    ? null
-    : row.rank === 1
-      ? MEDAL_TOKENS[0]
-      : row.rank === 2
-        ? MEDAL_TOKENS[1]
-        : MEDAL_TOKENS[2]
 
   return (
     <>
+      {/*
+        THE TABLE IS THE PODIUM'S CONTINUATION, not a list under it.
+
+        This is the screen the sellers open, and the top places have to feel
+        like places all the way down the page — the ceremony used to stop at
+        the fold, with the first three rows differing from the rest by an
+        eight-percent wash. `.rank-row` carries a metal rail and a wash that
+        fades across the row from the rank; see the RANKED ROWS block in
+        globals.css for why the metal is licensed here and what still carries
+        the rank without it.
+      */}
       <tr
         id={`seller-row-${row.employeeId}`}
-        className="border-b"
+        className={`border-b ${podium ? `rank-row rank-${row.rank}` : ''}`}
         style={{
           borderColor: 'var(--grid)',
-          /*
-            The podium rows echo the podium above them: a faint wash of their
-            own metal plus a stripe on the rank cell — chrome, per the header
-            contract, layered over the medal the cell already shows. The open
-            drill-down row takes the sunken token instead, so a click that
-            arrived from the podium visibly lands somewhere.
-          */
-          background: open
-            ? 'var(--surface-sunken)'
-            : metal
-              ? `color-mix(in oklab, ${metal} 8%, transparent)`
-              : undefined,
+          // The open drill-down takes the sunken token, so a click that
+          // arrived from the podium visibly lands somewhere.
+          background: open ? 'var(--surface-sunken)' : undefined,
         }}
       >
-        <td
-          className="px-2 py-2"
-          style={metal ? { boxShadow: `inset 3px 0 0 ${metal}` } : undefined}
-        >
+        <td className={podium ? 'px-2 py-3' : 'px-2 py-2'}>
           <Rank rank={row.rank} ranked={row.won.amount > 0} />
         </td>
-        <td className="px-2 py-2">
+        <td className={podium ? 'px-2 py-3' : 'px-2 py-2'}>
           {/*
             The name is the disclosure trigger — one target, not a name plus a
-            separate chevron, so the row has a single obvious action.
+            separate chevron, so the row has a single obvious action. On a
+            ranked row it wears the same metal-ringed initials the podium card
+            does, so the person is recognisable in both places at a glance.
           */}
-          <button
-            type="button"
-            onClick={onToggle}
-            aria-expanded={open}
-            className={`focusable rounded text-left text-[12.5px] underline-offset-2 hover:underline ${
-              podium ? 'font-semibold' : 'font-medium'
-            }`}
-            style={{ color: 'var(--ink-primary)' }}
-          >
-            {row.fullName}
-          </button>
+          <span className="flex items-center gap-2">
+            {podium && (
+              <span className="medal-ring shrink-0" aria-hidden="true">
+                <span
+                  className="flex items-center justify-center rounded-full text-[10px] font-semibold"
+                  style={{
+                    width: 22,
+                    height: 22,
+                    background: 'var(--surface-raised)',
+                    color: 'var(--ink-primary)',
+                  }}
+                >
+                  {initials(row.fullName)}
+                </span>
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-expanded={open}
+              className={`focusable rounded text-left underline-offset-2 hover:underline ${
+                podium ? 'text-[13.5px] font-semibold' : 'text-[12.5px] font-medium'
+              }`}
+              style={{ color: 'var(--ink-primary)' }}
+            >
+              {row.fullName}
+            </button>
+          </span>
           {/*
             Two lengths on one track, the same grammar as the drill-down's day
             bars: the light layer is the intake this seller took, the dark
@@ -1521,7 +1393,7 @@ function SellerRows({
             <ChaseCell row={row} ahead={ahead} />
           </div>
         </td>
-        <td className="px-2 py-2">
+        <td className={podium ? 'px-2 py-3' : 'px-2 py-2'}>
           <TeamBadge rop={row.rop} />
         </td>
         {/* FAKT 2 — Доставланди. Their leading money column, and ours. */}

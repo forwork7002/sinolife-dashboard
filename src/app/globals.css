@@ -2002,3 +2002,68 @@ p {
     transform: translateX(140%);
   }
 }
+
+/**
+ * The ranked rows, which are the podium's continuation and not a table.
+ *
+ * The client's ask on 2026-09-04: this is the screen the sellers themselves
+ * open for motivation, and the top places have to feel like places. The
+ * podium above already crowns three people; below it the table used to flatten
+ * them back into rows differing by an 8% wash, so the ceremony stopped at the
+ * fold.
+ *
+ * Same contract as the PODIUM block — the metal is CHROME. It rims, washes and
+ * rails; the rank itself still travels on size, weight, position, the ordinal
+ * and the medal glyph, so a colourblind reader loses nothing when the varnish
+ * is gone. --metal is set per row by .rank-1/2/3.
+ */
+.rank-1 { --metal: var(--medal-gold); }
+.rank-2 { --metal: var(--medal-silver); }
+.rank-3 { --metal: var(--medal-bronze); }
+
+/**
+ * A ranked row: metal rail down the leading edge, and a wash that fades out
+ * across the row rather than tinting it flat — the light comes from where the
+ * rank is, the same direction the podium's crown-light falls.
+ *
+ * THE WASH IS ON THE ROW, NOT THE CELLS. Painted per `td` the gradient
+ * restarts in every column and the row reads as a set of bands instead of one
+ * lit edge — which is exactly what it looked like on the first attempt. The
+ * cells keep no background of their own, so the row's own paint shows through.
+ *
+ * The rail is a box-shadow rather than a border so it cannot change the row's
+ * box and shift every column by four pixels.
+ */
+.rank-row {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in oklab, var(--metal) 15%, transparent),
+    transparent 34%
+  );
+}
+.rank-row > td:first-child {
+  box-shadow: inset 4px 0 0 var(--metal);
+}
+/* First place carries it a little further and a little brighter — the one row
+   that should be readable from across the room. */
+.rank-row.rank-1 {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in oklab, var(--metal) 22%, transparent),
+    transparent 46%
+  );
+}
+
+/**
+ * The ordinal on a ranked row. Metal, larger, and DECORATIVE — the medal glyph
+ * and the aria-label beside it carry the rank for anyone who cannot see hue,
+ * which is what licenses the colour here.
+ */
+.rank-num {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-weight: 800;
+  font-size: 19px;
+  line-height: 1;
+  color: var(--metal);
+  letter-spacing: -0.02em;
+}
