@@ -343,7 +343,17 @@ function Tile({
   status: 'loading' | 'error' | 'ready'
 }) {
   // 22px in a phone's 171px tile: «16.8 ming soʻm» is ~205px at 26.
-  const figureClass = 'figure block text-[22px] leading-none font-semibold sm:text-[26px]'
+  /*
+    `figure-wrap` for the reason the note on the grid above already gives:
+    «16.8 ming soʻm» does not fit a tile this band ever makes narrow, and the
+    fix there was more rows rather than a smaller number. Two across at 360px
+    the tile is 156px and the value measured 154px against ~140px of content
+    box — 14px out over the card's own edge. The number keeps its size and
+    takes a second line instead, breaking after «ming» because that is the
+    last break that fits.
+  */
+  const figureClass =
+    'figure figure-wrap block text-[22px] leading-none font-semibold sm:text-[26px]'
 
   const figure =
     status === 'loading' ? (

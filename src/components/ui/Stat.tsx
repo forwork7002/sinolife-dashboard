@@ -378,7 +378,18 @@ export function GaugeTile({
         {label}
       </p>
 
-      <div className="mt-2 flex items-center gap-3.5">
+      {/*
+        Ring beside the words from sm, ring ABOVE them on a phone.
+
+        The ring is a fixed 68px and the gap 14px, so beside it the sentence
+        gets whatever the tile has left — and these tiles sit two across at
+        360px, where the tile is 158px and the sentence was measured at 42px.
+        «10 ta eng yirik mijoz davr tushumida · Top-5: 11.1%» set in a 42px
+        column is a ribbon of two-word lines, not a hint. Stacked it gets the
+        full 124px and reads as a line of text. Nothing changes from sm up,
+        where there was never a shortage.
+      */}
+      <div className="mt-2 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3.5">
         {status === 'loading' ? (
           <div className="skeleton h-[68px] w-[68px] rounded-full" role="status">
             <span className="sr-only">Yuklanmoqda</span>

@@ -547,7 +547,7 @@ function RowName({
 
   if (!onDrill) {
     return (
-      <span className="block max-w-[240px] truncate" title={label}>
+      <span className="flex max-w-[240px] truncate" title={label}>
         {body}
       </span>
     )
@@ -565,7 +565,19 @@ function RowName({
       type="button"
       onClick={() => onDrill(name)}
       title={`${label} — ichiga kirish`}
-      className="focusable block max-w-[240px] rounded text-left transition-colors hover:underline"
+      /*
+        `flex`, not `block`, and it is what makes the 240px cap mean anything.
+
+        The name inside is an inline-flex carrying the label and, on a day
+        row, the «toʻliq emas» chip. An inline-level box wider than its
+        container does not shrink to it — it overflows — so the `truncate`
+        already sitting on the label never engaged and the longest campaign
+        names ran 228px past this cap into the column beside them. As a flex
+        container the cap is a real constraint, the label shrinks inside it
+        and ellipsises where it should. Its non-drillable twin above gets the
+        same treatment for the same reason.
+      */
+      className="focusable flex max-w-[240px] rounded text-left transition-colors hover:underline"
       style={{ color: 'var(--ink-primary)' }}
     >
       {body}
