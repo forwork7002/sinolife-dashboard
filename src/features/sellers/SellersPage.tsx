@@ -647,18 +647,26 @@ function PodiumAvatar({
     <span className="relative inline-flex" aria-hidden="true">
       {crowned && (
         <span
-          className="absolute z-[1] leading-none"
+          /* Drops in once, after the shine has crossed the card — the
+             ceremony's last beat, not its first. Reuses `.rise` rather than a
+             bespoke keyframe so it inherits the house's one motion rule for
+             free: nothing here plays under reduced motion. */
+          className="rise absolute z-[1] leading-none"
           style={{
             top: -15,
             left: '50%',
             transform: 'translateX(-50%) rotate(-12deg)',
             fontSize: 18,
+            animationDelay: '650ms',
           }}
         >
           👑
         </span>
       )}
-      <span className="medal-ring">
+      {/* The champion's ring carries a wider halo than the chrome shared with
+          silver and bronze — see `.medal-ring--crowned`: still the seat's own
+          metal, just lit brighter, the way the actual centre step is. */}
+      <span className={`medal-ring ${crowned ? 'medal-ring--crowned' : ''}`}>
         <span
           className="tabular flex items-center justify-center rounded-full font-extrabold"
           style={{
@@ -736,7 +744,16 @@ function PodiumStep({
     <button
       type="button"
       onClick={onOpen}
-      className={`focusable rounded text-center underline-offset-2 hover:underline ${
+      /*
+        `podium-name` is a hit-slop hook, not a style: `.podium-name::before`
+        pads the tap target a good ten pixels past this text on every side
+        with an absolutely-positioned layer, so a thumb aiming just off the
+        letters still opens the drill-down. `position: relative` here is
+        load-bearing for that overlay, same reason `.podium-card` carries it
+        for `.podium-shine`. It also doubles as the hook the CARD lifts on —
+        see `.podium-card:has(.podium-name:hover)`.
+      */
+      className={`podium-name focusable relative rounded text-center underline-offset-2 hover:underline ${
         isLeader ? 'text-[17px] font-semibold' : 'text-[13.5px] font-semibold'
       }`}
       style={{ color: 'var(--ink-primary)' }}
@@ -832,46 +849,77 @@ function PodiumStep({
                   {formatFullUzs(row.bonus.earned.amount)} soʻm bonus
                 </StatusChip>
               ) : row.bonus.toNext !== null ? (
-                <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                  Bonusgacha +{formatFullUzs(row.bonus.toNext.amount)} kerak
-                </span>
+                /*
+                  THE SAME "how close" GRAMMAR AS THE CHASE BAR, one rung up:
+                  a runner-up reads distance to the leader, the leader reads
+                  distance to their own next reward — neither card is ever
+                  just a number with nothing left to reach for. `toNextPercent`
+                  is the service's own figure (`sellerBonus.ts`), not computed
+                  here, so the fill can never disagree with the soʻm caption.
+                */
+                <div className="mx-auto w-full max-w-[220px]">
+                  <p className="text-[11px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                    <span aria-hidden="true">🎁</span> Bonusgacha{' '}
+                    <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
+                      +{formatFullUzs(row.bonus.toNext.amount)}
+                    </span>
+                  </p>
+                  {row.bonus.toNextPercent !== null && (
+                    <div
+                      className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full"
+                      style={{ background: 'var(--track)' }}
+                      aria-hidden="true"
+                    >
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${Math.max(2, row.bonus.toNextPercent)}%`,
+                          background: 'var(--metal)',
+                          transition: 'width var(--duration-enter) var(--ease-out)',
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
               ) : null}
             </div>
           </>
         ) : (
           <>
-            {/* The chase, stated as a distance — the one number a runner-up
-                can act on — and drawn as closeness to the leader on the
-                shared track. */}
-            {gap === 0 ? (
-              <p
-                className="mt-2.5 text-[11px] font-medium"
-                style={{ color: 'var(--ink-secondary)' }}
-              >
-                Lider bilan teng — bitta yutuq hal qiladi
-              </p>
-            ) : (
-              <p
-                className="mt-2.5 text-[11px] font-medium"
-                style={{ color: 'var(--ink-secondary)' }}
-              >
-                Marragacha{' '}
-                <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
-                  +{formatFullUzs(gap)}
-                </span>{' '}
-                soʻm
-              </p>
-            )}
+            {/*
+              The chase, stated as a distance — the one number a runner-up
+              can act on — in a tinted pill rather than a plain line, because
+              this is the card's one call to action and used to read exactly
+              like the caption above it. Still no colour outside the licensed
+              sequential ramp: the pill borrows `--seq-550`, the same hue the
+              track fill already carried, so nothing new is being asked of
+              the chrome-not-channel rule.
+            */}
+            <div className="chase-chip mt-2.5 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold">
+              <span aria-hidden="true">{gap === 0 ? '🔥' : '🎯'}</span>
+              {gap === 0 ? (
+                'Lider bilan teng — bitta yutuq hal qiladi'
+              ) : (
+                <>
+                  Liderga{' '}
+                  <span className="tabular">+{formatFullUzs(gap)}</span> soʻm
+                </>
+              )}
+            </div>
             <div
-              className="mt-2 h-1 w-full overflow-hidden rounded-full"
+              className="mt-2 h-1.5 w-full overflow-hidden rounded-full"
               style={{ background: 'var(--track)' }}
               aria-hidden="true"
             >
               <div
                 className="h-full rounded-full"
                 style={{
-                  width: `${Math.max(1, closeness)}%`,
-                  background: 'var(--seq-550)',
+                  width: `${Math.max(2, closeness)}%`,
+                  // A lighter-to-full sweep rather than a flat fill — mixed
+                  // toward the card's own surface, not a literal white, so it
+                  // reads correctly whichever theme's --seq-550 it is given.
+                  background:
+                    'linear-gradient(90deg, color-mix(in oklab, var(--seq-550) 45%, var(--surface-raised)), var(--seq-550))',
                   transition: 'width var(--duration-enter) var(--ease-out)',
                 }}
               />

@@ -2049,11 +2049,41 @@ p {
     ),
     var(--surface-raised);
   box-shadow: var(--shadow-card), var(--edge-highlight);
+  /* For the hover-lift below — harmless on a card nothing ever hovers. */
+  transition: transform var(--duration-enter) var(--ease-out), box-shadow var(--duration-enter) var(--ease-out);
 }
 
-/* The champion outranks the flankers in elevation too. */
+/*
+ * The champion outranks the flankers in elevation too, and now in wash: the
+ * same crown-light every card carries, turned up from 13% to 24% on the one
+ * card the client wants "unmistakable from across the room". Still the seat's
+ * own metal at the same angle — a brighter instance of the shared rule, not a
+ * second rule, so silver and bronze are untouched.
+ */
 .podium-col--gold .podium-card {
+  background:
+    radial-gradient(
+      130% 90% at 50% -25%,
+      color-mix(in oklab, var(--metal) 24%, transparent),
+      transparent 60%
+    ),
+    var(--surface-raised);
   box-shadow: var(--shadow-raised), var(--edge-highlight);
+}
+
+/*
+ * Hovering (or keyboard-focusing) the name lifts the WHOLE card, not just the
+ * text — `:has()` reaches up from `.podium-name` so the affordance matches
+ * what actually happens on click, rather than a card-wide hover promising an
+ * action only the name delivers. No transform on touch: nothing here fires
+ * without a real `:hover`/`:focus-visible`, so a tap goes straight to
+ * `onOpen` with no lift to wait out.
+ */
+.podium-card:has(.podium-name:hover),
+.podium-card:has(.podium-name:focus-visible) {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-raised), var(--edge-highlight),
+    0 0 0 1px color-mix(in oklab, var(--metal) 32%, transparent);
 }
 
 /** The place plaque: medal emoji + ordinal on a soft metal tint. The words
@@ -2092,6 +2122,43 @@ p {
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--metal) 24%, transparent),
     0 6px 18px -8px color-mix(in oklab, var(--metal) 60%, transparent);
+}
+
+/*
+ * The champion's ring, lit wider — a third, more diffuse shadow layer added
+ * to the shared one above rather than a replacement, so silver and bronze
+ * keep exactly the halo they had. Static, on purpose: MOTION above says
+ * motion is the delivery and never the message, and a glow that pulsed all
+ * day would stop being noticed by the second hour and just be a battery cost.
+ */
+.medal-ring--crowned {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--metal) 30%, transparent),
+    0 6px 18px -8px color-mix(in oklab, var(--metal) 60%, transparent),
+    0 0 30px 4px color-mix(in oklab, var(--metal) 32%, transparent);
+}
+
+/*
+ * Hit-slop for the podium name, not a visible style: the button's own text
+ * stays exactly where it draws, and `::before` pads a real ten-plus pixels of
+ * tappable area past its edges without pushing the team badge beside it or
+ * the money below it — an absolutely-positioned layer costs the flow nothing.
+ * A thumb aiming just off «Saparboyeva 110 Farida» still opens the drill-down.
+ */
+.podium-name::before {
+  content: "";
+  position: absolute;
+  inset: -8px -10px;
+}
+
+/**
+ * The runner-up's one call to action, in a tinted pill rather than a plain
+ * line — see the call site for why `--seq-550` and not a new colour.
+ */
+.chase-chip {
+  color: var(--ink-primary);
+  background: color-mix(in oklab, var(--seq-550) 14%, transparent);
+  border: 1px solid color-mix(in oklab, var(--seq-550) 38%, transparent);
 }
 
 /**
