@@ -126,7 +126,21 @@ export interface SellerBoardRowDto {
   /** Still open, already inside `ordered`: live work the seller is carrying. */
   readonly open: MoneyDto
   readonly openOrders: number
+  /** Refused in the queue PLUS confirmed-then-cancelled. Both are resolved. */
   readonly lostOrders: number
+  /**
+   * Of `lostOrders`, the ones the operator had already CONFIRMED before the
+   * order died — «Отказ предварительно» and its kind. A different fact from a
+   * refusal at the door, and July hid 102 of them inside «yoʻlda».
+   */
+  readonly lostAfterConfirmOrders: number
+  /**
+   * EVERY order of theirs in the window, whatever became of it — the count the
+   * Тасдиқлаш navbati page shows. Bigger than `orders`, which counts only the
+   * confirmed ones: August is 3 228 against 2 874, and until the screen prints
+   * both, two pages state two true numbers 354 apart with no explanation.
+   */
+  readonly cohortOrders: number
   /** wonOrders / (orders resolved so far), 0-100. Null when nothing resolved. */
   readonly conversionPercent: number | null
   /** This seller's share of the board's total won intake, 0-100. */
@@ -202,6 +216,8 @@ export interface SellerBoardTotalsDto {
    */
   readonly teamlessSellers: number
   readonly orders: number
+  /** Every order in the cohort — what the confirmation queue counts. */
+  readonly cohortOrders: number
   readonly ordered: MoneyDto
   readonly won: MoneyDto
   readonly wonOrders: number
@@ -351,6 +367,8 @@ export class SellerBoardService {
       open: toMoneyDto(money(row.openMinor, ctx.currency)),
       openOrders: row.openOrders,
       lostOrders: row.lostOrders,
+      lostAfterConfirmOrders: row.lostAfterConfirmOrders,
+      cohortOrders: row.cohortOrders,
       /*
         Resolved, not taken: an order still open has not failed, so counting
         it against the seller would make a busy week look like a bad one. The
@@ -384,6 +402,7 @@ export class SellerBoardService {
         teams: new Set(rows.map((r) => r.rop).filter((r): r is string => r !== null)).size,
         teamlessSellers: rows.filter((r) => r.rop === null).length,
         orders: rows.reduce((a, r) => a + r.orders, 0),
+        cohortOrders: rows.reduce((a, r) => a + r.cohortOrders, 0),
         ordered: toMoneyDto(money(sum(rows, (r) => r.orderedMinor), ctx.currency)),
         won: toMoneyDto(money(totalWonMinor, ctx.currency)),
         wonOrders: rows.reduce((a, r) => a + r.wonOrders, 0),
@@ -477,6 +496,7 @@ export class SellerBoardService {
           board by 3.4 points — 84.1% where the truth is 80.7%.
         */
         lostOrders: r.rejectedOrders + r.lostAfterConfirmOrders,
+        lostAfterConfirmOrders: r.lostAfterConfirmOrders,
         cohortOrders: r.cohortOrders,
       }),
     )

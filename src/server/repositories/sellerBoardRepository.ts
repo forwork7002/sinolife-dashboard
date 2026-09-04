@@ -66,6 +66,8 @@ export interface SellerBoardRow {
   readonly openMinor: bigint
   /** Cancelled by the customer. Outside fact1, shown so the exclusion is visible. */
   readonly lostOrders: number
+  /** Of those, the ones already confirmed when they died. Zero on this basis. */
+  readonly lostAfterConfirmOrders: number
   /**
    * EVERY order this operator has in the window, whatever became of it.
    *
@@ -153,6 +155,9 @@ export class SellerBoardRepository {
         second population for the screen to reconcile against.
       */
       cohortOrders: int(r.orders),
+      // The intake query has no confirmation step, so nothing can be lost
+      // after one. Stated rather than left to a default.
+      lostAfterConfirmOrders: 0,
       orderedMinor: money(r.ordered),
       wonOrders: int(r.won_orders),
       wonMinor: money(r.won),

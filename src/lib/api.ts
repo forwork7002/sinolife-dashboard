@@ -1010,7 +1010,15 @@ export interface SellerBoardRowDto {
   /** Still open, already inside `ordered`. */
   readonly open: MoneyDto
   readonly openOrders: number
+  /** Refused in the queue PLUS confirmed-then-cancelled. Both are resolved. */
   readonly lostOrders: number
+  /** Of those, the ones already confirmed when the order died. */
+  readonly lostAfterConfirmOrders: number
+  /**
+   * Every order of theirs in the window — the count the confirmation queue
+   * shows. Bigger than `orders`, which counts only the confirmed ones.
+   */
+  readonly cohortOrders: number
   /** Won over RESOLVED orders, 0-100. Open orders are not counted against. */
   readonly conversionPercent: number | null
   readonly sharePercent: number | null
@@ -1060,6 +1068,8 @@ export interface SellerBoardTotalsDto {
   /** Sellers with no ROP, so on no team row. The team shares exclude them. */
   readonly teamlessSellers: number
   readonly orders: number
+  /** Every order in the cohort — what the confirmation queue counts. */
+  readonly cohortOrders: number
   readonly ordered: MoneyDto
   readonly won: MoneyDto
   readonly wonOrders: number

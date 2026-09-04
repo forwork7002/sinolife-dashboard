@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
@@ -587,8 +587,22 @@ const MEDAL_TOKENS = [
 ] as const
 
 /** «Aziza Karimova» → «AK» — the first letters of the first two words. */
-function initials(fullName: string): string {
-  const words = fullName.trim().split(/\s+/)
+export function initials(fullName: string): string {
+  /*
+    THE FLOOR BADGE IS NOT A NAME, so it may not become an initial.
+
+    Every seller here is badged with a number and it sits wherever the
+    spelling puts it — «Sirojov 115 Davlatbek», «118 Aziza Vafoqulova». Taking
+    the first character of the first two whitespace tokens therefore produced
+    «S1» and «1A» for 227 of 289 production names, on the podium cards and on
+    the ranked rows where the ring is meant to make a person recognisable.
+
+    Split on anything that is not a letter — «130-Salomat Shoimova» is a real
+    row — and keep only tokens that start with one.
+  */
+  const words = fullName
+    .split(/[^\p{L}]+/u)
+    .filter((word) => word.length > 0)
   const letters = (words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')
   return letters ? letters.toUpperCase() : '•'
 }
@@ -923,7 +937,21 @@ function TotalsBand({
         value={totals ? totals.ordered.amount : null}
         unit="money"
         status={status}
-        hint={totals ? `${formatNumber(totals.orders)} ta buyurtma` : undefined}
+        /*
+          BOTH COUNTS, because the two screens print both and neither used to
+          say so. `orders` is the confirmed part — what FAKT 1's money is made
+          of — while `cohortOrders` is every order that reached the queue in
+          this window, which is the number Tasdiqlash navbati shows. August:
+          2 874 against 3 228. A reader comparing the two pages was left with
+          two true figures 354 apart and nothing to reconcile them.
+        */
+        hint={
+          totals
+            ? totals.cohortOrders > totals.orders
+              ? `${formatNumber(totals.orders)} ta tasdiqlangan · navbatda jami ${formatNumber(totals.cohortOrders)} ta`
+              : `${formatNumber(totals.orders)} ta buyurtma`
+            : undefined
+        }
       />
       {/*
         «FAKT 2», NOT «shundan yutilgani» — the word was a lie about the
@@ -1093,6 +1121,29 @@ function SellerTable({
   /** The plan's own span, when the board found targets. See SellersPage. */
   planWindowHint?: string
 }) {
+  /*
+    HOW WIDE THE DRILL-DOWN MAY BE.
+
+    The panel lives in a `<td colSpan>`, so it inherits the table's 1 220px
+    minimum — but the reader only ever sees the container's width. On a 1 280
+    screen that hid the fourth tile column and the right quarter of the daily
+    chart until they scrolled sideways, which is not something anyone does to
+    read their own numbers. Measured once on mount and on resize; the panel
+    then pins itself to the left edge of the scroll box and takes exactly the
+    visible width.
+  */
+  const scrollBox = useRef<HTMLDivElement | null>(null)
+  const [visibleWidth, setVisibleWidth] = useState<number | null>(null)
+  useEffect(() => {
+    const box = scrollBox.current
+    if (!box) return
+    const observer = new ResizeObserver(([entry]) => {
+      setVisibleWidth(entry ? Math.round(entry.contentRect.width) : null)
+    })
+    observer.observe(box)
+    return () => observer.disconnect()
+  }, [])
+
   /**
    * The bar's ceiling is the biggest intake on the board, so every row's two
    * layers are read against one scale — and the two layers state exactly the
@@ -1130,7 +1181,10 @@ function SellerTable({
         a page that does not scroll. Eighty gives the panel room without
         letting the closed table run away with the viewport.
       */}
-      <div className={`${openSeller ? 'max-h-[80dvh]' : 'max-h-[60dvh]'} overflow-auto`}>
+      <div
+        ref={scrollBox}
+        className={`${openSeller ? 'max-h-[80dvh]' : 'max-h-[60dvh]'} overflow-auto`}
+      >
         <table className="w-full" style={{ minWidth: 1220 }}>
           <thead>
             <tr>
@@ -1149,8 +1203,12 @@ function SellerTable({
               ].map(([label, align]) => (
                 <th
                   key={label}
+                  scope="col"
                   className="eyebrow sticky top-0 z-[1] px-2 pt-1 pb-2 whitespace-nowrap"
-                  style={{ textAlign: align as 'left' | 'right', background: 'var(--surface)' }}
+                  /* --surface-sunken, the token every other sticky header in
+                     the app uses: --surface is the card's own colour, so in
+                     light theme the header vanished into the card behind it. */
+                  style={{ textAlign: align as 'left' | 'right', background: 'var(--surface-sunken)' }}
                 >
                   {label}
                 </th>
@@ -1172,6 +1230,7 @@ function SellerTable({
                   apiParams={apiParams}
                   projectionDivisor={projectionDivisor}
                   planWindowHint={planWindowHint}
+                  visibleWidth={visibleWidth}
                 />
               )
             })}
@@ -1269,6 +1328,7 @@ function SellerRows({
   apiParams,
   projectionDivisor,
   planWindowHint,
+  visibleWidth,
 }: {
   row: SellerBoardRowDto
   ahead: SellerBoardRowDto | null
@@ -1279,6 +1339,7 @@ function SellerRows({
   apiParams: Record<string, string | number>
   projectionDivisor: number | null
   planWindowHint?: string
+  visibleWidth?: number | null
 }) {
   /*
     A PLACE IS ONLY A PLACE ONCE SOMETHING HAS BEEN DELIVERED.
@@ -1305,7 +1366,9 @@ function SellerRows({
       */}
       <tr
         id={`seller-row-${row.employeeId}`}
-        className={`border-b ${podium ? `rank-row rank-${row.rank}` : ''}`}
+        className={`border-b transition-colors hover:bg-[var(--surface-sunken)] ${
+          podium ? `rank-row rank-${row.rank}` : ''
+        }`}
         style={{
           borderColor: 'var(--grid)',
           // The open drill-down takes the sunken token, so a click that
@@ -1397,7 +1460,12 @@ function SellerRows({
           <TeamBadge rop={row.rop} />
         </td>
         {/* FAKT 2 — Доставланди. Their leading money column, and ours. */}
-        <td className="tabular px-2 py-2 text-right text-xs font-medium" style={{ color: 'var(--ink-primary)' }}>
+        <td
+          className={`tabular px-2 text-right font-semibold ${
+            podium ? 'py-3 text-[13.5px]' : 'py-2 text-[12.5px]'
+          }`}
+          style={{ color: 'var(--ink-primary)' }}
+        >
           <Tooltip content={<span className="tabular">{formatUzs(row.won.amount)}</span>}>
             <span tabIndex={0} className="focusable rounded">
               {formatCompactUzs(row.won.amount)}
@@ -1444,7 +1512,14 @@ function SellerRows({
 
       {open && (
         <tr>
-          <td colSpan={11} className="px-2 pt-1 pb-4">
+          <td colSpan={11} className="p-0">
+            {/* Pinned to the left edge of the scroll box and sized to what the
+                reader can actually see, so the panel never hides behind a
+                horizontal scroll the table needs and it does not. */}
+            <div
+              className="sticky left-0 px-2 pt-1 pb-4"
+              style={visibleWidth ? { width: visibleWidth } : undefined}
+            >
             <SellerDetail
               employeeId={row.employeeId}
               row={row}
@@ -1453,6 +1528,7 @@ function SellerRows({
               apiParams={apiParams}
               planWindowHint={planWindowHint}
             />
+            </div>
           </td>
         </tr>
       )}
@@ -1592,8 +1668,14 @@ function PlanCell({ plan }: { plan: SellerPlanDto }) {
             }}
           />
         </span>
+        {/*
+          CAPPED IN TEXT AT 999%, not in value. Their own board prints 1343%
+          and 44 029.3% where a plan is a fraction of the month's takings, and
+          one such row sets the width of the whole column. The bar already
+          clamps; this stops the label from doing the same damage sideways.
+        */}
         <span className="tabular text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-          {formatPercent(plan.percent)}
+          {plan.percent > 999 ? '999%+' : formatPercent(plan.percent)}
         </span>
       </span>
     </Tooltip>
@@ -1690,9 +1772,23 @@ function SellerDetail({
           </span>
         </p>
         <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+          {/*
+            THREE STATES, NOT TWO. «Yoʻlda» is only what is still moving —
+            confirmed, undelivered and OPEN. An order the seller confirmed and
+            then lost used to sit in that same figure (102 orders and
+            176 mln soʻm across July), which read as live work they were still
+            carrying. It has its own clause now, and the queue refusals keep
+            theirs.
+          */}
           FAKT 2 {formatCompactUzs(row.won.amount)} · yoʻlda{' '}
-          {formatCompactUzs(row.open.amount)} ({formatNumber(row.openOrders)} ta) · bekor{' '}
-          {formatNumber(row.lostOrders)} ta
+          {formatCompactUzs(row.open.amount)} ({formatNumber(row.openOrders)} ta)
+          {row.lostAfterConfirmOrders > 0 && (
+            <> · tasdiqlangach bekor {formatNumber(row.lostAfterConfirmOrders)} ta</>
+          )}
+          {' '}· navbatda rad {formatNumber(row.lostOrders - row.lostAfterConfirmOrders)} ta
+          {row.cohortOrders > row.orders && (
+            <> · davrda jami {formatNumber(row.cohortOrders)} ta</>
+          )}
         </p>
       </div>
 
@@ -1922,8 +2018,12 @@ function TeamTable({
               ].map(([label, align]) => (
                 <th
                   key={label}
+                  scope="col"
                   className="eyebrow sticky top-0 z-[1] px-2 pt-1 pb-2 whitespace-nowrap"
-                  style={{ textAlign: align as 'left' | 'right', background: 'var(--surface)' }}
+                  /* --surface-sunken, the token every other sticky header in
+                     the app uses: --surface is the card's own colour, so in
+                     light theme the header vanished into the card behind it. */
+                  style={{ textAlign: align as 'left' | 'right', background: 'var(--surface-sunken)' }}
                 >
                   {label}
                 </th>
