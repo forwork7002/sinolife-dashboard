@@ -584,7 +584,14 @@ export function ConfirmationPage() {
       }
       period={!backlog}
       accent="var(--series-4)"
-      meta={backlog ? undefined : query.data?.meta}
+      /*
+        NO DATE LINE UNDER THE TITLE, EVER. It used to print `meta.period`'s
+        resolved dates whenever the window was bounded — but the preset row
+        right below already says which window is active (Bugun / Kecha / Shu
+        oy / Sana), so restating the exact dates next to the description just
+        duplicated a control the reader is already looking at.
+      */
+      meta={undefined}
       /*
         Dimmed only when the numbers genuinely belong to another question. It
         used to dim on `isPlaceholderData`, which is also true while the next
