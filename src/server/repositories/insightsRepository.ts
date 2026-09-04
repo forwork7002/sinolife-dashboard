@@ -1356,9 +1356,21 @@ export class InsightsRepository {
           column headed РОП — Регистрация and Операцион, the two back-office
           units, leaked onto 25 orders and into the ROP filter list.
         */
+        /*
+          The strip is case-INSENSITIVE, like the ILIKE guard above it.
+
+          ILIKE admitted a department written «Charos(rop)» and the
+          case-sensitive replace() then left the marker in place, so the queue
+          basis would print «Charos(rop)» where the intake basis
+          (sellerBoardRepository.ropOf, a case-insensitive regex) prints
+          «Charos» — two spellings of one team on the one screen that renders
+          both bases. Every ROP department on this portal writes «(ROP)» in
+          capitals today, so this is a divergence waiting on a rename rather
+          than a wrong number on screen; the two rules still have to agree.
+        */
         CASE
           WHEN dep."name" ILIKE '%(ROP)%'
-            THEN NULLIF(btrim(replace(dep."name", '(ROP)', '')), '')
+            THEN NULLIF(btrim(regexp_replace(dep."name", '\(ROP\)', '', 'gi')), '')
           ELSE NULL
         END AS rop,
         /*

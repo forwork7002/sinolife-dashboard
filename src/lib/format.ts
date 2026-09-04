@@ -158,6 +158,22 @@ const UZ_MONTHS_SHORT = [
 ] as const
 
 /**
+ * The same table spelled out, for places where a month is a LABEL rather than
+ * part of a date — the sellers board's month bar, which reads «Iyul 2026» the
+ * way the client's own page reads «Июль 2026». Abbreviations are for axis
+ * ticks, where space is scarce; a button naming a month has room for its name.
+ */
+const UZ_MONTHS_LONG = [
+  'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
+  'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr',
+] as const
+
+/** «Iyul 2026» from a zero-based month index. Same table, same reason. */
+export function formatMonthLabel(year: number, monthIndex: number): string {
+  return `${UZ_MONTHS_LONG[monthIndex] ?? ''} ${year}`
+}
+
+/**
  * THE ZONE EVERY DATE ON SCREEN IS READ IN.
  *
  * Mirrors the server's `APP_TIMEZONE`, and it has to be STATED rather than

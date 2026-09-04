@@ -1,36 +1,84 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Card } from '@/components/ui/Card'
+import { SearchInput } from '@/components/ui/Controls'
 import { GaugeTile, Meter, SectionHeader, StatTile, StatusChip } from '@/components/ui/Stat'
-import { Tooltip } from '@/components/ui/Tooltip'
+import { InfoTip, Tooltip } from '@/components/ui/Tooltip'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
+import { SellerDaysChart } from '@/features/sellers/SellerDaysChart'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import {
   type SellerBoardDto,
   type SellerBoardRowDto,
   type SellerDayDto,
+  type SellerPlanDto,
   type SellerTeamRowDto,
   apiGet,
 } from '@/lib/api'
-import { NO_VALUE, formatCompactUzs, formatDateShort, formatNumber, formatPercent, formatUzs } from '@/lib/format'
+import {
+  NO_VALUE,
+  APP_TIME_ZONE,
+  formatCompactUzs,
+  formatDate,
+  formatMonthLabel,
+  formatNumber,
+  formatPercent,
+  formatUzs,
+} from '@/lib/format'
 import { t } from '@/lib/messages'
 
 /**
  * Sotuvchilar reytingi — who brought the work in, and what it earned them.
  *
- * Modelled on the client's own published sellers dashboard, which is the
- * board their floor already reads every morning: a ranked table with medals,
- * the ROP's team beside each name, a teams view, a per-seller drill-down, and
- * the bonus ladder. What it does NOT copy is that page's month tabs — the
- * period comes from this application's own control at the top of every
- * screen, so one date choice moves every section instead of each page holding
- * its own opinion about "now".
+ * A PORT of the client's own published sellers dashboard — the board their
+ * floor already reads every morning. Every function that page has is here:
+ * the month bar, the ranked table in their column order and their words
+ * (FAKT 2, FAKT 1, Tranz., Lid, Konv., Plan bajarish, Prognoz), the teams
+ * view over the same columns, the per-seller card grid, the bonus ladder with
+ * the band it is actually paid on, and the daily dynamics chart.
+ *
+ * FOUR DELIBERATE DEPARTURES, each one a place their page and this one had to
+ * disagree, and each one recorded here rather than argued again later:
+ *
+ * 1. THE MONTH BAR WRITES THE SHARED WINDOW. Their months are private to that
+ *    page. Here a month button writes `preset=custom` into the dashboard's own
+ *    URL, so it lands in the address bar, survives a refresh and can be pasted
+ *    into Telegram — a shortcut to the period control, not a second opinion
+ *    about "now".
+ *
+ * 2. NO PER-PERSON TAB STRIP. Their nav carries one tab per operator; on this
+ *    portal that is 128 tabs in a row that scrolls sideways forever. The job
+ *    those tabs do is "find me", so the table takes a name filter instead and
+ *    the row's own drill-down is the person page. Rank and share still come
+ *    from the whole board, so a filtered view never promotes anyone.
+ *
+ * 3. NO ROP COLOUR CODING. Their page paints each ROP a hue from a
+ *    thirteen-entry map. Two reasons it is not carried, and the second is the
+ *    decisive one: this design system caps categorical identity at eight slots
+ *    because past that the hues stop being distinguishable under
+ *    colourblindness — AND their map is already stale against this portal.
+ *    `department.get` returns fifteen (ROP) teams today; their map names ten
+ *    of them and three of its entries (Husniddin, Shohjaxon, Vohidjon) no
+ *    longer exist, so painting by it would leave Lola, Maftuna, Kompaniya,
+ *    Asliddin and NEW grey. The team rides as a text badge: unlimited,
+ *    readable, and never out of date.
+ *
+ * 4. THE DAILY CHART IS TWO PANELS, NOT ONE DUAL-AXIS PLOT — see
+ *    `SellerDaysChart`, which carries the reasoning.
+ *
+ * THREE COLUMNS ARE ON SCREEN AND EMPTY, on purpose: Lid, Plan bajarish and
+ * FOT. Their page fills the first two from a source outside Bitrix24 and the
+ * third from payroll, and none of the three is in this database today. They
+ * are rendered as em dashes that say why rather than left off, because a
+ * column that states its own gap is a question somebody can answer — and a
+ * zero would be an answer, the wrong one. What each would need is written on
+ * the DTO field it belongs to.
  *
  * THIS PAGE IS THE RACE, and the design treats it as one. The floor opens it
  * to see who is first and what it takes to catch them, so the screen leads
@@ -74,9 +122,23 @@ import { t } from '@/lib/messages'
  * and the ordinal still carry the rank entirely on their own.
  */
 export function SellersPage() {
-  const { apiParams: filterParams } = useDashboardFilters()
+  const { filters, setPeriod, apiParams: filterParams } = useDashboardFilters()
   const [tab, setTab] = useState<'sellers' | 'teams'>('sellers')
   const [openSeller, setOpenSeller] = useState<string | null>(null)
+  /**
+   * The name filter — this port's answer to their per-person tab strip.
+   *
+   * Their page puts one tab in the nav for every operator, which on this
+   * portal would be 128 of them in a row that scrolls sideways forever. The
+   * job those tabs actually do is "find me", and a search box does it in one
+   * keystroke instead of a horizontal hunt. The row's own drill-down is still
+   * the person page, so nothing is lost but the scrolling.
+   *
+   * IT FILTERS, IT DOES NOT RE-RANK. Rank, share and the podium all come from
+   * the whole board, so a filtered view shows a seller their real position
+   * rather than making everyone who searches their own name number one.
+   */
+  const [query, setQuery] = useState('')
   /**
    * Which clock the board reads — see `?basis=` on `/analytics/sellers`.
    *
@@ -97,6 +159,17 @@ export function SellersPage() {
   const data = board.data?.data
   const status = board.isPending ? 'loading' : board.isError ? 'error' : 'ready'
 
+  const visibleRows = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    if (!data) return []
+    if (!needle) return data.rows
+    return data.rows.filter(
+      (row) =>
+        row.fullName.toLowerCase().includes(needle) ||
+        (row.rop ?? '').toLowerCase().includes(needle),
+    )
+  }, [data, query])
+
   /*
     The per-row Prognoz divisor — the client's own `forecast()` carried over
     from their published page, where it is a COLUMN, not just a footer line.
@@ -110,6 +183,25 @@ export function SellersPage() {
     data && data.forecast.projected !== null && data.forecast.elapsedPercent > 0
       ? data.forecast.elapsedPercent / 100
       : null
+
+  /*
+    The span the targets were set for, printed beside every plan figure.
+
+    A target is a contract for a stated period, not a rate to be sliced to
+    whatever window the reader picked — `/kpi` learned that the expensive way.
+    So when the board scores a monthly plan under «Bugun», the tile says which
+    month it is scoring against instead of letting the reader assume the plan
+    is today's. Absent when no target covers the window, which is every window
+    until somebody sets one.
+  */
+  const planWindowHint = data?.planWindow
+    ? // Half-open, like every window in this product: the last INSTANT belongs
+      // to the previous day, so an August plan must read «1-avg — 31-avg» and
+      // not «1-avg — 1-sen». Same subtraction PageShell makes on the period line.
+      `Reja davri: ${formatDate(data.planWindow.start)} — ${formatDate(
+        new Date(new Date(data.planWindow.end).getTime() - 1).toISOString(),
+      )}`
+    : undefined
 
   /**
    * A podium card is a door, not a poster: clicking a name lands on that
@@ -179,6 +271,13 @@ export function SellersPage() {
         </div>
       }
     >
+      <MonthBar
+        preset={filters.preset}
+        from={filters.from}
+        to={filters.to}
+        onPick={(from, to) => setPeriod({ preset: 'custom', from, to })}
+      />
+
       <PodiumHero
         data={data}
         status={status}
@@ -247,12 +346,25 @@ export function SellersPage() {
                 </button>
               )
             })}
+
+            {/* Their per-person tab strip, as one box. See `query`. */}
+            {tab === 'sellers' && (
+              <div className="ml-1 w-48">
+                <SearchInput
+                  value={query}
+                  onChange={setQuery}
+                  placeholder="Sotuvchi yoki ROP…"
+                />
+              </div>
+            )}
           </div>
 
           {data && status === 'ready' && (
             <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
               {tab === 'sellers'
-                ? sellersCaption(data)
+                ? query.trim()
+                  ? `${formatNumber(visibleRows.length)} / ${formatNumber(data.rows.length)} ta sotuvchi — oʻrin va ulush butun jadval boʻyicha`
+                  : sellersCaption(data)
                 : data.totals.teamlessSellers > 0
                   ? `${formatNumber(data.totals.teams)} ta komanda · ${formatNumber(data.totals.teamlessSellers)} ta sotuvchi komandasiz, ulushlar ularsiz`
                   : `${formatNumber(data.totals.teams)} ta komanda`}
@@ -274,13 +386,21 @@ export function SellersPage() {
               body="Tanlangan davrda hech kim buyurtma olmagan."
             />
           ) : tab === 'sellers' ? (
+            visibleRows.length === 0 ? (
+              <EmptyState
+                title="Bu nom topilmadi"
+                body="Qidiruvni oʻzgartiring — bu davrdagi sotuvchilar orasida bunday nom yoʻq."
+              />
+            ) : (
             <SellerTable
-              rows={data.rows}
+              rows={visibleRows}
               openSeller={openSeller}
               onToggle={(id) => setOpenSeller((current) => (current === id ? null : id))}
               apiParams={apiParams}
               projectionDivisor={projectionDivisor}
+              planWindowHint={planWindowHint}
             />
+            )
           ) : (
             <TeamTable rows={data.teams} projectionDivisor={projectionDivisor} />
           )}
@@ -305,6 +425,160 @@ function sellersCaption(data: SellerBoardDto): string {
   return near > 0
     ? `${base} · ${formatNumber(near)} tasi bonus darajasiga 90%+ yaqin`
     : base
+}
+
+// ---------------------------------------------------------------------------
+// The month bar — the client's `moybar`
+// ---------------------------------------------------------------------------
+
+/** How many months back the bar offers. Their page publishes three. */
+const MONTH_CHOICES = 4
+
+interface MonthChoice {
+  readonly label: string
+  /** `YYYY-MM-DD`, the first of the month. */
+  readonly from: string
+  /** `YYYY-MM-DD`, the last day — INCLUSIVE, as `setPeriod` expects. */
+  readonly to: string
+}
+
+/**
+ * The client's `moybar`, carried over — and pointed at the shared control
+ * rather than at a private copy of the window.
+ *
+ * Their page holds its own months and nothing else on their site moves when
+ * you press one. Here a month button writes the DASHBOARD's window
+ * (`preset=custom` with explicit bounds, which the period picker already
+ * speaks), so pressing «Iyul 2026» is the same act as choosing that range in
+ * the picker: it lands in the URL, survives a refresh, and can be pasted into
+ * Telegram. The bar is a shortcut to the control, not a second opinion about
+ * what "now" means — which is the one thing the page's header comment says
+ * this port must not introduce.
+ *
+ * MOUNTED-ONLY, on purpose. "Which month is this" is answered from the
+ * clock, and the server's clock and the reader's are not required to agree
+ * about it — at 00:00 on the first of a month they differ, and the mismatch
+ * would be a hydration error on the one night nobody is watching. The row
+ * keeps its height while it is empty so nothing below it jumps.
+ */
+function MonthBar({
+  preset,
+  from,
+  to,
+  onPick,
+}: {
+  preset: string
+  from?: string
+  to?: string
+  onPick: (from: string, to: string) => void
+}) {
+  const months = useSyncExternalStore(subscribeNever, monthsSnapshot, serverMonths)
+
+  return (
+    <div className="flex min-h-[30px] flex-wrap items-center gap-1.5" role="group" aria-label="Oy tanlash">
+      {months.map((month) => {
+        const active = preset === 'custom' && from === month.from && to === month.to
+        return (
+          <button
+            key={month.from}
+            type="button"
+            onClick={() => onPick(month.from, month.to)}
+            aria-pressed={active}
+            className="focusable rounded-lg px-2.5 py-1 text-[12px] font-medium whitespace-nowrap transition-colors"
+            style={{
+              background: active ? 'var(--surface-raised)' : 'transparent',
+              color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
+              boxShadow: active ? 'var(--shadow-card)' : 'none',
+              border: `1px solid ${active ? 'var(--border-strong)' : 'var(--border)'}`,
+            }}
+          >
+            {month.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/*
+  The month list is a CLIENT-ONLY value, served through useSyncExternalStore.
+
+  "Which month is this" is answered from the clock, and the server's clock and
+  the reader's are not required to agree about it: at 00:00 on the first of a
+  month they name different months, and rendering one on the server and the
+  other in the browser is a hydration error on the one night nobody is
+  watching. `getServerSnapshot` returns nothing, so the row ships empty and
+  the browser fills it on the first paint — and the row holds its height while
+  it is empty, so nothing below it jumps.
+
+  The snapshot must be referentially stable or React re-renders forever, so
+  the list is cached and rebuilt only when the current month actually changes
+  — which also lets a tab left open overnight pick up the new month.
+*/
+const NO_MONTHS: readonly MonthChoice[] = Object.freeze([])
+
+let monthCache: { key: string; value: readonly MonthChoice[] } | null = null
+
+function subscribeNever(): () => void {
+  return () => {}
+}
+
+function serverMonths(): readonly MonthChoice[] {
+  return NO_MONTHS
+}
+
+function monthsSnapshot(): readonly MonthChoice[] {
+  const key = appZoneMonthKey()
+  if (!monthCache || monthCache.key !== key) {
+    monthCache = { key, value: recentMonths(MONTH_CHOICES) }
+  }
+  return monthCache.value
+}
+
+/** `YYYY-MM` as the application's zone reads it right now. */
+function appZoneMonthKey(): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: APP_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(new Date())
+  const year = parts.find((p) => p.type === 'year')?.value ?? '1970'
+  const month = parts.find((p) => p.type === 'month')?.value ?? '01'
+  return `${year}-${month}`
+}
+
+/**
+ * The last `count` calendar months, newest first, in the application's zone.
+ *
+ * Built from the zone's own wall-clock fields rather than from the browser's:
+ * a reader in Tashkent and a reader abroad must be offered the same months,
+ * and `new Date().getMonth()` would give them different ones for several
+ * hours a day. `Date.UTC` then does the month arithmetic on plain integers,
+ * so the 31st rolling back into a 30-day month cannot overflow.
+ */
+function recentMonths(count: number): MonthChoice[] {
+  const [yearText, monthText] = appZoneMonthKey().split('-')
+  const year = Number(yearText)
+  const month = Number(monthText) - 1
+
+  const out: MonthChoice[] = []
+  for (let back = 0; back < count; back++) {
+    const start = new Date(Date.UTC(year, month - back, 1))
+    // Day zero of the NEXT month is the last day of this one, in every month
+    // length and every leap year, without a table.
+    const end = new Date(Date.UTC(year, month - back + 1, 0))
+    out.push({
+      label: formatMonthLabel(start.getUTCFullYear(), start.getUTCMonth()),
+      from: isoDay(start),
+      to: isoDay(end),
+    })
+  }
+  return out
+}
+
+/** `YYYY-MM-DD` from a UTC-constructed calendar date. */
+function isoDay(date: Date): string {
+  return date.toISOString().slice(0, 10)
 }
 
 // ---------------------------------------------------------------------------
@@ -769,6 +1043,17 @@ function ForecastStrip({ data }: { data: SellerBoardDto }) {
         )}
         <span className="mx-1.5">·</span>
         {formatNumber(totals.sellersInBonus)} ta sotuvchi bonus darajasida
+        {/*
+          The board's own plan line — their `plandone` at the top level. It
+          appears only when targets exist, because a strip that always says
+          "reja belgilanmagan" trains the reader to stop looking at it.
+        */}
+        {totals.plan.percent !== null && (
+          <>
+            <span className="mx-1.5">·</span>
+            reja {formatPercent(totals.plan.percent)} bajarildi
+          </>
+        )}
       </p>
     </div>
   )
@@ -918,6 +1203,7 @@ function SellerTable({
   onToggle,
   apiParams,
   projectionDivisor,
+  planWindowHint,
 }: {
   rows: readonly SellerBoardRowDto[]
   openSeller: string | null
@@ -925,6 +1211,8 @@ function SellerTable({
   apiParams: Record<string, string | number>
   /** Elapsed fraction of the period, or null when no projection is honest. */
   projectionDivisor: number | null
+  /** The plan's own span, when the board found targets. See SellersPage. */
+  planWindowHint?: string
 }) {
   /**
    * The bar's ceiling is the biggest intake on the board, so every row's two
@@ -942,19 +1230,42 @@ function SellerTable({
         the same bound every DataTable carries. A hundred and ten sellers is six
         thousand pixels, and the application never scrolls as a page.
       */}
-      <div className="max-h-[60dvh] overflow-auto">
-        <table className="w-full" style={{ minWidth: 1020 }}>
+      {/*
+        THE CLIENT'S COLUMN ORDER, in the client's words.
+
+        Their board reads left to right: who, whose team, the money won, the
+        money ordered, the count, the leads, the conversion, the plan, the
+        forecast. This table now says the same things in the same order, with
+        their FAKT 1 / FAKT 2 vocabulary spelled out once in the header so
+        nobody has to remember which is which. Two columns are ours and sit
+        after theirs: Bonus (their ladder, which their table keeps on the
+        person page instead) and Quvish, the distance to the person ahead.
+      */}
+      {/*
+        The box grows when a row is open.
+
+        Sixty percent of the screen is the right bound for a hundred and ten
+        closed rows, and the wrong one the moment a drill-down unfolds inside
+        it: the person panel is eight tiles and a two-panel chart, and at
+        60dvh its lower half sat below the fold of a box that is itself inside
+        a page that does not scroll. Eighty gives the panel room without
+        letting the closed table run away with the viewport.
+      */}
+      <div className={`${openSeller ? 'max-h-[80dvh]' : 'max-h-[60dvh]'} overflow-auto`}>
+        <table className="w-full" style={{ minWidth: 1320 }}>
           <thead>
             <tr>
               {[
                 ['#', 'left'],
                 ['Sotuvchi', 'left'],
-                ['Komanda', 'left'],
-                ['Quvish', 'right'],
-                ['Buyurtma', 'right'],
-                ['Buyurtma puli', 'right'],
-                ['Yutilgan puli', 'right'],
+                ['ROP', 'left'],
+                ['FAKT 2 · yetkazilgan', 'right'],
+                ['FAKT 1 · tasdiqlangan', 'right'],
+                ['Tranz.', 'right'],
+                ['Lid', 'right'],
+                ['Konv. (lid)', 'right'],
                 ['Konversiya', 'right'],
+                ['Plan bajarish', 'right'],
                 ['Prognoz', 'right'],
                 ['Bonus', 'right'],
               ].map(([label, align]) => (
@@ -982,16 +1293,27 @@ function SellerTable({
                   onToggle={() => onToggle(row.employeeId)}
                   apiParams={apiParams}
                   projectionDivisor={projectionDivisor}
+                  planWindowHint={planWindowHint}
                 />
               )
             })}
           </tbody>
         </table>
       </div>
-      <p className="mt-2.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-        Och chiziq — olingan buyurtma puli, toʻq chiziq — shundan yutilgani.
-        Quvish — oldingi oʻrindagiga yetish uchun kerak summa. Prognoz — shu
-        surʼatda davr oxirida yutiladigan pul.
+      <p className="mt-2.5 text-[11px] leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
+        Och chiziq — tasdiqlangan buyurtma puli (FAKT 1), toʻq chiziq — shundan
+        yetkazilgani (FAKT 2). Prognoz — shu surʼatda davr oxirida yetkaziladigan
+        pul. Oldingi oʻringacha qancha qolgani — sotuvchi nomini bosing.
+        <br />
+        <strong style={{ color: 'var(--ink-secondary)' }}>Konv. (lid)</strong> — mijoz
+        dashboardidagi konversiya: buyurtma / lid. <strong style={{ color: 'var(--ink-secondary)' }}>
+        Konversiya</strong> — bizniki: yutilgan / hal boʻlgan buyurtma. Ikkalasi ham
+        toʻgʻri, savoli boshqa. <strong style={{ color: 'var(--ink-secondary)' }}>Bonus</strong>{' '}
+        faqat 107–147 raqamli sotuvchilarga toʻlanadi — boshqalarda katak boʻsh turadi.{' '}
+        <span className="inline-flex items-center gap-1">
+          Lid va Plan ustunlari hozircha boʻsh
+          <InfoTip content={<span>{NO_LEAD_SOURCE}</span>} label="Lid nega boʻsh" />
+        </span>
       </p>
     </>
   )
@@ -1023,7 +1345,7 @@ function ChaseCell({
   }
   if (!ahead) {
     return (
-      <span className="text-[11px] font-medium" style={{ color: 'var(--ink-primary)' }}>
+      <span className="text-[11px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
         Lider
       </span>
     )
@@ -1068,6 +1390,7 @@ function SellerRows({
   onToggle,
   apiParams,
   projectionDivisor,
+  planWindowHint,
 }: {
   row: SellerBoardRowDto
   ahead: SellerBoardRowDto | null
@@ -1077,6 +1400,7 @@ function SellerRows({
   onToggle: () => void
   apiParams: Record<string, string | number>
   projectionDivisor: number | null
+  planWindowHint?: string
 }) {
   const podium = row.rank <= 3 && row.won.amount > 0
   const metal = !podium
@@ -1160,28 +1484,22 @@ function SellerRows({
               }}
             />
           </div>
+          {/*
+            The chase, under the name rather than in a column of its own.
+
+            It belongs next to the person it is about, and the client's board
+            has ten columns before ours begin — a thirteenth pushed Bonus and
+            Prognoz off the right edge of an office monitor, which is a poor
+            trade for a figure that reads better here anyway.
+          */}
+          <div className="mt-0.5">
+            <ChaseCell row={row} ahead={ahead} />
+          </div>
         </td>
         <td className="px-2 py-2">
           <TeamBadge rop={row.rop} />
         </td>
-        <td className="px-2 py-2 text-right">
-          <ChaseCell row={row} ahead={ahead} />
-        </td>
-        <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-primary)' }}>
-          {formatNumber(row.orders)}
-          {row.openOrders > 0 && (
-            <span className="ml-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-              ({formatNumber(row.openOrders)} yoʻlda)
-            </span>
-          )}
-        </td>
-        <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
-          <Tooltip content={<span className="tabular">{formatUzs(row.ordered.amount)}</span>}>
-            <span tabIndex={0} className="focusable rounded">
-              {formatCompactUzs(row.ordered.amount)}
-            </span>
-          </Tooltip>
-        </td>
+        {/* FAKT 2 — Доставланди. Their leading money column, and ours. */}
         <td className="tabular px-2 py-2 text-right text-xs font-medium" style={{ color: 'var(--ink-primary)' }}>
           <Tooltip content={<span className="tabular">{formatUzs(row.won.amount)}</span>}>
             <span tabIndex={0} className="focusable rounded">
@@ -1194,8 +1512,33 @@ function SellerRows({
             </span>
           )}
         </td>
+        {/* FAKT 1 — Тасдиқланди. */}
+        <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
+          <Tooltip content={<span className="tabular">{formatUzs(row.ordered.amount)}</span>}>
+            <span tabIndex={0} className="focusable rounded">
+              {formatCompactUzs(row.ordered.amount)}
+            </span>
+          </Tooltip>
+        </td>
+        <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-primary)' }}>
+          {formatNumber(row.orders)}
+          {row.openOrders > 0 && (
+            <span className="ml-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              ({formatNumber(row.openOrders)} yoʻlda)
+            </span>
+          )}
+        </td>
+        <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
+          <LeadCell leads={row.leads} />
+        </td>
+        <td className="px-2 py-2 text-right">
+          <LeadConversionCell percent={row.leadConversionPercent} />
+        </td>
         <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
           {row.conversionPercent === null ? NO_VALUE : formatPercent(row.conversionPercent)}
+        </td>
+        <td className="px-2 py-2 text-right">
+          <PlanCell plan={row.plan} />
         </td>
         <td className="px-2 py-2 text-right">
           <ForecastCell wonAmount={row.won.amount} projectionDivisor={projectionDivisor} />
@@ -1207,13 +1550,14 @@ function SellerRows({
 
       {open && (
         <tr>
-          <td colSpan={10} className="px-2 pt-1 pb-4">
+          <td colSpan={12} className="px-2 pt-1 pb-4">
             <SellerDetail
               employeeId={row.employeeId}
               row={row}
               ahead={ahead}
               chaser={chaser}
               apiParams={apiParams}
+              planWindowHint={planWindowHint}
             />
           </td>
         </tr>
@@ -1271,7 +1615,131 @@ function ForecastCell({
   )
 }
 
+// ---------------------------------------------------------------------------
+// The three cells the client's board has and this one did not
+// ---------------------------------------------------------------------------
+
+/**
+ * The sentence a column with no source prints, once, in one place.
+ *
+ * Repeating it per cell would put a hundred identical tooltips on the page;
+ * the column is empty for the same reason on every row, so the explanation
+ * belongs to the column and the cells stay quiet dashes.
+ */
+const NO_LEAD_SOURCE =
+  'Lid soni bu bazada saqlanmaydi — Bitrix24 sinxronizatsiyasi lidlarni olib kelmaydi. ' +
+  'Qaysi manbadan olinishini kelishib olishimiz kerak.'
+
+/** Their `Lid`. Empty everywhere today, and saying so rather than showing 0. */
+function LeadCell({ leads }: { leads: number | null }) {
+  if (leads === null) {
+    return (
+      <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
+    )
+  }
+  return <>{formatNumber(leads)}</>
+}
+
+/**
+ * Their `Konv.` — orders over LEADS, with their own three thresholds.
+ *
+ * The 40 / 25 grading is theirs, transcribed from `rankTable()`, and it is
+ * mapped onto the status tokens rather than their raw hex: a threshold IS a
+ * judgement, which is the one thing the status palette exists for. Null while
+ * there are no leads, because a rate with no denominator is not zero.
+ */
+function LeadConversionCell({ percent }: { percent: number | null }) {
+  if (percent === null) {
+    return (
+      <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+        {NO_VALUE}
+      </span>
+    )
+  }
+  const tone =
+    percent >= 40 ? 'good' : percent >= 25 ? 'warning' : 'critical'
+  return <StatusChip tone={tone}>{formatPercent(percent)}</StatusChip>
+}
+
+/**
+ * Their `Plan bajarish` — the bar, and the percentage beside it.
+ *
+ * THE BAR CLAMPS AT 100 AND THE NUMBER DOES NOT. That is their behaviour and
+ * it is the right one: a track that can overflow stops being a track, while a
+ * seller who reached 112% has earned the 112. The tone follows their three
+ * bands (≥100, ≥70, below) on the status tokens.
+ *
+ * A row with no target prints a dash and NO track. An empty bar beside «0%»
+ * is a claim that the seller missed something; there is nothing to miss.
+ */
+function PlanCell({ plan }: { plan: SellerPlanDto }) {
+  if (plan.percent === null || plan.amount === null) {
+    return (
+      <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+        {NO_VALUE}
+      </span>
+    )
+  }
+
+  const rail =
+    plan.percent >= 100
+      ? 'var(--status-good)'
+      : plan.percent >= 70
+        ? 'var(--status-warning)'
+        : 'var(--status-critical)'
+
+  return (
+    <Tooltip
+      content={
+        <span className="tabular">
+          Reja {formatUzs(plan.amount.amount)} — bajarilgani {formatPercent(plan.percent)}
+        </span>
+      }
+    >
+      <span tabIndex={0} className="focusable inline-flex w-full items-center justify-end gap-1.5 rounded">
+        <span
+          className="relative h-1.5 w-14 shrink-0 overflow-hidden rounded-full"
+          style={{ background: 'var(--track)' }}
+          aria-hidden="true"
+        >
+          <span
+            className="absolute inset-y-0 left-0 rounded-full"
+            style={{
+              width: `${Math.min(plan.percent, 100)}%`,
+              background: rail,
+              transition: 'width var(--duration-enter) var(--ease-out)',
+            }}
+          />
+        </span>
+        <span className="tabular text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+          {formatPercent(plan.percent)}
+        </span>
+      </span>
+    </Tooltip>
+  )
+}
+
 function BonusCell({ bonus }: { bonus: SellerBoardRowDto['bonus'] }) {
+  /*
+    OUTSIDE THE BAND, NOTHING — not a dash that reads as "not yet".
+
+    The client's ladder pays only the 107–147 floor numbers, and this board
+    used to apply it to everyone: July's top three all clear the top rung and
+    none of them is paid for it. A promise of 2 mln soʻm to somebody who will
+    not receive it is worse than an empty column, so the row says which it is.
+  */
+  if (!bonus.eligible) {
+    /*
+      NOTHING, not a dash and not a word.
+
+      A dash reads as "not yet" and would promise a rung that will never
+      arrive; the word «bonussiz» printed on every ineligible row — 87 of 128
+      on this portal — turns the column into a wall of one string. The rule
+      belongs to the COLUMN, so it is stated once under the table and once on
+      the ladder, and the cell simply stays quiet.
+    */
+    return <span aria-label="Bonus qoidasi bu sotuvchiga tegishli emas" />
+  }
   if (bonus.earned.amount > 0) {
     return (
       <StatusChip tone="good">{formatCompactUzs(bonus.earned.amount)}</StatusChip>
@@ -1303,6 +1771,7 @@ function SellerDetail({
   ahead,
   chaser,
   apiParams,
+  planWindowHint,
 }: {
   employeeId: string
   row: SellerBoardRowDto
@@ -1311,6 +1780,8 @@ function SellerDetail({
   /** For the leader only: the second place, i.e. who is chasing THEM. */
   chaser: SellerBoardRowDto | null
   apiParams: Record<string, string | number>
+  /** The plan's own span, printed on the Plan tile. See SellersPage. */
+  planWindowHint?: string
 }) {
   const days = useQuery({
     queryKey: ['sellers', 'days', employeeId, apiParams],
@@ -1323,7 +1794,6 @@ function SellerDetail({
   })
 
   const rows = days.data?.data ?? []
-  const peak = Math.max(...rows.map((d) => d.ordered.amount), 1)
   const ranked = row.won.amount > 0
 
   return (
@@ -1343,6 +1813,77 @@ function SellerDetail({
           {formatCompactUzs(row.open.amount)} ({formatNumber(row.openOrders)} ta) · bekor{' '}
           {formatNumber(row.lostOrders)} ta
         </p>
+      </div>
+
+      {/*
+        THE CLIENT'S EIGHT CARDS, in their order — Lid, Tranzaksiya, FAKT 2,
+        FAKT 1, Plan, Konversiya, Plan bajarish, FOT.
+
+        Their per-seller tab opens on this grid, and it is the half of their
+        page this screen genuinely lacked: every one of these figures existed
+        here only as a cell on a row 1 400 pixels wide, which is not where a
+        seller reads their own numbers. Three of the eight are empty and each
+        says so on its own tile rather than in a footnote — the reader can see
+        exactly which questions this application cannot answer yet.
+      */}
+      <div className="stagger mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        <StatTile
+          label="Lid"
+          value={row.leads}
+          unit="count"
+          status="ready"
+          hint={row.leads === null ? 'Manba ulanmagan' : undefined}
+        />
+        <StatTile label="Tranzaksiya" value={row.orders} unit="count" status="ready" />
+        <StatTile
+          label="FAKT 2 · yetkazilgan"
+          value={row.won.amount}
+          unit="money"
+          status="ready"
+          hint={`${formatNumber(row.wonOrders)} ta buyurtma`}
+        />
+        <StatTile
+          label="FAKT 1 · tasdiqlangan"
+          value={row.ordered.amount}
+          unit="money"
+          status="ready"
+        />
+        <StatTile
+          label="Plan"
+          value={row.plan.amount?.amount ?? null}
+          unit="money"
+          status="ready"
+          hint={row.plan.amount === null ? 'Reja belgilanmagan' : planWindowHint}
+        />
+        <GaugeTile
+          label="Konversiya"
+          value={row.conversionPercent}
+          tone="neutral"
+          status="ready"
+          hint="yutilgan / hal boʻlgan buyurtma"
+          context={
+            <p className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+              Konv. (lid):{' '}
+              {row.leadConversionPercent === null
+                ? NO_VALUE
+                : formatPercent(row.leadConversionPercent)}
+            </p>
+          }
+        />
+        <GaugeTile
+          label="Plan bajarish"
+          value={row.plan.percent}
+          tone="neutral"
+          status="ready"
+          hint={row.plan.percent === null ? 'Reja belgilanmagan' : 'yetkazilgan / reja'}
+        />
+        <StatTile
+          label="FOT (ish haqi)"
+          value={row.fot?.amount ?? null}
+          unit="money"
+          status="ready"
+          hint={row.fot === null ? 'Bazada maosh maʼlumoti yoʻq' : undefined}
+        />
       </div>
 
       {/*
@@ -1433,64 +1974,19 @@ function SellerDetail({
             Kunlik yozuv topilmadi
           </p>
         ) : (
-          <ul className="space-y-1.5">
-            {rows.map((day) => (
-              <li key={day.date} className="flex items-center gap-3">
-                <span
-                  className="tabular w-16 shrink-0 text-[11px]"
-                  style={{ color: 'var(--ink-secondary)' }}
-                >
-                  {formatDateShort(day.date)}
-                </span>
-                <span
-                  className="tabular w-10 shrink-0 text-right text-[11px]"
-                  style={{ color: 'var(--ink-muted)' }}
-                >
-                  {formatNumber(day.orders)} ta
-                </span>
-                {/*
-                  Two lengths on one track: the day's intake, and the part of
-                  it already won. Same hue at two steps of the sequential ramp
-                  — one measure at two stages, never two categories.
-                */}
-                <div
-                  className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-full"
-                  style={{ background: 'var(--track)' }}
-                  role="img"
-                  aria-label={`${formatDateShort(day.date)}: ${formatCompactUzs(
-                    day.ordered.amount,
-                  )} olindi, ${formatCompactUzs(day.won.amount)} yutildi`}
-                >
-                  <div
-                    className="absolute inset-y-0 left-0 rounded-full"
-                    style={{
-                      width: `${(day.ordered.amount / peak) * 100}%`,
-                      background: 'var(--seq-250)',
-                    }}
-                  />
-                  <div
-                    className="absolute inset-y-0 left-0 rounded-full"
-                    style={{
-                      width: `${(day.won.amount / peak) * 100}%`,
-                      background: 'var(--seq-550)',
-                    }}
-                  />
-                </div>
-                <span
-                  className="tabular w-24 shrink-0 text-right text-[11px]"
-                  style={{ color: 'var(--ink-primary)' }}
-                >
-                  {formatCompactUzs(day.won.amount)}
-                </span>
-              </li>
-            ))}
-          </ul>
+          /*
+            «Kunlik dinamika» — their chart, as two stacked panels. The list of
+            horizontal bars this replaced could be read a day at a time but not
+            as a SHAPE, and the shape is the whole point of a daily series: a
+            week that trailed off looks nothing like a week that held. Exact
+            per-day figures did not go away, they moved into the tooltip.
+          */
+          <>
+            <p className="eyebrow mb-1.5">Kunlik dinamika</p>
+            <SellerDaysChart days={rows} />
+          </>
         )}
       </div>
-
-      <p className="mt-2.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-        Ochiq ustun — olingan buyurtma puli, toʻq ustun — shundan yutilgani.
-      </p>
     </div>
   )
 }
@@ -1519,17 +2015,23 @@ function TeamTable({
   return (
     <>
       <div className="max-h-[60dvh] overflow-auto">
-        <table className="w-full" style={{ minWidth: 800 }}>
+        {/* The same columns as the sellers' table, in the same order and the
+            same words — their ROP tab and their seller tab are one function
+            called twice, and a reader who learns one has learned both. */}
+        <table className="w-full" style={{ minWidth: 1180 }}>
           <thead>
             <tr>
               {[
                 ['#', 'left'],
                 ['Komanda (ROP)', 'left'],
                 ['Sotuvchi', 'right'],
-                ['Buyurtma', 'right'],
-                ['Buyurtma puli', 'right'],
-                ['Yutilgan puli', 'right'],
+                ['FAKT 2 · yetkazilgan', 'right'],
+                ['FAKT 1 · tasdiqlangan', 'right'],
+                ['Tranz.', 'right'],
+                ['Lid', 'right'],
+                ['Konv. (lid)', 'right'],
                 ['Konversiya', 'right'],
+                ['Plan bajarish', 'right'],
                 ['Prognoz', 'right'],
               ].map(([label, align]) => (
                 <th
@@ -1603,12 +2105,6 @@ function TeamTable({
                   <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
                     {formatNumber(row.sellers)}
                   </td>
-                  <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-primary)' }}>
-                    {formatNumber(row.orders)}
-                  </td>
-                  <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
-                    {formatCompactUzs(row.ordered.amount)}
-                  </td>
                   <td className="tabular px-2 py-2 text-right text-xs font-medium" style={{ color: 'var(--ink-primary)' }}>
                     {formatCompactUzs(row.won.amount)}
                     {row.sharePercent !== null && (
@@ -1618,7 +2114,22 @@ function TeamTable({
                     )}
                   </td>
                   <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
+                    {formatCompactUzs(row.ordered.amount)}
+                  </td>
+                  <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-primary)' }}>
+                    {formatNumber(row.orders)}
+                  </td>
+                  <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
+                    <LeadCell leads={row.leads} />
+                  </td>
+                  <td className="px-2 py-2 text-right">
+                    <LeadConversionCell percent={row.leadConversionPercent} />
+                  </td>
+                  <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
                     {row.conversionPercent === null ? NO_VALUE : formatPercent(row.conversionPercent)}
+                  </td>
+                  <td className="px-2 py-2 text-right">
+                    <PlanCell plan={row.plan} />
                   </td>
                   <td className="px-2 py-2 text-right">
                     <ForecastCell wonAmount={row.won.amount} projectionDivisor={projectionDivisor} />
@@ -1671,14 +2182,25 @@ function BonusLadder({
 
   const ready = status === 'ready' && data
 
+  /*
+    ONLY THE PEOPLE THE LADDER PAYS.
+
+    Every count and every «eng yaqini» on these three cards is drawn from the
+    107–147 band, because the ladder is. Counting the whole board here would
+    say "nine sellers reached 70 mln" on a page whose rows show a bonus for
+    four of them — the rungs and the column have to be describing one set of
+    people or the section is quietly lying about who gets paid.
+  */
+  const payable = ready ? data.rows.filter((r) => r.bonus.eligible) : []
+
   const reached = (floor: number) =>
-    ready ? data.rows.filter((r) => r.won.amount >= floor).length : null
+    ready ? payable.filter((r) => r.won.amount >= floor).length : null
 
   /** The highest-won seller still below this rung — the one about to arrive. */
   const nearest = (floor: number) => {
     if (!ready) return null
     let best: SellerBoardRowDto | null = null
-    for (const r of data.rows) {
+    for (const r of payable) {
       if (r.won.amount > 0 && r.won.amount < floor && (!best || r.won.amount > best.won.amount)) {
         best = r
       }
@@ -1690,7 +2212,7 @@ function BonusLadder({
     <section className="space-y-2.5">
       <SectionHeader
         title="Bonus darajalari"
-        hint="Mijozning oʻz qoidasi — yutilgan buyurtma puli boʻyicha"
+        hint="Mijozning oʻz qoidasi — 107–147 raqamli sotuvchilar, yetkazilgan pul boʻyicha"
       />
       <div className="stagger grid gap-3 sm:grid-cols-3">
         {tiers.map((tier) => {
@@ -1748,8 +2270,17 @@ function BonusLadder({
           )
         })}
       </div>
-      <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+      <p className="text-[11px] leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
         Daraja bir marta toʻlanadi — eng yuqori bosib oʻtilgan chegara boʻyicha, qoʻshilmaydi.
+        {ready && (
+          <>
+            {' '}Zinapoya faqat <strong style={{ color: 'var(--ink-secondary)' }}>107–147</strong>{' '}
+            raqamli sotuvchilarga tegishli — bu davrda{' '}
+            {formatNumber(data.totals.sellersEligibleForBonus)} tasi shu doirada,{' '}
+            {formatNumber(data.totals.sellers - data.totals.sellersEligibleForBonus)} tasi esa emas
+            (ularda bonus katagi boʻsh turadi).
+          </>
+        )}
       </p>
     </section>
   )

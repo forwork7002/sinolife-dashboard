@@ -9,17 +9,17 @@
  *   2. TEAM, by the ROP the seller's department names.
  *   3. BONUS, by the client's published tiers.
  *
- * The bonus tiers are THEIRS, transcribed from the `bonusInfo()` function on
- * their page and not invented here: 45 mln so'm earns 1 mln, 60 mln earns
- * 1.5 mln, 70 mln earns 2 mln, measured against `fact2` (won intake). A tier
- * table this consequential does not get re-derived from a screenshot — it is
- * quoted, and the source is named on screen so anyone can check it.
+ * The bonus tiers are THEIRS, transcribed in `domain/analytics/sellerBonus`
+ * together with the band their `idInRange()` gates the ladder on — see that
+ * module for both, and for why the gate is worth carrying.
  *
- * WHAT IS DELIBERATELY ABSENT: the PLAN, and with it plan-completion. Their
- * page carries a `plan` column and this database cannot: the `kpi` and
- * `kpi_result` tables hold zero rows, so every plan figure would be an em
- * dash or, worse, a zero that reads as "missed the target". The board says so
- * rather than showing a column of nothing.
+ * THE PLAN IS WIRED, AND IS EMPTY. Their page carries `plan` and `plandone`,
+ * and this application's only honest source for a target is the `kpi` table,
+ * which nothing writes to today — no sync handler, no seed, no admin screen.
+ * So the column is real, reads the same rows `/kpi` reads, obeys the same
+ * containment rule, and renders an em dash until somebody puts targets in.
+ * It is deliberately NOT a zero: a zero in a plan column reads as "missed the
+ * target", which is a different and much louder claim than "no target set".
  */
 
 import {
@@ -29,11 +29,13 @@ import {
   roundPercent,
   toDeltaDto,
 } from '@/server/domain/analytics/metrics'
-import { periodElapsedFraction } from '@/server/domain/analytics/performance'
+import { type KpiDefinition, periodElapsedFraction } from '@/server/domain/analytics/performance'
+import { BONUS_TIERS, bonusEligible } from '@/server/domain/analytics/sellerBonus'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import type { Period } from '@/server/domain/period/period'
 import type { DeltaDto } from '@/lib/api'
 import type { InsightsRepository } from '@/server/repositories/insightsRepository'
+import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type {
   SellerBoardFilters,
   SellerBoardRepository,
@@ -52,19 +54,9 @@ export type SellerBoardBasisValue = (typeof SELLER_BOARD_BASES)[number]
 // The client's bonus ladder, quoted
 // ---------------------------------------------------------------------------
 
-/**
- * From `bonusInfo()` on the client's published sellers dashboard.
- *
- * Descending, because the reading is "the highest tier whose floor you have
- * cleared" — evaluating ascending would award the first match and pay 1 mln
- * to a seller who earned 2.
- */
-export const BONUS_TIERS: readonly { readonly floorMinor: bigint; readonly bonusMinor: bigint }[] =
-  Object.freeze([
-    { floorMinor: 7_000_000_000n, bonusMinor: 200_000_000n },
-    { floorMinor: 6_000_000_000n, bonusMinor: 150_000_000n },
-    { floorMinor: 4_500_000_000n, bonusMinor: 100_000_000n },
-  ])
+// Re-exported so the ladder keeps one import path for callers that already
+// reach for it here; the rule itself lives in domain/analytics/sellerBonus.
+export { BONUS_TIERS } from '@/server/domain/analytics/sellerBonus'
 
 // ---------------------------------------------------------------------------
 // DTOs — mirrored in src/lib/api.ts, which the client imports instead.
@@ -81,6 +73,26 @@ export interface SellerBonusDto {
   readonly toNext: MoneyDto | null
   /** Progress toward the next floor, 0-100. Null when the top tier is cleared. */
   readonly toNextPercent: number | null
+  /**
+   * Whether the client's ladder pays this operator at all.
+   *
+   * False leaves every field above at its empty value, so a caller that
+   * ignores this flag still cannot print a bonus for somebody outside the
+   * band — see `bonusEligible` for the band and why it is carried.
+   */
+  readonly eligible: boolean
+}
+
+/**
+ * One seller's target for the period, and how far through it they are.
+ *
+ * `amount` is the target the `kpi` table holds for this operator; `percent`
+ * is won intake over that target. Both null together — a plan nobody set is
+ * not a plan of zero, and a percentage of nothing is not 0%.
+ */
+export interface SellerPlanDto {
+  readonly amount: MoneyDto | null
+  readonly percent: number | null
 }
 
 export interface SellerBoardRowDto {
@@ -103,6 +115,43 @@ export interface SellerBoardRowDto {
   readonly conversionPercent: number | null
   /** This seller's share of the board's total won intake, 0-100. */
   readonly sharePercent: number | null
+  /** Their `plan` and `plandone`. Empty until somebody sets targets. */
+  readonly plan: SellerPlanDto
+  /**
+   * Their `leads` — the Lid column, ALWAYS NULL and deliberately present.
+   *
+   * There is no lead anywhere in this database: no `Lead` model in the
+   * schema, no LEADS entity in the sync engine, nothing in `CrmProvider` that
+   * fetches one. Their board fills this from a source outside Bitrix24 (and
+   * fills it for one month of the three it publishes).
+   *
+   * The field is carried rather than dropped because the column is on the
+   * screen the client reads every morning, and a column that says "no source
+   * connected" is a question somebody can answer. A zero would be an answer,
+   * and the wrong one.
+   */
+  readonly leads: number | null
+  /**
+   * Their `conv` — orders over LEADS, which is not the conversion beside it.
+   *
+   * `conversionPercent` above asks "of the orders that were decided, how many
+   * were won"; this asks "of the leads handed to this operator, how many
+   * became an order". Two different questions with two different
+   * denominators, and the client's board shows the second one. Both are
+   * carried so neither screen has to pretend the other's number is its own.
+   *
+   * Null while `leads` is null — a rate with no denominator is null, not 0.
+   */
+  readonly leadConversionPercent: number | null
+  /**
+   * Their `fot` — payroll for the period. ALWAYS NULL.
+   *
+   * Nothing in this database holds pay: no salary column on `employee`, no
+   * payroll table, no CRM field that carries one. It is not derivable from
+   * anything here, so unlike `leads` — which at least has candidate sources —
+   * this one needs a source that does not exist yet.
+   */
+  readonly fot: MoneyDto | null
   readonly bonus: SellerBonusDto
 }
 
@@ -117,6 +166,12 @@ export interface SellerTeamRowDto {
   readonly open: MoneyDto
   readonly conversionPercent: number | null
   readonly sharePercent: number | null
+  /** The team's targets summed, and the team's won intake against them. */
+  readonly plan: SellerPlanDto
+  /** See `SellerBoardRowDto.leads`. Always null, for the same reason. */
+  readonly leads: number | null
+  /** See `SellerBoardRowDto.leadConversionPercent`. Null with `leads`. */
+  readonly leadConversionPercent: number | null
 }
 
 export interface SellerBoardTotalsDto {
@@ -141,6 +196,22 @@ export interface SellerBoardTotalsDto {
   /** Total bonus the tiers would pay on today's standings. */
   readonly bonusPayable: MoneyDto
   readonly sellersInBonus: number
+  /**
+   * Sellers the client's ladder pays at all — the 107–147 band.
+   *
+   * On the screen beside `sellers`, so a reader can see that a board of 128
+   * people has 41 the bonus column can ever light up for, rather than
+   * wondering why the top three carry no rung.
+   */
+  readonly sellersEligibleForBonus: number
+  /** Every target on the board summed, and won intake against them. */
+  readonly plan: SellerPlanDto
+  /** How many sellers on the board actually have a target set. */
+  readonly sellersWithPlan: number
+  /** See `SellerBoardRowDto.leads`. Always null, for the same reason. */
+  readonly leads: number | null
+  /** See `SellerBoardRowDto.leadConversionPercent`. Null with `leads`. */
+  readonly leadConversionPercent: number | null
 }
 
 export interface SellerBoardForecastDto {
@@ -166,6 +237,19 @@ export interface SellerBoardDto {
    *   WAS TAKEN (`createdAtSource`) — see `SellerBoardRepository`.
    */
   readonly basis: 'confirmation_queue' | 'created_in_period'
+  /**
+   * THE PLAN'S OWN SPAN, when the board found any targets at all.
+   *
+   * A target is a contract for a stated period — 300 mln in September — not
+   * a rate to be sliced to whatever window the reader picked. `/kpi` learned
+   * this the expensive way (see `KpiDefinition.periodStart`), so the span
+   * travels with the board and the screen prints it: reading «Bugun» against
+   * a monthly target is a legitimate thing to do, but only if the screen says
+   * that is what it is doing.
+   *
+   * Null when no target covers the window, which is every window today.
+   */
+  readonly planWindow: { readonly start: string; readonly end: string } | null
 }
 
 export interface SellerDayDto {
@@ -173,6 +257,8 @@ export interface SellerDayDto {
   readonly orders: number
   readonly ordered: MoneyDto
   readonly won: MoneyDto
+  /** See `SellerBoardRowDto.leads`. Always null, for the same reason. */
+  readonly leads: number | null
 }
 
 // ---------------------------------------------------------------------------
@@ -181,17 +267,25 @@ export class SellerBoardService {
   constructor(
     private readonly repo: SellerBoardRepository,
     private readonly insights: InsightsRepository,
+    private readonly reference: ReferenceRepository,
   ) {}
 
   async board(ctx: AnalyticsContext, basis: SellerBoardBasisValue = 'queue'): Promise<SellerBoardDto> {
     const filters = boardFilters(ctx)
 
-    // Both windows in parallel: the comparison exists only to give the total
-    // a delta, and a second round trip could straddle a sync.
-    const [rows, previous] = await Promise.all([
+    /*
+      All three reads at once. The comparison exists only to give the total a
+      delta, and the targets only to give the plan column a denominator; a
+      second round trip for either could straddle a sync and score one
+      window's money against another's cohort.
+    */
+    const [rows, previous, kpis] = await Promise.all([
       this.rowsFor(ctx.period, basis, filters),
       this.rowsFor(ctx.comparison, basis, filters),
+      this.reference.findKpisForPeriod(ctx.period),
     ])
+
+    const plans = revenueTargets(kpis)
 
     const totalWonMinor = sum(rows, (r) => r.wonMinor)
     const previousWonMinor = sum(previous, (r) => r.wonMinor)
@@ -248,12 +342,22 @@ export class SellerBoardService {
       */
       conversionPercent: roundOrNull(ratePercent(row.wonOrders, row.wonOrders + row.lostOrders)),
       sharePercent: roundOrNull(ratePercent(row.wonMinor, totalWonMinor)),
-      bonus: bonusFor(row.wonMinor, ctx.currency),
+      plan: planFor(plans.byEmployee.get(row.employeeId) ?? null, row.wonMinor, ctx.currency),
+      // No source in this database — see each field's own comment.
+      leads: null,
+      leadConversionPercent: null,
+      fot: null,
+      bonus: bonusFor(row.wonMinor, row.fullName, ctx.currency),
     }))
+
+    const plannedMinor = sum(
+      rows.filter((r) => plans.byEmployee.has(r.employeeId)),
+      (r) => plans.byEmployee.get(r.employeeId)!,
+    )
 
     return {
       rows: boardRows,
-      teams: teamRows(rows, totalWonMinor, ctx.currency),
+      teams: teamRows(rows, totalWonMinor, plans.byEmployee, ctx.currency),
       totals: {
         sellers: rows.length,
         teams: new Set(rows.map((r) => r.rop).filter((r): r is string => r !== null)).size,
@@ -277,9 +381,15 @@ export class SellerBoardService {
           ),
         ),
         sellersInBonus: boardRows.filter((r) => r.bonus.earned.amount > 0).length,
+        sellersEligibleForBonus: boardRows.filter((r) => r.bonus.eligible).length,
+        plan: planFor(plans.byEmployee.size > 0 ? plannedMinor : null, totalWonMinor, ctx.currency),
+        sellersWithPlan: rows.filter((r) => plans.byEmployee.has(r.employeeId)).length,
+        leads: null,
+        leadConversionPercent: null,
       },
       forecast: forecastOf(totalWonMinor, ctx),
       basis: basis === 'queue' ? 'confirmation_queue' : 'created_in_period',
+      planWindow: plans.window,
     }
   }
 
@@ -295,6 +405,7 @@ export class SellerBoardService {
         orders: d.orders,
         ordered: toMoneyDto(money(d.confirmedMinor, ctx.currency)),
         won: toMoneyDto(money(d.deliveredMinor, ctx.currency)),
+        leads: null,
       }))
     }
 
@@ -304,6 +415,7 @@ export class SellerBoardService {
       orders: d.orders,
       ordered: toMoneyDto(money(d.orderedMinor, ctx.currency)),
       won: toMoneyDto(money(d.wonMinor, ctx.currency)),
+      leads: null,
     }))
   }
 
@@ -349,12 +461,86 @@ function boardFilters(ctx: AnalyticsContext): SellerBoardFilters {
 }
 
 /**
+ * The REVENUE targets covering this window, keyed by the person they belong
+ * to — plus the span they were set for.
+ *
+ * Only REVENUE: the client's `plandone` is money against money. A
+ * DEALS_WON target in the same window is a different contract and would make
+ * the plan column compare a count with soʻm.
+ *
+ * COMPANY-WIDE TARGETS ARE DROPPED. A `kpi` row with a null `employeeId` is
+ * a target for the whole floor; charging it to one seller's row would read as
+ * that seller missing the company's plan single-handed. `kpiService` refuses
+ * them for the same reason.
+ *
+ * The window is reported only when every target on the board shares one. A
+ * monthly plan beside a quarterly one has no single span to print, and
+ * printing the widest would tell the reader the monthly plan covers three
+ * months.
+ */
+function revenueTargets(kpis: readonly KpiDefinition[]): {
+  byEmployee: Map<string, bigint>
+  window: { start: string; end: string } | null
+} {
+  const byEmployee = new Map<string, bigint>()
+  const spans = new Set<string>()
+  let span: { start: string; end: string } | null = null
+
+  for (const kpi of kpis) {
+    if (kpi.metric !== 'REVENUE' || kpi.employeeId === null) continue
+    // One target per person per metric per window is a database constraint
+    // (`@@unique([employeeId, metric, periodStart, periodEnd])`), but two
+    // windows can still both contain `asOf` if somebody sets a month and a
+    // quarter. Summing them would double-charge the seller, so the first
+    // one wins and the mixed span below is what tells the reader.
+    if (!byEmployee.has(kpi.employeeId)) byEmployee.set(kpi.employeeId, kpi.targetValue)
+    const key = `${kpi.periodStart.toISOString()}|${kpi.periodEnd.toISOString()}`
+    spans.add(key)
+    span = { start: kpi.periodStart.toISOString(), end: kpi.periodEnd.toISOString() }
+  }
+
+  return { byEmployee, window: spans.size === 1 ? span : null }
+}
+
+/**
+ * A target and the progress against it — or two nulls.
+ *
+ * Never a zero on either half. A plan nobody set is not a plan of zero soʻm,
+ * and 0% attainment is a claim about performance rather than about data. The
+ * whole reason this column can exist honestly is that it can say nothing.
+ */
+function planFor(targetMinor: bigint | null, wonMinor: bigint, currency: string): SellerPlanDto {
+  if (targetMinor === null || targetMinor <= 0n) return { amount: null, percent: null }
+  return {
+    amount: toMoneyDto(money(targetMinor, currency)),
+    // Deliberately uncapped: their bar clamps the WIDTH at 100%, but the
+    // number beside it keeps counting, and a seller at 112% should read 112%.
+    percent: roundPercent(ratePercent(wonMinor, targetMinor) ?? 0),
+  }
+}
+
+/**
  * The tier already cleared, and the distance to the next one.
  *
  * Both halves matter to the person reading it: the first is what they have
  * earned, the second is the only actionable number on the row.
+ *
+ * GATED ON THE BAND FIRST. Outside 107–147 the client's ladder pays nothing,
+ * so every field comes back empty rather than describing a rung this person
+ * will never be paid for — see `bonusEligible`.
  */
-function bonusFor(wonMinor: bigint, currency: string): SellerBonusDto {
+function bonusFor(wonMinor: bigint, fullName: string, currency: string): SellerBonusDto {
+  if (!bonusEligible(fullName)) {
+    return {
+      earned: toMoneyDto(money(0n, currency)),
+      nextFloor: null,
+      nextBonus: null,
+      toNext: null,
+      toNextPercent: null,
+      eligible: false,
+    }
+  }
+
   const cleared = BONUS_TIERS.find((tier) => wonMinor >= tier.floorMinor) ?? null
   const clearedIndex = cleared ? BONUS_TIERS.indexOf(cleared) : BONUS_TIERS.length
   // The tiers are descending, so the NEXT tier up is the entry before this one.
@@ -368,6 +554,7 @@ function bonusFor(wonMinor: bigint, currency: string): SellerBonusDto {
       ? toMoneyDto(money(next.floorMinor > wonMinor ? next.floorMinor - wonMinor : 0n, currency))
       : null,
     toNextPercent: next ? roundOrNull(ratePercent(wonMinor, next.floorMinor)) : null,
+    eligible: true,
   }
 }
 
@@ -375,6 +562,7 @@ function bonusFor(wonMinor: bigint, currency: string): SellerBonusDto {
 function teamRows(
   rows: readonly SellerBoardRow[],
   totalWonMinor: bigint,
+  planByEmployee: ReadonlyMap<string, bigint>,
   currency: string,
 ): readonly SellerTeamRowDto[] {
   const byRop = new Map<string, SellerBoardRow[]>()
@@ -413,6 +601,27 @@ function teamRows(
         open: toMoneyDto(money(sum(team.members, (m) => m.openMinor), currency)),
         conversionPercent: roundOrNull(ratePercent(wonOrders, wonOrders + lostOrders)),
         sharePercent: roundOrNull(ratePercent(team.wonMinor, totalWonMinor)),
+        /*
+          A team's plan is its members' plans summed — but only the members
+          who HAVE one. A team of ten where three carry targets has a real
+          target of those three; treating the other seven as zero-target
+          members would leave the team permanently over plan.
+
+          Null when nobody on the team has one at all, so the column says
+          "no target" rather than "0 soʻm, and you have beaten it".
+        */
+        plan: planFor(
+          team.members.some((m) => planByEmployee.has(m.employeeId))
+            ? sum(
+                team.members.filter((m) => planByEmployee.has(m.employeeId)),
+                (m) => planByEmployee.get(m.employeeId)!,
+              )
+            : null,
+          team.wonMinor,
+          currency,
+        ),
+        leads: null,
+        leadConversionPercent: null,
       }
     })
 }

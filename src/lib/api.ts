@@ -945,6 +945,19 @@ export interface SellerBonusDto {
   readonly nextBonus: MoneyDto | null
   readonly toNext: MoneyDto | null
   readonly toNextPercent: number | null
+  /**
+   * Whether the client's ladder pays this operator at all — their
+   * `idInRange()`, the 107-147 floor-number band. Outside it every field
+   * above is empty; see `domain/analytics/sellerBonus`.
+   */
+  readonly eligible: boolean
+}
+
+/** A target and the progress against it. Both null when no target is set. */
+export interface SellerPlanDto {
+  readonly amount: MoneyDto | null
+  /** Won intake over the target, 0-100+. Uncapped: 112% reads as 112%. */
+  readonly percent: number | null
 }
 
 export interface SellerBoardRowDto {
@@ -967,6 +980,24 @@ export interface SellerBoardRowDto {
   /** Won over RESOLVED orders, 0-100. Open orders are not counted against. */
   readonly conversionPercent: number | null
   readonly sharePercent: number | null
+  /** Their `plan` / `plandone`. Empty until targets are set in `kpi`. */
+  readonly plan: SellerPlanDto
+  /**
+   * Their `Lid` column — ALWAYS NULL today, and carried on purpose.
+   *
+   * Nothing in this database holds a lead: no model, no sync entity, no
+   * provider call. The column stays on screen saying so, because "no source
+   * connected" is a question somebody can answer and a zero is not.
+   */
+  readonly leads: number | null
+  /**
+   * Their `conv` — orders over LEADS. Not `conversionPercent` beside it,
+   * which is won over RESOLVED orders. Two questions, two denominators; both
+   * are carried so neither has to borrow the other's number.
+   */
+  readonly leadConversionPercent: number | null
+  /** Their `fot`. ALWAYS NULL — nothing in this database holds pay. */
+  readonly fot: MoneyDto | null
   readonly bonus: SellerBonusDto
 }
 
@@ -981,6 +1012,12 @@ export interface SellerTeamRowDto {
   readonly open: MoneyDto
   readonly conversionPercent: number | null
   readonly sharePercent: number | null
+  /** Members' targets summed — only the members who have one. */
+  readonly plan: SellerPlanDto
+  /** See `SellerBoardRowDto.leads`. Always null, for the same reason. */
+  readonly leads: number | null
+  /** See `SellerBoardRowDto.leadConversionPercent`. Null with `leads`. */
+  readonly leadConversionPercent: number | null
 }
 
 export interface SellerBoardTotalsDto {
@@ -997,6 +1034,15 @@ export interface SellerBoardTotalsDto {
   readonly wonDelta: DeltaDto
   readonly bonusPayable: MoneyDto
   readonly sellersInBonus: number
+  /** Sellers the ladder can pay at all — the 107-147 band. */
+  readonly sellersEligibleForBonus: number
+  /** Every target on the board summed, and won intake against them. */
+  readonly plan: SellerPlanDto
+  readonly sellersWithPlan: number
+  /** See `SellerBoardRowDto.leads`. Always null, for the same reason. */
+  readonly leads: number | null
+  /** See `SellerBoardRowDto.leadConversionPercent`. Null with `leads`. */
+  readonly leadConversionPercent: number | null
 }
 
 export interface SellerBoardForecastDto {
@@ -1015,6 +1061,13 @@ export interface SellerBoardDto {
    * ORDER WAS TAKEN. See `?basis=` on `/analytics/sellers`.
    */
   readonly basis: 'confirmation_queue' | 'created_in_period'
+  /**
+   * The span the targets were set for, when the board found any and they all
+   * share one. A target is a contract for a stated period, not a rate to be
+   * sliced to the reader's window — so the screen prints the span it is
+   * scoring against. Null when no target covers the window.
+   */
+  readonly planWindow: { readonly start: string; readonly end: string } | null
 }
 
 /** One day of one seller's intake. */
@@ -1023,6 +1076,8 @@ export interface SellerDayDto {
   readonly orders: number
   readonly ordered: MoneyDto
   readonly won: MoneyDto
+  /** See `SellerBoardRowDto.leads`. Always null, for the same reason. */
+  readonly leads: number | null
 }
 
 export interface StageConversionRowDto {
