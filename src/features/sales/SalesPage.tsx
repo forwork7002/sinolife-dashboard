@@ -705,7 +705,14 @@ export function SalesPage() {
         same ranking with more columns, and its freed slot is what gives the
         ladder room to breathe.
       */}
-      <div className="grid items-start gap-4 lg:grid-cols-3">
+      {/*
+        `min-w-0` on the items, because a grid track is `minmax(auto, 1fr)`
+        and `auto` means the item's MIN-CONTENT — so one wide row inside the
+        ladder widens the column it sits in rather than being contained by
+        it. At 360px that pushed this row 23px past the page and the card's
+        right edge left the screen.
+      */}
+      <div className="grid items-start gap-4 lg:grid-cols-3 [&>*]:min-w-0">
         <ChartCard
           className="lg:col-span-2"
           // "Qamrov", not "konversiya": the rows are shares of one cohort, not
@@ -836,7 +843,7 @@ function InsightTile({
           end of its own unit.
         */
         <div
-          className="figure mt-2 text-[26px] leading-none font-semibold sm:text-[30px]"
+          className="figure figure-wrap mt-2 text-[26px] leading-none font-semibold sm:text-[30px]"
           style={{ color: 'var(--ink-primary)' }}
         >
           {children}

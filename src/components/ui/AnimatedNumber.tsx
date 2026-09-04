@@ -87,7 +87,10 @@ export function AnimatedNumber({
     <span
       // Keyed by change count, so each live update restarts the flash.
       key={flash}
-      className={flash > 0 ? 'value-flash' : undefined}
+      /* A number is one atom. `.figure-wrap` lifts its container's nowrap
+         so a unit may fall to the next line; this is what keeps «3.2 mln»
+         from splitting after the «3.2» when it does. */
+      className={flash > 0 ? 'value-flash whitespace-nowrap' : 'whitespace-nowrap'}
     >
       <span className="sr-only">{format(value)}</span>
       {/* The tween passes through fractions on its way; a count of orders

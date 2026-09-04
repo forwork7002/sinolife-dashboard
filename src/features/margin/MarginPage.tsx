@@ -236,7 +236,7 @@ export function MarginPage() {
                   base it came from sits beside it a register quieter, so the
                   42% can be checked against the two numbers it divides.
                 */
-                <p className="figure-hero mt-2" style={{ color: 'var(--ink-primary)' }}>
+                <p className="figure-hero figure-wrap mt-2" style={{ color: 'var(--ink-primary)' }}>
                   <AnimatedNumber value={data.gross.amount} format={formatCompactUzs} />
                   <span className="text-lg font-normal" style={{ color: 'var(--ink-muted)' }}>
                     {' '}/ {formatCompactUzs(data.costedRevenue.amount)} soʻm

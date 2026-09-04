@@ -34,7 +34,7 @@ export function CohortHeatmap({
   )
 
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className="w-full border-separate" style={{ borderSpacing: '2px' }}>
         <caption className="sr-only">
           Kogorta bo‘yicha ushlab qolish: har bir qator — birinchi xarid oyi, har bir ustun — o‘sha

@@ -270,7 +270,7 @@ export function MarketingPage() {
               />
 
               {/* The twelve tabs, scrollable on narrow screens. */}
-              <div className="-mx-1 overflow-x-auto px-1 pb-1">
+              <div className="relative -mx-1 overflow-x-auto px-1 pb-1">
                 <div className="flex gap-1.5">
                   {MARKETING_DIMENSIONS.map((id) => {
                     const active = id === dimension

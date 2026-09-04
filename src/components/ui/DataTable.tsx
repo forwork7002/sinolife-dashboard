@@ -176,8 +176,21 @@ export function DataTable<T>({
 
   return (
     <>
+      {/*
+        `relative`, and it is load-bearing rather than tidy.
+
+        Overflow clips a descendant only while the scroll box is also its
+        containing block. This one was `position: static`, so every
+        absolutely-positioned thing inside the table — starting with the
+        `sr-only` reading AnimatedNumber puts beside each figure — resolved
+        against the CARD instead and escaped the clip entirely. Measured on
+        production at 360px: the confirmation table is 2 221px wide, and four
+        one-pixel sr-only spans sitting at its far right made `main` 2 034px
+        wide against a 328px viewport. Nothing looked wrong — `main` hides its
+        overflow — but the page was 1 674px wider than the phone holding it.
+      */}
     <div
-      className="-mx-1 overflow-x-auto"
+      className="relative -mx-1 overflow-x-auto"
       style={{ maxHeight, overflowY: 'auto' }}
       onScroll={onScroll}
     >

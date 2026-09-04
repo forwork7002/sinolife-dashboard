@@ -492,9 +492,16 @@ function ReasonList({
     <ul className="space-y-2">
       {reasons.map((reason) => (
         <li key={`${reason.stage}-${reason.reason}`} className="flex items-center gap-3">
+          {/*
+            The label gives way on a phone; from sm it is the fixed 224px
+            column it has always been. The three columns after it are fixed
+            too — 224 + 56 + 96 plus gaps is 412px against the 286px a 360px
+            phone actually has, so the row ran off the card and took the
+            money column with it.
+          */}
           <Tooltip content={<span className="block max-w-72">{reason.reason}</span>}>
             <span
-              className="w-56 shrink-0 truncate text-xs"
+              className="min-w-0 flex-1 truncate text-xs sm:w-56 sm:flex-none"
               style={{ color: 'var(--ink-secondary)' }}
             >
               {reasonLabel(reason.reason)}
@@ -509,7 +516,10 @@ function ReasonList({
               mode.
             */
             <div
-              className="h-2 flex-1 overflow-hidden rounded-full"
+              /* Hidden below sm: with the label shrunk there is no width left
+                 for a comparison bar, and it was already rendering 0px wide
+                 — a track with nothing in it, costing a gap. */
+              className="hidden h-2 flex-1 overflow-hidden rounded-full sm:block"
               style={{ background: 'var(--track)' }}
             >
               <div

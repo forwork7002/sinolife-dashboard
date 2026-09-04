@@ -532,6 +532,29 @@ body {
 }
 
 /**
+ * A figure that is allowed to leave its unit on the next line.
+ *
+ * `.figure` forbids wrapping so a number never breaks across lines, and that
+ * is right for the number. It is wrong for what rides beside it: «3.2 mln»
+ * followed by «/ 5.6 mln soʻm», or «997 mln» followed by «soʻm/kun», is one
+ * unbreakable string only by accident of markup. On a 360px phone those
+ * tiles are 124-138px wide and the tail was simply cut off by main's
+ * overflow-x-hidden — the reader saw «3.2 mln / 5.6 ml» and no way to reach
+ * the rest.
+ *
+ * So the BOX may break; the NUMBER may not. AnimatedNumber carries its own
+ * `whitespace-nowrap`, which is what keeps «3.2 mln» from splitting after
+ * «3.2» once this class lifts the container's rule. The suffix is ordinary
+ * secondary text and wraps like any other.
+ *
+ * Nothing changes at a width where the line already fits — this only ever
+ * grants a break that the old rule refused.
+ */
+.figure-wrap {
+  white-space: normal;
+}
+
+/**
  * THE hero figure — the one number a screen leads with.
  *
  * `.figure` sets the behaviour (tabular, tight, unwrappable); this adds the

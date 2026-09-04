@@ -137,7 +137,7 @@ export function StatTile({
           <Tooltip content={<span className="tabular">{formatUzs(value)}</span>}>
             <span
               tabIndex={0}
-              className="focusable figure block rounded-[var(--radius-panel-sm)] text-[26px] sm:text-[30px] leading-none font-semibold"
+              className="focusable figure figure-wrap block rounded-[var(--radius-panel-sm)] text-[26px] sm:text-[30px] leading-none font-semibold"
               style={{ color: toneColor }}
             >
               <StatValue value={value} unit={unit} />
@@ -146,7 +146,7 @@ export function StatTile({
         </div>
       ) : (
         <p
-          className={`figure mt-2 leading-none font-semibold ${
+          className={`figure figure-wrap mt-2 leading-none font-semibold ${
             unit === 'money' && money === 'full' ? 'figure-sum' : 'text-[26px] sm:text-[30px]'
           }`}
           style={{ color: toneColor }}

@@ -229,7 +229,7 @@ function Tree({ nodes }: { readonly nodes: readonly StructureDto[] }) {
       leave the screen exactly when the reader is deepest in the branches.
       Short trees never reach the cap and behave as before.
     */
-    <div className="overflow-x-auto" style={{ maxHeight: 560, overflowY: 'auto' }} onScroll={onScroll}>
+    <div className="relative overflow-x-auto" style={{ maxHeight: 560, overflowY: 'auto' }} onScroll={onScroll}>
       <table className="w-full text-sm" style={{ minWidth: 760 }}>
         <thead>
           <tr>
