@@ -437,10 +437,11 @@ function sellersCaption(data: SellerBoardDto): string {
  * so the three columns literally form a podium on wide screens.
  *
  * MEDALS ONLY FOR WON MONEY — the table's `ranked` rule, enforced here by
- * construction: the podium renders only rows with `won.amount > 0`, so a
- * short window where nobody has won yet shows the open-gate state instead of
- * handing out gold for a tie-break. That state still carries a real measured
- * number (the period's intake) rather than a zero pretending to be a fact.
+ * construction: a row with neither FAKT 2 nor FAKT 1 has done nothing to
+ * rank, and the open-gate state appears instead of gold handed out on a
+ * tie-break. Where FAKT 2 is still zero across the floor — most of a working
+ * day, since delivery takes days — the places are decided by FAKT 1 and each
+ * card says so, rather than leading with a zero about a real person.
  *
  * The footer is the pace of the race: the DTO's forecast, which this page
  * fetched and never showed. "At this pace the floor finishes at X" is the
@@ -459,7 +460,18 @@ function PodiumHero({
   onRetry: () => void
   onOpenSeller: (employeeId: string) => void
 }) {
-  const winners = data ? data.rows.filter((r) => r.won.amount > 0).slice(0, 3) : []
+  /*
+    THE TOP THREE OF WHOEVER HAS MONEY, not only of whoever has delivered.
+
+    Delivery takes days, so for most of a working day nobody has FAKT 2 and
+    the podium stood empty over a floor that had confirmed 148 mln soʻm
+    between 55 people. The board ranks FAKT 2 first and FAKT 1 second — the
+    client's own rule — so the podium shows the same three people the table
+    puts on top, and the card states which figure earned the place.
+  */
+  const winners = data
+    ? data.rows.filter((r) => r.won.amount > 0 || r.ordered.amount > 0).slice(0, 3)
+    : []
 
   return (
     <section className="rise" aria-label="Davr peshqadamlari">
@@ -476,7 +488,7 @@ function PodiumHero({
               Davr peshqadamlari
             </h2>
             <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-              Yutilgan buyurtma puli boʻyicha — medal faqat yutilgan pul uchun
+              Avval FAKT 2 (yetkazilgan), teng boʻlsa FAKT 1 (tasdiqlangan) boʻyicha
             </p>
           </header>
 
@@ -694,8 +706,21 @@ function PodiumStep({
   const seat =
     winnersCount === 3 ? (place === 2 ? 'sm:order-first' : place === 3 ? 'sm:order-last' : '') : ''
 
-  const gap = leader.won.amount - row.won.amount
-  const closeness = leader.won.amount > 0 ? (row.won.amount / leader.won.amount) * 100 : 0
+  /*
+    THE CARD SHOWS THE FIGURE THAT EARNED THE PLACE.
+
+    Ranking reads FAKT 2 first and FAKT 1 second, so for most of a working
+    day — before the first courier arrives — the places are decided by FAKT 1
+    and a card leading with «0 soʻm» would be reporting the wrong number about
+    the right person. `basis` picks the one that is actually ordering the
+    board right now, and the caption under it says which.
+  */
+  const onDelivered = leader.won.amount > 0
+  const figure = onDelivered ? row.won.amount : row.ordered.amount
+  const leaderFigure = onDelivered ? leader.won.amount : leader.ordered.amount
+
+  const gap = leaderFigure - figure
+  const closeness = leaderFigure > 0 ? (figure / leaderFigure) * 100 : 0
 
   const name = (
     <button
@@ -735,14 +760,14 @@ function PodiumStep({
         </div>
 
         <div className={isLeader ? 'mt-3' : 'mt-2'}>
-          <Tooltip content={<span className="tabular">{formatUzs(row.won.amount)}</span>}>
+          <Tooltip content={<span className="tabular">{formatUzs(figure)}</span>}>
             {isLeader ? (
               <span
                 tabIndex={0}
                 className="focusable figure-hero inline-block rounded-[var(--radius-panel-sm)]"
                 style={{ color: 'var(--ink-primary)' }}
               >
-                <AnimatedNumber value={row.won.amount} format={formatCompactUzs} duration={900} />
+                <AnimatedNumber value={figure} format={formatCompactUzs} duration={900} />
                 <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
                   soʻm
                 </span>
@@ -753,13 +778,20 @@ function PodiumStep({
                 className="focusable figure inline-block rounded text-[22px] leading-none font-semibold"
                 style={{ color: 'var(--ink-primary)' }}
               >
-                {formatCompactUzs(row.won.amount)}
+                {formatCompactUzs(figure)}
                 <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
                   soʻm
                 </span>
               </span>
             )}
           </Tooltip>
+          {/* Which of the two put them here. Silent on the delivered reading,
+              because that is the one the page's every other label assumes. */}
+          {!onDelivered && (
+            <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              FAKT 1 · tasdiqlangan
+            </p>
+          )}
         </div>
 
         {isLeader ? (
@@ -1349,7 +1381,8 @@ function SellerRows({
     metal. The table says «—» in the rank column instead of handing out gold
     for nothing, and the caption above explains why.
   */
-  const podium = row.rank <= 3 && row.won.amount > 0
+  const ranked = row.won.amount > 0 || row.ordered.amount > 0
+  const podium = row.rank <= 3 && ranked
 
   return (
     <>
@@ -1377,7 +1410,7 @@ function SellerRows({
         }}
       >
         <td className={podium ? 'px-2 py-3' : 'px-2 py-2'}>
-          <Rank rank={row.rank} ranked={row.won.amount > 0} />
+          <Rank rank={row.rank} ranked={ranked} />
         </td>
         <td className={podium ? 'px-2 py-3' : 'px-2 py-2'}>
           {/*
@@ -1757,7 +1790,7 @@ function SellerDetail({
   })
 
   const rows = days.data?.data ?? []
-  const ranked = row.won.amount > 0
+  const ranked = row.won.amount > 0 || row.ordered.amount > 0
 
   return (
     <div
@@ -2032,7 +2065,7 @@ function TeamTable({
           </thead>
           <tbody>
             {rows.map((row) => {
-              const podium = row.rank <= 3 && row.won.amount > 0
+              const podium = row.rank <= 3 && (row.won.amount > 0 || row.ordered.amount > 0)
               // The same metal echo as the sellers' table — chrome only.
               const metal = !podium
                 ? null

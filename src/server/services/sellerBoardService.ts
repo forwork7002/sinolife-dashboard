@@ -323,33 +323,49 @@ export class SellerBoardService {
     const previousWonMinor = sum(previous, (r) => r.wonMinor)
 
     /*
-      Rank on won intake, descending, with the employee id as the tiebreak.
-      The id rather than the name: two sellers on identical money must not
-      swap places between two refreshes of the same screen, and a name sort
-      would reorder on a rename.
+      FAKT 2 FIRST, THEN FAKT 1 — the client's own rule, stated 2026-09-04:
+      «kimda koʻp fakt 1 va fakt 2 boʻlsa u yuqori oʻrinda turadi».
+
+      Delivered money leads, because that is what the floor is paid on. But
+      ranking on it ALONE leaves the board blank for most of a working day:
+      delivery takes days, so on «Bugun» and «Kecha» every row holds zero
+      FAKT 2, the whole ranking collapses to a tie and the deciding factor
+      becomes an internal employee id — 55 sellers, 148 mln soʻm confirmed
+      between them, and not one of them ranked. Confirmed money is the honest
+      second key: it is the work they have actually done today, and it orders
+      exactly the people FAKT 2 cannot separate yet.
+
+      The employee id remains the last resort, so two sellers level on both
+      figures do not swap places between two refreshes of one screen — and a
+      name sort would reorder them on a rename.
     */
     const ordered = [...rows].sort(
       (a, b) =>
         (b.wonMinor > a.wonMinor ? 1 : b.wonMinor < a.wonMinor ? -1 : 0) ||
+        (b.orderedMinor > a.orderedMinor ? 1 : b.orderedMinor < a.orderedMinor ? -1 : 0) ||
         a.employeeId.localeCompare(b.employeeId),
     )
 
     /*
       COMPETITION RANKING: equal money, equal rank, and the next rank skips.
 
-      Position in the sorted list was the rank, so two sellers who had won the
-      same amount — common at the start of a window, universal when nobody has
-      won anything yet — were told one outranked the other, and the deciding
-      factor was an internal id. `/analytics/leaderboard` already ranks the
-      same people 1, 2, 2, 4; two boards of the same floor disagreeing about
-      who is second is the kind of thing a bonus argument starts over.
+      Equal on BOTH figures, now that both decide the order — otherwise two
+      sellers level on FAKT 2 but far apart on FAKT 1 would share a rank the
+      sort had already separated them by, and the board would print 1, 1, 3
+      over rows that visibly differ.
 
-      The id still decides DISPLAY order, so the table does not reshuffle
-      between two refreshes of the same screen.
+      `/analytics/leaderboard` ranks the same floor 1, 2, 2, 4 and two boards
+      disagreeing about who is second is the kind of thing a bonus argument
+      starts over. The id still decides DISPLAY order among true ties, so the
+      table does not reshuffle between two refreshes of one screen.
     */
     const rankOf = ordered.map((row, index) => {
       const previous = index > 0 ? ordered[index - 1] : undefined
-      return previous && previous.wonMinor === row.wonMinor ? -1 : index + 1
+      return previous &&
+        previous.wonMinor === row.wonMinor &&
+        previous.orderedMinor === row.orderedMinor
+        ? -1
+        : index + 1
     })
     for (let i = 1; i < rankOf.length; i++) {
       if (rankOf[i] === -1) rankOf[i] = rankOf[i - 1]!
