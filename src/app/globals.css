@@ -2402,6 +2402,15 @@ p {
 .org-canvas {
   position: relative;
   overflow: hidden;
+  /*
+    Height comes from the PAGE, through a custom property.
+
+    The chart is the reason the screen exists, so it takes what the viewport
+    has left rather than a number chosen once — and the phone override below
+    is then one line that changes the same variable instead of an !important
+    fighting an inline style.
+  */
+  height: var(--org-canvas-h, 620px);
   /* Its own containing block, so the absolutely-positioned stage and the
      floating controls are clipped by the card rather than by the page — the
      same rule the horizontal scrollers in this file already document. */
@@ -2438,7 +2447,7 @@ p {
 */
 @media (max-width: 640px) {
   .org-canvas {
-    height: 72vh !important;
+    --org-canvas-h: 72vh;
     min-height: 420px;
   }
 }

@@ -60,7 +60,7 @@ export function OrgChart({
   selectedId,
   onSelect,
   viewerDepartmentId,
-  height = 620,
+  height = '620px',
   panel,
 }: {
   roots: readonly StructureDto[]
@@ -68,7 +68,8 @@ export function OrgChart({
   onSelect: (id: string | null) => void
   /** Where «Meni topish» flies to. Null when the account is not linked. */
   viewerDepartmentId: string | null
-  height?: number
+  /** Any CSS length. Reaches `.org-canvas` as `--org-canvas-h`. */
+  height?: string
   /**
    * The department panel, rendered INSIDE the canvas.
    *
@@ -626,7 +627,7 @@ export function OrgChart({
     <div
       ref={canvasRef}
       className="org-canvas"
-      style={{ height }}
+      style={{ '--org-canvas-h': height } as React.CSSProperties}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endPan}
@@ -768,6 +769,18 @@ export function OrgChart({
                   dimmed={Boolean(matches && !matches.has(placed.id))}
                   onSelect={() => {
                     setFocusedId(placed.id)
+                    /*
+                      A CLICK IS NOT AN ARRIVAL.
+
+                      The layout effect flies to a selection it has not seen
+                      before, which is what makes a pasted «?dep=» link land on
+                      its card. A click sets the same state — so without
+                      marking it here the chart also flew to the card the
+                      reader had just clicked, sliding the whole tree under
+                      their cursor and pushing the root behind the toolbar.
+                      Claiming it now means the effect finds nothing to do.
+                    */
+                    revealed.current = placed.id
                     onSelect(placed.id === selectedId ? null : placed.id)
                   }}
                   onToggle={() => toggle(placed.id)}

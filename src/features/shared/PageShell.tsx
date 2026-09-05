@@ -91,6 +91,7 @@ export function PageShell({
   filters: enabled = {},
   accent,
   actions,
+  periodInHeader = false,
   stale = false,
   children,
   period = true,
@@ -115,6 +116,17 @@ export function PageShell({
    */
   accent?: string
   actions?: ReactNode
+  /**
+   * Put the reporting window on the TITLE ROW instead of in a row of its own.
+   *
+   * For a page whose one control is the window and whose content wants the
+   * vertical space: the org chart is the whole point of `/structure`, and a
+   * row holding four chips and nothing else pushed it 44px further down the
+   * screen for no information. Ignored when the page also has filters — those
+   * belong together in a row, and a title line carrying six controls is a
+   * toolbar pretending to be a heading.
+   */
+  periodInHeader?: boolean
   /**
    * True while the numbers on screen still belong to the PREVIOUS window.
    *
@@ -147,6 +159,22 @@ export function PageShell({
   const anyFilter =
     enabled.employees || enabled.departments || enabled.stages || enabled.products ||
     enabled.sources || enabled.search
+
+  /*
+    ONE control, two places, so the two cannot drift apart.
+
+    `inHeader` only takes effect on a page with no other filters — see the
+    prop. Everywhere else the window keeps its own row beside them.
+  */
+  const inHeader = periodInHeader && period && !anyFilter
+  const periodControl = period ? (
+    <PeriodFilter
+      value={filters.preset}
+      from={filters.from}
+      to={filters.to}
+      onChange={setPeriod}
+    />
+  ) : null
 
   return (
     /*
@@ -238,7 +266,16 @@ export function PageShell({
                   </p>
                 )}
               </div>
-              {actions}
+              {/* On a window-only page the control rides the title line,
+                  right-aligned, and the row below it is not rendered at all. */}
+              {inHeader ? (
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {periodControl}
+                  {actions}
+                </div>
+              ) : (
+                actions
+              )}
             </header>
 
             {/*
@@ -259,16 +296,9 @@ export function PageShell({
               without the control would have no way to change its dates. The
               one page that has no window (`period={false}`) gets no row.
             */}
-            {(period || anyFilter) && (
+            {(period || anyFilter) && !inHeader && (
             <div className="flex flex-wrap items-center gap-2">
-              {period && (
-                <PeriodFilter
-                  value={filters.preset}
-                  from={filters.from}
-                  to={filters.to}
-                  onChange={setPeriod}
-                />
-              )}
+              {periodControl}
               {anyFilter && (
                 <>
                 {enabled.search && (

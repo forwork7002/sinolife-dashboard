@@ -7,7 +7,7 @@ import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/State
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
-import { RingGauge, StatTile } from '@/components/ui/Stat'
+import { RingGauge } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import {
   STRUCTURE_VIEWS,
@@ -15,7 +15,7 @@ import {
   useDashboardFilters,
 } from '@/features/shared/useDashboardFilters'
 import { type StructureDto, apiGet } from '@/lib/api'
-import { NO_VALUE, formatNumber } from '@/lib/format'
+import { NO_VALUE, formatCompactUzs, formatNumber } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 import { DepartmentPanel } from './DepartmentPanel'
@@ -85,139 +85,136 @@ export function StructurePage() {
       // Not series-8: it is 4.1 ΔE from --status-critical in light mode, so a
       // page accented with it makes red mean two things at once.
       accent="var(--series-6)"
+      // The window is this page's only control, and the tree wants the row it
+      // was standing in. See PageShell.
+      periodInHeader
       meta={query.data?.meta}
       stale={query.isPlaceholderData}
     >
       {/*
-        The lead instrument — the page's one hero, the only panel wearing the
-        registration brackets.
+        FOUR FACTS IN ONE STRIP, because the chart is what this page is for.
 
-        "Kim bor, kim yoʻq" — the question this page exists to answer.
+        This used to be a hero panel carrying a 116px ring over three
+        full-height tiles — some 340px of page above the org chart, on a screen
+        whose entire job is the org chart. Everything they said is still here
+        and still in the same order; it is the register that changed, not the
+        content, and the tree starts roughly where the ring used to end.
 
-        The Bitrix isActive flag alone cannot answer it: every deactivated
-        person is also silent, so the flag finds nobody the roster does not
-        already show. What management is asking is who is ON the roster,
-        marked active, and produced nothing — and that was 58 of 206 people
-        with no page saying so. That rate leads the page: the ring carries
-        it, the hero figure carries the fraction it is drawn from — a rate
-        without its denominator is an opinion — and the silent count stands
-        in the caption because it is the number the rate exists to expose.
-        Page-resolved tone: below 70% working is worth amber here, whatever
-        the house thresholds say.
+        «Ishlagan xodimlar» keeps the lead position and the only ring, because
+        it is the one figure here that is a RATE and the one the page was built
+        to expose: who is on the roster, marked active, and produced nothing.
+        The other three are counts and read fine as counts.
       */}
-      <section className="card-hero brackets reveal px-5 py-5 sm:px-6" aria-label="Ishlagan xodimlar">
+      <section className="card reveal flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
         {query.isError ? (
           <ErrorState
             message={(query.error as Error).message}
             onRetry={() => void query.refetch()}
           />
         ) : (
-          <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
-            {query.isPending ? (
-              <div className="skeleton h-[116px] w-[116px] shrink-0 rounded-full" role="status">
-                <span className="sr-only">Yuklanmoqda</span>
-              </div>
-            ) : (
-              <RingGauge
-                value={activePeople === 0 ? null : (workingPeople / activePeople) * 100}
-                size={116}
-                thickness={9}
-                tone={
-                  activePeople > 0 && workingPeople / activePeople < 0.7 ? 'warning' : 'neutral'
-                }
-                label="Ishlagan xodimlar"
-              />
-            )}
-
-            <div className="min-w-0 flex-1">
-              <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-                Ishlagan xodimlar
-              </p>
-
+          <>
+            <div className="flex min-w-0 items-center gap-3">
               {query.isPending ? (
-                // Sized to the hero figure below, so ready never reflows loading.
-                <div className="skeleton mt-2 h-[38px] w-44" role="status">
+                <div className="skeleton h-[54px] w-[54px] shrink-0 rounded-full" role="status">
                   <span className="sr-only">Yuklanmoqda</span>
                 </div>
-              ) : activePeople > 0 ? (
-                /*
-                  The fraction, not a second copy of the percentage — the ring
-                  already states that. Working people lead at hero size; the
-                  active roster sits beside them a register quieter, numbers
-                  only, so the nowrap hero line cannot overflow a narrow
-                  screen with a long Uzbek word.
-                */
-                <p className="figure-hero mt-2" style={{ color: 'var(--ink-primary)' }}>
-                  <AnimatedNumber
-                    value={workingPeople}
-                    format={(v) => formatNumber(Math.round(v))}
-                  />
-                  <span className="text-lg font-normal" style={{ color: 'var(--ink-muted)' }}>
-                    {' '}/ {formatNumber(activePeople)}
-                  </span>
-                </p>
               ) : (
-                // Genuine null: no active roster imported. An em dash, never
-                // 0 — "nobody worked" is a different fact from "nobody is
-                // on the roster to measure".
-                <p className="figure-hero mt-2" style={{ color: 'var(--ink-primary)' }}>
-                  {NO_VALUE}
-                </p>
+                <RingGauge
+                  value={activePeople === 0 ? null : (workingPeople / activePeople) * 100}
+                  size={54}
+                  thickness={5}
+                  tone={
+                    activePeople > 0 && workingPeople / activePeople < 0.7 ? 'warning' : 'neutral'
+                  }
+                  label="Ishlagan xodimlar"
+                />
               )}
 
-              {!query.isPending && (
-                <p className="mt-2 text-[11px] leading-snug" style={{ color: 'var(--ink-muted)' }}>
-                  {activePeople > 0
-                    ? `Davr ichida kamida bitta bitim yopganlar · ${formatNumber(silentPeople)} nafari jim`
-                    : 'Faol xodimlar roʻyxati boʻsh — Bitrix24 strukturasi import qilinmagan'}
+              <div className="min-w-0">
+                <p className="text-[11px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                  Ishlagan xodimlar
                 </p>
+                {query.isPending ? (
+                  <div className="skeleton mt-1 h-[22px] w-28" role="status">
+                    <span className="sr-only">Yuklanmoqda</span>
+                  </div>
+                ) : activePeople > 0 ? (
+                  /* The fraction, not a second copy of the percentage — the ring
+                     already states that. A rate without its denominator is an
+                     opinion. */
+                  <p
+                    className="tabular text-[20px] leading-tight font-semibold"
+                    style={{ color: 'var(--ink-primary)' }}
+                  >
+                    <AnimatedNumber
+                      value={workingPeople}
+                      format={(v) => formatNumber(Math.round(v))}
+                    />
+                    <span className="text-[13px] font-normal" style={{ color: 'var(--ink-muted)' }}>
+                      {' '}/ {formatNumber(activePeople)}
+                    </span>
+                  </p>
+                ) : (
+                  // Genuine null: no active roster imported. An em dash, never
+                  // 0 — "nobody worked" is a different fact from "nobody is on
+                  // the roster to measure".
+                  <p
+                    className="text-[20px] leading-tight font-semibold"
+                    style={{ color: 'var(--ink-primary)' }}
+                  >
+                    {NO_VALUE}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {!query.isPending && (
+              <p className="text-[11px] leading-snug" style={{ color: 'var(--ink-muted)' }}>
+                {activePeople > 0
+                  ? `Davr ichida kamida bitta bitim yopganlar · ${formatNumber(silentPeople)} nafari jim`
+                  : 'Faol xodimlar roʻyxati boʻsh — Bitrix24 strukturasi import qilinmagan'}
+              </p>
+            )}
+
+            {/*
+              TWO OF THESE THREE DO NOT MOVE WITH THE PRESET, and they say so.
+
+              The org chart is a fact about today — how many units exist, how
+              many people are on the roster — and no window makes it a different
+              number. Revenue beside them is period-scoped.
+            */}
+            <div className="ml-auto flex flex-wrap items-center gap-x-6 gap-y-2">
+              <Figure
+                status={tileStatus}
+                label="Boʻlimlar"
+                value={flat.length || null}
+                hint="Hozirgi holat"
+              />
+              <Figure
+                status={tileStatus}
+                label="Xodimlar"
+                value={totalPeople || null}
+                hint="Hozirgi holat"
+              />
+              {withMoney && (
+                <Figure
+                  status={tileStatus}
+                  label="Tushum"
+                  value={totalRevenue || null}
+                  money
+                  hint="Davr ichida yopilgan bitimlar"
+                />
               )}
             </div>
-          </div>
+          </>
         )}
       </section>
-
-      {/*
-        TWO OF THESE THREE DO NOT MOVE WITH THE PRESET.
-
-        The org chart is a fact about today — how many departments exist, how
-        many people are on the roster — and no window makes it a different
-        number. Revenue beside them is period-scoped. Three tiles in one row
-        read as three answers to one question, so the two that are not say so
-        rather than leaving a reader to click through the presets and wonder
-        why only the third one changes.
-      */}
-      <div className={`stagger grid gap-3 ${withMoney ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
-        <StatTile
-          status={tileStatus}
-          label="Boʻlimlar"
-          value={flat.length || null}
-          unit="count"
-          hint="Hozirgi holat"
-        />
-        <StatTile
-          status={tileStatus}
-          label="Xodimlar"
-          value={totalPeople || null}
-          unit="count"
-          hint="Hozirgi holat"
-        />
-        {withMoney && (
-          <StatTile
-            status={tileStatus}
-            label="Tushum"
-            value={totalRevenue || null}
-            unit="money"
-            hint="Davr ichida yopilgan bitimlar"
-          />
-        )}
-      </div>
 
       <ChartCard
         title="Tuzilma"
         hint={
           filters.view === 'chart'
-            ? 'Bitrix24 kompaniya strukturasi. Xodim soni — faqat shu boʻlimniki, pul — shu boʻlim va uning ostidagi barcha boʻlimlar boʻyicha. Kartani bosing — boʻlim xodimlari ochiladi. Fonni sudrab suring, Ctrl bilan gʻildirak — masshtab.'
+            ? 'Kartani bosing — boʻlim xodimlari ochiladi. Xodim soni faqat shu boʻlimniki, pul — shu boʻlim va ostidagilar boʻyicha. Fonni sudrab suring.'
             : 'Raqamlar boʻlimning oʻzi va uning ostidagi barcha boʻlimlar boʻyicha. «Boʻysunuvchi» — Bitrix24 shu boʻlimda koʻrsatgan faol xodimlar, rahbarsiz; «Oʻzida» — faqat toʻgʻridan-toʻgʻri biriktirilganlar.'
         }
         action={
@@ -256,6 +253,18 @@ export function StructurePage() {
               selectedId={selected?.id ?? null}
               onSelect={(id) => update({ dep: id ?? undefined })}
               viewerDepartmentId={viewerDepartmentId}
+              /*
+                As tall as the viewport leaves it.
+
+                The subtraction is everything above the canvas plus what is
+                below it: measured in the browser at 339px of page above the
+                canvas and 21px of card beneath it, plus 16px so the card does
+                not sit flush on the fold. Guessing it left the zoom stepper
+                just past the bottom of the window. The floor keeps a short
+                laptop window usable — there the page simply scrolls, which is
+                the right trade against a 200px sliver of chart.
+              */
+              height="max(420px, calc(100vh - 376px))"
               panel={
                 selected && (
                   <DepartmentPanel
@@ -275,6 +284,63 @@ export function StructurePage() {
           ))}
       </ChartCard>
     </PageShell>
+  )
+}
+
+/**
+ * One count in the strip.
+ *
+ * Not `StatTile`: that is a card with its own surface, padding and hover, and
+ * three of them side by side inside a card is a card inside a card. This is
+ * the same information at the strip's register — label over figure, hint on
+ * the title so the caption does not cost a third line.
+ *
+ * A null value is an em dash, never 0 — the distinction is the whole point:
+ * "no departments imported" and "zero departments" are different claims.
+ */
+function Figure({
+  status,
+  label,
+  value,
+  hint,
+  money = false,
+}: {
+  status: 'loading' | 'error' | 'ready'
+  label: string
+  value: number | null
+  hint: string
+  money?: boolean
+}) {
+  return (
+    <div className="min-w-0" title={hint}>
+      <p className="text-[11px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+        {label}
+      </p>
+      {status === 'loading' ? (
+        <div className="skeleton mt-1 h-[22px] w-16" role="status">
+          <span className="sr-only">Yuklanmoqda</span>
+        </div>
+      ) : (
+        <p
+          className="tabular text-[20px] leading-tight font-semibold whitespace-nowrap"
+          style={{ color: 'var(--ink-primary)' }}
+        >
+          {value === null || status === 'error' ? (
+            <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
+          ) : money ? (
+            <>
+              {formatCompactUzs(value)}
+              <span className="text-[12px] font-normal" style={{ color: 'var(--ink-muted)' }}>
+                {' '}
+                soʻm
+              </span>
+            </>
+          ) : (
+            <AnimatedNumber value={value} format={(v) => formatNumber(Math.round(v))} />
+          )}
+        </p>
+      )}
+    </div>
   )
 }
 

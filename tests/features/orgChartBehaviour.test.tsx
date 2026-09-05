@@ -279,6 +279,34 @@ describe('org chart behaviour', () => {
     expect(ids(container)).not.toContain('me')
   })
 
+  /**
+   * CLICKING A CARD MUST NOT MOVE THE CHART UNDER THE CURSOR.
+   *
+   * The layout effect flies to a selection it has not seen before, which is
+   * what makes a pasted «?dep=» link land on its card. A click sets the same
+   * state, so without claiming it the chart also flew to the card the reader
+   * had just clicked — sliding the whole tree sideways and, on a full-height
+   * canvas, pushing the root up behind the floating toolbar.
+   */
+  it('leaves the viewport alone when a card is clicked', async () => {
+    const { container, rerender } = render(
+      <OrgChart roots={TREE} selectedId={null} onSelect={() => {}} viewerDepartmentId={null} />,
+    )
+    const stage = container.querySelector('.org-stage') as HTMLElement
+    const before = stage.style.transform
+
+    await act(async () => {
+      fireEvent.click(container.querySelector('[data-card-id="operatsion"]')!)
+    })
+    // The page re-renders with the selection the click asked for.
+    rerender(
+      <OrgChart roots={TREE} selectedId="operatsion" onSelect={() => {}} viewerDepartmentId={null} />,
+    )
+    await frames()
+
+    expect(stage.style.transform).toBe(before)
+  })
+
   /** One tab stop for the whole chart, wherever the selection currently is. */
   it('keeps exactly one card in the tab order', () => {
     const { container } = render(
