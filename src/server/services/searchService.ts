@@ -21,7 +21,7 @@
 import type { SectionValue } from '@/lib/sections'
 import { toMoneyDto, money, type MoneyDto } from '@/server/domain/money/money'
 import type { Principal } from '@/server/auth/rbac'
-import { canSeeSection, dealScopeFor } from '@/server/auth/rbac'
+import { canSeeSection, type RowScope } from '@/server/auth/rbac'
 import type { SearchRepository } from '@/server/repositories/searchRepository'
 
 export interface SearchHitDto {
@@ -53,11 +53,15 @@ const WINDOW = 'preset=this_year'
 export class SearchService {
   constructor(private readonly repository: SearchRepository) {}
 
-  async search(principal: Principal, term: string, currency: string): Promise<SearchDto> {
+  async search(
+    principal: Principal,
+    scope: RowScope,
+    term: string,
+    currency: string,
+  ): Promise<SearchDto> {
     const query = term.trim()
-    const scope = dealScopeFor(principal)
 
-    const results = await this.repository.search(query, scope.restrictToEmployeeId)
+    const results = await this.repository.search(query, scope.restrictToEmployeeIds)
     const allow = (section: SectionValue) => canSeeSection(principal, section)
 
     const groups: SearchGroupDto[] = []

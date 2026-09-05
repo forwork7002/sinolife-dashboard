@@ -37,10 +37,20 @@ const schema = analyticsQuerySchema.and(
 /**
  * The sellers' board — who brought in what during the period.
  *
- * Company-wide for every role, exactly like `/analytics/leaderboard` and for
- * the same reason: a ranking each person can only see themselves in is not a
- * ranking. `ctx.scope` is therefore not applied. Only aggregate per-seller
- * figures leave this endpoint; no individual deals.
+ * NARROWED BY THE CALLER'S SCOPE, and it was the one screen that most needed
+ * to be. `leaderboard:read` is a permission every active account holds, so
+ * this endpoint answered an OWN-scoped salesperson with the whole company's
+ * board — 289 people's confirmed and delivered money — while every other
+ * company-wide screen refused them at the gate. The docblock here used to
+ * argue that a ranking each person can only see themselves in is not a
+ * ranking, which is true of a NAME FILTER and was never a reason to hand the
+ * firm's numbers to an account scoped away from them.
+ *
+ * What a narrowed caller gets is their own board: their team's rows, ranked
+ * among themselves, with share and totals over the same rows. That is a real
+ * ranking — the one a ROP is paid to read — and `data.scope` on the payload
+ * says so, so «1-oʻrin» on a team board cannot be misread as first in the
+ * company.
  *
  * TWO CLOCKS, PICKED BY `?basis=`. The default, 'queue', dates every figure
  * by the order's own arrival in the confirmation queue (C4:NEW) — FAKT 1 is
@@ -54,7 +64,18 @@ const schema = analyticsQuerySchema.and(
  */
 export const GET = getHandler(ACCESS, schema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
-  const context = AnalyticsService.context(period, ctx.currency, ctx.query, ctx.now)
+  /*
+    SCOPE LAST, the same ordering every narrowed route in this API uses: a
+    caller who hand-writes `?employeeIds=` into the address bar narrows their
+    own view and cannot widen it, because the restriction is spread on top of
+    whatever they asked for and then ANDed in SQL.
+  */
+  const context = AnalyticsService.context(
+    period,
+    ctx.currency,
+    { ...ctx.query, ...ctx.scope },
+    ctx.now,
+  )
 
   if (ctx.query.employeeId) {
     return {

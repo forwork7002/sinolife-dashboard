@@ -39,11 +39,21 @@ const { InsightsRepository } = await import('@/server/repositories/insightsRepos
  * the same order.
  */
 const queueSql = (
-  InsightsRepository as unknown as { queueSql: (mode: 'window' | 'backlog') => string }
+  InsightsRepository as unknown as {
+    queueSql: (mode: 'window' | 'backlog', scopeParam: string) => string
+  }
 ).queueSql
 
-const WINDOW = queueSql('window')
-const BACKLOG = queueSql('backlog')
+/*
+  The scope placeholder every consumer supplies. It is a REQUIRED argument, so
+  the prelude cannot be built without one — a board answering for the whole
+  company because a new reading forgot to say whose it was is the failure the
+  argument exists to make impossible. `$9` here is deliberately not a slot any
+  real caller uses, so an assertion below can only be matching this parameter.
+*/
+const SCOPE = '$9'
+const WINDOW = queueSql('window', SCOPE)
+const BACKLOG = queueSql('backlog', SCOPE)
 
 /*
   Negative assertions run against the SQL with its prose stripped.
@@ -222,6 +232,74 @@ describe('confirmation queue SQL', () => {
 
     expect(tail(WINDOW)).toBe(tail(BACKLOG))
     expect(tail(WINDOW).length).toBeGreaterThan(500)
+  })
+})
+
+/**
+ * WHOSE BOARD IS THIS.
+ *
+ * A ROP given «Тасдиклаш» must read their own floor and not the company's, and
+ * a salesperson their own orders — the client asked for exactly this: «ROP
+ * Asliddin bersam shu faqat uzini malumotlarini korishi kerak umumiy emas».
+ *
+ * There are nine readings built on this one prelude — the row list, its
+ * pagination count, the five tiles, the ROP panel, the ROP filter's options,
+ * the header bell, the rejection control chart and both of the sellers board's
+ * queue queries. Narrowing them one at a time is how two of them end up
+ * disagreeing in front of the same operator, so the predicate lives in
+ * `classified`, the CTE all nine are cut from, and these tests pin it there.
+ */
+describe('the caller\'s scope', () => {
+  it('narrows the cohort inside classified, where every reading is cut from', () => {
+    const tail = (sql: string) => sql.slice(sql.indexOf('classified AS ('))
+    const classified = tail(bare(WINDOW))
+    const numbered = classified.slice(classified.indexOf('numbered AS ('))
+
+    expect(classified).toContain(SCOPE)
+    // Inside the classified CTE, not after it: `numbered` and everything the
+    // consumers append read from an already-narrowed set.
+    expect(numbered).not.toContain(SCOPE)
+  })
+
+  it('matches on the OPERATOR, the person the board credits the order to', () => {
+    /*
+      Not `d."employeeId"`. The assignee drifts — this portal moves deals to
+      back office while they are processed, which put 556 July orders on the
+      head of Операцион — so a team boundary drawn on the assignee would file
+      a seller's own order outside their ROP's board. `e` is the alias the
+      COALESCE resolves to, two lines above.
+    */
+    const sql = bare(WINDOW)
+    expect(sql).toContain(`e."id" = ANY(string_to_array(${SCOPE}, ','))`)
+    expect(sql).toContain('JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")')
+  })
+
+  it('treats a null scope as the whole company and nothing else as one', () => {
+    // `null` is how an ALL-scoped account is expressed. An EMPTY list must not
+    // be — the repository turns that into a sentinel id instead, because
+    // `= ANY('{}')` is the only correct reading of "admits nobody".
+    expect(bare(WINDOW)).toContain(`${SCOPE}::text IS NULL OR`)
+  })
+
+  it('narrows both modes identically', () => {
+    // The bell counts the backlog and the page counts a window; they differ in
+    // which orders ENTER the cohort, never in whose they are. A mode-dependent
+    // scope would make the header and the board it links to describe two
+    // different populations, which this file already forbids for the cohort.
+    const tail = (sql: string) => sql.slice(sql.indexOf('classified AS ('))
+    expect(tail(WINDOW)).toContain(SCOPE)
+    expect(tail(BACKLOG)).toBe(tail(WINDOW))
+  })
+
+  it('cannot be built without one', () => {
+    /*
+      The argument is required and has no default. TypeScript enforces it at
+      every call site; this asserts the shape a cast could still get past —
+      that the prelude interpolates whatever it is handed rather than carrying
+      a silent "no filter" of its own.
+    */
+    const withoutScope = (queueSql as unknown as (mode: string) => string)('window')
+    expect(withoutScope).toContain('undefined')
   })
 })
 

@@ -36,7 +36,9 @@ export class FinanceRepository {
       { closedAt: { gte: window.start, lt: window.end } },
     ]
 
-    if (filters.restrictToEmployeeId) and.push({ employeeId: filters.restrictToEmployeeId })
+    if (filters.restrictToEmployeeIds?.length) {
+      and.push({ employeeId: { in: [...filters.restrictToEmployeeIds] } })
+    }
     if (filters.employeeIds?.length) and.push({ employeeId: { in: [...filters.employeeIds] } })
     if (filters.departmentIds?.length) {
       and.push({ employee: { departmentId: { in: [...filters.departmentIds] } } })

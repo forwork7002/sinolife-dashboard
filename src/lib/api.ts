@@ -1159,6 +1159,17 @@ export interface SellerBoardDto {
    */
   readonly basis: 'confirmation_queue' | 'created_in_period'
   /**
+   * True when these rows are a SUBSET of the company — a ROP's own team, or
+   * one salesperson.
+   *
+   * The board ranks and shares over the rows it holds, which is the right
+   * reading for the person it was narrowed to and a lie if they think they
+   * are looking at the firm: «1-oʻrin» over one row would otherwise say a
+   * seller leads a company they cannot see. The screen prints who it is
+   * counting instead of leaving the reader to infer it from the row count.
+   */
+  readonly scoped: boolean
+  /**
    * The span the targets were set for, when the board found any and they all
    * share one. A target is a contract for a stated period, not a rate to be
    * sliced to the reader's window — so the screen prints the span it is

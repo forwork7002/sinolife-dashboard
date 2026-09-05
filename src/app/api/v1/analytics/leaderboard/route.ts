@@ -28,10 +28,20 @@ const schema = analyticsQuerySchema.and(
 )
 
 /**
- * The leaderboard is intentionally company-wide for every role, including
- * SALES — `ctx.scope` is NOT applied here. A ranking each person can only see
- * themselves in is not a ranking, and the standings are the point of the page.
- * Only aggregate per-employee figures are exposed; no individual deals.
+ * The standings, narrowed to the rows the caller may read.
+ *
+ * `ctx.scope` IS applied, and it is spread last. This route used to argue that
+ * a ranking each person can only see themselves in is not a ranking, and so
+ * served every account the whole company — but `leaderboard:read` is a
+ * permission every active account holds, which made this and `/analytics/
+ * sellers` the two endpoints where a scoped salesperson read the firm's
+ * numbers while every other company-wide screen refused them. An ALL-scoped
+ * account still reads the company; a ROP reads their own team ranked among
+ * themselves, which is a ranking and is the one they are accountable for.
+ *
+ * `analyticsService.leaderboard` folds the restriction into the roster's own
+ * id filter (`narrowEmployeeIds`), so ranking happens AFTER the narrowing and
+ * no rank has a hole in it where somebody out of scope was removed.
  *
  * It is company-wide but NOT everyone: it ranks salespeople only, and the
  * `meta.leaderboardScope` block states who that leaves out. No parameter opens
@@ -40,7 +50,12 @@ const schema = analyticsQuerySchema.and(
  */
 export const GET = getHandler(ACCESS, schema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
-  const context = AnalyticsService.context(period, ctx.currency, ctx.query, ctx.now)
+  const context = AnalyticsService.context(
+    period,
+    ctx.currency,
+    { ...ctx.query, ...ctx.scope },
+    ctx.now,
+  )
   const { rows, scope, sellerCloseBasis } = await analyticsService.leaderboard(
     context,
     ctx.query.metric,

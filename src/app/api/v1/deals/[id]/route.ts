@@ -1,4 +1,3 @@
-import { dealScopeFor } from '@/server/auth/rbac'
 import { requirePermission } from '@/server/auth/session'
 import { getCrmProvider } from '@/server/config/providerFactory'
 import { money, toMoneyDto } from '@/server/domain/money/money'
@@ -7,7 +6,7 @@ import { failure, serialise, success } from '@/server/http/envelope'
 import { assertSection } from '@/server/http/handler'
 import { DEALS_READ } from '@/server/http/permissions'
 import { newCorrelationId } from '@/server/logging/logger'
-import { dealRepository } from '@/server/services/container'
+import { dealRepository, scopeService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,7 +36,7 @@ export async function GET(
     assertSection(principal, 'sales')
     const { id } = await context.params
 
-    const deal = await dealRepository.findById(id, dealScopeFor(principal))
+    const deal = await dealRepository.findById(id, await scopeService.resolve(principal))
     if (!deal) throw ApiError.notFound('Bitim topilmadi.')
 
     const paidMinor = deal.payments.reduce((sum, p) => sum + p.amountMinor, 0n)

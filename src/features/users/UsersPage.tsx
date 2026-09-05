@@ -318,7 +318,16 @@ function UserDialog({
   // warning has to judge what the account will ACTUALLY hold.
   const effective = sections.length > 0 ? sections : roleDefaults
   const blockedByScope = companyWideSections(effective)
-  const scopeNeedsEmployee = dataScope === 'OWN' && employeeId === ''
+  /*
+    BOTH NARROWED SCOPES NEED THE LINK, and for the same reason.
+
+    OWN resolves to that person's rows; TEAM grows the department subtree from
+    that person's record. Neither has anything to start from without it, and
+    the server refuses both — so the form has to warn about both or it lets an
+    administrator save a combination that comes back as a red field.
+  */
+  const scopeIsNarrowed = dataScope !== 'ALL'
+  const scopeNeedsEmployee = scopeIsNarrowed && employeeId === ''
 
   return (
     // A modal, because this is a decision that should not be half-made while
@@ -492,12 +501,12 @@ function UserDialog({
               The server refuses this combination outright, so the form's job
               is to say what the choice will do while it is still a choice.
             */}
-            {dataScope === 'OWN' && employeeId === '' && (
+            {scopeNeedsEmployee && (
               <span
                 className="mt-1 block text-[10.5px]"
                 style={{ color: 'var(--status-warning)' }}
               >
-                «Faqat oʻz natijalari» uchun xodim tanlanishi shart — aks holda hisob
+                «{DATA_SCOPE_LABELS[dataScope]}» uchun xodim tanlanishi shart — aks holda hisob
                 hech qanday raqam koʻrmaydi.
               </span>
             )}
@@ -579,7 +588,7 @@ function UserDialog({
             shown a blank page. Said here, next to the ticks, because the
             administrator is looking at the ticks when they make the mistake.
           */}
-          {dataScope === 'OWN' && blockedByScope.length > 0 && (
+          {scopeIsNarrowed && blockedByScope.length > 0 && (
             <p
               className="mt-3 rounded-lg px-3 py-2 text-[11.5px]"
               style={{
@@ -587,9 +596,10 @@ function UserDialog({
                 color: 'var(--status-warning)',
               }}
             >
-              Bu boʻlimlar faqat kompaniya boʻyicha hisoblanadi va «Faqat oʻz natijalari»
-              doirasida ochilmaydi: {blockedByScope.map((spec) => spec.label).join(', ')}.
-              Yo doirani «Butun kompaniya» qiling, yo bu boʻlimlarni olib tashlang.
+              Bu boʻlimlar faqat kompaniya boʻyicha hisoblanadi va «
+              {DATA_SCOPE_LABELS[dataScope]}» doirasida ochilmaydi:{' '}
+              {blockedByScope.map((spec) => spec.label).join(', ')}. Yo doirani «Butun
+              kompaniya» qiling, yo bu boʻlimlarni olib tashlang.
             </p>
           )}
         </section>

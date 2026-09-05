@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { defaultSectionsFor } from '@/lib/sections'
-import type { Principal } from '@/server/auth/rbac'
+import { rowScopeFor, type Principal } from '@/server/auth/rbac'
 import type { SearchRepository, SearchResults } from '@/server/repositories/searchRepository'
 import { commandCentreCacheKey } from '@/server/services/commandCentreCacheKey'
 import { SearchService } from '@/server/services/searchService'
@@ -52,15 +52,23 @@ const FOUND: SearchResults = {
   sources: [{ id: 's1', name: 'Instagram', detail: null }],
 }
 
-function serviceReturning(results: SearchResults, capture?: { scope?: string }) {
+function serviceReturning(
+  results: SearchResults,
+  capture?: { scope?: readonly string[] | null },
+) {
   const repository = {
-    search: async (_term: string, restrictToEmployeeId?: string) => {
-      if (capture) capture.scope = restrictToEmployeeId
+    search: async (_term: string, restrictToEmployeeIds?: readonly string[] | null) => {
+      if (capture) capture.scope = restrictToEmployeeIds
       return results
     },
   } as unknown as SearchRepository
 
   return new SearchService(repository)
+}
+
+/** The scope the handler resolves before calling the service. */
+function scopeOf(p: Principal, team: readonly string[] | null = null) {
+  return rowScopeFor(p, team)
 }
 
 function principal(overrides: Partial<Principal> = {}): Principal {
@@ -77,7 +85,7 @@ function principal(overrides: Partial<Principal> = {}): Principal {
 
 describe('what the search is allowed to return', () => {
   it('shows an account everything it holds the screens for', async () => {
-    const dto = await serviceReturning(FOUND).search(principal(), 'dilnoza', 'UZS')
+    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), 'dilnoza', 'UZS')
 
     expect(dto.groups.map((g) => g.key)).toEqual([
       'deals',
@@ -93,6 +101,7 @@ describe('what the search is allowed to return', () => {
     // exists, which is the thing being withheld.
     const dto = await serviceReturning(FOUND).search(
       principal({ sections: ['logistics'] }),
+      scopeOf(principal({ sections: ['logistics'] })),
       'dilnoza',
       'UZS',
     )
@@ -103,6 +112,7 @@ describe('what the search is allowed to return', () => {
   it('gives an account with only the queue its orders and customers, nothing else', async () => {
     const dto = await serviceReturning(FOUND).search(
       principal({ sections: ['confirmation'] }),
+      scopeOf(principal({ sections: ['confirmation'] })),
       'dilnoza',
       'UZS',
     )
@@ -111,26 +121,28 @@ describe('what the search is allowed to return', () => {
   })
 
   it('passes an OWN-scoped account down to the SQL as its own employee', async () => {
-    const capture: { scope?: string } = {}
+    const capture: { scope?: readonly string[] | null } = {}
     await serviceReturning(FOUND, capture).search(
       principal({ dataScope: 'OWN', employeeId: 'emp-7' }),
+      scopeOf(principal({ dataScope: 'OWN', employeeId: 'emp-7' })),
       'dilnoza',
       'UZS',
     )
 
-    expect(capture.scope).toBe('emp-7')
+    expect(capture.scope).toEqual(['emp-7'])
   })
 
   it('leaves a company-wide account unscoped', async () => {
-    const capture: { scope?: string } = {}
-    await serviceReturning(FOUND, capture).search(principal(), 'dilnoza', 'UZS')
+    const capture: { scope?: readonly string[] | null } = {}
+    await serviceReturning(FOUND, capture).search(principal(), scopeOf(principal()), 'dilnoza', 'UZS')
 
-    expect(capture.scope).toBeUndefined()
+    expect(capture.scope).toBeNull()
   })
 
   it('drops a group that matched nothing rather than rendering an empty heading', async () => {
     const dto = await serviceReturning({ ...EMPTY, products: FOUND.products }).search(
       principal(),
+      scopeOf(principal()),
       'zextra',
       'UZS',
     )
@@ -141,7 +153,7 @@ describe('what the search is allowed to return', () => {
 
 describe('where a result takes you', () => {
   it('opens an order in the queue, by the id the queue searches on', async () => {
-    const dto = await serviceReturning(FOUND).search(principal(), '925842', 'UZS')
+    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), '925842', 'UZS')
     const deal = dto.groups.find((g) => g.key === 'deals')!.items[0]
 
     expect(deal.href).toContain('/confirmation?')
@@ -151,7 +163,7 @@ describe('where a result takes you', () => {
   it('carries a wide window, or the row just listed would not be there', async () => {
     // An order found by its id is usually an old one. Landing on a screen
     // showing today would say "not found" about the row that was clicked.
-    const dto = await serviceReturning(FOUND).search(principal(), '925842', 'UZS')
+    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), '925842', 'UZS')
 
     for (const group of dto.groups) {
       for (const item of group.items) {
@@ -162,14 +174,14 @@ describe('where a result takes you', () => {
 
   it('finds a customer by their number rather than their name', async () => {
     // A name repeats across people; a number does not.
-    const dto = await serviceReturning(FOUND).search(principal(), 'dilnoza', 'UZS')
+    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), 'dilnoza', 'UZS')
     const customer = dto.groups.find((g) => g.key === 'customers')!.items[0]
 
     expect(customer.href).toContain(encodeURIComponent('+998901234567'))
   })
 
   it('carries the order amount so a row can be told from its namesakes', async () => {
-    const dto = await serviceReturning(FOUND).search(principal(), '925842', 'UZS')
+    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), '925842', 'UZS')
     const deal = dto.groups.find((g) => g.key === 'deals')!.items[0]
 
     expect(deal.amount?.amount).toBe(1_600_000)
@@ -178,14 +190,14 @@ describe('where a result takes you', () => {
 
 describe('a term too short to look up', () => {
   it('says so, rather than reporting that nothing matched', async () => {
-    const dto = await serviceReturning(EMPTY).search(principal(), 'di', 'UZS')
+    const dto = await serviceReturning(EMPTY).search(principal(), scopeOf(principal()), 'di', 'UZS')
 
     expect(dto.tooShort).toBe(true)
     expect(dto.groups).toEqual([])
   })
 
   it('does not call an empty box too short', async () => {
-    const dto = await serviceReturning(EMPTY).search(principal(), '', 'UZS')
+    const dto = await serviceReturning(EMPTY).search(principal(), scopeOf(principal()), '', 'UZS')
 
     expect(dto.tooShort).toBe(false)
   })

@@ -54,11 +54,16 @@ export interface DealFilters {
    */
   readonly revenueOnly?: boolean
   /**
-   * Authorisation scope. When set, only this employee's deals are visible.
-   * Applied HERE rather than in the UI so it cannot be bypassed by calling the
-   * API directly.
+   * Authorisation scope — whose rows this caller may read at all.
+   *
+   * A LIST, because a scope can be a team. Null (or absent) is the whole
+   * company; a non-null list is exhaustive and never empty, so an account that
+   * narrows to nobody reads nothing rather than everything. Applied HERE
+   * rather than in the UI so it cannot be bypassed by calling the API
+   * directly, and ANDed with `employeeIds` above rather than replacing it: the
+   * caller's own pick narrows the scope, it never widens it.
    */
-  readonly restrictToEmployeeId?: string
+  readonly restrictToEmployeeIds?: readonly string[] | null
 }
 
 /** Columns the analytics layer needs. Selecting less keeps the payload small. */
@@ -100,8 +105,8 @@ export class DealRepository {
       })
     }
 
-    if (filters.restrictToEmployeeId) {
-      and.push({ employeeId: filters.restrictToEmployeeId })
+    if (filters.restrictToEmployeeIds?.length) {
+      and.push({ employeeId: { in: [...filters.restrictToEmployeeIds] } })
     }
     if (filters.employeeIds?.length) {
       and.push({ employeeId: { in: [...filters.employeeIds] } })
@@ -511,7 +516,7 @@ export class DealRepository {
         enteredAt: { gte: start, lt: end },
         // Every deal filter the rest of analytics honours, reused rather than
         // restated: employee, department, branch scope, the SALES caller's
-        // `restrictToEmployeeId`, stage, source, pipeline, region, status, q.
+        // `restrictToEmployeeIds`, stage, source, pipeline, region, status, q.
         deal: this.where(filters),
       },
       select: {

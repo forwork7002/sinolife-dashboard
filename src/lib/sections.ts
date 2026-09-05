@@ -72,11 +72,18 @@ const BY_ID = new Map<string, SectionSpec>(SECTIONS.map((s) => [s.id, s]))
 /**
  * The screens that only exist company-wide.
  *
- * Their endpoints aggregate across everyone — a confirmation queue, a
- * logistics funnel, a margin ladder — and take no employee filter, so there is
- * no honest answer to give an account scoped to one salesperson: the company's
- * figures would leak, and a blank page would lie. Those endpoints ask for
- * `analytics:read:all`, which an OWN-scoped account does not hold, and refuse.
+ * Their endpoints aggregate across everyone — a logistics funnel, a margin
+ * ladder, the command centre's intake against last month — and take no
+ * employee filter, so there is no honest answer to give an account scoped to
+ * one team or one salesperson: the company's figures would leak, and a blank
+ * page would lie. Those endpoints ask for `analytics:read:all`, which only an
+ * ALL-scoped account holds, and refuse.
+ *
+ * «TASDIQLASH NAVBATI» AND «SOTUVCHILAR REYTINGI» LEFT THIS SET. Both narrow
+ * now — the queue's cohort CTE and the sellers rating both take the caller's
+ * employee scope and cut in SQL — which is exactly what a ROP account was
+ * asked for. Leaving them here would have gone on warning an administrator
+ * away from the two screens the scope was built to serve.
  *
  * PRESENTATION ONLY, and a mirror rather than the rule — the refusal happens
  * at the endpoint. Naming them here is what lets the admin screen say so
@@ -87,9 +94,19 @@ const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
   'overview',
   'cohort',
   'margin',
-  'confirmation',
   'logistics',
   'warehouse',
+  /*
+    «REKLAMA SAMARASI» JOINED THE SET WHEN «TASDIQLASH» LEFT IT.
+
+    Not because it aggregates — because it has nothing to aggregate BY. The
+    Roistat ledger is a second, unrelated source with no Bitrix24 employee on
+    any row (its `rop` and `seller` dimensions are names typed into a
+    spreadsheet, joined to our roster by nothing), so there is no column a
+    team scope could cut on. Its three endpoints ask for `analytics:read:all`
+    for exactly that reason.
+  */
+  'marketing',
 ])
 
 export function sectionForRoute(route: string): SectionValue | undefined {
@@ -100,9 +117,14 @@ export function sectionSpec(id: SectionValue): SectionSpec | undefined {
   return BY_ID.get(id)
 }
 
-/** The sections an OWN-scoped account cannot be served. */
+/** The sections a narrowed account (OWN or TEAM) cannot be served. */
 export function companyWideSections(ids: readonly string[]): readonly SectionSpec[] {
   return SECTIONS.filter((spec) => COMPANY_WIDE.has(spec.id) && ids.includes(spec.id))
+}
+
+/** True when this screen's endpoint refuses an account that is not company-wide. */
+export function isCompanyWideSection(id: string): boolean {
+  return COMPANY_WIDE.has(id)
 }
 
 /**

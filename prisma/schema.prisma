@@ -65,6 +65,21 @@ enum Role {
 enum DataScope {
   /// Everything the granted sections cover, company-wide.
   ALL
+  /// The linked employee's own unit and everything under it. Requires `employeeId`.
+  ///
+  /// What a ROP is given. The client's own request: «ROP Asliddin bersam shu
+  /// faqat uzini malumotlarini korishi kerak umumiy emas» — a team head who
+  /// opens the confirmation queue or the sellers board must read their own
+  /// floor, not the company's. Resolved from the department tree, never
+  /// stored: the units this person's record is anchored to (their primary
+  /// department and any department they HEAD) plus every department beneath
+  /// them, then everyone whose primary department is one of those.
+  ///
+  /// PRIMARY membership, not `department_member`. A person is credited to one
+  /// unit for money and listed in several for the org chart, and this decides
+  /// which rows a reader may see — a money question. Widening it to every
+  /// membership would put a borrowed operator's orders on two ROPs' boards.
+  TEAM
   /// Only the linked employee's own records. Requires `employeeId`.
   OWN
 }
@@ -316,12 +331,13 @@ model User {
   /// was implied by the role, and it silently produced accounts that opened
   /// every page they were given and found every figure blank.
   ///
-  /// OWN is only meaningful with `employeeId` set; the service refuses the
-  /// combination without it rather than storing a scope that resolves to
-  /// nothing.
+  /// OWN and TEAM are only meaningful with `employeeId` set; the service
+  /// refuses either combination without it rather than storing a scope that
+  /// resolves to nothing.
   dataScope  DataScope @default(ALL)
-  /// The salesperson this login belongs to. Required for `dataScope = OWN`,
-  /// where it is enforced in the repository layer, never by hiding UI.
+  /// The salesperson this login belongs to. Required for `dataScope = OWN` and
+  /// for `TEAM`, where it is enforced in the repository layer, never by hiding
+  /// UI. Under TEAM it is also the anchor the department subtree is grown from.
   employeeId String? @unique
 
   createdAt DateTime @default(now())

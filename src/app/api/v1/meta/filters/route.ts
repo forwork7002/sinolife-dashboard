@@ -22,9 +22,16 @@ export const GET = getHandler(ACCESS, z.object({}), async (ctx) => {
 
   return {
     data: {
-      // An OWN-scoped account only ever filters by itself.
-      employees: ctx.scope.restrictToEmployeeId
-        ? employees.filter((e) => e.id === ctx.scope.restrictToEmployeeId)
+      /*
+        A narrowed account only ever filters by what it may read.
+
+        The list drives every employee picker on every screen, so leaving it
+        whole would put the company's roster — 289 names — into the dropdown of
+        an account whose rows are fifteen. Filtering it here is presentation;
+        the SQL scope behind each endpoint is the boundary.
+      */
+      employees: ctx.scope.restrictToEmployeeIds
+        ? employees.filter((e) => ctx.scope.restrictToEmployeeIds!.includes(e.id))
         : employees,
       departments,
       products,

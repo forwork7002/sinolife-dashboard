@@ -32,6 +32,7 @@ import {
 import { type KpiDefinition, periodElapsedFraction } from '@/server/domain/analytics/performance'
 import { BONUS_TIERS, bonusEligible } from '@/server/domain/analytics/sellerBonus'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
+import { scopedPeriod } from '@/server/domain/employees/branches'
 import type { Period } from '@/server/domain/period/period'
 import type { DeltaDto } from '@/lib/api'
 import type { InsightsRepository } from '@/server/repositories/insightsRepository'
@@ -271,6 +272,13 @@ export interface SellerBoardDto {
    */
   readonly basis: 'confirmation_queue' | 'created_in_period'
   /**
+   * True when these rows are a SUBSET of the company.
+   *
+   * Mirrored in `src/lib/api.ts` — see the note there for why the screen has
+   * to be told rather than left to infer it from the row count.
+   */
+  readonly scoped: boolean
+  /**
    * THE PLAN'S OWN SPAN, when the board found any targets at all.
    *
    * A target is a contract for a stated period — 300 mln in September — not
@@ -413,6 +421,12 @@ export class SellerBoardService {
 
     return {
       rows: boardRows,
+      /*
+        Said on the payload, not inferred from the row count. Twelve rows is a
+        small company and also one ROP's floor, and the difference decides
+        whether «1-oʻrin» means anything.
+      */
+      scoped: (ctx.filters.restrictToEmployeeIds ?? null) !== null,
       teams: teamRows(rows, totalWonMinor, plans.byEmployee, ctx.currency),
       totals: {
         sellers: rows.length,
@@ -461,7 +475,16 @@ export class SellerBoardService {
     basis: SellerBoardBasisValue = 'queue',
   ): Promise<readonly SellerDayDto[]> {
     if (basis === 'queue') {
-      const days = await this.insights.confirmationSellerRatingDays(ctx.period, employeeId)
+      /*
+        The scope rides the window here too, and it is what refuses a seller
+        the caller may not read: the prelude has already dropped every operator
+        outside the scope, so the series comes back empty rather than showing
+        another floor's days to whoever guessed an employee id.
+      */
+      const days = await this.insights.confirmationSellerRatingDays(
+        scopedPeriod(ctx.period, ctx.filters),
+        employeeId,
+      )
       return days.map((d) => ({
         date: d.date,
         orders: d.orders,
@@ -489,7 +512,22 @@ export class SellerBoardService {
   ): Promise<SellerBoardRow[]> {
     if (basis === 'intake') return this.repo.board(period, filters)
 
-    const rows = await this.insights.confirmationSellerRating(period, filters)
+    /*
+      THE SAME RESTRICTION, TWICE, BECAUSE THE TWO BASES SCOPE ON TWO PEOPLE.
+
+      `intake` groups by the deal's assignee and takes the scope through
+      `filterSql`. The queue basis groups by the OPERATOR — the portal's own
+      snapshot of who sold it, resolved in the confirmation cohort — so its
+      restriction has to travel on the window and be applied in the prelude
+      against that person. Filtering the queue basis by the assignee would put
+      the 556-orders-on-the-head-of-Операцион class of deal on the wrong side
+      of a team boundary, which is the same drift the operator column exists
+      to fix.
+    */
+    const rows = await this.insights.confirmationSellerRating(
+      scopedPeriod(period, filters),
+      filters,
+    )
     return rows.map(
       (r): SellerBoardRow => ({
         employeeId: r.employeeId,
@@ -528,7 +566,7 @@ function boardFilters(ctx: AnalyticsContext): SellerBoardFilters {
     employeeIds: ctx.filters.employeeIds,
     departmentIds: ctx.filters.departmentIds,
     sourceIds: ctx.filters.sourceIds,
-    restrictToEmployeeId: ctx.filters.restrictToEmployeeId,
+    restrictToEmployeeIds: ctx.filters.restrictToEmployeeIds,
   }
 }
 

@@ -17,7 +17,7 @@ export const GET = getHandler(ACCESS, analyticsQuerySchema, async (ctx) => {
     { ...ctx.query, ...ctx.scope },
     ctx.now,
   )
-  // A SALES caller is restricted to their own employee row by the scope.
-  const data = await analyticsService.employees(context, ctx.scope.restrictToEmployeeId)
+  // A narrowed caller is restricted to the rows their scope admits.
+  const data = await analyticsService.employees(context, ctx.scope.restrictToEmployeeIds)
   return { data, meta: AnalyticsService.periodMeta(context) }
 })

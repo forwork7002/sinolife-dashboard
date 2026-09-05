@@ -16,6 +16,7 @@ import { ResponseRepository } from '@/server/repositories/responseRepository'
 import { FinanceRepository } from '@/server/repositories/financeRepository'
 import { MarketingRepository } from '@/server/repositories/marketingRepository'
 import { SearchRepository } from '@/server/repositories/searchRepository'
+import { ScopeRepository } from '@/server/repositories/scopeRepository'
 import { AlertsService } from '@/server/services/alertsService'
 import { SearchService } from '@/server/services/searchService'
 import { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
@@ -30,6 +31,7 @@ import { ConcentrationService } from './concentrationService'
 import { ResponseService } from './responseService'
 import { MarketingService } from './marketingService'
 import { SellerBoardService } from './sellerBoardService'
+import { ScopeService } from './scopeService'
 
 export const dealRepository = new DealRepository(prisma)
 export const financeRepository = new FinanceRepository(prisma)
@@ -49,7 +51,14 @@ export const responseRepository = new ResponseRepository(prisma)
 export const marketingRepository = new MarketingRepository(prisma)
 export const sellerBoardRepository = new SellerBoardRepository(prisma)
 export const searchRepository = new SearchRepository(prisma)
+/**
+ * Answers one question and is asked it by `getHandler` on every request: who
+ * may this caller read? Kept out of every other service's constructor because
+ * it is authorisation, not analytics.
+ */
+export const scopeRepository = new ScopeRepository(prisma)
 
+export const scopeService = new ScopeService(scopeRepository)
 export const analyticsService = new AnalyticsService(dealRepository, referenceRepository)
 export const financeService = new FinanceService(financeRepository, referenceRepository)
 export const kpiService = new KpiService(dealRepository, referenceRepository)

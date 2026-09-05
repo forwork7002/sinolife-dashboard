@@ -48,12 +48,21 @@ describe('findForAnalysis coalescing', () => {
     const repo = new DealRepository(prisma)
 
     await Promise.all([
-      repo.findForAnalysis([period], { restrictToEmployeeId: 'emp-1' }),
-      repo.findForAnalysis([period], { restrictToEmployeeId: 'emp-2' }),
+      repo.findForAnalysis([period], { restrictToEmployeeIds: ['emp-1'] }),
+      repo.findForAnalysis([period], { restrictToEmployeeIds: ['emp-2'] }),
+      /*
+        Two ROPs with overlapping teams are the case the singular scope could
+        not express and the one most likely to be got wrong: they share a
+        member, so a key built from anything less than the whole list — its
+        length, its first entry, the caller's own id — would serve one team's
+        rows to the other.
+      */
+      repo.findForAnalysis([period], { restrictToEmployeeIds: ['emp-1', 'emp-2'] }),
+      repo.findForAnalysis([period], { restrictToEmployeeIds: ['emp-2', 'emp-1'] }),
       repo.findForAnalysis([period]),
     ])
 
-    expect(findMany).toHaveBeenCalledTimes(3)
+    expect(findMany).toHaveBeenCalledTimes(5)
   })
 
   it('never shares across different windows or filters', async () => {

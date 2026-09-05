@@ -254,27 +254,40 @@ describe('intersecting with the authorisation scope', () => {
   })
 
   it('leaves a SALES caller pinned to themselves when no branch is active', () => {
-    expect(intersectEmployeeScope(null, 'e1')).toEqual(['e1'])
+    expect(intersectEmployeeScope(null, ['e1'])).toEqual(['e1'])
   })
 
   it('narrows a SALES caller to themselves INSIDE their branch, never to it', () => {
     // The rule that must never invert: two restrictions narrow. A union would
     // hand a salesperson their whole branch.
-    expect(intersectEmployeeScope(['e1', 'e2', 'e3'], 'e1')).toEqual(['e1'])
+    expect(intersectEmployeeScope(['e1', 'e2', 'e3'], ['e1'])).toEqual(['e1'])
+  })
+
+  it('narrows a TEAM caller to the part of their team inside the branch', () => {
+    /*
+      The authorisation scope is a LIST now, because a ROP is fifteen people.
+      A team that straddles two filials must come back as the members of the
+      one being viewed — not the whole team (a union, which widens) and not the
+      whole branch (dropping the auth side, which widens further).
+    */
+    expect(intersectEmployeeScope(['e1', 'e2', 'e3'], ['e2', 'e9'])).toEqual(['e2'])
   })
 
   it('yields nobody when the two restrictions disagree', () => {
     // A Тошкент salesperson opening the Навоий view sees nothing — not their
     // own numbers under someone else's heading.
-    expect(intersectEmployeeScope(['e1', 'e2'], 'e4')).toEqual([NO_EMPLOYEE_IN_SCOPE])
+    expect(intersectEmployeeScope(['e1', 'e2'], ['e4'])).toEqual([NO_EMPLOYEE_IN_SCOPE])
+    // And a whole team on the wrong side of the boundary, likewise.
+    expect(intersectEmployeeScope(['e1', 'e2'], ['e4', 'e5'])).toEqual([NO_EMPLOYEE_IN_SCOPE])
   })
 
   it('never produces an empty list', () => {
     // Every repository tests id lists with `?.length`, so an empty array reads
     // as "no filter" and widens the query to the whole company.
     const cases = [
-      intersectEmployeeScope(['e1'], 'e4'),
-      resolveBranchScope(snapshot, { kind: 'branch', name: TOSHKENT.name }, 'e1').employeeIds,
+      intersectEmployeeScope(['e1'], ['e4']),
+      intersectEmployeeScope(['e1'], ['e4', 'e5']),
+      resolveBranchScope(snapshot, { kind: 'branch', name: TOSHKENT.name }, ['e1']).employeeIds,
       narrowEmployeeIds(['e4'], ['e1', 'e2']),
     ]
     for (const ids of cases) {

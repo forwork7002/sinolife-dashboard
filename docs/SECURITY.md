@@ -297,14 +297,25 @@ itself.
 | `MANAGER` | All analytics and all employees; no admin operations |
 | `SALES` | Own deals and own KPI only; no finance |
 
-Two rules make this hold against a caller who skips the UI:
+**How much each account reads is `dataScope`, and it has three values.** `ALL`
+is the company. `OWN` is the linked employee. `TEAM` is that employee's own
+department and every department beneath it — resolved per request from the
+tree, never stored — which is what a ROP is given so they read their own floor
+and not the firm's.
+
+Three rules make this hold against a caller who skips the UI:
 
 - **Scoping is a WHERE clause in the repository**, not a filter applied to
-  results. There is no query shape that returns another seller's rows for a
-  `SALES` caller.
+  results. There is no query shape that returns another team's rows for a
+  narrowed caller.
 - **Route handlers spread the authorisation scope *after* the parsed query**,
   so `?employeeIds=<someone-else>` narrows within the caller's scope instead of
   widening it. The order of those two spreads is the whole control.
+- **An endpoint that cannot narrow refuses instead of answering.** Naming
+  `analytics:read:all` — a permission only an `ALL` account holds — is how the
+  command centre, logistics, margin, dispatch, cohort and the Roistat marketing
+  ledger say so. The alternative was never "show less"; it was "show the
+  company", and that is the disclosure being prevented.
 
 **A resource the caller may not see returns 404, not 403.** A 403 confirms the
 record exists, and existence is itself a disclosure — "there is a deal with

@@ -17,7 +17,7 @@ export const GET = getHandler(ACCESS, analyticsQuerySchema, async (ctx) => {
     { ...ctx.query, ...ctx.scope },
     ctx.now,
   )
-  const data = await kpiService.list(context, ctx.scope.restrictToEmployeeId)
+  const data = await kpiService.list(context, ctx.scope.restrictToEmployeeIds)
 
   /*
     NO PERIOD META ON THIS ONE, on purpose.

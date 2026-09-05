@@ -28,7 +28,7 @@ import { apiGet, type AlertsDto, type SearchDto } from '@/lib/api'
 import { sessionUser, signOut, useSession } from '@/lib/authClient'
 import { formatCompactUzs, formatDateTime } from '@/lib/format'
 import { ROLE_LABELS, canSeeHref, type RoleValue } from '@/lib/roles'
-import { sectionSpec, type SectionValue } from '@/lib/sections'
+import { isCompanyWideSection, sectionSpec, type SectionValue } from '@/lib/sections'
 import { useFilterOptions } from '@/features/shared/PageShell'
 import { t } from '@/lib/messages'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -330,8 +330,24 @@ export function Shell({
     request.
   */
   const viewer = useFilterOptions().data?.data.viewer
+  /*
+    A NARROWED ACCOUNT LOSES THE LINKS ITS SCOPE CANNOT OPEN.
+
+    The command centre, logistics, margin, dispatch and Mijoz qaytishi answer
+    only an ALL-scoped caller — they aggregate across the whole company and
+    have no employee filter to narrow by, so their endpoints refuse rather than
+    hand a ROP the firm's figures. An administrator can still TICK those
+    sections (the ticks are stored, and the admin dialog warns which ones will
+    not open), and before this the ROP was left with five sidebar entries that
+    each led to a red error card.
+
+    Presentation, exactly like the section filter it sits on: the refusal
+    happens at the endpoint either way. What it removes is a menu that promises
+    something the account cannot have.
+  */
   const grantedRoutes = viewer
     ? viewer.sections
+        .filter((id: SectionValue) => viewer.dataScope === 'ALL' || !isCompanyWideSection(id))
         .map((id: SectionValue) => sectionSpec(id)?.route)
         .filter((route): route is string => route !== undefined)
     : undefined

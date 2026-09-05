@@ -16,5 +16,5 @@ export const dynamic = 'force-dynamic'
 const ACCESS = { permission: 'analytics:read:own', section: null } as const
 
 export const GET = getHandler(ACCESS, z.object({}), async (ctx) => ({
-  data: await alertsService.load(ctx.principal, ctx.now, ctx.timeZone),
+  data: await alertsService.load(ctx.principal, ctx.scope, ctx.now, ctx.timeZone),
 }))

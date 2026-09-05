@@ -401,8 +401,24 @@ export interface BranchScopeDto {
  */
 export type ScopedPeriod = Period & EmployeeScopeFilter
 
+/**
+ * The same thing with the scope NOT optional.
+ *
+ * `ScopedPeriod` above states the contract; this one makes the compiler keep
+ * it. Because `EmployeeScopeFilter`'s field is optional, a bare `Period` is
+ * assignable to `ScopedPeriod` — so a repository method that asked for one
+ * would still accept an unscoped window and answer for the whole company,
+ * which is the exact failure the contract is written against. A REQUIRED field
+ * cannot be satisfied by forgetting: every caller has to say, in as many
+ * words, whose rows it is asking for. `null` is a legitimate answer and means
+ * the company; it just has to be given.
+ */
+export type ScopedWindow = Period & {
+  readonly restrictToEmployeeIds: readonly string[] | null
+}
+
 /** Attach a resolved scope to a window. */
-export function scopedPeriod(period: Period, scope: EmployeeScopeFilter): ScopedPeriod {
+export function scopedPeriod(period: Period, scope: EmployeeScopeFilter): ScopedWindow {
   return { ...period, restrictToEmployeeIds: scope.restrictToEmployeeIds ?? null }
 }
 
@@ -433,16 +449,23 @@ const EMPTY_EXCLUSIONS = {
  * what dropping either side would. When the two disagree (a Навоий scope, a
  * Тошкент salesperson) the honest answer is the empty set, and the sentinel is
  * how an empty set survives a repository's `ids?.length` check.
+ *
+ * BOTH SIDES ARE LISTS. The authorisation scope used to be a single id because
+ * it could only ever mean one person; a TEAM-scoped ROP is fifteen, and a
+ * branch view they open must show their team inside that branch and nobody
+ * else's.
  */
 export function intersectEmployeeScope(
   branchEmployeeIds: readonly string[] | null,
-  restrictToEmployeeId: string | undefined,
+  restrictToEmployeeIds: readonly string[] | null | undefined,
 ): readonly string[] | null {
-  if (!restrictToEmployeeId) return branchEmployeeIds
-  if (branchEmployeeIds === null) return [restrictToEmployeeId]
-  return branchEmployeeIds.includes(restrictToEmployeeId)
-    ? [restrictToEmployeeId]
-    : [NO_EMPLOYEE_IN_SCOPE]
+  if (!restrictToEmployeeIds?.length) return branchEmployeeIds
+  if (branchEmployeeIds === null) return restrictToEmployeeIds
+  const branch = new Set(branchEmployeeIds)
+  const both = restrictToEmployeeIds.filter((id) => branch.has(id))
+  // Never an empty array. See NO_EMPLOYEE_IN_SCOPE: a repository reads `[]` as
+  // "no filter given" and hands back the company the intersection just refused.
+  return both.length > 0 ? both : [NO_EMPLOYEE_IN_SCOPE]
 }
 
 /**
@@ -471,11 +494,11 @@ export function narrowEmployeeIds(
 export function resolveBranchScope(
   snapshot: BranchSnapshot,
   request: BranchRequest,
-  restrictToEmployeeId?: string,
+  restrictToEmployeeIds?: readonly string[] | null,
 ): ResolvedBranchScope {
   if (request.kind === 'all') {
     return {
-      employeeIds: intersectEmployeeScope(null, restrictToEmployeeId),
+      employeeIds: intersectEmployeeScope(null, restrictToEmployeeIds),
       branchDepartmentId: null,
       meta: {
         branch: null,
@@ -525,7 +548,7 @@ export function resolveBranchScope(
     // reading as "no filter".
     employeeIds: intersectEmployeeScope(
       ids.length > 0 ? ids : [NO_EMPLOYEE_IN_SCOPE],
-      restrictToEmployeeId,
+      restrictToEmployeeIds,
     ),
     branchDepartmentId: branch.id,
     meta: {

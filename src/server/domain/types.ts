@@ -22,8 +22,13 @@ export type RoleValue = (typeof ROLES)[number]
  *
  * Separate from the role because they answer different questions. See the
  * `DataScope` enum in prisma/schema.prisma for why they were split.
+ *
+ * WIDEST TO NARROWEST, and the order is the meaning: ALL is the company, TEAM
+ * is one unit and everything under it, OWN is one person. TEAM exists because
+ * a ROP is neither of the other two — given ALL they read every rival team's
+ * money, given OWN they read a board with one row on it.
  */
-export const DATA_SCOPES = ['ALL', 'OWN'] as const
+export const DATA_SCOPES = ['ALL', 'TEAM', 'OWN'] as const
 export type DataScopeValue = (typeof DATA_SCOPES)[number]
 
 /**

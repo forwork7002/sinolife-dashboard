@@ -148,25 +148,53 @@ async function assertScopeIsUsable(
   dataScope: DataScopeValue,
   employeeId: string | null,
 ): Promise<void> {
-  if (dataScope !== 'OWN') return
+  if (dataScope === 'ALL') return
 
   if (!employeeId) {
     throw ApiError.validation('Bu doira uchun xodim bogʻlanishi kerak.', [
       {
         path: 'employeeId',
         message:
-          '«Faqat oʻz natijalari» uchun xodimni tanlang — aks holda hisob hech nima koʻrmaydi.',
+          dataScope === 'TEAM'
+            ? '«Faqat oʻz boʻlimi» uchun xodimni tanlang — boʻlim oʻsha xodimdan topiladi.'
+            : '«Faqat oʻz natijalari» uchun xodimni tanlang — aks holda hisob hech nima koʻrmaydi.',
       },
     ])
   }
 
   const employee = await prisma.employee.findUnique({
     where: { id: employeeId },
-    select: { id: true },
+    select: { id: true, departmentId: true, heads: { select: { id: true }, take: 1 } },
   })
   if (!employee) {
     throw ApiError.validation('Bunday xodim topilmadi.', [
       { path: 'employeeId', message: 'Roʻyxatdan xodim tanlang.' },
+    ])
+  }
+
+  /*
+    A TEAM SCOPE NEEDS A TEAM, AND THIS IS THE ONLY MOMENT ANYONE WILL NOTICE.
+
+    The scope is grown from the department tree: the unit this person is filed
+    in, plus any unit they HEAD, plus everything under either. Somebody the
+    portal has filed nowhere and who heads nothing anchors on nothing, so the
+    scope collapses to that one person — an account labelled «Faqat oʻz
+    boʻlimi» that behaves as «Faqat oʻz natijalari» and reads one row where a
+    ROP expected fifteen.
+
+    Refused at the door with the field named, exactly as the missing link
+    above is, because the alternative is an administrator who saves it, hands
+    over the password, and hears about it from the floor a day later. The head
+    check is a `take: 1` on the reverse relation — this asks whether ANY unit
+    names them, not which one.
+  */
+  if (dataScope === 'TEAM' && !employee.departmentId && employee.heads.length === 0) {
+    throw ApiError.validation('Bu xodim hech qaysi boʻlimda emas.', [
+      {
+        path: 'employeeId',
+        message:
+          'Boʻlim doirasi uchun xodim boʻlimga biriktirilgan yoki boʻlim rahbari boʻlishi kerak.',
+      },
     ])
   }
 }

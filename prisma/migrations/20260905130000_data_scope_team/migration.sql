@@ -1,0 +1,24 @@
+-- A third data scope: the linked employee's own UNIT, and everything under it.
+--
+-- WHY. `dataScope` could say "the whole company" or "one person's own rows" and
+-- nothing in between, so the one account shape this portal actually has most of
+-- — a ROP, the head of a fifteen-strong sales team — could not be served. Given
+-- ALL they read every other team's money; given OWN they read a board with one
+-- row on it. The client asked for the middle in their own words: «ROP Asliddin
+-- bersam shu faqat uzini malumotlarini korishi kerak umumiy emas».
+--
+-- ADDITIVE AND REVERSIBLE IN PRACTICE. No column changes, no backfill, no row
+-- is rewritten: every existing account keeps the scope it has, and TEAM only
+-- exists once an administrator picks it. Postgres cannot DROP an enum value, so
+-- undoing this means never selecting it again — which costs nothing, since the
+-- resolution that reads it lives in the application.
+--
+-- AFTER 'ALL', not appended, so the stored order matches the order the enum is
+-- declared in (ALL, TEAM, OWN — widest to narrowest) and a later `migrate diff`
+-- has nothing to say about it.
+--
+-- ALTER TYPE ... ADD VALUE inside a transaction is legal from PostgreSQL 12 on
+-- as long as the new value is not USED in the same transaction. Prisma wraps
+-- each migration in one and this file uses the value nowhere, so it applies
+-- cleanly; production is 16.
+ALTER TYPE "DataScope" ADD VALUE IF NOT EXISTS 'TEAM' AFTER 'ALL';

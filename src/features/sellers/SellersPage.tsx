@@ -238,6 +238,30 @@ export function SellersPage() {
       stale={board.isPlaceholderData}
       accent="var(--series-5)"
     >
+      {/*
+        WHOSE BOARD THIS IS, SAID BEFORE THE RANKS ARE.
+
+        Every rank, every share and every total on this page is computed over
+        the rows the reader may see. For an administrator that is the company
+        and needs no caption. For a ROP it is their own floor, and for one
+        salesperson it is one row — where «1-oʻrin» and «100%» would otherwise
+        claim they lead a company they cannot see. The server decides
+        (`data.scoped`); the page only prints it, because the account's scope
+        is not something the browser is allowed to have an opinion about.
+      */}
+      {data?.scoped ? (
+        <p
+          className="rounded-lg px-3 py-2 text-[11.5px]"
+          style={{
+            background: 'color-mix(in oklab, var(--series-5) 10%, transparent)',
+            color: 'var(--ink-secondary)',
+          }}
+        >
+          Bu reyting <strong>faqat sizga biriktirilgan boʻlim</strong> boʻyicha. Oʻrin, ulush
+          va jami raqamlar shu roʻyxat ichida hisoblanadi — kompaniya boʻyicha emas.
+        </p>
+      ) : null}
+
       <PodiumHero
         data={data}
         status={status}

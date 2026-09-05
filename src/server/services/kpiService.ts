@@ -65,11 +65,11 @@ export class KpiService {
    * The deal fetch therefore has to cover the PLAN windows, not the report
    * window, so the KPI read comes first and its windows go into the query.
    */
-  async list(ctx: AnalyticsContext, restrictToEmployeeId?: string) {
+  async list(ctx: AnalyticsContext, restrictToEmployeeIds?: readonly string[] | null) {
     const [kpis, roster] = await Promise.all([
       this.reference.findKpisForPeriod(
         ctx.period,
-        restrictToEmployeeId ? [restrictToEmployeeId] : undefined,
+        restrictToEmployeeIds?.length ? restrictToEmployeeIds : undefined,
       ),
       this.reference.findEmployees(),
     ])
@@ -102,8 +102,8 @@ export class KpiService {
       (byEmployee === null || byEmployee.has(employeeId)) &&
       (byDepartment === null || byDepartment.has(employeeId))
 
-    const visible = restrictToEmployeeId
-      ? roster.filter((e) => e.id === restrictToEmployeeId)
+    const visible = restrictToEmployeeIds?.length
+      ? roster.filter((e) => restrictToEmployeeIds.includes(e.id) && inScope(e.id))
       : roster.filter((e) => inScope(e.id))
 
     const windows = kpis.map((kpi) => kpiWindow(kpi, ctx.period.timeZone))
@@ -136,7 +136,10 @@ export class KpiService {
         seller's takings would read as that seller missing the whole company's
         plan.
       */
-      if (!kpi.employeeId && (byEmployee !== null || byDepartment !== null || restrictToEmployeeId))
+      if (
+        !kpi.employeeId &&
+        (byEmployee !== null || byDepartment !== null || restrictToEmployeeIds?.length)
+      )
         return
 
       const summary = summarizeDeals(

@@ -73,11 +73,14 @@ export class SearchRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   /**
-   * @param restrictToEmployeeId The caller's authorisation scope, applied in
-   *   SQL. An account that may only read its own deals must not be able to
-   *   confirm somebody else's customer exists by typing their number.
+   * @param restrictToEmployeeIds The caller's authorisation scope, applied in
+   *   SQL. An account that may only read its own team's deals must not be able
+   *   to confirm somebody else's customer exists by typing their number.
    */
-  async search(term: string, restrictToEmployeeId?: string): Promise<SearchResults> {
+  async search(
+    term: string,
+    restrictToEmployeeIds?: readonly string[] | null,
+  ): Promise<SearchResults> {
     const q = term.trim()
 
     if (q.length < MIN_SEARCH_LENGTH) {
@@ -85,7 +88,10 @@ export class SearchRepository {
     }
 
     const like = `%${escapeLike(q)}%`
-    const mine = restrictToEmployeeId ?? null
+    // Joined to text rather than passed as an array so the two arms below can
+    // stay a single `$n::text IS NULL` test — the same grammar every other
+    // repository's scope clause uses.
+    const mine = restrictToEmployeeIds?.length ? restrictToEmployeeIds.join(',') : null
 
     const [deals, customers, employees, products, sources] = await Promise.all([
       this.deals(q, like, mine),
@@ -156,7 +162,7 @@ export class SearchRepository {
       JOIN "deal_stage" st ON st."id" = d."stageId"
       LEFT JOIN "customer" cust ON cust."id" = d."customerId"
       LEFT JOIN "employee" e ON e."id" = d."employeeId"
-      WHERE $3::text IS NULL OR d."employeeId" = $3
+      WHERE $3::text IS NULL OR d."employeeId" = ANY(string_to_array($3, ','))
       ORDER BY d."createdAtSource" DESC
       LIMIT ${PER_GROUP}
       `,
@@ -214,7 +220,8 @@ export class SearchRepository {
       LEFT JOIN "deal" d ON d."customerId" = c."id"
       WHERE $2::text IS NULL
          OR EXISTS (SELECT 1 FROM "deal" md
-                     WHERE md."customerId" = c."id" AND md."employeeId" = $2)
+                     WHERE md."customerId" = c."id"
+                       AND md."employeeId" = ANY(string_to_array($2, ',')))
       GROUP BY c."id", c."name", c."phone", c."phones"
       -- Whoever ordered most recently is who is being asked about.
       ORDER BY max(d."createdAtSource") DESC NULLS LAST

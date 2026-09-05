@@ -132,6 +132,58 @@ That ordering is the mechanism — a `SALES` caller passing someone else's
 is *not* the boundary: it only checks that a session cookie is present so a
 signed-out visitor is redirected instead of watching a shell flash.
 
+### Data scope: ALL, TEAM, OWN
+
+**Three levels, and TEAM is the one the portal actually has most of.** A ROP
+heads a sales team of a dozen or more; given ALL they read every rival team's
+money, given OWN they read a board with one row on it. `dataScope = TEAM`
+resolves to the linked employee's own unit **and everything under it**.
+
+- **`ctx.scope` is `{ restrictToEmployeeIds: readonly string[] | null }` — one
+  field, and it is plural.** It was `restrictToEmployeeId`, a single id. The
+  singular was **removed rather than kept beside** the plural, because a
+  repository honouring the old field and ignoring a new one would have served
+  the whole company to a ROP without erroring. `null` is everybody; a non-null
+  value is **never empty** (`NO_EMPLOYEE_IN_SCOPE`, `__no_employee_linked__`).
+- **The subtree is resolved per request, in `ScopeRepository.teamEmployeeIds`.**
+  Anchors are the person's own `employee."departmentId"` **and every department
+  whose `headId` is them** — the second is not redundant: «Навоий» names a head
+  whose own units are elsewhere, so anchoring on membership alone hands that
+  man his own branch and not the one he runs. Then every department beneath the
+  anchors (`UNION`, not `UNION ALL`, so a `parentId` cycle terminates), then
+  everyone whose **primary** `departmentId` is in that set.
+- **PRIMARY membership, never `department_member`.** That table lists a person
+  in every unit Bitrix24 names, and it exists for the org chart. This is a
+  money question — one unit credits a person — and reading memberships would
+  put one operator's orders on two ROPs' boards.
+- **`ScopeService` memoises the subtree for 60 s, keyed by employee id.** The
+  key is the whole question; a key that omitted it would serve one account
+  another's scope. A rejection is never cached.
+- **`rowScopeFor(principal, teamEmployeeIds)` THROWS** if a TEAM principal
+  arrives with nothing resolved. Widening there would be a silent leak, so it
+  refuses to answer.
+- **`ScopedWindow` (branches.ts) has a REQUIRED `restrictToEmployeeIds`**, so a
+  bare `Period` will not type-check into the confirmation queries. That is what
+  forces every caller to say whose rows it wants; `commandCentreService`'s
+  `unscoped()` is the one place that says "everybody" out loud.
+
+**Which endpoints admit a narrowed account is pinned by
+`tests/http/routeAccess.test.ts`.** Declaring `permission: 'analytics:read:all'`
+is how an endpoint says *"I cannot narrow my rows — refuse a ROP rather than
+answer with the company's"*; declaring the any-of pair (or `leaderboard:read`,
+or `employees:read`) says the opposite, and every route that says the opposite
+must read `ctx.scope`. The test asserts both halves of that, so widening a
+permission without threading the scope fails the gate.
+
+Narrowed today: the confirmation queue and everything cut from its cohort (rows,
+pagination count, tiles, ROP panel, ROP filter options, the header bell, the
+rejection chart), the sellers board on both bases, the leaderboard, and the ten
+routes that already spread scope. Still company-only, and still refusing:
+the command centre, logistics, margin, dispatch, cohort, concentration,
+channels, `finance/overview` and **marketing** — the last was `ANALYTICS_READ`
+and had to be tightened, because the Roistat ledger has no employee dimension
+to narrow by at all.
+
 ### Client data flow
 
 Every `src/features/*/[A-Z]*Page.tsx` starts with `'use client'`. There is no
@@ -283,7 +335,8 @@ Three subsidiary rules of that screen, all invisible when they break:
   «Регистрация» and «Azizbek(ROP)» is one person under NEWGEN, so the count is
   `DISTINCT`; summing the row below would double them.
 
-**Scope narrows, never widens.** `intersectEmployeeScope` is an intersection,
+**Scope narrows, never widens.** `intersectEmployeeScope` takes two LISTS now
+(the authorisation side is a team, not a person) and is an intersection,
 never a union. An empty scope may not be an empty array — every repository
 tests `ids?.length`, so `[]` reads as "no filter" and silently widens to the
 whole company. Hence the sentinels `NO_EMPLOYEE_IN_SCOPE` and
@@ -383,7 +436,7 @@ roster panel docked over the canvas.
 - **Avatars are initials, not photos.** `user.get` returns `PERSONAL_PHOTO` on
   `cdn-ru.bitrix24.kz` and the CSP is `img-src 'self' data: blob:`, so every one
   of them would be a broken image. `InitialChip` is the whole answer.
-- **The money is withheld from an OWN-scoped reader, not the screen.** This is
+- **The money is withheld from a narrowed reader, not the screen.** This is
   the one company-wide page a salesperson is meant to open — the client asked
   for it precisely so the floor can see who reports to whom — so the route
   serves the tree and gates the figures on `analytics:read:all`, the same

@@ -21,5 +21,5 @@ const querySchema = z.object({
 })
 
 export const GET = getHandler(ACCESS, querySchema, async (ctx) => ({
-  data: await searchService.search(ctx.principal, ctx.query.q, ctx.currency),
+  data: await searchService.search(ctx.principal, ctx.scope, ctx.query.q, ctx.currency),
 }))

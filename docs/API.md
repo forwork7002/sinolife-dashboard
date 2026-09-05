@@ -250,6 +250,13 @@ counterpart in February — it is capped at the shorter month and
 is the same question for both roles; how much data comes back is decided
 separately by the scope.
 
+**`analytics:read:all` on its own is a refusal, not a wider answer.** Only an
+account whose `dataScope` is `ALL` holds it, so an endpoint that names it alone
+is saying "I cannot narrow my rows — refuse a ROP rather than hand them the
+company's". Endpoints that CAN narrow name the pair and apply `ctx.scope` in
+SQL. `tests/http/routeAccess.test.ts` pins which endpoints are in which set, so
+widening a permission without threading the scope fails the gate.
+
 The four `/insights/*` rows are the August 2026 indicator endpoints,
 documented below. They sit alongside the older module endpoints under
 `/insights/*` (cohorts, logistics, confirmations, channels, margin, calls,

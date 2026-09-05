@@ -231,7 +231,7 @@ function pulseFilters(ctx: AnalyticsContext): PulseDealFilters {
     employeeIds: ctx.filters.employeeIds,
     departmentIds: ctx.filters.departmentIds,
     sourceIds: ctx.filters.sourceIds,
-    restrictToEmployeeId: ctx.filters.restrictToEmployeeId,
+    restrictToEmployeeIds: ctx.filters.restrictToEmployeeIds,
   }
 }
 

@@ -12,11 +12,12 @@ import { NextResponse } from 'next/server'
 import { ZodError, type ZodType } from 'zod'
 
 import type { SectionValue } from '@/lib/sections'
-import { type Permission, type Principal, canSeeSection, dealScopeFor } from '@/server/auth/rbac'
+import { type Permission, type Principal, type RowScope, canSeeSection } from '@/server/auth/rbac'
 import { requirePermission } from '@/server/auth/session'
 import { TRUSTED_ORIGINS } from '@/server/auth/auth'
 import { env } from '@/server/config/env'
 import { getCrmProvider } from '@/server/config/providerFactory'
+import { scopeService } from '@/server/services/container'
 import { resolvePeriod, type Period } from '@/server/domain/period/period'
 import { childLogger, newCorrelationId } from '@/server/logging/logger'
 import { ApiError, toApiError } from './errors'
@@ -110,10 +111,15 @@ export interface HandlerContext<Q> {
   readonly principal: Principal
   /**
    * Data-scoping filter derived from the caller's data scope. Spread into
-   * every repository call so an OWN-scoped account's queries are narrowed in
-   * SQL rather than in the page that renders them.
+   * every repository call so a narrowed account's queries are cut in SQL
+   * rather than in the page that renders them.
+   *
+   * RESOLVED BEFORE THE HANDLER RUNS, including the department subtree a TEAM
+   * account needs, so no endpoint can be written that forgets to look it up.
+   * `restrictToEmployeeIds: null` is the whole company; anything else is an
+   * explicit, non-empty list.
    */
-  readonly scope: { restrictToEmployeeId?: string }
+  readonly scope: RowScope
 }
 
 /**
@@ -169,7 +175,7 @@ export function getHandler<Q>(
         timeZone: env.APP_TIMEZONE,
         now: new Date(),
         principal,
-        scope: dealScopeFor(principal),
+        scope: await scopeService.resolve(principal),
       })
 
       return jsonResponse(success(result.data, { ...meta, ...result.meta }), 200)
@@ -261,7 +267,7 @@ export function mutationHandler<B>(
         timeZone: env.APP_TIMEZONE,
         now: new Date(),
         principal,
-        scope: dealScopeFor(principal),
+        scope: await scopeService.resolve(principal),
       })
 
       return jsonResponse(success(result.data, { ...meta, ...result.meta }), 200)

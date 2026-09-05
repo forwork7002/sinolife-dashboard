@@ -25,6 +25,7 @@
  */
 
 import { concentrationService, insightsService } from './container'
+import type { ScopedWindow } from '@/server/domain/employees/branches'
 import type { Period } from '@/server/domain/period/period'
 import { commandCentreCacheKey } from './commandCentreCacheKey'
 import { periodLengthInDays, previousEquivalent } from '@/server/domain/period/period'
@@ -58,6 +59,17 @@ function trended(value: number, previous: number | null): TrendedDto {
  */
 const CACHE_TTL_MS = 45_000
 const cache = new Map<string, { at: number; value: Promise<CommandCentreDto> }>()
+
+/**
+ * A window that deliberately admits every employee.
+ *
+ * Written rather than implied: `ScopedWindow` refuses a bare `Period` on
+ * purpose, so a query that answers for the whole company has to say so in one
+ * place a reader can grep for.
+ */
+function unscoped(period: Period): ScopedWindow {
+  return { ...period, restrictToEmployeeIds: null }
+}
 
 export class CommandCentreService {
   constructor(private readonly repository: InsightsRepository) {}
@@ -129,8 +141,26 @@ export class CommandCentreService {
         numbers. `confirmationOutcomes` is the third of those queries on its
         own.
       */
-      this.repository.confirmationOutcomes(period),
-      this.repository.commandRejectionBand(period),
+      /*
+        COMPANY-WIDE, SAID OUT LOUD RATHER THAN BY OMISSION.
+
+        This screen is the one place where every figure is the company's by
+        construction — intake against last month, the whole delivery funnel,
+        headcount, the concentration of the customer base — and none of the
+        eleven readings below is narrowed to a caller. So its endpoint keeps
+        `analytics:read:all`, which only an ALL-scoped account holds, and a
+        ROP or a salesperson is refused at the gate instead of being handed a
+        page where four numbers describe their team and seven describe the
+        firm.
+
+        `unscoped()` is therefore a decision, not a default. The two confirm-
+        ation readings take a `ScopedWindow` because the board they are cut
+        from is narrowable; writing the null here is how this file states that
+        THIS screen does not narrow it. When the command centre is scoped, this
+        is the line to change, and the eleven queries under it are the work.
+      */
+      this.repository.confirmationOutcomes(unscoped(period)),
+      this.repository.commandRejectionBand(unscoped(period)),
       insightsService.logistics(period, currency, {}, { withReasons: false }),
       this.repository.commandProducts(period),
       this.repository.commandFunnel(period),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { dealScopeFor, type Principal } from '@/server/auth/rbac'
+import { rowScopeFor, type Principal } from '@/server/auth/rbac'
 import { dealsQuerySchema, searchParamsToObject } from '@/server/http/queryParams'
 
 /**
@@ -29,39 +29,72 @@ const manager: Principal = {
   sections: [],
 }
 
+/** A ROP: linked to one employee, reading the unit resolved beneath them. */
+const rop: Principal = {
+  userId: 'u3',
+  role: 'SALES',
+  isActive: true,
+  employeeId: 'emp-rop',
+  dataScope: 'TEAM',
+  sections: [],
+}
+
+/** The subtree the handler would have resolved before calling `rowScopeFor`. */
+const ROP_TEAM = ['emp-rop', 'emp-a', 'emp-b']
+
 /** Mirrors what every route handler does: parsed query, then scope on top. */
-function buildFilters(queryString: string, principal: Principal) {
+function buildFilters(
+  queryString: string,
+  principal: Principal,
+  team: readonly string[] | null = null,
+) {
   const query = dealsQuerySchema.parse(
     searchParamsToObject(new URLSearchParams(queryString)),
   )
-  return { ...query, ...dealScopeFor(principal) }
+  return { ...query, ...rowScopeFor(principal, team) }
 }
 
 describe('scope composition in route handlers', () => {
   it('pins an OWN-scoped caller to their own employee id', () => {
     const filters = buildFilters('preset=this_month', sales)
-    expect(filters.restrictToEmployeeId).toBe('emp-own')
+    expect(filters.restrictToEmployeeIds).toEqual(['emp-own'])
+  })
+
+  it('pins a TEAM-scoped caller to their unit and nobody else', () => {
+    const filters = buildFilters('preset=this_month', rop, ROP_TEAM)
+    expect(filters.restrictToEmployeeIds).toEqual(ROP_TEAM)
   })
 
   it('keeps the restriction even when the caller names another employee', () => {
     // The whole point of spreading scope LAST: a hand-crafted query string
     // must not be able to widen what the caller can see.
     const filters = buildFilters('employeeIds=emp-other,emp-third', sales)
-    expect(filters.restrictToEmployeeId).toBe('emp-own')
+    expect(filters.restrictToEmployeeIds).toEqual(['emp-own'])
     // The requested filter survives, but it narrows within the scope — the
     // repository ANDs both clauses, so the result is the empty intersection.
     expect(filters.employeeIds).toEqual(['emp-other', 'emp-third'])
   })
 
+  it('keeps a ROP inside their own team when they name another one', () => {
+    /*
+      The same property one level up, and the one the client asked for: a ROP
+      who edits the address bar to another team's employee ids gets the
+      intersection of the two — which is nobody — rather than that team.
+    */
+    const filters = buildFilters('employeeIds=emp-other', rop, ROP_TEAM)
+    expect(filters.restrictToEmployeeIds).toEqual(ROP_TEAM)
+    expect(filters.employeeIds).toEqual(['emp-other'])
+  })
+
   it('leaves a company-wide caller unrestricted', () => {
     const filters = buildFilters('employeeIds=emp-other', manager)
-    expect(filters.restrictToEmployeeId).toBeUndefined()
+    expect(filters.restrictToEmployeeIds).toBeNull()
     expect(filters.employeeIds).toEqual(['emp-other'])
   })
 
   it('restricts a deactivated caller to nothing', () => {
     const filters = buildFilters('', { ...manager, isActive: false })
-    expect(filters.restrictToEmployeeId).toBeDefined()
+    expect(filters.restrictToEmployeeIds).not.toBeNull()
   })
 })
 

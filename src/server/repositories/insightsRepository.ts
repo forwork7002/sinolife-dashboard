@@ -33,6 +33,10 @@
 
 import type { PrismaClient } from '@/generated/prisma/client'
 import { env } from '@/server/config/env'
+import {
+  NO_EMPLOYEE_IN_SCOPE,
+  type ScopedWindow,
+} from '@/server/domain/employees/branches'
 import type { Period } from '@/server/domain/period/period'
 import {
   CONFIRMATION_OUTCOMES,
@@ -448,7 +452,17 @@ export interface ConfirmationSellerRatingFilters {
   readonly employeeIds?: readonly string[]
   readonly departmentIds?: readonly string[]
   readonly sourceIds?: readonly string[]
-  readonly restrictToEmployeeId?: string
+  /**
+   * Authorisation scope — whose rows this caller may read at all.
+   *
+   * A LIST, because a scope can be a team. Null (or absent) is the whole
+   * company; a non-null list is exhaustive and never empty, so an account that
+   * narrows to nobody reads nothing rather than everything. Applied HERE
+   * rather than in the UI so it cannot be bypassed by calling the API
+   * directly, and ANDed with `employeeIds` above rather than replacing it: the
+   * caller's own pick narrows the scope, it never widens it.
+   */
+  readonly restrictToEmployeeIds?: readonly string[] | null
 }
 
 /**
@@ -1347,7 +1361,48 @@ export class InsightsRepository {
    * daily number — is shared, so the two readings can never drift apart in
    * how they classify an order. Only which orders enter differs.
    */
-  private static queueSql(mode: ConfirmationQueueMode = 'window'): string {
+  /**
+   * The SQL fragment that narrows this whole board to one caller's people.
+   *
+   * Written once and placed in `classified`, the CTE where the operator is
+   * resolved, because every reading of this board — the row list, its
+   * pagination count, the five tiles, the ROP panel, the ROP filter's own
+   * options, the header bell, the rejection control chart and both of the
+   * sellers board's queue queries — is built on top of it. Narrowing anywhere
+   * else would be narrowing one of them.
+   *
+   * NULL IS THE WHOLE COMPANY. An empty array is not: `= ANY('{}')` is false
+   * for every row, which is the correct answer for a scope that admits nobody
+   * and the reason `rowScopeFor` never produces one by accident.
+   */
+  private static scopeMatch(param: string): string {
+    return `(${param}::text IS NULL OR e."id" = ANY(string_to_array(${param}, ',')))`
+  }
+
+  /**
+   * The scope as one bind value: a comma-joined list, or null for everybody.
+   *
+   * AN EMPTY LIST IS «NOBODY», NEVER «EVERYBODY». Every other id filter in
+   * this codebase is written `ids?.length ? … : no filter`, which is right for
+   * a filter the reader chose and catastrophic for one the reader is subject
+   * to — the same inversion `NO_EMPLOYEE_IN_SCOPE` exists to stop. `null` here
+   * has to be said deliberately, and `[]` resolves to the sentinel, which
+   * matches no employee row.
+   */
+  private static scopeValue(window: ScopedWindow): string | null {
+    const ids = window.restrictToEmployeeIds
+    if (ids === null) return null
+    return ids.length > 0 ? ids.join(',') : NO_EMPLOYEE_IN_SCOPE
+  }
+
+  /**
+   * @param scopeParam The placeholder carrying the caller's employee scope,
+   *   e.g. `'$4'`. REQUIRED, and required with no default: a board that
+   *   silently answered for the whole company because a new consumer forgot
+   *   this argument is the failure this whole mechanism exists to prevent, and
+   *   a missing argument is the one kind the compiler can catch.
+   */
+  private static queueSql(mode: ConfirmationQueueMode, scopeParam: string): string {
     /*
       Backlog mode narrows the history scan to LIVE orders before aggregating.
 
@@ -1566,6 +1621,26 @@ export class InsightsRepository {
       */
       JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
       LEFT JOIN "department" dep ON dep."id" = e."departmentId"
+      /*
+        THE CALLER'S OWN PEOPLE, AND NOBODY ELSE'S.
+
+        Here rather than in any of the nine readings built on this prelude,
+        because the employee alias above is where the operator is finally
+        resolved and every one of those readings counts the rows this CTE
+        emits. A ROP given «Тасдиклаш» reads their own floor; the tiles above
+        the table, the ROP panel beside it and the bell in the header all
+        describe the same rows, because they ARE the same rows.
+
+        MODE-INDEPENDENT on purpose: window and backlog differ only in which
+        orders ENTER the cohort, never in whose they are, and
+        confirmationQueueSql.test.ts pins the two tails identical from the
+        classified CTE down.
+
+        NO BACKTICK MAY APPEAR IN THIS COMMENT. It lives inside a JavaScript
+        template literal, so one would end the string it is documenting — the
+        same trap the ROP strip above records for a lone backslash.
+      */
+      WHERE ${InsightsRepository.scopeMatch(scopeParam)}
     ),
     numbered AS (
       /*
@@ -1617,12 +1692,12 @@ export class InsightsRepository {
    * not have to prove the null case away before trusting the number.
    */
   async queuePressure(
-    period: Period,
+    period: ScopedWindow,
     overdueAfterMinutes = 120,
     mode: ConfirmationQueueMode = 'window',
   ): Promise<{ pending: number; overdue: number }> {
     const rows = await this.prisma.$queryRawUnsafe<{ pending: bigint; overdue: bigint }[]>(
-      `${InsightsRepository.queueSql(mode)}
+      `${InsightsRepository.queueSql(mode, '$4')}
        SELECT
          count(*) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::bigint AS pending,
          count(*) FILTER (
@@ -1645,6 +1720,7 @@ export class InsightsRepository {
       period.start,
       period.end,
       new Date(Date.now() - overdueAfterMinutes * 60_000),
+      InsightsRepository.scopeValue(period),
     )
 
     return { pending: int(rows[0]?.pending), overdue: int(rows[0]?.overdue) }
@@ -1652,14 +1728,14 @@ export class InsightsRepository {
 
   /** How the window's queue split across the five states. */
   async confirmationOutcomes(
-    period: Period,
+    period: ScopedWindow,
     filter: { rop?: string; q?: string } = {},
     mode: ConfirmationQueueMode = 'window',
   ): Promise<ConfirmationOutcomeTotals> {
     const rows = await this.prisma.$queryRawUnsafe<
       { outcome: ConfirmationOutcomeValue; orders: bigint }[]
     >(
-      `${InsightsRepository.queueSql(mode)}
+      `${InsightsRepository.queueSql(mode, '$5')}
        SELECT c.outcome, count(*)::bigint AS orders
          FROM classified c
          JOIN "deal" d ON d."id" = c.deal_id
@@ -1671,6 +1747,7 @@ export class InsightsRepository {
       period.end,
       filter.rop ?? null,
       filter.q ?? null,
+      InsightsRepository.scopeValue(period),
     )
 
     // Every state is present with a zero rather than absent. A state missing
@@ -1964,7 +2041,7 @@ export class InsightsRepository {
    * groups, which a state filter would collapse.
    */
   async confirmationByRop(
-    period: Period,
+    period: ScopedWindow,
     filter: { q?: string } = {},
     mode: ConfirmationQueueMode = 'window',
   ): Promise<ConfirmationRopRow[]> {
@@ -1979,7 +2056,7 @@ export class InsightsRepository {
         unconfirmed_shipped: bigint
       }[]
     >(
-      `${InsightsRepository.queueSql(mode)}
+      `${InsightsRepository.queueSql(mode, '$4')}
        SELECT
          c.rop AS rop,
          count(*)::bigint AS orders,
@@ -2006,6 +2083,7 @@ export class InsightsRepository {
       period.start,
       period.end,
       filter.q ?? null,
+      InsightsRepository.scopeValue(period),
     )
 
     return rows.map((r) => ({
@@ -2157,9 +2235,9 @@ export class InsightsRepository {
   private static ratingFilterSql(filters: ConfirmationSellerRatingFilters, params: unknown[]): string {
     const conditions: string[] = []
 
-    if (filters.restrictToEmployeeId) {
-      params.push(filters.restrictToEmployeeId)
-      conditions.push(`e."id" = $${params.length}`)
+    if (filters.restrictToEmployeeIds?.length) {
+      params.push(filters.restrictToEmployeeIds.join(','))
+      conditions.push(`e."id" = ANY(string_to_array($${params.length}, ','))`)
     }
     if (filters.employeeIds?.length) {
       params.push(filters.employeeIds.join(','))
@@ -2197,10 +2275,21 @@ export class InsightsRepository {
    * order — the two states «barcha buyurtmalar» exists to show.
    */
   async confirmationSellerRating(
-    period: Period,
+    period: ScopedWindow,
     filters: ConfirmationSellerRatingFilters = {},
   ): Promise<ConfirmationSellerRatingRow[]> {
-    const params: unknown[] = [period.start, period.end]
+    /*
+      THE SCOPE IS BOUND BEFORE THE FILTERS, AND THAT ORDER IS LOAD-BEARING.
+
+      `queueSql` needs its placeholder while the string is being built, and
+      `ratingFilterSql` numbers whatever it pushes from the length of the array
+      it is handed. Binding the scope first gives it the fixed slot $3 and
+      leaves the caller's own filters at $4 onwards, where they were. Pushing
+      it afterwards would give the scope a position that moved with the number
+      of filters the reader happened to set — and the prelude would have had to
+      guess it.
+    */
+    const params: unknown[] = [period.start, period.end, InsightsRepository.scopeValue(period)]
     const filterClause = InsightsRepository.ratingFilterSql(filters, params)
 
     const rows = await this.prisma.$queryRawUnsafe<
@@ -2220,7 +2309,7 @@ export class InsightsRepository {
         rejected_orders: bigint
       }[]
     >(
-      `${InsightsRepository.queueSql('window')}${InsightsRepository.ratingSql(filterClause)}`,
+      `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.ratingSql(filterClause)}`,
       ...params,
     )
 
@@ -2294,16 +2383,26 @@ export class InsightsRepository {
    * arrival in C4:NEW is the only date that tracks the client's own board.
    */
   async confirmationSellerRatingDays(
-    period: Period,
+    period: ScopedWindow,
     employeeId: string,
   ): Promise<{ date: string; confirmedMinor: bigint; deliveredMinor: bigint; orders: number }[]> {
     const rows = await this.prisma.$queryRawUnsafe<
       { date: string; confirmed: MoneyText; delivered: MoneyText; orders: bigint }[]
     >(
-      `${InsightsRepository.queueSql('window')}${InsightsRepository.ratingDaysSql()}`,
+      /*
+        The requested seller is narrowed by the prelude, not checked here.
+
+        `classified` has already dropped every operator outside the caller's
+        scope, so asking for a colleague on another floor returns an empty
+        series rather than their days — the same fail-closed shape
+        `deals/[id]` gets from putting the scope in its WHERE clause instead of
+        comparing after the read.
+      */
+      `${InsightsRepository.queueSql('window', '$4')}${InsightsRepository.ratingDaysSql()}`,
       period.start,
       period.end,
       employeeId,
+      InsightsRepository.scopeValue(period),
     )
 
     return rows.map((r) => ({
@@ -2316,14 +2415,15 @@ export class InsightsRepository {
 
   /** Every ROP group that has orders in the window, for the filter. */
   async confirmationRops(
-    period: Period,
+    period: ScopedWindow,
     mode: ConfirmationQueueMode = 'window',
   ): Promise<string[]> {
     const rows = await this.prisma.$queryRawUnsafe<{ rop: string | null }[]>(
-      `${InsightsRepository.queueSql(mode)}
+      `${InsightsRepository.queueSql(mode, '$3')}
        SELECT DISTINCT c.rop FROM classified c WHERE c.rop IS NOT NULL ORDER BY c.rop`,
       period.start,
       period.end,
+      InsightsRepository.scopeValue(period),
     )
 
     return rows.map((r) => r.rop).filter((r): r is string => r !== null)
@@ -2358,7 +2458,7 @@ export class InsightsRepository {
    * as ISO text without a zone and are read back as the UTC they are.
    */
   async confirmationBoard(
-    period: Period,
+    period: ScopedWindow,
     query: ConfirmationOrderQuery,
     mode: ConfirmationQueueMode = 'window',
   ): Promise<{ totalItems: number; rows: ConfirmationOrderRow[]; byRop: ConfirmationRopRow[] }> {
@@ -2419,7 +2519,7 @@ export class InsightsRepository {
     const rows = await this.prisma.$queryRawUnsafe<
       { total_items: bigint; page: PageJson[]; by_rop: RopJson[] }[]
     >(
-      `${InsightsRepository.queueSql(mode)},
+      `${InsightsRepository.queueSql(mode, '$8')},
        filtered AS (
          SELECT
            c.deal_id, c.rop, c.daily_no, c.outcome,
@@ -2521,6 +2621,7 @@ export class InsightsRepository {
       query.rop ?? null,
       query.pageSize,
       offset,
+      InsightsRepository.scopeValue(period),
     )
 
     const row = rows[0]
@@ -2582,7 +2683,7 @@ export class InsightsRepository {
   }
 
   async confirmationOrders(
-    period: Period,
+    period: ScopedWindow,
     query: ConfirmationOrderQuery,
     mode: ConfirmationQueueMode = 'window',
   ): Promise<{ totalItems: number; rows: ConfirmationOrderRow[] }> {
@@ -2628,7 +2729,7 @@ export class InsightsRepository {
         total_items: bigint
       }[]
     >(
-      `${InsightsRepository.queueSql(mode)},
+      `${InsightsRepository.queueSql(mode, '$8')},
        /*
          PAGE FIRST, DECORATE AFTERWARDS.
 
@@ -2724,6 +2825,7 @@ export class InsightsRepository {
       query.rop ?? null,
       query.pageSize,
       offset,
+      InsightsRepository.scopeValue(period),
     )
 
     return {
@@ -3111,7 +3213,7 @@ export class InsightsRepository {
    * 8.12 vs 4.56); blended into one baseline, every Sunday trips the alarm.
    */
   async commandRejectionBand(
-    period: Period,
+    period: ScopedWindow,
   ): Promise<{
     today: number | null
     mean: number
@@ -3134,7 +3236,7 @@ export class InsightsRepository {
     >(
       // Always the window cohort: this is a daily control chart, and a backlog
       // has no days to plot.
-      `${InsightsRepository.queueSql('window')},
+      `${InsightsRepository.queueSql('window', '$3')},
        perday AS (
          SELECT (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${tz}')::date AS day,
                 (count(*) FILTER (WHERE c.outcome = 'REJECTED')::float
@@ -3164,6 +3266,7 @@ export class InsightsRepository {
         ORDER BY days.day`,
       period.start,
       period.end,
+      InsightsRepository.scopeValue(period),
     )
 
     // Sunday is its own regime; it informs nobody about a Tuesday. Empty

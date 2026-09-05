@@ -11,7 +11,7 @@
 
 import {
   type EmployeeScopeFilter,
-  type ScopedPeriod,
+  type ScopedWindow,
   scopedPeriod,
 } from '@/server/domain/employees/branches'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
@@ -423,11 +423,11 @@ export class InsightsService {
   /**
    * Fold the scope into the window every query already takes.
    *
-   * See `ScopedPeriod`: this is the single door the employee restriction walks
+   * See `ScopedWindow`: this is the single door the employee restriction walks
    * through on its way into the insights SQL. A query that ignores it is a
    * whole-company answer with a branch label on it.
    */
-  private window(period: Period, scope: EmployeeScopeFilter): ScopedPeriod {
+  private window(period: Period, scope: EmployeeScopeFilter): ScopedWindow {
     return scopedPeriod(period, scope)
   }
 
@@ -752,10 +752,17 @@ export class InsightsService {
    * used to compare states, which is the only reason to put five of them
    * side by side.
    */
+  /**
+   * @param scope Whose orders the caller may read. REQUIRED, with no default:
+   *   every other reading in this service still defaults to the whole company
+   *   because the screens behind them refuse a narrowed account at the
+   *   permission gate, and this one no longer does. An omitted argument here
+   *   would be a ROP reading the firm's queue, so it cannot be omitted.
+   */
   async confirmationQueue(
     period: Period,
     query: ConfirmationOrderQuery,
-    scope: EmployeeScopeFilter = {},
+    scope: EmployeeScopeFilter,
     mode: ConfirmationQueueMode = 'window',
   ): Promise<ConfirmationQueueDto> {
     /*
@@ -766,7 +773,19 @@ export class InsightsService {
       the dates are left deliberately vacuous rather than removed, which keeps
       one set of parameter positions across both modes.
     */
-    const window = mode === 'backlog' ? allTime(period.timeZone) : this.window(period, scope)
+    /*
+      THE SPAN CHANGES WITH THE MODE; THE SCOPE NEVER DOES.
+
+      Backlog mode drops the window — the bell counts what is waiting whenever
+      it arrived — but it does not drop who is asking. Wrapping BOTH spans in
+      `this.window` is what makes that structural: there is no branch here that
+      produces a window without a scope on it, and `ScopedWindow` would not
+      compile if there were.
+    */
+    const window =
+      mode === 'backlog'
+        ? this.window(allTime(period.timeZone), scope)
+        : this.window(period, scope)
 
     /*
       TWO ROUND TRIPS, NOT THREE.

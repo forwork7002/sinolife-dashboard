@@ -321,8 +321,9 @@ export class AnalyticsService {
    *     restrictions narrow; they never widen. A SALES user opening the Навоий
    *     view sees themselves inside Навоий, and a Тошкент salesperson opening
    *     it sees nothing — not their own numbers under someone else's heading.
-   *     `scope` is still spread AFTER the query, so a hand-written query string
-   *     cannot dislodge `restrictToEmployeeId` either.
+   *     `scope` is still spread AFTER the query, and the intersection is
+   *     written explicitly on top of it, so a hand-written query string cannot
+   *     dislodge `restrictToEmployeeIds` either.
    *  3. Turns an unknown branch name into a 400 that lists the real ones,
    *     rather than a full-company answer labelled with a branch that does not
    *     exist.
@@ -331,13 +332,13 @@ export class AnalyticsService {
     period: Period,
     currency: string,
     query: DealFilters & { readonly filial?: string },
-    scope: { readonly restrictToEmployeeId?: string },
+    scope: EmployeeScopeFilter,
     now: Date,
   ): Promise<ScopedAnalyticsContext> {
     const request = branchRequestFrom(query.filial, DEFAULT_BRANCH)
 
     const resolved = await this.reference
-      .resolveBranchScope(request, scope.restrictToEmployeeId)
+      .resolveBranchScope(request, scope.restrictToEmployeeIds)
       .catch((error: unknown) => {
         if (error instanceof UnknownBranchError) {
           throw ApiError.validation('Bunday filial yoʻq.', [
@@ -581,7 +582,7 @@ export class AnalyticsService {
    */
   async employees(
     ctx: AnalyticsContext,
-    restrictToEmployeeId?: string,
+    restrictToEmployeeIds?: readonly string[] | null,
   ): Promise<{
     rows: readonly (Omit<EmployeePerformance, 'current' | 'previous' | 'revenueDelta'> & {
       current: SalesSummaryDto
@@ -660,8 +661,8 @@ export class AnalyticsService {
       ? requested.filter((e) => ctx.filters.restrictToEmployeeIds!.includes(e.id))
       : requested
 
-    const scoped = restrictToEmployeeId
-      ? inBranch.filter((e) => e.id === restrictToEmployeeId)
+    const scoped = restrictToEmployeeIds?.length
+      ? inBranch.filter((e) => restrictToEmployeeIds.includes(e.id))
       : inBranch
 
     const { employeePerformance } = await import('@/server/domain/analytics/performance')

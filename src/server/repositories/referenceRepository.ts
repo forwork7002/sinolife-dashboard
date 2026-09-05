@@ -330,16 +330,16 @@ export class ReferenceRepository {
   /**
    * The full scope: ids to filter by, plus the block the response prints.
    *
-   * `restrictToEmployeeId` is the caller's authorisation scope and is
+   * `restrictToEmployeeIds` is the caller's authorisation scope and is
    * INTERSECTED here — see `intersectEmployeeScope`. Passing it through this
    * one door is what lets a repository honour a single `restrictToEmployeeIds`
    * list and still be correct for a SALES user.
    */
   async resolveBranchScope(
     request: BranchRequest,
-    restrictToEmployeeId?: string,
+    restrictToEmployeeIds?: readonly string[] | null,
   ): Promise<ResolvedBranchScope> {
-    return resolveBranchScope(await this.branches.snapshot(), request, restrictToEmployeeId)
+    return resolveBranchScope(await this.branches.snapshot(), request, restrictToEmployeeIds)
   }
 
   /** Most recent sync runs, for the admin screen. */

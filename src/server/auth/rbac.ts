@@ -122,7 +122,14 @@ export interface Principal {
   readonly isActive: boolean
   /** Set when the login is linked to a salesperson. Drives own-data scoping. */
   readonly employeeId: string | null
-  /** How much of each granted section this account reads. */
+  /**
+   * How much of each granted section this account reads.
+   *
+   * ALL is the company. OWN is the linked employee. TEAM is that employee's
+   * unit and everything under it — resolved from the department tree per
+   * request, which is why `rowScopeFor` below takes the resolved ids rather
+   * than reading them itself: this module stays pure and unit testable.
+   */
   readonly dataScope: DataScopeValue
   /**
    * The sections this account may open, already resolved.
@@ -190,31 +197,108 @@ export function permissionsFor(
 }
 
 /**
- * Which employee's deals this principal may see, or `null` for all of them.
+ * The id that matches nobody.
+ *
+ * A scope that narrows to nothing must produce NOTHING. Every repository here
+ * tests an id list with `ids?.length`, so an empty array reads as "no filter
+ * given" and silently widens to the whole company — the exact inversion this
+ * scope exists to prevent. Carrying one impossible id keeps the list non-empty
+ * and the query honest. Mirrors `NO_EMPLOYEE_IN_SCOPE` in
+ * `domain/employees/branches`, which solves the same problem for filials.
+ */
+export const NO_EMPLOYEE_LINKED = '__no_employee_linked__'
+
+/**
+ * Whose rows this principal may read.
+ *
+ * ONE FIELD, AND IT IS PLURAL. It used to be `restrictToEmployeeId`, a single
+ * id, because a scope could only ever mean one person. TEAM means fifteen, and
+ * a repository that honoured the singular while ignoring a new plural
+ * companion would have served the whole company to a ROP without erroring —
+ * so the singular was removed rather than kept beside it. Every consumer now
+ * reads one field, and the compiler found them all.
+ *
+ * `null` means unrestricted. A non-null value is ALWAYS non-empty.
+ */
+export interface RowScope {
+  readonly restrictToEmployeeIds: readonly string[] | null
+}
+
+/**
+ * Does resolving this principal's scope require a look at the department tree?
+ *
+ * Asked by the handler so ALL and OWN — which are decided by the session row
+ * alone — cost no query. Only TEAM does.
+ */
+export function scopeNeedsTeam(principal: Principal): boolean {
+  return principal.isActive && principal.dataScope === 'TEAM'
+}
+
+/**
+ * Which employees' rows this principal may see, or `null` for all of them.
  *
  * This is the single source of the data-scoping rule. The repository applies
  * the returned value as a WHERE clause, so scoping happens in SQL and cannot
  * be bypassed by calling the API directly.
  *
- * An OWN-scoped account with no linked employee record sees NOTHING rather
- * than everything — failing closed. It is a provisioning mistake the admin
- * screen refuses to create, and the safe reading of "we do not know whose
- * deals these are" is "none".
+ * An OWN- or TEAM-scoped account with no linked employee record sees NOTHING
+ * rather than everything — failing closed. It is a provisioning mistake the
+ * admin screen refuses to create, and the safe reading of "we do not know
+ * whose deals these are" is "none".
+ *
+ * @param teamEmployeeIds The department subtree already resolved, for a TEAM
+ *   principal. Passed in rather than fetched so this module stays pure — and
+ *   REQUIRED for TEAM: omitting it throws instead of quietly widening, because
+ *   the failure mode of a forgotten resolver is a ROP reading the company.
  */
-export function dealScopeFor(principal: Principal): { restrictToEmployeeId?: string } {
+export function rowScopeFor(
+  principal: Principal,
+  teamEmployeeIds: readonly string[] | null = null,
+): RowScope {
   // `isActive` is asked here as well as in `can()`. A deactivated caller never
   // reaches a handler — `requirePrincipal` refuses first — but a scoping rule
   // that WIDENS when the caller is disabled is the wrong shape to leave lying
   // around for the next person who calls it from somewhere new.
-  if (principal.isActive && principal.dataScope === 'ALL') return {}
-
-  return {
-    restrictToEmployeeId: principal.employeeId ?? '__no_employee_linked__',
+  if (principal.isActive && principal.dataScope === 'ALL') {
+    return { restrictToEmployeeIds: null }
   }
+
+  const own = principal.employeeId ?? NO_EMPLOYEE_LINKED
+
+  if (scopeNeedsTeam(principal)) {
+    if (teamEmployeeIds === null) {
+      throw new Error(
+        'rowScopeFor: a TEAM principal reached a handler with no resolved team. ' +
+          'Resolve the department subtree first — widening here would serve the company.',
+      )
+    }
+    /*
+      The reader is always in their own scope, even when the tree says nothing
+      about them. A ROP filed in no department, or one whose unit was renamed
+      out from under them, still owns their own rows; an empty list would take
+      those away too and read on screen as "you have never sold anything".
+    */
+    const ids = new Set<string>(teamEmployeeIds)
+    ids.add(own)
+    return { restrictToEmployeeIds: [...ids] }
+  }
+
+  return { restrictToEmployeeIds: [own] }
 }
 
-/** True when the principal may view this specific employee's detail. */
-export function canViewEmployee(principal: Principal, employeeId: string): boolean {
+/**
+ * True when the principal may view this specific employee's detail.
+ *
+ * The scope is the third answer, and it has to be, or a ROP given TEAM could
+ * open the board their own team is on and then be refused every card in it.
+ */
+export function canViewEmployee(
+  principal: Principal,
+  employeeId: string,
+  scope?: RowScope,
+): boolean {
   if (can(principal, 'employees:read:detail')) return true
-  return principal.employeeId === employeeId
+  if (principal.employeeId === employeeId) return true
+  const ids = scope?.restrictToEmployeeIds
+  return ids ? ids.includes(employeeId) : false
 }

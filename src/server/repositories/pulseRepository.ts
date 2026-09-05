@@ -49,8 +49,17 @@ export interface PulseDealFilters {
   readonly employeeIds?: readonly string[]
   readonly departmentIds?: readonly string[]
   readonly sourceIds?: readonly string[]
-  /** Authorisation scope. Applied in SQL so it cannot be bypassed. */
-  readonly restrictToEmployeeId?: string
+  /**
+   * Authorisation scope — whose rows this caller may read at all.
+   *
+   * A LIST, because a scope can be a team. Null (or absent) is the whole
+   * company; a non-null list is exhaustive and never empty, so an account that
+   * narrows to nobody reads nothing rather than everything. Applied HERE
+   * rather than in the UI so it cannot be bypassed by calling the API
+   * directly, and ANDed with `employeeIds` above rather than replacing it: the
+   * caller's own pick narrows the scope, it never widens it.
+   */
+  readonly restrictToEmployeeIds?: readonly string[] | null
 }
 
 /** Closed-cohort stats for one window (current or comparison). */
@@ -165,9 +174,9 @@ export class PulseRepository {
   private filterSql(filters: PulseDealFilters, params: unknown[], alias: string): string {
     const conditions: string[] = []
 
-    if (filters.restrictToEmployeeId) {
-      params.push(filters.restrictToEmployeeId)
-      conditions.push(`${alias}."employeeId" = $${params.length}`)
+    if (filters.restrictToEmployeeIds?.length) {
+      params.push(filters.restrictToEmployeeIds.join(','))
+      conditions.push(`${alias}."employeeId" = ANY(string_to_array($${params.length}, ','))`)
     }
     if (filters.employeeIds?.length) {
       params.push(filters.employeeIds.join(','))

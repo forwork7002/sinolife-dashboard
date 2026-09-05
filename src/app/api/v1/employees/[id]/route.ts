@@ -10,7 +10,12 @@ import { assertSection, periodFrom } from '@/server/http/handler'
 import { analyticsQuerySchema, searchParamsToObject } from '@/server/http/queryParams'
 import { newCorrelationId } from '@/server/logging/logger'
 import { AnalyticsService } from '@/server/services/analyticsService'
-import { analyticsService, dealRepository, referenceRepository } from '@/server/services/container'
+import {
+  analyticsService,
+  dealRepository,
+  referenceRepository,
+  scopeService,
+} from '@/server/services/container'
 import { env } from '@/server/config/env'
 
 export const dynamic = 'force-dynamic'
@@ -44,7 +49,16 @@ export async function GET(
     assertSection(principal, 'structure')
     const { id } = await context.params
 
-    if (!canViewEmployee(principal, id)) {
+    /*
+      The scope is the third answer, and a TEAM account needs it.
+
+      A ROP given their own floor may open the cards on it — otherwise the
+      board they are allowed to read links to fifteen refusals. 404 rather than
+      403 for everyone else, deliberately: a 403 confirms the id names a real
+      employee, which is the enumeration oracle this route exists to avoid.
+    */
+    const scope = await scopeService.resolve(principal)
+    if (!canViewEmployee(principal, id, scope)) {
       throw ApiError.notFound('Xodim topilmadi.')
     }
 
@@ -64,7 +78,7 @@ export async function GET(
     )
 
     const [performance, deals] = await Promise.all([
-      analyticsService.employees(ctx, id),
+      analyticsService.employees(ctx, [id]),
       dealRepository.findForAnalysis([ctx.period, ctx.comparison], { employeeIds: [id] }),
     ])
 

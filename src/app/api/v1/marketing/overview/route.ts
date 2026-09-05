@@ -1,12 +1,25 @@
 import { getHandler } from '@/server/http/handler'
-import { ANALYTICS_READ } from '@/server/http/permissions'
 import { marketingWindowSchema } from '@/server/services/marketingService'
 import { marketingService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
 
 /** Who reaches this endpoint: the capability, then the screen it feeds. */
-const ACCESS = { permission: ANALYTICS_READ, section: 'marketing' } as const
+/**
+ * COMPANY-WIDE, AND NOW SAID AT THE GATE.
+ *
+ * This asked for `ANALYTICS_READ` — the any-of pair every active account holds
+ * one half of — which was harmless while a narrowed account was refused
+ * everywhere else, and stopped being harmless the moment a ROP could be given
+ * a real scope: this ledger has NO employee dimension to narrow by (its `rop`
+ * and `seller` columns are names typed into the client's spreadsheet, with no
+ * foreign key to our roster), so a scoped caller would have been handed the
+ * whole company's advertising spend under a screen that narrows everything
+ * else. `analytics:read:all` is the same permission every other
+ * un-narrowable screen uses to refuse; the answer for a ROP here is «no», not
+ * «all of it».
+ */
+const ACCESS = { permission: 'analytics:read:all', section: 'marketing' } as const
 
 /**
  * The marketing band: KPIs, funnel and the daily series.

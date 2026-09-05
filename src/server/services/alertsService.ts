@@ -19,8 +19,9 @@
  * barred from the queue would be the boundary leaking through the chrome.
  */
 
-import type { Principal } from '@/server/auth/rbac'
-import { can, canSeeSection } from '@/server/auth/rbac'
+import type { Principal, RowScope } from '@/server/auth/rbac'
+import { canSeeSection } from '@/server/auth/rbac'
+import { scopedPeriod } from '@/server/domain/employees/branches'
 import { allTime } from '@/server/domain/period/period'
 import type { InsightsRepository } from '@/server/repositories/insightsRepository'
 import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
@@ -40,21 +41,31 @@ export class AlertsService {
     private readonly reference: ReferenceRepository,
   ) {}
 
-  async load(principal: Principal, now: Date, timeZone: string): Promise<AlertsDto> {
+  async load(
+    principal: Principal,
+    scope: RowScope,
+    now: Date,
+    timeZone: string,
+  ): Promise<AlertsDto> {
     const [syncedAt, queue] = await Promise.all([
       this.reference.findLastSuccessfulSync(),
       /*
-        THE SAME TWO GATES THE QUEUE ITSELF ASKS FOR.
+        THE SECTION, AND NOW ONLY THE SECTION.
 
-        The section alone was not enough. `/insights/confirmations/orders`
-        declares `permission: 'analytics:read:all'` and does NOT narrow its
-        rows to the caller — the queue is company-wide by construction — so an
-        account holding the Tasdiqlash section on an OWN data scope was shown a
-        bell it could not open: clicking it produced a 403 and an error state
-        where a number had promised work. A bell is an invitation, and one
+        It used to ask for `analytics:read:all` as well, because the queue was
+        company-wide by construction and an OWN-scoped account holding the
+        Tasdiqlash section would have been shown a bell it could not open —
+        clicking it produced a 403 where a number had promised work, and a bell
         that leads to a refusal is worse than no bell.
+
+        The queue narrows now, so the second gate would do the opposite damage:
+        a ROP whose board has forty orders waiting on it would be given the
+        board and no bell to tell them so. The COUNT is narrowed by the same
+        scope the board is — `scope` is threaded into `queuePressure` below —
+        so the header and the page behind it still describe one set of rows,
+        which is the property this gate has always been protecting.
       */
-      canSeeSection(principal, 'confirmation') && can(principal, 'analytics:read:all')
+      canSeeSection(principal, 'confirmation')
         ? /*
              THE BACKLOG, NOT TODAY'S ARRIVALS.
 
@@ -67,7 +78,7 @@ export class AlertsService {
              signal is CONFIRM_NEW, whenever it arrived, which is what the
              page shows behind the link.
           */
-          this.insights.queuePressure(allTime(timeZone), 120, 'backlog')
+          this.insights.queuePressure(scopedPeriod(allTime(timeZone), scope), 120, 'backlog')
         : Promise.resolve(null),
     ])
 

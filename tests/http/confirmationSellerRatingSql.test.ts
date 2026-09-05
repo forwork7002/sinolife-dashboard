@@ -39,7 +39,7 @@ const ratingFilterSql = (
         employeeIds?: readonly string[]
         departmentIds?: readonly string[]
         sourceIds?: readonly string[]
-        restrictToEmployeeId?: string
+        restrictToEmployeeIds?: readonly string[] | null
       },
       params: unknown[],
     ) => string
@@ -203,29 +203,48 @@ describe('confirmation seller rating filters', () => {
     expect(params).toEqual(['start', 'end'])
   })
 
-  it('binds restrictToEmployeeId at the next free position', () => {
+  it('binds a whole team at the next free position, not one id', () => {
+    /*
+      The authorisation scope is a LIST, because the account it serves is a
+      ROP with fifteen people under them. It was a single id and a single `=`,
+      which is the shape that cannot express the thing the client asked for.
+    */
     const params: unknown[] = ['start', 'end']
-    const clause = ratingFilterSql({ restrictToEmployeeId: 'emp-1' }, params)
-    expect(clause).toContain('e."id" = $3')
-    expect(params).toEqual(['start', 'end', 'emp-1'])
+    const clause = ratingFilterSql({ restrictToEmployeeIds: ['emp-1', 'emp-9'] }, params)
+    expect(clause).toContain('e."id" = ANY(string_to_array($3')
+    expect(params).toEqual(['start', 'end', 'emp-1,emp-9'])
+  })
+
+  it('adds no scope clause for a company-wide caller', () => {
+    // null is «everybody» and must not become a predicate — one that matched
+    // every row would still cost the planner a pass over the cohort.
+    const params: unknown[] = ['start', 'end']
+    expect(ratingFilterSql({ restrictToEmployeeIds: null }, params)).toBe('')
+    expect(params).toEqual(['start', 'end'])
   })
 
   it('combines every filter, each at its own position, in one AND chain', () => {
     const params: unknown[] = ['start', 'end']
     const clause = ratingFilterSql(
       {
-        restrictToEmployeeId: 'emp-1',
+        restrictToEmployeeIds: ['emp-1'],
         employeeIds: ['emp-2', 'emp-3'],
         departmentIds: ['dep-1'],
         sourceIds: ['src-1'],
       },
       params,
     )
-    expect(clause).toContain('e."id" = $3')
+    expect(clause).toContain('e."id" = ANY(string_to_array($3')
     expect(clause).toContain('e."id" = ANY(string_to_array($4')
     expect(clause).toContain('e."departmentId" = ANY(string_to_array($5')
     expect(clause).toContain('d."sourceId" = ANY(string_to_array($6')
     expect(params).toEqual(['start', 'end', 'emp-1', 'emp-2,emp-3', 'dep-1', 'src-1'])
+    /*
+      AND, NEVER OR. The caller's own Xodim pick and the scope they are subject
+      to are two restrictions and both hold: a ROP who filters to a colleague
+      outside their team gets the empty intersection, not that colleague.
+    */
+    expect(clause).not.toContain(' OR ')
   })
 })
 

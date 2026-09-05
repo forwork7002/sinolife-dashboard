@@ -6,8 +6,9 @@ import {
   can,
   canSeeSection,
   canViewEmployee,
-  dealScopeFor,
   permissionsFor,
+  rowScopeFor,
+  scopeNeedsTeam,
 } from '@/server/auth/rbac'
 import { defaultSectionsFor } from '@/lib/sections'
 
@@ -37,6 +38,11 @@ const sales: Principal = {
 const scoped: Principal = {
   userId: 'u4', role: 'SALES', isActive: true, employeeId: 'emp-1',
   dataScope: 'OWN', sections: defaultSectionsFor('SALES'),
+}
+/* A ROP: one linked employee, and the whole unit under them to read. */
+const team: Principal = {
+  userId: 'u5', role: 'SALES', isActive: true, employeeId: 'emp-1',
+  dataScope: 'TEAM', sections: defaultSectionsFor('SALES'),
 }
 
 describe('the permission matrix', () => {
@@ -123,7 +129,7 @@ describe('deactivated accounts', () => {
   })
 
   it('are scoped to nothing rather than to everything', () => {
-    expect(dealScopeFor({ ...admin, isActive: false }).restrictToEmployeeId).toBeDefined()
+    expect(rowScopeFor({ ...admin, isActive: false }).restrictToEmployeeIds).not.toBeNull()
   })
 
   it('can open no section', () => {
@@ -144,32 +150,91 @@ describe('section reach', () => {
 
 describe('deal scoping', () => {
   it('does not restrict a company-wide account, whatever its role', () => {
-    expect(dealScopeFor(admin)).toEqual({})
-    expect(dealScopeFor(manager)).toEqual({})
-    expect(dealScopeFor(sales)).toEqual({})
+    expect(rowScopeFor(admin)).toEqual({ restrictToEmployeeIds: null })
+    expect(rowScopeFor(manager)).toEqual({ restrictToEmployeeIds: null })
+    expect(rowScopeFor(sales)).toEqual({ restrictToEmployeeIds: null })
   })
 
   it('restricts an OWN-scoped account to its linked employee', () => {
-    expect(dealScopeFor(scoped)).toEqual({ restrictToEmployeeId: 'emp-1' })
+    expect(rowScopeFor(scoped)).toEqual({ restrictToEmployeeIds: ['emp-1'] })
   })
 
   it('fails CLOSED for an OWN-scoped account with no linked employee', () => {
-    // The dangerous bug would be returning {} here — an unlinked account would
-    // silently see the whole company. A sentinel that matches no row is the
-    // safe reading of "we do not know whose deals these are". The admin screen
-    // refuses to save this pairing; the policy still has to hold if it appears.
+    // The dangerous bug would be returning null here — an unlinked account
+    // would silently see the whole company. A sentinel that matches no row is
+    // the safe reading of "we do not know whose deals these are". The admin
+    // screen refuses to save this pairing; the policy still has to hold if it
+    // appears.
     const unlinked: Principal = { ...scoped, employeeId: null }
-    const scope = dealScopeFor(unlinked)
+    const scope = rowScopeFor(unlinked)
 
-    expect(scope.restrictToEmployeeId).toBeDefined()
-    expect(scope.restrictToEmployeeId).not.toBe('')
-    expect(scope).not.toEqual({})
+    expect(scope.restrictToEmployeeIds).not.toBeNull()
+    expect(scope.restrictToEmployeeIds).toHaveLength(1)
+    expect(scope.restrictToEmployeeIds?.[0]).not.toBe('')
   })
 
   it('does not scope a read-only account that was never narrowed', () => {
     // The exact account the old model broke: created SALES, no employee link,
     // six sections ticked — and every figure blank.
-    expect(dealScopeFor({ ...sales, employeeId: null })).toEqual({})
+    expect(rowScopeFor({ ...sales, employeeId: null })).toEqual({
+      restrictToEmployeeIds: null,
+    })
+  })
+})
+
+describe('team scoping', () => {
+  it('says a TEAM account needs its subtree resolved, and the others do not', () => {
+    // What tells the handler whether to spend a query. ALL and OWN are decided
+    // by the session row alone.
+    expect(scopeNeedsTeam(team)).toBe(true)
+    expect(scopeNeedsTeam(scoped)).toBe(false)
+    expect(scopeNeedsTeam(admin)).toBe(false)
+    // A disabled ROP resolves nothing and still fails closed below.
+    expect(scopeNeedsTeam({ ...team, isActive: false })).toBe(false)
+  })
+
+  it('reads its whole unit, and itself with it', () => {
+    const scope = rowScopeFor(team, ['emp-2', 'emp-3'])
+
+    expect(scope.restrictToEmployeeIds).toContain('emp-2')
+    expect(scope.restrictToEmployeeIds).toContain('emp-3')
+    // The reader is always in their own scope. A ROP whose unit was renamed
+    // out from under them still owns their own rows, and a board missing them
+    // reads as "you have never sold anything" rather than as a tree problem.
+    expect(scope.restrictToEmployeeIds).toContain('emp-1')
+  })
+
+  it('does not repeat the reader when the subtree already names them', () => {
+    // The ids reach SQL as a list; a duplicate is harmless but says the set
+    // was built by concatenation rather than by union, which is the shape that
+    // eventually double-counts something.
+    const ids = rowScopeFor(team, ['emp-1', 'emp-2']).restrictToEmployeeIds ?? []
+    expect(ids.filter((id) => id === 'emp-1')).toHaveLength(1)
+  })
+
+  it('THROWS rather than widen when the subtree was never resolved', () => {
+    /*
+      The failure this whole mechanism is built against: a new call site that
+      forgets to resolve the team. Returning "the company" there would be a ROP
+      reading every other team's money and nothing on screen saying so, so the
+      policy refuses to answer at all. Loud beats wrong.
+    */
+    expect(() => rowScopeFor(team)).toThrow(/TEAM principal/)
+  })
+
+  it('fails CLOSED for a TEAM account whose unit resolved to nobody', () => {
+    // An employee the portal has filed nowhere. The scope collapses to that
+    // one person — never to everybody.
+    expect(rowScopeFor(team, [])).toEqual({ restrictToEmployeeIds: ['emp-1'] })
+  })
+
+  it('fails CLOSED for a TEAM account with no linked employee', () => {
+    const unlinked: Principal = { ...team, employeeId: null }
+    const ids = rowScopeFor(unlinked, []).restrictToEmployeeIds
+
+    expect(ids).not.toBeNull()
+    expect(ids).toHaveLength(1)
+    expect(ids?.[0]).toBe('__no_employee_linked__')
   })
 })
 
