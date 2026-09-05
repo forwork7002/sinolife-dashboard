@@ -136,6 +136,19 @@ export const paginationQuerySchema = z.object({
 
 export const analyticsQuerySchema = periodQuerySchema.and(filterQuerySchema)
 
+/**
+ * One department's roster, for the panel the org chart opens.
+ *
+ * `departmentId` is REQUIRED rather than optional-with-a-default. An optional
+ * one would make a bare call to this endpoint mean "every person in the
+ * company", which is a different question, a 289-row answer, and not one this
+ * screen ever asks — and the caller who forgot the parameter would get it
+ * silently instead of a 400 naming the mistake.
+ */
+export const departmentRosterQuerySchema = periodQuerySchema
+  .and(filterQuerySchema)
+  .and(z.object({ departmentId: z.string().min(1).max(64) }))
+
 export const dealsQuerySchema = periodQuerySchema
   .and(filterQuerySchema)
   .and(paginationQuerySchema)
@@ -202,6 +215,7 @@ export type PeriodQuery = z.infer<typeof periodQuerySchema>
 export type FilterQuery = z.infer<typeof filterQuerySchema>
 export type PaginationQuery = z.infer<typeof paginationQuerySchema>
 export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>
+export type DepartmentRosterQuery = z.infer<typeof departmentRosterQuerySchema>
 export type DealsQuery = z.infer<typeof dealsQuerySchema>
 export type ConfirmationOrdersQuery = z.infer<typeof confirmationOrdersQuerySchema>
 

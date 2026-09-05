@@ -67,11 +67,41 @@ export interface DashboardFilters {
    */
   readonly queue: 'window' | 'backlog'
   readonly q?: string
+  /**
+   * Which rendering of the org chart is on screen — the chart or the table.
+   *
+   * In the URL, and not in component state, for the reason every other view
+   * decision on this dashboard is: a link somebody pastes into Telegram has to
+   * open on what was copied. It is not a FILTER, so it is not in `apiParams`
+   * (both renderings read the same answer, and sending it would split the
+   * query cache in two for nothing) and not in `activeCount`; `reset()` keeps
+   * it for the same reason it keeps `queue`.
+   */
+  readonly view: StructureView
+  /**
+   * Which department's panel is open on the org chart.
+   *
+   * Also in the URL: «this is the team, look» is a link somebody sends. Cleared
+   * by `reset()`, because unlike `view` it is a selection rather than a mode —
+   * nothing is lost by closing a panel that can be reopened with one click.
+   */
+  readonly dep?: string
   readonly page: number
   readonly pageSize: number
   readonly sort: string
   readonly order: 'asc' | 'desc'
 }
+
+/**
+ * The two ways the company structure can be drawn.
+ *
+ * 'chart' is the org chart the portal draws — cards on a canvas, which is what
+ * a reader means by "who works under whom". 'list' is the indented table this
+ * screen has always had, kept because it is the only one that shows every
+ * column at once and the only one that prints.
+ */
+export const STRUCTURE_VIEWS = ['chart', 'list'] as const
+export type StructureView = (typeof STRUCTURE_VIEWS)[number]
 
 const DEFAULTS: DashboardFilters = {
   /*
@@ -91,6 +121,7 @@ const DEFAULTS: DashboardFilters = {
   sourceIds: [],
   outcomes: [],
   queue: 'window',
+  view: 'chart',
   page: 1,
   pageSize: 25,
   sort: 'createdAtSource',
@@ -179,6 +210,11 @@ export function useDashboardFilters() {
       */
       queue: params.get('queue') === 'backlog' ? 'backlog' : DEFAULTS.queue,
       q: params.get('q') ?? undefined,
+      // Same rule as `queue` above: a name this application has, or the
+      // default. An unrecognised one used to be a blank region of page with
+      // no control on screen able to put it right.
+      view: STRUCTURE_VIEWS.find((mode) => mode === params.get('view')) ?? DEFAULTS.view,
+      dep: params.get('dep') ?? undefined,
       page: counted(params.get('page'), DEFAULTS.page, 10_000),
       pageSize: counted(params.get('pageSize'), DEFAULTS.pageSize, 200),
       sort: params.get('sort') ?? DEFAULTS.sort,
@@ -250,7 +286,7 @@ export function useDashboardFilters() {
       count would change, and the button that did it said it was only
       clearing filters.
     */
-    for (const key of ['preset', 'from', 'to', 'queue'] as const) {
+    for (const key of ['preset', 'from', 'to', 'queue', 'view'] as const) {
       const value = params.get(key)
       if (value !== null) kept.set(key, value)
     }

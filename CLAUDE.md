@@ -171,7 +171,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Joʻnatish nuqtalari | `/warehouse` | `warehouse/WarehousePage` | `/insights/dispatch` | Insights → Insights | `createdAtSource` — a creation cohort graded by the deal's **current** stage |
 | Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | `createdAtSource` — order intake, same column for board, drill-down and comparison |
 | KPI rejalari | `/kpi` | `kpi/KpiPage` | `/kpi` | Kpi, Analytics → Reference, Deal | **the plan's own `periodStart`/`periodEnd`** — the dashboard window only *selects* which plan is live |
-| Struktura | `/structure` | `structure/StructurePage` | `/insights/structure` | Insights → Insights | **mixed** — money columns on `closedAt`, others undated |
+| Struktura | `/structure` | `structure/StructurePage` | `/insights/structure`, `/insights/structure/roster` | Insights → Insights | **mixed** — money columns on `closedAt`, every headcount undated |
 
 `/` is the one page with **no** `requireSection`: it calls `firstSectionFor()`
 and forwards, because it is where every login and every bookmark lands, and a
@@ -200,7 +200,15 @@ Per-screen traps worth knowing before you touch one:
 - **KPI rejalari** — the preset picks the plan but does not slice it. «Bugun»
   and «Shu oy» give identical numbers inside one plan.
 - **Struktura** — totals must be summed over the tree's roots; children are
-  already rolled into every parent, so flattening double-counts.
+  already rolled into every parent, so flattening double-counts. The screen
+  re-creates the portal's own `hr/structure` org chart, with the old indented
+  table kept behind a `?view=list` toggle — both are renderings of ONE
+  `/insights/structure` answer, so they cannot disagree and switching costs no
+  request. It prints **two headcounts that are both right**: `subordinateCount`
+  is Bitrix24's membership minus the head, the figure the floor checks against
+  the portal, while `activeHeadcount` counts who is CREDITED here and is what
+  the money columns are built from. They differ on five of the twenty units.
+  Everything else worth knowing about it is under *The org chart* below.
 
 ---
 
@@ -243,6 +251,37 @@ from close-minus-create.
 empty denominator and deliberately does not round — `pct` rounds again for
 display, and double-rounding moved one region across the 85% tone threshold.
 `null` (no data) and `0` (a measurement) stay distinct to the UI.
+
+**A person belongs to ONE unit for money and to SEVERAL for the org chart, and
+the two must never be swapped.** Bitrix24's `UF_DEPARTMENT` is an ARRAY, and the
+portal's own `hr/structure` screen counts a person once in EVERY unit it names —
+nine of this portal's 208 active people sit in two. The importer kept only `[0]`,
+so five of the twenty cards were short by one or two: Тошкент онлайн 0 against 1,
+Asliddin(ROP) 8 against 10, Azizbek(ROP) 14 against 16, Saidaziz(ROP) 14 against
+15, Sevinchxon(ROP) 8 against 10 (measured 2026-09-05). `department_member` now
+carries the full set and **nothing but the org chart reads it**.
+`employee."departmentId"` is untouched and stays the PRIMARY unit: every analytic
+credits a person to exactly one unit, and rolling a two-unit person up both
+branches would count their headcount and their money twice.
+`tests/http/structureSql.test.ts` pins which CTE reads which — the `members` CTE
+the join table, the `people` CTE the column — because swapping them produces a
+plausible number rather than an error.
+
+Three subsidiary rules of that screen, all invisible when they break:
+
+- **The head is not one of their own subordinates.** «Подчинённые: 13» sits over
+  a unit of fourteen. Dropping the subtraction adds one to every card at once —
+  and the subtraction and the total are computed in ONE pass under ONE
+  `isActive` filter, because a head the portal has deactivated is not in the
+  total and taking one off anyway printed five active people as four.
+- **A head the portal does not list IN the unit gets no head row.** «Навоий»
+  names `UF_HEAD` = Мурод Содиков, whose own two units are «Kompaniya(ROP)» and
+  «Тошкент онлайн»; the portal draws that card with no head row rather than
+  seating him where his record does not. `head` is null for exactly that case,
+  and `headName` is still on the DTO beside it.
+- **The subtree pill counts PEOPLE, not memberships.** Somebody in both
+  «Регистрация» and «Azizbek(ROP)» is one person under NEWGEN, so the count is
+  `DISTINCT`; summing the row below would double them.
 
 **Scope narrows, never widens.** `intersectEmployeeScope` is an intersection,
 never a union. An empty scope may not be an empty array — every repository
@@ -305,6 +344,67 @@ the pair together.
 
 ---
 
+### The org chart
+
+`/structure` re-creates `obey.bitrix24.kz/hr/structure/`: department cards on a
+pannable, zoomable canvas joined by orthogonal elbow connectors, one row per
+level, a floating control row at the top and a zoom stepper bottom-left, a
+per-card expand/collapse footer, a «SIZ» badge on the reader's own unit, and a
+roster panel docked over the canvas.
+
+- **Every write affordance the portal has is deliberately absent** — ДОБАВИТЬ,
+  the «+» on the connectors, the drag handle, the «...» menu. All four write
+  into Bitrix24, and the frontend never talks to a CRM; the entire mutation
+  surface of this API is three `/users` handlers. What the card gains instead is
+  the one thing the portal cannot print: the unit's money over the window,
+  rolled up over the subtree while the headcount above it is not — the card says
+  which is which, because on this tree «Навоий» reads 0 people over six teams'
+  worth of revenue.
+- **The second level down starts FOLDED, and the chart fits ONCE.** Fully open,
+  this portal's tree is 4 332 canvas units wide, which fitted into a 1 500px
+  card is 35% zoom and a screen of unreadable rectangles. Re-fitting on every
+  shape change was worse: the answer to "show me this branch" was the whole
+  company zoomed out and the branch smaller than before the click. Expanding
+  holds the clicked card still (a `useLayoutEffect` anchor measured at 0.0px
+  drift); «Sigʻdirish» is the way back, and it stops at a legibility floor of
+  0.5 rather than shrinking the names away.
+- **Pan writes the transform straight onto the stage node.** The viewport is a
+  ref, never state; only the zoom READOUT re-renders, and it moves in steps.
+- **The cards ARE the treeitems.** `role="tree"` owns its `treeitem`s, so the
+  layout's coordinates go on the treeitem itself rather than on a positioning
+  wrapper, and the treeitem is the focusable element rather than a button
+  inside it — a nested button is announced as a button and throws away the
+  level, the position among siblings and the expanded state. One roving tab
+  stop for the whole chart, and it falls back to the first card whenever the
+  focused one is folded away, or the chart has no tab stop at all.
+- **The canvas key handler only fires on a card.** It lives on the canvas, which
+  also holds the search box: unscoped, SPACE in that box selected a department
+  instead of typing, and Home/End/arrows moved the tree rather than the cursor.
+- **Avatars are initials, not photos.** `user.get` returns `PERSONAL_PHOTO` on
+  `cdn-ru.bitrix24.kz` and the CSP is `img-src 'self' data: blob:`, so every one
+  of them would be a broken image. `InitialChip` is the whole answer.
+- **The money is withheld from an OWN-scoped reader, not the screen.** This is
+  the one company-wide page a salesperson is meant to open — the client asked
+  for it precisely so the floor can see who reports to whom — so the route
+  serves the tree and gates the figures on `analytics:read:all`, the same
+  permission every other company-wide number is behind. Null, never zero, and
+  the columns and the tile are not rendered at all.
+- **The search matches PEOPLE, not just units.** Every active member's name
+  rides the tree's own payload (`memberNames`, ~290 strings), because the first
+  thing a seller types into this screen is their own name — matching only the
+  unit and its head answered «topilmadi» over a dimmed company while their row
+  sat two clicks away in the panel. A match force-opens its ancestors and is
+  centred once.
+- **A `?dep=` link force-opens its own way in**, by the same derivation, so
+  "this is the team, look" pasted into a chat opens on the card rather than on a
+  panel floating over a folded tree.
+- **`/insights/structure/roster` is a SECOND request on purpose.** The chart
+  draws twenty cards and a reader opens one panel; putting 289 people on every
+  node would ship the whole roster again on every change of the window. It
+  lists membership, so a person shown in their SECOND unit carries their own
+  money while that money counts towards their FIRST — the panel says so in a
+  footnote rather than letting the column quietly fail to add up.
+
 ## The sync pipeline
 
 `CrmProvider` (portal vocabulary) → handlers (`DEALS`, `STAGE_HISTORY`, …) →
@@ -312,6 +412,17 @@ the pair together.
 (`UF_CRM_*`, `CATEGORY_ID`, `crm.deal.list`) stay inside
 `src/server/integrations/crm/bitrix24/` — a strong convention, not a lint rule.
 
+- **The EMPLOYEES pass REPLACES each person's department memberships, and the
+  delete and the insert are ONE transaction.** A person moved out of a unit
+  leaves no record saying so, so anything absent from this pass's
+  `UF_DEPARTMENT` is gone. But `fetchEmployees` returns the whole roster in a
+  single page, so the delete empties `department_member` outright: as two
+  statements that is a 20–150 ms window (measured 1.6 ms + 15.5 ms locally on
+  298 rows, plus round trips) in which every card on the org chart reads zero
+  members, once every thirty ticks and again on every restart and redeploy,
+  with nothing erroring and nothing logged. A unit we never imported is dropped
+  rather than guessed at: the FK would refuse the row and take the whole
+  multi-row insert with it.
 - **`batchWalk` uses id-chained seeks, never offsets.** 50 chained commands per
   `batch`, `filter[>ID]` + `start=-1`, 2 500 rows a round trip. Offsets were
   measured: `start=400000` ran 25 minutes and then got *every* `crm.contact.list`

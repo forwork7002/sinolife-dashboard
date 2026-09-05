@@ -280,21 +280,79 @@ export interface MarginDto {
   readonly coverage: number
 }
 
+/**
+ * The unit's head, as the card prints them.
+ *
+ * NULL when the unit has no head AND when the portal's head is not one of its
+ * members. Bitrix24's own company-structure screen draws no head row in either
+ * case — «Навоий» names a head whose two units are «Kompaniya(ROP)» and
+ * «Тошкент онлайн», and the portal declines to seat them in «Навоий». Printing
+ * the name anyway would put a manager somewhere the source says they are not.
+ */
+export interface StructureHeadDto {
+  readonly id: string
+  readonly name: string
+  readonly position: string | null
+  /**
+   * Active people in this unit's whole subtree, minus this head — the figure in
+   * the pill beside their name on the portal's card. DISTINCT over the subtree,
+   * so somebody who sits in two units of one branch is one person.
+   */
+  readonly managesCount: number
+}
+
 export interface StructureDto {
   readonly id: string
   readonly name: string
   readonly depth: number
   readonly headName: string | null
-  /** People attached directly to this unit. */
+  /** The head as the CARD needs them — null where the portal shows no head row. */
+  readonly head: StructureHeadDto | null
+  /** People whose PRIMARY unit is this one. */
   readonly ownHeadcount: number
   /** This unit plus everything beneath it. All three roll up together. */
   readonly headcount: number
   /** Of those, marked active in Bitrix24. */
   readonly activeHeadcount: number
-  /** Of the active, those who made a call or won a deal this period. */
+  /** Of the active, those who won a revenue deal this period. */
   readonly workingHeadcount: number
-  readonly deals: number
-  readonly revenue: MoneyDto
+  /**
+   * Active people the PORTAL lists in this unit, minus the head when the head
+   * is one of them — «Подчинённые: N сотрудников» on the source screen, and the
+   * figure a floor manager will hold this page up against.
+   *
+   * It is NOT `activeHeadcount`, and the difference is not a rounding error:
+   * membership is many-to-many in Bitrix24 and nine of this portal's people sit
+   * in two units, so five of its twenty cards differ. `activeHeadcount` counts
+   * who is CREDITED here and is what the money columns are built from;
+   * this counts who is LISTED here. Both are true and the screen prints both.
+   */
+  readonly subordinateCount: number
+  /** Active members including the head. `subordinateCount` plus 0 or 1. */
+  readonly memberCount: number
+  /**
+   * Their names, so the chart's search box can find a person and not only a
+   * unit. Active only. See the CTE that builds it for why it rides the tree.
+   */
+  readonly memberNames: readonly string[]
+  /** Direct child units. The card's footer prints it, or says there are none. */
+  readonly childCount: number
+  /** The portal's own left-to-right order for this unit among its siblings. */
+  readonly sortOrder: number
+  /** Does the reader's own account sit in this unit? Drives the «Siz» badge. */
+  readonly isViewerDepartment: boolean
+  /**
+   * Period money — NULL for a reader who may not see the company's figures.
+   *
+   * The org chart is the one screen an OWN-scoped salesperson is meant to read:
+   * knowing who reports to whom is why it exists. Their own numbers are theirs,
+   * but every other unit's are not, so the money is withheld rather than the
+   * screen. Null and not zero, and the columns are not rendered at all — a
+   * «0 soʻm» beside a department that closed a billion is a lie, and a «—» with
+   * a tooltip still says the figure exists.
+   */
+  readonly deals: number | null
+  readonly revenue: MoneyDto | null
   /**
    * Is this unit inside the active filial?
    *
@@ -306,6 +364,44 @@ export interface StructureDto {
    */
   readonly inScope: boolean
   readonly children: readonly StructureDto[]
+}
+
+/** One person on a unit's roster, for the panel beside the chart. */
+export interface DepartmentMemberDto {
+  readonly id: string
+  readonly fullName: string
+  readonly position: string | null
+  readonly isActive: boolean
+  /**
+   * False when this unit is the person's SECOND one. Their money is credited to
+   * their primary unit, so a roster that did not say so would look like it had
+   * lost somebody's numbers.
+   */
+  readonly isPrimary: boolean
+  readonly isHead: boolean
+  readonly deals: number | null
+  readonly revenue: MoneyDto | null
+}
+
+/**
+ * What the org chart needs that is not a department.
+ *
+ * `viewerDepartmentIds` is a LIST for the same reason membership is: the
+ * account behind the reader can sit in two units, and badging only the first
+ * would send «Meni topish» to the wrong side of the chart.
+ */
+export interface StructureOptions {
+  /** The reader's own employee id, from Principal. Null when unlinked. */
+  readonly viewerEmployeeId?: string | null
+  /**
+   * May this reader see the company's money?
+   *
+   * `can(principal, 'analytics:read:all')` — true only for an ALL-scoped
+   * account. False strips every money field to null rather than refusing the
+   * screen, because the structure itself is not confidential and is the whole
+   * reason a salesperson opens this page.
+   */
+  readonly withMoney?: boolean
 }
 
 /**
@@ -891,12 +987,24 @@ export class InsightsService {
    * the database should not have to guess whether the caller wants own or
    * inclusive figures.
    */
-  async structure(period: Period, currency: string, scope: InsightsScope = {}) {
+  async structure(
+    period: Period,
+    currency: string,
+    scope: InsightsScope = {},
+    options: StructureOptions = {},
+  ) {
     // Deliberately UNSCOPED as data: the tree keeps every unit and every
     // number, and `inScope` marks which subtree the branch-scoped screens are
     // counting. Filtering the map would leave the reader unable to see that
     // Операцион exists at all, let alone that it closed 12.6% of last month.
-    const nodes = await this.repository.structure(period)
+    const withMoney = options.withMoney !== false
+    const [nodes, viewerDepartmentIds] = await Promise.all([
+      this.repository.structure(period),
+      options.viewerEmployeeId
+        ? this.repository.departmentsOfEmployee(options.viewerEmployeeId)
+        : Promise.resolve([] as string[]),
+    ])
+    const viewerIn = new Set(viewerDepartmentIds)
     const children = new Map<string | null, StructureNode[]>()
 
     for (const node of nodes) {
@@ -909,11 +1017,35 @@ export class InsightsService {
     // rather than a shrug: `filial=all` really does count every unit.
     const branchId = scope.branchDepartmentId ?? null
 
-    const build = (node: StructureNode, depth: number, inherited: boolean): StructureDto => {
+    /**
+     * The rollup travels beside the DTO, not inside it.
+     *
+     * It used to be read back off each child DTO — `acc.deals + kid.deals`.
+     * That stopped working the moment money became withholdable: a reader who
+     * may not see the company's figures gets `deals: null` on every node, and
+     * summing nulls up the tree turns an authorisation rule into a wrong
+     * number for the one reader who is allowed to see it. The totals are the
+     * repository's own integers all the way up; only the last step decides
+     * whether they are printed.
+     */
+    interface Rolled {
+      readonly headcount: number
+      readonly activeHeadcount: number
+      readonly workingHeadcount: number
+      readonly deals: number
+      readonly revenueMinor: bigint
+    }
+
+    const build = (
+      node: StructureNode,
+      depth: number,
+      inherited: boolean,
+    ): { dto: StructureDto; rolled: Rolled } => {
       const inScope = branchId === null || inherited || node.id === branchId
-      const kids = (children.get(node.id) ?? []).map((child) =>
+      const built = (children.get(node.id) ?? []).map((child) =>
         build(child, depth + 1, inScope),
       )
+      const kids = built.map((b) => b.dto)
 
       /**
        * All three headcounts roll up together.
@@ -923,13 +1055,13 @@ export class InsightsService {
        * total against its own direct reports. The two agreed at the root by
        * coincidence and nowhere else.
        */
-      const rolled = kids.reduce(
+      const rolled: Rolled = built.reduce<Rolled>(
         (acc, kid) => ({
-          headcount: acc.headcount + kid.headcount,
-          activeHeadcount: acc.activeHeadcount + kid.activeHeadcount,
-          workingHeadcount: acc.workingHeadcount + kid.workingHeadcount,
-          deals: acc.deals + kid.deals,
-          revenueMinor: acc.revenueMinor + BigInt(kid.revenue.amountMinor),
+          headcount: acc.headcount + kid.rolled.headcount,
+          activeHeadcount: acc.activeHeadcount + kid.rolled.activeHeadcount,
+          workingHeadcount: acc.workingHeadcount + kid.rolled.workingHeadcount,
+          deals: acc.deals + kid.rolled.deals,
+          revenueMinor: acc.revenueMinor + kid.rolled.revenueMinor,
         }),
         {
           headcount: node.headcount,
@@ -940,22 +1072,80 @@ export class InsightsService {
         },
       )
 
-      return {
+      const dto: StructureDto = {
         id: node.id,
         name: node.name,
         depth,
         headName: node.headName,
+        /*
+          NOT ROLLED UP, and none of the four below are.
+
+          The counts above answer "this unit plus everything under it", which is
+          what a manager asking about a branch means. These four are facts about
+          the unit itself as the portal draws its card — how many people it
+          lists, how many units hang off it, where it sits among its siblings —
+          and `managesCount` is already a subtree figure computed DISTINCT in
+          SQL, so adding the children's would count the same person once per
+          level they appear at.
+        */
+        head:
+          node.headId && node.headName && node.headIsMember
+            ? {
+                id: node.headId,
+                name: node.headName,
+                position: node.headPosition,
+                managesCount: node.headManagesCount,
+              }
+            : null,
         ownHeadcount: node.headcount,
         headcount: rolled.headcount,
         activeHeadcount: rolled.activeHeadcount,
         workingHeadcount: rolled.workingHeadcount,
-        deals: rolled.deals,
-        revenue: toMoneyDto(money(rolled.revenueMinor, currency)),
+        subordinateCount: node.subordinateCount,
+        memberCount: node.memberCount,
+        memberNames: node.memberNames,
+        childCount: node.childCount,
+        sortOrder: node.sortOrder,
+        isViewerDepartment: viewerIn.has(node.id),
+        deals: withMoney ? rolled.deals : null,
+        revenue: withMoney ? toMoneyDto(money(rolled.revenueMinor, currency)) : null,
         inScope,
         children: kids,
       }
+
+      return { dto, rolled }
     }
 
-    return (children.get(null) ?? []).map((root) => build(root, 0, false))
+    return (children.get(null) ?? []).map((root) => build(root, 0, false).dto)
+  }
+
+  /**
+   * One unit's roster, for the panel the chart opens.
+   *
+   * A second request rather than a field on every node: the chart draws twenty
+   * cards and a reader opens one panel, so shipping 289 people to render 13 of
+   * them would put the whole roster on the wire on every period change. It is
+   * also the only part of this screen that is per-selection, which is exactly
+   * the split that keeps the chart's own answer cacheable.
+   */
+  async departmentRoster(
+    departmentId: string,
+    period: Period,
+    currency: string,
+    options: StructureOptions = {},
+  ): Promise<DepartmentMemberDto[]> {
+    const withMoney = options.withMoney !== false
+    const rows = await this.repository.departmentRoster(departmentId, period)
+
+    return rows.map((r) => ({
+      id: r.id,
+      fullName: r.fullName,
+      position: r.position,
+      isActive: r.isActive,
+      isPrimary: r.isPrimary,
+      isHead: r.isHead,
+      deals: withMoney ? r.deals : null,
+      revenue: withMoney ? toMoneyDto(money(r.revenueMinor, currency)) : null,
+    }))
   }
 }

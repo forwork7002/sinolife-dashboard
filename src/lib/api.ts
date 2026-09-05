@@ -841,21 +841,61 @@ export interface DispatchDto {
   readonly deliveryRate: number | null
 }
 
+/**
+ * The unit's head, as the card prints them.
+ *
+ * NULL when the unit has no head AND when the portal's head is not one of its
+ * members — Bitrix24's own screen draws no head row in either case. See the
+ * server-side twin in `insightsService.ts`.
+ */
+export interface StructureHeadDto {
+  readonly id: string
+  readonly name: string
+  readonly position: string | null
+  /** Active people in this unit's whole subtree, minus this head. DISTINCT. */
+  readonly managesCount: number
+}
+
 export interface StructureDto {
   readonly id: string
   readonly name: string
   readonly depth: number
   readonly headName: string | null
-  /** People attached directly to this unit. */
+  /** The head as the CARD needs them — null where the portal shows no head row. */
+  readonly head: StructureHeadDto | null
+  /** People whose PRIMARY unit is this one. */
   readonly ownHeadcount: number
   /** This unit plus everything beneath it. All three roll up together. */
   readonly headcount: number
   /** Of those, marked active in Bitrix24. */
   readonly activeHeadcount: number
-  /** Of the active, those who made a call or won a deal this period. */
+  /** Of the active, those who won a revenue deal this period. */
   readonly workingHeadcount: number
-  readonly deals: number
-  readonly revenue: MoneyDto
+  /**
+   * Active people the PORTAL lists here, minus the head when the head is one of
+   * them — «Подчинённые: N сотрудников» on the source screen.
+   *
+   * Not `activeHeadcount`: membership is many-to-many in Bitrix24, so the two
+   * differ wherever somebody's second unit is this one. That one counts who is
+   * CREDITED here and carries the money; this counts who is LISTED here.
+   */
+  readonly subordinateCount: number
+  /** Active members including the head. `subordinateCount` plus 0 or 1. */
+  readonly memberCount: number
+  /**
+   * Their names, so the chart's search box can find a person and not only a
+   * unit. Active only. See the CTE that builds it for why it rides the tree.
+   */
+  readonly memberNames: readonly string[]
+  /** Direct child units. */
+  readonly childCount: number
+  /** The portal's own left-to-right order among siblings. */
+  readonly sortOrder: number
+  /** Does the reader's own account sit here? Drives the «Siz» badge. */
+  readonly isViewerDepartment: boolean
+  /** NULL for a reader who may not see the company's money. Never zero. */
+  readonly deals: number | null
+  readonly revenue: MoneyDto | null
   /**
    * Is this unit inside the active filial?
    *
@@ -866,6 +906,19 @@ export interface StructureDto {
    */
   readonly inScope: boolean
   readonly children: readonly StructureDto[]
+}
+
+/** One person on a unit's roster — `/insights/structure/roster`. */
+export interface DepartmentMemberDto {
+  readonly id: string
+  readonly fullName: string
+  readonly position: string | null
+  readonly isActive: boolean
+  /** False when this unit is the person's SECOND one; their money is credited elsewhere. */
+  readonly isPrimary: boolean
+  readonly isHead: boolean
+  readonly deals: number | null
+  readonly revenue: MoneyDto | null
 }
 
 // ---------------------------------------------------------------------------

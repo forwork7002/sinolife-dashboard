@@ -1,21 +1,41 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useState, type UIEvent } from 'react'
+import { useMemo } from 'react'
 
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { ChartCard } from '@/components/ui/Card'
-import { InitialChip } from '@/components/ui/DataTable'
+import { SegmentedControl } from '@/components/ui/Controls'
 import { RingGauge, StatTile } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
-import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
+import {
+  STRUCTURE_VIEWS,
+  type StructureView,
+  useDashboardFilters,
+} from '@/features/shared/useDashboardFilters'
 import { type StructureDto, apiGet } from '@/lib/api'
-import { NO_VALUE, formatCompactUzs, formatNumber } from '@/lib/format'
+import { NO_VALUE, formatNumber } from '@/lib/format'
 import { t } from '@/lib/messages'
+
+import { DepartmentPanel } from './DepartmentPanel'
+import { OrgChart } from './OrgChart'
+import { StructureTable } from './StructureTable'
 
 /**
  * The company as Bitrix24 records it.
+ *
+ * TWO READINGS OF ONE ANSWER. The default is the org chart the portal itself
+ * draws at `obey.bitrix24.kz/hr/structure/` — cards on a pannable canvas,
+ * joined by connectors, one row per level — because the question the floor
+ * brings to this page is «kim kimning qoʻlida ishlayapti», and a table of
+ * indented rows answers it badly. The table is still here behind the toggle:
+ * it is the only reading that shows every column at once, and the only one
+ * that prints.
+ *
+ * Both read the SAME request. The chart and the table are two renderings of
+ * one `/insights/structure` answer, so they cannot disagree about a figure and
+ * switching between them costs nothing.
  *
  * Figures roll up: a department shows itself plus everything beneath it, which
  * is what "how is Navoiy doing" means to the person asking. The unit's own
@@ -23,7 +43,7 @@ import { t } from '@/lib/messages'
  * reports is not mistaken for one running a team of forty.
  */
 export function StructurePage() {
-  const { apiParams } = useDashboardFilters()
+  const { filters, update, apiParams } = useDashboardFilters()
 
   const query = useQuery({
     queryKey: ['structure', apiParams],
@@ -33,15 +53,30 @@ export function StructurePage() {
 
   /** One derivation, so no tile can disagree with its own page. */
   const tileStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
-  const roots = query.data?.data ?? []
-  const flat = flatten(roots)
+  const roots = useMemo(() => query.data?.data ?? [], [query.data])
+  const flat = useMemo(() => flatten(roots), [roots])
+
   // All three now roll up in the service, so the roots carry inclusive totals.
   // Summing the FLATTENED list would double-count every parent.
   const totalPeople = roots.reduce((sum, r) => sum + r.headcount, 0)
   const activePeople = roots.reduce((sum, r) => sum + r.activeHeadcount, 0)
   const workingPeople = roots.reduce((sum, r) => sum + r.workingHeadcount, 0)
   const silentPeople = activePeople - workingPeople
-  const totalRevenue = roots.reduce((sum, r) => sum + r.revenue.amount, 0)
+
+  /*
+    Money is withheld, not zeroed, for a reader who may not see the company's.
+
+    The org chart is the one company-wide screen an OWN-scoped salesperson is
+    meant to open — that is what it was asked for. The server sends null rather
+    than 0 (see StructureDto) and the page drops the tile entirely: a «0 soʻm»
+    over a company that closed a billion is a lie, and a «—» with an
+    explanation still says the figure exists and is being kept from them.
+  */
+  const withMoney = roots.some((r) => r.revenue !== null)
+  const totalRevenue = roots.reduce((sum, r) => sum + (r.revenue?.amount ?? 0), 0)
+
+  const viewerDepartmentId = flat.find((n) => n.isViewerDepartment)?.id ?? null
+  const selected = filters.dep ? (flat.find((n) => n.id === filters.dep) ?? null) : null
 
   return (
     <PageShell
@@ -133,7 +168,7 @@ export function StructurePage() {
               {!query.isPending && (
                 <p className="mt-2 text-[11px] leading-snug" style={{ color: 'var(--ink-muted)' }}>
                   {activePeople > 0
-                    ? `Davr ichida kamida bitta qoʻngʻiroq yoki sotuv qilganlar · ${formatNumber(silentPeople)} nafari jim`
+                    ? `Davr ichida kamida bitta bitim yopganlar · ${formatNumber(silentPeople)} nafari jim`
                     : 'Faol xodimlar roʻyxati boʻsh — Bitrix24 strukturasi import qilinmagan'}
                 </p>
               )}
@@ -152,7 +187,7 @@ export function StructurePage() {
         rather than leaving a reader to click through the presets and wonder
         why only the third one changes.
       */}
-      <div className="stagger grid gap-3 sm:grid-cols-3">
+      <div className={`stagger grid gap-3 ${withMoney ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
         <StatTile
           status={tileStatus}
           label="Boʻlimlar"
@@ -167,18 +202,35 @@ export function StructurePage() {
           unit="count"
           hint="Hozirgi holat"
         />
-        <StatTile
-          status={tileStatus}
-          label="Tushum"
-          value={totalRevenue || null}
-          unit="money"
-          hint="Davr ichida yopilgan bitimlar"
-        />
+        {withMoney && (
+          <StatTile
+            status={tileStatus}
+            label="Tushum"
+            value={totalRevenue || null}
+            unit="money"
+            hint="Davr ichida yopilgan bitimlar"
+          />
+        )}
       </div>
 
       <ChartCard
         title="Tuzilma"
-        hint="Raqamlar boʻlimning oʻzi va uning ostidagi barcha boʻlimlar boʻyicha. «Oʻzida» ustuni — faqat toʻgʻridan-toʻgʻri biriktirilgan xodimlar."
+        hint={
+          filters.view === 'chart'
+            ? 'Bitrix24 kompaniya strukturasi. Xodim soni — faqat shu boʻlimniki, pul — shu boʻlim va uning ostidagi barcha boʻlimlar boʻyicha. Kartani bosing — boʻlim xodimlari ochiladi. Fonni sudrab suring, Ctrl bilan gʻildirak — masshtab.'
+            : 'Raqamlar boʻlimning oʻzi va uning ostidagi barcha boʻlimlar boʻyicha. «Boʻysunuvchi» — Bitrix24 shu boʻlimda koʻrsatgan faol xodimlar, rahbarsiz; «Oʻzida» — faqat toʻgʻridan-toʻgʻri biriktirilganlar.'
+        }
+        action={
+          <SegmentedControl<StructureView>
+            value={filters.view}
+            options={STRUCTURE_VIEWS.map((view) => ({
+              value: view,
+              label: view === 'chart' ? 'Chizma' : 'Roʻyxat',
+            }))}
+            onChange={(view) => update({ view })}
+            ariaLabel="Koʻrinish"
+          />
+        }
       >
         {query.isPending && <ChartSkeleton height={280} />}
         {query.isError && (
@@ -196,7 +248,31 @@ export function StructurePage() {
             body="Bitrix24 kompaniya strukturasi import qilinmagan."
           />
         )}
-        {roots.length > 0 && <Tree nodes={roots} />}
+
+        {roots.length > 0 &&
+          (filters.view === 'chart' ? (
+            <OrgChart
+              roots={roots}
+              selectedId={selected?.id ?? null}
+              onSelect={(id) => update({ dep: id ?? undefined })}
+              viewerDepartmentId={viewerDepartmentId}
+              panel={
+                selected && (
+                  <DepartmentPanel
+                    // Keyed by department, so switching cards remounts the
+                    // panel rather than showing the previous unit's roster
+                    // under the new unit's name while the request is in flight.
+                    key={selected.id}
+                    node={selected}
+                    apiParams={apiParams}
+                    onClose={() => update({ dep: undefined })}
+                  />
+                )
+              }
+            />
+          ) : (
+            <StructureTable nodes={roots} />
+          ))}
       </ChartCard>
     </PageShell>
   )
@@ -204,213 +280,4 @@ export function StructurePage() {
 
 function flatten(nodes: readonly StructureDto[]): StructureDto[] {
   return nodes.flatMap((node) => [node, ...flatten(node.children)])
-}
-
-function Tree({ nodes }: { readonly nodes: readonly StructureDto[] }) {
-  const siblingMax = Math.max(1, ...nodes.map((n) => n.revenue.amount))
-
-  /*
-    Same contract as DataTable's sticky header, hand-rolled because this
-    table is: the hairline under a resting header belongs to the first row
-    and scrolls away with it; `.is-scrolled` puts one back as a shadow so
-    the header reads as floating — which is what it is then actually doing.
-  */
-  const [scrolled, setScrolled] = useState(false)
-
-  const onScroll = (event: UIEvent<HTMLDivElement>) => {
-    const isScrolled = event.currentTarget.scrollTop > 0
-    if (isScrolled !== scrolled) setScrolled(isScrolled)
-  }
-
-  return (
-    /*
-      Bounded, so the sticky header has something to stick to: a fully open
-      tree runs past twenty departments, and without the cap the column names
-      leave the screen exactly when the reader is deepest in the branches.
-      Short trees never reach the cap and behave as before.
-    */
-    <div className="relative overflow-x-auto" style={{ maxHeight: 560, overflowY: 'auto' }} onScroll={onScroll}>
-      <table className="w-full text-sm" style={{ minWidth: 760 }}>
-        <thead>
-          <tr>
-            {['Boʻlim', 'Rahbar', 'Xodim', 'Ishlagan', 'Oʻzida', 'Sotuv', 'Tushum', ''].map((header, i) => (
-              <th
-                key={header || i}
-                scope="col"
-                /* `.thead-sticky` on the CELLS, not the row — sticky <tr>
-                   rendering is still uneven across engines, while cells pin
-                   everywhere and their contiguous sunken backgrounds read as
-                   one opaque band the rows slide under. */
-                className={`thead-sticky ${scrolled ? 'is-scrolled' : ''} px-3 py-2 text-[11px] font-medium ${i >= 2 && i <= 5 ? 'text-right' : 'text-left'}`}
-                style={{ color: 'var(--ink-muted)', borderBottom: '1px solid var(--border)' }}
-              >
-                {header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-rows">
-          {nodes.map((node) => (
-            <Branch key={node.id} node={node} siblingMax={siblingMax} />
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-/**
- * One unit and its children.
- *
- * `siblingMax` is the largest revenue among THIS node's siblings, so the bar
- * answers "how does this unit compare with the ones beside it" — the question
- * a reader of a tree is asking. Normalised to the company total instead, the
- * root was always full and every leaf a sliver.
- */
-function Branch({ node, siblingMax }: { node: StructureDto; siblingMax: number }) {
-  /** The children compare against each other, not against their parent. */
-  const childMax = Math.max(1, ...node.children.map((c) => c.revenue.amount))
-  // Roots start open; deeper branches start closed, so the first paint is the
-  // shape of the company rather than a wall of every team at once.
-  /**
-   * Open by default down to depth 2.
-   *
-   * At `depth < 1` the tree showed 5 of 20 departments on first paint and left
-   * roughly 430px of the card empty — a page that renders a quarter of its own
-   * content and looks finished. Two levels is the whole company here.
-   */
-  const [open, setOpen] = useState(node.depth < 2)
-  const hasChildren = node.children.length > 0
-
-  return (
-    <>
-      {/* The same reading hover DataTable rows carry — this table is
-          hand-rolled, and a row read across ten columns needs the wash under
-          the cursor just as much. */}
-      <tr className="transition-colors hover:bg-[var(--surface-sunken)]">
-        {/* The department name is what a screen reader announces the row BY. */}
-        <th
-          scope="row"
-          className="px-3 py-1.5 text-left font-normal"
-          style={{ paddingLeft: 12 + node.depth * 18 }}
-        >
-          <div className="flex items-center gap-1.5">
-            {hasChildren ? (
-              <button
-                type="button"
-                onClick={() => setOpen((v) => !v)}
-                aria-expanded={open}
-                aria-label={open ? 'Yopish' : 'Ochish'}
-                className="focusable flex h-4 w-4 shrink-0 items-center justify-center rounded"
-                style={{ color: 'var(--ink-muted)' }}
-              >
-                <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true">
-                  <path
-                    d={open ? 'M2 4.5l4 4 4-4' : 'M4.5 2l4 4-4 4'}
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-            ) : (
-              <span className="w-4 shrink-0" aria-hidden="true" />
-            )}
-            <span
-              className="truncate font-medium"
-              style={{
-                color: node.depth === 0 ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-                fontSize: node.depth === 0 ? 13 : 12.5,
-              }}
-            >
-              {node.name}
-            </span>
-          </div>
-        </th>
-        <td className="px-3 py-1.5 text-xs" style={{ color: 'var(--ink-secondary)' }}>
-          {node.headName ? (
-            /* The chip anchors the eye the way an avatar would; it is
-               aria-hidden inside InitialChip because it only repeats the
-               first letter of the name printed right beside it. The name
-               truncates rather than wrapping under the chip — a long Uzbek
-               full name must survive the column, not reshape it. */
-            <span className="flex items-center gap-2">
-              <InitialChip name={node.headName} />
-              <span className="truncate">{node.headName}</span>
-            </span>
-          ) : (
-            <span style={{ color: 'var(--ink-muted)' }}>—</span>
-          )}
-        </td>
-        <td
-          className="tabular px-3 py-1.5 text-right text-xs"
-          style={{ color: 'var(--ink-primary)' }}
-          title={`${formatNumber(node.activeHeadcount)} faol · ${formatNumber(
-            node.headcount - node.activeHeadcount,
-          )} oʻchirilgan`}
-        >
-          {/* Active of total. A branch reading "109" was counting 34 people
-              Bitrix24 had already deactivated. */}
-          {formatNumber(node.activeHeadcount)}
-          <span style={{ color: 'var(--ink-muted)' }}> / {formatNumber(node.headcount)}</span>
-        </td>
-        <td
-          className="tabular px-3 py-1.5 text-right text-xs"
-          style={{
-            color:
-              node.activeHeadcount > 0 && node.workingHeadcount === 0
-                ? 'var(--status-critical)'
-                : 'var(--ink-secondary)',
-          }}
-          title="Davr ichida kamida bitta qoʻngʻiroq yoki sotuv qilganlar"
-        >
-          {formatNumber(node.workingHeadcount)}
-        </td>
-        <td className="tabular px-3 py-1.5 text-right text-xs" style={{ color: 'var(--ink-muted)' }}>
-          {formatNumber(node.ownHeadcount)}
-        </td>
-        <td className="tabular px-3 py-1.5 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
-          {formatNumber(node.deals)}
-        </td>
-        <td className="tabular px-3 py-1.5 text-right text-xs font-medium" style={{ color: 'var(--ink-primary)' }}>
-          {node.revenue.amount === 0 ? (
-            <span style={{ color: 'var(--ink-muted)' }}>—</span>
-          ) : (
-            formatCompactUzs(node.revenue.amount)
-          )}
-        </td>
-        <td className="px-3 py-1.5" style={{ width: 120 }}>
-          {/* Share of the company total, so branches compare at a glance
-              without the reader converting nine-digit figures in their head. */}
-          <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ background: 'var(--track)' }}>
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${Math.min(100, (node.revenue.amount / siblingMax) * 100)}%`,
-                /*
-                  Sequential, and normalised to the SIBLING group.
-                  
-                  Against the company total the root branch was always full and
-                  every leaf was a sliver — the bar carried no information at
-                  any depth but the first. Comparing a unit to its own siblings
-                  is the comparison a reader of a tree is actually making.
-                  
-                  One hue, because this is a single quantity. It used to be
-                  --series-8, a red the eye cannot separate from
-                  --status-critical.
-                */
-                background: 'var(--seq-450)',
-              }}
-            />
-          </div>
-        </td>
-      </tr>
-      {open &&
-        node.children.map((child) => (
-          <Branch key={child.id} node={child} siblingMax={childMax} />
-        ))}
-    </>
-  )
 }

@@ -2382,3 +2382,546 @@ p {
   color: var(--metal);
   letter-spacing: -0.02em;
 }
+
+/* ===========================================================================
+ * ORG CHART — the company structure, drawn the way the portal draws it
+ *
+ * `/structure` reproduces `obey.bitrix24.kz/hr/structure/`: cards on a
+ * pannable canvas, joined by orthogonal connectors, one row per level. The
+ * geometry is computed in `orgLayout.ts` and arrives as inline `left`/`top`,
+ * so everything here is surface, type and state — nothing in this block
+ * decides where a card goes.
+ *
+ * THE CANVAS IS TRANSFORMED, NOT SCROLLED. Pan and zoom are one `transform`
+ * on `.org-stage`, written straight to the node during a drag and committed to
+ * React state only on release: a 20-card chart re-rendered on every
+ * pointermove is 60 renders a second of work whose only output is a matrix
+ * the compositor could have applied on its own.
+ * ======================================================================== */
+
+.org-canvas {
+  position: relative;
+  overflow: hidden;
+  /* Its own containing block, so the absolutely-positioned stage and the
+     floating controls are clipped by the card rather than by the page — the
+     same rule the horizontal scrollers in this file already document. */
+  border-radius: var(--radius-panel);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  /*
+    pan-y, NOT none.
+
+    `none` is what a full-page canvas wants, and this one is a card in a
+    scrolling page: on a phone the canvas is 72vh, so a thumb that lands on it
+    is a thumb that lands on most of the screen, and `none` meant the page
+    simply would not scroll from there. Vertical belongs to the page,
+    horizontal to the chart — which is the axis a wide tree actually needs, and
+    «Sigʻdirish» and the zoom stepper cover the rest.
+  */
+  touch-action: pan-y;
+  cursor: grab;
+  /* Inside the canvas nothing is a text target; a drag that selects the whole
+     tree's worth of department names reads as a bug. The panel opts back in —
+     an operator reading a roster is there to copy a name out of it. */
+  user-select: none;
+}
+.org-canvas[data-panning='true'] {
+  cursor: grabbing;
+}
+
+/*
+  Taller on a phone, because the chart does not fit and the reader has to pan.
+
+  A 620px canvas on a 1920px display shows the whole company; the same 620px on
+  a 390px phone shows a card and a half, and every extra row of viewport is one
+  fewer drag. The page below it is two tiles and a hero, so nothing is buried.
+*/
+@media (max-width: 640px) {
+  .org-canvas {
+    height: 72vh !important;
+    min-height: 420px;
+  }
+}
+
+.org-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  /* Promoted once, up front. Without it the first pan of a session repaints
+     the whole tree while the compositor works out that it should not. */
+  will-change: transform;
+}
+
+/* The connectors live behind every card, in one SVG the size of the layout. */
+.org-links {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.org-link {
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+/* The path into the selected card, so the eye can walk back up to its parent.
+   Same idea as the arrowhead the source screen draws on that one connector. */
+.org-link[data-active='true'] {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+/* --- The card ------------------------------------------------------------ */
+
+.org-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  /* The box is fixed because the connectors are drawn against it, so anything
+     that would grow past it is clipped rather than allowed to spill over its
+     own border and under the card below. */
+  overflow: hidden;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel-sm);
+  box-shadow: var(--shadow-card), var(--edge-highlight);
+  transition:
+    border-color var(--duration-move) var(--ease-out),
+    box-shadow var(--duration-move) var(--ease-out),
+    opacity var(--duration-move) var(--ease-out);
+}
+.org-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-raised), var(--edge-highlight);
+}
+.org-card[data-selected] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow-float), var(--edge-highlight);
+}
+/*
+  THE FOCUS RING WINS, WHATEVER ELSE THE CARD IS DOING.
+
+  `.focusable:focus-visible` is one class and so are `.org-card:hover` and
+  `.org-card[data-selected]`, both of which set `box-shadow` and both of which
+  come later in this file — so a keyboard reader arrowing onto the selected
+  card, or onto any card under the pointer, lost the ring entirely. Two classes
+  and an attribute here, so it outranks all of them; the accent ring keeps the
+  house geometry from `.focusable`.
+*/
+.org-card.focusable:focus-visible,
+.org-card.focusable[data-selected]:focus-visible,
+.org-card.focusable:hover:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--accent);
+}
+/*
+  A search answer, and everything that is not one.
+
+  Dimmed rather than hidden: the tree is the point, and pulling nine cards out
+  of a row would re-lay the whole chart on every keystroke and move the answer
+  out from under the reader's eye. 0.32 still reads as a card, which is what
+  keeps the shape of the company visible around the match.
+*/
+.org-card[data-matched] {
+  border-color: var(--accent);
+}
+.org-card[data-dimmed] {
+  opacity: 0.32;
+}
+
+.org-card-hit {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 11px 8px;
+  text-align: left;
+  border-radius: var(--radius-panel-sm) var(--radius-panel-sm) 0 0;
+}
+
+.org-card-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink-primary);
+  /* One line, always. A two-line unit name would push the head row out of a
+     fixed-height card, and the height is fixed because the connectors are
+     drawn against it. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+  INSIDE the card, because the card clips.
+
+  This started as a tab hanging off the top edge, the way the source screen
+  draws «ВАШ ОТДЕЛ» — and `.org-card` has `overflow: hidden` so the connectors
+  cannot be crossed by a card's own contents, which sliced the badge in half:
+  seven of its thirteen pixels, including the top of the text, on the one card
+  the feature exists to point at. It rides the title line instead.
+*/
+.org-badge-you {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 14px;
+  letter-spacing: 0.04em;
+  color: var(--ink-on-series);
+  background: var(--accent);
+}
+
+/* The title line: the name takes the room, the badge keeps its own. */
+.org-card-titlerow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.org-card-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.org-card-head-empty {
+  font-size: 11px;
+  color: var(--ink-muted);
+  font-style: italic;
+}
+.org-card-head-name {
+  display: block;
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-card-head-role {
+  display: block;
+  font-size: 10px;
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.org-card-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--grid);
+  color: var(--ink-secondary);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.org-card-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+}
+.org-card-caption {
+  font-size: 10px;
+  color: var(--ink-muted);
+}
+.org-card-count {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  color: var(--ink-primary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums lining-nums;
+  white-space: nowrap;
+}
+
+.org-card-money {
+  font-size: 10.5px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.org-card-foot {
+  border-top: 1px solid var(--border);
+  padding: 0;
+}
+.org-card-foot-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 8px;
+  font-size: 10.5px;
+  color: var(--ink-secondary);
+  border-radius: 0 0 var(--radius-panel-sm) var(--radius-panel-sm);
+  transition: color var(--duration-move) var(--ease-out);
+}
+.org-card-foot-btn:hover {
+  color: var(--accent);
+}
+.org-card-foot-empty {
+  display: block;
+  padding: 6px 8px;
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--ink-muted);
+}
+
+/* --- The floating chrome ------------------------------------------------- */
+
+/*
+  Two clusters, both inside the canvas: the view controls at the top and the
+  zoom stepper at the bottom left, exactly where the source screen puts them.
+  `--shadow-float` and a blur, because they sit over a moving tree and a flat
+  panel would read as part of it.
+*/
+.org-float {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--surface-raised) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-float);
+}
+.org-float--top {
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  /* The row has to survive a phone: the search box gives up its width first
+     and the buttons keep theirs. */
+  flex-wrap: wrap;
+  border-radius: var(--radius-panel-sm);
+}
+.org-float--zoom {
+  bottom: 12px;
+  left: 12px;
+}
+.org-float-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+  transition:
+    background var(--duration-move) var(--ease-out),
+    color var(--duration-move) var(--ease-out);
+}
+.org-float-btn:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  color: var(--ink-primary);
+}
+.org-float-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.org-zoom-value {
+  min-width: 42px;
+  text-align: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--ink-secondary);
+}
+
+/*
+  Motion is a preference, and this file cannot ask.
+
+  Everything above transitions colour and opacity only, so honouring the
+  preference here is a blanket off-switch rather than a per-property argument.
+  The pan and zoom themselves are direct manipulation — a transform that
+  follows the pointer is not an animation and is deliberately not disabled.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .org-card,
+  .org-float-btn,
+  .org-card-foot-btn {
+    transition: none;
+  }
+}
+
+/* --- The department panel ------------------------------------------------ */
+
+/*
+  Docked over the canvas, not beside it.
+
+  Beside it, opening the panel would narrow the canvas, which changes the fit
+  and re-lays the chart under the reader's cursor at exactly the moment they
+  clicked something. Over it, the viewport never changes size and the card they
+  picked stays where they left it — which is also what the source screen does.
+*/
+.org-panel {
+  position: absolute;
+  /* Opts out of the canvas's `user-select: none`: the roster is the one thing
+     on this screen somebody copies out — a name to paste into a chat. */
+  user-select: text;
+  z-index: 3;
+  top: 60px;
+  right: 12px;
+  bottom: 12px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel-sm);
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+}
+
+/*
+  On a phone the panel is the screen.
+
+  320px of panel over a 390px canvas leaves 70px of chart, which is not a chart
+  — so below `sm` it takes the bottom two thirds and the reader closes it to get
+  back to the tree, the way a sheet works everywhere else on a phone.
+*/
+@media (max-width: 640px) {
+  .org-panel {
+    top: auto;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    max-height: 66%;
+  }
+  /*
+    The zoom stepper has to stay reachable UNDER the sheet.
+
+    At 390px the panel's rectangle contains the whole zoom cluster —
+    `elementFromPoint` on both the − and the + returns the panel — so a phone
+    reader who opened a unit lost the only way to change scale without closing
+    it again. It rides above the sheet instead; the sheet stops two thirds up
+    and the buttons are 28px, so nothing important is behind them.
+  */
+  .org-float--zoom {
+    z-index: 4;
+  }
+}
+
+.org-panel-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+.org-panel-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  color: var(--ink-muted);
+}
+.org-panel-close:hover {
+  color: var(--ink-primary);
+  background: var(--grid);
+}
+
+.org-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.org-panel-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.org-person {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 6px;
+  border-radius: 8px;
+}
+.org-person + .org-person {
+  border-top: 1px solid var(--border);
+}
+.org-person:hover {
+  background: var(--surface-sunken);
+}
+/* Dimmed, not hidden: the roster's total counts the active ones and the list
+   has to account for the difference. */
+.org-person[data-inactive] {
+  opacity: 0.55;
+}
+
+.org-tag {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 9.5px;
+  line-height: 15px;
+  white-space: nowrap;
+  background: var(--grid);
+  color: var(--ink-secondary);
+}
+.org-tag--head {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+.org-tag--off {
+  color: var(--ink-muted);
+}
+
+/*
+  FORCED COLOURS: the chart's state is carried by colour, and colour is what
+  forced-colours mode discards.
+
+  Windows high-contrast throws away box-shadow and replaces every colour with
+  a system one, so the selected card, the search match and the active connector
+  all became indistinguishable from the twenty around them. Borders and
+  `Highlight` survive; the same fallback the focus ring in this file already
+  uses for the same reason.
+*/
+@media (forced-colors: active) {
+  .org-card[data-selected],
+  .org-card[data-matched] {
+    border: 2px solid Highlight;
+  }
+  .org-card[data-dimmed] {
+    opacity: 1;
+    border-style: dashed;
+  }
+  .org-link[data-active='true'] {
+    stroke: Highlight;
+  }
+  .org-badge-you,
+  .org-tag--head {
+    border: 1px solid CanvasText;
+  }
+}

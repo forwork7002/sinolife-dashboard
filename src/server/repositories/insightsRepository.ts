@@ -591,18 +591,71 @@ export interface StructureNode {
   readonly name: string
   readonly parentId: string | null
   readonly headName: string | null
-  /** Everyone on the roster, active or not. */
+  /**
+   * The head's own employee id, and the two facts the card needs about them.
+   *
+   * `headIsMember` is not a detail. Bitrix24's own company-structure screen
+   * draws NO head row for a unit whose `UF_HEAD` names somebody who is not in
+   * it — «Навоий» is exactly that, headed by a person whose departments are
+   * «Kompaniya(ROP)» and «Тошкент онлайн» — and a card that printed the name
+   * anyway would put a manager in a unit the portal says they do not sit in.
+   */
+  readonly headId: string | null
+  readonly headPosition: string | null
+  readonly headIsMember: boolean
+  /** Everyone whose PRIMARY unit is this one, active or not. */
   readonly headcount: number
   /** Marked active in Bitrix24. */
   readonly activeHeadcount: number
   /**
-   * Active AND produced something this period — a call or a won deal.
+   * Active AND produced something this period — a won revenue deal.
    *
    * The difference between this and `activeHeadcount` is the answer to "who is
    * here and who is not": people the roster says are working and the data says
    * are silent.
    */
   readonly workingHeadcount: number
+  /**
+   * Active people the PORTAL lists in this unit — its own `UF_DEPARTMENT`
+   * membership, which is many-to-many. Larger than `activeHeadcount` wherever
+   * somebody's second unit is this one. See the DepartmentMember model.
+   */
+  readonly memberCount: number
+  /**
+   * Those people's names, for the chart's own search box.
+   *
+   * Active only, and shipped with the tree rather than fetched per keystroke —
+   * the whole roster is a few kilobytes and the payload is already on the wire.
+   */
+  readonly memberNames: readonly string[]
+  /**
+   * `memberCount` minus the head, when the head is one of them. This is the
+   * figure the portal's card prints as «N сотрудников» under «Подчинённые»,
+   * and the one the floor will hold this screen up against.
+   */
+  readonly subordinateCount: number
+  /**
+   * Active people in this unit's whole subtree, minus this unit's own head —
+   * what the portal prints in the pill beside the head's name. DISTINCT, so a
+   * person who sits in two units of the same branch is one person.
+   */
+  readonly headManagesCount: number
+  /** Direct child units. The card's footer prints this or says there are none. */
+  readonly childCount: number
+  readonly sortOrder: number
+  readonly deals: number
+  readonly revenueMinor: bigint
+}
+
+/** One person on a department's roster, for the side panel. */
+export interface DepartmentMemberRow {
+  readonly id: string
+  readonly fullName: string
+  readonly position: string | null
+  readonly isActive: boolean
+  /** False when this unit is their SECOND department. */
+  readonly isPrimary: boolean
+  readonly isHead: boolean
   readonly deals: number
   readonly revenueMinor: bigint
 }
@@ -3655,21 +3708,18 @@ export class InsightsRepository {
     }
   }
 
-  async structure(period: Period): Promise<StructureNode[]> {
-    const rows = await this.prisma.$queryRawUnsafe<
-      {
-        id: string
-        name: string
-        parent_id: string | null
-        head_name: string | null
-        headcount: bigint
-        active_headcount: bigint
-        working_headcount: bigint
-        deals: bigint
-        revenue: MoneyText
-      }[]
-    >(
-      `
+  /**
+   * The org chart, as ONE statement.
+   *
+   * Extracted into a builder for the same reason `queueSql` is: this SQL
+   * decides figures a floor manager will hold against the portal's own
+   * screen, and the only way to pin them without a database is to assert on
+   * the built string. See tests/http/structureSql.test.ts.
+   *
+   * $1 and $2 are the reporting window.
+   */
+  private static structureSql(): string {
+    return `
       /*
         Two independent aggregates joined on the department, NOT one query with
         both a per-employee LATERAL and a deal join.
@@ -3691,7 +3741,7 @@ export class InsightsRepository {
         on employee instead, it is 289 index-only probes that stop at the
         first hit. Measured: 800-1 800 ms against 93-158 ms, same 146 ids.
       */
-      WITH active AS (
+      WITH RECURSIVE active AS (
         SELECT e."id" AS id
           FROM "employee" e
          WHERE EXISTS (
@@ -3705,6 +3755,104 @@ export class InsightsRepository {
                     AND d."countsAsRevenue" AND d."status" = 'WON'
                     AND d."closedAt" >= $1 AND d."closedAt" < $2
                )
+      ),
+      /*
+        Every (ancestor, descendant) pair, so a unit's subtree is one join away.
+
+        RECURSIVE is declared on the whole WITH list — Postgres allows the
+        non-recursive members beside it — because the head pill on each card
+        counts people across the WHOLE branch beneath the unit, which no
+        aggregate over one department can answer.
+
+        A depth cap of 16 is not a limit on the company, it is a cycle guard: this
+        tree comes from a portal over the wire, parentId is a nullable
+        self-reference with no constraint forbidding a loop, and a loop here is
+        not a wrong number but a statement that never returns and a page that
+        never loads. The real tree is three deep and the deepest this schema has
+        ever held is three.
+      */
+      walk AS (
+        SELECT d."id" AS root, d."id" AS node, 0 AS depth
+          FROM "department" d
+        UNION ALL
+        SELECT w.root, c."id", w.depth + 1
+          FROM walk w
+          JOIN "department" c ON c."parentId" = w.node
+         WHERE w.depth < 16
+      ),
+      /*
+        WHO THE PORTAL LISTS HERE — not who is credited here.
+
+        The people CTE below counts the PRIMARY unit, which is what every analytic on
+        this dashboard is built on. This counts membership, which is what the
+        portal's own screen prints: nine of its 208 active people sit in two
+        units and it counts each of them twice, once per card. Reading only the
+        primary left five of twenty cards short by one or two.
+      */
+      members AS (
+        SELECT
+          m."departmentId" AS dep_id,
+          count(*) FILTER (WHERE e."isActive")::bigint AS member_count,
+          /*
+            THE HEAD IS SUBTRACTED ONLY IF THE HEAD WAS COUNTED.
+
+            member_count is the ACTIVE members, so a head Bitrix24 has since
+            deactivated is not among them — and taking one off anyway printed a
+            unit of five active people as having four subordinates, one short of
+            the portal and one short of its own roster panel. Counted here, in
+            the same pass and under the same isActive filter, so the two can
+            never be computed under different rules again.
+          */
+          count(*) FILTER (WHERE e."isActive" AND m."employeeId" = d."headId")::bigint
+            AS head_counted,
+          /*
+            THE NAMES TRAVEL WITH THE TREE SO THE CHART CAN BE SEARCHED BY THEM.
+
+            This screen exists so the floor can answer "who works under whom",
+            and the first thing somebody types into it is a person's name — but
+            the chart only knew department and head names, so a seller looking
+            for themself got «topilmadi» over a dimmed company while their own
+            row sat two clicks away in a panel. Roughly 290 names across the
+            whole tree, a few kilobytes on a payload the page already fetches,
+            against a second round trip per keystroke. Active only: a search
+            that surfaced a card because somebody who left in March is still on
+            its roster is a wrong answer, not a generous one.
+          */
+          array_remove(
+            array_agg(e."fullName" ORDER BY e."fullName") FILTER (WHERE e."isActive"),
+            NULL
+          ) AS member_names
+        FROM "department_member" m
+        JOIN "employee" e ON e."id" = m."employeeId"
+        JOIN "department" d ON d."id" = m."departmentId"
+        GROUP BY m."departmentId"
+      ),
+      /*
+        DISTINCT, because the subtree is where a two-unit person shows up twice.
+
+        Somebody in both «Регистрация» and «Azizbek(ROP)» is one person under
+        NEWGEN, and summing the per-unit counts up the tree would make them two.
+        The head themself is excluded here rather than subtracted afterwards,
+        because whether they are inside their own subtree depends on which unit
+        they actually sit in — the portal's «Навоий» is headed from outside.
+      */
+      subtree AS (
+        SELECT
+          w.root AS dep_id,
+          count(DISTINCT m."employeeId") FILTER (
+            WHERE e."isActive" AND (r."headId" IS NULL OR m."employeeId" <> r."headId")
+          )::bigint AS head_manages_count
+        FROM walk w
+        JOIN "department" r ON r."id" = w.root
+        JOIN "department_member" m ON m."departmentId" = w.node
+        JOIN "employee" e ON e."id" = m."employeeId"
+        GROUP BY w.root
+      ),
+      kids AS (
+        SELECT c."parentId" AS dep_id, count(*)::bigint AS child_count
+          FROM "department" c
+         WHERE c."parentId" IS NOT NULL
+         GROUP BY c."parentId"
       ),
       people AS (
         SELECT
@@ -3746,18 +3894,83 @@ export class InsightsRepository {
         dep."id",
         dep."name",
         dep."parentId" AS parent_id,
+        dep."headId" AS head_id,
         head."fullName" AS head_name,
+        head."position" AS head_position,
+        /*
+          The head is only a head HERE if the portal also lists them here.
+          «Навоий» names a head whose own units are two others, and the portal's
+          card prints no head row at all rather than claiming they sit there.
+
+          Deliberately NOT filtered on isActive, unlike the arithmetic above:
+          this decides whether to DRAW the head row, and a unit whose head
+          Bitrix24 has deactivated still has that person as its head on the
+          portal. Saying «Rahbar tayinlanmagan» over a named UF_HEAD would be a
+          different claim from the one the source screen makes. The count is
+          what must not double-think it, and that now lives in the members CTE.
+        */
+        EXISTS (
+          SELECT 1 FROM "department_member" hm
+           WHERE hm."departmentId" = dep."id" AND hm."employeeId" = dep."headId"
+        ) AS head_is_member,
         COALESCE(p.headcount, 0)::bigint AS headcount,
         COALESCE(p.active_headcount, 0)::bigint AS active_headcount,
         COALESCE(p.working_headcount, 0)::bigint AS working_headcount,
+        COALESCE(m.member_count, 0)::bigint AS member_count,
+        COALESCE(m.member_names, ARRAY[]::text[]) AS member_names,
+        -- «Подчинённые: N сотрудников» on the portal's own card: its active
+        -- members, minus the head when the head is one of them. GREATEST is a
+        -- belt: the two counts come from one pass, so it can no longer go
+        -- negative, and a future edit that separates them again would.
+        GREATEST(COALESCE(m.member_count, 0) - COALESCE(m.head_counted, 0), 0)::bigint
+          AS subordinate_count,
+        COALESCE(t.head_manages_count, 0)::bigint AS head_manages_count,
+        COALESCE(k.child_count, 0)::bigint AS child_count,
+        dep."sortOrder" AS sort_order,
         COALESCE(s.deals, 0)::bigint AS deals,
         s.revenue AS revenue
       FROM "department" dep
       LEFT JOIN "employee" head ON head."id" = dep."headId"
       LEFT JOIN people p ON p.dep_id = dep."id"
       LEFT JOIN sales s ON s.dep_id = dep."id"
+      LEFT JOIN members m ON m.dep_id = dep."id"
+      LEFT JOIN subtree t ON t.dep_id = dep."id"
+      LEFT JOIN kids k ON k.dep_id = dep."id"
+      /*
+        Sibling order is the PORTAL's, not alphabetical.
+
+        sortOrder is what the person who arranged the org chart in Bitrix24
+        decided, and the screen this reproduces is read left to right in that
+        order. The name only breaks a tie, so two units sharing a sort value still
+        land in a stable order rather than swapping between requests.
+      */
       ORDER BY dep."sortOrder", dep."name"
-      `,
+    `
+  }
+  async structure(period: Period): Promise<StructureNode[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        id: string
+        name: string
+        parent_id: string | null
+        head_id: string | null
+        head_name: string | null
+        head_position: string | null
+        head_is_member: boolean
+        headcount: bigint
+        active_headcount: bigint
+        working_headcount: bigint
+        member_count: bigint
+        member_names: string[]
+        subordinate_count: bigint
+        head_manages_count: bigint
+        child_count: bigint
+        sort_order: number
+        deals: bigint
+        revenue: MoneyText
+      }[]
+    >(
+      InsightsRepository.structureSql(),
       period.start,
       period.end,
     )
@@ -3766,10 +3979,121 @@ export class InsightsRepository {
       id: r.id,
       name: r.name,
       parentId: r.parent_id,
+      headId: r.head_id,
       headName: r.head_name,
+      headPosition: r.head_position,
+      headIsMember: r.head_is_member,
       headcount: int(r.headcount),
       activeHeadcount: int(r.active_headcount),
       workingHeadcount: int(r.working_headcount),
+      memberCount: int(r.member_count),
+      memberNames: r.member_names ?? [],
+      subordinateCount: int(r.subordinate_count),
+      headManagesCount: int(r.head_manages_count),
+      childCount: int(r.child_count),
+      sortOrder: Number(r.sort_order),
+      deals: int(r.deals),
+      revenueMinor: money(r.revenue),
+    }))
+  }
+
+  /**
+   * Which units the portal lists this person in.
+   *
+   * A LIST, because membership is many-to-many: the account reading the org
+   * chart can sit in two units, and badging only the first would send «Meni
+   * topish» to the wrong side of a tree the reader is trying to find themself
+   * in. Prisma rather than raw SQL — it is one indexed lookup on the primary
+   * key's second column and there is no aggregate to get wrong.
+   */
+  async departmentsOfEmployee(employeeId: string): Promise<string[]> {
+    const rows = await this.prisma.departmentMember.findMany({
+      where: { employeeId },
+      select: { departmentId: true },
+    })
+    return rows.map((r) => r.departmentId)
+  }
+
+  /**
+   * One unit's roster, for the panel that opens beside the chart.
+   *
+   * Membership, not primary unit: the panel answers "who does the portal list
+   * here", which is the same question the card's count answers, and the two may
+   * never disagree on the same screen. `isPrimary` marks the people whose
+   * numbers are credited here so a reader can tell a borrowed operator from an
+   * owned one.
+   *
+   * Money is the person's own, on the same window and the same basis as every
+   * other figure on this page — closed revenue, credited by `employeeId`. A
+   * person listed in their SECOND unit still shows their own money, because it
+   * is theirs; it is simply not counted into this unit's total, which is what
+   * `isPrimary` is there to explain.
+   *
+   * Inactive people are returned and marked rather than dropped: a unit reading
+   * «13 xodim» over a list of nine is the kind of gap that costs an afternoon,
+   * and the count above them is of the ACTIVE ones.
+   */
+  async departmentRoster(departmentId: string, period: Period): Promise<DepartmentMemberRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        id: string
+        full_name: string
+        position: string | null
+        is_active: boolean
+        is_primary: boolean
+        is_head: boolean
+        deals: bigint
+        revenue: MoneyText
+      }[]
+    >(
+      `
+      SELECT
+        e."id",
+        e."fullName" AS full_name,
+        e."position",
+        e."isActive" AS is_active,
+        m."isPrimary" AS is_primary,
+        (dep."headId" = e."id") AS is_head,
+        COALESCE(s.deals, 0)::bigint AS deals,
+        s.revenue AS revenue
+      FROM "department_member" m
+      JOIN "employee" e ON e."id" = m."employeeId"
+      JOIN "department" dep ON dep."id" = m."departmentId"
+      /*
+        LATERAL rather than a join on "deal".
+
+        Joining the deal table here multiplies the roster row by that person's
+        deal count and every column beside it has to be de-duplicated back out.
+        The subquery runs once per person — a unit holds at most eighteen — and
+        rides deal_countsAsRevenue_status_closedAt_idx with its leading columns
+        bound, which is the same shape the structure() query was rewritten into
+        when its earlier fan-out took 52 seconds.
+      */
+      LEFT JOIN LATERAL (
+        SELECT count(*)::bigint AS deals, sum(d."amountMinor")::text AS revenue
+          FROM "deal" d
+         WHERE d."countsAsRevenue" AND d."status" = 'WON'
+           AND d."closedAt" >= $2 AND d."closedAt" < $3
+           AND d."employeeId" = e."id"
+      ) s ON true
+      WHERE m."departmentId" = $1
+      -- The head first, then everyone still here, then the deactivated. A
+      -- roster sorted by name alone buries the one person the reader opened
+      -- the panel to find.
+      ORDER BY (dep."headId" = e."id") DESC, e."isActive" DESC, e."fullName"
+      `,
+      departmentId,
+      period.start,
+      period.end,
+    )
+
+    return rows.map((r) => ({
+      id: r.id,
+      fullName: r.full_name,
+      position: r.position,
+      isActive: r.is_active,
+      isPrimary: r.is_primary,
+      isHead: r.is_head,
       deals: int(r.deals),
       revenueMinor: money(r.revenue),
     }))
