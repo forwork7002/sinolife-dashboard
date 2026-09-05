@@ -519,6 +519,9 @@ model Department {
   children  Department[] @relation("DepartmentTree")
   head      Employee?    @relation("DepartmentHead", fields: [headId], references: [id], onDelete: SetNull)
   employees Employee[]
+  /// Everyone the portal lists in this unit, including people whose PRIMARY
+  /// unit is another one. See DepartmentMember.
+  members   DepartmentMember[]
 
   @@unique([externalSource, externalId])
   @@index([isActive])
@@ -550,12 +553,46 @@ model Employee {
   kpis       Kpi[]
   calls      CallRecord[]
   heads      Department[] @relation("DepartmentHead")
+  /// Every unit this person belongs to. `departmentId` above is only the first
+  /// of them. See DepartmentMember.
+  memberships DepartmentMember[]
 
   @@unique([externalSource, externalId])
   @@index([departmentId])
   @@index([isActive])
   @@index([fullName])
   @@map("employee")
+}
+
+/// Which units a person belongs to — all of them.
+///
+/// `UF_DEPARTMENT` is an ARRAY in Bitrix24, and the portal's own org chart
+/// counts a person once in EVERY unit it names. Nine of this portal's 208
+/// active people sit in two units at once, so reading only the first entry
+/// under-counted five of the twenty cards by one or two against the screen
+/// they are meant to reproduce: Тошкент онлайн 0 against 1, Asliddin(ROP) 8
+/// against 10, Azizbek(ROP) 14 against 16, Saidaziz(ROP) 14 against 15,
+/// Sevinchxon(ROP) 8 against 10.
+///
+/// `Employee.departmentId` STAYS the primary membership and keeps its meaning:
+/// every analytic on this dashboard credits a person to exactly one unit, and
+/// rolling a two-unit person up both branches would count their headcount, and
+/// their money, twice. This table answers the other question — "who does the
+/// portal list here" — and nothing but the org chart reads it.
+model DepartmentMember {
+  departmentId String
+  employeeId   String
+  /// True for the first entry of UF_DEPARTMENT — the one `Employee.departmentId`
+  /// also points at. Kept so the two representations can be reconciled without
+  /// re-reading the portal.
+  isPrimary    Boolean @default(false)
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  employee   Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@id([departmentId, employeeId])
+  @@index([employeeId])
+  @@map("department_member")
 }
 
 // ---------------------------------------------------------------------------

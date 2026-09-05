@@ -322,6 +322,68 @@ export function createSyncHandlers(
 
       resolver.invalidate('employee')
 
+      /*
+        MEMBERSHIP IS MANY-TO-MANY, AND ONLY THE ORG CHART READS IT.
+
+        `departmentId` above is the person's PRIMARY unit and is what every
+        analytic credits them to — rolling a two-unit person up both branches
+        would count their headcount and their money twice. But Bitrix24's
+        `UF_DEPARTMENT` is an array and its own company-structure screen counts
+        a person once in each entry, so the screen we reproduce needs the full
+        set. Nine of this portal's 208 active people have two.
+
+        Replace rather than merge: a person moved out of a unit has no record
+        left saying so, so anything not in this pass's list is gone. Scoped to
+        the batch's own employees, which on an incremental run is the handful
+        that changed.
+      */
+      const employeeMap = await resolver.map('employee')
+      const departmentMap = await resolver.map('department')
+
+      const memberships: { departmentId: string; employeeId: string; isPrimary: boolean }[] = []
+      const touched: string[] = []
+
+      for (const record of batch) {
+        const employeeId = employeeMap.get(record.externalId)
+        if (!employeeId) continue
+        touched.push(employeeId)
+
+        // A provider with no multi-unit concept says so by leaving the array
+        // undefined; its single unit is the same answer, not a lesser one.
+        const externalIds =
+          record.departmentExternalIds ??
+          (record.departmentExternalId ? [record.departmentExternalId] : [])
+
+        const seen = new Set<string>()
+        for (const [index, externalId] of externalIds.entries()) {
+          const departmentId = departmentMap.get(externalId)
+          // A unit we never imported is dropped rather than guessed at. The FK
+          // would refuse the row anyway, and refusing it takes the whole
+          // multi-row insert with it.
+          if (!departmentId || seen.has(departmentId)) continue
+          seen.add(departmentId)
+          memberships.push({ departmentId, employeeId, isPrimary: index === 0 })
+        }
+      }
+
+      /*
+        ONE TRANSACTION, because the delete is the whole table.
+
+        `fetchEmployees` returns every user in a single page, so `touched` is
+        the entire roster and the delete empties `department_member` before the
+        insert puts it back. Run as two statements that is a 20-150 ms window —
+        measured at 1.6 ms + 15.5 ms locally on 298 rows, plus round trips —
+        during which every card on the org chart reads zero members, once every
+        thirty worker ticks and again on every restart and redeploy. Nothing
+        errors and nothing logs it; a reader simply catches the screen mid-blink.
+      */
+      if (touched.length > 0 || memberships.length > 0) {
+        await prisma.$transaction([
+          prisma.departmentMember.deleteMany({ where: { employeeId: { in: touched } } }),
+          prisma.departmentMember.createMany({ data: memberships, skipDuplicates: true }),
+        ])
+      }
+
       // Drain the department heads parked during the department pass. Both
       // sides exist now, so every link that can resolve, resolves.
       for (const [departmentExternalId, headExternalId] of pendingHeads) {

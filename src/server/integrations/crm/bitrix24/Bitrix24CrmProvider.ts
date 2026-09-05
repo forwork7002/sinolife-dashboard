@@ -606,18 +606,33 @@ export class Bitrix24CrmProvider implements CrmProvider {
     }>('user.get', {}, 'employees')
 
     return this.page(
-      rows.map((u) => ({
-        externalId: String(u.ID),
-        fullName:
-          [u.LAST_NAME, u.NAME, u.SECOND_NAME].filter(Boolean).join(' ').trim() || `User ${u.ID}`,
-        email: u.EMAIL || undefined,
-        phone: u.PERSONAL_MOBILE || u.WORK_PHONE || undefined,
-        position: u.WORK_POSITION || undefined,
-        departmentExternalId: u.UF_DEPARTMENT?.[0] ? String(u.UF_DEPARTMENT[0]) : undefined,
-        avatarUrl: u.PERSONAL_PHOTO || undefined,
-        hiredAt: toDate(u.DATE_REGISTER),
-        isActive: u.ACTIVE !== false,
-      })),
+      rows.map((u) => {
+        /*
+          UF_DEPARTMENT IS AN ARRAY, AND THE PORTAL'S OWN ORG CHART READS ALL OF IT.
+
+          Nine of this portal's 208 active people sit in two units at once — a
+          registrar who also works a sales floor, the owner who heads one team and
+          sits in another. `hr/structure` counts each of them once in EVERY unit,
+          so keeping only `[0]` left five of its twenty cards short by one or two.
+          The first entry stays the primary: it is what every analytic credits the
+          person to, and crediting two units would double their money.
+        */
+        const departments = (u.UF_DEPARTMENT ?? []).map(String).filter((id) => id.length > 0)
+
+        return {
+          externalId: String(u.ID),
+          fullName:
+            [u.LAST_NAME, u.NAME, u.SECOND_NAME].filter(Boolean).join(' ').trim() || `User ${u.ID}`,
+          email: u.EMAIL || undefined,
+          phone: u.PERSONAL_MOBILE || u.WORK_PHONE || undefined,
+          position: u.WORK_POSITION || undefined,
+          departmentExternalId: departments[0],
+          departmentExternalIds: departments,
+          avatarUrl: u.PERSONAL_PHOTO || undefined,
+          hiredAt: toDate(u.DATE_REGISTER),
+          isActive: u.ACTIVE !== false,
+        }
+      }),
     )
   }
 

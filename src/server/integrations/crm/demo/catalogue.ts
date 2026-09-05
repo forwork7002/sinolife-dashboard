@@ -35,12 +35,68 @@ export function feminineSurname(surname: string): string {
   return `${surname}a`
 }
 
+/**
+ * The demo company tree — a TREE, with a root and three levels.
+ *
+ * It used to be four sibling departments with no parent and no head, which made
+ * the company-structure screen render four disconnected cards and read as a
+ * broken page rather than as a small company. Production's tree is
+ * NEWGEN → region → (ROP) team, three deep with up to nine siblings on the
+ * bottom row, so the demo models the same shape at a size a reader can hold:
+ * one root, two branches, four teams.
+ *
+ * `sortOrder` is spaced by 100 for the same reason Bitrix24 spaces it by 200 —
+ * a unit can be slotted between two others without renumbering the row.
+ */
 export const DEPARTMENTS = [
-  { externalId: 'dep-1', name: 'Savdo boʻlimi' }, // Sales
-  { externalId: 'dep-2', name: 'Korporativ savdo' }, // Corporate sales
-  { externalId: 'dep-3', name: 'Mintaqaviy savdo' }, // Regional sales
-  { externalId: 'dep-4', name: 'Onlayn savdo' }, // Online sales
+  { externalId: 'dep-0', name: 'SinoLife', parentExternalId: undefined, sortOrder: 100 },
+  { externalId: 'dep-1', name: 'Savdo boʻlimi', parentExternalId: 'dep-0', sortOrder: 100 }, // Sales
+  { externalId: 'dep-2', name: 'Korporativ savdo', parentExternalId: 'dep-1', sortOrder: 100 }, // Corporate
+  { externalId: 'dep-3', name: 'Mintaqaviy savdo', parentExternalId: 'dep-1', sortOrder: 200 }, // Regional
+  { externalId: 'dep-4', name: 'Onlayn savdo', parentExternalId: 'dep-0', sortOrder: 200 }, // Online
+  { externalId: 'dep-5', name: 'Marketing', parentExternalId: 'dep-0', sortOrder: 300 },
+  { externalId: 'dep-6', name: 'Logistika', parentExternalId: 'dep-0', sortOrder: 400 },
 ] as const
+
+/**
+ * Which units actually take salespeople.
+ *
+ * The root and its branch units hold a head and nothing else, the way a real
+ * portal's «Навоий» holds six teams and no sellers of its own — a unit whose
+ * subtree is full and whose own roster is empty is a case the screen has to
+ * render, and generating people into every unit would hide it.
+ */
+export const STAFFED_DEPARTMENTS = ['dep-2', 'dep-3', 'dep-4', 'dep-5', 'dep-6'] as const
+
+/**
+ * Who heads which unit — and the three cases the real portal contains.
+ *
+ * `dep-0` is headed by someone who sits in it (the portal's NEWGEN). `dep-1` is
+ * headed by someone who sits one level DOWN, so the card must decide what to do
+ * with a head who is not a member — the portal's «Навоий» is exactly this and
+ * its own screen prints no head row at all. `dep-6` has no head, which is the
+ * portal's «Тошкент онлайн». Generating a tidy head-per-unit would leave two of
+ * the three untested.
+ */
+export const DEMO_HEADS: Readonly<Record<string, string | undefined>> = Object.freeze({
+  'dep-0': 'emp-001',
+  'dep-1': 'emp-002',
+  'dep-2': 'emp-003',
+  'dep-3': 'emp-004',
+  'dep-4': 'emp-005',
+  'dep-5': 'emp-006',
+  // 'dep-6' deliberately has none.
+})
+
+/** Where each of those heads actually sits. Note emp-002 heads dep-1 from dep-2. */
+export const DEMO_HEAD_OF: Readonly<Record<string, string | undefined>> = Object.freeze({
+  'emp-001': 'dep-0',
+  'emp-002': 'dep-2',
+  'emp-003': 'dep-2',
+  'emp-004': 'dep-3',
+  'emp-005': 'dep-4',
+  'emp-006': 'dep-5',
+})
 
 export const POSITIONS = [
   'Savdo menejeri',
