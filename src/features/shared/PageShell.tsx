@@ -27,7 +27,7 @@ export interface FilterOptions {
     readonly userId: string
     readonly role: RoleValue
     readonly sections: readonly SectionValue[]
-    /** ALL or OWN — how much of each granted screen this account reads. */
+    /** How much of each granted screen this account reads. See `@/lib/dataScope`. */
     readonly dataScope: DataScopeValue
     readonly canManageUsers: boolean
   }

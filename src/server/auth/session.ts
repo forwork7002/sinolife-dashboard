@@ -72,6 +72,20 @@ export async function requirePrincipal(request: Request): Promise<Principal> {
   // Same reasoning as the role above, pointed the other way: an unrecognised
   // scope degrades to the NARROWER of the two, so a corrupted column can only
   // ever show less than it should, never more.
+  /*
+    THIS GUARD IS NARROWER THAN IT LOOKS, AND THE DIFFERENCE MATTERS.
+
+    It protects against `DATA_SCOPES` in the domain drifting from the column —
+    a value stored by a newer build, or written by hand — and it degrades to
+    the NARROWEST scope, so a surprise can only ever show less than it should.
+
+    What it does NOT do is protect an older client from a newer enum value:
+    Prisma validates the column against its own generated enum and throws
+    P2023 before this line runs (measured on 7.9.1, from findUnique and
+    findMany alike). That case is a deploy ordering question, not a code one —
+    see the header of the `data_scope_team` migration for the order to roll
+    back in.
+  */
   const dataScope: DataScopeValue = DATA_SCOPES.includes(live.dataScope as DataScopeValue)
     ? (live.dataScope as DataScopeValue)
     : 'OWN'

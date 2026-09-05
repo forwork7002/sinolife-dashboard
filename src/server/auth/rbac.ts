@@ -211,6 +211,23 @@ export const NO_EMPLOYEE_LINKED = '__no_employee_linked__'
 /**
  * Whose rows this principal may read.
  *
+ * ONE LIST, TWO COLUMNS IT IS COMPARED AGAINST, AND THAT IS ON PURPOSE. The
+ * confirmation queue and the sellers board match it against the OPERATOR —
+ * `COALESCE(d."operatorEmployeeId", d."employeeId")`, the portal's own
+ * snapshot of who sold the order — because that is who those boards credit.
+ * Every deal-shaped endpoint (`/deals`, Savdo dinamikasi, pulse, search)
+ * matches it against `d."employeeId"`, the ASSIGNEE, because that is who those
+ * screens have always counted. The two differ by design and by measurement:
+ * this portal moves deals to back office while they are processed, which put
+ * 556 July orders on the head of Операцион.
+ *
+ * The consequence to know before configuring an account: a TEAM scope anchored
+ * to a back-office unit reads, on the deal-shaped screens, every order
+ * currently ASSIGNED there — which includes work sold by other teams. That is
+ * the answer those screens have always given about assignment; it is not the
+ * answer the confirmation queue gives about selling. Give a scope to the unit
+ * whose question the account is meant to ask.
+ *
  * ONE FIELD, AND IT IS PLURAL. It used to be `restrictToEmployeeId`, a single
  * id, because a scope could only ever mean one person. TEAM means fifteen, and
  * a repository that honoured the singular while ignoring a new plural
@@ -289,16 +306,29 @@ export function rowScopeFor(
 /**
  * True when the principal may view this specific employee's detail.
  *
- * The scope is the third answer, and it has to be, or a ROP given TEAM could
- * open the board their own team is on and then be refused every card in it.
+ * THE SCOPE OUTRANKS THE ROLE, and that ordering is the whole of this
+ * function. `employees:read:detail` is a ROLE permission — every ADMIN and
+ * every MANAGER holds it unconditionally — so asking for it first meant a
+ * MANAGER scoped to one team could open any card in the company. That is not
+ * hypothetical: MANAGER is the plausible configuration for a ROP, because it
+ * is the role that carries `kpi:manage` and the ROPs own the KPI plans.
+ *
+ * So the scope is asked FIRST and narrows everybody. An ALL-scoped account has
+ * a null scope and is unrestricted, exactly as before; a narrowed one reads
+ * the cards on the board it was given and no others.
+ *
+ * A caller that passes no scope is treated as narrowed to nothing but
+ * themselves — the fail-closed reading of "we were not told".
  */
 export function canViewEmployee(
   principal: Principal,
   employeeId: string,
   scope?: RowScope,
 ): boolean {
-  if (can(principal, 'employees:read:detail')) return true
   if (principal.employeeId === employeeId) return true
-  const ids = scope?.restrictToEmployeeIds
-  return ids ? ids.includes(employeeId) : false
+
+  const ids = scope?.restrictToEmployeeIds ?? (principal.dataScope === 'ALL' ? null : [])
+  if (ids !== null) return ids.includes(employeeId)
+
+  return can(principal, 'employees:read:detail')
 }

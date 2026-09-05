@@ -26,9 +26,48 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 
-import { SECTIONS, type SectionSpec, type SectionValue, sectionSpec } from '@/lib/sections'
+import {
+  SECTIONS,
+  type SectionSpec,
+  type SectionValue,
+  isCompanyWideSection,
+  sectionSpec,
+} from '@/lib/sections'
 import { optionalPrincipal } from './session'
-import { can, canSeeSection } from './rbac'
+import { can, canSeeSection, type Principal } from './rbac'
+
+/**
+ * The first screen this account may open AND be served.
+ *
+ * TWO CONDITIONS, BECAUSE THE TICKS ARE NOT THE ONLY GATE. A section says the
+ * administrator handed over the screen; the account's data scope says whether
+ * its endpoint has an answer to give. Six screens aggregate across the whole
+ * company and refuse anybody narrower — and `effectiveSections` hands an
+ * unconfigured SALES account `overview` by default, which is the first entry
+ * in `SECTIONS` and the route `/`.
+ *
+ * So without this filter the feature's own account walks into a wall: an
+ * administrator creates the ROP, ticks nothing (the documented "follow the
+ * role" default), and the first thing that person sees after signing in is the
+ * command centre refusing them — while the sidebar, which applies exactly this
+ * rule, no longer offers the link that would explain it. Landing them on
+ * Тасдиклаш instead is the whole point of the account.
+ *
+ * Presentation and routing only, like `companyWideSections` it reads from:
+ * every endpoint still decides for itself.
+ */
+function firstServableSection(principal: Principal): SectionSpec | undefined {
+  const narrowed = principal.dataScope !== 'ALL'
+  return (
+    SECTIONS.find(
+      (spec) => canSeeSection(principal, spec.id) && !(narrowed && isCompanyWideSection(spec.id)),
+    ) ??
+    // Nothing servable: fall back to anything ticked, so a misconfigured
+    // account still lands on a page that can explain itself rather than on a
+    // redirect loop.
+    SECTIONS.find((spec) => canSeeSection(principal, spec.id))
+  )
+}
 
 export async function requireSection(section: SectionValue): Promise<void> {
   const principal = await optionalPrincipal(
@@ -43,7 +82,7 @@ export async function requireSection(section: SectionValue): Promise<void> {
 
   if (canSeeSection(principal, section)) return
 
-  const fallback = SECTIONS.find((spec) => canSeeSection(principal, spec.id))
+  const fallback = firstServableSection(principal)
   redirect(fallback ? fallback.route : '/account')
 }
 
@@ -76,7 +115,7 @@ export async function firstSectionFor(): Promise<SectionSpec | null> {
     new Request('https://guard.invalid/', { headers: await headers() }),
   )
   if (!principal) return null
-  return SECTIONS.find((spec) => canSeeSection(principal, spec.id)) ?? null
+  return firstServableSection(principal) ?? null
 }
 
 /** The label of a section, for a page that wants to name what it is. */

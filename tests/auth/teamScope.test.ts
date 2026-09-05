@@ -51,7 +51,7 @@ function serviceFor(rowsByEmployee: Record<string, string[]>) {
 }
 
 describe('the team query', () => {
-  it('anchors on the person AND on anything they head', async () => {
+  it('reads both the unit they are filed in and the units they head', async () => {
     const { service, calls } = serviceFor({ 'emp-rop': ['emp-a'] })
     await service.resolve(principal())
     const sql = calls[0]!.sql
@@ -60,22 +60,33 @@ describe('the team query', () => {
       Two arms, and the second is not redundant. «Навоий» names a head whose
       own units are «Kompaniya(ROP)» and «Тошкент онлайн» — the portal draws
       that card with no head row because his record does not sit in the unit he
-      runs. Anchoring on membership alone would hand that man his own branch
-      and not the one he is accountable for.
+      runs. Reading membership alone would hand that man his own team and not
+      the branch he leads.
     */
-    expect(sql).toContain('e."departmentId" AS id')
+    expect(sql).toContain('e."departmentId"')
     expect(sql).toContain('d."headId" = $1')
   })
 
-  it('walks the whole subtree, not just the first level', async () => {
-    // A ROP anchors on one team and reads one team; the head of a branch
-    // anchors on its root and reads the teams under it, which is what the org
-    // chart already draws.
+  it('descends from HEADSHIP only, never from being filed in a unit', () => {
+    /*
+      The difference decides whether an ordinary registrar filed in «Тошкент
+      онлайн» — a unit with nine teams under it — reads their own desk or the
+      whole floor. Being filed somewhere says where your work is counted; it
+      does not say you run what sits beneath it. The recursion therefore hangs
+      off the headship arm, and the membership arm is unioned in flat
+      afterwards.
+    */
     const { service, calls } = serviceFor({ 'emp-rop': [] })
-    await service.resolve(principal())
+    void service.resolve(principal())
 
-    expect(calls[0]!.sql).toContain('WITH RECURSIVE')
-    expect(calls[0]!.sql).toContain('child."parentId" = s.id')
+    return service.resolve(principal()).then(() => {
+      const sql = calls[0]!.sql
+      expect(sql).toContain('WITH RECURSIVE headed AS (')
+      // The recursive step joins the HEADED set, not a set that includes the
+      // membership. Swapping these is a silent widening, not an error.
+      expect(sql).toContain('JOIN headed h ON child."parentId" = h.id')
+      expect(sql).not.toMatch(/JOIN (anchor|scope) \w+ ON child\."parentId"/)
+    })
   })
 
   it('terminates on a cycle rather than recursing forever', async () => {
@@ -100,7 +111,7 @@ describe('the team query', () => {
     const { service, calls } = serviceFor({ 'emp-rop': [] })
     await service.resolve(principal())
 
-    expect(calls[0]!.sql).toContain('e."departmentId" IN (SELECT id FROM subtree)')
+    expect(calls[0]!.sql).toContain(`e."departmentId" IN (SELECT id FROM scope)`)
     expect(calls[0]!.sql).not.toContain('department_member')
   })
 

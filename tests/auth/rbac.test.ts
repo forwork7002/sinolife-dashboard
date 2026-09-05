@@ -251,4 +251,37 @@ describe('employee detail visibility', () => {
   it('does not let a deactivated manager view anyone', () => {
     expect(canViewEmployee({ ...manager, isActive: false }, 'emp-9')).toBe(false)
   })
+
+  it('lets a ROP open the cards on the board they were given', () => {
+    // Otherwise the team board a ROP is allowed to read links to fifteen
+    // refusals — the drill-down is how the row is used.
+    const scope = rowScopeFor(team, ['emp-2', 'emp-3'])
+    expect(canViewEmployee(team, 'emp-2', scope)).toBe(true)
+    expect(canViewEmployee(team, 'emp-9', scope)).toBe(false)
+  })
+
+  it('does NOT let a narrowed MANAGER outrank their own scope', () => {
+    /*
+      The scope has to be asked BEFORE the role. `employees:read:detail` is a
+      role permission every MANAGER holds unconditionally, and MANAGER is the
+      plausible configuration for a ROP — it is the role that carries
+      `kpi:manage`, and the ROPs own the KPI plans. Asking for the permission
+      first meant a ROP scoped to one team could open any card in the company.
+    */
+    const ropManager: Principal = { ...manager, dataScope: 'TEAM', employeeId: 'emp-1' }
+    const scope = rowScopeFor(ropManager, ['emp-2'])
+
+    expect(canViewEmployee(ropManager, 'emp-2', scope)).toBe(true)
+    expect(canViewEmployee(ropManager, 'emp-9', scope)).toBe(false)
+    // Their own card, always.
+    expect(canViewEmployee(ropManager, 'emp-1', scope)).toBe(true)
+  })
+
+  it('fails closed when a caller forgets to pass the scope', () => {
+    // "We were not told" reads as "nothing but themselves", never as "anyone".
+    const ropManager: Principal = { ...manager, dataScope: 'TEAM', employeeId: 'emp-1' }
+    expect(canViewEmployee(ropManager, 'emp-9')).toBe(false)
+    // A company-wide manager is unchanged: null scope, role decides.
+    expect(canViewEmployee(manager, 'emp-9')).toBe(true)
+  })
 })

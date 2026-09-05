@@ -217,7 +217,19 @@ export class SearchRepository {
         max(d."createdAtSource") AS last_order_at
       FROM hits h
       JOIN "customer" c ON c."id" = h."id"
-      LEFT JOIN "deal" d ON d."customerId" = c."id"
+      /*
+        THE COUNT IS SCOPED TOO, NOT JUST THE ROW.
+
+        The EXISTS below decides WHICH customers a narrowed caller is shown.
+        These two figures describe them, and joined unscoped they described the
+        customer's dealings with the WHOLE company: «14 ta buyurtma, oxirgisi
+        4-sen» to an account that may see two of the fourteen. That is the same
+        disclosure this file already refuses to make as a hit — saying "3 you
+        may not see" still says they exist — restated as a count and a date.
+      */
+      LEFT JOIN "deal" d
+        ON d."customerId" = c."id"
+       AND ($2::text IS NULL OR d."employeeId" = ANY(string_to_array($2, ',')))
       WHERE $2::text IS NULL
          OR EXISTS (SELECT 1 FROM "deal" md
                      WHERE md."customerId" = c."id"

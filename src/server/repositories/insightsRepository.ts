@@ -1658,6 +1658,26 @@ export class InsightsRepository {
         --
         -- Tashkent, not UTC: the working day is the thing being counted, and
         -- five hours of it would otherwise be numbered into yesterday.
+        --
+        -- THIS NUMBER IS RELATIVE TO WHAT THE READER MAY SEE, and for one
+        -- scope that matters. The window runs over the classified CTE, which
+        -- the caller's scope has already cut, so it numbers the rows in front
+        -- of them rather than the rows on the board.
+        --
+        -- A TEAM scope is unaffected, and not by luck: it admits whole
+        -- departments, and the ROP name is derived from the same primary
+        -- department, so every ROP group arrives complete and every partition
+        -- is whole. An OWN scope is one person out of a group, so their 003
+        -- reads 001 — and the number is a label operators say out loud, to
+        -- each other and in the ROP's Telegram channel.
+        --
+        -- Left as it is deliberately. Numbering before the cut would mean
+        -- applying the scope somewhere other than the classified CTE, and the
+        -- one place every reading of this board is cut from is the property
+        -- that stops the tiles, the panel, the bell and the rows describing
+        -- four different populations. A label that reads differently for a
+        -- single seller is the cheaper of the two failures, and it is the one
+        -- that shows on screen rather than the one that does not.
         row_number() OVER (
           PARTITION BY c.rop, (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date
           ORDER BY c.queued_at ASC, c.deal_id ASC

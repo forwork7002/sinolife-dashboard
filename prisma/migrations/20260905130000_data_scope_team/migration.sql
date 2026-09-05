@@ -7,11 +7,31 @@
 -- row on it. The client asked for the middle in their own words: «ROP Asliddin
 -- bersam shu faqat uzini malumotlarini korishi kerak umumiy emas».
 --
--- ADDITIVE AND REVERSIBLE IN PRACTICE. No column changes, no backfill, no row
--- is rewritten: every existing account keeps the scope it has, and TEAM only
--- exists once an administrator picks it. Postgres cannot DROP an enum value, so
--- undoing this means never selecting it again — which costs nothing, since the
--- resolution that reads it lives in the application.
+-- ADDITIVE, AND SAFE TO APPLY AHEAD OF THE CODE. No column changes, no
+-- backfill, no row is rewritten: every existing account keeps the scope it has,
+-- and TEAM only exists once an administrator picks it. Applying this in the
+-- PRE_DEPLOY job while the previous container is still serving is therefore
+-- fine — nothing can be reading a value nothing has written yet.
+--
+-- ROLLING THE CODE BACK IS NOT SYMMETRIC, AND THAT IS WORTH KNOWING BEFORE
+-- SOMEBODY NEEDS IT. Postgres cannot DROP an enum value, so the type keeps
+-- TEAM either way; the asymmetry is on the client. Prisma validates enum
+-- columns against its OWN generated enum and REFUSES a value it does not know
+-- — measured on 7.9.1: P2023, «Value not found in enum», from both findUnique
+-- and findMany, never a null and never a fallback. So a build from before this
+-- change cannot read a user row that says TEAM at all: those accounts get a
+-- 500 on every request, and `listUsers()` — one findMany over every user —
+-- takes the whole /users screen down with them.
+--
+-- The order to undo this in, therefore: set every TEAM account back to OWN
+--   UPDATE "user" SET "dataScope" = 'OWN' WHERE "dataScope" = 'TEAM';
+-- and only then deploy the older build. While no account is TEAM, a rollback
+-- costs nothing.
+--
+-- The same asymmetry applies to `session.ts`'s "an unrecognised scope degrades
+-- to the narrower" guard: it is real defence against the TypeScript union
+-- drifting from the Prisma enum, and it is NOT what protects an older client
+-- from a newer enum value, because Prisma throws before that line is reached.
 --
 -- AFTER 'ALL', not appended, so the stored order matches the order the enum is
 -- declared in (ALL, TEAM, OWN — widest to narrowest) and a later `migrate diff`

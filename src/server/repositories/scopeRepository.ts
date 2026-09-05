@@ -8,23 +8,29 @@
  *
  * THE RULE, AND WHY EACH HALF OF IT IS THERE
  *
- *   ANCHOR — the units this person is attached to. Two sources, unioned:
- *     their own `employee."departmentId"`, and every department whose
- *     `headId` is them. The second is not redundant. «Навоий» names a head
+ *   MEMBERSHIP — the unit this person's record is filed in,
+ *     `employee."departmentId"`, AND NOTHING BENEATH IT. Being filed in a unit
+ *     says where your own work is counted; it does not say you run the units
+ *     under it. «Тошкент онлайн» has nine teams beneath it, so granting the
+ *     descendants of a membership would hand an ordinary registrar filed in
+ *     that unit the whole floor's orders — which is not what «faqat oʻz
+ *     boʻlimi» says, and not what an administrator picking it would expect.
+ *
+ *   HEADSHIP — every department whose `headId` is this person, AND EVERYTHING
+ *     BENEATH IT, to any depth. This is the arm that carries the tree: a ROP
+ *     heads their own team and reads their own team; the head of a branch
+ *     reads the teams under it, which is the thing they are accountable for
+ *     and the thing the org chart already draws. `UNION` rather than
+ *     `UNION ALL` so a parentId cycle — which the schema does not forbid —
+ *     terminates instead of hanging.
+ *
+ *     Headship is also not redundant with membership. «Навоий» names a head
  *     whose own units are «Kompaniya(ROP)» and «Тошкент онлайн» — the portal
  *     draws that card with no head row because his record does not sit in the
- *     unit he runs. Anchoring on membership alone would hand that man his own
- *     branch and not the one he heads.
+ *     unit he runs. Reading membership alone would hand that man his own team
+ *     and not the branch he leads.
  *
- *   SUBTREE — every department beneath the anchors, to any depth. A ROP
- *     anchors on one team and sees one team; the head of NEWGEN anchors on the
- *     root of a branch and sees the nine teams under it. That is what the org
- *     chart already draws, and a scope that stopped at the first level would
- *     mean a department head could not read the departments they are
- *     accountable for. `UNION` rather than `UNION ALL` so a parentId cycle —
- *     which the schema does not forbid — terminates instead of hanging.
- *
- *   MEMBERS — everyone whose PRIMARY `departmentId` falls in that subtree.
+ *   MEMBERS — everyone whose PRIMARY `departmentId` falls in that set.
  *
  * PRIMARY MEMBERSHIP, NOT `department_member`, AND THAT IS THE LOAD-BEARING
  * CHOICE. Bitrix24's `UF_DEPARTMENT` is an array and nine of this portal's
@@ -63,26 +69,29 @@ export class ScopeRepository {
   async teamEmployeeIds(employeeId: string): Promise<string[]> {
     const rows = await this.prisma.$queryRawUnsafe<{ id: string }[]>(
       `
-      WITH RECURSIVE anchor AS (
-        SELECT e."departmentId" AS id
-          FROM "employee" e
-         WHERE e."id" = $1
-           AND e."departmentId" IS NOT NULL
-        UNION
-        SELECT d."id"
+      WITH RECURSIVE headed AS (
+        -- The units this person RUNS, and then everything under them. Only
+        -- this arm descends: see the header for why a membership must not.
+        SELECT d."id" AS id
           FROM "department" d
          WHERE d."headId" = $1
-      ),
-      subtree AS (
-        SELECT id FROM anchor
         UNION
         SELECT child."id"
           FROM "department" child
-          JOIN subtree s ON child."parentId" = s.id
+          JOIN headed h ON child."parentId" = h.id
+      ),
+      scope AS (
+        SELECT id FROM headed
+        UNION
+        -- The unit this person is filed in. Itself, not its descendants.
+        SELECT e."departmentId"
+          FROM "employee" e
+         WHERE e."id" = $1
+           AND e."departmentId" IS NOT NULL
       )
       SELECT e."id" AS id
         FROM "employee" e
-       WHERE e."departmentId" IN (SELECT id FROM subtree)
+       WHERE e."departmentId" IN (SELECT id FROM scope)
       `,
       employeeId,
     )
