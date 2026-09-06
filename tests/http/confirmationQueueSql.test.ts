@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
@@ -278,6 +279,28 @@ describe('the caller\'s scope', () => {
     expect(cte('visible')).toContain(SCOPE)
     // Exactly two, so a third cut cannot appear unnoticed and disagree.
     expect(sql.split(SCOPE).length - 1).toBe(2 * 2)
+  })
+
+  it('leaves no reading able to select the UNCUT cohort', () => {
+    /*
+      THE HAZARD THIS RESTRUCTURE INTRODUCED, GUARDED AT ITS SOURCE.
+
+      Numbering before the cut means `classified` is now an UNSCOPED set that
+      lives inside the prelude, and a reading that selected from it would
+      answer for the whole company while looking exactly like its neighbours.
+      Two places may: `scoped`, which cuts it, and `numbered`, which numbers
+      it and is itself cut by `visible`. Nothing else, ever.
+
+      Asserted over the repository's own source rather than over one built
+      string, because the nine readings append their SQL in nine different
+      methods and only the file sees all of them.
+    */
+    const source = readFileSync(
+      join(process.cwd(), 'src/server/repositories/insightsRepository.ts'),
+      'utf8',
+    )
+    const uncut = source.match(/FROM classified\b/g) ?? []
+    expect(uncut).toHaveLength(2)
   })
 
   it('mints the daily number BEFORE the cut, never after it', () => {
