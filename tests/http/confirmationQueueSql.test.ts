@@ -74,7 +74,16 @@ describe('confirmation queue SQL', () => {
     const chain = (sql: string) =>
       [...sql.matchAll(/(\w+) AS(?: MATERIALIZED)? \(/g)].map((m) => m[1])
 
-    expect(chain(WINDOW)).toEqual(['signal_stage', 'moves', 'agg', 'dated', 'classified', 'numbered'])
+    expect(chain(WINDOW)).toEqual([
+      'signal_stage',
+      'moves',
+      'agg',
+      'dated',
+      'classified',
+      'scoped',
+      'numbered',
+      'visible',
+    ])
     expect(chain(BACKLOG)).toEqual(chain(WINDOW))
   })
 
@@ -250,14 +259,46 @@ describe('confirmation queue SQL', () => {
  * `classified`, the CTE all nine are cut from, and these tests pin it there.
  */
 describe('the caller\'s scope', () => {
-  it('narrows the cohort inside classified, where every reading is cut from', () => {
-    const tail = (sql: string) => sql.slice(sql.indexOf('classified AS ('))
-    const classified = tail(bare(WINDOW))
-    const numbered = classified.slice(classified.indexOf('numbered AS ('))
+  it('cuts in exactly two places, and both are doors out of the prelude', () => {
+    /*
+      `scoped` is the cheap door — the cohort with the caller's cut and no
+      window function. `visible` is the same cut applied to `numbered`. Every
+      one of the nine readings selects from one or the other, so there is still
+      a single predicate deciding who is on this board; it is simply written on
+      both sides of the window function rather than above it.
+    */
+    const sql = bare(WINDOW)
+    const cte = (name: string) => {
+      const from = sql.indexOf(`${name} AS (`)
+      const next = sql.indexOf(' AS (', from + name.length + 5)
+      return sql.slice(from, next === -1 ? undefined : next)
+    }
 
-    expect(classified).toContain(SCOPE)
-    // Inside the classified CTE, not after it: `numbered` and everything the
-    // consumers append read from an already-narrowed set.
+    expect(cte('scoped')).toContain(SCOPE)
+    expect(cte('visible')).toContain(SCOPE)
+    // Exactly two, so a third cut cannot appear unnoticed and disagree.
+    expect(sql.split(SCOPE).length - 1).toBe(2 * 2)
+  })
+
+  it('mints the daily number BEFORE the cut, never after it', () => {
+    /*
+      THE «№» IS A LABEL THE FLOOR READS OUT LOUD — to each other, and against
+      the bot's Тасдиклаш posts. Numbering after the cut counts the rows the
+      reader happens to be allowed to see, so a seller scoped to themselves
+      would call their sixth order «001» while their ROP called it «006».
+
+      It is not an OWN-only hazard either: `c.rop` is NULL for every unit whose
+      name carries no (ROP) marker, so the partition pools Операцион,
+      Регистрация and everyone else into one group, and any scope admitting
+      some of those people slices it.
+    */
+    const sql = bare(WINDOW)
+    const numbered = sql.slice(sql.indexOf('numbered AS ('), sql.indexOf('visible AS ('))
+
+    expect(numbered).toContain('row_number() OVER (')
+    expect(numbered).toContain('FROM classified c')
+    // The window's input is the UNCUT cohort. This is the assertion that
+    // fails if somebody moves the predicate back above it.
     expect(numbered).not.toContain(SCOPE)
   })
 
@@ -270,8 +311,13 @@ describe('the caller\'s scope', () => {
       COALESCE resolves to, two lines above.
     */
     const sql = bare(WINDOW)
-    expect(sql).toContain(`e."id" = ANY(string_to_array(${SCOPE}, ','))`)
+    expect(sql).toContain(`c.operator_id = ANY(string_to_array(${SCOPE}, ','))`)
+    // The column the predicate reads is PROJECTED from that one join, never
+    // re-derived: a second COALESCE somewhere else would be a second
+    // definition of whose order this is.
     expect(sql).toContain('JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")')
+    expect(sql).toContain('e."id" AS operator_id')
+    expect(sql.match(/COALESCE\(d\."operatorEmployeeId"/g) ?? []).toHaveLength(1)
   })
 
   it('treats a null scope as the whole company and nothing else as one', () => {

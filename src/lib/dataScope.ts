@@ -21,12 +21,17 @@ export const DATA_SCOPE_LABELS: Readonly<Record<DataScopeValue, string>> = {
 export const DATA_SCOPE_HINTS: Readonly<Record<DataScopeValue, string>> = {
   ALL: 'Berilgan boʻlimlardagi kompaniya boʻyicha barcha raqamlarni koʻradi.',
   /*
-    The ROP's setting, and the hint has to say WHICH unit, because the answer
-    is not "the one on their card" — it is that unit plus every unit under it,
-    grown from the person's own department AND from any department they head.
-    An administrator who reads only «oʻz boʻlimi» would expect a head of NEWGEN
-    to see NEWGEN and be surprised by the nine teams beneath it.
+    The ROP's setting, and the hint has to say the rule EXACTLY, because the
+    two halves of it differ. Being filed in a unit grants that unit and nothing
+    below it; HEADING a unit grants it and everything beneath. An administrator
+    who read only «oʻz boʻlimi» would expect the head of a branch to see one
+    card and be surprised by the nine teams under it — and, the other way
+    round, would not expect a clerk filed in that branch to see them at all.
+
+    The last sentence is not a footnote: granting this to whoever heads the
+    ROOT of the tree is the same thing as granting «Butun kompaniya», and the
+    administrator should read that here rather than discover it afterwards.
   */
-  TEAM: 'Xodim biriktirilgan boʻlim va uning ostidagi boʻlimlar. ROP uchun — faqat oʻz jamoasi. Xodimni bogʻlash shart.',
+  TEAM: 'Xodim biriktirilgan boʻlim; agar u boʻlim rahbari boʻlsa — oʻsha boʻlim va uning ostidagi barcha boʻlimlar. ROP uchun — faqat oʻz jamoasi. Xodimni bogʻlash shart. Eng yuqori boʻlim rahbariga berilsa — butun kompaniya demakdir.',
   OWN: 'Faqat oʻziga biriktirilgan xodimning bitimlari. Xodimni bogʻlash shart.',
 }

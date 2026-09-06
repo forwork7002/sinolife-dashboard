@@ -71,9 +71,11 @@ enum DataScope {
   /// faqat uzini malumotlarini korishi kerak umumiy emas» — a team head who
   /// opens the confirmation queue or the sellers board must read their own
   /// floor, not the company's. Resolved from the department tree, never
-  /// stored: the units this person's record is anchored to (their primary
-  /// department and any department they HEAD) plus every department beneath
-  /// them, then everyone whose primary department is one of those.
+  /// stored, and the two halves of the rule are not the same: the unit this
+  /// person's record is FILED in grants that unit ALONE, while every unit they
+  /// HEAD grants it and every department beneath it. Then everyone whose
+  /// primary department is one of those. Descending from a membership would
+  /// hand an ordinary clerk filed in a parent unit every team under it.
   ///
   /// PRIMARY membership, not `department_member`. A person is credited to one
   /// unit for money and listed in several for the org chart, and this decides

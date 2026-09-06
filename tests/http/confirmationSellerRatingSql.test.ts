@@ -58,12 +58,18 @@ const DAYS_SQL = ratingDaysSql()
 const BARE_DAYS_SQL = bare(DAYS_SQL)
 
 describe('confirmation seller rating SQL', () => {
-  it('runs over classified, not numbered', () => {
-    // `numbered` adds a window function over the whole cohort for a number
-    // nobody reading a per-operator total needs — see queueSql's own cost
-    // note, which this rating follows rather than repeats.
-    expect(BARE_SQL).toContain('FROM classified c')
+  it('runs over scoped, not visible — the cheap door out of the prelude', () => {
+    // `numbered` (and `visible`, which selects from it) adds a window function
+    // over the whole cohort for a number nobody reading a per-operator total
+    // needs — see queueSql's own cost note, which this rating follows rather
+    // than repeats. `scoped` is the same cohort with the caller's cut and no
+    // window.
+    expect(BARE_SQL).toContain('FROM scoped c')
     expect(BARE_SQL).not.toContain('FROM numbered')
+    expect(BARE_SQL).not.toContain('FROM visible')
+    // And it must not read the UNCUT cohort: that is the one name in the
+    // prelude a reading may never select from.
+    expect(BARE_SQL).not.toContain('FROM classified')
   })
 
   it('grades FAKT 1 on the two outcomes that left the queue, not on «Успешно заказ»', () => {
@@ -296,7 +302,8 @@ describe('confirmation seller rating day series SQL', () => {
   })
 
   it('reads the same cohort, dated by the queue arrival', () => {
-    expect(BARE_DAYS_SQL).toContain('FROM classified c')
+    expect(BARE_DAYS_SQL).toContain('FROM scoped c')
+    expect(BARE_DAYS_SQL).not.toContain('FROM classified')
     expect(BARE_DAYS_SQL).toContain('c.queued_at')
     expect(BARE_DAYS_SQL).not.toContain('createdAtSource')
   })

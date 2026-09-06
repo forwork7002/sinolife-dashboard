@@ -137,7 +137,8 @@ signed-out visitor is redirected instead of watching a shell flash.
 **Three levels, and TEAM is the one the portal actually has most of.** A ROP
 heads a sales team of a dozen or more; given ALL they read every rival team's
 money, given OWN they read a board with one row on it. `dataScope = TEAM`
-resolves to the linked employee's own unit **and everything under it**.
+resolves to the linked employee's own unit, plus **every unit they HEAD and
+everything under those**. Membership does not descend; headship does.
 
 - **`ctx.scope` is `{ restrictToEmployeeIds: readonly string[] | null }` — one
   field, and it is plural.** It was `restrictToEmployeeId`, a single id. The
@@ -145,13 +146,16 @@ resolves to the linked employee's own unit **and everything under it**.
   repository honouring the old field and ignoring a new one would have served
   the whole company to a ROP without erroring. `null` is everybody; a non-null
   value is **never empty** (`NO_EMPLOYEE_IN_SCOPE`, `__no_employee_linked__`).
-- **The subtree is resolved per request, in `ScopeRepository.teamEmployeeIds`.**
-  Anchors are the person's own `employee."departmentId"` **and every department
-  whose `headId` is them** — the second is not redundant: «Навоий» names a head
-  whose own units are elsewhere, so anchoring on membership alone hands that
-  man his own branch and not the one he runs. Then every department beneath the
-  anchors (`UNION`, not `UNION ALL`, so a `parentId` cycle terminates), then
-  everyone whose **primary** `departmentId` is in that set.
+- **The subtree is resolved per request, in `ScopeRepository.teamEmployeeIds`,
+  and only HEADSHIP descends.** The recursion walks down from every department
+  whose `headId` is this person (`UNION`, not `UNION ALL`, so a `parentId`
+  cycle terminates); the person's own `employee."departmentId"` is then unioned
+  in **flat**. Both arms are needed and neither is redundant: «Навоий» names a
+  head whose own units are elsewhere, so reading membership alone hands that
+  man his own team and not the branch he runs — while letting a membership
+  descend would hand an ordinary registrar filed in «Тошкент онлайн» the nine
+  teams beneath it. Then everyone whose **primary** `departmentId` is in that
+  set. Granting TEAM to whoever heads the ROOT is the same as granting ALL.
 - **PRIMARY membership, never `department_member`.** That table lists a person
   in every unit Bitrix24 names, and it exists for the org chart. This is a
   money question — one unit credits a person — and reading memberships would

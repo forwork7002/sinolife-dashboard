@@ -1376,7 +1376,7 @@ export class InsightsRepository {
    * and the reason `rowScopeFor` never produces one by accident.
    */
   private static scopeMatch(param: string): string {
-    return `(${param}::text IS NULL OR e."id" = ANY(string_to_array(${param}, ',')))`
+    return `(${param}::text IS NULL OR c.operator_id = ANY(string_to_array(${param}, ',')))`
   }
 
   /**
@@ -1540,6 +1540,18 @@ export class InsightsRepository {
     classified AS (
       SELECT
         d."id" AS deal_id,
+        /*
+          THE OPERATOR, CARRIED FORWARD RATHER THAN RE-DERIVED.
+
+          The caller's cut is applied two CTEs below — after the daily number
+          is minted — so it cannot reach the employee join that resolves this
+          person. Projecting the id here is what keeps the scope and the ROP
+          name and the operator on the row all naming ONE person: a predicate
+          that re-derived COALESCE(...) somewhere else would be a second
+          definition of whose order this is, which is the drift the join's own
+          comment above exists to prevent.
+        */
+        e."id" AS operator_id,
         w.created_at,
         w.moved_at,
         w.queued_at,
@@ -1621,33 +1633,41 @@ export class InsightsRepository {
       */
       JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
       LEFT JOIN "department" dep ON dep."id" = e."departmentId"
-      /*
-        THE CALLER'S OWN PEOPLE, AND NOBODY ELSE'S.
+    ),
+    /*
+      THE CALLER'S OWN PEOPLE, AND NOBODY ELSE'S.
 
-        Here rather than in any of the nine readings built on this prelude,
-        because the employee alias above is where the operator is finally
-        resolved and every one of those readings counts the rows this CTE
-        emits. A ROP given «Тасдиклаш» reads their own floor; the tiles above
-        the table, the ROP panel beside it and the bell in the header all
-        describe the same rows, because they ARE the same rows.
+      One predicate, written once, and the two CTEs below are the only doors
+      out of this prelude: every one of the nine readings built on it selects
+      from scoped or from visible, never from classified. A ROP given
+      «Тасдиклаш» reads their own floor; the tiles above the table, the ROP
+      panel beside it and the bell in the header describe the same rows,
+      because they ARE the same rows.
 
-        MODE-INDEPENDENT on purpose: window and backlog differ only in which
-        orders ENTER the cohort, never in whose they are, and
-        confirmationQueueSql.test.ts pins the two tails identical from the
-        classified CTE down.
+      MODE-INDEPENDENT on purpose: window and backlog differ only in which
+      orders ENTER the cohort, never in whose they are, and
+      confirmationQueueSql.test.ts pins the two tails identical from the
+      classified CTE down.
 
-        NO BACKTICK MAY APPEAR IN THIS COMMENT. It lives inside a JavaScript
-        template literal, so one would end the string it is documenting — the
-        same trap the ROP strip above records for a lone backslash.
-      */
-      WHERE ${InsightsRepository.scopeMatch(scopeParam)}
+      NO BACKTICK MAY APPEAR IN THIS COMMENT. It lives inside a JavaScript
+      template literal, so one would end the string it is documenting — the
+      same trap the ROP strip above records for a lone backslash.
+    */
+    scoped AS (
+      SELECT * FROM classified c
+       WHERE ${InsightsRepository.scopeMatch(scopeParam)}
     ),
     numbered AS (
       /*
         READ BY TWO CALLERS, NOT SIX. The number is only ever shown on the
         board's own rows, so confirmationOrders and confirmationBoard take
-        their rows from here and everything else reads classified above —
-        a window function nobody selects is still sorted and computed.
+        their rows from visible below, and everything else reads scoped
+        above — a window function nobody selects is still sorted and
+        computed, and this one runs over the whole cohort.
+
+        UNSCOPED ON PURPOSE, AND IT IS THE ONLY CTE HERE THAT IS. See visible
+        below: the number has to be minted over the whole queue day, and the
+        caller's cut is applied to the numbered rows rather than before them.
       */
       SELECT
         c.*,
@@ -1658,31 +1678,39 @@ export class InsightsRepository {
         --
         -- Tashkent, not UTC: the working day is the thing being counted, and
         -- five hours of it would otherwise be numbered into yesterday.
-        --
-        -- THIS NUMBER IS RELATIVE TO WHAT THE READER MAY SEE, and for one
-        -- scope that matters. The window runs over the classified CTE, which
-        -- the caller's scope has already cut, so it numbers the rows in front
-        -- of them rather than the rows on the board.
-        --
-        -- A TEAM scope is unaffected, and not by luck: it admits whole
-        -- departments, and the ROP name is derived from the same primary
-        -- department, so every ROP group arrives complete and every partition
-        -- is whole. An OWN scope is one person out of a group, so their 003
-        -- reads 001 — and the number is a label operators say out loud, to
-        -- each other and in the ROP's Telegram channel.
-        --
-        -- Left as it is deliberately. Numbering before the cut would mean
-        -- applying the scope somewhere other than the classified CTE, and the
-        -- one place every reading of this board is cut from is the property
-        -- that stops the tiles, the panel, the bell and the rows describing
-        -- four different populations. A label that reads differently for a
-        -- single seller is the cheaper of the two failures, and it is the one
-        -- that shows on screen rather than the one that does not.
         row_number() OVER (
           PARTITION BY c.rop, (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date
           ORDER BY c.queued_at ASC, c.deal_id ASC
         )::int AS daily_no
       FROM classified c
+    ),
+    /*
+      THE NUMBER IS MINTED BEFORE THE CUT, AND THAT ORDER IS THE POINT.
+
+      row_number() above runs over the WHOLE queue day, so 006 is 006 for
+      everybody. Cut first and the window would count the rows the reader
+      happens to be allowed to see: a seller scoped to themselves would call
+      their sixth order «001», and their ROP would call the same order «006»
+      — over a label the floor reads out loud, to each other and in the bot's
+      Тасдиклаш posts.
+
+      That is not an OWN-only hazard, which is what makes numbering first the
+      only honest answer rather than a nicety. c.rop is NULL for every unit
+      whose name carries no (ROP) marker, so the partition pools Операцион,
+      Регистрация, Навоий and everyone else into ONE group; any scope that
+      admits some of those people and not the others slices it, and the whole
+      reason the operator column exists is that this portal parks reassigned
+      work in exactly those units.
+
+      It costs nothing for the readings that do not show a number. They select
+      from scoped, which never mentions numbered, and Postgres does not
+      evaluate a CTE nothing references — so the tiles, the ROP panel, the ROP
+      options, the bell and the rejection chart still skip the sort and the
+      window, which is the measured reason they were pointed away from it.
+    */
+    visible AS (
+      SELECT * FROM numbered c
+       WHERE ${InsightsRepository.scopeMatch(scopeParam)}
     )
   `
   }
@@ -1736,7 +1764,7 @@ export class InsightsRepository {
          number; the tiles, the ROP panel, the ROP options, the header bell and
          the rejection chart do not.
        */
-       FROM classified c`,
+       FROM scoped c`,
       period.start,
       period.end,
       new Date(Date.now() - overdueAfterMinutes * 60_000),
@@ -1757,7 +1785,7 @@ export class InsightsRepository {
     >(
       `${InsightsRepository.queueSql(mode, '$5')}
        SELECT c.outcome, count(*)::bigint AS orders
-         FROM classified c
+         FROM scoped c
          JOIN "deal" d ON d."id" = c.deal_id
          LEFT JOIN "customer" cust ON cust."id" = d."customerId"
         WHERE ${InsightsRepository.ropMatch('$3')}
@@ -2085,7 +2113,7 @@ export class InsightsRepository {
          count(*) FILTER (WHERE c.outcome = 'REJECTED')::bigint AS rejected,
          count(*) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::bigint AS pending,
          count(*) FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::bigint AS unconfirmed_shipped
-       FROM classified c
+       FROM scoped c
        JOIN "deal" d ON d."id" = c.deal_id
        LEFT JOIN "customer" cust ON cust."id" = d."customerId"
       /*
@@ -2223,7 +2251,7 @@ export class InsightsRepository {
              AND d."status" = 'LOST'
          )::text AS lost_after_confirm,
          count(*) FILTER (WHERE c.outcome = 'REJECTED')::bigint AS rejected_orders
-       FROM classified c
+       FROM scoped c
        JOIN "deal" d ON d."id" = c.deal_id
        JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
        LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
@@ -2383,7 +2411,7 @@ export class InsightsRepository {
          count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS orders,
          sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::text AS confirmed,
          sum(d."amountMinor") FILTER (WHERE ds."logisticsRole" = 'DELIVERED')::text AS delivered
-       FROM classified c
+       FROM scoped c
        JOIN "deal" d ON d."id" = c.deal_id
        LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
        WHERE COALESCE(d."operatorEmployeeId", d."employeeId") = $3
@@ -2440,7 +2468,7 @@ export class InsightsRepository {
   ): Promise<string[]> {
     const rows = await this.prisma.$queryRawUnsafe<{ rop: string | null }[]>(
       `${InsightsRepository.queueSql(mode, '$3')}
-       SELECT DISTINCT c.rop FROM classified c WHERE c.rop IS NOT NULL ORDER BY c.rop`,
+       SELECT DISTINCT c.rop FROM scoped c WHERE c.rop IS NOT NULL ORDER BY c.rop`,
       period.start,
       period.end,
       InsightsRepository.scopeValue(period),
@@ -2546,7 +2574,7 @@ export class InsightsRepository {
            c.created_at, c.moved_at, c.queued_at, c.decided_at,
            d."amountMinor" AS amount_minor_sort,
            d."title" AS title_sort
-         FROM numbered c
+         FROM visible c
          JOIN "deal" d ON d."id" = c.deal_id
          LEFT JOIN "customer" cust ON cust."id" = d."customerId"
         -- NULL, not an empty array: ANY over an empty array is false for every
@@ -2620,7 +2648,7 @@ export class InsightsRepository {
            count(*) FILTER (WHERE c.outcome = 'REJECTED')::int AS rejected,
            count(*) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::int AS pending,
            count(*) FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::int AS unconfirmed_shipped
-         FROM numbered c
+         FROM visible c
          JOIN "deal" d ON d."id" = c.deal_id
          LEFT JOIN "customer" cust ON cust."id" = d."customerId"
         -- NULL rops are KEPT and dropped by the caller: the tiles are this
@@ -2772,7 +2800,7 @@ export class InsightsRepository {
            c.deal_id, c.rop, c.daily_no, c.outcome,
            c.created_at, c.moved_at, c.queued_at, c.decided_at,
            (count(*) OVER ())::bigint AS total_items
-         FROM numbered c
+         FROM visible c
          JOIN "deal" d ON d."id" = c.deal_id
          LEFT JOIN "customer" cust ON cust."id" = d."customerId"
         -- NULL, not an empty array: ANY over an empty array is false for every
@@ -3263,7 +3291,7 @@ export class InsightsRepository {
                    / NULLIF(count(*), 0)::float * 100)::float AS share,
                 count(*)::int AS orders,
                 count(*) FILTER (WHERE c.outcome = 'REJECTED')::int AS rejected
-           FROM classified c
+           FROM scoped c
           GROUP BY 1
        ),
        days AS (

@@ -15,6 +15,7 @@ import {
   scopedPeriod,
 } from '@/server/domain/employees/branches'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
+import type { RowScope } from '@/server/auth/rbac'
 import type { Period } from '@/server/domain/period/period'
 import { allTime, periodLengthInDays } from '@/server/domain/period/period'
 import type {
@@ -753,16 +754,18 @@ export class InsightsService {
    * side by side.
    */
   /**
-   * @param scope Whose orders the caller may read. REQUIRED, with no default:
-   *   every other reading in this service still defaults to the whole company
-   *   because the screens behind them refuse a narrowed account at the
-   *   permission gate, and this one no longer does. An omitted argument here
-   *   would be a ROP reading the firm's queue, so it cannot be omitted.
+   * @param scope Whose orders the caller may read. REQUIRED, and typed
+   *   `RowScope` rather than `EmployeeScopeFilter` — the difference is the
+   *   whole guarantee. `EmployeeScopeFilter`'s field is OPTIONAL, so a
+   *   required argument of that type still accepts `{}`, which reads as "no
+   *   filter" and serves the company: exactly the literal that used to sit at
+   *   this call site. `RowScope` makes the field required, so a caller has to
+   *   write `null` to mean everybody, and writing it is the decision.
    */
   async confirmationQueue(
     period: Period,
     query: ConfirmationOrderQuery,
-    scope: EmployeeScopeFilter,
+    scope: RowScope,
     mode: ConfirmationQueueMode = 'window',
   ): Promise<ConfirmationQueueDto> {
     /*
