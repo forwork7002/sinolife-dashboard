@@ -13,8 +13,9 @@ export const dynamic = 'force-dynamic'
  * from is already served whole to the same caller, so hiding one unit's roster
  * would withhold nothing the chart beside it does not already show.
  *
- * Dateless, like the chart. The period parameters are still accepted (a
- * sidebar link carries them) and ignored.
+ * Dateless, like the chart. `departmentRosterQuerySchema` is built on the
+ * shared `periodQuerySchema`, so the period parameters are still accepted and
+ * ignored — the panel sends only `departmentId`.
  */
 const ACCESS = { permission: 'employees:read', section: 'structure' } as const
 
