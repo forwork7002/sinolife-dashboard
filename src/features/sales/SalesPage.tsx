@@ -14,6 +14,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable'
 import { Meter, StatTile } from '@/components/ui/Stat'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
+import { ConfirmationFaktSection } from '@/features/sales/ConfirmationFaktSection'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import {
@@ -536,6 +537,15 @@ export function SalesPage() {
         )}
         </div>
       </section>
+
+      {/*
+        THE FLOOR'S OWN TWO NUMBERS, on the manager's screen. FAKT 1 / FAKT 2,
+        the conversion, the bonus fund and the ladder came here from the
+        sellers board on 2026-09-07, when that screen became the television
+        on the sales floor. A different clock from everything above it — the
+        section names it. See `ConfirmationFaktSection`.
+      */}
+      <ConfirmationFaktSection />
 
       {/*
         Savdo pulsi — how fast the machine turns, from /insights/pulse.

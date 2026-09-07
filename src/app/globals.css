@@ -2384,6 +2384,296 @@ p {
 }
 
 /* ===========================================================================
+ * TV BOARD — the sellers board as it is read on the floor's television
+ *
+ * `/sellers` is two columns of one card each: sellers left, teams right, a
+ * three-seat podium at the top of both and the ranked rows under it. The
+ * client's ask of 2026-09-07 — the screen lives on a TV on the sales floor,
+ * shows the sellers their own places, and carries nothing that is not a rank.
+ *
+ * TWO LAYOUTS, ONE BREAKPOINT — AND THE BREAKPOINT IS 1600px, NOT lg.
+ * Under it the columns stack and the page scrolls like any other. From it the
+ * board takes the height the shell leaves it (`PageShell fill`) and each LIST
+ * scrolls inside its own column — `min-height: 0` on every flex and grid
+ * ancestor is what lets an overflow box shrink below its content, and
+ * `grid-auto-rows: minmax(0, 1fr)` is the same rule for the grid track; drop
+ * either and the list grows to its rows and the page scrolls instead of the
+ * column.
+ *
+ * 1600 IS MEASURED, NOT CHOSEN. Two columns beside a 240px rail leave each
+ * one (vw − 240 − 32 − 16) / 2, and a seat is a third of that less 60px of
+ * padding and gaps: 145px at 1280, 188px at 1536, 252px at 1920. The seat
+ * carries a full-digit sum by design («126,950,000 soʻm» ≈ 134px, the chase
+ * pill «🎯 Liderga +108,000,000» ≈ 160px, neither of which may wrap on a
+ * screen read from across a room), so under about 1600 the three seats spill
+ * out of their cards and into each other — 33px past the card edge at 1280,
+ * measured. Stacked, the same seat is 344px wide at 1366. The television is
+ * 1920 and gets the two columns; a laptop gets one column at a time and its
+ * own scrollbar, which is what a laptop has.
+ *
+ * SIZED FROM THE VIEWPORT. A 1920px television is read from a desk away and
+ * a 1366px laptop from arm's length, and one pixel size cannot serve both:
+ * the `--tv-*` tokens ramp with vw between house sizes and a TV reading, so
+ * the board is legible across the room on the one screen and ordinary on
+ * every other. Clamped, so a 4K wall does not print names at 40px.
+ * ======================================================================== */
+
+.tv-board {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tv-col {
+  display: flex;
+  flex-direction: column;
+  --tv-name: clamp(13px, 0.88vw, 18px);
+  --tv-money: clamp(13px, 0.88vw, 18px);
+  --tv-small: clamp(11px, 0.62vw, 13px);
+  --tv-seat-scale: 1;
+  --tv-seat-name: clamp(14px, calc(1.05vw * var(--tv-seat-scale)), 21px);
+  --tv-seat-figure: clamp(17px, calc(1.35vw * var(--tv-seat-scale)), 28px);
+}
+
+.tv-col-head {
+  flex-shrink: 0;
+  padding: 14px 18px 0;
+}
+
+/*
+ * `min-height: 0` ONLY FROM the two-column width. Under it the page scrolls
+ * as a whole, and a shrinkable board inside a viewport-high wrapper squeezed
+ * both lists to nothing on a phone — the podium was there, the rows were a
+ * two-pixel scroll box under it, and nothing errored.
+ */
+@media (min-width: 1600px) {
+  /* The page's own column, so the viewport-height layout and the two-column
+     one switch on ONE query rather than on a Tailwind `lg:` that no longer
+     matches it. */
+  .tv-board-shell {
+    height: 100%;
+  }
+  .tv-board {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+  }
+  .tv-col {
+    min-height: 0;
+  }
+  .tv-list {
+    flex: 1;
+    min-height: 0;
+  }
+}
+
+/**
+ * The seats: a three-column grid with the bottoms aligned, so the champion's
+ * extra padding makes it a step TALLER — the podium's own shape — rather than
+ * a card floating higher. Silver and bronze step their type and ring down a
+ * notch each (`--tv-seat-scale`), which is what keeps first place readable
+ * as first from across the room with every card the same width.
+ */
+.tv-podium {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+  gap: 12px;
+  padding: 14px 18px 12px;
+}
+.tv-podium--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.tv-podium--1 {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 62%;
+  margin-inline: auto;
+}
+
+/*
+ * ONE ROW, STATED. The seats are placed by `grid-column` (gold in the
+ * middle, DOM order 1-2-3), and auto-placement only ever moves its cursor
+ * forward: after seating gold in column 2 it would put silver — column 1 —
+ * on the NEXT row, and the podium became a staircase of three rows the
+ * first time it rendered. Every seat names row 1 so the cursor has no say.
+ */
+.tv-seat {
+  grid-row: 1;
+  min-width: 0;
+}
+.tv-seat--at-1 { grid-column: 1; }
+.tv-seat--at-2 { grid-column: 2; }
+.tv-seat--at-3 { grid-column: 3; }
+
+/* A phone cannot seat three across: the seats stack in DOM order, champion
+   first, each at full width. */
+@media (max-width: 639px) {
+  .tv-podium,
+  .tv-podium--2,
+  .tv-podium--1 {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: none;
+  }
+  .tv-seat {
+    grid-row: auto;
+    grid-column: 1;
+  }
+}
+.tv-seat--2 { --tv-seat-scale: 0.9; }
+.tv-seat--3 { --tv-seat-scale: 0.82; }
+
+.tv-seat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 16px 12px 14px;
+}
+/*
+ * THE SEAT KEEPS WHAT IS IN IT. The breakpoint above sizes the seats so the
+ * figure and the chase pill fit, but a rail, a zoom level or a browser's own
+ * font size can still narrow one — and an `inline-flex` pill has no wrapping
+ * of its own, so it left the card sideways and overlapped its neighbour
+ * rather than growing taller. Wrapping is the honest failure here: two lines
+ * of «Liderga +108,000,000» is readable, half of it under the next seat is
+ * not.
+ */
+.tv-seat-card .chase-chip {
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.tv-seat--1 .tv-seat-card {
+  padding-top: 26px;
+  padding-bottom: 18px;
+}
+/* The same base rails the banner and runner cards wore: 4 / 3 / 2 px. */
+.tv-seat--1 .tv-seat-card {
+  border-bottom: 4px solid color-mix(in oklab, var(--metal) 62%, var(--border));
+}
+
+.tv-seat .podium-plaque {
+  white-space: nowrap;
+}
+
+.tv-seat-name {
+  font-size: var(--tv-seat-name);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+/* The whole sum. Tabular so a refetch that moves one digit does not move
+   the rest; tight tracking because it is set well above body size. */
+.tv-seat-figure {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: var(--tv-seat-figure);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+
+/* The ghost numeral fits a seat rather than a banner. */
+.tv-seat .podium-ghost-num {
+  font-size: clamp(64px, 6.2vw, 112px);
+  right: 8px;
+}
+
+/**
+ * The rows. A real table (the header IS a header) inside a box that scrolls
+ * on its own — and drifts on its own, see `useAutoScroll`. The header sticks
+ * on the card's surface, not `--surface-sunken`: this table sits directly on
+ * the card with no sunken well around it, so the sunken token would draw a
+ * band across the top of the list.
+ */
+.tv-list {
+  /* Six no-wrap columns are wider than a phone; they scroll inside the
+     column rather than pushing the page past its edge. */
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 0 10px 8px;
+}
+
+.tv-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.tv-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 8px 8px;
+  background: var(--surface-raised);
+  box-shadow: inset 0 -1px 0 var(--grid);
+}
+/* Figures never wrap — «10 (5 yoʻlda)» broke across two lines the first
+   time a name column took its share. The name cell is the one that may. */
+.tv-row > td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--grid);
+  vertical-align: top;
+  white-space: nowrap;
+}
+.tv-row > td:nth-child(2) {
+  white-space: normal;
+  width: 100%;
+}
+.tv-row:last-child > td {
+  border-bottom: 0;
+}
+.tv-row:hover > td {
+  background: var(--surface-sunken);
+}
+.tv-rank {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: var(--tv-money);
+  font-weight: 600;
+}
+.tv-name {
+  font-size: var(--tv-name);
+  font-weight: 600;
+  line-height: 1.2;
+}
+.tv-money {
+  font-size: var(--tv-money);
+  white-space: nowrap;
+}
+.tv-small {
+  font-size: var(--tv-small);
+}
+.tv-bar {
+  max-width: 260px;
+}
+/* «Oldingiga +27,627,672» is one fact; the two halves may wrap between
+   the chase and the bonus, never inside either. */
+.tv-chase,
+.tv-chase > span {
+  white-space: nowrap;
+}
+/* The legend's two swatches are the bar's two layers, same tokens, so the
+   key cannot drift from the thing it keys. */
+.tv-legend-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 4px;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.tv-legend-swatch--light {
+  background: var(--seq-250);
+}
+.tv-legend-swatch--dark {
+  background: var(--seq-550);
+}
+
+/* ===========================================================================
  * ORG CHART — the company structure, drawn the way the portal draws it
  *
  * `/structure` reproduces `obey.bitrix24.kz/hr/structure/`: cards on a

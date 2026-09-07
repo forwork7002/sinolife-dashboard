@@ -257,8 +257,11 @@ describe('confirmation seller rating filters', () => {
 /**
  * THE CHART UNDER A ROW MEASURES WHAT THE ROW MEASURES.
  *
- * `SellerDaysChart` draws the same two facts across days — light bar FAKT 1,
- * dark bar FAKT 2 — so every predicate here has to be the board's. It was not:
+ * `?employeeId=` on `/analytics/sellers` serves one seller's two facts across
+ * days — FAKT 1 and FAKT 2 — so every predicate here has to be the board's.
+ * (The drill-down chart that drew it left the sellers screen on 2026-09-07,
+ * when the page became the floor's television board; the series is still
+ * served, and this pin still holds it to the board's definitions.) It was not:
  * the series graded FAKT 2 on `d."status" = 'WON'` while the row graded on the
  * DELIVERED logistics role, and it named the operator with a bare
  * `d."employeeId"` while the row was minted by COALESCE over the snapshot.

@@ -689,7 +689,14 @@ function bonusFor(wonMinor: bigint, fullName: string, currency: string): SellerB
   }
 }
 
-/** Sellers folded into their ROP's team, ranked the same way rows are. */
+/**
+ * Sellers folded into their ROP's team, ranked the same way rows are.
+ *
+ * "The same way" is literal since 2026-09-07 and has to stay so: FAKT 2, then
+ * FAKT 1, then the name, with competition ranking over both figures. The two
+ * lists sit side by side on the floor's television, and one of them ordering
+ * by a key the other does not is a disagreement a reader can see.
+ */
 function teamRows(
   rows: readonly SellerBoardRow[],
   totalWonMinor: bigint,
@@ -707,26 +714,66 @@ function teamRows(
     else byRop.set(row.rop, [row])
   }
 
-  return [...byRop.entries()]
+  /*
+    THE SAME TWO KEYS THE SELLERS ARE ORDERED BY, AND FOR THE SAME REASON.
+
+    FAKT 2 alone left this list ALPHABETICAL for most of a working day:
+    delivery lags confirmation by days, so on «Bugun» every team's FAKT 2 is
+    zero, the money comparison ties for all fifteen of them and the name was
+    the only thing left deciding — «Asliddin» first on 2 mln confirmed,
+    «Gulzora» fourth on 40 mln. The table it used to feed printed the figures
+    beside the rank and the reader could see the order was not the money's;
+    the television seats the first three on a podium and states the basis
+    under it («oʻrinlar hozircha FAKT 1 boʻyicha»), which an alphabetical
+    order makes a false claim rather than an odd one — and every «Liderga +N»
+    gap on a card behind it goes negative.
+
+    FAKT 1 is therefore the second key here exactly as it is for a seller, and
+    the name stays the last resort so two teams level on both figures do not
+    swap places between two refreshes of one screen.
+  */
+  const ordered = [...byRop.entries()]
     .map(([rop, members]) => ({
       rop,
       members,
       wonMinor: sum(members, (m) => m.wonMinor),
+      orderedMinor: sum(members, (m) => m.orderedMinor),
     }))
     .sort(
       (a, b) =>
         (b.wonMinor > a.wonMinor ? 1 : b.wonMinor < a.wonMinor ? -1 : 0) ||
+        (b.orderedMinor > a.orderedMinor ? 1 : b.orderedMinor < a.orderedMinor ? -1 : 0) ||
         a.rop.localeCompare(b.rop),
     )
+
+  /*
+    COMPETITION RANKING, the seller rule applied to teams: equal on BOTH
+    figures, equal rank, and the next rank skips. Two teams level on FAKT 2
+    and far apart on FAKT 1 print 1 and 2 over visibly different rows, because
+    the sort has already separated them by the second key.
+  */
+  const rankOf = ordered.map((team, index) => {
+    const previous = index > 0 ? ordered[index - 1] : undefined
+    return previous &&
+      previous.wonMinor === team.wonMinor &&
+      previous.orderedMinor === team.orderedMinor
+      ? -1
+      : index + 1
+  })
+  for (let i = 1; i < rankOf.length; i++) {
+    if (rankOf[i] === -1) rankOf[i] = rankOf[i - 1]!
+  }
+
+  return ordered
     .map<SellerTeamRowDto>((team, index) => {
       const wonOrders = team.members.reduce((a, m) => a + m.wonOrders, 0)
       const lostOrders = team.members.reduce((a, m) => a + m.lostOrders, 0)
       return {
-        rank: index + 1,
+        rank: rankOf[index]!,
         rop: team.rop,
         sellers: team.members.length,
         orders: team.members.reduce((a, m) => a + m.orders, 0),
-        ordered: toMoneyDto(money(sum(team.members, (m) => m.orderedMinor), currency)),
+        ordered: toMoneyDto(money(team.orderedMinor, currency)),
         won: toMoneyDto(money(team.wonMinor, currency)),
         wonOrders,
         open: toMoneyDto(money(sum(team.members, (m) => m.openMinor), currency)),
@@ -749,7 +796,7 @@ function teamRows(
               )
             : null,
           team.wonMinor,
-          sum(team.members, (m) => m.orderedMinor),
+          team.orderedMinor,
           currency,
         ),
         leads: null,
