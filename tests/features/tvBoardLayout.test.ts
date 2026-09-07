@@ -73,6 +73,26 @@ describe('the television board switches layout on one width', () => {
     expect(css).toMatch(/@media \(max-width: 639px\)[\s\S]*?\.tv-seat \{\s*grid-row: auto;\s*grid-column: 1;/)
   })
 
+  /*
+    The two boards are told apart by colour on the frame and the heading —
+    two categorical hues, one each — and the rule that puts the hue there
+    must never reach a figure. Pinned as tokens: if either column lost its
+    own `--tv-tone`, both would fall back to the sellers' pink and the halves
+    would read as one board again.
+  */
+  it('gives the sellers and the teams columns two different tones', () => {
+    const sellers = css.match(/\.tv-col--sellers \{ --tv-tone: (var\(--series-\d\)); \}/)
+    const teams = css.match(/\.tv-col--teams \{ --tv-tone: (var\(--series-\d\)); \}/)
+    expect(sellers?.[1]).toBeDefined()
+    expect(teams?.[1]).toBeDefined()
+    expect(sellers?.[1]).not.toBe(teams?.[1])
+  })
+
+  it('steps the pedestals 1 : 1.6 : 2.4 with bronze as the unit', () => {
+    expect(css).toMatch(/\.tv-seat--1 \{ --tv-pedestal: calc\(var\(--tv-step\) \* 2\.4\); \}/)
+    expect(css).toMatch(/\.tv-seat--2 \{ --tv-pedestal: calc\(var\(--tv-step\) \* 1\.6\); \}/)
+  })
+
   it('lets a seat chase pill wrap rather than leave the card', () => {
     expect(css).toMatch(/\.tv-seat-card \.chase-chip \{[\s\S]*?flex-wrap: wrap;/)
   })

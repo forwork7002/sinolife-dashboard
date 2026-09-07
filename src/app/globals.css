@@ -2435,6 +2435,27 @@ p {
 .tv-col {
   display: flex;
   flex-direction: column;
+  position: relative;
+  /*
+    THE COLUMN'S OWN COLOUR — on its frame, its wash and its glyph, never on
+    a number. Sellers and teams are two kinds of thing, so each board wears
+    one categorical hue (two of the palette's eight) and a reader tells the
+    halves apart from the doorway, which the client asked for outright:
+    «komanda va sotuvchilar ajralib tursin bir-biridan».
+  */
+  --tv-tone: var(--series-5);
+  border-color: color-mix(in oklab, var(--tv-tone) 34%, var(--border));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--tv-tone) 9%, transparent),
+      transparent 180px
+    ),
+    var(--surface-raised);
+  box-shadow:
+    inset 0 3px 0 var(--tv-tone),
+    var(--shadow-card),
+    var(--edge-highlight);
   --tv-name: clamp(13px, 0.88vw, 18px);
   --tv-money: clamp(13px, 0.88vw, 18px);
   --tv-small: clamp(11px, 0.62vw, 13px);
@@ -2443,9 +2464,25 @@ p {
   --tv-seat-figure: clamp(17px, calc(1.35vw * var(--tv-seat-scale)), 28px);
 }
 
+.tv-col--sellers { --tv-tone: var(--series-5); }
+.tv-col--teams { --tv-tone: var(--series-3); }
+
 .tv-col-head {
   flex-shrink: 0;
-  padding: 14px 18px 0;
+  padding: 16px 18px 0;
+}
+/* The heading's glyph in a tinted disc of the column's colour. */
+.tv-col-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  font-size: 17px;
+  background: color-mix(in oklab, var(--tv-tone) 16%, transparent);
+  border: 1px solid color-mix(in oklab, var(--tv-tone) 45%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--tv-tone) 7%, transparent);
 }
 
 /*
@@ -2487,10 +2524,13 @@ p {
 .tv-podium {
   flex-shrink: 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* The champion's column a step wider — rank on size, as the podium block
+     header licenses — and the three bottoms level, so the pedestals read as
+     one floor and the cards as three heights standing on it. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.16fr) minmax(0, 1fr);
   align-items: end;
-  gap: 12px;
-  padding: 14px 18px 12px;
+  gap: 14px;
+  padding: 22px 18px 14px;
 }
 .tv-podium--2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2511,6 +2551,57 @@ p {
 .tv-seat {
   grid-row: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  /*
+    THE PEDESTAL HEIGHTS — 1 : 1.6 : 2.4 of one step, sized from the viewport
+    like the type, so the staircase is the same shape on a laptop and on the
+    television. Bronze is the unit.
+  */
+  --tv-step: clamp(22px, 1.55vw, 32px);
+  --tv-pedestal: var(--tv-step);
+}
+.tv-seat--1 { --tv-pedestal: calc(var(--tv-step) * 2.4); }
+.tv-seat--2 { --tv-pedestal: calc(var(--tv-step) * 1.6); }
+
+/*
+ * The block under the card. Its top lip is the one lit edge — a real
+ * podium's chrome strip — and the numeral is cut into the face large enough
+ * to be the first thing seen from across the room, in ink on the metal's
+ * wash so the metal never carries the glyph itself.
+ */
+.tv-pedestal {
+  position: relative;
+  height: var(--tv-pedestal);
+  margin: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0 0 12px 12px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--metal) 38%, var(--surface-raised)),
+    color-mix(in oklab, var(--metal) 14%, var(--surface-raised))
+  );
+  border: 1px solid color-mix(in oklab, var(--metal) 55%, var(--border));
+  border-top: 3px solid color-mix(in oklab, var(--metal) 70%, #fff);
+  box-shadow:
+    inset 0 -10px 18px -12px color-mix(in oklab, var(--metal) 60%, #000),
+    var(--shadow-card);
+}
+.tv-pedestal-num {
+  font-weight: 800;
+  font-size: calc(var(--tv-pedestal) * 0.66);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--ink-primary);
+  font-variant-numeric: lining-nums;
+  text-shadow: 0 1px 0 color-mix(in oklab, var(--metal) 40%, transparent);
+  user-select: none;
+}
+/* The bronze block is too short for a numeral at two thirds of its height. */
+.tv-seat--3 .tv-pedestal-num {
+  font-size: calc(var(--tv-pedestal) * 0.78);
 }
 .tv-seat--at-1 { grid-column: 1; }
 .tv-seat--at-2 { grid-column: 2; }
@@ -2528,6 +2619,12 @@ p {
   .tv-seat {
     grid-row: auto;
     grid-column: 1;
+  }
+  /* Stacked, a staircase of blocks is a staircase of gaps; one short block
+     under every card keeps the plinth without the empty height. */
+  .tv-seat--1,
+  .tv-seat--2 {
+    --tv-pedestal: var(--tv-step);
   }
 }
 /*
@@ -2577,17 +2674,53 @@ p {
   flex-wrap: wrap;
   justify-content: center;
 }
+.tv-seat .tv-seat-card {
+  /* Standing on the block: the card's own bottom edge is the pedestal's
+     top lip, so no radius and no rail of its own down there. */
+  border-bottom-left-radius: 4px;
+  border-bottom-right-radius: 4px;
+  padding-top: 22px;
+}
 .tv-seat--1 .tv-seat-card {
-  padding-top: 26px;
+  padding-top: 28px;
   padding-bottom: 18px;
 }
-/* The same base rails the banner and runner cards wore: 4 / 3 / 2 px. */
+
+/*
+ * THE CHAMPION'S CARD IS FRAMED IN ITS METAL, the other two only rimmed.
+ * A second, sharper ring outside the border and a wider pool of gold light
+ * under it — the seat the client wants «unmistakable from across the room»
+ * differs from its flankers in outline, not only in size.
+ */
 .tv-seat--1 .tv-seat-card {
-  border-bottom: 4px solid color-mix(in oklab, var(--metal) 62%, var(--border));
+  border-color: color-mix(in oklab, var(--metal) 72%, var(--border));
+  box-shadow:
+    0 0 0 3px color-mix(in oklab, var(--metal) 22%, transparent),
+    0 18px 40px -18px color-mix(in oklab, var(--metal) 70%, transparent),
+    var(--shadow-raised),
+    var(--edge-highlight);
+}
+.tv-seat--2 .tv-seat-card,
+.tv-seat--3 .tv-seat-card {
+  border-color: color-mix(in oklab, var(--metal) 50%, var(--border));
 }
 
+/* The plaque rides the card's top edge like a medal on its ribbon. */
 .tv-seat .podium-plaque {
   white-space: nowrap;
+}
+.tv-seat-plaque {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  background: color-mix(in oklab, var(--metal) 22%, var(--surface-raised));
+  box-shadow: var(--shadow-card);
+}
+.tv-seat--1 .tv-seat-plaque {
+  font-size: 12px;
+  padding: 4px 12px;
 }
 
 .tv-seat-name {
@@ -2609,10 +2742,10 @@ p {
   white-space: nowrap;
 }
 
-/* The ghost numeral fits a seat rather than a banner. */
-.tv-seat .podium-ghost-num {
-  font-size: clamp(64px, 6.2vw, 112px);
-  right: 8px;
+/* The champion's own distance, in the leader's tint rather than the chase blue. */
+.chase-chip--lead {
+  background: color-mix(in oklab, var(--metal) 18%, transparent);
+  border-color: color-mix(in oklab, var(--metal) 50%, transparent);
 }
 
 /**

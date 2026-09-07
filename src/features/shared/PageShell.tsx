@@ -96,6 +96,7 @@ export function PageShell({
   children,
   period = true,
   fill = false,
+  periodAlign = 'start',
 }: {
   title: string
   /**
@@ -206,6 +207,16 @@ export function PageShell({
    * and `gap-4` on the flex column is the visually identical replacement.
    */
   fill?: boolean
+  /**
+   * Where the period chips sit. `'end'` seats them in the title row's right
+   * slot, beside `actions`, instead of opening the filter row under the
+   * title — asked for on the television board, whose only control they are:
+   * «sanani oʻng tarafga». The date then reads as a setting in the corner
+   * rather than as the first thing on the page, and the page is one row
+   * shorter. The shell still owns the control; the page only says which
+   * side.
+   */
+  periodAlign?: 'start' | 'end'
 }) {
   const { filters, update, setPeriod, reset, activeCount } = useDashboardFilters()
   // Once per page: see the hook's own note on why it does not live in
@@ -324,7 +335,12 @@ export function PageShell({
                   </p>
                 )}
               </div>
-              {actions}
+              {(actions || periodAlign === 'end') && (
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                  {periodAlign === 'end' && periodControl}
+                  {actions}
+                </div>
+              )}
             </header>
 
             {/*
@@ -357,9 +373,9 @@ export function PageShell({
               `toolbar` opens it too, so a page whose only controls are its own
               still gets the row rather than silently dropping them.
             */}
-            {(period || anyFilter || toolbar) && (
+            {((period && periodAlign !== 'end') || anyFilter || toolbar) && (
             <div className="flex flex-wrap items-center gap-2">
-              {periodControl}
+              {periodAlign !== 'end' && periodControl}
               {anyFilter && (
                 <>
                 {enabled.search && (

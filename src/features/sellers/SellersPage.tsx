@@ -30,7 +30,8 @@ import { t } from '@/lib/messages'
  * totals band, the conversion gauge, the bonus fund, the bonus ladder, the
  * per-row Plan / Prognoz / Lid / FOT columns, the per-seller drill-down and
  * its day chart — moved to Savdo dinamikasi (`ConfirmationFaktSection`),
- * where the manager who reads those numbers actually is.
+ * where the manager who reads those numbers actually is. Nothing about a
+ * bonus is printed here at all, per the client's own note the same day.
  *
  * A TELEVISION HAS NO MOUSE, and that decides the rest of the layout:
  *
@@ -98,6 +99,7 @@ export function SellersPage() {
       meta={board.data?.meta}
       stale={board.isPlaceholderData}
       accent="var(--series-5)"
+      periodAlign="end"
       fill
     >
       {/*
@@ -142,7 +144,12 @@ export function SellersPage() {
  * rule, so the podium and the list are written once over this shape and the
  * two columns cannot drift apart in wording, sizing or arithmetic. What
  * differs is only what stands beside the name — a seller's team, a team's
- * headcount — and whether a bonus can be on the line at all.
+ * headcount.
+ *
+ * NO BONUS ON THIS BOARD. The ladder and the fund live on Savdo dinamikasi;
+ * the client's note of 2026-09-07 — «bonus kerak emas, bonus hali aytilmadi»
+ * — took the per-seat bonus chips off the television, and the shape here
+ * carries nothing the seats cannot print.
  */
 export interface BoardEntry {
   readonly key: string
@@ -160,10 +167,6 @@ export interface BoardEntry {
   readonly openOrders: number | null
   readonly conversionPercent: number | null
   readonly sharePercent: number | null
-  /** The ladder pays people, not teams: zero and null on a team line. */
-  readonly bonusEarned: number
-  readonly bonusToNext: number | null
-  readonly bonusToNextPercent: number | null
 }
 
 function fromSeller(row: SellerBoardRowDto): BoardEntry {
@@ -179,9 +182,6 @@ function fromSeller(row: SellerBoardRowDto): BoardEntry {
     openOrders: row.openOrders,
     conversionPercent: row.conversionPercent,
     sharePercent: row.sharePercent,
-    bonusEarned: row.bonus.earned.amount,
-    bonusToNext: row.bonus.toNext?.amount ?? null,
-    bonusToNextPercent: row.bonus.toNextPercent,
   }
 }
 
@@ -198,9 +198,6 @@ function fromTeam(row: SellerTeamRowDto): BoardEntry {
     openOrders: null,
     conversionPercent: row.conversionPercent,
     sharePercent: row.sharePercent,
-    bonusEarned: 0,
-    bonusToNext: null,
-    bonusToNextPercent: null,
   }
 }
 
@@ -219,6 +216,7 @@ export function SellersColumn({ data, status, errorMessage, onRetry }: ColumnPro
   return (
     <BoardColumn
       id="tv-sellers"
+      tone="sellers"
       glyph="🏆"
       title="Sotuvchilar"
       noun="Sotuvchi"
@@ -239,6 +237,7 @@ export function TeamsColumn({ data, status, errorMessage, onRetry }: ColumnProps
   return (
     <BoardColumn
       id="tv-teams"
+      tone="teams"
       glyph="🛡️"
       title="Komandalar"
       noun="Komanda (ROP)"
@@ -272,6 +271,7 @@ export function TeamsColumn({ data, status, errorMessage, onRetry }: ColumnProps
  */
 function BoardColumn({
   id,
+  tone,
   glyph,
   title,
   noun,
@@ -285,6 +285,14 @@ function BoardColumn({
   quiet = false,
 }: {
   id: string
+  /**
+   * Which of the two boards this is, as a colour. People and teams are two
+   * KINDS of thing, not two values of one, so a categorical hue each is
+   * legitimate — the sellers wear the page's own accent, the teams a second
+   * one — and it rides on the column's frame and heading, never on a figure.
+   * Two of the palette's eight slots; the ROP badge stays a text chip.
+   */
+  tone: 'sellers' | 'teams'
   glyph: string
   title: string
   /** The name column's header. */
@@ -322,15 +330,15 @@ function BoardColumn({
     !quiet && onDelivered && !!totals && totals.orders > 0 && totals.wonOrders * 2 < totals.orders
 
   return (
-    <section className="tv-col card reveal" aria-labelledby={`${id}-heading`}>
+    <section className={`tv-col tv-col--${tone} card reveal`} aria-labelledby={`${id}-heading`}>
       <header className="tv-col-head">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
           <h2
             id={`${id}-heading`}
-            className="display text-[17px] font-semibold"
+            className="display flex items-center gap-2.5 text-[18px] font-semibold"
             style={{ color: 'var(--ink-primary)' }}
           >
-            <span aria-hidden="true" className="mr-2">
+            <span aria-hidden="true" className="tv-col-glyph">
               {glyph}
             </span>
             {title}
@@ -423,9 +431,20 @@ function ColumnSkeleton() {
       <div className="tv-podium tv-podium--3" aria-hidden="true">
         {/* Placed by the seat classes, not an inline grid-column: an inline
             style would beat the <640px rule that stacks the seats. */}
-        <div className="skeleton tv-seat tv-seat--at-2 h-64" />
-        <div className="skeleton tv-seat tv-seat--at-1 h-56" />
-        <div className="skeleton tv-seat tv-seat--at-3 h-52" />
+        {/* Each seat names its metal so the pedestal's colour-mix has a
+            token to mix — without one the block paints nothing. */}
+        <div className="podium-col--gold tv-seat tv-seat--1 tv-seat--at-2">
+          <div className="skeleton h-64" />
+          <div className="tv-pedestal" />
+        </div>
+        <div className="podium-col--silver tv-seat tv-seat--2 tv-seat--at-1">
+          <div className="skeleton h-56" />
+          <div className="tv-pedestal" />
+        </div>
+        <div className="podium-col--bronze tv-seat tv-seat--3 tv-seat--at-3">
+          <div className="skeleton h-52" />
+          <div className="tv-pedestal" />
+        </div>
       </div>
       <div className="mt-3 space-y-2" aria-hidden="true">
         {Array.from({ length: 6 }, (_, i) => (
@@ -454,13 +473,13 @@ function PodiumBasis({ onDelivered, className = '' }: { onDelivered: boolean; cl
 }
 
 const SEATS = [
-  { col: 'podium-col--gold', medal: '🥇', ring: 58 },
+  { col: 'podium-col--gold', medal: '🥇', ring: 60 },
   { col: 'podium-col--silver', medal: '🥈', ring: 46 },
   { col: 'podium-col--bronze', medal: '🥉', ring: 40 },
 ] as const
 
 /**
- * The three seats, gold in the middle.
+ * The three seats, gold in the middle — and on the tallest block.
  *
  * DOM ORDER IS 1-2-3 AND THE GRID RE-SEATS THEM: a screen reader and the
  * stagger both meet the champion first, while the eye meets the shape it
@@ -469,6 +488,12 @@ const SEATS = [
  * Two winners sit gold-then-silver; one sits alone in the centre. The
  * column is a class, not an inline style, so a phone can overrule it and
  * stack the seats — an inline `grid-column` would beat any media query.
+ *
+ * A PODIUM, NOT THREE CARDS. Each seat stands on a pedestal — 1 : 1.6 : 2.4
+ * in height, the champion's card a step wider — so the three places are
+ * told apart by SHAPE from across the room before a single word is read:
+ * the client's ask of 2026-09-07, «1, 2 va 3 oʻrinlar yaqqol ajralib
+ * tursin». The metal stays chrome on every part of it.
  */
 function Podium({
   winners,
@@ -492,6 +517,7 @@ function Podium({
           place={index + 1}
           column={columnOf(index + 1)}
           leader={leader}
+          runnerUp={index === 0 ? (winners[1] ?? null) : null}
           onDelivered={onDelivered}
           totalWon={totalWon}
         />
@@ -514,10 +540,10 @@ function PodiumAvatar({ place, size, crowned }: { place: number; size: number; c
         <span
           className="rise absolute z-[1] leading-none"
           style={{
-            top: -15,
+            top: -16,
             left: '50%',
             transform: 'translateX(-50%) rotate(-12deg)',
-            fontSize: 18,
+            fontSize: 20,
             animationDelay: '650ms',
           }}
         >
@@ -531,7 +557,7 @@ function PodiumAvatar({ place, size, crowned }: { place: number; size: number; c
             width: size,
             height: size,
             background: 'var(--surface-raised)',
-            color: 'var(--metal)',
+            color: 'var(--ink-primary)',
             fontSize: Math.round(size * 0.52),
             letterSpacing: '-0.02em',
             lineHeight: 1,
@@ -549,6 +575,7 @@ function PodiumSeat({
   place,
   column,
   leader,
+  runnerUp,
   onDelivered,
   totalWon,
 }: {
@@ -556,48 +583,51 @@ function PodiumSeat({
   place: number
   column: number
   leader: BoardEntry
+  /** The second seat, handed to the first so the champion has a distance too. */
+  runnerUp: BoardEntry | null
   onDelivered: boolean
   totalWon: number
 }) {
   const seat = SEATS[place - 1]!
   const champion = place === 1
-  const figure = onDelivered ? entry.won : entry.ordered
-  const leaderFigure = onDelivered ? leader.won : leader.ordered
+  const figureOf = (e: BoardEntry) => (onDelivered ? e.won : e.ordered)
+  const figure = figureOf(entry)
+  const leaderFigure = figureOf(leader)
   const gap = leaderFigure - figure
   const closeness = leaderFigure > 0 ? (figure / leaderFigure) * 100 : 0
+  const lead = runnerUp ? figure - figureOf(runnerUp) : null
 
   return (
     <div className={`${seat.col} tv-seat tv-seat--${place} tv-seat--at-${column}`}>
       <div className="podium-card tv-seat-card">
-        <div className="podium-ghost" aria-hidden="true">
-          <span className="podium-ghost-num">{entry.rank}</span>
-        </div>
-
-        <div className="relative">
-          {champion && <span className="podium-aura" aria-hidden="true" />}
-          <PodiumAvatar place={place} size={seat.ring} crowned={champion} />
-        </div>
-
         {/*
-          THE RANK, NOT THE SEAT. Ranking is competition-style and shared only
-          when BOTH figures match — two sellers who each confirmed one order of
-          the same product on «Bugun» are both first — and the rows below print
-          the server's rank, so a seat printing its own position would put
-          «2-oʻrin» over a joint leader and disagree with the row beneath it.
-          The medal, the size and the position still follow the seat.
+          THE PLACE, ON THE CARD'S OWN EDGE. The plaque straddles the top
+          border like a medal on a ribbon, so the ordinal is the first thing
+          on the seat and is not mistaken for a line of the name.
         */}
-        <p className="podium-plaque relative mt-3">
+        <p className="podium-plaque tv-seat-plaque">
           <span aria-hidden="true">{seat.medal}</span>
           <span className="sr-only">{entry.rank}-oʻrin:</span>
+          {/*
+            THE RANK, NOT THE SEAT. Ranking is competition-style and shared
+            only when BOTH figures match — two sellers who each confirmed one
+            order of the same product on «Bugun» are both first — and the rows
+            below print the server's rank, so a seat printing its own position
+            would put «2-oʻrin» over a joint leader and disagree with the row
+            beneath it. The medal, the size and the pedestal follow the seat.
+          */}
           <span aria-hidden="true">
             {entry.rank}-oʻrin
-            {/* «Chempion» only where the seat is wide enough to say it on one
-                line — a laptop's 150px seat is not. */}
             {champion && <span className="hidden xl:inline"> · Chempion</span>}
           </span>
         </p>
 
-        <p className="tv-seat-name relative mt-2" style={{ color: 'var(--ink-primary)' }}>
+        <div className="relative mt-1">
+          {champion && <span className="podium-aura" aria-hidden="true" />}
+          <PodiumAvatar place={place} size={seat.ring} crowned={champion} />
+        </div>
+
+        <p className="tv-seat-name relative mt-3" style={{ color: 'var(--ink-primary)' }}>
           {entry.name}
         </p>
         {entry.badge && (
@@ -644,19 +674,26 @@ function PodiumSeat({
         {champion ? (
           <div className="relative mt-3 w-full">
             {/*
-              A champion with nothing left to chase is a page that stops
-              motivating exactly at the top: the leader reads distance to the
-              next reward where the runners read distance to the leader.
+              THE CHAMPION'S DISTANCE IS THE ONE BEHIND THEM. A leader with
+              nothing to read stops being motivated exactly at the top, and
+              the runners already read their distance to this seat — so the
+              seat states the same fact from its own side: the margin over
+              second place, in soʻm, or a level pair when there is none.
+              Alone on the podium it prints its share of the whole instead.
             */}
-            {entry.bonusEarned > 0 ? (
-              <span className="chase-chip inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold">
-                <span aria-hidden="true">🎁</span>
-                <span className="tabular">{formatFullUzs(entry.bonusEarned)}</span> soʻm bonus
-              </span>
-            ) : entry.bonusToNext !== null ? (
-              <span className="chase-chip inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold">
-                <span aria-hidden="true">🎁</span>
-                Bonusgacha <span className="tabular">+{formatUzs(entry.bonusToNext)}</span>
+            {lead !== null ? (
+              <span className="chase-chip chase-chip--lead inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold">
+                <span aria-hidden="true">{lead === 0 ? '🔥' : '🚀'}</span>
+                {lead === 0 ? (
+                  '2-oʻrin bilan teng'
+                ) : (
+                  /* Two halves that may part between them and never inside
+                     either: a team's margin runs to thirteen digits. */
+                  <>
+                    <span className="whitespace-nowrap">2-oʻrindan</span>
+                    <span className="tabular whitespace-nowrap">+{formatUzs(lead)} oldinda</span>
+                  </>
+                )}
               </span>
             ) : entry.sharePercent !== null && totalWon > 0 ? (
               <span className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
@@ -677,7 +714,7 @@ function PodiumSeat({
                 'Lider bilan teng'
               ) : (
                 <>
-                  Liderga <span className="tabular">+{formatUzs(gap)}</span>
+                  Liderga <span className="tabular whitespace-nowrap">+{formatUzs(gap)}</span>
                 </>
               )}
             </span>
@@ -692,7 +729,7 @@ function PodiumSeat({
                 <div
                   className="h-full rounded-full"
                   style={{
-                    width: `${Math.max(2, closeness)}%`,
+                    width: `${Math.max(2, Math.min(100, closeness))}%`,
                     background:
                       'linear-gradient(90deg, color-mix(in oklab, var(--seq-550) 45%, var(--surface-raised)), var(--seq-550))',
                     transition: 'width var(--duration-enter) var(--ease-out)',
@@ -712,6 +749,16 @@ function PodiumSeat({
 
         {/* Last child, so the streak passes over the whole seat. */}
         {champion && <div className="podium-shine" aria-hidden="true" />}
+      </div>
+
+      {/*
+        THE PEDESTAL. Decorative — the plaque has already said the place in
+        words — and the one part of the seat that is nothing but shape: a
+        block whose HEIGHT is the rank, with the numeral cut into its face.
+        Painted in the seat's metal, lettered in ink.
+      */}
+      <div className="tv-pedestal" aria-hidden="true">
+        <span className="tv-pedestal-num">{place}</span>
       </div>
     </div>
   )
@@ -900,11 +947,10 @@ function Th({
 }
 
 /**
- * The chase, under the name: the distance to the row directly ahead, and —
- * for a seller inside the ladder's band — the distance to the next bonus
- * rung. «+2,100,000» is something to do this afternoon. Within reach (a gap
- * under a tenth of the seller's own figure) the line steps up in ink and
- * weight — proximity emphasis, never a hue.
+ * The chase, under the name: the distance to the row directly ahead.
+ * «+2,100,000» is something to do this afternoon. Within reach (a gap under
+ * a tenth of the seller's own figure) the line steps up in ink and weight —
+ * proximity emphasis, never a hue.
  */
 function Chase({
   entry,
@@ -937,23 +983,11 @@ function Chase({
       </span>
     )
 
-  const bonus =
-    entry.bonusEarned > 0 ? (
-      <span className="tabular font-semibold" style={{ color: 'var(--status-good)' }}>
-        <span aria-hidden="true">🎁</span> {formatUzs(entry.bonusEarned)} bonus
-      </span>
-    ) : entry.bonusToNext !== null ? (
-      <span className="tabular" style={{ color: 'var(--ink-muted)' }}>
-        <span aria-hidden="true">🎁</span> Bonusgacha +{formatUzs(entry.bonusToNext)}
-      </span>
-    ) : null
-
-  if (!chase && !bonus) return null
+  if (!chase) return null
 
   return (
     <p className="tv-chase tv-small mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
       {chase}
-      {bonus}
     </p>
   )
 }

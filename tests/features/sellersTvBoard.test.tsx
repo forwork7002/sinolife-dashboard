@@ -204,6 +204,33 @@ describe('what a seat says it is ranking on', () => {
   })
 })
 
+describe('what the seats carry, and what they do not', () => {
+  /*
+    «bonus kerak emas, bonus hali aytilmadi» — the client, 2026-09-07. The
+    ladder and the fund live on Savdo dinamikasi; the television prints no
+    word of a bonus on any seat or row, whatever the DTO carries.
+  */
+  it('prints nothing about a bonus anywhere on the board', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} />)
+
+    expect(document.body.textContent).not.toMatch(/bonus/i)
+  })
+
+  it('gives the champion the margin over second place, in soʻm', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} />)
+
+    // 126 950 000 − 108 000 000, on the FAKT 2 figure the seats were decided by.
+    expect(screen.getByText(`+${formatUzs(18_950_000)} oldinda`)).toBeDefined()
+  })
+
+  it('stands every seat on a pedestal numbered by its place', () => {
+    const { container } = render(<SellersColumn data={RIPE} {...PROPS} />)
+
+    const numerals = [...container.querySelectorAll('.tv-pedestal-num')].map((n) => n.textContent)
+    expect(numerals).toEqual(['1', '2', '3'])
+  })
+})
+
 describe('the rows under the seats', () => {
   it('start at fourth place and chase the bronze seat above them', () => {
     render(<SellersColumn data={RIPE} {...PROPS} />)
