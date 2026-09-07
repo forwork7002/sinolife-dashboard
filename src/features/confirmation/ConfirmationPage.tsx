@@ -604,6 +604,23 @@ export function ConfirmationPage() {
         question is on screen instead, where the eye actually lands.
       */
       period={!backlog}
+      /*
+        THE CONTROL ROW SITS ON THE TITLE'S LINE, right-aligned.
+
+        Asked for on 2026-09-07, and the arithmetic is why it is right on this
+        page and on almost no other. The title is two words, the page prints
+        nothing under it (`description={null}` above, `meta={undefined}`
+        below), and the row is about 900px of window, search box, РОП, status
+        and Статистика — so a line of its own plus the 16px above it was
+        costing fifty pixels of the one thing this screen is: a table the
+        floor reads all day. Beside the title the row says exactly what it
+        said before and the tile band starts a row higher.
+
+        Below roughly 1300px the header wraps and the row lands back under the
+        title, left-aligned and full width, which is the layout every narrow
+        screen had anyway.
+      */
+      controlsAlign="end"
       accent="var(--series-4)"
       /*
         640 WAS A CEILING. IT IS NOW A FLOOR.

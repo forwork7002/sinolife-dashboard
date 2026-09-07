@@ -116,4 +116,45 @@ describe('PageShell toolbar', () => {
 
     expect(container.querySelector('header p')).not.toBeNull()
   })
+
+  /*
+    WHERE THE ROW SITS IS A PAGE'S DECISION, AND IT IS ONE ROW EITHER WAY.
+
+    `controlsAlign="end"` moves the whole control row into the title's line —
+    the television board asked for it with four chips, the confirmation board
+    with a window, a search box, two selects and a button, both to get a line
+    of the page back. The failure this pins is not a misplaced row, it is a
+    SECOND one: rendered in the header as well as under the title, the page
+    would look almost right, carry two search boxes with one URL between them,
+    and hand a keyboard reader the same five controls twice.
+  */
+  it('seats the whole control row in the header when the page asks for it', () => {
+    renderShell({
+      title: 'Tasdiqlash navbati',
+      description: null,
+      controlsAlign: 'end',
+      filters: { search: true },
+      toolbar: <button type="button">Статистика</button>,
+      children: null,
+    })
+
+    const search = screen.getByRole('searchbox')
+    expect(search.closest('header')).not.toBeNull()
+    // The page's own control travels with it, in the same row as before.
+    expect(screen.getByRole('button', { name: 'Статистика' }).closest('header')).not.toBeNull()
+    expect(screen.getAllByRole('searchbox')).toHaveLength(1)
+  })
+
+  it('leaves the row under the title by default', () => {
+    renderShell({
+      title: 'Tasdiqlash navbati',
+      description: null,
+      filters: { search: true },
+      toolbar: <button type="button">Статистика</button>,
+      children: null,
+    })
+
+    expect(screen.getByRole('searchbox').closest('header')).toBeNull()
+    expect(screen.getAllByRole('searchbox')).toHaveLength(1)
+  })
 })

@@ -111,7 +111,7 @@ export function SellersPage() {
       meta={board.data?.meta}
       stale={board.isPlaceholderData}
       accent="var(--series-5)"
-      periodAlign="end"
+      controlsAlign="end"
       fill
     >
       {/*
