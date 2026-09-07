@@ -461,6 +461,66 @@ mode rides the URL through `useDashboardFilters` (`reset()` keeps it — it is a
 question, not a filter), and `tests/features/confirmationBacklog.test.tsx` pins
 the pair together.
 
+**THE BOARD IS THE PAGE — `PageShell`'s `fill`, the second screen to take it —
+and `640` TURNED FROM A CEILING INTO A FLOOR.** The client asked for the
+«Барча буюртмалар» section to occupy more of the screen. The table was capped
+at a literal `maxHeight={640}`, a number that can only be wrong twice: too tall
+for a laptop, and permanently too short for the 27-inch screen a floor manager
+reads it on, where the browser had 800 spare pixels the board refused to use.
+The page body is now one flex column — banner, state tiles, Статистика panel
+all `shrink-0`, the results Card `flex-1` — and the table's bound is
+`maxHeight="100%"`, the height the card was given, which is whatever the screen
+had left. Same mechanism as the org chart's canvas: `Shell` is exactly `100dvh`
+and `main` is `min-h-0 flex-1`, so a percentage resolves without anything
+measuring the header.
+
+**The floor is `min-h-[746px]` on the Card and the number is load-bearing** —
+640 of table plus the card's own 106px of chrome. It only ever bites when the
+column does not fit, and a column that does not fit makes `main` scroll, so on
+exactly the screens where it applies the page is scrolling anyway: there is no
+reason to show a SHORTER table than before on a page that scrolls just as much
+as before. A comfortable-looking 540 was tried and measured as a loss — 6 rows
+where the old cap gave 9 on a 1280×800 laptop, and on a phone a letterbox
+inside a page that still scrolled. The break-even is a window about 1054px
+tall; above it the floor is slack and nothing scrolls. Measured: 2560×1440 →
+13 rows against 8, maximised 1920×1080 → 8 against 7 (that row is the caption
+the page no longer prints), 1280×800 → exactly what it was.
+
+Two more things a later edit would undo. `fill` hands a page ONE plain block
+with no `display: flex` and no gap, so the column is built in
+`ConfirmationPage`, not in `PageShell` — changing the wrapper would move the
+org chart for a reason that has nothing to do with it. And the Статистика panel
+had to be bounded (`maxHeight={300}`, `shrink-0`) in the same change: fifteen
+(ROP) groups unbounded is ~390px of panel opening ABOVE the card that takes
+what is left, and a demo database returns ONE, so neither the gate nor a local
+screenshot can see it.
+
+**Nothing is printed between the title and the controls, in any mode.**
+`description={null}` AND `meta={undefined}`, which say one thing together.
+`null` is not the same as omitting the prop: PageShell RESERVES that line by
+default, because a page that will print `meta.period`'s dates has to claim the
+height before the first response lands. This board never prints them, so an
+omitted prop held twenty pixels plus its margin open forever above the densest
+table in the application. The sentence that used to sit there — orders in
+Тасдиклаш have states, the window is the C4:NEW arrival — is not lost: the
+first is what the six state tiles directly under it say, the second is what the
+preset row says, and both are stated at length here and in the queue SQL, which
+is where somebody reconciling against the portal actually looks.
+`t.modules.confirmation.lead` was deleted with its last call site.
+
+**Its РОП / status / Статистика controls are `toolbar`, not `actions`.**
+`actions` is the header slot beside the title, right-aligned — for a page-level
+ACTION, which is what Foydalanuvchilar' «+ Yangi hisob» is. These three are
+filters, and passed as `actions` they sat on the far right of the header while
+the window and the search box sat on the left: one screen carrying two toolbars
+a metre apart, with the reader crossing the page to narrow one table. `toolbar`
+puts them in the filter row after the shell's own controls, and it opens that
+row on its own (`period || anyFilter || toolbar`) — backlog mode has no window
+and no filters and still needs its ROP filter and Статистика. «Filtrlarni
+tozalash» is hoisted out of the filters fragment so it stays LAST, rather than
+standing between the search box and the controls it also clears. Pinned by
+`tests/features/pageShellToolbar.test.tsx`.
+
 ---
 
 ### The org chart
@@ -478,8 +538,9 @@ for all four to go («shu joy kerak emas… shu boʻlimni kattaroq qil, sahifani
 qoplasin»), and what they cost was the thing the page exists for: the chart used
 to start below the fold on a 1080p window.
 
-The height is `height: 100%` on `.org-canvas` under `PageShell`'s `fill`, NOT a
-`calc(100dvh − N)`. `Shell` is exactly `100dvh` and `main` is `min-h-0 flex-1`,
+The height is `height: 100%` on `.org-canvas` under `PageShell`'s `fill` — the
+first of the two pages that take it, the confirmation board being the other —
+NOT a `calc(100dvh − N)`. `Shell` is exactly `100dvh` and `main` is `min-h-0 flex-1`,
 which gives a flex item a definite main size, so a percentage resolves against
 what is actually left — and no constant has to be re-measured when the header
 changes. The hand-measured expression this replaced was already stale and also

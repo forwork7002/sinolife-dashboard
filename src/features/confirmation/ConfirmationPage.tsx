@@ -550,9 +550,9 @@ export function ConfirmationPage() {
    *
    * Reached from the header bell, which counts the backlog: the badge and this
    * board have to be the same set or the header is lying about the page it
-   * links to. Everything the mode changes below — the description, the absent
-   * period control, the single tile, the banner that says so — exists because
-   * a board that ignores the window must not look like one that reads it.
+   * links to. Everything the mode changes below — the absent period control,
+   * the single tile, the banner that says so — exists because a board that
+   * ignores the window must not look like one that reads it.
    */
   const backlog = filters.queue === 'backlog'
 
@@ -568,28 +568,80 @@ export function ConfirmationPage() {
     <PageShell
       title={t.modules.confirmation.title}
       /*
+        NOTHING UNDER THE TITLE, IN ANY MODE — `null`, which is the same
+        statement `meta={undefined}` a few props below already makes.
+
+        The sentence that used to sit here restated the controls immediately
+        beneath it. The preset row names the window, the thirteen column
+        headers name what a row is, and the state band names the five states;
+        a paragraph explaining that orders in Тасдиклаш have states bought
+        nothing on the one screen the floor works in all day. It wrapped to two
+        lines at every width the board is actually read at, so dropping it
+        returned 36px — half a row of a table nobody has enough of.
+
+        BACKLOG MODE KEPT ITS OWN SENTENCE HERE LONGEST, and it was the one
+        duplicate nobody could miss. That mode is reached exactly one way — the
+        header bell — so every reader who ever saw the caption also saw the
+        banner one element below it, which says the same thing at more length
+        and carries the way back. Two statements of one fact, forty pixels
+        apart, on the mode with the least room to spare. The banner is now the
+        single statement; if it ever stops being enough, strengthen IT.
+
+        `null` rather than an omitted prop, because PageShell RESERVES this
+        line by default — see its own note: a page that WILL print dates claims
+        the height before they land, so the filter row does not drop one line
+        when they do. This page never prints them, so it opts out of the
+        reservation instead of holding an empty line open forever.
+      */
+      description={null}
+      /*
         IN BACKLOG MODE THE PERIOD DOES NOT APPLY, so it is not offered.
 
-        `period={false}` takes away the preset row and the date line under the
-        title, both of which would otherwise describe a window this view
-        ignores — a date control over a list that does not read it is worse
-        than no control, because a reader assumes it must be filtering
-        something. The description says which question is on screen instead,
-        and the banner above the tile repeats it where the eye actually lands.
+        `period={false}` takes away the preset row, which would otherwise
+        describe a window this view ignores — a date control over a list that
+        does not read it is worse than no control, because a reader assumes it
+        must be filtering something. The banner above the tile says which
+        question is on screen instead, where the eye actually lands.
       */
-      description={
-        backlog
-          ? 'Hozir tasdiqlashni kutayotgan barcha buyurtmalar — qachon kelganidan qatʼi nazar. Davr bu roʻyxatga taʼsir qilmaydi.'
-          : t.modules.confirmation.lead
-      }
       period={!backlog}
       accent="var(--series-4)"
       /*
-        NO DATE LINE UNDER THE TITLE, EVER. It used to print `meta.period`'s
-        resolved dates whenever the window was bounded — but the preset row
-        right below already says which window is active (Bugun / Kecha / Shu
-        oy / Sana), so restating the exact dates next to the description just
+        640 WAS A CEILING. IT IS NOW A FLOOR.
+
+        This queue is an instrument, not a document: it is read beside the
+        portal's own board all day, and every row it does not show is a row
+        somebody pages for. The table was capped at a literal
+        `maxHeight={640}`, which is a number that can only ever be wrong twice
+        — too tall for a laptop, and permanently too short for the 27-inch
+        screen a floor manager reads it on, where the browser had 800 spare
+        pixels the board refused to use.
+
+        `fill` turns the cap round. The card takes what the window has left, so
+        the table grows with the screen; the floor below (see the Card) keeps
+        it from ever showing less than the 640 it used to. Measured: a 2560
+        window draws thirteen rows against eight, and a maximised 1080p one
+        draws eight against seven — that last row is the caption this page no
+        longer prints.
+
+        Same mechanism as Kadrlar tuzilmasi's canvas: `Shell` is exactly 100dvh
+        and `main` is `min-h-0 flex-1`, which gives a flex item a DEFINITE main
+        size, so a percentage inside it resolves against what is actually left.
+        Nothing here measures the header, and nothing breaks the day it
+        changes.
+      */
+      fill
+      /*
+        NO DATE LINE UNDER THE TITLE, EVER — and it now has to stay that way.
+
+        It used to print `meta.period`'s resolved dates whenever the window was
+        bounded, but the preset row right below already says which window is
+        active (Bugun / Kecha / Shu oy / Sana), so restating the exact dates
         duplicated a control the reader is already looking at.
+
+        `description={null}` above suppresses that whole line, dates included,
+        so a `meta` passed here would have nowhere to print rather than
+        printing somewhere unwanted. The two props say one thing together:
+        nothing goes between this title and the controls under it.
       */
       meta={undefined}
       /*
@@ -606,18 +658,33 @@ export function ConfirmationPage() {
         // including the phone in the masked form it is displayed in.
         searchPlaceholder: 'ID, mijoz, telefon, operator, ROP, mahsulot, summa, region, manba…',
       }}
-      actions={
+      /*
+        IN THE FILTER ROW, NOT BESIDE THE TITLE.
+
+        These three narrow the table, so they belong with the other things
+        that narrow it. Passed as `actions` they were right-aligned in the
+        header while the window and the search box sat left-aligned below, so
+        one screen carried two toolbars a metre apart and the reader crossed
+        the page to narrow one table. `actions` stays what it was — the slot
+        for a page-level ACTION, which is what Foydalanuvchilar' «+ Yangi
+        hisob» is and none of these is.
+
+        A Fragment, not a wrapping <div>: the shell's row is already
+        `flex-wrap gap-2`, so each control wraps on its own line on a narrow
+        screen instead of the three of them moving as one block.
+      */
+      toolbar={
         /*
           No "Бугун" button here.
 
-          The period control in the page toolbar already owns the reporting
-          window and carries its own Bugun / Kecha / Shu hafta row. A second
-          one beside the ROP filter set the same URL parameter from a second
-          place, so the two could disagree on screen about which day was
-          selected — and a filter bar that contradicts the control above it is
-          worse than one button fewer.
+          The presets are the control immediately to the left of these three
+          and already own the reporting window — Bugun / Kecha / Shu oy / Sana.
+          A second Bugun in this same row would set the same URL parameter from
+          a second place, so the two could disagree on screen about which day
+          was selected, and a toolbar that contradicts itself is worse than one
+          button fewer.
         */
-        <div className="flex flex-wrap items-center gap-2">
+        <>
           {/*
             THE SELECTED ROP IS ALWAYS AN OPTION, even when the search hides it.
 
@@ -667,257 +734,328 @@ export function ConfirmationPage() {
               Статистика
             </span>
           </Button>
-        </div>
+        </>
       }
     >
       {/*
-        THE WAY BACK, and the sentence that says where you are.
+        ONE CHILD, AND IT IS THE COLUMN.
 
-        The mode used to be a two-button switch living among the filters. It
-        was dropped because a chip in a filter row changed the QUESTION rather
-        than the selection, and nothing on screen said so. It returns here
-        instead: visible only in the mode it describes, next to the sentence
-        that names what is on screen, so the control and its meaning arrive
-        together. Without it, arriving from the header bell is a one-way trip —
-        the period control is gone (it does not apply) and there is nothing
-        left to click that gets back to the client's own board.
+        `fill` hands a page ONE plain block (`min-h-0 flex-1`) — not a flex
+        container, and with no gap — because the page it was written for holds
+        a single canvas. The four things on this board dropped straight into
+        that block would sit flush against one another and none of them could
+        claim the leftover height, so the column is built HERE rather than in
+        PageShell: Kadrlar tuzilmasi keeps the wrapper it was designed around,
+        and this page takes from it the only thing it needs — a box with a
+        definite height.
+
+        `gap-4` is exactly the `space-y-4` the scrolling body had. A gap and
+        not a margin because margins cannot stretch a flex child, which is the
+        same reason PageShell's own fill branch makes that swap.
       */}
-      {backlog && (
-        <div
-          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5"
-          style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
-        >
-          <p
-            className="flex items-start gap-2 text-[13px] leading-snug"
-            style={{ color: 'var(--ink-secondary)' }}
+      <div className="flex h-full min-h-0 flex-col gap-4">
+        {/*
+          THE WAY BACK, and the sentence that says where you are.
+
+          The mode used to be a two-button switch living among the filters. It
+          was dropped because a chip in a filter row changed the QUESTION rather
+          than the selection, and nothing on screen said so. It returns here
+          instead: visible only in the mode it describes, next to the sentence
+          that names what is on screen, so the control and its meaning arrive
+          together. Without it, arriving from the header bell is a one-way trip —
+          the period control is gone (it does not apply) and there is nothing
+          left to click that gets back to the client's own board.
+        */}
+        {backlog && (
+          <div
+            className="flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5"
+            style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
           >
-            <span className="mt-0.5 shrink-0" style={{ color: 'var(--series-1)' }}>
-              <ClockGlyph size={14} />
-            </span>
-            <span>
-              <span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                Hozir kutilmoqda
+            <p
+              className="flex items-start gap-2 text-[13px] leading-snug"
+              style={{ color: 'var(--ink-secondary)' }}
+            >
+              <span className="mt-0.5 shrink-0" style={{ color: 'var(--series-1)' }}>
+                <ClockGlyph size={14} />
               </span>
-              {' — '}
-              yuqoridagi qoʻngʻiroq sanaydigan buyurtmalar: qachon kelganidan qatʼi
-              nazar hali tasdiqlanmaganlari. Davr tanlovi bu roʻyxatga taʼsir qilmaydi.
-            </span>
-          </p>
-          {/*
-            DROPPED, not set to 'window'.
-
-            `update` deletes a key whose value is undefined and writes every
-            other one, so `queue: 'window'` would leave `?queue=window` in an
-            otherwise empty address — and `useRestoreRememberedPeriod` only
-            restores into an address with NOTHING in it. The dead parameter
-            would have cost the reader the window this section was last read
-            in, landing them on «Bugun» on the way back from a bell they only
-            clicked to look at the backlog.
-          */}
-          <Button variant="secondary" size="sm" onClick={() => update({ queue: undefined })}>
-            Davr boʻyicha koʻrish
-          </Button>
-        </div>
-      )}
-
-      {/*
-        The state band, in the reference's own order: the queue, the two ways
-        it stalls, then the two outcomes.
-
-        Each tile is a filter as well as a figure — a count nobody can open is
-        a number that ends the conversation instead of starting it. The counts
-        follow the period, the ROP and the search box but deliberately NOT the
-        state filter: a band whose numbers changed to match its own selection
-        could not be used to compare one state against another, which is the
-        only reason to put five of them side by side.
-
-        ONE TILE IN BACKLOG MODE, because every row in it is «Кутилмоқда» by
-        construction. Rendering the five-state band over a single-state list
-        would put four zeros on screen and invite the reader to click them for
-        an empty table.
-      */}
-      <div
-        className={
-          backlog
-            ? // One tile takes the whole row on a phone rather than half of it
-              // with a hole beside it, and a third of the width where there is
-              // room — it is this board's headline figure, not one of six.
-              'stagger grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3'
-            : 'stagger grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'
-        }
-      >
-        <OutcomeTile
-          Glyph={backlog ? ClockGlyph : undefined}
-          label={backlog ? 'ҲОЗИР КУТИЛМОҚДА' : 'ЖАМИ'}
-          status={tileStatus}
-          count={totals?.orders ?? null}
-          /*
-            The bell's own colour in backlog mode: this figure IS the badge,
-            and a reader who clicked a blue 7 should land on a blue 7. In the
-            windowed band it stays ink, because there it is the total the five
-            states are read against rather than a state of its own.
-          */
-          color={backlog ? 'var(--series-1)' : 'var(--ink-primary)'}
-          active={filters.outcomes.length === 0}
-          /*
-            Also the only way to clear a stale `?outcomes=` that arrived on an
-            older bell link, now that the status control is hidden here.
-          */
-          onSelect={() => update({ outcomes: [] })}
-        />
-        {!backlog &&
-          OUTCOMES.map((spec) => (
-            <OutcomeTile
-              key={spec.key}
-              Glyph={spec.Glyph}
-              label={spec.label}
-              status={tileStatus}
-              count={totals?.byOutcome[spec.key] ?? null}
-              color={spec.color}
-              active={filters.outcomes.includes(spec.key)}
-              onSelect={() => toggleOutcome(spec.key)}
-            />
-          ))}
-      </div>
-
-      {statsOpen && <RopPanel rows={data?.byRop ?? []} status={tileStatus} backlog={backlog} />}
-
-      {/*
-        The rows, their count and the pager — the three things a state
-        selection actually changes — fade while they are being replaced.
-
-        Not a skeleton, and not the whole page: the tiles above are correct
-        throughout and must not move. This is the smallest honest signal that
-        the table is one selection behind, and it costs no layout, so nothing
-        jumps under the pointer.
-      */}
-      <Card
-        className="card-hero brackets px-4 py-4"
-        style={{ opacity: rowsStale ? 0.7 : 1, transition: 'opacity 150ms var(--ease-out)' }}
-        aria-busy={rowsStale || undefined}
-      >
-        <header className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
-            Барча буюртмалар
-          </h2>
-          <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+              <span>
+                <span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                  Hozir kutilmoqda
+                </span>
+                {' — '}
+                yuqoridagi qoʻngʻiroq sanaydigan buyurtmalar: qachon kelganidan qatʼi
+                nazar hali tasdiqlanmaganlari. Davr tanlovi bu roʻyxatga taʼsir qilmaydi.
+              </span>
+            </p>
             {/*
-              TWO NUMBERS, TWO NAMES.
+              DROPPED, not set to 'window'.
 
-              This count obeys every filter — state, ROP, search — while the
-              ЖАМИ tile above obeys none of them, because a band whose figures
-              moved with its own selection could not be used to compare one
-              state against another. Both were labelled «Жами», so picking
-              «Кутилмоқда» put 1 289 in the tile and «Жами: 37 та» directly
-              under it, and the screen contradicted itself. The filtered count
-              is now named as filtered, and the window's own total is printed
-              beside it so the reader can see both at once.
+              `update` deletes a key whose value is undefined and writes every
+              other one, so `queue: 'window'` would leave `?queue=window` in an
+              otherwise empty address — and `useRestoreRememberedPeriod` only
+              restores into an address with NOTHING in it. The dead parameter
+              would have cost the reader the window this section was last read
+              in, landing them on «Bugun» on the way back from a bell they only
+              clicked to look at the backlog.
             */}
-            {shown === null
-              ? ''
-              : narrowed
-                ? `Танланган: ${formatNumber(shown)} та`
-                : `Жами: ${formatNumber(shown)} та`}
-            {/*
-              THE COMPARISON IS "ALL STATES", NOT "THE WHOLE WINDOW".
-
-              `totals.orders` is the same ROP and the same search as the line
-              beside it, summed across all five states — so it differs from the
-              count above ONLY when a state is selected, and calling it «Жами»
-              while a ROP was also applied printed the filtered figure twice
-              under two names. It is named for what it is, and shown only when
-              it has something to add.
-            */}
-            {narrowed && totals && (
-              <>
-                {' · '}
-                Барча ҳолатлар: <span className="tabular">{formatNumber(totals.orders)}</span> та
-              </>
-            )}
-            {/*
-              NOT IN BACKLOG MODE, where the numerator is zero by construction.
-
-              That cohort is «every order whose latest signal is still
-              CONFIRM_NEW», so CONFIRMED cannot occur in it and the rate comes
-              back a hard 0 — non-null, because the DENOMINATOR is not empty,
-              so `rateBp`'s own null-for-no-data guard has nothing to catch.
-              Printed, «Тасдиқланиш (барча ҳолатлардан): 0%» under a list of
-              44 waiting orders reads as "this company confirmed nothing",
-              which is a verdict rather than a measurement — the same reason
-              the four other state tiles are not rendered here.
-            */}
-            {!backlog && totals && totals.confirmedRate !== null && (
-              <>
-                {' · '}
-                {/*
-                  The denominator is every order in this ROP and search across
-                  all five states — INCLUDING the ones still waiting, which is
-                  the client's own definition of Тасдиқланиш %. It is not the
-                  selection's rate: filtering to «Тасдиқланди» would otherwise
-                  report 100% every time. The label says which denominator it
-                  is so nobody has to guess.
-                */}
-                Тасдиқланиш (барча ҳолатлардан):{' '}
-                <span className="tabular">{totals.confirmedRate}%</span>
-              </>
-            )}
-            {query.dataUpdatedAt > 0 && (
-              <>
-                {' · '}
-                {/*
-                  THE PAGE'S CLOCK, NOT THE DATA'S.
-
-                  `dataUpdatedAt` is when this browser last fetched, which is
-                  not how old the numbers are — that is the Bitrix sync time,
-                  and the header states it a few centimetres away. A bare
-                  «Янгиланди» over the fetch clock claimed the figures were
-                  minutes old on a morning the sync had been stuck for hours.
-                */}
-                Саҳифа янгиланди:{' '}
-                <span className="tabular">{tashkentTime(new Date(query.dataUpdatedAt).toISOString())}</span>
-                {' (ҳар 2 дақиқада)'}
-              </>
-            )}
-          </p>
-        </header>
-
-        <DataTable
-          columns={QUEUE_COLUMNS}
-          rows={data?.items ?? []}
-          rowKey={(row) => row.dealId}
-          status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
-          errorMessage={(query.error as Error | null)?.message}
-          onRetry={() => void query.refetch()}
-          sort={sort}
-          order={filters.order}
-          onSort={onSort}
-          /*
-            Bounded, so the header row pins while the page's rows scroll under
-            it — and so the pager stays a glance away rather than a screen.
-          */
-          maxHeight={640}
-          minWidth={1860}
-          emptyTitle="Buyurtma topilmadi"
-          emptyBody={
-            filters.outcomes.length > 0 || filters.rop || filters.q
-              ? 'Bu filtrlar boʻyicha buyurtma yoʻq. Filtrlarni tozalab koʻring.'
-              : backlog
-                ? // An empty backlog is the good news, and «bu davrda» would be
-                  // a sentence about a window this board does not read.
-                  'Hozir tasdiqlashni kutayotgan buyurtma yoʻq — navbat boʻsh.'
-                : 'Bu davrda hech bir buyurtma tasdiqlash navbatiga tushmagan.'
-          }
-        />
-
-        {data && (
-          <Pagination
-            page={data.pagination.page}
-            totalPages={data.pagination.totalPages}
-            totalItems={data.pagination.totalItems}
-            onPage={(next) => update({ page: next })}
-          />
+            <Button variant="secondary" size="sm" onClick={() => update({ queue: undefined })}>
+              Davr boʻyicha koʻrish
+            </Button>
+          </div>
         )}
-      </Card>
+
+        {/*
+          The state band, in the reference's own order: the queue, the two ways
+          it stalls, then the two outcomes.
+
+          Each tile is a filter as well as a figure — a count nobody can open is
+          a number that ends the conversation instead of starting it. The counts
+          follow the period, the ROP and the search box but deliberately NOT the
+          state filter: a band whose numbers changed to match its own selection
+          could not be used to compare one state against another, which is the
+          only reason to put five of them side by side.
+
+          ONE TILE IN BACKLOG MODE, because every row in it is «Кутилмоқда» by
+          construction. Rendering the five-state band over a single-state list
+          would put four zeros on screen and invite the reader to click them for
+          an empty table.
+        */}
+        <div
+          className={
+            backlog
+              ? // One tile takes the whole row on a phone rather than half of it
+                // with a hole beside it, and a third of the width where there is
+                // room — it is this board's headline figure, not one of six.
+                'stagger grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3'
+              : 'stagger grid shrink-0 gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'
+          }
+        >
+          <OutcomeTile
+            Glyph={backlog ? ClockGlyph : undefined}
+            label={backlog ? 'ҲОЗИР КУТИЛМОҚДА' : 'ЖАМИ'}
+            status={tileStatus}
+            count={totals?.orders ?? null}
+            /*
+              The bell's own colour in backlog mode: this figure IS the badge,
+              and a reader who clicked a blue 7 should land on a blue 7. In the
+              windowed band it stays ink, because there it is the total the five
+              states are read against rather than a state of its own.
+            */
+            color={backlog ? 'var(--series-1)' : 'var(--ink-primary)'}
+            active={filters.outcomes.length === 0}
+            /*
+              Also the only way to clear a stale `?outcomes=` that arrived on an
+              older bell link, now that the status control is hidden here.
+            */
+            onSelect={() => update({ outcomes: [] })}
+          />
+          {!backlog &&
+            OUTCOMES.map((spec) => (
+              <OutcomeTile
+                key={spec.key}
+                Glyph={spec.Glyph}
+                label={spec.label}
+                status={tileStatus}
+                count={totals?.byOutcome[spec.key] ?? null}
+                color={spec.color}
+                active={filters.outcomes.includes(spec.key)}
+                onSelect={() => toggleOutcome(spec.key)}
+              />
+            ))}
+        </div>
+
+        {statsOpen && <RopPanel rows={data?.byRop ?? []} status={tileStatus} backlog={backlog} />}
+
+        {/*
+          The rows, their count and the pager — the three things a state
+          selection actually changes — fade while they are being replaced.
+
+          Not a skeleton, and not the whole page: the tiles above are correct
+          throughout and must not move. This is the smallest honest signal that
+          the table is one selection behind, and it costs no layout, so nothing
+          jumps under the pointer.
+        */}
+        {/*
+          THE CARD IS THE ONE THING THAT STRETCHES.
+
+          Everything above it — the banner, the six state tiles, the Статистика
+          panel — is `shrink-0` and keeps the height it asks for; this takes
+          what is left, whatever that is. `min-h-0` is the load-bearing half:
+          without it a flex item refuses to shrink below its content, so the
+          table's own scroll box would push the card past the bottom of the
+          screen and hand the page back the second scrollbar this change
+          exists to remove.
+
+          `min-h-[746px]` IS THE OLD CAP, PUT BACK AS A FLOOR — 640 of table
+          plus this card's own 106px of chrome (padding, the counts header,
+          the pager). Being a min-height at all is also what lets the card
+          shrink below the table's natural height in the first place: `auto`,
+          the default, is the content size, and the content here is 25 rows.
+
+          IT IS 746 AND NOT A COMFORTABLE 540 BECAUSE OF WHEN IT BITES. The
+          floor only ever applies when the column does not fit, and a column
+          that does not fit makes `main` scroll — so on exactly the screens
+          where the floor is in force, the page is scrolling anyway. There is
+          no reason to show a SHORTER table than before on a page that scrolls
+          just as much as before. A 540 floor read as a kindness and measured
+          as a loss: 6 rows where the old cap gave 9 on a 1280x800 laptop, and
+          on a phone a letterbox inside a page that still scrolled — both
+          halves of the fault, for nothing.
+
+          The break-even is a window about 1054px tall. Above it the floor is
+          slack, the card takes the screen and nothing scrolls; below it the
+          board is exactly what it was, plus the 36px the caption used to hold.
+          Two places run out below the break-even and both are covered by this
+          one number: a short window, and Статистика open — that panel is
+          fifteen (ROP) groups on the production roster against the one a demo
+          database returns, so it takes its 300px cap and some 390px of column
+          with it.
+        */}
+        <Card
+          className="card-hero brackets flex min-h-[746px] flex-1 flex-col px-4 py-4"
+          style={{ opacity: rowsStale ? 0.7 : 1, transition: 'opacity 150ms var(--ease-out)' }}
+          aria-busy={rowsStale || undefined}
+        >
+          <header className="mb-3 flex shrink-0 flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
+              Барча буюртмалар
+            </h2>
+            <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+              {/*
+                TWO NUMBERS, TWO NAMES.
+
+                This count obeys every filter — state, ROP, search — while the
+                ЖАМИ tile above obeys none of them, because a band whose figures
+                moved with its own selection could not be used to compare one
+                state against another. Both were labelled «Жами», so picking
+                «Кутилмоқда» put 1 289 in the tile and «Жами: 37 та» directly
+                under it, and the screen contradicted itself. The filtered count
+                is now named as filtered, and the window's own total is printed
+                beside it so the reader can see both at once.
+              */}
+              {shown === null
+                ? ''
+                : narrowed
+                  ? `Танланган: ${formatNumber(shown)} та`
+                  : `Жами: ${formatNumber(shown)} та`}
+              {/*
+                THE COMPARISON IS "ALL STATES", NOT "THE WHOLE WINDOW".
+
+                `totals.orders` is the same ROP and the same search as the line
+                beside it, summed across all five states — so it differs from the
+                count above ONLY when a state is selected, and calling it «Жами»
+                while a ROP was also applied printed the filtered figure twice
+                under two names. It is named for what it is, and shown only when
+                it has something to add.
+              */}
+              {narrowed && totals && (
+                <>
+                  {' · '}
+                  Барча ҳолатлар: <span className="tabular">{formatNumber(totals.orders)}</span> та
+                </>
+              )}
+              {/*
+                NOT IN BACKLOG MODE, where the numerator is zero by construction.
+
+                That cohort is «every order whose latest signal is still
+                CONFIRM_NEW», so CONFIRMED cannot occur in it and the rate comes
+                back a hard 0 — non-null, because the DENOMINATOR is not empty,
+                so `rateBp`'s own null-for-no-data guard has nothing to catch.
+                Printed, «Тасдиқланиш (барча ҳолатлардан): 0%» under a list of
+                44 waiting orders reads as "this company confirmed nothing",
+                which is a verdict rather than a measurement — the same reason
+                the four other state tiles are not rendered here.
+              */}
+              {!backlog && totals && totals.confirmedRate !== null && (
+                <>
+                  {' · '}
+                  {/*
+                    The denominator is every order in this ROP and search across
+                    all five states — INCLUDING the ones still waiting, which is
+                    the client's own definition of Тасдиқланиш %. It is not the
+                    selection's rate: filtering to «Тасдиқланди» would otherwise
+                    report 100% every time. The label says which denominator it
+                    is so nobody has to guess.
+                  */}
+                  Тасдиқланиш (барча ҳолатлардан):{' '}
+                  <span className="tabular">{totals.confirmedRate}%</span>
+                </>
+              )}
+              {query.dataUpdatedAt > 0 && (
+                <>
+                  {' · '}
+                  {/*
+                    THE PAGE'S CLOCK, NOT THE DATA'S.
+
+                    `dataUpdatedAt` is when this browser last fetched, which is
+                    not how old the numbers are — that is the Bitrix sync time,
+                    and the header states it a few centimetres away. A bare
+                    «Янгиланди» over the fetch clock claimed the figures were
+                    minutes old on a morning the sync had been stuck for hours.
+                  */}
+                  Саҳифа янгиланди:{' '}
+                  <span className="tabular">{tashkentTime(new Date(query.dataUpdatedAt).toISOString())}</span>
+                  {' (ҳар 2 дақиқада)'}
+                </>
+              )}
+            </p>
+          </header>
+
+          {/*
+            THE SCROLL BOX IS THE FLEX ITEM, not the table.
+
+            DataTable renders its scroll container as its own root, so the
+            wrapper is what claims the leftover height and `maxHeight="100%"`
+            is what hands it down — a percentage resolves here because every
+            box above it, up to `main`, has a definite height. The pager is
+            OUTSIDE this wrapper on purpose: it is the one control that must
+            never be the thing you scroll to find.
+          */}
+          <div className="flex min-h-0 flex-1 flex-col">
+          <DataTable
+            columns={QUEUE_COLUMNS}
+            rows={data?.items ?? []}
+            rowKey={(row) => row.dealId}
+            status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
+            errorMessage={(query.error as Error | null)?.message}
+            onRetry={() => void query.refetch()}
+            sort={sort}
+            order={filters.order}
+            onSort={onSort}
+            /*
+              THE WINDOW DECIDES, NOT A NUMBER TYPED ONCE.
+
+              `100%` is the height this card was given, and the card was given
+              what the screen had left — never less than the 640 it used to
+              have, because of the card's own floor. Still bounded, so the
+              header row keeps pinning while the rows scroll under it; what
+              changed is that the bound now knows how big the screen is.
+            */
+            maxHeight="100%"
+            minWidth={1860}
+            emptyTitle="Buyurtma topilmadi"
+            emptyBody={
+              filters.outcomes.length > 0 || filters.rop || filters.q
+                ? 'Bu filtrlar boʻyicha buyurtma yoʻq. Filtrlarni tozalab koʻring.'
+                : backlog
+                  ? // An empty backlog is the good news, and «bu davrda» would be
+                    // a sentence about a window this board does not read.
+                    'Hozir tasdiqlashni kutayotgan buyurtma yoʻq — navbat boʻsh.'
+                  : 'Bu davrda hech bir buyurtma tasdiqlash navbatiga tushmagan.'
+            }
+          />
+          </div>
+
+          {data && (
+            <Pagination
+              page={data.pagination.page}
+              totalPages={data.pagination.totalPages}
+              totalItems={data.pagination.totalItems}
+              onPage={(next) => update({ page: next })}
+            />
+          )}
+        </Card>
+      </div>
     </PageShell>
   )
 }
@@ -1024,6 +1162,17 @@ function RopPanel({
 
   return (
     <ChartCard
+      /*
+        BOUNDED, AND PINNED AT THE HEIGHT IT ASKS FOR.
+
+        This panel opens INSIDE the board's flex column, above the card that
+        takes what is left — so an unbounded list of fifteen (ROP) rows would
+        eat the queue itself, which is the thing the reader opened Статистика
+        to compare against. `shrink-0` keeps the panel honest about its own
+        height rather than being squeezed, and 300px is about eight groups
+        before it scrolls on its own.
+      */
+      className="shrink-0"
       title="Статистика — РОП кесимида"
       /*
         The ROP filter belongs on this list too.
@@ -1050,6 +1199,7 @@ function RopPanel({
         // Two columns in backlog mode, seven in the windowed one: a fixed 900
         // would scroll a two-column table sideways for no reason.
         minWidth={backlog ? 320 : 900}
+        maxHeight={300}
         emptyTitle="РОП маълумоти йўқ"
         emptyBody={
           backlog ? 'Ҳозир кутаётган буюртма йўқ.' : 'Бу даврда навбатга тушган буюртма йўқ.'

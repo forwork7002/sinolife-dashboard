@@ -44,13 +44,20 @@ export const t = {
   },
 
   /**
-   * Section headings and the one-line explanation each module leads with.
+   * Section headings, and the one-line explanation MOST modules lead with.
    *
-   * The explanation is not decoration. Every screen here reports something a
+   * The explanation is not decoration. Most screens here report something a
    * reader could misread as a more familiar figure — a "sklad" page that shows
    * dispatch rather than stock, a confirmation rate that says nothing about
-   * whether the order survived — so each states what it is measuring before it
-   * shows a number.
+   * whether the order survived — so they state what they are measuring before
+   * they show a number.
+   *
+   * Two entries carry a title and no lead, and each says why below its own
+   * key: Kadrlar tuzilmasi and Tasdiqlash navbati. Both are screens whose own
+   * controls already answer the question the sentence was answering, and both
+   * are sized to the viewport, where the line costs a card or a row rather
+   * than nothing. A missing `lead` is a decision here, not an omission —
+   * nothing types this object per module, so nothing else will tell you.
    */
   modules: {
     cohort: {
@@ -80,20 +87,26 @@ export const t = {
       lead: 'Buyurtma qaysi hudud va tashuvchi orqali ketgani, qancha vaqtda yetgani va qayerda qaytgani. Davr buyurtma OLINGAN sana boʻyicha.',
     },
     /*
-      THE TWO FACTS AN OWNER NEEDS TO RECONCILE THIS SCREEN WITH BITRIX.
+      NO LEAD LINE — the board prints nothing under its title in any mode
+      (`description={null}` in ConfirmationPage), so this key has no call site.
 
-      Which orders are on the board — only those that reached a confirmation
-      stage, so an order parked in «Пропущенный» or an SMS stage is on neither
-      this board nor its ЖАМИ — and which date the window is applied to, which
-      is the day the order ARRIVED in Тасдиклаш, not its Дата создания.
-      Without the second one a reader comparing "bugun" against the portal has
-      no way to know whether they are counting the same day, and without the
-      first the ЖАМИ tile reads as every order taken rather than every order
-      queued.
+      The sentence that stood here carried the two facts an owner needs to
+      reconcile the screen with Bitrix24: that only orders which reached a
+      confirmation stage are on the board, and that the window is applied to
+      the day an order ARRIVED in Тасдиклаш rather than to its Дата создания.
+      Neither fact is lost, and neither was being learned here — a caption
+      above six state tiles is not where somebody checks a definition. They are
+      stated where a reader who is actually reconciling looks: the cohort in
+      `insightsRepository`'s queue SQL and in CLAUDE.md's confirmation-queue
+      section, both of which say it at length, and the window in the preset row
+      immediately under the title.
+
+      What the line cost was two rows of the densest table in the application,
+      at every width the board is read at — which is why it went rather than
+      being shortened.
     */
     confirmation: {
       title: 'Tasdiqlash navbati',
-      lead: 'Tasdiqlash bosqichiga tushgan har bir buyurtma qaysi holatda ekani. Davr buyurtma navbatga kelgan kun (C4:NEW) boʻyicha.',
     },
     margin: {
       title: 'Yalpi marja',
@@ -108,8 +121,11 @@ export const t = {
       lead: 'Kim qancha sotdi, kim qancha gaplashdi, kim qayerda turibdi.',
     },
     /*
-      NO LEAD LINE HERE EITHER, and for a stronger reason than the confirmation
-      board's. The old one read «Boʻlimlar, rahbarlar va har bir boʻlimning
+      NO LEAD LINE HERE EITHER — the same conclusion as the confirmation board
+      above, reached by a different route and enforced by a different prop:
+      that page suppresses the line with `description={null}` while this one
+      never has a line to suppress, because `period={false}` means PageShell
+      reserves nothing for dates that are not coming. The old one read «Boʻlimlar, rahbarlar va har bir boʻlimning
       natijasi. Davr bitim YOPILGAN sana boʻyicha» — and both halves of that are
       now false: the page reports no «natija» in soʻm (money on this dashboard
       is stated on Boshqaruv markazi) and it has no «davr» at all. What is left

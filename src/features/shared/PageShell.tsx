@@ -91,13 +91,30 @@ export function PageShell({
   filters: enabled = {},
   accent,
   actions,
+  toolbar,
   stale = false,
   children,
   period = true,
   fill = false,
 }: {
   title: string
-  description?: string
+  /**
+   * The line under the title — and `null` is not the same as leaving it off.
+   *
+   * Omitted means "nothing written here YET": the paragraph is still drawn,
+   * because a page that prints `meta.period`'s dates has to claim that height
+   * before the first response lands (see the reservation note further down).
+   * `null` means this page puts nothing there in any state — no lead line and
+   * no dates — so nothing is held open for text that cannot arrive.
+   *
+   * ONLY PASS `null` ON A PAGE THAT ALSO SENDS NO `meta`. Everything meta
+   * carries lives inside this one paragraph, dates included and — the part
+   * that is easy to miss — the «davr qisqartirildi» badge, which is rendered
+   * nowhere else in the application. A page that suppressed the line while
+   * still passing a truncated comparison would drop that warning with nothing
+   * on screen and no error anywhere.
+   */
+  description?: string | null
   meta?: ResponseMeta
   filters?: FilterToggles
   /**
@@ -117,6 +134,22 @@ export function PageShell({
   accent?: string
   actions?: ReactNode
   /**
+   * The page's OWN controls, in the filter row rather than beside the title.
+   *
+   * `actions` sits in the header, right-aligned — the place for a page-level
+   * ACTION, which is what Foydalanuvchilar' «+ Yangi hisob» is. A page whose
+   * controls are FILTERS wants them with the other filters: the confirmation
+   * board's РОП, status and Статистика sat on the far right of the header
+   * while the window and the search box sat on the left, so one screen carried
+   * two toolbars a metre apart and the reader crossed the page to narrow one
+   * table.
+   *
+   * The ROW belongs to the shell, what goes in the slot belongs to the page.
+   * Pass a Fragment rather than a wrapping `<div>` — then each control wraps
+   * on its own against this row's `gap-2` instead of the group moving as one
+   * block with a nested gap of its own.
+   */
+  toolbar?: ReactNode
   /**
    * True while the numbers on screen still belong to the PREVIOUS window.
    *
@@ -141,12 +174,22 @@ export function PageShell({
   /**
    * Stretch the page body to the screen instead of to its own content.
    *
-   * For a page whose ONE piece of content is an instrument rather than a
-   * document — today that is Kadrlar tuzilmasi's org chart, which is a canvas
-   * you pan and zoom, and every pixel it does not get is a card the reader has
-   * to drag into view. Same word and same mechanism as `ChartCard`'s `fill`,
-   * deliberately: this application has one name for "take the height that is
-   * there".
+   * For a page whose content is an instrument rather than a document. Two
+   * pages are, for two different reasons: Kadrlar tuzilmasi's org chart is a
+   * canvas you pan and zoom, and every pixel it does not get is a card the
+   * reader has to drag into view; Tasdiqlash navbati is one long table read
+   * beside the portal's own board all day, and as an ordinary page it carried
+   * TWO scrollbars — its own bounded table inside a page that also scrolled —
+   * with the pager below the fold. Same word and same mechanism as
+   * `ChartCard`'s `fill`, deliberately: this application has one name for
+   * "take the height that is there".
+   *
+   * WHAT A PAGE ACTUALLY GETS IS ONE PLAIN BLOCK — `min-h-0 flex-1`, with no
+   * `display: flex` and no gap, because the page this was written for holds a
+   * single canvas. A page with several children builds its own column inside
+   * it (the confirmation board does) rather than changing this wrapper, which
+   * would move the org chart underneath it for a reason that has nothing to do
+   * with the org chart.
    *
    * WHY `h-full` IS ENOUGH, with no `calc(100dvh − header)` anywhere. The
    * application is already exactly one viewport tall (`Shell`'s root sets
@@ -249,8 +292,15 @@ export function PageShell({
                   header rendered and push the filter row and every card down
                   one line. A page that WILL print dates claims the height from
                   the start; the text simply arrives into space already held.
+
+                  `description={null}` opts out of the reservation, and that is
+                  not the same as leaving the prop off: it says this page prints
+                  no lead line and no dates in any state, so the twenty pixels
+                  would be held open for something that can never arrive. On a
+                  page whose one piece of content is a table, twenty pixels is
+                  a row.
                 */}
-                {(description || period || meta?.period) && (
+                {description !== null && (description || period || meta?.period) && (
                   <p className="mt-1 max-w-2xl text-xs" style={{ color: 'var(--ink-muted)' }}>
                     {description}
                     {description && meta?.period && <span className="mx-1.5">·</span>}
@@ -292,10 +342,22 @@ export function PageShell({
 
               The row renders even when a page has no other filters, because
               the window is not optional on a page that has one — a screen
-              without the control would have no way to change its dates. The
-              one page that has no window (`period={false}`) gets no row.
+              without the control would have no way to change its dates. A page
+              with no window (`period={false}`) gets no row from that clause —
+              but it still gets one if it brought controls of its own.
+
+              That last term is reached by no page today, deliberately: the one
+              screen with a toolbar also enables a search box, so `anyFilter`
+              already opens its row in every mode, backlog included. It is here
+              so that a page whose ONLY controls are its own gets a row rather
+              than losing them silently — which is a rendering nothing would
+              report, in a slot whose whole promise is that the shell owns
+              where the controls go.
+
+              `toolbar` opens it too, so a page whose only controls are its own
+              still gets the row rather than silently dropping them.
             */}
-            {(period || anyFilter) && (
+            {(period || anyFilter || toolbar) && (
             <div className="flex flex-wrap items-center gap-2">
               {periodControl}
               {anyFilter && (
@@ -347,12 +409,29 @@ export function PageShell({
                     onChange={(sourceIds) => update({ sourceIds })}
                   />
                 )}
-                {activeCount > 0 && (
-                  <Button variant="ghost" size="sm" onClick={reset}>
-                    Filtrlarni tozalash ({activeCount})
-                  </Button>
-                )}
                 </>
+              )}
+              {toolbar}
+              {/*
+                STILL GUARDED ON `anyFilter`, which is not cosmetic — and last
+                in the row on purpose.
+
+                `activeCount` counts employeeIds / departmentIds / stageIds /
+                productIds / sourceIds / status / outcomes / rop / q straight
+                off the URL, regardless of what this page enables — and eight
+                screens render PageShell with no `filters` prop at all. Left
+                unguarded, a stale `?employeeIds=` riding in on a pasted link
+                would grow a «Filtrlarni tozalash (1)» button on a page that
+                has never had one and cannot show what it would clear.
+
+                Hoisted out of the fragment so the page's own controls come
+                first: a clear button standing between the search box and the
+                toolbar it also clears reads as part of that toolbar.
+              */}
+              {anyFilter && activeCount > 0 && (
+                <Button variant="ghost" size="sm" onClick={reset}>
+                  Filtrlarni tozalash ({activeCount})
+                </Button>
               )}
             </div>
             )}
