@@ -221,16 +221,22 @@ guard the pseudo-element is never created. It sets `position: relative` on the
 card (the glow needs a containing block); a call site that needs the card
 positioned otherwise wraps it.
 
-### The keyboard layer
+### The floating layer
 
 Chrome, never data: it borrows the elevation system and may never borrow a
 series or status colour.
 
 | Piece | What it is |
 |---|---|
-| `.kbd` + `Kbd` | keycap chip — 11px, inherited family (a `<kbd>` defaults to monospace), `--surface-sunken`, darkened **bottom** edge via `--kbd-edge` so it reads as pressable |
 | `.tip` + `Tooltip` | the tooltip primitive — raised surface, `--border-strong`, `--radius-panel-sm`, 12px text, 120ms fade+2px rise (fade only under reduced motion) |
-| `.palette-enter`, `.backdrop-dim` + `CommandPalette` | ⌘K / Ctrl+K — 600px panel in the top third, 150ms scale 0.98→1, page-tinted scrim with a 2px blur |
+| `.backdrop-dim` + the phone drawer | page-tinted scrim with a 2px blur, behind the `lg:hidden` navigation drawer. **The drawer is its only consumer**, and Shell.tsx renders it as `backdrop-dim drawer-backdrop-enter` — sweeping it leaves every phone a fully transparent, unblurred menu backdrop, which no test in this repo would catch |
+
+The section was called *the keyboard layer* and led with a `.kbd` keycap chip
+rendered by `src/components/ui/Kbd.tsx`. Chip, component and the `--kbd-edge`
+token that only the chip's box-shadow read went together once the ⌘K palette
+they were drawn for was removed: a primitive documented in this table with no
+call site anywhere is read as available surface area, and the next screen that
+wants a shortcut hint reaches for a component the app no longer ships.
 
 The **tooltip primitive replaces every native `title` that carries data**: a
 `title` cannot be styled, ignores touch and keyboard focus, and takes a second
@@ -241,11 +247,17 @@ halo in dark, because a night room has no sun and a directional shadow there
 reads as a rendering artefact. Decorative `title`s that only repeat the
 visible word may stay.
 
-The palette scrim is tinted from `--page`, not black: a black scrim in light
-mode turns the app into a different, darker room for the duration of a search,
-while a page-coloured frost dims without changing the room.
+The drawer scrim is tinted from `--page`, not black: a black scrim in light
+mode turns the app into a different, darker room for as long as the menu is
+open, while a page-coloured frost dims without changing the room.
 `prefers-reduced-transparency` trades the blur for opacity; reduced motion
-reduces both entrances to fades by keyframe redefinition.
+reduces the tooltip's entrance to a fade by keyframe redefinition.
+
+**There is no ⌘K command palette.** It was removed along with the header's
+«Qidiruv» chip, so nothing in the chrome opens on a keystroke and nothing
+offers the period presets from outside the page. The board-level search boxes
+— the confirmation queue's own `q`, the sellers filter, the org chart's people
+search — are page controls in the filter row and are unrelated to it.
 
 ### The button kit
 

@@ -4,7 +4,7 @@
  * Pure and framework-free, like the rest of the domain layer.
  */
 
-import { type Money, divideMoney, money, toMajorNumber } from '@/server/domain/money/money'
+import { divideMoney, money } from '@/server/domain/money/money'
 import type { Period } from '@/server/domain/period/period'
 import type { KpiMetricValue, KpiStatusValue } from '@/server/domain/types'
 import { type Delta, growth, toBasisPoints } from './metrics'
@@ -359,10 +359,4 @@ export function overallAchievementPercent(
 
   const total = measurable.reduce((sum, e) => sum + (e.achievementBp ?? 0), 0)
   return total / measurable.length / 100
-}
-
-/** Convenience: money formatting boundary for leaderboard display values. */
-export function leaderboardDisplayNumber(display: Money | number | null): number | null {
-  if (display === null) return null
-  return typeof display === 'number' ? display : toMajorNumber(display)
 }

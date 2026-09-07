@@ -6,7 +6,12 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { rememberPeriod, rememberedPeriod } from './periodMemory'
 
 import { PERIOD_PRESETS, type PeriodPreset, type PeriodSelection } from '@/components/layout/PeriodFilter'
-import { CONFIRMATION_OUTCOMES, type ConfirmationOutcome } from '@/lib/api'
+import {
+  CONFIRMATION_OUTCOMES,
+  CONFIRMATION_QUEUE_MODES,
+  type ConfirmationOutcome,
+  type ConfirmationQueueMode,
+} from '@/lib/api'
 
 /**
  * Dashboard filter state, held in the URL.
@@ -57,7 +62,9 @@ export interface DashboardFilters {
    * and where each of those orders stands. 'backlog' ignores the period and
    * lists what is waiting right now, whenever it arrived — the one question a
    * windowed board cannot answer, because the oldest unworked order on this
-   * portal predates every preset.
+   * portal predates every preset. 'all' ignores it too and lists every order
+   * that ever reached Тасдиклаш — what the operators call «Жами», and the
+   * only way to reach an order whose month nobody on the call remembers.
    *
    * It lives in the URL like every filter beside it so the header bell can
    * link straight to the set it counts, and so a link somebody pastes into
@@ -65,13 +72,43 @@ export interface DashboardFilters {
    * `activeCount`: the "Filtrlarni tozalash (3)" button counts what it will
    * clear, and this is not something clearing filters may take away.
    */
-  readonly queue: 'window' | 'backlog'
+  readonly queue: ConfirmationQueueMode
   readonly q?: string
+  /**
+   * Which rendering of the org chart is on screen — the chart or the table.
+   *
+   * In the URL, and not in component state, for the reason every other view
+   * decision on this dashboard is: a link somebody pastes into Telegram has to
+   * open on what was copied. It is not a FILTER, so it is not in `apiParams`
+   * (both renderings read the same answer, and sending it would split the
+   * query cache in two for nothing) and not in `activeCount`; `reset()` keeps
+   * it for the same reason it keeps `queue`.
+   */
+  readonly view: StructureView
+  /**
+   * Which department's panel is open on the org chart.
+   *
+   * Also in the URL: «this is the team, look» is a link somebody sends. Cleared
+   * by `reset()`, because unlike `view` it is a selection rather than a mode —
+   * nothing is lost by closing a panel that can be reopened with one click.
+   */
+  readonly dep?: string
   readonly page: number
   readonly pageSize: number
   readonly sort: string
   readonly order: 'asc' | 'desc'
 }
+
+/**
+ * The two ways the company structure can be drawn.
+ *
+ * 'chart' is the org chart the portal draws — cards on a canvas, which is what
+ * a reader means by "who works under whom". 'list' is the indented table this
+ * screen has always had, kept because it is the only one that shows every
+ * column at once and the only one that prints.
+ */
+export const STRUCTURE_VIEWS = ['chart', 'list'] as const
+export type StructureView = (typeof STRUCTURE_VIEWS)[number]
 
 const DEFAULTS: DashboardFilters = {
   /*
@@ -91,6 +128,7 @@ const DEFAULTS: DashboardFilters = {
   sourceIds: [],
   outcomes: [],
   queue: 'window',
+  view: 'chart',
   page: 1,
   pageSize: 25,
   sort: 'createdAtSource',
@@ -172,13 +210,22 @@ export function useDashboardFilters() {
       ),
       rop: params.get('rop') ?? undefined,
       /*
-        One value is honoured, everything else is the default — same reasoning
-        as `resolvePresetParam` above. An unknown mode reaching the API is a
-        400 on the whole page, and the only mode that is worth typing by hand
-        is the one the bell links to.
+        The named modes are honoured, everything else is the default — same
+        reasoning as `resolvePresetParam` above. An unknown mode reaching the
+        API is a 400 on the whole page.
+
+        Listed rather than compared one at a time so a mode added to the
+        vocabulary cannot be silently dropped here on its way to the API,
+        which is a control on screen that does nothing when clicked.
       */
-      queue: params.get('queue') === 'backlog' ? 'backlog' : DEFAULTS.queue,
+      queue:
+        CONFIRMATION_QUEUE_MODES.find((mode) => mode === params.get('queue')) ?? DEFAULTS.queue,
       q: params.get('q') ?? undefined,
+      // Same rule as `queue` above: a name this application has, or the
+      // default. An unrecognised one used to be a blank region of page with
+      // no control on screen able to put it right.
+      view: STRUCTURE_VIEWS.find((mode) => mode === params.get('view')) ?? DEFAULTS.view,
+      dep: params.get('dep') ?? undefined,
       page: counted(params.get('page'), DEFAULTS.page, 10_000),
       pageSize: counted(params.get('pageSize'), DEFAULTS.pageSize, 200),
       sort: params.get('sort') ?? DEFAULTS.sort,
@@ -227,10 +274,22 @@ export function useDashboardFilters() {
         preset: selection.preset,
         from: selection.preset === 'custom' ? selection.from : undefined,
         to: selection.preset === 'custom' ? selection.to : undefined,
+        /*
+          PICKING A DATE LEAVES «ЖАМИ».
+
+          'all' sits in the same control as the presets, so clicking «Bugun»
+          while it is on is a request for today — and without this the board
+          would stay unbounded with «Bugun» lit above it, which is the exact
+          contradiction the mode exists to avoid. Only 'all' is dropped:
+          'backlog' hides this control entirely, so it can never get here, and
+          clearing it blind would be a way for a future caller to lose the
+          board the header bell links to.
+        */
+        ...(filters.queue === 'all' ? { queue: undefined } : {}),
       })
     },
     // No `pathname`: the window is the dashboard's, not this route's.
-    [update],
+    [update, filters.queue],
   )
 
   /**
@@ -249,8 +308,16 @@ export function useDashboardFilters() {
       from the bell for a board dated by today — the rows would change, the
       count would change, and the button that did it said it was only
       clearing filters.
+
+      `pageSize` is kept on the same argument. It narrows nothing — it says how
+      much of the answer the reader wants in front of them at once, which is a
+      reading preference and not a selection. Dropped here, somebody working
+      the confirmation board at 100 rows who cleared a status chip was put back
+      on the page's default with no notice, halfway down a table that had just
+      reflowed under them; the button said it was clearing filters and took
+      away something that was never one.
     */
-    for (const key of ['preset', 'from', 'to', 'queue'] as const) {
+    for (const key of ['preset', 'from', 'to', 'queue', 'view', 'pageSize'] as const) {
       const value = params.get(key)
       if (value !== null) kept.set(key, value)
     }
@@ -275,7 +342,7 @@ export function useDashboardFilters() {
     if (filters.rop) out.rop = filters.rop
     // Only when it is not the default: every other screen's requests stay
     // byte-identical, so their react-query caches are untouched by this.
-    if (filters.queue === 'backlog') out.queue = filters.queue
+    if (filters.queue !== 'window') out.queue = filters.queue
     if (filters.q) out.q = filters.q
     return out
   }, [filters])

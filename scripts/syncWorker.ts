@@ -135,8 +135,17 @@ const SWEEP_EVERY = Number(process.env.SYNC_SWEEP_EVERY ?? 60)
  */
 const HISTORY_BACKFILL_DAYS = Number(process.env.SYNC_HISTORY_BACKFILL_DAYS ?? 45)
 
-/** Read on every tick. */
-const HOT: SyncEntityValue[] = ['CUSTOMERS', 'DEALS', 'DEAL_ITEMS', 'STAGE_HISTORY', 'CALLS']
+/**
+ * Read on every tick.
+ *
+ * CALLS IS NOT HERE, AND THE TABLE IT FED IS GONE. Telephony was imported
+ * every minute — 310 000 rows, 118 MB, and by a wide margin the most
+ * sequentially scanned table on the database (2.8 BILLION tuples read against
+ * deal's 15 million) — to answer two endpoints that no screen in the
+ * application called. The client uses the confirmation queue and the sellers
+ * board; nothing anywhere renders a call.
+ */
+const HOT: SyncEntityValue[] = ['CUSTOMERS', 'DEALS', 'DEAL_ITEMS', 'STAGE_HISTORY']
 
 /** Read occasionally. Order matters — deals reference all of these. */
 const REFERENCE: SyncEntityValue[] = [

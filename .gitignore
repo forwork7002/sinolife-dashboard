@@ -17,6 +17,11 @@
 /.next/
 /out/
 
+# a peer session's nested worktree — must never reach a commit via `git add -A`
+/.podium-preview/
+# a stray 272 MB OS-dotfiles clone, pending removal — same `git add -A` landmine
+/dotfiles/
+
 # production
 /build
 

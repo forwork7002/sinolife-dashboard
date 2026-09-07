@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { StatusChip } from '@/components/ui/Stat'
@@ -33,6 +33,22 @@ import {
   percent,
   ratio,
 } from './marketingFormat'
+
+/**
+ * How many rows the table draws before the reader asks for more.
+ *
+ * The Reklamalar cut publishes 1 710 creatives and the table is 23 columns
+ * wide, so drawing it whole is ~39 000 cells — measured, the click that
+ * switches to that tab froze the main thread for seconds on a laptop and
+ * considerably longer on a phone. Nobody reads row 900 of a list sorted by
+ * spend; they read the top and then they filter.
+ *
+ * The cap is on RENDERING ONLY. Sorting still runs over the full set — a rank
+ * column computed over a truncation would be a lie — and `marketingRepository`
+ * still refuses a server-side LIMIT for the same reason JAMI needs: the total
+ * has to be summed over every row, not over the visible ones.
+ */
+const FIRST_PAGE_ROWS = 50
 
 /**
  * The dimension table — every column their `cols()` builds, in that order.
@@ -361,6 +377,34 @@ export function MarketingTable({
   const metricColumns = buildColumns(dimension, mode, rate)
   const isDays = dimension === 'days'
 
+  /*
+    How many rows are DRAWN. Reset whenever the question changes — a new
+    dimension, a new drill parent or a new sort is a new list, and carrying
+    "show 400" across into it would hand the reader four hundred rows of
+    something they did not ask to see that much of.
+
+    `rows` is the identity to watch rather than `dimension`: the drill parent
+    lives in the caller's state and never reaches this component, but a drill
+    down into a campaign replaces the array, so watching the array covers both.
+
+    ADJUSTED DURING RENDER, not in an effect. React's own guidance for "reset
+    state when a prop changes" is to compare against the previous value while
+    rendering and set both — an effect would paint the stale count first and
+    then correct it, which is a visible flash of four hundred rows in exactly
+    the case this cap exists to avoid. `react-hooks/set-state-in-effect`
+    enforces the same thing.
+  */
+  const listIdentity = `${sort.key}|${sort.direction}`
+  const [shown, setShown] = useState(FIRST_PAGE_ROWS)
+  const [seen, setSeen] = useState<{ rows: readonly unknown[]; identity: string }>({
+    rows,
+    identity: listIdentity,
+  })
+  if (seen.rows !== rows || seen.identity !== listIdentity) {
+    setSeen({ rows, identity: listIdentity })
+    setShown(FIRST_PAGE_ROWS)
+  }
+
   const sorted = [...rows].sort((a, b) => {
     const factor = sort.direction === 'desc' ? -1 : 1
 
@@ -392,8 +436,21 @@ export function MarketingTable({
     re-deriving the rates from the sum, never averaging the rendered
     percentages, which would weight a 4-lead campaign like a 4 000-lead one.
   */
+  /*
+    The cap is applied HERE, between the ranking and the total.
+
+    Ranking first, so `rank` counts positions in the real list. Total last, so
+    JAMI stays the bottom row — slicing after it were appended would drop the
+    total off every cut with more than fifty keys, which is most of them, and
+    JAMI is the one row on this table that is never optional.
+  */
+  const visibleRows = dataRows.slice(0, shown)
+  const hiddenCount = dataRows.length - visibleRows.length
+
   const allRows: TableRow[] =
-    total && dataRows.length > 0 ? [...dataRows, { kind: 'total', metrics: total }] : dataRows
+    total && dataRows.length > 0
+      ? [...visibleRows, { kind: 'total', metrics: total }]
+      : visibleRows
 
   const columns: Column<TableRow>[] = [
     {
@@ -497,6 +554,31 @@ export function MarketingTable({
         // twenty screens of unlabelled numbers.
         maxHeight={560}
       />
+
+      {/*
+        The rest of the list, on request.
+
+        Below the table rather than inside it: the scroll box has a bounded
+        height so the sticky header has something to stick to, and a control
+        that lives inside a scroller is a control the reader has to find. The
+        count is stated because "show more" without a number does not say
+        whether the remainder is nine rows or sixteen hundred.
+      */}
+      {hiddenCount > 0 && status === 'ready' ? (
+        <button
+          type="button"
+          onClick={() => setShown((current) => current + FIRST_PAGE_ROWS * 4)}
+          className="focusable mt-2 self-start rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors"
+          style={{
+            borderColor: 'var(--border-strong)',
+            background: 'var(--surface-raised)',
+            color: 'var(--ink-primary)',
+          }}
+        >
+          Yana {Math.min(hiddenCount, FIRST_PAGE_ROWS * 4)} ta qatorni koʻrsatish
+          <span style={{ color: 'var(--ink-muted)' }}> · jami {dataRows.length}</span>
+        </button>
+      ) : null}
     </>
   )
 }

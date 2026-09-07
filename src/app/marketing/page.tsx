@@ -11,7 +11,10 @@ export default async function Page() {
   await requireSection('marketing')
 
   return (
-    // Shell reads the URL for its command palette; Suspense gives prerender a shell.
+    // URL filtrlari klientda oʻqiladi; Suspense prerender paytida qobiqni chiqaradi.
+    // Bu qator ilgari ⌘K palitrasini sabab deb koʻrsatardi. Palitra oʻchirildi,
+    // chegara esa qoldi — u koʻz uchun emas, `next build` uchun: uni olib
+    // tashlasangiz, butun sahifa prerenderdan chiqib ketadi.
     <Suspense fallback={null}>
       <MarketingPage />
     </Suspense>

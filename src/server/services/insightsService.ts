@@ -18,8 +18,6 @@ import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import type { Period } from '@/server/domain/period/period'
 import { allTime, periodLengthInDays } from '@/server/domain/period/period'
 import type {
-  CallActivityRow,
-  CallDirectionRow,
   ChannelRow,
   ConfirmationOrderQuery,
   ConfirmationOrderRow,
@@ -242,18 +240,6 @@ export interface ChannelDto {
   readonly costPerOrder: MoneyDto | null
 }
 
-/**
- * Call activity, with the two directions kept apart.
- *
- * Blending them produces a single "connection rate" that answers neither
- * question: this log is 92% inbound, so a blended rate is mostly the share of
- * CUSTOMERS who got an answer, presented under a label about dialling.
- */
-export interface CallsDto {
-  readonly rows: readonly CallActivityRow[]
-  readonly outbound: CallDirectionRow
-  readonly inbound: CallDirectionRow
-}
 
 export interface MarginDto {
   readonly rows: readonly {
@@ -280,21 +266,65 @@ export interface MarginDto {
   readonly coverage: number
 }
 
+/**
+ * The unit's head, as the card prints them.
+ *
+ * NULL when the unit has no head AND when the portal's head is not one of its
+ * members. Bitrix24's own company-structure screen draws no head row in either
+ * case — «Навоий» names a head whose two units are «Kompaniya(ROP)» and
+ * «Тошкент онлайн», and the portal declines to seat them in «Навоий». Printing
+ * the name anyway would put a manager somewhere the source says they are not.
+ */
+export interface StructureHeadDto {
+  readonly id: string
+  readonly name: string
+  readonly position: string | null
+  /**
+   * Active people in this unit's whole subtree, minus this head — the figure in
+   * the pill beside their name on the portal's card. DISTINCT over the subtree,
+   * so somebody who sits in two units of one branch is one person.
+   */
+  readonly managesCount: number
+}
+
 export interface StructureDto {
   readonly id: string
   readonly name: string
   readonly depth: number
   readonly headName: string | null
-  /** People attached directly to this unit. */
+  /** The head as the CARD needs them — null where the portal shows no head row. */
+  readonly head: StructureHeadDto | null
+  /** People whose PRIMARY unit is this one. */
   readonly ownHeadcount: number
-  /** This unit plus everything beneath it. All three roll up together. */
+  /** This unit plus everything beneath it. Both headcounts roll up together. */
   readonly headcount: number
   /** Of those, marked active in Bitrix24. */
   readonly activeHeadcount: number
-  /** Of the active, those who made a call or won a deal this period. */
-  readonly workingHeadcount: number
-  readonly deals: number
-  readonly revenue: MoneyDto
+  /**
+   * Active people the PORTAL lists in this unit, minus the head when the head
+   * is one of them — «Подчинённые: N сотрудников» on the source screen, and the
+   * figure a floor manager will hold this page up against.
+   *
+   * It is NOT `activeHeadcount`, and the difference is not a rounding error:
+   * membership is many-to-many in Bitrix24 and nine of this portal's people sit
+   * in two units, so five of its twenty cards differ. `activeHeadcount` counts
+   * who is CREDITED to this unit by this dashboard; this counts who the PORTAL
+   * lists here. Both are true and the screen prints both.
+   */
+  readonly subordinateCount: number
+  /** Active members including the head. `subordinateCount` plus 0 or 1. */
+  readonly memberCount: number
+  /**
+   * Their names, so the chart's search box can find a person and not only a
+   * unit. Active only. See the CTE that builds it for why it rides the tree.
+   */
+  readonly memberNames: readonly string[]
+  /** Direct child units. The card's footer prints it, or says there are none. */
+  readonly childCount: number
+  /** The portal's own left-to-right order for this unit among its siblings. */
+  readonly sortOrder: number
+  /** Does the reader's own account sit in this unit? Drives the «Siz» badge. */
+  readonly isViewerDepartment: boolean
   /**
    * Is this unit inside the active filial?
    *
@@ -306,6 +336,36 @@ export interface StructureDto {
    */
   readonly inScope: boolean
   readonly children: readonly StructureDto[]
+}
+
+/** One person on a unit's roster, for the panel beside the chart. */
+export interface DepartmentMemberDto {
+  readonly id: string
+  readonly fullName: string
+  readonly position: string | null
+  readonly isActive: boolean
+  /**
+   * False when this unit is the person's SECOND one.
+   *
+   * Bitrix24 lists a person in every unit of their `UF_DEPARTMENT` and the
+   * chart draws them on every one of those cards. A roster that did not say so
+   * would present a borrowed operator as a member of this team, which is the
+   * one thing this screen must not get wrong.
+   */
+  readonly isPrimary: boolean
+  readonly isHead: boolean
+}
+
+/**
+ * What the org chart needs that is not a department.
+ *
+ * `viewerDepartmentIds` is a LIST for the same reason membership is: the
+ * account behind the reader can sit in two units, and badging only the first
+ * would send «Meni topish» to the wrong side of the chart.
+ */
+export interface StructureOptions {
+  /** The reader's own employee id, from Principal. Null when unlinked. */
+  readonly viewerEmployeeId?: string | null
 }
 
 /**
@@ -320,6 +380,37 @@ export interface InsightsScope extends EmployeeScopeFilter {
   /** The branch's own department id, for the tree that marks its subtree. */
   readonly branchDepartmentId?: string | null
 }
+
+/**
+ * The shortest term the confirmation search resolves to a set of ids.
+ *
+ * THREE, BECAUSE THAT IS WHAT A TRIGRAM IS. Every text arm of
+ * `InsightsRepository.confirmationSearchScope` was written to start on a GIN
+ * trigram index — the deal's title, order code, Bitrix id, region and delivery
+ * address, the customer's name and both forms of the phone, the amount as
+ * major units — and pg_trgm cannot answer a LIKE pattern that holds no whole
+ * trigram. Below three characters every one of those arms falls back to a
+ * sequential scan: several full passes over 423 845 deals and 326 859
+ * customers, whose result the hit cap then throws away as too broad anyway.
+ * The board would pay for the pre-filter AND for the unbounded query it fell
+ * back to — this statement making the screen slower than not having it, which
+ * is the only outcome it may never produce.
+ *
+ * Two, not three, is where pg_trgm actually gives up: it pads a short string
+ * with spaces, so «ab» yields no complete trigram at all. Three is the first
+ * length at which an index scan is possible, and it is the first length worth
+ * running this statement for.
+ *
+ * IT IS NOT A VALIDATION RULE, AND THE SHORT TERM STILL ANSWERS. Below it the
+ * service passes no scope, so the board takes exactly the shape it took before
+ * the pre-filter existed — slow and COMPLETE. The scope is only ever an
+ * optimisation; a length check that dropped rows would be a filter, and this
+ * screen may not silently lose an order. The client is given a matching
+ * `searchMinLength`, so in practice a short term arrives only from a direct
+ * call to the route — which is reachable, so the server has to be right about
+ * it on its own.
+ */
+const SEARCH_MIN_LENGTH = 3
 
 export class InsightsService {
   constructor(private readonly repository: InsightsRepository) {}
@@ -663,14 +754,65 @@ export class InsightsService {
     mode: ConfirmationQueueMode = 'window',
   ): Promise<ConfirmationQueueDto> {
     /*
-      THE BACKLOG HAS NO WINDOW, and says so by asking for all of time.
+      TWO OF THE THREE MODES HAVE NO WINDOW, and say so by asking for all of time.
 
       Every reading below binds $1 and $2, so the span still has to be a real
-      one — the cohort predicate in backlog mode is `signal = CONFIRM_NEW` and
-      the dates are left deliberately vacuous rather than removed, which keeps
-      one set of parameter positions across both modes.
+      one — the cohort predicate is left deliberately vacuous rather than
+      removed, which keeps one set of parameter positions across every mode.
+
+      'backlog' is unbounded because the oldest unworked order predates every
+      preset; 'all' is unbounded because that is what it means. Written as
+      "only 'window' reads the period" rather than as a list of the two, so a
+      fourth mode cannot arrive silently bounded by a window it never meant to
+      read — the failure that produces is a board quietly missing rows, which
+      is the one thing this screen must never do.
+
+      The route hands 'all' an all-time period already; this is the same
+      decision made where the query is built, so a direct API caller cannot
+      reach a half-bounded board.
     */
-    const window = mode === 'backlog' ? allTime(period.timeZone) : this.window(period, scope)
+    const window =
+      mode === 'window' ? this.window(period, scope) : this.window(allTime(period.timeZone), scope)
+
+    /*
+      A SEARCH IS RESOLVED TO A SET OF ORDERS BEFORE THE COHORT IS BUILT.
+
+      Everything this box searches is on an indexed table, and none of those
+      indexes can be used by the search predicate itself: it runs over the
+      cohort, where `deal` and `customer` are reached by id rather than
+      scanned. So the ids are resolved first, by a statement that starts on
+      the indexes, and the history scan is bounded by them — which is what
+      turns an unbounded pass over the whole signal history into a few
+      thousand index lookups. Every search lands on an all-time span (the
+      route drops the window whenever `q` is set), so before this every search
+      paid for the widest cohort this screen can build: ~5 s against the 2–3 s
+      a month's board costs.
+
+      ONE RESOLUTION, ONE ARRAY, EVERY READING. The page and the ROP panel are
+      two statements below 62 days; handing them different sets — or scoping
+      one and not the other — would put a row on screen that the tiles above
+      it do not count.
+
+      FOUR TERM SHAPES TAKE THE OLD, UNBOUNDED PATH, AND THE FALLBACK IS THE
+      POINT. Three of them are the repository's `capped`: a term matching more
+      than SEARCH_HIT_CAP orders is not a lookup; hits spread over more than
+      SEARCH_DAY_CAP arrival days make the day-peer expansion cost more than
+      the query it replaces; and the resolved set can outgrow the array it
+      rides in. The fourth is decided here — a term too short for a trigram
+      index to answer, see SEARCH_MIN_LENGTH — because past that point the
+      statement's every arm is a sequential scan and the answer is discarded
+      as too broad regardless, so the board would pay for both queries.
+
+      In all four this passes no scope at all and the board takes the shape it
+      took before — slow and complete, never a short answer that looks whole.
+      On this screen «Buyurtma topilmadi» is said to a customer who is on the
+      phone.
+    */
+    const searchScope =
+      query.q && query.q.trim().length >= SEARCH_MIN_LENGTH
+        ? await this.repository.confirmationSearchScope(query.q)
+        : null
+    const scopeIds = searchScope && !searchScope.capped ? searchScope.dealIds : null
 
     /*
       TWO ROUND TRIPS, NOT THREE.
@@ -698,17 +840,23 @@ export class InsightsService {
       CTE, so it is slower for a month (a steady ~4.6 s) and the only thing
       that finishes for a year (~5 s). Same rows either way, checked row for
       row on production.
+
+      THAT REASONING IS ABOUT THE UNSEARCHED BOARD. A search is always
+      answered over all of time, so it is always past the threshold and always
+      takes the single statement — but with `scopeIds` bound, the cohort it
+      builds once is a few thousand deals rather than the whole signal
+      history, and the measurements above do not describe it.
     */
     const LONG_WINDOW_DAYS = 62
     const { page, byRop } =
       periodLengthInDays(window) > LONG_WINDOW_DAYS
-        ? await this.repository.confirmationBoard(window, query, mode).then((board) => ({
+        ? await this.repository.confirmationBoard(window, query, mode, scopeIds).then((board) => ({
             page: { rows: board.rows, totalItems: board.totalItems },
             byRop: board.byRop,
           }))
         : await Promise.all([
-            this.repository.confirmationOrders(window, query, mode),
-            this.repository.confirmationByRop(window, { q: query.q }, mode),
+            this.repository.confirmationOrders(window, query, mode, scopeIds),
+            this.repository.confirmationByRop(window, { q: query.q }, mode, scopeIds),
           ]).then(([page, byRop]) => ({ page, byRop }))
 
     const scoped = query.rop ? byRop.filter((r) => r.rop === query.rop) : byRop
@@ -849,25 +997,6 @@ export class InsightsService {
     }
   }
 
-  async callActivity(period: Period, scope: EmployeeScopeFilter = {}): Promise<CallsDto> {
-    const window = this.window(period, scope)
-
-    const [rows, directions] = await Promise.all([
-      this.repository.callActivity(window),
-      this.repository.callDirections(window),
-    ])
-
-    const of = (direction: string) =>
-      directions.find((d) => d.direction === direction) ?? {
-        direction,
-        calls: 0,
-        connected: 0,
-        talkSeconds: 0,
-      }
-
-    return { rows, outbound: of('OUTBOUND'), inbound: of('INBOUND') }
-  }
-
   async dispatch(period: Period, currency: string, scope: EmployeeScopeFilter = {}) {
     const rows = await this.repository.dispatchPoints(this.window(period, scope))
     return rows.map((r: DispatchRow) => ({
@@ -886,17 +1015,30 @@ export class InsightsService {
   /**
    * The org chart, rolled up.
    *
-   * Rollup happens here rather than in SQL because "a department's revenue"
+   * Rollup happens here rather than in SQL because "a department's headcount"
    * means the unit plus everything under it, and that is a display decision —
    * the database should not have to guess whether the caller wants own or
    * inclusive figures.
+   *
+   * NO PERIOD AND NO CURRENCY. This screen answers "who works under whom",
+   * which is a fact about today; every period-scoped figure it used to carry
+   * has moved to Boshqaruv markazi, where this dashboard states money.
    */
-  async structure(period: Period, currency: string, scope: InsightsScope = {}) {
+  async structure(
+    scope: InsightsScope = {},
+    options: StructureOptions = {},
+  ) {
     // Deliberately UNSCOPED as data: the tree keeps every unit and every
     // number, and `inScope` marks which subtree the branch-scoped screens are
     // counting. Filtering the map would leave the reader unable to see that
-    // Операцион exists at all, let alone that it closed 12.6% of last month.
-    const nodes = await this.repository.structure(period)
+    // Операцион exists at all.
+    const [nodes, viewerDepartmentIds] = await Promise.all([
+      this.repository.structure(),
+      options.viewerEmployeeId
+        ? this.repository.departmentsOfEmployee(options.viewerEmployeeId)
+        : Promise.resolve([] as string[]),
+    ])
+    const viewerIn = new Set(viewerDepartmentIds)
     const children = new Map<string | null, StructureNode[]>()
 
     for (const node of nodes) {
@@ -909,53 +1051,113 @@ export class InsightsService {
     // rather than a shrug: `filial=all` really does count every unit.
     const branchId = scope.branchDepartmentId ?? null
 
-    const build = (node: StructureNode, depth: number, inherited: boolean): StructureDto => {
+    /**
+     * The rollup travels beside the DTO, not inside it.
+     *
+     * Read back off each child DTO instead, it would be summing whatever the
+     * DTO happened to print rather than the repository's own integers — which
+     * is how the withheld-money version of this used to add up nulls. The
+     * totals are the repository's numbers all the way up; only the last step
+     * decides what is printed.
+     */
+    interface Rolled {
+      readonly headcount: number
+      readonly activeHeadcount: number
+    }
+
+    const build = (
+      node: StructureNode,
+      depth: number,
+      inherited: boolean,
+    ): { dto: StructureDto; rolled: Rolled } => {
       const inScope = branchId === null || inherited || node.id === branchId
-      const kids = (children.get(node.id) ?? []).map((child) =>
+      const built = (children.get(node.id) ?? []).map((child) =>
         build(child, depth + 1, inScope),
       )
+      const kids = built.map((b) => b.dto)
 
       /**
-       * All three headcounts roll up together.
+       * BOTH headcounts roll up together.
        *
        * `activeHeadcount` used to stay own-only while `headcount` was rolled,
        * so a branch showing 109 people was quietly comparing an inclusive
        * total against its own direct reports. The two agreed at the root by
        * coincidence and nowhere else.
        */
-      const rolled = kids.reduce(
+      const rolled: Rolled = built.reduce<Rolled>(
         (acc, kid) => ({
-          headcount: acc.headcount + kid.headcount,
-          activeHeadcount: acc.activeHeadcount + kid.activeHeadcount,
-          workingHeadcount: acc.workingHeadcount + kid.workingHeadcount,
-          deals: acc.deals + kid.deals,
-          revenueMinor: acc.revenueMinor + BigInt(kid.revenue.amountMinor),
+          headcount: acc.headcount + kid.rolled.headcount,
+          activeHeadcount: acc.activeHeadcount + kid.rolled.activeHeadcount,
         }),
         {
           headcount: node.headcount,
           activeHeadcount: node.activeHeadcount,
-          workingHeadcount: node.workingHeadcount,
-          deals: node.deals,
-          revenueMinor: node.revenueMinor,
         },
       )
 
-      return {
+      const dto: StructureDto = {
         id: node.id,
         name: node.name,
         depth,
         headName: node.headName,
+        /*
+          NOT ROLLED UP, and none of the four below are.
+
+          The counts above answer "this unit plus everything under it", which is
+          what a manager asking about a branch means. These four are facts about
+          the unit itself as the portal draws its card — how many people it
+          lists, how many units hang off it, where it sits among its siblings —
+          and `managesCount` is already a subtree figure computed DISTINCT in
+          SQL, so adding the children's would count the same person once per
+          level they appear at.
+        */
+        head:
+          node.headId && node.headName && node.headIsMember
+            ? {
+                id: node.headId,
+                name: node.headName,
+                position: node.headPosition,
+                managesCount: node.headManagesCount,
+              }
+            : null,
         ownHeadcount: node.headcount,
         headcount: rolled.headcount,
         activeHeadcount: rolled.activeHeadcount,
-        workingHeadcount: rolled.workingHeadcount,
-        deals: rolled.deals,
-        revenue: toMoneyDto(money(rolled.revenueMinor, currency)),
+        subordinateCount: node.subordinateCount,
+        memberCount: node.memberCount,
+        memberNames: node.memberNames,
+        childCount: node.childCount,
+        sortOrder: node.sortOrder,
+        isViewerDepartment: viewerIn.has(node.id),
         inScope,
         children: kids,
       }
+
+      return { dto, rolled }
     }
 
-    return (children.get(null) ?? []).map((root) => build(root, 0, false))
+    return (children.get(null) ?? []).map((root) => build(root, 0, false).dto)
+  }
+
+  /**
+   * One unit's roster, for the panel the chart opens.
+   *
+   * A second request rather than a field on every node: the chart draws twenty
+   * cards and a reader opens one panel, so shipping 289 people to render 13 of
+   * them would put the whole roster on the wire on every period change. It is
+   * also the only part of this screen that is per-selection, which is exactly
+   * the split that keeps the chart's own answer cacheable.
+   */
+  async departmentRoster(departmentId: string): Promise<DepartmentMemberDto[]> {
+    const rows = await this.repository.departmentRoster(departmentId)
+
+    return rows.map((r) => ({
+      id: r.id,
+      fullName: r.fullName,
+      position: r.position,
+      isActive: r.isActive,
+      isPrimary: r.isPrimary,
+      isHead: r.isHead,
+    }))
   }
 }

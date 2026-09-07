@@ -27,10 +27,10 @@
 
 import type { PrismaClient } from '@/generated/prisma/client'
 import type { ExternalSourceValue } from '@/server/domain/types'
+import { floorNumberOf, indexByFloorNumber } from '@/server/domain/employees/floorNumber'
 import type {
   CrmProvider,
   FetchOptions,
-  RawCall,
   RawCustomer,
   RawDeal,
   RawDealItem,
@@ -201,6 +201,22 @@ export function createSyncHandlers(
   const ids = (batch: readonly { externalId: string }[]) => batch.map((r) => r.externalId)
 
   /**
+   * Floor badge to employee, read once and kept for the run.
+   *
+   * The roster is ~290 rows and every DEALS batch needs the same map, so
+   * fetching it per batch would be 175 identical queries on a full pass. It is
+   * deliberately NOT cached across runs: a resync after a hiring change must
+   * see the new people.
+   */
+  let operatorIndex: Map<number, string> | null = null
+  const floorNumberIndex = async (): Promise<Map<number, string>> => {
+    if (operatorIndex) return operatorIndex
+    const roster = await prisma.employee.findMany({ select: { id: true, fullName: true } })
+    operatorIndex = indexByFloorNumber(roster, (person) => person)
+    return operatorIndex
+  }
+
+  /**
    * Department heads, waiting for their employee to exist.
    *
    * `department.get` names each head by user id, but departments are written
@@ -304,6 +320,68 @@ export function createSyncHandlers(
       }
 
       resolver.invalidate('employee')
+
+      /*
+        MEMBERSHIP IS MANY-TO-MANY, AND ONLY THE ORG CHART READS IT.
+
+        `departmentId` above is the person's PRIMARY unit and is what every
+        analytic credits them to — rolling a two-unit person up both branches
+        would count their headcount and their money twice. But Bitrix24's
+        `UF_DEPARTMENT` is an array and its own company-structure screen counts
+        a person once in each entry, so the screen we reproduce needs the full
+        set. Nine of this portal's 208 active people have two.
+
+        Replace rather than merge: a person moved out of a unit has no record
+        left saying so, so anything not in this pass's list is gone. Scoped to
+        the batch's own employees, which on an incremental run is the handful
+        that changed.
+      */
+      const employeeMap = await resolver.map('employee')
+      const departmentMap = await resolver.map('department')
+
+      const memberships: { departmentId: string; employeeId: string; isPrimary: boolean }[] = []
+      const touched: string[] = []
+
+      for (const record of batch) {
+        const employeeId = employeeMap.get(record.externalId)
+        if (!employeeId) continue
+        touched.push(employeeId)
+
+        // A provider with no multi-unit concept says so by leaving the array
+        // undefined; its single unit is the same answer, not a lesser one.
+        const externalIds =
+          record.departmentExternalIds ??
+          (record.departmentExternalId ? [record.departmentExternalId] : [])
+
+        const seen = new Set<string>()
+        for (const [index, externalId] of externalIds.entries()) {
+          const departmentId = departmentMap.get(externalId)
+          // A unit we never imported is dropped rather than guessed at. The FK
+          // would refuse the row anyway, and refusing it takes the whole
+          // multi-row insert with it.
+          if (!departmentId || seen.has(departmentId)) continue
+          seen.add(departmentId)
+          memberships.push({ departmentId, employeeId, isPrimary: index === 0 })
+        }
+      }
+
+      /*
+        ONE TRANSACTION, because the delete is the whole table.
+
+        `fetchEmployees` returns every user in a single page, so `touched` is
+        the entire roster and the delete empties `department_member` before the
+        insert puts it back. Run as two statements that is a 20-150 ms window —
+        measured at 1.6 ms + 15.5 ms locally on 298 rows, plus round trips —
+        during which every card on the org chart reads zero members, once every
+        thirty worker ticks and again on every restart and redeploy. Nothing
+        errors and nothing logs it; a reader simply catches the screen mid-blink.
+      */
+      if (touched.length > 0 || memberships.length > 0) {
+        await prisma.$transaction([
+          prisma.departmentMember.deleteMany({ where: { employeeId: { in: touched } } }),
+          prisma.departmentMember.createMany({ data: memberships, skipDuplicates: true }),
+        ])
+      }
 
       // Drain the department heads parked during the department pass. Both
       // sides exist now, so every link that can resolve, resolves.
@@ -637,6 +715,9 @@ export function createSyncHandlers(
     { name: 'paymentMethodRaw' },
     { name: 'productLine' },
     { name: 'customerGrade' },
+    { name: 'operatorNameSource' },
+    { name: 'operatorTeamSource' },
+    { name: 'operatorEmployeeId' },
     { name: 'isReturnCustomer' },
     { name: 'createdAtSource', cast: 'timestamp' },
     { name: 'updatedAtSource', cast: 'timestamp' },
@@ -661,6 +742,7 @@ export function createSyncHandlers(
 
       const stageMap = await resolver.map('dealStage')
       const employeeMap = await resolver.map('employee')
+      const operatorMap = await floorNumberIndex()
       // Batch-scoped: 322 000 customers do not fit in the worker's heap.
       const customerMap = await resolver.mapFor(
         'customer',
@@ -676,6 +758,25 @@ export function createSyncHandlers(
       for (const record of batch) {
         const stageId = stageMap.get(record.stageExternalId)
         const employeeId = employeeMap.get(record.employeeExternalId)
+        /*
+          WHO ACTUALLY SOLD IT, when the portal recorded it.
+
+          `employeeId` above is ASSIGNED_BY_ID — the deal's owner today — and
+          this portal moves deals to back office while they are processed. In
+          July 2026 that put 556 orders on the head of Операцион and made him
+          the sellers board's number one. The portal's own snapshot names the
+          real seller, and the only thing the two spellings share is the floor
+          badge, so resolution happens here rather than in every query.
+
+          Null is normal, not an error: the field was added in May 2026, so
+          older cohorts are 20% empty and August is 10%. Readers COALESCE onto
+          `employeeId`, which is why this is resolved but not required.
+        */
+        const operatorBadge = record.operatorNameSource
+          ? floorNumberOf(record.operatorNameSource)
+          : null
+        const operatorEmployeeId =
+          operatorBadge === null ? null : (operatorMap.get(operatorBadge) ?? null)
 
         /**
          * Both are required foreign keys, so a deal missing either is dropped
@@ -712,6 +813,9 @@ export function createSyncHandlers(
           record.paymentMethodRaw ?? null,
           record.productLine ?? null,
           record.customerGrade ?? null,
+          record.operatorNameSource ?? null,
+          record.operatorTeamSource ?? null,
+          operatorEmployeeId,
           record.isReturnCustomer ?? false,
           ts(record.createdAtSource),
           ts(record.updatedAtSource),
@@ -1013,84 +1117,6 @@ export function createSyncHandlers(
   }
 
   // -------------------------------------------------------------------------
-  // Telephony
-  // -------------------------------------------------------------------------
-
-  const CALL_COLUMNS: ColumnSpec[] = [
-    ...identityColumns(),
-    { name: 'employeeId' },
-    { name: 'customerId' },
-    { name: 'dealId' },
-    { name: 'direction', cast: '"CallDirection"' },
-    { name: 'phoneNumber' },
-    { name: 'startedAt', cast: 'timestamp' },
-    { name: 'durationSec' },
-    { name: 'connected' },
-    { name: 'failedCode' },
-    { name: 'recordUrl' },
-    { name: 'createdAt', cast: 'timestamp', insertOnly: true },
-  ]
-
-  const calls: EntitySyncHandler<RawCall> = {
-    entity: 'CALLS',
-    externalIdOf: (record) => record.externalId,
-    fetch: (provider, options) => provider.fetchCalls(options),
-    async persist(batch) {
-      const existing = new Set(
-        (
-          await prisma.callRecord.findMany({
-            where: { externalSource: source, externalId: { in: ids(batch) } },
-            select: { externalId: true },
-          })
-        ).map((r) => r.externalId),
-      )
-
-      const employeeMap = await resolver.map('employee')
-      const customerMap = await resolver.mapFor(
-        'customer',
-        batch.map((r) => r.customerExternalId),
-      )
-      const dealMap = await resolver.mapFor('deal', batch.map((r) => r.dealExternalId))
-
-      const now = new Date().toISOString()
-
-      /**
-       * Every reference here is optional.
-       *
-       * A call to a number that never became a contact is still a call the
-       * salesperson made, and dropping it would understate their activity. So
-       * an unresolved link is written as null rather than skipping the row.
-       */
-      const rows = batch.map((record) => [
-        rowId(),
-        source,
-        record.externalId,
-        link(employeeMap, record.employeeExternalId),
-        link(customerMap, record.customerExternalId),
-        link(dealMap, record.dealExternalId),
-        record.direction,
-        record.phoneNumber ?? null,
-        ts(record.startedAt),
-        record.durationSec,
-        record.connected,
-        record.failedCode ?? null,
-        record.recordUrl ?? null,
-        now,
-      ])
-
-      await bulkUpsert({
-        prisma,
-        table: 'call_record',
-        columns: CALL_COLUMNS,
-        conflict: ['externalSource', 'externalId'],
-        rows,
-      })
-
-      return { ...classify(batch, existing), skipped: 0 }
-    },
-  }
-
-  // -------------------------------------------------------------------------
   // Warehouse
   // -------------------------------------------------------------------------
 
@@ -1254,7 +1280,6 @@ export function createSyncHandlers(
     payments,
     stock,
     stageHistory,
-    calls,
   ] as EntitySyncHandler[]
 
   return handlers.map((handler) => {

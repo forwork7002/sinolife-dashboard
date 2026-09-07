@@ -375,28 +375,6 @@ export interface AlertsDto {
   readonly queue: { readonly pending: number; readonly overdue: number } | null
 }
 
-/** One row in the global search, already told where it goes. */
-export interface SearchHitDto {
-  readonly id: string
-  readonly label: string
-  readonly hint: string
-  readonly href: string
-  readonly amount?: MoneyDto
-}
-
-export interface SearchGroupDto {
-  readonly key: 'deals' | 'customers' | 'employees' | 'products' | 'sources'
-  readonly label: string
-  readonly items: readonly SearchHitDto[]
-}
-
-export interface SearchDto {
-  readonly query: string
-  readonly groups: readonly SearchGroupDto[]
-  /** The term was too short to look anything up. */
-  readonly tooShort: boolean
-}
-
 export interface UsersPageDto {
   readonly items: readonly UserRowDto[]
 }
@@ -623,6 +601,17 @@ export const CONFIRMATION_OUTCOMES = [
 export type ConfirmationOutcome = (typeof CONFIRMATION_OUTCOMES)[number]
 
 /**
+ * Which question the Тасдиклаш board is being asked — the `queue` parameter.
+ *
+ * Mirrors `CONFIRMATION_QUEUE_MODES` in `@/server/domain/types`, which is
+ * where the three are explained. Nothing checks the mirror; a mode added
+ * there and forgotten here is a 400 on the whole page the first time somebody
+ * clicks the control that sends it, so edit both.
+ */
+export const CONFIRMATION_QUEUE_MODES = ['window', 'backlog', 'all'] as const
+export type ConfirmationQueueMode = (typeof CONFIRMATION_QUEUE_MODES)[number]
+
+/**
  * One visit to Тасдиклаш on an order's row: when it arrived, how it ended.
  *
  * Mirrored by hand from `ConfirmationVisitDto` in
@@ -797,20 +786,6 @@ export interface MarginDto {
   readonly coverage: number
 }
 
-/**
- * Call activity, with the two directions kept apart.
- *
- * They are different questions wearing the same word. Outbound asks how often
- * a dial reaches someone; inbound asks how many customers calling this company
- * got an answer. Blended into one "connection rate" on a log that is 92%
- * inbound, the result was mostly the second reported as the first — and it hid
- * 159,722 unanswered customer calls in a month.
- */
-export interface CallsDto {
-  readonly rows: readonly CallActivityDto[]
-  readonly outbound: CallDirectionDto
-  readonly inbound: CallDirectionDto
-}
 
 /** Totals for one call direction. */
 export interface CallDirectionDto {
@@ -841,21 +816,56 @@ export interface DispatchDto {
   readonly deliveryRate: number | null
 }
 
+/**
+ * The unit's head, as the card prints them.
+ *
+ * NULL when the unit has no head AND when the portal's head is not one of its
+ * members — Bitrix24's own screen draws no head row in either case. See the
+ * server-side twin in `insightsService.ts`.
+ */
+export interface StructureHeadDto {
+  readonly id: string
+  readonly name: string
+  readonly position: string | null
+  /** Active people in this unit's whole subtree, minus this head. DISTINCT. */
+  readonly managesCount: number
+}
+
 export interface StructureDto {
   readonly id: string
   readonly name: string
   readonly depth: number
   readonly headName: string | null
-  /** People attached directly to this unit. */
+  /** The head as the CARD needs them — null where the portal shows no head row. */
+  readonly head: StructureHeadDto | null
+  /** People whose PRIMARY unit is this one. */
   readonly ownHeadcount: number
-  /** This unit plus everything beneath it. All three roll up together. */
+  /** This unit plus everything beneath it. Both headcounts roll up together. */
   readonly headcount: number
   /** Of those, marked active in Bitrix24. */
   readonly activeHeadcount: number
-  /** Of the active, those who made a call or won a deal this period. */
-  readonly workingHeadcount: number
-  readonly deals: number
-  readonly revenue: MoneyDto
+  /**
+   * Active people the PORTAL lists here, minus the head when the head is one of
+   * them — «Подчинённые: N сотрудников» on the source screen.
+   *
+   * Not `activeHeadcount`: membership is many-to-many in Bitrix24, so the two
+   * differ wherever somebody's second unit is this one. That one counts who
+   * this dashboard CREDITS to the unit; this counts who the portal LISTS here.
+   */
+  readonly subordinateCount: number
+  /** Active members including the head. `subordinateCount` plus 0 or 1. */
+  readonly memberCount: number
+  /**
+   * Their names, so the chart's search box can find a person and not only a
+   * unit. Active only. See the CTE that builds it for why it rides the tree.
+   */
+  readonly memberNames: readonly string[]
+  /** Direct child units. */
+  readonly childCount: number
+  /** The portal's own left-to-right order among siblings. */
+  readonly sortOrder: number
+  /** Does the reader's own account sit here? Drives the «Siz» badge. */
+  readonly isViewerDepartment: boolean
   /**
    * Is this unit inside the active filial?
    *
@@ -866,6 +876,24 @@ export interface StructureDto {
    */
   readonly inScope: boolean
   readonly children: readonly StructureDto[]
+}
+
+/** One person on a unit's roster — `/insights/structure/roster`. */
+export interface DepartmentMemberDto {
+  readonly id: string
+  readonly fullName: string
+  readonly position: string | null
+  readonly isActive: boolean
+  /**
+   * False when this unit is the person's SECOND one.
+   *
+   * Bitrix24 lists a person in every unit of their `UF_DEPARTMENT`; this
+   * dashboard credits them to the first. The tag exists so a reader can tell a
+   * borrowed operator from an owned one, which is the difference between the
+   * card's «xodim» count and this unit's own roster.
+   */
+  readonly isPrimary: boolean
+  readonly isHead: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -972,17 +1000,26 @@ export interface SellerBonusDto {
   readonly toNextPercent: number | null
   /**
    * Whether the client's ladder pays this operator at all — their
-   * `idInRange()`, the 107-147 floor-number band. Outside it every field
+   * `idInRange()`, the 107–147 floor-number band. Outside it every field
    * above is empty; see `domain/analytics/sellerBonus`.
    */
   readonly eligible: boolean
 }
 
-/** A target and the progress against it. Both null when no target is set. */
+/**
+ * «Plan bajarish», and which question it answers.
+ *
+ * The client's board switches silently between two: FAKT 2 against a target
+ * where one exists, FAKT 2 against FAKT 1 where none does. We carry both and
+ * say which is on the row.
+ */
 export interface SellerPlanDto {
+  /** The target from `kpi`, when set. Null on the delivery reading. */
   readonly amount: MoneyDto | null
-  /** Won intake over the target, 0-100+. Uncapped: 112% reads as 112%. */
+  /** 0-100+, uncapped: 112% reads as 112%. */
   readonly percent: number | null
+  /** 'target' | 'delivery' | null — nothing to divide by. */
+  readonly basis: 'target' | 'delivery' | null
 }
 
 export interface SellerBoardRowDto {
@@ -1001,7 +1038,15 @@ export interface SellerBoardRowDto {
   /** Still open, already inside `ordered`. */
   readonly open: MoneyDto
   readonly openOrders: number
+  /** Refused in the queue PLUS confirmed-then-cancelled. Both are resolved. */
   readonly lostOrders: number
+  /** Of those, the ones already confirmed when the order died. */
+  readonly lostAfterConfirmOrders: number
+  /**
+   * Every order of theirs in the window — the count the confirmation queue
+   * shows. Bigger than `orders`, which counts only the confirmed ones.
+   */
+  readonly cohortOrders: number
   /** Won over RESOLVED orders, 0-100. Open orders are not counted against. */
   readonly conversionPercent: number | null
   readonly sharePercent: number | null
@@ -1051,6 +1096,8 @@ export interface SellerBoardTotalsDto {
   /** Sellers with no ROP, so on no team row. The team shares exclude them. */
   readonly teamlessSellers: number
   readonly orders: number
+  /** Every order in the cohort — what the confirmation queue counts. */
+  readonly cohortOrders: number
   readonly ordered: MoneyDto
   readonly won: MoneyDto
   readonly wonOrders: number
@@ -1059,7 +1106,7 @@ export interface SellerBoardTotalsDto {
   readonly wonDelta: DeltaDto
   readonly bonusPayable: MoneyDto
   readonly sellersInBonus: number
-  /** Sellers the ladder can pay at all — the 107-147 band. */
+  /** Sellers the ladder can pay at all — the 107–147 band. */
   readonly sellersEligibleForBonus: number
   /** Every target on the board summed, and won intake against them. */
   readonly plan: SellerPlanDto

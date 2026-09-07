@@ -12,12 +12,9 @@ import { DealRepository } from '@/server/repositories/dealRepository'
 import { InsightsRepository } from '@/server/repositories/insightsRepository'
 import { PulseRepository } from '@/server/repositories/pulseRepository'
 import { ConcentrationRepository } from '@/server/repositories/concentrationRepository'
-import { ResponseRepository } from '@/server/repositories/responseRepository'
 import { FinanceRepository } from '@/server/repositories/financeRepository'
 import { MarketingRepository } from '@/server/repositories/marketingRepository'
-import { SearchRepository } from '@/server/repositories/searchRepository'
 import { AlertsService } from '@/server/services/alertsService'
-import { SearchService } from '@/server/services/searchService'
 import { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import { AnalyticsService } from './analyticsService'
@@ -27,7 +24,6 @@ import { KpiService } from './kpiService'
 import { PulseService } from './pulseService'
 import { CommandCentreService } from './commandCentreService'
 import { ConcentrationService } from './concentrationService'
-import { ResponseService } from './responseService'
 import { MarketingService } from './marketingService'
 import { SellerBoardService } from './sellerBoardService'
 
@@ -37,7 +33,6 @@ export const referenceRepository = new ReferenceRepository(prisma)
 export const insightsRepository = new InsightsRepository(prisma)
 export const pulseRepository = new PulseRepository(prisma)
 export const concentrationRepository = new ConcentrationRepository(prisma)
-export const responseRepository = new ResponseRepository(prisma)
 /**
  * The second ledger.
  *
@@ -48,18 +43,15 @@ export const responseRepository = new ResponseRepository(prisma)
  */
 export const marketingRepository = new MarketingRepository(prisma)
 export const sellerBoardRepository = new SellerBoardRepository(prisma)
-export const searchRepository = new SearchRepository(prisma)
 
 export const analyticsService = new AnalyticsService(dealRepository, referenceRepository)
 export const financeService = new FinanceService(financeRepository, referenceRepository)
 export const kpiService = new KpiService(dealRepository, referenceRepository)
 export const insightsService = new InsightsService(insightsRepository)
 export const pulseService = new PulseService(pulseRepository)
-export const searchService = new SearchService(searchRepository)
 export const alertsService = new AlertsService(insightsRepository, referenceRepository)
 export const concentrationService = new ConcentrationService(concentrationRepository)
 export const commandCentreService = new CommandCentreService(insightsRepository)
-export const responseService = new ResponseService(responseRepository)
 export const marketingService = new MarketingService(marketingRepository)
 export const sellerBoardService = new SellerBoardService(
   sellerBoardRepository,

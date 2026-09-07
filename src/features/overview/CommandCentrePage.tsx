@@ -1,7 +1,8 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import dynamic from 'next/dynamic'
+import { useEffect, type ReactNode } from 'react'
 
 import { BarList } from '@/components/charts/BarList'
 import { Sparkline } from '@/components/charts/Sparkline'
@@ -10,14 +11,59 @@ import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Card } from '@/components/ui/Card'
 import { GaugeTile, Meter, RingGauge, SectionHeader, StatTile, StatusChip } from '@/components/ui/Stat'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
-import { IntakeTrendChart } from '@/features/overview/IntakeTrendChart'
-import { RejectionControlChart } from '@/features/overview/RejectionControlChart'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type CommandCentreDto, type DeltaDto, apiGet } from '@/lib/api'
 import { formatCompactUzs, formatDateShort, formatNumber, formatPercent } from '@/lib/format'
 import { t } from '@/lib/messages'
 
+/**
+ * The two charts are loaded on their own, not with the page.
+ *
+ * recharts is 379 KB unparsed — 109 KB over the wire — and it was in the
+ * SYNCHRONOUS entry set of this route, which is the page every login and every
+ * bookmark lands on. That is 65% of what this screen downloads, and all of it
+ * had to parse before hydration, which is before the first `/api/v1` request
+ * is even issued. The reader was waiting on a charting library to compile in
+ * order to be shown a skeleton.
+ *
+ * `ssr: false` forfeits nothing here. Both charts render inside recharts'
+ * `ResponsiveContainer`, which measures the DOM in an effect and draws an
+ * empty box on the server either way.
+ *
+ * The fallback is `ChartSkeleton` at the same height the slots below already
+ * use while the query is in flight, so the chunk landing is not a second
+ * visible state — it is the same skeleton, already on screen for the same
+ * reason.
+ */
+const IntakeTrendChart = dynamic(
+  () => import('@/features/overview/IntakeTrendChart').then((m) => m.IntakeTrendChart),
+  { ssr: false, loading: () => <ChartSkeleton height={240} /> },
+)
+
+const RejectionControlChart = dynamic(
+  () => import('@/features/overview/RejectionControlChart').then((m) => m.RejectionControlChart),
+  { ssr: false, loading: () => <ChartSkeleton height={240} /> },
+)
+
+/**
+ * Fetch the chart chunk DURING the round trip that has to happen anyway.
+ *
+ * Without this the import is triggered by the render that first has data —
+ * so the chunk download starts only once the API answers, and the two costs
+ * that used to overlap are now serialised. Warming it on mount puts the
+ * download inside the window the page spends waiting on `/dashboard/command`,
+ * which on this database is comfortably longer than a 109 KB fetch.
+ *
+ * Deliberately fire-and-forget: a failed warm-up is not an error state. The
+ * real import runs again at render and reports its own failure there.
+ */
+function useWarmCharts() {
+  useEffect(() => {
+    void import('@/features/overview/IntakeTrendChart')
+    void import('@/features/overview/RejectionControlChart')
+  }, [])
+}
 
 /**
  * The command centre — the one screen above the nine modules.
@@ -44,6 +90,8 @@ import { t } from '@/lib/messages'
  */
 export function CommandCentrePage() {
   const { apiParams } = useDashboardFilters()
+
+  useWarmCharts()
 
   const query = useQuery({
     queryKey: ['command', apiParams],

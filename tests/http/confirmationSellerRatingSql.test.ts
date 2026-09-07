@@ -16,12 +16,13 @@ const { InsightsRepository } = await import('@/server/repositories/insightsRepos
  * Sotuvchilar reytingi, rebuilt on the confirmation queue — FAKT 1 / FAKT 2
  * as the floor names them, not as a screenshot of their site's formulas.
  *
- * FAKT 1 IS Тасдиқланди, NOT «Успешно заказ». The latter (C6:UC_YUKVF1) was
- * the client's own first answer and was rejected after measurement:
- * `mapping.ts` documents it as a settlement stamp automation writes within
- * five seconds of Доставлено in most cases, not an operator's act. Using it
- * would have collapsed FAKT 1 into FAKT 2 — these tests are what keeps that
- * regression out.
+ * FAKT 1 IS WHAT LEFT THE QUEUE AS AN ORDER — Тасдиқланди AND Тасдиқланмай
+ * чиқди, the two states the client's own board prints side by side — and
+ * NEVER «Успешно заказ». The latter (C6:UC_YUKVF1) was the client's own first
+ * answer and was rejected after measurement: `mapping.ts` documents it as a
+ * settlement stamp automation writes within five seconds of Доставлено in
+ * most cases, not an operator's act. Using it would have collapsed FAKT 1
+ * into FAKT 2 — these tests are what keeps that regression out.
  *
  * SAME COHORT AS THE QUEUE BOARD (`classified`, dated by `queued_at`), so an
  * operator's rating and the «barcha buyurtmalar» table it is drawn from can
@@ -58,22 +59,77 @@ describe('confirmation seller rating SQL', () => {
     expect(BARE_SQL).not.toContain('FROM numbered')
   })
 
-  it('grades FAKT 1 on Тасдиқланди, not on «Успешно заказ»', () => {
-    expect(BARE_SQL).toContain("WHERE c.outcome = 'CONFIRMED'")
+  it('grades FAKT 1 on the two outcomes that left the queue, not on «Успешно заказ»', () => {
+    /*
+      2026-09-04, the client's own instruction: «тасдиқланмай чиқди» belongs in
+      FAKT 1 too. It is not a refusal — the operator never reached the customer
+      (`confirmStatus = 'UNREACHABLE'`) and the order was dispatched anyway, so
+      the goods and the money moved exactly as a confirmed order's do. Their
+      board showed 91 ✅ beside 3 🟣 on that day and FAKT 1 owes the floor
+      both.
+    */
+    expect(BARE_SQL).toContain("c.outcome IN ('CONFIRMED', 'UNCONFIRMED_SHIPPED')")
+    expect(BARE_SQL).not.toContain("WHERE c.outcome = 'CONFIRMED'")
     expect(BARE_SQL).not.toContain('UC_YUKVF1')
     expect(BARE_SQL).not.toContain('SETTLED')
   })
 
-  it('grades FAKT 2 on delivery, C6:WON via deal.status', () => {
-    expect(BARE_SQL).toContain(`WHERE d."status" = 'WON'`)
+  it('measures FAKT 1, «yoʻlda» and «bekor» over the SAME population', () => {
+    /*
+      Four filters, one predicate. If the money widened and the breakdown did
+      not, a row would carry FAKT 1 soʻm that neither «yoʻlda» nor «chiqqach
+      bekor» nor FAKT 2 could account for — a gap nothing on screen explains.
+    */
+    const fakt1 = BARE_SQL.split("c.outcome IN ('CONFIRMED', 'UNCONFIRMED_SHIPPED')").length - 1
+    expect(fakt1).toBe(6)
   })
 
-  it('reports orders confirmed but not yet delivered as their own bucket', () => {
-    expect(BARE_SQL).toContain(`WHERE c.outcome = 'CONFIRMED' AND d."status" <> 'WON'`)
+  it('grades FAKT 2 on a DELIVERY stage, never on a bare WON status', () => {
+    /*
+      The client's rule is «moved to Завершить сделку» — the Доставка kanban's
+      end drop-zone, which lands a deal in C6:WON «Доставлено». A WON STATUS is
+      not that: nine stages across nine pipelines carry category WON, and two
+      of them hold real deals that never met a courier — «База · Успешно»
+      (C10:WON, the retention kanban) and «Регистрация · Сделка успешна», the
+      automation stamp that HANDS a lead to Тасдиқлаш. Measured over this
+      cohort all-time: 41 База rows worth 56 900 000 soʻm plus 33 Регистрация
+      rows that inflate the delivered COUNT and so the conversion rate.
+    */
+    expect(BARE_SQL).toContain(`WHERE ds."logisticsRole" = 'DELIVERED'`)
+    expect(BARE_SQL).not.toContain(`FILTER (WHERE d."status" = 'WON')`)
+    expect(BARE_SQL).toContain(`LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"`)
+  })
+
+  it('keeps a dead order out of «yoʻlda»', () => {
+    /*
+      In-transit used to mean "confirmed and not won", which files an order the
+      seller confirmed and then LOST as live work they are still carrying. In
+      July that was 102 orders and 176 230 000 soʻm — a fifth of the money the
+      screen labelled in-transit. The two are separate measures now.
+    */
+    expect(BARE_SQL).toContain(`AND d."status" = 'OPEN'`)
+    expect(BARE_SQL).toContain('lost_after_confirm_orders')
+    expect(BARE_SQL).not.toContain(`d."status" <> 'WON'`)
+  })
+
+  it('carries the operator\'s whole cohort, not only the confirmed part', () => {
+    /*
+      «barcha buyurtmalar» is the client's own name for the population. Without
+      this column the queue page says 3 228 for August and this board says
+      2 874, with nothing on either explaining that the second counts only the
+      confirmed ones.
+    */
+    expect(BARE_SQL).toContain('count(*)::bigint AS cohort_orders')
   })
 
   it('shows refused orders without folding them into FAKT 1', () => {
+    /*
+      ❌ Тасдиқланмади is the one decided state that stays OUT — the order was
+      killed in the queue and nothing was sent. It keeps its own count so the
+      exclusion is visible on the row rather than implied by a subtraction.
+    */
     expect(BARE_SQL).toContain("WHERE c.outcome = 'REJECTED'")
+    expect(BARE_SQL).not.toContain("'CONFIRMED', 'UNCONFIRMED_SHIPPED', 'REJECTED'")
   })
 
   it('does not name countsAsRevenue', () => {
@@ -92,20 +148,40 @@ describe('confirmation seller rating SQL', () => {
     expect(BARE_SQL).toContain('GROUP BY e."id", e."fullName", c.rop')
   })
 
-  it('keeps an operator whose only money was delivered without a confirmation', () => {
+  it('keeps every operator that appears in «barcha buyurtmalar»', () => {
     /*
-      FAKT 2 spans the whole cohort — "har bir buyurtma" is the client's own
-      wording — so a book of Тасдиқланмай чиқди orders that the carrier
-      delivered must stay on the board. A confirmed-only HAVING erased it.
-      Books that are all pending or all refused stay off: work done ranks.
+      The client's model: the ОПЕРАТОР on a «barcha buyurtmalar» row IS the
+      seller. So a seller whose whole July was refusals — seven operators and
+      29 orders that month, four of them in real (ROP) teams — belongs on the
+      board with FAKT 1 and FAKT 2 at zero, and their 28 refusals belong in the
+      conversion rate's denominator, which they were silently missing from.
+
+      This is a deliberate departure from the client's PUBLISHED page, which
+      drops rows with no FAKT 2. Their stated model wins over their old HTML.
     */
     const having = BARE_SQL.slice(BARE_SQL.indexOf('HAVING'))
-    expect(having).toContain("count(*) FILTER (WHERE c.outcome = 'CONFIRMED') > 0")
-    expect(having).toContain(`OR count(*) FILTER (WHERE d."status" = 'WON') > 0`)
+    expect(having).toContain('HAVING count(*) > 0')
   })
 
-  it('joins the operator by the deal\'s employeeId, not by a stage-history actor', () => {
-    expect(BARE_SQL).toContain(`JOIN "employee" e ON e."id" = d."employeeId"`)
+  it('credits the operator who SOLD it, falling back to the assignee', () => {
+    /*
+      The client's model: the ОПЕРАТОР on a «barcha buyurtmalar» row IS the
+      seller. `ASSIGNED_BY_ID` is not that person — this portal moves deals to
+      back office during processing, and in July 2026 that put 556 orders on
+      the head of Операцион and made him the board's number one, at 4.2x the
+      client's own leader. Twelve of twelve sampled deals named a different,
+      real seller in the portal's own snapshot field.
+
+      COALESCE and not a bare join: the snapshot was added in May 2026, so the
+      July cohort is 20% empty and August 10%. A deal without it keeps the
+      assignee rather than dropping off the board.
+
+      Still not a stage-history actor — that column does not exist.
+    */
+    expect(BARE_SQL).toContain(
+      `JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")`,
+    )
+    expect(BARE_SQL).not.toContain(`e."id" = d."employeeId"`)
   })
 
   it('balances its parentheses', () => {

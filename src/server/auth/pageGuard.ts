@@ -26,7 +26,7 @@
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 
-import { SECTIONS, type SectionSpec, type SectionValue, sectionSpec } from '@/lib/sections'
+import { SECTIONS, type SectionSpec, type SectionValue } from '@/lib/sections'
 import { optionalPrincipal } from './session'
 import { can, canSeeSection } from './rbac'
 
@@ -77,9 +77,4 @@ export async function firstSectionFor(): Promise<SectionSpec | null> {
   )
   if (!principal) return null
   return SECTIONS.find((spec) => canSeeSection(principal, spec.id)) ?? null
-}
-
-/** The label of a section, for a page that wants to name what it is. */
-export function sectionLabel(section: SectionValue): string {
-  return sectionSpec(section)?.label ?? section
 }

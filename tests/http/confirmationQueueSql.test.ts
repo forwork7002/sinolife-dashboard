@@ -39,7 +39,9 @@ const { InsightsRepository } = await import('@/server/repositories/insightsRepos
  * the same order.
  */
 const queueSql = (
-  InsightsRepository as unknown as { queueSql: (mode: 'window' | 'backlog') => string }
+  InsightsRepository as unknown as {
+    queueSql: (mode: 'window' | 'backlog', scopeParam?: string) => string
+  }
 ).queueSql
 
 const WINDOW = queueSql('window')
@@ -222,6 +224,87 @@ describe('confirmation queue SQL', () => {
 
     expect(tail(WINDOW)).toBe(tail(BACKLOG))
     expect(tail(WINDOW).length).toBeGreaterThan(500)
+  })
+})
+
+
+/**
+ * A SEARCH IS BOUNDED BY A SET OF IDS, NOT BY A DATE.
+ *
+ * The board answers every search over all of time — the operator has the
+ * customer on the line and does not know which day the order reached
+ * Тасдиклаш — and `allTime` starts at the epoch, so `moves`'s left bound
+ * stops bounding anything and the cohort is built over the whole signal
+ * history. The candidate ids are resolved first instead
+ * (`confirmationSearchScope`) and bound into `moves`.
+ *
+ * These tests are the fence around the two ways that can go wrong quietly: a
+ * second copy of the bound somewhere below the cohort, which would make the
+ * row list and the tiles describe different populations, and a bound that
+ * leaks into the readings that never pass one — the bell, the ROP options and
+ * the sellers rating all still call `queueSql(mode)` with a single argument,
+ * and `confirmationSellerRatingSql.test.ts` asserts on that exact text.
+ */
+describe('the scoped confirmation queue SQL', () => {
+  const SCOPED = queueSql('window', '$8')
+
+  it('bounds the history scan by the pre-resolved ids, and only there', () => {
+    expect(SCOPED).toContain('AND h."dealId" = ANY($8::text[])')
+    // Once. The cohort has to be built from one population or the row list
+    // and the tiles describe two.
+    expect((SCOPED.match(/= ANY\(\$8::text\[\]\)/g) ?? []).length).toBe(1)
+    // In `moves`, above `agg` — which groups by deal, so dropping other deals
+    // cannot change a surviving order's state or the day it is filed under.
+    expect(SCOPED.indexOf('= ANY($8::text[])')).toBeLessThan(SCOPED.indexOf('agg AS ('))
+  })
+
+  it('adds no CTE and no right-hand date bound when scoped', () => {
+    const chain = (sql: string) =>
+      [...sql.matchAll(/(\w+) AS(?: MATERIALIZED)? \(/g)].map((m) => m[1])
+
+    // A scope arriving as extra leading CTEs would break every reading that
+    // appends its own SELECT to this string.
+    expect(chain(SCOPED)).toEqual(chain(WINDOW))
+    // Bounding `moves` by dates instead of by ids is the route this closes:
+    // a right bound freezes an order at the status it held at midnight.
+    expect(bare(SCOPED)).not.toContain('h."enteredAt" <')
+  })
+
+  it('leaves everything below the cohort untouched', () => {
+    const tail = (sql: string) => sql.slice(sql.indexOf('classified AS ('))
+
+    expect(tail(SCOPED)).toBe(tail(WINDOW))
+  })
+
+  it('scopes the backlog cohort the same way, without losing the live-order join', () => {
+    // The bell never passes a scope today, but the mode and the scope are
+    // independent parameters and nothing stops a future reading from doing so.
+    const scopedBacklog = queueSql('backlog', '$4')
+    expect(scopedBacklog).toContain('AND h."dealId" = ANY($4::text[])')
+    expect(scopedBacklog).toContain(`d0."status" = 'OPEN'`)
+    // The join has to stay last in the ON chain, or the clause lands inside it.
+    expect(scopedBacklog.indexOf('= ANY($4::text[])')).toBeLessThan(
+      scopedBacklog.indexOf('d0."status"'),
+    )
+  })
+
+  it('is a no-op when no scope is passed', () => {
+    /*
+      Every other reading of this board — the header bell, the five tiles, the
+      ROP options, the sellers rating — still builds the unscoped string, and
+      confirmationSellerRatingSql.test.ts asserts on that exact text. The
+      clause is therefore built as a clause or as nothing at all, never as
+      `(param IS NULL OR ...)`, which would also hide the qual from the
+      planner and lose the index this exists to reach.
+    */
+    expect(queueSql('window')).toBe(WINDOW)
+    expect(queueSql('backlog')).toBe(BACKLOG)
+    expect(WINDOW).not.toContain('ANY($')
+    expect(BACKLOG).not.toContain('ANY($')
+  })
+
+  it('balances its parentheses when scoped', () => {
+    expect((SCOPED.match(/\(/g) ?? []).length).toBe((SCOPED.match(/\)/g) ?? []).length)
   })
 })
 

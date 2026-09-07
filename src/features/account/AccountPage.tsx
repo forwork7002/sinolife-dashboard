@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 
-import { Shell } from '@/components/layout/Shell'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { StatusChip } from '@/components/ui/Stat'
@@ -13,6 +12,7 @@ import {
   checkPassword,
   passwordStrength,
 } from '@/lib/passwordPolicy'
+import { AppearanceSection } from './AppearanceSection'
 import { TwoFactorSection } from './TwoFactorSection'
 
 /**
@@ -93,7 +93,9 @@ export function AccountPage() {
   }
 
   return (
-    <Shell>
+      // No <Shell>: it mounts once in the root layout (see AppFrame). This
+      // screen has no dates at all, so it sits in Shell.tsx's
+      // SCREENS_WITHOUT_A_PERIOD — the palette must not offer presets here.
       <div className="mx-auto flex max-w-[720px] flex-col gap-5">
         <header>
           <div className="accent-rule" aria-hidden="true" />
@@ -104,7 +106,7 @@ export function AccountPage() {
             Hisob
           </h1>
           <p className="mt-1 text-sm" style={{ color: 'var(--ink-secondary)' }}>
-            Kirish maʼlumotlaringiz, parol va ikki bosqichli himoya.
+            Kirish maʼlumotlaringiz, parol, ikki bosqichli himoya va koʻrinish.
           </p>
         </header>
 
@@ -221,8 +223,14 @@ export function AccountPage() {
           lands — see the `confirmed` comment in TwoFactorSection.)
         */}
         <TwoFactorSection enabled={user?.twoFactorEnabled ?? false} />
+
+        {/*
+          Last, and the only block here that changes nothing on the server:
+          the theme is a browser preference, so it neither reads nor writes the
+          account. See AppearanceSection for why «Tizim» has to be reachable.
+        */}
+        <AppearanceSection />
       </div>
-    </Shell>
   )
 }
 

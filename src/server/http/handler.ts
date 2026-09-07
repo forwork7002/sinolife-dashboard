@@ -138,6 +138,11 @@ export function getHandler<Q>(
   return async function GET(request: Request): Promise<NextResponse> {
     const correlationId = newCorrelationId()
     const meta = baseMeta(correlationId)
+    // Resolved before the try: the log lines in the catch need it, and by then
+    // the URL parsed inside the try may never have existed. Without the route,
+    // a production `57014 statement timeout` was a correlationId and nothing
+    // else — no way to tell WHICH endpoint died (observed 2026-09-04).
+    const route = new URL(request.url).pathname
 
     try {
       const principal = await requirePermission(request, access.permission)
@@ -180,11 +185,11 @@ export function getHandler<Q>(
       // message crosses the wire.
       if (apiError.status >= 500) {
         log.error(
-          { correlationId, code: apiError.code, cause: String(apiError.cause ?? apiError.message) },
+          { correlationId, route, code: apiError.code, cause: String(apiError.cause ?? apiError.message) },
           'request failed',
         )
       } else {
-        log.warn({ correlationId, code: apiError.code }, 'request rejected')
+        log.warn({ correlationId, route, code: apiError.code }, 'request rejected')
       }
 
       return jsonResponse(failure(apiError, meta), apiError.status)
@@ -219,11 +224,14 @@ export function mutationHandler<B>(
   return async function POST(request: Request): Promise<NextResponse> {
     const correlationId = newCorrelationId()
     const meta = baseMeta(correlationId)
+    // Same reason as the GET handler: the catch's log lines must name the
+    // endpoint, and they run whether or not the try got anywhere.
+    const route = new URL(request.url).pathname
 
     try {
       const origin = request.headers.get('origin')
       if (!origin || !TRUSTED_ORIGINS.includes(origin)) {
-        log.warn({ correlationId, origin }, 'write rejected: untrusted origin')
+        log.warn({ correlationId, route, origin }, 'write rejected: untrusted origin')
         throw ApiError.forbidden('Soʻrov ishonchsiz manzildan keldi.')
       }
 
@@ -270,11 +278,11 @@ export function mutationHandler<B>(
 
       if (apiError.status >= 500) {
         log.error(
-          { correlationId, code: apiError.code, cause: String(apiError.cause ?? apiError.message) },
+          { correlationId, route, code: apiError.code, cause: String(apiError.cause ?? apiError.message) },
           'write failed',
         )
       } else {
-        log.warn({ correlationId, code: apiError.code }, 'write rejected')
+        log.warn({ correlationId, route, code: apiError.code }, 'write rejected')
       }
 
       return jsonResponse(failure(apiError, meta), apiError.status)

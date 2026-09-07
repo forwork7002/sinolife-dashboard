@@ -15,24 +15,16 @@ import {
   type ReactNode,
 } from 'react'
 
-import { Button } from '@/components/ui/Button'
-import { CommandPalette, useCommandK, type CommandGroup } from '@/components/ui/CommandPalette'
-import {
-  BellGlyph,
-  RefreshGlyph,
-  SearchGlyph,
-} from '@/components/ui/Icons'
-import { Kbd } from '@/components/ui/Kbd'
+import { BellGlyph, MoonGlyph, RefreshGlyph, SunGlyph } from '@/components/ui/Icons'
 import { Tooltip } from '@/components/ui/Tooltip'
-import { apiGet, type AlertsDto, type SearchDto } from '@/lib/api'
+import { apiGet, type AlertsDto } from '@/lib/api'
 import { sessionUser, signOut, useSession } from '@/lib/authClient'
-import { formatCompactUzs, formatDateTime } from '@/lib/format'
+import { formatDateTime } from '@/lib/format'
 import { ROLE_LABELS, canSeeHref, type RoleValue } from '@/lib/roles'
 import { sectionSpec, type SectionValue } from '@/lib/sections'
+import { setTheme, useResolvedTheme } from '@/lib/theme'
 import { useFilterOptions } from '@/features/shared/PageShell'
 import { t } from '@/lib/messages'
-import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
-import { VISIBLE_PRESETS } from './PeriodFilter'
 
 /**
  * React's <ViewTransition>, taken from whatever React the framework vendors.
@@ -143,34 +135,38 @@ const NAV_GROUPS: readonly { readonly label: string | null; readonly items: read
 
 const NAV = NAV_GROUPS.flatMap((group) => group.items)
 
-export function Shell({
-  children,
-  dataSource,
-  periodAware = false,
-}: {
-  children: ReactNode
-  /**
-   * Whether the open page HAS a reporting window.
-   *
-   * False by default, true only from PageShell. Marketing and the account
-   * screen render this shell directly — marketing keeps its own period control
-   * and the account screen has no dates at all — so offering presets in the
-   * palette there wrote a window nothing on the page reads and left no control
-   * anywhere to clear it again.
-   */
-  periodAware?: boolean
-  dataSource?: 'DEMO' | 'BITRIX24' | 'MANUAL'
-}) {
-  const pathname = usePathname()
-  /*
-    The reporting window, read here for the palette's "Davr" group.
+/**
+ * The screens with no reporting window of their own.
+ *
+ * Marketing keeps its own period control, and the account, user and structure
+ * screens have no dates at all — so a window set for one of them is a window
+ * nothing on the page reads, pinned into the address and into the sidebar link
+ * with no control anywhere to clear it again.
+ *
+ * Kadrlar tuzilmasi is the newest entry and the one that had to EARN it. It
+ * used to print two period-scoped figures — each unit's revenue on its card and
+ * an «Ishlagan xodimlar» count over the window — and both are gone: money on
+ * this dashboard is stated on Boshqaruv markazi, and who reports to whom is a
+ * fact about today that no preset can change. With nothing left on the page
+ * reading a window, the control over it could only lie.
+ *
+ * NOTHING IN THIS FILE READS THIS LIST ANY MORE, and that is not an oversight.
+ * Its one runtime reader was the ⌘K palette's "Davr" group, which is gone; the
+ * list survives as the place the agreement is written down — these three
+ * screens and the pages PageShell renders with `period={false}` must name the
+ * same set, and tests/features/shellPeriodScreens.test.ts is what makes a new
+ * screen pick a side. Deleting it as dead code deletes the only statement of
+ * that rule; the test reads this file's source text, so it would go red too.
+ */
+export const SCREENS_WITHOUT_A_PERIOD: readonly string[] = [
+  '/users',
+  '/account',
+  '/marketing',
+  '/structure',
+]
 
-    Reusing the SAME hook every page uses — not a re-implementation — is what
-    guarantees a preset chosen from the palette lands in the URL exactly the
-    way the control's own buttons put it there: preset set, stale from/to
-    cleared, page number dropped.
-  */
-  const { filters, setPeriod } = useDashboardFilters()
+export function Shell({ children }: { children: ReactNode }) {
+  const pathname = usePathname()
   const router = useRouter()
   const queryClient = useQueryClient()
   const { data: session } = useSession()
@@ -193,26 +189,36 @@ export function Shell({
     /*
       EQUAL TO THE INTERVAL, NOT HALF OF IT.
 
-      `Shell` is rendered by `PageShell`, not by a layout — there is no
-      dashboard `layout.tsx` — so it unmounts and remounts on every navigation,
-      and a fresh observer refetches anything older than its staleTime. At 30 s
-      that meant a full `/meta/alerts` on nearly every page change: the all-time
-      backlog cohort over the whole stage history, measured at ~4 s on
-      production, for a number whose own promise is only ever "a minute old".
-      Matched to the interval, the timer is the only thing that fires it.
+      Any observer mounting against this key refetches anything older than
+      its staleTime. When the shell still remounted on every navigation, a
+      30 s staleTime meant a full `/meta/alerts` on nearly every page change:
+      the all-time backlog cohort over the whole stage history, measured at
+      ~4 s on production, for a number whose own promise is only ever "a
+      minute old". The shell now mounts once in the root layout, so that
+      remount is gone — but the value stays matched to the interval so the
+      timer remains the ONLY thing that fires this query, whatever mounts an
+      observer next (a sign-in, a future second consumer of the key). Halving
+      it buys nothing and re-arms the old failure.
     */
     staleTime: 60_000,
   })
   const alerts = alertsQuery.data?.data
   const pending = alerts?.queue?.pending ?? 0
-  const busy = useIsFetching() > 0
 
-  /**
-   * The ⌘K palette. Closed means UNMOUNTED (the primitive returns null), so
-   * its Escape handling cannot linger and fight PeriodFilter's popover — while
-   * it IS open, its Escape is preventDefault-ed and PeriodFilter stands down.
-   */
-  const [paletteOpen, setPaletteOpen] = useState(false)
+  /*
+    The scroll reset a remount used to do for free.
+
+    `main` now outlives the page: the shell mounts once in the root layout, so
+    navigating from the foot of a long table would otherwise open the next
+    screen already scrolled to nowhere. Reset on the PATH only — a filter or
+    page-number change stays on the same screen and must keep the reader's
+    place, exactly as it did when the shell remounted per page (a query change
+    never remounted it either).
+  */
+  const mainRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    mainRef.current?.scrollTo(0, 0)
+  }, [pathname])
 
   /*
     The phone drawer. Closed on Escape here; closed on navigation and on the
@@ -233,36 +239,6 @@ export function Shell({
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [menuOpen])
-
-  /*
-    What is being typed in the palette, and what the server makes of it.
-
-    DEBOUNCED, not throttled, and only from three characters. Every keystroke
-    is six indexed lookups on a one-core database; firing them per character
-    would queue five requests to answer the sixth. 220ms is under the gap
-    between keystrokes for anyone typing a phone number and above the noise of
-    correcting one.
-
-    `keepPreviousData` is what stops the list emptying between a term and its
-    successor — without it the palette blinks to "nothing found" on every pause
-    and reads as broken.
-  */
-  const [typed, setTyped] = useState('')
-  const [lookup, setLookup] = useState('')
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setLookup(typed.trim()), 220)
-    return () => window.clearTimeout(timer)
-  }, [typed])
-
-  const searchable = lookup.length >= 3
-  const results = useQuery({
-    queryKey: ['search', lookup],
-    queryFn: ({ signal }) => apiGet<SearchDto>('/search', { q: lookup }, signal),
-    enabled: paletteOpen && searchable,
-    placeholderData: (previous) => previous,
-    staleTime: 30_000,
-  })
 
   /*
     Nav links carry the window each section was last read in.
@@ -305,9 +281,9 @@ export function Shell({
     So the current section links to the current address, and every other one
     links to the window it was left in.
 
-    Used by the rail, by the strip below the header on a phone, and by the
-    palette — all three navigate, and a window carried by only one of them is
-    the double round trip this exists to avoid, on the other two.
+    Used by the rail and by the drawer below lg — both navigate, and a window
+    carried by only one of them is the double round trip this exists to avoid,
+    on the other.
   */
   const search = useSearchParams()
   const hrefFor = useCallback(
@@ -318,10 +294,6 @@ export function Shell({
     },
     [pathname, search, sectionQuery],
   )
-  const openPalette = useCallback(() => setPaletteOpen(true), [])
-  const closePalette = useCallback(() => setPaletteOpen(false), [])
-  useCommandK(openPalette)
-
   const role = user?.role
 
   /*
@@ -329,7 +301,20 @@ export function Shell({
     fetches. Shares react-query's cache with PageShell, so this costs no extra
     request.
   */
-  const viewer = useFilterOptions().data?.data.viewer
+  const filterOptions = useFilterOptions()
+  const viewer = filterOptions.data?.data.viewer
+  /*
+    Which source the numbers come from — DEMO or the live CRM.
+
+    Also once a prop from PageShell, which read it off the OPEN PAGE's own
+    response. That was never a per-page fact: it is how the application is
+    configured, and every endpoint reports the same value. Taken from the
+    filters payload it is one cached read, it is the same answer, and the
+    badge now appears on the two screens that render no PageShell and so never
+    showed it — marketing and the account page — where a DEMO warning belongs
+    just as much as anywhere else.
+  */
+  const dataSource = filterOptions.data?.meta.dataSource
   const grantedRoutes = viewer
     ? viewer.sections
         .map((id: SectionValue) => sectionSpec(id)?.route)
@@ -351,8 +336,6 @@ export function Shell({
     if (!role) return true
     return canSeeHref(role, grantedRoutes, item.href)
   }
-
-  const visibleNav = NAV.filter(canOpen)
 
   /*
     The menu, resolved: which groups this account may see, where each entry
@@ -382,80 +365,6 @@ export function Shell({
       router.refresh()
     })
   }, [queryClient, router])
-
-  /**
-   * What the palette knows: every screen this role can see, then the six
-   * period presets. The same canSee gate as the sidebar — a palette that
-   * offers a route the rail hides would just be a faster way to find a 403.
-   * Navigation goes through router.push, exactly like the
-   * sidebar's links — through the same `hrefFor`, so a section opens on the
-   * window it was left in from here too; period changes go through setPeriod,
-   * exactly like the control on the open page, and land on that page since
-   * setPeriod writes the window of whatever route is current. The palette adds
-   * no third semantics of its own.
-   *
-   * Built plainly, no useMemo: the React Compiler memoizes it (a manual memo
-   * here is flagged by react-hooks/preserve-manual-memoization), and twenty
-   * rows would be cheap even if it did not.
-   */
-  const paletteGroups: readonly CommandGroup[] = [
-    {
-      label: t.palette.sections,
-      items: visibleNav.map((item) => {
-        const Icon = item.icon
-        return {
-          id: item.href,
-          label: item.label,
-          icon: <Icon />,
-          onSelect: () => router.push(hrefFor(item.href)),
-        }
-      }),
-    },
-    /*
-      What the server found, above the static lists.
-
-      `prefiltered` because it has already matched — on a phone number inside
-      an array, or a customer's name on an order titled something else, neither
-      of which is in the label the palette would filter against.
-
-      Ordered first: somebody who typed a phone number is looking for that
-      customer, not for a section whose name happens to share three letters.
-    */
-    ...(results.data?.data.groups ?? []).map((group) => ({
-      label: group.label,
-      prefiltered: true,
-      items: group.items.map((hit) => ({
-        id: hit.id,
-        label: hit.label,
-        hint: hit.amount ? `${hit.hint} · ${formatCompactUzs(hit.amount.amount)}` : hit.hint,
-        onSelect: () => router.push(hit.href),
-      })),
-    })),
-
-    /*
-      The same three presets the page's own control shows, from the same list.
-
-      Only where there ARE dates. Marketing keeps its own period control and
-      the account screen has none, so on those two a preset chosen here wrote a
-      window nothing on the page reads, pinned it into the address and the
-      sidebar link, and left no control anywhere to clear it again.
-    */
-    ...(periodAware
-      ? [
-          {
-            label: t.period.label,
-            items: VISIBLE_PRESETS.map((preset) => ({
-              id: `davr-${preset}`,
-              label: t.period[preset],
-              // Say which window is already on screen, so re-choosing it reads
-              // as the no-op it is rather than a change that did nothing.
-              hint: preset === filters.preset ? t.palette.currentPeriod : undefined,
-              onSelect: () => setPeriod({ preset }),
-            })),
-          },
-        ]
-      : []),
-  ]
 
   return (
     /*
@@ -589,7 +498,7 @@ export function Shell({
             paddingTop: 'env(safe-area-inset-top)',
           }}
         >
-          <div className="flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3 lg:px-6">
+          <div className="flex items-center gap-2 px-4 py-2.5 sm:gap-3 sm:py-3">
             {/*
               The way into the drawer, first thing on the bar and 40px square:
               a thumb's target, not a pointer's. Hidden from lg up, where the
@@ -617,27 +526,21 @@ export function Shell({
 
             <div className="ml-auto flex items-center gap-2">
               {/*
-                The ⌘K chip, and now the only control up here.
+                THE BAR'S ONLY CONTROLS, and what holds the bar's height.
 
-                Search is the one thing on this bar that is genuinely global:
-                it looks across every section at once — a phone number, a deal
-                id, a customer — while the reporting window belongs to whatever
-                page is open and lives on that page. A ghost button because the
-                keycaps do the explaining. On a phone the label and caps fold
-                away (there is no ⌘K to teach) and the chip is just a search
-                button; the aria-label keeps it named either way.
+                The ⌘K chip led this cluster until the search was removed. It
+                was a `md` Button — 32px — and never set the header's height:
+                the bell and the refresh leaf are both `h-9`, so the row is
+                still 36px + `sm:py-3` above lg, and below lg the 40px drawer
+                button + `py-2.5` still wins. Nothing moved when the chip went,
+                so do not close a gap here that was never opened; the empty
+                middle of the bar is the badge's row, not a hole.
+
+                `ml-auto` is the right-alignment itself, not a spacer: it keeps
+                the cluster on the right edge even before the data-source badge
+                to its left has loaded, and even on the days the bell is hidden
+                at a zero backlog and the refresh leaf is all that is left.
               */}
-              <Button
-                variant="ghost"
-                icon={<SearchGlyph size={14} />}
-                onClick={openPalette}
-                aria-label={t.palette.search}
-              >
-                <span className="hidden sm:inline">{t.palette.search}</span>
-                <span className="hidden sm:inline-flex">
-                  <Kbd keys={['mod', 'K']} />
-                </span>
-              </Button>
 
               {/*
                 ONE QUESTION, ONE NUMBER: how many orders await confirmation.
@@ -707,31 +610,34 @@ export function Shell({
                 </Tooltip>
               )}
 
-              {/*
-                Refresh, for the person who will not wait sixty seconds.
-
-                It invalidates the cache rather than reloading the page: the
-                window, the filters and the scroll position are state this
-                screen holds, and a reload would throw them away to fetch the
-                same rows. It turns only while something is genuinely in
-                flight — an arrow that always spins says nothing.
-              */}
-              <Tooltip content="Maʼlumotni yangilash">
-                <button
-                  type="button"
-                  onClick={() => void queryClient.invalidateQueries()}
-                  aria-label="Maʼlumotni yangilash"
-                  className="rail-item focusable flex h-9 w-9 items-center justify-center rounded-lg"
-                >
-                  <RefreshGlyph spinning={busy} />
-                </button>
-              </Tooltip>
+              <RefreshButton />
+              <ThemeButton />
             </div>
           </div>
 
         </header>
 
         {/*
+          ONE gutter, 16px, at every width — phone, tablet and desktop alike.
+
+          It used to widen to 24px from lg up, on the reasoning that a big
+          screen can afford a bigger margin. It cannot: the rail already takes
+          240px out of the same row, so past lg the margin is not breathing
+          room, it is the last thing standing between the data and the edge it
+          is allowed to use. The client asked for it back on a 1920px display
+          — "bo'shliqni kamaytiramiz, juda ham emas" — and 16px is the "not
+          too much": the same gutter the phone has always had, which nobody
+          has ever called cramped, so the two layouts now share one number
+          instead of disagreeing about it.
+
+          The bar above carries the same 16px for the same reason plus one
+          more: it did not, and its content sat 12px in on a phone and 24px in
+          on a desktop while the page under it sat at 16px both times. The
+          drawer button, the wordmark and the data-source badge were never on
+          the same vertical line as the page title at any width. Now they are.
+
+          Vertical padding is untouched — it is not competing with anything.
+
           The name the transition animates.
 
           `viewTransitionName` on the element the browser should treat as its
@@ -742,8 +648,9 @@ export function Shell({
         {ViewTransition ? (
           <ViewTransition name="page-body">
             <main
+              ref={mainRef}
               id="main"
-              className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4 sm:py-5 lg:px-6 lg:py-6"
+              className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4 sm:py-5 lg:py-6"
               style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
             >
               {children}
@@ -769,26 +676,15 @@ export function Shell({
             the page.
           */
           <main
+            ref={mainRef}
             id="main"
-            className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4 sm:py-5 lg:px-6 lg:py-6"
+            className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4 sm:py-5 lg:py-6"
             style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
           >
             {children}
           </main>
         )}
       </div>
-
-      {/* Portalled to document.body by the primitive; mounted here so the
-          shortcut, the chip and the dialog ship as one unit on every page.
-          Closed is unmounted — its Escape and focus trap cannot outlive it. */}
-      <CommandPalette
-        open={paletteOpen}
-        onClose={closePalette}
-        groups={paletteGroups}
-        onQueryChange={setTyped}
-        busy={searchable && (results.isFetching || lookup !== typed.trim())}
-        placeholder="Telefon, ID, mijoz, mahsulot yoki boʻlim…"
-      />
     </div>
   )
 }
@@ -1165,6 +1061,78 @@ function RailBody({
 
       </div>
     </>
+  )
+}
+
+/**
+ * Refresh, for the person who will not wait sixty seconds — as its own leaf
+ * ON PURPOSE.
+ *
+ * It invalidates the cache rather than reloading the page: the window, the
+ * filters and the scroll position are state this screen holds, and a reload
+ * would throw them away to fetch the same rows. The arrow turns only while
+ * something is genuinely in flight — an arrow that always spins says nothing.
+ *
+ * `useIsFetching` re-renders its subscriber on every query start AND stop,
+ * several times a minute under the global poll. When that subscriber was
+ * Shell itself the whole persistent chrome — rail, drawer, every nav link —
+ * re-ran to turn one arrow. Now the chrome holds still and only this button
+ * ticks.
+ */
+function RefreshButton() {
+  const queryClient = useQueryClient()
+  const busy = useIsFetching() > 0
+  return (
+    <Tooltip content="Maʼlumotni yangilash">
+      <button
+        type="button"
+        onClick={() => void queryClient.invalidateQueries()}
+        aria-label="Maʼlumotni yangilash"
+        className="rail-item focusable flex h-9 w-9 items-center justify-center rounded-lg"
+      >
+        <RefreshGlyph spinning={busy} />
+      </button>
+    </Tooltip>
+  )
+}
+
+/**
+ * Light or dark, one press, from anywhere in the app.
+ *
+ * It sits at the end of the header cluster rather than in the middle of it
+ * because the two controls to its left are read every few minutes and this one
+ * is pressed twice a year — putting it before them would move the refresh
+ * arrow, which is the most-clicked thing on the bar, for the sake of the
+ * least-clicked.
+ *
+ * IT IS A TWO-STATE TOGGLE ON PURPOSE, not the three-state cycle the store
+ * underneath it can hold. A button that steps light → dark → «Tizim» leaves a
+ * reader who wanted the other mode pressing it and getting neither, and the
+ * third state is not a look — it is the absence of a choice, which is a
+ * settings decision rather than a one-press one. «Tizim» lives on /account,
+ * where it can say what it means in words.
+ *
+ * A leaf, for the same reason `RefreshButton` is one: the shell is permanent
+ * now, and a subscription read at the top of it re-renders the rail, the
+ * drawer and every nav link. This subscribes to the theme store and the OS
+ * media query; only this button ticks.
+ */
+function ThemeButton() {
+  const resolved = useResolvedTheme()
+  const next = resolved === 'dark' ? 'light' : 'dark'
+  const label = next === 'dark' ? 'Tungi koʻrinishga oʻtish' : 'Kunduzgi koʻrinishga oʻtish'
+
+  return (
+    <Tooltip content={label}>
+      <button
+        type="button"
+        onClick={() => setTheme(next)}
+        aria-label={label}
+        className="rail-item focusable flex h-9 w-9 items-center justify-center rounded-lg"
+      >
+        {next === 'dark' ? <MoonGlyph /> : <SunGlyph />}
+      </button>
+    </Tooltip>
   )
 }
 

@@ -112,8 +112,18 @@ export type ConfirmationOutcomeValue = (typeof CONFIRMATION_OUTCOMES)[number]
  *             reporting window does not apply. A queue dated by intake cannot
  *             answer this — the oldest unworked order is older than any
  *             preset — which is why it is a mode and not a filter.
+ * 'all'     — every order that ever reached Тасдиклаш, at whatever state it
+ *             has reached. The 'window' cohort over an unbounded span: the
+ *             operators asked for it because a customer on the line does not
+ *             say which month their order arrived, and stepping preset by
+ *             preset to find one row is not a search.
+ *
+ * ONLY 'backlog' CHANGES THE SQL. 'all' takes the windowed branch of
+ * `queueSql` and is handed an all-time span, so there is no third cohort to
+ * keep in step with the other two — see `insightsService.confirmationQueue`,
+ * which is where the span is chosen.
  */
-export const CONFIRMATION_QUEUE_MODES = ['window', 'backlog'] as const
+export const CONFIRMATION_QUEUE_MODES = ['window', 'backlog', 'all'] as const
 export type ConfirmationQueueMode = (typeof CONFIRMATION_QUEUE_MODES)[number]
 
 /**
@@ -138,8 +148,6 @@ export const CONFIRMATION_ORDER_SORTS = [
 ] as const
 export type ConfirmationOrderSortValue = (typeof CONFIRMATION_ORDER_SORTS)[number]
 
-export const CALL_DIRECTIONS = ['INBOUND', 'OUTBOUND', 'CALLBACK'] as const
-export type CallDirectionValue = (typeof CALL_DIRECTIONS)[number]
 
 /**
  * Our normalised meaning of a pipeline stage. Bitrix24 stage IDs are mapped
@@ -195,9 +203,15 @@ export type SyncEntityValue = (typeof SYNC_ENTITIES)[number]
  * already exist when deals are written. Running the entities in this order is
  * what keeps foreign keys satisfiable on a cold database.
  *
- * STAGE_HISTORY, CALLS and STOCK come last: they reference deals, employees
- * and products, and they are the slowest steps, so a failure there leaves
+ * STAGE_HISTORY and STOCK come last: they reference deals, employees and
+ * products, and they are the slowest steps, so a failure there leaves
  * everything cheaper already committed.
+ *
+ * CALLS IS ABSENT FROM THE ORDER AND STAYS IN `SYNC_ENTITIES`. Telephony is no
+ * longer imported and its table is gone — nothing in the application ever
+ * rendered a call — but `SyncEntity` is a database enum and the sync log holds
+ * thousands of historical CALLS rows. Dropping the value would mean deleting
+ * that history to satisfy a name nobody reads.
  *
  * A deal whose customer is nonetheless missing still imports — the link is
  * nullable and the customer pass has a backfill for it — because losing a
@@ -218,7 +232,6 @@ export const SYNC_ORDER: readonly SyncEntityValue[] = [
   'PAYMENTS',
   'STOCK',
   'STAGE_HISTORY',
-  'CALLS',
 ]
 
 export const SYNC_MODES = ['FULL', 'INCREMENTAL'] as const

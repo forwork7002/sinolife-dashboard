@@ -35,6 +35,7 @@ import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import type { Period } from '@/server/domain/period/period'
 import type { DeltaDto } from '@/lib/api'
 import type { InsightsRepository } from '@/server/repositories/insightsRepository'
+import { keyPart, ttlCache } from './ttlCache'
 import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type {
   SellerBoardFilters,
@@ -84,15 +85,31 @@ export interface SellerBonusDto {
 }
 
 /**
- * One seller's target for the period, and how far through it they are.
+ * «Plan bajarish» — and WHICH question it is answering.
  *
- * `amount` is the target the `kpi` table holds for this operator; `percent`
- * is won intake over that target. Both null together — a plan nobody set is
- * not a plan of zero, and a percentage of nothing is not 0%.
+ * The client's own board answers two, and switches between them silently:
+ * where a target exists it prints FAKT 2 against the target, and where none
+ * does it prints FAKT 2 against FAKT 1 — the share of confirmed orders that
+ * actually got delivered. Verified against their published July board on
+ * 2026-09-04: 86 of 93 rows are FAKT 2 / FAKT 1 to the percent (Marjona
+ * Shahtiyarovna 197 reads 84% on 199 318 000 of 237 118 000), and all seven
+ * exceptions are rows their own generator left at zero.
+ *
+ * We carry the same two readings and, unlike them, say which one is on the
+ * row. A column that means one thing here and another there is only
+ * defensible if the screen admits it.
  */
 export interface SellerPlanDto {
+  /** The target from `kpi`, when one is set. Null on the delivery reading. */
   readonly amount: MoneyDto | null
+  /** 0-100+, uncapped — a seller at 112% reads 112%. */
   readonly percent: number | null
+  /**
+   * 'target'   — FAKT 2 against a target somebody set.
+   * 'delivery' — FAKT 2 against FAKT 1, the client's fallback and ours.
+   * null       — nothing to divide by: no target and no confirmed money.
+   */
+  readonly basis: 'target' | 'delivery' | null
 }
 
 export interface SellerBoardRowDto {
@@ -110,7 +127,21 @@ export interface SellerBoardRowDto {
   /** Still open, already inside `ordered`: live work the seller is carrying. */
   readonly open: MoneyDto
   readonly openOrders: number
+  /** Refused in the queue PLUS confirmed-then-cancelled. Both are resolved. */
   readonly lostOrders: number
+  /**
+   * Of `lostOrders`, the ones the operator had already CONFIRMED before the
+   * order died — «Отказ предварительно» and its kind. A different fact from a
+   * refusal at the door, and July hid 102 of them inside «yoʻlda».
+   */
+  readonly lostAfterConfirmOrders: number
+  /**
+   * EVERY order of theirs in the window, whatever became of it — the count the
+   * Тасдиқлаш navbati page shows. Bigger than `orders`, which counts only the
+   * confirmed ones: August is 3 228 against 2 874, and until the screen prints
+   * both, two pages state two true numbers 354 apart with no explanation.
+   */
+  readonly cohortOrders: number
   /** wonOrders / (orders resolved so far), 0-100. Null when nothing resolved. */
   readonly conversionPercent: number | null
   /** This seller's share of the board's total won intake, 0-100. */
@@ -186,6 +217,8 @@ export interface SellerBoardTotalsDto {
    */
   readonly teamlessSellers: number
   readonly orders: number
+  /** Every order in the cohort — what the confirmation queue counts. */
+  readonly cohortOrders: number
   readonly ordered: MoneyDto
   readonly won: MoneyDto
   readonly wonOrders: number
@@ -230,9 +263,10 @@ export interface SellerBoardDto {
    * The basis, stated in the payload so the screen cannot forget to print it.
    *
    * 'confirmation_queue' — FAKT 1 / FAKT 2, the floor's own vocabulary.
-   *   `ordered` is Тасдиқланди (confirmed into Доставка), `won` is
-   *   Доставланди (C6:WON), and everything is dated by the order's OWN
-   *   arrival in C4:NEW — see `InsightsRepository.confirmationSellerRating`.
+   *   `ordered` is FAKT 1 — Тасдиқланди AND Тасдиқланмай чиқди, everything
+   *   that left the queue as an order — `won` is Доставланди (C6:WON), and
+   *   everything is dated by the order's OWN arrival in C4:NEW. See
+   *   `InsightsRepository.FAKT1_OUTCOMES` and `confirmationSellerRating`.
    * 'created_in_period' — the original reading, dated by the day the ORDER
    *   WAS TAKEN (`createdAtSource`) — see `SellerBoardRepository`.
    */
@@ -263,6 +297,16 @@ export interface SellerDayDto {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Sixty seconds, matching the sync tick.
+ *
+ * The data behind this board moves exactly once a minute, so an entry is never
+ * older than the numbers would have been anyway — and the client polls on the
+ * same minute clock, which means a TTL any shorter is missed by every solo
+ * reader while buying them nothing.
+ */
+const boardCache = ttlCache<SellerBoardDto>(60_000)
+
 export class SellerBoardService {
   constructor(
     private readonly repo: SellerBoardRepository,
@@ -270,8 +314,58 @@ export class SellerBoardService {
     private readonly reference: ReferenceRepository,
   ) {}
 
+  /**
+   * ONE board per question, shared by everyone looking at it.
+   *
+   * This screen is the floor's, and the floor opens it together — the same
+   * arrival pattern the command centre's cache was written for. Each build is
+   * TWO full confirmation-cohort constructions (the window and the comparison,
+   * both through `queueSql` + the rating aggregate) plus the KPI read, and the
+   * route passes `ctx.query` and never `ctx.scope`, so every one of those
+   * readers was paying for an identical answer.
+   *
+   * SAFE TO SHARE ONLY BECAUSE THIS ENDPOINT IS SCOPELESS. The route's own
+   * comment says so and means it: "Company-wide for every role … a ranking
+   * each person can only see themselves in is not a ranking." If that ever
+   * changes — if `analytics/sellers/route.ts` starts spreading `ctx.scope`, or
+   * `scopedContext` grows its first caller — this memo has to be DELETED in
+   * the same commit. Adding the scope to the key instead would be a cache
+   * keyed on data the reader is trusted to have supplied honestly.
+   *
+   * THE PRESET IS IN THE KEY, and it is not decoration. `ctx.comparison` is
+   * derived from the preset, so on a Monday «Bugun» and «Shu hafta» resolve to
+   * one window and demand different comparison rows; without the preset they
+   * would share an entry and swap each other's deltas. That exact bug is
+   * documented, with its measured numbers, in `commandCentreCacheKey.ts`.
+   */
   async board(ctx: AnalyticsContext, basis: SellerBoardBasisValue = 'queue'): Promise<SellerBoardDto> {
     const filters = boardFilters(ctx)
+
+    const key = [
+      basis,
+      ctx.period.preset,
+      ctx.period.start.toISOString(),
+      ctx.period.end.toISOString(),
+      // The comparison is derived, but it is also TRUNCATED for a to-date
+      // window — two questions can share a preset and a window and still want
+      // different previous spans, so it is named rather than assumed.
+      ctx.comparison.start.toISOString(),
+      ctx.comparison.end.toISOString(),
+      ctx.currency,
+      keyPart(filters.employeeIds),
+      keyPart(filters.departmentIds),
+      keyPart(filters.sourceIds),
+      keyPart(filters.restrictToEmployeeId),
+    ].join('|')
+
+    return boardCache.get(key, () => this.buildBoard(ctx, basis, filters))
+  }
+
+  private async buildBoard(
+    ctx: AnalyticsContext,
+    basis: SellerBoardBasisValue,
+    filters: SellerBoardFilters,
+  ): Promise<SellerBoardDto> {
 
     /*
       All three reads at once. The comparison exists only to give the total a
@@ -291,33 +385,49 @@ export class SellerBoardService {
     const previousWonMinor = sum(previous, (r) => r.wonMinor)
 
     /*
-      Rank on won intake, descending, with the employee id as the tiebreak.
-      The id rather than the name: two sellers on identical money must not
-      swap places between two refreshes of the same screen, and a name sort
-      would reorder on a rename.
+      FAKT 2 FIRST, THEN FAKT 1 — the client's own rule, stated 2026-09-04:
+      «kimda koʻp fakt 1 va fakt 2 boʻlsa u yuqori oʻrinda turadi».
+
+      Delivered money leads, because that is what the floor is paid on. But
+      ranking on it ALONE leaves the board blank for most of a working day:
+      delivery takes days, so on «Bugun» and «Kecha» every row holds zero
+      FAKT 2, the whole ranking collapses to a tie and the deciding factor
+      becomes an internal employee id — 55 sellers, 148 mln soʻm confirmed
+      between them, and not one of them ranked. Confirmed money is the honest
+      second key: it is the work they have actually done today, and it orders
+      exactly the people FAKT 2 cannot separate yet.
+
+      The employee id remains the last resort, so two sellers level on both
+      figures do not swap places between two refreshes of one screen — and a
+      name sort would reorder them on a rename.
     */
     const ordered = [...rows].sort(
       (a, b) =>
         (b.wonMinor > a.wonMinor ? 1 : b.wonMinor < a.wonMinor ? -1 : 0) ||
+        (b.orderedMinor > a.orderedMinor ? 1 : b.orderedMinor < a.orderedMinor ? -1 : 0) ||
         a.employeeId.localeCompare(b.employeeId),
     )
 
     /*
       COMPETITION RANKING: equal money, equal rank, and the next rank skips.
 
-      Position in the sorted list was the rank, so two sellers who had won the
-      same amount — common at the start of a window, universal when nobody has
-      won anything yet — were told one outranked the other, and the deciding
-      factor was an internal id. `/analytics/leaderboard` already ranks the
-      same people 1, 2, 2, 4; two boards of the same floor disagreeing about
-      who is second is the kind of thing a bonus argument starts over.
+      Equal on BOTH figures, now that both decide the order — otherwise two
+      sellers level on FAKT 2 but far apart on FAKT 1 would share a rank the
+      sort had already separated them by, and the board would print 1, 1, 3
+      over rows that visibly differ.
 
-      The id still decides DISPLAY order, so the table does not reshuffle
-      between two refreshes of the same screen.
+      `/analytics/leaderboard` ranks the same floor 1, 2, 2, 4 and two boards
+      disagreeing about who is second is the kind of thing a bonus argument
+      starts over. The id still decides DISPLAY order among true ties, so the
+      table does not reshuffle between two refreshes of one screen.
     */
     const rankOf = ordered.map((row, index) => {
       const previous = index > 0 ? ordered[index - 1] : undefined
-      return previous && previous.wonMinor === row.wonMinor ? -1 : index + 1
+      return previous &&
+        previous.wonMinor === row.wonMinor &&
+        previous.orderedMinor === row.orderedMinor
+        ? -1
+        : index + 1
     })
     for (let i = 1; i < rankOf.length; i++) {
       if (rankOf[i] === -1) rankOf[i] = rankOf[i - 1]!
@@ -335,6 +445,8 @@ export class SellerBoardService {
       open: toMoneyDto(money(row.openMinor, ctx.currency)),
       openOrders: row.openOrders,
       lostOrders: row.lostOrders,
+      lostAfterConfirmOrders: row.lostAfterConfirmOrders,
+      cohortOrders: row.cohortOrders,
       /*
         Resolved, not taken: an order still open has not failed, so counting
         it against the seller would make a busy week look like a bad one. The
@@ -342,7 +454,12 @@ export class SellerBoardService {
       */
       conversionPercent: roundOrNull(ratePercent(row.wonOrders, row.wonOrders + row.lostOrders)),
       sharePercent: roundOrNull(ratePercent(row.wonMinor, totalWonMinor)),
-      plan: planFor(plans.byEmployee.get(row.employeeId) ?? null, row.wonMinor, ctx.currency),
+      plan: planFor(
+        plans.byEmployee.get(row.employeeId) ?? null,
+        row.wonMinor,
+        row.orderedMinor,
+        ctx.currency,
+      ),
       // No source in this database — see each field's own comment.
       leads: null,
       leadConversionPercent: null,
@@ -363,6 +480,7 @@ export class SellerBoardService {
         teams: new Set(rows.map((r) => r.rop).filter((r): r is string => r !== null)).size,
         teamlessSellers: rows.filter((r) => r.rop === null).length,
         orders: rows.reduce((a, r) => a + r.orders, 0),
+        cohortOrders: rows.reduce((a, r) => a + r.cohortOrders, 0),
         ordered: toMoneyDto(money(sum(rows, (r) => r.orderedMinor), ctx.currency)),
         won: toMoneyDto(money(totalWonMinor, ctx.currency)),
         wonOrders: rows.reduce((a, r) => a + r.wonOrders, 0),
@@ -382,7 +500,12 @@ export class SellerBoardService {
         ),
         sellersInBonus: boardRows.filter((r) => r.bonus.earned.amount > 0).length,
         sellersEligibleForBonus: boardRows.filter((r) => r.bonus.eligible).length,
-        plan: planFor(plans.byEmployee.size > 0 ? plannedMinor : null, totalWonMinor, ctx.currency),
+        plan: planFor(
+          plans.byEmployee.size > 0 ? plannedMinor : null,
+          totalWonMinor,
+          sum(rows, (r) => r.orderedMinor),
+          ctx.currency,
+        ),
         sellersWithPlan: rows.filter((r) => plans.byEmployee.has(r.employeeId)).length,
         leads: null,
         leadConversionPercent: null,
@@ -442,7 +565,17 @@ export class SellerBoardService {
         wonMinor: r.deliveredMinor,
         openOrders: r.inTransitOrders,
         openMinor: r.inTransitMinor,
-        lostOrders: r.rejectedOrders,
+        /*
+          BOTH KINDS OF LOSS, because the conversion rate divides by them.
+
+          A refusal in the queue and an order confirmed then cancelled before
+          dispatch are different events, but they are both resolved and both
+          belong in the denominator. Counting only the first flattered July's
+          board by 3.4 points — 84.1% where the truth is 80.7%.
+        */
+        lostOrders: r.rejectedOrders + r.lostAfterConfirmOrders,
+        lostAfterConfirmOrders: r.lostAfterConfirmOrders,
+        cohortOrders: r.cohortOrders,
       }),
     )
   }
@@ -503,20 +636,41 @@ function revenueTargets(kpis: readonly KpiDefinition[]): {
 }
 
 /**
- * A target and the progress against it — or two nulls.
+ * The target when there is one, the delivery share when there is not.
  *
- * Never a zero on either half. A plan nobody set is not a plan of zero soʻm,
- * and 0% attainment is a claim about performance rather than about data. The
- * whole reason this column can exist honestly is that it can say nothing.
+ * A TARGET WINS. Somebody setting 300 mln for September is a contract, and
+ * scoring against it is a different and stronger statement than "84% of what
+ * you confirmed arrived". The `kpi` table is empty today, so in practice every
+ * row reads the delivery share — which is exactly what the client's own board
+ * prints, and it is a real measurement rather than the em dash this column
+ * used to be.
+ *
+ * Still never a zero out of nothing: a seller with no target AND no confirmed
+ * money divides by nothing, and that is null, not 0%.
  */
-function planFor(targetMinor: bigint | null, wonMinor: bigint, currency: string): SellerPlanDto {
-  if (targetMinor === null || targetMinor <= 0n) return { amount: null, percent: null }
-  return {
-    amount: toMoneyDto(money(targetMinor, currency)),
-    // Deliberately uncapped: their bar clamps the WIDTH at 100%, but the
-    // number beside it keeps counting, and a seller at 112% should read 112%.
-    percent: roundPercent(ratePercent(wonMinor, targetMinor) ?? 0),
+function planFor(
+  targetMinor: bigint | null,
+  wonMinor: bigint,
+  orderedMinor: bigint,
+  currency: string,
+): SellerPlanDto {
+  if (targetMinor !== null && targetMinor > 0n) {
+    return {
+      amount: toMoneyDto(money(targetMinor, currency)),
+      // Deliberately uncapped: their bar clamps the WIDTH at 100%, but the
+      // number beside it keeps counting, and a seller at 112% reads 112%.
+      percent: roundPercent(ratePercent(wonMinor, targetMinor) ?? 0),
+      basis: 'target',
+    }
   }
+  if (orderedMinor > 0n) {
+    return {
+      amount: null,
+      percent: roundPercent(ratePercent(wonMinor, orderedMinor) ?? 0),
+      basis: 'delivery',
+    }
+  }
+  return { amount: null, percent: null, basis: null }
 }
 
 /**
@@ -618,6 +772,7 @@ function teamRows(
               )
             : null,
           team.wonMinor,
+          sum(team.members, (m) => m.orderedMinor),
           currency,
         ),
         leads: null,

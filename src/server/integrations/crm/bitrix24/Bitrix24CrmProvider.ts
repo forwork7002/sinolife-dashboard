@@ -26,7 +26,6 @@ import {
   type Page,
   type ProviderCapabilities,
   type ProviderHealth,
-  type RawCall,
   type RawCustomer,
   type RawDeal,
   type RawDealItem,
@@ -51,7 +50,6 @@ import {
   PIPELINE_NAMES,
   UF,
   UF_FIELDS,
-  callDirection,
   categoryFromSemantic,
   confirmStatusFromLabel,
   confirmationSignal,
@@ -164,7 +162,8 @@ export class Bitrix24CrmProvider implements CrmProvider {
     DEAL_ITEMS: true,
     PAYMENTS: false,
     STAGE_HISTORY: true,
-    CALLS: true,
+    // Telephony is not imported: nothing renders a call. See syncWorker's HOT.
+    CALLS: false,
     STORES: false,
     STOCK: false,
   }
@@ -606,18 +605,33 @@ export class Bitrix24CrmProvider implements CrmProvider {
     }>('user.get', {}, 'employees')
 
     return this.page(
-      rows.map((u) => ({
-        externalId: String(u.ID),
-        fullName:
-          [u.LAST_NAME, u.NAME, u.SECOND_NAME].filter(Boolean).join(' ').trim() || `User ${u.ID}`,
-        email: u.EMAIL || undefined,
-        phone: u.PERSONAL_MOBILE || u.WORK_PHONE || undefined,
-        position: u.WORK_POSITION || undefined,
-        departmentExternalId: u.UF_DEPARTMENT?.[0] ? String(u.UF_DEPARTMENT[0]) : undefined,
-        avatarUrl: u.PERSONAL_PHOTO || undefined,
-        hiredAt: toDate(u.DATE_REGISTER),
-        isActive: u.ACTIVE !== false,
-      })),
+      rows.map((u) => {
+        /*
+          UF_DEPARTMENT IS AN ARRAY, AND THE PORTAL'S OWN ORG CHART READS ALL OF IT.
+
+          Nine of this portal's 208 active people sit in two units at once — a
+          registrar who also works a sales floor, the owner who heads one team and
+          sits in another. `hr/structure` counts each of them once in EVERY unit,
+          so keeping only `[0]` left five of its twenty cards short by one or two.
+          The first entry stays the primary: it is what every analytic credits the
+          person to, and crediting two units would double their money.
+        */
+        const departments = (u.UF_DEPARTMENT ?? []).map(String).filter((id) => id.length > 0)
+
+        return {
+          externalId: String(u.ID),
+          fullName:
+            [u.LAST_NAME, u.NAME, u.SECOND_NAME].filter(Boolean).join(' ').trim() || `User ${u.ID}`,
+          email: u.EMAIL || undefined,
+          phone: u.PERSONAL_MOBILE || u.WORK_PHONE || undefined,
+          position: u.WORK_POSITION || undefined,
+          departmentExternalId: departments[0],
+          departmentExternalIds: departments,
+          avatarUrl: u.PERSONAL_PHOTO || undefined,
+          hiredAt: toDate(u.DATE_REGISTER),
+          isActive: u.ACTIVE !== false,
+        }
+      }),
     )
   }
 
@@ -931,6 +945,10 @@ export class Bitrix24CrmProvider implements CrmProvider {
         paymentMethodRaw: this.label(UF.PAYMENT_METHOD, d[UF.PAYMENT_METHOD]),
         productLine: this.label(UF.PRODUCT_LINE, d[UF.PRODUCT_LINE]),
         customerGrade: this.label(UF.CUSTOMER_GRADE, d[UF.CUSTOMER_GRADE]),
+        // Free text, so raw — `label()` resolves enumeration ids and would
+        // return undefined for every one of these. Same trap as ADDRESS.
+        operatorNameSource: nonEmpty(d[UF.OPERATOR_NAME]),
+        operatorTeamSource: nonEmpty(d[UF.OPERATOR_TEAM]),
         isReturnCustomer: d.IS_RETURN_CUSTOMER === 'Y',
         createdAtSource: toDate(d.DATE_CREATE) ?? new Date(),
         updatedAtSource: toDate(d.DATE_MODIFY),
@@ -1252,119 +1270,6 @@ export class Bitrix24CrmProvider implements CrmProvider {
   // Telephony
   // -------------------------------------------------------------------------
 
-  /**
-   * Call records — who spoke to whom, for how long, and whether it connected.
-   *
-   * Read one DAY at a time, not by walking a single 283 000-row result.
-   *
-   * `voximplant.statistic.get` is metered: asking it for offset 20 000 of the
-   * whole history earns `OPERATION_TIME_LIMIT` and the method is then blocked
-   * for everyone, including the cheap calls. Measured, not guessed — the first
-   * import hit it after eight batches. A day holds roughly eight hundred
-   * calls, so every offset stays under a thousand and the method never gets
-   * near its limit.
-   *
-   * Bounded to the last `callHistoryMonths` because the portal has been
-   * running since 2025 and nobody asks how long a call lasted two years ago,
-   * while the volume would dominate the import.
-   *
-   * `transcript` and `score` are not populated. The recordings are, so a call
-   * quality scorer added later reads this table instead of facing a year-long
-   * gap in the data.
-   */
-  async fetchCalls(options: FetchOptions = {}): Promise<Page<RawCall>> {
-    const from = startOfUtcDay(
-      options.updatedSince ?? new Date(Date.now() - this.callHistoryMonths * 30 * DAY_MS),
-    )
-    const days = Math.max(1, Math.ceil((Date.now() - from.getTime()) / DAY_MS))
-
-    const [dayText, afterText] = (options.cursor ?? '0:0').split(':')
-    const startDay = Number(dayText)
-
-    // Skip empty days rather than returning an empty page for each, which the
-    // sync engine would read as the end of the data.
-    for (let day = startDay; day < days; day++) {
-      const dayStart = new Date(from.getTime() + day * DAY_MS)
-      const windowEnd = new Date(dayStart.getTime() + DAY_MS)
-
-      /**
-       * On an incremental run, start at the watermark instant — not at
-       * midnight of the day it falls in.
-       *
-       * Day windows exist to keep offsets shallow, not to define the query.
-       * Flooring to midnight made every minute-by-minute sync re-read the
-       * whole day: 10 000 rows and forty seconds to find the handful of calls
-       * that were actually new.
-       */
-      const windowStart =
-        options.updatedSince && day === startDay && options.updatedSince > dayStart
-          ? options.updatedSince
-          : dayStart
-
-      const afterId = day === startDay ? (afterText ?? '0') : '0'
-
-      const { rows, done } = await this.batchWalk<{
-        ID: string
-        PORTAL_USER_ID?: string
-        PHONE_NUMBER?: string
-        CALL_TYPE?: string
-        CALL_CATEGORY?: string
-        CALL_DURATION?: string
-        CALL_START_DATE?: string
-        CALL_RECORD_URL?: string
-        CALL_FAILED_CODE?: string
-        CRM_ENTITY_TYPE?: string
-        CRM_ENTITY_ID?: string
-      }>(
-        'voximplant.statistic.get',
-        {
-          FILTER: {
-            '>=CALL_START_DATE': isoLocal(windowStart),
-            '<CALL_START_DATE': isoLocal(windowEnd),
-          },
-        },
-        afterId,
-        // Telephony names its parameters in upper case and sorts through SORT
-        // rather than an order map, so the walk's clauses differ here.
-        { filterKey: 'FILTER', orderQuery: 'SORT=ID&ORDER=ASC' },
-      )
-
-      if (rows.length === 0) continue
-
-      const calls: RawCall[] = rows
-        .filter((r) => r.ID && r.CALL_START_DATE)
-        .map((r) => ({
-          externalId: String(r.ID),
-          employeeExternalId: nonEmpty(r.PORTAL_USER_ID),
-          customerExternalId:
-            r.CRM_ENTITY_TYPE === 'CONTACT' ? nonEmpty(r.CRM_ENTITY_ID) : undefined,
-          dealExternalId: r.CRM_ENTITY_TYPE === 'DEAL' ? nonEmpty(r.CRM_ENTITY_ID) : undefined,
-          direction: callDirection(r.CALL_CATEGORY, r.CALL_TYPE),
-          phoneNumber: r.PHONE_NUMBER || undefined,
-          startedAt: toDate(r.CALL_START_DATE) ?? dayStart,
-          durationSec: Number(r.CALL_DURATION ?? 0),
-          // 200 is the portal's success code; anything else is a failed leg,
-          // and the reason is kept so "nobody answered" reads differently
-          // from "the number was wrong".
-          connected: r.CALL_FAILED_CODE === '200',
-          failedCode:
-            r.CALL_FAILED_CODE && r.CALL_FAILED_CODE !== '200' ? r.CALL_FAILED_CODE : undefined,
-          recordUrl: r.CALL_RECORD_URL || undefined,
-        }))
-
-      this.callsRead += rows.length
-      this.progress(
-        `  calls: ${this.callsRead} (${dayStart.toISOString().slice(0, 10)}, kun ${day + 1}/${days})`,
-      )
-
-      const lastId = rows[rows.length - 1]?.ID
-      const nextCursor = !done && lastId ? `${day}:${lastId}` : day + 1 < days ? `${day + 1}:0` : undefined
-
-      return { items: calls, nextCursor }
-    }
-
-    return this.page([])
-  }
 
   // -------------------------------------------------------------------------
   // Warehouse

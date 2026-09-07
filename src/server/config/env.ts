@@ -133,9 +133,6 @@ const schema = z
      */
     DASHBOARD_DEFAULT_BRANCH: blankAsUndefined(z.string().trim().min(1).default('Навоий')),
 
-    APP_DEFAULT_LOCALE: blankAsUndefined(
-      z.enum(['uz', 'ru', 'en']).default('uz'),
-    ),
     APP_DEFAULT_CURRENCY: blankAsUndefined(
       z
         .string()
@@ -327,9 +324,6 @@ function load(): Env {
 }
 
 export const env: Env = load()
-
-/** True when the app is serving generated demo data rather than live CRM data. */
-export const isDemoMode = env.DATA_SOURCE === DataSource.Demo
 
 /**
  * The branch every screen shows unless the URL says otherwise.

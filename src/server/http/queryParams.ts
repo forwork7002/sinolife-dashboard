@@ -136,6 +136,19 @@ export const paginationQuerySchema = z.object({
 
 export const analyticsQuerySchema = periodQuerySchema.and(filterQuerySchema)
 
+/**
+ * One department's roster, for the panel the org chart opens.
+ *
+ * `departmentId` is REQUIRED rather than optional-with-a-default. An optional
+ * one would make a bare call to this endpoint mean "every person in the
+ * company", which is a different question, a 289-row answer, and not one this
+ * screen ever asks — and the caller who forgot the parameter would get it
+ * silently instead of a 400 naming the mistake.
+ */
+export const departmentRosterQuerySchema = periodQuerySchema
+  .and(filterQuerySchema)
+  .and(z.object({ departmentId: z.string().min(1).max(64) }))
+
 export const dealsQuerySchema = periodQuerySchema
   .and(filterQuerySchema)
   .and(paginationQuerySchema)
@@ -178,11 +191,24 @@ export const confirmationOrdersQuerySchema = periodQuerySchema
       /**
        * Which question the board answers — see `ConfirmationQueueMode`.
        *
-       * 'window' (the default) keeps every existing link working: the board is
-       * dated by the order's own Дата создания. 'backlog' ignores the period
-       * entirely and lists what is waiting right now, which is the one
-       * question a queue dated by intake cannot answer — the oldest unworked
-       * order is older than any preset.
+       * 'window' (the default) keeps every existing link working: the orders
+       * that ARRIVED in the confirmation queue during the period. Not the
+       * order's own Дата создания, which is what this docstring said and what
+       * the board did before it was rebuilt to the client's specification — a
+       * deal can sit in «Регистрация» for days before anyone may work it, and
+       * on 2026-08-31 the two readings were 99 orders against 125 arrivals
+       * over 135 portal visits.
+       *
+       * 'backlog' ignores the period entirely and lists what is waiting right
+       * now, which is the one question a windowed queue cannot answer — the
+       * oldest unworked order is older than any preset. It is what the header
+       * bell counts, so its link carries this mode.
+       *
+       * 'all' is «Жами»: the same windowed cohort read over an unbounded span.
+       * A third branch would be a third definition of "an order is on this
+       * board"; the span is chosen in the route and again in
+       * `insightsService.confirmationQueue`, so a direct caller passing
+       * `queue=all&preset=today` cannot reach a half-bounded board.
        */
       queue: z.enum(CONFIRMATION_QUEUE_MODES).default('window'),
       /**
@@ -202,6 +228,7 @@ export type PeriodQuery = z.infer<typeof periodQuerySchema>
 export type FilterQuery = z.infer<typeof filterQuerySchema>
 export type PaginationQuery = z.infer<typeof paginationQuerySchema>
 export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>
+export type DepartmentRosterQuery = z.infer<typeof departmentRosterQuerySchema>
 export type DealsQuery = z.infer<typeof dealsQuerySchema>
 export type ConfirmationOrdersQuery = z.infer<typeof confirmationOrdersQuerySchema>
 

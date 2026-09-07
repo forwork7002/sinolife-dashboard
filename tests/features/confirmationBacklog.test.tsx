@@ -92,7 +92,9 @@ describe('the queue mode travels in the URL', () => {
   })
 
   it('falls back rather than forwarding a mode the API would reject', () => {
-    for (const bad of ['BACKLOG', 'backlog ', 'all', '']) {
+    // 'all' was in this list until the board learned to answer it — see
+    // confirmationAllOrders.test.tsx, which now pins it as a real mode.
+    for (const bad of ['BACKLOG', 'backlog ', 'ALL', 'window ', 'everything', '']) {
       expect(filtersFor(`queue=${encodeURIComponent(bad)}`).result.current.filters.queue).toBe(
         'window',
       )

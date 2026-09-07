@@ -1,16 +1,16 @@
 'use client'
 
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+
+import dynamic from 'next/dynamic'
 
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Card } from '@/components/ui/Card'
-import { SearchInput } from '@/components/ui/Controls'
 import { GaugeTile, Meter, SectionHeader, StatTile, StatusChip } from '@/components/ui/Stat'
 import { InfoTip, Tooltip } from '@/components/ui/Tooltip'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
-import { SellerDaysChart } from '@/features/sellers/SellerDaysChart'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import {
@@ -23,15 +23,41 @@ import {
 } from '@/lib/api'
 import {
   NO_VALUE,
-  APP_TIME_ZONE,
-  formatCompactUzs,
+  formatFullUzs,
   formatDate,
-  formatMonthLabel,
   formatNumber,
   formatPercent,
   formatUzs,
 } from '@/lib/format'
 import { t } from '@/lib/messages'
+
+/**
+ * The drill-down chart, fetched only when a row is actually opened.
+ *
+ * recharts is 379 KB unparsed / 109 KB over the wire, and this is the only
+ * thing on the screen that uses it — but it sits inside `SellerDetail`, behind
+ * `{open && (`, so most visits to the board never draw a chart at all. Shipped
+ * with the page it was a third of what /sellers downloads, paid for by every
+ * reader on behalf of the few who expand a row.
+ *
+ * NOT WARMED UP ON MOUNT, unlike the charts on / and /marketing where the plot
+ * is part of the first screenful. Here the import is started by the expand
+ * handler instead, so it overlaps the day-series request that the same click
+ * issues, and a reader who never expands anything never fetches it.
+ *
+ * `ssr: false` costs nothing — `ResponsiveContainer` measures in an effect.
+ * The fallback is sized to the two stacked panels plus the strip below them so
+ * the row does not jump when the chunk lands.
+ */
+const SellerDaysChart = dynamic(
+  () => import('@/features/sellers/SellerDaysChart').then((m) => m.SellerDaysChart),
+  { ssr: false, loading: () => <ChartSkeleton height={328} /> },
+)
+
+/** Start the chart chunk on the click that opens a row, not on the render. */
+function warmSellerChart() {
+  void import('@/features/sellers/SellerDaysChart')
+}
 
 /**
  * Sotuvchilar reytingi — who brought the work in, and what it earned them.
@@ -52,11 +78,14 @@ import { t } from '@/lib/messages'
  *    into Telegram — a shortcut to the period control, not a second opinion
  *    about "now".
  *
- * 2. NO PER-PERSON TAB STRIP. Their nav carries one tab per operator; on this
- *    portal that is 128 tabs in a row that scrolls sideways forever. The job
- *    those tabs do is "find me", so the table takes a name filter instead and
- *    the row's own drill-down is the person page. Rank and share still come
- *    from the whole board, so a filtered view never promotes anyone.
+ * 2. NO PER-PERSON TAB STRIP, AND NO NAME BOX STANDING IN FOR ONE. Their nav
+ *    carries one tab per operator; on this portal that is 128 tabs in a row
+ *    that scrolls sideways forever. A name filter stood in for it here for a
+ *    while and has been taken out: rank, share and the podium have always been
+ *    read off the WHOLE board, so filtering the table told a seller nothing
+ *    the ranked list does not — it only hid the rows they are measured
+ *    against. The board is one list read top-down, and the row's own
+ *    drill-down is the person page.
  *
  * 3. NO ROP COLOUR CODING. Their page paints each ROP a hue from a
  *    thirteen-entry map. Two reasons it is not carried, and the second is the
@@ -88,15 +117,16 @@ import { t } from '@/lib/messages'
  * never ordinals: "+2,1 mln kerak" is something a seller can act on today,
  * "siz 47-siz" is something they can only feel bad about.
  *
- * TWO CLOCKS, QUEUE FIRST. The default reading is the floor's own FAKT 1 /
- * FAKT 2 — Тасдиқланди and Доставланди, every figure dated by the order's
+ * ONE CLOCK ON SCREEN. The only reading is the floor's own FAKT 1 /
+ * FAKT 2 — (Тасдиқланди + Тасдиқланмай чиқди) and Доставланди, every figure dated by the order's
  * arrival in the confirmation queue (C4:NEW), the same cohort the Tasdiqlash
  * board runs on. The client stated these definitions directly on 2026-09-03.
- * The original intake reading (dated by the day the ORDER WAS TAKEN) stays
- * behind the «Yaratilgan sana» toggle as the one figure measured against
+ * The original intake reading (dated by the day the ORDER WAS TAKEN) is
+ * reachable only as `?basis=intake`, being the one figure measured against
  * their published dashboard to 0.1% (see `sellerBoardRepository`) — the
- * oracle a queue regression gets checked against, not the default anyone
- * reads. Either way this board's totals are nothing like Savdo dinamikasi's
+ * oracle a queue regression gets checked against, never a second board the
+ * floor was meant to read, and the toggle that once offered it invited
+ * exactly that. Either way this board's totals are nothing like Savdo dinamikasi's
  * delivered revenue (3.89 bn of July intake vs 0.98 bn delivered, same month,
  * same deals), so the caption under the totals states the basis in force —
  * a reader reconciling two true numbers must not conclude one is broken.
@@ -122,32 +152,20 @@ import { t } from '@/lib/messages'
  * and the ordinal still carry the rank entirely on their own.
  */
 export function SellersPage() {
-  const { filters, setPeriod, apiParams: filterParams } = useDashboardFilters()
+  const { apiParams: filterParams } = useDashboardFilters()
   const [tab, setTab] = useState<'sellers' | 'teams'>('sellers')
   const [openSeller, setOpenSeller] = useState<string | null>(null)
-  /**
-   * The name filter — this port's answer to their per-person tab strip.
-   *
-   * Their page puts one tab in the nav for every operator, which on this
-   * portal would be 128 of them in a row that scrolls sideways forever. The
-   * job those tabs actually do is "find me", and a search box does it in one
-   * keystroke instead of a horizontal hunt. The row's own drill-down is still
-   * the person page, so nothing is lost but the scrolling.
-   *
-   * IT FILTERS, IT DOES NOT RE-RANK. Rank, share and the podium all come from
-   * the whole board, so a filtered view shows a seller their real position
-   * rather than making everyone who searches their own name number one.
-   */
-  const [query, setQuery] = useState('')
-  /**
-   * Which clock the board reads — see `?basis=` on `/analytics/sellers`.
-   *
-   * A page-local toggle, not a `useDashboardFilters` entry: the basis is a
-   * question this screen alone asks, not a window every screen shares, and
-   * `reset()` clearing it back to the floor's own definition is the right
-   * behaviour rather than a bug to route around.
-   */
-  const [basis, setBasis] = useState<'queue' | 'intake'>('queue')
+  /*
+    ONE CLOCK ON SCREEN. The board reads the floor's own FAKT 1 / FAKT 2 —
+    Тасдиқланди + Тасдиқланмай чиқди and Доставланди, dated by the arrival in
+    C4:NEW — and there is
+    no longer a control to change it. The 'intake' reading still exists behind
+    `?basis=intake` because it is the figure measured against the client's own
+    published dashboard and so the oracle a regression gets checked against;
+    it is not a second board the floor was ever meant to read, and a toggle
+    offering it invited exactly that.
+  */
+  const basis = 'queue' as const
   const apiParams = useMemo(() => ({ ...filterParams, basis }), [filterParams, basis])
 
   const board = useQuery({
@@ -158,17 +176,6 @@ export function SellersPage() {
 
   const data = board.data?.data
   const status = board.isPending ? 'loading' : board.isError ? 'error' : 'ready'
-
-  const visibleRows = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    if (!data) return []
-    if (!needle) return data.rows
-    return data.rows.filter(
-      (row) =>
-        row.fullName.toLowerCase().includes(needle) ||
-        (row.rop ?? '').toLowerCase().includes(needle),
-    )
-  }, [data, query])
 
   /*
     The per-row Prognoz divisor — the client's own `forecast()` carried over
@@ -211,6 +218,7 @@ export function SellersPage() {
    * it may.
    */
   const openFromPodium = (employeeId: string) => {
+    warmSellerChart()
     setTab('sellers')
     setOpenSeller(employeeId)
     requestAnimationFrame(() =>
@@ -225,59 +233,11 @@ export function SellersPage() {
   return (
     <PageShell
       title={t.nav.sellers}
-      description={
-        basis === 'queue'
-          ? 'Kim qancha buyurtma olib keldi — FAKT 1 / FAKT 2, navbatga tushgan sana boʻyicha'
-          : 'Kim qancha buyurtma olib keldi — buyurtma OLINGAN sana boʻyicha'
-      }
+      description="Kim qancha sotdi — FAKT 1 / FAKT 2, navbatga tushgan sana boʻyicha"
       meta={board.data?.meta}
       stale={board.isPlaceholderData}
       accent="var(--series-5)"
-      actions={
-        /*
-          TWO CLOCKS, ONE TOGGLE. «Navbat» is the floor's own FAKT 1 / FAKT 2 —
-          Тасдиқланди / Доставланди, dated by the arrival in C4:NEW. «Yaratilgan
-          sana» is the original reading this screen shipped with, kept as the
-          one figure measured against the client's own published dashboard
-          (see `sellerBoardRepository`) — the oracle a «Navbat» regression gets
-          checked against, not a second board anyone is meant to keep reading.
-        */
-        <div className="flex gap-1" role="group" aria-label="Hisoblash asosi">
-          {(
-            [
-              ['queue', 'Navbat (FAKT 1/2)'],
-              ['intake', 'Yaratilgan sana'],
-            ] as const
-          ).map(([id, label]) => {
-            const active = basis === id
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setBasis(id)}
-                aria-pressed={active}
-                className="focusable rounded-lg px-2.5 py-1.5 text-[12px] font-medium whitespace-nowrap transition-colors"
-                style={{
-                  background: active ? 'var(--surface-raised)' : 'transparent',
-                  color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-                  boxShadow: active ? 'var(--shadow-card)' : 'none',
-                  border: `1px solid ${active ? 'var(--border-strong)' : 'transparent'}`,
-                }}
-              >
-                {label}
-              </button>
-            )
-          })}
-        </div>
-      }
     >
-      <MonthBar
-        preset={filters.preset}
-        from={filters.from}
-        to={filters.to}
-        onPick={(from, to) => setPeriod({ preset: 'custom', from, to })}
-      />
-
       <PodiumHero
         data={data}
         status={status}
@@ -299,8 +259,10 @@ export function SellersPage() {
             Bu sahifadagi raqamlar <strong style={{ color: 'var(--ink-secondary)' }}>
             tasdiqlash navbatiga tushgan sana</strong> (C4:NEW) boʻyicha.{' '}
             <strong style={{ color: 'var(--ink-secondary)' }}>FAKT 1</strong> —{' '}
-            <strong style={{ color: 'var(--ink-secondary)' }}>Тасдиқланди</strong>: mijozga yetib,
-            Доставка ga oʻtgan buyurtmalar puli.{' '}
+            <strong style={{ color: 'var(--ink-secondary)' }}>Тасдиқланди</strong> va{' '}
+            <strong style={{ color: 'var(--ink-secondary)' }}>Тасдиқланмай чиқди</strong>:
+            navbatdan chiqib Доставка ga oʻtgan buyurtmalar puli — mijozga yetib tasdiqlanganlari
+            ham, mijozga yetib boʻlmay, lekin baribir joʻnatilganlari ham.{' '}
             <strong style={{ color: 'var(--ink-secondary)' }}>FAKT 2</strong> —{' '}
             <strong style={{ color: 'var(--ink-secondary)' }}>Доставланди</strong>: yetkazib
             berilganlari.{' '}
@@ -309,15 +271,20 @@ export function SellersPage() {
               is the one that has to say so. The page previously read «FAKT 2,
               shundan Доставланди» — "of which" — and then printed 57.6 mln
               beside 58.8 mln, which reads as a broken page rather than as the
-              fact it is: an order shipped Тасдиқланмай чиқди never entered
-              FAKT 1 and still delivers into FAKT 2.
+              fact it is.
+
+              The example the sentence used to give — an order shipped
+              Тасдиқланмай чиқди — is now INSIDE FAKT 1 (see `FAKT1_OUTCOMES`),
+              so it names the case that is still outside: an order refused in
+              the queue and revived afterwards.
             */}
-            FAKT 2 — FAKT 1 ning bir qismi emas: тасдиқланмай chiqib ketgan buyurtma FAKT 1 ga
-            kirmaydi, lekin yetkazilsa FAKT 2 ga tushadi, shuning uchun FAKT 2 baʼzan FAKT 1 dan
-            katta boʻlishi mumkin. Iyul oyida jonatilib avgustda yetkazilgan buyurtma FAKT 2 ga
+            FAKT 2 — FAKT 1 ning bir qismi emas: navbatda rad etilgan buyurtma keyin tiklanib
+            yetkazilsa FAKT 2 ga tushadi-yu, FAKT 1 ga kirmaydi, shuning uchun FAKT 2 baʼzan
+            FAKT 1 dan katta boʻlishi mumkin. Iyul oyida jonatilib avgustda yetkazilgan buyurtma FAKT 2 ga
             avgustda emas, iyulning oʻzida qoʻshiladi va oy yopilgandan keyin ham oʻsishda davom
             etishi mumkin — chunki sana buyurtma navbatga TUSHGAN kunni bildiradi, YETKAZILGAN
-            kunni emas. Тасдиқланмаган va rad etilgan buyurtmalar FAKT 1 ga kirmaydi.
+            kunni emas. Rad etilgan (Тасдиқланмади), hali navbatda turgan va koʻtarmagan
+            buyurtmalar FAKT 1 ga kirmaydi.
           </>
         ) : (
           <>
@@ -333,7 +300,7 @@ export function SellersPage() {
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {(
               [
                 ['sellers', 'Sotuvchilar'],
@@ -359,25 +326,12 @@ export function SellersPage() {
                 </button>
               )
             })}
-
-            {/* Their per-person tab strip, as one box. See `query`. */}
-            {tab === 'sellers' && (
-              <div className="ml-1 w-48">
-                <SearchInput
-                  value={query}
-                  onChange={setQuery}
-                  placeholder="Sotuvchi yoki ROP…"
-                />
-              </div>
-            )}
           </div>
 
           {data && status === 'ready' && (
             <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
               {tab === 'sellers'
-                ? query.trim()
-                  ? `${formatNumber(visibleRows.length)} / ${formatNumber(data.rows.length)} ta sotuvchi — oʻrin va ulush butun jadval boʻyicha`
-                  : sellersCaption(data)
+                ? sellersCaption(data)
                 : data.totals.teamlessSellers > 0
                   ? `${formatNumber(data.totals.teams)} ta komanda · ${formatNumber(data.totals.teamlessSellers)} ta sotuvchi komandasiz, ulushlar ularsiz`
                   : `${formatNumber(data.totals.teams)} ta komanda`}
@@ -399,21 +353,17 @@ export function SellersPage() {
               body="Tanlangan davrda hech kim buyurtma olmagan."
             />
           ) : tab === 'sellers' ? (
-            visibleRows.length === 0 ? (
-              <EmptyState
-                title="Bu nom topilmadi"
-                body="Qidiruvni oʻzgartiring — bu davrdagi sotuvchilar orasida bunday nom yoʻq."
-              />
-            ) : (
             <SellerTable
-              rows={visibleRows}
+              rows={data.rows}
               openSeller={openSeller}
-              onToggle={(id) => setOpenSeller((current) => (current === id ? null : id))}
+              onToggle={(id) => {
+                warmSellerChart()
+                setOpenSeller((current) => (current === id ? null : id))
+              }}
               apiParams={apiParams}
               projectionDivisor={projectionDivisor}
               planWindowHint={planWindowHint}
             />
-            )
           ) : (
             <TeamTable rows={data.teams} projectionDivisor={projectionDivisor} />
           )}
@@ -431,167 +381,32 @@ export function SellersPage() {
  * as "who is about to cost me money", the floor reads it as "it can be done".
  */
 function sellersCaption(data: SellerBoardDto): string {
+  const base = `${formatNumber(data.totals.sellers)} ta sotuvchi`
+
+  /*
+    THE YOUNG-WINDOW STATE, SAID OUT LOUD.
+
+    Delivery takes days, so on «Bugun» — and on any window opened before the
+    first courier arrives — every row holds zero FAKT 2, the ranking has
+    nothing to sort on and the whole rank column is em dashes. That is correct
+    and it looks broken. Naming it turns a dead-looking board into a board
+    that is waiting, which is what it actually is.
+  */
+  if (data.totals.won.amount === 0) {
+    return data.totals.ordered.amount > 0
+      ? `${base} — ${formatFullUzs(data.totals.ordered.amount)} soʻm tasdiqlangan, hali hech biri yetkazilmagan. Reyting FAKT 2 toʻlgani sayin shakllanadi.`
+      : `${base} — bu davrda hali harakat yoʻq.`
+  }
+
   const near = data.rows.filter(
     (r) => r.bonus.toNextPercent !== null && r.bonus.toNextPercent >= 90,
   ).length
-  const base = `${formatNumber(data.totals.sellers)} ta sotuvchi — davrda buyurtma olganlar`
+  const withMoney = data.rows.filter((r) => r.won.amount > 0).length
+
+  const body = `${base} · ${formatNumber(withMoney)} tasida FAKT 2 bor`
   return near > 0
-    ? `${base} · ${formatNumber(near)} tasi bonus darajasiga 90%+ yaqin`
-    : base
-}
-
-// ---------------------------------------------------------------------------
-// The month bar — the client's `moybar`
-// ---------------------------------------------------------------------------
-
-/** How many months back the bar offers. Their page publishes three. */
-const MONTH_CHOICES = 4
-
-interface MonthChoice {
-  readonly label: string
-  /** `YYYY-MM-DD`, the first of the month. */
-  readonly from: string
-  /** `YYYY-MM-DD`, the last day — INCLUSIVE, as `setPeriod` expects. */
-  readonly to: string
-}
-
-/**
- * The client's `moybar`, carried over — and pointed at the shared control
- * rather than at a private copy of the window.
- *
- * Their page holds its own months and nothing else on their site moves when
- * you press one. Here a month button writes the DASHBOARD's window
- * (`preset=custom` with explicit bounds, which the period picker already
- * speaks), so pressing «Iyul 2026» is the same act as choosing that range in
- * the picker: it lands in the URL, survives a refresh, and can be pasted into
- * Telegram. The bar is a shortcut to the control, not a second opinion about
- * what "now" means — which is the one thing the page's header comment says
- * this port must not introduce.
- *
- * MOUNTED-ONLY, on purpose. "Which month is this" is answered from the
- * clock, and the server's clock and the reader's are not required to agree
- * about it — at 00:00 on the first of a month they differ, and the mismatch
- * would be a hydration error on the one night nobody is watching. The row
- * keeps its height while it is empty so nothing below it jumps.
- */
-function MonthBar({
-  preset,
-  from,
-  to,
-  onPick,
-}: {
-  preset: string
-  from?: string
-  to?: string
-  onPick: (from: string, to: string) => void
-}) {
-  const months = useSyncExternalStore(subscribeNever, monthsSnapshot, serverMonths)
-
-  return (
-    <div className="flex min-h-[30px] flex-wrap items-center gap-1.5" role="group" aria-label="Oy tanlash">
-      {months.map((month) => {
-        const active = preset === 'custom' && from === month.from && to === month.to
-        return (
-          <button
-            key={month.from}
-            type="button"
-            onClick={() => onPick(month.from, month.to)}
-            aria-pressed={active}
-            className="focusable rounded-lg px-2.5 py-1 text-[12px] font-medium whitespace-nowrap transition-colors"
-            style={{
-              background: active ? 'var(--surface-raised)' : 'transparent',
-              color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-              boxShadow: active ? 'var(--shadow-card)' : 'none',
-              border: `1px solid ${active ? 'var(--border-strong)' : 'var(--border)'}`,
-            }}
-          >
-            {month.label}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-/*
-  The month list is a CLIENT-ONLY value, served through useSyncExternalStore.
-
-  "Which month is this" is answered from the clock, and the server's clock and
-  the reader's are not required to agree about it: at 00:00 on the first of a
-  month they name different months, and rendering one on the server and the
-  other in the browser is a hydration error on the one night nobody is
-  watching. `getServerSnapshot` returns nothing, so the row ships empty and
-  the browser fills it on the first paint — and the row holds its height while
-  it is empty, so nothing below it jumps.
-
-  The snapshot must be referentially stable or React re-renders forever, so
-  the list is cached and rebuilt only when the current month actually changes
-  — which also lets a tab left open overnight pick up the new month.
-*/
-const NO_MONTHS: readonly MonthChoice[] = Object.freeze([])
-
-let monthCache: { key: string; value: readonly MonthChoice[] } | null = null
-
-function subscribeNever(): () => void {
-  return () => {}
-}
-
-function serverMonths(): readonly MonthChoice[] {
-  return NO_MONTHS
-}
-
-function monthsSnapshot(): readonly MonthChoice[] {
-  const key = appZoneMonthKey()
-  if (!monthCache || monthCache.key !== key) {
-    monthCache = { key, value: recentMonths(MONTH_CHOICES) }
-  }
-  return monthCache.value
-}
-
-/** `YYYY-MM` as the application's zone reads it right now. */
-function appZoneMonthKey(): string {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: APP_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(new Date())
-  const year = parts.find((p) => p.type === 'year')?.value ?? '1970'
-  const month = parts.find((p) => p.type === 'month')?.value ?? '01'
-  return `${year}-${month}`
-}
-
-/**
- * The last `count` calendar months, newest first, in the application's zone.
- *
- * Built from the zone's own wall-clock fields rather than from the browser's:
- * a reader in Tashkent and a reader abroad must be offered the same months,
- * and `new Date().getMonth()` would give them different ones for several
- * hours a day. `Date.UTC` then does the month arithmetic on plain integers,
- * so the 31st rolling back into a 30-day month cannot overflow.
- */
-function recentMonths(count: number): MonthChoice[] {
-  const [yearText, monthText] = appZoneMonthKey().split('-')
-  const year = Number(yearText)
-  const month = Number(monthText) - 1
-
-  const out: MonthChoice[] = []
-  for (let back = 0; back < count; back++) {
-    const start = new Date(Date.UTC(year, month - back, 1))
-    // Day zero of the NEXT month is the last day of this one, in every month
-    // length and every leap year, without a table.
-    const end = new Date(Date.UTC(year, month - back + 1, 0))
-    out.push({
-      label: formatMonthLabel(start.getUTCFullYear(), start.getUTCMonth()),
-      from: isoDay(start),
-      to: isoDay(end),
-    })
-  }
-  return out
-}
-
-/** `YYYY-MM-DD` from a UTC-constructed calendar date. */
-function isoDay(date: Date): string {
-  return date.toISOString().slice(0, 10)
+    ? `${body} · ${formatNumber(near)} tasi bonus darajasiga 90%+ yaqin`
+    : body
 }
 
 // ---------------------------------------------------------------------------
@@ -613,10 +428,11 @@ function isoDay(date: Date): string {
  * so the three columns literally form a podium on wide screens.
  *
  * MEDALS ONLY FOR WON MONEY — the table's `ranked` rule, enforced here by
- * construction: the podium renders only rows with `won.amount > 0`, so a
- * short window where nobody has won yet shows the open-gate state instead of
- * handing out gold for a tie-break. That state still carries a real measured
- * number (the period's intake) rather than a zero pretending to be a fact.
+ * construction: a row with neither FAKT 2 nor FAKT 1 has done nothing to
+ * rank, and the open-gate state appears instead of gold handed out on a
+ * tie-break. Where FAKT 2 is still zero across the floor — most of a working
+ * day, since delivery takes days — the places are decided by FAKT 1 and each
+ * card says so, rather than leading with a zero about a real person.
  *
  * The footer is the pace of the race: the DTO's forecast, which this page
  * fetched and never showed. "At this pace the floor finishes at X" is the
@@ -635,7 +451,18 @@ function PodiumHero({
   onRetry: () => void
   onOpenSeller: (employeeId: string) => void
 }) {
-  const winners = data ? data.rows.filter((r) => r.won.amount > 0).slice(0, 3) : []
+  /*
+    THE TOP THREE OF WHOEVER HAS MONEY, not only of whoever has delivered.
+
+    Delivery takes days, so for most of a working day nobody has FAKT 2 and
+    the podium stood empty over a floor that had confirmed 148 mln soʻm
+    between 55 people. The board ranks FAKT 2 first and FAKT 1 second — the
+    client's own rule — so the podium shows the same three people the table
+    puts on top, and the card states which figure earned the place.
+  */
+  const winners = data
+    ? data.rows.filter((r) => r.won.amount > 0 || r.ordered.amount > 0).slice(0, 3)
+    : []
 
   return (
     <section className="rise" aria-label="Davr peshqadamlari">
@@ -652,7 +479,7 @@ function PodiumHero({
               Davr peshqadamlari
             </h2>
             <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-              Yutilgan buyurtma puli boʻyicha — medal faqat yutilgan pul uchun
+              Avval FAKT 2 (yetkazilgan), teng boʻlsa FAKT 1 (tasdiqlangan) boʻyicha
             </p>
           </header>
 
@@ -690,18 +517,17 @@ function PodiumHero({
                 Birinchi yutilgan buyurtma podiumni yoqadi. Hozircha olingan buyurtma puli:
               </p>
               <div className="mt-2.5">
-                <Tooltip content={<span className="tabular">{formatUzs(data.totals.ordered.amount)}</span>}>
-                  <span
-                    tabIndex={0}
-                    className="focusable figure-hero inline-block rounded-[var(--radius-panel-sm)]"
-                    style={{ color: 'var(--ink-primary)' }}
-                  >
-                    <AnimatedNumber value={data.totals.ordered.amount} format={formatCompactUzs} />
-                    <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
-                      soʻm
-                    </span>
+                {/* No tooltip and no tab stop: the figure IS the exact soʻm —
+                    see `formatFullUzs`. */}
+                <span
+                  className="figure-hero figure-sum-hero inline-block"
+                  style={{ color: 'var(--ink-primary)' }}
+                >
+                  <AnimatedNumber value={data.totals.ordered.amount} format={formatFullUzs} />
+                  <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
+                    soʻm
                   </span>
-                </Tooltip>
+                </span>
               </div>
               <p className="mt-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
                 {formatNumber(data.totals.orders)} ta buyurtma olingan — gʻolib hali aniqlanmagan
@@ -762,28 +588,36 @@ const MEDAL_TOKENS = [
   'var(--medal-bronze)',
 ] as const
 
-/** «Aziza Karimova» → «AK» — the first letters of the first two words. */
-function initials(fullName: string): string {
-  const words = fullName.trim().split(/\s+/)
-  const letters = (words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')
-  return letters ? letters.toUpperCase() : '•'
-}
-
 /**
- * The face of a ceremony card. The CRM carries no portraits, so two initials
- * in the seat's metal ring do the "person, not row" work — and the champion
- * wears the crown, because the floor should recognise its leader before it
- * reads a name. All of it decorative: the name itself is the button beside it.
+ * The face of a ceremony card: the seat's number in its own metal ring, and
+ * a crown on the champion — the floor should see WHICH PLACE it is looking at
+ * before it reads a name, and the name is written in full immediately below.
+ * All of it decorative; see the note inside for what carries the rank.
  */
 function PodiumAvatar({
-  name,
+  place,
   size,
   crowned = false,
 }: {
-  name: string
+  place: number
   size: number
   crowned?: boolean
 }) {
+  /*
+    THE RING HOLDS THE PLACE, NOT THE PERSON.
+
+    It used to hold two initials, and the client's note on 2026-09-04 is the
+    right reading of it: the name is written in full immediately below, so the
+    letters said nothing the card had not already said, and on this portal
+    they were often wrong anyway — the floor badge is a number, so
+    «Sirojov 115 Davlatbek» came out «S1». The one fact the seat has that the
+    name does not is WHICH SEAT IT IS, and that is now what it shows, set in
+    the seat's own metal.
+
+    Still decorative: the plaque above spells «1-oʻrin» for a screen reader and
+    the pedestal below repeats the numeral, so nothing here is the only carrier
+    of the rank.
+  */
   return (
     <span className="relative inline-flex" aria-hidden="true">
       {crowned && (
@@ -801,17 +635,18 @@ function PodiumAvatar({
       )}
       <span className="medal-ring">
         <span
-          className="flex items-center justify-center rounded-full font-semibold"
+          className="tabular flex items-center justify-center rounded-full font-extrabold"
           style={{
             width: size,
             height: size,
             background: 'var(--surface-raised)',
-            color: 'var(--ink-primary)',
-            fontSize: Math.round(size * 0.32),
-            letterSpacing: '0.03em',
+            color: 'var(--metal)',
+            fontSize: Math.round(size * 0.52),
+            letterSpacing: '-0.02em',
+            lineHeight: 1,
           }}
         >
-          {initials(name)}
+          {place}
         </span>
       </span>
     </span>
@@ -856,8 +691,21 @@ function PodiumStep({
   const seat =
     winnersCount === 3 ? (place === 2 ? 'sm:order-first' : place === 3 ? 'sm:order-last' : '') : ''
 
-  const gap = leader.won.amount - row.won.amount
-  const closeness = leader.won.amount > 0 ? (row.won.amount / leader.won.amount) * 100 : 0
+  /*
+    THE CARD SHOWS THE FIGURE THAT EARNED THE PLACE.
+
+    Ranking reads FAKT 2 first and FAKT 1 second, so for most of a working
+    day — before the first courier arrives — the places are decided by FAKT 1
+    and a card leading with «0 soʻm» would be reporting the wrong number about
+    the right person. `basis` picks the one that is actually ordering the
+    board right now, and the caption under it says which.
+  */
+  const onDelivered = leader.won.amount > 0
+  const figure = onDelivered ? row.won.amount : row.ordered.amount
+  const leaderFigure = onDelivered ? leader.won.amount : leader.ordered.amount
+
+  const gap = leaderFigure - figure
+  const closeness = leaderFigure > 0 ? (figure / leaderFigure) * 100 : 0
 
   const name = (
     <button
@@ -886,7 +734,7 @@ function PodiumStep({
         </p>
 
         <div className={isLeader ? 'mt-5' : 'mt-3'}>
-          <PodiumAvatar name={row.fullName} size={seatSpec.avatar} crowned={isLeader} />
+          <PodiumAvatar place={place} size={seatSpec.avatar} crowned={isLeader} />
         </div>
 
         <div className="mt-2.5 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
@@ -897,31 +745,45 @@ function PodiumStep({
         </div>
 
         <div className={isLeader ? 'mt-3' : 'mt-2'}>
-          <Tooltip content={<span className="tabular">{formatUzs(row.won.amount)}</span>}>
-            {isLeader ? (
-              <span
-                tabIndex={0}
-                className="focusable figure-hero inline-block rounded-[var(--radius-panel-sm)]"
-                style={{ color: 'var(--ink-primary)' }}
-              >
-                <AnimatedNumber value={row.won.amount} format={formatCompactUzs} duration={900} />
-                <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
-                  soʻm
-                </span>
+          {/*
+            THE WHOLE SUM, so the card can be read against the floor's own
+            board — and therefore no tooltip and no tab stop, which existed
+            only to reveal the digits the compact reading hid.
+
+            Both sizes live in globals.css (`.figure-sum-hero`,
+            `.figure-sum-runner`) against the podium's measured tracks: a
+            runner-up's column is 1fr beside the leader's 1.3fr, which is
+            121px wide at the sm breakpoint — thirteen digits at the old 22px
+            overran it by half a card.
+          */}
+          {isLeader ? (
+            <span
+              className="figure-hero figure-sum-hero inline-block"
+              style={{ color: 'var(--ink-primary)' }}
+            >
+              <AnimatedNumber value={figure} format={formatFullUzs} duration={900} />
+              <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
+                soʻm
               </span>
-            ) : (
-              <span
-                tabIndex={0}
-                className="focusable figure inline-block rounded text-[22px] leading-none font-semibold"
-                style={{ color: 'var(--ink-primary)' }}
-              >
-                {formatCompactUzs(row.won.amount)}
-                <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
-                  soʻm
-                </span>
+            </span>
+          ) : (
+            <span
+              className="figure figure-sum-runner inline-block leading-none font-semibold"
+              style={{ color: 'var(--ink-primary)' }}
+            >
+              {formatFullUzs(figure)}
+              <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
+                soʻm
               </span>
-            )}
-          </Tooltip>
+            </span>
+          )}
+          {/* Which of the two put them here. Silent on the delivered reading,
+              because that is the one the page's every other label assumes. */}
+          {!onDelivered && (
+            <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              FAKT 1 · tasdiqlangan
+            </p>
+          )}
         </div>
 
         {isLeader ? (
@@ -942,11 +804,11 @@ function PodiumStep({
             <div className="mt-2">
               {row.bonus.earned.amount > 0 ? (
                 <StatusChip tone="good">
-                  {formatCompactUzs(row.bonus.earned.amount)} soʻm bonus
+                  {formatFullUzs(row.bonus.earned.amount)} soʻm bonus
                 </StatusChip>
               ) : row.bonus.toNext !== null ? (
                 <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                  Bonusgacha +{formatCompactUzs(row.bonus.toNext.amount)} kerak
+                  Bonusgacha +{formatFullUzs(row.bonus.toNext.amount)} kerak
                 </span>
               ) : null}
             </div>
@@ -970,7 +832,7 @@ function PodiumStep({
               >
                 Marragacha{' '}
                 <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
-                  +{formatCompactUzs(gap)}
+                  +{formatFullUzs(gap)}
                 </span>{' '}
                 soʻm
               </p>
@@ -1038,15 +900,9 @@ function ForecastStrip({ data }: { data: SellerBoardDto }) {
         {forecast.projected !== null ? (
           <>
             Shu surʼatda davr oxirida ≈{' '}
-            <Tooltip content={<span className="tabular">{formatUzs(forecast.projected.amount)}</span>}>
-              <strong
-                tabIndex={0}
-                className="tabular focusable rounded font-medium"
-                style={{ color: 'var(--ink-primary)' }}
-              >
-                {formatCompactUzs(forecast.projected.amount)}
-              </strong>
-            </Tooltip>{' '}
+            <strong className="tabular font-medium" style={{ color: 'var(--ink-primary)' }}>
+              {formatFullUzs(forecast.projected.amount)}
+            </strong>{' '}
             soʻm yutiladi
           </>
         ) : forecast.elapsedPercent >= 100 ? (
@@ -1098,8 +954,38 @@ function TotalsBand({
         label="FAKT 1 · tasdiqlangan"
         value={totals ? totals.ordered.amount : null}
         unit="money"
+        /*
+          THE SUM, TO THE LAST DIGIT, everywhere on this board.
+
+          The floor does not scan these two tiles, it reconciles them: against
+          the Тасдиқлаш kanban, against the bot's own Telegram totals, against
+          the client's published page. «106 mln» cannot be compared with
+          «106 432 000» without opening a tooltip, and this is the screen where
+          that comparison is the whole point. `money="full"` carries the
+          format, the size and the dropped tooltip together — see StatTile.
+        */
+        money="full"
         status={status}
-        hint={totals ? `${formatNumber(totals.orders)} ta buyurtma` : undefined}
+        /*
+          BOTH COUNTS, because the two screens print both and neither used to
+          say so. `orders` is the part that left the queue as an order —
+          Тасдиқланди plus Тасдиқланмай чиқди, exactly what FAKT 1's money is
+          made of — while `cohortOrders` is every order that reached the queue
+          in this window, which is the number Tasdiqlash navbati shows.
+          August: 2 874 against 3 228. A reader comparing the two pages was
+          left with two true figures 354 apart and nothing to reconcile them.
+
+          «navbatdan chiqdi», not «tasdiqlangan»: the count covers two of the
+          board's states now, and naming it after one of them would send a
+          reader looking for the difference on the wrong tile.
+        */
+        hint={
+          totals
+            ? totals.cohortOrders > totals.orders
+              ? `${formatNumber(totals.orders)} ta navbatdan chiqdi · navbatda jami ${formatNumber(totals.cohortOrders)} ta`
+              : `${formatNumber(totals.orders)} ta buyurtma`
+            : undefined
+        }
       />
       {/*
         «FAKT 2», NOT «shundan yutilgani» — the word was a lie about the
@@ -1118,6 +1004,7 @@ function TotalsBand({
         label="FAKT 2 · yetkazilgan"
         value={totals ? totals.won.amount : null}
         unit="money"
+        money="full"
         status={status}
         hint={
           totals ? `${formatNumber(totals.wonOrders)} ta yakunlangan buyurtma` : undefined
@@ -1151,6 +1038,7 @@ function TotalsBand({
         label="Bonus jamgʻarmasi"
         value={totals ? totals.bonusPayable.amount : null}
         unit="money"
+        money="full"
         status={status}
         hint={
           totals
@@ -1177,18 +1065,47 @@ function TotalsBand({
 function Rank({ rank, ranked = true }: { rank: number; ranked?: boolean }) {
   const medal = ranked && rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] : null
 
+  /*
+    THE PLACE, AT THE SIZE A PLACE DESERVES.
+
+    On the podium rows the ordinal is set in the row's own metal at 19px — the
+    same varnish the rail and the avatar ring wear, and decorative by the same
+    contract: the medal glyph sits beside it and the aria-label spells the
+    place out, so the rank survives with the colour gone. Everyone else keeps
+    the quiet tabular figure, which is what makes the top three read as
+    somewhere to get to.
+  */
+  if (!ranked) {
+    return (
+      <span
+        className="tabular inline-flex w-10 shrink-0 justify-end text-xs"
+        style={{ color: 'var(--ink-muted)' }}
+        aria-label="Hali yetkazilgan puli yoʻq"
+      >
+        —
+      </span>
+    )
+  }
+
+  if (medal) {
+    return (
+      <span className="inline-flex w-10 shrink-0 items-center justify-end gap-1">
+        <span aria-hidden="true" className="text-[13px] leading-none">
+          {medal}
+        </span>
+        <span className="rank-num" aria-label={`${rank}-oʻrin`}>
+          {rank}
+        </span>
+      </span>
+    )
+  }
+
   return (
     <span
-      className="tabular inline-flex w-9 shrink-0 justify-end text-xs font-semibold"
-      style={{ color: ranked && rank <= 3 ? 'var(--ink-primary)' : 'var(--ink-muted)' }}
+      className="tabular inline-flex w-10 shrink-0 justify-end text-xs font-medium"
+      style={{ color: 'var(--ink-secondary)' }}
     >
-      {!ranked ? (
-        <span aria-label="Hali yutilgan puli yoʻq">—</span>
-      ) : medal ? (
-        <span aria-label={`${rank}-oʻrin`}>{medal}</span>
-      ) : (
-        rank
-      )}
+      {rank}
     </span>
   )
 }
@@ -1240,6 +1157,29 @@ function SellerTable({
   /** The plan's own span, when the board found targets. See SellersPage. */
   planWindowHint?: string
 }) {
+  /*
+    HOW WIDE THE DRILL-DOWN MAY BE.
+
+    The panel lives in a `<td colSpan>`, so it inherits the table's 1 220px
+    minimum — but the reader only ever sees the container's width. On a 1 280
+    screen that hid the fourth tile column and the right quarter of the daily
+    chart until they scrolled sideways, which is not something anyone does to
+    read their own numbers. Measured once on mount and on resize; the panel
+    then pins itself to the left edge of the scroll box and takes exactly the
+    visible width.
+  */
+  const scrollBox = useRef<HTMLDivElement | null>(null)
+  const [visibleWidth, setVisibleWidth] = useState<number | null>(null)
+  useEffect(() => {
+    const box = scrollBox.current
+    if (!box) return
+    const observer = new ResizeObserver(([entry]) => {
+      setVisibleWidth(entry ? Math.round(entry.contentRect.width) : null)
+    })
+    observer.observe(box)
+    return () => observer.disconnect()
+  }, [])
+
   /**
    * The bar's ceiling is the biggest intake on the board, so every row's two
    * layers are read against one scale — and the two layers state exactly the
@@ -1277,8 +1217,11 @@ function SellerTable({
         a page that does not scroll. Eighty gives the panel room without
         letting the closed table run away with the viewport.
       */}
-      <div className={`${openSeller ? 'max-h-[80dvh]' : 'max-h-[60dvh]'} overflow-auto`}>
-        <table className="w-full" style={{ minWidth: 1320 }}>
+      <div
+        ref={scrollBox}
+        className={`${openSeller ? 'max-h-[80dvh]' : 'max-h-[60dvh]'} overflow-auto`}
+      >
+        <table className="w-full" style={{ minWidth: 1220 }}>
           <thead>
             <tr>
               {[
@@ -1289,16 +1232,19 @@ function SellerTable({
                 ['FAKT 1 · tasdiqlangan', 'right'],
                 ['Tranz.', 'right'],
                 ['Lid', 'right'],
-                ['Konv. (lid)', 'right'],
-                ['Konversiya', 'right'],
+                ['Konv.', 'right'],
                 ['Plan bajarish', 'right'],
                 ['Prognoz', 'right'],
                 ['Bonus', 'right'],
               ].map(([label, align]) => (
                 <th
                   key={label}
+                  scope="col"
                   className="eyebrow sticky top-0 z-[1] px-2 pt-1 pb-2 whitespace-nowrap"
-                  style={{ textAlign: align as 'left' | 'right', background: 'var(--surface)' }}
+                  /* --surface-sunken, the token every other sticky header in
+                     the app uses: --surface is the card's own colour, so in
+                     light theme the header vanished into the card behind it. */
+                  style={{ textAlign: align as 'left' | 'right', background: 'var(--surface-sunken)' }}
                 >
                   {label}
                 </th>
@@ -1320,6 +1266,7 @@ function SellerTable({
                   apiParams={apiParams}
                   projectionDivisor={projectionDivisor}
                   planWindowHint={planWindowHint}
+                  visibleWidth={visibleWidth}
                 />
               )
             })}
@@ -1332,13 +1279,12 @@ function SellerTable({
         surʼatda davr oxirida yetkaziladigan pul. Oldingi oʻringacha qancha
         qolgani — sotuvchi nomini bosing.
         <br />
-        <strong style={{ color: 'var(--ink-secondary)' }}>Konv. (lid)</strong> — mijoz
-        dashboardidagi konversiya: buyurtma / lid. <strong style={{ color: 'var(--ink-secondary)' }}>
-        Konversiya</strong> — bizniki: yutilgan / hal boʻlgan buyurtma. Ikkalasi ham
-        toʻgʻri, savoli boshqa. <strong style={{ color: 'var(--ink-secondary)' }}>Bonus</strong>{' '}
+        <strong style={{ color: 'var(--ink-secondary)' }}>Konv.</strong> — yetkazilgan / hal
+        boʻlgan buyurtma. Mijozning taxtasi bu ustunni buyurtma / lid deb sanaydi; lid manbasi
+        ulanganda ikkinchi oʻlchov ham qoʻshiladi. <strong style={{ color: 'var(--ink-secondary)' }}>Bonus</strong>{' '}
         faqat 107–147 raqamli sotuvchilarga toʻlanadi — boshqalarda katak boʻsh turadi.{' '}
         <span className="inline-flex items-center gap-1">
-          Lid va Plan ustunlari hozircha boʻsh
+          Lid ustuni hozircha boʻsh
           <InfoTip content={<span>{NO_LEAD_SOURCE}</span>} label="Lid nega boʻsh" />
         </span>
       </p>
@@ -1402,7 +1348,7 @@ function ChaseCell({
         className={`tabular focusable rounded text-[11px] whitespace-nowrap ${near ? 'font-medium' : ''}`}
         style={{ color: near ? 'var(--ink-primary)' : 'var(--ink-secondary)' }}
       >
-        +{formatCompactUzs(gap)}
+        +{formatFullUzs(gap)}
       </span>
     </Tooltip>
   )
@@ -1418,6 +1364,7 @@ function SellerRows({
   apiParams,
   projectionDivisor,
   planWindowHint,
+  visibleWidth,
 }: {
   row: SellerBoardRowDto
   ahead: SellerBoardRowDto | null
@@ -1428,59 +1375,69 @@ function SellerRows({
   apiParams: Record<string, string | number>
   projectionDivisor: number | null
   planWindowHint?: string
+  visibleWidth?: number | null
 }) {
-  const podium = row.rank <= 3 && row.won.amount > 0
-  const metal = !podium
-    ? null
-    : row.rank === 1
-      ? MEDAL_TOKENS[0]
-      : row.rank === 2
-        ? MEDAL_TOKENS[1]
-        : MEDAL_TOKENS[2]
+  /*
+    A PLACE IS ONLY A PLACE ONCE SOMETHING HAS BEEN DELIVERED.
+
+    On a young window — «Bugun» before the first courier arrives — every row
+    holds zero FAKT 2 and the order is decided by a tie-break, so nobody wears
+    metal. The table says «—» in the rank column instead of handing out gold
+    for nothing, and the caption above explains why.
+  */
+  const ranked = row.won.amount > 0 || row.ordered.amount > 0
+  const podium = row.rank <= 3 && ranked
 
   return (
     <>
+      {/*
+        THE TABLE IS THE PODIUM'S CONTINUATION, not a list under it.
+
+        This is the screen the sellers open, and the top places have to feel
+        like places all the way down the page — the ceremony used to stop at
+        the fold, with the first three rows differing from the rest by an
+        eight-percent wash. `.rank-row` carries a metal rail and a wash that
+        fades across the row from the rank; see the RANKED ROWS block in
+        globals.css for why the metal is licensed here and what still carries
+        the rank without it.
+      */}
       <tr
         id={`seller-row-${row.employeeId}`}
-        className="border-b"
+        className={`border-b transition-colors hover:bg-[var(--surface-sunken)] ${
+          podium ? `rank-row rank-${row.rank}` : ''
+        }`}
         style={{
           borderColor: 'var(--grid)',
-          /*
-            The podium rows echo the podium above them: a faint wash of their
-            own metal plus a stripe on the rank cell — chrome, per the header
-            contract, layered over the medal the cell already shows. The open
-            drill-down row takes the sunken token instead, so a click that
-            arrived from the podium visibly lands somewhere.
-          */
-          background: open
-            ? 'var(--surface-sunken)'
-            : metal
-              ? `color-mix(in oklab, ${metal} 8%, transparent)`
-              : undefined,
+          // The open drill-down takes the sunken token, so a click that
+          // arrived from the podium visibly lands somewhere.
+          background: open ? 'var(--surface-sunken)' : undefined,
         }}
       >
-        <td
-          className="px-2 py-2"
-          style={metal ? { boxShadow: `inset 3px 0 0 ${metal}` } : undefined}
-        >
-          <Rank rank={row.rank} ranked={row.won.amount > 0} />
+        <td className={podium ? 'px-2 py-3' : 'px-2 py-2'}>
+          <Rank rank={row.rank} ranked={ranked} />
         </td>
-        <td className="px-2 py-2">
+        <td className={podium ? 'px-2 py-3' : 'px-2 py-2'}>
           {/*
             The name is the disclosure trigger — one target, not a name plus a
             separate chevron, so the row has a single obvious action.
           */}
-          <button
-            type="button"
-            onClick={onToggle}
-            aria-expanded={open}
-            className={`focusable rounded text-left text-[12.5px] underline-offset-2 hover:underline ${
-              podium ? 'font-semibold' : 'font-medium'
-            }`}
-            style={{ color: 'var(--ink-primary)' }}
-          >
-            {row.fullName}
-          </button>
+          {/* No ring here. The # column beside it already carries the medal
+              and the ordinal in the row's metal; a second mark on the same
+              row repeats the place instead of adding anything, and initials
+              would repeat the name it sits next to. */}
+          <span className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-expanded={open}
+              className={`focusable rounded text-left underline-offset-2 hover:underline ${
+                podium ? 'text-[13.5px] font-semibold' : 'text-[12.5px] font-medium'
+              }`}
+              style={{ color: 'var(--ink-primary)' }}
+            >
+              {row.fullName}
+            </button>
+          </span>
           {/*
             Two lengths on one track, the same grammar as the drill-down's day
             bars: the light layer is the intake this seller took, the dark
@@ -1523,29 +1480,26 @@ function SellerRows({
             <ChaseCell row={row} ahead={ahead} />
           </div>
         </td>
-        <td className="px-2 py-2">
+        <td className={podium ? 'px-2 py-3' : 'px-2 py-2'}>
           <TeamBadge rop={row.rop} />
         </td>
         {/* FAKT 2 — Доставланди. Their leading money column, and ours. */}
-        <td className="tabular px-2 py-2 text-right text-xs font-medium" style={{ color: 'var(--ink-primary)' }}>
-          <Tooltip content={<span className="tabular">{formatUzs(row.won.amount)}</span>}>
-            <span tabIndex={0} className="focusable rounded">
-              {formatCompactUzs(row.won.amount)}
-            </span>
-          </Tooltip>
+        <td
+          className={`tabular px-2 text-right font-semibold ${
+            podium ? 'py-3 text-[13.5px]' : 'py-2 text-[12.5px]'
+          }`}
+          style={{ color: 'var(--ink-primary)' }}
+        >
+          {formatFullUzs(row.won.amount)}
           {row.sharePercent !== null && (
             <span className="ml-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
               {formatPercent(row.sharePercent, 1)}
             </span>
           )}
         </td>
-        {/* FAKT 1 — Тасдиқланди. */}
+        {/* FAKT 1 — Тасдиқланди + Тасдиқланмай чиқди. See `FAKT1_OUTCOMES`. */}
         <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
-          <Tooltip content={<span className="tabular">{formatUzs(row.ordered.amount)}</span>}>
-            <span tabIndex={0} className="focusable rounded">
-              {formatCompactUzs(row.ordered.amount)}
-            </span>
-          </Tooltip>
+          {formatFullUzs(row.ordered.amount)}
         </td>
         <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-primary)' }}>
           {formatNumber(row.orders)}
@@ -1557,9 +1511,6 @@ function SellerRows({
         </td>
         <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
           <LeadCell leads={row.leads} />
-        </td>
-        <td className="px-2 py-2 text-right">
-          <LeadConversionCell percent={row.leadConversionPercent} />
         </td>
         <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
           {row.conversionPercent === null ? NO_VALUE : formatPercent(row.conversionPercent)}
@@ -1577,7 +1528,14 @@ function SellerRows({
 
       {open && (
         <tr>
-          <td colSpan={12} className="px-2 pt-1 pb-4">
+          <td colSpan={11} className="p-0">
+            {/* Pinned to the left edge of the scroll box and sized to what the
+                reader can actually see, so the panel never hides behind a
+                horizontal scroll the table needs and it does not. */}
+            <div
+              className="sticky left-0 px-2 pt-1 pb-4"
+              style={visibleWidth ? { width: visibleWidth } : undefined}
+            >
             <SellerDetail
               employeeId={row.employeeId}
               row={row}
@@ -1586,6 +1544,7 @@ function SellerRows({
               apiParams={apiParams}
               planWindowHint={planWindowHint}
             />
+            </div>
           </td>
         </tr>
       )}
@@ -1636,7 +1595,7 @@ function ForecastCell({
         className="tabular focusable rounded text-xs whitespace-nowrap"
         style={{ color: 'var(--ink-secondary)' }}
       >
-        ≈{formatCompactUzs(projected)}
+        ≈{formatFullUzs(projected)}
       </span>
     </Tooltip>
   )
@@ -1668,27 +1627,6 @@ function LeadCell({ leads }: { leads: number | null }) {
 }
 
 /**
- * Their `Konv.` — orders over LEADS, with their own three thresholds.
- *
- * The 40 / 25 grading is theirs, transcribed from `rankTable()`, and it is
- * mapped onto the status tokens rather than their raw hex: a threshold IS a
- * judgement, which is the one thing the status palette exists for. Null while
- * there are no leads, because a rate with no denominator is not zero.
- */
-function LeadConversionCell({ percent }: { percent: number | null }) {
-  if (percent === null) {
-    return (
-      <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-        {NO_VALUE}
-      </span>
-    )
-  }
-  const tone =
-    percent >= 40 ? 'good' : percent >= 25 ? 'warning' : 'critical'
-  return <StatusChip tone={tone}>{formatPercent(percent)}</StatusChip>
-}
-
-/**
  * Their `Plan bajarish` — the bar, and the percentage beside it.
  *
  * THE BAR CLAMPS AT 100 AND THE NUMBER DOES NOT. That is their behaviour and
@@ -1700,7 +1638,13 @@ function LeadConversionCell({ percent }: { percent: number | null }) {
  * is a claim that the seller missed something; there is nothing to miss.
  */
 function PlanCell({ plan }: { plan: SellerPlanDto }) {
-  if (plan.percent === null || plan.amount === null) {
+  /*
+    Null only when there is nothing to divide by — no target AND no confirmed
+    money. With FAKT 1 on the row the column always has something true to say:
+    the share of it that arrived, which is what the client's own board prints
+    wherever no target exists.
+  */
+  if (plan.percent === null) {
     return (
       <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
         {NO_VALUE}
@@ -1719,7 +1663,9 @@ function PlanCell({ plan }: { plan: SellerPlanDto }) {
     <Tooltip
       content={
         <span className="tabular">
-          Reja {formatUzs(plan.amount.amount)} — bajarilgani {formatPercent(plan.percent)}
+          {plan.amount
+            ? `Reja ${formatUzs(plan.amount.amount)} — bajarilgani ${formatPercent(plan.percent)}`
+            : `FAKT 1 ning ${formatPercent(plan.percent)} i yetkazilgan`}
         </span>
       }
     >
@@ -1738,8 +1684,14 @@ function PlanCell({ plan }: { plan: SellerPlanDto }) {
             }}
           />
         </span>
+        {/*
+          CAPPED IN TEXT AT 999%, not in value. Their own board prints 1343%
+          and 44 029.3% where a plan is a fraction of the month's takings, and
+          one such row sets the width of the whole column. The bar already
+          clamps; this stops the label from doing the same damage sideways.
+        */}
         <span className="tabular text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-          {formatPercent(plan.percent)}
+          {plan.percent > 999 ? '999%+' : formatPercent(plan.percent)}
         </span>
       </span>
     </Tooltip>
@@ -1769,7 +1721,7 @@ function BonusCell({ bonus }: { bonus: SellerBoardRowDto['bonus'] }) {
   }
   if (bonus.earned.amount > 0) {
     return (
-      <StatusChip tone="good">{formatCompactUzs(bonus.earned.amount)}</StatusChip>
+      <StatusChip tone="good">{formatFullUzs(bonus.earned.amount)}</StatusChip>
     )
   }
   if (bonus.toNext === null) {
@@ -1785,8 +1737,8 @@ function BonusCell({ bonus }: { bonus: SellerBoardRowDto['bonus'] }) {
       className={`text-[11px] whitespace-nowrap ${near ? 'font-medium' : ''}`}
       style={{ color: near ? 'var(--ink-secondary)' : 'var(--ink-muted)' }}
     >
-      +{formatCompactUzs(bonus.toNext.amount)}
-      {bonus.nextBonus !== null && <> → {formatCompactUzs(bonus.nextBonus.amount)}</>}
+      +{formatFullUzs(bonus.toNext.amount)}
+      {bonus.nextBonus !== null && <> → {formatFullUzs(bonus.nextBonus.amount)}</>}
     </span>
   )
 }
@@ -1821,7 +1773,7 @@ function SellerDetail({
   })
 
   const rows = days.data?.data ?? []
-  const ranked = row.won.amount > 0
+  const ranked = row.won.amount > 0 || row.ordered.amount > 0
 
   return (
     <div
@@ -1836,9 +1788,23 @@ function SellerDetail({
           </span>
         </p>
         <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          FAKT 2 {formatCompactUzs(row.won.amount)} · yoʻlda{' '}
-          {formatCompactUzs(row.open.amount)} ({formatNumber(row.openOrders)} ta) · bekor{' '}
-          {formatNumber(row.lostOrders)} ta
+          {/*
+            THREE STATES, NOT TWO. «Yoʻlda» is only what is still moving —
+            confirmed, undelivered and OPEN. An order the seller confirmed and
+            then lost used to sit in that same figure (102 orders and
+            176 mln soʻm across July), which read as live work they were still
+            carrying. It has its own clause now, and the queue refusals keep
+            theirs.
+          */}
+          FAKT 2 {formatFullUzs(row.won.amount)} · yoʻlda{' '}
+          {formatFullUzs(row.open.amount)} ({formatNumber(row.openOrders)} ta)
+          {row.lostAfterConfirmOrders > 0 && (
+            <> · chiqqach bekor {formatNumber(row.lostAfterConfirmOrders)} ta</>
+          )}
+          {' '}· navbatda rad {formatNumber(row.lostOrders - row.lostAfterConfirmOrders)} ta
+          {row.cohortOrders > row.orders && (
+            <> · davrda jami {formatNumber(row.cohortOrders)} ta</>
+          )}
         </p>
       </div>
 
@@ -1866,6 +1832,7 @@ function SellerDetail({
           label="FAKT 2 · yetkazilgan"
           value={row.won.amount}
           unit="money"
+          money="full"
           status="ready"
           hint={`${formatNumber(row.wonOrders)} ta buyurtma`}
         />
@@ -1873,12 +1840,14 @@ function SellerDetail({
           label="FAKT 1 · tasdiqlangan"
           value={row.ordered.amount}
           unit="money"
+          money="full"
           status="ready"
         />
         <StatTile
           label="Plan"
           value={row.plan.amount?.amount ?? null}
           unit="money"
+          money="full"
           status="ready"
           hint={row.plan.amount === null ? 'Reja belgilanmagan' : planWindowHint}
         />
@@ -1890,7 +1859,7 @@ function SellerDetail({
           hint="yutilgan / hal boʻlgan buyurtma"
           context={
             <p className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-              Konv. (lid):{' '}
+              Lid boʻyicha:{' '}
               {row.leadConversionPercent === null
                 ? NO_VALUE
                 : formatPercent(row.leadConversionPercent)}
@@ -1902,12 +1871,19 @@ function SellerDetail({
           value={row.plan.percent}
           tone="neutral"
           status="ready"
-          hint={row.plan.percent === null ? 'Reja belgilanmagan' : 'yetkazilgan / reja'}
+          hint={
+            row.plan.percent === null
+              ? 'Hisoblash uchun maʼlumot yoʻq'
+              : row.plan.basis === 'target'
+                ? 'yetkazilgan / reja'
+                : 'FAKT 2 / FAKT 1 — tasdiqlanganning qanchasi yetkazilgani'
+          }
         />
         <StatTile
           label="FOT (ish haqi)"
           value={row.fot?.amount ?? null}
           unit="money"
+          money="full"
           status="ready"
           hint={row.fot === null ? 'Bazada maosh maʼlumoti yoʻq' : undefined}
         />
@@ -1931,7 +1907,7 @@ function SellerDetail({
                     <>teng, bitta yutuq hal qiladi</>
                   ) : (
                     <strong className="tabular font-medium" style={{ color: 'var(--ink-primary)' }}>
-                      +{formatCompactUzs(ahead.won.amount - row.won.amount)}
+                      +{formatFullUzs(ahead.won.amount - row.won.amount)}
                     </strong>
                   )}
                 </span>
@@ -1953,7 +1929,7 @@ function SellerDetail({
                 <>
                   {' '}— 2-oʻrin{' '}
                   <strong className="tabular font-medium" style={{ color: 'var(--ink-primary)' }}>
-                    {formatCompactUzs(row.won.amount - chaser.won.amount)}
+                    {formatFullUzs(row.won.amount - chaser.won.amount)}
                   </strong>{' '}
                   orqada
                 </>
@@ -1966,10 +1942,10 @@ function SellerDetail({
               {/* The meter prints the percentage itself — a second copy of the
                   same figure at a different rounding would read as two facts. */}
               <span className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-                Keyingi daraja {formatCompactUzs(row.bonus.nextFloor.amount)}: yana{' '}
-                {row.bonus.toNext ? `+${formatCompactUzs(row.bonus.toNext.amount)}` : NO_VALUE} kerak
+                Keyingi daraja {formatFullUzs(row.bonus.nextFloor.amount)}: yana{' '}
+                {row.bonus.toNext ? `+${formatFullUzs(row.bonus.toNext.amount)}` : NO_VALUE} kerak
                 {row.bonus.nextBonus && (
-                  <> → {formatCompactUzs(row.bonus.nextBonus.amount)} bonus</>
+                  <> → {formatFullUzs(row.bonus.nextBonus.amount)} bonus</>
                 )}
               </span>
               <div className="mt-1">
@@ -1980,7 +1956,7 @@ function SellerDetail({
           {/* Past the top rung: the ladder is climbed, and that is a state. */}
           {row.bonus.nextFloor === null && row.bonus.earned.amount > 0 && (
             <StatusChip tone="good">
-              Eng yuqori daraja — {formatCompactUzs(row.bonus.earned.amount)} soʻm bonus
+              Eng yuqori daraja — {formatFullUzs(row.bonus.earned.amount)} soʻm bonus
             </StatusChip>
           )}
         </div>
@@ -2045,7 +2021,7 @@ function TeamTable({
         {/* The same columns as the sellers' table, in the same order and the
             same words — their ROP tab and their seller tab are one function
             called twice, and a reader who learns one has learned both. */}
-        <table className="w-full" style={{ minWidth: 1180 }}>
+        <table className="w-full" style={{ minWidth: 1080 }}>
           <thead>
             <tr>
               {[
@@ -2056,15 +2032,18 @@ function TeamTable({
                 ['FAKT 1 · tasdiqlangan', 'right'],
                 ['Tranz.', 'right'],
                 ['Lid', 'right'],
-                ['Konv. (lid)', 'right'],
-                ['Konversiya', 'right'],
+                ['Konv.', 'right'],
                 ['Plan bajarish', 'right'],
                 ['Prognoz', 'right'],
               ].map(([label, align]) => (
                 <th
                   key={label}
+                  scope="col"
                   className="eyebrow sticky top-0 z-[1] px-2 pt-1 pb-2 whitespace-nowrap"
-                  style={{ textAlign: align as 'left' | 'right', background: 'var(--surface)' }}
+                  /* --surface-sunken, the token every other sticky header in
+                     the app uses: --surface is the card's own colour, so in
+                     light theme the header vanished into the card behind it. */
+                  style={{ textAlign: align as 'left' | 'right', background: 'var(--surface-sunken)' }}
                 >
                   {label}
                 </th>
@@ -2073,7 +2052,7 @@ function TeamTable({
           </thead>
           <tbody>
             {rows.map((row) => {
-              const podium = row.rank <= 3 && row.won.amount > 0
+              const podium = row.rank <= 3 && (row.won.amount > 0 || row.ordered.amount > 0)
               // The same metal echo as the sellers' table — chrome only.
               const metal = !podium
                 ? null
@@ -2133,7 +2112,7 @@ function TeamTable({
                     {formatNumber(row.sellers)}
                   </td>
                   <td className="tabular px-2 py-2 text-right text-xs font-medium" style={{ color: 'var(--ink-primary)' }}>
-                    {formatCompactUzs(row.won.amount)}
+                    {formatFullUzs(row.won.amount)}
                     {row.sharePercent !== null && (
                       <span className="ml-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
                         {formatPercent(row.sharePercent, 1)}
@@ -2141,16 +2120,13 @@ function TeamTable({
                     )}
                   </td>
                   <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
-                    {formatCompactUzs(row.ordered.amount)}
+                    {formatFullUzs(row.ordered.amount)}
                   </td>
                   <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-primary)' }}>
                     {formatNumber(row.orders)}
                   </td>
                   <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
                     <LeadCell leads={row.leads} />
-                  </td>
-                  <td className="px-2 py-2 text-right">
-                    <LeadConversionCell percent={row.leadConversionPercent} />
                   </td>
                   <td className="tabular px-2 py-2 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
                     {row.conversionPercent === null ? NO_VALUE : formatPercent(row.conversionPercent)}
@@ -2257,7 +2233,7 @@ function BonusLadder({
               <div className="flex flex-col gap-1 px-4 pt-2.5 pb-3.5">
                 <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
                   <span aria-hidden="true" className="mr-1.5">{tier.glyph}</span>
-                  {formatCompactUzs(tier.floor)} soʻmdan
+                  {formatFullUzs(tier.floor)} soʻmdan
                 </p>
                 {/*
                   Plain text, NOT AnimatedNumber, and the reason is both
@@ -2265,12 +2241,14 @@ function BonusLadder({
                   not arrive from a query, so there is nothing to count up to,
                   and animating it would imply a figure that moves. It also
                   broke hydration: this is the one number on the page the server
-                  renders, and `formatCompactUzs` resolves uz-UZ differently in
-                  Node than in the browser ("1,5 mln" against "1.5 mln"), so the
-                  SSR text and the client text disagreed on first paint.
+                  renders, and a formatter that resolved uz-UZ per engine gave
+                  Node and the browser different separators ("1,5 mln" against
+                  "1.5 mln"), so the SSR text and the client text disagreed on
+                  first paint. `format.ts` states the separators now, and the
+                  full reading goes through the same two constants.
                 */}
                 <p className="figure text-[22px] leading-none font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                  {formatCompactUzs(tier.bonus)}
+                  {formatFullUzs(tier.bonus)}
                   <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
                     soʻm bonus
                   </span>
@@ -2287,7 +2265,7 @@ function BonusLadder({
                   <p className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
                     Eng yaqini: {contender.fullName} —{' '}
                     <span className="tabular font-medium" style={{ color: 'var(--ink-primary)' }}>
-                      +{formatCompactUzs(tier.floor - contender.won.amount)}
+                      +{formatFullUzs(tier.floor - contender.won.amount)}
                     </span>{' '}
                     kerak
                   </p>

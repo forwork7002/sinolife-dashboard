@@ -1,11 +1,11 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 
 import { keepPreviousData, useQueries } from '@tanstack/react-query'
+import dynamic from 'next/dynamic'
 
 import { BarList } from '@/components/charts/BarList'
-import { RevenueTrendChart } from '@/components/charts/RevenueTrendChart'
 import { Sparkline } from '@/components/charts/Sparkline'
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
@@ -28,6 +28,25 @@ import {
 } from '@/lib/api'
 import { NO_VALUE, formatCompactUzs, formatNumber, formatPercent, formatUzs } from '@/lib/format'
 import { t } from '@/lib/messages'
+
+/**
+ * The trend chart arrives on its own, after the page.
+ *
+ * It is the only recharts component on this screen, and recharts is 379 KB
+ * unparsed — 109 KB over the wire, 65% of everything this route downloads.
+ * Loaded with the page it had to parse before hydration, which is before any
+ * of the five queries below is issued; loaded on its own it downloads while
+ * they are in flight and costs the reader nothing.
+ *
+ * `ssr: false` because `ResponsiveContainer` measures the DOM in an effect and
+ * draws an empty box server-side regardless. The fallback is the same
+ * `ChartSkeleton height={300}` the slot already shows while `sales` is
+ * pending, so the chunk landing is not a second visible state.
+ */
+const RevenueTrendChart = dynamic(
+  () => import('@/components/charts/RevenueTrendChart').then((m) => m.RevenueTrendChart),
+  { ssr: false, loading: () => <ChartSkeleton height={300} /> },
+)
 
 /**
  * Money as `/analytics/sales` actually serialises it.
@@ -88,6 +107,18 @@ function formatDays(value: number): string {
 
 export function SalesPage() {
   const { apiParams, filters } = useDashboardFilters()
+
+  /*
+    Start the chart chunk now, not when the data lands.
+
+    The chart renders only once `sales` resolves, so a bare dynamic import
+    would queue the 109 KB fetch BEHIND the API round trip instead of beside
+    it. Fire-and-forget: a failed warm-up is not an error state, and the real
+    import runs again at render.
+  */
+  useEffect(() => {
+    void import('@/components/charts/RevenueTrendChart')
+  }, [])
 
   /**
    * The insights endpoints honour employee / department / source filters but
@@ -811,22 +842,32 @@ function InsightTile({
       </p>
 
       {status === 'loading' ? (
-        // Sized to the 30px figure below, so ready never reflows loading.
-        <div className="skeleton mt-2 h-[30px] w-2/3" role="status">
+        // Sized to the figure below at each breakpoint, so ready never
+        // reflows loading.
+        <div className="skeleton mt-2 h-[26px] w-2/3 sm:h-[30px]" role="status">
           <span className="sr-only">Yuklanmoqda</span>
         </div>
       ) : status === 'error' ? (
         <p
-          className="figure mt-2 text-[30px] leading-none font-semibold"
+          className="figure mt-2 text-[26px] leading-none font-semibold sm:text-[30px]"
           style={{ color: 'var(--status-critical)' }}
           title="Maʼlumot olinmadi"
         >
           <span className="text-base font-medium">Olinmadi</span>
         </p>
       ) : (
-        // A div, not a p: the velocity tile nests its Tooltip trigger here.
+        /*
+          A div, not a p: the velocity tile nests its Tooltip trigger here.
+
+          26px on a phone, 30px from sm up — the same two steps StatTile has
+          always had, and this tile was the one member of the KPI family that
+          skipped them. Four of these sit two-across at 360px, and «47.8 mln
+          soʻm/kun» at a flat 30px ran 13px past the card into main's
+          overflow-x-hidden, so the tile did not scroll — it simply lost the
+          end of its own unit.
+        */
         <div
-          className="figure mt-2 text-[30px] leading-none font-semibold"
+          className="figure mt-2 text-[26px] leading-none font-semibold sm:text-[30px]"
           style={{ color: 'var(--ink-primary)' }}
         >
           {children}

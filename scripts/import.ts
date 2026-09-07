@@ -145,7 +145,7 @@ async function main() {
     }
 
     // ---- Totals, for comparison against Bitrix24's own reports -------------
-    const [pipelines, deals, revenue, all, employees, customers, products, items, history, calls] =
+    const [pipelines, deals, revenue, all, employees, customers, products, items, history] =
       await Promise.all([
         prisma.pipeline.findMany({ orderBy: { sortOrder: 'asc' }, select: { name: true, role: true, _count: { select: { deals: true } } } }),
         prisma.deal.count(),
@@ -160,7 +160,6 @@ async function main() {
         prisma.product.count(),
         prisma.dealItem.count(),
         prisma.dealStageHistory.count(),
-        prisma.callRecord.count(),
       ])
 
     console.log('\n  ' + '━'.repeat(74))
@@ -181,7 +180,6 @@ async function main() {
     console.log(`  Mahsulotlar       : ${products}`)
     console.log(`  Mahsulot qatori   : ${items.toLocaleString('en-US')}`)
     console.log(`  Bosqich tarixi    : ${history.toLocaleString('en-US')}`)
-    console.log(`  Qoʻngʻiroqlar     : ${calls.toLocaleString('en-US')}`)
 
     /**
      * The duplicate guard, stated out loud.

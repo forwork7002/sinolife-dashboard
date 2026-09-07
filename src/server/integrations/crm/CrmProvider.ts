@@ -18,7 +18,6 @@
  */
 
 import type {
-  CallDirectionValue,
   ConfirmStatusValue,
   ConfirmationSignalValue,
   DealStatusValue,
@@ -86,7 +85,19 @@ export interface RawEmployee extends ExternalRecord {
   readonly email?: string
   readonly phone?: string
   readonly position?: string
+  /** The PRIMARY unit — the first of `departmentExternalIds`. */
   readonly departmentExternalId?: string
+  /**
+   * Every unit the source lists this person in, primary first.
+   *
+   * Bitrix24's `UF_DEPARTMENT` is an array and its own org chart counts a
+   * person once in each entry. `departmentExternalId` above is the first of
+   * these and remains what every analytic credits the person to; this is what
+   * the company-structure screen counts. A provider that has no such concept
+   * may leave it undefined — the sync then derives a single membership from
+   * `departmentExternalId`, which is the same answer.
+   */
+  readonly departmentExternalIds?: readonly string[]
   readonly avatarUrl?: string
   readonly isActive: boolean
   readonly hiredAt?: Date
@@ -192,6 +203,16 @@ export interface RawDeal extends ExternalRecord {
   readonly paymentMethodRaw?: string
   readonly productLine?: string
   readonly customerGrade?: string
+  /**
+   * The seller as the SOURCE recorded them at the time of sale, free text.
+   *
+   * Distinct from `employeeExternalId`, which is whoever owns the deal now.
+   * See `UF.OPERATOR_NAME` for the 556-order reason the two are not the same
+   * person. Absent when the source left the field empty.
+   */
+  readonly operatorNameSource?: string
+  /** That operator's team at the time of sale, e.g. «Sevinch(ROP)». */
+  readonly operatorTeamSource?: string
   readonly isReturnCustomer?: boolean
   /** When the deal was created in the SOURCE system, not when we imported it. */
   readonly createdAtSource: Date
@@ -232,19 +253,6 @@ export interface RawStageHistory extends ExternalRecord {
   readonly dealExternalId: string
   readonly stageExternalId: string
   readonly enteredAt: Date
-}
-
-export interface RawCall extends ExternalRecord {
-  readonly employeeExternalId?: string
-  readonly customerExternalId?: string
-  readonly dealExternalId?: string
-  readonly direction: CallDirectionValue
-  readonly phoneNumber?: string
-  readonly startedAt: Date
-  readonly durationSec: number
-  readonly connected: boolean
-  readonly failedCode?: string
-  readonly recordUrl?: string
 }
 
 export interface RawStore extends ExternalRecord {
@@ -325,7 +333,6 @@ export interface CrmProvider {
   fetchDealItems(options?: FetchOptions): Promise<Page<RawDealItem>>
   fetchPayments(options?: FetchOptions): Promise<Page<RawPayment>>
   fetchStageHistory(options?: FetchOptions): Promise<Page<RawStageHistory>>
-  fetchCalls(options?: FetchOptions): Promise<Page<RawCall>>
   fetchStores(options?: FetchOptions): Promise<Page<RawStore>>
   fetchStockLevels(options?: FetchOptions): Promise<Page<RawStockLevel>>
 }

@@ -42,9 +42,17 @@ export type PeriodPreset = (typeof PERIOD_PRESETS)[number] | 'custom'
  * (Kun · Oy · Yil · Oraliq), and keeping them cost a row that ran about 470px
  * and scrolled sideways on a phone.
  *
- * ONE LIST, read by both surfaces that offer presets: this control and the
- * command palette. Two lists drift, and the drift is invisible until somebody
- * reaches for a window on one surface that the other has stopped offering.
+ * ONE LIST, and now a list with ONE reader. It was written for two surfaces —
+ * this control and the ⌘K palette's «Davr» group — because two lists drift and
+ * the drift is invisible until somebody reaches for a window on one surface
+ * that the other has stopped offering. The palette is gone, so both readers
+ * below (the "is a preset lit" test and the button row) are in this file and
+ * nothing outside it imports the name.
+ *
+ * The `export` is therefore vestigial rather than a contract: dropping it is a
+ * behaviour-free tidy for whoever runs the dead-export sweep, and adding a
+ * SECOND surface that offers presets is the one thing that must read this list
+ * rather than restate it.
  */
 export const VISIBLE_PRESETS = ['today', 'yesterday', 'this_month'] as const
 
@@ -61,14 +69,59 @@ export function PeriodFilter({
   from,
   to,
   onChange,
+  muted = false,
+  mutedReason,
+  extra,
 }: {
   value: PeriodPreset
   from?: string
   to?: string
   onChange: (selection: PeriodSelection) => void
+  /**
+   * True while the page on screen is NOT reading this window.
+   *
+   * One page does that on purpose: the confirmation board answers a search
+   * across every date, because the person typing a phone number does not know
+   * which day the order arrived. A date control over rows that ignore it is
+   * the thing the ARCHITECTURE note warns about — a reader assumes it must be
+   * filtering something — so it says so instead of pretending.
+   *
+   * Dimmed and NOT disabled, and not hidden either. Hidden, the row would
+   * reflow under the caret on every search and back again on every clear;
+   * disabled, the window could not be set up before the search is cleared.
+   * The control keeps working; it just stops claiming to be in force.
+   */
+  muted?: boolean
+  /** What to say on hover about why it does not apply. */
+  mutedReason?: string
+  /**
+   * One more chip in the preset group, owned by the page rather than by the
+   * window.
+   *
+   * The confirmation board needs «Жами» — every order ever, no dates — and it
+   * has to sit WITH Bugun / Kecha / Shu oy, because it is the same decision
+   * the reader is making there: how far back does this board reach. Put among
+   * the page's own filters instead, it reads as a narrowing, and «Жами» is the
+   * opposite of one.
+   *
+   * The meaning stays with the page (it sets a mode, not a window); only the
+   * chip's PLACE and its look belong here, so the group cannot end up with two
+   * chips styled by two files.
+   *
+   * While it is active NO date preset lights up: two lit chips would say two
+   * windows are in force, and one of them would be wrong.
+   */
+  extra?: {
+    readonly label: string
+    readonly active: boolean
+    readonly onSelect: () => void
+    readonly title?: string
+  }
 }) {
   const [open, setOpen] = useState(false)
   const container = useRef<HTMLDivElement>(null)
+  /** A custom window, and actually in force — see the picker button below. */
+  const custom = value === 'custom' && !extra?.active
 
   /*
     What the one remaining control says it is showing.
@@ -99,10 +152,16 @@ export function PeriodFilter({
       if (!container.current?.contains(event.target as Node)) setOpen(false)
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      // `defaultPrevented` is the layering contract with the ⌘K palette: its
-      // Escape is preventDefault-ed before this document-level listener runs
-      // (React's delegated handlers were registered first), so one keypress
-      // closes the palette without also folding this popover underneath it.
+      // KEEP THE GUARD. This listener is on `document`, so it fires for every
+      // Escape anywhere on the page, including ones a layer ABOVE this popover
+      // has already answered — React's delegated handlers run first, so by the
+      // time this sees the event a nested handler has had its say. Without
+      // `defaultPrevented`, one keypress closes that layer AND folds this
+      // popover underneath it, and the reader who only meant to dismiss the
+      // thing on top loses the date control they were mid-way through setting.
+      // It was written against the ⌘K palette's Escape and outlived it: the
+      // contract is with any nested handler that preventDefaults Escape, not
+      // with that one deleted component.
       if (event.key === 'Escape' && !event.defaultPrevented) setOpen(false)
     }
 
@@ -129,7 +188,12 @@ export function PeriodFilter({
       The picker popover hangs off THIS wrapper, not the scroller: a popover
       inside an overflow container is clipped by it.
     */
-    <div ref={container} className="relative w-full sm:w-auto">
+    <div
+      ref={container}
+      className="relative w-full sm:w-auto"
+      style={{ opacity: muted ? 0.45 : 1, transition: 'opacity 150ms var(--ease-out)' }}
+      title={muted ? mutedReason : undefined}
+    >
       <div className="flex w-full items-center gap-1.5 sm:w-auto">
         <div
           className="flex shrink-0 items-center gap-0.5 rounded-lg border p-0.5"
@@ -138,7 +202,7 @@ export function PeriodFilter({
           aria-label={t.period.label}
         >
           {VISIBLE_PRESETS.map((preset) => {
-            const active = preset === value
+            const active = preset === value && !extra?.active
             return (
               <button
                 key={preset}
@@ -157,6 +221,23 @@ export function PeriodFilter({
               </button>
             )
           })}
+          {extra && (
+            <button
+              type="button"
+              onClick={extra.onSelect}
+              aria-pressed={extra.active}
+              title={extra.title}
+              // The same classes as the presets beside it, deliberately: this
+              // is one control with four choices, not three plus a guest.
+              className="focusable rounded-md px-2.5 py-2 text-[13px] font-medium whitespace-nowrap transition-colors sm:py-1.5 sm:text-xs"
+              style={{
+                background: extra.active ? 'var(--ink-primary)' : 'transparent',
+                color: extra.active ? 'var(--surface)' : 'var(--ink-secondary)',
+              }}
+            >
+              {extra.label}
+            </button>
+          )}
         </div>
 
         {/*
@@ -177,9 +258,16 @@ export function PeriodFilter({
           title={t.period.pick}
           className="focusable flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors sm:py-2 sm:text-xs"
           style={{
-            borderColor: value === 'custom' ? 'var(--accent)' : 'var(--border)',
-            background: value === 'custom' ? 'var(--accent-soft)' : 'var(--surface-raised)',
-            color: value === 'custom' ? 'var(--ink-primary)' : 'var(--ink-secondary)',
+            /*
+              Unlit while the extra chip is active, for the same reason no
+              preset lights up: a custom window drawn in accent beside a lit
+              «Жами» claims dates that are not being read. The label under it
+              still names the window, which is what the reader gets back the
+              moment they leave the extra chip.
+            */
+            borderColor: custom ? 'var(--accent)' : 'var(--border)',
+            background: custom ? 'var(--accent-soft)' : 'var(--surface-raised)',
+            color: custom ? 'var(--ink-primary)' : 'var(--ink-secondary)',
           }}
         >
           <CalendarIcon />

@@ -184,31 +184,28 @@ export function DashGlyph(props: GlyphProps) {
   )
 }
 
+/**
+ * A list, for a view that is the whole of something rather than a slice.
+ *
+ * Three rules on the same 5.5–18.5 span the other glyphs use, so it sits at
+ * the same optical weight as the marks beside it in a banner.
+ */
+export function ListGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M5.5 7.5h13" {...stroke} />
+      <path d="M5.5 12h13" {...stroke} />
+      <path d="M5.5 16.5h13" {...stroke} />
+    </Glyph>
+  )
+}
+
 /** Magnifier, drawn like the one in SearchInput so the two never diverge. */
 export function SearchGlyph(props: GlyphProps) {
   return (
     <Glyph {...props}>
       <circle cx="11" cy="11" r="6.5" {...stroke} />
       <path d="M16 16l4 4" {...stroke} />
-    </Glyph>
-  )
-}
-
-/**
- * The ⌘ mark, for the search chip and palette chrome.
- *
- * Stroke dropped to 1.4: the four loops sit on a 3-unit radius, and at chip
- * size the full 1.7 welds them into blobs. This is the one glyph where the
- * drawing is denser than the grid was designed for.
- */
-export function CommandGlyph(props: GlyphProps) {
-  return (
-    <Glyph {...props}>
-      <path
-        d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"
-        {...stroke}
-        strokeWidth={1.4}
-      />
     </Glyph>
   )
 }
@@ -397,5 +394,38 @@ export function RefreshGlyph({ spinning = false, ...props }: GlyphProps & { spin
         <path d="M20 4v4.5h-4.5" {...stroke} />
       </Glyph>
     </span>
+  )
+}
+
+/**
+ * A sun and a moon — the two states of the header's appearance toggle.
+ *
+ * Drawn here rather than borrowed from ☀️/🌙 for the reason the whole module
+ * exists: the emoji pair renders in colour on most platforms, which would put
+ * the only two coloured marks in the chrome on a control that carries no data,
+ * and they sit on a different baseline from the bell and the refresh arrow
+ * beside them.
+ *
+ * The button shows the mode it will GIVE you, not the one you are in — a moon
+ * in daylight, a sun at night — and its label says so in words, because a
+ * lone pictogram cannot distinguish "you are here" from "go here".
+ */
+export function SunGlyph(props: GlyphProps) {
+  return (
+    <Glyph size={16} {...props}>
+      <circle cx="12" cy="12" r="4" {...stroke} />
+      <path
+        d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.4 5.4l1.4 1.4M17.2 17.2l1.4 1.4M18.6 5.4l-1.4 1.4M6.8 17.2l-1.4 1.4"
+        {...stroke}
+      />
+    </Glyph>
+  )
+}
+
+export function MoonGlyph(props: GlyphProps) {
+  return (
+    <Glyph size={16} {...props}>
+      <path d="M20.5 13.4A8.5 8.5 0 1 1 10.6 3.5a6.6 6.6 0 0 0 9.9 9.9z" {...stroke} />
+    </Glyph>
   )
 }

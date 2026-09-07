@@ -1,12 +1,12 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import dynamic from 'next/dynamic'
 
 import { ChartCard, Card } from '@/components/ui/Card'
 import { SectionHeader } from '@/components/ui/Stat'
-import { EmptyState, ErrorState } from '@/components/states/States'
-import { Shell } from '@/components/layout/Shell'
+import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { apiGet } from '@/lib/api'
 
 import {
@@ -28,7 +28,6 @@ import {
   resolveWindow,
   type MarketingPeriod,
 } from './MarketingControls'
-import { MarketingDynamics } from './MarketingDynamics'
 import { MarketingFunnel } from './MarketingFunnel'
 import { MarketingHero } from './MarketingHero'
 import { MarketingKpiBand, MarketingRateRings } from './MarketingKpiBand'
@@ -36,6 +35,26 @@ import { MarketingTable, defaultSort, type TableSort } from './MarketingTable'
 import { MarketingVerify } from './MarketingVerify'
 import type { CurrencyMode } from './marketingFormat'
 import { t } from '@/lib/messages'
+
+/**
+ * The dynamics panels are the route's other recharts consumer.
+ *
+ * MarketingHero's plot is already split out; this is the rest. With both
+ * deferred, recharts leaves /marketing's synchronous entry set entirely — 379
+ * KB unparsed, 109 KB over the wire, roughly two thirds of what this screen
+ * downloads, none of which the reader needs before the figures above it paint.
+ *
+ * `ssr: false` forfeits nothing (`ResponsiveContainer` measures in an effect).
+ * The fallback matches the two stacked plot areas inside, so the card does not
+ * change height when the chunk lands.
+ */
+const MarketingDynamics = dynamic(
+  () => import('./MarketingDynamics').then((m) => m.MarketingDynamics),
+  { ssr: false, loading: () => <ChartSkeleton height={332} /> },
+)
+
+/** How often Kanallar re-asks. See the comment on the overview query below. */
+const MARKETING_POLL_MS = 10 * 60_000
 
 /**
  * The Marketing screen — the client's Roistat dashboard, rebuilt on our stack.
@@ -71,6 +90,20 @@ export function MarketingPage() {
    */
   const [drill, setDrill] = useState<{ camp?: string; adset?: string }>({})
 
+  /*
+    Pull the chart chunks while the requests above are in flight.
+
+    Both plots render only once data lands, so without this the 109 KB recharts
+    fetch queues BEHIND the API round trip instead of overlapping it — the
+    deferral would move the cost rather than remove it. Fire-and-forget: a
+    failed warm-up is not an error state, and the real import runs again at
+    render and reports there.
+  */
+  useEffect(() => {
+    void import('./MarketingHeroTrend')
+    void import('./MarketingDynamics')
+  }, [])
+
   const overview = useQuery({
     queryKey: ['marketing', 'overview', period],
     // No snapshot in this key on purpose: the overview request is what FETCHES
@@ -79,6 +112,28 @@ export function MarketingPage() {
     queryFn: ({ signal }) =>
       apiGet<MarketingOverviewDto>('/marketing/overview', bareWindow(period), signal),
     placeholderData: (previous) => previous,
+    /*
+      TEN MINUTES, NOT THE GLOBAL MINUTE — the fourth documented exception.
+
+      `src/app/providers.tsx` sets one minute for the whole app and says why:
+      it matches the sync worker's tick, so the browser asks again exactly as
+      often as the numbers behind it can have changed. That reasoning does not
+      reach this screen, because this screen is not Bitrix24 data. The Roistat
+      ledger is imported by a child process on the HOUR (`syncWorker.ts`) and
+      otherwise by hand (`npm run roistat:import`), so fifty-nine of every
+      sixty polls here re-fetch a table that provably did not move.
+
+      They are not free. Each round costs three requests, and `/marketing/verify`
+      alone runs seven passes over `deal` on a one-core database shared with
+      the sync worker — so a single open Kanallar tab was spending ~420 deal
+      scans an hour to redraw identical numbers.
+
+      BOTH FIELDS, deliberately. `PageShell.tsx` records that `refetchInterval`
+      runs on its own clock and never consults staleness, so raising only
+      `staleTime` changes nothing about how often the request goes out.
+    */
+    staleTime: MARKETING_POLL_MS,
+    refetchInterval: MARKETING_POLL_MS,
   })
 
   const snapshot = overview.data?.data.snapshot ?? null
@@ -88,6 +143,18 @@ export function MarketingPage() {
   const parent =
     dimension === 'adset' ? drill.camp : dimension === 'creative' ? drill.adset : undefined
 
+  /*
+    NO `enabled: snapshot !== null` HERE, and none on `verify` below.
+
+    Both queries used to wait for the overview to resolve, which serialised
+    three requests that have nothing to say to each other: neither one SENDS
+    the snapshot. `breakdown` posts the bare window plus its dimension, `verify`
+    posts the bare window, and each handler resolves the snapshot itself on the
+    server — `marketingService.breakdown` and `.verify` both open with
+    `await this.repository.snapshot()` and both return a well-formed empty
+    payload when there is none. The gate bought nothing and cost a whole round
+    trip of this database's latency on every cold open of the screen.
+  */
   const breakdown = useQuery({
     queryKey: ['marketing', 'breakdown', dimension, parent ?? null, period],
     queryFn: ({ signal }) =>
@@ -97,7 +164,8 @@ export function MarketingPage() {
         signal,
       ),
     placeholderData: (previous) => previous,
-    enabled: snapshot !== null,
+    staleTime: MARKETING_POLL_MS,
+    refetchInterval: MARKETING_POLL_MS,
   })
 
   const verify = useQuery({
@@ -105,7 +173,8 @@ export function MarketingPage() {
     queryFn: ({ signal }) =>
       apiGet<MarketingVerifyDto>('/marketing/verify', bareWindow(period), signal),
     placeholderData: (previous) => previous,
-    enabled: snapshot !== null,
+    staleTime: MARKETING_POLL_MS,
+    refetchInterval: MARKETING_POLL_MS,
   })
 
   const window = useMemo(
@@ -136,8 +205,10 @@ export function MarketingPage() {
   }
 
   return (
-    <Shell>
-      <div className="mx-auto flex max-w-[1400px] flex-col gap-5">
+      // No <Shell>: it mounts once in the root layout (see AppFrame). This
+      // screen keeps its own period control, so it sits in Shell.tsx's
+      // SCREENS_WITHOUT_A_PERIOD — the palette must not offer presets here.
+      <div className="page-container flex flex-col gap-5">
         <header>
           <div className="accent-rule" aria-hidden="true" />
           <h1 className="display mt-2.5 text-2xl font-semibold" style={{ color: 'var(--ink-primary)' }}>
@@ -399,7 +470,6 @@ export function MarketingPage() {
           </>
         )}
       </div>
-    </Shell>
   )
 }
 

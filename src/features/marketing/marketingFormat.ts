@@ -79,15 +79,6 @@ export function moneyFromUzs(
   return mode === 'usd' ? formatUsd(amount / rate) : formatUzsAt(amount, scale)
 }
 
-/** The exact figure, for the tooltip behind a compacted one. */
-export function exactFromUsd(amount: number | null, mode: CurrencyMode, rate: number): string {
-  return moneyFromUsd(amount, mode, rate, 'unit')
-}
-
-export function exactFromUzs(amount: number | null, mode: CurrencyMode, rate: number): string {
-  return moneyFromUzs(amount, mode, rate, 'unit')
-}
-
 /** A count, or an em dash. Never a zero standing in for "unknown". */
 export function count(value: number | null): string {
   return value === null ? NO_VALUE : formatNumber(Math.round(value))

@@ -79,10 +79,6 @@ describe('every v1 endpoint declares its access', () => {
                       account is OWN-scoped.
         meta/alerts   the header's freshness and its bell. The service gates
                       the queue count on the section the caller holds.
-        search        the one box that looks across every screen. It gates each
-                      GROUP it returns on a section the caller holds and
-                      narrows the rows to their data scope, so it can reach
-                      nothing navigation could not.
         users         account administration, which is a permission and
                       deliberately not a section — see `pageGuard`.
     */
@@ -91,6 +87,6 @@ describe('every v1 endpoint declares its access', () => {
       .map((r) => r.relative.replace('src/app/api/v1/', '').replace('/route.ts', ''))
       .sort()
 
-    expect(ungated).toEqual(['meta/alerts', 'meta/filters', 'search', 'users', 'users/[id]'])
+    expect(ungated).toEqual(['meta/alerts', 'meta/filters', 'users', 'users/[id]'])
   })
 })

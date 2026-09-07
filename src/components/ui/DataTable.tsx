@@ -90,6 +90,20 @@ interface DataTableProps<T> {
    * different relation to the viewport.
    */
   readonly maxHeight?: number | string
+  /**
+   * How much air each row gets. PADDING ONLY.
+   *
+   * 'compact' changes the body cells' vertical padding and nothing else, so a
+   * cell that renders two phone lines or four product lines still renders all
+   * of them — those cells set their own height and this never clips them.
+   *
+   * It exists for the confirmation queue, whose rows are already 55–92px tall
+   * because four of the twelve columns are multi-line, and whose reader is
+   * scanning a page of them looking for one order. Eight pixels a row is two
+   * more orders on a laptop screen; on a table where only 20px of a 55px row
+   * is padding, it is the only vertical win left that costs no information.
+   */
+  readonly density?: 'comfortable' | 'compact'
 }
 
 export function DataTable<T>({
@@ -109,6 +123,7 @@ export function DataTable<T>({
   initialRows,
   moreLabel = (hidden) => `Yana ${hidden} ta qatorni koʻrsatish`,
   maxHeight = '60dvh',
+  density = 'comfortable',
 }: DataTableProps<T>) {
   const [expanded, setExpanded] = useState(false)
   /*
@@ -209,7 +224,9 @@ export function DataTable<T>({
                         : 'none'
                       : undefined
                   }
-                  className={`thead-sticky ${scrolled ? 'is-scrolled' : ''} px-2 py-2 text-[11px] font-medium tracking-wide uppercase ${
+                  className={`thead-sticky ${scrolled ? 'is-scrolled' : ''} px-2 ${
+                    density === 'compact' ? 'py-1.5' : 'py-2'
+                  } text-[11px] font-medium tracking-wide uppercase ${
                     column.align === 'right' ? 'text-right' : 'text-left'
                   }`}
                 >
@@ -290,7 +307,7 @@ export function DataTable<T>({
                   <Cell
                     key={column.key}
                     scope={column.rowHeader ? 'row' : undefined}
-                    className={`px-2 py-2.5 ${
+                    className={`px-2 ${density === 'compact' ? 'py-1.5' : 'py-2.5'} ${
                       column.rowHeader ? 'font-medium' : 'font-normal'
                     } ${column.align === 'right' ? 'text-right' : 'text-left'} ${
                       column.numeric ? 'tabular' : ''

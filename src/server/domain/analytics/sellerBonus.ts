@@ -1,3 +1,5 @@
+import { floorNumberOf } from '@/server/domain/employees/floorNumber'
+
 /**
  * The client's bonus policy, quoted rather than re-derived.
  *
@@ -34,6 +36,11 @@ export const BONUS_TIERS: readonly { readonly floorMinor: bigint; readonly bonus
 // The gate in front of it
 // ---------------------------------------------------------------------------
 
+// Re-exported so callers of the bonus rule get the badge parser from the same
+// module; the rule itself lives in domain/employees/floorNumber, because it is
+// an identity question rather than a bonus one and the sync engine needs it too.
+export { floorNumberOf }
+
 /**
  * The floor-number band the client's ladder actually pays, inclusive.
  *
@@ -55,38 +62,6 @@ export const BONUS_TIERS: readonly { readonly floorMinor: bigint; readonly bonus
  * will not be paid it is worse than a board with no bonus column at all.
  */
 export const BONUS_BAND = Object.freeze({ from: 107, to: 147 })
-
-/**
- * The floor number somewhere in an operator's name, or null when there is none.
- *
- * ANYWHERE, NOT AT THE END, and the difference is the whole rule. Their
- * `idInRange()` anchors at the end because their board prints «Marjona
- * Xayrullayeva 154» — Bitrix24's `NAME` then `LAST_NAME`, and the portal
- * keeps the number on the LAST_NAME. This application composes `fullName` the
- * other way round, so the very same person is stored «Xayrullayeva 154
- * Marjona» and the number lands in the MIDDLE. Measured on production
- * 2026-09-04 over all 289 employees: 90 names carry it first, 16 last, 237
- * carry it somewhere, and an end-anchored regex matched 16 — which gated all
- * but three people out of a bonus they are owed.
- *
- * EXACTLY ONE standalone 2–4 digit token, or nothing. That is the rule
- * `marketingService.employeeCode()` already uses to pair these same people
- * against the Roistat sheet, proven there against a 24 541-row import; two
- * numbers in one name is an ambiguity, not a match, and today there are none.
- *
- * Separators are not always spaces — «130-Salomat Shoimova» is a real row —
- * so anything that is not a letter or a digit splits.
- */
-export function floorNumberOf(fullName: string): number | null {
-  const digits = fullName
-    .replace(/[^0-9\p{L}]+/gu, ' ')
-    .split(' ')
-    .filter((token) => /^\d{2,4}$/.test(token))
-
-  if (digits.length !== 1) return null
-  const value = Number.parseInt(digits[0]!, 10)
-  return Number.isFinite(value) ? value : null
-}
 
 /**
  * Whether the client's ladder pays this operator at all.

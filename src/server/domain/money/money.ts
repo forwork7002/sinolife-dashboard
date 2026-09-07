@@ -73,10 +73,6 @@ export function zeroMoney(currency: string): Money {
   return money(0n, currency)
 }
 
-export function isZero(m: Money): boolean {
-  return m.amountMinor === 0n
-}
-
 function assertSameCurrency(a: Money, b: Money): void {
   if (a.currency !== b.currency) {
     throw new CurrencyMismatchError(a.currency, b.currency)

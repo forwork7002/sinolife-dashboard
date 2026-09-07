@@ -539,14 +539,41 @@ export class MarketingRepository {
     return toVerifyFacts(rows)
   }
 
-  /** What Bitrix24 covers on the created basis, so the windows can be intersected. */
+  /**
+   * What Bitrix24 covers on the created basis, so the windows can be intersected.
+   *
+   * THE AGGREGATE IS TAKEN OVER THE RAW COLUMN AND CONVERTED AFTERWARDS.
+   *
+   * Written the obvious way — `min((d."createdAtSource" AT TIME ZONE …)::date)`
+   * — the conversion sits on the column side of the aggregate, so Postgres has
+   * to compute a timezone shift and a date cast for every revenue deal before
+   * it can take the minimum: a sequential scan of the whole table to produce
+   * two scalars. Taking `min`/`max` of the bare timestamp instead lets the
+   * planner satisfy both from `deal_createdAtSource_idx` — it walks the index
+   * from each end and stops at the first row that passes the filter — and the
+   * two survivors are converted in the outer SELECT, where it is two rows of
+   * work rather than four hundred thousand.
+   *
+   * The rewrite is exact, not an approximation: converting to a timezone and
+   * truncating to a day are both MONOTONIC, so `min(f(x)) = f(min(x))`. That
+   * holds for Asia/Tashkent specifically because it is a fixed +05:00 with no
+   * DST since 1996 — under a zone with a backward transition, two instants
+   * could swap order across the shift and this identity would not survive.
+   * `APP_TIMEZONE` is configurable, so this is a real precondition and not a
+   * detail; if it is ever pointed at a DST zone, this query has to go back to
+   * converting first.
+   */
   async bitrixCoverage(): Promise<DateRange | null> {
     const rows = await this.prisma.$queryRawUnsafe<{ from: string | null; to: string | null }[]>(
       `
-      SELECT min((d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $1)::date)::text AS "from",
-             max((d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $1)::date)::text AS "to"
-      FROM "deal" d
-      WHERE d."countsAsRevenue"
+      SELECT (b."min_at" AT TIME ZONE 'UTC' AT TIME ZONE $1)::date::text AS "from",
+             (b."max_at" AT TIME ZONE 'UTC' AT TIME ZONE $1)::date::text AS "to"
+      FROM (
+        SELECT min(d."createdAtSource") AS "min_at",
+               max(d."createdAtSource") AS "max_at"
+        FROM "deal" d
+        WHERE d."countsAsRevenue"
+      ) b
       `,
       TZ,
     )

@@ -90,12 +90,6 @@
   --edge-hero-top: color-mix(in oklab, var(--ink-primary) 18%, transparent);
   --edge-hero-bottom: color-mix(in oklab, var(--ink-primary) 8%, transparent);
 
-  /* A keycap's bottom edge. It is a SHADOW under the key, so unlike the hero
-     stops it cannot mix from ink — ink turns white in dark mode, and a white
-     bottom edge reads as a key lit from below. Dark overrides it with a
-     black alpha instead. */
-  --kbd-edge: inset 0 -1px 0 color-mix(in oklab, var(--ink-primary) 16%, transparent);
-
   /* --- Categorical series, in fixed slot order -------------------------- */
   --series-1: #3d6df4; /* blue */
   --series-2: #ca4c07; /* orange */
@@ -211,6 +205,31 @@
   --radius-panel: 14px;
   --radius-panel-lg: 18px;
 
+  /**
+   * The size of a soʻm figure printed to the last digit.
+   *
+   * A compact figure is four characters wide whatever it says, so one size
+   * fits every tile. A full one is not: «40,123,456,789» is 7.48em of tabular
+   * Inter — MEASURED, not estimated — and the tile that has to hold it is
+   * 139px wide on a phone and 206px wide on a 1280 desktop, where the band
+   * turns four across behind a 240px sidebar. Those are the two binding
+   * cases; everything between them has room to spare.
+   *
+   * Measured inner widths of one tile in that band (2026-09-04, this page):
+   *
+   *   390  139     900  392    1280  206    1920  366
+   *   640  262    1024  334    1440  246
+   *
+   * so the size follows the VIEWPORT below xl, where the tile grows with it,
+   * and switches to a second, lower ramp at xl, where the tile suddenly
+   * halves. The 30px ceiling is the compact figure's own size, so the two
+   * readings never disagree about how loud a KPI is.
+   *
+   * Read in two places that must not drift — `.figure-sum` and the skeleton
+   * StatTile reflows out of — hence a token rather than a literal.
+   */
+  --figure-sum-size: clamp(14px, 3.6vw, 30px);
+
   /* --- Motion ----------------------------------------------------------- */
   /* One easing curve for the whole app. `--ease-out` is a decelerating curve:
      things arrive quickly and settle, which is what makes an interface feel
@@ -243,12 +262,6 @@
     --border-strong: rgba(255, 255, 255, 0.22);
 
     --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    /* Black, not an ink mix — a keycap's shadow falls below the key in both
-       themes; see the light-mode note on the token. The [data-theme="dark"]
-       block always carried this override; the system-preference path had
-       silently missed it and served night users the ink mix — which is white
-       in dark, i.e. a key lit from below. */
-    --kbd-edge: inset 0 -1px 0 rgba(0, 0, 0, 0.55);
 
     --series-1: #497bff;
     --series-2: #d8591e;
@@ -320,10 +333,6 @@
   --border-strong: rgba(255, 255, 255, 0.22);
 
   --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  /* Black, not an ink mix — see the light-mode note: a keycap's bottom edge
-     is a shadow in both themes. (--edge-hero-* needs no override; it mixes
-     from ink and flips by construction.) */
-  --kbd-edge: inset 0 -1px 0 rgba(0, 0, 0, 0.55);
 
   --series-1: #497bff;
   --series-2: #d8591e;
@@ -534,6 +543,69 @@ body {
 }
 
 /**
+ * A figure printed to the last digit — size only; pair it with `.figure`.
+ *
+ * See --figure-sum-size for the measurements. The tighter tracking is not
+ * decoration: fourteen grouped digits at -0.025em run about a character wider
+ * than the compact reading they replace, and the tile has none to spare.
+ */
+.figure-sum {
+  font-size: var(--figure-sum-size);
+  letter-spacing: -0.03em;
+}
+
+/*
+  The band turns four across at xl and the tile halves — 412px at 1180,
+  206px at 1280 — so the ramp has to break there. A single vw slope cannot:
+  it is still climbing at exactly the width where the box collapses.
+*/
+@media (min-width: 1280px) {
+  :root {
+    --figure-sum-size: clamp(20px, 1.55vw, 28px);
+  }
+}
+
+/**
+ * THE PODIUM, PRINTED IN FULL — the leader's figure and the two beside it.
+ *
+ * `.figure-hero` is sized for «7.9 mln» and overruns here: the podium is
+ * three across from sm, and its 1.3fr / 1fr tracks measure (leader / runner,
+ * content width, 2026-09-04):
+ *
+ *   390  274 / 282   (stacked — every card is the full width)
+ *   640  186 / 121    1024  249 / 156    1440  386 / 295
+ *   768  216 / 164    1180  283 / 216    1920  575 / 441
+ *
+ * The dip at 1024 is the sidebar arriving, not a mistake. Below sm the cards
+ * stack and take a fixed size; from sm they follow the viewport, floored at
+ * the width the 640 column can actually hold — «4,081,234,567» is 6.86em
+ * plus a 36px unit, so the leader's 186px track tops out near 21px.
+ *
+ * The runner-up stays visibly smaller than the leader at every width. That
+ * ordering is the point of a podium, so it is a constraint on these two
+ * numbers, not a coincidence of them.
+ */
+.figure-sum-hero {
+  font-size: 32px;
+  letter-spacing: -0.03em;
+}
+
+.figure-sum-runner {
+  font-size: 17px;
+  letter-spacing: -0.03em;
+}
+
+@media (min-width: 640px) {
+  .figure-sum-hero {
+    font-size: clamp(20px, calc(2.4vw + 4px), 40px);
+  }
+
+  .figure-sum-runner {
+    font-size: clamp(13px, 1.6vw, 22px);
+  }
+}
+
+/**
  * Display type.
  *
  * Negative tracking at large sizes only. Inter is drawn for tight setting
@@ -567,6 +639,47 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: var(--radius-panel-sm);
+}
+
+/* ===========================================================================
+ * LAYOUT — how wide a page is allowed to be
+ * ======================================================================== */
+
+/**
+ * The one content width in the product.
+ *
+ * Every screen is a dense reporting surface: six-column KPI grids, wide
+ * tables, charts whose x axis is a month of days. The cap used to be 1400px,
+ * which was chosen when the rail was the only thing beside it — and on the
+ * 1920px displays this is actually read on it left ~230px of empty canvas
+ * between the rail and the first card while the tables inside were still
+ * eliding columns and truncating names. Space the data wanted, spent on
+ * nothing.
+ *
+ * So the cap is now wide enough that every ordinary display fills edge to
+ * edge, and it exists only as a guard for the ultrawide case. Measured, with
+ * the rail open and main's own 16px gutters: 1920 leaves 1633px of content,
+ * 2560 leaves 2273px — both under the cap, so both fill completely — while
+ * 3440 would give a three-card row cards 1000px wide with one 24px figure
+ * alone in the middle of each. That is the only case the number is for.
+ *
+ * ONE definition, because a page that centres its content on a different
+ * width than its neighbour makes the whole application look like it shifts
+ * sideways as you navigate — and the view transition between screens
+ * animates that shift, so it reads as a bug rather than a difference.
+ *
+ * The exception is deliberate and stays: Hisob (`AccountPage`) is a form
+ * column, not a report, and a password field 2000px wide is not a wider form,
+ * it is a broken one.
+ */
+:root {
+  --content-width: 2400px;
+}
+
+.page-container {
+  width: 100%;
+  max-width: var(--content-width);
+  margin-inline: auto;
 }
 
 /* ===========================================================================
@@ -1073,41 +1186,18 @@ body::after {
 }
 
 /* ===========================================================================
- * COMMAND CHROME — keycaps, tooltip, palette scrim
+ * FLOATING CHROME — tooltip, drawer scrim
  *
- * The keyboard layer of the interface. Everything in this section is chrome,
- * never data: it may borrow the elevation system, and it must never borrow a
- * series or status colour. Its two animations carry `reduce` overrides via
- * keyframe redefinition, same pattern as `pulse` below.
+ * The two surfaces that float over the page. Everything in this section is
+ * chrome, never data: it may borrow the elevation system, and it must never
+ * borrow a series or status colour. Its animation carries a `reduce` override
+ * via keyframe redefinition, same pattern as `pulse` below.
+ *
+ * The section was called COMMAND CHROME and led with a keycap chip. Both the
+ * chip and the `--kbd-edge` token it was the only reader of are gone with the
+ * ⌘K palette they were drawn for — a rule and a token that outlive everything
+ * that could use them are read by the next person as live surface area.
  * ======================================================================== */
-
-/**
- * A keycap chip — the ⌘K hint in the header, shortcut suffixes in menu rows.
- *
- * The physical cue is the bottom edge: a key catches its shadow BELOW, so
- * --kbd-edge darkens only that edge and the chip reads as pressable at 11px
- * with nothing else added. Sunken background for the same reason — a key
- * sits IN the surface, not on it.
- *
- * `font-family: inherit` matters on a real <kbd> element, whose browser
- * default is monospace: one monospace K in a sans-serif row reads as a typo.
- * min-width keeps a single letter square instead of postage-stamp narrow.
- */
-.kbd {
-  display: inline-block;
-  min-width: 18px;
-  padding: 2px 5px;
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1;
-  text-align: center;
-  color: var(--ink-secondary);
-  background: var(--surface-sunken);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  box-shadow: var(--kbd-edge);
-}
 
 /**
  * The tooltip primitive.
@@ -1162,14 +1252,22 @@ body::after {
 }
 
 /**
- * The scrim behind the command palette.
+ * The scrim behind the phone drawer.
+ *
+ * IT SURVIVED THE ⌘K SWEEP AND MUST KEEP SURVIVING. It was written for the
+ * palette and reads like palette chrome, so it is the obvious next thing to
+ * take once the keycap and its token have gone — but the drawer is a real,
+ * current consumer: Shell renders it as `backdrop-dim drawer-backdrop-enter`
+ * on the drawer's backdrop button, and deleting it gives every phone a fully
+ * transparent, unblurred menu backdrop, which no test in this repo would
+ * catch. Grep Shell.tsx before touching this rule.
  *
  * Tinted from --page, not black: a black scrim in light mode turns the app
- * into a different, darker room for the duration of a search, while a
+ * into a different, darker room for as long as the menu is open, while a
  * page-coloured frost dims WITHOUT changing the room. In dark mode --page is
  * near-black and the very same mix is the conventional dim. The 2px blur
  * softens content just enough to say "inactive" while the layout stays
- * recognisable underneath — which is what makes the palette feel like a
+ * recognisable underneath — which is what makes the drawer feel like a
  * layer of the app rather than a modal interruption.
  *
  * `prefers-reduced-transparency` trades the blur for opacity: the same
@@ -1186,40 +1284,6 @@ body::after {
     backdrop-filter: none;
     background: color-mix(in oklab, var(--page) 85%, transparent);
   }
-}
-
-/**
- * Command-palette entrance.
- *
- * Scale 0.98 → 1 with a fade, 150ms: the palette must feel FASTER than a
- * page — it is what you reach for INSTEAD of navigating — so it gets less
- * than the page's 220ms and no translate, only the settle. Under reduced
- * motion the keyframes drop the scale and the fade alone remains.
- */
-@keyframes palette-enter {
-  from {
-    opacity: 0;
-    transform: scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  @keyframes palette-enter {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-}
-
-.palette-enter {
-  animation: palette-enter 150ms var(--ease-out) both;
 }
 
 /* ===========================================================================
@@ -1704,26 +1768,6 @@ p {
 
 
 /*
-  The palette's magnifier, while a lookup is in flight.
-
-  A pulse on the glyph already on screen rather than a spinner beside it: the
-  row does not reflow, and the thing that is working is the thing that is
-  marked. Motion-safe, because a heartbeat in the corner of the eye is exactly
-  what a reduced-motion preference is asking us not to do.
-*/
-@media (prefers-reduced-motion: no-preference) {
-  .palette-busy {
-    animation: palette-busy-pulse 1.1s ease-in-out infinite;
-  }
-}
-
-@keyframes palette-busy-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
-
-
-/*
  * The sidebar's items — hover, active, folded — in one place.
  *
  * Inline styles cannot express :hover, and the rail had none: a pointer over a
@@ -1853,8 +1897,8 @@ p {
  *
  * The one screen whose audience is the sellers themselves, and the client's
  * explicit ask: first place must be unmistakable from across the room. The
- * three medal metals (--medal-*) are chrome here in the same sense the kbd
- * chip and the scrim are chrome — they may borrow elevation and tint, and
+ * three medal metals (--medal-*) are chrome here in the same sense the
+ * tooltip and the scrim are chrome — they may borrow elevation and tint, and
  * they may never encode a value. Rank itself still travels on the licensed
  * channels (size, elevation, position, the ordinal, the emoji medals); the
  * metal is varnish over that, so a colourblind reader loses nothing.
@@ -2000,5 +2044,917 @@ p {
 @keyframes podium-shine {
   to {
     transform: translateX(140%);
+  }
+}
+
+/**
+ * The ranked rows, which are the podium's continuation and not a table.
+ *
+ * The client's ask on 2026-09-04: this is the screen the sellers themselves
+ * open for motivation, and the top places have to feel like places. The
+ * podium above already crowns three people; below it the table used to flatten
+ * them back into rows differing by an 8% wash, so the ceremony stopped at the
+ * fold.
+ *
+ * Same contract as the PODIUM block — the metal is CHROME. It rims, washes and
+ * rails; the rank itself still travels on size, weight, position, the ordinal
+ * and the medal glyph, so a colourblind reader loses nothing when the varnish
+ * is gone. --metal is set per row by .rank-1/2/3.
+ */
+.rank-1 { --metal: var(--medal-gold); }
+.rank-2 { --metal: var(--medal-silver); }
+.rank-3 { --metal: var(--medal-bronze); }
+
+/**
+ * A ranked row: metal rail down the leading edge, and a wash that fades out
+ * across the row rather than tinting it flat — the light comes from where the
+ * rank is, the same direction the podium's crown-light falls.
+ *
+ * THE WASH IS ON THE ROW, NOT THE CELLS. Painted per `td` the gradient
+ * restarts in every column and the row reads as a set of bands instead of one
+ * lit edge — which is exactly what it looked like on the first attempt. The
+ * cells keep no background of their own, so the row's own paint shows through.
+ *
+ * The rail is a box-shadow rather than a border so it cannot change the row's
+ * box and shift every column by four pixels.
+ */
+.rank-row {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in oklab, var(--metal) 15%, transparent),
+    transparent 34%
+  );
+}
+.rank-row > td:first-child {
+  box-shadow: inset 4px 0 0 var(--metal);
+}
+/* First place carries it a little further and a little brighter — the one row
+   that should be readable from across the room. */
+.rank-row.rank-1 {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in oklab, var(--metal) 22%, transparent),
+    transparent 46%
+  );
+}
+
+/**
+ * The ordinal on a ranked row. Metal, larger, and DECORATIVE — the medal glyph
+ * and the aria-label beside it carry the rank for anyone who cannot see hue,
+ * which is what licenses the colour here.
+ */
+.rank-num {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-weight: 800;
+  font-size: 19px;
+  line-height: 1;
+  color: var(--metal);
+  letter-spacing: -0.02em;
+}
+
+/* ===========================================================================
+ * ORG CHART — the company structure, drawn the way the portal draws it
+ *
+ * `/structure` reproduces `obey.bitrix24.kz/hr/structure/`: cards on a
+ * pannable canvas, joined by orthogonal connectors, one row per level. The
+ * geometry is computed in `orgLayout.ts` and arrives as inline `left`/`top`,
+ * so everything here is surface, type and state — nothing in this block
+ * decides where a card goes.
+ *
+ * THE CANVAS IS TRANSFORMED, NOT SCROLLED. Pan and zoom are one `transform`
+ * on `.org-stage`, written straight to the node during a drag and committed to
+ * React state only on release: a 20-card chart re-rendered on every
+ * pointermove is 60 renders a second of work whose only output is a matrix
+ * the compositor could have applied on its own.
+ * ======================================================================== */
+
+.org-canvas {
+  position: relative;
+  overflow: hidden;
+  /* Its own containing block, so the absolutely-positioned stage and the
+     floating controls are clipped by the card rather than by the page — the
+     same rule the horizontal scrollers in this file already document. */
+  border-radius: var(--radius-panel);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  /*
+    THE CANVAS IS THE PAGE, so it takes the page's height and the page's
+    gestures.
+
+    `height: 100%` and not a `calc(100vh − something)` or a custom property
+    somebody has to keep in step: `main` is a flex item with a definite height
+    inside a shell that is exactly `100dvh`, so a percentage resolves against
+    whatever is actually left after the header and the page title — and nothing
+    here has to be re-measured the day either of them changes. See PageShell's
+    `fill` for the other half of the chain. (It also fixes a `vh` against
+    `dvh` mismatch: the hand-measured expression this replaces used `100vh`
+    under a shell sized in `100dvh`, which differ on a phone whose browser
+    chrome retracts.)
+
+    A FLOOR, because `100%` of a 400px-tall window is a canvas smaller than
+    one card, with nothing on the page left to scroll to and a wheel that zooms
+    rather than scrolls. Below the floor `main` overflows and scrolls again, the
+    way every other page does.
+
+    NO `touch-action` HERE. It used to be `pan-y` for a reason that has expired
+    — the canvas was a card in a scrolling page — and then briefly `none`, which
+    was worse: the property composes by INTERSECTION down the tree, so `none`
+    on the canvas took touch scrolling away from the roster sheet and the result
+    list docked inside it. The gesture now lives on `.org-backdrop` and
+    `.org-stage`, the two surfaces a finger actually drags.
+  */
+  height: 100%;
+  min-height: 420px;
+  cursor: grab;
+  /* Inside the canvas nothing is a text target; a drag that selects the whole
+     tree's worth of department names reads as a bug. The panel opts back in —
+     an operator reading a roster is there to copy a name out of it. */
+  user-select: none;
+}
+.org-canvas[data-panning='true'] {
+  cursor: grabbing;
+}
+
+/*
+  The pan surface behind the cards. Its only job is to be the element a finger
+  lands on when it lands on nothing, so that `touch-action: none` can refuse
+  the browser the gesture WITHOUT that refusal reaching the panel or the search
+  list, which are its siblings and keep native touch scrolling.
+*/
+.org-backdrop {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+}
+
+.org-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  touch-action: none;
+  transform-origin: 0 0;
+  /* Promoted once, up front. Without it the first pan of a session repaints
+     the whole tree while the compositor works out that it should not. */
+  will-change: transform;
+}
+
+/* The connectors live behind every card, in one SVG the size of the layout. */
+.org-links {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.org-link {
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+/* The path into the selected card, so the eye can walk back up to its parent.
+   Same idea as the arrowhead the source screen draws on that one connector. */
+.org-link[data-active='true'] {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+/* --- The card ------------------------------------------------------------ */
+
+.org-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  /* The box is fixed because the connectors are drawn against it, so anything
+     that would grow past it is clipped rather than allowed to spill over its
+     own border and under the card below. */
+  overflow: hidden;
+  --org-card-bg: var(--surface-raised);
+  background: var(--org-card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel-sm);
+  box-shadow: var(--shadow-card), var(--edge-highlight);
+  transition:
+    border-color var(--duration-move) var(--ease-out),
+    box-shadow var(--duration-move) var(--ease-out),
+    opacity var(--duration-move) var(--ease-out);
+}
+.org-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-raised), var(--edge-highlight);
+}
+/*
+  THE CHAIN OF COMMAND, WASHED.
+
+  Every card from the one being pointed at up to the company root, the end
+  included — it is a path, not a set of superiors. Quieter than
+  `[data-selected]`, and BEFORE it in this file on purpose: same specificity, so
+  source order is what lets the card the reader actually picked keep its own
+  accent border on top of the wash.
+
+  Mixed from `--accent` ITSELF, not from `--accent-soft`. That token carries a
+  12% alpha, and color-mix averages alpha too — the result was 60% transparent
+  over the sunken canvas, so the chain rendered darker than the plain cards
+  around it in light mode and lighter in dark. The card's surface is a variable
+  so the avatar ring on it can match whatever the card is painted.
+*/
+.org-card[data-chain] {
+  --org-card-bg: color-mix(in oklab, var(--accent) 6%, var(--surface-raised));
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--border));
+  background: var(--org-card-bg);
+}
+
+.org-card[data-selected] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow-float), var(--edge-highlight);
+}
+/*
+  THE FOCUS RING WINS, WHATEVER ELSE THE CARD IS DOING.
+
+  `.focusable:focus-visible` is one class and so are `.org-card:hover` and
+  `.org-card[data-selected]`, both of which set `box-shadow` and both of which
+  come later in this file — so a keyboard reader arrowing onto the selected
+  card, or onto any card under the pointer, lost the ring entirely. Two classes
+  and an attribute here, so it outranks all of them; the accent ring keeps the
+  house geometry from `.focusable`.
+*/
+.org-card.focusable:focus-visible,
+.org-card.focusable[data-selected]:focus-visible,
+.org-card.focusable:hover:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--accent);
+}
+/*
+  A search answer, and everything that is not one.
+
+  Dimmed rather than hidden: the tree is the point, and pulling nine cards out
+  of a row would re-lay the whole chart on every keystroke and move the answer
+  out from under the reader's eye. 0.32 still reads as a card, which is what
+  keeps the shape of the company visible around the match.
+*/
+.org-card[data-matched] {
+  border-color: var(--accent);
+}
+.org-card[data-dimmed] {
+  opacity: 0.32;
+}
+
+.org-card-hit {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 11px 8px;
+  text-align: left;
+  border-radius: var(--radius-panel-sm) var(--radius-panel-sm) 0 0;
+}
+
+.org-card-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink-primary);
+  /* One line, always. A two-line unit name would push the head row out of a
+     fixed-height card, and the height is fixed because the connectors are
+     drawn against it. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+  INSIDE the card, because the card clips.
+
+  This started as a tab hanging off the top edge, the way the source screen
+  draws «ВАШ ОТДЕЛ» — and `.org-card` has `overflow: hidden` so the connectors
+  cannot be crossed by a card's own contents, which sliced the badge in half:
+  seven of its thirteen pixels, including the top of the text, on the one card
+  the feature exists to point at. It rides the title line instead.
+*/
+.org-badge-you {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 14px;
+  letter-spacing: 0.04em;
+  color: var(--ink-on-series);
+  background: var(--accent);
+}
+
+/* The title line: the name takes the room, the badge keeps its own. */
+.org-card-titlerow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.org-card-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.org-card-head-empty {
+  font-size: 11px;
+  color: var(--ink-muted);
+  font-style: italic;
+}
+.org-card-head-name {
+  display: block;
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-card-head-role {
+  display: block;
+  font-size: 10px;
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.org-card-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--grid);
+  color: var(--ink-secondary);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.org-card-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+}
+.org-card-caption {
+  font-size: 10px;
+  color: var(--ink-muted);
+}
+.org-card-count {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  color: var(--ink-primary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums lining-nums;
+  white-space: nowrap;
+}
+
+/*
+  THE TEAM, AS A STACK OF FACES.
+
+  Overlapped by 6px with a ring in the card's own surface colour, so five chips
+  and a «+N» fit the 236px box and read as one group rather than five fields.
+  The ring is `box-shadow` and not a border: a border would grow each chip and
+  push the last one out of a card whose width the connectors are drawn against.
+*/
+.org-card-people {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+}
+.org-card-chip + .org-card-chip {
+  margin-left: -6px;
+}
+.org-card-chip {
+  display: inline-flex;
+  border-radius: 999px;
+  /* The card's OWN surface, whatever it currently is — a washed chain card
+     paints differently, and a ring in the plain colour was a white halo per
+     face on exactly the cards the reader was looking at. */
+  box-shadow: 0 0 0 2px var(--org-card-bg);
+}
+.org-card-more {
+  margin-left: 6px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--ink-muted);
+}
+
+.org-card-foot {
+  border-top: 1px solid var(--border);
+  padding: 0;
+}
+.org-card-foot-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 8px;
+  font-size: 10.5px;
+  color: var(--ink-secondary);
+  border-radius: 0 0 var(--radius-panel-sm) var(--radius-panel-sm);
+  transition: color var(--duration-move) var(--ease-out);
+}
+.org-card-foot-btn:hover {
+  color: var(--accent);
+}
+.org-card-foot-empty {
+  display: block;
+  padding: 6px 8px;
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--ink-muted);
+}
+
+/* --- The floating chrome ------------------------------------------------- */
+
+/*
+  Two clusters, both inside the canvas: the view controls at the top and the
+  zoom stepper at the bottom left, exactly where the source screen puts them.
+  `--shadow-float` and a blur, because they sit over a moving tree and a flat
+  panel would read as part of it.
+*/
+.org-float {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--surface-raised) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-float);
+}
+.org-float--top {
+  /* Above the roster panel (z-index 3): `.org-float` is a stacking context,
+     so the result list's own z-index can only order it against siblings
+     INSIDE the toolbar — and the list hangs down into the space the panel
+     docks in at narrow widths. */
+  z-index: 4;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  /* The row has to survive a phone: the search box gives up its width first
+     and the buttons keep theirs. */
+  flex-wrap: wrap;
+  border-radius: var(--radius-panel-sm);
+}
+/* `.org-float` above is already `position: absolute`, which is what the help
+   note anchors its `bottom: 100%` against. */
+.org-float--zoom {
+  bottom: 12px;
+  left: 12px;
+}
+.org-float-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  color: var(--ink-secondary);
+  transition:
+    background var(--duration-move) var(--ease-out),
+    color var(--duration-move) var(--ease-out);
+}
+.org-float-btn:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  color: var(--ink-primary);
+}
+/*
+  THE ONE FILLED BUTTON ON THIS SCREEN.
+
+  «Meni topish» is the task the page was asked for, and as a ghost pill among
+  four other ghost pills it read as one more view control. Exactly one primary
+  affordance, so the fill is the instruction.
+*/
+.org-float-btn--primary {
+  background: var(--accent);
+  color: var(--ink-on-series);
+  font-weight: 600;
+}
+.org-float-btn--primary:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--accent) 85%, var(--ink-on-series));
+  color: var(--ink-on-series);
+}
+
+/* --- The search, and the answer under it --------------------------------- */
+
+/*
+  A REAL BASIS, or the box vanishes on a phone. `flex: 1` alone is a zero base
+  with the minimum switched off, so it only ever got what the four buttons left
+  — twenty-two pixels at 390px once «Meni topish» joined the row. With a basis
+  the line overflows its budget and wraps instead.
+*/
+.org-search {
+  position: relative;
+  flex: 1 1 180px;
+  max-width: 260px;
+}
+
+/*
+  ABSOLUTE, so opening the answer never reflows the control row.
+
+  The row wraps on a phone; a list that pushed the buttons down would move a
+  target out from under a finger already on its way to it. It is bounded and
+  scrolls, because a term matching forty people must not become the screen.
+*/
+.org-hits {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  min-width: 240px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+  border-radius: var(--radius-panel-sm);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-float);
+}
+.org-hit {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 6px;
+  text-align: left;
+}
+.org-hit:hover {
+  background: var(--surface-sunken);
+}
+.org-hit-name {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-hit-sub {
+  display: block;
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-hit-empty {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+/* --- «Siz» — the reader's own chain, in words ---------------------------- */
+
+/*
+  A SECOND LINE OF THE SAME FLOATING PANEL, not a strip of its own.
+
+  `flex-basis: 100%` inside `.org-float--top`, which already wraps, is what puts
+  it on its own row — and keeps it from colliding with the roster docked on the
+  right or the zoom cluster at the bottom, both of which a free-floating strip
+  would have had to dodge at every width.
+*/
+.org-you {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 4px 1px;
+  font-size: 11px;
+}
+.org-you-label {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 14px;
+  color: var(--ink-on-series);
+  background: var(--accent);
+}
+.org-you-trail {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+.org-you-boss {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+.org-you-boss strong {
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+/* --- A chain of unit names, used by the strip and by the panel ------------ */
+
+.org-trail {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-bottom: 2px;
+  overflow: hidden;
+}
+.org-trail-step {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.org-trail-sep {
+  flex-shrink: 0;
+  padding: 0 4px;
+  color: var(--ink-muted);
+}
+/* Each name truncates on its own rather than the row wrapping to three lines:
+   the panel is 320px and three Cyrillic unit names do not fit it. */
+.org-trail-link {
+  min-width: 0;
+  border-radius: 4px;
+  padding: 0 2px;
+  font-size: 11px;
+  color: var(--ink-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-trail-link:hover {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+}
+.org-trail-link[data-own] {
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+
+/* --- The help note ------------------------------------------------------- */
+
+.org-help {
+  position: absolute;
+  z-index: 3;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: max-content;
+  max-width: 280px;
+  padding: 8px 10px;
+  border-radius: var(--radius-panel-sm);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-float);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-secondary);
+}
+.org-help strong {
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+.org-float-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.org-zoom-value {
+  min-width: 42px;
+  text-align: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--ink-secondary);
+}
+
+/*
+  Motion is a preference, and this file cannot ask.
+
+  Everything above transitions colour and opacity only, so honouring the
+  preference here is a blanket off-switch rather than a per-property argument.
+  The pan and zoom themselves are direct manipulation — a transform that
+  follows the pointer is not an animation and is deliberately not disabled.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .org-card,
+  .org-float-btn,
+  .org-card-foot-btn {
+    transition: none;
+  }
+}
+
+/* --- The department panel ------------------------------------------------ */
+
+/*
+  Docked over the canvas, not beside it.
+
+  Beside it, opening the panel would narrow the canvas, which changes the fit
+  and re-lays the chart under the reader's cursor at exactly the moment they
+  clicked something. Over it, the viewport never changes size and the card they
+  picked stays where they left it — which is also what the source screen does.
+*/
+.org-panel {
+  position: absolute;
+  /* Opts out of the canvas's `user-select: none`: the roster is the one thing
+     on this screen somebody copies out — a name to paste into a chat. */
+  user-select: text;
+  z-index: 3;
+  /*
+    BELOW THE CONTROL ROW, whatever height that row happens to be.
+
+    It was a constant 60px, chosen when the row was one line of buttons. An
+    account linked to an employee now gets a second line — its own chain of
+    command — and the panel docked straight over the half of it naming their
+    manager. `--org-toolbar-h` is written onto the canvas by a ResizeObserver
+    in OrgChart; the fallback is the one-line height, for the frame before it
+    has been measured.
+  */
+  top: calc(var(--org-toolbar-h, 44px) + 24px);
+  right: 12px;
+  bottom: 12px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel-sm);
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+}
+
+/*
+  On a phone the panel is the screen.
+
+  320px of panel over a 390px canvas leaves 70px of chart, which is not a chart
+  — so below `sm` it takes the bottom two thirds and the reader closes it to get
+  back to the tree, the way a sheet works everywhere else on a phone.
+*/
+@media (max-width: 640px) {
+  .org-panel {
+    top: auto;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    max-height: 66%;
+  }
+  /*
+    The zoom stepper has to stay reachable UNDER the sheet.
+
+    At 390px the panel's rectangle contains the whole zoom cluster —
+    `elementFromPoint` on both the − and the + returns the panel — so a phone
+    reader who opened a unit lost the only way to change scale without closing
+    it again. It rides above the sheet instead; the sheet stops two thirds up
+    and the buttons are 28px, so nothing important is behind them.
+  */
+  .org-float--zoom {
+    z-index: 4;
+  }
+}
+
+.org-panel-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+.org-panel-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  color: var(--ink-muted);
+}
+.org-panel-close:hover {
+  color: var(--ink-primary);
+  background: var(--grid);
+}
+
+.org-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.org-panel-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.org-person {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 6px;
+  border-radius: 8px;
+}
+.org-person + .org-person {
+  border-top: 1px solid var(--border);
+}
+.org-person:hover {
+  background: var(--surface-sunken);
+}
+/* Dimmed, not hidden: the roster's total counts the active ones and the list
+   has to account for the difference. */
+.org-person[data-inactive] {
+  opacity: 0.55;
+}
+/*
+  The person the search was actually looking for.
+
+  A unit of eighteen opened from a search for one name is eighteen rows the
+  reader has to scan for the name they just typed. A wash AND a rail: the wash
+  is what the eye finds, the rail is what survives if a future rule repaints
+  the row. It deliberately outranks the hover wash by source order — the one
+  row that must read as marked is the one row hover may not repaint.
+*/
+.org-person[data-found] {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.org-tag {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 9.5px;
+  line-height: 15px;
+  white-space: nowrap;
+  background: var(--grid);
+  color: var(--ink-secondary);
+}
+.org-tag--head {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+.org-tag--off {
+  color: var(--ink-muted);
+}
+
+/*
+  FORCED COLOURS: the chart's state is carried by colour, and colour is what
+  forced-colours mode discards.
+
+  Windows high-contrast throws away box-shadow and replaces every colour with
+  a system one, so the selected card, the search match and the active connector
+  all became indistinguishable from the twenty around them. Borders and
+  `Highlight` survive; the same fallback the focus ring in this file already
+  uses for the same reason.
+*/
+@media (forced-colors: active) {
+  /* The chain is carried by a wash and a mixed border, and forced-colours
+     discards both — so the one thing this screen exists to show would be
+     invisible in that mode without a border of its own. BEFORE the selection
+     rule, as in the base stylesheet: the picked card is always on its own chain,
+     and written the other way round it wore the ancestors' dotted border. */
+  .org-card[data-chain] {
+    border: 2px dotted Highlight;
+  }
+  .org-card[data-selected],
+  .org-card[data-matched] {
+    border: 2px solid Highlight;
+  }
+  .org-person[data-found] {
+    border: 1px solid Highlight;
+  }
+  /* The overlapped chips are separated only by a box-shadow ring, and the
+     «Siz» pill only by its fill — both of which this mode throws away. */
+  .org-card-chip {
+    border: 1px solid CanvasText;
+  }
+  .org-you-label {
+    border: 1px solid CanvasText;
+  }
+  .org-card[data-dimmed] {
+    opacity: 1;
+    border-style: dashed;
+  }
+  .org-link[data-active='true'] {
+    stroke: Highlight;
+  }
+  .org-badge-you,
+  .org-tag--head {
+    border: 1px solid CanvasText;
   }
 }

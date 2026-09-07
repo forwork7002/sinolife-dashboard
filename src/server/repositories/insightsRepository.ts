@@ -52,6 +52,28 @@ function int(value: unknown): number {
 }
 
 /**
+ * `%`, `_` and the escape itself are wildcards to LIKE and characters to a
+ * person.
+ *
+ * A customer named "100%" would otherwise match every order on the board, and
+ * a search for "bx_1" would quietly match "bx-1" as well. Backslash is
+ * Postgres's default LIKE escape character, so the escaped form needs no
+ * ESCAPE clause.
+ *
+ * BOTH READINGS OF A TERM MUST ESCAPE IT THE SAME WAY.
+ * `confirmationSearchScope` decides which orders a term can REACH and
+ * `SEARCH_SQL` decides which of them it MATCHES; escaping in one and not the
+ * other would let the two disagree about what was typed, and the shape that
+ * disagreement takes is an order the tiles count and the table cannot show.
+ *
+ * The masked-phone and digits branches are unaffected on purpose: they read
+ * the raw parameter, and a backslash is neither a digit nor a star.
+ */
+function escapeLike(term: string): string {
+  return term.replace(/[\\%_]/g, (char) => `\\${char}`)
+}
+
+/**
  * A timestamp that travelled inside JSON.
  *
  * `json_build_object` renders a `timestamp` as ISO text with NO zone, and
@@ -455,39 +477,62 @@ export interface ConfirmationSellerRatingFilters {
  * One operator's standing on the confirmation-queue cohort.
  *
  * THE TWO FACTS ARE THE CLIENT'S OWN, NAMED «FAKT 1» AND «FAKT 2» ON THE
- * FLOOR. FAKT 1 is Тасдиқланди — the order reached the customer and moved
- * into Доставка (`outcome = 'CONFIRMED'`). FAKT 2 is Доставланди — of those,
- * the ones the carrier actually delivered (`deal.status = 'WON'` on a
- * Доставка-pipeline deal, i.e. C6:WON).
+ * FLOOR. FAKT 1 is what left the queue as an order — Тасдиқланди AND
+ * Тасдиқланмай чиқди, the two states their board prints side by side; see
+ * `FAKT1_OUTCOMES` for why the second one's money is on the road exactly like
+ * the first one's. FAKT 2 is Доставланди — of those, the ones the carrier
+ * actually delivered (`deal.status = 'WON'` on a Доставка-pipeline deal,
+ * i.e. C6:WON).
  *
  * «Успешно заказ» (C6:UC_YUKVF1) was considered and rejected for FAKT 1: see
  * `DELIVERY_STAGE_ROLES['C6:UC_YUKVF1']` in `mapping.ts` — it is a settlement
  * stamp automation writes within five seconds of Доставлено in most cases,
  * not an operator's own act, and using it collapsed FAKT 1 into FAKT 2.
  *
- * FAKT 2 IS NOT A SUBSET OF FAKT 1, and the client's definition is why:
- * "har bir buyurtma" — EVERY cohort order that reached delivery counts,
- * including one shipped as Тасдиқланмай чиқди (outcome UNCONFIRMED_SHIPPED,
- * so outside FAKT 1) that the carrier then delivered. For the ordinary order
- * the two do nest — `moves` never records a C6:WON visit (WON is not in
- * `CONFIRMATION_SIGNAL_STAGES`), so a confirmed order's `outcome` stays
- * 'CONFIRMED' through delivery — which is what makes inTransit ("confirmed,
- * still on the way") a meaningful remainder.
+ * FAKT 2 IS STILL NOT A SUBSET OF FAKT 1, and the client's definition is
+ * why: "har bir buyurtma" — EVERY cohort order that reached delivery counts,
+ * including one that was refused in the queue (❌ Тасдиқланмади) and revived
+ * afterwards. Тасдиқланмай чиқди used to be the common case of that gap and
+ * is now inside FAKT 1, so the two nearly nest; they are still two measures
+ * and the page must not print one as a share of the other. For the ordinary
+ * order they do nest — `moves` never records a C6:WON visit (WON is not in
+ * `CONFIRMATION_SIGNAL_STAGES`), so an order's `outcome` survives delivery —
+ * which is what makes inTransit ("out of the queue, still on the way") a
+ * meaningful remainder.
  */
 export interface ConfirmationSellerRatingRow {
   readonly employeeId: string
   readonly fullName: string
   /** The ROP's own name — see `queueSql`'s `classified.rop`. Null off a team. */
   readonly rop: string | null
-  /** FAKT 1: Тасдиқланди — confirmed orders, this operator's book. */
+  /**
+   * EVERY order this operator has in the cohort — the count the confirmation
+   * queue shows for the same period. FAKT 1 counts only the ones that left
+   * the queue as an order, so the two differ and the screen has to be able to
+   * say by how much.
+   */
+  readonly cohortOrders: number
+  /**
+   * FAKT 1: Тасдиқланди + Тасдиқланмай чиқди — what this operator sent out.
+   * See `FAKT1_OUTCOMES`; the name stays `confirmed*` because FAKT 1 is what
+   * the floor calls it and every consumer downstream reads it as that.
+   */
   readonly confirmedOrders: number
   readonly confirmedMinor: bigint
-  /** FAKT 2: Доставланди — of those, delivered (C6:WON). */
+  /** FAKT 2: Доставланди — the deal's CURRENT stage is a delivery stage. */
   readonly deliveredOrders: number
   readonly deliveredMinor: bigint
-  /** Confirmed but not yet delivered — still inside FAKT 1, shown apart. */
+  /** In FAKT 1, not delivered, still OPEN — genuinely on the road. */
   readonly inTransitOrders: number
   readonly inTransitMinor: bigint
+  /**
+   * In FAKT 1, then LOST before delivery — «Отказ предварительно» and its
+   * kind. Not in-transit (nothing is moving) and not a queue refusal (the
+   * order DID leave the queue). Its own measure, or a fifth of the in-transit
+   * money is a fiction.
+   */
+  readonly lostAfterConfirmOrders: number
+  readonly lostAfterConfirmMinor: bigint
   /** Тасдиқланмади — refused in the queue. Outside FAKT 1, shown so the exclusion is visible. */
   readonly rejectedOrders: number
 }
@@ -535,23 +580,7 @@ export interface MarginSummary {
   readonly coverageBp: number
 }
 
-/** Call totals for one direction. */
-export interface CallDirectionRow {
-  readonly direction: string
-  readonly calls: number
-  readonly connected: number
-  readonly talkSeconds: number
-}
 
-export interface CallActivityRow {
-  readonly employeeId: string
-  readonly employeeName: string
-  readonly calls: number
-  readonly connected: number
-  readonly talkSeconds: number
-  readonly connectRateBp: number | null
-  readonly averageTalkSeconds: number
-}
 
 export interface DispatchRow {
   readonly point: string
@@ -568,20 +597,61 @@ export interface StructureNode {
   readonly name: string
   readonly parentId: string | null
   readonly headName: string | null
-  /** Everyone on the roster, active or not. */
+  /**
+   * The head's own employee id, and the two facts the card needs about them.
+   *
+   * `headIsMember` is not a detail. Bitrix24's own company-structure screen
+   * draws NO head row for a unit whose `UF_HEAD` names somebody who is not in
+   * it — «Навоий» is exactly that, headed by a person whose departments are
+   * «Kompaniya(ROP)» and «Тошкент онлайн» — and a card that printed the name
+   * anyway would put a manager in a unit the portal says they do not sit in.
+   */
+  readonly headId: string | null
+  readonly headPosition: string | null
+  readonly headIsMember: boolean
+  /** Everyone whose PRIMARY unit is this one, active or not. */
   readonly headcount: number
   /** Marked active in Bitrix24. */
   readonly activeHeadcount: number
   /**
-   * Active AND produced something this period — a call or a won deal.
-   *
-   * The difference between this and `activeHeadcount` is the answer to "who is
-   * here and who is not": people the roster says are working and the data says
-   * are silent.
+   * Active people the PORTAL lists in this unit — its own `UF_DEPARTMENT`
+   * membership, which is many-to-many. Larger than `activeHeadcount` wherever
+   * somebody's second unit is this one. See the DepartmentMember model.
    */
-  readonly workingHeadcount: number
-  readonly deals: number
-  readonly revenueMinor: bigint
+  readonly memberCount: number
+  /**
+   * Those people's names, for the chart's own search box.
+   *
+   * Active only, and shipped with the tree rather than fetched per keystroke —
+   * the whole roster is a few kilobytes and the payload is already on the wire.
+   */
+  readonly memberNames: readonly string[]
+  /**
+   * `memberCount` minus the head, when the head is one of them. This is the
+   * figure the portal's card prints as «N сотрудников» under «Подчинённые»,
+   * and the one the floor will hold this screen up against.
+   */
+  readonly subordinateCount: number
+  /**
+   * Active people in this unit's whole subtree, minus this unit's own head —
+   * what the portal prints in the pill beside the head's name. DISTINCT, so a
+   * person who sits in two units of the same branch is one person.
+   */
+  readonly headManagesCount: number
+  /** Direct child units. The card's footer prints this or says there are none. */
+  readonly childCount: number
+  readonly sortOrder: number
+}
+
+/** One person on a department's roster, for the side panel. */
+export interface DepartmentMemberRow {
+  readonly id: string
+  readonly fullName: string
+  readonly position: string | null
+  readonly isActive: boolean
+  /** False when this unit is their SECOND department. */
+  readonly isPrimary: boolean
+  readonly isHead: boolean
 }
 
 export class InsightsRepository {
@@ -1087,7 +1157,7 @@ export class InsightsRepository {
         count(*) FILTER (WHERE d."status" = 'WON')::bigint AS delivered,
         count(*) FILTER (WHERE d."status" = 'LOST')::bigint AS failed
       FROM "deal" d
-      JOIN "employee" e ON e."id" = d."employeeId"
+      JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
       JOIN "deal_stage" cur ON cur."id" = d."stageId"
       JOIN queued q ON q.deal_id = d."id"
       LEFT JOIN touched t ON t.deal_id = d."id"
@@ -1249,6 +1319,36 @@ export class InsightsRepository {
   }
 
   /**
+   * THE ROP STRIP, WRITTEN ONCE BECAUSE TWO READINGS COMPARE ITS RESULT.
+   *
+   * `classified.rop` is the department name with the «(ROP)» marker removed,
+   * and `SEARCH_SQL` matches THAT column — so the search scope's department
+   * arm has to compare the same string or it stops being a superset of the
+   * predicate it is only allowed to pre-filter for.
+   *
+   * IT DID NOT, AND THE BOARD WENT BLANK. The arm matched the department's
+   * RAW name. For any unit with text on both sides of the marker — «Sevinch(ROP) 2»
+   * strips to «Sevinch 2» — the term «Sevinch 2» matches the predicate and
+   * misses the raw name, so the scope excluded exactly the rows the predicate
+   * would have kept. The scope bounds the cohort every reading of this board
+   * is built from, so that is not a few missing rows: it is zero rows, zero
+   * tiles and an empty ROP panel, with nothing erroring and nothing on screen
+   * saying why. A pre-filter is an optimisation; it may only ever be WIDER
+   * than the predicate.
+   *
+   * ONE CONSTANT RATHER THAN TWO COPIES, because of what a copy is made of.
+   * The doubled backslashes are load-bearing: the SQL lives in a JavaScript
+   * template literal, a lone backslash before a parenthesis is not a JS
+   * escape, so it collapses and Postgres receives a bare capture group round
+   * the three letters — which matches them and leaves the parentheses, so
+   * «Sevinch(ROP)» prints «Sevinch()» everywhere the board names a ROP. Only
+   * one of the two sites was pinned by an assertion on the BUILT string, and
+   * a second hand-written copy is a second chance to get that wrong in the
+   * place nothing was watching.
+   */
+  private static readonly ROP_STRIP_SQL = `regexp_replace(dep."name", '\\(ROP\\)', '', 'gi')`
+
+  /**
    * The board answers two questions, and they are not the same question.
    *
    *   'window'  — WHAT CAME IN, AND WHERE DOES IT STAND. Orders that ARRIVED
@@ -1271,7 +1371,32 @@ export class InsightsRepository {
    * daily number — is shared, so the two readings can never drift apart in
    * how they classify an order. Only which orders enter differs.
    */
-  private static queueSql(mode: ConfirmationQueueMode = 'window'): string {
+  private static queueSql(
+    mode: ConfirmationQueueMode = 'window',
+    /*
+      A PRE-RESOLVED SET OF DEAL IDS — the placeholder, not the value.
+
+      A search over an unbounded span cannot be made affordable by indexing the
+      predicate: the predicate runs over the cohort, where `deal` and
+      `customer` are reached by id and never scanned, so no index on either can
+      be chosen. What IS affordable is resolving the candidate ids FIRST, from
+      a statement that starts on the indexed tables, and bounding the history
+      scan by them — see `confirmationSearchScope`.
+
+      IT GOES IN `moves` AND NOWHERE ELSE. That CTE is what every reading of
+      this board is built on, so binding it here is the only place that cannot
+      let the row list, the five tiles and the ROP panel end up looking at
+      three different populations. Each caller must bind the SAME array.
+
+      THE SET IS A SUPERSET, NOT THE ANSWER. `SEARCH_SQL` is still the
+      authority on what matches; this only decides what the cohort is built
+      out of. It also carries the DAY-PEERS of every hit, because `numbered`
+      restarts the daily № per ROP per Tashkent day and a cohort holding only
+      the matches would renumber the day 001, 002, 003 — an identifier the
+      column's own comment promises never changes.
+    */
+    scopeParam?: string,
+  ): string {
     /*
       Backlog mode narrows the history scan to LIVE orders before aggregating.
 
@@ -1284,9 +1409,28 @@ export class InsightsRepository {
       mode === 'backlog' ? `JOIN "deal" d0 ON d0."id" = h."dealId" AND d0."status" = 'OPEN'` : ''
 
     /*
+      A clause or nothing at all — never `(param::text[] IS NULL OR ...)`.
+
+      Two reasons, and both have teeth. Under a generic plan the OR form hides
+      the qual from the planner, so the (dealId, enteredAt) index this exists
+      to reach is not chosen and the scan it was meant to cut runs in full.
+      And an UNSCOPED reading has to build the string it built before this
+      parameter existed: the header bell, the tiles, the ROP options and the
+      sellers rating all still call `queueSql(mode)` with one argument, and
+      confirmationSellerRatingSql.test.ts asserts on that exact text.
+    */
+    const scoped = scopeParam ? `AND h."dealId" = ANY(${scopeParam}::text[])` : ''
+
+    /*
       The cohort predicate. Both forms still read $1 and $2 — the caller binds
       an all-time span for the backlog — so the parameter positions every
       reading below depends on stay identical in either mode.
+
+      THERE ARE THREE MODES AND TWO BRANCHES, and that is deliberate. 'all' is
+      the windowed cohort read over an unbounded span, so it is the same SQL
+      with different bounds; giving it a branch of its own would be a third
+      definition of "an order is on this board" to keep in step with the other
+      two. The span is chosen in `insightsService.confirmationQueue`.
     */
     const cohort =
       mode === 'backlog'
@@ -1334,6 +1478,21 @@ export class InsightsRepository {
       than that arrival, so none of them can win max(moved_at). What the
       bound buys is the whole reason this query is affordable — (stageId,
       enteredAt) range scans instead of a sequential pass over the history.
+
+      ON A SEARCH THAT BOUND STOPS BOUNDING ANYTHING, WHICH IS WHY THE ID
+      BOUND EXISTS. A search and «Жами» are answered over all of time, and
+      allTime starts at the epoch — so $1 admits the entire signal history and
+      the affordability the left bound bought is simply gone. The scope clause
+      puts it back from the other side: the candidate ids are resolved first,
+      by a statement that starts ON the indexed tables
+      (confirmationSearchScope), and this scan becomes (dealId, enteredAt)
+      lookups for those deals.
+
+      IT NARROWS WHICH DEALS ARE AVAILABLE AND REDEFINES NOTHING. The dated
+      CTE still requires an arrival in C4:NEW, and agg groups by deal — so
+      removing other deals cannot change a surviving deal's max(moved_at), its
+      queued_at, or which signal it is filed under. The set is a superset of
+      what the search matches, and SEARCH_SQL still decides the rest.
     */
     moves AS (
       SELECT h."dealId" AS deal_id, h."enteredAt" AS moved_at, ss.signal
@@ -1341,6 +1500,7 @@ export class InsightsRepository {
         JOIN "deal_stage_history" h
           ON h."stageId" = ss."id"
          AND h."enteredAt" >= $1
+         ${scoped}
         ${liveOnly}
     ),
     /*
@@ -1436,20 +1596,18 @@ export class InsightsRepository {
           capitals today, so this is a divergence waiting on a rename rather
           than a wrong number on screen; the two rules still have to agree.
 
-          THE BACKSLASHES ARE DOUBLED BECAUSE THIS IS A TEMPLATE LITERAL.
-          A lone backslash before a parenthesis is not a JavaScript escape, so
-          it collapses and Postgres receives a bare capture group round the
-          three letters ROP — which matches the letters and leaves the
-          parentheses exactly where they were, printing «Sevinch()» on every
-          ROP. This very comment must therefore avoid both a backtick and a
-          lone backslash, or it terminates the literal it documents. Pinned in
-          confirmationQueueSql.test.ts by an assertion on the BUILT string,
-          since every other check in that file reads the source and would have
-          passed either way.
+          THE EXPRESSION ITSELF IS ROP_STRIP_SQL, NOT A LITERAL WRITTEN HERE.
+          Its escaping is one collapsed backslash away from printing
+          «Sevinch()» on every ROP on this board, and the search scope compares
+          the result of the SAME strip — so the two share one constant rather
+          than two copies of a regex that only looks right. See ROP_STRIP_SQL
+          for the whole argument; it is pinned in confirmationQueueSql.test.ts
+          by an assertion on the BUILT string, since every other check in that
+          file reads the source and would have passed either way.
         */
         CASE
           WHEN dep."name" ILIKE '%(ROP)%'
-            THEN NULLIF(btrim(regexp_replace(dep."name", '\\(ROP\\)', '', 'gi')), '')
+            THEN NULLIF(btrim(${InsightsRepository.ROP_STRIP_SQL}), '')
           ELSE NULL
         END AS rop,
         /*
@@ -1467,7 +1625,28 @@ export class InsightsRepository {
         END AS outcome
       FROM dated w
       JOIN "deal" d ON d."id" = w.deal_id
-      JOIN "employee" e ON e."id" = d."employeeId"
+      /*
+        ОПЕРАТОР IS WHO SOLD IT, NOT WHO HOLDS THE ROW TODAY.
+
+        The client's definition of the sellers board is «Тасдиқлаш навбати ->
+        barcha buyurtmalar, and the ОПЕРАТОР on the row IS the seller». The
+        deal's assignee is not that person: this portal moves deals to back
+        office while they are processed, so ASSIGNED_BY_ID drifts. Measured on
+        July 2026 — 556 orders sat on the head of Операцион, making him the
+        board's number one with 4.2x the client's own leader, and twelve of
+        twelve sampled deals named a different, real seller in the portal's own
+        snapshot field.
+
+        The operatorEmployeeId column is that snapshot resolved to one of our
+        people at import (see domain/employees/floorNumber). COALESCE, because
+        the field was added in May 2026 and older cohorts are ~20% empty — a
+        deal without it keeps the assignee rather than leaving the board.
+
+        The join lives in the classified CTE, so the confirmation queue and the
+        sellers board name the same person for the same order. They are one
+        cohort and must not disagree about whose order it is.
+      */
+      JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
       LEFT JOIN "department" dep ON dep."id" = e."departmentId"
     ),
     numbered AS (
@@ -1573,7 +1752,8 @@ export class InsightsRepository {
       period.start,
       period.end,
       filter.rop ?? null,
-      filter.q ?? null,
+      // Escaped, so a typed % is a per cent sign rather than "every order".
+      filter.q === undefined ? null : escapeLike(filter.q),
     )
 
     // Every state is present with a zero rather than absent. A state missing
@@ -1763,12 +1943,430 @@ export class InsightsRepository {
        ) rep ON true`
 
   /**
+   * How many orders a term may match and still be treated as a lookup.
+   *
+   * 2 000, because the day-peer expansion behind the hits grows with the
+   * number of distinct arrival days they touch rather than with the hits
+   * themselves: a term matching 146 431 deal titles («collagen», measured on
+   * production) would drag in every arrival of every day it touches and read
+   * more of the history than the unbounded shape it was meant to replace.
+   *
+   * IT IS THE ARM LIMIT AND THE OVERFLOW DETECTOR AT ONCE, AND THAT IS THE
+   * WHOLE POINT. Each arm is capped one ABOVE it and returns distinct deal
+   * ids, so `hits` can only exceed this if some arm truncated — which means
+   * the reverse also holds: at or below it, no arm truncated and `hits` is
+   * the COMPLETE candidate set. Two different numbers here would leave the
+   * gap this exists to close: an arm quietly cut at its own limit, a total
+   * comfortably under the other one, and a board silently missing orders that
+   * the predicate would have matched. Nothing errors, nothing looks wrong,
+   * and the operator on the phone is told the order does not exist.
+   */
+  private static readonly SEARCH_HIT_CAP = 2_000
+
+  /**
+   * How large the resolved set may get before the search gives up on being
+   * fast and lets the unbounded cohort answer instead.
+   *
+   * The hits are bounded by SEARCH_HIT_CAP and the day-peer expansion behind
+   * them by SEARCH_DAY_CAP; this is the last of the three, and the only one
+   * measured on the answer rather than on the work. It catches the shape the
+   * other two cannot see coming — a set inside both caps whose days are
+   * unusually full — and it is why nothing downstream has to trust an
+   * arithmetic argument about 130 rows a day.
+   *
+   * ABOVE THIS IT FALLS BACK, IT DOES NOT TRUNCATE. A board that quietly
+   * dropped the twenty-thousand-and-first order would be wrong in the one way
+   * this screen may never be wrong — the operator has the customer on the
+   * line and «Buyurtma topilmadi» would be a lie. Slow and complete beats
+   * fast and short here.
+   */
+  private static readonly SEARCH_SCOPE_CAP = 20_000
+
+  /**
+   * How many distinct arrival DAYS the hits may touch before the day-peer
+   * expansion is refused and the search falls back to the unbounded shape.
+   *
+   * THE HIT CAP DOES NOT BOUND THIS. `hits` is capped at 2 000 orders, but the
+   * expansion behind them costs one index range scan per distinct day, not per
+   * hit — so the cheap term and the expensive term look identical from the hit
+   * count alone. An operator's name matching ~800 orders spread over ~300
+   * arrival days ran 300 range scans of about 130 rows each and produced a set
+   * SEARCH_SCOPE_CAP then threw away, so the board paid for this statement AND
+   * for the unbounded query it was written to avoid. That is the one way this
+   * pre-filter can be worse than not existing.
+   *
+   * 150, because that is where the expansion stops being able to fit in the
+   * answer at all: about 130 arrivals a day on this portal puts 150 days at
+   * ~19 500 rows against a SEARCH_SCOPE_CAP of 20 000, so past it the length
+   * check downstream would have rejected the set anyway — this only stops the
+   * work BEFORE it is done rather than after. On a term whose days are
+   * unusually sparse (early history, a few orders a day) the cap does refuse a
+   * set that would have fitted; the cost of that is the unbounded shape, which
+   * is slow and COMPLETE. Never a short answer that looks whole: the operator
+   * is on the phone to the customer and «Buyurtma topilmadi» would be a lie.
+   */
+  private static readonly SEARCH_DAY_CAP = 150
+
+  /**
+   * The four values the scope statement binds, derived from the typed term.
+   *
+   * Separated from the SQL so both halves can be pinned without a database:
+   * a term with no digits must bind NULL rather than '%%', which matches
+   * every row, and a lone '*' must bind NULL for the masked form rather than
+   * a prefix and a suffix that are both empty.
+   */
+  private static searchScopeParams(term: string): {
+    like: string
+    digitsLike: string | null
+    headLike: string | null
+    tailLike: string | null
+  } {
+    const digits = term.replace(/[^0-9]/g, '')
+    // The digits before the first '*' and after the last one — the masked
+    // form as the screen prints it, +99894***0037.
+    const head = term.includes('*') ? term.split('*')[0]!.replace(/[^0-9]/g, '') : ''
+    const tail = term.includes('*') ? term.split('*').at(-1)!.replace(/[^0-9]/g, '') : ''
+    const masked = head !== '' && tail !== ''
+
+    return {
+      like: `%${escapeLike(term)}%`,
+      digitsLike: digits === '' ? null : `%${digits}%`,
+      headLike: masked ? `${head}%` : null,
+      tailLike: masked ? `%${tail}` : null,
+    }
+  }
+
+  /**
+   * The statement that turns a typed term into the set of orders the cohort
+   * may be built from — isolated so its shape can be pinned without a
+   * database, exactly as `queueSql` is.
+   */
+  private static searchScopeSql(): string {
+    /*
+      ONE ABOVE THE CAP, ON EVERY ARM. An arm that returns exactly the cap is
+      indistinguishable from an arm that had nothing more to give; one row
+      further and the overflow is a fact rather than a suspicion.
+    */
+    const arm = InsightsRepository.SEARCH_HIT_CAP + 1
+
+    return `
+      /*
+        EVERY ARM STARTS ON AN INDEXED TABLE, AND EVERY ARM IS CAPPED.
+
+        A union of single-index lookups, never one WHERE with sixteen ORs. An
+        OR spanning two tables leaves the planner nothing to drive an index
+        scan from and it reads both — the shape 20260831150000 was written
+        against, where an unindexed substring over 423 845 deals measured
+        6 488 ms and 0.25 ms once the arm could be answered from an index.
+
+        The arms are deliberately WIDER than SEARCH_SQL wherever being wider
+        is free — the ROP arm matches the department's raw name rather than
+        the stripped one, and the operator arm matches both the assignee and
+        the resolved operator. A superset costs a few extra ids; a subset
+        loses rows the predicate downstream would have matched, and the reader
+        would see the tiles count an order the table cannot show.
+      */
+      WITH hits AS (
+        /*
+          THE BITRIX ID, AS A SUBSTRING — BECAUSE THE PREDICATE MATCHES ONE.
+
+          The obvious arm here is an exact match on a btree: the global search
+          box already argues that 9258 is not a prefix of 925842 in any sense
+          a person means by typing it. It would be WRONG here, and quietly.
+          SEARCH_SQL matches this column with ILIKE, so an exact arm would
+          make the pre-filter NARROWER than the predicate — a partial id would
+          find its order on the unbounded fallback and not on the fast path,
+          which is a board whose answer depends on how broad the term was.
+          Every arm in this statement is a superset of what the predicate does
+          with the same column, and this is the one that has to be argued for.
+        */
+        (SELECT "id" FROM "deal" WHERE "externalId" ILIKE $1 LIMIT ${arm})
+        UNION (SELECT "id" FROM "deal" WHERE "orderCode" ILIKE $1 LIMIT ${arm})
+        UNION (SELECT "id" FROM "deal" WHERE "title"     ILIKE $1 LIMIT ${arm})
+        UNION (SELECT "id" FROM "deal" WHERE "region"    ILIKE $1 LIMIT ${arm})
+        UNION (SELECT "id" FROM "deal" WHERE "deliveryAddress" ILIKE $1 LIMIT ${arm})
+        UNION (SELECT d."id" FROM "deal" d JOIN "customer" c ON c."id" = d."customerId"
+                WHERE c."name" ILIKE $1 LIMIT ${arm})
+        /* The phone, on the expression customer_phone_digits_trgm_idx carries. */
+        UNION (SELECT d."id" FROM "deal" d JOIN "customer" c ON c."id" = d."customerId"
+                WHERE $2::text IS NOT NULL
+                  AND regexp_replace(c."phone", '[^0-9]', '', 'g') LIKE $2 LIMIT ${arm})
+        /*
+          Second and third numbers: 3 702 customers of 326 859, reached through
+          customer_extra_phones_idx rather than by reading the whole table.
+          Per element, like the predicate, so the pre-filter cannot resolve an
+          order on a run of digits that spans two numbers.
+        */
+        UNION (SELECT d."id" FROM "deal" d JOIN "customer" c ON c."id" = d."customerId"
+                WHERE $2::text IS NOT NULL AND array_length(c."phones", 1) > 0
+                  AND EXISTS (SELECT 1 FROM unnest(c."phones") AS one(num)
+                               WHERE regexp_replace(one.num, '[^0-9]', '', 'g') LIKE $2)
+                LIMIT ${arm})
+        /*
+          The masked form. Prefix AND suffix, both required and both non-empty
+          — a lone '*' would otherwise match every row in the table.
+        */
+        UNION (SELECT d."id" FROM "deal" d JOIN "customer" c ON c."id" = d."customerId"
+                WHERE $3::text IS NOT NULL
+                  AND regexp_replace(c."phone", '[^0-9]', '', 'g') LIKE $3
+                  AND regexp_replace(c."phone", '[^0-9]', '', 'g') LIKE $4 LIMIT ${arm})
+        UNION (SELECT d."id" FROM "deal" d JOIN "customer" c ON c."id" = d."customerId"
+                WHERE $3::text IS NOT NULL AND array_length(c."phones", 1) > 0
+                  AND EXISTS (SELECT 1 FROM unnest(c."phones") AS one(num)
+                               WHERE regexp_replace(one.num, '[^0-9]', '', 'g') LIKE $3
+                                 AND regexp_replace(one.num, '[^0-9]', '', 'g') LIKE $4)
+                LIMIT ${arm})
+        /* The amount, written exactly as deal_amount_major_trgm_idx has it. */
+        UNION (SELECT "id" FROM "deal"
+                WHERE $2::text IS NOT NULL AND ("amountMinor" / 100)::text LIKE $2 LIMIT ${arm})
+        /*
+          The four small reference tables, inverted: a sequential scan of a few
+          hundred rows feeding an indexed lookup on deal, instead of the
+          correlated EXISTS the predicate runs once per cohort row.
+
+          BOTH SIDES OF THE OPERATOR COALESCE. The row displays the name of
+          COALESCE(operatorEmployeeId, employeeId), so resolving only the
+          assignee would leave the name printed on screen unable to find its
+          own row on every deal this portal moved to back office.
+        */
+        UNION (SELECT d."id" FROM "deal" d
+                 JOIN "employee" e ON e."id" = d."employeeId"
+                WHERE e."fullName" ILIKE $1 LIMIT ${arm})
+        UNION (SELECT d."id" FROM "deal" d
+                 JOIN "employee" e ON e."id" = d."operatorEmployeeId"
+                WHERE e."fullName" ILIKE $1 LIMIT ${arm})
+        UNION (SELECT d."id" FROM "deal" d
+                 JOIN "sales_source" s ON s."id" = d."sourceId"
+                WHERE s."name" ILIKE $1 LIMIT ${arm})
+        /*
+          DISTINCT, and only here: a deal carries up to four line items, so
+          this is the one arm whose rows are not already one per order. Left
+          as rows, its LIMIT would count items and cut the arm at fewer deals
+          than the cap says — which is the overflow going undetected, and an
+          undetected overflow is a board silently missing orders.
+        */
+        UNION (SELECT DISTINCT di."dealId" FROM "deal_item" di
+                 JOIN "product" pr ON pr."id" = di."productId"
+                WHERE pr."name" ILIKE $1 LIMIT ${arm})
+        /*
+          The ROP, matched on the STRIPPED name — the same string the predicate
+          matches, from the same constant.
+
+          It used to match the department's RAW name, on the reasoning that
+          raw is a superset of stripped and a second copy of that regexp would
+          be a second place for the doubled backslash to be got wrong. Only
+          the second half of that was true. Raw is a superset of stripped only
+          while the marker sits at one END of the name: a unit called
+          «Sevinch(ROP) 2» strips to «Sevinch 2», the predicate matches the
+          term «Sevinch 2» and the raw name does not, so the scope EXCLUDED
+          the rows the predicate would have kept. Every reading of the board
+          is bounded by this set, so the result was zero rows, zero tiles and
+          an empty ROP panel at once, with nothing erroring.
+
+          The doubled-backslash worry is answered by sharing ROP_STRIP_SQL
+          rather than by comparing a different string: one expression, both
+          sites, pinned by confirmationSearchScope.test.ts against the built
+          strings so the two cannot drift again.
+
+          Still WIDER than the predicate, which is the only thing this arm is
+          allowed to be: it skips the ILIKE guard that makes rop NULL off a ROP
+          team, and it skips the btrim, whose result is a substring of what is
+          compared here.
+        */
+        UNION (SELECT d."id" FROM "deal" d
+                 JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
+                 JOIN "department" dep ON dep."id" = e."departmentId"
+                WHERE ${InsightsRepository.ROP_STRIP_SQL} ILIKE $1 LIMIT ${arm})
+      ),
+      /*
+        WHICH DAY EACH HIT IS FILED UNDER — its LAST arrival in C4:NEW, read
+        from that deal's own history through (dealId, enteredAt). The same
+        rule as agg.queued_at, and unbounded for the same reason it is
+        unbounded there: this statement only ever runs for a search, and the
+        route drops the reporting window whenever q is set. If a search is
+        ever re-bounded to the window, this and days must take the same
+        left bound or the peers below cover the wrong days.
+
+        A hit with no arrival drops out here, which is correct — the ~52 deals
+        that appear straight in C6:NEW were never on this board, in any mode.
+      */
+      arrivals AS (
+        SELECT x."id" AS deal_id, max(h."enteredAt") AS queued_at
+          FROM hits x
+          JOIN "deal_stage_history" h ON h."dealId" = x."id"
+          JOIN "deal_stage" s ON s."id" = h."stageId" AND s."confirmationSignal" = 'CONFIRM_NEW'
+         /*
+           A one-time filter, evaluated once: past the cap this arm and the two
+           below it do no work at all, and the statement returns the overflow
+           row alone. The alternative — resolving the ids anyway and letting the
+           caller throw them away — spends the day-peer expansion on exactly the
+           terms it was sized to avoid.
+         */
+         WHERE (SELECT count(*) FROM hits) <= ${InsightsRepository.SEARCH_HIT_CAP}
+         GROUP BY x."id"
+      ),
+      /*
+        THE DAY-PEERS, AND WHY THE SCOPE IS NOT JUST THE HITS.
+
+        numbered restarts № per ROP per Tashkent day, and that column's own
+        comment promises the number never changes. A cohort built from the
+        matches alone would print 001 over the day's thirty-seventh order —
+        nothing errors, nothing looks wrong, and the floor reconciles that
+        number against Telegram. So every order that arrived on a hit's day
+        rides in too: one index range scan per distinct day on
+        (stageId, enteredAt), and CONFIRM_NEW is exactly one stage (C4:NEW),
+        so it is one scan of about 130 rows per day. They are dropped again by
+        SEARCH_SQL downstream and never rendered.
+      */
+      days AS (
+        /*
+          ONE ABOVE ITS OWN CAP, FOR THE SAME REASON EVERY ARM ABOVE IS.
+
+          The cost of the expansion below is one range scan per row of this
+          CTE, so this is the number that decides whether the statement is a
+          lookup — not the hit count. Capped one row above SEARCH_DAY_CAP so
+          "there were more" is a fact and not a suspicion.
+        */
+        SELECT DISTINCT (a.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date AS d
+          FROM arrivals a
+         LIMIT ${InsightsRepository.SEARCH_DAY_CAP + 1}
+      ),
+      peers AS (
+        SELECT DISTINCT h."dealId" AS deal_id
+          FROM days
+          JOIN "deal_stage" s ON s."confirmationSignal" = 'CONFIRM_NEW'
+          JOIN "deal_stage_history" h
+            ON h."stageId" = s."id"
+           /* Back to the UTC the column stores: Tashkent midnight, as UTC. */
+           AND h."enteredAt" >= ((days.d::timestamp AT TIME ZONE '${env.APP_TIMEZONE}') AT TIME ZONE 'UTC')
+           AND h."enteredAt" <  (((days.d + 1)::timestamp AT TIME ZONE '${env.APP_TIMEZONE}') AT TIME ZONE 'UTC')
+         /*
+           THE SAME ONE-TIME GATE THE HIT CAP HAS, AND FOR THE SAME REASON.
+
+           Written as a WHERE rather than folded into the join above, so it is
+           the gating qual the planner evaluates once — the shape «arrivals»
+           already uses. Past the day cap the expansion does not run at all and
+           the sentinel below reports the overflow. Gated after the fact
+           instead — resolving the peers and letting the caller discard them —
+           the board paid for the 300 range scans AND for the unbounded query
+           it fell back to, which is this statement making the screen slower
+           than doing nothing.
+         */
+         WHERE (SELECT count(*) FROM days) <= ${InsightsRepository.SEARCH_DAY_CAP}
+      )
+      /*
+        THE OVERFLOW TRAVELS AS A ROW, NOT AS A ROW COUNT.
+
+        Read from the size of the answer alone it would be invisible: a term
+        matching three thousand titles truncates its arm at the cap, resolves
+        maybe fifteen hundred of them to arrivals, and comes back a set the
+        caller has no reason to distrust — a board quietly missing half the
+        orders it was asked for. The sentinel says so instead, and the caller
+        falls back to the unbounded cohort, which is slow and complete.
+
+        BOTH CAPS RAISE IT, AND THE SECOND ONE HAS TO. Past the day cap the
+        peers CTE is switched off above, so the arrivals alone would come back
+        looking like a complete set — a cohort holding the matches without
+        their day-peers, which renumbers every affected day 001, 002, 003 over
+        an identifier the floor reconciles against Telegram. Silent, plausible
+        and wrong, which is the pair of properties this sentinel exists for.
+      */
+      SELECT deal_id, false AS overflow FROM arrivals
+      UNION
+      SELECT deal_id, false FROM peers
+      UNION ALL
+      SELECT NULL::text, true
+        FROM (SELECT 1) AS sentinel
+       WHERE (SELECT count(*) FROM hits) > ${InsightsRepository.SEARCH_HIT_CAP}
+          OR (SELECT count(*) FROM days) > ${InsightsRepository.SEARCH_DAY_CAP}
+      LIMIT ${InsightsRepository.SEARCH_SCOPE_CAP + 1}
+    `
+  }
+
+  /**
+   * Which orders a typed term can reach, resolved BEFORE the cohort is built.
+   *
+   * WHY THIS EXISTS AT ALL. A search on this board is answered over all of
+   * time, and `allTime` starts at the epoch — so `moves`'s left bound admits
+   * the entire signal history, `dated` and `classified` each hash-join the
+   * whole deal table, and the search predicate then runs a correlated EXISTS
+   * over deal_item once per surviving row. Measured before this: about five
+   * seconds for a search against two to three for a month's board. Indexing
+   * the predicate cannot help — it runs over the cohort, where `deal` and
+   * `customer` are reached by id and never scanned, so no index on either is
+   * available to it. Resolving the ids from a statement that STARTS on those
+   * indexes is the only intervention that changes the shape.
+   *
+   * IT IS A SUPERSET FILTER AND NOT THE ANSWER. `SEARCH_SQL` still decides
+   * what matches, over the same three tables all three consumers join. This
+   * may reach further — employee, department, sales_source, product — and it
+   * may return more, precisely because it is not the authority. It may never
+   * return LESS: an id missing here is a row the table cannot show and the
+   * tiles would not have counted either.
+   *
+   * `capped` means "too broad to be a lookup", which is three term shapes and
+   * not one: more than SEARCH_HIT_CAP matching orders, hits spread over more
+   * than SEARCH_DAY_CAP distinct arrival days, or a resolved set past
+   * SEARCH_SCOPE_CAP. The caller passes no scope at all in every one of them
+   * and the board takes the shape it took before — slow and complete, which
+   * on this screen is the right way round.
+   *
+   * A FOURTH SHAPE NEVER REACHES THIS METHOD. A term of one or two characters
+   * is shorter than a trigram, so none of the four GIN indexes every arm here
+   * was written to reach can answer it and the statement degenerates into
+   * several sequential scans of `deal` and `customer` — whose result the hit
+   * cap then discards anyway. `insightsService.confirmationQueue` does not
+   * call this below that length; see SEARCH_MIN_LENGTH there.
+   */
+  async confirmationSearchScope(term: string): Promise<{ dealIds: string[]; capped: boolean }> {
+    const { like, digitsLike, headLike, tailLike } = InsightsRepository.searchScopeParams(term)
+
+    const rows = await this.prisma.$queryRawUnsafe<
+      { deal_id: string | null; overflow: boolean }[]
+    >(InsightsRepository.searchScopeSql(), like, digitsLike, headLike, tailLike)
+
+    /*
+      THREE WAYS TO BE TOO BROAD, AND ALL THREE MEAN THE SAME THING HERE.
+
+      The sentinel row says either that the term matched more orders than an
+      arm was allowed to return — so what came back would be a truncation — or
+      that the hits were spread over more arrival days than the peer expansion
+      is allowed to walk, in which case the statement stopped before running
+      it and the set is missing every day-peer. The length check says the
+      resolved set outgrew the array it was meant to fit into. All three mean
+      the caller passes no scope at all and the board answers the way it always
+      did — never with a short set that looks complete.
+    */
+    const capped =
+      rows.some((row) => row.overflow) || rows.length > InsightsRepository.SEARCH_SCOPE_CAP
+
+    return {
+      dealIds: capped ? [] : rows.map((row) => row.deal_id!),
+      capped,
+    }
+  }
+
+  /**
    * The search box, as one predicate.
    *
    * Shared verbatim between the list and its tiles so a search can never
    * narrow the rows and leave the counts above them describing a wider set.
    * The product term needs its own EXISTS: a deal carries up to four line
    * items and joining them in would multiply the row.
+   *
+   * STILL THE SOLE AUTHORITY ON WHAT MATCHES. `confirmationSearchScope` runs
+   * before the cohort is built and decides which orders are even available to
+   * it; that statement is a SUPERSET filter and reaches tables this predicate
+   * cannot — employee, department, sales_source, product are indexed lookups
+   * there and correlated EXISTS here. Nothing is matched because the scope
+   * resolved it, and nothing may be matched here that the scope cannot
+   * resolve, or the tiles would count an order the table cannot show.
+   *
+   * THE TERM ARRIVES LIKE-ESCAPED, from the same `escapeLike` the scope
+   * statement uses. Before that, a typed `%` matched every order on the board
+   * and `bx_1` quietly matched `bx-1`. The escape reaches the ILIKE arms and
+   * is invisible to the rest: the digits and the masked head/tail are read
+   * off the raw parameter, and a backslash is neither a digit nor a star.
    */
   private static SEARCH_SQL(param: string): string {
     /*
@@ -1805,9 +2403,23 @@ export class InsightsRepository {
             OR d."deliveryAddress" ILIKE '%' || ${param} || '%'
             OR c.rop ILIKE '%' || ${param} || '%'
             OR cust."name" ILIKE '%' || ${param} || '%'
+            /*
+              THE PERSON THE ROW PRINTS, WHICH IS NOT THE DEAL'S OWNER.
+
+              Both the board and the sellers rating name
+              COALESCE(operatorEmployeeId, employeeId) — the portal's own
+              snapshot of who sold the order, resolved at import — because
+              this portal reassigns deals to back office while they are
+              processed. Matched on employeeId alone, typing the ОПЕРАТОР
+              name printed on the row failed to find that row on exactly the
+              deals the snapshot exists for: 556 July orders sat on the head
+              of Операцион. This widens the search, and it widens it onto the
+              name the reader can see.
+            */
             OR EXISTS (
               SELECT 1 FROM "employee" emp
-               WHERE emp."id" = d."employeeId" AND emp."fullName" ILIKE '%' || ${param} || '%'
+               WHERE emp."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
+                 AND emp."fullName" ILIKE '%' || ${param} || '%'
             )
             OR EXISTS (
               SELECT 1 FROM "sales_source" ss
@@ -1818,13 +2430,36 @@ export class InsightsRepository {
                 JOIN "product" pr ON pr."id" = di."productId"
                WHERE di."dealId" = d."id" AND pr."name" ILIKE '%' || ${param} || '%'
             )
+            /*
+              THE PHONE AND THE AMOUNT, ON DIGITS — EACH NUMBER ON ITS OWN.
+
+              These used to be one expression: the array and the first number
+              concatenated, then the separators stripped. Stripping deletes
+              the joining SPACE too, so «+998 90 111 22 33» beside
+              «+998 91 444 55 66» became one twenty-four-digit run and a term
+              straddling the boundary matched an order it had nothing to do
+              with. Split, no comparison can span two numbers.
+
+              The first arm is written character for character as
+              customer_phone_digits_trgm_idx carries it. That index does
+              nothing HERE — cust is reached by id from the cohort, so
+              nothing scans customer at this point — it pays in
+              confirmationSearchScope, which makes the same comparison
+              starting FROM the table. Written identically in both places so
+              the pre-filter cannot resolve an order this predicate then
+              refuses to match.
+            */
             OR (
               ${digits} <> ''
               AND (
-                regexp_replace(
-                  COALESCE(array_to_string(cust."phones", ' '), '') || ' ' || COALESCE(cust."phone", ''),
-                  '[^0-9]', '', 'g'
-                ) LIKE '%' || ${digits} || '%'
+                regexp_replace(cust."phone", '[^0-9]', '', 'g') LIKE '%' || ${digits} || '%'
+                OR (
+                  array_length(cust."phones", 1) > 0
+                  AND EXISTS (
+                    SELECT 1 FROM unnest(cust."phones") AS one(num)
+                     WHERE regexp_replace(one.num, '[^0-9]', '', 'g') LIKE '%' || ${digits} || '%'
+                  )
+                )
                 OR (d."amountMinor" / 100)::text LIKE '%' || ${digits} || '%'
               )
             )
@@ -1870,7 +2505,41 @@ export class InsightsRepository {
     period: Period,
     filter: { q?: string } = {},
     mode: ConfirmationQueueMode = 'window',
+    /*
+      The pre-resolved orders this reading may be built from, or null.
+
+      Resolved ONCE, in `insightsService.confirmationQueue`, and handed to
+      every reading of the board unchanged. Resolving it here instead would
+      let the page and the ROP panel — two statements, fired side by side
+      below 62 days — bound their cohorts by two different sets, and the shape
+      that takes on screen is a row the tiles above it do not count.
+
+      NULL IS «NO PRE-FILTER»; AN EMPTY ARRAY IS «NOTHING MATCHED», AND THE
+      TWO ARE NOT INTERCHANGEABLE. This is the reverse of the employee-scope
+      convention elsewhere in this file, where an empty array reads as no
+      filter and silently widens to the whole company — hence the sentinels
+      that rule it out there. Here the widening value is null, and the empty
+      array is a real answer: a search that resolved no candidate orders must
+      show an empty board, not the whole queue.
+    */
+    scopeIds: string[] | null = null,
   ): Promise<ConfirmationRopRow[]> {
+    /*
+      THE SCOPE RIDES AS A TRAILING PARAMETER, AND ONLY WHEN THERE IS ONE.
+
+      Postgres refuses a bind that supplies more values than the statement has
+      placeholders, so an unscoped reading has to pass exactly what it always
+      passed — which is also what keeps the built SQL byte-identical for every
+      other reader of this cohort.
+    */
+    const params: unknown[] = [
+      period.start,
+      period.end,
+      // Escaped, so a typed % is a per cent sign rather than "every order".
+      filter.q === undefined ? null : escapeLike(filter.q),
+    ]
+    if (scopeIds) params.push(scopeIds)
+
     const rows = await this.prisma.$queryRawUnsafe<
       {
         rop: string | null
@@ -1882,7 +2551,7 @@ export class InsightsRepository {
         unconfirmed_shipped: bigint
       }[]
     >(
-      `${InsightsRepository.queueSql(mode)}
+      `${InsightsRepository.queueSql(mode, scopeIds ? '$4' : undefined)}
        SELECT
          c.rop AS rop,
          count(*)::bigint AS orders,
@@ -1906,9 +2575,7 @@ export class InsightsRepository {
         ${InsightsRepository.SEARCH_SQL('$3')}
       GROUP BY c.rop
       ORDER BY orders DESC`,
-      period.start,
-      period.end,
-      filter.q ?? null,
+      ...params,
     )
 
     return rows.map((r) => ({
@@ -1928,33 +2595,128 @@ export class InsightsRepository {
    * The SELECT this rating runs over `classified`, isolated so its predicates
    * can be pinned by a SQL-shape test without a database — see `queueSql`.
    */
+  /**
+   * WHAT FAKT 1 IS MADE OF — every cohort order that left the queue WITH an
+   * order, which is two of the five states and not one.
+   *
+   * The floor's own board prints them side by side: ✅ ТАСДИҚЛАНДИ and
+   * 🟣 ТАСДИҚЛАНМАЙ ЧИҚДИ (91 and 3 on 2026-09-04). The second is not a
+   * refusal — it is `outcome = 'CONFIRMED'` refined by the deal's «Тастиклаш
+   * анализ» field reading «Недозвон булиб чикарилган» (see `queueSql`): the
+   * operator never reached the customer and the order was dispatched anyway.
+   * The goods went out and the money is on the road exactly as the confirmed
+   * one's is, so the client counts both in FAKT 1. Only ❌ ТАСДИҚЛАНМАДИ is a
+   * loss and it stays outside, with 🕔 Тасдиқлаш and 🟡 Кутармади, which have
+   * not left the queue at all.
+   *
+   * STATED ONCE AND READ SIX TIMES. FAKT 1's money, its order count, «yoʻlda»
+   * and «bekor qilindi» all describe the same population from different
+   * angles; if one of them still read `= 'CONFIRMED'` the row would carry
+   * money no other column on it could account for.
+   *
+   * The Тасдиқлаш board itself keeps the five states apart — that screen is
+   * where an operator reads what happened to one order, and this one is where
+   * a manager reads what the floor sold.
+   */
+  private static readonly FAKT1_OUTCOMES = `c.outcome IN ('CONFIRMED', 'UNCONFIRMED_SHIPPED')`
+
   private static ratingSql(filterClause: string): string {
     return `
        SELECT
          e."id" AS employee_id,
          e."fullName" AS full_name,
          c.rop AS rop,
-         count(*) FILTER (WHERE c.outcome = 'CONFIRMED')::bigint AS confirmed_orders,
-         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRMED')::text AS confirmed,
-         count(*) FILTER (WHERE d."status" = 'WON')::bigint AS delivered_orders,
-         sum(d."amountMinor") FILTER (WHERE d."status" = 'WON')::text AS delivered,
-         count(*) FILTER (WHERE c.outcome = 'CONFIRMED' AND d."status" <> 'WON')::bigint AS in_transit_orders,
-         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRMED' AND d."status" <> 'WON')::text AS in_transit,
+         /*
+           EVERY ORDER THIS OPERATOR HAS IN THE COHORT.
+
+           The client's definition of this board is «Тасдиқлаш навбати ->
+           BARCHA BUYURTMALAR, and the ОПЕРАТОР on the row is the seller», so
+           the board owes the reader the same population the queue page shows.
+           Without this column the two screens print 2 874 and 3 228 for one
+           August with nothing on either saying the first counts only the
+           confirmed ones.
+         */
+         count(*)::bigint AS cohort_orders,
+         count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS confirmed_orders,
+         sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::text AS confirmed,
+         /*
+           FAKT 2 IS A DELIVERY, NOT ANY WON.
+
+           The client's words: "if that order has moved to «Завершить сделку»,
+           it is entered as FAKT 2". «Завершить сделку» is the Доставка
+           kanban's end drop-zone, and dropping a deal there lands it in
+           C6:WON «Доставлено» — verified against the portal with
+           crm.dealcategory.stage.list.
+
+           A plain WON status is NOT that. Nine stages across nine pipelines
+           carry category WON, and two of them hold real deals that never went
+           near a courier: «База · Успешно» (C10:WON, the retention kanban's
+           own success, 1 707 deals) and «Регистрация · Сделка успешна», the
+           automation stamp that HANDS a lead to Тасдиқлаш — the opposite end
+           of the funnel. Measured over this cohort all-time: 41 База rows
+           worth 56 900 000 soʻm and 33 Регистрация rows worth nothing but
+           inflating the delivered COUNT, which drives conversion. August
+           alone carried 3 (6 300 000 soʻm) and April 26 (33 550 000).
+
+           The DELIVERED logistics role is the mapping's own name for the
+           three stages that mean a courier arrived — C6:WON, C14:WON and
+           C14:UC_WFN8MP — and it is read from the deal's CURRENT stage, the
+           way their kanban is read. An order delivered and then bounced back
+           out is not delivered money today: of 19 such orders in August, 7
+           had gone to «Отказ предварительно» and 11 back to a hub.
+         */
+         count(*) FILTER (WHERE ds."logisticsRole" = 'DELIVERED')::bigint AS delivered_orders,
+         sum(d."amountMinor") FILTER (WHERE ds."logisticsRole" = 'DELIVERED')::text AS delivered,
+         /*
+           «Yoʻlda» MEANS STILL MOVING, so a dead order may not sit in it.
+
+           The predicate used to be "confirmed and not won", which counts a
+           deal the seller confirmed and then LOST as live work the seller is
+           carrying. In July that was 102 orders and 176 230 000 soʻm — a
+           fifth of the money the screen labelled in-transit. The two are now
+           separate measures, because "still on the road" and "confirmed, then
+           refused" are different facts about a seller's month and only the
+           second one is a loss.
+         */
+         count(*) FILTER (
+           WHERE ${InsightsRepository.FAKT1_OUTCOMES} AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
+             AND d."status" = 'OPEN'
+         )::bigint AS in_transit_orders,
+         sum(d."amountMinor") FILTER (
+           WHERE ${InsightsRepository.FAKT1_OUTCOMES} AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
+             AND d."status" = 'OPEN'
+         )::text AS in_transit,
+         count(*) FILTER (
+           WHERE ${InsightsRepository.FAKT1_OUTCOMES} AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
+             AND d."status" = 'LOST'
+         )::bigint AS lost_after_confirm_orders,
+         sum(d."amountMinor") FILTER (
+           WHERE ${InsightsRepository.FAKT1_OUTCOMES} AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
+             AND d."status" = 'LOST'
+         )::text AS lost_after_confirm,
          count(*) FILTER (WHERE c.outcome = 'REJECTED')::bigint AS rejected_orders
        FROM classified c
        JOIN "deal" d ON d."id" = c.deal_id
-       JOIN "employee" e ON e."id" = d."employeeId"
+       JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
+       LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
        WHERE TRUE
          ${filterClause}
        GROUP BY e."id", e."fullName", c.rop
-       -- Confirmed OR delivered, not confirmed alone. FAKT 2 spans the whole
-       -- cohort ("har bir buyurtma"), so an operator whose only deliveries
-       -- rode out as Тасдиқланмай чиқди still holds real FAKT 2 money — a
-       -- confirmed-only gate silently erased it from the board. Books that
-       -- are all pending or all refused stay off: the board ranks work done.
-       HAVING count(*) FILTER (WHERE c.outcome = 'CONFIRMED') > 0
-           OR count(*) FILTER (WHERE d."status" = 'WON') > 0
-       ORDER BY sum(d."amountMinor") FILTER (WHERE d."status" = 'WON') DESC NULLS LAST`
+       /*
+         EVERY OPERATOR IN THE COHORT, including one whose whole month was
+         refusals.
+
+         The gate used to be "confirmed > 0 OR delivered > 0", which is what
+         the client's own published page does (it drops rows with no FAKT 2).
+         Their stated model does not: the ОПЕРАТОР on a «barcha buyurtmalar»
+         row IS the seller, and a seller who took nine orders in July and had
+         all nine refused is exactly the row a floor manager needs. Seven
+         operators and 29 orders were invisible that month, four of them in
+         real (ROP) sales teams — and their 28 refusals were also missing from
+         the conversion rate's denominator, flattering the whole board.
+       */
+       HAVING count(*) > 0
+       ORDER BY sum(d."amountMinor") FILTER (WHERE ds."logisticsRole" = 'DELIVERED') DESC NULLS LAST`
   }
 
   /**
@@ -2016,12 +2778,15 @@ export class InsightsRepository {
         employee_id: string
         full_name: string
         rop: string | null
+        cohort_orders: bigint
         confirmed_orders: bigint
         confirmed: MoneyText
         delivered_orders: bigint
         delivered: MoneyText
         in_transit_orders: bigint
         in_transit: MoneyText
+        lost_after_confirm_orders: bigint
+        lost_after_confirm: MoneyText
         rejected_orders: bigint
       }[]
     >(
@@ -2033,12 +2798,15 @@ export class InsightsRepository {
       employeeId: r.employee_id,
       fullName: r.full_name,
       rop: r.rop,
+      cohortOrders: int(r.cohort_orders),
       confirmedOrders: int(r.confirmed_orders),
       confirmedMinor: money(r.confirmed),
       deliveredOrders: int(r.delivered_orders),
       deliveredMinor: money(r.delivered),
       inTransitOrders: int(r.in_transit_orders),
       inTransitMinor: money(r.in_transit),
+      lostAfterConfirmOrders: int(r.lost_after_confirm_orders),
+      lostAfterConfirmMinor: money(r.lost_after_confirm),
       rejectedOrders: int(r.rejected_orders),
     }))
   }
@@ -2060,8 +2828,8 @@ export class InsightsRepository {
       `${InsightsRepository.queueSql('window')}
        SELECT
          (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS date,
-         count(*) FILTER (WHERE c.outcome = 'CONFIRMED')::bigint AS orders,
-         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRMED')::text AS confirmed,
+         count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS orders,
+         sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::text AS confirmed,
          sum(d."amountMinor") FILTER (WHERE d."status" = 'WON')::text AS delivered
        FROM classified c
        JOIN "deal" d ON d."id" = c.deal_id
@@ -2069,7 +2837,7 @@ export class InsightsRepository {
        GROUP BY 1
        -- The same gate as the board: a day whose only money was delivered
        -- without a confirmation still belongs to FAKT 2's series.
-       HAVING count(*) FILTER (WHERE c.outcome = 'CONFIRMED') > 0
+       HAVING count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}) > 0
            OR count(*) FILTER (WHERE d."status" = 'WON') > 0
        ORDER BY 1`,
       period.start,
@@ -2132,6 +2900,24 @@ export class InsightsRepository {
     period: Period,
     query: ConfirmationOrderQuery,
     mode: ConfirmationQueueMode = 'window',
+    /*
+      The pre-resolved orders this reading may be built from, or null.
+
+      Resolved ONCE, in `insightsService.confirmationQueue`, and handed to
+      every reading of the board unchanged. Resolving it here instead would
+      let the page and the ROP panel — two statements, fired side by side
+      below 62 days — bound their cohorts by two different sets, and the shape
+      that takes on screen is a row the tiles above it do not count.
+
+      NULL IS «NO PRE-FILTER»; AN EMPTY ARRAY IS «NOTHING MATCHED», AND THE
+      TWO ARE NOT INTERCHANGEABLE. This is the reverse of the employee-scope
+      convention elsewhere in this file, where an empty array reads as no
+      filter and silently widens to the whole company — hence the sentinels
+      that rule it out there. Here the widening value is null, and the empty
+      array is a real answer: a search that resolved no candidate orders must
+      show an empty board, not the whole queue.
+    */
+    scopeIds: string[] | null = null,
   ): Promise<{ totalItems: number; rows: ConfirmationOrderRow[]; byRop: ConfirmationRopRow[] }> {
     // Allowlisted, never interpolated from the request: this reaches SQL.
     // Columns of `filtered`, which carries the two deal fields a sort may need.
@@ -2187,10 +2973,30 @@ export class InsightsRepository {
       unconfirmed_shipped: number
     }
 
+    /*
+      THE SCOPE RIDES AS A TRAILING PARAMETER, AND ONLY WHEN THERE IS ONE.
+
+      Postgres refuses a bind that supplies more values than the statement has
+      placeholders, so an unscoped reading has to pass exactly what it always
+      passed — which is also what keeps the built SQL byte-identical for every
+      other reader of this cohort.
+    */
+    const params: unknown[] = [
+      period.start,
+      period.end,
+      query.outcomes && query.outcomes.length > 0 ? [...query.outcomes] : null,
+      // Escaped, so a typed % is a per cent sign rather than "every order".
+      query.q === undefined ? null : escapeLike(query.q),
+      query.rop ?? null,
+      query.pageSize,
+      offset,
+    ]
+    if (scopeIds) params.push(scopeIds)
+
     const rows = await this.prisma.$queryRawUnsafe<
       { total_items: bigint; page: PageJson[]; by_rop: RopJson[] }[]
     >(
-      `${InsightsRepository.queueSql(mode)},
+      `${InsightsRepository.queueSql(mode, scopeIds ? '$8' : undefined)},
        filtered AS (
          SELECT
            c.deal_id, c.rop, c.daily_no, c.outcome,
@@ -2248,7 +3054,7 @@ export class InsightsRepository {
            rep.visits AS visits
          FROM page p
          JOIN "deal" d ON d."id" = p.deal_id
-         JOIN "employee" e ON e."id" = d."employeeId"
+         JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
          JOIN "deal_stage" st ON st."id" = d."stageId"
          LEFT JOIN "customer" cust ON cust."id" = d."customerId"
          LEFT JOIN "sales_source" src ON src."id" = d."sourceId"
@@ -2285,13 +3091,7 @@ export class InsightsRepository {
          (SELECT count(*) FROM filtered)::bigint AS total_items,
          (SELECT coalesce(json_agg(x ORDER BY x.pos), '[]'::json) FROM decorated x) AS page,
          (SELECT coalesce(json_agg(r ORDER BY r.orders DESC), '[]'::json) FROM by_rop r) AS by_rop`,
-      period.start,
-      period.end,
-      query.outcomes && query.outcomes.length > 0 ? [...query.outcomes] : null,
-      query.q ?? null,
-      query.rop ?? null,
-      query.pageSize,
-      offset,
+      ...params,
     )
 
     const row = rows[0]
@@ -2356,6 +3156,24 @@ export class InsightsRepository {
     period: Period,
     query: ConfirmationOrderQuery,
     mode: ConfirmationQueueMode = 'window',
+    /*
+      The pre-resolved orders this reading may be built from, or null.
+
+      Resolved ONCE, in `insightsService.confirmationQueue`, and handed to
+      every reading of the board unchanged. Resolving it here instead would
+      let the page and the ROP panel — two statements, fired side by side
+      below 62 days — bound their cohorts by two different sets, and the shape
+      that takes on screen is a row the tiles above it do not count.
+
+      NULL IS «NO PRE-FILTER»; AN EMPTY ARRAY IS «NOTHING MATCHED», AND THE
+      TWO ARE NOT INTERCHANGEABLE. This is the reverse of the employee-scope
+      convention elsewhere in this file, where an empty array reads as no
+      filter and silently widens to the whole company — hence the sentinels
+      that rule it out there. Here the widening value is null, and the empty
+      array is a real answer: a search that resolved no candidate orders must
+      show an empty board, not the whole queue.
+    */
+    scopeIds: string[] | null = null,
   ): Promise<{ totalItems: number; rows: ConfirmationOrderRow[] }> {
     // Allowlisted, never interpolated from the request: this reaches SQL.
     const sortColumn: Record<ConfirmationOrderSortValue, string> = {
@@ -2368,6 +3186,26 @@ export class InsightsRepository {
     }
     const direction = query.order === 'asc' ? 'ASC' : 'DESC'
     const offset = (query.page - 1) * query.pageSize
+
+    /*
+      THE SCOPE RIDES AS A TRAILING PARAMETER, AND ONLY WHEN THERE IS ONE.
+
+      Postgres refuses a bind that supplies more values than the statement has
+      placeholders, so an unscoped reading has to pass exactly what it always
+      passed — which is also what keeps the built SQL byte-identical for every
+      other reader of this cohort.
+    */
+    const params: unknown[] = [
+      period.start,
+      period.end,
+      query.outcomes && query.outcomes.length > 0 ? [...query.outcomes] : null,
+      // Escaped, so a typed % is a per cent sign rather than "every order".
+      query.q === undefined ? null : escapeLike(query.q),
+      query.rop ?? null,
+      query.pageSize,
+      offset,
+    ]
+    if (scopeIds) params.push(scopeIds)
 
     const rows = await this.prisma.$queryRawUnsafe<
       {
@@ -2399,7 +3237,7 @@ export class InsightsRepository {
         total_items: bigint
       }[]
     >(
-      `${InsightsRepository.queueSql(mode)},
+      `${InsightsRepository.queueSql(mode, scopeIds ? '$8' : undefined)},
        /*
          PAGE FIRST, DECORATE AFTERWARDS.
 
@@ -2473,7 +3311,7 @@ export class InsightsRepository {
          c.total_items AS total_items
        FROM page c
        JOIN "deal" d ON d."id" = c.deal_id
-       JOIN "employee" e ON e."id" = d."employeeId"
+       JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
        JOIN "deal_stage" st ON st."id" = d."stageId"
        LEFT JOIN "customer" cust ON cust."id" = d."customerId"
        LEFT JOIN "sales_source" src ON src."id" = d."sourceId"
@@ -2488,13 +3326,7 @@ export class InsightsRepository {
        ${InsightsRepository.QUEUE_HISTORY_SQL}
       -- The same order the page was cut in; a join does not promise to keep it.
       ORDER BY ${sortColumn[query.sort]} ${direction} NULLS LAST, d."id" ASC`,
-      period.start,
-      period.end,
-      query.outcomes && query.outcomes.length > 0 ? [...query.outcomes] : null,
-      query.q ?? null,
-      query.rop ?? null,
-      query.pageSize,
-      offset,
+      ...params,
     )
 
     return {
@@ -3244,95 +4076,6 @@ export class InsightsRepository {
   // 6 — Call activity
   // -------------------------------------------------------------------------
 
-  /**
-   * How much each person actually spoke to customers.
-   *
-   * Talk time counts connected calls only. Including the failed legs would
-   * reward dialling over conversation, which is the opposite of what the
-   * number is for.
-   */
-  /**
-   * The same call log, split by who dialled.
-   *
-   * The two directions are different questions wearing the same word. Outbound
-   * asks how often a dial reaches someone — a third to two thirds is ordinary
-   * and nobody has set a target. Inbound asks how many CUSTOMERS calling this
-   * company got an answer, and that has an obvious direction: every miss is a
-   * person who wanted to buy and did not get through.
-   *
-   * Blended, they had been reported as one 31.5% "dial success" rate on a log
-   * that is 92% inbound, which hid 159,722 unanswered customer calls behind a
-   * number labelled as something else entirely.
-   */
-  async callDirections(period: Period): Promise<CallDirectionRow[]> {
-    const rows = await this.prisma.$queryRawUnsafe<
-      { direction: string; calls: bigint; connected: bigint; talk_seconds: bigint }[]
-    >(
-      `
-      SELECT
-        c."direction"::text AS direction,
-        count(*)::bigint AS calls,
-        count(*) FILTER (WHERE c."connected")::bigint AS connected,
-        COALESCE(sum(c."durationSec") FILTER (WHERE c."connected"), 0)::bigint AS talk_seconds
-      FROM "call_record" c
-      WHERE c."startedAt" >= $1 AND c."startedAt" < $2
-      GROUP BY c."direction"
-      ORDER BY calls DESC
-      `,
-      period.start,
-      period.end,
-    )
-
-    return rows.map((r) => ({
-      direction: r.direction,
-      calls: int(r.calls),
-      connected: int(r.connected),
-      talkSeconds: int(r.talk_seconds),
-    }))
-  }
-
-  async callActivity(period: Period): Promise<CallActivityRow[]> {
-    const rows = await this.prisma.$queryRawUnsafe<
-      {
-        employee_id: string
-        employee_name: string
-        calls: bigint
-        connected: bigint
-        talk_seconds: bigint
-      }[]
-    >(
-      `
-      SELECT
-        e."id" AS employee_id,
-        e."fullName" AS employee_name,
-        count(*)::bigint AS calls,
-        count(*) FILTER (WHERE c."connected")::bigint AS connected,
-        COALESCE(sum(c."durationSec") FILTER (WHERE c."connected"), 0)::bigint AS talk_seconds
-      FROM "call_record" c
-      JOIN "employee" e ON e."id" = c."employeeId"
-      WHERE c."startedAt" >= $1 AND c."startedAt" < $2
-      GROUP BY e."id", e."fullName"
-      ORDER BY talk_seconds DESC
-      `,
-      period.start,
-      period.end,
-    )
-
-    return rows.map((r) => {
-      const calls = int(r.calls)
-      const connected = int(r.connected)
-      const talk = int(r.talk_seconds)
-      return {
-        employeeId: r.employee_id,
-        employeeName: r.employee_name,
-        calls,
-        connected,
-        talkSeconds: talk,
-        connectRateBp: rateBp(connected, calls),
-        averageTalkSeconds: connected === 0 ? 0 : Math.round(talk / connected),
-      }
-    })
-  }
 
   // -------------------------------------------------------------------------
   // 5 — Dispatch by fulfilment point
@@ -3440,15 +4183,21 @@ export class InsightsRepository {
       { employees: bigint; active: bigint; working: bigint; departments: bigint }[]
     >(
       `
+      /*
+        ACTIVE MEANS "CLOSED REVENUE", NOT "MADE A CALL OR CLOSED REVENUE".
+
+        The first branch of this test asked the call log whether an employee
+        had done anything in the window. Telephony is no longer imported —
+        nothing in the application ever rendered a call, and the table was the
+        most sequentially scanned on the database — so the only evidence left
+        is the one the column beside it is built from. The population narrows
+        by whoever made calls and closed nothing, which on this roster is the
+        back office rather than a seller.
+      */
       WITH active AS (
         SELECT e."id" AS id
           FROM "employee" e
          WHERE EXISTS (
-                 SELECT 1 FROM "call_record" c
-                  WHERE c."employeeId" = e."id"
-                    AND c."startedAt" >= $1 AND c."startedAt" < $2
-               )
-            OR EXISTS (
                  SELECT 1 FROM "deal" d
                   WHERE d."employeeId" = e."id"
                     AND d."countsAsRevenue" AND d."status" = 'WON'
@@ -3479,123 +4228,334 @@ export class InsightsRepository {
     }
   }
 
-  async structure(period: Period): Promise<StructureNode[]> {
-    const rows = await this.prisma.$queryRawUnsafe<
-      {
-        id: string
-        name: string
-        parent_id: string | null
-        head_name: string | null
-        headcount: bigint
-        active_headcount: bigint
-        working_headcount: bigint
-        deals: bigint
-        revenue: MoneyText
-      }[]
-    >(
-      `
+  /**
+   * The org chart, as ONE statement.
+   *
+   * Extracted into a builder for the same reason `queueSql` is: this SQL
+   * decides figures a floor manager will hold against the portal's own
+   * screen, and the only way to pin them without a database is to assert on
+   * the built string. See tests/http/structureSql.test.ts.
+   *
+   * It binds NOTHING. The two parameters it used to take were the reporting
+   * window, and the only CTEs that read them are gone — see the note at the
+   * top of the statement.
+   */
+  private static structureSql(): string {
+    return `
       /*
-        Two independent aggregates joined on the department, NOT one query with
-        both a per-employee LATERAL and a deal join.
-        
-        That earlier shape took 52 seconds and was cancelled by the statement
-        timeout — the page simply never loaded. The reason is a fan-out: the
-        deal join multiplies each employee row by their deal count, and the
-        correlated subqueries then ran once per multiplied row, 24,367 index
-        searches deep. Aggregating each side to one row per department first
-        means every table is touched exactly once.
-      */
-      /*
-        Asked of the ROSTER, not of the call log.
+        NOTHING IN HERE TOUCHES "deal", AND THAT IS THE POINT.
 
-        This used to union two DISTINCTs, which made Postgres materialise
-        every call row in the window and de-duplicate it — 281 818 of
-        call_record's 299 141 rows, correctly seq-scanned because 94% of the
-        table matches, to learn which of 289 employees did something. Anchored
-        on employee instead, it is 289 index-only probes that stop at the
-        first hit. Measured: 800-1 800 ms against 93-158 ms, same 146 ids.
+        This statement used to carry two more CTEs — an «active» roster over
+        won deals, feeding a working_headcount column, and a «sales» aggregate
+        feeding the card's revenue. Measured together they were 3.4 of the
+        query's 3.5 seconds, on the single vCPU that answers every other screen
+        too, for a page every seller on the floor is meant to open.
+
+        Both are gone because the screen no longer prints either: money on this
+        dashboard lives on Boshqaruv markazi, and a period-scoped headcount has
+        no meaning on a page that deliberately carries no reporting window. What
+        is left reads "department", "department_member" and "employee" — three
+        small tables, no date bound, and no parameters at all.
+
+        Aggregate per department FIRST, one row each, then join. The shape
+        before that took 52 seconds and was cancelled by the statement timeout:
+        a deal join multiplied every employee row by their deal count and the
+        correlated subqueries ran once per multiplied row, 24 367 index
+        searches deep. The rule outlives the deal join that forced it.
       */
-      WITH active AS (
-        SELECT e."id" AS id
-          FROM "employee" e
-         WHERE EXISTS (
-                 SELECT 1 FROM "call_record" c
-                  WHERE c."employeeId" = e."id"
-                    AND c."startedAt" >= $1 AND c."startedAt" < $2
-               )
-            OR EXISTS (
-                 SELECT 1 FROM "deal" d
-                  WHERE d."employeeId" = e."id"
-                    AND d."countsAsRevenue" AND d."status" = 'WON'
-                    AND d."closedAt" >= $1 AND d."closedAt" < $2
-               )
+      WITH RECURSIVE
+      /*
+        Every (ancestor, descendant) pair, so a unit's subtree is one join away.
+
+        RECURSIVE is declared on the whole WITH list — Postgres allows the
+        non-recursive members beside it — because the head pill on each card
+        counts people across the WHOLE branch beneath the unit, which no
+        aggregate over one department can answer.
+
+        A depth cap of 16 is not a limit on the company, it is a cycle guard: this
+        tree comes from a portal over the wire, parentId is a nullable
+        self-reference with no constraint forbidding a loop, and a loop here is
+        not a wrong number but a statement that never returns and a page that
+        never loads. The real tree is three deep and the deepest this schema has
+        ever held is three.
+      */
+      walk AS (
+        SELECT d."id" AS root, d."id" AS node, 0 AS depth
+          FROM "department" d
+        UNION ALL
+        SELECT w.root, c."id", w.depth + 1
+          FROM walk w
+          JOIN "department" c ON c."parentId" = w.node
+         WHERE w.depth < 16
       ),
+      /*
+        WHO THE PORTAL LISTS HERE — not who is credited here.
+
+        The people CTE below counts the PRIMARY unit, which is what every analytic on
+        this dashboard is built on. This counts membership, which is what the
+        portal's own screen prints: nine of its 208 active people sit in two
+        units and it counts each of them twice, once per card. Reading only the
+        primary left five of twenty cards short by one or two.
+      */
+      members AS (
+        SELECT
+          m."departmentId" AS dep_id,
+          count(*) FILTER (WHERE e."isActive")::bigint AS member_count,
+          /*
+            THE HEAD IS SUBTRACTED ONLY IF THE HEAD WAS COUNTED.
+
+            member_count is the ACTIVE members, so a head Bitrix24 has since
+            deactivated is not among them — and taking one off anyway printed a
+            unit of five active people as having four subordinates, one short of
+            the portal and one short of its own roster panel. Counted here, in
+            the same pass and under the same isActive filter, so the two can
+            never be computed under different rules again.
+          */
+          count(*) FILTER (WHERE e."isActive" AND m."employeeId" = d."headId")::bigint
+            AS head_counted,
+          /*
+            THE NAMES TRAVEL WITH THE TREE SO THE CHART CAN BE SEARCHED BY THEM.
+
+            This screen exists so the floor can answer "who works under whom",
+            and the first thing somebody types into it is a person's name — but
+            the chart only knew department and head names, so a seller looking
+            for themself got «topilmadi» over a dimmed company while their own
+            row sat two clicks away in a panel. Roughly 290 names across the
+            whole tree, a few kilobytes on a payload the page already fetches,
+            against a second round trip per keystroke. Active only: a search
+            that surfaced a card because somebody who left in March is still on
+            its roster is a wrong answer, not a generous one.
+          */
+          array_remove(
+            array_agg(e."fullName" ORDER BY e."fullName") FILTER (WHERE e."isActive"),
+            NULL
+          ) AS member_names
+        FROM "department_member" m
+        JOIN "employee" e ON e."id" = m."employeeId"
+        JOIN "department" d ON d."id" = m."departmentId"
+        GROUP BY m."departmentId"
+      ),
+      /*
+        DISTINCT, because the subtree is where a two-unit person shows up twice.
+
+        Somebody in both «Регистрация» and «Azizbek(ROP)» is one person under
+        NEWGEN, and summing the per-unit counts up the tree would make them two.
+        The head themself is excluded here rather than subtracted afterwards,
+        because whether they are inside their own subtree depends on which unit
+        they actually sit in — the portal's «Навоий» is headed from outside.
+      */
+      subtree AS (
+        SELECT
+          w.root AS dep_id,
+          count(DISTINCT m."employeeId") FILTER (
+            WHERE e."isActive" AND (r."headId" IS NULL OR m."employeeId" <> r."headId")
+          )::bigint AS head_manages_count
+        FROM walk w
+        JOIN "department" r ON r."id" = w.root
+        JOIN "department_member" m ON m."departmentId" = w.node
+        JOIN "employee" e ON e."id" = m."employeeId"
+        GROUP BY w.root
+      ),
+      kids AS (
+        SELECT c."parentId" AS dep_id, count(*)::bigint AS child_count
+          FROM "department" c
+         WHERE c."parentId" IS NOT NULL
+         GROUP BY c."parentId"
+      ),
+      /*
+        THE PRIMARY UNIT, deliberately — this is the only count that still is.
+
+        «members» above reads the join table, because the card's «xodim» figure
+        is the portal's membership and a person in two units is drawn on both
+        cards. This one is the roster as this dashboard credits it: one person,
+        one unit. The two are different numbers on five of the twenty cards and
+        the screen prints both.
+      */
       people AS (
         SELECT
           e."departmentId" AS dep_id,
           count(*)::bigint AS headcount,
-          count(*) FILTER (WHERE e."isActive")::bigint AS active_headcount,
-          -- On the roster, marked active, and produced something. The gap
-          -- between this and active_headcount is "who is here and who is not".
-          count(*) FILTER (WHERE e."isActive" AND a.id IS NOT NULL)::bigint AS working_headcount
+          count(*) FILTER (WHERE e."isActive")::bigint AS active_headcount
         FROM "employee" e
-        LEFT JOIN active a ON a.id = e."id"
         WHERE e."departmentId" IS NOT NULL
-        GROUP BY e."departmentId"
-      ),
-      /*
-        The two conditions belong in the WHERE, not in the FILTER.
-
-        They are the leading columns of deal_countsAsRevenue_status_closedAt_idx.
-        Left in the aggregate FILTER they are unbound at scan time, so Postgres
-        walked the whole index and heap-fetched 28 449 rows to keep 3 890.
-        Moving them changes no answer — a department with no won deals still
-        arrives through the LEFT JOIN below and is COALESCEd to zero, which was
-        checked column by column across all 20 departments. Measured on the
-        whole query: 3 527 ms against 992 ms.
-      */
-      sales AS (
-        SELECT
-          e."departmentId" AS dep_id,
-          count(d."id")::bigint AS deals,
-          sum(d."amountMinor")::text AS revenue
-        FROM "deal" d
-        JOIN "employee" e ON e."id" = d."employeeId"
-        WHERE d."countsAsRevenue" AND d."status" = 'WON'
-          AND d."closedAt" >= $1 AND d."closedAt" < $2
-          AND e."departmentId" IS NOT NULL
         GROUP BY e."departmentId"
       )
       SELECT
         dep."id",
         dep."name",
         dep."parentId" AS parent_id,
+        dep."headId" AS head_id,
         head."fullName" AS head_name,
+        head."position" AS head_position,
+        /*
+          The head is only a head HERE if the portal also lists them here.
+          «Навоий» names a head whose own units are two others, and the portal's
+          card prints no head row at all rather than claiming they sit there.
+
+          Deliberately NOT filtered on isActive, unlike the arithmetic above:
+          this decides whether to DRAW the head row, and a unit whose head
+          Bitrix24 has deactivated still has that person as its head on the
+          portal. Saying «Rahbar tayinlanmagan» over a named UF_HEAD would be a
+          different claim from the one the source screen makes. The count is
+          what must not double-think it, and that now lives in the members CTE.
+        */
+        EXISTS (
+          SELECT 1 FROM "department_member" hm
+           WHERE hm."departmentId" = dep."id" AND hm."employeeId" = dep."headId"
+        ) AS head_is_member,
         COALESCE(p.headcount, 0)::bigint AS headcount,
         COALESCE(p.active_headcount, 0)::bigint AS active_headcount,
-        COALESCE(p.working_headcount, 0)::bigint AS working_headcount,
-        COALESCE(s.deals, 0)::bigint AS deals,
-        s.revenue AS revenue
+        COALESCE(m.member_count, 0)::bigint AS member_count,
+        COALESCE(m.member_names, ARRAY[]::text[]) AS member_names,
+        -- «Подчинённые: N сотрудников» on the portal's own card: its active
+        -- members, minus the head when the head is one of them. GREATEST is a
+        -- belt: the two counts come from one pass, so it can no longer go
+        -- negative, and a future edit that separates them again would.
+        GREATEST(COALESCE(m.member_count, 0) - COALESCE(m.head_counted, 0), 0)::bigint
+          AS subordinate_count,
+        COALESCE(t.head_manages_count, 0)::bigint AS head_manages_count,
+        COALESCE(k.child_count, 0)::bigint AS child_count,
+        dep."sortOrder" AS sort_order
       FROM "department" dep
       LEFT JOIN "employee" head ON head."id" = dep."headId"
       LEFT JOIN people p ON p.dep_id = dep."id"
-      LEFT JOIN sales s ON s.dep_id = dep."id"
+      LEFT JOIN members m ON m.dep_id = dep."id"
+      LEFT JOIN subtree t ON t.dep_id = dep."id"
+      LEFT JOIN kids k ON k.dep_id = dep."id"
+      /*
+        Sibling order is the PORTAL's, not alphabetical.
+
+        sortOrder is what the person who arranged the org chart in Bitrix24
+        decided, and the screen this reproduces is read left to right in that
+        order. The name only breaks a tie, so two units sharing a sort value still
+        land in a stable order rather than swapping between requests.
+      */
       ORDER BY dep."sortOrder", dep."name"
-      `,
-      period.start,
-      period.end,
-    )
+    `
+  }
+  /**
+   * NO ARGUMENTS, AND THAT IS THE CONTRACT.
+   *
+   * Who reports to whom is a fact about today. It was period-scoped only
+   * because the card once printed the unit's money and the table a
+   * period-scoped «Ishlagan» count; both are gone from the screen, so a window
+   * here would be a parameter that changes no answer and a cache key that
+   * splits one into several.
+   */
+  async structure(): Promise<StructureNode[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        id: string
+        name: string
+        parent_id: string | null
+        head_id: string | null
+        head_name: string | null
+        head_position: string | null
+        head_is_member: boolean
+        headcount: bigint
+        active_headcount: bigint
+        member_count: bigint
+        member_names: string[]
+        subordinate_count: bigint
+        head_manages_count: bigint
+        child_count: bigint
+        sort_order: number
+      }[]
+    >(InsightsRepository.structureSql())
 
     return rows.map((r) => ({
       id: r.id,
       name: r.name,
       parentId: r.parent_id,
+      headId: r.head_id,
       headName: r.head_name,
+      headPosition: r.head_position,
+      headIsMember: r.head_is_member,
       headcount: int(r.headcount),
       activeHeadcount: int(r.active_headcount),
-      workingHeadcount: int(r.working_headcount),
-      deals: int(r.deals),
-      revenueMinor: money(r.revenue),
+      memberCount: int(r.member_count),
+      memberNames: r.member_names ?? [],
+      subordinateCount: int(r.subordinate_count),
+      headManagesCount: int(r.head_manages_count),
+      childCount: int(r.child_count),
+      sortOrder: Number(r.sort_order),
+    }))
+  }
+
+  /**
+   * Which units the portal lists this person in.
+   *
+   * A LIST, because membership is many-to-many: the account reading the org
+   * chart can sit in two units, and badging only the first would send «Meni
+   * topish» to the wrong side of a tree the reader is trying to find themself
+   * in. Prisma rather than raw SQL — it is one indexed lookup on the primary
+   * key's second column and there is no aggregate to get wrong.
+   */
+  async departmentsOfEmployee(employeeId: string): Promise<string[]> {
+    const rows = await this.prisma.departmentMember.findMany({
+      where: { employeeId },
+      select: { departmentId: true },
+    })
+    return rows.map((r) => r.departmentId)
+  }
+
+  /**
+   * One unit's roster, for the panel that opens beside the chart.
+   *
+   * Membership, not primary unit: the panel answers "who does the portal list
+   * here", which is the same question the card's count answers, and the two may
+   * never disagree on the same screen. `isPrimary` marks the people whose
+   * numbers are credited here so a reader can tell a borrowed operator from an
+   * owned one.
+   *
+   * NO MONEY AND NO WINDOW. The panel used to carry each person's closed
+   * revenue over the page's reporting window, through a LATERAL over `deal`
+   * once per member. This dashboard now states money in one place — Boshqaruv
+   * markazi — so the roster is a roster: who the portal lists here, who leads
+   * them, and who is credited here rather than borrowed from another unit.
+   *
+   * Inactive people are returned and marked rather than dropped: a unit reading
+   * «13 xodim» over a list of nine is the kind of gap that costs an afternoon,
+   * and the count above them is of the ACTIVE ones.
+   */
+  async departmentRoster(departmentId: string): Promise<DepartmentMemberRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        id: string
+        full_name: string
+        position: string | null
+        is_active: boolean
+        is_primary: boolean
+        is_head: boolean
+      }[]
+    >(
+      `
+      SELECT
+        e."id",
+        e."fullName" AS full_name,
+        e."position",
+        e."isActive" AS is_active,
+        m."isPrimary" AS is_primary,
+        (dep."headId" = e."id") AS is_head
+      FROM "department_member" m
+      JOIN "employee" e ON e."id" = m."employeeId"
+      JOIN "department" dep ON dep."id" = m."departmentId"
+      WHERE m."departmentId" = $1
+      -- The head first, then everyone still here, then the deactivated. A
+      -- roster sorted by name alone buries the one person the reader opened
+      -- the panel to find.
+      ORDER BY (dep."headId" = e."id") DESC, e."isActive" DESC, e."fullName"
+      `,
+      departmentId,
+    )
+
+    return rows.map((r) => ({
+      id: r.id,
+      fullName: r.full_name,
+      position: r.position,
+      isActive: r.is_active,
+      isPrimary: r.is_primary,
+      isHead: r.is_head,
     }))
   }
 }

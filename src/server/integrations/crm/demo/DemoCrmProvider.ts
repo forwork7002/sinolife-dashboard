@@ -48,6 +48,8 @@ import { statusForStageCategory } from '@/server/domain/types'
 import {
   COMPANY_PREFIXES,
   COMPANY_SUFFIXES,
+  DEMO_HEADS,
+  DEMO_HEAD_OF,
   DEPARTMENTS,
   GIVEN_NAMES_FEMALE,
   GIVEN_NAMES_MALE,
@@ -56,6 +58,7 @@ import {
   PRODUCT_CATEGORIES,
   REGIONS,
   SALES_SOURCES,
+  STAFFED_DEPARTMENTS,
   STAGES,
   SURNAMES,
   feminineSurname,
@@ -180,7 +183,6 @@ export class DemoCrmProvider implements CrmProvider {
   // this provider genuinely has no delivery timings or call recordings.
   async fetchPipelines(_o?: FetchOptions) { return this.page([], _o) }
   async fetchStageHistory(_o?: FetchOptions) { return this.page([], _o) }
-  async fetchCalls(_o?: FetchOptions) { return this.page([], _o) }
   async fetchStores(_o?: FetchOptions) { return this.page([], _o) }
   async fetchStockLevels(_o?: FetchOptions) { return this.page([], _o) }
 
@@ -235,9 +237,22 @@ export class DemoCrmProvider implements CrmProvider {
     const endMs = referenceDate.getTime()
     const startMs = endMs - historyDays * DAY_MS
 
+    /*
+      The tree, its heads and its sort order all come from the catalogue.
+
+      A department with no parent and no head is not a smaller company, it is a
+      different screen: the org chart draws no connectors, prints no head row
+      and shows «rahbar tayinlanmagan» on every card. `headExternalId` points at
+      the first employee generated into that unit (see generateEmployees), so
+      demo mode exercises the head row, the subtree count and the
+      head-is-not-a-member case the portal actually contains.
+    */
     const departments: RawDepartment[] = DEPARTMENTS.map((d) => ({
       externalId: d.externalId,
       name: d.name,
+      parentExternalId: d.parentExternalId,
+      headExternalId: DEMO_HEADS[d.externalId],
+      sortOrder: d.sortOrder,
       isActive: true,
       updatedAtSource: referenceDate,
     }))
@@ -264,6 +279,18 @@ export class DemoCrmProvider implements CrmProvider {
       externalId: s.externalId,
       name: s.name,
       category: s.category as StageCategoryValue,
+      /*
+        The demo's won stage IS its delivery.
+
+        FAKT 2 on the sellers board is graded on the DELIVERED logistics role
+        rather than on a bare WON status, because on the real portal nine
+        stages across nine pipelines carry WON and only one of them means a
+        courier arrived. The demo models a single pipeline, so its won stage
+        is that one — and without saying so, demo mode renders the whole
+        sellers board with FAKT 2 at zero, which reads as a broken screen
+        rather than as a provider that never mentioned delivery.
+      */
+      logisticsRole: s.category === 'WON' ? 'DELIVERED' : undefined,
       sortOrder: s.sortOrder,
       isActive: true,
       updatedAtSource: referenceDate,
@@ -315,13 +342,29 @@ export class DemoCrmProvider implements CrmProvider {
       // still count toward past periods even though they are inactive now.
       const isActive = i >= employeeCount - 2 ? rng.bool(0.3) : true
 
+      const externalId = `emp-${String(i + 1).padStart(3, '0')}`
+
+      /*
+        Membership is a LIST, because Bitrix24's UF_DEPARTMENT is one.
+
+        Nine of the real portal's 208 active people sit in two units at once and
+        its org chart counts them in both. A demo where nobody does would let a
+        query that reads only the primary unit pass every test and still be
+        short by eight people in production, which is exactly the bug this
+        models. Every fourth person gets a second unit; the first entry stays
+        the primary, so no analytic's numbers move.
+      */
+      const home = DEMO_HEAD_OF[externalId] ?? rng.pick(STAFFED_DEPARTMENTS)
+      const second = i % 4 === 3 ? rng.pick(STAFFED_DEPARTMENTS.filter((d) => d !== home)) : undefined
+
       employees.push({
-        externalId: `emp-${String(i + 1).padStart(3, '0')}`,
+        externalId,
         fullName: `${given} ${surname}`,
         email: `${transliterate(given)}.${transliterate(baseSurname)}@sinolife.uz`.toLowerCase(),
         phone: `+998 ${rng.int(90, 99)} ${rng.int(100, 999)}-${rng.int(10, 99)}-${rng.int(10, 99)}`,
-        position: rng.pick(POSITIONS),
-        departmentExternalId: rng.pick(DEPARTMENTS).externalId,
+        position: DEMO_HEAD_OF[externalId] ? 'Boʻlim boshligʻi' : rng.pick(POSITIONS),
+        departmentExternalId: home,
+        departmentExternalIds: second ? [home, second] : [home],
         isActive,
         hiredAt: new Date(startMs - rng.int(0, 900) * DAY_MS),
         updatedAtSource: referenceDate,
@@ -510,6 +553,14 @@ export class DemoCrmProvider implements CrmProvider {
         stageExternalId,
         status,
         employeeExternalId: employee.externalId,
+        /*
+          The demo has no back-office reassignment, so the snapshot is simply
+          the assignee. It is set rather than left undefined on purpose: a
+          screen that groups by the snapshot must have something to group by
+          in demo mode, or the whole sellers board renders empty there.
+        */
+        operatorNameSource: employee.fullName,
+        operatorTeamSource: employee.departmentExternalId,
         customerExternalId: customer.externalId,
         sourceExternalId: rng.weighted(sourceWeights),
         // The demo provider models a single sales pipeline, so every deal it

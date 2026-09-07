@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { Fragment, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 
 import { Card, ChartCard } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -14,7 +15,9 @@ import {
   CrossCircleGlyph,
   EyeGlyph,
   EyeOffGlyph,
+  ListGlyph,
   PhoneMissedGlyph,
+  SearchGlyph,
   type GlyphProps,
 } from '@/components/ui/Icons'
 import { MultiSelect, Pagination } from '@/components/ui/Controls'
@@ -279,7 +282,11 @@ const QUEUE_COLUMNS: Column<ConfirmationOrderDto>[] = [
       row.products.length === 0 ? (
         <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
       ) : (
-        <ul className="space-y-1">
+        /* Half the gap the rest of the dashboard's lists use: this is the
+           tallest cell in the table and sets the row height on its own, so
+           four products at 4px apart cost six pixels less per row than at 8
+           — and it touches no line box, so nothing here wraps differently. */
+        <ul className="space-y-0.5">
           {row.products.map((product) => (
             <li key={product} className="flex items-start gap-1.5 text-[11px] leading-snug">
               {/* A drawn dot, not the • character: the glyph's size and
@@ -363,9 +370,47 @@ const QUEUE_COLUMNS: Column<ConfirmationOrderDto>[] = [
   },
 ]
 
+/**
+ * This board's own rows-per-page, over the dashboard-wide default of 25.
+ *
+ * Confined to this page rather than raised in `useDashboardFilters`, because
+ * that default is shared by every paginated screen and none of the others is
+ * read the way this one is. See the note where it is applied for why it is
+ * fifty and not two hundred, and why the address bar has the last word.
+ */
+const QUEUE_PAGE_SIZE = 50
+
 export function ConfirmationPage() {
   const { filters, update, apiParams } = useDashboardFilters()
+  const params = useSearchParams()
   const [statsOpen, setStatsOpen] = useState(false)
+
+  /*
+    ROWS PER PAGE, on the one screen that is read as a table rather than
+    skimmed as one.
+
+    `useDashboardFilters` defaults every screen to 25, which is right for a
+    list somebody glances at. This board is where the floor works: a month is
+    a few thousand orders and «Барча буюртмалар» carried hundreds of pages of
+    them, so finding one order meant paging rather than reading. Fifty halves
+    that at no cost to the query's fixed half.
+
+    NOT MORE, and the ceiling is the reason: `confirmationOrders` pages FIRST
+    and decorates afterwards, so every row that survives the LIMIT costs one
+    LATERAL over `deal_item` and one correlated pass over the stage history.
+    That half of the statement scales linearly with this number, on a single
+    vCPU shared with the sync worker, on a board that polls every minute — so
+    the selector offers 100 and stops there, well under the API schemas' own
+    `.max(200)`.
+
+    READ OFF THE ADDRESS, not off `filters.pageSize`, because the hook cannot
+    tell an absent parameter from an explicit `pageSize=25` — both arrive as
+    25. Without this the selector's own 25 would be overwritten by this
+    page's default on the next render, and the control would refuse to move.
+    The value itself still comes from the hook, so it stays clamped to the
+    1–200 the API accepts.
+  */
+  const pageSize = params.get('pageSize') ? filters.pageSize : QUEUE_PAGE_SIZE
 
   /*
     `sort` is shared URL state, and its dashboard-wide default is a deal
@@ -389,20 +434,32 @@ export function ConfirmationPage() {
   const summaryKey = boardSummaryKey(apiParams)
 
   const query = useQuery({
-    queryKey: ['confirmation-queue', apiParams, filters.page, filters.pageSize, sort, filters.order],
+    queryKey: ['confirmation-queue', apiParams, filters.page, pageSize, sort, filters.order],
     queryFn: async ({ signal }) => {
       const answer = await apiGet<ConfirmationQueueDto>(
         '/insights/confirmations/orders',
         {
           ...apiParams,
           page: filters.page,
-          pageSize: filters.pageSize,
+          pageSize,
           sort,
           order: filters.order,
         },
         signal,
       )
-      return { ...answer, askedFor: summaryKey, askedOutcomes: apiParams.outcomes ?? '' }
+      /*
+        `askedQ` for the same reason `askedOutcomes` exists: the banner and the
+        hidden date line describe the WINDOW the rows came back for, and the
+        URL flips a debounce ahead of the answer. Read from the URL, the page
+        would drop its own date line and announce an all-time search while the
+        windowed rows were still on screen.
+      */
+      return {
+        ...answer,
+        askedFor: summaryKey,
+        askedOutcomes: apiParams.outcomes ?? '',
+        askedQ: String(apiParams.q ?? ''),
+      }
     },
     // The table keeps the page it has while the next one loads, instead of
     // collapsing to a skeleton on every click of the pager.
@@ -556,6 +613,37 @@ export function ConfirmationPage() {
    */
   const backlog = filters.queue === 'backlog'
 
+  /**
+   * Whether the rows on screen were found across EVERY date.
+   *
+   * The route drops the reporting window as soon as `q` is set — see its own
+   * note: the person typing a phone number is holding a customer on the line
+   * and does not know which day the order reached Тасдиклаш, so a search
+   * bounded by «Bugun» answers «topilmadi» about an order that exists.
+   *
+   * Read off the answer, not off `filters.q`, so the sentence and the missing
+   * date line arrive WITH the rows they describe rather than a debounce early.
+   * Not in backlog mode: that board is all-time already and says so in its own
+   * banner, and two banners saying "the period does not apply" is one too many.
+   */
+  const globalSearch = Boolean(query.data?.askedQ) && !backlog
+
+  /**
+   * «ЖАМИ» — every order that ever reached Тасдиклаш, no dates at all.
+   *
+   * The third question this board answers, and the one the operators asked
+   * for by name: a customer on the line does not say which month their order
+   * arrived, and stepping Bugun → Kecha → Shu oy → Sana to find one row is
+   * not a search. It is a MODE rather than a preset because there is no
+   * window to resolve — `queueSql` reads the same cohort over an unbounded
+   * span — and because `reset()` must keep it, like the backlog.
+   *
+   * Read from the URL, not from the answer: unlike the search it is not
+   * debounced, so the chip must light on the click that set it or the control
+   * reads as broken. The date line and the banner still follow the answer.
+   */
+  const allOrders = filters.queue === 'all'
+
   /** The ROP list, with the current selection guaranteed present. */
   const ropOptions = (() => {
     const names = data?.rops ?? []
@@ -568,23 +656,96 @@ export function ConfirmationPage() {
     <PageShell
       title={t.modules.confirmation.title}
       /*
+        NOTHING UNDER THE TITLE, IN ANY MODE — `null`, the same statement
+        `meta={undefined}` a few props below already makes.
+
+        The sentence that used to sit here restated the controls immediately
+        beneath it. The preset row names the window, «Жами» names the absence
+        of one, the search banner names an all-time lookup, and the twelve
+        column headers name what a row is; a paragraph explaining that orders
+        in Тасдиклаш have states bought nothing on the one screen the floor
+        works in all day, and cost its table twenty-four pixels of it.
+
+        BACKLOG MODE KEPT ITS OWN SENTENCE HERE LONGEST, and it was the one
+        duplicate nobody could miss. That mode is reached exactly one way — the
+        header bell — so every reader who ever saw the caption also saw the
+        banner one element below it, which says the same thing at more length
+        and carries the way back. Two statements of one fact, forty pixels
+        apart, on the mode with the least room to spare, because the banner
+        itself is 4.5rem this table does not get. The banner is now the single
+        statement; if it ever stops being enough, strengthen IT.
+
+        `null` rather than an omitted prop, because PageShell RESERVES this
+        line by default — see its own note: a page that WILL print dates
+        claims the height before they land, so the filter row does not drop
+        one line when they do. This page never prints them, so it opts out of
+        the reservation instead of holding an empty line open forever.
+      */
+      description={null}
+      /*
         IN BACKLOG MODE THE PERIOD DOES NOT APPLY, so it is not offered.
 
-        `period={false}` takes away the preset row and the date line under the
-        title, both of which would otherwise describe a window this view
-        ignores — a date control over a list that does not read it is worse
-        than no control, because a reader assumes it must be filtering
-        something. The description says which question is on screen instead,
-        and the banner above the tile repeats it where the eye actually lands.
+        `period={false}` takes away the preset row, which would otherwise
+        describe a window this view ignores — a date control over a list that
+        does not read it is worse than no control, because a reader assumes it
+        must be filtering something. The banner above the tile says which
+        question is on screen instead, where the eye actually lands.
       */
-      description={
-        backlog
-          ? 'Hozir tasdiqlashni kutayotgan barcha buyurtmalar — qachon kelganidan qatʼi nazar. Davr bu roʻyxatga taʼsir qilmaydi.'
-          : t.modules.confirmation.lead
-      }
       period={!backlog}
+      /*
+        THE CONTROL STAYS, DIMMED, while a search ignores it.
+
+        Hiding it (what backlog mode does, where the mode is a deliberate trip
+        through the header bell) would reflow the filter row sideways under the
+        caret every time someone types into the box beside it, and again when
+        they clear it. Dimmed, it neither claims to be filtering nor moves.
+      */
+      /*
+        NOT DIMMED WHILE «ЖАМИ» IS LIT. The chip beside the presets already
+        says no window is in force — dimming would grey the lit chip too, and
+        a lit-but-faded control is a control that looks broken.
+      */
+      periodMuted={globalSearch && !allOrders}
+      periodMutedReason="Qidiruv barcha sanalar boʻyicha ishlaydi — davr qoʻllanilmaydi"
+      /*
+        «ЖАМИ» SITS WITH THE PRESETS because it answers their question — how
+        far back does this board reach — and the reader is already looking
+        there. Among the filters on the right it would read as a narrowing,
+        which is the opposite of what it does.
+
+        Not offered in backlog mode: that board is unbounded already, so the
+        chip could only turn one all-time view into another while claiming to
+        have changed something.
+      */
+      periodExtra={
+        backlog
+          ? undefined
+          : {
+              label: 'Jami',
+              active: allOrders,
+              title: 'Barcha buyurtmalar — sanadan qatʼi nazar',
+              // A toggle: the same chip is the way back, so nobody has to
+              // find which preset they were on before.
+              onSelect: () => update({ queue: allOrders ? undefined : 'all' }),
+            }
+      }
       accent="var(--series-4)"
-      meta={backlog ? undefined : query.data?.meta}
+      /*
+        NO DATE LINE UNDER THE TITLE, EVER. It used to print `meta.period`'s
+        resolved dates whenever the window was bounded — but the preset row
+        right below already says which window is active (Bugun / Kecha / Shu
+        oy / Sana), and «Jami» already says when none is; restating the exact
+        dates under the title just duplicated a control the reader is already
+        looking at. With `description` now null too, nothing at all is printed
+        between the title and the filter row — which is the point: the row
+        below IS the answer to "which dates am I reading". In the unrestricted
+        modes (global search, «Жами»,
+        backlog) it was worse than redundant: `meta.period` is honest that the
+        route answered for all of time, but printing it reads
+        «01.01.1970 – 31.12.2099», so those were already suppressed — this
+        extends the same call to the bounded case.
+      */
+      meta={undefined}
       /*
         Dimmed only when the numbers genuinely belong to another question. It
         used to dim on `isPlaceholderData`, which is also true while the next
@@ -598,19 +759,71 @@ export function ConfirmationPage() {
         // Every column the table shows is searchable, so the box says so —
         // including the phone in the masked form it is displayed in.
         searchPlaceholder: 'ID, mijoz, telefon, operator, ROP, mahsulot, summa, region, manba…',
+        /*
+          THREE IS `pg_trgm`'S TRIGRAM LENGTH. It is not a taste call and it is
+          not a round number picked to be polite about typing.
+
+          Every arm of this board's search predicate is answered by a GIN
+          trigram index — deal title, order code, customer name, address,
+          region, the digits-only phone form. A trigram index can only be
+          probed with the trigrams a term contains, and a term of one or two
+          characters contains NONE: Postgres extracts an empty key set, cannot
+          use the index at all, and falls back to a sequential scan of every
+          arm at once. On top of that a one-character search is answered for
+          ALL TIME here — `q` drops the reporting window in the route — so the
+          two-statement shape is off and `moves`'s left bound stops bounding
+          anything. The single keystroke that starts a phone number would run
+          the most expensive statement this page has, against a single vCPU
+          shared with the sync worker, and then be thrown away by the next
+          keystroke 350 ms later.
+
+          A reader is told rather than left guessing: SearchInput prints
+          «Kamida 3 ta belgi» under the box while the term is short, because a
+          box that quietly does nothing for two characters reads as broken.
+        */
+        searchMinLength: 3,
       }}
-      actions={
+      /*
+        THE FILTER ROW SITS ON THE TITLE LINE HERE, not under it.
+
+        This page has no description and never prints its resolved dates, so
+        the line under the title was empty and the filter row under THAT was
+        costing the table ~52px on the one screen the floor reads all day.
+        Beside the title the row says exactly what it said before and the tile
+        band starts a row higher. It is still this page's row — see
+        `filtersInHeader` in PageShell — and on a narrow screen it wraps back
+        under the title on its own.
+      */
+      filtersInHeader
+      /*
+        IN THE FILTER ROW, NOT IN `actions`.
+
+        These three narrow the table, so they travel with the other things
+        that narrow it — the window and the search box — and they now do that
+        wherever the row goes, this page having asked for it on the title line.
+        Passed as `actions` they were pinned to the header on their own while
+        the window and the search box sat left-aligned below, so one screen
+        carried two toolbars a metre apart and the reader crossed the page to
+        narrow one table. `actions` stays what it was — the slot for a
+        page-level ACTION, which is what Foydalanuvchilar' «+ Yangi hisob» is
+        and none of these is.
+
+        A Fragment, not a wrapping <div>: the shell's row is already
+        `flex-wrap gap-2`, so each control wraps on its own line on a phone
+        instead of the three of them moving as one block.
+      */
+      toolbar={
         /*
           No "Бугун" button here.
 
-          The period control in the page toolbar already owns the reporting
-          window and carries its own Bugun / Kecha / Shu hafta row. A second
-          one beside the ROP filter set the same URL parameter from a second
-          place, so the two could disagree on screen about which day was
-          selected — and a filter bar that contradicts the control above it is
-          worse than one button fewer.
+          The presets are the control immediately to the left of these three
+          and already own the reporting window — Bugun / Kecha / Shu oy / Sana
+          / Jami. A second Bugun in this same row would set the same URL
+          parameter from a second place, so the two could disagree on screen
+          about which day was selected, and a toolbar that contradicts itself
+          is worse than one button fewer.
         */
-        <div className="flex flex-wrap items-center gap-2">
+        <>
           {/*
             THE SELECTED ROP IS ALWAYS AN OPTION, even when the search hides it.
 
@@ -660,7 +873,7 @@ export function ConfirmationPage() {
               Статистика
             </span>
           </Button>
-        </div>
+        </>
       }
     >
       {/*
@@ -708,6 +921,86 @@ export function ConfirmationPage() {
             clicked to look at the backlog.
           */}
           <Button variant="secondary" size="sm" onClick={() => update({ queue: undefined })}>
+            Davr boʻyicha koʻrish
+          </Button>
+        </div>
+      )}
+
+      {/*
+        THE SENTENCE THAT SAYS WHY YESTERDAY'S ORDER IS ON A «BUGUN» BOARD.
+
+        Without it the change is invisible and reads as a bug: the period says
+        «Bugun», the rows are dated three weeks back, and the tiles count a
+        population no preset on screen selects. It sits exactly where the
+        backlog banner sits — above the band, which is the first thing the eye
+        lands on after the toolbar — and carries the way back, because clearing
+        a search from the box means finding the box again.
+
+        The term is printed because the box may be scrolled out of view on a
+        narrow screen, and because it is what the reader is being told the
+        scope of.
+      */}
+      {allOrders && !globalSearch && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5"
+          style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
+        >
+          <p
+            className="flex items-start gap-2 text-[13px] leading-snug"
+            style={{ color: 'var(--ink-secondary)' }}
+          >
+            <span className="mt-0.5 shrink-0" style={{ color: 'var(--series-4)' }}>
+              <ListGlyph size={14} />
+            </span>
+            <span>
+              <span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                Jami — barcha buyurtmalar
+              </span>
+              {' — '}
+              Тасдиклаш навбатига tushgan har bir buyurtma, qachon tushganidan
+              qatʼi nazar. Davr tanlovi bu roʻyxatga taʼsir qilmaydi; РОП,
+              status va qidiruv esa ishlaydi.
+            </span>
+          </p>
+          {/*
+            The way back names the outcome rather than the action, like the
+            backlog banner's — and it is the same click as the lit chip above,
+            offered here because that chip is a small target in a row of four.
+          */}
+          <Button variant="secondary" size="sm" onClick={() => update({ queue: undefined })}>
+            Davr boʻyicha koʻrish
+          </Button>
+        </div>
+      )}
+
+      {globalSearch && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5"
+          style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
+        >
+          <p
+            className="flex items-start gap-2 text-[13px] leading-snug"
+            style={{ color: 'var(--ink-secondary)' }}
+          >
+            <span className="mt-0.5 shrink-0" style={{ color: 'var(--series-4)' }}>
+              <SearchGlyph size={14} />
+            </span>
+            <span>
+              <span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                «{query.data?.askedQ}» — barcha sanalar boʻyicha
+              </span>
+              {' — '}
+              qidiruv tanlangan davr bilan cheklanmaydi: buyurtma navbatga qachon
+              tushganidan qatʼi nazar topiladi. Yuqoridagi hisoblagichlar ham shu
+              natijani sanaydi.
+            </span>
+          </p>
+          {/*
+            Clearing the search is what puts the window back in force, so the
+            button says the outcome rather than the action — the same way the
+            backlog banner's does.
+          */}
+          <Button variant="secondary" size="sm" onClick={() => update({ q: undefined })}>
             Davr boʻyicha koʻrish
           </Button>
         </div>
@@ -887,12 +1180,64 @@ export function ConfirmationPage() {
           /*
             Bounded, so the header row pins while the page's rows scroll under
             it — and so the pager stays a glance away rather than a screen.
+
+            BOUNDED BY THE VIEWPORT, NOT BY A LITERAL. 640px was a box sized
+            for no screen in particular: on a 1080-tall display it left the
+            rows in the middle third of the page with empty card below them,
+            and the whole thing still measured taller than the viewport, so
+            the reader scrolled `main` to reach the pager and then scrolled the
+            table inside it to reach the rows. Two scrollbars over one list.
+
+            `dvh` and not `vh` because Shell makes the application exactly one
+            viewport tall (`height: '100dvh'`) with `main` as the only page
+            scroller — so `100dvh` minus the chrome around this box IS the room
+            it may have, and on a phone `dvh` is the height that survives the
+            browser's own bars.
+
+            26rem is that chrome, summed by hand: ~333px above (app header 57,
+            main's lg:py-6 24, accent rule 3 + mb-2.5 10, the h1 32, three
+            space-y-4 gaps 48, the filter row 34, the tile band 76, this card's
+            border + py-4 + mb-3 + h2 49) and ~81px below (pager pt-3 12 + a
+            28px button, the card's bottom py-4 16 + border 1, main's own
+            bottom padding 24). It is a hand-sum and it goes stale if the title
+            block, the tile band or the card header changes — re-derive it
+            then; being a few pixels short only costs a little scroll on
+            `main`, which is why the slack is small and not zero.
+
+            The banner modes insert one more row above the tiles, so they
+            subtract it too. Opening Статистика inserts the whole ROP panel and
+            the page scrolls — correct, and deliberately not compensated: that
+            is a disclosure the reader just opened, not permanent chrome.
+
+            The floor keeps ~7 rows and something for the sticky header to
+            stick to on a short window (DataTable's own note: an `overflow-y`
+            box that never overflows is not a scroll container, and the header
+            silently stops pinning). The ceiling stops a tall portrait screen
+            putting the pager a full screen below the last row.
           */
-          maxHeight={640}
+          maxHeight={`clamp(420px, calc(100dvh - 26rem${
+            backlog || allOrders || globalSearch ? ' - 4.5rem' : ''
+          }), 1400px)`}
           minWidth={1860}
+          /*
+            Eight pixels a row, taken from padding alone — the multi-line
+            phone, product and СТАТУС cells keep every line they render. On a
+            table whose rows are 55–92px tall that is two more orders on a
+            laptop screen, which is what this page is for.
+          */
+          density="compact"
           emptyTitle="Buyurtma topilmadi"
           emptyBody={
-            filters.outcomes.length > 0 || filters.rop || filters.q
+            globalSearch
+              ? // Widening the period is the reader's next instinct and it
+                // cannot help — the search already read every date. Saying so
+                // is the difference between one more try and five.
+                'Butun tarix boʻyicha qidirildi — bu soʻrov boʻyicha buyurtma topilmadi. Boshqa filtrlarni (status, РОП) tozalab koʻring.'
+              : allOrders && (filters.outcomes.length > 0 || filters.rop)
+                ? // Same reasoning: the board is already as wide as it goes,
+                  // so only the state and the ROP can be standing in the way.
+                  'Butun tarix boʻyicha qaraldi — bu status va РОП boʻyicha buyurtma yoʻq.'
+              : filters.outcomes.length > 0 || filters.rop || filters.q
               ? 'Bu filtrlar boʻyicha buyurtma yoʻq. Filtrlarni tozalab koʻring.'
               : backlog
                 ? // An empty backlog is the good news, and «bu davrda» would be
@@ -908,6 +1253,15 @@ export function ConfirmationPage() {
             totalPages={data.pagination.totalPages}
             totalItems={data.pagination.totalItems}
             onPage={(next) => update({ page: next })}
+            /*
+              The size lives in the URL like every other reading of this board,
+              so a link somebody sends opens on the same rows they were looking
+              at. `update` drops `page` from the address unless the patch names
+              it, so changing the size lands on page 1 — which is the only
+              honest place to land when every page boundary has just moved.
+            */
+            pageSize={pageSize}
+            onPageSize={(size) => update({ pageSize: size })}
           />
         )}
       </Card>
@@ -1464,7 +1818,11 @@ function Select({
       className="focusable rounded-lg border px-2.5 py-1.5 text-xs font-medium"
       style={{
         background: 'var(--surface-raised)',
-        borderColor: 'var(--border)',
+        // The same border as SearchInput and MultiSelect, which are now its
+        // immediate neighbours in the filter row. On `--border` it read a
+        // step quieter than the «Барча статус» control beside it, which said
+        // the two were different kinds of thing when they are the same kind.
+        borderColor: 'var(--border-strong)',
         color: value ? 'var(--ink-primary)' : 'var(--ink-secondary)',
       }}
     >

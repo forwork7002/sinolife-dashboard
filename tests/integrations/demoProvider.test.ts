@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { DemoCrmProvider } from '@/server/integrations/crm/demo/DemoCrmProvider'
 import { Rng } from '@/server/integrations/crm/demo/rng'
-import { STAGES } from '@/server/integrations/crm/demo/catalogue'
+import { DEMO_HEADS, DEPARTMENTS, STAGES } from '@/server/integrations/crm/demo/catalogue'
 
 const REFERENCE = new Date('2026-08-23T00:00:00.000Z')
 
@@ -369,5 +369,94 @@ describe('provider contract', () => {
     const health = await provider().healthCheck()
     expect(health.ok).toBe(true)
     expect(health.detail).toContain('Demo provider ready')
+  })
+})
+
+/**
+ * The org chart is a screen, so the demo has to be a company.
+ *
+ * These pin the three shapes the company-structure screen has to render, each
+ * of which the real portal contains and none of which a flat list of
+ * departments with no heads would ever produce. Before this the demo was four
+ * parentless departments with no head at all, and the screen drew four
+ * disconnected cards — a broken page rather than a small company.
+ */
+describe('demo company structure', () => {
+  it('is a tree with exactly one root and three levels', async () => {
+    const departments = await drain((o) => provider().fetchDepartments(o))
+    const byId = new Map(departments.map((d) => [d.externalId, d]))
+
+    const roots = departments.filter((d) => !d.parentExternalId)
+    expect(roots).toHaveLength(1)
+
+    const depthOf = (id: string): number => {
+      let depth = 0
+      let parent = byId.get(id)?.parentExternalId
+      while (parent) {
+        depth += 1
+        parent = byId.get(parent)?.parentExternalId
+      }
+      return depth
+    }
+
+    // Production is NEWGEN -> region -> (ROP) team. A demo one level shallower
+    // never renders a grandchild row, which is where the connectors are.
+    expect(Math.max(...departments.map((d) => depthOf(d.externalId)))).toBe(2)
+    // Every parent named is a department that exists — an org chart with a
+    // dangling parent silently drops a whole branch.
+    for (const d of departments) {
+      if (d.parentExternalId) expect(byId.has(d.parentExternalId)).toBe(true)
+    }
+  })
+
+  it('covers all three head cases the portal contains', async () => {
+    const departments = await drain((o) => provider().fetchDepartments(o))
+    const employees = await drain((o) => provider().fetchEmployees(o))
+    const memberships = new Map(
+      employees.map((e) => [e.externalId, new Set(e.departmentExternalIds ?? [])]),
+    )
+
+    const headed = departments.filter((d) => d.headExternalId)
+    const headless = departments.filter((d) => !d.headExternalId)
+
+    // A unit with no head at all — the portal's «Тошкент онлайн».
+    expect(headless.length).toBeGreaterThan(0)
+
+    const insider = headed.filter((d) => memberships.get(d.headExternalId!)?.has(d.externalId))
+    const outsider = headed.filter((d) => !memberships.get(d.headExternalId!)?.has(d.externalId))
+
+    // A head who sits in the unit — the portal's NEWGEN.
+    expect(insider.length).toBeGreaterThan(0)
+    // And one who does not — the portal's «Навоий», whose UF_HEAD names
+    // somebody whose own UF_DEPARTMENT is elsewhere. Its card prints no head
+    // row, so a demo without this case never exercises that branch.
+    expect(outsider.length).toBeGreaterThan(0)
+
+    // Every head named is an employee the provider also emits.
+    const known = new Set(employees.map((e) => e.externalId))
+    for (const d of headed) expect(known.has(d.headExternalId!)).toBe(true)
+    for (const [dep, emp] of Object.entries(DEMO_HEADS)) {
+      if (emp) expect(DEPARTMENTS.some((d) => d.externalId === dep)).toBe(true)
+    }
+  })
+
+  it('gives some people two departments, primary first', async () => {
+    const employees = await drain((o) => provider().fetchEmployees(o))
+
+    // Bitrix24's UF_DEPARTMENT is an array and its org chart counts a person in
+    // every entry. A demo where nobody has two lets a query that reads only the
+    // primary unit pass every test and still be short by eight people against
+    // the real portal, which is the bug this exists to catch.
+    const multi = employees.filter((e) => (e.departmentExternalIds ?? []).length > 1)
+    expect(multi.length).toBeGreaterThan(0)
+
+    for (const e of employees) {
+      const ids = e.departmentExternalIds ?? []
+      expect(ids.length).toBeGreaterThan(0)
+      // The first entry IS the primary: every analytic credits the person to
+      // that one unit, and the two representations may never disagree.
+      expect(ids[0]).toBe(e.departmentExternalId)
+      expect(new Set(ids).size).toBe(ids.length)
+    }
   })
 })

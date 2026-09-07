@@ -58,39 +58,38 @@ export const t = {
       lead: 'Har oy birinchi marta xarid qilgan mijozlarning qanchasi keyingi oylarda qaytgani — kogorta tahlili.',
     },
     /*
-      WHICH DATE THE WINDOW IS APPLIED TO, on the three screens that disagree.
+      WHICH DATE THE WINDOW IS APPLIED TO, on the screens that disagree.
 
-      "Tushum" is one word for two different measurements here. Logistics and
-      the dispatch points window on the day an order was TAKEN and then report
-      what became of it; the structure screen windows on the day a deal was
-      CLOSED. Both are right for their own question — a courier is judged on
-      the parcels handed to it, a department on the money it banked — but the
-      median order takes 25 days to travel between the two, so the same preset
-      gives the two screens genuinely different totals.
+      "Tushum" is one word for more than one measurement on this dashboard.
+      Logistics and the dispatch points window on the day an order was TAKEN
+      and then report what became of it; the screens that report money window on
+      the day a deal was CLOSED. Both are right for their own question — a
+      courier is judged on the parcels handed to it, a department on the money
+      it banked — but the median order takes 25 days to travel between the two,
+      so the same preset gives them genuinely different totals.
 
       A reader comparing them has no way to know that unless it is written
       down. `t.period.closedBasis` already says this beside the deltas that
       need it; these leads say it where a whole page needs it.
+
+      Kadrlar tuzilmasi used to be the third screen in this note and no longer
+      belongs to it at all: it reports no money and has no window.
     */
     logistics: {
       title: 'Logistika natijasi',
       lead: 'Buyurtma qaysi hudud va tashuvchi orqali ketgani, qancha vaqtda yetgani va qayerda qaytgani. Davr buyurtma OLINGAN sana boʻyicha.',
     },
     /*
-      THE TWO FACTS AN OWNER NEEDS TO RECONCILE THIS SCREEN WITH BITRIX.
-
-      Which orders are on the board — only those that reached a confirmation
-      stage, so an order parked in «Пропущенный» or an SMS stage is on neither
-      this board nor its ЖАМИ — and which date the window is applied to, which
-      is the day the order ARRIVED in Тасдиклаш, not its Дата создания.
-      Without the second one a reader comparing "bugun" against the portal has
-      no way to know whether they are counting the same day, and without the
-      first the ЖАМИ tile reads as every order taken rather than every order
-      queued.
+      NO LEAD LINE HERE, deliberately — the client asked for the description
+      under this title to go. Everything it used to say (only orders that
+      reached a confirmation stage are on the board; the window is the day the
+      order ARRIVED in Тасдиклаш, not its Дата создания) is still true and is
+      still recorded where the query is built — see the confirmation section of
+      CLAUDE.md and QUEUE_HISTORY_SQL. Do not restore it as a `lead` key: the
+      page no longer reads one.
     */
     confirmation: {
       title: 'Tasdiqlash navbati',
-      lead: 'Tasdiqlash bosqichiga tushgan har bir buyurtma qaysi holatda ekani. Davr buyurtma navbatga kelgan kun (C4:NEW) boʻyicha.',
     },
     margin: {
       title: 'Yalpi marja',
@@ -104,9 +103,18 @@ export const t = {
       title: 'Jamoa',
       lead: 'Kim qancha sotdi, kim qancha gaplashdi, kim qayerda turibdi.',
     },
+    /*
+      NO LEAD LINE HERE EITHER, and for a stronger reason than the confirmation
+      board's. The old one read «Boʻlimlar, rahbarlar va har bir boʻlimning
+      natijasi. Davr bitim YOPILGAN sana boʻyicha» — and both halves of that are
+      now false: the page reports no «natija» in soʻm (money on this dashboard
+      is stated on Boshqaruv markazi) and it has no «davr» at all. What is left
+      to say about the screen the chart says in its own controls, and the page
+      passes `description={null}` so the line is not even reserved: on a canvas
+      sized to the viewport, 20px of held-open space is 20px of chart.
+    */
     structure: {
       title: 'Kadrlar tuzilmasi',
-      lead: 'Boʻlimlar, rahbarlar va har bir boʻlimning natijasi. Davr bitim YOPILGAN sana boʻyicha.',
     },
   },
 
@@ -139,22 +147,6 @@ export const t = {
     */
     closedBasis: 'Yopilgan sana boʻyicha — buyurtma oʻrtacha 25 kunda yopiladi',
     truncated: 'Taqqoslash davri qisqartirildi',
-  },
-
-  /**
-   * The ⌘K command palette and its header trigger.
-   *
-   * Footer strings (↑↓ tanlash · ↵ ochish · Esc yopish) and the placeholder
-   * live inside the CommandPalette primitive itself; only what Shell wires —
-   * the trigger chip and the group headings — belongs here. "Davr" is not
-   * duplicated: the period group reuses t.period.label.
-   */
-  palette: {
-    search: 'Qidiruv',
-    sections: 'Boʻlimlar',
-    // Beside the preset the page is already showing — so choosing it again
-    // reads as a no-op before it is one.
-    currentPeriod: 'joriy',
   },
 
   cards: {
