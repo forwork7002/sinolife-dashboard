@@ -1,5 +1,40 @@
 # Development
 
+## Setup
+
+Verified end to end on 2026-09-07 from a fresh clone: `npm ci` 44 s for 661
+packages, `npm run verify` green in 73 s, `npm run build` green in 103 s, and
+`next start` serving `/login` with no database running at all.
+
+**Node 22.22.2+, or 24.15.0+ on the 24.x line.** Node 20 fails. The floor is not
+Next's (it takes 20.9) — it comes from `jsdom` and `undici` in the lockfile, and
+it is declared nowhere but `.nvmrc`, which names the 22.22.2 that production
+itself builds on.
+
+```bash
+nvm use                # .nvmrc
+cp .env.example .env   # then edit it: BETTER_AUTH_SECRET ships empty and
+                       # DATABASE_URL ships CHANGE_ME, so a verbatim copy cannot boot
+npm ci
+npm run db:generate    # gitignored client, no postinstall — typecheck fails without it
+npm run verify         # needs no database
+npm run build          # needs no database
+```
+
+Only the database commands need PostgreSQL. Use **16**, the version
+`.do/app.yaml` pins for production; the SQL's own floor is 12.
+
+```bash
+initdb -D ~/pg-sinolife -A trust -U "$USER"
+pg_ctl -D ~/pg-sinolife -o "-p 5433 -c listen_addresses=127.0.0.1" start
+createdb -h 127.0.0.1 -p 5433 sinolife
+npm run db:deploy && npm run db:seed && npm run db:seed:users
+npm run db:check       # 11 of 11 pass on a freshly seeded demo database
+```
+
+A `db:check` failure on a database that has been sitting around is a stale
+database, not a broken invariant — the demo seed is clean on a fresh migrate.
+
 ## The gate
 
 ```bash
@@ -11,11 +46,13 @@ npm run db:check    # 11 data-integrity invariants
 All three must be green before a phase is called done. Not "should work" — run
 them.
 
-Currently: **628 tests, 0 lint errors, 0 type errors.**
+Currently: **928 tests, 0 lint errors, 0 type errors** — measured 2026-09-07 on
+a fresh clone.
 
 A count in prose goes stale the moment somebody adds a test, so treat it as a
 floor rather than a fact: `npm run verify` is what actually answers the
-question. This line said 285 for long enough that it stopped being read.
+question. This line said 285, then 628, for long enough each time that it
+stopped being read.
 
 ## Conventions
 

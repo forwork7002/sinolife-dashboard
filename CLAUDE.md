@@ -818,14 +818,30 @@ output and answers 200 with the database gone.
   no-op with no callers, and the `sourceField` / `confirmed: true` fields its
   "steps to finish" tell you to edit do not exist. It also references a
   `POST /api/v1/sync/run` route that was never built.
-- `docs/DEVELOPMENT.md` carries a stale test count and a finished phase table.
+- `docs/DEVELOPMENT.md`'s test count is current as of 2026-09-07 (928) but the
+  phase table below it is finished work; `npm run verify` is the authority.
 - `src/lib/sections.ts` cites a `src/server/auth/sections.ts` that does not
   exist. The invariant it describes still holds — by direct import.
 
 ## Local database
 
-`.env` points at `127.0.0.1:5433`; the only cluster on this machine is 5432 and
-the role it names does not exist, so `db:deploy`, `db:check`, `db:studio` and
-`prisma migrate` all fail with `P1001`. `.env.example` says 5432. Everything
-else — typecheck, lint, the whole test suite, `next build` — runs without a
-database.
+`.env` points at `127.0.0.1:5433` and **nothing serves that port** — the
+throwaway cluster this checkout used was deleted on 2026-09-07 with the machine
+move, so `db:deploy`, `db:check`, `db:studio` and `prisma migrate` all fail with
+`P1001` until one is made. `.env.example` says 5432.
+
+```bash
+initdb -D ~/pg-sinolife -A trust -U "$USER"
+pg_ctl -D ~/pg-sinolife -o "-p 5433 -c listen_addresses=127.0.0.1" start
+createdb -h 127.0.0.1 -p 5433 sinolife
+npm run db:deploy && npm run db:seed && npm run db:seed:users
+```
+
+On a database made that way all **16 migrations apply and `db:check` returns 11
+of 11** (1 600 deals, 14 employees, 611 won) — measured 2026-09-07. A failing
+invariant on a database that has been sitting around is a stale database, not a
+broken rule.
+
+Everything else — typecheck, lint, the whole test suite, `next build` — runs
+without a database, on Node 22.22.2+ (see `.nvmrc`; Node 20 cannot run the
+tests, `jsdom` refuses it).

@@ -15,17 +15,22 @@ that does and does not protect: [SECURITY.md](docs/SECURITY.md).
 
 | Screen | Question it answers |
 |---|---|
-| **Umumiy koʻrinish** | How much did we sell, where the period is heading, how fast the pipeline turns, and which deals are stuck |
-| **Savdo tahlili** | Revenue over time, by product, by seller — and how far deals created in the period actually got |
-| **Kanallar** | What each of the 25 sources brings in, what it converts at, and how concentrated the mix is |
-| **Kogorta** | Do customers come back, how soon, what repeat business is worth — and how much revenue rests on the top ten customers |
-| **Marja** | Gross margin per product, and how much of revenue it covers |
-| **Logistika** | Which hub and carrier delivered, how fast, and where parcels came back |
-| **Tasdiqlash** | Did the operator confirm the order — and did the confirmation hold |
-| **Sklad** | What each warehouse, courier and marketplace shipped |
-| **Reyting / Xodimlar / Struktura** | Who sold what — the branch's sellers only, ROPs excluded, ranked on **delivered** revenue — and where everyone sits in the company. The seller-close basis (what was *closed* rather than *delivered*) ships on the API today, not yet in this screen's metric picker |
-| **Qoʻngʻiroqlar** | Who actually spoke to customers, how fast a new deal gets its first call, and what an hour of talk returns |
-| **Bitimlar** | Every deal, filterable, across all nine pipelines |
+| **Boshqaruv markazi** | How much came in, what the funnel and the couriers did with it, and what the confirmation queue is holding right now |
+| **Savdo dinamikasi** | Revenue over time, by product, by source and by seller — plus the confirmation FAKT band the floor is paid on |
+| **Mijoz qaytishi** | Do customers come back, how soon, what repeat business is worth, and how much revenue rests on the top ten |
+| **Yalpi marja** | Gross margin per product, and how much of revenue it covers |
+| **Reklama samarasi** | What each campaign, ad set and creative returned. Roistat's own ledger, not Bitrix24 data |
+| **Tasdiqlash navbati** | Did the operator confirm the order, and did the confirmation hold |
+| **Logistika natijasi** | Which hub and carrier delivered, how fast, and where parcels came back |
+| **Joʻnatish nuqtalari** | What each warehouse, courier and marketplace shipped |
+| **KPI rejalari** | Each plan's target against what was delivered inside the plan's own window |
+| **Kadrlar tuzilmasi** | The portal's own org chart, with every unit's headcount and its money over the window |
+| **Sotuvchilar reytingi** | Who sold what, ranked on delivered revenue — the television board the floor watches |
+
+Eleven sections, listed in `src/lib/sections.ts`, which is the only place that
+decides what a section is. Two more pages sit outside that list and are reached
+by permission rather than by section: `/users` (account administration) and
+`/account` (password and two-factor).
 
 ---
 
@@ -84,15 +89,32 @@ guard has stopped working.
 
 ## Getting started
 
+**Before anything else: Node 22.22.2 or newer** (the 24.x line needs 24.15.0).
+Node 20 will not do — the floor comes from `jsdom` and `undici` in the lockfile,
+not from Next, and nothing in the repo enforces it beyond `.nvmrc`. Production
+builds on **22.22.2**, which is what `.nvmrc` names. PostgreSQL **16**, to match
+the managed cluster; the SQL itself only needs 12.
+
 ```bash
-cp .env.example .env          # fill in DATABASE_URL, BITRIX24_WEBHOOK_URL,
-                              # BETTER_AUTH_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD
+nvm use                       # reads .nvmrc
+cp .env.example .env          # then EDIT it — see below
 npm ci
+npm run db:generate           # the Prisma client is gitignored, and there is no postinstall
 npm run db:deploy             # migrations
 npm run bitrix:import -- --full --reset
 npm run db:seed:users         # the single administrator
 npm run dev
 ```
+
+**The copied `.env` will not boot as it stands**, and that is deliberate: it
+ships an empty `BETTER_AUTH_SECRET` and a `CHANGE_ME` password inside
+`DATABASE_URL`. Fill in `DATABASE_URL`, `BITRIX24_WEBHOOK_URL`,
+`BETTER_AUTH_SECRET`, `ADMIN_EMAIL` and `ADMIN_PASSWORD` before the first
+command that touches either.
+
+On a machine with no Bitrix24 webhook, set `DATA_SOURCE=demo` and run
+`npm run db:seed` in place of the import: the demo provider walks the same sync
+engine, so every screen has data and no portal is contacted.
 
 Then sign in, change the password from `/account`, and arm two-factor while you
 are there — **the ten backup codes are shown once and are the only recovery
@@ -123,13 +145,13 @@ and for catching up by hand.
 | | |
 |---|---|
 | [SUPERDASHBOARD.md](docs/SUPERDASHBOARD.md) | What each module measures and why, with the portal evidence behind it |
-| [BITRIX24-IMPORT-PLAN.md](docs/BITRIX24-IMPORT-PLAN.md) | Field mapping, duplicate analysis, revenue recognition |
+| [BITRIX24.md](docs/BITRIX24.md) | Field mapping, duplicate analysis, revenue recognition |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers and the rules between them |
 | [DATABASE.md](docs/DATABASE.md) | Schema and the money/time contracts |
 | [API.md](docs/API.md) | Endpoints and the response envelope |
 | [DEPLOY.md](docs/DEPLOY.md) | DigitalOcean App Platform, step by step |
 | [SECURITY.md](docs/SECURITY.md) | What protects the dashboard, what does not, and what to do if you suspect a compromise |
-| [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup and conventions |
+| [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup, the gate, and the conventions |
 
 ---
 
