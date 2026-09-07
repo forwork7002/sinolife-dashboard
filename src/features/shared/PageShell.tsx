@@ -92,6 +92,7 @@ export function PageShell({
   accent,
   actions,
   toolbar,
+  controlsBesideTitle = false,
   stale = false,
   children,
   period = true,
@@ -150,6 +151,26 @@ export function PageShell({
    * block with a nested gap of its own.
    */
   toolbar?: ReactNode
+  /**
+   * Put the control row on the TITLE'S line instead of under it.
+   *
+   * The row is a line of its own by default, and on nearly every screen that
+   * is right: five or six MultiSelects do not fit beside a heading, and a row
+   * that sat under the title on one page and beside it on the next would make
+   * the app look like it shifts as you navigate.
+   *
+   * The confirmation board is the exception, and the reason is arithmetic. Its
+   * whole content is one table, its title is two words, and its controls come
+   * to about half the width of the screen — so the row was spending a line,
+   * plus the 16px gap above it, to say nothing the title's own line could not
+   * have said beside it. Fifty pixels, on the page with the least to spare.
+   *
+   * The mechanism is `basis-full`, not a second copy of the row: the row is
+   * always the header's last child, and it either claims a line of its own or
+   * it does not. One row, one place in the DOM, and the same tab order either
+   * way.
+   */
+  controlsBesideTitle?: boolean
   /**
    * True while the numbers on screen still belong to the PREVIOUS window.
    *
@@ -273,7 +294,18 @@ export function PageShell({
           </div>
 
           <div className="relative space-y-4">
-            <header className="flex flex-wrap items-start justify-between gap-3">
+            {/*
+              THE ROW IS A CHILD OF THIS HEADER, on its own line or beside the
+              title — see `controlsBesideTitle`. Hence `gap-y-4` and not the
+              old `gap-3`: when the row wraps to its own line, that gap is what
+              used to be `space-y-4` on the container, so every other page keeps
+              the 16px it had. `gap-x-3` keeps the horizontal 12px.
+            */}
+            <header
+              className={`flex flex-wrap justify-between gap-x-3 gap-y-4 ${
+                controlsBesideTitle ? 'items-center' : 'items-start'
+              }`}
+            >
               <div className="min-w-0">
                 {accent && <div className="accent-rule mb-2.5" aria-hidden="true" />}
                 {/* `.display` (tight tracking for large sizes) at 24px — the page
@@ -325,116 +357,119 @@ export function PageShell({
                 )}
               </div>
               {actions}
+              {/*
+                THE REPORTING WINDOW BELONGS TO THE PAGE, not to the chrome.
+
+                It used to sit in the app header, above every screen, which said
+                it was one setting for the whole dashboard — and it never was:
+                each section is read in its own window, and each keeps it. A
+                control rendered over the top bar cannot say that. Down here it
+                sits with the section's other filters, in the section's own
+                header, and reads as what it is: this page's dates. (Under the
+                title or beside it — see `controlsBesideTitle`; either way it is
+                the page's header and not the app's.)
+
+                The header keeps the search, which genuinely is global — it looks
+                across every screen at once.
+
+                The row renders even when a page has no other filters, because
+                the window is not optional on a page that has one — a screen
+                without the control would have no way to change its dates. A page
+                with no window (`period={false}`) gets no row from that clause —
+                but it still gets one if it brought controls of its own.
+
+                That last term is reached by no page today, deliberately: the one
+                screen with a toolbar also enables a search box, so `anyFilter`
+                already opens its row in every mode, backlog included. It is here
+                so that a page whose ONLY controls are its own gets a row rather
+                than losing them silently — which is a rendering nothing would
+                report, in a slot whose whole promise is that the shell owns
+                where the controls go.
+              */}
+              {(period || anyFilter || toolbar) && (
+              <div
+                className={`flex flex-wrap items-center gap-2 ${
+                  controlsBesideTitle ? 'ml-auto' : 'basis-full'
+                }`}
+              >
+                {periodControl}
+                {anyFilter && (
+                  <>
+                  {enabled.search && (
+                    <SearchInput
+                      value={filters.q ?? ''}
+                      onChange={(q) => update({ q: q || undefined })}
+                      placeholder={enabled.searchPlaceholder}
+                    />
+                  )}
+                  {enabled.employees && (
+                    <MultiSelect
+                      label="Xodim"
+                      options={(data?.employees ?? []).map((e) => ({ id: e.id, label: e.fullName }))}
+                      selected={filters.employeeIds}
+                      onChange={(employeeIds) => update({ employeeIds })}
+                    />
+                  )}
+                  {enabled.departments && (
+                    <MultiSelect
+                      label="Boʻlim"
+                      options={(data?.departments ?? []).map((d) => ({ id: d.id, label: d.name }))}
+                      selected={filters.departmentIds}
+                      onChange={(departmentIds) => update({ departmentIds })}
+                    />
+                  )}
+                  {enabled.stages && (
+                    <MultiSelect
+                      label="Bosqich"
+                      options={(data?.stages ?? []).map((s) => ({ id: s.id, label: s.name }))}
+                      selected={filters.stageIds}
+                      onChange={(stageIds) => update({ stageIds })}
+                    />
+                  )}
+                  {enabled.products && (
+                    <MultiSelect
+                      label="Mahsulot"
+                      options={(data?.products ?? []).map((p) => ({ id: p.id, label: p.name }))}
+                      selected={filters.productIds}
+                      onChange={(productIds) => update({ productIds })}
+                    />
+                  )}
+                  {enabled.sources && (
+                    <MultiSelect
+                      label="Manba"
+                      options={(data?.sources ?? []).map((s) => ({ id: s.id, label: s.name }))}
+                      selected={filters.sourceIds}
+                      onChange={(sourceIds) => update({ sourceIds })}
+                    />
+                  )}
+                  </>
+                )}
+                {toolbar}
+                {/*
+                  STILL GUARDED ON `anyFilter`, which is not cosmetic — and last
+                  in the row on purpose.
+
+                  `activeCount` counts employeeIds / departmentIds / stageIds /
+                  productIds / sourceIds / status / outcomes / rop / q straight
+                  off the URL, regardless of what this page enables — and eight
+                  screens render PageShell with no `filters` prop at all. Left
+                  unguarded, a stale `?employeeIds=` riding in on a pasted link
+                  would grow a «Filtrlarni tozalash (1)» button on a page that
+                  has never had one and cannot show what it would clear.
+
+                  Hoisted out of the fragment so the page's own controls come
+                  first: a clear button standing between the search box and the
+                  toolbar it also clears reads as part of that toolbar.
+                */}
+                {anyFilter && activeCount > 0 && (
+                  <Button variant="ghost" size="sm" onClick={reset}>
+                    Filtrlarni tozalash ({activeCount})
+                  </Button>
+                )}
+              </div>
+              )}
             </header>
 
-            {/*
-              THE REPORTING WINDOW BELONGS TO THE PAGE, not to the chrome.
-
-              It used to sit in the app header, above every screen, which said
-              it was one setting for the whole dashboard — and it never was:
-              each section is read in its own window, and each keeps it. A
-              control rendered over the top bar cannot say that. Down here it
-              sits with the section's other filters, under the section's title,
-              and reads as what it is: this page's dates.
-
-              The header keeps the search, which genuinely is global — it looks
-              across every screen at once.
-
-              The row renders even when a page has no other filters, because
-              the window is not optional on a page that has one — a screen
-              without the control would have no way to change its dates. A page
-              with no window (`period={false}`) gets no row from that clause —
-              but it still gets one if it brought controls of its own.
-
-              That last term is reached by no page today, deliberately: the one
-              screen with a toolbar also enables a search box, so `anyFilter`
-              already opens its row in every mode, backlog included. It is here
-              so that a page whose ONLY controls are its own gets a row rather
-              than losing them silently — which is a rendering nothing would
-              report, in a slot whose whole promise is that the shell owns
-              where the controls go.
-
-              `toolbar` opens it too, so a page whose only controls are its own
-              still gets the row rather than silently dropping them.
-            */}
-            {(period || anyFilter || toolbar) && (
-            <div className="flex flex-wrap items-center gap-2">
-              {periodControl}
-              {anyFilter && (
-                <>
-                {enabled.search && (
-                  <SearchInput
-                    value={filters.q ?? ''}
-                    onChange={(q) => update({ q: q || undefined })}
-                    placeholder={enabled.searchPlaceholder}
-                  />
-                )}
-                {enabled.employees && (
-                  <MultiSelect
-                    label="Xodim"
-                    options={(data?.employees ?? []).map((e) => ({ id: e.id, label: e.fullName }))}
-                    selected={filters.employeeIds}
-                    onChange={(employeeIds) => update({ employeeIds })}
-                  />
-                )}
-                {enabled.departments && (
-                  <MultiSelect
-                    label="Boʻlim"
-                    options={(data?.departments ?? []).map((d) => ({ id: d.id, label: d.name }))}
-                    selected={filters.departmentIds}
-                    onChange={(departmentIds) => update({ departmentIds })}
-                  />
-                )}
-                {enabled.stages && (
-                  <MultiSelect
-                    label="Bosqich"
-                    options={(data?.stages ?? []).map((s) => ({ id: s.id, label: s.name }))}
-                    selected={filters.stageIds}
-                    onChange={(stageIds) => update({ stageIds })}
-                  />
-                )}
-                {enabled.products && (
-                  <MultiSelect
-                    label="Mahsulot"
-                    options={(data?.products ?? []).map((p) => ({ id: p.id, label: p.name }))}
-                    selected={filters.productIds}
-                    onChange={(productIds) => update({ productIds })}
-                  />
-                )}
-                {enabled.sources && (
-                  <MultiSelect
-                    label="Manba"
-                    options={(data?.sources ?? []).map((s) => ({ id: s.id, label: s.name }))}
-                    selected={filters.sourceIds}
-                    onChange={(sourceIds) => update({ sourceIds })}
-                  />
-                )}
-                </>
-              )}
-              {toolbar}
-              {/*
-                STILL GUARDED ON `anyFilter`, which is not cosmetic — and last
-                in the row on purpose.
-
-                `activeCount` counts employeeIds / departmentIds / stageIds /
-                productIds / sourceIds / status / outcomes / rop / q straight
-                off the URL, regardless of what this page enables — and eight
-                screens render PageShell with no `filters` prop at all. Left
-                unguarded, a stale `?employeeIds=` riding in on a pasted link
-                would grow a «Filtrlarni tozalash (1)» button on a page that
-                has never had one and cannot show what it would clear.
-
-                Hoisted out of the fragment so the page's own controls come
-                first: a clear button standing between the search box and the
-                toolbar it also clears reads as part of that toolbar.
-              */}
-              {anyFilter && activeCount > 0 && (
-                <Button variant="ghost" size="sm" onClick={reset}>
-                  Filtrlarni tozalash ({activeCount})
-                </Button>
-              )}
-            </div>
-            )}
           </div>
         </div>
 

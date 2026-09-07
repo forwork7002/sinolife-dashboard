@@ -483,8 +483,9 @@ as before. A comfortable-looking 540 was tried and measured as a loss — 6 rows
 where the old cap gave 9 on a 1280×800 laptop, and on a phone a letterbox
 inside a page that still scrolled. The break-even is a window about 1054px
 tall; above it the floor is slack and nothing scrolls. Measured: 2560×1440 →
-13 rows against 8, maximised 1920×1080 → 8 against 7 (that row is the caption
-the page no longer prints), 1280×800 → exactly what it was.
+13 rows against 8, maximised 1920×1080 → 9 against 7 (the two rows are the
+caption the page no longer prints and the control row's own line), 1280×800 →
+exactly what it was.
 
 Two more things a later edit would undo. `fill` hands a page ONE plain block
 with no `display: flex` and no gap, so the column is built in
@@ -507,6 +508,17 @@ first is what the six state tiles directly under it say, the second is what the
 preset row says, and both are stated at length here and in the queue SQL, which
 is where somebody reconciling against the portal actually looks.
 `t.modules.confirmation.lead` was deleted with its last call site.
+
+**Its whole control row sits on the TITLE'S line** (`controlsBesideTitle`), the
+only screen that does. The row is the page header's last flex child everywhere;
+the prop swaps `basis-full` for `ml-auto`, so it either claims a line of its own
+or right-aligns beside the title — one row, one place in the DOM, same tab
+order, and it still wraps underneath on its own at narrow widths. It is worth a
+prop here and nowhere else because this title is two words and these controls
+are half a screen: the line plus its 16px gap was 50px of chrome on the one page
+whose entire content is a table. `<header>`'s gap became `gap-x-3 gap-y-4` in
+the same change — the y value is the `space-y-4` the row used to get from the
+container, so every other page keeps the spacing it had.
 
 **Its РОП / status / Статистика controls are `toolbar`, not `actions`.**
 `actions` is the header slot beside the title, right-aligned — for a page-level

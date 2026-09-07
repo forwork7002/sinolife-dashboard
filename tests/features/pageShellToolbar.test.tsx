@@ -43,6 +43,18 @@ vi.mock('next/navigation', () => ({
 
 const { PageShell } = await import('@/features/shared/PageShell')
 
+/*
+  THE PAGE'S HEADER, NOT THE APP'S.
+
+  PageShell renders inside `Shell`, which has a `<header>` of its own — so a
+  bare `querySelector('header')` returns the top bar, and an assertion about
+  what is or is not under the title quietly becomes an assertion about the
+  chrome. Anchor on the `<h1>`, which only the page has.
+*/
+function pageHeader(container: HTMLElement) {
+  return container.querySelector('h1')!.closest('header')!
+}
+
 function renderShell(props: Parameters<typeof PageShell>[0]) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnMount: false } },
@@ -90,6 +102,37 @@ describe('PageShell toolbar', () => {
     expect(screen.queryByRole('searchbox')).toBeNull()
   })
 
+  it('gives the row its own line by default and the title\u2019s line on request', () => {
+    /*
+      ONE ROW, ONE PLACE IN THE DOM. `controlsBesideTitle` is a class on the
+      row, not a second copy of it rendered somewhere else — so the tab order
+      is the same on both settings and there is no way for the two to drift.
+      `basis-full` is what claims the line; without it the row sits beside the
+      title and `ml-auto` pushes it to the right edge.
+    */
+    const stacked = renderShell({
+      title: 'Savdo dinamikasi',
+      filters: { search: true },
+      children: null,
+    })
+    const stackedRow = pageHeader(stacked.container).lastElementChild!
+    expect(stackedRow.className).toContain('basis-full')
+    expect(stackedRow.className).not.toContain('ml-auto')
+
+    const inline = renderShell({
+      title: 'Tasdiqlash navbati',
+      description: null,
+      filters: { search: true },
+      controlsBesideTitle: true,
+      children: null,
+    })
+    const inlineRow = pageHeader(inline.container).lastElementChild!
+    expect(inlineRow.className).toContain('ml-auto')
+    expect(inlineRow.className).not.toContain('basis-full')
+    // Still the header's own last child either way — the row never moves out.
+    expect(inlineRow.querySelector('input[type="search"]')).not.toBeNull()
+  })
+
   it('draws no line under the title when the page passes description={null}', () => {
     const { container } = renderShell({
       title: 'Tasdiqlash navbati',
@@ -104,8 +147,7 @@ describe('PageShell toolbar', () => {
       pixels plus its margin for text that could never arrive, above the
       densest table in the application.
     */
-    const header = container.querySelector('header')!
-    expect(header.querySelector('p')).toBeNull()
+    expect(pageHeader(container).querySelector('p')).toBeNull()
   })
 
   it('still reserves the line for a page that will print its dates', () => {
@@ -114,6 +156,6 @@ describe('PageShell toolbar', () => {
       children: null,
     })
 
-    expect(container.querySelector('header p')).not.toBeNull()
+    expect(pageHeader(container).querySelector('p')).not.toBeNull()
   })
 })

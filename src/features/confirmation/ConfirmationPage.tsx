@@ -606,6 +606,20 @@ export function ConfirmationPage() {
       period={!backlog}
       accent="var(--series-4)"
       /*
+        THE CONTROLS SHARE THE TITLE'S LINE.
+
+        «Tasdiqlash navbati» is two words and the row is about half the screen,
+        so the two fit side by side at every width this board is read at — and
+        the line the row used to have, plus the gap over it, is 50px that goes
+        to the table instead. On the one page whose entire content is a table,
+        a line of chrome is most of a row.
+
+        It wraps back underneath on its own when it has to: the row is the
+        header's last flex child, so a narrow window pushes it to a second line
+        exactly as before, rather than crushing the title.
+      */
+      controlsBesideTitle
+      /*
         640 WAS A CEILING. IT IS NOW A FLOOR.
 
         This queue is an instrument, not a document: it is read beside the
