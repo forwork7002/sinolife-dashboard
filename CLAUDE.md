@@ -250,6 +250,47 @@ exceptions, each with a reason in place: `/meta/alerts` (one request a minute
 for the whole app, keyed constantly), `/meta/filters` (5 min — reference data
 changes on sync), and the ⌘K search.
 
+### Light or dark
+
+`globals.css` has carried a full second palette since it was written, but for a
+long time the only thing that could reach it was the operating system —
+somebody on a machine pinned to light by IT policy had no way to the dark one
+at all. `src/lib/theme.ts` is the switch, and **the entire mechanism is one
+attribute on `<html>`**: `:root[data-theme="dark"]` forces dark, and the
+`prefers-color-scheme: dark` block is guarded `:not([data-theme="light"])` so
+the attribute can force light BACK. That guard is the half a reader on a dark
+machine depends on, and `tests/features/theme.test.ts` asserts it against the
+stylesheet, because nothing in TypeScript can see it. No class list, no inline
+colours, no second palette in JavaScript that could drift from the CSS.
+
+**Three choices, not two.** «Tizim» is the absence of a decision rather than a
+third theme, and it has to stay reachable, or one press of the header toggle
+permanently detaches the dashboard from a machine that switches itself at
+sunset. So `Shell`'s `ThemeButton` is a two-state toggle on the RESOLVED theme
+— a three-state cycle hands a reader who wanted the other mode a press that
+gives neither — and the three named states live in `AppearanceSection` on
+`/account`. The store is read through `useSyncExternalStore` for the same
+reason `periodMemory` and `sidebarCollapsed` are, and is remembered per browser
+under `sinolife.theme.v1`.
+
+Two duplications the feature cannot avoid, both deliberate:
+
+- **The storage key is written out twice.** The attribute has to be on `<html>`
+  before the body is parsed or every cold load flashes white at a dark reader,
+  and a script that runs that early cannot import a client module — so
+  `layout.tsx` carries an inline copy of the one line that sets it.
+  `theme.test.ts` reads both files and pins them to the same key; the symptom
+  it prevents is silent, because the preference still applies, one full paint
+  too late.
+- **`<meta name="theme-color">` is set from the CSS, not from a hex literal.**
+  The layout's pair is keyed to `prefers-color-scheme`, which is exactly what a
+  forced theme overrides — so a reader who picks light on a dark phone would
+  otherwise get a black address bar over a white page. `paintBrowserChrome`
+  reads `--page` back out of `getComputedStyle` and prepends its own meta (the
+  FIRST matching one wins). It runs from `subscribeTheme`, which React calls
+  from an effect; `/login` is the one screen nothing subscribes on, so its
+  address bar follows the machine until the reader is through the door.
+
 ---
 
 ## The eleven screens, and what each one dates by

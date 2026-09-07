@@ -399,3 +399,36 @@ export function RefreshGlyph({ spinning = false, ...props }: GlyphProps & { spin
     </span>
   )
 }
+
+/**
+ * A sun and a moon — the two states of the header's appearance toggle.
+ *
+ * Drawn here rather than borrowed from ☀️/🌙 for the reason the whole module
+ * exists: the emoji pair renders in colour on most platforms, which would put
+ * the only two coloured marks in the chrome on a control that carries no data,
+ * and they sit on a different baseline from the bell and the refresh arrow
+ * beside them.
+ *
+ * The button shows the mode it will GIVE you, not the one you are in — a moon
+ * in daylight, a sun at night — and its label says so in words, because a
+ * lone pictogram cannot distinguish "you are here" from "go here".
+ */
+export function SunGlyph(props: GlyphProps) {
+  return (
+    <Glyph size={16} {...props}>
+      <circle cx="12" cy="12" r="4" {...stroke} />
+      <path
+        d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.4 5.4l1.4 1.4M17.2 17.2l1.4 1.4M18.6 5.4l-1.4 1.4M6.8 17.2l-1.4 1.4"
+        {...stroke}
+      />
+    </Glyph>
+  )
+}
+
+export function MoonGlyph(props: GlyphProps) {
+  return (
+    <Glyph size={16} {...props}>
+      <path d="M20.5 13.4A8.5 8.5 0 1 1 10.6 3.5a6.6 6.6 0 0 0 9.9 9.9z" {...stroke} />
+    </Glyph>
+  )
+}

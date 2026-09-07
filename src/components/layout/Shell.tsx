@@ -19,8 +19,10 @@ import { Button } from '@/components/ui/Button'
 import { CommandPalette, useCommandK, type CommandGroup } from '@/components/ui/CommandPalette'
 import {
   BellGlyph,
+  MoonGlyph,
   RefreshGlyph,
   SearchGlyph,
+  SunGlyph,
 } from '@/components/ui/Icons'
 import { Kbd } from '@/components/ui/Kbd'
 import { Tooltip } from '@/components/ui/Tooltip'
@@ -29,6 +31,7 @@ import { sessionUser, signOut, useSession } from '@/lib/authClient'
 import { formatCompactUzs, formatDateTime } from '@/lib/format'
 import { ROLE_LABELS, canSeeHref, type RoleValue } from '@/lib/roles'
 import { isCompanyWideSection, sectionSpec, type SectionValue } from '@/lib/sections'
+import { setTheme, useResolvedTheme } from '@/lib/theme'
 import { useFilterOptions } from '@/features/shared/PageShell'
 import { t } from '@/lib/messages'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -742,6 +745,8 @@ export function Shell({
                   <RefreshGlyph spinning={busy} />
                 </button>
               </Tooltip>
+
+              <ThemeButton />
             </div>
           </div>
 
@@ -1202,6 +1207,46 @@ function RailBody({
 
       </div>
     </>
+  )
+}
+
+/**
+ * Light or dark, one press, from anywhere in the app.
+ *
+ * It sits at the end of the header cluster rather than in the middle of it
+ * because the two controls to its left are read every few minutes and this one
+ * is pressed twice a year — putting it before them would move the refresh
+ * arrow, which is the most-clicked thing on the bar, for the sake of the
+ * least-clicked.
+ *
+ * IT IS A TWO-STATE TOGGLE ON PURPOSE, not the three-state cycle the store
+ * underneath it can hold. A button that steps light → dark → «Tizim» leaves a
+ * reader who wanted the other mode pressing it and getting neither, and the
+ * third state is not a look — it is the absence of a choice, which is a
+ * settings decision rather than a one-press one. «Tizim» lives on /account,
+ * where it can say what it means in words.
+ *
+ * Its own component rather than a `useResolvedTheme()` at the top of `Shell`:
+ * that hook subscribes to the OS media query as well as to the store, and read
+ * from the shell it would re-render the rail, the drawer and every nav link
+ * the moment a machine crossed over into night.
+ */
+function ThemeButton() {
+  const resolved = useResolvedTheme()
+  const next = resolved === 'dark' ? 'light' : 'dark'
+  const label = next === 'dark' ? 'Tungi koʻrinishga oʻtish' : 'Kunduzgi koʻrinishga oʻtish'
+
+  return (
+    <Tooltip content={label}>
+      <button
+        type="button"
+        onClick={() => setTheme(next)}
+        aria-label={label}
+        className="rail-item focusable flex h-9 w-9 items-center justify-center rounded-lg"
+      >
+        {next === 'dark' ? <MoonGlyph /> : <SunGlyph />}
+      </button>
+    </Tooltip>
   )
 }
 

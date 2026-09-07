@@ -13,6 +13,7 @@ import {
   checkPassword,
   passwordStrength,
 } from '@/lib/passwordPolicy'
+import { AppearanceSection } from './AppearanceSection'
 import { TwoFactorSection } from './TwoFactorSection'
 
 /**
@@ -104,7 +105,7 @@ export function AccountPage() {
             Hisob
           </h1>
           <p className="mt-1 text-sm" style={{ color: 'var(--ink-secondary)' }}>
-            Kirish maʼlumotlaringiz, parol va ikki bosqichli himoya.
+            Kirish maʼlumotlaringiz, parol, ikki bosqichli himoya va koʻrinish.
           </p>
         </header>
 
@@ -221,6 +222,13 @@ export function AccountPage() {
           lands — see the `confirmed` comment in TwoFactorSection.)
         */}
         <TwoFactorSection enabled={user?.twoFactorEnabled ?? false} />
+
+        {/*
+          Last, and the only block here that changes nothing on the server:
+          the theme is a browser preference, so it neither reads nor writes the
+          account. See AppearanceSection for why «Tizim» has to be reachable.
+        */}
+        <AppearanceSection />
       </div>
     </Shell>
   )
