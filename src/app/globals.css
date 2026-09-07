@@ -2930,21 +2930,6 @@ p {
 .tv-chase > span {
   white-space: nowrap;
 }
-/* The legend's two swatches are the bar's two layers, same tokens, so the
-   key cannot drift from the thing it keys. */
-.tv-legend-swatch {
-  display: inline-block;
-  width: 14px;
-  height: 4px;
-  border-radius: 999px;
-  vertical-align: middle;
-}
-.tv-legend-swatch--light {
-  background: var(--seq-250);
-}
-.tv-legend-swatch--dark {
-  background: var(--seq-550);
-}
 
 /* ===========================================================================
  * ORG CHART — the company structure, drawn the way the portal draws it

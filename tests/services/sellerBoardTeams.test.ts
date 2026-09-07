@@ -13,8 +13,8 @@ import { SellerBoardService } from '@/server/services/sellerBoardService'
  * `teamRows` used to order on FAKT 2 alone and break ties on the ROP's name.
  * In a table that printed the figures beside the rank, an alphabetical run
  * of zero-delivery teams was odd; on the floor's television, which seats the
- * first three on a podium and states «oʻrinlar hozircha FAKT 1 boʻyicha»
- * underneath, it was a false claim — «Asliddin» first on 2 mln confirmed,
+ * first three on a podium and marks each seat «FAKT 1 · tasdiqlangan», it was
+ * a false claim — «Asliddin» first on 2 mln confirmed,
  * «Gulzora» fourth on 40 mln, and every «Liderga +N» behind the leader
  * negative. And that is the state the board opens in: the window is «Bugun»
  * and delivery lags confirmation by days, so FAKT 2 is zero for everyone

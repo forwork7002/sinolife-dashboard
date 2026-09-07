@@ -178,29 +178,26 @@ describe('what a seat says it is ranking on', () => {
 
     expect(screen.getAllByText('FAKT 1 · tasdiqlangan').length).toBe(2)
     expect(screen.queryByText('FAKT 2 · yetkazilgan')).toBeNull()
-    // And the column says why, in words — a board of zeros is a date.
-    expect(screen.getByText(/Hali yetkazilgan buyurtma yoʻq/)).toBeDefined()
   })
 
-  it('says how few orders the rank rests on when most are still moving', () => {
+  /*
+    THE SEAT SAYS IT, THE HEADING DOES NOT. The column used to carry two
+    grey captions under its title — the ranking rule («oʻrinlar hozircha
+    FAKT 1 boʻyicha», with the delivered-share note beside it) and a two-
+    swatch legend for the bar. The client asked for both off on 2026-09-07:
+    on a television read from across the floor they were unreadable at that
+    size and pushed the first seat down. `PodiumBasis` still names the
+    deciding fact on every seat, which is where a reader looks anyway.
+  */
+  it('carries no rule caption and no legend under the heading', () => {
     render(<SellersColumn data={THIN} {...PROPS} />)
 
-    expect(
-      screen.getByText(/263 tadan 22 tasi yetkazilgan — reyting shu 22 tasi boʻyicha/),
-    ).toBeDefined()
-  })
-
-  it('stays quiet once the majority has been delivered', () => {
-    render(<SellersColumn data={RIPE} {...PROPS} />)
-
-    expect(screen.getAllByText('FAKT 2 · yetkazilgan').length).toBe(3)
-    expect(screen.queryByText(/reyting shu/)).toBeNull()
-  })
-
-  it('never adds the note to the FAKT 1 fallback — there is no share to state', () => {
-    render(<SellersColumn data={FALLBACK} {...PROPS} />)
-
-    expect(screen.queryByText(/reyting shu/)).toBeNull()
+    const text = document.body.textContent ?? ''
+    expect(text).not.toMatch(/oʻrinlar hozircha/)
+    expect(text).not.toMatch(/Avval FAKT 2/)
+    expect(text).not.toMatch(/reyting shu/)
+    expect(text).not.toMatch(/ikkalasi bir oʻlchovda/)
+    expect(document.querySelector('.tv-legend-swatch')).toBeNull()
   })
 })
 
@@ -274,12 +271,6 @@ describe('the teams column', () => {
     expect(within(screen.getByRole('table')).getByText('Azizbek')).toBeDefined()
     // Sellers on no team are named once, as the reason the shares do not add up.
     expect(screen.getByText(/1 ta sotuvchi komandasiz/)).toBeDefined()
-  })
-
-  it('leaves the share note to the sellers column', () => {
-    render(<TeamsColumn data={THIN} {...PROPS} />)
-
-    expect(screen.queryByText(/reyting shu/)).toBeNull()
   })
 
   /*

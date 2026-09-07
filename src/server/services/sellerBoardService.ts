@@ -723,8 +723,8 @@ function teamRows(
     the only thing left deciding — «Asliddin» first on 2 mln confirmed,
     «Gulzora» fourth on 40 mln. The table it used to feed printed the figures
     beside the rank and the reader could see the order was not the money's;
-    the television seats the first three on a podium and states the basis
-    under it («oʻrinlar hozircha FAKT 1 boʻyicha»), which an alphabetical
+    the television seats the first three on a podium and each seat names the
+    fact that put it there («FAKT 1 · tasdiqlangan»), which an alphabetical
     order makes a false claim rather than an odd one — and every «Liderga +N»
     gap on a card behind it goes negative.
 
