@@ -28,6 +28,14 @@ import { prisma } from '@/server/db/prisma'
 import type { DataScopeValue, RoleValue } from '@/server/domain/types'
 import { ApiError } from '@/server/http/errors'
 import { provisionUser, setPassword } from '@/server/auth/provisioning'
+import {
+  type DepartmentHead,
+  type HeadlessUnit,
+  departmentHeads,
+  headlessUnits,
+} from '@/server/domain/employees/departmentHeads'
+import { rowScopeFor } from '@/server/auth/rbac'
+import { scopeRepository } from '@/server/services/container'
 
 export interface UserRow {
   readonly id: string
@@ -108,6 +116,149 @@ export async function listUsers(): Promise<UserRow[]> {
   })
   return users.map(toRow)
 }
+
+/**
+ * A head, with the size of the scope they would carry.
+ *
+ * `teamSize` is the only thing this adds to the domain shape, and it is the
+ * one figure that cannot be worked out from the tree alone without writing a
+ * second definition of who is on a team.
+ */
+export interface DepartmentHeadRow extends DepartmentHead {
+  /** How many employees «Faqat oʻz boʻlimi» actually resolves to for them. */
+  readonly teamSize: number
+}
+
+/**
+ * The people a «Faqat oʻz boʻlimi» account can honestly be anchored to.
+ *
+ * WHY A SECOND LIST AND NOT THE ROSTER. The account form's employee picker
+ * offers all 289 people, which is right for a company-wide or an OWN account —
+ * either can be linked to anybody. A TEAM account cannot. Its scope is grown
+ * from the department tree, so somebody the portal filed nowhere and who heads
+ * nothing anchors on nothing, and `assertScopeIsUsable` refuses to save them.
+ * Offering the whole roster for that one choice is offering mostly wrong
+ * answers in an unsearchable dropdown, which is what the floor asked us to
+ * stop doing.
+ *
+ * THE TEAM SIZE IS ASKED OF THE REAL RESOLVER, ONE HEAD AT A TIME. It could be
+ * counted from the tree in a dozen lines beside the rest of the shaping, and
+ * that would be a SECOND definition of who is on a team — the failure this
+ * codebase pays for most often, because two definitions agree until the day
+ * they do not and neither of them errors. `ScopeRepository.teamEmployeeIds` is
+ * the definition; this asks it. Roughly nineteen recursive queries on a portal
+ * with twenty departments, on a screen only an administrator opens and only on
+ * the tab that needs them — which is why the route takes `?include=heads`
+ * rather than answering with this every minute.
+ *
+ * The count includes INACTIVE employees, because the scope does: their past
+ * orders are still the team's, and a number here that disagreed with the board
+ * the account then opens would be worse than a number that needs a caption.
+ */
+export interface DepartmentHeadsPayload {
+  readonly heads: readonly DepartmentHeadRow[]
+  /** Units nobody heads, so the administrator knows why one is missing. */
+  readonly headless: readonly HeadlessUnit[]
+}
+
+export async function listDepartmentHeads(): Promise<DepartmentHeadsPayload> {
+  const [units, headed] = await Promise.all([
+    // The whole tree, for the descendant count. Twenty rows on this portal.
+    prisma.department.findMany({ select: { id: true, name: true, parentId: true } }),
+    prisma.department.findMany({
+      /*
+        NO `isActive` FILTER, deliberately, and it is the scope's own rule
+        rather than a preference. `ScopeRepository` includes inactive units and
+        inactive people on purpose — their orders are still the team's — so a
+        list that hid them here would offer a reach smaller than the grant it
+        then makes. The dropdown habit of filtering `isActive` belongs to
+        `findDepartments`, which feeds filters, not to a scope preview.
+      */
+      where: { headId: { not: null } },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        head: {
+          select: {
+            id: true,
+            fullName: true,
+            isActive: true,
+            department: { select: { name: true } },
+            user: {
+              select: {
+                id: true,
+                username: true,
+                displayUsername: true,
+                isActive: true,
+                dataScope: true,
+                sections: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  ])
+
+  const headedInput = headed.map((unit) => ({
+      id: unit.id,
+      name: unit.name,
+      head: unit.head
+        ? {
+            id: unit.head.id,
+            fullName: unit.head.fullName,
+            isActive: unit.head.isActive,
+            homeDepartmentName: unit.head.department?.name ?? null,
+            account: unit.head.user
+              ? {
+                  id: unit.head.user.id,
+                  // The administrator's own casing, exactly as `toRow` reads it.
+                  username: unit.head.user.displayUsername ?? unit.head.user.username,
+                  isActive: unit.head.user.isActive,
+                  dataScope: unit.head.user.dataScope,
+                  sections: unit.head.user.sections.filter((section): section is SectionValue =>
+                    (SECTION_IDS as readonly string[]).includes(section),
+                  ),
+                }
+              : null,
+          }
+        : null,
+  }))
+
+  const rows = departmentHeads(units, headedInput)
+
+  const sized = await Promise.all(
+    rows.map(async (row) => ({
+      ...row,
+      /*
+        THE NUMBER THE REQUEST PATH WOULD PRODUCE, NOT A COUNT OF THE QUERY.
+
+        `teamEmployeeIds` answers "who is in the tree beneath this person";
+        `rowScopeFor` is what turns that into a scope, and it adds the reader
+        themself unconditionally — a head the portal filed nowhere is not in
+        their own query's answer but is certainly in their own scope. Counting
+        the raw rows would print one less than the account gets for exactly the
+        people whose record is odd enough to be worth checking. Running the
+        real function over the real answer costs one Set and cannot drift.
+      */
+      teamSize: (rowScopeFor(
+        {
+          userId: '',
+          role: 'SALES',
+          isActive: true,
+          employeeId: row.employeeId,
+          dataScope: 'TEAM',
+          sections: [],
+        },
+        await scopeRepository.teamEmployeeIds(row.employeeId),
+      ).restrictToEmployeeIds ?? []).length,
+    })),
+  )
+
+  return { heads: sized, headless: headlessUnits(units, headedInput) }
+}
+
 
 /** How many administrators could still sign in. Guards every demotion. */
 async function activeAdminCount(): Promise<number> {
@@ -200,6 +351,40 @@ async function assertScopeIsUsable(
 }
 
 /**
+ * One employee, one login — refused BEFORE anything is written.
+ *
+ * `user.employeeId` is `@unique`, and `provisionUser` writes it in its third
+ * statement, after `createUser` and `createAccount` have already committed. So
+ * picking somebody who already has a login produced a Prisma `P2002` that
+ * nothing in this codebase translates — a 500 to the administrator — while
+ * leaving behind a real, signable account with no username, role SALES and
+ * scope ALL. A half-made account nobody meant to create is a worse outcome
+ * than any error message.
+ *
+ * Named here rather than caught afterwards because the caller can act on it:
+ * the answer is "edit that account", and this says whose it is.
+ */
+async function assertEmployeeIsFree(employeeId: string | null): Promise<void> {
+  if (!employeeId) return
+
+  const taken = await prisma.user.findUnique({
+    where: { employeeId },
+    select: { name: true, username: true, displayUsername: true },
+  })
+  if (!taken) return
+
+  const login = taken.displayUsername ?? taken.username
+  throw ApiError.validation('Bu xodimga allaqachon hisob ochilgan.', [
+    {
+      path: 'employeeId',
+      message: login
+        ? `Mavjud hisob: ${taken.name} (${login}). Uni tahrirlang yoki boshqa xodimni tanlang.`
+        : `Mavjud hisob: ${taken.name}. Uni tahrirlang yoki boshqa xodimni tanlang.`,
+    },
+  ])
+}
+
+/**
  * The domain synthesised emails hang off.
  *
  * `.local` is reserved and unroutable by design — nothing can ever be
@@ -231,6 +416,7 @@ export async function createUser(
 
   const dataScope: DataScopeValue = input.dataScope ?? 'ALL'
   await assertScopeIsUsable(dataScope, input.employeeId ?? null)
+  await assertEmployeeIsFree(input.employeeId ?? null)
 
   const email = `${key}@${SYNTHETIC_EMAIL_DOMAIN}`
   const existing = await prisma.user.findFirst({

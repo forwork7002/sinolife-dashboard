@@ -397,8 +397,95 @@ export interface SearchDto {
   readonly tooShort: boolean
 }
 
+/**
+ * One unit a department head runs.
+ *
+ * Mirrors `DepartmentHeadUnit` in `userAdminService` — client code may not
+ * import from `@/server/*`, so the shape is restated here and nothing checks
+ * the mirror. Edit both sides.
+ */
+export interface DepartmentHeadUnitDto {
+  readonly id: string
+  readonly name: string
+  /** The portal's «…(ROP)» convention: this unit is a sales team. */
+  readonly isSalesTeam: boolean
+  /**
+   * Units beneath this one, to any depth.
+   *
+   * On the screen because the scope descends from headship: heading a branch
+   * hands over every team under it, heading a team hands over the team. Two
+   * very different grants behind two names that look alike in a list.
+   */
+  readonly descendants: number
+  /**
+   * The TOP of the tree, which makes this grant the whole company.
+   *
+   * Headship descends to any depth, so «Faqat oʻz boʻlimi» over the root
+   * resolves to every employee on the portal — the same reach as «Butun
+   * kompaniya» under a label that says the opposite. The screen has to say so
+   * before the account is saved.
+   */
+  readonly isRoot: boolean
+}
+
+/** A unit the portal names but nobody heads. */
+export interface HeadlessUnitDto {
+  readonly id: string
+  readonly name: string
+}
+
+/** The login already linked to a head, when there is one. */
+export interface DepartmentHeadAccountDto {
+  readonly id: string
+  readonly username: string | null
+  readonly isActive: boolean
+  readonly dataScope: DataScopeValue
+  readonly sections: readonly string[]
+}
+
+/**
+ * A person a «Faqat oʻz boʻlimi» account can be anchored to.
+ *
+ * Not the roster: a TEAM scope grows from the department tree, so only someone
+ * the tree knows about can carry one. See `listDepartmentHeads`.
+ */
+export interface DepartmentHeadDto {
+  readonly employeeId: string
+  readonly fullName: string
+  readonly isActive: boolean
+  readonly homeDepartmentName: string | null
+  readonly heads: readonly DepartmentHeadUnitDto[]
+  /**
+   * How many employees the scope actually resolves to for this person.
+   *
+   * Asked of the same resolver the request path uses, so the number the
+   * administrator reads before saving is the number the account then gets.
+   * Inactive employees are counted, because the scope counts them.
+   */
+  readonly teamSize: number
+  readonly account: DepartmentHeadAccountDto | null
+}
+
 export interface UsersPageDto {
   readonly items: readonly UserRowDto[]
+  /**
+   * Present only when the request asked for it (`?include=heads`).
+   *
+   * Absent and empty mean different things: absent is "not requested", empty
+   * is "this portal names no department heads", and the ROP tab has to be able
+   * to tell them apart to know whether to show a spinner or an empty state.
+   */
+  readonly heads?: readonly DepartmentHeadDto[]
+  /**
+   * Units nobody heads, present alongside `heads`.
+   *
+   * A department with no head cannot be on the list — there is nobody to
+   * anchor an account to — and this portal really has them: «Тошкент онлайн»
+   * carries nine sales teams and names no head. Without this the
+   * administrator hunts a list for a name that cannot be there and reports the
+   * screen as broken, when the field to fill is in Bitrix24.
+   */
+  readonly headlessUnits?: readonly HeadlessUnitDto[]
 }
 
 // ---------------------------------------------------------------------------

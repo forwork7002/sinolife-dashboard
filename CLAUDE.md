@@ -171,6 +171,55 @@ everything under those**. Membership does not descend; headship does.
   forces every caller to say whose rows it wants; `commandCentreService`'s
   `unscoped()` is the one place that says "everybody" out loud.
 
+#### Handing one out: the «ROP» tab on `/users`
+
+The scope above is the rule; this is the only place it is granted. `/users`
+carries two readings behind a `SegmentedControl` — «Hisoblar», every account,
+and «ROP», **the department heads**, whether or not they have a login yet.
+
+- **The list is heads, not the roster, and that is the whole point.** An OWN or
+  ALL account can be linked to anybody, so the ordinary picker offers all 289
+  people. A TEAM account cannot: the scope is grown from the tree, so somebody
+  filed nowhere who heads nothing anchors on nothing and `assertScopeIsUsable`
+  refuses to save them. `listDepartmentHeads()` answers two `findMany`s and
+  hands them to `departmentHeads()` in `domain/employees/departmentHeads.ts` —
+  one row per PERSON, because `headId` is one head per unit but nothing stops
+  one person running several.
+- **EVERY department head, not only the fifteen «(ROP)» ones.** The client
+  asked for it and headship descending makes a branch head a real grant. Sales
+  teams sort first because ROP is what the floor calls this. Sorted with
+  `localeCompare(…, 'ru')`, matching `branches.ts`: 'uz' collation files the
+  digraphs Sh and Ch at the END of the alphabet, which is correct Uzbek and
+  wrong for a list somebody scans with their eye.
+- **The team size beside each name is asked of the REAL resolver**, one head at
+  a time, and then run through `rowScopeFor` — not counted from the tree here.
+  A second count would be a second definition of who is on a team, and the two
+  would agree until the day they did not; going through `rowScopeFor` is what
+  adds the reader themself, which a raw `teamEmployeeIds().length` omits for
+  exactly the odd records worth checking. Roughly nineteen recursive queries,
+  which is why the route takes **`?include=heads`** — a query parameter and not
+  a second endpoint, because `routeAccess.test.ts` pins the ungated list and
+  this has nothing new to say under it. Its own react-query key with **both**
+  `staleTime` and `refetchInterval` at five minutes: `refetchInterval` never
+  consults staleness, so setting one alone buys nothing.
+- **Heading the ROOT is «Butun kompaniya» wearing another label**, so the row
+  and the form both say so in red. The demo tree has one (`SinoLife`, 14 of 14
+  people); production has one too.
+- **Units nobody heads are NAMED under the table.** «Тошкент онлайн» carries
+  nine sales teams and names no `UF_HEAD` at all, so it cannot be on a list of
+  people — and unsaid, an administrator hunts for it and reports the screen.
+  The field to fill is in Bitrix24, not here.
+- **The form is the same `UserDialog`**, given a `head` prop. It fixes only the
+  two fields that fail silently — `dataScope: 'TEAM'` and the linked employee —
+  and pre-ticks Tasdiqlash + Sotuvchilar. Everything else, all eleven sections
+  included, stays the administrator's choice; a head who already has a login
+  opens the ordinary form so the scope can be corrected.
+- **`createUser` now refuses an employee that already has a login**
+  (`assertEmployeeIsFree`). `user.employeeId` is `@unique` and `provisionUser`
+  writes it in its THIRD statement, so the clash was a `P2002` nothing
+  translates — a 500 — that left behind a real, signable account with no
+  username, role SALES and scope ALL.
+
 **Which endpoints admit a narrowed account is pinned by
 `tests/http/routeAccess.test.ts`.** Declaring `permission: 'analytics:read:all'`
 is how an endpoint says *"I cannot narrow my rows — refuse a ROP rather than
