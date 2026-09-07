@@ -241,8 +241,10 @@ describe('the rows under the seats', () => {
     expect(names[0]).toContain('Nodira 118 Karimova')
     expect(names.some((n) => n?.includes('154 Marjona Xayrullayeva'))).toBe(false)
     // 41 000 000 (bronze) − 39 000 000 (fourth), on the FAKT 2 figure — with
-    // its unit, the way every other money delta on the board carries one.
-    expect(within(table).getByText(`Oldingiga +${formatUzs(2_000_000)}`)).toBeDefined()
+    // its unit, the way every other money delta on the board carries one. The
+    // figure is its own span so a phone may break the line before it.
+    const figure = within(table).getByText(`+${formatUzs(2_000_000)}`)
+    expect(figure.parentElement?.textContent).toContain('Oldingiga')
   })
 
   it('prints both facts on every row, in full', () => {

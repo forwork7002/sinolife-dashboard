@@ -2830,19 +2830,64 @@ p {
   padding: 0 10px 8px;
 }
 /*
- * THE LIST IS A SCROLL BOX ONLY WHERE IT HAS A HEIGHT TO SCROLL IN — the
- * two-column layout from 1280, where the column is viewport-high and the
- * rows drift inside it. Under that the page scrolls and the list is plain
- * flow: as an `overflow: auto` box with six nowrap columns in 390px it grew
- * a sideways scrollbar, and `overscroll-behavior: contain` then held the
- * thumb inside it — a phone reader swiping down to find their own row was
- * dragging a table left and right instead. The columns it drops under 768
- * and 640 (below) are what let it fit without one.
+ * TWO KINDS OF SCROLL BOX, AND THE AXIS IS THE WHOLE DIFFERENCE.
+ *
+ * From 1280 the column is viewport-high and the rows drift inside it, so
+ * the list scrolls on both axes and contains its own overscroll — a wheel
+ * that reaches the end of the list has no page to hand the scroll to.
+ *
+ * Under 1280 the page scrolls, and the list may scroll SIDEWAYS ONLY. Six
+ * nowrap columns are wider than a phone and the client wants every one of
+ * them reachable — «chapga-oʻngga scroll qilib boʻlmadi» — but the first
+ * version of this box used the `overscroll-behavior: contain` shorthand,
+ * which contains BOTH axes: a container that cannot scroll vertically is
+ * always at its vertical edge, so a thumb swiping down on the table never
+ * reached the page. That was «scroll qilish qiyinlashgan». Contain the x
+ * axis alone (so a sideways over-scroll does not become the browser's back
+ * gesture) and leave y to chain to the page.
  */
 @media (min-width: 1280px) {
   .tv-list {
     overflow: auto;
     overscroll-behavior: contain;
+  }
+}
+@media (max-width: 1279px) {
+  .tv-list {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+  /*
+   * THE RANK AND THE NAME STAY PUT while the figures slide under them —
+   * a sideways scroll that carried the name off the left edge would leave
+   * a column of sums with nobody's name on them. The rank cell is given a
+   * fixed width so the name knows where to stop; both are opaque so the
+   * moving cells pass underneath rather than through.
+   */
+  .tv-table th:nth-child(1),
+  .tv-row > td:nth-child(1) {
+    position: sticky;
+    left: 0;
+    width: 40px;
+    min-width: 40px;
+    z-index: 2;
+    background: var(--surface-raised);
+  }
+  .tv-table th:nth-child(2),
+  .tv-row > td:nth-child(2) {
+    position: sticky;
+    left: 40px;
+    z-index: 2;
+    background: var(--surface-raised);
+    box-shadow: 4px 0 8px -6px color-mix(in oklab, var(--ink-primary) 25%, transparent);
+  }
+  .tv-table th:nth-child(1),
+  .tv-table th:nth-child(2) {
+    z-index: 3;
+  }
+  .tv-row:hover > td:nth-child(1),
+  .tv-row:hover > td:nth-child(2) {
+    background: var(--surface-sunken);
   }
 }
 
@@ -2859,25 +2904,13 @@ p {
   background: var(--surface-raised);
   box-shadow: inset 0 -1px 0 var(--grid);
 }
-/* The phone's second money line — hidden everywhere the FAKT 1 column is
-   its own column. */
-.tv-fakt1-inline {
-  display: none;
-}
-@media (max-width: 767px) {
-  .tv-col-optional {
-    display: none;
-  }
-}
+/*
+ * On a phone the pinned name cell has to be narrow, or the sums slide under
+ * it before they can be read: the chase may break between «Oldingiga» and
+ * its figure (the figure itself never breaks — see `Chase`), which brings
+ * the cell down from the width of one long line to the width of the sum.
+ */
 @media (max-width: 639px) {
-  .tv-col-fakt1,
-  .tv-share {
-    display: none;
-  }
-  .tv-fakt1-inline {
-    display: block;
-    margin-top: 2px;
-  }
   .tv-list {
     padding: 0 4px 8px;
   }
@@ -2929,6 +2962,16 @@ p {
 .tv-chase,
 .tv-chase > span {
   white-space: nowrap;
+}
+/* …except on a phone, where the pinned name cell must be narrow or the sums
+   slide under it before they can be read: the line may break between
+   «Oldingiga» and its figure, and the figure itself still never breaks (it
+   is its own nowrap span — see `Chase`). After the rule above on purpose:
+   same specificity, and source order is what lets this one win. */
+@media (max-width: 639px) {
+  .tv-row .tv-chase > span {
+    white-space: normal;
+  }
 }
 
 /* ===========================================================================

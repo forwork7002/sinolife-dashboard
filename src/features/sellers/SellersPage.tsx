@@ -833,12 +833,9 @@ function BoardList({
             <Th align="right">#</Th>
             <Th>{noun}</Th>
             <Th align="right">FAKT 2 · yetkaz.</Th>
-            {/* On a phone FAKT 1 is printed under FAKT 2 in the same cell —
-                see `.tv-fakt1-inline`. */}
-            <Th align="right" className="tv-col-fakt1">
-              FAKT 1 · tasdiq.
-            </Th>
-            {/* Dropped between 1280 and 1599, and under 768 — `.tv-col-optional`. */}
+            <Th align="right">FAKT 1 · tasdiq.</Th>
+            {/* Dropped between 1280 and 1599 — `.tv-col-optional`. Under 1280
+                every column is kept and the list scrolls sideways instead. */}
             <Th align="right" className="tv-col-optional">
               Buyurtma
             </Th>
@@ -900,17 +897,12 @@ function BoardList({
                     {formatFullUzs(entry.won)}
                   </span>
                   {entry.sharePercent !== null && entry.won > 0 && (
-                    <span className="tv-share tv-small ml-1.5" style={{ color: 'var(--ink-muted)' }}>
+                    <span className="tv-small ml-1.5" style={{ color: 'var(--ink-muted)' }}>
                       {formatPercent(entry.sharePercent, 1)}
                     </span>
                   )}
-                  {/* The phone's second line: the same FAKT 1 the hidden
-                      column holds, so a row never loses a fact, only a column. */}
-                  <span className="tv-fakt1-inline tv-small" style={{ color: 'var(--ink-secondary)' }}>
-                    FAKT 1 {formatFullUzs(entry.ordered)}
-                  </span>
                 </td>
-                <td className="tv-col-fakt1 tabular text-right">
+                <td className="tabular text-right">
                   <span className="tv-money" style={{ color: 'var(--ink-secondary)' }}>
                     {formatFullUzs(entry.ordered)}
                   </span>
@@ -991,7 +983,8 @@ function Chase({
         className={`tabular ${near ? 'font-semibold' : ''}`}
         style={{ color: near ? 'var(--ink-primary)' : 'var(--ink-secondary)' }}
       >
-        <span aria-hidden="true">🎯</span> Oldingiga +{formatUzs(gap)}
+        <span aria-hidden="true">🎯</span> Oldingiga{' '}
+        <span className="whitespace-nowrap">+{formatUzs(gap)}</span>
       </span>
     )
 

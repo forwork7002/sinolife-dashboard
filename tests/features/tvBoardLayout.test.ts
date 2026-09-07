@@ -107,10 +107,26 @@ describe('the television board switches layout on one width', () => {
     expect(css).toMatch(/@media \(max-width: 1279px\) \{\s*\.tv-col--parked \{\s*display: none;/)
   })
 
-  it('makes the list a scroll box only from the two-column width', () => {
+  it('makes the list a two-axis scroll box only from the two-column width', () => {
     expect(queryFor('.tv-list {\n    overflow: auto')).toBe(1280)
-    // And never traps a phone's thumb: the contain rule lives inside that query too.
     expect(css).not.toMatch(/^\.tv-list \{[^}]*overscroll-behavior/m)
+  })
+
+  /*
+    Under 1280 the list scrolls sideways so every column stays reachable on
+    a phone — and contains ONLY that axis. The shorthand `overscroll-behavior:
+    contain` contains both, and a box that cannot scroll vertically is always
+    at its vertical edge, so a thumb swiping down on it never reaches the
+    page. That is the bug this test exists to keep out.
+  */
+  it('scrolls the phone list sideways without swallowing the page scroll', () => {
+    const narrow = css.slice(css.indexOf('@media (max-width: 1279px) {\n  .tv-list {'))
+    const block = narrow.slice(0, narrow.indexOf('\n}\n'))
+    expect(block).toMatch(/\.tv-list \{\s*overflow-x: auto;\s*overscroll-behavior-x: contain;\s*\}/)
+    expect(block).not.toMatch(/overscroll-behavior: contain/)
+    expect(block).not.toMatch(/overscroll-behavior-y/)
+    // And the name stays on screen while the sums slide under it.
+    expect(block).toMatch(/\.tv-row > td:nth-child\(2\) \{\s*position: sticky;\s*left: 40px;/)
   })
 
   it('lets a seat chase pill wrap rather than leave the card', () => {
