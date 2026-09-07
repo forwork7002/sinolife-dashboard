@@ -67,10 +67,13 @@ describe('the television board switches layout on one width', () => {
     )
   })
 
-  it('keeps the seats stacked on a phone', () => {
+  it('seats the champion across the top of a phone, the other two beneath', () => {
     // The seats are placed by class rather than an inline style precisely so
-    // this rule can win; an inline `grid-column` would beat any media query.
-    expect(css).toMatch(/@media \(max-width: 639px\)[\s\S]*?\.tv-seat \{\s*grid-row: auto;\s*grid-column: 1;/)
+    // these rules can win; an inline `grid-column` would beat any media query.
+    const phone = css.slice(css.indexOf('@media (max-width: 639px)'))
+    expect(phone).toMatch(/\.tv-seat--1 \{\s*grid-row: 1;\s*grid-column: 1 \/ -1;/)
+    expect(phone).toMatch(/\.tv-seat--2 \{\s*grid-row: 2;\s*grid-column: 1;/)
+    expect(phone).toMatch(/\.tv-seat--3 \{\s*grid-row: 2;\s*grid-column: 2;/)
   })
 
   /*
@@ -91,6 +94,23 @@ describe('the television board switches layout on one width', () => {
   it('steps the pedestals 1 : 1.6 : 2.4 with bronze as the unit', () => {
     expect(css).toMatch(/\.tv-seat--1 \{ --tv-pedestal: calc\(var\(--tv-step\) \* 2\.4\); \}/)
     expect(css).toMatch(/\.tv-seat--2 \{ --tv-pedestal: calc\(var\(--tv-step\) \* 1\.6\); \}/)
+  })
+
+  /*
+    Under 1280 a phone sees one board through a switch; the switch must be
+    gone exactly where both boards are on screen, and a parked column must
+    be hidden exactly where the switch is drawn — one width for both, or a
+    desktop reader loses a column to state they cannot see.
+  */
+  it('draws the switch and parks a column on the same width', () => {
+    expect(css).toMatch(/@media \(min-width: 1280px\) \{\s*\.tv-switch \{\s*display: none;/)
+    expect(css).toMatch(/@media \(max-width: 1279px\) \{\s*\.tv-col--parked \{\s*display: none;/)
+  })
+
+  it('makes the list a scroll box only from the two-column width', () => {
+    expect(queryFor('.tv-list {\n    overflow: auto')).toBe(1280)
+    // And never traps a phone's thumb: the contain rule lives inside that query too.
+    expect(css).not.toMatch(/^\.tv-list \{[^}]*overscroll-behavior/m)
   })
 
   it('lets a seat chase pill wrap rather than leave the card', () => {

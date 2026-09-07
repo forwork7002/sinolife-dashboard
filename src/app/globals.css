@@ -2467,6 +2467,52 @@ p {
 .tv-col--sellers { --tv-tone: var(--series-5); }
 .tv-col--teams { --tv-tone: var(--series-3); }
 
+/*
+ * THE PHONE'S SWITCH — «Sotuvchilar | Komandalar», one board at a time
+ * under 1280px, where the columns would otherwise stack into a page of two
+ * podiums and two lists. Drawn in the two columns' own tones so the tab
+ * and the board it opens are the same colour. Not drawn at all from 1280,
+ * where both boards are on screen and a switch would promise a choice the
+ * layout does not offer.
+ */
+.tv-switch {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+}
+.tv-switch-tab {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  transition: background var(--duration-enter) var(--ease-out), color var(--duration-enter) var(--ease-out);
+}
+.tv-switch-tab--sellers { --tv-tone: var(--series-5); }
+.tv-switch-tab--teams { --tv-tone: var(--series-3); }
+.tv-switch-tab[aria-selected="true"] {
+  color: var(--ink-primary);
+  background: color-mix(in oklab, var(--tv-tone) 18%, var(--surface-raised));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--tv-tone) 50%, transparent),
+    var(--shadow-card);
+}
+@media (min-width: 1280px) {
+  .tv-switch {
+    display: none;
+  }
+}
+@media (max-width: 1279px) {
+  .tv-col--parked {
+    display: none;
+  }
+}
+
 .tv-col-head {
   flex-shrink: 0;
   padding: 16px 18px 0;
@@ -2607,24 +2653,48 @@ p {
 .tv-seat--at-2 { grid-column: 2; }
 .tv-seat--at-3 { grid-column: 3; }
 
-/* A phone cannot seat three across: the seats stack in DOM order, champion
-   first, each at full width. */
+/*
+ * A PHONE CANNOT SEAT THREE ACROSS, and three full-width cards in a column
+ * put the list a thousand pixels down. So the champion takes the top row at
+ * full width and silver and bronze share the row beneath — two rows of
+ * podium instead of three cards, the champion still the biggest by a whole
+ * width. Placed by PLACE here (`.tv-seat--N`), not by the desktop column
+ * classes, which is why the seat carries both.
+ */
 @media (max-width: 639px) {
   .tv-podium,
   .tv-podium--2,
   .tv-podium--1 {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     max-width: none;
+    gap: 10px;
+    padding: 20px 12px 12px;
   }
-  .tv-seat {
-    grid-row: auto;
+  .tv-seat--1 {
+    grid-row: 1;
+    grid-column: 1 / -1;
+  }
+  .tv-seat--2 {
+    grid-row: 2;
     grid-column: 1;
   }
-  /* Stacked, a staircase of blocks is a staircase of gaps; one short block
-     under every card keeps the plinth without the empty height. */
+  .tv-seat--3 {
+    grid-row: 2;
+    grid-column: 2;
+  }
+  /* Two winners: silver alone on the second row takes the whole of it. */
+  .tv-podium--2 .tv-seat--2 {
+    grid-column: 1 / -1;
+  }
+  /* Side by side, a staircase of blocks is a staircase of gaps; one short
+     block under every card keeps the plinth without the empty height. */
   .tv-seat--1,
   .tv-seat--2 {
     --tv-pedestal: var(--tv-step);
+  }
+  .tv-seat-card {
+    padding-left: 8px;
+    padding-right: 8px;
   }
 }
 /*
@@ -2756,12 +2826,24 @@ p {
  * band across the top of the list.
  */
 .tv-list {
-  /* Six no-wrap columns are wider than a phone; they scroll inside the
-     column rather than pushing the page past its edge. */
-  overflow: auto;
-  overscroll-behavior: contain;
   scrollbar-width: thin;
   padding: 0 10px 8px;
+}
+/*
+ * THE LIST IS A SCROLL BOX ONLY WHERE IT HAS A HEIGHT TO SCROLL IN — the
+ * two-column layout from 1280, where the column is viewport-high and the
+ * rows drift inside it. Under that the page scrolls and the list is plain
+ * flow: as an `overflow: auto` box with six nowrap columns in 390px it grew
+ * a sideways scrollbar, and `overscroll-behavior: contain` then held the
+ * thumb inside it — a phone reader swiping down to find their own row was
+ * dragging a table left and right instead. The columns it drops under 768
+ * and 640 (below) are what let it fit without one.
+ */
+@media (min-width: 1280px) {
+  .tv-list {
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
 }
 
 .tv-table {
@@ -2777,6 +2859,33 @@ p {
   background: var(--surface-raised);
   box-shadow: inset 0 -1px 0 var(--grid);
 }
+/* The phone's second money line — hidden everywhere the FAKT 1 column is
+   its own column. */
+.tv-fakt1-inline {
+  display: none;
+}
+@media (max-width: 767px) {
+  .tv-col-optional {
+    display: none;
+  }
+}
+@media (max-width: 639px) {
+  .tv-col-fakt1,
+  .tv-share {
+    display: none;
+  }
+  .tv-fakt1-inline {
+    display: block;
+    margin-top: 2px;
+  }
+  .tv-list {
+    padding: 0 4px 8px;
+  }
+  .tv-row > td {
+    padding: 8px 6px;
+  }
+}
+
 /* Figures never wrap — «10 (5 yoʻlda)» broke across two lines the first
    time a name column took its share. The name cell is the one that may. */
 .tv-row > td {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { EmptyState, ErrorState } from '@/components/states/States'
@@ -92,10 +92,22 @@ export function SellersPage() {
   const errorMessage = (board.error as Error | null)?.message
   const retry = () => void board.refetch()
 
+  /*
+    ONE BOARD AT A TIME UNDER 1280px. Stacked, the two columns made a phone
+    page of two podiums and two lists — a seller looking for their own row
+    scrolled through three tall cards, then a list, then three more, and
+    the list's own horizontal scroll (six nowrap columns in 390px) caught
+    the thumb on the way: «scroll qilish qiyinlashgan», the client, on
+    2026-09-07. So a phone gets a switch and sees one board; the television
+    and the desk see both, and the switch is not drawn there at all. Local
+    state, not the URL: which half a phone is looking at is not a question
+    a pasted link needs to answer.
+  */
+  const [shown, setShown] = useState<'sellers' | 'teams'>('sellers')
+
   return (
     <PageShell
       title={t.nav.sellers}
-      description="Kim qancha sotdi — FAKT 1 / FAKT 2, navbatga tushgan sana boʻyicha"
       meta={board.data?.meta}
       stale={board.isPlaceholderData}
       accent="var(--series-5)"
@@ -126,9 +138,42 @@ export function SellersPage() {
           </p>
         ) : null}
 
+        <div className="tv-switch" role="tablist" aria-label="Qaysi reyting">
+          {(
+            [
+              ['sellers', '🏆', 'Sotuvchilar'],
+              ['teams', '🛡️', 'Komandalar'],
+            ] as const
+          ).map(([key, glyph, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={shown === key}
+              aria-controls={`tv-${key}`}
+              className={`tv-switch-tab tv-switch-tab--${key}`}
+              onClick={() => setShown(key)}
+            >
+              <span aria-hidden="true">{glyph}</span> {label}
+            </button>
+          ))}
+        </div>
+
         <div className="tv-board">
-          <SellersColumn data={data} status={status} errorMessage={errorMessage} onRetry={retry} />
-          <TeamsColumn data={data} status={status} errorMessage={errorMessage} onRetry={retry} />
+          <SellersColumn
+            data={data}
+            status={status}
+            errorMessage={errorMessage}
+            onRetry={retry}
+            parked={shown !== 'sellers'}
+          />
+          <TeamsColumn
+            data={data}
+            status={status}
+            errorMessage={errorMessage}
+            onRetry={retry}
+            parked={shown !== 'teams'}
+          />
         </div>
       </div>
     </PageShell>
@@ -208,15 +253,18 @@ interface ColumnProps {
   status: Status
   errorMessage?: string
   onRetry: () => void
+  /** Hidden under 1280px while the switch shows the other board. */
+  parked?: boolean
 }
 
 /** Exported for the tests, like `TotalsBand` before it. */
-export function SellersColumn({ data, status, errorMessage, onRetry }: ColumnProps) {
+export function SellersColumn({ data, status, errorMessage, onRetry, parked = false }: ColumnProps) {
   const entries = useMemo(() => data?.rows.map(fromSeller) ?? [], [data])
   return (
     <BoardColumn
       id="tv-sellers"
       tone="sellers"
+      parked={parked}
       glyph="🏆"
       title="Sotuvchilar"
       noun="Sotuvchi"
@@ -231,13 +279,14 @@ export function SellersColumn({ data, status, errorMessage, onRetry }: ColumnPro
   )
 }
 
-export function TeamsColumn({ data, status, errorMessage, onRetry }: ColumnProps) {
+export function TeamsColumn({ data, status, errorMessage, onRetry, parked = false }: ColumnProps) {
   const entries = useMemo(() => data?.teams.map(fromTeam) ?? [], [data])
   const teamless = data?.totals.teamlessSellers ?? 0
   return (
     <BoardColumn
       id="tv-teams"
       tone="teams"
+      parked={parked}
       glyph="🛡️"
       title="Komandalar"
       noun="Komanda (ROP)"
@@ -252,10 +301,6 @@ export function TeamsColumn({ data, status, errorMessage, onRetry }: ColumnProps
       errorMessage={errorMessage}
       onRetry={onRetry}
       empty="Bu davrda hech bir ROP komandasi buyurtma olmagan."
-      /* The share note is a fact about the whole window and is printed once,
-         on the sellers' side; the same sentence twice across one screen reads
-         as two facts. */
-      quiet
     />
   )
 }
@@ -272,6 +317,7 @@ export function TeamsColumn({ data, status, errorMessage, onRetry }: ColumnProps
 function BoardColumn({
   id,
   tone,
+  parked = false,
   glyph,
   title,
   noun,
@@ -282,7 +328,6 @@ function BoardColumn({
   errorMessage,
   onRetry,
   empty,
-  quiet = false,
 }: {
   id: string
   /**
@@ -293,6 +338,7 @@ function BoardColumn({
    * Two of the palette's eight slots; the ROP badge stays a text chip.
    */
   tone: 'sellers' | 'teams'
+  parked?: boolean
   glyph: string
   title: string
   /** The name column's header. */
@@ -304,7 +350,6 @@ function BoardColumn({
   errorMessage?: string
   onRetry: () => void
   empty: string
-  quiet?: boolean
 }) {
   /*
     THE TOP THREE OF WHOEVER HAS MONEY, not only of whoever has delivered.
@@ -319,18 +364,12 @@ function BoardColumn({
   const seated = new Set(winners.map((w) => w.key))
   const rows = entries.filter((e) => !seated.has(e.key))
 
-  /*
-    HOW MUCH OF THE WINDOW THE RANKING ACTUALLY SAW. Below half, the leader
-    was picked by fewer orders than the window left unjudged — a fact about
-    the ranking, not the seller, and one the column has to state. «Shu oy» on
-    2026-09-04: 22 of 263 delivered, and the floor's top confirmer was not on
-    the podium at all.
-  */
-  const thinlyRanked =
-    !quiet && onDelivered && !!totals && totals.orders > 0 && totals.wonOrders * 2 < totals.orders
-
   return (
-    <section className={`tv-col tv-col--${tone} card reveal`} aria-labelledby={`${id}-heading`}>
+    <section
+      id={id}
+      className={`tv-col tv-col--${tone}${parked ? ' tv-col--parked' : ''} card reveal`}
+      aria-labelledby={`${id}-heading`}
+    >
       <header className="tv-col-head">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
           <h2
@@ -349,38 +388,6 @@ function BoardColumn({
             </p>
           )}
         </div>
-        {/*
-          The rule, and the state it is in. On a window younger than the
-          delivery the places are decided by FAKT 1, and the caption says so
-          rather than letting a board full of zeros read as a fault — a zero
-          FAKT 2 on «Bugun» is a date.
-        */}
-        {status === 'ready' && entries.length > 0 && (
-          <p className="mt-0.5 text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
-            {onDelivered
-              ? 'Avval FAKT 2 (yetkazilgan), teng boʻlsa FAKT 1 (tasdiqlangan) boʻyicha'
-              : 'Hali yetkazilgan buyurtma yoʻq — yetkazish bir-ikki kun oladi, oʻrinlar hozircha FAKT 1 (tasdiqlangan) boʻyicha'}
-            {thinlyRanked && totals && (
-              <>
-                {' '}· {formatNumber(totals.orders)} tadan {formatNumber(totals.wonOrders)} tasi
-                yetkazilgan — reyting shu {formatNumber(totals.wonOrders)} tasi boʻyicha
-              </>
-            )}
-          </p>
-        )}
-        {/*
-          What the two tones under every row mean — said once, because the
-          overlay reads as «delivered is part of confirmed» to anyone not
-          told otherwise, and it is not (see the bar's own comment).
-        */}
-        {status === 'ready' && entries.length > 3 && (
-          <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-            <span className="tv-legend-swatch tv-legend-swatch--light" aria-hidden="true" /> FAKT 1
-            (tasdiqlangan) ·{' '}
-            <span className="tv-legend-swatch tv-legend-swatch--dark" aria-hidden="true" /> FAKT 2
-            (yetkazilgan) — ikkalasi bir oʻlchovda, biri ikkinchisining qismi emas
-          </p>
-        )}
       </header>
 
       {status === 'loading' ? (
@@ -826,12 +833,16 @@ function BoardList({
             <Th align="right">#</Th>
             <Th>{noun}</Th>
             <Th align="right">FAKT 2 · yetkaz.</Th>
-            <Th align="right">FAKT 1 · tasdiq.</Th>
-            {/* Dropped between 1280 and 1599 — see `.tv-col-optional`. */}
-            <Th align="right" optional>
+            {/* On a phone FAKT 1 is printed under FAKT 2 in the same cell —
+                see `.tv-fakt1-inline`. */}
+            <Th align="right" className="tv-col-fakt1">
+              FAKT 1 · tasdiq.
+            </Th>
+            {/* Dropped between 1280 and 1599, and under 768 — `.tv-col-optional`. */}
+            <Th align="right" className="tv-col-optional">
               Buyurtma
             </Th>
-            <Th align="right" optional>
+            <Th align="right" className="tv-col-optional">
               Konv.
             </Th>
           </tr>
@@ -889,12 +900,17 @@ function BoardList({
                     {formatFullUzs(entry.won)}
                   </span>
                   {entry.sharePercent !== null && entry.won > 0 && (
-                    <span className="tv-small ml-1.5" style={{ color: 'var(--ink-muted)' }}>
+                    <span className="tv-share tv-small ml-1.5" style={{ color: 'var(--ink-muted)' }}>
                       {formatPercent(entry.sharePercent, 1)}
                     </span>
                   )}
+                  {/* The phone's second line: the same FAKT 1 the hidden
+                      column holds, so a row never loses a fact, only a column. */}
+                  <span className="tv-fakt1-inline tv-small" style={{ color: 'var(--ink-secondary)' }}>
+                    FAKT 1 {formatFullUzs(entry.ordered)}
+                  </span>
                 </td>
-                <td className="tabular text-right">
+                <td className="tv-col-fakt1 tabular text-right">
                   <span className="tv-money" style={{ color: 'var(--ink-secondary)' }}>
                     {formatFullUzs(entry.ordered)}
                   </span>
@@ -928,19 +944,15 @@ function BoardList({
 function Th({
   children,
   align = 'left',
-  optional = false,
+  className = '',
 }: {
   children: ReactNode
   align?: 'left' | 'right'
-  /** Hidden in the narrow two-column band, with its column. */
-  optional?: boolean
+  /** A width class the column is hidden by, shared with its cells. */
+  className?: string
 }) {
   return (
-    <th
-      scope="col"
-      className={`eyebrow whitespace-nowrap${optional ? ' tv-col-optional' : ''}`}
-      style={{ textAlign: align }}
-    >
+    <th scope="col" className={`eyebrow whitespace-nowrap ${className}`} style={{ textAlign: align }}>
       {children}
     </th>
   )
