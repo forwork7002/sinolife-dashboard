@@ -42,15 +42,12 @@ function node(over: Partial<StructureDto> = {}): StructureDto {
     ownHeadcount: 14,
     headcount: 14,
     activeHeadcount: 14,
-    workingHeadcount: 9,
     subordinateCount: 13,
     memberCount: 14,
     memberNames: ['Usmonova 199 Sevinch'],
     childCount: 0,
     sortOrder: 100,
     isViewerDepartment: false,
-    deals: 34,
-    revenue: { amountMinor: '1240000000', amount: 12_400_000, currency: 'UZS' },
     inScope: true,
     children: [],
     ...over,
@@ -71,9 +68,11 @@ function paint(over: Partial<StructureDto> = {}, props: Partial<Parameters<typeo
       dimmed={false}
       onSelect={() => {}}
       onToggle={() => {}}
+      onHover={() => {}}
       index={1}
       total={6}
       tabbable
+      onChain={false}
       {...props}
     />,
   )
@@ -117,33 +116,77 @@ describe('org chart card', () => {
   })
 
   /**
-   * MONEY IS WITHHELD, NOT ZEROED.
+   * NO MONEY ANYWHERE ON THIS CARD, and it is a claim about the whole screen.
    *
-   * An OWN-scoped salesperson is meant to open this screen — it is what the
-   * client asked it to be wired to the floor for — and the service sends null
-   * for every money field. A «0 soʻm» beside a department that closed a
-   * billion is a lie, and a «—» still says the figure exists.
+   * The card carried the unit's revenue over the reporting window until the
+   * client moved money onto Boshqaruv markazi and this page lost its window
+   * with it. A figure in soʻm reappearing here would be a second, undated
+   * statement of the company's revenue on the one screen the whole floor opens
+   * — so this asserts on rendered text rather than on a class name, which a
+   * rename would quietly satisfy.
    */
-  it('renders no money line at all when the reader may not see money', () => {
-    const { container } = paint({ revenue: null, deals: null })
-    expect(container.querySelector('.org-card-money')).toBeNull()
-    expect(screen.queryByText(/soʻm|mln|bitim/)).toBeNull()
-  })
-
-  it('renders the money line when the reader may see it', () => {
+  it('prints no money at all', () => {
     const { container } = paint()
-    expect(container.querySelector('.org-card-money')).toBeTruthy()
-    expect(screen.getByText(/bitim/)).toBeTruthy()
+    expect(container.querySelector('.org-card-money')).toBeNull()
+    expect(screen.queryByText(/soʻm|mln|mlrd|bitim/)).toBeNull()
   })
 
   /**
-   * Zero revenue is a MEASUREMENT and says so; null is an absence and says
-   * nothing. The two must not render the same way — that distinction is the
-   * whole reason the DTO carries null rather than 0.
+   * THE ROOM THE MONEY LEFT GOES TO THE PEOPLE.
+   *
+   * «har bir sotuvchi bilishi kerak kim kimlar borligini» is half of what this
+   * page was asked for, and it was answered one unit at a time by opening a
+   * panel. The names already ride the tree's payload for the search box, so
+   * this costs no request — and the overflow is counted out loud, because five
+   * faces over a unit of fourteen would be a wrong answer to the question the
+   * strip exists to answer.
    */
-  it('distinguishes a unit that earned nothing from one whose money is hidden', () => {
-    paint({ revenue: { amountMinor: '0', amount: 0, currency: 'UZS' }, deals: 0 })
-    expect(screen.getByText('Davr ichida tushum yoʻq')).toBeTruthy()
+  it('shows the team as faces, and says how many it did not fit', () => {
+    // subordinateCount is 13 on this fixture: five faces shown, eight more.
+    const { container } = paint({
+      memberNames: ['Aziz', 'Bekzod', 'Charos', 'Dilnoza', 'Elyor', 'Farrux'],
+      memberCount: 14,
+    })
+    expect(container.querySelectorAll('.org-card-chip')).toHaveLength(5)
+    expect(screen.getByText('+8')).toBeTruthy()
+  })
+
+  /**
+   * THE HEAD IS NOT ONE OF THE FACES, AND THE COUNT IS THE CAPTION'S.
+   *
+   * The head has their own row two lines up, and the caption over the strip
+   * prints «Boʻysunuvchilar» — the portal's count, which excludes them. Drawn
+   * straight from `memberNames` the strip showed the head's initials twice on
+   * one card and one face more than the number printed above it.
+   */
+  it('leaves the head out of the strip and counts against the subordinate figure', () => {
+    const { container } = paint({
+      memberNames: ['Usmonova 199 Sevinch', 'Aziz', 'Bekzod'],
+      memberCount: 3,
+      subordinateCount: 2,
+    })
+    expect(container.querySelectorAll('.org-card-chip')).toHaveLength(2)
+    expect(screen.queryByText(/^\+\d/)).toBeNull()
+  })
+
+  it('draws no strip and no overflow count for a unit with nobody in it', () => {
+    const { container } = paint({ memberNames: [], memberCount: 0 })
+    expect(container.querySelector('.org-card-people')).toBeNull()
+  })
+
+  /**
+   * THE CHAIN OF COMMAND, DRAWN.
+   *
+   * `data-chain` lights every unit from the card the reader is pointing at up
+   * to the company root. It is a separate state from `data-selected` and both
+   * are in the forced-colours block for the same reason: the one thing this
+   * screen exists to show is carried by colour, and colour is what that mode
+   * discards.
+   */
+  it('marks a card that is on the highlighted chain', () => {
+    const { container } = paint({}, { onChain: true })
+    expect(container.querySelector('[data-chain]')).toBeTruthy()
+    expect(container.querySelector('[data-selected]')).toBeNull()
   })
 
   it('carries the tree semantics a keyboard reader navigates by', () => {

@@ -11,7 +11,6 @@ process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
 const { InsightsService } = await import('@/server/services/insightsService')
-const { resolvePeriod } = await import('@/server/domain/period/period')
 
 /**
  * THE ORG CHART IS THE ONE COMPANY-WIDE SCREEN A SALESPERSON MAY OPEN.
@@ -19,18 +18,17 @@ const { resolvePeriod } = await import('@/server/domain/period/period')
  * Every other company-wide reading on this dashboard refuses an OWN-scoped
  * account at the permission gate, because there is no honest answer to give
  * one: the company's figures would leak and a blank page would lie. This screen
- * takes the third option — it serves the STRUCTURE, which is not confidential
- * and is the whole reason the floor was to be given the page, and withholds the
- * money. The route decides with `can(principal, 'analytics:read:all')`; these
- * pin what the service does with the answer.
+ * has no figures to leak — money on this dashboard is stated on Boshqaruv
+ * markazi and nowhere else — so it is served whole, to everybody holding the
+ * section, which is what the client asked the page to be wired to the floor for.
  *
- * A leak here is silent: the numbers simply appear, on a screen whose audience
- * is by design the widest in the product.
+ * This file replaces `structureMoneyGate.test.ts`, which pinned the withholding
+ * that gate used to do. What it kept are the two things that survive: the
+ * headcounts roll up from the repository's own integers, and the «SIZ» badge
+ * lands only where the reader actually sits.
  */
 
-const PERIOD = resolvePeriod('this_month', { timeZone: 'Asia/Tashkent' })
-
-/** Two units, one nested, both with money — the smallest tree that rolls up. */
+/** Two units, one nested — the smallest tree that rolls up. */
 const NODES = [
   {
     id: 'root',
@@ -42,15 +40,12 @@ const NODES = [
     headIsMember: true,
     headcount: 3,
     activeHeadcount: 3,
-    workingHeadcount: 1,
     memberCount: 3,
     memberNames: ['Rahbar'],
     subordinateCount: 2,
     headManagesCount: 4,
     childCount: 1,
     sortOrder: 100,
-    deals: 4,
-    revenueMinor: 1_000_00n,
   },
   {
     id: 'child',
@@ -62,15 +57,12 @@ const NODES = [
     headIsMember: false,
     headcount: 2,
     activeHeadcount: 2,
-    workingHeadcount: 2,
     memberCount: 2,
     memberNames: ['A', 'B'],
     subordinateCount: 2,
     headManagesCount: 2,
     childCount: 0,
     sortOrder: 100,
-    deals: 6,
-    revenueMinor: 500_00n,
   },
 ]
 
@@ -82,8 +74,6 @@ const ROSTER = [
     isActive: true,
     isPrimary: true,
     isHead: true,
-    deals: 4,
-    revenueMinor: 1_000_00n,
   },
 ]
 
@@ -99,60 +89,69 @@ function flatten(nodes: readonly { children: readonly unknown[] }[]): unknown[] 
   return nodes.flatMap((n) => [n, ...flatten(n.children as never)])
 }
 
-describe('the org chart money gate', () => {
-  it('sends every money field as null when the reader may not see money', async () => {
-    const tree = await service().structure(PERIOD, 'UZS', {}, { withMoney: false })
+describe('the org chart', () => {
+  /**
+   * NEITHER CALL TAKES A PERIOD, AND THAT IS THE POINT.
+   *
+   * TypeScript already refuses the old four-argument form, but the argument is
+   * about meaning rather than arity: who reports to whom is a fact about today,
+   * `/structure` carries no window control, and a dated question here would key
+   * one unchanging answer under a dozen windows. If somebody re-adds a `Period`
+   * parameter, this file stops compiling before the screen starts lying.
+   */
+  it('answers with no reporting window at all', async () => {
+    const tree = await service().structure()
+    const roster = await service().departmentRoster('child')
 
-    for (const node of flatten(tree) as { revenue: unknown; deals: unknown }[]) {
-      expect(node.revenue).toBeNull()
-      // Null, never 0 — a zero is a measurement and would be a false one here.
-      expect(node.deals).toBeNull()
-    }
+    expect(tree).toHaveLength(1)
+    expect(roster).toHaveLength(1)
   })
 
-  it('still sends the whole structure to that reader', async () => {
-    const tree = await service().structure(PERIOD, 'UZS', {}, { withMoney: false })
-    const flat = flatten(tree) as { name: string; subordinateCount: number }[]
+  it('serves the whole structure to every reader', async () => {
+    const flat = (await service().structure()) as unknown as {
+      name: string
+      subordinateCount: number
+    }[]
+    const all = flatten(await service().structure()) as {
+      name: string
+      subordinateCount: number
+    }[]
 
-    expect(flat.map((n) => n.name)).toEqual(['NEWGEN', 'Sevinch(ROP)'])
+    expect(flat).toHaveLength(1)
+    expect(all.map((n) => n.name)).toEqual(['NEWGEN', 'Sevinch(ROP)'])
     // The counts are the point of the screen and are not confidential.
-    expect(flat.map((n) => n.subordinateCount)).toEqual([2, 2])
-  })
-
-  it('withholds the roster money too, and keeps the roster', async () => {
-    const rows = await service().departmentRoster('child', PERIOD, 'UZS', { withMoney: false })
-    expect(rows).toHaveLength(1)
-    expect(rows[0]!.revenue).toBeNull()
-    expect(rows[0]!.deals).toBeNull()
-    expect(rows[0]!.fullName).toBe('Rahbar')
+    expect(all.map((n) => n.subordinateCount)).toEqual([2, 2])
   })
 
   /**
    * THE ROLLUP MUST NOT TRAVEL THROUGH THE DTO.
    *
-   * It used to read `acc.deals + kid.deals` off each child DTO, which stopped
-   * working the moment money became withholdable: the children's fields are
-   * null for a gated reader, and summing nulls up the tree turns an
-   * authorisation rule into a wrong number for the reader who IS allowed to
-   * see it. 4 + 6 deals and 1 500 minor units, whatever the gate says.
+   * `headcount` and `activeHeadcount` are the unit plus everything beneath it,
+   * summed from the repository's own integers. Read back off each child DTO
+   * instead, the sum would be of whatever the DTO happened to print — which is
+   * how the withheld-money version of this used to add up nulls. 3 + 2 people,
+   * and the child still states its own 2.
    */
   it('rolls the children up from the repository integers, not from the DTO', async () => {
-    const withMoney = await service().structure(PERIOD, 'UZS', {}, { withMoney: true })
-    const root = withMoney[0]!
+    const tree = await service().structure()
+    const root = tree[0]!
 
-    expect(root.deals).toBe(10)
-    expect(root.revenue?.amountMinor).toBe('150000')
-    expect(root.children[0]!.deals).toBe(6)
+    expect(root.headcount).toBe(5)
+    expect(root.activeHeadcount).toBe(5)
+    // «Oʻzida» stays the unit's own, or a branch would claim its children's
+    // people as directly attached to it.
+    expect(root.ownHeadcount).toBe(3)
+    expect(root.children[0]!.headcount).toBe(2)
   })
 
   it('badges only the units the reader actually sits in', async () => {
-    const tree = await service().structure(PERIOD, 'UZS', {}, { viewerEmployeeId: 'e9' })
+    const tree = await service().structure({}, { viewerEmployeeId: 'e9' })
     const flat = flatten(tree) as { id: string; isViewerDepartment: boolean }[]
     expect(flat.filter((n) => n.isViewerDepartment).map((n) => n.id)).toEqual(['child'])
   })
 
   it('badges nothing when the account is not linked to an employee', async () => {
-    const tree = await service().structure(PERIOD, 'UZS', {}, { viewerEmployeeId: null })
+    const tree = await service().structure({}, { viewerEmployeeId: null })
     const flat = flatten(tree) as { isViewerDepartment: boolean }[]
     expect(flat.some((n) => n.isViewerDepartment)).toBe(false)
   })

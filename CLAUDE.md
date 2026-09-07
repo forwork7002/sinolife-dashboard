@@ -276,7 +276,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Joʻnatish nuqtalari | `/warehouse` | `warehouse/WarehousePage` | `/insights/dispatch` | Insights → Insights | `createdAtSource` — a creation cohort graded by the deal's **current** stage |
 | Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | `createdAtSource` — order intake, same column for board, drill-down and comparison |
 | KPI rejalari | `/kpi` | `kpi/KpiPage` | `/kpi` | Kpi, Analytics → Reference, Deal | **the plan's own `periodStart`/`periodEnd`** — the dashboard window only *selects* which plan is live |
-| Struktura | `/structure` | `structure/StructurePage` | `/insights/structure`, `/insights/structure/roster` | Insights → Insights | **mixed** — money columns on `closedAt`, every headcount undated |
+| Struktura | `/structure` | `structure/StructurePage` | `/insights/structure`, `/insights/structure/roster` | Insights → Insights | **nothing — the screen is DATELESS.** `period={false}`, no window control, and neither endpoint takes one |
 
 `/` is the one page with **no** `requireSection`: it calls `firstSectionFor()`
 and forwards, because it is where every login and every bookmark lands, and a
@@ -304,16 +304,29 @@ Per-screen traps worth knowing before you touch one:
   `ctx.query` and never `ctx.scope`.
 - **KPI rejalari** — the preset picks the plan but does not slice it. «Bugun»
   and «Shu oy» give identical numbers inside one plan.
-- **Struktura** — totals must be summed over the tree's roots; children are
-  already rolled into every parent, so flattening double-counts. The screen
-  re-creates the portal's own `hr/structure` org chart, with the old indented
-  table kept behind a `?view=list` toggle — both are renderings of ONE
-  `/insights/structure` answer, so they cannot disagree and switching costs no
-  request. It prints **two headcounts that are both right**: `subordinateCount`
-  is Bitrix24's membership minus the head, the figure the floor checks against
-  the portal, while `activeHeadcount` counts who is CREDITED here and is what
-  the money columns are built from. They differ on five of the twenty units.
-  Everything else worth knowing about it is under *The org chart* below.
+- **Struktura** — **no money and no reporting window, and both are load-bearing
+  absences.** The client's instruction was that money is stated on Boshqaruv
+  markazi and nowhere else, so the card's revenue, the list view's «Sotuv» /
+  «Tushum» columns, the roster's per-person figures and the «Ishlagan xodimlar»
+  ring are all gone. «Ishlagan» went with them because it is not a headcount at
+  all — it is "closed a revenue deal in the window", which on a page with no
+  window would silently have meant *today* and printed 0 beside almost every
+  unit at nine in the morning. With nothing left on the page reading a window,
+  the control over it could only lie, so `PageShell` gets `period={false}` and
+  both endpoints dropped their `Period` argument. Do not reintroduce a figure
+  here without reintroducing a window and a gate; `tests/http/routeAccess.test.ts`
+  fails if a route grows `periodFrom`, `ctx.currency` or `analytics:read:all`
+  back.
+  Totals must be summed over the tree's roots; children are already rolled into
+  every parent, so flattening double-counts. The screen re-creates the portal's
+  own `hr/structure` org chart, with the old indented table kept behind a
+  `?view=list` toggle — both are renderings of ONE `/insights/structure` answer,
+  so they cannot disagree and switching costs no request. It prints **two
+  headcounts that are both right**: `subordinateCount` is Bitrix24's membership
+  minus the head, the figure the floor checks against the portal, while
+  `activeHeadcount` counts who is CREDITED here by this dashboard. They differ
+  on five of the twenty units. Everything else worth knowing about it is under
+  *The org chart* below.
 
 ---
 
@@ -458,14 +471,29 @@ level, a floating control row at the top and a zoom stepper bottom-left, a
 per-card expand/collapse footer, a «SIZ» badge on the reader's own unit, and a
 roster panel docked over the canvas.
 
+**IT IS THE WHOLE PAGE.** The screen carries a title, a Chizma/Roʻyxat toggle
+and then the canvas, which takes every remaining pixel. There is no header
+band, no KPI tile, no reporting window and no figure in soʻm — the client asked
+for all four to go («shu joy kerak emas… shu boʻlimni kattaroq qil, sahifani
+qoplasin»), and what they cost was the thing the page exists for: the chart used
+to start below the fold on a 1080p window.
+
+The height is `height: 100%` on `.org-canvas` under `PageShell`'s `fill`, NOT a
+`calc(100dvh − N)`. `Shell` is exactly `100dvh` and `main` is `min-h-0 flex-1`,
+which gives a flex item a definite main size, so a percentage resolves against
+what is actually left — and no constant has to be re-measured when the header
+changes. The hand-measured expression this replaced was already stale and also
+mixed `100vh` against a shell sized in `100dvh`.
+
 - **Every write affordance the portal has is deliberately absent** — ДОБАВИТЬ,
   the «+» on the connectors, the drag handle, the «...» menu. All four write
   into Bitrix24, and the frontend never talks to a CRM; the entire mutation
   surface of this API is three `/users` handlers. What the card gains instead is
-  the one thing the portal cannot print: the unit's money over the window,
-  rolled up over the subtree while the headcount above it is not — the card says
-  which is which, because on this tree «Навоий» reads 0 people over six teams'
-  worth of revenue.
+  the TEAM: where the money used to be there is now a stack of `InitialChip`s
+  for the unit's first five active members and a «+N» for the rest, because
+  «har bir sotuvchi bilishi kerak kim kimlar borligini» was previously answered
+  one unit at a time by opening a panel. The names already ride the payload for
+  the search box, so a face on every card at once costs no request.
 - **The second level down starts FOLDED, and the chart fits ONCE.** Fully open,
   this portal's tree is 4 332 canvas units wide, which fitted into a 1 500px
   card is 35% zoom and a screen of unreadable rectangles. Re-fitting on every
@@ -489,12 +517,45 @@ roster panel docked over the canvas.
 - **Avatars are initials, not photos.** `user.get` returns `PERSONAL_PHOTO` on
   `cdn-ru.bitrix24.kz` and the CSP is `img-src 'self' data: blob:`, so every one
   of them would be a broken image. `InitialChip` is the whole answer.
-- **The money is withheld from a narrowed reader, not the screen.** This is
-  the one company-wide page a salesperson is meant to open — the client asked
-  for it precisely so the floor can see who reports to whom — so the route
-  serves the tree and gates the figures on `analytics:read:all`, the same
-  permission every other company-wide number is behind. Null, never zero, and
-  the columns and the tile are not rendered at all.
+- **THE CHAIN OF COMMAND IS DRAWN, NOT LEFT TO THE EYE.** Every card from the
+  one under the pointer — or picked, or focused — up to the company root wears
+  `data-chain`, and every connector along it lights. Before this exactly ONE
+  connector ever lit (`edge.to === selectedId`), so a reader was told who their
+  immediate parent was and left to trace the rest across nineteen identical grey
+  lines. With nothing picked at all the chain falls back to the READER'S OWN
+  unit, so the first frame answers the question before they touch anything.
+  `data-chain` is in the `forced-colors` block for the same reason
+  `data-selected` is: the one thing this screen exists to show is carried by
+  colour, and that mode discards colour.
+- **The opening frame is the reader's own chain, fitted.** An account linked to
+  an employee opens unfolded to its own unit with the whole chain to the root in
+  view — the fold comes from `openingCollapsed`, derived rather than written by
+  an effect, and the viewport is sized to the chain's BOUNDING BOX (not just its
+  height: the root sits over the middle of its children, so a chain hanging off
+  the leftmost branch is as wide as it is tall, and a phone showed the reader's
+  card with the connector running off to a root that was not on screen). It does
+  not SELECT the unit — that would open the roster over a third of the chart and
+  write `?dep=` into an address nobody chose. «Hammasini yopish» still returns
+  the structural default, which is why that is a separate set.
+- **The chain is also printed in words.** A second line of the floating control
+  row reads «Siz  NEWGEN › Тошкент онлайн › Sevinch(ROP)  ·  Rahbaringiz: …»,
+  every crumb a button. It is the only affordance here that needs no
+  interaction at all, and it survives panning, zooming, folding and a phone.
+  «Rahbaringiz» walks UP until it finds a head, because «Тошкент онлайн» has no
+  `UF_HEAD` and «Навоий»'s is not listed inside it — stopping at the reader's own
+  unit would tell a third of the floor «Rahbar tayinlanmagan».
+- **A plain wheel ZOOMS, and it could not before.** The handler used to return
+  early unless ctrl/meta was held, because the canvas was a card inside a
+  scrolling `main` and an unconditional `preventDefault` would have trapped the
+  page. The canvas is the page now, so the gesture is free to take. Three riders
+  make it safe: it bails over `.org-panel` (whose body scrolls), it scales by
+  `deltaY` magnitude honouring `deltaMode` (a trackpad fires dozens of small
+  deltas per flick and a fixed step would cross the whole range in one gesture),
+  and Shift+wheel takes over the sideways pan the wheel no longer does.
+  `touch-action` moved from `pan-y` to `none` for the same reason. The honest
+  cost: a Mac trackpad's two-finger scroll now zooms rather than pans — nothing
+  in a wheel event distinguishes the devices — and the pan is a drag on the
+  background.
 - **The search matches PEOPLE, not just units.** Every active member's name
   rides the tree's own payload (`memberNames`, ~290 strings), because the first
   thing a seller types into this screen is their own name — matching only the
@@ -504,12 +565,33 @@ roster panel docked over the canvas.
 - **A `?dep=` link force-opens its own way in**, by the same derivation, so
   "this is the team, look" pasted into a chat opens on the card rather than on a
   panel floating over a folded tree.
+- **The search answers with NAMES, not a count.** It used to print «3 ta» and
+  centre one card silently, so if three units held a Malika the second and third
+  were unreachable and nothing ever said which person had matched. Up to twelve
+  rows now read «Ismoilov Aziz — Sevinch(ROP)»; picking one selects that unit,
+  flies to its card and marks that person's row in the roster. The mark travels
+  as a NAME rather than an id, because `memberNames` and `DepartmentMemberDto.
+  fullName` are the same `employee."fullName"` column — carrying ids would mean
+  turning `array_agg` into a `jsonb_agg` of objects and rippling that through
+  the node type, the `src/lib/api.ts` mirror and both test fixtures to mark one
+  row.
 - **`/insights/structure/roster` is a SECOND request on purpose.** The chart
   draws twenty cards and a reader opens one panel; putting 289 people on every
-  node would ship the whole roster again on every change of the window. It
-  lists membership, so a person shown in their SECOND unit carries their own
-  money while that money counts towards their FIRST — the panel says so in a
-  footnote rather than letting the column quietly fail to add up.
+  node would ship the whole roster again on every change of selection. Its
+  header carries the unit's ancestors as clickable crumbs and the person it
+  answers to; its rows carry membership, so somebody shown in their SECOND unit
+  is tagged «Ikkinchi boʻlim» — without it a borrowed operator reads as a member
+  of that team, which is the one thing this screen must not get wrong.
+- **The endpoint touches no `deal` table and takes no parameters.** `structureSql`
+  used to carry an `active` CTE (feeding the period-scoped `workingHeadcount`)
+  and a `sales` CTE (the card's revenue); together they were the only readers of
+  `deal`, the only users of `$1`/`$2`, and **3.4 of the query's 3.5 seconds** —
+  on the single vCPU that answers every other screen, for the page every seller
+  is meant to open. What is left reads `department`, `department_member` and
+  `employee`. `tests/http/structureSql.test.ts` fails on a `$1`, on a `"deal"`,
+  on a fourth table, and on `WITH RECURSIVE` going missing — which is the exact
+  edit deleting the first CTE invites, and which fails with a
+  relation-does-not-exist error naming `walk` rather than the missing keyword.
 
 ## The sync pipeline
 

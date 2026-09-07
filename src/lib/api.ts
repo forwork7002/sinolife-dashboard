@@ -952,19 +952,17 @@ export interface StructureDto {
   readonly head: StructureHeadDto | null
   /** People whose PRIMARY unit is this one. */
   readonly ownHeadcount: number
-  /** This unit plus everything beneath it. All three roll up together. */
+  /** This unit plus everything beneath it. Both headcounts roll up together. */
   readonly headcount: number
   /** Of those, marked active in Bitrix24. */
   readonly activeHeadcount: number
-  /** Of the active, those who won a revenue deal this period. */
-  readonly workingHeadcount: number
   /**
    * Active people the PORTAL lists here, minus the head when the head is one of
    * them — «Подчинённые: N сотрудников» on the source screen.
    *
    * Not `activeHeadcount`: membership is many-to-many in Bitrix24, so the two
-   * differ wherever somebody's second unit is this one. That one counts who is
-   * CREDITED here and carries the money; this counts who is LISTED here.
+   * differ wherever somebody's second unit is this one. That one counts who
+   * this dashboard CREDITS to the unit; this counts who the portal LISTS here.
    */
   readonly subordinateCount: number
   /** Active members including the head. `subordinateCount` plus 0 or 1. */
@@ -980,9 +978,6 @@ export interface StructureDto {
   readonly sortOrder: number
   /** Does the reader's own account sit here? Drives the «Siz» badge. */
   readonly isViewerDepartment: boolean
-  /** NULL for a reader who may not see the company's money. Never zero. */
-  readonly deals: number | null
-  readonly revenue: MoneyDto | null
   /**
    * Is this unit inside the active filial?
    *
@@ -1001,11 +996,16 @@ export interface DepartmentMemberDto {
   readonly fullName: string
   readonly position: string | null
   readonly isActive: boolean
-  /** False when this unit is the person's SECOND one; their money is credited elsewhere. */
+  /**
+   * False when this unit is the person's SECOND one.
+   *
+   * Bitrix24 lists a person in every unit of their `UF_DEPARTMENT`; this
+   * dashboard credits them to the first. The tag exists so a reader can tell a
+   * borrowed operator from an owned one, which is the difference between the
+   * card's «xodim» count and this unit's own roster.
+   */
   readonly isPrimary: boolean
   readonly isHead: boolean
-  readonly deals: number | null
-  readonly revenue: MoneyDto | null
 }
 
 // ---------------------------------------------------------------------------

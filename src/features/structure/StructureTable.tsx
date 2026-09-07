@@ -4,7 +4,7 @@ import { useState, type UIEvent } from 'react'
 
 import { InitialChip } from '@/components/ui/DataTable'
 import type { StructureDto } from '@/lib/api'
-import { formatCompactUzs, formatNumber } from '@/lib/format'
+import { formatNumber } from '@/lib/format'
 
 /**
  * The company as a table — the list view behind the header's toggle.
@@ -12,18 +12,18 @@ import { formatCompactUzs, formatNumber } from '@/lib/format'
  * This is the reading `/structure` has always had, kept rather than replaced:
  * it is the only one that shows every column at once, the only one that prints,
  * and the only one that works at a width the chart cannot. The chart answers
- * "who works under whom"; this answers "which unit closed what".
+ * "who works under whom" as a picture; this answers it as a list, and is what
+ * somebody takes into a meeting on paper.
  *
- * Extracted from StructurePage unchanged in behaviour, with two additions: the
- * «Boʻysunuvchi» column, so the two views cannot state different headcounts for
- * the same unit, and a money column that disappears rather than printing zero
- * for a reader who may not see the company's figures.
+ * EVERY COLUMN LEFT IS DATELESS, and that is now a requirement rather than an
+ * observation. This table used to carry «Ishlagan» (people who closed a revenue
+ * deal in the window), «Sotuv», «Tushum» and a share bar. Money moved to
+ * Boshqaruv markazi and the page lost its reporting window with it — and a
+ * period-scoped column on a page with no period control does not read as
+ * missing, it reads as wrong: «Ishlagan» would quietly have meant "today", and
+ * printed 0 beside almost every unit at nine in the morning.
  */
 export function StructureTable({ nodes }: { nodes: readonly StructureDto[] }) {
-  const siblingMax = Math.max(1, ...nodes.map((n) => n.revenue?.amount ?? 0))
-  /** One decision for the whole table: the server sends null or it does not. */
-  const withMoney = nodes.some((n) => n.revenue !== null)
-
   /*
     Same contract as DataTable's sticky header, hand-rolled because this
     table is: the hairline under a resting header belongs to the first row
@@ -46,15 +46,7 @@ export function StructureTable({ nodes }: { nodes: readonly StructureDto[] }) {
       hint: 'Bitrix24 shu boʻlimda koʻrsatgan faol xodimlar, rahbarsiz. Portaldagi «Подчинённые» soni.',
     },
     { label: 'Xodim', align: 'right' },
-    { label: 'Ishlagan', align: 'right' },
     { label: 'Oʻzida', align: 'right' },
-    ...(withMoney
-      ? ([
-          { label: 'Sotuv', align: 'right' as const },
-          { label: 'Tushum', align: 'right' as const },
-          { label: '', align: 'left' as const },
-        ] as const)
-      : []),
   ]
 
   return (
@@ -69,7 +61,10 @@ export function StructureTable({ nodes }: { nodes: readonly StructureDto[] }) {
       style={{ maxHeight: 560, overflowY: 'auto', position: 'relative' }}
       onScroll={onScroll}
     >
-      <table className="w-full text-sm" style={{ minWidth: 820 }}>
+      {/* 520, not 820: four columns went, and a minimum sized for the old
+          eight forced a horizontal scrollbar under a table that now fits a
+          phone. */}
+      <table className="w-full text-sm" style={{ minWidth: 520 }}>
         <thead>
           <tr>
             {headers.map((header, i) => (
@@ -93,7 +88,7 @@ export function StructureTable({ nodes }: { nodes: readonly StructureDto[] }) {
         </thead>
         <tbody className="divide-rows">
           {nodes.map((node) => (
-            <Branch key={node.id} node={node} siblingMax={siblingMax} withMoney={withMoney} />
+            <Branch key={node.id} node={node} />
           ))}
         </tbody>
       </table>
@@ -103,23 +98,8 @@ export function StructureTable({ nodes }: { nodes: readonly StructureDto[] }) {
 
 /**
  * One unit and its children.
- *
- * `siblingMax` is the largest revenue among THIS node's siblings, so the bar
- * answers "how does this unit compare with the ones beside it" — the question
- * a reader of a tree is asking. Normalised to the company total instead, the
- * root was always full and every leaf a sliver.
  */
-function Branch({
-  node,
-  siblingMax,
-  withMoney,
-}: {
-  node: StructureDto
-  siblingMax: number
-  withMoney: boolean
-}) {
-  /** The children compare against each other, not against their parent. */
-  const childMax = Math.max(1, ...node.children.map((c) => c.revenue?.amount ?? 0))
+function Branch({ node }: { node: StructureDto }) {
   /**
    * Open by default down to depth 2.
    *
@@ -129,7 +109,6 @@ function Branch({
    */
   const [open, setOpen] = useState(node.depth < 2)
   const hasChildren = node.children.length > 0
-  const revenue = node.revenue?.amount ?? 0
 
   return (
     <>
@@ -221,77 +200,15 @@ function Branch({
           <span style={{ color: 'var(--ink-muted)' }}> / {formatNumber(node.headcount)}</span>
         </td>
 
-        <td
-          className="tabular px-3 py-1.5 text-right text-xs"
-          style={{
-            color:
-              node.activeHeadcount > 0 && node.workingHeadcount === 0
-                ? 'var(--status-critical)'
-                : 'var(--ink-secondary)',
-          }}
-          title="Davr ichida kamida bitta bitim yopganlar"
-        >
-          {formatNumber(node.workingHeadcount)}
-        </td>
-
         <td className="tabular px-3 py-1.5 text-right text-xs" style={{ color: 'var(--ink-muted)' }}>
           {formatNumber(node.ownHeadcount)}
         </td>
 
-        {withMoney && (
-          <>
-            <td
-              className="tabular px-3 py-1.5 text-right text-xs"
-              style={{ color: 'var(--ink-secondary)' }}
-            >
-              {formatNumber(node.deals ?? 0)}
-            </td>
-            <td
-              className="tabular px-3 py-1.5 text-right text-xs font-medium"
-              style={{ color: 'var(--ink-primary)' }}
-            >
-              {revenue === 0 ? (
-                <span style={{ color: 'var(--ink-muted)' }}>—</span>
-              ) : (
-                formatCompactUzs(revenue)
-              )}
-            </td>
-            <td className="px-3 py-1.5" style={{ width: 120 }}>
-              {/* Share of the sibling group, so branches compare at a glance
-                  without the reader converting nine-digit figures in their head. */}
-              <div
-                className="h-1.5 w-full overflow-hidden rounded-full"
-                style={{ background: 'var(--track)' }}
-              >
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${Math.min(100, (revenue / siblingMax) * 100)}%`,
-                    /*
-                      Sequential, and normalised to the SIBLING group.
-
-                      Against the company total the root branch was always full
-                      and every leaf was a sliver — the bar carried no
-                      information at any depth but the first. Comparing a unit
-                      to its own siblings is the comparison a reader of a tree
-                      is actually making.
-
-                      One hue, because this is a single quantity. It used to be
-                      --series-8, a red the eye cannot separate from
-                      --status-critical.
-                    */
-                    background: 'var(--seq-450)',
-                  }}
-                />
-              </div>
-            </td>
-          </>
-        )}
       </tr>
 
       {open &&
         node.children.map((child) => (
-          <Branch key={child.id} node={child} siblingMax={childMax} withMoney={withMoney} />
+          <Branch key={child.id} node={child} />
         ))}
     </>
   )

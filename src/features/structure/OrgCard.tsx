@@ -2,7 +2,7 @@
 
 import { InitialChip } from '@/components/ui/DataTable'
 import type { StructureDto } from '@/lib/api'
-import { formatCompactUzs, formatNumber } from '@/lib/format'
+import { formatNumber } from '@/lib/format'
 
 /**
  * One department, drawn the way the portal draws it.
@@ -18,8 +18,16 @@ import { formatCompactUzs, formatNumber } from '@/lib/format'
  * Bitrix24, and nothing in this application writes to a CRM — the sync engine
  * is the only thing that speaks to one, and it reads. Drawing them anyway would
  * put four controls on the card that do nothing, which is worse than a card
- * that admits it is a mirror. What the card gains instead is the one thing the
- * portal cannot show: the unit's money over the reporting window.
+ * that admits it is a mirror.
+ *
+ * WHAT IT GAINS INSTEAD IS THE TEAM. The strip above the footer used to be the
+ * unit's revenue over the reporting window; money on this dashboard is now
+ * stated in one place, Boshqaruv markazi, and this screen has no window at all.
+ * The room it left goes to the people, because «har bir sotuvchi bilishi kerak
+ * kim kimlar borligini» is half of what this page was asked for and it was
+ * previously answered one unit at a time, by opening a panel. The names ride
+ * the tree's own payload already — they were put there for the search box — so
+ * a face on every card at once costs no request.
  */
 export function OrgCard({
   node,
@@ -33,9 +41,11 @@ export function OrgCard({
   dimmed,
   onSelect,
   onToggle,
+  onHover,
   index,
   total,
   tabbable,
+  onChain,
 }: {
   node: StructureDto
   /** Where the layout put it. Applied HERE rather than on a wrapper — see below. */
@@ -51,14 +61,43 @@ export function OrgCard({
   dimmed: boolean
   onSelect: () => void
   onToggle: () => void
+  /** Pointer entered (true) or left (false) this card. */
+  onHover: (over: boolean) => void
   /** 1-based position among siblings, for the tree semantics. */
   index: number
   total: number
   /** The one card in the tab order. See the roving tabindex note in OrgChart. */
   tabbable: boolean
+  /**
+   * On the chain from the highlighted card up to the company root.
+   *
+   * This is the answer to «kim kimning qoʻl ostida ishlayapti», drawn rather
+   * than written: one lit path from a team up to the company, instead of a
+   * single lit connector and nineteen identical grey ones the reader had to
+   * trace by eye. The chain's own END wears it too — it is a path, not a set of
+   * superiors — and `selected` still reads on top of it, because that rule
+   * comes later in the stylesheet.
+   */
+  onChain: boolean
 }) {
   const hasChildren = node.childCount > 0
-  const money = node.revenue
+  /*
+    FIVE, AND THE COUNT NEXT TO THEM IS THE CAPTION'S.
+
+    Five chips is what fits at 236px beside a «+N» without the strip wrapping
+    and breaking the fixed card box the connectors are drawn against. The
+    overflow is stated rather than silently cut: a card showing five faces over
+    a unit of eighteen would be a wrong answer to the question the strip exists
+    to answer.
+
+    THE HEAD IS NOT IN IT. They have their own row two lines up, and the caption
+    directly above the strip says «Boʻysunuvchilar: N» — the portal's own count,
+    which excludes them. Drawn from `memberNames` unfiltered, the strip showed
+    one face more than the number over it and the head's initials twice on one
+    card. Matched by name, the same way the search marks a roster row.
+  */
+  const shown = node.memberNames.filter((name) => name !== node.head?.name).slice(0, 5)
+  const more = Math.max(0, node.subordinateCount - shown.length)
 
   return (
     /*
@@ -85,8 +124,11 @@ export function OrgCard({
       {...(hasChildren ? { 'aria-expanded': !collapsed } : {})}
       tabIndex={tabbable ? 0 : -1}
       onClick={onSelect}
+      onPointerEnter={() => onHover(true)}
+      onPointerLeave={() => onHover(false)}
       className="focusable org-card"
       data-selected={selected || undefined}
+      data-chain={onChain || undefined}
       data-matched={matched || undefined}
       data-dimmed={dimmed || undefined}
       style={{ left: x, top: y, width, height }}
@@ -153,41 +195,36 @@ export function OrgCard({
         </span>
 
         {/*
-          The one line the portal has no way to print.
+          THE TEAM, AS FACES.
 
-          Only for a reader who may see the company's money — an OWN-scoped
-          salesperson gets the chart without it rather than a «0 soʻm» beside a
-          department that closed a billion. Null, never zero: see StructureDto.
+          Overlapped like a stack of avatars rather than laid out in a row: at
+          236px five separate chips and a «+N» do not fit, and the overlap is
+          also what makes them read as one group — «these people», not five
+          fields. Deliberately NOT clickable: the whole card is one control, the
+          tree pattern gives it one tab stop, and a chip that opened a person
+          would put six more targets inside every treeitem.
+
+          aria-hidden, because the names are already in the card's accessible
+          label's neighbourhood — the panel is where a screen reader is sent for
+          the roster, and six initials read aloud between the head's name and
+          the fold button is noise, not information.
         */}
-        {money && (
-          /*
-            THE MONEY IS ROLLED UP; THE HEADCOUNT ABOVE IT IS NOT.
-
-            `revenue` and `deals` are the unit plus everything beneath it —
-            "how is Navoiy doing" means the branch — while «Boʻysunuvchilar» two
-            lines up is the unit's own membership and is deliberately not
-            rolled. On this portal that puts «0 xodim» directly above the whole
-            company's revenue on the root card, and «Навоий» reads 0 people over
-            six teams' worth of money. The two altitudes are both right and the
-            card has to say which is which.
-          */
+        {shown.length > 0 && (
           <span
-            className="org-card-money"
-            title="Shu boʻlim va uning ostidagi barcha boʻlimlar boʻyicha"
+            className="org-card-people"
+            aria-hidden="true"
+            title={
+              more > 0
+                ? `${shown.join(', ')} va yana ${formatNumber(more)} xodim`
+                : shown.join(', ')
+            }
           >
-            {money.amount === 0 ? (
-              <span style={{ color: 'var(--ink-muted)' }}>Davr ichida tushum yoʻq</span>
-            ) : (
-              <>
-                <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
-                  {formatCompactUzs(money.amount)}
-                </span>
-                <span style={{ color: 'var(--ink-muted)' }}>
-                  {' '}
-                  · {formatNumber(node.deals ?? 0)} bitim
-                </span>
-              </>
-            )}
+            {shown.map((name, i) => (
+              <span key={`${name}-${i}`} className="org-card-chip">
+                <InitialChip name={name} />
+              </span>
+            ))}
+            {more > 0 && <span className="org-card-more">+{formatNumber(more)}</span>}
           </span>
         )}
       </div>

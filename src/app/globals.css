@@ -2402,15 +2402,6 @@ p {
 .org-canvas {
   position: relative;
   overflow: hidden;
-  /*
-    Height comes from the PAGE, through a custom property.
-
-    The chart is the reason the screen exists, so it takes what the viewport
-    has left rather than a number chosen once — and the phone override below
-    is then one line that changes the same variable instead of an !important
-    fighting an inline style.
-  */
-  height: var(--org-canvas-h, 620px);
   /* Its own containing block, so the absolutely-positioned stage and the
      floating controls are clipped by the card rather than by the page — the
      same rule the horizontal scrollers in this file already document. */
@@ -2418,16 +2409,33 @@ p {
   background: var(--surface-sunken);
   border: 1px solid var(--border);
   /*
-    pan-y, NOT none.
+    THE CANVAS IS THE PAGE, so it takes the page's height and the page's
+    gestures.
 
-    `none` is what a full-page canvas wants, and this one is a card in a
-    scrolling page: on a phone the canvas is 72vh, so a thumb that lands on it
-    is a thumb that lands on most of the screen, and `none` meant the page
-    simply would not scroll from there. Vertical belongs to the page,
-    horizontal to the chart — which is the axis a wide tree actually needs, and
-    «Sigʻdirish» and the zoom stepper cover the rest.
+    `height: 100%` and not a `calc(100vh − something)` or a custom property
+    somebody has to keep in step: `main` is a flex item with a definite height
+    inside a shell that is exactly `100dvh`, so a percentage resolves against
+    whatever is actually left after the header and the page title — and nothing
+    here has to be re-measured the day either of them changes. See PageShell's
+    `fill` for the other half of the chain. (It also fixes a `vh` against
+    `dvh` mismatch: the hand-measured expression this replaces used `100vh`
+    under a shell sized in `100dvh`, which differ on a phone whose browser
+    chrome retracts.)
+
+    A FLOOR, because `100%` of a 400px-tall window is a canvas smaller than
+    one card, with nothing on the page left to scroll to and a wheel that zooms
+    rather than scrolls. Below the floor `main` overflows and scrolls again, the
+    way every other page does.
+
+    NO `touch-action` HERE. It used to be `pan-y` for a reason that has expired
+    — the canvas was a card in a scrolling page — and then briefly `none`, which
+    was worse: the property composes by INTERSECTION down the tree, so `none`
+    on the canvas took touch scrolling away from the roster sheet and the result
+    list docked inside it. The gesture now lives on `.org-backdrop` and
+    `.org-stage`, the two surfaces a finger actually drags.
   */
-  touch-action: pan-y;
+  height: 100%;
+  min-height: 420px;
   cursor: grab;
   /* Inside the canvas nothing is a text target; a drag that selects the whole
      tree's worth of department names reads as a bug. The panel opts back in —
@@ -2439,23 +2447,22 @@ p {
 }
 
 /*
-  Taller on a phone, because the chart does not fit and the reader has to pan.
-
-  A 620px canvas on a 1920px display shows the whole company; the same 620px on
-  a 390px phone shows a card and a half, and every extra row of viewport is one
-  fewer drag. The page below it is two tiles and a hero, so nothing is buried.
+  The pan surface behind the cards. Its only job is to be the element a finger
+  lands on when it lands on nothing, so that `touch-action: none` can refuse
+  the browser the gesture WITHOUT that refusal reaching the panel or the search
+  list, which are its siblings and keep native touch scrolling.
 */
-@media (max-width: 640px) {
-  .org-canvas {
-    --org-canvas-h: 72vh;
-    min-height: 420px;
-  }
+.org-backdrop {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
 }
 
 .org-stage {
   position: absolute;
   top: 0;
   left: 0;
+  touch-action: none;
   transform-origin: 0 0;
   /* Promoted once, up front. Without it the first pan of a session repaints
      the whole tree while the compositor works out that it should not. */
@@ -2493,7 +2500,8 @@ p {
      that would grow past it is clipped rather than allowed to spill over its
      own border and under the card below. */
   overflow: hidden;
-  background: var(--surface-raised);
+  --org-card-bg: var(--surface-raised);
+  background: var(--org-card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-panel-sm);
   box-shadow: var(--shadow-card), var(--edge-highlight);
@@ -2506,6 +2514,27 @@ p {
   border-color: var(--border-strong);
   box-shadow: var(--shadow-raised), var(--edge-highlight);
 }
+/*
+  THE CHAIN OF COMMAND, WASHED.
+
+  Every card from the one being pointed at up to the company root, the end
+  included — it is a path, not a set of superiors. Quieter than
+  `[data-selected]`, and BEFORE it in this file on purpose: same specificity, so
+  source order is what lets the card the reader actually picked keep its own
+  accent border on top of the wash.
+
+  Mixed from `--accent` ITSELF, not from `--accent-soft`. That token carries a
+  12% alpha, and color-mix averages alpha too — the result was 60% transparent
+  over the sunken canvas, so the chain rendered darker than the plain cards
+  around it in light mode and lighter in dark. The card's surface is a variable
+  so the avatar ring on it can match whatever the card is painted.
+*/
+.org-card[data-chain] {
+  --org-card-bg: color-mix(in oklab, var(--accent) 6%, var(--surface-raised));
+  border-color: color-mix(in oklab, var(--accent) 55%, var(--border));
+  background: var(--org-card-bg);
+}
+
 .org-card[data-selected] {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent), var(--shadow-float), var(--edge-highlight);
@@ -2660,12 +2689,35 @@ p {
   white-space: nowrap;
 }
 
-.org-card-money {
+/*
+  THE TEAM, AS A STACK OF FACES.
+
+  Overlapped by 6px with a ring in the card's own surface colour, so five chips
+  and a «+N» fit the 236px box and read as one group rather than five fields.
+  The ring is `box-shadow` and not a border: a border would grow each chip and
+  push the last one out of a card whose width the connectors are drawn against.
+*/
+.org-card-people {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+}
+.org-card-chip + .org-card-chip {
+  margin-left: -6px;
+}
+.org-card-chip {
+  display: inline-flex;
+  border-radius: 999px;
+  /* The card's OWN surface, whatever it currently is — a washed chain card
+     paints differently, and a ring in the plain colour was a white halo per
+     face on exactly the cards the reader was looking at. */
+  box-shadow: 0 0 0 2px var(--org-card-bg);
+}
+.org-card-more {
+  margin-left: 6px;
   font-size: 10.5px;
-  line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--ink-muted);
 }
 
 .org-card-foot {
@@ -2717,6 +2769,11 @@ p {
   box-shadow: var(--shadow-float);
 }
 .org-float--top {
+  /* Above the roster panel (z-index 3): `.org-float` is a stacking context,
+     so the result list's own z-index can only order it against siblings
+     INSIDE the toolbar — and the list hangs down into the space the panel
+     docks in at narrow widths. */
+  z-index: 4;
   top: 12px;
   left: 12px;
   right: 12px;
@@ -2725,6 +2782,8 @@ p {
   flex-wrap: wrap;
   border-radius: var(--radius-panel-sm);
 }
+/* `.org-float` above is already `position: absolute`, which is what the help
+   note anchors its `bottom: 100%` against. */
 .org-float--zoom {
   bottom: 12px;
   left: 12px;
@@ -2748,6 +2807,201 @@ p {
   background: var(--surface-sunken);
   color: var(--ink-primary);
 }
+/*
+  THE ONE FILLED BUTTON ON THIS SCREEN.
+
+  «Meni topish» is the task the page was asked for, and as a ghost pill among
+  four other ghost pills it read as one more view control. Exactly one primary
+  affordance, so the fill is the instruction.
+*/
+.org-float-btn--primary {
+  background: var(--accent);
+  color: var(--ink-on-series);
+  font-weight: 600;
+}
+.org-float-btn--primary:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--accent) 85%, var(--ink-on-series));
+  color: var(--ink-on-series);
+}
+
+/* --- The search, and the answer under it --------------------------------- */
+
+/*
+  A REAL BASIS, or the box vanishes on a phone. `flex: 1` alone is a zero base
+  with the minimum switched off, so it only ever got what the four buttons left
+  — twenty-two pixels at 390px once «Meni topish» joined the row. With a basis
+  the line overflows its budget and wraps instead.
+*/
+.org-search {
+  position: relative;
+  flex: 1 1 180px;
+  max-width: 260px;
+}
+
+/*
+  ABSOLUTE, so opening the answer never reflows the control row.
+
+  The row wraps on a phone; a list that pushed the buttons down would move a
+  target out from under a finger already on its way to it. It is bounded and
+  scrolls, because a term matching forty people must not become the screen.
+*/
+.org-hits {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  min-width: 240px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+  border-radius: var(--radius-panel-sm);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-float);
+}
+.org-hit {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 6px;
+  text-align: left;
+}
+.org-hit:hover {
+  background: var(--surface-sunken);
+}
+.org-hit-name {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-hit-sub {
+  display: block;
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-hit-empty {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+/* --- «Siz» — the reader's own chain, in words ---------------------------- */
+
+/*
+  A SECOND LINE OF THE SAME FLOATING PANEL, not a strip of its own.
+
+  `flex-basis: 100%` inside `.org-float--top`, which already wraps, is what puts
+  it on its own row — and keeps it from colliding with the roster docked on the
+  right or the zoom cluster at the bottom, both of which a free-floating strip
+  would have had to dodge at every width.
+*/
+.org-you {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 4px 1px;
+  font-size: 11px;
+}
+.org-you-label {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 14px;
+  color: var(--ink-on-series);
+  background: var(--accent);
+}
+.org-you-trail {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+.org-you-boss {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+.org-you-boss strong {
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+/* --- A chain of unit names, used by the strip and by the panel ------------ */
+
+.org-trail {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-bottom: 2px;
+  overflow: hidden;
+}
+.org-trail-step {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.org-trail-sep {
+  flex-shrink: 0;
+  padding: 0 4px;
+  color: var(--ink-muted);
+}
+/* Each name truncates on its own rather than the row wrapping to three lines:
+   the panel is 320px and three Cyrillic unit names do not fit it. */
+.org-trail-link {
+  min-width: 0;
+  border-radius: 4px;
+  padding: 0 2px;
+  font-size: 11px;
+  color: var(--ink-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-trail-link:hover {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+}
+.org-trail-link[data-own] {
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+
+/* --- The help note ------------------------------------------------------- */
+
+.org-help {
+  position: absolute;
+  z-index: 3;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: max-content;
+  max-width: 280px;
+  padding: 8px 10px;
+  border-radius: var(--radius-panel-sm);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-float);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-secondary);
+}
+.org-help strong {
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+
 .org-float-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -2792,7 +3046,17 @@ p {
      on this screen somebody copies out — a name to paste into a chat. */
   user-select: text;
   z-index: 3;
-  top: 60px;
+  /*
+    BELOW THE CONTROL ROW, whatever height that row happens to be.
+
+    It was a constant 60px, chosen when the row was one line of buttons. An
+    account linked to an employee now gets a second line — its own chain of
+    command — and the panel docked straight over the half of it naming their
+    manager. `--org-toolbar-h` is written onto the canvas by a ResizeObserver
+    in OrgChart; the fallback is the one-line height, for the frame before it
+    has been measured.
+  */
+  top: calc(var(--org-toolbar-h, 44px) + 24px);
   right: 12px;
   bottom: 12px;
   width: 320px;
@@ -2888,6 +3152,19 @@ p {
 .org-person[data-inactive] {
   opacity: 0.55;
 }
+/*
+  The person the search was actually looking for.
+
+  A unit of eighteen opened from a search for one name is eighteen rows the
+  reader has to scan for the name they just typed. A wash AND a rail: the wash
+  is what the eye finds, the rail is what survives if a future rule repaints
+  the row. It deliberately outranks the hover wash by source order — the one
+  row that must read as marked is the one row hover may not repaint.
+*/
+.org-person[data-found] {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
 
 .org-tag {
   flex-shrink: 0;
@@ -2918,9 +3195,28 @@ p {
   uses for the same reason.
 */
 @media (forced-colors: active) {
+  /* The chain is carried by a wash and a mixed border, and forced-colours
+     discards both — so the one thing this screen exists to show would be
+     invisible in that mode without a border of its own. BEFORE the selection
+     rule, as in the base stylesheet: the picked card is always on its own chain,
+     and written the other way round it wore the ancestors' dotted border. */
+  .org-card[data-chain] {
+    border: 2px dotted Highlight;
+  }
   .org-card[data-selected],
   .org-card[data-matched] {
     border: 2px solid Highlight;
+  }
+  .org-person[data-found] {
+    border: 1px solid Highlight;
+  }
+  /* The overlapped chips are separated only by a box-shadow ring, and the
+     «Siz» pill only by its fill — both of which this mode throws away. */
+  .org-card-chip {
+    border: 1px solid CanvasText;
+  }
+  .org-you-label {
+    border: 1px solid CanvasText;
   }
   .org-card[data-dimmed] {
     opacity: 1;

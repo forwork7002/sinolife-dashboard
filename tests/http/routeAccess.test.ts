@@ -127,7 +127,7 @@ describe('what a TEAM- or OWN-scoped caller can reach', () => {
     'insights/confirmations/orders': 'the queue cohort narrows in classified',
     'insights/flow': 'spreads scope',
     'insights/pulse': 'spreads scope',
-    'insights/structure': 'the TREE is for everyone with the section; the MONEY is gated',
+    'insights/structure': 'nothing on it to narrow: who reports to whom, and no figures',
     'insights/structure/roster': 'same as the tree above',
     kpi: 'spreads scope; plans and roster both narrowed',
     'meta/alerts': 'the bell counts the caller\'s own backlog',
@@ -151,22 +151,27 @@ describe('what a TEAM- or OWN-scoped caller can reach', () => {
   })
 
   /*
-    THE TWO THAT WITHHOLD A COLUMN INSTEAD OF NARROWING A ROW.
+    THE TWO THAT HAVE NOTHING TO NARROW.
 
     Kadrlar tuzilmasi is the one company-wide page a salesperson is meant to
     open — the client asked for it so the floor can see who reports to whom —
-    so it serves the whole TREE to anyone holding the section and gates the
-    MONEY on `analytics:read:all`, which turns into nulls rather than zeros for
-    everybody else. Narrowing the tree instead would leave a reader unable to
-    see that another department exists at all, which is the opposite of what
-    the screen is for. Neither route may quietly start narrowing rows, and
-    neither may stop gating the figures.
+    so it serves the whole TREE to anyone holding the section. Narrowing it
+    would leave a reader unable to see that another department exists at all,
+    which is the opposite of what the screen is for.
+
+    Both routes used to gate the MONEY on `analytics:read:all` and hand a
+    narrowed caller nulls. There is no money on that screen any more — this
+    dashboard states it on Boshqaruv markazi and nowhere else — so there is
+    nothing left to withhold and nothing dated to withhold it over. The
+    assertion below pins that absence: three strings whose reappearance, gated
+    or not, means a window or a figure has come back to the screen, and that
+    has to be argued for in a diff rather than slipped into a route.
   */
-  const GATES_THE_MONEY = ['insights/structure', 'insights/structure/roster']
+  const NOTHING_TO_NARROW = ['insights/structure', 'insights/structure/roster']
 
   it.each(
     Object.keys(NARROWS)
-      .filter((id) => !['users', 'users/[id]', ...GATES_THE_MONEY].includes(id))
+      .filter((id) => !['users', 'users/[id]', ...NOTHING_TO_NARROW].includes(id))
       .map((id) => [id] as const),
   )('%s actually reads the scope it is allowed to be asked for', (id) => {
     /*
@@ -181,12 +186,28 @@ describe('what a TEAM- or OWN-scoped caller can reach', () => {
     expect(route!.source).toMatch(/ctx\.scope|scopeService\.resolve/)
   })
 
-  it.each(GATES_THE_MONEY.map((id) => [id] as const))(
-    '%s withholds the figures from a narrowed caller instead',
+  it.each(NOTHING_TO_NARROW.map((id) => [id] as const))(
+    '%s serves the structure whole, with no figure and no window',
     (id) => {
       const route = routes.find((r) => name(r.relative) === id)
       expect(route).toBeDefined()
-      expect(route!.source).toContain("can(ctx.principal, 'analytics:read:all')")
+
+      /*
+        A `currency`, a `periodFrom` or the money permission reappearing in
+        either of these routes means a figure or a reporting window has come
+        back to a screen whose whole audience is OWN-scoped. That is not
+        forbidden — it is a decision, and this is where it gets noticed: the
+        page would need a gate and a window control again, and this test would
+        need rewriting to say so.
+
+        Read with the prose stripped, the way the SQL-shape tests do: both
+        routes explain in a comment what they no longer do, and those comments
+        name the very things these three checks forbid.
+      */
+      const code = route!.source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
+      expect(code).not.toContain('periodFrom')
+      expect(code).not.toContain('ctx.currency')
+      expect(code).not.toContain('analytics:read:all')
     },
   )
 })

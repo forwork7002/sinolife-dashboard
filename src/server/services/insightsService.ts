@@ -311,12 +311,10 @@ export interface StructureDto {
   readonly head: StructureHeadDto | null
   /** People whose PRIMARY unit is this one. */
   readonly ownHeadcount: number
-  /** This unit plus everything beneath it. All three roll up together. */
+  /** This unit plus everything beneath it. Both headcounts roll up together. */
   readonly headcount: number
   /** Of those, marked active in Bitrix24. */
   readonly activeHeadcount: number
-  /** Of the active, those who won a revenue deal this period. */
-  readonly workingHeadcount: number
   /**
    * Active people the PORTAL lists in this unit, minus the head when the head
    * is one of them — «Подчинённые: N сотрудников» on the source screen, and the
@@ -325,8 +323,8 @@ export interface StructureDto {
    * It is NOT `activeHeadcount`, and the difference is not a rounding error:
    * membership is many-to-many in Bitrix24 and nine of this portal's people sit
    * in two units, so five of its twenty cards differ. `activeHeadcount` counts
-   * who is CREDITED here and is what the money columns are built from;
-   * this counts who is LISTED here. Both are true and the screen prints both.
+   * who is CREDITED to this unit by this dashboard; this counts who the PORTAL
+   * lists here. Both are true and the screen prints both.
    */
   readonly subordinateCount: number
   /** Active members including the head. `subordinateCount` plus 0 or 1. */
@@ -342,18 +340,6 @@ export interface StructureDto {
   readonly sortOrder: number
   /** Does the reader's own account sit in this unit? Drives the «Siz» badge. */
   readonly isViewerDepartment: boolean
-  /**
-   * Period money — NULL for a reader who may not see the company's figures.
-   *
-   * The org chart is the one screen an OWN-scoped salesperson is meant to read:
-   * knowing who reports to whom is why it exists. Their own numbers are theirs,
-   * but every other unit's are not, so the money is withheld rather than the
-   * screen. Null and not zero, and the columns are not rendered at all — a
-   * «0 soʻm» beside a department that closed a billion is a lie, and a «—» with
-   * a tooltip still says the figure exists.
-   */
-  readonly deals: number | null
-  readonly revenue: MoneyDto | null
   /**
    * Is this unit inside the active filial?
    *
@@ -374,14 +360,15 @@ export interface DepartmentMemberDto {
   readonly position: string | null
   readonly isActive: boolean
   /**
-   * False when this unit is the person's SECOND one. Their money is credited to
-   * their primary unit, so a roster that did not say so would look like it had
-   * lost somebody's numbers.
+   * False when this unit is the person's SECOND one.
+   *
+   * Bitrix24 lists a person in every unit of their `UF_DEPARTMENT` and the
+   * chart draws them on every one of those cards. A roster that did not say so
+   * would present a borrowed operator as a member of this team, which is the
+   * one thing this screen must not get wrong.
    */
   readonly isPrimary: boolean
   readonly isHead: boolean
-  readonly deals: number | null
-  readonly revenue: MoneyDto | null
 }
 
 /**
@@ -394,15 +381,6 @@ export interface DepartmentMemberDto {
 export interface StructureOptions {
   /** The reader's own employee id, from Principal. Null when unlinked. */
   readonly viewerEmployeeId?: string | null
-  /**
-   * May this reader see the company's money?
-   *
-   * `can(principal, 'analytics:read:all')` — true only for an ALL-scoped
-   * account. False strips every money field to null rather than refusing the
-   * screen, because the structure itself is not confidential and is the whole
-   * reason a salesperson opens this page.
-   */
-  readonly withMoney?: boolean
 }
 
 /**
@@ -1004,24 +982,25 @@ export class InsightsService {
   /**
    * The org chart, rolled up.
    *
-   * Rollup happens here rather than in SQL because "a department's revenue"
+   * Rollup happens here rather than in SQL because "a department's headcount"
    * means the unit plus everything under it, and that is a display decision —
    * the database should not have to guess whether the caller wants own or
    * inclusive figures.
+   *
+   * NO PERIOD AND NO CURRENCY. This screen answers "who works under whom",
+   * which is a fact about today; every period-scoped figure it used to carry
+   * has moved to Boshqaruv markazi, where this dashboard states money.
    */
   async structure(
-    period: Period,
-    currency: string,
     scope: InsightsScope = {},
     options: StructureOptions = {},
   ) {
     // Deliberately UNSCOPED as data: the tree keeps every unit and every
     // number, and `inScope` marks which subtree the branch-scoped screens are
     // counting. Filtering the map would leave the reader unable to see that
-    // Операцион exists at all, let alone that it closed 12.6% of last month.
-    const withMoney = options.withMoney !== false
+    // Операцион exists at all.
     const [nodes, viewerDepartmentIds] = await Promise.all([
-      this.repository.structure(period),
+      this.repository.structure(),
       options.viewerEmployeeId
         ? this.repository.departmentsOfEmployee(options.viewerEmployeeId)
         : Promise.resolve([] as string[]),
@@ -1042,20 +1021,15 @@ export class InsightsService {
     /**
      * The rollup travels beside the DTO, not inside it.
      *
-     * It used to be read back off each child DTO — `acc.deals + kid.deals`.
-     * That stopped working the moment money became withholdable: a reader who
-     * may not see the company's figures gets `deals: null` on every node, and
-     * summing nulls up the tree turns an authorisation rule into a wrong
-     * number for the one reader who is allowed to see it. The totals are the
-     * repository's own integers all the way up; only the last step decides
-     * whether they are printed.
+     * Read back off each child DTO instead, it would be summing whatever the
+     * DTO happened to print rather than the repository's own integers — which
+     * is how the withheld-money version of this used to add up nulls. The
+     * totals are the repository's numbers all the way up; only the last step
+     * decides what is printed.
      */
     interface Rolled {
       readonly headcount: number
       readonly activeHeadcount: number
-      readonly workingHeadcount: number
-      readonly deals: number
-      readonly revenueMinor: bigint
     }
 
     const build = (
@@ -1070,7 +1044,7 @@ export class InsightsService {
       const kids = built.map((b) => b.dto)
 
       /**
-       * All three headcounts roll up together.
+       * BOTH headcounts roll up together.
        *
        * `activeHeadcount` used to stay own-only while `headcount` was rolled,
        * so a branch showing 109 people was quietly comparing an inclusive
@@ -1081,16 +1055,10 @@ export class InsightsService {
         (acc, kid) => ({
           headcount: acc.headcount + kid.rolled.headcount,
           activeHeadcount: acc.activeHeadcount + kid.rolled.activeHeadcount,
-          workingHeadcount: acc.workingHeadcount + kid.rolled.workingHeadcount,
-          deals: acc.deals + kid.rolled.deals,
-          revenueMinor: acc.revenueMinor + kid.rolled.revenueMinor,
         }),
         {
           headcount: node.headcount,
           activeHeadcount: node.activeHeadcount,
-          workingHeadcount: node.workingHeadcount,
-          deals: node.deals,
-          revenueMinor: node.revenueMinor,
         },
       )
 
@@ -1122,15 +1090,12 @@ export class InsightsService {
         ownHeadcount: node.headcount,
         headcount: rolled.headcount,
         activeHeadcount: rolled.activeHeadcount,
-        workingHeadcount: rolled.workingHeadcount,
         subordinateCount: node.subordinateCount,
         memberCount: node.memberCount,
         memberNames: node.memberNames,
         childCount: node.childCount,
         sortOrder: node.sortOrder,
         isViewerDepartment: viewerIn.has(node.id),
-        deals: withMoney ? rolled.deals : null,
-        revenue: withMoney ? toMoneyDto(money(rolled.revenueMinor, currency)) : null,
         inScope,
         children: kids,
       }
@@ -1150,14 +1115,8 @@ export class InsightsService {
    * also the only part of this screen that is per-selection, which is exactly
    * the split that keeps the chart's own answer cacheable.
    */
-  async departmentRoster(
-    departmentId: string,
-    period: Period,
-    currency: string,
-    options: StructureOptions = {},
-  ): Promise<DepartmentMemberDto[]> {
-    const withMoney = options.withMoney !== false
-    const rows = await this.repository.departmentRoster(departmentId, period)
+  async departmentRoster(departmentId: string): Promise<DepartmentMemberDto[]> {
+    const rows = await this.repository.departmentRoster(departmentId)
 
     return rows.map((r) => ({
       id: r.id,
@@ -1166,8 +1125,6 @@ export class InsightsService {
       isActive: r.isActive,
       isPrimary: r.isPrimary,
       isHead: r.isHead,
-      deals: withMoney ? r.deals : null,
-      revenue: withMoney ? toMoneyDto(money(r.revenueMinor, currency)) : null,
     }))
   }
 }

@@ -39,12 +39,43 @@ const bare = SQL.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '')
 describe('structure SQL', () => {
   it('builds one statement with every CTE the tree needs', () => {
     const chain = [...SQL.matchAll(/(\w+) AS(?: MATERIALIZED)? \(/g)].map((m) => m[1])
-    expect(chain).toEqual(['active', 'walk', 'members', 'subtree', 'kids', 'people', 'sales'])
+    expect(chain).toEqual(['walk', 'members', 'subtree', 'kids', 'people'])
   })
 
-  it('binds both window parameters', () => {
-    expect(SQL).toContain('$1')
-    expect(SQL).toContain('$2')
+  /**
+   * NO PARAMETERS, AND NO "deal" — the two halves of the same fact.
+   *
+   * This statement used to carry an `active` CTE (which fed a period-scoped
+   * working_headcount) and a `sales` CTE (the card's revenue). Together they
+   * were the only readers of the deal table and the only users of $1/$2, and
+   * measured at 3.4 of the query's 3.5 seconds — on the single vCPU that
+   * answers every other screen, for a page every seller is meant to open.
+   *
+   * They went with the screen's money and its reporting window. A `$1`
+   * reappearing here means somebody has made «who reports to whom» a question
+   * about a date again; a `"deal"` means the page is stating money in a second
+   * place, which is what moving it to Boshqaruv markazi was meant to stop.
+   */
+  it('binds no window parameters and never touches the deal table', () => {
+    expect(SQL).not.toContain('$1')
+    expect(SQL).not.toContain('$2')
+    // `\bdeal\b` and not `"deal"`: the table is all-lowercase, so an unquoted
+    // `JOIN deal d` is valid Postgres and would have slipped a quoted check.
+    expect(bare).not.toMatch(/\bdeal\b/)
+    expect(bare).not.toContain('closedAt')
+    expect(bare).not.toContain('countsAsRevenue')
+  })
+
+  /**
+   * The three tables that are left, and nothing else — the CTEs are named
+   * beside them, so the allowlist is the whole statement's FROM/JOIN targets
+   * with quotes optional, for the same reason as above.
+   */
+  it('reads only the roster and the tree', () => {
+    const CTES = new Set(['walk', 'members', 'subtree', 'kids', 'people'])
+    const targets = [...bare.matchAll(/(?:FROM|JOIN)\s+"?(\w+)"?/g)].map((m) => m[1]!)
+    const tables = [...new Set(targets.filter((t) => !CTES.has(t)))]
+    expect(tables.sort()).toEqual(['department', 'department_member', 'employee'])
   })
 
   /**
@@ -62,9 +93,20 @@ describe('structure SQL', () => {
     const membersCte = bare.slice(bare.indexOf('members AS ('), bare.indexOf('subtree AS ('))
     expect(membersCte).toContain('"department_member"')
     expect(membersCte).toContain('m."departmentId" AS dep_id')
-    // …while the analytics CTE beside it still keys off the primary unit, or
-    // a two-unit person's revenue would be counted into both branches.
-    const peopleCte = bare.slice(bare.indexOf('people AS ('), bare.indexOf('sales AS ('))
+    /*
+      …while the headcount CTE beside it still keys off the PRIMARY unit. The
+      two answer different questions and the screen prints both: «xodim» is who
+      the portal lists here, «Oʻzida» is who this dashboard credits here. Swap
+      them and five of the twenty cards are quietly wrong in a way no error
+      reports — which is why the CTEs are pinned by which table each reads.
+    */
+    const peopleCte = bare.slice(
+      bare.indexOf('people AS ('),
+      // Its own last line. `people` is now the final CTE, so slicing to the end
+      // would sweep in the outer SELECT — whose `head_is_member` EXISTS reads
+      // department_member for a different and correct reason.
+      bare.indexOf('GROUP BY e."departmentId"'),
+    )
     expect(peopleCte).toContain('e."departmentId"')
     expect(peopleCte).not.toContain('department_member')
   })
@@ -155,16 +197,16 @@ describe('structure SQL', () => {
   })
 
   /**
-   * The money half is unchanged and must stay that way.
+   * RECURSIVE SURVIVED THE CTE IT WAS WRITTEN BESIDE.
    *
-   * These two conditions are the leading columns of
-   * deal_countsAsRevenue_status_closedAt_idx. Left in an aggregate FILTER they
-   * are unbound at scan time: Postgres walked the whole index and heap-fetched
-   * 28 449 rows to keep 3 890, and the query went from 992 ms to 3 527 ms.
+   * `WITH RECURSIVE active AS (…), walk AS (…)` declared the keyword on the
+   * whole list, so deleting `active` — the first member — is exactly the edit
+   * that takes `RECURSIVE` with it. The result is not a wrong number: `walk`
+   * fails with a relation-does-not-exist error naming itself, which reads like
+   * a typo rather than like a missing keyword, and the page simply 500s.
    */
-  it('keeps the revenue predicate in the WHERE, not in a FILTER', () => {
-    const sales = bare.slice(bare.indexOf('sales AS ('))
-    expect(sales).toMatch(/WHERE d\."countsAsRevenue" AND d\."status" = 'WON'/)
-    expect(sales).not.toMatch(/FILTER \(WHERE d\."countsAsRevenue"/)
+  it('still declares the recursion after the first CTE was deleted', () => {
+    expect(SQL).toMatch(/WITH RECURSIVE\s/)
+    expect(bare.indexOf('WITH RECURSIVE')).toBeLessThan(bare.indexOf('walk AS ('))
   })
 })

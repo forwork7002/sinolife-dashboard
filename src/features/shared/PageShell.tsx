@@ -91,10 +91,10 @@ export function PageShell({
   filters: enabled = {},
   accent,
   actions,
-  periodInHeader = false,
   stale = false,
   children,
   period = true,
+  fill = false,
 }: {
   title: string
   description?: string
@@ -117,16 +117,6 @@ export function PageShell({
   accent?: string
   actions?: ReactNode
   /**
-   * Put the reporting window on the TITLE ROW instead of in a row of its own.
-   *
-   * For a page whose one control is the window and whose content wants the
-   * vertical space: the org chart is the whole point of `/structure`, and a
-   * row holding four chips and nothing else pushed it 44px further down the
-   * screen for no information. Ignored when the page also has filters — those
-   * belong together in a row, and a title line carrying six controls is a
-   * toolbar pretending to be a heading.
-   */
-  periodInHeader?: boolean
   /**
    * True while the numbers on screen still belong to the PREVIOUS window.
    *
@@ -148,6 +138,31 @@ export function PageShell({
    * reader assumes it must be filtering something.
    */
   period?: boolean
+  /**
+   * Stretch the page body to the screen instead of to its own content.
+   *
+   * For a page whose ONE piece of content is an instrument rather than a
+   * document — today that is Kadrlar tuzilmasi's org chart, which is a canvas
+   * you pan and zoom, and every pixel it does not get is a card the reader has
+   * to drag into view. Same word and same mechanism as `ChartCard`'s `fill`,
+   * deliberately: this application has one name for "take the height that is
+   * there".
+   *
+   * WHY `h-full` IS ENOUGH, with no `calc(100dvh − header)` anywhere. The
+   * application is already exactly one viewport tall (`Shell`'s root sets
+   * `height: 100dvh; overflow: hidden`) and `main` is `min-h-0 flex-1`, which
+   * gives a flex item a DEFINITE main size — so a percentage height inside it
+   * resolves, against `main`'s own content box, which is the padded area this
+   * page is allowed to use. Nothing here has to know how tall the header is,
+   * and nothing breaks the day it changes.
+   *
+   * The one thing that would break it is a `height` appearing on
+   * `.page-container` in globals.css: that rule is unlayered and would beat the
+   * layered Tailwind utility (the file documents the same mechanism for
+   * `max-w-*`). `space-y-4` also has to go — margins cannot stretch a child —
+   * and `gap-4` on the flex column is the visually identical replacement.
+   */
+  fill?: boolean
 }) {
   const { filters, update, setPeriod, reset, activeCount } = useDashboardFilters()
   // Once per page: see the hook's own note on why it does not live in
@@ -160,13 +175,6 @@ export function PageShell({
     enabled.employees || enabled.departments || enabled.stages || enabled.products ||
     enabled.sources || enabled.search
 
-  /*
-    ONE control, two places, so the two cannot drift apart.
-
-    `inHeader` only takes effect on a page with no other filters — see the
-    prop. Everywhere else the window keeps its own row beside them.
-  */
-  const inHeader = periodInHeader && period && !anyFilter
   const periodControl = period ? (
     <PeriodFilter
       value={filters.preset}
@@ -189,7 +197,7 @@ export function PageShell({
       periodAware={period}
     >
       <div
-        className="page-container space-y-4"
+        className={`page-container ${fill ? 'flex h-full min-h-0 flex-col gap-4' : 'space-y-4'}`}
         style={{
           ...(accent ? ({ '--accent': accent } as React.CSSProperties) : undefined),
           // A dimmed page is data awaiting replacement; opacity is cheap to
@@ -213,7 +221,7 @@ export function PageShell({
           top of the page, not 20px into it. pointer-events-none because
           scenery must never intercept a click meant for the controls over it.
         */}
-        <div className="relative">
+        <div className={`relative ${fill ? 'shrink-0' : ''}`}>
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-x-0 -top-5 bottom-0 overflow-hidden lg:-top-6"
@@ -266,16 +274,7 @@ export function PageShell({
                   </p>
                 )}
               </div>
-              {/* On a window-only page the control rides the title line,
-                  right-aligned, and the row below it is not rendered at all. */}
-              {inHeader ? (
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  {periodControl}
-                  {actions}
-                </div>
-              ) : (
-                actions
-              )}
+              {actions}
             </header>
 
             {/*
@@ -296,7 +295,7 @@ export function PageShell({
               without the control would have no way to change its dates. The
               one page that has no window (`period={false}`) gets no row.
             */}
-            {(period || anyFilter) && !inHeader && (
+            {(period || anyFilter) && (
             <div className="flex flex-wrap items-center gap-2">
               {periodControl}
               {anyFilter && (
@@ -360,7 +359,11 @@ export function PageShell({
           </div>
         </div>
 
-        {children}
+        {/* The body takes what the header left, and its own children size
+            against it — hence `min-h-0`, without which the flex child refuses
+            to shrink below its content and the canvas grows the page instead
+            of fitting into it. */}
+        {fill ? <div className="min-h-0 flex-1">{children}</div> : children}
       </div>
     </Shell>
   )

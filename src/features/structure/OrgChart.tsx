@@ -18,8 +18,39 @@ import { OrgCard } from './OrgCard'
 import { DEFAULT_LAYOUT, type LayoutInput, layoutTree } from './orgLayout'
 
 const MIN_SCALE = 0.35
-const MAX_SCALE = 1.6
+/*
+  2, not 1.6. The canvas is the whole page now, so zooming in is how somebody
+  reads a card from across a desk or shows it on a meeting screen — and at 1.6
+  a 12.5px name is still 20px. Zooming OUT stops at 0.35 for the opposite
+  reason: below that the names are gone and the chart stops being one.
+*/
+const MAX_SCALE = 2
 const SCALE_STEP = 0.1
+
+/**
+ * How hard one wheel notch bites.
+ *
+ * A mouse notch is deltaY 100, so 100/700 is a factor of 0.87 — about a
+ * seventh of the scale per notch, which crosses the whole range in a dozen
+ * notches without overshooting the card the reader was aiming at. The
+ * exponential is what makes a trackpad's forty small deltas add up to the same
+ * gesture as a mouse's three big ones instead of slamming into a limit.
+ */
+const WHEEL_DIVISOR = 700
+
+/** How many search rows fit over the chart without becoming the chart. */
+const SEARCH_HIT_CAP = 12
+
+/** One row of the search answer: a person, or a unit. */
+interface SearchHit {
+  readonly key: string
+  /** The unit to select — a person's row selects the unit they sit in. */
+  readonly unitId: string
+  readonly label: string
+  readonly sub: string
+  /** Set on a person's row, so the panel can mark them. */
+  readonly person?: string
+}
 
 /**
  * The smallest scale FIT is allowed to choose on its own.
@@ -35,11 +66,16 @@ const SCALE_STEP = 0.1
 const FIT_FLOOR = 0.5
 
 /**
- * How far below the canvas top the first card starts when the chart is too big
- * to fit. The floating control row is 28px of button inside 4px of padding
- * inside a 12px inset, so anything less puts the root card under the search box.
+ * How far below the canvas top the first card may start.
+ *
+ * MEASURED, not assumed. It used to be the constant 68 — 28px of button inside
+ * 4px of padding inside a 12px inset — and the control row is no longer one
+ * row: an account linked to an employee gets a second line carrying its own
+ * chain of command, which put the top of the company behind the very strip
+ * describing it. The fallback is the old number, for the render before the row
+ * has been laid out.
  */
-const TOOLBAR_CLEARANCE = 68
+const TOOLBAR_FALLBACK = 68
 
 /**
  * The company as a chart, on a canvas you can move.
@@ -60,16 +96,17 @@ export function OrgChart({
   selectedId,
   onSelect,
   viewerDepartmentId,
-  height = '620px',
   panel,
 }: {
   roots: readonly StructureDto[]
   selectedId: string | null
-  onSelect: (id: string | null) => void
+  /**
+   * A unit was picked, and — when the search is what picked it — the person
+   * whose name matched, so the panel can mark their row.
+   */
+  onSelect: (id: string | null, personName?: string) => void
   /** Where «Meni topish» flies to. Null when the account is not linked. */
   viewerDepartmentId: string | null
-  /** Any CSS length. Reaches `.org-canvas` as `--org-canvas-h`. */
-  height?: string
   /**
    * The department panel, rendered INSIDE the canvas.
    *
@@ -83,6 +120,45 @@ export function OrgChart({
 }) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
+  const toolbarRef = useRef<HTMLDivElement>(null)
+
+  /** Whatever the floating row currently occupies, plus its own inset. */
+  const clearance = useCallback(
+    () => (toolbarRef.current?.offsetHeight ?? TOOLBAR_FALLBACK - 24) + 24,
+    [],
+  )
+
+  /*
+    THE SAME MEASUREMENT, PUBLISHED TO CSS.
+
+    The roster docks inside the canvas and has to start below the control row —
+    and that row is one line for most readers and two for anybody linked to an
+    employee, whose chain of command rides a second line. A constant `top` put
+    the panel over the very strip naming their manager. A custom property is
+    the only way the stylesheet can know a number only the layout has.
+
+    A ResizeObserver rather than a one-off read: the row wraps at narrow widths
+    and grows a line when a search runs, and neither of those re-renders this
+    component with the new height available.
+  */
+  useEffect(() => {
+    const bar = toolbarRef.current
+    const canvas = canvasRef.current
+    if (!bar || !canvas) return
+
+    const publish = () =>
+      canvas.style.setProperty('--org-toolbar-h', `${bar.offsetHeight}px`)
+    publish()
+
+    // jsdom has no ResizeObserver, and a component test that threw here would
+    // fail fifteen assertions about the tree over a measurement none of them
+    // makes. The one-off read above is what those tests get.
+    if (typeof ResizeObserver === 'undefined') return
+
+    const observer = new ResizeObserver(publish)
+    observer.observe(bar)
+    return () => observer.disconnect()
+  }, [])
 
   /** The live viewport. Written during a drag; never a render trigger. */
   const view = useRef({ x: 0, y: 0, scale: 1 })
@@ -106,10 +182,22 @@ export function OrgChart({
   */
   const [collapsed, setCollapsed] = useState<ReadonlySet<string> | null>(null)
   const [focusedId, setFocusedId] = useState<string | null>(null)
+  /**
+   * The card being LOOKED AT — under the pointer, or reached by the arrow keys.
+   *
+   * One state for both, because the chain highlight has to follow whichever
+   * the reader is using. Keyed on DOM focus alone it froze for a keyboard
+   * reader the moment anything was selected, and a selection is easy to
+   * acquire here and hard to shed. Cleared when the pointer leaves the card and
+   * when focus leaves the tree, so a stale peek cannot outrank a selection
+   * made from the panel's breadcrumb.
+   */
+  const [peekId, setPeekId] = useState<string | null>(null)
+  const [helpOpen, setHelpOpen] = useState(false)
 
   /** Derived, not seeded through an effect: no cascading render, and it is
    *  simply unused from the moment the reader folds anything themself. */
-  const defaultCollapsed = useMemo(() => {
+  const structuralDefault = useMemo(() => {
     const folded = new Set<string>()
     const walk = (nodes: readonly StructureDto[], depth: number) => {
       for (const n of nodes) {
@@ -133,27 +221,72 @@ export function OrgChart({
     come back the moment the box is cleared.
   */
   const term = query.trim().toLowerCase()
-  const matches = useMemo(() => {
-    if (!term) return null
-    const hit = new Set<string>()
-    for (const n of flat) {
-      /*
-        MEMBER NAMES ARE IN THE HAYSTACK, and they are the point.
 
-        This screen was asked for so the floor can see who works under whom,
-        and the first thing a seller types into it is their own name. Matching
-        only the unit and its head answered «topilmadi» over a dimmed company
-        while their row sat two clicks away in a panel — the one search result
-        the page exists to give them. The names ride the tree's own payload, so
-        this costs no request and no debounce.
+  /*
+    ONE PREDICATE FOR THE LIGHTS AND THE LIST.
+
+    The cards that light, the cards that dim, the count the live region
+    announces and the rows under the box are all derived from THIS list, so
+    they cannot disagree. They did: the highlighter matched a head's job title
+    and the list did not, so «menejer» dimmed the company, lit two cards, flew
+    to the first of them and printed «Topilmadi» underneath.
+
+    MEMBER NAMES ARE IN THE HAYSTACK, and they are the point. This screen was
+    asked for so the floor can see who works under whom, and the first thing a
+    seller types into it is their own name. Matching only the unit and its head
+    answered «topilmadi» over a dimmed company while their row sat two clicks
+    away in a panel — the one search result the page exists to give them. The
+    names ride the tree's own payload, so this costs no request.
+
+    Keyed by INDEX among the members, not by name: two people who genuinely
+    share a full name are two rows, which is the honest answer to a search for
+    that name, and two rows may not share a React key.
+  */
+  const hits = useMemo(() => {
+    if (!term) return [] as SearchHit[]
+    const rows: SearchHit[] = []
+    const has = (text: string | null | undefined) => (text ?? '').toLowerCase().includes(term)
+
+    for (const n of flat) {
+      if (has(n.name)) rows.push({ key: `u:${n.id}`, unitId: n.id, label: n.name, sub: 'boʻlim' })
+
+      /*
+        The head is usually one of the members too, and would then be listed
+        twice — but not always: a unit whose named head does not sit in it has
+        no membership row at all («Навоий»), and that person is exactly the one
+        somebody searching for a manager is looking for. A head matches by
+        name or by job title.
       */
-      const hay = [n.name, n.head?.name ?? '', n.head?.position ?? '', ...n.memberNames]
-        .join(' ')
-        .toLowerCase()
-      if (hay.includes(term)) hit.add(n.id)
+      if (n.head && !n.memberNames.includes(n.head.name) && (has(n.head.name) || has(n.head.position))) {
+        rows.push({
+          key: `h:${n.id}`,
+          unitId: n.id,
+          label: n.head.name,
+          sub: `${n.name} · rahbar`,
+          person: n.head.name,
+        })
+      }
+
+      n.memberNames.forEach((name, i) => {
+        const isHead = n.head?.name === name
+        if (!has(name) && !(isHead && has(n.head?.position))) return
+        rows.push({
+          key: `m:${n.id}:${i}`,
+          unitId: n.id,
+          label: name,
+          sub: isHead ? `${n.name} · rahbar` : n.name,
+          person: name,
+        })
+      })
     }
-    return hit
+    return rows
   }, [flat, term])
+
+  /** The units that lit — derived from the rows, never computed beside them. */
+  const matches = useMemo(
+    () => (term ? new Set(hits.map((h) => h.unitId)) : null),
+    [term, hits],
+  )
 
   const parentOf = useMemo(() => {
     const map = new Map<string, string | null>()
@@ -166,6 +299,110 @@ export function OrgChart({
     walk(roots, null)
     return map
   }, [roots])
+
+  /*
+    THE OPENING FOLD IS THE READER'S OWN BRANCH, ALREADY OPEN.
+
+    `structuralDefault` folds everything below the first level, which is right
+    for somebody who came to look at the organisation and wrong for the person
+    this screen was asked for: a seller's first frame was four root units, none
+    of them theirs, with the useful one behind a control in the corner they had
+    to notice first.
+
+    Derived rather than written into state by an effect, because an effect that
+    calls setState on the first paint is a second render of twenty cards before
+    anything is on screen — and because the fold this produces is not the
+    reader's decision, so «Hammasini yopish» must still return them to the
+    structural default and not to this.
+  */
+  const openingCollapsed = useMemo(() => {
+    if (!viewerDepartmentId) return structuralDefault
+    const open = new Set(structuralDefault)
+    let parent = parentOf.get(viewerDepartmentId) ?? null
+    while (parent) {
+      open.delete(parent)
+      parent = parentOf.get(parent) ?? null
+    }
+    return open
+  }, [structuralDefault, parentOf, viewerDepartmentId])
+
+  /*
+    THE SEARCH ANSWERS WITH NAMES, NOT WITH A COUNT.
+
+    Typing «malika» used to produce «3 ta» and one card silently centred:
+    nothing said WHICH Malika, and the second and third were unreachable. Each
+    row names the person and the unit they sit in, and clicking it selects that
+    unit, flies to its card and marks the row in the roster — which turns the
+    box from a highlighter into the company's directory.
+
+    Capped at twelve with the remainder counted out loud, because a term like
+    «a» matches most of a 290-name roster and a list that long would cover the
+    chart it is meant to point into.
+  */
+  const results = useMemo(
+    () => ({
+      rows: hits.slice(0, SEARCH_HIT_CAP),
+      more: Math.max(0, hits.length - SEARCH_HIT_CAP),
+    }),
+    [hits],
+  )
+
+  /*
+    WHOSE CHAIN IS LIT, in priority order.
+
+    The peek comes first, so the chain follows the pointer — or the arrow keys
+    — over a chart the reader has not committed to yet; a selection holds it
+    still once they have; and with nothing picked at all it falls back to the
+    READER'S OWN unit — so the first frame already answers «kim kimning qoʻl
+    ostida ishlayapti» for the person looking at it, without them touching
+    anything.
+  */
+  const chainEnd = peekId ?? selectedId ?? viewerDepartmentId
+
+  /*
+    THE CHAIN OF COMMAND, AS A SET OF IDS — the page's whole reason for being.
+
+    Everything from that card up to the company root. The cards on it are washed
+    and the connectors along it are lit, so the question is answered by the
+    drawing instead of by the reader tracing nineteen identical grey lines with
+    a finger.
+  */
+  const lineage = useMemo(() => {
+    const chain = new Set<string>()
+    let at: string | null = chainEnd
+    while (at) {
+      chain.add(at)
+      at = parentOf.get(at) ?? null
+    }
+    return chain
+  }, [chainEnd, parentOf])
+
+  /** The reader's own chain, root first — printed in words at the top. */
+  const yourChain = useMemo(() => {
+    if (!viewerDepartmentId) return [] as StructureDto[]
+    const up: StructureDto[] = []
+    let at: string | null = viewerDepartmentId
+    while (at) {
+      const node = byId.get(at)
+      if (node) up.unshift(node)
+      at = parentOf.get(at) ?? null
+    }
+    return up
+  }, [viewerDepartmentId, byId, parentOf])
+
+  /*
+    WHO THE READER ANSWERS TO — their unit's head, or the nearest one above it.
+
+    Not every unit has one. «Тошкент онлайн» names no `UF_HEAD` at all and
+    «Навоий» names somebody the portal does not list inside it, and in both
+    cases the card draws no head row — so a line that stopped at the reader's
+    own unit would tell a third of this floor «Rahbar tayinlanmagan», which is
+    true of the unit and useless to the person.
+  */
+  const yourManager = useMemo(
+    () => [...yourChain].reverse().find((n) => n.head)?.head ?? null,
+    [yourChain],
+  )
 
   /*
     WHAT MUST BE ON SCREEN WHATEVER THE READER HAS FOLDED.
@@ -181,7 +418,7 @@ export function OrgChart({
     and come back the moment the search is cleared or the panel is closed.
   */
   const effectiveCollapsed = useMemo(() => {
-    const base: ReadonlySet<string> = collapsed ?? defaultCollapsed
+    const base: ReadonlySet<string> = collapsed ?? openingCollapsed
     const reveal = [...(matches ?? []), ...(selectedId ? [selectedId] : [])]
     if (reveal.length === 0) return base
 
@@ -194,7 +431,7 @@ export function OrgChart({
       }
     }
     return new Set([...base].filter((id) => !open.has(id)))
-  }, [collapsed, defaultCollapsed, matches, parentOf, selectedId])
+  }, [collapsed, openingCollapsed, matches, parentOf, selectedId])
 
   const layout = useMemo(
     () => layoutTree(roots as readonly LayoutInput[], { ...DEFAULT_LAYOUT, collapsed: effectiveCollapsed }),
@@ -263,31 +500,16 @@ export function OrgChart({
     if (ideal < FIT_FLOOR) {
       const root = layout.nodes[0]
       const cx = root ? root.x + DEFAULT_LAYOUT.cardWidth / 2 : layout.width / 2
-      view.current = { x: vw / 2 - cx * scale, y: TOOLBAR_CLEARANCE, scale }
+      view.current = { x: vw / 2 - cx * scale, y: clearance(), scale }
       setScalePct(Math.round(scale * 100))
       applyTransform()
       return
     }
 
     centreOn(layout.width / 2, layout.height / 2, scale)
-  }, [layout.width, layout.height, layout.nodes, centreOn, applyTransform])
+  }, [layout.width, layout.height, layout.nodes, centreOn, applyTransform, clearance])
 
-  /*
-    FIT ONCE, ON THE FIRST TREE — AND NEVER AGAIN ON ITS OWN.
-
-    Re-fitting whenever the shape changed was the obvious version and it is the
-    wrong one: expanding «Тошкент онлайн» triples the chart's width, so the
-    answer to "show me this branch" was the whole company zoomed to 35% and the
-    branch smaller than it had been before the click. Expanding keeps the
-    reader's zoom and holds the card they clicked still (see `anchor` below);
-    «Sigʻdirish» is there for when they do want the whole thing back.
-  */
   const fitted = useRef(false)
-  useEffect(() => {
-    if (fitted.current || layout.width === 0) return
-    fitted.current = true
-    fit()
-  }, [layout.width, fit])
 
   /*
     Expanding a branch must not move the card that was clicked.
@@ -411,25 +633,78 @@ export function OrgChart({
   }
 
   /*
-    Wheel zoom is bound imperatively because it must be able to preventDefault.
+    A PLAIN WHEEL ZOOMS. It could not before, and the reason it can now is that
+    the canvas became the page.
 
-    React attaches wheel listeners as passive, so `onWheel` cannot stop the
-    page from scrolling underneath — a pinch on a trackpad would zoom the chart
-    AND scroll the dashboard. The `{ passive: false }` listener below is the
-    only way to own the gesture.
+    This used to return early unless ctrl or meta was held, because the canvas
+    was a card inside a scrolling `main` — a wheel that always called
+    preventDefault would have trapped the page around it, so only the pinch
+    gesture (which every trackpad sends as ctrl+wheel) was allowed to zoom.
+    The chart now fills the viewport and there is nothing behind it left to
+    scroll, so the gesture the client asked for is free to take: «sichqoncha
+    scroll orqali katta-kichik».
+
+    Bound imperatively because React attaches wheel listeners as PASSIVE, and a
+    passive listener cannot preventDefault at all.
+
+    THE HONEST COST: a Mac trackpad's two-finger scroll now zooms rather than
+    pans, because a trackpad sends a plain wheel for scrolling and ctrl+wheel
+    for pinching, and nothing in the event tells the two devices apart. This
+    dashboard is read on office PCs with mice, one behaviour is right, and the
+    trackpad's pan is a drag on the background — or Shift+wheel, below.
   */
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
     const onWheel = (event: WheelEvent) => {
-      // A plain wheel is a scroll and belongs to the page. Only the pinch
-      // gesture — which arrives as ctrl+wheel from every trackpad — zooms.
-      if (!event.ctrlKey && !event.metaKey) return
+      /*
+        THE ROSTER SCROLLS, AND ITS WHEEL IS NOT OURS.
+
+        `.org-panel` is docked INSIDE the canvas — that is what stops the chart
+        resizing when it opens — and its body is `overflow-y: auto`. Without
+        this the wheel over an eighteen-person roster zoomed the chart behind
+        it and the list simply would not move, with nothing on screen saying
+        why. Same guard, same idiom, as `onPointerDown`.
+      */
+      if ((event.target as HTMLElement).closest('.org-panel, .org-hits')) return
       event.preventDefault()
+
       const rect = canvas.getBoundingClientRect()
+
+      /*
+        deltaMode says what the number means — pixels, lines or pages — and
+        Firefox reports a mouse notch as three LINES. Both branches below need
+        the same normalisation; the sideways pan once forgot it and moved the
+        chart three pixels per notch, which on a tree four thousand units wide
+        is indistinguishable from nothing happening.
+      */
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 400 : 1
+
+      /*
+        Shift is what the wheel's old job becomes.
+
+        A wide tree is panned sideways far more than up and down, and a mouse
+        with one wheel has no other way to ask for it now that plain wheel is
+        the zoom.
+      */
+      if (event.shiftKey) {
+        view.current.x -= (event.deltaY || event.deltaX) * unit
+        applyTransform()
+        return
+      }
+
+      /*
+        SCALED BY HOW FAR THE WHEEL TURNED, not just which way.
+
+        A fixed step per event is right for a mouse notch and wrong for a
+        trackpad, which fires dozens of small deltas per flick and would cross
+        the whole zoom range in one gesture. The clamp keeps one violent flick
+        from jumping the chart across two scales at once.
+      */
+      const delta = Math.max(-240, Math.min(240, event.deltaY * unit))
       zoomAbout(
-        view.current.scale * (event.deltaY < 0 ? 1.08 : 1 / 1.08),
+        view.current.scale * Math.exp(-delta / WHEEL_DIVISOR),
         event.clientX - rect.left,
         event.clientY - rect.top,
       )
@@ -437,7 +712,7 @@ export function OrgChart({
 
     canvas.addEventListener('wheel', onWheel, { passive: false })
     return () => canvas.removeEventListener('wheel', onWheel)
-  }, [zoomAbout])
+  }, [zoomAbout, applyTransform])
 
   // --- Bringing a card into view -------------------------------------------
 
@@ -450,44 +725,157 @@ export function OrgChart({
     [positions, centreOn],
   )
 
+  /**
+   * Open the way to a card and put it in the middle of the screen.
+   *
+   * THE REVEAL WAITS FOR THE LAYOUT, IT DOES NOT GUESS AT A FRAME COUNT.
+   *
+   * This used to be a double `requestAnimationFrame` around `reveal(id)`, and
+   * `reveal` closes over the CURRENT `positions` map — the one from before the
+   * unfold, in which a card inside a folded branch does not exist at all. The
+   * first click therefore did nothing and the second one worked, which is
+   * exactly what a reader reports as "the button is broken".
+   *
+   * A card already on screen is centred straight away; one that has to be
+   * unfolded first is parked, and the layout effect above picks it up on the
+   * render where its position actually exists.
+   */
+  const bringIntoView = useCallback(
+    (id: string) => {
+      setCollapsed((prev) => {
+        const next = new Set(prev ?? openingCollapsed)
+        let parent = parentOf.get(id) ?? null
+        while (parent) {
+          next.delete(parent)
+          parent = parentOf.get(parent) ?? null
+        }
+        return next
+      })
+
+      if (positions.has(id)) reveal(id)
+      else pendingReveal.current = id
+    },
+    [openingCollapsed, parentOf, positions, reveal],
+  )
+
   const findMe = () => {
     if (!viewerDepartmentId) return
-    // Unfold everything above it first, or «Meni topish» centres on a card
-    // that is not currently drawn and the canvas lands on empty space.
-    setCollapsed((prev) => {
-      const next = new Set(prev ?? defaultCollapsed)
-      let parent = parentOf.get(viewerDepartmentId) ?? null
-      while (parent) {
-        next.delete(parent)
-        parent = parentOf.get(parent) ?? null
-      }
-      return next
-    })
     onSelect(viewerDepartmentId)
     setFocusedId(viewerDepartmentId)
+    bringIntoView(viewerDepartmentId)
+  }
+
+  /**
+   * A search row was picked: go to the unit, mark the person in it — and put
+   * the list away. The selection and the flight ARE the answer; left open, the
+   * twelve rows sat over the chart as twelve stale tab stops with the rest of
+   * the company still dimmed underneath them.
+   */
+  const openHit = (hit: SearchHit) => {
+    onSelect(hit.unitId, hit.person)
+    setFocusedId(hit.unitId)
+    bringIntoView(hit.unitId)
+    setQuery('')
+  }
+
+  /*
+    THE FIRST FRAME LANDS ON THE READER, NOT ON THE COMPANY.
+
+    Fitting the whole tree is the right opening for somebody who came to look at
+    the organisation. It is the wrong one for the person this screen was asked
+    for: a seller's first frame was four root units, none of them theirs, with
+    the useful view one click away on a 28px control in the far corner that they
+    had to discover. An account linked to an employee now opens unfolded to its
+    own unit, centred, with the SIZ badge on it and its chain to the root already
+    lit — the client's sentence answered before the reader does anything.
+
+    It does NOT select the unit. Selecting opens the roster panel over a third of
+    the chart and writes `?dep=` into an address the reader did not choose.
+
+    FIT ONCE, AND NEVER AGAIN ON ITS OWN. Re-fitting whenever the shape changed
+    was the obvious version and it is the wrong one: expanding «Тошкент онлайн»
+    triples the chart's width, so the answer to "show me this branch" was the
+    whole company zoomed to 35% and the branch smaller than before the click.
+    Expanding keeps the reader's zoom and holds the card they clicked still (see
+    `anchor` above); «Sigʻdirish» is there for when they do want the whole thing
+    back — which is also the way back from this opening frame.
+
+    Guarded on both `selectedId` and `term`: a pasted `?dep=` link and a search
+    are each somebody asking for a different card, and this must not fight them.
+  */
+  useEffect(() => {
+    if (fitted.current || layout.width === 0) return
+    fitted.current = true
 
     /*
-      THE REVEAL WAITS FOR THE LAYOUT, IT DOES NOT GUESS AT A FRAME COUNT.
-
-      This used to be a double `requestAnimationFrame` around `reveal(id)`, and
-      `reveal` closes over the CURRENT `positions` map — the one from before the
-      unfold, in which a card inside a folded branch does not exist at all. The
-      first click therefore did nothing and the second one worked, which is
-      exactly what a reader reports as "the button is broken".
-
-      A card already on screen is centred straight away; one that has to be
-      unfolded first is parked, and the layout effect below picks it up on the
-      render where its position actually exists.
+      The card is already PLACED — `openingCollapsed` unfolded the way to it
+      before this render — so all that is left is to move the viewport, which
+      is why nothing here changes the fold and no state is written.
     */
-    if (positions.has(viewerDepartmentId)) reveal(viewerDepartmentId)
-    else pendingReveal.current = viewerDepartmentId
-  }
+    const canvas = canvasRef.current
+    const own = viewerDepartmentId && !selectedId && !term ? viewerDepartmentId : null
+
+    /*
+      FIT THE CHAIN, NOT THE CARD — and not the company either.
+
+      Centring the reader's own unit was the obvious opening and it hides the
+      exact thing they came for: the card lands in the middle of the canvas and
+      everybody above them goes up behind the floating control row. Fitting the
+      whole company is the other obvious opening and it is the one this
+      replaces, because a seller's first frame was then four root units, none of
+      them theirs.
+
+      So the opening frame is the CHAIN's own bounding box — the company at the
+      top, the reader at the bottom, everyone between them in view. It has to be
+      the box and not just the height: the root sits over the middle of its
+      children, so a chain hanging off the leftmost branch is as wide as it is
+      tall and a phone showed the reader's card with the connector running off
+      the right edge to a root that was not on screen.
+
+      Scaled DOWN only, never up, and never below the same legibility floor
+      `fit` uses. If even that will not hold the chain, `y` slides up so the
+      reader's own card stays on screen — losing the top of the company rather
+      than losing them.
+    */
+    const chain = own
+      ? [...lineage].map((id) => positions.get(id)).filter((at) => at !== undefined)
+      : []
+
+    if (canvas && chain.length > 0) {
+      const { width: vw, height: vh } = canvas.getBoundingClientRect()
+      const top = clearance()
+
+      const left = Math.min(...chain.map((at) => at.x))
+      const right = Math.max(...chain.map((at) => at.x + DEFAULT_LAYOUT.cardWidth))
+      const bottom = Math.max(...chain.map((at) => at.y + DEFAULT_LAYOUT.cardHeight))
+      const width = right - left
+      const height = bottom - Math.min(...chain.map((at) => at.y))
+
+      const scale = Math.max(
+        FIT_FLOOR,
+        Math.min(1, (vw - 32) / width, (vh - top - 24) / height),
+      )
+
+      view.current = {
+        x: vw / 2 - (left + width / 2) * scale,
+        y: Math.min(top, vh - 24 - bottom * scale),
+        scale,
+      }
+      setScalePct(Math.round(scale * 100))
+      applyTransform()
+    } else {
+      fit()
+    }
+    // Deliberately once, on the first tree. The guards above are read at that
+    // moment only, which is why they are not dependencies.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout.width])
 
   const toggle = (id: string) => {
     const at = positions.get(id)
     if (at) anchor.current = { id, x: at.x, y: at.y }
     setCollapsed((prev) => {
-      const next = new Set(prev ?? defaultCollapsed)
+      const next = new Set(prev ?? openingCollapsed)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
@@ -530,6 +918,8 @@ export function OrgChart({
       if (!to) return
       event.preventDefault()
       setFocusedId(to)
+      // The arrow keys are the keyboard's pointer: the chain follows them.
+      setPeekId(to)
       reveal(to)
     }
 
@@ -619,7 +1009,7 @@ export function OrgChart({
     focusedId && positions.has(focusedId) ? focusedId : (layout.nodes[0]?.id ?? null)
 
   /** Nothing the default would have folded is folded — so the button folds. */
-  const allOpen = [...defaultCollapsed].every((id) => !effectiveCollapsed.has(id))
+  const allOpen = [...structuralDefault].every((id) => !effectiveCollapsed.has(id))
 
   const empty = layout.nodes.length === 0
 
@@ -627,21 +1017,109 @@ export function OrgChart({
     <div
       ref={canvasRef}
       className="org-canvas"
-      style={{ '--org-canvas-h': height } as React.CSSProperties}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endPan}
       onPointerCancel={endPan}
       onKeyDown={onKeyDown}
     >
+      {/*
+        THE SURFACE A FINGER PANS, and the only element that refuses the
+        browser its gestures.
+
+        `touch-action: none` has to live on the thing being dragged and not on
+        the canvas, because the property composes by INTERSECTION down the
+        tree: a descendant cannot opt back in. On the canvas it silently took
+        touch scrolling away from the two scrollers docked inside it — the
+        roster sheet and the result list — so a phone could open a unit of
+        eighteen and never reach the last eight. The stage carries the same
+        rule; the floating chrome and the panel keep the default.
+      */}
+      <div className="org-backdrop" aria-hidden="true" />
+
       {/* The control row the portal floats over its own canvas. */}
-      <div className="org-float org-float--top">
-        <div className="min-w-0 flex-1" style={{ maxWidth: 260 }}>
+      <div ref={toolbarRef} className="org-float org-float--top">
+        {/*
+          «MENI TOPISH» LEADS THE ROW, and it is the only filled button here.
+
+          It used to be a 28px ghost pill wedged between «−», «100 %» and «+» in
+          the bottom-left corner, where it read as a third zoom control. The
+          client's goal makes finding yourself THE task on this screen, so it
+          takes the first slot, the accent fill and the unit's name in its
+          tooltip. It is absent — not disabled — for an account with no linked
+          employee, because there is nowhere for it to fly to.
+        */}
+        {viewerDepartmentId && (
+          <button
+            type="button"
+            onClick={findMe}
+            className="focusable org-float-btn org-float-btn--primary"
+            title={
+              byId.get(viewerDepartmentId)
+                ? `${byId.get(viewerDepartmentId)!.name} — sizning boʻlimingiz`
+                : 'Sizning boʻlimingiz'
+            }
+          >
+            <PinGlyph />
+            Meni topish
+          </button>
+        )}
+
+        <div
+          className="org-search"
+          /*
+            Escape clears the search FIRST. The roster panel closes on Escape
+            from anywhere on the page, so without stopping it here a reader
+            trying to dismiss the result list lost the department they had
+            open and kept the list.
+          */
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape' || !query) return
+            event.stopPropagation()
+            setQuery('')
+          }}
+        >
           <SearchInput
             value={query}
             onChange={setQuery}
             placeholder="Boʻlim, rahbar yoki xodim…"
           />
+
+          {/*
+            The answer, under the box that asked for it.
+
+            Absolutely positioned so opening it never reflows the control row —
+            the row wraps on a phone, and a list that pushed the buttons down
+            would move the target out from under a finger already on its way.
+            It sits inside `.org-float`, so the canvas's own pan guard already
+            treats a drag in here as a drag on a control and not on the chart.
+          */}
+          {term.length > 0 && (
+            <div className="org-hits">
+              {results.rows.length === 0 ? (
+                <p className="org-hit-empty">Topilmadi</p>
+              ) : (
+                <>
+                  {results.rows.map((hit) => (
+                    <button
+                      key={hit.key}
+                      type="button"
+                      className="focusable org-hit"
+                      onClick={() => openHit(hit)}
+                    >
+                      <span className="org-hit-name">{hit.label}</span>
+                      <span className="org-hit-sub">{hit.sub}</span>
+                    </button>
+                  ))}
+                  {results.more > 0 && (
+                    <p className="org-hit-empty">
+                      va yana {formatNumber(results.more)} ta — qidiruvni aniqlashtiring
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/*
@@ -659,7 +1137,17 @@ export function OrgChart({
           aria-live="polite"
           style={{ minWidth: matches ? 78 : 0 }}
         >
-          {matches ? (matches.size === 0 ? 'topilmadi' : `${formatNumber(matches.size)} ta`) : ''}
+          {/*
+            THE ROWS, NOT THE UNITS. `matches` counts the cards that lit, and
+            the list beside it counts people — so a term matching one unit and
+            three of its people announced «1 ta» over four rows. This is the
+            same number the reader can see.
+          */}
+          {matches
+            ? results.rows.length === 0
+              ? 'topilmadi'
+              : `${formatNumber(results.rows.length + results.more)} ta`
+            : ''}
         </span>
 
         <div className="ml-auto flex items-center gap-1">
@@ -673,7 +1161,7 @@ export function OrgChart({
           */}
           <button
             type="button"
-            onClick={() => setCollapsed(allOpen ? defaultCollapsed : new Set())}
+            onClick={() => setCollapsed(allOpen ? structuralDefault : new Set())}
             className="focusable org-float-btn"
             title={
               allOpen
@@ -692,14 +1180,93 @@ export function OrgChart({
             Sigʻdirish
           </button>
         </div>
+
+        {/*
+          THE CLIENT'S SENTENCE, PRINTED — «kim kimning qoʻl ostida ishlaydi».
+
+          A second line of the same floating panel rather than a strip of its
+          own, so it cannot collide with the roster docked on the right or with
+          the zoom cluster at the bottom, and so it wraps with everything else on
+          a phone. `flex-basis: 100%` is what puts it on its own line.
+
+          It is the one affordance on this page that needs no interaction at
+          all: a seller who does not yet know the canvas is draggable still
+          reads their own chain of command on first paint. Every crumb selects
+          that unit, so it doubles as the way up the tree.
+        */}
+        {yourChain.length > 0 && (
+          <div className="org-you">
+            <span className="org-you-label">Siz</span>
+            <nav className="org-you-trail" aria-label="Sizning boʻlimingiz zanjiri">
+              {yourChain.map((step, i) => (
+                <span key={step.id} className="org-trail-step">
+                  {i > 0 && (
+                    <span className="org-trail-sep" aria-hidden="true">
+                      ›
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="focusable org-trail-link"
+                    data-own={i === yourChain.length - 1 || undefined}
+                    onClick={() => {
+                      onSelect(step.id)
+                      setFocusedId(step.id)
+                      bringIntoView(step.id)
+                    }}
+                  >
+                    {step.name}
+                  </button>
+                </span>
+              ))}
+            </nav>
+            {yourManager && (
+              <span className="org-you-boss">
+                Rahbaringiz: <strong>{yourManager.name}</strong>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Bottom-left, exactly where the source screen keeps it. */}
-      <div className="org-float org-float--zoom">
-        {viewerDepartmentId && (
-          <button type="button" onClick={findMe} className="focusable org-float-btn">
-            Meni topish
-          </button>
+      <div
+        className="org-float org-float--zoom"
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || !helpOpen) return
+          event.stopPropagation()
+          setHelpOpen(false)
+        }}
+      >
+        {/*
+          THE ONLY PLACE LEFT THAT CAN EXPLAIN THE CANVAS.
+
+          The instructions used to live in the card header's `hint` — «Kartani
+          bosing… Fonni sudrab suring, Ctrl bilan gʻildirak — masshtab» — and
+          that header is gone with the card, on a screen whose audience is
+          sellers who have never used a pannable canvas. Six lines, behind a
+          «?», rather than a permanent paragraph over the chart: the reader
+          needs it once.
+        */}
+        <button
+          type="button"
+          onClick={() => setHelpOpen((open) => !open)}
+          aria-expanded={helpOpen}
+          aria-controls="org-help-note"
+          aria-label="Qanday ishlatiladi"
+          className="focusable org-float-btn"
+        >
+          ?
+        </button>
+        {helpOpen && (
+          <div id="org-help-note" className="org-help" role="note">
+            <p><strong>Sudrab suring</strong> — fonni ushlab, chizmani suring.</p>
+            <p><strong>Gʻildirak</strong> — kattalashtirish va kichraytirish.</p>
+            <p><strong>Shift + gʻildirak</strong> — chapga-oʻngga surish.</p>
+            <p><strong>Kartani bosing</strong> — boʻlim xodimlari roʻyxati ochiladi.</p>
+            <p><strong>Yoʻnalish tugmalari</strong> — tuzilma boʻylab yurish.</p>
+            <p><strong>Sigʻdirish</strong> — butun kompaniyani ekranga sigʻdirish.</p>
+          </div>
         )}
         <button
           type="button"
@@ -731,12 +1298,21 @@ export function OrgChart({
           height={Math.max(1, layout.height)}
           aria-hidden="true"
         >
+          {/*
+            EVERY CONNECTOR ON THE CHAIN, not just the last hop.
+
+            `edge.to === selectedId` lit exactly one line — the reader was told
+            who their immediate parent was and left to trace the rest by eye
+            across nineteen identical grey connectors. Every edge of the chain
+            has its `to` inside `lineage`, so the mechanism generalises by one
+            word and the picture becomes the answer.
+          */}
           {layout.edges.map((edge) => (
             <path
               key={`${edge.from}->${edge.to}`}
               className="org-link"
               d={edge.d}
-              data-active={edge.to === selectedId || undefined}
+              data-active={lineage.has(edge.to) || undefined}
             />
           ))}
         </svg>
@@ -747,7 +1323,19 @@ export function OrgChart({
           treeitem — a screen reader would announce the zoom buttons as
           departments.
         */}
-        <div role="tree" aria-label="Kompaniya tuzilmasi">
+        <div
+          role="tree"
+          aria-label="Kompaniya tuzilmasi"
+          /*
+            A keyboard peek dies with the tree's focus. Without this, arrowing
+            onto a card and then clicking a crumb in the panel left the chain
+            lit on the card the keys had reached rather than on the unit the
+            crumb had just selected.
+          */
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPeekId(null)
+          }}
+        >
           {layout.nodes.map((placed) => {
             const node = byId.get(placed.id)
             if (!node) return null
@@ -784,6 +1372,21 @@ export function OrgChart({
                     onSelect(placed.id === selectedId ? null : placed.id)
                   }}
                   onToggle={() => toggle(placed.id)}
+                  /*
+                    THE WHOLE CHAIN, ITS END INCLUDED — it is a path, not a set
+                    of superiors. The picked card wears `selected` on top of it,
+                    which wins by source order in globals.css.
+
+                    `onPointerEnter` and not `mousemove`: one event per card
+                    crossed rather than sixty a second, and guarded on a live
+                    drag so panning the canvas does not repaint twenty cards
+                    every frame it passes under the cursor.
+                  */
+                  onChain={lineage.has(placed.id)}
+                  onHover={(over) => {
+                    if (drag.current) return
+                    setPeekId((prev) => (over ? placed.id : prev === placed.id ? null : prev))
+                  }}
                   index={siblings.findIndex((s) => s.id === placed.id) + 1}
                   total={siblings.length}
                   /*
@@ -819,4 +1422,19 @@ export function OrgChart({
 
 function flatten(nodes: readonly StructureDto[]): StructureDto[] {
   return nodes.flatMap((n) => [n, ...flatten(n.children)])
+}
+
+/** A map pin, so «Meni topish» reads as a place rather than a zoom step. */
+function PinGlyph() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none">
+      <path
+        d="M8 14.5s5-4.2 5-8a5 5 0 0 0-10 0c0 3.8 5 8 5 8Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <circle cx="8" cy="6.4" r="1.8" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  )
 }

@@ -315,10 +315,16 @@ inside it.
 **Source.** `department.get`, three levels deep: NEWGEN → region → ROP group,
 with `UF_HEAD` naming each head. 288 employees across 20 departments.
 
-Figures roll up — a department shows itself plus everything beneath it, which
-is what "how is Navoiy doing" means — while its own headcount is shown
+Headcounts roll up — a department shows itself plus everything beneath it,
+which is what "how big is Navoiy" means — while its own headcount is shown
 separately so a manager with a large tree and no direct reports is not mistaken
 for one running a team of forty.
+
+**No money and no reporting window, on the client's instruction** (September
+2026): money is stated on Boshqaruv markazi and nowhere else, and who reports to
+whom is a fact about today. The screen is the portal's own org chart drawn to
+fill the page, with the reader's own chain of command lit and printed, and both
+of its endpoints take no period at all.
 
 `timeman` is granted; today's present/absent roster is not built yet.
 

@@ -622,14 +622,6 @@ export interface StructureNode {
   /** Marked active in Bitrix24. */
   readonly activeHeadcount: number
   /**
-   * Active AND produced something this period — a won revenue deal.
-   *
-   * The difference between this and `activeHeadcount` is the answer to "who is
-   * here and who is not": people the roster says are working and the data says
-   * are silent.
-   */
-  readonly workingHeadcount: number
-  /**
    * Active people the PORTAL lists in this unit — its own `UF_DEPARTMENT`
    * membership, which is many-to-many. Larger than `activeHeadcount` wherever
    * somebody's second unit is this one. See the DepartmentMember model.
@@ -657,8 +649,6 @@ export interface StructureNode {
   /** Direct child units. The card's footer prints this or says there are none. */
   readonly childCount: number
   readonly sortOrder: number
-  readonly deals: number
-  readonly revenueMinor: bigint
 }
 
 /** One person on a department's roster, for the side panel. */
@@ -670,8 +660,6 @@ export interface DepartmentMemberRow {
   /** False when this unit is their SECOND department. */
   readonly isPrimary: boolean
   readonly isHead: boolean
-  readonly deals: number
-  readonly revenueMinor: bigint
 }
 
 export class InsightsRepository {
@@ -3867,46 +3855,34 @@ export class InsightsRepository {
    * screen, and the only way to pin them without a database is to assert on
    * the built string. See tests/http/structureSql.test.ts.
    *
-   * $1 and $2 are the reporting window.
+   * It binds NOTHING. The two parameters it used to take were the reporting
+   * window, and the only CTEs that read them are gone — see the note at the
+   * top of the statement.
    */
   private static structureSql(): string {
     return `
       /*
-        Two independent aggregates joined on the department, NOT one query with
-        both a per-employee LATERAL and a deal join.
-        
-        That earlier shape took 52 seconds and was cancelled by the statement
-        timeout — the page simply never loaded. The reason is a fan-out: the
-        deal join multiplies each employee row by their deal count, and the
-        correlated subqueries then ran once per multiplied row, 24,367 index
-        searches deep. Aggregating each side to one row per department first
-        means every table is touched exactly once.
-      */
-      /*
-        Asked of the ROSTER, not of the call log.
+        NOTHING IN HERE TOUCHES "deal", AND THAT IS THE POINT.
 
-        This used to union two DISTINCTs, which made Postgres materialise
-        every call row in the window and de-duplicate it — 281 818 of
-        call_record's 299 141 rows, correctly seq-scanned because 94% of the
-        table matches, to learn which of 289 employees did something. Anchored
-        on employee instead, it is 289 index-only probes that stop at the
-        first hit. Measured: 800-1 800 ms against 93-158 ms, same 146 ids.
+        This statement used to carry two more CTEs — an «active» roster over
+        won deals, feeding a working_headcount column, and a «sales» aggregate
+        feeding the card's revenue. Measured together they were 3.4 of the
+        query's 3.5 seconds, on the single vCPU that answers every other screen
+        too, for a page every seller on the floor is meant to open.
+
+        Both are gone because the screen no longer prints either: money on this
+        dashboard lives on Boshqaruv markazi, and a period-scoped headcount has
+        no meaning on a page that deliberately carries no reporting window. What
+        is left reads "department", "department_member" and "employee" — three
+        small tables, no date bound, and no parameters at all.
+
+        Aggregate per department FIRST, one row each, then join. The shape
+        before that took 52 seconds and was cancelled by the statement timeout:
+        a deal join multiplied every employee row by their deal count and the
+        correlated subqueries ran once per multiplied row, 24 367 index
+        searches deep. The rule outlives the deal join that forced it.
       */
-      WITH RECURSIVE active AS (
-        SELECT e."id" AS id
-          FROM "employee" e
-         WHERE EXISTS (
-                 SELECT 1 FROM "call_record" c
-                  WHERE c."employeeId" = e."id"
-                    AND c."startedAt" >= $1 AND c."startedAt" < $2
-               )
-            OR EXISTS (
-                 SELECT 1 FROM "deal" d
-                  WHERE d."employeeId" = e."id"
-                    AND d."countsAsRevenue" AND d."status" = 'WON'
-                    AND d."closedAt" >= $1 AND d."closedAt" < $2
-               )
-      ),
+      WITH RECURSIVE
       /*
         Every (ancestor, descendant) pair, so a unit's subtree is one join away.
 
@@ -4005,40 +3981,22 @@ export class InsightsRepository {
          WHERE c."parentId" IS NOT NULL
          GROUP BY c."parentId"
       ),
+      /*
+        THE PRIMARY UNIT, deliberately — this is the only count that still is.
+
+        «members» above reads the join table, because the card's «xodim» figure
+        is the portal's membership and a person in two units is drawn on both
+        cards. This one is the roster as this dashboard credits it: one person,
+        one unit. The two are different numbers on five of the twenty cards and
+        the screen prints both.
+      */
       people AS (
         SELECT
           e."departmentId" AS dep_id,
           count(*)::bigint AS headcount,
-          count(*) FILTER (WHERE e."isActive")::bigint AS active_headcount,
-          -- On the roster, marked active, and produced something. The gap
-          -- between this and active_headcount is "who is here and who is not".
-          count(*) FILTER (WHERE e."isActive" AND a.id IS NOT NULL)::bigint AS working_headcount
+          count(*) FILTER (WHERE e."isActive")::bigint AS active_headcount
         FROM "employee" e
-        LEFT JOIN active a ON a.id = e."id"
         WHERE e."departmentId" IS NOT NULL
-        GROUP BY e."departmentId"
-      ),
-      /*
-        The two conditions belong in the WHERE, not in the FILTER.
-
-        They are the leading columns of deal_countsAsRevenue_status_closedAt_idx.
-        Left in the aggregate FILTER they are unbound at scan time, so Postgres
-        walked the whole index and heap-fetched 28 449 rows to keep 3 890.
-        Moving them changes no answer — a department with no won deals still
-        arrives through the LEFT JOIN below and is COALESCEd to zero, which was
-        checked column by column across all 20 departments. Measured on the
-        whole query: 3 527 ms against 992 ms.
-      */
-      sales AS (
-        SELECT
-          e."departmentId" AS dep_id,
-          count(d."id")::bigint AS deals,
-          sum(d."amountMinor")::text AS revenue
-        FROM "deal" d
-        JOIN "employee" e ON e."id" = d."employeeId"
-        WHERE d."countsAsRevenue" AND d."status" = 'WON'
-          AND d."closedAt" >= $1 AND d."closedAt" < $2
-          AND e."departmentId" IS NOT NULL
         GROUP BY e."departmentId"
       )
       SELECT
@@ -4066,7 +4024,6 @@ export class InsightsRepository {
         ) AS head_is_member,
         COALESCE(p.headcount, 0)::bigint AS headcount,
         COALESCE(p.active_headcount, 0)::bigint AS active_headcount,
-        COALESCE(p.working_headcount, 0)::bigint AS working_headcount,
         COALESCE(m.member_count, 0)::bigint AS member_count,
         COALESCE(m.member_names, ARRAY[]::text[]) AS member_names,
         -- «Подчинённые: N сотрудников» on the portal's own card: its active
@@ -4077,13 +4034,10 @@ export class InsightsRepository {
           AS subordinate_count,
         COALESCE(t.head_manages_count, 0)::bigint AS head_manages_count,
         COALESCE(k.child_count, 0)::bigint AS child_count,
-        dep."sortOrder" AS sort_order,
-        COALESCE(s.deals, 0)::bigint AS deals,
-        s.revenue AS revenue
+        dep."sortOrder" AS sort_order
       FROM "department" dep
       LEFT JOIN "employee" head ON head."id" = dep."headId"
       LEFT JOIN people p ON p.dep_id = dep."id"
-      LEFT JOIN sales s ON s.dep_id = dep."id"
       LEFT JOIN members m ON m.dep_id = dep."id"
       LEFT JOIN subtree t ON t.dep_id = dep."id"
       LEFT JOIN kids k ON k.dep_id = dep."id"
@@ -4098,7 +4052,16 @@ export class InsightsRepository {
       ORDER BY dep."sortOrder", dep."name"
     `
   }
-  async structure(period: Period): Promise<StructureNode[]> {
+  /**
+   * NO ARGUMENTS, AND THAT IS THE CONTRACT.
+   *
+   * Who reports to whom is a fact about today. It was period-scoped only
+   * because the card once printed the unit's money and the table a
+   * period-scoped «Ishlagan» count; both are gone from the screen, so a window
+   * here would be a parameter that changes no answer and a cache key that
+   * splits one into several.
+   */
+  async structure(): Promise<StructureNode[]> {
     const rows = await this.prisma.$queryRawUnsafe<
       {
         id: string
@@ -4110,21 +4073,14 @@ export class InsightsRepository {
         head_is_member: boolean
         headcount: bigint
         active_headcount: bigint
-        working_headcount: bigint
         member_count: bigint
         member_names: string[]
         subordinate_count: bigint
         head_manages_count: bigint
         child_count: bigint
         sort_order: number
-        deals: bigint
-        revenue: MoneyText
       }[]
-    >(
-      InsightsRepository.structureSql(),
-      period.start,
-      period.end,
-    )
+    >(InsightsRepository.structureSql())
 
     return rows.map((r) => ({
       id: r.id,
@@ -4136,15 +4092,12 @@ export class InsightsRepository {
       headIsMember: r.head_is_member,
       headcount: int(r.headcount),
       activeHeadcount: int(r.active_headcount),
-      workingHeadcount: int(r.working_headcount),
       memberCount: int(r.member_count),
       memberNames: r.member_names ?? [],
       subordinateCount: int(r.subordinate_count),
       headManagesCount: int(r.head_manages_count),
       childCount: int(r.child_count),
       sortOrder: Number(r.sort_order),
-      deals: int(r.deals),
-      revenueMinor: money(r.revenue),
     }))
   }
 
@@ -4174,17 +4127,17 @@ export class InsightsRepository {
    * numbers are credited here so a reader can tell a borrowed operator from an
    * owned one.
    *
-   * Money is the person's own, on the same window and the same basis as every
-   * other figure on this page — closed revenue, credited by `employeeId`. A
-   * person listed in their SECOND unit still shows their own money, because it
-   * is theirs; it is simply not counted into this unit's total, which is what
-   * `isPrimary` is there to explain.
+   * NO MONEY AND NO WINDOW. The panel used to carry each person's closed
+   * revenue over the page's reporting window, through a LATERAL over `deal`
+   * once per member. This dashboard now states money in one place — Boshqaruv
+   * markazi — so the roster is a roster: who the portal lists here, who leads
+   * them, and who is credited here rather than borrowed from another unit.
    *
    * Inactive people are returned and marked rather than dropped: a unit reading
    * «13 xodim» over a list of nine is the kind of gap that costs an afternoon,
    * and the count above them is of the ACTIVE ones.
    */
-  async departmentRoster(departmentId: string, period: Period): Promise<DepartmentMemberRow[]> {
+  async departmentRoster(departmentId: string): Promise<DepartmentMemberRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<
       {
         id: string
@@ -4193,8 +4146,6 @@ export class InsightsRepository {
         is_active: boolean
         is_primary: boolean
         is_head: boolean
-        deals: bigint
-        revenue: MoneyText
       }[]
     >(
       `
@@ -4204,29 +4155,10 @@ export class InsightsRepository {
         e."position",
         e."isActive" AS is_active,
         m."isPrimary" AS is_primary,
-        (dep."headId" = e."id") AS is_head,
-        COALESCE(s.deals, 0)::bigint AS deals,
-        s.revenue AS revenue
+        (dep."headId" = e."id") AS is_head
       FROM "department_member" m
       JOIN "employee" e ON e."id" = m."employeeId"
       JOIN "department" dep ON dep."id" = m."departmentId"
-      /*
-        LATERAL rather than a join on "deal".
-
-        Joining the deal table here multiplies the roster row by that person's
-        deal count and every column beside it has to be de-duplicated back out.
-        The subquery runs once per person — a unit holds at most eighteen — and
-        rides deal_countsAsRevenue_status_closedAt_idx with its leading columns
-        bound, which is the same shape the structure() query was rewritten into
-        when its earlier fan-out took 52 seconds.
-      */
-      LEFT JOIN LATERAL (
-        SELECT count(*)::bigint AS deals, sum(d."amountMinor")::text AS revenue
-          FROM "deal" d
-         WHERE d."countsAsRevenue" AND d."status" = 'WON'
-           AND d."closedAt" >= $2 AND d."closedAt" < $3
-           AND d."employeeId" = e."id"
-      ) s ON true
       WHERE m."departmentId" = $1
       -- The head first, then everyone still here, then the deactivated. A
       -- roster sorted by name alone buries the one person the reader opened
@@ -4234,8 +4166,6 @@ export class InsightsRepository {
       ORDER BY (dep."headId" = e."id") DESC, e."isActive" DESC, e."fullName"
       `,
       departmentId,
-      period.start,
-      period.end,
     )
 
     return rows.map((r) => ({
@@ -4245,8 +4175,6 @@ export class InsightsRepository {
       isActive: r.is_active,
       isPrimary: r.is_primary,
       isHead: r.is_head,
-      deals: int(r.deals),
-      revenueMinor: money(r.revenue),
     }))
   }
 }

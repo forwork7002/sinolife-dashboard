@@ -37,15 +37,12 @@ function unit(
     ownHeadcount: 1,
     headcount: 1,
     activeHeadcount: 1,
-    workingHeadcount: 0,
     subordinateCount: 1,
     memberCount: 1,
     memberNames: [name],
     childCount: children.length,
     sortOrder: 100,
     isViewerDepartment,
-    deals: null,
-    revenue: null,
     inScope: true,
     children,
   }
@@ -65,6 +62,15 @@ const TREE = [
 const ids = (root: HTMLElement) =>
   [...root.querySelectorAll('[data-card-id]')].map((e) => e.getAttribute('data-card-id'))
 
+/** `SearchInput` commits after 350 ms, so a search has to be waited out. */
+async function search(container: HTMLElement, text: string) {
+  const box = container.querySelector('input[type="search"]') as HTMLInputElement
+  await act(async () => {
+    fireEvent.change(box, { target: { value: text } })
+    await new Promise((r) => setTimeout(r, 400))
+  })
+}
+
 async function frames() {
   await act(async () => {
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))))
@@ -73,20 +79,60 @@ async function frames() {
 
 describe('org chart behaviour', () => {
   /**
+   * THE FIRST FRAME BELONGS TO THE READER, NOT TO THE COMPANY.
+   *
+   * The second level starts folded, so a seller's opening view was four root
+   * units, none of them theirs, with the useful one behind a control in the
+   * far corner that they had to notice first. An account linked to an employee
+   * now opens unfolded to its own unit — which is the client's whole request
+   * («har bir xodim kim kimning qoʻl ostida ishlayotganini tushunishi kerak»)
+   * answered before the reader does anything.
+   *
+   * It must NOT select it: selecting opens the roster over a third of the chart
+   * and writes `?dep=` into an address nobody asked for.
+   */
+  it('opens on the reader own unit, unfolded, without selecting it', async () => {
+    const onSelect = vi.fn()
+    const { container } = render(
+      <OrgChart roots={TREE} selectedId={null} onSelect={onSelect} viewerDepartmentId="me" />,
+    )
+    await frames()
+
+    expect(ids(container)).toContain('me')
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  /** An account with nowhere to fly to still gets the whole company. */
+  it('opens on the whole company when the account is not linked', async () => {
+    const { container } = render(
+      <OrgChart roots={TREE} selectedId={null} onSelect={() => {}} viewerDepartmentId={null} />,
+    )
+    await frames()
+
+    // The default fold: the root's children are drawn, their children are not.
+    expect(ids(container)).toContain('toshkent')
+    expect(ids(container)).not.toContain('me')
+  })
+
+  /**
    * «Meni topish» USED TO NEED TWO CLICKS.
    *
-   * The second level starts folded, so the reader's own unit is usually not in
-   * the layout at all when the button is pressed. The reveal read the positions
-   * map it had closed over — the one from before the unfold — found nothing,
-   * and did nothing; the second press worked because by then the branch was
-   * open. That is exactly what somebody reports as "the button is broken".
+   * The reveal read the positions map it had closed over — the one from before
+   * the unfold — found nothing, and did nothing; the second press worked
+   * because by then the branch was open. That is exactly what somebody reports
+   * as "the button is broken". The opening frame above unfolds the branch for a
+   * linked reader, so this folds it back by hand first, which is the state a
+   * reader who pressed «Hammasini yopish» is actually in.
    */
   it('finds the reader own unit inside a folded branch on the FIRST click', async () => {
     const { container } = render(
       <OrgChart roots={TREE} selectedId={null} onSelect={() => {}} viewerDepartmentId="me" />,
     )
+    await frames()
 
-    // Folded by default: the reader's unit is not drawn yet.
+    await act(async () => {
+      fireEvent.click(screen.getByText('Hammasini yopish'))
+    })
     expect(ids(container)).not.toContain('me')
 
     await act(async () => {
@@ -100,6 +146,62 @@ describe('org chart behaviour', () => {
   it('offers no find-me control to an account with no linked employee', () => {
     render(<OrgChart roots={TREE} selectedId={null} onSelect={() => {}} viewerDepartmentId={null} />)
     expect(screen.queryByText('Meni topish')).toBeNull()
+  })
+
+  /**
+   * THE SEARCH ANSWERS WITH NAMES, AND THE NAMES ARE REACHABLE.
+   *
+   * The box already matched member names — that was built deliberately, because
+   * the first thing a seller types here is their own. But the answer was «N ta»
+   * and one card silently centred, so if three units held a Malika the second
+   * and third could not be reached at all, and nothing ever said WHICH person
+   * had matched. Each row now selects that person's unit and hands the name up
+   * so the roster can mark their row.
+   */
+  it('lists the people a search matched, and picks one by name', async () => {
+    const onSelect = vi.fn()
+    /*
+      The person's name is NOT the unit's name here, on purpose. The fixture
+      helper names every member after its unit, which made the assertion below
+      unable to tell an implementation passing the member's name from one
+      passing the department's — and in production the roster compares that
+      string against `fullName`, so the wrong one marks nobody.
+    */
+    const tree = [
+      unit('root', 'NEWGEN', 0, [
+        { ...unit('other', 'Saida(ROP)', 1), memberNames: ['Ismoilov Aziz', 'Saida Karimova'] },
+      ]),
+    ]
+    const { container } = render(
+      <OrgChart roots={tree} selectedId={null} onSelect={onSelect} viewerDepartmentId={null} />,
+    )
+    await search(container, 'saida')
+
+    /*
+      Two rows for one term, and they are different answers: the unit whose
+      NAME matched, and the person whose name did. Only the second carries a
+      name upward — clicking a unit marks nobody in its roster.
+    */
+    const hits = [...container.querySelectorAll('.org-hit')] as HTMLElement[]
+    expect(hits).toHaveLength(2)
+    expect(hits[0]!.textContent).toContain('boʻlim')
+    expect(hits[1]!.textContent).toContain('Saida Karimova')
+    expect(hits[1]!.textContent).toContain('Saida(ROP)')
+
+    await act(async () => {
+      fireEvent.click(hits[1]!)
+    })
+    expect(onSelect).toHaveBeenCalledWith('other', 'Saida Karimova')
+    // The list has done its job and goes away with the query.
+    expect(container.querySelector('.org-hits')).toBeNull()
+  })
+
+  it('says so rather than showing an empty list when nothing matches', async () => {
+    const { container } = render(
+      <OrgChart roots={TREE} selectedId={null} onSelect={() => {}} viewerDepartmentId={null} />,
+    )
+    await search(container, 'zzzz')
+    expect(screen.getByText('Topilmadi')).toBeTruthy()
   })
 
   /**

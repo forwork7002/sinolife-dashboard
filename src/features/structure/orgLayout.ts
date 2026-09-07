@@ -68,10 +68,11 @@ export interface LayoutOptions {
  *
  * Every connector is drawn against these numbers, so a card that grew to fit a
  * long name or a second line of position would leave its own elbow hanging in
- * space. 150 is what the tallest content actually needs — title, a two-line
- * head row, the subordinate pill and the money strip, plus the footer — and it
- * was measured, not guessed: at 132 the footer of every childless card
- * overflowed its own border by eight pixels.
+ * space. 152 is what the tallest content actually needs — title, a two-line
+ * head row, the subordinate pill and the strip of member chips that replaced
+ * the money line, plus the footer — and it was measured, not guessed: at 132
+ * the footer of every childless card overflowed its own border by eight
+ * pixels.
  */
 export const DEFAULT_LAYOUT: Omit<LayoutOptions, 'collapsed'> = {
   cardWidth: 236,

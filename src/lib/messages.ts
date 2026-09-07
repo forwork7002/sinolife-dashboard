@@ -58,19 +58,22 @@ export const t = {
       lead: 'Har oy birinchi marta xarid qilgan mijozlarning qanchasi keyingi oylarda qaytgani — kogorta tahlili.',
     },
     /*
-      WHICH DATE THE WINDOW IS APPLIED TO, on the three screens that disagree.
+      WHICH DATE THE WINDOW IS APPLIED TO, on the screens that disagree.
 
-      "Tushum" is one word for two different measurements here. Logistics and
-      the dispatch points window on the day an order was TAKEN and then report
-      what became of it; the structure screen windows on the day a deal was
-      CLOSED. Both are right for their own question — a courier is judged on
-      the parcels handed to it, a department on the money it banked — but the
-      median order takes 25 days to travel between the two, so the same preset
-      gives the two screens genuinely different totals.
+      "Tushum" is one word for more than one measurement on this dashboard.
+      Logistics and the dispatch points window on the day an order was TAKEN
+      and then report what became of it; the screens that report money window on
+      the day a deal was CLOSED. Both are right for their own question — a
+      courier is judged on the parcels handed to it, a department on the money
+      it banked — but the median order takes 25 days to travel between the two,
+      so the same preset gives them genuinely different totals.
 
       A reader comparing them has no way to know that unless it is written
       down. `t.period.closedBasis` already says this beside the deltas that
       need it; these leads say it where a whole page needs it.
+
+      Kadrlar tuzilmasi used to be the third screen in this note and no longer
+      belongs to it at all: it reports no money and has no window.
     */
     logistics: {
       title: 'Logistika natijasi',
@@ -104,9 +107,18 @@ export const t = {
       title: 'Jamoa',
       lead: 'Kim qancha sotdi, kim qancha gaplashdi, kim qayerda turibdi.',
     },
+    /*
+      NO LEAD LINE HERE EITHER, and for a stronger reason than the confirmation
+      board's. The old one read «Boʻlimlar, rahbarlar va har bir boʻlimning
+      natijasi. Davr bitim YOPILGAN sana boʻyicha» — and both halves of that are
+      now false: the page reports no «natija» in soʻm (money on this dashboard
+      is stated on Boshqaruv markazi) and it has no «davr» at all. What is left
+      to say about the screen the chart says in its own controls, and the page
+      passes no description, so the line is not even reserved: on a canvas sized
+      to the viewport, 20px of held-open space is 20px of chart.
+    */
     structure: {
       title: 'Kadrlar tuzilmasi',
-      lead: 'Boʻlimlar, rahbarlar va har bir boʻlimning natijasi. Davr bitim YOPILGAN sana boʻyicha.',
     },
   },
 
