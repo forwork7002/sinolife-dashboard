@@ -2391,7 +2391,7 @@ p {
  * client's ask of 2026-09-07 — the screen lives on a TV on the sales floor,
  * shows the sellers their own places, and carries nothing that is not a rank.
  *
- * TWO LAYOUTS, ONE BREAKPOINT — AND THE BREAKPOINT IS 1600px, NOT lg.
+ * TWO LAYOUTS, ONE BREAKPOINT — AND THE BREAKPOINT IS 1280px, NOT lg.
  * Under it the columns stack and the page scrolls like any other. From it the
  * board takes the height the shell leaves it (`PageShell fill`) and each LIST
  * scrolls inside its own column — `min-height: 0` on every flex and grid
@@ -2400,16 +2400,24 @@ p {
  * either and the list grows to its rows and the page scrolls instead of the
  * column.
  *
- * 1600 IS MEASURED, NOT CHOSEN. Two columns beside a 240px rail leave each
- * one (vw − 240 − 32 − 16) / 2, and a seat is a third of that less 60px of
- * padding and gaps: 145px at 1280, 188px at 1536, 252px at 1920. The seat
- * carries a full-digit sum by design («126,950,000 soʻm» ≈ 134px, the chase
- * pill «🎯 Liderga +108,000,000» ≈ 160px, neither of which may wrap on a
- * screen read from across a room), so under about 1600 the three seats spill
- * out of their cards and into each other — 33px past the card edge at 1280,
- * measured. Stacked, the same seat is 344px wide at 1366. The television is
- * 1920 and gets the two columns; a laptop gets one column at a time and its
- * own scrollbar, which is what a laptop has.
+ * 1280 IS WHERE THE CLIENT'S ASK STOPS BEING POSSIBLE, and the two columns
+ * are the ask: «chap tarafda sotuvchilar, oʻng tomonda komandalar». So the
+ * board keeps them wherever three seats can be made to fit, and is measured
+ * rather than assumed. Two columns beside a 240px rail leave each one
+ * (vw − 240 − 32 − 16) / 2, and a seat is a third of that less 60px of
+ * padding and gaps: 145px at 1280, 159px at 1366, 188px at 1536, 252px at
+ * 1920. A seat carries a full-digit sum by design, and «126,950,000 soʻm» is
+ * 134px at the 17px house size — which does not fit 119px of card at 1280, so
+ * the seats spilled sideways into each other, 33px past the card edge,
+ * measured in a headless browser.
+ *
+ * THE FIX IS TYPE, NOT LAYOUT, because a television is not always 1920: a
+ * 720p panel reports 1280, and a floor manager who zooms the browser to read
+ * it from further away reports less than the panel does. Stacking the columns
+ * there would answer the client's own requirement with the wrong drawing, so
+ * between 1280 and 1599 the seat type steps down a notch and the two columns
+ * stay. Under 1280 — a tablet or a phone, never the TV — they stack and the
+ * page scrolls like any other screen.
  *
  * SIZED FROM THE VIEWPORT. A 1920px television is read from a desk away and
  * a 1366px laptop from arm's length, and one pixel size cannot serve both:
@@ -2446,7 +2454,7 @@ p {
  * both lists to nothing on a phone — the podium was there, the rows were a
  * two-pixel scroll box under it, and nothing errored.
  */
-@media (min-width: 1600px) {
+@media (min-width: 1280px) {
   /* The page's own column, so the viewport-height layout and the two-column
      one switch on ONE query rather than on a Tailwind `lg:` that no longer
      matches it. */
@@ -2522,6 +2530,29 @@ p {
     grid-column: 1;
   }
 }
+/*
+ * THE NARROW TWO-COLUMN BAND — 1280 to 1599, a 720p television or a zoomed
+ * one. The seats stay three across (see the block header) and the type steps
+ * down to fit the sum: 13.4px at 1280 puts «126,950,000 soʻm» at ~106px
+ * inside 119px of card, where the house 17px needed 134px.
+ *
+ * The list drops «Buyurtma» and «Konv.» over the same band. Its own columns
+ * are nowrap by necessity — a wrapped money figure is unreadable at a
+ * distance — so a table that does not fit gets a horizontal scrollbar, and a
+ * television has no pointer to move it: the right-hand columns would simply
+ * be gone with nothing saying so. Rank, name, FAKT 2 and FAKT 1 are what the
+ * floor reads; the other two are for the desk, which has the width for them.
+ */
+@media (min-width: 1280px) and (max-width: 1599px) {
+  .tv-col {
+    --tv-seat-name: clamp(12px, calc(0.95vw * var(--tv-seat-scale)), 16px);
+    --tv-seat-figure: clamp(13px, calc(1.05vw * var(--tv-seat-scale)), 18px);
+  }
+  .tv-col-optional {
+    display: none;
+  }
+}
+
 .tv-seat--2 { --tv-seat-scale: 0.9; }
 .tv-seat--3 { --tv-seat-scale: 0.82; }
 

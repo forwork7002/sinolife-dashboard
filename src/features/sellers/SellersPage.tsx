@@ -780,8 +780,13 @@ function BoardList({
             <Th>{noun}</Th>
             <Th align="right">FAKT 2 · yetkaz.</Th>
             <Th align="right">FAKT 1 · tasdiq.</Th>
-            <Th align="right">Buyurtma</Th>
-            <Th align="right">Konv.</Th>
+            {/* Dropped between 1280 and 1599 — see `.tv-col-optional`. */}
+            <Th align="right" optional>
+              Buyurtma
+            </Th>
+            <Th align="right" optional>
+              Konv.
+            </Th>
           </tr>
         </thead>
         <tbody>
@@ -847,7 +852,7 @@ function BoardList({
                     {formatFullUzs(entry.ordered)}
                   </span>
                 </td>
-                <td className="tabular text-right">
+                <td className="tv-col-optional tabular text-right">
                   <span className="tv-money" style={{ color: 'var(--ink-primary)' }}>
                     {formatNumber(entry.orders)}
                   </span>
@@ -857,7 +862,7 @@ function BoardList({
                     </span>
                   )}
                 </td>
-                <td className="tabular text-right">
+                <td className="tv-col-optional tabular text-right">
                   <span className="tv-money" style={{ color: 'var(--ink-secondary)' }}>
                     {entry.conversionPercent === null
                       ? NO_VALUE
@@ -873,9 +878,22 @@ function BoardList({
   )
 }
 
-function Th({ children, align = 'left' }: { children: ReactNode; align?: 'left' | 'right' }) {
+function Th({
+  children,
+  align = 'left',
+  optional = false,
+}: {
+  children: ReactNode
+  align?: 'left' | 'right'
+  /** Hidden in the narrow two-column band, with its column. */
+  optional?: boolean
+}) {
   return (
-    <th scope="col" className="eyebrow whitespace-nowrap" style={{ textAlign: align }}>
+    <th
+      scope="col"
+      className={`eyebrow whitespace-nowrap${optional ? ' tv-col-optional' : ''}`}
+      style={{ textAlign: align }}
+    >
       {children}
     </th>
   )

@@ -6,12 +6,13 @@ import { describe, expect, it } from 'vitest'
  * THE BOARD'S TWO LAYOUTS SWITCH ON ONE WIDTH, AND NOTHING IN TYPESCRIPT CAN
  * SEE IT.
  *
- * `/sellers` is two columns of three seats on the floor's television and one
- * column at a time on anything smaller, because a seat is a third of half the
- * content width and the figures in it are full-digit sums that may not wrap:
- * 145px per seat at 1280 against a «🎯 Liderga +108,000,000» pill of about
- * 160px, which left the card sideways and overlapped the next seat. Stacked,
- * the same seat is 344px at 1366.
+ * `/sellers` is two columns of three seats from 1280px — a 720p television or
+ * a zoomed one, the narrowest width the client's «chap tarafda sotuvchilar,
+ * oʻng tomonda komandalar» can still be drawn at — and one column at a time
+ * below it. It holds there on TYPE: a seat is 145px at 1280 and the house
+ * 17px sum «126,950,000 soʻm» needs 134px inside 119px of card, so the seat
+ * type steps down over the narrow band and the two least-read table columns
+ * are dropped rather than pushed behind a scrollbar no television can move.
  *
  * TWO RULES LIVE ON THAT ONE QUERY and they are in different files' idioms —
  * the grid in `globals.css`, the page's own viewport-height column reached
@@ -43,12 +44,27 @@ function queryFor(selector: string): number | null {
 }
 
 describe('the television board switches layout on one width', () => {
-  it('turns the board into two columns only from 1600px', () => {
-    expect(queryFor('.tv-board {\n    display: grid')).toBe(1600)
+  it('turns the board into two columns from 1280px', () => {
+    expect(queryFor('.tv-board {\n    display: grid')).toBe(1280)
   })
 
   it('gives the page its viewport-height column on the same query', () => {
-    expect(queryFor('.tv-board-shell {')).toBe(1600)
+    expect(queryFor('.tv-board-shell {')).toBe(1280)
+  })
+
+  /*
+    The band exists so the two columns survive a 1280px television. If its
+    upper bound ever drifted past the width where the seat type returns to
+    the house size, the seats would spill sideways again — silently, since
+    nothing clips them.
+  */
+  it('steps the seat type down over the narrow two-column band only', () => {
+    expect(css).toMatch(
+      /@media \(min-width: 1280px\) and \(max-width: 1599px\) \{[\s\S]*?--tv-seat-figure: clamp\(13px/,
+    )
+    expect(css).toMatch(
+      /@media \(min-width: 1280px\) and \(max-width: 1599px\) \{[\s\S]*?\.tv-col-optional \{\s*display: none;/,
+    )
   })
 
   it('keeps the seats stacked on a phone', () => {
