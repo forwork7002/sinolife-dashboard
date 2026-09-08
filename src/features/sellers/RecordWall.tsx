@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { useReducedMotion } from '@/lib/useReducedMotion'
@@ -8,27 +8,39 @@ import { type SellerRecordDto, type SellerRecordsDto, apiGet } from '@/lib/api'
 import { formatNumber, formatUzs } from '@/lib/format'
 
 /**
- * The record wall — one month's champion at a time, in the board's title line.
+ * The record wall — every month's best seller, crawling through the title line.
  *
- * WHY IT IS HERE AND NOT ON THE BOARD. The client asked for it in this strip
- * («shu yer qismida rekord deb turishi kerak»), and the strip is the one place
- * on this screen with room: the title sits left, the preset chips sit right,
- * and on the 1920px television the floor reads this on, the metre between them
- * is empty. Nothing below it can be given away — both columns are already
- * fighting for rows under their podiums.
+ * A TICKER, NOT A CARD THAT SWAPS. The first two drawings were a plaque
+ * showing one month at a time and turning every eight seconds. The client
+ * asked for the other thing outright — «alohida card bo'lib emas… huddi
+ * yangiliklarda aylanib turadiku… har bir oyda kim eng ko'p qilganligini
+ * ko'rib tursa bo'ladigan» — and a crawl really is the better instrument
+ * here. A card that flips shows ONE month and hides the rest behind a wait: a
+ * reader who wants August has to stand there until August comes round. A crawl
+ * carries the whole run continuously, so "how does this month compare" is
+ * answered on screen rather than eight seconds away. It is also a form a
+ * television audience already reads without being taught.
  *
- * IT TURNS, BECAUSE A TELEVISION HAS NO MOUSE. Same premise as
- * `useAutoScroll`: whatever is not on screen is never seen, and a wall that
- * showed only the newest month would be a wall of one. Eight seconds a card,
- * which is the pace a name stays legible from across a room without the strip
- * becoming the thing people watch instead of the board.
+ * NO BOX. The plaque's border and fill were what made it a separate object
+ * sitting in the header; the ceremony travels on the type instead — the medal
+ * glyph, the month in the podium's gold, a metal lozenge between entries. The
+ * strip belongs to the header now rather than being placed on top of it.
  *
- * REDUCED MOTION STOPS IT COMPLETELY and shows the newest record, which is the
- * one a reader would have picked. A strip that changed under someone who asked
- * the operating system for stillness is exactly what that preference is for,
- * and unlike the lists below it there is no scrollbar here to reach the rest
- * by hand — so this degrades to the single most useful card rather than to a
- * control nobody can use.
+ * SEAMLESS, WHICH IS WHY THE LIST IS RENDERED TWICE. The track holds two
+ * identical copies and slides exactly one copy's width before resetting, so
+ * the join lands on the frame the animation restarts and there is no visible
+ * jump. Any other loop — stepping, or running to the end and springing back —
+ * reads as a fault on a screen watched from across a room.
+ *
+ * THE PACE IS FIXED IN PIXELS, NOT IN SECONDS. A fixed duration would make the
+ * crawl faster every month the portal adds, because the same seconds would
+ * have to carry a longer track. The width is measured and the duration derived
+ * from it, so a name is legible for as long next year as it is today.
+ *
+ * REDUCED MOTION STOPS IT and hands back a strip the reader can scroll by
+ * hand. The months are all still there, which a merely frozen crawl would not
+ * be — it would show whichever entries happened to fit and hide the rest with
+ * no way to reach them.
  *
  * ITS OWN QUERY, ON ITS OWN CLOCK. `?include=records` is a second request
  * rather than a field on the board's payload: the wall spans every month since
@@ -39,8 +51,15 @@ import { formatNumber, formatUzs } from '@/lib/format'
  * `/users?include=heads` uses, and for the same reason).
  */
 
-/** How long one card holds the strip. */
-const TURN_MS = 8_000
+/**
+ * How fast the crawl travels, in CSS pixels per second.
+ *
+ * Measured against what it has to serve: a name staying readable to someone
+ * glancing up from a desk on the far side of the floor. Much above this and
+ * the eye is chasing the text; much below and the strip stops looking like it
+ * moves at all, which is worse than a static line because the reader waits.
+ */
+const PIXELS_PER_SECOND = 46
 
 export function RecordWall() {
   const reduced = useReducedMotion()
@@ -55,160 +74,119 @@ export function RecordWall() {
   })
 
   const months = records.data?.data.months ?? []
-  const [index, setIndex] = useState(0)
 
   /*
-    The turn is driven by an interval rather than by a CSS animation because
-    the number of cards is not known when the stylesheet is written, and it
-    stops dead when there is nothing to turn between — a one-card wall that
-    still ran a timer would re-render the strip every eight seconds forever.
+    OLDEST FIRST, unlike the payload.
+
+    The route answers newest first, which is right for a list read top-down. A
+    crawl is read left to right as time, so running it newest-first would walk
+    the reader backwards through the year.
   */
-  useEffect(() => {
-    if (reduced || months.length < 2) return
-    const id = setInterval(() => setIndex((i) => (i + 1) % months.length), TURN_MS)
-    return () => clearInterval(id)
-  }, [reduced, months.length])
+  const ordered = [...months].reverse()
+
+  const runRef = useRef<HTMLDivElement>(null)
+  const [travel, setTravel] = useState(0)
 
   /*
-    A wall that grew a month while the reader was on its last card would index
-    past the end for one frame. Clamping on render rather than in an effect
-    keeps that frame from ever being drawn.
+    Measured in a LAYOUT effect: the duration is a style, and setting it after
+    paint would show one frame at the wrong speed every time the list changes.
+    A ResizeObserver rather than a one-off read, because the `--record-*` sizes
+    ramp with the viewport — the same months are a different number of pixels
+    on a laptop and on the television.
   */
-  const shown = months.length === 0 ? null : months[Math.min(index, months.length - 1)]!
+  useLayoutEffect(() => {
+    const el = runRef.current
+    if (!el) return
+    const measure = () => setTravel(el.scrollWidth)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [ordered.length, records.dataUpdatedAt])
 
   // Nothing to say yet, and nothing worth holding the line open for: the title
   // and the preset chips are the header's own content and neither moves.
-  if (!shown) return null
+  if (ordered.length === 0) return null
+
+  const seconds = travel > 0 ? travel / PIXELS_PER_SECOND : 0
+  const crawling = !reduced && seconds > 0
 
   return (
     <div
       className="record-wall min-w-0 flex-1"
-      // A live region would announce a new champion every eight seconds to a
-      // screen reader that never asked for one. The strip is decorative
-      // repetition of what the board below already says, so it is polite about
-      // the turn and honest about the content.
+      /*
+        A live region would announce a new champion to a screen reader every
+        time the crawl came round. The strip repeats what the board below
+        already says, so it stays quiet about the movement.
+      */
       aria-live="off"
+      aria-label="Har oyning eng yaxshi sotuvchisi"
     >
-      <div className="record-plaque mx-auto flex w-fit max-w-full min-w-0 items-center gap-3 pl-3.5 pr-14">
-        {/*
-          THE RANK, AS THE SEATS DRAW IT. Every row this strip can show is a
-          first place, so the numeral is a fact rather than an ornament — and
-          it is the podium's own move, which is most of what makes this read
-          as part of the screen instead of a box on top of it.
-        */}
-        <span className="record-ghost" aria-hidden="true">
-          1
-        </span>
-
-        {/*
-          The medal ring is the object the seats put their avatars in — a
-          conic sweep through lighter and darker cuts of one metal, which is
-          what reads as metallic without a literal hex per theme. Not
-          `--crowned`: that wider halo belongs to the champion of the window
-          the floor is actually reading, one screen down.
-        */}
-        <span
-          className="medal-ring shrink-0"
-          aria-hidden="true"
-          style={{ position: 'relative' }}
-        >
-          <span
-            className="flex items-center justify-center rounded-full"
-            style={{
-              width: 'calc(var(--record-name) * 1.72)',
-              height: 'calc(var(--record-name) * 1.72)',
-              background: 'var(--surface-raised)',
-              fontSize: 'calc(var(--record-name) * 0.86)',
-              lineHeight: 1,
-            }}
-          >
-            🏆
-          </span>
-        </span>
-
-        <div className="relative min-w-0">
-          <div className="flex items-center gap-2" style={{ lineHeight: 1.1 }}>
-            <span className="record-tag shrink-0">
-              {shown.running ? 'Yetakchi' : 'Rekord'}
-            </span>
-            <span
-              className="shrink-0"
-              style={{ color: 'var(--ink-muted)', fontSize: 'var(--record-label)' }}
-            >
-              {monthLabel(shown.month)}
-            </span>
-            {/*
-              The turn indicator, on the tag row rather than in the corner.
-              Beside the ghost numeral it crowded the one piece of the podium's
-              language this strip borrows; here it sits where the composition
-              already has room, and it is drawn in the METAL rather than the
-              page accent — one pink dot inside a gold object is the kind of
-              detail that makes a composition look assembled rather than
-              designed.
-            */}
-            {months.length > 1 && !reduced && (
-              <span className="flex shrink-0 items-center gap-1" aria-hidden="true">
-                {months.map((m, i) => (
-                  <span
-                    key={m.month}
-                    className="block rounded-full transition-opacity"
-                    style={{
-                      width: 3,
-                      height: 3,
-                      background: 'var(--metal)',
-                      opacity: i === Math.min(index, months.length - 1) ? 1 : 0.32,
-                    }}
-                  />
-                ))}
-              </span>
-            )}
-          </div>
-
-          <div
-            className="truncate font-semibold"
-            style={{
-              color: 'var(--ink-primary)',
-              fontSize: 'var(--record-name)',
-              lineHeight: 1.25,
-              marginTop: 1,
-            }}
-          >
-            {shown.fullName}
-            {shown.rop && (
-              <span className="ml-1.5 font-normal" style={{ color: 'var(--ink-muted)' }}>
-                · {shown.rop}
-              </span>
-            )}
-          </div>
-
-          <div
-            className="truncate"
-            style={{
-              color: 'var(--ink-secondary)',
-              fontSize: 'var(--record-figure)',
-              lineHeight: 1.2,
-            }}
-          >
-            <span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
-              {formatUzs(shown.amount.amount)}
-            </span>
-            <span style={{ color: 'var(--ink-muted)' }}>
-              {' · '}
-              {formatNumber(shown.orders)} ta ·{' '}
-              {/*
-                WHICH FIGURE THIS IS, ALWAYS SAID. The wall switches between
-                FAKT 2 and FAKT 1 by the podium's rule, so a running month can
-                print a bigger number than a closed one purely because nothing
-                in it has been delivered yet. Unlabelled, that reads as a
-                record being broken.
-              */}
-              {shown.basis === 'delivered' ? 'yetkazilgan' : 'tasdiqlangan'}
-            </span>
-          </div>
+      <div
+        className={`record-track${crawling ? ' record-track--crawling' : ''}`}
+        style={
+          crawling
+            ? ({
+                '--record-travel': `${travel}px`,
+                animationDuration: `${seconds}s`,
+              } as React.CSSProperties)
+            : undefined
+        }
+      >
+        <div className="record-run" ref={runRef}>
+          {ordered.map((m) => (
+            <RecordEntry key={m.month} record={m} />
+          ))}
         </div>
-
+        {/*
+          The second copy is decoration, not content — a screen reader that
+          read both would announce every month twice.
+        */}
+        {crawling && (
+          <div className="record-run" aria-hidden="true">
+            {ordered.map((m) => (
+              <RecordEntry key={m.month} record={m} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
+  )
+}
+
+function RecordEntry({ record }: { record: SellerRecordDto }) {
+  return (
+    <span className="record-entry">
+      <span aria-hidden="true" className="record-medal">
+        🏆
+      </span>
+      <span className="record-month">
+        {/*
+          THE MONTH'S STATE, IN THE WORD. «Rekord» is a month that is over and
+          can no longer change; «Yetakchi» is the month still running, whose
+          leader may yet lose the place. Without it, a running month's smaller
+          figure reads as a record having collapsed.
+        */}
+        {record.running ? 'Yetakchi' : 'Rekord'} · {monthLabel(record.month)}
+      </span>
+      <span className="record-who">{record.fullName}</span>
+      {record.rop && <span className="record-team">{record.rop}</span>}
+      <span className="record-sum">{formatUzs(record.amount.amount)}</span>
+      <span className="record-note">
+        {formatNumber(record.orders)} ta ·{' '}
+        {/*
+          WHICH FIGURE THIS IS, ALWAYS SAID. The wall switches between FAKT 2
+          and FAKT 1 by the podium's rule — FAKT 2 decides, FAKT 1 only where
+          nobody has delivered yet — so a month can print a bigger number
+          purely because none of it is on the road. Unlabelled, that change of
+          measure reads as a record being broken.
+        */}
+        {record.basis === 'delivered' ? 'yetkazilgan' : 'tasdiqlangan'}
+      </span>
+      <span aria-hidden="true" className="record-sep">
+        ◆
+      </span>
+    </span>
   )
 }
 

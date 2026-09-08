@@ -2468,161 +2468,199 @@ p {
 .tv-col--teams { --tv-tone: var(--series-3); }
 
 /* ==========================================================================
- * THE RECORD WALL — the ceremony, compressed into the title line.
+ * THE RECORD WALL — every month's best seller, crawling through the title line.
  *
- * IT IS THE SAME CEREMONY AS THE PODIUM, NOT A BOX BESIDE IT. The first
- * drawing of this strip was a tinted pill with an emoji in it, and it read as
- * something dropped into the header rather than part of the screen — which is
- * exactly what it was, because it borrowed nothing from the language already
- * running underneath it. Everything here is a rule the podium already owns,
- * at header scale: `--metal` on the wrapper, the crown-light radial washing
- * down from the top edge, the metal hairline, the conic `.medal-ring` the
- * seats put their avatars in, and the ghost numeral bleeding off one corner.
- * A reader who has looked at the board below recognises all five without
- * being told, which is what makes the strip look SEATED rather than placed.
+ * A TICKER RATHER THAN A CARD, and the client asked for exactly that: «alohida
+ * card bo'lib emas… huddi yangiliklarda aylanib turadiku». Two earlier
+ * drawings were a plaque showing one month and turning every eight seconds,
+ * which hides the rest of the run behind a wait — a reader wanting August has
+ * to stand there until August comes round. A crawl carries all of it at once.
  *
- * THE METAL IS ALWAYS GOLD, and that is a constraint rather than a choice.
- * The PODIUM block above licenses metal as chrome — it may borrow elevation
- * and tint and it may NEVER encode a value. Switching to silver for a month
- * still running would make the metal carry the distinction, so the WORD
- * carries it instead: «Rekord» against «Yetakchi», stated in the plaque.
+ * SO THERE IS NO BOX. The border and fill were what made the strip a separate
+ * object sitting in the header. The ceremony travels on the TYPE instead: the
+ * medal glyph, the month in the podium's own `--medal-gold`, and a metal
+ * lozenge between entries. Nothing here draws a surface.
  *
- * SIZED FROM THE VIEWPORT, like the board. This is read off a television from
- * a desk away while the header around it is drawn at the house sizes every
- * other screen uses. It cannot borrow the `--tv-*` tokens — those are
- * declared on `.tv-col`, inside the page body, and this lives in the header
- * above it — so it declares its own ramp on the same principle. Clamped both
- * ends: a laptop gets an ordinary strip, and a 4K wall does not print a
- * seller's name larger than the page title.
+ * MASKED AT BOTH ENDS rather than clipped. A crawl that vanishes at a hard
+ * edge reads as text being cut off; fading it out is what makes the movement
+ * look like a designed instrument instead of an overflow.
  *
- * STILL QUIETER THAN THE SEATS. The record is a standing fact about a month
- * that is over; the board under it is what happened today, and that is what
- * the floor came to read. The wash is the flankers' 13%, never the
- * champion's 24%, and nothing here animates.
+ * SIZED FROM THE VIEWPORT, like the board below. This is read off a television
+ * from a desk away while the header around it is drawn at the house sizes
+ * every other screen uses. It cannot borrow the `--tv-*` tokens — those are
+ * declared on `.tv-col`, inside the page body — so it declares its own ramp on
+ * the same principle, clamped at both ends so a laptop gets an ordinary strip
+ * and a 4K wall does not print a seller larger than the page title.
+ *
+ * NOT DRAWN UNDER 1280 — the same line the board itself draws, and for the
+ * same reason. Under 1280 this page stops being a television: the columns
+ * stack, the tv-switch appears, and it is read on a phone by one person
+ * holding it. A crawl on a phone is a strip of moving text in the tightest
+ * part of the page, which is a cost with no reader.
  * ======================================================================== */
 
 .record-wall {
-  /*
-    NOT DRAWN UNDER 1280 — the same line the board itself draws, and for the
-    same reason. Under 1280 this page stops being a television: the two
-    columns stack, the tv-switch appears, and the screen is read on a phone or
-    a tablet by one person holding it. The record strip is a television
-    object. Measured at 390px it collapsed to a 128px plaque with the seller's
-    name entirely truncated — a gold box saying nothing, in a header that is
-    already the tightest part of the page. Absent, the header on a phone is
-    exactly what it was before this feature existed.
-  */
   display: none;
   --metal: var(--medal-gold);
-  --record-name: clamp(13px, 0.86vw, 20px);
-  --record-figure: clamp(11px, 0.68vw, 15px);
-  --record-label: clamp(9.5px, 0.54vw, 12px);
+  --record-name: clamp(12px, 0.72vw, 17px);
+  --record-small: clamp(10.5px, 0.6vw, 14px);
+  overflow: hidden;
+  /*
+    The height the title block occupies, so the strip cannot grow the header.
+    Measured: title block is 59px, and an earlier plaque at 88px was setting
+    the header's height for every other element in the row.
+  */
+  height: 59px;
+  /*
+    Clear of the two things it runs between. The header's own `gap-3` is the
+    right distance between controls; it is not the right distance between a
+    page title and a line of moving text, which arrived hard against
+    «Sotuvchilar reytingi» and read as part of it. The mask fades inside this,
+    so the gap is real space and not just a soft edge.
+  */
+  margin-inline: 26px;
+  /* Both ends fade; the lane is wide enough that a name is never half-lit. */
+  mask-image: linear-gradient(
+    90deg,
+    transparent,
+    #000 44px,
+    #000 calc(100% - 44px),
+    transparent
+  );
 }
 
 @media (min-width: 1280px) {
   .record-wall {
-    display: block;
+    display: flex;
+    align-items: center;
   }
 }
 
 /*
- * The plaque. `.podium-card`'s crown-light and hairline, in a strip — the
- * same radial at the same angle and the same 13% the flanking seats carry.
+ * The track holds TWO copies of the run and slides exactly one copy's width.
  *
- * `overflow: hidden` and `position: relative` are load-bearing: the ghost
- * numeral is an absolutely-positioned child that bleeds past the right edge
- * and must be clipped by this box rather than by the header.
+ * That is what makes the loop seamless: at the moment the animation restarts,
+ * the second copy is sitting precisely where the first one began, so the join
+ * is invisible. `--record-travel` is measured in the component, because the
+ * run's width depends on how many months exist and on the viewport the type
+ * is ramped against — neither is knowable here.
+ *
+ * `will-change: transform` promotes the track to its own layer. Without it a
+ * strip that never stops moving repaints the header behind it on every frame,
+ * which on the single-core box this dashboard is read from is a real cost for
+ * a decorative line.
  */
-.record-plaque {
-  position: relative;
-  overflow: hidden;
-  /*
-    IT MAY NOT MAKE THE HEADER TALLER. Measured before this line existed: the
-    title block is 59px (accent rule, title, date line) and the plaque was 88,
-    so the strip was setting the header's height and every other element in
-    the row sat in space it had claimed — which is precisely what «o'zidan
-    o'zi kelib qolganga o'xshaydi» describes. Bounded to the title block's own
-    height, the two read as one band and the header measures what it did
-    before the wall existed.
+.record-track {
+  display: flex;
+  width: max-content;
+}
 
-    A fixed height rather than a max: the three rows inside are a known
-    composition, and a plaque that shrank on a short name would bob as the
-    strip turned.
-  */
-  height: 59px;
-  /*
-    IT HUGS ITS CONTENT. Given a fixed max width the plaque was 576px around
-    360px of text, and the dead space on the right read as a box waiting for
-    something that never arrived. Sized to what is in it — and centred in the
-    slot rather than stretched across it — the strip is a plaque on a wall
-    instead of a container. The right padding is the ghost numeral's lane; the
-    numeral is absolutely positioned and would otherwise sit on the figures.
-  */
-  border: 1px solid color-mix(in oklab, var(--metal) 38%, var(--border));
-  border-radius: var(--radius-panel);
-  background:
-    radial-gradient(
-      130% 120% at 50% -40%,
-      color-mix(in oklab, var(--metal) 13%, transparent),
-      transparent 62%
-    ),
-    var(--surface-raised);
-  box-shadow: var(--shadow-card), var(--edge-highlight);
+.record-track--crawling {
+  animation-name: record-crawl;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
+@keyframes record-crawl {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(calc(-1 * var(--record-travel)), 0, 0);
+  }
 }
 
 /*
- * The ghost «1» — the podium's signature, at the one size that fits a header.
- *
- * It is TRUE rather than decorative: every row this strip can draw is a first
- * place, so the numeral states the rank the plaque would otherwise leave the
- * reader to assume. Bottom-right and bleeding, exactly as the seats do it.
+ * A hand on the strip holds it still. A television has no pointer so this
+ * costs the floor nothing, and on a desk it is the difference between a line
+ * you can read and one you chase.
  */
-.record-ghost {
-  position: absolute;
-  /*
-    BLEEDING, NOT CROPPED. Tucked inside the box the numeral read as a mark
-    that had been cut off by accident; run past both edges it reads as the
-    seats' ghost does — a numeral the plaque is standing in front of. The
-    figure is taller than the strip on purpose, which is what makes the
-    overflow look intended.
-  */
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-weight: 800;
-  line-height: 0.74;
-  letter-spacing: -0.06em;
-  /*
-    SIZED TO THE STRIP, not to the seats. The podium's numeral is 96–150px in
-    a card some 300px tall — about four tenths of it. Carried over literally
-    it was 104px inside a 59px plaque, so only the middle band of the glyph
-    was ever visible: a «1» reduced to a vertical smudge that read as a
-    rendering fault rather than a numeral. Kept just under the plaque's own
-    height it is legibly a 1, still ghosted, still bleeding a little at top
-    and bottom — the same gesture at the scale this box can hold.
-  */
-  font-size: 54px;
-  color: color-mix(in oklab, var(--metal) 15%, transparent);
-  user-select: none;
-  pointer-events: none;
+.record-wall:hover .record-track--crawling,
+.record-wall:focus-within .record-track--crawling {
+  animation-play-state: paused;
 }
 
 /*
- * The label pill — `.podium-plaque`'s tint and hairline, one step smaller
- * because it sits inside a strip rather than on a card.
+ * Reduced motion gets a strip it can scroll by hand — the months are all
+ * still reachable, which a merely frozen crawl would not make them.
  */
-.record-tag {
-  display: inline-flex;
+@media (prefers-reduced-motion: reduce) {
+  .record-wall {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .record-track {
+    animation: none;
+  }
+}
+
+.record-run {
+  display: flex;
   align-items: center;
-  border-radius: 999px;
-  padding: 1.5px 8px;
+  flex: none;
+}
+
+.record-entry {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
+  font-size: var(--record-small);
+  color: var(--ink-secondary);
+}
+
+.record-medal {
+  font-size: var(--record-name);
+  line-height: 1;
+  /* Baseline-aligned with the text beside it rather than sitting on it. */
+  transform: translateY(1px);
+}
+
+/*
+ * The month, in the podium's gold — the one place metal appears in this
+ * strip, and the thing that ties it to the seats below at a glance. Metal is
+ * chrome here in the same sense it is there: it may carry tint and never a
+ * value, which is why «Rekord» and «Yetakchi» are words rather than colours.
+ */
+.record-month {
+  color: var(--metal);
   font-weight: 650;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
-  font-size: var(--record-label);
+  font-size: var(--record-small);
+}
+
+.record-who {
   color: var(--ink-primary);
-  background: color-mix(in oklab, var(--metal) 15%, transparent);
-  border: 1px solid color-mix(in oklab, var(--metal) 38%, transparent);
+  font-weight: 600;
+  font-size: var(--record-name);
+}
+
+.record-team {
+  color: var(--ink-muted);
+}
+
+.record-sum {
+  color: var(--ink-primary);
+  font-weight: 600;
+  font-size: var(--record-name);
+  font-variant-numeric: tabular-nums;
+}
+
+.record-note {
+  color: var(--ink-muted);
+}
+
+/*
+ * The lozenge between entries, in the metal and generously spaced. It is the
+ * only thing separating one month from the next, so it carries the whole job
+ * a card's edge used to do.
+ */
+.record-sep {
+  color: color-mix(in oklab, var(--metal) 55%, transparent);
+  font-size: calc(var(--record-small) * 0.72);
+  margin: 0 22px;
 }
 
 /*
