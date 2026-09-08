@@ -529,6 +529,26 @@ export interface ConfirmationSellerRatingRow {
   readonly rejectedOrders: number
 }
 
+/**
+ * The best month one seller has had — one row per calendar month.
+ *
+ * The same two figures the board and the podium carry, cut by the month of the
+ * order's ARRIVAL in C4:NEW rather than by anything on the deal, so a record
+ * and the board row it came from can be reconciled by eye.
+ */
+export interface ConfirmationMonthlyRecordRow {
+  /** First day of the month, in `APP_TIMEZONE`, as `YYYY-MM-DD`. */
+  readonly month: string
+  readonly employeeId: string
+  readonly fullName: string
+  /** The ROP's own name — see `queueSql`'s `classified.rop`. Null off a team. */
+  readonly rop: string | null
+  readonly confirmedOrders: number
+  readonly confirmedMinor: bigint
+  readonly deliveredOrders: number
+  readonly deliveredMinor: bigint
+}
+
 
 export interface ChannelRow {
   readonly sourceId: string
@@ -2447,6 +2467,131 @@ export class InsightsRepository {
       confirmedMinor: money(r.confirmed),
       deliveredMinor: money(r.delivered),
     }))
+  }
+
+  /**
+   * The month-by-month record wall behind the sellers' television.
+   *
+   * ONE STATEMENT, NOT ONE PER MONTH. Asking `confirmationSellerRating` for
+   * each calendar month in turn would reuse tested code and guarantee the wall
+   * agrees with the board — a real argument in this file, where two
+   * definitions of one column is the recurring bug. It is still wrong here:
+   * every call rebuilds the whole `queueSql` cohort for its own window
+   * (~0.9 s a month, measured on production), so a year of records is a dozen
+   * cohort constructions and eleven seconds of a single vCPU held open. The
+   * cohort is built ONCE and cut by month instead, and the agreement is bought
+   * back by sharing the predicates literally: `FAKT1_OUTCOMES`, the
+   * `logisticsRole = 'DELIVERED'` test and the
+   * `COALESCE(d."operatorEmployeeId", d."employeeId")` operator are the same
+   * expressions `ratingSql` uses, pinned by `confirmationRecordsSql.test.ts`.
+   *
+   * THE ORDER IS THE PODIUM'S ORDER, and it has to be. FAKT 2 first and
+   * FAKT 1 only when nobody delivered is the client's own rule, already
+   * spelled out on `PodiumHero`; a wall that ranked the other way would print
+   * one champion in the header and a different one on the seat below it, on
+   * the same screen, for the same month.
+   *
+   * A MONTH OF PURE REFUSALS IS NOT A RECORD. `ratingSql` deliberately keeps
+   * an operator whose every order was refused — a floor manager needs that
+   * row, and its refusals belong in the conversion denominator. This is a
+   * different question: the gate here is FAKT 1 or FAKT 2 above zero, because
+   * "the biggest month anyone has had" cannot be answered with nothing sold.
+   *
+   * The tie-break is the employee id rather than the name. Two operators level
+   * to the soʻm is not something this floor produces, but a wall that reorders
+   * itself between two polls of identical data would look broken, and a name
+   * collates differently under 'uz' and 'ru' (see `branches.ts`).
+   */
+  async confirmationSellerRecords(
+    period: ScopedWindow,
+    filters: ConfirmationSellerRatingFilters = {},
+  ): Promise<ConfirmationMonthlyRecordRow[]> {
+    // Scope first, at the fixed slot $3 — same reason as
+    // `confirmationSellerRating`: `queueSql` needs its placeholder while the
+    // string is being built, and the caller's filters number from $4 onwards.
+    const params: unknown[] = [period.start, period.end, InsightsRepository.scopeValue(period)]
+    const filterClause = InsightsRepository.ratingFilterSql(filters, params)
+
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        month: string
+        employee_id: string
+        full_name: string
+        rop: string | null
+        confirmed_orders: bigint
+        confirmed: MoneyText
+        delivered_orders: bigint
+        delivered: MoneyText
+      }[]
+    >(
+      `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.recordsSql(filterClause)}`,
+      ...params,
+    )
+
+    return rows.map((r) => ({
+      month: r.month,
+      employeeId: r.employee_id,
+      fullName: r.full_name,
+      rop: r.rop,
+      confirmedOrders: int(r.confirmed_orders),
+      confirmedMinor: money(r.confirmed),
+      deliveredOrders: int(r.delivered_orders),
+      deliveredMinor: money(r.delivered),
+    }))
+  }
+
+  /**
+   * Isolated for the same reason `ratingSql` and `ratingDaysSql` are: it has
+   * to be pinned against the board's own predicates without a database.
+   */
+  private static recordsSql(filterClause: string): string {
+    const month = `date_trunc('month', c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date`
+    const fakt1 = `sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})`
+    const fakt2 = `sum(d."amountMinor") FILTER (WHERE ds."logisticsRole" = 'DELIVERED')`
+
+    return `
+       SELECT m.month::text AS month,
+              m.employee_id,
+              m.full_name,
+              m.rop,
+              m.confirmed_orders,
+              m.confirmed::text AS confirmed,
+              m.delivered_orders,
+              m.delivered::text AS delivered
+       FROM (
+         SELECT
+           ${month} AS month,
+           e."id" AS employee_id,
+           e."fullName" AS full_name,
+           c.rop AS rop,
+           count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS confirmed_orders,
+           ${fakt1} AS confirmed,
+           count(*) FILTER (WHERE ds."logisticsRole" = 'DELIVERED')::bigint AS delivered_orders,
+           ${fakt2} AS delivered,
+           /*
+             The podium's rule, as a window: FAKT 2 decides, FAKT 1 decides
+             the months nobody has delivered in yet — which is every month
+             still in progress, because delivery lags confirmation by days.
+           */
+           row_number() OVER (
+             PARTITION BY ${month}
+             ORDER BY ${fakt2} DESC NULLS LAST,
+                      ${fakt1} DESC NULLS LAST,
+                      e."id"
+           ) AS place
+         FROM scoped c
+         JOIN "deal" d ON d."id" = c.deal_id
+         JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
+         LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
+         WHERE TRUE
+           ${filterClause}
+         GROUP BY 1, e."id", e."fullName", c.rop
+         -- A month of pure refusals is a row on the board and not a record.
+         HAVING count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}) > 0
+             OR count(*) FILTER (WHERE ds."logisticsRole" = 'DELIVERED') > 0
+       ) m
+       WHERE m.place = 1
+       ORDER BY m.month DESC`
   }
 
   /** Every ROP group that has orders in the window, for the filter. */

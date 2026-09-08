@@ -33,7 +33,7 @@ import { type KpiDefinition, periodElapsedFraction } from '@/server/domain/analy
 import { BONUS_TIERS, bonusEligible } from '@/server/domain/analytics/sellerBonus'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import { scopedPeriod } from '@/server/domain/employees/branches'
-import type { Period } from '@/server/domain/period/period'
+import { type Period, sinceMonth } from '@/server/domain/period/period'
 import type { DeltaDto } from '@/lib/api'
 import type { InsightsRepository } from '@/server/repositories/insightsRepository'
 import { keyPart, ttlCache } from './ttlCache'
@@ -332,6 +332,89 @@ export function resetSellerBoardCache(): void {
   boardCache.clear()
 }
 
+/**
+ * One month's champion on the sellers' television.
+ *
+ * Mirrored in `src/lib/api.ts` as `SellerRecordDto`, where the field-by-field
+ * reasoning lives. Nothing checks the mirror — edit both sides.
+ */
+export interface SellerRecordDto {
+  readonly month: string
+  readonly running: boolean
+  readonly employeeId: string
+  readonly fullName: string
+  readonly rop: string | null
+  /** Which of the two figures earned the place — the podium's own rule. */
+  readonly basis: 'delivered' | 'confirmed'
+  readonly amount: MoneyDto
+  readonly orders: number
+  readonly confirmed: MoneyDto
+  readonly confirmedOrders: number
+  readonly delivered: MoneyDto
+  readonly deliveredOrders: number
+}
+
+export interface SellerRecordsDto {
+  /** Newest month first. */
+  readonly months: readonly SellerRecordDto[]
+  /** True when these are one team's records rather than the company's. */
+  readonly scoped: boolean
+  /** The first instant the wall covers. See `RECORDS_FROM`. */
+  readonly from: string
+}
+
+/**
+ * The first month the record wall may report on.
+ *
+ * NOT A PREFERENCE — the month the numbers before it stop being about sellers.
+ * Until the portal began writing «Фамилия имя ответсвенный»
+ * (`UF_CRM_1778416910`) onto the deal, a row was credited to `ASSIGNED_BY_ID`,
+ * the CURRENT assignee, and this portal moves deals to back office while they
+ * are processed. Measured on production 2026-09-08, by month, on FAKT 2:
+ *
+ *   June 2026   Fazliddinov Bunyodjon   321 630 000 soʻm over 220 orders
+ *   July 2026   Fazliddinov Bunyodjon   830 660 000 soʻm over 551 orders
+ *   August 2026 154 Marjona Xayrullayeva 128 550 000 soʻm over 74 orders
+ *
+ * Bunyodjon is the head of Операцион and belongs to no ROP team. The same
+ * board's ROP-LESS total is what proves the snapshot is the thing that
+ * changed: 840 510 000 soʻm in July against 29 600 000 in August.
+ *
+ * An unbounded wall therefore opens on a 830 mln «record» that no seller set
+ * and none can beat, on the television the floor reads to know where they
+ * stand — the same attribution failure `mapping.ts` documents at `UF.
+ * OPERATOR_NAME`, arriving on a different screen. If the portal is ever
+ * backfilled, this constant moves and nothing else does.
+ */
+const RECORDS_FROM = '2026-08'
+
+/**
+ * The record wall changes when a month closes and, within the running month,
+ * no faster than the sync worker. Ten minutes rather than the board's sixty
+ * seconds: the wall is a slow fact and its query builds a cohort spanning
+ * every month it covers, which is the most expensive read on this screen.
+ */
+const recordsCache = ttlCache<SellerRecordsDto>(600_000)
+
+/** Test seam only — see `resetSellerBoardCache`, same hazard. */
+export function resetSellerRecordsCache(): void {
+  recordsCache.clear()
+}
+
+function recordWindow(now: Date, timeZone: string): Period {
+  return sinceMonth(RECORDS_FROM, now, timeZone)
+}
+
+/** `YYYY-MM` for an instant, read in the reporting timezone. */
+function monthKey(instant: Date, timeZone: string): string {
+  // `en-CA` renders ISO order, which is the one thing needed from it here.
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+  }).format(instant)
+}
+
 export class SellerBoardService {
   constructor(
     private readonly repo: SellerBoardRepository,
@@ -561,6 +644,91 @@ export class SellerBoardService {
       forecast: forecastOf(totalWonMinor, ctx),
       basis: basis === 'queue' ? 'confirmation_queue' : 'created_in_period',
       planWindow: plans.window,
+    }
+  }
+
+  /**
+   * The record wall — the biggest month each seller has had, newest first.
+   *
+   * WHY THE WALL STARTS WHERE IT DOES, AND WHY THE DATE IS A CONSTANT RATHER
+   * THAN «BARCHA VAQT». Before the operator snapshot
+   * (`UF_CRM_1778416910`) began arriving, a deal was credited to
+   * `ASSIGNED_BY_ID` — the CURRENT assignee — and this portal moves deals to
+   * back office while they are processed. Measured on production 2026-09-08,
+   * by month, on FAKT 2: June's champion is Fazliddinov Bunyodjon with
+   * 321 630 000 soʻm over 220 orders and July's is the same man with
+   * 830 660 000 over 551, and he is the head of Операцион, not a seller.
+   * August's is a real one — 154 Marjona Xayrullayeva, 128 550 000 — and the
+   * proof that the snapshot is what changed is the ROP-less total on the same
+   * board: 840 510 000 soʻm in July against 29 600 000 in August.
+   *
+   * So an unbounded wall would open on a 830 mln «record» that no seller set
+   * and none can ever beat, on a television the floor reads to know where they
+   * stand. The wall begins the month the attribution became true. That is a
+   * data fact, not a preference: if the portal is ever backfilled, this
+   * constant moves and nothing else does.
+   *
+   * THE SPAN'S UPPER BOUND IS `now`, so the month in progress is on the wall
+   * and can take the record from a closed one. Delivery lags confirmation by
+   * about two days, which is exactly why the ordering falls back to FAKT 1 —
+   * see `recordsSql`. A running month is marked on the DTO rather than hidden:
+   * a champion who is winning a month that is not over is a different claim
+   * from one who won it, and the screen says which.
+   */
+  async records(ctx: AnalyticsContext): Promise<SellerRecordsDto> {
+    const filters = boardFilters(ctx)
+    const period = recordWindow(ctx.now, ctx.period.timeZone)
+
+    const key = [
+      period.start.toISOString(),
+      period.end.toISOString(),
+      period.timeZone,
+      ctx.currency,
+      keyPart(filters.employeeIds),
+      keyPart(filters.departmentIds),
+      keyPart(filters.sourceIds),
+      keyPart(filters.restrictToEmployeeIds),
+    ].join('|')
+
+    return recordsCache.get(key, () => this.buildRecords(ctx, period, filters))
+  }
+
+  private async buildRecords(
+    ctx: AnalyticsContext,
+    period: Period,
+    filters: SellerBoardFilters,
+  ): Promise<SellerRecordsDto> {
+    const rows = await this.insights.confirmationSellerRecords(
+      scopedPeriod(period, filters),
+      filters,
+    )
+
+    const runningMonth = monthKey(ctx.now, period.timeZone)
+
+    return {
+      scoped: (filters.restrictToEmployeeIds ?? null) !== null,
+      from: period.start.toISOString(),
+      months: rows.map((r) => {
+        // The seat's own rule, restated on the DTO so the screen does not have
+        // to re-derive which of the two figures earned the place.
+        const delivered = r.deliveredMinor > 0n
+        return {
+          month: r.month,
+          running: r.month.slice(0, 7) === runningMonth,
+          employeeId: r.employeeId,
+          fullName: r.fullName,
+          rop: r.rop,
+          basis: delivered ? ('delivered' as const) : ('confirmed' as const),
+          amount: toMoneyDto(
+            money(delivered ? r.deliveredMinor : r.confirmedMinor, ctx.currency),
+          ),
+          orders: delivered ? r.deliveredOrders : r.confirmedOrders,
+          confirmed: toMoneyDto(money(r.confirmedMinor, ctx.currency)),
+          confirmedOrders: r.confirmedOrders,
+          delivered: toMoneyDto(money(r.deliveredMinor, ctx.currency)),
+          deliveredOrders: r.deliveredOrders,
+        }
+      }),
     }
   }
 

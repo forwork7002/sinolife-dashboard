@@ -340,6 +340,47 @@ export function calendarMonth(
 }
 
 /**
+ * A window that opens at the start of a named calendar month and runs to now.
+ *
+ * For a reading whose lower bound is a FACT rather than a choice — the record
+ * wall's, which cannot begin before the month the portal started naming the
+ * seller on the deal (`sellerBoardService.RECORDS_FROM` carries that reason).
+ * The caller owns the date; this owns the arithmetic, because a month boundary
+ * built with `Date.UTC` starts five hours before a Tashkent month and the
+ * sliver is enough to file the first orders of a month under the one before.
+ *
+ * Half-open like every other window here, and `preset: 'custom'` because it is
+ * one: nothing in the preset row selects it.
+ *
+ * @param yearMonth `YYYY-MM`, read in `timeZone`.
+ */
+export function sinceMonth(yearMonth: string, now: Date, timeZone: string): Period {
+  const match = /^(\d{4})-(\d{2})$/.exec(yearMonth)
+  if (!match) throw new InvalidPeriodError(`${yearMonth} is not a YYYY-MM month`)
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  if (month < 1 || month > 12) throw new InvalidPeriodError(`${yearMonth} is not a month`)
+
+  // Built by stepping a zoned date to the first of the month rather than by
+  // constructing one directly, so the zone's own offset is applied by the same
+  // code path every other boundary in this file uses.
+  const start = startOfMonth(new TZDate(Date.UTC(year, month - 1, 2), timeZone))
+  const end = new Date(now.getTime())
+  assertValidDate(end, 'now')
+
+  return Object.freeze({
+    start: toInstant(start),
+    // A window that ended before it began would silently return nothing; a
+    // caller asking for records from a month in the future is a bug, not an
+    // empty wall.
+    end: end.getTime() < start.getTime() ? toInstant(start) : end,
+    timeZone,
+    preset: 'custom' as const,
+  })
+}
+
+/**
  * The instant a period is measured "as of" — its last representable moment.
  *
  * Because periods are half-open, `end` itself belongs to the NEXT period. Using

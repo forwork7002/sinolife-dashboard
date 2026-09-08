@@ -2467,6 +2467,30 @@ p {
 .tv-col--sellers { --tv-tone: var(--series-5); }
 .tv-col--teams { --tv-tone: var(--series-3); }
 
+/* ==========================================================================
+ * The record wall — the strip in the board's title line.
+ *
+ * SIZED FROM THE VIEWPORT for the same reason the board below it is: this is
+ * read off a television from a desk away, and the header it sits in is
+ * otherwise drawn at the house sizes every other screen uses. It cannot
+ * borrow the `--tv-*` tokens — those are declared on `.tv-col`, which is
+ * inside the page body, and this lives in `PageShell`'s header above it — so
+ * it declares its own ramp on the same principle. Clamped at both ends: the
+ * floor is the house size, so a laptop gets an ordinary strip, and the
+ * ceiling stops a 4K wall printing a name larger than the page title.
+ *
+ * IT IS DELIBERATELY QUIETER THAN THE PODIUM. The record is a standing fact
+ * about a month that is over; the board under it is what happened today, and
+ * that is what the floor came to read. A strip that outshouted the seats
+ * would have the screen arguing with itself about which is the news.
+ * ======================================================================== */
+
+.record-wall {
+  --record-name: clamp(13px, 0.82vw, 19px);
+  --record-figure: clamp(11px, 0.68vw, 15px);
+  --record-label: clamp(10px, 0.55vw, 12px);
+}
+
 /*
  * THE PHONE'S SWITCH — «Sotuvchilar | Komandalar», one board at a time
  * under 1280px, where the columns would otherwise stack into a page of two

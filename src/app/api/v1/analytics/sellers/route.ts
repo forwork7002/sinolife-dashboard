@@ -52,6 +52,29 @@ const schema = analyticsQuerySchema.and(
      * gets checked against, not a screen anyone is meant to keep reading.
      */
     basis: z.enum(SELLER_BOARD_BASES).default('queue'),
+    /*
+      THE RECORD WALL, ASKED FOR SEPARATELY AND ON ITS OWN CLOCK.
+
+      A query parameter rather than a second route, for the reason `/users`
+      takes `?include=heads`: it is the same capability, the same section and
+      the same scope, and `routeAccess.test.ts` pins the ungated list — a new
+      path would have to be argued into that array while having nothing new to
+      say under it.
+
+      OPT-IN because it is not free and not wanted on the board's cadence. The
+      wall spans every month since `RECORDS_FROM`, so its cohort is the widest
+      read on this screen, while the answer changes when a month closes. The
+      television polls the board once a minute and the wall once every ten;
+      folding the two into one response would put the expensive half on the
+      fast clock.
+
+      IT REPLACES the board in the response rather than riding beside it. The
+      caller that wants records is a second react-query key with its own
+      staleTime, and it has no use for a board it already holds — building one
+      anyway would be two full cohort constructions thrown away every ten
+      minutes, per reader.
+    */
+    include: z.enum(['records']).optional(),
   }),
 )
 
@@ -97,6 +120,13 @@ export const GET = getHandler(ACCESS, schema, async (ctx) => {
     { ...ctx.query, ...ctx.scope },
     ctx.now,
   )
+
+  if (ctx.query.include === 'records') {
+    return {
+      data: await sellerBoardService.records(context),
+      meta: AnalyticsService.periodMeta(context),
+    }
+  }
 
   if (ctx.query.employeeId) {
     return {

@@ -91,6 +91,7 @@ export function PageShell({
   filters: enabled = {},
   accent,
   actions,
+  banner,
   toolbar,
   stale = false,
   children,
@@ -134,6 +135,24 @@ export function PageShell({
    */
   accent?: string
   actions?: ReactNode
+  /**
+   * The middle of the title line — between the title and the controls.
+   *
+   * `actions` is the right-hand slot, for a page-level ACTION; `toolbar` is
+   * the filter row, for controls. This is neither: it is a page's own STANDING
+   * DISPLAY, and the only page that has one is the sellers' television, whose
+   * record wall the client asked for in this strip. On a 1920px screen the
+   * metre between «Sotuvchilar reytingi» and the preset chips is empty, and
+   * nothing below it can be given away — both board columns are already
+   * fighting for rows under their podiums.
+   *
+   * IT SHRINKS AND WRAPS, and both matter. The header is `flex-wrap`, so on a
+   * laptop this drops to its own line under the title rather than squeezing
+   * the two things either side of it; the slot carries no width of its own so
+   * a page that passes nothing pays nothing, not even an empty box in the
+   * flex row.
+   */
+  banner?: ReactNode
   /**
    * The page's OWN controls, in the filter row rather than beside the title.
    *
@@ -465,6 +484,7 @@ export function PageShell({
                   </p>
                 )}
               </div>
+              {banner}
               {(actions || (controlsAlign === 'end' && controls)) && (
                 /*
                   NO `shrink-0` HERE, and that is the difference between one

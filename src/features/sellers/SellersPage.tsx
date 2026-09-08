@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { EmptyState, ErrorState } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
+import { RecordWall } from '@/features/sellers/RecordWall'
 import { useAutoScroll } from '@/features/sellers/useAutoScroll'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -109,6 +110,14 @@ export function SellersPage() {
     <PageShell
       title={t.nav.sellers}
       meta={board.data?.meta}
+      /*
+        THE RECORD WALL RIDES THE TITLE LINE, not the board below it. The
+        client asked for it there, and it is also the only room left: the two
+        columns already run to the bottom of the screen. It fetches on its own
+        ten-minute clock rather than riding this board's minute — see
+        `RecordWall`.
+      */
+      banner={<RecordWall />}
       stale={board.isPlaceholderData}
       accent="var(--series-5)"
       controlsAlign="end"

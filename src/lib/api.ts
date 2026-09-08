@@ -1265,6 +1265,59 @@ export interface SellerBoardDto {
   readonly planWindow: { readonly start: string; readonly end: string } | null
 }
 
+/**
+ * One month's champion on the sellers' television — the record wall.
+ *
+ * Mirrors `sellerBoardService.SellerRecordsDto`, like every other type in this
+ * file; nothing checks the mirror, so edit both sides.
+ */
+export interface SellerRecordDto {
+  /** First day of the month, `YYYY-MM-DD`, in the reporting timezone. */
+  readonly month: string
+  /** True while the month is still running — a lead, not yet a record. */
+  readonly running: boolean
+  readonly employeeId: string
+  readonly fullName: string
+  /** The ROP's own name. Null when the seller is off every team. */
+  readonly rop: string | null
+  /**
+   * WHICH FIGURE EARNED THE PLACE, because the wall switches between two.
+   *
+   * The podium's rule: FAKT 2 decides, and FAKT 1 decides the months nobody
+   * has delivered in yet — which is every month still in progress, since
+   * delivery lags confirmation by about two days. `amount` and `orders` are
+   * whichever of the pairs below this names, so the screen prints one figure
+   * and can say what it is rather than leaving the reader to guess why a
+   * running month looks bigger than a closed one.
+   */
+  readonly basis: 'delivered' | 'confirmed'
+  readonly amount: MoneyDto
+  readonly orders: number
+  /** Both figures travel anyway, so the wall can show the other one. */
+  readonly confirmed: MoneyDto
+  readonly confirmedOrders: number
+  readonly delivered: MoneyDto
+  readonly deliveredOrders: number
+}
+
+export interface SellerRecordsDto {
+  /** Newest month first. */
+  readonly months: readonly SellerRecordDto[]
+  /**
+   * True when these records are a subset of the company — a ROP's own team.
+   * Same meaning and same reason as `SellerBoardDto.scoped`: a record inside
+   * one team is not the company's record, and the screen says so.
+   */
+  readonly scoped: boolean
+  /**
+   * The first instant the wall covers. Not «all time»: before the portal began
+   * naming the seller on the deal, orders were credited to whoever held the
+   * row, which put the head of Операцион at the top of two months with figures
+   * no seller can beat. See `RECORDS_FROM`.
+   */
+  readonly from: string
+}
+
 /** One day of one seller's intake. */
 export interface SellerDayDto {
   readonly date: string
