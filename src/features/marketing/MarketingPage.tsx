@@ -1,11 +1,12 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { ChartCard, Card } from '@/components/ui/Card'
 import { SectionHeader } from '@/components/ui/Stat'
-import { EmptyState, ErrorState } from '@/components/states/States'
+import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { Shell } from '@/components/layout/Shell'
 import { apiGet } from '@/lib/api'
 
@@ -28,7 +29,6 @@ import {
   resolveWindow,
   type MarketingPeriod,
 } from './MarketingControls'
-import { MarketingDynamics } from './MarketingDynamics'
 import { MarketingFunnel } from './MarketingFunnel'
 import { MarketingHero } from './MarketingHero'
 import { MarketingKpiBand, MarketingRateRings } from './MarketingKpiBand'
@@ -56,7 +56,43 @@ import { t } from '@/lib/messages'
  * chart is dual-axis, which this design system forbids, so it renders as two
  * stacked panels sharing an x axis (see MarketingDynamics).
  */
+/**
+ * The two-panel dynamics chart is loaded on its own, not with the page.
+ *
+ * It is the only recharts importer this route pulls that is a chart and
+ * nothing else, and recharts is 379 KB unparsed / 109 KB over the wire — in
+ * the SYNCHRONOUS entry set, parsed before hydration and therefore before the
+ * first `/api/v1` request. `ssr: false` forfeits nothing: both panels draw
+ * inside `ResponsiveContainer`, which measures the DOM in an effect and
+ * renders an empty box on the server anyway.
+ *
+ * The fallback height is the two panels plus the gap between them (176 + 156),
+ * so the card does not resize when the chunk lands.
+ *
+ * `MarketingHero` also imports recharts and is NOT split here. It is a hero
+ * panel whose figures and copy are the point and whose plot is one part of
+ * it; lazy-loading the whole thing would blank the page's lead instrument,
+ * and lazy-loading only its plot is a separate change to that component.
+ */
+const MarketingDynamics = dynamic(
+  () => import('./MarketingDynamics').then((m) => m.MarketingDynamics),
+  { ssr: false, loading: () => <ChartSkeleton height={344} /> },
+)
+
+/**
+ * Fetch the chart chunk DURING the round trip that has to happen anyway.
+ *
+ * Fire-and-forget: a failed warm-up is not an error state, and the real import
+ * runs again at render and reports its own failure there.
+ */
+function useWarmDynamics() {
+  useEffect(() => {
+    void import('./MarketingDynamics')
+  }, [])
+}
+
 export function MarketingPage() {
+  useWarmDynamics()
   const [period, setPeriod] = useState<MarketingPeriod>({ choice: 'all' })
   const [mode, setMode] = useState<CurrencyMode>('uzs')
   const [dimension, setDimension] = useState<MarketingDimension>('camp')

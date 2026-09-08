@@ -1,11 +1,11 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import dynamic from 'next/dynamic'
+import { useEffect, type ReactNode } from 'react'
 
 import { keepPreviousData, useQueries } from '@tanstack/react-query'
 
 import { BarList } from '@/components/charts/BarList'
-import { RevenueTrendChart } from '@/components/charts/RevenueTrendChart'
 import { Sparkline } from '@/components/charts/Sparkline'
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
@@ -87,8 +87,43 @@ function formatDays(value: number): string {
   return formatNumber(Math.round(value * 10) / 10)
 }
 
+/**
+ * The trend chart is loaded on its own, not with the page.
+ *
+ * recharts is 379 KB unparsed — 109 KB over the wire — and it sat in the
+ * SYNCHRONOUS entry set of this route, which is about 65% of what the screen
+ * downloads and all of it parsed before hydration, i.e. before the first
+ * `/api/v1` request is issued. The reader was waiting on a charting library
+ * to compile in order to be shown a skeleton.
+ *
+ * `ssr: false` forfeits nothing: the chart draws inside recharts'
+ * `ResponsiveContainer`, which measures the DOM in an effect and renders an
+ * empty box on the server either way. The fallback is the SAME
+ * `ChartSkeleton height={300}` the slot below already shows while the query is
+ * in flight, so a late chunk is not a second visible state.
+ */
+const RevenueTrendChart = dynamic(
+  () => import('@/components/charts/RevenueTrendChart').then((m) => m.RevenueTrendChart),
+  { ssr: false, loading: () => <ChartSkeleton height={300} /> },
+)
+
+/**
+ * Fetch the chart chunk DURING the round trip that has to happen anyway.
+ *
+ * Left to the render that first has data, the download starts only once the
+ * API answers and two costs that could overlap are serialised instead.
+ * Fire-and-forget on purpose — a failed warm-up is not an error state; the
+ * real import runs again at render and reports its own failure there.
+ */
+function useWarmTrendChart() {
+  useEffect(() => {
+    void import('@/components/charts/RevenueTrendChart')
+  }, [])
+}
+
 export function SalesPage() {
   const { apiParams, filters } = useDashboardFilters()
+  useWarmTrendChart()
 
   /**
    * The insights endpoints honour employee / department / source filters but
