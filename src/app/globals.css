@@ -2468,27 +2468,161 @@ p {
 .tv-col--teams { --tv-tone: var(--series-3); }
 
 /* ==========================================================================
- * The record wall — the strip in the board's title line.
+ * THE RECORD WALL — the ceremony, compressed into the title line.
  *
- * SIZED FROM THE VIEWPORT for the same reason the board below it is: this is
- * read off a television from a desk away, and the header it sits in is
- * otherwise drawn at the house sizes every other screen uses. It cannot
- * borrow the `--tv-*` tokens — those are declared on `.tv-col`, which is
- * inside the page body, and this lives in `PageShell`'s header above it — so
- * it declares its own ramp on the same principle. Clamped at both ends: the
- * floor is the house size, so a laptop gets an ordinary strip, and the
- * ceiling stops a 4K wall printing a name larger than the page title.
+ * IT IS THE SAME CEREMONY AS THE PODIUM, NOT A BOX BESIDE IT. The first
+ * drawing of this strip was a tinted pill with an emoji in it, and it read as
+ * something dropped into the header rather than part of the screen — which is
+ * exactly what it was, because it borrowed nothing from the language already
+ * running underneath it. Everything here is a rule the podium already owns,
+ * at header scale: `--metal` on the wrapper, the crown-light radial washing
+ * down from the top edge, the metal hairline, the conic `.medal-ring` the
+ * seats put their avatars in, and the ghost numeral bleeding off one corner.
+ * A reader who has looked at the board below recognises all five without
+ * being told, which is what makes the strip look SEATED rather than placed.
  *
- * IT IS DELIBERATELY QUIETER THAN THE PODIUM. The record is a standing fact
- * about a month that is over; the board under it is what happened today, and
- * that is what the floor came to read. A strip that outshouted the seats
- * would have the screen arguing with itself about which is the news.
+ * THE METAL IS ALWAYS GOLD, and that is a constraint rather than a choice.
+ * The PODIUM block above licenses metal as chrome — it may borrow elevation
+ * and tint and it may NEVER encode a value. Switching to silver for a month
+ * still running would make the metal carry the distinction, so the WORD
+ * carries it instead: «Rekord» against «Yetakchi», stated in the plaque.
+ *
+ * SIZED FROM THE VIEWPORT, like the board. This is read off a television from
+ * a desk away while the header around it is drawn at the house sizes every
+ * other screen uses. It cannot borrow the `--tv-*` tokens — those are
+ * declared on `.tv-col`, inside the page body, and this lives in the header
+ * above it — so it declares its own ramp on the same principle. Clamped both
+ * ends: a laptop gets an ordinary strip, and a 4K wall does not print a
+ * seller's name larger than the page title.
+ *
+ * STILL QUIETER THAN THE SEATS. The record is a standing fact about a month
+ * that is over; the board under it is what happened today, and that is what
+ * the floor came to read. The wash is the flankers' 13%, never the
+ * champion's 24%, and nothing here animates.
  * ======================================================================== */
 
 .record-wall {
-  --record-name: clamp(13px, 0.82vw, 19px);
+  /*
+    NOT DRAWN UNDER 1280 — the same line the board itself draws, and for the
+    same reason. Under 1280 this page stops being a television: the two
+    columns stack, the tv-switch appears, and the screen is read on a phone or
+    a tablet by one person holding it. The record strip is a television
+    object. Measured at 390px it collapsed to a 128px plaque with the seller's
+    name entirely truncated — a gold box saying nothing, in a header that is
+    already the tightest part of the page. Absent, the header on a phone is
+    exactly what it was before this feature existed.
+  */
+  display: none;
+  --metal: var(--medal-gold);
+  --record-name: clamp(13px, 0.86vw, 20px);
   --record-figure: clamp(11px, 0.68vw, 15px);
-  --record-label: clamp(10px, 0.55vw, 12px);
+  --record-label: clamp(9.5px, 0.54vw, 12px);
+}
+
+@media (min-width: 1280px) {
+  .record-wall {
+    display: block;
+  }
+}
+
+/*
+ * The plaque. `.podium-card`'s crown-light and hairline, in a strip — the
+ * same radial at the same angle and the same 13% the flanking seats carry.
+ *
+ * `overflow: hidden` and `position: relative` are load-bearing: the ghost
+ * numeral is an absolutely-positioned child that bleeds past the right edge
+ * and must be clipped by this box rather than by the header.
+ */
+.record-plaque {
+  position: relative;
+  overflow: hidden;
+  /*
+    IT MAY NOT MAKE THE HEADER TALLER. Measured before this line existed: the
+    title block is 59px (accent rule, title, date line) and the plaque was 88,
+    so the strip was setting the header's height and every other element in
+    the row sat in space it had claimed — which is precisely what «o'zidan
+    o'zi kelib qolganga o'xshaydi» describes. Bounded to the title block's own
+    height, the two read as one band and the header measures what it did
+    before the wall existed.
+
+    A fixed height rather than a max: the three rows inside are a known
+    composition, and a plaque that shrank on a short name would bob as the
+    strip turned.
+  */
+  height: 59px;
+  /*
+    IT HUGS ITS CONTENT. Given a fixed max width the plaque was 576px around
+    360px of text, and the dead space on the right read as a box waiting for
+    something that never arrived. Sized to what is in it — and centred in the
+    slot rather than stretched across it — the strip is a plaque on a wall
+    instead of a container. The right padding is the ghost numeral's lane; the
+    numeral is absolutely positioned and would otherwise sit on the figures.
+  */
+  border: 1px solid color-mix(in oklab, var(--metal) 38%, var(--border));
+  border-radius: var(--radius-panel);
+  background:
+    radial-gradient(
+      130% 120% at 50% -40%,
+      color-mix(in oklab, var(--metal) 13%, transparent),
+      transparent 62%
+    ),
+    var(--surface-raised);
+  box-shadow: var(--shadow-card), var(--edge-highlight);
+}
+
+/*
+ * The ghost «1» — the podium's signature, at the one size that fits a header.
+ *
+ * It is TRUE rather than decorative: every row this strip can draw is a first
+ * place, so the numeral states the rank the plaque would otherwise leave the
+ * reader to assume. Bottom-right and bleeding, exactly as the seats do it.
+ */
+.record-ghost {
+  position: absolute;
+  /*
+    BLEEDING, NOT CROPPED. Tucked inside the box the numeral read as a mark
+    that had been cut off by accident; run past both edges it reads as the
+    seats' ghost does — a numeral the plaque is standing in front of. The
+    figure is taller than the strip on purpose, which is what makes the
+    overflow look intended.
+  */
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-weight: 800;
+  line-height: 0.74;
+  letter-spacing: -0.06em;
+  /*
+    SIZED TO THE STRIP, not to the seats. The podium's numeral is 96–150px in
+    a card some 300px tall — about four tenths of it. Carried over literally
+    it was 104px inside a 59px plaque, so only the middle band of the glyph
+    was ever visible: a «1» reduced to a vertical smudge that read as a
+    rendering fault rather than a numeral. Kept just under the plaque's own
+    height it is legibly a 1, still ghosted, still bleeding a little at top
+    and bottom — the same gesture at the scale this box can hold.
+  */
+  font-size: 54px;
+  color: color-mix(in oklab, var(--metal) 15%, transparent);
+  user-select: none;
+  pointer-events: none;
+}
+
+/*
+ * The label pill — `.podium-plaque`'s tint and hairline, one step smaller
+ * because it sits inside a strip rather than on a card.
+ */
+.record-tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 1.5px 8px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: var(--record-label);
+  color: var(--ink-primary);
+  background: color-mix(in oklab, var(--metal) 15%, transparent);
+  border: 1px solid color-mix(in oklab, var(--metal) 38%, transparent);
 }
 
 /*

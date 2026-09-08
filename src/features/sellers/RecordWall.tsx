@@ -82,34 +82,53 @@ export function RecordWall() {
 
   return (
     <div
-      className="record-wall min-w-0 flex-1 px-2"
+      className="record-wall min-w-0 flex-1"
       // A live region would announce a new champion every eight seconds to a
       // screen reader that never asked for one. The strip is decorative
       // repetition of what the board below already says, so it is polite about
       // the turn and honest about the content.
       aria-live="off"
     >
-      <div
-        className="mx-auto flex max-w-lg min-w-0 items-center gap-3 rounded-xl px-3.5 py-2"
-        style={{
-          background: 'color-mix(in oklab, var(--series-5) 12%, transparent)',
-          border: '1px solid color-mix(in oklab, var(--series-5) 22%, transparent)',
-        }}
-      >
-        <span
-          aria-hidden="true"
-          className="shrink-0 leading-none"
-          style={{ fontSize: 'calc(var(--record-name) * 1.35)' }}
-        >
-          🏆
+      <div className="record-plaque mx-auto flex w-fit max-w-full min-w-0 items-center gap-3 pl-3.5 pr-14">
+        {/*
+          THE RANK, AS THE SEATS DRAW IT. Every row this strip can show is a
+          first place, so the numeral is a fact rather than an ornament — and
+          it is the podium's own move, which is most of what makes this read
+          as part of the screen instead of a box on top of it.
+        */}
+        <span className="record-ghost" aria-hidden="true">
+          1
         </span>
 
-        <div className="min-w-0">
-          <div className="flex items-baseline gap-1.5">
-            <span
-              className="shrink-0 font-semibold tracking-wide uppercase"
-              style={{ color: 'var(--series-5)', fontSize: 'var(--record-label)' }}
-            >
+        {/*
+          The medal ring is the object the seats put their avatars in — a
+          conic sweep through lighter and darker cuts of one metal, which is
+          what reads as metallic without a literal hex per theme. Not
+          `--crowned`: that wider halo belongs to the champion of the window
+          the floor is actually reading, one screen down.
+        */}
+        <span
+          className="medal-ring shrink-0"
+          aria-hidden="true"
+          style={{ position: 'relative' }}
+        >
+          <span
+            className="flex items-center justify-center rounded-full"
+            style={{
+              width: 'calc(var(--record-name) * 1.72)',
+              height: 'calc(var(--record-name) * 1.72)',
+              background: 'var(--surface-raised)',
+              fontSize: 'calc(var(--record-name) * 0.86)',
+              lineHeight: 1,
+            }}
+          >
+            🏆
+          </span>
+        </span>
+
+        <div className="relative min-w-0">
+          <div className="flex items-center gap-2" style={{ lineHeight: 1.1 }}>
+            <span className="record-tag shrink-0">
               {shown.running ? 'Yetakchi' : 'Rekord'}
             </span>
             <span
@@ -118,11 +137,41 @@ export function RecordWall() {
             >
               {monthLabel(shown.month)}
             </span>
+            {/*
+              The turn indicator, on the tag row rather than in the corner.
+              Beside the ghost numeral it crowded the one piece of the podium's
+              language this strip borrows; here it sits where the composition
+              already has room, and it is drawn in the METAL rather than the
+              page accent — one pink dot inside a gold object is the kind of
+              detail that makes a composition look assembled rather than
+              designed.
+            */}
+            {months.length > 1 && !reduced && (
+              <span className="flex shrink-0 items-center gap-1" aria-hidden="true">
+                {months.map((m, i) => (
+                  <span
+                    key={m.month}
+                    className="block rounded-full transition-opacity"
+                    style={{
+                      width: 3,
+                      height: 3,
+                      background: 'var(--metal)',
+                      opacity: i === Math.min(index, months.length - 1) ? 1 : 0.32,
+                    }}
+                  />
+                ))}
+              </span>
+            )}
           </div>
 
           <div
             className="truncate font-semibold"
-            style={{ color: 'var(--ink-primary)', fontSize: 'var(--record-name)' }}
+            style={{
+              color: 'var(--ink-primary)',
+              fontSize: 'var(--record-name)',
+              lineHeight: 1.25,
+              marginTop: 1,
+            }}
           >
             {shown.fullName}
             {shown.rop && (
@@ -134,9 +183,15 @@ export function RecordWall() {
 
           <div
             className="truncate"
-            style={{ color: 'var(--ink-secondary)', fontSize: 'var(--record-figure)' }}
+            style={{
+              color: 'var(--ink-secondary)',
+              fontSize: 'var(--record-figure)',
+              lineHeight: 1.2,
+            }}
           >
-            {formatUzs(shown.amount.amount)}
+            <span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
+              {formatUzs(shown.amount.amount)}
+            </span>
             <span style={{ color: 'var(--ink-muted)' }}>
               {' · '}
               {formatNumber(shown.orders)} ta ·{' '}
@@ -152,20 +207,6 @@ export function RecordWall() {
           </div>
         </div>
 
-        {months.length > 1 && !reduced && (
-          <div className="ml-auto flex shrink-0 gap-1" aria-hidden="true">
-            {months.map((m, i) => (
-              <span
-                key={m.month}
-                className="block h-1 w-1 rounded-full transition-opacity"
-                style={{
-                  background: 'var(--series-5)',
-                  opacity: i === Math.min(index, months.length - 1) ? 1 : 0.28,
-                }}
-              />
-            ))}
-          </div>
-        )}
       </div>
     </div>
   )
