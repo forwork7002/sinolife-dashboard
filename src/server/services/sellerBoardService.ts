@@ -36,6 +36,7 @@ import { scopedPeriod } from '@/server/domain/employees/branches'
 import type { Period } from '@/server/domain/period/period'
 import type { DeltaDto } from '@/lib/api'
 import type { InsightsRepository } from '@/server/repositories/insightsRepository'
+import { keyPart, ttlCache } from './ttlCache'
 import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type {
   SellerBoardFilters,
@@ -304,6 +305,33 @@ export interface SellerDayDto {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Sixty seconds, matching the sync tick.
+ *
+ * The data behind this board moves exactly once a minute, so an entry is never
+ * older than the numbers would have been anyway — and the client polls on the
+ * same minute clock, which means a TTL any shorter is missed by every solo
+ * reader while buying them nothing.
+ */
+const boardCache = ttlCache<SellerBoardDto>(60_000)
+
+/**
+ * Test seam only — and it is not optional in a test that builds two boards.
+ *
+ * The memo is module-level, which is what makes it shared between readers in
+ * production and what makes it shared between TESTS in a suite. Two cases that
+ * stub the repository differently and then ask for the same window, currency
+ * and filters are asking the same QUESTION as far as this key is concerned, so
+ * the second one is served the first one's board. It does not error: it
+ * returns a complete, well-formed DTO built from another test's fixtures, and
+ * the assertion fails somewhere that has nothing to do with the cause. That is
+ * exactly how it was found — four ranking assertions in
+ * `sellerBoardTeams.test.ts` failed with another case's ROP names in them.
+ */
+export function resetSellerBoardCache(): void {
+  boardCache.clear()
+}
+
 export class SellerBoardService {
   constructor(
     private readonly repo: SellerBoardRepository,
@@ -311,8 +339,75 @@ export class SellerBoardService {
     private readonly reference: ReferenceRepository,
   ) {}
 
+  /**
+   * ONE board per question, shared by everyone looking at it.
+   *
+   * This screen is the floor's, and the floor opens it together — the same
+   * arrival pattern the command centre's cache was written for. Each build is
+   * TWO full confirmation-cohort constructions (the window and the comparison,
+   * both through `queueSql` + the rating aggregate) plus the KPI read, and the
+   * route passes `ctx.query` and never `ctx.scope`, so every one of those
+   * readers was paying for an identical answer.
+   *
+   * THE SCOPE IS IN THE KEY, BECAUSE THIS ENDPOINT STOPPED BEING SCOPELESS.
+   * This memo was written when the route passed `ctx.query` and never
+   * `ctx.scope`, and it said in as many words that if that ever changed the
+   * memo had to be DELETED rather than extended. It changed:
+   * `analytics/sellers/route.ts` now builds its context from
+   * `{ ...ctx.query, ...ctx.scope }` so a ROP reads their own floor, and
+   * `data.scoped` travels with the payload so «1-oʻrin» cannot be misread.
+   *
+   * Deleting the memo was the other option and it is the wrong one here — this
+   * board is the floor's television plus every ROP's own reading of it, which
+   * is MORE readers of the same few answers, not fewer. What made the old rule
+   * right was a real distinction the new key respects: `restrictToEmployeeIds`
+   * is spread LAST, over anything the caller wrote into `?employeeIds=`, so
+   * the value in this key is the server's own resolution of who this account
+   * may read and never the reader's claim about it. `employeeIds`,
+   * `departmentIds` and `sourceIds` are the reader's, and they are in the key
+   * too — they narrow the same answer and cannot widen it past the scope
+   * ANDed underneath them in SQL.
+   *
+   * `keyPart` keeps `undefined` and `[]` distinct on purpose: an empty array
+   * reads as "no filter" in every repository here and widens to the whole
+   * company, so collapsing the two would let a narrowed question be served a
+   * company-wide answer. That is the one way this cache could leak, and it is
+   * the one thing `keyPart` exists to prevent.
+   *
+   * THE PRESET IS IN THE KEY, and it is not decoration. `ctx.comparison` is
+   * derived from the preset, so on a Monday «Bugun» and «Shu hafta» resolve to
+   * one window and demand different comparison rows; without the preset they
+   * would share an entry and swap each other's deltas. That exact bug is
+   * documented, with its measured numbers, in `commandCentreCacheKey.ts`.
+   */
   async board(ctx: AnalyticsContext, basis: SellerBoardBasisValue = 'queue'): Promise<SellerBoardDto> {
     const filters = boardFilters(ctx)
+
+    const key = [
+      basis,
+      ctx.period.preset,
+      ctx.period.start.toISOString(),
+      ctx.period.end.toISOString(),
+      // The comparison is derived, but it is also TRUNCATED for a to-date
+      // window — two questions can share a preset and a window and still want
+      // different previous spans, so it is named rather than assumed.
+      ctx.comparison.start.toISOString(),
+      ctx.comparison.end.toISOString(),
+      ctx.currency,
+      keyPart(filters.employeeIds),
+      keyPart(filters.departmentIds),
+      keyPart(filters.sourceIds),
+      keyPart(filters.restrictToEmployeeIds),
+    ].join('|')
+
+    return boardCache.get(key, () => this.buildBoard(ctx, basis, filters))
+  }
+
+  private async buildBoard(
+    ctx: AnalyticsContext,
+    basis: SellerBoardBasisValue,
+    filters: SellerBoardFilters,
+  ): Promise<SellerBoardDto> {
 
     /*
       All three reads at once. The comparison exists only to give the total a

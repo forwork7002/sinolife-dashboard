@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import { previousEquivalent, resolvePeriod } from '@/server/domain/period/period'
 import type { InsightsRepository, ConfirmationSellerRatingRow } from '@/server/repositories/insightsRepository'
 import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import type { AnalyticsContext } from '@/server/services/analyticsService'
-import { SellerBoardService } from '@/server/services/sellerBoardService'
+import { SellerBoardService, resetSellerBoardCache } from '@/server/services/sellerBoardService'
 
 /**
  * THE TEAMS ARE RANKED BY THE SELLERS' RULE, AND THE TELEVISION DEPENDS ON IT.
@@ -23,6 +23,13 @@ import { SellerBoardService } from '@/server/services/sellerBoardService'
  * Driven through `board()` rather than a copy of the rule, so the sellers'
  * rows and the teams' rows are proven to come out of ONE ordering.
  */
+
+/*
+  EVERY CASE HERE BUILDS A BOARD FOR THE SAME WINDOW, so without this they
+  share one memo entry and every case after the first asserts against the
+  first's fixtures. See `resetSellerBoardCache`.
+*/
+beforeEach(resetSellerBoardCache)
 
 const TZ = 'Asia/Tashkent'
 const NOW = new Date('2026-09-07T09:00:00+05:00')
