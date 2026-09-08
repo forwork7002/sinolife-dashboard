@@ -87,7 +87,6 @@ export function ConfirmationFaktSection() {
             and both FAKTs are the unit's, not the firm's — said here the way
             the board says it, or «Bonus jamgʻarmasi» reads as the company's.
           */}
-          {data?.scoped && ' · faqat sizga biriktirilgan boʻlim boʻyicha'}
         </p>
       </div>
 

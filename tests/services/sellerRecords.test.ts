@@ -137,25 +137,31 @@ describe('which figure the wall calls the record', () => {
   })
 })
 
-describe('what the wall says about whose records these are', () => {
-  it('is unscoped for an account that reads the whole company', async () => {
-    const records = serviceOver([row({ month: '2026-08-01', deliveredMinor: mln(128) })])
-    expect((await records(null)).scoped).toBe(false)
-  })
-
-  it('is scoped for a ROP, so «rekord» cannot be read as the company’s', async () => {
-    // Same meaning and same reason as `SellerBoardDto.scoped`: a record inside
-    // one team is not the firm's record, and the screen has to be able to say
-    // which it is showing.
-    const records = serviceOver([row({ month: '2026-08-01', deliveredMinor: mln(128) })])
-    expect((await records(['e1', 'e2'])).scoped).toBe(true)
-  })
-
+describe('what the wall says about the span it covers', () => {
   it('reports the first instant it covers, so the wall can disclose its own floor', async () => {
     const records = serviceOver([])
     // 2026-08 in Tashkent — the month the operator snapshot began. See
     // RECORDS_FROM for the measured reason it is not «all time».
     expect((await records()).from).toBe('2026-07-31T19:00:00.000Z')
     expect((await records()).months).toEqual([])
+  })
+
+  it('answers the same wall to a narrowed account as to an administrator', async () => {
+    /*
+      COMPANY-WIDE BY DECISION — the client's, on 2026-09-08: «sotuvchilar
+      reytingi bo'limi hammaga bir xil ko'rinishi kerak… hamma bir-birini
+      natijasini ko'ra olishi uchun». The scope is dropped in `boardFilters`,
+      so a caller carrying one gets the same rows as a caller carrying none.
+      If that is ever reversed, the memo in front of this service has to gain
+      the scope in its key in the same commit — see `sellerBoardCacheScope`.
+    */
+    const rows = [row({ month: '2026-08-01', deliveredMinor: mln(128), deliveredOrders: 74 })]
+    const records = serviceOver(rows)
+
+    const wide = await records(null)
+    resetSellerRecordsCache()
+    const narrowed = await records(['e1', 'e2'])
+
+    expect(narrowed.months).toEqual(wide.months)
   })
 })

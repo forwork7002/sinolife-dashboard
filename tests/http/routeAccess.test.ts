@@ -118,7 +118,7 @@ describe('what a TEAM- or OWN-scoped caller can reach', () => {
     'analytics/leaderboard': 'spreads scope; narrowEmployeeIds folds it into the roster',
     'analytics/products': 'spreads scope',
     'analytics/sales': 'spreads scope',
-    'analytics/sellers': 'spreads scope; both bases restrict in SQL',
+    'analytics/sellers': 'COMPANY-WIDE ON PURPOSE — see COMPANY_WIDE below',
     'analytics/sources': 'spreads scope',
     'dashboard/overview': 'spreads scope',
     deals: 'spreads scope',
@@ -169,9 +169,35 @@ describe('what a TEAM- or OWN-scoped caller can reach', () => {
   */
   const NOTHING_TO_NARROW = ['insights/structure', 'insights/structure/roster']
 
+  /*
+    THE ONE ROUTE THAT COULD NARROW AND DELIBERATELY DOES NOT.
+
+    Sotuvchilar reytingi is the floor's television, and the client asked on
+    2026-09-08 for it to read the same for everyone: «sotuvchilar reytingi
+    bo'limi hammaga bir xil ko'rinishi kerak… hamma bir-birini natijasini ko'ra
+    olishi uchun». A leaderboard whose readers each see a different league is
+    not a leaderboard — the instrument exists so a seller can find their own
+    row among all the others and know what the number ahead of them is.
+
+    It WAS scoped for six weeks, and that was a defensible reading of a
+    different question: `leaderboard:read` is held by every active account, so
+    the scope was the only thing between a salesperson and the firm's figures.
+    What it cost was the screen's whole purpose, so the trade is made the other
+    way — and recorded here, by name, rather than left as a missing line in a
+    route.
+
+    What is disclosed, so the decision can be judged rather than assumed: per
+    seller and per team, FAKT 1 / FAKT 2 money, order counts, conversion and
+    rank. No deal rows, no customers, no phone numbers, no costs, no salaries.
+
+    Everything else in NARROWS still has to be seen reading `ctx.scope`, which
+    is the point of keeping this a LIST of one rather than loosening the rule.
+  */
+  const COMPANY_WIDE = ['analytics/sellers']
+
   it.each(
     Object.keys(NARROWS)
-      .filter((id) => !['users', 'users/[id]', ...NOTHING_TO_NARROW].includes(id))
+      .filter((id) => !['users', 'users/[id]', ...NOTHING_TO_NARROW, ...COMPANY_WIDE].includes(id))
       .map((id) => [id] as const),
   )('%s actually reads the scope it is allowed to be asked for', (id) => {
     /*
@@ -185,6 +211,23 @@ describe('what a TEAM- or OWN-scoped caller can reach', () => {
     expect(route).toBeDefined()
     expect(route!.source).toMatch(/ctx\.scope|scopeService\.resolve/)
   })
+
+  it.each(COMPANY_WIDE.map((id) => [id] as const))(
+    '%s answers every caller the same board, and says so where it is read',
+    (id) => {
+      const route = routes.find((r) => name(r.relative) === id)
+      expect(route).toBeDefined()
+
+      /*
+        The absence has to be DELIBERATE and visible. A route that simply
+        forgot the scope looks identical to this one from the outside, so the
+        exemption is only honest while the source says out loud that it is
+        company-wide — and while it is genuinely not spreading the scope.
+      */
+      expect(route!.source).toMatch(/COMPANY-WIDE FOR EVERY CALLER/)
+      expect(route!.source).not.toMatch(/\.\.\.ctx\.scope/)
+    },
+  )
 
   it.each(NOTHING_TO_NARROW.map((id) => [id] as const))(
     '%s serves the structure whole, with no figure and no window',

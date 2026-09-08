@@ -81,20 +81,38 @@ const schema = analyticsQuerySchema.and(
 /**
  * The sellers' board — who brought in what during the period.
  *
- * NARROWED BY THE CALLER'S SCOPE, and it was the one screen that most needed
- * to be. `leaderboard:read` is a permission every active account holds, so
- * this endpoint answered an OWN-scoped salesperson with the whole company's
- * board — 289 people's confirmed and delivered money — while every other
- * company-wide screen refused them at the gate. The docblock here used to
- * argue that a ranking each person can only see themselves in is not a
- * ranking, which is true of a NAME FILTER and was never a reason to hand the
- * firm's numbers to an account scoped away from them.
+ * COMPANY-WIDE FOR EVERY CALLER, WHATEVER THEIR DATA SCOPE. This endpoint is
+ * the one deliberate hole in team scoping and the client asked for it in as
+ * many words on 2026-09-08: «sotuvchilar reytingi bo'limi hammaga bir xil
+ * ko'rinishi kerak… hamma bir-birini natijasini ko'ra olishi uchun». Every
+ * other screen still narrows — an account set to «faqat o'z bo'limi» reads its
+ * own confirmation queue, its own bell, its own everything — and this one does
+ * not, because a leaderboard whose readers each see a different league is not
+ * a leaderboard. It is the floor's television: the instrument exists so a
+ * seller can find their own row among all the others and know what the number
+ * ahead of them is.
  *
- * What a narrowed caller gets is their own board: their team's rows, ranked
- * among themselves, with share and totals over the same rows. That is a real
- * ranking — the one a ROP is paid to read — and `data.scope` on the payload
- * says so, so «1-oʻrin» on a team board cannot be misread as first in the
- * company.
+ * It was narrowed for six weeks and that was a defensible reading of a
+ * different question — `leaderboard:read` is held by every active account, so
+ * the scope was the only thing standing between a salesperson and the firm's
+ * figures. What it costs is the screen's whole purpose, so the trade is made
+ * the other way and stated here rather than left implicit.
+ *
+ * WHAT IS ACTUALLY DISCLOSED, so the decision can be judged: per-seller and
+ * per-team FAKT 1 / FAKT 2 money, order counts, conversion and rank. No deal
+ * rows, no customers, no phone numbers, no costs, no salaries. It is the same
+ * standing every seller already reads off the wall the client hangs this on.
+ *
+ * ALL THREE READERS OF THIS ROUTE MOVE TOGETHER, and they have to. The board
+ * on `/sellers`, the record ticker in its header, and the FAKT 1 / FAKT 2 band
+ * on Savdo dinamikasi are one answer rendered three ways — the band's tiles
+ * are built FROM these rows. Narrowing one and not the others would have a
+ * single endpoint reporting two different floors on two screens.
+ *
+ * `tests/http/routeAccess.test.ts` records the exemption by name: every other
+ * route that admits a narrowed caller must be seen reading `ctx.scope`, and
+ * this one is listed as company-wide on purpose so the absence is a decision
+ * in a diff rather than an oversight.
  *
  * TWO CLOCKS, PICKED BY `?basis=`. The default, 'queue', dates every figure
  * by the order's own arrival in the confirmation queue (C4:NEW) — FAKT 1 is
@@ -109,17 +127,16 @@ const schema = analyticsQuerySchema.and(
 export const GET = getHandler(ACCESS, schema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
   /*
-    SCOPE LAST, the same ordering every narrowed route in this API uses: a
-    caller who hand-writes `?employeeIds=` into the address bar narrows their
-    own view and cannot widen it, because the restriction is spread on top of
-    whatever they asked for and then ANDed in SQL.
+    `ctx.query` AND NOT `ctx.scope` — the one place in this API where that is
+    deliberate. See the block above for why, and `routeAccess.test.ts` for
+    where the exemption is recorded.
+
+    The caller's own `?employeeIds=` still applies. It can only ever narrow
+    what is shown, so a reader filtering the board to one team is doing on
+    screen what the scope used to do underneath — the difference is that they
+    chose it and can undo it.
   */
-  const context = AnalyticsService.context(
-    period,
-    ctx.currency,
-    { ...ctx.query, ...ctx.scope },
-    ctx.now,
-  )
+  const context = AnalyticsService.context(period, ctx.currency, ctx.query, ctx.now)
 
   if (ctx.query.include === 'records') {
     return {

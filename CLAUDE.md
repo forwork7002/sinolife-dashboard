@@ -230,8 +230,27 @@ permission without threading the scope fails the gate.
 
 Narrowed today: the confirmation queue and everything cut from its cohort (rows,
 pagination count, tiles, ROP panel, ROP filter options, the header bell, the
-rejection chart), the sellers board on both bases, the leaderboard, and the ten
-routes that already spread scope. Still company-only, and still refusing:
+rejection chart), the leaderboard, and the ten routes that already spread
+scope.
+
+**One route admits a narrowed caller and answers with the whole company on
+purpose: `/analytics/sellers`.** The client asked for it on 2026-09-08 —
+«sotuvchilar reytingi bo'limi hammaga bir xil ko'rinishi kerak… hamma
+bir-birini natijasini ko'ra olishi uchun» — and a leaderboard whose readers
+each see a different league is not a leaderboard. It was scoped for six weeks
+and the trade was made the other way. THREE screens move with it, because they
+are one answer rendered three ways: the board, its record ticker, and the
+FAKT 1 / FAKT 2 band on Savdo dinamikasi, whose tiles are built from these
+rows. What that discloses to every account: per seller and per team, FAKT 1 /
+FAKT 2 money, order counts, conversion and rank — no deal rows, no customers,
+no phone numbers, no costs. `routeAccess.test.ts` records the exemption by
+name (`COMPANY_WIDE`) and fails if the route stops saying so out loud, so
+every OTHER route in that list must still be seen reading `ctx.scope`. The
+60-second memo in front of `SellerBoardService.board` is keyed WITHOUT a
+scope, which is only safe while this holds: narrow the board again and the
+memo has to gain the scope in the same commit or be deleted in it.
+
+Still company-only, and still refusing:
 the command centre, logistics, margin, dispatch, cohort, concentration,
 channels, `finance/overview` and **marketing** — the last was `ANALYTICS_READ`
 and had to be tightened, because the Roistat ledger has no employee dimension
@@ -341,8 +360,11 @@ Per-screen traps worth knowing before you touch one:
   ever has a dispatch-role stage-history row, not by its current stage.
 - **Joʻnatish nuqtalari** — delivery rate's denominator is *resolved* orders;
   in-flight is excluded and reported separately.
-- **Sotuvchilar reytingi** — company-wide on purpose: the route passes
-  `ctx.query` and never `ctx.scope`.
+- **Sotuvchilar reytingi** — company-wide on purpose, and it is the ONLY route
+  that admits a narrowed caller without narrowing: it passes `ctx.query` and
+  never `ctx.scope`, and `boardFilters` drops `restrictToEmployeeIds` a second
+  time so a scope cannot reach the SQL by one edit. See the block above
+  *Client data flow* for the reason and what it discloses.
 - **KPI rejalari** — the preset picks the plan but does not slice it. «Bugun»
   and «Shu oy» give identical numbers inside one plan.
 - **Struktura** — **no money and no reporting window, and both are load-bearing

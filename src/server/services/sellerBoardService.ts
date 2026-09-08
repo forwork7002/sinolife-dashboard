@@ -273,13 +273,6 @@ export interface SellerBoardDto {
    */
   readonly basis: 'confirmation_queue' | 'created_in_period'
   /**
-   * True when these rows are a SUBSET of the company.
-   *
-   * Mirrored in `src/lib/api.ts` — see the note there for why the screen has
-   * to be told rather than left to infer it from the row count.
-   */
-  readonly scoped: boolean
-  /**
    * THE PLAN'S OWN SPAN, when the board found any targets at all.
    *
    * A target is a contract for a stated period — 300 mln in September — not
@@ -357,8 +350,6 @@ export interface SellerRecordDto {
 export interface SellerRecordsDto {
   /** Newest month first. */
   readonly months: readonly SellerRecordDto[]
-  /** True when these are one team's records rather than the company's. */
-  readonly scoped: boolean
   /** The first instant the wall covers. See `RECORDS_FROM`. */
   readonly from: string
 }
@@ -432,30 +423,27 @@ export class SellerBoardService {
    * route passes `ctx.query` and never `ctx.scope`, so every one of those
    * readers was paying for an identical answer.
    *
-   * THE SCOPE IS IN THE KEY, BECAUSE THIS ENDPOINT STOPPED BEING SCOPELESS.
-   * This memo was written when the route passed `ctx.query` and never
-   * `ctx.scope`, and it said in as many words that if that ever changed the
-   * memo had to be DELETED rather than extended. It changed:
-   * `analytics/sellers/route.ts` now builds its context from
-   * `{ ...ctx.query, ...ctx.scope }` so a ROP reads their own floor, and
-   * `data.scoped` travels with the payload so «1-oʻrin» cannot be misread.
+   * NO SCOPE IN THE KEY, BECAUSE THERE IS NO SCOPE IN THE ANSWER. This board
+   * is company-wide for every caller by decision — the client's, stated on
+   * 2026-09-08 and argued in `analytics/sellers/route.ts` — so two accounts
+   * asking for the same window are asking the identical question and must
+   * share the entry. `boardFilters` drops `restrictToEmployeeIds` rather than
+   * forwarding it, which is the second of the two places a scope would have to
+   * reappear before it could reach the SQL.
    *
-   * Deleting the memo was the other option and it is the wrong one here — this
-   * board is the floor's television plus every ROP's own reading of it, which
-   * is MORE readers of the same few answers, not fewer. What made the old rule
-   * right was a real distinction the new key respects: `restrictToEmployeeIds`
-   * is spread LAST, over anything the caller wrote into `?employeeIds=`, so
-   * the value in this key is the server's own resolution of who this account
-   * may read and never the reader's claim about it. `employeeIds`,
-   * `departmentIds` and `sourceIds` are the reader's, and they are in the key
-   * too — they narrow the same answer and cannot widen it past the scope
-   * ANDed underneath them in SQL.
+   * IF THIS SCREEN IS EVER NARROWED AGAIN, this memo has to gain the scope in
+   * the same commit or be deleted in it. That is not a style note: keyed
+   * without it, an administrator and a ROP asking for the same window inside
+   * the same minute share one entry and the second is served the first's
+   * board. `keyPart` is imported and ready for exactly that, and
+   * `sellerBoardCacheScope.test.ts` fails the moment the service starts
+   * reading a scope it is not keying on.
    *
-   * `keyPart` keeps `undefined` and `[]` distinct on purpose: an empty array
-   * reads as "no filter" in every repository here and widens to the whole
-   * company, so collapsing the two would let a narrowed question be served a
-   * company-wide answer. That is the one way this cache could leak, and it is
-   * the one thing `keyPart` exists to prevent.
+   * The reader's own `employeeIds`, `departmentIds` and `sourceIds` ARE in the
+   * key. They are the caller's claim rather than the server's, which is fine
+   * because they can only narrow what is already public — and `keyPart` keeps
+   * `undefined` and `[]` distinct, since an empty array reads as "no filter"
+   * in every repository here and widens back to the whole company.
    *
    * THE PRESET IS IN THE KEY, and it is not decoration. `ctx.comparison` is
    * derived from the preset, so on a Monday «Bugun» and «Shu hafta» resolve to
@@ -480,7 +468,6 @@ export class SellerBoardService {
       keyPart(filters.employeeIds),
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
-      keyPart(filters.restrictToEmployeeIds),
     ].join('|')
 
     return boardCache.get(key, () => this.buildBoard(ctx, basis, filters))
@@ -604,7 +591,6 @@ export class SellerBoardService {
         small company and also one ROP's floor, and the difference decides
         whether «1-oʻrin» means anything.
       */
-      scoped: (ctx.filters.restrictToEmployeeIds ?? null) !== null,
       teams: teamRows(rows, totalWonMinor, plans.byEmployee, ctx.currency),
       totals: {
         sellers: rows.length,
@@ -687,7 +673,6 @@ export class SellerBoardService {
       keyPart(filters.employeeIds),
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
-      keyPart(filters.restrictToEmployeeIds),
     ].join('|')
 
     return recordsCache.get(key, () => this.buildRecords(ctx, period, filters))
@@ -706,7 +691,6 @@ export class SellerBoardService {
     const runningMonth = monthKey(ctx.now, period.timeZone)
 
     return {
-      scoped: (filters.restrictToEmployeeIds ?? null) !== null,
       from: period.start.toISOString(),
       months: rows.map((r) => {
         // The seat's own rule, restated on the DTO so the screen does not have
@@ -739,13 +723,14 @@ export class SellerBoardService {
   ): Promise<readonly SellerDayDto[]> {
     if (basis === 'queue') {
       /*
-        The scope rides the window here too, and it is what refuses a seller
-        the caller may not read: the prelude has already dropped every operator
-        outside the scope, so the series comes back empty rather than showing
-        another floor's days to whoever guessed an employee id.
+        UNSCOPED, like the board this drills into. It used to carry the scope
+        so a caller could not read a seller on another floor; the board is
+        company-wide by decision now, and a day chart that refused the rows the
+        table above it prints would be the one screen disagreeing with itself.
+        `boardFilters` is what drops the scope, in one place, for both.
       */
       const days = await this.insights.confirmationSellerRatingDays(
-        scopedPeriod(ctx.period, ctx.filters),
+        scopedPeriod(ctx.period, boardFilters(ctx)),
         employeeId,
       )
       return days.map((d) => ({
@@ -824,12 +809,20 @@ export class SellerBoardService {
 // ---------------------------------------------------------------------------
 
 /** Keep only the filters this board's SQL can honestly honour. */
+/**
+ * The reader's OWN filters, and deliberately not their data scope.
+ *
+ * `restrictToEmployeeIds` is dropped rather than forwarded, and dropping it
+ * here is what makes the omission hard to undo by accident: the route already
+ * declines to spread `ctx.scope`, and this is the second place a scope would
+ * have to reappear before it could reach the SQL. See the route's own docblock
+ * for why this board is company-wide for every caller.
+ */
 function boardFilters(ctx: AnalyticsContext): SellerBoardFilters {
   return {
     employeeIds: ctx.filters.employeeIds,
     departmentIds: ctx.filters.departmentIds,
     sourceIds: ctx.filters.sourceIds,
-    restrictToEmployeeIds: ctx.filters.restrictToEmployeeIds,
   }
 }
 

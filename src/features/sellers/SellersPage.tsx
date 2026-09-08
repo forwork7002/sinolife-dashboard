@@ -129,23 +129,6 @@ export function SellersPage() {
         it keeps its own.
       */}
       <div className="tv-board-shell flex min-h-0 flex-col gap-3">
-        {/*
-          WHOSE BOARD THIS IS, SAID BEFORE THE RANKS ARE. For a ROP the rows
-          are their own floor and «1-oʻrin» means first on it, not first in
-          the company. The server decides (`data.scoped`); the page prints it.
-        */}
-        {data?.scoped ? (
-          <p
-            className="shrink-0 rounded-lg px-3 py-2 text-[11.5px]"
-            style={{
-              background: 'color-mix(in oklab, var(--series-5) 10%, transparent)',
-              color: 'var(--ink-secondary)',
-            }}
-          >
-            Bu reyting <strong>faqat sizga biriktirilgan boʻlim</strong> boʻyicha. Oʻrin va ulush
-            shu roʻyxat ichida hisoblanadi — kompaniya boʻyicha emas.
-          </p>
-        ) : null}
 
         <div className="tv-switch" role="tablist" aria-label="Qaysi reyting">
           {(
