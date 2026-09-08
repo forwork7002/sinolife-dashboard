@@ -167,6 +167,13 @@ export function SellersPage() {
             parked={shown !== 'teams'}
           />
         </div>
+
+        {/*
+          The one line on this board that is not a rank: who made it. English,
+          right-aligned and at the page's smallest size — see `.tv-credit` —
+          so it stays out of the way of a seller looking for their own row.
+        */}
+        <p className="tv-credit">Developed by Yusuf</p>
       </div>
     </PageShell>
   )

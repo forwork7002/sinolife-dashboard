@@ -2744,7 +2744,9 @@ p {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-auto-rows: minmax(0, 1fr);
-    height: 100%;
+    /* `flex: 1`, not `height: 100%`: the shell also carries the credit line
+       under the board, and a 100%-high board would push it off the screen. */
+    flex: 1;
     min-height: 0;
   }
   .tv-col {
@@ -2754,6 +2756,24 @@ p {
     flex: 1;
     min-height: 0;
   }
+}
+
+/*
+ * THE CREDIT LINE — who built the board, in the quietest voice the page has.
+ * It sits under both columns, right-aligned and in English, so a floor
+ * reading its own rank off the television never reads it by accident and a
+ * visitor standing at the screen still can. Never a link, never a colour the
+ * board uses for a value.
+ */
+.tv-credit {
+  flex-shrink: 0;
+  padding: 2px 4px 0;
+  text-align: right;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  color: color-mix(in oklab, var(--ink-secondary) 45%, transparent);
+  user-select: none;
 }
 
 /**
