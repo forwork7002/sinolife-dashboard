@@ -672,6 +672,19 @@ export function ConfirmationPage() {
   /** Moves with the board it belongs to — see `StatsToggle`. */
   const statsToggle = <StatsToggle open={statsOpen} onToggle={() => setStatsOpen((v) => !v)} />
 
+  /*
+    WHETHER A COHORT FILTER IS WHAT EMPTIED THE PANEL — and only those two.
+
+    The РОП selection is excluded on purpose: it does not reach the breakdown,
+    so it cannot be the reason the breakdown came back empty, and naming it
+    would send the reader to clear a filter that was never applied there. The
+    search box is excluded for the opposite reason — it DOES narrow the
+    cohort, but it is on screen with its own text in it, so it does not need a
+    caption to be found.
+  */
+  const cohortNarrowed =
+    filters.regions.length > 0 || filters.amountMin !== undefined || filters.amountMax !== undefined
+
   return (
     <PageShell
       title={t.modules.confirmation.title}
@@ -1004,6 +1017,7 @@ export function ConfirmationPage() {
             rows={data?.byRop ?? []}
             status={tileStatus}
             backlog={backlog}
+            narrowed={cohortNarrowed}
             action={statsToggle}
           />
         )}
@@ -1553,6 +1567,7 @@ export function RopPanel({
   rows,
   status,
   backlog,
+  narrowed,
   action,
 }: {
   rows: readonly ConfirmationQueueDto['byRop'][number][]
@@ -1584,6 +1599,22 @@ export function RopPanel({
    * worth.
    */
   backlog: boolean
+  /**
+   * Whether a РЕГИОН or СУММА filter is applied — the two that reach these rows.
+   *
+   * IT ONLY EVER CHANGES THE EMPTY STATE, and it exists because the sentence
+   * printed there was FALSE the moment a column filter was on. «Бу даврда
+   * навбатга тушган буюртма йўқ» blames the period, and the period is not what
+   * emptied the table: filter to a region nobody ordered from this month and
+   * there are still eight hundred orders in the window, none of them here.
+   * Measured on 2026-09-09 — `regions=Xorazm` against a local board holding
+   * nine orders returned zero rows under that caption.
+   *
+   * A reader who believes the caption clears the WINDOW, which is the one
+   * control that cannot help them, and the funnel they actually have to clear
+   * is two metres away at the top of a column.
+   */
+  narrowed?: boolean
 }) {
   /*
     APPENDED, AND ONLY OVER ROWS THAT EXIST. A ЖАМИ of zeros under no groups
@@ -1824,7 +1855,13 @@ export function RopPanel({
           stickyLastRow
           emptyTitle="РОП маълумоти йўқ"
           emptyBody={
-            backlog ? 'Ҳозир кутаётган буюртма йўқ.' : 'Бу даврда навбатга тушган буюртма йўқ.'
+            narrowed
+              ? // Names the control that did it, because it is the only one
+                // that can undo it — and the period never could.
+                'Танланган регион ва сумма филтрлари бўйича буюртма йўқ. Устун филтрларини тозаланг.'
+              : backlog
+                ? 'Ҳозир кутаётган буюртма йўқ.'
+                : 'Бу даврда навбатга тушган буюртма йўқ.'
           }
         />
       </div>

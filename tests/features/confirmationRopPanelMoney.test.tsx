@@ -208,6 +208,26 @@ describe('the ROP panel prints what each state is worth', () => {
     expect(lineOf(/Sevinch/).textContent).toContain('1,245,150,000')
   })
 
+  it('blames the filter that emptied it, not the window', () => {
+    render(<RopPanel rows={[]} status="ready" backlog={false} narrowed />)
+
+    /*
+      «Бу даврда навбатга тушган буюртма йўқ» is FALSE while a column filter is
+      on: filter to a region nobody ordered from and there are still eight
+      hundred orders in the window, none of them here. A reader who believes
+      that caption goes and changes the period, which is the one control that
+      cannot help them.
+    */
+    expect(screen.getByText(/Устун филтрларини тозаланг/)).toBeTruthy()
+    expect(screen.queryByText(/Бу даврда/)).toBeNull()
+  })
+
+  it('still blames the window when nothing is filtered', () => {
+    render(panel([]))
+
+    expect(screen.getByText(/Бу даврда навбатга тушган буюртма йўқ/)).toBeTruthy()
+  })
+
   it('renders no total over no groups', () => {
     render(panel([]))
 
