@@ -125,6 +125,8 @@ describe('what a TEAM- or OWN-scoped caller can reach', () => {
     'deals/[id]': 'hand-rolled: the scope is in the WHERE clause, so a stranger 404s',
     'employees/[id]': 'hand-rolled: canViewEmployee is asked with the resolved scope',
     'insights/confirmations/orders': 'the queue cohort narrows in classified',
+    'insights/confirmations/regions':
+      'the same cohort, so the РЕГИОН filter offers a narrowed caller only the regions their own rows are in',
     'insights/flow': 'spreads scope',
     'insights/pulse': 'spreads scope',
     'insights/structure': 'nothing on it to narrow: who reports to whom, and no figures',

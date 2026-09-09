@@ -460,11 +460,42 @@ export interface ConfirmationRopRow {
   readonly money: ConfirmationOutcomeMoneyMinor
 }
 
+/**
+ * What narrows the COHORT the tiles and the ROP panel are measured over.
+ *
+ * Deliberately a subset of `ConfirmationOrderQuery`: it carries everything
+ * that narrows the population and nothing that identifies a group. The two
+ * things it leaves out are the state selection and the ROP selection, and both
+ * are left out for one reason — each would collapse the comparison the band and
+ * the panel exist to make, the states against each other and the groups against
+ * each other. Region and сумма narrow what is being compared without taking the
+ * comparison away.
+ */
+export interface ConfirmationCohortFilter {
+  readonly q?: string
+  readonly regions?: readonly string[]
+  readonly amountMinMinor?: bigint
+  readonly amountMaxMinor?: bigint
+}
+
 export interface ConfirmationOrderQuery {
   /** Any subset of the five states. Undefined or empty means all of them. */
   readonly outcomes?: readonly ConfirmationOutcomeValue[]
-  /** A single ROP group ("Sevinch"), or undefined for all of them. */
-  readonly rop?: string
+  /**
+   * ROP groups by name. Undefined or empty means all of them.
+   *
+   * The service unions the legacy single `?rop=` into this, so the repository
+   * has ONE rop predicate to maintain rather than two that can disagree.
+   */
+  readonly rops?: readonly string[]
+  /** Customer regions by name. `NO_REGION` selects the ones carrying none. */
+  readonly regions?: readonly string[]
+  /**
+   * The СУММА range in MINOR units, inclusive. The service converts from the
+   * whole soʻm a human typed; nothing below this line knows about that scale.
+   */
+  readonly amountMinMinor?: bigint
+  readonly amountMaxMinor?: bigint
   /** Free text over name, phone, product, Bitrix id, order code and title. */
   readonly q?: string
   readonly page: number
@@ -1367,9 +1398,48 @@ export class InsightsRepository {
    */
   static readonly NO_ROP = '(ROP yoʻq)'
 
-  /** The ROP predicate, written once so the three readings cannot drift. */
+  /**
+   * The label for orders whose customer carries no region.
+   *
+   * THE SAME ARGUMENT AS `NO_ROP`, AND THE SAME TRAP. `d."region"` is NULL for
+   * a real population of orders, and `= ANY($n)` never matches a NULL — so a
+   * region filter written without this would have offered the reader a column
+   * of «—» rows it could describe but never select, exactly as the ROP filter
+   * once did with its 83 orders. It is a filter VALUE, not a display string:
+   * the column still prints an em dash.
+   */
+  static readonly NO_REGION = '(Region yoʻq)'
+
+  /**
+   * The ROP predicate, written once so the four readings cannot drift.
+   *
+   * A LIST SINCE 2026-09-09, when the control became a column filter rather
+   * than a single-choice dropdown — see `rops` in `queryParams`. NULL, not an
+   * empty array: `= ANY` over an empty array is false for every row, so an
+   * empty selection would render an empty table instead of the whole queue.
+   * That is the same rule the outcome predicate states beside it.
+   */
   private static ropMatch(param: string): string {
-    return `(${param}::text IS NULL OR coalesce(c.rop, '${InsightsRepository.NO_ROP}') = ${param})`
+    return `(${param}::text[] IS NULL OR coalesce(c.rop, '${InsightsRepository.NO_ROP}') = ANY(${param}::text[]))`
+  }
+
+  /** The region predicate. Same shape, same NULL-means-everything rule. */
+  private static regionMatch(param: string): string {
+    return `(${param}::text[] IS NULL OR coalesce(d."region", '${InsightsRepository.NO_REGION}') = ANY(${param}::text[]))`
+  }
+
+  /**
+   * The СУММА range, in MINOR units — the column's own scale.
+   *
+   * Two independent bounds rather than one range type, because a reader
+   * routinely wants only one of them («everything over a million») and a
+   * half-open range is not an edge case here. Both are inclusive: the box says
+   * «dan» and «gacha», and a reader who types the exact figure of an order
+   * expects to see that order.
+   */
+  private static amountRange(min: string, max: string): string {
+    return `(${min}::bigint IS NULL OR d."amountMinor" >= ${min}::bigint)
+          AND (${max}::bigint IS NULL OR d."amountMinor" <= ${max}::bigint)`
   }
 
   /**
@@ -1811,7 +1881,7 @@ export class InsightsRepository {
   /** How the window's queue split across the five states. */
   async confirmationOutcomes(
     period: ScopedWindow,
-    filter: { rop?: string; q?: string } = {},
+    filter: { rops?: readonly string[]; q?: string } = {},
     mode: ConfirmationQueueMode = 'window',
   ): Promise<ConfirmationOutcomeTotals> {
     const rows = await this.prisma.$queryRawUnsafe<
@@ -1827,7 +1897,7 @@ export class InsightsRepository {
         GROUP BY c.outcome`,
       period.start,
       period.end,
-      filter.rop ?? null,
+      filter.rops && filter.rops.length > 0 ? [...filter.rops] : null,
       filter.q ?? null,
       InsightsRepository.scopeValue(period),
     )
@@ -2124,7 +2194,7 @@ export class InsightsRepository {
    */
   async confirmationByRop(
     period: ScopedWindow,
-    filter: { q?: string } = {},
+    filter: ConfirmationCohortFilter = {},
     mode: ConfirmationQueueMode = 'window',
   ): Promise<ConfirmationRopRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<
@@ -2177,8 +2247,17 @@ export class InsightsRepository {
         here is an order missing from the headline total — and the one
         population most likely to have no ROP is exactly the one worth
         noticing. The filter list drops them; the arithmetic does not.
+
+        REGION AND СУММА NARROW THIS; THE ROP SELECTION DOES NOT — the same
+        line the long-window shape draws, and it must stay drawn in the same
+        place in both or a month and a year answer differently. A ROP filter
+        would collapse this breakdown to the one row the reader picked, and
+        comparing the groups is the only reason it exists; region and сумма
+        narrow the population being compared without taking the comparison
+        away, exactly as the period and the search box already do.
       */
-      WHERE TRUE
+      WHERE ${InsightsRepository.regionMatch('$5')}
+        AND ${InsightsRepository.amountRange('$6', '$7')}
         ${InsightsRepository.SEARCH_SQL('$3')}
       GROUP BY c.rop
       ORDER BY orders DESC`,
@@ -2186,6 +2265,9 @@ export class InsightsRepository {
       period.end,
       filter.q ?? null,
       InsightsRepository.scopeValue(period),
+      filter.regions && filter.regions.length > 0 ? [...filter.regions] : null,
+      filter.amountMinMinor?.toString() ?? null,
+      filter.amountMaxMinor?.toString() ?? null,
     )
 
     return rows.map((r) => ({
@@ -2206,6 +2288,54 @@ export class InsightsRepository {
           unconfirmedShipped: money(r.unconfirmed_shipped_amount),
         },
     }))
+  }
+
+  /**
+   * The РЕГИОН filter's options — every region present in the window.
+   *
+   * A QUERY OF ITS OWN, AND FETCHED ONLY WHEN THE POPOVER OPENS. It could have
+   * ridden on `confirmationByRop` as a second cut over the same cohort, the way
+   * `confirmationLogistics` unions its two, and that was the first design. It
+   * was dropped because the cost lands in the wrong place: the board reloads
+   * every two minutes on a screen the floor keeps open all day, and the
+   * options change about as often as the portal grows a region. Lazy, this
+   * runs once per session behind a spinner nobody waits on; unioned, it would
+   * have run several hundred times a day to answer a question nobody asked.
+   *
+   * IT IGNORES EVERY COLUMN FILTER, INCLUDING ITS OWN. A list narrowed by the
+   * selection made in it cannot be un-narrowed — pick «Хорезм» and every other
+   * region leaves the list, so the only way back is the address bar. The
+   * period, the search box and the caller's scope DO apply: those describe
+   * which board is on screen rather than which slice of it.
+   *
+   * Counts ride along because Excel's own filter prints them and they are free
+   * here — a region with four orders is worth telling apart from one with four
+   * hundred before you click it.
+   */
+  async confirmationRegions(
+    period: ScopedWindow,
+    filter: { q?: string } = {},
+    mode: ConfirmationQueueMode = 'window',
+  ): Promise<{ region: string; orders: number }[]> {
+    const rows = await this.prisma.$queryRawUnsafe<{ region: string; orders: bigint }[]>(
+      `${InsightsRepository.queueSql(mode, '$4')}
+       SELECT
+         coalesce(d."region", '${InsightsRepository.NO_REGION}') AS region,
+         count(*)::bigint AS orders
+       FROM scoped c
+       JOIN "deal" d ON d."id" = c.deal_id
+       LEFT JOIN "customer" cust ON cust."id" = d."customerId"
+      WHERE TRUE
+        ${InsightsRepository.SEARCH_SQL('$3')}
+      GROUP BY 1
+      ORDER BY orders DESC, 1 ASC`,
+      period.start,
+      period.end,
+      filter.q ?? null,
+      InsightsRepository.scopeValue(period),
+    )
+
+    return rows.map((r) => ({ region: r.region, orders: int(r.orders) }))
   }
 
   /**
@@ -2861,6 +2991,8 @@ export class InsightsRepository {
         -- the whole queue.
         WHERE ($3::text[] IS NULL OR c.outcome = ANY($3::text[]))
           AND ${InsightsRepository.ropMatch('$5')}
+          AND ${InsightsRepository.regionMatch('$9')}
+          AND ${InsightsRepository.amountRange('$10', '$11')}
           ${InsightsRepository.SEARCH_SQL('$4')}
        ),
        page AS (
@@ -2938,10 +3070,21 @@ export class InsightsRepository {
          FROM visible c
          JOIN "deal" d ON d."id" = c.deal_id
          LEFT JOIN "customer" cust ON cust."id" = d."customerId"
-        -- NULL rops are KEPT and dropped by the caller: the tiles are this
-        -- breakdown summed down its columns, so a row excluded here is an
-        -- order missing from the headline total.
-        WHERE TRUE
+        /*
+          NULL rops are KEPT and dropped by the caller: the tiles are this
+          breakdown summed down its columns, so a row excluded here is an
+          order missing from the headline total.
+
+          REGION AND СУММА NARROW THIS; THE ROP SELECTION DOES NOT. The line
+          is not arbitrary — a ROP filter would collapse this breakdown to the
+          one row the reader selected, and comparing the groups is the only
+          reason it exists. Region and сумма narrow the population being
+          compared without taking the comparison away, exactly as the period
+          and the search box already do. The tiles are these rows added up, so
+          this is also what makes the band follow the two new filters.
+        */
+        WHERE ${InsightsRepository.regionMatch('$9')}
+          AND ${InsightsRepository.amountRange('$10', '$11')}
           ${InsightsRepository.SEARCH_SQL('$4')}
         GROUP BY c.rop
        )
@@ -2953,10 +3096,13 @@ export class InsightsRepository {
       period.end,
       query.outcomes && query.outcomes.length > 0 ? [...query.outcomes] : null,
       query.q ?? null,
-      query.rop ?? null,
+      query.rops && query.rops.length > 0 ? [...query.rops] : null,
       query.pageSize,
       offset,
       InsightsRepository.scopeValue(period),
+      query.regions && query.regions.length > 0 ? [...query.regions] : null,
+      query.amountMinMinor?.toString() ?? null,
+      query.amountMaxMinor?.toString() ?? null,
     )
 
     const row = rows[0]
@@ -3102,6 +3248,8 @@ export class InsightsRepository {
         -- the whole queue.
         WHERE ($3::text[] IS NULL OR c.outcome = ANY($3::text[]))
           AND ${InsightsRepository.ropMatch('$5')}
+          AND ${InsightsRepository.regionMatch('$9')}
+          AND ${InsightsRepository.amountRange('$10', '$11')}
           ${InsightsRepository.SEARCH_SQL('$4')}
         -- The deal id breaks ties, so paging cannot show one order twice and
         -- skip another when a thousand rows share a sort value.
@@ -3164,10 +3312,13 @@ export class InsightsRepository {
       period.end,
       query.outcomes && query.outcomes.length > 0 ? [...query.outcomes] : null,
       query.q ?? null,
-      query.rop ?? null,
+      query.rops && query.rops.length > 0 ? [...query.rops] : null,
       query.pageSize,
       offset,
       InsightsRepository.scopeValue(period),
+      query.regions && query.regions.length > 0 ? [...query.regions] : null,
+      query.amountMinMinor?.toString() ?? null,
+      query.amountMaxMinor?.toString() ?? null,
     )
 
     return {

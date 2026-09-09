@@ -35,6 +35,27 @@ const idList = z
   )
   .pipe(z.array(z.string().min(1).max(64)).max(200).optional())
 
+/**
+ * The same list, for NAMES rather than ids.
+ *
+ * 64 characters is a cuid; a department name or a region is prose and runs
+ * long — the ROP dropdown already offered one of 69 characters, which the id
+ * cap would turn into a 400 on the whole page the moment it was picked. The
+ * ceiling matches the column the value comes from, as `rop` below explains.
+ */
+const nameList = z
+  .string()
+  .optional()
+  .transform((value) =>
+    value
+      ? value
+          .split(',')
+          .map((part) => part.trim())
+          .filter((part) => part.length > 0)
+      : undefined,
+  )
+  .pipe(z.array(z.string().min(1).max(200)).max(40).optional())
+
 /** A calendar date, `YYYY-MM-DD`, interpreted in the app timezone downstream. */
 const isoDate = z
   .string()
@@ -208,6 +229,50 @@ export const confirmationOrdersQuerySchema = periodQuerySchema
        * column it comes from rather than a guess about how long a name is.
        */
       rop: z.string().trim().min(1).max(200).optional(),
+      /**
+       * ROP groups by name, comma-separated — the column filter's selection.
+       *
+       * A LIST NOW, because the control moved. It used to be the toolbar's
+       * single-choice «Барча РОП»; the client asked on 2026-09-09 for an
+       * Excel-style filter on the column itself («jadvaldagi roplar ustuniga
+       * exceldagi filtrga oʻxshab filtr»), and an AutoFilter is a set of
+       * checkboxes. Comparing two ROP groups against each other was a page
+       * reload each before this.
+       *
+       * `rop` above is kept and still honoured, so every link already pasted
+       * into Telegram — /confirmation?rop=Sevinch — opens on what it opened on
+       * before. The service unions the two.
+       *
+       * 200 per entry for the reason `rop` states; 40 entries because the
+       * portal has fifteen ROP departments and the ceiling is a bound, not a
+       * prediction.
+       */
+      rops: nameList,
+      /**
+       * Customer regions by name, comma-separated.
+       *
+       * `deal.region` is one of fourteen values written by the portal's own
+       * UF_CRM field, so this is a bounded vocabulary rather than free text —
+       * but it is NOT enumerated here. The import writes whatever the portal
+       * says, and a region added in Bitrix24 must not turn this endpoint into
+       * a 400 on the whole page; the predicate compares strings and an unknown
+       * one simply matches nothing.
+       */
+      regions: nameList,
+      /**
+       * The СУММА column's range, in whole soʻm — not minor units.
+       *
+       * MAJOR UNITS, BECAUSE A HUMAN TYPES THIS. The number in the box is the
+       * number printed in the column, and the service multiplies by the
+       * currency's exponent exactly once. Sending minor units would have made
+       * the control a hundred times wrong for anybody who typed what they saw.
+       *
+       * The ceiling is 1e13 soʻm — four orders of magnitude above the largest
+       * order this portal has recorded, and still far inside the safe integer
+       * range once it becomes minor units.
+       */
+      amountMin: z.coerce.number().min(0).max(1e13).optional(),
+      amountMax: z.coerce.number().min(0).max(1e13).optional(),
     }),
   )
 

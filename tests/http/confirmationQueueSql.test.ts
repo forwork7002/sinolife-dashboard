@@ -654,3 +654,121 @@ describe('the state band’s money', () => {
     }
   })
 })
+
+/**
+ * THE COLUMN FILTERS, AND WHERE EACH ONE IS ALLOWED TO REACH.
+ *
+ * The client asked on 2026-09-09 for Excel-style filters on the РОП, РЕГИОН
+ * and СУММА columns. Two of the three narrow more than the rows: the state
+ * band is the per-ROP breakdown added down its columns, so a filter that
+ * reaches the breakdown reaches the band, and one that does not cannot.
+ *
+ * THE LINE IS DRAWN ON PURPOSE AND IS INVISIBLE WHEN IT MOVES.
+ *
+ *   · РЕГИОН and СУММА narrow the cohort — rows, tiles and the Статистика
+ *     panel alike. A reader who filters to Хорезм is asking what Хорезм is
+ *     worth, and a band that answered for the whole country would be a figure
+ *     nobody asked for sitting above a table that disagreed with it.
+ *   · РОП narrows the rows and the tiles but NOT the panel, because the panel
+ *     is a comparison OF ROP groups — applying it would leave the one row the
+ *     reader picked, and there is nothing to compare a group against but the
+ *     others.
+ *
+ * Nothing else in the suite would name it if it moved: both readings would
+ * still be internally consistent, still be correct measurements, and still be
+ * of two different populations printed under one heading.
+ *
+ * The window's LENGTH picks between two hand-maintained SQL shapes, so both are
+ * asked the same question here — a predicate added to one and not the other is
+ * a month and a year answering differently.
+ */
+describe('what each column filter is allowed to narrow', () => {
+  // The repository's own text. Read here rather than shared with the describe
+  // above it, so neither block can be reordered into breaking the other.
+  const source = readFileSync('src/server/repositories/insightsRepository.ts', 'utf8')
+
+  /** The two blocks that produce the PAGE of rows, one per window shape. */
+  const rowBlocks = () => {
+    const short = source.slice(
+      source.indexOf("queueSql(mode, '$8')}"),
+      source.indexOf('ORDER BY ${sortColumn[query.sort]}'),
+    )
+    const long = source.slice(source.indexOf('filtered AS ('), source.indexOf('page AS ('))
+    return { short, long }
+  }
+
+  /**
+   * The two blocks that produce the per-ROP breakdown, one per window shape.
+   *
+   * ANCHORED ON THE METHOD, not on `queueSql(mode, '$4')` the way the older
+   * block above does. Three methods bind the scope at $4, and the first of
+   * them has no `GROUP BY c.rop` of its own — so slicing from the first match
+   * to the first GROUP BY swallows two unrelated statements, one of which has
+   * a `ropMatch` in it. That is harmless for an assertion that something is
+   * PRESENT and fatal for one that something is ABSENT, which is what the
+   * prohibition below needs.
+   */
+  const cohortBlocks = () => {
+    const shortFrom = source.indexOf('async confirmationByRop(')
+    const short = source.slice(shortFrom, source.indexOf('GROUP BY c.rop', shortFrom))
+    const longFrom = source.indexOf('by_rop AS (')
+    const long = source.slice(longFrom, source.indexOf('GROUP BY c.rop', longFrom))
+    return { short, long }
+  }
+
+  it('lets region and summa reach the rows in both window shapes', () => {
+    for (const block of Object.values(rowBlocks())) {
+      expect(block).toContain('regionMatch')
+      expect(block).toContain('amountRange')
+      expect(block).toContain('ropMatch')
+    }
+  })
+
+  it('lets region and summa reach the ROP breakdown in both window shapes', () => {
+    for (const block of Object.values(cohortBlocks())) {
+      expect(block).toContain('regionMatch')
+      expect(block).toContain('amountRange')
+    }
+  })
+
+  it('keeps the ROP selection OUT of the ROP breakdown, in both shapes', () => {
+    /*
+      The one assertion here that is a prohibition rather than a requirement.
+      A `ropMatch` in either of these blocks would collapse the Статистика
+      panel to the single row the reader selected — and the panel would still
+      look correct, which is exactly why this is pinned in a test rather than
+      left to the comment above the SQL.
+    */
+    for (const block of Object.values(cohortBlocks())) expect(block).not.toContain('ropMatch')
+  })
+
+  it('compares lists and ranges rather than scalars', () => {
+    const rop = InsightsRepository as unknown as {
+      ropMatch: (p: string) => string
+      regionMatch: (p: string) => string
+      amountRange: (a: string, b: string) => string
+    }
+
+    /*
+      `::text[]` and `= ANY`, not `= $n`. The controls are checkbox lists now,
+      and a scalar predicate would have silently matched only the last name in
+      the list. NULL is the empty selection and means «everything»: `= ANY` over
+      an EMPTY array is false for every row, so a repository that sent `[]`
+      instead of `null` would render an empty table for a filter nobody set.
+    */
+    for (const built of [rop.ropMatch('$5'), rop.regionMatch('$9')]) {
+      expect(built).toContain('::text[] IS NULL')
+      expect(built).toContain('= ANY(')
+    }
+
+    // The sentinels are compared, not just displayed: a NULL rop and a NULL
+    // region are both real populations and both have to be selectable.
+    expect(rop.ropMatch('$5')).toContain(InsightsRepository.NO_ROP)
+    expect(rop.regionMatch('$9')).toContain(InsightsRepository.NO_REGION)
+
+    // Two independent bounds, each optional, and inclusive at both ends.
+    const range = rop.amountRange('$10', '$11')
+    expect(range).toContain('$10::bigint IS NULL OR d."amountMinor" >= $10::bigint')
+    expect(range).toContain('$11::bigint IS NULL OR d."amountMinor" <= $11::bigint')
+  })
+})

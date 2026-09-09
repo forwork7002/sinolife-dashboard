@@ -834,6 +834,18 @@ export interface ConfirmationQueueDto {
   }
 }
 
+/**
+ * The РЕГИОН column filter's options — `/insights/confirmations/regions`.
+ *
+ * Its own request, fetched when the popover first opens rather than with the
+ * board: the board reloads every two minutes and this answer changes about as
+ * often as the portal grows a region. `(Region yoʻq)` is a real option and a
+ * real filter value, not a placeholder — see `NO_REGION` in the repository.
+ */
+export interface ConfirmationRegionOptionsDto {
+  readonly regions: readonly { readonly region: string; readonly orders: number }[]
+}
+
 export interface ConfirmationDto {
   readonly rows: readonly ConfirmationRowDto[]
   readonly totals: {

@@ -48,8 +48,32 @@ export interface DashboardFilters {
    * refresh and a shared link, wherever it is read.
    */
   readonly outcomes: readonly ConfirmationOutcome[]
-  /** Which ROP group the confirmation queue is narrowed to. */
-  readonly rop?: string
+  /**
+   * Which ROP groups the confirmation queue is narrowed to.
+   *
+   * A LIST SINCE 2026-09-09, when the control left the toolbar for the РОП
+   * column's own header — the client asked for «exceldagi filtrga oʻxshab
+   * filtr», and an AutoFilter is a set of checkboxes. Comparing two groups
+   * against each other used to be a page load each.
+   *
+   * The old single `?rop=` is still READ, below, and folded into this. Links
+   * carrying it sit in Telegram and in browser histories, and the rule on this
+   * dashboard is that a link opens on what it was copied from. It is not
+   * written back out, so an address settles on the new spelling after the first
+   * interaction.
+   */
+  readonly rops: readonly string[]
+  /** Which customer regions the queue is narrowed to. `(Region yoʻq)` is one. */
+  readonly regions: readonly string[]
+  /**
+   * The СУММА column's range, in whole soʻm — the figure the column prints.
+   *
+   * Two independent bounds, because «everything over a million» is the common
+   * ask and a half-open range is not an edge case. Undefined is «no bound»,
+   * which is a different statement from zero.
+   */
+  readonly amountMin?: number
+  readonly amountMax?: number
   /**
    * Which QUESTION the confirmation board answers — not which rows it keeps.
    *
@@ -120,6 +144,8 @@ const DEFAULTS: DashboardFilters = {
   productIds: [],
   sourceIds: [],
   outcomes: [],
+  rops: [],
+  regions: [],
   queue: 'window',
   view: 'chart',
   page: 1,
@@ -130,6 +156,24 @@ const DEFAULTS: DashboardFilters = {
 
 function list(value: string | null): string[] {
   return value ? value.split(',').filter(Boolean) : []
+}
+
+/**
+ * A money bound off the address bar, or nothing at all.
+ *
+ * NEGATIVES AND NONSENSE BECOME `undefined`, NOT ZERO. The API rejects a
+ * negative amount, and a rejected parameter is a 400 on the whole page with a
+ * filter chip nobody can clear — the same failure `resolvePresetParam`
+ * documents. Dropping the bound leaves the rest of the selection working,
+ * which is what a reader following a mistyped link wants.
+ *
+ * Zero itself SURVIVES: «up to 0 soʻm» is how a reader finds the orders
+ * somebody saved without a price on them.
+ */
+function positive(value: string | null): number | undefined {
+  if (value === null) return undefined
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined
 }
 
 /**
@@ -201,7 +245,15 @@ export function useDashboardFilters() {
       outcomes: list(params.get('outcomes')).filter((value): value is ConfirmationOutcome =>
         (CONFIRMATION_OUTCOMES as readonly string[]).includes(value),
       ),
-      rop: params.get('rop') ?? undefined,
+      /*
+        The old single `?rop=` folded in, not honoured separately. `Set`
+        because a link can legitimately carry both spellings — the API unions
+        them too, at the one other place they meet.
+      */
+      rops: [...new Set([...list(params.get('rops')), ...list(params.get('rop'))])],
+      regions: list(params.get('regions')),
+      amountMin: positive(params.get('amountMin')),
+      amountMax: positive(params.get('amountMax')),
       /*
         One value is honoured, everything else is the default — same reasoning
         as `resolvePresetParam` above. An unknown mode reaching the API is a
@@ -236,6 +288,20 @@ export function useDashboardFilters() {
         if (isEmpty) next.delete(key)
         else next.set(key, Array.isArray(value) ? value.join(',') : String(value))
       }
+
+      /*
+        WRITING `rops` RETIRES THE OLD `rop`, and it has to happen here.
+
+        The parser folds a legacy `?rop=Sevinch` INTO `rops`, so the control
+        shows it selected — but the serializer only ever writes `rops`, and
+        `update` deletes a key whose value is empty. Without this line,
+        unticking the last box deleted `rops` and left `rop=Sevinch` standing:
+        the filter would clear on screen and come straight back on the next
+        read, with nothing on the page able to put it right. Deleting it
+        whenever the new key is written is what makes the address settle on one
+        spelling after the first interaction.
+      */
+      if ('rops' in patch) next.delete('rop')
 
       // Any filter change invalidates the current page number — staying on
       // page 7 of a result set that now has two pages shows an empty table.
@@ -308,7 +374,12 @@ export function useDashboardFilters() {
     if (filters.sourceIds.length) out.sourceIds = filters.sourceIds.join(',')
     if (filters.status) out.status = filters.status
     if (filters.outcomes.length) out.outcomes = filters.outcomes.join(',')
-    if (filters.rop) out.rop = filters.rop
+    if (filters.rops.length) out.rops = filters.rops.join(',')
+    if (filters.regions.length) out.regions = filters.regions.join(',')
+    // `!== undefined`, never a truthiness test: a bound of exactly 0 is a
+    // reader asking for the free orders, and `if (0)` would drop it silently.
+    if (filters.amountMin !== undefined) out.amountMin = String(filters.amountMin)
+    if (filters.amountMax !== undefined) out.amountMax = String(filters.amountMax)
     // Only when it is not the default: every other screen's requests stay
     // byte-identical, so their react-query caches are untouched by this.
     if (filters.queue === 'backlog') out.queue = filters.queue
@@ -324,7 +395,11 @@ export function useDashboardFilters() {
     filters.sourceIds.length +
     (filters.status ? 1 : 0) +
     filters.outcomes.length +
-    (filters.rop ? 1 : 0) +
+    filters.rops.length +
+    filters.regions.length +
+    // The range counts ONCE however many of its two ends are set: the reader
+    // clears one control, so «Filtrlarni tozalash (3)» must promise one thing.
+    (filters.amountMin !== undefined || filters.amountMax !== undefined ? 1 : 0) +
     (filters.q ? 1 : 0)
 
   return { filters, update, setPeriod, reset, apiParams, activeCount }

@@ -40,6 +40,20 @@ export interface Column<T> {
    * strongest text in the row body.
    */
   readonly rowHeader?: boolean
+  /**
+   * A control that narrows this column, drawn beside its header.
+   *
+   * The spreadsheet idiom, and the reason it is a slot rather than a config
+   * object: what a column filters by is the caller's business — a checkbox
+   * list of ROP names, a soʻm range — and every shape of it would otherwise
+   * have to be described to a table that does not care. `ColumnFilter` in
+   * `Controls` is what goes here.
+   *
+   * IT SITS OUTSIDE THE SORT BUTTON, never inside it. A button nested in a
+   * button is invalid markup, and clicking the funnel would re-sort the table
+   * on the way to opening the popover.
+   */
+  readonly filter?: ReactNode
   readonly render: (row: T) => ReactNode
 }
 
@@ -242,6 +256,22 @@ export function DataTable<T>({
                     column.align === 'right' ? 'text-right' : 'text-left'
                   }`}
                 >
+                  {/*
+                    A flex line ONLY when there is a filter to place. Every
+                    header without one keeps the plain text node it has always
+                    had, so no existing table's header can shift by a pixel —
+                    `inline-flex` on a right-aligned numeric header would have
+                    changed where the label sits.
+                  */}
+                  <span
+                    className={
+                      column.filter
+                        ? `inline-flex max-w-full items-center gap-0.5 ${
+                            column.align === 'right' ? 'justify-end' : ''
+                          }`
+                        : undefined
+                    }
+                  >
                   {sortable ? (
                     <button
                       type="button"
@@ -266,6 +296,8 @@ export function DataTable<T>({
                   ) : (
                     column.header
                   )}
+                  {column.filter}
+                  </span>
                 </th>
               )
             })}

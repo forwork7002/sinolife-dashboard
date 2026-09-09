@@ -17,7 +17,13 @@ import {
   PhoneMissedGlyph,
   type GlyphProps,
 } from '@/components/ui/Icons'
-import { MultiSelect, Pagination } from '@/components/ui/Controls'
+import {
+  ColumnFilter,
+  ColumnFilterList,
+  ColumnFilterRange,
+  MultiSelect,
+  Pagination,
+} from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { PageShell } from '@/features/shared/PageShell'
@@ -27,6 +33,7 @@ import {
   type ConfirmationOrderDto,
   type ConfirmationOutcome,
   type ConfirmationQueueDto,
+  type ConfirmationRegionOptionsDto,
   type ConfirmationVisitDto,
   type MoneyDto,
   apiGet,
@@ -389,6 +396,26 @@ export function ConfirmationPage() {
   */
   const summaryKey = boardSummaryKey(apiParams)
 
+  /*
+    WHAT THE РЕГИОН OPTIONS ARE ASKED FOR — the window, the search box and the
+    mode, and deliberately nothing else.
+
+    Built here rather than taken from `apiParams`, which now carries the column
+    filters too: a list narrowed by the selection made in it cannot be
+    un-narrowed. Pick «Хорезм» and every other region would leave the list, so
+    the only way back would be the address bar. Keeping the four keys explicit
+    also keeps this request's cache key stable while the reader ticks boxes —
+    the options are fetched once and not again.
+  */
+  const regionOptionParams: Record<string, string> = {
+    preset: filters.preset,
+    ...(filters.preset === 'custom' && filters.from && filters.to
+      ? { from: filters.from, to: filters.to }
+      : {}),
+    ...(filters.q ? { q: filters.q } : {}),
+    ...(filters.queue === 'backlog' ? { queue: 'backlog' } : {}),
+  }
+
   const query = useQuery({
     queryKey: ['confirmation-queue', apiParams, filters.page, filters.pageSize, sort, filters.order],
     queryFn: async ({ signal }) => {
@@ -557,13 +584,93 @@ export function ConfirmationPage() {
    */
   const backlog = filters.queue === 'backlog'
 
-  /** The ROP list, with the current selection guaranteed present. */
+  /**
+   * The РОП filter's options, WITH EVERY CURRENT SELECTION GUARANTEED PRESENT.
+   *
+   * `rops` is derived from the per-ROP breakdown, which obeys the search box
+   * and now the region and сумма filters too — so narrowing by one of them can
+   * take a group out of the list while the selection on it stands. The control
+   * would then show a filtered column whose reason had vanished, and the only
+   * way back would be the address bar. Carrying the selection keeps every
+   * applied filter removable from the control that applied it.
+   */
   const ropOptions = (() => {
     const names = data?.rops ?? []
-    const withSelection =
-      filters.rop && !names.includes(filters.rop) ? [...names, filters.rop].sort() : names
-    return withSelection.map((rop) => ({ value: rop, label: rop }))
+    const missing = filters.rops.filter((rop) => !names.includes(rop))
+    return [...names, ...missing].sort().map((rop) => ({ id: rop, label: rop }))
   })()
+
+  /*
+    THE THREE COLUMN FILTERS, ATTACHED TO THE MODULE-LEVEL COLUMNS.
+
+    `QUEUE_COLUMNS` stays at module scope for the reason written above it —
+    nothing in a render closure reads component state, so rebuilding thirteen
+    of them on every keystroke of the search box bought nothing. That is still
+    true of the RENDERERS; only these three header controls know about state,
+    so only they are rebuilt here and grafted on. A column not named below is
+    handed through by reference, unchanged.
+  */
+  const filterFor: Record<string, React.ReactNode> = {
+    rop: (
+      <ColumnFilter label="РОП" active={filters.rops.length > 0}>
+        {() => (
+          <ColumnFilterList
+            options={ropOptions}
+            selected={filters.rops}
+            onChange={(rops) => update({ rops })}
+            emptyLabel="РОП топилмади"
+          />
+        )}
+      </ColumnFilter>
+    ),
+    region: (
+      <ColumnFilter label="РЕГИОН" active={filters.regions.length > 0}>
+        {/*
+          A COMPONENT, SO THE FETCH HAPPENS ON FIRST OPEN AND NOT BEFORE.
+
+          `children` is only called while the popover is open, so mounting
+          `RegionFilterList` IS the trigger — no `onOpen` prop, no effect, and
+          nothing to keep in step with the popover's own state. React Query
+          caches the answer from there, so the second open is instant.
+        */}
+        {() => (
+          <RegionFilterList
+            params={regionOptionParams}
+            selected={filters.regions}
+            onChange={(regions) => update({ regions })}
+          />
+        )}
+      </ColumnFilter>
+    ),
+    amount: (
+      <ColumnFilter
+        label="СУММА"
+        active={filters.amountMin !== undefined || filters.amountMax !== undefined}
+      >
+        {(close) => (
+          <ColumnFilterRange
+            min={filters.amountMin}
+            max={filters.amountMax}
+            unit="soʻm — buyurtma summasi boʻyicha"
+            onApply={({ min, max }) => {
+              update({ amountMin: min, amountMax: max })
+              // The only one of the three that closes itself: a submitted form
+              // has said everything it had to say, while a checkbox list is
+              // routinely ticked twice.
+              close()
+            }}
+          />
+        )}
+      </ColumnFilter>
+    ),
+  }
+
+  const columns = QUEUE_COLUMNS.map((column) =>
+    filterFor[column.key] ? { ...column, filter: filterFor[column.key] } : column,
+  )
+
+  /** Moves with the board it belongs to — see `StatsToggle`. */
+  const statsToggle = <StatsToggle open={statsOpen} onToggle={() => setStatsOpen((v) => !v)} />
 
   return (
     <PageShell
@@ -704,23 +811,15 @@ export function ConfirmationPage() {
         */
         <>
           {/*
-            THE SELECTED ROP IS ALWAYS AN OPTION, even when the search hides it.
+            «БАРЧА РОП» IS NOT HERE ANY MORE — it is on the РОП column.
 
-            `rops` is derived from the per-ROP breakdown, which obeys the search
-            box — so typing a term that no order of the selected group matches
-            removed that group from the list while the filter stayed applied.
-            The control then showed blank over a table narrowed to a group the
-            reader could no longer see, and the only way out was to clear the
-            search first. Carrying the current value keeps the control able to
-            describe its own state.
+            The client asked for it on 2026-09-09: «shu joyni olib tashlab
+            oʻrniga jadvaldagi roplar ustuniga exceldagi filtrga oʻxshab filtr
+            beriladigan boʻlsin». A toolbar select and the column it narrows
+            were a page apart on a 1 860px-wide table, and it could only ever
+            hold one group — comparing two was a page load each. See
+            `QUEUE_FILTERS` below for the three that took its place.
           */}
-          <Select
-            label="Барча РОП"
-            value={filters.rop ?? ''}
-            options={ropOptions}
-            onChange={(rop) => update({ rop: rop || undefined })}
-          />
-
           {/*
             Multi-select, not a single choice: the states are read in
             combinations. The house MultiSelect is what every other filter on
@@ -742,16 +841,12 @@ export function ConfirmationPage() {
             />
           )}
 
-          <Button
-            variant={statsOpen ? 'primary' : 'secondary'}
-            size="sm"
-            onClick={() => setStatsOpen((open) => !open)}
-          >
-            <span className="inline-flex items-center gap-1.5">
-              <BarsGlyph size={13} />
-              Статистика
-            </span>
-          </Button>
+          {/*
+            AND NEITHER IS «СТАТИСТИКА» — see `StatsToggle`. It sits in the
+            corner of whichever card is on screen now, which is where the
+            client asked for it: «statistika tugmasini ham pastga buyurtmalar
+            ustunining oʻng tomon burchagiga qoʻyish kerak».
+          */}
         </>
       }
     >
@@ -904,7 +999,14 @@ export function ConfirmationPage() {
             ))}
         </div>
 
-        {statsOpen && <RopPanel rows={data?.byRop ?? []} status={tileStatus} backlog={backlog} />}
+        {statsOpen && (
+          <RopPanel
+            rows={data?.byRop ?? []}
+            status={tileStatus}
+            backlog={backlog}
+            action={statsToggle}
+          />
+        )}
 
         {/*
           The rows, their count and the pager — the three things a state
@@ -987,7 +1089,16 @@ export function ConfirmationPage() {
             style={{ opacity: rowsStale ? 0.7 : 1, transition: 'opacity 150ms var(--ease-out)' }}
             aria-busy={rowsStale || undefined}
           >
-            <header className="mb-3 flex shrink-0 flex-wrap items-baseline justify-between gap-2">
+            <header className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
+              {/*
+                THE HEADING AND ITS COUNTS ARE ONE BLOCK NOW, so the corner is
+                free for the control the client asked to be put there. They
+                keep `items-baseline` between themselves — the counts are a
+                continuation of the heading's line — while the row that holds
+                them centres, because a button hung off a text baseline sits
+                visibly low against it.
+              */}
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <h2 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
                 Барча буюртмалар
               </h2>
@@ -1071,6 +1182,8 @@ export function ConfirmationPage() {
                   </>
                 )}
               </p>
+              </div>
+              {statsToggle}
             </header>
 
             {/*
@@ -1085,7 +1198,7 @@ export function ConfirmationPage() {
             */}
             <div className="flex min-h-0 flex-1 flex-col">
             <DataTable
-              columns={QUEUE_COLUMNS}
+              columns={columns}
               rows={data?.items ?? []}
               rowKey={(row) => row.dealId}
               status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
@@ -1107,7 +1220,12 @@ export function ConfirmationPage() {
               minWidth={1860}
               emptyTitle="Buyurtma topilmadi"
               emptyBody={
-                filters.outcomes.length > 0 || filters.rop || filters.q
+                filters.outcomes.length > 0 ||
+                filters.rops.length > 0 ||
+                filters.regions.length > 0 ||
+                filters.amountMin !== undefined ||
+                filters.amountMax !== undefined ||
+                filters.q
                   ? 'Bu filtrlar boʻyicha buyurtma yoʻq. Filtrlarni tozalab koʻring.'
                   : backlog
                     ? // An empty backlog is the good news, and «bu davrda» would be
@@ -1130,6 +1248,111 @@ export function ConfirmationPage() {
         )}
       </div>
     </PageShell>
+  )
+}
+
+/**
+ * «Статистика» — one button, drawn in the corner of whichever card is showing.
+ *
+ * ASKED FOR THERE BY NAME on 2026-09-09: «statistika tugmasini ham pastga
+ * buyurtmalar ustunining oʻng tomon burchagiga qoʻyish kerak». It used to sit
+ * in the page toolbar with the filters, which was the wrong company for it —
+ * the other controls in that row NARROW the board, and this one REPLACES it.
+ *
+ * IT IS ONE COMPONENT AND NOT TWO BUTTONS. Pressing it hides the orders card,
+ * so a control that only lived in that card's corner would leave the screen
+ * with it and strand the reader in a mode with no way out. Rendering the same
+ * element into whichever card is on screen keeps the corner the client asked
+ * for AND keeps the way back — and because it is one element, the two can
+ * never disagree about which state they are in.
+ *
+ * `aria-pressed` and not a label that changes: a toggle that renamed itself
+ * «Ёпиш» when open would move under the pointer on every press, and a screen
+ * reader is told the state properly by the attribute.
+ */
+function StatsToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <Button
+      variant={open ? 'primary' : 'secondary'}
+      size="sm"
+      onClick={onToggle}
+      aria-pressed={open}
+      className="shrink-0"
+    >
+      <span className="inline-flex items-center gap-1.5">
+        <BarsGlyph size={13} />
+        Статистика
+      </span>
+    </Button>
+  )
+}
+
+/**
+ * The РЕГИОН filter's option list, fetched the first time it is looked at.
+ *
+ * MOUNTING IS THE TRIGGER. `ColumnFilter` only calls its children while the
+ * popover is open, so this component exists exactly when the reader has asked
+ * to see the list — no `onOpen` prop, no effect, and no state to keep in step
+ * with the popover's own. React Query caches the answer, so the second open is
+ * instant and the board's own two-minute refresh never touches it.
+ *
+ * IT IS ITS OWN REQUEST for the reason the endpoint states: the board reloads
+ * every two minutes on a screen the floor keeps open all day, and this answer
+ * changes about as often as the portal grows a region.
+ *
+ * A FAILURE IS SAID, NOT SWALLOWED. An empty list and a list that could not be
+ * fetched look identical, and the second one is the reader waiting for
+ * something that is never coming.
+ */
+function RegionFilterList({
+  params,
+  selected,
+  onChange,
+}: {
+  params: Record<string, string>
+  selected: readonly string[]
+  onChange: (regions: string[]) => void
+}) {
+  const query = useQuery({
+    queryKey: ['confirmation-regions', params],
+    queryFn: ({ signal }) =>
+      apiGet<ConfirmationRegionOptionsDto>('/insights/confirmations/regions', params, signal),
+    // The vocabulary of a CRM field. Refetching it on every open would be a
+    // round trip to learn that Xorazm is still a region.
+    staleTime: 10 * 60 * 1000,
+  })
+
+  if (query.isError)
+    return (
+      <p className="px-2 py-2 text-xs" style={{ color: 'var(--status-critical)' }}>
+        Регионлар рўйхати олинмади.
+      </p>
+    )
+
+  /*
+    EVERY SELECTED REGION IS AN OPTION, even one the window no longer holds.
+
+    The same guarantee `ropOptions` makes and for the same reason: change the
+    period with a region ticked and that region can leave the list while the
+    filter on it stands, leaving a narrowed table whose control cannot describe
+    or undo itself.
+  */
+  // `apiGet` returns the envelope; the payload is under `data`, exactly as the
+  // board's own query unwraps it.
+  const fetched = query.data?.data.regions ?? []
+  const missing = selected.filter((region) => !fetched.some((r) => r.region === region))
+
+  return (
+    <ColumnFilterList
+      options={[
+        ...fetched.map((r) => ({ id: r.region, label: r.region, count: r.orders })),
+        ...missing.map((region) => ({ id: region, label: region })),
+      ]}
+      selected={selected}
+      onChange={onChange}
+      loading={query.isPending}
+      emptyLabel="Регион топилмади"
+    />
   )
 }
 
@@ -1330,9 +1553,24 @@ export function RopPanel({
   rows,
   status,
   backlog,
+  action,
 }: {
   rows: readonly ConfirmationQueueDto['byRop'][number][]
   status: 'loading' | 'error' | 'ready'
+  /**
+   * The «Статистика» toggle, which lives in whichever card is on screen.
+   *
+   * IT MOVED HERE WITH THE MODE. The button used to sit in the page toolbar
+   * beside the filters; the client asked on 2026-09-09 for it to go «pastga
+   * buyurtmalar ustunining oʻng tomon burchagiga» — the corner of the orders
+   * card. That card is not rendered while this panel is, so the control would
+   * have left the screen with it and the mode would have had no way out. One
+   * button, drawn in the corner of whatever is showing, is what satisfies both
+   * halves: it is where it was asked to be, and it is always reachable.
+   *
+   * Optional, so the panel still renders in a test that does not care.
+   */
+  action?: React.ReactNode
   /**
    * Whether the board behind this panel is the backlog.
    *
@@ -1530,6 +1768,7 @@ export function RopPanel({
       */
       fill
       className="flex-1 min-h-[450px]"
+      action={action}
       title="Статистика — РОП кесимида"
       /*
         The ROP filter belongs on this list too.
@@ -2059,46 +2298,6 @@ function OutcomeChip({ outcome }: { outcome: ConfirmationOutcome }) {
       </span>
       {spec.label}
     </span>
-  )
-}
-
-/**
- * A single-choice filter, in the house style.
- *
- * A native select rather than the MultiSelect popover: these two are
- * single-choice and the reference the page mirrors uses a dropdown for both,
- * so the affordance stays the one the floor already knows.
- */
-function Select({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string
-  value: string
-  options: readonly { value: string; label: string }[]
-  onChange: (value: string) => void
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      aria-label={label}
-      className="focusable rounded-lg border px-2.5 py-1.5 text-xs font-medium"
-      style={{
-        background: 'var(--surface-raised)',
-        borderColor: 'var(--border)',
-        color: value ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-      }}
-    >
-      <option value="">{label}</option>
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
   )
 }
 

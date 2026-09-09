@@ -50,7 +50,24 @@ export const GET = getHandler(
       period,
       {
         outcomes: ctx.query.outcomes,
-        rop: ctx.query.rop,
+        /*
+          ONE LIST OUT OF TWO PARAMETERS, and the older one still counts.
+
+          `?rop=Sevinch` was the toolbar dropdown's parameter until the control
+          became a column filter on 2026-09-09. Links carrying it are pasted
+          into Telegram and sit in browser histories, and the house rule on
+          this dashboard is that a link opens on what it was copied from — so
+          it is unioned in here rather than dropped, at the one place the two
+          spellings meet. `Set` because a link can carry both.
+        */
+        rops: (() => {
+          const names = [...(ctx.query.rops ?? []), ...(ctx.query.rop ? [ctx.query.rop] : [])]
+          return names.length > 0 ? [...new Set(names)] : undefined
+        })(),
+        regions: ctx.query.regions,
+        // Whole soʻm, as typed. `insightsService` owns the one conversion.
+        amountMin: ctx.query.amountMin,
+        amountMax: ctx.query.amountMax,
         q: ctx.query.q,
         page: ctx.query.page,
         pageSize: ctx.query.pageSize,

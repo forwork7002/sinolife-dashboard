@@ -47,6 +47,21 @@ interface AsButtonProps extends BaseProps {
   readonly href?: undefined
   readonly type?: 'button' | 'submit'
   readonly disabled?: boolean
+  /**
+   * For a button that TOGGLES something rather than doing it once.
+   *
+   * Buttons here are enumerated, never spread: every attribute this component
+   * forwards is written out below, so a prop that is not listed is silently
+   * dropped rather than landing on the DOM by accident. That is the right
+   * default, and it is why this one has to be declared to exist.
+   *
+   * A pressed state is not decoration. `variant="primary"` says «on» to
+   * somebody looking at the screen and says nothing at all to somebody
+   * listening to it, and a toggle whose label does not change — which is the
+   * correct design, so the control does not move under the pointer — has
+   * nothing else left to announce with.
+   */
+  readonly 'aria-pressed'?: boolean
   readonly onClick?: MouseEventHandler<HTMLButtonElement>
 }
 
@@ -138,6 +153,7 @@ export function Button(props: ButtonProps) {
       disabled={props.disabled}
       onClick={props.onClick}
       aria-label={props['aria-label']}
+      aria-pressed={props['aria-pressed']}
       className={classes}
     >
       {content}

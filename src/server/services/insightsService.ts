@@ -14,7 +14,7 @@ import {
   type ScopedWindow,
   scopedPeriod,
 } from '@/server/domain/employees/branches'
-import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
+import { type MoneyDto, currencyExponent, money, toMoneyDto } from '@/server/domain/money/money'
 import type { RowScope } from '@/server/auth/rbac'
 import type { Period } from '@/server/domain/period/period'
 import { allTime, periodLengthInDays } from '@/server/domain/period/period'
@@ -202,6 +202,31 @@ export interface ConfirmationOrderDto {
    * still counts once, as refused.
    */
   readonly queueHistory: readonly ConfirmationVisitDto[]
+}
+
+/**
+ * What the endpoint hands this service — the repository's query, except that
+ * the СУММА range arrives in whole soʻm.
+ *
+ * THE SCALE IS CONVERTED HERE AND NOWHERE ELSE. `amountMinMinor` is what
+ * reaches SQL, and the number in the reader's box is the number printed in the
+ * column; putting the multiplication in the route would have made it a
+ * decision two callers could make differently, and putting it in the
+ * repository would have given SQL a unit it does not otherwise speak. This
+ * layer's stated job is turning minor units into DTOs — this is the same
+ * trade, run backwards, and it is the only place the two scales meet.
+ */
+export type ConfirmationQueueQuery = Omit<
+  ConfirmationOrderQuery,
+  'amountMinMinor' | 'amountMaxMinor'
+> & {
+  readonly amountMin?: number
+  readonly amountMax?: number
+}
+
+/** The РЕГИОН filter's options: every region in the window, busiest first. */
+export interface ConfirmationRegionOptionsDto {
+  readonly regions: readonly { readonly region: string; readonly orders: number }[]
 }
 
 /** The five states' money, in the app's own currency. */
@@ -790,9 +815,44 @@ export class InsightsService {
    *   this call site. `RowScope` makes the field required, so a caller has to
    *   write `null` to mean everybody, and writing it is the decision.
    */
+  /**
+   * The РЕГИОН column filter's options.
+   *
+   * ITS OWN ENDPOINT, ON PURPOSE. The board reloads every two minutes on a
+   * screen the floor keeps open all day; this answer changes about as often as
+   * the portal grows a region, so it is fetched when the popover first opens
+   * and cached by the client from then on. Riding it on the board's response
+   * would have run the query several hundred times a day to answer a question
+   * nobody asked, and riding it on `confirmationByRop` would have put the cost
+   * inside the one statement that already decides whether «Shu yil» returns.
+   *
+   * Region-labelled, count-carrying, and NOT narrowed by the column filters —
+   * see the repository for why a list narrowed by its own selection cannot be
+   * un-narrowed.
+   */
+  async confirmationRegionOptions(
+    period: Period,
+    filter: { q?: string },
+    scope: RowScope,
+    mode: ConfirmationQueueMode = 'window',
+  ): Promise<ConfirmationRegionOptionsDto> {
+    /*
+      THE SAME TWO LINES `confirmationQueue` USES, and they have to stay the
+      same two: the options describe the board's own cohort, so a window built
+      differently here would offer a region the table cannot show.
+    */
+    const window =
+      mode === 'backlog'
+        ? this.window(allTime(period.timeZone), scope)
+        : this.window(period, scope)
+    const rows = await this.repository.confirmationRegions(window, filter, mode)
+
+    return { regions: rows.map((r) => ({ region: r.region, orders: r.orders })) }
+  }
+
   async confirmationQueue(
     period: Period,
-    query: ConfirmationOrderQuery,
+    query: ConfirmationQueueQuery,
     scope: RowScope,
     /*
       REQUIRED, and positioned before the optional `mode` for that reason.
@@ -854,19 +914,68 @@ export class InsightsService {
       that finishes for a year (~5 s). Same rows either way, checked row for
       row on production.
     */
+    /*
+      WHOLE SOʻM IN, MINOR UNITS OUT — once, here.
+
+      `Math.round` and not a truncation: the box takes a number and a reader
+      who types «1000000.5» meant the soʻm either side of it, not a silently
+      different bound. Undefined stays undefined, because an absent bound and a
+      bound of zero are different questions — «everything» against «nothing
+      below nothing», and the second one would quietly drop every refunded or
+      zero-value order the moment the box was cleared to empty.
+    */
+    const minor = (amount: number | undefined): bigint | undefined =>
+      amount === undefined
+        ? undefined
+        : BigInt(Math.round(amount * 10 ** currencyExponent(currency)))
+
+    const cohortQuery: ConfirmationOrderQuery = {
+      ...query,
+      amountMinMinor: minor(query.amountMin),
+      amountMaxMinor: minor(query.amountMax),
+    }
+
     const LONG_WINDOW_DAYS = 62
     const { page, byRop } =
       periodLengthInDays(window) > LONG_WINDOW_DAYS
-        ? await this.repository.confirmationBoard(window, query, mode).then((board) => ({
+        ? await this.repository.confirmationBoard(window, cohortQuery, mode).then((board) => ({
             page: { rows: board.rows, totalItems: board.totalItems },
             byRop: board.byRop,
           }))
         : await Promise.all([
-            this.repository.confirmationOrders(window, query, mode),
-            this.repository.confirmationByRop(window, { q: query.q }, mode),
+            this.repository.confirmationOrders(window, cohortQuery, mode),
+            /*
+              THE COHORT FILTER, NOT THE WHOLE QUERY. The panel is measured
+              over what region and сумма leave standing, and never over what
+              the ROP or the state selection leaves standing — see
+              `ConfirmationCohortFilter`. Spelling the four fields out here,
+              rather than spreading `query`, is what stops a filter added to
+              the table tomorrow silently collapsing this breakdown.
+            */
+            this.repository.confirmationByRop(
+              window,
+              {
+                q: cohortQuery.q,
+                regions: cohortQuery.regions,
+                amountMinMinor: cohortQuery.amountMinMinor,
+                amountMaxMinor: cohortQuery.amountMaxMinor,
+              },
+              mode,
+            ),
           ]).then(([page, byRop]) => ({ page, byRop }))
 
-    const scoped = query.rop ? byRop.filter((r) => r.rop === query.rop) : byRop
+    /*
+      THE TILES FOLLOW THE ROP SELECTION, AND IT IS A LIST NOW.
+
+      The panel above is handed every group; the band is cut to the ones the
+      reader picked. Region and сумма are already applied in SQL — they narrow
+      both readings — so the only thing left to do here is the group cut, and
+      it is done in TypeScript for the reason it always was: one round trip,
+      one population, no way for the two to disagree about what a window holds.
+    */
+    const picked = query.rops
+    const scoped =
+      picked && picked.length > 0 ? byRop.filter((r) => picked.includes(r.rop)) : byRop
     const byOutcome: ConfirmationOutcomeTotals = {
       CONFIRM_NEW: scoped.reduce((n, r) => n + r.pending, 0),
       CONFIRMED: scoped.reduce((n, r) => n + r.confirmed, 0),

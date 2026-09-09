@@ -372,3 +372,336 @@ export function StatusBadge({ status }: { status: string }) {
     </span>
   )
 }
+
+/**
+ * A column's own filter, in the shape a spreadsheet taught everybody.
+ *
+ * Asked for by name on 2026-09-09: «jadvaldagi roplar ustuniga exceldagi
+ * filtrga oʻxshab filtr beriladigan boʻlsin». The client reads this board
+ * beside a Bitrix24 kanban and an Excel export all day, and an AutoFilter is
+ * the one filtering idiom he does not have to be taught — the control lives ON
+ * the column it narrows, so there is nothing to learn about which is which.
+ *
+ * WHY NOT `MultiSelect`, WHICH IS RIGHT ABOVE THIS. That control is a toolbar
+ * button: it prints its own label, sizes itself to the text, and opens a panel
+ * anchored under a 32px-tall pill. A column header is 11px uppercase in a cell
+ * that may be 96px wide, and the trigger has to be a mark rather than a word or
+ * it becomes the widest thing in the header. What the two DO share is the
+ * dismissal behaviour and the panel's surface, and those are the parts worth
+ * having identical — a reader who learns that Escape closes one has learnt the
+ * other. They are kept in step by sitting in one file, not by an abstraction
+ * neither of them asked for.
+ *
+ * THE FUNNEL IS FILLED WHEN THE FILTER IS ON, and that is the whole of the
+ * state indicator. A count badge was tried and dropped: at 11px beside a
+ * Cyrillic header it read as part of the label, and the header row is the one
+ * place on this screen with no spare pixels. A filtered column also gets its
+ * mark in `--series-1`, so the eye finds WHICH column is narrowed from across
+ * the table without reading a single header.
+ */
+export function ColumnFilter({
+  label,
+  active,
+  children,
+}: {
+  /** The column's own header text. It names the popover for a screen reader. */
+  label: string
+  /** Whether anything is currently selected — draws the funnel filled. */
+  active: boolean
+  children: (close: () => void) => React.ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const id = useId()
+
+  /*
+    The same two listeners `MultiSelect` installs, and installed only while the
+    panel exists. A document-level mousedown handler that outlives its popover
+    is a listener per column per render, and this table has three.
+  */
+  useEffect(() => {
+    if (!open) return
+    function onPointerDown(event: MouseEvent) {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  return (
+    <div className="relative inline-flex" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        aria-haspopup="dialog"
+        // The header itself is not a label a screen reader reaches from here,
+        // so the button says which column it belongs to in full.
+        aria-label={`${label} — filtr`}
+        className="focusable ml-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--grid)]"
+        style={{ color: active ? 'var(--series-1)' : 'var(--ink-muted)' }}
+      >
+        {/* A funnel, hollow when it filters nothing and filled when it does. */}
+        <svg width="11" height="11" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M3 5h18l-7 8v6l-4 2v-8L3 5z"
+            fill={active ? 'currentColor' : 'none'}
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          id={id}
+          role="dialog"
+          aria-label={`${label} — filtr`}
+          /*
+            RIGHT-ALIGNED, AND ABOVE EVERYTHING.
+
+            `right-0` because these sit on right-aligned numeric headers near
+            the table's right edge, where a left-anchored panel would open off
+            the card. `z-40` clears the sticky header (`z-index: 1`) and the
+            toolbar's own dropdowns; `text-left` because the header cell it
+            inherits from is centred or right-aligned and a form is not.
+          */
+          className="absolute top-full right-0 z-40 mt-1 w-60 rounded-[var(--radius-panel)] border p-1 text-left normal-case"
+          style={{
+            background: 'var(--surface-raised)',
+            borderColor: 'var(--border-strong)',
+            boxShadow: 'var(--shadow-float)',
+          }}
+        >
+          {children(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The checkbox list inside a `ColumnFilter` — Excel's own value list.
+ *
+ * SEARCHABLE ONLY WHEN IT NEEDS TO BE. Fifteen ROP groups and fourteen regions
+ * both fit a scroll box without one, and a search field over a list you can
+ * already see is a control that costs a line and answers nothing; past
+ * `SEARCHABLE_FROM` the list stops being scannable and the field earns itself.
+ *
+ * COUNTS ARE OPTIONAL AND MUTED. A region with four orders is worth telling
+ * apart from one with four hundred before you click it, but the count is not
+ * what you are choosing — it never takes the option's own ink.
+ */
+export function ColumnFilterList({
+  options,
+  selected,
+  onChange,
+  emptyLabel = 'Hech narsa topilmadi',
+  loading = false,
+}: {
+  readonly options: readonly { id: string; label: string; count?: number }[]
+  readonly selected: readonly string[]
+  readonly onChange: (ids: string[]) => void
+  readonly emptyLabel?: string
+  readonly loading?: boolean
+}) {
+  const SEARCHABLE_FROM = 12
+  const [query, setQuery] = useState('')
+
+  const shown = options.filter((o) => o.label.toLowerCase().includes(query.trim().toLowerCase()))
+
+  const toggle = (id: string) =>
+    onChange(selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id])
+
+  return (
+    <>
+      {options.length >= SEARCHABLE_FROM && (
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Qidirish…"
+          aria-label="Roʻyxatdan qidirish"
+          className="focusable mb-1 w-full rounded-md border px-2 py-1.5 text-xs outline-none"
+          style={{
+            background: 'var(--surface)',
+            borderColor: 'var(--border-strong)',
+            color: 'var(--ink-primary)',
+          }}
+        />
+      )}
+
+      {selected.length > 0 && (
+        <Button variant="ghost" size="sm" className="mb-1 w-full" onClick={() => onChange([])}>
+          Tozalash
+        </Button>
+      )}
+
+      <div className="max-h-56 overflow-y-auto">
+        {loading ? (
+          // Three bars, not a spinner: the list is what is coming, so the
+          // placeholder is shaped like a list.
+          <div className="space-y-1 p-1" role="status">
+            <span className="sr-only">Yuklanmoqda</span>
+            <div className="skeleton h-5 w-full" />
+            <div className="skeleton h-5 w-4/5" />
+            <div className="skeleton h-5 w-3/5" />
+          </div>
+        ) : shown.length === 0 ? (
+          <p className="px-2 py-2 text-xs" style={{ color: 'var(--ink-muted)' }}>
+            {emptyLabel}
+          </p>
+        ) : (
+          shown.map((option) => (
+            <label
+              key={option.id}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-[var(--grid)]"
+              style={{ color: 'var(--ink-primary)' }}
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(option.id)}
+                onChange={() => toggle(option.id)}
+                className="h-3.5 w-3.5 shrink-0"
+              />
+              <span className="truncate">{option.label}</span>
+              {option.count !== undefined && (
+                <span
+                  className="tabular ml-auto shrink-0 text-[10.5px]"
+                  style={{ color: 'var(--ink-muted)' }}
+                >
+                  {formatNumber(option.count)}
+                </span>
+              )}
+            </label>
+          ))
+        )}
+      </div>
+    </>
+  )
+}
+
+/**
+ * The numeric range inside a `ColumnFilter` — Excel's «Number Filters».
+ *
+ * TWO INDEPENDENT BOUNDS, and either may stand alone: «everything over a
+ * million» is the ask this column actually gets, and forcing a ceiling onto it
+ * would make the reader invent one.
+ *
+ * IT COMMITS ON SUBMIT, NOT ON KEYSTROKE. Every other filter on this dashboard
+ * applies as you touch it, and that is right for a checkbox — one click, one
+ * unambiguous intent. A number is typed a digit at a time, and «1», «10», «100»
+ * are three complete requests to a server that answers each of them: the reader
+ * would watch the table empty and refill four times on the way to 1 000 000.
+ * A form with an explicit «Qoʻllash» also makes Enter work, which is what a
+ * hand that has just typed a number expects to press.
+ *
+ * The two boxes are NOT ordered for the reader. A min above a max returns
+ * nothing, and that is a legible answer to a contradictory question — swapping
+ * them silently would answer a question they did not ask.
+ */
+export function ColumnFilterRange({
+  min,
+  max,
+  unit,
+  onApply,
+}: {
+  readonly min?: number
+  readonly max?: number
+  /** Printed under the boxes, once, so neither of them has to carry it. */
+  readonly unit: string
+  readonly onApply: (next: { min?: number; max?: number }) => void
+}) {
+  // Local, because this form is uncommitted until it is submitted. Keyed on
+  // the incoming values so a reset from the URL (back button, Tozalash
+  // elsewhere) is reflected the next time the popover opens.
+  const [from, setFrom] = useState(min === undefined ? '' : String(min))
+  const [to, setTo] = useState(max === undefined ? '' : String(max))
+
+  const parse = (value: string): number | undefined => {
+    const trimmed = value.trim()
+    if (trimmed === '') return undefined
+    const parsed = Number(trimmed.replace(/\s|,/g, ''))
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined
+  }
+
+  const box = 'focusable tabular w-full rounded-md border px-2 py-1.5 text-xs outline-none'
+  const boxStyle = {
+    background: 'var(--surface)',
+    borderColor: 'var(--border-strong)',
+    color: 'var(--ink-primary)',
+  }
+
+  return (
+    <form
+      className="p-1"
+      onSubmit={(event) => {
+        event.preventDefault()
+        onApply({ min: parse(from), max: parse(to) })
+      }}
+    >
+      <div className="flex items-center gap-1.5">
+        <label className="flex-1">
+          <span className="sr-only">Eng kam summa</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            placeholder="dan"
+            className={box}
+            style={boxStyle}
+          />
+        </label>
+        <span aria-hidden="true" style={{ color: 'var(--ink-muted)' }}>
+          –
+        </span>
+        <label className="flex-1">
+          <span className="sr-only">Eng koʻp summa</span>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            placeholder="gacha"
+            className={box}
+            style={boxStyle}
+          />
+        </label>
+      </div>
+
+      <p className="mt-1 px-0.5 text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
+        {unit}
+      </p>
+
+      <div className="mt-1.5 flex gap-1.5">
+        <Button type="submit" variant="primary" size="sm" className="flex-1">
+          Qoʻllash
+        </Button>
+        {(min !== undefined || max !== undefined) && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setFrom('')
+              setTo('')
+              onApply({})
+            }}
+          >
+            Tozalash
+          </Button>
+        )}
+      </div>
+    </form>
+  )
+}

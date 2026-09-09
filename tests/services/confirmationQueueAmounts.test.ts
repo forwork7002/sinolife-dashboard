@@ -98,7 +98,15 @@ function serviceOver(rows: readonly ConfirmationRopRow[]) {
   return (preset: 'this_month' | 'this_year', rop?: string) =>
     service.confirmationQueue(
       resolvePeriod(preset, { timeZone: TZ, now: NOW }),
-      { page: 1, pageSize: 25, sort: 'queuedAt', order: 'desc', rop },
+      {
+        page: 1,
+        pageSize: 25,
+        sort: 'queuedAt',
+        order: 'desc',
+        // A list since the control became a column filter; one entry here,
+        // because what this file measures is the cut, not the arity.
+        rops: rop ? [rop] : undefined,
+      },
       { restrictToEmployeeIds: null },
       'UZS',
     )
