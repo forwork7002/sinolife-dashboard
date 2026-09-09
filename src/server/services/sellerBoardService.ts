@@ -29,7 +29,8 @@ import {
   roundPercent,
   toDeltaDto,
 } from '@/server/domain/analytics/metrics'
-import { type KpiDefinition, periodElapsedFraction } from '@/server/domain/analytics/performance'
+import type { KpiDefinition } from '@/server/domain/analytics/performance'
+import { projectionElapsedFraction } from '@/server/domain/analytics/pulse'
 import { BONUS_TIERS, bonusEligible } from '@/server/domain/analytics/sellerBonus'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import { scopedPeriod } from '@/server/domain/employees/branches'
@@ -136,6 +137,8 @@ export interface SellerBoardRowDto {
    * refusal at the door, and July hid 102 of them inside «yoʻlda».
    */
   readonly lostAfterConfirmOrders: number
+  /** What those orders were worth. NOT `ordered − won − open`; see `SellerBoardRow`. */
+  readonly lostAfterConfirm: MoneyDto
   /**
    * EVERY order of theirs in the window, whatever became of it — the count the
    * Тасдиқлаш navbati page shows. Bigger than `orders`, which counts only the
@@ -224,6 +227,13 @@ export interface SellerBoardTotalsDto {
   readonly won: MoneyDto
   readonly wonOrders: number
   readonly open: MoneyDto
+  /** Orders inside `open` — «yoʻlda» money needs its count beside it. */
+  readonly openOrders: number
+  /** Refused in the queue PLUS confirmed-then-cancelled — the rate's own loss pool. */
+  readonly lostOrders: number
+  /** Of those, the ones already confirmed when they died, and what they were worth. */
+  readonly lostAfterConfirmOrders: number
+  readonly lostAfterConfirm: MoneyDto
   readonly conversionPercent: number | null
   /** Won intake vs the comparison window's, on the same clock. */
   readonly wonDelta: DeltaDto
@@ -581,6 +591,7 @@ export class SellerBoardService {
       openOrders: row.openOrders,
       lostOrders: row.lostOrders,
       lostAfterConfirmOrders: row.lostAfterConfirmOrders,
+      lostAfterConfirm: toMoneyDto(money(row.lostAfterConfirmMinor, ctx.currency)),
       cohortOrders: row.cohortOrders,
       /*
         Resolved, not taken: an order still open has not failed, so counting
@@ -625,6 +636,25 @@ export class SellerBoardService {
         won: toMoneyDto(money(totalWonMinor, ctx.currency)),
         wonOrders: rows.reduce((a, r) => a + r.wonOrders, 0),
         open: toMoneyDto(money(sum(rows, (r) => r.openMinor), ctx.currency)),
+        openOrders: rows.reduce((a, r) => a + r.openOrders, 0),
+        /*
+          THE THREE COUNTS THE PAGE WAS REDUCING FROM `rows` BY HAND.
+
+          `ConfirmationFaktSection` already summed `wonOrders + lostOrders`
+          across every row to print the conversion's own denominator, because
+          the totals carried no loss count — and the moment a second block
+          needed «how many are still on the road» or «how many died after
+          confirmation», the page would have grown a second and a third
+          hand-rolled reduction over the same array. Each one is a place where
+          a filtered, sliced or paged `rows` silently disagrees with the totals
+          printed beside it. They are summed once, here, where every other
+          total on this payload is summed.
+        */
+        lostOrders: rows.reduce((a, r) => a + r.lostOrders, 0),
+        lostAfterConfirmOrders: rows.reduce((a, r) => a + r.lostAfterConfirmOrders, 0),
+        lostAfterConfirm: toMoneyDto(
+          money(sum(rows, (r) => r.lostAfterConfirmMinor), ctx.currency),
+        ),
         conversionPercent: roundOrNull(
           ratePercent(
             rows.reduce((a, r) => a + r.wonOrders, 0),
@@ -889,6 +919,9 @@ export class SellerBoardService {
         */
         lostOrders: r.rejectedOrders + r.lostAfterConfirmOrders,
         lostAfterConfirmOrders: r.lostAfterConfirmOrders,
+        // Measured in `ratingSql` since the FAKT columns were written and
+        // dropped here until 2026-09-09 — see `SellerBoardRow`.
+        lostAfterConfirmMinor: r.lostAfterConfirmMinor,
         cohortOrders: r.cohortOrders,
       }),
     )
@@ -1156,9 +1189,28 @@ function teamRows(
  * Null once the period is over — a finished total is not a forecast — and
  * null below a 2% elapsed floor, where dividing by a sliver of a month
  * multiplies one early order into a fantasy.
+ *
+ * THE FRACTION IS OF THE WHOLE CALENDAR UNIT, NOT OF THE WINDOW — and the
+ * difference is the whole value of this field.
+ *
+ * `periodElapsedFraction(ctx.period, …)` was what stood here, and a to-date
+ * preset is by construction almost entirely elapsed: «Shu oy» resolves to
+ * [1-sen, tomorrow), so on 9 September this returned 94.4% and projected
+ * FAKT 2 forward by six percent — a "month-end forecast" of tonight.
+ * `performance.ts` records the same bug from the KPI screen at length
+ * («on the 2nd of a 30-day month the page announced davrning 79% qismi
+ * oʻtdi… The number was wrong every day of every month»), and `pulse.ts`
+ * already carries the fix that screen's forecast uses. This one had simply
+ * never been rendered, so nobody saw it: it reached the DTO, and every
+ * feature that could have printed it left it alone.
+ *
+ * `projectionElapsedFraction` measures against `fullUnitWindow` — this_month
+ * against its month, this_week against its seven days — and passes finished
+ * presets through unchanged, where the elapsed fraction is 1 and the
+ * "projection" is simply what happened.
  */
 function forecastOf(wonMinor: bigint, ctx: AnalyticsContext): SellerBoardForecastDto {
-  const elapsed = periodElapsedFraction(ctx.period, ctx.now)
+  const elapsed = projectionElapsedFraction(ctx.period, ctx.now)
   const usable = Number.isFinite(elapsed) && elapsed >= 0.02 && elapsed < 1
   return {
     elapsedPercent: roundPercent(Math.min(1, Math.max(0, elapsed)) * 100),

@@ -197,7 +197,18 @@ export const t = {
     dealsWon: 'Yutilgan bitimlar',
     dealsCreated: 'Yangi bitimlar',
     averageDeal: 'Oʻrtacha bitim',
-    conversion: 'Konversiya',
+    /*
+      «Bitim konversiyasi», not a bare «Konversiya» — because Savdo dinamikasi
+      prints TWO of them and they are 25 points apart.
+
+      This one is won over resolved DEALS on the close date; the FAKT spine
+      above it prints delivery conversion over the confirmation queue's own
+      orders. Live on 2026-09-09 that was 97.4% here and 72.4% there, both
+      true, one word, one screen — the exact shape of `basis` below: "a number
+      names its basis when a sibling screen computes one differently", except
+      the sibling was the same screen.
+    */
+    conversion: 'Bitim konversiyasi',
     dealsOpen: 'Ochiq bitimlar',
     pipeline: 'Ochiq bitimlar qiymati',
     kpiAchievement: 'KPI bajarilishi',
@@ -205,7 +216,17 @@ export const t = {
   },
 
   chart: {
-    revenueTrend: 'Tushum dinamikasi',
+    /*
+      THE CARD HEADLINES WHAT IT PLOTS, and since 2026-09-09 what it plots
+      first is the floor's own pair.
+
+      The client asked for the page's essential data to be built on FAKT 1 and
+      FAKT 2 («eng muhim malumotlar fakt 1 va fakt 2 ustiga quriladi»), so the
+      two figures moved into this card, above the chart that has been drawing
+      them as lines over the revenue area all along. The title names all three
+      because the card carries all three.
+    */
+    revenueTrend: 'FAKT 1 / FAKT 2 va tushum',
     /*
       The basis and the bucket are two separate facts, so they are two strings.
 
@@ -214,7 +235,8 @@ export const t = {
       hint reading "kunlar kesimida" was a plain misstatement on «Shu yil»,
       where each point is a week and each label is that week's first day.
     */
-    revenueTrendBasis: 'Yopilgan bitimlar boʻyicha',
+    revenueTrendBasis:
+      'FAKT 1 / FAKT 2 — navbatga tushgan sana, tushum — yopilgan sana boʻyicha',
     /*
       THE SECOND CLOCK ON THE SAME CHART, named because it is not the first.
 
@@ -256,7 +278,10 @@ export const t = {
     revenue: 'Tushum',
     deals: 'Bitimlar',
     dealsWon: 'Yopilgan',
-    conversion: 'Konversiya',
+    /* The THIRD reading of the word on that one page — this column is won over
+       deals CLOSED in the window, per source. Named for its clock like the
+       other two. */
+    conversion: 'Yopilgan konversiya',
     kpi: 'KPI',
     growth: 'Oʻsish',
     rank: 'Oʻrin',

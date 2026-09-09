@@ -13,7 +13,11 @@ import { Card, ChartCard } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { Meter, StatTile } from '@/components/ui/Stat'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
-import { ConfirmationFaktSection } from '@/features/sales/ConfirmationFaktSection'
+import {
+  ConfirmationFaktSection,
+  FaktHeadline,
+  useFaktBoard,
+} from '@/features/sales/ConfirmationFaktSection'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import {
@@ -124,6 +128,17 @@ function useWarmTrendChart() {
 export function SalesPage() {
   const { apiParams, filters } = useDashboardFilters()
   useWarmTrendChart()
+
+  /*
+    THE SAME REQUEST THE FAKT SECTION MAKES, AND THAT IS THE POINT.
+
+    `useFaktBoard` issues one query under one key; TanStack serves both call
+    sites from the one cache entry, so the hero's FAKT 1 / FAKT 2 and the band
+    under them are the same answer for the same window and cannot drift apart
+    by a refetch. Fetching the board here separately would have been a second
+    request for one payload and a second chance to disagree.
+  */
+  const faktBoard = useFaktBoard()
 
   /**
    * The insights endpoints honour employee / department / source filters but
@@ -341,9 +356,32 @@ export function SalesPage() {
           </div>
         </header>
 
+        {/*
+          THREE FIGURES, AND THE FIRST TWO ARE THE FLOOR'S OWN.
+
+          The client's instruction on 2026-09-09 was that this page's essential
+          data is built on FAKT 1 and FAKT 2 («eng muhim malumotlar fakt 1 va
+          fakt 2 ustiga quriladi»). They used to be a band three sections down,
+          under a chart that was already plotting them as two lines over this
+          card's area — the card headlined one clock and drew two. It now
+          headlines both.
+
+          REVENUE KEEPS ITS PLACE, one size step down. It is what an owner asks
+          for first and what the AREA under the chart still is, so demoting it
+          out of the card would have left the plot unheadlined and the page
+          named for a number it no longer prints. `figure-sum` against the
+          pair's `figure-hero-sum` is the whole of the demotion.
+
+          THE PAIR IS NEVER STACKED, NESTED OR SUBTRACTED — see `FaktHeadline`.
+          Three peers on one row, each naming its own clock above.
+        */}
         <div className="px-5 pt-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <FaktHeadline data={faktBoard.data} status={faktBoard.status} />
+
+            <div className="min-w-0">
           <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-            Davr tushumi
+            Yopilgan tushum
           </p>
           {/*
             Three states, not one — the same discipline as the tiles. A
@@ -374,7 +412,11 @@ export function SalesPage() {
               is reconciled against the portal, where the number is written out.
             */
             <div className="mt-1.5">
-              <span className="figure-hero figure-hero-sum figure-wrap inline-block" style={{ color: 'var(--ink-primary)' }}>
+              {/* `figure-sum`, not `figure-hero-sum`: one step under the pair
+                  beside it, and the same size the velocity tile prints a full
+                  figure at. The demotion is the only thing about this figure
+                  that changed. */}
+              <span className="figure figure-sum figure-wrap inline-block" style={{ color: 'var(--ink-primary)' }}>
                 <AnimatedNumber
                   value={toUzs(summary.revenue)}
                   format={formatFullUzs}
@@ -386,6 +428,8 @@ export function SalesPage() {
               </span>
             </div>
           ) : null}
+            </div>
+          </div>
 
           {/*
             WHAT THAT NUMBER IS MADE OF — the single most misread fact on a
@@ -478,6 +522,19 @@ export function SalesPage() {
       </Card>
 
       {/*
+        THE REST OF THE CONFIRMATION COHORT, directly under the pair it
+        explains — the page's spine since 2026-09-09.
+
+        It answers what the hero cannot: where the rest of FAKT 1 went, which
+        ROP team is carrying the month, and who is one order from a bonus
+        rung. It comes BEFORE the closedAt band now because that is the order
+        the client reads the floor in, and because the two figures above it
+        are on this section's clock, not on the band's. See
+        `ConfirmationFaktSection`.
+      */}
+      <ConfirmationFaktSection />
+
+      {/*
         The KPI row this page never had — the summary was always fetched and
         never rendered. Supporting tiles, deliberately subordinate to the
         hero: 30px figures against its 34–40px, and each carries its own
@@ -495,14 +552,25 @@ export function SalesPage() {
           unfiltered amount and find the second larger than the first.
         */}
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          {/*
+            THE CLOCK IS IN THE HEADING NOW, because the section above it runs
+            on another one and the two are read one after the other.
+
+            Every figure below is a DEAL closed (or created) in the window and
+            credited to the deal's assignee; every figure above is an ORDER
+            dated by its arrival in the confirmation queue and credited to the
+            operator. That is two clocks, two populations and two definitions
+            of whose work it was — and until this line the page named only the
+            first, in one paragraph, three sections down.
+          */}
           <h2 id="sales-band-heading" className="eyebrow">
-            Davr koʻrsatkichlari
+            Yopilgan bitimlar boʻyicha
           </h2>
-          {insightsIgnoreFilters && (
-            <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-              Oxirgi ikki plitka mahsulot va bosqich filtrlarini hisobga olmaydi
-            </p>
-          )}
+          <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            Yopilgan/yaratilgan sana boʻyicha · masʼul xodim boʻyicha hisoblanadi
+            {insightsIgnoreFilters &&
+              ' · oxirgi ikki plitka mahsulot va bosqich filtrlarini hisobga olmaydi'}
+          </p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -546,11 +614,33 @@ export function SalesPage() {
           }
           context={
             summary && summary.conversionRatePercent !== null ? (
-              <Meter
-                value={summary.conversionRatePercent}
-                tone="neutral"
-                label={t.cards.conversion}
-              />
+              <div className="space-y-1.5">
+                <Meter
+                  value={summary.conversionRatePercent}
+                  tone="neutral"
+                  label={t.cards.conversion}
+                />
+                {/*
+                  THE MOVE, INHERITED FROM THE TILE THIS ONE REPLACES — and
+                  gated, because it comes from the other endpoint.
+
+                  The value above is /analytics/sales, which honours the
+                  product and stage filters; this delta is /insights/pulse,
+                  which cannot. Ungated, a product filter would print a
+                  filtered rate with an unfiltered arrow under it and the
+                  arrow would be about a different population than the number
+                  it points at.
+                */}
+                {!insightsIgnoreFilters && pulseData && (
+                  <TrendIndicator
+                    delta={pulseData.winRate.countDelta}
+                    points={{
+                      current: pulseData.winRate.countPercent,
+                      previous: pulseData.winRate.previousCountPercent,
+                    }}
+                  />
+                )}
+              </div>
             ) : undefined
           }
         />
@@ -575,8 +665,12 @@ export function SalesPage() {
           the period on the creation clock, which is why it differs from the
           velocity tile's company-wide open snapshot.
         */}
+        {/* «Bu davrdan» is load-bearing: the FAKT band prints a «Yoʻlda» of
+            the confirmation cohort and the velocity tile's hint names the
+            whole pipe with no window at all. Three true readings of one word,
+            each qualified where it stands. */}
         <StatTile
-          label="Bu davrdan yoʻlda"
+          label="Bu davrdan yoʻlda — yaratilgan, hali yopilmagan"
           value={pulseData ? pulseData.composition.openFromPeriod.amount : null}
           unit="money"
           money="full"
@@ -606,7 +700,10 @@ export function SalesPage() {
         */}
         {pulseData && pulseData.forecast.elapsedPercent < 100 && (
           <StatTile
-            label={`${unitName} yakuni prognozi`}
+            /* «Tushum ·» leads it because the FAKT band above prints an
+               «oy yakuni prognozi» of its own, on the other clock. Two
+               projections of one month is fine; two under one name is not. */
+            label={`Tushum · ${unitName} yakuni prognozi`}
             value={pulseData.forecast.projected ? pulseData.forecast.projected.amount : null}
             unit="money"
             money="full"
@@ -632,15 +729,6 @@ export function SalesPage() {
       </section>
 
       {/*
-        THE FLOOR'S OWN TWO NUMBERS, on the manager's screen. FAKT 1 / FAKT 2,
-        the conversion, the bonus fund and the ladder came here from the
-        sellers board on 2026-09-07, when that screen became the television
-        on the sales floor. A different clock from everything above it — the
-        section names it. See `ConfirmationFaktSection`.
-      */}
-      <ConfirmationFaktSection />
-
-      {/*
         Savdo pulsi — how fast the machine turns, from /insights/pulse.
         Cycle time, velocity, and the win rate stated BOTH ways: by deal
         count and value-weighted, side by side and labelled, because the two
@@ -658,7 +746,7 @@ export function SalesPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
           <InsightTile
             label="Aylanish davri (mediana)"
             status={pulseStatus}
@@ -738,39 +826,31 @@ export function SalesPage() {
             )}
           </InsightTile>
 
-          <StatTile
-            label="Yutish — bitimlar soni"
-            value={pulseData?.winRate.countPercent ?? null}
-            unit="percent"
-            status={pulseStatus}
-            hint={
-              pulseData
-                ? `${formatNumber(pulseData.winRate.wonCount)} / ${formatNumber(
-                    pulseData.winRate.wonCount + pulseData.winRate.lostCount,
-                  )} yakunlangan bitim`
-                : undefined
-            }
-            context={
-              pulseData ? (
-                <TrendIndicator
-                  delta={pulseData.winRate.countDelta}
-                  points={{
-                    current: pulseData.winRate.countPercent,
-                    previous: pulseData.winRate.previousCountPercent,
-                  }}
-                />
-              ) : undefined
-            }
-          />
+          {/*
+            «Yutish — bitimlar soni» USED TO SIT HERE, and it was the same
+            measurement twice.
 
+            It printed won / (won + lost) by COUNT from /insights/pulse —
+            97.4% — while «Bitim konversiyasi» two sections up prints won /
+            (won + lost) by count from /analytics/sales, also 97.4%. One
+            number, two endpoints, two names, one screen. What it carried that
+            the other did not was the period-over-period move, so the tile is
+            gone and its TrendIndicator moved onto the tile that survives.
+
+            The value-weighted rate stays, and is now the only «Yutish» on the
+            page: it is a different measurement, and the two diverge exactly
+            when a few large deals are carrying the period — which is the
+            reason the pair was drawn side by side in the first place.
+          */}
           <StatTile
             label="Yutish — bitim qiymati"
             value={pulseData?.winRate.valuePercent ?? null}
             unit="percent"
             status={pulseStatus}
             // What "value-weighted" means, in the reader's language: a big
-            // deal moves this rate more than a small one.
-            hint="Katta bitimlar koʻproq vazn oladi"
+            // deal moves this rate more than a small one — and where the
+            // count-weighted reading it used to sit beside now lives.
+            hint="Katta bitimlar koʻproq vazn oladi — soni boʻyicha oʻlchov «Bitim konversiyasi»da"
             context={
               pulseData ? (
                 <TrendIndicator
@@ -994,6 +1074,30 @@ function StageLadder({ stages }: { stages: readonly StageConversionRowDto[] }) {
     <div className="space-y-5">
       {[...byPipeline.entries()].map(([pipelineName, rows]) => {
         const ordered = [...rows].sort((a, b) => a.sortOrder - b.sortOrder)
+        /*
+          A PIPELINE NOBODY ENTERED IS NOT DRAWN; A STAGE NOBODY REACHED IS
+          COUNTED.
+
+          Measured on production for September 2026: of this ladder's rows,
+          more than half read «0 ta», and the whole Ecommerce pipeline was
+          zeros — a wall of empty meters the reader scrolls past to find the
+          four rows that moved. The client asked for the page's essential data
+          to be built on FAKT 1 / FAKT 2 on 2026-09-09, and the space this
+          spent was the space that ask needs.
+
+          The two cases are not the same and are not treated the same. A
+          pipeline with no cohort at all (`cohortDeals === 0`) has nothing to
+          say and no denominator to say it against, so it goes. A stage inside
+          a LIVE pipeline that nobody reached IS news — that is exactly where
+          a leak shows — so it is not deleted, it is counted: the rows go, one
+          line stays and says how many and that they were empty. A reader who
+          needs them by name has the stage list on Logistika and the queue's
+          own board.
+        */
+        const cohort = ordered[0]?.cohortDeals ?? 0
+        if (cohort === 0) return null
+        const reached = ordered.filter((row) => row.dealCount > 0)
+        const empty = ordered.length - reached.length
         return (
           <div key={pipelineName}>
             <p className="text-xs font-semibold" style={{ color: 'var(--ink-primary)' }}>
@@ -1007,7 +1111,7 @@ function StageLadder({ stages }: { stages: readonly StageConversionRowDto[] }) {
               )}
             </p>
             <ul className="mt-2 space-y-2">
-              {ordered.map((row) => (
+              {reached.map((row) => (
                 <li
                   key={row.stageId}
                   className="grid grid-cols-[minmax(0,1fr)_auto_minmax(110px,150px)] items-center gap-3"
@@ -1036,6 +1140,13 @@ function StageLadder({ stages }: { stages: readonly StageConversionRowDto[] }) {
                 </li>
               ))}
             </ul>
+            {/* The rows that are not drawn, said out loud — a trim nobody can
+                see is a trim that reads as "this is everything". */}
+            {empty > 0 && (
+              <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                {formatNumber(empty)} ta bosqichga bu davrda hech kim yetib bormadi
+              </p>
+            )}
           </div>
         )
       })}

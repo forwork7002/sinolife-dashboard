@@ -78,6 +78,20 @@ export interface SellerBoardRow {
   /** Of those, the ones already confirmed when they died. Zero on this basis. */
   readonly lostAfterConfirmOrders: number
   /**
+   * What those orders were WORTH — and it is not derivable from the two money
+   * columns beside it.
+   *
+   * The tempting arithmetic is `ordered − won − open`, and it is wrong on the
+   * queue basis for the same reason nothing may print FAKT 2 as a share of
+   * FAKT 1: `won` is not a subset of `ordered`. An order refused in the queue,
+   * revived and delivered lands in `won` and never in `ordered`, so the
+   * subtraction quietly borrows that money from this figure. The SQL has
+   * measured it all along (`lost_after_confirm`); it was simply dropped at the
+   * service boundary. Zero on the intake basis, which has no confirmation step
+   * to die after.
+   */
+  readonly lostAfterConfirmMinor: bigint
+  /**
    * EVERY order this operator has in the window, whatever became of it.
    *
    * On the queue basis that is the count the Тасдиқлаш navbati page shows for
@@ -167,6 +181,7 @@ export class SellerBoardRepository {
       // The intake query has no confirmation step, so nothing can be lost
       // after one. Stated rather than left to a default.
       lostAfterConfirmOrders: 0,
+      lostAfterConfirmMinor: 0n,
       orderedMinor: money(r.ordered),
       wonOrders: int(r.won_orders),
       wonMinor: money(r.won),

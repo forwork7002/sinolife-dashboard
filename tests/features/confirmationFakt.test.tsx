@@ -22,8 +22,12 @@ import { formatFullUzs } from '@/lib/format'
  * were read as one. These tests hold the three readings apart: money on the
  * road, nothing at all, and a window that has actually delivered.
  *
- * The band moved from the sellers board to Savdo dinamikasi on 2026-09-07;
- * the tests came with it unchanged, because the tile did not change.
+ * The band moved from the sellers board to Savdo dinamikasi on 2026-09-07 and
+ * the FAKT figures moved again on 2026-09-09, out of the band and into the
+ * page's hero, when the client asked for the page to be built on them. The
+ * tests came with them BOTH times without changing an assertion, which is the
+ * point of them: they are about what the screen SAYS when a window is younger
+ * than its own deliveries, not about which component says it.
  */
 
 vi.mock('next/navigation', () => ({
@@ -49,13 +53,13 @@ window.matchMedia = ((query: string) => ({
   dispatchEvent: () => false,
 })) as unknown as typeof window.matchMedia
 
-const { TotalsBand } = await import('@/features/sales/ConfirmationFaktSection')
+const { FaktHeadline } = await import('@/features/sales/ConfirmationFaktSection')
 
 function money(amount: number) {
   return { amountMinor: String(Math.round(amount * 100)), currency: 'UZS', amount }
 }
 
-/** Only the fields `TotalsBand` reads; the DTO carries two dozen more. */
+/** Only the fields `FaktHeadline` reads; the DTO carries two dozen more. */
 function board(over: {
   ordered: number
   orders: number
@@ -65,6 +69,13 @@ function board(over: {
 }): SellerBoardDto {
   return {
     rows: [],
+    /*
+      The figures are named FAKT 1 / FAKT 2 only while the payload says it sent
+      the queue reading — `/analytics/sellers` also answers `?basis=intake`,
+      where those words mean nothing. Stated in the fixture because it is
+      stated on the wire.
+    */
+    basis: 'confirmation_queue',
     totals: {
       sellers: 51,
       orders: over.orders,
@@ -106,7 +117,7 @@ const MATURE = board({
 
 describe('FAKT 2 on a window younger than the delivery', () => {
   it('names the money still on the road instead of counting nothing', () => {
-    render(<TotalsBand data={YOUNG} status="ready" />)
+    render(<FaktHeadline data={YOUNG} status="ready" />)
 
     // Built from the formatter rather than typed out: the group separator is
     // a deliberate one-line change in `format.ts`, and this test is about what
@@ -118,7 +129,7 @@ describe('FAKT 2 on a window younger than the delivery', () => {
   })
 
   it('drops the trend, because zero against zero explains nothing', () => {
-    render(<TotalsBand data={YOUNG} status="ready" />)
+    render(<FaktHeadline data={YOUNG} status="ready" />)
 
     // «oʻzgarishsiz» is what `wonDelta: unchanged` renders. It is true and
     // useless beside the very figure the reader is questioning.
@@ -126,7 +137,7 @@ describe('FAKT 2 on a window younger than the delivery', () => {
   })
 
   it('says so plainly when there is no order in the window either', () => {
-    render(<TotalsBand data={EMPTY} status="ready" />)
+    render(<FaktHeadline data={EMPTY} status="ready" />)
 
     expect(screen.getByText('bu davrda yetkazilgan buyurtma yoʻq')).toBeDefined()
   })
@@ -134,7 +145,7 @@ describe('FAKT 2 on a window younger than the delivery', () => {
 
 describe('FAKT 2 once the couriers have arrived', () => {
   it('counts the deliveries and keeps the comparison', () => {
-    render(<TotalsBand data={MATURE} status="ready" />)
+    render(<FaktHeadline data={MATURE} status="ready" />)
 
     expect(screen.getByText('73 ta yakunlangan buyurtma')).toBeDefined()
     expect(screen.getByText(/oʻzgarishsiz/)).toBeDefined()

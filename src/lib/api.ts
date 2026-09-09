@@ -1177,6 +1177,15 @@ export interface SellerBoardRowDto {
   /** Of those, the ones already confirmed when the order died. */
   readonly lostAfterConfirmOrders: number
   /**
+   * What those orders were worth.
+   *
+   * Carried rather than derived, because `ordered − won − open` is NOT this
+   * figure: `won` is not a subset of `ordered` on the queue basis, so the
+   * subtraction borrows the money of every order that was refused, revived
+   * and then delivered.
+   */
+  readonly lostAfterConfirm: MoneyDto
+  /**
    * Every order of theirs in the window — the count the confirmation queue
    * shows. Bigger than `orders`, which counts only the confirmed ones.
    */
@@ -1236,6 +1245,13 @@ export interface SellerBoardTotalsDto {
   readonly won: MoneyDto
   readonly wonOrders: number
   readonly open: MoneyDto
+  /** Orders inside `open` — «yoʻlda» money needs its count beside it. */
+  readonly openOrders: number
+  /** Refused in the queue PLUS confirmed-then-cancelled — the rate's loss pool. */
+  readonly lostOrders: number
+  /** Of those, the ones already confirmed when they died, and their money. */
+  readonly lostAfterConfirmOrders: number
+  readonly lostAfterConfirm: MoneyDto
   readonly conversionPercent: number | null
   readonly wonDelta: DeltaDto
   readonly bonusPayable: MoneyDto
