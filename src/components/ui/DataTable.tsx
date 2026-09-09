@@ -90,6 +90,21 @@ interface DataTableProps<T> {
    * different relation to the viewport.
    */
   readonly maxHeight?: number | string
+  /**
+   * The last row is a summary of the ones above it — pin it to the bottom of
+   * the scroll box.
+   *
+   * The mirror of `.thead-sticky`. Only a BOUNDED table has a bottom to stick
+   * to, which is the same condition `maxHeight` states above; every table has
+   * one, `'60dvh'` by default. A sticky element with nothing to stick to
+   * renders exactly where it already was, so a short table pays nothing.
+   *
+   * IGNORED WHILE `initialRows` HAS THE TABLE CAPPED. `slice(0, initialRows)`
+   * takes from the FRONT, so under a cap the last VISIBLE row is an ordinary
+   * data row — pinning it would put a lie exactly where the reader has been
+   * taught to find the total.
+   */
+  readonly stickyLastRow?: boolean
 }
 
 export function DataTable<T>({
@@ -109,6 +124,7 @@ export function DataTable<T>({
   initialRows,
   moreLabel = (hidden) => `Yana ${hidden} ta qatorni koʻrsatish`,
   maxHeight = '60dvh',
+  stickyLastRow,
 }: DataTableProps<T>) {
   const [expanded, setExpanded] = useState(false)
   /*
@@ -257,7 +273,16 @@ export function DataTable<T>({
         </thead>
 
         <tbody>
-          {visible.map((row) => (
+          {visible.map((row, index) => {
+            /*
+              `!capped` is the whole of the guard the prop documents: under an
+              `initialRows` cap the last visible row is an ordinary data row,
+              and pinning it would put a lie where the reader looks for the
+              total.
+            */
+            const pinned = stickyLastRow === true && !capped && index === visible.length - 1
+
+            return (
             <tr
               key={rowKey(row)}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
@@ -303,7 +328,9 @@ export function DataTable<T>({
                   <Cell
                     key={column.key}
                     scope={column.rowHeader ? 'row' : undefined}
-                    className={`px-2 py-2.5 ${
+                    /* `.tfoot-sticky` sits on the CELLS and not the row, for
+                       the same reason `.thead-sticky` does above. */
+                    className={`${pinned ? 'tfoot-sticky ' : ''}px-2 py-2.5 ${
                       column.rowHeader ? 'font-medium' : 'font-normal'
                     } ${column.align === 'right' ? 'text-right' : 'text-left'} ${
                       column.numeric ? 'tabular' : ''
@@ -319,7 +346,8 @@ export function DataTable<T>({
                 )
               })}
             </tr>
-          ))}
+            )
+          })}
         </tbody>
       </table>
     </div>

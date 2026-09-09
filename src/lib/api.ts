@@ -794,7 +794,7 @@ export interface ConfirmationQueueDto {
   readonly pagination: PaginationDto
   /** Every ROP group with orders in the window — the filter's options. */
   readonly rops: readonly string[]
-  /** The Статистика panel: one row per ROP group. */
+  /** The Статистика panel: one row per ROP group, with what each state is worth. */
   readonly byRop: readonly {
     readonly rop: string
     readonly orders: number
@@ -803,6 +803,18 @@ export interface ConfirmationQueueDto {
     readonly rejected: number
     readonly pending: number
     readonly unconfirmedShipped: number
+    /**
+     * Per state, keyed as the tiles are, so the panel can index it by the
+     * same `spec.key` it already reads counts with.
+     *
+     * Mirrored BY HAND from `ConfirmationRopPanelRow` in
+     * `@/server/services/insightsService`, because this module is the whole
+     * client/server boundary and may not import from `@/server/*`. NOTHING
+     * CHECKS THE MIRROR — edit both sides.
+     */
+    readonly amounts: Readonly<Record<ConfirmationOutcome, MoneyDto>>
+    /** ЖАМИ for this group — `amounts` added up, never a sixth reading. */
+    readonly amountTotal: MoneyDto
   }[]
   readonly totals: {
     readonly orders: number

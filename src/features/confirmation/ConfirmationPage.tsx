@@ -918,9 +918,11 @@ export function ConfirmationPage() {
         {/*
           THE CARD IS THE ONE THING THAT STRETCHES.
 
-          Everything above it — the banner, the six state tiles, the Статистика
-          panel — is `shrink-0` and keeps the height it asks for; this takes
-          what is left, whatever that is. `min-h-0` is the load-bearing half:
+          Everything above it — the banner and the six state tiles — is
+          `shrink-0` and keeps the height it asks for; this takes what is left,
+          whatever that is. (The Статистика panel used to be in that list and
+          is not any more: it is `flex-1` now, and it and this card are never on
+          screen together.) `min-h-0` is the load-bearing half:
           without it a flex item refuses to shrink below its content, so the
           table's own scroll box would push the card past the bottom of the
           screen and hand the page back the second scrollbar this change
@@ -945,173 +947,386 @@ export function ConfirmationPage() {
           The break-even is a window about 1054px tall. Above it the floor is
           slack, the card takes the screen and nothing scrolls; below it the
           board is exactly what it was, plus the 36px the caption used to hold.
-          Two places run out below the break-even and both are covered by this
-          one number: a short window, and Статистика open — that panel is
-          fifteen (ROP) groups on the production roster against the one a demo
-          database returns, so it takes its 300px cap and some 390px of column
-          with it.
+
+          IT USED TO NAME «Статистика open» AS THE OTHER CASE BELOW THAT LINE,
+          because the panel opened above this card and took 300px off it. It
+          is not a case any more: since 2026-09-09 Статистика is a MODE and
+          this card is not rendered at all while it is on — see the guard
+          below. A short window is the only thing this floor still covers.
         */}
-        <Card
-          className="card-hero brackets flex min-h-[746px] flex-1 flex-col px-4 py-4"
-          style={{ opacity: rowsStale ? 0.7 : 1, transition: 'opacity 150ms var(--ease-out)' }}
-          aria-busy={rowsStale || undefined}
-        >
-          <header className="mb-3 flex shrink-0 flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
-              Барча буюртмалар
-            </h2>
-            <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-              {/*
-                TWO NUMBERS, TWO NAMES.
+        {/*
+          «СТАТИСТИКА» IS A MODE NOW, NOT AN ADDITION.
 
-                This count obeys every filter — state, ROP, search — while the
-                ЖАМИ tile above obeys none of them, because a band whose figures
-                moved with its own selection could not be used to compare one
-                state against another. Both were labelled «Жами», so picking
-                «Кутилмоқда» put 1 289 in the tile and «Жами: 37 та» directly
-                under it, and the screen contradicted itself. The filtered count
-                is now named as filtered, and the window's own total is printed
-                beside it so the reader can see both at once.
-              */}
-              {shown === null
-                ? ''
-                : narrowed
-                  ? `Танланган: ${formatNumber(shown)} та`
-                  : `Жами: ${formatNumber(shown)} та`}
-              {/*
-                THE COMPARISON IS "ALL STATES", NOT "THE WHOLE WINDOW".
+          The client, 2026-09-09: «statistika bosilganda pastdagi barcha
+          buyurtmalar boʻlimi koʻrinmasin faqat statistika boʻlimi koʻrinsin».
+          The panel used to open as a 300px strip ABOVE this card, and the
+          reader compared fifteen (ROP) groups through a letterbox — while
+          this card carried a 746px floor partly BECAUSE the panel was taking
+          300px off it.
 
-                `totals.orders` is the same ROP and the same search as the line
-                beside it, summed across all five states — so it differs from the
-                count above ONLY when a state is selected, and calling it «Жами»
-                while a ROP was also applied printed the filtered figure twice
-                under two names. It is named for what it is, and shown only when
-                it has something to add.
-              */}
-              {narrowed && totals && (
-                <>
-                  {' · '}
-                  Барча ҳолатлар: <span className="tabular">{formatNumber(totals.orders)}</span> та
-                </>
-              )}
-              {/*
-                NOT IN BACKLOG MODE, where the numerator is zero by construction.
+          IT NAMES THIS SECTION AND ONLY THIS SECTION. The state band above
+          stays: «Барча буюртмалар» is what was asked to go, and the band is
+          this page's headline money figure and its only state filter. Hiding
+          it would have taken away the very thing the same sentence asks for —
+          «qaysi boʻlimda qancha pul borligi».
 
-                That cohort is «every order whose latest signal is still
-                CONFIRM_NEW», so CONFIRMED cannot occur in it and the rate comes
-                back a hard 0 — non-null, because the DENOMINATOR is not empty,
-                so `rateBp`'s own null-for-no-data guard has nothing to catch.
-                Printed, «Тасдиқланиш (барча ҳолатлардан): 0%» under a list of
-                44 waiting orders reads as "this company confirmed nothing",
-                which is a verdict rather than a measurement — the same reason
-                the four other state tiles are not rendered here.
-              */}
-              {!backlog && totals && totals.confirmedRate !== null && (
-                <>
-                  {' · '}
-                  {/*
-                    The denominator is every order in this ROP and search across
-                    all five states — INCLUDING the ones still waiting, which is
-                    the client's own definition of Тасдиқланиш %. It is not the
-                    selection's rate: filtering to «Тасдиқланди» would otherwise
-                    report 100% every time. The label says which denominator it
-                    is so nobody has to guess.
-                  */}
-                  Тасдиқланиш (барча ҳолатлардан):{' '}
-                  <span className="tabular">{totals.confirmedRate}%</span>
-                </>
-              )}
-              {query.dataUpdatedAt > 0 && (
-                <>
-                  {' · '}
-                  {/*
-                    THE PAGE'S CLOCK, NOT THE DATA'S.
+          THE QUERY IS UNTOUCHED. `pageSize` is part of the query key, so
+          skipping the page rows while the panel is open would invalidate the
+          cache and buy a round trip on the way INTO the mode and another on
+          the way out. The rows are fetched and not rendered; that is the
+          price of an instant toggle and it is the right one.
 
-                    `dataUpdatedAt` is when this browser last fetched, which is
-                    not how old the numbers are — that is the Bitrix sync time,
-                    and the header states it a few centimetres away. A bare
-                    «Янгиланди» over the fetch clock claimed the figures were
-                    minutes old on a morning the sync had been stuck for hours.
-                  */}
-                  Саҳифа янгиланди:{' '}
-                  <span className="tabular">{tashkentTime(new Date(query.dataUpdatedAt).toISOString())}</span>
-                  {' (ҳар 2 дақиқада)'}
-                </>
-              )}
-            </p>
-          </header>
+          THE PAGE-RESET EFFECT KEEPS RUNNING behind the panel and will still
+          rewrite `?page=1`. Harmless — a URL change with nothing visible
+          attached — and left alone: moving it inside hidden JSX would make it
+          a hook that mounts and unmounts with a mode.
+        */}
+        {!statsOpen && (
+          <Card
+            className="card-hero brackets flex min-h-[746px] flex-1 flex-col px-4 py-4"
+            style={{ opacity: rowsStale ? 0.7 : 1, transition: 'opacity 150ms var(--ease-out)' }}
+            aria-busy={rowsStale || undefined}
+          >
+            <header className="mb-3 flex shrink-0 flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
+                Барча буюртмалар
+              </h2>
+              <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+                {/*
+                  TWO NUMBERS, TWO NAMES.
 
-          {/*
-            THE SCROLL BOX IS THE FLEX ITEM, not the table.
+                  This count obeys every filter — state, ROP, search — while the
+                  ЖАМИ tile above follows the ROP and the search box but NOT the
+                  state selection, because a band whose figures moved with its
+                  own selection could not be used to compare one state against
+                  another. Both were labelled «Жами», so picking
+                  «Кутилмоқда» put 1 289 in the tile and «Жами: 37 та» directly
+                  under it, and the screen contradicted itself. The filtered count
+                  is now named as filtered, and the window's own total is printed
+                  beside it so the reader can see both at once.
+                */}
+                {shown === null
+                  ? ''
+                  : narrowed
+                    ? `Танланган: ${formatNumber(shown)} та`
+                    : `Жами: ${formatNumber(shown)} та`}
+                {/*
+                  THE COMPARISON IS "ALL STATES", NOT "THE WHOLE WINDOW".
 
-            DataTable renders its scroll container as its own root, so the
-            wrapper is what claims the leftover height and `maxHeight="100%"`
-            is what hands it down — a percentage resolves here because every
-            box above it, up to `main`, has a definite height. The pager is
-            OUTSIDE this wrapper on purpose: it is the one control that must
-            never be the thing you scroll to find.
-          */}
-          <div className="flex min-h-0 flex-1 flex-col">
-          <DataTable
-            columns={QUEUE_COLUMNS}
-            rows={data?.items ?? []}
-            rowKey={(row) => row.dealId}
-            status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
-            errorMessage={(query.error as Error | null)?.message}
-            onRetry={() => void query.refetch()}
-            sort={sort}
-            order={filters.order}
-            onSort={onSort}
-            /*
-              THE WINDOW DECIDES, NOT A NUMBER TYPED ONCE.
+                  `totals.orders` is the same ROP and the same search as the line
+                  beside it, summed across all five states — so it differs from the
+                  count above ONLY when a state is selected, and calling it «Жами»
+                  while a ROP was also applied printed the filtered figure twice
+                  under two names. It is named for what it is, and shown only when
+                  it has something to add.
+                */}
+                {narrowed && totals && (
+                  <>
+                    {' · '}
+                    Барча ҳолатлар: <span className="tabular">{formatNumber(totals.orders)}</span> та
+                  </>
+                )}
+                {/*
+                  NOT IN BACKLOG MODE, where the numerator is zero by construction.
 
-              `100%` is the height this card was given, and the card was given
-              what the screen had left — never less than the 640 it used to
-              have, because of the card's own floor. Still bounded, so the
-              header row keeps pinning while the rows scroll under it; what
-              changed is that the bound now knows how big the screen is.
-            */
-            maxHeight="100%"
-            minWidth={1860}
-            emptyTitle="Buyurtma topilmadi"
-            emptyBody={
-              filters.outcomes.length > 0 || filters.rop || filters.q
-                ? 'Bu filtrlar boʻyicha buyurtma yoʻq. Filtrlarni tozalab koʻring.'
-                : backlog
-                  ? // An empty backlog is the good news, and «bu davrda» would be
-                    // a sentence about a window this board does not read.
-                    'Hozir tasdiqlashni kutayotgan buyurtma yoʻq — navbat boʻsh.'
-                  : 'Bu davrda hech bir buyurtma tasdiqlash navbatiga tushmagan.'
-            }
-          />
-          </div>
+                  That cohort is «every order whose latest signal is still
+                  CONFIRM_NEW», so CONFIRMED cannot occur in it and the rate comes
+                  back a hard 0 — non-null, because the DENOMINATOR is not empty,
+                  so `rateBp`'s own null-for-no-data guard has nothing to catch.
+                  Printed, «Тасдиқланиш (барча ҳолатлардан): 0%» under a list of
+                  44 waiting orders reads as "this company confirmed nothing",
+                  which is a verdict rather than a measurement — the same reason
+                  the four other state tiles are not rendered here.
+                */}
+                {!backlog && totals && totals.confirmedRate !== null && (
+                  <>
+                    {' · '}
+                    {/*
+                      The denominator is every order in this ROP and search across
+                      all five states — INCLUDING the ones still waiting, which is
+                      the client's own definition of Тасдиқланиш %. It is not the
+                      selection's rate: filtering to «Тасдиқланди» would otherwise
+                      report 100% every time. The label says which denominator it
+                      is so nobody has to guess.
+                    */}
+                    Тасдиқланиш (барча ҳолатлардан):{' '}
+                    <span className="tabular">{totals.confirmedRate}%</span>
+                  </>
+                )}
+                {query.dataUpdatedAt > 0 && (
+                  <>
+                    {' · '}
+                    {/*
+                      THE PAGE'S CLOCK, NOT THE DATA'S.
 
-          {data && (
-            <Pagination
-              page={data.pagination.page}
-              totalPages={data.pagination.totalPages}
-              totalItems={data.pagination.totalItems}
-              onPage={(next) => update({ page: next })}
+                      `dataUpdatedAt` is when this browser last fetched, which is
+                      not how old the numbers are — that is the Bitrix sync time,
+                      and the header states it a few centimetres away. A bare
+                      «Янгиланди» over the fetch clock claimed the figures were
+                      minutes old on a morning the sync had been stuck for hours.
+                    */}
+                    Саҳифа янгиланди:{' '}
+                    <span className="tabular">{tashkentTime(new Date(query.dataUpdatedAt).toISOString())}</span>
+                    {' (ҳар 2 дақиқада)'}
+                  </>
+                )}
+              </p>
+            </header>
+
+            {/*
+              THE SCROLL BOX IS THE FLEX ITEM, not the table.
+
+              DataTable renders its scroll container as its own root, so the
+              wrapper is what claims the leftover height and `maxHeight="100%"`
+              is what hands it down — a percentage resolves here because every
+              box above it, up to `main`, has a definite height. The pager is
+              OUTSIDE this wrapper on purpose: it is the one control that must
+              never be the thing you scroll to find.
+            */}
+            <div className="flex min-h-0 flex-1 flex-col">
+            <DataTable
+              columns={QUEUE_COLUMNS}
+              rows={data?.items ?? []}
+              rowKey={(row) => row.dealId}
+              status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
+              errorMessage={(query.error as Error | null)?.message}
+              onRetry={() => void query.refetch()}
+              sort={sort}
+              order={filters.order}
+              onSort={onSort}
+              /*
+                THE WINDOW DECIDES, NOT A NUMBER TYPED ONCE.
+
+                `100%` is the height this card was given, and the card was given
+                what the screen had left — never less than the 640 it used to
+                have, because of the card's own floor. Still bounded, so the
+                header row keeps pinning while the rows scroll under it; what
+                changed is that the bound now knows how big the screen is.
+              */
+              maxHeight="100%"
+              minWidth={1860}
+              emptyTitle="Buyurtma topilmadi"
+              emptyBody={
+                filters.outcomes.length > 0 || filters.rop || filters.q
+                  ? 'Bu filtrlar boʻyicha buyurtma yoʻq. Filtrlarni tozalab koʻring.'
+                  : backlog
+                    ? // An empty backlog is the good news, and «bu davrda» would be
+                      // a sentence about a window this board does not read.
+                      'Hozir tasdiqlashni kutayotgan buyurtma yoʻq — navbat boʻsh.'
+                    : 'Bu davrda hech bir buyurtma tasdiqlash navbatiga tushmagan.'
+              }
             />
-          )}
-        </Card>
+            </div>
+
+            {data && (
+              <Pagination
+                page={data.pagination.page}
+                totalPages={data.pagination.totalPages}
+                totalItems={data.pagination.totalItems}
+                onPage={(next) => update({ page: next })}
+              />
+            )}
+          </Card>
+        )}
       </div>
     </PageShell>
   )
 }
 
+/** One ROP group's row exactly as the panel receives it from the wire. */
+type RopRow = ConfirmationQueueDto['byRop'][number]
+
 /**
- * Статистика — the queue by ROP group.
+ * A line of the panel: a ROP group, or the ЖАМИ that adds them up.
  *
- * The one cut the table below cannot make. A ROP's confirmation rate is a
+ * The total wears A GROUP'S OWN SHAPE rather than a parallel one, so every
+ * render closure below reads `line.row.…` unchanged and branches on `kind`
+ * only for ink and weight. MarketingTable's total arrives as a bare metrics
+ * object instead, so it needs the branch written out in each of its two
+ * hand-written columns and once more inside the map over its metric columns
+ * — of which a Meta campaign has twenty-one. A column added HERE totals
+ * itself.
+ */
+type PanelLine = { readonly kind: 'rop' | 'total'; readonly row: RopRow }
+
+/** MarketingTable's own sentinel. No Bitrix24 ROP name can collide with it. */
+const TOTAL_ROW_KEY = '__jami__'
+
+/*
+  THE MINOR-UNIT SCALE IS STATED HERE BECAUSE NOTHING ELSE ON THIS SIDE CAN.
+
+  `MoneyDto` carries `amountMinor` (exact) and `amount` (lossy) but not the
+  exponent between them, and `currencyExponent` lives in
+  `@/server/domain/money/money`, which `src/features/**` may not import — the
+  ESLint boundary, not a convention. So the sum stays exact all the way and
+  becomes a major number exactly once, here. `formatFullUzs` carries the same
+  assumption, which is why the two are used together everywhere.
+*/
+const SOM_MINOR = 100
+
+/**
+ * ЖАМИ — THE ROWS ON SCREEN ADDED UP, AND `totals` IS NOT AN OPTION.
+ *
+ * `totals` is cut from `scoped` in `insightsService` —
+ * `query.rop ? byRop.filter(…) : byRop` — while this panel is handed the
+ * UNFILTERED `byRop`, deliberately, for the reason its own hint gives: a
+ * comparison table that narrowed to the one row you selected would have
+ * nothing left to compare. So the moment anybody picks a ROP, `totals` equals
+ * ONE of the lines still listed above this one, and the footer would not add
+ * up to the column over it. That is the same fault the band records at «TWO
+ * NUMBERS, TWO NAMES», and it is invisible: both figures are correct
+ * measurements of different populations printed under one word.
+ *
+ * MONEY IS SUMMED IN BIGINT AND CONVERTED ONCE. Never over `.amount`, the
+ * lossy major-unit double `MoneyDto` carries for charts — it happens to be
+ * exact at this magnitude, which is precisely why summing it would go
+ * unnoticed until the day it was not.
+ *
+ * THE COUNT COLUMN AND THE MONEY COLUMN TOTAL DIFFERENT POPULATIONS AND BOTH
+ * ARE RIGHT. `orders` is `count(*)` per group, so this line's ЖАМИ count is
+ * `count(*)` added down — a footer follows its own column. Its ЖАМИ money is
+ * the five states added, because that is what `amountTotal` is. The two agree
+ * today because `outcome` is exhaustive over the five, and the repository
+ * forbids closing any future gap with a sixth SQL sum.
+ */
+function totalLine(rows: readonly RopRow[]): RopRow {
+  // Unreachable: an empty `rows` renders DataTable's EmptyState and never
+  // reaches here. Stated so nobody hard-codes 'UZS' at a print site instead.
+  const currency = rows[0]?.amountTotal.currency ?? 'UZS'
+
+  const count = (pick: (row: RopRow) => number) => rows.reduce((sum, row) => sum + pick(row), 0)
+  const sum = (pick: (row: RopRow) => MoneyDto): MoneyDto => {
+    const minor = rows.reduce((total, row) => total + BigInt(pick(row).amountMinor), 0n)
+    return { amountMinor: minor.toString(), currency, amount: Number(minor) / SOM_MINOR }
+  }
+
+  return {
+    rop: TOTAL_ROW_KEY,
+    orders: count((row) => row.orders),
+    pending: count((row) => row.pending),
+    noAnswer: count((row) => row.noAnswer),
+    confirmed: count((row) => row.confirmed),
+    rejected: count((row) => row.rejected),
+    unconfirmedShipped: count((row) => row.unconfirmedShipped),
+    amounts: {
+      CONFIRM_NEW: sum((row) => row.amounts.CONFIRM_NEW),
+      NO_ANSWER: sum((row) => row.amounts.NO_ANSWER),
+      CONFIRMED: sum((row) => row.amounts.CONFIRMED),
+      REJECTED: sum((row) => row.amounts.REJECTED),
+      UNCONFIRMED_SHIPPED: sum((row) => row.amounts.UNCONFIRMED_SHIPPED),
+    },
+    amountTotal: sum((row) => row.amountTotal),
+  }
+}
+
+/**
+ * THE SUM GOES UNDER ITS COUNT, NOT BESIDE IT.
+ *
+ * The client asked on 2026-09-09 for «har bir rop jami va qaysi boʻlimda
+ * qancha pul borligi» — five states in money, per ROP — and the obvious build
+ * is five more columns. It does not fit. This panel is read at 1280 behind a
+ * 240px rail, which leaves 974px of table; thirteen columns of Cyrillic state
+ * names plus full soʻm is about 1 640. That table scrolls sideways, and a
+ * sideways scroll carries the РОП name off the left edge — a column of
+ * ten-digit sums with nobody's name on it. DataTable cannot pin a column on
+ * the x axis, and its `onScroll` reads `scrollTop` alone, so nothing on
+ * screen would even say there was more table out there.
+ *
+ * Stacked, the panel stays EIGHT columns at 884px and fits inside 974 with
+ * 90px to spare, and the eye still travels one row per ROP. It costs 8px of
+ * row height, 41 → 49.
+ *
+ * NO HAIRLINE BETWEEN THE LINES, unlike `OutcomeTile`, which divides them
+ * with a border. A tile is one object and needs an internal division; a table
+ * already draws one on every row, and a hundred more hairlines inside the
+ * cells would be a second grid arguing with the first.
+ *
+ * NO « soʻm » IN THE CELL. The tiles print the unit because a tile is read
+ * alone; this is a column of money under a header, and the hint says
+ * «Суммалар сўмда» once in place of a hundred repetitions. The queue's own
+ * СУММА column has printed no unit since the board shipped, for that reason.
+ *
+ * A ZERO COUNT GETS AN EMPTY LINE BOX, NOT A SECOND ZERO. The money under a
+ * count of nought is nought by construction, and printing it says the same
+ * thing twice in a panel that is already fifteen rows of mostly zero.
+ * Dropping the line instead would make the cell one line tall and
+ * `vertical-align` would centre it against its two-line neighbours, breaking
+ * the one thing this layout is for — reading a row of counts straight across.
+ * So the box stays and the digits go. The INVERSE still prints: a state
+ * holding three orders whose deals carry no amount reads «3» over «0», which
+ * is a fact worth having.
+ *
+ * FULL DIGITS, AND THE WIDTH DID NOT FORCE THE QUESTION. `formatFullUzs` and
+ * never `formatCompactUzs` — this board is reconciled against Bitrix24 and
+ * the Telegram РОП channels, both of which print the sum out in full, the
+ * same rule the tiles above already follow. Compacting all six money readings
+ * would take the table from 884 to about 757, and it cannot spend the
+ * difference: three of the five state columns are bound by their own HEADER,
+ * not by their figure — ТАСДИҚЛАНМАДИ is wider than any soʻm this portal has
+ * printed.
+ */
+function StackedFigure({
+  count,
+  amount,
+  color,
+  total,
+}: {
+  count: number
+  amount: MoneyDto
+  /** The state's own token. The ЖАМИ column passes none and inherits the cell. */
+  color?: string
+  total: boolean
+}) {
+  return (
+    <>
+      <span
+        className="block leading-none"
+        style={{
+          color: total
+            ? 'var(--ink-primary)'
+            : count === 0
+              ? 'var(--ink-muted)'
+              : (color ?? 'var(--ink-secondary)'),
+          fontWeight: total ? 600 : undefined,
+        }}
+      >
+        {formatNumber(count)}
+      </span>
+      {count === 0 && !total ? (
+        // The line box, and nothing in it — see above.
+        <span aria-hidden="true" className="mt-[3px] block h-[11px]" />
+      ) : (
+        <span
+          className="mt-[3px] block text-[11px] leading-none"
+          style={total ? { color: 'var(--ink-primary)', fontWeight: 600 } : undefined}
+        >
+          {formatFullUzs(amount.amount)}
+        </span>
+      )}
+    </>
+  )
+}
+
+/**
+ * Статистика — the queue by ROP group, in orders AND in money.
+ *
+ * The one cut the queue table cannot make. A ROP's confirmation rate is a
  * statement about their whole day, and the reader is looking at twenty-five
  * rows of it; ranking the groups is what turns "we are at 90%" into a name.
  *
  * Sorted by orders rather than by rate on purpose: a group with four orders
  * and one refusal is not the worst ROP on the floor, and rate-sorting would
- * put them at the top of a list managers act on.
+ * put them at the top of a list managers act on. Nothing on this table can
+ * re-sort it — no `sort`, no `onSort`, no column carries a `sortKey` — which
+ * is also what keeps ЖАМИ at the bottom wherever the reader clicks.
+ *
+ * SINCE 2026-09-09 IT IS A MODE, NOT A STRIP. It used to open as a 300px
+ * letterbox above the queue and the reader compared fifteen groups through
+ * it. The client asked for the whole screen and for the money in it; both
+ * halves of that sentence are why every cell now carries a sum and why the
+ * board below is not rendered at all while this is open.
  */
-function RopPanel({
+export function RopPanel({
   rows,
   status,
   backlog,
@@ -1127,46 +1342,108 @@ function RopPanel({
    * which this panel then paints `--status-critical` and semibold, putting a
    * red verdict on every ROP on the floor for a rate that could not have been
    * anything else. What survives is the one cut that still says something
-   * here: who is sitting on the most unworked orders.
+   * here: who is sitting on the most unworked orders, and what that pile is
+   * worth.
    */
   backlog: boolean
 }) {
-  const columns: Column<ConfirmationQueueDto['byRop'][number]>[] = [
+  /*
+    APPENDED, AND ONLY OVER ROWS THAT EXIST. A ЖАМИ of zeros under no groups
+    is a claim nobody made; DataTable returns its EmptyState before the scroll
+    box when `rows.length === 0`, and this keeps that path reachable.
+  */
+  const lines: PanelLine[] =
+    rows.length === 0
+      ? []
+      : [
+          ...rows.map((row): PanelLine => ({ kind: 'rop', row })),
+          { kind: 'total', row: totalLine(rows) },
+        ]
+
+  const columns: Column<PanelLine>[] = [
     {
       key: 'rop',
       rowHeader: true,
       header: 'РОП',
-      render: (row) => (
-        <span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
-          {row.rop}
-        </span>
-      ),
+      // The same 116px the queue table gives РОП: the same names, one page.
+      width: '116px',
+      render: (line) =>
+        line.kind === 'total' ? (
+          /*
+            ЖАМИ, AND THEN WHOSE.
+
+            «ЖАМИ» already names the total COLUMN one cell to the right and the
+            total TILE in the band above — and that tile follows the ROP filter
+            while this table does not. (Neither follows the state selection;
+            both follow the period and the search box.) One word, three
+            populations, and this page has been burned by exactly that once:
+            two counts were both labelled «Жами», so picking «Кутилмоқда» put
+            1 289 in the tile and «Жами: 37 та» directly under it, and the
+            screen contradicted itself. The second line is what stops it
+            happening again, and it is the ROP filter's own string rather than
+            a coinage.
+
+            `.eyebrow` is the house's total-row voice — MarketingTable's JAMI
+            cell — and this is a table header cell, one of the two places
+            globals.css rations that style to.
+          */
+          <span className="block">
+            <span className="eyebrow" style={{ color: 'var(--ink-primary)' }}>
+              ЖАМИ
+            </span>
+            <span className="block text-[10px] leading-tight" style={{ color: 'var(--ink-muted)' }}>
+              барча РОП
+            </span>
+          </span>
+        ) : (
+          <span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
+            {line.row.rop}
+          </span>
+        ),
     },
     {
       key: 'orders',
       header: backlog ? 'ҲОЗИР КУТИЛМОҚДА' : 'ЖАМИ',
       align: 'right',
       numeric: true,
-      render: (row) => formatNumber(row.orders),
+      width: backlog ? '124px' : '112px',
+      /*
+        `amountTotal`, NOT `amounts.CONFIRM_NEW`, in backlog mode too — one
+        code path with the windowed ЖАМИ column, and a total that keeps
+        totalling if the backlog population ever admits a second state.
+      */
+      render: (line) => (
+        <StackedFigure
+          count={line.row.orders}
+          amount={line.row.amountTotal}
+          total={line.kind === 'total'}
+        />
+      ),
     },
     /*
       The four other states are zero for every group in backlog mode, so the
       columns are dropped rather than filled with zeros: a table of zeros
-      invites the reader to look for the difference between them.
+      invites the reader to look for the difference between them. Their MONEY
+      is zero for the same reason and by the same construction, so it leaves
+      with them — a column of «0» over a column of «0» is the fault twice.
+      What survives carries both readings, which is the only question the
+      backlog is asked.
     */
     ...(backlog ? [] : OUTCOMES).map((spec: OutcomeSpec) => ({
       key: spec.key,
       header: spec.label,
       align: 'right' as const,
       numeric: true,
-      render: (row: ConfirmationQueueDto['byRop'][number]) => {
-        const count = countFor(row, spec.key)
-        return count === 0 ? (
-          <span style={{ color: 'var(--ink-muted)' }}>0</span>
-        ) : (
-          <span style={{ color: spec.color }}>{formatNumber(count)}</span>
-        )
-      },
+      // Bound by the header on ТАСДИҚЛАНМАДИ, by the figure on the rest.
+      width: '112px',
+      render: (line: PanelLine) => (
+        <StackedFigure
+          count={countFor(line.row, spec.key)}
+          amount={line.row.amounts[spec.key]}
+          color={spec.color}
+          total={line.kind === 'total'}
+        />
+      ),
     })),
   ]
 
@@ -1176,12 +1453,30 @@ function RopPanel({
       header: 'ТАСДИҚЛАНИШ %',
       align: 'right',
       numeric: true,
-      width: '150px',
-      render: (row) => {
+      /*
+        96, DOWN FROM 150. With seven columns to its left it no longer has to
+        hold the right edge of the table open, and the header's longest word
+        is what binds it — the content is never wider than «100.0%».
+
+        IT IS STILL A RATE OF ORDERS, NOT OF MONEY, and the header does not
+        say so with a «(ТА)» suffix: a parenthetical earns its place beside a
+        control that could make the label mean something else, and there is no
+        such control. The hint carries the clause instead — read once, not
+        fifteen times.
+      */
+      width: '96px',
+      render: (line) => {
         // Null, not zero: a group with no orders has no rate, and a 0% would
         // be a verdict on somebody who was not asked to do anything.
-        if (row.orders === 0) return <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
-        const rate = Math.round((row.confirmed / row.orders) * 1000) / 10
+        if (line.row.orders === 0)
+          return <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
+        /*
+          On the ЖАМИ line this runs over the SUMMED RAW COUNTS, through this
+          same closure — MarketingTable's "never average the rendered
+          percentages" rule satisfied by construction rather than by
+          discipline. A four-order group cannot weigh like a four-hundred one.
+        */
+        const rate = Math.round((line.row.confirmed / line.row.orders) * 1000) / 10
         return (
           <span
             style={{
@@ -1191,7 +1486,9 @@ function RopPanel({
                   : rate < 85
                     ? 'var(--status-warning)'
                     : 'var(--ink-secondary)',
-              fontWeight: rate < 85 ? 600 : 400,
+              // The total keeps the threshold colouring — a red board-wide
+              // rate is the fact a floor manager opened this panel for.
+              fontWeight: line.kind === 'total' ? 600 : rate < 85 ? 600 : 400,
             }}
           >
             {rate}%
@@ -1203,16 +1500,36 @@ function RopPanel({
   return (
     <ChartCard
       /*
-        BOUNDED, AND PINNED AT THE HEIGHT IT ASKS FOR.
+        THE PANEL IS THE PAGE NOW.
 
-        This panel opens INSIDE the board's flex column, above the card that
-        takes what is left — so an unbounded list of fifteen (ROP) rows would
-        eat the queue itself, which is the thing the reader opened Статистика
-        to compare against. `shrink-0` keeps the panel honest about its own
-        height rather than being squeezed, and 300px is about eight groups
-        before it scrolls on its own.
+        It used to be `shrink-0` at a literal `maxHeight={300}`, bounded
+        because it opened ABOVE the card that took what was left — fifteen
+        (ROP) groups unbounded would have eaten the queue the reader opened it
+        to compare against. That card is not on screen while this one is.
+
+        `fill` supplies ChartCard's two inner levels (`flex min-h-0 flex-1
+        flex-col` on the body, `min-h-0 flex-1` on the box that becomes the
+        DataTable's containing block) and `flex-1` here supplies the outer
+        one — provably the same three-level chain the orders Card hand-rolls.
+
+        `min-h-[450px]` AND DELIBERATELY NOT `min-h-0`. A definite min-height
+        releases the card from `min-height: auto` exactly as `min-h-0` would,
+        so one utility does both jobs — and the floor is needed on its own
+        account: the tile band and the backlog banner are both `shrink-0`, so
+        this panel is the only thing in the column that CAN give. Without a
+        floor it would collapse toward nothing on a short window while the
+        tiles kept every pixel, and `main` would not scroll because nothing
+        overflowed.
+
+        450 IS THE OLD 300px CAP, PUT BACK HONESTLY. Rows are 49px now instead
+        of 41, so a straight 300 would have shown FEWER groups than before and
+        the panel would have been a downgrade on the one screen it was meant
+        to help. 348 of table at 49px is the six-and-a-half groups 300px gave
+        at 41px; plus this card's ~102px of chrome (header, a two-line hint,
+        `pb-5`, borders) that is 450.
       */
-      className="shrink-0"
+      fill
+      className="flex-1 min-h-[450px]"
       title="Статистика — РОП кесимида"
       /*
         The ROP filter belongs on this list too.
@@ -1224,27 +1541,54 @@ function RopPanel({
         disagreed. Both exclusions are deliberate and for the same reason: a
         comparison table that narrowed to the one row you selected would have
         nothing left to compare.
+
+        AND IT NOW HAS TO NAME ЖАМИ'S POPULATION. There is a ЖАМИ tile in the
+        band above, cut by the ROP filter, and a ЖАМИ row here that is not; the
+        sentence is what keeps the reader from reading one as the other.
       */
       hint={
         backlog
-          ? 'Қидирув бўйича, барча РОПлар — ким энг кўп ишланмаган буюртма устида ўтирганини кўрсатади. Давр бу панелга ҳам таъсир қилмайди.'
-          : 'Танланган давр ва қидирув бўйича, барча РОПлар. Ҳолат ва РОП филтрлари бу панелга таъсир қилмайди — у гуруҳларни солиштириш учун.'
+          ? 'Қидирув бўйича, барча РОПлар — сони ва суммаси; ким энг кўп ишланмаган буюртма ва пул устида ўтирганини кўрсатади. Давр бу панелга таъсир қилмайди. ЖАМИ қатори — шу жадвалнинг ўз йиғиндиси, юқоридаги плиткалар эмас. Суммалар сўмда.'
+          : 'Танланган давр ва қидирув бўйича, барча РОПлар — ҳар бир ҳолатнинг сони ва суммаси. Ҳолат ва РОП филтрлари бу панелга таъсир қилмайди — у гуруҳларни солиштириш учун. ЖАМИ қатори — шу жадвалнинг ўз йиғиндиси, юқоридаги плиткалар эмас. ТАСДИҚЛАНИШ % — буюртмалар сони бўйича. Суммалар сўмда.'
       }
     >
-      <DataTable
-        columns={columns}
-        rows={rows}
-        rowKey={(row) => row.rop}
-        status={status}
-        // Two columns in backlog mode, seven in the windowed one: a fixed 900
-        // would scroll a two-column table sideways for no reason.
-        minWidth={backlog ? 320 : 900}
-        maxHeight={300}
-        emptyTitle="РОП маълумоти йўқ"
-        emptyBody={
-          backlog ? 'Ҳозир кутаётган буюртма йўқ.' : 'Бу даврда навбатга тушган буюртма йўқ.'
-        }
-      />
+      {/*
+        A two-column table has nothing to do with 974px. `w-full` stretches it
+        anyway, and a figure 800px from the name it belongs to is not a table,
+        it is two lists.
+
+        `h-full` IS NOT OPTIONAL: `maxHeight="100%"` below resolves against
+        this box, and a block at `height: auto` gives it none to resolve
+        against.
+      */}
+      <div className={`h-full ${backlog ? 'max-w-[560px]' : ''}`}>
+        <DataTable
+          columns={columns}
+          rows={lines}
+          rowKey={(line) => (line.kind === 'total' ? TOTAL_ROW_KEY : line.row.rop)}
+          status={status}
+          // Eight columns: 116 РОП + 112 ЖАМИ + 5 × 112 + 96 rate. Two columns
+          // in backlog mode, where a fixed 884 would scroll a two-column table
+          // sideways for no reason.
+          minWidth={backlog ? 240 : 884}
+          // The card is the definite-height box now rather than a 300px cap —
+          // the same mechanism and the same chain as the queue table.
+          maxHeight="100%"
+          /*
+            ЖАМИ STAYS ON SCREEN. Production carries fifteen (ROP) groups and
+            a maximised 1080p window fits about eleven rows, so the one figure
+            the client asked for by name would otherwise be the one below the
+            fold. MarketingTable's JAMI has that wart; this does not inherit
+            it. A sticky element with nothing to stick to renders where it
+            already was, so at 2560 it costs nothing.
+          */
+          stickyLastRow
+          emptyTitle="РОП маълумоти йўқ"
+          emptyBody={
+            backlog ? 'Ҳозир кутаётган буюртма йўқ.' : 'Бу даврда навбатга тушган буюртма йўқ.'
+          }
+        />
+      </div>
     </ChartCard>
   )
 }

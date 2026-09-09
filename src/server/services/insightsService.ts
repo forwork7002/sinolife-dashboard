@@ -204,11 +204,23 @@ export interface ConfirmationOrderDto {
   readonly queueHistory: readonly ConfirmationVisitDto[]
 }
 
-/** The panel's row on the wire: every column of it except the bigint money. */
-export type ConfirmationRopPanelRow = Omit<ConfirmationRopRow, 'money'>
-
 /** The five states' money, in the app's own currency. */
 export type ConfirmationOutcomeAmounts = Readonly<Record<ConfirmationOutcomeValue, MoneyDto>>
+
+/**
+ * The panel's row on the wire: every column of it, with the bigint money
+ * CONVERTED rather than deleted.
+ *
+ * Still `Omit<…, 'money'> &` and not seven restated scalars, so the property
+ * the DTO comment below claims survives: a column added to the panel tomorrow
+ * reaches the wire on its own, and a bigint still cannot.
+ */
+export type ConfirmationRopPanelRow = Omit<ConfirmationRopRow, 'money'> & {
+  /** Per state, keyed the way the tiles are — the panel indexes by `spec.key`. */
+  readonly amounts: ConfirmationOutcomeAmounts
+  /** ЖАМИ for this group: `amounts` added up, never a sixth reading. */
+  readonly amountTotal: MoneyDto
+}
 
 export interface ConfirmationQueueDto {
   readonly items: readonly ConfirmationOrderDto[]
@@ -216,12 +228,15 @@ export interface ConfirmationQueueDto {
   /** Every ROP group with orders in the window — the filter's options. */
   readonly rops: readonly string[]
   /**
-   * The Статистика panel: one row per ROP group — WITHOUT THE MONEY THE TILES ARE SUMMED FROM.
+   * The Статистика panel: one row per ROP group, WITH what each state in it
+   * is worth.
    *
    * `ConfirmationRopRow.money` is bigint and `JSON.stringify` throws on one,
-   * so the panel's rows are handed on with that key removed rather than
-   * remembered field by field — a column added to the panel tomorrow reaches
-   * the wire on its own, and a bigint cannot.
+   * so the row is rebuilt with that key CONVERTED rather than deleted — the
+   * client asked for the per-ROP sums on 2026-09-09: «har bir rop jami va
+   * qaysi boʻlimda qancha pul borligi ham koʻrinsin jadvalda». The bigint
+   * stops at that line; `amountTotal` is `amounts` added up, so a row's ЖАМИ
+   * always equals the five columns beside it.
    */
   readonly byRop: readonly ConfirmationRopPanelRow[]
   readonly totals: {
@@ -934,8 +949,45 @@ export class InsightsService {
       })),
       totalItems: page.totalItems,
       rops,
-      // The money goes to the tiles, not onto the wire — see the DTO.
-      byRop: byRop.map(({ money: _money, ...row }) => row),
+      /*
+        THE MONEY GOES TO THE TILES **AND** ONTO THE WIRE NOW.
+
+        It used to be dropped here (`({ money: _money, ...row }) => row`)
+        because `JSON.stringify` throws on a bigint and the panel had no use
+        for it. It has one since 2026-09-09: the panel prints every state's
+        sum per ROP. So the bigint is CONVERTED at this line rather than
+        deleted, and this is still the only place one can reach the wire from.
+
+        Summed in bigint and turned into money ONCE. Never over `MoneyDto`'s
+        `amount`, the lossy major-unit double it carries for charts.
+      */
+      byRop: byRop.map(({ money: minor, ...row }) => ({
+        ...row,
+        amounts: {
+          CONFIRM_NEW: toMoneyDto(money(minor.pending, currency)),
+          NO_ANSWER: toMoneyDto(money(minor.noAnswer, currency)),
+          CONFIRMED: toMoneyDto(money(minor.confirmed, currency)),
+          REJECTED: toMoneyDto(money(minor.rejected, currency)),
+          UNCONFIRMED_SHIPPED: toMoneyDto(money(minor.unconfirmedShipped, currency)),
+        },
+        /*
+          The five added up — the ЖАМИ tile's own rule, stated at
+          `ConfirmationOutcomeMoneyMinor` in the repository: a sixth column
+          summing `count(*)`'s population could differ from the five by a
+          state nobody has named yet, and a row whose total does not equal its
+          parts is unreadable.
+        */
+        amountTotal: toMoneyDto(
+          money(
+            minor.pending +
+              minor.noAnswer +
+              minor.confirmed +
+              minor.rejected +
+              minor.unconfirmedShipped,
+            currency,
+          ),
+        ),
+      })),
       totals: {
         orders,
         byOutcome,

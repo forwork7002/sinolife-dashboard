@@ -23,9 +23,11 @@ import { InsightsService } from '@/server/services/insightsService'
  *
  *   1. ЖАМИ is the five states added up, never a sixth reading of the cohort.
  *   2. The ROP filter cuts the sums exactly where it cuts the counts.
- *   3. No bigint reaches the wire — `JSON.stringify` THROWS on one, so a money
- *      column that leaked onto `byRop` would turn the endpoint into a 500 that
- *      no typecheck and no unit test would have named.
+ *   3. No bigint reaches the wire — `JSON.stringify` THROWS on one. The
+ *      panel's rows now CARRY the money on purpose (the client asked for the
+ *      per-ROP sums on 2026-09-09), so what must hold is that every one of
+ *      them was CONVERTED. A bigint left anywhere under the DTO is a 500 that
+ *      no typecheck and no other test here would have named.
  *
  * The window's LENGTH picks between two SQL shapes (`LONG_WINDOW_DAYS`), and
  * they are two hand-maintained copies of one measurement, so both are asked
@@ -157,18 +159,39 @@ describe('the state band prints what each state is worth', () => {
     */
     expect(long.totals.amount).toEqual(short.totals.amount)
     expect(long.totals.byOutcomeAmount).toEqual(short.totals.byOutcomeAmount)
+    // The PER-ROP money too, since the panel prints it: the long shape builds
+    // by_rop by hand, and a column present in one copy and not the other reads
+    // as a year of zeros with every count on it correct.
+    expect(long.byRop).toEqual(short.byRop)
   })
 
-  it('keeps the bigint money off the wire', async () => {
+  it('keeps every bigint off the wire', async () => {
     const dto = await serviceOver(ROWS)('this_month')
 
-    // The panel's rows are handed on WITHOUT the key the tiles were summed
-    // from. `JSON.stringify` throws on a bigint, so this is the difference
-    // between a working endpoint and a 500 nothing else would have caught.
-    for (const row of dto.byRop) expect(row).not.toHaveProperty('money')
+    /*
+      THE PROPERTY IS «NO BIGINT», NOT «NO KEY CALLED money».
+
+      The panel's rows CARRY the money now — the client asked for it on
+      2026-09-09 — so the old `not.toHaveProperty('money')` would pass while
+      proving nothing: the absence of that key was only ever a proxy. What
+      still has to hold is that every bigint was converted, and the walk NAMES
+      the path so a regression says which field leaked. `JSON.stringify` alone
+      is not a replacement — it throws only when a bigint is reachable, and a
+      bare `.not.toThrow()` reads as incidental. Keep both.
+    */
+    const bigints: string[] = []
+    const walk = (value: unknown, path: string): void => {
+      if (typeof value === 'bigint') bigints.push(path)
+      else if (Array.isArray(value)) value.forEach((v, i) => walk(v, `${path}[${i}]`))
+      else if (value !== null && typeof value === 'object')
+        for (const [key, v] of Object.entries(value)) walk(v, `${path}.${key}`)
+    }
+    walk(dto, 'dto')
+
+    expect(bigints).toEqual([])
     expect(() => JSON.stringify(dto)).not.toThrow()
 
-    // Everything the Статистика panel actually reads is still there.
+    // Everything the Статистика panel reads — the counts, and now the money.
     expect(dto.byRop[0]).toEqual({
       rop: 'Sevinch(ROP)',
       orders: 11,
@@ -177,6 +200,42 @@ describe('the state band prints what each state is worth', () => {
       confirmed: 5,
       rejected: 1,
       unconfirmedShipped: 0,
+      amounts: {
+        CONFIRM_NEW: { amountMinor: som(4_000_000).toString(), currency: 'UZS', amount: 4_000_000 },
+        NO_ANSWER: { amountMinor: som(250_000).toString(), currency: 'UZS', amount: 250_000 },
+        CONFIRMED: {
+          amountMinor: som(12_500_000).toString(),
+          currency: 'UZS',
+          amount: 12_500_000,
+        },
+        REJECTED: { amountMinor: som(900_000).toString(), currency: 'UZS', amount: 900_000 },
+        UNCONFIRMED_SHIPPED: { amountMinor: '0', currency: 'UZS', amount: 0 },
+      },
+      /*
+        4 000 000 + 250 000 + 12 500 000 + 900 000 + 0 — the same 17 650 000
+        the ROP-filter test above reads out of `totals`, now by construction
+        rather than by coincidence.
+      */
+      amountTotal: {
+        amountMinor: som(17_650_000).toString(),
+        currency: 'UZS',
+        amount: 17_650_000,
+      },
     })
+  })
+
+  it('makes every row’s ЖАМИ that row’s five states added up', async () => {
+    const dto = await serviceOver(ROWS)('this_month')
+
+    /*
+      The row-level echo of the band-level rule proved above, and the one thing
+      a sixth money column in SQL would break — which is what
+      `ConfirmationOutcomeMoneyMinor` forbids in prose and what
+      `confirmationQueueSql.test.ts`'s `toHaveLength(10)` enforces mechanically.
+    */
+    for (const row of dto.byRop) {
+      const parts = Object.values(row.amounts).reduce((sum, m) => sum + BigInt(m.amountMinor), 0n)
+      expect(row.amountTotal.amountMinor).toBe(parts.toString())
+    }
   })
 })

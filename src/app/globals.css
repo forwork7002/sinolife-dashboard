@@ -1236,6 +1236,41 @@ body::after {
 }
 
 /**
+ * A summary row pinned to the BOTTOM of a bounded scroll box — the mirror of
+ * `.thead-sticky`, and for its reasons.
+ *
+ * ON THE CELLS, not the <tr>: sticky rendering on a row is still uneven
+ * across engines, while cells pin everywhere and their contiguous backgrounds
+ * read as one band. Same argument as the header above.
+ *
+ * The opaque background is mandatory, not decoration — a transparent sticky
+ * cell lets the rows it stands over show through it, which is worse than not
+ * sticking at all. `--surface-sunken` matches the header on purpose, so a
+ * table's two bands of chrome read as a pair, and it is a recess in both
+ * themes. It has a second effect worth keeping: DataTable's row hover paints
+ * `--surface-sunken` too, so the total does not light up under a pointer
+ * crossing it on the way to the scrollbar. A total is not a row you point at.
+ *
+ * The rule above it is a BOX-SHADOW and not a border-top. This table is
+ * `border-collapse: collapse`, where the row hairline lives on <tr>'s
+ * `border-t` and is painted by the TABLE — it does not travel with a cell
+ * lifted out of the flow. Same reason `.thead-sticky.is-scrolled` draws its
+ * rule with a shadow.
+ *
+ * ALWAYS ON, unlike the header's, which waits for a scroll: a header with
+ * nothing above it needs no rule, while a total always has the column it
+ * totals directly above it. So no second scroll reader — DataTable's
+ * `onScroll` still measures `scrollTop` alone.
+ */
+.tfoot-sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--surface-sunken);
+  box-shadow: 0 -1px 0 var(--border-strong);
+}
+
+/**
  * Empty and error states hold the grid's rhythm.
  *
  * A tile whose fetch failed must not collapse into a caption-height sliver:
