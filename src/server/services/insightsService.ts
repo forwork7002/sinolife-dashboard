@@ -24,6 +24,7 @@ import type {
   ChannelRow,
   ConfirmationOrderQuery,
   ConfirmationOrderRow,
+  ConfirmationOutcomeMoneyMinor,
   ConfirmationOutcomeTotals,
   ConfirmationRopRow,
   ConfirmationRow,
@@ -203,17 +204,51 @@ export interface ConfirmationOrderDto {
   readonly queueHistory: readonly ConfirmationVisitDto[]
 }
 
+/** The panel's row on the wire: every column of it except the bigint money. */
+export type ConfirmationRopPanelRow = Omit<ConfirmationRopRow, 'money'>
+
+/** The five states' money, in the app's own currency. */
+export type ConfirmationOutcomeAmounts = Readonly<Record<ConfirmationOutcomeValue, MoneyDto>>
+
 export interface ConfirmationQueueDto {
   readonly items: readonly ConfirmationOrderDto[]
   readonly totalItems: number
   /** Every ROP group with orders in the window — the filter's options. */
   readonly rops: readonly string[]
-  /** The Статистика panel: one row per ROP group. */
-  readonly byRop: readonly ConfirmationRopRow[]
+  /**
+   * The Статистика panel: one row per ROP group — WITHOUT THE MONEY THE TILES ARE SUMMED FROM.
+   *
+   * `ConfirmationRopRow.money` is bigint and `JSON.stringify` throws on one,
+   * so the panel's rows are handed on with that key removed rather than
+   * remembered field by field — a column added to the panel tomorrow reaches
+   * the wire on its own, and a bigint cannot.
+   */
+  readonly byRop: readonly ConfirmationRopPanelRow[]
   readonly totals: {
     /** Orders that entered the queue in the window. The denominator. */
     readonly orders: number
     readonly byOutcome: ConfirmationOutcomeTotals
+    /**
+     * WHAT THE QUEUE IS WORTH — the ЖАМИ tile's money, and the five states'.
+     *
+     * The floor reads this band beside its own Bitrix24 kanban, where every
+     * column prints a sum: a count alone cannot tell twenty small orders from
+     * twenty large ones, which is the whole question a confirmation desk is
+     * asked at the end of a day.
+     *
+     * `amount` IS THE FIVE ADDED UP, not a sixth reading of the cohort — the
+     * same relationship `orders` has to `byOutcome`, so the band's total
+     * always equals its parts.
+     *
+     * ONE CURRENCY, THE APP'S OWN. Each order carries its own (`items[].amount`
+     * uses `r.currency`), but a SUM cannot: adding two currencies' minor units
+     * gives a number in neither. Every deal in this database is UZS, which is
+     * what makes the sum true today, and it is the same trade the sellers
+     * board's FAKT 1 and FAKT 2 already make. The day a second currency
+     * arrives, this is a per-currency breakdown, not a bigger number.
+     */
+    readonly amount: MoneyDto
+    readonly byOutcomeAmount: ConfirmationOutcomeAmounts
     /**
      * `Тасдиқланиш %` — confirmed over everything that entered the queue.
      *
@@ -744,6 +779,15 @@ export class InsightsService {
     period: Period,
     query: ConfirmationOrderQuery,
     scope: RowScope,
+    /*
+      REQUIRED, and positioned before the optional `mode` for that reason.
+
+      The tile band prints a sum, and a sum needs a currency to be named in.
+      Defaulting it here would have hidden the choice inside the service; the
+      handler already holds `ctx.currency`, and passing it is the decision —
+      the same shape `channels`, `products` and the sellers board use.
+    */
+    currency: string,
     mode: ConfirmationQueueMode = 'window',
   ): Promise<ConfirmationQueueDto> {
     /*
@@ -835,6 +879,24 @@ export class InsightsService {
 
     const orders = Object.values(byOutcome).reduce((sum, count) => sum + count, 0)
 
+    /*
+      THE SAME `scoped` ROWS THE COUNTS COME FROM, added down a money column.
+
+      Not a third query and not a second pass over the page: the tiles and
+      their sums have to describe one population, and the only way to be sure
+      of that is to derive both from the same rows.
+    */
+    const amountMinor = (pick: (m: ConfirmationOutcomeMoneyMinor) => bigint): bigint =>
+      scoped.reduce((sum, r) => sum + pick(r.money), 0n)
+
+    const byOutcomeMinor: Readonly<Record<ConfirmationOutcomeValue, bigint>> = {
+      CONFIRM_NEW: amountMinor((m) => m.pending),
+      CONFIRMED: amountMinor((m) => m.confirmed),
+      NO_ANSWER: amountMinor((m) => m.noAnswer),
+      REJECTED: amountMinor((m) => m.rejected),
+      UNCONFIRMED_SHIPPED: amountMinor((m) => m.unconfirmedShipped),
+    }
+
     return {
       items: page.rows.map((r: ConfirmationOrderRow) => ({
         dealId: r.dealId,
@@ -872,10 +934,24 @@ export class InsightsService {
       })),
       totalItems: page.totalItems,
       rops,
-      byRop,
+      // The money goes to the tiles, not onto the wire — see the DTO.
+      byRop: byRop.map(({ money: _money, ...row }) => row),
       totals: {
         orders,
         byOutcome,
+        amount: toMoneyDto(
+          money(
+            Object.values(byOutcomeMinor).reduce((sum, minor) => sum + minor, 0n),
+            currency,
+          ),
+        ),
+        byOutcomeAmount: {
+          CONFIRM_NEW: toMoneyDto(money(byOutcomeMinor.CONFIRM_NEW, currency)),
+          CONFIRMED: toMoneyDto(money(byOutcomeMinor.CONFIRMED, currency)),
+          NO_ANSWER: toMoneyDto(money(byOutcomeMinor.NO_ANSWER, currency)),
+          REJECTED: toMoneyDto(money(byOutcomeMinor.REJECTED, currency)),
+          UNCONFIRMED_SHIPPED: toMoneyDto(money(byOutcomeMinor.UNCONFIRMED_SHIPPED, currency)),
+        },
         confirmedRate:
           orders === 0 ? null : Math.round((byOutcome.CONFIRMED / orders) * 1000) / 10,
       },

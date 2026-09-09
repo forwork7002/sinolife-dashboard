@@ -807,6 +807,16 @@ export interface ConfirmationQueueDto {
   readonly totals: {
     readonly orders: number
     readonly byOutcome: Readonly<Record<ConfirmationOutcome, number>>
+    /**
+     * What the window is worth, and what each state in it is worth — the
+     * figure under every tile in the band.
+     *
+     * `amount` is `byOutcomeAmount` added up, so the total always equals its
+     * parts. One currency (the app default): the rows carry their own, a sum
+     * cannot. See `ConfirmationQueueDto` in `insightsService`.
+     */
+    readonly amount: MoneyDto
+    readonly byOutcomeAmount: Readonly<Record<ConfirmationOutcome, MoneyDto>>
     /** `Тасдиқланиш %` — confirmed over everything that entered the queue. */
     readonly confirmedRate: number | null
   }

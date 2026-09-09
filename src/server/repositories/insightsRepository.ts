@@ -423,6 +423,30 @@ export interface ConfirmationOrderRow {
 /** How many orders ended in each of the five states. */
 export type ConfirmationOutcomeTotals = Readonly<Record<ConfirmationOutcomeValue, number>>
 
+/**
+ * The five states in MONEY — minor units, summed from each deal's own
+ * `amountMinor`, one entry per state and nothing outside them.
+ *
+ * NESTED UNDER ONE KEY, and that is not tidiness. `ConfirmationRopRow` goes
+ * onto the wire as it stands (`confirmationQueue` returns the ROP panel's rows
+ * unchanged), and `JSON.stringify` THROWS on a bigint — so six more sibling
+ * fields would have turned the whole endpoint into a 500. Under a key of their
+ * own the service strips them with one `Omit`, and the panel's shape is
+ * provably unchanged.
+ *
+ * NO `orders` TOTAL HERE, on purpose: the ЖАМИ tile's money is these five
+ * added up, exactly as its count is. A sixth column summing `count(*)`'s
+ * population could differ from the five by a state nobody has named yet, and
+ * a band whose total does not equal its parts is unreadable.
+ */
+export interface ConfirmationOutcomeMoneyMinor {
+  readonly confirmed: bigint
+  readonly noAnswer: bigint
+  readonly rejected: bigint
+  readonly pending: bigint
+  readonly unconfirmedShipped: bigint
+}
+
 /** One ROP group's slice of the queue — the Статистика panel's row. */
 export interface ConfirmationRopRow {
   readonly rop: string
@@ -432,6 +456,8 @@ export interface ConfirmationRopRow {
   readonly rejected: number
   readonly pending: number
   readonly unconfirmedShipped: number
+  /** The same five populations in money. Summed for the tiles, not printed here. */
+  readonly money: ConfirmationOutcomeMoneyMinor
 }
 
 export interface ConfirmationOrderQuery {
@@ -2110,6 +2136,11 @@ export class InsightsRepository {
         rejected: bigint
         pending: bigint
         unconfirmed_shipped: bigint
+        confirmed_amount: MoneyText
+        no_answer_amount: MoneyText
+        rejected_amount: MoneyText
+        pending_amount: MoneyText
+        unconfirmed_shipped_amount: MoneyText
       }[]
     >(
       `${InsightsRepository.queueSql(mode, '$4')}
@@ -2120,7 +2151,22 @@ export class InsightsRepository {
          count(*) FILTER (WHERE c.outcome = 'NO_ANSWER')::bigint AS no_answer,
          count(*) FILTER (WHERE c.outcome = 'REJECTED')::bigint AS rejected,
          count(*) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::bigint AS pending,
-         count(*) FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::bigint AS unconfirmed_shipped
+         count(*) FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::bigint AS unconfirmed_shipped,
+         /*
+           THE SAME FIVE FILTERS, OVER MONEY — and ::text, like every money
+           column in this file, because sum(bigint) is numeric and the driver
+           does not agree with itself about how to hand one back.
+
+           The column is the deal's OWN amountMinor; a state with no orders
+           sums to NULL, which money() in TypeScript reads as zero — the honest
+           reading for a tile whose count is also zero.
+         */
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRMED')::text AS confirmed_amount,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'NO_ANSWER')::text AS no_answer_amount,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'REJECTED')::text AS rejected_amount,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRM_NEW')::text AS pending_amount,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::text
+           AS unconfirmed_shipped_amount
        FROM scoped c
        JOIN "deal" d ON d."id" = c.deal_id
        LEFT JOIN "customer" cust ON cust."id" = d."customerId"
@@ -2152,6 +2198,13 @@ export class InsightsRepository {
         rejected: int(r.rejected),
         pending: int(r.pending),
         unconfirmedShipped: int(r.unconfirmed_shipped),
+        money: {
+          confirmed: money(r.confirmed_amount),
+          noAnswer: money(r.no_answer_amount),
+          rejected: money(r.rejected_amount),
+          pending: money(r.pending_amount),
+          unconfirmedShipped: money(r.unconfirmed_shipped_amount),
+        },
     }))
   }
 
@@ -2775,6 +2828,19 @@ export class InsightsRepository {
       rejected: number
       pending: number
       unconfirmed_shipped: number
+      /*
+        TEXT INSIDE THE JSON, unlike the counts beside it.
+
+        These arrive through `json_agg`, so a numeric would be parsed by
+        `JSON.parse` as a double — and a year of this cohort in minor units
+        runs past the fifteen digits a double keeps exactly. The counts are
+        safe as numbers; money never is.
+      */
+      confirmed_amount: MoneyText
+      no_answer_amount: MoneyText
+      rejected_amount: MoneyText
+      pending_amount: MoneyText
+      unconfirmed_shipped_amount: MoneyText
     }
 
     const rows = await this.prisma.$queryRawUnsafe<
@@ -2860,7 +2926,15 @@ export class InsightsRepository {
            count(*) FILTER (WHERE c.outcome = 'NO_ANSWER')::int AS no_answer,
            count(*) FILTER (WHERE c.outcome = 'REJECTED')::int AS rejected,
            count(*) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::int AS pending,
-           count(*) FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::int AS unconfirmed_shipped
+           count(*) FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::int AS unconfirmed_shipped,
+           -- The five state tiles' money, measured here so the long-window
+           -- shape returns exactly what the two-query shape does.
+           sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRMED')::text AS confirmed_amount,
+           sum(d."amountMinor") FILTER (WHERE c.outcome = 'NO_ANSWER')::text AS no_answer_amount,
+           sum(d."amountMinor") FILTER (WHERE c.outcome = 'REJECTED')::text AS rejected_amount,
+           sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRM_NEW')::text AS pending_amount,
+           sum(d."amountMinor") FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::text
+             AS unconfirmed_shipped_amount
          FROM visible c
          JOIN "deal" d ON d."id" = c.deal_id
          LEFT JOIN "customer" cust ON cust."id" = d."customerId"
@@ -2939,6 +3013,13 @@ export class InsightsRepository {
         rejected: r.rejected,
         pending: r.pending,
         unconfirmedShipped: r.unconfirmed_shipped,
+        money: {
+          confirmed: money(r.confirmed_amount),
+          noAnswer: money(r.no_answer_amount),
+          rejected: money(r.rejected_amount),
+          pending: money(r.pending_amount),
+          unconfirmedShipped: money(r.unconfirmed_shipped_amount),
+        },
       })),
     }
   }

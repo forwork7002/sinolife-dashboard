@@ -572,3 +572,85 @@ describe('the queue history on a row', () => {
     }
   })
 })
+
+/**
+ * WHAT EACH TILE IN THE BAND IS WORTH — the same five FILTERs, over money.
+ *
+ * The band's sums are the ROP breakdown added down its columns, exactly as its
+ * counts are, and the breakdown is written TWICE: `confirmationByRop` for a
+ * window up to two months, and the `by_rop` CTE inside `confirmationBoard` for
+ * anything longer. Two hand-maintained copies of one measurement drift, and
+ * this one drifts silently — a money column added to the short shape alone
+ * leaves «Shu yil» printing a band of zero soʻm with every count on it correct.
+ */
+describe('the state band’s money', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'src/server/repositories/insightsRepository.ts'),
+    'utf8',
+  )
+
+  /** The five states as the two breakdowns name them, in one place. */
+  const STATES = [
+    ['CONFIRMED', 'confirmed_amount'],
+    ['NO_ANSWER', 'no_answer_amount'],
+    ['REJECTED', 'rejected_amount'],
+    ['CONFIRM_NEW', 'pending_amount'],
+    ['UNCONFIRMED_SHIPPED', 'unconfirmed_shipped_amount'],
+  ] as const
+
+  it('is summed per state in both breakdowns', () => {
+    for (const [state, column] of STATES) {
+      const sums = [
+        ...source.matchAll(
+          new RegExp(
+            `sum\\(d\\."amountMinor"\\) FILTER \\(WHERE c\\.outcome = '${state}'\\)::text\\s*\\n?\\s*AS ${column}`,
+            'g',
+          ),
+        ),
+      ]
+      // Once in confirmationByRop, once in confirmationBoard's by_rop CTE.
+      expect(sums, state).toHaveLength(2)
+    }
+  })
+
+  it('crosses the driver as text, never as a number', () => {
+    /*
+      ::text on every one of them, and not for tidiness. `sum(bigint)` is
+      numeric — which this driver hands back inconsistently — and inside
+      `confirmationBoard` the column travels through `json_agg`, where a
+      numeric is parsed by `JSON.parse` as a double. A year of this cohort in
+      minor units runs past the fifteen digits a double keeps exactly, so the
+      band would be wrong by a few soʻm in a figure the floor reconciles
+      against Bitrix24 digit for digit. The counts beside it are safe as
+      numbers; money never is.
+    */
+    const money = [...source.matchAll(/sum\(d\."amountMinor"\) FILTER \(WHERE c\.outcome[\s\S]{0,120}?AS \w*amount/g)]
+    expect(money).toHaveLength(10)
+    for (const [fragment] of money) expect(fragment).toContain('::text')
+  })
+
+  it('is measured beside the counts, over the same cohort rows', () => {
+    /*
+      Both breakdowns GROUP BY c.rop over the queue's own CTE, and the money
+      has to be a column of THAT aggregate — not a second pass, not a second
+      join to `deal`. The tiles and their sums are one population wearing one
+      label, and the only way to be sure of it is that one GROUP BY produces
+      both.
+    */
+    const byRop = source.slice(
+      source.indexOf("queueSql(mode, '$4')"),
+      source.indexOf('GROUP BY c.rop', source.indexOf("queueSql(mode, '$4')")),
+    )
+    const cte = source.slice(
+      source.indexOf('by_rop AS ('),
+      source.indexOf('GROUP BY c.rop', source.indexOf('by_rop AS (')),
+    )
+
+    for (const block of [byRop, cte]) {
+      for (const [, column] of STATES) expect(block).toContain(column)
+      // The cohort's own alias, joined once, feeding counts and money alike.
+      expect(block).toContain('JOIN "deal" d ON d."id" = c.deal_id')
+      expect(block).toContain("count(*) FILTER (WHERE c.outcome = 'CONFIRMED')")
+    }
+  })
+})

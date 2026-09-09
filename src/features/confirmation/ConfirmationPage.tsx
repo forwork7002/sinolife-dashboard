@@ -28,9 +28,10 @@ import {
   type ConfirmationOutcome,
   type ConfirmationQueueDto,
   type ConfirmationVisitDto,
+  type MoneyDto,
   apiGet,
 } from '@/lib/api'
-import { APP_TIME_ZONE, NO_VALUE, formatNumber } from '@/lib/format'
+import { APP_TIME_ZONE, NO_VALUE, formatFullUzs, formatNumber } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 /**
@@ -844,7 +845,27 @@ export function ConfirmationPage() {
                 // with a hole beside it, and a third of the width where there is
                 // room — it is this board's headline figure, not one of six.
                 'stagger grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3'
-              : 'stagger grid shrink-0 gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'
+              : /*
+                  SIX ACROSS FROM xl, NOT FROM lg — because of what each tile
+                  has to PRINT now.
+
+                  A tile in a six-across band is 113px wide on a 1024 window
+                  behind the sidebar, and 85px of that is inside its padding.
+                  The sum printed to the last digit is ~93px at thirteen
+                  grouped digits, which is an ordinary month on this portal —
+                  so at lg the figure did not merely crowd the tile, it left
+                  it. The number could not shrink its way out either: fitting
+                  fourteen digits and the unit into 85px needs about 7px of
+                  type.
+
+                  Between sm and xl the band is three across on two rows, where
+                  a tile is ~240px and every sum fits on one line. It costs one
+                  row of tiles on a 1024–1279 window and nothing at all on the
+                  screens this board is actually read on (1280, 1920, 2560),
+                  where six across still fits — measured, at 158px a tile on
+                  the tightest of them.
+                */
+                'stagger grid shrink-0 gap-3 grid-cols-2 sm:grid-cols-3 xl:grid-cols-6'
           }
         >
           <OutcomeTile
@@ -852,6 +873,7 @@ export function ConfirmationPage() {
             label={backlog ? 'ҲОЗИР КУТИЛМОҚДА' : 'ЖАМИ'}
             status={tileStatus}
             count={totals?.orders ?? null}
+            amount={totals?.amount ?? null}
             /*
               The bell's own colour in backlog mode: this figure IS the badge,
               and a reader who clicked a blue 7 should land on a blue 7. In the
@@ -874,6 +896,7 @@ export function ConfirmationPage() {
                 label={spec.label}
                 status={tileStatus}
                 count={totals?.byOutcome[spec.key] ?? null}
+                amount={totals?.byOutcomeAmount[spec.key] ?? null}
                 color={spec.color}
                 active={filters.outcomes.includes(spec.key)}
                 onSelect={() => toggleOutcome(spec.key)}
@@ -1300,16 +1323,35 @@ function countFor(
 }
 
 /**
- * One state: its count and a way into the rows.
+ * One state: its count, what it is WORTH, and a way into the rows.
  *
  * A button rather than a card with a click handler, so it is reachable by Tab
  * and announced as pressed or not — the selection is real state and has to be
  * legible without seeing the border change.
+ *
+ * TWO FIGURES, AND ONLY ONE OF THEM IS THE HEADLINE. The count keeps the tile's
+ * colour and stays the largest thing in it (22px); the sum sits under the label
+ * in secondary ink, below a hairline, at the size the page's own prose is read
+ * at. A sum printed as loud as the count gives the reader two headlines and no
+ * answer to "how many are waiting", which is the first question this band is
+ * asked.
+ *
+ * Exported for `tests/features/confirmationAmountTiles.test.tsx`, the same
+ * reason `OutcomeCell` is: the rule below — full digits, never a compacted
+ * reading — is a property of the RENDERED tile, and the only honest way to
+ * check it is to render one.
+ *
+ * PRINTED TO THE LAST DIGIT, never «340 mln». The floor reconciles this board
+ * against its own Bitrix24 kanban and the Telegram channel, both of which print
+ * the sum out in full — the same reason `formatFullUzs` exists for the sellers
+ * board. A rounded figure here is not a shorter reading of the same number, it
+ * is a number that cannot be checked against the screen beside it.
  */
-function OutcomeTile({
+export function OutcomeTile({
   Glyph,
   label,
   count,
+  amount,
   color,
   status,
   active,
@@ -1318,6 +1360,7 @@ function OutcomeTile({
   Glyph?: (props: GlyphProps) => React.ReactElement
   label: string
   count: number | null
+  amount: MoneyDto | null
   color: string
   status: 'loading' | 'error' | 'ready'
   active: boolean
@@ -1328,11 +1371,22 @@ function OutcomeTile({
       type="button"
       onClick={onSelect}
       aria-pressed={active}
-      className="focusable card flex flex-col px-3.5 py-3 text-left transition-colors hover:bg-[var(--grid)]"
+      className="focusable card flex h-full flex-col px-3.5 py-2 text-left transition-colors hover:bg-[var(--grid)]"
       style={active ? { borderColor: color, boxShadow: `inset 0 0 0 1px ${color}` } : undefined}
     >
+      {/*
+        THE COUNT IS 22px, DOWN FROM 28 — and the skeleton above it with it.
+
+        «Barcha buyurtmalar» under this band is what the reader came for, and
+        the client said so on 2026-09-09: «shu joyni sal kichikroq qil… pastdagi
+        barcha buyurtmalar boʻlimi ekranda koʻproq koʻrinishi kerak u
+        muhimroqda». The band is `shrink-0` inside a flex column, so every pixel
+        it gives up is a pixel the table takes — a shorter tile is literally
+        more rows on screen, and at these counts (two and three digits) 22px is
+        still the loudest thing in the tile.
+      */}
       {status === 'loading' ? (
-        <div className="skeleton h-[30px] w-2/3" role="status">
+        <div className="skeleton h-[24px] w-2/3" role="status">
           <span className="sr-only">Yuklanmoqda</span>
         </div>
       ) : status === 'error' ? (
@@ -1341,14 +1395,14 @@ function OutcomeTile({
         </p>
       ) : (
         <p
-          className="figure tabular text-[28px] leading-none font-semibold"
+          className="figure tabular text-[22px] leading-none font-semibold"
           style={{ color }}
         >
           {count === null ? NO_VALUE : formatNumber(count)}
         </p>
       )}
 
-      <div className="mt-2 flex items-center gap-1.5">
+      <div className="mt-1 flex items-center gap-1.5">
         {/* Decorative, and inheriting the state's colour: the label right
             beside it is the accessible text. */}
         {Glyph && (
@@ -1363,6 +1417,58 @@ function OutcomeTile({
           {label}
         </span>
       </div>
+
+      {/*
+        THE SUM, ON ITS OWN LINE UNDER A HAIRLINE.
+
+        `mt-auto` and not a margin: six tiles are one grid row, so they are
+        already the same height, and pushing this block to the bottom keeps the
+        six sums on one baseline even if a label ever wraps or a figure runs to
+        two lines.
+
+        `overflow-wrap: anywhere` is the LAST RESORT, not the plan. The band's
+        breakpoint (see above) is what makes every tile wide enough for its own
+        sum; this is only what happens if a figure ever outgrows that anyway —
+        it wraps inside the tile instead of spilling out of the card, which is
+        the difference between a cramped number and a broken screen. `figure-wrap`
+        was tried here first and does nothing: it permits a break at a SPACE,
+        and a grouped number has none.
+
+        The unit is a separate muted span at its own size, the way every other
+        full figure in the app prints it, so the digits and the word are never
+        the same weight.
+
+        AND NOTHING AT ALL WHEN THE REQUEST FAILED. «Olinmadi» stands where the
+        count is and it already answers for the whole tile; a second line under
+        it could only be an em dash, and a dash beside a stated failure reads as
+        a THIRD thing — as if the count were unavailable and the sum genuinely
+        zero-ish. All six tiles fail together, so they lose the line together
+        and the band stays level.
+      */}
+      {status !== 'error' && (
+        <div
+          className="mt-auto flex items-baseline gap-1 border-t pt-1"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          {status === 'loading' ? (
+            <div className="skeleton mt-0.5 h-[12px] w-4/5" role="status">
+              <span className="sr-only">Yuklanmoqda</span>
+            </div>
+          ) : (
+            <>
+              <span
+                className="tabular text-[12px] leading-tight font-semibold [overflow-wrap:anywhere]"
+                style={{ color: 'var(--ink-secondary)' }}
+              >
+                {amount === null ? NO_VALUE : formatFullUzs(amount.amount)}
+              </span>
+              <span className="shrink-0 text-[10px]" style={{ color: 'var(--ink-muted)' }}>
+                soʻm
+              </span>
+            </>
+          )}
+        </div>
+      )}
     </button>
   )
 }

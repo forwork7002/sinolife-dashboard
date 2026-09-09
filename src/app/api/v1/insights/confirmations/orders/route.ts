@@ -67,6 +67,8 @@ export const GET = getHandler(
         is where it enters.
       */
       ctx.scope,
+      // The band's sums are printed in one currency and it is named here.
+      ctx.currency,
       ctx.query.queue,
     )
 
