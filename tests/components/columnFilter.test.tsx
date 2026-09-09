@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   ColumnFilter,
@@ -67,6 +67,97 @@ describe('a column opens its own filter', () => {
     expect(children).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'РЕГИОН — filtr' }))
     expect(children).toHaveBeenCalled()
+  })
+})
+
+/**
+ * WHICH SIDE THE PANEL HANGS FROM, and why it is measured.
+ *
+ * This shipped broken on 2026-09-09. The side was a fixed `right-0`, chosen
+ * because two of the three columns are near the table's right edge — but the
+ * panel hangs INSIDE the table's own `overflow-x: auto` scroll box, and РОП is
+ * the LEFTMOST column. Right-anchored, its 240px panel opened leftward and the
+ * container clipped it: measured on production at `left: -157` against a box
+ * starting at 29, so 186px of 240 was simply not drawn. The list was correct
+ * the whole time — the reader saw a sliver with a scrollbar in it and reported
+ * the filter as broken, which it was.
+ *
+ * A fixed side cannot be right in any case, because the table scrolls
+ * sideways: one column is near the left edge at one scroll position and near
+ * the right edge at another.
+ *
+ * jsdom has no layout, so the rects are supplied. That is the honest way to
+ * test this: the RULE is what regressed, and the rule is arithmetic over two
+ * rectangles.
+ */
+describe('the panel opens on the side that has room', () => {
+  const SCROLLER = 'data-scroller'
+
+  /** Puts a trigger of the given span inside a clipping box of another. */
+  function layout(trigger: { left: number; right: number }, box: { left: number; right: number }) {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: Element,
+    ) {
+      const source = this.hasAttribute(SCROLLER) ? box : trigger
+      return {
+        left: source.left,
+        right: source.right,
+        width: source.right - source.left,
+        top: 0,
+        bottom: 0,
+        height: 0,
+        x: source.left,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect
+    })
+  }
+
+  const openFilter = (label: string) =>
+    render(
+      // The inline overflow is what the component walks up to find; it does
+      // not know about DataTable's class names, and must not.
+      <div {...{ [SCROLLER]: '' }} style={{ overflowX: 'auto' }}>
+        <ColumnFilter label={label} active={false}>
+          {() => <p>ichida</p>}
+        </ColumnFilter>
+      </div>,
+    )
+
+  const panel = () => screen.getByRole('dialog')
+
+  afterEach(() => vi.restoreAllMocks())
+
+  it('opens leftward from a column near the right edge', () => {
+    // СУММА at 1 700 in a box ending at 1 860: 240px would not fit rightward.
+    layout({ left: 1690, right: 1706 }, { left: 29, right: 1860 })
+    openFilter('СУММА')
+    fireEvent.click(screen.getByRole('button', { name: 'СУММА — filtr' }))
+
+    expect(panel().className).toContain('right-0')
+    expect(panel().className).not.toContain('left-0')
+  })
+
+  it('opens rightward from the leftmost column — the case that shipped broken', () => {
+    // РОП's funnel at 190 in a box starting at 29: right-anchored it would
+    // begin at -50 and 79px of it would be clipped away.
+    layout({ left: 174, right: 190 }, { left: 29, right: 1860 })
+    openFilter('РОП')
+    fireEvent.click(screen.getByRole('button', { name: 'РОП — filtr' }))
+
+    expect(panel().className).toContain('left-0')
+    expect(panel().className).not.toContain('right-0')
+  })
+
+  it('takes the roomier side when neither can hold the whole panel', () => {
+    // A 300px box: 240 fits on neither side, so it leans to the larger gap
+    // rather than picking a fixed one and losing more of the panel.
+    layout({ left: 250, right: 266 }, { left: 29, right: 300 })
+    openFilter('РЕГИОН')
+    fireEvent.click(screen.getByRole('button', { name: 'РЕГИОН — filtr' }))
+
+    // 237px leftward against 50px rightward.
+    expect(panel().className).toContain('right-0')
   })
 })
 

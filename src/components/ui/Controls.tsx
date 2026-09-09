@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { formatNumber } from '@/lib/format'
@@ -399,6 +399,9 @@ export function StatusBadge({ status }: { status: string }) {
  * mark in `--series-1`, so the eye finds WHICH column is narrowed from across
  * the table without reading a single header.
  */
+/** `w-60`, stated as a number so the side can be chosen before it is drawn. */
+const PANEL_WIDTH = 240
+
 export function ColumnFilter({
   label,
   active,
@@ -411,8 +414,58 @@ export function ColumnFilter({
   children: (close: () => void) => React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
+  /**
+   * Which edge of the funnel the panel hangs from.
+   *
+   * MEASURED ON OPEN, NEVER ASSUMED. This was a static `right-0` and it
+   * shipped broken on 2026-09-09: the panel hangs INSIDE the table's own
+   * `overflow-x: auto` scroll box, so anchoring it to the right of the
+   * LEFTMOST column threw 240px of it off the left edge and the container
+   * clipped it. Measured on production, the РОП panel sat at `left: -157`
+   * against a box starting at 29 — 186px of a 240px panel, gone. The list was
+   * correct the whole time; a reader saw a sliver with a scrollbar in it.
+   *
+   * A fixed side cannot be right in any case, because the table SCROLLS
+   * sideways: the same column is near the left edge at one scroll position and
+   * near the right edge at another. So the side is chosen from the room that
+   * actually exists at the moment of opening.
+   */
+  const [side, setSide] = useState<'left' | 'right'>('right')
   const containerRef = useRef<HTMLDivElement>(null)
   const id = useId()
+
+  /*
+    BEFORE PAINT, so the panel never appears on the wrong side and jumps.
+    `useLayoutEffect` runs after the DOM is built and before the browser
+    paints, which is exactly the window in which a measurement can still
+    change where something is drawn.
+  */
+  useLayoutEffect(() => {
+    if (!open) return
+    const trigger = containerRef.current?.getBoundingClientRect()
+    if (!trigger) return
+
+    /*
+      The nearest ancestor that CLIPS, found by asking rather than by knowing.
+      Keying on DataTable's `.overflow-x-auto` would have made this component
+      wrong the first time it was used inside anything else; the viewport is
+      the backstop when nothing clips.
+    */
+    let clip = containerRef.current?.parentElement ?? null
+    while (clip) {
+      const { overflowX, overflowY } = getComputedStyle(clip)
+      if (`${overflowX}${overflowY}`.includes('auto') || `${overflowX}${overflowY}`.includes('scroll')) break
+      clip = clip.parentElement
+    }
+    const bounds = clip
+      ? clip.getBoundingClientRect()
+      : { left: 0, right: window.innerWidth }
+
+    // Right-anchored means the panel extends LEFTWARD from the funnel.
+    const roomLeftward = trigger.right - bounds.left
+    const roomRightward = bounds.right - trigger.left
+    setSide(roomLeftward >= PANEL_WIDTH || roomLeftward >= roomRightward ? 'right' : 'left')
+  }, [open])
 
   /*
     The same two listeners `MultiSelect` installs, and installed only while the
@@ -467,15 +520,16 @@ export function ColumnFilter({
           role="dialog"
           aria-label={`${label} — filtr`}
           /*
-            RIGHT-ALIGNED, AND ABOVE EVERYTHING.
+            THE SIDE IS MEASURED — see `side` above for what a fixed one cost.
 
-            `right-0` because these sit on right-aligned numeric headers near
-            the table's right edge, where a left-anchored panel would open off
-            the card. `z-40` clears the sticky header (`z-index: 1`) and the
-            toolbar's own dropdowns; `text-left` because the header cell it
-            inherits from is centred or right-aligned and a form is not.
+            `z-40` clears the sticky header (`z-index: 1`) and the toolbar's own
+            dropdowns; `text-left` and `normal-case` because the header cell
+            this inherits from is uppercase and right-aligned, and a form is
+            neither.
           */
-          className="absolute top-full right-0 z-40 mt-1 w-60 rounded-[var(--radius-panel)] border p-1 text-left normal-case"
+          className={`absolute top-full ${
+            side === 'right' ? 'right-0' : 'left-0'
+          } z-40 mt-1 w-60 rounded-[var(--radius-panel)] border p-1 text-left normal-case`}
           style={{
             background: 'var(--surface-raised)',
             borderColor: 'var(--border-strong)',
