@@ -600,6 +600,27 @@ body {
   letter-spacing: -0.03em;
 }
 
+/**
+ * THE HERO, PRINTED TO THE LAST DIGIT — size only; pair it with
+ * `.figure-hero`, and it MUST STAY BELOW IT. Both are a single class, so
+ * source order is the whole mechanism: written above `.figure-hero` this loses
+ * to it and does nothing at all.
+ *
+ * `.figure-hero`'s floor is 34px, sized for «2.2 mlrd» — four characters. The
+ * same figure in full is thirteen (2,208,080,002), which at 34px is about
+ * 265px of tabular digits inside a card that is ~300px wide on a 360px phone:
+ * the number left the screen through `main`'s overflow-x-hidden, taking its
+ * last digits with it. The vw term is what makes it fit, and the ceiling is
+ * unchanged so nothing moves on a desktop.
+ *
+ * The tighter tracking is the same trade `.figure-sum` makes, for the same
+ * reason: grouped digits run wider than the compact reading they replace.
+ */
+.figure-hero-sum {
+  font-size: clamp(21px, 8px + 3.6vw, 40px);
+  letter-spacing: -0.03em;
+}
+
 /*
   The band turns four across at xl and the tile halves — 412px at 1180,
   206px at 1280 — so the ramp has to break there. A single vw slope cannot:

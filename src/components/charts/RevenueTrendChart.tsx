@@ -17,7 +17,7 @@ import { endpointDot, endpointLabelWidth } from '@/components/charts/chartEndpoi
 import { ChartTooltipPanel } from '@/components/charts/chartTooltip'
 import { type FaktChartPoint, mergeFaktSeries } from '@/components/charts/faktSeries'
 import type { FaktTrendPointDto, TrendPointDto } from '@/lib/api'
-import { formatCompactUzs, formatDateShort, formatNumber, formatUzs } from '@/lib/format'
+import { formatDateShort, formatFullUzs, formatNumber, formatUzs } from '@/lib/format'
 import { t } from '@/lib/messages'
 import { useReducedMotion } from '@/lib/useReducedMotion'
 
@@ -118,7 +118,10 @@ export function RevenueTrendChart({
   const hasFakt = points.some((point) => point.fakt1 !== null || point.fakt2 !== null)
 
   const last = points[points.length - 1]
-  const endLabel = last ? formatCompactUzs(last.revenue) : undefined
+  // In full, like the axis and the headline above it. `endpointLabelWidth`
+  // measures whatever it is given, so the reserved right margin grows with the
+  // longer string rather than clipping it.
+  const endLabel = last ? formatFullUzs(last.revenue) : undefined
 
   const handleMove = (state: { activeTooltipIndex?: number | string | null | undefined }) => {
     const raw = state?.activeTooltipIndex
@@ -217,7 +220,18 @@ export function RevenueTrendChart({
             */
             width="auto"
             tick={{ fill: 'var(--ink-muted)', fontSize: 11 }}
-            tickFormatter={(value: number) => formatCompactUzs(value)}
+            /*
+              THE LAST DIGIT, NOT «600 mln» — the client's instruction on
+              2026-09-09 was that every figure on this screen is printed in
+              full. The axis is the one place that costs something: a tick
+              label goes from four characters to eleven, and the plot loses
+              that width. `width="auto"` above is what makes it affordable —
+              it MEASURES the rendered labels, so the gutter is exactly as
+              wide as this month's numbers need and no wider. A hard-coded
+              width here would either clip the ticks or tax every chart whose
+              figures are short.
+            */
+            tickFormatter={(value: number) => formatFullUzs(value)}
           />
 
           <Tooltip

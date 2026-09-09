@@ -12,7 +12,6 @@ import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Card, ChartCard } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { Meter, StatTile } from '@/components/ui/Stat'
-import { Tooltip } from '@/components/ui/Tooltip'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import { ConfirmationFaktSection } from '@/features/sales/ConfirmationFaktSection'
 import { PageShell } from '@/features/shared/PageShell'
@@ -28,7 +27,7 @@ import {
   type StageConversionRowDto,
   type TrendPointDto,
 } from '@/lib/api'
-import { NO_VALUE, formatCompactUzs, formatNumber, formatPercent, formatUzs } from '@/lib/format'
+import { NO_VALUE, formatFullUzs, formatNumber, formatPercent, formatUzs } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 /**
@@ -272,8 +271,11 @@ export function SalesPage() {
       align: 'right',
       numeric: true,
       render: (row) => (
-        <span style={{ color: 'var(--ink-primary)' }} title={formatUzs(row.revenue.amount)}>
-          {formatCompactUzs(row.revenue.amount)}
+        /* In full, so no `title` — the tooltip existed only to recover the
+           digits the compact reading dropped, and repeating them on hover is
+           chrome that says nothing. */
+        <span style={{ color: 'var(--ink-primary)' }}>
+          {formatFullUzs(row.revenue.amount)}
         </span>
       ),
     },
@@ -362,23 +364,26 @@ export function SalesPage() {
           ) : summary ? (
             /* The exact soʻm amount rides the Tooltip primitive — hover,
                focus and touch — because the compact form drops the digits. */
+            /*
+              THE SUM, TO THE LAST DIGIT, AND SO NO TOOLTIP. The Tooltip
+              primitive used to carry the exact figure because the compact
+              form dropped it; printing the digits and repeating them on hover
+              is a control that promises something it does not add, and it
+              took a tab stop for it. Same trade `StatTile` makes under
+              `money="full"`, and the reason is the client's own: this screen
+              is reconciled against the portal, where the number is written out.
+            */
             <div className="mt-1.5">
-              <Tooltip content={<span className="tabular">{formatUzs(toUzs(summary.revenue))}</span>}>
-                <span
-                  tabIndex={0}
-                  className="focusable figure-hero inline-block rounded-[var(--radius-panel-sm)]"
-                  style={{ color: 'var(--ink-primary)' }}
-                >
-                  <AnimatedNumber
-                    value={toUzs(summary.revenue)}
-                    format={formatCompactUzs}
-                    duration={900}
-                  />
-                  <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
-                    soʻm
-                  </span>
+              <span className="figure-hero figure-hero-sum figure-wrap inline-block" style={{ color: 'var(--ink-primary)' }}>
+                <AnimatedNumber
+                  value={toUzs(summary.revenue)}
+                  format={formatFullUzs}
+                  duration={900}
+                />
+                <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
+                  soʻm
                 </span>
-              </Tooltip>
+              </span>
             </div>
           ) : null}
 
@@ -416,10 +421,10 @@ export function SalesPage() {
                   {formatPercent(pulseData.composition.ownSharePercent, 1)}
                 </span>{' '}
                 — shu davrda olingan buyurtmalardan (
-                {formatCompactUzs(pulseData.composition.own.amount)} soʻm,{' '}
+                {formatFullUzs(pulseData.composition.own.amount)} soʻm,{' '}
                 {formatNumber(pulseData.composition.ownDeals)} ta); qolgani oldingi davrlarda
                 olinib, shu davrda yopildi (
-                {formatCompactUzs(pulseData.composition.carried.amount)} soʻm,{' '}
+                {formatFullUzs(pulseData.composition.carried.amount)} soʻm,{' '}
                 {formatNumber(pulseData.composition.carriedDeals)} ta).
               </p>
             )}
@@ -518,7 +523,7 @@ export function SalesPage() {
           value={summary?.dealsCreated ?? null}
           unit="count"
           status={salesStatus}
-          hint={summary ? `Qiymati ${formatCompactUzs(toUzs(summary.createdValue))} soʻm` : undefined}
+          hint={summary ? `Qiymati ${formatUzs(toUzs(summary.createdValue))}` : undefined}
           context={
             createdSpark.length >= 2 ? (
               <Sparkline values={createdSpark} label="Davr boʻyicha yaratilgan bitimlar" />
@@ -553,6 +558,10 @@ export function SalesPage() {
           label={t.cards.averageDeal}
           value={summary?.averageDeal ? toUzs(summary.averageDeal) : null}
           unit="money"
+          /* Every soʻm figure on this page is printed out — the client's
+             instruction on 2026-09-09. `money="full"` carries the format, the
+             smaller figure size and the dropped tooltip together. */
+          money="full"
           status={salesStatus}
           hint={summary ? `${formatNumber(summary.dealsWon)} ta yutilgan bitim boʻyicha` : undefined}
         />
@@ -570,6 +579,7 @@ export function SalesPage() {
           label="Bu davrdan yoʻlda"
           value={pulseData ? pulseData.composition.openFromPeriod.amount : null}
           unit="money"
+          money="full"
           status={pulseStatus}
           hint={
             pulseData
@@ -599,6 +609,7 @@ export function SalesPage() {
             label={`${unitName} yakuni prognozi`}
             value={pulseData.forecast.projected ? pulseData.forecast.projected.amount : null}
             unit="money"
+            money="full"
             status={pulseStatus}
             /*
               THE CALENDAR UNIT, NOT "THE PERIOD".
@@ -697,9 +708,9 @@ export function SalesPage() {
             */
             hint={
               pulseData
-                ? `Ochiq ${formatNumber(pulseData.velocity.openDeals)} ta (${formatCompactUzs(
+                ? `Ochiq ${formatNumber(pulseData.velocity.openDeals)} ta (${formatUzs(
                     pulseData.velocity.openValue.amount,
-                  )} soʻm, butun quvur — davrga bogʻliq emas) · yutish ${formatPercent(
+                  )}, butun quvur — davrga bogʻliq emas) · yutish ${formatPercent(
                     pulseData.velocity.winRatePercent,
                   )} · aylanish ${
                     pulseData.velocity.medianCycleDays !== null
@@ -709,27 +720,19 @@ export function SalesPage() {
                 : undefined
             }
           >
+            {/* Printed out, so the tooltip that recovered the dropped digits
+                goes with the compact form — and takes its tab stop with it.
+                `figure-sum` matches the size the full tiles beside it use. */}
             {pulseData?.velocity.salesVelocityPerDay ? (
-              <Tooltip
-                content={
-                  <span className="tabular">
-                    {formatUzs(pulseData.velocity.salesVelocityPerDay.amount)} / kun
-                  </span>
-                }
-              >
-                <span
-                  tabIndex={0}
-                  className="focusable inline-block rounded-[var(--radius-panel-sm)]"
-                >
-                  <AnimatedNumber
-                    value={pulseData.velocity.salesVelocityPerDay.amount}
-                    format={formatCompactUzs}
-                  />
-                  <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
-                    soʻm/kun
-                  </span>
+              <span className="figure-sum figure-wrap inline-block">
+                <AnimatedNumber
+                  value={pulseData.velocity.salesVelocityPerDay.amount}
+                  format={formatFullUzs}
+                />
+                <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
+                  soʻm/kun
                 </span>
-              </Tooltip>
+              </span>
             ) : (
               NO_VALUE
             )}
@@ -854,6 +857,10 @@ export function SalesPage() {
                 value: row.revenue.amount,
                 sharePercent: row.sharePercent,
               }))}
+              /* Passed here rather than changed in `BarList`: every soʻm on
+                 THIS page is printed out, and the component's compact default
+                 is right for the pages that still read it. */
+              valueFormatter={formatFullUzs}
             />
           )}
         </ChartCard>
