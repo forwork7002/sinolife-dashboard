@@ -21,6 +21,7 @@ import {
   ApiClientError,
   apiGet,
   type DeltaDto,
+  type FaktTrendPointDto,
   type FlowDto,
   type MoneyDto,
   type PulseDto,
@@ -134,7 +135,7 @@ export function SalesPage() {
    */
   const insightsIgnoreFilters = filters.productIds.length > 0 || filters.stageIds.length > 0
 
-  const [sales, sources, products, pulse, flow] = useQueries({
+  const [sales, sources, products, pulse, flow, faktTrend] = useQueries({
     queries: [
       {
         queryKey: ['sales', apiParams],
@@ -166,6 +167,33 @@ export function SalesPage() {
           apiGet<FlowDto>('/insights/flow', apiParams, signal),
         placeholderData: keepPreviousData,
       },
+      /*
+        THE FAKT 1 / FAKT 2 LINES OVER THE HERO AREA, asked for by the client
+        on 2026-09-09 — «bir birni ustida chiqib turadi, solishtirsa boʻladigan
+        boʻladi».
+
+        Its own key rather than a field on `/analytics/sales`: the two are
+        different cohorts on different clocks, and this one is the SAME cohort
+        the FAKT tiles further down the page are built from, so the line and
+        the totals under it cannot disagree. `basis` is not passed — 'queue' is
+        the route's default and the only basis these two names mean anything on.
+
+        A FAILURE HERE IS SILENT ON PURPOSE. The hero has its own error state
+        for revenue; if this second read fails, the chart draws the area alone
+        and the legend does not appear, which is exactly the page as it was
+        before this was added. An error banner over a working hero would be
+        louder than what was lost.
+      */
+      {
+        queryKey: ['sellers', 'faktTrend', apiParams],
+        queryFn: ({ signal }: { signal: AbortSignal }) =>
+          apiGet<readonly FaktTrendPointDto[]>(
+            '/analytics/sellers',
+            { ...apiParams, include: 'faktTrend' },
+            signal,
+          ),
+        placeholderData: keepPreviousData,
+      },
     ],
   })
 
@@ -175,6 +203,7 @@ export function SalesPage() {
   const productRows = products.data?.data ?? []
   const pulseData = pulse.data?.data
   const stageRows = flow.data?.data.stageConversion.stages ?? []
+  const faktPoints = faktTrend.data?.data
 
   const salesStatus = sales.isPending ? 'loading' : sales.isError ? 'error' : 'ready'
   const pulseStatus = pulse.isPending ? 'loading' : pulse.isError ? 'error' : 'ready'
@@ -282,7 +311,7 @@ export function SalesPage() {
     <PageShell
       title={t.nav.sales}
       meta={sales.data?.meta}
-      stale={[sales, sources, products, pulse, flow].some((q) => q.isPlaceholderData)}
+      stale={[sales, sources, products, pulse, flow, faktTrend].some((q) => q.isPlaceholderData)}
       filters={{ employees: true, departments: true, products: true, sources: true, stages: true }}
     >
       {/*
@@ -415,12 +444,30 @@ export function SalesPage() {
               body="Tanlangan davr ichida yopilgan bitim topilmadi."
             />
           ) : (
-            <RevenueTrendChart
-              data={trend}
-              height={300}
-              referenceValue={trendAverage}
-              referenceLabel="Davr oʻrtachasi"
-            />
+            <>
+              <RevenueTrendChart
+                data={trend}
+                fakt={faktPoints}
+                height={300}
+                referenceValue={trendAverage}
+                referenceLabel="Davr oʻrtachasi"
+              />
+              {/*
+                SAID, NOT LEFT TO BE DIAGNOSED. `/analytics/sellers` honours
+                the employee, department and source filters and drops the
+                other two — an order has no product until it is itemised, and
+                the queue cohort has no stage of its own. Under a product or
+                stage filter the area therefore shrinks and the two lines do
+                not, which on one chart reads as the FAKTs overtaking revenue.
+                The same sentence `ConfirmationFaktSection` prints over its
+                tiles, for the same reason.
+              */}
+              {insightsIgnoreFilters && faktPoints && faktPoints.length > 0 && (
+                <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                  {t.chart.faktIgnoresFilters}
+                </p>
+              )}
+            </>
           )}
         </div>
       </Card>

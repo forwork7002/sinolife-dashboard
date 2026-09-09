@@ -37,9 +37,19 @@ export interface ChartTooltipRow {
 export function ChartTooltipPanel({
   header,
   rows,
+  footer,
 }: {
   header: string
   rows: readonly ChartTooltipRow[]
+  /**
+   * One line under the rows, for a fact about the rows themselves rather than
+   * a value — the hero chart's «FAKT 1 / FAKT 2 — navbatga tushgan sana
+   * boʻyicha», which says that two of the three figures above it are measured
+   * on a different date from the first. Muted and smaller than a row, because
+   * it is a caveat and not a measurement; omitted entirely when there is
+   * nothing to caveat.
+   */
+  footer?: string
 }) {
   return (
     <div
@@ -74,6 +84,14 @@ export function ChartTooltipPanel({
           </div>
         ))}
       </dl>
+      {footer && (
+        <p
+          className="mt-1.5 border-t pt-1.5 text-[10.5px] leading-snug"
+          style={{ borderColor: 'var(--border)', color: 'var(--ink-muted)' }}
+        >
+          {footer}
+        </p>
+      )}
     </div>
   )
 }

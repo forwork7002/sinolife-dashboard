@@ -411,6 +411,22 @@ export function chooseGranularity(period: Period): Granularity {
 }
 
 /**
+ * One instant as the calendar date it falls on in `timeZone`, `YYYY-MM-DD`.
+ *
+ * THE WIRE FORMAT THE DAY-GROUPED QUERIES ALREADY SPEAK. Every daily series in
+ * this codebase casts `AT TIME ZONE '<zone>'` to `::date::text`, so a bucket
+ * boundary rendered through here can be matched against those rows by plain
+ * string comparison — which orders chronologically, and cannot pick up a UTC
+ * offset on the way the same comparison does when one side is an instant.
+ */
+export function zonedDateKey(instant: Date, timeZone: string): string {
+  const zoned = new TZDate(instant.getTime(), timeZone)
+  const month = String(zoned.getMonth() + 1).padStart(2, '0')
+  const day = String(zoned.getDate()).padStart(2, '0')
+  return `${zoned.getFullYear()}-${month}-${day}`
+}
+
+/**
  * Enumerate the half-open buckets tiling a period.
  *
  * The first and last buckets are clipped to the period, so a month-granularity

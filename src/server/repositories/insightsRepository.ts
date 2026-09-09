@@ -2470,6 +2470,86 @@ export class InsightsRepository {
   }
 
   /**
+   * The FAKT 1 / FAKT 2 series behind the hero chart on Savdo dinamikasi.
+   *
+   * Isolated from the query for the same reason `ratingSql` and
+   * `ratingDaysSql` are: it has to be pinned against the board's own
+   * predicates without a database. See `confirmationFaktTrendSql.test.ts`.
+   *
+   * NOT `ratingDaysSql` WITH THE `$3` DROPPED. That one answers "one
+   * operator's days" and pins the seller at a fixed placeholder; this answers
+   * "the floor's days" under whatever the reader has filtered to, which needs
+   * the employee joined rather than compared. The two share every predicate
+   * that decides what FAKT 1 and FAKT 2 mean, and nothing else.
+   */
+  private static faktTrendSql(filterClause: string): string {
+    return `
+       SELECT
+         (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS date,
+         count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS orders,
+         sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::text AS confirmed,
+         sum(d."amountMinor") FILTER (WHERE ds."logisticsRole" = 'DELIVERED')::text AS delivered
+       FROM scoped c
+       JOIN "deal" d ON d."id" = c.deal_id
+       /*
+         INNER, and joined on the operator the portal snapshotted — the same
+         person ratingSql groups by. ratingFilterSql writes e."id" and
+         e."departmentId", so without this join an employee or department
+         filter would not be an unfiltered chart, it would be a syntax error;
+         and reading the row-holder instead would put the 556-orders-on-the-
+         head-of-Операцион class of deal on the wrong side of a team filter.
+       */
+       JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
+       LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
+       WHERE TRUE
+         ${filterClause}
+       GROUP BY 1
+       -- The same gate as the per-seller series: a day whose only money was
+       -- delivered without a confirmation still belongs to FAKT 2's line, and
+       -- dropping it would break the chart exactly where the two cross.
+       HAVING count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}) > 0
+           OR count(*) FILTER (WHERE ds."logisticsRole" = 'DELIVERED') > 0
+       ORDER BY 1`
+  }
+
+  /**
+   * The whole floor's daily arrivals into the confirmation queue — FAKT 1 and
+   * FAKT 2 per day, for the chart the two totals sit under.
+   *
+   * Dated by `queued_at` like every other figure on the queue basis, which is
+   * NOT the clock the revenue area on that same chart is drawn on. The screen
+   * says so; see `RevenueTrendChart` and `FaktBasisNote`.
+   *
+   * ONLY THE DAYS THAT CARRY ORDERS come back, as with the per-seller series.
+   * Zero-filling a time axis is the caller's job, because only the caller
+   * knows which buckets the chart is drawn on.
+   */
+  async confirmationFaktDays(
+    period: ScopedWindow,
+    filters: ConfirmationSellerRatingFilters = {},
+  ): Promise<{ date: string; confirmedMinor: bigint; deliveredMinor: bigint; orders: number }[]> {
+    // Scope first, at the fixed slot $3 — same reason as
+    // `confirmationSellerRating`: `queueSql` needs its placeholder while the
+    // string is being built, and the caller's filters number from $4 onwards.
+    const params: unknown[] = [period.start, period.end, InsightsRepository.scopeValue(period)]
+    const filterClause = InsightsRepository.ratingFilterSql(filters, params)
+
+    const rows = await this.prisma.$queryRawUnsafe<
+      { date: string; confirmed: MoneyText; delivered: MoneyText; orders: bigint }[]
+    >(
+      `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.faktTrendSql(filterClause)}`,
+      ...params,
+    )
+
+    return rows.map((r) => ({
+      date: r.date,
+      orders: int(r.orders),
+      confirmedMinor: money(r.confirmed),
+      deliveredMinor: money(r.delivered),
+    }))
+  }
+
+  /**
    * The month-by-month record wall behind the sellers' television.
    *
    * ONE STATEMENT, NOT ONE PER MONTH. Asking `confirmationSellerRating` for

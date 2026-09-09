@@ -215,6 +215,29 @@ export const t = {
       where each point is a week and each label is that week's first day.
     */
     revenueTrendBasis: 'Yopilgan bitimlar boʻyicha',
+    /*
+      THE SECOND CLOCK ON THE SAME CHART, named because it is not the first.
+
+      The client asked on 2026-09-09 for FAKT 1 and FAKT 2 to be drawn over the
+      revenue area so the three can be compared — «bir birni ustida chiqib
+      turadi, solishtirsa boʻladigan boʻladi». They are not measured on the
+      same date: revenue is booked on the CLOSE date, the two FAKTs on the
+      order's arrival in the confirmation queue (C4:NEW). Unsaid, a reader who
+      sums the lines and finds a different total for one month concludes the
+      chart is broken — which is what `FaktBasisNote` further down the page
+      exists to prevent for the tiles.
+    */
+    faktBasis: 'FAKT 1 / FAKT 2 — navbatga tushgan sana boʻyicha',
+    fakt1: 'FAKT 1 · tasdiqlangan',
+    fakt2: 'FAKT 2 · yetkazilgan',
+    /*
+      `/analytics/sellers` honours the employee, department and source filters
+      and drops the other two — an order has no product until it is itemised,
+      and the queue cohort has no stage of its own. On this chart that means
+      the area shrinks under a product filter and the two lines do not, so it
+      is said out loud rather than left as a discrepancy the reader diagnoses.
+    */
+    faktIgnoresFilters: 'FAKT chiziqlari mahsulot va bosqich filtrlarini hisobga olmaydi',
     buckets: {
       day: 'kunlar kesimida',
       week: 'haftalar kesimida',

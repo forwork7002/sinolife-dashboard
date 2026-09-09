@@ -1311,6 +1311,27 @@ export interface SellerDayDto {
   readonly leads: number | null
 }
 
+/**
+ * One point of the FAKT 1 / FAKT 2 line on Savdo dinamikasi's hero chart.
+ *
+ * Mirrors `sellerBoardService.FaktTrendPointDto`, like every other type in
+ * this file; nothing checks the mirror, so edit both sides.
+ *
+ * MONEY AS A PLAIN NUMBER IN SOʻM, not a `MoneyDto`, because these two series
+ * share an axis with `TrendPointDto.revenue`, which `/analytics/sales` has
+ * always serialised the same lossy way. `date` is the BUCKET START as an ISO
+ * instant, written exactly as the revenue trend writes it, so the client zips
+ * the two on equal strings rather than on an index.
+ */
+export interface FaktTrendPointDto {
+  readonly date: string
+  /** Тасдиқланди + Тасдиқланмай чиқди — what left the queue as an order. */
+  readonly fakt1: number
+  /** Доставланди — what a courier actually delivered. */
+  readonly fakt2: number
+  readonly orders: number
+}
+
 export interface StageConversionRowDto {
   readonly stageId: string
   readonly stageName: string

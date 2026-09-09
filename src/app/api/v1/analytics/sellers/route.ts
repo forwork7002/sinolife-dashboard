@@ -74,7 +74,19 @@ const schema = analyticsQuerySchema.and(
       anyway would be two full cohort constructions thrown away every ten
       minutes, per reader.
     */
-    include: z.enum(['records']).optional(),
+    /*
+      'faktTrend' — the FAKT 1 / FAKT 2 lines the hero chart on Savdo
+      dinamikasi draws over its revenue area. Opt-in and replacing, for the
+      same two reasons 'records' is: the caller is a second react-query key
+      that already holds a board, and building one anyway would be a second
+      cohort construction thrown away on every poll.
+
+      It is the SAME cohort as the tiles below that chart, so the line and the
+      totals cannot disagree — which is the whole reason it is served from
+      this route rather than bolted onto `/analytics/sales`, whose window is
+      the close date and whose payload the chart's area already comes from.
+    */
+    include: z.enum(['records', 'faktTrend']).optional(),
   }),
 )
 
@@ -141,6 +153,13 @@ export const GET = getHandler(ACCESS, schema, async (ctx) => {
   if (ctx.query.include === 'records') {
     return {
       data: await sellerBoardService.records(context),
+      meta: AnalyticsService.periodMeta(context),
+    }
+  }
+
+  if (ctx.query.include === 'faktTrend') {
+    return {
+      data: await sellerBoardService.faktTrend(context),
       meta: AnalyticsService.periodMeta(context),
     }
   }

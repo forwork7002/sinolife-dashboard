@@ -33,7 +33,7 @@ import { type KpiDefinition, periodElapsedFraction } from '@/server/domain/analy
 import { BONUS_TIERS, bonusEligible } from '@/server/domain/analytics/sellerBonus'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import { scopedPeriod } from '@/server/domain/employees/branches'
-import { type Period, sinceMonth } from '@/server/domain/period/period'
+import { type Period, enumerateBuckets, sinceMonth, zonedDateKey } from '@/server/domain/period/period'
 import type { DeltaDto } from '@/lib/api'
 import type { InsightsRepository } from '@/server/repositories/insightsRepository'
 import { keyPart, ttlCache } from './ttlCache'
@@ -294,6 +294,29 @@ export interface SellerDayDto {
   readonly won: MoneyDto
   /** See `SellerBoardRowDto.leads`. Always null, for the same reason. */
   readonly leads: number | null
+}
+
+/**
+ * One point of the FAKT 1 / FAKT 2 line drawn over the revenue area on Savdo
+ * dinamikasi.
+ *
+ * MONEY AS A PLAIN NUMBER IN SOʻM, not a `MoneyDto`, and that is the one place
+ * in this service where that is right: it exists to be plotted on the same
+ * axis as `TrendPointDto.revenue`, which `/analytics/sales` has always
+ * serialised as a lossy major-unit number. A `MoneyDto` here would make the
+ * chart divide one series and not the other.
+ *
+ * `date` is the BUCKET START as an ISO instant, exactly as the revenue trend
+ * writes it, so the two series zip on equal strings rather than on an index.
+ */
+export interface FaktTrendPointDto {
+  readonly date: string
+  /** Тасдиқланди + Тасдиқланмай чиқди — what left the queue as an order. */
+  readonly fakt1: number
+  /** Доставланди — what a courier actually delivered. */
+  readonly fakt2: number
+  /** FAKT 1's own order count. Not the cohort — see `SellerBoardTotalsDto`. */
+  readonly orders: number
 }
 
 // ---------------------------------------------------------------------------
@@ -750,6 +773,72 @@ export class SellerBoardService {
       won: toMoneyDto(money(d.wonMinor, ctx.currency)),
       leads: null,
     }))
+  }
+
+  /**
+   * FAKT 1 and FAKT 2 as a time series, on the hero chart's own buckets.
+   *
+   * THE BUCKETS ARE NOT THIS METHOD'S CHOICE. They come from
+   * `enumerateBuckets(ctx.period)` with its default granularity — the same
+   * call `revenueTrend` makes for the area these two lines are drawn over — so
+   * the two series share one x axis by construction rather than by agreement.
+   * Widen one and the other widens with it; give this one its own granularity
+   * and the chart compares the 3rd of September with the 5th while looking
+   * perfectly ordinary.
+   *
+   * EVERY BUCKET IS EMITTED, including the ones the queue was empty on. The
+   * repository returns only the days that carry orders — right for a seller's
+   * drill-down, wrong for a series drawn beside another: a shorter array is
+   * silently indexed against the longer one and every point after the first
+   * quiet day is drawn a day early.
+   *
+   * A DIFFERENT CLOCK FROM THE AREA UNDERNEATH, and the screen says so. These
+   * are dated by the order's arrival in the confirmation queue (C4:NEW);
+   * revenue is dated by the close. The client asked for the comparison on one
+   * chart on 2026-09-09 knowing that; `RevenueTrendChart` prints the basis
+   * under the title and in the tooltip so no reader has to be told twice.
+   */
+  async faktTrend(ctx: AnalyticsContext): Promise<readonly FaktTrendPointDto[]> {
+    const filters = boardFilters(ctx)
+    const days = await this.insights.confirmationFaktDays(
+      scopedPeriod(ctx.period, filters),
+      filters,
+    )
+
+    return enumerateBuckets(ctx.period).map((bucket) => {
+      /*
+        Matched on the ZONED DATE STRING, which is what the query grouped by.
+        Comparing the day against the bucket's instants would work until a
+        bucket boundary and a UTC offset disagreed — Tashkent midnight is
+        19:00 the previous day — and the failure is a day of money moved one
+        column left, not an error.
+      */
+      const from = zonedDateKey(bucket.start, ctx.period.timeZone)
+      const until = zonedDateKey(bucket.end, ctx.period.timeZone)
+
+      let fakt1 = 0n
+      let fakt2 = 0n
+      let orders = 0
+      /*
+        A scan per bucket rather than an index: the widest window this chart
+        draws is a year of days against 53 weekly buckets, so the whole thing
+        is a few thousand string comparisons — cheaper to read than a second
+        grouping that would have to reproduce the granularity rule.
+      */
+      for (const day of days) {
+        if (day.date < from || day.date >= until) continue
+        fakt1 += day.confirmedMinor
+        fakt2 += day.deliveredMinor
+        orders += day.orders
+      }
+
+      return {
+        date: bucket.start.toISOString(),
+        fakt1: Number(fakt1) / 100,
+        fakt2: Number(fakt2) / 100,
+        orders,
+      }
+    })
   }
 
   /** One row per operator, on whichever clock `basis` names. */
