@@ -14,7 +14,8 @@ const ACCESS = { permission: 'users:manage', section: null } as const
 
 const listSchema = z.object({
   /*
-    Ask for the department heads as well — the ROP tab's own list.
+    Ask for the department heads as well — the «+ Yangi hisob» ROP picker's
+    own list.
 
     A QUERY PARAMETER RATHER THAN A SECOND ROUTE, and the reason is a test.
     `tests/http/routeAccess.test.ts` pins the exact set of endpoints that
@@ -27,7 +28,8 @@ const listSchema = z.object({
     OPT-IN RATHER THAN ALWAYS, because it is not free: the team size beside each
     head is asked of the real scope resolver, one recursive query per head. The
     accounts table does not need any of it, and this screen refetches on the
-    app's one-minute cadence.
+    app's one-minute cadence. Nothing asks for these until an administrator
+    says the new account is for a department head.
   */
   include: z.enum(['heads']).optional(),
 })

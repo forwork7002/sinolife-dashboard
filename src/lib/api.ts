@@ -472,8 +472,9 @@ export interface UsersPageDto {
    * Present only when the request asked for it (`?include=heads`).
    *
    * Absent and empty mean different things: absent is "not requested", empty
-   * is "this portal names no department heads", and the ROP tab has to be able
-   * to tell them apart to know whether to show a spinner or an empty state.
+   * is "this portal names no department heads", and the head picker has to be
+   * able to tell them apart to know whether to show a spinner or an empty
+   * state.
    */
   readonly heads?: readonly DepartmentHeadDto[]
   /**

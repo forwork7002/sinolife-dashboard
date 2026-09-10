@@ -1,11 +1,6 @@
 'use client'
 
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type UseQueryResult,
-} from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { Card } from '@/components/ui/Card'
@@ -28,7 +23,6 @@ import {
   type UserRowDto,
   type UsersPageDto,
 } from '@/lib/api'
-import { formatDate } from '@/lib/format'
 import { MIN_PASSWORD_LENGTH } from '@/lib/passwordPolicy'
 import {
   DATA_SCOPE_HINTS,
@@ -49,8 +43,8 @@ import { SECTIONS, companyWideSections, defaultSectionsFor } from '@/lib/section
  *   3. WHICH SCREENS — the section ticks. This is the reach boundary: the page
  *      redirects and the endpoint refuses, so an unticked screen cannot be
  *      opened by typing its URL either.
- *   4. HOW MUCH OF EACH — the data scope. The whole company, or one linked
- *      salesperson's own records.
+ *   4. HOW MUCH OF EACH — the data scope. The whole company, one team, or one
+ *      linked salesperson's own records.
  *
  * WHY 2 AND 4 ARE SEPARATE QUESTIONS. They used to be one, and the answer was
  * the role: the only account that saw the company's numbers was one that could
@@ -64,57 +58,27 @@ import { SECTIONS, companyWideSections, defaultSectionsFor } from '@/lib/section
  * ticks follows its role's defaults, so every account that predates this
  * screen keeps working. The table says so in words rather than showing an
  * empty cell that reads as "sees nothing".
- */
-/**
- * The two readings of this screen.
  *
- * «Hisoblar» is every account on the deployment. «ROP» is the same data asked
- * a different question — which department heads have a team-scoped login and
- * which do not — and it is a separate tab rather than a filter because the
- * rows are not accounts at all: a head with no login has to appear, and a
- * filter over accounts cannot show a row that does not exist yet.
+ * ONE READING, NOT TWO. This screen carried a `SegmentedControl` — «Hisoblar»,
+ * every account, and «ROP», every department head — and the second tab was the
+ * only way to open a team-scoped account. An administrator who wanted to give
+ * a ROP a login had to know that the button marked «+ Yangi hisob» was the
+ * wrong one. The heads are now a CHOICE INSIDE that button, which is where
+ * somebody opening an account already is. Everything the tab knew is kept, in
+ * `HeadPicker`: the list is heads rather than the 289-name roster, each option
+ * carries the size of the scope it grants, a head who already signs in is
+ * refused a second login, and the units nobody heads are named.
  */
-type TabValue = 'accounts' | 'rops'
-
-const TABS: readonly { readonly value: TabValue; readonly label: string }[] = [
-  { value: 'accounts', label: 'Hisoblar' },
-  { value: 'rops', label: 'ROP' },
-]
-
 export function UsersPage() {
   const queryClient = useQueryClient()
   // Shares react-query's cache with PageShell, so this costs no extra request.
   const viewerId = useFilterOptions().data?.data.viewer?.userId
   const [editing, setEditing] = useState<UserRowDto | null>(null)
   const [creating, setCreating] = useState(false)
-  const [tab, setTab] = useState<TabValue>('accounts')
-  /** The head an administrator is opening a new ROP account for. */
-  const [ropTarget, setRopTarget] = useState<DepartmentHeadDto | null>(null)
 
   const query = useQuery({
     queryKey: ['users'],
     queryFn: ({ signal }) => apiGet<UsersPageDto>('/users', {}, signal),
-  })
-
-  /*
-    THE ROP TAB'S OWN REQUEST, AND ITS OWN CADENCE.
-
-    Separate from the accounts query because it is not free — each head's team
-    size is asked of the real scope resolver — and because it is only wanted on
-    one tab. `enabled` keeps it unsent until the administrator asks for it.
-
-    Five minutes rather than the app's minute: this list changes when Bitrix24
-    moves somebody or names a new head, which reaches us through the sync
-    worker's reference-data pass — once every thirty ticks. Both fields are set,
-    because `refetchInterval` runs on its own clock and never consults
-    staleness; raising only one of them changes nothing.
-  */
-  const heads = useQuery({
-    queryKey: ['users', 'heads'],
-    queryFn: ({ signal }) => apiGet<UsersPageDto>('/users', { include: 'heads' }, signal),
-    enabled: tab === 'rops',
-    staleTime: 300_000,
-    refetchInterval: 300_000,
   })
 
   const refresh = () => {
@@ -124,6 +88,16 @@ export function UsersPage() {
     void queryClient.invalidateQueries({ queryKey: ['filters'] })
   }
 
+  /*
+    FIVE COLUMNS, DOWN FROM EIGHT.
+
+    «Yaratilgan» and a column of its own for 2FA were answering questions
+    nobody opens this screen to ask, and the eighth column pushed `minWidth`
+    past 1100 — a horizontal scrollbar on the laptop the office actually uses.
+    The role and the data scope moved into ONE cell because they are read
+    together: "what may this person change, and how much do they see". 2FA
+    rides beside the status as a glyph, where it is still visible at a glance.
+  */
   const columns: Column<UserRowDto>[] = [
     {
       key: 'name',
@@ -133,8 +107,16 @@ export function UsersPage() {
         <span className="flex items-center gap-2">
           <InitialChip name={row.name} />
           <span className="min-w-0">
-            <span className="block truncate font-medium" style={{ color: 'var(--ink-primary)' }}>
-              {row.name}
+            <span className="flex items-center gap-1.5">
+              <span className="truncate font-medium" style={{ color: 'var(--ink-primary)' }}>
+                {row.name}
+              </span>
+              {/*
+                A team-scoped account IS a ROP account — that is the whole
+                definition — so the tab that used to list them separately is
+                replaced by a mark on the row they were already on.
+              */}
+              {row.dataScope === 'TEAM' && <StatusChip tone="neutral">ROP</StatusChip>}
             </span>
             <span className="block truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
               {row.username ?? row.email}
@@ -144,18 +126,24 @@ export function UsersPage() {
       ),
     },
     {
-      key: 'role',
-      header: 'Rol',
-      width: '140px',
+      key: 'access',
+      header: 'Kirish huquqi',
+      width: '210px',
       render: (row) => (
-        <StatusChip tone={row.role === 'ADMIN' ? 'good' : 'neutral'}>
-          {ROLE_LABELS[row.role]}
-        </StatusChip>
+        <span className="block min-w-0">
+          <span className="block truncate text-[12px]" style={{ color: 'var(--ink-primary)' }}>
+            {ROLE_LABELS[row.role]}
+          </span>
+          <span className="block truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            {DATA_SCOPE_LABELS[row.dataScope]}
+          </span>
+        </span>
       ),
     },
     {
       key: 'sections',
-      header: 'Koʻra oladigan boʻlimlar',
+      header: 'Boʻlimlar',
+      width: '150px',
       render: (row) =>
         row.sections.length === 0 ? (
           <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
@@ -168,50 +156,34 @@ export function UsersPage() {
         ),
     },
     {
-      key: 'dataScope',
-      header: 'Maʼlumot doirasi',
-      width: '150px',
-      render: (row) => (
-        <span className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-          {DATA_SCOPE_LABELS[row.dataScope]}
-        </span>
-      ),
-    },
-    {
       key: 'employee',
       header: 'Bogʻlangan xodim',
-      render: (row) =>
-        row.employeeName ?? (
-          <span style={{ color: 'var(--ink-muted)' }}>—</span>
-        ),
-    },
-    {
-      key: 'twoFactor',
-      header: '2FA',
-      width: '80px',
-      render: (row) => (
-        <span style={{ color: row.twoFactorEnabled ? 'var(--status-good)' : 'var(--ink-muted)' }}>
-          {row.twoFactorEnabled ? <CheckCircleGlyph size={13} /> : <DashGlyph size={13} />}
-        </span>
-      ),
+      render: (row) => row.employeeName ?? <span style={{ color: 'var(--ink-muted)' }}>—</span>,
     },
     {
       key: 'isActive',
       header: 'Holat',
-      width: '110px',
-      render: (row) =>
-        row.isActive ? (
-          <StatusChip tone="good">Faol</StatusChip>
-        ) : (
-          <StatusChip tone="critical">Faol emas</StatusChip>
-        ),
-    },
-    {
-      key: 'createdAt',
-      header: 'Yaratilgan',
-      align: 'right',
-      numeric: true,
-      render: (row) => formatDate(row.createdAt),
+      width: '150px',
+      render: (row) => (
+        <span className="flex items-center gap-1.5">
+          {row.isActive ? (
+            <StatusChip tone="good">Faol</StatusChip>
+          ) : (
+            <StatusChip tone="critical">Faol emas</StatusChip>
+          )}
+          {/*
+            2FA, as a glyph rather than a column. It matters — an administrator
+            account without it is the weakest door in the building — but it is
+            one bit, and a whole column of dashes was spending 80px to say so.
+          */}
+          <span
+            title={row.twoFactorEnabled ? '2FA yoqilgan' : '2FA yoqilmagan'}
+            style={{ color: row.twoFactorEnabled ? 'var(--status-good)' : 'var(--ink-muted)' }}
+          >
+            {row.twoFactorEnabled ? <CheckCircleGlyph size={13} /> : <DashGlyph size={13} />}
+          </span>
+        </span>
+      ),
     },
   ]
 
@@ -224,44 +196,25 @@ export function UsersPage() {
       description="Kim kira oladi, qaysi boʻlimlarni ochadi va har birida qancha maʼlumot koʻradi."
       accent="var(--series-7)"
       actions={
-        <span className="flex items-center gap-2">
-          <SegmentedControl
-            value={tab}
-            options={TABS}
-            onChange={setTab}
-            ariaLabel="Foydalanuvchilar koʻrinishi"
-          />
-          {tab === 'accounts' && (
-            <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
-              + Yangi hisob
-            </Button>
-          )}
-        </span>
+        <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+          + Yangi hisob
+        </Button>
       }
     >
-      {tab === 'accounts' ? (
-        <Card className="card-hero brackets px-4 py-4">
-          <DataTable
-            columns={columns}
-            rows={items}
-            rowKey={(row) => row.id}
-            status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
-            errorMessage={(query.error as Error | null)?.message}
-            onRetry={() => void query.refetch()}
-            onRowClick={(row) => setEditing(row)}
-            minWidth={1120}
-            emptyTitle="Hisob yoʻq"
-            emptyBody="Hali hech kimga hisob ochilmagan."
-          />
-        </Card>
-      ) : (
-        <RopBoard
-          query={heads}
-          accounts={items}
-          onOpenAccount={setEditing}
-          onCreate={setRopTarget}
+      <Card className="card-hero brackets px-4 py-4">
+        <DataTable
+          columns={columns}
+          rows={items}
+          rowKey={(row) => row.id}
+          status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
+          errorMessage={(query.error as Error | null)?.message}
+          onRetry={() => void query.refetch()}
+          onRowClick={(row) => setEditing(row)}
+          minWidth={860}
+          emptyTitle="Hisob yoʻq"
+          emptyBody="Hali hech kimga hisob ochilmagan."
         />
-      )}
+      </Card>
 
       {creating && (
         <UserDialog
@@ -286,231 +239,28 @@ export function UsersPage() {
           }}
         />
       )}
-
-      {ropTarget && (
-        <UserDialog
-          title={`ROP hisobi — ${ropTarget.fullName}`}
-          head={ropTarget}
-          onClose={() => setRopTarget(null)}
-          onSaved={() => {
-            setRopTarget(null)
-            refresh()
-          }}
-        />
-      )}
     </PageShell>
   )
 }
 
 /**
- * The ROP board.
+ * The two kinds of account, asked as the first question on the create form.
  *
- * WHY THIS IS A SEPARATE TAB AND NOT A BETTER DROPDOWN. Anchoring a «Faqat oʻz
- * boʻlimi» account is not the same choice as linking an OWN account: it can
- * only be made against somebody the department tree knows about, the answer it
- * produces is a whole team rather than one person, and how big that team is
- * depends on whether the person heads a team or a branch. None of that fits in
- * a `<select>` of 289 names sorted alphabetically — which is what an
- * administrator was previously asked to make the choice from.
- *
- * The list is heads only, the team size beside each name is the real resolved
- * scope, and picking one opens a form that has already made the two decisions
- * that were easy to get wrong: the scope and the person it is anchored to.
+ * They differ in exactly the two fields that fail SILENTLY when they are
+ * wrong: the data scope, and the person the scope is grown from. A ROP account
+ * left on «Butun kompaniya» reads every rival team's money and looks perfectly
+ * normal; one anchored to somebody the department tree knows nothing about
+ * reads a single row and looks like a broken page. Asking the question once,
+ * in words, is what keeps an administrator from having to get both right in
+ * two unrelated dropdowns.
  */
-function RopBoard({
-  query,
-  accounts,
-  onOpenAccount,
-  onCreate,
-}: {
-  query: UseQueryResult<{ data: UsersPageDto }>
-  /** The full account rows, so an existing ROP opens the ordinary edit form. */
-  accounts: readonly UserRowDto[]
-  onOpenAccount: (user: UserRowDto) => void
-  onCreate: (head: DepartmentHeadDto) => void
-}) {
-  const rows = query.data?.data.heads ?? []
-  const headless = query.data?.data.headlessUnits ?? []
-  const byId = new Map(accounts.map((account) => [account.id, account]))
+type AccountKind = 'plain' | 'rop'
 
-  const columns: Column<DepartmentHeadDto>[] = [
-    {
-      key: 'head',
-      rowHeader: true,
-      header: 'Rahbar',
-      render: (row) => (
-        <span className="flex items-center gap-2">
-          <InitialChip name={row.fullName} />
-          <span className="min-w-0">
-            <span className="block truncate font-medium" style={{ color: 'var(--ink-primary)' }}>
-              {row.fullName}
-            </span>
-            <span className="block truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-              {/*
-                The unit they are FILED in, which is not always one they head —
-                «Навоий» names a head whose own record sits in two other units,
-                and the portal draws that card with no head row. Saying where
-                the person actually sits keeps that from looking like a bug.
-              */}
-              {row.homeDepartmentName ?? 'Boʻlimga biriktirilmagan'}
-            </span>
-          </span>
-        </span>
-      ),
-    },
-    {
-      key: 'units',
-      header: 'Rahbarlik qiladigan boʻlimi',
-      render: (row) => (
-        <span className="flex flex-wrap items-center gap-1.5">
-          {row.heads.map((unit) => (
-            <span key={unit.id} className="flex items-center gap-1">
-              <span className="text-[12px]" style={{ color: 'var(--ink-primary)' }}>
-                {unit.name}
-              </span>
-              {/*
-                The descendant count, said next to the name rather than folded
-                into the team size. Heading a branch hands over every team under
-                it — «Тошкент онлайн» is nine — and the administrator is looking
-                at the NAME when they decide, not at the number two columns
-                away.
-              */}
-              {unit.descendants > 0 && (
-                <StatusChip tone="warning">+{unit.descendants} ta ost-boʻlim</StatusChip>
-              )}
-              {/*
-                THE ROOT IS «BUTUN KOMPANIYA» UNDER ANOTHER NAME, so it gets
-                the strongest mark on the row rather than a footnote. Headship
-                descends to any depth: an account anchored to whoever runs the
-                top of the tree reads every employee on the portal, which is
-                the exact grant this tab exists to avoid making by accident.
-              */}
-              {unit.isRoot && <StatusChip tone="critical">butun kompaniya</StatusChip>}
-            </span>
-          ))}
-        </span>
-      ),
-    },
-    {
-      key: 'teamSize',
-      header: 'Doiraga tushadi',
-      align: 'right',
-      numeric: true,
-      width: '130px',
-      render: (row) => (
-        <span style={{ color: 'var(--ink-primary)' }}>{row.teamSize} kishi</span>
-      ),
-    },
-    {
-      key: 'account',
-      header: 'Hisob',
-      width: '230px',
-      render: (row) => {
-        if (!row.account) {
-          return (
-            <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-              Hisob yoʻq — ochish uchun bosing
-            </span>
-          )
-        }
+const KINDS: readonly { readonly value: AccountKind; readonly label: string }[] = [
+  { value: 'plain', label: 'Oddiy hisob' },
+  { value: 'rop', label: 'Boʻlim rahbari (ROP)' },
+]
 
-        return (
-          <span className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[12px]" style={{ color: 'var(--ink-primary)' }}>
-              {row.account.username ?? '—'}
-            </span>
-            {row.account.isActive ? (
-              <StatusChip tone="good">Faol</StatusChip>
-            ) : (
-              <StatusChip tone="critical">Faol emas</StatusChip>
-            )}
-            {/*
-              A head whose account is NOT team-scoped is the case this screen
-              exists to make visible. Said as a warning rather than hidden: the
-              administrator opened this tab to grant one floor, and an account
-              reading the whole company under a ROP's name is the opposite
-              outcome, arrived at silently.
-            */}
-            {row.account.dataScope !== 'TEAM' && (
-              <StatusChip tone="warning">{DATA_SCOPE_LABELS[row.account.dataScope]}</StatusChip>
-            )}
-          </span>
-        )
-      },
-    },
-  ]
-
-  return (
-    <div className="grid gap-3">
-      <Card className="px-4 py-3">
-        <p className="text-[12px] leading-relaxed" style={{ color: 'var(--ink-secondary)' }}>
-          ROP hisobi — bu <strong>«{DATA_SCOPE_LABELS.TEAM}»</strong> doirasidagi hisob. U faqat
-          oʻzi rahbarlik qiladigan boʻlim, oʻzi biriktirilgan boʻlim va ular ostidagi boʻlimlar
-          xodimlarining natijalarini koʻradi. Sotuvchilar reytingidagi <strong>oʻrin, ulush va
-          jami</strong> raqamlar ham faqat shu roʻyxat ichida hisoblanadi — kompaniya boʻyicha
-          emas. Qaysi ekranlar ochilishini har bir hisob uchun oʻzingiz tanlaysiz.
-        </p>
-
-        {/*
-          WHY A BOʻLIM YOU EXPECTED IS NOT ON THE LIST.
-
-          Only a unit with a head can carry an account, and this portal has
-          units without one — «Тошкент онлайн» names nine sales teams and no
-          head at all. Unsaid, an administrator hunts the list for it, does not
-          find it, and reports the screen; the field to fill is `UF_HEAD` on
-          the department card in Bitrix24, and nothing this application can do
-          will put it there.
-        */}
-        {headless.length > 0 && (
-          <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-            Rahbari belgilanmagan boʻlimlar bu roʻyxatda yoʻq —{' '}
-            <span style={{ color: 'var(--ink-secondary)' }}>
-              {headless.map((unit) => unit.name).join(', ')}
-            </span>
-            . Rahbarni Bitrix24 dagi boʻlim kartochkasida belgilang.
-          </p>
-        )}
-      </Card>
-
-      <Card className="card-hero brackets px-4 py-4">
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(row) => row.employeeId}
-          status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
-          errorMessage={(query.error as Error | null)?.message}
-          onRetry={() => void query.refetch()}
-          onRowClick={(row) => {
-            /*
-              One click, two destinations. A head who already has a login is
-              edited through the ordinary account form — there is nothing
-              ROP-specific about changing their sections or their password, and
-              a second form for it would be a second place to keep in step.
-              A head with no login goes to the same form with the two dangerous
-              fields already decided.
-            */
-            const existing = row.account ? byId.get(row.account.id) : undefined
-            if (existing) onOpenAccount(existing)
-            else onCreate(row)
-          }}
-          minWidth={980}
-          emptyTitle="Boʻlim rahbari topilmadi"
-          emptyBody="Bitrix24 da hech qaysi boʻlimga rahbar belgilanmagan. Portalda rahbarni belgilang — keyingi sinxronizatsiyadan soʻng bu yerda chiqadi."
-        />
-      </Card>
-    </div>
-  )
-}
-
-/**
- * Create or edit, in one form.
- *
- * The two differ in exactly three places — the password is required on create
- * and optional on edit, the email is fixed once issued, and only an existing
- * account can be switched off — so splitting them into two components would
- * duplicate the section grid, the role picker and the error handling to avoid
- * three conditionals.
- */
 /**
  * A first guess at the login, from the person's name.
  *
@@ -532,49 +282,42 @@ export function loginSuggestion(fullName: string | undefined): string {
   )
 }
 
+/**
+ * Create or edit, in one form.
+ *
+ * The two differ in exactly three places — the password is required on create
+ * and optional on edit, only an existing account can be switched off, and the
+ * kind switch is a question you can only answer once — so splitting them into
+ * two components would duplicate the section grid, the role picker and the
+ * error handling to avoid three conditionals.
+ */
 function UserDialog({
   title,
   user,
-  head,
   isSelf = false,
   onClose,
   onSaved,
 }: {
   title: string
   user?: UserRowDto
-  /**
-   * Opening a NEW account for this department head.
-   *
-   * Its presence decides two fields the administrator would otherwise have to
-   * get right by hand, and they are the two that fail quietly: the scope, and
-   * the person the scope is grown from. Everything else on the form stays
-   * exactly as it is — the role, the password, and above all the section
-   * ticks, which the client asked to keep choosing themselves.
-   *
-   * Never passed together with `user`: an existing account is edited through
-   * the ordinary form, because nothing about changing a password or a tick is
-   * ROP-specific and a second copy of that form would be a second thing to
-   * keep in step.
-   */
-  head?: DepartmentHeadDto
   /** Your own account. Deletion is not offered on it. */
   isSelf?: boolean
   onClose: () => void
   onSaved: () => void
 }) {
   const editing = user !== undefined
-  const isRop = head !== undefined
 
-  const [name, setName] = useState(user?.name ?? head?.fullName ?? '')
-  const [username, setUsername] = useState(user?.username ?? loginSuggestion(head?.fullName))
+  const [name, setName] = useState(user?.name ?? '')
+  const [username, setUsername] = useState(user?.username ?? '')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   // One toggle for both password fields: they must match, so reading one
   // without the other tells you nothing about why they do not.
   const [showPassword, setShowPassword] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [kind, setKind] = useState<AccountKind>('plain')
   /*
-    SALES for a ROP, and it is already the default for everybody.
+    SALES on a new account, and it is already the default for everybody.
 
     Role says what an account may CHANGE, not what it reads — a ROP reads a
     whole team and changes nothing. The picker stays enabled: the client may
@@ -585,32 +328,93 @@ function UserDialog({
     ALL on a new account, deliberately.
 
     An administrator opening this form is handing someone screens; the useful
-    default is that those screens have numbers on them. OWN is the narrower,
-    rarer intent and has to be chosen — along with the person it narrows to.
+    default is that those screens have numbers on them. The narrower scopes are
+    the rarer intent and have to be chosen — along with the person they narrow
+    to.
   */
-  const [dataScope, setDataScope] = useState<DataScopeValue>(
-    user?.dataScope ?? (isRop ? 'TEAM' : 'ALL'),
-  )
-  const [employeeId, setEmployeeId] = useState<string>(user?.employeeId ?? head?.employeeId ?? '')
+  const [dataScope, setDataScope] = useState<DataScopeValue>(user?.dataScope ?? 'ALL')
+  const [employeeId, setEmployeeId] = useState<string>(user?.employeeId ?? '')
   const [isActive, setIsActive] = useState(user?.isActive ?? true)
-  /*
-    A ROP ACCOUNT OPENS WITH TICKS, WHERE AN ORDINARY ONE OPENS WITH NONE.
-
-    An empty list means "follow the role", and a SALES role's default set
-    includes the command centre and Logistika — two screens that aggregate
-    across the whole company and refuse a narrowed account outright. The
-    sidebar already hides them from a ROP and the page guard already lands them
-    somewhere usable, so nothing breaks; but an account created for one purpose
-    and configured for another is a thing the administrator then has to
-    discover. Both of these narrow correctly, and both are the reason the
-    client asked for the account. Every tick stays editable.
-  */
-  const [sections, setSections] = useState<string[]>([
-    ...(user?.sections ?? (isRop ? ['confirmation', 'sellers'] : [])),
-  ])
+  const [sections, setSections] = useState<string[]>([...(user?.sections ?? [])])
 
   // The roster the filter bar already loaded, reused rather than refetched.
   const employees = useFilterOptions().data?.data.employees ?? []
+
+  /*
+    ONLY EXISTING ACCOUNTS ARE EDITED AS ORDINARY ONES.
+
+    A head who already signs in opens the table row, not this switch: nothing
+    about changing their password or a tick is ROP-specific, and their scope is
+    corrected in the unlocked «Maʼlumot doirasi» dropdown like anybody else's.
+  */
+  const isRop = !editing && kind === 'rop'
+
+  /*
+    THE HEADS, ASKED FOR ONLY WHEN SOMEBODY WANTS ONE.
+
+    Each option's team size is resolved by the real scope resolver, one
+    recursive query per head — roughly nineteen on this portal. When this list
+    lived behind a tab it went out the moment the tab was opened and again
+    every five minutes; nothing polls it now, because a modal that is open for
+    a minute has nothing to learn from a second answer. The five-minute
+    `staleTime` is what makes reopening the form instant: the roster changes
+    when Bitrix24 names a new head, which reaches us through the sync worker's
+    reference-data pass, not while the administrator is typing a password.
+  */
+  const headsQuery = useQuery({
+    queryKey: ['users', 'heads'],
+    queryFn: ({ signal }) => apiGet<UsersPageDto>('/users', { include: 'heads' }, signal),
+    enabled: isRop,
+    staleTime: 300_000,
+  })
+  const heads = headsQuery.data?.data.heads ?? []
+  const headlessUnits = headsQuery.data?.data.headlessUnits ?? []
+  /*
+    THE SELECTED HEAD IS DERIVED FROM `employeeId`, NEVER STORED BESIDE IT.
+
+    Two pieces of state for one choice is how a form ends up sending a scope
+    anchored to one person while showing the team size of another — and the
+    number on screen is the only thing standing between an administrator and
+    granting a branch of nine teams by accident.
+  */
+  const head: DepartmentHeadDto | undefined = heads.find((row) => row.employeeId === employeeId)
+
+  /*
+    SWITCHING THE KIND RESETS THE THREE FIELDS THAT FOLLOW FROM IT.
+
+    The scope, the person it is anchored to and the opening set of ticks are
+    answers to the kind question, not to anything the administrator typed. A
+    switch that left the previous kind's scope behind would produce exactly the
+    silent mismatch this form exists to prevent.
+
+    THE ROP TICKS ARE NOT EMPTY, and that is deliberate. An empty list means
+    "follow the role", and a SALES role's defaults include the command centre
+    and Logistika — two screens that aggregate across the whole company and
+    refuse a narrowed account outright. Tasdiqlash and Sotuvchilar both narrow
+    correctly and are the two the client asked for the account for. Every tick
+    stays editable.
+  */
+  const switchKind = (next: AccountKind) => {
+    setKind(next)
+    setEmployeeId('')
+    setDataScope(next === 'rop' ? 'TEAM' : 'ALL')
+    setSections(next === 'rop' ? ['confirmation', 'sellers'] : [])
+  }
+
+  /*
+    PICKING THE HEAD FILLS THE NAME AND GUESSES THE LOGIN.
+
+    On the ROP form the person is the FIRST thing chosen, so retyping a name
+    the list just showed is pure transcription — and transcription of names
+    like «Sirojov 115 Davlatbek» is where the typos are.
+  */
+  const chooseHead = (id: string) => {
+    setEmployeeId(id)
+    const picked = heads.find((row) => row.employeeId === id)
+    if (!picked) return
+    setName(picked.fullName)
+    setUsername(loginSuggestion(picked.fullName))
+  }
 
   const save = useMutation({
     mutationFn: async () => {
@@ -705,6 +509,30 @@ function UserDialog({
             Yopish
           </Button>
         </header>
+
+        {!editing && (
+          <div className="mb-4">
+            <SegmentedControl
+              value={kind}
+              options={KINDS}
+              onChange={switchKind}
+              ariaLabel="Hisob turi"
+            />
+          </div>
+        )}
+
+        {isRop && (
+          <div className="mb-4">
+            <HeadPicker
+              heads={heads}
+              headlessUnits={headlessUnits}
+              selected={head}
+              isPending={headsQuery.isPending}
+              isError={headsQuery.isError}
+              onChoose={chooseHead}
+            />
+          </div>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Ism">
@@ -819,17 +647,16 @@ function UserDialog({
             {/*
               LOCKED ON THE ROP FORM, and shown rather than hidden.
 
-              This form was opened from a row that says «this person heads that
-              unit»; the scope is the whole reason it exists, so offering it as
-              a choice invites the one mistake the tab was built to remove.
-              Printed as a chip instead of a disabled `<select>` because a
-              greyed-out control reads as "broken here" rather than "already
-              decided" — and the hint underneath is the same sentence the free
-              form shows, so the two screens cannot describe the scope
-              differently.
+              The kind switch above already said this account follows one
+              team; offering «Butun kompaniya» beside it invites the one
+              mistake the switch exists to remove. Printed as a chip instead of
+              a disabled `<select>` because a greyed-out control reads as
+              "broken here" rather than "already decided" — and the hint
+              underneath is the same sentence the ordinary form shows, so the
+              two readings cannot describe the scope differently.
 
-              To give a head something OTHER than their own floor, edit the
-              account on the «Hisoblar» tab, where every field is open.
+              To give a head something OTHER than their own floor, save the
+              account and open its row, where every field is unlocked.
             */}
             {isRop ? (
               <div
@@ -843,111 +670,79 @@ function UserDialog({
                 {DATA_SCOPE_LABELS.TEAM}
               </div>
             ) : (
-            <select
-              value={dataScope}
-              onChange={(e) => setDataScope(e.target.value as DataScopeValue)}
-              className="focusable w-full rounded-[var(--radius-panel-sm)] border px-2.5 py-1.5 text-sm"
-              style={{
-                background: 'var(--surface)',
-                borderColor: 'var(--border)',
-                color: 'var(--ink-primary)',
-              }}
-            >
-              {DATA_SCOPE_VALUES.map((value) => (
-                <option key={value} value={value}>
-                  {DATA_SCOPE_LABELS[value]}
-                </option>
-              ))}
-            </select>
+              <select
+                value={dataScope}
+                onChange={(e) => setDataScope(e.target.value as DataScopeValue)}
+                className="focusable w-full rounded-[var(--radius-panel-sm)] border px-2.5 py-1.5 text-sm"
+                style={{
+                  background: 'var(--surface)',
+                  borderColor: 'var(--border)',
+                  color: 'var(--ink-primary)',
+                }}
+              >
+                {DATA_SCOPE_VALUES.map((value) => (
+                  <option key={value} value={value}>
+                    {DATA_SCOPE_LABELS[value]}
+                  </option>
+                ))}
+              </select>
             )}
             <span className="mt-1 block text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
               {DATA_SCOPE_HINTS[dataScope]}
             </span>
           </Field>
 
-          <Field label={isRop ? 'Boʻlim rahbari' : 'Bogʻlangan xodim'}>
-            {/*
-              THE ANSWER, NOT THE QUESTION.
+          {/*
+            The roster picker, for the accounts a person is not a head on.
 
-              On the ROP form the person is what the administrator clicked, so
-              the picker is replaced by what that choice actually buys: the
-              units it anchors on and how many employees the scope resolves to.
-              The count comes from the same resolver the request path uses, so
-              the number read here is the number the account gets — and it is
-              the only place a branch head's «nine teams» becomes a figure
-              before the account exists rather than after.
-            */}
-            {isRop ? (
-              <div
-                className="rounded-[var(--radius-panel-sm)] border px-2.5 py-1.5"
-                style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+            On the ROP form the person was already chosen above, from a list
+            that could answer for the scope; offering all 289 names a second
+            time would offer mostly wrong answers to a question already
+            settled.
+          */}
+          {!isRop && (
+            <Field label="Bogʻlangan xodim">
+              <select
+                value={employeeId}
+                onChange={(e) => setEmployeeId(e.target.value)}
+                className="focusable w-full rounded-[var(--radius-panel-sm)] border px-2.5 py-1.5 text-sm"
+                style={{
+                  background: 'var(--surface)',
+                  borderColor: 'var(--border)',
+                  color: 'var(--ink-primary)',
+                }}
               >
-                <span className="block text-sm" style={{ color: 'var(--ink-primary)' }}>
-                  {head.fullName}
-                </span>
-                <span className="mt-0.5 block text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-                  {head.heads.map((unit) => unit.name).join(', ')}
-                </span>
-                <span className="mt-1 block text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
-                  Doiraga <strong>{head.teamSize} ta xodim</strong> tushadi
-                  {head.heads.some((unit) => unit.descendants > 0)
-                    ? ' — ost-boʻlimlardagilar bilan birga.'
-                    : '.'}
-                </span>
-                {/*
-                  The one grant on this list that is not a team. Said in the
-                  form as well as on the row, because this is the last screen
-                  before the password is typed.
-                */}
-                {head.heads.some((unit) => unit.isRoot) && (
-                  <span
-                    className="mt-1 block text-[10.5px]"
-                    style={{ color: 'var(--status-critical)' }}
-                  >
-                    Bu xodim eng yuqori boʻlim rahbari — «{DATA_SCOPE_LABELS.TEAM}» unga butun
-                    kompaniyani ochadi, «{DATA_SCOPE_LABELS.ALL}» bilan bir xil.
-                  </span>
-                )}
-              </div>
-            ) : (
-            <select
-              value={employeeId}
-              onChange={(e) => setEmployeeId(e.target.value)}
-              className="focusable w-full rounded-[var(--radius-panel-sm)] border px-2.5 py-1.5 text-sm"
-              style={{
-                background: 'var(--surface)',
-                borderColor: 'var(--border)',
-                color: 'var(--ink-primary)',
-              }}
-            >
-              <option value="">Bogʻlanmagan</option>
-              {employees.map((employee) => (
-                <option key={employee.id} value={employee.id}>
-                  {employee.fullName}
-                </option>
-              ))}
-            </select>
-            )}
-            {/*
-              Stated as a consequence, not as a red field.
+                <option value="">Bogʻlanmagan</option>
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.fullName}
+                  </option>
+                ))}
+              </select>
+              {/*
+                Stated as a consequence, not as a red field.
 
-              The server refuses this combination outright, so the form's job
-              is to say what the choice will do while it is still a choice.
-            */}
-            {scopeNeedsEmployee && (
-              <span
-                className="mt-1 block text-[10.5px]"
-                style={{ color: 'var(--status-warning)' }}
-              >
-                «{DATA_SCOPE_LABELS[dataScope]}» uchun xodim tanlanishi shart — aks holda hisob
-                hech qanday raqam koʻrmaydi.
-              </span>
-            )}
-          </Field>
+                The server refuses this combination outright, so the form's job
+                is to say what the choice will do while it is still a choice.
+              */}
+              {scopeNeedsEmployee && (
+                <span
+                  className="mt-1 block text-[10.5px]"
+                  style={{ color: 'var(--status-warning)' }}
+                >
+                  «{DATA_SCOPE_LABELS[dataScope]}» uchun xodim tanlanishi shart — aks holda hisob
+                  hech qanday raqam koʻrmaydi.
+                </span>
+              )}
+            </Field>
+          )}
 
           {editing && (
             <Field label="Holat">
-              <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--ink-primary)' }}>
+              <label
+                className="flex items-center gap-2 text-sm"
+                style={{ color: 'var(--ink-primary)' }}
+              >
                 <input
                   type="checkbox"
                   checked={isActive}
@@ -971,15 +766,25 @@ function UserDialog({
             </p>
           </div>
 
+          {/*
+            TWO BUTTONS, DOWN FROM THREE.
+
+            «Rol boʻyicha toʻldirish» wrote the role's defaults into the list
+            explicitly — which is what an EMPTY list already does, only frozen,
+            so an account that should have followed its role stopped doing so
+            the moment somebody pressed it. The line above already says what
+            empty means; these two are the ends of the range.
+          */}
           <div className="mt-2 flex flex-wrap gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setSections([...roleDefaults])}>
-              Rol boʻyicha toʻldirish
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setSections(SECTIONS.map((s) => s.id))}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setSections(SECTIONS.map((s) => s.id))}
+            >
               Hammasi
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setSections([])}>
-              Tozalash (rolga qaytarish)
+              Tozalash
             </Button>
           </div>
 
@@ -1017,8 +822,8 @@ function UserDialog({
             The one combination that ticks a box and delivers nothing.
 
             These screens aggregate across the whole company and take no
-            employee filter, so an OWN-scoped account is refused rather than
-            shown a blank page. Said here, next to the ticks, because the
+            employee filter, so a narrowed account is refused rather than shown
+            a blank page. Said here, next to the ticks, because the
             administrator is looking at the ticks when they make the mistake.
           */}
           {scopeIsNarrowed && blockedByScope.length > 0 && (
@@ -1031,8 +836,8 @@ function UserDialog({
             >
               Bu boʻlimlar faqat kompaniya boʻyicha hisoblanadi va «
               {DATA_SCOPE_LABELS[dataScope]}» doirasida ochilmaydi:{' '}
-              {blockedByScope.map((spec) => spec.label).join(', ')}. Yo doirani «Butun
-              kompaniya» qiling, yo bu boʻlimlarni olib tashlang.
+              {blockedByScope.map((spec) => spec.label).join(', ')}. Yo doirani «Butun kompaniya»
+              qiling, yo bu boʻlimlarni olib tashlang.
             </p>
           )}
         </section>
@@ -1058,14 +863,10 @@ function UserDialog({
             clicks, because the first is easy to make by accident and there is
             no undo — the row and its credentials go, and only the audit trail
             of what they did remains.
-          */}
-          {/*
-            Never on your own account.
 
-            The server refuses it either way, but an administrator who can SEE
-            "Hisobni oʻchirish" under their own name has to think about it
-            every time they open their own row. The action that cannot be
-            undone should not be the one sitting under the cursor.
+            Never on your own account. The server refuses it either way, but an
+            administrator who can SEE "Hisobni oʻchirish" under their own name
+            has to think about it every time they open their own row.
           */}
           {editing && !isSelf && (
             <span className="mr-auto">
@@ -1117,6 +918,158 @@ function UserDialog({
           </Button>
         </footer>
       </Card>
+    </div>
+  )
+}
+
+/**
+ * The department heads, and what anchoring an account to one actually buys.
+ *
+ * WHY THIS LIST AND NOT THE ROSTER. An OWN or ALL account can be linked to
+ * anybody, so the ordinary picker offers all 289 people. A TEAM account cannot:
+ * the scope is grown from the department tree, so somebody filed nowhere who
+ * heads nothing anchors on nothing and `assertScopeIsUsable` refuses to save
+ * them. Nineteen right answers beat 289 mostly-wrong ones.
+ *
+ * WHY THE NUMBER IS IN THE OPTION TEXT. «Lola(ROP)» and «Тошкент онлайн» look
+ * alike in a dropdown and are a team of 27 and a floor of nine teams
+ * respectively. The size is the REAL resolved scope — the same query the
+ * request path runs — so the figure read here before saving is the figure the
+ * account then gets.
+ */
+function HeadPicker({
+  heads,
+  headlessUnits,
+  selected,
+  isPending,
+  isError,
+  onChoose,
+}: {
+  heads: readonly DepartmentHeadDto[]
+  headlessUnits: readonly { readonly id: string; readonly name: string }[]
+  selected: DepartmentHeadDto | undefined
+  isPending: boolean
+  isError: boolean
+  onChoose: (employeeId: string) => void
+}) {
+  return (
+    <div
+      className="rounded-[var(--radius-panel-sm)] border px-3 py-3"
+      style={{
+        background: 'color-mix(in oklab, var(--series-7) 5%, transparent)',
+        borderColor: 'var(--border)',
+      }}
+    >
+      <Field label="Boʻlim rahbari">
+        <select
+          value={selected?.employeeId ?? ''}
+          onChange={(e) => onChoose(e.target.value)}
+          disabled={isPending || isError}
+          className="focusable w-full rounded-[var(--radius-panel-sm)] border px-2.5 py-1.5 text-sm"
+          style={{
+            background: 'var(--surface)',
+            borderColor: 'var(--border)',
+            color: 'var(--ink-primary)',
+          }}
+        >
+          <option value="">
+            {isPending
+              ? 'Rahbarlar yuklanmoqda…'
+              : isError
+                ? 'Rahbarlar roʻyxati kelmadi'
+                : 'Rahbarni tanlang'}
+          </option>
+          {heads.map((row) => (
+            /*
+              A HEAD WHO ALREADY SIGNS IN IS NOT OFFERED A SECOND LOGIN.
+
+              `user.employeeId` is unique and `provisionUser` writes it in its
+              THIRD statement, so the clash used to be a `P2002` nothing
+              translates — a 500 that left behind a real, signable account with
+              no username, role SALES and scope ALL. `createUser` refuses it
+              now; saying so in the option is what keeps an administrator from
+              meeting that refusal after typing a password.
+            */
+            <option key={row.employeeId} value={row.employeeId} disabled={row.account !== null}>
+              {row.account
+                ? `${row.fullName} — hisobi bor`
+                : `${row.fullName} — ${row.teamSize} kishi`}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      {selected && (
+        <div className="mt-2">
+          <span className="flex flex-wrap items-center gap-1.5">
+            {selected.heads.map((unit) => (
+              <span key={unit.id} className="flex items-center gap-1">
+                <span className="text-[12px]" style={{ color: 'var(--ink-primary)' }}>
+                  {unit.name}
+                </span>
+                {/*
+                  The descendant count, said next to the NAME rather than
+                  folded into the team size. Heading a branch hands over every
+                  team under it — «Тошкент онлайн» is nine — and the
+                  administrator is looking at the name when they decide.
+                */}
+                {unit.descendants > 0 && (
+                  <StatusChip tone="warning">+{unit.descendants} ta ost-boʻlim</StatusChip>
+                )}
+                {/*
+                  THE ROOT IS «BUTUN KOMPANIYA» UNDER ANOTHER NAME, so it gets
+                  the strongest mark rather than a footnote. Headship descends
+                  to any depth: an account anchored to whoever runs the top of
+                  the tree reads every employee on the portal, which is the
+                  exact grant this picker exists to avoid making by accident.
+                */}
+                {unit.isRoot && <StatusChip tone="critical">butun kompaniya</StatusChip>}
+              </span>
+            ))}
+          </span>
+
+          <span className="mt-1.5 block text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+            Doiraga <strong>{selected.teamSize} ta xodim</strong> tushadi
+            {selected.heads.some((unit) => unit.descendants > 0)
+              ? ' — ost-boʻlimlardagilar bilan birga.'
+              : '.'}
+            {/*
+              The unit they are FILED in, which is not always one they head —
+              «Навоий» names a head whose own record sits in two other units,
+              and the portal draws that card with no head row. Saying where the
+              person actually sits keeps that from looking like a bug.
+            */}
+            {selected.homeDepartmentName && ` Oʻzi: ${selected.homeDepartmentName}.`}
+          </span>
+
+          {selected.heads.some((unit) => unit.isRoot) && (
+            <span className="mt-1 block text-[10.5px]" style={{ color: 'var(--status-critical)' }}>
+              Bu xodim eng yuqori boʻlim rahbari — «{DATA_SCOPE_LABELS.TEAM}» unga butun
+              kompaniyani ochadi, «{DATA_SCOPE_LABELS.ALL}» bilan bir xil.
+            </span>
+          )}
+        </div>
+      )}
+
+      {/*
+        WHY A BOʻLIM YOU EXPECTED IS NOT ON THE LIST.
+
+        Only a unit with a head can carry an account, and this portal has units
+        without one — «Тошкент онлайн» names nine sales teams and no head at
+        all. Unsaid, an administrator hunts the list for it, does not find it,
+        and reports the screen; the field to fill is `UF_HEAD` on the
+        department card in Bitrix24, and nothing this application can do will
+        put it there.
+      */}
+      {headlessUnits.length > 0 && (
+        <p className="mt-2 text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
+          Rahbari belgilanmagan boʻlimlar bu roʻyxatda yoʻq —{' '}
+          <span style={{ color: 'var(--ink-secondary)' }}>
+            {headlessUnits.map((unit) => unit.name).join(', ')}
+          </span>
+          . Rahbarni Bitrix24 dagi boʻlim kartochkasida belgilang.
+        </p>
+      )}
     </div>
   )
 }

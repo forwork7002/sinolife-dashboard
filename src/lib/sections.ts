@@ -109,10 +109,6 @@ const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
   'marketing',
 ])
 
-export function sectionForRoute(route: string): SectionValue | undefined {
-  return BY_ROUTE.get(route)
-}
-
 export function sectionSpec(id: SectionValue): SectionSpec | undefined {
   return BY_ID.get(id)
 }

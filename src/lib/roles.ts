@@ -74,7 +74,7 @@ export const ROLE_NAV: Readonly<Record<RoleValue, readonly string[]>> = {
   ],
 }
 
-export function canSee(role: RoleValue, href: string): boolean {
+function canSee(role: RoleValue, href: string): boolean {
   return ROLE_NAV[role].includes(href)
 }
 

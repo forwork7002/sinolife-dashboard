@@ -171,11 +171,16 @@ everything under those**. Membership does not descend; headship does.
   forces every caller to say whose rows it wants; `commandCentreService`'s
   `unscoped()` is the one place that says "everybody" out loud.
 
-#### Handing one out: the «ROP» tab on `/users`
+#### Handing one out: «ROP» inside «+ Yangi hisob» on `/users`
 
-The scope above is the rule; this is the only place it is granted. `/users`
-carries two readings behind a `SegmentedControl` — «Hisoblar», every account,
-and «ROP», **the department heads**, whether or not they have a login yet.
+The scope above is the rule; this is the only place it is granted. `/users` is
+ONE table now. It carried two readings behind a `SegmentedControl` —
+«Hisoblar» and «ROP», the department heads — and the second tab was the only
+door to a team-scoped account, so an administrator who wanted to give a ROP a
+login had to know that the button marked «+ Yangi hisob» was the wrong one.
+The heads are a CHOICE INSIDE that button now: «Oddiy hisob» / «Boʻlim rahbari
+(ROP)», answered before anything else on the form. Everything the tab knew is
+kept, in `HeadPicker`.
 
 - **The list is heads, not the roster, and that is the whole point.** An OWN or
   ALL account can be linked to anybody, so the ordinary picker offers all 289
@@ -191,34 +196,58 @@ and «ROP», **the department heads**, whether or not they have a login yet.
   `localeCompare(…, 'ru')`, matching `branches.ts`: 'uz' collation files the
   digraphs Sh and Ch at the END of the alphabet, which is correct Uzbek and
   wrong for a list somebody scans with their eye.
-- **The team size beside each name is asked of the REAL resolver**, one head at
-  a time, and then run through `rowScopeFor` — not counted from the tree here.
-  A second count would be a second definition of who is on a team, and the two
+- **The team size in each option is asked of the REAL resolver**, one head at a
+  time, and then run through `rowScopeFor` — not counted from the tree here. A
+  second count would be a second definition of who is on a team, and the two
   would agree until the day they did not; going through `rowScopeFor` is what
   adds the reader themself, which a raw `teamEmployeeIds().length` omits for
   exactly the odd records worth checking. Roughly nineteen recursive queries,
   which is why the route takes **`?include=heads`** — a query parameter and not
   a second endpoint, because `routeAccess.test.ts` pins the ungated list and
-  this has nothing new to say under it. Its own react-query key with **both**
-  `staleTime` and `refetchInterval` at five minutes: `refetchInterval` never
-  consults staleness, so setting one alone buys nothing.
-- **Heading the ROOT is «Butun kompaniya» wearing another label**, so the row
-  and the form both say so in red. The demo tree has one (`SinoLife`, 14 of 14
-  people); production has one too.
-- **Units nobody heads are NAMED under the table.** «Тошкент онлайн» carries
+  this has nothing new to say under it.
+- **NOTHING ASKS FOR THE HEADS UNTIL SOMEBODY PICKS «ROP».** The query is
+  `enabled: isRop` on the dialog and it no longer polls. On the tab it went out
+  the moment the tab opened and again every five minutes; a modal that is open
+  for a minute has nothing to learn from a second answer. `staleTime` stays at
+  five minutes — the roster changes when the sync worker's reference-data pass
+  names a new head, not while an administrator types a password — and that is
+  what makes reopening the form instant. `refetchInterval` was DELETED rather
+  than lowered: it never consults staleness, so leaving it would have restored
+  the polling the enable flag exists to stop.
+- **The selected head is derived from `employeeId`, never stored beside it.**
+  Two pieces of state for one choice is how a form sends a scope anchored to
+  one person while showing another's team size — and that number is the only
+  thing between an administrator and granting nine teams by accident.
+- **Heading the ROOT is «Butun kompaniya» wearing another label**, so the
+  option's units line says so in red. The demo tree has one (`SinoLife`, 14 of
+  14 people); production has one too.
+- **Units nobody heads are NAMED under the picker.** «Тошкент онлайн» carries
   nine sales teams and names no `UF_HEAD` at all, so it cannot be on a list of
   people — and unsaid, an administrator hunts for it and reports the screen.
   The field to fill is in Bitrix24, not here.
-- **The form is the same `UserDialog`**, given a `head` prop. It fixes only the
-  two fields that fail silently — `dataScope: 'TEAM'` and the linked employee —
-  and pre-ticks Tasdiqlash + Sotuvchilar. Everything else, all eleven sections
-  included, stays the administrator's choice; a head who already has a login
-  opens the ordinary form so the scope can be corrected.
-- **`createUser` now refuses an employee that already has a login**
-  (`assertEmployeeIsFree`). `user.employeeId` is `@unique` and `provisionUser`
+- **Picking a head fills the name and guesses the login**, because the person
+  is the first thing the form asks and retyping «Sirojov 115 Davlatbek» is
+  where the typos are. `loginSuggestion` takes the first ASCII word carrying a
+  letter, so a floor badge never becomes a login.
+- **Switching the kind resets the scope, the anchor and the ticks**, which are
+  answers to the kind question rather than to anything typed. ROP opens with
+  Tasdiqlash + Sotuvchilar ticked: an empty list means «follow the role», and a
+  SALES role's defaults include the command centre and Logistika, two screens
+  that refuse a narrowed account outright. Every tick stays editable.
+- **A head who already signs in is a DISABLED option reading «hisobi bor».**
+  `createUser` refuses an employee that already has a login
+  (`assertEmployeeIsFree`) — `user.employeeId` is `@unique` and `provisionUser`
   writes it in its THIRD statement, so the clash was a `P2002` nothing
-  translates — a 500 — that left behind a real, signable account with no
-  username, role SALES and scope ALL.
+  translates, a 500 that left behind a real, signable account with no username,
+  role SALES and scope ALL. Correcting such an account, its scope above all, is
+  done by opening its row in the table, where every field is unlocked.
+- **The table marks a TEAM account «ROP» on its name cell.** A team-scoped
+  account IS a ROP account — that is the definition — so the list that used to
+  live on its own tab is a chip on the row it was already on. Five columns, not
+  eight: «Yaratilgan» and a column of its own for 2FA went (2FA is a glyph
+  beside the status), and the role and the scope share one cell because they
+  are read together. `minWidth` 1120 → 860, which is what took the horizontal
+  scrollbar off the office laptop.
 
 **Which endpoints admit a narrowed account is pinned by
 `tests/http/routeAccess.test.ts`.** Declaring `permission: 'analytics:read:all'`

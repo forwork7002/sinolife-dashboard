@@ -31,7 +31,6 @@ import {
   type SectionSpec,
   type SectionValue,
   isCompanyWideSection,
-  sectionSpec,
 } from '@/lib/sections'
 import { optionalPrincipal } from './session'
 import { can, canSeeSection, type Principal } from './rbac'
@@ -116,9 +115,4 @@ export async function firstSectionFor(): Promise<SectionSpec | null> {
   )
   if (!principal) return null
   return firstServableSection(principal) ?? null
-}
-
-/** The label of a section, for a page that wants to name what it is. */
-export function sectionLabel(section: SectionValue): string {
-  return sectionSpec(section)?.label ?? section
 }
