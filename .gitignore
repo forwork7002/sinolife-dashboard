@@ -16,6 +16,14 @@
 # next.js
 /.next/
 /out/
+# A hand-built production tree (`next build --distDir .next-prod`, served
+# beside the dev server). It MUST be ignored, and not only to keep 231 MB
+# out of a commit: Tailwind v4's automatic source detection skips what git
+# ignores and scans everything else, so while this tree was tracked it read
+# the binary Turbopack cache inside it as candidate class names. That put
+# `.pt-\[max\(env\(w\17 Q-areaL...` into the generated stylesheet and every
+# page 500'd on `Parsing CSS source code failed` — from a file nobody edited.
+/.next-prod/
 
 # production
 /build

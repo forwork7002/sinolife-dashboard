@@ -2871,42 +2871,121 @@ p {
  * opening 'auto' is decided by the data — see `FaktSwitch`. It is `--tv-tone`,
  * so each column lights its own hue and the control belongs to the board it
  * sits on; chrome, never a value.
+ *
+ * ONE PILL THAT SLIDES, NOT A BACKGROUND THAT REAPPEARS. The lit state used to
+ * be painted on whichever button had won, so a press swapped two washes and
+ * the eye had nothing to follow between them. It is now a single thumb on the
+ * track — `.tv-fakt::before`, moved by `data-fakt` — and a press reads as the
+ * one movement it is. Two consequences worth keeping:
+ *   · The buttons are `flex: 1 1 0`, so both take the width of the wider label
+ *     and the thumb's `translateX(100%)` lands exactly on the second seat. Do
+ *     not give them intrinsic widths — «FAKT 1» is narrower than «FAKT 2» in a
+ *     proportional font and the thumb would stop short of it.
+ *   · The lit button no longer carries a `box-shadow`, which is what the focus
+ *     ring is drawn with. `.focusable:focus-visible` and the pressed rule have
+ *     equal specificity and the pressed one is written later, so it used to
+ *     win outright and a keyboard reader landing on the lit fact saw no ring.
+ *
+ * THE DOT IS THE PART THAT READS FROM THE DOORWAY. This board is a television;
+ * an 18% wash is a hint at two metres and nothing at five. A filled disc in the
+ * column's hue against a hollow one survives the distance — and it is the same
+ * mark the Savdo dinamikasi legend already puts beside these two words.
  */
 .tv-fakt {
+  position: relative;
   display: flex;
   flex-shrink: 0;
-  gap: 3px;
   padding: 3px;
   border-radius: 999px;
+  /*
+    THE TRACK TAKES NO TONE WASH, ONLY A TINTED BORDER. A tint here belongs to
+    the harmony — `.tv-col` tints its own frame the same way — but the track is
+    also what the UNLIT label sits on, and that label has no surface of its own
+    to lift it. Washing the track 7% put `--ink-muted` on a tinted
+    `--surface-sunken` at ~4.4:1 in light mode, under the 4.5:1 that 13px bold
+    text needs. On the border the same hue costs the text nothing.
+  */
   background: var(--surface-sunken);
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in oklab, var(--tv-tone) 22%, var(--border));
 }
+
+/*
+ * The thumb. `calc(50% - 3px)` is one seat exactly: the track is two seats
+ * plus its own 3px of padding on each side, so half of it overshoots by that
+ * padding and the subtraction hands it back.
+ */
+.tv-fakt::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--tv-tone) 26%, var(--surface-raised)),
+    color-mix(in oklab, var(--tv-tone) 14%, var(--surface-raised))
+  );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--tv-tone) 52%, transparent),
+    var(--edge-highlight),
+    var(--shadow-card);
+}
+.tv-fakt[data-fakt='fakt2']::before {
+  transform: translateX(100%);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tv-fakt::before {
+    transition: transform var(--duration-enter) var(--ease-out);
+  }
+}
+
 .tv-fakt-tab {
+  position: relative;
+  /* Over the thumb, which is the track's own ::before. */
+  z-index: 1;
+  /* Equal seats — see the block above. */
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 5px 12px;
   border-radius: 999px;
   font-size: var(--tv-small);
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   color: var(--ink-muted);
-  transition:
-    background var(--duration-enter) var(--ease-out),
-    color var(--duration-enter) var(--ease-out);
+  transition: color var(--duration-enter) var(--ease-out);
 }
 .tv-fakt-tab:hover {
   color: var(--ink-secondary);
 }
 .tv-fakt-tab[aria-pressed='true'] {
   color: var(--ink-primary);
-  background: color-mix(in oklab, var(--tv-tone) 18%, var(--surface-raised));
-  box-shadow:
-    inset 0 0 0 1px color-mix(in oklab, var(--tv-tone) 50%, transparent),
-    var(--shadow-card);
+}
+.tv-fakt-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--ink-muted) 40%, transparent);
+  transition:
+    background var(--duration-enter) var(--ease-out),
+    box-shadow var(--duration-enter) var(--ease-out);
+}
+.tv-fakt-tab[aria-pressed='true'] .tv-fakt-dot {
+  background: var(--tv-tone);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--tv-tone) 22%, transparent);
 }
 /*
- * Forced colours discard both the wash and the ring, so the lit button would
- * be told apart by nothing at all. `aria-pressed` is already on the element;
- * this gives that state a border the mode keeps.
+ * Forced colours discard the thumb, its wash and its ring alike, so the lit
+ * button would be told apart by nothing at all. `aria-pressed` is already on
+ * the element; this gives that state a border the mode keeps. Box sizing is
+ * border-box and the seats are equal-width, so it costs no layout.
  */
 @media (forced-colors: active) {
   .tv-fakt-tab[aria-pressed='true'] {

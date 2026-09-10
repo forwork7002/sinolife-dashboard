@@ -434,7 +434,19 @@ function FaktSwitch({
   onFakt: (choice: FaktChoice) => void
 }) {
   return (
-    <div className="tv-fakt" role="group" aria-label="Reyting qaysi fakt boʻyicha">
+    /*
+      `data-fakt` IS WHAT MOVES THE LIT PILL. The thumb is one element on the
+      track (`.tv-fakt::before`) rather than a background each button paints
+      for itself, so the press reads as a slide from one fact to the other.
+      The attribute carries the RESOLVED fact, the same one `aria-pressed`
+      below is answering — they cannot disagree.
+    */
+    <div
+      className="tv-fakt"
+      data-fakt={fakt}
+      role="group"
+      aria-label="Reyting qaysi fakt boʻyicha"
+    >
       {(
         [
           ['fakt1', 'FAKT 1'],
@@ -448,6 +460,12 @@ function FaktSwitch({
           aria-pressed={fakt === key}
           onClick={() => onFakt(key)}
         >
+          {/*
+            The mark that carries across a room — a filled disc in the column's
+            hue on the lit fact, a hollow one on the other. Decoration only:
+            `aria-pressed` is the state a reader is told.
+          */}
+          <span aria-hidden="true" className="tv-fakt-dot" />
           {label}
         </button>
       ))}
