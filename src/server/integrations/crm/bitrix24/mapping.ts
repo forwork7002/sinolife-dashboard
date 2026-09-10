@@ -64,6 +64,22 @@ export function pipelineRole(categoryId: number): PipelineRoleValue {
   return PIPELINE_ROLE_BY_ID[categoryId] ?? 'IGNORED'
 }
 
+/**
+ * Доставка's own category id, as a string, because that is how it is stored.
+ *
+ * `Pipeline.externalId` is the portal's `CATEGORY_ID` written out
+ * (`fetchPipelines` → `String(r.ID)`), so a query that wants THIS funnel and
+ * not the other REVENUE one compares against this constant.
+ *
+ * IT IS EXPORTED SO THE LITERAL HAS ONE HOME. Two pipelines carry the REVENUE
+ * role — 6 Доставка and 14 Ecommerce — so `pl."role" = 'REVENUE'` is not the
+ * same question as "the delivery funnel", and a repository that needed the
+ * narrower one would otherwise have written `'6'` into its SQL, where nothing
+ * relates it back to this table. Portal vocabulary stays in this file; callers
+ * import the name.
+ */
+export const DELIVERY_PIPELINE_EXTERNAL_ID = '6'
+
 /** Every pipeline on the portal, in the order the portal sorts them. */
 export const ALL_PIPELINES = [0, 12, 4, 6, 10, 8, 14, 18, 20] as const
 

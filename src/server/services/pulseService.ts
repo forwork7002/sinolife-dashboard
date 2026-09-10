@@ -215,7 +215,53 @@ export interface FlowDto {
   readonly aging: FlowAgingDto
 }
 
+/**
+ * One column of the Доставка kanban.
+ *
+ * `stageName` IS THE PORTAL'S STRING, untranslated. «В пути», «TOSHKENT-1»,
+ * «Отказ предварительно» — the client reads this board in Bitrix24 and asked
+ * for the same words here, so this field is passed through and no UI may
+ * localise it.
+ */
+export interface DeliveryStageDto {
+  readonly stageId: string
+  readonly stageName: string
+  readonly category: string
+  readonly sortOrder: number
+  /** Orders standing in this column right now — no reporting window. */
+  readonly openCount: number
+  readonly openValue: MoneyDto
+}
+
+export interface DeliveryBoardDto {
+  /**
+   * The funnel's own name, from the portal. Null when this database holds no
+   * Доставка pipeline at all — the demo seed, which has nine generic stages
+   * and no delivery ladder — so a screen can say «not in this database»
+   * rather than draw an empty board and imply the funnel is idle.
+   */
+  readonly pipelineName: string | null
+  readonly stages: readonly DeliveryStageDto[]
+  readonly totals: {
+    readonly openCount: number
+    readonly openValue: MoneyDto
+  }
+}
+
 // ---------------------------------------------------------------------------
+
+/**
+ * «Доставка · В пути» → «В пути»: one KNOWN prefix removed, or nothing.
+ *
+ * The stage table stores every name prefixed with its funnel, because stage
+ * ids repeat across pipelines and a bare name is ambiguous in a filter list.
+ * Matching the row's own pipeline name rather than splitting on the separator
+ * is what makes this safe for a stage whose name contains ' · ' itself.
+ */
+function stripPipelinePrefix(stageName: string, pipelineName: string): string {
+  const prefix = `${pipelineName} \u00b7 `
+  return stageName.startsWith(prefix) ? stageName.slice(prefix.length) : stageName
+}
 
 /**
  * One decimal for display, same policy as `roundPercent` but named for what
@@ -416,6 +462,55 @@ export class PulseService {
           stuckCount: totals.stuckCount,
           stuckValue: toMoneyDto(money(totals.stuckValueMinor, ctx.currency)),
         },
+      },
+    }
+  }
+
+  /**
+   * The Доставка funnel's kanban columns — what is standing where, right now.
+   *
+   * ITS OWN METHOD RATHER THAN A BLOCK ON `flow`, because it answers a
+   * different question with a different clock. `flow` is period-bound on both
+   * halves — `stageReach` cohorts the deals CREATED in the window, `aging`
+   * measures dwell against `ctx.now` for a filtered set — while this is a
+   * snapshot with no window at all, which is exactly what a kanban column is.
+   * Folding it in would have made one payload carry two clocks and forced
+   * every caller of `flow` to pay for a read it does not render, which is the
+   * mistake `withAging` was added to undo.
+   *
+   * NO ROUNDING, NO DERIVED RATE, NO SHARE. The board's whole value is that a
+   * manager can put it beside the portal and read the same two numbers per
+   * column; anything computed on top is a number the portal does not show.
+   */
+  async deliveryBoard(ctx: AnalyticsContext): Promise<DeliveryBoardDto> {
+    const rows = await this.repo.deliveryBoard(pulseFilters(ctx))
+    const pipelineName = rows[0]?.pipelineName ?? null
+
+    const stages = rows.map<DeliveryStageDto>((row) => ({
+      stageId: row.stageId,
+      /* Stripped here and not on the client: the board IS one funnel and its
+         heading already names it, so the prefix is thirteen characters
+         repeated down fifteen rows. See `stripPipelinePrefix`. */
+      stageName: stripPipelinePrefix(row.stageName, row.pipelineName),
+      category: row.category,
+      sortOrder: row.sortOrder,
+      openCount: row.openCount,
+      openValue: toMoneyDto(money(row.openValueMinor, ctx.currency)),
+    }))
+
+    /*
+      Summed from the SAME rows the board draws, so the total is the columns
+      and cannot be a second answer. Reduced over minor units — adding the
+      lossy `amount` fields would drift by a tiyin per column.
+    */
+    const openValueMinor = rows.reduce((sum, row) => sum + row.openValueMinor, 0n)
+
+    return {
+      pipelineName,
+      stages,
+      totals: {
+        openCount: rows.reduce((sum, row) => sum + row.openCount, 0),
+        openValue: toMoneyDto(money(openValueMinor, ctx.currency)),
       },
     }
   }

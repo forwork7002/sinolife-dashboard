@@ -53,3 +53,6 @@ bitrix24-analysis.json
 bitrix24-pipelines.json
 bitrix24-duplication.json
 bitrix24-final-dup.json
+
+# Playwright MCP output — screenshots and session snapshots, never source
+.playwright-mcp/

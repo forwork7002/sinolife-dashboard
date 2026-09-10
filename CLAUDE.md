@@ -356,14 +356,14 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Screen | URL | Feature | Endpoint(s) | Service → Repository | Window filters on |
 |---|---|---|---|---|---|
 | Boshqaruv markazi | `/` | `overview/CommandCentrePage` | `/dashboard/command` | CommandCentre, Insights, Concentration → Insights, Concentration | **mixed, 3 clocks** — `createdAtSource` (intake, funnel, logistics), `closedAt` (delivered revenue, products, headcount), `queued_at` (confirmation + rejection band) |
-| Savdo tahlili | `/analytics/sales` | `sales/SalesPage` | `/analytics/sales`, `/analytics/sources`, `/analytics/products`, `/insights/pulse`, `/insights/flow`, `/analytics/sellers` (the FAKT 1 / FAKT 2 band, `sales/ConfirmationFaktSection`) | Analytics, Pulse, SellerBoard → Deal, Reference, Pulse, Insights | **mixed** — a permissive pre-filter admits anything touching the window, then each measure picks its own basis |
+| Savdo dinamikasi | `/analytics/sales` | `sales/SalesPage` + `ConfirmationFaktSection` + `DeliveryBoardSection` | `/analytics/sellers` twice (the board, and `?include=faktTrend` for the chart) + `/insights/delivery` | SellerBoard, Pulse → SellerBoard, Pulse | the arrival in `C4:NEW` (`queued_at`) — **except the Доставка board, which has NO window at all**: a kanban column is where orders are standing now |
 | Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` | `/insights/cohorts`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | `closedAt`, on revenue-bearing WON deals only — nothing here reads `createdAtSource` |
 | Kanallar | `/marketing` | `marketing/MarketingPage` | `/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` | `/insights/logistics` | Insights → Insights, Reference | `createdAtSource`, uniformly in all three queries |
 | Tasdiqlash navbati | `/confirmation` | `confirmation/ConfirmationPage` | `/insights/confirmations/orders` | Insights → Insights | **the arrival in `C4:NEW`** — the latest `deal_stage_history` row whose stage signals `CONFIRM_NEW`; `?queue=backlog` (where the bell lands) drops the window entirely |
 | Joʻnatish nuqtalari | `/warehouse` | `warehouse/WarehousePage` | `/insights/dispatch` | Insights → Insights | `createdAtSource` — a creation cohort graded by the deal's **current** stage |
-| Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | the arrival in `C4:NEW` (`queued_at`) — the confirmation queue's own cohort. **The television board**: two podiums and two ranked lists (sellers left, teams right), nothing else; the FAKT 1 / FAKT 2 totals, conversion, bonus fund and ladder render on Savdo dinamikasi (`sales/ConfirmationFaktSection`), which is why the route lists both sections |
+| Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | the arrival in `C4:NEW` (`queued_at`) — the confirmation queue's own cohort. **The television board**: two podiums and two ranked lists (sellers left, teams right) and ONE control, the FAKT 1 / FAKT 2 switch in each heading; the FAKT 1 / FAKT 2 totals, conversion, bonus fund and ladder render on Savdo dinamikasi (`sales/ConfirmationFaktSection`), which is why the route lists both sections |
 | KPI rejalari | `/kpi` | `kpi/KpiPage` | `/kpi` | Kpi, Analytics → Reference, Deal | **the plan's own `periodStart`/`periodEnd`** — the dashboard window only *selects* which plan is live |
 | Struktura | `/structure` | `structure/StructurePage` | `/insights/structure`, `/insights/structure/roster` | Insights → Insights | **nothing — the screen is DATELESS.** `period={false}`, no window control, and neither endpoint takes one |
 
@@ -377,8 +377,29 @@ Per-screen traps worth knowing before you touch one:
 - **Boshqaruv markazi** — the 45-second in-process cache key carries the
   *preset*, not just the window. Dropping it served «Shu hafta» the numbers for
   «Bugun» (78 where 103 was right, and the reverse).
-- **Savdo tahlili** — the only endpoint whose money does not pass through
-  `toMoneyDto`.
+- **Savdo dinamikasi** — **stripped to FAKT 1 / FAKT 2 on 2026-09-10**, on the
+  client's instruction («bu boʻlimda koʻp malumotlar ortiqcha boʻlib ketgan…
+  menga bu boʻlim fakt 1 va fakt 2 va bitrix24dan»). Gone: the «Yopilgan
+  tushum» hero figure and its composition line, «Yopilgan bitimlar boʻyicha»,
+  «Savdo pulsi», «Bosqichlar qamrovi», «Mahsulotlar boʻyicha», «Manbalar
+  boʻyicha» and the bonus ladder. What that bought is the reason to keep it
+  that way: the screen had SEVEN requests on THREE clocks and now has two on
+  one, so nothing on it can disagree with anything else on it. Re-adding any
+  closedAt figure re-adds the reconciliation prose with it.
+  `/analytics/sales` — still the only endpoint whose money does not pass
+  through `toMoneyDto` — no longer has a caller in `src/features`; the route
+  and its service are untouched, and `/insights/flow` now has no caller either.
+  **The one block on that screen with a different clock is the Доставка board**,
+  and it is deliberate: `/insights/delivery` takes a period and uses none of it,
+  because the client reads these columns beside the portal's own kanban, where
+  an order that arrived in June and is still in VODIY is in VODIY today. Two
+  traps live in that one query and both print a plausible board rather than an
+  error — the dashboard filters must ride the LEFT JOIN's ON clause (moved to
+  the WHERE they delete every empty column) and the count must be
+  `count(d."id")` (an outer join makes `count(*)` print 1 for an empty one).
+  `tests/http/deliveryBoardSql.test.ts` pins both, and every stage name is
+  printed VERBATIM in Russian — the block's whole value is that it reconciles
+  against the screen it was copied from.
 - **Mijoz qaytishi** — «Faol bazada» is a separate DISTINCT-customer total, not
   the sum of the ladder bars.
 - **Kanallar** — the dashboard-wide `preset` and `filial` do **not** reach this
@@ -394,6 +415,24 @@ Per-screen traps worth knowing before you touch one:
   never `ctx.scope`, and `boardFilters` drops `restrictToEmployeeIds` a second
   time so a scope cannot reach the SQL by one edit. See the block above
   *Client data flow* for the reason and what it discloses.
+  **The FAKT 1 / FAKT 2 switch re-ranks in the BROWSER, and one press moves
+  BOTH columns.** Added 2026-09-10 — «ikkita boʻlimni sotuvchilar va
+  komandalar boʻyichasini fakt 1 va fakt 2 boʻyicha koʻrish mumkin boʻlsin».
+  Every row is already on the payload carrying both facts, so this is one
+  answer read two ways and not a second question: no parameter, no request, no
+  cache key, nothing that can straddle a sync. `rankedBy` in `SellersPage`
+  therefore MIRRORS `SellerBoardService` — `buildBoard` for the sellers and
+  `teamRows` for the teams — the fact being read, then the other one, then the
+  key, with competition ranking over BOTH figures; change that rule on the
+  server and it has to change here in the same commit, or this board and
+  `/analytics/leaderboard` disagree about who is second.
+  `tests/features/sellersTvBoard.test.tsx` is what holds the mirror: read on
+  FAKT 2 it asserts the ranks the service sent, shared ranks and skips
+  included. The choice lives on the page, not in the column, because a team's
+  money is its sellers' money summed and two halves reading different facts is
+  the reconciliation `PodiumBasis` exists to prevent, one column deep. It
+  opens on 'auto' — the board's old behaviour, FAKT 2 once anybody has
+  delivered — so a television nobody touches is unchanged.
 - **KPI rejalari** — the preset picks the plan but does not slice it. «Bugun»
   and «Shu oy» give identical numbers inside one plan.
 - **Struktura** — **no money and no reporting window, and both are load-bearing

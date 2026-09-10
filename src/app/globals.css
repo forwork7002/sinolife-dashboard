@@ -1271,6 +1271,78 @@ body::after {
 }
 
 /**
+ * The identity columns, pinned to the LEFT edge — `.thead-sticky` turned
+ * ninety degrees, and for exactly its reason.
+ *
+ * WHAT IT IS FOR. The confirmation queue is thirteen columns of order data and
+ * it does not fit a laptop: measured on 2026-09-10 at a 1600px window, the
+ * scroll box is 1287px against a 1860px table, so the last three columns —
+ * АДРЕС, СТАТУС and ИСТОЧНИК — are reachable only by scrolling sideways. The
+ * middle one of those is the state of the order, which is the entire question
+ * this board answers. Scrolling to it used to take the row's identity off the
+ * screen with it: by the time СТАТУС was visible, the ROP, the daily № and the
+ * date it belongs to were gone, so the reader was looking at a status with
+ * nothing to attach it to and scrolled back to find out whose it was.
+ *
+ * Pinned, the first three columns stay while the other ten travel under them,
+ * which is the spreadsheet behaviour every reader of this board already knows
+ * from the client's own Excel exports.
+ *
+ * ON THE CELLS AND NOT THE COLUMN, for the reason `.thead-sticky` records:
+ * there is no such thing as a sticky <col>, and sticky on a <tr> is still
+ * uneven across engines. The per-cell `left` offset is computed in DataTable
+ * from the declared widths, because CSS cannot sum its siblings.
+ *
+ * THE OPAQUE BACKGROUND IS MANDATORY. A transparent pinned cell lets the cells
+ * sliding beneath it show through, which is worse than not pinning at all.
+ * `--surface-raised` and not `--surface-sunken`: these are DATA cells, and they
+ * must go on reading as part of their row rather than as a band of chrome, so
+ * they take the card's own background (`.card`) — the surface the rest of the
+ * row is already painted on.
+ *
+ * THE HOVER WASH HAD TO BE PUT BACK BY HAND. The row paints its hover on <tr>,
+ * and an opaque cell lifted out of the flow paints over it — so the pinned
+ * three stayed pale while the ten beside them lit up, and one row read as two.
+ * `:hover` on the row's own class reaches them here instead.
+ *
+ * THE RULE IS A BOX-SHADOW, never a border-right: this table is
+ * `border-collapse: collapse`, where a cell's borders are painted by the table
+ * and do not travel with a cell that has been lifted out. Same trap, same cure,
+ * as the two rules above. It is drawn only once the rows have actually moved
+ * sideways — `.is-scrolled-x` — because a divider over a table that is not
+ * scrolled is a line claiming a split that is not happening.
+ */
+.tcol-sticky {
+  position: sticky;
+  z-index: 1;
+  background: var(--surface-raised);
+}
+
+/* Above the pinned columns AND above the ordinary header cells: this handful
+   of cells is sticky in both directions at once, so it has to win both. */
+.thead-sticky.tcol-sticky {
+  z-index: 3;
+}
+
+tr:hover > .tcol-sticky {
+  background: var(--surface-sunken);
+}
+
+.tcol-sticky.is-edge {
+  box-shadow: 1px 0 0 var(--border);
+}
+
+.tcol-sticky.is-edge.is-scrolled-x {
+  box-shadow: 1px 0 0 var(--border-strong), 6px 0 12px -6px rgb(0 0 0 / 0.28);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tcol-sticky.is-edge {
+    transition: box-shadow 150ms var(--ease-out);
+  }
+}
+
+/**
  * Empty and error states hold the grid's rhythm.
  *
  * A tile whose fetch failed must not collapse into a caption-height sliver:
@@ -2781,6 +2853,65 @@ p {
   background: color-mix(in oklab, var(--tv-tone) 16%, transparent);
   border: 1px solid color-mix(in oklab, var(--tv-tone) 45%, transparent);
   box-shadow: 0 0 0 4px color-mix(in oklab, var(--tv-tone) 7%, transparent);
+}
+
+/*
+ * FAKT 1 / FAKT 2 — which fact the board is ranked on, in each column's head.
+ *
+ * THE PHONE'S SWITCH WEARS THE SAME SHAPE and this one is deliberately a size
+ * quieter: `.tv-switch` chooses which BOARD is on screen and takes a full row
+ * to do it, while this chooses which FIGURE that board is read on and rides
+ * the heading beside the count. Same pill, same tone, half the type.
+ *
+ * DRAWN AT EVERY WIDTH, unlike `.tv-switch`, which is a phone's answer to two
+ * columns that do not fit. Both boards carry this control at 1920 and at 390,
+ * because the fact is a question about the numbers and not about the layout.
+ *
+ * The lit button is the fact the board is ACTUALLY ranked on, which under the
+ * opening 'auto' is decided by the data — see `FaktSwitch`. It is `--tv-tone`,
+ * so each column lights its own hue and the control belongs to the board it
+ * sits on; chrome, never a value.
+ */
+.tv-fakt {
+  display: flex;
+  flex-shrink: 0;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+}
+.tv-fakt-tab {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: var(--tv-small);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--ink-muted);
+  transition:
+    background var(--duration-enter) var(--ease-out),
+    color var(--duration-enter) var(--ease-out);
+}
+.tv-fakt-tab:hover {
+  color: var(--ink-secondary);
+}
+.tv-fakt-tab[aria-pressed='true'] {
+  color: var(--ink-primary);
+  background: color-mix(in oklab, var(--tv-tone) 18%, var(--surface-raised));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--tv-tone) 50%, transparent),
+    var(--shadow-card);
+}
+/*
+ * Forced colours discard both the wash and the ring, so the lit button would
+ * be told apart by nothing at all. `aria-pressed` is already on the element;
+ * this gives that state a border the mode keeps.
+ */
+@media (forced-colors: active) {
+  .tv-fakt-tab[aria-pressed='true'] {
+    border: 2px solid CanvasText;
+  }
 }
 
 /*

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode, type UIEvent } from 'react'
+import { useEffect, useLayoutEffect, useState, type ReactNode, type UIEvent } from 'react'
 
 import { EmptyState, ErrorState } from '@/components/states/States'
 import { t } from '@/lib/messages'
@@ -18,6 +18,14 @@ import { SortCaretGlyph } from '@/components/ui/Icons'
  * Wide tables scroll inside their own container so the page body never scrolls
  * horizontally on a laptop.
  */
+
+/*
+  useLayoutEffect warns on the server, and this component renders there. The
+  house cure is the same one Tooltip uses — see its note: by the time either
+  runs in a browser they are equivalent, minus one frame, and the frame is what
+  the layout variant is for.
+*/
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect
 
 export interface Column<T> {
   readonly key: string
@@ -119,6 +127,117 @@ interface DataTableProps<T> {
    * taught to find the total.
    */
   readonly stickyLastRow?: boolean
+  /**
+   * How many LEADING columns stay put while the rest scroll sideways.
+   *
+   * For a table too wide for the screen, which on this dashboard means exactly
+   * one: the confirmation queue is thirteen columns and needs 1 860px against
+   * the 1 287px a 1600 window leaves it. Reaching СТАТУС there meant scrolling
+   * the row's own identity off the left edge — see `.tcol-sticky` in
+   * globals.css for the whole reasoning and the measurements.
+   *
+   * COUNTED, NOT NAMED, and the count must cover a block that reads as one
+   * thing: the identity of the row. Pinning half of an identity is worse than
+   * pinning none of it.
+   *
+   * The offsets are MEASURED rather than taken from the declared widths — see
+   * `useStickyOffsets` for why summing the widths leaves a visible gap — so a
+   * pinned column needs no `width` of its own to sit in the right place.
+   *
+   * Zero and undefined both mean "nothing pinned", which is every other table
+   * in the application — none of them pays a pixel or a class for this.
+   */
+  readonly stickyColumns?: number
+}
+
+/**
+ * Where each pinned column starts, MEASURED from the laid-out header row.
+ *
+ * SUMMING THE DECLARED WIDTHS DOES NOT WORK, and the gap it leaves is visible.
+ * A `width` on a table cell is a hint: `table-layout: auto` honours it only as
+ * far as the content and the table's own width allow, and this table is
+ * `w-full` over a `minWidth`, so the browser redistributes. Measured on the
+ * confirmation queue on 2026-09-10 — РОП declared 116px and laid out at 113,
+ * МИЖОЗ declared 140 and laid out at 153. Pinning the second column at the
+ * DECLARED 116 while the first one really ends at 113 leaves a three-pixel
+ * slot for the scrolling cells to show through, which is exactly the artefact
+ * an opaque pinned cell exists to prevent.
+ *
+ * So the offsets come from `offsetLeft` on the header cells, which is the
+ * layout's own answer. The scroll box is the offset parent (it is `relative`,
+ * for the reason written at it) and the table starts flush inside it, so a
+ * header cell's `offsetLeft` IS the distance the column has to stick at.
+ *
+ * A LAYOUT EFFECT, so the offsets are applied in the same frame the table is
+ * first painted in — a `useEffect` would paint one frame of unpinned columns.
+ * The observer re-measures when the window, the sidebar or the content changes
+ * a column's width; it watches the header ROW, which is the element whose box
+ * changes when any of its cells do.
+ *
+ * THE ROW ARRIVES AS STATE, NOT AS A REF, and that is not a style choice. This
+ * component returns a skeleton before it returns a table, so on the render the
+ * effect first runs there is no header row to measure — and a `useRef` gives
+ * the effect nothing to depend ON, so it never ran again once the rows landed
+ * and the columns were never pinned at all. A callback ref sets state when the
+ * node attaches, which is a dependency the effect can see.
+ *
+ * @returns One entry per column: the pixel offset for a pinned one, null for
+ *   every other. Empty until the first measurement, so nothing is pinned to a
+ *   guess.
+ */
+function useStickyOffsets(
+  count: number,
+  columnCount: number,
+): { headRef: (node: HTMLTableRowElement | null) => void; offsets: (number | null)[] } {
+  const [headRef, setHeadRef] = useState<HTMLTableRowElement | null>(null)
+  const [measured, setMeasured] = useState<number[]>([])
+
+  useIsomorphicLayoutEffect(() => {
+    const row = headRef
+    if (count <= 0 || row === null) {
+      // Not a no-op: a table that loses its pinning must not keep the last
+      // offsets it measured while it had some.
+      setMeasured((previous) => (previous.length === 0 ? previous : []))
+      return
+    }
+
+    const measure = () => {
+      const cells = [...row.children] as HTMLElement[]
+      const next = cells.slice(0, count).map((cell) => cell.offsetLeft)
+      // Same numbers, same array: this runs from a ResizeObserver, and setting
+      // fresh state on every observation would re-render the table on every
+      // frame of a window drag.
+      setMeasured((previous) =>
+        previous.length === next.length && previous.every((value, i) => value === next[i])
+          ? previous
+          : next,
+      )
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(row)
+    return () => observer.disconnect()
+  }, [count, columnCount, headRef])
+
+  const offsets = Array.from({ length: columnCount }, (_, i) =>
+    i < measured.length ? measured[i]! : null,
+  )
+
+  return { headRef: setHeadRef, offsets }
+}
+
+/**
+ * The classes a cell needs to be pinned, and nothing at all when it is not.
+ *
+ * An empty string for every column of every other table in the application:
+ * the pinning costs a class only where it is asked for.
+ */
+function pinClass(left: number | null, isEdge: boolean, scrolledX: boolean): string {
+  if (left === null) return ''
+  // The divider belongs to the LAST pinned column and only once the rows have
+  // moved — see `.tcol-sticky` in globals.css.
+  return `tcol-sticky${isEdge ? ' is-edge' : ''}${isEdge && scrolledX ? ' is-scrolled-x' : ''}`
 }
 
 export function DataTable<T>({
@@ -139,6 +258,7 @@ export function DataTable<T>({
   moreLabel = (hidden) => `Yana ${hidden} ta qatorni koʻrsatish`,
   maxHeight = '60dvh',
   stickyLastRow,
+  stickyColumns = 0,
 }: DataTableProps<T>) {
   const [expanded, setExpanded] = useState(false)
   /*
@@ -149,11 +269,35 @@ export function DataTable<T>({
     owns the DOM as usual.
   */
   const [scrolled, setScrolled] = useState(false)
+  /*
+    The same reading for the OTHER axis, and it is a separate one on purpose: a
+    table can be scrolled down without being scrolled across, and each rule
+    belongs to the edge that has actually moved. Read from the same event, so
+    the pair costs one handler and no extra listener.
+  */
+  const [scrolledX, setScrolledX] = useState(false)
 
   const onScroll = (event: UIEvent<HTMLDivElement>) => {
     const isScrolled = event.currentTarget.scrollTop > 0
     if (isScrolled !== scrolled) setScrolled(isScrolled)
+    /*
+      Only measured when something is actually pinned. Without pinned columns
+      the class it drives is on nothing, so reading it would be a state update
+      per horizontal scroll of every table in the application for no paint.
+    */
+    if (stickyColumns > 0) {
+      const isScrolledX = event.currentTarget.scrollLeft > 0
+      if (isScrolledX !== scrolledX) setScrolledX(isScrolledX)
+    }
   }
+
+  const { headRef, offsets: pinnedLeft } = useStickyOffsets(stickyColumns, columns.length)
+  /*
+    The last column that is actually pinned — the one that carries the divider.
+    Found rather than assumed to be `stickyColumns - 1`, because before the
+    first measurement lands there is nothing pinned at all.
+  */
+  const lastPinned = pinnedLeft.reduce((last, offset, i) => (offset === null ? last : i), -1)
 
   if (status === 'error') {
     return <ErrorState message={errorMessage} onRetry={onRetry} />
@@ -231,16 +375,17 @@ export function DataTable<T>({
               everywhere and their contiguous backgrounds read as one band.
               The sunken background keeps a long table's header distinct from
               its rows — and opaque, so rows cannot show through mid-scroll. */}
-          <tr style={{ color: 'var(--ink-muted)' }}>
-            {columns.map((column) => {
+          <tr ref={headRef} style={{ color: 'var(--ink-muted)' }}>
+            {columns.map((column, index) => {
               const sortable = Boolean(column.sortKey && onSort)
               const active = column.sortKey && sort === column.sortKey
+              const left = pinnedLeft[index]
 
               return (
                 <th
                   key={column.key}
                   scope="col"
-                  style={{ width: column.width }}
+                  style={left === null ? { width: column.width } : { width: column.width, left }}
                   // aria-sort belongs on the header cell, not on the button
                   // inside it — the column is what is sorted, not the control.
                   aria-sort={
@@ -252,7 +397,7 @@ export function DataTable<T>({
                         : 'none'
                       : undefined
                   }
-                  className={`thead-sticky ${scrolled ? 'is-scrolled' : ''} px-2 py-2 text-[11px] font-medium tracking-wide uppercase ${
+                  className={`thead-sticky ${scrolled ? 'is-scrolled' : ''} ${pinClass(left, index === lastPinned, scrolledX)} px-2 py-2 text-[11px] font-medium tracking-wide uppercase ${
                     column.align === 'right' ? 'text-right' : 'text-left'
                   }`}
                 >
@@ -354,24 +499,28 @@ export function DataTable<T>({
               }`}
               style={{ borderColor: 'var(--border)' }}
             >
-              {columns.map((column) => {
+              {columns.map((column, colIndex) => {
                 const Cell = column.rowHeader ? 'th' : 'td'
+                const left = pinnedLeft[colIndex]
+                const ink = column.rowHeader ? 'var(--ink-primary)' : 'var(--ink-secondary)'
                 return (
                   <Cell
                     key={column.key}
                     scope={column.rowHeader ? 'row' : undefined}
                     /* `.tfoot-sticky` sits on the CELLS and not the row, for
-                       the same reason `.thead-sticky` does above. */
-                    className={`${pinned ? 'tfoot-sticky ' : ''}px-2 py-2.5 ${
+                       the same reason `.thead-sticky` does above — and so does
+                       `.tcol-sticky`, which is the same idea turned ninety
+                       degrees. A cell in the bottom-left corner of a table with
+                       both wears both, which is why neither sets `position`
+                       twice over the other. */
+                    className={`${pinned ? 'tfoot-sticky ' : ''}${pinClass(left, colIndex === lastPinned, scrolledX)} px-2 py-2.5 ${
                       column.rowHeader ? 'font-medium' : 'font-normal'
                     } ${column.align === 'right' ? 'text-right' : 'text-left'} ${
                       column.numeric ? 'tabular' : ''
                     }`}
                     // Row identity leads: the name column in primary ink, the
                     // figures beside it a step quieter.
-                    style={{
-                      color: column.rowHeader ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-                    }}
+                    style={left === null ? { color: ink } : { color: ink, left }}
                   >
                     {column.render(row)}
                   </Cell>

@@ -640,26 +640,43 @@ export interface LogisticsRowDto {
   readonly deliveryRate: number | null
   /** Days from the order being created to its `Доставлено` stamp. */
   readonly medianDays: number | null
-  readonly p90Days: number | null
+}
+
+/**
+ * One column of the portal's Доставка kanban, named the way the portal names
+ * it — «Подготовка товара», «Заказ в мой склад», «TOSHKENT-1», «Доставлено».
+ *
+ * `amount` is every deal standing in the stage, which is the figure the
+ * kanban prints. It is NOT `LogisticsRowDto.revenue`, which counts won deals
+ * only: a stage nothing has won yet is not a stage worth nothing.
+ */
+export interface LogisticsStageDto {
+  readonly stage: string
+  readonly orders: number
+  /** Share of the funnel's own orders. Null when the funnel is empty. */
+  readonly sharePercent: number | null
+  readonly amount: MoneyDto
 }
 
 export interface LogisticsDto {
   readonly routes: readonly LogisticsRowDto[]
   readonly regions: readonly LogisticsRowDto[]
+  /** The Доставка funnel itself, stage by stage, in the portal's own order. */
+  readonly stages: readonly LogisticsStageDto[]
   /**
    * Losses split by `stage`:
    *   RETURNED  — travelled to the customer and came back
    *   CANCELLED — killed in the delivery pipeline before dispatch
-   *   PRE_SALE  — never became an order; lost in qualification
    *
-   * `lost` is null for PRE_SALE, whose rows are excluded from revenue because
-   * the same order appears in several pipelines.
+   * A third bucket, PRE_SALE, used to carry the qualification funnel's
+   * reasons — the one block on this screen reporting a different funnel. It
+   * went with the rework, and `lost` stopped being nullable with it.
    */
   readonly reasons: readonly {
     readonly stage: string
     readonly reason: string
     readonly orders: number
-    readonly lost: MoneyDto | null
+    readonly lost: MoneyDto
   }[]
   readonly totals: {
     readonly orders: number
@@ -1368,11 +1385,13 @@ export interface SellerDayDto {
  * Mirrors `sellerBoardService.FaktTrendPointDto`, like every other type in
  * this file; nothing checks the mirror, so edit both sides.
  *
- * MONEY AS A PLAIN NUMBER IN SOʻM, not a `MoneyDto`, because these two series
- * share an axis with `TrendPointDto.revenue`, which `/analytics/sales` has
- * always serialised the same lossy way. `date` is the BUCKET START as an ISO
- * instant, written exactly as the revenue trend writes it, so the client zips
- * the two on equal strings rather than on an index.
+ * MONEY AS A PLAIN NUMBER IN SOʻM, not a `MoneyDto`. It shared an axis with
+ * `TrendPointDto.revenue` until 2026-09-10 — which `/analytics/sales` has
+ * always serialised the same lossy way — and the shape stayed after the
+ * revenue area came off `FaktTrendChart`, because these two now own that axis
+ * alone and a `MoneyDto` would buy the chart nothing it plots. `date` is the
+ * BUCKET START as an ISO instant, from the same `enumerateBuckets` every other
+ * trend on the dashboard uses.
  */
 export interface FaktTrendPointDto {
   readonly date: string
@@ -1446,6 +1465,50 @@ export interface FlowAgingDto {
 export interface FlowDto {
   readonly stageConversion: FlowConversionDto
   readonly aging: FlowAgingDto
+}
+
+// ---------------------------------------------------------------------------
+// The Доставка kanban — `/insights/delivery`.
+// Mirrors the DTOs in `src/server/services/pulseService.ts`.
+// ---------------------------------------------------------------------------
+
+/**
+ * One column of the portal's Доставка board.
+ *
+ * `stageName` ARRIVES IN THE PORTAL'S OWN WORDS and is rendered as it arrives.
+ * «В пути», «TOSHKENT-1», «Отказ предварительно» — the client asked for these
+ * exact strings on 2026-09-10 because the floor reconciles this block against
+ * the Bitrix24 screen it was copied from. Nothing on the client may translate,
+ * shorten or title-case them.
+ */
+export interface DeliveryStageDto {
+  readonly stageId: string
+  /** Already stripped of its «Доставка · » prefix by the service. */
+  readonly stageName: string
+  readonly category: string
+  readonly sortOrder: number
+  /**
+   * Orders standing in this column RIGHT NOW. There is no reporting window on
+   * this figure — an order that arrived in June and has not moved is counted
+   * here today, exactly as the portal counts it.
+   */
+  readonly openCount: number
+  readonly openValue: MoneyDto
+}
+
+export interface DeliveryBoardDto {
+  /**
+   * The funnel's own name from the portal, or null when this database holds no
+   * Доставка pipeline — which is the demo seed, whose nine generic stages are
+   * not a delivery ladder. A screen uses it to tell "nothing is standing in
+   * the funnel" apart from "this funnel is not here".
+   */
+  readonly pipelineName: string | null
+  readonly stages: readonly DeliveryStageDto[]
+  readonly totals: {
+    readonly openCount: number
+    readonly openValue: MoneyDto
+  }
 }
 
 // ---------------------------------------------------------------------------

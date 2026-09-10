@@ -84,7 +84,7 @@ export const t = {
     */
     logistics: {
       title: 'Logistika natijasi',
-      lead: 'Buyurtma qaysi hudud va tashuvchi orqali ketgani, qancha vaqtda yetgani va qayerda qaytgani. Davr buyurtma OLINGAN sana boʻyicha.',
+      lead: 'Доставка voronkasi — bosqichlar portaldagi nomi va tartibida, keyin hudud va tashuvchi kesimlari. Davr buyurtma OLINGAN sana boʻyicha.',
     },
     /*
       NO LEAD LINE — the board prints nothing under its title in any mode
@@ -217,16 +217,16 @@ export const t = {
 
   chart: {
     /*
-      THE CARD HEADLINES WHAT IT PLOTS, and since 2026-09-09 what it plots
-      first is the floor's own pair.
+      THE CARD HEADLINES WHAT IT PLOTS, AND SINCE 2026-09-10 THAT IS TWO
+      THINGS, NOT THREE.
 
-      The client asked for the page's essential data to be built on FAKT 1 and
-      FAKT 2 («eng muhim malumotlar fakt 1 va fakt 2 ustiga quriladi»), so the
-      two figures moved into this card, above the chart that has been drawing
-      them as lines over the revenue area all along. The title names all three
-      because the card carries all three.
+      It read «FAKT 1 / FAKT 2 va tushum» while the panel drew a closed-revenue
+      area with the pair as lines over it. The client took the revenue off this
+      screen — «menga bu boʻlim fakt 1 va fakt 2 va bitrix24dan» — so the title
+      names what is left, and the basis line below no longer has a second clock
+      to reconcile.
     */
-    revenueTrend: 'FAKT 1 / FAKT 2 va tushum',
+    faktTrend: 'FAKT 1 / FAKT 2',
     /*
       The basis and the bucket are two separate facts, so they are two strings.
 
@@ -235,31 +235,20 @@ export const t = {
       hint reading "kunlar kesimida" was a plain misstatement on «Shu yil»,
       where each point is a week and each label is that week's first day.
     */
-    revenueTrendBasis:
-      'FAKT 1 / FAKT 2 — navbatga tushgan sana, tushum — yopilgan sana boʻyicha',
+    faktTrendBasis: 'Navbatga tushgan sana boʻyicha',
     /*
-      THE SECOND CLOCK ON THE SAME CHART, named because it is not the first.
+      THE CLOCK, NAMED WHEREVER THE FIGURES ARE READ CLOSELY — the legend and
+      the tooltip both carry it.
 
-      The client asked on 2026-09-09 for FAKT 1 and FAKT 2 to be drawn over the
-      revenue area so the three can be compared — «bir birni ustida chiqib
-      turadi, solishtirsa boʻladigan boʻladi». They are not measured on the
-      same date: revenue is booked on the CLOSE date, the two FAKTs on the
-      order's arrival in the confirmation queue (C4:NEW). Unsaid, a reader who
-      sums the lines and finds a different total for one month concludes the
-      chart is broken — which is what `FaktBasisNote` further down the page
-      exists to prevent for the tiles.
+      FAKT 1 and FAKT 2 are dated by the order's arrival in the confirmation
+      queue (C4:NEW), not by the day it was delivered: a July order delivered
+      in August adds to July's FAKT 2. Unsaid, a reader reconciling a month
+      against the portal concludes the chart is broken — which is what
+      `FaktBasisNote` further down the page exists to prevent for the tiles.
     */
     faktBasis: 'FAKT 1 / FAKT 2 — navbatga tushgan sana boʻyicha',
     fakt1: 'FAKT 1 · tasdiqlangan',
     fakt2: 'FAKT 2 · yetkazilgan',
-    /*
-      `/analytics/sellers` honours the employee, department and source filters
-      and drops the other two — an order has no product until it is itemised,
-      and the queue cohort has no stage of its own. On this chart that means
-      the area shrinks under a product filter and the two lines do not, so it
-      is said out loud rather than left as a discrepancy the reader diagnoses.
-    */
-    faktIgnoresFilters: 'FAKT chiziqlari mahsulot va bosqich filtrlarini hisobga olmaydi',
     buckets: {
       day: 'kunlar kesimida',
       week: 'haftalar kesimida',

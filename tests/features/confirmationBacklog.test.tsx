@@ -34,8 +34,40 @@ vi.mock('next/navigation', () => ({
 
 const { useDashboardFilters } = await import('@/features/shared/useDashboardFilters')
 
+/*
+  BOTH DOORS OUT, RECORDED AS ONE.
+
+  `/confirmation` writes its address with `window.history.replaceState` rather
+  than `router.replace` — see `SHALLOW_ROUTES`, and the measurement behind it.
+  What these tests are about is the ADDRESS the hook writes, which is the same
+  statement either way, so the spy catches the native call alongside the router
+  mock instead of the assertions being rewritten around one mechanism. The day
+  a route moves between the two, this file goes on testing what it was written
+  to test.
+*/
+vi.spyOn(window.history, 'replaceState').mockImplementation(
+  (_state: unknown, _title: string, url?: string | URL | null) => {
+    if (url != null) {
+      nav.replaced.push(String(url))
+      // Kept in step, because the hook reads `window.location` back on a
+      // shallow route — in a browser the two cannot disagree, and a harness
+      // where they do would test a state that cannot happen.
+      nav.search = String(url).split('?')[1] ?? ''
+    }
+  },
+)
+
 function filtersFor(search: string) {
   nav.search = search
+  nav.replaced = []
+  /*
+    The address bar carries what the mocked `useSearchParams` carries. On a
+    shallow route the hook composes its next address from `window.location`
+    (see `address()` — it is what stops two clicks in one render losing the
+    first), so a harness that set only one of the two would be describing a
+    browser that does not exist.
+  */
+  window.history.pushState(null, '', `/confirmation${search ? `?${search}` : ''}`)
   nav.replaced = []
   return renderHook(() => useDashboardFilters())
 }

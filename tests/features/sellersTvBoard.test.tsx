@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { SellerBoardDto } from '@/lib/api'
@@ -21,6 +22,8 @@ import { formatFullUzs, formatUzs } from '@/lib/format'
  *   are on screen once, and the fourth row's chase names the bronze seat.
  * - The teams column is the same board over the same words, with the
  *   headcount where the seller's team would be.
+ * - The FAKT 1 / FAKT 2 switch re-ranks the board it is pressed on AND the
+ *   one beside it, because a team's money is its sellers' money summed.
  */
 
 vi.mock('next/navigation', () => ({
@@ -103,7 +106,34 @@ function board(over: {
   } as unknown as SellerBoardDto
 }
 
-const PROPS = { status: 'ready' as const, onRetry: () => {} }
+const PROPS = {
+  status: 'ready' as const,
+  onRetry: () => {},
+  fakt: 'auto' as const,
+  onFakt: () => {},
+}
+
+/**
+ * The page's own wiring: ONE choice, pressed from either heading.
+ * `SellersPage` holds this state — see the block there for why it is not two.
+ */
+function Board({ data }: { data: SellerBoardDto }) {
+  const [fakt, setFakt] = useState<'auto' | 'fakt1' | 'fakt2'>('auto')
+  const props = { status: 'ready' as const, onRetry: () => {}, fakt, onFakt: setFakt }
+  return (
+    <>
+      <SellersColumn data={data} {...props} />
+      <TeamsColumn data={data} {...props} />
+    </>
+  )
+}
+
+const column = (id: 'tv-sellers' | 'tv-teams') => within(document.getElementById(id)!)
+
+/** Presses FAKT 1 (or FAKT 2) in one column's heading. */
+function press(id: 'tv-sellers' | 'tv-teams', label: string) {
+  fireEvent.click(column(id).getByRole('button', { name: label }))
+}
 
 /* «Shu oy» on 2026-09-04: 22 of 263 orders delivered, so 8% decides the rank. */
 const THIN = board({
@@ -296,5 +326,161 @@ describe('the teams column', () => {
     expect(screen.getByText('Gulzora')).toBeDefined()
     expect(within(screen.getByRole('table')).queryByText('Gulzora')).toBeNull()
     expect(within(screen.getByRole('table')).getByText('Baza')).toBeDefined()
+  })
+})
+
+/*
+  «Shu oy», crossed: the order the floor has DELIVERED is not the order it has
+  CONFIRMED. Farida has taken the most money into the queue and delivered the
+  second-most of it; Nodira has confirmed 200 mln and delivered almost none of
+  it yet. Reading FAKT 2 seats Marjona, Farida, Mahliyo — reading FAKT 1 seats
+  Farida, Nodira, Marjona, and not one assertion below is true of both.
+*/
+const CROSSED = board({
+  orders: 300,
+  wonOrders: 120,
+  won: 285_000_000,
+  rows: [
+    seller('Ashrafova 172 Marjona', 1, 120_000_000, 130_000_000, 'Gulzora'),
+    seller('Saparboyeva 110 Farida', 2, 90_000_000, 240_000_000, 'Sevinch'),
+    seller('Yusupova 139 Mahliyo', 3, 60_000_000, 70_000_000, 'Gulzora'),
+    seller('Nodira 118 Karimova', 4, 10_000_000, 200_000_000, 'Lola'),
+    seller('Aziza 121 Toshmatova', 5, 5_000_000, 20_000_000, 'Lola'),
+  ],
+  teams: [
+    team('Gulzora', 1, 12, 180_000_000, 200_000_000),
+    team('Sevinch', 2, 9, 90_000_000, 240_000_000),
+    team('Lola', 3, 7, 15_000_000, 220_000_000),
+  ],
+})
+
+/*
+  Two sellers level on BOTH facts, one ahead of them on FAKT 1 alone, one
+  behind them on everything. Competition ranking is the service's own rule and
+  the switch has to keep it whichever way the keys are ordered: equal money is
+  an equal rank, and the rank after a shared one skips.
+*/
+const TIED = board({
+  orders: 60,
+  wonOrders: 12,
+  won: 26_000_000,
+  rows: [
+    seller('Karimova Aziza', 1, 10_000_000, 30_000_000),
+    seller('Karimova Barno', 1, 10_000_000, 30_000_000),
+    seller('Toshmatova Charos', 3, 5_000_000, 90_000_000),
+    seller('Yusupova Dilnoza', 4, 1_000_000, 10_000_000),
+  ],
+})
+
+/** The seat names of one column, in DOM order — which is 1, 2, 3. */
+const seatsOf = (id: 'tv-sellers' | 'tv-teams') =>
+  [...document.querySelectorAll(`#${id} .tv-seat-name`)].map((n) => n.textContent)
+
+/** The rank each seat's plaque states, digits only: the ranking, not the seat. */
+const ranksOf = (id: 'tv-sellers' | 'tv-teams') =>
+  [...document.querySelectorAll(`#${id} .podium-plaque .sr-only`)].map((n) =>
+    (n.textContent ?? '').replace(/\D/g, ''),
+  )
+
+describe('reading the same board on the other fact', () => {
+  /*
+    THE CLIENT ASKED FOR THE SWITCH IN BOTH HEADINGS, 2026-09-10: «ikkita
+    boʻlimni sotuvchilar va komandalar boʻyichasini fakt 1 va fakt 2 boʻyicha
+    koʻrish mumkin boʻlsin». A phone shows one column at a time, so a control
+    over only one of them is unreachable from the other.
+  */
+  it('draws both buttons in both headings, lit on the fact the data decides', () => {
+    render(<Board data={CROSSED} />)
+
+    for (const id of ['tv-sellers', 'tv-teams'] as const) {
+      expect(column(id).getByRole('button', { name: 'FAKT 1' }).getAttribute('aria-pressed')).toBe(
+        'false',
+      )
+      expect(column(id).getByRole('button', { name: 'FAKT 2' }).getAttribute('aria-pressed')).toBe(
+        'true',
+      )
+    }
+  })
+
+  it('re-seats the podium on confirmed money, and says so on every seat', () => {
+    render(<Board data={CROSSED} />)
+
+    expect(seatsOf('tv-sellers')).toEqual([
+      'Ashrafova 172 Marjona',
+      'Saparboyeva 110 Farida',
+      'Yusupova 139 Mahliyo',
+    ])
+
+    press('tv-sellers', 'FAKT 1')
+
+    expect(seatsOf('tv-sellers')).toEqual([
+      'Saparboyeva 110 Farida',
+      'Nodira 118 Karimova',
+      'Ashrafova 172 Marjona',
+    ])
+    expect(column('tv-sellers').getAllByText(/tasdiqlangan/).length).toBe(3)
+    // The champion's seat prints the figure it was seated on, to the last
+    // digit. Read off the seat rather than the page: `AnimatedNumber` writes
+    // the value twice, visibly and for a screen reader.
+    expect(document.querySelector('#tv-sellers .tv-seat-figure')?.textContent).toContain(
+      formatFullUzs(240_000_000),
+    )
+    // And the seller the delivered board seated third is a row now.
+    expect(within(column('tv-sellers').getByRole('table')).getByText(/Mahliyo/)).toBeDefined()
+    // The seat still carries the OTHER fact under it — real money on this
+    // window, and printed for the first time under a FAKT 1 reading.
+    expect(document.querySelector('#tv-sellers .tv-seat-card')?.textContent).toContain(
+      `FAKT 2 ${formatFullUzs(90_000_000)}`,
+    )
+  })
+
+  /*
+    ONE CHOICE, BOTH COLUMNS. A team's money is its sellers' money summed, so
+    a board reading FAKT 1 on the left and FAKT 2 on the right is the
+    reconciliation `PodiumBasis` exists to prevent, one column deep.
+  */
+  it('moves the other column with it, pressed from either heading', () => {
+    render(<Board data={CROSSED} />)
+
+    expect(seatsOf('tv-teams')[0]).toBe('Gulzora')
+
+    press('tv-sellers', 'FAKT 1')
+    expect(seatsOf('tv-teams')[0]).toBe('Sevinch')
+    expect(column('tv-teams').getByRole('button', { name: 'FAKT 1' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    )
+
+    press('tv-teams', 'FAKT 2')
+    expect(seatsOf('tv-sellers')[0]).toBe('Ashrafova 172 Marjona')
+    expect(
+      column('tv-sellers').getByRole('button', { name: 'FAKT 2' }).getAttribute('aria-pressed'),
+    ).toBe('true')
+  })
+
+  /*
+    THE RANKS IT DERIVES ARE THE RANKS THE SERVICE SENT. `rankedBy` mirrors
+    `SellerBoardService`; read on FAKT 2 it must reproduce it exactly, or the
+    board and `/analytics/leaderboard` start disagreeing about who is second.
+  */
+  it('reproduces the service ranking, shared ranks and skips included', () => {
+    render(<Board data={TIED} />)
+
+    expect(ranksOf('tv-sellers')).toEqual(['1', '1', '3'])
+    expect(column('tv-sellers').getByRole('table').querySelector('.tv-rank')?.textContent).toBe('4')
+  })
+
+  it('keeps that rule when the two keys swap', () => {
+    render(<Board data={TIED} />)
+    press('tv-sellers', 'FAKT 1')
+
+    // Charos alone on 90 mln confirmed, then the pair level on 30 mln — and
+    // the rank behind a shared one still skips.
+    expect(seatsOf('tv-sellers')).toEqual([
+      'Toshmatova Charos',
+      'Karimova Aziza',
+      'Karimova Barno',
+    ])
+    expect(ranksOf('tv-sellers')).toEqual(['1', '2', '2'])
+    expect(column('tv-sellers').getByRole('table').querySelector('.tv-rank')?.textContent).toBe('4')
   })
 })

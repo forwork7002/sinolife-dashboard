@@ -10,17 +10,33 @@ import { DataTable, type Column } from '@/components/ui/DataTable'
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
-import { type LogisticsDto, type LogisticsRowDto, apiGet } from '@/lib/api'
+import {
+  type LogisticsDto,
+  type LogisticsRowDto,
+  type LogisticsStageDto,
+  apiGet,
+} from '@/lib/api'
 import { NO_VALUE, formatCompactUzs, formatNumber } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 /**
- * Delivery performance.
+ * Delivery performance — the Доставка funnel, and two cuts across it.
  *
- * Two cuts of the same orders — by route (hub or carrier) and by customer
- * region — because they answer different questions: one is about the operation
+ * THE FUNNEL IS PRINTED IN THE PORTAL'S OWN WORDS. «Подготовка товара»,
+ * «Заказ в мой склад», «В пути», «Доставлено» — the stage names arrive from
+ * `deal_stage."name"` untranslated, in the portal's own `sortOrder`, because
+ * the floor reads this board in Bitrix24 every day and a translated column is
+ * a column nobody can reconcile against the screen it was copied from.
+ *
+ * The two cuts below it are the same orders asked different questions — by
+ * route (hub or carrier) and by customer region: one is about the operation
  * we run, the other about the geography we serve, and a parcel from Tashkent
  * can travel through any of the hubs.
+ *
+ * EVERYTHING HERE IS Доставка. The page used to carry a third loss card,
+ * «Buyurtmagacha yoʻqotilganlar», reading the qualification funnel — the one
+ * block on a delivery screen reporting a different pipeline. It went, and the
+ * loss query stopped scanning every lost deal on the portal with it.
  *
  * Timings run from the order being created to its `Доставлено` stage stamp,
  * and BOTH tables measure that — the region cut used to measure something
@@ -40,25 +56,21 @@ export function LogisticsPage() {
       apiGet<LogisticsDto>('/insights/logistics', apiParams, signal),
   })
 
-  /** One derivation, so no tile can disagree with its own page. */
+  /**
+   * ONE DERIVATION, so no block can disagree with its own page.
+   *
+   * The three tables each rebuilt this ternary inline, which is three places
+   * for a loading state to fall out of step with the tiles above it.
+   */
+  const viewStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
 
-  const tileStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
-
+  const errorMessage = (query.error as Error | null)?.message
 
   const data = query.data?.data
 
   const returned = data?.reasons.filter((r) => r.stage === 'RETURNED') ?? []
 
   const cancelled = data?.reasons.filter((r) => r.stage === 'CANCELLED') ?? []
-  /**
-   * Losses before the order existed — where every recorded reason actually is.
-   *
-   * On this portal the delivery pipeline records no reason at all (82 losses,
-   * all null) while the qualification funnel records 883. A page asking "why
-   * did we lose them" that showed only the first was showing the only part
-   * with no answer.
-   */
-  const preSale = data?.reasons.filter((r) => r.stage === 'PRE_SALE') ?? []
 
   const totals = data?.totals
 
@@ -107,7 +119,19 @@ export function LogisticsPage() {
     },
     {
       key: 'delivered',
-      header: 'Yetkazildi',
+      /*
+        THE STAGE'S OWN NAME, because this column IS the stage: it counts the
+        DELIVERED logistics role, which is `C6:WON` and nothing else.
+
+        The two failure columns after it are NOT renamed, and that is the same
+        rule applied honestly rather than a lapse. «Qaytdi» and «Joʻnatilmay
+        bekor» are split on whether the parcel ever reached a hub — not on
+        which of «Отказ» / «Отказ предварительно» the portal parked it in,
+        because since June it parks every refusal in the second one. Heading
+        them with those stage names would state the exact thing
+        `refusalReasons` documents as false.
+      */
+      header: 'Доставлено',
       align: 'right',
       numeric: true,
       render: (row) => formatNumber(row.delivered),
@@ -150,18 +174,62 @@ export function LogisticsPage() {
       render: (row) => (row.medianDays === null ? NO_VALUE : formatNumber(row.medianDays)),
     },
     {
-      key: 'p90',
-      header: 'p90 kun',
-      align: 'right',
-      numeric: true,
-      render: (row) => (row.p90Days === null ? NO_VALUE : formatNumber(row.p90Days)),
-    },
-    {
       key: 'revenue',
       header: 'Tushum',
       align: 'right',
       numeric: true,
       render: (row) => formatCompactUzs(row.revenue.amount),
+    },
+  ]
+
+  /**
+   * The kanban's columns: name, count, share, money. Nothing else.
+   *
+   * The delivery table's ten columns say nothing about a stage — «Yetkazish
+   * %» of «В пути» is not a number, it is a category error — so the funnel
+   * gets its own four rather than borrowing them and rendering eight dashes
+   * per row.
+   */
+  const stageColumns: Column<LogisticsStageDto>[] = [
+    {
+      key: 'stage',
+      rowHeader: true,
+      header: 'Bosqich',
+      render: (row) => {
+        const short = routeName(row.stage)
+        const cell = (
+          <span className="font-medium" style={{ color: 'var(--ink-primary)' }}>
+            {short}
+          </span>
+        )
+        return short === row.stage ? cell : <Tooltip content={row.stage}>{cell}</Tooltip>
+      },
+    },
+    {
+      key: 'orders',
+      header: 'Buyurtma',
+      align: 'right',
+      numeric: true,
+      render: (row) => formatNumber(row.orders),
+    },
+    {
+      key: 'share',
+      header: 'Ulush',
+      width: '180px',
+      /*
+        `neutral`, not the graded default. A share of the funnel is a
+        magnitude, not a score — 43% standing in «В пути» is neither good nor
+        bad, and the auto tone would paint it the red it paints a 43%
+        delivery rate.
+      */
+      render: (row) => <Meter value={row.sharePercent} tone="neutral" label={row.stage} />,
+    },
+    {
+      key: 'amount',
+      header: 'Summa',
+      align: 'right',
+      numeric: true,
+      render: (row) => formatCompactUzs(row.amount.amount),
     },
   ]
 
@@ -256,14 +324,14 @@ export function LogisticsPage() {
 
       <div className="stagger grid gap-3 sm:grid-cols-3">
         <StatTile
-          status={tileStatus}
+          status={viewStatus}
           label="Buyurtmalar"
           value={totals?.orders ?? null}
           unit="count"
           hint={totals ? `${formatNumber(totals.inFlight)} tasi hali yoʻlda` : undefined}
         />
         <StatTile
-          status={tileStatus}
+          status={viewStatus}
           label="Qaytdi / bekor"
           value={totals ? totals.refused + totals.cancelledEarly : null}
           unit="count"
@@ -292,13 +360,60 @@ export function LogisticsPage() {
           }
         />
         <StatTile
-          status={tileStatus}
+          status={viewStatus}
           label="Median yetkazish"
           value={totals?.medianDays ?? null}
           unit="days"
           hint="Buyurtmadan «Доставлено» belgisigacha"
         />
       </div>
+
+      {/*
+        THE PORTAL'S OWN BOARD, FIRST.
+
+        The client reads this funnel in Bitrix24 every day and asked for the
+        same columns here under the same names. It sits directly under the
+        tiles because it is the section itself — the two tables below are cuts
+        ACROSS it, and a reader who has not yet seen the funnel has nothing to
+        cut.
+
+        IT IS A COHORT, NOT A LIVE KANBAN, and the hint says so. Every other
+        block on this page is windowed on the day the order was taken; an
+        unwindowed snapshot dropped in among them would answer a different
+        question under the same date range, with nothing on screen saying
+        which. So it reads «orders CREATED in the window — where do they stand
+        now», the same basis Joʻnatish nuqtalari uses. Against the portal's
+        live board the totals will differ, and that is the window doing its
+        job rather than a fault.
+      */}
+      <ChartCard
+        title="Доставка — bosqichlar boʻyicha"
+        hint="Portaldagi voronkaning oʻz ustunlari, oʻz nomlari va oʻz tartibida. Davr ichida OLINGAN buyurtmalar hozir qaysi bosqichda turibdi."
+      >
+        <DataTable
+          columns={stageColumns}
+          rows={data?.stages ?? []}
+          rowKey={(row) => row.stage}
+          status={viewStatus}
+          errorMessage={errorMessage}
+          onRetry={() => void query.refetch()}
+          emptyTitle="Bu davrda buyurtma yoʻq"
+          /*
+            THE FUNNEL, NOT THE WINDOW, is the second thing that empties this
+            table — and the only one a developer ever meets. It is drawn from
+            the Доставка stages by their portal ids (`C6:…`), and the demo
+            database has none: seven generic stages, no pipeline, no C6. So on
+            demo data this table is empty however wide the window is opened,
+            and without this line that reads as a fault rather than as an
+            unimported funnel.
+          */
+          emptyBody="Yoki Доставка voronkasining bosqichlari hali import qilinmagan."
+          minWidth={560}
+          /* Eighteen stages: bounded so the sticky header has something to
+             stick to, the same as the two tables below. */
+          maxHeight={560}
+        />
+      </ChartCard>
 
       <ChartCard
         title="Hudud boʻyicha"
@@ -308,8 +423,8 @@ export function LogisticsPage() {
           columns={columns}
           rows={data?.regions ?? []}
           rowKey={(row) => row.label}
-          status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
-          errorMessage={(query.error as Error | null)?.message}
+          status={viewStatus}
+          errorMessage={errorMessage}
           onRetry={() => void query.refetch()}
           emptyTitle="Bu davrda buyurtma yoʻq"
           minWidth={980}
@@ -330,10 +445,10 @@ export function LogisticsPage() {
           columns={columns}
           rows={data?.routes ?? []}
           rowKey={(row) => row.label}
-          status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
+          status={viewStatus}
           // It rendered the error state with no way out of it: no message and
           // no retry, unlike the identical table directly above.
-          errorMessage={(query.error as Error | null)?.message}
+          errorMessage={errorMessage}
           onRetry={() => void query.refetch()}
           /*
             THE WINDOW FIRST, the import second.
@@ -365,7 +480,7 @@ export function LogisticsPage() {
       */}
       <ChartCard
         title="Qaytgan buyurtmalar"
-        hint="Yoʻlga chiqib, mijozga yetmagan yoki qaytarilgan buyurtmalar. Yoʻqotilgan summa — real yetkazish xarajati bilan birga."
+        hint="Yoʻlga chiqib, mijozga yetmagan yoki qaytarilgan buyurtmalar — «Отказ» yoki «Отказ предварительно», qaysi bosqichda turgani emas, omborni tark etganiga qarab. Yoʻqotilgan summa — real yetkazish xarajati bilan birga."
       >
         {query.isPending && <ChartSkeleton height={140} />}
         {query.isError && (
@@ -385,7 +500,7 @@ export function LogisticsPage() {
 
       <ChartCard
         title="Joʻnatilmay bekor qilinganlar"
-        hint="Ombordan chiqmasdan bekor qilingan buyurtmalar. Tovar qimirlamagani uchun bu yoʻqotilgan tushum emas, oʻtkazib yuborilgan savdo."
+        hint="Ombordan umuman chiqmasdan bekor qilingan buyurtmalar. Tovar qimirlamagani uchun bu yoʻqotilgan tushum emas, oʻtkazib yuborilgan savdo."
       >
         {query.isPending && <ChartSkeleton height={140} />}
         {query.isError && (
@@ -401,26 +516,6 @@ export function LogisticsPage() {
           />
         )}
         {cancelled.length > 0 && <ReasonList reasons={cancelled} />}
-      </ChartCard>
-
-      <ChartCard
-        title="Buyurtmagacha yoʻqotilganlar"
-        hint="Buyurtmaga aylanmay, kvalifikatsiya bosqichida yoʻqolganlar. Operator koʻrsatgan sabab shu yerda yoziladi — yetkazish bosqichida sabab umuman qayd etilmaydi."
-      >
-        {query.isPending && <ChartSkeleton height={140} />}
-        {query.isError && (
-          <ErrorState
-            message={(query.error as Error).message}
-            onRetry={() => void query.refetch()}
-          />
-        )}
-        {data && !query.isError && preSale.length === 0 && (
-          <EmptyState
-            title="Yoʻqotish yoʻq"
-            body="Bu davrda buyurtmagacha bosqichda hech narsa yoʻqolmagan."
-          />
-        )}
-        {preSale.length > 0 && <ReasonList reasons={preSale} />}
       </ChartCard>
     </PageShell>
   )
@@ -473,7 +568,7 @@ function ReasonList({
     readonly stage: string
     readonly reason: string
     readonly orders: number
-    readonly lost: { readonly amount: number } | null
+    readonly lost: { readonly amount: number }
   }[]
 }) {
   const max = Math.max(...reasons.map((r) => r.orders), 1)
@@ -547,28 +642,19 @@ function ReasonList({
           >
             {formatNumber(reason.orders)}
           </span>
-          {reason.lost === null ? (
-            /*
-              The em dash EXPLAINS itself on demand: why this row has no lost
-              money is data, so it rides the Tooltip primitive rather than a
-              native title only a patient mouse ever saw.
-            */
-            <Tooltip content="Bu bosqichda summa hisoblanmaydi">
-              <span
-                className="tabular w-24 shrink-0 text-right text-xs"
-                style={{ color: 'var(--ink-muted)' }}
-              >
-                {NO_VALUE}
-              </span>
-            </Tooltip>
-          ) : (
-            <span
-              className="tabular w-24 shrink-0 text-right text-xs"
-              style={{ color: 'var(--ink-muted)' }}
-            >
-              {formatCompactUzs(reason.lost.amount)}
-            </span>
-          )}
+          {/*
+            Always a figure now. This column used to carry an em dash and a
+            tooltip reading "we do not count money here", for the qualification
+            rows whose amounts cannot be summed without double-counting an
+            order that appears in several pipelines. Those rows are not on this
+            screen any more, so every row left has a real sum.
+          */}
+          <span
+            className="tabular w-24 shrink-0 text-right text-xs"
+            style={{ color: 'var(--ink-muted)' }}
+          >
+            {formatCompactUzs(reason.lost.amount)}
+          </span>
         </li>
       ))}
     </ul>

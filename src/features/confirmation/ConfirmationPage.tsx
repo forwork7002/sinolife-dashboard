@@ -27,8 +27,11 @@ import {
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { PageShell } from '@/features/shared/PageShell'
-import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
-import { boardSummaryKey } from './summaryKey'
+import {
+  useAwaitingRememberedPeriod,
+  useDashboardFilters,
+} from '@/features/shared/useDashboardFilters'
+import { boardCohortKey, boardSummaryKey } from './summaryKey'
 import {
   type ConfirmationOrderDto,
   type ConfirmationOutcome,
@@ -158,7 +161,7 @@ const SORTS = ['createdAt', 'movedAt', 'queuedAt', 'decidedAt', 'amountMinor', '
  * The queue table, one definition for the life of the module.
  *
  * Thirteen columns and fourteen render closures were rebuilt on every
- * render of a page that re-renders on a two-minute poll and on every
+ * render of a page that re-renders on a minute poll and on every
  * keystroke of the search box. Nothing in them reads component state —
  * proved by the move compiling — so the allocation bought nothing.
  */
@@ -388,6 +391,26 @@ export function ConfirmationPage() {
   */
   const sort = (SORTS as readonly string[]).includes(filters.sort) ? filters.sort : 'queuedAt'
 
+  /**
+   * True while the window on screen is the DEFAULT one and the remembered one
+   * is a tick away from replacing it.
+   *
+   * The board holds its first request until this clears. Without it, arriving
+   * at a bare `/confirmation` fired a full cohort build for «Bugun», had the
+   * address replaced with the remembered «Shu oy» a moment later, and fired the
+   * whole thing again — two requests, the first of which nothing was ever drawn
+   * from. `useAwaitingRememberedPeriod` carries the measurement and the reason
+   * the bare address is not a rare arrival: `/` redirects to the account's
+   * first section with no query string, so this is what a login looks like on
+   * the one screen that costs the most to build.
+   *
+   * `!backlog` matches what PageShell passes the restore itself: the bell's
+   * board ignores the window, so there is nothing to restore into and nothing
+   * to wait for. (Its address carries `?queue=backlog` and is never bare
+   * anyway; the two agree in as many words rather than by coincidence.)
+   */
+  const awaitingWindow = useAwaitingRememberedPeriod(filters.queue !== 'backlog')
+
   /*
     What the tiles, the ROP panel and the ROP options actually read — see
     `boardSummaryKey`. Stamped onto the answer so the page can tell an answer
@@ -395,6 +418,13 @@ export function ConfirmationPage() {
     still correct above the table, from one that belongs to another window.
   */
   const summaryKey = boardSummaryKey(apiParams)
+
+  /*
+    And which POPULATION they are measuring, which the ROP selection does not
+    change — see `boardCohortKey`. The pair is what lets a ticked group DIM the
+    band instead of blanking it.
+  */
+  const cohortKey = boardCohortKey(apiParams)
 
   /*
     WHAT THE РЕГИОН OPTIONS ARE ASKED FOR — the window, the search box and the
@@ -430,8 +460,23 @@ export function ConfirmationPage() {
         },
         signal,
       )
-      return { ...answer, askedFor: summaryKey, askedOutcomes: apiParams.outcomes ?? '' }
+      return {
+        ...answer,
+        askedFor: summaryKey,
+        askedCohort: cohortKey,
+        askedOutcomes: apiParams.outcomes ?? '',
+      }
     },
+    /*
+      NOT UNTIL THE WINDOW IS SETTLED — see `awaitingWindow`.
+
+      The one thing this must not do is strand the board: it is false on every
+      arrival that carries a window (which is every link on this dashboard, the
+      sidebar included), and on a bare one it clears within a tick whether or
+      not there is anything to restore. The page shows its loading state for
+      that tick, which is what it would have been showing anyway.
+    */
+    enabled: !awaitingWindow,
     // The table keeps the page it has while the next one loads, instead of
     // collapsing to a skeleton on every click of the pager.
     placeholderData: (previous) => previous,
@@ -497,13 +542,39 @@ export function ConfirmationPage() {
    */
   const rowsStale = query.isPlaceholderData && summaryIsCurrent
 
+  /**
+   * Whether the figures on screen are still ABOUT the same population — see
+   * `boardCohortKey`.
+   *
+   * True across a ticked ROP, false across a moved window. It is the whole of
+   * the difference between a band that dims and a band that blanks.
+   */
+  const cohortIsCurrent = query.data?.askedCohort === cohortKey
+
+  /*
+    SKELETONS ARE FOR A DIFFERENT QUESTION, NOT FOR A NARROWER ONE.
+
+    The band used to drop to six grey blocks whenever `summaryIsCurrent` went
+    false, and the ROP filter is the common way that happens — the client asked
+    for those checkboxes to work «exceldagi filtrga oʻxshab», which is a control
+    you tick and re-tick while comparing, and every tick rebuilt the whole band
+    from grey. Nothing about the numbers justified it: ticking a group narrows a
+    population already on screen, so the figures that come back are a subset of
+    the ones being replaced, in the same units, over the same window.
+
+    So the band keeps them and marks them as one selection behind — the same
+    signal, and the same 0.7, that the rows under it already use for exactly the
+    same situation. A moved window still blanks, because there the next figures
+    genuinely could be anything.
+  */
   const tileStatus = query.isPending
     ? 'loading'
     : query.isError
       ? 'error'
-      : summaryIsCurrent
+      : summaryIsCurrent || cohortIsCurrent
         ? 'ready'
         : 'loading'
+  const tilesStale = tileStatus === 'ready' && !summaryIsCurrent
   const data = query.data?.data
   const totals = data?.totals
 
@@ -975,6 +1046,18 @@ export function ConfirmationPage() {
                 */
                 'stagger grid shrink-0 gap-3 grid-cols-2 sm:grid-cols-3 xl:grid-cols-6'
           }
+          /*
+            One selection behind, and saying so — see `tilesStale`. The same
+            0.7 and the same 150ms the orders card uses, because it is the same
+            statement about the same kind of wait; two different fades for one
+            meaning would read as two different things happening.
+
+            `aria-busy` rather than a visually-hidden caption: the figures are
+            still on screen and still readable, so there is nothing to announce
+            except that they are being replaced.
+          */
+          style={{ opacity: tilesStale ? 0.7 : 1, transition: 'opacity 150ms var(--ease-out)' }}
+          aria-busy={tilesStale || undefined}
         >
           <OutcomeTile
             Glyph={backlog ? ClockGlyph : undefined}
@@ -1192,7 +1275,21 @@ export function ConfirmationPage() {
                     */}
                     Саҳифа янгиланди:{' '}
                     <span className="tabular">{tashkentTime(new Date(query.dataUpdatedAt).toISOString())}</span>
-                    {' (ҳар 2 дақиқада)'}
+                    {/*
+                      ONE MINUTE, WHICH IS WHAT ACTUALLY HAPPENS.
+
+                      It said two, and had said two since the query carried its
+                      own two-minute override. That override was dropped in
+                      favour of the global minute clock (see the query, which
+                      records why) and this line was not moved with it — so the
+                      one caption on this board whose whole job is to say how
+                      fresh the figures are had been understating them by half
+                      for as long as it had been right. A number on screen that
+                      disagrees with the code is worse than no number: the
+                      reader who waits two minutes for a refresh that has
+                      already happened twice stops trusting the board's clock.
+                    */}
+                    {' (ҳар дақиқада)'}
                   </>
                 )}
               </p>
@@ -1232,6 +1329,29 @@ export function ConfirmationPage() {
               */
               maxHeight="100%"
               minWidth={1860}
+              /*
+                РОП, № AND САНА STAY WHILE THE OTHER TEN SCROLL UNDER THEM.
+
+                Thirteen columns of order data do not fit a laptop and never
+                will: measured on 2026-09-10, a 1600px window leaves this table
+                1 287px and it asks for 1 860, so АДРЕС, СТАТУС and ИСТОЧНИК are
+                reachable only sideways — and the middle one of those is the
+                state of the order, which is the whole question this board
+                answers. Getting to it took the row's identity off the screen
+                with it, so the reader arrived at a status with nothing attached
+                to it and scrolled back to find out whose it was.
+
+                THREE, because that is where the identity ends. РОП is the
+                group, № is the label the floor reads out loud, and САНА is the
+                arrival both of them are counted against — the same three the
+                bot posts in its Тасдиклаш line. Pinning two of them would leave
+                a № belonging to no day, and pinning four would take ID сделки
+                out of the part of the row a reader compares against Bitrix.
+
+                It costs 283px of the scrolling area, which is the price of the
+                other ten columns never being anonymous. See `.tcol-sticky`.
+              */
+              stickyColumns={3}
               emptyTitle="Buyurtma topilmadi"
               emptyBody={
                 filters.outcomes.length > 0 ||
@@ -1308,10 +1428,10 @@ function StatsToggle({ open, onToggle }: { open: boolean; onToggle: () => void }
  * popover is open, so this component exists exactly when the reader has asked
  * to see the list — no `onOpen` prop, no effect, and no state to keep in step
  * with the popover's own. React Query caches the answer, so the second open is
- * instant and the board's own two-minute refresh never touches it.
+ * instant and the board’s own minute refresh never touches it.
  *
  * IT IS ITS OWN REQUEST for the reason the endpoint states: the board reloads
- * every two minutes on a screen the floor keeps open all day, and this answer
+ * every minute on a screen the floor keeps open all day, and this answer
  * changes about as often as the portal grows a region.
  *
  * A FAILURE IS SAID, NOT SWALLOWED. An empty list and a list that could not be
@@ -1334,6 +1454,25 @@ function RegionFilterList({
     // The vocabulary of a CRM field. Refetching it on every open would be a
     // round trip to learn that Xorazm is still a region.
     staleTime: 10 * 60 * 1000,
+    /*
+      AND THE TIMER HAS TO BE TURNED OFF SEPARATELY — `staleTime` does not gate
+      it.
+
+      The same trap `useFilterOptions` records in PageShell, arriving by another
+      door: `refetchInterval` runs on its own clock and never asks whether the
+      data is stale (query-core's `#updateRefetchInterval` calls `#executeFetch`
+      directly), so this query inherited the global one-minute poll and the ten
+      minutes above bought nothing at all. A reader who opens the РЕГИОН list
+      and reads down it — which is the whole point of a list with counts on it —
+      re-ran a whole-cohort region aggregation every sixty seconds for as long
+      as the popover stayed open.
+
+      `false` and not a longer interval: this list has no cadence of its own to
+      keep. It is fetched when it is first looked at, and the day the portal
+      grows a region a reader will have reloaded the page long before it
+      matters.
+    */
+    refetchInterval: false,
   })
 
   if (query.isError)

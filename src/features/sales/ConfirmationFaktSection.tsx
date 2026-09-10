@@ -9,12 +9,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable'
 import { GaugeTile, RankBadge, StatTile } from '@/components/ui/Stat'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
-import {
-  type SellerBoardDto,
-  type SellerBoardRowDto,
-  type SellerTeamRowDto,
-  apiGet,
-} from '@/lib/api'
+import { type SellerBoardDto, type SellerTeamRowDto, apiGet } from '@/lib/api'
 import { NO_VALUE, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
 /**
@@ -30,20 +25,29 @@ import { NO_VALUE, formatFullUzs, formatNumber, formatPercent } from '@/lib/form
  * figures are no longer a band in the middle of the page: `FaktHeadline`
  * renders them INSIDE the page's one hero, above the chart that already
  * plots them, and what stays here is everything else the same cohort knows —
- * where the rest of FAKT 1 went, which team is carrying the month, and who
- * is one order from a bonus rung.
+ * where the rest of FAKT 1 went and which team is carrying the month.
+ *
+ * THE BONUS LADDER USED TO CLOSE THIS SECTION and does not any more: the
+ * client took it off on 2026-09-10 («shu joy umuman kerak emas menga, shu
+ * joyni olib tashla»). It was the one block here that was a POLICY rather
+ * than a measurement — three rungs, a payout per rung, and the seller nearest
+ * each. `totals.bonusPayable` survives as one tile on the band, because what
+ * the policy is currently paying is a fact about this cohort; the rungs
+ * themselves live in the client's own rules, not on this screen.
  *
  * ONE REQUEST, TWO CALL SITES. `useFaktBoard` is the only place this screen
  * asks for the board, and both the hero and this section call it: TanStack
  * serves one fetch from one cache entry under one key, so the hero figure and
  * the tiles under it cannot disagree, and the page does not pay twice.
  *
- * A DIFFERENT CLOCK FROM EVERY OTHER NUMBER ON THIS PAGE, and three
- * different things about the population besides. The hero's revenue is dated
- * by the CLOSE date; these are dated by the order's arrival in the
- * confirmation queue (C4:NEW). The two differ by a wide margin in any month
- * (3.89 bn of intake against 0.98 bn delivered in one July), and a reader who
- * does not see the basis named concludes one of them is broken.
+ * ONE CLOCK ON THE PAGE NOW, AND THE NOTE STILL NAMES IT. Until 2026-09-10
+ * the hero printed closed revenue on the CLOSE date beside these figures on
+ * the order's arrival in the confirmation queue (C4:NEW) — two clocks that
+ * differ by a wide margin in any month (3.89 bn of intake against 0.98 bn
+ * delivered in one July). The revenue is gone, so nothing on this screen
+ * disagrees with anything else on it; the basis is still stated because the
+ * television board and the portal both count differently, and a reader
+ * reconciling against either needs to know which date this is.
  */
 
 /** What the caption and the basis note have to say about every figure here. */
@@ -313,8 +317,6 @@ export function ConfirmationFaktSection() {
       <FaktBasisNote />
 
       <TeamsTable data={data} status={status} />
-
-      <BonusLadder data={data} status={status} />
     </section>
   )
 }
@@ -636,16 +638,20 @@ function TeamsTable({
 
 /**
  * The basis, stated once. It is the single fact that stops this section and
- * the revenue hero above it — and this section and the television board —
- * from looking like a bug when their totals differ.
+ * the television board from looking like a bug when their totals differ.
+ *
+ * IT USED TO RECONCILE A SECOND CLOCK ON THIS PAGE — the closed-revenue hero,
+ * dated by the close date against this cohort's arrival in C4:NEW. That figure
+ * came off the screen on 2026-09-10, so the sentence that pointed at it went
+ * with it. What survives is what is still true and still misread: the cohort's
+ * date is the day the order ENTERED the queue, not the day it was delivered.
  */
 function FaktBasisNote() {
   const em = { color: 'var(--ink-secondary)' } as const
   return (
     <p className="text-[11px] leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
       Bu boʻlimdagi raqamlar <strong style={em}>tasdiqlash navbatiga tushgan sana</strong> (C4:NEW)
-      boʻyicha — yuqoridagi tushum esa yopilgan sana boʻyicha, shuning uchun jamlar bir xil
-      boʻlmaydi.{' '}
+      boʻyicha hisoblanadi.{' '}
       <strong style={em}>FAKT 1</strong> — <strong style={em}>Тасдиқланди</strong> va{' '}
       <strong style={em}>Тасдиқланмай чиқди</strong>: navbatdan chiqib Доставка ga oʻtgan
       buyurtmalar puli — mijozga yetib tasdiqlanganlari ham, mijozga yetib boʻlmay, lekin baribir
@@ -663,129 +669,5 @@ function FaktBasisNote() {
       YETKAZILGAN kunni emas. Rad etilgan (Тасдиқланмади), hali navbatda turgan va koʻtarmagan
       buyurtmalar FAKT 1 ga kirmaydi.
     </p>
-  )
-}
-
-/**
- * The ladder itself, printed once so the rule is on the page rather than in
- * somebody's memory — and attributed, because it is the client's policy and
- * not a figure this application measured.
- *
- * ASCENDING, left to right: read upward a ladder is a climb, and the next
- * rung is always the one to the right of where you stand. Each rung wears a
- * rail from the sequential ramp — the MAGNITUDE of its own floor, which is
- * the licensed ordinal encoding — and names the seller closest to reaching
- * it, because "Aziza is 2 mln away from the next rung" is a sentence a floor
- * repeats to itself all afternoon.
- */
-export function BonusLadder({
-  data,
-  status,
-}: {
-  data: SellerBoardDto | undefined
-  status: 'loading' | 'error' | 'ready'
-}) {
-  const tiers = [
-    { floor: 45_000_000, bonus: 1_000_000, rail: 'var(--seq-250)', glyph: '🎯' },
-    { floor: 60_000_000, bonus: 1_500_000, rail: 'var(--seq-450)', glyph: '🚀' },
-    { floor: 70_000_000, bonus: 2_000_000, rail: 'var(--seq-650)', glyph: '💎' },
-  ]
-
-  const ready = status === 'ready' && data
-
-  /*
-    ONLY THE PEOPLE THE LADDER PAYS. Every count and every «eng yaqini» on
-    these three cards is drawn from the 107–147 band, because the ladder is.
-    Counting the whole board would say "nine sellers reached 70 mln" over a
-    policy that pays four of them.
-  */
-  const payable = ready ? data.rows.filter((r) => r.bonus.eligible) : []
-
-  const reached = (floor: number) =>
-    ready ? payable.filter((r) => r.won.amount >= floor).length : null
-
-  /** The highest-won seller still below this rung — the one about to arrive. */
-  const nearest = (floor: number) => {
-    if (!ready) return null
-    let best: SellerBoardRowDto | null = null
-    for (const r of payable) {
-      if (r.won.amount > 0 && r.won.amount < floor && (!best || r.won.amount > best.won.amount)) {
-        best = r
-      }
-    }
-    return best
-  }
-
-  return (
-    <div className="space-y-2.5">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
-          Bonus darajalari
-        </h3>
-        <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          Mijozning oʻz qoidasi — 107–147 raqamli sotuvchilar, yetkazilgan pul boʻyicha
-        </p>
-      </div>
-      <div className="stagger grid gap-3 sm:grid-cols-3">
-        {tiers.map((tier) => {
-          const count = reached(tier.floor)
-          const contender = nearest(tier.floor)
-          return (
-            <div key={tier.floor} className="card flex flex-col gap-1 overflow-hidden">
-              <div className="h-[3px] w-full" style={{ background: tier.rail }} aria-hidden="true" />
-              <div className="flex flex-col gap-1 px-4 pt-2.5 pb-3.5">
-                <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-                  <span aria-hidden="true" className="mr-1.5">
-                    {tier.glyph}
-                  </span>
-                  {formatFullUzs(tier.floor)} soʻmdan
-                </p>
-                {/*
-                  Plain text, NOT AnimatedNumber: a tier is a POLICY CONSTANT
-                  with nothing to count up to — and this is the one number on
-                  the page the server renders, where a per-engine formatter
-                  once gave Node and the browser different separators and
-                  broke hydration.
-                */}
-                <p className="figure text-[22px] leading-none font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                  {formatFullUzs(tier.bonus)}
-                  <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
-                    soʻm bonus
-                  </span>
-                </p>
-                <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                  {count === null
-                    ? '…'
-                    : count === 0
-                      ? 'Bu davrda hech kim yetmadi'
-                      : `${formatNumber(count)} ta sotuvchi yetdi`}
-                </p>
-                {contender && (
-                  <p className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-                    Eng yaqini: {contender.fullName} —{' '}
-                    <span className="tabular font-medium" style={{ color: 'var(--ink-primary)' }}>
-                      +{formatFullUzs(tier.floor - contender.won.amount)}
-                    </span>{' '}
-                    kerak
-                  </p>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-      <p className="text-[11px] leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
-        Daraja bir marta toʻlanadi — eng yuqori bosib oʻtilgan chegara boʻyicha, qoʻshilmaydi.
-        {ready && (
-          <>
-            {' '}
-            Zinapoya faqat <strong style={{ color: 'var(--ink-secondary)' }}>107–147</strong> raqamli
-            sotuvchilarga tegishli — bu davrda{' '}
-            {formatNumber(data.totals.sellersEligibleForBonus)} tasi shu doirada,{' '}
-            {formatNumber(data.totals.sellers - data.totals.sellersEligibleForBonus)} tasi esa emas.
-          </>
-        )}
-      </p>
-    </div>
   )
 }

@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
  * The РЕГИОН column filter's options, for the Тасдиклаш board.
  *
  * A SIBLING OF `/orders` RATHER THAN A FIELD ON IT. The board reloads every
- * two minutes on a screen the floor keeps open all day, and this answer
+ * one minute on a screen the floor keeps open all day, and this answer
  * changes about as often as the portal grows a region — so the popover fetches
  * it once, on first open, and the client caches it from there. See
  * `InsightsRepository.confirmationRegions` for the cost argument in full.

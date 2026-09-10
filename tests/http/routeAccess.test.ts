@@ -127,6 +127,7 @@ describe('what a TEAM- or OWN-scoped caller can reach', () => {
     'insights/confirmations/orders': 'the queue cohort narrows in classified',
     'insights/confirmations/regions':
       'the same cohort, so the РЕГИОН filter offers a narrowed caller only the regions their own rows are in',
+    'insights/delivery': 'spreads scope; the kanban columns are the caller\'s own orders',
     'insights/flow': 'spreads scope',
     'insights/pulse': 'spreads scope',
     'insights/structure': 'nothing on it to narrow: who reports to whom, and no figures',

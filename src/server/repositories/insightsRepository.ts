@@ -135,7 +135,7 @@ function deliveryRateBp(
 /**
  * Peel the `GROUPING SETS` grand total off the bottom of a delivery cut.
  *
- * Both cuts of the logistics table are grouped over `((route), ())`, so the
+ * The route and region cuts are grouped over `((route), ())`, so the
  * one row where `GROUPING(route)` is 1 is the whole window aggregated by the
  * database — including a median taken over every deal at once, which is the
  * only way to get a real one. An empty window still yields that row, so the
@@ -152,7 +152,6 @@ function splitTotals(
     in_flight: bigint
     revenue: MoneyText
     median_days: number | null
-    p90_days: number | null
   }[],
 ): LogisticsBreakdown {
   const toRow = (r: (typeof rows)[number]): LogisticsRouteRow => {
@@ -169,7 +168,6 @@ function splitTotals(
       revenueMinor: money(r.revenue),
       deliveryRateBp: deliveryRateBp(delivered, refused, cancelledEarly),
       medianDays: r.median_days === null ? null : Number(r.median_days),
-      p90Days: r.p90_days === null ? null : Number(r.p90_days),
     }
   }
 
@@ -189,8 +187,52 @@ function splitTotals(
           revenueMinor: 0n,
           deliveryRateBp: null,
           medianDays: null,
-          p90Days: null,
         },
+  }
+}
+
+/**
+ * One row of `logisticsSql` — three groupings arriving down one pipe.
+ *
+ * `route` is the bucket under whichever grouping produced the row: a hub, a
+ * region or a Доставка stage. `sort` is the portal's own stage order and is
+ * null for the two cuts that have no funnel position to keep.
+ */
+interface LogisticsCutRow {
+  readonly cut: 'route' | 'region' | 'stage'
+  readonly route: string | null
+  readonly is_total: number
+  readonly sort: number | null
+  readonly orders: bigint
+  readonly delivered: bigint
+  readonly refused: bigint
+  readonly cancelled_early: bigint
+  readonly in_flight: bigint
+  readonly revenue: MoneyText
+  readonly amount: MoneyText
+  readonly median_days: number | null
+}
+
+/**
+ * Peel the funnel's grand total off the bottom of the stage cut.
+ *
+ * Same `GROUPING SETS` trick as `splitTotals`, and for the same reason: an
+ * empty window still yields the total row, so the denominator is never
+ * undefined and the caller never has to decide what a missing one means.
+ */
+function splitStages(rows: readonly LogisticsCutRow[]): LogisticsStageBreakdown {
+  const total = rows.find((r) => r.is_total === 1)
+
+  return {
+    rows: rows
+      .filter((r) => r.is_total === 0)
+      .map((r) => ({
+        stage: r.route ?? 'Nomaʼlum bosqich',
+        orders: int(r.orders),
+        amountMinor: money(r.amount),
+      })),
+    totalOrders: total ? int(total.orders) : 0,
+    totalAmountMinor: total ? money(total.amount) : 0n,
   }
 }
 
@@ -253,7 +295,6 @@ export interface LogisticsRouteRow {
    * apart in the median. There is no honest in-network clock to prefer.
    */
   readonly medianDays: number | null
-  readonly p90Days: number | null
 }
 
 /** A cut of the delivery table plus the true totals row beneath it. */
@@ -269,6 +310,39 @@ export interface LogisticsBreakdown {
    * and returns the real thing.
    */
   readonly total: LogisticsRouteRow
+}
+
+/**
+ * One stage of the Доставка funnel, named the way the portal names it.
+ *
+ * The label is `deal_stage."name"`, which the importer writes as
+ * «Доставка · Подготовка товара» — the pipeline prefix earns its place in a
+ * filter list where stage ids repeat across funnels, and is dropped for
+ * display. The eight hub and carrier stages carry `DELIVERY_ROUTE_NAMES`
+ * instead of the raw stage name, which is the same vocabulary the floor uses.
+ *
+ * `amountMinor` is EVERY deal sitting in the stage, not the won ones — the
+ * figure the portal's own kanban prints under each column. `В пути` has won
+ * nothing and is not worth nothing.
+ */
+export interface LogisticsStageRow {
+  readonly stage: string
+  readonly orders: number
+  readonly amountMinor: bigint
+}
+
+/**
+ * The funnel, plus the denominator its shares divide by.
+ *
+ * The total is the funnel's OWN — Доставка alone. `scoped` is filtered on
+ * `countsAsRevenue`, which is two pipelines, so the region cut's total counts
+ * Ecommerce as well; dividing by that would print eighteen shares that do not
+ * add to a hundred.
+ */
+export interface LogisticsStageBreakdown {
+  readonly rows: readonly LogisticsStageRow[]
+  readonly totalOrders: number
+  readonly totalAmountMinor: bigint
 }
 
 export interface ConfirmationRow {
@@ -916,37 +990,28 @@ export class InsightsRepository {
   // -------------------------------------------------------------------------
 
   /**
-   * Delivery performance per route.
+   * THREE CUTS FROM ONE PASS — the Доставка funnel, the routes, the regions.
    *
-   * The route is the regional hub or carrier the parcel passed through, taken
-   * from stage HISTORY rather than the deal's current stage — a delivered
-   * order sits on `Доставлено` and has long since left `NAVOIY`, so the
-   * current stage cannot tell you which hub handled it.
+   * The route and region cuts were two methods issuing two statements that
+   * differed by ONE LINE: `COALESCE(r.route, …)` against `COALESCE(d."region",
+   * …)`. Everything above that — the three unbounded CTEs over the whole stage
+   * history, the DISTINCT ON sorts, the join back to every revenue deal in the
+   * window — was computed twice to answer one card. Measured on production:
+   * 2 212 ms and 1 361 ms, side by side in a Promise.all, for a single
+   * request. And the command centre pays it too, because its logistics module
+   * fans out to the same pair.
    *
-   * Timings are the CALENDAR DAYS between entering that route stage and the
-   * deal being closed — see `LogisticsRouteRow.medianDays` for why days and
-   * not hours. Median and p90 rather than a mean: delivery times have a long
-   * tail of chased orders, and an average lets three disasters hide a hundred
-   * normal days.
+   * The funnel is the third grouping for exactly that reason. It is the
+   * portal's own kanban — every Доставка stage, in the portal's order, with
+   * the count and the sum the floor reads off `obey.bitrix24.kz` — and it
+   * needs no column `scoped` does not already hold. As a fourth query it would
+   * have rebuilt those three history CTEs a third time; as a `GROUPING SETS`
+   * arm it costs one more pass over rows already in memory.
    *
-   * `refused` and `cancelledEarly` stay apart. One is a parcel that travelled
-   * and came back, the other a customer who changed their mind before
-   * dispatch; only the first cost anything to move.
-   */
-  /**
-   * BOTH LOGISTICS CUTS FROM ONE PASS — by route and by customer region.
-   *
-   * They were two methods issuing two statements that differed by ONE LINE:
-   * `COALESCE(r.route, …)` against `COALESCE(d."region", …)`. Everything above
-   * that — the three unbounded CTEs over the whole stage history, the DISTINCT
-   * ON sorts, the join back to every revenue deal in the window — was computed
-   * twice to answer one card. Measured on production: 2 212 ms and 1 361 ms,
-   * side by side in a Promise.all, for a single request. And the command centre
-   * pays it too, because its logistics module fans out to the same pair.
-   *
-   * `scoped` is MATERIALIZED and read twice, so the expensive half runs once
-   * and only the grouping is repeated. Postgres would materialise a CTE with
-   * two references anyway; saying so keeps it true if a later edit leaves one.
+   * `scoped` is MATERIALIZED and read three times, so the expensive half runs
+   * once and only the grouping is repeated. Postgres would materialise a CTE
+   * with three references anyway; saying so keeps it true if a later edit
+   * leaves one.
    *
    * MEASURES THE DELIVERY LEG, both ways. It used to measure `closedAt -
    * createdAtSource` — the order's whole life, qualification and confirmation
@@ -956,41 +1021,57 @@ export class InsightsRepository {
    *
    * The joins stay LEFT, so a region or a route whose orders never reached a
    * hub keeps its counts and reports a null pace rather than vanishing.
+   *
+   * THE ROUTE COMES FROM HISTORY, THE STAGE FROM THE DEAL. A delivered order
+   * sits on `Доставлено` and left `NAVOIY` days ago, so its current stage
+   * cannot say which hub handled it — the route cut reads the last hub or
+   * carrier entry in `deal_stage_history` instead. The funnel cut is the
+   * opposite question, "where is this order now", and reads the deal's own
+   * stage. Both are right for their own table and neither substitutes.
+   *
+   * `refused` and `cancelledEarly` stay apart in all three. One is a parcel
+   * that travelled and came back, the other a customer who changed their mind
+   * before dispatch; only the first cost anything to move.
+   *
+   * Median, and no p90. Delivery times have a long tail of chased orders, so
+   * a mean would let three disasters hide a hundred normal days — but the
+   * ninetieth percentile was a tenth column on two tables that nobody read it
+   * on, and a second sort over the same ordered set to say it.
+   *
+   * Held as a builder rather than inline so the shape can be asserted without
+   * a database. See tests/http/logisticsSql.test.ts.
    */
-  async logisticsCuts(
-    period: Period,
-  ): Promise<{ routes: LogisticsBreakdown; regions: LogisticsBreakdown }> {
+  private static logisticsSql(): string {
     /*
-      One list, read by both cuts. Written twice, the two halves of this card
-      could drift into counting different things under the same column names —
-      which is the fault the module header records, arriving by another door.
+      One list, read by all three cuts. Written per cut, the halves of this
+      card could drift into counting different things under the same column
+      names — which is the fault the module header records, arriving by
+      another door.
+
+      `revenue` and `amount` are both here and are not the same claim.
+      `revenue` is won deals only, which is what the delivery tables state
+      under «Tushum». `amount` is every deal in the bucket, which is what the
+      portal's kanban prints under a funnel column — and the only honest
+      figure for a stage nothing has won yet.
+
+      `count(amount_minor)`, NOT `count(*)`. The funnel cut reaches its rows
+      through a LEFT JOIN from the stage list, so an empty column arrives as
+      one all-null row — and `count(*)` would count that row and print
+      «Подготовка товара 1» over nothing. `amountMinor` is NOT NULL on every
+      real deal, so the two are identical for the cuts that group deals
+      directly, and only this one is right for all three.
     */
     const AGGREGATES = `
-        count(*)::bigint AS orders,
+        count(amount_minor)::bigint AS orders,
         count(*) FILTER (WHERE stage_role = 'DELIVERED')::bigint AS delivered,
         count(*) FILTER (WHERE stage_role IN ('REFUSED', 'CANCELLED_EARLY') AND dispatched)::bigint AS refused,
         count(*) FILTER (WHERE stage_role IN ('REFUSED', 'CANCELLED_EARLY') AND NOT dispatched)::bigint AS cancelled_early,
         count(*) FILTER (WHERE status = 'OPEN')::bigint AS in_flight,
         sum(amount_minor) FILTER (WHERE status = 'WON')::text AS revenue,
-        percentile_cont(0.5) WITHIN GROUP (ORDER BY pace_days) AS median_days,
-        percentile_cont(0.9) WITHIN GROUP (ORDER BY pace_days) AS p90_days`
+        sum(amount_minor)::text AS amount,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY pace_days) AS median_days`
 
-    const rows = await this.prisma.$queryRawUnsafe<
-      {
-        cut: 'route' | 'region'
-        route: string | null
-        is_total: number
-        orders: bigint
-        delivered: bigint
-        refused: bigint
-        cancelled_early: bigint
-        in_flight: bigint
-        revenue: MoneyText
-        median_days: number | null
-        p90_days: number | null
-      }[]
-    >(
-      `
+    return `
       WITH routed AS (
         SELECT DISTINCT ON (h."dealId")
           h."dealId"    AS deal_id,
@@ -1020,6 +1101,7 @@ export class InsightsRepository {
         SELECT
           COALESCE(r.route, 'Hub belgilanmagan') AS route,
           COALESCE(d."region", 'Nomaʼlum')       AS region,
+          d."stageId"  AS stage_id,
           d."status"   AS status,
           d."amountMinor" AS amount_minor,
           cur."logisticsRole" AS stage_role,
@@ -1037,102 +1119,154 @@ export class InsightsRepository {
           AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
       ),
       by_route AS (
-        SELECT 'route'::text AS cut, route AS bucket, GROUPING(route)::int AS is_total,${AGGREGATES}
+        SELECT 'route'::text AS cut, route AS bucket, GROUPING(route)::int AS is_total,
+               NULL::int AS sort,${AGGREGATES}
         FROM scoped
         GROUP BY GROUPING SETS ((route), ())
       ),
       by_region AS (
-        SELECT 'region'::text AS cut, region AS bucket, GROUPING(region)::int AS is_total,${AGGREGATES}
+        SELECT 'region'::text AS cut, region AS bucket, GROUPING(region)::int AS is_total,
+               NULL::int AS sort,${AGGREGATES}
         FROM scoped
         GROUP BY GROUPING SETS ((region), ())
+      ),
+      /*
+        THE FUNNEL IS THE Доставка FUNNEL, AND NOTHING ELSE.
+
+        "scoped" is filtered on "countsAsRevenue", which is TWO pipelines —
+        Доставка (#6) and Ecommerce (#14). Reading both would print «Новая
+        заявка» and «Оплаченно с click» among the hubs under a heading naming
+        a funnel neither belongs to, and every share below would divide by a
+        population the portal's own kanban never shows.
+
+        The filter is the portal's id namespace rather than a join to the
+        pipeline name, because "deal_stage"."externalId" IS the STATUS_ID —
+        the same key DELIVERY_STAGE_ROLES is written in — so renaming the
+        funnel in Bitrix24 cannot quietly empty this table.
+
+        Its own grand total, not the card's: eighteen shares divided by a
+        denominator that counts Ecommerce would not add to a hundred, and
+        nothing on screen would say why.
+
+        IT STARTS FROM THE STAGES, NOT FROM THE DEALS, so an EMPTY column is
+        still a column. «Подготовка товара» and «Заказ в мой склад» stand at
+        nought for days at a time on this portal; grouped over deals they do
+        not come back as zero, they come back not at all, and the board
+        quietly renumbers itself against the kanban it is copied from. Hence
+        the LEFT JOIN — and hence the funnel filter sitting in the WHERE
+        against "deal_stage" rather than against the joined rows, where it
+        would turn the outer join back into an inner one and delete the empty
+        columns again.
+      */
+      by_stage AS (
+        SELECT 'stage'::text AS cut, st."name" AS bucket, GROUPING(st."name")::int AS is_total,
+               min(st."sortOrder")::int AS sort,${AGGREGATES}
+        FROM "deal_stage" st
+        LEFT JOIN scoped ON scoped.stage_id = st."id"
+        WHERE st."externalId" LIKE 'C6:%' AND st."isActive"
+        GROUP BY GROUPING SETS ((st."name"), ())
       )
-      SELECT cut, bucket AS route, is_total, orders, delivered, refused, cancelled_early,
-             in_flight, revenue, median_days, p90_days
-        FROM (SELECT * FROM by_route UNION ALL SELECT * FROM by_region) cuts
-       ORDER BY cut, is_total, orders DESC
-      `,
+      SELECT cut, bucket AS route, is_total, sort, orders, delivered, refused, cancelled_early,
+             in_flight, revenue, amount, median_days
+        FROM (
+          SELECT * FROM by_route
+          UNION ALL SELECT * FROM by_region
+          UNION ALL SELECT * FROM by_stage
+        ) cuts
+       ORDER BY cut, is_total, sort, orders DESC
+      `
+  }
+
+  async logisticsCuts(period: Period): Promise<{
+    routes: LogisticsBreakdown
+    regions: LogisticsBreakdown
+    stages: LogisticsStageBreakdown
+  }> {
+    const rows = await this.prisma.$queryRawUnsafe<LogisticsCutRow[]>(
+      InsightsRepository.logisticsSql(),
       period.start,
       period.end,
     )
 
     const cut = (name: 'route' | 'region') => splitTotals(rows.filter((r) => r.cut === name))
 
-    return { routes: cut('route'), regions: cut('region') }
+    return {
+      routes: cut('route'),
+      regions: cut('region'),
+      stages: splitStages(rows.filter((r) => r.cut === 'stage')),
+    }
   }
 
 
   /**
-   * Why orders were lost, split by WHEN they were lost.
+   * Why delivery orders were lost, split by whether the parcel ever moved.
    *
-   * THREE STAGES, AND THEY ARE NOT COMPARABLE
+   * TWO STAGES, AND THEY ARE NOT COMPARABLE
    *   RETURNED  — the parcel travelled and came back. Cost the delivery, the
    *               handling and the return leg.
-   *   CANCELLED — killed in the delivery pipeline before anything shipped.
-   *               Cost a phone call.
-   *   PRE_SALE  — never became an order at all. Lost in the qualification
-   *               funnel.
+   *   CANCELLED — killed before anything shipped. Cost a phone call.
    *
-   * WHERE THE REASONS ACTUALLY ARE
-   * This is the part that made the old card useless. It filtered on
-   * `countsAsRevenue`, and on this portal EVERY loss carrying a real reason
-   * sits in a pipeline that flag excludes — 442 "олиш нияти ёк", 208 "5
-   * уринишда богланиб болмади", 142 "пулидан муамоси бор". The rows that
-   * survived the filter were 82 deals whose reason is null. So a card titled
-   * "why orders come back" could only ever render one full-width bar reading
-   * "reason not given", and 883 recorded reasons were invisible.
+   * THE SPLIT IS THE JOURNEY, NOT THE STAGE. Since June this portal writes
+   * every refusal to «Отказ предварительно» — all 150 of August's, every one
+   * of which had reached a hub, a carrier or «В пути» first. Read from the
+   * stage name alone the screen said nothing came back and 150 orders never
+   * left the warehouse; both were the opposite of the truth.
    *
-   * MONEY IS NULL FOR PRE_SALE, deliberately. `countsAsRevenue` exists because
-   * the same order appears in several pipelines; summing amounts across the
-   * excluded ones would double-count. A count of reasons has no such problem —
-   * which is exactly why the filter belongs on the money and not on the rows.
+   * IT ANSWERS FOR THE DELIVERY PIPELINES ONLY, and that is a change.
+   *
+   * It used to carry a third bucket, PRE_SALE, for deals `countsAsRevenue`
+   * excludes — because the delivery pipeline records almost no reason at all
+   * (82 losses, all null) while the qualification funnel records 883, so the
+   * card that drew them was the only place those reasons appeared. It was
+   * also the one block on a Доставка screen reporting a different funnel,
+   * under a heading about delivery, and the client asked for the screen to
+   * hold this section and nothing else.
+   *
+   * Two things went with it. The WHERE now names both refusal roles, so the
+   * `OTHER` bucket — fetched, decoded, mapped and dropped by a page that only
+   * ever drew two — is not scanned at all. And the money stopped being
+   * nullable: every remaining row counts toward revenue, so there is no
+   * longer a row whose sum has to be withheld to avoid double-counting a
+   * deal that appears in several pipelines.
+   *
+   * Held as a builder rather than inline so the shape can be asserted without
+   * a database. See tests/http/logisticsSql.test.ts.
    */
-  async refusalReasons(
-    period: Period,
-  ): Promise<{ stage: string; reason: string; orders: number; lostMinor: bigint | null }[]> {
-    const rows = await this.prisma.$queryRawUnsafe<
-      { stage: string; reason: string | null; orders: bigint; lost: MoneyText }[]
-    >(
-      `
+  private static refusalReasonsSql(): string {
+    return `
       SELECT
-        CASE
-          WHEN NOT d."countsAsRevenue" THEN 'PRE_SALE'
-          -- Split on whether the parcel actually travelled, not on which of
-          -- the two refusal stages the portal happens to park it in. Since
-          -- June this portal writes every refusal to
-          -- "Отказ предварительно" — all 150 of August's, every one of which
-          -- had reached a hub, a carrier or "В пути" first. Read from the
-          -- stage alone the screen said nothing came back and 150 orders
-          -- never left the warehouse; both were the opposite of the truth.
-          WHEN cur."logisticsRole" IN ('REFUSED', 'CANCELLED_EARLY')
-            AND EXISTS (
+        CASE WHEN EXISTS (
               SELECT 1 FROM "deal_stage_history" hh
               JOIN "deal_stage" ss ON ss."id" = hh."stageId"
               WHERE hh."dealId" = d."id"
                 AND ss."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER', 'IN_TRANSIT')
-            ) THEN 'RETURNED'
-          WHEN cur."logisticsRole" IN ('REFUSED', 'CANCELLED_EARLY') THEN 'CANCELLED'
-          ELSE 'OTHER'
-        END AS stage,
+            ) THEN 'RETURNED' ELSE 'CANCELLED' END AS stage,
         d."refusalReason" AS reason,
         count(*)::bigint AS orders,
-        sum(d."amountMinor") FILTER (WHERE d."countsAsRevenue")::text AS lost
+        COALESCE(sum(d."amountMinor"), 0)::text AS lost
       FROM "deal" d
       JOIN "deal_stage" cur ON cur."id" = d."stageId"
       WHERE d."status" = 'LOST'
+        AND d."countsAsRevenue"
+        AND cur."logisticsRole" IN ('REFUSED', 'CANCELLED_EARLY')
         AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
       GROUP BY 1, 2
       ORDER BY orders DESC
-      `,
-      period.start,
-      period.end,
-    )
+      `
+  }
+
+  async refusalReasons(
+    period: Period,
+  ): Promise<{ stage: string; reason: string; orders: number; lostMinor: bigint }[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { stage: string; reason: string | null; orders: bigint; lost: MoneyText }[]
+    >(InsightsRepository.refusalReasonsSql(), period.start, period.end)
+
     return rows.map((r) => ({
       stage: r.stage,
       reason: r.reason ?? 'Sabab koʻrsatilmagan',
       orders: int(r.orders),
-      // Null, not zero: "no money was lost" and "we do not count money here"
-      // are different claims.
-      lostMinor: r.lost === null ? null : money(r.lost),
+      lostMinor: money(r.lost),
     }))
   }
 
@@ -2297,7 +2431,7 @@ export class InsightsRepository {
    * ridden on `confirmationByRop` as a second cut over the same cohort, the way
    * `confirmationLogistics` unions its two, and that was the first design. It
    * was dropped because the cost lands in the wrong place: the board reloads
-   * every two minutes on a screen the floor keeps open all day, and the
+   * every minute on a screen the floor keeps open all day, and the
    * options change about as often as the portal grows a region. Lazy, this
    * runs once per session behind a spinner nobody waits on; unioned, it would
    * have run several hundred times a day to answer a question nobody asked.

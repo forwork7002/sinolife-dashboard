@@ -106,6 +106,26 @@ export function SellersPage() {
   */
   const [shown, setShown] = useState<'sellers' | 'teams'>('sellers')
 
+  /*
+    WHICH FACT THE BOARD IS READ ON — ONE CHOICE FOR BOTH COLUMNS.
+
+    The client asked for it on 2026-09-10: «ikkita boʻlimni sotuvchilar va
+    komandalar boʻyichasini fakt 1 va fakt 2 boʻyicha koʻrish mumkin boʻlsin.
+    reytingni». So both headings carry the switch — that is where they pointed
+    — and both press the SAME state, which is the part that is not cosmetic:
+    a team's money is its sellers' money summed, so a board reading FAKT 1 on
+    the left and FAKT 2 on the right invites exactly the reconciliation
+    `PodiumBasis` exists to prevent, one column deep instead of one slot deep.
+
+    'auto' is what the board did before the switch and is still what it opens
+    on — FAKT 2 the moment anybody has delivered, FAKT 1 while nobody has —
+    so a television nobody touches behaves as it always did. Local state, not
+    the URL, for the reason the phone's switch is: which fact somebody is
+    reading is not a question a pasted link needs to answer, and on this
+    dashboard a URL write is a server round trip (`SHALLOW_ROUTES`).
+  */
+  const [fakt, setFakt] = useState<FaktChoice>('auto')
+
   return (
     <PageShell
       title={t.nav.sellers}
@@ -158,6 +178,8 @@ export function SellersPage() {
             errorMessage={errorMessage}
             onRetry={retry}
             parked={shown !== 'sellers'}
+            fakt={fakt}
+            onFakt={setFakt}
           />
           <TeamsColumn
             data={data}
@@ -165,6 +187,8 @@ export function SellersPage() {
             errorMessage={errorMessage}
             onRetry={retry}
             parked={shown !== 'teams'}
+            fakt={fakt}
+            onFakt={setFakt}
           />
         </div>
 
@@ -195,6 +219,17 @@ export function SellersPage() {
  * — took the per-seat bonus chips off the television, and the shape here
  * carries nothing the seats cannot print.
  */
+/**
+ * Which of the two facts the board is ranked and read on.
+ *
+ * 'auto' is not a third reading — it is the absence of a decision, and it
+ * resolves to one of the other two on every render: FAKT 2 once anybody has
+ * delivered, FAKT 1 until then. It has to stay reachable as the OPENING
+ * state, or a board left on «Bugun» overnight opens pinned to a fact nobody
+ * has any money in yet.
+ */
+export type FaktChoice = 'auto' | 'fakt1' | 'fakt2'
+
 export interface BoardEntry {
   readonly key: string
   readonly rank: number
@@ -254,16 +289,29 @@ interface ColumnProps {
   onRetry: () => void
   /** Hidden under 1280px while the switch shows the other board. */
   parked?: boolean
+  /** Which fact BOTH columns are read on — the page owns it, not the column. */
+  fakt: FaktChoice
+  onFakt: (choice: FaktChoice) => void
 }
 
 /** Exported for the tests, like `TotalsBand` before it. */
-export function SellersColumn({ data, status, errorMessage, onRetry, parked = false }: ColumnProps) {
+export function SellersColumn({
+  data,
+  status,
+  errorMessage,
+  onRetry,
+  parked = false,
+  fakt,
+  onFakt,
+}: ColumnProps) {
   const entries = useMemo(() => data?.rows.map(fromSeller) ?? [], [data])
   return (
     <BoardColumn
       id="tv-sellers"
       tone="sellers"
       parked={parked}
+      fakt={fakt}
+      onFakt={onFakt}
       glyph="🏆"
       title="Sotuvchilar"
       noun="Sotuvchi"
@@ -278,7 +326,15 @@ export function SellersColumn({ data, status, errorMessage, onRetry, parked = fa
   )
 }
 
-export function TeamsColumn({ data, status, errorMessage, onRetry, parked = false }: ColumnProps) {
+export function TeamsColumn({
+  data,
+  status,
+  errorMessage,
+  onRetry,
+  parked = false,
+  fakt,
+  onFakt,
+}: ColumnProps) {
   const entries = useMemo(() => data?.teams.map(fromTeam) ?? [], [data])
   const teamless = data?.totals.teamlessSellers ?? 0
   return (
@@ -286,6 +342,8 @@ export function TeamsColumn({ data, status, errorMessage, onRetry, parked = fals
       id="tv-teams"
       tone="teams"
       parked={parked}
+      fakt={fakt}
+      onFakt={onFakt}
       glyph="🛡️"
       title="Komandalar"
       noun="Komanda (ROP)"
@@ -305,6 +363,99 @@ export function TeamsColumn({ data, status, errorMessage, onRetry, parked = fals
 }
 
 /**
+ * The board's own order, over whichever fact is being read.
+ *
+ * THIS MIRRORS `SellerBoardService` — `buildBoard` for the sellers and
+ * `teamRows` for the teams — AND HAS TO KEEP MIRRORING IT: the fact being
+ * read, then the other one, then the key, with competition ranking over BOTH
+ * figures so equal money is an equal rank and the next rank skips. Read on
+ * FAKT 2 it reproduces the ranks the service already sent, which is what
+ * `sellersTvBoard.test.tsx` asserts row by row; read on FAKT 1 it is the same
+ * rule with the two keys swapped, and that swap is the whole of what the
+ * switch does. Ranking on the leading fact alone is the failure both those
+ * comments record: on «Bugun» nobody has FAKT 2, the comparison ties for all
+ * fifteen teams, and the tie-break — a name, an employee id — becomes the
+ * ranking, under a seat claiming a fact.
+ *
+ * WHY IT IS DONE HERE AND NOT ASKED OF THE API. Every row is already on the
+ * payload carrying both facts; this is ONE answer read two ways, not a second
+ * question. So the switch costs no request, cannot straddle a sync, cannot
+ * flash a stale board while a second one lands, and cannot disagree with the
+ * totals beside it. The key stays the last resort — an employee id, a ROP's
+ * name — so two rows level on both figures do not swap places between two
+ * refreshes of one screen.
+ */
+function rankedBy(
+  entries: readonly BoardEntry[],
+  onDelivered: boolean,
+): readonly BoardEntry[] {
+  const read = (e: BoardEntry) => (onDelivered ? e.won : e.ordered)
+  const other = (e: BoardEntry) => (onDelivered ? e.ordered : e.won)
+
+  const ordered = [...entries].sort(
+    (a, b) => read(b) - read(a) || other(b) - other(a) || a.key.localeCompare(b.key),
+  )
+
+  let rank = 0
+  return ordered.map((entry, index) => {
+    const previous = index > 0 ? ordered[index - 1]! : null
+    // Equal on BOTH figures, because both decide the order. Otherwise two
+    // sellers level on the fact being read but far apart on the other would
+    // share a rank the sort has already separated them by, and the board
+    // would print 1, 1, 3 over rows that visibly differ.
+    if (!previous || previous.won !== entry.won || previous.ordered !== entry.ordered) {
+      rank = index + 1
+    }
+    return { ...entry, rank }
+  })
+}
+
+/**
+ * FAKT 1 / FAKT 2 — the switch in each heading, and the only thing on this
+ * board that answers a press.
+ *
+ * IT SHOWS THE RESOLVED FACT, NOT THE STORED CHOICE. The board opens on
+ * 'auto', and an 'auto' that lit neither button would leave a reader unable
+ * to tell which fact they are looking at from the control that names both —
+ * with the seats' own caption two lines below saying it outright. So the
+ * button that is lit is the one the board is actually ranked on, and pressing
+ * it changes nothing but the fact that it is now pinned.
+ *
+ * TWO BUTTONS AND NO WAY BACK TO 'auto'. A third state on a television is a
+ * third thing to read from across a room, and the state it would return to is
+ * only ever the opening one; a floor that pins FAKT 2 at nine in the morning
+ * sees «Podium hali boʻsh» and the other button, lit, one press away.
+ */
+function FaktSwitch({
+  fakt,
+  onFakt,
+}: {
+  fakt: 'fakt1' | 'fakt2'
+  onFakt: (choice: FaktChoice) => void
+}) {
+  return (
+    <div className="tv-fakt" role="group" aria-label="Reyting qaysi fakt boʻyicha">
+      {(
+        [
+          ['fakt1', 'FAKT 1'],
+          ['fakt2', 'FAKT 2'],
+        ] as const
+      ).map(([key, label]) => (
+        <button
+          key={key}
+          type="button"
+          className="tv-fakt-tab focusable"
+          aria-pressed={fakt === key}
+          onClick={() => onFakt(key)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/**
  * One half of the television: a heading, the three seats, the rows.
  *
  * Which FACT decided the places is computed ONCE here and handed to every
@@ -317,6 +468,8 @@ function BoardColumn({
   id,
   tone,
   parked = false,
+  fakt,
+  onFakt,
   glyph,
   title,
   noun,
@@ -338,6 +491,8 @@ function BoardColumn({
    */
   tone: 'sellers' | 'teams'
   parked?: boolean
+  fakt: FaktChoice
+  onFakt: (choice: FaktChoice) => void
   glyph: string
   title: string
   /** The name column's header. */
@@ -351,17 +506,26 @@ function BoardColumn({
   empty: string
 }) {
   /*
-    THE TOP THREE OF WHOEVER HAS MONEY, not only of whoever has delivered.
-    Delivery takes days, so for most of a working day nobody has FAKT 2, and
-    a podium gated on it stood empty over a floor that had confirmed 148 mln
-    soʻm between 55 people. The board ranks FAKT 2 first and FAKT 1 second —
-    the client's own rule — so the seats hold the same three the list would
-    put on top, and each says which figure earned the place.
+    THE FACT FIRST, THEN THE ORDER — the heading's switch decides both, and
+    it decides them in that sequence because the second follows the first.
+
+    'auto' resolves the way the board always did: FAKT 2 the moment anybody
+    has delivered, FAKT 1 while nobody has. Delivery takes days, so for most
+    of a working day nobody has FAKT 2, and a podium gated on it stood empty
+    over a floor that had confirmed 148 mln soʻm between 55 people.
+
+    THE TOP THREE OF WHOEVER HAS THE FACT BEING READ. It used to be the top
+    three of whoever had ANY money, which on a window where two people had
+    delivered seated a third card printing «0 soʻm» under «FAKT 2 ·
+    yetkazilgan». With the fact now chosen rather than inferred, an empty
+    podium is an answer — «hech kim yetkazmagan hali» — and the branch below
+    already has words for it.
   */
-  const winners = entries.filter((e) => e.won > 0 || e.ordered > 0).slice(0, 3)
-  const onDelivered = winners.length > 0 && winners[0]!.won > 0
+  const onDelivered = fakt === 'auto' ? entries.some((e) => e.won > 0) : fakt === 'fakt2'
+  const ranked = useMemo(() => rankedBy(entries, onDelivered), [entries, onDelivered])
+  const winners = ranked.filter((e) => (onDelivered ? e.won : e.ordered) > 0).slice(0, 3)
   const seated = new Set(winners.map((w) => w.key))
-  const rows = entries.filter((e) => !seated.has(e.key))
+  const rows = ranked.filter((e) => !seated.has(e.key))
 
   return (
     <section
@@ -382,9 +546,19 @@ function BoardColumn({
             {title}
           </h2>
           {status === 'ready' && entries.length > 0 && (
-            <p className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
-              {count(entries.length)}
-            </p>
+            <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5">
+              <p className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+                {count(entries.length)}
+              </p>
+              {/*
+                THE ONE CONTROL ON THIS BOARD, and it is drawn in both headings
+                on purpose — a phone shows one column at a time, so a switch
+                living over only one of them would be unreachable from the
+                other. Both press the page's single choice; see the block in
+                `SellersPage`.
+              */}
+              <FaktSwitch fakt={onDelivered ? 'fakt2' : 'fakt1'} onFakt={onFakt} />
+            </div>
           )}
         </div>
       </header>
@@ -413,8 +587,8 @@ function BoardColumn({
             Podium hali boʻsh — oʻrinlar hammaga ochiq
           </p>
           <BoardList
-            entries={entries}
-            allEntries={entries}
+            entries={ranked}
+            allEntries={ranked}
             noun={noun}
             onDelivered={onDelivered}
           />
@@ -422,7 +596,7 @@ function BoardColumn({
       ) : (
         <>
           <Podium winners={winners} onDelivered={onDelivered} totalWon={totals?.won.amount ?? 0} />
-          <BoardList entries={rows} allEntries={entries} noun={noun} onDelivered={onDelivered} />
+          <BoardList entries={rows} allEntries={ranked} noun={noun} onDelivered={onDelivered} />
         </>
       )}
     </section>
@@ -654,16 +828,22 @@ function PodiumSeat({
         <PodiumBasis onDelivered={onDelivered} className="relative mt-1.5" />
 
         {/*
-          What the number is made of. The other FACT is printed only when it
-          is the secondary one — under the fallback nothing has been delivered
-          and a row of «FAKT 2 0» on every seat says what the column's caption
-          already said, three times.
+          What the number is made of. THE OTHER FACT, WHEN THERE IS ONE TO
+          PRINT. It used to be drawn only under a FAKT 2 reading, because the
+          other reading meant nobody had delivered and a row of «FAKT 2 0» on
+          every seat said what the caption above it already said, three times.
+          Since 2026-09-10 FAKT 1 is a reading somebody CHOOSES, and on a
+          window where deliveries exist the fact left off the seat is real
+          money — so the test is whether it exists, not which way round the
+          two are. Nobody delivered, nothing printed, exactly as before.
         */}
         <div className="tabular relative mt-2.5 text-[11px] leading-snug" style={{ color: 'var(--ink-secondary)' }}>
-          {onDelivered && (
+          {(onDelivered ? entry.ordered : entry.won) > 0 && (
             <p>
-              FAKT 1{' '}
-              <span style={{ color: 'var(--ink-primary)' }}>{formatFullUzs(entry.ordered)}</span>
+              {onDelivered ? 'FAKT 1' : 'FAKT 2'}{' '}
+              <span style={{ color: 'var(--ink-primary)' }}>
+                {formatFullUzs(onDelivered ? entry.ordered : entry.won)}
+              </span>
             </p>
           )}
           <p>
@@ -701,7 +881,12 @@ function PodiumSeat({
                   </>
                 )}
               </span>
-            ) : entry.sharePercent !== null && totalWon > 0 ? (
+            ) : /*
+                The share is FAKT 2's own — `sharePercent` divides by
+                `totals.won` — so it is not printed under a FAKT 1 figure,
+                where it would be a percentage of a number nowhere on the seat.
+              */
+            onDelivered && entry.sharePercent !== null && totalWon > 0 ? (
               <span className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
                 Jami yutuqning{' '}
                 <span className="tabular font-semibold" style={{ color: 'var(--ink-primary)' }}>
@@ -831,8 +1016,16 @@ function BoardList({
           <tr>
             <Th align="right">#</Th>
             <Th>{noun}</Th>
-            <Th align="right">FAKT 2 · yetkaz.</Th>
-            <Th align="right">FAKT 1 · tasdiq.</Th>
+            {/* BOTH FACTS STAY ON EVERY ROW, whichever one is being read —
+                the switch moves the emphasis and the order, it never hides a
+                figure. The ranked column is the one marked `aria-sort`, so a
+                reader who cannot see the weight is told which it is. */}
+            <Th align="right" sorted={onDelivered}>
+              FAKT 2 · yetkaz.
+            </Th>
+            <Th align="right" sorted={!onDelivered}>
+              FAKT 1 · tasdiq.
+            </Th>
             {/* Dropped between 1280 and 1599 — `.tv-col-optional`. Under 1280
                 every column is kept and the list scrolls sideways instead. */}
             <Th align="right" className="tv-col-optional">
@@ -892,7 +1085,10 @@ function BoardList({
                   <Chase entry={entry} ahead={ahead} figureOf={figureOf} />
                 </td>
                 <td className="tabular text-right">
-                  <span className="tv-money font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                  <span
+                    className={`tv-money ${onDelivered ? 'font-semibold' : ''}`}
+                    style={{ color: onDelivered ? 'var(--ink-primary)' : 'var(--ink-secondary)' }}
+                  >
                     {formatFullUzs(entry.won)}
                   </span>
                   {entry.sharePercent !== null && entry.won > 0 && (
@@ -902,7 +1098,10 @@ function BoardList({
                   )}
                 </td>
                 <td className="tabular text-right">
-                  <span className="tv-money" style={{ color: 'var(--ink-secondary)' }}>
+                  <span
+                    className={`tv-money ${onDelivered ? '' : 'font-semibold'}`}
+                    style={{ color: onDelivered ? 'var(--ink-secondary)' : 'var(--ink-primary)' }}
+                  >
                     {formatFullUzs(entry.ordered)}
                   </span>
                 </td>
@@ -936,14 +1135,22 @@ function Th({
   children,
   align = 'left',
   className = '',
+  sorted = false,
 }: {
   children: ReactNode
   align?: 'left' | 'right'
   /** A width class the column is hidden by, shared with its cells. */
   className?: string
+  /** The fact the rows are ordered by. Descending, always. */
+  sorted?: boolean
 }) {
   return (
-    <th scope="col" className={`eyebrow whitespace-nowrap ${className}`} style={{ textAlign: align }}>
+    <th
+      scope="col"
+      className={`eyebrow whitespace-nowrap ${className}`}
+      style={{ textAlign: align }}
+      aria-sort={sorted ? 'descending' : undefined}
+    >
       {children}
     </th>
   )

@@ -1,95 +1,62 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useEffect, type ReactNode } from 'react'
+import { useEffect } from 'react'
 
-import { keepPreviousData, useQueries } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
-import { BarList } from '@/components/charts/BarList'
-import { Sparkline } from '@/components/charts/Sparkline'
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
-import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
-import { Card, ChartCard } from '@/components/ui/Card'
-import { DataTable, type Column } from '@/components/ui/DataTable'
-import { Meter, StatTile } from '@/components/ui/Stat'
-import { TrendIndicator } from '@/components/ui/TrendIndicator'
+import { Card } from '@/components/ui/Card'
 import {
   ConfirmationFaktSection,
   FaktHeadline,
   useFaktBoard,
 } from '@/features/sales/ConfirmationFaktSection'
+import { DeliveryBoardSection } from '@/features/sales/DeliveryBoardSection'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
-import {
-  ApiClientError,
-  apiGet,
-  type DeltaDto,
-  type FaktTrendPointDto,
-  type FlowDto,
-  type MoneyDto,
-  type PulseDto,
-  type StageConversionRowDto,
-  type TrendPointDto,
-} from '@/lib/api'
-import { NO_VALUE, formatFullUzs, formatNumber, formatPercent, formatUzs } from '@/lib/format'
+import { apiGet, type FaktTrendPointDto } from '@/lib/api'
 import { t } from '@/lib/messages'
 
 /**
- * Money as `/analytics/sales` actually serialises it.
+ * Savdo dinamikasi — FAKT 1 and FAKT 2, and nothing else.
  *
- * The summary crosses the JSON layer as raw domain `Money` — a bigint in
- * MINOR units that the serialiser writes as a string, with no `amount`
- * convenience field. Unlike the newer endpoints it never went through
- * `toMoneyDto`, so the client divides by 100 itself. See `toUzs` below.
+ * WHAT THIS PAGE STOPPED BEING, on the client's instruction of 2026-09-10:
+ * «bu boʻlimda koʻp malumotlar ortiqcha boʻlib ketgan… qolgan pastdagisini
+ * toʻliqligicha tozalashliging kerak… menga bu boʻlim fakt 1 va fakt 2 va
+ * bitrix24dan». Five blocks came off the screen in one pass —
+ *
+ *   · the «Yopilgan tushum» hero figure and the composition line under it
+ *   · «Yopilgan bitimlar boʻyicha» — six tiles on the CLOSE-date clock
+ *   · «Savdo pulsi» — cycle time, velocity, value-weighted win rate
+ *   · «Bosqichlar qamrovi» and «Mahsulotlar boʻyicha»
+ *   · «Manbalar boʻyicha» — the sources table
+ *
+ * — and with them five of the page's seven requests: `/analytics/sales`,
+ * `/analytics/sources`, `/analytics/products`, `/insights/pulse` and
+ * `/insights/flow` are all gone. That is the second half of the same ask
+ * («yengil va optimal ishlashligi tarafdoriman»), and it is not a saving that
+ * had to be engineered: the blocks WERE the requests.
+ *
+ * ONE COHORT, ONE CLOCK, AND SO NO RECONCILIATION. Everything removed was
+ * measured on a different clock from what remains — revenue and the tile band
+ * on the deal's CLOSE date and its assignee, the FAKT spine on the order's
+ * arrival in the confirmation queue (C4:NEW) and its operator. Half the prose
+ * this file used to carry existed to stop a reader concluding one of the two
+ * was broken. With one clock on the page that prose is not shortened, it is
+ * unnecessary.
+ *
+ * TWO REQUESTS REMAIN AND THEY ARE THE SAME ENDPOINT: `useFaktBoard` for the
+ * totals, teams and band, and `?include=faktTrend` for the daily series. Both
+ * are `/analytics/sellers` on `basis=queue`, so the headline pair, the chart
+ * under it and the tiles under that cannot disagree.
+ *
+ * THE PRODUCT AND STAGE FILTERS ARE NOT OFFERED HERE ANY MORE. Nothing left
+ * on the screen honours them — an order has no product until it is itemised,
+ * and the queue cohort has no stage of its own — so the toolbar used to hand
+ * the reader two controls that changed nothing and a caption apologising for
+ * them. `insightsIgnoreFilters` and every line it gated went with them.
  */
-interface RawMoney {
-  readonly amountMinor: string
-  readonly currency: string
-}
-
-interface SalesPayload {
-  readonly trend: readonly TrendPointDto[]
-  readonly summary: {
-    readonly revenue: RawMoney
-    readonly createdValue: RawMoney
-    readonly pipelineValue: RawMoney
-    readonly averageDeal: RawMoney | null
-    readonly dealsCreated: number
-    readonly dealsWon: number
-    readonly dealsLost: number
-    readonly dealsOpen: number
-    readonly conversionRatePercent: number | null
-  }
-}
-
-interface SourceRow {
-  readonly sourceId: string
-  readonly name: string
-  readonly revenue: MoneyDto
-  readonly dealsWon: number
-  readonly dealsTotal: number
-  readonly sharePercent: number | null
-  readonly conversionPercent: number | null
-  readonly delta: DeltaDto
-}
-
-interface ProductRow {
-  readonly productId: string
-  readonly name: string
-  readonly revenue: MoneyDto
-  readonly units: number
-  readonly sharePercent: number | null
-}
-
-/** Minor units (tiyin) to soʻm — the same division the trend does server-side. */
-function toUzs(money: RawMoney): number {
-  return Number(money.amountMinor) / 100
-}
-
-/** Days with one decimal, matching how the API states cycle percentiles. */
-function formatDays(value: number): string {
-  return formatNumber(Math.round(value * 10) / 10)
-}
 
 /**
  * The trend chart is loaded on its own, not with the page.
@@ -106,8 +73,8 @@ function formatDays(value: number): string {
  * `ChartSkeleton height={300}` the slot below already shows while the query is
  * in flight, so a late chunk is not a second visible state.
  */
-const RevenueTrendChart = dynamic(
-  () => import('@/components/charts/RevenueTrendChart').then((m) => m.RevenueTrendChart),
+const FaktTrendChart = dynamic(
+  () => import('@/components/charts/FaktTrendChart').then((m) => m.FaktTrendChart),
   { ssr: false, loading: () => <ChartSkeleton height={300} /> },
 )
 
@@ -121,12 +88,12 @@ const RevenueTrendChart = dynamic(
  */
 function useWarmTrendChart() {
   useEffect(() => {
-    void import('@/components/charts/RevenueTrendChart')
+    void import('@/components/charts/FaktTrendChart')
   }, [])
 }
 
 export function SalesPage() {
-  const { apiParams, filters } = useDashboardFilters()
+  const { apiParams } = useDashboardFilters()
   useWarmTrendChart()
 
   /*
@@ -140,101 +107,49 @@ export function SalesPage() {
   */
   const faktBoard = useFaktBoard()
 
-  /**
-   * The insights endpoints honour employee / department / source filters but
-   * deliberately ignore product and stage ones (documented in pulseService).
-   * When such a filter is active, the pulse band and the conversion ladder
-   * would silently disagree with the filtered headline above them — so the
-   * page says so instead of letting the reader reconcile two truths.
-   */
-  const insightsIgnoreFilters = filters.productIds.length > 0 || filters.stageIds.length > 0
+  /*
+    THE DAILY SERIES, on its own key rather than as a field on the board.
 
-  const [sales, sources, products, pulse, flow, faktTrend] = useQueries({
-    queries: [
-      {
-        queryKey: ['sales', apiParams],
-        queryFn: ({ signal }: { signal: AbortSignal }) =>
-          apiGet<SalesPayload>('/analytics/sales', apiParams, signal),
-        placeholderData: keepPreviousData,
-      },
-      {
-        queryKey: ['sources', apiParams],
-        queryFn: ({ signal }: { signal: AbortSignal }) =>
-          apiGet<readonly SourceRow[]>('/analytics/sources', apiParams, signal),
-        placeholderData: keepPreviousData,
-      },
-      {
-        queryKey: ['products', apiParams],
-        queryFn: ({ signal }: { signal: AbortSignal }) =>
-          apiGet<readonly ProductRow[]>('/analytics/products', apiParams, signal),
-        placeholderData: keepPreviousData,
-      },
-      {
-        queryKey: ['pulse', apiParams],
-        queryFn: ({ signal }: { signal: AbortSignal }) =>
-          apiGet<PulseDto>('/insights/pulse', apiParams, signal),
-        placeholderData: keepPreviousData,
-      },
-      {
-        queryKey: ['flow', apiParams],
-        queryFn: ({ signal }: { signal: AbortSignal }) =>
-          apiGet<FlowDto>('/insights/flow', apiParams, signal),
-        placeholderData: keepPreviousData,
-      },
-      /*
-        THE FAKT 1 / FAKT 2 LINES OVER THE HERO AREA, asked for by the client
-        on 2026-09-09 — «bir birni ustida chiqib turadi, solishtirsa boʻladigan
-        boʻladi».
+    Same endpoint, same cohort, same `basis=queue` default — `include=faktTrend`
+    asks for the per-bucket breakdown the board answers only in total. Keeping
+    it separate is what lets the headline pair render the moment the board
+    lands, without waiting on the heavier per-day aggregation.
 
-        Its own key rather than a field on `/analytics/sales`: the two are
-        different cohorts on different clocks, and this one is the SAME cohort
-        the FAKT tiles further down the page are built from, so the line and
-        the totals under it cannot disagree. `basis` is not passed — 'queue' is
-        the route's default and the only basis these two names mean anything on.
-
-        A FAILURE HERE IS SILENT ON PURPOSE. The hero has its own error state
-        for revenue; if this second read fails, the chart draws the area alone
-        and the legend does not appear, which is exactly the page as it was
-        before this was added. An error banner over a working hero would be
-        louder than what was lost.
-      */
-      {
-        queryKey: ['sellers', 'faktTrend', apiParams],
-        queryFn: ({ signal }: { signal: AbortSignal }) =>
-          apiGet<readonly FaktTrendPointDto[]>(
-            '/analytics/sellers',
-            { ...apiParams, include: 'faktTrend' },
-            signal,
-          ),
-        placeholderData: keepPreviousData,
-      },
-    ],
+    A FAILURE HERE NO LONGER FAILS SILENTLY. It used to: the chart's subject
+    was the revenue area and these two were references drawn over it, so losing
+    them left a working panel. They ARE the panel now, so the slot below
+    carries its own error state and its own retry.
+  */
+  const faktTrend = useQuery({
+    queryKey: ['sellers', 'faktTrend', apiParams],
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
+      apiGet<readonly FaktTrendPointDto[]>(
+        '/analytics/sellers',
+        { ...apiParams, include: 'faktTrend' },
+        signal,
+      ),
+    placeholderData: keepPreviousData,
   })
 
-  const trend = sales.data?.data.trend ?? []
-  const summary = sales.data?.data.summary
-  const sourceRows = sources.data?.data ?? []
-  const productRows = products.data?.data ?? []
-  const pulseData = pulse.data?.data
-  const stageRows = flow.data?.data.stageConversion.stages ?? []
-  const faktPoints = faktTrend.data?.data
-
-  const salesStatus = sales.isPending ? 'loading' : sales.isError ? 'error' : 'ready'
-  const pulseStatus = pulse.isPending ? 'loading' : pulse.isError ? 'error' : 'ready'
+  const faktPoints = faktTrend.data?.data ?? []
 
   /**
-   * The dashed reference on the hero chart: the mean of the buckets on
-   * screen, so "is today above or below the period's own bar?" is answerable
-   * from the plot. Context in ink, not a series — and pointless under two
-   * buckets, where the average IS the data.
+   * The dashed reference on the chart: the mean of FAKT 1 across the buckets
+   * on screen, so "is this day above or below the period's own bar?" is
+   * answerable from the plot. Context in ink, not a series — and pointless
+   * under two buckets, where the average IS the data.
+   *
+   * OF FAKT 1, AND THE LABEL SAYS SO. One hairline cannot be the average of
+   * two series; drawing it unnamed over a two-line chart invites the reader to
+   * attach it to whichever line is nearer.
    */
   const trendAverage =
-    trend.length >= 2
-      ? trend.reduce((sum, point) => sum + point.revenue, 0) / trend.length
+    faktPoints.length >= 2
+      ? faktPoints.reduce((sum, point) => sum + point.fakt1, 0) / faktPoints.length
       : undefined
 
   /**
-   * What one point on the hero chart actually is.
+   * What one point on the chart actually is.
    *
    * READ OFF THE DATA, not off the preset. The server widens the bucket as the
    * window grows — daily up to about two months, then weekly, then monthly —
@@ -244,99 +159,36 @@ export function SalesPage() {
    * than guessing.
    */
   const bucketLabel = (() => {
-    if (trend.length < 2) return null
+    if (faktPoints.length < 2) return null
 
     const days =
-      (new Date(trend[1]!.date).getTime() - new Date(trend[0]!.date).getTime()) / 86_400_000
+      (new Date(faktPoints[1]!.date).getTime() - new Date(faktPoints[0]!.date).getTime()) /
+      86_400_000
 
     if (days <= 2) return t.chart.buckets.day
     if (days <= 10) return t.chart.buckets.week
     return t.chart.buckets.month
   })()
 
-  /**
-   * The calendar unit the forecast projects to the end of.
-   *
-   * `fullUnitWindow` in domain/analytics/pulse widens the reporting window to
-   * this unit before projecting, so the tile beside it has to name the same
-   * thing. The presets not listed are complete windows — the forecast hides
-   * itself on those, so 'Davr' is a fallback nobody should see.
-   */
-  const unitName =
-    { today: 'Kun', this_week: 'Hafta', this_month: 'Oy', this_year: 'Yil' }[
-      filters.preset as string
-    ] ?? 'Davr'
-
-  const wonSpark = trend.map((point) => point.dealsWon)
-  const createdSpark = trend.map((point) => point.dealsCreated)
-
-  const sourceColumns: Column<SourceRow>[] = [
-    {
-      key: 'name',
-      header: t.table.source,
-      render: (row) => (
-        <span className="font-medium" style={{ color: 'var(--ink-primary)' }}>
-          {row.name}
-        </span>
-      ),
-    },
-    {
-      key: 'revenue',
-      header: t.table.revenue,
-      align: 'right',
-      numeric: true,
-      render: (row) => (
-        /* In full, so no `title` — the tooltip existed only to recover the
-           digits the compact reading dropped, and repeating them on hover is
-           chrome that says nothing. */
-        <span style={{ color: 'var(--ink-primary)' }}>
-          {formatFullUzs(row.revenue.amount)}
-        </span>
-      ),
-    },
-    {
-      key: 'share',
-      header: t.table.share,
-      align: 'right',
-      numeric: true,
-      render: (row) => formatPercent(row.sharePercent, 1),
-    },
-    {
-      key: 'deals',
-      // The cell reads "won / closed"; the header used to name only the second.
-      header: `${t.table.dealsWon} / yopilgan`,
-      align: 'right',
-      numeric: true,
-      render: (row) => `${formatNumber(row.dealsWon)} / ${formatNumber(row.dealsTotal)}`,
-    },
-    {
-      key: 'conversion',
-      header: t.table.conversion,
-      align: 'right',
-      numeric: true,
-      render: (row) => formatPercent(row.conversionPercent),
-    },
-    {
-      key: 'growth',
-      header: t.table.growth,
-      align: 'right',
-      render: (row) => <TrendIndicator delta={row.delta} />,
-    },
-  ]
-
   return (
     <PageShell
       title={t.nav.sales}
-      meta={sales.data?.meta}
-      stale={[sales, sources, products, pulse, flow, faktTrend].some((q) => q.isPlaceholderData)}
-      filters={{ employees: true, departments: true, products: true, sources: true, stages: true }}
+      meta={faktTrend.data?.meta ?? faktBoard.query.data?.meta}
+      stale={[faktBoard.query, faktTrend].some((q) => q.isPlaceholderData)}
+      /*
+        THREE CONTROLS, NOT FIVE. `/analytics/sellers` honours the employee,
+        department and source filters and drops the other two
+        (`sellerBoardService.boardFilters`), and nothing else is left on this
+        screen to honour them — so a product or stage control here would be a
+        control that does nothing.
+      */
+      filters={{ employees: true, departments: true, sources: true }}
     >
       {/*
-        The lead instrument — the page's ONE hero.
+        The lead instrument — the page's ONE hero, and now its only chart.
 
-        The revenue figure this page fetched and never showed now sits as the
-        hero number above the trend that explains it: figure and chart are one
-        panel, so the number is never a blank tile and the chart is never an
+        The pair sits above the plot that draws it: figure and chart are one
+        panel, so the numbers are never a blank tile and the chart is never an
         unheadlined plot. `.card-hero` + `.brackets` mark it as the flagship;
         nothing else on the page wears either class.
       */}
@@ -347,131 +199,30 @@ export function SalesPage() {
               className="text-sm font-semibold tracking-tight"
               style={{ color: 'var(--ink-primary)' }}
             >
-              {t.chart.revenueTrend}
+              {t.chart.faktTrend}
             </h2>
             <p className="mt-0.5 text-xs" style={{ color: 'var(--ink-muted)' }}>
-              {t.chart.revenueTrendBasis}
+              {t.chart.faktTrendBasis}
               {bucketLabel && `, ${bucketLabel}`}
             </p>
           </div>
         </header>
 
         {/*
-          THREE FIGURES, AND THE FIRST TWO ARE THE FLOOR'S OWN.
-
-          The client's instruction on 2026-09-09 was that this page's essential
-          data is built on FAKT 1 and FAKT 2 («eng muhim malumotlar fakt 1 va
-          fakt 2 ustiga quriladi»). They used to be a band three sections down,
-          under a chart that was already plotting them as two lines over this
-          card's area — the card headlined one clock and drew two. It now
-          headlines both.
-
-          REVENUE KEEPS ITS PLACE, one size step down. It is what an owner asks
-          for first and what the AREA under the chart still is, so demoting it
-          out of the card would have left the plot unheadlined and the page
-          named for a number it no longer prints. `figure-sum` against the
-          pair's `figure-hero-sum` is the whole of the demotion.
-
           THE PAIR IS NEVER STACKED, NESTED OR SUBTRACTED — see `FaktHeadline`.
-          Three peers on one row, each naming its own clock above.
+          Two peers on one row, each naming its own clock above.
+
+          A THIRD FIGURE USED TO SIT BESIDE THEM. «Yopilgan tushum» — closed
+          revenue, on the close-date clock — came off on 2026-09-10 with the
+          «Shundan …%» composition line that explained it. Both were true and
+          both were about a different cohort from everything else on this
+          screen; the client asked for one subject («menga bu boʻlim fakt 1 va
+          fakt 2»), and two of three columns is what one subject looks like.
         */}
         <div className="px-5 pt-3">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <FaktHeadline data={faktBoard.data} status={faktBoard.status} />
-
-            <div className="min-w-0">
-          <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-            Yopilgan tushum
-          </p>
-          {/*
-            Three states, not one — the same discipline as the tiles. A
-            loading skeleton sized to the hero figure, a critical "Olinmadi"
-            for a failed fetch, and the number itself only when it is real.
-          */}
-          {sales.isPending ? (
-            <div className="skeleton mt-1.5 h-10 w-56" role="status">
-              <span className="sr-only">Yuklanmoqda</span>
-            </div>
-          ) : sales.isError ? (
-            <p
-              className="mt-1.5 text-base font-medium"
-              style={{ color: 'var(--status-critical)' }}
-            >
-              Olinmadi
-            </p>
-          ) : summary ? (
-            /* The exact soʻm amount rides the Tooltip primitive — hover,
-               focus and touch — because the compact form drops the digits. */
-            /*
-              THE SUM, TO THE LAST DIGIT, AND SO NO TOOLTIP. The Tooltip
-              primitive used to carry the exact figure because the compact
-              form dropped it; printing the digits and repeating them on hover
-              is a control that promises something it does not add, and it
-              took a tab stop for it. Same trade `StatTile` makes under
-              `money="full"`, and the reason is the client's own: this screen
-              is reconciled against the portal, where the number is written out.
-            */
-            <div className="mt-1.5">
-              {/* `figure-sum`, not `figure-hero-sum`: one step under the pair
-                  beside it, and the same size the velocity tile prints a full
-                  figure at. The demotion is the only thing about this figure
-                  that changed. */}
-              <span className="figure figure-sum figure-wrap inline-block" style={{ color: 'var(--ink-primary)' }}>
-                <AnimatedNumber
-                  value={toUzs(summary.revenue)}
-                  format={formatFullUzs}
-                  duration={900}
-                />
-                <span className="ml-1.5 text-sm font-normal" style={{ color: 'var(--ink-muted)' }}>
-                  soʻm
-                </span>
-              </span>
-            </div>
-          ) : null}
-            </div>
           </div>
-
-          {/*
-            WHAT THAT NUMBER IS MADE OF — the single most misread fact on a
-            revenue screen, and it was missing.
-
-            Revenue is booked on the CLOSE date while the median order takes
-            three weeks to close, so a month's revenue is mostly the previous
-            months' orders arriving. Measured on August 2026: of 5.68 mlrd
-            closed, only 1.68 mlrd (29%) came from orders August itself took
-            in — 2.42 mlrd was July's and 1.25 mlrd June's. Without this line
-            a reader sees revenue quintuple against a flat intake (2,616 →
-            2,393 orders) and reads five-fold growth that did not happen.
-          */}
-          {/*
-            Gated on the HERO's own state as well as the pulse's, and on the
-            filters: a breakdown printed under a skeleton describes a number
-            nobody has fetched, and `/insights/pulse` cannot honour the product
-            and stage filters `/analytics/sales` applies — so under those
-            filters the parts would not be parts of this whole.
-          */}
-          {salesStatus === 'ready' &&
-            summary &&
-            !insightsIgnoreFilters &&
-            pulseStatus === 'ready' &&
-            pulseData &&
-            pulseData.composition.ownSharePercent !== null && (
-              <p className="mt-2 text-[11px] leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
-                Shundan{' '}
-                <span style={{ color: 'var(--ink-secondary)' }}>
-                  {/* One decimal: the server has already rounded to one, and
-                      rounding again to none moved 33.5 across a boundary and
-                      printed 34. */}
-                  {formatPercent(pulseData.composition.ownSharePercent, 1)}
-                </span>{' '}
-                — shu davrda olingan buyurtmalardan (
-                {formatFullUzs(pulseData.composition.own.amount)} soʻm,{' '}
-                {formatNumber(pulseData.composition.ownDeals)} ta); qolgani oldingi davrlarda
-                olinib, shu davrda yopildi (
-                {formatFullUzs(pulseData.composition.carried.amount)} soʻm,{' '}
-                {formatNumber(pulseData.composition.carriedDeals)} ta).
-              </p>
-            )}
         </div>
 
         {/*
@@ -480,676 +231,54 @@ export function SalesPage() {
           plot area under a confident headline.
         */}
         <div className="px-5 pt-4 pb-5">
-          {sales.isPending ? (
+          {faktTrend.isPending ? (
             <ChartSkeleton height={300} />
-          ) : sales.isError ? (
+          ) : faktTrend.isError ? (
             <ErrorState
-              message={(sales.error as Error | null)?.message}
-              onRetry={() => void sales.refetch()}
+              message={(faktTrend.error as Error | null)?.message}
+              onRetry={() => void faktTrend.refetch()}
             />
-          ) : trend.length === 0 ? (
+          ) : faktPoints.length === 0 ? (
             <EmptyState
-              title="Bu davrda tushum yoʻq"
-              body="Tanlangan davr ichida yopilgan bitim topilmadi."
+              title="Bu davrda maʼlumot yoʻq"
+              body="Tanlangan davrda tasdiqlash navbatiga tushgan buyurtma topilmadi."
             />
           ) : (
-            <>
-              <RevenueTrendChart
-                data={trend}
-                fakt={faktPoints}
-                height={300}
-                referenceValue={trendAverage}
-                referenceLabel="Davr oʻrtachasi"
-              />
-              {/*
-                SAID, NOT LEFT TO BE DIAGNOSED. `/analytics/sellers` honours
-                the employee, department and source filters and drops the
-                other two — an order has no product until it is itemised, and
-                the queue cohort has no stage of its own. Under a product or
-                stage filter the area therefore shrinks and the two lines do
-                not, which on one chart reads as the FAKTs overtaking revenue.
-                The same sentence `ConfirmationFaktSection` prints over its
-                tiles, for the same reason.
-              */}
-              {insightsIgnoreFilters && faktPoints && faktPoints.length > 0 && (
-                <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                  {t.chart.faktIgnoresFilters}
-                </p>
-              )}
-            </>
+            <FaktTrendChart
+              data={faktPoints}
+              height={300}
+              referenceValue={trendAverage}
+              referenceLabel="FAKT 1 · davr oʻrtachasi"
+            />
           )}
         </div>
       </Card>
 
       {/*
         THE REST OF THE CONFIRMATION COHORT, directly under the pair it
-        explains — the page's spine since 2026-09-09.
+        explains — the page's spine since 2026-09-09 and, since 2026-09-10,
+        the whole of the rest of the page.
 
-        It answers what the hero cannot: where the rest of FAKT 1 went, which
-        ROP team is carrying the month, and who is one order from a bonus
-        rung. It comes BEFORE the closedAt band now because that is the order
-        the client reads the floor in, and because the two figures above it
-        are on this section's clock, not on the band's. See
-        `ConfirmationFaktSection`.
+        It answers what the hero cannot: where the rest of FAKT 1 went and
+        which ROP team is carrying the month. See `ConfirmationFaktSection`.
       */}
       <ConfirmationFaktSection />
 
       {/*
-        The KPI row this page never had — the summary was always fetched and
-        never rendered. Supporting tiles, deliberately subordinate to the
-        hero: 30px figures against its 34–40px, and each carries its own
-        context (sparkline, meter or fraction) so no number sits unjudgeable.
-        The summary DTO carries no deltas, so none are invented here; the
-        period-over-period story lives on the pulse band's win-rate pills.
+        WHERE THOSE ORDERS PHYSICALLY ARE, and the last thing on the page.
+
+        The client asked for the Доставка funnel's own figures to stay on this
+        screen and for its columns to be named as Bitrix24 names them
+        (2026-09-10). It reads last because it answers last: the chart says
+        what was confirmed and delivered, the band says what is left of FAKT 1,
+        and this says which hub or courier is holding it right now.
+
+        IT IS THE ONE BLOCK HERE ON A DIFFERENT CLOCK — a snapshot, not a
+        window — which is why it carries its own caption saying so rather than
+        sitting silently under the page's date range. See
+        `DeliveryBoardSection`.
       */}
-      <section aria-labelledby="sales-band-heading" className="space-y-3">
-        {/*
-          The band draws from TWO endpoints — the first four tiles from
-          /analytics/sales, which honours every filter, and the last two from
-          /insights/pulse, which cannot honour product or stage. One uniform
-          row of six may not hide that: with a product filter active the
-          reader would otherwise compare a filtered count against an
-          unfiltered amount and find the second larger than the first.
-        */}
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          {/*
-            THE CLOCK IS IN THE HEADING NOW, because the section above it runs
-            on another one and the two are read one after the other.
-
-            Every figure below is a DEAL closed (or created) in the window and
-            credited to the deal's assignee; every figure above is an ORDER
-            dated by its arrival in the confirmation queue and credited to the
-            operator. That is two clocks, two populations and two definitions
-            of whose work it was — and until this line the page named only the
-            first, in one paragraph, three sections down.
-          */}
-          <h2 id="sales-band-heading" className="eyebrow">
-            Yopilgan bitimlar boʻyicha
-          </h2>
-          <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-            Yopilgan/yaratilgan sana boʻyicha · masʼul xodim boʻyicha hisoblanadi
-            {insightsIgnoreFilters &&
-              ' · oxirgi ikki plitka mahsulot va bosqich filtrlarini hisobga olmaydi'}
-          </p>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <StatTile
-          label={t.cards.dealsWon}
-          value={summary?.dealsWon ?? null}
-          unit="count"
-          status={salesStatus}
-          hint={summary ? `${formatNumber(summary.dealsLost)} ta bekor qilingan` : undefined}
-          context={
-            wonSpark.length >= 2 ? (
-              <Sparkline values={wonSpark} label="Davr boʻyicha yopilgan bitimlar" />
-            ) : undefined
-          }
-        />
-        <StatTile
-          label={t.cards.dealsCreated}
-          value={summary?.dealsCreated ?? null}
-          unit="count"
-          status={salesStatus}
-          hint={summary ? `Qiymati ${formatUzs(toUzs(summary.createdValue))}` : undefined}
-          context={
-            createdSpark.length >= 2 ? (
-              <Sparkline values={createdSpark} label="Davr boʻyicha yaratilgan bitimlar" />
-            ) : undefined
-          }
-        />
-        <StatTile
-          label={t.cards.conversion}
-          value={summary?.conversionRatePercent ?? null}
-          unit="percent"
-          status={salesStatus}
-          // A rate states its fraction: won over resolved, the same
-          // denominator the server divides by.
-          hint={
-            summary
-              ? `${formatNumber(summary.dealsWon)} / ${formatNumber(
-                  summary.dealsWon + summary.dealsLost,
-                )} yakunlangan bitim`
-              : undefined
-          }
-          context={
-            summary && summary.conversionRatePercent !== null ? (
-              <div className="space-y-1.5">
-                <Meter
-                  value={summary.conversionRatePercent}
-                  tone="neutral"
-                  label={t.cards.conversion}
-                />
-                {/*
-                  THE MOVE, INHERITED FROM THE TILE THIS ONE REPLACES — and
-                  gated, because it comes from the other endpoint.
-
-                  The value above is /analytics/sales, which honours the
-                  product and stage filters; this delta is /insights/pulse,
-                  which cannot. Ungated, a product filter would print a
-                  filtered rate with an unfiltered arrow under it and the
-                  arrow would be about a different population than the number
-                  it points at.
-                */}
-                {!insightsIgnoreFilters && pulseData && (
-                  <TrendIndicator
-                    delta={pulseData.winRate.countDelta}
-                    points={{
-                      current: pulseData.winRate.countPercent,
-                      previous: pulseData.winRate.previousCountPercent,
-                    }}
-                  />
-                )}
-              </div>
-            ) : undefined
-          }
-        />
-        <StatTile
-          label={t.cards.averageDeal}
-          value={summary?.averageDeal ? toUzs(summary.averageDeal) : null}
-          unit="money"
-          /* Every soʻm figure on this page is printed out — the client's
-             instruction on 2026-09-09. `money="full"` carries the format, the
-             smaller figure size and the dropped tooltip together. */
-          money="full"
-          status={salesStatus}
-          hint={summary ? `${formatNumber(summary.dealsWon)} ta yutilgan bitim boʻyicha` : undefined}
-        />
-
-        {/*
-          The counterweight to the hero, and it was missing entirely.
-
-          Revenue says what CLOSED; this says what the same period took in
-          and has NOT closed — money that will land in a later month's
-          revenue. Without it the page can only ever show the past. Scoped to
-          the period on the creation clock, which is why it differs from the
-          velocity tile's company-wide open snapshot.
-        */}
-        {/* «Bu davrdan» is load-bearing: the FAKT band prints a «Yoʻlda» of
-            the confirmation cohort and the velocity tile's hint names the
-            whole pipe with no window at all. Three true readings of one word,
-            each qualified where it stands. */}
-        <StatTile
-          label="Bu davrdan yoʻlda — yaratilgan, hali yopilmagan"
-          value={pulseData ? pulseData.composition.openFromPeriod.amount : null}
-          unit="money"
-          money="full"
-          status={pulseStatus}
-          hint={
-            pulseData
-              ? `${formatNumber(
-                  pulseData.composition.openFromPeriodDeals,
-                )} ta buyurtma hali yopilmagan`
-              : undefined
-          }
-        />
-
-        {/*
-          The run-rate projection, and DELIBERATELY WITHOUT ITS DELTA.
-
-          The API also returns `forecast.delta` — projection against the
-          previous full month — and on this data it reads +523.6%, which is
-          not growth: July closed only 983 mln because July's orders were
-          still in transit and closed in August instead. That is the same
-          close-date artifact the composition line above explains, so the
-          comparison is dropped and only the projection itself is shown.
-
-          Rendered only while the period is still RUNNING: once it is over
-          the projection is defined to equal the actual, and calling a
-          finished total a forecast would be a second name for the hero.
-        */}
-        {pulseData && pulseData.forecast.elapsedPercent < 100 && (
-          <StatTile
-            /* «Tushum ·» leads it because the FAKT band above prints an
-               «oy yakuni prognozi» of its own, on the other clock. Two
-               projections of one month is fine; two under one name is not. */
-            label={`Tushum · ${unitName} yakuni prognozi`}
-            value={pulseData.forecast.projected ? pulseData.forecast.projected.amount : null}
-            unit="money"
-            money="full"
-            status={pulseStatus}
-            /*
-              THE CALENDAR UNIT, NOT "THE PERIOD".
-
-              `forecast.elapsedPercent` measures the FULL unit — a projection
-              for all of September has to be read against how much of September
-              has gone. The window this page prints under its title is
-              month-to-DATE, which ends at midnight tonight and is therefore
-              always about to be finished. Calling the same figure "davrning"
-              set the two against each other: the header said 1–2 September and
-              the tile said six per cent of it had elapsed.
-            */
-            hint={`${unitName}ning ${formatPercent(
-              pulseData.forecast.elapsedPercent,
-              0,
-            )} qismi oʻtdi — shu surʼatda davom etsa`}
-          />
-        )}
-        </div>
-      </section>
-
-      {/*
-        Savdo pulsi — how fast the machine turns, from /insights/pulse.
-        Cycle time, velocity, and the win rate stated BOTH ways: by deal
-        count and value-weighted, side by side and labelled, because the two
-        diverge exactly when a few large deals are carrying the period.
-      */}
-      <section aria-labelledby="sales-pulse-heading" className="space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <h2 id="sales-pulse-heading" className="eyebrow">
-            Savdo pulsi
-          </h2>
-          {insightsIgnoreFilters && (
-            <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-              Mahsulot va bosqich filtrlari bu qatorga taʼsir qilmaydi
-            </p>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
-          <InsightTile
-            label="Aylanish davri (mediana)"
-            status={pulseStatus}
-            hint={
-              pulseData
-                ? pulseData.cycle.wonCount > 0
-                  ? `${formatNumber(pulseData.cycle.wonCount)} ta yutilgan bitim boʻyicha`
-                  : 'Bu davrda yutilgan bitim yoʻq'
-                : undefined
-            }
-            context={
-              pulseData &&
-              (pulseData.cycle.p75Days !== null || pulseData.cycle.p90Days !== null) ? (
-                <p className="tabular text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                  p75:{' '}
-                  {pulseData.cycle.p75Days !== null
-                    ? formatDays(pulseData.cycle.p75Days)
-                    : NO_VALUE}{' '}
-                  · p90:{' '}
-                  {pulseData.cycle.p90Days !== null
-                    ? formatDays(pulseData.cycle.p90Days)
-                    : NO_VALUE}{' '}
-                  kun
-                </p>
-              ) : undefined
-            }
-          >
-            {pulseData?.cycle.p50Days != null ? (
-              <>
-                <AnimatedNumber value={pulseData.cycle.p50Days} format={formatDays} />
-                <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
-                  kun
-                </span>
-              </>
-            ) : (
-              NO_VALUE
-            )}
-          </InsightTile>
-
-          <InsightTile
-            label="Savdo tezligi"
-            status={pulseStatus}
-            /*
-              The formula's legs, always visible. Velocity is null the moment
-              ANY component is — so the hint names each leg, and the missing
-              one prints its em dash right where the reader is looking.
-            */
-            hint={
-              pulseData
-                ? `Ochiq ${formatNumber(pulseData.velocity.openDeals)} ta (${formatUzs(
-                    pulseData.velocity.openValue.amount,
-                  )}, butun quvur — davrga bogʻliq emas) · yutish ${formatPercent(
-                    pulseData.velocity.winRatePercent,
-                  )} · aylanish ${
-                    pulseData.velocity.medianCycleDays !== null
-                      ? `${formatDays(pulseData.velocity.medianCycleDays)} kun`
-                      : NO_VALUE
-                  }`
-                : undefined
-            }
-          >
-            {/* Printed out, so the tooltip that recovered the dropped digits
-                goes with the compact form — and takes its tab stop with it.
-                `figure-sum` matches the size the full tiles beside it use. */}
-            {pulseData?.velocity.salesVelocityPerDay ? (
-              <span className="figure-sum figure-wrap inline-block">
-                <AnimatedNumber
-                  value={pulseData.velocity.salesVelocityPerDay.amount}
-                  format={formatFullUzs}
-                />
-                <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
-                  soʻm/kun
-                </span>
-              </span>
-            ) : (
-              NO_VALUE
-            )}
-          </InsightTile>
-
-          {/*
-            «Yutish — bitimlar soni» USED TO SIT HERE, and it was the same
-            measurement twice.
-
-            It printed won / (won + lost) by COUNT from /insights/pulse —
-            97.4% — while «Bitim konversiyasi» two sections up prints won /
-            (won + lost) by count from /analytics/sales, also 97.4%. One
-            number, two endpoints, two names, one screen. What it carried that
-            the other did not was the period-over-period move, so the tile is
-            gone and its TrendIndicator moved onto the tile that survives.
-
-            The value-weighted rate stays, and is now the only «Yutish» on the
-            page: it is a different measurement, and the two diverge exactly
-            when a few large deals are carrying the period — which is the
-            reason the pair was drawn side by side in the first place.
-          */}
-          <StatTile
-            label="Yutish — bitim qiymati"
-            value={pulseData?.winRate.valuePercent ?? null}
-            unit="percent"
-            status={pulseStatus}
-            // What "value-weighted" means, in the reader's language: a big
-            // deal moves this rate more than a small one — and where the
-            // count-weighted reading it used to sit beside now lives.
-            hint="Katta bitimlar koʻproq vazn oladi — soni boʻyicha oʻlchov «Bitim konversiyasi»da"
-            context={
-              pulseData ? (
-                <TrendIndicator
-                  delta={pulseData.winRate.valueDelta}
-                  points={{
-                    current: pulseData.winRate.valuePercent,
-                    previous: pulseData.winRate.previousValuePercent,
-                  }}
-                />
-              ) : undefined
-            }
-          />
-        </div>
-      </section>
-
-      {/*
-        The ever-reached conversion ladder replaces the FunnelChart that used
-        to sit here. The funnel showed the CURRENT position of the period's
-        deals — a snapshot the Overview still carries — while this ladder,
-        from DealStageHistory, answers the question a sales screen actually
-        asks: of the deals created in the period, how many ever REACHED each
-        stage, and where does the pipeline leak. Two funnels with two
-        different denominators on one screen would demand a reconciliation
-        nobody can do from memory; the honest one for this page won.
-
-        The by-source BarList is gone too: the sources table below states the
-        same ranking with more columns, and its freed slot is what gives the
-        ladder room to breathe.
-      */}
-      {/*
-        `min-w-0` on the items, because a grid track is `minmax(auto, 1fr)`
-        and `auto` means the item's MIN-CONTENT — so one wide row inside the
-        ladder widens the column it sits in rather than being contained by
-        it. At 360px that pushed this row 23px past the page and the card's
-        right edge left the screen.
-      */}
-      <div className="grid items-start gap-4 lg:grid-cols-3 [&>*]:min-w-0">
-        <ChartCard
-          className="lg:col-span-2"
-          // "Qamrov", not "konversiya": the rows are shares of one cohort, not
-          // pass-through between steps. The command centre names the same
-          // reading the same way, so one word means one thing across screens.
-          title="Bosqichlar qamrovi"
-          // The basis, stated where the numbers are — this ladder counts
-          // deals CREATED in the period, not deals currently sitting anywhere.
-          hint={`Davrda yaratilgan bitimlardan har bosqichga yetib borganlar — ulush har voronkaning oʻz jamisidan${
-            insightsIgnoreFilters ? ' · mahsulot va bosqich filtrlarisiz' : ''
-          }`}
-        >
-          {flow.isPending ? (
-            <ChartSkeleton height={240} />
-          ) : flow.isError ? (
-            <ErrorState
-              message={flow.error instanceof ApiClientError ? flow.error.message : undefined}
-              onRetry={() => void flow.refetch()}
-            />
-          ) : stageRows.length === 0 ? (
-            <EmptyState
-              title="Maʼlumot yoʻq"
-              body="Tanlangan davrda yaratilgan bitimlar boʻyicha bosqich tarixi topilmadi."
-            />
-          ) : (
-            <StageLadder stages={stageRows} />
-          )}
-        </ChartCard>
-
-        <ChartCard title={t.chart.byProduct} hint="Eng yaxshi 8 ta">
-          {/* Three states, like every card on the page. This one fed BarList
-              directly, and BarList answers an empty list with "Maʼlumot yoʻq"
-              — so the card claimed no data while the data was still loading,
-              and said the same thing about a failed request, with no retry. */}
-          {products.isPending ? (
-            <ChartSkeleton height={240} />
-          ) : products.isError ? (
-            <ErrorState
-              message={products.error instanceof ApiClientError ? products.error.message : undefined}
-              onRetry={() => void products.refetch()}
-            />
-          ) : (
-            <BarList
-              items={productRows.slice(0, 8).map((row) => ({
-                id: row.productId,
-                label: row.name,
-                value: row.revenue.amount,
-                sharePercent: row.sharePercent,
-              }))}
-              /* Passed here rather than changed in `BarList`: every soʻm on
-                 THIS page is printed out, and the component's compact default
-                 is right for the pages that still read it. */
-              valueFormatter={formatFullUzs}
-            />
-          )}
-        </ChartCard>
-      </div>
-
-      <Card className="px-4 py-4">
-        <h2
-          className="mb-3 text-sm font-semibold tracking-tight"
-          style={{ color: 'var(--ink-primary)' }}
-        >
-          {t.chart.bySource}
-        </h2>
-        <DataTable
-          columns={sourceColumns}
-          rows={sourceRows}
-          rowKey={(row) => row.sourceId}
-          status={sources.isError ? 'error' : sources.isPending ? 'loading' : 'ready'}
-          errorMessage={
-            sources.error instanceof ApiClientError ? sources.error.message : undefined
-          }
-          onRetry={() => void sources.refetch()}
-          minWidth={760}
-        />
-      </Card>
+      <DeliveryBoardSection />
     </PageShell>
-  )
-}
-
-/**
- * A stat tile whose value is not a bare number — days with a unit, money per
- * day — rendered in exactly StatTile's voice (same card, label, 30px figure,
- * skeleton and error treatments) so the pulse row reads as one family.
- * StatTile itself formats from `(value, unit)` and neither of these values
- * fits its unit set; duplicating the shell here is cheaper than widening a
- * component six pages already depend on.
- */
-function InsightTile({
-  label,
-  hint,
-  context,
-  status,
-  children,
-}: {
-  label: string
-  hint?: string
-  context?: ReactNode
-  status: 'loading' | 'error' | 'ready'
-  children: ReactNode
-}) {
-  return (
-    <div className="card flex flex-col px-4 py-3.5">
-      <p className="truncate text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-        {label}
-      </p>
-
-      {status === 'loading' ? (
-        // Sized to the figure below at each breakpoint, so ready never
-        // reflows loading.
-        <div className="skeleton mt-2 h-[26px] w-2/3 sm:h-[30px]" role="status">
-          <span className="sr-only">Yuklanmoqda</span>
-        </div>
-      ) : status === 'error' ? (
-        <p
-          className="figure mt-2 text-[26px] leading-none font-semibold sm:text-[30px]"
-          style={{ color: 'var(--status-critical)' }}
-          title="Maʼlumot olinmadi"
-        >
-          <span className="text-base font-medium">Olinmadi</span>
-        </p>
-      ) : (
-        /*
-          A div, not a p: the velocity tile nests its Tooltip trigger here.
-
-          26px on a phone, 30px from sm up — the same two steps StatTile has
-          always had, and this tile was the one member of the KPI family that
-          skipped them. Four of these sit two-across at 360px, and «47.8 mln
-          soʻm/kun» at a flat 30px ran 13px past the card into main's
-          overflow-x-hidden, so the tile did not scroll — it simply lost the
-          end of its own unit.
-        */
-        <div
-          className="figure figure-wrap mt-2 text-[26px] leading-none font-semibold sm:text-[30px]"
-          style={{ color: 'var(--ink-primary)' }}
-        >
-          {children}
-        </div>
-      )}
-
-      {hint && (
-        <p className="mt-1 text-[11px] leading-snug" style={{ color: 'var(--ink-muted)' }}>
-          {hint}
-        </p>
-      )}
-
-      {context && <div className="mt-2.5">{context}</div>}
-    </div>
-  )
-}
-
-/**
- * The reach ladder: per pipeline, each stage with the count of cohort deals
- * that ever entered it, drawn against ONE shared denominator — the pipeline's
- * whole cohort of deals created in the period.
- *
- * IT USED TO DRAW CONSECUTIVE-STAGE CONVERSION, AND THAT WAS WRONG HERE. The
- * Доставка pipeline's middle is not a sequence: stages 6040–6080 are
- * REGIONAL_HUB (TOSHKENT-1, NAVOIY, VODIY, QASHQADARYO, SURXONDARYO) and
- * 6090–6110 are CARRIER — an order enters ONE region and ONE carrier, not
- * each in turn. Dividing a stage by its sortOrder predecessor therefore
- * divided one parallel branch by another and printed VODIY/NAVOIY = 671.8%,
- * CARAVAN/SURXONDARYO = 672.0% and Доставлено/Отказ-предварительно = 961.1%.
- * A reader cannot un-see "961% conversion", and there is no honest reading
- * of it, because those two stages have no sequence between them.
- *
- * The shared denominator is what the command centre's cohort card already
- * uses for the same reason ("bu voronka emas, qamrov"), and it composes: a
- * share cannot exceed 100%, parallel branches simply add up to the whole, and
- * the same eye can compare any two rows on the page. Magnitude, not
- * judgement — a "good" reach differs per stage, so the meter stays neutral.
- */
-function StageLadder({ stages }: { stages: readonly StageConversionRowDto[] }) {
-  // Map preserves the server's pipeline order; stages re-sorted defensively.
-  const byPipeline = new Map<string, StageConversionRowDto[]>()
-  for (const stage of stages) {
-    const group = byPipeline.get(stage.pipelineName)
-    if (group) group.push(stage)
-    else byPipeline.set(stage.pipelineName, [stage])
-  }
-
-  return (
-    <div className="space-y-5">
-      {[...byPipeline.entries()].map(([pipelineName, rows]) => {
-        const ordered = [...rows].sort((a, b) => a.sortOrder - b.sortOrder)
-        /*
-          A PIPELINE NOBODY ENTERED IS NOT DRAWN; A STAGE NOBODY REACHED IS
-          COUNTED.
-
-          Measured on production for September 2026: of this ladder's rows,
-          more than half read «0 ta», and the whole Ecommerce pipeline was
-          zeros — a wall of empty meters the reader scrolls past to find the
-          four rows that moved. The client asked for the page's essential data
-          to be built on FAKT 1 / FAKT 2 on 2026-09-09, and the space this
-          spent was the space that ask needs.
-
-          The two cases are not the same and are not treated the same. A
-          pipeline with no cohort at all (`cohortDeals === 0`) has nothing to
-          say and no denominator to say it against, so it goes. A stage inside
-          a LIVE pipeline that nobody reached IS news — that is exactly where
-          a leak shows — so it is not deleted, it is counted: the rows go, one
-          line stays and says how many and that they were empty. A reader who
-          needs them by name has the stage list on Logistika and the queue's
-          own board.
-        */
-        const cohort = ordered[0]?.cohortDeals ?? 0
-        if (cohort === 0) return null
-        const reached = ordered.filter((row) => row.dealCount > 0)
-        const empty = ordered.length - reached.length
-        return (
-          <div key={pipelineName}>
-            <p className="text-xs font-semibold" style={{ color: 'var(--ink-primary)' }}>
-              {pipelineName}
-              {/* The denominator, beside the rows it divides — a share whose
-                  base is off-screen is a number nobody can check. */}
-              {ordered[0] !== undefined && ordered[0].cohortDeals > 0 && (
-                <span className="ml-2 font-normal" style={{ color: 'var(--ink-muted)' }}>
-                  {formatNumber(ordered[0].cohortDeals)} ta bitimdan
-                </span>
-              )}
-            </p>
-            <ul className="mt-2 space-y-2">
-              {reached.map((row) => (
-                <li
-                  key={row.stageId}
-                  className="grid grid-cols-[minmax(0,1fr)_auto_minmax(110px,150px)] items-center gap-3"
-                >
-                  {/* Long Uzbek stage names wrap rather than truncate — a
-                      ladder row has the vertical room a table cell lacks. */}
-                  <span
-                    className="text-[12.5px] leading-snug"
-                    style={{ color: 'var(--ink-secondary)' }}
-                  >
-                    {row.stageName}
-                  </span>
-                  <span
-                    className="tabular text-xs font-medium"
-                    style={{ color: 'var(--ink-primary)' }}
-                  >
-                    {formatNumber(row.dealCount)} ta
-                  </span>
-                  {/* One denominator for every row, so the meter can never
-                      overflow its own track and two rows are comparable. */}
-                  <Meter
-                    value={row.cohortSharePercent}
-                    tone="neutral"
-                    label={`${row.stageName}: shu bosqichga yetib borganlar`}
-                  />
-                </li>
-              ))}
-            </ul>
-            {/* The rows that are not drawn, said out loud — a trim nobody can
-                see is a trim that reads as "this is everything". */}
-            {empty > 0 && (
-              <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                {formatNumber(empty)} ta bosqichga bu davrda hech kim yetib bormadi
-              </p>
-            )}
-          </div>
-        )
-      })}
-    </div>
   )
 }

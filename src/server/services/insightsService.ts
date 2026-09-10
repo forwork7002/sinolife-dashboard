@@ -22,6 +22,7 @@ import type {
   CallActivityRow,
   CallDirectionRow,
   ChannelRow,
+  ConfirmationCohortFilter,
   ConfirmationOrderQuery,
   ConfirmationOrderRow,
   ConfirmationOutcomeMoneyMinor,
@@ -35,6 +36,30 @@ import type {
   StructureNode,
 } from '@/server/repositories/insightsRepository'
 import type { ConfirmationOutcomeValue, ConfirmationQueueMode } from '@/server/domain/types'
+import { keyPart, ttlCache } from './ttlCache'
+
+/**
+ * One build of the confirmation board's ROP breakdown per cohort per minute.
+ *
+ * The reasoning is at `InsightsService.confirmationBreakdown`, which is the
+ * only thing that may reach this. Module level rather than per instance for the
+ * reason every memo here is: readers arriving together on one screen is the
+ * case that breaks a small pool, and collapsing them needs one map.
+ */
+const confirmationRopCache = ttlCache<ConfirmationRopRow[]>(60_000)
+
+/**
+ * Test seam, and the hazard is real rather than theoretical.
+ *
+ * A module-level memo is shared between test FILES in one worker, and the last
+ * time this codebase grew one without a reset it silently served
+ * `sellerBoardTeams.test.ts` another case's board — four ranking assertions
+ * failing against a different fixture's ROP names, with no error anywhere.
+ * Anything that swaps the repository under this service must call it.
+ */
+export function resetConfirmationRopCache(): void {
+  confirmationRopCache.clear()
+}
 
 /** Basis points as a percentage, to one decimal. */
 function pct(bp: number | null): number | null {
@@ -71,12 +96,33 @@ export interface LogisticsRowDto {
   readonly revenue: MoneyDto
   readonly deliveryRate: number | null
   readonly medianDays: number | null
-  readonly p90Days: number | null
+}
+
+/**
+ * One column of the portal's Доставка kanban.
+ *
+ * `stage` is the portal's own stage name with its pipeline prefix stripped —
+ * «Подготовка товара», «Заказ в мой склад», «TOSHKENT-1», «Доставлено» — and
+ * the rows arrive in the portal's own order, so the table reads down the way
+ * the kanban reads across.
+ *
+ * `amount` is every deal in the stage, which is the figure the kanban prints.
+ * It is NOT `LogisticsRowDto.revenue`, which counts won deals only: a stage
+ * nothing has won yet is not a stage worth nothing.
+ */
+export interface LogisticsStageDto {
+  readonly stage: string
+  readonly orders: number
+  /** Share of the funnel's own orders. Null when the funnel is empty. */
+  readonly sharePercent: number | null
+  readonly amount: MoneyDto
 }
 
 export interface LogisticsDto {
   readonly routes: readonly LogisticsRowDto[]
   readonly regions: readonly LogisticsRowDto[]
+  /** The Доставка funnel itself, stage by stage, in the portal's order. */
+  readonly stages: readonly LogisticsStageDto[]
   /**
    * Losses, split by whether the goods had already been dispatched.
    *
@@ -88,8 +134,7 @@ export interface LogisticsDto {
     stage: string
     reason: string
     orders: number
-    /** Null where the rows are excluded from revenue and cannot be summed. */
-    lost: MoneyDto | null
+    lost: MoneyDto
   }[]
   readonly totals: {
     readonly orders: number
@@ -625,7 +670,7 @@ export class InsightsService {
         ? Promise.resolve([] as Awaited<ReturnType<typeof this.repository.refusalReasons>>)
         : this.repository.refusalReasons(window),
     ])
-    const { routes: routeCut, regions: regionCut } = cuts
+    const { routes: routeCut, regions: regionCut, stages: stageCut } = cuts
 
     const toRow = (r: LogisticsRouteRow): LogisticsRowDto => ({
       label: r.route,
@@ -637,7 +682,6 @@ export class InsightsService {
       revenue: toMoneyDto(money(r.revenueMinor, currency)),
       deliveryRate: pct(r.deliveryRateBp),
       medianDays: r.medianDays === null ? null : Math.round(r.medianDays * 10) / 10,
-      p90Days: r.p90Days === null ? null : Math.round(r.p90Days * 10) / 10,
     })
 
     /*
@@ -667,14 +711,26 @@ export class InsightsService {
     return {
       routes: routeCut.rows.map(toRow),
       regions: regionCut.rows.map(toRow),
+      /*
+        The share divides by the FUNNEL'S own total, which is why the
+        repository returns one. Null rather than zero over an empty funnel:
+        «no orders yet» and «0% of the orders» are different claims, and the
+        table draws a bar from this.
+      */
+      stages: stageCut.rows.map((r) => ({
+        stage: r.stage,
+        orders: r.orders,
+        sharePercent:
+          stageCut.totalOrders === 0
+            ? null
+            : Math.round((r.orders / stageCut.totalOrders) * 1000) / 10,
+        amount: toMoneyDto(money(r.amountMinor, currency)),
+      })),
       reasons: reasons.map((r) => ({
         stage: r.stage,
         reason: r.reason,
         orders: r.orders,
-        // Null for pre-sale losses: those rows are excluded from revenue
-        // because the same order appears in several pipelines, so their
-        // amounts cannot be summed without double-counting.
-        lost: r.lostMinor === null ? null : toMoneyDto(money(r.lostMinor, currency)),
+        lost: toMoneyDto(money(r.lostMinor, currency)),
       })),
       totals: {
         orders,
@@ -818,7 +874,7 @@ export class InsightsService {
   /**
    * The РЕГИОН column filter's options.
    *
-   * ITS OWN ENDPOINT, ON PURPOSE. The board reloads every two minutes on a
+   * ITS OWN ENDPOINT, ON PURPOSE. The board reloads every minute on a
    * screen the floor keeps open all day; this answer changes about as often as
    * the portal grows a region, so it is fetched when the popover first opens
    * and cached by the client from then on. Riding it on the board's response
@@ -848,6 +904,65 @@ export class InsightsService {
     const rows = await this.repository.confirmationRegions(window, filter, mode)
 
     return { regions: rows.map((r) => ({ region: r.region, orders: r.orders })) }
+  }
+
+  /**
+   * The per-ROP breakdown, built once per cohort however many questions are
+   * asked of it.
+   *
+   * WHAT THIS SAVES, AND WHY IT IS SAFE TO SAVE IT. The breakdown feeds three
+   * things — the six tiles, the Статистика panel and the РОП filter's options —
+   * and NONE of them reads the state selection, the ROP selection, the page,
+   * the page size or the sort. `confirmationByRop` is handed four filters and a
+   * window and that is the whole of what it looks at; the ROP cut that reaches
+   * the tiles is done in TypeScript below, over these very rows.
+   *
+   * It nevertheless rode on the same request as the table, so every click of a
+   * state tile, every sort, every page and every tick of a РОП checkbox re-ran
+   * a second whole-cohort aggregation to arrive at figures that were already on
+   * screen and could not have changed. On production that statement is about
+   * two seconds (see the shape note below), so half the wait after most clicks
+   * on this board was work whose answer was known before it started.
+   *
+   * THE KEY CARRIES THE SCOPE, and that is not decoration — see `ttlCache`'s
+   * own note. This cohort is narrowed per account (a ROP reads their own floor,
+   * a seller their own orders), so a key without `restrictToEmployeeIds` would
+   * not serve a slightly stale answer, it would serve somebody else's. The
+   * scope comes from `ctx.scope`, which the route spreads LAST over the
+   * caller's query, so what lands in the key is the server's own resolution of
+   * who is asking and never the reader's claim about it.
+   *
+   * SIXTY SECONDS, matching the board's own poll and the sync worker's tick.
+   * A shorter TTL would buy no freshness — nothing behind it moves faster —
+   * and would only make a lone reader miss on every interaction, which is the
+   * one case this exists for. A longer one would let the tiles fall behind the
+   * table beneath them.
+   *
+   * NOT REACHED BY THE LONG-WINDOW SHAPE, deliberately. Past 62 days the page
+   * and the panel are one statement (`confirmationBoard`) because the pair of
+   * them raced one database core into the statement timeout; that branch keeps
+   * building its own breakdown, and the day it wants this it must be measured
+   * first, not assumed.
+   */
+  private confirmationBreakdown(
+    window: ScopedWindow,
+    filter: ConfirmationCohortFilter,
+    mode: ConfirmationQueueMode,
+  ): Promise<ConfirmationRopRow[]> {
+    const key = [
+      mode,
+      window.start.toISOString(),
+      window.end.toISOString(),
+      keyPart(window.restrictToEmployeeIds),
+      keyPart(filter.q ?? null),
+      keyPart(filter.regions),
+      keyPart(filter.amountMinMinor?.toString() ?? null),
+      keyPart(filter.amountMaxMinor?.toString() ?? null),
+    ].join('|')
+
+    return confirmationRopCache.get(key, () =>
+      this.repository.confirmationByRop(window, filter, mode),
+    )
   }
 
   async confirmationQueue(
@@ -952,7 +1067,7 @@ export class InsightsService {
               rather than spreading `query`, is what stops a filter added to
               the table tomorrow silently collapsing this breakdown.
             */
-            this.repository.confirmationByRop(
+            this.confirmationBreakdown(
               window,
               {
                 q: cohortQuery.q,

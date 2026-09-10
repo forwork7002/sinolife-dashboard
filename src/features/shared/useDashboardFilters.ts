@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 import { rememberPeriod, rememberedPeriod } from './periodMemory'
@@ -220,10 +220,52 @@ export function resolvePresetParam(
     : DEFAULTS.preset
 }
 
+/**
+ * The routes whose address is written WITHOUT asking the server for a new one.
+ *
+ * WHAT `router.replace` COSTS ON A FILTER CHANGE, measured on 2026-09-10 with
+ * a warm dev server on localhost and one row in the table:
+ *
+ *     click a state tile        t+0
+ *     RSC request goes out      t+45ms
+ *     the URL commits, the      t+212ms   ← the tile lights up only HERE
+ *       page re-renders
+ *     the API request starts    t+521ms
+ *
+ * Half a second of nothing, on a loopback. Every screen here is a client
+ * component that reads its filters out of `useSearchParams` and fetches its own
+ * data; the server page above it does `requireSection` and renders that
+ * component and NOTHING ELSE reads the query string. So the payload that round
+ * trip fetches is byte-for-byte the one already on screen — it is a network
+ * round trip, a session lookup and a full re-render bought to learn nothing,
+ * and until it lands the page cannot even show that the click registered.
+ *
+ * `window.history.replaceState` is Next's own answer to this: the docs are
+ * explicit that push/replaceState "integrate into the Next.js Router, allowing
+ * you to sync with usePathname and useSearchParams"
+ * (01-getting-started/04-linking-and-navigating.md). The address changes, the
+ * hook re-reads it in the same tick, the back button still steps through the
+ * entries — and no server is asked anything.
+ *
+ * A SET AND NOT A FLAG, because two hooks have to agree. This page's controls
+ * call `update` on their own instance of this hook while the search box, the
+ * period chips and «Filtrlarni tozalash» call it on PageShell's — and one of
+ * them writing the address shallowly while the other made the browser fetch a
+ * route would give one screen two speeds. Keying on the route is what keeps
+ * every control on it the same.
+ *
+ * TO ADD A ROUTE HERE, check the one condition: nothing on the server side of
+ * it may read `searchParams`. The day a page does — a server-rendered table, an
+ * OG image built from the window — its address has to be navigated to properly
+ * or the server keeps answering the previous question.
+ */
+const SHALLOW_ROUTES: ReadonlySet<string> = new Set(['/confirmation'])
+
 export function useDashboardFilters() {
   const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
+  const shallow = SHALLOW_ROUTES.has(pathname)
 
   const filters = useMemo<DashboardFilters>(
     () => ({
@@ -275,9 +317,51 @@ export function useDashboardFilters() {
     [params],
   )
 
+  /**
+   * Write an address, and let the route decide whether the server hears about it.
+   *
+   * See `SHALLOW_ROUTES` for the measurement that put this here. `replaceState`
+   * and not `pushState` on both paths, so the two behave identically in the
+   * history stack: a filter change has never been a step the back button walks
+   * through on this dashboard, and making it one on a single route would mean
+   * pressing Back eleven times to leave a board somebody had been ticking
+   * checkboxes on.
+   */
+  const write = useCallback(
+    (href: string) => {
+      if (shallow) window.history.replaceState(null, '', href)
+      else router.replace(href, { scroll: false })
+    },
+    [router, shallow],
+  )
+
+  /**
+   * The address as it stands RIGHT NOW, not as this render saw it.
+   *
+   * THE LOST UPDATE THIS FIXES. `update` used to build on the `params` its
+   * closure captured, and two clicks inside one render — «Кутилмоқда» then
+   * «Тасдиқланди», 60ms apart, which is ordinary human speed on a band of six
+   * tiles — both built on the address BEFORE either of them. The second
+   * overwrote the first and the URL settled on `?outcomes=CONFIRMED`, so
+   * exactly the "pick 🟡 then ❌ and you get both" the tiles document was the
+   * one thing they could not do. Ticking two boxes in the РОП or РЕГИОН list
+   * lost the first the same way.
+   *
+   * On a shallow route the address bar is the truth and it is already updated
+   * by the time the second handler runs, so reading it is what makes the
+   * accumulation reliable rather than a matter of whether React re-rendered in
+   * between. Elsewhere `params` is still the only address there is — a
+   * `router.replace` in flight has not changed `window.location` yet — so
+   * nothing changes for those routes.
+   */
+  const address = useCallback(
+    () => new URLSearchParams(shallow ? window.location.search : params.toString()),
+    [params, shallow],
+  )
+
   const update = useCallback(
     (patch: Partial<DashboardFilters>) => {
-      const next = new URLSearchParams(params.toString())
+      const next = address()
 
       for (const [key, value] of Object.entries(patch)) {
         const isEmpty =
@@ -307,9 +391,9 @@ export function useDashboardFilters() {
       // page 7 of a result set that now has two pages shows an empty table.
       if (!('page' in patch)) next.delete('page')
 
-      router.replace(`${pathname}?${next.toString()}`, { scroll: false })
+      write(`${pathname}?${next.toString()}`)
     },
-    [params, pathname, router],
+    [address, pathname, write],
   )
 
   /**
@@ -352,13 +436,17 @@ export function useDashboardFilters() {
       count would change, and the button that did it said it was only
       clearing filters.
     */
+    // The live address, for the reason `address()` states above: on a shallow
+    // route a selection made a moment ago is in `window.location` and not yet
+    // in this closure's `params`, and clearing filters must not put one back.
+    const current = address()
     for (const key of ['preset', 'from', 'to', 'queue', 'view'] as const) {
-      const value = params.get(key)
+      const value = current.get(key)
       if (value !== null) kept.set(key, value)
     }
     const query = kept.toString()
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
-  }, [params, pathname, router])
+    write(query ? `${pathname}?${query}` : pathname)
+  }, [address, pathname, write])
 
   /** Query-string params for the API, omitting empties. */
   const apiParams = useMemo(() => {
@@ -466,6 +554,76 @@ export function useRestoreRememberedPeriod(enabled = true): void {
       next.set('to', stored.to)
     }
 
-    router.replace(`${pathname}?${next.toString()}`, { scroll: false })
+    // The same door every other address change on this route goes through —
+    // see `SHALLOW_ROUTES`. A restore is the first thing that happens on a
+    // bare arrival, so paying an RSC round trip for it delays the board's
+    // first request by the whole of that trip.
+    const href = `${pathname}?${next.toString()}`
+    if (SHALLOW_ROUTES.has(pathname)) window.history.replaceState(null, '', href)
+    else router.replace(href, { scroll: false })
   }, [bare, enabled, pathname, router])
+}
+
+/**
+ * Whether the address on screen is about to be replaced by the remembered
+ * window — so a page can hold its first request until it knows which window it
+ * is for.
+ *
+ * THE WASTED QUERY THIS EXISTS TO STOP. `useRestoreRememberedPeriod` runs in an
+ * EFFECT, which is one commit too late: the first render has already happened
+ * with the default window, so a page fires a full request for «Bugun», the
+ * address is then replaced with the remembered «Shu oy», and a second request
+ * goes out for the window the reader actually wanted. Reproduced at the hook
+ * level on 2026-09-10 — a bare `/confirmation` with a remembered month asks
+ * `{"preset":"today"}` and then `{"preset":"this_month"}`, two react-query keys,
+ * two fetches.
+ *
+ * ON THIS BOARD THAT FIRST FETCH IS THE EXPENSIVE ONE: a whole-cohort CTE plus
+ * a ROP breakdown, seconds of work on production, thrown away before anything
+ * is drawn with it. TanStack cancels the browser's request when the key
+ * changes, which is precisely what makes it invisible — the tab shows a
+ * cancelled request and the database still does every second of the work.
+ *
+ * AND IT IS NOT A RARE PATH. `/` resolves the account's first section and
+ * `redirect`s to its route with NO query string, so an operator whose first
+ * section is Тасдиклаш lands on a bare address every time they sign in. The
+ * sidebar avoids it (`Shell`'s `hrefFor` carries the window on every link, for
+ * this same reason) — bookmarks, the logo and the post-login redirect do not.
+ *
+ * IT ANSWERS ON THE FIRST RENDER, WHICH IS THE ONLY RENDER THAT MATTERS. A
+ * query fires from a mount effect, so a gate that only closed a tick later
+ * would close after the request it exists to prevent. Both halves of the answer
+ * are therefore read during render: whether the address is bare, which is a
+ * pure reading of the query string, and whether a window is stored, which is
+ * one synchronous look at `localStorage` in a `useState` initialiser — run
+ * once, at mount, exactly when the decision is made.
+ *
+ * AN EFFECT WOULD BE THE WRONG SHAPE and eslint says so
+ * (`react-hooks/set-state-in-effect`): setting state from an effect body to
+ * announce something that was already knowable during the render is a
+ * cascading render, and here it is also a render too late.
+ *
+ * NOTHING HYDRATES DIFFERENTLY BECAUSE OF IT. The server cannot read storage,
+ * so it renders as though there were nothing to restore — but the only thing
+ * this value changes is whether a fetch is issued, and a page whose query has
+ * no data yet draws its loading state either way. The markup is identical in
+ * both worlds; what differs is a request that the server was never going to
+ * make.
+ *
+ * It cannot strand a page: it is false unless the address is bare, so every
+ * arrival that carries a window — which is every link on this dashboard —
+ * proceeds untouched, and on a bare one it agrees with
+ * `useRestoreRememberedPeriod` because both decide with the same
+ * `rememberedPeriod()`.
+ *
+ * It is a decision and not the restore itself, deliberately: the restore has to
+ * happen exactly once per page (see the hook above) while this may be asked by
+ * anybody who is about to fetch something.
+ */
+export function useAwaitingRememberedPeriod(enabled = true): boolean {
+  const params = useSearchParams()
+  const bare = params.toString() === ''
+  const [hasRememberedWindow] = useState(() => rememberedPeriod() !== null)
+
+  return enabled && bare && hasRememberedWindow
 }
