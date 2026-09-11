@@ -13,9 +13,9 @@ const ACCESS = { permission: 'employees:read', section: 'structure' } as const
  * This used to resolve a reporting window and then withhold the money half of
  * its answer from an account without `analytics:read:all`. Both are gone: the
  * screen prints who reports to whom and nothing else, so there is nothing on it
- * left to withhold and nothing a date could change. Money on this dashboard is
- * stated in one place — Boshqaruv markazi — and that is where its permission
- * gate lives too.
+ * left to withhold and nothing a date could change. Money was to be stated in
+ * one place — «Boshqaruv markazi» — and when that screen was removed on
+ * 2026-09-10 the instruction stood: this one still states none.
  *
  * The schema still accepts the period parameters, and ignores them. The page
  * sends none — its request is `apiGet('/insights/structure', {})` — so nothing

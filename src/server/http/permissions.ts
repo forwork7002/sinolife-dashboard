@@ -13,6 +13,5 @@ export const ANALYTICS_READ: readonly Permission[] = [
   'analytics:read:own',
 ]
 
-export const DEALS_READ: readonly Permission[] = ['deals:read:all', 'deals:read:own']
 
 export const KPI_READ: readonly Permission[] = ['kpi:read:all', 'kpi:read:own']

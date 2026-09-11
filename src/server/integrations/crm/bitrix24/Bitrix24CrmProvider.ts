@@ -740,12 +740,26 @@ export class Bitrix24CrmProvider implements CrmProvider {
           rows.push({
             externalId: String(p.id),
             name: p.name,
-            // Null means the portal has no purchase price for this item. It
-            // must stay undefined: a zero cost reports as 100% margin.
-            costMinor:
-              p.purchasingPrice === null || p.purchasingPrice === undefined
-                ? undefined
-                : toMinorUnits(p.purchasingPrice),
+            /*
+              Null means the portal has no purchase price for this item. It
+              must stay undefined: a zero cost reports as 100% margin.
+
+              THE NULL CHECK ALONE WAS NOT ENOUGH. `purchasingPrice` comes back
+              as an empty string for an item nobody has filled in, and
+              `toMinorUnits('')` returns 0n rather than throwing — so a blank
+              catalogue field was persisting as a REAL zero cost, which is
+              exactly the value `prisma/schema.prisma` forbids on this column.
+              A non-positive result is therefore folded back into undefined
+              here, and the margin SQL refuses it a second time so neither
+              layer is load-bearing on its own.
+            */
+            costMinor: (() => {
+              if (p.purchasingPrice === null || p.purchasingPrice === undefined) {
+                return undefined
+              }
+              const minor = toMinorUnits(p.purchasingPrice)
+              return minor > 0n ? minor : undefined
+            })(),
             currency: 'UZS',
             isActive: p.active !== 'N',
           })

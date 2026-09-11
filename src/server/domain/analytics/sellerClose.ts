@@ -100,15 +100,6 @@ export const SELLER_PIPELINE_ROLES: readonly PipelineRoleValue[] = Object.freeze
   'QUALIFICATION',
 ])
 
-/** One resolved seller-won stage, as the response meta names it. */
-export interface SellerWonStage {
-  readonly id: string
-  readonly name: string
-  /** The portal's own id (e.g. "C12:WON"). Reported, never matched on. */
-  readonly externalId: string | null
-  readonly pipelineName: string | null
-}
-
 // ---------------------------------------------------------------------------
 // Events and totals
 // ---------------------------------------------------------------------------

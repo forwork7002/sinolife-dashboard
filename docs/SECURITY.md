@@ -312,9 +312,8 @@ Three rules make this hold against a caller who skips the UI:
   so `?employeeIds=<someone-else>` narrows within the caller's scope instead of
   widening it. The order of those two spreads is the whole control.
 - **An endpoint that cannot narrow refuses instead of answering.** Naming
-  `analytics:read:all` — a permission only an `ALL` account holds — is how the
-  command centre, logistics, margin, dispatch, cohort and the Roistat marketing
-  ledger say so. The alternative was never "show less"; it was "show the
+  `analytics:read:all` — a permission only an `ALL` account holds — is how
+  logistics, margin, dispatch, cohort and the Roistat marketing ledger say so. The alternative was never "show less"; it was "show the
   company", and that is the disclosure being prevented.
 
 **A resource the caller may not see returns 404, not 403.** A 403 confirms the

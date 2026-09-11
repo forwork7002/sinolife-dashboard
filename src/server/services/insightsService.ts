@@ -17,24 +17,23 @@ import {
 import { type MoneyDto, currencyExponent, money, toMoneyDto } from '@/server/domain/money/money'
 import type { RowScope } from '@/server/auth/rbac'
 import type { Period } from '@/server/domain/period/period'
-import { allTime, periodLengthInDays } from '@/server/domain/period/period'
+import { allTime, enumerateBuckets, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
+import { deliveryStageName } from '@/server/domain/analytics/stageNames'
+import { LOGISTICS_BUCKETS, UNMAPPED_BUCKET } from '@/lib/logisticsBuckets'
 import type {
-  CallActivityRow,
-  CallDirectionRow,
-  ChannelRow,
   ConfirmationCohortFilter,
   ConfirmationOrderQuery,
   ConfirmationOrderRow,
   ConfirmationOutcomeMoneyMinor,
   ConfirmationOutcomeTotals,
   ConfirmationRopRow,
-  ConfirmationRow,
   DispatchRow,
   InsightsRepository,
-  LogisticsRouteRow,
+  LogisticsCut,
   MarginSummary,
   StructureNode,
 } from '@/server/repositories/insightsRepository'
+import { deliveryRateBp, moneyRateBp } from '@/server/domain/analytics/rates'
 import type { ConfirmationOutcomeValue, ConfirmationQueueMode } from '@/server/domain/types'
 import { keyPart, ttlCache } from './ttlCache'
 
@@ -86,43 +85,164 @@ export interface CohortSummaryDto {
   readonly totalCustomers: number
 }
 
-export interface LogisticsRowDto {
+/**
+ * One logistics role inside a column, kept separate from its neighbours.
+ *
+ * «Отказ» IS ONE COLUMN ON SCREEN AND TWO NUMBERS UNDERNEATH IT. `REFUSED` is
+ * a parcel that shipped, travelled and came back; `CANCELLED_EARLY` is a
+ * customer who changed their mind before dispatch and cost a phone call.
+ * `schema.prisma` forbids merging them and the client asked for one column, so
+ * the merge happens HERE, in the rendering, and never in the SQL — the
+ * expensive half is one hover away instead of gone. The same mechanism carries
+ * the three roles inside «Ожидание / нд» and the two inside «Успешно», so
+ * nothing about Отказ is special-cased.
+ */
+export interface LogisticsPartDto {
+  readonly role: string
+  readonly orders: number
+  readonly amount: MoneyDto
+}
+
+/** One column of the client's own logistics sheet. */
+export interface LogisticsBucketDto {
+  readonly key: string
+  /** The client's own header, verbatim: ТАСТИКЛАНГАН, не собран, В пути… */
   readonly label: string
   readonly orders: number
+  readonly amount: MoneyDto
+  /** Share of ЗАКАЗ's MONEY — the basis the client's %покрытия is on. */
+  readonly sharePercent: number | null
+  /** Share of ЗАКАЗ's ORDER COUNT. Both, because their sheet does not say which. */
+  readonly shareOfOrdersPercent: number | null
+  /**
+   * The column opened out by STAGE — which of its roles the orders stand in.
+   *
+   * Truthful about where an order is, and the same decomposition the
+   * reconciliation table prints. It is NOT the right split for «Отказ»: see
+   * `returnedOrders` below.
+   */
+  readonly parts: readonly LogisticsPartDto[]
+  /**
+   * «Отказ» OPENED OUT BY JOURNEY, WHICH IS THE SPLIT THAT MEANS ANYTHING.
+   *
+   * Measured on the client's own week: all 48 refusals stand in «Отказ
+   * предварительно» AND all 48 had already reached a post office. Split by
+   * stage the column reads "nothing came back, 48 were killed before
+   * dispatch"; split by journey it reads "48 travelled and came back" — and
+   * the second is the truth. Since June the portal writes every refusal to
+   * that one stage, so the stage name has stopped carrying the distinction
+   * and only the history still does.
+   *
+   * Carried on every column rather than special-cased on one, so the shape
+   * stays uniform; it is zero everywhere except «Отказ».
+   */
+  readonly returnedOrders: number
+  readonly returnedAmount: MoneyDto
+  readonly cancelledOrders: number
+  readonly cancelledAmount: MoneyDto
+}
+
+/** One Asia/Tashkent day of the sheet. The six columns sum to `amount`. */
+export interface LogisticsDayDto {
+  /** YYYY-MM-DD in Asia/Tashkent — the day the order reached Тасдиклаш. */
+  readonly date: string
+  readonly orders: number
+  readonly amount: MoneyDto
+  readonly coveragePercent: number | null
+  readonly buckets: readonly LogisticsBucketDto[]
+}
+
+/**
+ * A post office or a region, with what it delivered.
+ *
+ * `deliveryRate` divides by RESOLVED orders — delivered plus refused plus
+ * cancelled — not by everything in the window. Half of any current month is
+ * still moving, and dividing by the whole month reported 42% for an operation
+ * that delivers 93% of what it dispatches. The orders still moving are
+ * reported beside it as `inFlight`, where they belong. Null while nothing has
+ * resolved: «no answer yet» and «delivers nothing» are different claims.
+ *
+ * `medianDays` is from the arrival in Тасдиклаш to «Доставлено». On the
+ * post-office table that is NOT dwell time at that post office — there is no
+ * honest in-network clock on this portal, because the route is written down
+ * when the parcel is closed out, not when it is picked up.
+ */
+export interface LogisticsPointDto {
+  readonly label: string
+  readonly orders: number
+  readonly amount: MoneyDto
   readonly delivered: number
+  readonly deliveredAmount: MoneyDto
   readonly refused: number
   readonly cancelledEarly: number
   readonly inFlight: number
-  readonly revenue: MoneyDto
   readonly deliveryRate: number | null
   readonly medianDays: number | null
 }
 
 /**
- * One column of the portal's Доставка kanban.
+ * One Доставка stage, named the way the portal names it.
  *
- * `stage` is the portal's own stage name with its pipeline prefix stripped —
- * «Подготовка товара», «Заказ в мой склад», «TOSHKENT-1», «Доставлено» — and
- * the rows arrive in the portal's own order, so the table reads down the way
- * the kanban reads across.
- *
- * `amount` is every deal in the stage, which is the figure the kanban prints.
- * It is NOT `LogisticsRowDto.revenue`, which counts won deals only: a stage
- * nothing has won yet is not a stage worth nothing.
+ * THE RECONCILIATION ROW. The whole value of this block is that the floor can
+ * put it beside obey.bitrix24.kz and check that the six columns above really
+ * are these eighteen stages grouped. `bucket` is decided on the SERVER for the
+ * same reason: re-deriving the eighteen-into-six mapping in the browser would
+ * be a second definition of a partition the client approved stage by stage.
  */
 export interface LogisticsStageDto {
   readonly stage: string
+  readonly bucket: string
   readonly orders: number
+  readonly amount: MoneyDto
   /** Share of the funnel's own orders. Null when the funnel is empty. */
   readonly sharePercent: number | null
-  readonly amount: MoneyDto
 }
 
 export interface LogisticsDto {
-  readonly routes: readonly LogisticsRowDto[]
-  readonly regions: readonly LogisticsRowDto[]
-  /** The Доставка funnel itself, stage by stage, in the portal's order. */
-  readonly stages: readonly LogisticsStageDto[]
+  readonly summary: {
+    /** Every arrival in Тасдиклаш in the window — FAKT 1 and the rest. */
+    readonly cohortOrders: number
+    /** ЗАКАЗ = FAKT 1. The same expression `/analytics/sellers` reports as `ordered`. */
+    readonly orderedOrders: number
+    readonly ordered: MoneyDto
+    /** FAKT 2 = Доставланди. The same expression that endpoint reports as `won`. */
+    readonly wonOrders: number
+    readonly won: MoneyDto
+    /**
+     * %покрытия — FAKT 2 over FAKT 1, on money. 78.18% on the client's own week.
+     *
+     * MAY EXCEED 100 AND IS NOT CLAMPED. FAKT 2 is not a subset of FAKT 1: an
+     * order refused in the queue and revived afterwards is delivered money
+     * that never counted as confirmed. Clamping it would hide the one case
+     * the reader most needs explained, which is why the screen prints the
+     * basis note beside it.
+     */
+    readonly coveragePercent: number | null
+    /** The six, zero-filled, in the client's own order. They sum to ЗАКАЗ. */
+    readonly buckets: readonly LogisticsBucketDto[]
+    /**
+     * FAKT 1 orders whose current stage is outside Доставка. Expected 0.
+     *
+     * Printed rather than dropped: the six columns claim to be the whole of
+     * ЗАКАЗ, and an order that matches none of them is a real event the
+     * reader should see.
+     */
+    readonly unbucketedOrders: number
+    /** FAKT 1 orders that never reached a hub or a carrier. */
+    readonly unroutedOrders: number
+    /**
+     * Expected 0. Non-zero is a `countsAsRevenue` double-count announcing itself.
+     * See `LogisticsCut.offRevenueOrders` for why it is counted, not filtered.
+     */
+    readonly offRevenueOrders: number
+    readonly medianDays: number | null
+  }
+  readonly days: readonly LogisticsDayDto[]
+  /** The eight hub and carrier stages, empty ones included. */
+  readonly posts: readonly LogisticsPointDto[]
+  readonly regions: readonly LogisticsPointDto[]
+  /** All eighteen Доставка stages, in the portal's Russian and the portal's order. */
+  readonly reconciliation: readonly LogisticsStageDto[]
   /**
    * Losses, split by whether the goods had already been dispatched.
    *
@@ -136,42 +256,6 @@ export interface LogisticsDto {
     orders: number
     lost: MoneyDto
   }[]
-  readonly totals: {
-    readonly orders: number
-    readonly delivered: number
-    readonly refused: number
-    readonly cancelledEarly: number
-    /** Still moving. Excluded from the delivery rate rather than counted against it. */
-    readonly inFlight: number
-    readonly deliveryRate: number | null
-    readonly medianDays: number | null
-  }
-}
-
-export interface ConfirmationDto {
-  readonly rows: readonly (Omit<ConfirmationRow, 'confirmRateBp'> & {
-    readonly confirmRate: number | null
-    /** Share of this operator's orders that went through the confirmation stage. */
-    readonly coverage: number
-    readonly stickRate: number
-    /** Delivered as a share of this operator's RESOLVED orders. */
-    readonly deliveryRate: number | null
-  })[]
-  readonly totals: {
-    /** Every revenue order created in the window. */
-    readonly orders: number
-    /** Orders belonging to operators who appear in `rows`. */
-    readonly coveredByRows: number
-    /** Unconfirmed and still moving — not yet at the step, rather than skipped. */
-    readonly unconfirmedOpen: number
-    /** Unconfirmed and already resolved — genuinely skipped. */
-    readonly unconfirmedClosed: number
-    readonly confirmed: number
-    readonly unreachable: number
-    readonly undecided: number
-    readonly coverage: number
-    readonly stickRate: number
-  }
 }
 
 /**
@@ -343,37 +427,6 @@ export interface ConfirmationQueueDto {
      */
     readonly confirmedRate: number | null
   }
-}
-
-export interface ChannelDto {
-  readonly sourceId: string
-  readonly sourceName: string
-  readonly leads: number
-  readonly deals: number
-  readonly won: number
-  readonly revenue: MoneyDto
-  readonly spend: MoneyDto | null
-  /** won / leads — of enquiries, how many paid. */
-  readonly conversion: number | null
-  /** won / deals — of orders that reached a money pipeline, how many closed. */
-  readonly funnelRate: number | null
-  readonly averageCheque: MoneyDto | null
-  /** Return on ad spend as a multiple. Null when spend is not entered. */
-  readonly roas: number | null
-  readonly costPerOrder: MoneyDto | null
-}
-
-/**
- * Call activity, with the two directions kept apart.
- *
- * Blending them produces a single "connection rate" that answers neither
- * question: this log is 92% inbound, so a blended rate is mostly the share of
- * CUSTOMERS who got an answer, presented under a label about dialling.
- */
-export interface CallsDto {
-  readonly rows: readonly CallActivityRow[]
-  readonly outbound: CallDirectionRow
-  readonly inbound: CallDirectionRow
 }
 
 export interface MarginDto {
@@ -645,211 +698,192 @@ export class InsightsService {
   }
 
   /**
-   * @param options.withReasons Fetch the refusal breakdown. The logistics
-   *   SCREEN draws it; the command centre reads only the totals and the
-   *   regions, and that third query is 0.7 s it would spend on a chart it
-   *   never renders.
+   * The client's own logistics sheet, on the cohort that matches it.
+   *
+   * ONE STATEMENT, ONE CLOCK. Every figure on this screen — ЗАКАЗ, the six
+   * columns, the daily rows, the post offices, the regions, the eighteen
+   * stages and the refusal reasons — comes from one pass over the Тасдиклаш
+   * arrival cohort, which is the same cohort Savdo dinamikasi and Sotuvchilar
+   * reytingi are on. ЗАКАЗ is FAKT 1 and Успешно is FAKT 2, measured with the
+   * constants `ratingSql` groups by, so the three screens cannot disagree.
+   * See `logisticsCohortSql` for the measurement that settled the cohort.
+   *
+   * `options.withReasons` is gone with the command centre that wanted it: the
+   * reasons are a UNION arm now, not a second statement, so there is nothing
+   * left to skip.
    */
   async logistics(
     period: Period,
     currency: string,
     scope: EmployeeScopeFilter = {},
-    options: { withReasons?: boolean } = {},
   ): Promise<LogisticsDto> {
-    const window = this.window(period, scope)
+    const cuts = await this.repository.logisticsCohort(this.window(period, scope))
+
+    const cash = (minor: bigint): MoneyDto => toMoneyDto(money(minor, currency))
+    const days1 = (value: number | null): number | null =>
+      value === null ? null : Math.round(value * 10) / 10
 
     /*
-      ONE STATEMENT FOR BOTH CUTS. They used to be two, differing by a single
-      projected column, each rebuilding three unbounded history CTEs — 2 212 ms
-      and 1 361 ms measured side by side for one card, and the command centre
-      pays the same pair. See `logisticsCuts`.
+      Null over an empty denominator, never zero — the rule `rateBp` states in
+      the repository, restated here for the two shares taken on counts. A
+      column that is 0% of a real window and a column in a window with no
+      orders at all are different claims, and the Meter draws a bar from this.
     */
-    const [cuts, reasons] = await Promise.all([
-      this.repository.logisticsCuts(window),
-      options.withReasons === false
-        ? Promise.resolve([] as Awaited<ReturnType<typeof this.repository.refusalReasons>>)
-        : this.repository.refusalReasons(window),
-    ])
-    const { routes: routeCut, regions: regionCut, stages: stageCut } = cuts
+    const countShare = (part: number, whole: number): number | null =>
+      whole === 0 ? null : Math.round((part / whole) * 1000) / 10
 
-    const toRow = (r: LogisticsRouteRow): LogisticsRowDto => ({
-      label: r.route,
-      orders: r.orders,
-      delivered: r.delivered,
-      refused: r.refused,
-      cancelledEarly: r.cancelledEarly,
-      inFlight: r.inFlight,
-      revenue: toMoneyDto(money(r.revenueMinor, currency)),
-      deliveryRate: pct(r.deliveryRateBp),
-      medianDays: r.medianDays === null ? null : Math.round(r.medianDays * 10) / 10,
-    })
+    const ordered = cuts.total
+    const orderedMinor = ordered.fakt1Minor
+    const orderedOrders = ordered.fakt1Orders
 
     /*
-      The totals come from the QUERY, not from adding the rows up here.
-
-      Counts would survive a summation; the pace would not. The median used to
-      be a weighted mean of each region's median, which is not a median of
-      anything — and it was weighted by every order in the region while the
-      median itself covered only the delivered ones, so a region that shipped
-      nine of nine hundred pulled the company figure by nine hundred. Against
-      the true median over August it read 197.5 where the answer was 87.4.
+      THE PARTS RIDE THE COLUMN THEY BELONG TO, so «Отказ» can print one figure
+      and still say what it is made of. Ordered by money so the expensive half
+      of a refusal is the first thing under the hover.
     */
-    const { orders, delivered, refused, cancelledEarly: cancelled, inFlight } = regionCut.total
-
-    /**
-     * Resolved orders only — the same denominator the per-row rate uses.
-     *
-     * Dividing by every order in the window measures how much of the month has
-     * finished, not how well delivery works: mid-month it reported 42% for an
-     * operation that delivers 93% of what it dispatches.
-     */
-    const resolved = delivered + refused + cancelled
-
-    const medianDays =
-      regionCut.total.medianDays === null ? null : Math.round(regionCut.total.medianDays * 10) / 10
-
-    return {
-      routes: routeCut.rows.map(toRow),
-      regions: regionCut.rows.map(toRow),
-      /*
-        The share divides by the FUNNEL'S own total, which is why the
-        repository returns one. Null rather than zero over an empty funnel:
-        «no orders yet» and «0% of the orders» are different claims, and the
-        table draws a bar from this.
-      */
-      stages: stageCut.rows.map((r) => ({
-        stage: r.stage,
-        orders: r.orders,
-        sharePercent:
-          stageCut.totalOrders === 0
-            ? null
-            : Math.round((r.orders / stageCut.totalOrders) * 1000) / 10,
-        amount: toMoneyDto(money(r.amountMinor, currency)),
-      })),
-      reasons: reasons.map((r) => ({
-        stage: r.stage,
-        reason: r.reason,
-        orders: r.orders,
-        lost: toMoneyDto(money(r.lostMinor, currency)),
-      })),
-      totals: {
-        orders,
-        delivered,
-        refused,
-        cancelledEarly: cancelled,
-        inFlight,
-        /*
-          Null, not zero, when nothing has resolved yet.
-
-          A window whose orders are all still travelling — the first days of a
-          month, "today", "this week" on a Monday — showed a critical-red 0.0%
-          ring beside its own text saying no order had resolved. `rateBp` in
-          the repository already returns null for exactly this; these two
-          hand-written rates did not.
-        */
-        deliveryRate: resolved === 0 ? null : Math.round((delivered / resolved) * 1000) / 10,
-        medianDays,
-      },
+    const partsOf = new Map<string, LogisticsPartDto[]>()
+    for (const part of [...cuts.parts].sort((a, b) => Number(b.fakt1Minor - a.fakt1Minor))) {
+      const list = partsOf.get(part.bucket) ?? []
+      list.push({
+        role: part.sub ?? 'NONE',
+        orders: part.fakt1Orders,
+        amount: cash(part.fakt1Minor),
+      })
+      partsOf.set(part.bucket, list)
     }
-  }
 
-  async confirmations(period: Period, scope: EmployeeScopeFilter = {}): Promise<ConfirmationDto> {
-    const window = this.window(period, scope)
+    /*
+      ZERO-FILLED FROM THE CLIENT'S OWN TABLE, in the client's own order.
 
-    const [rows, windowOrders] = await Promise.all([
-      this.repository.confirmations(window),
-      this.repository.confirmationWindowOrders(window),
-    ])
+      A column with no orders returns no row, and their sheet prints «не собран
+      0» routinely — «Подготовка товара» and «Заказ в мой склад» stood at
+      nought for the whole of the week we measured. Six columns that appear and
+      disappear are not a report anybody can read down.
+    */
+    const bucketsFrom = (
+      rows: ReadonlyMap<string, LogisticsCut>,
+      totalMinor: bigint,
+      totalOrders: number,
+      withParts: boolean,
+    ): LogisticsBucketDto[] =>
+      LOGISTICS_BUCKETS.map((spec) => {
+        const row = rows.get(spec.key)
+        const minor = row?.fakt1Minor ?? 0n
+        const orders = row?.fakt1Orders ?? 0
+        return {
+          key: spec.key,
+          label: spec.label,
+          orders,
+          amount: cash(minor),
+          sharePercent: pct(moneyRateBp(minor, totalMinor)),
+          shareOfOrdersPercent: countShare(orders, totalOrders),
+          parts: withParts ? (partsOf.get(spec.key) ?? []) : [],
+          returnedOrders: row?.refusedOrders ?? 0,
+          returnedAmount: cash(row?.refusedMinor ?? 0n),
+          cancelledOrders: row?.cancelledOrders ?? 0,
+          cancelledAmount: cash(row?.cancelledMinor ?? 0n),
+        }
+      })
 
-    const mapped = rows.map((r: ConfirmationRow) => {
-      const { confirmRateBp, ...rest } = r
-      const resolved = r.delivered + r.failed
+    const bucketRows = new Map(cuts.buckets.map((row) => [row.bucket, row]))
 
+    /*
+      THE DAYS ARE MATCHED ON THE ZONED DATE STRING the query grouped by, never
+      on the bucket's instants. Tashkent midnight is 19:00 UTC the previous
+      day, so comparing instants works until a bucket boundary and a UTC offset
+      disagree — and the failure is a day of money moved one column left, not
+      an error. Same mechanism as `SellerBoardService.faktTrend`.
+
+      Granularity is pinned to 'day' rather than taken from `chooseGranularity`:
+      this table IS the client's daily sheet, and a weekly row is a different
+      document. The guard below is for the pathological custom window only —
+      `periodQuerySchema` admits ten years, and 3 650 padded rows would be a
+      payload nobody asked for. Past a year the days that carry orders are
+      returned unpadded, which is still every row the sheet would have.
+    */
+    const dayRows = new Map<string, Map<string, LogisticsCut>>()
+    for (const row of cuts.days) {
+      if (row.sub === null) continue
+      const forDay = dayRows.get(row.sub) ?? new Map<string, LogisticsCut>()
+      forDay.set(row.bucket, row)
+      dayRows.set(row.sub, forDay)
+    }
+    const dayTotals = new Map(cuts.dayTotals.map((row) => [row.sub ?? '', row]))
+
+    const PAD_LIMIT_DAYS = 400
+    const padded = enumerateBuckets(period, 'day').map((bucket) =>
+      zonedDateKey(bucket.start, period.timeZone),
+    )
+    const dayKeys =
+      padded.length <= PAD_LIMIT_DAYS ? padded : [...dayTotals.keys()].sort()
+
+    const days: LogisticsDayDto[] = dayKeys.map((date) => {
+      const total = dayTotals.get(date)
+      const rows = dayRows.get(date) ?? new Map<string, LogisticsCut>()
+      const dayMinor = total?.fakt1Minor ?? 0n
       return {
-        ...rest,
-        confirmRate: pct(confirmRateBp),
-        /**
-         * The rate that actually varies.
-         *
-         * Confirmation on this portal is optional, and almost nobody records a
-         * failed attempt — so `confirmRate` comes out at 100% for every
-         * operator every month and says nothing. How much of their book they
-         * put through the step ranges from 20% to 60% and is a real
-         * difference in how people work.
-         */
-        coverage: r.orders === 0 ? 0 : Math.round((r.confirmed / r.orders) * 1000) / 10,
-        deliveryRate: resolved === 0 ? null : Math.round((r.delivered / resolved) * 1000) / 10,
-        /**
-         * How many confirmations survived to delivery.
-         *
-         * This is the column that catches an operator clearing their queue by
-         * marking everything confirmed: their confirmation rate looks superb
-         * and this one collapses.
-         */
-        stickRate:
-          r.deliveredAfterConfirm + r.refusedAfterConfirm === 0
-            ? 0
-            : Math.round(
-                (r.deliveredAfterConfirm / (r.deliveredAfterConfirm + r.refusedAfterConfirm)) *
-                  1000,
-              ) / 10,
+        date,
+        orders: total?.fakt1Orders ?? 0,
+        amount: cash(dayMinor),
+        coveragePercent: pct(moneyRateBp(rows.get('DONE')?.fakt1Minor ?? 0n, dayMinor)),
+        buckets: bucketsFrom(rows, dayMinor, total?.fakt1Orders ?? 0, false),
       }
     })
 
-    const sum = (pick: (r: ConfirmationRow) => number) => rows.reduce((s, r) => s + pick(r), 0)
-    const confirmed = sum((r) => r.confirmed)
-    const unreachable = sum((r) => r.unreachable)
-    const delivered = sum((r) => r.deliveredAfterConfirm)
-    const refusedAfter = sum((r) => r.refusedAfterConfirm)
+    const toPoint = (row: LogisticsCut): LogisticsPointDto => ({
+      label: deliveryStageName(row.bucket),
+      orders: row.fakt1Orders,
+      amount: cash(row.fakt1Minor),
+      delivered: row.deliveredOrders,
+      deliveredAmount: cash(row.deliveredMinor),
+      refused: row.refusedOrders,
+      cancelledEarly: row.cancelledOrders,
+      inFlight: row.inFlightOrders,
+      deliveryRate: pct(
+        deliveryRateBp(row.deliveredOrders, row.refusedOrders, row.cancelledOrders),
+      ),
+      medianDays: days1(row.medianDays),
+    })
 
-    /**
-     * Every order in the window — NOT the sum of the rows.
-     *
-     * The row list is filtered to operators who used the confirmation stage,
-     * so summing it drops the operators with no coverage at all. Coverage
-     * divided by that sum answers "among the people who use the stage, how
-     * much do they cover", which is a different and much flattering question.
-     */
-    const orders = windowOrders.orders
-    const coveredByRows = sum((r) => r.orders)
+    /*
+      Every FAKT 1 order sits in exactly one of the eighteen stages or in none
+      of them, so the reconciliation arm's own total is ЗАКАЗ minus the orders
+      that left the funnel. Taking the difference here rather than adding a
+      seventh column is what keeps the six exhaustive AND keeps the stray
+      orders visible.
+    */
+    const unbucketedOrders = orderedOrders - cuts.stageTotal.fakt1Orders
 
     return {
-      rows: mapped,
-      totals: {
-        orders,
-        /** Orders belonging to operators who appear in `rows`. */
-        coveredByRows,
-        unconfirmedOpen: windowOrders.unconfirmedOpen,
-        unconfirmedClosed: windowOrders.unconfirmedClosed,
-        confirmed,
-        unreachable,
-        /*
-          Derived from the window, not summed from the rows.
-          
-          `undecided` rode the same filtered row list as `orders` did, so it
-          reported 1,227 where the window holds 1,289 — the 62 orders belonging
-          to operators who never touched the stage are undecided by definition,
-          and dropping them understated exactly the population the number is
-          about.
-        */
-        undecided: windowOrders.unconfirmedOpen + windowOrders.unconfirmedClosed,
-        /**
-         * How much of the order flow the confirmation step actually covers.
-         *
-         * This is the headline, and it replaced a "confirmation rate" of
-         * confirmed / (confirmed + unreachable). That ratio read 100.0% for
-         * every operator and every period, because this portal records the
-         * confirmed outcome and never the unreachable one — the denominator
-         * could not differ from the numerator. A rate that cannot fall is not
-         * a measurement, and it sat on the overview looking like a perfect
-         * score.
-         */
-        coverage: orders === 0 ? 0 : Math.round((confirmed / orders) * 1000) / 10,
-        stickRate:
-          delivered + refusedAfter === 0
-            ? 0
-            : Math.round((delivered / (delivered + refusedAfter)) * 1000) / 10,
+      summary: {
+        cohortOrders: cuts.fakt.orders,
+        orderedOrders,
+        ordered: cash(orderedMinor),
+        wonOrders: cuts.fakt.deliveredOrders,
+        won: cash(cuts.fakt.deliveredMinor),
+        coveragePercent: pct(moneyRateBp(cuts.fakt.deliveredMinor, orderedMinor)),
+        buckets: bucketsFrom(bucketRows, orderedMinor, orderedOrders, true),
+        unbucketedOrders,
+        unroutedOrders: orderedOrders - cuts.postTotal.fakt1Orders,
+        offRevenueOrders: cuts.fakt.offRevenueOrders,
+        medianDays: days1(cuts.fakt.medianDays),
       },
+      days,
+      posts: cuts.posts.map(toPoint),
+      regions: cuts.regions.map(toPoint),
+      reconciliation: cuts.stages.map((row) => ({
+        stage: deliveryStageName(row.bucket),
+        bucket: row.sub ?? UNMAPPED_BUCKET,
+        orders: row.fakt1Orders,
+        amount: cash(row.fakt1Minor),
+        sharePercent: countShare(row.fakt1Orders, cuts.stageTotal.fakt1Orders),
+      })),
+      reasons: cuts.reasons.map((row) => ({
+        stage: row.sub ?? 'CANCELLED',
+        reason: row.bucket,
+        orders: row.fakt1Orders,
+        lost: cash(row.fakt1Minor),
+      })),
     }
   }
 
@@ -1234,40 +1268,6 @@ export class InsightsService {
     }
   }
 
-  async channels(
-    period: Period,
-    currency: string,
-    scope: EmployeeScopeFilter = {},
-  ): Promise<ChannelDto[]> {
-    const rows = await this.repository.channels(this.window(period, scope))
-
-    return rows.map((r: ChannelRow) => ({
-      sourceId: r.sourceId,
-      sourceName: r.sourceName,
-      leads: r.leads,
-      deals: r.deals,
-      won: r.won,
-      revenue: toMoneyDto(money(r.revenueMinor, currency)),
-      spend: r.spendMinor === null ? null : toMoneyDto(money(r.spendMinor, currency)),
-      conversion: pct(r.conversionBp),
-      funnelRate: pct(r.funnelRateBp),
-      averageCheque:
-        r.averageChequeMinor === null
-          ? null
-          : toMoneyDto(money(r.averageChequeMinor, currency)),
-      // Null, never Infinity: a channel with no spend recorded has unknown
-      // return, and a dash says that where "∞×" would look like a triumph.
-      roas:
-        r.spendMinor === null || r.spendMinor === 0n
-          ? null
-          : Math.round(Number((r.revenueMinor * 100n) / r.spendMinor)) / 100,
-      costPerOrder:
-        r.spendMinor === null || r.won === 0
-          ? null
-          : toMoneyDto(money(r.spendMinor / BigInt(r.won), currency)),
-    }))
-  }
-
   async margin(
     period: Period,
     currency: string,
@@ -1297,25 +1297,6 @@ export class InsightsService {
     }
   }
 
-  async callActivity(period: Period, scope: EmployeeScopeFilter = {}): Promise<CallsDto> {
-    const window = this.window(period, scope)
-
-    const [rows, directions] = await Promise.all([
-      this.repository.callActivity(window),
-      this.repository.callDirections(window),
-    ])
-
-    const of = (direction: string) =>
-      directions.find((d) => d.direction === direction) ?? {
-        direction,
-        calls: 0,
-        connected: 0,
-        talkSeconds: 0,
-      }
-
-    return { rows, outbound: of('OUTBOUND'), inbound: of('INBOUND') }
-  }
-
   async dispatch(period: Period, currency: string, scope: EmployeeScopeFilter = {}) {
     const rows = await this.repository.dispatchPoints(this.window(period, scope))
     return rows.map((r: DispatchRow) => ({
@@ -1341,7 +1322,8 @@ export class InsightsService {
    *
    * NO PERIOD AND NO CURRENCY. This screen answers "who works under whom",
    * which is a fact about today; every period-scoped figure it used to carry
-   * has moved to Boshqaruv markazi, where this dashboard states money.
+   * moved to «Boshqaruv markazi», the one place this dashboard was to state
+   * money. That screen was removed on 2026-09-10; the figures did not return.
    */
   async structure(
     scope: InsightsScope = {},

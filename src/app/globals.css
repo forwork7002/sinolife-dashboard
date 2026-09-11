@@ -1290,8 +1290,9 @@ body::after {
  *
  * ON THE CELLS AND NOT THE COLUMN, for the reason `.thead-sticky` records:
  * there is no such thing as a sticky <col>, and sticky on a <tr> is still
- * uneven across engines. The per-cell `left` offset is computed in DataTable
- * from the declared widths, because CSS cannot sum its siblings.
+ * uneven across engines. The per-cell `left` offset is MEASURED in DataTable
+ * from the laid-out header row, because CSS cannot sum its siblings — see
+ * `useStickyOffsets` for why the declared widths are not the same answer.
  *
  * THE OPAQUE BACKGROUND IS MANDATORY. A transparent pinned cell lets the cells
  * sliding beneath it show through, which is worse than not pinning at all.
@@ -1324,8 +1325,41 @@ body::after {
   z-index: 3;
 }
 
+/**
+ * EACH PINNED CELL BLEEDS ITS BACKGROUND ONE PIXEL RIGHT, UNDER THE NEXT ONE.
+ *
+ * The pinned three abut exactly — `useStickyOffsets` accumulates fractional
+ * widths so that they do — and abutting exactly is not enough. A boundary at
+ * 113.44px is between device pixels, and both the antialiasing of two
+ * adjacent backgrounds and a browser snapping a sticky cell's own layer to a
+ * whole pixel leave that column of pixels showing what is scrolling
+ * underneath. Reported from production on 2026-09-10 and unmistakable once
+ * seen: a hairline of `--surface-sunken` down the header — the unpinned
+ * header cells passing behind — and, down the rows, a dotted column of stray
+ * glyph slivers, one per line of text going by.
+ *
+ * A shadow rather than a wider cell: a table cell's width is the layout's to
+ * decide. An outer box-shadow is clipped OUT of its own border box, so this
+ * paints nowhere but the seam, and the pinned cell to the right — a later
+ * sibling at the same z-index — paints over the rest of it.
+ *
+ * NOT ON `.is-edge`. The last pinned cell's right-hand boundary is the one
+ * place the scrolling cells are SUPPOSED to appear, and that edge carries the
+ * divider below instead — a background bleed there would paint a pixel of
+ * card over the first column of moving data.
+ */
+.tcol-sticky:not(.is-edge) {
+  box-shadow: 1px 0 0 0 var(--surface-raised);
+}
+
 tr:hover > .tcol-sticky {
   background: var(--surface-sunken);
+}
+
+/* The wash reaches the bleed too, or the seam stays card-coloured down a lit
+   row — the same "one row read as two" the rule above exists to prevent. */
+tr:hover > .tcol-sticky:not(.is-edge) {
+  box-shadow: 1px 0 0 0 var(--surface-sunken);
 }
 
 .tcol-sticky.is-edge {

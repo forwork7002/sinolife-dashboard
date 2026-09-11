@@ -275,10 +275,11 @@ year-long gap.
 connecting is ordinary for this kind of dialling and there is no agreed target
 to grade against.
 
-### Added August 2026 — response speed and what an hour of talk returns
+### Added August 2026, removed 2026-09-10 — response speed and what an hour of talk returns
 
-From `/insights/response`, which joins calls to deal creation — a join the
-call analytics never made before:
+`/insights/response` joined calls to deal creation — a join the call analytics
+never made before — and no screen ever shipped that read it, so it went in the
+callerless sweep. What it measured, for whoever builds it again:
 
 - **Birinchi qoʻngʻiroqqacha** — p50/p90 minutes from a revenue deal's
   `createdAtSource` to its first OUTBOUND call, matched by `dealId` with a
@@ -321,8 +322,9 @@ separately so a manager with a large tree and no direct reports is not mistaken
 for one running a team of forty.
 
 **No money and no reporting window, on the client's instruction** (September
-2026): money is stated on Boshqaruv markazi and nowhere else, and who reports to
-whom is a fact about today. The screen is the portal's own org chart drawn to
+2026): money was to be stated on «Boshqaruv markazi» and nowhere else. That
+screen was removed on 2026-09-10 and the instruction stood — this page states
+none — and who reports to whom is a fact about today. The screen is the portal's own org chart drawn to
 fill the page, with the reader's own chain of command lit and printed, and both
 of its endpoints take no period at all.
 
@@ -395,10 +397,15 @@ revenue would be a confident claim about the whole.
 
 ## 10. Puls va oqim — how fast the machine turns, and where it jams
 
-Two endpoints added August 2026, feeding the sales page. (The front page's
-own hero band draws from `/dashboard/command` instead — order intake with its
-daily series — not from these.) Neither invents a new source: every input already existed in the
-schema, computed separately and never combined.
+**REMOVED 2026-09-10.** `/insights/pulse` and `/insights/flow` fed «Savdo
+pulsi» and «Bosqichlar qamrovi» on the sales page; both blocks were stripped
+from that screen on the client's instruction, and the endpoints, their service
+and their SQL went with them in the callerless sweep. What follows is kept as
+the record of what those numbers MEANT, so re-deriving them is not starting from
+nothing — see `git log` for the queries.
+
+Neither invented a new source: every input already existed in the schema,
+computed separately and never combined.
 
 **Savdo tezligi (soʻm/kun).** Open revenue deals × win rate × average won
 amount ÷ median cycle days — the one number that trends pipeline health. The

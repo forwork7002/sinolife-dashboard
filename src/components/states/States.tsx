@@ -93,29 +93,6 @@ function ErrorIllustration() {
   )
 }
 
-/**
- * Unavailable: a socket nothing is plugged into — a dashed outline where a
- * panel would be. Deliberately the calmest of the three: not a fault, not an
- * absence of business, just a source that is not wired up yet.
- */
-function UnavailableIllustration() {
-  return (
-    <svg width="72" height="40" viewBox="0 0 72 40" fill="none" aria-hidden="true">
-      <rect
-        x="15"
-        y="8"
-        width="42"
-        height="24"
-        rx="6"
-        stroke="var(--track)"
-        strokeWidth="2"
-        strokeDasharray="5 4"
-      />
-      <circle cx="36" cy="20" r="3" fill="var(--grid)" />
-    </svg>
-  )
-}
-
 export function EmptyState({
   title,
   body,
@@ -184,24 +161,6 @@ export function ErrorState({
           {t.state.retry}
         </Button>
       )}
-    </div>
-  )
-}
-
-/** The data source does not supply this entity. Not an error, not a zero. */
-export function UnavailableState({ hint }: { hint?: string }) {
-  return (
-    <div className="state-well gap-1.5 px-6 py-8" role="status">
-      <UnavailableIllustration />
-      <span
-        className="mt-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
-        style={{ background: 'var(--grid)', color: 'var(--ink-secondary)' }}
-      >
-        {t.state.unavailable}
-      </span>
-      <p className="max-w-xs text-xs" style={{ color: 'var(--ink-secondary)' }}>
-        {hint ?? t.state.unavailableHint}
-      </p>
     </div>
   )
 }

@@ -84,22 +84,6 @@ export function ChevronDownGlyph(props: GlyphProps) {
   )
 }
 
-export function ChevronUpGlyph(props: GlyphProps) {
-  return (
-    <Glyph {...props}>
-      <path d="M5.5 15L12 8.5 18.5 15" {...stroke} />
-    </Glyph>
-  )
-}
-
-export function ChevronRightGlyph(props: GlyphProps) {
-  return (
-    <Glyph {...props}>
-      <path d="M9 5.5l6.5 6.5L9 18.5" {...stroke} />
-    </Glyph>
-  )
-}
-
 /**
  * Sort caret: ONE chevron, rotated, not two drawings.
  *
@@ -121,15 +105,6 @@ export function SortCaretGlyph({
       } ${className}`}
     />
   )
-}
-
-/** Static aliases, for a caret that never animates (aria-sort states it). */
-export function SortAscGlyph(props: GlyphProps) {
-  return <SortCaretGlyph direction="asc" {...props} />
-}
-
-export function SortDescGlyph(props: GlyphProps) {
-  return <SortCaretGlyph direction="desc" {...props} />
 }
 
 /** Filled dot — the drawn ●. Status "good" in the StatusChip vocabulary. */
@@ -190,25 +165,6 @@ export function SearchGlyph(props: GlyphProps) {
     <Glyph {...props}>
       <circle cx="11" cy="11" r="6.5" {...stroke} />
       <path d="M16 16l4 4" {...stroke} />
-    </Glyph>
-  )
-}
-
-/**
- * The ⌘ mark, for the search chip and palette chrome.
- *
- * Stroke dropped to 1.4: the four loops sit on a 3-unit radius, and at chip
- * size the full 1.7 welds them into blobs. This is the one glyph where the
- * drawing is denser than the grid was designed for.
- */
-export function CommandGlyph(props: GlyphProps) {
-  return (
-    <Glyph {...props}>
-      <path
-        d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"
-        {...stroke}
-        strokeWidth={1.4}
-      />
     </Glyph>
   )
 }

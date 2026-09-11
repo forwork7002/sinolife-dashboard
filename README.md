@@ -15,22 +15,23 @@ that does and does not protect: [SECURITY.md](docs/SECURITY.md).
 
 | Screen | Question it answers |
 |---|---|
-| **Boshqaruv markazi** | How much came in, what the funnel and the couriers did with it, and what the confirmation queue is holding right now |
 | **Savdo dinamikasi** | Revenue over time, by product, by source and by seller — plus the confirmation FAKT band the floor is paid on |
 | **Mijoz qaytishi** | Do customers come back, how soon, what repeat business is worth, and how much revenue rests on the top ten |
 | **Yalpi marja** | Gross margin per product, and how much of revenue it covers |
-| **Reklama samarasi** | What each campaign, ad set and creative returned. Roistat's own ledger, not Bitrix24 data |
+| **Reklama samarasi** | What each campaign, ad set and creative returned. Roistat's own ledger, not Bitrix24 data. **Paused** — the screen is held and shows «tayyorlanmoqda» |
 | **Tasdiqlash navbati** | Did the operator confirm the order, and did the confirmation hold |
 | **Logistika natijasi** | Which hub and carrier delivered, how fast, and where parcels came back |
-| **Joʻnatish nuqtalari** | What each warehouse, courier and marketplace shipped |
+| **Joʻnatish nuqtalari** | What each warehouse, courier and marketplace shipped. **Paused** — the screen is held and shows «tayyorlanmoqda» |
 | **KPI rejalari** | Each plan's target against what was delivered inside the plan's own window |
 | **Kadrlar tuzilmasi** | The portal's own org chart, with every unit's headcount and its money over the window |
 | **Sotuvchilar reytingi** | Who sold what, ranked on delivered revenue — the television board the floor watches |
 
-Eleven sections, listed in `src/lib/sections.ts`, which is the only place that
+Ten sections, listed in `src/lib/sections.ts`, which is the only place that
 decides what a section is. Two more pages sit outside that list and are reached
 by permission rather than by section: `/users` (account administration) and
-`/account` (password and two-factor).
+`/account` (password and two-factor). `/` renders nothing at all — it forwards
+to `LANDING_ROUTE` («Sotuvchilar reytingi»), or to the first section the account
+actually holds.
 
 ---
 

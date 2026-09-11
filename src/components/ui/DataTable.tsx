@@ -163,10 +163,37 @@ interface DataTableProps<T> {
  * slot for the scrolling cells to show through, which is exactly the artefact
  * an opaque pinned cell exists to prevent.
  *
- * So the offsets come from `offsetLeft` on the header cells, which is the
- * layout's own answer. The scroll box is the offset parent (it is `relative`,
- * for the reason written at it) and the table starts flush inside it, so a
- * header cell's `offsetLeft` IS the distance the column has to stick at.
+ * So the offsets come from the header cells themselves, which is the layout's
+ * own answer. The scroll box is the offset parent (it is `relative`, for the
+ * reason written at it) and the table starts flush inside it, so the distance
+ * a column has to stick at is just the sum of the widths before it.
+ *
+ * AND THAT SUM MUST BE FRACTIONAL. `offsetLeft` is the same answer ROUNDED TO
+ * A WHOLE PIXEL, and it reopens the very slot the paragraph above closed —
+ * one third of a pixel wide instead of three, which is worse, because it does
+ * not read as a mistake. A `w-full` table over a `minWidth` lays its columns
+ * out at fractions: РОП at 113.44 and № at 56.72 puts САНА at 170.16, which
+ * `offsetLeft` reports as 170 — so № really ends at 169.72 and САНА is pinned
+ * a quarter-pixel to the RIGHT of it, and the scrolling cells show through
+ * the seam. On the confirmation queue that printed a hairline down the header
+ * and a column of stray glyph slivers down the rows, one per line of text
+ * passing underneath. Reported from production on 2026-09-10.
+ *
+ * `getBoundingClientRect().width` keeps the fraction, and the widths are
+ * ACCUMULATED rather than each cell's own position being read: a pinned cell
+ * has already been SHIFTED by the sticky offset by the time this re-measures
+ * from the observer, so its own `left` is no longer where the layout put it.
+ * A width never moves. Accumulating them makes each pinned cell start exactly
+ * where the one before it ends.
+ *
+ * That closes the geometry, and it is only half the cure — a boundary landing
+ * between two device pixels is still a boundary, and a browser that snaps a
+ * sticky cell's layer to a whole one can part the pair by a pixel however
+ * exactly they were placed. So `.tcol-sticky` in globals.css bleeds each
+ * pinned cell's own background one pixel to the RIGHT, under its neighbour.
+ * Neither half is redundant: without the fraction the gap is real and can be
+ * wider than the bleed, without the bleed the last fraction of a pixel still
+ * lets the rows underneath tint the seam.
  *
  * A LAYOUT EFFECT, so the offsets are applied in the same frame the table is
  * first painted in — a `useEffect` would paint one frame of unpinned columns.
@@ -203,7 +230,15 @@ function useStickyOffsets(
 
     const measure = () => {
       const cells = [...row.children] as HTMLElement[]
-      const next = cells.slice(0, count).map((cell) => cell.offsetLeft)
+      // The base is the first cell's own position — 0 while the table sits
+      // flush inside the scroll box, which it does; read rather than assumed
+      // so an inset table would still pin against its own left edge.
+      let left = cells[0]?.offsetLeft ?? 0
+      const next = cells.slice(0, count).map((cell) => {
+        const start = left
+        left += cell.getBoundingClientRect().width
+        return start
+      })
       // Same numbers, same array: this runs from a ResizeObserver, and setting
       // fresh state on every observation would re-render the table on every
       // frame of a window drag.

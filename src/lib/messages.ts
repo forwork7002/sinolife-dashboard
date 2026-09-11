@@ -14,21 +14,18 @@ export const t = {
   },
 
   /**
-   * The nine sections, named exactly as the client's director listed them.
-   *
-   * Cyrillic and untranslated on purpose: this is the vocabulary the request
-   * arrived in, and a dashboard whose menu says something slightly different
-   * from what was asked for is a dashboard nobody is sure they received.
-   */
-  /**
-   * The nine sections, in the order and wording the client asked for.
+   * The ten sections, in the order and wording the client asked for.
    *
    * Latin Uzbek, matching every other label in the product — the request
    * arrived in Cyrillic and the client confirmed Latin was fine, so the menu
-   * reads in one script rather than two.
+   * reads in one script rather than two. (A superseded copy of this note stood
+   * above it saying the labels were kept in Cyrillic; it contradicted the code
+   * under it and went with the 2026-09-10 sweep.)
+   *
+   * `overview` — «Boshqaruv markazi» — was the eleventh and was removed on
+   * 2026-09-10. `/` renders no screen now; see `LANDING_ROUTE`.
    */
   nav: {
-    overview: 'Boshqaruv markazi',
     cohort: 'Mijoz qaytishi',
     logistics: 'Logistika natijasi',
     sales: 'Savdo dinamikasi',
@@ -82,9 +79,18 @@ export const t = {
       Kadrlar tuzilmasi used to be the third screen in this note and no longer
       belongs to it at all: it reports no money and has no window.
     */
+    /*
+      THE CLOCK IS IN THE LEAD LINE BECAUSE IT CHANGED.
+
+      This screen was cohorted on the order’s CREATION date until 2026-09-10,
+      and the line here said so. It now runs on the arrival in Тасдиклаш
+      (C4:NEW) — the cohort FAKT 1 and FAKT 2 are on, and the one the
+      client's own sheet turned out to be on. A lead line still naming the
+      old basis would be the most confidently wrong sentence on the page.
+    */
     logistics: {
       title: 'Logistika natijasi',
-      lead: 'Доставка voronkasi — bosqichlar portaldagi nomi va tartibida, keyin hudud va tashuvchi kesimlari. Davr buyurtma OLINGAN sana boʻyicha.',
+      lead: 'Mijozning kunlik logistika hisoboti: ЗАКАЗ (FAKT 1) qanday taqsimlangan, qaysi pochta qanday ishlayapti va 18 ta Bitrix24 bosqichi. Davr buyurtma tasdiqlash navbatiga TUSHGAN sana boʻyicha.',
     },
     /*
       NO LEAD LINE — the board prints nothing under its title in any mode
@@ -127,8 +133,9 @@ export const t = {
       never has a line to suppress, because `period={false}` means PageShell
       reserves nothing for dates that are not coming. The old one read «Boʻlimlar, rahbarlar va har bir boʻlimning
       natijasi. Davr bitim YOPILGAN sana boʻyicha» — and both halves of that are
-      now false: the page reports no «natija» in soʻm (money on this dashboard
-      is stated on Boshqaruv markazi) and it has no «davr» at all. What is left
+      now false: the page reports no «natija» in soʻm (the client asked for
+      money to be stated on «Boshqaruv markazi» and nowhere else; that screen
+      has since gone and the absence here stayed) and it has no «davr» at all. What is left
       to say about the screen the chart says in its own controls, and the page
       passes no description, so the line is not even reserved: on a canvas sized
       to the viewport, 20px of held-open space is 20px of chart.
@@ -318,8 +325,6 @@ export const t = {
     errorTitle: 'Maʼlumotni yuklab boʻlmadi',
     errorBody: 'Server bilan bogʻlanishda xatolik yuz berdi.',
     retry: 'Qayta urinish',
-    unavailable: 'Ulanmagan',
-    unavailableHint: 'Bu maʼlumot manbasi hali ulanmagan.',
   },
 
   badge: {

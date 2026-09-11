@@ -105,7 +105,7 @@ the mirror** — edit both sides.
 1. `docs/ARCHITECTURE.md` — the layer contract (but see *Doc rot* below)
 2. `eslint.config.mjs` — where that contract is actually enforced
 3. `src/server/http/handler.ts` — `getHandler(access, schema, handle)`
-4. `src/app/api/v1/dashboard/overview/route.ts` — the canonical route, 23 lines
+4. `src/app/api/v1/insights/margin/route.ts` — the canonical route, 15 lines
 5. `src/server/domain/period/period.ts` — every date boundary in the product
 6. `src/server/integrations/crm/bitrix24/mapping.ts` — the portal's vocabulary
 7. `prisma/schema.prisma` — the DESIGN CONTRACT block at the top
@@ -232,8 +232,8 @@ kept, in `HeadPicker`.
 - **Switching the kind resets the scope, the anchor and the ticks**, which are
   answers to the kind question rather than to anything typed. ROP opens with
   Tasdiqlash + Sotuvchilar ticked: an empty list means «follow the role», and a
-  SALES role's defaults include the command centre and Logistika, two screens
-  that refuse a narrowed account outright. Every tick stays editable.
+  SALES role's defaults include Logistika, a screen that refuses a narrowed
+  account outright. Every tick stays editable.
 - **A head who already signs in is a DISABLED option reading «hisobi bor».**
   `createUser` refuses an employee that already has a login
   (`assertEmployeeIsFree`) — `user.employeeId` is `@unique` and `provisionUser`
@@ -280,10 +280,9 @@ scope, which is only safe while this holds: narrow the board again and the
 memo has to gain the scope in the same commit or be deleted in it.
 
 Still company-only, and still refusing:
-the command centre, logistics, margin, dispatch, cohort, concentration,
-channels, `finance/overview` and **marketing** — the last was `ANALYTICS_READ`
-and had to be tightened, because the Roistat ledger has no employee dimension
-to narrow by at all.
+logistics, margin, dispatch, cohort, concentration and **marketing** — the last
+was `ANALYTICS_READ` and had to be tightened, because the Roistat ledger has no
+employee dimension to narrow by at all.
 
 ### Client data flow
 
@@ -341,7 +340,17 @@ Two duplications the feature cannot avoid, both deliberate:
 
 ---
 
-## The eleven screens, and what each one dates by
+## The ten screens, and what each one dates by
+
+**Two of the ten are PAUSED and two screens were removed.** «Boshqaruv markazi»
+went entirely on 2026-09-10 («boshqaruv markazi boʻlimini toʻliq olib tashla»);
+«Joʻnatish nuqtalari» and «Reklama samarasi» keep their section, their nav entry
+and their endpoints but render `shared/SectionPending` and issue no request
+(«hozircha api qilmay tur… bitta bitta keyinchalik toʻgʻrilab chiqaman»). The
+feature files under `features/warehouse` and `features/marketing` are HELD, not
+dead: switching one back on is an import and a `<Suspense>` in its
+`src/app/<name>/page.tsx`, and that page's own comment says so.
+
 
 Every page is a thin shell under `src/app/`, the UI lives in
 `src/features/<dir>/<Name>Page.tsx`, and each page calls
@@ -355,28 +364,27 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 
 | Screen | URL | Feature | Endpoint(s) | Service → Repository | Window filters on |
 |---|---|---|---|---|---|
-| Boshqaruv markazi | `/` | `overview/CommandCentrePage` | `/dashboard/command` | CommandCentre, Insights, Concentration → Insights, Concentration | **mixed, 3 clocks** — `createdAtSource` (intake, funnel, logistics), `closedAt` (delivered revenue, products, headcount), `queued_at` (confirmation + rejection band) |
 | Savdo dinamikasi | `/analytics/sales` | `sales/SalesPage` + `ConfirmationFaktSection` + `DeliveryBoardSection` | `/analytics/sellers` twice (the board, and `?include=faktTrend` for the chart) + `/insights/delivery` | SellerBoard, Pulse → SellerBoard, Pulse | the arrival in `C4:NEW` (`queued_at`) — **except the Доставка board, which has NO window at all**: a kanban column is where orders are standing now |
 | Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` | `/insights/cohorts`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | `closedAt`, on revenue-bearing WON deals only — nothing here reads `createdAtSource` |
-| Kanallar | `/marketing` | `marketing/MarketingPage` | `/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
+| Reklama samarasi | `/marketing` | **PAUSED** — `shared/SectionPending`; `marketing/MarketingPage` is held, not mounted | none while paused (`/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` still answer) | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
-| Logistika | `/logistics` | `logistics/LogisticsPage` | `/insights/logistics` | Insights → Insights, Reference | `createdAtSource`, uniformly in all three queries |
+| Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
 | Tasdiqlash navbati | `/confirmation` | `confirmation/ConfirmationPage` | `/insights/confirmations/orders` | Insights → Insights | **the arrival in `C4:NEW`** — the latest `deal_stage_history` row whose stage signals `CONFIRM_NEW`; `?queue=backlog` (where the bell lands) drops the window entirely |
-| Joʻnatish nuqtalari | `/warehouse` | `warehouse/WarehousePage` | `/insights/dispatch` | Insights → Insights | `createdAtSource` — a creation cohort graded by the deal's **current** stage |
+| Joʻnatish nuqtalari | `/warehouse` | **PAUSED** — `shared/SectionPending`; `warehouse/WarehousePage` is held, not mounted | none while paused (`/insights/dispatch` still answers) | Insights → Insights | `createdAtSource` — a creation cohort graded by the deal's **current** stage |
 | Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | the arrival in `C4:NEW` (`queued_at`) — the confirmation queue's own cohort. **The television board**: two podiums and two ranked lists (sellers left, teams right) and ONE control, the FAKT 1 / FAKT 2 switch in each heading; the FAKT 1 / FAKT 2 totals, conversion, bonus fund and ladder render on Savdo dinamikasi (`sales/ConfirmationFaktSection`), which is why the route lists both sections |
 | KPI rejalari | `/kpi` | `kpi/KpiPage` | `/kpi` | Kpi, Analytics → Reference, Deal | **the plan's own `periodStart`/`periodEnd`** — the dashboard window only *selects* which plan is live |
 | Struktura | `/structure` | `structure/StructurePage` | `/insights/structure`, `/insights/structure/roster` | Insights → Insights | **nothing — the screen is DATELESS.** `period={false}`, no window control, and neither endpoint takes one |
 
-`/` is the one page with **no** `requireSection`: it calls `firstSectionFor()`
-and forwards, because it is where every login and every bookmark lands, and a
-guard there would bounce the user off their own home page. Its section id is
-enforced at the API instead (`dashboard/command/route.ts`).
+`/` RENDERS NOTHING. It is a signpost with **no** `requireSection`: it calls
+`firstSectionFor(LANDING_ROUTE)` and redirects, because it is where every login
+and every bookmark lands and a guard there would bounce the user off their own
+home page. `LANDING_ROUTE` in `src/lib/sections.ts` is «Sotuvchilar reytingi» —
+named rather than taken from the head of `SECTIONS`, so where 289 people land
+after signing in is a decision and not an ordering detail. An account that does
+not hold it falls through to the first section it does, then to `/account`.
 
 Per-screen traps worth knowing before you touch one:
 
-- **Boshqaruv markazi** — the 45-second in-process cache key carries the
-  *preset*, not just the window. Dropping it served «Shu hafta» the numbers for
-  «Bugun» (78 where 103 was right, and the reverse).
 - **Savdo dinamikasi** — **stripped to FAKT 1 / FAKT 2 on 2026-09-10**, on the
   client's instruction («bu boʻlimda koʻp malumotlar ortiqcha boʻlib ketgan…
   menga bu boʻlim fakt 1 va fakt 2 va bitrix24dan»). Gone: the «Yopilgan
@@ -386,9 +394,10 @@ Per-screen traps worth knowing before you touch one:
   that way: the screen had SEVEN requests on THREE clocks and now has two on
   one, so nothing on it can disagree with anything else on it. Re-adding any
   closedAt figure re-adds the reconciliation prose with it.
-  `/analytics/sales` — still the only endpoint whose money does not pass
-  through `toMoneyDto` — no longer has a caller in `src/features`; the route
-  and its service are untouched, and `/insights/flow` now has no caller either.
+  `/analytics/sales`, `/insights/flow` and `/insights/pulse` lost their last
+  caller with those blocks and were **deleted on 2026-09-10** in the callerless
+  sweep below, along with their services. The URL `/analytics/sales` is still
+  the SCREEN's address; only the endpoint of that name is gone.
   **The one block on that screen with a different clock is the Доставка board**,
   and it is deliberate: `/insights/delivery` takes a period and uses none of it,
   because the client reads these columns beside the portal's own kanban, where
@@ -406,8 +415,38 @@ Per-screen traps worth knowing before you touch one:
   screen; it resolves its own window from `from`/`to`/`today`.
 - **Yalpi marja** — discounts are split by sign in SQL; never net them or
   re-sum them client-side.
-- **Logistika** — `refused` vs `cancelledEarly` is decided by whether the deal
-  ever has a dispatch-role stage-history row, not by its current stage.
+- **Logistika** — **REBUILT ON THE QUEUE COHORT ON 2026-09-10**, on the
+  client's instruction («logistika boʻlimini yaxshilaymiz… tubdan»). It is
+  now their own Google Sheet — ЗАКАЗ, ТАСТИКЛАНГАН, не собран, В пути,
+  Ожидание/нд, Отказ, Успешно, %покрытия — and the columns are the eighteen
+  Доставка stages grouped six ways by `deal_stage."logisticsRole"`. The
+  partition lives in `src/lib/logisticsBuckets.ts`, which BOTH sides read:
+  the repository builds its `CASE` from it and the screen draws its labels
+  and colours from it, so a business definition the client approved stage by
+  stage has one home rather than a hand-mirror. Pinned by
+  `tests/domain/logisticsBuckets.test.ts` against `DELIVERY_STAGE_ROLES`.
+  **THE COHORT WAS MEASURED, NOT CHOSEN.** Against the client's own week
+  (31.08–06.09.2026) their ЗАКАЗ of 893 489 993 sits 98.6% on FAKT 1
+  (881 270 000) and their Успешно of 698 539 996 sits 100.4% on FAKT 2
+  (701 570 000); the old `createdAtSource` cohort gives 788 670 000 — 88.3%.
+  So **ЗАКАЗ is FAKT 1, Успешно is FAKT 2 and %покрытия is one over the
+  other**, measured with `FAKT1_OUTCOMES` and `faktDeliveredSql` — the same
+  constants `ratingSql` groups by, so this screen and Savdo dinamikasi
+  cannot drift. Verified against production: `summary.ordered` equals
+  `/analytics/sellers` `totals.ordered` to the soʻm.
+  `refused` vs `cancelledEarly` is still decided by whether the deal ever
+  has a dispatch-role stage-history row, NOT by its current stage — on that
+  week all 48 refusals stand in «Отказ предварительно» and all 48 had
+  already reached a post office, so the stage name reports the opposite of
+  the truth. The client's sheet and ours still disagree about the split
+  between Отказ (8.4% against their 16.70%) and Ожидание (10.9% against
+  4.25%) while both totals and Успешно agree; the mapping is confirmed
+  (CARAVAN is a post office, not a refusal), so the last block on the screen
+  prints all eighteen stages verbatim for the floor to find the column that
+  moved. `countsAsRevenue` is NAMED but COUNTED rather than filtered:
+  the cohort is chosen by an arrival in Тасдиклаш (#4), which is not a
+  revenue pipeline, so a `WHERE` would drop every queued and every refused
+  order — `summary.offRevenueOrders` is the tripwire and is expected to be 0.
 - **Joʻnatish nuqtalari** — delivery rate's denominator is *resolved* orders;
   in-flight is excluded and reported separately.
 - **Sotuvchilar reytingi** — company-wide on purpose, and it is the ONLY route
@@ -424,8 +463,8 @@ Per-screen traps worth knowing before you touch one:
   therefore MIRRORS `SellerBoardService` — `buildBoard` for the sellers and
   `teamRows` for the teams — the fact being read, then the other one, then the
   key, with competition ranking over BOTH figures; change that rule on the
-  server and it has to change here in the same commit, or this board and
-  `/analytics/leaderboard` disagree about who is second.
+  server and it has to change here in the same commit, or the two columns
+  disagree about who is second.
   `tests/features/sellersTvBoard.test.tsx` is what holds the mirror: read on
   FAKT 2 it asserts the ranks the service sent, shared ranks and skips
   included. The choice lives on the page, not in the column, because a team's
@@ -436,8 +475,10 @@ Per-screen traps worth knowing before you touch one:
 - **KPI rejalari** — the preset picks the plan but does not slice it. «Bugun»
   and «Shu oy» give identical numbers inside one plan.
 - **Struktura** — **no money and no reporting window, and both are load-bearing
-  absences.** The client's instruction was that money is stated on Boshqaruv
-  markazi and nowhere else, so the card's revenue, the list view's «Sotuv» /
+  absences.** The client's instruction was that money is stated on «Boshqaruv
+  markazi» and nowhere else; that screen was removed on 2026-09-10 and the
+  instruction stood, so this page still states none — the card's revenue, the
+  list view's «Sotuv» /
   «Tushum» columns, the roster's per-person figures and the «Ishlagan xodimlar»
   ring are all gone. «Ishlagan» went with them because it is not a headcount at
   all — it is "closed a revenue deal in the window", which on a page with no
@@ -460,6 +501,51 @@ Per-screen traps worth knowing before you touch one:
   *The org chart* below.
 
 ---
+
+## The 2026-09-10 cull — what is gone, and how to tell
+
+The client asked for «Boshqaruv markazi» to be removed outright and for all dead
+code to go with it («loyihadagi barcha oʻlik kodlarni yoʻqotish»). What went was
+everything with **no caller in `src/features`** — the API had grown a long tail
+of endpoints whose screens had been removed one instruction at a time.
+
+**Fifteen endpoints** — every `/analytics/*` except `sellers`; `/dashboard/command`
+and `/dashboard/overview`; `/deals` and `/deals/[id]`; `/employees/[id]`;
+`/finance/overview`; `/insights/calls`, `/channels`, `/confirmations` (the
+parent — `orders` and `regions` stayed), `/flow`, `/pulse` and `/response`.
+Twenty remain. **Four services**: CommandCentre, Finance, Response, and the
+whole instance side of Analytics — `AnalyticsService` is now two statics,
+`context()` and `periodMeta()`, which is all three live routes ever asked it for.
+**Two repositories** (Finance, Response) and ~40 methods out of four more.
+**Forty-odd DTOs** from `src/lib/api.ts`, which lost a third of its lines.
+
+**How to check the claim rather than trust it**, because this is the sort of
+list that rots:
+
+```bash
+# Every endpoint, and whether any client code names it.
+for r in $(find src/app/api/v1 -name route.ts | sed 's|.*api/v1/||;s|/route.ts||'); do
+  echo "$r $(grep -rl "'/${r%%/\[*}" src/features src/components src/lib | wc -l)"
+done
+```
+
+**Two things were deliberately NOT removed** although nothing calls them, and
+both would look like oversights:
+
+- `src/server/repositories/enumParity.ts` — imported by nobody on purpose. It is
+  a compile-time assertion that the domain unions match the Prisma enums, and
+  `tsc` reads it because `tsconfig.json` includes `**/*.ts`.
+- `resetCrmProvider`, `resetAlertsQueueCache`, `marketingService.__internals` —
+  test seams whose own comments say no test drives them yet. They exist so the
+  first test that does is not the one that discovers the cache is shared.
+- `REVENUE_PIPELINES`, `REVENUE_RULE` and `PAYMENTS_AVAILABLE` in
+  `bitrix24/mapping.ts` — decision records with the measurements in their
+  comments. `countsAsRevenue` on the deal row is what the code actually reads.
+
+**What the sweep exposed and did not fix:** the ⌘K «Mahsulotlar» group still
+links to `/analytics/sales?productIds=…`, and that screen has applied no product
+filter since it was stripped to FAKT 1 / FAKT 2. The «Manbalar» group beside it
+is fine — `sourceIds` does reach `sellerBoardRepository`.
 
 ## Invariants that break things quietly
 
@@ -904,10 +990,15 @@ output and answers 200 with the database gone.
   real signature takes `access = { permission, section }`, and the word
   "section" appears nowhere in that file — half the authorisation model is
   undocumented there.
-- `docs/BITRIX24.md` says `assertMappingComplete()` guards startup. It is a
-  no-op with no callers, and the `sourceField` / `confirmed: true` fields its
-  "steps to finish" tell you to edit do not exist. It also references a
+- `docs/BITRIX24.md` says `assertMappingComplete()` guards startup. It was a
+  no-op with no callers and was deleted on 2026-09-10 with the rest of the
+  callerless code; the `sourceField` / `confirmed: true` fields its "steps to
+  finish" tell you to edit do not exist either. It also references a
   `POST /api/v1/sync/run` route that was never built.
+- `docs/API.md` still lists fifteen endpoints that no longer exist — every
+  `/analytics/*` but `sellers`, `/dashboard/*`, `/deals*`, `/employees/[id]`,
+  `/finance/overview`, `/insights/{calls,channels,confirmations,flow,pulse,response}`.
+  `find src/app/api/v1 -name route.ts` is the authority; twenty remain.
 - `docs/DEVELOPMENT.md`'s test count is current as of 2026-09-07 (928) but the
   phase table below it is finished work; `npm run verify` is the authority.
 - `src/lib/sections.ts` cites a `src/server/auth/sections.ts` that does not

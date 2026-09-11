@@ -277,12 +277,6 @@ export const confirmationOrdersQuerySchema = periodQuerySchema
   )
 
 export type PeriodQuery = z.infer<typeof periodQuerySchema>
-export type FilterQuery = z.infer<typeof filterQuerySchema>
-export type PaginationQuery = z.infer<typeof paginationQuerySchema>
-export type AnalyticsQuery = z.infer<typeof analyticsQuerySchema>
-export type DepartmentRosterQuery = z.infer<typeof departmentRosterQuerySchema>
-export type DealsQuery = z.infer<typeof dealsQuerySchema>
-export type ConfirmationOrdersQuery = z.infer<typeof confirmationOrdersQuerySchema>
 
 /** Flatten URLSearchParams to a plain object, keeping the last value per key. */
 export function searchParamsToObject(params: URLSearchParams): Record<string, string> {

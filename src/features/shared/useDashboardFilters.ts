@@ -259,7 +259,7 @@ export function resolvePresetParam(
  * OG image built from the window — its address has to be navigated to properly
  * or the server keeps answering the previous question.
  */
-const SHALLOW_ROUTES: ReadonlySet<string> = new Set(['/confirmation'])
+const SHALLOW_ROUTES: ReadonlySet<string> = new Set(['/confirmation', '/logistics'])
 
 export function useDashboardFilters() {
   const router = useRouter()

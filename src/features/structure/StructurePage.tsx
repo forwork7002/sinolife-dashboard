@@ -26,8 +26,10 @@ import { StructureTable } from './StructureTable'
  * «har bir xodim kim kimning qoʻl ostida ishlayotganini tushunishi kerak».
  * Everything that did not answer that has been taken off it — the «Ishlagan
  * xodimlar» ring, the three tiles, the reporting window and every figure in
- * soʻm. Money on this dashboard is stated in one place, Boshqaruv markazi, and
- * a second statement of it here was a second place for it to disagree.
+ * soʻm. Money was to be stated in one place, «Boshqaruv markazi», and a second
+ * statement of it here was a second place for it to disagree. That screen was
+ * removed on 2026-09-10; this page still states none, which is the same
+ * decision and not an accident of the removal.
  *
  * WHAT THAT BUYS IS THE SCREEN ITSELF. The band those instruments occupied was
  * around 420px of a 950px viewport, so the chart — the only thing on the page

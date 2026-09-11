@@ -10,10 +10,11 @@ import { SECTION_IDS } from '@/lib/sections'
  *
  * `getHandler` takes an `Access` with a required `section`, so TypeScript
  * already refuses a handler that omits it. What TypeScript cannot see is a
- * route that goes around the wrapper: two of them hand-roll their response and
- * call `requirePermission` directly, and a third could be added tomorrow by
- * copying one of those two. That is exactly the path by which an unguarded
- * endpoint ships.
+ * route that goes around the wrapper: `users/[id]` hand-rolls its response and
+ * calls `requirePermission` directly, and a second could be added tomorrow by
+ * copying it. (`deals/[id]` and `employees/[id]` did the same until they were
+ * deleted on 2026-09-10 as endpoints no screen called.) That is exactly the
+ * path by which an unguarded endpoint ships.
  *
  * So this reads the files. It is a blunt instrument on purpose — it does not
  * parse, it looks for the decision being made — and its value is that the
@@ -39,8 +40,16 @@ const routes = routeFiles(API_ROOT).map((path) => ({
 
 describe('every v1 endpoint declares its access', () => {
   it('finds the routes at all', () => {
-    // A glob that silently matches nothing would make every case below pass.
-    expect(routes.length).toBeGreaterThan(20)
+    /*
+      A glob that silently matches nothing would make every case below pass.
+
+      The floor was 20 while `/api/v1` held 35 routes. Fifteen of them were
+      deleted on 2026-09-10 — every endpoint no screen in `src/features` had
+      called since the product narrowed to the sections the client asked for —
+      so the floor moves with them rather than pinning a count that says
+      nothing. It is a smoke test for the reader, not a budget.
+    */
+    expect(routes.length).toBeGreaterThan(15)
   })
 
   it.each(routes.map((r) => [r.relative, r.source] as const))(
@@ -113,23 +122,11 @@ describe('every v1 endpoint declares its access', () => {
 describe('what a TEAM- or OWN-scoped caller can reach', () => {
   /** Route → why it is safe to answer an account that is not company-wide. */
   const NARROWS: Readonly<Record<string, string>> = {
-    'analytics/employees': 'spreads scope; the roster is filtered to it as well',
-    'analytics/funnel': 'spreads scope',
-    'analytics/leaderboard': 'spreads scope; narrowEmployeeIds folds it into the roster',
-    'analytics/products': 'spreads scope',
-    'analytics/sales': 'spreads scope',
     'analytics/sellers': 'COMPANY-WIDE ON PURPOSE — see COMPANY_WIDE below',
-    'analytics/sources': 'spreads scope',
-    'dashboard/overview': 'spreads scope',
-    deals: 'spreads scope',
-    'deals/[id]': 'hand-rolled: the scope is in the WHERE clause, so a stranger 404s',
-    'employees/[id]': 'hand-rolled: canViewEmployee is asked with the resolved scope',
     'insights/confirmations/orders': 'the queue cohort narrows in classified',
     'insights/confirmations/regions':
       'the same cohort, so the РЕГИОН filter offers a narrowed caller only the regions their own rows are in',
     'insights/delivery': 'spreads scope; the kanban columns are the caller\'s own orders',
-    'insights/flow': 'spreads scope',
-    'insights/pulse': 'spreads scope',
     'insights/structure': 'nothing on it to narrow: who reports to whom, and no figures',
     'insights/structure/roster': 'same as the tree above',
     kpi: 'spreads scope; plans and roster both narrowed',
@@ -144,9 +141,15 @@ describe('what a TEAM- or OWN-scoped caller can reach', () => {
     relative.replace('src/app/api/v1/', '').replace('/route.ts', '')
 
   it('lets exactly the endpoints that narrow their rows admit a narrowed caller', () => {
+    /*
+      `finance:read` was filtered out here too, for `/finance/overview`. That
+      route was deleted on 2026-09-10 with the rest of the endpoints no screen
+      had called since the product narrowed — the `payment` table holds 0 rows,
+      so it had been answering 501 for its whole life. Restore the filter with
+      the route if settlement data ever arrives.
+    */
     const reachable = routes
       .filter((r) => !/permission:\s*'analytics:read:all'/.test(r.source))
-      .filter((r) => !/permission:\s*'finance:read'/.test(r.source))
       .map((r) => name(r.relative))
       .sort()
 
@@ -163,12 +166,14 @@ describe('what a TEAM- or OWN-scoped caller can reach', () => {
     which is the opposite of what the screen is for.
 
     Both routes used to gate the MONEY on `analytics:read:all` and hand a
-    narrowed caller nulls. There is no money on that screen any more — this
-    dashboard states it on Boshqaruv markazi and nowhere else — so there is
-    nothing left to withhold and nothing dated to withhold it over. The
-    assertion below pins that absence: three strings whose reappearance, gated
-    or not, means a window or a figure has come back to the screen, and that
-    has to be argued for in a diff rather than slipped into a route.
+    narrowed caller nulls. There is no money on that screen any more — the
+    client asked for it to be stated on «Boshqaruv markazi» and nowhere else,
+    and when that screen was removed on 2026-09-10 the instruction stood: this
+    page still states none. So there is nothing left to withhold and nothing
+    dated to withhold it over. The assertion below pins that absence: three
+    strings whose reappearance, gated or not, means a window or a figure has
+    come back to the screen, and that has to be argued for in a diff rather
+    than slipped into a route.
   */
   const NOTHING_TO_NARROW = ['insights/structure', 'insights/structure/roster']
 

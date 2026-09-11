@@ -9,14 +9,8 @@ import { Prisma, type PrismaClient } from '@/generated/prisma/client'
 import type { KpiDefinition } from '@/server/domain/analytics/performance'
 import {
   type BranchGraph,
-  type BranchRequest,
   type BranchSnapshot,
-  type BranchSummary,
   BranchDirectory,
-  type ResolvedBranchScope,
-  UnknownBranchError,
-  branchKey,
-  resolveBranchScope,
 } from '@/server/domain/employees/branches'
 import { type Period, asOfInstant } from '@/server/domain/period/period'
 
@@ -117,33 +111,6 @@ export class ReferenceRepository {
       isActive: row.isActive,
       avatarUrl: row.avatarUrl,
     }))
-  }
-
-  async findEmployeeById(id: string): Promise<EmployeeSummary | null> {
-    const row = await this.prisma.employee.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        fullName: true,
-        position: true,
-        isActive: true,
-        avatarUrl: true,
-        departmentId: true,
-        department: { select: { name: true } },
-      },
-    })
-
-    if (!row) return null
-
-    return {
-      id: row.id,
-      fullName: row.fullName,
-      position: row.position,
-      departmentId: row.departmentId,
-      departmentName: row.department?.name ?? null,
-      isActive: row.isActive,
-      avatarUrl: row.avatarUrl,
-    }
   }
 
   async findDepartments(): Promise<NamedRef[]> {
@@ -292,90 +259,12 @@ export class ReferenceRepository {
     return this.branches.snapshot()
   }
 
-  /** Forget the cached tree. For the importer, once it has rewritten it. */
-  invalidateBranches(): void {
-    this.branches.invalidate()
-  }
-
-  /**
-   * The filial list for the branch switcher.
-   *
-   * Only real branches — a top-level unit with sales teams under it. Операцион
-   * and Регистрация are top-level too and are not places to switch to; they are
-   * named in `meta.branchScope.excluded` instead, which is where a reader needs
-   * to see them.
-   */
-  async listBranches(): Promise<readonly BranchSummary[]> {
-    return (await this.branches.snapshot()).branches
-  }
-
-  /**
-   * Everyone under one branch, at any depth.
-   *
-   * @throws UnknownBranchError so a typo becomes a 400 rather than a silent
-   *         full-company answer wearing a branch label.
-   */
-  async employeeIdsForBranch(name: string): Promise<readonly string[]> {
-    const snapshot = await this.branches.snapshot()
-    const ids = snapshot.employeeIdsByBranch.get(branchKey(name))
-    if (!ids) {
-      throw new UnknownBranchError(
-        name,
-        snapshot.branches.map((b) => b.name),
-      )
-    }
-    return ids
-  }
-
-  /**
-   * The full scope: ids to filter by, plus the block the response prints.
-   *
-   * `restrictToEmployeeIds` is the caller's authorisation scope and is
-   * INTERSECTED here — see `intersectEmployeeScope`. Passing it through this
-   * one door is what lets a repository honour a single `restrictToEmployeeIds`
-   * list and still be correct for a SALES user.
-   */
-  async resolveBranchScope(
-    request: BranchRequest,
-    restrictToEmployeeIds?: readonly string[] | null,
-  ): Promise<ResolvedBranchScope> {
-    return resolveBranchScope(await this.branches.snapshot(), request, restrictToEmployeeIds)
-  }
-
-  /** Most recent sync runs, for the admin screen. */
-  async findRecentSyncLogs(limit = 25) {
-    return this.prisma.syncLog.findMany({
-      orderBy: { startedAt: 'desc' },
-      take: limit,
-    })
-  }
-
   /**
    * When the data was last imported.
    *
    * Shown in the UI so a stale dashboard is visibly stale rather than silently
    * wrong.
    */
-  /**
-   * The most recent tick of any entity, including a failed one.
-   *
-   * `findLastSuccessfulSync` deliberately looks past failures to answer "how
-   * old are the numbers"; this answers the other question, "did the last
-   * attempt work", which a green freshness dot cannot.
-   */
-  async findLastSyncOutcome(): Promise<{
-    status: 'RUNNING' | 'SUCCESS' | 'PARTIAL' | 'FAILED'
-    entity: string
-    finishedAt: Date | null
-  } | null> {
-    const row = await this.prisma.syncLog.findFirst({
-      where: { finishedAt: { not: null } },
-      orderBy: { finishedAt: 'desc' },
-      select: { status: true, entity: true, finishedAt: true },
-    })
-    return row ? { status: row.status, entity: row.entity, finishedAt: row.finishedAt } : null
-  }
-
   async findLastSuccessfulSync(): Promise<Date | null> {
     const row = await this.prisma.syncLog.findFirst({
       where: { status: { in: ['SUCCESS', 'PARTIAL'] }, finishedAt: { not: null } },

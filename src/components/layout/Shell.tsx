@@ -99,15 +99,12 @@ interface NavItem {
 
 const NAV_GROUPS: readonly { readonly label: string | null; readonly items: readonly NavItem[] }[] = [
   /*
-    The nine sections the client asked for, in their own words, and nothing
-    else. Overview, channels, products, leaderboard, employees, calls, deals
+    The sections the client asked for, in their own words, and nothing else.
+    Boshqaruv markazi, channels, products, leaderboard, employees, calls, deals
     and finance were removed on instruction — the pages are gone, not hidden,
-    so nothing renders a link to a screen that no longer exists.
+    so nothing renders a link to a screen that no longer exists. `/` renders no
+    screen at all now; it is a signpost that forwards to `LANDING_ROUTE`.
   */
-  {
-    label: null,
-    items: [{ href: '/', label: t.nav.overview, icon: PulseIcon }],
-  },
   {
     label: 'Tahlil',
     items: [
@@ -1009,12 +1006,12 @@ function RailBody({
       >
         {groups.map((group, index) => (
           /*
-            Keyed by POSITION, not by label. Two groups are deliberately
-            unlabelled — the overview at the top and the admin block at the
-            bottom — so a `label ?? 'root'` fallback gave both the same key
-            and React warned about it on every page. The list is derived from
-            a module-level constant that never reorders, which is exactly the
-            case where an index key is the correct one.
+            Keyed by POSITION, not by label. The admin block at the bottom is
+            deliberately unlabelled, and it used to share that with the
+            overview group at the top — so a `label ?? 'root'` fallback gave
+            both the same key and React warned about it on every page. The list
+            is derived from a module-level constant that never reorders, which
+            is exactly the case where an index key is the correct one.
           */
           <div
             key={index}
@@ -1515,22 +1512,6 @@ function MegaphoneIcon() {
         stroke="currentColor"
         strokeWidth="1.7"
         strokeLinecap="round"
-      />
-    </svg>
-  )
-}
-
-function PulseIcon() {
-  // The command centre: a heartbeat line, for the one screen that reads the
-  // whole business at a glance.
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M3 12h4l2.5-6 4 13 2.5-7H21"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
       />
     </svg>
   )

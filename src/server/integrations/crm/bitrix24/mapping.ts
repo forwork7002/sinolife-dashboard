@@ -142,9 +142,42 @@ export const DELIVERY_STAGE_ROLES: Readonly<Record<string, LogisticsRoleValue>> 
   'C6:UC_3OK02F': 'CARRIER',              // BEK POCHTA
   'C6:UC_06YLAO': 'CHASING',              // Юрист смс
   'C6:UC_AL40O1': 'CHASING',              // Пропущенный
+  /*
+    «Ожидание / нд» — ADDED 2026-09-10, EMPTY WHEN IT WAS ADDED.
+
+    The client created this stage in the portal while the Logistika screen
+    was being rebuilt around a column of the same name: it is the header
+    from their own Google Sheet, made into a kanban column. It carried 0
+    deals and 0 history rows when it was found, which is exactly why it was
+    found by a valve rather than by a wrong number — the six columns print a
+    diagnostic for orders that fall outside them, and this stage would have
+    started collecting orders into it the moment the floor began using it.
+
+    CHASING, following its own twin: `C14:UC_EW3SZA` is the Ecommerce funnel’s
+    «Ожидания и нд» and has been CHASING since this map was written. «нд» is
+    недозвон — the customer is not answering, which is what the two chasing
+    stages beside it already describe. It lands in the «Ожидание / нд» column
+    of the report, beside the post offices, which is where the client’s sheet
+    puts it.
+  */
+  'C6:UC_IXGHDH': 'CHASING',              // Ожидание / нд
   'C6:WON': 'DELIVERED',                  // Доставлено
-  'C6:LOSE': 'REFUSED',                   // Отказ
-  'C6:UC_3U7025': 'CANCELLED_EARLY',      // Отказ предварительно
+  /*
+    THE PORTAL RENAMED THESE TWO ON OR BEFORE 2026-09-10; THE ROLES DID NOT
+    MOVE, AND MUST NOT.
+
+    `C6:LOSE` now reads «Возврат получен» — the return has been received —
+    which is REFUSED said more plainly: the parcel travelled and came back.
+    `C6:UC_3U7025` now reads plain «Отказ» where it read «Отказ
+    предварительно», and it is still the pre-dispatch cancellation.
+
+    The comments below carry BOTH names so a reader who opens the kanban
+    finds the row they are looking at. Nothing keyed on the name — this map
+    keys on STATUS_ID precisely so a rename in the portal cannot move money
+    between two figures the client reads as different numbers.
+  */
+  'C6:LOSE': 'REFUSED',                   // Возврат получен (was: Отказ)
+  'C6:UC_3U7025': 'CANCELLED_EARLY',      // Отказ (was: Отказ предварительно)
 
   /*
     Тасдиклаш (C4) is the REAL confirmation ladder.
@@ -529,15 +562,6 @@ export function extractOrderCode(title: unknown): string | undefined {
  * which would be false.
  */
 export const PAYMENTS_AVAILABLE = false
-
-/** Mapping is confirmed; the old gap-checking helpers no longer apply. */
-export function findMappingGaps(): readonly { entity: string; missing: readonly string[] }[] {
-  return []
-}
-
-export function assertMappingComplete(): void {
-  // Confirmed against the live portal — nothing to assert.
-}
 
 export class MappingIncompleteError extends Error {
   constructor(public readonly gaps: readonly { entity: string; missing: readonly string[] }[]) {

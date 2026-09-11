@@ -21,8 +21,9 @@ import { formatNumber } from '@/lib/format'
  * that admits it is a mirror.
  *
  * WHAT IT GAINS INSTEAD IS THE TEAM. The strip above the footer used to be the
- * unit's revenue over the reporting window; money on this dashboard is now
- * stated in one place, Boshqaruv markazi, and this screen has no window at all.
+ * unit's revenue over the reporting window; the client asked for money to be
+ * stated on «Boshqaruv markazi» and nowhere else, and this screen has no window
+ * at all. That screen went on 2026-09-10; the absence here is unchanged.
  * The room it left goes to the people, because «har bir sotuvchi bilishi kerak
  * kim kimlar borligini» is half of what this page was asked for and it was
  * previously answered one unit at a time, by opening a panel. The names ride

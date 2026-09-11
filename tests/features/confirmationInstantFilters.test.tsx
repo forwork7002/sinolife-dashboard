@@ -106,6 +106,23 @@ describe('a filter change on the confirmation board asks no server', () => {
     expect(nav.routed).toEqual([])
   })
 
+  /*
+    LOGISTIKA JOINED THE SET ON 2026-09-10, and it qualifies for the same one
+    reason: `src/app/logistics/page.tsx` takes no props and reads no
+    `searchParams` — it is `requireSection` plus a client component. Every
+    period change on that screen was paying the 521 ms round trip measured
+    above to fetch a payload the browser already had.
+  */
+  it('writes the address natively on Logistika too', () => {
+    const { result } = board('preset=today', '/logistics')
+
+    act(() => result.current.setPeriod({ preset: 'this_month' }))
+
+    expect(shallow).toHaveLength(1)
+    expect(paramsOf(shallow[0]!).get('preset')).toBe('this_month')
+    expect(nav.routed).toEqual([])
+  })
+
   it('leaves every other screen navigating exactly as it did', () => {
     /*
       The opt-in is a SET of routes for a reason: this cure is only sound where

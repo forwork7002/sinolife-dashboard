@@ -18,7 +18,8 @@ import { formatNumber } from '@/lib/format'
  * EVERY COLUMN LEFT IS DATELESS, and that is now a requirement rather than an
  * observation. This table used to carry «Ishlagan» (people who closed a revenue
  * deal in the window), «Sotuv», «Tushum» and a share bar. Money moved to
- * Boshqaruv markazi and the page lost its reporting window with it — and a
+ * «Boshqaruv markazi» and the page lost its reporting window with it. That
+ * screen has since been removed and the money did not come back here — and a
  * period-scoped column on a page with no period control does not read as
  * missing, it reads as wrong: «Ishlagan» would quietly have meant "today", and
  * printed 0 beside almost every unit at nine in the morning.

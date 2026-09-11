@@ -38,13 +38,6 @@ export interface SectionSpec {
 }
 
 export const SECTIONS = [
-  /*
-    The command centre. Not one of the director's nine — it is the screen ABOVE
-    them: the summary that answers "what is happening" and hands off to the
-    module that answers "why". First, because it is where `/` lands and the
-    first thing every role that holds it should see.
-  */
-  { id: 'overview', route: '/', label: 'Boshqaruv markazi', group: 'Asosiy' },
   { id: 'cohort', route: '/analytics/cohort', label: 'Mijoz qaytishi', group: 'Tahlil' },
   { id: 'sales', route: '/analytics/sales', label: 'Savdo dinamikasi', group: 'Tahlil' },
   { id: 'margin', route: '/margin', label: 'Yalpi marja', group: 'Tahlil' },
@@ -70,14 +63,31 @@ const BY_ROUTE = new Map<string, SectionValue>(SECTIONS.map((s) => [s.route, s.i
 const BY_ID = new Map<string, SectionSpec>(SECTIONS.map((s) => [s.id, s]))
 
 /**
+ * Where `/` sends an account that holds it.
+ *
+ * «Boshqaruv markazi» was the first entry in SECTIONS and the route `/`, so
+ * the root page rendered it and every other account fell through to whatever
+ * came first in this list. With that screen removed, "first in the list" would
+ * have made «Mijoz qaytishi» everyone's home page by accident — an ordering
+ * detail deciding where 289 people land after signing in.
+ *
+ * So the landing screen is NAMED. «Sotuvchilar reytingi» is the one screen
+ * every role is meant to read (`/analytics/sellers` answers every caller the
+ * same rows on purpose — see routeAccess.test.ts), which makes it the only
+ * honest default. An account that does not hold it still falls through to the
+ * first section it does; see `firstSectionFor`.
+ */
+export const LANDING_ROUTE = '/sellers'
+
+/**
  * The screens that only exist company-wide.
  *
  * Their endpoints aggregate across everyone — a logistics funnel, a margin
- * ladder, the command centre's intake against last month — and take no
- * employee filter, so there is no honest answer to give an account scoped to
- * one team or one salesperson: the company's figures would leak, and a blank
- * page would lie. Those endpoints ask for `analytics:read:all`, which only an
- * ALL-scoped account holds, and refuse.
+ * ladder, a cohort's return rate — and take no employee filter, so there is no
+ * honest answer to give an account scoped to one team or one salesperson: the
+ * company's figures would leak, and a blank page would lie. Those endpoints
+ * ask for `analytics:read:all`, which only an ALL-scoped account holds, and
+ * refuse.
  *
  * «TASDIQLASH NAVBATI» AND «SOTUVCHILAR REYTINGI» LEFT THIS SET. Both narrow
  * now — the queue's cohort CTE and the sellers rating both take the caller's
@@ -91,7 +101,6 @@ const BY_ID = new Map<string, SectionSpec>(SECTIONS.map((s) => [s.id, s]))
  * colleague who cannot open a page they were told they had.
  */
 const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
-  'overview',
   'cohort',
   'margin',
   'logistics',

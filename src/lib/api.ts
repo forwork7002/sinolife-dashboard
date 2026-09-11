@@ -6,6 +6,7 @@
  */
 
 import type { DataScopeValue } from './dataScope'
+import type { LogisticsBucketKey, UNMAPPED_BUCKET } from './logisticsBuckets'
 
 export interface MoneyDto {
   readonly amountMinor: string
@@ -29,116 +30,6 @@ export interface PeriodDto {
   readonly days: number
 }
 
-/**
- * Who a leaderboard response actually ranked.
- *
- * The board ranks SALESPEOPLE only — a department head carries their whole
- * team's closed deals, so leaving the managers in put the head of an operations
- * department at number one and pushed the best seller to third. The rule lives
- * server-side (`server/domain/employees/roles`); this block is how the response
- * admits what it dropped, so the page can print it rather than let the reader
- * assume the ranking covers everyone.
- */
-export interface LeaderboardScopeDto {
-  readonly scope: 'sellers'
-  readonly sellers: number
-  readonly excludedManagers: number
-  readonly excludedOther: number
-}
-
-/**
- * How a response's SELLER-CLOSE figures were arrived at.
- *
- * The dashboard measures a seller two ways and they are not the same number.
- * `revenue` is DELIVERED money — `countsAsRevenue`, status WON, by `closedAt`.
- * `closedValue` / `closedCount` are what the seller actually CLOSED: entries
- * into the won stage of the sellers' own pipeline, which a robot empties within
- * seconds by moving the deal to Доставка, so the stage history is the only
- * trace left. Last August 2 798 deals passed the seller's stage and 3 729 were
- * delivered, with 1 152 in both — 1 646 sold-but-not-yet-delivered on one side,
- * 2 577 delivered-without-a-seller (repeat orders, AI triage, direct entry) on
- * the other.
- *
- * Neither is the "real" figure and neither may be substituted for the other.
- * The page shows both and this block says how the second was obtained, so a
- * disagreement between the columns reads as the fact it is rather than as a
- * bug. See `server/domain/analytics/sellerClose`.
- */
-export interface SellerCloseBasisDto {
-  /**
-   * False when the seller pipeline's won stage could not be resolved. Every
-   * `closedCount` / `closedValue` is then null: UNMEASURED, not zero. Render
-   * the column as unavailable, never as a row of zeros.
-   */
-  readonly resolved: boolean
-  /** The pipeline roles searched, e.g. `["QUALIFICATION"]`. */
-  readonly pipelineRoles: readonly string[]
-  /** The stages that matched. `externalId` is for display only. */
-  readonly stages: readonly {
-    readonly id: string
-    readonly name: string
-    readonly externalId: string | null
-    readonly pipelineName: string | null
-  }[]
-  /**
-   * `deal_current_amount` — the value is summed from the deal's amount TODAY,
-   * because the stage history carries none. An amount edited after the sale
-   * moves this figure. Worth a footnote wherever the figure is exported.
-   */
-  readonly amountBasis: 'deal_current_amount'
-}
-
-/**
- * One filial, as the branch switcher lists it.
- *
- * A branch is a top-level unit with sales teams under it: Навоий (6 teams, 109
- * people, 103 of them sellers) and Тошкент онлайн (9 / 116 / 100). Операцион
- * and Регистрация sit at the same level of the tree and are NOT branches —
- * they are departments, and they appear in `BranchScopeDto.excluded` instead.
- */
-export interface BranchOptionDto {
-  readonly id: string
-  readonly name: string
-  /** Sales teams — the "(ROP)" departments — beneath it. */
-  readonly teamCount: number
-  readonly headcount: number
-  /** Of those, sellers: team members who are not the team's ROP. */
-  readonly sellerCount: number
-}
-
-/**
- * Which filial produced the numbers in this response, and who that leaves out.
- *
- * Every screen states this, because the branch scope is not a small filter: on
- * last month's data, scoping to Навоий removes 59% of the company's revenue —
- * Тошкент онлайн's 46% and Операцион's 12.6%. A reader who does not know that
- * will conclude the dashboard is broken.
- *
- * `employees` plus the five `excluded` buckets sum to the whole roster, so the
- * block answers "where did the other people go" rather than merely asserting a
- * branch. It describes the BRANCH partition only: a SALES user additionally
- * sees just their own row, which is true on every screen and is not counted
- * here.
- */
-export interface BranchScopeDto {
-  /** The active branch, or null when the caller asked for every branch. */
-  readonly branch: string | null
-  /** People the branch admits. The whole roster when `branch` is null. */
-  readonly employees: number
-  readonly excluded: {
-    /** The other filial — Тошкент онлайн when Навоий is active. */
-    readonly otherBranches: number
-    readonly operations: number
-    readonly registration: number
-    /** Filed directly in the NEWGEN root — "markaz". */
-    readonly centre: number
-    /** Anything the four above do not name. Zero today. */
-    readonly other: number
-    /** The five buckets summed. `employees + excluded.total` is the roster. */
-    readonly total: number
-  }
-}
-
 export interface ResponseMeta {
   readonly dataSource: 'DEMO' | 'BITRIX24' | 'MANUAL'
   readonly generatedAt: string
@@ -147,12 +38,6 @@ export interface ResponseMeta {
   readonly comparisonTruncated?: boolean
   readonly correlationId?: string
   readonly unavailable?: readonly string[]
-  /** Present on /analytics/leaderboard only. */
-  readonly leaderboardScope?: LeaderboardScopeDto
-  /** Present wherever `closedCount` / `closedValue` are. */
-  readonly sellerCloseBasis?: SellerCloseBasisDto
-  /** Present on every branch-scoped endpoint. Absent means nothing was scoped. */
-  readonly branchScope?: BranchScopeDto
 }
 
 export interface ApiSuccess<T> {
@@ -493,101 +378,6 @@ export interface UsersPageDto {
 // Endpoint payload shapes
 // ---------------------------------------------------------------------------
 
-export interface KpiCardDto {
-  readonly key: string
-  /** The number to display, in the unit `unit` names. Money is in soʻm. */
-  readonly value: number | null
-  /** Money only. `amountMinor` is the lossless form; `amount` equals `value`. */
-  readonly money?: MoneyDto
-  readonly unit: 'money' | 'count' | 'percent'
-  readonly delta: DeltaDto
-}
-
-export interface TrendPointDto {
-  readonly date: string
-  readonly revenue: number
-  readonly dealsWon: number
-  readonly dealsCreated: number
-}
-
-export interface OverviewDto {
-  readonly cards: readonly KpiCardDto[]
-  readonly trend: readonly TrendPointDto[]
-  readonly kpiAchievementPercent: number | null
-  readonly activeEmployees: number
-  readonly lastSyncedAt: string | null
-}
-
-export interface FunnelStepDto {
-  readonly stageId: string
-  readonly stageName: string
-  readonly sortOrder: number
-  readonly category: 'NEW' | 'IN_PROGRESS' | 'WON' | 'LOST'
-  readonly dealCount: number
-  readonly value: { readonly amountMinor: string; readonly currency: string }
-  readonly reachedPercent: number | null
-}
-
-/**
- * One ranked SELLER. Never a ROP, never an operations head — see
- * `LeaderboardScopeDto` for what the endpoint excludes and why.
- */
-export interface LeaderboardRowDto {
-  readonly rank: number
-  readonly tied: boolean
-  readonly employeeId: string
-  readonly fullName: string
-  readonly departmentName: string | null
-  /** DELIVERED money in the period — the basis every other screen uses. */
-  readonly revenue: MoneyDto
-  readonly dealsWon: number
-  readonly conversionPercent: number | null
-  readonly kpiAchievementPercent: number | null
-  /**
-   * The SELLER-CLOSE basis, present on every row whatever `?metric=` ranked by,
-   * so a page can show both columns side by side. Null means unmeasured — see
-   * `SellerCloseBasisDto.resolved` — and must print as an em dash, never 0.
-   */
-  readonly closedCount: number | null
-  readonly closedValue: MoneyDto | null
-  /** Always the DELIVERED-revenue delta; the close basis has no comparison yet. */
-  readonly delta: DeltaDto
-  /** The value of the ACTIVE metric, whichever basis that came from. */
-  readonly value: number | null
-}
-
-/** Every value `?metric=` accepts on /analytics/leaderboard. */
-export const LEADERBOARD_METRICS = [
-  'revenue',
-  'deals_won',
-  'conversion',
-  'kpi_achievement',
-  /** Seller-close basis — see `SellerCloseBasisDto`. */
-  'closed_deals',
-  'closed_value',
-] as const
-
-export type LeaderboardMetricValue = (typeof LEADERBOARD_METRICS)[number]
-
-/** True for the metrics that rank the seller-close basis rather than delivery. */
-export function isSellerCloseMetric(metric: string): boolean {
-  return metric === 'closed_deals' || metric === 'closed_value'
-}
-
-export interface DealRowDto {
-  readonly id: string
-  readonly title: string
-  readonly amount: MoneyDto
-  readonly status: 'OPEN' | 'WON' | 'LOST'
-  readonly createdAt: string
-  readonly closedAt: string | null
-  readonly employee: { readonly id: string; readonly fullName: string }
-  readonly stage: { readonly id: string; readonly name: string; readonly category: string }
-  readonly customer: { readonly id: string; readonly name: string } | null
-  readonly source: { readonly id: string; readonly name: string } | null
-  readonly products: readonly string[]
-}
-
 export interface PaginationDto {
   readonly page: number
   readonly pageSize: number
@@ -595,11 +385,6 @@ export interface PaginationDto {
   readonly totalPages: number
   readonly hasNextPage: boolean
   readonly hasPreviousPage: boolean
-}
-
-export interface DealsPageDto {
-  readonly items: readonly DealRowDto[]
-  readonly pagination: PaginationDto
 }
 
 // ---------------------------------------------------------------------------
@@ -629,48 +414,145 @@ export interface CohortSummaryDto {
   readonly totalCustomers: number
 }
 
-export interface LogisticsRowDto {
+/**
+ * One logistics role inside a column of the client's sheet.
+ *
+ * «Отказ» is ONE column on screen and two numbers underneath it, and the two
+ * are never added together on the server — see `LogisticsBucketDto.parts` and
+ * `returnedOrders`. Mirrored by hand from `LogisticsPartDto` in
+ * `@/server/services/insightsService`; nothing checks the mirror.
+ */
+export interface LogisticsPartDto {
+  readonly role: string
+  readonly orders: number
+  readonly amount: MoneyDto
+}
+
+/**
+ * One column of the client's own logistics sheet.
+ *
+ * `key` and `label` come from `@/lib/logisticsBuckets`, which BOTH sides read
+ * — the server builds its SQL from the same table. That is the one shape on
+ * this screen that is not a hand-mirror, and it is deliberate: a six-way
+ * partition the client approved stage by stage must not have two definitions.
+ */
+export interface LogisticsBucketDto {
+  readonly key: LogisticsBucketKey | typeof UNMAPPED_BUCKET
+  /** The client's own header, verbatim: ТАСТИКЛАНГАН, не собран, В пути… */
   readonly label: string
   readonly orders: number
+  readonly amount: MoneyDto
+  /** Share of ЗАКАЗ's MONEY — the basis the client's %покрытия is on. */
+  readonly sharePercent: number | null
+  /** Share of ЗАКАЗ's ORDER COUNT. */
+  readonly shareOfOrdersPercent: number | null
+  /** The column opened out by STAGE. Not the right split for «Отказ». */
+  readonly parts: readonly LogisticsPartDto[]
+  /**
+   * «Отказ» opened out by JOURNEY — travelled and came back, against killed
+   * before dispatch. This is the split that means something: the portal has
+   * written every refusal to one stage since June, so the stage name no
+   * longer carries the distinction and only the history does. Zero on every
+   * column but «Отказ».
+   */
+  readonly returnedOrders: number
+  readonly returnedAmount: MoneyDto
+  readonly cancelledOrders: number
+  readonly cancelledAmount: MoneyDto
+}
+
+/** One Asia/Tashkent day of the sheet. The six columns sum to `amount`. */
+export interface LogisticsDayDto {
+  /** YYYY-MM-DD in Asia/Tashkent — the day the order reached Тасдиклаш. */
+  readonly date: string
+  readonly orders: number
+  readonly amount: MoneyDto
+  readonly coveragePercent: number | null
+  readonly buckets: readonly LogisticsBucketDto[]
+}
+
+/**
+ * A post office or a region, with what it delivered.
+ *
+ * `deliveryRate` divides by RESOLVED orders — delivered plus refused plus
+ * cancelled — not by everything in the window: half of any current month is
+ * still moving, and dividing by the whole month reported 42% for an operation
+ * that delivers 93% of what it dispatches. `inFlight` is reported beside it
+ * rather than counted against it. Null while nothing has resolved.
+ *
+ * `medianDays` is from the arrival in Тасдиклаш to «Доставлено» — on the
+ * post-office table that is NOT dwell time at that post office. There is no
+ * honest in-network clock on this portal.
+ */
+export interface LogisticsPointDto {
+  readonly label: string
+  readonly orders: number
+  readonly amount: MoneyDto
   readonly delivered: number
+  readonly deliveredAmount: MoneyDto
   readonly refused: number
   readonly cancelledEarly: number
   readonly inFlight: number
-  readonly revenue: MoneyDto
   readonly deliveryRate: number | null
-  /** Days from the order being created to its `Доставлено` stamp. */
   readonly medianDays: number | null
 }
 
 /**
- * One column of the portal's Доставка kanban, named the way the portal names
- * it — «Подготовка товара», «Заказ в мой склад», «TOSHKENT-1», «Доставлено».
+ * One Доставка stage, named the way the portal names it.
  *
- * `amount` is every deal standing in the stage, which is the figure the
- * kanban prints. It is NOT `LogisticsRowDto.revenue`, which counts won deals
- * only: a stage nothing has won yet is not a stage worth nothing.
+ * THE RECONCILIATION ROW — the only place a reader can check that the six
+ * columns really are these eighteen stages grouped. `bucket` is decided on the
+ * server so the browser never re-derives the partition.
  */
 export interface LogisticsStageDto {
   readonly stage: string
+  readonly bucket: LogisticsBucketKey | typeof UNMAPPED_BUCKET
   readonly orders: number
+  readonly amount: MoneyDto
   /** Share of the funnel's own orders. Null when the funnel is empty. */
   readonly sharePercent: number | null
-  readonly amount: MoneyDto
 }
 
 export interface LogisticsDto {
-  readonly routes: readonly LogisticsRowDto[]
-  readonly regions: readonly LogisticsRowDto[]
-  /** The Доставка funnel itself, stage by stage, in the portal's own order. */
-  readonly stages: readonly LogisticsStageDto[]
+  readonly summary: {
+    /** Every arrival in Тасдиклаш in the window — FAKT 1 and the rest. */
+    readonly cohortOrders: number
+    /** ЗАКАЗ = FAKT 1 — the same figure `/analytics/sellers` reports as `ordered`. */
+    readonly orderedOrders: number
+    readonly ordered: MoneyDto
+    /** FAKT 2 = Доставланди — the same figure that endpoint reports as `won`. */
+    readonly wonOrders: number
+    readonly won: MoneyDto
+    /**
+     * %покрытия — FAKT 2 over FAKT 1, on money.
+     *
+     * MAY EXCEED 100 AND IS NOT CLAMPED: FAKT 2 is not a subset of FAKT 1. An
+     * order refused in the queue and revived afterwards is delivered money
+     * that never counted as confirmed, which is why the screen prints the
+     * basis note beside it rather than hiding the case.
+     */
+    readonly coveragePercent: number | null
+    /** The six, zero-filled, in the client's own order. They sum to ЗАКАЗ. */
+    readonly buckets: readonly LogisticsBucketDto[]
+    /** FAKT 1 orders whose current stage is outside Доставка. Expected 0, printed anyway. */
+    readonly unbucketedOrders: number
+    /** FAKT 1 orders that never reached a hub or a carrier. */
+    readonly unroutedOrders: number
+    /** Expected 0. Non-zero is a `countsAsRevenue` double-count announcing itself. */
+    readonly offRevenueOrders: number
+    readonly medianDays: number | null
+  }
+  readonly days: readonly LogisticsDayDto[]
+  /** The eight hub and carrier stages, empty ones included. */
+  readonly posts: readonly LogisticsPointDto[]
+  readonly regions: readonly LogisticsPointDto[]
+  /** All eighteen Доставка stages, in the portal's Russian and the portal's order. */
+  readonly reconciliation: readonly LogisticsStageDto[]
   /**
-   * Losses split by `stage`:
-   *   RETURNED  — travelled to the customer and came back
-   *   CANCELLED — killed in the delivery pipeline before dispatch
+   * Losses, split by whether the goods had already been dispatched.
    *
-   * A third bucket, PRE_SALE, used to carry the qualification funnel's
-   * reasons — the one block on this screen reporting a different funnel. It
-   * went with the rework, and `lost` stopped being nullable with it.
+   * `stage` is 'RETURNED' (travelled and came back) or 'CANCELLED' (killed
+   * before anything shipped). They cost completely different amounts.
    */
   readonly reasons: readonly {
     readonly stage: string
@@ -678,37 +560,6 @@ export interface LogisticsDto {
     readonly orders: number
     readonly lost: MoneyDto
   }[]
-  readonly totals: {
-    readonly orders: number
-    readonly delivered: number
-    readonly refused: number
-    readonly cancelledEarly: number
-    /** Still moving. Excluded from the delivery rate rather than counted against it. */
-    readonly inFlight: number
-    readonly deliveryRate: number | null
-    /** True median over every delivered order, not an average of the rows. */
-    readonly medianDays: number | null
-  }
-}
-
-export interface ConfirmationRowDto {
-  readonly employeeId: string
-  readonly employeeName: string
-  readonly orders: number
-  readonly confirmed: number
-  readonly unreachable: number
-  readonly undecided: number
-  readonly confirmRate: number | null
-  /** Share of this operator's orders that went through the confirmation stage. */
-  readonly coverage: number
-  /** How many confirmed orders actually reached the customer. */
-  readonly stickRate: number
-  readonly deliveredAfterConfirm: number
-  readonly refusedAfterConfirm: number
-  readonly delivered: number
-  readonly failed: number
-  /** Delivered as a share of this operator's resolved orders. */
-  readonly deliveryRate: number | null
 }
 
 /**
@@ -864,50 +715,6 @@ export interface ConfirmationRegionOptionsDto {
   readonly regions: readonly { readonly region: string; readonly orders: number }[]
 }
 
-export interface ConfirmationDto {
-  readonly rows: readonly ConfirmationRowDto[]
-  readonly totals: {
-    /** Every revenue order created in the window. */
-    readonly orders: number
-    /** Orders belonging to operators who appear in `rows`. */
-    readonly coveredByRows: number
-    /** Unconfirmed and still moving — not yet at the step, rather than skipped. */
-    readonly unconfirmedOpen: number
-    /** Unconfirmed and already resolved — genuinely skipped. */
-    readonly unconfirmedClosed: number
-    readonly confirmed: number
-    readonly unreachable: number
-    readonly undecided: number
-    /**
-     * Share of orders the confirmation step covers at all.
-     *
-     * The headline. It replaced a confirmed/(confirmed+unreachable) rate that
-     * read 100.0% for everyone in every period, because the portal records the
-     * confirmed outcome and never the unreachable one.
-     */
-    readonly coverage: number
-    /** Of confirmed orders, how many reached the customer. */
-    readonly stickRate: number
-  }
-}
-
-export interface ChannelDto {
-  readonly sourceId: string
-  readonly sourceName: string
-  readonly leads: number
-  readonly deals: number
-  readonly won: number
-  readonly revenue: MoneyDto
-  readonly spend: MoneyDto | null
-  /** won / leads — of enquiries, how many paid. */
-  readonly conversion: number | null
-  /** won / deals — of orders that reached a money pipeline, how many closed. */
-  readonly funnelRate: number | null
-  readonly averageCheque: MoneyDto | null
-  readonly roas: number | null
-  readonly costPerOrder: MoneyDto | null
-}
-
 export interface MarginRowDto {
   readonly productId: string
   readonly productName: string
@@ -934,39 +741,6 @@ export interface MarginDto {
   readonly margin: number
   /** Percentage of revenue whose product has a known purchase price. */
   readonly coverage: number
-}
-
-/**
- * Call activity, with the two directions kept apart.
- *
- * They are different questions wearing the same word. Outbound asks how often
- * a dial reaches someone; inbound asks how many customers calling this company
- * got an answer. Blended into one "connection rate" on a log that is 92%
- * inbound, the result was mostly the second reported as the first — and it hid
- * 159,722 unanswered customer calls in a month.
- */
-export interface CallsDto {
-  readonly rows: readonly CallActivityDto[]
-  readonly outbound: CallDirectionDto
-  readonly inbound: CallDirectionDto
-}
-
-/** Totals for one call direction. */
-export interface CallDirectionDto {
-  readonly direction: string
-  readonly calls: number
-  readonly connected: number
-  readonly talkSeconds: number
-}
-
-export interface CallActivityDto {
-  readonly employeeId: string
-  readonly employeeName: string
-  readonly calls: number
-  readonly connected: number
-  readonly talkSeconds: number
-  readonly connectRateBp: number
-  readonly averageTalkSeconds: number
 }
 
 export interface DispatchDto {
@@ -1058,91 +832,6 @@ export interface DepartmentMemberDto {
    */
   readonly isPrimary: boolean
   readonly isHead: boolean
-}
-
-// ---------------------------------------------------------------------------
-// Pulse & flow — `/insights/pulse`, `/insights/flow`.
-// Mirrors the DTOs in `src/server/services/pulseService.ts`.
-// ---------------------------------------------------------------------------
-
-export interface PulseVelocityDto {
-  /** Open revenue deals right now — point-in-time, not period-bound. */
-  readonly openDeals: number
-  readonly openValue: MoneyDto
-  /** Count-based win rate over deals closed in the period, 0-100. */
-  readonly winRatePercent: number | null
-  readonly avgWonAmount: MoneyDto | null
-  readonly medianCycleDays: number | null
-  /**
-   * "Savdo tezligi", soʻm per day. Null whenever ANY component above is null
-   * — render an em dash, never a zero, and the components say which leg of
-   * the formula is missing.
-   */
-  readonly salesVelocityPerDay: MoneyDto | null
-}
-
-export interface PulseForecastDto {
-  /** Revenue won so far in the period. */
-  readonly periodToDate: MoneyDto
-  /** How much of the FULL calendar unit has elapsed, 0-100. */
-  readonly elapsedPercent: number
-  /** Run-rate projection to the unit's end. Null while under 2% elapsed. */
-  readonly projected: MoneyDto | null
-  /** The previous FULL unit's revenue — what the projection is read against. */
-  readonly previousFull: MoneyDto
-  /** projected vs previousFull. */
-  readonly delta: DeltaDto
-}
-
-/**
- * What the period's revenue is made of, and what it is still owed.
- *
- * Revenue is booked on the CLOSE date and the median order takes weeks to
- * close, so a month's revenue is largely earlier months' orders arriving.
- * This split says how much of it the period actually earned itself.
- */
-export interface PulseCompositionDto {
-  /** Closed in the period AND created in it — the period's own work. */
-  readonly own: MoneyDto
-  readonly ownDeals: number
-  /** Closed in the period but created before it — carried in from earlier. */
-  readonly carried: MoneyDto
-  readonly carriedDeals: number
-  /** own / (own + carried), 0-100. Null when nothing closed. */
-  readonly ownSharePercent: number | null
-  /** Taken in this period and still open — lands in a LATER period's revenue. */
-  readonly openFromPeriod: MoneyDto
-  readonly openFromPeriodDeals: number
-}
-
-export interface PulseCycleDto {
-  readonly p50Days: number | null
-  readonly p75Days: number | null
-  readonly p90Days: number | null
-  /** How many won deals the percentiles were computed from. */
-  readonly wonCount: number
-}
-
-export interface PulseWinRateDto {
-  /** won / (won + lost) by deal count, 0-100. Null when nothing closed. */
-  readonly countPercent: number | null
-  /** The same rate weighted by deal value. */
-  readonly valuePercent: number | null
-  /** Both rates last period, so a change can be stated in percentage points. */
-  readonly previousCountPercent: number | null
-  readonly previousValuePercent: number | null
-  readonly wonCount: number
-  readonly lostCount: number
-  readonly countDelta: DeltaDto
-  readonly valueDelta: DeltaDto
-}
-
-export interface PulseDto {
-  readonly velocity: PulseVelocityDto
-  readonly forecast: PulseForecastDto
-  readonly composition: PulseCompositionDto
-  readonly cycle: PulseCycleDto
-  readonly winRate: PulseWinRateDto
 }
 
 // ---------------------------------------------------------------------------
@@ -1402,71 +1091,6 @@ export interface FaktTrendPointDto {
   readonly orders: number
 }
 
-export interface StageConversionRowDto {
-  readonly stageId: string
-  readonly stageName: string
-  readonly pipelineName: string
-  readonly category: string
-  readonly logisticsRole: string | null
-  readonly sortOrder: number
-  /** Distinct cohort deals that EVER entered this stage. */
-  readonly dealCount: number
-  /**
-   * dealCount over the pipeline's whole cohort — one shared denominator for
-   * every stage. This is the reading the ladder draws: the Доставка pipeline
-   * has parallel REGIONAL_HUB and CARRIER branches, so a stage-to-stage
-   * conversion there compares two branches and reads past 900%.
-   */
-  readonly cohortSharePercent: number | null
-  /** How many deals the share is OF — the denominator, stated. */
-  readonly cohortDeals: number
-  /** vs the previous stage of the same pipeline. Null for the first stage. */
-  readonly conversionFromPreviousPercent: number | null
-}
-
-export interface FlowConversionDto {
-  /**
-   * The honest denominator: deals CREATED in the period, revenue pipelines.
-   * Captions must say "davrda yaratilgan bitimlar boʻyicha".
-   */
-  readonly basis: 'created_in_period'
-  readonly stages: readonly StageConversionRowDto[]
-}
-
-export interface StageAgingRowDto {
-  readonly stageId: string
-  readonly stageName: string
-  readonly pipelineName: string
-  readonly category: string
-  readonly logisticsRole: string | null
-  readonly sortOrder: number
-  readonly openCount: number
-  readonly openValue: MoneyDto
-  /** Current dwell of open deals in this stage, hours. */
-  readonly dwellP50Hours: number | null
-  readonly dwellP90Hours: number | null
-  /** All-time median over completed visits — the stuck baseline. Null = none. */
-  readonly historicalP50Hours: number | null
-  /** Deals dwelling longer than 2x the historical median. */
-  readonly stuckCount: number
-  readonly stuckValue: MoneyDto
-}
-
-export interface FlowAgingDto {
-  readonly stages: readonly StageAgingRowDto[]
-  readonly totals: {
-    readonly openCount: number
-    readonly openValue: MoneyDto
-    readonly stuckCount: number
-    readonly stuckValue: MoneyDto
-  }
-}
-
-export interface FlowDto {
-  readonly stageConversion: FlowConversionDto
-  readonly aging: FlowAgingDto
-}
-
 // ---------------------------------------------------------------------------
 // The Доставка kanban — `/insights/delivery`.
 // Mirrors the DTOs in `src/server/services/pulseService.ts`.
@@ -1574,198 +1198,4 @@ export interface ConcentrationDto {
   readonly pareto: ConcentrationParetoDto
   readonly hhi: ConcentrationHhiDto
   readonly repeat: ConcentrationRepeatDto
-}
-
-// ---------------------------------------------------------------------------
-// Response — `/insights/response`.
-// Mirrors the DTOs in `src/server/services/responseService.ts`.
-// ---------------------------------------------------------------------------
-
-export interface ResponseFirstTouchDto {
-  /** Creation → first outbound call, minutes, over deals that WERE called. */
-  readonly p50Minutes: number | null
-  readonly p90Minutes: number | null
-  /** First-called within 15 / 60 minutes, as a share of ALL cohort deals. */
-  readonly calledWithin15MinPercent: number | null
-  readonly calledWithin60MinPercent: number | null
-  /**
-   * Deals with no outbound call at all. Excluded from the percentiles —
-   * "never" is not a large number of minutes — and disclosed here instead.
-   */
-  readonly noCallSharePercent: number | null
-  /** Revenue deals created in the period — the honest denominator. */
-  readonly deals: number
-}
-
-export interface ResponseAttemptsDto {
-  /** Dials up to and including the first connect; 1 = reached first try. */
-  readonly medianAttemptsToConnect: number | null
-  /** Dialling targets never connected after 5+ dials, share of all targets. */
-  readonly neverConnectedAfter5Percent: number | null
-  /** Dialling targets in the period: a deal, or customer+day without one. */
-  readonly groups: number
-}
-
-/** Average call effort behind one closed deal, per outcome. */
-export interface ResponseOutcomeDto {
-  readonly deals: number
-  readonly avgCalls: number | null
-  /** Connected talk-seconds only — dialling is not conversation. */
-  readonly avgTalkSeconds: number | null
-}
-
-export interface ResponseEmployeeDto {
-  readonly employeeId: string
-  readonly fullName: string
-  readonly revenue: MoneyDto
-  readonly talkHours: number
-  readonly revenuePerTalkHour: MoneyDto
-}
-
-export interface ResponseEfficiencyDto {
-  readonly won: ResponseOutcomeDto
-  readonly lost: ResponseOutcomeDto
-  /** Period revenue over period connected talk time. Null under one talk-hour. */
-  readonly revenuePerTalkHour: MoneyDto | null
-  /** Best ratios, employees over the one-talk-hour floor only. */
-  readonly topEmployees: readonly ResponseEmployeeDto[]
-}
-
-export interface ResponseDto {
-  readonly firstTouch: ResponseFirstTouchDto
-  readonly attempts: ResponseAttemptsDto
-  readonly efficiency: ResponseEfficiencyDto
-}
-
-// ---------------------------------------------------------------------------
-// Boshqaruv markazi — the command centre
-// ---------------------------------------------------------------------------
-
-/**
- * A number with its own previous-period reading.
- *
- * The delta is the house `Delta`, not a hand-rolled percentage: it already
- * distinguishes "no baseline" from "unchanged" from "the baseline was too
- * small to divide by", and a second definition of growth on this page would
- * eventually disagree with the one on every other page.
- */
-export interface TrendedDto {
-  readonly value: number
-  readonly previous: number | null
-  readonly delta: DeltaDto
-}
-
-export interface UnavailableDto {
-  readonly key: string
-  readonly label: string
-  /** What is missing, in one sentence a director can act on. */
-  readonly reason: string
-  readonly needed: string
-}
-
-/** One day of order intake — the same clock and filter as the intake tiles. */
-export interface IntakeDayDto {
-  readonly date: string
-  readonly orders: number
-  /** Booked value that day, in major units. Zero days are present, not absent. */
-  readonly booked: number
-}
-
-/** One day of the confirmation queue, for the rejection control chart. */
-export interface RejectionDayDto {
-  readonly date: string
-  /** Null when nothing entered the queue that day — a gap, not a zero. */
-  readonly sharePercent: number | null
-  readonly rejected: number
-  readonly orders: number
-  /** Sundays are drawn but excluded from the control band's baseline. */
-  readonly sunday: boolean
-}
-
-export interface CommandCentreDto {
-  readonly intake: {
-    readonly orders: TrendedDto
-    readonly booked: MoneyDto
-    readonly bookedPrevious: MoneyDto
-    readonly bookedDelta: DeltaDto
-    readonly averageOrder: MoneyDto
-    readonly averageOrderDelta: DeltaDto
-    /** Of those orders, how many are still open. Their value is under revenue. */
-    readonly open: number
-    /** Orders and booked value per day, zero-filled, capped at today. */
-    readonly daily: readonly IntakeDayDto[]
-    /**
-     * The previous window's intake as orders-per-day, for the chart's
-     * reference line. Null when the previous window took nothing in — a
-     * dashed line at zero would claim a baseline nobody measured.
-     */
-    readonly previousDailyOrders: number | null
-  }
-  readonly revenue: {
-    readonly delivered: MoneyDto
-    /**
-     * Value of this window's orders that are still open.
-     *
-     * Carries NO period-over-period delta, and the omission is the point. An
-     * older window has had longer to drain, so it always shows less still
-     * open — measured here, August against July reads "+186%" purely because
-     * July's orders have had an extra month to close. It is the same
-     * survivorship artifact as the close lag, wearing a different hat.
-     */
-    readonly openPipeline: MoneyDto
-    /** Median days from order created to closed. Why revenue carries no arrow. */
-    readonly closeLagDays: number | null
-  }
-  readonly customers: {
-    readonly ordering: TrendedDto
-    readonly fresh: TrendedDto
-    readonly returning: number
-    readonly returningSharePercent: number | null
-  }
-  readonly confirmation: {
-    readonly orders: number
-    readonly confirmedRate: number | null
-    /** The rate's own numerator, so the fraction can be printed beside it. */
-    readonly confirmed: number
-    readonly rejected: number
-    /** Today's rejection share against a 2-sigma band on working days. */
-    readonly rejectionToday: number | null
-    readonly rejectionMean: number
-    readonly rejectionLimit: number
-    readonly rejectionDays: number
-    /** The full daily series the band was graded on — the control chart. */
-    readonly days: readonly RejectionDayDto[]
-  }
-  readonly logistics: {
-    readonly orders: number
-    readonly delivered: number
-    /** delivered + refused + cancelledEarly — the delivery rate's own denominator. */
-    readonly resolved: number
-    readonly deliveryRate: number | null
-    readonly inFlight: number
-    readonly cancelledEarly: number
-    readonly regions: readonly { label: string; orders: number; deliveryRate: number | null }[]
-  }
-  readonly funnel: readonly { key: string; orders: number; sharePercent: number }[]
-  readonly team: {
-    readonly employees: number
-    readonly active: number
-    /** Of the active, those who actually made a call or won a deal this period. */
-    readonly working: number
-    readonly departments: number
-  }
-  readonly products: {
-    readonly rows: readonly { label: string; revenue: MoneyDto; sharePercent: number }[]
-    /** Share of period revenue resting on the single largest product. */
-    readonly topSharePercent: number | null
-    /** How much of that revenue is itemised at all — the shares are of THIS. */
-    readonly coveragePercent: number | null
-  }
-  readonly concentration: {
-    /** Herfindahl index over acquisition sources, and its band. */
-    readonly sourceHhi: number | null
-    readonly sourceBand: string | null
-    readonly repeatMedianDays: number | null
-  }
-  readonly unavailable: readonly UnavailableDto[]
 }

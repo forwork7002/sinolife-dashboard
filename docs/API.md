@@ -226,25 +226,38 @@ counterpart in February — it is capped at the shorter month and
 
 ## Endpoints
 
+**Twenty endpoints, and this is the whole list.** Fifteen more were deleted on
+2026-09-10 — every endpoint no screen in `src/features` had called since the
+product narrowed to the sections the client asked for. `find src/app/api/v1
+-name route.ts` is the authority if this table ever drifts again.
+
 | Method | Path | Permission | Returns |
 |---|---|---|---|
-| `GET` | `/dashboard/overview` | analytics | KPI cards, deltas, trend, KPI attainment |
-| `GET` | `/analytics/sales` | analytics | Revenue trend, sources, products, summary |
-| `GET` | `/analytics/employees` | analytics | Per-employee performance + KPI |
-| `GET` | `/analytics/leaderboard` | `leaderboard:read` | Ranking on one of **two bases**; `metric=revenue\|deals_won\|conversion\|kpi_achievement\|closed_deals\|closed_value` |
-| `GET` | `/analytics/products` | analytics | Product revenue, units, share, delta |
-| `GET` | `/analytics/sources` | analytics | Revenue and conversion by lead source |
-| `GET` | `/analytics/funnel` | analytics | Stage distribution for the period cohort |
-| `GET` | `/employees/:id` | `employees:read` | Drill-down: metrics, trend, team comparison |
-| `GET` | `/deals` | deals | Paginated, filtered, sorted deals |
-| `GET` | `/deals/:id` | deals | Line items, payments, settlement |
+| `GET` | `/analytics/sellers` | `leaderboard:read` | The sellers' and teams' board on the FAKT 1 / FAKT 2 basis. **Company-wide for every caller, on purpose** |
 | `GET` | `/kpi` | kpi | Targets, attainment, pace-aware status |
-| `GET` | `/finance/overview` | `finance:read` | Invoiced/collected/outstanding, ageing, debtors |
-| `GET` | `/meta/filters` | `employees:read` | Filter dropdown options |
-| `GET` | `/insights/pulse` | analytics | Sales velocity, run-rate forecast, cycle percentiles, win rate |
-| `GET` | `/insights/flow` | analytics | Ever-reached stage conversion; stage aging and stuck deals |
+| `GET` | `/insights/cohorts` | `analytics:read:all` | Return-rate ladder by first-purchase cohort |
 | `GET` | `/insights/concentration` | `analytics:read:all` | Customer Pareto, HHI by source and region, repeat-purchase intervals |
-| `GET` | `/insights/response` | `analytics:read:all` | First-call speed, attempts to connect, revenue per talk-hour |
+| `GET` | `/insights/confirmations/orders` | `analytics:read:all` | The confirmation queue as orders, paginated |
+| `GET` | `/insights/confirmations/regions` | `analytics:read:all` | The РЕГИОН column filter's options, cut from the same cohort |
+| `GET` | `/insights/delivery` | analytics | The Доставка kanban — what is standing where, right now. **No window** |
+| `GET` | `/insights/dispatch` | `analytics:read:all` | Per-dispatch-point orders, delivery rate, revenue |
+| `GET` | `/insights/logistics` | `analytics:read:all` | The client’s logistics sheet: six columns over the Доставка funnel, daily rows, post offices, regions, all eighteen stages verbatim and the refusal reasons. Cohorted on the arrival in `C4:NEW`, so ЗАКАЗ is FAKT 1 and Успешно is FAKT 2 |
+| `GET` | `/insights/margin` | `analytics:read:all` | Gross margin per product and its coverage |
+| `GET` | `/insights/structure` | `employees:read` | The org chart. **Dateless, and no money on it** |
+| `GET` | `/insights/structure/roster` | `employees:read` | One unit's members |
+| `GET` | `/marketing/overview` | `analytics:read:all` | Roistat spend, leads and return |
+| `GET` | `/marketing/breakdown` | `analytics:read:all` | The same ledger cut by campaign / ad set / creative |
+| `GET` | `/marketing/verify` | `analytics:read:all` | Roistat's own totals against ours, for reconciliation |
+| `GET` | `/meta/filters` | `employees:read` | Filter dropdown options |
+| `GET` | `/meta/alerts` | none (section `null`) | Freshness and the header's bell |
+| `GET` | `/search` | none (section `null`) | ⌘K — every group section-gated, every row scope-narrowed |
+| `GET`/`POST` | `/users` | `users:manage` | Account administration |
+| `GET`/`PATCH`/`DELETE` | `/users/:id` | `users:manage` | One account |
+
+The three `/marketing/*` routes still answer, but **nothing calls them**: the
+screen was paused on 2026-09-10 and renders `shared/SectionPending` instead. The
+same is true of `/insights/dispatch`. Both are held rather than removed, so
+switching either screen back on needs no server work.
 
 "analytics" means either `analytics:read:all` or `analytics:read:own` — access
 is the same question for both roles; how much data comes back is decided
@@ -257,10 +270,10 @@ company's". Endpoints that CAN narrow name the pair and apply `ctx.scope` in
 SQL. `tests/http/routeAccess.test.ts` pins which endpoints are in which set, so
 widening a permission without threading the scope fails the gate.
 
-The four `/insights/*` rows are the August 2026 indicator endpoints,
-documented below. They sit alongside the older module endpoints under
-`/insights/*` (cohorts, logistics, confirmations, channels, margin, calls,
-dispatch, structure), whose payloads are described module-by-module in
+`/insights/concentration` is the one August 2026 indicator endpoint left;
+`pulse`, `flow` and `response` went with the screens that read them. The rest of
+`/insights/*` are the module endpoints — cohorts, logistics, confirmations,
+margin, dispatch, structure — whose payloads are described module-by-module in
 [SUPERDASHBOARD.md](SUPERDASHBOARD.md).
 
 **Not built yet:** `/reports/:type`, `POST /sync/run`, `GET /sync/logs`. The
@@ -269,77 +282,15 @@ the HTTP surface and admin UI are missing.
 
 ### The insight endpoints
 
-All four take the shared analytics query parameters and return the standard
-envelope. Two differences worth knowing before calling them:
-
-- **Permissions differ.** `/insights/pulse` and `/insights/flow` are open to
-  both roles and apply the caller's scope in SQL. `/insights/concentration`
-  and `/insights/response` require `analytics:read:all` — they are
-  company-wide reads by construction (a Pareto over only your own customers is
-  not a concentration figure), so a `SALES` caller gets 403.
-- **Filters are honoured unevenly, deliberately.** Pulse and flow honour
-  `employeeIds`, `departmentIds` and `sourceIds` (plus the scope), and ignore
-  `productIds`, `stageIds`, `status` and `q`. Concentration and response are
-  period-aware only and ignore the people/source filters, like the other
-  `/insights/*` endpoints. Pages that show these numbers next to filtered ones
-  say so on screen.
-
-Pulse and flow return `meta.period`, `meta.comparisonPeriod` and
-`meta.comparisonTruncated`; concentration and response return `meta.period`
-only — they compute no deltas, so advertising a comparison window they never
-read would be a false caption.
+`/insights/concentration` requires `analytics:read:all` — it is a company-wide
+read by construction (a Pareto over only your own customers is not a
+concentration figure), so a `SALES` caller gets 403. It is period-aware only and
+ignores the people and source filters, like the other `/insights/*` endpoints;
+pages that show these numbers next to filtered ones say so on screen. It returns
+`meta.period` and nothing else, because it computes no deltas and advertising a
+comparison window it never reads would be a false caption.
 
 Field names below are the exact DTO mirror in `src/lib/api.ts`.
-
-#### `GET /insights/pulse`
-
-```
-velocity  { openDeals, openValue, winRatePercent, avgWonAmount,
-            medianCycleDays, salesVelocityPerDay }
-forecast  { periodToDate, elapsedPercent, projected, previousFull, delta }
-cycle     { p50Days, p75Days, p90Days, wonCount }
-winRate   { countPercent, valuePercent, wonCount, lostCount,
-            countDelta, valueDelta }
-```
-
-`salesVelocityPerDay` = open revenue deals × win rate × average won amount ÷
-median cycle days, in soʻm/day. It is **null whenever any component is null**
-— the components still travel so the UI can show which leg of the formula is
-missing, and the right rendering is an em dash, never a zero.
-
-The forecast is a run rate over the **full calendar unit**, not the to-date
-window: `elapsedPercent` says how much of the month (or week, or year) has
-passed, `projected` is period-to-date ÷ that fraction, and `previousFull` is
-the previous *complete* unit the projection is read against. `projected` is
-null under 2% elapsed — a projection from the first hours of a month is
-arithmetic, not information. Cycle percentiles are `closedAt −
-createdAtSource` on won revenue deals — the one whole-deal duration the
-data-model rules sanction.
-
-#### `GET /insights/flow`
-
-```
-stageConversion  { basis: 'created_in_period',
-                   stages: [{ stageId, stageName, pipelineName, category,
-                              logisticsRole, sortOrder, dealCount,
-                              conversionFromPreviousPercent }] }
-aging            { stages: [{ …stage identity, openCount, openValue,
-                              dwellP50Hours, dwellP90Hours,
-                              historicalP50Hours, stuckCount, stuckValue }],
-                   totals: { openCount, openValue, stuckCount, stuckValue } }
-```
-
-`basis` is in the payload because it is the honest denominator and captions
-must repeat it: the conversion ladder counts deals **created in the period**
-(revenue pipelines, ever-reached basis from `DealStageHistory`), so the UI
-says "davrda yaratilgan bitimlar boʻyicha". `conversionFromPreviousPercent` is
-against the previous stage of the *same* pipeline and null on each pipeline's
-first stage.
-
-Aging is a **point-in-time** reading over open revenue deals: dwell is `now −
-enteredAt` of the open history row, and a deal is "stuck" when its dwell
-exceeds 2× that stage's own historical median (`historicalP50Hours`, from
-completed visits) — the stage judged against itself, not a global constant.
 
 #### `GET /insights/concentration`
 
@@ -365,153 +316,3 @@ days, so no member is censored mid-horizon. `bitrixFlagSharePercent` is the
 same repeat-revenue claim from Bitrix24's own `isReturnCustomer` flag;
 divergence from `repeatRevenueSharePercent` is a data-quality signal, so the
 UI shows both and reconciles neither.
-
-#### `GET /insights/response`
-
-```
-firstTouch  { p50Minutes, p90Minutes, calledWithin15MinPercent,
-              calledWithin60MinPercent, noCallSharePercent, deals }
-attempts    { medianAttemptsToConnect, neverConnectedAfter5Percent, groups }
-efficiency  { won: { deals, avgCalls, avgTalkSeconds },
-              lost: { deals, avgCalls, avgTalkSeconds },
-              revenuePerTalkHour,
-              topEmployees: [{ employeeId, fullName, revenue,
-                               talkHours, revenuePerTalkHour }] }
-```
-
-Two denominators keep first-touch honest. The percentiles run over deals that
-**were** called — "never" is not a large number of minutes — while the 15- and
-60-minute rates divide by **all** cohort deals, and `noCallSharePercent`
-discloses the deals no outbound call ever reached. The first call is matched
-by `dealId`, falling back to the same `customerId`, outbound only.
-
-The won/lost effort split attributes calls by **customer over the deal's
-lifetime** (`createdAtSource` → `closedAt`), not by `dealId`: of ~300k call
-records exactly one carries a `dealId`, so a deal-keyed join would report
-"0 calls" for every deal — a claim of no effort where the truth is no linkage.
-Deals without a customer link are excluded from the averages rather than
-rendered as zeros; a customer with two concurrent deals can have a call counted
-against both, which the UI caption discloses.
-
-`revenuePerTalkHour` is period revenue over *connected* talk time — dialling
-is not conversation — and is **null under one connected talk-hour**: a ratio
-over minutes of talk is noise wearing a currency, so the API withholds it
-rather than letting a spectacular number rest on seventy minutes. The same
-one-hour floor gates `topEmployees` (max 10).
-
-### Leaderboard ranks by one metric, on one of two bases
-
-`metric` selects a single measure. There is deliberately no blended "score":
-the weights would be arbitrary, nobody could explain their position, and the
-ranking would stop being actionable.
-
-Six values, and the difference between the two groups is not cosmetic:
-
-| `metric` | Basis | Ranks by |
-|---|---|---|
-| `revenue` *(default)* | Delivered | `countsAsRevenue`, status `WON`, bucketed by `closedAt` |
-| `deals_won` | Delivered | count of the same |
-| `conversion` | Delivered | won ÷ total, in the period cohort |
-| `kpi_achievement` | Delivered | attainment against the employee's target |
-| `closed_deals` | **Seller-close** | distinct deals entering a seller pipeline's `WON` stage |
-| `closed_value` | **Seller-close** | those deals' amounts, summed |
-
-The delivered metrics rank what **arrived**; the seller-close metrics rank what
-the **seller closed**. Last August those two sets of deals overlapped in 1 152
-of 5 375 — see [SUPERDASHBOARD.md](SUPERDASHBOARD.md) §3. The default stays
-`revenue`, so no existing link changes meaning.
-
-Nothing averages, falls back or substitutes. A request for a seller-close
-ranking that cannot be measured comes back with null values and
-`meta.sellerCloseBasis.resolved = false` — never as a delivered-revenue board
-wearing the other label.
-
-Ties share a rank, competition style (1, 2, 2, 4). Employees with no measurable
-value sort **last** regardless of direction — "no data" is not an achievement.
-
-The leaderboard is company-wide for every role, `SALES` included: a ranking
-each person can only see themselves in is not a ranking. Only aggregate
-per-employee figures are exposed; no individual deals.
-
-#### Both bases on every row
-
-Two fields were added to each row, and they are present **whichever** `metric`
-is active — deliberately not gated on it. A reader comparing "5.7 mlrd
-delivered" against "4.1 mlrd closed" learns something real about the month, and
-a board that could only ever show one of the two would invite the assumption
-that they are the same number seen from two angles.
-
-The shape (values illustrative; the revenue figure is the real top seller's
-217.6 mln for the last thirty days):
-
-```jsonc
-{
-  "rank": 1, "tied": false,
-  "employeeId": "…", "fullName": "…", "departmentName": "Lola(ROP)",
-  "revenue": { "amountMinor": "21760000000", "amount": 217600000, "currency": "UZS" },
-  "dealsWon": …,
-  "conversionPercent": …,
-  "kpiAchievementPercent": …,
-  "closedCount": …,                                                      // NEW
-  "closedValue": { "amountMinor": "…", "amount": …, "currency": "UZS" }, // NEW
-  "delta": { /* still the DELIVERED-revenue delta, on every metric */ },
-  "value": 21760000000
-}
-```
-
-`value` is the active metric's ranking number. For `revenue` and `closed_value`
-it is **minor units** — note that this differs from `KpiCardDto.value`, which is
-major units because a card renders it directly.
-
-`closedCount` and `closedValue` are `null` when the basis could not be
-resolved. **Null is unmeasured, never zero** — a seller who closed nothing gets
-`0`, and the two states must render differently.
-
-`delta` remains the delivered-revenue delta on every metric. The comparison
-window carries no seller-close delta yet, and inventing one from a different
-basis would be exactly the blend this endpoint refuses.
-
-#### `meta.sellerCloseBasis` — how those two fields were arrived at
-
-The basis is a **choice**, not a fact of the data, so every response states it:
-
-```jsonc
-"sellerCloseBasis": {
-  "resolved": true,
-  "pipelineRoles": ["QUALIFICATION"],
-  "stages": [{ "id": "…", "name": "Сделка успешна", "externalId": "C12:WON", "pipelineName": "Первичный отдел" }],
-  "amountBasis": "deal_current_amount"
-}
-```
-
-- **`resolved`** is `false` when no `WON` stage exists in any seller pipeline —
-  a reconfigured portal, a role reassigned, a funnel retired. Every
-  `closedCount` and `closedValue` on the response is then `null`, and a page is
-  expected to read this flag before presenting standings at all.
-- **`pipelineRoles`** is how the stage was found. The stage is resolved by
-  **role**, never matched on the literal `C12:WON`; `externalId` is reported
-  back for the reader, not used as a key.
-- **`amountBasis`** is the honest caveat, and it has only one value today:
-
-  > **`deal_current_amount`** — `closedValue` sums the deal's amount **as it
-  > stands now**, not the amount it carried at the moment the seller closed it.
-  > `deal_stage_history` carries no amount column, so if an operator later
-  > edits the sum — a discount, a corrected quantity — this figure follows the
-  > edit and moves. There is no column that would let it be otherwise. The
-  > response says so rather than letting the number imply a precision it does
-  > not have.
-
-An empty board (`data: []`, no seller matched the filters) still carries a
-resolved `sellerCloseBasis`: "no seller matched" and "the seller stage no longer
-exists" are different failures and a page must be able to tell them apart.
-
-### Finance is capability-gated
-
-`/finance/overview` returns **501 `INTEGRATION_PENDING`** when the active
-provider does not supply payments. The demo provider does; the Bitrix24
-provider deliberately does not, because whether that portal exposes a payment
-ledger is an open question (see [BITRIX24.md](BITRIX24.md) §7).
-
-A page of zeros would tell a finance team nothing is outstanding. That is a
-different claim from "we cannot see what is outstanding", and only one of them
-is true.

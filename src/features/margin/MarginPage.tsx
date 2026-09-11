@@ -145,30 +145,58 @@ export function MarginPage() {
       header: 'Chegirma',
       align: 'right',
       numeric: true,
-      render: (row) =>
-        row.discount.amount === 0 && row.overList.amount === 0 ? (
-          <span style={{ color: 'var(--ink-muted)' }}>0</span>
-        ) : row.discount.amount > 0 ? (
-          /*
-            Ink. Every product carries some discount, so painting the column
-            --status-serious made 100% of rows orange — and a colour that is
-            on every row informs on none, while quietly spending a reserved
-            status hue on an ordinary fact. The TILE above grades the total.
-          */
-          <span style={{ color: 'var(--ink-secondary)' }}>
-            {formatCompactUzs(row.discount.amount)}
+      /*
+        BOTH FACTS, WHEN A ROW CARRIES BOTH — this cell used to print only one.
+
+        A product row is an aggregate over many lines, so a product with some
+        lines discounted and some sold above list has a non-zero discount AND a
+        non-zero over-list. The old three-way ternary took the discount branch
+        and dropped `overList` on the floor for exactly those rows — and per the
+        note below, a discount is on almost every row with volume, so the
+        markup branch was effectively unreachable and the column's second fact
+        was never seen. The repository splits the two by sign precisely so they
+        are not netted (406 markup lines in one month); rendering one of them is
+        the same loss by another route, one layer later.
+
+        Unnetted here too: the giveaway on the first line, the markup under it
+        in muted ink. The row now reconciles against the two tiles above it.
+      */
+      render: (row) => {
+        const hasDiscount = row.discount.amount > 0
+        const hasOverList = row.overList.amount > 0
+
+        if (!hasDiscount && !hasOverList) {
+          return <span style={{ color: 'var(--ink-muted)' }}>0</span>
+        }
+
+        return (
+          <span className="inline-flex flex-col items-end leading-tight">
+            {hasDiscount && (
+              /*
+                Ink. Every product carries some discount, so painting the column
+                --status-serious made 100% of rows orange — and a colour that is
+                on every row informs on none, while quietly spending a reserved
+                status hue on an ordinary fact. The TILE above grades the total.
+              */
+              <span style={{ color: 'var(--ink-secondary)' }}>
+                {formatCompactUzs(row.discount.amount)}
+              </span>
+            )}
+            {hasOverList && (
+              // Sold ABOVE the catalogue price. This used to render in the same
+              // warning orange as a giveaway, with a minus sign as the only clue —
+              // so money earned and money surrendered looked identical.
+              <span
+                className={hasDiscount ? 'text-[11px]' : undefined}
+                style={{ color: 'var(--ink-muted)' }}
+                title="Narx katalog narxidan yuqori — chegirma emas, ustama"
+              >
+                +{formatCompactUzs(row.overList.amount)}
+              </span>
+            )}
           </span>
-        ) : (
-          // Sold ABOVE the catalogue price. This used to render in the same
-          // warning orange as a giveaway, with a minus sign as the only clue —
-          // so money earned and money surrendered looked identical.
-          <span
-            style={{ color: 'var(--ink-secondary)' }}
-            title="Narx katalog narxidan yuqori — chegirma emas, ustama"
-          >
-            +{formatCompactUzs(row.overList.amount)}
-          </span>
-        ),
+        )
+      },
     },
   ]
 

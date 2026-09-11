@@ -40,27 +40,41 @@ import { can, canSeeSection, type Principal } from './rbac'
  *
  * TWO CONDITIONS, BECAUSE THE TICKS ARE NOT THE ONLY GATE. A section says the
  * administrator handed over the screen; the account's data scope says whether
- * its endpoint has an answer to give. Six screens aggregate across the whole
+ * its endpoint has an answer to give. Five screens aggregate across the whole
  * company and refuse anybody narrower — and `effectiveSections` hands an
- * unconfigured SALES account `overview` by default, which is the first entry
- * in `SECTIONS` and the route `/`.
+ * unconfigured SALES account the whole SALES role default, Logistika included.
  *
  * So without this filter the feature's own account walks into a wall: an
  * administrator creates the ROP, ticks nothing (the documented "follow the
- * role" default), and the first thing that person sees after signing in is the
- * command centre refusing them — while the sidebar, which applies exactly this
- * rule, no longer offers the link that would explain it. Landing them on
+ * role" default), and the first thing that person sees after signing in is a
+ * company-wide screen refusing them — while the sidebar, which applies exactly
+ * this rule, no longer offers the link that would explain it. Landing them on
  * Тасдиклаш instead is the whole point of the account.
+ *
+ * `prefer` names a route to try FIRST — the root page passes `LANDING_ROUTE`,
+ * so where everyone lands is a decision in `sections.ts` rather than a
+ * side effect of this list's order. It still has to pass both conditions; an
+ * account that cannot be served the preferred screen falls through to the
+ * ordinary search below.
  *
  * Presentation and routing only, like `companyWideSections` it reads from:
  * every endpoint still decides for itself.
  */
-function firstServableSection(principal: Principal): SectionSpec | undefined {
+function firstServableSection(
+  principal: Principal,
+  prefer?: string,
+): SectionSpec | undefined {
   const narrowed = principal.dataScope !== 'ALL'
+  const servable = (spec: SectionSpec) =>
+    canSeeSection(principal, spec.id) && !(narrowed && isCompanyWideSection(spec.id))
+
+  const preferred = prefer
+    ? SECTIONS.find((spec) => spec.route === prefer && servable(spec))
+    : undefined
+
   return (
-    SECTIONS.find(
-      (spec) => canSeeSection(principal, spec.id) && !(narrowed && isCompanyWideSection(spec.id)),
-    ) ??
+    preferred ??
+    SECTIONS.find(servable) ??
     // Nothing servable: fall back to anything ticked, so a misconfigured
     // account still lands on a page that can explain itself rather than on a
     // redirect loop.
@@ -109,10 +123,10 @@ export async function requireUserAdmin(): Promise<void> {
  * middleware has already dealt with that case, and the root page's own
  * fallback is a better answer than an exception on a redirect.
  */
-export async function firstSectionFor(): Promise<SectionSpec | null> {
+export async function firstSectionFor(prefer?: string): Promise<SectionSpec | null> {
   const principal = await optionalPrincipal(
     new Request('https://guard.invalid/', { headers: await headers() }),
   )
   if (!principal) return null
-  return firstServableSection(principal) ?? null
+  return firstServableSection(principal, prefer) ?? null
 }

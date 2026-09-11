@@ -69,11 +69,6 @@ export interface PaginationMeta {
   readonly hasPreviousPage: boolean
 }
 
-export interface PaginatedData<T> {
-  readonly items: readonly T[]
-  readonly pagination: PaginationMeta
-}
-
 export function buildPagination(
   page: number,
   pageSize: number,

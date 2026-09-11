@@ -15,215 +15,211 @@ process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 const { InsightsRepository } = await import('@/server/repositories/insightsRepository')
 
 const reach = InsightsRepository as unknown as {
-  logisticsSql: () => string
-  refusalReasonsSql: () => string
+  queueSql: (mode: string, scopeParam: string) => string
+  logisticsCohortSql: () => string
 }
 
-const CUTS = reach.logisticsSql()
-const REASONS = reach.refusalReasonsSql()
+/** What the repository actually sends: the queue prelude plus the cuts. */
+const SQL = `${reach.queueSql('window', '$3')}${reach.logisticsCohortSql()}`
 
 /*
-  Negative assertions run against the SQL with its prose stripped. Both
-  builders carry long comments explaining why each figure is what it is, and
-  those comments name the very tokens the `not.toContain` checks forbid.
+  Negative assertions run against the SQL with its prose stripped. The builder
+  carries long comments explaining why each figure is what it is, and those
+  comments name the very tokens the `not.toContain` checks forbid.
 */
-const bare = (sql: string) =>
-  sql.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '')
+const bare = (sql: string) => sql.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '')
 
-const bareCuts = bare(CUTS)
-const bareReasons = bare(REASONS)
+const BARE = bare(SQL)
+
+const count = (haystack: string, needle: string) => haystack.split(needle).length - 1
 
 /**
- * The delivery cuts: three groupings of ONE pass.
+ * The logistics cohort: the client's own sheet, from one pass.
  *
- * The route and region cuts were once two statements differing by a single
- * projected column, each rebuilding three unbounded history CTEs — 2 212 ms
- * and 1 361 ms for one card. The Доставка funnel is the third grouping and it
- * joins them rather than opening a fourth query, because `scoped` already
- * holds exactly the rows it needs.
+ * This query answers a whole screen — six columns, a daily table, the post
+ * offices, the regions, the eighteen-stage reconciliation and the refusal
+ * reasons — out of one scan of the confirmation-queue cohort. Every assertion
+ * below stands in for a wrong number that would otherwise render as a plausible
+ * report, which is the failure mode this file exists for.
  */
-describe('logistics cuts SQL', () => {
-  it('builds one statement whose CTEs each earn their place', () => {
-    const chain = [...CUTS.matchAll(/(\w+) AS(?: MATERIALIZED)? \(/g)].map((m) => m[1])
+describe('logisticsCohortSql', () => {
+  it('builds on the confirmation queue, in the order the CTEs depend on', () => {
+    const chain = [...BARE.matchAll(/(?:WITH|,)\s*([a-z_]+) AS/g)].map((m) => m[1])
+
     expect(chain).toEqual([
-      'routed',
-      'dispatched',
-      'delivered',
+      // queueSql's prelude, unchanged — the cohort is SHARED with the
+      // confirmation queue and the sellers board, never re-derived here.
+      'signal_stage',
+      'moves',
+      'agg',
+      'dated',
+      'classified',
       'scoped',
-      'by_route',
+      'numbered',
+      'visible',
+      // the delivery leg
+      'routed',
+      'delivered_at',
+      'dispatched',
+      'cohort',
+      // the seven cuts
+      'by_fakt',
+      'by_bucket',
+      'by_day',
+      'by_post',
       'by_region',
       'by_stage',
+      'by_reason',
     ])
   })
 
-  /**
-   * `scoped` is read three times now, so materialising it is what keeps the
-   * expensive half — three unbounded passes over the stage history — running
-   * once. Postgres would materialise a CTE with three references anyway;
-   * saying so keeps it true if a later edit leaves one.
-   */
-  it('materialises the shared scan', () => {
-    expect(CUTS).toContain('scoped AS MATERIALIZED (')
+  /*
+    MATERIALIZED is not decoration. Seven arms read `cohort`; inlined, the
+    planner estimates the join badly and picks a sequential scan over the whole
+    history table. queueSql's own signal_stage measured 1 881 ms against 206 ms
+    for exactly this.
+  */
+  it('pins the row every cut reads', () => {
+    expect(BARE).toContain('cohort AS MATERIALIZED (')
   })
 
-  /**
-   * ONE aggregate list, read by all three cuts.
-   *
-   * Written out per cut, the three halves of this card could drift into
-   * counting different things under the same column names — which is the
-   * fault the module header records, arriving by another door. The median is
-   * the cheapest witness that the list is shared: three groupings, three
-   * copies, no fourth.
-   */
-  it('computes the same aggregates for every cut', () => {
-    expect(bareCuts.match(/percentile_cont\(0\.5\)/g)).toHaveLength(3)
+  /*
+    THE HISTORY SCAN IS BOUNDED ON THE LEFT ONLY.
+
+    Closing it at $2 freezes an order's status at the window's edge — measured
+    on the queue: «Kecha» showed 96 orders against a true 101. Every row in this
+    cohort arrived at or after $1 and a hub stamp follows the arrival it belongs
+    to, so the left bound is free and the right bound is a bug.
+  */
+  it('bounds the three delivery CTEs from the left and never from the right', () => {
+    expect(count(BARE, 'h."enteredAt" >= $1')).toBe(4) // three here + moves
+    expect(BARE).not.toContain('h."enteredAt" < $2')
+    expect(BARE).not.toContain('h."enteredAt" <= $2')
   })
 
-  /**
-   * NO p90. It was a tenth column on two tables nobody asked for it on, and
-   * a second percentile over the same ordered set for a figure the median
-   * already carries.
-   */
-  it('states the pace once, as a median', () => {
-    expect(bareCuts).not.toContain('percentile_cont(0.9)')
-    expect(bareCuts).not.toContain('p90')
+  /*
+    count(k.deal_id), NEVER count(*). Two arms reach their rows through a LEFT
+    JOIN from a stage list, so an empty column arrives as one all-null row and
+    count(*) would count it — printing «Заказ в мой склад 1» over nothing.
+  */
+  it('counts the joined row and not the grouping', () => {
+    expect(BARE).toContain('count(k.deal_id)::bigint AS orders')
+    expect(BARE).not.toContain('count(*)::bigint AS orders')
   })
 
-  /**
-   * THE FUNNEL IS THE Доставка FUNNEL, AND NOTHING ELSE.
-   *
-   * `scoped` is filtered on `countsAsRevenue`, which is TWO pipelines —
-   * Доставка (#6) and Ecommerce (#14). A funnel table that read both would
-   * print «Новая заявка» and «Оплаченно с click» among the hubs, under a
-   * heading naming a funnel neither belongs to, and the shares underneath
-   * would divide by a population the portal's own kanban never shows.
-   *
-   * The filter is the portal's own id namespace rather than a join to the
-   * pipeline name, because `deal_stage."externalId"` IS `STATUS_ID` — the
-   * same key `DELIVERY_STAGE_ROLES` is written in — and a renamed funnel
-   * cannot break it.
-   */
-  it('draws the funnel from the Доставка stages alone', () => {
-    expect(bareCuts).toContain(`st."externalId" LIKE 'C6:%'`)
+  /*
+    The FAKT 1 filter rides the LEFT JOIN's ON clause on the two arms that
+    start from a stage list. Moved to the WHERE it turns the outer join back
+    into an inner one and deletes every empty post office — the same trap
+    deliveryBoardSql.test.ts pins on the other board.
+  */
+  it('filters the stage-led arms on the join, not in the WHERE', () => {
+    expect(count(BARE, 'LEFT JOIN cohort k ON k.post_stage_id = st."id" AND k.fakt1')).toBe(1)
+    expect(count(BARE, 'LEFT JOIN cohort k ON k.stage_id = st."id" AND k.fakt1')).toBe(1)
+    // bucket, day, region and reason cut the cohort directly. Counted as a
+    // standalone clause, since FILTER (WHERE k.fakt1) appears all over the
+    // aggregate list and means something else entirely.
+    expect(BARE.match(/^\s*WHERE k\.fakt1/gm) ?? []).toHaveLength(4)
   })
 
-  /**
-   * AN EMPTY COLUMN IS STILL A COLUMN.
-   *
-   * «Подготовка товара» and «Заказ в мой склад» stand at nought for days on
-   * this portal. Grouped over deals they do not come back as zero, they come
-   * back not at all — and the board silently renumbers itself against the
-   * kanban it is copied from. The funnel therefore reads FROM the stage list
-   * and joins the deals on, with the funnel filter on `deal_stage` where it
-   * cannot turn the outer join back into an inner one.
-   */
-  it('keeps a stage nothing is standing in', () => {
-    expect(bareCuts).toContain('FROM "deal_stage" st')
-    expect(bareCuts).toContain('LEFT JOIN scoped ON scoped.stage_id = st."id"')
+  it('reads FAKT 1 and FAKT 2 through the shared definitions', () => {
+    // The same predicates ratingSql groups by, so this screen and the sellers
+    // board cannot drift apart about what either fact means.
+    expect(BARE).toContain(`c.outcome IN ('CONFIRMED', 'UNCONFIRMED_SHIPPED')`)
+    expect(BARE).toContain(`k.role = 'DELIVERED'`)
   })
 
-  /**
-   * `count(*)` would count the LEFT JOIN's one all-null row and print an
-   * empty column as holding one order. `amountMinor` is NOT NULL on every
-   * real deal, so `count(amount_minor)` is identical for the two cuts that
-   * group deals directly and is the only form right for all three.
-   */
-  it('counts deals, not join rows', () => {
-    expect(bareCuts).toContain('count(amount_minor)::bigint AS orders')
-    expect(bareCuts).not.toContain('count(*)::bigint AS orders')
+  /*
+    `countsAsRevenue` IS NAMED, AND IT IS A TRIPWIRE RATHER THAN A FILTER.
+
+    Every money query must name it or report ~30% too much. Filtering on it
+    here would be wrong for a different reason: the cohort is chosen by an
+    arrival in Тасдиклаш (#4), which is not a revenue pipeline, so a WHERE
+    would drop every still-queued and every refused order.
+  */
+  it('counts the revenue flag instead of filtering on it', () => {
+    expect(BARE).toContain('k.fakt1 AND NOT k.counts_as_revenue')
+    expect(BARE).not.toMatch(/WHERE[^)]*counts_as_revenue\s*$/m)
+    expect(BARE).not.toContain('WHERE d."countsAsRevenue"')
   })
 
-  /**
-   * The funnel is ordered by the PORTAL'S order, not by size.
-   *
-   * The whole point of the table is that it reads the way the kanban reads:
-   * Подготовка товара, then the warehouse, then the hubs, then the carriers,
-   * then Доставлено. Sorted by order count it would still be correct and
-   * would no longer be a funnel.
-   */
-  it('keeps the funnel in the portal’s own stage order', () => {
-    expect(bareCuts).toContain(`min(st."sortOrder")::int AS sort`)
-    expect(bareCuts.slice(bareCuts.lastIndexOf('ORDER BY'))).toContain('sort')
+  it('generates the six columns from the client-approved table, with a valve', () => {
+    for (const role of [
+      'PREPARING',
+      'WAREHOUSE',
+      'IN_TRANSIT',
+      'REGIONAL_HUB',
+      'CARRIER',
+      'CHASING',
+      'REFUSED',
+      'CANCELLED_EARLY',
+      'DELIVERED',
+      'SETTLED',
+    ]) {
+      expect(BARE, role).toContain(`WHEN '${role}' THEN '`)
+    }
+    // A confirmed order moved out of Доставка is counted and reported, never
+    // dropped out of a partition the screen says is exhaustive.
+    expect(count(BARE, `ELSE 'OTHER'`)).toBe(2)
   })
 
-  /**
-   * The funnel needs its OWN total, not the card's.
-   *
-   * Share of orders is divided by a denominator, and the only honest one for
-   * a C6-only table is the C6-only count. Dividing by the region cut's total
-   * — which includes Ecommerce — makes eighteen shares that do not add to a
-   * hundred and no line on screen saying why.
-   */
-  it('gives the funnel its own grand total', () => {
-    expect(bareCuts).toContain(`GROUPING SETS ((st."name"), ())`)
+  /*
+    «Отказ» is one column on screen and two numbers underneath it, and the two
+    are split by JOURNEY. Since June the portal writes every refusal to «Отказ
+    предварительно», so reading the split off the stage name reports that
+    nothing ever came back.
+  */
+  it('splits refusals by whether the parcel travelled', () => {
+    expect(BARE).toContain(`k.bucket = 'REFUSED' AND k.dispatched`)
+    expect(BARE).toContain(`k.bucket = 'REFUSED' AND NOT k.dispatched`)
+    expect(BARE).toContain(`CASE WHEN k.dispatched THEN 'RETURNED' ELSE 'CANCELLED' END`)
   })
 
-  /**
-   * The funnel's money is EVERY deal in the stage, the way the kanban states
-   * it. `revenue` — won deals only — is the right figure for the delivery
-   * tables and the wrong one here: «В пути» has won nothing and is not worth
-   * nothing.
-   */
-  it('carries the kanban’s own sum beside the won-only revenue', () => {
-    expect(bareCuts).toContain("sum(amount_minor) FILTER (WHERE status = 'WON')::text AS revenue")
-    expect(bareCuts).toContain('sum(amount_minor)::text AS amount')
-  })
-})
-
-/**
- * Loss reasons, and the two arms this query no longer has.
- *
- * It used to answer for the qualification funnel as well — deals the revenue
- * flag excludes — because the delivery pipeline records no reason at all and
- * the only recorded ones live there. That card was the one block on a
- * Доставка screen reading another funnel, and it went with the rework.
- */
-describe('refusal reasons SQL', () => {
-  /**
-   * A PRE_SALE arm coming back means the screen is reporting the
-   * qualification funnel under a delivery heading again — and it arrives
-   * with the `countsAsRevenue` filter removed from the WHERE, which is what
-   * makes it a scan of every lost deal on the portal rather than of the
-   * delivery pipeline's own.
-   */
-  it('reads the revenue pipelines only', () => {
-    expect(bareReasons).not.toContain('PRE_SALE')
-    expect(bareReasons).toContain('d."countsAsRevenue"')
+  /*
+    In-flight is tested on the BUCKET, not on the role. `role` is nullable, and
+    `NULL NOT IN (…)` is NULL — an order on a stage with no logistics role
+    would drop out of the count silently. `bucket` is never null.
+  */
+  it('measures in-flight on the column, which is never null', () => {
+    expect(BARE).toContain(`k.bucket NOT IN ('REFUSED', 'DONE')`)
+    expect(BARE).not.toContain(`k.role NOT IN (`)
   })
 
-  /**
-   * Both refusal roles, filtered in the WHERE rather than bucketed and
-   * dropped. The `OTHER` bucket had no consumer: the page renders RETURNED
-   * and CANCELLED and nothing else, so every row that fell through the CASE
-   * was fetched, decoded, mapped and discarded.
-   */
-  it('fetches only the rows the page draws', () => {
-    expect(bareReasons).toContain(`cur."logisticsRole" IN ('REFUSED', 'CANCELLED_EARLY')`)
-    expect(bareReasons).not.toContain("'OTHER'")
+  it('keeps the funnel filter against the stage table', () => {
+    expect(count(BARE, `st."externalId" LIKE 'C6:%'`)).toBe(2)
+    expect(BARE).toContain('min(st."sortOrder")::int')
   })
 
-  /**
-   * RETURNED vs CANCELLED is decided by whether the parcel ever reached a hub,
-   * a carrier or «В пути» — NOT by which of the two refusal stages the portal
-   * parked it in. Since June this portal writes every refusal to «Отказ
-   * предварительно»; read from the stage alone the screen said nothing came
-   * back and 150 orders never left the warehouse, both the opposite of the
-   * truth.
-   */
-  it('splits on whether the parcel travelled, not on the stage', () => {
-    expect(bareReasons).toContain(
-      `ss."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER', 'IN_TRANSIT')`,
+  it('buckets the day in Tashkent, not in UTC', () => {
+    expect(BARE).toContain(
+      `(c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Tashkent')::date::text AS day`,
     )
   })
 
-  /**
-   * Money is never null here any more. With the pre-sale rows gone every
-   * remaining row counts toward revenue, so the DTO's `lost` stopped being
-   * nullable — and the em dash and its "we do not count money here" tooltip
-   * went with it.
-   */
-  it('always states a sum', () => {
-    expect(bareReasons).toContain('COALESCE(sum(d."amountMinor"), 0)::text AS lost')
-    expect(bareReasons).not.toContain('FILTER (WHERE d."countsAsRevenue")')
+  it('takes a true median per cut and no ninetieth percentile', () => {
+    expect(count(BARE, 'percentile_cont(0.5) WITHIN GROUP (ORDER BY k.pace_days)')).toBe(7)
+    expect(BARE).not.toContain('percentile_cont(0.9)')
+  })
+
+  /*
+    The pace is measured from the queue arrival to the «Доставлено» stamp.
+    closedAt is a DATE on this portal — every closed deal lands on UTC midnight
+    — and the hub stamp's median against the delivered stamp is 0.0 hours,
+    because the route is written down when the parcel is closed out.
+  */
+  it('measures delivery from the arrival, never from closedAt', () => {
+    expect(BARE).toContain('EXTRACT(EPOCH FROM (dv.delivered_at - c.queued_at)) / 86400')
+    expect(BARE).not.toContain('closedAt')
+  })
+
+  it('returns the grand total of every cut that has one', () => {
+    expect(count(BARE, 'GROUPING SETS')).toBe(5)
+    expect(BARE).toContain('GROUP BY GROUPING SETS ((k.bucket, COALESCE(k.role, \'NONE\')), (k.bucket), ())')
+    expect(BARE).toContain('GROUP BY GROUPING SETS ((k.day, k.bucket), (k.day))')
+  })
+
+  it('unions the seven arms and orders them for the decoder', () => {
+    expect(count(BARE, 'UNION ALL SELECT * FROM')).toBe(6)
+    expect(BARE).toContain('ORDER BY cut, is_total, sort NULLS LAST, sub NULLS FIRST, orders DESC')
   })
 })

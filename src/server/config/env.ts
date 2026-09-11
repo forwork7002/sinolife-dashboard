@@ -28,7 +28,6 @@ export const DataSource = {
   Bitrix24: 'bitrix24',
 } as const
 
-export type DataSourceValue = (typeof DataSource)[keyof typeof DataSource]
 
 /**
  * Treat an empty string as absent.
@@ -328,8 +327,6 @@ function load(): Env {
 
 export const env: Env = load()
 
-/** True when the app is serving generated demo data rather than live CRM data. */
-export const isDemoMode = env.DATA_SOURCE === DataSource.Demo
 
 /**
  * The branch every screen shows unless the URL says otherwise.

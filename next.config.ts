@@ -56,6 +56,7 @@ const csp = [
 ].join('; ')
 
 const nextConfig: NextConfig = {
+  distDir: process.env.NEXT_DIST_DIR ?? '.next',
   /**
    * No floating "N" badge over the sidebar in development.
    *

@@ -37,7 +37,6 @@ export const ROLE_HINTS: Readonly<Record<RoleValue, string>> = {
  * page and at the endpoint alike.
  */
 const ALL_ROUTES = [
-  '/',
   '/analytics/cohort',
   '/logistics',
   '/analytics/sales',
@@ -63,7 +62,6 @@ export const ROLE_NAV: Readonly<Record<RoleValue, readonly string[]>> = {
    * or only its own.
    */
   SALES: [
-    '/',
     '/confirmation',
     '/logistics',
     '/kpi',

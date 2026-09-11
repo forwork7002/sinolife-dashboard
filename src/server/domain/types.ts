@@ -244,8 +244,3 @@ export function statusForStageCategory(category: StageCategoryValue): DealStatus
       return 'OPEN'
   }
 }
-
-/** A deal is resolved once it has left the pipeline, either way. */
-export function isResolved(status: DealStatusValue): boolean {
-  return status === 'WON' || status === 'LOST'
-}

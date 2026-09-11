@@ -15,7 +15,16 @@ const eslintConfig = defineConfig([
   ...nextTs,
 
   globalIgnores([
-    ".next/**",
+    /*
+      Build output, whatever it is called.
+
+      `next.config.ts` takes `distDir` from `NEXT_DIST_DIR`, so a production
+      build beside the dev server lands in `.next-prod` — which the bare
+      `.next/**` did not cover, and `npm run lint` then reported a thousand
+      errors inside minified chunks. The glob follows the config rather than
+      naming one directory the next environment variable would step around.
+    */
+    ".next*/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
