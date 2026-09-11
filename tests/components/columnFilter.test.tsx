@@ -330,6 +330,61 @@ describe('the summa range', () => {
     expect(onApply).toHaveBeenCalledWith({ min: 1_240_000, max: undefined })
   })
 
+  it('finds one exact sum when both ends are the same', () => {
+    /*
+      Asked for on 2026-09-11: «1600000 dan 1600000 qilib kiritsa… barcha
+      1600000 minglik buyurtmalarni koʻrsatishi kerak». The server bounds are
+      inclusive (production: 399 orders at exactly 1 600 000 this month), so
+      the form only has to pass both through untouched.
+    */
+    const onApply = vi.fn()
+    render(<ColumnFilterRange unit="soʻm" onApply={onApply} />)
+
+    fireEvent.change(screen.getByLabelText('Eng kam summa'), { target: { value: '1600000' } })
+    fireEvent.change(screen.getByLabelText('Eng koʻp summa'), { target: { value: '1600000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Qoʻllash' }))
+
+    expect(onApply).toHaveBeenCalledWith({ min: 1_600_000, max: 1_600_000 })
+  })
+
+  it('reads a sum grouped with dots, spaces or apostrophes, and drops zero tiyin', () => {
+    /*
+      «1.600.000» is how this floor writes a sum, and it was the one spelling
+      that failed: `Number('1.600.000')` is NaN, the bound became undefined,
+      and the filter was dropped SILENTLY — the popover closed on the whole
+      month (1 065 orders) as if the filter did not work. Measured on
+      production 2026-09-11.
+    */
+    const cases: [string, number][] = [
+      ['1.600.000', 1_600_000],
+      ['1 600 000', 1_600_000],
+      ['1 600 000', 1_600_000],
+      ["1'600'000", 1_600_000],
+      ['1 600 000,00', 1_600_000],
+      ['1600000.00', 1_600_000],
+    ]
+    for (const [typed, expected] of cases) {
+      const onApply = vi.fn()
+      const { unmount } = render(<ColumnFilterRange unit="soʻm" onApply={onApply} />)
+      fireEvent.change(screen.getByLabelText('Eng kam summa'), { target: { value: typed } })
+      fireEvent.click(screen.getByRole('button', { name: 'Qoʻllash' }))
+      expect(onApply, typed).toHaveBeenCalledWith({ min: expected, max: undefined })
+      unmount()
+    }
+  })
+
+  it('says so, and applies nothing, when a bound is not a number', () => {
+    const onApply = vi.fn()
+    render(<ColumnFilterRange unit="soʻm" onApply={onApply} />)
+
+    fireEvent.change(screen.getByLabelText('Eng kam summa'), { target: { value: '1,6 mln' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Qoʻllash' }))
+
+    // Dropping the bound and applying the rest is what hid the dotted sum.
+    expect(onApply).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert').textContent).toMatch(/raqam/i)
+  })
+
   it('offers Tozalash only when there is something to clear', () => {
     const onApply = vi.fn()
     const { rerender } = render(<ColumnFilterRange unit="soʻm" onApply={onApply} />)

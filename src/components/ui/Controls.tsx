@@ -768,12 +768,25 @@ export function ColumnFilterRange({
   // elsewhere) is reflected the next time the popover opens.
   const [from, setFrom] = useState(min === undefined ? '' : String(min))
   const [to, setTo] = useState(max === undefined ? '' : String(max))
+  const [invalid, setInvalid] = useState(false)
 
-  const parse = (value: string): number | undefined => {
+  /**
+   * Whole soʻm, grouped however the reader writes a number — or `null` when
+   * it is not one. Empty is `undefined`: an open end, not an error.
+   *
+   * DOTS ARE GROUP SEPARATORS HERE. «1.600.000» is how this floor writes a
+   * sum, and `Number()` reads it as NaN — which used to become `undefined`
+   * and drop the bound SILENTLY, so the popover closed on the whole month as
+   * if the filter did not work (production, 2026-09-11). Spaces (no-break
+   * ones too, which a spreadsheet copy carries), commas and apostrophes are
+   * separators as well. A trailing `,00` / `.00` is zero tiyin and goes
+   * first, so «1600000.00» is not read as a hundred and sixty million.
+   */
+  const parse = (value: string): number | undefined | null => {
     const trimmed = value.trim()
     if (trimmed === '') return undefined
-    const parsed = Number(trimmed.replace(/\s|,/g, ''))
-    return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined
+    const digits = trimmed.replace(/[.,]0{1,2}$/, '').replace(/[\s.,'’_]/g, '')
+    return /^\d+$/.test(digits) ? Number(digits) : null
   }
 
   const box = 'focusable tabular w-full rounded-md border px-2 py-1.5 text-xs outline-none'
@@ -788,7 +801,16 @@ export function ColumnFilterRange({
       className="p-1"
       onSubmit={(event) => {
         event.preventDefault()
-        onApply({ min: parse(from), max: parse(to) })
+        const low = parse(from)
+        const high = parse(to)
+        // Nothing is applied from a half-read form: dropping the bad bound and
+        // applying the rest is exactly the silent failure described above.
+        if (low === null || high === null) {
+          setInvalid(true)
+          return
+        }
+        setInvalid(false)
+        onApply({ min: low, max: high })
       }}
     >
       <div className="flex items-center gap-1.5">
@@ -798,7 +820,10 @@ export function ColumnFilterRange({
             type="text"
             inputMode="numeric"
             value={from}
-            onChange={(e) => setFrom(e.target.value)}
+            onChange={(e) => {
+              setFrom(e.target.value)
+              setInvalid(false)
+            }}
             placeholder="dan"
             className={box}
             style={boxStyle}
@@ -813,7 +838,10 @@ export function ColumnFilterRange({
             type="text"
             inputMode="numeric"
             value={to}
-            onChange={(e) => setTo(e.target.value)}
+            onChange={(e) => {
+              setTo(e.target.value)
+              setInvalid(false)
+            }}
             placeholder="gacha"
             className={box}
             style={boxStyle}
@@ -821,9 +849,17 @@ export function ColumnFilterRange({
         </label>
       </div>
 
-      <p className="mt-1 px-0.5 text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
-        {unit}
-      </p>
+      {invalid ? (
+        <p role="alert" className="mt-1 px-0.5 text-[10.5px]" style={{ color: 'var(--status-critical)' }}>
+          Faqat raqam kiriting, masalan 1600000 yoki 1.600.000
+        </p>
+      ) : (
+        <p className="mt-1 px-0.5 text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
+          {unit}
+          {/* The one thing this form cannot say by itself: how to ask for one exact sum. */}
+          {' · bitta summa uchun ikkalasiga bir xil son'}
+        </p>
+      )}
 
       <div className="mt-1.5 flex gap-1.5">
         <Button type="submit" variant="primary" size="sm" className="flex-1">
