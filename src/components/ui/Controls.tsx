@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { Button } from '@/components/ui/Button'
 import { formatNumber } from '@/lib/format'
@@ -415,70 +416,137 @@ export function ColumnFilter({
 }) {
   const [open, setOpen] = useState(false)
   /**
-   * Which edge of the funnel the panel hangs from.
+   * Where the panel is drawn, in VIEWPORT pixels — null until first measured.
    *
-   * MEASURED ON OPEN, NEVER ASSUMED. This was a static `right-0` and it
-   * shipped broken on 2026-09-09: the panel hangs INSIDE the table's own
-   * `overflow-x: auto` scroll box, so anchoring it to the right of the
-   * LEFTMOST column threw 240px of it off the left edge and the container
-   * clipped it. Measured on production, the РОП panel sat at `left: -157`
-   * against a box starting at 29 — 186px of a 240px panel, gone. The list was
-   * correct the whole time; a reader saw a sliver with a scrollbar in it.
+   * THE PANEL IS PORTALLED TO <body> AND FIXED, and both halves were forced by
+   * production. It used to hang inside the header cell, and that cell is
+   * `.thead-sticky`: `position: sticky` with a z-index, which makes it a
+   * stacking context. The panel's own z-40 then only counted INSIDE that cell,
+   * so every later header cell — same z-index, later in the document — painted
+   * over it: the top of the РОП panel, its search box, sat under САНА and
+   * ID СДЕЛКИ. And it hung inside the table's `overflow: auto` scroll box, which
+   * CLIPPED it: filter the board down to one ROP and the table is one row
+   * tall, so the panel showed two names of fifteen and the rest could not be
+   * reached. Measured on production 2026-09-11 — «ROP filter qilsam eng
+   * tepadagi ustun tagida boʻlib qolayapti». No z-index inside the table can fix
+   * the clip, so the panel leaves the table.
    *
-   * A fixed side cannot be right in any case, because the table SCROLLS
-   * sideways: the same column is near the left edge at one scroll position and
-   * near the right edge at another. So the side is chosen from the room that
-   * actually exists at the moment of opening.
+   * WHICH SIDE is still measured, never assumed. A static `right-0` shipped
+   * broken on 2026-09-09: anchored to the right of the LEFTMOST column, 186px of
+   * the 240px РОП panel fell outside the table. The table scrolls sideways, so
+   * one column is near either edge depending on the scroll — the side is chosen
+   * from the room inside the nearest clipping box at the moment of opening, so
+   * the panel stays over the table rather than over the sidebar.
    */
-  const [side, setSide] = useState<'left' | 'right'>('right')
+  const [place, setPlace] = useState<{
+    top: number
+    left: number
+    side: 'left' | 'right'
+  } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
   const id = useId()
 
   /*
-    BEFORE PAINT, so the panel never appears on the wrong side and jumps.
-    `useLayoutEffect` runs after the DOM is built and before the browser
-    paints, which is exactly the window in which a measurement can still
-    change where something is drawn.
+    BEFORE PAINT, so the panel never appears in the wrong place and jumps —
+    and again on every scroll and resize while it is open, because a fixed
+    panel does not travel with the header it belongs to on its own. The scroll
+    listener is a CAPTURE listener: scroll does not bubble, and the thing that
+    scrolls here is `main` or the table, never the window.
   */
   useLayoutEffect(() => {
     if (!open) return
-    const trigger = containerRef.current?.getBoundingClientRect()
-    if (!trigger) return
 
-    /*
-      The nearest ancestor that CLIPS, found by asking rather than by knowing.
-      Keying on DataTable's `.overflow-x-auto` would have made this component
-      wrong the first time it was used inside anything else; the viewport is
-      the backstop when nothing clips.
-    */
-    let clip = containerRef.current?.parentElement ?? null
-    while (clip) {
-      const { overflowX, overflowY } = getComputedStyle(clip)
-      if (`${overflowX}${overflowY}`.includes('auto') || `${overflowX}${overflowY}`.includes('scroll')) break
-      clip = clip.parentElement
+    const measure = () => {
+      const trigger = containerRef.current?.getBoundingClientRect()
+      if (!trigger) return
+
+      /*
+        The nearest ancestor that CLIPS, found by asking rather than by knowing.
+        Keying on DataTable's `.overflow-x-auto` would have made this component
+        wrong the first time it was used inside anything else; the viewport is
+        the backstop when nothing clips.
+      */
+      let clip = containerRef.current?.parentElement ?? null
+      while (clip) {
+        const { overflowX, overflowY } = getComputedStyle(clip)
+        if (`${overflowX}${overflowY}`.includes('auto') || `${overflowX}${overflowY}`.includes('scroll')) break
+        clip = clip.parentElement
+      }
+      const bounds = clip ? clip.getBoundingClientRect() : { left: 0, right: window.innerWidth }
+
+      // Right-anchored means the panel extends LEFTWARD from the funnel.
+      const roomLeftward = trigger.right - bounds.left
+      const roomRightward = bounds.right - trigger.left
+      const side = roomLeftward >= PANEL_WIDTH || roomLeftward >= roomRightward ? 'right' : 'left'
+
+      // Never off the screen, whatever the table's box says.
+      const anchored = side === 'right' ? trigger.right - PANEL_WIDTH : trigger.left
+      const left = Math.max(8, Math.min(anchored, window.innerWidth - PANEL_WIDTH - 8))
+
+      // Below the funnel; above it only when below cannot hold it and above can.
+      const height = panelRef.current?.offsetHeight ?? 0
+      const below = window.innerHeight - trigger.bottom
+      const top =
+        below < height + 12 && trigger.top > below ? trigger.top - 4 - height : trigger.bottom + 4
+
+      setPlace((previous) =>
+        previous && previous.top === top && previous.left === left && previous.side === side
+          ? previous
+          : { top, left, side },
+      )
     }
-    const bounds = clip
-      ? clip.getBoundingClientRect()
-      : { left: 0, right: window.innerWidth }
 
-    // Right-anchored means the panel extends LEFTWARD from the funnel.
-    const roomLeftward = trigger.right - bounds.left
-    const roomRightward = bounds.right - trigger.left
-    setSide(roomLeftward >= PANEL_WIDTH || roomLeftward >= roomRightward ? 'right' : 'left')
+    measure()
+    window.addEventListener('scroll', measure, true)
+    window.addEventListener('resize', measure)
+    // The РЕГИОН list arrives after the panel opens and changes its height.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    if (panelRef.current) observer?.observe(panelRef.current)
+    return () => {
+      window.removeEventListener('scroll', measure, true)
+      window.removeEventListener('resize', measure)
+      observer?.disconnect()
+    }
   }, [open])
 
   /*
+    INTO THE PANEL ON OPEN, BACK TO THE FUNNEL ON ESCAPE. In the header cell
+    the panel followed its button in the tab order; portalled to the end of
+    <body> it no longer does, so focus is carried across by hand — and it lands
+    on the search box when there is one, which is where a hand that opened a
+    fifteen-name list goes next anyway.
+
+    ONLY ONCE THE PANEL IS PLACED. Until the first measurement it is
+    `visibility: hidden`, and a browser refuses focus to a hidden element — on
+    the first open the focus simply stayed on the funnel. jsdom does not model
+    that, so this was caught in a real browser, not by the suite.
+  */
+  const placed = place !== null
+  useEffect(() => {
+    if (!open || !placed) return
+    panelRef.current
+      ?.querySelector<HTMLElement>('input, button, [tabindex]:not([tabindex="-1"])')
+      ?.focus({ preventScroll: true })
+  }, [open, placed])
+
+  /*
     The same two listeners `MultiSelect` installs, and installed only while the
-    panel exists. A document-level mousedown handler that outlives its popover
-    is a listener per column per render, and this table has three.
+    panel exists. The panel is outside the funnel's box in the DOM now, so a
+    press inside EITHER counts as inside.
   */
   useEffect(() => {
     if (!open) return
     function onPointerDown(event: MouseEvent) {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+      const target = event.target as Node
+      if (containerRef.current?.contains(target) || panelRef.current?.contains(target)) return
+      setOpen(false)
     }
     function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpen(false)
+      if (event.key !== 'Escape') return
+      setOpen(false)
+      buttonRef.current?.focus({ preventScroll: true })
     }
     document.addEventListener('mousedown', onPointerDown)
     document.addEventListener('keydown', onKey)
@@ -491,6 +559,7 @@ export function ColumnFilter({
   return (
     <div className="relative inline-flex" ref={containerRef}>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
@@ -514,31 +583,34 @@ export function ColumnFilter({
         </svg>
       </button>
 
-      {open && (
-        <div
-          id={id}
-          role="dialog"
-          aria-label={`${label} — filtr`}
-          /*
-            THE SIDE IS MEASURED — see `side` above for what a fixed one cost.
-
-            `z-40` clears the sticky header (`z-index: 1`) and the toolbar's own
-            dropdowns; `text-left` and `normal-case` because the header cell
-            this inherits from is uppercase and right-aligned, and a form is
-            neither.
-          */
-          className={`absolute top-full ${
-            side === 'right' ? 'right-0' : 'left-0'
-          } z-40 mt-1 w-60 rounded-[var(--radius-panel)] border p-1 text-left normal-case`}
-          style={{
-            background: 'var(--surface-raised)',
-            borderColor: 'var(--border-strong)',
-            boxShadow: 'var(--shadow-float)',
-          }}
-        >
-          {children(() => setOpen(false))}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div
+            ref={panelRef}
+            id={id}
+            role="dialog"
+            aria-label={`${label} — filtr`}
+            data-side={place?.side}
+            /*
+              `z-40` clears the page's own dropdowns and the mobile rail; the
+              command palette (z-50) and tooltips (60) still go over it.
+              Hidden until measured — one frame — so it never flashes at 0,0.
+            */
+            className="z-40 w-60 rounded-[var(--radius-panel)] border p-1 text-left text-xs"
+            style={{
+              position: 'fixed',
+              top: place?.top ?? 0,
+              left: place?.left ?? 0,
+              visibility: place ? 'visible' : 'hidden',
+              background: 'var(--surface-raised)',
+              borderColor: 'var(--border-strong)',
+              boxShadow: 'var(--shadow-float)',
+            }}
+          >
+            {children(() => setOpen(false))}
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }

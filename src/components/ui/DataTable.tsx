@@ -355,7 +355,17 @@ export function DataTable<T>({
     )
   }
 
-  if (rows.length === 0) {
+  /*
+    A TABLE WHOSE COLUMNS CARRY FILTERS KEEPS ITS HEADER WHEN IT IS EMPTY.
+
+    The header is where those filters live. Returning the bare empty state
+    took the funnels with it, so a column filter that emptied the table — a
+    region nobody ordered from this month — left a board saying «clear the
+    filters» with the control that set them gone from the screen. Seen on the
+    confirmation queue, 2026-09-11. Every other table keeps the bare state.
+  */
+  const filterable = columns.some((column) => column.filter)
+  if (rows.length === 0 && !filterable) {
     return <EmptyState title={emptyTitle} body={emptyBody} />
   }
 
@@ -565,6 +575,8 @@ export function DataTable<T>({
         </tbody>
       </table>
     </div>
+
+    {rows.length === 0 && <EmptyState title={emptyTitle} body={emptyBody} />}
 
     {hidden > 0 && (
       <Button

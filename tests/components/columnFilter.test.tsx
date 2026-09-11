@@ -134,8 +134,7 @@ describe('the panel opens on the side that has room', () => {
     openFilter('СУММА')
     fireEvent.click(screen.getByRole('button', { name: 'СУММА — filtr' }))
 
-    expect(panel().className).toContain('right-0')
-    expect(panel().className).not.toContain('left-0')
+    expect(panel().dataset.side).toBe('right')
   })
 
   it('opens rightward from the leftmost column — the case that shipped broken', () => {
@@ -145,8 +144,7 @@ describe('the panel opens on the side that has room', () => {
     openFilter('РОП')
     fireEvent.click(screen.getByRole('button', { name: 'РОП — filtr' }))
 
-    expect(panel().className).toContain('left-0')
-    expect(panel().className).not.toContain('right-0')
+    expect(panel().dataset.side).toBe('left')
   })
 
   it('takes the roomier side when neither can hold the whole panel', () => {
@@ -157,7 +155,80 @@ describe('the panel opens on the side that has room', () => {
     fireEvent.click(screen.getByRole('button', { name: 'РЕГИОН — filtr' }))
 
     // 237px leftward against 50px rightward.
-    expect(panel().className).toContain('right-0')
+    expect(panel().dataset.side).toBe('right')
+  })
+})
+
+/**
+ * THE PANEL LEAVES THE TABLE.
+ *
+ * Reported from production on 2026-09-11: «ROP filter qilsam eng tepadagi ustun
+ * tagida boʻlib qolayapti». The panel hung inside the sticky header cell and
+ * inside the table's scroll box. The cell is a stacking context, so the header
+ * cells after it painted over the panel's top; the box clips, so with the board
+ * filtered to one ROP — a one-row table — the fifteen-name list showed two.
+ * Both are properties of WHERE the panel sits in the DOM, and that is what
+ * these pin.
+ */
+describe('the panel is drawn outside the table', () => {
+  const renderInTable = () =>
+    render(
+      <div data-testid="scroller" style={{ overflow: 'auto', maxHeight: 60 }}>
+        <table>
+          <thead>
+            <tr>
+              <th className="thead-sticky">
+                <ColumnFilter label="РОП" active={false}>
+                  {() => (
+                    <>
+                      <input aria-label="Roʻyxatdan qidirish" />
+                      <label>
+                        <input type="checkbox" /> Azizbek
+                      </label>
+                    </>
+                  )}
+                </ColumnFilter>
+              </th>
+            </tr>
+          </thead>
+        </table>
+      </div>,
+    )
+
+  it('is not inside the header cell or the scroll box that clips it', () => {
+    renderInTable()
+    fireEvent.click(screen.getByRole('button', { name: 'РОП — filtr' }))
+
+    const panel = screen.getByRole('dialog')
+    expect(screen.getByTestId('scroller').contains(panel)).toBe(false)
+    expect(panel.closest('th')).toBeNull()
+    expect(panel.style.position).toBe('fixed')
+  })
+
+  it('stays open while it is used, and closes on a press outside', () => {
+    renderInTable()
+    fireEvent.click(screen.getByRole('button', { name: 'РОП — filtr' }))
+
+    // Inside the panel is inside, even though it is no longer inside the
+    // funnel's own box in the DOM.
+    fireEvent.mouseDown(screen.getByRole('checkbox'))
+    expect(screen.queryByRole('dialog')).not.toBeNull()
+
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('takes focus into the panel and gives it back on Escape', () => {
+    renderInTable()
+    const trigger = screen.getByRole('button', { name: 'РОП — filtr' })
+    fireEvent.click(trigger)
+
+    // Portalled to the end of <body>, the panel is no longer next in the tab
+    // order after its button — so focus is carried across by hand.
+    expect(document.activeElement).toBe(screen.getByLabelText('Roʻyxatdan qidirish'))
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(document.activeElement).toBe(trigger)
   })
 })
 
