@@ -109,13 +109,9 @@ const VARIANT_CLASSES: Record<Variant, string> = {
     red fill, which would out-shout the one primary action a screen may have.
     The text is the token itself: on its own 10% tint it clears AA in both
     themes, where a solid fill would need a second text colour per theme.
-
-    THE RING IS AN INSET SHADOW, NOT A BORDER. globals.css sets
-    `* { border-color: var(--border) }` unlayered, and an unlayered rule beats
-    every Tailwind utility, so a `border-[…]` colour here rendered grey.
   */
   danger: [
-    'shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--status-critical)_45%,transparent)]',
+    'border border-[color:color-mix(in_oklab,var(--status-critical)_45%,transparent)]',
     'bg-[color-mix(in_oklab,var(--status-critical)_10%,transparent)] text-[var(--status-critical)]',
     'hover:bg-[color-mix(in_oklab,var(--status-critical)_18%,transparent)]',
     'active:bg-[color-mix(in_oklab,var(--status-critical)_26%,transparent)]',

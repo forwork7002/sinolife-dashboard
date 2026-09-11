@@ -435,8 +435,21 @@
  * BASE
  * ======================================================================== */
 
-* {
-  border-color: var(--border);
+/*
+  IN `@layer base`, AND THE LAYER IS THE WHOLE POINT. Unlayered, this rule beat
+  every Tailwind utility — an unlayered declaration outranks any layered one,
+  whatever the specificity — so a `border-[…]` colour on an element was
+  silently ignored. The one place that used one, the `secondary` Button's
+  `--border-strong`, drew at `--border` instead: 0.09 where 0.16 was designed,
+  on every secondary button in the application. Found on 2026-09-11 while the
+  red clear buttons were being built, which had to route round it. In the base
+  layer it is still the default for every border, and a utility can override
+  it again.
+*/
+@layer base {
+  * {
+    border-color: var(--border);
+  }
 }
 
 /* Anchor links and programmatic scrolls glide instead of jumping — but a
