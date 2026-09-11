@@ -20,9 +20,9 @@ import {
   BUYOUT_THRESHOLDS,
   type CurrencyMode,
   GRADE_WORDS,
+  type Grade,
   QL_THRESHOLDS,
   QUALITY_THRESHOLDS,
-  ROAS_THRESHOLDS,
   type Thresholds,
   count,
   dayLabel,
@@ -239,7 +239,7 @@ function buildColumns(
       key: 'roas',
       header: 'ROAS',
       value: (m) => m.roas,
-      render: (m) => <RoasCell value={m.roas} />,
+      render: (m) => <RoasCell value={m.roas} grade={m.roasGrade} />,
     },
   )
 
@@ -300,13 +300,23 @@ function Graded({ value, thresholds }: { value: number | null; thresholds: Thres
  * this dataset is "— вне Meta —", 4,2 mlrd soʻm against zero spend. Their page
  * paints exactly that case red and says so; an em dash would file the module's
  * biggest measurement gap under "no data".
+ *
+ * BUT ONLY WHEN THERE IS REVENUE TO EXPLAIN, and that half was missing. This
+ * cell painted EVERY null ROAS red, so the blob's zero-padding days — ~16 days
+ * carrying impressions and nothing else — each rendered a red verdict about
+ * attribution on a day when nothing happened at all. A colour that is on every
+ * empty row informs on none. The exception lives in `gradeRoas` on the server
+ * and now rides the payload as `roasGrade`, so this cell, the hero and the
+ * dynamics tooltip read ONE decision instead of three re-derivations of it.
  */
-function RoasCell({ value }: { value: number | null }) {
+function RoasCell({ value, grade }: { value: number | null; grade: Grade | null }) {
+  // Null grade on a null ratio: the row is empty, not failing. Print nothing.
+  if (grade === null) return <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
+
   if (value === null) {
-    return <StatusChip tone="critical">xarajat yoʻq</StatusChip>
+    return <StatusChip tone={grade}>xarajat yoʻq</StatusChip>
   }
 
-  const grade = gradeOf(value, ROAS_THRESHOLDS)!
   return (
     <StatusChip tone={grade}>
       <span className="tabular">{ratio(value)}×</span>
@@ -324,6 +334,16 @@ type TableRow =
       readonly kind: 'data'
       readonly rank: number
       readonly key: string
+      /**
+       * The level above — a campaign for an adset, an adset for a creative.
+       *
+       * ON THE ROW BECAUSE THE NAME IS NOT UNIQUE. `breakdownRows` groups by
+       * (key, parent), so one adset name used under two campaigns is correctly
+       * two rows with two sets of figures — and the table printed the name
+       * alone, so they arrived as two identically-labelled rows with split
+       * spend and no way to tell them apart, under duplicate React keys.
+       */
+      readonly parent: string | null
       readonly metrics: MarketingMetricsDto
     }
   | { readonly kind: 'total'; readonly metrics: MarketingMetricsDto }
@@ -381,6 +401,7 @@ export function MarketingTable({
     kind: 'data',
     rank: index + 1,
     key: row.key,
+    parent: row.parent,
     metrics: row.metrics,
   }))
 
@@ -422,6 +443,7 @@ export function MarketingTable({
         ) : (
           <RowName
             name={row.key}
+            parent={row.parent}
             isDays={isDays}
             dailyFrom={dailyFrom}
             freshFrom={freshFrom}
@@ -479,7 +501,13 @@ export function MarketingTable({
       <DataTable
         columns={columns}
         rows={allRows}
-        rowKey={(row) => (row.kind === 'total' ? '__jami__' : row.key)}
+        /*
+          THE PARENT IS PART OF THE IDENTITY, and it has to be part of the key.
+          Two campaigns owning an adset called «TOF-1» produce two legitimate
+          rows; keyed on the name alone they collided, and React reconciled two
+          different rows as one.
+        */
+        rowKey={(row) => (row.kind === 'total' ? '__jami__' : `${row.parent ?? ''}\u2215${row.key}`)}
         status={status}
         errorMessage={errorMessage}
         onRetry={onRetry}
@@ -512,12 +540,29 @@ export function MarketingTable({
  */
 function RowName({
   name,
+  parent,
   isDays,
   dailyFrom,
   freshFrom,
   onDrill,
 }: {
   name: string
+  /**
+   * The level above, printed under the name when there is one.
+   *
+   * Without it two rows read as one repeated row. With it the reader can see
+   * that «TOF-1 · Kampaniya A» and «TOF-1 · Kampaniya B» are different things
+   * that happen to share a name.
+   *
+   * WHAT THIS DOES NOT FIX, stated so nobody assumes it does: drilling into a
+   * repeated name still merges both branches. `breakdownRows` filters the next
+   * level by the bare parent string, and `marketing_daily` carries ONE parent
+   * column — a creative row knows its adset and not its campaign — so a
+   * full-path filter is a schema change, not a query change. Until then the
+   * breadcrumb can name a campaign whose creative list includes another
+   * campaign's.
+   */
+  parent: string | null
   isDays: boolean
   dailyFrom: string
   freshFrom: string
@@ -528,18 +573,31 @@ function RowName({
   const label = isDays ? (monthly ? `${monthLabel(name)} (oy)` : dayLabel(name)) : name
 
   const body = (
-    <span className="inline-flex min-w-0 items-center gap-1.5">
-      <span className="truncate">{label}</span>
-      {incomplete && (
-        <span
-          className="inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
-          style={{
-            background: 'color-mix(in oklab, var(--status-warning) 12%, transparent)',
-            color: 'var(--status-warning)',
-          }}
-        >
-          <HourglassGlyph />
-          toʻliq emas
+    <span className="inline-flex min-w-0 flex-col items-start">
+      <span className="inline-flex min-w-0 items-center gap-1.5">
+        <span className="truncate">{label}</span>
+        {incomplete && (
+          <span
+            className="inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+            style={{
+              background: 'color-mix(in oklab, var(--status-warning) 12%, transparent)',
+              color: 'var(--status-warning)',
+            }}
+          >
+            <HourglassGlyph />
+            toʻliq emas
+          </span>
+        )}
+      </span>
+      {/*
+        The parent, under the name, muted and small. Only when there IS one —
+        campaigns, regions, sellers and days have no level above and would
+        gain an empty line. Rendering it is what makes two rows sharing an
+        adset name readable as two different things.
+      */}
+      {parent !== null && parent !== '' && (
+        <span className="truncate text-[10.5px]" style={{ color: 'var(--ink-muted)' }}>
+          {parent}
         </span>
       )}
     </span>

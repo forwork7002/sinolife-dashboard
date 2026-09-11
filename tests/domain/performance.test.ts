@@ -55,6 +55,21 @@ function lost(id: string, closedIso: string, employeeId: string): AnalyticsDeal 
   }
 }
 
+/** An OPEN deal — created in the window, resolved by nothing. */
+function created(id: string, createdIso: string, employeeId: string): AnalyticsDeal {
+  return {
+    id,
+    amountMinor: 10_000_00n,
+    currency: UZS,
+    status: 'OPEN',
+    stageId: 'stg-2',
+    stageCategory: 'NEW',
+    employeeId,
+    // Absent, not null: `closedIn` tests `closedAt !== undefined`.
+    createdAtSource: new Date(createdIso),
+  }
+}
+
 describe('employeePerformance', () => {
   const deals = [
     // August
@@ -348,8 +363,67 @@ describe('actualForMetric', () => {
   })
 
   it('reports a zero average deal when nothing was won', () => {
+    // Deliberately NOT null: the denominator is the window, and the window
+    // exists. "Nothing was won" is the measurement. Contrast the case below.
     const empty = summarizeDeals([], august, UZS)
     expect(actualForMetric(empty, 'AVERAGE_DEAL')).toBe(0n)
+  })
+
+  /*
+    A RATE WITH NO DENOMINATOR IS UNKNOWN, NOT ZERO — the doctrine
+    `tests/domain/rateHonesty.test.ts` pins for the repositories, reaching the
+    one place in the KPI path that used to flatten it with `?? 0`.
+
+    On this portal the median order takes 20-25 days to travel from the order
+    clock to the money clock, so "in the queue, nothing resolved yet" is the
+    ordinary state of a fresh month — and it used to score 0% attainment and a
+    BEHIND badge, while the very same seller's conversion read «—» on
+    «Sotuvchilar reytingi». One empty denominator, two screens, two facts.
+  */
+  it('refuses to call an unresolved window a zero conversion', () => {
+    const openOnly = summarizeDeals(
+      [created('c', '2026-08-12T06:00:00.000Z', 'emp-9')],
+      august,
+      UZS,
+    )
+
+    expect(openOnly.conversionRatePercent).toBeNull()
+    expect(actualForMetric(openOnly, 'CONVERSION_RATE')).toBeNull()
+  })
+
+  it('still returns a real zero when deals resolved and none were won', () => {
+    // The case that must keep working: failures were measured, and 0% is the
+    // measurement. Only an EMPTY denominator is unknown.
+    const allLost = summarizeDeals([lost('d', '2026-08-13T06:00:00.000Z', 'emp-9')], august, UZS)
+
+    expect(actualForMetric(allLost, 'CONVERSION_RATE')).toBe(0n)
+  })
+
+  it('scores an unmeasurable actual as no verdict rather than as a miss', () => {
+    const openOnly = summarizeDeals(
+      [created('e', '2026-08-14T06:00:00.000Z', 'emp-9')],
+      august,
+      UZS,
+    )
+
+    const evaluation = evaluateKpi(
+      {
+        id: 'k1',
+        employeeId: 'emp-9',
+        metric: 'CONVERSION_RATE',
+        targetValue: 6_000n,
+        periodStart: august.start,
+        periodEnd: august.end,
+      },
+      openOnly,
+      TZ,
+      NOW,
+    )
+
+    expect(evaluation.actualValue).toBeNull()
+    expect(evaluation.achievementBp).toBeNull()
+    // And it drops out of the headline average rather than dragging it down.
+    expect(overallAchievementPercent([evaluation])).toBeNull()
   })
 })
 

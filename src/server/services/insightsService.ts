@@ -32,6 +32,7 @@ import type {
   LogisticsCut,
   MarginSummary,
   StructureNode,
+  ViewerDepartment,
 } from '@/server/repositories/insightsRepository'
 import { deliveryRateBp, moneyRateBp } from '@/server/domain/analytics/rates'
 import type { ConfirmationOutcomeValue, ConfirmationQueueMode } from '@/server/domain/types'
@@ -80,7 +81,18 @@ export interface CohortSummaryDto {
   /** Distinct customers on an open retention deal. Never the sum of `stages`. */
   readonly workedCustomers: number
   /** Share of revenue that came from customers buying a second time or later. */
-  readonly repeatRevenueShare: number
+  /**
+   * Repeat money as a share of all money, 0-100. NULL when nothing was measured.
+   *
+   * Not a zero. `total === 0n` holds when no revenue-bearing win is linked to a
+   * customer at all — the failure this screen's own empty state anticipates
+   * («Yetkazilgan buyurtmalar mijozga bogʻlanmagan boʻlishi mumkin») — and it
+   * also holds when every cell's revenue is 0n. A 0% ring under «Takroriy
+   * tushum ulushi» claims "nobody buys twice"; the truth there is "nothing was
+   * measured", and the matrix directly below already says so. Same rule as
+   * `rateBp` and `deliveryRateBp`, pinned in tests/domain/rateHonesty.test.ts.
+   */
+  readonly repeatRevenueShare: number | null
   readonly repeatCustomers: number
   readonly totalCustomers: number
 }
@@ -514,6 +526,16 @@ export interface StructureDto {
   /** Does the reader's own account sit in this unit? Drives the «Siz» badge. */
   readonly isViewerDepartment: boolean
   /**
+   * Is this the reader's PRIMARY unit — the one their numbers are credited to?
+   *
+   * At most one node carries it, and none does for a reader filed nowhere or
+   * with no linked employee. The «SIZ» badge reads `isViewerDepartment` above
+   * and still lands on both units of a person listed twice; the chain line,
+   * «Rahbaringiz» and «Meni topish» read THIS, because each of them names one
+   * unit and must not name an arbitrary one.
+   */
+  readonly isViewerPrimaryDepartment: boolean
+  /**
    * Is this unit inside the active filial?
    *
    * The org chart is the MAP of the company, so it keeps showing every unit
@@ -612,20 +634,46 @@ export class InsightsService {
       restrictToEmployeeIds: scope.restrictToEmployeeIds ?? null,
     }
 
-    const [rows, base] = await Promise.all([
+    const [matrix, base] = await Promise.all([
       this.repository.cohorts(options),
       this.repository.retentionStages(),
     ])
 
-    const maxOffset = rows.reduce(
-      (max, row) => Math.max(max, ...row.cells.map((c) => c.monthsSince)),
-      0,
-    )
+    const rows = matrix.rows
 
-    // The repository returns one row per month up to the current one, so the
-    // latest key IS this month — no clock needed, and no chance of the grid
-    // disagreeing with the rows it was built from.
-    const newestCohort = rows.reduce((latest, row) => (row.cohort > latest ? row.cohort : latest), '')
+    /*
+      THE HORIZON IS THE CLOCK, and it used to be the data.
+
+      This read `newestCohort` — the newest month in which SOME customer made a
+      first purchase — on the stated assumption that the repository returns one
+      row per month up to the current one. It does not: a month with no
+      first-time buyer emits no row at all, so as soon as one passes, every
+      row's horizon fell short by the same amount and fully elapsed months
+      dropped into the `offset > reachable` branch. They then rendered as
+      «maʼlumot yoʻq» — not measured — when what had actually been measured was
+      a zero. That is the precise inversion the comment below this exists to
+      prevent, arriving by a different door; and it bites hardest on a narrowed
+      employee scope, where a quiet month is ordinary rather than remarkable.
+
+      `currentMonth` comes out of the same statement as the cells, so the grid
+      cannot disagree with the calendar it is drawn against either.
+    */
+    const currentMonth = matrix.currentMonth
+
+    /*
+      The grid runs to the CALENDAR's widest span, not the data's.
+
+      Taken from the cells, the last column was the newest month anybody
+      happened to return in — so a cohort that has lived nine months but whose
+      returns stopped at five was drawn five columns wide and its four silent
+      months were not drawn at all.
+    */
+    const oldestCohort = rows.reduce(
+      (oldest, row) => (oldest === '' || row.cohort < oldest ? row.cohort : oldest),
+      '',
+    )
+    const maxOffset =
+      oldestCohort === '' ? 0 : InsightsService.monthsApart(oldestCohort, currentMonth)
 
     const dtos = rows.map((row) => {
       const retention: (number | null)[] = []
@@ -643,12 +691,22 @@ export class InsightsService {
         finding, and it is the row a reader most needs to see. Null belongs
         only to months that have not happened yet.
       */
-      const reachable = InsightsService.monthsApart(row.cohort, newestCohort)
+      const reachable = InsightsService.monthsApart(row.cohort, currentMonth)
 
       for (let offset = 0; offset <= maxOffset; offset++) {
         const cell = byOffset.get(offset)
+        /*
+          `&& !cell` WENT WITH THE DATA-DERIVED HORIZON, and it has to.
+
+          It was the escape hatch that let a cell past the horizon print
+          anyway — which, with a horizon that could fall behind the calendar,
+          produced the one reading a matrix must never have: inside a single
+          row, a later month drawn and an EARLIER month blank, the two being
+          the same kind of fact. With the horizon on the clock nothing can sit
+          past it, so a missing cell inside it is a measured zero and says so.
+        */
         retention.push(
-          offset > reachable && !cell
+          offset > reachable
             ? null
             : row.size === 0
               ? 0
@@ -660,30 +718,31 @@ export class InsightsService {
       return { cohort: row.cohort, size: row.size, retention, revenue, maxOffset: reachable }
     })
 
-    const totalCustomers = dtos.reduce((sum, r) => sum + r.size, 0)
     /*
-      Everyone who ever came back, not everyone who came back NEXT MONTH.
+      THE FOUR TILES ARE «BUTUN TARIX», AND THEY NOW ACTUALLY ARE.
 
-      `.find` stopped at the first cell past offset zero, so a customer whose
-      second order landed in month +2 was not a returning customer as far as
-      this tile was concerned. On this database that is 320 against 751 — the
-      tile understated its own headline by more than half, under a label
-      reading «Qaytgan mijozlar».
+      All four used to be folded from `rows` — the WINDOWED cohorts. `months`
+      bounds how far back the matrix starts, and it was silently bounding the
+      headline with it: every customer whose first delivered order predated the
+      cut vanished from «Jami mijozlar», from «Qaytgan mijozlar» and from both
+      halves of «Takroriy tushum ulushi». The customers it deleted are the
+      oldest loyal ones — exactly the repeat business those tiles exist to
+      measure — and the figures would have moved on the first of a month for no
+      reason but the calendar.
 
-      Summing the cells instead would have been the other error: a customer
-      who returned in +1 and again in +3 is counted in both. The repository
-      counts each cohort's returners once, which is the only place that can.
+      `matrix.totals` is computed over every cohort there has ever been, in the
+      same statement as the cells. See `InsightsRepository.cohorts`.
+
+      Everyone who ever came back, not everyone who came back NEXT MONTH: a
+      customer whose second order landed in month +2 is a returning customer.
+      Summing the cells would be the other error — someone who returned in +1
+      and again in +3 is in two of them. The repository counts each cohort's
+      returners once, which is the only place that can.
     */
-    const repeatCustomers = rows.reduce((sum, row) => sum + row.returned, 0)
-    const firstRevenue = rows.reduce(
-      (sum, row) => sum + (row.cells.find((c) => c.monthsSince === 0)?.revenueMinor ?? 0n),
-      0n,
-    )
-    const laterRevenue = rows.reduce(
-      (sum, row) =>
-        sum + row.cells.filter((c) => c.monthsSince > 0).reduce((s, c) => s + c.revenueMinor, 0n),
-      0n,
-    )
+    const totalCustomers = matrix.totals.customers
+    const repeatCustomers = matrix.totals.returned
+    const firstRevenue = matrix.totals.firstRevenueMinor
+    const laterRevenue = matrix.totals.laterRevenueMinor
     const total = firstRevenue + laterRevenue
 
     return {
@@ -691,7 +750,7 @@ export class InsightsService {
       stages: base.stages,
       workedCustomers: base.workedCustomers,
       repeatRevenueShare:
-        total === 0n ? 0 : Math.round(Number((laterRevenue * 1000n) / total)) / 10,
+        total === 0n ? null : Math.round(Number((laterRevenue * 1000n) / total)) / 10,
       repeatCustomers,
       totalCustomers,
     }
@@ -1337,9 +1396,23 @@ export class InsightsService {
       this.repository.structure(),
       options.viewerEmployeeId
         ? this.repository.departmentsOfEmployee(options.viewerEmployeeId)
-        : Promise.resolve([] as string[]),
+        : Promise.resolve([] as ViewerDepartment[]),
     ])
-    const viewerIn = new Set(viewerDepartmentIds)
+    const viewerIn = new Set(viewerDepartmentIds.map((d) => d.departmentId))
+    /*
+      The PRIMARY unit, kept apart from the other memberships.
+
+      `isViewerDepartment` is true on every unit the reader is listed in, and
+      that is right for the badge. It is wrong for the three statements the
+      page makes ABOUT the reader — the «Siz A › B › C» chain, «Rahbaringiz»
+      and «Meni topish» — because those name one unit, and the page used to
+      choose it with `flat.find(...)` over the DFS-flattened tree: whichever of
+      the reader's units came first in `sortOrder`/name order. For anybody
+      filed in two units that is a coin toss, and it resolved against the unit
+      this dashboard actually credits their numbers to.
+    */
+    const viewerPrimary =
+      viewerDepartmentIds.find((d) => d.isPrimary)?.departmentId ?? null
     const children = new Map<string | null, StructureNode[]>()
 
     for (const node of nodes) {
@@ -1430,6 +1503,7 @@ export class InsightsService {
         childCount: node.childCount,
         sortOrder: node.sortOrder,
         isViewerDepartment: viewerIn.has(node.id),
+        isViewerPrimaryDepartment: viewerPrimary !== null && viewerPrimary === node.id,
         inScope,
         children: kids,
       }

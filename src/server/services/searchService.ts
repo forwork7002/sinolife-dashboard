@@ -107,27 +107,56 @@ export class SearchService {
       groups.push({
         key: 'employees',
         label: 'Xodimlar',
+        /*
+          TO THEIR UNIT, NOT TO THE READER'S.
+
+          This linked to a bare `/structure`, and that screen opens on the
+          reader's OWN chain, lit and fitted. So a supervisor who typed an
+          operator's name to find out who runs them landed on their own
+          department — the one thing they already knew. `?dep=` force-opens the
+          ancestors, flies to the card and opens the roster, so the path from a
+          name on an order to that person's ROP becomes one keystroke and one
+          press. A person filed in no unit still gets the bare page.
+        */
         items: results.employees.map((e) => ({
           id: `employee-${e.id}`,
           label: e.name,
           hint: e.detail ?? 'Boʻlimsiz',
-          href: '/structure',
+          href: e.departmentId ? `/structure?dep=${encodeURIComponent(e.departmentId)}` : '/structure',
         })),
       })
     }
 
-    if (allow('sales')) {
+    /*
+      PRODUCTS GO TO YALPI MARJA, NOT TO SAVDO DINAMIKASI.
+
+      This group used to link to `/analytics/sales?productIds=<id>`, and that
+      screen has applied no product filter since it was stripped to FAKT 1 /
+      FAKT 2: `boardFilters` and `pulseFilters` carry employees, departments
+      and sources only, so the parameter parsed cleanly, reached no SQL, and
+      the reader was handed the WHOLE COMPANY's month under a product's name —
+      with a lit «Filtrlarni tozalash (1)» button asserting a filter was on.
+
+      Yalpi marja is the one screen that itemises by product, and its table now
+      narrows on `?q=` in the browser. So the link carries the NAME, not the
+      id: the destination matches on what it prints, and a reader who edits the
+      box sees the list follow. The group is gated on `margin` for the same
+      reason — the section that answers it is the section that must be held.
+    */
+    if (allow('margin')) {
       groups.push({
         key: 'products',
         label: 'Mahsulotlar',
         items: results.products.map((p) => ({
           id: `product-${p.id}`,
           label: p.name,
-          hint: 'Savdo dinamikasida ochish',
-          href: `/analytics/sales?preset=this_month&productIds=${encodeURIComponent(p.id)}`,
+          hint: 'Yalpi marjada ochish',
+          href: `/margin?q=${encodeURIComponent(p.name)}`,
         })),
       })
+    }
 
+    if (allow('sales')) {
       groups.push({
         key: 'sources',
         label: 'Manbalar',

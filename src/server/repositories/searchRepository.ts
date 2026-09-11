@@ -51,6 +51,16 @@ export interface SearchNamedRow {
   readonly id: string
   readonly name: string
   readonly detail: string | null
+  /**
+   * The unit's id, for the employee arm only — null everywhere else.
+   *
+   * On the wire so the palette can send a reader to the person they searched
+   * for. «Xodimlar» hits used to link to a bare `/structure`, and that screen
+   * opens on the READER's own chain: typing an operator's name and pressing
+   * enter drew the supervisor's own department, which is the one answer they
+   * did not ask for.
+   */
+  readonly departmentId: string | null
 }
 
 export interface SearchResults {
@@ -268,10 +278,19 @@ export class SearchRepository {
     const detail = withDepartment
       ? '(SELECT dep."name" FROM "department" dep WHERE dep."id" = t."departmentId")'
       : 'NULL::text'
+    // The PRIMARY unit — `employee."departmentId"` — which is the one this
+    // dashboard credits the person to and therefore the one to fly the chart
+    // to. Membership rows would give several and no way to choose.
+    const departmentId = withDepartment ? 't."departmentId"' : 'NULL::text'
 
-    return this.prisma.$queryRawUnsafe<{ id: string; name: string; detail: string | null }[]>(
+    return this.prisma.$queryRawUnsafe<
+      { id: string; name: string; detail: string | null; departmentId: string | null }[]
+    >(
       `
-      SELECT t."id" AS id, t."${column}" AS name, ${detail} AS detail
+      SELECT t."id" AS id,
+             t."${column}" AS name,
+             ${detail} AS detail,
+             ${departmentId} AS "departmentId"
         FROM "${table}" t
        WHERE t."${column}" ILIKE $1
        ORDER BY t."${column}"

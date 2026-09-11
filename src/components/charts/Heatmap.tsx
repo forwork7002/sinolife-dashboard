@@ -17,7 +17,21 @@ import { formatPercent } from '@/lib/format'
  */
 export function CohortHeatmap({
   rows,
-  maxColumns = 13,
+  /*
+    WIDE ENOUGH FOR THE DATA IT IS GIVEN.
+
+    This was 13, while the page asks for 18 months of cohorts — so the oldest
+    rows carried up to 17 offsets and five columns were cut before render, with
+    no ellipsis, no note, and nothing the horizontal scroll could reveal
+    (`columns` bounds the loop, so the cells were never drawn). A reader
+    scanning the oldest row for "did they ever come back" was reading a
+    truncation as an answer.
+
+    The table already lives inside `overflow-x-auto` with the cohort and size
+    columns `sticky left-0`, so extra width scrolls and costs nothing. The cap
+    stays as a guard against an unbounded payload, not as a display choice.
+  */
+  maxColumns = 24,
 }: {
   readonly rows: readonly {
     readonly cohort: string

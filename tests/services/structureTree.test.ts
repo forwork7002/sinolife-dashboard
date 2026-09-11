@@ -81,7 +81,7 @@ function service() {
   return new InsightsService({
     structure: async () => NODES,
     departmentRoster: async () => ROSTER,
-    departmentsOfEmployee: async () => ['child'],
+    departmentsOfEmployee: async () => [{ departmentId: 'child', isPrimary: true }],
   } as never)
 }
 
@@ -148,6 +148,52 @@ describe('the org chart', () => {
     const tree = await service().structure({}, { viewerEmployeeId: 'e9' })
     const flat = flatten(tree) as { id: string; isViewerDepartment: boolean }[]
     expect(flat.filter((n) => n.isViewerDepartment).map((n) => n.id)).toEqual(['child'])
+  })
+
+  /*
+    THE BADGE AND THE CHAIN ANSWER DIFFERENT QUESTIONS.
+
+    Nine of this portal's people are listed in two units, so «SIZ» belongs on
+    both — but «Siz A › B › C», «Rahbaringiz» and «Meni topish» each name ONE
+    unit, and the page used to pick it with `flat.find` over the flattened
+    tree: whichever of the reader's units came first in sortOrder/name order.
+    The primary flag is the only thing that can answer it, so it travels
+    separately and exactly one node may carry it.
+  */
+  it('marks one unit as the primary, and only that one', async () => {
+    const service = () =>
+      new InsightsService({
+        structure: async () => NODES,
+        departmentRoster: async () => ROSTER,
+        departmentsOfEmployee: async () => [
+          { departmentId: 'root', isPrimary: false },
+          { departmentId: 'child', isPrimary: true },
+        ],
+      } as never)
+
+    const tree = await service().structure({}, { viewerEmployeeId: 'e9' })
+    const flat = flatten(tree) as {
+      id: string
+      isViewerDepartment: boolean
+      isViewerPrimaryDepartment: boolean
+    }[]
+
+    // Both memberships badge; only one of them is the primary.
+    expect(flat.filter((n) => n.isViewerDepartment).map((n) => n.id)).toEqual(['root', 'child'])
+    expect(flat.filter((n) => n.isViewerPrimaryDepartment).map((n) => n.id)).toEqual(['child'])
+  })
+
+  it('marks no primary when the membership rows name none', async () => {
+    const service = () =>
+      new InsightsService({
+        structure: async () => NODES,
+        departmentRoster: async () => ROSTER,
+        departmentsOfEmployee: async () => [{ departmentId: 'child', isPrimary: false }],
+      } as never)
+
+    const tree = await service().structure({}, { viewerEmployeeId: 'e9' })
+    const flat = flatten(tree) as { isViewerPrimaryDepartment: boolean }[]
+    expect(flat.some((n) => n.isViewerPrimaryDepartment)).toBe(false)
   })
 
   it('badges nothing when the account is not linked to an employee', async () => {

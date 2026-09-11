@@ -47,9 +47,11 @@ const FOUND: SearchResults = {
       lastOrderAt: new Date('2026-08-31T04:09:00.000Z'),
     },
   ],
-  employees: [{ id: 'e1', name: 'Quvondiqova Gulmira', detail: 'Baza(ROP)' }],
-  products: [{ id: 'p1', name: 'Zextra sure', detail: null }],
-  sources: [{ id: 's1', name: 'Instagram', detail: null }],
+  employees: [
+    { id: 'e1', name: 'Quvondiqova Gulmira', detail: 'Baza(ROP)', departmentId: 'dep-7' },
+  ],
+  products: [{ id: 'p1', name: 'Zextra sure', detail: null, departmentId: null }],
+  sources: [{ id: 's1', name: 'Instagram', detail: null, departmentId: null }],
 }
 
 function serviceReturning(
@@ -178,6 +180,60 @@ describe('where a result takes you', () => {
     const customer = dto.groups.find((g) => g.key === 'customers')!.items[0]
 
     expect(customer.href).toContain(encodeURIComponent('+998901234567'))
+  })
+
+  /*
+    EVERY DESTINATION MUST BE ABLE TO ACT ON WHAT IT IS SENT.
+
+    «Mahsulotlar» pointed at `/analytics/sales?productIds=<id>` for weeks after
+    that screen stopped applying a product filter — the parameter parsed, the
+    request returned 200, no SQL ever saw it, and the reader was handed the
+    whole company's month under one product's name. The failure was silent in
+    every layer, which is why it is pinned here rather than left to review.
+  */
+  it('sends a product to the one screen that itemises by product', async () => {
+    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), 'collagen', 'UZS')
+    const product = dto.groups.find((g) => g.key === 'products')!.items[0]!
+
+    expect(product.href).toContain('/margin?')
+    // The NAME, not the id: Yalpi marja narrows its table on what it prints.
+    expect(product.href).toContain(`q=${encodeURIComponent(FOUND.products[0]!.name)}`)
+  })
+
+  it('never sends anyone to a filter the destination does not apply', async () => {
+    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), 'collagen', 'UZS')
+
+    for (const group of dto.groups) {
+      for (const item of group.items) {
+        // Savdo dinamikasi reads employees, departments and sources. It has
+        // read neither of these two since it was stripped to FAKT 1 / FAKT 2.
+        expect(item.href).not.toContain('productIds=')
+        expect(item.href).not.toContain('stageIds=')
+      }
+    }
+  })
+
+  it('opens an employee on THEIR unit, not on the reader\u2019s own', async () => {
+    /*
+      «Xodimlar» linked to a bare `/structure`, and that screen opens on the
+      READER's chain — so typing an operator's name to find out who runs them
+      drew the supervisor's own department, the one answer they already had.
+    */
+    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), 'gulmira', 'UZS')
+    const person = dto.groups.find((g) => g.key === 'employees')!.items[0]!
+
+    expect(person.href).toBe('/structure?dep=dep-7')
+  })
+
+  it('falls back to the bare chart for someone filed in no unit', async () => {
+    const unfiled = {
+      ...FOUND,
+      employees: [{ id: 'e2', name: 'Yangi Xodim', detail: null, departmentId: null }],
+    }
+    const dto = await serviceReturning(unfiled).search(principal(), scopeOf(principal()), 'yangi', 'UZS')
+    const person = dto.groups.find((g) => g.key === 'employees')!.items[0]!
+
+    expect(person.href).toBe('/structure')
   })
 
   it('carries the order amount so a row can be told from its namesakes', async () => {

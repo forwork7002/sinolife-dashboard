@@ -1,11 +1,13 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 
 import { ErrorState } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { ChartCard } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/ui/DataTable'
+import { SegmentedControl } from '@/components/ui/Controls'
 import { Meter, RingGauge, StatTile } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -25,7 +27,7 @@ import { t } from '@/lib/messages'
  * would report 100% margin on it and quietly lift the company average.
  */
 export function MarginPage() {
-  const { apiParams } = useDashboardFilters()
+  const { filters, apiParams } = useDashboardFilters()
 
   const query = useQuery({
     queryKey: ['margin', apiParams],
@@ -39,10 +41,90 @@ export function MarginPage() {
 
 
   const data = query.data?.data
+
+  /*
+    THE SEARCH FILTERS THE TABLE AND NOTHING ELSE, and the card says so.
+
+    The catalogue runs to ~160 rows and the ~22 that carry a cost — the only
+    rows the margin figure is computed from — are scattered through it. Finding
+    one product meant scrolling. The box narrows the LIST in the browser: the
+    endpoint is period-only and already returns every row, so this costs no
+    request and cannot straddle a sync.
+
+    What it deliberately does NOT touch is every figure above it. The hero
+    rate, the coverage bar and the two tiles are the WINDOW's totals, and a
+    band that followed its own filter could not be compared against anything —
+    the same fault the confirmation board's tiles exist to avoid. The card
+    heading prints «N / M» whenever a search is active so the reader can see
+    that the table is a subset and the figures above it are not.
+  */
+  const search = (filters.q ?? '').trim().toLocaleLowerCase('uz')
+  const allRows = data?.rows ?? []
+
+  /*
+    TWO NARROWINGS AND ONE ORDER, ALL IN THE BROWSER.
+
+    The endpoint takes a period and returns every row, so none of this costs a
+    request or can straddle a sync — and none of it touches the figures above,
+    which stay the window's totals.
+
+    `costed` is the narrowing the page most needs and had no way to express:
+    the margin, the coverage and the hero are computed from the ~22 rows that
+    carry a purchase price, and those rows are scattered through ~160 sorted by
+    revenue. «Tannarxi bor» isolates the set the page is actually about;
+    «Tannarxsiz» isolates the gap the coverage banner is asking to be filled.
+  */
+  const [costFilter, setCostFilter] = useState<'all' | 'costed' | 'uncosted'>('all')
+  const [sort, setSort] = useState<string | null>(null)
+  const [order, setOrder] = useState<'asc' | 'desc'>('desc')
+
+  const sortValue = (row: MarginRowDto, key: string): number | null => {
+    if (key === 'revenue') return row.revenue.amount
+    if (key === 'gross') return row.gross?.amount ?? null
+    if (key === 'margin') return row.margin
+    if (key === 'discount') return row.discount.amount - row.overList.amount
+    return null
+  }
+
+  const narrowed = allRows
+    .filter((row) => (search === '' ? true : row.productName.toLocaleLowerCase('uz').includes(search)))
+    .filter((row) =>
+      costFilter === 'all' ? true : costFilter === 'costed' ? row.cost !== null : row.cost === null,
+    )
+
+  /*
+    NULLS LAST IN BOTH DIRECTIONS. A product with no purchase price has no
+    gross and no margin — sorting it as a zero would put the unmeasured rows at
+    the top of an ascending «eng past marja», which is the one reading this
+    page exists to prevent.
+  */
+  /** Is the table showing a subset? Drives the «N / M» heading and the hint. */
+  const narrowing = search !== '' || costFilter !== 'all'
+
+  const visibleRows =
+    sort === null
+      ? narrowed
+      : [...narrowed].sort((a, b) => {
+          const av = sortValue(a, sort)
+          const bv = sortValue(b, sort)
+          if (av === null && bv === null) return 0
+          if (av === null) return 1
+          if (bv === null) return -1
+          return order === 'asc' ? av - bv : bv - av
+        })
+
   // Both totals come from the server, already split by sign. Summing the
   // rows here would net a giveaway against a markup and report neither.
   const discountTotal = data?.discount.amount ?? null
   const overListTotal = data?.overList.amount ?? null
+
+  /*
+    The giveaway as a share of what was taken — the figure that makes the
+    number above it readable. Null over an empty window rather than 0%: no
+    revenue is not "we gave nothing away", it is nothing to divide by.
+  */
+  const discountShare =
+    data && data.revenue.amount > 0 ? (data.discount.amount / data.revenue.amount) * 100 : null
 
   /**
    * Neutral while coverage is thin.
@@ -83,6 +165,7 @@ export function MarginPage() {
     },
     {
       key: 'revenue',
+      sortKey: 'revenue',
       header: 'Tushum',
       align: 'right',
       numeric: true,
@@ -104,6 +187,7 @@ export function MarginPage() {
     },
     {
       key: 'gross',
+      sortKey: 'gross',
       header: 'Yalpi foyda',
       align: 'right',
       numeric: true,
@@ -122,6 +206,7 @@ export function MarginPage() {
     },
     {
       key: 'margin',
+      sortKey: 'margin',
       header: 'Marja',
       width: '150px',
       render: (row) =>
@@ -142,6 +227,7 @@ export function MarginPage() {
     },
     {
       key: 'discount',
+      sortKey: 'discount',
       header: 'Chegirma',
       align: 'right',
       numeric: true,
@@ -207,6 +293,14 @@ export function MarginPage() {
       accent="var(--series-2)"
       meta={query.data?.meta}
       stale={query.isPlaceholderData}
+      /*
+        Search only. The roster, department, source and stage pickers are
+        deliberately absent: this endpoint takes a period and nothing else, so
+        offering a control the SQL never reads would be a filter that lies —
+        which is exactly the fault the ⌘K product link had before it was
+        pointed here.
+      */
+      filters={{ search: true, searchPlaceholder: 'Mahsulot nomi…' }}
     >
       {/*
         The lead instrument — the page's one hero, the only panel wearing the
@@ -290,10 +384,19 @@ export function MarginPage() {
         )}
       </section>
 
-      {/* Kept: the honesty banner. The hero states the coverage in passing;
-          this spells out WHY it is short and what fixes it, right under the
-          claim it qualifies. */}
-      {data && data.coverage < 99 && (
+      {/*
+        Kept: the honesty banner. The hero states the coverage in passing; this
+        spells out WHY it is short and what fixes it, right under the claim it
+        qualifies.
+
+        GUARDED ON THERE BEING REVENUE AT ALL. `coverageBp` is 0 when nothing
+        closed in the window, so a quiet period rendered «Marja tushumning 0%
+        qismi boʻyicha hisoblandi — qolgan mahsulotlarda tannarx
+        koʻrsatilmagan»: a confident accusation about the Bitrix24 catalogue,
+        one line under a hero that is correctly an em dash. Nothing is wrong
+        with the catalogue on a day nobody sold anything.
+      */}
+      {data && data.revenue.amount > 0 && data.coverage < 99 && (
         <div
           className="rounded-[var(--radius-panel)] border px-4 py-3 text-xs"
           style={{
@@ -336,9 +439,18 @@ export function MarginPage() {
           label="Tushum"
           value={data?.revenue.amount ?? null}
           unit="money"
+          /*
+            NAMED, because «Tushum» means something else on every other screen.
+
+            This sums `deal_item.totalMinor` across an INNER JOIN to product;
+            the rest of the dashboard sums `deal.amountMinor`. A revenue-
+            bearing WON deal with no product lines contributes nothing here, so
+            this tile is silently ≤ the closed revenue the sellers board prints
+            under the same word, and nothing said which was which.
+          */
           hint={
             data
-              ? `${formatCompactUzs(data.costedRevenue.amount)} soʻmda tannarx maʼlum`
+              ? `Mahsulot qatorlari boʻyicha · ${formatCompactUzs(data.costedRevenue.amount)} soʻmda tannarx maʼlum`
               : undefined
           }
         />
@@ -347,27 +459,68 @@ export function MarginPage() {
           label="Berilgan chegirma"
           value={discountTotal}
           unit="money"
-          tone={discountTotal && discountTotal > 0 ? 'warning' : 'neutral'}
-          hint={
+          /*
+            NEUTRAL, and the number that would actually grade it in the hint.
+
+            The tone was `warning` on `discountTotal > 0` — a condition that
+            never turns off, because every product with volume carries some
+            discount. That is the argument this page already makes one column
+            to the left («a colour that is on every row informs on none»),
+            spending a reserved status hue on an ordinary fact. What a reader
+            can act on is the SHARE: 3% of revenue given away is housekeeping,
+            18% is a conversation. Both totals are already on the payload.
+          */
+          tone="neutral"
+          hint={[
+            discountShare === null ? null : `Tushumning ${formatPercent(discountShare)}`,
+            'Toʻgʻridan-toʻgʻri marjadan chiqadi',
             overListTotal && overListTotal > 0
-              ? `Toʻgʻridan-toʻgʻri marjadan chiqadi · ${formatCompactUzs(overListTotal)} ustama alohida`
-              : 'Toʻgʻridan-toʻgʻri marjadan chiqadi'
-          }
+              ? `${formatCompactUzs(overListTotal)} ustama alohida`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         />
       </div>
 
       <ChartCard
-        title="Mahsulotlar"
-        hint="Tushum boʻyicha tartiblangan. Chegirma ustuni — sotuvda berilgan yon berish; u toʻgʻridan-toʻgʻri foydadan ketadi."
+        title={
+          narrowing ? `Mahsulotlar · ${visibleRows.length} / ${allRows.length}` : 'Mahsulotlar'
+        }
+        hint={
+          narrowing
+            ? 'Filtr va qidiruv faqat shu jadvalni oʻzgartiradi. Yuqoridagi marja, qamrov va summalar butun davrniki.'
+            : 'Chegirma ustuni — sotuvda berilgan yon berish; u toʻgʻridan-toʻgʻri foydadan ketadi. Ustun nomini bosib tartiblang.'
+        }
+        action={
+          <SegmentedControl
+            value={costFilter}
+            onChange={setCostFilter}
+            ariaLabel="Tannarx boʻyicha filtr"
+            options={[
+              { value: 'all', label: 'Hammasi' },
+              { value: 'costed', label: 'Tannarxi bor' },
+              { value: 'uncosted', label: 'Tannarxsiz' },
+            ]}
+          />
+        }
       >
         <DataTable
           columns={columns}
-          rows={data?.rows ?? []}
+          rows={visibleRows}
+          sort={sort ?? undefined}
+          order={order}
+          onSort={(key) => {
+            // Same column toggles direction; a new column opens descending,
+            // which is what "biggest first" means on every figure here.
+            setOrder((previous) => (sort === key ? (previous === 'asc' ? 'desc' : 'asc') : 'desc'))
+            setSort(key)
+          }}
           rowKey={(row) => row.productId}
           status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
           errorMessage={(query.error as Error | null)?.message}
           onRetry={() => void query.refetch()}
-          emptyTitle="Bu davrda sotuv yoʻq"
+          emptyTitle={narrowing ? 'Bu filtr boʻyicha mahsulot topilmadi' : 'Bu davrda sotuv yoʻq'}
           minWidth={940}
           /*
             The catalogue runs long. Bounded, the rows scroll INSIDE the card

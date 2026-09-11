@@ -253,8 +253,16 @@ export interface KpiEvaluation {
   readonly employeeId: string | null
   readonly metric: KpiMetricValue
   readonly targetValue: bigint
-  readonly actualValue: bigint
-  /** Attainment in basis points (10000 = 100.00%). Null when the target is zero. */
+  /**
+   * Null when the metric cannot be measured over this window at all — today
+   * only a conversion rate with nothing resolved. See `actualForMetric`: it is
+   * an absence, not a zero, and the screen must print an em dash for it.
+   */
+  readonly actualValue: bigint | null
+  /**
+   * Attainment in basis points (10000 = 100.00%). Null when the target is zero
+   * or the actual is unmeasurable.
+   */
   readonly achievementBp: number | null
   readonly status: KpiStatusValue
 }
@@ -297,8 +305,31 @@ export function classifyKpi(
   return 'BEHIND'
 }
 
-/** Extract the actual value for a metric from a summary, in the KPI's units. */
-export function actualForMetric(summary: SalesSummary, metric: KpiMetricValue): bigint {
+/**
+ * Extract the actual value for a metric from a summary, in the KPI's units.
+ *
+ * NULL MEANS UNMEASURABLE, and only CONVERSION_RATE can be. `summarizeDeals`
+ * returns `conversionRatePercent: null` when NOTHING resolved in the window —
+ * a rate with no denominator — and `?? 0` used to flatten that into a measured
+ * zero. It then scored as 0% attainment and a BEHIND badge, on a portal whose
+ * median order takes 20-25 days to travel from the order clock to the money
+ * clock: a seller with fourteen orders in the queue and none yet delivered
+ * read «Haqiqiy 0% · Ortda» here while the very same conversion read «—» on
+ * «Sotuvchilar reytingi». Two screens, one empty denominator, two facts.
+ *
+ * `tests/domain/rateHonesty.test.ts` pins the doctrine this restores: a rate
+ * with no denominator is unknown, not zero — and it still returns 0 when there
+ * genuinely were failures, which is the case that must keep working.
+ *
+ * THE OTHER FOUR STAY ZERO ON PURPOSE, and AVERAGE_DEAL is the one worth
+ * saying out loud: `tests/domain/performance.test.ts` pins that it reports a
+ * zero average deal rather than null, because "nothing was won" IS the
+ * measurement there — the denominator is the window, and the window exists.
+ */
+export function actualForMetric(
+  summary: SalesSummary,
+  metric: KpiMetricValue,
+): bigint | null {
   switch (metric) {
     case 'REVENUE':
       return summary.revenue.amountMinor
@@ -308,9 +339,11 @@ export function actualForMetric(summary: SalesSummary, metric: KpiMetricValue): 
       return BigInt(summary.dealsWon)
     case 'AVERAGE_DEAL':
       return summary.averageDeal?.amountMinor ?? 0n
-    case 'CONVERSION_RATE':
+    case 'CONVERSION_RATE': {
       // Stored as basis points so the integer contract holds.
-      return BigInt(toBasisPoints(summary.conversionRatePercent) ?? 0)
+      const bp = toBasisPoints(summary.conversionRatePercent)
+      return bp === null ? null : BigInt(bp)
+    }
   }
 }
 
@@ -329,10 +362,18 @@ export function evaluateKpi(
 ): KpiEvaluation {
   const actualValue = actualForMetric(summary, definition.metric)
 
-  // A zero target cannot be attained by any amount of work; reporting infinite
-  // attainment would be meaningless, so it is explicitly undefined.
+  /*
+    Two ways a target cannot be scored, and both are null rather than zero.
+
+    A zero target cannot be attained by any amount of work, so reporting
+    infinite attainment would be meaningless. An unmeasurable ACTUAL — a
+    conversion rate over a window in which nothing resolved — is the same kind
+    of absence one step earlier. `overallAchievementPercent` already excludes a
+    null from the headline average, and `classifyKpi` already reads a null as
+    "no verdict", so both were waiting for this to be told the truth.
+  */
   const achievementBp =
-    definition.targetValue === 0n
+    actualValue === null || definition.targetValue === 0n
       ? null
       : Number((actualValue * 10_000n) / definition.targetValue)
 

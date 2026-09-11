@@ -274,7 +274,15 @@ export function OrgChart({
           key: `m:${n.id}:${i}`,
           unitId: n.id,
           label: name,
-          sub: isHead ? `${n.name} · rahbar` : n.name,
+          /*
+            THE MANAGER'S NAME, ON THE HIT ROW.
+
+            The whole point of this search is «kim kimning qoʻl ostida», and the
+            row printed the person and their unit — so the reader had to click,
+            wait for the roster and read the head there to get the answer they
+            typed the name for. `head` is already on the same node.
+          */
+          sub: isHead ? `${n.name} · rahbar` : n.head ? `${n.name} · ${n.head.name}` : n.name,
           person: name,
         })
       })
@@ -1097,7 +1105,15 @@ export function OrgChart({
           {term.length > 0 && (
             <div className="org-hits">
               {results.rows.length === 0 ? (
-                <p className="org-hit-empty">Topilmadi</p>
+                /*
+                  THE SCOPE, because the haystack is active-only. `memberNames`
+                  carries live employees, so a fired or suspended person — who
+                  is exactly who somebody chasing an old order looks up —
+                  returned a bare «Topilmadi» over a dimmed company,
+                  indistinguishable from a typo. The roster panel can and does
+                  render that person, with a «Faol emas» tag.
+                */
+                <p className="org-hit-empty">Topilmadi — qidiruv faqat faol xodimlar boʻyicha</p>
               ) : (
                 <>
                   {results.rows.map((hit) => (
@@ -1225,6 +1241,23 @@ export function OrgChart({
                 Rahbaringiz: <strong>{yourManager.name}</strong>
               </span>
             )}
+          </div>
+        )}
+        {/*
+          AND WHEN THERE IS NO CHAIN, SAY WHY.
+
+          «Meni topish» and the chain line both render only for a reader whose
+          account is linked to an employee. An unlinked account therefore opened
+          on four folded root units with nothing personalised and nothing
+          explaining the difference — the page looked broken rather than
+          unconfigured. One muted line in the same slot, and the search box
+          above it is the way through.
+        */}
+        {yourChain.length === 0 && (
+          <div className="org-you">
+            <span className="org-you-boss">
+              Hisobingiz xodimga bogʻlanmagan — oʻzingizni qidiruvdan toping
+            </span>
           </div>
         )}
       </div>

@@ -19,12 +19,44 @@ import { describe, expect, it, vi } from 'vitest'
 
 const replace = vi.fn()
 let search = ''
+/** Every address the hook wrote, by whichever mechanism it used. */
+let written: string[] = []
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace, push: () => {} }),
+  useRouter: () => ({
+    replace: (...args: unknown[]) => {
+      written.push(String(args[0]))
+      replace(...args)
+    },
+    push: () => {},
+  }),
   usePathname: () => '/structure',
   useSearchParams: () => new URLSearchParams(search),
 }))
+
+/*
+  `/structure` WRITES ITS ADDRESS NATIVELY — see `SHALLOW_ROUTES` and the
+  measurement behind it. It joined that set on 2026-09-11 because `?dep=` is
+  written on EVERY card click, and half a second between pressing a department
+  and it opening is the whole interaction on a canvas made of departments.
+
+  What this file tests is the ADDRESS the hook writes, which is the same
+  statement either way, so the spy catches the native call alongside the router
+  mock rather than the assertions being rewritten around one mechanism. The day
+  a route moves between the two, this file goes on testing what it was written
+  to test.
+*/
+vi.spyOn(window.history, 'replaceState').mockImplementation(
+  (_state: unknown, _title: string, url?: string | URL | null) => {
+    if (url != null) {
+      written.push(String(url))
+      // Kept in step: on a shallow route the hook reads `window.location` back,
+      // and a harness where the two disagree describes a browser that does not
+      // exist.
+      search = String(url).split('?')[1] ?? ''
+    }
+  },
+)
 
 const { STRUCTURE_VIEWS, useDashboardFilters } = await import(
   '@/features/shared/useDashboardFilters'
@@ -33,6 +65,9 @@ const { STRUCTURE_VIEWS, useDashboardFilters } = await import(
 /** The hook's whole return value: `{ filters, update, reset, apiParams, … }`. */
 function filters(query: string) {
   search = query
+  written = []
+  replace.mockClear()
+  window.history.pushState(null, '', `/structure${query ? `?${query}` : ''}`)
   return renderHook(() => useDashboardFilters()).result.current
 }
 
@@ -83,7 +118,7 @@ describe('org chart view state', () => {
     replace.mockClear()
     filters('view=list&dep=abc123&preset=this_month&rop=Sevinch').reset()
 
-    const [url] = replace.mock.calls[0] as [string]
+    const url = written[0]!
     const kept = new URLSearchParams(url.split('?')[1] ?? '')
     expect(kept.get('view')).toBe('list')
     expect(kept.get('preset')).toBe('this_month')

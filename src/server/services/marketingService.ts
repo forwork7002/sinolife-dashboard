@@ -42,6 +42,7 @@ import {
   clampDate,
   derive,
   funnel,
+  gradeRoas,
   previousWindow,
   roas,
   sumRaw,
@@ -212,6 +213,22 @@ export interface MarketingMetricsDto {
   readonly frequency: number | null
   /** (revenue/rate)/spend. Null when nothing was spent. */
   readonly roas: number | null
+  /**
+   * The client's own verdict on `roas`, WITH their one deliberate exception.
+   *
+   * Sent rather than re-derived, because the exception is the whole point and
+   * it was being re-derived in three places — the hero got it right and the
+   * table and the dynamics tooltip did not. A null ROAS is `critical`
+   * («xarajat yoʻq») only when there is revenue to explain: money collected
+   * against no recorded spend is broken attribution. A row that neither spent
+   * nor sold is simply empty, and grading it critical fills the table with red
+   * rows that mean nothing — which is exactly what the blob's zero-padding
+   * days did. Null grade means "print nothing", not "print an em dash".
+   *
+   * `gradeRoas` in `domain/analytics/marketing` is the one definition, and
+   * this is its only caller.
+   */
+  readonly roasGrade: 'good' | 'warning' | 'critical' | null
 }
 
 /** One step of the lead funnel. `reachedPercent` is share of the FIRST step. */
@@ -229,6 +246,8 @@ export interface MarketingDayDto {
   /** UZS-native. */
   readonly revenue: MoneyDto
   readonly roas: number | null
+  /** See `MarketingMetricsDto.roasGrade`. Null means print nothing. */
+  readonly roasGrade: 'good' | 'warning' | 'critical' | null
   /** Same-day counters, for the KPI tiles' sparklines. */
   readonly leads: number
   readonly sold: number
@@ -517,6 +536,7 @@ function metricsDto(raw: MarketingRaw, usdRateMicro: bigint): MarketingMetricsDt
     cpc: usdMoneyOrNull(d.cpcMicroUsd),
     frequency: d.frequency,
     roas: d.roas,
+    roasGrade: gradeRoas(d.roas, raw.soldMinor),
   }
 }
 
@@ -984,6 +1004,17 @@ export class MarketingService {
         spend: usdMoney(row.raw.spendMicroUsd),
         revenue: uzsMoney(row.raw.soldMinor),
         roas: roas(row.raw.soldMinor, row.raw.spendMicroUsd, snapshot.usdRateMicro),
+        /*
+          Graded here for the same reason the metrics are: the exception is the
+          point. The blob pads the series with days that carry impressions and
+          nothing else, and every one of them used to raise «xarajat yoʻq» in
+          the hero's tooltip — a verdict about broken attribution on a day when
+          nothing was attributed either way.
+        */
+        roasGrade: gradeRoas(
+          roas(row.raw.soldMinor, row.raw.spendMicroUsd, snapshot.usdRateMicro),
+          row.raw.soldMinor,
+        ),
         leads: row.raw.leads,
         sold: row.raw.sold,
       })),

@@ -409,7 +409,18 @@ export interface CohortSummaryDto {
   readonly stages: readonly { readonly stage: string; readonly customers: number }[]
   /** Distinct customers on an open retention deal. Never the sum of `stages`. */
   readonly workedCustomers: number
-  readonly repeatRevenueShare: number
+  /**
+   * Repeat money as a share of all money, 0-100. NULL when nothing was measured.
+   *
+   * Not a zero. `total === 0n` holds when no revenue-bearing win is linked to a
+   * customer at all — the failure this screen's own empty state anticipates
+   * («Yetkazilgan buyurtmalar mijozga bogʻlanmagan boʻlishi mumkin») — and it
+   * also holds when every cell's revenue is 0n. A 0% ring under «Takroriy
+   * tushum ulushi» claims "nobody buys twice"; the truth there is "nothing was
+   * measured", and the matrix directly below already says so. Same rule as
+   * `rateBp` and `deliveryRateBp`, pinned in tests/domain/rateHonesty.test.ts.
+   */
+  readonly repeatRevenueShare: number | null
   readonly repeatCustomers: number
   readonly totalCustomers: number
 }
@@ -804,6 +815,15 @@ export interface StructureDto {
   readonly sortOrder: number
   /** Does the reader's own account sit here? Drives the «Siz» badge. */
   readonly isViewerDepartment: boolean
+  /**
+   * The reader's PRIMARY unit — the one this dashboard credits them to.
+   *
+   * At most one node carries it. The «SIZ» badge still reads
+   * `isViewerDepartment` and lands on both units of a person listed twice;
+   * the chain line, «Rahbaringiz» and «Meni topish» read this one, because
+   * each names a single unit and must not name an arbitrary one.
+   */
+  readonly isViewerPrimaryDepartment: boolean
   /**
    * Is this unit inside the active filial?
    *

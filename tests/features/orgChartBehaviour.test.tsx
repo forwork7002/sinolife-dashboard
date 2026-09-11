@@ -43,6 +43,7 @@ function unit(
     childCount: children.length,
     sortOrder: 100,
     isViewerDepartment,
+    isViewerPrimaryDepartment: false,
     inScope: true,
     children,
   }
@@ -201,7 +202,15 @@ describe('org chart behaviour', () => {
       <OrgChart roots={TREE} selectedId={null} onSelect={() => {}} viewerDepartmentId={null} />,
     )
     await search(container, 'zzzz')
-    expect(screen.getByText('Topilmadi')).toBeTruthy()
+    /*
+      AND IT NAMES ITS SCOPE. The haystack is `memberNames`, which is
+      active-only, so a deactivated person — exactly who somebody chasing an old
+      order looks up — matches nothing here even though the roster panel renders
+      them with a «Faol emas» tag. A bare «Topilmadi» read as a typo.
+    */
+    const empty = container.querySelector('.org-hit-empty')
+    expect(empty?.textContent).toContain('Topilmadi')
+    expect(empty?.textContent).toContain('faol xodimlar')
   })
 
   /**

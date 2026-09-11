@@ -228,6 +228,16 @@ export interface MarketingMetricsDto {
   readonly frequency: number | null
   /** (revenue/rate)/spend. Null when nothing was spent. */
   readonly roas: number | null
+  /**
+   * The verdict on `roas`, decided by the server so it is decided ONCE.
+   *
+   * `critical` on a null ROAS means «xarajat yoʻq» — revenue collected against
+   * no recorded spend, i.e. broken attribution. NULL means print nothing at
+   * all: a row that neither spent nor sold is empty, not failing. Three call
+   * sites used to re-derive this and only the hero got the exception right.
+   * See `gradeRoas` in `server/domain/analytics/marketing`.
+   */
+  readonly roasGrade: 'good' | 'warning' | 'critical' | null
 }
 
 export interface MarketingWindowDto {
@@ -250,6 +260,8 @@ export interface MarketingDayDto {
   /** UZS-native. */
   readonly revenue: MoneyDto
   readonly roas: number | null
+  /** See `MarketingMetricsDto.roasGrade`. Null means print nothing. */
+  readonly roasGrade: 'good' | 'warning' | 'critical' | null
   /** Same-day counters, for the KPI tiles' sparklines. */
   readonly leads: number
   readonly sold: number

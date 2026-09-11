@@ -187,9 +187,20 @@ export function CohortPage() {
         half is which. This header says it, and the band's own caption below
         states the window it is read in.
       */}
+      {/*
+        THREE SPANS SIT UNDER ONE HEADING, and the hint used to claim one.
+
+        The four tiles are whole-history (the totals arm of the cohort query
+        takes no `months` bound). «Faol bazada» is a snapshot of today. The
+        matrix below is the last 18 months of cohorts. «Butun tarix boʻyicha
+        hisoblanadi» was true of the tiles and false of the matrix, and a
+        reader who took it at face value read the grid as the company's whole
+        history. Said in three clauses rather than a paragraph: this is 12px
+        muted text over a band somebody scans, not a methodology note.
+      */}
       <SectionHeader
         title="Kogorta tahlili"
-        hint="Butun tarix boʻyicha hisoblanadi — tanlangan davr bu blokka taʼsir qilmaydi."
+        hint="Koʻrsatkichlar — butun tarix · matritsa — soʻnggi 18 oy · tanlangan davr bu blokka taʼsir qilmaydi."
       />
 
       <div className="stagger grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -206,7 +217,13 @@ export function CohortPage() {
             finding; the reader supplies the target.
           */
           tone="neutral"
-          hint="Birinchi xariddan keyingi savdolar"
+          /*
+            THE WINDOW IS IN THE HINT because this label appears twice on one
+            screen. `RepeatShareCard` at the bottom carries the same words over
+            the SELECTED PERIOD and legitimately prints a different number; with
+            neither naming its span, the two read as a contradiction.
+          */
+          hint="Butun tarix boʻyicha · birinchi xariddan keyingi savdolar"
         />
         <StatTile
           status={tileStatus}
@@ -222,7 +239,14 @@ export function CohortPage() {
           label="Jami mijozlar"
           value={data?.totalCustomers ?? null}
           unit="count"
-          hint="Kamida bitta yetkazilgan buyurtma"
+          /*
+            «Yetkazilgan» is Logistika's word for the Доставлено stage, and this
+            figure is not that: it counts customers whose first WON,
+            revenue-bearing deal closed. On a dashboard where the gap between
+            those two clocks is 20-25 days, borrowing the other screen's word
+            invited a reconciliation that can never come out.
+          */
+          hint="Yopilgan (WON) birinchi xaridi boʻlgan mijozlar"
         />
         <StatTile
           status={tileStatus}
@@ -268,6 +292,19 @@ export function CohortPage() {
         hint="Takroriy aloqa sikli: 1 kun, 3 kun, 10 kun, 20 kun, 30 kun. Bu tarixiy egri chiziq emas, bugungi holat."
       >
         {query.isPending && <ChartSkeleton height={200} />}
+        {/*
+          THE ERROR BRANCH, which this card did not have. Both guards below
+          test `data`, so a failed request left the card body empty — a title
+          and a hint over nothing, which reads as "База is empty" rather than
+          "we could not ask". The matrix card above has carried all three
+          states from the start; this one now matches it.
+        */}
+        {query.isError && (
+          <ErrorState
+            message={(query.error as Error | null)?.message}
+            onRetry={() => void query.refetch()}
+          />
+        )}
         {data && data.stages.length === 0 && (
           <EmptyState
             title="Retention voronkasi boʻsh"
@@ -461,8 +498,15 @@ function RepeatShareCard({
   return (
     <div className="card px-4 py-3.5">
       <div className="flex items-center gap-1">
+        {/*
+          THE WINDOW IS IN THE TITLE. The gauge at the top of this screen wears
+          the same three words over the WHOLE HISTORY and legitimately prints a
+          different number; two identical labels with two numbers on one page
+          read as an error in one of them. Neither is dropped and neither is
+          averaged — they answer the same question over different spans.
+        */}
         <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-          Takroriy tushum ulushi — ikki oʻlchov
+          Takroriy tushum ulushi — tanlangan davrda, ikki oʻlchov
         </p>
         <InfoTip
           label="Nega ikkita raqam"

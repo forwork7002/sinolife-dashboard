@@ -123,6 +123,28 @@ describe('a filter change on the confirmation board asks no server', () => {
     expect(nav.routed).toEqual([])
   })
 
+  /*
+    FOUR MORE ON 2026-09-11, each checked against the one condition: none of
+    their server pages mentions `searchParams`. Two of them had a control a
+    reader uses repeatedly rather than occasionally — «Yalpi marja» grew a
+    search box that calls `update` on EVERY KEYSTROKE with no debounce, and
+    «Kadrlar tuzilmasi» writes `?dep=` on every card click — so the half second
+    was being paid per character and per department.
+  */
+  it.each([
+    ['/margin', 'the product search box', () => ({ q: 'zextra' })],
+    ['/analytics/cohort', 'the period chips', () => ({ q: undefined })],
+    ['/kpi', 'the employee filter', () => ({ employeeIds: ['e1'] })],
+    ['/structure', 'a card click writing ?dep=', () => ({ dep: 'dep-7' })],
+  ])('writes the address natively on %s (%s)', (pathname, _what, change) => {
+    const { result } = board('preset=this_month', pathname)
+
+    act(() => result.current.update(change() as never))
+
+    expect(nav.routed).toEqual([])
+    expect(shallow).toHaveLength(1)
+  })
+
   it('leaves every other screen navigating exactly as it did', () => {
     /*
       The opt-in is a SET of routes for a reason: this cure is only sound where

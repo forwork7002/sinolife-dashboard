@@ -81,7 +81,21 @@ export function StructurePage() {
   const roots = useMemo(() => query.data?.data ?? [], [query.data])
   const flat = useMemo(() => flatten(roots), [roots])
 
-  const viewerDepartmentId = flat.find((n) => n.isViewerDepartment)?.id ?? null
+  /*
+    THE PRIMARY UNIT, then any unit — never "the first one the tree walked past".
+
+    This drives the «Siz A › B › C» chain, «Rahbaringiz» and «Meni topish», and
+    each of those names ONE unit. `isViewerDepartment` is true on every unit the
+    reader is listed in (nine of this portal's people sit in two), so taking the
+    first match over the DFS-flattened tree picked by `sortOrder`/name — which
+    has nothing to do with which unit the reader actually belongs to. The
+    fallback keeps a reader whose membership rows carry no primary flag pointed
+    somewhere real rather than nowhere.
+  */
+  const viewerDepartmentId =
+    flat.find((n) => n.isViewerPrimaryDepartment)?.id ??
+    flat.find((n) => n.isViewerDepartment)?.id ??
+    null
   const selected = filters.dep ? (flat.find((n) => n.id === filters.dep) ?? null) : null
 
   const chart = filters.view === 'chart'

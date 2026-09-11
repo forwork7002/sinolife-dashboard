@@ -27,6 +27,8 @@ import {
   moneyFromUzs,
   ratio,
 } from './marketingFormat'
+import { NO_VALUE } from '@/lib/format'
+
 import { ROAS_THRESHOLDS } from './marketingFormat'
 import { TriangleGlyph } from '@/components/ui/Icons'
 
@@ -84,6 +86,7 @@ export function MarketingDynamics({
     spendUsd: day.spend.amount,
     revenueUzs: day.revenue.amount,
     roas: day.roas,
+    roasGrade: day.roasGrade,
   }))
 
   const spendUnit = mode === 'usd' ? 'Xarajat, $' : 'Xarajat, soʻm'
@@ -316,6 +319,8 @@ interface DynamicsPoint {
   readonly spendUsd: number
   readonly revenueUzs: number
   readonly roas: number | null
+  /** The server's verdict. Null means the day is empty — print nothing. */
+  readonly roasGrade: 'good' | 'warning' | 'critical' | null
 }
 
 /**
@@ -354,9 +359,22 @@ function DynamicsTooltip({
         {
           swatch: 'var(--series-3)',
           label: 'ROAS',
-          // "xarajat yoʻq" rather than an em dash: a day with revenue and no
-          // recorded spend has a BROKEN attribution, not an unknown ratio.
-          value: point.roas === null ? 'xarajat yoʻq' : `${ratio(point.roas)}×`,
+          /*
+            "xarajat yoʻq" rather than an em dash: a day with revenue and no
+            recorded spend has BROKEN attribution, not an unknown ratio.
+
+            BUT ONLY WHEN THERE IS REVENUE TO EXPLAIN — the half this tooltip
+            was missing. The blob pads the series with days carrying
+            impressions and nothing else, and each of them read as an
+            attribution failure. `roasGrade` comes from `gradeRoas` on the
+            server and is null for exactly those.
+          */
+          value:
+            point.roas !== null
+              ? `${ratio(point.roas)}×`
+              : point.roasGrade === 'critical'
+                ? 'xarajat yoʻq'
+                : NO_VALUE,
         },
       ]}
     />

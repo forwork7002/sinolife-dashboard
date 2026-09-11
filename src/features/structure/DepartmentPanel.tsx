@@ -203,7 +203,16 @@ export function DepartmentPanel({
               gap that costs an afternoon, so the deactivated are counted out
               loud rather than quietly dropped.
             */}
+            {/*
+              «RAHBAR BILAN», because the card one click away says the other
+              number. The card prints `subordinateCount` — the portal's count,
+              head excluded — and this prints `memberCount`, which the DTO
+              defines as that plus 0 or 1. Same unit, one click apart, two
+              figures, and nothing said which was which. Naming the head is
+              cheaper than changing either number, and both stay true.
+            */}
             Jami {formatNumber(node.memberCount)} faol xodim
+            {node.head !== null && ' (rahbar bilan)'}
             {people.length > active.length &&
               ` · ${formatNumber(people.length - active.length)} oʻchirilgan`}
           </p>

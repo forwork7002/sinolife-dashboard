@@ -118,12 +118,42 @@ export class KpiService {
       which is the state the portal is in today, and the reason this screen has
       always rendered em dashes rather than confident zeros.
     */
+    /*
+      ONLY THE FILTERS THIS SCREEN OFFERS REACH THE DEALS.
+
+      `ctx.filters` is the whole shared bag — `analyticsQuerySchema` accepts
+      `stageIds`, `sourceIds`, `productIds`, `status` and `q` on every
+      analytics endpoint — and `DealRepository.where` turns every one of them
+      into a WHERE clause. The TARGETS have no such filter and cannot: a
+      September revenue plan is a plan for September, not for September's
+      Instagram orders. So a pasted `/kpi?status=WON` narrowed the actuals and
+      left the targets whole, and every CONVERSION_RATE row read 100% against
+      an unnarrowed plan — the exact failure the company-wide guard below was
+      written for, arriving through the filters that guard does not test.
+      `?sourceIds=` does it to per-employee plans too, so this is not confined
+      to the company-wide case.
+
+      The screen renders employees and departments and nothing else
+      (`filters={{ employees: true, departments: true }}`), so those two plus
+      the authorisation scope are what may cut. Anything else is dropped here
+      rather than disclosed, because there is no control on the page to turn it
+      back off.
+    */
+    const scoringFilters = {
+      employeeIds: ctx.filters.employeeIds,
+      departmentIds: ctx.filters.departmentIds,
+      restrictToEmployeeIds: ctx.filters.restrictToEmployeeIds,
+    }
+
     const all = windows.length
-      ? await this.deals.findForAnalysis(windows, ctx.filters)
+      ? await this.deals.findForAnalysis(windows, scoringFilters)
       : []
 
     const nameById = new Map(visible.map((e) => [e.id, e.fullName]))
-    const evaluations: (KpiEvaluation & { fullName: string })[] = []
+    const evaluations: (KpiEvaluation & {
+      fullName: string
+      expectedPercent: number
+    })[] = []
 
     kpis.forEach((kpi, index) => {
       // A KPI belonging to an employee outside the caller's scope — or outside
@@ -151,6 +181,20 @@ export class KpiService {
       evaluations.push({
         ...evaluateKpi(kpi, summary, ctx.period.timeZone, ctx.now),
         fullName: kpi.employeeId ? (nameById.get(kpi.employeeId) ?? '—') : 'Jamoa',
+        /*
+          THE ROW'S OWN CLOCK, beside the row.
+
+          The page-wide `elapsedPercent` below is the WIDEST window — right for
+          the one hero bar, wrong for a row. `evaluateKpi` already grades each
+          plan against its own period (`classifyKpi` over
+          `periodElapsedFraction(kpiWindow(definition, ...))`), so a row whose
+          bar was positioned by the widest window contradicted the badge
+          printed beside it: a seller 35% through a September target she is ON
+          TRACK for, drawn short of a pace marker standing at the YEAR's 69%.
+        */
+        expectedPercent: roundPercent(
+          periodElapsedFraction(windows[index]!, ctx.now) * 100,
+        ),
       })
     })
 
@@ -163,12 +207,25 @@ export class KpiService {
       pace bar, and the plan dates below say what it spans.
     */
     const planWindow = widestWindow(windows)
-    const elapsed = planWindow ? periodElapsedFraction(planWindow, ctx.now) : 0
+
+    /*
+      NULL WHEN THERE IS NO PLAN, because 0% is a measurement.
+
+      This fell back to 0 and shipped it as a number, so the hero line read
+      «reja oʻtishi 0% · bajarilish —»: one half correctly saying "no targets
+      are set", the other half asserting that none of the plan period has
+      elapsed — indistinguishable, to a reader, from a plan that starts
+      tomorrow. That is the portal's state TODAY (the kpi table holds no rows),
+      so it is the sentence every reader of this screen currently sees.
+    */
+    const elapsedPercent = planWindow
+      ? roundPercent(periodElapsedFraction(planWindow, ctx.now) * 100)
+      : null
 
     return {
       /** The span every figure on this screen is measured over. */
       planPeriod: planWindow ? toPeriodDto(planWindow) : null,
-      elapsedPercent: roundPercent(elapsed * 100),
+      elapsedPercent,
       overallPercent: (() => {
         const value = overallAchievementPercent(evaluations)
         return value === null ? null : roundPercent(value)
@@ -201,11 +258,18 @@ export class KpiService {
             target: isMoney
               ? toMoneyDto(money(evaluation.targetValue, ctx.currency))
               : null,
-            actual: isMoney ? toMoneyDto(money(evaluation.actualValue, ctx.currency)) : null,
+            actual:
+              isMoney && evaluation.actualValue !== null
+                ? toMoneyDto(money(evaluation.actualValue, ctx.currency))
+                : null,
             targetValue: Number(evaluation.targetValue),
-            actualValue: Number(evaluation.actualValue),
+            // Null survives to the wire: see `actualForMetric`. The cell prints
+            // an em dash rather than a zero it did not measure.
+            actualValue:
+              evaluation.actualValue === null ? null : Number(evaluation.actualValue),
 
             achievementPercent: achievement === null ? null : roundPercent(achievement),
+            expectedPercent: evaluation.expectedPercent,
             status: evaluation.status,
           }
         })

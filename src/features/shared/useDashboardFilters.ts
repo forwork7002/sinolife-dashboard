@@ -258,8 +258,31 @@ export function resolvePresetParam(
  * it may read `searchParams`. The day a page does — a server-rendered table, an
  * OG image built from the window — its address has to be navigated to properly
  * or the server keeps answering the previous question.
+ *
+ * FOUR MORE JOINED ON 2026-09-11, each checked against that condition: none of
+ * `src/app/{margin,analytics/cohort,kpi,structure}/page.tsx` mentions
+ * `searchParams` at all — every one is `requireSection` plus a client
+ * component, exactly the shape the note above describes.
+ *
+ * Two of them were paying the round trip on a control a reader uses
+ * repeatedly rather than occasionally, which is what moved them up:
+ *
+ *   - «Yalpi marja» grew a product search box, and `SearchInput` calls
+ *     `update` on EVERY KEYSTROKE with no debounce — so typing a seven-letter
+ *     product name bought seven RSC round trips to fetch a payload the browser
+ *     already had, and the box could not keep up with a typist.
+ *   - «Kadrlar tuzilmasi» writes `?dep=` on every card click and `?view=` on
+ *     the toggle. Half a second between pressing a department and it opening,
+ *     on a canvas whose whole interaction is pressing departments.
  */
-const SHALLOW_ROUTES: ReadonlySet<string> = new Set(['/confirmation', '/logistics'])
+const SHALLOW_ROUTES: ReadonlySet<string> = new Set([
+  '/confirmation',
+  '/logistics',
+  '/margin',
+  '/analytics/cohort',
+  '/kpi',
+  '/structure',
+])
 
 export function useDashboardFilters() {
   const router = useRouter()

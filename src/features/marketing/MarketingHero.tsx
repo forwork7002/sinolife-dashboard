@@ -19,17 +19,16 @@ import { Card } from '@/components/ui/Card'
 import { StatusChip } from '@/components/ui/Stat'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
+import { NO_VALUE } from '@/lib/format'
 import { useReducedMotion } from '@/lib/useReducedMotion'
 
 import { amountOf, type MarketingMetricsDto, type MarketingDayDto, type MarketingWindowDto } from './marketingApi'
 import {
   GRADE_WORDS,
-  ROAS_THRESHOLDS,
   type CurrencyMode,
   dayLabel,
   dayShortLabel,
   deltaOf,
-  gradeOf,
   monthLabel,
   moneyFromUsd,
   moneyFromUzs,
@@ -84,7 +83,13 @@ export function MarketingHero({
   const value = moneyFromUzs(revenue, mode, rate, 'compact')
   const exact = moneyFromUzs(revenue, mode, rate, 'unit')
   const roas = current?.roas ?? null
-  const grade = gradeOf(roas, ROAS_THRESHOLDS)
+  /*
+    The verdict comes from the server now — `gradeRoas` is the one definition
+    and carries the client's own exception (a null ROAS is «xarajat yoʻq» only
+    when there is revenue to explain). This screen had the exception right and
+    the table did not; reading one decision is how they stay agreed.
+  */
+  const grade = current?.roasGrade ?? null
 
   /*
     The reference line's value: last window's revenue spread over its own
@@ -142,13 +147,12 @@ export function MarketingHero({
                     graded at THEIR 3.0 / 1.5. Zero spend under real revenue is
                     named, not dashed — the table documents why. */}
                 {status === 'ready' &&
+                  grade !== null &&
                   (roas === null ? (
-                    current && current.revenue.amount > 0 ? (
-                      <StatusChip tone="critical">xarajat yoʻq</StatusChip>
-                    ) : null
+                    <StatusChip tone={grade}>xarajat yoʻq</StatusChip>
                   ) : (
-                    <StatusChip tone={grade ?? 'neutral'}>
-                      ROAS {ratio(roas)}× {grade ? GRADE_WORDS[grade] : ''}
+                    <StatusChip tone={grade}>
+                      ROAS {ratio(roas)}× {GRADE_WORDS[grade]}
                     </StatusChip>
                   ))}
               </div>
@@ -220,6 +224,7 @@ function RevenueTrend({
     revenueUzs: day.revenue.amount,
     spendUsd: day.spend.amount,
     roas: day.roas,
+    roasGrade: day.roasGrade,
     sold: day.sold,
   }))
 
@@ -334,6 +339,8 @@ interface HeroPoint {
   readonly revenueUzs: number
   readonly spendUsd: number
   readonly roas: number | null
+  /** The server's verdict. Null means the day is empty — print nothing. */
+  readonly roasGrade: 'good' | 'warning' | 'critical' | null
   readonly sold: number
 }
 
@@ -369,9 +376,20 @@ function HeroTooltip({
         },
         { label: 'Sotuvlar', value: String(point.sold) },
         { label: 'Xarajat', value: moneyFromUsd(point.spendUsd, mode, rate, 'unit') },
+        /*
+          A day that neither spent nor sold is EMPTY, not failing. The blob pads
+          the series with such days and every one of them used to read «xarajat
+          yoʻq» here — a verdict about broken attribution on a day with nothing
+          to attribute. `roasGrade` is null for exactly those.
+        */
         {
           label: 'ROAS',
-          value: point.roas === null ? 'xarajat yoʻq' : `${ratio(point.roas)}×`,
+          value:
+            point.roas !== null
+              ? `${ratio(point.roas)}×`
+              : point.roasGrade === 'critical'
+                ? 'xarajat yoʻq'
+                : NO_VALUE,
         },
       ]}
     />

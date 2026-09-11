@@ -22,8 +22,18 @@ interface KpiItem {
   readonly target: MoneyDto | null
   readonly actual: MoneyDto | null
   readonly targetValue: number
-  readonly actualValue: number
+  /** Null when the metric could not be measured at all — see `actualForMetric`. */
+  readonly actualValue: number | null
   readonly achievementPercent: number | null
+  /**
+   * How much of THIS row's plan has elapsed.
+   *
+   * Per row, not per page: a monthly plan and an annual one are on screen
+   * together by design, and the page-wide `elapsedPercent` is the widest of
+   * them. Positioning a row's pace marker from that made the bar contradict
+   * the badge printed beside it.
+   */
+  readonly expectedPercent: number
   readonly status: string
 }
 
@@ -38,7 +48,8 @@ interface KpiPayload {
    * a month's target says nothing about a Tuesday.
    */
   readonly planPeriod: PeriodDto | null
-  readonly elapsedPercent: number
+  /** Null when no targets are set at all — «0% elapsed» would be a measurement. */
+  readonly elapsedPercent: number | null
   readonly overallPercent: number | null
   readonly counts: {
     readonly achieved: number
@@ -49,9 +60,19 @@ interface KpiPayload {
   readonly items: readonly KpiItem[]
 }
 
+/*
+  THE HOUSE'S WORDS FOR THE HOUSE'S BASIS.
+
+  Both of these are measured on the DELIVERED basis — `findForAnalysis` is
+  revenue-only and `summarizeDeals` counts WON deals by `closedAt` — and they
+  used to be labelled «Tushum» and «Yopilgan bitimlar», which are the words
+  this dashboard reserves for the OTHER reading. `t.basis` already holds the
+  right pair, so a KPI row now reconciles against the board a supervisor checks
+  it against instead of inviting the question.
+*/
 const METRIC_LABELS: Record<string, string> = {
-  REVENUE: 'Tushum',
-  DEALS_WON: 'Yopilgan bitimlar',
+  REVENUE: t.basis.deliveredRevenueColumn,
+  DEALS_WON: t.basis.deliveredDealsColumn,
   DEALS_CREATED: 'Yangi bitimlar',
   AVERAGE_DEAL: 'Oʻrtacha bitim',
   CONVERSION_RATE: 'Konversiya',
@@ -68,11 +89,29 @@ export function KpiPage() {
 
   const data = query.data?.data
 
-  const formatValue = (item: KpiItem, which: 'target' | 'actual') => {
+  const formatValue = (item: KpiItem, which: 'target' | 'actual' | 'actual-raw') => {
     const money = which === 'target' ? item.target : item.actual
     const raw = which === 'target' ? item.targetValue : item.actualValue
 
+    /*
+      'actual-raw' formats `actualValue` in the row's own unit WITHOUT reaching
+      for the Money DTO beside it — the «Qoldi» column passes a derived gap,
+      which has no DTO of its own and must not borrow the actual's.
+    */
+    if (which === 'actual-raw') {
+      if (raw === null) return NO_VALUE
+      if (item.unit === 'money') return formatCompactUzs(raw / 100)
+      if (item.unit === 'percent') return formatPercent(raw / 100)
+      return formatNumber(raw)
+    }
+
     if (item.unit === 'money') return money ? formatCompactUzs(money.amount) : NO_VALUE
+    /*
+      An em dash for an actual that was never measured — see `actualForMetric`.
+      A conversion rate over a window in which nothing resolved is unknown, and
+      this cell used to print «0%» beside an «Ortda» badge for it.
+    */
+    if (raw === null) return NO_VALUE
     if (item.unit === 'percent') return formatPercent(raw / 100)
     return formatNumber(raw)
   }
@@ -109,10 +148,45 @@ export function KpiPage() {
       ),
     },
     {
+      key: 'remaining',
+      header: 'Qoldi',
+      align: 'right',
+      numeric: true,
+      /*
+        THE NUMBER A SUPERVISOR ACTS ON, and it was the one figure not printed.
+
+        «Reja 320 mln» and «Haqiqiy 190 mln» are two right-aligned compact
+        amounts two columns apart, and the thing anybody does with them is
+        subtract — before lunch, out loud, «130 mln qoldi». Both operands ride
+        every row already, so this is a derivation and not a request.
+
+        An em dash rather than «0» when the actual is unmeasurable: there is no
+        gap to a target you cannot score against. Clamped at zero when the plan
+        is beaten — a negative «remaining» is a surplus, and the attainment
+        column two cells right already says so at 140%.
+      */
+      render: (row) => {
+        if (row.actualValue === null) {
+          return <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
+        }
+        const gap = Math.max(0, row.targetValue - row.actualValue)
+        if (gap === 0) {
+          return <span style={{ color: 'var(--status-good)' }}>bajarildi</span>
+        }
+        return (
+          <span style={{ color: 'var(--ink-secondary)' }}>
+            {formatValue({ ...row, actualValue: gap }, 'actual-raw')}
+          </span>
+        )
+      },
+    },
+    {
       key: 'progress',
       header: 'Bajarilishi',
       width: '160px',
-      render: (row) => <ProgressBar percent={row.achievementPercent} expected={data?.elapsedPercent ?? 0} />,
+      render: (row) => (
+        <ProgressBar percent={row.achievementPercent} expected={row.expectedPercent} />
+      ),
     },
     {
       key: 'status',
@@ -148,7 +222,9 @@ export function KpiPage() {
             )} – ${formatDate(
               new Date(new Date(data.planPeriod.end).getTime() - 1).toISOString(),
             )} rejasi · ${formatPercent(data.elapsedPercent, 0)} qismi oʻtdi`
-          : 'Yanovskiy tizimi boʻyicha baholash'
+          : // The state the portal is actually in. Saying so in the subtitle
+            // costs nothing and stops the page reading as broken.
+            'Yanovskiy tizimi boʻyicha baholash · bu davr uchun reja belgilanmagan'
       }
       meta={query.data?.meta}
       stale={query.isPlaceholderData}
@@ -200,11 +276,19 @@ export function KpiPage() {
               </p>
             )}
 
-            {data && (
+            {data?.planPeriod && (
               /*
                 The pace comparison, stated as words before it is drawn as a
                 bar: the two percentages share a sentence so the reader never
                 has to carry one across the panel to reach the other.
+
+                GUARDED ON THE PLAN, NOT ON THE RESPONSE. With no targets set —
+                the portal's state today — there is no plan period to have
+                elapsed, and this line printed «reja oʻtishi 0%» beside a hero
+                that is correctly an em dash: one half saying "nothing is set",
+                the other asserting that none of it has passed. The em dash and
+                the table's «rejalar belgilanmagan» already say the whole truth
+                without it.
               */
               <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
                 reja oʻtishi {formatPercent(data.elapsedPercent, 0)} · bajarilish{' '}
@@ -214,7 +298,10 @@ export function KpiPage() {
 
             {data && data.overallPercent !== null && (
               <div className="mt-3 max-w-md">
-                <ProgressBar percent={data.overallPercent} expected={data.elapsedPercent} />
+                <ProgressBar
+                  percent={data.overallPercent}
+                  expected={data.elapsedPercent ?? undefined}
+                />
               </div>
             )}
           </>
@@ -253,8 +340,19 @@ export function KpiPage() {
       </div>
 
       <ChartCard
-        title="KPI rejalari"
-        hint="Har bir reja oʻz davri boʻyicha — rejadan oʻtgan vaqtga nisbatan baholanadi"
+        title="Kim rejada, kim orqada?"
+        /*
+          THE PRESET PICKS THE PLAN; IT DOES NOT SLICE IT — said here because
+          the control above offers «Bugun», «Kecha» and «Shu oy», and inside one
+          monthly plan all three return byte-identical numbers. A reader who
+          presses two of them and sees nothing move concludes the screen is
+          stuck, not that the chips do not apply.
+
+          The pace mark is explained ONCE, on the card, rather than in a
+          `title` on every row — a tooltip is not an explanation on a touch
+          device, and the mark is the same mark in all of them.
+        */
+        hint="Har bir reja oʻz davri boʻyicha baholanadi · ▏ belgisi — shu kunga kutilgan surʼat · davr rejani tanlaydi, uni kesmaydi"
       >
         <DataTable
           columns={columns}
@@ -336,7 +434,14 @@ function CountCard({
  * and on the 28th it is a problem. A bare percentage cannot express that, so
  * the bar carries the pace line and the colour follows the comparison.
  */
-function ProgressBar({ percent, expected }: { percent: number | null; expected: number }) {
+function ProgressBar({
+  percent,
+  expected,
+}: {
+  percent: number | null
+  /** Undefined when there is no plan period — draw no marker and pass no verdict. */
+  expected?: number
+}) {
   if (percent === null) {
     return (
       <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
@@ -346,8 +451,20 @@ function ProgressBar({ percent, expected }: { percent: number | null; expected: 
   }
 
   const clamped = Math.min(100, Math.max(0, percent))
-  const onPace = percent >= expected
-  const color = percent >= 100 ? 'var(--status-good)' : onPace ? 'var(--seq-450)' : 'var(--status-warning)'
+  /*
+    NO EXPECTED PACE MEANS NO VERDICT, not "behind".
+
+    `expected` is undefined when there is no plan period to have elapsed. The
+    old `?? 0` made every bar pass a zero pace and paint itself on-track, which
+    is the same class of confident answer the em dash beside it refuses.
+  */
+  const onPace = expected === undefined ? null : percent >= expected
+  const color =
+    percent >= 100
+      ? 'var(--status-good)'
+      : onPace === false
+        ? 'var(--status-warning)'
+        : 'var(--seq-450)'
 
   return (
     <div className="flex items-center gap-2">
@@ -359,7 +476,7 @@ function ProgressBar({ percent, expected }: { percent: number | null; expected: 
           className="h-full rounded-full"
           style={{ width: `${clamped}%`, background: color }}
         />
-        {expected > 0 && expected < 100 && (
+        {expected !== undefined && expected > 0 && expected < 100 && (
           <span
             className="absolute top-0 h-full w-px"
             style={{ left: `${expected}%`, background: 'var(--ink-muted)' }}
