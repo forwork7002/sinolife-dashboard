@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useState, type ReactNode, type UIEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type UIEvent } from 'react'
 
 import { EmptyState, ErrorState } from '@/components/states/States'
 import { t } from '@/lib/messages'
@@ -146,6 +146,156 @@ interface DataTableProps<T> {
    * in the application — none of them pays a pixel or a class for this.
    */
   readonly stickyColumns?: number
+  /**
+   * Grab the rows with the mouse and drag them sideways.
+   *
+   * For a table far wider than the screen — the confirmation queue, 1 860px —
+   * where the horizontal scrollbar is the only other way across and it sits
+   * under the last row. Asked for on 2026-09-11: «mishka bilan oʻng tomonga
+   * sursa oʻsha yerga qarab surilishi kerak». See `useDragScroll`.
+   *
+   * Opt-in: every other table keeps plain text selection under the mouse.
+   */
+  readonly dragScroll?: boolean
+}
+
+/** How far the mouse travels sideways before a press becomes a drag. */
+const DRAG_THRESHOLD_PX = 5
+
+/** A press on one of these is the control's, never the start of a drag. */
+const NOT_A_DRAG_HANDLE = 'button, a, input, select, textarea, label, summary, [contenteditable]'
+
+/**
+ * Drag the scroll box sideways with the mouse — the rows follow the hand, the
+ * way a finger moves them on a phone.
+ *
+ * MOUSE ONLY. Touch and pen already pan a scroll box natively, and taking
+ * their pointer events would fight the browser's own gesture.
+ *
+ * A PRESS IS NOT A DRAG UNTIL IT MOVES SIDEWAYS. Five pixels, and further
+ * across than down: a click, a double-click on an ID to copy it, and a
+ * vertical sweep selecting a column of text all behave exactly as before. Only
+ * a sideways drag is taken — and the half-started text selection it began is
+ * cleared, because the reader was moving the table and not choosing words.
+ *
+ * Nothing that is itself a control starts one (the eye that unmasks a phone,
+ * a column filter), and neither do the scrollbars: a press there is the
+ * browser's own drag, and the box's client area is what excludes them.
+ *
+ * THE CLICK THAT ENDS A DRAG IS SWALLOWED, in the capture phase, so letting go
+ * over a clickable row does not open it.
+ *
+ * NATIVE LISTENERS ON THE BOX, not React props: a column filter's popover is
+ * portalled, and React bubbles a portal's events through the component tree —
+ * a press inside the popover would otherwise reach this box and start a drag.
+ * The DOM only delivers what is really inside it.
+ *
+ * The box arrives as state for the reason `useStickyOffsets` gives: the table
+ * renders a skeleton first, so a `useRef` would give the effect nothing to
+ * re-run on when the real box attaches.
+ */
+function useDragScroll(enabled: boolean): {
+  boxRef: (node: HTMLDivElement | null) => void
+  canPan: boolean
+  dragging: boolean
+} {
+  const [box, setBox] = useState<HTMLDivElement | null>(null)
+  const [canPan, setCanPan] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const swallowClick = useRef(false)
+
+  // Whether there is anywhere to drag TO — drives only the grab cursor, so a
+  // table that fits its card never advertises a gesture that does nothing.
+  useEffect(() => {
+    if (!enabled || box === null) return
+    const measure = () => setCanPan(box.scrollWidth > box.clientWidth + 1)
+    measure()
+    // jsdom has none, and the confirmation page's tests render this table.
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(box)
+    if (box.firstElementChild) observer.observe(box.firstElementChild)
+    return () => observer.disconnect()
+  }, [enabled, box])
+
+  useEffect(() => {
+    if (!enabled || box === null) return
+
+    let press: { id: number; x: number; y: number; left: number } | null = null
+    let panning = false
+
+    const onDown = (event: PointerEvent) => {
+      if (event.pointerType !== 'mouse' || event.button !== 0) return
+      if (box.scrollWidth <= box.clientWidth) return
+      if (event.target instanceof Element && event.target.closest(NOT_A_DRAG_HANDLE)) return
+      const rect = box.getBoundingClientRect()
+      const onScrollbar =
+        event.clientX - rect.left >= box.clientLeft + box.clientWidth ||
+        event.clientY - rect.top >= box.clientTop + box.clientHeight
+      if (onScrollbar) return
+      press = { id: event.pointerId, x: event.clientX, y: event.clientY, left: box.scrollLeft }
+      panning = false
+    }
+
+    const onMove = (event: PointerEvent) => {
+      if (press === null || event.pointerId !== press.id) return
+      // Released outside the box before the drag began: no pointerup reached
+      // us, so the first move back in with the button up ends the press.
+      if ((event.buttons & 1) === 0) {
+        press = null
+        return
+      }
+      const dx = event.clientX - press.x
+      if (!panning) {
+        const dy = event.clientY - press.y
+        if (Math.abs(dx) < DRAG_THRESHOLD_PX || Math.abs(dx) <= Math.abs(dy)) return
+        panning = true
+        box.setPointerCapture(event.pointerId)
+        window.getSelection()?.removeAllRanges()
+        setDragging(true)
+      }
+      event.preventDefault()
+      box.scrollLeft = press.left - dx
+    }
+
+    const onEnd = (event: PointerEvent) => {
+      if (press === null || event.pointerId !== press.id) return
+      if (panning) {
+        swallowClick.current = true
+        // The click, if one comes, is dispatched in this same turn; one that
+        // never comes must not eat the next genuine click.
+        setTimeout(() => {
+          swallowClick.current = false
+        }, 0)
+        setDragging(false)
+      }
+      press = null
+      panning = false
+    }
+
+    const onClick = (event: MouseEvent) => {
+      if (!swallowClick.current) return
+      swallowClick.current = false
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
+    box.addEventListener('pointerdown', onDown)
+    box.addEventListener('pointermove', onMove)
+    box.addEventListener('pointerup', onEnd)
+    box.addEventListener('pointercancel', onEnd)
+    box.addEventListener('click', onClick, true)
+    return () => {
+      box.removeEventListener('pointerdown', onDown)
+      box.removeEventListener('pointermove', onMove)
+      box.removeEventListener('pointerup', onEnd)
+      box.removeEventListener('pointercancel', onEnd)
+      box.removeEventListener('click', onClick, true)
+      setDragging(false)
+    }
+  }, [enabled, box])
+
+  return { boxRef: setBox, canPan: enabled && canPan, dragging }
 }
 
 /**
@@ -292,6 +442,7 @@ export function DataTable<T>({
   maxHeight = '60dvh',
   stickyLastRow,
   stickyColumns = 0,
+  dragScroll = false,
 }: DataTableProps<T>) {
   const [expanded, setExpanded] = useState(false)
   /*
@@ -331,6 +482,8 @@ export function DataTable<T>({
     first measurement lands there is nothing pinned at all.
   */
   const lastPinned = pinnedLeft.reduce((last, offset, i) => (offset === null ? last : i), -1)
+
+  const { boxRef, canPan, dragging } = useDragScroll(dragScroll)
 
   if (status === 'error') {
     return <ErrorState message={errorMessage} onRetry={onRetry} />
@@ -407,8 +560,16 @@ export function DataTable<T>({
         overflow — but the page was 1 674px wider than the phone holding it.
       */}
     <div
+      ref={boxRef}
       className="relative -mx-1 overflow-x-auto"
-      style={{ maxHeight, overflowY: 'auto' }}
+      style={{
+        maxHeight,
+        overflowY: 'auto',
+        // Only where a drag can go somewhere — see `useDragScroll`. No text is
+        // selected mid-drag; between drags selection works as it always has.
+        ...(canPan && { cursor: dragging ? 'grabbing' : 'grab' }),
+        ...(dragging && { userSelect: 'none' as const }),
+      }}
       onScroll={onScroll}
     >
       <table className="w-full border-collapse text-sm" style={{ minWidth }}>

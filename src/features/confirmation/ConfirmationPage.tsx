@@ -1244,6 +1244,15 @@ export function ConfirmationPage() {
                   frame of that scroll. The table now scrolls as one plain block.
                 */
                 minWidth={1860}
+                /*
+                  GRAB IT AND DRAG IT SIDEWAYS — the client, 2026-09-11:
+                  «mishka bilan oʻng tomonga sursa oʻsha yerga qarab surilishi
+                  kerak… chap tomonga qarab». 1 860px across, so АДРЕС and
+                  everything after it sat behind a scrollbar under the last
+                  row. Mouse only; a click, a double-click and a vertical text
+                  sweep behave as before. See `useDragScroll`.
+                */
+                dragScroll
                 emptyTitle="Buyurtma topilmadi"
                 emptyBody={
                   filters.outcomes.length > 0 ||
