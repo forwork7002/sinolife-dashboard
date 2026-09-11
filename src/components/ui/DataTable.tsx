@@ -130,11 +130,9 @@ interface DataTableProps<T> {
   /**
    * How many LEADING columns stay put while the rest scroll sideways.
    *
-   * For a table too wide for the screen, which on this dashboard means exactly
-   * one: the confirmation queue is thirteen columns and needs 1 860px against
-   * the 1 287px a 1600 window leaves it. Reaching СТАТУС there meant scrolling
-   * the row's own identity off the left edge — see `.tcol-sticky` in
-   * globals.css for the whole reasoning and the measurements.
+   * For a table too wide for the screen — today Logistika's day sheet, which
+   * pins its date. The confirmation queue pinned three and dropped them on
+   * 2026-09-11 at the client's request. See `.tcol-sticky` in globals.css.
    *
    * COUNTED, NOT NAMED, and the count must cover a block that reads as one
    * thing: the identity of the row. Pinning half of an identity is worse than

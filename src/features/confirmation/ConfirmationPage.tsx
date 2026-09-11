@@ -481,16 +481,9 @@ export function ConfirmationPage() {
     // collapsing to a skeleton on every click of the pager.
     placeholderData: (previous) => previous,
     /*
-      Two minutes, matching the reference dashboard's own cadence — and the
-      bot's poll interval, so a row cannot be more than one poll stale.
-
-      `placeholderData` above is what makes this safe to do while someone is
-      reading: the refresh swaps the rows underneath without collapsing the
-      table, and the URL holds every filter, so nothing the reader set is lost
-      when the data comes back.
-    */
-    /*
       The global minute clock (src/app/providers.tsx), not a slower local one.
+      `placeholderData` above is what makes that safe while someone is reading:
+      the refresh swaps the rows underneath without collapsing the table.
 
       This screen overrode the default with two minutes, and the worker behind
       it was itself stalled — so a confirmation that arrived in Bitrix could
@@ -619,7 +612,6 @@ export function ConfirmationPage() {
         : { sort: sortKey, order: 'desc' },
     )
   }
-
 
   const shown = data?.pagination.totalItems ?? null
 
@@ -882,56 +874,28 @@ export function ConfirmationPage() {
         `flex-wrap gap-2`, so each control wraps on its own line on a narrow
         screen instead of the three of them moving as one block.
       */
+      /*
+        Only the state filter is left here: РОП moved onto its column
+        (2026-09-09, «exceldagi filtrga oʻxshab») and Статистика into the
+        orders card's corner — see `StatsToggle`. Multi-select, because the
+        states are read in combinations.
+
+        NOT IN BACKLOG MODE, where every row is «Кутилмоқда» by construction,
+        so the control could only narrow the board to itself or to nothing.
+        The filter row still opens there: the search box opens it on its own.
+      */
       toolbar={
-        /*
-          No "Бугун" button here.
-
-          The presets are the control immediately to the left of these three
-          and already own the reporting window — Bugun / Kecha / Shu oy / Sana.
-          A second Bugun in this same row would set the same URL parameter from
-          a second place, so the two could disagree on screen about which day
-          was selected, and a toolbar that contradicts itself is worse than one
-          button fewer.
-        */
-        <>
-          {/*
-            «БАРЧА РОП» IS NOT HERE ANY MORE — it is on the РОП column.
-
-            The client asked for it on 2026-09-09: «shu joyni olib tashlab
-            oʻrniga jadvaldagi roplar ustuniga exceldagi filtrga oʻxshab filtr
-            beriladigan boʻlsin». A toolbar select and the column it narrows
-            were a page apart on a 1 860px-wide table, and it could only ever
-            hold one group — comparing two was a page load each. See
-            `QUEUE_FILTERS` below for the three that took its place.
-          */}
-          {/*
-            Multi-select, not a single choice: the states are read in
-            combinations. The house MultiSelect is what every other filter on
-            the dashboard uses, so the checkbox affordance is already familiar.
-
-            NOT IN BACKLOG MODE, where every row is «Кутилмоқда» by
-            construction — the cohort there IS the state — so the control could
-            only ever narrow the board to itself or to nothing.
-          */}
-          {!backlog && (
-            <MultiSelect
-              label="Барча статус"
-              options={OUTCOMES.map((spec) => ({
-                id: spec.key,
-                label: spec.label,
-              }))}
-              selected={filters.outcomes}
-              onChange={(outcomes) => update({ outcomes: outcomes as ConfirmationOutcome[] })}
-            />
-          )}
-
-          {/*
-            AND NEITHER IS «СТАТИСТИКА» — see `StatsToggle`. It sits in the
-            corner of whichever card is on screen now, which is where the
-            client asked for it: «statistika tugmasini ham pastga buyurtmalar
-            ustunining oʻng tomon burchagiga qoʻyish kerak».
-          */}
-        </>
+        !backlog && (
+          <MultiSelect
+            label="Барча статус"
+            options={OUTCOMES.map((spec) => ({
+              id: spec.key,
+              label: spec.label,
+            }))}
+            selected={filters.outcomes}
+            onChange={(outcomes) => update({ outcomes: outcomes as ConfirmationOutcome[] })}
+          />
+        )
       }
     >
       {/*
@@ -1106,79 +1070,21 @@ export function ConfirmationPage() {
         )}
 
         {/*
-          The rows, their count and the pager — the three things a state
-          selection actually changes — fade while they are being replaced.
+          THE CARD IS THE ONE THING THAT STRETCHES, and it fades (0.7) while
+          its rows are one selection behind — the tiles above stay put.
 
-          Not a skeleton, and not the whole page: the tiles above are correct
-          throughout and must not move. This is the smallest honest signal that
-          the table is one selection behind, and it costs no layout, so nothing
-          jumps under the pointer.
-        */}
-        {/*
-          THE CARD IS THE ONE THING THAT STRETCHES.
+          Everything above it is `shrink-0`; this takes what is left. A
+          definite min-height is what lets a flex item shrink below its
+          content, so the table scrolls inside the card instead of pushing it
+          past the screen. `min-h-[746px]` is the old 640px table cap put back
+          as a FLOOR (640 + 106 of chrome): it only bites when the column does
+          not fit, which is exactly when `main` scrolls anyway. A 540 floor was
+          measured as a loss — 6 rows against 9 on a 1280x800 laptop.
 
-          Everything above it — the banner and the six state tiles — is
-          `shrink-0` and keeps the height it asks for; this takes what is left,
-          whatever that is. (The Статистика panel used to be in that list and
-          is not any more: it is `flex-1` now, and it and this card are never on
-          screen together.) `min-h-0` is the load-bearing half:
-          without it a flex item refuses to shrink below its content, so the
-          table's own scroll box would push the card past the bottom of the
-          screen and hand the page back the second scrollbar this change
-          exists to remove.
-
-          `min-h-[746px]` IS THE OLD CAP, PUT BACK AS A FLOOR — 640 of table
-          plus this card's own 106px of chrome (padding, the counts header,
-          the pager). Being a min-height at all is also what lets the card
-          shrink below the table's natural height in the first place: `auto`,
-          the default, is the content size, and the content here is 25 rows.
-
-          IT IS 746 AND NOT A COMFORTABLE 540 BECAUSE OF WHEN IT BITES. The
-          floor only ever applies when the column does not fit, and a column
-          that does not fit makes `main` scroll — so on exactly the screens
-          where the floor is in force, the page is scrolling anyway. There is
-          no reason to show a SHORTER table than before on a page that scrolls
-          just as much as before. A 540 floor read as a kindness and measured
-          as a loss: 6 rows where the old cap gave 9 on a 1280x800 laptop, and
-          on a phone a letterbox inside a page that still scrolled — both
-          halves of the fault, for nothing.
-
-          The break-even is a window about 1054px tall. Above it the floor is
-          slack, the card takes the screen and nothing scrolls; below it the
-          board is exactly what it was, plus the 36px the caption used to hold.
-
-          IT USED TO NAME «Статистика open» AS THE OTHER CASE BELOW THAT LINE,
-          because the panel opened above this card and took 300px off it. It
-          is not a case any more: since 2026-09-09 Статистика is a MODE and
-          this card is not rendered at all while it is on — see the guard
-          below. A short window is the only thing this floor still covers.
-        */}
-        {/*
-          «СТАТИСТИКА» IS A MODE NOW, NOT AN ADDITION.
-
-          The client, 2026-09-09: «statistika bosilganda pastdagi barcha
-          buyurtmalar boʻlimi koʻrinmasin faqat statistika boʻlimi koʻrinsin».
-          The panel used to open as a 300px strip ABOVE this card, and the
-          reader compared fifteen (ROP) groups through a letterbox — while
-          this card carried a 746px floor partly BECAUSE the panel was taking
-          300px off it.
-
-          IT NAMES THIS SECTION AND ONLY THIS SECTION. The state band above
-          stays: «Барча буюртмалар» is what was asked to go, and the band is
-          this page's headline money figure and its only state filter. Hiding
-          it would have taken away the very thing the same sentence asks for —
-          «qaysi boʻlimda qancha pul borligi».
-
-          THE QUERY IS UNTOUCHED. `pageSize` is part of the query key, so
-          skipping the page rows while the panel is open would invalidate the
-          cache and buy a round trip on the way INTO the mode and another on
-          the way out. The rows are fetched and not rendered; that is the
-          price of an instant toggle and it is the right one.
-
-          THE PAGE-RESET EFFECT KEEPS RUNNING behind the panel and will still
-          rewrite `?page=1`. Harmless — a URL change with nothing visible
-          attached — and left alone: moving it inside hidden JSX would make it
-          a hook that mounts and unmounts with a mode.
+          «СТАТИСТИКА» IS A MODE (2026-09-09: «statistika bosilganda pastdagi
+          barcha buyurtmalar boʻlimi koʻrinmasin»), so this card is not
+          rendered while it is on. The query is untouched: `pageSize` is in the
+          key, and skipping the rows would cost a round trip each way.
         */}
         {!statsOpen && (
           <Card
@@ -1196,103 +1102,103 @@ export function ConfirmationPage() {
                 visibly low against it.
               */}
               <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              <h2 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
-                Барча буюртмалар
-              </h2>
-              <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-                {/*
-                  TWO NUMBERS, TWO NAMES.
+                <h2 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
+                  Барча буюртмалар
+                </h2>
+                <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+                  {/*
+                    TWO NUMBERS, TWO NAMES.
 
-                  This count obeys every filter — state, ROP, search — while the
-                  ЖАМИ tile above follows the ROP and the search box but NOT the
-                  state selection, because a band whose figures moved with its
-                  own selection could not be used to compare one state against
-                  another. Both were labelled «Жами», so picking
-                  «Кутилмоқда» put 1 289 in the tile and «Жами: 37 та» directly
-                  under it, and the screen contradicted itself. The filtered count
-                  is now named as filtered, and the window's own total is printed
-                  beside it so the reader can see both at once.
-                */}
-                {shown === null
-                  ? ''
-                  : narrowed
-                    ? `Танланган: ${formatNumber(shown)} та`
-                    : `Жами: ${formatNumber(shown)} та`}
-                {/*
-                  THE COMPARISON IS "ALL STATES", NOT "THE WHOLE WINDOW".
+                    This count obeys every filter — state, ROP, search — while the
+                    ЖАМИ tile above follows the ROP and the search box but NOT the
+                    state selection, because a band whose figures moved with its
+                    own selection could not be used to compare one state against
+                    another. Both were labelled «Жами», so picking
+                    «Кутилмоқда» put 1 289 in the tile and «Жами: 37 та» directly
+                    under it, and the screen contradicted itself. The filtered count
+                    is now named as filtered, and the window's own total is printed
+                    beside it so the reader can see both at once.
+                  */}
+                  {shown === null
+                    ? ''
+                    : narrowed
+                      ? `Танланган: ${formatNumber(shown)} та`
+                      : `Жами: ${formatNumber(shown)} та`}
+                  {/*
+                    THE COMPARISON IS "ALL STATES", NOT "THE WHOLE WINDOW".
 
-                  `totals.orders` is the same ROP and the same search as the line
-                  beside it, summed across all five states — so it differs from the
-                  count above ONLY when a state is selected, and calling it «Жами»
-                  while a ROP was also applied printed the filtered figure twice
-                  under two names. It is named for what it is, and shown only when
-                  it has something to add.
-                */}
-                {narrowed && totals && (
-                  <>
-                    {' · '}
-                    Барча ҳолатлар: <span className="tabular">{formatNumber(totals.orders)}</span> та
-                  </>
-                )}
-                {/*
-                  NOT IN BACKLOG MODE, where the numerator is zero by construction.
+                    `totals.orders` is the same ROP and the same search as the line
+                    beside it, summed across all five states — so it differs from the
+                    count above ONLY when a state is selected, and calling it «Жами»
+                    while a ROP was also applied printed the filtered figure twice
+                    under two names. It is named for what it is, and shown only when
+                    it has something to add.
+                  */}
+                  {narrowed && totals && (
+                    <>
+                      {' · '}
+                      Барча ҳолатлар: <span className="tabular">{formatNumber(totals.orders)}</span> та
+                    </>
+                  )}
+                  {/*
+                    NOT IN BACKLOG MODE, where the numerator is zero by construction.
 
-                  That cohort is «every order whose latest signal is still
-                  CONFIRM_NEW», so CONFIRMED cannot occur in it and the rate comes
-                  back a hard 0 — non-null, because the DENOMINATOR is not empty,
-                  so `rateBp`'s own null-for-no-data guard has nothing to catch.
-                  Printed, «Тасдиқланиш (барча ҳолатлардан): 0%» under a list of
-                  44 waiting orders reads as "this company confirmed nothing",
-                  which is a verdict rather than a measurement — the same reason
-                  the four other state tiles are not rendered here.
-                */}
-                {!backlog && totals && totals.confirmedRate !== null && (
-                  <>
-                    {' · '}
-                    {/*
-                      The denominator is every order in this ROP and search across
-                      all five states — INCLUDING the ones still waiting, which is
-                      the client's own definition of Тасдиқланиш %. It is not the
-                      selection's rate: filtering to «Тасдиқланди» would otherwise
-                      report 100% every time. The label says which denominator it
-                      is so nobody has to guess.
-                    */}
-                    Тасдиқланиш (барча ҳолатлардан):{' '}
-                    <span className="tabular">{totals.confirmedRate}%</span>
-                  </>
-                )}
-                {query.dataUpdatedAt > 0 && (
-                  <>
-                    {' · '}
-                    {/*
-                      THE PAGE'S CLOCK, NOT THE DATA'S.
+                    That cohort is «every order whose latest signal is still
+                    CONFIRM_NEW», so CONFIRMED cannot occur in it and the rate comes
+                    back a hard 0 — non-null, because the DENOMINATOR is not empty,
+                    so `rateBp`'s own null-for-no-data guard has nothing to catch.
+                    Printed, «Тасдиқланиш (барча ҳолатлардан): 0%» under a list of
+                    44 waiting orders reads as "this company confirmed nothing",
+                    which is a verdict rather than a measurement — the same reason
+                    the four other state tiles are not rendered here.
+                  */}
+                  {!backlog && totals && totals.confirmedRate !== null && (
+                    <>
+                      {' · '}
+                      {/*
+                        The denominator is every order in this ROP and search across
+                        all five states — INCLUDING the ones still waiting, which is
+                        the client's own definition of Тасдиқланиш %. It is not the
+                        selection's rate: filtering to «Тасдиқланди» would otherwise
+                        report 100% every time. The label says which denominator it
+                        is so nobody has to guess.
+                      */}
+                      Тасдиқланиш (барча ҳолатлардан):{' '}
+                      <span className="tabular">{totals.confirmedRate}%</span>
+                    </>
+                  )}
+                  {query.dataUpdatedAt > 0 && (
+                    <>
+                      {' · '}
+                      {/*
+                        THE PAGE'S CLOCK, NOT THE DATA'S.
 
-                      `dataUpdatedAt` is when this browser last fetched, which is
-                      not how old the numbers are — that is the Bitrix sync time,
-                      and the header states it a few centimetres away. A bare
-                      «Янгиланди» over the fetch clock claimed the figures were
-                      minutes old on a morning the sync had been stuck for hours.
-                    */}
-                    Саҳифа янгиланди:{' '}
-                    <span className="tabular">{tashkentTime(new Date(query.dataUpdatedAt).toISOString())}</span>
-                    {/*
-                      ONE MINUTE, WHICH IS WHAT ACTUALLY HAPPENS.
+                        `dataUpdatedAt` is when this browser last fetched, which is
+                        not how old the numbers are — that is the Bitrix sync time,
+                        and the header states it a few centimetres away. A bare
+                        «Янгиланди» over the fetch clock claimed the figures were
+                        minutes old on a morning the sync had been stuck for hours.
+                      */}
+                      Саҳифа янгиланди:{' '}
+                      <span className="tabular">{tashkentTime(new Date(query.dataUpdatedAt).toISOString())}</span>
+                      {/*
+                        ONE MINUTE, WHICH IS WHAT ACTUALLY HAPPENS.
 
-                      It said two, and had said two since the query carried its
-                      own two-minute override. That override was dropped in
-                      favour of the global minute clock (see the query, which
-                      records why) and this line was not moved with it — so the
-                      one caption on this board whose whole job is to say how
-                      fresh the figures are had been understating them by half
-                      for as long as it had been right. A number on screen that
-                      disagrees with the code is worse than no number: the
-                      reader who waits two minutes for a refresh that has
-                      already happened twice stops trusting the board's clock.
-                    */}
-                    {' (ҳар дақиқада)'}
-                  </>
-                )}
-              </p>
+                        It said two, and had said two since the query carried its
+                        own two-minute override. That override was dropped in
+                        favour of the global minute clock (see the query, which
+                        records why) and this line was not moved with it — so the
+                        one caption on this board whose whole job is to say how
+                        fresh the figures are had been understating them by half
+                        for as long as it had been right. A number on screen that
+                        disagrees with the code is worse than no number: the
+                        reader who waits two minutes for a refresh that has
+                        already happened twice stops trusting the board's clock.
+                      */}
+                      {' (ҳар дақиқада)'}
+                    </>
+                  )}
+                </p>
               </div>
               {statsToggle}
             </header>
@@ -1308,66 +1214,50 @@ export function ConfirmationPage() {
               never be the thing you scroll to find.
             */}
             <div className="flex min-h-0 flex-1 flex-col">
-            <DataTable
-              columns={columns}
-              rows={data?.items ?? []}
-              rowKey={(row) => row.dealId}
-              status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
-              errorMessage={(query.error as Error | null)?.message}
-              onRetry={() => void query.refetch()}
-              sort={sort}
-              order={filters.order}
-              onSort={onSort}
-              /*
-                THE WINDOW DECIDES, NOT A NUMBER TYPED ONCE.
+              <DataTable
+                columns={columns}
+                rows={data?.items ?? []}
+                rowKey={(row) => row.dealId}
+                status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
+                errorMessage={(query.error as Error | null)?.message}
+                onRetry={() => void query.refetch()}
+                sort={sort}
+                order={filters.order}
+                onSort={onSort}
+                /*
+                  THE WINDOW DECIDES, NOT A NUMBER TYPED ONCE.
 
-                `100%` is the height this card was given, and the card was given
-                what the screen had left — never less than the 640 it used to
-                have, because of the card's own floor. Still bounded, so the
-                header row keeps pinning while the rows scroll under it; what
-                changed is that the bound now knows how big the screen is.
-              */
-              maxHeight="100%"
-              minWidth={1860}
-              /*
-                РОП, № AND САНА STAY WHILE THE OTHER TEN SCROLL UNDER THEM.
-
-                Thirteen columns of order data do not fit a laptop and never
-                will: measured on 2026-09-10, a 1600px window leaves this table
-                1 287px and it asks for 1 860, so АДРЕС, СТАТУС and ИСТОЧНИК are
-                reachable only sideways — and the middle one of those is the
-                state of the order, which is the whole question this board
-                answers. Getting to it took the row's identity off the screen
-                with it, so the reader arrived at a status with nothing attached
-                to it and scrolled back to find out whose it was.
-
-                THREE, because that is where the identity ends. РОП is the
-                group, № is the label the floor reads out loud, and САНА is the
-                arrival both of them are counted against — the same three the
-                bot posts in its Тасдиклаш line. Pinning two of them would leave
-                a № belonging to no day, and pinning four would take ID сделки
-                out of the part of the row a reader compares against Bitrix.
-
-                It costs 283px of the scrolling area, which is the price of the
-                other ten columns never being anonymous. See `.tcol-sticky`.
-              */
-              stickyColumns={3}
-              emptyTitle="Buyurtma topilmadi"
-              emptyBody={
-                filters.outcomes.length > 0 ||
-                filters.rops.length > 0 ||
-                filters.regions.length > 0 ||
-                filters.amountMin !== undefined ||
-                filters.amountMax !== undefined ||
-                filters.q
-                  ? 'Bu filtrlar boʻyicha buyurtma yoʻq. Filtrlarni tozalab koʻring.'
-                  : backlog
-                    ? // An empty backlog is the good news, and «bu davrda» would be
-                      // a sentence about a window this board does not read.
-                      'Hozir tasdiqlashni kutayotgan buyurtma yoʻq — navbat boʻsh.'
-                    : 'Bu davrda hech bir buyurtma tasdiqlash navbatiga tushmagan.'
-              }
-            />
+                  `100%` is the height this card was given, and the card was given
+                  what the screen had left — never less than the 640 it used to
+                  have, because of the card's own floor. Still bounded, so the
+                  header row keeps pinning while the rows scroll under it; what
+                  changed is that the bound now knows how big the screen is.
+                */
+                maxHeight="100%"
+                /*
+                  NO PINNED COLUMNS — the client, 2026-09-11: «zakrepit ustun
+                  kerak emas». РОП, № and САНА were pinned (`stickyColumns={3}`)
+                  so the row's identity stayed while the table scrolled sideways,
+                  and the three opaque sticky cells per row repainted on every
+                  frame of that scroll. The table now scrolls as one plain block.
+                */
+                minWidth={1860}
+                emptyTitle="Buyurtma topilmadi"
+                emptyBody={
+                  filters.outcomes.length > 0 ||
+                  filters.rops.length > 0 ||
+                  filters.regions.length > 0 ||
+                  filters.amountMin !== undefined ||
+                  filters.amountMax !== undefined ||
+                  filters.q
+                    ? 'Bu filtrlar boʻyicha buyurtma yoʻq. Filtrlarni tozalab koʻring.'
+                    : backlog
+                      ? // An empty backlog is the good news, and «bu davrda» would be
+                        // a sentence about a window this board does not read.
+                        'Hozir tasdiqlashni kutayotgan buyurtma yoʻq — navbat boʻsh.'
+                      : 'Bu davrda hech bir buyurtma tasdiqlash navbatiga tushmagan.'
+                }
+              />
             </div>
 
             {data && (
@@ -1604,9 +1494,7 @@ function totalLine(rows: readonly RopRow[]): RopRow {
  * 240px rail, which leaves 974px of table; thirteen columns of Cyrillic state
  * names plus full soʻm is about 1 640. That table scrolls sideways, and a
  * sideways scroll carries the РОП name off the left edge — a column of
- * ten-digit sums with nobody's name on it. DataTable cannot pin a column on
- * the x axis, and its `onScroll` reads `scrollTop` alone, so nothing on
- * screen would even say there was more table out there.
+ * ten-digit sums with nobody's name on it.
  *
  * Stacked, the panel stays EIGHT columns at 884px and fits inside 974 with
  * 90px to spare, and the eye still travels one row per ROP. It costs 8px of

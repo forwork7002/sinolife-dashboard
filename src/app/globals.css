@@ -1288,6 +1288,10 @@ body::after {
  * which is the spreadsheet behaviour every reader of this board already knows
  * from the client's own Excel exports.
  *
+ * THE CONFIRMATION QUEUE NO LONGER PINS ANYTHING — the client asked on
+ * 2026-09-11 for plain columns («zakrepit ustun kerak emas»). The one caller
+ * left is Logistika's day sheet (`stickyColumns={1}`, its date).
+ *
  * ON THE CELLS AND NOT THE COLUMN, for the reason `.thead-sticky` records:
  * there is no such thing as a sticky <col>, and sticky on a <tr> is still
  * uneven across engines. The per-cell `left` offset is MEASURED in DataTable
