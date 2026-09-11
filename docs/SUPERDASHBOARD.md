@@ -98,21 +98,33 @@ answers a different question: an order that sat unconfirmed for three days did
 not take three days to deliver.
 
 **The ladder.** Bitrix24 returns `SEMANTICS` only for WON and LOSE; the other
-sixteen Доставка stages come back null, so their classification into
-`LogisticsRole` is ours and lives in `mapping.ts`.
+seventeen Доставка stages come back null, so their classification into
+`LogisticsRole` is ours and lives in `mapping.ts`. **NINETEEN stages as of
+2026-09-10** — the client added «Ожидание / нд» (`C6:UC_IXGHDH`) that day,
+empty, and it was found by the Logistika screen’s own unmapped-order
+diagnostic rather than by a wrong figure.
 
 ```
 Подготовка товара → Заказ в мой склад → Успешно заказ → В пути
   → TOSHKENT-1 / NAVOIY / VODIY / QASHQADARYO / SURXONDARYO   (hubs)
   → CARAVAN / OSON POCHTA / BEK POCHTA                        (carriers)
+  → Юрист смс / Пропущенный / Ожидание / нд                   (chasing)
   → Доставлено                                                (delivered)
-  ↘ Отказ                     parcel travelled and came back
-  ↘ Отказ предварительно      cancelled before dispatch
+  ↘ Возврат получен           parcel travelled and came back      (C6:LOSE)
+  ↘ Отказ                     cancelled before dispatch     (C6:UC_3U7025)
 ```
 
-**Two numbers that must not merge.** `Отказ` cost real money to move; `Отказ
-предварительно` cost nothing. Reporting them as one figure hides the expensive
-half.
+**THE LAST TWO WERE RENAMED IN THE PORTAL and the roles did not move.**
+`C6:LOSE` read «Отказ» and now reads «Возврат получен»; `C6:UC_3U7025` read
+«Отказ предварительно» and now reads plain «Отказ». `mapping.ts` keys on
+STATUS_ID for exactly this reason — a rename in Bitrix24 must not be able to
+move money between two figures the floor reads as different numbers.
+
+**Two numbers that must not merge.** The returned parcel cost real money to
+move; the pre-dispatch cancellation cost a phone call. Reporting them as one
+figure hides the expensive half — and since June the portal writes every
+refusal to ONE stage, so the split has to come from the stage HISTORY (did
+the parcel ever reach a hub?) and never from the stage name.
 
 **The delivery rate is over RESOLVED orders**, not over every order in the
 window. Half of any current month is still in transit; dividing by the whole
