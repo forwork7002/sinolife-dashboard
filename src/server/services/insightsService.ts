@@ -213,8 +213,9 @@ export interface LogisticsPointDto {
    *
    * Measured against now(), which makes these the only fields on a windowed
    * payload that are not on the window's clock. `aged*` is the part past
-   * seven days — the band where delivery measured 62.5% against 95.1%
-   * inside two days, which is what turns a statistic into a call list.
+   * seven days — the band past the point where the measured delivery rate has
+   * fallen from ~94% inside two days to ~75%, which is what turns a statistic
+   * into a call list.
    */
   readonly waitingOrders: number
   readonly waitingAmount: MoneyDto
@@ -248,22 +249,66 @@ export interface LogisticsStandingOrderDto {
  * One band of «how long did it wait», and whether it arrived.
  *
  * The one block on this screen that is a reason to act rather than a record
- * of what happened. Measured over 60 days of production: 95.1% delivered
- * when collected inside two days, 62.5% once past seven — and the gradient
- * holds inside every post office, so it is a fact about elapsed time and not
- * about a carrier.
+ * of what happened: a parcel collected quickly is delivered, one left at the
+ * counter is progressively less likely to be, and the gradient holds inside
+ * every post office — so it is a fact about elapsed time and not about a
+ * carrier.
+ *
+ * THE FIRST THREE BANDS ARE STABLE; THE FOURTH MOVES WITH THE WINDOW.
+ * Measured on production at five horizons, one row per order (its last post
+ * office), resolved orders only:
+ *
+ *     window    0–2     2–4     4–7      7+    n(7+)
+ *       14 d   94.2    90.1    79.8    61.5       13
+ *       30 d   93.8    85.2    80.2    66.9      269
+ *       60 d   94.9    86.0    74.1    62.5     1106
+ *      120 d   94.5    85.9    75.0    76.6     2603
+ *      240 d   95.4    89.0    77.8    78.5     2885
+ *
+ * The fall from 94 to 75 across the first three bands holds at every horizon.
+ * The last band does not: past about three months it climbs back into the
+ * high seventies, because a parcel that sat for weeks and was eventually
+ * collected only enters the measurement once the window is wide enough to
+ * contain its ending. That is not noise, it is the shape of the tail — and
+ * it means «past seven days» is a long wait rather than a write-off.
+ *
+ * A FIXED TRAILING WINDOW WAS CONSIDERED AND REJECTED for exactly that
+ * reason: it would freeze one horizon into a block whose subject is how the
+ * answer moves with time, and it would disagree with every other figure on
+ * a page the reader is choosing the window for. The bands follow the page.
  *
  * RESOLVED ORDERS ONLY. A parcel still standing is undelivered by
- * definition; including it would build the conclusion into the measurement.
+ * definition; including it would build the conclusion into the measurement —
+ * and it is also why a short window can leave the last band nearly empty,
+ * which `sparse` is what answers.
  */
 /**
  * The four wait bands, in the order a parcel passes through them.
  *
  * The boundaries are not round numbers chosen for tidiness: two days is
- * where the measured delivery rate is still 95.1%, seven is where it has
- * fallen to 62.5%, and four sits between them so the fall has a shape rather
+ * where the measured delivery rate is still ~94%, seven is where it has
+ * fallen to ~75%, and four sits between them so the fall has a shape rather
  * than a cliff. The SQL bands on the same hours (48 / 96 / 168).
+ *
+ * Those three figures are quoted as approximations because they ARE stable —
+ * 94 / 86 / 75 at every horizon from a fortnight to eight months. The fourth
+ * band's is not, and is deliberately not quoted here; see the table above.
  */
+/**
+ * Below this many resolved orders a band prints its count instead of a rate.
+ *
+ * At thirty orders one parcel is 3.3 percentage points, which is about the
+ * width of the gap between two neighbouring bands — under it the bar stops
+ * being a measurement and becomes a rounding of a handful of parcels. It
+ * bites on exactly the case that needs it and no other: over a fortnight the
+ * last band held 13 orders and the first three held 378, 333 and 188.
+ *
+ * The rate is still computed and still on the payload. `deliveryRate` keeps
+ * its own meaning — null is «no denominator», 0 is a measurement — and this
+ * is a third thing, so it is a third field rather than another null.
+ */
+const WAIT_BAND_MIN_ORDERS = 30
+
 const WAIT_BANDS = [
   { key: '1', label: '0–2 kun' },
   { key: '2', label: '2–4 kun' },
@@ -278,6 +323,13 @@ export interface LogisticsWaitBandDto {
   readonly orders: number
   readonly delivered: number
   readonly deliveryRate: number | null
+  /**
+   * Too few resolved orders for the rate to be read as one.
+   *
+   * Decided on the server so the threshold has one home, and carried beside
+   * the rate rather than replacing it — see `WAIT_BAND_MIN_ORDERS`.
+   */
+  readonly sparse: boolean
 }
 
 /**
@@ -1093,6 +1145,7 @@ export class InsightsService {
           orders,
           delivered,
           deliveryRate: pct(rateBp(delivered, orders)),
+          sparse: orders < WAIT_BAND_MIN_ORDERS,
         }
       }),
       standing: {

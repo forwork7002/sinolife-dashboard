@@ -456,6 +456,26 @@ Per-screen traps worth knowing before you touch one:
   the cohort is chosen by an arrival in Тасдиклаш (#4), which is not a
   revenue pipeline, so a `WHERE` would drop every queued and every refused
   order — `summary.offRevenueOrders` is the tripwire and is expected to be 0.
+  **It counts only orders still INSIDE Доставка, and the narrowing is what
+  makes the 0 mean anything.** Counted over the whole cohort it read 14 at
+  60 days, 589 at 180 and 636 at a year, under a red line saying it must be
+  0; every one was a confirmed order handed on to another funnel, 13 of the
+  14 into «База» — a repeat purchase, already reported by name as
+  `unbucketedOrders`, and the red line sent a reader hunting a defect that
+  was ordinary business. Inside the funnel AND unflagged is the case that
+  cannot happen, and it measures 0 at 60, 180 and 365 days.
+  **The wait gradient follows the page's window, and a fixed trailing window
+  was measured and REJECTED.** One row per order, resolved only, at five
+  horizons: the first three bands hold at 94 / 86 / 75 whatever the window,
+  but the last reads 61.5 (14 d) · 66.9 (30 d) · 62.5 (60 d) · 76.6 (120 d) ·
+  78.5 (240 d) — a parcel that sat for weeks and was eventually collected
+  only enters the measurement once the window contains its ending. Freezing
+  one horizon would have frozen one answer into the block whose whole subject
+  is how that answer moves. What a short window really costs is orders, not
+  bias, so the guard is on the count: under `WAIT_BAND_MIN_ORDERS` = 30 the
+  band prints its count and no rate (at thirty, one parcel is 3.3 points —
+  about the gap between two neighbouring bands), and over a fortnight that
+  bites on exactly the last band (13 orders against 378 / 333 / 188).
 - **Joʻnatish nuqtalari** — delivery rate's denominator is *resolved* orders;
   in-flight is excluded and reported separately.
 - **Sotuvchilar reytingi** — company-wide on purpose, and it is the ONLY route

@@ -147,6 +147,20 @@ describe('logisticsCohortSql', () => {
     expect(BARE).not.toContain('WHERE d."countsAsRevenue"')
   })
 
+  /*
+    AND IT COUNTS ONLY WHAT IS STILL INSIDE ДОСТАВКА.
+
+    Without the bucket clause the tripwire read 14 over 60 days, 589 over
+    180 and 636 over a year, under a red line saying the figure must be 0.
+    Every one of them was a confirmed order moved on to another funnel —
+    13 of the 14 into «База» — which is a repeat purchase and is already
+    reported by name as unbucketedOrders. Inside the funnel and unflagged
+    is the case that cannot happen, and it measures 0 at all three.
+  */
+  it('narrows the tripwire to orders still inside the funnel', () => {
+    expect(BARE).toContain("k.fakt1 AND NOT k.counts_as_revenue AND k.bucket <> 'OTHER'")
+  })
+
   it('generates the six columns from the client-approved table, with a valve', () => {
     for (const role of [
       'PREPARING',

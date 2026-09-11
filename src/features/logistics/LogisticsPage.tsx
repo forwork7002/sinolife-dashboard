@@ -279,16 +279,23 @@ export function LogisticsPage() {
             the screen says so rather than letting the arithmetic quietly fail
             to add up — a confirmed order moved into another funnel is a real
             event, not an error to swallow.
+
+            AND IT SAYS WHAT THEY ARE. Measured on production: of the 14 such
+            orders over 60 days, 13 stand in «База» and one in «Первичный
+            отдел» — confirmed, then handed on as a repeat purchase. A line
+            that only said «outside Доставка» read as a defect and was chased
+            as one.
           */
-          <p className="mt-3 text-[11px]" style={{ color: 'var(--status-warning)' }}>
-            {formatNumber(summary.unbucketedOrders)} ta buyurtma Доставка voronkasidan tashqarida —
-            ustunlar yigʻindisi ЗАКАЗ dan shuncha kam.
+          <p className="mt-3 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            {formatNumber(summary.unbucketedOrders)} ta buyurtma tasdiqlangandan keyin boshqa
+            voronkaga (koʻpincha «База») oʻtkazilgan — shuning uchun ustunlar yigʻindisi ЗАКАЗ
+            dan shuncha kam. Bu xato emas, takroriy xarid.
           </p>
         )}
         {summary && summary.offRevenueOrders > 0 && (
           <p className="mt-1 text-[11px]" style={{ color: 'var(--status-critical)' }}>
-            {formatNumber(summary.offRevenueOrders)} ta buyurtma daromad voronkasida emas — bu
-            raqam 0 boʻlishi kerak, tekshirish talab qilinadi.
+            {formatNumber(summary.offRevenueOrders)} ta buyurtma Доставка ichida, lekin daromad
+            voronkasida emas — bu raqam 0 boʻlishi kerak, tekshirish talab qilinadi.
           </p>
         )}
 
@@ -398,9 +405,9 @@ export function LogisticsPage() {
 
         Left: what is standing at each post office right now and how much of
         it has been standing past seven days. Right: why seven days is the
-        line — measured over sixty days of production, a parcel collected
-        inside two days is delivered 95.1% of the time and one still standing
-        after seven only 62.5%, and that gradient holds inside every single
+        line — a parcel collected inside two days is delivered ~94% of the
+        time, one collected after four ~75%, and that fall holds at every
+        horizon measured (a fortnight to eight months) and inside every single
         post office. Neither half means much alone: the list without the
         curve is a pile of numbers, the curve without the list is a fact
         nobody can act on.
@@ -521,6 +528,20 @@ export function LogisticsPage() {
               Faqat pochtadan chiqib ketgan va yakunlangan joʻnatmalar. Hali turganlar bu
               yerda emas — ular chapdagi jadvalda. Qoida har bir pochtada takrorlanadi,
               yaʼni gap tashuvchida emas, kutish vaqtida.
+            </p>
+            {/*
+              THE LAST BAND IS THE ONE THAT MOVES, AND THE READER IS TOLD SO.
+              Measured at five horizons, the first three bands sit at 94 / 86 / 75
+              whatever window is chosen; the last reads 62.5% over 60 days and
+              78.5% over 240, because a parcel that sat for weeks and was
+              eventually collected only counts once the window contains its
+              ending. Unsaid, a manager reads the short window as «these are
+              lost» and writes them off.
+            */}
+            <p className="mt-2 text-[11px]" style={{ color: "var(--ink-muted)" }}>
+              Oxirgi qator tanlangan oynaga bogʻliq: uzoq turib, keyin olib ketilgan
+              joʻnatma faqat oyna uzun boʻlganda hisobga tushadi. Shuning uchun qisqa
+              oynada u pastroq koʻrinadi — «7 kundan ortiq» degani yoʻqolgan degani emas.
             </p>
           </section>
         </div>
@@ -895,8 +916,28 @@ function volumeRow(point: LogisticsPointDto): CategoryBarRow {
  * The count rides the meta line because a band with four orders in it and a
  * band with two thousand look identical as bars, and the thin one is where a
  * reader would otherwise see a collapse that is really three parcels.
+ *
+ * A SPARSE BAND PRINTS NO RATE AT ALL. Over a fortnight the last band holds
+ * about a dozen orders, where one parcel is eight percentage points — drawn
+ * as a graded bar beside three bands built on hundreds, it invites a
+ * decision that the measurement cannot support. `CategoryBarList` already
+ * renders a null value as an em dash and no bar, which is the right shape
+ * for «not enough to say», so the guard is one substitution and no new
+ * rendering path. The server decides where the line is (`sparse`).
  */
 function waitRow(band: LogisticsWaitBandDto): CategoryBarRow {
+  if (band.sparse) {
+    return {
+      key: band.key,
+      label: band.label,
+      value: null,
+      display: NO_VALUE,
+      meta:
+        band.orders === 0
+          ? 'bu oynada yakunlangani yoʻq'
+          : `${formatNumber(band.orders)} ta — foiz aytish uchun kam`,
+    }
+  }
   return {
     key: band.key,
     label: band.label,

@@ -556,6 +556,8 @@ export interface LogisticsWaitBandDto {
   readonly orders: number
   readonly delivered: number
   readonly deliveryRate: number | null
+  /** Too few resolved orders for the rate to be read as one. */
+  readonly sparse: boolean
 }
 
 /**

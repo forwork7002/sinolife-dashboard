@@ -360,3 +360,55 @@ describe('nothing bigint reaches the wire', () => {
     expect(() => JSON.stringify(dto)).not.toThrow()
   })
 })
+
+/**
+ * The wait gradient, and the one band that cannot be read on a short window.
+ *
+ * Measured on production at five horizons, the first three bands sit at
+ * 94 / 86 / 75 whatever window is chosen, while the fourth reads 62.5% over
+ * 60 days and 78.5% over 240 — a parcel that sat for weeks and was eventually
+ * collected only counts once the window contains its ending. A fixed trailing
+ * window was considered and rejected for exactly that reason; the guard is on
+ * the count instead.
+ */
+describe('the wait bands', () => {
+  it('flags a thin band and leaves its rate on the payload', async () => {
+    /*
+      Thirty is the line: at thirty orders one parcel is 3.3 points, about the
+      width of the gap between two neighbouring bands. 29 is under it and 30 is
+      not, and the pair is asserted together so moving the constant has to be a
+      decision rather than a drift.
+    */
+    const board = await serviceOver(
+      cohort({
+        waits: [
+          cut({ bucket: '1', fakt1Orders: 30, deliveredOrders: 28 }),
+          cut({ bucket: '4', fakt1Orders: 29, deliveredOrders: 18 }),
+        ],
+      }),
+    )()
+
+    const wide = board.waits.find((b) => b.key === '1')
+    const thin = board.waits.find((b) => b.key === '4')
+
+    expect(wide?.sparse).toBe(false)
+    expect(thin?.sparse).toBe(true)
+    // The rate is withheld by the SCREEN, not removed from the answer.
+    expect(thin?.deliveryRate).toBeCloseTo(62.1, 1)
+  })
+
+  /*
+    An empty band is sparse too, and its rate stays null rather than 0.
+    `null` is «no denominator» and 0 is a measurement; sparse is a third
+    thing, which is why it is a third field.
+  */
+  it('zero-fills the missing bands as sparse with a null rate', async () => {
+    const board = await serviceOver(cohort())()
+
+    expect(board.waits.map((b) => b.key)).toEqual(['1', '2', '3', '4'])
+    const empty = board.waits.find((b) => b.key === '2')
+    expect(empty?.orders).toBe(0)
+    expect(empty?.deliveryRate).toBeNull()
+    expect(empty?.sparse).toBe(true)
+  })
+})

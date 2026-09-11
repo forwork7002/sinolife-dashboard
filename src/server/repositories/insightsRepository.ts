@@ -250,7 +250,20 @@ export interface LogisticsCut {
    *
    * The duplicate База deal cannot enter this cohort at all: it never touches
    * a confirmation-signal stage. So the flag has nothing to exclude and
-   * everything to prove, and it is counted instead of applied. Expected 0. A
+   * everything to prove, and it is counted instead of applied.
+   *
+   * IT COUNTS ONLY ORDERS STILL INSIDE ДОСТАВКА, and that narrowing is what
+   * makes it mean anything. Counted over the whole cohort the reading was
+   * 14 at 60 days, 589 at 180 and 636 at a year, and it printed a red line
+   * saying the figure must be 0 — but every one of those orders had been
+   * confirmed and then moved to another funnel, 13 of the 14 into «База».
+   * That is a repeat purchase being handed on, it is already reported by
+   * name as `unbucketedOrders`, and calling it a double-count sent a reader
+   * hunting a defect that was ordinary business.
+   *
+   * An order INSIDE Доставка and unflagged is the case that cannot happen,
+   * and it measures 0 at 60, 180 and 365 days. That is a tripwire; the
+   * wider count was an alarm wired to the wrong door. Expected 0. A
    * non-zero value on the payload is a double-count announcing itself.
    */
   readonly offRevenueOrders: number
@@ -1185,7 +1198,7 @@ export class InsightsRepository {
         count(k.deal_id) FILTER (WHERE k.bucket = 'REFUSED' AND NOT k.dispatched)::bigint AS cancelled_orders,
         COALESCE(sum(k.amount_minor) FILTER (WHERE k.bucket = 'REFUSED' AND NOT k.dispatched), 0)::text AS cancelled_amount,
         count(k.deal_id) FILTER (WHERE k.bucket NOT IN ('REFUSED', 'DONE'))::bigint AS in_flight_orders,
-        count(k.deal_id) FILTER (WHERE k.fakt1 AND NOT k.counts_as_revenue)::bigint AS off_revenue_orders,
+        count(k.deal_id) FILTER (WHERE k.fakt1 AND NOT k.counts_as_revenue AND k.bucket <> '${UNMAPPED_BUCKET}')::bigint AS off_revenue_orders,
         percentile_cont(0.5) WITHIN GROUP (ORDER BY k.pace_days) AS median_days,
         percentile_cont(0.5) WITHIN GROUP (ORDER BY k.wait_hours) AS median_wait_hours,
         count(k.deal_id) FILTER (WHERE k.wait_hours IS NOT NULL)::bigint AS waited_orders,
