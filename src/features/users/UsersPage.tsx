@@ -201,20 +201,37 @@ export function UsersPage() {
           + Yangi hisob
         </Button>
       }
+      /*
+        THE TABLE RUNS TO THE BOTTOM OF THE WINDOW — the client, 2026-09-11:
+        «shu joyi oxirigacha tushsin». It sat under DataTable's default
+        `60dvh` cap, so the rows scrolled inside a box that stopped short of
+        the screen with empty page below it.
+
+        The confirmation board's mechanism, not a second one: `fill` gives
+        the page a box of definite height, the Card takes all of it, and
+        `maxHeight="100%"` hands that height to the scroll box, so the header
+        row still pins while the rows scroll under it. `min-h-[420px]` is a
+        floor for a short window — below it `main` scrolls rather than the
+        table shrinking to a letterbox.
+      */
+      fill
     >
-      <Card className="card-hero brackets px-4 py-4">
-        <DataTable
-          columns={columns}
-          rows={items}
-          rowKey={(row) => row.id}
-          status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
-          errorMessage={(query.error as Error | null)?.message}
-          onRetry={() => void query.refetch()}
-          onRowClick={(row) => setEditing(row)}
-          minWidth={860}
-          emptyTitle="Hisob yoʻq"
-          emptyBody="Hali hech kimga hisob ochilmagan."
-        />
+      <Card className="card-hero brackets flex h-full min-h-[420px] flex-col px-4 py-4">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <DataTable
+            columns={columns}
+            rows={items}
+            rowKey={(row) => row.id}
+            status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
+            errorMessage={(query.error as Error | null)?.message}
+            onRetry={() => void query.refetch()}
+            onRowClick={(row) => setEditing(row)}
+            minWidth={860}
+            maxHeight="100%"
+            emptyTitle="Hisob yoʻq"
+            emptyBody="Hali hech kimga hisob ochilmagan."
+          />
+        </div>
       </Card>
 
       {creating && (
