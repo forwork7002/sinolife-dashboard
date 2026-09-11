@@ -521,6 +521,16 @@ export function ConfirmationPage() {
   const summaryIsCurrent = query.data?.askedFor === summaryKey
 
   /**
+   * Whether the figures on screen are still ABOUT the same cohort — the same
+   * window — see `boardCohortKey`.
+   *
+   * True across any filter, ticked or cleared; false across a moved window. It
+   * is the whole of the difference between a band that dims and a band that
+   * blanks, and between the rows fading on their own and the page fading.
+   */
+  const cohortIsCurrent = query.data?.askedCohort === cohortKey
+
+  /**
    * THE ROWS FOLLOW WHAT THE TILES DO NOT.
    *
    * The state selection, the page and the sort cannot move a tile — which is
@@ -529,20 +539,11 @@ export function ConfirmationPage() {
    * holds the answer to the previous selection, and saying nothing about that
    * presents one selection's rows as though they were another's.
    *
-   * ANDed with `summaryIsCurrent` so the two never stack: when the WINDOW
+   * ANDed with `cohortIsCurrent` so the two never stack: when the WINDOW
    * moved, PageShell already dims the whole page, and 0.6 × 0.7 reads as
    * disabled rather than as loading.
    */
-  const rowsStale = query.isPlaceholderData && summaryIsCurrent
-
-  /**
-   * Whether the figures on screen are still ABOUT the same population — see
-   * `boardCohortKey`.
-   *
-   * True across a ticked ROP, false across a moved window. It is the whole of
-   * the difference between a band that dims and a band that blanks.
-   */
-  const cohortIsCurrent = query.data?.askedCohort === cohortKey
+  const rowsStale = query.isPlaceholderData && cohortIsCurrent
 
   /*
     SKELETONS ARE FOR A DIFFERENT QUESTION, NOT FOR A NARROWER ONE.
@@ -846,13 +847,14 @@ export function ConfirmationPage() {
       */
       meta={undefined}
       /*
-        Dimmed only when the numbers genuinely belong to another question. It
-        used to dim on `isPlaceholderData`, which is also true while the next
-        PAGE of the same window loads and on every click of a state tile — so
-        the header greyed itself on interactions that could not change a single
-        figure under it.
+        The WHOLE PAGE dims only when the WINDOW moved — the one change after
+        which every figure on it belongs to another question. A filter (ticked
+        or cleared) dims just the tiles and the rows, which fade on their own;
+        the title, the controls and the button just pressed stay put. It used
+        to dim on any filter, so «Filtrlarni tozalash» faded the entire page
+        and read as a reload (2026-09-11).
       */
-      stale={query.isSuccess && !summaryIsCurrent}
+      stale={query.isSuccess && !cohortIsCurrent}
       filters={{
         search: true,
         // Every column the table shows is searchable, so the box says so —

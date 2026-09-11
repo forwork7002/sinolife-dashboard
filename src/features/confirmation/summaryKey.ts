@@ -30,33 +30,31 @@ export function boardSummaryKey(params: Record<string, string | number>): string
 }
 
 /**
- * Which POPULATION the board is measuring — the window, the search box, the
- * region and the сумма range, and nothing else.
+ * Which COHORT the board is measuring — the window and the mode, and nothing
+ * else: the orders that arrived in `C4:NEW` in the selected period (or, in
+ * backlog mode, everything still waiting). That is this board's cohort in the
+ * sense CLAUDE.md uses the word.
  *
- * ONE STEP WIDER THAN `boardSummaryKey`, and the extra step is the ROP
- * selection. The two differ in what they are used for, which is why they are
- * two functions and not one:
+ * EVERY FILTER NARROWS INSIDE IT — the ROP, the search box, the region, the
+ * сумма range. Ticking one of them, or clearing it, moves between a population
+ * and a part of it: the figures that come back are over the same window, in
+ * the same units, and are a subset or a superset of the ones on screen. So the
+ * tiles DIM and keep their figures, the same signal the rows under them use.
  *
- *   * `boardSummaryKey` says whether the tiles are still CORRECT. Ticking a
- *     ROP changes what they should read, so it is in that key.
- *   * this one says whether they are still ABOUT the same thing. Ticking a ROP
- *     narrows a population that is already on screen — the new figures are a
- *     subset of the ones being shown, in the same units, over the same window —
- *     so it is not in this one.
+ * Only a moved WINDOW blanks them, because there the next figures genuinely
+ * could be anything. It used to be the search, region and сумма too, and
+ * «Filtrlarni tozalash» after a region filter then dropped six tiles to grey
+ * and faded the whole page at once — the client read it as the page reloading
+ * into something else (2026-09-11). The client asked for these filters to
+ * behave «exceldagi filtrga oʻxshab»: you tick, you glance, you tick again.
  *
- * WHAT THE DIFFERENCE BUYS. A tile band that drops to six skeletons is a claim
- * that the numbers coming back could be anything, which is true when the window
- * moves and false when a group is ticked. The client asked for these filters to
- * behave «exceldagi filtrga oʻxshab» — you tick, you glance, you tick again —
- * and rebuilding the whole band from grey on every tick made a two-second job
- * out of a comparison the reader was holding in their head. Between these two
- * keys the band DIMS instead: the figures stay legible and stay marked as one
- * selection behind, which is exactly what they are, and is the same signal the
- * rows under them already use.
+ * `boardSummaryKey` is the narrower question — whether the tiles are still
+ * CORRECT — and every filter is in that one, so they are still refetched.
  */
 export function boardCohortKey(params: Record<string, string | number>): string {
-  const { outcomes: _states, rops: _groups, rop: _legacy, ...cohort } = params
-  return stable(cohort)
+  const { preset, from, to, queue } = params
+  // `JSON.stringify` omits undefined, so an absent key and a missing one agree.
+  return stable({ preset, from, to, queue } as Record<string, string | number>)
 }
 
 /**

@@ -222,17 +222,34 @@ describe('what the tile band is allowed to blank for', () => {
     expect(boardCohortKey({ ...base, rop: 'Sevinch' })).toBe(boardCohortKey(base))
   })
 
-  it('treats a different window, search, region or сумма as a different question', () => {
+  it('treats a different window or mode as a different cohort', () => {
     const changes: Record<string, string>[] = [
       { preset: 'this_month' },
-      { q: '945' },
-      { regions: 'Xorazm' },
-      { amountMin: '1000000' },
-      { amountMax: '1000000' },
+      { preset: 'custom', from: '2026-09-01', to: '2026-09-05' },
       { queue: 'backlog' },
     ]
     for (const change of changes) {
       expect(boardCohortKey({ ...base, ...change })).not.toBe(boardCohortKey(base))
+    }
+  })
+
+  it('keeps the cohort across the search, region and сумма filters', () => {
+    /*
+      Each narrows inside the window, exactly as a ROP does — and clearing one
+      widens back to it. Blanking the band for them made «Filtrlarni tozalash»
+      after a region filter drop six tiles to grey and fade the whole page,
+      which the client read as a reload (2026-09-11). They are still in the
+      summary key, so the figures are still refetched.
+    */
+    const changes: Record<string, string>[] = [
+      { q: '945' },
+      { regions: 'Xorazm' },
+      { amountMin: '1000000' },
+      { amountMax: '1000000' },
+    ]
+    for (const change of changes) {
+      expect(boardCohortKey({ ...base, ...change })).toBe(boardCohortKey(base))
+      expect(boardSummaryKey({ ...base, ...change })).not.toBe(boardSummaryKey(base))
     }
   })
 

@@ -7,6 +7,7 @@ import { PeriodFilter } from '@/components/layout/PeriodFilter'
 import { Shell } from '@/components/layout/Shell'
 import { Button } from '@/components/ui/Button'
 import { MultiSelect, SearchInput } from '@/components/ui/Controls'
+import { MultiplyGlyph } from '@/components/ui/Icons'
 import { apiGet, type ResponseMeta } from '@/lib/api'
 import type { RoleValue } from '@/lib/roles'
 import type { SectionValue } from '@/lib/sections'
@@ -379,8 +380,20 @@ export function PageShell({
         first: a clear button standing between the search box and the
         toolbar it also clears reads as part of that toolbar.
       */}
+      {/*
+        RED, WITH A ×, because it was invisible as a ghost: grey text at the
+        end of a row of bordered controls, and the client asked for it by name
+        on 2026-09-11 («koʻrinmay qolayapti… qizil qilibmi»). It exists only
+        while something is filtered, so its colour is itself the signal that
+        the board is narrowed.
+      */}
       {anyFilter && activeCount > 0 && (
-        <Button variant="ghost" size="sm" onClick={reset}>
+        <Button
+          variant="danger"
+          size="sm"
+          onClick={reset}
+          icon={<MultiplyGlyph size={13} />}
+        >
           Filtrlarni tozalash ({activeCount})
         </Button>
       )}

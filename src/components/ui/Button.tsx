@@ -16,6 +16,12 @@ import type { MouseEventHandler, ReactNode } from 'react'
  *   secondary — bordered raised surface. The workhorse: retry, apply, export.
  *   ghost     — transparent until hovered. Toolbar and inline actions that
  *               must not compete with the data beside them.
+ *   danger    — a red tint. For the control that TAKES AWAY what the reader
+ *               set — «Filtrlarni tozalash». As a ghost it was grey text in
+ *               a row of controls and the client could not find it
+ *               (2026-09-11: «koʻrinmay qolayapti… qizil qilib»). It only
+ *               ever appears when there is something to clear, so it may be
+ *               loud.
  *
  * Colour states are Tailwind arbitrary-value classes rather than inline
  * styles, because an inline `background` would beat the `hover:` class and
@@ -28,7 +34,7 @@ import type { MouseEventHandler, ReactNode } from 'react'
  * and the status-bar preview.
  */
 
-type Variant = 'primary' | 'secondary' | 'ghost'
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
 type Size = 'sm' | 'md'
 
 interface BaseProps {
@@ -97,6 +103,22 @@ const VARIANT_CLASSES: Record<Variant, string> = {
     'bg-transparent text-[var(--ink-secondary)]',
     'hover:bg-[var(--grid)] hover:text-[var(--ink-primary)]',
     'active:bg-[var(--track)]',
+  ].join(' '),
+  /*
+    A tint and a ring of --status-critical, deepening on hover — never a solid
+    red fill, which would out-shout the one primary action a screen may have.
+    The text is the token itself: on its own 10% tint it clears AA in both
+    themes, where a solid fill would need a second text colour per theme.
+
+    THE RING IS AN INSET SHADOW, NOT A BORDER. globals.css sets
+    `* { border-color: var(--border) }` unlayered, and an unlayered rule beats
+    every Tailwind utility, so a `border-[…]` colour here rendered grey.
+  */
+  danger: [
+    'shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--status-critical)_45%,transparent)]',
+    'bg-[color-mix(in_oklab,var(--status-critical)_10%,transparent)] text-[var(--status-critical)]',
+    'hover:bg-[color-mix(in_oklab,var(--status-critical)_18%,transparent)]',
+    'active:bg-[color-mix(in_oklab,var(--status-critical)_26%,transparent)]',
   ].join(' '),
 }
 

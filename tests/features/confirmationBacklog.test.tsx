@@ -163,4 +163,26 @@ describe('the queue mode travels in the URL', () => {
     expect(kept.get('rop')).toBeNull()
     expect(kept.get('q')).toBeNull()
   })
+
+  it('keeps the sort when the filters are cleared, and drops the page', () => {
+    /*
+      The sort arranges the rows; it does not narrow them. «Filtrlarni
+      tozalash» used to drop it, so a board sorted by СУММА jumped back to
+      САНА on the click — measured on production 2026-09-11. The page number
+      belongs to the narrower list and has to go.
+    */
+    const { result } = filtersFor(
+      'preset=this_month&rops=Baza&sort=amountMinor&order=asc&pageSize=50&page=3',
+    )
+
+    act(() => result.current.reset())
+
+    const kept = new URLSearchParams(nav.replaced[0]!.split('?')[1] ?? '')
+    expect(kept.get('sort')).toBe('amountMinor')
+    expect(kept.get('order')).toBe('asc')
+    expect(kept.get('pageSize')).toBe('50')
+    expect(kept.get('preset')).toBe('this_month')
+    expect(kept.get('rops')).toBeNull()
+    expect(kept.get('page')).toBeNull()
+  })
 })

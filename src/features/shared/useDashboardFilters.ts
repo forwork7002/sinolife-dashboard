@@ -440,7 +440,15 @@ export function useDashboardFilters() {
     // route a selection made a moment ago is in `window.location` and not yet
     // in this closure's `params`, and clearing filters must not put one back.
     const current = address()
-    for (const key of ['preset', 'from', 'to', 'queue', 'view'] as const) {
+    /*
+      AND THE SORT, THE ORDER AND THE PAGE SIZE — they arrange the rows, they
+      do not narrow them. Dropping them made «Filtrlarni tozalash» re-sort the
+      board: a reader sorted by СУММА, cleared a ROP, and the table jumped back
+      to САНА, which read as the page reloading into something else. Measured
+      on production 2026-09-11. The page number still goes: it belongs to the
+      narrower list.
+    */
+    for (const key of ['preset', 'from', 'to', 'queue', 'view', 'sort', 'order', 'pageSize'] as const) {
       const value = current.get(key)
       if (value !== null) kept.set(key, value)
     }
