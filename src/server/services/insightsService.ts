@@ -34,7 +34,7 @@ import type {
   StructureNode,
   ViewerDepartment,
 } from '@/server/repositories/insightsRepository'
-import { deliveryRateBp, moneyRateBp } from '@/server/domain/analytics/rates'
+import { deliveryRateBp, moneyRateBp, rateBp } from '@/server/domain/analytics/rates'
 import type { ConfirmationOutcomeValue, ConfirmationQueueMode } from '@/server/domain/types'
 import { keyPart, ttlCache } from './ttlCache'
 
@@ -190,6 +190,73 @@ export interface LogisticsPointDto {
   readonly inFlight: number
   readonly deliveryRate: number | null
   readonly medianDays: number | null
+  /**
+   * HOW LONG A PARCEL WAITS AT THIS POST OFFICE — a different quantity from
+   * `medianDays`, and the screen must not let the two be added or compared.
+   *
+   * `medianDays` is the order's whole journey, from the arrival in Тасдиклаш
+   * to «Доставлено». This is the leg that a floor manager can shorten: the
+   * parcel reaching one post office, and the parcel leaving it.
+   *
+   * Passes under an hour are excluded and `waitedOrders` is the surviving
+   * denominator. On this portal the LEAVE stamp is written at closeout — it
+   * lands within five seconds of «Доставлено» in 88.8% of passes — so a pass
+   * whose two stamps coincide carries no elapsed time at all. Those are 27.5%
+   * of passes and are delivered by construction; counting them would
+   * manufacture the gradient `waits` reports. Print `waitedOrders` beside
+   * the median: BEK POCHTA's «two weeks» rests on 92 passes, not on 1 394.
+   */
+  readonly medianWaitDays: number | null
+  readonly waitedOrders: number
+  /**
+   * STANDING THERE RIGHT NOW, and the part of it standing too long.
+   *
+   * Measured against now(), which makes these the only fields on a windowed
+   * payload that are not on the window's clock. `aged*` is the part past
+   * seven days — the band where delivery measured 62.5% against 95.1%
+   * inside two days, which is what turns a statistic into a call list.
+   */
+  readonly waitingOrders: number
+  readonly waitingAmount: MoneyDto
+  readonly agedOrders: number
+  readonly agedAmount: MoneyDto
+  readonly medianWaitingDays: number | null
+}
+
+/**
+ * One band of «how long did it wait», and whether it arrived.
+ *
+ * The one block on this screen that is a reason to act rather than a record
+ * of what happened. Measured over 60 days of production: 95.1% delivered
+ * when collected inside two days, 62.5% once past seven — and the gradient
+ * holds inside every post office, so it is a fact about elapsed time and not
+ * about a carrier.
+ *
+ * RESOLVED ORDERS ONLY. A parcel still standing is undelivered by
+ * definition; including it would build the conclusion into the measurement.
+ */
+/**
+ * The four wait bands, in the order a parcel passes through them.
+ *
+ * The boundaries are not round numbers chosen for tidiness: two days is
+ * where the measured delivery rate is still 95.1%, seven is where it has
+ * fallen to 62.5%, and four sits between them so the fall has a shape rather
+ * than a cliff. The SQL bands on the same hours (48 / 96 / 168).
+ */
+const WAIT_BANDS = [
+  { key: '1', label: '0–2 kun' },
+  { key: '2', label: '2–4 kun' },
+  { key: '3', label: '4–7 kun' },
+  { key: '4', label: '7 kundan ortiq' },
+] as const
+
+export interface LogisticsWaitBandDto {
+  readonly key: string
+  /** «0–2 kun», «2–4 kun», «4–7 kun», «7 kundan ortiq». */
+  readonly label: string
+  readonly orders: number
+  readonly delivered: number
+  readonly deliveryRate: number | null
 }
 
 /**
@@ -243,11 +310,37 @@ export interface LogisticsDto {
     /** FAKT 1 orders that never reached a hub or a carrier. */
     readonly unroutedOrders: number
     /**
+     * Refused, and then delivered anyway — how much «Отказ» overstates the
+     * loss. Decided against the LAST refusal, so a parcel that was delivered,
+     * bounced and then refused is not reported as a recovery.
+     */
+    readonly revivedOrders: number
+    readonly revived: MoneyDto
+    /**
      * Expected 0. Non-zero is a `countsAsRevenue` double-count announcing itself.
      * See `LogisticsCut.offRevenueOrders` for why it is counted, not filtered.
      */
     readonly offRevenueOrders: number
     readonly medianDays: number | null
+  }
+  /** How long orders waited at a post office, against whether they arrived. */
+  readonly waits: readonly LogisticsWaitBandDto[]
+  /**
+   * What is standing at a post office RIGHT NOW, two ways.
+   *
+   * `cohort` counts only orders from the selected window — the page's own
+   * clock, so it reconciles with everything above it, and it cannot see a
+   * parcel ordered before the window and stuck ever since. `all` counts every
+   * parcel standing at a post office whatever month it was ordered in, which
+   * is the list somebody would actually work through. Measured: the oldest
+   * ones — QASHQADARYO at a median of 45 days — exist only in `all`.
+   *
+   * Both are shipped and the screen switches between them, because neither
+   * one is the honest answer on its own.
+   */
+  readonly standing: {
+    readonly cohort: readonly LogisticsPointDto[]
+    readonly all: readonly LogisticsPointDto[]
   }
   readonly days: readonly LogisticsDayDto[]
   /** The eight hub and carrier stages, empty ones included. */
@@ -255,19 +348,6 @@ export interface LogisticsDto {
   readonly regions: readonly LogisticsPointDto[]
   /** All eighteen Доставка stages, in the portal's Russian and the portal's order. */
   readonly reconciliation: readonly LogisticsStageDto[]
-  /**
-   * Losses, split by whether the goods had already been dispatched.
-   *
-   * `stage` is 'RETURNED' (travelled and came back) or 'CANCELLED' (killed
-   * before anything shipped). They cost completely different amounts and used
-   * to share one bar labelled "return reasons".
-   */
-  readonly reasons: readonly {
-    stage: string
-    reason: string
-    orders: number
-    lost: MoneyDto
-  }[]
 }
 
 /**
@@ -776,7 +856,18 @@ export class InsightsService {
     currency: string,
     scope: EmployeeScopeFilter = {},
   ): Promise<LogisticsDto> {
-    const cuts = await this.repository.logisticsCohort(this.window(period, scope))
+    /*
+      TWO STATEMENTS, AND THE SECOND ONE IS NOT A WINDOW.
+
+      `logisticsStanding` reads every parcel standing at a post office
+      whatever month it was ordered in — the cohort cannot see the oldest
+      ones, and those are the ones worth a phone call. It costs 48 ms and
+      runs beside the cohort rather than after it.
+    */
+    const [cuts, standing] = await Promise.all([
+      this.repository.logisticsCohort(this.window(period, scope)),
+      this.repository.logisticsStanding(),
+    ])
 
     const cash = (minor: bigint): MoneyDto => toMoneyDto(money(minor, currency))
     const days1 = (value: number | null): number | null =>
@@ -845,6 +936,33 @@ export class InsightsService {
       })
 
     const bucketRows = new Map(cuts.buckets.map((row) => [row.bucket, row]))
+    const waitRows = new Map(cuts.waits.map((row) => [row.bucket, row]))
+
+    /*
+      The unbounded snapshot wears the same row shape as the windowed one, so
+      the screen can switch between them without a second table. The fields
+      that only a cohort can answer — what it was ordered for, how it
+      resolved — are zero here and the screen does not draw them.
+    */
+    const standingAll: LogisticsPointDto[] = standing.map((row) => ({
+      label: deliveryStageName(row.post),
+      orders: row.orders,
+      amount: cash(row.amountMinor),
+      delivered: 0,
+      deliveredAmount: cash(0n),
+      refused: 0,
+      cancelledEarly: 0,
+      inFlight: row.orders,
+      deliveryRate: null,
+      medianDays: null,
+      medianWaitDays: null,
+      waitedOrders: 0,
+      waitingOrders: row.orders,
+      waitingAmount: cash(row.amountMinor),
+      agedOrders: row.agedOrders,
+      agedAmount: cash(row.agedMinor),
+      medianWaitingDays: days1(row.medianDays),
+    }))
 
     /*
       THE DAYS ARE MATCHED ON THE ZONED DATE STRING the query grouped by, never
@@ -902,6 +1020,13 @@ export class InsightsService {
         deliveryRateBp(row.deliveredOrders, row.refusedOrders, row.cancelledOrders),
       ),
       medianDays: days1(row.medianDays),
+      medianWaitDays: days1(row.medianWaitHours === null ? null : row.medianWaitHours / 24),
+      waitedOrders: row.waitedOrders,
+      waitingOrders: row.waitingOrders,
+      waitingAmount: cash(row.waitingMinor),
+      agedOrders: row.agedOrders,
+      agedAmount: cash(row.agedMinor),
+      medianWaitingDays: days1(row.medianWaitingDays),
     })
 
     /*
@@ -924,9 +1049,29 @@ export class InsightsService {
         buckets: bucketsFrom(bucketRows, orderedMinor, orderedOrders, true),
         unbucketedOrders,
         unroutedOrders: orderedOrders - cuts.postTotal.fakt1Orders,
+        revivedOrders: cuts.total.revivedOrders,
+        revived: cash(cuts.total.revivedMinor),
         offRevenueOrders: cuts.fakt.offRevenueOrders,
         medianDays: days1(cuts.fakt.medianDays),
       },
+      /*
+        ZERO-FILLED AND ORDERED, like the six columns and for the same reason.
+        A band with no resolved orders in it returns no row, and a gradient
+        that silently loses its middle reads as a smaller drop than it is.
+      */
+      waits: WAIT_BANDS.map((band) => {
+        const row = waitRows.get(band.key)
+        const orders = row?.fakt1Orders ?? 0
+        const delivered = row?.deliveredOrders ?? 0
+        return {
+          key: band.key,
+          label: band.label,
+          orders,
+          delivered,
+          deliveryRate: pct(rateBp(delivered, orders)),
+        }
+      }),
+      standing: { cohort: cuts.posts.map(toPoint), all: standingAll },
       days,
       posts: cuts.posts.map(toPoint),
       regions: cuts.regions.map(toPoint),
@@ -936,12 +1081,6 @@ export class InsightsService {
         orders: row.fakt1Orders,
         amount: cash(row.fakt1Minor),
         sharePercent: countShare(row.fakt1Orders, cuts.stageTotal.fakt1Orders),
-      })),
-      reasons: cuts.reasons.map((row) => ({
-        stage: row.sub ?? 'CANCELLED',
-        reason: row.bucket,
-        orders: row.fakt1Orders,
-        lost: cash(row.fakt1Minor),
       })),
     }
   }

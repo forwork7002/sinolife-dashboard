@@ -60,6 +60,7 @@ describe('logisticsCohortSql', () => {
       // the delivery leg
       'routed',
       'delivered_at',
+      'refused_at',
       'dispatched',
       'cohort',
       // the seven cuts
@@ -69,7 +70,7 @@ describe('logisticsCohortSql', () => {
       'by_post',
       'by_region',
       'by_stage',
-      'by_reason',
+      'by_wait',
     ])
   })
 
@@ -92,7 +93,7 @@ describe('logisticsCohortSql', () => {
     to, so the left bound is free and the right bound is a bug.
   */
   it('bounds the three delivery CTEs from the left and never from the right', () => {
-    expect(count(BARE, 'h."enteredAt" >= $1')).toBe(4) // three here + moves
+    expect(count(BARE, 'h."enteredAt" >= $1')).toBe(5) // four here + moves
     expect(BARE).not.toContain('h."enteredAt" < $2')
     expect(BARE).not.toContain('h."enteredAt" <= $2')
   })
@@ -116,9 +117,10 @@ describe('logisticsCohortSql', () => {
   it('filters the stage-led arms on the join, not in the WHERE', () => {
     expect(count(BARE, 'LEFT JOIN cohort k ON k.post_stage_id = st."id" AND k.fakt1')).toBe(1)
     expect(count(BARE, 'LEFT JOIN cohort k ON k.stage_id = st."id" AND k.fakt1')).toBe(1)
-    // bucket, day, region and reason cut the cohort directly. Counted as a
-    // standalone clause, since FILTER (WHERE k.fakt1) appears all over the
-    // aggregate list and means something else entirely.
+    // bucket, day and region cut the cohort directly; by_wait adds its own
+    // conditions to the same clause. Counted as a standalone clause, since
+    // FILTER (WHERE k.fakt1) appears all over the aggregate list and means
+    // something else entirely.
     expect(BARE.match(/^\s*WHERE k\.fakt1/gm) ?? []).toHaveLength(4)
   })
 
@@ -172,7 +174,48 @@ describe('logisticsCohortSql', () => {
   it('splits refusals by whether the parcel travelled', () => {
     expect(BARE).toContain(`k.bucket = 'REFUSED' AND k.dispatched`)
     expect(BARE).toContain(`k.bucket = 'REFUSED' AND NOT k.dispatched`)
-    expect(BARE).toContain(`CASE WHEN k.dispatched THEN 'RETURNED' ELSE 'CANCELLED' END`)
+    /*
+      The split lives on every bucket now, not in a reasons arm. That arm
+      grouped by `deal."refusalReason"`, a field this portal does not fill —
+      830 refusals in sixty days and one reason — so it returned one row and
+      the screen drew it as a chart.
+    */
+    expect(BARE).not.toContain('refusalReason')
+    expect(BARE).not.toContain('by_reason')
+  })
+
+  /*
+    THE WAIT BANDS, AND THE TWO FILTERS THAT MAKE THEM HONEST.
+
+    Resolved orders only — a parcel still standing is undelivered by
+    definition and would build the conclusion into the measurement. And
+    wait_hours is null for a pass whose stamps were written together at
+    closeout, which is 27.5% of passes and 97.2% delivered.
+  */
+  it('bands the wait over resolved orders only', () => {
+    expect(BARE).toContain(`k.fakt1 AND k.wait_hours IS NOT NULL AND k.bucket IN ('REFUSED', 'DONE')`)
+    expect(BARE).toContain('WHEN k.wait_hours <  48 THEN')
+    expect(BARE).toContain('WHEN k.wait_hours <  96 THEN')
+    expect(BARE).toContain('WHEN k.wait_hours < 168 THEN')
+  })
+
+  /*
+    A pass under an hour carries no elapsed time — both its stamps were
+    written when the parcel was closed out. Counting it as «instant» is how
+    the gradient this screen reports would become an artefact of stamping.
+  */
+  it('throws away the retro-stamped passes', () => {
+    expect(BARE).toContain(`r.post_left_at - r.post_entered_at > interval '1 hour'`)
+  })
+
+  /*
+    A revival is decided against the LAST refusal. Against the first, a
+    parcel delivered, bounced and then refused counts as a recovery — a loss
+    reported as a win.
+  */
+  it('decides a revival against the last refusal', () => {
+    expect(BARE).toContain('max(h."enteredAt") AS refused_at')
+    expect(BARE).toContain('dv.last_delivered_at > rf.refused_at')
   })
 
   /*
@@ -198,6 +241,7 @@ describe('logisticsCohortSql', () => {
 
   it('takes a true median per cut and no ninetieth percentile', () => {
     expect(count(BARE, 'percentile_cont(0.5) WITHIN GROUP (ORDER BY k.pace_days)')).toBe(7)
+    expect(count(BARE, 'percentile_cont(0.5) WITHIN GROUP (ORDER BY k.wait_hours)')).toBe(7)
     expect(BARE).not.toContain('percentile_cont(0.9)')
   })
 

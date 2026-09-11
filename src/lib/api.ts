@@ -506,6 +506,35 @@ export interface LogisticsPointDto {
   readonly inFlight: number
   readonly deliveryRate: number | null
   readonly medianDays: number | null
+  /**
+   * How long a parcel WAITS at this post office — the leg a floor manager
+   * can shorten. Not `medianDays`, which is the order's whole journey; the
+   * two must never be added or compared. `waitedOrders` is the denominator,
+   * and it is smaller than `orders` because passes whose two stamps were
+   * written at closeout carry no elapsed time and are excluded.
+   */
+  readonly medianWaitDays: number | null
+  readonly waitedOrders: number
+  /** Standing there right now; `aged*` is the part past seven days. */
+  readonly waitingOrders: number
+  readonly waitingAmount: MoneyDto
+  readonly agedOrders: number
+  readonly agedAmount: MoneyDto
+  readonly medianWaitingDays: number | null
+}
+
+/**
+ * One band of «how long did it wait at the post office», and whether it
+ * arrived. Measured over 60 days of production: 95.1% delivered when
+ * collected inside two days, 62.5% once past seven — and the gradient holds
+ * inside every post office. Resolved orders only.
+ */
+export interface LogisticsWaitBandDto {
+  readonly key: string
+  readonly label: string
+  readonly orders: number
+  readonly delivered: number
+  readonly deliveryRate: number | null
 }
 
 /**
@@ -551,7 +580,25 @@ export interface LogisticsDto {
     readonly unroutedOrders: number
     /** Expected 0. Non-zero is a `countsAsRevenue` double-count announcing itself. */
     readonly offRevenueOrders: number
+    /** Refused, then delivered anyway — how much «Отказ» overstates the loss. */
+    readonly revivedOrders: number
+    readonly revived: MoneyDto
     readonly medianDays: number | null
+  }
+  /** How long orders waited at a post office, against whether they arrived. */
+  readonly waits: readonly LogisticsWaitBandDto[]
+  /**
+   * What is standing at a post office right now, two ways.
+   *
+   * `cohort` is the selected window — it reconciles with the rest of the
+   * page and cannot see a parcel ordered earlier and stuck ever since.
+   * `all` is every parcel standing at a post office whatever month it was
+   * ordered in, which is the list somebody works through. The screen
+   * switches between them because neither is the honest answer alone.
+   */
+  readonly standing: {
+    readonly cohort: readonly LogisticsPointDto[]
+    readonly all: readonly LogisticsPointDto[]
   }
   readonly days: readonly LogisticsDayDto[]
   /** The eight hub and carrier stages, empty ones included. */
@@ -559,18 +606,6 @@ export interface LogisticsDto {
   readonly regions: readonly LogisticsPointDto[]
   /** All eighteen Доставка stages, in the portal's Russian and the portal's order. */
   readonly reconciliation: readonly LogisticsStageDto[]
-  /**
-   * Losses, split by whether the goods had already been dispatched.
-   *
-   * `stage` is 'RETURNED' (travelled and came back) or 'CANCELLED' (killed
-   * before anything shipped). They cost completely different amounts.
-   */
-  readonly reasons: readonly {
-    readonly stage: string
-    readonly reason: string
-    readonly orders: number
-    readonly lost: MoneyDto
-  }[]
 }
 
 /**

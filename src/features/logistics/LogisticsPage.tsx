@@ -5,8 +5,9 @@ import { useState } from 'react'
 
 import { CategoryBarList, type CategoryBarRow } from '@/components/charts/CategoryBarList'
 import { StatusCompositionBar } from '@/components/charts/StatusCompositionBar'
-import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
+import { ErrorState } from '@/components/states/States'
 import { ChartCard } from '@/components/ui/Card'
+import { SegmentedControl } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { Meter, RingGauge } from '@/components/ui/Stat'
 import { Tooltip } from '@/components/ui/Tooltip'
@@ -19,6 +20,7 @@ import {
   type LogisticsDto,
   type LogisticsPointDto,
   type LogisticsStageDto,
+  type LogisticsWaitBandDto,
   apiGet,
 } from '@/lib/api'
 import { NO_VALUE, formatCompactUzs, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
@@ -94,6 +96,42 @@ export function LogisticsPage() {
     `useDashboardFilters` is paid for by the dozen components sharing it.
   */
   const [dailyOpen, setDailyOpen] = useState(false)
+
+  /*
+    WHICH «standing now» THE READER IS LOOKING AT.
+
+    Both are true and neither is the whole answer. 'cohort' is the selected
+    window and reconciles with everything above it; on «Shu oy» it finds 234
+    parcels of which 20 are past seven days, because nothing ordered this
+    month has had time to get stuck. 'all' drops the window and finds 888 —
+    659 of them past seven days, worth a billion soʻm — including the ones
+    that have been standing since before the window opened, which are exactly
+    the ones worth a phone call. The default is the unbounded one for that
+    reason; the switch is there because the windowed figure is the one that
+    adds up with the rest of the page.
+  */
+  const [standingScope, setStandingScope] = useState<'all' | 'cohort'>('all')
+
+  /*
+    A post office with nothing standing at it is dropped from THIS table and
+    kept in the one above, and the difference is what each table is for. The
+    Pochtalar table answers «how does each office perform» and an office with
+    no traffic is still an answer; this one is a work list, and a row reading
+    zero is a line to skip past on the way to the ones that matter.
+  */
+  const standingRows = (
+    standingScope === 'all' ? (data?.standing.all ?? []) : (data?.standing.cohort ?? [])
+  ).filter((row) => row.waitingOrders > 0)
+
+  const standingTotal = standingRows.reduce(
+    (sum, row) => ({
+      orders: sum.orders + row.waitingOrders,
+      amount: sum.amount + row.waitingAmount.amount,
+      agedOrders: sum.agedOrders + row.agedOrders,
+      agedAmount: sum.agedAmount + row.agedAmount.amount,
+    }),
+    { orders: 0, amount: 0, agedOrders: 0, agedAmount: 0 },
+  )
 
   return (
     <PageShell
@@ -250,7 +288,33 @@ export function LogisticsPage() {
           payment appears solely as a stage NAME. Printing two columns of
           zeroes would be a measurement; this is the truth.
         */}
-        <p className="mt-3 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+        {summary && summary.revivedOrders > 0 && (
+          /*
+            WHAT «Отказ» OVERSTATES. An order refused and then delivered anyway
+            is money already counted inside Успешно; printing the number bounds
+            how much of the loss column is not a loss. Decided against the LAST
+            refusal, so a parcel delivered, bounced and then refused does not
+            count as a recovery.
+          */
+          <p className="mt-3 text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+            Отказ koʻrsatgan yoʻqotishdan{' '}
+            <strong>{formatNumber(summary.revivedOrders)} tasi</strong> ({formatFullUzs(summary.revived.amount)}{' '}
+            soʻm) keyinchalik baribir yetkazilgan — bu pul allaqachon Успешно ichida sanalgan.
+          </p>
+        )}
+
+        {/*
+          WHY THERE IS NO REASONS TABLE. The portal has a refusal-reason field
+          and it is empty: 830 refusals in sixty days, one of them with a
+          reason. Two cards used to draw that single value as a chart. Saying
+          it once in a sentence is the honest rendering of an empty field.
+        */}
+        <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+          Rad etish sababi Bitrix24da toʻldirilmaydi — 60 kunda 830 ta raddan faqat bittasida
+          sabab bor, shuning uchun sabablar jadvali chiqarilmaydi.
+        </p>
+
+        <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
           «Касса» va «Остаток» ustunlari yoʻq: Bitrix24 toʻlov summasini saqlamaydi — toʻlov faqat
           bosqich nomida koʻrinadi («Оплаченно с click»), hisob-fakturalar esa umuman yuritilmaydi.
         </p>
@@ -318,6 +382,95 @@ export function LogisticsPage() {
         )}
       </ChartCard>
 
+      {/*
+        THE WORK LIST, AND THE REASON IT IS URGENT, SIDE BY SIDE.
+
+        Left: what is standing at each post office right now and how much of
+        it has been standing past seven days. Right: why seven days is the
+        line — measured over sixty days of production, a parcel collected
+        inside two days is delivered 95.1% of the time and one still standing
+        after seven only 62.5%, and that gradient holds inside every single
+        post office. Neither half means much alone: the list without the
+        curve is a pile of numbers, the curve without the list is a fact
+        nobody can act on.
+      */}
+      <ChartCard
+        title="Pochtada kutayotgan pul"
+        hint="Joʻnatma pochtaga yetib bordi, lekin hali olib ketilmagan. Yosh — shu pochtaga kirgan vaqtdan hisoblanadi."
+        action={
+          <SegmentedControl<"all" | "cohort">
+            value={standingScope}
+            options={[
+              { value: 'all', label: 'Hozirgi holat' },
+              { value: 'cohort', label: 'Tanlangan davr' },
+            ]}
+            onChange={setStandingScope}
+            ariaLabel="Qamrov"
+          />
+        }
+      >
+        <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
+          <section>
+            <DataTable<LogisticsPointDto>
+              columns={STANDING_COLUMNS}
+              rows={standingRows}
+              rowKey={(row) => row.label}
+              status={viewStatus}
+              errorMessage={errorMessage}
+              onRetry={retry}
+              emptyTitle="Pochtada turgan joʻnatma yoʻq"
+              emptyBody="Hamma joʻnatma yo yetkazilgan, yo hali yoʻlda."
+              minWidth={620}
+              maxHeight="none"
+            />
+            {standingTotal.orders > 0 && (
+              <p className="mt-3 text-[12px]" style={{ color: "var(--ink-secondary)" }}>
+                Jami <strong>{formatNumber(standingTotal.orders)}</strong> ta joʻnatma —{" "}
+                <strong>{formatFullUzs(standingTotal.amount)}</strong> soʻm. Shundan{" "}
+                <strong style={{ color: "var(--status-critical)" }}>
+                  {formatNumber(standingTotal.agedOrders)} ta
+                </strong>{" "}
+                7 kundan ortiq turibdi —{" "}
+                <strong style={{ color: "var(--status-critical)" }}>
+                  {formatFullUzs(standingTotal.agedAmount)}
+                </strong>{" "}
+                soʻm.
+              </p>
+            )}
+            {/*
+              THE CLOCK WARNING. Everything else on this page is dated by the
+              order's arrival in Тасдиклаш; this block is dated by now().
+              Without the sentence the two readings look like a contradiction.
+            */}
+            <p className="mt-2 text-[11px]" style={{ color: "var(--ink-muted)" }}>
+              {standingScope === 'all'
+                ? "«Hozirgi holat» — davr tanlovidan qatʼi nazar, pochtada turgan BARCHA joʻnatmalar. Sahifaning qolgan qismi tanlangan davr boʻyicha, shuning uchun bu raqamlar yuqoridagilarga qoʻshilmaydi."
+                : "«Tanlangan davr» — faqat shu oynada navbatga tushgan buyurtmalar. Oyna ochilishidan oldin tiqilib qolgan joʻnatmalar bu yerda koʻrinmaydi."}
+            </p>
+          </section>
+
+          <section>
+            <h3 className="mb-1 text-[12.5px] font-medium" style={{ color: "var(--ink-secondary)" }}>
+              Qancha kutgani natijani qanday oʻzgartiradi
+            </h3>
+            <p className="mb-3 text-[11px]" style={{ color: "var(--ink-muted)" }}>
+              Tanlangan davrdagi yakunlangan joʻnatmalar, pochtada qancha turganiga qarab.
+            </p>
+            <CategoryBarList
+              rows={(data?.waits ?? []).map(waitRow)}
+              mode="rate"
+              status={viewStatus}
+              emptyBody="Yakunlangan joʻnatma yetarli emas."
+            />
+            <p className="mt-3 text-[11px]" style={{ color: "var(--ink-muted)" }}>
+              Faqat pochtadan chiqib ketgan va yakunlangan joʻnatmalar. Hali turganlar bu
+              yerda emas — ular chapdagi jadvalda. Qoida har bir pochtada takrorlanadi,
+              yaʼni gap tashuvchida emas, kutish vaqtida.
+            </p>
+          </section>
+        </div>
+      </ChartCard>
+
       <ChartCard
         title="Hududlar boʻyicha"
         hint="Hudud — bitimdagi «Регион» maydonidan. Bir hududning buyurtmasi istalgan pochtadan oʻtishi mumkin, shuning uchun bu jadval yuqoridagisining boshqacha kesimi."
@@ -337,25 +490,6 @@ export function LogisticsPage() {
           maxHeight={480}
         />
       </ChartCard>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ReasonCard
-          title="Qaytgan buyurtmalar"
-          hint="Mijozga yetib bordi va qaytdi — yetkazish, ishlov va qaytish yoʻlining hammasi toʻlangan."
-          reasons={(data?.reasons ?? []).filter((reason) => reason.stage === 'RETURNED')}
-          status={viewStatus}
-          errorMessage={errorMessage}
-          onRetry={retry}
-        />
-        <ReasonCard
-          title="Joʻnatilmay bekor qilinganlar"
-          hint="Joʻnatilishdan oldin bekor qilindi — narxi bitta telefon qoʻngʻirogʻi."
-          reasons={(data?.reasons ?? []).filter((reason) => reason.stage === 'CANCELLED')}
-          status={viewStatus}
-          errorMessage={errorMessage}
-          onRetry={retry}
-        />
-      </div>
 
       {/*
         THE AUDIT TRAIL, AND THE LAST BLOCK ON PURPOSE.
@@ -493,6 +627,56 @@ const POINT_COLUMNS: Column<LogisticsPointDto>[] = [
   },
 ]
 
+/**
+ * The work list: one row per post office, ordered by what is standing there.
+ *
+ * The aged column wears the critical tone and nothing else on the row does —
+ * it is the only number here that says «act», and giving it company would
+ * make the table read as a wall of alarm.
+ */
+const STANDING_COLUMNS: Column<LogisticsPointDto>[] = [
+  { key: 'post', header: 'Pochta', rowHeader: true, render: (row) => row.label },
+  {
+    key: 'orders',
+    header: 'Turibdi',
+    align: 'right',
+    numeric: true,
+    width: '100px',
+    render: (row) => formatNumber(row.waitingOrders),
+  },
+  {
+    key: 'amount',
+    header: 'Summa',
+    align: 'right',
+    numeric: true,
+    width: '170px',
+    render: (row) => formatFullUzs(row.waitingAmount.amount),
+  },
+  {
+    key: 'median',
+    header: 'Median kun',
+    align: 'right',
+    numeric: true,
+    width: '110px',
+    render: (row) => (row.medianWaitingDays === null ? NO_VALUE : row.medianWaitingDays),
+  },
+  {
+    key: 'aged',
+    header: '7 kundan ortiq',
+    align: 'right',
+    numeric: true,
+    width: '210px',
+    render: (row) =>
+      row.agedOrders === 0 ? (
+        <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
+      ) : (
+        <span style={{ color: 'var(--status-critical)' }}>
+          {formatNumber(row.agedOrders)} ta · {formatFullUzs(row.agedAmount.amount)}
+        </span>
+      ),
+  },
+]
+
 const STAGE_COLUMNS: Column<LogisticsStageDto>[] = [
   {
     key: 'stage',
@@ -600,6 +784,23 @@ function volumeRow(point: LogisticsPointDto): CategoryBarRow {
   }
 }
 
+/**
+ * One wait band as a graded bar.
+ *
+ * The count rides the meta line because a band with four orders in it and a
+ * band with two thousand look identical as bars, and the thin one is where a
+ * reader would otherwise see a collapse that is really three parcels.
+ */
+function waitRow(band: LogisticsWaitBandDto): CategoryBarRow {
+  return {
+    key: band.key,
+    label: band.label,
+    value: band.deliveryRate,
+    display: formatPercent(band.deliveryRate),
+    meta: `${formatNumber(band.delivered)} / ${formatNumber(band.orders)} yetkazilgan`,
+  }
+}
+
 function rateRow(point: LogisticsPointDto): CategoryBarRow {
   const resolved = point.delivered + point.refused + point.cancelledEarly
   return {
@@ -610,131 +811,12 @@ function rateRow(point: LogisticsPointDto): CategoryBarRow {
     meta:
       resolved === 0
         ? `${formatNumber(point.inFlight)} ta hali yoʻlda`
-        : `${formatNumber(point.delivered)} / ${formatNumber(resolved)} yakunlangan · median ${
-            point.medianDays === null ? NO_VALUE : `${point.medianDays} kun`
+        : `${formatNumber(point.delivered)} / ${formatNumber(resolved)} yakunlangan · pochtada ${
+            point.medianWaitDays === null
+              ? NO_VALUE
+              : `${point.medianWaitDays} kun (n=${formatNumber(point.waitedOrders)})`
           }`,
   }
-}
-
-/**
- * One loss card — why the «Отказ» column lost what it lost.
- *
- * KEPT WHEN THE SCREEN WAS REBUILT, and deliberately: Отказ is the one column
- * where our figure and the client's sheet disagree, and «why» is the question
- * that follows. On this portal the reason field is mostly empty, which is
- * itself worth seeing — a card saying «sabab koʻrsatilmagan, 48 ta» is a
- * fact about the CRM, not a gap in the dashboard.
- */
-function ReasonCard({
-  title,
-  hint,
-  reasons,
-  status,
-  errorMessage,
-  onRetry,
-}: {
-  title: string
-  hint: string
-  reasons: readonly { stage: string; reason: string; orders: number; lost: { amount: number } }[]
-  status: 'loading' | 'error' | 'ready'
-  errorMessage?: string
-  onRetry: () => void
-}) {
-  return (
-    <ChartCard title={title} hint={hint}>
-      {status === 'loading' ? (
-        <ChartSkeleton height={140} />
-      ) : status === 'error' ? (
-        <ErrorState message={errorMessage ?? 'Olinmadi'} onRetry={onRetry} />
-      ) : reasons.length === 0 ? (
-        <EmptyState title="Yoʻq" body="Bu davrda bunday yoʻqotish qayd etilmagan." />
-      ) : (
-        <ReasonList reasons={reasons} />
-      )}
-    </ChartCard>
-  )
-}
-
-/**
- * Reasons, ordered by COUNT and not by money.
- *
- * The reason that happens most is the one to fix operationally, and sorting by
- * value would put a single large refused order above a systemic problem
- * affecting fifty small ones. The value is shown beside it so the trade is
- * visible either way.
- */
-function ReasonList({
-  reasons,
-}: {
-  readonly reasons: readonly {
-    readonly stage: string
-    readonly reason: string
-    readonly orders: number
-    readonly lost: { readonly amount: number }
-  }[]
-}) {
-  const max = Math.max(...reasons.map((r) => r.orders), 1)
-
-  /*
-    No bar for a list of one. These bars are normalised to the largest row, so
-    a lone row is ALWAYS full-width — one returned parcel drew exactly the same
-    mark as eighty-one cancellations. A comparison chart with nothing to
-    compare is decoration wearing a data costume; the count says everything.
-  */
-  const comparable = reasons.length > 1
-
-  return (
-    <ul className="space-y-2">
-      {reasons.map((reason) => (
-        <li key={`${reason.stage}-${reason.reason}`} className="flex items-center gap-3">
-          <Tooltip
-            content={<span className="block max-w-72">{reason.reason}</span>}
-            className="min-w-0 flex-1 sm:w-56 sm:flex-none"
-          >
-            <span
-              className="min-w-0 flex-1 truncate text-xs"
-              style={{ color: 'var(--ink-secondary)' }}
-            >
-              {reasonLabel(reason.reason)}
-            </span>
-          </Tooltip>
-          {comparable && (
-            <div
-              className="hidden h-2 flex-1 overflow-hidden rounded-full sm:block"
-              style={{ background: 'var(--track)' }}
-            >
-              <div
-                className="grow-x h-full rounded-full"
-                style={{ width: `${(reason.orders / max) * 100}%`, background: 'var(--seq-450)' }}
-              />
-            </div>
-          )}
-          <span
-            className="tabular w-14 shrink-0 text-right text-xs font-medium"
-            style={{ color: 'var(--ink-primary)' }}
-          >
-            {formatNumber(reason.orders)}
-          </span>
-          <span
-            className="tabular w-24 shrink-0 text-right text-xs"
-            style={{ color: 'var(--ink-muted)' }}
-          >
-            {formatCompactUzs(reason.lost.amount)}
-          </span>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-/**
- * Bitrix24 writes pictographs into the reason field. They are stripped for the
- * label and kept in the tooltip, so the row reads as a sentence and the
- * original string is still one hover away for anyone reconciling.
- */
-function reasonLabel(reason: string): string {
-  const stripped = reason.replace(/[\p{Extended_Pictographic}️]/gu, '').trim()
-  return stripped.length > 0 ? stripped : reason
 }
 
 /** The six columns, in the client's order — exported for the tests that pin it. */

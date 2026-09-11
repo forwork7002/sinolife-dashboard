@@ -111,7 +111,6 @@ function visits(rows: VisitJson[] | null | undefined): ConfirmationVisit[] {
  *   stage   — `bucket` is a Доставка stage name VERBATIM; `sub` is the column
  *             it belongs to, decided server-side so the browser never
  *             re-derives the partition.
- *   reason  — `bucket` is the refusal reason; `sub` is RETURNED or CANCELLED.
  */
 interface LogisticsCutRow {
   readonly cut: string
@@ -132,6 +131,15 @@ interface LogisticsCutRow {
   readonly in_flight_orders: bigint
   readonly off_revenue_orders: bigint
   readonly median_days: number | null
+  readonly median_wait_hours: number | null
+  readonly waited_orders: bigint
+  readonly waiting_orders: bigint
+  readonly waiting_amount: MoneyText
+  readonly aged_orders: bigint
+  readonly aged_amount: MoneyText
+  readonly median_waiting_days: number | null
+  readonly revived_orders: bigint
+  readonly revived_amount: MoneyText
 }
 
 export interface CohortCell {
@@ -276,6 +284,47 @@ export interface LogisticsCut {
    * sort over the same ordered set to say it.
    */
   readonly medianDays: number | null
+  /**
+   * HOW LONG THE PARCEL WAITED AT THE POST OFFICE, over passes that really
+   * elapsed.
+   *
+   * NOT the same quantity as `medianDays`, and the screen has to say so
+   * where both are drawn. `medianDays` runs from the arrival in Тасдиклаш
+   * to «Доставлено» — the order's whole journey. This one runs from the
+   * parcel reaching one post office to it leaving, and it is the figure a
+   * floor manager can act on.
+   *
+   * Passes shorter than an hour are excluded, because on this portal the
+   * LEAVE stamp is written at closeout: measured over 60 days it lands
+   * within five seconds of «Доставлено» in 88.8% of passes, and 27.5% of
+   * passes have both stamps written at once. Those are delivered by
+   * construction and would manufacture the gradient `waitedOrders`
+   * measures. `waitedOrders` is that denominator, printed so a median over
+   * ninety-five passes cannot pass for one over nine hundred.
+   */
+  readonly medianWaitHours: number | null
+  readonly waitedOrders: number
+  /**
+   * STILL STANDING AT A POST OFFICE, and how long for.
+   *
+   * Measured against now(), which makes this the ONE quantity on the cohort
+   * that is not on the window's clock. `aged*` is the part standing longer
+   * than seven days — the band where the delivery rate measured 62.5%
+   * against 95.1% inside two days, which is what makes it a work list
+   * rather than a statistic.
+   */
+  readonly waitingOrders: number
+  readonly waitingMinor: bigint
+  readonly agedOrders: number
+  readonly agedMinor: bigint
+  readonly medianWaitingDays: number | null
+  /**
+   * Refused, and then delivered anyway — how much the «Отказ» column
+   * overstates the loss. Decided against the LAST refusal, so a parcel that
+   * was delivered, bounced and then refused is not reported as a recovery.
+   */
+  readonly revivedOrders: number
+  readonly revivedMinor: bigint
 }
 
 /**
@@ -305,7 +354,21 @@ export interface LogisticsCohort {
   /** All eighteen Доставка stages, verbatim, with the column each belongs to. */
   readonly stages: readonly LogisticsCut[]
   readonly stageTotal: LogisticsCut
-  readonly reasons: readonly LogisticsCut[]
+  /**
+   * Resolved orders grouped by how long they waited at the post office:
+   * '1' under two days, '2' two to four, '3' four to seven, '4' beyond.
+   */
+  readonly waits: readonly LogisticsCut[]
+}
+
+/** One post office, and what is standing at it right now. No window. */
+export interface LogisticsStandingRow {
+  readonly post: string
+  readonly orders: number
+  readonly amountMinor: bigint
+  readonly agedOrders: number
+  readonly agedMinor: bigint
+  readonly medianDays: number | null
 }
 
 /**
@@ -1108,7 +1171,16 @@ export class InsightsRepository {
         COALESCE(sum(k.amount_minor) FILTER (WHERE k.bucket = 'REFUSED' AND NOT k.dispatched), 0)::text AS cancelled_amount,
         count(k.deal_id) FILTER (WHERE k.bucket NOT IN ('REFUSED', 'DONE'))::bigint AS in_flight_orders,
         count(k.deal_id) FILTER (WHERE k.fakt1 AND NOT k.counts_as_revenue)::bigint AS off_revenue_orders,
-        percentile_cont(0.5) WITHIN GROUP (ORDER BY k.pace_days) AS median_days`
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY k.pace_days) AS median_days,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY k.wait_hours) AS median_wait_hours,
+        count(k.deal_id) FILTER (WHERE k.wait_hours IS NOT NULL)::bigint AS waited_orders,
+        count(k.deal_id) FILTER (WHERE k.waiting_days IS NOT NULL)::bigint AS waiting_orders,
+        COALESCE(sum(k.amount_minor) FILTER (WHERE k.waiting_days IS NOT NULL), 0)::text AS waiting_amount,
+        count(k.deal_id) FILTER (WHERE k.waiting_days >= 7)::bigint AS aged_orders,
+        COALESCE(sum(k.amount_minor) FILTER (WHERE k.waiting_days >= 7), 0)::text AS aged_amount,
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY k.waiting_days) AS median_waiting_days,
+        count(k.deal_id) FILTER (WHERE k.revived)::bigint AS revived_orders,
+        COALESCE(sum(k.amount_minor) FILTER (WHERE k.revived), 0)::text AS revived_amount`
 
     /*
       The five arms that report the client's partition read FAKT 1 only.
@@ -1141,10 +1213,21 @@ export class InsightsRepository {
       that arrived on the 31st is delivered in the new month, and freezing it
       at $2 would report a status nobody can act on.
     */
+    /*
+      IT CARRIES ITS OWN TIMESTAMPS, and that is what pays for two blocks.
+
+      «How long did the parcel wait at the post office» and «how long have
+      the ones still standing been standing» are both questions about the
+      HUB VISIT rather than about the order, and both are two projected
+      columns on a DISTINCT ON this query already pays for. Verified on
+      production: no extra scan, the same (stageId, enteredAt) index range.
+    */
     routed AS (
       SELECT DISTINCT ON (h."dealId")
-             h."dealId"  AS deal_id,
-             h."stageId" AS post_stage_id
+             h."dealId"    AS deal_id,
+             h."stageId"   AS post_stage_id,
+             h."enteredAt" AS post_entered_at,
+             h."leftAt"    AS post_left_at
         FROM "deal_stage_history" h
         JOIN "deal_stage" s ON s."id" = h."stageId"
        WHERE s."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER')
@@ -1152,15 +1235,55 @@ export class InsightsRepository {
          AND h."enteredAt" >= $1
        ORDER BY h."dealId", h."enteredAt" DESC
     ),
+    /*
+      BOTH ENDS OF THE DELIVERY STAMP, from one scan.
+
+      The FIRST entry is the pace clock, as before. The LAST one is what
+      tells a revival from a bounce: a parcel that was delivered, came back
+      and was then refused has a delivery AFTER its first refusal, and
+      counting that as a recovery reports a loss as a win.
+
+      GROUP BY rather than DISTINCT ON, because two aggregates over one
+      scan are cheaper than two sorted passes and the scan is identical.
+    */
     delivered_at AS (
-      SELECT DISTINCT ON (h."dealId")
-             h."dealId"    AS deal_id,
-             h."enteredAt" AS delivered_at
+      SELECT h."dealId"          AS deal_id,
+             min(h."enteredAt")  AS delivered_at,
+             max(h."enteredAt")  AS last_delivered_at
         FROM "deal_stage_history" h
         JOIN "deal_stage" s ON s."id" = h."stageId"
        WHERE s."logisticsRole" = 'DELIVERED'
          AND h."enteredAt" >= $1
-       ORDER BY h."dealId", h."enteredAt" ASC
+       GROUP BY h."dealId"
+    ),
+    /*
+      THE LAST REFUSAL, so «qaytarib olindi» means what it says.
+
+      max(), never min(). Against the first refusal, any later delivery
+      counts as a recovery — including the delivered-then-bounced-then-
+      refused parcel, which is a loss. Against the LAST one, only a
+      delivery that outlived every refusal counts.
+
+      Bounded on the left like its three siblings, and for the same reason.
+    */
+    refused_at AS (
+      SELECT h."dealId" AS deal_id, max(h."enteredAt") AS refused_at
+        FROM "deal_stage_history" h
+        JOIN "deal_stage" s ON s."id" = h."stageId"
+        /*
+          JOINED TO delivered_at, WHICH IS THE WHOLE POPULATION THAT MATTERS.
+
+          A revival is a refusal followed by a delivery, so an order that was
+          never delivered cannot be one. Restricting the scan to orders that
+          reached «Доставлено» leaves the answer identical and stops this CTE
+          from walking every refusal in the window — measured at a 60-day
+          window, that is most of the cost the two new blocks would otherwise
+          have added.
+        */
+        JOIN delivered_at dv ON dv.deal_id = h."dealId"
+       WHERE s."logisticsRole" IN ('REFUSED', 'CANCELLED_EARLY')
+         AND h."enteredAt" >= $1
+       GROUP BY h."dealId"
     ),
     dispatched AS (
       SELECT DISTINCT h."dealId" AS deal_id
@@ -1191,7 +1314,6 @@ export class InsightsRepository {
         c.deal_id,
         d."amountMinor"          AS amount_minor,
         d."countsAsRevenue"      AS counts_as_revenue,
-        d."refusalReason"        AS refusal_reason,
         COALESCE(d."region", '${InsightsRepository.NO_REGION}') AS region,
         d."stageId"              AS stage_id,
         ds."logisticsRole"::text AS role,
@@ -1199,6 +1321,55 @@ export class InsightsRepository {
         ${bucketCase} AS bucket,
         r.post_stage_id,
         (dp.deal_id IS NOT NULL) AS dispatched,
+        /*
+          HOW LONG THE PARCEL WAITED AT THE POST OFFICE — and why a pass
+          under an hour is thrown away rather than counted as «instant».
+
+          The LEAVE stamp is not an independent observation. Measured on
+          production over 60 days: it lands within five seconds of the
+          «Доставлено» stamp in 88.8% of passes, because the route is
+          written down when the parcel is closed out. The ENTER stamp is
+          real and separate — only 9.1% coincide, median 61.5 hours
+          earlier — so enter-to-leave IS the wait, EXCEPT where BOTH were
+          written at closeout. Those show as a near-zero elapsed time and
+          are 27.5% of all passes (1 276 of 4 633); they are delivered by
+          construction (97.2% against 75.6% for the rest), so counting
+          them would manufacture the very gradient this measures.
+
+          Dropping them changes the shape not at all — the delivery rate
+          by wait band reads 96.8/85.3/73.9/62.4 with them and
+          95.1/85.6/73.9/62.5 without — which is what makes the gradient
+          believable rather than an artefact. It does change the LEVEL of
+          the per-office median, from ~3 days to ~5, and the honest one is
+          the one measured over real elapsed time.
+        */
+        CASE
+          WHEN r.post_left_at IS NOT NULL
+           AND r.post_left_at - r.post_entered_at > interval '1 hour'
+          THEN EXTRACT(EPOCH FROM (r.post_left_at - r.post_entered_at)) / 3600
+        END AS wait_hours,
+        /*
+          AND HOW LONG THE ONES STILL THERE HAVE BEEN THERE.
+
+          Null unless the parcel is still standing at the post office it
+          last reached. This is the only quantity on the cohort measured
+          against now() rather than against the window, and the screen has
+          to say so where it is drawn.
+        */
+        CASE
+          WHEN r.post_entered_at IS NOT NULL AND r.post_left_at IS NULL
+          THEN EXTRACT(EPOCH FROM (now() - r.post_entered_at)) / 86400
+        END AS waiting_days,
+        /*
+          «QAYTARIB OLINDI» — refused, and then delivered anyway.
+
+          Bounds how much the Отказ column overstates the loss. Both sides
+          come from CTEs already scanned; see refused_at for why the last
+          refusal and not the first.
+        */
+        (dv.last_delivered_at IS NOT NULL
+         AND rf.refused_at IS NOT NULL
+         AND dv.last_delivered_at > rf.refused_at) AS revived,
         -- Tashkent, not UTC: the working day is what is being counted, and
         -- five hours of it would otherwise be filed into yesterday.
         (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS day,
@@ -1212,6 +1383,7 @@ export class InsightsRepository {
       LEFT JOIN routed r        ON r.deal_id  = c.deal_id
       LEFT JOIN delivered_at dv ON dv.deal_id = c.deal_id
       LEFT JOIN dispatched dp   ON dp.deal_id = c.deal_id
+      LEFT JOIN refused_at rf   ON rf.deal_id = c.deal_id
     ),
     /*
       FAKT 1 AND FAKT 2 — the only arm that reads the whole cohort.
@@ -1332,26 +1504,38 @@ export class InsightsRepository {
       GROUP BY GROUPING SETS ((st."name"), ())
     ),
     /*
-      WHY THE «Отказ» COLUMN LOST THEM, split by whether the parcel travelled.
+      HOW LONG IT WAITED, AND WHETHER IT ARRIVED.
 
-        RETURNED  — went to the customer and came back. Cost the delivery, the
-                    handling and the return leg.
-        CANCELLED — killed before anything shipped. Cost a phone call.
+      The one block on this screen that is not a description of what happened
+      but a reason to act: measured over 60 days on production, a parcel
+      collected inside two days is delivered 95.1% of the time and one still
+      standing after seven only 62.5%. The gradient holds inside EVERY post
+      office (VODIY 98.1 to 60.1, SURXONDARYO 98.1 to 52.9), so it is a fact
+      about elapsed time rather than about a carrier.
 
-      Kept, and rebased onto this cohort. It is the most useful block on the
-      page precisely because Отказ is the column the client's sheet and ours
-      disagree about, and it is now a UNION arm rather than a second statement
-      that rebuilt the cohort to ask one question.
+      RESOLVED ORDERS ONLY. A parcel still standing is undelivered by
+      definition; leaving it in would build the conclusion into the
+      measurement. k.bucket IN (REFUSED, DONE) is that filter, and it is why
+      this arm cannot simply read the whole cohort.
+
+      wait_hours is already null for a pass whose two stamps were written
+      together at closeout — 27.5% of passes, 97.2% of them delivered — so
+      those cannot reach the first band and inflate it.
+
+      The band is positional in GROUP BY so the CASE is written once.
     */
-    by_reason AS (
-      SELECT 'reason'::text,
-             COALESCE(k.refusal_reason, 'Sabab koʻrsatilmagan'),
-             CASE WHEN k.dispatched THEN 'RETURNED' ELSE 'CANCELLED' END,
-             NULL::int, 0::int,${AGG}
+    by_wait AS (
+      SELECT 'wait'::text,
+             CASE
+               WHEN k.wait_hours <  48 THEN '1'
+               WHEN k.wait_hours <  96 THEN '2'
+               WHEN k.wait_hours < 168 THEN '3'
+               ELSE '4'
+             END,
+             NULL::text, NULL::int, 0::int,${AGG}
       FROM cohort k
-      WHERE k.fakt1 AND k.bucket = 'REFUSED'
-      GROUP BY COALESCE(k.refusal_reason, 'Sabab koʻrsatilmagan'),
-               CASE WHEN k.dispatched THEN 'RETURNED' ELSE 'CANCELLED' END
+      WHERE k.fakt1 AND k.wait_hours IS NOT NULL AND k.bucket IN ('REFUSED', 'DONE')
+      GROUP BY 2
     )
     SELECT * FROM (
       SELECT * FROM by_fakt
@@ -1360,7 +1544,7 @@ export class InsightsRepository {
       UNION ALL SELECT * FROM by_post
       UNION ALL SELECT * FROM by_region
       UNION ALL SELECT * FROM by_stage
-      UNION ALL SELECT * FROM by_reason
+      UNION ALL SELECT * FROM by_wait
     ) cuts
     ORDER BY cut, is_total, sort NULLS LAST, sub NULLS FIRST, orders DESC
     `
@@ -1375,6 +1559,85 @@ export class InsightsRepository {
    * whole company — but the plumbing is here, and widening the endpoint later
    * is a line in the route rather than a rewrite of this query.
    */
+  /**
+   * WHAT IS STANDING AT A POST OFFICE RIGHT NOW — every parcel, no window.
+   *
+   * A SECOND STATEMENT, AND DELIBERATELY SO. The screen's own cohort is bounded
+   * on the left at the window's start, so a parcel that reached a post office
+   * before the window and has been standing there ever since is invisible to
+   * it — and those are precisely the ones worth a phone call. Measured on
+   * production: the cohort-bounded reading finds 658 parcels against 890, and
+   * loses the worst of them (QASHQADARYO stands at a median of 45 days and
+   * every one of its parcels is outside a 60-day window).
+   *
+   * The screen ships BOTH and switches between them, because the windowed one
+   * reconciles with the rest of the page and the unbounded one is the list
+   * somebody actually works through. Neither is the honest answer alone.
+   *
+   * It costs 48 ms against production, measured: the stage list is eight rows,
+   * `deal(stageId)` leads the lookup, and the LATERAL reads one history row per
+   * order through (dealId, enteredAt).
+   *
+   * Held as a builder rather than inline so the shape can be asserted without a
+   * database. See tests/http/logisticsSql.test.ts.
+   */
+  private static logisticsStandingSql(): string {
+    return `
+      SELECT s."name" AS post,
+             min(s."sortOrder")::int AS sort,
+             count(*)::bigint AS orders,
+             COALESCE(sum(d."amountMinor"), 0)::text AS amount,
+             count(*) FILTER (WHERE now() - e.entered_at > interval '7 days')::bigint AS aged_orders,
+             COALESCE(sum(d."amountMinor") FILTER (
+               WHERE now() - e.entered_at > interval '7 days'), 0)::text AS aged_amount,
+             percentile_cont(0.5) WITHIN GROUP (
+               ORDER BY EXTRACT(EPOCH FROM (now() - e.entered_at)) / 86400) AS median_days
+        FROM "deal" d
+        JOIN "deal_stage" s ON s."id" = d."stageId"
+        /*
+          WHEN IT REACHED THE STAGE IT IS STANDING IN — the deal's own last
+          entry into its own current stage, not the last hub entry of any kind.
+          An order that was re-routed carries an older entry for the office it
+          left, and ageing it from that would report a parcel as stuck for
+          weeks at a counter it reached yesterday.
+        */
+        JOIN LATERAL (
+          SELECT h."enteredAt" AS entered_at
+            FROM "deal_stage_history" h
+           WHERE h."dealId" = d."id" AND h."stageId" = d."stageId"
+           ORDER BY h."enteredAt" DESC
+           LIMIT 1
+        ) e ON true
+       WHERE s."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER')
+         AND s."externalId" LIKE 'C6:%'
+       GROUP BY s."name"
+       ORDER BY sort
+      `
+  }
+
+  /** Every parcel standing at a Доставка post office, whatever month it was ordered in. */
+  async logisticsStanding(): Promise<readonly LogisticsStandingRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        post: string
+        orders: bigint
+        amount: MoneyText
+        aged_orders: bigint
+        aged_amount: MoneyText
+        median_days: number | null
+      }[]
+    >(InsightsRepository.logisticsStandingSql())
+
+    return rows.map((r) => ({
+      post: r.post,
+      orders: int(r.orders),
+      amountMinor: money(r.amount),
+      agedOrders: int(r.aged_orders),
+      agedMinor: money(r.aged_amount),
+      medianDays: r.median_days === null ? null : Number(r.median_days),
+    }))
+  }
+
   async logisticsCohort(window: ScopedWindow): Promise<LogisticsCohort> {
     const rows = await this.prisma.$queryRawUnsafe<LogisticsCutRow[]>(
       `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.logisticsCohortSql()}`,
@@ -1400,6 +1663,16 @@ export class InsightsRepository {
       inFlightOrders: int(row.in_flight_orders),
       offRevenueOrders: int(row.off_revenue_orders),
       medianDays: row.median_days === null ? null : Number(row.median_days),
+      medianWaitHours: row.median_wait_hours === null ? null : Number(row.median_wait_hours),
+      waitedOrders: int(row.waited_orders),
+      waitingOrders: int(row.waiting_orders),
+      waitingMinor: money(row.waiting_amount),
+      agedOrders: int(row.aged_orders),
+      agedMinor: money(row.aged_amount),
+      medianWaitingDays:
+        row.median_waiting_days === null ? null : Number(row.median_waiting_days),
+      revivedOrders: int(row.revived_orders),
+      revivedMinor: money(row.revived_amount),
     })
 
     /*
@@ -1425,6 +1698,15 @@ export class InsightsRepository {
       inFlightOrders: 0,
       offRevenueOrders: 0,
       medianDays: null,
+      medianWaitHours: null,
+      waitedOrders: 0,
+      waitingOrders: 0,
+      waitingMinor: 0n,
+      agedOrders: 0,
+      agedMinor: 0n,
+      medianWaitingDays: null,
+      revivedOrders: 0,
+      revivedMinor: 0n,
     }
 
     const of = (cut: string) => rows.filter((row) => row.cut === cut)
@@ -1462,7 +1744,7 @@ export class InsightsRepository {
       regionTotal: regions.total,
       stages: stages.rows,
       stageTotal: stages.total,
-      reasons: of('reason').map(decode),
+      waits: of('wait').map(decode),
     }
   }
 

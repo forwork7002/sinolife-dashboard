@@ -46,6 +46,15 @@ const ZERO: LogisticsCut = {
   inFlightOrders: 0,
   offRevenueOrders: 0,
   medianDays: null,
+  medianWaitHours: null,
+  waitedOrders: 0,
+  waitingOrders: 0,
+  waitingMinor: 0n,
+  agedOrders: 0,
+  agedMinor: 0n,
+  medianWaitingDays: null,
+  revivedOrders: 0,
+  revivedMinor: 0n,
 }
 
 const cut = (over: Partial<LogisticsCut>): LogisticsCut => ({ ...ZERO, ...over })
@@ -128,8 +137,9 @@ function cohort(over: Partial<LogisticsCohort> = {}): LogisticsCohort {
       cut({ bucket: 'Доставка · Отказ предварительно', sub: 'REFUSED', sort: 6160, fakt1Orders: 12 }),
     ],
     stageTotal: cut({ fakt1Orders: 100 }),
-    reasons: [
-      cut({ bucket: 'Sabab koʻrsatilmagan', sub: 'RETURNED', fakt1Orders: 12, fakt1Minor: som(24_000_000) }),
+    waits: [
+      cut({ bucket: '1', fakt1Orders: 60, deliveredOrders: 57 }),
+      cut({ bucket: '4', fakt1Orders: 32, deliveredOrders: 20 }),
     ],
     ...over,
   }
@@ -138,6 +148,9 @@ function cohort(over: Partial<LogisticsCohort> = {}): LogisticsCohort {
 function serviceOver(cuts: LogisticsCohort) {
   const repository = {
     logisticsCohort: async () => cuts,
+    // The unbounded snapshot is a second statement; this file measures the
+    // shaping of the windowed one, so it answers empty.
+    logisticsStanding: async () => [],
   } as unknown as InsightsRepository
 
   const service = new InsightsService(repository)
@@ -333,17 +346,6 @@ describe('the post offices and the reconciliation', () => {
     expect(dto.reconciliation.map((r) => r.bucket)).toEqual(['DONE', 'REFUSED'])
   })
 
-  it('labels a refusal reason by the journey it took', async () => {
-    const dto = await serviceOver(cohort())()
-    expect(dto.reasons).toEqual([
-      {
-        stage: 'RETURNED',
-        reason: 'Sabab koʻrsatilmagan',
-        orders: 12,
-        lost: expect.objectContaining({ amountMinor: som(24_000_000).toString() }),
-      },
-    ])
-  })
 })
 
 describe('nothing bigint reaches the wire', () => {
