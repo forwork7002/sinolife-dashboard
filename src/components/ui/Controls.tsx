@@ -54,20 +54,46 @@ export function SearchInput({
       </svg>
       {/* The placeholder is not an accessible name — it disappears the moment
           anyone types. `outline-none` with no replacement removed the only
-          focus indicator; `focusable` puts the house ring back. */}
+          focus indicator; `focusable` puts the house ring back.
+
+          The browser's own ✕ is hidden: in Chrome it is a 9px grey mark the
+          client never found, and it cleared through the debounce. The red one
+          below replaces it. */}
       <input
         type="search"
         value={local}
         onChange={(e) => setLocal(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="focusable w-full rounded-lg border py-2 pr-2.5 pl-8 text-[13px] outline-none sm:min-w-[200px] sm:py-1.5 sm:text-xs"
+        className={`focusable w-full rounded-lg border py-2 pl-8 text-[13px] outline-none sm:min-w-[200px] sm:py-1.5 sm:text-xs [&::-webkit-search-cancel-button]:appearance-none ${
+          local ? 'pr-8' : 'pr-2.5'
+        }`}
         style={{
           background: 'var(--surface-raised)',
           borderColor: 'var(--border-strong)',
           color: 'var(--ink-primary)',
         }}
       />
+      {/*
+        RED, LIKE EVERY CLEAR IN THE APPLICATION (2026-09-11: «barcha tozalash…
+        funksiyalari aniqroq koʻrinsin»), and only while there is text to clear.
+        IMMEDIATE, not debounced: typing waits so a word costs one request, but
+        a clear is one decision and the table should answer it at once.
+      */}
+      {local && (
+        <button
+          type="button"
+          aria-label="Qidiruvni tozalash"
+          onClick={() => {
+            committed.current = ''
+            setLocal('')
+            onChange('')
+          }}
+          className="focusable absolute top-1/2 right-1.5 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-[var(--status-critical)] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--status-critical)_45%,transparent)] bg-[color-mix(in_oklab,var(--status-critical)_10%,transparent)] hover:bg-[color-mix(in_oklab,var(--status-critical)_20%,transparent)]"
+        >
+          <MultiplyGlyph size={11} />
+        </button>
+      )}
     </div>
   )
 }
