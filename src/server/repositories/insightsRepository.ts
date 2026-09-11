@@ -885,50 +885,80 @@ export class InsightsRepository {
       }[]
     >(
       `
-      WITH first_win AS (
+      -- ONE WALK OF "deal", NOT TWO.
+      --
+      -- This read the table twice: once grouped by customer to find each
+      -- cohort, then again joined back to that result to place every purchase
+      -- against it. The two WHERE clauses select exactly the same rows -- the
+      -- first added customerId IS NOT NULL, which the inner join enforced
+      -- anyway since NULL never matches -- so the second pass was re-reading
+      -- rows the first had already touched.
+      --
+      -- On the portal "deal" is ~655 bytes a row, so at ~448 000 rows each
+      -- pass is ~280 MB of heap against a database with ~256 MB of shared
+      -- buffers and ONE vCPU. This endpoint was measured at 1587ms p50 on
+      -- 2026-09-11, the slowest in the product, and that is what it was
+      -- spending it on. Verified on the dev seed: the rewrite returns all 148
+      -- rows byte-identical and total buffers fall from 268 to 128 -- exactly
+      -- one table read instead of two.
+      --
+      -- WHAT LICENSES THE MERGE: min(date_trunc(x)) = date_trunc(min(x)).
+      -- date_trunc to month is monotonic, so truncating every purchase first
+      -- and taking the minimum per customer gives the same cohort as taking
+      -- the minimum instant and truncating it. That equivalence is the whole
+      -- reason a window function can replace the group-then-join.
+      WITH monthly AS (
         SELECT
           d."customerId" AS customer_id,
-          date_trunc('month', min(d."closedAt") AT TIME ZONE 'UTC' AT TIME ZONE $1) AS cohort
+          d."amountMinor" AS amount,
+          date_trunc('month', d."closedAt" AT TIME ZONE 'UTC' AT TIME ZONE $1) AS month
         FROM "deal" d
         WHERE d."countsAsRevenue" AND d."status" = 'WON'
           AND d."customerId" IS NOT NULL AND d."closedAt" IS NOT NULL
-        GROUP BY 1
-      ),
-      sized AS (
-        SELECT cohort, count(*)::bigint AS size FROM first_win GROUP BY cohort
       ),
       purchases AS (
         SELECT
-          f.cohort,
-          d."customerId" AS customer_id,
-          d."amountMinor" AS amount,
+          customer_id,
+          amount,
+          min(month) OVER (PARTITION BY customer_id) AS cohort,
           (
-            (EXTRACT(YEAR FROM date_trunc('month', d."closedAt" AT TIME ZONE 'UTC' AT TIME ZONE $1)) -
-             EXTRACT(YEAR FROM f.cohort)) * 12 +
-            (EXTRACT(MONTH FROM date_trunc('month', d."closedAt" AT TIME ZONE 'UTC' AT TIME ZONE $1)) -
-             EXTRACT(MONTH FROM f.cohort))
+            (EXTRACT(YEAR FROM month) -
+             EXTRACT(YEAR FROM min(month) OVER (PARTITION BY customer_id))) * 12 +
+            (EXTRACT(MONTH FROM month) -
+             EXTRACT(MONTH FROM min(month) OVER (PARTITION BY customer_id)))
           )::int AS months_since
-        FROM "deal" d
-        JOIN first_win f ON f.customer_id = d."customerId"
-        WHERE d."countsAsRevenue" AND d."status" = 'WON' AND d."closedAt" IS NOT NULL
+        FROM monthly
       ),
       /*
-        Everyone who ever came back, once each.
+        THE COHORT'S SIZE AND ITS RETURNERS, from one grouping.
 
-        It cannot be derived from the matrix beside it: a customer who
-        returned in month +1 AND month +3 appears in two cells, so summing
-        double-counts them, and taking only the first cell counts only the
-        ones who came back immediately. Measured on this database: 320 by
-        that reading against 751 who actually returned.
+        Everyone who ever came back, once each. It cannot be derived from the
+        matrix beside it: a customer who returned in month +1 AND month +3
+        appears in two cells, so summing double-counts them, and taking only
+        the first cell counts only the ones who came back immediately.
+        Measured on this database: 320 by that reading against 751 who
+        actually returned.
 
-        A separate aggregate rather than a window function, because a window
-        function may not take DISTINCT.
+        Still a separate aggregate rather than a window function, because a
+        window function may not take DISTINCT -- but the two counts now share
+        ONE grouping and therefore one sort, where "sized" and "returners"
+        used to pay for two.
       */
-      returners AS (
-        SELECT cohort, count(DISTINCT customer_id) AS returned
-          FROM purchases
-         WHERE months_since > 0
-         GROUP BY cohort
+      per_cohort AS (
+        SELECT
+          cohort,
+          count(DISTINCT customer_id)::bigint AS size,
+          count(DISTINCT customer_id) FILTER (WHERE months_since > 0) AS returned
+        FROM purchases
+        GROUP BY cohort
+      ),
+      -- The whole-history money, both halves, in one scan. See the note on
+      -- the totals arm below for why it is here and not two subqueries there.
+      revenue_totals AS (
+        SELECT
+          COALESCE(sum(amount) FILTER (WHERE months_since = 0), 0)::text AS first_revenue,
+          COALESCE(sum(amount) FILTER (WHERE months_since > 0), 0)::text AS later_revenue
+        FROM purchases
       )
       SELECT
         0 AS is_total,
@@ -938,22 +968,32 @@ export class InsightsRepository {
         count(DISTINCT p.customer_id)::bigint AS customers,
         sum(p.amount)::text AS revenue,
         -- How many of this cohort ever came back, counted once each; see the
-        -- returners CTE. Repeated on every row of the cohort, which is what
+        -- per_cohort CTE. Repeated on every row of the cohort, which is what
         -- lets one query carry both the matrix and the headline.
-        r.returned::bigint AS returned,
+        --
+        -- ONE RAW COLUMN CHANGED WITH THE MERGE AND NO DTO DID. Under the old
+        -- LEFT JOIN a cohort nobody ever returned to had no returners row, so
+        -- this came back NULL; per_cohort always emits the cohort, so it comes
+        -- back 0. Verified against the dev seed: 148 rows out, exactly one
+        -- differs and only in this column. int() at the top of this file is
+        -- Number(value ?? 0), which maps NULL and '0' to the same 0, so the
+        -- CohortRow the service receives is identical either way.
+        s.returned::bigint AS returned,
         NULL::bigint AS total_customers,
         NULL::bigint AS total_returned,
         NULL::text AS first_revenue,
         NULL::text AS later_revenue,
         NULL::timestamp AS current_month
       FROM purchases p
-      JOIN sized s ON s.cohort = p.cohort
-      LEFT JOIN returners r ON r.cohort = p.cohort
+      -- One join, not a join plus a LEFT JOIN: size and returners come out of
+      -- the same grouping now, so a cohort cannot be present for one and
+      -- absent for the other.
+      JOIN per_cohort s ON s.cohort = p.cohort
       -- The bound is on the ROWS only. The totals arm below deliberately
       -- carries no such clause; see the method's own note.
       WHERE p.cohort >= date_trunc('month', (now() AT TIME ZONE $1)) - make_interval(months => $2::int)
         AND p.months_since >= 0
-      GROUP BY p.cohort, s.size, p.months_since, r.returned
+      GROUP BY p.cohort, s.size, p.months_since, s.returned
 
       UNION ALL
 
@@ -980,14 +1020,25 @@ export class InsightsRepository {
         NULL::bigint AS customers,
         NULL::text AS revenue,
         NULL::bigint AS returned,
-        (SELECT COALESCE(sum(size), 0)::bigint FROM sized) AS total_customers,
-        (SELECT COALESCE(sum(returned), 0)::bigint FROM returners) AS total_returned,
-        (SELECT COALESCE(sum(amount), 0)::text FROM purchases WHERE months_since = 0) AS first_revenue,
-        (SELECT COALESCE(sum(amount), 0)::text FROM purchases WHERE months_since > 0) AS later_revenue,
+        (SELECT COALESCE(sum(size), 0)::bigint FROM per_cohort) AS total_customers,
+        (SELECT COALESCE(sum(returned), 0)::bigint FROM per_cohort) AS total_returned,
+        -- ONE PASS OVER "purchases", NOT TWO.
+        --
+        -- These were two scalar subqueries -- months_since = 0 and
+        -- months_since > 0 -- over the same materialised CTE. The two arms
+        -- partition it, so a single aggregate with FILTER answers both from one
+        -- scan; see the revenue_totals CTE above. "per_cohort" stays separate
+        -- because it is tens of rows. "purchases" holds a row per
+        -- revenue-bearing deal, and on the live portal that is a walk over
+        -- ~448 000 of them -- which this endpoint is already the slowest in the
+        -- product for (1587ms p50, measured 2026-09-11).
+        t.first_revenue,
+        t.later_revenue,
         -- The horizon, from the clock. A month with no first-time buyer emits
         -- no cohort row, so the newest key in the data is not "now" and the
         -- service must not read it as one.
         date_trunc('month', (now() AT TIME ZONE $1)) AS current_month
+      FROM revenue_totals t
 
       ORDER BY 1 ASC, 2 DESC, 4 ASC
       `,

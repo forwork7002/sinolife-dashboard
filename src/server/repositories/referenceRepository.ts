@@ -113,6 +113,31 @@ export class ReferenceRepository {
     }))
   }
 
+  /**
+   * The roster as a PICKER sees it: an id and a name, and nothing else.
+   *
+   * `findEmployees` returns position, department id, department name, active
+   * flag and avatar because `kpiService` resolves a department selection
+   * through it. `/meta/filters` needs none of that — every consumer maps to
+   * `{ id, label }` — and it is the endpoint EVERY screen loads. Measured on
+   * the real 289-row roster: the employee array is 67 126 of the response's
+   * 82 263 bytes, and 45 727 of those are the five fields nobody reads.
+   *
+   * The department name also costs a whole extra statement: Prisma resolves
+   * `department: { select: { name } }` as a second query. Dropping the
+   * relation drops that too.
+   */
+  async findEmployeeChoices(): Promise<{ id: string; fullName: string }[]> {
+    return this.prisma.employee.findMany({
+      // Inactive people are included, for the same reason `findEmployees`
+      // includes them: their historical deals still count toward past periods,
+      // so a filter that could not name them could not reproduce an old
+      // report.
+      orderBy: { fullName: 'asc' },
+      select: { id: true, fullName: true },
+    })
+  }
+
   async findDepartments(): Promise<NamedRef[]> {
     return this.prisma.department.findMany({
       where: { isActive: true },

@@ -282,6 +282,22 @@ const SHALLOW_ROUTES: ReadonlySet<string> = new Set([
   '/analytics/cohort',
   '/kpi',
   '/structure',
+  /*
+    THE LAST FOUR, AND NOW IT IS EVERY WINDOWED SCREEN. Each checked against
+    the one condition above: `grep searchParams src/app/{analytics/sales,
+    sellers,warehouse,marketing}/page.tsx` returns nothing — all four are
+    `requireSection` plus a client component.
+
+    Savdo dinamikasi is the one that mattered: it carries three filter controls
+    and is the screen an analyst sits on, so it was paying the 521ms per
+    interaction more often than any other. It stayed behind while the rest
+    moved because the note above says to check them one at a time, and it has
+    now been checked.
+  */
+  '/analytics/sales',
+  '/sellers',
+  '/warehouse',
+  '/marketing',
 ])
 
 export function useDashboardFilters() {

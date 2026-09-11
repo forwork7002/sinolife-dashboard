@@ -145,13 +145,19 @@ describe('a filter change on the confirmation board asks no server', () => {
     expect(shallow).toHaveLength(1)
   })
 
-  it('leaves every other screen navigating exactly as it did', () => {
+  it('leaves a route outside the set navigating exactly as it did', () => {
     /*
-      The opt-in is a SET of routes for a reason: this cure is only sound where
-      nothing on the server side of the page reads `searchParams`. Every other
-      screen keeps `router.replace` until it has been checked, one at a time.
+      THE OPT-IN IS STILL A SET, and this is what keeps it one.
+
+      Every windowed screen has now been checked and is in it, so there is no
+      dashboard route left to use as the counter-example — `/users` stands in,
+      and it is the honest one: the cure is only sound where nothing on the
+      SERVER side of the page reads `searchParams`, and the day a page does —
+      a server-rendered table, an OG image built from the window — it must
+      navigate properly or the server keeps answering the previous question.
+      A future screen starts outside this set and stays there until checked.
     */
-    const { result } = board('preset=today', '/analytics/sales')
+    const { result } = board('preset=today', '/users')
 
     act(() => result.current.update({ status: 'WON' }))
 

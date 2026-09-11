@@ -8,17 +8,32 @@ export const dynamic = 'force-dynamic'
 /** Who reaches this endpoint: the capability, then the screen it feeds. */
 const ACCESS = { permission: 'employees:read', section: null } as const
 
-/** Populates every filter dropdown in one round trip. */
+/**
+ * Populates every filter dropdown in one round trip.
+ *
+ * THIS IS THE ENDPOINT EVERY SCREEN LOADS, and on 2026-09-11 it was measured
+ * at 595ms p50 and 82 263 bytes — the broadest single cost in the product,
+ * paid by screens that render no filter row at all. Three of the six reads it
+ * made were feeding nothing:
+ *
+ *   - `findStages` shipped 12 180 bytes of Доставка stages for a «Bosqich»
+ *     control no screen enables, and `findProducts` shipped a list that is
+ *     empty on this portal anyway. Both controls were deleted from PageShell
+ *     in the same change, so nothing is left offering an empty dropdown.
+ *   - `findLastSuccessfulSync` was the ONE query here whose plan grows with
+ *     the table, and `lastSyncedAt` had no reader: PageShell's own comment
+ *     records that the header fetches freshness from `/meta/alerts` itself.
+ *   - `permissions` was not even declared on the client type.
+ *
+ * What is left is three reads of tables in the tens-to-hundreds of rows, and a
+ * roster projected to the two fields a picker actually renders.
+ */
 export const GET = getHandler(ACCESS, z.object({}), async (ctx) => {
-  const [employees, departments, products, sources, stages, lastSyncedAt] =
-    await Promise.all([
-      referenceRepository.findEmployees(),
-      referenceRepository.findDepartments(),
-      referenceRepository.findProducts(),
-      referenceRepository.findSources(),
-      referenceRepository.findStages(),
-      referenceRepository.findLastSuccessfulSync(),
-    ])
+  const [employees, departments, sources] = await Promise.all([
+    referenceRepository.findEmployeeChoices(),
+    referenceRepository.findDepartments(),
+    referenceRepository.findSources(),
+  ])
 
   return {
     data: {
@@ -34,11 +49,7 @@ export const GET = getHandler(ACCESS, z.object({}), async (ctx) => {
         ? employees.filter((e) => ctx.scope.restrictToEmployeeIds!.includes(e.id))
         : employees,
       departments,
-      products,
       sources,
-      stages,
-      lastSyncedAt: lastSyncedAt?.toISOString() ?? null,
-      permissions: ctx.principal.role,
       /*
         The viewer, so the sidebar can hide what this account was not given.
 

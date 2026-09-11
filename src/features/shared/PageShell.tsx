@@ -16,13 +16,24 @@ import { t } from '@/lib/messages'
 import type { DataScopeValue } from '@/lib/dataScope'
 import { useDashboardFilters, useRestoreRememberedPeriod } from './useDashboardFilters'
 
+/**
+ * THREE LISTS, NOT FIVE, AND NO SYNC TIME.
+ *
+ * `stages` and `products` went with the «Bosqich» and «Mahsulot» controls
+ * below: no screen in the product enabled either toggle, and the stage list
+ * alone was 12 180 bytes on every request to every screen. `lastSyncedAt` had
+ * no reader at all — the header takes freshness from `/meta/alerts`, as the
+ * comment further down this file has said for a while.
+ *
+ * The roster is `{ id, fullName }` because that is what a picker renders. It
+ * used to carry position, department id, department name, active flag and
+ * avatar — 45 727 of the response's 82 263 bytes, plus a second SQL statement
+ * for the department relation.
+ */
 export interface FilterOptions {
   readonly employees: readonly { id: string; fullName: string }[]
   readonly departments: readonly { id: string; name: string }[]
-  readonly products: readonly { id: string; name: string }[]
   readonly sources: readonly { id: string; name: string }[]
-  readonly stages: readonly { id: string; name: string }[]
-  readonly lastSyncedAt: string | null
   /** Who is looking. Drives which nav entries render. */
   readonly viewer?: {
     readonly userId: string
@@ -73,8 +84,6 @@ export interface FilterToggles {
   readonly searchPlaceholder?: string
   readonly employees?: boolean
   readonly departments?: boolean
-  readonly stages?: boolean
-  readonly products?: boolean
   readonly sources?: boolean
   readonly search?: boolean
 }
@@ -263,8 +272,7 @@ export function PageShell({
   const data = options.data?.data
 
   const anyFilter =
-    enabled.employees || enabled.departments || enabled.stages || enabled.products ||
-    enabled.sources || enabled.search
+    enabled.employees || enabled.departments || enabled.sources || enabled.search
 
   const periodControl = period ? (
     <PeriodFilter
@@ -337,22 +345,21 @@ export function PageShell({
             onChange={(departmentIds) => update({ departmentIds })}
           />
         )}
-        {enabled.stages && (
-          <MultiSelect
-            label="Bosqich"
-            options={(data?.stages ?? []).map((s) => ({ id: s.id, label: s.name }))}
-            selected={filters.stageIds}
-            onChange={(stageIds) => update({ stageIds })}
-          />
-        )}
-        {enabled.products && (
-          <MultiSelect
-            label="Mahsulot"
-            options={(data?.products ?? []).map((p) => ({ id: p.id, label: p.name }))}
-            selected={filters.productIds}
-            onChange={(productIds) => update({ productIds })}
-          />
-        )}
+        {/*
+          «Bosqich» AND «Mahsulot» ARE GONE, controls and payload together.
+
+          No screen enabled either toggle — the only `filters` props in the
+          product are employees / departments / sources on Savdo dinamikasi,
+          employees / departments on KPI, and search on Yalpi marja and the
+          confirmation board. They were shipping 12 180 bytes of stage list to
+          every screen to populate a dropdown nothing mounted.
+
+          Deleted in the same change as the payload, deliberately: dropping the
+          data and leaving the toggle would have left a future screen with a
+          control that renders an empty list, which is worse than no control.
+          `stageIds` and `productIds` still exist in the URL grammar and still
+          reach the SQL that reads them — this is the picker, not the filter.
+        */}
         {enabled.sources && (
           <MultiSelect
             label="Manba"

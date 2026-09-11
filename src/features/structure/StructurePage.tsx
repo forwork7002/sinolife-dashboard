@@ -76,6 +76,23 @@ export function StructurePage() {
   const query = useQuery({
     queryKey: ['structure'],
     queryFn: ({ signal }) => apiGet<StructureDto[]>('/insights/structure', {}, signal),
+    /*
+      FIVE MINUTES, NOT ONE — this tree does not move on a one-minute clock.
+
+      The global cadence in `providers.tsx` is 60s because that is the sync
+      worker's tick, and for a screen reading DEALS that is right. This screen
+      reads `department`, `department_member` and `employee`: who reports to
+      whom, which changes when the sync's reference-data pass names a new head,
+      not when an order is taken. It is also DATELESS — there is no window here
+      that could go stale.
+
+      BOTH, because `staleTime` does not gate the timer: `refetchInterval`
+      fires on its own clock and never asks whether the data is stale. Setting
+      only one of them buys nothing, which `/meta/filters` records having
+      learned the hard way.
+    */
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
   })
 
   const roots = useMemo(() => query.data?.data ?? [], [query.data])
