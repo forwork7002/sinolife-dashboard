@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { viewerOf } from '@/server/auth/viewer'
 import { getHandler } from '@/server/http/handler'
 import { referenceRepository } from '@/server/services/container'
 
@@ -57,16 +58,14 @@ export const GET = getHandler(ACCESS, z.object({}), async (ctx) => {
         already fetches it once per session. Presentation only — the page guard
         and the route permissions are what actually refuse access, and both
         read the database rather than this payload.
+
+        BUILT BY `viewerOf`, WHICH THE ROOT LAYOUT ALSO CALLS. The layout hands
+        the same object to the shell as it renders, so the sidebar is right
+        before this request is even made; written out twice instead, a field
+        that disagreed would show up as the menu moving a second after the page
+        opened, which is the bug the handed-down copy exists to end.
       */
-      viewer: {
-        // The viewer's own id, so the admin screen can refuse to offer an
-        // action the server would reject anyway — deleting yourself.
-        userId: ctx.principal.userId,
-        role: ctx.principal.role,
-        sections: ctx.principal.sections,
-        dataScope: ctx.principal.dataScope,
-        canManageUsers: ctx.principal.role === 'ADMIN',
-      },
+      viewer: viewerOf(ctx.principal),
     },
   }
 })

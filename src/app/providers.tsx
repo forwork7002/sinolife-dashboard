@@ -3,6 +3,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 
+import { ViewerProvider, type Viewer } from '@/lib/viewer'
+
 /**
  * Client-side data layer.
  *
@@ -14,7 +16,21 @@ import { useState, type ReactNode } from 'react'
  * The client is created inside state so each browser session gets exactly one,
  * and a server render never shares a cache between requests.
  */
-export function Providers({ children }: { children: ReactNode }) {
+export function Providers({
+  children,
+  /**
+   * Who is signed in, resolved by the root layout on the server.
+   *
+   * It rides through here because this is already the one client boundary the
+   * whole tree sits under. The shell reads it with `useServerViewer()` and
+   * draws the menu this account actually holds on the first frame, instead of
+   * showing everything until `/meta/filters` answers. See `@/lib/viewer`.
+   */
+  viewer = null,
+}: {
+  children: ReactNode
+  viewer?: Viewer | null
+}) {
   const [client] = useState(
     () =>
       new QueryClient({
@@ -91,5 +107,9 @@ export function Providers({ children }: { children: ReactNode }) {
       }),
   )
 
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={client}>
+      <ViewerProvider value={viewer}>{children}</ViewerProvider>
+    </QueryClientProvider>
+  )
 }

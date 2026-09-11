@@ -30,6 +30,7 @@ import { apiGet, type AlertsDto, type SearchDto } from '@/lib/api'
 import { sessionUser, signOut, useSession } from '@/lib/authClient'
 import { formatCompactUzs, formatDateTime } from '@/lib/format'
 import { ROLE_LABELS, canSeeHref, type RoleValue } from '@/lib/roles'
+import { useServerViewer } from '@/lib/viewer'
 import { isCompanyWideSection, sectionSpec, type SectionValue } from '@/lib/sections'
 import { setTheme, useResolvedTheme } from '@/lib/theme'
 import { useFilterOptions } from '@/features/shared/PageShell'
@@ -323,14 +324,28 @@ export function Shell({
   const closePalette = useCallback(() => setPaletteOpen(false), [])
   useCommandK(openPalette)
 
-  const role = user?.role
-
   /*
-    The viewer's granted sections, from the filters payload every page already
-    fetches. Shares react-query's cache with PageShell, so this costs no extra
-    request.
+    WHO IS LOOKING — ASKED OF THE SERVER FIRST, THEN KEPT CURRENT.
+
+    The root layout resolves the viewer while it renders and hands it down
+    (`@/lib/viewer`), so the menu below is right on the FIRST frame. The filters
+    payload every page already fetches then takes over, which is what makes an
+    administrator's edit to your own account move your own sidebar without a
+    reload — `UsersPage.refresh()` invalidates `['filters']` for exactly that.
+    Both are built by `viewerOf` on the server, so the handover changes nothing
+    on screen.
+
+    WHAT THIS REPLACED, because the shape of it invites putting it back: the rail
+    read the session and the payload and nothing else, and treated "neither has
+    answered" as "show everything". Every cold load therefore shipped HTML
+    carrying all eleven destinations — «Foydalanuvchilar» included — to every
+    account, for as long as /api/auth/get-session took to answer. A salesperson
+    whose account had just been opened for them signed in and met the
+    administrator's menu for a second. Reported 2026-09-11.
   */
-  const viewer = useFilterOptions().data?.data.viewer
+  const serverViewer = useServerViewer()
+  const viewer = useFilterOptions().data?.data.viewer ?? serverViewer
+  const role = user?.role ?? viewer?.role
   /*
     A NARROWED ACCOUNT LOSES THE LINKS ITS SCOPE CANNOT OPEN.
 
@@ -360,12 +375,15 @@ export function Shell({
    * each endpoint are what actually refuse access. Hiding a link the user
    * would only be redirected away from is a courtesy, not the boundary.
    *
-   * While the viewer payload loads, the role default stands in, so the
-   * sidebar does not render a full menu and then visibly shrink.
+   * NOTHING KNOWN MEANS NOTHING OFFERED. Both of these used to fail OPEN — an
+   * unknown role returned true — which is how the full menu came to be the
+   * first frame of every cold load. There is no signed-in state in which the
+   * server does not know the answer, so a viewer this code cannot see is a
+   * signed-out one, and a signed-out reader is on their way to /login.
    */
   const canOpen = (item: NavItem) => {
     if (item.adminOnly) return viewer?.canManageUsers === true
-    if (!role) return true
+    if (!role) return false
     return canSeeHref(role, grantedRoutes, item.href)
   }
 
@@ -379,7 +397,7 @@ export function Shell({
   const railGroups: readonly RailGroup[] = NAV_GROUPS.map((group) => ({
     label: group.label,
     items: group.items
-      .filter((item) => !user || canOpen(item))
+      .filter((item) => canOpen(item))
       .map((item) => ({
         key: item.href,
         label: item.label,

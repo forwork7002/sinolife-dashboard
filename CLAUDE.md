@@ -287,8 +287,29 @@ employee dimension to narrow by at all.
 ### Client data flow
 
 Every `src/features/*/[A-Z]*Page.tsx` starts with `'use client'`. There is no
-server-component fetching, no prefetch/hydration boundary — pages are thin
-shells, all data comes from `/api/v1` in the browser.
+server-component fetching and no hydration boundary — pages are thin shells, all
+data comes from `/api/v1` in the browser.
+
+**ONE EXCEPTION, AND IT IS ABOUT THE FIRST FRAME: the viewer.** `layout.tsx` is
+an async server component that calls `pageViewer()` and hands the result to the
+client tree through `ViewerProvider` (`src/lib/viewer.tsx`); `Shell` reads it
+with `useServerViewer()` and draws the sidebar from it, letting the
+`/meta/filters` payload override it the moment it lands. Both copies are built by
+`viewerOf` in `src/server/auth/viewer.ts`, so the handover is invisible — which
+is the whole requirement. **Without it the rail had nothing to go on for about a
+second and showed EVERYTHING**: the session comes from
+`/api/auth/get-session`, which cannot have answered during the server render, so
+every cold load shipped HTML carrying all eleven destinations — «Foydalanuvchilar»
+included — to every account, and a salesperson whose account had just been opened
+met the administrator's menu blinking at them. Reported by the client on
+2026-09-11; pinned by `tests/features/navColdLoad.test.tsx`, which also pins the
+direction of the override and the fail-closed default.
+
+It costs no extra query: `pagePrincipal()` in `pageGuard.ts` is wrapped in React's
+`cache`, so the layout and the page guard under it share ONE session-plus-user
+resolution per request. The one thing it does cost is that the root layout now
+reads cookies, so `/login` and `/_not-found` are server-rendered on demand like
+everything else rather than prerendered — `next build` shows every route as `ƒ`.
 
 `src/app/providers.tsx` sets the cadence **globally**: `refetchInterval: 60_000`
 with `staleTime: 55_000`, matched to the sync worker's one-minute tick.

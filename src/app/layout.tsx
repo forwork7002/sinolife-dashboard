@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 
 import './globals.css'
+import { pageViewer } from '@/server/auth/viewer'
 import { inter } from './fonts'
 import { Providers } from './providers'
 
@@ -30,9 +31,32 @@ export const viewport: Viewport = {
   ],
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  /*
+    WHO IS READING, BEFORE THE FIRST FRAME.
+
+    The sidebar is a client component, and both of the things that tell it which
+    links to draw — the session and `/meta/filters` — are round trips that cannot
+    have answered yet when this HTML is built. It used to fill that second by
+    drawing every destination in the product, so a salesperson signed in and met
+    the administrator's menu, «Foydalanuvchilar» included, for about a second
+    before it collapsed to the four links they hold. The client reported it as a
+    bug in the accounts screen, which is where they had just opened the account.
+
+    Resolved HERE rather than per page because there is no dashboard layout: ten
+    pages render the shell through `PageShell`, and threading a prop through all
+    ten features to reach it is ten chances to forget. It shares the page guard's
+    per-request cache, so it costs no extra query — see `pagePrincipal`.
+
+    This is the same reasoning as the theme script below: a first paint that is
+    wrong and then corrects itself is read as the application being broken, and
+    the fix is always to know the answer before painting rather than to paint
+    faster.
+  */
+  const viewer = await pageViewer()
+
   return (
     <html lang="uz" className={inter.variable} suppressHydrationWarning>
       <body>
@@ -66,7 +90,7 @@ export default function RootLayout({
               "document.documentElement.setAttribute('data-theme',c)}catch(e){}",
           }}
         />
-        <Providers>{children}</Providers>
+        <Providers viewer={viewer}>{children}</Providers>
       </body>
     </html>
   )

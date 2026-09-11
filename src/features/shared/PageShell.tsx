@@ -9,11 +9,9 @@ import { Button } from '@/components/ui/Button'
 import { MultiSelect, SearchInput } from '@/components/ui/Controls'
 import { MultiplyGlyph } from '@/components/ui/Icons'
 import { apiGet, type ResponseMeta } from '@/lib/api'
-import type { RoleValue } from '@/lib/roles'
-import type { SectionValue } from '@/lib/sections'
 import { formatDate } from '@/lib/format'
 import { t } from '@/lib/messages'
-import type { DataScopeValue } from '@/lib/dataScope'
+import type { Viewer } from '@/lib/viewer'
 import { useDashboardFilters, useRestoreRememberedPeriod } from './useDashboardFilters'
 
 /**
@@ -34,15 +32,14 @@ export interface FilterOptions {
   readonly employees: readonly { id: string; fullName: string }[]
   readonly departments: readonly { id: string; name: string }[]
   readonly sources: readonly { id: string; name: string }[]
-  /** Who is looking. Drives which nav entries render. */
-  readonly viewer?: {
-    readonly userId: string
-    readonly role: RoleValue
-    readonly sections: readonly SectionValue[]
-    /** How much of each granted screen this account reads. See `@/lib/dataScope`. */
-    readonly dataScope: DataScopeValue
-    readonly canManageUsers: boolean
-  }
+  /**
+   * Who is looking. Drives which nav entries render.
+   *
+   * `Viewer` rather than a shape of its own: the root layout hands the shell
+   * the same object from the server (see `@/lib/viewer`), and a second
+   * declaration here is how the two would come to differ by a field.
+   */
+  readonly viewer?: Viewer
 }
 
 /**

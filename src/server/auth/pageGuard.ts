@@ -25,6 +25,7 @@
 
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { cache } from 'react'
 
 import {
   SECTIONS,
@@ -82,12 +83,28 @@ function firstServableSection(
   )
 }
 
+/**
+ * The caller, resolved ONCE for the whole page request.
+ *
+ * `requirePrincipal` is a session lookup plus a primary-key read of the user
+ * row, and the row is deliberately re-read rather than trusted from the cookie
+ * (see its comment). Three callers now want the same answer on the same
+ * request — the guard on the page, and the root layout, which hands the viewer
+ * to the sidebar so it paints the right menu on the first frame — and asking
+ * twice would double that cost on every navigation in the product.
+ *
+ * React's `cache` is per-request, so the layout and the page it wraps share one
+ * resolution and a different request shares nothing. A Request is what
+ * `optionalPrincipal` reads cookies from; the incoming headers are the only
+ * part of it that matters here.
+ */
+export const pagePrincipal = cache(
+  async (): Promise<Principal | null> =>
+    optionalPrincipal(new Request('https://guard.invalid/', { headers: await headers() })),
+)
+
 export async function requireSection(section: SectionValue): Promise<void> {
-  const principal = await optionalPrincipal(
-    // A Request is what `optionalPrincipal` reads cookies from; the incoming
-    // headers are the only part of it that matters here.
-    new Request('https://guard.invalid/', { headers: await headers() }),
-  )
+  const principal = await pagePrincipal()
 
   // No principal at all is the middleware's job, and it has already run. If it
   // somehow did not, /login is still the right destination.
@@ -107,9 +124,7 @@ export async function requireSection(section: SectionValue): Promise<void> {
  * without letting an administrator give that power away by ticking a box.
  */
 export async function requireUserAdmin(): Promise<void> {
-  const principal = await optionalPrincipal(
-    new Request('https://guard.invalid/', { headers: await headers() }),
-  )
+  const principal = await pagePrincipal()
 
   if (!principal) redirect('/login')
   if (!can(principal, 'users:manage')) redirect('/')
@@ -124,9 +139,7 @@ export async function requireUserAdmin(): Promise<void> {
  * fallback is a better answer than an exception on a redirect.
  */
 export async function firstSectionFor(prefer?: string): Promise<SectionSpec | null> {
-  const principal = await optionalPrincipal(
-    new Request('https://guard.invalid/', { headers: await headers() }),
-  )
+  const principal = await pagePrincipal()
   if (!principal) return null
   return firstServableSection(principal, prefer) ?? null
 }
