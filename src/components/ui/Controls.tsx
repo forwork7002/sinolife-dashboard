@@ -4,6 +4,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { Button } from '@/components/ui/Button'
+import { MultiplyGlyph } from '@/components/ui/Icons'
 import { formatNumber } from '@/lib/format'
 import { t } from '@/lib/messages'
 
@@ -170,9 +171,17 @@ export function MultiSelect({
           }}
         >
           {selected.length > 0 && (
-            // The button kit's ghost: quiet until hovered, so clearing never
-            // competes with the options it clears.
-            <Button variant="ghost" size="sm" className="mb-1 w-full" onClick={() => onChange([])}>
+            // Red, like every clear and delete in the application — the client
+            // asked on 2026-09-11 for all of them to be findable at a glance
+            // («barcha tozalash va oʻchirish funksiyalari aniqroq koʻrinsin»).
+            // As a ghost it was grey text above the list and read as a label.
+            <Button
+              variant="danger"
+              size="sm"
+              className="mb-1 w-full"
+              icon={<MultiplyGlyph size={12} />}
+              onClick={() => onChange([])}
+            >
               Tozalash
             </Button>
           )}
@@ -667,7 +676,14 @@ export function ColumnFilterList({
       )}
 
       {selected.length > 0 && (
-        <Button variant="ghost" size="sm" className="mb-1 w-full" onClick={() => onChange([])}>
+        // Red — see MultiSelect's clear, which this matches.
+        <Button
+          variant="danger"
+          size="sm"
+          className="mb-1 w-full"
+          icon={<MultiplyGlyph size={12} />}
+          onClick={() => onChange([])}
+        >
           Tozalash
         </Button>
       )}
@@ -814,10 +830,12 @@ export function ColumnFilterRange({
           Qoʻllash
         </Button>
         {(min !== undefined || max !== undefined) && (
+          // Red — see MultiSelect's clear, which this matches.
           <Button
             type="button"
-            variant="ghost"
+            variant="danger"
             size="sm"
+            icon={<MultiplyGlyph size={12} />}
             onClick={() => {
               setFrom('')
               setTo('')

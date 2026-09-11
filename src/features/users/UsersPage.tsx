@@ -11,6 +11,7 @@ import {
   DashGlyph,
   EyeGlyph,
   EyeOffGlyph,
+  MultiplyGlyph,
   TrashGlyph,
 } from '@/components/ui/Icons'
 import { SegmentedControl } from '@/components/ui/Controls'
@@ -783,7 +784,13 @@ function UserDialog({
             >
               Hammasi
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setSections([])}>
+            {/* Red, like every clear and delete in the application (2026-09-11). */}
+            <Button
+              variant="danger"
+              size="sm"
+              icon={<MultiplyGlyph size={12} />}
+              onClick={() => setSections([])}
+            >
               Tozalash
             </Button>
           </div>
@@ -875,9 +882,11 @@ function UserDialog({
                   <span className="text-xs" style={{ color: 'var(--status-critical)' }}>
                     Butunlay oʻchirilsinmi?
                   </span>
+                  {/* The irreversible one says so in colour, not only in words. */}
                   <Button
-                    variant="secondary"
+                    variant="danger"
                     size="sm"
+                    icon={<TrashGlyph size={13} />}
                     disabled={remove.isPending}
                     onClick={() => remove.mutate()}
                   >
@@ -888,14 +897,13 @@ function UserDialog({
                   </Button>
                 </span>
               ) : (
-                <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)}>
-                  <span
-                    className="inline-flex items-center gap-1.5"
-                    style={{ color: 'var(--status-critical)' }}
-                  >
-                    <TrashGlyph size={13} />
-                    Hisobni oʻchirish
-                  </span>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={<TrashGlyph size={13} />}
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  Hisobni oʻchirish
                 </Button>
               )}
             </span>
