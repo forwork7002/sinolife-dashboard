@@ -524,6 +524,27 @@ export interface LogisticsPointDto {
 }
 
 /**
+ * One parcel standing at a post office for more than a week, richest first.
+ *
+ * THE ROW A MANAGER ACTS ON. The table above says CARAVAN holds 337 of these;
+ * this says which. Sorted by money rather than by age on purpose — the oldest
+ * parcels standing are three to four months old, carry no order code and are
+ * plainly abandoned, while the recoverable ones are a fortnight old and carry
+ * millions. `days` is printed on every row so the reader can tell the two
+ * apart.
+ *
+ * No customer name and no phone: `bitrixId` opens the deal in the portal,
+ * where both already are, and this screen has never disclosed a customer.
+ */
+export interface LogisticsStandingOrderDto {
+  readonly bitrixId: string | null
+  readonly orderCode: string | null
+  readonly post: string
+  readonly region: string
+  readonly amount: MoneyDto
+  readonly days: number
+}
+/**
  * One band of «how long did it wait at the post office», and whether it
  * arrived. Measured over 60 days of production: 95.1% delivered when
  * collected inside two days, 62.5% once past seven — and the gradient holds
@@ -599,6 +620,8 @@ export interface LogisticsDto {
   readonly standing: {
     readonly cohort: readonly LogisticsPointDto[]
     readonly all: readonly LogisticsPointDto[]
+    /** The richest of them, so the block ends in something to do. */
+    readonly orders: readonly LogisticsStandingOrderDto[]
   }
   readonly days: readonly LogisticsDayDto[]
   /** The eight hub and carrier stages, empty ones included. */

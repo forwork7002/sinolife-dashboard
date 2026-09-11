@@ -361,6 +361,21 @@ export interface LogisticsCohort {
   readonly waits: readonly LogisticsCut[]
 }
 
+/**
+ * One parcel standing at a post office for more than a week.
+ *
+ * Carries no customer data on purpose — the Bitrix24 id opens the deal in the
+ * portal, where the phone number already is.
+ */
+export interface LogisticsStandingOrder {
+  readonly bitrixId: string | null
+  readonly orderCode: string | null
+  readonly post: string
+  readonly region: string
+  readonly amountMinor: bigint
+  readonly days: number
+}
+
 /** One post office, and what is standing at it right now. No window. */
 export interface LogisticsStandingRow {
   readonly post: string
@@ -1613,6 +1628,83 @@ export class InsightsRepository {
        GROUP BY s."name"
        ORDER BY sort
       `
+  }
+
+  /**
+   * THE WORK LIST: the parcels with the most money in them, standing too long.
+   *
+   * The aggregate above says CARAVAN holds 337 parcels past seven days. This is
+   * the answer to «which ones» — without it the block is a number a manager can
+   * read and not act on.
+   *
+   * SORTED BY MONEY, NOT BY AGE, and that is the difference between a recovery
+   * list and a graveyard. Measured on production: the oldest parcels standing
+   * are 88 to 127 days old, carry no order code (they predate the convention)
+   * and are plainly abandoned; the ones worth a phone call are 14 to 20 days
+   * old and carry 3 to 6 million soʻm each. Age is still printed on every row,
+   * because it is what tells the reader which of them is still recoverable.
+   *
+   * DRIVEN FROM THE HISTORY, not from the deal. A parcel still standing IS a
+   * history row with no leftAt, and there are ~890 of those against 434 000
+   * deals — so this walks (stageId, enteredAt) for eight stages and looks the
+   * deals up by primary key. The same answer through a LATERAL over deal
+   * measured 1 358 ms; this one measures 27 ms.
+   *
+   * NO CUSTOMER DATA. The Bitrix24 id and the order code are enough to open the
+   * deal in the portal, which is where the phone number already is. This screen
+   * is company-wide (analytics:read:all) and has never disclosed a customer;
+   * adding a name or a number here would change what the whole screen is
+   * allowed to show, for no gain over a link the reader follows anyway.
+   *
+   * Held as a builder rather than inline so the shape can be asserted without a
+   * database. See tests/http/logisticsSql.test.ts.
+   */
+  private static logisticsStandingOrdersSql(): string {
+    return `
+      SELECT d."externalId"                                     AS bitrix_id,
+             d."orderCode"                                      AS order_code,
+             s."name"                                           AS post,
+             COALESCE(d."region", '${InsightsRepository.NO_REGION}') AS region,
+             d."amountMinor"::text                              AS amount,
+             EXTRACT(EPOCH FROM (now() - h."enteredAt")) / 86400 AS days
+        FROM "deal_stage_history" h
+        JOIN "deal_stage" s ON s."id" = h."stageId"
+        /*
+          d."stageId" = h."stageId" is the whole "still standing" test: the deal
+          has not moved on from the stage this history row is about. Without it
+          a delivered parcel's old hub row would be reported as stuck forever.
+        */
+        JOIN "deal" d ON d."id" = h."dealId" AND d."stageId" = h."stageId"
+       WHERE h."leftAt" IS NULL
+         AND s."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER')
+         AND s."externalId" LIKE 'C6:%'
+         AND h."enteredAt" < now() - interval '7 days'
+       ORDER BY d."amountMinor" DESC, h."enteredAt" ASC
+       LIMIT 25
+      `
+  }
+
+  /** The 25 richest parcels standing at a post office for more than a week. */
+  async logisticsStandingOrders(): Promise<readonly LogisticsStandingOrder[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        bitrix_id: string | null
+        order_code: string | null
+        post: string
+        region: string
+        amount: MoneyText
+        days: number
+      }[]
+    >(InsightsRepository.logisticsStandingOrdersSql())
+
+    return rows.map((r) => ({
+      bitrixId: r.bitrix_id,
+      orderCode: r.order_code,
+      post: r.post,
+      region: r.region,
+      amountMinor: money(r.amount),
+      days: Number(r.days),
+    }))
   }
 
   /** Every parcel standing at a Доставка post office, whatever month it was ordered in. */

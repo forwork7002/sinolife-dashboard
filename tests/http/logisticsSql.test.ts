@@ -17,6 +17,8 @@ const { InsightsRepository } = await import('@/server/repositories/insightsRepos
 const reach = InsightsRepository as unknown as {
   queueSql: (mode: string, scopeParam: string) => string
   logisticsCohortSql: () => string
+  logisticsStandingSql: () => string
+  logisticsStandingOrdersSql: () => string
 }
 
 /** What the repository actually sends: the queue prelude plus the cuts. */
@@ -265,5 +267,81 @@ describe('logisticsCohortSql', () => {
   it('unions the seven arms and orders them for the decoder', () => {
     expect(count(BARE, 'UNION ALL SELECT * FROM')).toBe(6)
     expect(BARE).toContain('ORDER BY cut, is_total, sort NULLS LAST, sub NULLS FIRST, orders DESC')
+  })
+})
+
+/**
+ * The two statements that answer «what is standing at a post office RIGHT NOW».
+ *
+ * They take no window and no parameters, which is the point and also the risk:
+ * everything else on this screen is dated by the arrival in Тасдиклаш, and a
+ * left bound here would hide exactly the parcels worth acting on. Measured on
+ * production: bounded at 60 days the reading finds 658 parcels against 890, and
+ * loses QASHQADARYO entirely — every one of its parcels has been standing
+ * longer than that, at a median of 45 days.
+ */
+describe('the standing snapshot', () => {
+  const STANDING = bare(reach.logisticsStandingSql())
+  const ORDERS = bare(reach.logisticsStandingOrdersSql())
+
+  it('takes no window, in either statement', () => {
+    for (const sql of [STANDING, ORDERS]) {
+      expect(sql).not.toContain('$1')
+      expect(sql).not.toContain('$2')
+    }
+  })
+
+  /*
+    The deal must still be IN the stage the history row is about. Without that
+    equality a delivered parcel’s old hub row is reported as standing there
+    forever — and it reads as a plausible number, not as an error.
+  */
+  it('only counts a parcel the deal has not moved on from', () => {
+    expect(STANDING).toContain('h."stageId" = d."stageId"')
+    expect(ORDERS).toContain('d."stageId" = h."stageId"')
+  })
+
+  it('ages from the entry into the stage it is standing in', () => {
+    expect(STANDING).toContain("now() - e.entered_at > interval '7 days'")
+    expect(ORDERS).toContain('h."leftAt" IS NULL')
+    expect(ORDERS).toContain("h.\"enteredAt\" < now() - interval '7 days'")
+  })
+
+  /*
+    Money, not age. The oldest parcels standing are three to four months old,
+    carry no order code and are abandoned; the recoverable ones are a fortnight
+    old and carry millions. Sorting by age would put the graveyard on top.
+  */
+  it('orders the work list by money', () => {
+    expect(ORDERS).toContain('ORDER BY d."amountMinor" DESC')
+    expect(ORDERS).toContain('LIMIT 25')
+  })
+
+  /*
+    NO CUSTOMER DATA. This screen is company-wide and has never disclosed a
+    customer; the Bitrix24 id opens the deal in the portal, where the phone
+    number already is.
+  */
+  it('discloses no customer', () => {
+    for (const field of ['customerName', 'customerId', 'phone', 'deliveryAddress']) {
+      expect(ORDERS, field).not.toContain(field)
+    }
+  })
+
+  /*
+    Driven from the history, where a standing parcel is a row with no leftAt —
+    ~890 of those against 434 000 deals. The same answer through a LATERAL over
+    deal measured 1 358 ms against 27 ms.
+  */
+  it('drives the work list from the history, not from every deal', () => {
+    expect(ORDERS.indexOf('FROM "deal_stage_history" h')).toBeGreaterThan(-1)
+    expect(ORDERS).not.toContain('JOIN LATERAL')
+  })
+
+  it('keeps both statements inside the Доставка funnel', () => {
+    for (const sql of [STANDING, ORDERS]) {
+      expect(sql).toContain(`s."externalId" LIKE 'C6:%'`)
+      expect(sql).toContain(`s."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER')`)
+    }
   })
 })

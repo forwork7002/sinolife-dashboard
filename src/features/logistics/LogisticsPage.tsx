@@ -7,6 +7,7 @@ import { CategoryBarList, type CategoryBarRow } from '@/components/charts/Catego
 import { StatusCompositionBar } from '@/components/charts/StatusCompositionBar'
 import { ErrorState } from '@/components/states/States'
 import { ChartCard } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { Meter, RingGauge } from '@/components/ui/Stat'
@@ -20,6 +21,7 @@ import {
   type LogisticsDto,
   type LogisticsPointDto,
   type LogisticsStageDto,
+  type LogisticsStandingOrderDto,
   type LogisticsWaitBandDto,
   apiGet,
 } from '@/lib/api'
@@ -111,6 +113,15 @@ export function LogisticsPage() {
     adds up with the rest of the page.
   */
   const [standingScope, setStandingScope] = useState<'all' | 'cohort'>('all')
+
+  /*
+    The work list is a disclosure, not a default. The table above answers
+    «where», which is what a manager reads every morning; the twenty-five
+    rows answer «which ones», which is what they read once they have decided
+    to act. Open by default it would push the wait gradient and everything
+    under it off the first screen.
+  */
+  const [ordersOpen, setOrdersOpen] = useState(false)
 
   /*
     A post office with nothing standing at it is dropped from THIS table and
@@ -447,6 +458,50 @@ export function LogisticsPage() {
                 ? "«Hozirgi holat» — davr tanlovidan qatʼi nazar, pochtada turgan BARCHA joʻnatmalar. Sahifaning qolgan qismi tanlangan davr boʻyicha, shuning uchun bu raqamlar yuqoridagilarga qoʻshilmaydi."
                 : "«Tanlangan davr» — faqat shu oynada navbatga tushgan buyurtmalar. Oyna ochilishidan oldin tiqilib qolgan joʻnatmalar bu yerda koʻrinmaydi."}
             </p>
+
+            {(data?.standing.orders.length ?? 0) > 0 && (
+              <div className="mt-3">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setOrdersOpen(!ordersOpen)}
+                  aria-expanded={ordersOpen}
+                >
+                  {ordersOpen
+                    ? "Roʻyxatni yopish"
+                    : `Eng koʻp pul turgan joʻnatmalar (${formatNumber(data?.standing.orders.length ?? 0)} ta)`}
+                </Button>
+              </div>
+            )}
+
+            {ordersOpen && (
+              <div className="mt-3">
+                <DataTable<LogisticsStandingOrderDto>
+                  columns={STANDING_ORDER_COLUMNS}
+                  rows={data?.standing.orders ?? []}
+                  rowKey={(row) => row.bitrixId ?? `${row.post}-${row.days}-${row.amount.amountMinor}`}
+                  status={viewStatus}
+                  errorMessage={errorMessage}
+                  onRetry={retry}
+                  emptyTitle="Joʻnatma yoʻq"
+                  emptyBody="7 kundan ortiq turgan joʻnatma topilmadi."
+                  minWidth={680}
+                  maxHeight={420}
+                />
+                {/*
+                  WHY MONEY AND NOT AGE. The oldest parcels standing are three
+                  to four months old and plainly abandoned; the recoverable
+                  ones are a fortnight old and carry millions. Age is on every
+                  row so the reader can tell which is which.
+                */}
+                <p className="mt-2 text-[11px]" style={{ color: "var(--ink-muted)" }}>
+                  Summa boʻyicha saralangan — eng koʻp pul turgani birinchi. Kod boʻyicha
+                  Bitrix24 dan topasiz. Eng eskilari (3–4 oylik) odatda qaytarib boʻlmaydi,
+                  shuning uchun har qatorda necha kun turgani yozilgan.
+                </p>
+              </div>
+            )}
           </section>
 
           <section>
@@ -674,6 +729,56 @@ const STANDING_COLUMNS: Column<LogisticsPointDto>[] = [
           {formatNumber(row.agedOrders)} ta · {formatFullUzs(row.agedAmount.amount)}
         </span>
       ),
+  },
+]
+
+/**
+ * The work list. Identity first, because the reader is about to go and look
+ * the parcel up; money second, because that is what ordered the list.
+ */
+const STANDING_ORDER_COLUMNS: Column<LogisticsStandingOrderDto>[] = [
+  {
+    key: 'code',
+    header: 'Buyurtma',
+    rowHeader: true,
+    width: '150px',
+    render: (row) => (
+      <span className="whitespace-nowrap">
+        {row.orderCode ?? NO_VALUE}
+        {row.bitrixId && (
+          <span className="ml-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            #{row.bitrixId}
+          </span>
+        )}
+      </span>
+    ),
+  },
+  { key: 'post', header: 'Pochta', width: '130px', render: (row) => row.post },
+  { key: 'region', header: 'Hudud', render: (row) => row.region },
+  {
+    key: 'days',
+    header: 'Necha kun',
+    align: 'right',
+    numeric: true,
+    width: '110px',
+    /*
+      Past a month a parcel is almost never recovered, so the number stops
+      being an alarm and starts being a note that this one is gone. The tone
+      says which of the two it is without a legend.
+    */
+    render: (row) => (
+      <span style={{ color: row.days >= 30 ? 'var(--ink-muted)' : 'var(--status-critical)' }}>
+        {formatNumber(row.days)}
+      </span>
+    ),
+  },
+  {
+    key: 'amount',
+    header: 'Summa',
+    align: 'right',
+    numeric: true,
+    width: '160px',
+    render: (row) => formatFullUzs(row.amount.amount),
   },
 ]
 

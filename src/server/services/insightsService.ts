@@ -224,6 +224,27 @@ export interface LogisticsPointDto {
 }
 
 /**
+ * One parcel standing at a post office for more than a week, richest first.
+ *
+ * THE ROW A MANAGER ACTS ON. The table above says CARAVAN holds 337 of these;
+ * this says which. Sorted by money rather than by age on purpose — the oldest
+ * parcels standing are three to four months old, carry no order code and are
+ * plainly abandoned, while the recoverable ones are a fortnight old and carry
+ * millions. `days` is printed on every row so the reader can tell the two
+ * apart.
+ *
+ * No customer name and no phone: `bitrixId` opens the deal in the portal,
+ * where both already are, and this screen has never disclosed a customer.
+ */
+export interface LogisticsStandingOrderDto {
+  readonly bitrixId: string | null
+  readonly orderCode: string | null
+  readonly post: string
+  readonly region: string
+  readonly amount: MoneyDto
+  readonly days: number
+}
+/**
  * One band of «how long did it wait», and whether it arrived.
  *
  * The one block on this screen that is a reason to act rather than a record
@@ -341,6 +362,8 @@ export interface LogisticsDto {
   readonly standing: {
     readonly cohort: readonly LogisticsPointDto[]
     readonly all: readonly LogisticsPointDto[]
+    /** The richest of them, so the block ends in something to do. */
+    readonly orders: readonly LogisticsStandingOrderDto[]
   }
   readonly days: readonly LogisticsDayDto[]
   /** The eight hub and carrier stages, empty ones included. */
@@ -864,9 +887,10 @@ export class InsightsService {
       ones, and those are the ones worth a phone call. It costs 48 ms and
       runs beside the cohort rather than after it.
     */
-    const [cuts, standing] = await Promise.all([
+    const [cuts, standing, standingOrders] = await Promise.all([
       this.repository.logisticsCohort(this.window(period, scope)),
       this.repository.logisticsStanding(),
+      this.repository.logisticsStandingOrders(),
     ])
 
     const cash = (minor: bigint): MoneyDto => toMoneyDto(money(minor, currency))
@@ -1071,7 +1095,18 @@ export class InsightsService {
           deliveryRate: pct(rateBp(delivered, orders)),
         }
       }),
-      standing: { cohort: cuts.posts.map(toPoint), all: standingAll },
+      standing: {
+        cohort: cuts.posts.map(toPoint),
+        all: standingAll,
+        orders: standingOrders.map((row) => ({
+          bitrixId: row.bitrixId,
+          orderCode: row.orderCode,
+          post: deliveryStageName(row.post),
+          region: row.region,
+          amount: cash(row.amountMinor),
+          days: Math.round(row.days),
+        })),
+      },
       days,
       posts: cuts.posts.map(toPoint),
       regions: cuts.regions.map(toPoint),

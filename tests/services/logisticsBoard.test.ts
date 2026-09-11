@@ -151,6 +151,7 @@ function serviceOver(cuts: LogisticsCohort) {
     // The unbounded snapshot is a second statement; this file measures the
     // shaping of the windowed one, so it answers empty.
     logisticsStanding: async () => [],
+    logisticsStandingOrders: async () => [],
   } as unknown as InsightsRepository
 
   const service = new InsightsService(repository)
