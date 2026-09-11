@@ -90,7 +90,7 @@ export const t = {
     */
     logistics: {
       title: 'Logistika natijasi',
-      lead: 'Mijozning kunlik logistika hisoboti: ЗАКАЗ (FAKT 1) qanday taqsimlangan, qaysi pochta qanday ishlayapti va 18 ta Bitrix24 bosqichi. Davr buyurtma tasdiqlash navbatiga TUSHGAN sana boʻyicha.',
+      lead: 'Kunlik logistika hisoboti: ЗАКАЗ (FAKT 1) qanday taqsimlangan, qaysi pochta qanday ishlayapti va har bir Bitrix24 bosqichi. Davr buyurtma tasdiqlash navbatiga TUSHGAN sana boʻyicha.',
     },
     /*
       NO LEAD LINE — the board prints nothing under its title in any mode
@@ -116,7 +116,17 @@ export const t = {
     },
     margin: {
       title: 'Yalpi marja',
-      lead: 'Mahsulot boʻyicha tushum, tannarx va yalpi foyda.',
+      /*
+        THE BASIS IS IN THE LEAD, like Logistika's and Joʻnatish nuqtalari'.
+
+        Every money figure on this screen windows on `closedAt`, and the only
+        other thing under the title was a date range — so a reader comparing it
+        against Logistika, which windows on the day the order was TAKEN, had
+        nothing on either screen telling them the two spans mean different
+        things. On this portal the median order takes 20-25 days between those
+        two clocks, so the gap is not a rounding difference.
+      */
+      lead: 'Mahsulot boʻyicha tushum, tannarx va yalpi foyda. Davr bitim YOPILGAN sana boʻyicha.',
     },
     warehouse: {
       title: 'Joʻnatish nuqtalari',

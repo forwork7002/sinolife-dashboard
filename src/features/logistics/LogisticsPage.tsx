@@ -42,14 +42,20 @@ import { t } from '@/lib/messages'
  * So ЗАКАЗ IS FAKT 1, Успешно IS FAKT 2, and %покрытия is one over the other —
  * which is why the client asked for both names to appear here too.
  *
- * WHAT TO READ WHEN THE NUMBERS ARE ARGUED ABOUT. The last block prints all
- * eighteen Доставка stages verbatim, with the column each one feeds. It is the
- * only place a reader can check that the six columns above really are those
- * eighteen stages grouped — and there is a live disagreement to check: on the
- * client's own week our Отказ reads 8.4% against their 16.70% and our Ожидание
- * 10.9% against their 4.25%, while both totals and Успешно agree. The mapping
- * is confirmed (CARAVAN is a post office, not a refusal), so the difference is
- * in their sheet's arithmetic, and that block is how it gets found.
+ * THE SHEET SPECIFIED THE COLUMNS; BITRIX24 SUPPLIES THE NUMBERS.
+ *
+ * Settled with the client on 2026-09-11, in their words: «bitrix24dagi
+ * malumot to'g'ri… google sheet ni ko'rsatganim sababi shu malumotlar
+ * dashboardda bo'lishi mumkin… undagi malumotlarga tayanma». So the sheet is
+ * read as a SPECIFICATION — these six columns, under these names — and never
+ * as a second source of figures. Where the two differ, the portal wins and
+ * nothing here needs changing.
+ *
+ * WHAT THE LAST BLOCK IS FOR. It prints every Доставка stage verbatim with
+ * the column it feeds, and it is the only place a reader can check that the
+ * six columns above really are the portal’s own stages grouped. That is an
+ * audit trail, not a dispute: it is what makes every figure above it
+ * checkable against obey.bitrix24.kz rather than trusted.
  *
  * FOUR OF THE FIVE CHARTS ARE HAND-DRAWN. Six columns and eight post offices
  * are fixed comparisons; a chart library for those is an axis nobody reads and
@@ -366,7 +372,7 @@ export function LogisticsPage() {
       */}
       <ChartCard
         title="Доставка bosqichlari · Bitrix24 bilan solishtirish"
-        hint="Portalning oʻz 18 ta bosqichi, oʻz nomi va tartibida — har biri qaysi ustunga kirgani bilan. Bu jadvalni obey.bitrix24.kz yonida ochib, qaysi ustun farq qilishini topish mumkin."
+        hint="Доставка voronkasining har bir bosqichi — portaldagi nomi va tartibida, har biri qaysi ustunga kirgani bilan. Bu jadvalni obey.bitrix24.kz yonida ochib, olti ustun haqiqatan shu bosqichlardan yigʻilganini tekshirish mumkin."
       >
         <DataTable<LogisticsStageDto>
           columns={STAGE_COLUMNS}

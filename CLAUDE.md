@@ -438,12 +438,21 @@ Per-screen traps worth knowing before you touch one:
   has a dispatch-role stage-history row, NOT by its current stage — on that
   week all 48 refusals stand in «Отказ предварительно» and all 48 had
   already reached a post office, so the stage name reports the opposite of
-  the truth. The client's sheet and ours still disagree about the split
-  between Отказ (8.4% against their 16.70%) and Ожидание (10.9% against
-  4.25%) while both totals and Успешно agree; the mapping is confirmed
-  (CARAVAN is a post office, not a refusal), so the last block on the screen
-  prints all eighteen stages verbatim for the floor to find the column that
-  moved. `countsAsRevenue` is NAMED but COUNTED rather than filtered:
+  the truth.
+  **THE SHEET SPECIFIED THE COLUMNS; BITRIX24 SUPPLIES THE NUMBERS** — settled
+  by the client on 2026-09-11 («bitrix24dagi malumot toʻgʻri… google sheet ni
+  koʻrsatganim sababi shu malumotlar dashboardda boʻlishi mumkin… undagi
+  malumotlarga tayanma»). Their sheet and ours split «still at a post office»
+  against «refused» differently (8.4% vs their 16.70%, 10.9% vs their 4.25%)
+  while Успешно and both totals agree to the soʻm — and that is not an open
+  defect to chase: the portal wins, the mapping it specified is confirmed
+  stage by stage, and nothing here changes. The last block on the screen is
+  therefore an AUDIT TRAIL rather than a dispute — every Доставка stage
+  verbatim with the column it feeds, so the six can be checked against
+  obey.bitrix24.kz instead of trusted. **No stage COUNT is written down**,
+  in that block or in `messages.ts`: it was eighteen until 2026-09-10 and is
+  nineteen now, and both places said eighteen on a live screen for a day.
+  `countsAsRevenue` is NAMED but COUNTED rather than filtered:
   the cohort is chosen by an arrival in Тасдиклаш (#4), which is not a
   revenue pipeline, so a `WHERE` would drop every queued and every refused
   order — `summary.offRevenueOrders` is the tripwire and is expected to be 0.

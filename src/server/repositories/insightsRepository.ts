@@ -140,6 +140,33 @@ export interface CohortCell {
   readonly revenueMinor: bigint
 }
 
+/**
+ * The cohort read: the matrix, the whole-history headline, and the calendar.
+ *
+ * `rows` honour the caller's `months` bound; `totals` never do — see the note
+ * on `InsightsRepository.cohorts`. `currentMonth` is the first day of the
+ * month it is NOW in Asia/Tashkent, so the service measures each row's horizon
+ * against the clock instead of against the newest row it happens to have.
+ */
+export interface CohortMatrix {
+  readonly rows: readonly CohortRow[]
+  readonly totals: CohortTotals
+  /** `YYYY-MM-DD`, first day of the current month in APP_TIMEZONE. */
+  readonly currentMonth: string
+}
+
+/** Folded over EVERY cohort, whatever window the matrix was cut to. */
+export interface CohortTotals {
+  /** Every customer with at least one delivered order, ever. */
+  readonly customers: number
+  /** How many of them ever came back, counted once each. */
+  readonly returned: number
+  /** Money from each customer's FIRST month. */
+  readonly firstRevenueMinor: bigint
+  /** Money from every month after it. */
+  readonly laterRevenueMinor: bigint
+}
+
 export interface CohortRow {
   /** First day of the cohort month, in Asia/Tashkent. */
   readonly cohort: string
@@ -676,6 +703,22 @@ export interface StructureNode {
 }
 
 /** One person on a department's roster, for the side panel. */
+/**
+ * One unit the reader belongs to, and whether it is the PRIMARY one.
+ *
+ * Both travel, because the screen needs both and they answer different
+ * questions. Every membership gets the «SIZ» badge — a person listed in two
+ * units is in two units, and badging one would be a claim about the other.
+ * But the chain line, «Rahbaringiz» and «Meni topish» are statements about ONE
+ * unit, and that unit is the primary: the one this dashboard credits the
+ * person's numbers to. Collapsing the list to whichever id the tree happened
+ * to walk past first answered a question nobody asked.
+ */
+export interface ViewerDepartment {
+  readonly departmentId: string
+  readonly isPrimary: boolean
+}
+
 export interface DepartmentMemberRow {
   readonly id: string
   readonly fullName: string
@@ -709,15 +752,45 @@ export class InsightsRepository {
    * "how much is repeat business worth", which is the number that decides
    * whether the retention team is funded.
    */
-  async cohorts(options: { months: number }): Promise<CohortRow[]> {
+  /**
+   * The matrix, its WHOLE-HISTORY totals, and the calendar it is read against.
+   *
+   * THREE THINGS, BECAUSE TWO OF THEM USED TO BE INFERRED AND BOTH WERE WRONG.
+   *
+   * 1. `months` bounds which cohort ROWS are drawn, and it always did. The
+   *    summary the service folds on top of them must NOT inherit that bound:
+   *    every tile above the matrix says «butun tarix», and a customer whose
+   *    first order predates the cut is a real customer with real repeat
+   *    revenue. The `is_total` arm below is computed over every cohort, and it
+   *    survives an empty matrix — the first month the database's history
+   *    exceeds 18 months, the windowed arm can return nothing at all.
+   *
+   * 2. `currentMonth` comes from the CLOCK. The service used to take the
+   *    newest key in the data as "now", on the stated assumption that there is
+   *    a row for every month up to this one. There is not: a month in which
+   *    nobody made a first purchase emits no row, so the horizon fell behind
+   *    the calendar and every elapsed month past it rendered as «maʼlumot
+   *    yoʻq» — "not measured" — when the truth was a measured zero. That is
+   *    the exact opposite of the finding, and it is worst on a narrowed
+   *    employee scope, where a quiet month is ordinary.
+   *
+   * One statement, not three: the CTEs are built once and both arms read them.
+   */
+  async cohorts(options: { months: number }): Promise<CohortMatrix> {
     const rows = await this.prisma.$queryRawUnsafe<
       {
-        cohort: Date
-        size: bigint
-        months_since: number
-        customers: bigint
+        is_total: number
+        cohort: Date | null
+        size: bigint | null
+        months_since: number | null
+        customers: bigint | null
         revenue: MoneyText
-        returned: bigint
+        returned: bigint | null
+        total_customers: bigint | null
+        total_returned: bigint | null
+        first_revenue: MoneyText
+        later_revenue: MoneyText
+        current_month: Date | null
       }[]
     >(
       `
@@ -767,6 +840,7 @@ export class InsightsRepository {
          GROUP BY cohort
       )
       SELECT
+        0 AS is_total,
         p.cohort,
         s.size,
         p.months_since,
@@ -775,22 +849,66 @@ export class InsightsRepository {
         -- How many of this cohort ever came back, counted once each; see the
         -- returners CTE. Repeated on every row of the cohort, which is what
         -- lets one query carry both the matrix and the headline.
-        r.returned::bigint AS returned
+        r.returned::bigint AS returned,
+        NULL::bigint AS total_customers,
+        NULL::bigint AS total_returned,
+        NULL::text AS first_revenue,
+        NULL::text AS later_revenue,
+        NULL::timestamp AS current_month
       FROM purchases p
       JOIN sized s ON s.cohort = p.cohort
       LEFT JOIN returners r ON r.cohort = p.cohort
+      -- The bound is on the ROWS only. The totals arm below deliberately
+      -- carries no such clause; see the method's own note.
       WHERE p.cohort >= date_trunc('month', (now() AT TIME ZONE $1)) - make_interval(months => $2::int)
         AND p.months_since >= 0
       GROUP BY p.cohort, s.size, p.months_since, r.returned
-      ORDER BY p.cohort DESC, p.months_since ASC
+
+      UNION ALL
+
+      /*
+        ONE ROW, OVER EVERY COHORT THERE HAS EVER BEEN.
+
+        Emitted from the same CTEs rather than from a second statement, so the
+        headline and the matrix can never be built from two different reads of
+        a table the sync worker rewrites every minute. It also survives a
+        matrix that is empty: the windowed arm returns nothing at all once the
+        whole history is older than the bound, and four tiles reading «butun
+        tarix» must still have an answer then.
+
+        first / later are split here rather than in TS for the same reason the
+        returners CTE exists: the split is a property of the data, and summing
+        it on the client from windowed cells is how it drifted in the first
+        place.
+      */
+      SELECT
+        1 AS is_total,
+        NULL::timestamp AS cohort,
+        NULL::bigint AS size,
+        NULL::int AS months_since,
+        NULL::bigint AS customers,
+        NULL::text AS revenue,
+        NULL::bigint AS returned,
+        (SELECT COALESCE(sum(size), 0)::bigint FROM sized) AS total_customers,
+        (SELECT COALESCE(sum(returned), 0)::bigint FROM returners) AS total_returned,
+        (SELECT COALESCE(sum(amount), 0)::text FROM purchases WHERE months_since = 0) AS first_revenue,
+        (SELECT COALESCE(sum(amount), 0)::text FROM purchases WHERE months_since > 0) AS later_revenue,
+        -- The horizon, from the clock. A month with no first-time buyer emits
+        -- no cohort row, so the newest key in the data is not "now" and the
+        -- service must not read it as one.
+        date_trunc('month', (now() AT TIME ZONE $1)) AS current_month
+
+      ORDER BY 1 ASC, 2 DESC, 4 ASC
       `,
       this.tz,
       options.months,
     )
 
     const byCohort = new Map<string, { size: number; returned: number; cells: CohortCell[] }>()
+    const summary = rows.find((row) => row.is_total === 1)
 
     for (const row of rows) {
+      if (row.is_total === 1 || row.cohort === null || row.months_since === null) continue
       const key = row.cohort.toISOString().slice(0, 10)
       const entry =
         byCohort.get(key) ?? { size: int(row.size), returned: int(row.returned), cells: [] }
@@ -802,12 +920,27 @@ export class InsightsRepository {
       byCohort.set(key, entry)
     }
 
-    return [...byCohort.entries()].map(([cohort, entry]) => ({
-      cohort,
-      size: entry.size,
-      returned: entry.returned,
-      cells: entry.cells,
-    }))
+    return {
+      rows: [...byCohort.entries()].map(([cohort, entry]) => ({
+        cohort,
+        size: entry.size,
+        returned: entry.returned,
+        cells: entry.cells,
+      })),
+      totals: {
+        customers: int(summary?.total_customers ?? 0n),
+        returned: int(summary?.total_returned ?? 0n),
+        firstRevenueMinor: money(summary?.first_revenue ?? null),
+        laterRevenueMinor: money(summary?.later_revenue ?? null),
+      },
+      /*
+        The UNION arm always produces exactly one row, so the fallback is
+        unreachable in practice. It is written rather than asserted because an
+        empty string would make `monthsApart` return 0 for every cohort and
+        blank the whole matrix — a louder failure than a stale-looking grid.
+      */
+      currentMonth: summary?.current_month?.toISOString().slice(0, 10) ?? '',
+    }
   }
 
   /**
@@ -923,16 +1056,20 @@ export class InsightsRepository {
    * the same two numbers. Restating either predicate here is how the two
    * screens would start to disagree.
    *
-   * WHAT IS STILL UNRESOLVED, AND WHY THERE IS A RECONCILIATION ARM. On that
-   * same week our Отказ reads ~8.4% against the client's 16.70% and our
-   * Ожидание ~10.9% against their 4.25%, while Успешно (79.6 against 78.18)
-   * and both totals agree. The disagreement is entirely in the split between
-   * "still standing at a post office" and "refused"; the client has confirmed
-   * CARAVAN is a delivery post office and not a refusal, so the mapping is
-   * right and the difference is in their sheet's own arithmetic. Eleven stages
-   * compose those two columns, so `by_stage` prints all eighteen one per row
-   * in the portal's Russian and the portal's order, and the floor can put the
-   * screen beside obey.bitrix24.kz and find the column that moved.
+   * THE SHEET SPECIFIED THE COLUMNS; THE PORTAL SUPPLIES THE NUMBERS.
+   *
+   * The sheet and this query disagree about the split between "still standing
+   * at a post office" and "refused" — on the measured week 8.4% against their
+   * 16.70%, and 10.9% against their 4.25%, while Успешно and both totals
+   * agree. That is NOT an open defect: the client settled it on 2026-09-11
+   * («bitrix24dagi malumot toʻgʻri… undagi malumotlarga tayanma»). Bitrix24 is
+   * the source of truth, the sheet was a list of which columns to build, and
+   * the mapping it specified is confirmed stage by stage.
+   *
+   * `by_stage` therefore exists as an AUDIT TRAIL rather than as a dispute:
+   * every Доставка stage, one per row, in the portal's Russian and the
+   * portal's order, with the column it feeds — so the six columns above can
+   * be checked against obey.bitrix24.kz instead of trusted.
    *
    * ONE STATEMENT, SEVEN ARMS. The queueSql prelude is the whole cost — a
    * cohort rebuild is ~0.9 s — and the arms are seven hash aggregates over a
@@ -1159,18 +1296,23 @@ export class InsightsRepository {
       GROUP BY GROUPING SETS ((k.region), ())
     ),
     /*
-      THE RECONCILIATION CUT: ALL EIGHTEEN C6 STAGES, VERBATIM.
+      THE RECONCILIATION CUT: EVERY ACTIVE C6 STAGE, VERBATIM.
 
-      This is the screen's answer to the disagreement described above. Printed
-      one per row, in the portal's own Russian and the portal's own sortOrder,
-      with the column each one feeds, it is the only place a reader can check
-      that the six columns really are these eighteen stages grouped — which is
-      what makes every figure above it checkable rather than trusted.
+      THE COUNT IS NOT WRITTEN DOWN, on purpose. It was eighteen until the
+      client added «Ожидание / нд» on 2026-09-10 and it is nineteen now; a
+      number in this comment would have been wrong within a day, and a number
+      on the screen was. The arm starts from the stage table itself and prints
+      whatever the portal currently has.
+
+      Printed one per row, in the portal's own Russian and the portal's own
+      sortOrder, with the column each one feeds, it is the only place a reader
+      can check that the six columns really are the portal's own stages
+      grouped — which is what makes every figure above it checkable rather
+      than trusted.
 
       THE COLUMN IS DECIDED HERE, not in the browser. Re-deriving the
-      eighteen-into-six grouping client-side would be a second definition of
-      the partition. min() over a group that is one stage is that stage's own
-      bucket.
+      grouping client-side would be a second definition of the partition.
+      min() over a group that is one stage is that stage's own bucket.
 
       IT IS NOT THE PORTAL'S LIVE KANBAN — /insights/delivery is that, and it
       has no window at all. This is our six columns opened out to the stages
@@ -3859,12 +4001,12 @@ export class InsightsRepository {
    * in. Prisma rather than raw SQL — it is one indexed lookup on the primary
    * key's second column and there is no aggregate to get wrong.
    */
-  async departmentsOfEmployee(employeeId: string): Promise<string[]> {
+  async departmentsOfEmployee(employeeId: string): Promise<ViewerDepartment[]> {
     const rows = await this.prisma.departmentMember.findMany({
       where: { employeeId },
-      select: { departmentId: true },
+      select: { departmentId: true, isPrimary: true },
     })
-    return rows.map((r) => r.departmentId)
+    return rows.map((r) => ({ departmentId: r.departmentId, isPrimary: r.isPrimary }))
   }
 
   /**
