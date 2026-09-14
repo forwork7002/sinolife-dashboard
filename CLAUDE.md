@@ -1094,6 +1094,18 @@ mixed `100vh` against a shell sized in `100dvh`.
 - **`DEAL_ITEMS` reads in-memory state left by the `DEALS` pass** in the same
   process, and ignores `updatedSince`. Running it alone yields zero rows and
   reports `SUCCESS`.
+- **AND IT HAS ITS OWN INDEX, because the chip is polled by every open tab.**
+  `ORDER BY "finishedAt" DESC LIMIT 1` under a status filter was a sequential
+  scan plus a top-N sort — **816 ms over 120 342 rows**, measured on production
+  2026-09-14, and the endpoint ran it TWICE per request (the failure lookup
+  re-read the success the caller had just fetched). Once a minute per open tab,
+  on the one vCPU that answers every screen, that was enough for `/meta/alerts`
+  to return `INTERNAL_ERROR` while the worker was catching up. Now
+  `@@index([status, finishedAt(sort: Desc)])` serves both readers as a short
+  backwards walk, and `findCurrentSyncFailure(lastSuccess)` takes the timestamp
+  instead of re-reading it. If either the index or the parameter is removed, the
+  header starts timing out again under exactly the conditions it exists to
+  report on.
 - **THE FRESHNESS CLOCK READS AN ALLOWLIST — `FRESHNESS_ENTITIES`, three of
   them.** «Necha daqiqa oldin» promises that the numbers on screen are current,
   and every number here is built from DEALS, STAGE_HISTORY and CUSTOMERS.

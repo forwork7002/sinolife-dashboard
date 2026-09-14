@@ -191,14 +191,24 @@ export class AlertsService {
     now: Date,
     timeZone: string,
   ): Promise<AlertsDto> {
-    const [syncedAt, failure, queue] = await Promise.all([
-      this.reference.findLastSuccessfulSync(),
+    /*
+      THE CLOCK FIRST, THEN THE REASON — and the reason is handed the clock.
+
+      Read in parallel they were two sequential scans of `sync_log` per request
+      (816 ms each on production before the index that now serves them), and the
+      second one re-read exactly what the first had just returned. Sequenced,
+      with the value passed in, the endpoint asks the log twice instead of three
+      times and each answer is an index walk.
+    */
+    const syncedAt = await this.reference.findLastSuccessfulSync()
+
+    const [failure, queue] = await Promise.all([
       /*
         NOT CACHED, for the same reason `syncedAt` is not: this is the honest
         answer to "is the dashboard still being fed", and a minute-old copy of
         it is a minute in which the screen says everything is fine.
       */
-      this.reference.findCurrentSyncFailure(),
+      this.reference.findCurrentSyncFailure(syncedAt),
       /*
         THE SECTION, AND NOW ONLY THE SECTION.
 

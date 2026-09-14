@@ -1,0 +1,17 @@
+-- The freshness chip's own index.
+--
+-- `/meta/alerts` answers «necha daqiqa oldin» with
+--   SELECT ... FROM sync_log
+--    WHERE status IN ('SUCCESS','PARTIAL') AND "finishedAt" IS NOT NULL
+--      AND entity IN ('DEALS','STAGE_HISTORY','CUSTOMERS')
+--    ORDER BY "finishedAt" DESC LIMIT 1
+-- and a second, near-identical query for the standing failure. Both ran as a
+-- sequential scan plus a top-N sort: measured on production 2026-09-14 at
+-- 816 ms over 120 342 rows, twice per request, once a minute per open tab, on
+-- the one vCPU that also answers every screen. It was enough to make the
+-- endpoint return INTERNAL_ERROR while the worker was catching up.
+--
+-- Ordinary CREATE INDEX rather than CONCURRENTLY: Prisma runs a migration
+-- inside a transaction, which forbids CONCURRENTLY, and this table is small
+-- enough (120k rows, 14 MB) that the exclusive lock is milliseconds.
+CREATE INDEX "sync_log_status_finishedAt_idx" ON "sync_log" ("status", "finishedAt" DESC);

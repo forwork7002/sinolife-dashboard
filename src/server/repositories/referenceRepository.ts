@@ -330,18 +330,27 @@ export class ReferenceRepository {
    * bare HTTP status. That string is what the freshness chip turns into a
    * sentence a reader can act on, so it is read raw and never re-worded here.
    */
-  async findCurrentSyncFailure(): Promise<{
+  async findCurrentSyncFailure(lastSuccess?: Date | null): Promise<{
     readonly entity: string
     readonly at: Date
     readonly message: string | null
   } | null> {
+    /*
+      THE CALLER ALREADY KNOWS THE LAST SUCCESS — take it rather than ask again.
+
+      This method needs that timestamp only to decide whether the failure it
+      finds is still standing, and `alertsService` has just read it. Asking a
+      second time doubled the most expensive query on the endpoint every screen
+      polls once a minute; the parameter is optional so a caller that has not
+      read it still gets a correct answer.
+    */
     const [failure, success] = await Promise.all([
       this.prisma.syncLog.findFirst({
         where: { status: 'FAILED', finishedAt: { not: null } },
         orderBy: { finishedAt: 'desc' },
         select: { entity: true, finishedAt: true, errorMessage: true },
       }),
-      this.findLastSuccessfulSync(),
+      lastSuccess === undefined ? this.findLastSuccessfulSync() : Promise.resolve(lastSuccess),
     ])
 
     if (!failure?.finishedAt) return null

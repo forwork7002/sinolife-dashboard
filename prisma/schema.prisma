@@ -1365,6 +1365,21 @@ model SyncLog {
 
   @@index([provider, entity, startedAt])
   @@index([status])
+  /// THE FRESHNESS CHIP'S OWN INDEX, and it is not decoration.
+  ///
+  /// «Necha daqiqa oldin» is answered by ORDER BY "finishedAt" DESC LIMIT 1
+  /// under a status filter, and `/meta/alerts` asks it once a minute for every
+  /// open tab in the company. Without this index that is a sequential scan plus
+  /// a sort over the whole table — measured on production 2026-09-14 at
+  /// **816 ms over 120 342 rows**, twice per request, on the single vCPU that
+  /// answers every other screen. Several tabs open was enough to make the
+  /// endpoint time out and the header show nothing at all.
+  ///
+  /// `status` leads because both readers filter on it (SUCCESS/PARTIAL for the
+  /// clock, FAILED for the reason), and `finishedAt` descending is the order
+  /// they both want, so each is a short backwards walk that stops at its first
+  /// match rather than a scan of the log's whole history.
+  @@index([status, finishedAt(sort: Desc)])
   @@map("sync_log")
 }
 
