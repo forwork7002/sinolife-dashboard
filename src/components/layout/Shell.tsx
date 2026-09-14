@@ -1389,8 +1389,18 @@ function DataSourceBadge({
     itself: the worker keeps trying, the block lifts on its own, and the right
     advice to the reader is to wait rather than to reload anything. Anything
     else — an expired webhook above all — is somebody's job that day.
+
+    ONLY WHILE THE CLOCK IS ACTUALLY STOPPED, and that pairing is the whole
+    rule. This chip explains stale numbers; it is not a monitor. Minutes after
+    the block of 2026-09-14 lifted the deals were syncing again and one entity
+    — CALLS, the least consequential thing on the portal — was still being
+    refused, so the unconditional version printed «Bitrix24 band» over a
+    dashboard that was a minute old. A warning that fires while everything a
+    reader can see is current is the kind they learn to ignore before the day
+    it matters. Failures on a healthy clock belong in the sync log, where the
+    person who can act on them is looking.
   */
-  const blocked = !isDemo && syncError != null
+  const blocked = !isDemo && syncError != null && sync.stale
   const throttled =
     syncError?.code === 'OVERLOAD_LIMIT' || syncError?.code === 'QUERY_LIMIT_EXCEEDED'
 
