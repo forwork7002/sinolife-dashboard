@@ -22,12 +22,16 @@ import { formatFullUzs, formatNumber } from '@/lib/format'
  * row falls back to the seller's department, which is what this table used
  * before. See the `rop` column in `logisticsCohortSql`.
  *
- * IT IS THE ONE QUESTION THE SHEET BELOW IT CANNOT ANSWER. The six columns
+ * IT IS THE ONE QUESTION THE SHEET ABOVE IT CANNOT ANSWER. The six columns
  * partition ЗАКАЗ by where an order stands — «Отказ», «В пути», «Успешно» —
  * and every one of them is company-wide. A ROP reading that card learns what
- * happened to the month and nothing about their own half of it, which is why
- * this block sits directly under the hero rather than at the bottom of the
- * page: hero, then the same three figures per team, then where the money went.
+ * happened to the month and nothing about their own half of it.
+ *
+ * IT SITS AMONG THE BREAKDOWN CARDS, not under the hero. Moved down on
+ * 2026-09-14 at the client's word; `LogisticsPage` states the page's reading
+ * order beside the call. What follows from that here is the drawing: one line
+ * a row, the same 150px meter «Pochtalar» and «Hududlar» use, and a card no
+ * wider than its own four columns.
  *
  * ЖАМИ IS THE SERVER'S OWN TOTAL, never a sum taken here — the rule every
  * table on this screen keeps. It is `by_rop`'s grouping-set row over the same
@@ -75,7 +79,7 @@ export function RopSection({
         vocabulary — repeating it here put four lines of prose between the hero
         and the only table on the screen anybody asked for.
       */
-      hint="Har bir buyurtma sdelkadagi «Организация сотрудника (не удалять)» maydoni boʻyicha ROPga biriktiriladi. ЖАМИ — serverning oʻz yigʻindisi: yuqoridagi Qamrov paneli bilan aynan teng boʻlishi kerak."
+      hint="Buyurtma sdelkadagi «Организация сотрудника (не удалять)» maydoni boʻyicha. ЖАМИ yuqoridagi Qamrov paneli bilan aynan teng."
     >
       {/*
         CAPPED, BECAUSE A FOUR-COLUMN TABLE HAS NOTHING TO DO WITH 1 560px.
@@ -85,8 +89,14 @@ export function RopSection({
         records at `max-w-[560px]`: a figure that far from the name it belongs
         to is not a table, it is two lists. The width is the four columns plus
         the table's own padding, so nothing inside it is compressed.
+
+        NARROWED WITH THE ROWS on 2026-09-14, on the client's instruction
+        («kichiroq qilib… oddiyroq va tushunarliroq»). One line a row instead
+        of two took ~250px off the card, and 900px of table over 700px of
+        content would have put the slack back as white space between a name
+        and its money.
       */}
-      <div className="max-w-[900px]">
+      <div className="max-w-[760px]">
         <DataTable<RopLine>
           columns={ROP_COLUMNS}
           rows={lines}
@@ -96,10 +106,10 @@ export function RopSection({
           onRetry={onRetry}
           emptyTitle="ROP maʼlumoti yoʻq"
           emptyBody="Bu davrda tasdiqlash navbatiga tushgan buyurtma topilmadi."
-          // 190 РОП + 2 × 190 full soʻm + 280 Qamrov. Below that the two sums
-          // would wrap, which is the one thing this table may not do — it
-          // exists to be read across.
-          minWidth={850}
+          // 160 РОП + 2 × 200 full soʻm with its count + 150 Qamrov. Below
+          // that the two sums would wrap, which is the one thing this table
+          // may not do — it exists to be read across.
+          minWidth={710}
           /*
             EVERY ROP AT ONCE, AND NO INNER SCROLL — the client asked for each
             of them by name, and the default 60dvh cap showed nine of fifteen
@@ -135,26 +145,28 @@ type RopLine = { readonly kind: 'rop' | 'total'; readonly row: LogisticsRopDto }
 const TOTAL_ROW_KEY = '__jami__'
 
 /**
- * A sum over its own order count, and the count is not a second column.
+ * A sum with its own order count beside it, on ONE line.
  *
- * The two facts are one reading — «224 mln, 312 ta buyurtma» — and splitting
- * them into four columns is what turned the first draft of the confirmation
- * panel into a table that scrolled sideways and carried the ROP name off the
- * left edge. Stacked, the eye runs down two columns of money and finds the
- * count where it already is.
+ * The two facts are one reading — «224 149 999, 312 ta» — and splitting them
+ * into four columns is what turned the first draft of the confirmation panel
+ * into a table that scrolled sideways and carried the ROP name off the left
+ * edge. They were STACKED until 2026-09-14, which cost every row a second
+ * line and made the card the tallest thing on the screen after the sheet
+ * itself; side by side they read the same and the table halves in height.
  *
  * FULL SOʻM, NOT COMPACT, and that is the same decision the six-column table
  * above records: this block exists to be reconciled against the client's own
  * ROP dashboards, and «224 mln» cannot be checked against «224 149 999»
- * without opening something.
+ * without opening something. The count is what gives way instead — it is the
+ * smaller fact, and at 10px beside the sum it is still the same sentence.
  */
 function Sum({ amount, orders }: { amount: number; orders: number }) {
   return (
-    <span className="block">
-      <span className="tabular block text-[12.5px]" style={{ color: 'var(--ink-primary)' }}>
+    <span className="tabular inline-flex items-baseline justify-end gap-1.5 whitespace-nowrap">
+      <span className="text-[12.5px]" style={{ color: 'var(--ink-primary)' }}>
         {formatFullUzs(amount)}
       </span>
-      <span className="tabular block text-[10px] leading-tight" style={{ color: 'var(--ink-muted)' }}>
+      <span className="text-[10px]" style={{ color: 'var(--ink-muted)' }}>
         {formatNumber(orders)} ta
       </span>
     </span>
@@ -166,7 +178,7 @@ const ROP_COLUMNS: Column<RopLine>[] = [
     key: 'rop',
     header: 'РОП',
     rowHeader: true,
-    width: '190px',
+    width: '160px',
     render: (line) =>
       line.kind === 'total' ? (
         /*
@@ -175,11 +187,11 @@ const ROP_COLUMNS: Column<RopLine>[] = [
           because one word over three different populations is how this project
           has contradicted itself on screen before.
         */
-        <span className="block">
+        <span className="inline-flex items-baseline gap-1.5">
           <span className="eyebrow" style={{ color: 'var(--ink-primary)' }}>
             ЖАМИ
           </span>
-          <span className="block text-[10px] leading-tight" style={{ color: 'var(--ink-muted)' }}>
+          <span className="text-[10px]" style={{ color: 'var(--ink-muted)' }}>
             barcha ROP
           </span>
         </span>
@@ -194,7 +206,7 @@ const ROP_COLUMNS: Column<RopLine>[] = [
     header: 'ЗАКАЗ · FAKT 1',
     align: 'right',
     numeric: true,
-    width: '190px',
+    width: '200px',
     render: (line) => <Sum amount={line.row.ordered.amount} orders={line.row.orders} />,
   },
   {
@@ -202,7 +214,7 @@ const ROP_COLUMNS: Column<RopLine>[] = [
     header: 'Успешно · FAKT 2',
     align: 'right',
     numeric: true,
-    width: '190px',
+    width: '200px',
     render: (line) => <Sum amount={line.row.won.amount} orders={line.row.wonOrders} />,
   },
   {
@@ -210,11 +222,15 @@ const ROP_COLUMNS: Column<RopLine>[] = [
     header: 'Qamrov',
     align: 'right',
     /*
-      THE WIDEST COLUMN ON PURPOSE. «Kim orqada qolgan» is what the client
-      reads this table for, and the answer is the bar's length — at 150px
-      fifteen teams differed by a few pixels each.
+      150px, THE WIDTH THE OTHER TWO BREAKDOWN TABLES ON THIS PAGE USE.
+
+      It was 280 while this card sat second on the page and had 1 560px to
+      spend; at the foot of the sheet, beside «Pochtalar» and «Hududlar», a
+      bar twice their length is the one thing that would stop the three
+      reading as one family. «Kim orqada qolgan» is still the bar's length and
+      fifteen teams still separate — Meter draws a percentage, not pixels.
     */
-    width: '280px',
+    width: '150px',
     /*
       NEUTRAL, NOT GRADED — the hero's own decision, and it has to be the same
       one. On a young window nothing has been delivered yet, so `tone="auto"`

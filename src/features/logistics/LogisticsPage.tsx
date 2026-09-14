@@ -235,24 +235,6 @@ export function LogisticsPage() {
       <FaktBasisNote />
 
       {/*
-        THE TEAMS, DIRECTLY UNDER THE HERO AND ABOVE THE SHEET.
-
-        The order of this page is one drill-down: the company's two figures,
-        then the same two per ROP, then where the money went. The six columns
-        below are company-wide by construction, so a ROP reading them learns
-        about the month and nothing about their own half of it — which is the
-        gap the client named on 2026-09-12 and the reason this block is second
-        rather than last.
-      */}
-      <RopSection
-        rops={data?.rops ?? []}
-        total={data?.ropTotal ?? null}
-        status={viewStatus}
-        errorMessage={errorMessage}
-        onRetry={retry}
-      />
-
-      {/*
         THE SIX COLUMNS — the report itself.
 
         The bar and the table are literally the same six numbers, in the same
@@ -364,6 +346,29 @@ export function LogisticsPage() {
         onRetry={retry}
         open={dailyOpen}
         onToggle={setDailyOpen}
+      />
+
+      {/*
+        THE TEAMS — KIM, BETWEEN QACHON AND QAYERDA.
+
+        Moved here from directly under the hero on 2026-09-14, on the client's
+        instruction («pastroqdan biri birgan uygʻunlashgan xolatda tursin»).
+        The page now reads as one sentence: the company's two figures, what
+        happened to them (the six columns), WHEN (the day sheet), WHOSE they
+        were (this card), and WHERE they went (pochtalar, hududlar) — with the
+        audit trail last. Standing second it interrupted that sentence with a
+        fifteen-row table before the reader had seen the report it cuts up.
+
+        It belongs to the three breakdown cards it now sits among rather than
+        to the hero, and it is drawn like them: one line a row, a 150px meter,
+        no card wider than its own content.
+      */}
+      <RopSection
+        rops={data?.rops ?? []}
+        total={data?.ropTotal ?? null}
+        status={viewStatus}
+        errorMessage={errorMessage}
+        onRetry={retry}
       />
 
       {/*
