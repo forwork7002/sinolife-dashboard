@@ -2211,15 +2211,29 @@ export class InsightsRepository {
    */
   private static queueSql(mode: ConfirmationQueueMode, scopeParam: string): string {
     /*
-      Backlog mode narrows the history scan to LIVE orders before aggregating.
+      Backlog mode keeps LIVE orders only, and it applies that AFTER the
+      aggregate rather than before it.
 
-      Without a window there is no cheap bound on `moves`, and the signal
-      history is six figures of rows. Open deals are a small fraction of the
-      table and `deal(status, closedAt)` leads on the column, so this is what
-      keeps the bell affordable enough to poll from every screen.
+      It used to ride `moves` as `JOIN "deal" d0 … AND d0."status" = 'OPEN'`,
+      on the reasoning that open deals are a small fraction of the table. THEY
+      ARE NOT: 303 286 of 462 968 on production 2026-09-14 — this portal closes
+      a third of what it opens, so the join removed a third of the rows and
+      paid a random `deal_pkey` probe for every confirmation move ever
+      recorded to do it. Measured: 70 876 probes against a 257 MB heap on a
+      1 GB database, 6.1 s of the bell's 7.8 s, and the bell is polled by every
+      open tab once a minute.
+
+      `status` is a fact about the DEAL, not about the move, so the predicate
+      selects the same deal_ids on either side of the per-deal aggregate and
+      leaves each survivor's own moves untouched. Applied in the `dated` CTE —
+      which already joins `deal` for Дата создания — it probes only the 165
+      orders whose latest signal is CONFIRM_NEW, instead of all 70 876 moves.
+      Measured back to back on production 2026-09-14: 8.3 s → 1.7 s, the same
+      74 rows, row for row, the board's `visible` tail included.
+
+      Do not move it back into `moves` to "narrow the scan earlier". Narrowing
+      earlier is what cost the six seconds.
     */
-    const liveOnly =
-      mode === 'backlog' ? `JOIN "deal" d0 ON d0."id" = h."dealId" AND d0."status" = 'OPEN'` : ''
 
     /*
       The cohort predicate. Both forms still read $1 and $2 — the caller binds
@@ -2229,7 +2243,8 @@ export class InsightsRepository {
     const cohort =
       mode === 'backlog'
         ? `WHERE a.signal = 'CONFIRM_NEW'
-         AND a.queued_at >= $1 AND a.queued_at < $2`
+         AND a.queued_at >= $1 AND a.queued_at < $2
+         AND d."status" = 'OPEN'`
         : `WHERE a.queued_at >= $1
          AND a.queued_at <  $2`
 
@@ -2279,7 +2294,6 @@ export class InsightsRepository {
         JOIN "deal_stage_history" h
           ON h."stageId" = ss."id"
          AND h."enteredAt" >= $1
-        ${liveOnly}
     ),
     /*
       One row per order, at its latest signal.

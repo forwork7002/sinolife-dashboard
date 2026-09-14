@@ -73,14 +73,23 @@ type QueueCount = { readonly pending: number; readonly overdue: number }
  * true. The second stopped being true when the bell moved to the BACKLOG: the
  * call below is `queuePressure(allTime, …, 'backlog')`, which is the whole
  * `queueSql` CTE chain over an unbounded left bound — measured at ~4 s on
- * production, and recorded as that in `Shell.tsx` beside the poll that issues
- * it. A four-second query is a perfectly reasonable thing for a page to do
- * once. This one runs on EVERY screen, once a minute, per open tab.
+ * production when this cache was written, and recorded as that in `Shell.tsx`
+ * beside the poll that issues it. A four-second query is a perfectly
+ * reasonable thing for a page to do once. This one runs on EVERY screen, once
+ * a minute, per open tab.
  *
  * N people watching the dashboard were issuing N identical four-second
  * statements against a pool of eight on a one-core database. That is the same
  * failure the command centre's cache was written to stop, arriving through a
  * different door.
+ *
+ * IT HAD GROWN TO 7.8 s BY 2026-09-14, and a cache in front of a query that
+ * slow still hands one reader a minute the whole wait — on the afternoon the
+ * portal was refusing us, `/meta/alerts` was answering in 13 s or returning
+ * INTERNAL_ERROR, on the one screen element whose job is to report exactly
+ * that. The query itself is 1.7 s now (`queueSql`'s own header records what
+ * moved and what was measured); this cache stays, because 1.7 s times every
+ * open tab is still the same door.
  *
  * THE ANSWER IS SCOPED, SO THE KEY CARRIES THE SCOPE. This memo was first
  * written when the bell was company-wide by construction, and `ttlCache`'s own

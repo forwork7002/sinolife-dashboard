@@ -200,8 +200,10 @@ export function Shell({
       dashboard `layout.tsx` — so it unmounts and remounts on every navigation,
       and a fresh observer refetches anything older than its staleTime. At 30 s
       that meant a full `/meta/alerts` on nearly every page change: the all-time
-      backlog cohort over the whole stage history, measured at ~4 s on
-      production, for a number whose own promise is only ever "a minute old".
+      backlog cohort over the whole stage history — ~4 s on production when
+      this was written, 7.8 s by 2026-09-14 and 1.7 s since the cohort stopped
+      probing `deal` once per move — for a number whose own promise is only
+      ever "a minute old".
       Matched to the interval, the timer is the only thing that fires it.
     */
     staleTime: 60_000,

@@ -142,8 +142,9 @@ describe('confirmation queue SQL', () => {
     expect(WINDOW_SQL).not.toContain('d."createdAtSource" <')
     // The window asks who arrived, not who is still waiting.
     expect(WINDOW_SQL).not.toContain("a.signal = 'CONFIRM_NEW'")
-    // Nothing narrows the history scan: the window already bounds it.
-    expect(WINDOW_SQL).not.toContain('d0."status"')
+    // And it holds no live-order filter at all: a windowed board reports where
+    // each of that period's orders STANDS, closed ones included.
+    expect(WINDOW_SQL).not.toContain(`"status" = 'OPEN'`)
   })
 
   it('dates the backlog cohort the same way, and narrows the scan to live orders', () => {
@@ -153,9 +154,20 @@ describe('confirmation queue SQL', () => {
     expect(BACKLOG_SQL).toContain('a.queued_at >= $1')
     expect(BACKLOG_SQL).toContain('a.queued_at < $2')
     expect(BACKLOG_SQL).not.toContain('d."createdAtSource" >= $1')
-    // Without a window there is no cheap bound on the history scan, so the
-    // join to open deals is what keeps the bell affordable to poll.
-    expect(BACKLOG_SQL).toContain(`d0."status" = 'OPEN'`)
+    /*
+      Waiting means LIVE, and the filter belongs to the cohort — `dated`, which
+      already joins `deal` — not to the history scan.
+
+      It rode `moves` as `JOIN "deal" d0 … d0."status" = 'OPEN'` until
+      2026-09-14, which paid one random deal_pkey probe per confirmation move
+      ever recorded (70 876 of them) to remove a third of the rows: 6.1 s of the
+      bell's 7.8 s, once a minute per open tab. `status` is a fact about the
+      deal, so moving the predicate past the per-deal aggregate selects exactly
+      the same orders — verified row for row on production — for 1.7 s.
+    */
+    expect(BACKLOG_SQL).toContain(`d."status" = 'OPEN'`)
+    expect(BACKLOG_SQL).not.toContain('d0."status"')
+    expect(BACKLOG_SQL).not.toContain('JOIN "deal" d0')
   })
 
   it('keeps an order that never reached the queue off the board, in both modes', () => {

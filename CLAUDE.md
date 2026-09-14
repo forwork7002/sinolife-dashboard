@@ -826,6 +826,20 @@ mode rides the URL through `useDashboardFilters` (`reset()` keeps it — it is a
 question, not a filter), and `tests/features/confirmationBacklog.test.tsx` pins
 the pair together.
 
+**AND THE BACKLOG'S «LIVE ORDERS ONLY» FILTER LIVES IN THE COHORT, NOT IN THE
+HISTORY SCAN.** It rode `moves` as `JOIN "deal" d0 … d0."status" = 'OPEN'`
+until 2026-09-14, on the reasoning that open deals are a small fraction of the
+table — they are **303 286 of 462 968**, so the join removed a third of the
+rows and paid one random `deal_pkey` probe per confirmation move ever recorded
+(70 876, against a 257 MB heap on a 1 GB database) to do it: **6.1 s of the
+bell's 7.8 s**, once a minute per open tab, which is what had `/meta/alerts`
+answering in 13 s or returning `INTERNAL_ERROR` on the afternoon the portal was
+refusing us. `status` is a fact about the DEAL, so the predicate selects the
+same deal_ids on either side of the per-deal aggregate; in `dated` it probes
+the 165 orders whose latest signal is CONFIRM_NEW instead. **8.3 s → 1.7 s,
+same 74 rows, row for row, board included** (measured back to back on
+production). `confirmationQueueSql.test.ts` pins which CTE holds it.
+
 **THE BOARD IS THE PAGE — `PageShell`'s `fill`, the second screen to take it —
 and `640` TURNED FROM A CEILING INTO A FLOOR.** The client asked for the
 «Барча буюртмалар» section to occupy more of the screen. The table was capped
