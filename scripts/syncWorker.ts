@@ -341,9 +341,37 @@ async function main() {
     },
   })
 
+  /*
+    A FAILED HEALTH CHECK IS REPORTED, NOT FATAL — and that changed on
+    2026-09-14, when Bitrix24 blocked its own REST API for a quarter of an
+    hour («OVERLOAD_LIMIT — REST API is blocked due to overload»).
+
+    `process.exit(1)` here turns exactly that state into a restart loop: the
+    platform brings the worker back, the portal is still throttling, the
+    process exits again — and every cycle pays the startup cost and issues the
+    same call that is being refused, which is the last thing a portal
+    complaining about load needs from us. Meanwhile nothing syncs even in the
+    minute AFTER the block lifts, because the process that would have noticed
+    is gone.
+
+    The tick loop already handles a portal that will not answer: it logs, it
+    counts consecutive failures and it backs off up to five minutes between
+    ticks. Starting into that loop is strictly better than not starting.
+
+    What is lost is the fast fail on a genuinely bad configuration — a
+    mistyped webhook never gets a first reading. The line below still says so
+    on the first line of the log, and the dashboard's own header now names the
+    portal's error code (see `AlertsDto.syncError`), which is a better place
+    for it than a container nobody is watching.
+  */
   const health = await provider.healthCheck()
   console.log(`\n  ${health.ok ? '✓' : '✗'} ${health.detail}`)
-  if (!health.ok) process.exit(1)
+  if (!health.ok) {
+    console.warn(
+      `  ${stamp()} ! portal javob bermadi — tsikl baribir boshlanadi,` +
+        ' xatolar har tsiklda qayd etiladi.',
+    )
+  }
 
   /*
     WIND THE HISTORY CURSOR BACK, ONCE, BEFORE THE FIRST TICK.

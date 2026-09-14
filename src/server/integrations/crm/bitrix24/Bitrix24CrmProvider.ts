@@ -137,6 +137,27 @@ const DEAL_SELECT = [
   ...UF_FIELDS,
 ]
 
+/**
+ * The portal's own error code and sentence, as a suffix, or an empty string.
+ *
+ * Never throws: the body of a failed response is best-effort context, and a
+ * parse error here would replace a real HTTP status with a JSON one.
+ */
+async function errorDetail(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as {
+      error?: string
+      error_description?: string
+    }
+    if (!body?.error) return ''
+    return body.error_description
+      ? ` — ${body.error}: ${body.error_description}`
+      : ` — ${body.error}`
+  } catch {
+    return ''
+  }
+}
+
 export class Bitrix24CrmProvider implements CrmProvider {
   readonly source: ExternalSourceValue = 'BITRIX24'
 
@@ -258,7 +279,28 @@ export class Bitrix24CrmProvider implements CrmProvider {
           throw new Bitrix24Error(`Bitrix24 responded ${response.status}`, response.status, true)
         }
         if (!response.ok) {
-          throw new Bitrix24Error(`Bitrix24 responded ${response.status}`, response.status, false)
+          /*
+            THE PORTAL SAYS WHY IN THE BODY, AND ON THIS ONE IT MATTERS MOST.
+
+            A non-ok response used to be reported as bare «Bitrix24 responded
+            401», which is what the sync log carried through the whole outage
+            of 2026-09-14: every entity failing once a minute for a quarter of
+            an hour under a message that reads like a revoked token. The body
+            said something entirely different and entirely actionable —
+            `OVERLOAD_LIMIT: REST API is blocked due to overload` — the
+            portal's own throttle, which clears by itself and needs nobody to
+            touch a credential. Diagnosing it took a probe against the live
+            portal because this line threw the reason away.
+
+            The code is the portal's vocabulary and the description is its own
+            sentence; neither carries a secret, and `redact` still runs over
+            the message on the way out.
+          */
+          throw new Bitrix24Error(
+            `Bitrix24 responded ${response.status}${await errorDetail(response)}`,
+            response.status,
+            false,
+          )
         }
 
         const payload = (await response.json()) as Bitrix24Response<T>

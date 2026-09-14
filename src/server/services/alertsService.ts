@@ -39,6 +39,28 @@ export interface AlertsDto {
   readonly syncAgeMinutes: number | null
   /** Today's queue, or null when this account may not see the queue at all. */
   readonly queue: { readonly pending: number; readonly overdue: number } | null
+  /**
+   * Why the clock has stopped, when it has. Null while the sync is healthy.
+   *
+   * THE CHIP WENT ORANGE AND SAID NOTHING, and on 2026-09-14 that cost the
+   * client an hour: Bitrix24 blocked its own REST API («OVERLOAD_LIMIT — REST
+   * API is blocked due to overload»), the dashboard went on showing the last
+   * numbers it had, and the only thing on screen was «13 daqiqa oldin». The
+   * reader's reading of that was that the REFRESH BUTTON was broken — they
+   * pressed it, reloaded the page, cleared the cache, and none of it could
+   * have helped, because nothing was wrong on this side at all.
+   *
+   * `code` is the portal's own, which is what makes the difference
+   * actionable: a throttle clears itself and needs nobody, an
+   * authentication error needs a new webhook in Bitrix24 that day.
+   */
+  readonly syncError: {
+    /** The portal's code where it gave one, else the HTTP status. */
+    readonly code: string
+    /** Which entity was being read when it failed. */
+    readonly entity: string
+    readonly at: string
+  } | null
 }
 
 type QueueCount = { readonly pending: number; readonly overdue: number }
@@ -136,6 +158,27 @@ function cachedQueuePressure(
   )
 }
 
+/**
+ * The portal's error code, pulled out of the message the provider wrote.
+ *
+ * Bitrix24 names its own failures — `OVERLOAD_LIMIT`, `QUERY_LIMIT_EXCEEDED`,
+ * `expired_token`, `NO_AUTH_FOUND` — and those names are what a reader can
+ * act on. The message around them is prose for a log, and the screen has room
+ * for one word.
+ *
+ * SCREENED, NOT PARSED FREELY. Only an uppercase-or-underscore token is taken,
+ * so nothing from a portal response body can reach the header as arbitrary
+ * text. With no code in the message the HTTP status stands in, and with
+ * neither the caller gets 'UNKNOWN' rather than an empty chip.
+ */
+export function syncErrorCode(message: string | null): string {
+  if (!message) return 'UNKNOWN'
+  const named = /\b([A-Z][A-Z_]{4,39})\b/.exec(message)
+  if (named?.[1] && named[1] !== 'REST' && named[1] !== 'API') return named[1]
+  const status = /responded (\d{3})/.exec(message)
+  return status?.[1] ? `HTTP ${status[1]}` : 'UNKNOWN'
+}
+
 export class AlertsService {
   constructor(
     private readonly insights: InsightsRepository,
@@ -148,8 +191,14 @@ export class AlertsService {
     now: Date,
     timeZone: string,
   ): Promise<AlertsDto> {
-    const [syncedAt, queue] = await Promise.all([
+    const [syncedAt, failure, queue] = await Promise.all([
       this.reference.findLastSuccessfulSync(),
+      /*
+        NOT CACHED, for the same reason `syncedAt` is not: this is the honest
+        answer to "is the dashboard still being fed", and a minute-old copy of
+        it is a minute in which the screen says everything is fine.
+      */
+      this.reference.findCurrentSyncFailure(),
       /*
         THE SECTION, AND NOW ONLY THE SECTION.
 
@@ -198,6 +247,14 @@ export class AlertsService {
           ? null
           : Math.max(0, Math.floor((now.getTime() - syncedAt.getTime()) / 60_000)),
       queue,
+      syncError:
+        failure === null
+          ? null
+          : {
+              code: syncErrorCode(failure.message),
+              entity: failure.entity,
+              at: failure.at.toISOString(),
+            },
     }
   }
 }

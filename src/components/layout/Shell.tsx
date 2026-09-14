@@ -628,7 +628,11 @@ export function Shell({
 
             {dataSource && (
               <span className="hidden min-[400px]:inline-flex">
-                <DataSourceBadge source={dataSource} syncedAt={alerts?.syncedAt ?? null} />
+                <DataSourceBadge
+                  source={dataSource}
+                  syncedAt={alerts?.syncedAt ?? null}
+                  syncError={alerts?.syncError ?? null}
+                />
               </span>
             )}
 
@@ -1350,10 +1354,21 @@ function isActive(pathname: string, href: string): boolean {
 function DataSourceBadge({
   source,
   syncedAt,
+  syncError,
 }: {
   source: 'DEMO' | 'BITRIX24' | 'MANUAL'
   /** When the numbers last landed. Null until the first payload arrives. */
   syncedAt?: string | null
+  /**
+   * Why they stopped landing, when they have.
+   *
+   * The chip used to go orange and leave the reader to guess, and the guess
+   * they make is that the REFRESH BUTTON is broken — see `AlertsDto.syncError`
+   * for the afternoon that cost. A stopped clock with no cause on screen is a
+   * bug report; with the cause it is a five-word sentence and, for a portal
+   * throttle, an instruction to do nothing at all.
+   */
+  syncError?: { readonly code: string; readonly entity: string; readonly at: string } | null
 }) {
   const isDemo = source !== 'BITRIX24'
 
@@ -1367,6 +1382,17 @@ function DataSourceBadge({
     dot colours the whole statement.
   */
   const sync = useSyncFreshness(syncedAt)
+
+  /*
+    A FAILURE THE SCREEN SHOULD SPEAK ABOUT, and the one kind that needs no
+    action. `OVERLOAD_LIMIT` and `QUERY_LIMIT_EXCEEDED` are Bitrix24 throttling
+    itself: the worker keeps trying, the block lifts on its own, and the right
+    advice to the reader is to wait rather than to reload anything. Anything
+    else — an expired webhook above all — is somebody's job that day.
+  */
+  const blocked = !isDemo && syncError != null
+  const throttled =
+    syncError?.code === 'OVERLOAD_LIMIT' || syncError?.code === 'QUERY_LIMIT_EXCEEDED'
 
   const badge = (
     <span
@@ -1390,6 +1416,26 @@ function DataSourceBadge({
         }}
       />
       {isDemo ? t.badge.demo : t.badge.live}
+      {!isDemo && blocked && (
+        /*
+          THE WORD THE READER NEEDS, IN THE CHIP ITSELF.
+
+          Not in the tooltip alone: a tooltip is for the detail, and «why has
+          this stopped» is not a detail — it is the difference between waiting
+          and filing a bug. Two states only, because there are only two acts
+          available to the person reading it: a portal throttle clears itself
+          («kutilmoqda»), and everything else needs somebody to look
+          («xatolik»).
+        */
+        <>
+          <span aria-hidden="true" style={{ color: 'var(--ink-muted)' }}>
+            ·
+          </span>
+          <span style={{ color: 'var(--status-warning)' }}>
+            {throttled ? 'Bitrix24 band' : 'sinx xatosi'}
+          </span>
+        </>
+      )}
       {!isDemo && sync.label && (
         <>
           <span aria-hidden="true" style={{ color: 'var(--ink-muted)' }}>
@@ -1406,11 +1452,17 @@ function DataSourceBadge({
     </span>
   )
 
+  const lastSyncHint = syncedAt ? `${t.badge.lastSync}: ${formatDateTime(syncedAt)}` : t.badge.live
+
   const hint = isDemo
     ? t.badge.demoHint
-    : syncedAt
-      ? `${t.badge.lastSync}: ${formatDateTime(syncedAt)}`
-      : t.badge.live
+    : blocked
+      ? `${lastSyncHint}. ${
+          throttled
+            ? 'Bitrix24 oʻz API sini vaqtincha bloklagan — yangilanish oʻzi tiklanadi, hech narsa qilish shart emas.'
+            : 'Bitrix24 dan maʼlumot olinmayapti — texnik yordam kerak.'
+        } (${syncError?.code}, ${syncError?.entity.toLowerCase()})`
+      : lastSyncHint
 
   return <Tooltip content={hint}>{badge}</Tooltip>
 }

@@ -290,6 +290,43 @@ export class ReferenceRepository {
    * Shown in the UI so a stale dashboard is visibly stale rather than silently
    * wrong.
    */
+  /**
+   * The failure that is still standing, if the sync is currently failing.
+   *
+   * ONLY WHEN IT IS NEWER THAN THE LAST SUCCESS. A FAILED row from last week
+   * is history — reporting it beside a healthy clock would put a permanent
+   * red mark on a working dashboard. The comparison is what makes this
+   * "something is wrong NOW" rather than "something once went wrong".
+   *
+   * The message is the one the provider wrote, which since 2026-09-14 carries
+   * the portal's own code — `OVERLOAD_LIMIT`, `expired_token` — rather than a
+   * bare HTTP status. That string is what the freshness chip turns into a
+   * sentence a reader can act on, so it is read raw and never re-worded here.
+   */
+  async findCurrentSyncFailure(): Promise<{
+    readonly entity: string
+    readonly at: Date
+    readonly message: string | null
+  } | null> {
+    const [failure, success] = await Promise.all([
+      this.prisma.syncLog.findFirst({
+        where: { status: 'FAILED', finishedAt: { not: null } },
+        orderBy: { finishedAt: 'desc' },
+        select: { entity: true, finishedAt: true, errorMessage: true },
+      }),
+      this.findLastSuccessfulSync(),
+    ])
+
+    if (!failure?.finishedAt) return null
+    if (success && success.getTime() >= failure.finishedAt.getTime()) return null
+
+    return {
+      entity: failure.entity,
+      at: failure.finishedAt,
+      message: failure.errorMessage,
+    }
+  }
+
   async findLastSuccessfulSync(): Promise<Date | null> {
     const row = await this.prisma.syncLog.findFirst({
       where: { status: { in: ['SUCCESS', 'PARTIAL'] }, finishedAt: { not: null } },

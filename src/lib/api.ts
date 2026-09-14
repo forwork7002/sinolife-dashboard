@@ -258,6 +258,12 @@ export interface AlertsDto {
   readonly syncedAt: string | null
   readonly syncAgeMinutes: number | null
   readonly queue: { readonly pending: number; readonly overdue: number } | null
+  /** Why the sync clock has stopped, when it has. See `AlertsDto` on the server. */
+  readonly syncError: {
+    readonly code: string
+    readonly entity: string
+    readonly at: string
+  } | null
 }
 
 /** One row in the global search, already told where it goes. */

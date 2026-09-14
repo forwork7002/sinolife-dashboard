@@ -1042,6 +1042,33 @@ mixed `100vh` against a shell sized in `100dvh`.
   static page, parsed by brace-matching, not regex). It lands in its own tables
   and is spawned as a child process, hourly.
 
+- **THE PORTAL CAN BLOCK ITSELF, AND THE DASHBOARD NOW SAYS SO.** On
+  2026-09-14 every REST call came back `401` with
+  `OVERLOAD_LIMIT — REST API is blocked due to overload`: Bitrix24's own
+  throttle, portal-wide, lifting on its own. Three things were wrong with how
+  that played out, and all three are fixed.
+  **The reason was thrown away.** A non-ok response reported «Bitrix24
+  responded 401» and dropped the body, so the sync log read like a revoked
+  token for fifteen minutes and diagnosing it needed a probe against the live
+  portal. `Bitrix24CrmProvider` now appends the portal's own code and sentence.
+  **The screen said nothing.** The freshness chip went orange, printed
+  «13 daqiqa oldin» and left the reader to conclude the REFRESH BUTTON was
+  broken — they pressed it, reloaded, cleared the cache, and none of it could
+  help. `/meta/alerts` now carries `syncError` (the code, the entity, when),
+  the chip prints «Bitrix24 band» for a throttle and «sinx xatosi» otherwise,
+  and the tooltip says whether to wait or to call somebody.
+  `findCurrentSyncFailure` only reports a failure NEWER than the last success,
+  so a healthy dashboard never wears a red mark for last week.
+  **The worker exited.** `process.exit(1)` on a failed startup health check
+  turned a transient throttle into a restart loop that re-issued the refused
+  call every cycle. It logs and starts the tick loop instead; the loop already
+  backs off up to five minutes.
+  **And the restart itself was expensive.** `historyBackfillCursor` re-read 45
+  days of stage history on EVERY start — five deploys in two hours is five
+  such passes. It now runs only when the cursor has been still for half an
+  hour, which is the case it was written for (a worker that was DOWN); a
+  redeploy under a healthy sync is covered by `SKIP_LOOKBACK_MS`.
+
 Worker cadence lives in `scripts/syncWorker.ts`: `SYNC_INTERVAL_SEC` 60,
 reference data every 30 ticks, sweep and Roistat every 60, and
 `SYNC_HISTORY_BACKFILL_DAYS` 45 — the stage-history cursor is wound back once
