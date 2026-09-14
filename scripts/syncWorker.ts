@@ -144,6 +144,18 @@ const HISTORY_BACKFILL_DAYS = Number(process.env.SYNC_HISTORY_BACKFILL_DAYS ?? 4
 const THROTTLED_WAIT_MS = 10 * 60_000
 
 /**
+ * The heap the Roistat child is allowed, in megabytes.
+ *
+ * Deliberately NOT the worker's own 768 — see `runRoistatImport` for the
+ * measurement that forced this. Roughly ten times the working set of the 5.5 MB
+ * page it parses, and a third of the container, so parent and child together
+ * cannot reach the ceiling. If the importer ever genuinely needs more it dies
+ * with a JavaScript heap error naming this constant: one passenger failing
+ * diagnosably, which is the whole point of it being a child process.
+ */
+const ROISTAT_HEAP_MB = 320
+
+/**
  * Read on every tick — and CALLS is deliberately NOT among them.
  *
  * These four are what every screen in the product is built on: the deal, its
@@ -282,14 +294,61 @@ async function acquireLock(pool: Pool): Promise<PoolClient> {
  *
  * Never throws. The Bitrix sync is the worker's job; marketing is a passenger
  * and a passenger does not get to stop the vehicle.
+ *
+ * THE CHILD GETS ITS OWN, SMALLER HEAP — and that is what stopped this worker
+ * dying seventeen times a day. See `ROISTAT_HEAP_MB`.
  */
 async function runRoistatImport(): Promise<void> {
   await new Promise<void>((resolve) => {
-    const child = spawn(process.execPath, ['--import', 'tsx', 'scripts/importRoistat.ts'], {
-      cwd: process.cwd(),
-      env: process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
+    /*
+      `env: process.env` MINUS `NODE_OPTIONS`, with the cap on argv instead.
+
+      The platform sets NODE_OPTIONS=--max-old-space-size=768 on this worker and
+      a spawned child inherits the whole environment — so a 1 024 MB container
+      held TWO V8 isolates, each believing it could take 768 MB. Neither ever
+      felt pressure, neither collected defensively, and neither raised a
+      JavaScript OOM: the kernel got there first, which is exactly why no
+      out-of-memory message was ever in any log.
+
+      Measured on production 2026-09-14, before this change: the worker's own
+      RSS is flat at 262-297 MB for a whole hour and the deletion sweep adds
+      about 65 MB, while DigitalOcean's own metric caught the container at
+      999.0 MB of 1 024 — during the tick-60 window, the only tick that runs the
+      sweep AND this import. Fifteen restarts in 24 hours, every one beginning
+      the instant CALLS finished, i.e. inside this block; twelve killed the
+      container, three got through. Nothing else in the process is big enough to
+      account for the difference.
+    */
+    const { NODE_OPTIONS: _workerHeap, ...env } = process.env
+
+    /*
+      SPAWN CAN THROW SYNCHRONOUSLY, and the header above promises it does not.
+
+      `spawn` raises ENOMEM or EMFILE from inside this executor rather than
+      through the 'error' event — and a throw here REJECTS the promise, which
+      travels up the one awaited call in the tick loop that carries no catch,
+      reaches `main().catch` and exits the process. Under memory pressure at
+      tick 60 that is a second, quieter way for this block to kill the worker,
+      punctual and tick-aligned and indistinguishable in the data from the
+      kernel doing it. Caught here, the passenger fails and the vehicle
+      continues, which is what the whole child-process design is for.
+    */
+    let child
+    try {
+      child = spawn(
+        process.execPath,
+        [`--max-old-space-size=${ROISTAT_HEAP_MB}`, '--import', 'tsx', 'scripts/importRoistat.ts'],
+        {
+          cwd: process.cwd(),
+          env,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      )
+    } catch (error) {
+      console.warn(`  ${stamp()} roistat: ishga tushirib boʻlmadi — ${(error as Error).message}`)
+      resolve()
+      return
+    }
 
     // The importer prints a full report; only its verdict belongs in this log.
     let tail = ''
@@ -317,7 +376,7 @@ async function runRoistatImport(): Promise<void> {
       })
     })
 
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       done(() => {
         if (code === 0) {
           const changed = /(\d+)\s+ta oʻlchov oʻzgardi/.exec(tail)
@@ -325,10 +384,22 @@ async function runRoistatImport(): Promise<void> {
             `  ${stamp()} roistat: ${changed ? `${changed[1]} oʻlchov yangilandi` : 'oʻzgarish yoʻq'}`,
           )
         } else if (code === null) {
-          // Killed by a signal, which on this worker means shutdown reached it
-          // mid-import. That is an interruption, not a failure, and logging it
-          // as one would put a red line in the log on every redeploy.
-          console.log(`  ${stamp()} roistat: toʻxtatildi (keyingi tsiklda qaytadan uriniladi)`)
+          /*
+            Killed by a signal — and WHICH signal is the whole diagnosis.
+
+            SIGTERM is our own shutdown reaching the child mid-import: an
+            interruption, not a failure, and logging it as one would put a red
+            line in the log on every redeploy. SIGKILL is the kernel, which on a
+            1 024 MB container means the memory ceiling — the death this worker
+            spent seventeen restarts a day hiding behind an unnamed
+            `code === null`. Naming it is how the next one is diagnosable
+            without container logs nobody can read.
+          */
+          console.log(
+            `  ${stamp()} roistat: toʻxtatildi (${signal ?? 'signalsiz'})` +
+              (signal === 'SIGKILL' ? ' — xotira chegarasi boʻlishi mumkin' : '') +
+              ' — keyingi tsiklda qaytadan uriniladi',
+          )
         } else {
           const reason = /✗ IMPORT TOʻXTADI\s*\n\s*\n\s*(.+)/.exec(tail)
           console.warn(

@@ -1160,6 +1160,45 @@ that time issuing ~50 refused calls an hour against a counter we cannot see and
 may be feeding. `THROTTLED_WAIT_MS` is a flat ten; the block lifts on the
 portal's clock, not ours, and the header says why meanwhile.
 
+**THE WORKER WAS DYING SEVENTEEN TIMES A DAY, AND THE ROISTAT CHILD WAS THE
+BALLOON.** Measured 2026-09-14 and fixed the same day. DigitalOcean sets
+`NODE_OPTIONS=--max-old-space-size=768` on this worker; `spawn(..., {env:
+process.env})` handed the Roistat child the same licence, so a 1 024 MB
+container held two V8 isolates each entitled to 768 MB. Neither felt pressure,
+neither collected defensively, neither raised a JavaScript OOM — the kernel got
+there first, which is why no out-of-memory message was ever in any log and the
+death showed up only as an unnamed `code === null`.
+
+The evidence, none of it estimated: the worker's own RSS is flat at 262–297 MB
+for a whole hour and the deletion sweep adds ~65 MB (304–327 MB on the two
+tick-60 windows it survived), while DO's `memory_percentage` metric for
+component `sync` caught the container at **999.0 MB of 1 024** in the tick-60
+window; `sync_log` shows 15 gaps >100 s in 24 h, all 62–67 minutes apart and
+**every one beginning the instant CALLS finished** — inside the sweep-plus-
+Roistat block — twelve of them followed by a `DEPARTMENTS` boot (a fresh
+process), three by a `CUSTOMERS` tick (the same one). Ruled out with the same
+data: a socket idle-drop (cannot land on tick 60 fifteen times), a leak (RSS
+flat), the sweep's id Set (65 MB, measured), the 200 MB `IdResolver` map
+(`PAYMENTS` is in neither HOT nor REFERENCE, so it is never built).
+
+`ROISTAT_HEAP_MB` = 320 on the child's own argv, with `NODE_OPTIONS` stripped
+from its environment. A synchronous `spawn` throw is now caught too: it was the
+one awaited call in the tick loop with no catch, so ENOMEM there rejected into
+`main().catch` and exited the process — a second, quieter version of the same
+death. And `close` names the signal, so `SIGKILL` says «xotira chegarasi»
+instead of hiding as an interruption.
+
+**How to check it stayed fixed, without container logs** (`doctl apps logs …
+--type run` answers `websocket: close 1011`): count `DEPARTMENTS` rows in
+`sync_log` for a day — that entity only runs at tick 0 and every 30 ticks, so
+12–17 a day means the worker is still booting that often and 2 (the deploys)
+means it is not. Container memory comes from the metrics API directly —
+`monitoring/metrics/apps/memory_percentage?app_id=…`, filter
+`metric.app_component == 'sync'`, ×10.24 for MB — because doctl does not wrap
+it. And `SELECT max("importedAt") FROM marketing_snapshot` must keep advancing
+hourly: if it stops, the child is hitting the new 320 MB cap and the log line
+above will say so.
+
 Worker cadence lives in `scripts/syncWorker.ts`: `SYNC_INTERVAL_SEC` 60,
 reference data every 30 ticks, sweep and Roistat every 60, and
 `SYNC_HISTORY_BACKFILL_DAYS` 45 — the stage-history cursor is wound back once
