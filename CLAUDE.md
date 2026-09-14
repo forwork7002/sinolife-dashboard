@@ -297,6 +297,20 @@ exceptions, each with a reason in place: `/meta/alerts` (one request a minute
 for the whole app, keyed constantly), `/meta/filters` (5 min — reference data
 changes on sync), and the ⌘K search.
 
+**THE INTERVAL DOES NOT RUN WHILE THE TAB IS HIDDEN, so the focus refetch is
+what keeps the promise.** `refetchIntervalInBackground` is false — a dashboard
+left open for a week must not issue ten thousand queries nobody reads — which
+means a reader who works in Bitrix24 and glances at this dashboard comes back
+to whatever was on screen when they left. `refetchOnWindowFocus` was true, was
+turned off on 2026-09-03 because every return reissued every query while
+somebody switched tabs every few seconds, and is **true again since
+2026-09-14**, when the client reported the other half of it as «avtomatik
+yangilanmayapti» (measured: a return at +160 s was answered at +185 s, by the
+timer, not by the return). What makes both true at once is `staleTime`: a
+focus refetch fires only for a STALE query, so two returns inside a minute
+cost nothing and a return after an hour is current at once. Changing either
+value without the other brings one of the two failures back.
+
 ### Light or dark
 
 `globals.css` has carried a full second palette since it was written, but for a
@@ -1037,6 +1051,16 @@ mixed `100vh` against a shell sized in `100dvh`.
 - **`DEAL_ITEMS` reads in-memory state left by the `DEALS` pass** in the same
   process, and ignores `updatedSince`. Running it alone yields zero rows and
   reports `SUCCESS`.
+- **`CALLS` LEFT THE PER-MINUTE LIST ON 2026-09-14.** `call_record` is written
+  by the sync and read by NOTHING — `/insights/calls` went in the 2026-09-10
+  cull with the screen it fed, and the only other mentions are a proof script
+  and the importer's row count. It was costing a portal call a minute for data
+  no reader has seen since, on the portal that spent that afternoon refusing
+  us for overload, and it was the last entity still being refused. It rides
+  the reference pass now (half-hourly, and LAST in that list so its links
+  resolve against freshly imported deals), so the history keeps accumulating
+  at a thirtieth of the cost. Moved, not deleted: deleting the entity would
+  throw the history away with the cost.
 - The provider **ignores `pageSize`** and returns one page for most entities.
 - Roistat is a second, unrelated source (a `var D = {…}` literal inside a 5.5 MB
   static page, parsed by brace-matching, not regex). It lands in its own tables

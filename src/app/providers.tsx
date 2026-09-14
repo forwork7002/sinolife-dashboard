@@ -44,24 +44,34 @@ export function Providers({ children }: { children: ReactNode }) {
             refetchIntervalInBackground: false,
 
             /**
-             * AND NOT ON FOCUS EITHER.
+             * ON FOCUS TOO — BUT ONLY WHEN THE DATA IS ACTUALLY OLD.
              *
-             * This used to be true, on the argument that coming back to the
-             * tab should bring the screen straight up to date. In use it did
-             * something else: this dashboard is read BESIDE Bitrix24, so the
-             * tab is left and returned to every few seconds, and each return
-             * reissued every query on the page. The screen reloaded under the
-             * reader's hands for no reason they had given it — which is how a
-             * refresh stops reading as "fresh data" and starts reading as
-             * "this thing is unstable".
+             * This was true, then false, and is true again; the two failures
+             * are different and the setting alone is not what separates them.
              *
-             * Nothing is lost. The minute tick above is the freshness promise
-             * and it keeps running while the tab is visible; the worst case is
-             * a screen up to a minute old on return, which is the same worst
-             * case it has while you are looking at it. The header's refresh
-             * button is there for anyone who will not wait.
+             * IT WAS TURNED OFF on 2026-09-03 because the dashboard is read
+             * BESIDE Bitrix24: the tab is left and returned to every few
+             * seconds, and every return reissued every query on the page. The
+             * screen reloaded under the reader's hands for no reason they had
+             * given it.
+             *
+             * TURNING IT OFF COST THE OTHER HALF, and the client reported that
+             * on 2026-09-14 as «avtomatik yangilanmayapti»: the interval above
+             * does not run while the tab is HIDDEN (see
+             * `refetchIntervalInBackground`), so somebody who works in
+             * Bitrix24 and glances at the dashboard came back to numbers from
+             * whenever they last looked, and the screen would not correct
+             * itself until the resumed timer fired — measured at up to a full
+             * minute, and for a glance of ten seconds, never.
+             *
+             * WHAT MAKES BOTH TRUE AT ONCE IS `staleTime`, which was already
+             * 55 seconds and is what this now leans on: a focus refetch fires
+             * only for a query that is STALE, so returning twice in a minute
+             * costs nothing and returning after an hour is up to date before
+             * the reader has finished looking at it. At most one refetch per
+             * query per minute, which is the same promise the interval makes.
              */
-            refetchOnWindowFocus: false,
+            refetchOnWindowFocus: true,
 
             // A 400 from validation will fail identically on retry; only
             // retry once, for genuine transport blips.

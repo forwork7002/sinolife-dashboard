@@ -135,8 +135,28 @@ const SWEEP_EVERY = Number(process.env.SYNC_SWEEP_EVERY ?? 60)
  */
 const HISTORY_BACKFILL_DAYS = Number(process.env.SYNC_HISTORY_BACKFILL_DAYS ?? 45)
 
-/** Read on every tick. */
-const HOT: SyncEntityValue[] = ['CUSTOMERS', 'DEALS', 'DEAL_ITEMS', 'STAGE_HISTORY', 'CALLS']
+/**
+ * Read on every tick — and CALLS is deliberately NOT among them.
+ *
+ * These four are what every screen in the product is built on: the deal, its
+ * items, its stage history and the customer. A minute late on any of them is
+ * a minute the confirmation queue, the sellers board and the payroll are
+ * wrong, which is the whole reason this worker runs at all.
+ *
+ * `call_record` is read by NOTHING. `/insights/calls` went in the 2026-09-10
+ * cull with the screen it fed, and `grep -rn "prisma.callRecord" src` now
+ * returns the sync handler that writes it and nothing else — the only other
+ * readers are a proof script and the importer's row count. So a per-minute
+ * portal call was being spent on data no reader has seen since that cull, on
+ * a portal that spent the afternoon of 2026-09-14 refusing us for overload —
+ * and CALLS was the last entity it was still refusing.
+ *
+ * IT IS MOVED, NOT DELETED. The rows keep arriving with the reference pass
+ * below, which is half-hourly rather than per-minute, so call history goes on
+ * accumulating for whoever asks for it next and costs 1/30th of what it did.
+ * Deleting the entity would throw away the history with the cost.
+ */
+const HOT: SyncEntityValue[] = ['CUSTOMERS', 'DEALS', 'DEAL_ITEMS', 'STAGE_HISTORY']
 
 /** Read occasionally. Order matters — deals reference all of these. */
 const REFERENCE: SyncEntityValue[] = [
@@ -148,6 +168,17 @@ const REFERENCE: SyncEntityValue[] = [
   'SOURCES',
   'STORES',
   'STOCK',
+  /*
+    NOT reference data, and LAST on purpose.
+
+    It rides this clock for the reason HOT gives above — nothing renders a
+    call, so a minute's freshness buys nothing — and it goes at the end
+    because its rows link to employees, customers and deals. The links are
+    resolved from the DATABASE and an unresolved one is written as null, so
+    the order cannot lose a row; it only decides whether a call recorded
+    minutes ago finds the deal it belongs to on this pass or the next.
+  */
+  'CALLS',
 ]
 
 const url: string = DATABASE_URL
