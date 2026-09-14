@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/Button'
 import { ChartCard } from '@/components/ui/Card'
 import { SearchInput, SegmentedControl } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
-import { Meter } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { type PayrollDto, type PayrollHalf, type PayrollSellerDto, apiGet } from '@/lib/api'
 import { NO_VALUE, formatCompactUzs, formatFullUzs, formatNumber } from '@/lib/format'
@@ -602,8 +601,32 @@ const COLUMNS: Column<PayrollLine>[] = [
             {line.row.fixed.amount > 0 ? formatFullUzs(line.row.fixed.amount) : NO_VALUE}
           </span>
           {line.row.nextFloor && line.row.toNext ? (
+            /*
+              A RAIL WITH NO READOUT, which is why it is not `Meter`.
+
+              Meter prints its own percentage beside the bar, and «36.0%» is
+              not a fact anybody acts on here — it competed with the money in
+              the same cell and made the column the busiest thing on the page.
+              What the reader wants is the GAP, in soʻm, and the bar is there
+              to be scanned rather than read. The screen-reader label carries
+              the same sentence the caption does.
+            */
             <span className="mt-1 flex items-center justify-end gap-2">
-              <Meter value={tierProgress(line.row)} tone="neutral" width="w-[68px]" />
+              <span
+                className="h-1.5 w-[56px] shrink-0 overflow-hidden rounded-full"
+                style={{ background: 'var(--track)' }}
+                role="img"
+                aria-label={`${formatCompactUzs(line.row.nextFloor.amount)} gacha ${formatCompactUzs(line.row.toNext.amount)}`}
+              >
+                <span
+                  className="block h-full rounded-full"
+                  style={{
+                    width: `${tierProgress(line.row)}%`,
+                    background: 'var(--seq-450)',
+                    transition: 'width var(--duration-enter) var(--ease-out)',
+                  }}
+                />
+              </span>
               <span className="text-[10px] whitespace-nowrap" style={{ color: 'var(--ink-muted)' }}>
                 {formatCompactUzs(line.row.nextFloor.amount)} gacha{' '}
                 {formatCompactUzs(line.row.toNext.amount)}
