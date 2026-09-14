@@ -1130,6 +1130,14 @@ mixed `100vh` against a shell sized in `100dvh`.
   hour, which is the case it was written for (a worker that was DOWN); a
   redeploy under a healthy sync is covered by `SKIP_LOOKBACK_MS`.
 
+**A THROTTLED TICK WAITS TEN MINUTES, not the failure-count backoff.** When
+any entity comes back `OVERLOAD_LIMIT` or `QUERY_LIMIT_EXCEEDED` the portal is
+refusing the whole REST surface — on 2026-09-14 for four hours — and the
+ordinary backoff (five minutes after five consecutive failures) would spend
+that time issuing ~50 refused calls an hour against a counter we cannot see and
+may be feeding. `THROTTLED_WAIT_MS` is a flat ten; the block lifts on the
+portal's clock, not ours, and the header says why meanwhile.
+
 Worker cadence lives in `scripts/syncWorker.ts`: `SYNC_INTERVAL_SEC` 60,
 reference data every 30 ticks, sweep and Roistat every 60, and
 `SYNC_HISTORY_BACKFILL_DAYS` 45 — the stage-history cursor is wound back once

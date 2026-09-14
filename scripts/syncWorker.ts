@@ -136,6 +136,14 @@ const SWEEP_EVERY = Number(process.env.SYNC_SWEEP_EVERY ?? 60)
 const HISTORY_BACKFILL_DAYS = Number(process.env.SYNC_HISTORY_BACKFILL_DAYS ?? 45)
 
 /**
+ * How long to wait after the portal has refused a tick for overload.
+ *
+ * Ten minutes, flat, rather than the failure-count backoff: this is not our
+ * error to retry out of. See the tick loop for the measurement behind it.
+ */
+const THROTTLED_WAIT_MS = 10 * 60_000
+
+/**
  * Read on every tick — and CALLS is deliberately NOT among them.
  *
  * These four are what every screen in the product is built on: the deal, its
@@ -464,6 +472,8 @@ async function main() {
    * block alive; backing off lets it clear.
    */
   let failures = 0
+  /** Whether the LAST tick was refused by the portal's own throttle. */
+  let throttled = false
 
   while (!stopping) {
     const started = Date.now()
@@ -473,6 +483,25 @@ async function main() {
       const results = await engine.runAll(entities, 'INCREMENTAL')
       const changed = results.reduce((sum, r) => sum + r.recordsCreated + r.recordsUpdated, 0)
       const failed = results.filter((r) => r.status === 'FAILED')
+
+      /*
+        A PORTAL THAT SAYS «TOO MUCH» IS NOT ASKED AGAIN IN A MINUTE.
+
+        `OVERLOAD_LIMIT` and `QUERY_LIMIT_EXCEEDED` are Bitrix24 refusing the
+        whole REST surface, not one entity having a bad second: on 2026-09-14
+        it lasted four hours. The ordinary backoff below reaches five minutes
+        after five consecutive failures, which over a block that long is
+        another ~50 refused calls an hour against a counter we cannot see and
+        may be feeding. There is nothing to gain by asking sooner — the block
+        lifts on the portal's clock, not on ours — so a throttled tick waits
+        ten minutes flat, and the dashboard says why in the header meanwhile.
+      */
+      throttled = results.some(
+        (r) =>
+          r.status === 'FAILED' &&
+          (r.errorMessage?.includes('OVERLOAD_LIMIT') ||
+            r.errorMessage?.includes('QUERY_LIMIT_EXCEEDED')),
+      )
 
       if (failed.length > 0) {
         failures += 1
@@ -497,6 +526,7 @@ async function main() {
       }
     } catch (error) {
       failures += 1
+      throttled = false
       console.error(`  ${stamp()} ✗ tsikl xatosi:`, error)
     }
 
@@ -586,7 +616,9 @@ async function main() {
       waits at least its backoff; a long but SUCCESSFUL tick still starts the
       next one immediately, because `backoff` is zero when nothing failed.
     */
-    const backoff = Math.min(failures, 5) * INTERVAL_SEC * 1000
+    const backoff = throttled
+      ? THROTTLED_WAIT_MS
+      : Math.min(failures, 5) * INTERVAL_SEC * 1000
     const remaining = Math.max(INTERVAL_SEC * 1000 - (Date.now() - started), backoff)
 
     if (remaining > 0 && !stopping) await sleep(remaining)
