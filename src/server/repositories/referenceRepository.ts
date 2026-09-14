@@ -71,6 +71,33 @@ const BRANCH_TREE_CTE = Prisma.sql`
   )
 `
 
+/**
+ * The entities whose arrival the freshness chip is actually promising.
+ *
+ * AN ALLOWLIST, AND IT IS SHORTER THAN THE ENTITY LIST ON PURPOSE. Every
+ * figure in this product is built from deals, their stage history and the
+ * customers on them; nothing else being read is evidence that the dashboard is
+ * current. Two passes proved that on 2026-09-14, four hours into a portal-wide
+ * `OVERLOAD_LIMIT` block:
+ *
+ *   `DEAL_ITEMS` makes no portal call at all — it reads what the DEALS pass
+ *   left in memory — so with DEALS failing it finished SUCCESS once a minute
+ *   and the header read «1 daqiqa oldin» over 45-minute-old data.
+ *
+ *   `DEPARTMENTS` then did the same thing more quietly: its own method was
+ *   still being answered while every deal call was refused, so the chip said
+ *   «2 daqiqa oldin» while the deals on screen were four hours old.
+ *
+ * Both readings were technically true and both were useless to the person
+ * looking at the screen. A pass that reads zero rows because nothing changed
+ * still counts — the portal answered for the data this chip is about.
+ */
+export const FRESHNESS_ENTITIES = Object.freeze([
+  'DEALS',
+  'STAGE_HISTORY',
+  'CUSTOMERS',
+] as const)
+
 export class ReferenceRepository {
   /**
    * The branch resolver, cached.
@@ -352,7 +379,7 @@ export class ReferenceRepository {
       where: {
         status: { in: ['SUCCESS', 'PARTIAL'] },
         finishedAt: { not: null },
-        entity: { not: 'DEAL_ITEMS' },
+        entity: { in: [...FRESHNESS_ENTITIES] },
       },
       orderBy: { finishedAt: 'desc' },
       select: { finishedAt: true },

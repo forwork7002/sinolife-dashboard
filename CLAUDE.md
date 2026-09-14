@@ -1051,17 +1051,22 @@ mixed `100vh` against a shell sized in `100dvh`.
 - **`DEAL_ITEMS` reads in-memory state left by the `DEALS` pass** in the same
   process, and ignores `updatedSince`. Running it alone yields zero rows and
   reports `SUCCESS`.
-- **THE FRESHNESS CLOCK MUST NOT COUNT `DEAL_ITEMS`.** That pass makes no
-  portal call — it reads what the `DEALS` pass left in memory — so during a
-  portal outage it finds nothing to do and finishes `SUCCESS` once a minute,
-  for as long as the outage lasts. `findLastSuccessfulSync` took the newest
-  success of ANY entity, so the header read «1 daqiqa oldin» in green over a
-  dashboard that had not been fed for 45 minutes (measured 2026-09-14, mid
-  `OVERLOAD_LIMIT`: CUSTOMERS 11 failures, DEALS 11, STAGE_HISTORY 11, CALLS 9,
-  DEAL_ITEMS 11 successes). That is what the client was reporting as «avtomatik
-  yangilanmayapti» while the screen insisted it was current — the refresh was
-  working and the CLOCK was lying. A pass that read zero rows because nothing
-  changed still counts; a pass that cannot have talked to the portal does not.
+- **THE FRESHNESS CLOCK READS AN ALLOWLIST — `FRESHNESS_ENTITIES`, three of
+  them.** «Necha daqiqa oldin» promises that the numbers on screen are current,
+  and every number here is built from DEALS, STAGE_HISTORY and CUSTOMERS.
+  `findLastSuccessfulSync` used to take the newest success of ANY entity, and
+  on 2026-09-14 — four hours into a portal-wide `OVERLOAD_LIMIT` — two
+  different passes made it lie in turn. `DEAL_ITEMS` makes no portal call at
+  all (it reads what the DEALS pass left in memory), so with DEALS failing it
+  finished SUCCESS once a minute and the header read «1 daqiqa oldin» over
+  45-minute-old data: CUSTOMERS 11 failures, DEALS 11, STAGE_HISTORY 11,
+  CALLS 9, DEAL_ITEMS 11 successes. Excluding it, `DEPARTMENTS` did the same
+  more quietly — its method was still being answered while every deal call was
+  refused — and the chip said «2 daqiqa oldin» over deals four hours old. Both
+  readings were true and both were useless to the reader. THIS is what the
+  client kept reporting as «avtomatik yangilanmayapti»: the refresh worked and
+  the clock lied. A pass that read zero rows because nothing changed still
+  counts — the portal answered for the data the chip is about.
 - **`CALLS` LEFT THE PER-MINUTE LIST ON 2026-09-14.** `call_record` is written
   by the sync and read by NOTHING — `/insights/calls` went in the 2026-09-10
   cull with the screen it fed, and the only other mentions are a proof script
