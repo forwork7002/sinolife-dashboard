@@ -555,11 +555,14 @@ Per-screen traps worth knowing before you touch one:
   payroll is twelve people's salaries. Opening it to a ROP takes three changes
   in one commit: the route's permission, the scope threaded through the
   service, and the scope added to its memo key.
-  **It is the slowest read in the product** — 9–11 s on production for a whole
-  month, against 2.3 s for the logistics screen — because it builds the queue
-  cohort over the window with no employee cut. The 60-second memo is what
-  makes that bearable; if this screen is opened daily it needs its own query
-  rather than the board's.
+  **IT IS NOT SLOW, AND THE FIRST MEASUREMENT SAYING SO WAS MEASURING THE
+  WRONG THING.** A local `npx tsx` probe read 9–11 s for a whole month and the
+  figure went into this file; the same query answered from the app in
+  **0.9–1.1 s** (measured 2026-09-14 on `/api/v1/payroll/sellers`, both a
+  fortnight and a full month). The gap is the probe's own round trips from
+  Tashkent to fra1, not the database — a lesson worth keeping for the next
+  probe: time a query from something that sits beside the database, or time
+  the endpoint.
 - **KPI rejalari** — the preset picks the plan but does not slice it. «Bugun»
   and «Shu oy» give identical numbers inside one plan.
 - **Struktura** — **no money and no reporting window, and both are load-bearing
