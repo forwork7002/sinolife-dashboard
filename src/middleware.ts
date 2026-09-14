@@ -37,6 +37,13 @@ export const config = {
    * Everything except the auth endpoints, the login page, Next's internals and
    * static assets. The API is excluded on purpose: an unauthenticated API call
    * must return a 401 envelope the client can handle, not an HTML redirect.
+   *
+   * `build-id.json` is excluded for the same reason as the API and not as a
+   * convenience: it is polled by an open tab to notice a deploy
+   * (`useNewBuildAvailable`), and a session that expires overnight would
+   * otherwise answer that poll with the LOGIN PAGE — HTML where the reader
+   * expects JSON. It carries one timestamp and no session, so there is
+   * nothing in it to guard.
    */
-  matcher: ['/((?!api|login|_next/static|_next/image|favicon.ico|.*\\.svg).*)'],
+  matcher: ['/((?!api|login|build-id.json|_next/static|_next/image|favicon.ico|.*\\.svg).*)'],
 }

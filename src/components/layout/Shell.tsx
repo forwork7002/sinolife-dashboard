@@ -28,6 +28,7 @@ import { Kbd } from '@/components/ui/Kbd'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { apiGet, type AlertsDto, type SearchDto } from '@/lib/api'
 import { sessionUser, signOut, useSession } from '@/lib/authClient'
+import { useNewBuildAvailable } from '@/lib/buildVersion'
 import { formatCompactUzs, formatDateTime } from '@/lib/format'
 import { ROLE_LABELS, canSeeHref, type RoleValue } from '@/lib/roles'
 import { useServerViewer } from '@/lib/viewer'
@@ -207,7 +208,53 @@ export function Shell({
   })
   const alerts = alertsQuery.data?.data
   const pending = alerts?.queue?.pending ?? 0
+  /*
+    THE SYNC IS BLOCKED AND THE READER CAN SEE IT — the same pairing the
+    freshness chip uses, and for the same reason: a failing entity over a
+    current clock is a log entry, not something to put in front of the floor.
+    Five minutes is the worker's own threshold (five missed ticks).
+  */
+  const syncBlocked = alerts?.syncError != null && (alerts?.syncAgeMinutes ?? 0) >= 5
   const busy = useIsFetching() > 0
+
+  /*
+    WHAT THE REFRESH BUTTON SAYS AFTER IT HAS DONE ITS WORK.
+
+    It did work before — measured on production, one press issued the screen's
+    own query plus /meta/filters and /meta/alerts — and the client reported it
+    three times as broken, because a press that lands on unchanged numbers is
+    indistinguishable from a press that did nothing. On 2026-09-14 the numbers
+    could not change at all: Bitrix24 had blocked its own REST API for four
+    hours, so every press correctly re-read a database nobody had written to.
+
+    So the button now reports. `refreshedAt` lights a short line beside it —
+    «Yangilandi 16:12», or the reason there is nothing new — and clears itself
+    after a few seconds, because a permanent label is furniture rather than
+    feedback. The state is the TIMESTAMP rather than a boolean: the message has
+    to name the moment, or it reads as a status that was always true.
+  */
+  const [refreshedAt, setRefreshedAt] = useState<number | null>(null)
+
+  const refresh = async () => {
+    try {
+      await queryClient.invalidateQueries()
+    } finally {
+      setRefreshedAt(Date.now())
+    }
+  }
+
+  useEffect(() => {
+    if (refreshedAt === null) return
+    const timer = setTimeout(() => setRefreshedAt(null), 6000)
+    return () => clearTimeout(timer)
+  }, [refreshedAt])
+
+  /*
+    A DEPLOY DOES NOT REACH AN OPEN TAB — see `useNewBuildAvailable`. Five
+    deploys landed under this reader's open dashboard in one afternoon and
+    nothing on screen said so.
+  */
+  const newBuild = useNewBuildAvailable()
 
   /**
    * The ⌘K palette. Closed means UNMOUNTED (the primitive returns null), so
@@ -755,10 +802,47 @@ export function Shell({
                 same rows. It turns only while something is genuinely in
                 flight — an arrow that always spins says nothing.
               */}
+              {/*
+                A DEPLOY LANDED UNDER THIS TAB, so offer the only thing that
+                fixes it — a real reload. It is a BUTTON rather than an
+                automatic reload: this dashboard is read in the middle of
+                work, and a page that reloads itself under somebody's hands
+                loses their scroll, their filters and their place in a table.
+              */}
+              {newBuild && (
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="focusable rounded-lg px-2.5 py-1.5 text-[11px] font-semibold whitespace-nowrap"
+                  style={{ background: 'var(--series-3)', color: '#fff' }}
+                >
+                  Yangi versiya · yangilash
+                </button>
+              )}
+
+              {/*
+                THE ANSWER TO THE PRESS, IN WORDS, RIGHT BESIDE THE BUTTON.
+
+                `aria-live` so it is announced rather than only drawn: this is
+                the confirmation that the press did something, and a reader who
+                cannot see the line is exactly the reader who most needs it.
+              */}
+              {refreshedAt !== null && (
+                <span
+                  aria-live="polite"
+                  className="hidden text-[11px] whitespace-nowrap sm:inline"
+                  style={{ color: syncBlocked ? 'var(--status-warning)' : 'var(--ink-muted)' }}
+                >
+                  {syncBlocked
+                    ? 'Bitrix24 band — yangi maʼlumot yoʻq'
+                    : `Yangilandi ${clockOf(refreshedAt)}`}
+                </span>
+              )}
+
               <Tooltip content="Maʼlumotni yangilash">
                 <button
                   type="button"
-                  onClick={() => void queryClient.invalidateQueries()}
+                  onClick={() => void refresh()}
                   aria-label="Maʼlumotni yangilash"
                   className="rail-item focusable flex h-9 w-9 items-center justify-center rounded-lg"
                 >
@@ -1502,6 +1586,11 @@ function DataSourceBadge({
  * "hozirgina" at six in the morning. Fifteen seconds is fine: the unit shown
  * is minutes, so nothing finer would ever be visible.
  */
+/** HH:MM on the reader's own clock — the press happened on their machine. */
+function clockOf(at: number): string {
+  return new Date(at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+}
+
 function useSyncFreshness(syncedAt?: string | null): { label: string | null; stale: boolean } {
   const [now, setNow] = useState(() => Date.now())
 

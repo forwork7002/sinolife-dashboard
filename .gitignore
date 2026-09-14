@@ -64,3 +64,6 @@ bitrix24-final-dup.json
 
 # Playwright MCP output — screenshots and session snapshots, never source
 .playwright-mcp/
+
+# Written by scripts/writeBuildId.mjs at build time.
+/public/build-id.json

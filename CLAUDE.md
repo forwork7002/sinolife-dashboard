@@ -318,6 +318,28 @@ exceptions, each with a reason in place: `/meta/alerts` (one request a minute
 for the whole app, keyed constantly), `/meta/filters` (5 min — reference data
 changes on sync), and the ⌘K search.
 
+**THE REFRESH BUTTON REPORTS, AND A DEPLOY NOW REACHES AN OPEN TAB.** Both
+added 2026-09-14, after the client reported «yangilash ishlamayapti» four times
+over an afternoon in which the button was measurably working. Two different
+absences produced that.
+*A press that lands on unchanged numbers looks like a press that did nothing* —
+and for four hours that afternoon the numbers could not change at all, because
+Bitrix24 was refusing every REST call. So the button now prints
+«Yangilandi 16:12» beside itself for six seconds, or «Bitrix24 band — yangi
+maʼlumot yoʻq» when the sync is blocked (`aria-live`, so it is announced as
+well as drawn). The state is the timestamp rather than a flag: the message has
+to name the moment or it reads as a status that was always true.
+*And a single-page app does not notice a deploy* — five landed under that same
+open tab. `scripts/writeBuildId.mjs` stamps `public/build-id.json` before every
+`next build`; `useNewBuildAvailable` reads it on mount (that is what THIS tab is
+running) and every minute after (that is what the server is serving now), and a
+difference offers «Yangi versiya · yangilash». A BUTTON, never an automatic
+reload: this dashboard is read in the middle of work and a page that reloads
+itself loses the reader's scroll, filters and place in a table. A failed read —
+offline, 404 in dev, HTML from a proxy — is never a new version. The file is
+excluded from the auth matcher in `middleware.ts` for that last reason: an
+expired session would otherwise answer the poll with the login PAGE.
+
 **THE INTERVAL DOES NOT RUN WHILE THE TAB IS HIDDEN, so the focus refetch is
 what keeps the promise.** `refetchIntervalInBackground` is false — a dashboard
 left open for a week must not issue ten thousand queries nobody reads — which
