@@ -126,6 +126,7 @@ const NAV_GROUPS: readonly { readonly label: string | null; readonly items: read
     items: [
       { href: '/kpi', label: t.nav.kpi, icon: TargetIcon },
       { href: '/sellers', label: t.nav.sellers, icon: TrophyIcon },
+      { href: '/payroll', label: t.nav.payroll, icon: WalletIcon },
       { href: '/structure', label: t.nav.structure, icon: TreeIcon },
     ],
   },
@@ -1561,6 +1562,17 @@ function CoinIcon() {
       <ellipse cx="12" cy="6.5" rx="7.5" ry="3" stroke="currentColor" strokeWidth="1.7" />
       <path d="M4.5 6.5v11c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-11" stroke="currentColor" strokeWidth="1.7" />
       <path d="M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3" stroke="currentColor" strokeWidth="1.7" />
+    </svg>
+  )
+}
+
+/** «Oyliklar» — a wallet, which is neither the margin's coin nor a trophy. */
+function WalletIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3" y="6" width="18" height="13" rx="2.2" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M3 10h18" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="16.5" cy="14.5" r="1.3" fill="currentColor" />
     </svg>
   )
 }

@@ -34,6 +34,7 @@ export const t = {
     kpi: 'KPI rejalari',
     structure: 'Kadrlar tuzilmasi',
     sellers: 'Sotuvchilar reytingi',
+    payroll: 'Sotuvchilar oyligi',
     margin: 'Yalpi marja',
     marketing: 'Reklama samarasi',
     /** Not one of the nine: account administration, shown only to an admin. */

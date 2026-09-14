@@ -13,7 +13,7 @@
 
 import { z } from 'zod'
 
-import { PERIOD_PRESETS } from '@/server/domain/period/period'
+import { PAYROLL_HALVES, PERIOD_PRESETS } from '@/server/domain/period/period'
 import {
   CONFIRMATION_ORDER_SORTS,
   CONFIRMATION_OUTCOMES,
@@ -156,6 +156,27 @@ export const paginationQuerySchema = z.object({
 })
 
 export const analyticsQuerySchema = periodQuerySchema.and(filterQuerySchema)
+
+/**
+ * «Oyliklar» — a payroll period, which is a MONTH and a HALF, never from/to.
+ *
+ * The office pays on the 1st-15th and the 16th-end, so the window is a
+ * calendar fact rather than a range somebody drags. Taking `month` + `half`
+ * and resolving them on the server (`payrollPeriod`) is what keeps a laptop in
+ * another timezone from shifting a day of pay from one half into the other —
+ * and it makes the URL say what the reader chose rather than what their clock
+ * computed.
+ *
+ * NO `preset`, NO from/to, and no filters: this screen answers one question
+ * about the whole company, and an employee filter on a payroll would produce a
+ * fund total for a subset that reads like the payroll.
+ */
+export const payrollQuerySchema = z.object({
+  month: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected a month in YYYY-MM format'),
+  half: z.enum(PAYROLL_HALVES).default('full'),
+})
 
 /**
  * One department's roster, for the panel the org chart opens.

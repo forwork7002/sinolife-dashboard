@@ -47,6 +47,9 @@ const ALL_ROUTES = [
   '/sellers',
   '/margin',
   '/marketing',
+  // Salaries. ADMIN and MANAGER only by default, and the endpoint refuses any
+  // account that is not company-wide however the sections are ticked.
+  '/payroll',
 ] as const
 
 export const ROLE_NAV: Readonly<Record<RoleValue, readonly string[]>> = {

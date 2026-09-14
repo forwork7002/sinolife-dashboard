@@ -20,6 +20,7 @@ import { SearchService } from '@/server/services/searchService'
 import { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import { InsightsService } from './insightsService'
+import { PayrollService } from './payrollService'
 import { KpiService } from './kpiService'
 import { PulseService } from './pulseService'
 import { ConcentrationService } from './concentrationService'
@@ -54,6 +55,13 @@ export const scopeService = new ScopeService(scopeRepository)
 export const kpiService = new KpiService(dealRepository, referenceRepository)
 export const insightsService = new InsightsService(insightsRepository)
 export const pulseService = new PulseService(pulseRepository)
+/*
+  «Oyliklar» reads the confirmation cohort's per-seller rating — the same query
+  the sellers board reads — and applies the client's pay table to it. It takes
+  the repository rather than SellerBoardService on purpose; payrollService's
+  own header says why.
+*/
+export const payrollService = new PayrollService(insightsRepository)
 export const searchService = new SearchService(searchRepository)
 export const alertsService = new AlertsService(insightsRepository, referenceRepository)
 export const concentrationService = new ConcentrationService(concentrationRepository)

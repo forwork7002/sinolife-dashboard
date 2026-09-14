@@ -47,6 +47,7 @@ export const SECTIONS = [
   { id: 'kpi', route: '/kpi', label: 'KPI rejalari', group: 'Jamoa' },
   { id: 'structure', route: '/structure', label: 'Kadrlar tuzilmasi', group: 'Jamoa' },
   { id: 'sellers', route: '/sellers', label: 'Sotuvchilar reytingi', group: 'Jamoa' },
+  { id: 'payroll', route: '/payroll', label: 'Sotuvchilar oyligi', group: 'Jamoa' },
   { id: 'marketing', route: '/marketing', label: 'Reklama samarasi', group: 'Marketing' },
 ] as const satisfies readonly {
   id: string
@@ -116,6 +117,20 @@ const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
     for exactly that reason.
   */
   'marketing',
+  /*
+    «SOTUVCHILAR OYLIGI» IS COMPANY-WIDE BECAUSE OF WHAT IT STATES, not
+    because of what it can aggregate.
+
+    Every other name in this set is here for a shape reason — a funnel, a
+    ledger, a cohort with no employee dimension to cut on. This one could be
+    narrowed perfectly well: the rating query it reads takes a scope like any
+    other. It is refused to a narrowed account because a team's payroll is
+    twelve people's salaries, and the client has asked for no such screen.
+    Opening it to a ROP is a decision to hand one manager their whole team's
+    pay, and it takes three changes together: the route's permission, the
+    scope threaded into the service, and the scope added to its memo key.
+  */
+  'payroll',
 ])
 
 export function sectionSpec(id: SectionValue): SectionSpec | undefined {

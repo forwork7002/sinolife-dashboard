@@ -381,6 +381,67 @@ export function sinceMonth(yearMonth: string, now: Date, timeZone: string): Peri
 }
 
 /**
+ * WHICH HALF OF A MONTH A PAYROLL PERIOD COVERS.
+ *
+ * The office pays on two clocks — «15 kunlik» and «1 oylik» — so a payroll
+ * window is a calendar month, or one of its two halves, and never a rolling
+ * span. `first` is the 1st to the 15th inclusive; `second` is the 16th to the
+ * end of the month, whether that is 28, 29, 30 or 31 days.
+ */
+export const PAYROLL_HALVES = ['full', 'first', 'second'] as const
+export type PayrollHalfValue = (typeof PAYROLL_HALVES)[number]
+
+/**
+ * A payroll window: a named calendar month, or one half of it.
+ *
+ * BUILT HERE RATHER THAN IN THE BROWSER, and that is the point of the
+ * endpoint taking `month` + `half` instead of `from` + `to`. A client that
+ * computed «1–15 sentabr» from its own clock would send a window shifted by
+ * whatever zone the laptop is in, and the payroll would quietly pay one day of
+ * one half to the other. The two parameters are what the client asked for in
+ * words; the arithmetic is Tashkent's, through the same TZDate path every
+ * other boundary in this file uses.
+ *
+ * NOT CLIPPED TO `now`. A half that has not finished yet reports what has
+ * been delivered so far, which is the question the office actually asks
+ * mid-period — and clipping would make the window depend on when the page was
+ * opened, so two people reading the same payroll on the same day could not
+ * disagree, but the same person could disagree with themselves next week.
+ * The screen says the period is still open; the window does not lie about
+ * which period it is.
+ *
+ * @param yearMonth `YYYY-MM`, read in `timeZone`.
+ */
+export function payrollPeriod(
+  yearMonth: string,
+  half: PayrollHalfValue,
+  timeZone: string,
+): Period {
+  const match = /^(\d{4})-(\d{2})$/.exec(yearMonth)
+  if (!match) throw new InvalidPeriodError(`${yearMonth} is not a YYYY-MM month`)
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  if (month < 1 || month > 12) throw new InvalidPeriodError(`${yearMonth} is not a month`)
+
+  // The 2nd, then stepped back to the 1st — the same construction `sinceMonth`
+  // uses, so the zone's offset is applied by one code path rather than two.
+  const monthStart = startOfMonth(new TZDate(Date.UTC(year, month - 1, 2), timeZone))
+  const monthEnd = startOfMonth(addMonths(monthStart, 1))
+  const midMonth = addDays(monthStart, 15)
+
+  const start = half === 'second' ? midMonth : monthStart
+  const end = half === 'first' ? midMonth : monthEnd
+
+  return Object.freeze({
+    start: toInstant(start),
+    end: toInstant(end),
+    timeZone,
+    preset: 'custom' as const,
+  })
+}
+
+/**
  * The instant a period is measured "as of" — its last representable moment.
  *
  * Because periods are half-open, `end` itself belongs to the NEXT period. Using

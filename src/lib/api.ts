@@ -587,6 +587,57 @@ export interface LogisticsStageDto {
  * rescued an order refused in the queue delivers money that never entered its
  * own ЗАКАЗ.
  */
+/**
+ * «Sotuvchilar oyligi» — one seller's pay for one payroll period.
+ *
+ * HAND-MIRRORED from `PayrollSellerDto` in `payrollService`, like every other
+ * DTO here: client code may not import from `@/server/*`, and nothing checks
+ * the mirror — edit both sides.
+ *
+ * Money is soʻm; `bonusUsd` is DOLLARS and is deliberately not converted. This
+ * application has no exchange rate and inventing one would turn a fixed 100$
+ * incentive into a figure that moves with whatever rate was hardcoded.
+ */
+export interface PayrollSellerDto {
+  readonly rank: number
+  readonly employeeId: string
+  readonly fullName: string
+  readonly rop: string | null
+  /** FAKT 2 — delivered money, the only basis the pay is computed from. */
+  readonly fakt2: MoneyDto
+  readonly fakt2Orders: number
+  /** 8% of FAKT 2. */
+  readonly percent: MoneyDto
+  /** The tier's fixed part. Zero below the first floor, never null. */
+  readonly fixed: MoneyDto
+  readonly total: MoneyDto
+  readonly tierFloor: MoneyDto | null
+  readonly nextFloor: MoneyDto | null
+  readonly toNext: MoneyDto | null
+  readonly tierUsd: number
+  readonly firstPlaceUsd: number
+  readonly bonusUsd: number
+}
+
+export type PayrollHalf = 'full' | 'first' | 'second'
+
+export interface PayrollDto {
+  readonly month: string
+  readonly half: PayrollHalf
+  readonly scheme: 'month' | 'half'
+  /** True while the period is still running — the totals are partial. */
+  readonly open: boolean
+  readonly sellers: readonly PayrollSellerDto[]
+  readonly totals: {
+    readonly sellers: number
+    readonly fakt2: MoneyDto
+    readonly percent: MoneyDto
+    readonly fixed: MoneyDto
+    readonly total: MoneyDto
+    readonly bonusUsd: number
+  }
+}
+
 export interface LogisticsRopDto {
   /**
    * «(ROP)» stripped from the team's name. Empty on the total row.
