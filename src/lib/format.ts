@@ -240,6 +240,32 @@ export function formatDate(iso: string): string {
   return `${day}-${UZ_MONTHS_SHORT[month]} ${year}`
 }
 
+/**
+ * A MONTH, the shortest unambiguous way to print one.
+ *
+ * `2026-mar` rather than `2026-03`: the cohort matrix stacks eighteen of these
+ * in one column, and two adjacent numeric fields («2026-03» over a row of
+ * percentages) read as more arithmetic. The year leads so the column sorts by
+ * eye, the month is a word so it is never mistaken for a count.
+ */
+export function formatMonth(iso: string): string {
+  const { month, year } = appZoneParts(iso)
+  return `${year}-${UZ_MONTHS_SHORT[month]}`
+}
+
+/**
+ * The same month, shifted by whole months — a cohort's `+N` column.
+ *
+ * Whole-month arithmetic on the year/month pair, never on the timestamp:
+ * adding 30 days to 31-yanvar lands in March, and a cohort column that skips a
+ * month is a matrix that lies about which month it is reporting.
+ */
+export function formatMonthOffset(iso: string, offset: number): string {
+  const { month, year } = appZoneParts(iso)
+  const months = year * 12 + month + offset
+  return `${Math.floor(months / 12)}-${UZ_MONTHS_SHORT[months % 12]}`
+}
+
 export function formatDateShort(iso: string): string {
   const { day, month } = appZoneParts(iso)
   return `${day}-${UZ_MONTHS_SHORT[month]}`

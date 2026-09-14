@@ -2016,13 +2016,18 @@ tr:hover > .tcol-sticky:not(.is-edge) {
 }
 
 /* Heatmap cells lift slightly under the pointer, so the eye keeps its place
-   in a dense grid. Transform only — no repaint of neighbours. */
+   in a dense grid. Transform only — no repaint of neighbours.
+   
+   The hook is the attribute, not `td[data-heat]`: the tile is now a div inside
+   a padded cell, because the 2px gap between tiles is drawn by that padding —
+   `border-spacing` would have put the same gap between the pinned columns and
+   thrown every sticky `left` offset out by two pixels. */
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  td[data-heat] {
+  [data-heat] {
     transition: transform 140ms var(--ease-out), box-shadow 140ms var(--ease-out);
   }
 
-  td[data-heat]:hover {
+  [data-heat]:hover {
     transform: scale(1.12);
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18), 0 0 0 1.5px var(--surface);
     position: relative;

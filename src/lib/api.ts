@@ -406,6 +406,25 @@ export interface CohortDto {
   readonly size: number
   /** Percentage of the cohort still buying, by month offset. Null = not yet reachable. */
   readonly retention: readonly (number | null)[]
+  /**
+   * The customers BEHIND each percentage, same offsets, same nulls.
+   *
+   * A rate on this dashboard prints the fraction it was computed from, and the
+   * matrix could not: `size × retention%` recovers the count only to within
+   * the rounding the server already did, so a cell reading 13% on a 45-person
+   * cohort could be five customers or six. The server counted them once; it
+   * now says how many.
+   */
+  readonly customers: readonly (number | null)[]
+  /**
+   * How many of this cohort ever came back, counted once each.
+   *
+   * NOT the sum of `customers` — someone who returned in +1 and again in +3 is
+   * in two of those cells — and not `customers[1]` either, which is only the
+   * ones who came back immediately. Measured by the database on the whole of
+   * each customer's history, so it is not bounded by the matrix's own columns.
+   */
+  readonly returned: number
   readonly revenue: readonly MoneyDto[]
   readonly maxOffset: number
 }

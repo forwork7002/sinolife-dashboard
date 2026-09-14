@@ -56,6 +56,39 @@ right now" in the team's own vocabulary.
 set to that range. The usual SaaS bands (40/25/12/4) would paint every cell in
 the lightest step and the matrix would read as blank.
 
+**The matrix states its own arithmetic** (rebuilt September 2026). It is read by
+people who do not read cohort matrices for a living, so nothing on it is a
+number whose denominator has to be guessed:
+
+- three pinned columns carry the row's terms — the cohort month, `Yangi mijoz`
+  (the denominator of every percentage in the row) and `Qaytgan shu guruhdan`,
+  the DISTINCT count of that cohort who ever came back. That last one is the
+  database's own `count(DISTINCT …)`, never the sum of the row's cells: a
+  customer who returned in +1 and again in +3 sits in two of them;
+- the `0` column is unpainted. It is the cohort buying in the month that defines
+  it — 100%, always, by construction — so on the ramp it was the darkest column
+  on the table and said nothing. It keeps its figure and loses its heat;
+- a month a cohort has not lived yet is **hatched**, not tinted. A flat pale
+  tile is what the bottom of a light-to-dark ramp looks like, and «nobody came
+  back» against «this month has not happened» is the distinction this screen
+  exists to keep. Texture is not on the ramp at all;
+- the last row is `Jami · oʻrtacha` — sums on the left, and per column the mean
+  **weighted by cohort size over the cohorts that have reached that offset**.
+  Averaging the percentages would let a 40-person month outvote a 400-person
+  one; keeping a too-young cohort in the base divides by people who were never
+  given the chance to return;
+- hovering any cell opens the fraction behind it — `3 / 35`, the exact share to
+  one decimal, and what that month's purchases were worth. Hovering a cohort's
+  label opens the row's own summary, repeat revenue included. The cells carry
+  the same sentence as their accessible name, so it is not hover-only;
+- one worked example, generated from the largest cohort on screen, sits above
+  the table and names the column it points at — including the rounding, since
+  the cell says 26% where the sentence says 25.7%.
+
+`CohortDto` carries `customers[]` and `returned` for exactly this: `size ×
+retention%` recovers a headcount only to within the rounding the server already
+did, so a cell reading 13% of 45 people could be five customers or six.
+
 **The headline** is second-order revenue share — what proportion of money comes
 from customers buying again. It is not visible anywhere in Bitrix24 itself.
 

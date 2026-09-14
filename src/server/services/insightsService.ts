@@ -887,6 +887,8 @@ export class InsightsService {
 
     const dtos = rows.map((row) => {
       const retention: (number | null)[] = []
+      /* The countable half of every percentage below — see `CohortDto`. */
+      const customers: (number | null)[] = []
       const revenue: MoneyDto[] = []
       const byOffset = new Map(row.cells.map((c) => [c.monthsSince, c]))
 
@@ -922,10 +924,25 @@ export class InsightsService {
               ? 0
               : Math.round(((cell?.customers ?? 0) / row.size) * 1000) / 10,
         )
+        /* Null in the SAME places as the rate, never 0 there: an offset that
+           has not happened yet has no headcount either, and a 0 beside a blank
+           cell would be the one reading this matrix must never have. */
+        customers.push(offset > reachable ? null : (cell?.customers ?? 0))
         revenue.push(toMoneyDto(money(cell?.revenueMinor ?? 0n, currency)))
       }
 
-      return { cohort: row.cohort, size: row.size, retention, revenue, maxOffset: reachable }
+      return {
+        cohort: row.cohort,
+        size: row.size,
+        /* Straight from the database's own DISTINCT count. Folding it out of
+           `customers` here would double-count a customer who came back twice —
+           the error the `returners` CTE exists to avoid. */
+        returned: row.returned,
+        retention,
+        customers,
+        revenue,
+        maxOffset: reachable,
+      }
     })
 
     /*

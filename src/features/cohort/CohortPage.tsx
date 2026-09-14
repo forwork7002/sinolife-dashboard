@@ -270,7 +270,11 @@ export function CohortPage() {
       <ChartCard
         title="Kogorta matritsasi"
         className="card-hero brackets"
-        hint="Qator — birinchi xarid oyi. Ustun — oʻshandan keyingi oylar. Katakdagi son — oʻsha oyda yana xarid qilgan mijozlar ulushi, %."
+        /* The matrix now carries its own column group, its own legend and a
+           worked example from the reader's own data, so the card hint no longer
+           repeats the mechanics. It says the one thing the table cannot: WHY a
+           row is a row. */
+        hint="Mijozlar birinchi xarid qilgan oyi boʻyicha guruhlanadi — har bir guruh keyin qanchalik qaytib kelgani shu qatorda koʻrinadi."
       >
         {query.isPending && <ChartSkeleton height={320} />}
         {query.isError && (
