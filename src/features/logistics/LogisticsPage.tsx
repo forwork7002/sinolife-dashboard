@@ -13,6 +13,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable'
 import { Meter, RingGauge } from '@/components/ui/Stat'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { DailySection } from '@/features/logistics/DailySection'
+import { RopSection } from '@/features/logistics/RopSection'
 import { FaktBasisNote, FaktFigure } from '@/features/shared/faktVocabulary'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -232,6 +233,24 @@ export function LogisticsPage() {
 
       {/* The one thing that stops a Qamrov above 100% reading as a bug. */}
       <FaktBasisNote />
+
+      {/*
+        THE TEAMS, DIRECTLY UNDER THE HERO AND ABOVE THE SHEET.
+
+        The order of this page is one drill-down: the company's two figures,
+        then the same two per ROP, then where the money went. The six columns
+        below are company-wide by construction, so a ROP reading them learns
+        about the month and nothing about their own half of it — which is the
+        gap the client named on 2026-09-12 and the reason this block is second
+        rather than last.
+      */}
+      <RopSection
+        rops={data?.rops ?? []}
+        total={data?.ropTotal ?? null}
+        status={viewStatus}
+        errorMessage={errorMessage}
+        onRetry={retry}
+      />
 
       {/*
         THE SIX COLUMNS — the report itself.

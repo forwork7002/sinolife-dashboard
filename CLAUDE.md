@@ -476,6 +476,26 @@ Per-screen traps worth knowing before you touch one:
   band prints its count and no rate (at thirty, one parcel is 3.3 points —
   about the gap between two neighbouring bands), and over a fortnight that
   bites on exactly the last band (13 orders against 378 / 333 / 188).
+  **PER-ROP FAKT 1 / FAKT 2 SITS DIRECTLY UNDER THE HERO** — asked for on
+  2026-09-12 («ROP larni FAKT 1 larini tortgansan… keyingi tarafida FAKT 2 si
+  ROP larni har biriga kerak»). It is an eighth `GROUPING SETS` arm (`by_rop`)
+  over rows already in memory, not a second question, and its total row IS the
+  hero: `ropTotal` must equal `summary.ordered` and `summary.won` to the soʻm,
+  which is what makes the table checkable. Like `by_fakt` it is **not** filtered
+  to FAKT 1 — FAKT 2 is not a subset of FAKT 1, and a `WHERE k.fakt1` would
+  print a full ЗАКАЗ beside a short Успешно.
+  **THE TEAM COMES OFF THE DEAL, NOT OFF TODAY'S ORG CHART.** Settled by the
+  client on 2026-09-14: «Организация сотрудника (не удалять)» on the deal card
+  — `deal."operatorTeamSource"`, which the portal stamps at the moment of sale
+  and never rewrites. The seller's CURRENT department (`c.rop`) is only the
+  fallback, for the older orders the portal wrote no field on. Under the
+  department basis a seller who changes team drags their whole history across
+  and a settled month moves; one sampled July order still names
+  «Husniddin(ROP)», a department the portal no longer has. **This screen only** —
+  `c.rop` itself is untouched, so `/confirmation`, its РОП filter, its daily
+  numbering and `/sellers` name teams exactly as before. The strip now has one
+  home, `InsightsRepository.ropNameSql`, read by both bases; pinned by
+  `tests/http/logisticsSql.test.ts` and `tests/http/confirmationQueueSql.test.ts`.
 - **Joʻnatish nuqtalari** — delivery rate's denominator is *resolved* orders;
   in-flight is excluded and reported separately.
 - **Sotuvchilar reytingi** — company-wide on purpose, and it is the ONLY route

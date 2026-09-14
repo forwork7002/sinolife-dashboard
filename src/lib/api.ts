@@ -576,6 +576,36 @@ export interface LogisticsStageDto {
   readonly sharePercent: number | null
 }
 
+/**
+ * One ROP group's delivery result — ЗАКАЗ with Успешно beside it.
+ *
+ * HAND-MIRRORED from `LogisticsRopDto` in `insightsService`, like everything
+ * else in this file, and nothing checks the mirror — edit both sides.
+ *
+ * `coveragePercent` may exceed 100 and is NOT clamped, for the reason
+ * `LogisticsDto.summary` states: FAKT 2 is not a subset of FAKT 1. A team that
+ * rescued an order refused in the queue delivers money that never entered its
+ * own ЗАКАЗ.
+ */
+export interface LogisticsRopDto {
+  /**
+   * «(ROP)» stripped from the team's name. Empty on the total row.
+   *
+   * The team is the deal's own «Организация сотрудника (не удалять)», and the
+   * seller's department only where that field is empty — see `LogisticsRopDto`
+   * in `insightsService`.
+   */
+  readonly rop: string
+  /** ЗАКАЗ = FAKT 1. */
+  readonly orders: number
+  readonly ordered: MoneyDto
+  /** Успешно = FAKT 2. */
+  readonly wonOrders: number
+  readonly won: MoneyDto
+  /** This team's own %покрытия, on money. Null over an empty ЗАКАЗ. */
+  readonly coveragePercent: number | null
+}
+
 export interface LogisticsDto {
   readonly summary: {
     /** Every arrival in Тасдиклаш in the window — FAKT 1 and the rest. */
@@ -626,6 +656,13 @@ export interface LogisticsDto {
     readonly orders: readonly LogisticsStandingOrderDto[]
   }
   readonly days: readonly LogisticsDayDto[]
+  /** The ROP groups, biggest ЗАКАЗ first. They sum to `ropTotal`. */
+  readonly rops: readonly LogisticsRopDto[]
+  /**
+   * ЖАМИ — the server's own total over every group, never a browser sum.
+   * Equals `summary.ordered` / `summary.won`. Null on an empty window.
+   */
+  readonly ropTotal: LogisticsRopDto | null
   /** The eight hub and carrier stages, empty ones included. */
   readonly posts: readonly LogisticsPointDto[]
   readonly regions: readonly LogisticsPointDto[]

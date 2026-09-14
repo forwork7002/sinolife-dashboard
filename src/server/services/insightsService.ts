@@ -115,6 +115,45 @@ export interface LogisticsPartDto {
   readonly amount: MoneyDto
 }
 
+/**
+ * One ROP group's delivery result — ЗАКАЗ and Успешно side by side.
+ *
+ * THE TWO FACTS, PER TEAM, AND NOTHING ELSE. Asked for by the client on
+ * 2026-09-12: FAKT 1 per ROP with FAKT 2 beside it. The six columns of the
+ * sheet answer «where did ЗАКАЗ go»; this answers «whose ЗАКАЗ was it, and
+ * how much of it arrived», which is the one question the sheet cannot.
+ *
+ * `coveragePercent` MAY EXCEED 100 AND IS NOT CLAMPED, for the reason
+ * `LogisticsDto.summary` gives at length: FAKT 2 is not a subset of FAKT 1.
+ * A team that rescued a refused order delivers money that never entered its
+ * own ЗАКАЗ, and clamping would hide the one row most needing an explanation.
+ */
+export interface LogisticsRopDto {
+  /**
+   * The team's name with «(ROP)» stripped, or the NO_ROP sentinel.
+   *
+   * READ OFF THE DEAL'S OWN «Организация сотрудника (не удалять)» — the
+   * client's instruction of 2026-09-14 — and off the seller's department only
+   * where that field is empty. `logisticsCohortSql` states why at length; the
+   * short version is that the deal's field is the team AT THE MOMENT OF SALE
+   * and the department is the team today.
+   *
+   * EMPTY ON `ropTotal`, which is a total and not a team. The grouping set
+   * puts NULL in the dimension column of its own total row, and the decoder
+   * reads NULL as `''` — so the emptiness is the database saying "every
+   * group", not a missing name.
+   */
+  readonly rop: string
+  /** ЗАКАЗ = FAKT 1 — what left Тасдиклаш as this team's order. */
+  readonly orders: number
+  readonly ordered: MoneyDto
+  /** Успешно = FAKT 2 — what a courier actually handed over. */
+  readonly wonOrders: number
+  readonly won: MoneyDto
+  /** %покрытия on money, this team's own. Null over an empty ЗАКАЗ. */
+  readonly coveragePercent: number | null
+}
+
 /** One column of the client's own logistics sheet. */
 export interface LogisticsBucketDto {
   readonly key: string
@@ -418,6 +457,22 @@ export interface LogisticsDto {
     readonly orders: readonly LogisticsStandingOrderDto[]
   }
   readonly days: readonly LogisticsDayDto[]
+  /** The ROP groups, biggest ЗАКАЗ first. They sum to `ropTotal`. */
+  readonly rops: readonly LogisticsRopDto[]
+  /**
+   * ЖАМИ — `by_rop`'s own grouping-set total, and NEVER a sum taken in the
+   * browser.
+   *
+   * A FIELD RATHER THAN A LAST ROW, and rather than a sentinel `rop` name: no
+   * coinage can collide with a department Bitrix24 might actually be renamed
+   * to, and a table that wants a footer says so at its own call site. It is
+   * measured over the same unfiltered cohort as `summary.ordered` and
+   * `summary.won`, so it must equal the hero above the table figure for
+   * figure — which is the reconciliation this block exists to make.
+   *
+   * Null on an empty window, where there is nothing to total.
+   */
+  readonly ropTotal: LogisticsRopDto | null
   /** The eight hub and carrier stages, empty ones included. */
   readonly posts: readonly LogisticsPointDto[]
   readonly regions: readonly LogisticsPointDto[]
@@ -1083,6 +1138,41 @@ export class InsightsService {
       }
     })
 
+    /*
+      THE TEAMS, SORTED BY ЗАКАЗ AND NOT BY QAMROV.
+
+      Money descending is the order the floor reads a board in, and it is the
+      only order that cannot mislead here: sorted by coverage, a team with one
+      delivered order out of one stands at 100% above the team carrying half
+      the month, and the top of the table stops meaning anything. The client's
+      own question is «whose FAKT 1, and how much of it arrived», so ЗАКАЗ
+      orders the rows and Qamrov is read across them.
+
+      The SQL's own ORDER BY cannot do this: it sorts every cut by `orders`,
+      which on this arm is the WHOLE cohort's count — refusals included — and
+      the column on screen is FAKT 1. Name is the tie-break so two teams level
+      on the money do not swap places between two reads of one screen.
+
+      THE SENTINEL GROUP IS A ROW LIKE ANY OTHER. Orders whose seller sits
+      outside a ROP department are what makes these rows add up to ЗАКАЗ;
+      dropping them would leave a table quietly short of the hero above it.
+    */
+    const ropRow = (row: LogisticsCut): LogisticsRopDto => ({
+      rop: row.bucket,
+      orders: row.fakt1Orders,
+      ordered: cash(row.fakt1Minor),
+      wonOrders: row.deliveredOrders,
+      won: cash(row.deliveredMinor),
+      coveragePercent: pct(moneyRateBp(row.deliveredMinor, row.fakt1Minor)),
+    })
+
+    const rops: LogisticsRopDto[] = [...cuts.rops]
+      .sort(
+        (a, b) =>
+          Number(b.fakt1Minor - a.fakt1Minor) || a.bucket.localeCompare(b.bucket, 'ru'),
+      )
+      .map(ropRow)
+
     const toPoint = (row: LogisticsCut): LogisticsPointDto => ({
       label: deliveryStageName(row.bucket),
       orders: row.fakt1Orders,
@@ -1161,6 +1251,8 @@ export class InsightsService {
         })),
       },
       days,
+      rops,
+      ropTotal: rops.length === 0 ? null : ropRow(cuts.ropTotal),
       posts: cuts.posts.map(toPoint),
       regions: cuts.regions.map(toPoint),
       reconciliation: cuts.stages.map((row) => ({

@@ -65,8 +65,9 @@ describe('logisticsCohortSql', () => {
       'refused_at',
       'dispatched',
       'cohort',
-      // the seven cuts
+      // the eight cuts
       'by_fakt',
+      'by_rop',
       'by_bucket',
       'by_day',
       'by_post',
@@ -77,7 +78,7 @@ describe('logisticsCohortSql', () => {
   })
 
   /*
-    MATERIALIZED is not decoration. Seven arms read `cohort`; inlined, the
+    MATERIALIZED is not decoration. Eight arms read `cohort`; inlined, the
     planner estimates the join badly and picks a sequential scan over the whole
     history table. queueSql's own signal_stage measured 1 881 ms against 206 ms
     for exactly this.
@@ -256,8 +257,8 @@ describe('logisticsCohortSql', () => {
   })
 
   it('takes a true median per cut and no ninetieth percentile', () => {
-    expect(count(BARE, 'percentile_cont(0.5) WITHIN GROUP (ORDER BY k.pace_days)')).toBe(7)
-    expect(count(BARE, 'percentile_cont(0.5) WITHIN GROUP (ORDER BY k.wait_hours)')).toBe(7)
+    expect(count(BARE, 'percentile_cont(0.5) WITHIN GROUP (ORDER BY k.pace_days)')).toBe(8)
+    expect(count(BARE, 'percentile_cont(0.5) WITHIN GROUP (ORDER BY k.wait_hours)')).toBe(8)
     expect(BARE).not.toContain('percentile_cont(0.9)')
   })
 
@@ -272,14 +273,74 @@ describe('logisticsCohortSql', () => {
     expect(BARE).not.toContain('closedAt')
   })
 
+  /*
+    THE ROP ARM READS THE WHOLE COHORT, NOT FAKT 1.
+
+    Its FAKT 1 columns carry their own FILTER, so ЗАКАЗ is identical either
+    way — but FAKT 2 is NOT a subset of FAKT 1, and under a `WHERE k.fakt1`
+    every team's Успешно would silently lose the orders refused in Тасдиклаш
+    and delivered afterwards. The table would then print a full ЗАКАЗ beside a
+    short Успешно and disagree with the hero on the same screen, which is the
+    one failure this block exists to make impossible.
+
+    Pinned as an ANCHORED clause: the arm's own WHERE would be at line start,
+    the way the four FAKT-1 arms above write theirs.
+  */
+  it('measures the ROP groups over the same cohort as the hero', () => {
+    expect(BARE).toContain('GROUP BY GROUPING SETS ((k.rop), ())')
+    // Four FAKT-1-only arms, and this is not a fifth — counted the same way
+    // the assertion above counts them.
+    expect(BARE.match(/^\s*WHERE k\.fakt1/gm) ?? []).toHaveLength(4)
+    /*
+      The arm carries no WHERE of its own. Matched as an ANCHORED clause and
+      not as the word: `FILTER (WHERE k.fakt1)` appears fourteen times in the
+      aggregate list, means the opposite thing, and is what every figure here
+      is built out of.
+    */
+    const arm = BARE.slice(BARE.indexOf('by_rop AS ('), BARE.indexOf('by_bucket AS ('))
+    expect(arm).not.toMatch(/^\s*WHERE/m)
+  })
+
+  /*
+    THE TEAM COMES OFF THE DEAL, AND THE ORDER OF THE COALESCE ARMS IS THE RULE.
+
+    The client named the source on 2026-09-14: «Организация сотрудника (не
+    удалять)» on the deal card, which the portal stamps at the moment of sale
+    and never rewrites. `c.rop` — the CURRENT department of whoever the order
+    resolves to today — is the SECOND arm and only fills the gap the portal
+    left before it began writing the field. Swap the two and a seller who
+    changes team rewrites a settled month; drop the second and every pre-2026
+    order leaves its team for the sentinel, money falling out of a table whose
+    rows must add up to the hero above it.
+
+    THE SENTINEL STAYS LAST, for the reason `NO_ROP` gives: a NULL group is
+    countable but unreachable.
+  */
+  it('groups the ROP arm by the deal-s own team snapshot, then the department', () => {
+    expect(BARE).toContain(`COALESCE(CASE
+          WHEN d."operatorTeamSource" ILIKE '%(ROP)%'`)
+    expect(BARE).toContain(`END, c.rop, '(ROP yoʻq)') AS rop`)
+    // The department-only basis this block used until 2026-09-14.
+    expect(BARE).not.toContain(`COALESCE(c.rop, '(ROP yoʻq)') AS rop`)
+    /*
+      THE SAME ESCAPED PARENTHESES THE QUEUE'S OWN STRIP NEEDS, and now the
+      same expression: both bases call `ropNameSql`. A bare '(ROP)' is a
+      capture group round three letters, matches them, leaves the parentheses
+      where they were and prints «Sevinch()» — pinned on the BUILT string here
+      exactly as confirmationQueueSql.test.ts pins it for the department.
+    */
+    expect(BARE).toContain("regexp_replace(d.\"operatorTeamSource\", '\\(ROP\\)', '', 'gi')")
+    expect(BARE).not.toContain("regexp_replace(d.\"operatorTeamSource\", '(ROP)', '', 'gi')")
+  })
+
   it('returns the grand total of every cut that has one', () => {
-    expect(count(BARE, 'GROUPING SETS')).toBe(5)
+    expect(count(BARE, 'GROUPING SETS')).toBe(6)
     expect(BARE).toContain('GROUP BY GROUPING SETS ((k.bucket, COALESCE(k.role, \'NONE\')), (k.bucket), ())')
     expect(BARE).toContain('GROUP BY GROUPING SETS ((k.day, k.bucket), (k.day))')
   })
 
-  it('unions the seven arms and orders them for the decoder', () => {
-    expect(count(BARE, 'UNION ALL SELECT * FROM')).toBe(6)
+  it('unions the eight arms and orders them for the decoder', () => {
+    expect(count(BARE, 'UNION ALL SELECT * FROM')).toBe(7)
     expect(BARE).toContain('ORDER BY cut, is_total, sort NULLS LAST, sub NULLS FIRST, orders DESC')
   })
 })

@@ -123,6 +123,36 @@ function cohort(over: Partial<LogisticsCohort> = {}): LogisticsCohort {
       // Nothing moved through it, and it is still a row.
       cut({ bucket: 'Доставка · OSON POCHTA' }),
     ],
+    /*
+      THREE TEAMS AND THE SENTINEL, and the arm's own total over all four.
+      «Charos» is the case the table exists to show: a big ЗАКАЗ with a poor
+      Qamrov, sitting beside a smaller team that delivered nearly everything.
+      Ordered here by NAME, so a test that asserts the money order is asserting
+      the service and not the fixture.
+    */
+    rops: [
+      cut({
+        bucket: 'Charos',
+        fakt1Orders: 40,
+        fakt1Minor: som(80_000_000),
+        deliveredOrders: 24,
+        deliveredMinor: som(48_000_000),
+      }),
+      cut({
+        bucket: 'Sevinch',
+        fakt1Orders: 50,
+        fakt1Minor: som(100_000_000),
+        deliveredOrders: 45,
+        deliveredMinor: som(96_000_000),
+      }),
+      cut({ bucket: '(ROP yoʻq)', fakt1Orders: 10, fakt1Minor: som(20_000_000) }),
+    ],
+    ropTotal: cut({
+      fakt1Orders: 100,
+      fakt1Minor: som(200_000_000),
+      deliveredOrders: 80,
+      deliveredMinor: som(160_000_000),
+    }),
     postTotal: cut({ fakt1Orders: 92 }),
     regions: [cut({ bucket: 'Тошкент', fakt1Orders: 30, fakt1Minor: som(60_000_000) })],
     regionTotal: cut({ fakt1Orders: 100 }),
@@ -263,6 +293,125 @@ describe('ЗАКАЗ is FAKT 1 and Успешно is FAKT 2', () => {
       expect(bucket.sharePercent).toBeNull()
       expect(bucket.shareOfOrdersPercent).toBeNull()
     }
+  })
+})
+
+/**
+ * WHOSE ЗАКАЗ WAS IT — the client's 2026-09-12 ask.
+ *
+ * FAKT 1 per ROP with FAKT 2 beside it. Every assertion below is a way the
+ * block reads as a plausible report while being wrong: a team missing because
+ * its seller sits outside a ROP department, a footer that is the browser's sum
+ * instead of the server's, a young window rendered as fifteen failures, or the
+ * top of the table given to whoever delivered one order out of one.
+ */
+describe('FAKT 1 and FAKT 2 per ROP', () => {
+  it('prints both facts per team, with the team’s own Qamrov', async () => {
+    const dto = await serviceOver(cohort())()
+
+    expect(dto.rops.map((r) => r.rop)).toEqual(['Sevinch', 'Charos', '(ROP yoʻq)'])
+    expect(dto.rops[0]).toMatchObject({
+      rop: 'Sevinch',
+      orders: 50,
+      wonOrders: 45,
+      coveragePercent: 96,
+    })
+    expect(dto.rops[0]!.ordered.amountMinor).toBe(som(100_000_000).toString())
+    expect(dto.rops[0]!.won.amountMinor).toBe(som(96_000_000).toString())
+  })
+
+  /*
+    ЗАКАЗ DESCENDING, NEVER QAMROV. Sorted by coverage, a team that delivered
+    one order out of one stands at 100% above the team carrying half the month,
+    and the top of the table stops meaning anything. `(ROP yoʻq)` is a row like
+    any other and takes its place by money.
+  */
+  it('orders the teams by money and not by rate', async () => {
+    const dto = await serviceOver(
+      cohort({
+        rops: [
+          // 100% of a single order, and it must not lead the table.
+          cut({
+            bucket: 'Yangi',
+            fakt1Orders: 1,
+            fakt1Minor: som(2_000_000),
+            deliveredOrders: 1,
+            deliveredMinor: som(2_000_000),
+          }),
+          cut({
+            bucket: 'Sevinch',
+            fakt1Orders: 50,
+            fakt1Minor: som(100_000_000),
+            deliveredOrders: 30,
+            deliveredMinor: som(60_000_000),
+          }),
+        ],
+      }),
+    )()
+
+    expect(dto.rops.map((r) => r.rop)).toEqual(['Sevinch', 'Yangi'])
+    expect(dto.rops.map((r) => r.coveragePercent)).toEqual([60, 100])
+  })
+
+  /*
+    ЖАМИ IS THE SERVER'S OWN GROUPING-SET ROW, and it must equal the hero on
+    the same screen. A footer summed in the browser would drift the moment the
+    arm changed what it groups — and a table that contradicts the two figures
+    directly above it is the one failure this block cannot have.
+  */
+  it('takes ЖАМИ from the server and reconciles it against the hero', async () => {
+    const dto = await serviceOver(cohort())()
+
+    expect(dto.ropTotal).not.toBeNull()
+    expect(dto.ropTotal!.ordered.amountMinor).toBe(dto.summary.ordered.amountMinor)
+    expect(dto.ropTotal!.won.amountMinor).toBe(dto.summary.won.amountMinor)
+    expect(dto.ropTotal!.orders).toBe(dto.summary.orderedOrders)
+    expect(dto.ropTotal!.wonOrders).toBe(dto.summary.wonOrders)
+    expect(dto.ropTotal!.coveragePercent).toBe(dto.summary.coveragePercent)
+    // The total carries no team name: it is every group, not one of them.
+    expect(dto.ropTotal!.rop).toBe('')
+
+    // And the rows still add up to it, which is what makes the footer checkable.
+    const money = dto.rops.reduce((sum, r) => sum + BigInt(r.ordered.amountMinor), 0n)
+    expect(money.toString()).toBe(dto.ropTotal!.ordered.amountMinor)
+  })
+
+  /*
+    FAKT 2 IS NOT A SUBSET OF FAKT 1 here either: a team that rescued an order
+    refused in Тасдиклаш delivers money that never entered its own ЗАКАЗ. Not
+    clamped, for the reason the hero states.
+  */
+  it('lets a team’s Qamrov pass 100 rather than clamping it', async () => {
+    const dto = await serviceOver(
+      cohort({
+        rops: [
+          cut({
+            bucket: 'Sevinch',
+            fakt1Orders: 50,
+            fakt1Minor: som(100_000_000),
+            deliveredOrders: 52,
+            deliveredMinor: som(104_000_000),
+          }),
+        ],
+      }),
+    )()
+
+    expect(dto.rops[0]!.coveragePercent).toBe(104)
+  })
+
+  /*
+    A team with no ЗАКАЗ has no denominator, so its Qamrov is null and the
+    Meter draws nothing — never a confident 0% that reads as a failure.
+  */
+  it('gives a team with no ЗАКАЗ a null Qamrov, not a zero', async () => {
+    const dto = await serviceOver(cohort({ rops: [cut({ bucket: 'Yangi' })] }))()
+    expect(dto.rops[0]!.coveragePercent).toBeNull()
+  })
+
+  it('has no footer to print on an empty window', async () => {
+    const dto = await serviceOver(cohort({ rops: [], ropTotal: ZERO }))()
+    expect(dto.rops).toEqual([])
+    expect(dto.ropTotal).toBeNull()
   })
 })
 

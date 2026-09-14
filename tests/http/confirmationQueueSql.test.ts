@@ -707,11 +707,20 @@ describe('what each column filter is allowed to narrow', () => {
    * a `ropMatch` in it. That is harmless for an assertion that something is
    * PRESENT and fatal for one that something is ABSENT, which is what the
    * prohibition below needs.
+   *
+   * THE LONG BLOCK IS ANCHORED ON THE METHOD FOR THE SAME REASON, and it took
+   * a second CTE named `by_rop` to expose that it was not. The logistics
+   * cohort grew one on 2026-09-12 — FAKT 1 and FAKT 2 per ROP — and it sits
+   * EARLIER in the file, so a bare `indexOf('by_rop AS (')` started slicing
+   * that arm instead and this prohibition failed against a query it has
+   * nothing to say about. The method anchor cannot be stolen by a name;
+   * `confirmationBoard`'s own page block does hold a `ropMatch`, which is why
+   * the CTE is still what the slice STARTS at rather than the method.
    */
   const cohortBlocks = () => {
     const shortFrom = source.indexOf('async confirmationByRop(')
     const short = source.slice(shortFrom, source.indexOf('GROUP BY c.rop', shortFrom))
-    const longFrom = source.indexOf('by_rop AS (')
+    const longFrom = source.indexOf('by_rop AS (', source.indexOf('async confirmationBoard('))
     const long = source.slice(longFrom, source.indexOf('GROUP BY c.rop', longFrom))
     return { short, long }
   }

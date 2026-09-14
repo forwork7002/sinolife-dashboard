@@ -96,12 +96,14 @@ function visits(rows: VisitJson[] | null | undefined): ConfirmationVisit[] {
 }
 
 /**
- * One row of `logisticsCohortSql` — seven groupings arriving down one pipe.
+ * One row of `logisticsCohortSql` — eight groupings arriving down one pipe.
  *
  * `cut` says which arm produced the row and therefore how to read the two
  * dimension columns:
  *
  *   fakt    — one row, the whole queue cohort. FAKT 1 and FAKT 2 together.
+ *   rop     — `bucket` is the seller's ROP group, or the NO_ROP sentinel.
+ *             FAKT 1 and FAKT 2 per team; `is_total` marks the whole cohort.
  *   bucket  — `bucket` is a column key; `sub` is the logistics role inside it,
  *             or null for the column's own total. `is_total` marks ЗАКАЗ.
  *   day     — `sub` is the Asia/Tashkent day; `bucket` is a column key, or
@@ -198,7 +200,7 @@ export interface RetentionStage {
 /**
  * One grouping of the logistics cohort, whatever it was grouped by.
  *
- * ONE ROW SHAPE FOR SEVEN CUTS, because every cut answers the same questions
+ * ONE ROW SHAPE FOR EIGHT CUTS, because every cut answers the same questions
  * about a different slice and a per-cut shape is how two halves of one screen
  * come to count different things under the same column names. `bucket` and
  * `sub` carry whichever two dimensions the arm grouped on; see
@@ -349,6 +351,16 @@ export interface LogisticsCut {
 export interface LogisticsCohort {
   /** The whole queue cohort, once. Carries ЗАКАЗ (FAKT 1) and FAKT 2. */
   readonly fakt: LogisticsCut
+  /**
+   * ЗАКАЗ and Успешно per ROP group, the teams in whatever order the database
+   * returned them. Measured over the same unfiltered cohort as `fakt`, so they
+   * sum to it — see `by_rop`. The group is the DEAL'S own team snapshot, not
+   * the seller's department today; the `rop` column in `logisticsCohortSql`
+   * carries the client's instruction and the fallback.
+   */
+  readonly rops: readonly LogisticsCut[]
+  /** The ROP arm's own total. Must equal `fakt` on both figures. */
+  readonly ropTotal: LogisticsCut
   /** ЗАКАЗ — the FAKT 1 grand total the six columns must sum to. */
   readonly total: LogisticsCut
   /** The six columns, in whatever order the database returned them. */
@@ -1210,7 +1222,7 @@ export class InsightsRepository {
    * portal's order, with the column it feeds — so the six columns above can
    * be checked against obey.bitrix24.kz instead of trusted.
    *
-   * ONE STATEMENT, SEVEN ARMS. The queueSql prelude is the whole cost — a
+   * ONE STATEMENT, EIGHT ARMS. The queueSql prelude is the whole cost — a
    * cohort rebuild is ~0.9 s — and the arms are seven hash aggregates over a
    * few thousand rows already in memory. Two statements would pay for the
    * cohort twice. `numbered` and `visible` go unreferenced and Postgres does
@@ -1261,10 +1273,10 @@ export class InsightsRepository {
     /*
       The five arms that report the client's partition read FAKT 1 only.
 
-      by_fakt is the exception and has to be: FAKT 2 is measured over the WHOLE
-      cohort because it is not a subset of FAKT 1 — an order refused in the
-      queue and revived afterwards is delivered money that never counted as
-      confirmed, and the sellers board already counts it.
+      by_fakt and by_rop are the exceptions and have to be: FAKT 2 is measured
+      over the WHOLE cohort because it is not a subset of FAKT 1 — an order
+      refused in the queue and revived afterwards is delivered money that never
+      counted as confirmed, and the sellers board already counts it.
     */
     const FAKT1_ONLY = `WHERE k.fakt1`
 
@@ -1371,14 +1383,14 @@ export class InsightsRepository {
     /*
       THE ROW EVERY CUT READS. MATERIALIZED, and that is the whole budget.
 
-      Seven arms reference it. Postgres would materialise a CTE with seven
+      Eight arms reference it. Postgres would materialise a CTE with eight
       references anyway; saying so keeps it true if a later edit leaves one —
       the same argument queueSql's signal_stage measured at 1 881 ms against
       206 ms for the same rows.
 
       NOT FILTERED TO FAKT 1. The fakt1 column carries the test instead, so
-      by_fakt can measure FAKT 2 over the whole cohort while the five arms
-      that report the client's columns read FAKT 1 only.
+      by_fakt and by_rop can measure FAKT 2 over the whole cohort while the
+      five arms that report the client's columns read FAKT 1 only.
 
       THE COLUMN IS THE DEAL'S CURRENT STAGE, the way the kanban is read. The
       post office is the opposite question — which hub HANDLED it — and comes
@@ -1391,6 +1403,48 @@ export class InsightsRepository {
         d."amountMinor"          AS amount_minor,
         d."countsAsRevenue"      AS counts_as_revenue,
         COALESCE(d."region", '${InsightsRepository.NO_REGION}') AS region,
+        /*
+          THE TEAM IS THE DEAL'S OWN «Организация сотрудника (не удалять)»,
+          AND THE QUEUE'S COLUMN ONLY WHERE THAT FIELD IS EMPTY.
+
+          Settled by the client on 2026-09-14, answering where this block's
+          teams are to come from: «dostavka varonkasidagi hohlagan sdelka
+          ichiga kirganingda ayan Организация сотрудника (не удалять)
+          Azizbek(ROP) shu yeridan olsang boladi». It is the same field the
+          floor reads off the deal card, so a ROP checking one order against
+          this table finds the row they expect.
+
+          IT IS A SNAPSHOT, AND THAT IS THE POINT. operatorTeamSource is the
+          team the portal wrote onto the deal at the moment of sale and never
+          rewrites afterwards. c.rop is the CURRENT department of whoever the
+          order resolves to today, so under it a seller who moved team last
+          week drags their whole history across with them and last month's
+          settled numbers change. One sampled July order still reads
+          «Husniddin(ROP)», a department this portal no longer has — see
+          UF.OPERATOR_TEAM in mapping.ts.
+
+          THE FALLBACK IS NOT DECORATION. The portal only began writing the
+          field in 2026 and older cohorts are partly empty; without the second
+          arm every one of those orders would leave its team for the sentinel,
+          money vanishing out of a table whose rows have to add up to the hero
+          above them. Same question, newest evidence first.
+
+          ONLY THIS SCREEN READS IT THIS WAY. c.rop itself is untouched, so
+          the Тасдиклаш board, its РОП filter, its daily numbering and the
+          sellers board keep naming teams exactly as they do today.
+
+          COALESCEd to the sentinel the confirmation queue's РОП filter
+          offers, for the same reason it exists there. The orders that answer
+          to neither basis are what makes these rows add up to ЗАКАЗ; a NULL
+          group would drop them out of a table that claims to be exhaustive,
+          countable but unreachable.
+
+          NO BACKTICK AND NO LONE BACKSLASH MAY APPEAR IN THIS COMMENT. It
+          lives inside a JavaScript template literal, so one would end the
+          string it documents — a syntax error 120 lines below itself. The ROP
+          strip in ropNameSql records the same trap for the backslash.
+        */
+        COALESCE(${InsightsRepository.ropNameSql('d."operatorTeamSource"')}, c.rop, '${InsightsRepository.NO_ROP}') AS rop,
         d."stageId"              AS stage_id,
         ds."logisticsRole"::text AS role,
         (${InsightsRepository.FAKT1_OUTCOMES}) AS fakt1,
@@ -1473,6 +1527,35 @@ export class InsightsRepository {
       SELECT 'fakt'::text AS cut, NULL::text AS bucket, NULL::text AS sub,
              NULL::int AS sort, 1::int AS is_total,${AGG}
       FROM cohort k
+    ),
+    /*
+      THE SAME TWO FACTS PER ROP — asked for by the client on 2026-09-12:
+      «ROP larni FAKT 1 larini tortgansan… keyingi tarafida FAKT 2 si ROP
+      larni har biriga kerak».
+
+      NOT FILTERED TO FAKT 1, and it is the second arm to make that exception
+      for exactly by_fakt's reason: FAKT 2 is not a subset of FAKT 1, so an
+      order refused in Тасдиклаш and revived afterwards is delivered money
+      that never entered ЗАКАЗ. Under the FAKT1_ONLY clause this table would
+      print a team's full ЗАКАЗ beside a SHORT Успешно, and the column would
+      not add up to the figure at the top of the same screen. The fakt1
+      aggregates carry their own FILTER, so ЗАКАЗ reads identically either
+      way — the filter would cost only the half it is not needed for.
+
+      ITS GRAND TOTAL IS by_fakt's OWN ROW. Both arms group the same
+      unfiltered cohort, so the grouping set's total row must equal the hero's
+      FAKT 1 and FAKT 2 to the minor unit. That equality is the reason this is
+      an eighth arm over rows already in memory rather than a second question.
+
+      NO BACKTICK HERE EITHER, and no interpolation: a dollar-brace inside a
+      comment is still substituted, so naming FAKT1_ONLY that way would paste
+      a live WHERE clause into prose and read as if the arm carried one.
+    */
+    by_rop AS (
+      SELECT 'rop'::text, k.rop, NULL::text, NULL::int,
+             GROUPING(k.rop)::int,${AGG}
+      FROM cohort k
+      GROUP BY GROUPING SETS ((k.rop), ())
     ),
     /*
       THE SIX COLUMNS OF THE CLIENT'S SHEET, AND ЗАКАЗ UNDER THEM.
@@ -1615,6 +1698,7 @@ export class InsightsRepository {
     )
     SELECT * FROM (
       SELECT * FROM by_fakt
+      UNION ALL SELECT * FROM by_rop
       UNION ALL SELECT * FROM by_bucket
       UNION ALL SELECT * FROM by_day
       UNION ALL SELECT * FROM by_post
@@ -1876,6 +1960,7 @@ export class InsightsRepository {
 
     const bucketArm = of('bucket')
     const dayArm = of('day')
+    const rops = peel('rop')
     const posts = peel('post')
     const regions = peel('region')
     const stages = peel('stage')
@@ -1883,6 +1968,8 @@ export class InsightsRepository {
 
     return {
       fakt: faktRow ? decode(faktRow) : EMPTY,
+      rops: rops.rows,
+      ropTotal: rops.total,
       total: (() => {
         const found = bucketArm.find((row) => row.is_total === 1)
         return found ? decode(found) : EMPTY
@@ -1979,6 +2066,52 @@ export class InsightsRepository {
    * the column still prints an em dash.
    */
   static readonly NO_REGION = '(Region yoʻq)'
+
+  /**
+   * A department name — or the deal's own team snapshot — read as a ROP team.
+   *
+   * ONE HOME FOR THE STRIP, because there are now two columns to read it off:
+   * `department."name"` for the queue's own РОП, and
+   * `deal."operatorTeamSource"` for the team the portal wrote onto the deal at
+   * the moment of sale. Two hand-copies of this expression would be two
+   * definitions of what a team is called, and the comment in `classified`
+   * records what the last such divergence printed on screen.
+   *
+   * A DEPARTMENT IS ONLY A ROP IF IT SAYS SO. Stripping unconditionally
+   * printed the raw name of any other unit into a column headed РОП —
+   * Регистрация and Операцион, the two back-office ones, leaked onto 25
+   * orders and into the ROP filter list. NULL is the honest answer for them.
+   */
+  private static ropNameSql(column: string): string {
+    /*
+      The strip is case-INSENSITIVE, like the ILIKE guard beside it.
+
+      ILIKE admitted a department written «Charos(rop)» and the case-sensitive
+      replace() then left the marker in place, so the queue basis would print
+      «Charos(rop)» where the intake basis (sellerBoardRepository.ropOf, a
+      case-insensitive regex) prints «Charos» — two spellings of one team on
+      the one screen that renders both bases. Every ROP department on this
+      portal writes «(ROP)» in capitals today, so this is a divergence waiting
+      on a rename rather than a wrong number on screen; the two rules still
+      have to agree.
+
+      THE BACKSLASHES ARE DOUBLED BECAUSE THIS IS A TEMPLATE LITERAL.
+      A lone backslash before a parenthesis is not a JavaScript escape, so it
+      collapses and Postgres receives a bare capture group round the three
+      letters ROP — which matches the letters and leaves the parentheses
+      exactly where they were, printing «Sevinch()» on every ROP. This very
+      comment must therefore avoid both a backtick and a lone backslash, or it
+      terminates the literal it documents. Pinned in
+      confirmationQueueSql.test.ts by an assertion on the BUILT string, since
+      every other check in that file reads the source and would have passed
+      either way.
+    */
+    return `CASE
+          WHEN ${column} ILIKE '%(ROP)%'
+            THEN NULLIF(btrim(regexp_replace(${column}, '\\(ROP\\)', '', 'gi')), '')
+          ELSE NULL
+        END`
+  }
 
   /**
    * The ROP predicate, written once so the four readings cannot drift.
@@ -2241,34 +2374,8 @@ export class InsightsRepository {
           column headed РОП — Регистрация and Операцион, the two back-office
           units, leaked onto 25 orders and into the ROP filter list.
         */
-        /*
-          The strip is case-INSENSITIVE, like the ILIKE guard above it.
-
-          ILIKE admitted a department written «Charos(rop)» and the
-          case-sensitive replace() then left the marker in place, so the queue
-          basis would print «Charos(rop)» where the intake basis
-          (sellerBoardRepository.ropOf, a case-insensitive regex) prints
-          «Charos» — two spellings of one team on the one screen that renders
-          both bases. Every ROP department on this portal writes «(ROP)» in
-          capitals today, so this is a divergence waiting on a rename rather
-          than a wrong number on screen; the two rules still have to agree.
-
-          THE BACKSLASHES ARE DOUBLED BECAUSE THIS IS A TEMPLATE LITERAL.
-          A lone backslash before a parenthesis is not a JavaScript escape, so
-          it collapses and Postgres receives a bare capture group round the
-          three letters ROP — which matches the letters and leaves the
-          parentheses exactly where they were, printing «Sevinch()» on every
-          ROP. This very comment must therefore avoid both a backtick and a
-          lone backslash, or it terminates the literal it documents. Pinned in
-          confirmationQueueSql.test.ts by an assertion on the BUILT string,
-          since every other check in that file reads the source and would have
-          passed either way.
-        */
-        CASE
-          WHEN dep."name" ILIKE '%(ROP)%'
-            THEN NULLIF(btrim(regexp_replace(dep."name", '\\(ROP\\)', '', 'gi')), '')
-          ELSE NULL
-        END AS rop,
+        /* The expression itself is ropNameSql, which both bases read. */
+        ${InsightsRepository.ropNameSql('dep."name"')} AS rop,
         /*
           Shipped without anyone reaching the customer.
 
