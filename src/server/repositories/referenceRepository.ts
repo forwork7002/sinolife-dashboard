@@ -327,9 +327,33 @@ export class ReferenceRepository {
     }
   }
 
+  /**
+   * When data last actually ARRIVED from the portal.
+   *
+   * `DEAL_ITEMS` IS EXCLUDED, AND WITHOUT THAT THIS CLOCK LIES. That pass
+   * makes no portal call at all: it reads state the `DEALS` pass left in
+   * memory (see its own comment in `handlers.ts`), so when Bitrix24 refuses
+   * everything, DEALS fails, DEAL_ITEMS finds nothing to do and finishes
+   * `SUCCESS` — once a minute, for as long as the outage lasts.
+   *
+   * Measured on 2026-09-14, 45 minutes into a portal-wide `OVERLOAD_LIMIT`
+   * block: CUSTOMERS 11 failures, DEALS 11, STAGE_HISTORY 11, CALLS 9 — and
+   * DEAL_ITEMS 11 successes. The header read «1 daqiqa oldin» in green over a
+   * dashboard that had not been fed for three quarters of an hour, which is
+   * precisely the state the client was reporting as «avtomatik
+   * yangilanmayapti» while the screen insisted it was current.
+   *
+   * A pass that reads zero rows because nothing changed is still a success
+   * here — the portal answered, and that is what the chip is promising. A
+   * pass that cannot have talked to the portal is not.
+   */
   async findLastSuccessfulSync(): Promise<Date | null> {
     const row = await this.prisma.syncLog.findFirst({
-      where: { status: { in: ['SUCCESS', 'PARTIAL'] }, finishedAt: { not: null } },
+      where: {
+        status: { in: ['SUCCESS', 'PARTIAL'] },
+        finishedAt: { not: null },
+        entity: { not: 'DEAL_ITEMS' },
+      },
       orderBy: { finishedAt: 'desc' },
       select: { finishedAt: true },
     })

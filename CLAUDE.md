@@ -1051,6 +1051,17 @@ mixed `100vh` against a shell sized in `100dvh`.
 - **`DEAL_ITEMS` reads in-memory state left by the `DEALS` pass** in the same
   process, and ignores `updatedSince`. Running it alone yields zero rows and
   reports `SUCCESS`.
+- **THE FRESHNESS CLOCK MUST NOT COUNT `DEAL_ITEMS`.** That pass makes no
+  portal call — it reads what the `DEALS` pass left in memory — so during a
+  portal outage it finds nothing to do and finishes `SUCCESS` once a minute,
+  for as long as the outage lasts. `findLastSuccessfulSync` took the newest
+  success of ANY entity, so the header read «1 daqiqa oldin» in green over a
+  dashboard that had not been fed for 45 minutes (measured 2026-09-14, mid
+  `OVERLOAD_LIMIT`: CUSTOMERS 11 failures, DEALS 11, STAGE_HISTORY 11, CALLS 9,
+  DEAL_ITEMS 11 successes). That is what the client was reporting as «avtomatik
+  yangilanmayapti» while the screen insisted it was current — the refresh was
+  working and the CLOCK was lying. A pass that read zero rows because nothing
+  changed still counts; a pass that cannot have talked to the portal does not.
 - **`CALLS` LEFT THE PER-MINUTE LIST ON 2026-09-14.** `call_record` is written
   by the sync and read by NOTHING — `/insights/calls` went in the 2026-09-10
   cull with the screen it fed, and the only other mentions are a proof script
