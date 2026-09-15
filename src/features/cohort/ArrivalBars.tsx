@@ -105,7 +105,10 @@ export function ArrivalBars({
 
   return (
     <section>
-      <h3>
+      <h3
+        className="flex items-center gap-1 text-[13px] font-medium"
+        style={{ color: 'var(--ink-secondary)' }}
+      >
         Qancha yangi mijoz keladi?{' '}
         <InfoTip
           label="Izoh: yangi mijozlar"
@@ -113,12 +116,17 @@ export function ArrivalBars({
         />
       </h3>
 
-      <div data-testid="arrival-bars">
+      {/* A DEFINITE HEIGHT, because every bar's height is a PERCENTAGE of it.
+          `items-end` grows them from the baseline; without a height on the rail
+          the percentages resolve against `auto` and every month collapses to
+          its own 2px floor. */}
+      <div className="mt-3 flex h-28 items-end gap-1" data-testid="arrival-bars">
         {dense.map((row) => {
           const partial = row.cohort >= currentMonth
           return (
             <div
               key={row.cohort}
+              className="min-w-0 flex-1 rounded-t-[2px]"
               role="img"
               data-partial={partial ? 'true' : 'false'}
               aria-label={
@@ -148,7 +156,11 @@ export function ArrivalBars({
       </div>
 
       {mean !== null && last && (
-        <p role="status">
+        <p
+          className="mt-3 text-sm leading-snug"
+          style={{ color: 'var(--ink-secondary)' }}
+          role="status"
+        >
           {formatMonth(last.cohort)}da {formatNumber(last.size)} ta yangi mijoz —{' '}
           oldingi {before.length} toʻliq oyning oʻrtachasi {formatNumber(Math.round(mean))} ta
           edi.

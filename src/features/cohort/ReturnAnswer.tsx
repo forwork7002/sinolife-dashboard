@@ -90,7 +90,10 @@ export function ReturnAnswer({
 
   return (
     <section>
-      <h3>
+      <h3
+        className="flex items-center gap-1 text-[13px] font-medium"
+        style={{ color: 'var(--ink-secondary)' }}
+      >
         Ular qaytadimi?{' '}
         <InfoTip
           label="Izoh: qaytish"
@@ -99,7 +102,11 @@ export function ReturnAnswer({
       </h3>
 
       {share !== null && (
-        <p role="status">
+        <p
+          className="mt-2 text-sm leading-snug"
+          style={{ color: 'var(--ink-primary)' }}
+          role="status"
+        >
           Har 100 ta yangi mijozdan <strong>{share}</strong> tasi keyin
           yana xarid qiladi.
         </p>
@@ -109,9 +116,13 @@ export function ReturnAnswer({
           comment on `sparklineValues` above. `Sparkline` itself already
           refuses fewer than two, this just keeps a one-point call from
           reaching it. */}
-      {sparklineValues.length >= 2 && <Sparkline values={sparklineValues} />}
+      {sparklineValues.length >= 2 && (
+        <div className="mt-2">
+          <Sparkline values={sparklineValues} />
+        </div>
+      )}
 
-      <dl>
+      <dl className="mt-3 grid grid-cols-4 gap-2">
         {MILESTONES.map((offset) => {
           const at = curve[offset]
           const cohorts = at?.cohorts ?? 0
@@ -121,9 +132,20 @@ export function ReturnAnswer({
               key={offset}
               aria-label={`+${offset} oy — ${cohorts} ta kogorta boʻyicha`}
             >
-              <dt>+{offset} oy</dt>
-              <dd>
-                <span>
+              <dt className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                +{offset} oy
+              </dt>
+              <dd className="mt-0.5">
+                {/* The refusal is a SENTENCE, not a figure, so it does not
+                    wear the figure's size — at 15px «yetarli maʼlumot yoʻq»
+                    wraps to three lines in a quarter-width column and reads
+                    as the answer rather than as its absence. */}
+                <span
+                  className={
+                    enough ? 'figure block text-[15px] font-semibold' : 'block text-[11px]'
+                  }
+                  style={{ color: enough ? 'var(--ink-primary)' : 'var(--ink-muted)' }}
+                >
                   {enough && at?.percent !== null && at !== undefined
                     ? formatPercent(at.percent)
                     : 'yetarli maʼlumot yoʻq'}

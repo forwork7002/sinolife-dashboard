@@ -487,7 +487,34 @@ export function useDashboardFilters() {
       on production 2026-09-11. The page number still goes: it belongs to the
       narrower list.
     */
-    for (const key of ['preset', 'from', 'to', 'queue', 'view', 'sort', 'order', 'pageSize'] as const) {
+    /*
+      AND `mode` — WHICH READING OF A SCREEN IS ON, not which rows it keeps.
+
+      `/analytics/cohort` carries «Oddiy» / «Batafsil» in the address
+      (`useCohortMode`), for the same reason `queue` is there: a manager is
+      sent a link to what somebody is looking at. Rebuilt from an allowlist
+      that omitted it, «Filtrlarni tozalash» would DELETE it — and that route
+      is shallow, so the deletion lands through `replaceState`, fires no
+      `popstate`, and never reaches the hook's own `publish()`. The screen
+      would go on drawing «Batafsil» while the address said «Oddiy», which is
+      precisely the divergence a URL-backed toggle exists to prevent, and the
+      next reload or shared link would flip it without anybody touching it.
+
+      Latent today only because `CohortPage` passes no filter props, so the
+      button does not render there. That is an accident of one page's props,
+      not a property of this hook.
+    */
+    for (const key of [
+      'preset',
+      'from',
+      'to',
+      'queue',
+      'view',
+      'mode',
+      'sort',
+      'order',
+      'pageSize',
+    ] as const) {
       const value = current.get(key)
       if (value !== null) kept.set(key, value)
     }
