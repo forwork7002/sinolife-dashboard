@@ -23,8 +23,23 @@ import { describe, expect, it } from 'vitest'
  * vCPU costs more than the heap scan it saved.
  *
  * So the tests below pin the things that are TRUE of this statement regardless
- * of which shape it takes, and none of them asserts a scan count. The lever on
- * this endpoint is the scan itself — a covering index — not the join.
+ * of which shape it takes, and none of them asserts a scan count.
+ *
+ * THAT LAST SENTENCE USED TO READ «the lever on this endpoint is the scan
+ * itself — a covering index — not the join», AND IT IS NOW FALSIFIED. It was
+ * true of the statement it was written about, which had one join the planner
+ * handled well. Measured on production 2026-09-15 with
+ * EXPLAIN (ANALYZE, BUFFERS): the two `deal` scans cost ~120–190 ms of a
+ * ~990 ms statement, while a single `LEFT JOIN first_offsets` cost **566 ms**
+ * of self time — the planner estimates a CTE at 3 rows against an actual 912,
+ * takes a Nested Loop Left Join and rescans it once per matrix row. It is kept
+ * here rather than deleted because this file's header is a record of what has
+ * already been tried and measured, and «the scan is the lever» is a conclusion
+ * a future edit would otherwise reach again from the same reasoning. The join
+ * was removed on 2026-09-15 by emitting `first_offsets` as a THIRD UNION arm
+ * (`is_total = 2`) and merging it in the fold; the statement returned to the
+ * pre-change plan's range. The covering index is still worth having — it is
+ * now the SECOND lever, not the first.
  */
 
 const SOURCE = readFileSync(
@@ -47,6 +62,24 @@ function code(): string {
   return cohortsSql()
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/--[^\n]*/g, '')
+}
+
+/**
+ * Every UNION arm's SELECT list, in the order the statement writes them.
+ *
+ * The statement grew a THIRD arm on 2026-09-15 (`first_offsets`, to take a
+ * nested loop off the hot path), so no test may reach for "the arm" by
+ * slicing to the end of the string any more — the last arm is no longer the
+ * totals arm. Splitting on `UNION ALL` is what keeps every assertion below
+ * true of ALL arms rather than of however many there happened to be.
+ */
+function arms(): string[] {
+  const parts = code().split(/\bUNION ALL\b/)
+  /* The CTE block rides in front of the first arm; cut it at that arm's own
+     SELECT so the alias scan does not pick up a CTE's columns. */
+  parts[0] = parts[0].slice(parts[0].indexOf('0 AS is_total'))
+  expect(parts.length).toBeGreaterThanOrEqual(2)
+  return parts
 }
 
 describe('the cohort statement', () => {
@@ -91,8 +124,13 @@ describe('the cohort statement', () => {
     */
     const sql = code()
     expect([...sql.matchAll(/make_interval\(months =>/g)]).toHaveLength(1)
-    const totalsArm = sql.slice(sql.indexOf('1 AS is_total'))
-    expect(totalsArm).not.toContain('make_interval')
+    /* EVERY arm but the matrix one, so the third arm added in 2026-09-15 is
+       held to the same rule — it feeds the curve, which is drawn on the
+       matrix's own rows, and a bound on it would be a second statement of the
+       first. */
+    for (const arm of arms().filter((a) => !a.includes('0 AS is_total'))) {
+      expect(arm).not.toContain('make_interval')
+    }
   })
 
   it('reads the horizon from the clock, never from the newest row', () => {
@@ -136,18 +174,44 @@ describe('the cohort statement', () => {
     expect(rowArm).toMatch(/count\(DISTINCT p\.customer_id\)::bigint AS customers/i)
   })
 
-  it('carries the same column list in both UNION arms, in the same order', () => {
+  it('carries the same column list in EVERY UNION arm, in the same order', () => {
     /*
       A UNION ALL matches columns BY POSITION. `ORDER BY 1, 2, 4` is positional
       too. Inserting a column into one arm only would silently transpose the
       whole read rather than fail.
+
+      Written over every arm rather than over a named pair: the statement had
+      two arms, has three since 2026-09-15, and a contract that has to be
+      re-typed each time an arm is added is a contract that will eventually be
+      left behind by one. A fourth arm is covered by this the day it is
+      written.
+    */
+    const aliases = (arm: string) => [...arm.matchAll(/ AS ([a-z_]+),?\n/g)].map((m) => m[1])
+    const all = arms().map(aliases)
+    expect(all.length).toBeGreaterThanOrEqual(3)
+    /* Guards the guard: an alias list that came back empty would make every
+       comparison below trivially true. */
+    expect(all[0]!.length).toBeGreaterThan(10)
+    for (const list of all.slice(1)) expect(list).toEqual(all[0])
+  })
+
+  it('emits the first-return counts as an ARM, never as a join onto the matrix', () => {
+    /*
+      THE 566 ms NODE. `LEFT JOIN first_offsets` was the single most expensive
+      thing in this statement — see the file header for the measurement. The
+      cheap shape is `first_offsets` as its own `is_total = 2` arm, merged in
+      the fold by (cohort, months_since).
+
+      Both halves are asserted, because either one alone can be satisfied
+      while the regression is present: an arm can be added WITHOUT the join
+      being taken out, and the join is what costs.
     */
     const sql = code()
-    const rowArm = sql.slice(sql.indexOf('0 AS is_total'), sql.indexOf('UNION ALL'))
-    const totalsArm = sql.slice(sql.indexOf('1 AS is_total'))
-    const aliases = (arm: string) =>
-      [...arm.matchAll(/ AS ([a-z_]+),?\n/g)].map((m) => m[1])
-    expect(aliases(totalsArm)).toEqual(aliases(rowArm))
+    expect(sql).not.toMatch(/JOIN\s+first_offsets/i)
+    expect(sql).toMatch(/2 AS is_total/)
+    const curveArm = arms().find((arm) => arm.includes('2 AS is_total'))!
+    expect(curveArm).toMatch(/FROM first_offsets/i)
+    expect(curveArm).toMatch(/fo\.first_returners AS first_returners/i)
   })
 
   it('narrows by nothing but the month bound — a cohort is a company-wide fact', () => {

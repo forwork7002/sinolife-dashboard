@@ -510,9 +510,17 @@ Per-screen traps worth knowing before you touch one:
   construction: the curve is a running sum of `firstReturners`, each returning
   customer walked in exactly once, advanced only inside the row's reachable
   span. And the matrix footer's money is its own column summed and nothing
-  wider — `months` bounds COLUMNS, not rows, so the figure does not move under
-  the 6 / 12 / Hammasi control. Both were re-measured against production on
-  2026-09-15 and held on every cohort.
+  wider — the grid's own `months` prop bounds COLUMNS, so the figure does not
+  move under the 6 / 12 / Hammasi control. Both were re-measured against
+  production on 2026-09-15 and held on every cohort.
+  **TWO DIFFERENT THINGS ARE BOTH CALLED `months`, and confusing them is how
+  you write a wrong sentence about this screen.** The **API parameter**
+  (`COHORT_HISTORY_MONTHS` = 18 in `CohortPage`, `$2` in the statement) bounds
+  which cohort **ROWS** the matrix arm draws, and the totals arm deliberately
+  ignores it. The **`CohortHeatmap` prop** of the same name is the 6 / 12 /
+  Hammasi control and bounds which **COLUMNS** are drawn, of rows the grid was
+  already given. Neither touches the other: the reader's column choice cannot
+  move a row total, and the eighteen-month request cannot move a column.
   **TWO FLOORS, AND NEITHER IS DECORATION.** Per-customer money prints greyed
   under `MONEY_YOUNG_MONTHS` = 3 (a three-month-old cohort's lifetime value is
   noise, and a money column is an invitation to compare down it); a milestone
@@ -524,28 +532,47 @@ Per-screen traps worth knowing before you touch one:
   **A STATED LIMIT: DUPLICATE IDENTITIES.** Bitrix24 holds the same human
   under more than one contact row, and a second row is a second first
   purchase — so a returning customer is occasionally counted as a new one and
-  the curve reads slightly low. Measured 2026-09-15: **39 of 11 517
-  buyers, 0.34%**. A full contact re-import was offered and declined that day;
-  the gap is recorded rather than closed. Do not present retention here as
-  exact to the person.
-  **LATENCY — THE «FREE CURVE» CLAIM DOES NOT HOLD, AND THE COST HAS A NAME.**
-  The cumulative curve was argued to be free because `first_return` REPLACES
-  the old `count(DISTINCT customer_id)` grouping rather than adding one. The
-  replacement is indeed free — but the curve also needs `first_offsets` joined
-  back onto every matrix row, and the planner cannot estimate a CTE: it takes
-  a **Nested Loop Left Join** and rescans `first_offsets` once per matrix row.
-  Measured on production 2026-09-15 with `EXPLAIN (ANALYZE, BUFFERS)`, both
-  statements back to back on the same database, four runs each: the
-  pre-change SQL (`7404c2a`) executes in **~445 ms** and the current SQL in
-  **~990 ms**. **Buffers are identical — `shared hit=24722`, `read=0`, on both**
-  — so this buys no extra I/O at all; it is pure CPU in that one node, which
-  discarded over a million join-filter rows. `MATERIALIZED` on the CTE was
-  tried and did not help. The 1587 ms figure recorded for this endpoint is an
-  END-TO-END p50 from 2026-09-11, not a server-side execution time, so it is
-  not the same quantity — the honest comparison is the +~545 ms between the
-  two statements, and the endpoint should be expected to have moved by about
-  that. If this endpoint is to be made fast the lever is still the SCAN — the
-  covering index named in the method's own comment — not the join.
+  the curve reads slightly low. The stated limit is **39 of 11 517 buyers,
+  0.34%**, measured 2026-09-15 — kept because it is the higher, more
+  conservative of the two figures taken that day. **The denominator moves and
+  the method matters**: the same day's probe counted **11 536** buyers (the
+  roster grows daily) and found **35 surplus rows sharing a normalised phone
+  number, 0.30%**, which is the same finding by a narrower match. Quote the
+  0.34% and say which of the two matchings you mean; do not present retention
+  here as exact to the person.
+  **THE CURVE IS FREE — BUT ONLY AS A THIRD UNION ARM, AND THAT COST 566 ms
+  TO LEARN.** The cumulative curve was argued to be free because `first_return`
+  REPLACES the old `count(DISTINCT customer_id)` grouping rather than adding
+  one. That half is true and is worth about 1 ms. What the argument missed is
+  that the per-offset counts then have to reach the matrix — and as
+  `LEFT JOIN first_offsets fo ON fo.cohort = p.cohort AND fo.first_offset =
+  p.months_since` they were the most expensive node in the product's slowest
+  statement. **The planner cannot estimate a CTE**: it read `first_offsets` as
+  3 rows against an actual 912, took a **Nested Loop Left Join** and rescanned
+  it once per matrix row — `loops=13460`, **1 165 954 rows discarded by the
+  join filter, 566 ms of self time**. `first_offsets` is emitted as its own
+  `is_total = 2` **arm** instead, merged in the fold by
+  `(cohort, months_since)`: ~91 extra rows on the wire, no join at all.
+  Measured on production 2026-09-15, `EXPLAIN (ANALYZE, BUFFERS)`, three
+  statements interleaved on one connection, twelve runs each — medians
+  **pre-change (`7404c2a`) 414–415 ms · with the join 900–959 ms · with the
+  third arm 405–467 ms**. The arm is back in the pre-change plan's range; the
+  join's Nested Loop is gone from the plan and the only `Rows Removed by Join
+  Filter` left (176 672, `returners`) is the one the pre-change plan has too.
+  Folded payloads from the two shapes are **byte-identical**.
+  **Buffers are `shared hit=24722`, `read=0` on all three shapes**, which is
+  the fact that decides where to look next: none of this is I/O, so **an index
+  could not have fixed it and cannot fix what is left**. `MATERIALIZED` on the
+  CTE was tried and measured and did not help — the estimate drives the plan,
+  not the materialisation.
+  **The lever on this endpoint is therefore the JOIN SHAPE first and the SCAN
+  second**, which is the reverse of what this file and
+  `tests/http/cohortsSql.test.ts` said before 2026-09-15: the two `deal` scans
+  are ~120–190 ms of the statement, the one join was 566. The covering index
+  named in the method's own comment is still worth having; it is no longer the
+  biggest thing available. And the 1587 ms recorded for this endpoint is an
+  END-TO-END p50 from 2026-09-11, **not** a server-side execution time — do
+  not compare it to any figure above. It should be re-timed on the deploy.
 - **Kanallar** — the dashboard-wide `preset` and `filial` do **not** reach this
   screen; it resolves its own window from `from`/`to`/`today`.
 - **Yalpi marja** — discounts are split by sign in SQL; never net them or

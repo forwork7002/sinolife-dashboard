@@ -36,8 +36,9 @@ const SOURCE = readFileSync(
  *
  * Uneven, because a weighted and an unweighted mean coincide on equal cohorts:
  * the wrong implementation has to print a WRONG FIGURE here, not a tie.
- * Weighted over +1 this is (60 + 21 + 9) / (240 + 70 + 12) = 27.9%;
- * unweighted it is (25 + 30 + 75) / 3 = 43.3%. Three, because
+ * Weighted over +1 this is (60 + 21 + 9) / (240 + 70 + 10) = 28.125%, which
+ * the grid prints as 28.1; unweighted it is (25 + 30 + 90) / 3 = 48.3%.
+ * Three cohorts, because
  * `MIN_COHORTS_FOR_AVERAGE` is 3 and a milestone standing on fewer prints a
  * refusal instead of a number — the assertion could never run.
  */

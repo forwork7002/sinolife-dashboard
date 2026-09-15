@@ -1066,7 +1066,29 @@ export class InsightsRepository {
         count(DISTINCT p.customer_id)::bigint AS customers,
         sum(p.amount)::text AS revenue,
         count(*)::bigint AS orders,
-        COALESCE(fo.first_returners, 0)::bigint AS first_returners,
+        /*
+          THE CURVE'S COUNTS ARE NOT JOINED IN HERE. THEY ARE THEIR OWN ARM.
+
+          This column was \`COALESCE(fo.first_returners, 0)\` off a
+          \`LEFT JOIN first_offsets fo ON fo.cohort = p.cohort
+           AND fo.first_offset = p.months_since\`, and that join was measured
+          as the single most expensive node in the statement: the planner
+          estimates a CTE at 3 rows against an actual 912, picks a Nested Loop
+          Left Join and rescans \`first_offsets\` once per matrix row —
+          loops=13460, 1 165 954 rows discarded by the join filter, 566 ms of
+          self time. Measured on production 2026-09-15 with
+          EXPLAIN (ANALYZE, BUFFERS): with the join ~990 ms, without it the
+          shape the pre-change statement had, ~445 ms. Buffers were IDENTICAL
+          either way (shared hit=24722, read=0), so it bought no I/O at all —
+          it was pure CPU spent re-deriving 87 rows thirteen thousand times.
+          MATERIALIZED on the CTE was tried and did not help; the estimate,
+          not the materialisation, is what drives the plan choice.
+
+          \`first_offsets\` is emitted as its own UNION arm below instead, and
+          the fold merges it back by (cohort, months_since). Tens of extra rows
+          on the wire against a join Postgres cannot plan.
+        */
+        NULL::bigint AS first_returners,
         -- How many of this cohort ever came back, counted once each; see the
         -- returners CTE. Repeated on every row of the cohort, which is what
         -- lets one query carry both the matrix and the headline.
@@ -1079,13 +1101,11 @@ export class InsightsRepository {
       FROM purchases p
       JOIN sized s ON s.cohort = p.cohort
       LEFT JOIN returners r ON r.cohort = p.cohort
-      LEFT JOIN first_offsets fo
-             ON fo.cohort = p.cohort AND fo.first_offset = p.months_since
-      -- The bound is on the ROWS only. The totals arm below deliberately
-      -- carries no such clause; see the method's own note.
+      -- The bound is on the ROWS only. The two arms below deliberately
+      -- carry no such clause; see the method's own note.
       WHERE p.cohort >= date_trunc('month', (now() AT TIME ZONE $1)) - make_interval(months => $2::int)
         AND p.months_since >= 0
-      GROUP BY p.cohort, s.size, p.months_since, r.returned, fo.first_returners
+      GROUP BY p.cohort, s.size, p.months_since, r.returned
 
       UNION ALL
 
@@ -1134,25 +1154,100 @@ export class InsightsRepository {
         date_trunc('month', (now() AT TIME ZONE $1)) AS current_month
       FROM revenue_totals t
 
+      UNION ALL
+
+      /*
+        THE CUMULATIVE CURVE'S COUNTS, AS ROWS RATHER THAN AS A JOIN.
+
+        One row per (cohort, first_offset): how many of that cohort came back
+        for the FIRST time in that month. The running sum stays in TypeScript,
+        where it already was.
+
+        This is the whole of the 2026-09-15 latency fix. As a LEFT JOIN onto
+        the matrix arm it cost 566 ms of self time and no extra I/O; as an arm
+        it costs the rows themselves — tens of them, out of a HashAggregate
+        the statement has already paid 3.4 ms for — and no join.
+
+        IT CARRIES NO MONTH BOUND, deliberately, like the totals arm above it.
+        Bounding it would be a second \`make_interval\` saying the same thing as
+        the first, and the fold below simply ignores a cohort the matrix arm
+        did not draw. A first return at offset k implies a purchase at
+        (cohort, k), so every row here lands on a cell that exists; an offset
+        with no row is a measured zero, which is what the fold's default is.
+      */
+      SELECT
+        2 AS is_total,
+        fo.cohort AS cohort,
+        NULL::bigint AS size,
+        fo.first_offset AS months_since,
+        NULL::bigint AS customers,
+        NULL::text AS revenue,
+        NULL::bigint AS orders,
+        fo.first_returners AS first_returners,
+        NULL::bigint AS returned,
+        NULL::bigint AS total_customers,
+        NULL::bigint AS total_returned,
+        NULL::text AS first_revenue,
+        NULL::text AS later_revenue,
+        NULL::timestamp AS current_month
+      FROM first_offsets fo
+
       ORDER BY 1 ASC, 2 DESC, 4 ASC
       `,
       this.tz,
       options.months,
     )
 
-    const byCohort = new Map<string, { size: number; returned: number; cells: CohortCell[] }>()
+    /*
+      THREE ARMS, MERGED BY (cohort, months_since).
+
+      `cells` is keyed rather than an array while it is being built, because
+      the matrix arm and the first-return arm both write to the same cell and
+      the second of them has to FIND the first. `ORDER BY 1 ASC` puts arm 0
+      before arm 2, so by the time a first-return row arrives its cell exists —
+      but the lookup is written to tolerate the opposite order rather than to
+      depend on the ORDER BY, since a sort key is not a data structure.
+    */
+    type Cell = { -readonly [K in keyof CohortCell]: CohortCell[K] }
+    const byCohort = new Map<string, { size: number; returned: number; cells: Map<number, Cell> }>()
     const summary = rows.find((row) => row.is_total === 1)
 
     for (const row of rows) {
-      if (row.is_total === 1 || row.cohort === null || row.months_since === null) continue
+      /* The totals arm is read once, through `summary` above. */
+      if (row.is_total === 1) continue
+      /*
+        REFUSE AN ARM NOBODY WROTE A FOLD FOR.
+
+        A fourth arm added to the statement without a branch here would
+        otherwise be silently dropped — every column it does not set is NULL,
+        so it would fold into a cohort of zeros and print as data. Three arms
+        are what this method emits; anything else is a bug in the statement.
+      */
+      if (row.is_total !== 0 && row.is_total !== 2) {
+        throw new Error(`cohorts(): unknown UNION arm is_total=${row.is_total}`)
+      }
+      if (row.cohort === null || row.months_since === null) continue
       const key = row.cohort.toISOString().slice(0, 10)
+
+      if (row.is_total === 2) {
+        /* A cohort older than the `months` bound: the matrix arm did not draw
+           it, so there is nothing to merge into. The arm is unbounded on
+           purpose — see its comment in the statement. */
+        const entry = byCohort.get(key)
+        const cell = entry?.cells.get(row.months_since)
+        if (cell) cell.firstReturners = int(row.first_returners)
+        continue
+      }
+
       const entry =
-        byCohort.get(key) ?? { size: int(row.size), returned: int(row.returned), cells: [] }
-      entry.cells.push({
+        byCohort.get(key) ?? { size: int(row.size), returned: int(row.returned), cells: new Map() }
+      entry.cells.set(row.months_since, {
         monthsSince: row.months_since,
         customers: int(row.customers),
         orders: int(row.orders),
-        firstReturners: int(row.first_returners),
+        /* The first-return arm overwrites this where it has a count. An
+           offset it says nothing about is a measured zero, not a gap. */
+        firstReturners: 0,
         revenueMinor: money(row.revenue),
       })
       byCohort.set(key, entry)
@@ -1163,7 +1258,7 @@ export class InsightsRepository {
         cohort,
         size: entry.size,
         returned: entry.returned,
-        cells: entry.cells,
+        cells: [...entry.cells.values()],
       })),
       totals: {
         customers: int(summary?.total_customers ?? 0n),
