@@ -25,9 +25,18 @@ const cell = (
   revenueMinor: over.revenueMinor ?? 0n,
 })
 
-/** One cohort of 10, of whom 4 ever return: 2 in +1, 1 in +2, 1 in +4. */
+/**
+ * Two rows, on purpose. `rows[0]` (Jan) has lived the grid's full five
+ * months, so every offset on it is measured and a "nulls match" comparison
+ * against it is vacuous — six `false`s equal six `false`s whatever the code
+ * does. `rows[1]` (May) has lived only one month against the same June
+ * clock, so offsets +2..+5 on IT must be null while the grid still draws
+ * five columns (`maxOffset` is the OLDEST cohort's span, not this row's own).
+ * That is the row the null-rule test below actually needs.
+ */
 const MATRIX: CohortMatrix = {
   rows: [
+    // One cohort of 10, of whom 4 ever return: 2 in +1, 1 in +2, 1 in +4.
     {
       cohort: '2026-01-01',
       size: 10,
@@ -40,14 +49,26 @@ const MATRIX: CohortMatrix = {
         cell(4, { customers: 1, orders: 1, firstReturners: 1, revenueMinor: 100n }),
       ],
     },
+    // A cohort of 5 that has only lived one month: +0 and +1 measured, +2..+5
+    // have not happened yet.
+    {
+      cohort: '2026-05-01',
+      size: 5,
+      returned: 1,
+      cells: [
+        cell(0, { customers: 5, orders: 5, revenueMinor: 500n }),
+        cell(1, { customers: 1, orders: 1, firstReturners: 1, revenueMinor: 50n }),
+      ],
+    },
   ],
   totals: {
-    customers: 10,
-    returned: 4,
-    firstRevenueMinor: 1_000n,
-    laterRevenueMinor: 700n,
+    customers: 15,
+    returned: 5,
+    firstRevenueMinor: 1_500n,
+    laterRevenueMinor: 750n,
   },
-  // June 2026: the cohort has lived five whole months, +0 … +5.
+  // June 2026: the Jan cohort has lived five whole months, +0 … +5; the grid
+  // is drawn to that span even though May has lived only one of them.
   currentMonth: '2026-06-01',
 }
 
@@ -86,12 +107,23 @@ describe('the cumulative curve', () => {
   })
 
   it('nulls in exactly the same places as the monthly reading', async () => {
+    /*
+      This has to be the MAY row, not January's. The grid draws five columns
+      (the OLDEST cohort's span), but January has itself lived all five, so
+      every one of its cells is measured and a "same nulls" comparison on it
+      is vacuously true — six `false`s next to six `false`s, whatever the
+      code does. May has lived one month against the same June clock, so its
+      tail (+2..+5) genuinely nulls, which is the case this rule exists for.
+    */
     const { rows } = await service(MATRIX).cohorts('UZS', 18)
-    const row = rows[0]!
+    const row = rows[1]!
     const nulls = (a: readonly (number | null)[]) => a.map((v) => v === null)
     expect(nulls(row.cumulative)).toEqual(nulls(row.retention))
     expect(nulls(row.cumulativeCustomers)).toEqual(nulls(row.retention))
     expect(nulls(row.orders)).toEqual(nulls(row.retention))
+    // And the comparison has to be non-vacuous: at least one cell must
+    // actually be null, or the equality above proves nothing.
+    expect(nulls(row.retention)).toContain(true)
   })
 
   it('reports a measured month with no returns as 0, never as null', async () => {

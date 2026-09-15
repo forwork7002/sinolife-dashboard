@@ -96,6 +96,15 @@ export interface CohortDto {
   readonly cumulative: readonly (number | null)[]
   /** The headcount behind each `cumulative` share, same offsets, same nulls. */
   readonly cumulativeCustomers: readonly (number | null)[]
+  /**
+   * The customers BEHIND each percentage, same offsets, same nulls.
+   *
+   * A rate on this dashboard prints the fraction it was computed from, and the
+   * matrix could not: `size × retention%` recovers the count only to within
+   * the rounding the server already did, so a cell reading 13% on a 45-person
+   * cohort could be five customers or six. The server counted them once; it
+   * now says how many.
+   */
   readonly customers: readonly (number | null)[]
   /**
    * Revenue-bearing WON deals per offset — ORDERS, where `customers` counts
