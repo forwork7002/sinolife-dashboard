@@ -409,24 +409,30 @@ export function CohortHeatmap({
   maxColumns?: number
   readonly months?: number | null
   /**
-   * The company's own revenue total, for the summary row's «Kogorta tushumi»
-   * cell. Omitted, that cell stays blank and says why on hover.
+   * «Kogorta tushumi», added up over the rows this grid was given.
+   *
+   * IT IS THE COLUMN, SUMMED — nothing wider. A footer cell's grammar already
+   * promises exactly that, and it is the one promise this slot cannot be
+   * talked out of: the figure carries no visible marker (its hover and its
+   * accessible name are all there is), so a sighted reader scanning the
+   * column sees a number under a column and reads it as that column's total.
+   * A company-wide figure here would be a different fact wearing the same
+   * shape, and this screen prints no revenue tile anywhere else that could
+   * have told them otherwise.
+   *
+   * Well-defined because `months` bounds COLUMNS, not rows: every row the
+   * caller hands over is drawn, whichever width the reader picks, so the sum
+   * does not move under the 6 / 12 / Hammasi control.
    *
    * TWO STRINGS, compact and exact, exactly like the column above it — the
    * grid is handed money already formatted and has no currency, no locale and
    * no rounding rule of its own. The caller crosses that boundary once, in
-   * `toMatrixRow`'s neighbourhood.
-   *
-   * `span` is not decoration. This figure is the WHOLE history while the
-   * column above it is the window the page asked for, so the two need not add
-   * up — and a reader who adds a column and gets a different number has found
-   * a bug, not a span. The sentence names the span in the hover and in the
-   * cell's own label, the way «Butun tarix boʻyicha» names it on the tiles.
+   * `toMatrixRow`'s neighbourhood. Omitted, the cell stays blank and says why
+   * on hover.
    */
   readonly totalRevenue?: {
     readonly compact: string
     readonly exact: string
-    readonly span: string
   }
 }) {
   const [hot, setHot] = useState<Hot | null>(null)
@@ -783,19 +789,20 @@ export function CohortHeatmap({
                 ONE MONEY COLUMN TOTALS AND THE OTHER MAY NOT, so they are two
                 different cells now rather than one blank repeated.
 
-                «Kogorta tushumi» adds up: every cohort's money is money, and
-                the sum of it is a company total a manager can act on. It is
-                not folded from the rows here — the grid is handed money
-                already FORMATTED, so there is no number in this file to add —
-                it is SENT, from the same two figures «Takroriy tushum ulushi»
-                divides. See `totalRevenue` above for why the cell names its
-                span out loud.
+                «Kogorta tushumi» adds up, and what it adds up is THE COLUMN
+                ABOVE IT — the rows this grid was handed, which is every row
+                the caller sent. The figure is computed where the formatting
+                already happens (`CohortPage`), because the grid is handed
+                money as text and has no number to add.
 
                 «1 mijozga» still prints «—», and that stays. Each of its
                 figures covers a different span of months, so a mean of them is
                 the cross-row comparison the whole column is built to
                 discourage, printed as a fact. Each cohort's per-customer money
-                is on its own row, where it is a measurement.
+                is on its own row, where it is a measurement. The two cells
+                read better side by side now than they did as one blank
+                repeated: they cover the same rows, and one of them says why it
+                cannot be folded.
               */}
               <PinnedCell
                 left={LEFT.revenueTotal}
@@ -803,13 +810,9 @@ export function CohortHeatmap({
                 align="right"
                 summary
                 onMouseEnter={enter(-1, -1)}
-                label={
-                  totalRevenue ? `${totalRevenue.exact} · ${totalRevenue.span}` : MONEY_NOT_SUMMED
-                }
+                label={totalRevenue ? totalRevenue.exact : MONEY_NOT_SUMMED}
                 ariaLabel={
-                  totalRevenue
-                    ? `Kogorta tushumi jami: ${totalRevenue.exact} — ${totalRevenue.span}`
-                    : undefined
+                  totalRevenue ? `Kogorta tushumi jami: ${totalRevenue.exact}` : undefined
                 }
               >
                 {totalRevenue ? totalRevenue.compact : NO_VALUE}
@@ -871,12 +874,15 @@ export function CohortHeatmap({
 /**
  * Why a summary money cell is blank. Said on hover, not in a figure.
  *
- * «1 mijozga» always carries it. «Kogorta tushumi» carries it only when the
- * caller sends no total — the page does, so on this product it is the
- * per-customer column's sentence.
+ * SINGULAR, AND IT HAS TO BE. It read «Pul ustunlari … jamlanmaydi» — money
+ * columnS, plural — from the day both of them were blank. «Kogorta tushumi»
+ * now visibly sums one cell to its left, so the plural would be a sentence
+ * the screen itself contradicts. «1 mijozga» always carries this; «Kogorta
+ * tushumi» carries it only when a caller sends no total, and on this product
+ * the page always does.
  */
 const MONEY_NOT_SUMMED =
-  'Pul ustunlari qator boʻyicha oʻqiladi: har bir kogortaning puli oʻz yoshiga bogʻliq, shuning uchun bu yerda jamlanmaydi.'
+  'Bu ustun qator boʻyicha oʻqiladi: har bir kogortaning bir mijozga toʻgʻri keladigan puli oʻz yoshiga bogʻliq, shuning uchun bu yerda jamlanmaydi.'
 
 /**
  * The edge of the pinned block.

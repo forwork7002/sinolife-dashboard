@@ -76,7 +76,12 @@ const { CohortPage } = await import('@/features/cohort/CohortPage')
 const { useDashboardFilters } = await import('@/features/shared/useDashboardFilters')
 
 /** A cohort row, with only the fields `toMatrixRow` and the two views read. */
-function cohortRow(cohort: string, size: number, cumulative: (number | null)[]) {
+function cohortRow(
+  cohort: string,
+  size: number,
+  cumulative: (number | null)[],
+  revenueTotal: number,
+) {
   const cumulativeCustomers = cumulative.map((v) =>
     v === null ? null : Math.round((v / 100) * size),
   )
@@ -90,17 +95,27 @@ function cohortRow(cohort: string, size: number, cumulative: (number | null)[]) 
     cumulativeCustomers,
     revenue: cumulative.map(() => ({ amount: 1_000_000, amountMinor: '100000000', currency: 'UZS' })),
     orders: cumulative.map(() => 1),
-    revenueTotal: { amount: 12_000_000, amountMinor: '1200000000', currency: 'UZS' },
+    revenueTotal: {
+      amount: revenueTotal,
+      amountMinor: String(revenueTotal * 100),
+      currency: 'UZS',
+    },
     revenuePerCustomer: { amount: 500_000, amountMinor: '50000000', currency: 'UZS' },
     ageMonths: cumulative.length - 1,
   }
 }
 
 const COHORTS = {
+  /*
+    THREE DIFFERENT REVENUES, adding to 23 750 000 — deliberately nowhere near
+    `revenueTotalAll` below. The footer cell has to be the sum of THESE, and a
+    fixture where the two figures happened to be close could not tell the
+    difference.
+  */
   rows: [
-    cohortRow('2025-08-01', 24, [0, 21, 29, 38, 54, 63, 67]),
-    cohortRow('2025-09-01', 17, [0, 18, 35, 35, 41, 41, 53]),
-    cohortRow('2025-10-01', 15, [0, 13, 27, 33, 47, 47, 60]),
+    cohortRow('2025-08-01', 24, [0, 21, 29, 38, 54, 63, 67], 12_000_000),
+    cohortRow('2025-09-01', 17, [0, 18, 35, 35, 41, 41, 53], 7_500_000),
+    cohortRow('2025-10-01', 15, [0, 13, 27, 33, 47, 47, 60], 4_250_000),
   ],
   stages: [{ stage: '1 kun', customers: 40 }],
   workedCustomers: 90,
@@ -359,22 +374,62 @@ describe('switching between «Oddiy» and «Batafsil»', () => {
     expect(page).toContain('rows: matrixRows')
   })
 
-  it('prints the company’s revenue total where the summary row printed «—»', async () => {
+  it('sums the VISIBLE column where the summary row printed «—»', async () => {
     /*
-      The grid is handed money already formatted, so it has nothing to add and
-      the cell was blank. The figure is SENT — the same `firstRevenue +
-      laterRevenue` that «Takroriy tushum ulushi» divides — and it names its
-      span, because it is whole history while the column above it is the
-      eighteen months the page asked for.
+      THE FOOTER IS THE COLUMN, ADDED UP — 12 000 000 + 7 500 000 + 4 250 000.
+
+      A footer cell's grammar already promises that, and this one has no
+      visible marker to say otherwise: its span lives in a `title` and an
+      `aria-label`, so a sighted reader scanning the column sees one number
+      under a column of numbers and reads it as their total. The DTO's
+      whole-history `revenueTotalAll` (253 750 000) would have been a different
+      fact wearing that shape, and this screen prints no revenue tile anywhere
+      else that could have corrected them.
     */
     await openPage()
     fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
 
     const cell = screen.getByLabelText(/Kogorta tushumi jami/)
-    expect(cell.getAttribute('aria-label')).toMatch(/butun tarix boʻyicha/)
-    expect(cell.getAttribute('aria-label')).toMatch(/253\D?750\D?000/)
+    expect(cell.getAttribute('aria-label')).toMatch(/23\D?750\D?000/)
     // Compact in the column, exact in the label — the columns' own treatment.
-    expect(cell.textContent).toMatch(/254 mln/)
+    expect(cell.textContent).toMatch(/23[.,]8 mln/)
+
+    /*
+      AND EXPLICITLY NOT THE WHOLE-HISTORY FIGURE. Without this the test would
+      pass on the windowed number and say nothing about the one it replaced —
+      the regression worth catching is the cell quietly going back.
+    */
+    expect(cell.getAttribute('aria-label')).not.toMatch(/253\D?750\D?000/)
+    expect(cell.textContent).not.toMatch(/254 mln/)
+  })
+
+  it('does not move the footer when the reader changes the month window', () => {
+    /*
+      `months` bounds the grid's COLUMNS, not its rows, which is what makes
+      summing rows well-defined here. If that ever changes, the footer starts
+      disagreeing with a column the reader just narrowed — so the sum is taken
+      from `matrixRows`, which the window control does not touch.
+    */
+    const page = readFileSync('src/features/cohort/CohortPage.tsx', 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '')
+
+    expect(page).toMatch(/matrixRows\.reduce\(\(sum, row\) => sum \+ row\.revenueTotalAmount, 0\)/)
+    expect(page).not.toContain('revenueTotalAll')
+  })
+
+  it('still refuses to fold the per-customer column, in the singular', () => {
+    /*
+      «Pul ustunlari … jamlanmaydi» — money columnS — was true while both were
+      blank and is false now that the cell beside it visibly sums. The sentence
+      a reader actually sees has to be about the one column it still describes.
+    */
+    const heatmap = readFileSync('src/components/charts/Heatmap.tsx', 'utf8')
+    const sentence = /const MONEY_NOT_SUMMED =\s*'([^']*)'/.exec(heatmap)?.[1]
+
+    expect(sentence).toBeDefined()
+    expect(sentence).toMatch(/^Bu ustun/)
+    expect(sentence).not.toMatch(/Pul ustunlari/)
   })
 })
 

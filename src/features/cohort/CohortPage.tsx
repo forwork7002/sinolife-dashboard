@@ -203,6 +203,19 @@ export function CohortPage() {
   */
   const matrixRows = useMemo(() => (data ? data.rows.map(toMatrixRow) : []), [data])
 
+  /**
+   * «Kogorta tushumi», added up over the rows the grid draws.
+   *
+   * Folded from `matrixRows` and from nothing else, so the footer is the
+   * column above it and a reader who checks it finds it checks out. See the
+   * comment on `totalRevenue` at the `CohortHeatmap` call for why the DTO's
+   * own whole-history `revenueTotalAll` is deliberately NOT what goes here.
+   */
+  const visibleRevenueTotal = useMemo(
+    () => matrixRows.reduce((sum, row) => sum + row.revenueTotalAmount, 0),
+    [matrixRows],
+  )
+
   /*
    * Concentration grades the WRONG way round for the gauge's `auto` tone,
    * which was built for delivery-style rates where high is good. Here a high
@@ -498,24 +511,36 @@ export function CohortPage() {
               /*
                 THE SUMMARY ROW'S «Kogorta tushumi», which printed «—» until
                 now because the grid is handed money already formatted and had
-                nothing to add. It does not fold the column either: the figure
-                is the DTO's own `revenueTotalAll`, the same
-                `firstRevenue + laterRevenue` that «Takroriy tushum ulushi»
-                divides, so the two cannot be built from different reads.
+                nothing to add. So it is added HERE, beside the formatters —
+                and what is added is the column the reader can see.
 
-                It is WHOLE HISTORY and the column above it is the eighteen
-                months the page asked for, so the cell names its span — the way
-                the tiles name theirs — rather than inviting a reader to add up
-                what they can see and find a different number.
+                NOT `revenueTotalAll`, although the DTO now carries it. That is
+                the company's whole history, and it would have made its only
+                appearance on this screen in a table FOOTER, whose grammar
+                already promises «the column, added up». The tiles at the top
+                can carry a whole-history figure because each wears a visible
+                hint line naming its span; this cell has a `title` and an
+                `aria-label` and no visible marker at all, so a sighted reader
+                scanning the column would see one number under a column of
+                numbers and read it as their total. It would have been right
+                far more often than it looked wrong, which is the worst way for
+                a figure to be wrong.
+
+                Well-defined, and it stays well-defined: `months` bounds the
+                grid's COLUMNS, not its rows, so every row handed over is drawn
+                whichever width the reader picks and this sum does not move
+                under the 6 / 12 / Hammasi control. `revenueTotalAmount` is the
+                lossy major-unit number, which is exactly the right one here —
+                it is the same number already printed in every cell of this
+                column.
 
                 «1 mijozga» keeps its «—» and its sentence. A mean of
                 per-customer figures across cohorts of different ages is not a
                 fact about anything.
               */
               totalRevenue={{
-                compact: formatCompactUzs(data.revenueTotalAll.amount),
-                exact: formatUzs(data.revenueTotalAll.amount),
-                span: 'butun tarix boʻyicha',
+                compact: formatCompactUzs(visibleRevenueTotal),
+                exact: formatUzs(visibleRevenueTotal),
               }}
             />
           )}
