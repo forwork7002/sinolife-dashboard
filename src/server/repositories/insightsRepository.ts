@@ -1428,7 +1428,7 @@ export class InsightsRepository {
 
       -- PER BUCKET, "new" MEANS THIS BUCKET IS WHERE THE CUSTOMER ARRIVED --
       -- their first-ever order's bucket equals this row's bucket. Comparing
-      -- first_ts against the WINDOW START ($1) instead -- the shape the
+      -- first_ts against the WINDOW START ($1) alone -- the shape the
       -- summary arm above correctly uses for its own single total -- marks a
       -- customer new in every bucket they ordered in, not only the one they
       -- arrived in. Measured on this database over 2024-01-01..2027-01-01:
@@ -1436,17 +1436,34 @@ export class InsightsRepository {
       -- to 1306 across 19 monthly buckets -- the chart would have printed
       -- about six times the tile sitting directly above it.
       --
-      -- RETURNING IS DIFFERENT, AND IS EXPECTED TO SUM TO MORE THAN
-      -- summary.returning_customers -- do not "fix" that. A customer who
-      -- orders again in three separate buckets inside the window is
-      -- legitimately returning in all three; the summary total counts the
-      -- PERSON once, this arm counts the bucket visits.
+      -- BUT THE BUCKET COMPARISON ALONE IS NOT ENOUGH EITHER, and
+      -- first_ts >= $1 is not a redundant conjunct to drop. It is sufficient
+      -- on its own only when the window START is aligned to the grain, and a
+      -- custom range need not be: $1 = 2026-01-15, $2 = 2026-07-15, month
+      -- grain. A customer whose first order EVER was 2026-01-10 (before the
+      -- window) who orders again on 2026-01-20 (inside it) truncates BOTH
+      -- timestamps to 2026-01-01, so first_bucket = bucket reads true even
+      -- though the summary arm correctly calls this customer returning. Any
+      -- custom range longer than 62 days that does not start on the 1st
+      -- reaches this. Both conjuncts are required: the bucket match confines
+      -- a customer to ONE bucket, and $1 confines "new" to customers the
+      -- summary arm also calls new.
+      --
+      -- RETURNING IS THE COMPLEMENT, NOT A SEPARATE RULE: first_bucket can
+      -- never exceed bucket (a customer's first-ever order can never be
+      -- later than another order of theirs inside the window), so
+      -- NOT (first_ts >= $1 AND first_bucket = bucket) simplifies to
+      -- first_ts < $1 OR first_bucket < bucket. It is expected to sum to
+      -- MORE than summary.returning_customers -- do not "fix" that. A
+      -- customer who orders again in three separate buckets inside the
+      -- window is legitimately returning in all three; the summary total
+      -- counts the PERSON once, this arm counts the bucket visits.
       SELECT
         1,
         bucket,
         NULL::text, NULL::text,
-        count(DISTINCT cid) FILTER (WHERE first_bucket = bucket)::bigint,
-        count(DISTINCT cid) FILTER (WHERE first_bucket < bucket)::bigint,
+        count(DISTINCT cid) FILTER (WHERE first_ts >= $1 AND first_bucket = bucket)::bigint,
+        count(DISTINCT cid) FILTER (WHERE first_ts < $1 OR first_bucket < bucket)::bigint,
         NULL::bigint, NULL::bigint, NULL::text, NULL::text
       FROM bucketed
       GROUP BY 1, 2

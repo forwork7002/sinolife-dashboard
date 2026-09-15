@@ -69,21 +69,23 @@ describe('the customer flow statement', () => {
     expect(cte).toMatch(/ORDER BY ts, sid NULLS LAST, deal_id/i)
   })
 
-  it('classifies new and returning per BUCKET, not against the window start', () => {
+  it('classifies new and returning per BUCKET, AND against the window start — both, never either alone', () => {
     /*
-      first_ts >= $1 compares against the WINDOW START, so a customer who
-      ordered in three different buckets inside the window reads as new in
-      all three — measured on this database: summary.new_customers = 220,
-      but that shape summed to 1306 across the series. Comparing the two
-      TRUNCATED timestamps confines a customer to exactly the one bucket
-      their first-ever order actually falls in.
+      The bucket comparison alone is sufficient only when the window starts
+      on a grain boundary, which a custom range need not: $1 = 2026-01-15,
+      month grain, a customer whose first order EVER was 2026-01-10 (before
+      the window) who orders again on 2026-01-20 (inside it) truncates both
+      timestamps to 2026-01-01, so first_bucket = bucket alone would call
+      them new although the summary arm correctly calls them returning. The
+      window bound the summary arm uses ($1) is not a redundant conjunct
+      here — dropping it as "the series arm handles buckets now" reopens
+      exactly this mismatch between the tile and the chart under it.
     */
     const firstUnion = code().indexOf('UNION ALL')
     const secondUnion = code().indexOf('UNION ALL', firstUnion + 1)
     const series = code().slice(firstUnion, secondUnion)
-    expect(series).toMatch(/first_bucket\s*=\s*bucket/i)
-    expect(series).toMatch(/first_bucket\s*<\s*bucket/i)
-    expect(series).not.toMatch(/first_ts\s*>=\s*\$1/)
+    expect(series).toMatch(/FILTER \(WHERE first_ts >= \$1 AND first_bucket = bucket\)/i)
+    expect(series).toMatch(/FILTER \(WHERE first_ts < \$1 OR first_bucket < bucket\)/i)
   })
 
   it('bounds the window half-open, the way every other period query does', () => {
