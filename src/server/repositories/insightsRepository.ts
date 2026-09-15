@@ -32,6 +32,11 @@
  */
 
 import type { PrismaClient } from '@/generated/prisma/client'
+import {
+  CUSTOMER_ACTIVE_DAYS,
+  CUSTOMER_AT_RISK_DAYS,
+  type CustomerStateKey,
+} from '@/lib/customerStates'
 import { LOGISTICS_BUCKETS, UNMAPPED_BUCKET } from '@/lib/logisticsBuckets'
 import {
   RETENTION_GROUPS,
@@ -212,6 +217,38 @@ export interface CohortRow {
 export interface RetentionStage {
   readonly stage: string
   readonly customers: number
+}
+
+export interface CustomerStateCounts {
+  readonly customers: number
+  readonly ours: Record<CustomerStateKey, number>
+}
+
+export interface CustomerFlowRows {
+  readonly summary: {
+    readonly newCustomers: number
+    readonly returningCustomers: number
+    readonly activeCustomers: number
+    readonly newCustomersWon: number
+    readonly firstRevenueMinor: bigint
+    readonly repeatRevenueMinor: bigint
+  }
+  readonly series: readonly {
+    readonly bucket: string // 'YYYY-MM-DD'
+    readonly newCustomers: number
+    readonly returningCustomers: number
+  }[]
+  readonly sources: readonly {
+    readonly key: string // SalesSource id, or '' for no source
+    readonly label: string // source name, or '(manbasiz)'
+    readonly newCustomers: number
+  }[]
+}
+
+export interface SourceRepeatRate {
+  readonly key: string // SalesSource id, or '' for no source
+  readonly maturedCustomers: number
+  readonly repeatPercent: number | null
 }
 
 /**
@@ -1329,6 +1366,363 @@ export class InsightsRepository {
     }).join('\n          ')
 
     return `CASE\n          ${arms}\n          ELSE '${UNMAPPED_RETENTION_GROUP}'\n        END`
+  }
+
+  /**
+   * How long each customer has gone silent, on the order clock — nothing
+   * about which База stage they sit on.
+   *
+   * THE PORTAL'S OWN VERDICT ON THE SAME PEOPLE IS ALREADY ON THIS SCREEN,
+   * drawn from `retentionGroupCaseSql` above and `src/features/cohort/
+   * StateBars.tsx`. This statement used to carry a second, competing
+   * partition of that same funnel and lost it on 2026-09-15: two statements
+   * answering the same question is how they start disagreeing. What is left
+   * is the one reading no stage table can give.
+   *
+   * NO PERIOD, ON PURPOSE. Silence is a state as of now — exactly like the
+   * «База — mijozlar hozir qayerda» ladder beside it on the same screen. A
+   * customer who went quiet in March did not become un-quiet because the
+   * reader picked August.
+   *
+   * THE THREE COUNTS MUST SUM TO `customers`: `ours` partitions every row of
+   * `last_order`, which shares its WHERE clause with `cust`, so every
+   * customer in the denominator lands in exactly one of ACTIVE, AT_RISK or
+   * LOST.
+   */
+  async customerStates(): Promise<CustomerStateCounts> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        customers: bigint | null
+        active: bigint | null
+        at_risk: bigint | null
+        lost: bigint | null
+      }[]
+    >(
+      `
+      WITH cust AS (
+        SELECT DISTINCT d."customerId" AS cid
+        FROM "deal" d
+        WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
+      ),
+      -- The order clock. Deliberately createdAtSource and not closedAt: the
+      -- band this feeds counts arrivals, and the cohort matrix on the same
+      -- screen states the other clock in its own heading.
+      last_order AS (
+        SELECT d."customerId" AS cid, max(d."createdAtSource") AS last_ts
+        FROM "deal" d
+        WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
+        GROUP BY 1
+      ),
+      ours AS (
+        SELECT l.cid,
+          CASE
+            WHEN l.last_ts >= now() - make_interval(days => $1::int) THEN 'ACTIVE'
+            WHEN l.last_ts >= now() - make_interval(days => $2::int) THEN 'AT_RISK'
+            ELSE 'LOST'
+          END AS state
+        FROM last_order l
+      )
+      SELECT
+        (SELECT count(*) FROM cust)::bigint AS customers,
+        count(*) FILTER (WHERE state = 'ACTIVE')::bigint AS active,
+        count(*) FILTER (WHERE state = 'AT_RISK')::bigint AS at_risk,
+        count(*) FILTER (WHERE state = 'LOST')::bigint AS lost
+      FROM ours
+      `,
+      CUSTOMER_ACTIVE_DAYS,
+      CUSTOMER_AT_RISK_DAYS,
+    )
+
+    const row = rows[0]
+
+    return {
+      customers: int(row?.customers ?? 0n),
+      // The three state literals above are exactly the CustomerStateKey
+      // values, and they partition `ours` — one row per customer, one
+      // FILTER matches each — so active + at_risk + lost sums to customers.
+      ours: {
+        ACTIVE: int(row?.active ?? 0n),
+        AT_RISK: int(row?.at_risk ?? 0n),
+        LOST: int(row?.lost ?? 0n),
+      },
+    }
+  }
+
+  /**
+   * How customers arrived in the window: new, returning, and from where.
+   *
+   * THE CLOCK IS THE ORDER DATE — `createdAtSource` — chosen by the client
+   * over the delivered date («buyurtma bergan sana (kelgan kun)»). The cohort
+   * matrix on the same screen is cohorted by `closedAt` on WON deals and
+   * legitimately prints a different customer total (15 867 against 11 512 on
+   * 2026-09-15). Both blocks state their clock in their own heading; neither
+   * is wrong and they must never be summed.
+   *
+   * NEW IS DECIDED AGAINST THE WHOLE HISTORY. `first_ts` carries no date
+   * bound. Bounded to the window every customer in it would look new and the
+   * returning count would be a flat zero.
+   *
+   * STATUS IS FILTERED ONLY FOR MONEY. A refused order is an arrival, not a
+   * soʻm, and 26% of revenue-pipeline orders never reach WON — a status
+   * filter in the wrong place moves a quarter of this band.
+   *
+   * ONE WALK OF "deal", AND HERE THAT IS THE CHEAP SHAPE. `cohorts` measured
+   * the opposite and its note says why: its window function sorts ~180 000
+   * rows against a 2 MB `work_mem` and spills. This statement's set is the
+   * 18 392 revenue-bearing deals, which sorts in memory — measured at 0.4-0.9 s
+   * from this machine including the fra1 round trip.
+   */
+  async customerFlow(options: {
+    period: Period
+    grain: 'day' | 'month'
+  }): Promise<CustomerFlowRows> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        kind: number
+        bucket: Date | null
+        source_key: string | null
+        source_label: string | null
+        new_customers: bigint | null
+        returning_customers: bigint | null
+        active_customers: bigint | null
+        new_customers_won: bigint | null
+        first_revenue: MoneyText
+        repeat_revenue: MoneyText
+      }[]
+    >(
+      `
+      WITH orders AS (
+        SELECT d."id" AS deal_id,
+               d."customerId" AS cid,
+               d."createdAtSource" AS ts,
+               d."amountMinor" AS amount,
+               d."status" AS status,
+               d."sourceId" AS sid
+        FROM "deal" d
+        WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
+      ),
+      -- NO DATE BOUND HERE, and that is the whole correctness property: a
+      -- customer is new because this is their first order EVER, not because
+      -- it is the earliest one the reader's window happens to contain.
+      ranked AS (
+        SELECT cid, ts, amount, status, sid,
+               -- deal_id breaks the tie when one customer has two orders at
+               -- the same ts AND the same (possibly NULL) sid -- without it,
+               -- which row wins rn = 1 is whatever order the planner happens
+               -- to produce, and that decides both the credited source below
+               -- and the first/repeat revenue split above.
+               row_number() OVER (PARTITION BY cid ORDER BY ts, sid NULLS LAST, deal_id) AS rn,
+               min(ts) OVER (PARTITION BY cid) AS first_ts
+        FROM orders
+      ),
+      win AS (SELECT * FROM ranked WHERE ts >= $1 AND ts < $2),
+      -- Only the series arm buckets by grain. Built on win, not inlined in
+      -- that arm, so date_trunc runs once per row instead of being repeated
+      -- for every place it is read below (the GROUP BY and both FILTERs).
+      bucketed AS (
+        SELECT *,
+               date_trunc($3, ts AT TIME ZONE 'UTC' AT TIME ZONE $4) AS bucket,
+               date_trunc($3, first_ts AT TIME ZONE 'UTC' AT TIME ZONE $4) AS first_bucket
+        FROM win
+      )
+
+      SELECT
+        0 AS kind,
+        NULL::timestamp AS bucket,
+        NULL::text AS source_key,
+        NULL::text AS source_label,
+        count(DISTINCT cid) FILTER (WHERE first_ts >= $1)::bigint AS new_customers,
+        count(DISTINCT cid) FILTER (WHERE first_ts < $1)::bigint AS returning_customers,
+        count(DISTINCT cid)::bigint AS active_customers,
+        -- Of the window's new customers, how many actually bought. Printed
+        -- under the tile because «yangi mijoz» counts arrivals and a quarter
+        -- of them never land.
+        count(DISTINCT cid) FILTER (WHERE first_ts >= $1 AND status = 'WON')::bigint
+          AS new_customers_won,
+        -- The same split the repeat-share gauge on this screen already makes:
+        -- per ORDER, first against later, never per customer.
+        COALESCE(sum(amount) FILTER (WHERE rn = 1 AND status = 'WON'), 0)::text AS first_revenue,
+        COALESCE(sum(amount) FILTER (WHERE rn > 1 AND status = 'WON'), 0)::text AS repeat_revenue
+      FROM win
+
+      UNION ALL
+
+      -- PER BUCKET, "new" MEANS THIS BUCKET IS WHERE THE CUSTOMER ARRIVED --
+      -- their first-ever order's bucket equals this row's bucket. Comparing
+      -- first_ts against the WINDOW START ($1) alone -- the shape the
+      -- summary arm above correctly uses for its own single total -- marks a
+      -- customer new in every bucket they ordered in, not only the one they
+      -- arrived in. Measured on this database over 2024-01-01..2027-01-01:
+      -- summary.new_customers = 220, but that window-relative shape summed
+      -- to 1306 across 19 monthly buckets -- the chart would have printed
+      -- about six times the tile sitting directly above it.
+      --
+      -- BUT THE BUCKET COMPARISON ALONE IS NOT ENOUGH EITHER, and
+      -- first_ts >= $1 is not a redundant conjunct to drop. It is sufficient
+      -- on its own only when the window START is aligned to the grain, and a
+      -- custom range need not be: $1 = 2026-01-15, $2 = 2026-07-15, month
+      -- grain. A customer whose first order EVER was 2026-01-10 (before the
+      -- window) who orders again on 2026-01-20 (inside it) truncates BOTH
+      -- timestamps to 2026-01-01, so first_bucket = bucket reads true even
+      -- though the summary arm correctly calls this customer returning. Any
+      -- custom range longer than 62 days that does not start on the 1st
+      -- reaches this. Both conjuncts are required: the bucket match confines
+      -- a customer to ONE bucket, and $1 confines "new" to customers the
+      -- summary arm also calls new.
+      --
+      -- RETURNING IS THE COMPLEMENT, NOT A SEPARATE RULE: first_bucket can
+      -- never exceed bucket (a customer's first-ever order can never be
+      -- later than another order of theirs inside the window), so
+      -- NOT (first_ts >= $1 AND first_bucket = bucket) simplifies to
+      -- first_ts < $1 OR first_bucket < bucket. It is expected to sum to
+      -- MORE than summary.returning_customers -- do not "fix" that. A
+      -- customer who orders again in three separate buckets inside the
+      -- window is legitimately returning in all three; the summary total
+      -- counts the PERSON once, this arm counts the bucket visits.
+      SELECT
+        1,
+        bucket,
+        NULL::text, NULL::text,
+        count(DISTINCT cid) FILTER (WHERE first_ts >= $1 AND first_bucket = bucket)::bigint,
+        count(DISTINCT cid) FILTER (WHERE first_ts < $1 OR first_bucket < bucket)::bigint,
+        NULL::bigint, NULL::bigint, NULL::text, NULL::text
+      FROM bucketed
+      GROUP BY 1, 2
+
+      UNION ALL
+
+      -- WHERE THE WINDOW'S NEW CUSTOMERS CAME FROM.
+      --
+      -- rn = 1 inside the window IS the set of new customers, so these rows
+      -- sum exactly to new_customers above — an invariant the screen relies
+      -- on to print a share. The LEFT JOIN keeps the sourceless row (1.7% of
+      -- orders); dropped, the block would silently lie about its denominator.
+      SELECT
+        2,
+        -- Cast, not a bare NULL: GROUP BY 2 below otherwise forces this
+        -- literal to resolve as text, and the UNION then refuses to match it
+        -- against the timestamp bucket the other two arms carry — a type
+        -- error on every call, never on a shape-only test of the source text.
+        NULL::timestamp,
+        COALESCE(s."id", '') AS source_key,
+        COALESCE(s."name", '(manbasiz)') AS source_label,
+        count(DISTINCT w.cid)::bigint,
+        -- Every padding NULL cast to match its column's type in the summary
+        -- arm above -- cohorts() does the same in every arm, for the same
+        -- reason the bucket cast above is not optional: a bare NULL is only
+        -- safe here because some sibling arm happens to fix the column's
+        -- type first, which is an accident of arm order, not a guarantee.
+        NULL::bigint, NULL::bigint, NULL::bigint, NULL::text, NULL::text
+      FROM win w
+      LEFT JOIN "sales_source" s ON s."id" = w.sid
+      WHERE w.rn = 1
+      GROUP BY 2, 3, 4
+
+      ORDER BY 1, 2, 5 DESC
+      `,
+      options.period.start,
+      options.period.end,
+      options.grain,
+      this.tz,
+    )
+
+    const summary = rows.find((row) => row.kind === 0)
+
+    return {
+      summary: {
+        newCustomers: int(summary?.new_customers ?? 0n),
+        returningCustomers: int(summary?.returning_customers ?? 0n),
+        activeCustomers: int(summary?.active_customers ?? 0n),
+        newCustomersWon: int(summary?.new_customers_won ?? 0n),
+        firstRevenueMinor: money(summary?.first_revenue ?? null),
+        repeatRevenueMinor: money(summary?.repeat_revenue ?? null),
+      },
+      series: rows
+        .filter((row) => row.kind === 1 && row.bucket !== null)
+        .map((row) => ({
+          bucket: (row.bucket as Date).toISOString().slice(0, 10),
+          newCustomers: int(row.new_customers ?? 0n),
+          returningCustomers: int(row.returning_customers ?? 0n),
+        })),
+      sources: rows
+        .filter((row) => row.kind === 2)
+        .map((row) => ({
+          key: row.source_key ?? '',
+          label: row.source_label ?? '(manbasiz)',
+          newCustomers: int(row.new_customers ?? 0n),
+        })),
+    }
+  }
+
+  /**
+   * How often a source's customers come back — a property of the SOURCE.
+   *
+   * NO PERIOD, AND A 90-DAY HORIZON. Only customers whose first order is old
+   * enough to have had a chance to return are counted. Without that horizon a
+   * source that acquired heavily last month reports a near-zero repeat rate
+   * for no reason but the calendar, and every source is understated:
+   * measured on production 2026-09-15 over the last 365 days, Ген лид reads
+   * 8.0% uncontrolled against 12.4% on the horizon, Входящий 10.2% against
+   * 16.9%, and «База клиент» 19.6% against 40.3% — a twenty-point error on
+   * the row a reader would act on first.
+   *
+   * It is the same rule the concentration card on this screen already applies
+   * to `repurchaseWithin90Percent`, which is what stops one screen printing
+   * two different answers to "do they come back".
+   *
+   * THE COLUMN DOES NOT FOLLOW THE PERIOD CONTROL, and the block's hint says
+   * so. A rate that sat beside a period-scoped count and silently ignored it
+   * would be the worst of both.
+   */
+  async sourceRepeatRates(): Promise<readonly SourceRepeatRate[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { source_key: string | null; matured: bigint; returned: bigint }[]
+    >(
+      `
+      WITH orders AS (
+        SELECT d."id" AS deal_id,
+               d."customerId" AS cid,
+               d."createdAtSource" AS ts,
+               d."sourceId" AS sid
+        FROM "deal" d
+        WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
+      ),
+      ranked AS (
+        SELECT cid, ts, sid,
+               -- deal_id breaks the tie when one customer has two orders at
+               -- the same ts AND the same (possibly NULL) sid -- without it,
+               -- which row wins rn = 1 is whatever order the planner happens
+               -- to produce, and here that decides which source is credited
+               -- with acquiring this customer, the entire output of this
+               -- method. customerFlow ends its own ranked ORDER BY the same way.
+               row_number() OVER (PARTITION BY cid ORDER BY ts, sid NULLS LAST, deal_id) AS rn,
+               count(*) OVER (PARTITION BY cid) AS orders
+        FROM orders
+      )
+      SELECT
+        COALESCE(s."id", '') AS source_key,
+        count(*)::bigint AS matured,
+        count(*) FILTER (WHERE r.orders > 1)::bigint AS returned
+      FROM ranked r
+      LEFT JOIN "sales_source" s ON s."id" = r.sid
+      -- The horizon. A first order younger than this has not had its chance.
+      WHERE r.rn = 1 AND r.ts < now() - interval '90 days'
+      GROUP BY 1
+      `,
+    )
+
+    return rows.map((row) => {
+      const matured = int(row.matured)
+      return {
+        key: row.source_key ?? '',
+        maturedCustomers: matured,
+        /* Null, never 0, when nothing has matured: «no answer yet» is not
+           «nobody came back», and the component that draws it renders the
+           two differently. */
+        repeatPercent:
+          matured === 0 ? null : Math.round((int(row.returned) / matured) * 1000) / 10,
+      }
+    })
   }
 
   // -------------------------------------------------------------------------

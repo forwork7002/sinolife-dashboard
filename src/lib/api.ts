@@ -1449,3 +1449,76 @@ export interface ConcentrationDto {
   readonly hhi: ConcentrationHhiDto
   readonly repeat: ConcentrationRepeatDto
 }
+
+// ---------------------------------------------------------------------------
+// Mijozlar oqimi — the band at the top of «Mijoz qaytishi» (`/analytics/cohort`).
+// Mirrors the DTOs in `src/server/services/insightsService.ts`, beside
+// `customerFlow`.
+// ---------------------------------------------------------------------------
+
+/**
+ * THREE READS, THREE CLOCKS, AND THE SCREEN MUST SAY WHICH IS WHICH:
+ *
+ *   - `summary` and `series` are this band's OWN trailing window, by ORDER
+ *     date (`createdAtSource`) — ninety days by default, `days` on the
+ *     route. The resolved span is NOT on this DTO: it rides back in the
+ *     response's `meta.period`, the same place `/insights/concentration`
+ *     puts its own self-resolved window, because the ROUTE resolves it, not
+ *     the service. See `InsightsService.customerFlow`.
+ *   - `sources[].repeatPercent` and `.maturedCustomers` are the WHOLE
+ *     history, on a fixed ninety-day maturity horizon, and move with neither
+ *     the resolved window above nor the calendar below. `sources[].newCustomers`
+ *     and `.sharePercent` DO belong to that window, same as `summary`.
+ *   - `states` takes no window at all — it is TODAY, a customer's silence
+ *     measured against their own last order as of now.
+ *
+ * `CohortSummaryDto` on the same screen counts a customer from when their
+ * FIRST ORDER WAS DELIVERED (`closedAt` on a WON deal), not when they
+ * ordered — so its total and this DTO's `summary.newCustomers` /
+ * `states.customers` legitimately disagree, on purpose. Never sum across them.
+ */
+export interface CustomerFlowSummaryDto {
+  readonly newCustomers: number
+  readonly returningCustomers: number
+  readonly activeCustomers: number
+  readonly newCustomersWon: number
+  readonly firstRevenue: MoneyDto
+  readonly repeatRevenue: MoneyDto
+  /** Null when there is no money at all, never a manufactured zero. */
+  readonly repeatRevenueSharePercent: number | null
+}
+
+export interface CustomerFlowPointDto {
+  readonly bucket: string
+  readonly newCustomers: number
+  readonly returningCustomers: number
+}
+
+export interface CustomerSourceDto {
+  readonly key: string
+  readonly label: string
+  readonly newCustomers: number
+  /** Share of `summary.newCustomers`. Null when there are no new customers to share. */
+  readonly sharePercent: number | null
+  /** The whole history, ninety-day horizon. Null when nobody has matured yet. */
+  readonly repeatPercent: number | null
+  readonly maturedCustomers: number
+}
+
+export interface CustomerStateRowDto {
+  readonly key: string
+  readonly label: string
+  readonly colour: string
+  readonly customers: number
+}
+
+export interface CustomerFlowDto {
+  readonly summary: CustomerFlowSummaryDto
+  readonly series: readonly CustomerFlowPointDto[]
+  readonly sources: readonly CustomerSourceDto[]
+  readonly states: {
+    readonly customers: number
+    /** In `CUSTOMER_STATES` order — see `src/lib/customerStates.ts`. */
+    readonly rows: readonly CustomerStateRowDto[]
+  }
+}

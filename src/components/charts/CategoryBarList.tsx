@@ -22,6 +22,15 @@ import { formatPercent } from '@/lib/format'
  *               RingGauge on the dashboard. Null renders an em dash and no
  *               bar: «nothing has resolved yet» is not «zero per cent».
  *
+ *   share     — a hundred-denominator bar too, but NEVER graded. `rate`'s
+ *               85/60 thresholds are right for a delivery rate and wrong for
+ *               a repeat rate: on «Mijoz qaytishi» those run 9%–40%, so every
+ *               source would paint critical and the dashboard would be
+ *               asserting a benchmark nothing in this business supports. Both
+ *               rate gauges already on that screen carry `tone="neutral"` for
+ *               the same reason, and this keeps the bar list agreeing with
+ *               them.
+ *
  * STACKED PANELS, NEVER A SECOND AXIS. Two of these under one heading, in the
  * SAME row order, is how volume and rate are compared here — a dual-axis chart
  * can be rescaled to imply any relationship between them, which is why this
@@ -54,7 +63,7 @@ export function CategoryBarList({
   emptyBody,
 }: {
   rows: readonly CategoryBarRow[]
-  mode: 'magnitude' | 'rate'
+  mode: 'magnitude' | 'rate' | 'share'
   status: 'loading' | 'error' | 'ready'
   emptyBody?: string
 }) {
