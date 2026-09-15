@@ -32,6 +32,14 @@
  */
 
 import type { PrismaClient } from '@/generated/prisma/client'
+import {
+  CUSTOMER_ACTIVE_DAYS,
+  CUSTOMER_AT_RISK_DAYS,
+  type CustomerStateKey,
+  RETENTION_STATE_STAGES,
+  STATE_BUCKET,
+  UNBUCKETED_BUCKET,
+} from '@/lib/customerStates'
 import { LOGISTICS_BUCKETS, UNMAPPED_BUCKET } from '@/lib/logisticsBuckets'
 import { env } from '@/server/config/env'
 import {
@@ -195,6 +203,14 @@ export interface CohortRow {
 export interface RetentionStage {
   readonly stage: string
   readonly customers: number
+}
+
+export interface CustomerStateCounts {
+  readonly customers: number
+  readonly ours: Record<CustomerStateKey, number>
+  readonly portal: Record<CustomerStateKey, number> & { readonly ABSENT: number }
+  /** RETENTION stages the table does not name. Expected empty; see the method. */
+  readonly unbucketedStages: readonly string[]
 }
 
 /**
@@ -1139,6 +1155,154 @@ export class InsightsRepository {
         .filter((r) => r.is_total === 0)
         .map((r) => ({ stage: r.stage ?? '', customers: int(r.customers) })),
       workedCustomers: int(rows.find((r) => r.is_total === 1)?.open_customers ?? 0n),
+    }
+  }
+
+  /**
+   * ONE CASE, GENERATED FROM THE STATE TABLE.
+   *
+   * Hand-writing the stage-to-bucket mapping here would be a second
+   * definition of something the screen also reads, and the two would agree
+   * right up until somebody moved a stage. `ELSE ${UNBUCKETED_BUCKET}` is the
+   * honesty valve and is not optional: a stage this table does not name is
+   * reported by name rather than quietly counted as healthy.
+   *
+   * The stage names come from our own constant, never from a caller, but the
+   * quote doubling stays — a table that grows an apostrophe should produce a
+   * wrong row rather than a broken statement.
+   */
+  private static stateCaseSql(stageColumn: string): string {
+    const arms = RETENTION_STATE_STAGES.flatMap((row) =>
+      row.stages.map(
+        (stage) => `WHEN '${stage.replace(/'/g, "''")}' THEN ${STATE_BUCKET[row.state]}`,
+      ),
+    ).join(`
+            `)
+    return `CASE ${stageColumn}
+            ${arms}
+            ELSE ${UNBUCKETED_BUCKET}
+          END`
+  }
+
+  /**
+   * Where every customer stands TODAY, by two verdicts that disagree.
+   *
+   * NO PERIOD, ON PURPOSE. Churn is a state as of now — exactly like the
+   * «База — mijozlar hozir qayerda» ladder beside it on the same screen.
+   * A customer who went quiet in March did not become un-quiet because the
+   * reader picked August.
+   *
+   * THE TWO COLUMNS ARE NOT MEANT TO AGREE. Measured on production
+   * 2026-09-15: the portal calls 7 609 customers active where their order
+   * dates say 4 753, and calls 3 452 dead where the order dates say 6 062 —
+   * some 2 900 people sitting in an active-looking stage who have not ordered
+   * in five months. One column reports what the retention desk believes, the
+   * other what the customers did. Averaging them would delete the finding.
+   *
+   * ONE STATEMENT, TWO ARMS: the counts, then the unrecognised stage names.
+   */
+  async customerStates(): Promise<CustomerStateCounts> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        kind: number
+        stage: string | null
+        customers: bigint | null
+        ours_active: bigint | null
+        ours_at_risk: bigint | null
+        ours_lost: bigint | null
+        portal_active: bigint | null
+        portal_at_risk: bigint | null
+        portal_lost: bigint | null
+        portal_absent: bigint | null
+      }[]
+    >(
+      `
+      WITH cust AS (
+        SELECT DISTINCT d."customerId" AS cid
+        FROM "deal" d
+        WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
+      ),
+      -- The order clock. Deliberately createdAtSource and not closedAt: the
+      -- band this feeds counts arrivals, and the cohort matrix on the same
+      -- screen states the other clock in its own heading.
+      last_order AS (
+        SELECT d."customerId" AS cid, max(d."createdAtSource") AS last_ts
+        FROM "deal" d
+        WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
+        GROUP BY 1
+      ),
+      ours AS (
+        SELECT l.cid,
+          CASE
+            WHEN l.last_ts >= now() - make_interval(days => $1::int) THEN ${STATE_BUCKET.ACTIVE}
+            WHEN l.last_ts >= now() - make_interval(days => $2::int) THEN ${STATE_BUCKET.AT_RISK}
+            ELSE ${STATE_BUCKET.LOST}
+          END AS bucket
+        FROM last_order l
+      ),
+      baza AS (
+        SELECT d."customerId" AS cid, s."name" AS stage,
+               ${InsightsRepository.stateCaseSql('s."name"')} AS bucket
+        FROM "deal" d
+        JOIN "deal_stage" s ON s."id" = d."stageId"
+        JOIN "pipeline" p ON p."id" = d."pipelineId"
+        WHERE p."role" = 'RETENTION'
+          AND d."status" = 'OPEN'
+          AND d."customerId" IS NOT NULL
+      ),
+      -- ONE ROW PER CUSTOMER, IN THEIR BEST BUCKET. A person on two open
+      -- stages is one person; min() is correct only because ACTIVE < AT_RISK
+      -- < LOST < UNBUCKETED, which customerStates.test.ts pins.
+      best AS (SELECT cid, min(bucket) AS bucket FROM baza GROUP BY cid),
+      -- LEFT JOIN, so a customer who never entered База is counted rather
+      -- than dropped: without it the two columns carry different
+      -- denominators and cannot be read against each other.
+      portal AS (
+        SELECT c.cid, COALESCE(b.bucket, 0) AS bucket
+        FROM cust c LEFT JOIN best b ON b.cid = c.cid
+      )
+      SELECT
+        0 AS kind,
+        NULL::text AS stage,
+        (SELECT count(*) FROM cust)::bigint AS customers,
+        (SELECT count(*) FROM ours WHERE bucket = ${STATE_BUCKET.ACTIVE})::bigint AS ours_active,
+        (SELECT count(*) FROM ours WHERE bucket = ${STATE_BUCKET.AT_RISK})::bigint AS ours_at_risk,
+        (SELECT count(*) FROM ours WHERE bucket = ${STATE_BUCKET.LOST})::bigint AS ours_lost,
+        (SELECT count(*) FROM portal WHERE bucket = ${STATE_BUCKET.ACTIVE})::bigint AS portal_active,
+        -- An unrecognised stage counts as at risk: not knowing where somebody
+        -- stands is not evidence that they are fine.
+        (SELECT count(*) FROM portal
+          WHERE bucket IN (${STATE_BUCKET.AT_RISK}, ${UNBUCKETED_BUCKET}))::bigint AS portal_at_risk,
+        (SELECT count(*) FROM portal WHERE bucket = ${STATE_BUCKET.LOST})::bigint AS portal_lost,
+        (SELECT count(*) FROM portal WHERE bucket = 0)::bigint AS portal_absent
+
+      UNION ALL
+
+      SELECT 1, u.stage, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+      FROM (SELECT DISTINCT stage FROM baza WHERE bucket = ${UNBUCKETED_BUCKET}) u
+      `,
+      CUSTOMER_ACTIVE_DAYS,
+      CUSTOMER_AT_RISK_DAYS,
+    )
+
+    const summary = rows.find((row) => row.kind === 0)
+
+    return {
+      customers: int(summary?.customers ?? 0n),
+      ours: {
+        ACTIVE: int(summary?.ours_active ?? 0n),
+        AT_RISK: int(summary?.ours_at_risk ?? 0n),
+        LOST: int(summary?.ours_lost ?? 0n),
+      },
+      portal: {
+        ACTIVE: int(summary?.portal_active ?? 0n),
+        AT_RISK: int(summary?.portal_at_risk ?? 0n),
+        LOST: int(summary?.portal_lost ?? 0n),
+        ABSENT: int(summary?.portal_absent ?? 0n),
+      },
+      unbucketedStages: rows
+        .filter((row) => row.kind === 1 && row.stage !== null)
+        .map((row) => row.stage as string),
     }
   }
 
