@@ -41,6 +41,11 @@ import {
   UNBUCKETED_BUCKET,
 } from '@/lib/customerStates'
 import { LOGISTICS_BUCKETS, UNMAPPED_BUCKET } from '@/lib/logisticsBuckets'
+import {
+  RETENTION_GROUPS,
+  RETENTION_GROUP_ORDER,
+  UNMAPPED_RETENTION_GROUP,
+} from '@/lib/retentionGroups'
 import { env } from '@/server/config/env'
 import {
   NO_EMPLOYEE_IN_SCOPE,
@@ -156,6 +161,18 @@ export interface CohortCell {
   readonly monthsSince: number
   readonly customers: number
   readonly revenueMinor: bigint
+  /**
+   * Customers whose FIRST return landed on this offset — the increment the
+   * cumulative curve is built from.
+   *
+   * Different from `customers`, and the difference is the whole point.
+   * `customers` is "bought again in this month", so somebody who comes back
+   * every month is in every cell; this counts each returning customer exactly
+   * once, in the month they first came back. Summed across a row it equals
+   * `CohortRow.returned` by construction, which is what lets the matrix's last
+   * measured cell agree with the «Qaytgan» column instead of overshooting it.
+   */
+  readonly firstReturners: number
 }
 
 /**
@@ -238,6 +255,25 @@ export interface SourceRepeatRate {
   readonly key: string // SalesSource id, or '' for no source
   readonly maturedCustomers: number
   readonly repeatPercent: number | null
+}
+
+/**
+ * One of the four states a customer in База can be in, and the stages inside it.
+ *
+ * Counted DISTINCT inside the group rather than summed from `stages`: a
+ * customer holding two open База deals sits on two stages, so adding the stage
+ * rows up counts them twice. The same caveat still holds BETWEEN groups — two
+ * deals in two groups put one person in both — which is why nothing on the
+ * screen presents these four as parts of a whole.
+ */
+export interface RetentionGroupRow {
+  /** A key from `RETENTION_GROUPS`, or `OTHER` for a stage the table has never seen. */
+  readonly key: string
+  readonly customers: number
+  /** Of those, the ones whose deal here is still OPEN — the ones being worked. */
+  readonly openCustomers: number
+  /** The portal's own stages inside this group, in funnel order. */
+  readonly stages: readonly RetentionStage[]
 }
 
 /**
@@ -930,6 +966,7 @@ export class InsightsRepository {
         size: bigint | null
         months_since: number | null
         customers: bigint | null
+        first_returners: bigint | null
         revenue: MoneyText
         returned: bigint | null
         total_customers: bigint | null
@@ -1001,11 +1038,40 @@ export class InsightsRepository {
         A separate aggregate rather than a window function, because a window
         function may not take DISTINCT.
       */
-      returners AS (
-        SELECT cohort, count(DISTINCT customer_id) AS returned
+      /*
+        EACH RETURNING CUSTOMER, ONCE, WITH THE MONTH THEY CAME BACK IN.
+
+        This replaced a "count(DISTINCT customer_id) GROUP BY cohort" that
+        answered only "how many came back". Both facts now come from one
+        aggregate, at the same cost: a count(DISTINCT) already has to group the
+        set by customer inside each cohort, so grouping by (cohort, customer)
+        explicitly and counting the groups is the same work with the offset
+        kept instead of thrown away.
+
+        What the offset buys is the cumulative curve. Per-month retention on
+        this portal runs 0-4%, so the matrix of monthly shares is 250 cells of
+        noise; «how many of this cohort have come back BY month N» runs 0-37%
+        and is the reading the business acts on. It cannot be summed from the
+        monthly cells — a customer who returns in +1 and again in +3 is in two
+        of them — so it has to be counted here, where the customer is still an
+        identity rather than a share.
+      */
+      first_return AS (
+        SELECT cohort, customer_id, min(months_since) AS first_offset
           FROM purchases
          WHERE months_since > 0
+         GROUP BY cohort, customer_id
+      ),
+      returners AS (
+        SELECT cohort, count(*)::bigint AS returned
+          FROM first_return
          GROUP BY cohort
+      ),
+      /* The per-offset increment. Summed across a cohort it IS returned. */
+      first_by_offset AS (
+        SELECT cohort, first_offset, count(*)::bigint AS first_returners
+          FROM first_return
+         GROUP BY cohort, first_offset
       ),
       -- The whole-history money, both halves, in ONE scan of "purchases".
       --
@@ -1028,6 +1094,10 @@ export class InsightsRepository {
         s.size,
         p.months_since,
         count(DISTINCT p.customer_id)::bigint AS customers,
+        -- Zero, not null, inside the measured span: an offset in which nobody
+        -- came back for the first time is a measured zero increment, and the
+        -- service decides what has not happened yet from the CLOCK.
+        COALESCE(fo.first_returners, 0)::bigint AS first_returners,
         sum(p.amount)::text AS revenue,
         -- How many of this cohort ever came back, counted once each; see the
         -- returners CTE. Repeated on every row of the cohort, which is what
@@ -1041,11 +1111,16 @@ export class InsightsRepository {
       FROM purchases p
       JOIN sized s ON s.cohort = p.cohort
       LEFT JOIN returners r ON r.cohort = p.cohort
+      -- LEFT, and it can never lose a row: a customer whose first return is at
+      -- offset N has a purchase at offset N, so every (cohort, offset) this
+      -- join could match already exists on the left.
+      LEFT JOIN first_by_offset fo
+             ON fo.cohort = p.cohort AND fo.first_offset = p.months_since
       -- The bound is on the ROWS only. The totals arm below deliberately
       -- carries no such clause; see the method's own note.
       WHERE p.cohort >= date_trunc('month', (now() AT TIME ZONE $1)) - make_interval(months => $2::int)
         AND p.months_since >= 0
-      GROUP BY p.cohort, s.size, p.months_since, r.returned
+      GROUP BY p.cohort, s.size, p.months_since, r.returned, fo.first_returners
 
       UNION ALL
 
@@ -1070,6 +1145,7 @@ export class InsightsRepository {
         NULL::bigint AS size,
         NULL::int AS months_since,
         NULL::bigint AS customers,
+        NULL::bigint AS first_returners,
         NULL::text AS revenue,
         NULL::bigint AS returned,
         (SELECT COALESCE(sum(size), 0)::bigint FROM sized) AS total_customers,
@@ -1109,6 +1185,7 @@ export class InsightsRepository {
       entry.cells.push({
         monthsSince: row.months_since,
         customers: int(row.customers),
+        firstReturners: int(row.first_returners),
         revenueMinor: money(row.revenue),
       })
       byCohort.set(key, entry)
@@ -1146,7 +1223,16 @@ export class InsightsRepository {
    * worked" in the team's own vocabulary, which the cohort matrix cannot.
    */
   async retentionStages(): Promise<{
-    readonly stages: RetentionStage[]
+    /** The four states, in `RETENTION_GROUPS` order, each carrying its stages. */
+    readonly groups: RetentionGroupRow[]
+    /**
+     * Distinct customers anywhere in База, counted once each.
+     *
+     * The honest denominator for the four groups, and NOT their sum: one
+     * customer with two open deals sits in two groups, so the bars add up to
+     * more than the base they came from.
+     */
+    readonly totalCustomers: number
     /**
      * Distinct customers on an OPEN retention deal — the ones actually being
      * worked, counted once each.
@@ -1158,31 +1244,98 @@ export class InsightsRepository {
      */
     readonly workedCustomers: number
   }> {
+    /*
+      THREE LEVELS FROM ONE PASS — stage, group, and the whole funnel.
+
+      Every level has to be a `count(DISTINCT customerId)` of its own, because
+      a customer is in a group once however many of its stages they stand on,
+      and in the base once however many groups they are in. GROUPING SETS is
+      what makes that one walk of the funnel instead of three; summing the
+      level below is the error this shape exists to make impossible, and it is
+      the one that produced a "base" bigger than the customer list.
+    */
     const rows = await this.prisma.$queryRawUnsafe<
-      { stage: string | null; is_total: number; customers: bigint; open_customers: bigint }[]
+      {
+        grp: string | null
+        stage: string | null
+        g_stage: number
+        g_grp: number
+        customers: bigint
+        open_customers: bigint
+        sort_order: number | null
+      }[]
     >(
       `
+      WITH labelled AS (
+        SELECT
+          d."customerId" AS customer_id,
+          d."status" AS status,
+          ${InsightsRepository.retentionGroupCaseSql('s."externalId"')} AS grp,
+          s."name" AS stage,
+          s."sortOrder" AS sort_order
+        FROM "deal" d
+        JOIN "deal_stage" s ON s."id" = d."stageId"
+        JOIN "pipeline" p ON p."id" = d."pipelineId"
+        WHERE p."role" = 'RETENTION' AND d."customerId" IS NOT NULL
+      )
       SELECT
-        s."name" AS stage,
-        GROUPING(s."name")::int AS is_total,
-        count(DISTINCT d."customerId")::bigint AS customers,
-        count(DISTINCT d."customerId") FILTER (WHERE d."status" = 'OPEN')::bigint
-          AS open_customers
-      FROM "deal" d
-      JOIN "deal_stage" s ON s."id" = d."stageId"
-      JOIN "pipeline" p ON p."id" = d."pipelineId"
-      WHERE p."role" = 'RETENTION' AND d."customerId" IS NOT NULL
-      GROUP BY GROUPING SETS ((s."name", s."sortOrder"), ())
-      ORDER BY is_total, min(s."sortOrder")
+        grp,
+        stage,
+        GROUPING(stage)::int AS g_stage,
+        GROUPING(grp)::int AS g_grp,
+        count(DISTINCT customer_id)::bigint AS customers,
+        count(DISTINCT customer_id) FILTER (WHERE status = 'OPEN')::bigint AS open_customers,
+        min(sort_order)::int AS sort_order
+      FROM labelled
+      GROUP BY GROUPING SETS ((grp, stage), (grp), ())
+      ORDER BY g_grp, g_stage, min(sort_order)
       `,
     )
 
+    const order = new Map(RETENTION_GROUP_ORDER.map((key, i) => [key, i]))
+    const groups: RetentionGroupRow[] = rows
+      .filter((r) => r.g_grp === 0 && r.g_stage === 1 && r.grp !== null)
+      .map((r) => ({
+        key: r.grp as string,
+        customers: int(r.customers),
+        openCustomers: int(r.open_customers),
+        stages: rows
+          .filter((s) => s.g_stage === 0 && s.grp === r.grp)
+          .map((s) => ({ stage: s.stage ?? '', customers: int(s.customers) })),
+      }))
+      /* The table's order, not the funnel's: `OTHER` is last wherever its
+         stages happen to sit in the portal's ladder. */
+      .sort((a, b) => (order.get(a.key) ?? 99) - (order.get(b.key) ?? 99))
+
+    const total = rows.find((r) => r.g_grp === 1)
+
     return {
-      stages: rows
-        .filter((r) => r.is_total === 0)
-        .map((r) => ({ stage: r.stage ?? '', customers: int(r.customers) })),
-      workedCustomers: int(rows.find((r) => r.is_total === 1)?.open_customers ?? 0n),
+      groups,
+      totalCustomers: int(total?.customers ?? 0n),
+      workedCustomers: int(total?.open_customers ?? 0n),
     }
+  }
+
+  /**
+   * The four-way partition of База, as SQL, from the one table that defines it.
+   *
+   * Same trick and the same reason as `bucketCaseSql` below: `src/lib` holds
+   * the business partition, both sides read it, and nothing hand-mirrors a
+   * CASE. The ids are asserted to be portal stage ids before they are
+   * interpolated — this string goes into `$queryRawUnsafe`, and a table that
+   * lives one import away is exactly the kind of thing a later edit widens
+   * without thinking about the SQL it feeds.
+   */
+  private static retentionGroupCaseSql(column: string): string {
+    const arms = RETENTION_GROUPS.map((group) => {
+      for (const id of group.stages) {
+        if (!/^[A-Z0-9_:]+$/.test(id)) throw new Error(`Invalid retention stage id: ${id}`)
+      }
+      const list = group.stages.map((id) => `'${id}'`).join(', ')
+      return `WHEN ${column} IN (${list}) THEN '${group.key}'`
+    }).join('\n          ')
+
+    return `CASE\n          ${arms}\n          ELSE '${UNMAPPED_RETENTION_GROUP}'\n        END`
   }
 
   /**

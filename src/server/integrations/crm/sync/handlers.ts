@@ -451,20 +451,43 @@ export function createSyncHandlers(
           name: record.name,
           sku: record.sku ?? null,
           priceMinor: record.priceMinor ?? null,
-          // Absent means unknown. Writing 0 would make every margin against
-          // this product read as 100%.
-          costMinor: record.costMinor ?? null,
           currency: record.currency,
           isActive: record.isActive,
           categoryId: (await resolver.optional('productCategory', record.categoryExternalId)) ?? null,
         }
 
+        /*
+          UNDEFINED IS «I COULD NOT READ IT», AND IT MUST NOT OVERWRITE.
+
+          `costMinor: record.costMinor ?? null` sat in this object, so both
+          branches wrote it — and the catalogue methods that supply the cost are
+          a DIFFERENT set from `crm.product.list` that supplies the row. Bitrix24
+          blocks individual methods (`OPERATION_TIME_LIMIT`) while answering
+          others, so a pass could read every product and no cost at all, write
+          null over each one, and finish SUCCESS. Every margin figure on the
+          dashboard then reads «no cost» — correctly, because that is what the
+          column now says — until a reference tick up to thirty ticks away
+          repairs it.
+
+          On INSERT, absent still means unknown: writing 0 would make every
+          margin against a new product read as 100%. On UPDATE, absent now means
+          «leave yesterday's answer alone», which Prisma does for an omitted
+          field. An explicit `null` from the provider still clears it.
+        */
         await prisma.product.upsert({
           where: {
             externalSource_externalId: { externalSource: source, externalId: record.externalId },
           },
-          create: { ...data, externalSource: source, externalId: record.externalId },
-          update: data,
+          create: {
+            ...data,
+            costMinor: record.costMinor ?? null,
+            externalSource: source,
+            externalId: record.externalId,
+          },
+          update: {
+            ...data,
+            ...(record.costMinor === undefined ? {} : { costMinor: record.costMinor }),
+          },
         })
       }
 

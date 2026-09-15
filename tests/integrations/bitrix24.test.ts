@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   Bitrix24CrmProvider,
   encodeParams,
+  isCredentialFailure,
   isoLocal,
   nonEmpty,
   nestedIn,
@@ -350,5 +351,98 @@ describe('stage history walk', () => {
   it('does not invent a pass when no stages are configured', async () => {
     const page = await reader(NO_ROWS, { stages: [] }).provider.fetchStageHistory()
     expect(page.nextCursor).toBeUndefined()
+  })
+})
+
+/**
+ * THE OUTAGE OF 2026-09-15, AND THE HOUR IT SPENT ASKING ANYWAY.
+ *
+ * Bitrix24 throttled the portal at 05:50 UTC and then began answering every
+ * REST call `401 INVALID_CREDENTIALS` at 06:10 — the inbound webhook was gone
+ * and only a person could put a new one in. The worker's ordinary backoff caps
+ * at five minutes, so for the next hour it asked twelve entities for data with
+ * a credential the portal had already refused: roughly 240 calls an hour that
+ * could not have succeeded, against a portal that had blocked this same
+ * integration for four hours the day before, for volume.
+ *
+ * The distinction these cases pin is the whole fix: a throttle is waited out,
+ * a rejected credential is waited out LONGER and reported as somebody's job.
+ */
+describe('a credential the portal no longer accepts', () => {
+  it('recognises the portal’s own names for it, in the provider’s message', () => {
+    expect(
+      isCredentialFailure(
+        'Bitrix24 call "batch" failed after 1 attempt: Bitrix24 responded 401 — INVALID_CREDENTIALS: Invalid request credentials',
+      ),
+    ).toBe(true)
+    expect(isCredentialFailure('Bitrix24 responded 401 — NO_AUTH_FOUND')).toBe(true)
+    expect(isCredentialFailure('Bitrix24 error: expired_token')).toBe(true)
+    expect(isCredentialFailure('Bitrix24 error: WRONG_AUTH_TYPE')).toBe(true)
+  })
+
+  /*
+    THE ONE IT MUST NOT CLAIM. A throttle clears itself and the chip tells the
+    reader to wait; folding it in here would put «yangi webhook kerak» in the
+    log for a portal that needed nobody at all — which is the 2026-09-14
+    misdiagnosis running backwards.
+  */
+  it('does not claim a throttle, a timeout or a healthy sync', () => {
+    expect(
+      isCredentialFailure('Bitrix24 responded 401 — OVERLOAD_LIMIT: REST API is blocked'),
+    ).toBe(false)
+    expect(isCredentialFailure('Bitrix24 error: QUERY_LIMIT_EXCEEDED')).toBe(false)
+    expect(isCredentialFailure('socket hang up')).toBe(false)
+    expect(isCredentialFailure(null)).toBe(false)
+    expect(isCredentialFailure(undefined)).toBe(false)
+    expect(isCredentialFailure('')).toBe(false)
+  })
+})
+
+/**
+ * The number in the message is EVIDENCE, and it was four times the truth.
+ *
+ * `sync_log` said «failed after 4 attempts» for every failure, including the
+ * 401s that are not retryable and break out after one — and that log is what
+ * this integration hands Bitrix24 support when it is asked what load it was
+ * putting on the portal. The ticket of 2026-09-14 quoted it.
+ */
+describe('the attempt count in a failure message', () => {
+  /*
+    `maxRetries: 1` and an unthrottled limiter keep this pair under a tenth of
+    a second. What is under test is that the number PRINTED is the number of
+    calls MADE — the ceiling it is measured against is incidental.
+  */
+  const provider = (fetchImpl: typeof fetch, maxRetries = 1) =>
+    new Bitrix24CrmProvider({
+      webhookUrl: 'https://portal/rest/1/tok/',
+      fetchImpl,
+      maxRetries,
+      rateLimitRps: 1000,
+    })
+
+  const respond = (status: number, body: unknown) => {
+    let calls = 0
+    const impl = (async () => {
+      calls += 1
+      return new Response(JSON.stringify(body), { status })
+    }) as unknown as typeof fetch
+    return { impl, calls: () => calls }
+  }
+
+  it('reports one attempt for a 401 the portal will answer the same way again', async () => {
+    const { impl, calls } = respond(401, {
+      error: 'INVALID_CREDENTIALS',
+      error_description: 'Invalid request credentials',
+    })
+
+    await expect(provider(impl).fetchPipelines()).rejects.toThrow(/failed after 1 attempt:/)
+    expect(calls()).toBe(1)
+  })
+
+  it('still retries, and still counts, what the portal might answer differently', async () => {
+    const { impl, calls } = respond(500, {})
+
+    await expect(provider(impl).fetchPipelines()).rejects.toThrow(/failed after 2 attempts:/)
+    expect(calls()).toBe(2)
   })
 })

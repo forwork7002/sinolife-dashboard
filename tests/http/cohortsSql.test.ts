@@ -55,11 +55,39 @@ describe('the cohort statement', () => {
       A customer who returned in +1 AND +3 is ONE returner. Summing the matrix
       cells double-counts them and taking the first cell counts only the ones
       who came back immediately — measured on this database, 320 against 751.
-      The DISTINCT is the whole guarantee, and a window function may not take
-      one, which is why this is a separate aggregate.
+
+      The guarantee used to be a count(DISTINCT customer_id); it is now the
+      first_return CTE, which groups by (cohort, customer) and therefore emits
+      one row per returning customer by construction. returners counts those
+      rows. Both readings are one-per-customer; this one also keeps the month,
+      which is what the cumulative column is built from.
     */
-    expect(code()).toMatch(/count\(DISTINCT customer_id\)/i)
-    expect(code()).toMatch(/WHERE months_since > 0/i)
+    const sql = code()
+    expect(sql).toMatch(/first_return AS \(/i)
+    expect(sql).toMatch(/GROUP BY cohort, customer_id/i)
+    expect(sql).toMatch(/WHERE months_since > 0/i)
+  })
+
+  it('builds the cumulative curve from FIRST returns, not from the monthly cells', () => {
+    /*
+      THE ONE WAY THIS COLUMN GOES WRONG AND STILL RENDERS. Summing
+      "customers" -- bought again in month N -- walks a monthly buyer in once a
+      month and sends the curve past 100%. The increment has to be the count of
+      customers whose FIRST return landed on that offset, which is what
+      first_by_offset is, and the service only ever adds THAT up.
+
+      Its other property is the check a reader can make on screen: summed
+      across a cohort these increments are exactly "returned", so the last
+      measured cell of a row equals the «Qaytgan» column beside it.
+    */
+    const sql = code()
+    const cte = sql.slice(sql.indexOf('first_by_offset AS ('))
+    expect(cte).toMatch(/FROM first_return/i)
+    expect(cte).toMatch(/GROUP BY cohort, first_offset/i)
+    /* The join may not drop a row: it is LEFT, and a missing match inside the
+       measured span is a zero rather than a hole in the middle of a row. */
+    expect(sql).toMatch(/LEFT JOIN first_by_offset/i)
+    expect(sql).toMatch(/COALESCE\(fo\.first_returners, 0\)/i)
   })
 
   it('walks the deal table no more than twice', () => {

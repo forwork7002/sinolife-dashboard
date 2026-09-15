@@ -422,7 +422,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Screen | URL | Feature | Endpoint(s) | Service → Repository | Window filters on |
 |---|---|---|---|---|---|
 | Savdo dinamikasi | `/analytics/sales` | `sales/SalesPage` + `ConfirmationFaktSection` + `DeliveryBoardSection` | `/analytics/sellers` twice (the board, and `?include=faktTrend` for the chart) + `/insights/delivery` | SellerBoard, Pulse → SellerBoard, Pulse | the arrival in `C4:NEW` (`queued_at`) — **except the Доставка board, which has NO window at all**: a kanban column is where orders are standing now |
-| Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` | `/insights/cohorts`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | `closedAt`, on revenue-bearing WON deals only — nothing here reads `createdAtSource` |
+| Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` + `StateBars` | `/insights/cohorts`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | **nothing — the screen is DATELESS since 2026-09-15** (`period={false}`, like Struktura). `closedAt` on revenue-bearing WON deals is the clock both endpoints read; the matrix takes no window at all and `/insights/concentration` resolves its OWN trailing 90 days (`trailingDays`). Nothing here reads `createdAtSource` |
 | Reklama samarasi | `/marketing` | **PAUSED** — `shared/SectionPending`; `marketing/MarketingPage` is held, not mounted | none while paused (`/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` still answer) | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
@@ -467,8 +467,69 @@ Per-screen traps worth knowing before you touch one:
   `tests/http/deliveryBoardSql.test.ts` pins both, and every stage name is
   printed VERBATIM in Russian — the block's whole value is that it reconciles
   against the screen it was copied from.
-- **Mijoz qaytishi** — «Faol bazada» is a separate DISTINCT-customer total, not
-  the sum of the ladder bars.
+- **Mijoz qaytishi** — **REWORKED ON 2026-09-15**, on the client's instruction
+  («kogorta jadvalini … kuchaytirish … oddiylashtirish kerak, mijoz qaytishi
+  boʻlimini toʻliqligicha yaxshilash»). Three things changed and each fixed a
+  reading, not a look.
+  **THE MATRIX DEFAULTS TO CUMULATIVE.** «Jami qaytgan» — of this cohort, how
+  many have come back at least once BY month N — with «Oylik», the old
+  per-month reading, one press away. Measured on production: monthly repeat
+  purchase here runs **0–4%**, so ~250 cells landed in the two palest steps of
+  a five-step ramp and the grid said nothing; the same customers read
+  cumulatively run **0–37%**. It is NOT derivable from the monthly cells — a
+  customer returning in +1 and again in +3 is in two of them — so the
+  repository counts each returner's FIRST return month (`first_return` →
+  `first_by_offset`) and the service runs a total over it. That CTE replaced
+  the old `count(DISTINCT customer_id)` rather than joining it: a count(DISTINCT)
+  already groups by customer inside each cohort, so this is the same work with
+  the month kept. **The identity to check:** a row's last measured cell equals
+  its «Qaytgan» share, because the increments sum to `returned` by
+  construction. The cumulative reading drops the `0` column (100% monthly, 0%
+  cumulatively, for every row there has ever been) and has its OWN colour bands
+  — 0/5/10/20/30 against the monthly 0/2/4/7/12, since one ramp cannot carry
+  both scales. `tests/components/cohortMatrix.test.tsx` pins both readings and
+  the double-count that would send the curve past 100%.
+  **A «Jami · oʻrtacha» CELL UNDER `SUMMARY_MIN_BASE` (30) IS PRINTED BUT NOT
+  PAINTED**, found on production hours after this shipped. That row read
+  4 7 9 10 11 11 12 12 13 13 14 19 27 36 **0** — every figure correct, and
+  together a cliff. Each column averages only the cohorts old enough to have
+  reached it, so the far right is one or two ancient cohorts and the last
+  column was ONE cohort of ONE customer who never returned. On the ramp beside
+  fourteen real averages that reads as a collapse in retention. Same floor and
+  same argument as Logistika's `WAIT_BAND_MIN_ORDERS`; the figure and its
+  fraction stay, the colour and the trend do not.
+  **«База» IS FOUR STATES, NOT FIFTEEN STAGES.** The card drew one bar per
+  portal stage under copy promising «1 kun, 3 kun, 10 kun, 20 kun, 30 kun» —
+  five of the fifteen; the other ten were never named. The partition is
+  `src/lib/retentionGroups.ts` (Yangi / Aloqa siklida / Faol mijoz / Sovigan),
+  keyed by **stage id** and read by BOTH sides exactly as `logisticsBuckets` is.
+  Every level is its own `count(DISTINCT customerId)` under one `GROUPING SETS`
+  — stage, group, funnel — because a customer on two stages of one group is one
+  person in it, and summing the level below is how this screen once printed a
+  base 1 660 people too big. The four still **do not** add up to the base
+  (one customer, two open deals, two states) and the card says so rather than
+  presenting them as parts of a whole. An unmapped stage becomes its own
+  «Boshqa bosqichlar» row; `tests/domain/retentionGroups.test.ts` and
+  `tests/http/retentionStagesSql.test.ts` pin the partition and the statement,
+  and `tests/features/retentionStateBars.test.tsx` renders the card — the demo
+  seed has no RETENTION pipeline at all, so production is the only place the
+  bars have ever drawn.
+  **«Faol bazada» LEFT THE TILE ROW**, where it read «12 558» beside «Jami
+  mijozlar 11 512» — two numbers contradicting each other on their faces
+  unless the reader already knew one counts База deals and the other counts
+  first purchases. It is stated on the База card now, over its own denominator.
+  Still a separate DISTINCT-customer total, never the sum of the bars.
+  **AND THE PERIOD CONTROL IS GONE, because it drove nothing.** The matrix
+  needs the whole history, the База bars are today's snapshot — so the only
+  thing the control reached was `/insights/concentration`, which inherited the
+  dashboard default of «Bugun». Read on production 2026-09-15 that gave the
+  band **12 customers, ONE first-to-second pair and a cohort of four**, under
+  «Top-10 mijoz ulushi 89%» painted critical red. Every figure was
+  arithmetically correct and the band as a whole was noise. The endpoint now
+  resolves its own trailing 90 days (`trailingDays` in `period.ts`; `days` is a
+  parameter, wired to no control), and the four tiles refuse to print at all
+  under `MIN_CUSTOMERS` 30 / `MIN_PAIRS` 10 / `MIN_COHORT` 30 — low on purpose,
+  to catch a day's trading rather than a quiet fortnight.
 - **Kanallar** — the dashboard-wide `preset` and `filial` do **not** reach this
   screen; it resolves its own window from `from`/`to`/`today`.
 - **Yalpi marja** — discounts are split by sign in SQL; never net them or
@@ -1168,6 +1229,22 @@ mixed `100vh` against a shell sized in `100dvh`.
   and the tooltip says whether to wait or to call somebody.
   `findCurrentSyncFailure` only reports a failure NEWER than the last success,
   so a healthy dashboard never wears a red mark for last week.
+  **AND ON 2026-09-15 IT GAINED THE TWO THINGS IT STILL COULD NOT SAY.**
+  `syncError.since` is when the run of failures BEGAN — `at` is the newest
+  failed tick, which during an outage is always seconds old, so a four-hour
+  block and a four-minute blip read identically; the tooltip now says «06:05 dan
+  beri». And `syncError.kind` classifies the refusal SERVER-SIDE
+  (`bitrix24/refusal.ts`), replacing a two-element allowlist of Bitrix24 codes
+  that sat inside `Shell.tsx` — the portal's vocabulary on the wrong side of
+  the one rule, and unreachable from the worker that needs the same judgement.
+  A `CREDENTIAL` failure skips the deliberate five-minute quiet period the chip
+  gives a throttle, turns the dot critical and names the act («portalda yangi
+  kalit ochilib, dashboardga qoʻyilishi kerak»): a revoked webhook will never
+  clear on its own, so waiting it out is exactly wrong. On 2026-09-15 that
+  silence ran from 06:10 until somebody happened to look.
+  `/meta/alerts` also reads its two halves with `allSettled`, so a slow backlog
+  aggregate can no longer take the freshness clock down with it — the moment the
+  database is under strain is the moment the header most needs to answer.
   **The worker exited.** `process.exit(1)` on a failed startup health check
   turned a transient throttle into a restart loop that re-issued the refused
   call every cycle. It logs and starts the tick loop instead; the loop already
@@ -1178,13 +1255,78 @@ mixed `100vh` against a shell sized in `100dvh`.
   hour, which is the case it was written for (a worker that was DOWN); a
   redeploy under a healthy sync is covered by `SKIP_LOOKBACK_MS`.
 
-**A THROTTLED TICK WAITS TEN MINUTES, not the failure-count backoff.** When
-any entity comes back `OVERLOAD_LIMIT` or `QUERY_LIMIT_EXCEEDED` the portal is
-refusing the whole REST surface — on 2026-09-14 for four hours — and the
-ordinary backoff (five minutes after five consecutive failures) would spend
-that time issuing ~50 refused calls an hour against a counter we cannot see and
-may be feeding. `THROTTLED_WAIT_MS` is a flat ten; the block lifts on the
-portal's clock, not ours, and the header says why meanwhile.
+**A REFUSED PORTAL IS NOT ASKED AGAIN UNTIL A PROBE SAYS IT IS —
+`PortalGate`, and it replaced the flat ten-minute wait on 2026-09-15.**
+
+The old `throttled` flag could not do the job it was written for: it is
+computed from the RESULTS of `runAll`, so by the time it is true every entity
+in that tick has already been refused. Measured that morning under a 401
+`OVERLOAD_LIMIT` — a hot tick sent 3 requests of which **2 left after** the
+portal had already said no, a reference tick sent 12 of which 11 did, and a
+restart inside the block sent 11 more because tick 0 is always a reference
+tick. Over a four-hour block, ~107 requests fired into a door already shut.
+
+The gate sits inside `call()`, BEFORE the rate limiter, so it covers every
+caller — the engine, the sweep, `scripts/import.ts`, a hand-run resync. The
+first refusal shuts it; every later call in that tick throws locally with the
+remembered code and sends nothing. `scripts/syncWorker.ts` then does no work at
+all while it is shut, and asks ONE cheap `profile` question on a ladder:
+**60 s, 120 s, 240 s, 480 s, then 600 s** for a throttle (the ten minutes
+`THROTTLED_WAIT_MS` used to be, now the ladder's ceiling in `portalGate.ts`),
+and a flat **300 s** for a credential failure, which will not clear on its own
+and where backing off only delays noticing that somebody fixed it. A successful
+probe closes the gate and runs a full tick at once, so recovery is 1–3 minutes
+into any block instead of always ten.
+
+**The four refusals are one vocabulary, in `bitrix24/refusal.ts`.** `THROTTLE`
+(OVERLOAD_LIMIT, QUERY_LIMIT_EXCEEDED) and `CREDENTIAL` (a revoked webhook, and
+any unparsable 401) shut the whole gate; `METHOD` (OPERATION_TIME_LIMIT) holds
+ONE method for ten minutes and leaves the rest answering; `TRANSIENT` tolerates
+two failures before shutting. **`null` is the fifth answer and the load-bearing
+one** — `INVALID_ARG_VALUE` is how `batchWalk` learns a chain ran dry, so
+classifying it as a refusal would shut the gate on every SUCCESSFUL pass.
+Branch on the CODE, never on `error_description`, which arrives in the portal's
+interface language.
+
+**The worker starts already knowing.** `lastRefusal()` reads the newest FAILED
+row against the last `FRESHNESS_ENTITIES` success — two index walks, no portal
+call — and seeds the gate shut when a refusal newer than that success is under
+fifteen minutes old. A restart inside a block cost ~11 requests
+re-discovering it, ~17 times a day; seeded, it costs 0 until a probe is due.
+
+**AND THE ERROR MESSAGE STOPPED LYING.** «failed after 4 attempts» was a
+constant, false on every non-retryable error — a 401 breaks out after ONE
+request. That sentence went into `sync_log`, the dashboard tooltip and the
+2026-09-14 incident notes, and it is why that outage first read as «the client
+is hammering the portal four times over». It reports the attempts it made. The
+429/5xx branch also stopped dropping the response body, which is what hid a
+`QUERY_LIMIT_EXCEEDED` behind a bare «Bitrix24 responded 503» and kept the
+ten-minute wait from ever engaging: measured at 40 HTTP requests where 10 were
+expected.
+
+- **THE CHIP NAMED ONE ENTITY FOR A PORTAL-WIDE OUTAGE.** `syncError.entity` is
+  whichever pass failed LAST, so an hour with every number on every screen
+  frozen was reported as «stage_history» — the narrowest thing on the portal,
+  and a reader who knows what it is would have taken the deal figures for
+  current. `findCurrentSyncFailure` also counts the DISTINCT entities failing
+  since the last success (an index walk bounded by that timestamp, 0.3 ms on
+  production, and it does not run at all while the sync is healthy), and
+  `syncFailureScope` prints «9 ta boʻlim» instead of a name whenever the count
+  is known and above one. A null count means *not counted*, never *narrow*, so
+  it falls back to the name rather than inventing a scope. It is read beside
+  `syncError.since`, which says how LONG.
+- **THE ATTEMPT COUNT IN A FAILURE MESSAGE IS EVIDENCE.** `sync_log` is what
+  this integration hands Bitrix24 support when it is asked what load it was
+  putting on the portal, and the ticket opened after the 2026-09-14 block
+  promises in writing that we back off when refused. That is what the gate's
+  probe ladder honours, and what its 600 s ceiling bounds — do not raise it
+  without remembering what it answers to.
+- **`isCredentialFailure` IS STILL EXPORTED, AND IT IS NOW A READING OF
+  `refusal.ts` RATHER THAN A SECOND LIST.** It takes a MESSAGE, because that is
+  what survives into `sync_log`; `classifyRefusal` reads a live error's `code`
+  field first and falls back to the same screen. Two copies of the portal's
+  vocabulary in one repository is exactly the drift this file keeps warning
+  about.
 
 **THE WORKER WAS DYING SEVENTEEN TIMES A DAY, AND THE ROISTAT CHILD WAS THE
 BALLOON.** Measured 2026-09-14 and fixed the same day. DigitalOcean sets
@@ -1226,7 +1368,8 @@ hourly: if it stops, the child is hitting the new 320 MB cap and the log line
 above will say so.
 
 Worker cadence lives in `scripts/syncWorker.ts`: `SYNC_INTERVAL_SEC` 60,
-reference data every 30 ticks, sweep and Roistat every 60, and
+reference data every 30 ticks, Roistat every 60, **the deletion sweep every 360
+(six-hourly since 2026-09-15, was 60)**, and
 `SYNC_HISTORY_BACKFILL_DAYS` 45 — the stage-history cursor is wound back once
 at startup so the ordinary incremental pass repairs arrival rows lost before
 the watermark learned to rewind (`historyBackfillCursor`; it never writes a
@@ -1234,6 +1377,20 @@ cursor where there is none, and never moves one forward). 76 000 of 222 000
 rows, under a minute, once per start. Backoff is a
 **floor**, not an addend — as an addend it disappeared exactly when it was
 needed.
+
+**THE SWEEP WENT SIX-HOURLY, AND A DELETED DEAL NOW SURVIVES UP TO SIX HOURS
+HERE.** `listDealIds` walks all 464 396 deals at 2 500 a round trip = 180
+requests, ninety seconds of continuous traffic at the 2 rps limiter. Hourly
+that was 4 320 requests a day — **32% of the worker's entire HTTP volume** —
+carrying 9 000 `crm.deal.list` invocations an hour against that method's
+ten-minute operating basket, to detect an event the code's own comment calls
+rare. Bitrix24's helpdesk names «an app that checks all CRM activities every
+five minutes» as the kind of thing that earns an administrative block, and this
+portal issued one on 2026-09-14 and again on 2026-09-15. 24 bursts a day became
+4. Nothing about the walk, `sweepByAntiJoin` or the short-read guard changed, so
+correctness is untouched — **read a six-hour-old test deal as `SYNC_SWEEP_EVERY`,
+not as a sync fault**, and set it lower on the deployed app if the client ever
+wants the old latency back.
 
 ---
 

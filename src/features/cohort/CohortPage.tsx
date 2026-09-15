@@ -1,16 +1,17 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
-import { CohortHeatmap } from '@/components/charts/Heatmap'
+import { CohortHeatmap, type CohortView } from '@/components/charts/Heatmap'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { ChartCard } from '@/components/ui/Card'
+import { SegmentedControl } from '@/components/ui/Controls'
 import { GaugeTile, Meter, SectionHeader, StatTile } from '@/components/ui/Stat'
 import { InfoTip } from '@/components/ui/Tooltip'
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
+import { StateBars } from '@/features/cohort/StateBars'
 import { PageShell } from '@/features/shared/PageShell'
-import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import {
   type CohortSummaryDto,
   type ConcentrationDto,
@@ -23,10 +24,10 @@ import { t } from '@/lib/messages'
 /**
  * Retention, two ways — then who the money actually stands on.
  *
- * The matrix answers "do customers come back", and the ladder beside it
- * answers "where are they right now" — the portal runs a follow-up cycle
- * (1 day, 3, 10, 20, 30) whose live headcount is a different and more
- * actionable fact than a historical curve.
+ * The matrix answers "do customers come back", and the four-state bar list
+ * beside it answers "where are they right now" — the portal runs a follow-up
+ * cycle whose live headcount is a different and more actionable fact than a
+ * historical curve.
  *
  * The headline is second-order revenue share. That is the number that decides
  * whether the retention team is worth funding, and it is not visible anywhere
@@ -35,6 +36,17 @@ import { t } from '@/lib/messages'
  * The concentration band at the bottom closes the loop: retention says the
  * customers return, concentration says how few of them the period's revenue
  * would survive losing — and how fast a first buyer becomes a second one.
+ *
+ * THE PAGE TAKES NO REPORTING WINDOW, and that is a change rather than an
+ * omission. Every block on it is period-independent: the matrix needs the
+ * whole history to be a matrix, the База bars are a snapshot of today, and the
+ * concentration band resolves its own ninety days on the server (see its
+ * route). While the shell's period control was here it drove NOTHING on the
+ * screen except, by its «Bugun» default, the concentration band — twelve
+ * customers on 2026-09-15, with «Top-10 mijoz ulushi 89%» in red over them. A
+ * control that does nothing is worse than no control, because a reader assumes
+ * it must be filtering something; the same reasoning `PageShell` gives for
+ * `/users`.
  */
 export function CohortPage() {
   const query = useQuery({
@@ -58,22 +70,29 @@ export function CohortPage() {
     refetchInterval: 5 * 60_000,
   })
 
-  const { apiParams } = useDashboardFilters()
-
   /*
-   * Period-scoped where the cohort read deliberately is not: the matrix needs
-   * 18 months of history to be a matrix, but "whose money is this period
-   * standing on" is a question about the selected window. Keyed on apiParams
-   * so the cache follows the period control (and matches the channels page's
-   * key — two pages, one fetch); the endpoint ignores the people/source
-   * filters server-side, insights-style, but the key stays honest if that
-   * ever changes.
-   */
+    NO `apiParams`, AND NO KEY THAT COULD CARRY ONE.
+
+    The endpoint resolves its own trailing ninety days from the server clock,
+    so there is nothing for the dashboard filters to change and a key naming
+    them would invent cache entries that all hold the same answer. Same cadence
+    as the matrix above: a ninety-day shape does not move in a minute either.
+  */
   const concentration = useQuery({
-    queryKey: ['concentration', apiParams],
-    queryFn: ({ signal }) =>
-      apiGet<ConcentrationDto>('/insights/concentration', apiParams, signal),
+    queryKey: ['concentration', 'trailing-90'],
+    queryFn: ({ signal }) => apiGet<ConcentrationDto>('/insights/concentration', {}, signal),
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
   })
+
+  /**
+   * Which reading of the matrix is on screen.
+   *
+   * Local state, not the URL: it is a way of LOOKING at one answer, both
+   * arrays are already on the payload, and switching costs no request. The
+   * same rule the FAKT 1 / FAKT 2 switch on `/sellers` follows.
+   */
+  const [view, setView] = useState<CohortView>('cumulative')
 
   /** One derivation, so no tile can disagree with its own page. */
 
@@ -89,42 +108,41 @@ export function CohortPage() {
   const conc = concentration.data?.data
 
   /*
-   * Concentration grades the WRONG way round for the gauge's `auto` tone,
-   * which was built for delivery-style rates where high is good. Here a high
-   * top-10 share means the period's revenue stands on a handful of customers,
-   * and losing one of them is an event, not a statistic — so the judgement is
-   * made where the domain reading lives and stated explicitly:
-   *
-   *   <25%    good     — no short list of customers can sink the period
-   *   25–40%  warning  — dependence worth watching
-   *   >40%    critical — the revenue line is a client list
-   */
+    Concentration grades the WRONG way round for the gauge's `auto` tone,
+    which was built for delivery-style rates where high is good. Here a high
+    top-10 share means the period's revenue stands on a handful of customers,
+    and losing one of them is an event, not a statistic — so the judgement is
+    made where the domain reading lives and stated explicitly:
+
+      <25%    good     — no short list of customers can sink the period
+      25–40%  warning  — dependence worth watching
+      >40%    critical — the revenue line is a client list
+  */
   const top10 = conc?.pareto.top10SharePercent ?? null
   const top10Tone =
     top10 === null ? 'neutral' : top10 < 25 ? 'good' : top10 <= 40 ? 'warning' : 'critical'
 
   /*
-   * The band's honesty caption. Pareto shares can only count revenue that HAS
-   * a customer attached — whatever share does not is the blind spot, and it
-   * is printed in the section header rather than footnoted, so the shares are
-   * never read as covering everything.
-   */
+    The band's honesty caption. Pareto shares can only count revenue that HAS
+    a customer attached — whatever share does not is the blind spot, and it
+    is printed in the section header rather than footnoted, so the shares are
+    never read as covering everything.
+  */
   const nullCustomerShare = conc?.pareto.nullCustomerSharePercent ?? null
   /*
-    The window is NAMED here rather than under the page title.
+    The window is NAMED here, and it is the endpoint's own.
 
-    PageShell prints the resolved dates beside the description, and the
-    description on this page belongs to the cohort matrix — which has no
-    window. So the dates are stated where they actually apply: on the one band
-    the period control drives.
+    It is not a window anybody chose — see this file's header and the route —
+    so it has to be printed where the figures it governs are, in the dates the
+    server actually resolved rather than as the words "ninety days".
   */
   const concentrationWindow = concentration.data?.meta.period
   const concentrationCaption = [
     concentrationWindow
       ? `${formatDate(concentrationWindow.start)} – ${formatDate(
           new Date(new Date(concentrationWindow.end).getTime() - 1).toISOString(),
-        )} oraligʻida yutilgan bitimlar boʻyicha.`
-      : 'Davrda yutilgan bitimlar boʻyicha.',
+        )} oraligʻida yutilgan bitimlar boʻyicha. Bu blok sahifaning boshqa qismlaridan mustaqil oʻlchanadi.`
+      : 'Soʻnggi 90 kunda yutilgan bitimlar boʻyicha.',
     nullCustomerShare !== null && nullCustomerShare > 0
       ? `Tushumning ${formatPercent(nullCustomerShare)} qismi mijozga bogʻlanmagan — ulushlar faqat aniqlangan mijozlarni hisoblaydi.`
       : null,
@@ -171,46 +189,39 @@ export function CohortPage() {
       description={t.modules.cohort.lead}
       accent="var(--series-7)"
       meta={query.data?.meta}
-      stale={concentration.isPlaceholderData}
+      /* Nothing on this page reads a reporting window. See the header. */
+      period={false}
     >
       {/*
-        THE PERIOD CONTROL GOVERNS THE BOTTOM OF THIS PAGE, NOT THE TOP.
+        TWO SPANS UNDER ONE HEADING, and the hint used to claim one.
 
-        Everything down to the ladder is a statement about the whole customer
-        history — "how many of March's buyers came back" only means something
-        if every month since is counted, so `/insights/cohorts` takes no
-        window and none of it moves when the presets are clicked. The
-        concentration band below IS period-scoped.
+        The three tiles are whole-history (the totals arm of the cohort query
+        takes no `months` bound); the matrix below is the last 18 months of
+        cohorts. «Butun tarix boʻyicha hisoblanadi» was true of the tiles and
+        false of the matrix, and a reader who took it at face value read the
+        grid as the company's whole history.
 
-        A control that visibly changes half a screen and leaves the other half
-        still is the reader's problem to solve unless the screen says which
-        half is which. This header says it, and the band's own caption below
-        states the window it is read in.
-      */}
-      {/*
-        THREE SPANS SIT UNDER ONE HEADING, and the hint used to claim one.
-
-        The four tiles are whole-history (the totals arm of the cohort query
-        takes no `months` bound). «Faol bazada» is a snapshot of today. The
-        matrix below is the last 18 months of cohorts. «Butun tarix boʻyicha
-        hisoblanadi» was true of the tiles and false of the matrix, and a
-        reader who took it at face value read the grid as the company's whole
-        history. Said in three clauses rather than a paragraph: this is 12px
-        muted text over a band somebody scans, not a methodology note.
+        «Faol bazada» used to be a fourth tile here and was the odd one out
+        three ways: a snapshot rather than a history, a count of a different
+        population, and — on 2026-09-15 — 12 558 sitting beside «Jami mijozlar
+        11 512», two numbers that contradict each other on their faces unless
+        the reader already knows one counts База deals and the other counts
+        first purchases. It now lives on the База card, where its own
+        denominator is.
       */}
       <SectionHeader
         title="Kogorta tahlili"
-        hint="Koʻrsatkichlar — butun tarix · matritsa — soʻnggi 18 oy · tanlangan davr bu blokka taʼsir qilmaydi."
+        hint="Koʻrsatkichlar — butun tarix · matritsa — soʻnggi 18 oy."
       />
 
-      <div className="stagger grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className="stagger grid grid-cols-2 gap-3 xl:grid-cols-3">
         <GaugeTile
           status={tileStatus}
           label="Takroriy tushum ulushi"
           value={data?.repeatRevenueShare ?? null}
           /*
             Deliberately uncoloured.
-            
+
             There is no benchmark for what repeat share SHOULD be in this
             business, and painting 9% red would be the dashboard asserting a
             judgement it cannot support. The number and its trend are the
@@ -220,8 +231,9 @@ export function CohortPage() {
           /*
             THE WINDOW IS IN THE HINT because this label appears twice on one
             screen. `RepeatShareCard` at the bottom carries the same words over
-            the SELECTED PERIOD and legitimately prints a different number; with
-            neither naming its span, the two read as a contradiction.
+            the band's own ninety days and legitimately prints a different
+            number; with neither naming its span, the two read as a
+            contradiction.
           */
           hint="Butun tarix boʻyicha · birinchi xariddan keyingi savdolar"
         />
@@ -231,7 +243,13 @@ export function CohortPage() {
           value={data?.repeatCustomers ?? null}
           unit="count"
           hint={
-            data ? `${formatNumber(data.totalCustomers)} ta mijozdan` : undefined
+            data
+              ? `${formatNumber(data.totalCustomers)} ta mijozdan · ${formatPercent(
+                  data.totalCustomers > 0
+                    ? (data.repeatCustomers / data.totalCustomers) * 100
+                    : null,
+                )}`
+              : undefined
           }
         />
         <StatTile
@@ -248,16 +266,6 @@ export function CohortPage() {
           */
           hint="Yopilgan (WON) birinchi xaridi boʻlgan mijozlar"
         />
-        <StatTile
-          status={tileStatus}
-          label="Faol bazada"
-          /* Counted once each by the database. Adding the stage column up
-             counted anyone with two open deals twice, and swept in the three
-             stages where the cadence ends. */
-          value={data?.workedCustomers ?? null}
-          unit="count"
-          hint="База da ochiq bitimi bor mijozlar"
-        />
       </div>
 
       {/*
@@ -270,11 +278,22 @@ export function CohortPage() {
       <ChartCard
         title="Kogorta matritsasi"
         className="card-hero brackets"
-        /* The matrix now carries its own column group, its own legend and a
-           worked example from the reader's own data, so the card hint no longer
-           repeats the mechanics. It says the one thing the table cannot: WHY a
-           row is a row. */
+        /* The matrix carries its own column group, its own legend and the
+           arithmetic of every cell in the hover panel, so the card hint does
+           not repeat the mechanics. It says the one thing the table cannot:
+           WHY a row is a row. */
         hint="Mijozlar birinchi xarid qilgan oyi boʻyicha guruhlanadi — har bir guruh keyin qanchalik qaytib kelgani shu qatorda koʻrinadi."
+        action={
+          <SegmentedControl
+            value={view}
+            onChange={setView}
+            ariaLabel="Matritsa koʻrinishi"
+            options={[
+              { value: 'cumulative', label: 'Jami qaytgan' },
+              { value: 'monthly', label: 'Oylik' },
+            ]}
+          />
+        }
       >
         {query.isPending && <ChartSkeleton height={320} />}
         {query.isError && (
@@ -286,14 +305,19 @@ export function CohortPage() {
             body="Yetkazilgan buyurtmalar mijozga bogʻlanmagan boʻlishi mumkin."
           />
         )}
-        {data && data.rows.length > 0 && <CohortHeatmap rows={data.rows} />}
+        {data && data.rows.length > 0 && <CohortHeatmap rows={data.rows} view={view} />}
       </ChartCard>
 
       <ChartCard
         title="База — mijozlar hozir qayerda"
-        // The stage names in the data are 1/3/10/20/30 kun — the copy used to
-        // promise a 7/14/21 cycle the portal does not run.
-        hint="Takroriy aloqa sikli: 1 kun, 3 kun, 10 kun, 20 kun, 30 kun. Bu tarixiy egri chiziq emas, bugungi holat."
+        /*
+          The hint no longer lists the cadence stages, because the card no
+          longer lists stages: it lists the four STATES, and each bar names its
+          own stages in its hover. The old copy promised «1 kun, 3 kun, 10 kun,
+          20 kun, 30 kun» over a list of fifteen rows, ten of which it never
+          mentioned.
+        */
+        hint="Bu tarixiy egri chiziq emas, bugungi holat: База voronkasidagi har bir mijoz hozir qaysi holatda."
       >
         {query.isPending && <ChartSkeleton height={200} />}
         {/*
@@ -309,23 +333,29 @@ export function CohortPage() {
             onRetry={() => void query.refetch()}
           />
         )}
-        {data && data.stages.length === 0 && (
+        {data && data.groups.length === 0 && (
           <EmptyState
             title="Retention voronkasi boʻsh"
             body="База voronkasidagi bitimlar mijozga bogʻlanmagan."
           />
         )}
-        {data && data.stages.length > 0 && <StageLadder stages={data.stages} />}
+        {data && data.groups.length > 0 && (
+          <StateBars
+            groups={data.groups}
+            baseCustomers={data.baseCustomers}
+            workedCustomers={data.workedCustomers}
+          />
+        )}
       </ChartCard>
 
       {/*
         The dependency chapter — /insights/concentration.
 
         Everything above says whether customers come back; this band says how
-        much of the period's money would leave with a handful of them, and
-        what the second purchase actually looks like when it happens. Its own
-        query, so a failure here degrades these five cards to honest error
-        states without touching the matrix.
+        much of the last ninety days' money would leave with a handful of them,
+        and what the second purchase actually looks like when it happens. Its
+        own query and its own window, so a failure here degrades these five
+        cards to honest error states without touching the matrix.
       */}
       <SectionHeader title="Mijozlar kontsentratsiyasi" hint={concentrationCaption} />
 
@@ -333,11 +363,21 @@ export function CohortPage() {
         <GaugeTile
           status={concStatus}
           label="Top-10 mijoz ulushi"
-          value={top10}
-          tone={top10Tone}
+          /*
+            SMALL SAMPLES DO NOT GET A RING, and this is the guard that was
+            missing. On a twelve-customer window the top ten ARE 89% of the
+            revenue arithmetically and the ring painted it critical red — a
+            statement about a business that was really a statement about a
+            sample. `null` here draws the tile's own no-value state, and the
+            hint says which it is.
+          */
+          value={enoughCustomers(conc) ? top10 : null}
+          tone={enoughCustomers(conc) ? top10Tone : 'neutral'}
           hint={
             conc
-              ? `10 ta eng yirik mijoz davr tushumida · Top-5: ${formatPercent(conc.pareto.top5SharePercent)}`
+              ? enoughCustomers(conc)
+                ? `10 ta eng yirik mijoz davr tushumida · Top-5: ${formatPercent(conc.pareto.top5SharePercent)}`
+                : `Namuna kichik — bu oynada ${formatNumber(conc.pareto.totalCustomers)} ta mijoz (kamida ${MIN_CUSTOMERS} kerak)`
               : undefined
           }
         />
@@ -347,11 +387,13 @@ export function CohortPage() {
           label="80% tushumni beruvchilar"
           hint={
             conc
-              ? `Jami ${formatNumber(conc.pareto.totalCustomers)} mijozdan shunchasi davr tushumining 80 foizini beradi`
+              ? enoughCustomers(conc)
+                ? `Jami ${formatNumber(conc.pareto.totalCustomers)} mijozdan shunchasi davr tushumining 80 foizini beradi`
+                : `Namuna kichik — ${formatNumber(conc.pareto.totalCustomers)} ta mijoz`
               : undefined
           }
         >
-          {conc && conc.pareto.customersFor80Percent !== null ? (
+          {conc && enoughCustomers(conc) && conc.pareto.customersFor80Percent !== null ? (
             <>
               <AnimatedNumber
                 value={conc.pareto.customersFor80Percent}
@@ -372,9 +414,13 @@ export function CohortPage() {
         <FigureTile
           status={concStatus}
           label="Takroriy xarid oraligʻi"
-          hint={repeatIntervalHint}
+          hint={
+            conc && !enoughPairs(conc)
+              ? `Namuna kichik — ${formatNumber(conc.repeat.pairsMeasured)} ta ikkinchi xarid (kamida ${MIN_PAIRS} kerak)`
+              : repeatIntervalHint
+          }
         >
-          {conc && conc.repeat.medianDaysBetweenFirstAndSecond !== null ? (
+          {conc && enoughPairs(conc) && conc.repeat.medianDaysBetweenFirstAndSecond !== null ? (
             <>
               <AnimatedNumber
                 value={conc.repeat.medianDaysBetweenFirstAndSecond}
@@ -392,7 +438,7 @@ export function CohortPage() {
         <GaugeTile
           status={concStatus}
           label="90 kunda qaytish"
-          value={conc?.repeat.repurchaseWithin90Percent ?? null}
+          value={enoughCohort(conc) ? (conc?.repeat.repurchaseWithin90Percent ?? null) : null}
           /*
             Neutral like the repeat-share gauge at the top of the page, and
             for the same reason: there is no benchmark for how fast THIS
@@ -404,9 +450,11 @@ export function CohortPage() {
           tone="neutral"
           hint={
             conc
-              ? `Kohorta: ${formatNumber(conc.repeat.cohortSize)} ta birinchi xaridor${
-                  horizonWindow ? ` (${horizonWindow})` : ''
-                }, har biriga toʻliq 90 kunlik ufq berilgan`
+              ? enoughCohort(conc)
+                ? `Kohorta: ${formatNumber(conc.repeat.cohortSize)} ta birinchi xaridor${
+                    horizonWindow ? ` (${horizonWindow})` : ''
+                  }, har biriga toʻliq 90 kunlik ufq berilgan`
+                : `Namuna kichik — ${formatNumber(conc.repeat.cohortSize)} ta birinchi xaridor (kamida ${MIN_COHORT} kerak)`
               : undefined
           }
         />
@@ -415,6 +463,35 @@ export function CohortPage() {
       <RepeatShareCard status={concStatus} repeat={conc?.repeat} />
     </PageShell>
   )
+}
+
+/*
+  THE FLOORS UNDER THE CONCENTRATION BAND.
+
+  Not statistical thresholds — none of these figures has a confidence interval
+  the screen could print — but the point below which the number says more about
+  the sample than about the business. They are separate because the three
+  denominators are different populations: how many customers bought at all, how
+  many second purchases there were to measure an interval between, and how many
+  first buyers are old enough to have had their ninety days.
+
+  Deliberately low. The job is to catch a day's trading (12 customers, 1 pair,
+  4 first buyers — measured 2026-09-15), not to refuse a quiet fortnight.
+*/
+const MIN_CUSTOMERS = 30
+const MIN_PAIRS = 10
+const MIN_COHORT = 30
+
+function enoughCustomers(conc: ConcentrationDto | undefined): boolean {
+  return conc !== undefined && conc.pareto.totalCustomers >= MIN_CUSTOMERS
+}
+
+function enoughPairs(conc: ConcentrationDto | undefined): boolean {
+  return conc !== undefined && conc.repeat.pairsMeasured >= MIN_PAIRS
+}
+
+function enoughCohort(conc: ConcentrationDto | undefined): boolean {
+  return conc !== undefined && conc.repeat.cohortSize >= MIN_COHORT
 }
 
 /**
@@ -510,7 +587,7 @@ function RepeatShareCard({
           averaged — they answer the same question over different spans.
         */}
         <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-          Takroriy tushum ulushi — tanlangan davrda, ikki oʻlchov
+          Takroriy tushum ulushi — soʻnggi 90 kunda, ikki oʻlchov
         </p>
         <InfoTip
           label="Nega ikkita raqam"
@@ -567,61 +644,5 @@ function MeasureRow({ label, value }: { readonly label: string; readonly value: 
         <Meter value={value} tone="neutral" label={label} />
       </div>
     </div>
-  )
-}
-
-/**
- * The follow-up ladder as a bar list.
- *
- * Bars are proportional to the largest stage rather than to the total: the
- * stages are not parts of a whole — a customer sits in exactly one, but the
- * list is not exhaustive of the customer base — so a stacked or percentage
- * treatment would state something untrue.
- */
-function StageLadder({
-  stages,
-}: {
-  readonly stages: readonly { readonly stage: string; readonly customers: number }[]
-}) {
-  const max = Math.max(...stages.map((s) => s.customers), 1)
-
-  return (
-    <ul className="space-y-1.5">
-      {stages.map((stage) => (
-        <li key={stage.stage} className="flex items-center gap-3">
-          <span
-            className="w-44 shrink-0 truncate text-xs"
-            style={{ color: 'var(--ink-secondary)' }}
-            title={stage.stage}
-          >
-            {stage.stage.replace(/^.*·\s*/, '')}
-          </span>
-          <div className="h-2 flex-1 overflow-hidden rounded-full" style={{ background: 'var(--track)' }}>
-            <div
-              className="grow-x h-full rounded-full"
-              style={{
-                width: `${(stage.customers / max) * 100}%`,
-                /*
-                  Sequential, not series-7.
-                  
-                  This is one quantitative measure, so it takes the magnitude
-                  hue every other single-measure bar uses. series-7 also
-                  happens to be THIS page's accent — so the bars were wearing
-                  what looked exactly like page identity, the one thing a
-                  value-encoding mark must never do, even by coincidence.
-                */
-                background: 'var(--seq-450)',
-              }}
-            />
-          </div>
-          <span
-            className="tabular w-16 shrink-0 text-right text-xs font-medium"
-            style={{ color: 'var(--ink-primary)' }}
-          >
-            {formatNumber(stage.customers)}
-          </span>
-        </li>
-      ))}
-    </ul>
   )
 }
