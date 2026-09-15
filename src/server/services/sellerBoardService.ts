@@ -1014,14 +1014,20 @@ function planFor(
       amount: toMoneyDto(money(targetMinor, currency)),
       // Deliberately uncapped: their bar clamps the WIDTH at 100%, but the
       // number beside it keeps counting, and a seller at 112% reads 112%.
-      percent: roundPercent(ratePercent(wonMinor, targetMinor) ?? 0),
+      //
+      // PINNED AT ONE DECIMAL. This is «Sotuvchilar reytingi», which the client
+      // froze; `roundPercent` now defaults to `SHARE_DECIMALS` and that would
+      // move this figure by a point in the [x.45, x.5) band. More correct, and
+      // still a change to a board the floor reads every morning.
+      percent: roundPercent(ratePercent(wonMinor, targetMinor) ?? 0, 1),
       basis: 'target',
     }
   }
   if (orderedMinor > 0n) {
     return {
       amount: null,
-      percent: roundPercent(ratePercent(wonMinor, orderedMinor) ?? 0),
+      /* Pinned for the same reason as the target basis above. */
+      percent: roundPercent(ratePercent(wonMinor, orderedMinor) ?? 0, 1),
       basis: 'delivery',
     }
   }

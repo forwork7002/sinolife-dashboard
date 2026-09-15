@@ -766,6 +766,29 @@ onto the deal at import. Bypass it and revenue is ~5 bn UZS (~30%) too high and
 **nothing looks broken**. `scripts/import.ts` prints the excluded total on every
 run; if it is ever zero, the guard has stopped working.
 
+**A PERCENTAGE IS ROUNDED ONCE, AND `roundPercent` NOW DEFAULTS TO THAT.**
+Its doc comment has always said «the client rounds once, at the point where the
+number becomes text», while the signature defaulted to ONE decimal — so every
+service that forgot `SHARE_DECIMALS` put a value on the wire that the client
+rounded a SECOND time, and anything landing in [x.45, x.5) crossed on the way.
+It shipped: the cohort matrix printed a cell as **4%** beside its own «Qaytgan»
+column reading **3%**, both from 118 of 3 390 (2026-09-15; the cell fix is
+c0f70f7, the default is this commit). The same shape was then found on the KPI
+attainment bar, the KPI pace sentence and the FAKT 2 forecast hint on
+Savdo dinamikasi. **Send shares at `SHARE_DECIMALS` and round for display at the
+render site — never both.** Three callers pin `1` explicitly and say why:
+`toDeltaDto`, and the two `SellerPlanDto.percent` bases, because they feed
+«Sotuvchilar reytingi» and «Tasdiqlash navbati», which the client froze — there
+a figure moving by a point is a support call even when the new one is right.
+
+**BigInt division truncates, so never divide before you round.**
+`repeatRevenueShare` was `Math.round(Number((laterRevenue * 1000n) / total)) / 10`
+over two BigInts: the division floored to an integer before `Number` saw it, so
+the `Math.round` could never change anything — dead code that read like the
+rounding it was not doing. The gauge ran up to 0.1 pp low, always downward,
+roughly half the time (9.598% printed «9.5%»). Use `ratePercent` +
+`roundPercent`, which divide in floating point.
+
 **Money is BigInt minor units, end to end.** `src/server/domain/money/money.ts`.
 `toMajorNumber` is lossy and one-way and throws past `MAX_SAFE_INTEGER`.
 `MoneyDto` carries `amountMinor` as a string plus a lossy `amount` for charts.

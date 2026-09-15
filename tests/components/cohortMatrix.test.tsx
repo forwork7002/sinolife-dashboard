@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { CohortHeatmap, type CohortMatrixRow } from '@/components/charts/Heatmap'
@@ -37,6 +37,8 @@ const ROWS: CohortMatrixRow[] = [
     cohort: '2026-08-01',
     size: 100,
     returned: 0,
+    /* Its own month is the one still running. */
+    maxOffset: 0,
     retention: [100, null, null],
     customers: [100, null, null],
     cumulative: [0, null, null],
@@ -47,6 +49,7 @@ const ROWS: CohortMatrixRow[] = [
     cohort: '2026-07-01',
     size: 50,
     returned: 5,
+    maxOffset: 1,
     retention: [100, 10, null],
     customers: [100, 5, null],
     cumulative: [0, 10, null],
@@ -63,6 +66,7 @@ const ROWS: CohortMatrixRow[] = [
     cohort: '2026-06-01',
     size: 200,
     returned: 45,
+    maxOffset: 2,
     retention: [100, 20, 5],
     customers: [100, 40, 10],
     cumulative: [0, 20, 22.5],
@@ -186,6 +190,7 @@ describe('the summary row refuses to colour a sample of one', () => {
       cohort: '2026-06-01',
       size: 1,
       returned: 0,
+      maxOffset: 2,
       retention: [100, 0, 0],
       customers: [1, 0, 0],
       cumulative: [0, 0, 0],
@@ -197,6 +202,7 @@ describe('the summary row refuses to colour a sample of one', () => {
       cohort: '2026-08-01',
       size: 400,
       returned: 40,
+      maxOffset: 1,
       retention: [100, 10, null],
       customers: [400, 40, null],
       cumulative: [0, 10, null],
@@ -249,6 +255,7 @@ describe('a cell and its «Qaytgan» column never disagree', () => {
     cohort,
     size,
     returned,
+    maxOffset: 1,
     /* `wireShare` is what the service actually sends: already one-decimal. */
     retention: [100, wireShare],
     customers: [size, returned],
@@ -283,5 +290,57 @@ describe('a cell and its «Qaytgan» column never disagree', () => {
     render(<CohortHeatmap rows={[wireRow('2026-08-01', 3390, 118, 3.5)]} view="monthly" />)
 
     expect(cell(/2026-avg kogortasi, \+1 oy/).textContent).toBe('3%')
+  })
+})
+
+/**
+ * A MONTH THAT HAS NOT FINISHED HAS NOT ANSWERED YET.
+ *
+ * The hover panel picked its footer from the count alone, so on the newest
+ * column — the one whose month is still running — it told the reader a
+ * half-elapsed September was a finished one: «oʻlchangan nol, maʼlumot yoʻqligi
+ * emas» («a measured zero, not missing data») over a month with a fortnight
+ * left in it, and «ulush oʻzgarmagan» («the share did not move») over a share
+ * that had every chance still to move.
+ */
+describe('the panel on a month that is still running', () => {
+  const RUNNING: CohortMatrixRow[] = [
+    {
+      cohort: '2026-07-01',
+      size: 200,
+      returned: 0,
+      /* +1 is August, and August is the month we are in. */
+      maxOffset: 1,
+      retention: [100, 0, null],
+      customers: [200, 0, null],
+      cumulative: [0, 0, null],
+      cumulativeCustomers: [0, 0, null],
+      revenue: [{ amount: 0 }, { amount: 0 }, { amount: 0 }],
+    },
+  ]
+
+  it('says the month is not over instead of calling it a measured zero', () => {
+    render(<CohortHeatmap rows={RUNNING} view="monthly" />)
+    fireEvent.mouseEnter(cell(/2026-iyl kogortasi, \+1 oy/))
+
+    expect(screen.getByText('Bu oy hali tugamagan — hisob davom etmoqda.')).toBeTruthy()
+    expect(screen.queryByText(/oʻlchangan nol/)).toBeNull()
+  })
+
+  it('says the same on the cumulative reading, where it claimed the share had not moved', () => {
+    render(<CohortHeatmap rows={RUNNING} />)
+    fireEvent.mouseEnter(cell(/2026-iyl kogortasi, \+1 oy/))
+
+    expect(screen.getByText('Bu oy hali tugamagan — hisob davom etmoqda.')).toBeTruthy()
+    expect(screen.queryByText(/ulush oʻzgarmagan/)).toBeNull()
+  })
+
+  /* A finished month keeps the sentence it always had — the guard is on the
+     horizon, not on the zero. */
+  it('still calls a finished empty month a measured zero', () => {
+    render(<CohortHeatmap rows={ROWS} view="monthly" />)
+    fireEvent.mouseEnter(cell(/2026-iyn kogortasi, \+1 oy/))
+
+    expect(screen.queryByText('Bu oy hali tugamagan — hisob davom etmoqda.')).toBeNull()
   })
 })

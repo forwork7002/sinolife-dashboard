@@ -35,6 +35,7 @@ import type {
   ViewerDepartment,
 } from '@/server/repositories/insightsRepository'
 import { deliveryRateBp, moneyRateBp, rateBp } from '@/server/domain/analytics/rates'
+import { ratePercent, roundPercent } from '@/server/domain/analytics/metrics'
 import type { ConfirmationOutcomeValue, ConfirmationQueueMode } from '@/server/domain/types'
 import { keyPart, ttlCache } from './ttlCache'
 
@@ -1029,13 +1030,31 @@ export class InsightsService {
     const laterRevenue = matrix.totals.laterRevenueMinor
     const total = firstRevenue + laterRevenue
 
+    /*
+      BIGINT DIVISION TRUNCATES, AND IT ATE THE DIGIT THIS TILE PRINTS.
+
+      This was `Math.round(Number((laterRevenue * 1000n) / total)) / 10`. Both
+      operands are BigInt minor units, so the division is BigInt division: it
+      floors to an integer BEFORE `Number` sees it, which leaves `Math.round`
+      rounding an integer — a no-op that reads like the rounding it never did.
+      What shipped was floor(1000 * later / total) / 10, always low, by up to a
+      tenth of a point, roughly half the time. 9.598% printed as «9.5%», and
+      12.9% printed as «12.8%».
+
+      The sibling measure at the foot of the same page has always gone through
+      `ratePercent` + `roundPercent`, which divide in floating point and round
+      once. Using them here makes the two agree on arithmetic as well as on
+      wording, and `roundPercent` now leaves four decimals on the wire so the
+      gauge does the single rounding itself.
+    */
+    const repeatRate = ratePercent(laterRevenue, total)
+
     return {
       rows: dtos,
       groups: base.groups,
       baseCustomers: base.totalCustomers,
       workedCustomers: base.workedCustomers,
-      repeatRevenueShare:
-        total === 0n ? null : Math.round(Number((laterRevenue * 1000n) / total)) / 10,
+      repeatRevenueShare: repeatRate === null ? null : roundPercent(repeatRate),
       repeatCustomers,
       totalCustomers,
     }

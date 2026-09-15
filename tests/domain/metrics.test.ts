@@ -95,7 +95,9 @@ describe('growth', () => {
     const delta = growth(34_000_000_000n, 29_600_000_000n)
     expect(delta.kind).toBe('change')
     if (delta.kind === 'change') {
-      expect(roundPercent(delta.percent)).toBe(14.9)
+      /* One decimal, because that is what `toDeltaDto` pins a Delta to — see
+         `roundPercent`, whose own default is now SHARE_DECIMALS. */
+      expect(roundPercent(delta.percent, 1)).toBe(14.9)
     }
   })
 
@@ -169,5 +171,44 @@ describe('toDeltaDto', () => {
     expect(toDeltaDto({ kind: 'no_baseline', current: 999 })).toEqual({
       kind: 'no_baseline',
     })
+  })
+})
+
+/**
+ * THE DEFAULT IS THE POLICY, AND IT USED TO CONTRADICT ITS OWN DOC COMMENT.
+ *
+ * `roundPercent`'s paragraph has always said «the client rounds once, at the
+ * point where the number becomes text», while the signature defaulted to one
+ * decimal — so every caller that forgot `SHARE_DECIMALS` put a number on the
+ * wire that the client rounded a SECOND time. A value in [x.45, x.5) crosses on
+ * the way, which is why it looked like a glitch in a few rows rather than the
+ * rule it was: the cohort matrix shipped a cell reading 4% beside its own
+ * «Qaytgan» column reading 3%, both from 118 of 3 390.
+ *
+ * These cases pin the default itself, because the default is the only thing
+ * standing between the next service and the same bug.
+ */
+describe('roundPercent, the transport rounding', () => {
+  it('keeps four decimals by default, so the client can round once', () => {
+    expect(roundPercent(3.4808259587020647)).toBe(3.4808)
+    expect(roundPercent(64.46666666666667)).toBe(64.4667)
+  })
+
+  /*
+    The crossing the whole class turns on: quantised to one decimal first, a
+    true 3.48% reaches the client as 3.5 and prints as «4%»; left at four, it
+    prints as «3%», which is what the count beside it says.
+  */
+  it('does not push a value across a .5 boundary the way one decimal did', () => {
+    expect(Math.round(roundPercent(3.4808259587020647))).toBe(3)
+    expect(Math.round(roundPercent(3.4808259587020647, 1))).toBe(4)
+  })
+
+  it('still answers exactly when asked for one decimal', () => {
+    expect(roundPercent(14.8649, 1)).toBe(14.9)
+    expect(roundPercent(0.026, 1)).toBe(0)
+    /* The case the SHARE_DECIMALS paragraph was written for: one decimal hands
+       the client an exact zero for a real non-zero share. */
+    expect(roundPercent(0.026)).toBe(0.026)
   })
 })

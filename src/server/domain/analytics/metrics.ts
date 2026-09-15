@@ -164,7 +164,24 @@ export function fromBasisPoints(bp: number | null): number | null {
  */
 export const SHARE_DECIMALS = 4
 
-export function roundPercent(value: number, decimals = 1): number {
+/*
+  THE DEFAULT IS THE POLICY, AND IT USED TO CONTRADICT THE PARAGRAPH ABOVE IT.
+
+  That comment has said «the client rounds once, at the point where the number
+  becomes text» since it was written, while this signature defaulted to ONE
+  decimal — so every caller that did not remember to pass `SHARE_DECIMALS` put a
+  number on the wire that the client then rounded a SECOND time. A value landing
+  in [x.45, x.5) crosses on the way: the cohort matrix printed a cell as 4%
+  beside its own «Qaytgan» column reading 3%, both from 118 of 3 390, and that
+  shipped to production (fixed in c0f70f7). The same shape was then found on the
+  KPI attainment bar, the KPI pace sentence and the FAKT 2 forecast hint.
+
+  Defaulting to `SHARE_DECIMALS` makes the safe thing automatic. The three
+  callers that must NOT move pass `1` explicitly and say why — they feed screens
+  the client has frozen, where a number changing by a point is a support call
+  even when the new number is the more correct one.
+*/
+export function roundPercent(value: number, decimals = SHARE_DECIMALS): number {
   const factor = 10 ** decimals
   return Math.round(value * factor) / factor
 }
@@ -183,7 +200,11 @@ export function toDeltaDto(delta: Delta): DeltaDto {
     case 'change':
       return {
         kind: 'change',
-        percent: roundPercent(delta.percent),
+        /* PINNED AT ONE DECIMAL — a Delta is read on every board, «Sotuvchilar
+           reytingi» and «Tasdiqlash navbati» included, and those two are frozen
+           by the client. Widening it here would move arrows on screens nobody
+           asked to change. See `roundPercent`. */
+        percent: roundPercent(delta.percent, 1),
         direction: delta.direction,
       }
     case 'unchanged':

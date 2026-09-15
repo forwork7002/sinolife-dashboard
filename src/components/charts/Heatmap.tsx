@@ -65,6 +65,17 @@ export interface CohortMatrixRow {
   readonly retention: readonly (number | null)[]
   /** The headcount behind each share, same offsets, same nulls. */
   readonly customers: readonly (number | null)[]
+  /**
+   * The newest offset this cohort has reached — and the ONE offset whose month
+   * is still running.
+   *
+   * The server takes it from the calendar (`monthsApart(cohort, currentMonth)`,
+   * where `currentMonth` is the first of THIS month), so `maxOffset` always
+   * names the current, incomplete month. The matrix draws it like any other
+   * cell, which is right — hiding it would leave the table a month behind — but
+   * the hover panel was telling the reader it was finished. See `panelFor`.
+   */
+  readonly maxOffset: number
   /** Share that had come back at least once by each offset. Monotonic. */
   readonly cumulative: readonly (number | null)[]
   /** The headcount behind each cumulative share, same offsets, same nulls. */
@@ -959,10 +970,22 @@ function panelFor(
         { label: 'Shu oyda qoʻshilgan', value: added > 0 ? `+${formatNumber(added)}` : '0' },
         { label: 'Shu oydagi tushum', value: formatUzs(amount) },
       ],
+      /*
+        A MONTH THAT HAS NOT FINISHED HAS NOT ANSWERED YET.
+
+        Both sentences below were written for a month in the past, and the panel
+        said them about the current one too: on 15 September the 2026-avg row's
+        only cell covers 1–15 September, and hovering it claimed the share «had
+        not moved» as though September were over. The legend already draws the
+        line the right way for months that have not STARTED («hali oʻtmagan
+        oy»); this is the same distinction one column earlier.
+      */
       footer:
-        added === 0
-          ? 'Bu oyda yangi qaytgan mijoz boʻlmagan — ulush oʻzgarmagan.'
-          : 'Har bir mijoz bir marta sanaladi: birinchi qaytgan oyida.',
+        hot.col === row.maxOffset
+          ? 'Bu oy hali tugamagan — hisob davom etmoqda.'
+          : added === 0
+            ? 'Bu oyda yangi qaytgan mijoz boʻlmagan — ulush oʻzgarmagan.'
+            : 'Har bir mijoz bir marta sanaladi: birinchi qaytgan oyida.',
     }
   }
 
@@ -995,10 +1018,14 @@ function panelFor(
       { label: 'Ulush', value: formatPercent(value) },
       { label: 'Tushum', value: formatUzs(amount) },
     ],
+    /* «oʻlchangan nol» is a claim about a FINISHED month — see the cumulative
+       branch above for the failure it made on the current one. */
     footer:
-      customers === 0
-        ? 'Bu oyda bu kogortadan hech kim qaytmagan — oʻlchangan nol, maʼlumot yoʻqligi emas.'
-        : undefined,
+      hot.col === row.maxOffset
+        ? 'Bu oy hali tugamagan — hisob davom etmoqda.'
+        : customers === 0
+          ? 'Bu oyda bu kogortadan hech kim qaytmagan — oʻlchangan nol, maʼlumot yoʻqligi emas.'
+          : undefined,
   }
 }
 
