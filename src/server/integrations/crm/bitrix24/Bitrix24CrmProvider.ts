@@ -269,7 +269,10 @@ export class Bitrix24CrmProvider implements CrmProvider {
     }
 
     this.webhookUrl = options.webhookUrl.replace(/\/+$/, '') + '/'
-    this.limiter = new RateLimiter(options.rateLimitRps ?? 2)
+    /* Below the portal's documented sustained limit, not at it — see the note
+       in `syncWorker` for why the last half a request a second is the one worth
+       giving up. */
+    this.limiter = new RateLimiter(options.rateLimitRps ?? 1.5)
     this.timeoutMs = options.requestTimeoutMs ?? 30_000
     this.maxRetries = options.maxRetries ?? 3
     this.fetchImpl = options.fetchImpl ?? fetch

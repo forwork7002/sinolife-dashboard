@@ -153,8 +153,9 @@ const schema = z
       .string()
       .optional()
       .transform((v) => (v === '' ? undefined : v)),
+    /* 1.5, not the portal's documented ceiling of 2 — see `syncWorker`. */
     BITRIX24_RATE_LIMIT_RPS: blankAsUndefined(
-      z.coerce.number().positive().default(2),
+      z.coerce.number().positive().default(1.5),
     ),
     BITRIX24_REQUEST_TIMEOUT_MS: blankAsUndefined(
       z.coerce.number().int().positive().default(15_000),

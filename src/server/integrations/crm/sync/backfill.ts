@@ -23,6 +23,26 @@ export function historyBackfillCursor(
    * rather than a RECOVERY. Default thirty minutes.
    */
   minIdleMs = 30 * 60_000,
+  /**
+   * How far BEFORE the cursor to start reading again. Default two days.
+   *
+   * THE REPAIR IS AROUND THE CURSOR, NOT AT THE START OF THE WINDOW. The rows
+   * this exists to recover are the ones a skipped run dropped — they sit beside
+   * the watermark, because that is where the drop happened. Reading from six
+   * weeks back to recover them was a historical sweep for gaps that predate
+   * `SKIP_LOOKBACK_MS`, and those have long since been closed; what it costs
+   * now is ~80 500 rows every time the worker is down for half an hour.
+   *
+   * Which is the worst possible moment to spend them. On 2026-09-15 the portal
+   * refused this integration for 95 minutes and the recovery tick immediately
+   * re-read six weeks of stage history — at a portal that had blocked us the
+   * day before, for volume. Two days covers any gap a restart can open and
+   * costs a couple of thousand rows.
+   *
+   * `days` remains the hard floor, so setting `SYNC_HISTORY_BACKFILL_DAYS` and
+   * a large margin still performs the old full sweep if one is ever wanted.
+   */
+  marginMs = 2 * 86_400_000,
 ): Date | null {
   // Switched off.
   if (!Number.isFinite(days) || days <= 0) return null
@@ -65,5 +85,9 @@ export function historyBackfillCursor(
     forward would skip everything in between, which is the one thing a repair
     must not do.
   */
-  return cursor > from ? from : null
+  if (cursor <= from) return null
+
+  /* Back from the CURSOR by the margin, and never past `days` from now. */
+  const target = new Date(cursor.getTime() - marginMs)
+  return target < from ? from : target
 }

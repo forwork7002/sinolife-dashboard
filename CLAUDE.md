@@ -1284,6 +1284,31 @@ ours, and the header says why meanwhile.
   an operator to fetch a new webhook for one is the 2026-09-14 misdiagnosis
   running backwards. The log says the act, not the symptom, because the worker
   log is where an operator looks before the client telephones.
+- **THE PORTAL IS ASKED A BOUNDED NUMBER OF TIMES A DAY, BY CONSTRUCTION.**
+  `sync_log.apiCalls` counts requests SENT (retries included) beside the rows
+  received — a batch is one request and up to 2 500 rows, so the number the
+  portal rate-limits on was three orders of magnitude from the only number we
+  recorded, and the 2026-09-14 support ticket had to describe our behaviour
+  rather than measure it. `BITRIX24_DAILY_CALL_BUDGET` (default 50 000, under a
+  third of the 172 800 a day that the documented 2 req/s allows) is a ceiling
+  nothing should approach; when it is spent the worker skips the tick, says so
+  loudly and waits. Set it to `0` for a deliberate full import.
+  `BITRIX24_RATE_LIMIT_RPS` now defaults to **1.5, not 2** — two IS the portal's
+  documented sustained limit, and the portal also carries the client's Telegram
+  bot, a МойСклад sync and a Mini App whose load we neither see nor control.
+- **THE STAGE-HISTORY REPAIR READS AROUND THE CURSOR, NOT SIX WEEKS BACK.** The
+  rows it recovers sit beside the watermark, because that is where a skipped run
+  drops them; `SYNC_HISTORY_BACKFILL_DAYS` is now the FLOOR and the default
+  two-day margin is the reach. The old full sweep was for gaps predating
+  `SKIP_LOOKBACK_MS`, and it cost ~80 500 rows every time the worker was down
+  half an hour — including the tick that recovered from the 95-minute refusal of
+  2026-09-15, at a portal that had blocked us the day before for volume.
+- **`SYNC_ALERT_WEBHOOK_URL` is how anybody finds out.** On 2026-09-15 the
+  dashboard was stale for 95 minutes and the only signals were an 11px chip and
+  a container log; the client found it by looking at the screen. The worker
+  POSTs `{text}` once per outage after `SYNC_ALERT_AFTER_MIN` (default 30) — a
+  Slack incoming webhook takes that as it stands, Telegram's `sendMessage` takes
+  it with `?chat_id=` on the URL. Unset, it does nothing.
 - **THE CHIP NAMED ONE ENTITY FOR A PORTAL-WIDE OUTAGE.** `syncError.entity` is
   whichever pass failed LAST, so an hour with every number on every screen
   frozen was reported as «stage_history» — the narrowest thing on the portal,

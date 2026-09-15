@@ -17,13 +17,39 @@ import { historyBackfillCursor } from '@/server/integrations/crm/sync/backfill'
  */
 const NOW = new Date('2026-09-03T12:00:00.000Z')
 const DAYS = 45
+/** The hard floor: `days` back from now, and the cursor may never pass it. */
 const WINDOW_START = new Date(NOW.getTime() - DAYS * 86_400_000)
+/** The default margin the repair actually uses — two days before the cursor. */
+const back = (iso: string, ms = 2 * 86_400_000) => new Date(new Date(iso).getTime() - ms)
 
 describe('the stage-history backfill cursor', () => {
-  it('winds a cursor left by a DOWN worker back to the window', () => {
+  /*
+    THE REPAIR IS AROUND THE CURSOR, NOT AT THE START OF THE WINDOW.
+
+    The rows this recovers sit BESIDE the watermark, because that is where a
+    skipped run drops them. Reading from six weeks back to find them was a
+    sweep for gaps predating `SKIP_LOOKBACK_MS`, and it cost ~80 500 rows every
+    time the worker was down half an hour — including, on 2026-09-15, the tick
+    that recovered from a 95-minute refusal, at a portal that had blocked this
+    integration the day before for volume.
+  */
+  it('winds a cursor left by a DOWN worker back by the margin, not to the window', () => {
     // Two hours idle: the process was not running, so a gap can have opened.
     const cursor = new Date('2026-09-03T10:00:00.000Z')
+    expect(historyBackfillCursor(cursor, NOW, DAYS)).toEqual(back('2026-09-03T10:00:00.000Z'))
+  })
+
+  it('still floors at `days`, so the margin can never reach past the window', () => {
+    // A cursor 44 days old, less than the margin inside the 45-day floor.
+    const cursor = new Date(NOW.getTime() - 44 * 86_400_000)
     expect(historyBackfillCursor(cursor, NOW, DAYS)).toEqual(WINDOW_START)
+  })
+
+  it('performs the old full sweep when asked for one', () => {
+    const cursor = new Date('2026-09-03T10:00:00.000Z')
+    expect(historyBackfillCursor(cursor, NOW, DAYS, undefined, 90 * 86_400_000)).toEqual(
+      WINDOW_START,
+    )
   })
 
   /*
@@ -40,10 +66,12 @@ describe('the stage-history backfill cursor', () => {
     expect(historyBackfillCursor(cursor, NOW, DAYS)).toBeNull()
     // Just past the threshold, it is a repair again.
     expect(historyBackfillCursor(new Date('2026-09-03T11:29:00.000Z'), NOW, DAYS)).toEqual(
-      WINDOW_START,
+      back('2026-09-03T11:29:00.000Z'),
     )
     // The threshold is a parameter, so a worker can be told to repair always.
-    expect(historyBackfillCursor(cursor, NOW, DAYS, 0)).toEqual(WINDOW_START)
+    expect(historyBackfillCursor(cursor, NOW, DAYS, 0)).toEqual(
+      back('2026-09-03T11:55:00.000Z'),
+    )
   })
 
   it('leaves a cursor that is already older than the window alone', () => {

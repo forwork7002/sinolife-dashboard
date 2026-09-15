@@ -84,7 +84,11 @@ async function main() {
 
     const provider = new Bitrix24CrmProvider({
       webhookUrl: WEBHOOK_URL,
-      rateLimitRps: Number(process.env.BITRIX24_RATE_LIMIT_RPS ?? 2),
+      /* Headroom below the portal's documented 2 req/s — see `syncWorker`.
+         This is the highest-volume thing we do (a full pass is ~448 000 rows),
+         so it is the run most likely to earn a block, and the one whose extra
+         minutes matter least. */
+      rateLimitRps: Number(process.env.BITRIX24_RATE_LIMIT_RPS ?? 1.5),
       requestTimeoutMs: Number(process.env.BITRIX24_REQUEST_TIMEOUT_MS ?? 30_000),
       callHistoryMonths: Number(process.env.BITRIX24_CALL_MONTHS ?? 1),
       onProgress: (m) => console.log(`  ${stamp()} ${m}`),

@@ -184,6 +184,52 @@ const DAILY_CALL_BUDGET = Number(process.env.BITRIX24_DAILY_CALL_BUDGET ?? 50_00
 const BUDGET_CHECK_EVERY = 10
 
 /**
+ * Where to say out loud that the dashboard has stopped being fed.
+ *
+ * NOBODY WAS TOLD FOR NINETY-FIVE MINUTES. On 2026-09-15 the portal refused
+ * every call from 11:10, every screen in the product froze at 10:47, and the
+ * only signals were an 11px chip in the header and a container log nobody
+ * watches. The client found it by looking at the screen.
+ *
+ * Deliberately a bare URL and a JSON POST rather than an integration: a Slack
+ * incoming webhook takes `{text}` as it stands, and Telegram's `sendMessage`
+ * takes the same body with `?chat_id=` on the URL. Unset, this does nothing —
+ * which is the state the product shipped in, so nothing gets worse by default.
+ */
+const ALERT_WEBHOOK_URL = process.env.SYNC_ALERT_WEBHOOK_URL ?? ''
+
+/** How long the clock may be stopped before it is worth waking somebody. */
+const ALERT_AFTER_MS = Number(process.env.SYNC_ALERT_AFTER_MIN ?? 30) * 60_000
+
+/**
+ * Post the alert. Never throws, never blocks a tick for long.
+ *
+ * An integration whose ALERTING can break the thing it is watching is worse
+ * than none: this is why the timeout is short and the catch is silent past one
+ * line. The sync is the job; telling somebody about it is not allowed to
+ * become a second way to fail.
+ */
+async function raiseAlert(text: string): Promise<void> {
+  if (!ALERT_WEBHOOK_URL) return
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 10_000)
+    try {
+      await fetch(ALERT_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text }),
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+  } catch (error) {
+    console.error(`  ${stamp()} ! ogohlantirish yuborilmadi:`, error)
+  }
+}
+
+/**
  * The heap the Roistat child is allowed, in megabytes.
  *
  * Deliberately NOT the worker's own 768 — see `runRoistatImport` for the
@@ -465,7 +511,20 @@ async function main() {
 
   const provider = new Bitrix24CrmProvider({
     webhookUrl: webhook,
-    rateLimitRps: Number(process.env.BITRIX24_RATE_LIMIT_RPS ?? 2),
+/*
+      HEADROOM, NOT THE CEILING ITSELF.
+
+      Two requests a second IS Bitrix24's documented sustained limit on a
+      non-Enterprise plan, so running at exactly two leaves nothing for a burst,
+      a retry, or the client's OTHER integrations on the same portal — a
+      Telegram bot, a МойСклад sync and a Mini App, whose load we neither see
+      nor control. On 2026-09-14 the portal blocked this webhook for four hours
+      and documented no threshold for doing it.
+
+      This worker is a background loop with a one-minute clock; a third less
+      throughput costs it nothing it can notice.
+    */
+    rateLimitRps: Number(process.env.BITRIX24_RATE_LIMIT_RPS ?? 1.5),
     requestTimeoutMs: Number(process.env.BITRIX24_REQUEST_TIMEOUT_MS ?? 30_000),
     callHistoryMonths: Number(process.env.BITRIX24_CALL_MONTHS ?? 1),
   })
@@ -589,6 +648,10 @@ async function main() {
   let overBudget = false
   /** Calls in the last rolling day, as of the most recent reading. */
   let callsToday = 0
+  /** When a tick last completed with nothing failing. */
+  let lastGoodAt = Date.now()
+  /** Whether this outage has already been reported. One message, not forty. */
+  let alerted = false
   /** Whether the LAST tick was refused for a credential the portal rejects. */
   let unauthorised = false
 
@@ -700,8 +763,34 @@ async function main() {
               ` qayta urinish yordam bermaydi, ${PORTAL_PAUSE_MS / 60_000} daqiqa kutiladi.`,
           )
         }
+
+        /*
+          ONCE PER OUTAGE, AND ONLY WHEN THE CLOCK IS ACTUALLY STOPPED.
+
+          Not on the first failed tick: a single refused minute is ordinary and
+          clears itself, and a channel that speaks every time one happens is a
+          channel people mute before the day it matters — the same rule the
+          header chip follows. `alerted` resets on the next clean tick, so a
+          second outage is reported again.
+        */
+        const stoppedFor = Date.now() - lastGoodAt
+        if (!alerted && stoppedFor >= ALERT_AFTER_MS) {
+          alerted = true
+          const why = unauthorised
+            ? 'Bitrix24 webhook rad etildi (401) — yangi webhook kerak'
+            : throttled
+              ? 'Bitrix24 oʻz API sini vaqtincha bloklagan'
+              : `xato: ${failed[0]?.errorMessage?.slice(0, 160) ?? 'nomaʼlum'}`
+          await raiseAlert(
+            `SinoLife: maʼlumot ${Math.round(stoppedFor / 60_000)} daqiqadan beri` +
+              ` yangilanmayapti. ${why}.` +
+              ` Boʻlimlar: ${failed.map((r) => r.entity).join(', ')}.`,
+          )
+        }
       } else {
         failures = 0
+        lastGoodAt = Date.now()
+        alerted = false
         // Silent when nothing moved: a worker that logs every idle minute
         // buries the ticks that did something.
         if (changed > 0) {
