@@ -86,7 +86,20 @@ const schema = analyticsQuerySchema.and(
       this route rather than bolted onto `/analytics/sales`, whose window is
       the close date and whose payload the chart's area already comes from.
     */
-    include: z.enum(['records', 'faktTrend']).optional(),
+    /*
+      'medals' — pagonning fakti: medal, ball, daraja.
+
+      OPT-IN va ALMASHTIRUVCHI, xuddi 'records' kabi va xuddi shu ikki sabab
+      bilan: o'quvchi allaqachon taxtani ushlab turgan ikkinchi react-query
+      kaliti, va baribir taxta qurish har o'n daqiqada tashlab yuboriladigan
+      ikkinchi kogorta qurilishi bo'lardi.
+
+      OYNASI TAXTANIKI EMAS. Medal `RECORDS_FROM` dan bugungacha bo'lgan
+      butun tarixni o'qiydi va so'rovdagi `?from`/`?to` ga qaramaydi —
+      sababi `sellerBoardService.medals()` ustida: «Bugun» tanlanganda
+      hamma medalini yo'qotadigan taxta motivatsiya asbobi bo'la olmaydi.
+    */
+    include: z.enum(['records', 'faktTrend', 'medals']).optional(),
   }),
 )
 
@@ -160,6 +173,13 @@ export const GET = getHandler(ACCESS, schema, async (ctx) => {
   if (ctx.query.include === 'faktTrend') {
     return {
       data: await sellerBoardService.faktTrend(context),
+      meta: AnalyticsService.periodMeta(context),
+    }
+  }
+
+  if (ctx.query.include === 'medals') {
+    return {
+      data: await sellerBoardService.medals(context),
       meta: AnalyticsService.periodMeta(context),
     }
   }

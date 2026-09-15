@@ -1251,6 +1251,68 @@ export interface SellerRecordsDto {
   readonly from: string
 }
 
+/** Pagonning medal kodlari. Mirrors `sellerMedals.MEDAL_CODES`. */
+export type MedalCode =
+  | 'month-gold'
+  | 'month-silver'
+  | 'month-bronze'
+  | 'year-champion'
+  | 'streak-fire'
+  | 'streak-steady'
+  | 'work-month'
+  | 'conversion-master'
+  | 'clean-month'
+  | 'jump'
+  | 'rookie'
+  | 'day-record'
+  | 'day-winner'
+  | 'first-sale'
+  | 'club'
+
+/**
+ * Bitta medal va uning sababi, bo'laklarda.
+ *
+ * TAYYOR MATN EMAS: qaysi oy/kun, qancha pul, necha buyurtma, necha foiz —
+ * jumlani `Pagon.tsx` yig'adi. Sabab: domen qatlami o'zbek tilini bilmaydi va
+ * bir xil bo'laklardan seat kartasi uzun, jadval qatori qisqa jumla tuzadi.
+ *
+ * Mirrors `sellerBoardService.SellerMedalDto`; nothing checks the mirror —
+ * edit both sides.
+ */
+export interface SellerMedalDto {
+  readonly code: MedalCode
+  /** Takrorlanadiganlar uchun nechta; takrorlanmaydiganda 1. */
+  readonly count: number
+  /** Faqat `club` uchun 1..7 — eng yuqori o'tilgan bosqich. */
+  readonly tier: number | null
+  readonly points: number
+  /** Sababning oyi yoki kuni, `YYYY-MM-DD`. Takrorlanganda ENG OXIRGISI. */
+  readonly at: string | null
+  readonly amount: MoneyDto | null
+  readonly orders: number | null
+  readonly percent: number | null
+}
+
+export interface SellerMedalRowDto {
+  readonly employeeId: string
+  readonly points: number
+  readonly level: number
+  /** «Usta», «Master» — `titleOf`. */
+  readonly rankTitle: string
+  readonly levelFloor: number
+  readonly nextLevelAt: number
+  /** Keyingi daraja unvonni almashtirsa — o'sha unvon; bo'lmasa null. */
+  readonly nextTitle: string | null
+  /** Ball bo'yicha kamayib — pagon qimmatlisini oldin chizadi. */
+  readonly medals: readonly SellerMedalDto[]
+}
+
+export interface SellerMedalsDto {
+  readonly sellers: readonly SellerMedalRowDto[]
+  /** See `SellerRecordsDto.from` — o'sha chegara, o'sha sabab. */
+  readonly from: string
+}
+
 /** One day of one seller's intake. */
 export interface SellerDayDto {
   readonly date: string
