@@ -403,6 +403,12 @@ export interface SellerMedalDto {
   /** Sababning oyi yoki kuni, `YYYY-MM-DD`. */
   readonly at: string | null
   readonly amount: MoneyDto | null
+  /**
+   * Odatda buyurtma soni — lekin ikki medalda BOSHQA narsani tashiydi:
+   * `rookie` da bu sotuvchining o'sha oydagi O'RNI, `work-month` da esa
+   * necha KUN ishlagani. `medalReason` (`Pagon.tsx`) ikkalasini ham
+   * alohida o'qiydi — umumiy yo'ldan o'tsa, ikkalasi ham noto'g'ri chiziladi.
+   */
   readonly orders: number | null
   readonly percent: number | null
 }
@@ -827,15 +833,28 @@ export class SellerBoardService {
    * narsa emas — aks holda filtr motivatsiyani o'chirib qo'yadigan tugmaga
    * aylanardi. Devor ham aynan shu sababdan o'z oynasida yashaydi.
    *
-   * Kesh kaliti — `records()` ning kaliti: bir xil oyna, bir xil filtrlar.
+   * Kesh kaliti `records()` ning kalitidan ATAYLAB bitta joyda farq qiladi —
+   * pastdagi izohga qarang.
    */
   async medals(ctx: AnalyticsContext): Promise<SellerMedalsDto> {
     const filters = boardFilters(ctx)
     const period = recordWindow(ctx.now, ctx.period.timeZone)
 
+    /*
+      `period.end` BU YERDA ATAYLAB YO'Q. `recordWindow` uni `ctx.now`dan
+      quradi — har so'rovda yangi `new Date()` — ya'ni kalitga qo'shilsa,
+      kalit har millisekundda boshqacha bo'lib, kesh HECH QACHON hit
+      bo'lmasdi: ikkala kogorta qurilishi ham (~2 s o'lchangan) HAR
+      SO'ROVDA ishga tushardi, va `ttlCache`ning promise'ni qo'shib
+      yuborishi — butun floor bir vaqtda ochganda ishlashi uchun
+      yozilgan — hech qachon ishlamas edi. O'N DAQIQALIK TTL javobni yangi
+      ushlab turadi; kalitga esa faqat SAVOLNI aniqlash kerak, savol esa
+      "RECORDS_FROM dan buyon qaysi medallar, shu filtrlar ostida" — buni
+      `period.start` (RECORDS_FROM ning o'zi), mintaqa, valyuta va filtrlar
+      to'liq aytib beradi, `end`siz ham.
+    */
     const key = [
       period.start.toISOString(),
-      period.end.toISOString(),
       period.timeZone,
       ctx.currency,
       keyPart(filters.employeeIds),
@@ -857,6 +876,7 @@ export class SellerBoardService {
       months: facts.months,
       days: facts.days,
       runningMonth: monthKey(ctx.now, period.timeZone),
+      runningDay: zonedDateKey(ctx.now, period.timeZone),
     })
 
     return {

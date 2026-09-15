@@ -67,6 +67,22 @@ export function medalReason(medal: SellerMedalDto): string {
     return parts.join(' · ')
   }
 
+  /*
+    📅 «ISHCHAN OY»NING `orders` MAYDONI BUYURTMA EMAS, KUN, VA `percent`
+    KONVERSIYA EMAS, DAVOMAT. Domen qatlami floor ishlagan kunlar ichida bu
+    sotuvchi necha kun tasdiq berganini `orders`da, ulushni `percent`da
+    uzatadi (boshqa maydon qo'shmaslik uchun) — umumiy yo'ldan o'tsa, kun
+    soni «N buyurtma» deb, foiz esa yorliqsiz chizilardi, va bu aynan mijoz
+    2026-09-15 da o'chirtirgan ziddiyatli holatni qayta yaratardi.
+  */
+  if (medal.code === 'work-month') {
+    if (when !== null) parts.push(when)
+    if (medal.orders !== null) parts.push(`${formatNumber(medal.orders)} kun`)
+    if (medal.percent !== null) parts.push(`davomat ${formatPercent(medal.percent)}`)
+    if (medal.count > 1) parts.push(`${formatNumber(medal.count)} marta`)
+    return parts.length > 0 ? parts.join(' · ') : MEDALS[medal.code].name
+  }
+
   if (when !== null) parts.push(when)
   if (medal.percent !== null) parts.push(formatPercent(medal.percent))
   if (medal.amount !== null) parts.push(`${formatFullUzs(medal.amount.amount)} soʻm`)

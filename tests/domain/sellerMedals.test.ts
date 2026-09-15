@@ -31,8 +31,8 @@ function day(over: Partial<SellerDayFact> & { employeeId: string }): SellerDayFa
   }
 }
 
-const build = (months: SellerMonthFact[], days: SellerDayFact[] = []) =>
-  buildSellerMedals({ months, days, runningMonth: '2026-09' })
+const build = (months: SellerMonthFact[], days: SellerDayFact[] = [], runningDay = '2026-09-01') =>
+  buildSellerMedals({ months, days, runningMonth: '2026-09', runningDay })
 
 const rowOf = <T extends { employeeId: string }>(rows: readonly T[], id: string) =>
   rows.find((r) => r.employeeId === id)!
@@ -262,6 +262,7 @@ describe('seriya medallari', () => {
       ],
       days: [],
       runningMonth: '2026-10',
+      runningDay: '2026-10-01',
     })
     expect(codes(rowOf(rows, 'a'))).not.toContain('streak-fire')
     expect(codes(rowOf(rows, 'a'))).not.toContain('streak-steady')
@@ -317,6 +318,27 @@ describe('kun medallari', () => {
     expect(codes(rowOf(rows, 'a'))).toContain('day-record')
     expect(codes(rowOf(rows, 'b'))).not.toContain('day-record')
   })
+
+  it('JORIY KUN na ⚡ na 🌅 beradi — o‘rni kun tugamaguncha o‘zgarib turadi', () => {
+    const rows = build(
+      [],
+      [day({ employeeId: 'a', day: '2026-09-10', place: 1, deliveredMinor: MLN })],
+      '2026-09-10',
+    )
+    const row = rows.find((r) => r.employeeId === 'a')
+    expect(row?.medals.some((m) => m.code === 'day-winner')).toBeFalsy()
+    expect(row?.medals.some((m) => m.code === 'day-record')).toBeFalsy()
+  })
+
+  it('xuddi shu fixture, lekin kun runningDay dan ERTAROQ bo‘lsa — ikkalasi ham beriladi', () => {
+    const rows = build(
+      [],
+      [day({ employeeId: 'a', day: '2026-09-09', place: 1, deliveredMinor: MLN })],
+      '2026-09-10',
+    )
+    expect(codes(rowOf(rows, 'a'))).toContain('day-winner')
+    expect(codes(rowOf(rows, 'a'))).toContain('day-record')
+  })
 })
 
 describe('yil chempioni va yangi yulduz', () => {
@@ -343,6 +365,7 @@ describe('yil chempioni va yangi yulduz', () => {
       ],
       days: [],
       runningMonth: '2026-11',
+      runningDay: '2026-11-01',
     })
     expect(codes(rowOf(rows, 'a'))).toContain('rookie')
   })
@@ -355,6 +378,7 @@ describe('yil chempioni va yangi yulduz', () => {
       ],
       days: [],
       runningMonth: '2026-12',
+      runningDay: '2026-12-01',
     })
     expect(codes(rowOf(rows, 'a'))).not.toContain('rookie')
   })

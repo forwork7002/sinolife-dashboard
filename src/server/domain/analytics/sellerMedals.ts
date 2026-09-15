@@ -255,6 +255,16 @@ export interface SellerMedalsInput {
   readonly days: readonly SellerDayFact[]
   /** `YYYY-MM` — hali yopilmagan oy. Seriya va oylik medallar undan qochadi. */
   readonly runningMonth: string
+  /**
+   * `YYYY-MM-DD`, hisobot mintaqasida — hali tugamagan kun.
+   *
+   * Xuddi `runningMonth` oylik medallarni chetlab o'tgani kabi, ⚡ va 🌅 shu
+   * kunni chetlab o'tadi. Kun tugamaguncha uning `place`i har soatda
+   * o'zgaradi: bugungi yetakchi kechqurun boshqasidan oshirilib, 🌅 ni
+   * yo'qotardi — va 50 ball yo'qotish darajani pasaytirishi mumkin, spec esa
+   * darajaning hech qachon pasaymasligini talab qiladi.
+   */
+  readonly runningDay: string
 }
 
 export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMedalRow[] {
@@ -485,6 +495,10 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
   // --- ⚡ 🌅 kun medallari ------------------------------------------------
   let recordDay: SellerDayFact | null = null
   for (const d of input.days) {
+    // JORIY KUN MEDAL BERMAYDI — xuddi joriy oy kabi. Kun tugamaguncha
+    // `place`i har soatda o'zgaradi, ya'ni bugungi g'olib kechqurun almashib
+    // ketardi, va ⚡ ni ham xuddi shunday yo'qotib-topib turardi.
+    if (d.day === input.runningDay) continue
     // PULSIZ KUN G'OLIBLIK EMAS. `place` hamma qatnashgan kun uchun
     // beriladi, shu jumladan hech kim yetkazmagan kun uchun ham — u yerdagi
     // «1-o'rin» tie-break natijasi, yutuq emas.

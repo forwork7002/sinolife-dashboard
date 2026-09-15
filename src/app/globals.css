@@ -2594,13 +2594,18 @@ p {
   align-items: flex-end;
 }
 
+/* FALLBACK, NOT A NEW TOKEN: table rows start at rank 4, where `--metal` is
+   never set (only .podium-col--* and .rank-1/2/3 set it), so this color-mix
+   had no value to read, went invalid at computed-value time, and painted as
+   nothing. `var(--metal, var(--ink-muted))` keeps the podium's own metal and
+   gives every other row a neutral chevron instead of none at all. */
 .pagon-chevron span {
   width: 3px;
   border-radius: 1px;
   background: linear-gradient(
     180deg,
-    color-mix(in oklab, var(--metal) 78%, transparent),
-    color-mix(in oklab, var(--metal) 38%, transparent)
+    color-mix(in oklab, var(--metal, var(--ink-muted)) 78%, transparent),
+    color-mix(in oklab, var(--metal, var(--ink-muted)) 38%, transparent)
   );
 }
 
@@ -2678,9 +2683,11 @@ p {
 
 /* The club lozenge is the one medal that earns the metal rim: its tier IS a
    ceremony rank, and the numeral beside it is a roman ordinal rather than a
-   measured value. */
+   measured value. Same fallback as the chevron above — this lozenge also
+   sits inside table rows, where `--metal` is unset and the bare var() would
+   otherwise fall back to `currentColor`. */
 .pagon-medal--club {
-  border-color: color-mix(in oklab, var(--metal) 40%, var(--border));
+  border-color: color-mix(in oklab, var(--metal, var(--ink-muted)) 40%, var(--border));
 }
 
 .pagon-more {

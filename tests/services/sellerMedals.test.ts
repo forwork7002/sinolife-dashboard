@@ -113,4 +113,25 @@ describe('medal servisi', () => {
     await service.medals(ctx)
     expect(calls.n).toBe(1)
   })
+
+  it('kesh HIT bo‘ladi — ctx.now ikki chaqiriq orasida millisekundlarga farq qilsa ham', async () => {
+    /*
+      Yuqoridagi test BITTA `ctx`ni ikki marta chaqiradi, ya'ni `period.end`
+      kalitda bo‘lsa ham har doim hit bo‘lardi va nuqsonni ushlamas edi. Bu
+      yerda ikkita ALOHIDA `ctx.now` beriladi — xuddi ikkita alohida so‘rov
+      bir necha millisekund orada kelganidek — aynan `medals()`ning kaliti
+      `period.end.toISOString()`ni ushlaganida sindirgan holat. `period.start`
+      RECORDS_FROM'dan qurilgani uchun ikkalasida ham bir xil qoladi, shuning
+      uchun to‘g‘rilangan kalit bittasiga tushishi kerak.
+    */
+    const calls = { n: 0 }
+    const service = new SellerBoardService(
+      {} as never,
+      repoWith(months, [], calls) as never,
+      {} as never,
+    )
+    await service.medals(contextAt(new Date('2026-09-15T06:00:00.000Z')))
+    await service.medals(contextAt(new Date('2026-09-15T06:00:00.037Z')))
+    expect(calls.n).toBe(1)
+  })
 })

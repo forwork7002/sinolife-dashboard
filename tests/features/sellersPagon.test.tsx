@@ -115,6 +115,17 @@ describe('medalReason', () => {
     expect(text).not.toContain('7 buyurtma')
   })
 
+  it('📅 «ishchan oy» kun sonini «kun» deb, foizni «davomat» deb yozadi — «buyurtma» emas', () => {
+    // Domen qatlami bu medalda `orders`ga KUN sonini, `percent`ga DAVOMAT
+    // ulushini uzatadi (Finding 1) — umumiy yo'l bilan o'qilsa, 24 kun
+    // «24 buyurtma» deb, 77% esa yorliqsiz chizilib, mijoz 2026-09-15 da
+    // o'chirtirgan ziddiyatli holatni qayta yaratardi.
+    const text = medalReason(medal({ code: 'work-month', orders: 24, percent: 77 }))
+    expect(text).toContain('24 kun')
+    expect(text).toContain('davomat')
+    expect(text).not.toContain('24 buyurtma')
+  })
+
   it('faqat oyi bor medal o‘sha oyni yozadi', () => {
     // `not.toBe('')` yetarli emasdi: u har qanday axlat satrda ham o‘tardi.
     expect(medalReason(medal({ code: 'streak-fire', at: '2026-11-01' }))).toBe('Noyabr 2026')

@@ -1289,6 +1289,12 @@ export interface SellerMedalDto {
   /** Sababning oyi yoki kuni, `YYYY-MM-DD`. Takrorlanganda ENG OXIRGISI. */
   readonly at: string | null
   readonly amount: MoneyDto | null
+  /**
+   * Odatda buyurtma soni — lekin ikki medalda BOSHQA narsani tashiydi:
+   * `rookie` da bu sotuvchining o'sha oydagi O'RNI, `work-month` da esa
+   * necha KUN ishlagani. `medalReason` (`Pagon.tsx`) ikkalasini ham
+   * alohida o'qiydi — umumiy yo'ldan o'tsa, ikkalasi ham noto'g'ri chiziladi.
+   */
   readonly orders: number | null
   readonly percent: number | null
 }
