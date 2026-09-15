@@ -66,7 +66,8 @@ export type CohortView = 'cumulative' | 'monthly'
 /**
  * Exactly the five fields `columnAverage` reads — so a caller that only wants
  * the grid's column average (see `ReturnAnswer`) does not have to construct a
- * whole matrix row for the other nine fields it would never look at.
+ * whole matrix row for the fields beyond these five, which it would never
+ * look at.
  */
 export interface AveragableCohortRow {
   readonly size: number

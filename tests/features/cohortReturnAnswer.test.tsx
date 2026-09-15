@@ -63,7 +63,9 @@ describe('the return answer', () => {
     render(<ReturnAnswer data={{ ...data, rows: [BIG, SMALL, MEDIUM] }} />)
     const expected = columnAverage([BIG, SMALL, MEDIUM], 1, 'cumulative').percent!
     expect(expected).toBeCloseTo(25, 1)
-    expect(screen.getByLabelText(/\+1 oy/i).textContent).toMatch(/25/)
+    // Pinned to the rendered figure, not just "25" — which would also match
+    // "125" or a stray cohort count sharing the digits.
+    expect(screen.getByLabelText(/\+1 oy/i).textContent).toMatch(/25[.,]0/)
   })
 
   it('refuses to print a milestone averaged over fewer than three cohorts', () => {
@@ -81,8 +83,46 @@ describe('the return answer', () => {
     expect(screen.getByLabelText(/\+12 oy/i).textContent).toMatch(/yetarli maʼlumot yoʻq/i)
   })
 
-  it('says how many cohorts each milestone averages', () => {
+  it('says how many cohorts each milestone averages, in the aria-label and on screen', () => {
+    /*
+      «3 ta kogorta» has to be readable without a screen reader too — an
+      aria-label on a role-less element is not reliably exposed, and the
+      manager reading «+12 oy · 85%» is the one who needs to see the width.
+    */
     render(<ReturnAnswer data={data} />)
-    expect(screen.getByLabelText(/\+3 oy/i).getAttribute('aria-label')).toMatch(/3 ta kogorta/i)
+    const milestone = screen.getByLabelText(/\+3 oy/i)
+    expect(milestone.getAttribute('aria-label')).toMatch(/3 ta kogorta/i)
+    expect(milestone.textContent).toMatch(/3 ta kogorta/i)
+  })
+
+  it('truncates the sparkline where the evidence does, not at the payload’s full width', () => {
+    /*
+      Four cohorts share offsets 0-6 (the shared `data` fixture); only `long`
+      reaches offsets 7-12, so the curve there would be built from a sample of
+      one — the same evidence the +12 milestone refuses to speak from. The
+      line must stop at offset 6 (7 points: 0..6), not run to offset 12 (13
+      points), and it must not be padded or interpolated past the stop.
+    */
+    const long = row(
+      '2025-01-01',
+      24,
+      [0, 18, 28, 37, 45, 51, 56, 60, 64, 68, 72, 76, 85],
+      [0, 4, 7, 9, 11, 12, 13, 14, 15, 16, 17, 18, 20],
+    )
+    const { container } = render(<ReturnAnswer data={{ ...data, rows: [...data.rows, long] }} />)
+    const linePath = container.querySelector('path.draw-in')
+    const pointCount = (linePath?.getAttribute('d')?.match(/[ML]/g) ?? []).length
+    expect(pointCount).toBe(7)
+  })
+
+  it('draws no sparkline when truncation would leave fewer than two points', () => {
+    /*
+      A single cohort. `cohorts` is 1 at every offset — never three — so no
+      offset qualifies and `lastQualifyingOffset` stays -1: truncating leaves
+      zero points, well under the two a line needs to show a direction.
+    */
+    const lone = row('2026-06-01', 24, [0, 18, 28], [0, 4, 7])
+    const { container } = render(<ReturnAnswer data={{ ...data, rows: [lone] }} />)
+    expect(container.querySelector('svg[role="img"]')).toBeNull()
   })
 })
