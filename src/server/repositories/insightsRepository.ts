@@ -757,6 +757,29 @@ export interface ConfirmationMonthlyRecordRow {
   readonly deliveredMinor: bigint
 }
 
+/** Bir sotuvchining bir oyi, pagon uchun. Rekord devoridan farqi: HAR o'rin. */
+export interface SellerMedalMonthRow {
+  /** Oyning birinchi kuni, `APP_TIMEZONE` da, `YYYY-MM-DD`. */
+  readonly month: string
+  readonly employeeId: string
+  readonly fullName: string
+  readonly confirmedOrders: number
+  readonly confirmedMinor: bigint
+  readonly deliveredOrders: number
+  readonly deliveredMinor: bigint
+  /** O'sha oydagi o'rin, podiumning qoidasi bilan. */
+  readonly place: number
+}
+
+/** Bir sotuvchining bir kuni — ⚡, 🌅 va 📅 davomati uchun. */
+export interface SellerMedalDayRow {
+  readonly day: string
+  readonly employeeId: string
+  readonly confirmedOrders: number
+  readonly deliveredMinor: bigint
+  readonly place: number
+}
+
 
 export interface MarginRow {
   readonly productId: string
@@ -3982,6 +4005,144 @@ export class InsightsRepository {
       deliveredOrders: int(r.delivered_orders),
       deliveredMinor: money(r.delivered),
     }))
+  }
+
+  /**
+   * Pagonning fakti — bir kogorta, ikki kesim.
+   *
+   * `confirmationSellerRecords` BILAN QO'SHILMAGAN, ATAYLAB. Rekord devori
+   * `place = 1` ni qoldiradi va uning SQL satri `confirmationRecordsSql.test.ts`
+   * tomonidan mixlangan; u televizorda ishlab turgan obyekt. Ikkinchi kogorta
+   * qurilishi 10 daqiqalik kesh ostida sutkasiga ~140 marta ishlaydi
+   * (o'lchangan 2026-09-15: oy kesimi 848 ms, kun kesimi 1 224 ms), va bu
+   * ishlayotgan taxtani sindirish xavfidan arzon.
+   *
+   * IKKI SO'ROV, BIR TRANZAKSIYA EMAS. Ikkalasi ham bir xil oynani o'qiydi va
+   * javob 10 daqiqa keshlanadi; oralarida yozilgan bitta buyurtma medalni
+   * emas, faqat ballni bir necha ballga o'zgartiradi va keyingi keshda
+   * tuzaladi. Bitta statement'ga yig'ish esa ikki `row_number()` oynasini bir
+   * natija to'plamiga tiqishni talab qiladi — o'qilishi qiyinroq, tezligi
+   * o'lchovda bir xil.
+   *
+   * KUN KESIMI NIMA UCHUN KERAK: ⚡ kun rekordi va 🌅 kun g'olibi o'z-o'zidan,
+   * va 📅 «ishchan oy» davomati — «floor ishlagan kunlarning ulushi» degan
+   * savolga kalendar emas, portalning o'z ma'lumoti javob beradi.
+   */
+  async sellerMedalFacts(
+    period: ScopedWindow,
+    filters: ConfirmationSellerRatingFilters = {},
+  ): Promise<{ months: SellerMedalMonthRow[]; days: SellerMedalDayRow[] }> {
+    // Scope first, at the fixed slot $3 — same reason as
+    // `confirmationSellerRecords`: `queueSql` needs its placeholder while the
+    // string is being built, and the caller's filters number from $4 onwards.
+    const params: unknown[] = [period.start, period.end, InsightsRepository.scopeValue(period)]
+    const filterClause = InsightsRepository.ratingFilterSql(filters, params)
+    const head = InsightsRepository.queueSql('window', '$3')
+
+    const monthRows = await this.prisma.$queryRawUnsafe<
+      {
+        bucket: string
+        employee_id: string
+        full_name: string
+        confirmed_orders: bigint
+        confirmed: MoneyText
+        delivered_orders: bigint
+        delivered: MoneyText
+        place: bigint
+      }[]
+    >(`${head}${InsightsRepository.medalFactsSql('month', filterClause)}`, ...params)
+
+    const dayRows = await this.prisma.$queryRawUnsafe<
+      {
+        bucket: string
+        employee_id: string
+        full_name: string
+        confirmed_orders: bigint
+        confirmed: MoneyText
+        delivered_orders: bigint
+        delivered: MoneyText
+        place: bigint
+      }[]
+    >(`${head}${InsightsRepository.medalFactsSql('day', filterClause)}`, ...params)
+
+    return {
+      months: monthRows.map((r) => ({
+        month: r.bucket,
+        employeeId: r.employee_id,
+        fullName: r.full_name,
+        confirmedOrders: int(r.confirmed_orders),
+        confirmedMinor: money(r.confirmed),
+        deliveredOrders: int(r.delivered_orders),
+        deliveredMinor: money(r.delivered),
+        place: int(r.place),
+      })),
+      days: dayRows.map((r) => ({
+        day: r.bucket,
+        employeeId: r.employee_id,
+        confirmedOrders: int(r.confirmed_orders),
+        deliveredMinor: money(r.delivered),
+        place: int(r.place),
+      })),
+    }
+  }
+
+  /**
+   * Isolated for the same reason `recordsSql` is: it has to be pinned against
+   * the board's own predicates without a database.
+   *
+   * The two grains differ in ONE expression — the bucket — so they share a
+   * builder rather than a copy. A copy is where the day cut would quietly
+   * stop meaning what the month cut means.
+   */
+  private static medalFactsSql(grain: 'month' | 'day', filterClause: string): string {
+    const bucket = `date_trunc('${grain}', c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date`
+    const fakt1 = `sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})`
+    const fakt2 = `sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')})`
+
+    return `
+       SELECT m.bucket::text AS bucket,
+              m.employee_id,
+              m.full_name,
+              m.confirmed_orders,
+              m.confirmed::text AS confirmed,
+              m.delivered_orders,
+              m.delivered::text AS delivered,
+              m.place
+       FROM (
+         SELECT
+           ${bucket} AS bucket,
+           e."id" AS employee_id,
+           e."fullName" AS full_name,
+           count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS confirmed_orders,
+           ${fakt1} AS confirmed,
+           count(*) FILTER (WHERE ${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')})::bigint AS delivered_orders,
+           ${fakt2} AS delivered,
+           /*
+             The podium's rule, as a window: FAKT 2 decides, FAKT 1 decides
+             the buckets nobody has delivered in yet. The tie-break is the
+             employee id rather than the name — a name collates differently
+             under 'uz' and 'ru' (see branches.ts), and a pagon that
+             reordered itself between two polls of identical data would look
+             broken.
+           */
+           row_number() OVER (
+             PARTITION BY ${bucket}
+             ORDER BY ${fakt2} DESC NULLS LAST,
+                      ${fakt1} DESC NULLS LAST,
+                      e."id"
+           ) AS place
+         FROM scoped c
+         JOIN "deal" d ON d."id" = c.deal_id
+         JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
+         LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
+         WHERE TRUE
+           ${filterClause}
+         GROUP BY 1, e."id", e."fullName"
+         -- A bucket of pure refusals is a row on the board and not a medal.
+         HAVING count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}) > 0
+             OR count(*) FILTER (WHERE ${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')}) > 0
+       ) m
+       ORDER BY m.bucket, m.place`
   }
 
   /**
