@@ -59,8 +59,27 @@ describe('medal kesimi taxtaning tilida gapiradi', () => {
   it('o‘rin podiumning qoidasi: FAKT 2 birinchi, FAKT 1 hech kim yetkazmaganda', () => {
     for (const sql of [MONTH, DAY]) {
       expect(sql).toMatch(/row_number\(\) OVER \(/)
-      expect(sql).toMatch(/ORDER BY[\s\S]*?DELIVERED[\s\S]*?DESC NULLS LAST/)
-      expect(sql).toContain('e."id"') // tie-break — ism emas
+
+      const order = sql.slice(sql.indexOf('ORDER BY'), sql.indexOf(') AS place'))
+      const fakt2 = order.indexOf(`FILTER (WHERE ds."logisticsRole" = 'DELIVERED') DESC`)
+      const fakt1 = order.indexOf(`FILTER (WHERE c.outcome IN ('CONFIRMED', 'UNCONFIRMED_SHIPPED')) DESC`)
+
+      expect(fakt2).toBeGreaterThan(-1)
+      expect(fakt1).toBeGreaterThan(-1)
+      // Ikkisi o‘rin almashsa, buyurtmalari hali yo‘lda turgan kesim
+      // haqiqatan yetkazgan kesimdan yuqori chiqadi — podiumning qoidasi
+      // teskarisiga aylanadi va taxta bilan pagon boshqa-boshqa odamni
+      // chempion deb ataydi.
+      expect(fakt2).toBeLessThan(fakt1)
+    }
+  })
+
+  it('tenglikni employee id hal qiladi, ism emas', () => {
+    // Ism 'uz' va 'ru' da boshqacha saralanadi — branches.ts. Bir xil
+    // ma'lumotning ikki so‘rovi orasida o‘rin almashadigan taxta buzuq
+    // ko‘rinadi.
+    for (const sql of [MONTH, DAY]) {
+      expect(sql).toMatch(/DESC NULLS LAST,\s*e\."id"\s*\)\s*AS place/)
     }
   })
 
