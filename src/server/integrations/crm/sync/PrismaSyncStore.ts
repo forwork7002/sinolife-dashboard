@@ -44,6 +44,7 @@ export class PrismaSyncStore implements SyncStore {
     recordsUpdated: number
     recordsSkipped: number
     recordsFailed: number
+    apiCalls: number
     errorMessage?: string
   }): Promise<void> {
     await this.prisma.syncLog.update({
@@ -56,6 +57,7 @@ export class PrismaSyncStore implements SyncStore {
         recordsUpdated: input.recordsUpdated,
         recordsSkipped: input.recordsSkipped,
         recordsFailed: input.recordsFailed,
+        apiCalls: input.apiCalls,
         // Truncated: a provider error can be enormous, and the column is an
         // operator summary, not a transcript.
         errorMessage: input.errorMessage?.slice(0, 2_000),

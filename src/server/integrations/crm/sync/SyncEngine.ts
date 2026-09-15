@@ -175,6 +175,8 @@ export interface SyncStore {
     recordsUpdated: number
     recordsSkipped: number
     recordsFailed: number
+    /** Requests this pass sent to the provider. See `CrmProvider.callsMade`. */
+    apiCalls: number
     errorMessage?: string
   }): Promise<void>
 
@@ -268,6 +270,11 @@ export class SyncEngine {
     // time instead of being skipped. Re-importing a record is harmless
     // (upsert); missing one is not.
     const startedAt = this.now()
+
+    /* The provider's counter is monotonic for its whole life, so a pass is the
+       DIFFERENCE across it. Read here rather than at finish so a throw still
+       leaves the baseline correct for the next entity. */
+    const callsBefore = this.provider.callsMade ?? 0
 
     const watermark =
       mode === 'INCREMENTAL'
@@ -400,6 +407,7 @@ export class SyncEngine {
       recordsUpdated: updated,
       recordsSkipped: skipped,
       recordsFailed: failed,
+      apiCalls: Math.max(0, (this.provider.callsMade ?? 0) - callsBefore),
       errorMessage: fatal,
     })
 

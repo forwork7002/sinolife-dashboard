@@ -67,6 +67,7 @@ class FakeStore implements SyncStore {
     recordsUpdated: number
     recordsSkipped: number
     recordsFailed: number
+    apiCalls: number
     errorMessage?: string
   }) {
     const run = this.runs.find((r) => r.id === input.id)!
@@ -659,5 +660,75 @@ describe('watermark after a run that skipped records', () => {
     // history table and without the watermark ever standing still.
     expect(table.rows.has('h-1')).toBe(true)
     expect((await store.getCursor('DEMO', 'STAGE_HISTORY'))!.getTime()).toBe(NOW.getTime())
+  })
+})
+
+/**
+ * ROWS ARE NOT CALLS, AND ONLY ONE OF THEM IS WHAT A PORTAL COUNTS.
+ *
+ * On 2026-09-14 Bitrix24 blocked this integration for four hours and asked
+ * what load it had been putting on the portal. The only number `sync_log` held
+ * was `recordsRead` — rows RECEIVED — and a batch carries up to 2 500 of those
+ * per single request, so the figure we could state was three orders of
+ * magnitude away from the figure they rate-limit on. `apiCalls` is the one
+ * they asked for, and the one the daily budget is counted against.
+ */
+describe('the requests a pass sent', () => {
+  /** A provider whose counter moves the way the real one does: monotonic. */
+  function counting(capabilities: Record<string, boolean>) {
+    let calls = 0
+    const base = fakeProvider(capabilities)
+    const provider = {
+      ...base,
+      get callsMade() {
+        return calls
+      },
+    } as CrmProvider
+    return { provider, spend: (n: number) => { calls += n } }
+  }
+
+  it('records the DIFFERENCE across the pass, not the provider’s lifetime total', async () => {
+    const store = new FakeStore()
+    const table = new FakeTable()
+    const { provider, spend } = counting({ EMPLOYEES: true })
+
+    // Another entity already used this provider before the pass began.
+    spend(40)
+
+    // One call per page, which is what a paging read actually costs.
+    const handler = makeHandler('EMPLOYEES', rows(25), table)
+    const paged = {
+      ...handler,
+      async fetch(p: CrmProvider, options: FetchOptions) {
+        spend(1)
+        return handler.fetch(p, options)
+      },
+    }
+
+    const engine = new SyncEngine({
+      provider,
+      store,
+      handlers: [paged],
+      pageSize: 10,
+      now: () => NOW,
+    })
+    await engine.runEntity('EMPLOYEES', 'FULL')
+
+    // 25 rows at 10 a page is three reads. Never 43 — that is this provider's
+    // whole life, and the pass is a delta across it.
+    const run = store.runs.at(-1) as unknown as { apiCalls: number }
+    expect(run.apiCalls).toBe(3)
+  })
+
+  /*
+    A provider that talks to nobody has nothing to count — `callsMade` is
+    optional for exactly that case, and the engine must not throw over it.
+  */
+  it('records zero for a provider that does not count, rather than failing', async () => {
+    const { store, engine } = engineWith([makeHandler('EMPLOYEES', rows(5), new FakeTable())])
+    await engine.runEntity('EMPLOYEES', 'FULL')
+
+    const run = store.runs.at(-1) as unknown as { apiCalls: number }
+    expect(run.apiCalls).toBe(0)
   })
 })

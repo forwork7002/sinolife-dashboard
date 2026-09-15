@@ -1359,6 +1359,18 @@ model SyncLog {
   recordsSkipped Int @default(0)
   recordsFailed  Int @default(0)
 
+  /// HTTP calls this pass made to the provider, retries included.
+  ///
+  /// ROWS ARE NOT CALLS, AND ONLY ONE OF THEM IS WHAT A PORTAL COUNTS. On
+  /// 2026-09-14 Bitrix24 blocked this integration for four hours and the
+  /// support ticket had to describe our load from `recordsRead` — the rows we
+  /// received — because nothing recorded the requests we sent. A batch of
+  /// fifty commands is ONE call and up to 2 500 rows, so the two numbers differ
+  /// by three orders of magnitude and the one the portal rate-limits on was the
+  /// one we could not state. It is also what the daily budget in `syncWorker`
+  /// is counted against.
+  apiCalls Int @default(0)
+
   /// Safe, already-redacted failure summary. Never a raw provider response:
   /// those can contain credentials.
   errorMessage String?

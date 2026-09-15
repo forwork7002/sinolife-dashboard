@@ -151,6 +151,39 @@ const HISTORY_BACKFILL_DAYS = Number(process.env.SYNC_HISTORY_BACKFILL_DAYS ?? 4
 const PORTAL_PAUSE_MS = 10 * 60_000
 
 /**
+ * The most requests this integration may send the portal in any rolling day.
+ *
+ * A CEILING DERIVED FROM THE PORTAL'S OWN LIMIT, NOT FROM OUR HABITS. At the
+ * documented 2 req/s a day is 172 800 requests; this is 50 000, under a third
+ * of that, and several times what a healthy day measures. It is not a target
+ * and nothing should ever approach it — it exists so that a runaway CANNOT
+ * happen, which is the promise this integration made Bitrix24 support in
+ * writing after the block of 2026-09-14.
+ *
+ * What a runaway looks like here, measured: the worker was dying roughly every
+ * 66 minutes and each start wound the stage-history cursor back 45 days, so it
+ * re-read ~80 500 rows 11-29 times a day — 1.2-2.4 MILLION rows, 94-97% of it
+ * the same six weeks over and over. A budget would have stopped that on the
+ * first day instead of the thirtieth.
+ *
+ * Set `BITRIX24_DAILY_CALL_BUDGET=0` to switch the guard off. Do that for a
+ * deliberate full import (`npm run bitrix:import -- --full`), which is one
+ * legitimate spike, and put it back afterwards.
+ */
+const DAILY_CALL_BUDGET = Number(process.env.BITRIX24_DAILY_CALL_BUDGET ?? 50_000)
+
+/**
+ * How many ticks between budget readings. Ten, not one.
+ *
+ * The sum is over `sync_log`, whose indexes lead on `status` and on
+ * `provider` — neither answers a bare `startedAt > x` range without a walk, and
+ * this runs on the same single vCPU that serves every screen. A rolling-day
+ * ceiling does not need minute resolution: at the measured rate ten minutes is
+ * a few hundred calls, far inside the headroom the budget is made of.
+ */
+const BUDGET_CHECK_EVERY = 10
+
+/**
  * The heap the Roistat child is allowed, in megabytes.
  *
  * Deliberately NOT the worker's own 768 — see `runRoistatImport` for the
@@ -552,6 +585,10 @@ async function main() {
   let failures = 0
   /** Whether the LAST tick was refused by the portal's own throttle. */
   let throttled = false
+  /** Whether the LAST tick was skipped because the daily budget was spent. */
+  let overBudget = false
+  /** Calls in the last rolling day, as of the most recent reading. */
+  let callsToday = 0
   /** Whether the LAST tick was refused for a credential the portal rejects. */
   let unauthorised = false
 
@@ -560,6 +597,45 @@ async function main() {
     const entities = tick % REFERENCE_EVERY === 0 ? [...REFERENCE, ...HOT] : HOT
 
     try {
+      /*
+        ASKED BEFORE WE ASK THE PORTAL, and cheaply.
+
+        `apiCalls` counts requests SENT, which is what a portal rate-limits on —
+        `recordsRead` is rows RECEIVED and a batch carries up to 2 500 of them,
+        so the two are three orders of magnitude apart and only one of them is
+        the load. See the column's own comment in `schema.prisma`.
+      */
+      /* `|| overBudget` so a stopped worker re-reads every tick instead of
+         once every ten: while the budget is spent nothing is being asked of the
+         portal anyway, and the ceiling is a ROLLING day — it frees itself as
+         yesterday's calls age out, and the loop has to notice that. */
+      if (DAILY_CALL_BUDGET > 0 && (tick % BUDGET_CHECK_EVERY === 0 || overBudget)) {
+        const spent = await prisma.syncLog.aggregate({
+          _sum: { apiCalls: true },
+          where: { startedAt: { gt: new Date(Date.now() - 86_400_000) } },
+        })
+        callsToday = spent._sum.apiCalls ?? 0
+      }
+
+      overBudget = DAILY_CALL_BUDGET > 0 && callsToday >= DAILY_CALL_BUDGET
+
+      if (overBudget) {
+        /*
+          LOUD, AND EVERY TIME. This is not a tick that failed; it is the
+          integration refusing to make one. An operator who sees the dashboard
+          go stale has to be able to find out why from this log, and the reason
+          is not a portal error — there will be none.
+        */
+        console.error(
+          `  ${stamp()} ✗ kunlik so'rov shifti tugadi: ${callsToday}/${DAILY_CALL_BUDGET}.` +
+            ` Portalga murojaat qilinmadi — ${PORTAL_PAUSE_MS / 60_000} daqiqa kutiladi.`,
+        )
+        tick += 1
+        const wait = Math.max(INTERVAL_SEC * 1000 - (Date.now() - started), PORTAL_PAUSE_MS)
+        if (wait > 0 && !stopping) await sleep(wait)
+        continue
+      }
+
       const results = await engine.runAll(entities, 'INCREMENTAL')
       const changed = results.reduce((sum, r) => sum + r.recordsCreated + r.recordsUpdated, 0)
       const failed = results.filter((r) => r.status === 'FAILED')

@@ -284,6 +284,19 @@ export class Bitrix24CrmProvider implements CrmProvider {
   // Transport
   // -------------------------------------------------------------------------
 
+  /**
+   * Requests actually sent to the portal, retries included.
+   *
+   * A retry IS a call: it costs the portal the same work and counts against
+   * the same limits, and pretending otherwise is how an integration reports
+   * a quarter of its own load. See `CrmProvider.callsMade`.
+   */
+  get callsMade(): number {
+    return this.calls
+  }
+
+  private calls = 0
+
   private async call<T>(method: string, params: Record<string, unknown>): Promise<Bitrix24Response<T>> {
     let lastError: unknown
     /*
@@ -312,6 +325,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
       const timer = setTimeout(() => controller.abort(), timeout)
 
       try {
+        this.calls += 1
         const response = await this.fetchImpl(`${this.webhookUrl}${method}.json`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },

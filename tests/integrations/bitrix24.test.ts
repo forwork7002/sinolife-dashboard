@@ -446,3 +446,38 @@ describe('the attempt count in a failure message', () => {
     expect(calls()).toBe(2)
   })
 })
+
+/**
+ * A RETRY IS A CALL. It costs the portal the same work, counts against the
+ * same limits, and an integration that reported only its successes would state
+ * a fraction of its own load — which is what `sync_log` did until `apiCalls`
+ * existed, and what the 2026-09-14 support ticket had to work around.
+ */
+describe('the provider’s own call counter', () => {
+  const impl = (status: number, body: unknown) =>
+    (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch
+
+  it('counts every request sent, retries included', async () => {
+    const provider = new Bitrix24CrmProvider({
+      webhookUrl: 'https://portal/rest/1/tok/',
+      fetchImpl: impl(500, {}),
+      maxRetries: 2,
+      rateLimitRps: 1000,
+    })
+
+    expect(provider.callsMade).toBe(0)
+    await expect(provider.fetchPipelines()).rejects.toThrow(/failed after 3 attempts:/)
+    expect(provider.callsMade).toBe(3)
+  })
+
+  it('counts a call the portal refused outright as the one call it was', async () => {
+    const provider = new Bitrix24CrmProvider({
+      webhookUrl: 'https://portal/rest/1/tok/',
+      fetchImpl: impl(401, { error: 'INVALID_CREDENTIALS' }),
+      rateLimitRps: 1000,
+    })
+
+    await expect(provider.fetchPipelines()).rejects.toThrow(/failed after 1 attempt:/)
+    expect(provider.callsMade).toBe(1)
+  })
+})

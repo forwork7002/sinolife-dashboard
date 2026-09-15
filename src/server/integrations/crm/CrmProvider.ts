@@ -329,6 +329,19 @@ export interface CrmProvider {
   readonly capabilities: ProviderCapabilities
 
   /**
+   * HTTP calls this provider has made since it was constructed, retries
+   * included. Monotonic; optional because a provider that talks to nobody has
+   * nothing to count.
+   *
+   * ROWS ARE NOT CALLS. A batch is ONE request and up to 2 500 rows, so
+   * `recordsRead` is three orders of magnitude away from the number a portal
+   * rate-limits on — and after Bitrix24 blocked this integration on
+   * 2026-09-14, the number it asked us for was the one nothing recorded. The
+   * engine deltas this across each pass into `sync_log.apiCalls`.
+   */
+  readonly callsMade?: number
+
+  /**
    * Cheap reachability probe. Must never throw — a provider that cannot be
    * reached reports `{ ok: false }` so the admin screen can render the reason
    * instead of the whole page failing.
