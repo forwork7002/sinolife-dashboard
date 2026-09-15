@@ -1309,8 +1309,31 @@ describe('medal kesimi taxtaning tilida gapiradi', () => {
   it('o‘rin podiumning qoidasi: FAKT 2 birinchi, FAKT 1 hech kim yetkazmaganda', () => {
     for (const sql of [MONTH, DAY]) {
       expect(sql).toMatch(/row_number\(\) OVER \(/)
-      expect(sql).toMatch(/ORDER BY[\s\S]*?DELIVERED[\s\S]*?DESC NULLS LAST/)
-      expect(sql).toContain('e."id"') // tie-break — ism emas
+
+      /*
+        POZITSIYA BO‘YICHA, MATN BO‘YICHA EMAS. «ORDER BY … DELIVERED …»
+        degan regex ikkisi o‘rin almashganda ham o‘tardi, chunki FAKT 1
+        ifodasida DELIVERED so‘zi umuman yo‘q — ya‘ni podiumning butun
+        qoidasi teskarisiga aylansa ham test yashil qolardi.
+        `confirmationRecordsSql.test.ts` buni indeks taqqoslash bilan
+        qiladi; bu yerda ham shunday.
+      */
+      const order = sql.slice(sql.indexOf('ORDER BY'), sql.indexOf(') AS place'))
+      const fakt2 = order.indexOf(`FILTER (WHERE ds."logisticsRole" = 'DELIVERED') DESC`)
+      const fakt1 = order.indexOf(`FILTER (WHERE c.outcome IN ('CONFIRMED', 'UNCONFIRMED_SHIPPED')) DESC`)
+
+      expect(fakt2).toBeGreaterThan(-1)
+      expect(fakt1).toBeGreaterThan(-1)
+      // Almashsa, buyurtmalari hali yo‘lda turgan kesim haqiqatan
+      // yetkazgan kesimdan yuqori chiqadi.
+      expect(fakt2).toBeLessThan(fakt1)
+    }
+  })
+
+  it('tenglikni employee id hal qiladi, ism emas', () => {
+    // Ism 'uz' va 'ru' da boshqacha saralanadi — branches.ts.
+    for (const sql of [MONTH, DAY]) {
+      expect(sql).toMatch(/DESC NULLS LAST,\s*e\."id"\s*\)\s*AS place/)
     }
   })
 
@@ -1612,8 +1635,35 @@ describe('medal servisi', () => {
     )
     const dto = await service.medals(contextAt(new Date('2026-09-15T06:00:00Z')))
     const row = dto.sellers.find((s) => s.employeeId === 'e1')!
-    expect(row.level).toBeGreaterThan(1)
-    expect(row.rankTitle).toBeTypeOf('string')
+
+    /*
+      ANIQ QIYMAT, «noldan katta» EMAS. `toBeGreaterThan(1)` motorni
+      servisga noto‘g‘ri ulagan holatda ham o‘tardi — bu test aynan
+      ulanishni tekshirish uchun bor. Hisob, qadam-baqadam:
+
+        kundalik ish  40·10 + 30·25 + 30·5   = 1 300
+        🥇 oy chempioni (place 1)            =   500
+        🎯 konversiya ustasi (75%, 40 ≥ 20)  =   400
+        🌱 birinchi savdo                    =   100
+        💎 klub: 30 mln → I va II bosqich    =   250
+                                               -----
+                                               2 550
+
+      💯 tushmaydi (75% < 80), 📅 tushmaydi (kun fakti yo‘q), 📈/🔥/⭐/🏆
+      tushmaydi (bitta yopilgan oy), 🚀 tushmaydi (2026-08 < 2026-09).
+      7-daraja 2 100 ballda, 8-daraja 2 800 da.
+    */
+    expect(row.points).toBe(2_550)
+    expect(row.level).toBe(7)
+    expect(row.rankTitle).toBe('Sotuvchi')
+    expect(row.nextLevelAt).toBe(2_800)
+    expect(row.nextTitle).toBe('Katta sotuvchi')
+    expect(row.medals.map((m) => m.code).sort()).toEqual([
+      'club',
+      'conversion-master',
+      'first-sale',
+      'month-gold',
+    ])
     const gold = row.medals.find((m) => m.code === 'month-gold')!
     expect(gold.amount).not.toBeNull()
     expect(gold.amount!.currency).toBe('UZS')
