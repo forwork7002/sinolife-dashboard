@@ -36,6 +36,8 @@ import type {
 } from '@/server/repositories/insightsRepository'
 import { deliveryRateBp, moneyRateBp, rateBp } from '@/server/domain/analytics/rates'
 import type { ConfirmationOutcomeValue, ConfirmationQueueMode } from '@/server/domain/types'
+import { CUSTOMER_STATES } from '@/lib/customerStates'
+import type { CustomerFlowDto } from '@/lib/api'
 import { keyPart, ttlCache } from './ttlCache'
 
 /**
@@ -60,6 +62,30 @@ const confirmationRopCache = ttlCache<ConfirmationRopRow[]>(60_000)
 export function resetConfirmationRopCache(): void {
   confirmationRopCache.clear()
 }
+
+/**
+ * The «Mijozlar oqimi» band's three reads, each memoised on its own clock.
+ *
+ * `customerFlow` is the expensive one — measured against production,
+ * 370-1478 ms warm and up to 8 s cold — so it gets the dashboard's own
+ * refetch cadence (60 s, `providers.tsx`): a shorter TTL would buy no
+ * freshness (nobody asks again before then) and only add misses, and a
+ * longer one would sit stale in front of a screen that already knows to
+ * re-ask every minute.
+ *
+ * `sourceRepeatRates` and `customerStates` take no period and no scope and
+ * move only a few times a day — 5 minutes, matching the cohort read beside
+ * them on the same screen.
+ */
+const customerFlowCache = ttlCache<Awaited<ReturnType<InsightsRepository['customerFlow']>>>(
+  60_000,
+)
+const sourceRatesCache = ttlCache<Awaited<ReturnType<InsightsRepository['sourceRepeatRates']>>>(
+  5 * 60_000,
+)
+const customerStatesCache = ttlCache<Awaited<ReturnType<InsightsRepository['customerStates']>>>(
+  5 * 60_000,
+)
 
 /** Basis points as a percentage, to one decimal. */
 function pct(bp: number | null): number | null {
@@ -828,6 +854,28 @@ export interface InsightsScope extends EmployeeScopeFilter {
   readonly branchDepartmentId?: string | null
 }
 
+/**
+ * The band's own ninety days.
+ *
+ * «Mijoz qaytishi» has no period control — it was removed on 2026-09-15
+ * because it drove nothing, and its «Bugun» default had made the
+ * concentration band read twelve customers and one first-to-second pair. So
+ * this band resolves its own window, as that commit made /insights/
+ * concentration do, and the card prints the dates rather than implying a
+ * control that is not there.
+ *
+ * NINETY, not thirty and not a year, because the source block's repeat column
+ * is measured on a ninety-day horizon: one span across the whole card is one
+ * fewer thing for a reader to hold.
+ */
+export function trailingWindow(now: Date): { start: Date; end: Date; days: number } {
+  const days = 90
+  /* A new Date, never `now` itself: Date is mutable and every other window
+     resolved from the same instant in this request would move with it. */
+  const start = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
+  return { start, end: new Date(now.getTime()), days }
+}
+
 export class InsightsService {
   constructor(private readonly repository: InsightsRepository) {}
 
@@ -1038,6 +1086,100 @@ export class InsightsService {
         total === 0n ? null : Math.round(Number((laterRevenue * 1000n) / total)) / 10,
       repeatCustomers,
       totalCustomers,
+    }
+  }
+
+  /**
+   * The «Mijozlar oqimi» band: arrivals, returns, sources, and who went quiet.
+   *
+   * THREE READS, THREE CLOCKS, AND ONLY ONE OF THEM MOVES.
+   *
+   * The window is resolved here and not by the caller, so the key below is
+   * the DAY it lands on rather than the instant: a band that re-queried on
+   * every request would put the most expensive statement on this screen into
+   * a one-vCPU database once per reader per minute. Measured on production:
+   * customerFlow 370-1478 ms warm, 3.7-8 s cold.
+   *
+   * No scope in the key because there is no scope to carry — `cohort` is in
+   * COMPANY_WIDE and this endpoint asks for `analytics:read:all`, so every
+   * caller who gets through reads the same rows. If that ever changes, the
+   * key changes in the same commit or the memo goes.
+   */
+  async customerFlow(currency: string, now: Date, timeZone: string): Promise<CustomerFlowDto> {
+    const w = trailingWindow(now)
+    const period: Period = { start: w.start, end: w.end, timeZone, preset: 'custom' }
+
+    const dayKey = w.end.toISOString().slice(0, 10)
+
+    const [flow, rates, states] = await Promise.all([
+      customerFlowCache.get(`flow|${dayKey}|${w.days}|day`, () =>
+        this.repository.customerFlow({ period, grain: 'day' }),
+      ),
+      sourceRatesCache.get('rates', () => this.repository.sourceRepeatRates()),
+      customerStatesCache.get('states', () => this.repository.customerStates()),
+    ])
+
+    const byKey = new Map(rates.map((rate) => [rate.key, rate]))
+    const totalNew = flow.summary.newCustomers
+
+    const sources = flow.sources.map((row) => {
+      const rate = byKey.get(row.key)
+      return {
+        key: row.key,
+        label: row.label,
+        newCustomers: row.newCustomers,
+        // Against this window's new customers, which the source rows sum to
+        // by construction — see the repository statement's third arm.
+        sharePercent: pct(rateBp(row.newCustomers, totalNew)),
+        /*
+          `byKey.get` returns undefined for a source with NOBODY past the
+          ninety-day maturity horizon — GROUP BY never emits an empty group,
+          so there is no row to carry a null. The absence IS the signal: the
+          `?? null` and `?? 0` below are what produce the null and the zero
+          the screen needs. Do not go looking for a null row
+          `sourceRepeatRates` never emits.
+        */
+        repeatPercent: rate?.repeatPercent ?? null,
+        maturedCustomers: rate?.maturedCustomers ?? 0,
+      }
+    })
+
+    // In CUSTOMER_STATES order, so this block cannot fall out of step with
+    // the labels the screen already draws from that table.
+    const rows = CUSTOMER_STATES.map((state) => ({
+      key: state.key,
+      label: state.label,
+      colour: state.colour,
+      customers: states.ours[state.key],
+    }))
+
+    const first = flow.summary.firstRevenueMinor
+    const repeat = flow.summary.repeatRevenueMinor
+    const moneyTotal = first + repeat
+
+    return {
+      window: {
+        start: w.start.toISOString(),
+        end: w.end.toISOString(),
+        days: w.days,
+      },
+      summary: {
+        newCustomers: flow.summary.newCustomers,
+        returningCustomers: flow.summary.returningCustomers,
+        activeCustomers: flow.summary.activeCustomers,
+        newCustomersWon: flow.summary.newCustomersWon,
+        firstRevenue: toMoneyDto(money(first, currency)),
+        repeatRevenue: toMoneyDto(money(repeat, currency)),
+        // Null when there is no money at all — see `moneyRateBp` — never a
+        // manufactured zero.
+        repeatRevenueSharePercent: pct(moneyRateBp(repeat, moneyTotal)),
+      },
+      series: flow.series,
+      sources,
+      states: {
+        customers: states.customers,
+        rows,
+      },
     }
   }
 
