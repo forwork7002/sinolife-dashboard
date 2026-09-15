@@ -58,6 +58,34 @@ describe('the customer flow statement', () => {
     expect(cte).not.toMatch(/\$1|\$2/)
   })
 
+  it('breaks the rn = 1 tie deterministically, on the deal id', () => {
+    /*
+      Two orders at the same instant with the same (possibly NULL) source
+      otherwise leave rn = 1 to whichever row the planner happens to produce
+      first, which decides both the credited source and the first/repeat
+      revenue split from a replan to the next.
+    */
+    const cte = code().slice(code().indexOf('ranked AS ('), code().indexOf('win AS ('))
+    expect(cte).toMatch(/ORDER BY ts, sid NULLS LAST, deal_id/i)
+  })
+
+  it('classifies new and returning per BUCKET, not against the window start', () => {
+    /*
+      first_ts >= $1 compares against the WINDOW START, so a customer who
+      ordered in three different buckets inside the window reads as new in
+      all three — measured on this database: summary.new_customers = 220,
+      but that shape summed to 1306 across the series. Comparing the two
+      TRUNCATED timestamps confines a customer to exactly the one bucket
+      their first-ever order actually falls in.
+    */
+    const firstUnion = code().indexOf('UNION ALL')
+    const secondUnion = code().indexOf('UNION ALL', firstUnion + 1)
+    const series = code().slice(firstUnion, secondUnion)
+    expect(series).toMatch(/first_bucket\s*=\s*bucket/i)
+    expect(series).toMatch(/first_bucket\s*<\s*bucket/i)
+    expect(series).not.toMatch(/first_ts\s*>=\s*\$1/)
+  })
+
   it('bounds the window half-open, the way every other period query does', () => {
     expect(code()).toMatch(/ts\s*>=\s*\$1/i)
     expect(code()).toMatch(/ts\s*<\s*\$2/i)

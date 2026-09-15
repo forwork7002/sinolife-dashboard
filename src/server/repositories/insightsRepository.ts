@@ -1371,7 +1371,8 @@ export class InsightsRepository {
     >(
       `
       WITH orders AS (
-        SELECT d."customerId" AS cid,
+        SELECT d."id" AS deal_id,
+               d."customerId" AS cid,
                d."createdAtSource" AS ts,
                d."amountMinor" AS amount,
                d."status" AS status,
@@ -1384,11 +1385,25 @@ export class InsightsRepository {
       -- it is the earliest one the reader's window happens to contain.
       ranked AS (
         SELECT cid, ts, amount, status, sid,
-               row_number() OVER (PARTITION BY cid ORDER BY ts, sid NULLS LAST) AS rn,
+               -- deal_id breaks the tie when one customer has two orders at
+               -- the same ts AND the same (possibly NULL) sid -- without it,
+               -- which row wins rn = 1 is whatever order the planner happens
+               -- to produce, and that decides both the credited source below
+               -- and the first/repeat revenue split above.
+               row_number() OVER (PARTITION BY cid ORDER BY ts, sid NULLS LAST, deal_id) AS rn,
                min(ts) OVER (PARTITION BY cid) AS first_ts
         FROM orders
       ),
-      win AS (SELECT * FROM ranked WHERE ts >= $1 AND ts < $2)
+      win AS (SELECT * FROM ranked WHERE ts >= $1 AND ts < $2),
+      -- Only the series arm buckets by grain. Built on win, not inlined in
+      -- that arm, so date_trunc runs once per row instead of being repeated
+      -- for every place it is read below (the GROUP BY and both FILTERs).
+      bucketed AS (
+        SELECT *,
+               date_trunc($3, ts AT TIME ZONE 'UTC' AT TIME ZONE $4) AS bucket,
+               date_trunc($3, first_ts AT TIME ZONE 'UTC' AT TIME ZONE $4) AS first_bucket
+        FROM win
+      )
 
       SELECT
         0 AS kind,
@@ -1411,14 +1426,29 @@ export class InsightsRepository {
 
       UNION ALL
 
+      -- PER BUCKET, "new" MEANS THIS BUCKET IS WHERE THE CUSTOMER ARRIVED --
+      -- their first-ever order's bucket equals this row's bucket. Comparing
+      -- first_ts against the WINDOW START ($1) instead -- the shape the
+      -- summary arm above correctly uses for its own single total -- marks a
+      -- customer new in every bucket they ordered in, not only the one they
+      -- arrived in. Measured on this database over 2024-01-01..2027-01-01:
+      -- summary.new_customers = 220, but that window-relative shape summed
+      -- to 1306 across 19 monthly buckets -- the chart would have printed
+      -- about six times the tile sitting directly above it.
+      --
+      -- RETURNING IS DIFFERENT, AND IS EXPECTED TO SUM TO MORE THAN
+      -- summary.returning_customers -- do not "fix" that. A customer who
+      -- orders again in three separate buckets inside the window is
+      -- legitimately returning in all three; the summary total counts the
+      -- PERSON once, this arm counts the bucket visits.
       SELECT
         1,
-        date_trunc($3, ts AT TIME ZONE 'UTC' AT TIME ZONE $4) AS bucket,
-        NULL, NULL,
-        count(DISTINCT cid) FILTER (WHERE first_ts >= $1)::bigint,
-        count(DISTINCT cid) FILTER (WHERE first_ts < $1)::bigint,
-        NULL, NULL, NULL, NULL
-      FROM win
+        bucket,
+        NULL::text, NULL::text,
+        count(DISTINCT cid) FILTER (WHERE first_bucket = bucket)::bigint,
+        count(DISTINCT cid) FILTER (WHERE first_bucket < bucket)::bigint,
+        NULL::bigint, NULL::bigint, NULL::text, NULL::text
+      FROM bucketed
       GROUP BY 1, 2
 
       UNION ALL
@@ -1439,7 +1469,12 @@ export class InsightsRepository {
         COALESCE(s."id", '') AS source_key,
         COALESCE(s."name", '(manbasiz)') AS source_label,
         count(DISTINCT w.cid)::bigint,
-        NULL, NULL, NULL, NULL, NULL
+        -- Every padding NULL cast to match its column's type in the summary
+        -- arm above -- cohorts() does the same in every arm, for the same
+        -- reason the bucket cast above is not optional: a bare NULL is only
+        -- safe here because some sibling arm happens to fix the column's
+        -- type first, which is an accident of arm order, not a guarantee.
+        NULL::bigint, NULL::bigint, NULL::bigint, NULL::text, NULL::text
       FROM win w
       LEFT JOIN "sales_source" s ON s."id" = w.sid
       WHERE w.rn = 1
