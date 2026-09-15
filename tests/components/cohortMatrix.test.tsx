@@ -170,3 +170,55 @@ describe('the cohort matrix, read cumulatively', () => {
     )
   })
 })
+
+describe('the summary row refuses to colour a sample of one', () => {
+  /*
+    SEEN ON PRODUCTION THE DAY THIS SHIPPED. «Jami · oʻrtacha» read
+    4 7 9 10 11 11 12 12 13 13 14 19 27 36 0 — climbing to 36% and then off a
+    cliff. Each column averages only the cohorts old enough to have reached it,
+    so the far right is one or two ancient cohorts and the last column was ONE
+    cohort of ONE customer. Right arithmetic, and on the ramp it reads as a
+    collapse in retention.
+  */
+  const THIN: CohortMatrixRow[] = [
+    {
+      // One customer, old enough to have reached +2, who never came back.
+      cohort: '2026-06-01',
+      size: 1,
+      returned: 0,
+      retention: [100, 0, 0],
+      customers: [1, 0, 0],
+      cumulative: [0, 0, 0],
+      cumulativeCustomers: [0, 0, 0],
+      revenue: [{ amount: 10_000 }, { amount: 0 }, { amount: 0 }],
+    },
+    {
+      // A real cohort, but it has only lived one month.
+      cohort: '2026-08-01',
+      size: 400,
+      returned: 40,
+      retention: [100, 10, null],
+      customers: [400, 40, null],
+      cumulative: [0, 10, null],
+      cumulativeCustomers: [0, 40, null],
+      revenue: [{ amount: 4_000_000 }, { amount: 300_000 }, { amount: 0 }],
+    },
+  ]
+
+  it('prints the figure but takes it off the ramp under thirty customers', () => {
+    render(<CohortHeatmap rows={THIN} />)
+
+    const tiles = (label: RegExp) =>
+      (screen.getByLabelText(label).querySelector('[data-heat]') as HTMLElement).style.background
+
+    // +1 stands on 401 customers and is painted; +2 stands on the one-person
+    // cohort alone and is not.
+    expect(tiles(/Oʻrtacha, \+1 oy/)).not.toBe('var(--surface-sunken)')
+    expect(tiles(/Oʻrtacha, \+2 oy/)).toBe('var(--surface-sunken)')
+
+    // The number itself is never withheld — it is true, it is just thin.
+    expect(screen.getByLabelText(/Oʻrtacha, \+2 oy/).getAttribute('aria-label')).toContain(
+      '1 mijozdan 0 tasi',
+    )
+  })
+})

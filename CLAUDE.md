@@ -489,6 +489,15 @@ Per-screen traps worth knowing before you touch one:
   — 0/5/10/20/30 against the monthly 0/2/4/7/12, since one ramp cannot carry
   both scales. `tests/components/cohortMatrix.test.tsx` pins both readings and
   the double-count that would send the curve past 100%.
+  **A «Jami · oʻrtacha» CELL UNDER `SUMMARY_MIN_BASE` (30) IS PRINTED BUT NOT
+  PAINTED**, found on production hours after this shipped. That row read
+  4 7 9 10 11 11 12 12 13 13 14 19 27 36 **0** — every figure correct, and
+  together a cliff. Each column averages only the cohorts old enough to have
+  reached it, so the far right is one or two ancient cohorts and the last
+  column was ONE cohort of ONE customer who never returned. On the ramp beside
+  fourteen real averages that reads as a collapse in retention. Same floor and
+  same argument as Logistika's `WAIT_BAND_MIN_ORDERS`; the figure and its
+  fraction stay, the colour and the trend do not.
   **«База» IS FOUR STATES, NOT FIFTEEN STAGES.** The card drew one bar per
   portal stage under copy promising «1 kun, 3 kun, 10 kun, 20 kun, 30 kun» —
   five of the fifteen; the other ten were never named. The partition is

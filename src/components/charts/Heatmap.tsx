@@ -87,6 +87,16 @@ const W_RETURNED = 96
 const W_MONTH = 44
 
 /**
+ * Below this many customers a «Jami · oʻrtacha» cell is printed but not painted.
+ *
+ * The same floor `WAIT_BAND_MIN_ORDERS` uses on Logistika, for the same
+ * argument: at thirty, one person moves the figure by more than the gap
+ * between two neighbouring bands, so the colour would be claiming a precision
+ * the sample cannot carry. See the `thin` branch of `HeatCell`.
+ */
+const SUMMARY_MIN_BASE = 30
+
+/**
  * Five steps, not a continuous gradient — and a different five per reading.
  *
  * Banding is a feature: it makes "roughly the same" cells read as the same,
@@ -649,7 +659,27 @@ function HeatCell({
     row that starts at 100% is how a reader anchors the ones that follow, and
     loses its heat.
   */
-  const base = view === 'monthly' && offset === 0
+  /*
+    AND NEITHER IS A SUMMARY CELL STANDING ON A HANDFUL OF PEOPLE.
+
+    Seen on production the day this shipped. The «Jami · oʻrtacha» row read
+    4 7 9 10 11 11 12 12 13 13 14 19 27 36 **0** — climbing to 36% and then
+    falling off a cliff. Every figure was right: each column averages only the
+    cohorts old enough to have reached it, so the far right of that row is one
+    or two ancient cohorts, and the last column was ONE cohort of ONE customer
+    who never came back. Painted on the ramp beside fourteen real averages, it
+    reads as a collapse in retention. It is a sample of one.
+
+    The figure stays — «0% of 1» is true and the panel says how many cohorts —
+    but it comes off the ramp, the same treatment and for the same reason as
+    the `0` column: a cell nobody should read a trend into must not be coloured
+    like the cells they should. Thirty is the floor `WAIT_BAND_MIN_ORDERS` uses
+    on Logistika, and for the same argument — below it one person moves the
+    figure by more than the gap between two bands.
+  */
+  const thin = summary && size < SUMMARY_MIN_BASE
+
+  const base = (view === 'monthly' && offset === 0) || thin
 
   const band = bandsFor(view)[bandOf(view, value)] ?? bandsFor(view)[0]
   const shown = value === 0 ? '0' : value < 1 ? '<1' : String(Math.round(value))
@@ -822,7 +852,12 @@ function panelFor(
         { label: 'Ulush', value: formatPercent(avg.percent) },
         { label: 'Nechta kogortadan', value: `${formatNumber(avg.cohorts)} ta` },
       ],
-      footer: 'Faqat shu oyga yetib ulgurgan kogortalar hisobga olingan.',
+      /* A thin base is the thing to say FIRST — see the `thin` branch of
+         HeatCell for the production row that made this necessary. */
+      footer:
+        avg.base < SUMMARY_MIN_BASE
+          ? `Namuna kichik — bu ustunga atigi ${formatNumber(avg.base)} ta mijoz yetib kelgan, shuning uchun katak rangsiz. Undan tendensiya oʻqimang.`
+          : 'Faqat shu oyga yetib ulgurgan kogortalar hisobga olingan.',
     }
   }
 
