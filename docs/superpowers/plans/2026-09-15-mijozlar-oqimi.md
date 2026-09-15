@@ -1153,16 +1153,165 @@ EOF
 
 ---
 
-### Task 5: DTOs and `InsightsService.customerFlow()`
+> **REVISED 2026-09-15, after `origin/main` moved.** Tasks 1–4 shipped as written and are
+> merged. Everything from here was re-planned: commit `9d5246c` rebuilt «Mijoz qaytishi»
+> the same day — it added `src/lib/retentionGroups.ts` (a four-way partition of the База
+> funnel keyed by stage ID) with `src/features/cohort/StateBars.tsx` to draw it, rewrote
+> the cohort matrix to a cumulative reading, and **removed the period control from the
+> screen** on the stated ground that it drove nothing. Two decisions from the user settle
+> what that means here:
+>
+> 1. **The band resolves its own trailing 90 days on the server**, with no control, the
+>    shape `/insights/concentration` took in that same commit.
+> 2. **`retentionGroups` wins.** Our `src/lib/customerStates.ts` loses its stage table.
+>    Only the TIME verdict survives from it — «no order in 60 / 150 days» — because that
+>    is a fact about what the customer did, which no stage table can answer.
+>
+> And one ruling of mine that follows: the portal's side of the comparison is **already on
+> the screen**, in upstream's «База — mijozlar hozir qayerda» card. Our block must not draw
+> it twice. So the churn block carries the time bands alone and names where the portal's
+> answer lives; `customerStates()` loses its portal half entirely, which deletes more code
+> than it adds.
+
+### Task 5: Retire our state module onto upstream's partition
 
 **Files:**
-- Modify: `src/lib/api.ts` (add DTOs beside `ConcentrationDto`, around line 1390)
-- Modify: `src/server/services/insightsService.ts` (add after `cohorts`, around line 978)
-- Test: `tests/domain/customerFlow.test.ts`
+- Modify: `src/lib/customerStates.ts` (delete the stage table and the bucket integers; keep the thresholds and the three time states)
+- Modify: `src/server/repositories/insightsRepository.ts` (delete `stateCaseSql`; simplify `customerStates()` to the time bands)
+- Modify: `tests/domain/customerStates.test.ts`
+- Modify: `tests/http/customerStatesSql.test.ts`
 
 **Interfaces:**
-- Consumes: Task 2's `customerStates()`, Task 3's `customerFlow()`, Task 4's `sourceRepeatRates()`, Task 1's `CUSTOMER_STATES` / `PORTAL_ABSENT`.
-- Produces (in `src/lib/api.ts`):
+- Consumes: upstream's `src/lib/retentionGroups.ts` and `retentionGroupCaseSql` — **read them, do not touch them**.
+- Produces: `CUSTOMER_ACTIVE_DAYS = 60`, `CUSTOMER_AT_RISK_DAYS = 150`, `CUSTOMER_STATES` (unchanged: `{ key, label, colour }`, keys `'ACTIVE' | 'AT_RISK' | 'LOST'`), `type CustomerStateKey`, and
+  `async customerStates(): Promise<{ customers: number; ours: Record<CustomerStateKey, number> }>`
+
+**What goes, and why.** `RETENTION_STATE_STAGES`, `STATE_BUCKET`, `UNBUCKETED_BUCKET`, `ABSENT_BUCKET`, `PORTAL_ABSENT` and `InsightsRepository.stateCaseSql` all go. They were a second definition of a partition `retentionGroups.ts` already owns, keyed by stage NAME where upstream keys by stage ID — and ID is the stabler key, because a portal rename moves a name and not an id. The `baza`, `best` and `portal` CTEs go with them, along with the `unbucketedStages` UNION arm: upstream's own query already reports its unmapped stages as «Boshqa bosqichlar».
+
+**What stays.** `cust`, `last_order` and `ours`, and the two thresholds — measured from p75 (73.9 days) and p90 (141.1) of the real inter-purchase interval, which nothing upstream measures.
+
+- [ ] **Step 1: Read what you are deferring to**
+
+Read `src/lib/retentionGroups.ts` and `src/features/cohort/StateBars.tsx`. You are not changing either. You are deleting the thing that competes with them, and your new comments should point a reader at them by name.
+
+- [ ] **Step 2: Cut the tests down first, and watch them fail**
+
+In `tests/domain/customerStates.test.ts`, delete the tests for the stage partition, the bucket integers and the verbatim-Russian names — every one of those facts now lives in upstream's own test for `retentionGroups`. Keep the thresholds test. Add one test that pins the reason the module still exists:
+
+```ts
+  it('keeps only what the stage table cannot answer', async () => {
+    /*
+      src/lib/retentionGroups.ts owns the partition of the База funnel and
+      is read by both the screen and the SQL. This module owns one different
+      thing: how long a customer has been SILENT, which is a fact about their
+      orders and not about any stage they sit on. If a stage list ever
+      reappears here, there are two definitions of one partition again.
+    */
+    const mod = await import('@/lib/customerStates')
+    expect(Object.keys(mod).some((k) => /STAGE|BUCKET|PORTAL/i.test(k))).toBe(false)
+  })
+```
+
+In `tests/http/customerStatesSql.test.ts`, delete the assertions about `min(bucket)`, the `RETENTION`/`OPEN` filters, the `LEFT JOIN` and the unrecognised-stage arm. Keep the two that still hold — the order clock, and `countsAsRevenue` named explicitly — and keep the parameterised-thresholds test. Add one:
+
+```ts
+  it('no longer reads the retention funnel at all', () => {
+    // Upstream's retentionStages query owns that reading; this one is about
+    // order dates. Two statements answering the same question is how they
+    // start disagreeing.
+    expect(code()).not.toMatch(/'RETENTION'/)
+    expect(code()).not.toMatch(/deal_stage/)
+  })
+```
+
+Run: `npx vitest run tests/domain/customerStates.test.ts tests/http/customerStatesSql.test.ts`
+Expected: FAIL — the new tests fail against the current module and statement.
+
+- [ ] **Step 3: Cut the module**
+
+Delete `RETENTION_STATE_STAGES`, `STATE_BUCKET`, `UNBUCKETED_BUCKET`, `ABSENT_BUCKET` and `PORTAL_ABSENT` from `src/lib/customerStates.ts`. Rewrite the file header so it says what the module is now — the silence thresholds and their three labels — and names `retentionGroups.ts` as the owner of the funnel partition, so a reader who comes looking for stages is sent one file over rather than left to add them back.
+
+- [ ] **Step 4: Cut the statement**
+
+In `customerStates()`, delete the `baza`, `best` and `portal` CTEs, the whole second UNION arm, and every `portal_*` column. Delete `stateCaseSql` and its import of the stage table. What remains is one row:
+
+```sql
+      WITH cust AS (
+        SELECT DISTINCT d."customerId" AS cid
+        FROM "deal" d
+        WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
+      ),
+      last_order AS (
+        SELECT d."customerId" AS cid, max(d."createdAtSource") AS last_ts
+        FROM "deal" d
+        WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
+        GROUP BY 1
+      ),
+      ours AS (
+        SELECT l.cid,
+          CASE
+            WHEN l.last_ts >= now() - make_interval(days => $1::int) THEN 'ACTIVE'
+            WHEN l.last_ts >= now() - make_interval(days => $2::int) THEN 'AT_RISK'
+            ELSE 'LOST'
+          END AS state
+        FROM last_order l
+      )
+      SELECT
+        (SELECT count(*) FROM cust)::bigint AS customers,
+        count(*) FILTER (WHERE state = 'ACTIVE')::bigint AS active,
+        count(*) FILTER (WHERE state = 'AT_RISK')::bigint AS at_risk,
+        count(*) FILTER (WHERE state = 'LOST')::bigint AS lost
+      FROM ours
+```
+
+The state literals are the `CustomerStateKey` values and the three counts must sum to `customers` — say both in comments. Keep the thresholds as `$1`/`$2`.
+
+- [ ] **Step 5: Verify, including against the database**
+
+Run the two focused test files, then the full suite once, then `npm run typecheck`.
+
+Then EXPLAIN and run the statement against the local dev cluster, the way Tasks 2–4 did — extract the template literal from the committed file so what you test is what you ship. Report the plan and the returned row, and confirm the three counts sum to `customers`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/lib/customerStates.ts src/server/repositories/insightsRepository.ts tests/domain/customerStates.test.ts tests/http/customerStatesSql.test.ts
+git commit src/lib/customerStates.ts src/server/repositories/insightsRepository.ts tests/domain/customerStates.test.ts tests/http/customerStatesSql.test.ts -m "$(cat <<'EOF'
+Let retentionGroups own the funnel, and keep only what it cannot answer
+
+Two modules in src/lib partitioned the same База funnel — upstream's by
+stage id, ours by stage name — and both their headers say that must not
+happen. Ours goes. The id is the stabler key anyway: a portal rename moves a
+name and leaves an id alone.
+
+What survives is the one reading no stage table can give: how long a customer
+has been silent, banded at 60 and 150 days, which came from p75 and p90 of the
+measured inter-purchase interval. The portal's own verdict on the same people
+is already on this screen in «База — mijozlar hozir qayerda», so drawing it
+twice was the other thing to stop.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+EOF
+)"
+```
+
+---
+
+### Task 6: DTOs and the service, on a fixed trailing 90 days
+
+**Files:**
+- Modify: `src/lib/api.ts` (add the DTOs beside `ConcentrationDto`)
+- Modify: `src/server/services/insightsService.ts`
+- Test: `tests/domain/customerFlow.test.ts`
+
+A partial, uncommitted attempt at this task exists at
+`.superpowers/sdd/2026-09-15-mijozlar-oqimi/task5-partial.patch`. It was written against the
+old period-scoped design and stopped mid-way. Read it for the DTO shapes if useful; do not
+apply it.
+
+**Interfaces:**
+- Consumes: `customerStates()` (Task 5), `customerFlow({ period, grain })` and `sourceRepeatRates()` (already shipped, unchanged).
+- Produces, in `src/lib/api.ts`:
 
 ```ts
 export interface CustomerFlowSummaryDto {
@@ -1191,24 +1340,24 @@ export interface CustomerStateRowDto {
   readonly key: string
   readonly label: string
   readonly colour: string
-  readonly ours: number | null
-  readonly portal: number
-}
-export interface CustomerStatesDto {
   readonly customers: number
-  readonly rows: readonly CustomerStateRowDto[]
-  readonly unbucketedStages: readonly string[]
 }
 export interface CustomerFlowDto {
+  /** The window this band resolved for itself, so the screen can print it. */
+  readonly window: { readonly start: string; readonly end: string; readonly days: number }
   readonly summary: CustomerFlowSummaryDto
-  readonly grain: 'day' | 'month'
   readonly series: readonly CustomerFlowPointDto[]
   readonly sources: readonly CustomerSourceDto[]
-  readonly states: CustomerStatesDto
+  readonly states: {
+    readonly customers: number
+    readonly rows: readonly CustomerStateRowDto[]
+  }
 }
 ```
 
-- Service: `async customerFlow(currency: string, period: Period, scope: EmployeeScopeFilter): Promise<CustomerFlowDto>`, plus an exported pure helper `export function grainFor(days: number): 'day' | 'month'`.
+- Service: `async customerFlow(currency: string, now: Date, timeZone: string): Promise<CustomerFlowDto>`.
+
+**The window is the service's own, and there is no `grain` argument.** The band resolves a trailing 90 days ending now, and asks the repository for **day** grain. Ninety days at month grain is three bars, which is a number wearing an axis; ninety daily points are a curve. `customerFlow`'s `grain` parameter stays as it is — it is tested — and this caller passes `'day'`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1216,211 +1365,131 @@ export interface CustomerFlowDto {
 // tests/domain/customerFlow.test.ts
 import { describe, expect, it } from 'vitest'
 
-import { grainFor } from '@/server/services/insightsService'
+import { trailingWindow } from '@/server/services/insightsService'
 
-describe('the series grain', () => {
-  it('draws days for a window a reader would read as days', () => {
+describe('the band’s own window', () => {
+  it('trails ninety days back from now, half-open', () => {
     /*
-      The period control's shortest presets are a day and a week. Bucketed by
-      month those draw ONE bar, which is not a series — it is a number wearing
-      an axis.
+      The screen lost its period control on 2026-09-15 because it drove
+      nothing, so this band resolves its own window on the server — the same
+      shape /insights/concentration took in that commit. Ninety days is the
+      horizon the repeat-rate column already uses, so the two halves of the
+      source block are measured over spans a reader can hold together.
     */
-    expect(grainFor(1)).toBe('day')
-    expect(grainFor(7)).toBe('day')
-    expect(grainFor(31)).toBe('day')
-    expect(grainFor(62)).toBe('day')
+    const now = new Date('2026-09-15T08:00:00Z')
+    const w = trailingWindow(now)
+    expect(w.end.toISOString()).toBe('2026-09-15T08:00:00.000Z')
+    expect(w.start.toISOString()).toBe('2026-06-17T08:00:00.000Z')
+    expect(w.days).toBe(90)
   })
 
-  it('switches to months past two of them', () => {
-    // 62 daily bars is the most this card draws legibly at 360px.
-    expect(grainFor(63)).toBe('month')
-    expect(grainFor(365)).toBe('month')
+  it('does not mutate the clock it was handed', () => {
+    // A Date is mutable and `setDate` on the caller's instance would move
+    // every other window resolved from it in the same request.
+    const now = new Date('2026-09-15T08:00:00Z')
+    trailingWindow(now)
+    expect(now.toISOString()).toBe('2026-09-15T08:00:00.000Z')
   })
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run it and watch it fail**
 
 Run: `npx vitest run tests/domain/customerFlow.test.ts`
-Expected: FAIL — `grainFor is not a function` / no such export.
+Expected: FAIL — no such export.
 
-- [ ] **Step 3: Add the DTOs, the helper and the service method**
-
-In `src/lib/api.ts`, immediately after `ConcentrationDto`, add the six interfaces exactly as written in **Interfaces** above, with this comment above the group:
+- [ ] **Step 3: Write the helper, the DTOs and the service method**
 
 ```ts
 /**
- * «Mijozlar oqimi» — the band at the top of «Mijoz qaytishi».
+ * The band's own ninety days.
  *
- * ON THE ORDER CLOCK, and that is the one thing a reader of this type must
- * know: `summary` and `series` count customers by when they ORDERED
- * (`createdAtSource`), while `CohortSummaryDto` above counts them by when
- * their first order was DELIVERED. The two legitimately disagree — 15 867
- * against 11 512 on 2026-09-15 — and each block prints its clock in its own
- * heading. Nothing may sum across the two.
+ * «Mijoz qaytishi» has no period control — it was removed on 2026-09-15
+ * because it drove nothing, and its «Bugun» default had made the
+ * concentration band read twelve customers and one first-to-second pair. So
+ * this band resolves its own window, as that commit made /insights/
+ * concentration do, and the card prints the dates rather than implying a
+ * control that is not there.
  *
- * `states` takes no period at all: churn is a fact about today, like the
- * retention ladder beside it. `sources[].repeatPercent` takes no period
- * either — see `InsightsRepository.sourceRepeatRates`.
+ * NINETY, not thirty and not a year, because the source block's repeat column
+ * is measured on a ninety-day horizon: one span across the whole card is one
+ * fewer thing for a reader to hold.
  */
-```
-
-In `src/server/services/insightsService.ts`, add near the top of the file:
-
-```ts
-import { CUSTOMER_STATES, PORTAL_ABSENT } from '@/lib/customerStates'
-```
-
-and, beside the existing `confirmationRopCache`:
-
-```ts
-/* Both take no period and no scope, and both are identical for every reader.
-   Five minutes, matching the cohort read on the same screen: neither answer
-   can move more than a few times a day. */
-const customerStatesCache = ttlCache<Awaited<ReturnType<InsightsRepository['customerStates']>>>(
-  5 * 60_000,
-)
-const sourceRatesCache = ttlCache<Awaited<ReturnType<InsightsRepository['sourceRepeatRates']>>>(
-  5 * 60_000,
-)
-```
-
-Add the exported helper above the class:
-
-```ts
-/**
- * Days per bar, from the window's own length.
- *
- * Resolved on the SERVER and returned in the DTO, so the axis label and the
- * bucket boundaries come from one decision. Re-derived on the client they
- * would disagree the moment a window straddled the threshold.
- */
-export function grainFor(days: number): 'day' | 'month' {
-  return days <= 62 ? 'day' : 'month'
+export function trailingWindow(now: Date): { start: Date; end: Date; days: number } {
+  const days = 90
+  /* A new Date, never `now` itself: Date is mutable and every other window
+     resolved from the same instant in this request would move with it. */
+  const start = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
+  return { start, end: new Date(now.getTime()), days }
 }
 ```
 
-Add the method to `InsightsService`, after `cohorts`:
+Add the six DTOs to `src/lib/api.ts` with a header saying the three clocks: the series and summary are the band's own trailing ninety days by ORDER date; `sources[].repeatPercent` is the whole history on a ninety-day maturity horizon and moves with neither; `states` is today. Say that the cohort matrix on the same screen counts a customer from when their first order was DELIVERED, so the two totals differ on purpose.
+
+Then the service method, modelled on `cohorts()` beside it:
 
 ```ts
-  /**
-   * The «Mijozlar oqimi» band: arrivals, returns, sources, and who went quiet.
-   *
-   * THREE READS, THREE CLOCKS, SAID OUT LOUD. `customerFlow` is the reader's
-   * window. `sourceRepeatRates` is the whole history on a 90-day horizon.
-   * `customerStates` is today. Folding them into one DTO is only safe because
-   * each block on the screen prints which of the three it is showing.
-   *
-   * THE SCOPE IS TAKEN AND NOT USED, AND THAT IS DELIBERATE. `cohort` is in
-   * `COMPANY_WIDE` and this endpoint asks for `analytics:read:all`, so
-   * `restrictToEmployeeIds` is null for every caller who gets through. It is
-   * still in the cache key below: the day this section narrows, a memo that
-   * had forgotten the scope would serve one account another's rows, and
-   * `ttlCache`'s own header calls that the worst thing it could cause.
-   */
-  async customerFlow(
-    currency: string,
-    period: Period,
-    scope: EmployeeScopeFilter = {},
-  ): Promise<CustomerFlowDto> {
-    const grain = grainFor(periodLengthInDays(period))
-    const scopeKey = keyPart(scope.restrictToEmployeeIds ?? null)
+  async customerFlow(currency: string, now: Date, timeZone: string): Promise<CustomerFlowDto> {
+    const w = trailingWindow(now)
+    const period: Period = { start: w.start, end: w.end, timeZone, preset: 'custom' }
+
+    /*
+      THREE READS, THREE CLOCKS, AND ONLY ONE OF THEM MOVES.
+
+      The window is resolved here and not by the caller, so the key below is
+      the DAY it lands on rather than the instant: a band that re-queried on
+      every request would put the most expensive statement on this screen into
+      a one-vCPU database once per reader per minute. Measured on production:
+      customerFlow 370-1478 ms warm, 3.7-8 s cold.
+
+      No scope in the key because there is no scope to carry — `cohort` is in
+      COMPANY_WIDE and this endpoint asks for `analytics:read:all`, so every
+      caller who gets through reads the same rows. If that ever changes, the
+      key changes in the same commit or the memo goes.
+    */
+    const dayKey = w.end.toISOString().slice(0, 10)
 
     const [flow, rates, states] = await Promise.all([
-      this.repository.customerFlow({ period, grain }),
-      sourceRatesCache.get(`rates|${scopeKey}`, () => this.repository.sourceRepeatRates()),
-      customerStatesCache.get(`states|${scopeKey}`, () => this.repository.customerStates()),
+      customerFlowCache.get(`flow|${dayKey}|${w.days}|day`, () =>
+        this.repository.customerFlow({ period, grain: 'day' }),
+      ),
+      sourceRatesCache.get('rates', () => this.repository.sourceRepeatRates()),
+      customerStatesCache.get('states', () => this.repository.customerStates()),
     ])
-
-    const byKey = new Map(rates.map((rate) => [rate.key, rate]))
-    const total = flow.summary.newCustomers
-
-    const sources = flow.sources.map((row) => {
-      const rate = byKey.get(row.key)
-      return {
-        key: row.key,
-        label: row.label,
-        newCustomers: row.newCustomers,
-        /* Against the window's new customers, which the source rows sum to by
-           construction — see the statement's third arm. */
-        sharePercent: total === 0 ? null : Math.round((row.newCustomers / total) * 1000) / 10,
-        /* Null, never 0, when this source has nobody past the 90-day horizon.
-           «No answer yet» is not «nobody came back». */
-        repeatPercent: rate?.repeatPercent ?? null,
-        maturedCustomers: rate?.maturedCustomers ?? 0,
-      }
-    })
-
-    /* The state rows are built from the SHARED table, in its order, so the two
-       columns of the block cannot fall out of step with the labels above them.
-       «Базада yoʻq» has no counterpart on our side and carries null rather
-       than 0 — a 0 there would read as "nobody", not as "not applicable". */
-    const rows = [
-      ...CUSTOMER_STATES.map((state) => ({
-        key: state.key,
-        label: state.label,
-        colour: state.colour,
-        ours: states.ours[state.key],
-        portal: states.portal[state.key],
-      })),
-      {
-        key: PORTAL_ABSENT.key,
-        label: PORTAL_ABSENT.label,
-        colour: PORTAL_ABSENT.colour,
-        ours: null,
-        portal: states.portal.ABSENT,
-      },
-    ]
-
-    const first = flow.summary.firstRevenueMinor
-    const repeat = flow.summary.repeatRevenueMinor
-    const money_total = first + repeat
-
-    return {
-      summary: {
-        newCustomers: flow.summary.newCustomers,
-        returningCustomers: flow.summary.returningCustomers,
-        activeCustomers: flow.summary.activeCustomers,
-        newCustomersWon: flow.summary.newCustomersWon,
-        firstRevenue: toMoneyDto(money(first, currency)),
-        repeatRevenue: toMoneyDto(money(repeat, currency)),
-        repeatRevenueSharePercent:
-          money_total === 0n ? null : Math.round(Number((repeat * 1000n) / money_total)) / 10,
-      },
-      grain,
-      series: flow.series,
-      sources,
-      states: {
-        customers: states.customers,
-        rows,
-        unbucketedStages: states.unbucketedStages,
-      },
-    }
+    …
   }
 ```
 
-Add any missing imports to `insightsService.ts`: `periodLengthInDays` and `type Period` from `@/server/domain/period/period`, and the `CustomerFlowDto` type from `@/lib/api`. Follow the file's existing import style.
+Fold the rest as the old plan had it: `sharePercent` against `summary.newCustomers` (null when there are none), `repeatPercent` and `maturedCustomers` from `byKey.get(row.key)` with `?? null` and `?? 0` — **a source with nothing matured is ABSENT from `sourceRepeatRates` rather than present with a null, so the `??` is what produces the null the screen needs; say so in a comment.** Build `states.rows` from `CUSTOMER_STATES` in its order. Name the money total `moneyTotal`.
 
-- [ ] **Step 4: Run tests and typecheck**
+Caches, beside the existing `confirmationRopCache`:
 
-Run: `npx vitest run tests/domain/customerFlow.test.ts && npm run typecheck && npm run lint`
-Expected: PASS, 2 tests. Typecheck and lint clean.
+```ts
+const customerFlowCache = ttlCache<Awaited<ReturnType<InsightsRepository['customerFlow']>>>(60_000)
+const sourceRatesCache = ttlCache<Awaited<ReturnType<InsightsRepository['sourceRepeatRates']>>>(5 * 60_000)
+const customerStatesCache = ttlCache<Awaited<ReturnType<InsightsRepository['customerStates']>>>(5 * 60_000)
+```
+
+- [ ] **Step 4: Verify**
+
+Focused test, full suite once, `npm run typecheck`. All three must be clean — this worktree has no scratch files, so there is no error baseline to subtract any more.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/lib/api.ts src/server/services/insightsService.ts tests/domain/customerFlow.test.ts
 git commit src/lib/api.ts src/server/services/insightsService.ts tests/domain/customerFlow.test.ts -m "$(cat <<'EOF'
-Fold the three customer-flow reads into one payload that names each clock
+Give the arrivals band its own ninety days, since the screen no longer has one
 
-Three reads with three clocks — the reader's window, the whole history on a
-90-day horizon, and today — and the DTO says which is which, because the
-screen has to print it. The two period-less reads are memoised for five
-minutes, matching the cohort read on the same screen.
+The period control left «Mijoz qaytishi» because it drove nothing, so the band
+resolves its window on the server the way the concentration band now does, and
+the card prints the dates instead of implying a control that is not there.
+Ninety days matches the horizon the source block's repeat column already uses,
+which is one span across the card rather than two.
 
-The scope is taken and not used: `cohort` is company-wide, so it is null for
-every caller who gets through. It is in the cache key anyway, so the day this
-section narrows the memo cannot serve one account another's rows.
+The memo is keyed on the day the window lands on, not the instant, or the most
+expensive statement on this screen would run once per reader per minute
+against one vCPU — 370 ms to 1.5 s warm, and up to eight seconds cold.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
@@ -1429,38 +1498,25 @@ EOF
 
 ---
 
-### Task 6: The endpoint
+### Task 7: The endpoint
 
 **Files:**
 - Create: `src/app/api/v1/insights/customers/route.ts`
-- Modify: `tests/http/routeAccess.test.ts` (add the route to its table)
-- Modify: `docs/API.md` (document the endpoint beside `/insights/cohorts`)
+- Modify: `docs/API.md`
 
-**Interfaces:**
-- Consumes: Task 5's `insightsService.customerFlow`.
-- Produces: `GET /api/v1/insights/customers` → `{ data: CustomerFlowDto, meta: { period: PeriodDto } }`.
+**Do NOT edit `tests/http/routeAccess.test.ts`.** That suite discovers routes from the filesystem (`routeFiles(API_ROOT)`) and asserts properties over `it.each` — there is no table to add a row to. Its one hand-written list, `NARROWS`, is asserted against routes that do **not** declare `permission: 'analytics:read:all'`, and this route declares exactly that, so it is filtered out and needs no entry.
 
-- [ ] **Step 1: Read how the route table is written, then add the failing row**
-
-Run: `grep -n "insights/concentration" tests/http/routeAccess.test.ts`
-
-Add a row for `/api/v1/insights/customers` in the same shape the neighbouring
-`/insights/concentration` row uses, asserting `permission: 'analytics:read:all'`
-and `section: 'cohort'`. Copy the surrounding row's exact structure — this
-file's table format is what the test iterates.
-
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 1: Run the suite and record what it does not yet see**
 
 Run: `npx vitest run tests/http/routeAccess.test.ts`
-Expected: FAIL — the new row's module cannot be imported.
+Confirm `insights/customers` appears in no case name. That is your RED.
 
-- [ ] **Step 3: Write the route**
+- [ ] **Step 2: Write the route**
 
 ```ts
-// src/app/api/v1/insights/customers/route.ts
-import { toPeriodDto } from '@/server/domain/period/period'
-import { analyticsQuerySchema } from '@/server/http/queryParams'
-import { getHandler, periodFrom } from '@/server/http/handler'
+import { z } from 'zod'
+
+import { getHandler } from '@/server/http/handler'
 import { insightsService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
@@ -1469,51 +1525,45 @@ export const dynamic = 'force-dynamic'
 const ACCESS = { permission: 'analytics:read:all', section: 'cohort' } as const
 
 /**
- * «Mijozlar oqimi» — arrivals, returns, sources and churn.
+ * «Mijozlar oqimi» — arrivals, returns, sources and silence.
  *
- * TAKES THE PERIOD, unlike `/insights/cohorts` beside it. That endpoint
- * refuses one because a retention matrix is a statement about the whole
- * history; this one answers "who arrived in the window the reader picked",
- * which is a different question on a different clock. Both feed the same
- * screen and each block there prints which clock it is on.
+ * TAKES NO PERIOD, like `/insights/cohorts` beside it and for a related
+ * reason. That one refuses a window because a retention matrix is a statement
+ * about the whole history; this one resolves its OWN trailing ninety days,
+ * because the screen's period control was removed on 2026-09-15 and a band
+ * that read a parameter nothing sets would answer «Bugun» forever.
  *
- * Two of the three reads behind it take no period at all — a source's repeat
- * rate and today's churn state — and the service says so in place.
+ * The empty schema is written out rather than omitted so that giving this
+ * endpoint a parameter is a decision somebody makes, not an oversight.
  */
-export const GET = getHandler(ACCESS, analyticsQuerySchema, async (ctx) => {
-  const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
-  const data = await insightsService.customerFlow(ctx.currency, period, {
-    ...ctx.query,
-    ...ctx.scope,
-  })
-  return { data, meta: { period: toPeriodDto(period) } }
+const schema = z.object({})
+
+export const GET = getHandler(ACCESS, schema, async (ctx) => {
+  const data = await insightsService.customerFlow(ctx.currency, ctx.now, ctx.timeZone)
+  return { data }
 })
 ```
 
-- [ ] **Step 4: Run tests, typecheck and lint**
+Check `getHandler`'s signature and how a sibling route with no query parameters declares its schema before settling on `z.object({})`; follow what the file's neighbours do.
 
-Run: `npm run verify`
-Expected: everything green. If `eslint` complains about the layering, the
-import is reaching past `@/server/services/container` — fix the import, never
-the rule.
+- [ ] **Step 3: Verify**
 
-- [ ] **Step 5: Document it**
+Run: `npx vitest run tests/http/routeAccess.test.ts` — the new file must now appear as its own case and pass. Then the full suite and `npm run typecheck`.
 
-In `docs/API.md`, add `/insights/customers` beside `/insights/cohorts`: the
-query parameters it takes, the `CustomerFlowDto` shape, and one line saying it
-is on the order clock while `/insights/cohorts` is on the delivered clock.
+- [ ] **Step 4: Document it**
 
-- [ ] **Step 6: Commit**
+In `docs/API.md`, add `/insights/customers` beside `/insights/cohorts`: that it takes no parameters, that it resolves a trailing 90 days itself, the `CustomerFlowDto` shape, and one line saying it counts by ORDER date where `/insights/cohorts` counts by DELIVERED date.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/app/api/v1/insights/customers/route.ts tests/http/routeAccess.test.ts docs/API.md
-git commit src/app/api/v1/insights/customers/route.ts tests/http/routeAccess.test.ts docs/API.md -m "$(cat <<'EOF'
-Serve the customer flow at /insights/customers, on the period the reader picked
+git add src/app/api/v1/insights/customers/route.ts docs/API.md
+git commit src/app/api/v1/insights/customers/route.ts docs/API.md -m "$(cat <<'EOF'
+Serve the customer flow at /insights/customers, on a window it resolves itself
 
-It sits beside /insights/cohorts and deliberately takes the period that one
-refuses: a retention matrix is a statement about the whole history, while
-"who arrived in this window" is a different question on a different clock.
-Both feed «Mijoz qaytishi» and each block there prints which clock it is on.
+It takes no parameters. The screen it feeds lost its period control, so an
+endpoint that read one would answer «Bugun» forever — the failure that made
+the concentration band report twelve customers under a red gauge.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
@@ -1522,202 +1572,44 @@ EOF
 
 ---
 
-### Task 7: The two chart pieces
+### Task 8: The two chart pieces
 
 **Files:**
 - Modify: `src/components/charts/CategoryBarList.tsx`
 - Create: `src/components/charts/CustomerFlowChart.tsx`
 
-**Interfaces:**
-- Consumes: nothing from earlier tasks.
-- Produces: `CategoryBarList` gains `mode: 'magnitude' | 'rate' | 'share'`; `CustomerFlowChart({ data, grain, height })` where `data: readonly CustomerFlowPointDto[]`.
+- [ ] **Step 1: Widen `CategoryBarList`'s mode, and change nothing else**
 
-- [ ] **Step 1: Add the `share` mode to `CategoryBarList`**
+Read the component first. `peak` is `mode === 'magnitude' ? … : 100` and `colour` is `mode === 'rate' ? toneFor(value) : 'var(--seq-450)'`, so a new `'share'` member already falls through to a hundred-denominator bar in the neutral hue. **The only code change is widening the union** to `'magnitude' | 'rate' | 'share'`; if the file does not match that description, stop and report rather than inventing a change.
 
-The `rate` mode grades on the house thresholds (85 / 60), which would paint
-every repeat rate in this product critical — they run 9% to 40%. That is the
-dashboard asserting a benchmark it does not have, and the cohort page already
-refuses to: both its rate gauges carry `tone="neutral"` for exactly this
-reason.
+Add a comment saying why `share` exists: `rate` grades on the house thresholds (85 / 60), which is right for a delivery rate and wrong for a repeat rate — these run 9% to 40%, so every source would paint critical and the dashboard would assert a benchmark nothing in this business supports. Both rate gauges on this very screen already carry `tone="neutral"` for that reason.
 
-Change the `mode` prop to `'magnitude' | 'rate' | 'share'` and add, beside the
-existing `peak` and `colour` lines:
-
-```tsx
-  /*
-    `share` IS `rate` WITHOUT THE JUDGEMENT.
-
-    Same denominator — the value's own hundred, so a 12% bar is a tenth of the
-    track and two panels can be read against each other — but one neutral hue
-    for every row. The house thresholds (85 / 60) encode "higher is better and
-    85 is good", which is true of a delivery rate and false of a repeat rate:
-    nothing in this business says what share of customers SHOULD come back, and
-    painting 12.4% red would be the dashboard asserting a benchmark it cannot
-    support. The cohort page's two rate gauges already carry `tone="neutral"`
-    for the same reason; this keeps the bar list agreeing with them.
-  */
-  const peak = mode === 'magnitude'
-    ? Math.max(1, ...rows.map((row) => (row.value === null ? 0 : row.value)))
-    : 100
-  const colour =
-    mode === 'rate' ? toneFor(value) : 'var(--seq-450)'
-```
-
-(The existing `peak` ternary already yields 100 for anything that is not
-`magnitude`, so only the `colour` line changes: `mode === 'rate'` where it said
-`mode === 'rate'` before is unchanged — confirm by reading the file that
-`share` falls through to `var(--seq-450)`.)
-
-- [ ] **Step 2: Verify the existing callers still render**
+- [ ] **Step 2: Confirm the existing callers are untouched**
 
 Run: `npm run typecheck && npx vitest run`
-Expected: green. `LogisticsPage` passes `'magnitude'` and `'rate'` only, so it
-is untouched by the widened union.
+`LogisticsPage` passes only `'magnitude'` and `'rate'`, so a widened union cannot reach it.
 
 - [ ] **Step 3: Write `CustomerFlowChart`**
 
+Two lines, ONE Y axis, counts only. Both series are people, which is what makes one axis honest; a second axis can be rescaled to imply any relationship and is forbidden in this codebase. Model it on `src/components/charts/DailyOutcomeChart.tsx` — copy its `ChartTooltipPanel` usage, its hand-rolled legend (Recharts' own `<Legend>` reserves a band inside the plot and re-lays the chart out when it wraps) and its `useReducedMotion` guard. Props:
+
 ```tsx
-// src/components/charts/CustomerFlowChart.tsx
-'use client'
-
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
-
-import { ChartTooltipPanel } from '@/components/charts/chartTooltip'
-import type { CustomerFlowPointDto } from '@/lib/api'
-import { formatDateShort, formatNumber } from '@/lib/format'
-import { useReducedMotion } from '@/lib/useReducedMotion'
-
-/**
- * New customers against returning ones, over the reader's own window.
- *
- * ONE Y AXIS. A second one is forbidden in this codebase because it can be
- * rescaled to imply any relationship between two series. Here both lines
- * count PEOPLE, which is what makes one axis honest — and the gap between
- * them is the whole reading: on this portal returning customers run at
- * roughly a seventh of new ones, and the question is whether that ratio is
- * moving.
- *
- * COUNTS ONLY, never money. Revenue by arrival month is a different question
- * with a different denominator, and the tiles above already carry it.
- *
- * Modelled on `DailyOutcomeChart`, which is the logistics screen's and is
- * welded to Успешно / Отказ and a money toggle. Copied rather than
- * generalised: two small charts that share a shape are cheaper to read than
- * one chart with four props deciding what it means.
- */
 export function CustomerFlowChart({
   data,
-  grain,
   height,
 }: {
   data: readonly CustomerFlowPointDto[]
-  grain: 'day' | 'month'
   height?: number
-}) {
-  // Recharts drives its draw-in from JS, out of reach of the CSS media guards
-  // every other animation sits behind — so it asks the same question here.
-  const reducedMotion = useReducedMotion()
-
-  const points = data.map((point) => ({
-    ...point,
-    label:
-      grain === 'month'
-        ? /* «2026-08» reads as a month; formatDateShort would print a first-of-
-             the-month day and invite it to be read as one day's arrivals. */
-          point.bucket.slice(0, 7)
-        : formatDateShort(point.bucket),
-  }))
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: height ?? '100%' }}>
-      {/* Ours, not Recharts' <Legend>: its own reserves a band inside the plot
-          and re-lays the chart out when it wraps. */}
-      <div
-        className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]"
-        style={{ color: 'var(--ink-secondary)' }}
-      >
-        <LegendItem colour="var(--series-1)" label="Yangi mijoz" />
-        <LegendItem colour="var(--series-3)" label="Qaytgan mijoz" />
-      </div>
-
-      <div className="min-h-0 flex-1">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={points} margin={{ top: 6, right: 12, bottom: 0, left: 0 }}>
-            <CartesianGrid stroke="var(--grid)" strokeDasharray="3 3" vertical={false} />
-            <XAxis
-              dataKey="label"
-              tick={{ fontSize: 11, fill: 'var(--ink-muted)' }}
-              tickLine={false}
-              axisLine={{ stroke: 'var(--axis)' }}
-              minTickGap={24}
-            />
-            <YAxis
-              tick={{ fontSize: 11, fill: 'var(--ink-muted)' }}
-              tickLine={false}
-              axisLine={false}
-              width={44}
-              tickFormatter={(value: number) => formatNumber(value)}
-              allowDecimals={false}
-            />
-            <Tooltip
-              content={<ChartTooltipPanel formatter={(value: number) => formatNumber(value)} />}
-            />
-            <Line
-              type="monotone"
-              dataKey="newCustomers"
-              name="Yangi mijoz"
-              stroke="var(--series-1)"
-              strokeWidth={2}
-              dot={false}
-              isAnimationActive={!reducedMotion}
-            />
-            <Line
-              type="monotone"
-              dataKey="returningCustomers"
-              name="Qaytgan mijoz"
-              stroke="var(--series-3)"
-              strokeWidth={2}
-              dot={false}
-              isAnimationActive={!reducedMotion}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  )
-}
-
-function LegendItem({ colour, label }: { colour: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span
-        aria-hidden
-        className="inline-block h-0.5 w-3 rounded-full"
-        style={{ background: colour }}
-      />
-      {label}
-    </span>
-  )
-}
+}) 
 ```
 
-Before running, open `src/components/charts/chartTooltip.tsx` and
-`src/components/charts/DailyOutcomeChart.tsx` and match `ChartTooltipPanel`'s
-actual prop names and the `LegendItem` helper's actual signature — copy them
-rather than the sketch above if they differ.
+No `grain` prop — the band is always ninety daily points. Label the X axis with `formatDateShort(point.bucket)`, legend «Yangi mijoz» / «Qaytgan mijoz», colours `var(--series-1)` and `var(--series-3)`.
 
-- [ ] **Step 4: Typecheck and lint**
+**One thing the series does not do: gap-fill.** A day with no orders at all emits no row, so a quiet day is a missing point rather than a zero. Say so in the component's header — with ninety daily buckets on this portal's volume it will rarely bite, and a reader who sees a straight segment should know why.
 
-Run: `npm run typecheck && npm run lint`
-Expected: clean.
+- [ ] **Step 4: Verify**
+
+`npm run typecheck && npm run lint`
 
 - [ ] **Step 5: Commit**
 
@@ -1726,16 +1618,13 @@ git add src/components/charts/CategoryBarList.tsx src/components/charts/Customer
 git commit src/components/charts/CategoryBarList.tsx src/components/charts/CustomerFlowChart.tsx -m "$(cat <<'EOF'
 Give the bar list a rate mode that states a share without judging it
 
-The existing rate mode grades on the house thresholds, 85 and 60, which is
-right for a delivery rate and wrong for a repeat rate: these run 9% to 40%,
-so every source would paint red and the dashboard would be asserting a
-benchmark nothing in this business supports. The cohort page's own rate
-gauges already carry tone="neutral" for that reason; `share` keeps the bar
-list agreeing with them.
+The existing rate mode grades on 85 and 60, which is right for a delivery rate
+and wrong for a repeat rate: these run 9% to 40%, so every source would paint
+red and the dashboard would be asserting a benchmark nothing in this business
+supports. Both rate gauges already on this screen carry tone="neutral" for the
+same reason.
 
-The flow chart is two lines on one axis because both count people. A second
-axis can be rescaled to imply any relationship between two series and is
-forbidden here.
+The flow chart is two lines on one axis because both count people.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
@@ -1744,326 +1633,58 @@ EOF
 
 ---
 
-### Task 8: The band on the screen
+### Task 9: The band on the screen
 
 **Files:**
 - Modify: `src/features/cohort/CohortPage.tsx`
 
-**Interfaces:**
-- Consumes: `/insights/customers` (Task 6), `CustomerFlowDto` (Task 5), `CustomerFlowChart` and `CategoryBarList`'s `share` mode (Task 7), `CUSTOMER_STATES` (Task 1).
-- Produces: nothing downstream.
+**Read the file first.** It was rewritten on 2026-09-15: the cohort matrix is cumulative, «База — mijozlar hozir qayerda» draws `<StateBars>` from upstream's four-way partition, the concentration band resolves its own trailing ninety days, and **`useDashboardFilters` is gone**. Your band adds to that screen; it does not restore anything that was removed.
 
 - [ ] **Step 1: Add the query**
 
-Beside the existing `concentration` query in `CohortPage`, add:
-
 ```tsx
-  /*
-    Period-scoped, and keyed on `apiParams` so the cache follows the period
-    control — the same key shape the concentration read uses. The cohort read
-    above deliberately takes no period; this one is the other clock on this
-    screen and the section header says so.
-  */
   const flow = useQuery({
-    queryKey: ['customer-flow', apiParams],
-    queryFn: ({ signal }) => apiGet<CustomerFlowDto>('/insights/customers', apiParams, signal),
+    queryKey: ['customer-flow'],
+    queryFn: ({ signal }) => apiGet<CustomerFlowDto>('/insights/customers', {}, signal),
+    /* Ninety days do not move in a minute, and the server memoises on the day
+       this window lands on. Match the cohort read beside it. */
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
   })
-
-  const flowStatus = flow.isPending ? 'loading' : flow.isError ? 'error' : 'ready'
-  const f = flow.data?.data
 ```
 
-- [ ] **Step 2: Insert the band above «Kogorta tahlili»**
+A literal key with no `apiParams`, like the concentration read above it — there is no period to carry, and a key that could carry one would invite somebody to pass one.
 
-Immediately after `<PageShell …>` opens and before the existing
-`<SectionHeader title="Kogorta tahlili" …>`:
+- [ ] **Step 2: Put the band at the TOP, above «Kogorta tahlili»**
 
-```tsx
-      {/*
-        THE ARRIVAL BAND, AND IT IS ON THE OTHER CLOCK.
+- `SectionHeader` «Mijozlar oqimi», hint naming the window and the clock: «Buyurtma berilgan sana boʻyicha · soʻnggi 90 kun» with the resolved dates from `data.window`.
+- Four tiles: **Yangi mijozlar** (`summary.newCustomers`, hint `${newCustomersWon} tasi xarid qildi` — the headline counts arrivals and a quarter of orders never land), **Qaytgan mijozlar**, **Takroriy tushum ulushi** as a `GaugeTile` with `tone="neutral"` (no benchmark exists; the two gauges below it already do this), and **Yoʻqotilgan mijozlar** (the `LOST` row of `states.rows`, hint «150 kundan beri buyurtma yoʻq · bugungi holat» — it is the one tile in the row that is not about the window).
+- `ChartCard` «Yangi va qaytgan mijozlar» → `<CustomerFlowChart data={f.series} height={280} />`, with loading, error and empty branches. All three: the «База» card shipped without an error branch once and a failed request read as an empty funnel.
+- `ChartCard` «Mijoz qayerdan kelayapti» → two `CategoryBarList` panels, `magnitude` above (new customers per source) and `share` below (that source's repeat %), **in the same row order, the lower panel never re-sorted** — the mechanism is that the reader's eye runs down one column of labels. Hint must say the two panels are on different clocks: the count is the band's ninety days, the rate is the whole history on a ninety-day maturity horizon.
+- `ChartCard` «Mijozlar holati — bugun» → the three time bands as hand-drawn rows with their `colour` from the shared table, over a caption saying the total and pointing at the other card: «Портал oʻz hukmini «База — mijozlar hozir qayerda» kartasida aytadi». **Do not redraw the portal's groups** — `StateBars` already does, further down the same page.
 
-        Everything below this counts a customer from the day their first order
-        was DELIVERED; this band counts them from the day they ORDERED. The two
-        legitimately print different totals — 15 867 against 11 512 on
-        2026-09-15 — so the clock is named here and in the cohort header below,
-        never left for a reader to infer from two numbers that will not
-        reconcile.
-      */}
-      <SectionHeader
-        title="Mijozlar oqimi"
-        hint="Buyurtma berilgan sana boʻyicha · tanlangan davr"
-      />
+- [ ] **Step 3: Name the other clock on the existing cohort header**
 
-      <div className="stagger grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <StatTile
-          status={flowStatus}
-          label="Yangi mijozlar"
-          value={f?.summary.newCustomers ?? null}
-          unit="count"
-          /* «Yangi mijoz» counts ARRIVALS, and a quarter of orders never land.
-             The share that bought rides in the hint rather than replacing the
-             headline: the client asked how customers are coming. */
-          hint={
-            f
-              ? `${formatNumber(f.summary.newCustomersWon)} tasi xarid qildi · birinchi buyurtmasi shu davrda`
-              : undefined
-          }
-        />
-        <StatTile
-          status={flowStatus}
-          label="Qaytgan mijozlar"
-          value={f?.summary.returningCustomers ?? null}
-          unit="count"
-          hint="Avval ham buyurtma bergan · shu davrda yana keldi"
-        />
-        <GaugeTile
-          status={flowStatus}
-          label="Takroriy tushum ulushi"
-          value={f?.summary.repeatRevenueSharePercent ?? null}
-          /* Uncoloured, like the whole-history gauge below it and the 90-day
-             gauge at the bottom: there is no benchmark for what repeat share
-             SHOULD be here, and painting a number red asserts one. */
-          tone="neutral"
-          hint="Tanlangan davrda · birinchi buyurtmadan keyingi savdolar"
-        />
-        <StatTile
-          status={flowStatus}
-          label="Yoʻqotilgan mijozlar"
-          value={f?.states.rows.find((r) => r.key === 'LOST')?.ours ?? null}
-          unit="count"
-          /* BUGUNGI HOLAT, not the window's. Said on the tile because it sits
-             in a row of three figures that all follow the period control. */
-          hint={`${CUSTOMER_AT_RISK_DAYS} kundan beri buyurtma yoʻq · bugungi holat`}
-        />
-      </div>
+The «Kogorta tahlili» hint gains «yetkazilgan sana boʻyicha» at the front. Add a comment above it saying the band at the top counts a customer from the day they ORDERED and this block from the day their first order was DELIVERED, so the two customer totals differ on purpose. Change nothing else in that block.
 
-      <ChartCard
-        title="Yangi va qaytgan mijozlar"
-        hint="Har ikkalasi ham mijoz soni — bitta oʻqda, shuning uchun oralaridagi masofa haqiqiy nisbatni koʻrsatadi."
-      >
-        {flow.isPending && <ChartSkeleton height={280} />}
-        {flow.isError && (
-          <ErrorState
-            message={(flow.error as Error | null)?.message}
-            onRetry={() => void flow.refetch()}
-          />
-        )}
-        {f && f.series.length === 0 && (
-          <EmptyState
-            title="Bu davrda buyurtma yoʻq"
-            body="Boshqa davrni tanlab koʻring."
-          />
-        )}
-        {f && f.series.length > 0 && (
-          <CustomerFlowChart data={f.series} grain={f.grain} height={280} />
-        )}
-      </ChartCard>
+- [ ] **Step 4: Verify**
 
-      <ChartCard
-        title="Mijoz qayerdan kelayapti"
-        /*
-          THE TWO PANELS ARE ON DIFFERENT CLOCKS AND THE HINT SAYS BOTH.
+`npm run typecheck && npm run lint && npx vitest run`, then run the app and open `http://localhost:3000/analytics/cohort` — **`localhost`, never `127.0.0.1`**, or better-auth rejects the origin as untrusted and the sign-in form silently re-renders. Note that this worktree cannot run `next dev` while the main checkout's server is running; if it is, verify on production in Task 10 instead and say so.
 
-          The count follows the period control; the rate cannot, because a
-          source that acquired heavily last month would report a near-zero
-          repeat rate for no reason but the calendar. Measured: without the
-          horizon every source reads several points low and «База клиент»
-          twenty points low.
-        */
-        hint="Yuqorida — shu davrda kelgan yangi mijozlar. Pastda — oʻsha manbadan kelgan mijozlarning qaytish foizi: butun tarix, birinchi xaridiga 90 kun toʻlganlar boʻyicha."
-      >
-        {f && f.sources.length === 0 && flowStatus === 'ready' ? (
-          <EmptyState
-            title="Manba maʼlumoti yoʻq"
-            body="Bu davrda yangi mijoz kelmagan."
-          />
-        ) : (
-          <div className="flex flex-col gap-5">
-            <CategoryBarList
-              mode="magnitude"
-              status={flowStatus}
-              rows={(f?.sources ?? []).map((s) => ({
-                key: s.key || 'none',
-                label: s.label,
-                value: s.newCustomers,
-                display: formatNumber(s.newCustomers),
-                meta: s.sharePercent === null ? undefined : formatPercent(s.sharePercent),
-              }))}
-            />
-            {/*
-              SAME ROW ORDER, NEVER RE-SORTED. The whole mechanism is that the
-              reader's eye runs straight down one column of labels — re-sorting
-              this panel by rate turns a comparison into two unrelated lists.
-            */}
-            <CategoryBarList
-              mode="share"
-              status={flowStatus}
-              rows={(f?.sources ?? []).map((s) => ({
-                key: s.key || 'none',
-                label: s.label,
-                value: s.repeatPercent,
-                display: s.repeatPercent === null ? NO_VALUE : formatPercent(s.repeatPercent),
-                meta:
-                  s.maturedCustomers === 0
-                    ? '90 kunlik ufqi toʻlgan mijoz yoʻq'
-                    : `${formatNumber(s.maturedCustomers)} ta mijozdan`,
-              }))}
-            />
-          </div>
-        )}
-      </ChartCard>
-
-      <ChartCard
-        title="Mijozlar holati — bugun"
-        /*
-          The two columns are NOT meant to agree, and a reader who expects them
-          to will read the block as broken. The hint states the disagreement is
-          the finding before they get to the numbers.
-        */
-        hint="Chapda — oxirgi buyurtma sanasi boʻyicha. Oʻngda — portalning База voronkasidagi hukmi. Ikkisi bir xil chiqmaydi, va aynan shu farq koʻrsatkich. Davr tanlovi bu blokka taʼsir qilmaydi."
-      >
-        {flow.isPending && <ChartSkeleton height={200} />}
-        {flow.isError && (
-          <ErrorState
-            message={(flow.error as Error | null)?.message}
-            onRetry={() => void flow.refetch()}
-          />
-        )}
-        {f && <CustomerStateTable states={f.states} />}
-      </ChartCard>
-```
-
-- [ ] **Step 3: Write the `CustomerStateTable` helper at the bottom of the file**
-
-Beside `StageLadder` and `RepeatShareCard`:
-
-```tsx
-/**
- * Two verdicts on the same people, side by side, never reconciled.
- *
- * Hand-drawn rather than charted: four fixed rows compared against each other
- * need a number and a bar, not a chart library — it works at 360px, it prints,
- * and every figure stays on screen instead of behind a hover.
- *
- * «Базада yoʻq» carries an em dash on our side, not a zero. A 0 there would
- * read as "nobody is in this state", when what is true is that the state does
- * not exist on that side of the comparison.
- */
-function CustomerStateTable({ states }: { readonly states: CustomerStatesDto }) {
-  const total = states.customers
-
-  return (
-    <div className="flex flex-col gap-2.5">
-      <div
-        className="flex items-baseline gap-3 text-[11px]"
-        style={{ color: 'var(--ink-muted)' }}
-      >
-        <span className="min-w-0 flex-1" />
-        <span className="w-20 text-right">Buyurtma boʻyicha</span>
-        <span className="w-20 text-right">Портал (База)</span>
-      </div>
-
-      {states.rows.map((row) => (
-        <div key={row.key} className="flex items-baseline gap-3">
-          <span
-            className="min-w-0 flex-1 truncate text-[12.5px]"
-            style={{ color: 'var(--ink-secondary)' }}
-          >
-            <span
-              aria-hidden
-              className="mr-2 inline-block h-2 w-2 rounded-full align-middle"
-              style={{ background: `var(${row.colour})` }}
-            />
-            {row.label}
-          </span>
-          <span className="w-20 text-right text-[13px] tabular-nums">
-            {row.ours === null ? NO_VALUE : formatNumber(row.ours)}
-          </span>
-          <span className="w-20 text-right text-[13px] tabular-nums">
-            {formatNumber(row.portal)}
-          </span>
-        </div>
-      ))}
-
-      <p className="pt-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-        Jami {formatNumber(total)} ta mijoz · har ikkala ustun ham shu songa yigʻiladi.
-      </p>
-
-      {/*
-        THE TRIPWIRE, PRINTED. The portal adds stages — it added a 19th
-        Доставка stage on 2026-09-10 — and a stage this screen does not know
-        is counted as «Xavf ostida». Saying which one is what turns a silent
-        mis-bucketing into a thing somebody fixes.
-      */}
-      {states.unbucketedStages.length > 0 && (
-        <p className="text-[11px]" style={{ color: 'var(--status-warning)' }}>
-          Notanish bosqich: {states.unbucketedStages.join(', ')} — «Xavf ostida» deb sanaldi.
-        </p>
-      )}
-    </div>
-  )
-}
-```
-
-- [ ] **Step 4: Name the other clock on the existing cohort header**
-
-Change the existing `SectionHeader` for «Kogorta tahlili» hint from:
-
-```
-hint="Koʻrsatkichlar — butun tarix · matritsa — soʻnggi 18 oy · tanlangan davr bu blokka taʼsir qilmaydi."
-```
-
-to:
-
-```
-hint="Yetkazilgan sana boʻyicha · koʻrsatkichlar — butun tarix · matritsa — soʻnggi 18 oy · tanlangan davr bu blokka taʼsir qilmaydi."
-```
-
-Add above it:
-
-```tsx
-      {/*
-        THE CLOCK, NAMED, because the band above this one is on the other.
-        «Mijozlar oqimi» counts a customer from the day they ORDERED and this
-        block counts them from the day their first order was DELIVERED — 15 867
-        against 11 512 on 2026-09-15. Unlabelled, the two totals read as one of
-        them being broken.
-      */}
-```
-
-- [ ] **Step 5: Add the imports**
-
-At the top of `CohortPage.tsx`: `CustomerFlowChart`, `CategoryBarList`,
-`CUSTOMER_AT_RISK_DAYS` from `@/lib/customerStates`, and
-`type CustomerFlowDto`, `type CustomerStatesDto` from `@/lib/api`.
-
-- [ ] **Step 6: Verify**
-
-Run: `npm run verify`
-Expected: green.
-
-Then run the dev server and open the screen: `npm run dev`, then
-`http://localhost:3000/analytics/cohort` (never `127.0.0.1` — better-auth
-rejects the other host as an untrusted origin). The local `sinolife` seed has
-1 600 deals and no confirmation queue, so expect thin but non-empty bars; the
-numbers that matter are checked against production in Task 9.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/features/cohort/CohortPage.tsx
 git commit src/features/cohort/CohortPage.tsx -m "$(cat <<'EOF'
-Put arrivals, sources and churn at the top of «Mijoz qaytishi»
+Put arrivals, sources and silence at the top of «Mijoz qaytishi»
 
-The screen has answered "do customers come back" and never "how are they
-arriving, from where, and who stopped". Four tiles, the two-line flow chart,
-the source panels and the two churn verdicts go above the matrix; nothing
-below moves.
+The screen answers whether customers come back and, since this morning, where
+the база stands. It still does not answer how customers are ARRIVING, from
+which source, or which of them have gone quiet by their own order dates.
 
-Both clocks are now named. This band counts a customer from the day they
-ordered and the matrix counts them from the day their first order was
-delivered — 15 867 against 11 512 — and unlabelled the two totals read as
-one of them being broken.
+Both clocks are now named. The band counts a customer from the day they
+ordered and the matrix from the day their first order was delivered, and
+unlabelled the two totals read as one of them being broken.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 EOF
@@ -2072,124 +1693,55 @@ EOF
 
 ---
 
-### Task 9: Verify the invariants against production, then document
+### Task 10: Verify against production, then document
 
 **Files:**
-- Create: `probe-flow-verify.ts` (throwaway; `git add` it immediately — untracked files in this repo get wiped)
-- Modify: `CLAUDE.md` (the screen table, around line 425)
+- Create: `probe-flow-verify.mts` (throwaway; `git add` it immediately)
+- Modify: `CLAUDE.md`
 
-**Interfaces:**
-- Consumes: everything above.
-- Produces: nothing downstream.
+- [ ] **Step 1: Check the machine can still reach production**
 
-- [ ] **Step 1: Confirm the machine can still reach production**
+`curl -s https://api.ipify.org` against
+`doctl databases firewalls list 352cdb7b-53a7-4567-842f-5fee6d852f38`. **The IP rotates**, and when it has, the connection HANGS rather than failing. Appending a rule is refused by the auto-mode classifier — ask the user to run
+`doctl databases firewalls append 352cdb7b-53a7-4567-842f-5fee6d852f38 --rule ip_addr:<new ip>` themselves with the `!` prefix.
 
-Run: `curl -s https://api.ipify.org` and
-`doctl databases firewalls list 352cdb7b-53a7-4567-842f-5fee6d852f38`
+- [ ] **Step 2: Write the probe**
 
-The IP must appear in the list. **It rotates**, and when it has, the
-connection HANGS rather than failing. Appending a rule is refused by the
-auto-mode classifier — ask the user to run
-`doctl databases firewalls append 352cdb7b-53a7-4567-842f-5fee6d852f38 --rule ip_addr:<new ip>`
-themselves with the `!` prefix.
+Read `probe-rates-prod.mts` in the repo root for the working recipe: the URI goes to a file and is never inlined, the CA comes from `doctl databases get-ca`, and **`sslmode` must be stripped from the URI** or `pg` v9 ignores the CA and dies with «self-signed certificate in certificate chain».
 
-- [ ] **Step 2: Write the verification probe**
+Call the SERVICE, not the SQL, so the probe tests what the screen gets.
 
-Read `probe-cust1.ts` in the repo root for the exact connection recipe — the
-URI goes to a file (never inlined), the CA comes from `doctl databases get-ca`,
-and `sslmode` must be stripped from the URI or `pg` v9 ignores the CA and dies
-with «self-signed certificate in certificate chain».
+- [ ] **Step 3: Assert these four invariants, and no others**
 
-The probe calls the SERVICE, not the SQL, so it tests what the screen gets:
-build `new PrismaClient({ adapter: new PrismaPg({ connectionString, ssl: { ca, rejectUnauthorized: true } }) })`, construct `new InsightsRepository(prisma)`
-and `new InsightsService(repository)`, and call `customerFlow('UZS', period, {})`
-for a 30-day and a 365-day window.
+1. `sum(series[].newCustomers) === summary.newCustomers` — a customer is new in exactly one bucket.
+2. `sum(sources[].newCustomers) === summary.newCustomers`, the `(manbasiz)` row included.
+3. `states.rows` sums to `states.customers`.
+4. `window.days === 90` and `window.end` is within a minute of now.
 
-Assert, and print, all five:
+**Do NOT assert `sum(series[].returningCustomers) === summary.returningCustomers`.** It cannot hold and the earlier draft of this plan was wrong to ask for it: a customer who returns in three different days is legitimately in three buckets. Assert `>=` instead, and put the reason beside it.
 
-1. `sum(series[].newCustomers) === summary.newCustomers`
-2. `sum(series[].returningCustomers) === summary.returningCustomers`
-3. `sum(sources[].newCustomers) === summary.newCustomers` — the `(manbasiz)` row included
-4. `states.rows` — the `ours` column (excluding the null on «Базада yoʻq») and the `portal` column each sum to `states.customers`
-5. `states.unbucketedStages` is empty
+- [ ] **Step 4: Run it, and report the timing**
 
-- [ ] **Step 3: Run it**
+If the whole-screen call takes more than about three seconds cold, say so rather than shipping quietly — this cluster is one vCPU with 2 MB `work_mem`, and `sourceRepeatRates` alone touches ~138 MB of buffers against 190 MB of `shared_buffers`.
 
-Run: `git add probe-flow-verify.ts && npx tsx probe-flow-verify.ts`
-Expected: all five hold. Round trip from here to fra1 is ~1.4 s per
-whole-screen call; if `customerFlow` takes more than ~3 s, say so rather than
-shipping it — this cluster is one vCPU with 2 MB `work_mem`.
+- [ ] **Step 5: Record the numbers in the spec**
 
-**If an invariant fails, stop and fix the statement.** These are the reasons
-each one exists: a series that does not sum to its own total means the grain
-is dropping a bucket at a window edge; sources that do not sum mean the
-sourceless row was lost to an inner join; a state column that does not sum
-means the `LEFT JOIN` or the `min(bucket)` is wrong and one customer is being
-counted twice or not at all.
+Append the measured figures and the date to `docs/superpowers/specs/2026-09-15-mijozlar-oqimi-design.md` under §7, so a later reader can tell whether the screen has drifted.
 
-- [ ] **Step 4: Record the numbers in the plan's own spec**
+- [ ] **Step 6: Update `CLAUDE.md`**
 
-Append the measured figures to
-`docs/superpowers/specs/2026-09-15-mijozlar-oqimi-design.md` under §7, with the
-date — so the next reader can tell whether the screen has drifted since.
+The screen table's «Mijoz qaytishi» row gains `/insights/customers`, and its cohort column must name both clocks — the matrix on `closedAt` over revenue-bearing WON deals, the arrivals band on `createdAtSource` over revenue-bearing orders of any status, on a server-resolved trailing 90 days. Add one line to the per-screen notes saying the two customer totals differ on purpose and that the silence block takes no window.
 
-- [ ] **Step 5: Add the screen to `CLAUDE.md`**
+- [ ] **Step 7: Commit, and stop**
 
-The screen table around line 425 has a row for «Mijoz qaytishi». Add
-`/insights/customers` to its endpoint list and extend its cohort column to name
-both clocks: the matrix on `closedAt` over revenue-bearing WON deals, the
-arrival band on `createdAtSource` over revenue-bearing orders of any status.
-
-Add one line to the per-screen notes below (where «Mijoz qaytishi — «Faol
-bazada» is a separate DISTINCT-customer total» already sits): that the band and
-the matrix carry different customer totals on purpose, and that the churn block
-takes no period.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add CLAUDE.md docs/superpowers/specs/2026-09-15-mijozlar-oqimi-design.md probe-flow-verify.ts
-git commit CLAUDE.md docs/superpowers/specs/2026-09-15-mijozlar-oqimi-design.md -m "$(cat <<'EOF'
-Check the customer flow against production and write down both clocks
-
-Five invariants hold on the live portal: the series and the source rows each
-sum to the new-customer total the tiles print, both state columns sum to the
-customer total, and no RETENTION stage falls outside the table.
-
-CLAUDE.md's screen row now names both clocks for «Mijoz qaytishi», because
-the two blocks on it legitimately print different customer totals and the
-next reader should learn that from the entry point rather than from the gap.
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
-EOF
-)"
-```
-
-- [ ] **Step 7: Report, do not push**
-
-Pushing to `main` deploys. Tell the user what shipped locally and wait for
-«deploy qil».
+Commit `CLAUDE.md` and the spec. **Do not push** — pushing to `main` deploys. Report what is on the branch and wait for «deploy qil».
 
 ---
 
-## Self-Review
+## Self-Review of the revision
 
-**Spec coverage.** §1 → Task 8. §2's measurements → cited in Tasks 1-4's
-comments and re-checked in Task 9. §3 (the two clocks) → Task 8 step 4 and
-Task 9 step 5. §4 (definitions) → Global Constraints, Task 3. §5.1 → Task 6.
-§5.2 → Task 3. §5.3 → Task 4. §5.4 → Tasks 1 and 2. §5.5 (service, caching)
-→ Task 5. §6 (screen) → Tasks 7 and 8. §7 (tests and invariants) → the test
-in every task plus Task 9. §8 (out of scope) → nothing built. §9 (known
-unfixed) → the 0.3% duplicate note stays in the spec; `isReturnCustomer` is
-untouched, as promised.
+**Spec coverage after the revision.** The spec's §5.4 portal-verdict column is the one requirement this revision DROPS, and deliberately: upstream's `StateBars` draws it, so keeping ours would put two answers to one question on one screen. Everything else survives — §5.1 → Task 7; §5.2 → shipped in Task 3; §5.3 → shipped in Task 4; §5.4's time bands → Task 5; §5.5 → Task 6; §6 → Tasks 8 and 9; §7 → Task 10.
 
-**One thing the spec asked for that no task builds:** §6 lists a per-card
-`EmptyState` for the state block. It has none — `customerStates` returns
-counts that are zero rather than rows that are absent, so there is nothing to
-be empty. Left as is deliberately.
+**What the spec now says that is no longer true**, and is corrected in Task 10's step 5 rather than left to rot: §3's «the period control» and §5.2's window language both assume a control the screen no longer has.
 
-**Type consistency.** `CustomerStateKey`, `STATE_BUCKET`, `CustomerFlowRows`,
-`SourceRepeatRate`, `CustomerFlowDto` and `grainFor` are defined in Tasks 1,
-2, 3, 4 and 5 and used under those exact names in Tasks 5, 6 and 8. The DTO
-field `firstRevenue`/`repeatRevenue` is named the same in `api.ts` and in the
-service. `mode="share"` is added in Task 7 and consumed in Task 8.
+**Type consistency.** `CustomerStateRowDto` lost `ours`/`portal` and carries a single `customers`, because there is only one column now. `CustomerFlowDto` gained `window` and lost `grain`. `trailingWindow` is defined in Task 6 and used only there. `CustomerFlowChart` lost its `grain` prop in Task 8 and is called without one in Task 9.
