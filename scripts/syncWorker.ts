@@ -52,7 +52,10 @@ import { caCertFromEnv, poolConfig } from '../src/server/db/poolConfig'
 
 import { PrismaClient } from '../src/generated/prisma/client'
 import type { SyncEntityValue } from '../src/server/domain/types'
-import { Bitrix24CrmProvider } from '../src/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
+import {
+  Bitrix24CrmProvider,
+  isCredentialFailure,
+} from '../src/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
 import { createSyncHandlers } from '../src/server/integrations/crm/sync/handlers'
 import { PrismaSyncStore } from '../src/server/integrations/crm/sync/PrismaSyncStore'
 import { SyncEngine } from '../src/server/integrations/crm/sync/SyncEngine'
@@ -136,12 +139,16 @@ const SWEEP_EVERY = Number(process.env.SYNC_SWEEP_EVERY ?? 60)
 const HISTORY_BACKFILL_DAYS = Number(process.env.SYNC_HISTORY_BACKFILL_DAYS ?? 45)
 
 /**
- * How long to wait after the portal has refused a tick for overload.
+ * How long to wait after the portal has refused a whole tick.
  *
- * Ten minutes, flat, rather than the failure-count backoff: this is not our
- * error to retry out of. See the tick loop for the measurement behind it.
+ * Ten minutes, flat, rather than the failure-count backoff: neither refusal
+ * this covers is ours to retry out of. An `OVERLOAD_LIMIT` block lifts on the
+ * portal's clock; a credential the portal no longer accepts lifts when a
+ * person installs a new webhook. Asking sooner cannot shorten either — and on
+ * a portal that has already blocked this integration once for sheer volume, it
+ * can lengthen the first. See the tick loop for the measurements behind both.
  */
-const THROTTLED_WAIT_MS = 10 * 60_000
+const PORTAL_PAUSE_MS = 10 * 60_000
 
 /**
  * The heap the Roistat child is allowed, in megabytes.
@@ -545,6 +552,8 @@ async function main() {
   let failures = 0
   /** Whether the LAST tick was refused by the portal's own throttle. */
   let throttled = false
+  /** Whether the LAST tick was refused for a credential the portal rejects. */
+  let unauthorised = false
 
   while (!stopping) {
     const started = Date.now()
@@ -574,12 +583,47 @@ async function main() {
             r.errorMessage?.includes('QUERY_LIMIT_EXCEEDED')),
       )
 
+      /*
+        A REVOKED WEBHOOK IS NOT A BAD MINUTE, AND WAITING IS NOT OPTIONAL.
+
+        On 2026-09-15 the portal throttled at 05:50 UTC and then began
+        answering `401 INVALID_CREDENTIALS` at 06:10 — the webhook was gone.
+        The ordinary backoff caps at five minutes, so for the next hour this
+        worker asked twelve entities for data with a credential the portal had
+        already refused, roughly 240 calls an hour that could not succeed. The
+        day before, that same portal had blocked the integration for four
+        hours over volume, and the ticket we sent its support promised we back
+        off when refused. This is the promise, kept in code.
+
+        The clock cannot start again until a person installs a new webhook, so
+        there is nothing for a tighter loop to catch. Ten minutes bounds the
+        cost of being broken at roughly seventy refused calls an hour and
+        still picks the new credential up inside one cycle.
+      */
+      unauthorised = results.some(
+        (r) => r.status === 'FAILED' && isCredentialFailure(r.errorMessage),
+      )
+
       if (failed.length > 0) {
         failures += 1
         console.warn(
           `  ${stamp()} ${failed.map((r) => r.entity).join(', ')} muvaffaqiyatsiz` +
             ` (${failures}-marta ketma-ket)`,
         )
+        /*
+          SAID ONCE, IN THE WORDS OF THE ACT IT NEEDS.
+
+          «muvaffaqiyatsiz» above reads like a portal having a bad minute, and
+          for every other failure it is. This one needs a person, and the log
+          is the only place an operator will be looking before the client
+          phones — so it names the act rather than the symptom.
+        */
+        if (unauthorised) {
+          console.error(
+            `  ${stamp()} ✗ Bitrix24 webhook rad etildi (401). Yangi webhook kerak —` +
+              ` qayta urinish yordam bermaydi, ${PORTAL_PAUSE_MS / 60_000} daqiqa kutiladi.`,
+          )
+        }
       } else {
         failures = 0
         // Silent when nothing moved: a worker that logs every idle minute
@@ -598,6 +642,7 @@ async function main() {
     } catch (error) {
       failures += 1
       throttled = false
+      unauthorised = false
       console.error(`  ${stamp()} ✗ tsikl xatosi:`, error)
     }
 
@@ -687,9 +732,10 @@ async function main() {
       waits at least its backoff; a long but SUCCESSFUL tick still starts the
       next one immediately, because `backoff` is zero when nothing failed.
     */
-    const backoff = throttled
-      ? THROTTLED_WAIT_MS
-      : Math.min(failures, 5) * INTERVAL_SEC * 1000
+    const backoff =
+      throttled || unauthorised
+        ? PORTAL_PAUSE_MS
+        : Math.min(failures, 5) * INTERVAL_SEC * 1000
     const remaining = Math.max(INTERVAL_SEC * 1000 - (Date.now() - started), backoff)
 
     if (remaining > 0 && !stopping) await sleep(remaining)

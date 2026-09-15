@@ -262,6 +262,8 @@ export interface AlertsDto {
   readonly syncError: {
     readonly code: string
     readonly entity: string
+    /** How many entities are failing; null when it could not be bounded. */
+    readonly entities: number | null
     readonly at: string
   } | null
 }

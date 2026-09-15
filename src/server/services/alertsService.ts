@@ -59,6 +59,12 @@ export interface AlertsDto {
     readonly code: string
     /** Which entity was being read when it failed. */
     readonly entity: string
+    /**
+     * How many entities are failing, so the chip can say whether this is one
+     * pass or the whole portal. Null when it could not be bounded cheaply —
+     * see `findCurrentSyncFailure`.
+     */
+    readonly entities: number | null
     readonly at: string
   } | null
 }
@@ -272,6 +278,7 @@ export class AlertsService {
           : {
               code: syncErrorCode(failure.message),
               entity: failure.entity,
+              entities: failure.entities,
               at: failure.at.toISOString(),
             },
     }

@@ -29,7 +29,7 @@ import { Tooltip } from '@/components/ui/Tooltip'
 import { apiGet, type AlertsDto, type SearchDto } from '@/lib/api'
 import { sessionUser, signOut, useSession } from '@/lib/authClient'
 import { useNewBuildAvailable } from '@/lib/buildVersion'
-import { formatCompactUzs, formatDateTime } from '@/lib/format'
+import { formatCompactUzs, formatDateTime, syncFailureScope } from '@/lib/format'
 import { ROLE_LABELS, canSeeHref, type RoleValue } from '@/lib/roles'
 import { useServerViewer } from '@/lib/viewer'
 import { isCompanyWideSection, sectionSpec, type SectionValue } from '@/lib/sections'
@@ -1472,7 +1472,12 @@ function DataSourceBadge({
    * bug report; with the cause it is a five-word sentence and, for a portal
    * throttle, an instruction to do nothing at all.
    */
-  syncError?: { readonly code: string; readonly entity: string; readonly at: string } | null
+  syncError?: {
+    readonly code: string
+    readonly entity: string
+    readonly entities: number | null
+    readonly at: string
+  } | null
 }) {
   const isDemo = source !== 'BITRIX24'
 
@@ -1568,6 +1573,9 @@ function DataSourceBadge({
 
   const lastSyncHint = syncedAt ? `${t.badge.lastSync}: ${formatDateTime(syncedAt)}` : t.badge.live
 
+  /* How wide the outage is, not which pass failed last — see the helper. */
+  const failingScope = syncFailureScope(syncError)
+
   const hint = isDemo
     ? t.badge.demoHint
     : blocked
@@ -1575,7 +1583,7 @@ function DataSourceBadge({
           throttled
             ? 'Bitrix24 oʻz API sini vaqtincha bloklagan — yangilanish oʻzi tiklanadi, hech narsa qilish shart emas.'
             : 'Bitrix24 dan maʼlumot olinmayapti — texnik yordam kerak.'
-        } (${syncError?.code}, ${syncError?.entity.toLowerCase()})`
+        } (${syncError?.code}, ${failingScope})`
       : lastSyncHint
 
   return <Tooltip content={hint}>{badge}</Tooltip>

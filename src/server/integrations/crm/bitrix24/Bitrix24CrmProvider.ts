@@ -125,6 +125,38 @@ export class Bitrix24Error extends Error {
   }
 }
 
+/**
+ * The portal's names for «this credential is not one I accept».
+ *
+ * `expired_token` is lower-case in the portal's own vocabulary; the rest are
+ * upper. Matched as substrings of the message the provider wrote, because that
+ * message is what survives into `sync_log` and is all a later reader has.
+ */
+const CREDENTIAL_FAILURE_CODES = [
+  'INVALID_CREDENTIALS',
+  'NO_AUTH_FOUND',
+  'INVALID_TOKEN',
+  'WRONG_AUTH_TYPE',
+  'expired_token',
+] as const
+
+/**
+ * A REFUSAL THAT WILL NOT CLEAR ON ITS OWN, and that is the whole distinction.
+ *
+ * `OVERLOAD_LIMIT` lifts on the portal's clock, so waiting is the right act.
+ * A revoked or replaced webhook never lifts: every retry until somebody
+ * installs a new one is a call that CANNOT succeed, and on 2026-09-15 that was
+ * twelve entities asked again every three minutes — against a portal that had
+ * blocked this same integration for four hours the day before, for volume.
+ *
+ * So the caller backs off exactly as it does for a throttle. Nothing here
+ * decides HOW long; it decides only that no amount of asking is the answer.
+ */
+export function isCredentialFailure(message: string | null | undefined): boolean {
+  if (!message) return false
+  return CREDENTIAL_FAILURE_CODES.some((code) => message.includes(code))
+}
+
 /** Rows a single list call returns. Fixed by the portal, not configurable. */
 const LIST_PAGE = 50
 /** Commands per batch request. The portal's hard limit. */
@@ -254,8 +286,20 @@ export class Bitrix24CrmProvider implements CrmProvider {
 
   private async call<T>(method: string, params: Record<string, unknown>): Promise<Bitrix24Response<T>> {
     let lastError: unknown
+    /*
+      THE ATTEMPTS MADE, NOT THE ATTEMPTS ALLOWED.
+
+      This message printed `maxRetries + 1` unconditionally — «failed after 4
+      attempts» — including for the non-retryable 401s that break out of the
+      loop after ONE. Every credential and overload failure in `sync_log` has
+      therefore overstated our own call volume four-fold, and that log is the
+      evidence this integration hands Bitrix24 when it asks what we were doing
+      to its portal. A number offered as proof has to be the measured one.
+    */
+    let attempts = 0
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      attempts += 1
       await this.limiter.acquire()
       const controller = new AbortController()
       /**
@@ -324,7 +368,9 @@ export class Bitrix24CrmProvider implements CrmProvider {
     }
 
     throw new Bitrix24Error(
-      `Bitrix24 call "${method}" failed after ${this.maxRetries + 1} attempts: ${redact(lastError)}`,
+      `Bitrix24 call "${method}" failed after ${attempts} ${
+        attempts === 1 ? 'attempt' : 'attempts'
+      }: ${redact(lastError)}`,
     )
   }
 

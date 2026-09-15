@@ -1239,13 +1239,44 @@ mixed `100vh` against a shell sized in `100dvh`.
   hour, which is the case it was written for (a worker that was DOWN); a
   redeploy under a healthy sync is covered by `SKIP_LOOKBACK_MS`.
 
-**A THROTTLED TICK WAITS TEN MINUTES, not the failure-count backoff.** When
-any entity comes back `OVERLOAD_LIMIT` or `QUERY_LIMIT_EXCEEDED` the portal is
-refusing the whole REST surface — on 2026-09-14 for four hours — and the
-ordinary backoff (five minutes after five consecutive failures) would spend
-that time issuing ~50 refused calls an hour against a counter we cannot see and
-may be feeding. `THROTTLED_WAIT_MS` is a flat ten; the block lifts on the
-portal's clock, not ours, and the header says why meanwhile.
+**A REFUSED TICK WAITS TEN MINUTES, not the failure-count backoff.** Two
+refusals get that pause, and neither is ours to retry out of.
+`OVERLOAD_LIMIT` / `QUERY_LIMIT_EXCEEDED` is the portal refusing its whole REST
+surface — on 2026-09-14 for four hours — and the ordinary backoff (five minutes
+after five consecutive failures) would spend that time issuing ~50 refused
+calls an hour against a counter we cannot see and may be feeding.
+`PORTAL_PAUSE_MS` is a flat ten; the block lifts on the portal's clock, not
+ours, and the header says why meanwhile.
+
+- **A REVOKED WEBHOOK IS THE SECOND, AND IT NEVER LIFTS BY ITSELF.** On
+  2026-09-15 the portal throttled at 05:50 UTC and from 06:10 answered every
+  call `401 INVALID_CREDENTIALS` — the inbound webhook was gone, and only a
+  person putting a new one in Bitrix24 could end it. The worker asked anyway:
+  twelve entities every three minutes, ~240 calls an hour that could not
+  succeed, at a portal that had blocked this same integration the day before
+  for volume — and the ticket we sent its support promises we back off when
+  refused. `isCredentialFailure` (in `Bitrix24CrmProvider`, matched against the
+  message that lands in `sync_log`) now earns the same flat ten minutes.
+  **It must not claim a throttle:** `OVERLOAD_LIMIT` needs nobody, and telling
+  an operator to fetch a new webhook for one is the 2026-09-14 misdiagnosis
+  running backwards. The log says the act, not the symptom, because the worker
+  log is where an operator looks before the client telephones.
+- **THE CHIP NAMED ONE ENTITY FOR A PORTAL-WIDE OUTAGE.** `syncError.entity` is
+  whichever pass failed LAST, so an hour with every number on every screen
+  frozen was reported as «stage_history» — the narrowest thing on the portal,
+  and a reader who knows what it is would have taken the deal figures for
+  current. `findCurrentSyncFailure` now also counts the DISTINCT entities
+  failing since the last success (an index walk bounded by that timestamp,
+  0.3 ms on production, and it does not run at all while the sync is healthy),
+  and `syncFailureScope` prints «9 ta boʻlim» instead of a name whenever the
+  count is known and above one. A null count means *not counted*, never
+  *narrow*, so it falls back to the name rather than inventing a scope.
+- **THE ATTEMPT COUNT IN A FAILURE MESSAGE IS EVIDENCE.** It printed
+  `maxRetries + 1` unconditionally — «failed after 4 attempts» — including for
+  the non-retryable 401s that break out after ONE. Every credential and
+  overload row in `sync_log` overstated our own call volume four-fold, and that
+  log is what this integration hands Bitrix24 support when it is asked what it
+  was doing to the portal. It counts the attempts actually made.
 
 **THE WORKER WAS DYING SEVENTEEN TIMES A DAY, AND THE ROISTAT CHILD WAS THE
 BALLOON.** Measured 2026-09-14 and fixed the same day. DigitalOcean sets

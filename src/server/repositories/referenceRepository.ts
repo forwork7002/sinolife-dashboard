@@ -334,6 +334,18 @@ export class ReferenceRepository {
     readonly entity: string
     readonly at: Date
     readonly message: string | null
+    /**
+     * How many DISTINCT entities are failing right now, or null when there is
+     * no last-success timestamp to bound the count against.
+     *
+     * ONE ENTITY IS A CLAIM ABOUT SCOPE, and until this existed the chip made
+     * the wrong one. `entity` above is whichever pass happened to fail LAST,
+     * so a portal refusing every REST call was reported as «stage_history» —
+     * the narrowest, least consequential thing on the portal. A reader who
+     * knows what that is concludes the deal numbers are fine. On 2026-09-15
+     * every one of the twelve entities was down and the header named that one.
+     */
+    readonly entities: number | null
   } | null> {
     /*
       THE CALLER ALREADY KNOWS THE LAST SUCCESS — take it rather than ask again.
@@ -356,10 +368,35 @@ export class ReferenceRepository {
     if (!failure?.finishedAt) return null
     if (success && success.getTime() >= failure.finishedAt.getTime()) return null
 
+    /*
+      ASKED ONLY WHILE SOMETHING IS ACTUALLY WRONG, and bounded when it is.
+
+      This runs on `/meta/alerts`, which every open tab polls once a minute, so
+      a second query here has to earn itself. It does not run at all on a
+      healthy dashboard — the two returns above have already left. When it does
+      run it is the same `[status, finishedAt DESC]` index walk as the read
+      above, over the failures since the last success: fifty-odd rows an hour
+      into an outage, not the log's whole history.
+
+      WITHOUT a last success there is nothing to bound it by, and an unbounded
+      GROUP BY over 120 000 rows is precisely what that index was added to stop
+      — so the count is null and the chip falls back to naming one entity.
+    */
+    const entities =
+      success === null || success === undefined
+        ? null
+        : (
+            await this.prisma.syncLog.groupBy({
+              by: ['entity'],
+              where: { status: 'FAILED', finishedAt: { gt: success } },
+            })
+          ).length
+
     return {
       entity: failure.entity,
       at: failure.finishedAt,
       message: failure.errorMessage,
+      entities,
     }
   }
 
