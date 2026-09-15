@@ -233,7 +233,7 @@ product narrowed to the sections the client asked for. `find src/app/api/v1
 
 | Method | Path | Permission | Returns |
 |---|---|---|---|
-| `GET` | `/analytics/sellers` | `leaderboard:read` | The sellers' and teams' board on the FAKT 1 / FAKT 2 basis. **Company-wide for every caller, on purpose** |
+| `GET` | `/analytics/sellers` | `leaderboard:read` | The sellers' and teams' board on the FAKT 1 / FAKT 2 basis. **Company-wide for every caller, on purpose**. `?include=medals` replaces it with each seller's medals, points and level (`SellerMedalsDto`) — **its window is fixed to `RECORDS_FROM` (`2026-08`) through now and ignores the caller's period filter**, because a medal is a fact about the whole history, not the selected window. Cached 10 minutes |
 | `GET` | `/kpi` | kpi | Targets, attainment, pace-aware status |
 | `GET` | `/insights/cohorts` | `analytics:read:all` | Return-rate ladder by first-purchase cohort |
 | `GET` | `/insights/concentration` | `analytics:read:all` | Customer Pareto, HHI by source and region, repeat-purchase intervals |
