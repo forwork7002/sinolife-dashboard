@@ -1184,6 +1184,12 @@ export interface SellerTeamRowDto {
   readonly leadConversionPercent: number | null
 }
 
+/** One queue state's slice: how many orders, and what they were worth. */
+export interface SellerOutcomeDto {
+  readonly orders: number
+  readonly amount: MoneyDto
+}
+
 export interface SellerBoardTotalsDto {
   readonly sellers: number
   readonly teams: number
@@ -1192,6 +1198,14 @@ export interface SellerBoardTotalsDto {
   readonly orders: number
   /** Every order in the cohort — what the confirmation queue counts. */
   readonly cohortOrders: number
+  /**
+   * The five queue states apart — count and money each — summed the way
+   * `cohortOrders` is, so they add up to it. Null on the intake basis. See
+   * `SellerBoardTotalsDto.outcomes` in `sellerBoardService`.
+   */
+  readonly outcomes: Readonly<Record<ConfirmationOutcome, SellerOutcomeDto>> | null
+  /** «Тасдиқланиш %» — Тасдиқланди over the whole cohort, one decimal. Null over nothing. */
+  readonly confirmedRate: number | null
   readonly ordered: MoneyDto
   readonly won: MoneyDto
   readonly wonOrders: number
@@ -1321,6 +1335,10 @@ export interface FaktTrendPointDto {
   /** Доставланди — what a courier actually delivered. */
   readonly fakt2: number
   readonly orders: number
+  /** The bucket's five queue states, counts — what the confirmation-rate line divides. */
+  readonly byOutcome: Readonly<Record<ConfirmationOutcome, number>>
+  /** Every order that entered the queue in the bucket — the five summed. */
+  readonly cohortOrders: number
 }
 
 // ---------------------------------------------------------------------------

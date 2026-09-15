@@ -12,6 +12,7 @@ import {
   FaktHeadline,
   useFaktBoard,
 } from '@/features/sales/ConfirmationFaktSection'
+import { ConfirmationOutcomeSection } from '@/features/sales/ConfirmationOutcomeSection'
 import { DeliveryBoardSection } from '@/features/sales/DeliveryBoardSection'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -253,6 +254,21 @@ export function SalesPage() {
           )}
         </div>
       </Card>
+
+      {/*
+        WHERE THE WHOLE QUEUE WENT — the hero's «navbatda jami N ta» opened up
+        into its five states, with the confirmation rate day by day. Added
+        2026-09-15 on the client's ask for the ratio of confirmed, shipped
+        unconfirmed and refused orders. It reads the SAME board and the SAME
+        trend points as the hero — no third request — so nothing in it can
+        disagree with the figure above it. See `ConfirmationOutcomeSection`.
+      */}
+      <ConfirmationOutcomeSection
+        points={faktPoints}
+        trendStatus={faktTrend.isPending ? 'loading' : faktTrend.isError ? 'error' : 'ready'}
+        trendError={(faktTrend.error as Error | null)?.message}
+        onRetry={() => void faktTrend.refetch()}
+      />
 
       {/*
         THE REST OF THE CONFIRMATION COHORT, directly under the pair it

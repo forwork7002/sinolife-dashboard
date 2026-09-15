@@ -637,7 +637,10 @@ describe('the state band’s money', () => {
       numbers; money never is.
     */
     const money = [...source.matchAll(/sum\(d\."amountMinor"\) FILTER \(WHERE c\.outcome[\s\S]{0,120}?AS \w*amount/g)]
-    expect(money).toHaveLength(10)
+    // Ten for the ROP panel's two window shapes, and five more since
+    // 2026-09-15 in `ratingSql`, where Savdo dinamikasi reads the same five
+    // states' money — held to the same rule, for the same reason.
+    expect(money).toHaveLength(15)
     for (const [fragment] of money) expect(fragment).toContain('::text')
   })
 

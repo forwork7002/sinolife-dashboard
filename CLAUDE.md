@@ -421,7 +421,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 
 | Screen | URL | Feature | Endpoint(s) | Service → Repository | Window filters on |
 |---|---|---|---|---|---|
-| Savdo dinamikasi | `/analytics/sales` | `sales/SalesPage` + `ConfirmationFaktSection` + `DeliveryBoardSection` | `/analytics/sellers` twice (the board, and `?include=faktTrend` for the chart) + `/insights/delivery` | SellerBoard, Pulse → SellerBoard, Pulse | the arrival in `C4:NEW` (`queued_at`) — **except the Доставка board, which has NO window at all**: a kanban column is where orders are standing now |
+| Savdo dinamikasi | `/analytics/sales` | `sales/SalesPage` + `ConfirmationOutcomeSection` + `ConfirmationFaktSection` + `DeliveryBoardSection` | `/analytics/sellers` twice (the board, and `?include=faktTrend` for the chart) + `/insights/delivery` | SellerBoard, Pulse → SellerBoard, Pulse | the arrival in `C4:NEW` (`queued_at`) — **except the Доставка board, which has NO window at all**: a kanban column is where orders are standing now |
 | Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` + `StateBars` | `/insights/cohorts`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | **nothing — the screen is DATELESS since 2026-09-15** (`period={false}`, like Struktura). `closedAt` on revenue-bearing WON deals is the clock both endpoints read; the matrix takes no window at all and `/insights/concentration` resolves its OWN trailing 90 days (`trailingDays`). Nothing here reads `createdAtSource` |
 | Reklama samarasi | `/marketing` | **PAUSED** — `shared/SectionPending`; `marketing/MarketingPage` is held, not mounted | none while paused (`/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` still answer) | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
@@ -467,6 +467,34 @@ Per-screen traps worth knowing before you touch one:
   `tests/http/deliveryBoardSql.test.ts` pins both, and every stage name is
   printed VERBATIM in Russian — the block's whole value is that it reconciles
   against the screen it was copied from.
+  **«TASDIQLASH NATIJASI» SITS DIRECTLY UNDER THE HERO, since 2026-09-15**
+  («tasdiqlanganlar, tasdiqlanmay chiqdilar bilan tasdiqlanmaganlar nisbati…
+  oʻrtachasi»). It is the hero's «navbatda jami N ta» opened up: the queue's
+  FIVE states as a partition of the cohort — count, share and money each —
+  the «Тасдиқланиш %» figure, and that rate day by day with the period's rate
+  dashed across it. **It adds NO request.** The partition is `totals.outcomes`
+  on the board `useFaktBoard` already holds, and the daily line divides
+  `byOutcome` counts riding on the same `?include=faktTrend` points the FAKT
+  chart draws — so the screen is still two requests to one endpoint and the
+  block cannot disagree with the figure above it. Both come from the same
+  `ratingSql` / `faktTrendSql` statements as FAKT 1 (five `state_*` columns
+  beside it, `null` on `basis=intake`), pinned by
+  `confirmationSellerRatingSql.test.ts` and `confirmationFaktTrendSql.test.ts`.
+  **SHARES ARE OF THE COHORT, NEVER OF FAKT 1** — the Тасдиқлаш board divides
+  by everything that entered, and a reader carries the number between the two
+  screens. **The dashed «davr oʻrtachasi» is the POOLED rate**
+  (ΣТасдиқланди ÷ Σcohort, the queue board's own `Math.round(x·1000)/10`),
+  not the mean of the days: a Sunday with three orders at 100% weighs a
+  thirtieth of the month in one and a thousandth in the other, and one screen
+  carries one figure under that name — the same one the tile prints.
+  `faktTrendSql` LOST ITS `HAVING` for this: a day whose every order was
+  refused is a 0% point on the rate line, not a gap, and the FAKT chart never
+  needed the gate (the service zero-fills every bucket). Measured on
+  production for August 2026: 3 222 entered, 2 873 Тасдиқланди (89.2%), 331
+  Тасдиқланмади, 17 Тасдиқланмай чиқди, 1 still queued. Per-ROP was offered
+  and DECLINED («faqat kompaniya boʻyicha») — do not add the columns unasked.
+- **Mijoz qaytishi** — «Faol bazada» is a separate DISTINCT-customer total, not
+  the sum of the ladder bars.
 - **Mijoz qaytishi** — **REWORKED ON 2026-09-15**, on the client's instruction
   («kogorta jadvalini … kuchaytirish … oddiylashtirish kerak, mijoz qaytishi
   boʻlimini toʻliqligicha yaxshilash»). Three things changed and each fixed a

@@ -568,6 +568,16 @@ export interface ConfirmationOrderRow {
 export type ConfirmationOutcomeTotals = Readonly<Record<ConfirmationOutcomeValue, number>>
 
 /**
+ * The same five states in minor units, keyed the way the counts are.
+ *
+ * Not `ConfirmationOutcomeMoneyMinor` below, whose keys are the ROP panel's
+ * column names: a consumer that walks CONFIRMATION_OUTCOMES to print a
+ * partition needs the count and the money under ONE key per state, or it has
+ * to carry a translation table between the two.
+ */
+export type ConfirmationOutcomeMinor = Readonly<Record<ConfirmationOutcomeValue, bigint>>
+
+/**
  * The five states in MONEY — minor units, summed from each deal's own
  * `amountMinor`, one entry per state and nothing outside them.
  *
@@ -728,6 +738,32 @@ export interface ConfirmationSellerRatingRow {
   readonly lostAfterConfirmMinor: bigint
   /** Тасдиқланмади — refused in the queue. Outside FAKT 1, shown so the exclusion is visible. */
   readonly rejectedOrders: number
+  /**
+   * EVERY STATE ON ITS OWN, count and money — the partition of `cohortOrders`.
+   *
+   * `CONFIRMED + UNCONFIRMED_SHIPPED` is `confirmedOrders` (FAKT 1) and
+   * `REJECTED` is `rejectedOrders`, restated here so a consumer reading the
+   * split never has to know which of the other columns to add. The five sum
+   * to `cohortOrders` on every row; `tests/services/sellerBoardFakt.test.ts`
+   * pins that the totals keep it so.
+   */
+  readonly byOutcome: ConfirmationOutcomeTotals
+  readonly byOutcomeMinor: ConfirmationOutcomeMinor
+}
+
+/**
+ * One day of the whole floor's arrivals in the queue — what `faktTrend` sums
+ * into the hero chart's buckets.
+ *
+ * `byOutcome` is the day's five-state partition, counts only; every state
+ * summed is the day's cohort, which is why no separate total rides here.
+ */
+export interface FaktDayRow {
+  readonly date: string
+  readonly orders: number
+  readonly confirmedMinor: bigint
+  readonly deliveredMinor: bigint
+  readonly byOutcome: ConfirmationOutcomeTotals
 }
 
 /**
@@ -3307,7 +3343,32 @@ export class InsightsRepository {
            WHERE ${InsightsRepository.FAKT1_OUTCOMES} AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
              AND d."status" = 'LOST'
          )::text AS lost_after_confirm,
-         count(*) FILTER (WHERE c.outcome = 'REJECTED')::bigint AS rejected_orders
+         /*
+           THE FIVE STATES, KEPT APART — the fold FAKT 1 makes, undone beside it.
+
+           Asked for on 2026-09-15 («tasdiqlanganlar, tasdiqlanmay chiqdilar
+           bilan tasdiqlanmaganlar nisbati»). FAKT 1 deliberately adds
+           Тасдиқланди and Тасдиқланмай чиқди together; what the client wants
+           to see is how much of the queue each state took, and it is measured
+           HERE, over the same rows as every column above, so the five counts
+           add up to cohort_orders on every row and the screen prints a
+           partition rather than a remainder. Money per state too: the
+           Тасдиқлаш board prints what each state is worth, and this has to
+           agree with it to the soʻm.
+
+           state_rejected is the count rejected_orders carried until now — one
+           column, one name, read into both places downstream.
+         */
+         count(*) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::bigint AS state_confirm_new,
+         count(*) FILTER (WHERE c.outcome = 'NO_ANSWER')::bigint AS state_no_answer,
+         count(*) FILTER (WHERE c.outcome = 'CONFIRMED')::bigint AS state_confirmed,
+         count(*) FILTER (WHERE c.outcome = 'REJECTED')::bigint AS state_rejected,
+         count(*) FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::bigint AS state_unconfirmed_shipped,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRM_NEW')::text AS state_confirm_new_amount,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'NO_ANSWER')::text AS state_no_answer_amount,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRMED')::text AS state_confirmed_amount,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'REJECTED')::text AS state_rejected_amount,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::text AS state_unconfirmed_shipped_amount
        FROM scoped c
        JOIN "deal" d ON d."id" = c.deal_id
        JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
@@ -3411,7 +3472,16 @@ export class InsightsRepository {
         in_transit: MoneyText
         lost_after_confirm_orders: bigint
         lost_after_confirm: MoneyText
-        rejected_orders: bigint
+        state_confirm_new: bigint
+        state_no_answer: bigint
+        state_confirmed: bigint
+        state_rejected: bigint
+        state_unconfirmed_shipped: bigint
+        state_confirm_new_amount: MoneyText
+        state_no_answer_amount: MoneyText
+        state_confirmed_amount: MoneyText
+        state_rejected_amount: MoneyText
+        state_unconfirmed_shipped_amount: MoneyText
       }[]
     >(
       `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.ratingSql(filterClause)}`,
@@ -3431,7 +3501,21 @@ export class InsightsRepository {
       inTransitMinor: money(r.in_transit),
       lostAfterConfirmOrders: int(r.lost_after_confirm_orders),
       lostAfterConfirmMinor: money(r.lost_after_confirm),
-      rejectedOrders: int(r.rejected_orders),
+      rejectedOrders: int(r.state_rejected),
+      byOutcome: {
+        CONFIRM_NEW: int(r.state_confirm_new),
+        NO_ANSWER: int(r.state_no_answer),
+        CONFIRMED: int(r.state_confirmed),
+        REJECTED: int(r.state_rejected),
+        UNCONFIRMED_SHIPPED: int(r.state_unconfirmed_shipped),
+      },
+      byOutcomeMinor: {
+        CONFIRM_NEW: money(r.state_confirm_new_amount),
+        NO_ANSWER: money(r.state_no_answer_amount),
+        CONFIRMED: money(r.state_confirmed_amount),
+        REJECTED: money(r.state_rejected_amount),
+        UNCONFIRMED_SHIPPED: money(r.state_unconfirmed_shipped_amount),
+      },
     }))
   }
 
@@ -3537,7 +3621,18 @@ export class InsightsRepository {
          (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS date,
          count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS orders,
          sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::text AS confirmed,
-         sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')})::text AS delivered
+         sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')})::text AS delivered,
+         /*
+           The same five columns ratingSql carries, per day, so the day's
+           share on the confirmation-rate line and the period's share in the
+           tiles above it are one arithmetic over one cohort. Counts only: the
+           line divides orders, and the tiles already print the money.
+         */
+         count(*) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::bigint AS state_confirm_new,
+         count(*) FILTER (WHERE c.outcome = 'NO_ANSWER')::bigint AS state_no_answer,
+         count(*) FILTER (WHERE c.outcome = 'CONFIRMED')::bigint AS state_confirmed,
+         count(*) FILTER (WHERE c.outcome = 'REJECTED')::bigint AS state_rejected,
+         count(*) FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::bigint AS state_unconfirmed_shipped
        FROM scoped c
        JOIN "deal" d ON d."id" = c.deal_id
        /*
@@ -3553,11 +3648,14 @@ export class InsightsRepository {
        WHERE TRUE
          ${filterClause}
        GROUP BY 1
-       -- The same gate as the per-seller series: a day whose only money was
-       -- delivered without a confirmation still belongs to FAKT 2's line, and
-       -- dropping it would break the chart exactly where the two cross.
-       HAVING count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}) > 0
-           OR count(*) FILTER (WHERE ${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')}) > 0
+       /*
+         NO HAVING, since 2026-09-15. The gate that kept only days carrying
+         FAKT 1 or FAKT 2 money bought nothing — faktTrend zero-fills every
+         bucket regardless — and it would have cost the confirmation-rate line
+         the one day it most needs to show: a day whose every order was refused
+         is a 0% point on that line, not a gap. ratingDaysSql keeps its gate;
+         one operator's drill-down has no rate line under it.
+       */
        ORDER BY 1`
   }
 
@@ -3576,7 +3674,7 @@ export class InsightsRepository {
   async confirmationFaktDays(
     period: ScopedWindow,
     filters: ConfirmationSellerRatingFilters = {},
-  ): Promise<{ date: string; confirmedMinor: bigint; deliveredMinor: bigint; orders: number }[]> {
+  ): Promise<FaktDayRow[]> {
     // Scope first, at the fixed slot $3 — same reason as
     // `confirmationSellerRating`: `queueSql` needs its placeholder while the
     // string is being built, and the caller's filters number from $4 onwards.
@@ -3584,7 +3682,17 @@ export class InsightsRepository {
     const filterClause = InsightsRepository.ratingFilterSql(filters, params)
 
     const rows = await this.prisma.$queryRawUnsafe<
-      { date: string; confirmed: MoneyText; delivered: MoneyText; orders: bigint }[]
+      {
+        date: string
+        confirmed: MoneyText
+        delivered: MoneyText
+        orders: bigint
+        state_confirm_new: bigint
+        state_no_answer: bigint
+        state_confirmed: bigint
+        state_rejected: bigint
+        state_unconfirmed_shipped: bigint
+      }[]
     >(
       `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.faktTrendSql(filterClause)}`,
       ...params,
@@ -3595,6 +3703,13 @@ export class InsightsRepository {
       orders: int(r.orders),
       confirmedMinor: money(r.confirmed),
       deliveredMinor: money(r.delivered),
+      byOutcome: {
+        CONFIRM_NEW: int(r.state_confirm_new),
+        NO_ANSWER: int(r.state_no_answer),
+        CONFIRMED: int(r.state_confirmed),
+        REJECTED: int(r.state_rejected),
+        UNCONFIRMED_SHIPPED: int(r.state_unconfirmed_shipped),
+      },
     }))
   }
 
