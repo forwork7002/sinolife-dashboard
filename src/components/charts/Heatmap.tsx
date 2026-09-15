@@ -681,8 +681,36 @@ function HeatCell({
 
   const base = (view === 'monthly' && offset === 0) || thin
 
-  const band = bandsFor(view)[bandOf(view, value)] ?? bandsFor(view)[0]
-  const shown = value === 0 ? '0' : value < 1 ? '<1' : String(Math.round(value))
+  /*
+    THE FIGURE COMES FROM THE COUNTS, NOT FROM A SHARE ALREADY ROUNDED ONCE.
+
+    The footer under this matrix promises «Qator oxiridagi katak «Qaytgan»
+    ustuni bilan bir xil boʻladi», and on production it was not. Measured
+    2026-09-15: the 2026-avg row printed «118 · 3%» in the «Qaytgan» column and
+    4% in its only cell; 2026-may printed «108 · 9%» and 10%. Both cells stand
+    on exactly the numbers the column does — the cumulative curve is built from
+    `first_return`, so at a row's last elapsed offset its headcount IS
+    `returned` — so the two could only disagree by arithmetic.
+
+    They disagreed because the number was rounded TWICE. `InsightsService`
+    quantises the share to one decimal for the wire (118/3390 = 3.4808 → 3.5),
+    and this line rounded that to none (3.5 → 4), while the column at the top
+    of the row rounds the untouched ratio once (3.4808 → 3). Every value landing
+    in [x.45, x.5) crosses the boundary on the way; of the fifteen cohorts on
+    production exactly those two did, which is why it read as a glitch in two
+    rows rather than as a rule.
+
+    Taking the integer from `customers / size` makes the promise structural
+    instead of probabilistic: it is the same expression, over the same two
+    numbers, that the «Qaytgan» column uses. The band and the spoken label read
+    the same value, so nothing on the cell can disagree with the rest of it.
+    The summary row is unaffected — `columnAverage` never pre-rounded, and
+    `returned / base` there is what `percent` already was.
+  */
+  const exact = customers !== null && size > 0 ? (customers / size) * 100 : value
+
+  const band = bandsFor(view)[bandOf(view, exact)] ?? bandsFor(view)[0]
+  const shown = exact === 0 ? '0' : exact < 1 ? '<1' : String(Math.round(exact))
 
   return (
     <td
@@ -693,7 +721,7 @@ function HeatCell({
          no role, and a screen reader announces nothing for it. Here it replaces
          «13%» with the whole fraction, which is the reading a person who cannot
          hover would otherwise have to assemble from the headers. */
-      aria-label={cellSentence({ view, cohort, offset, value, customers, size, summary })}
+      aria-label={cellSentence({ view, cohort, offset, value: exact, customers, size, summary })}
     >
       <div
         data-heat=""

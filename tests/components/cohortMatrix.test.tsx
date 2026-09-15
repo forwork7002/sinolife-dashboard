@@ -222,3 +222,66 @@ describe('the summary row refuses to colour a sample of one', () => {
     )
   })
 })
+
+/**
+ * A CELL AND ITS «QAYTGAN» COLUMN ARE THE SAME NUMBER, ROUNDED ONCE.
+ *
+ * The footer under the matrix promises exactly that, and on production
+ * 2026-09-15 it was false in two rows out of fifteen: «118 · 3%» in the column
+ * beside a cell reading 4%, and «108 · 9%» beside a cell reading 10%. Both
+ * cells stand on the counts the column stands on, so the disagreement was
+ * arithmetic — the share was rounded twice. `InsightsService` quantises it to
+ * one decimal for the wire (118/3390 = 3.4808 → 3.5) and the cell rounded that
+ * to none (3.5 → 4), while the column rounds the untouched ratio once
+ * (3.4808 → 3).
+ *
+ * Only a value in [x.45, x.5) crosses on the way, which is why two rows broke
+ * and thirteen did not — a rule that looks like a glitch. The fixtures below
+ * are the two production rows, wire values included.
+ */
+describe('a cell and its «Qaytgan» column never disagree', () => {
+  const wireRow = (
+    cohort: string,
+    size: number,
+    returned: number,
+    wireShare: number,
+  ): CohortMatrixRow => ({
+    cohort,
+    size,
+    returned,
+    /* `wireShare` is what the service actually sends: already one-decimal. */
+    retention: [100, wireShare],
+    customers: [size, returned],
+    cumulative: [0, wireShare],
+    cumulativeCustomers: [0, returned],
+    revenue: [{ amount: 0 }, { amount: 0 }],
+  })
+
+  it('rounds 118 of 3390 to 3% in both places, not 3% and 4%', () => {
+    render(<CohortHeatmap rows={[wireRow('2026-08-01', 3390, 118, 3.5)]} />)
+
+    const row = screen.getByRole('row', { name: /2026-avg kogortasi/ })
+    expect(row.querySelectorAll('td')[1]?.textContent).toBe('118· 3%')
+    // The regression printed '4%' here, beside a column reading 3%.
+    expect(cell(/2026-avg kogortasi, \+1 oy/).textContent).toBe('3%')
+  })
+
+  it('rounds 108 of 1138 to 9% in both places, not 9% and 10%', () => {
+    render(<CohortHeatmap rows={[wireRow('2026-05-01', 1138, 108, 9.5)]} />)
+
+    const row = screen.getByRole('row', { name: /2026-may kogortasi/ })
+    expect(row.querySelectorAll('td')[1]?.textContent).toBe('108· 9%')
+    // The regression printed '10%' here, beside a column reading 9%.
+    expect(cell(/2026-may kogortasi, \+1 oy/).textContent).toBe('9%')
+  })
+
+  /*
+    The monthly reading prints the same cell from the same two counts, so it
+    carries the same promise and broke the same way.
+  */
+  it('holds for the monthly reading too', () => {
+    render(<CohortHeatmap rows={[wireRow('2026-08-01', 3390, 118, 3.5)]} view="monthly" />)
+
+    expect(cell(/2026-avg kogortasi, \+1 oy/).textContent).toBe('3%')
+  })
+})
