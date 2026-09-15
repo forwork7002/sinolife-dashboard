@@ -43,8 +43,11 @@ const ROWS: CohortMatrixRow[] = [
     cumulativeCustomers: [0, null, null],
     revenue: [{ amount: 1_000_000 }, { amount: 0 }, { amount: 0 }],
     orders: [120, null, null],
-    revenueTotal: '1,000,000 soʻm',
-    revenuePerCustomer: '10,000 soʻm',
+    revenueTotal: '1 mln',
+    revenueTotalExact: '1,000,000 soʻm',
+    revenueTotalAmount: 1_000_000,
+    revenuePerCustomer: '10 ming',
+    revenuePerCustomerExact: '10,000 soʻm',
     ageMonths: 0,
   },
   {
@@ -57,8 +60,11 @@ const ROWS: CohortMatrixRow[] = [
     cumulativeCustomers: [0, 5, null],
     revenue: [{ amount: 500_000 }, { amount: 90_000 }, { amount: 0 }],
     orders: [55, 6, null],
-    revenueTotal: '590,000 soʻm',
-    revenuePerCustomer: '11,800 soʻm',
+    revenueTotal: '590 ming',
+    revenueTotalExact: '590,000 soʻm',
+    revenueTotalAmount: 590_000,
+    revenuePerCustomer: '11.8 ming',
+    revenuePerCustomerExact: '11,800 soʻm',
     ageMonths: 1,
   },
   {
@@ -77,8 +83,11 @@ const ROWS: CohortMatrixRow[] = [
     cumulativeCustomers: [0, 40, 45],
     revenue: [{ amount: 2_000_000 }, { amount: 700_000 }, { amount: 150_000 }],
     orders: [210, 45, 12],
-    revenueTotal: '2,850,000 soʻm',
-    revenuePerCustomer: '14,250 soʻm',
+    revenueTotal: '2.9 mln',
+    revenueTotalExact: '2,850,000 soʻm',
+    revenueTotalAmount: 2_850_000,
+    revenuePerCustomer: '14.3 ming',
+    revenuePerCustomerExact: '14,250 soʻm',
     ageMonths: 2,
   },
 ]
@@ -215,8 +224,11 @@ describe('the summary row refuses to colour a sample of one', () => {
       cumulativeCustomers: [0, 0, 0],
       revenue: [{ amount: 10_000 }, { amount: 0 }, { amount: 0 }],
     orders: [1, 0, 0],
-    revenueTotal: '10,000 soʻm',
-    revenuePerCustomer: '10,000 soʻm',
+    revenueTotal: '10 ming',
+    revenueTotalExact: '10,000 soʻm',
+    revenueTotalAmount: 10_000,
+    revenuePerCustomer: '10 ming',
+    revenuePerCustomerExact: '10,000 soʻm',
     ageMonths: 2,
     },
     {
@@ -230,8 +242,11 @@ describe('the summary row refuses to colour a sample of one', () => {
       cumulativeCustomers: [0, 40, null],
       revenue: [{ amount: 4_000_000 }, { amount: 300_000 }, { amount: 0 }],
     orders: [420, 40, null],
-    revenueTotal: '4,300,000 soʻm',
-    revenuePerCustomer: '10,750 soʻm',
+    revenueTotal: '4.3 mln',
+    revenueTotalExact: '4,300,000 soʻm',
+    revenueTotalAmount: 4_300_000,
+    revenuePerCustomer: '10.8 ming',
+    revenuePerCustomerExact: '10,750 soʻm',
     ageMonths: 1,
     },
   ]
@@ -276,8 +291,11 @@ describe('the matrix shows a window of months rather than every one it is given'
       cumulativeCustomers: Array.from({ length: 19 }, (_, i) => (i === 0 ? 0 : 2 * i)),
       revenue: Array.from({ length: 19 }, () => ({ amount: 10_000 })),
     orders: Array.from({ length: 19 }, (_, i) => (i === 0 ? 100 : 2)),
-    revenueTotal: '190,000 soʻm',
-    revenuePerCustomer: '1,900 soʻm',
+    revenueTotal: '190 ming',
+    revenueTotalExact: '190,000 soʻm',
+    revenueTotalAmount: 190_000,
+    revenuePerCustomer: '1.9 ming',
+    revenuePerCustomerExact: '1,900 soʻm',
     ageMonths: 18,
     },
   ]
@@ -378,8 +396,11 @@ describe('the money columns, and the comparison they invite', () => {
       // Three people came back in +1 and placed FOUR orders between them:
       // the two counts are different facts and the hover must not merge them.
       orders: [24, 4, 3],
-      revenueTotal: '6,300,000 soʻm',
-      revenuePerCustomer: '262,500 soʻm',
+      revenueTotal: '6.3 mln',
+      revenueTotalExact: '6,300,000 soʻm',
+      revenueTotalAmount: 6_300_000,
+      revenuePerCustomer: '262.5 ming',
+      revenuePerCustomerExact: '262,500 soʻm',
       ageMonths: 13,
     },
   ]
@@ -395,8 +416,11 @@ describe('the money columns, and the comparison they invite', () => {
       cumulativeCustomers: [0, 0, null],
       revenue: [{ amount: 600_000 }, { amount: 0 }, { amount: 0 }],
       orders: [3, 0, null],
-      revenueTotal: '600,000 soʻm',
-      revenuePerCustomer: '200,000 soʻm',
+      revenueTotal: '600 ming',
+      revenueTotalExact: '600,000 soʻm',
+      revenueTotalAmount: 600_000,
+      revenuePerCustomer: '200 ming',
+      revenuePerCustomerExact: '200,000 soʻm',
       ageMonths: 1,
     },
   ]
@@ -404,8 +428,18 @@ describe('the money columns, and the comparison they invite', () => {
   it('prints the cohort’s whole revenue and its per-customer share', () => {
     render(<CohortHeatmap rows={GROWN} />)
 
-    expect(cell(/kogorta tushumi/i).textContent).toBe('6,300,000 soʻm')
-    expect(cell(/1 mijozga/i).textContent).toBe('262,500 soʻm')
+    /*
+      COMPACT IN THE COLUMN, EVERY DIGIT IN THE LABEL. A money column is
+      scanned, and this one is beside twelve heat cells that need the width —
+      so precision is deferred to the hover and to the cell's own accessible
+      name, the trade `formatCompactUzs` exists for. Nothing on this screen is
+      reconciled digit-for-digit against the portal; the sellers board, which
+      is, keeps the full figure for exactly that reason.
+    */
+    expect(cell(/kogorta tushumi/i).textContent).toBe('6.3 mln')
+    expect(cell(/kogorta tushumi/i).getAttribute('aria-label')).toContain('6,300,000 soʻm')
+    expect(cell(/1 mijozga/i).textContent).toBe('262.5 ming')
+    expect(cell(/1 mijozga/i).getAttribute('aria-label')).toContain('262,500 soʻm')
   })
 
   it('heads both columns «hozirgacha», because they are money TO DATE', () => {
@@ -426,7 +460,7 @@ describe('the money columns, and the comparison they invite', () => {
     expect(perCustomer.getAttribute('data-young')).toBe('true')
     expect(perCustomer.getAttribute('aria-label')).toMatch(/solishtirib boʻlmaydi/)
     // Greyed, never withheld: the figure is true, it is simply not comparable.
-    expect(perCustomer.textContent).toBe('200,000 soʻm')
+    expect(perCustomer.textContent).toBe('200 ming')
   })
 
   it('does not grey a cohort old enough to compare', () => {
@@ -443,6 +477,9 @@ describe('the money columns, and the comparison they invite', () => {
 
     expect(screen.getByText('13 oy')).toBeTruthy()
     expect(screen.getByText(/13 oy davomida/)).toBeTruthy()
+    // The panel is where the compact column's precision comes back.
+    expect(screen.getByText('6,300,000 soʻm')).toBeTruthy()
+    expect(screen.getByText('262,500 soʻm')).toBeTruthy()
   })
 
   it('says in the young cohort’s hover why its figure cannot be ranked', () => {
@@ -460,8 +497,55 @@ describe('the money columns, and the comparison they invite', () => {
     // Three people, four orders. Printed as one number the cell would be
     // saying whichever of the two the reader assumed it meant.
     expect(screen.getByText('3 / 24 mijoz')).toBeTruthy()
-    expect(screen.getByText('Buyurtmalar')).toBeTruthy()
+    /*
+      And the orders row says «shu oydagi», because it is the one per-offset
+      number in a cumulative panel: `orders` has no running total, so an
+      unqualified label would read as one beside the 3 / 24 above it.
+    */
+    expect(screen.getByText('Shu oydagi buyurtmalar')).toBeTruthy()
     expect(screen.getByText('4 ta')).toBeTruthy()
+  })
+
+  it('divides «Shundan takroriy» by the total it prints, not by a fold of its own', () => {
+    /*
+      THE BASE AND THE FIGURE IT IS A SHARE OF MUST BE ONE NUMBER.
+
+      «Jami tushum» prints the server's sum and «Shundan takroriy» is a
+      percentage of it. The panel used to re-fold `revenue` for that
+      denominator over the offsets whose `retention` is non-null — a narrower
+      set than the server adds up — so the share could be computed against a
+      base the line above it did not state, and nothing on screen would say so.
+
+      The fixture makes the two visibly different on purpose: the offsets carry
+      6,300,000 between them while the cohort's stated total is 7,500,000. The
+      repeat money is 1,500,000, which is 20.0% of the printed total and 23.8%
+      of the fold — so the assertion can only pass on the right base.
+    */
+    const SPLIT: CohortMatrixRow[] = [
+      {
+        cohort: '2025-08-01',
+        size: 24,
+        returned: 5,
+        retention: [100, 12.5, 8.3],
+        customers: [24, 3, 2],
+        cumulative: [0, 12.5, 20.8],
+        cumulativeCustomers: [0, 3, 5],
+        revenue: [{ amount: 4_800_000 }, { amount: 900_000 }, { amount: 600_000 }],
+        orders: [24, 4, 3],
+        revenueTotal: '7.5 mln',
+        revenueTotalExact: '7,500,000 soʻm',
+        revenueTotalAmount: 7_500_000,
+        revenuePerCustomer: '312.5 ming',
+        revenuePerCustomerExact: '312,500 soʻm',
+        ageMonths: 13,
+      },
+    ]
+
+    render(<CohortHeatmap rows={SPLIT} />)
+    fireEvent.mouseEnter(screen.getByRole('rowheader', { name: '2025-avg' }))
+
+    expect(screen.getByText('7,500,000 soʻm')).toBeTruthy()
+    expect(screen.getByText('1,500,000 soʻm · 20.0%')).toBeTruthy()
   })
 
   it('leaves the summary row’s money blank rather than adding formatted strings', () => {

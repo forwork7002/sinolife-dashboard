@@ -87,17 +87,35 @@ export interface CohortMatrixRow {
    */
   readonly orders: readonly (number | null)[]
   /**
-   * Every month of this cohort's money added up. PRE-FORMATTED for display.
+   * Every month of this cohort's money added up — COMPACT, «6.3 mln», for the
+   * column. PRE-FORMATTED, like every other figure on this grid.
    *
-   * The DTO carries a `MoneyDto`; this carries a string, and the boundary is
-   * deliberate — every other figure on this grid arrives formatted, and handing
-   * a chart a currency would put currency logic inside a presentation
-   * component. `toMatrixRow` in `CohortPage.tsx` is where the crossing happens,
-   * beside the `formatUzs` that already lives there.
+   * The DTO carries a `MoneyDto`; this carries strings, and the boundary is
+   * deliberate — handing a chart a currency would put currency logic inside a
+   * presentation component. `toMatrixRow` in `CohortPage.tsx` is where the
+   * crossing happens, beside the formatters that already live there.
    */
   readonly revenueTotal: string
-  /** `revenueTotal / size`, formatted. See `ageMonths` — it does NOT compare across rows. */
+  /**
+   * The same figure to the last soʻm, for the hover and the cell's own label.
+   *
+   * Precision is DEFERRED, never lost: a money column is scanned, and
+   * «6,300,000» beside «412,350,000» is two shapes the eye has to parse before
+   * it can compare them. Both strings so the grid never rounds anything itself.
+   */
+  readonly revenueTotalExact: string
+  /**
+   * The number behind those two strings — major units, lossy, ratios ONLY.
+   *
+   * The whole-cohort panel divides «Shundan takroriy» by this rather than by a
+   * fold of its own, so the share and the total it is a share OF are one base.
+   * Never printed: the two strings above are what the screen says.
+   */
+  readonly revenueTotalAmount: number
+  /** `revenueTotal / size`, compact. See `ageMonths` — it does NOT compare across rows. */
   readonly revenuePerCustomer: string
+  /** The same figure to the last soʻm. See `revenueTotalExact`. */
+  readonly revenuePerCustomerExact: string
   /** Whole months this cohort has lived. Under `MONEY_YOUNG_MONTHS`, the figure above is noise. */
   readonly ageMonths: number
 }
@@ -125,15 +143,25 @@ const PINNED = [
   { key: 'size', width: 72 },
   { key: 'returned', width: 84 },
   /*
-    MEASURED, not guessed, because these cells are `whitespace-nowrap`: too
-    narrow and a cohort's money spills out over the heat tiles passing
-    underneath instead of wrapping. Inter at 12px with `tabular-nums`, plus the
-    cell's own 16px of padding: «1,234,567,890 soʻm» (a ten-digit month, which
-    this portal has) is 117.8 + 16, and «12,450,000 soʻm» per customer is
-    99.1 + 16. Both are the widest figure `formatUzs` can print in the column.
+    COMPACT MONEY, AND THE WIDTHS ARE MEASURED FROM IT.
+
+    A money COLUMN is compact everywhere in this application — Yalpi marja and
+    Logistika both print `formatCompactUzs` in the cell — and the full-digit
+    exception belongs to the sellers board, whose whole job is to reconcile
+    digit-for-digit against a Bitrix24 board and a Telegram channel. Nothing
+    reconciles a cohort's lifetime revenue; no portal screen prints it at all.
+    Full precision is one hover away, in the panel and in the cell's own label.
+
+    Measured in Inter 12px with `tabular-nums`, plus the cell's own 16px of
+    padding, because these cells are `whitespace-nowrap` and an over-long
+    figure spills out over the heat tiles instead of wrapping: «999.9 mln» is
+    58.0 and «12.3 mlrd» 54.8, so 104 carries the widest total with room for
+    the «Kogorta tushumi» heading (86.6) on one line; «262.5 ming» is 65.4, so
+    88 carries the per-customer figure. Full-digit money needed 136 + 116, and
+    that 52px is sideways scroll this grid now does not do at 1280px.
   */
-  { key: 'revenueTotal', width: 136 },
-  { key: 'revenuePerCustomer', width: 116 },
+  { key: 'revenueTotal', width: 104 },
+  { key: 'revenuePerCustomer', width: 88 },
 ] as const
 
 type PinnedKey = (typeof PINNED)[number]['key']
@@ -456,11 +484,11 @@ export function CohortHeatmap({
           style={{
             /* The pinned columns keep the fixed widths `PINNED` declares —
                every sticky `left` is derived from them — and only the months
-               flex. With five of them the block is 520px wide, so a 1280px
-               screen with the rail open gives the twelve months less than
-               their 44px floor and the card scrolls sideways by ~95px; the
-               pinned block is sticky, so the labels stay while it does, and
-               from ~1375px (or with the rail collapsed) it fits again. */
+               flex. With five of them the block is 460px wide, so a 1280px
+               screen with the rail OPEN is ~35px short of the twelve months'
+               44px floor and the card scrolls sideways by that much; the
+               pinned block is sticky, so every label stays on screen while it
+               does. With the rail collapsed, or from ~1315px, it fits. */
             width: '100%',
             minWidth: width,
             maxWidth,
@@ -574,7 +602,7 @@ export function CohortHeatmap({
                 <tr key={row.cohort}>
                   <PinnedCell
                     header
-                    left={0}
+                    left={LEFT.cohort}
                     lit={lit}
                     align="left"
                     onMouseEnter={enter(r, -1)}
@@ -627,7 +655,7 @@ export function CohortHeatmap({
                     align="right"
                     onMouseEnter={enter(r, MONEY_COL)}
                     ariaLabel={`${formatMonth(row.cohort)} kogortasi: kogorta tushumi hozirgacha ${
-                      row.revenueTotal
+                      row.revenueTotalExact
                     }`}
                   >
                     {row.revenueTotal}
@@ -642,12 +670,14 @@ export function CohortHeatmap({
                     onMouseEnter={enter(r, MONEY_COL)}
                     ariaLabel={
                       young
-                        ? `1 mijozga hozirgacha ${row.revenuePerCustomer} — kogorta ${formatNumber(
+                        ? `1 mijozga hozirgacha ${
+                            row.revenuePerCustomerExact
+                          } — kogorta ${formatNumber(
                             row.ageMonths,
                           )} oylik, boshqa qatorlar bilan solishtirib boʻlmaydi`
-                        : `1 mijozga hozirgacha ${row.revenuePerCustomer} — kogorta ${formatNumber(
-                            row.ageMonths,
-                          )} oylik`
+                        : `1 mijozga hozirgacha ${
+                            row.revenuePerCustomerExact
+                          } — kogorta ${formatNumber(row.ageMonths)} oylik`
                     }
                   >
                     {row.revenuePerCustomer}
@@ -686,7 +716,7 @@ export function CohortHeatmap({
             <tr>
               <PinnedCell
                 header
-                left={0}
+                left={LEFT.cohort}
                 lit={hot?.row === -1}
                 align="left"
                 summary
@@ -802,14 +832,14 @@ const MONEY_NOT_SUMMED =
 /**
  * The edge of the pinned block.
  *
- * Without it, a half-scrolled heat tile sits flush against «Qaytgan» and reads
+ * Without it, a half-scrolled heat tile sits flush against «1 mijozga» and reads
  * as a clipped column of the table rather than as content passing underneath.
  * A hairline shadow rather than a border, so it costs no layout width and the
  * sticky offsets stay whole sums of the column widths.
  */
 const PINNED_EDGE = '2px 0 4px -2px color-mix(in oklab, var(--ink-primary) 22%, transparent)'
 
-/** A pinned heading in the header band — the three left columns. */
+/** A pinned heading in the header band — one per entry in `PINNED`. */
 function HeadCell({
   children,
   left,
@@ -1232,8 +1262,9 @@ function panelFor(
     return {
       header: `${formatMonth(row.cohort)} kogortasi · pul`,
       rows: [
-        { label: 'Kogorta tushumi', value: row.revenueTotal },
-        { label: '1 mijozga', value: row.revenuePerCustomer },
+        /* The panel is where the compact column's precision comes back. */
+        { label: 'Kogorta tushumi', value: row.revenueTotalExact },
+        { label: '1 mijozga', value: row.revenuePerCustomerExact },
         { label: 'Mijozlar', value: `${formatNumber(row.size)} mijoz` },
         { label: 'Kogorta yoshi', value: `${formatNumber(row.ageMonths)} oy` },
       ],
@@ -1248,11 +1279,20 @@ function panelFor(
 
   // A whole cohort — hovering its label or either of its two figures.
   if (hot.col === -1) {
-    const total = row.revenue.reduce((sum, m, i) => (row.retention[i] === null ? sum : sum + m.amount), 0)
-    const repeat = row.revenue.reduce(
-      (sum, m, i) => (i === 0 || row.retention[i] === null ? sum : sum + m.amount),
-      0,
-    )
+    /*
+      ONE BASE FOR THE TOTAL AND FOR THE SHARE OF IT.
+
+      «Jami tushum» prints the server's own sum and «Shundan takroriy» is a
+      percentage OF that sum, so the two may not come from different
+      arithmetic. They did: the total was re-folded here over the offsets whose
+      `retention` is non-null, a narrower set than the server adds up, so the
+      percentage could be computed against a base the line above it did not
+      state. The numerator is still folded — repeat money is «everything after
+      the cohort's own month», which the payload carries nowhere else — but it
+      is divided by `revenueTotalAmount`, the number behind the printed figure.
+    */
+    const total = row.revenueTotalAmount
+    const repeat = row.revenue.reduce((sum, m, i) => (i === 0 ? sum : sum + m.amount), 0)
 
     return {
       header: `${formatMonth(row.cohort)} kogortasi`,
@@ -1266,9 +1306,10 @@ function panelFor(
           label: 'Qaytish ulushi',
           value: formatPercent(row.size > 0 ? (row.returned / row.size) * 100 : null),
         },
-        /* The «Kogorta tushumi» column's own string, not a second fold of
-           `revenue` — two places computing one figure is two figures. */
-        { label: 'Jami tushum', value: row.revenueTotal },
+        /* The «Kogorta tushumi» column's own figure, to the last soʻm, not a
+           second fold of `revenue` — two places computing one number is two
+           numbers. The row under it divides by exactly this. */
+        { label: 'Jami tushum', value: row.revenueTotalExact },
         {
           label: 'Shundan takroriy',
           value: `${formatUzs(repeat)}${
@@ -1320,7 +1361,14 @@ function panelFor(
         },
         { label: 'Ulush', value: formatPercent(share) },
         { label: 'Shu oyda qoʻshilgan', value: added > 0 ? `+${formatNumber(added)}` : '0' },
-        { label: 'Buyurtmalar', value: `${formatNumber(row.orders[hot.col] ?? 0)} ta` },
+        /*
+          «SHU OYDAGI», because this is the only per-offset number in a
+          cumulative panel. `orders` has no cumulative counterpart, so beside
+          «3 / 24 mijoz» — a running total — an unqualified «Buyurtmalar» is
+          the same people-versus-orders blur one row over: at +2 the panel
+          would read five customers and three orders.
+        */
+        { label: 'Shu oydagi buyurtmalar', value: `${formatNumber(row.orders[hot.col] ?? 0)} ta` },
         { label: 'Shu oydagi tushum', value: formatUzs(amount) },
       ],
       footer:

@@ -19,7 +19,14 @@ import {
   type ConcentrationRepeatDto,
   apiGet,
 } from '@/lib/api'
-import { NO_VALUE, formatDate, formatNumber, formatPercent, formatUzs } from '@/lib/format'
+import {
+  NO_VALUE,
+  formatCompactUzs,
+  formatDate,
+  formatNumber,
+  formatPercent,
+  formatUzs,
+} from '@/lib/format'
 import { t } from '@/lib/messages'
 
 /**
@@ -51,9 +58,20 @@ const MONTH_WINDOWS: Record<MonthWindow, number | null> = { '6': 6, '12': 12, al
  * fields, and there were two ways to repair it: widen the matrix row to take a
  * `MoneyDto`, or format here. Formatting here, because `Heatmap.tsx` draws — it
  * has no currency, no locale and no rounding rule, and every other figure on
- * that grid already arrives as text. `formatUzs` rather than
- * `formatCompactUzs`: this money is read beside the portal's own figures, and
- * «6 mln» cannot be reconciled against «6,300,000».
+ * that grid already arrives as text.
+ *
+ * TWO STRINGS PER FIGURE, compact for the column and full for the hover.
+ * `formatCompactUzs` is what a money COLUMN prints everywhere in this
+ * application (Yalpi marja, Logistika), and the full-digit exception is the
+ * sellers board's, because that screen is reconciled digit-for-digit against a
+ * Bitrix24 board and a Telegram channel. NOTHING reconciles a cohort's
+ * lifetime revenue — the portal prints it on no screen — so the trade
+ * `formatCompactUzs`'s own comment describes is the right one here: precision
+ * deferred to the tooltip, not lost. It also buys back 52px of pinned width on
+ * a grid whose months were being squeezed under their legibility floor.
+ *
+ * The lossy `amount` travels too, for the one ratio the panel computes. It is
+ * never printed.
  *
  * One named function, and the call site is one `.map`, so hoisting the mapping
  * further up the page later is a move rather than a rewrite.
@@ -69,8 +87,11 @@ function toMatrixRow(row: CohortDto): CohortMatrixRow {
     cumulativeCustomers: row.cumulativeCustomers,
     revenue: row.revenue,
     orders: row.orders,
-    revenueTotal: formatUzs(row.revenueTotal.amount),
-    revenuePerCustomer: formatUzs(row.revenuePerCustomer.amount),
+    revenueTotal: formatCompactUzs(row.revenueTotal.amount),
+    revenueTotalExact: formatUzs(row.revenueTotal.amount),
+    revenueTotalAmount: row.revenueTotal.amount,
+    revenuePerCustomer: formatCompactUzs(row.revenuePerCustomer.amount),
+    revenuePerCustomerExact: formatUzs(row.revenuePerCustomer.amount),
     ageMonths: row.ageMonths,
   }
 }
