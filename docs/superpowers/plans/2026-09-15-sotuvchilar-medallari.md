@@ -2658,64 +2658,138 @@ bo'yicha, seat bo'yicha emas."
 
 - [ ] **Step 1: Write the failing test**
 
-`tests/features/sellersTvBoard.test.tsx` oxiriga qo'shiladi (`SellersColumn` allaqachon test uchun eksport qilingan):
+`tests/features/sellersTvBoard.test.tsx` — bu fayl ekranni jsdom bilan RENDER
+qiladi va `SellersColumn` allaqachon test uchun eksport qilingan, shuning uchun
+testlar manba matniga emas, DOM ga tekshiradi.
+
+**Avval mavjud ikki joyga `medals` qo'shiladi.** `medals` — `ColumnProps` ning
+MAJBURIY maydoni (ixtiyoriy qilib qo'yilsa, `SellersPage` uni uzatishni unutsa
+hech narsa xato bermaydi va pagon jimgina yo'qoladi). Fayldagi 16 ta render
+`PROPS` ni tarqatib chaqiradi, shuning uchun ikki qator yetadi:
 
 ```tsx
-import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+const PROPS = {
+  status: 'ready' as const,
+  onRetry: () => {},
+  fakt: 'auto' as const,
+  onFakt: () => {},
+  medals: new Map<string, SellerMedalRowDto>(),   // ← qo'shiladi
+}
+```
+
+va `Board` ichidagi `props` obyektiga ham xuddi shu maydon. Boshqa hech bir
+mavjud test o'zgartirilmaydi.
+
+Importga `import type { SellerMedalRowDto } from '@/lib/api'` va
+`import { readFileSync } from 'node:fs'` qo'shiladi.
+
+Keyin fayl oxiriga:
+
+```tsx
+function medalRow(
+  employeeId: string,
+  over: Partial<SellerMedalRowDto> = {},
+): SellerMedalRowDto {
+  return {
+    employeeId,
+    points: 11_000,
+    level: 15,
+    rankTitle: 'Usta',
+    levelFloor: 10_500,
+    nextLevelAt: 12_000,
+    nextTitle: 'Master',
+    medals: [
+      {
+        code: 'month-gold',
+        count: 3,
+        tier: null,
+        points: 1500,
+        at: '2026-08-01',
+        amount: money(128_550_000),
+        orders: 74,
+        percent: null,
+      },
+    ],
+    ...over,
+  }
+}
+
+/* RIPE taxtasining birinchi seati va to'rtinchi qatori — `seller()`
+   `employeeId` ni to'liq ismdan yasaydi, shuning uchun kalit ham shu. */
+const MEDALS = new Map<string, SellerMedalRowDto>([
+  ['154 Marjona Xayrullayeva', medalRow('154 Marjona Xayrullayeva')],
+  [
+    'Nodira 118 Karimova',
+    medalRow('Nodira 118 Karimova', {
+      points: 3_000,
+      level: 8,
+      rankTitle: 'Katta sotuvchi',
+      levelFloor: 2_800,
+      nextLevelAt: 3_600,
+      nextTitle: null,
+    }),
+  ],
+])
 
 /**
- * The block the client called «noaniq keraksiz xolat» (2026-09-15).
+ * PAGON — VA MIJOZ OLIB TASHLASHNI SO'RAGAN BLOK.
  *
- * One fact was drawn three times on every runner-up seat: the chip
- * «Liderga +100 000», a progress bar, and «97%». All three answered «how far
- * behind the leader am I», and the `0 / 2 buyurtma` line beside a 97% bar
- * read as a contradiction. It is gone from the SEAT — and stays on the LIST
- * ROW, which is a different component the client did not object to.
+ * Seat kartasida bitta fakt uch marta chizilgan edi: «Liderga +100 000»
+ * chipi, progress chizig'i va «97%». Uchalasi ham «liderdan qancha
+ * orqadaman» degan bitta savolga javob berardi, va yonidagi «0 / 2
+ * buyurtma» bilan birga ziddiyatli o'qilardi — mijozning o'z ta'rifi
+ * «noaniq keraksiz xolat» (2026-09-15).
+ *
+ * Bu testlar o'sha blokning YO'QLIGINI va o'rniga kelgan pagonning borligini
+ * DOM dan tekshiradi. Manba matni faqat bitta narsa uchun o'qiladi —
+ * so'rovning ulanishi, uni DOM ko'rsata olmaydi.
  */
-describe('seat kartasi', () => {
-  const source = readFileSync('src/features/sellers/SellersPage.tsx', 'utf8')
-
-  it('seatda liderga nisbatan foiz chizig‘i qolmagan', () => {
-    expect(source).not.toContain('aria-label="Liderga nisbatan"')
-    expect(source).not.toContain('chase-chip--lead')
+describe('pagon', () => {
+  it('seat kartasi darajani va unvonni chizadi', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    expect(column('tv-sellers').getByText(/15-daraja/)).toBeTruthy()
+    expect(column('tv-sellers').getByText(/Master/)).toBeTruthy()
   })
 
-  it('pagon o‘rnatilgan', () => {
-    expect(source).toContain("from '@/features/sellers/Pagon'")
-    expect(source).toContain('useMedalRotation')
-    expect(source).toContain(`variant="seat"`)
-    expect(source).toContain(`variant="row"`)
+  it('liderga nisbatan foiz chizig\u2018i seatdan olib tashlangan', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    expect(document.querySelector('[aria-label="Liderga nisbatan"]')).toBeNull()
   })
 
-  it('jadval qatoridagi Chase saqlangan — mijoz unga e’tiroz bildirmagan', () => {
-    expect(source).toContain('<Chase')
+  it('jadval qatorida ham pagon bor, lekin qisqasi', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    // 4-o'rindagi Nodira jadvalda, seatda emas.
+    expect(column('tv-sellers').getByText(/8-daraja/)).toBeTruthy()
   })
 
-  it('medal so‘rovi taxtanikidan alohida kalitda va o‘z soatida', () => {
-    expect(source).toContain(`'medals'`)
+  it('medali yo\u2018q sotuvchida pagon umuman chizilmaydi', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} />)
+    expect(document.querySelector('.pagon')).toBeNull()
+  })
+
+  it('daraja va o\u2018rin farqi ustunda BIR MARTA yozilgan', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    expect(column('tv-sellers').getAllByText(/Daraja \u2014 o\u02bbrin emas/)).toHaveLength(1)
+  })
+
+  it('jadvalga yangi ustun qo\u2018shilmagan \u2014 390px da yon skroll yomonlashmaydi', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    expect(column('tv-sellers').getAllByRole('columnheader')).toHaveLength(6)
+  })
+
+  it('jadval qatoridagi masofa saqlangan \u2014 mijoz unga e\u2019tiroz bildirmagan', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    // `Chase` 4-qatorda bronza seatiga bo'lgan masofani yozadi.
+    expect(column('tv-sellers').getAllByText(/oldinda|ortda|\+/).length).toBeGreaterThan(0)
+  })
+
+  it('medal so\u2018rovi taxtanikidan alohida kalitda va o\u2018z soatida', () => {
+    // DOM javob bera olmaydigan yagona narsa: so'rovning ulanishi.
+    const source = readFileSync('src/features/sellers/SellersPage.tsx', 'utf8')
+    expect(source).toContain("queryKey: ['sellers', 'medals']")
     expect(source).toContain('staleTime: 600_000')
-  })
-
-  it('jadvalga yangi ustun qo‘shilmagan — 390px da yon skroll yomonlashmaydi', () => {
-    const headers = source.match(/<Th[\s>]/g) ?? []
-    expect(headers).toHaveLength(6)
-  })
-
-  /*
-    Spec talab qiladi: «Daraja — o'rin emas» jumlasi EKRANDA bo'lishi kerak,
-    izohda emas. O'rin — bu davrdagi pul; daraja — avgustdan buyon to'plangan
-    mehnat. 8-o'rindagi odam 12-darajada bo'lishi mumkin, va bu aytilmasa
-    floor uni xato o'qiydi — taxtaning ishonchi shunga ketadi.
-  */
-  it('daraja va o‘rin farqi ekranda yozilgan', () => {
-    expect(source).toContain('pagon-note')
-    expect(source).toMatch(/Daraja — o[ʻ']rin emas/)
-  })
-
-  it('medal so‘rovi buzilsa taxta ishlashda davom etadi', () => {
-    // Taxta hech qachon medal so'rovining holatiga qaramaydi: na isError,
-    // na isPending seat chizilishini to'xtatadi.
+    // Taxta hech qachon medal so'rovining holatiga qaramaydi: u sekin kelsa
+    // yoki xato bersa, reyting hech nima sezmasligi kerak.
     expect(source).not.toMatch(/medals\.(isError|isPending)/)
   })
 })
@@ -2724,7 +2798,9 @@ describe('seat kartasi', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run tests/features/sellersTvBoard.test.tsx`
-Expected: FAIL — `expected '…' not to contain 'aria-label="Liderga nisbatan"'`.
+Expected: FAIL — typecheck darajasida `medals` propi `SellersColumn` da yo'q,
+va render qilinganda `15-daraja` matni topilmaydi. Mavjud 16 ta test yashil
+qolishi kerak: agar ular ham yiqilsa, `PROPS` ga `medals` qo'shilmagan. — `expected '…' not to contain 'aria-label="Liderga nisbatan"'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
