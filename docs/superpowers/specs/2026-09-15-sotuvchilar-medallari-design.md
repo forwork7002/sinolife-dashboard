@@ -153,16 +153,15 @@ Bazasiz test qilinadi, `sellerBonus.ts` va `sellerClose.ts` yonida turadi.
 | `year-champion` | 🏆 | Yil chempioni | Yopilgan kalendar yilda eng ko'p | ha | 2000 |
 | `streak-fire` | 🔥 | Olov seriyasi | 3 oy ketma-ket top-3 | ha | 750 |
 | `streak-steady` | ⭐ | Barqaror | 3 oy ketma-ket top-10 | ha | 400 |
-| `full-month` | 📅 | To'liq oy | Oyning har ish kunida ≥ 1 tasdiq | ha | 250 |
+| `work-month` | 📅 | Ishchan oy | Floor ishlagan kunlarning ≥ 60% ida ≥ 1 tasdiq | ha | 250 |
 | `conversion-master` | 🎯 | Konversiya ustasi | Oyda eng yuqori konv., ≥ 20 buyurtma | ha | 400 |
 | `clean-month` | 💯 | Toza oy | Oyda konv. ≥ 80%, ≥ 20 buyurtma | ha | 300 |
 | `jump` | 📈 | Sakrash | O'tgan oydan FAKT 2 ≥ +50% | ha | 300 |
 | `rookie` | 🚀 | Yangi yulduz | Birinchi to'liq oyidayoq top-10 (2026-08 dan keyin boshlaganlar) | yo'q | 300 |
 | `day-record` | ⚡ | Kun rekordi | Butun tarixdagi eng katta bir kunlik FAKT 2 | yo'q | 1000 |
 | `day-winner` | 🌅 | Kun g'olibi | Bir kunda 1-o'rin | ha | 50 |
-| `club-100m` | 🏅 | 100 mln klubi | Jami FAKT 2 ≥ 100 000 000 | yo'q | 200 |
-| `club-500m` | 💎 | 500 mln klubi | Jami FAKT 2 ≥ 500 000 000 | yo'q | 600 |
-| `club-1b` | 👑 | 1 mlrd klubi | Jami FAKT 2 ≥ 1 000 000 000 | yo'q | 1500 |
+| `first-sale` | 🌱 | Birinchi savdo | Birinchi yetkazilgan buyurtma | yo'q | 100 |
+| `club` | 💎 | Klub | Jami FAKT 2 — 7 bosqich, pastda | bosqich | pastda |
 
 **O'rin qoidasi hamma joyda bitta:** FAKT 2 birinchi, FAKT 1 esa hech kim
 yetkazmagan oyni hal qiladi — podiumning va `recordsSql` ning o'z qoidasi.
@@ -170,10 +169,33 @@ Ikkinchisi teng bo'lsa, `employee.id` — ism 'uz' va 'ru' da boshqacha
 saralanadi (`branches.ts`), va ikki so'rov orasida o'rin almashadigan taxta
 buzuq ko'rinadi.
 
-**Klub medallari ataylab chegara, raqobat emas.** 142 sotuvchining ko'pchiligi
-kamida bittasini taqib yuradi, ya'ni pagon hech qachon bo'sh qolmaydi. «Faqat
-uch kishi yutadi» — bu tizimni o'ldiradigan narsa, va klublar unga qarshi
-turadi.
+**Klub — bitta medal, yetti bosqich.** Raqobat emas, chegara: har bosqich
+o'tilgan sari medal ko'tariladi va **pagonda faqat eng yuqorisi ko'rinadi** —
+to'rtta klub belgisi bir qatorda turmaydi. Ball esa o'tilgan bosqichlar
+yig'indisi, ya'ni yuqori bosqich pastdagisini bekor qilmaydi.
+
+| Bosqich | Jami FAKT 2 | Ball | Bugun qamrovi |
+|---|---|---|---|
+| I | 10 mln | +100 | 85 kishi (67%) |
+| II | 25 mln | +150 | 64 (51%) |
+| III | 50 mln | +250 | 41 (33%) |
+| IV | 100 mln | +400 | 13 (10%) |
+| V | 250 mln | +800 | 0 |
+| VI | 500 mln | +1200 | 0 |
+| VII | 1 mlrd | +2000 | 0 |
+
+Mediana sotuvchi oyiga ~25 mln qiladi, ya'ni keyingi bosqich har bir necha
+oyda keladi — narvon o'zini bir yilga yetkazadi.
+
+«Faqat uch kishi yutadi» — bu tizimni o'ldiradigan narsa. 🌱 va klub unga
+qarshi turadi: o'lchov bo'yicha ular medalsizlar sonini **83 dan 5 ga**
+tushiradi.
+
+**📅 «Ishchan oy» 100% davomat emas, va bo'lishi ham mumkin emas.** Avgustda
+floor 31 kun ishlagan; dam olish kuni bor sotuvchi hech qachon 100% ga
+chiqmaydi. O'lchov: eng yuqori davomat 96,8%, p90 — 77,4%, p50 — 35,5%.
+100% qoidasi **nol** kishiga medal berardi. 60% chegarasi 29 kishini qamraydi
+va «bu oy muntazam ishladi» degan haqiqiy fakt bo'lib qoladi.
 
 **Joriy oy seriyaga kirmaydi.** Yopilmagan oy o'rni har kuni o'zgaradi;
 seriyani unga bog'lash medalning kelib-ketib turishiga olib keladi. Seriya
@@ -217,16 +239,38 @@ maqsad. Keyingi daraja unvonni almashtirsa, sarlavhada unvon nomi yoziladi
 («Master'ga 1 000 ball»). 15-daraja 10 500 ballda, 16-daraja — ya'ni Master
 — 12 000 da: yuqoridagi maketning raqamlari shu narvondan olingan.
 
-### Kalibrlash — qurishdan OLDIN
+### Kalibrlash — O'LCHANGAN, 2026-09-15
 
-Koeffitsiyentlar taxmin: o'rtacha sotuvchi oyiga ~800 ball (~30 tasdiq,
-~15 yetkazish, ~30 mln), chempion ~2 500–3 000. Kod yozilishidan oldin
-production bazasidan o'qib, 142 sotuvchining **haqiqiy taqsimoti** jadval
-qilib ko'rsatiladi: kim qaysi darajada, kimda nechta medal, nechta sotuvchi
-1-darajada qotib qolgan.
+Koeffitsiyentlar taxmin emas: production bazasida, 2026-08-01 dan bugungacha,
+**126 sotuvchi** ustida to'liq hisoblab ko'rildi (`probe-medals.mts`,
+`probe-medals2.mts`, `probe-medals3.mts`).
 
-Sabab: bir marta ishga tushgan darajani keyin pasaytirish mumkin emas — floor
-uni jazo deb o'qiydi. Raqamlar bir marta, ishga tushishdan oldin qotiriladi.
+| | Birinchi taxmin | Kalibrlangan |
+|---|---|---|
+| Medalsiz | 83 / 126 (66%) | **5 / 126 (4%)** |
+| 1-darajada | 23 (18%) | **5 (4%)** |
+| Mediana | 4-daraja, 0 medal | **5-daraja, 1 130 ball, 2 medal** |
+| Eng yuqori | 12-daraja, 6 650 ball | 12-daraja, 7 700 ball (2 kishi) |
+
+Daraja taqsimoti kalibrlangandan keyin: 1-dj 5 · 2-dj 29 · 3-dj 13 · 4-dj 14 ·
+5-dj 15 · 6-dj 11 · 7-dj 13 · 8-dj 11 · 9-dj 5 · 10-dj 5 · 11-dj 3 · 12-dj 2.
+Cho'qqi 2-darajada (🌱 birinchi savdo o'sha yerga olib chiqadi), quyruq
+o'ngga cho'zilgan — narvon ishlayapti.
+
+**Qolgan 5 medalsiz — halol nol:** ular yetkazilgan savdosi umuman yo'q
+sotuvchilar. Shu sababdan **1-daraja endi aniq ma'no tashiydi** — «hali
+yetkazilgan savdosi yo'q», va undan chiqish uchun bitta savdo yetadi.
+
+Medal qamrovi (bugun): 🌱 121 · 💎 klub 85 · 📅 29 · 🌅 27 kishi / 44 dona ·
+💯 26 · 🥇🥈🥉 1 tadan · ⚡ 1 · 🎯 1. Nol: 🏆 (2027-yanvar), 🔥 ⭐ (noyabr),
+📈 🚀 (ikkinchi yopilgan oy — oktyabr).
+
+**So'rov narxi o'lchandi:** oy kesimi 848 ms, kun kesimi 1 224 ms — birgalikda
+~2 s, 10 daqiqalik kesh ostida, ya'ni sutkasiga ~140 marta.
+
+Sabab bularni oldindan o'lchashda: bir marta ishga tushgan darajani keyin
+pasaytirish mumkin emas — floor uni jazo deb o'qiydi. **Raqamlar shu yerda
+qotirildi.**
 
 ---
 
@@ -244,7 +288,7 @@ O'rniga:
    ───────────────────────────────
    ▌▌▌   15-daraja · USTA · 11 000 ball
    ━━━━━━━━━━━╸──────  Master'ga 1 000 ball
-   🥇×3  🥈  🎯  🏅  💎    +4
+   🥇×3  🥈  🎯  💯  💎IV   +4
 
    ╭─────────────────────────────╮
    │ 🎯  Konversiya ustasi       │
@@ -287,7 +331,7 @@ Pagon ism katakchasining ichiga, chiziq ostiga, `Chase` yoniga tushadi:
 ```
  47 │ Marjona Xayrullayeva   [Xonzoda]
     │ ▁▁▁▁▁▁▁▁▁▁▁▁▁▁
-    │ ▌▌ 8-dj  🥉 🏅 +2      ↑ 2 100 000
+    │ ▌▌ 8-dj  🥉 💎III 🌱 +2   ↑ 2 100 000
 ```
 
 Daraja chipi + eng qimmatli 3 medal + `+N`. Aylanish yo'q — 139 qator bir
@@ -332,7 +376,7 @@ Televizordagi ishlayotgan taxta yangi funksiya tufayli o'chib qolmasligi kerak.
 
 | Test | Nima pinlanadi |
 |---|---|
-| `tests/domain/sellerMedals.test.ts` | Har 16 medalning qoidasi, jadval bilan. Chegara holatlari: 2 oylik seriya medal bermaydi; uzilgan seriya qaytadan sanaladi; 19 buyurtmali 100% konversiya 💯 bermaydi |
+| `tests/domain/sellerMedals.test.ts` | Har 15 medalning qoidasi va klubning 7 bosqichi, jadval bilan. Chegara holatlari: 2 oylik seriya medal bermaydi; uzilgan seriya qaytadan sanaladi; 19 buyurtmali 100% konversiya 💯 bermaydi; klub faqat eng yuqori bosqichni CHIZADI, lekin BALLNI yig'indi beradi; 100% davomat talab qilinmaydi |
 | `tests/domain/sellerMedals.level.test.ts` | Daraja chegaralari va unvon bandlari; 0 ball → 1-daraja; chegaraning aynan ustidagi ball |
 | `tests/repositories/sellerMedalFactsSql.test.ts` | SQL satri `recordsSql` bilan bir xil predikatlarni ishlatishi — `confirmationRecordsSql.test.ts` naqshi |
 | `tests/features/sellersPagon.test.tsx` | Medalli va medalsiz seat; `+N` toshishi; reduced-motion da aylanish yo'qligi |
