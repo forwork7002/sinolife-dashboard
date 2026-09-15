@@ -511,6 +511,8 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
     if (firstMonth.slice(0, 7) < ROOKIE_FROM_MONTH) continue
     const place = placesOf.get(employeeId)?.get(firstMonth)
     if (place !== undefined && place <= ROOKIE_PLACE) {
+      // `orders` bu yerda buyurtma soni emas — bu medalda u o‘RINNI tashiydi,
+      // aks holda keyingi render «7 buyurtma» deb «7-o‘rin»ni yozib qo‘yadi.
       award(employeeId, 'rookie', firstMonth, { orders: place })
     }
   }

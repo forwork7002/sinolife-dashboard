@@ -243,13 +243,28 @@ describe('seriya medallari', () => {
   })
 
   it('oy TUSHIB QOLSA ham seriya uziladi — qatnashmagan oy ketma-ketlik emas', () => {
-    const rows = build([
-      month({ employeeId: 'a', month: '2026-06-01', place: 1, deliveredOrders: 1, deliveredMinor: MLN }),
-      // 2026-07 yo‘q
-      month({ employeeId: 'a', month: '2026-08-01', place: 1, deliveredOrders: 1, deliveredMinor: MLN }),
-      month({ employeeId: 'b', month: '2026-07-01', place: 1, deliveredOrders: 1, deliveredMinor: MLN }),
-    ])
+    /*
+      DISKRIMINATSIYA QILADIGAN HOLAT. `a` ning UCHTA saralanadigan oyi bor —
+      06, 08, 09 — ya‘ni «sotuvchining O‘Z oylarini ketma-ket sana» degan
+      soddalashtirilgan implementatsiya uchga yetib medal berardi. To‘g‘ri
+      implementatsiya butun floorning yopilgan oylari bo‘ylab yuradi va 07 da
+      `a` ni topolmay sanoqni nolga tushiradi. `b` 07 ni ataylab qoplaydi:
+      aks holda 07 umuman `closedMonths` ga tushmasdi va bo‘shliqning o‘zi
+      ko‘rinmasdi.
+    */
+    const rows = buildSellerMedals({
+      months: [
+        month({ employeeId: 'a', month: '2026-06-01', place: 1, deliveredOrders: 1, deliveredMinor: MLN }),
+        // 2026-07 — `a` qatnashmagan
+        month({ employeeId: 'b', month: '2026-07-01', place: 1, deliveredOrders: 1, deliveredMinor: MLN }),
+        month({ employeeId: 'a', month: '2026-08-01', place: 1, deliveredOrders: 1, deliveredMinor: MLN }),
+        month({ employeeId: 'a', month: '2026-09-01', place: 1, deliveredOrders: 1, deliveredMinor: MLN }),
+      ],
+      days: [],
+      runningMonth: '2026-10',
+    })
     expect(codes(rowOf(rows, 'a'))).not.toContain('streak-fire')
+    expect(codes(rowOf(rows, 'a'))).not.toContain('streak-steady')
   })
 
   it('6 oy ketma-ket ikkita 🔥 beradi — seriya tugagach qaytadan boshlanadi', () => {
