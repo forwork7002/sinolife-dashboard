@@ -973,11 +973,33 @@ export class InsightsRepository {
       -- merge sort on one vCPU costs more than the second heap scan it saves.
       -- The seed was three orders of magnitude too small to show it.
       --
-      -- So the two passes stay. If this endpoint is to get faster the lever is
-      -- the SCAN, not the join: a covering index carrying customerId and
-      -- amountMinor alongside the existing (countsAsRevenue, status, closedAt)
-      -- would turn both walks into index-only scans and touch a small
-      -- fraction of the pages. That is a migration and a separate decision.
+      -- So the two passes stay.
+      --
+      -- THIS COMMENT THEN SAID «the lever is the SCAN, not the join», AND THAT
+      -- WAS MEASURED FALSE ON 2026-09-15. It was a reasonable reading of the
+      -- statement it was written about -- which had one join the planner
+      -- handled well -- and it is kept here, corrected rather than deleted,
+      -- because it is a conclusion the next person will otherwise reach again
+      -- from the same reasoning.
+      --
+      -- What EXPLAIN (ANALYZE, BUFFERS) against production actually shows:
+      -- the two "deal" walks are ~120-190 ms of the statement, while the ONE
+      -- \`LEFT JOIN first_offsets\` that carried the cumulative curve was 566 ms
+      -- of self time -- the planner reads a CTE as 3 rows against an actual
+      -- 912, takes a Nested Loop Left Join and rescans it once per matrix row
+      -- (loops=13460, 1 165 954 rows discarded by the join filter). Removing
+      -- that join, by emitting \`first_offsets\` as its own UNION arm below,
+      -- took the statement from ~900-960 ms back to ~405-467 ms against a
+      -- pre-change baseline of ~414 ms. Buffers were shared hit=24722, read=0
+      -- throughout: NONE of this is I/O.
+      --
+      -- So: the JOIN SHAPE is the first lever on this endpoint and the scan is
+      -- the second. The covering index is still worth having -- carrying
+      -- customerId and amountMinor alongside the existing
+      -- (countsAsRevenue, status, closedAt) would turn both walks into
+      -- index-only scans and touch a small fraction of the pages -- but it is
+      -- a migration, a separate decision, and no longer the biggest thing
+      -- available. An index could not have fixed what was actually wrong here.
       WITH first_win AS (
         SELECT
           d."customerId" AS customer_id,
@@ -1199,18 +1221,32 @@ export class InsightsRepository {
     )
 
     /*
-      THREE ARMS, MERGED BY (cohort, months_since).
+      THREE ARMS, MERGED BY (cohort, months_since) — AND THE MERGE DOES NOT
+      DEPEND ON THE ORDER THEY ARRIVE IN.
 
-      `cells` is keyed rather than an array while it is being built, because
-      the matrix arm and the first-return arm both write to the same cell and
-      the second of them has to FIND the first. `ORDER BY 1 ASC` puts arm 0
-      before arm 2, so by the time a first-return row arrives its cell exists —
-      but the lookup is written to tolerate the opposite order rather than to
-      depend on the ORDER BY, since a sort key is not a data structure.
+      The matrix arm (0) CREATES each cell; the first-return arm (2) fills in
+      one field of a cell that must already exist. Done in a single pass that
+      looks the cell up as it goes, that is a silent dependency on
+      `ORDER BY 1 ASC` — and the failure it hides is total rather than partial:
+      arm 2 arriving first would find nothing, leave every `firstReturners` at
+      0, and draw a matrix stating that no customer has ever come back. No
+      error, no empty result, a full grid of plausible zeros. An earlier
+      version of this comment claimed the lookup "tolerates" the other order;
+      it tolerated it only in the sense of not crashing.
+
+      So the curve's rows are COLLECTED here and applied after the loop, when
+      every cell they could belong to exists. There are tens of them. The
+      order of the statement is then a fact about how the grid is DRAWN (see
+      `ORDER BY 2 DESC` and `tests/http/cohortsSql.test.ts`) and not something
+      the arithmetic leans on.
+
+      `cells` is a Map while it is being built for the same reason the second
+      pass exists: arm 2 has to FIND arm 0's cell by offset.
     */
     type Cell = { -readonly [K in keyof CohortCell]: CohortCell[K] }
     const byCohort = new Map<string, { size: number; returned: number; cells: Map<number, Cell> }>()
     const summary = rows.find((row) => row.is_total === 1)
+    const curve: { cohort: string; monthsSince: number; firstReturners: number }[] = []
 
     for (const row of rows) {
       /* The totals arm is read once, through `summary` above. */
@@ -1230,12 +1266,11 @@ export class InsightsRepository {
       const key = row.cohort.toISOString().slice(0, 10)
 
       if (row.is_total === 2) {
-        /* A cohort older than the `months` bound: the matrix arm did not draw
-           it, so there is nothing to merge into. The arm is unbounded on
-           purpose — see its comment in the statement. */
-        const entry = byCohort.get(key)
-        const cell = entry?.cells.get(row.months_since)
-        if (cell) cell.firstReturners = int(row.first_returners)
+        curve.push({
+          cohort: key,
+          monthsSince: row.months_since,
+          firstReturners: int(row.first_returners),
+        })
         continue
       }
 
@@ -1251,6 +1286,20 @@ export class InsightsRepository {
         revenueMinor: money(row.revenue),
       })
       byCohort.set(key, entry)
+    }
+
+    /*
+      The curve, applied once every cell exists.
+
+      A cohort older than the `months` bound has no entry at all — the matrix
+      arm did not draw it and this arm is deliberately unbounded, so it is
+      dropped here rather than in the statement. An offset this arm says
+      nothing about keeps the 0 its cell was built with, which is the measured
+      zero `COALESCE` used to supply.
+    */
+    for (const point of curve) {
+      const cell = byCohort.get(point.cohort)?.cells.get(point.monthsSince)
+      if (cell) cell.firstReturners = point.firstReturners
     }
 
     return {

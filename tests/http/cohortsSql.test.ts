@@ -214,6 +214,29 @@ describe('the cohort statement', () => {
     expect(curveArm).toMatch(/fo\.first_returners AS first_returners/i)
   })
 
+  it('orders newest cohort first, because NOTHING downstream re-sorts the rows', () => {
+    /*
+      `ORDER BY 2 DESC` is column 2, the cohort — and it is the ONLY thing that
+      decides which way up the matrix is drawn. The repository folds rows in
+      arrival order, `InsightsService` maps them in place, and `CohortHeatmap`
+      draws the array it is handed; not one of the three sorts. Drop or flip
+      this clause and the grid silently renders oldest-first — every figure
+      correct, the whole table upside down, and no test between here and the
+      screen that would notice.
+
+      `1 ASC` is here because the fold reads `summary` and the arms by
+      `is_total` and a stable arm order keeps the payload diffable; the merge
+      itself no longer depends on it — see the fold's own comment for the
+      silent all-zero curve that dependency used to hide. `4 ASC` keeps each
+      row's cells in offset order.
+
+      (`ArrivalBars` is the one consumer that DOES sort, ascending, on its own
+      copy — because a bar chart reads left to right while a matrix reads top
+      down. That is a deliberate exception, not a second opinion.)
+    */
+    expect(code()).toMatch(/ORDER BY 1 ASC, 2 DESC, 4 ASC/)
+  })
+
   it('narrows by nothing but the month bound — a cohort is a company-wide fact', () => {
     /*
       `InsightsService.cohorts()` used to build an `EmployeeScopeFilter` and
