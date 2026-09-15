@@ -198,6 +198,31 @@ export const CLUB_RUNGS: readonly { readonly tier: number; readonly atMinor: big
 
 const MINOR_PER_MLN = 100_000_000n
 
+/**
+ * Sifat medallarining eng kam buyurtmasi.
+ *
+ * 19 ta buyurtmadagi 100% konversiya statistik shovqin, mahorat emas — va
+ * medal uni mahorat deb e'lon qilsa, taxtaning ishonchi shunga ketadi.
+ */
+export const MEDAL_MIN_ORDERS = 20
+
+/** 💯 «Toza oy» chegarasi. O'lchangan: p75 = 78.6%, p90 = 85.7%. */
+export const CLEAN_MONTH_PERCENT = 80
+
+/**
+ * 📅 «Ishchan oy» — floor ishlagan kunlarning ulushi.
+ *
+ * 100% EMAS, VA BO'LISHI HAM MUMKIN EMAS. Avgustda floor 31 kun ishladi;
+ * dam olish kuni bor sotuvchi 100% ga hech qachon chiqmaydi. O'lchangan:
+ * eng yuqori davomat 96.8%, p90 = 77.4%, p50 = 35.5% — 100% qoidasi NOL
+ * kishiga medal berardi. 60% 29 kishini qamraydi va «bu oy muntazam ishladi»
+ * degan haqiqiy faktligicha qoladi.
+ */
+export const WORK_MONTH_SHARE = 0.6
+
+/** 📈 «Sakrash» — o'tgan oyning necha barobari. */
+export const JUMP_GROWTH = 1.5
+
 interface Draft {
   readonly employeeId: string
   points: number
@@ -228,6 +253,147 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
     d.points += m.confirmedOrders * POINTS_PER_CONFIRMED_ORDER
     d.points += m.deliveredOrders * POINTS_PER_DELIVERED_ORDER
     d.points += Number(m.deliveredMinor / MINOR_PER_MLN) * POINTS_PER_MLN
+  }
+
+  // --- oylarni guruhlash; joriy oy hech qanday oylik medal bermaydi -------
+  /*
+    YOPILMAGAN OY MEDAL BERMAYDI. Uning o'rni har kuni o'zgaradi, ya'ni
+    oltin medal ertalab berilib kechqurun olinardi — bu taxtani buzuq
+    qiladi. Xuddi shu sabab `📅` va `📈` ham yopilgan oyda hisoblanadi.
+  */
+  const byMonth = new Map<string, SellerMonthFact[]>()
+  for (const m of input.months) {
+    if (m.month.slice(0, 7) === input.runningMonth) continue
+    const bucket = byMonth.get(m.month)
+    if (bucket) bucket.push(m)
+    else byMonth.set(m.month, [m])
+  }
+  const closedMonths = [...byMonth.keys()].sort()
+
+  const daysByMonth = new Map<string, SellerDayFact[]>()
+  for (const d of input.days) {
+    const key = `${d.day.slice(0, 7)}-01`
+    const bucket = daysByMonth.get(key)
+    if (bucket) bucket.push(d)
+    else daysByMonth.set(key, [d])
+  }
+
+  /** Bir medalni qo'shadi; takrorlanadigani bo'lsa sanoqni oshiradi. */
+  const award = (
+    employeeId: string,
+    code: Exclude<MedalCode, 'club'>,
+    at: string | null,
+    detail: { amountMinor?: bigint; orders?: number; percent?: number } = {},
+  ): void => {
+    const d = draftOf(employeeId)
+    const points = MEDAL_POINTS[code]
+    d.points += points
+    const seen = d.medals.find((m) => m.code === code)
+    if (seen) {
+      const index = d.medals.indexOf(seen)
+      d.medals[index] = {
+        ...seen,
+        count: seen.count + 1,
+        points: seen.points + points,
+        // ENG OXIRGI SABAB QOLADI: pagon «qachon oldi» deganda yangisini
+        // ko'rsatadi — eskisi hikoya, yangisi yangilik.
+        at: at !== null && (seen.at === null || at > seen.at) ? at : seen.at,
+        amountMinor: detail.amountMinor ?? seen.amountMinor,
+        orders: detail.orders ?? seen.orders,
+        percent: detail.percent ?? seen.percent,
+      }
+      return
+    }
+    d.medals.push({
+      code,
+      count: 1,
+      tier: null,
+      points,
+      at,
+      amountMinor: detail.amountMinor ?? null,
+      orders: detail.orders ?? null,
+      percent: detail.percent ?? null,
+    })
+  }
+
+  const conversionOf = (m: SellerMonthFact): number =>
+    m.confirmedOrders > 0 ? (m.deliveredOrders / m.confirmedOrders) * 100 : 0
+
+  for (const monthKey of closedMonths) {
+    const rows = byMonth.get(monthKey)!
+
+    // --- 🥇🥈🥉 podium ---------------------------------------------------
+    for (const m of rows) {
+      if (m.place === 1) award(m.employeeId, 'month-gold', monthKey, { amountMinor: m.deliveredMinor, orders: m.deliveredOrders })
+      else if (m.place === 2) award(m.employeeId, 'month-silver', monthKey, { amountMinor: m.deliveredMinor, orders: m.deliveredOrders })
+      else if (m.place === 3) award(m.employeeId, 'month-bronze', monthKey, { amountMinor: m.deliveredMinor, orders: m.deliveredOrders })
+    }
+
+    // --- 🎯 va 💯, ikkalasi ham eng kam buyurtma gatesi ostida ------------
+    const eligible = rows.filter((m) => m.confirmedOrders >= MEDAL_MIN_ORDERS)
+    let best: SellerMonthFact | null = null
+    for (const m of eligible) if (best === null || conversionOf(m) > conversionOf(best)) best = m
+    if (best !== null) {
+      award(best.employeeId, 'conversion-master', monthKey, {
+        percent: conversionOf(best),
+        orders: best.confirmedOrders,
+      })
+    }
+    for (const m of eligible) {
+      if (conversionOf(m) >= CLEAN_MONTH_PERCENT) {
+        award(m.employeeId, 'clean-month', monthKey, {
+          percent: conversionOf(m),
+          orders: m.confirmedOrders,
+        })
+      }
+    }
+
+    // --- 📅 ishchan oy ----------------------------------------------------
+    /*
+      ISH KUNI — KALENDAR EMAS, FLOORNING O'ZI. «Butun floor kamida bitta
+      buyurtma tasdiqlagan kun» — bayram va yakshanbani sotuvchining aybiga
+      yozib bo'lmaydi, va portalning o'z ma'lumoti bu savolga allaqachon
+      javob beradi.
+    */
+    const dayRows = daysByMonth.get(monthKey) ?? []
+    const floorDays = new Set(dayRows.filter((d) => d.confirmedOrders > 0).map((d) => d.day))
+    if (floorDays.size > 0) {
+      const worked = new Map<string, Set<string>>()
+      for (const d of dayRows) {
+        if (d.confirmedOrders === 0) continue
+        const set = worked.get(d.employeeId) ?? new Set<string>()
+        set.add(d.day)
+        worked.set(d.employeeId, set)
+      }
+      for (const m of rows) {
+        const mine = worked.get(m.employeeId)?.size ?? 0
+        if (mine / floorDays.size >= WORK_MONTH_SHARE) {
+          award(m.employeeId, 'work-month', monthKey, {
+            orders: mine,
+            percent: (mine / floorDays.size) * 100,
+          })
+        }
+      }
+    }
+  }
+
+  // --- 📈 sakrash: qo'shni YOPILGAN oylar orasida -------------------------
+  for (let i = 1; i < closedMonths.length; i++) {
+    const before = new Map(
+      byMonth.get(closedMonths[i - 1]!)!.map((m) => [m.employeeId, m.deliveredMinor] as const),
+    )
+    for (const m of byMonth.get(closedMonths[i]!)!) {
+      const past = before.get(m.employeeId) ?? 0n
+      // NOLDAN BOSHLAGANGA BERILMAYDI: nolning ellik foizi ham nol, ya'ni
+      // birinchi oyi bor har kim avtomatik «sakragan» bo'lib chiqardi.
+      if (past <= 0n) continue
+      if (m.deliveredMinor * 2n >= past * 3n) {
+        award(m.employeeId, 'jump', closedMonths[i]!, {
+          amountMinor: m.deliveredMinor,
+          percent: (Number(m.deliveredMinor) / Number(past) - 1) * 100,
+        })
+      }
+    }
   }
 
   // --- 🌱 birinchi savdo va 💎 klub — ikkalasi ham JAMI bo'yicha ----------
