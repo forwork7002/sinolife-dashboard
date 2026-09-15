@@ -16,6 +16,23 @@ import { formatMonth, formatNumber } from '@/lib/format'
  * are still sitting in Тасдиклаш and Доставка. Drawn as a finished month it
  * reads as a collapse — the mistake the record wall already made once — so it
  * is hatched, labelled, and kept out of the comparison below.
+ *
+ * `rows` IS SPARSE, AND THAT IS A SEPARATE TRAP FROM THE ONE ABOVE. A month
+ * with no first-time buyer emits no row at all (see the cohort query in
+ * `insightsRepository.ts`) — the exact fact `InsightsService.cohorts()`
+ * already had to learn once, in the comment above its own `currentMonth`
+ * ("THE HORIZON IS THE CLOCK, and it used to be the data"), and the matrix's
+ * cells apply the same rule cell by cell ("a month with no repeat buyers
+ * reports 0, not null — the absence IS the finding"). Reading `rows` as one
+ * entry per calendar month turns a quiet month into a MISSING bar instead of
+ * a SHORT one, which hides the exact thing this block exists to show a
+ * manager. So the bars — and the months the comparison walks — are built from
+ * a DENSE calendar sequence, walked from the oldest row's month through
+ * `currentMonth` one whole month at a time, with every gap filled at size 0.
+ * That is also what makes `before`'s slice a slice of calendar months rather
+ * than of array entries: with a gap, the last N ARRAY entries can reach
+ * further back than the last N CALENDAR months, while the sentence claims the
+ * latter.
  */
 
 /** How many complete months the comparison leans on, at most. */
@@ -28,6 +45,27 @@ const TREND_MONTHS = 12
  */
 const MIN_TREND_MONTHS = 2
 
+/**
+ * A cohort string → whole months elapsed since year 0.
+ *
+ * Whole-month arithmetic on the year/month pair, never on the timestamp —
+ * the same discipline `formatMonthOffset` documents (adding 30 days to
+ * 31-yanvar lands in March) and `InsightsService.monthsApart` already applies
+ * server-side. `cohort` arrives as `YYYY-MM-DD` (always the first of the
+ * month — `date_trunc('month', …)`), so a plain string split is exact.
+ */
+function monthIndex(cohort: string): number {
+  const [year, month] = cohort.split('-').map(Number)
+  return (year ?? 0) * 12 + ((month ?? 1) - 1)
+}
+
+/** The inverse of `monthIndex` — always the first of the month. */
+function cohortAtIndex(index: number): string {
+  const year = Math.floor(index / 12)
+  const month = index % 12
+  return `${year}-${String(month + 1).padStart(2, '0')}-01`
+}
+
 export function ArrivalBars({
   rows,
   currentMonth,
@@ -36,9 +74,28 @@ export function ArrivalBars({
   readonly currentMonth: string
 }) {
   const ordered = [...rows].sort((a, b) => a.cohort.localeCompare(b.cohort))
-  const max = Math.max(1, ...ordered.map((r) => r.size))
+  const sizeByCohort = new Map(ordered.map((r) => [r.cohort, r.size]))
 
-  const complete = ordered.filter((r) => r.cohort < currentMonth)
+  /*
+    THE DENSE CALENDAR, NOT THE SPARSE ROWS. Walked from the oldest row's
+    month through `currentMonth` inclusive; a month absent from `rows` is a
+    measured zero (nobody's first purchase landed there), filled in rather
+    than skipped. With no rows at all there is no calendar to anchor on, so
+    the block draws nothing — the same as before this fix.
+  */
+  const dense: { cohort: string; size: number }[] = []
+  if (ordered.length > 0) {
+    const start = monthIndex(ordered[0]!.cohort)
+    const end = monthIndex(currentMonth)
+    for (let idx = start; idx <= end; idx += 1) {
+      const cohort = cohortAtIndex(idx)
+      dense.push({ cohort, size: sizeByCohort.get(cohort) ?? 0 })
+    }
+  }
+
+  const max = Math.max(1, ...dense.map((r) => r.size))
+
+  const complete = dense.filter((r) => r.cohort < currentMonth)
   const last = complete.at(-1)
   const before = complete.slice(-1 - TREND_MONTHS, -1)
   const mean =
@@ -57,7 +114,7 @@ export function ArrivalBars({
       </h3>
 
       <div data-testid="arrival-bars">
-        {ordered.map((row) => {
+        {dense.map((row) => {
           const partial = row.cohort >= currentMonth
           return (
             <div
@@ -71,9 +128,16 @@ export function ArrivalBars({
               }
               style={{
                 height: `${Math.round((row.size / max) * 100)}%`,
+                /* A gap month is a MEASURED zero (nobody's first purchase
+                   landed there), not an absence, so it still draws a bar —
+                   just enough of one (2px) to read as empty rather than
+                   missing when the computed height rounds to nothing. */
+                minHeight: '2px',
                 /* Colour follows the entity, never its rank (docs/DESIGN.md),
                    and the hatch is the matrix's own «not measured» fill, so
-                   the two blocks say the same thing the same way. */
+                   the two blocks say the same thing the same way. A dense
+                   zero month is measured, not merely un-reached, so it is
+                   NEVER hatched — only the running month is. */
                 background: partial
                   ? 'repeating-linear-gradient(45deg, var(--axis) 0 2px, transparent 2px 6px)'
                   : 'var(--series-1)',
