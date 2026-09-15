@@ -55,10 +55,11 @@ describe('the cohort statement', () => {
       A customer who returned in +1 AND +3 is ONE returner. Summing the matrix
       cells double-counts them and taking the first cell counts only the ones
       who came back immediately — measured on this database, 320 against 751.
-      The DISTINCT is the whole guarantee, and a window function may not take
-      one, which is why this is a separate aggregate.
+      The guarantee moved from a `count(DISTINCT customer_id)` aggregate to a
+      `GROUP BY (cohort, customer_id)` in `first_return` — same one-pass
+      grouping, and now it also carries each customer's FIRST offset.
     */
-    expect(code()).toMatch(/count\(DISTINCT customer_id\)/i)
+    expect(code()).toMatch(/GROUP BY cohort, customer_id/i)
     expect(code()).toMatch(/WHERE months_since > 0/i)
   })
 
@@ -99,5 +100,67 @@ describe('the cohort statement', () => {
     // in the data is not "now" — the service read it as one and elapsed months
     // rendered as «maʼlumot yoʻq» instead of the measured zero they were.
     expect(code()).toMatch(/date_trunc\('month', \(now\(\) AT TIME ZONE \$1\)\) AS current_month/i)
+  })
+
+  it('finds each returning customer’s FIRST return, once', () => {
+    /*
+      The cumulative curve is a running sum of first returns. Summing the
+      monthly cells instead counts a monthly buyer once a month and sends the
+      curve past 100%; `min(months_since)` per customer is what walks each
+      returning customer in exactly once.
+    */
+    const sql = code()
+    expect(sql).toMatch(/first_return AS \(/i)
+    expect(sql).toMatch(/min\(months_since\) AS first_offset/i)
+  })
+
+  it('derives the returner headcount from first_return, not from a second DISTINCT', () => {
+    /*
+      `first_return` already holds one row per returning customer per cohort,
+      so counting it is the same answer as `count(DISTINCT customer_id)` over
+      `purchases` — and it is the answer this statement has already paid for.
+      Doing both would group ~180 000 rows twice to learn one number.
+    */
+    const returners = code().slice(code().indexOf('returners AS ('))
+    expect(returners).toMatch(/FROM first_return/i)
+  })
+
+  it('counts orders and customers with DIFFERENT aggregates', () => {
+    /*
+      A cell says «15 mijoz · 23 ta buyurtma». `count(*)` counts
+      revenue-bearing deals, `count(DISTINCT customer_id)` counts people, and
+      a cell that blurred them would report a repeat buyer as two customers.
+    */
+    const rowArm = code().slice(code().indexOf('0 AS is_total'))
+    expect(rowArm).toMatch(/count\(\*\)::bigint AS orders/i)
+    expect(rowArm).toMatch(/count\(DISTINCT p\.customer_id\)::bigint AS customers/i)
+  })
+
+  it('carries the same column list in both UNION arms, in the same order', () => {
+    /*
+      A UNION ALL matches columns BY POSITION. `ORDER BY 1, 2, 4` is positional
+      too. Inserting a column into one arm only would silently transpose the
+      whole read rather than fail.
+    */
+    const sql = code()
+    const rowArm = sql.slice(sql.indexOf('0 AS is_total'), sql.indexOf('UNION ALL'))
+    const totalsArm = sql.slice(sql.indexOf('1 AS is_total'))
+    const aliases = (arm: string) =>
+      [...arm.matchAll(/ AS ([a-z_]+),?\n/g)].map((m) => m[1])
+    expect(aliases(totalsArm)).toEqual(aliases(rowArm))
+  })
+
+  it('narrows by nothing but the month bound — a cohort is a company-wide fact', () => {
+    /*
+      `InsightsService.cohorts()` used to build an `EmployeeScopeFilter` and
+      hand it to a method whose SQL has no employee predicate at all;
+      TypeScript missed it because the argument was a variable rather than an
+      object literal. It leaked nothing — the route passes no scope — but a
+      filter that appears to apply and does not is the one defect this screen
+      cannot carry. Deleted rather than implemented: one customer's purchases
+      are spread across sellers, so narrowing a retention curve by employee
+      produces a figure with no business meaning.
+    */
+    expect(code()).not.toMatch(/assignee|ownerId|restrictTo|employee/i)
   })
 })

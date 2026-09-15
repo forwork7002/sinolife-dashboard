@@ -155,6 +155,20 @@ interface LogisticsCutRow {
 export interface CohortCell {
   readonly monthsSince: number
   readonly customers: number
+  /**
+   * Revenue-bearing WON deals in this cell — a count of ORDERS, where
+   * `customers` is a count of PEOPLE. A repeat buyer makes these differ, and
+   * the difference is the useful half: «15 mijoz · 23 ta buyurtma».
+   */
+  readonly orders: number
+  /**
+   * Customers whose FIRST return landed on this offset.
+   *
+   * The cumulative curve is a running sum of these and of nothing else.
+   * Summing `customers` would count a monthly buyer once a month and walk the
+   * curve past 100%.
+   */
+  readonly firstReturners: number
   readonly revenueMinor: bigint
 }
 
@@ -931,6 +945,8 @@ export class InsightsRepository {
         months_since: number | null
         customers: bigint | null
         revenue: MoneyText
+        orders: bigint | null
+        first_returners: bigint | null
         returned: bigint | null
         total_customers: bigint | null
         total_returned: bigint | null
@@ -990,21 +1006,41 @@ export class InsightsRepository {
         WHERE d."countsAsRevenue" AND d."status" = 'WON' AND d."closedAt" IS NOT NULL
       ),
       /*
-        Everyone who ever came back, once each.
+        EACH RETURNING CUSTOMER'S FIRST RETURN, AND THE TWO THINGS BUILT ON IT.
 
-        It cannot be derived from the matrix beside it: a customer who
-        returned in month +1 AND month +3 appears in two cells, so summing
-        double-counts them, and taking only the first cell counts only the
-        ones who came back immediately. Measured on this database: 320 by
-        that reading against 751 who actually returned.
+        This replaced a \`count(DISTINCT customer_id)\` over \`purchases\` that
+        answered only the headcount. Grouping the same filtered set by
+        (cohort, customer_id) costs the same single pass and answers three
+        questions instead of one: who returned, when they FIRST returned, and
+        how many there were. The expensive grouping over ~180 000 rows now
+        happens once where it used to happen twice, which is how the
+        cumulative curve arrives at no net cost on the slowest endpoint in the
+        product.
 
-        A separate aggregate rather than a window function, because a window
-        function may not take DISTINCT.
+        A customer who returned in +1 AND +3 is ONE returner, at +1. Summing
+        the matrix cells double-counts them; taking only the first cell counts
+        only the ones who came back immediately. Measured on this database:
+        320 by that reading against 751 who actually returned.
       */
-      returners AS (
-        SELECT cohort, count(DISTINCT customer_id) AS returned
+      first_return AS (
+        SELECT cohort, customer_id, min(months_since) AS first_offset
           FROM purchases
          WHERE months_since > 0
+         GROUP BY cohort, customer_id
+      ),
+      -- How many of the cohort came back for the first time IN this month.
+      -- Tens of rows per cohort; the running sum happens in TypeScript.
+      first_offsets AS (
+        SELECT cohort, first_offset, count(*)::bigint AS first_returners
+          FROM first_return
+         GROUP BY cohort, first_offset
+      ),
+      -- One row per returning customer is already what \`first_return\` holds,
+      -- so counting it IS the distinct count, without grouping 180 000 rows
+      -- a second time to learn the same number.
+      returners AS (
+        SELECT cohort, count(*)::bigint AS returned
+          FROM first_return
          GROUP BY cohort
       ),
       -- The whole-history money, both halves, in ONE scan of "purchases".
@@ -1024,11 +1060,13 @@ export class InsightsRepository {
       )
       SELECT
         0 AS is_total,
-        p.cohort,
-        s.size,
-        p.months_since,
+        p.cohort AS cohort,
+        s.size AS size,
+        p.months_since AS months_since,
         count(DISTINCT p.customer_id)::bigint AS customers,
         sum(p.amount)::text AS revenue,
+        count(*)::bigint AS orders,
+        COALESCE(fo.first_returners, 0)::bigint AS first_returners,
         -- How many of this cohort ever came back, counted once each; see the
         -- returners CTE. Repeated on every row of the cohort, which is what
         -- lets one query carry both the matrix and the headline.
@@ -1041,11 +1079,13 @@ export class InsightsRepository {
       FROM purchases p
       JOIN sized s ON s.cohort = p.cohort
       LEFT JOIN returners r ON r.cohort = p.cohort
+      LEFT JOIN first_offsets fo
+             ON fo.cohort = p.cohort AND fo.first_offset = p.months_since
       -- The bound is on the ROWS only. The totals arm below deliberately
       -- carries no such clause; see the method's own note.
       WHERE p.cohort >= date_trunc('month', (now() AT TIME ZONE $1)) - make_interval(months => $2::int)
         AND p.months_since >= 0
-      GROUP BY p.cohort, s.size, p.months_since, r.returned
+      GROUP BY p.cohort, s.size, p.months_since, r.returned, fo.first_returners
 
       UNION ALL
 
@@ -1071,6 +1111,8 @@ export class InsightsRepository {
         NULL::int AS months_since,
         NULL::bigint AS customers,
         NULL::text AS revenue,
+        NULL::bigint AS orders,
+        NULL::bigint AS first_returners,
         NULL::bigint AS returned,
         (SELECT COALESCE(sum(size), 0)::bigint FROM sized) AS total_customers,
         (SELECT COALESCE(sum(returned), 0)::bigint FROM returners) AS total_returned,
@@ -1084,8 +1126,8 @@ export class InsightsRepository {
         -- revenue-bearing deal, and on the live portal that is a walk over
         -- ~448 000 of them -- which this endpoint is already the slowest in the
         -- product for (1587ms p50, measured 2026-09-11).
-        t.first_revenue,
-        t.later_revenue,
+        t.first_revenue AS first_revenue,
+        t.later_revenue AS later_revenue,
         -- The horizon, from the clock. A month with no first-time buyer emits
         -- no cohort row, so the newest key in the data is not "now" and the
         -- service must not read it as one.
@@ -1109,6 +1151,8 @@ export class InsightsRepository {
       entry.cells.push({
         monthsSince: row.months_since,
         customers: int(row.customers),
+        orders: int(row.orders),
+        firstReturners: int(row.first_returners),
         revenueMinor: money(row.revenue),
       })
       byCohort.set(key, entry)

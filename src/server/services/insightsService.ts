@@ -831,21 +831,26 @@ export class InsightsService {
    * A month with no repeat buyers reports 0, not null — the absence IS the
    * finding. Null is reserved for offsets that have not happened yet, which is
    * a different statement entirely.
+   *
+   * DELIBERATELY UNSCOPED, and it used to pretend otherwise. This method built
+   * an `EmployeeScopeFilter` and handed it to a repository method whose
+   * statement contains no employee predicate of any kind; TypeScript let it
+   * through because the argument was a variable rather than an object literal,
+   * so the filter was silently discarded for as long as it existed. It leaked
+   * nothing — the route passes no scope — but a filter that appears to apply
+   * and does not is the one defect a screen valued for its numbers cannot
+   * carry.
+   *
+   * Deleted rather than implemented. A cohort is a company-wide fact about a
+   * CUSTOMER: their purchases are spread across sellers and across months, so
+   * «did this seller's customers come back» asks about customers that seller
+   * no longer owns. There is no honest branch answer to give.
    */
-  async cohorts(
-    currency: string,
-    months = 18,
-    scope: EmployeeScopeFilter = {},
-  ): Promise<CohortSummaryDto> {
-    // A cohort is a set of CUSTOMERS, but every purchase in it belongs to an
-    // employee, so the branch narrows it like everything else.
-    const options: { months: number } & EmployeeScopeFilter = {
-      months,
-      restrictToEmployeeIds: scope.restrictToEmployeeIds ?? null,
-    }
-
+  async cohorts(currency: string, months = 18): Promise<CohortSummaryDto> {
+    // DELIBERATELY UNSCOPED — see the doc comment above: a cohort is a
+    // company-wide fact about a customer, not a per-seller one.
     const [matrix, base] = await Promise.all([
-      this.repository.cohorts(options),
+      this.repository.cohorts({ months }),
       this.repository.retentionStages(),
     ])
 
