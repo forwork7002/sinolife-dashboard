@@ -422,7 +422,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Screen | URL | Feature | Endpoint(s) | Service → Repository | Window filters on |
 |---|---|---|---|---|---|
 | Savdo dinamikasi | `/analytics/sales` | `sales/SalesPage` + `ConfirmationFaktSection` + `DeliveryBoardSection` | `/analytics/sellers` twice (the board, and `?include=faktTrend` for the chart) + `/insights/delivery` | SellerBoard, Pulse → SellerBoard, Pulse | the arrival in `C4:NEW` (`queued_at`) — **except the Доставка board, which has NO window at all**: a kanban column is where orders are standing now |
-| Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` | `/insights/cohorts`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | `closedAt`, on revenue-bearing WON deals only — nothing here reads `createdAtSource` |
+| Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` — TWO MODES over ONE fetch: `cohort/SimpleView` («Oddiy», the default) and the matrix («Batafsil»), chosen by `?mode=` | `/insights/cohorts`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | `closedAt`, on revenue-bearing WON deals only — nothing here reads `createdAtSource`. The dashboard period does **not** reach it at all; `months` bounds which cohort ROWS are drawn and never the totals arm |
 | Reklama samarasi | `/marketing` | **PAUSED** — `shared/SectionPending`; `marketing/MarketingPage` is held, not mounted | none while paused (`/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` still answer) | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
@@ -469,6 +469,83 @@ Per-screen traps worth knowing before you touch one:
   against the screen it was copied from.
 - **Mijoz qaytishi** — «Faol bazada» is a separate DISTINCT-customer total, not
   the sum of the ladder bars.
+  **TWO MODES, ONE FETCH, AND THAT IS WHY THEY CANNOT DISAGREE.** «Oddiy»
+  (`SimpleView` — three questions in sentences and shapes) and «Batafsil» (the
+  matrix and the bands under it) are two renderings of the SAME
+  `/insights/cohorts` response, mapped once by `toMatrixRow` in `CohortPage`
+  and handed to both. The toggle costs no request, no cache key and no
+  permission; it rides `?mode=` through `useCohortMode`, written with
+  `replaceState` rather than a router push, because a push re-runs the server
+  component and that is 521 ms of frozen UI per click on this product. The
+  manager's milestones call the grid's OWN `columnAverage` rather than folding
+  a mean of their own — an unweighted mean would let a 40-person month outvote
+  a 400-person one, and two averaging implementations agree on the day they
+  are written and drift on the first change to either.
+  `tests/features/cohortAgreement.test.tsx` pins both halves: the two
+  renderings printing one figure, and — structurally, by reading the source —
+  that `ReturnAnswer` still has no mean of its own.
+  **«YETKAZILGAN» AND «YOPILGAN (WON)» NAME THE SAME EVENT.** A deal becomes
+  WON the instant it reaches Успешно, which is the instant Logistika would
+  call it delivered; there is no second clock here and an earlier comment
+  claiming a 20–25 day gap between the two was wrong (that gap is real, but it
+  is order→delivery, and every figure on this screen already sits on the
+  delivery side of it). **What does not reconcile against Logistika is the
+  DENOMINATOR**: Logistika counts ORDERS that arrived in a bounded C4:NEW
+  window, this counts DISTINCT CUSTOMERS by their first purchase over all
+  history. A customer with three orders is one here and three there, and a
+  customer whose first order predates the window is here and not there. That
+  is said to the reader once, in `cohort-total-hint` under the tiles; pinned by
+  `tests/features/cohortExplains.test.tsx`.
+  **`cohorts()` IS DELIBERATELY UNSCOPED, and that is a business fact, not an
+  oversight.** The route declares `analytics:read:all` and the repository
+  method takes `{ months }` and nothing else — no `restrictToEmployeeIds`
+  reaches it. A customer's purchases are spread across whoever happened to
+  answer the phone, so a per-seller retention curve would be measuring which
+  seller's colleagues sold to their customers. There is no correct narrowing,
+  which is why the endpoint refuses a narrowed account outright rather than
+  answering it with a number. See *Which endpoints admit a narrowed account*
+  above — cohort is in the still-refusing list, and it belongs there.
+  **TWO IDENTITIES A READER CAN CHECK WITHOUT LEAVING THE TABLE.** A row's
+  last MEASURED cumulative cell equals that row's «Qaytgan» share, by
+  construction: the curve is a running sum of `firstReturners`, each returning
+  customer walked in exactly once, advanced only inside the row's reachable
+  span. And the matrix footer's money is its own column summed and nothing
+  wider — `months` bounds COLUMNS, not rows, so the figure does not move under
+  the 6 / 12 / Hammasi control. Both were re-measured against production on
+  2026-09-15 and held on every cohort.
+  **TWO FLOORS, AND NEITHER IS DECORATION.** Per-customer money prints greyed
+  under `MONEY_YOUNG_MONTHS` = 3 (a three-month-old cohort's lifetime value is
+  noise, and a money column is an invitation to compare down it); a milestone
+  in «Oddiy» prints «yetarli maʼlumot yoʻq» rather than a figure under
+  `MIN_COHORTS_FOR_AVERAGE` = 3 cohorts, after +12 once printed one cohort's
+  number as the company average. The sparkline is truncated on that same floor
+  rather than drawn past it. A third, `SUMMARY_MIN_BASE` = 30, takes a thin
+  summary cell off the colour ramp.
+  **A STATED LIMIT: DUPLICATE IDENTITIES.** Bitrix24 holds the same human
+  under more than one contact row, and a second row is a second first
+  purchase — so a returning customer is occasionally counted as a new one and
+  the curve reads slightly low. Measured 2026-09-15: **39 of 11 517
+  buyers, 0.34%**. A full contact re-import was offered and declined that day;
+  the gap is recorded rather than closed. Do not present retention here as
+  exact to the person.
+  **LATENCY — THE «FREE CURVE» CLAIM DOES NOT HOLD, AND THE COST HAS A NAME.**
+  The cumulative curve was argued to be free because `first_return` REPLACES
+  the old `count(DISTINCT customer_id)` grouping rather than adding one. The
+  replacement is indeed free — but the curve also needs `first_offsets` joined
+  back onto every matrix row, and the planner cannot estimate a CTE: it takes
+  a **Nested Loop Left Join** and rescans `first_offsets` once per matrix row.
+  Measured on production 2026-09-15 with `EXPLAIN (ANALYZE, BUFFERS)`, both
+  statements back to back on the same database, four runs each: the
+  pre-change SQL (`7404c2a`) executes in **~445 ms** and the current SQL in
+  **~990 ms**. **Buffers are identical — `shared hit=24722`, `read=0`, on both**
+  — so this buys no extra I/O at all; it is pure CPU in that one node, which
+  discarded over a million join-filter rows. `MATERIALIZED` on the CTE was
+  tried and did not help. The 1587 ms figure recorded for this endpoint is an
+  END-TO-END p50 from 2026-09-11, not a server-side execution time, so it is
+  not the same quantity — the honest comparison is the +~545 ms between the
+  two statements, and the endpoint should be expected to have moved by about
+  that. If this endpoint is to be made fast the lever is still the SCAN — the
+  covering index named in the method's own comment — not the join.
 - **Kanallar** — the dashboard-wide `preset` and `filial` do **not** reach this
   screen; it resolves its own window from `from`/`to`/`today`.
 - **Yalpi marja** — discounts are split by sign in SQL; never net them or
