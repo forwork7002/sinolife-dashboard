@@ -2733,6 +2733,13 @@ p {
 .pagon--row .pagon-level { font-size: 0.6875rem; }
 .pagon--row .pagon-medal { padding: 0 0.25rem; }
 
+.pagon-note {
+  margin-top: 0.5rem;
+  text-align: center;
+  font-size: 0.6875rem;
+  color: var(--ink-muted);
+}
+
 /* ===========================================================================
  * TV BOARD — the sellers board as it is read on the floor's television
  *
@@ -3514,12 +3521,6 @@ p {
   line-height: 1;
   letter-spacing: -0.03em;
   white-space: nowrap;
-}
-
-/* The champion's own distance, in the leader's tint rather than the chase blue. */
-.chase-chip--lead {
-  background: color-mix(in oklab, var(--metal) 18%, transparent);
-  border-color: color-mix(in oklab, var(--metal) 50%, transparent);
 }
 
 /**

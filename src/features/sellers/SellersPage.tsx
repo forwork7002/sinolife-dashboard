@@ -5,14 +5,18 @@ import { useQuery } from '@tanstack/react-query'
 
 import { EmptyState, ErrorState } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
+import { Pagon } from '@/features/sellers/Pagon'
 import { RecordWall } from '@/features/sellers/RecordWall'
 import { useAutoScroll } from '@/features/sellers/useAutoScroll'
+import { useMedalRotation } from '@/features/sellers/useMedalRotation'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import {
   type SellerBoardDto,
   type SellerBoardRowDto,
-  type SellerBoardTotalsDto,
+  type SellerMedalDto,
+  type SellerMedalRowDto,
+  type SellerMedalsDto,
   type SellerTeamRowDto,
   apiGet,
 } from '@/lib/api'
@@ -69,6 +73,11 @@ import { t } from '@/lib/messages'
  * (fifteen teams, ten named, three that no longer exist) and the design
  * system caps categorical hue at eight; the team rides as a text badge.
  */
+
+/** Medal shaxsiy — ROP komandasiga berilmaydi, shuning uchun komandalar
+ *  ustuni har doim bo'sh Map bilan chizadi. */
+const EMPTY_MEDALS: ReadonlyMap<string, SellerMedalRowDto> = new Map()
+
 export function SellersPage() {
   const { apiParams: filterParams } = useDashboardFilters()
 
@@ -87,6 +96,34 @@ export function SellersPage() {
     queryFn: ({ signal }) => apiGet<SellerBoardDto>('/analytics/sellers', apiParams, signal),
     placeholderData: (previous) => previous,
   })
+
+  /*
+    PAGON O'Z SO'ROVIDA VA O'Z SOATIDA — devorning naqshi.
+
+    Uch sabab. Oynasi boshqa: medal `RECORDS_FROM` dan bugungacha, taxta esa
+    tanlangan davr — bir payloadga solish medalni filtr tugmasi bilan
+    o'chiradigan qilib qo'yardi. Sur'ati boshqa: taxta oltmish soniyada,
+    medal o'n daqiqada o'zgaradi. Va eng muhimi — BUZILMASLIK: bu so'rov
+    xato bersa yoki kechiksa, televizordagi reyting hech nima sezmaydi,
+    faqat pagon ko'rinmaydi.
+
+    `staleTime` va `refetchInterval` — ikkalasi ham, chunki `refetchInterval`
+    staleness'ni hech qachon so'ramaydi va bittasini qo'yish hech narsa
+    bermaydi (`?include=records` ning o'sha juftligi).
+  */
+  const medals = useQuery({
+    queryKey: ['sellers', 'medals'],
+    queryFn: ({ signal }) => apiGet<SellerMedalsDto>('/analytics/sellers', { include: 'medals' }, signal),
+    staleTime: 600_000,
+    refetchInterval: 600_000,
+    placeholderData: (previous) => previous,
+  })
+
+  const medalsById = useMemo(() => {
+    const map = new Map<string, SellerMedalRowDto>()
+    for (const row of medals.data?.data.sellers ?? []) map.set(row.employeeId, row)
+    return map
+  }, [medals.data])
 
   const data = board.data?.data
   const status = board.isPending ? 'loading' : board.isError ? 'error' : 'ready'
@@ -180,6 +217,7 @@ export function SellersPage() {
             parked={shown !== 'sellers'}
             fakt={fakt}
             onFakt={setFakt}
+            medals={medalsById}
           />
           <TeamsColumn
             data={data}
@@ -189,6 +227,7 @@ export function SellersPage() {
             parked={shown !== 'teams'}
             fakt={fakt}
             onFakt={setFakt}
+            medals={EMPTY_MEDALS}
           />
         </div>
 
@@ -292,6 +331,8 @@ interface ColumnProps {
   /** Which fact BOTH columns are read on — the page owns it, not the column. */
   fakt: FaktChoice
   onFakt: (choice: FaktChoice) => void
+  /** Sotuvchi id si bo'yicha pagon. Komandalar ustuni uchun bo'sh Map. */
+  medals: ReadonlyMap<string, SellerMedalRowDto>
 }
 
 /** Exported for the tests, like `TotalsBand` before it. */
@@ -303,6 +344,7 @@ export function SellersColumn({
   parked = false,
   fakt,
   onFakt,
+  medals,
 }: ColumnProps) {
   const entries = useMemo(() => data?.rows.map(fromSeller) ?? [], [data])
   return (
@@ -317,11 +359,11 @@ export function SellersColumn({
       noun="Sotuvchi"
       count={(n) => `${formatNumber(n)} ta sotuvchi`}
       entries={entries}
-      totals={data?.totals}
       status={status}
       errorMessage={errorMessage}
       onRetry={onRetry}
       empty="Tanlangan davrda hech kim buyurtma olmagan — podium keyingi buyurtmani kutmoqda."
+      medals={medals}
     />
   )
 }
@@ -334,6 +376,7 @@ export function TeamsColumn({
   parked = false,
   fakt,
   onFakt,
+  medals,
 }: ColumnProps) {
   const entries = useMemo(() => data?.teams.map(fromTeam) ?? [], [data])
   const teamless = data?.totals.teamlessSellers ?? 0
@@ -353,11 +396,11 @@ export function TeamsColumn({
           : `${formatNumber(n)} ta komanda`
       }
       entries={entries}
-      totals={data?.totals}
       status={status}
       errorMessage={errorMessage}
       onRetry={onRetry}
       empty="Bu davrda hech bir ROP komandasi buyurtma olmagan."
+      medals={medals}
     />
   )
 }
@@ -493,11 +536,11 @@ function BoardColumn({
   noun,
   count,
   entries,
-  totals,
   status,
   errorMessage,
   onRetry,
   empty,
+  medals,
 }: {
   id: string
   /**
@@ -517,11 +560,12 @@ function BoardColumn({
   noun: string
   count: (n: number) => string
   entries: readonly BoardEntry[]
-  totals: SellerBoardTotalsDto | undefined
   status: Status
   errorMessage?: string
   onRetry: () => void
   empty: string
+  /** Sotuvchi id si bo'yicha pagon. Komandalar ustuni uchun bo'sh Map. */
+  medals: ReadonlyMap<string, SellerMedalRowDto>
 }) {
   /*
     THE FACT FIRST, THEN THE ORDER — the heading's switch decides both, and
@@ -544,6 +588,21 @@ function BoardColumn({
   const winners = ranked.filter((e) => (onDelivered ? e.won : e.ordered) > 0).slice(0, 3)
   const seated = new Set(winners.map((w) => w.key))
   const rows = ranked.filter((e) => !seated.has(e.key))
+
+  /*
+    USTUNGA BITTA SOAT. Uch seatning medallari bitta navbatga yig'iladi va
+    bir vaqtda faqat bittasi gapiradi.
+  */
+  const speaking = useMedalRotation(
+    useMemo(
+      () =>
+        winners.map((entry) => ({
+          employeeId: entry.key,
+          medals: medals.get(entry.key)?.medals ?? [],
+        })),
+      [winners, medals],
+    ),
+  )
 
   return (
     <section
@@ -609,12 +668,33 @@ function BoardColumn({
             allEntries={ranked}
             noun={noun}
             onDelivered={onDelivered}
+            medals={medals}
           />
         </>
       ) : (
         <>
-          <Podium winners={winners} onDelivered={onDelivered} totalWon={totals?.won.amount ?? 0} />
-          <BoardList entries={rows} allEntries={ranked} noun={noun} onDelivered={onDelivered} />
+          <Podium
+            winners={winners}
+            onDelivered={onDelivered}
+            medals={medals}
+            speaking={speaking}
+          />
+          {/*
+            DARAJA — O'RIN EMAS, va buni aytish kerak.
+
+            O'rin — bu tanlangan davrdagi pul, ertaga boshqacha. Daraja —
+            2026-avgustdan buyon to'plangan mehnat, va u davr filtriga
+            bo'ysunmaydi. Ya'ni 8-o'rindagi odam 12-darajada bo'lishi mumkin va
+            bu xato emas. Aytilmasa, floor buni nosozlik deb o'qiydi va
+            taxtaning ishonchi shunga ketadi — shuning uchun jumla ustunda bir
+            marta, seat'larning ostida turadi.
+          */}
+          {medals.size > 0 && (
+            <p className="pagon-note">
+              Daraja — oʻrin emas: 2026-avgustdan buyon toʻplangan ball
+            </p>
+          )}
+          <BoardList entries={rows} allEntries={ranked} noun={noun} onDelivered={onDelivered} medals={medals} />
         </>
       )}
     </section>
@@ -696,13 +776,16 @@ const SEATS = [
 function Podium({
   winners,
   onDelivered,
-  totalWon,
+  medals,
+  speaking,
 }: {
   winners: readonly BoardEntry[]
   onDelivered: boolean
-  totalWon: number
+  /** Sotuvchi id si bo'yicha pagon. Komandalar ustuni uchun bo'sh Map. */
+  medals: ReadonlyMap<string, SellerMedalRowDto>
+  /** Ustunning soati shu seatga navbat berganida — ochiladigan medal. */
+  speaking: ReturnType<typeof useMedalRotation>
 }) {
-  const leader = winners[0]!
   const columnOf = (place: number) =>
     winners.length === 3 ? [2, 1, 3][place - 1]! : winners.length === 2 ? place : 1
 
@@ -714,10 +797,9 @@ function Podium({
           entry={entry}
           place={index + 1}
           column={columnOf(index + 1)}
-          leader={leader}
-          runnerUp={index === 0 ? (winners[1] ?? null) : null}
           onDelivered={onDelivered}
-          totalWon={totalWon}
+          medal={medals.get(entry.key) ?? null}
+          speaking={speaking?.employeeId === entry.key ? speaking.medal : null}
         />
       ))}
     </div>
@@ -772,28 +854,22 @@ function PodiumSeat({
   entry,
   place,
   column,
-  leader,
-  runnerUp,
   onDelivered,
-  totalWon,
+  medal,
+  speaking,
 }: {
   entry: BoardEntry
   place: number
   column: number
-  leader: BoardEntry
-  /** The second seat, handed to the first so the champion has a distance too. */
-  runnerUp: BoardEntry | null
   onDelivered: boolean
-  totalWon: number
+  medal: SellerMedalRowDto | null
+  /** Ustunning soati shu seatga navbat berganida — ochiladigan medal. */
+  speaking: SellerMedalDto | null
 }) {
   const seat = SEATS[place - 1]!
   const champion = place === 1
   const figureOf = (e: BoardEntry) => (onDelivered ? e.won : e.ordered)
   const figure = figureOf(entry)
-  const leaderFigure = figureOf(leader)
-  const gap = leaderFigure - figure
-  const closeness = leaderFigure > 0 ? (figure / leaderFigure) * 100 : 0
-  const lead = runnerUp ? figure - figureOf(runnerUp) : null
 
   return (
     <div className={`${seat.col} tv-seat tv-seat--${place} tv-seat--at-${column}`}>
@@ -875,84 +951,27 @@ function PodiumSeat({
           </p>
         </div>
 
-        {champion ? (
+        {/*
+          PAGON — MIJOZNING O'Z SO'ROVI, 2026-09-15.
+
+          Bu yerda ilgari bitta fakt uch marta chizilgan edi: «Liderga
+          +100 000» chipi, progress chizig'i va «97%». Uchalasi ham «liderdan
+          qancha orqada» degan bitta savolga javob berardi, va yonidagi
+          «0 / 2 buyurtma» bilan birga o'qilganda ziddiyatli ko'rinardi —
+          mijozning o'z ta'rifi «noaniq keraksiz xolat».
+
+          O'RNIGA TO'PLANGAN NARSA. Masofa — bugungi holat, ertaga boshqacha;
+          medal va daraja esa avgustdan buyon qilingan ishning o'zi, va
+          aynan shu podiumdan tashqaridagi 123 sotuvchiga ham tegadigan
+          yagona narsa.
+
+          MEDALSIZDA FAQAT DARAJA CHIZIG'I qoladi va karta qisqaradi — bu
+          ham mijozning qarori. Jadval qatoridagi `Chase` esa o'z joyida:
+          u boshqa komponent va unga e'tiroz bo'lmagan.
+        */}
+        {medal !== null && (
           <div className="relative mt-3 w-full">
-            {/*
-              THE CHAMPION'S DISTANCE IS THE ONE BEHIND THEM. A leader with
-              nothing to read stops being motivated exactly at the top, and
-              the runners already read their distance to this seat — so the
-              seat states the same fact from its own side: the margin over
-              second place, in soʻm, or a level pair when there is none.
-              Alone on the podium it prints its share of the whole instead.
-            */}
-            {lead !== null ? (
-              <span className="chase-chip chase-chip--lead inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold">
-                <span aria-hidden="true">{lead === 0 ? '🔥' : '🚀'}</span>
-                {lead === 0 ? (
-                  '2-oʻrin bilan teng'
-                ) : (
-                  /* Two halves that may part between them and never inside
-                     either: a team's margin runs to thirteen digits. */
-                  <>
-                    <span className="whitespace-nowrap">2-oʻrindan</span>
-                    <span className="tabular whitespace-nowrap">+{formatUzs(lead)} oldinda</span>
-                  </>
-                )}
-              </span>
-            ) : /*
-                The share is FAKT 2's own — `sharePercent` divides by
-                `totals.won` — so it is not printed under a FAKT 1 figure,
-                where it would be a percentage of a number nowhere on the seat.
-              */
-            onDelivered && entry.sharePercent !== null && totalWon > 0 ? (
-              <span className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-                Jami yutuqning{' '}
-                <span className="tabular font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                  {formatPercent(entry.sharePercent, 1)}
-                </span>
-              </span>
-            ) : null}
-          </div>
-        ) : (
-          <div className="relative mt-3 w-full">
-            {/* The chase — the one number a runner-up can act on — in the
-                pill the board already uses for it; `--seq-550`, no new hue. */}
-            <span className="chase-chip inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold">
-              <span aria-hidden="true">{gap === 0 ? '🔥' : '🎯'}</span>
-              {gap === 0 ? (
-                'Lider bilan teng'
-              ) : (
-                <>
-                  Liderga <span className="tabular whitespace-nowrap">+{formatUzs(gap)}</span>
-                </>
-              )}
-            </span>
-            {/* The bar states its own reading — «N% of the leader» — so the
-                proportion never has to be estimated from a length. */}
-            <div className="mt-2 flex items-center gap-2">
-              <div
-                className="h-1.5 flex-1 overflow-hidden rounded-full"
-                style={{ background: 'var(--track)' }}
-                aria-hidden="true"
-              >
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${Math.max(2, Math.min(100, closeness))}%`,
-                    background:
-                      'linear-gradient(90deg, color-mix(in oklab, var(--seq-550) 45%, var(--surface-raised)), var(--seq-550))',
-                    transition: 'width var(--duration-enter) var(--ease-out)',
-                  }}
-                />
-              </div>
-              <span
-                className="tabular shrink-0 text-[10.5px] font-medium"
-                style={{ color: 'var(--ink-muted)' }}
-                aria-label="Liderga nisbatan"
-              >
-                {formatPercent(closeness, 0)}
-              </span>
-            </div>
+            <Pagon row={medal} variant="seat" speaking={speaking} />
           </div>
         )}
 
@@ -1007,11 +1026,14 @@ function BoardList({
   allEntries,
   noun,
   onDelivered,
+  medals,
 }: {
   entries: readonly BoardEntry[]
   allEntries: readonly BoardEntry[]
   noun: string
   onDelivered: boolean
+  /** Sotuvchi id si bo'yicha pagon. Komandalar ustuni uchun bo'sh Map. */
+  medals: ReadonlyMap<string, SellerMedalRowDto>
 }) {
   const listRef = useAutoScroll<HTMLDivElement>(entries.length > 0)
   if (entries.length === 0) return null
@@ -1101,6 +1123,9 @@ function BoardList({
                     />
                   </div>
                   <Chase entry={entry} ahead={ahead} figureOf={figureOf} />
+                  {medals.get(entry.key) != null && (
+                    <Pagon row={medals.get(entry.key)!} variant="row" />
+                  )}
                 </td>
                 <td className="tabular text-right">
                   <span
