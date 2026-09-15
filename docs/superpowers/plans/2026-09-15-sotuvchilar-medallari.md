@@ -2087,6 +2087,13 @@ describe('medalReason', () => {
     expect(text).toContain('IV')
   })
 
+  it('🚀 ning orders maydoni o‘rin deb chiziladi, buyurtma deb emas', () => {
+    // Domen qatlami yangi yulduzning o‘rnini `orders` da uzatadi.
+    const text = medalReason(medal({ code: 'rookie', at: '2026-10-01', orders: 7 }))
+    expect(text).toContain('7-oʻrin')
+    expect(text).not.toContain('7 buyurtma')
+  })
+
   it('sababsiz medal bo‘sh satr emas', () => {
     expect(medalReason(medal({ code: 'streak-fire', at: '2026-11-01' }))).not.toBe('')
   })
@@ -2345,7 +2352,17 @@ export function medalReason(medal: SellerMedalDto): string {
   if (when !== null) parts.push(when)
   if (medal.percent !== null) parts.push(formatPercent(medal.percent))
   if (medal.amount !== null) parts.push(`${formatFullUzs(medal.amount.amount)} soʻm`)
-  if (medal.orders !== null) parts.push(`${formatNumber(medal.orders)} buyurtma`)
+  /*
+    🚀 NING `orders` MAYDONI BUYURTMA EMAS, O'RIN. Domen qatlami yangi
+    yulduzning birinchi oyidagi o'rnini shu maydonda uzatadi (boshqa
+    maydon qo'shmaslik uchun), shuning uchun uni «7 buyurtma» deb chizish
+    yolg'on bo'lardi — medal aytayotgan narsa «7-oʻrin».
+  */
+  if (medal.code === 'rookie' && medal.orders !== null) {
+    parts.push(`${formatNumber(medal.orders)}-oʻrin`)
+  } else if (medal.orders !== null) {
+    parts.push(`${formatNumber(medal.orders)} buyurtma`)
+  }
   if (medal.count > 1) parts.push(`${formatNumber(medal.count)} marta`)
 
   return parts.length > 0 ? parts.join(' · ') : MEDALS[medal.code].name
