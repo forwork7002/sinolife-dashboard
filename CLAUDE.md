@@ -552,7 +552,7 @@ Per-screen traps worth knowing before you touch one:
   it once per matrix row — `loops=13460`, **1 165 954 rows discarded by the
   join filter, 566 ms of self time**. `first_offsets` is emitted as its own
   `is_total = 2` **arm** instead, merged in the fold by
-  `(cohort, months_since)`: ~91 extra rows on the wire, no join at all.
+  `(cohort, months_since)`: ~87 extra rows on the wire, no join at all.
   Measured on production 2026-09-15, `EXPLAIN (ANALYZE, BUFFERS)`, three
   statements interleaved on one connection, twelve runs each — medians
   **pre-change (`7404c2a`) 414–415 ms · with the join 900–959 ms · with the

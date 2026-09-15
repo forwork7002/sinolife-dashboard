@@ -63,9 +63,19 @@ describe('the return answer', () => {
     render(<ReturnAnswer data={{ ...data, rows: [BIG, SMALL, MEDIUM] }} />)
     const expected = columnAverage([BIG, SMALL, MEDIUM], 1, 'cumulative').percent!
     expect(expected).toBeCloseTo(25, 1)
-    // Pinned to the rendered figure, not just "25" — which would also match
-    // "125" or a stray cohort count sharing the digits.
-    expect(screen.getByLabelText(/\+1 oy/i).textContent).toMatch(/25[.,]0/)
+    /*
+      Pinned to the FIGURE element, not to the milestone's whole text — «25»
+      alone would also match a «125» or a stray cohort count sharing the
+      digits, and an exact match on the figure cannot.
+
+      «25%», not «25,0%»: the milestone prints through the grid's own
+      `sharePercentText` since 2026-09-15, because the summary cell one
+      toggle-press away prints «25» and two texts for one number is the one
+      thing this screen may not do. The exact fraction is still spelled out in
+      the grid's hover panel.
+    */
+    const figure = screen.getByLabelText(/\+1 oy/i).querySelector('.figure')
+    expect(figure?.textContent).toBe('25%')
   })
 
   it('refuses to print a milestone averaged over fewer than three cohorts', () => {

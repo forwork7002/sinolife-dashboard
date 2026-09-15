@@ -169,7 +169,16 @@ describe('the cohort statement', () => {
       revenue-bearing deals, `count(DISTINCT customer_id)` counts people, and
       a cell that blurred them would report a repeat buyer as two customers.
     */
-    const rowArm = code().slice(code().indexOf('0 AS is_total'))
+    /*
+      `arms()[0]`, NOT a slice to the end of the statement. Slicing from
+      `0 AS is_total` was the matrix arm when the statement had two arms and
+      the totals arm carried neither aggregate; with a third arm it spans the
+      WHOLE statement, so either assertion would now pass on a match made in
+      any arm at all — including one that never reaches a matrix cell. The
+      file header says exactly this, and this line was the one place left
+      doing it.
+    */
+    const rowArm = arms()[0]!
     expect(rowArm).toMatch(/count\(\*\)::bigint AS orders/i)
     expect(rowArm).toMatch(/count\(DISTINCT p\.customer_id\)::bigint AS customers/i)
   })

@@ -22,15 +22,29 @@ import { formatPercent, formatUzs } from '@/lib/format'
  * the «Oddiy» / «Batafsil» toggle must never allow, and the reason it costs no
  * request.
  *
- * IT STATES ITS CLOCK, ONCE, AT THE BOTTOM. This screen prints two honest
- * customer totals that are not the same number: «har 100 ta yangi mijozdan…»
- * stands on every cohort there has ever been, while the bars above it are the
- * eighteen months the page asked for. Unlabelled, the smaller of the two reads
- * as broken — and the manager is the reader most likely to meet them side by
- * side and least equipped to reconcile them. The word that settles it is the
- * CLOCK: a customer joins the month their order was DELIVERED, which is the
- * same basis the matrix, the tiles and Logistika's Успешно column all use, and
- * is 20-25 days later than the day the order was taken.
+ * IT STATES ITS WINDOW AND ITS CLOCK, ONCE, AT THE BOTTOM. This screen prints
+ * two honest customer totals that are not the same number: «har 100 ta yangi
+ * mijozdan…» stands on every cohort there has ever been, while the bars above
+ * it are the months the page asked for. Unlabelled, the smaller of the two
+ * reads as broken — and the manager is the reader most likely to meet them
+ * side by side and least equipped to reconcile them.
+ *
+ * TWO WORDS SETTLE IT AND THIS BLOCK USED TO PRINT ONLY ONE. The comment here
+ * claimed the bottom line closed the gap; the rendered paragraph explained the
+ * CLOCK — a customer joins the month their order was DELIVERED, the same basis
+ * the matrix, the tiles and Logistika's Успешно column all use, 20-25 days
+ * later than the day the order was taken — and said nothing about the WINDOW,
+ * which is the half that actually differs between the two figures. «Batafsil»
+ * was given both in Task 9 and the default mode was given neither. Today the
+ * gap is empty (16 months of history against an 18-month bound, so the bars
+ * ARE the whole history) and it opens the month the portal's history passes
+ * the bound, around 2027-01 — which is precisely when nobody will be reading
+ * this file.
+ *
+ * `historyMonths` therefore comes from the page, interpolated: the bound is
+ * `COHORT_HISTORY_MONTHS` in `CohortPage`, and the one thing this sentence may
+ * not do is carry a second copy of it. A hand-mirrored «18» is the failure
+ * that constant's own comment was written about.
  */
 
 /**
@@ -56,6 +70,14 @@ export interface SimpleViewData {
   readonly currentMonth: string
   /** Whole-history revenue per customer. Major units, for display only. */
   readonly revenuePerCustomerAll: { readonly amount: number }
+  /**
+   * How many months of cohorts the page asked for — `COHORT_HISTORY_MONTHS`.
+   *
+   * Passed in rather than imported: `CohortPage` imports this file, so reading
+   * the constant back out of it would be a cycle, and re-declaring it here
+   * would be the mirrored literal its own comment forbids.
+   */
+  readonly historyMonths: number
 }
 
 export function SimpleView({ data }: { readonly data: SimpleViewData }) {
@@ -83,16 +105,21 @@ export function SimpleView({ data }: { readonly data: SimpleViewData }) {
       </div>
 
       {/*
-        THE CLOCK, IN WORDS, ON THE SCREEN — not only in a tooltip.
+        THE WINDOW AND THE CLOCK, IN WORDS, ON THE SCREEN — not only in a
+        tooltip, and not only in a comment.
 
         A tooltip is read by whoever suspects there is something to read. The
         two customer totals above are read by everybody, and their difference
         is the kind of thing that gets reported as a defect before anybody
-        hovers anything.
+        hovers anything. The window comes FIRST because it is the half that
+        makes them different numbers; the clock is what makes both of them
+        later than the day the order was taken.
       */}
       <p className="px-1 text-[11px] leading-snug" style={{ color: 'var(--ink-muted)' }}>
-        Barcha raqamlar yetkazilgan sana boʻyicha hisoblanadi — mijoz buyurtmasi yetkazilgan
-        oyda hisobga olinadi, buyurtma qabul qilingan kuni emas.
+        Ustunlar — koʻpi bilan soʻnggi {data.historyMonths} oy; «har 100 ta yangi mijozdan…»
+        va quyidagi pul raqamlari esa butun tarix boʻyicha. Barcha raqamlar yetkazilgan sana
+        boʻyicha hisoblanadi — mijoz buyurtmasi yetkazilgan oyda hisobga olinadi, buyurtma
+        qabul qilingan kuni emas.
       </p>
     </div>
   )

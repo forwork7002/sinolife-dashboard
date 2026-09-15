@@ -212,7 +212,55 @@ describe('the summary row refuses to colour a sample of one', () => {
     cohort of ONE customer. Right arithmetic, and on the ramp it reads as a
     collapse in retention.
   */
+  /*
+    THREE SMALL COHORTS REACH +2, NOT ONE.
+
+    The summary row grew a SECOND floor on 2026-09-15 —
+    `MIN_COHORTS_FOR_AVERAGE`, the one «Oddiy» always had — and this fixture
+    used to have two cohorts, so under it every column here would have come
+    off the ramp and the case could no longer tell the two floors apart. The
+    +2 column is therefore reached by three cohorts totalling 25 customers:
+    the cohort floor is satisfied and only HEADCOUNT can explain the missing
+    paint, which is what this case is about. The cohort floor is isolated the
+    other way round in `cohortSimpleMode.test.tsx`, where the grid and the
+    manager's milestone have to refuse the same column together.
+  */
+  const money = (amount: number) => ({
+    revenueTotal: '10 ming',
+    revenueTotalExact: '10,000 soʻm',
+    revenueTotalAmount: amount,
+    revenuePerCustomer: '10 ming',
+    revenuePerCustomerExact: '10,000 soʻm',
+  })
+
   const THIN: CohortMatrixRow[] = [
+    {
+      // Fourteen customers, old enough to have reached +2, none of whom came back.
+      cohort: '2026-04-01',
+      size: 14,
+      returned: 0,
+      retention: [100, 0, 0],
+      customers: [14, 0, 0],
+      cumulative: [0, 0, 0],
+      cumulativeCustomers: [0, 0, 0],
+      revenue: [{ amount: 140_000 }, { amount: 0 }, { amount: 0 }],
+      orders: [14, 0, 0],
+      ...money(140_000),
+      ageMonths: 4,
+    },
+    {
+      cohort: '2026-05-01',
+      size: 10,
+      returned: 0,
+      retention: [100, 0, 0],
+      customers: [10, 0, 0],
+      cumulative: [0, 0, 0],
+      cumulativeCustomers: [0, 0, 0],
+      revenue: [{ amount: 100_000 }, { amount: 0 }, { amount: 0 }],
+      orders: [10, 0, 0],
+      ...money(100_000),
+      ageMonths: 3,
+    },
     {
       // One customer, old enough to have reached +2, who never came back.
       cohort: '2026-06-01',
@@ -223,13 +271,9 @@ describe('the summary row refuses to colour a sample of one', () => {
       cumulative: [0, 0, 0],
       cumulativeCustomers: [0, 0, 0],
       revenue: [{ amount: 10_000 }, { amount: 0 }, { amount: 0 }],
-    orders: [1, 0, 0],
-    revenueTotal: '10 ming',
-    revenueTotalExact: '10,000 soʻm',
-    revenueTotalAmount: 10_000,
-    revenuePerCustomer: '10 ming',
-    revenuePerCustomerExact: '10,000 soʻm',
-    ageMonths: 2,
+      orders: [1, 0, 0],
+      ...money(10_000),
+      ageMonths: 2,
     },
     {
       // A real cohort, but it has only lived one month.
@@ -257,15 +301,29 @@ describe('the summary row refuses to colour a sample of one', () => {
     const tiles = (label: RegExp) =>
       (screen.getByLabelText(label).querySelector('[data-heat]') as HTMLElement).style.background
 
-    // +1 stands on 401 customers and is painted; +2 stands on the one-person
-    // cohort alone and is not.
+    // +1 stands on four cohorts and 425 customers and is painted; +2 stands on
+    // three cohorts — enough of them — totalling 25 people, and is not. Only
+    // the headcount floor can account for the difference.
     expect(tiles(/Oʻrtacha, \+1 oy/)).not.toBe('var(--surface-sunken)')
     expect(tiles(/Oʻrtacha, \+2 oy/)).toBe('var(--surface-sunken)')
 
     // The number itself is never withheld — it is true, it is just thin.
     expect(screen.getByLabelText(/Oʻrtacha, \+2 oy/).getAttribute('aria-label')).toContain(
-      '1 mijozdan 0 tasi',
+      '25 mijozdan 0 tasi',
     )
+  })
+
+  it('says which floor took the colour away, rather than «namuna kichik» for both', () => {
+    /*
+      «Thirty people» and «three cohorts» are different complaints about a
+      cell, and the hover panel is the only place either is stated. A reader
+      told the wrong one goes looking for the wrong fix — more history, when
+      what the column needs is more customers.
+    */
+    render(<CohortHeatmap rows={THIN} />)
+
+    fireEvent.mouseEnter(screen.getByLabelText(/Oʻrtacha, \+2 oy/))
+    expect(screen.getByText(/atigi 25 ta mijoz yetib kelgan/i)).toBeDefined()
   })
 })
 
@@ -461,6 +519,15 @@ describe('the money columns, and the comparison they invite', () => {
     expect(perCustomer.getAttribute('aria-label')).toMatch(/solishtirib boʻlmaydi/)
     // Greyed, never withheld: the figure is true, it is simply not comparable.
     expect(perCustomer.textContent).toBe('200 ming')
+    /*
+      AND MARKED BY SOMETHING THAT IS NOT A COLOUR. Muted ink was the whole
+      signal here — the one rule on this screen carried by colour alone, where
+      the unmeasured month is hatched and a thin summary cell comes off the
+      ramp onto a flat fill. `data-young` and the label above serve the
+      machine and the screen reader; a reader in forced colours, on a
+      projector, or with a colour vision deficiency has this.
+    */
+    expect(perCustomer.style.textDecoration).toBe('underline dotted')
   })
 
   it('does not grey a cohort old enough to compare', () => {
@@ -469,6 +536,9 @@ describe('the money columns, and the comparison they invite', () => {
     const perCustomer = cell(/1 mijozga/i)
     expect(perCustomer.getAttribute('data-young')).toBe('false')
     expect(perCustomer.getAttribute('aria-label')).not.toMatch(/solishtirib boʻlmaydi/)
+    // The negative control for the marker above: an ordinary figure wears no
+    // underline, or the mark would say nothing about the row it is on.
+    expect(perCustomer.style.textDecoration).toBe('')
   })
 
   it('states the cohort’s age in the money hover, at every age', () => {
@@ -564,6 +634,14 @@ describe('the money columns, and the comparison they invite', () => {
     // td[0] «Yangi mijoz», td[1] «Qaytgan», then the two money columns.
     expect(cells[2]?.textContent).toBe('—')
     expect(cells[3]?.textContent).toBe('—')
+
+    /*
+      AND IT SAYS WHY OUT LOUD, not only on hover. `title` is the reason a
+      mouse gets; a screen reader heard «—» and stopped, which reads as a
+      missing figure rather than as a refusal to fold one. Its neighbour has
+      carried an accessible name since it started summing.
+    */
+    expect(cells[3]?.getAttribute('aria-label')).toMatch(/jamlanmaydi/)
   })
 })
 

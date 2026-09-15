@@ -134,6 +134,28 @@ export function CohortPage() {
     refetchInterval: 5 * 60_000,
   })
 
+  /**
+   * Which reading of this screen is on — the manager's or the analyst's.
+   *
+   * URL-backed (`useCohortMode`), unlike `view` and `months` below, and the
+   * difference is what each one is FOR: those two decide how one card draws an
+   * answer, this decides which answer the page opens on, and a manager is sent
+   * a link to the latter. It is written with `replaceState`, so it costs no
+   * navigation.
+   *
+   * BOTH MODES READ THE SAME `useQuery(['cohorts'])` RESULT — that key is
+   * above this hook and does not mention the mode, so switching readings
+   * issues no cohort request, shows no skeleton and cannot produce a second
+   * answer. That is not a convenience: a second endpoint for the manager's
+   * view would have doubled the most expensive read in this product to print
+   * numbers that were already in the first response — and the two views would
+   * then have been free to disagree about the same customers across a sync.
+   *
+   * It is read BEFORE the concentration query below, which is the one query
+   * on this page the mode does gate. See that query's own comment.
+   */
+  const { mode, setMode } = useCohortMode()
+
   const { apiParams } = useDashboardFilters()
 
   /*
@@ -145,10 +167,34 @@ export function CohortPage() {
    * filters server-side, insights-style, but the key stays honest if that
    * ever changes.
    */
+  /*
+    AND IT IS ONLY ASKED FOR IN «BATAFSIL», WHICH IS NOT THE DEFAULT.
+
+    Every consumer of this response — the four tiles and `RepeatShareCard` —
+    is inside the `detail` branch. When «Batafsil» was the whole page that
+    made this a rendered query; making «Oddiy» the default turned it into a
+    DISCARDED one on every first load of the slowest screen in the product,
+    for the majority of visits, which never press the toggle at all.
+
+    THE TRADE, STATED: the first press of «Batafsil» now waits for this
+    request instead of finding it already in hand. That cost is paid once —
+    TanStack caches the result under `['concentration', apiParams]`, so
+    toggling back and forth afterwards costs nothing and the band redraws from
+    cache — and it is paid by the reader who asked for the analyst's view,
+    which is the reader who is prepared to wait for it. A prefetch on every
+    load spends a real query on every manager who never asks, and the band
+    already degrades to honest skeletons while it loads (`concStatus`), so
+    what the waiting reader sees is the state the page was built to show.
+
+    The gate is on the MODE and not on the query key: a key mentioning the
+    mode would be a second cache entry for one answer, which is the mistake
+    the cohort read's own comment is about.
+  */
   const concentration = useQuery({
     queryKey: ['concentration', apiParams],
     queryFn: ({ signal }) =>
       apiGet<ConcentrationDto>('/insights/concentration', apiParams, signal),
+    enabled: mode === 'detail',
   })
 
   /**
@@ -183,25 +229,6 @@ export function CohortPage() {
 
   const data = query.data?.data
   const conc = concentration.data?.data
-
-  /**
-   * Which reading of this screen is on — the manager's or the analyst's.
-   *
-   * URL-backed (`useCohortMode`), unlike `view` and `months` above, and the
-   * difference is what each one is FOR: those two decide how one card draws an
-   * answer, this decides which answer the page opens on, and a manager is sent
-   * a link to the latter. It is written with `replaceState`, so it costs no
-   * navigation.
-   *
-   * BOTH MODES READ THE SAME `useQuery(['cohorts'])` RESULT. The hook is
-   * below the queries and changes neither key, so switching issues no request,
-   * shows no skeleton and cannot produce a second answer. That is not a
-   * convenience: a second endpoint for the manager's view would have doubled
-   * the most expensive read in this product to print numbers that were already
-   * in the first response — and the two views would then have been free to
-   * disagree about the same customers across a sync.
-   */
-  const { mode, setMode } = useCohortMode()
 
   /*
     ONE MAPPING, ABOVE THE MODE SWITCH.
@@ -373,6 +400,10 @@ export function CohortPage() {
                    see `CohortSummaryDto.currentMonth`. */
                 currentMonth: data.currentMonth,
                 revenuePerCustomerAll: data.revenuePerCustomerAll,
+                /* The bound the query above asked for, so the view can state
+                   the window it draws without carrying a second copy of the
+                   number. */
+                historyMonths: COHORT_HISTORY_MONTHS,
               }}
             />
           )}

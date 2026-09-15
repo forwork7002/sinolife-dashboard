@@ -216,6 +216,27 @@ const W_MONTH_MAX = 72
 const SUMMARY_MIN_BASE = 30
 
 /**
+ * And below this many COHORTS it is printed but not painted either.
+ *
+ * TWO FLOORS, ONE HAZARD, AND THE SECOND ONE USED TO EXIST IN ONLY ONE MODE.
+ * `SUMMARY_MIN_BASE` above asks how many PEOPLE reached a column;
+ * this asks how many COHORTS were averaged to get there, and a column can
+ * clear one floor while failing the other — a single cohort of 400 customers
+ * is 400 people and a sample of ONE month, which is exactly the shape the +12
+ * column takes as the oldest rows fall out of the window.
+ *
+ * It lived in `ReturnAnswer.tsx`, where «Oddiy» refuses the milestone
+ * outright, while the grid beside it painted the same evidence on the ramp:
+ * «yetarli maʼlumot yoʻq» and a coloured figure, one press of the toggle
+ * apart, about one number. Exported and read by both, so the two modes refuse
+ * on the SAME evidence — which is the invariant this screen is built on
+ * (spec §8.2), not a nicety.
+ *
+ * Three, because two cohorts is a pair and a pair has no middle.
+ */
+export const MIN_COHORTS_FOR_AVERAGE = 3
+
+/**
  * Under this many months a cohort's money-to-date is greyed, and says why.
  *
  * A column of per-customer figures is an invitation to rank the rows against
@@ -297,9 +318,12 @@ function bandsFor(view: CohortView): readonly { label: string; background: strin
 const GRID_LINE = 'inset -1px 0 0 var(--surface-raised), inset 0 -1px 0 var(--surface-raised)'
 
 /*
-  The crosshair. Hovering lifts a row AND a column out of eighteen of each,
-  which is most of what makes a wide matrix answerable — «2025-avg × +3» is a
-  cell nobody can find by counting. The row half is also painted on the pinned
+  The crosshair. Hovering lifts a row AND a column out of the dozens of each
+  the grid draws, which is most of what makes a wide matrix answerable —
+  «2025-avg × +3» is a cell nobody can find by counting. (It said «out of
+  eighteen of each»; the query asks for eighteen months but the columns have
+  defaulted to twelve since the window landed, and the row count is whatever
+  the payload holds. The point does not depend on either number.) The row half is also painted on the pinned
   cells, which the scrolling tiles pass underneath; this is the half that runs
   across the grid itself.
 */
@@ -826,6 +850,13 @@ export function CohortHeatmap({
                 edge
                 onMouseEnter={enter(-1, -1)}
                 label={MONEY_NOT_SUMMED}
+                /* THE SAME SENTENCE, OUT LOUD. `label` is a `title` — hover
+                   text, and hovering is the one thing a screen-reader user is
+                   not doing. Without this the cell announced «—» and stopped,
+                   which reads as a missing figure rather than as a refusal;
+                   its neighbour «Kogorta tushumi» has said why since it
+                   started summing. */
+                ariaLabel={MONEY_NOT_SUMMED}
               >
                 {NO_VALUE}
               </PinnedCell>
@@ -840,6 +871,7 @@ export function CohortHeatmap({
                     value={avg?.percent ?? null}
                     customers={avg?.returned ?? null}
                     size={avg?.base ?? 0}
+                    cohorts={avg?.cohorts ?? 0}
                     cohort={null}
                     offset={i}
                     litRow={hot?.row === -1}
@@ -934,8 +966,8 @@ function HeadCell({
  * One of the pinned columns of a body or summary row — see `PINNED`.
  *
  * `lit` is the row half of the crosshair: hovering anywhere in a row lifts its
- * own label out of eighteen identical ones, which is most of what makes a wide
- * matrix followable. The pinned cells carry an opaque background by necessity —
+ * own label out of a column of identical ones, which is most of what makes a
+ * wide matrix followable. The pinned cells carry an opaque background by necessity —
  * the scrolling cells pass underneath them — so the highlight has to be painted
  * here rather than on the `<tr>`.
  */
@@ -991,6 +1023,24 @@ function PinnedCell({
       : summary || header
         ? 'var(--ink-primary)'
         : 'var(--ink-secondary)',
+    /*
+      AND A MARKER THAT IS NOT A COLOUR.
+
+      Muted ink alone made this the one rule on this screen carried by colour
+      and nothing else — every other distinction here has a second, non-colour
+      carrier: the unmeasured month is HATCHED rather than pale, a thin summary
+      cell comes off the ramp onto the flat `--surface-sunken`, the legend
+      prints the bands as numbers. `data-young` and the cell's `aria-label`
+      already cover the machine and the screen reader; this covers the reader
+      who is looking at it, in forced-colours mode, on a projector, or with a
+      colour vision deficiency that flattens muted grey against body ink.
+
+      A dotted underline rather than a glyph: it marks the figure without
+      joining it, so «26.2 ming†» cannot be misread as part of the money, and
+      text decoration survives `forced-colors` where a tint does not.
+    */
+    textDecoration: young ? 'underline dotted' : undefined,
+    textUnderlineOffset: young ? '3px' : undefined,
     borderTop: summary ? '1px solid var(--border-strong)' : undefined,
     boxShadow: edge ? PINNED_EDGE : undefined,
   } as const
@@ -1029,6 +1079,7 @@ function HeatCell({
   value,
   customers,
   size,
+  cohorts = 0,
   cohort,
   offset,
   summary = false,
@@ -1040,6 +1091,13 @@ function HeatCell({
   readonly value: number | null
   readonly customers: number | null
   readonly size: number
+  /**
+   * How many cohorts were averaged into this cell — summary cells only.
+   *
+   * A body cell is one cohort by definition and is never taken off the ramp
+   * for it, so the prop is only read under `summary`.
+   */
+  readonly cohorts?: number
   readonly cohort: string | null
   readonly offset: number
   readonly summary?: boolean
@@ -1105,12 +1163,23 @@ function HeatCell({
     on Logistika, and for the same argument — below it one person moves the
     figure by more than the gap between two bands.
   */
-  const thin = summary && size < SUMMARY_MIN_BASE
+  /*
+    AND THE SAME CELL COMES OFF THE RAMP WHEN THE SAMPLE IS ONE MONTH WIDE.
+
+    Headcount was the only floor here until 2026-09-15, and «Oddiy» beside it
+    had the other one: a column averaged over a single 400-person cohort
+    cleared thirty customers, so the grid painted it, while the milestone at
+    that offset printed «yetarli maʼlumot yoʻq» from
+    `MIN_COHORTS_FOR_AVERAGE`. One number, two modes, opposite claims, one
+    press of the toggle apart. Both floors are read here now and both are read
+    by the milestone, so whatever one mode refuses the other refuses too.
+  */
+  const thin = summary && (size < SUMMARY_MIN_BASE || cohorts < MIN_COHORTS_FOR_AVERAGE)
 
   const base = (view === 'monthly' && offset === 0) || thin
 
   const band = bandsFor(view)[bandOf(view, value)] ?? bandsFor(view)[0]
-  const shown = value === 0 ? '0' : value < 1 ? '<1' : String(Math.round(value))
+  const shown = sharePercentText(value)
 
   return (
     <td
@@ -1255,6 +1324,33 @@ export function columnAverage(
   return { percent: base > 0 ? (returned / base) * 100 : null, returned, base, cohorts }
 }
 
+/**
+ * How a share is PRINTED on this screen — one function, both modes.
+ *
+ * `columnAverage` already guarantees the two readings compute the same
+ * number; this guarantees they SPELL it the same. They did not: the grid
+ * printed «28» and «Oddiy»'s milestone printed «28,1%» from `formatPercent`,
+ * one press of the toggle apart, on a screen whose whole premise is that the
+ * two modes cannot disagree. A reader has no way to know that two texts are
+ * one number.
+ *
+ * WHOLE PERCENT IS THE ONE THEY CAN BOTH KEEP. The grid's cells are 44px
+ * wide and there are 250 of them — a decimal there is a precision nobody
+ * scans and a column that no longer fits — so the sentence rounds to the
+ * grid rather than the grid stretching to the sentence. The decimal is not
+ * lost: the cell's own accessible name and the hover panel still spell the
+ * whole fraction out through `formatPercent`, which is where a figure gets
+ * reconciled rather than scanned.
+ *
+ * `<1` rather than `0` under one percent, because «nobody came back» and
+ * «almost nobody came back» are different findings and rounding merges them.
+ * The unit is said once in the column header, so this returns the digits
+ * alone and a caller outside the grid appends its own «%».
+ */
+export function sharePercentText(value: number): string {
+  return value === 0 ? '0' : value < 1 ? '<1' : String(Math.round(value))
+}
+
 function panelFor(
   hot: Hot,
   rows: readonly CohortMatrixRow[],
@@ -1279,8 +1375,20 @@ function panelFor(
           value: formatPercent(totalSize > 0 ? (totalReturned / totalSize) * 100 : null),
         },
       ],
+      /*
+        IT NAMES THE RULE, NOT THE COUNT.
+
+        This read «Chapdagi ikki ustun — jami» and was written when the pinned
+        block was cohort / size / returned. There are four figure columns
+        there now and «Kogorta tushumi» visibly adds up, so the sentence was
+        counting to two over a block of four. A sentence that has to be
+        re-counted every time a column is added will eventually be left
+        behind by one — as this one was — so it states what the left columns
+        DO and what the exception looks like on screen, which stays true
+        whatever the next column is.
+      */
       footer:
-        'Chapdagi ikki ustun — jami. Oylar boʻyicha qator — mijozlar soniga tortilgan oʻrtacha ulush.',
+        'Chapdagi ustunlar — shu kogortalar boʻyicha jami; jamlab boʻlmaydigan ustun «—» koʻrsatadi. Oylar boʻyicha qator — mijozlar soniga tortilgan oʻrtacha ulush.',
     }
   }
 
@@ -1300,11 +1408,16 @@ function panelFor(
         { label: 'Nechta kogortadan', value: `${formatNumber(avg.cohorts)} ta` },
       ],
       /* A thin base is the thing to say FIRST — see the `thin` branch of
-         HeatCell for the production row that made this necessary. */
+         HeatCell for the production row that made this necessary. Two floors,
+         and the panel names the one that bit: «thirty people» and «three
+         cohorts» are different complaints about a cell, and a reader told the
+         wrong one goes looking for the wrong fix. */
       footer:
         avg.base < SUMMARY_MIN_BASE
           ? `Namuna kichik — bu ustunga atigi ${formatNumber(avg.base)} ta mijoz yetib kelgan, shuning uchun katak rangsiz. Undan tendensiya oʻqimang.`
-          : 'Faqat shu oyga yetib ulgurgan kogortalar hisobga olingan.',
+          : avg.cohorts < MIN_COHORTS_FOR_AVERAGE
+            ? `Namuna tor — bu ustunga atigi ${formatNumber(avg.cohorts)} ta kogorta yetib kelgan, shuning uchun katak rangsiz. Undan tendensiya oʻqimang.`
+            : 'Faqat shu oyga yetib ulgurgan kogortalar hisobga olingan.',
     }
   }
 

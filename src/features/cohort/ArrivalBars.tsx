@@ -95,6 +95,13 @@ export function ArrivalBars({
 
   const max = Math.max(1, ...dense.map((r) => r.size))
 
+  /* Is a hatched bar actually on screen for the caption to name? The dense
+     calendar always runs THROUGH `currentMonth`, so this is true wherever
+     there are bars at all — asked as the real question rather than as
+     `dense.length > 0`, so it stays correct if the calendar's end ever
+     stops being the running month. */
+  const hasPartial = dense.some((r) => r.cohort >= currentMonth)
+
   const complete = dense.filter((r) => r.cohort < currentMonth)
   const last = complete.at(-1)
   const before = complete.slice(-1 - TREND_MONTHS, -1)
@@ -154,6 +161,27 @@ export function ArrivalBars({
           )
         })}
       </div>
+
+      {/*
+        «OY TUGAMAGAN», ON THE SCREEN.
+
+        The hatch used to say this by itself, to sighted readers, and the
+        words existed only in the bar's `aria-label`. This block has no month
+        axis and no legend — nothing else names a bar — so the reader looking
+        at a short striped column at the right-hand edge had the texture and
+        nothing to convert it into. §4.1 asks for hatched AND labelled; this
+        is the labelled half, and it names the month so the reader does not
+        have to count columns to find which one is meant.
+
+        Only when such a bar is actually drawn: a caption explaining a mark
+        that is not on screen is noise.
+      */}
+      {hasPartial && (
+        <p className="mt-1.5 text-[11px] leading-snug" style={{ color: 'var(--ink-muted)' }}>
+          Shtrixlangan ustun — {formatMonth(currentMonth)}: oy tugamagan, quyidagi
+          solishtirishga kirmaydi.
+        </p>
+      )}
 
       {mean !== null && last && (
         <p

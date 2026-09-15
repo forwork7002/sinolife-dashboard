@@ -192,6 +192,9 @@ const SIMPLE_DATA = {
   repeatRevenueShare: 65.2,
   currentMonth: '2026-09-01',
   revenuePerCustomerAll: { amount: 1_250_000 },
+  /* The page passes `COHORT_HISTORY_MONTHS`; the view states it rather than
+     typing a number of its own. 18 is what the page asks for today. */
+  historyMonths: 18,
 }
 
 describe('the manager’s view', () => {
@@ -233,17 +236,39 @@ describe('the manager’s view', () => {
     expect(sentence.textContent).toMatch(/1\D?250\D?000/)
   })
 
-  it('names its clock ON THE SCREEN, so two honest totals do not look like a bug', () => {
+  it('names its clock AND its window ON THE SCREEN, so two honest totals do not look like a bug', () => {
     /*
       «Har 100 ta yangi mijozdan…» stands on every cohort there has ever been;
       the bars above it are the months the page asked for. Both are right and
       they are not the same population. The sentence that settles it has to be
       VISIBLE — a tooltip is read by whoever already suspects there is
       something to read, and this is read by everybody.
+
+      TWO HALVES, AND THIS BLOCK USED TO PRINT ONE. The clock («delivered, not
+      ordered») was on screen; the WINDOW — the half that actually makes the
+      two totals different numbers — was only in a comment claiming it was on
+      screen. It costs nothing today, with 16 months of history under an
+      18-month bound, and starts lying the month the history passes it.
     */
-    render(<SimpleView data={SIMPLE_DATA} />)
+    const { container } = render(<SimpleView data={SIMPLE_DATA} />)
 
     expect(screen.getByText(/yetkazilgan sana boʻyicha/i)).toBeDefined()
+    expect(container.textContent).toMatch(/soʻnggi 18 oy/)
+    expect(container.textContent).toMatch(/butun tarix/i)
+  })
+
+  it('reads the window off the page’s own bound rather than typing it', () => {
+    /*
+      `COHORT_HISTORY_MONTHS` lives in `CohortPage` and the query asks for it;
+      a second copy in this sentence is the hand-mirrored literal that
+      constant's own comment was written about — two places in this product
+      said «eighteen» on a live screen for a day after the portal changed.
+      Rendered at a different bound, the sentence has to follow.
+    */
+    const { container } = render(<SimpleView data={{ ...SIMPLE_DATA, historyMonths: 24 }} />)
+
+    expect(container.textContent).toMatch(/soʻnggi 24 oy/)
+    expect(container.textContent).not.toMatch(/soʻnggi 18 oy/)
   })
 
   it('says nothing about a share that was never measured, rather than 0%', () => {
@@ -269,37 +294,55 @@ describe('switching between «Oddiy» and «Batafsil»', () => {
         <CohortPage />
       </QueryClientProvider>,
     )
-    // Both queries resolved: the manager's view is drawn from the first.
+    /* The cohorts read resolved and «Oddiy» drew itself from it. The
+       concentration query has not run at all yet — it is gated on «Batafsil»
+       — which is the subject of its own case below. */
     await screen.findByText(/Qancha yangi mijoz keladi\?/)
     return { ...view, queryClient }
   }
 
-  it('issues NO request, shows NO skeleton and opens NO second query key', async () => {
+  /** What the page asked each endpoint for, so far. */
+  const cohortReads = () => requested.filter((u) => u.includes('/insights/cohorts'))
+  const concentrationReads = () =>
+    requested.filter((u) => u.includes('/insights/concentration'))
+
+  it('reads /insights/cohorts ONCE and redraws the other mode from it', async () => {
     /*
-      THE PROPERTY, NOT A CONVENIENCE. `/insights/cohorts` is two of the most
-      expensive scans in the product; a second read for the manager's view
-      would have doubled it to print numbers already in the first response, and
-      — worse — the two views would then have been built from two reads of a
-      table the sync worker rewrites every minute, free to disagree about the
-      same customers.
+      THE PROPERTY, NOT A CONVENIENCE, AND IT IS ABOUT ONE ENDPOINT.
+      `/insights/cohorts` is two of the most expensive scans in the product; a
+      second read for the manager's view would have doubled it to print
+      numbers already in the first response, and — worse — the two views would
+      then have been built from two reads of a table the sync worker rewrites
+      every minute, free to disagree about the same customers.
+
+      Written over the COHORTS requests rather than over every request the page
+      makes. It used to assert that the full URL list did not change at all,
+      which quietly made it a test of two different things: the shared-payload
+      property above, and «no other query may ever be mode-dependent» — a rule
+      nobody stated and the concentration read now deliberately breaks (see
+      the case below, and that query's comment in `CohortPage`). Narrowed, it
+      fails for the reason it is named after and for no other.
     */
     const { container, queryClient } = await openPage()
 
-    const before = [...requested]
-    expect(before.filter((u) => u.includes('/insights/cohorts'))).toHaveLength(1)
+    expect(cohortReads()).toHaveLength(1)
 
     fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
 
     // The matrix is on screen, so the switch really happened…
     expect(screen.getByText('Kogorta matritsasi')).toBeDefined()
     expect(screen.queryByText(/Qancha yangi mijoz keladi\?/)).toBeNull()
-    // …and it arrived without asking anybody anything.
-    expect(requested).toEqual(before)
-    expect(container.querySelectorAll('.skeleton')).toHaveLength(0)
+    // …and it arrived without re-reading the cohorts, or reloading at all.
+    expect(cohortReads()).toHaveLength(1)
+    // Scoped to the matrix's own card (`card-hero`): the concentration band
+    // below it IS loading at this instant, honestly, and that is the trade
+    // the gating case documents — but the matrix may never skeleton, because
+    // its payload has been in hand since the first render.
+    expect(container.querySelector('.card-hero')!.querySelectorAll('.skeleton')).toHaveLength(0)
 
     fireEvent.click(screen.getByRole('button', { name: 'Oddiy' }))
     expect(screen.getByText(/Qancha yangi mijoz keladi\?/)).toBeDefined()
-    expect(requested).toEqual(before)
+    expect(cohortReads()).toHaveLength(1)
     expect(container.querySelectorAll('.skeleton')).toHaveLength(0)
 
     /*
@@ -312,6 +355,32 @@ describe('switching between «Oddiy» and «Batafsil»', () => {
       .getAll()
       .filter((q) => q.queryKey[0] === 'cohorts')
     expect(cohortQueries).toHaveLength(1)
+  })
+
+  it('does not fetch the concentration band a manager never opens', async () => {
+    /*
+      THE OTHER HALF OF THE SAME ARITHMETIC. Every consumer of
+      `/insights/concentration` lives in «Batafsil», and «Oddiy» is the
+      default: fetching it unconditionally spent a real query on the slowest
+      screen in the product, on every first load, and threw the answer away
+      for the majority of visits that never press the toggle.
+
+      The trade, asserted rather than only described: the FIRST press pays for
+      it, and no press after that does — the result is cached under
+      `['concentration', apiParams]`, so toggling back and forth costs one
+      fetch in total.
+    */
+    await openPage()
+
+    expect(concentrationReads()).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
+    expect(concentrationReads()).toHaveLength(1)
+
+    // Back to «Oddiy» and forward again: still one, from cache.
+    fireEvent.click(screen.getByRole('button', { name: 'Oddiy' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
+    expect(concentrationReads()).toHaveLength(1)
   })
 
   it('carries the reading in the address, so a link opens on what was sent', async () => {

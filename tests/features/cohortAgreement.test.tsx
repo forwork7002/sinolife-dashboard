@@ -95,20 +95,74 @@ describe('the two readings of one payload', () => {
     const manager = render(
       <ReturnAnswer data={{ repeatCustomers: 127, totalCustomers: 320, rows }} />,
     )
-    const milestone = manager.container.querySelector('[aria-label*="+1 oy"]')!.textContent!
-    expect(milestone).toMatch(/28[.,]1/)
+    const milestone = manager.container
+      .querySelector('[aria-label*="+1 oy"]')!
+      .querySelector('.figure')!.textContent!
 
     /*
-      THE SAME NUMBER OUT OF THE OTHER MODE. The grid states its summary in the
-      cell's accessible name — «Oʻrtacha, +1 oy: 28,1% — …» — which is the one
-      place the whole fraction is spelled out; the tile itself prints a rounded
-      «28» because the column is scanned, not reconciled. Reading the label is
-      therefore reading what the grid CLAIMS, at the precision the milestone
-      claims it.
+      THE SAME NUMBER OUT OF THE OTHER MODE, AND NOW THE SAME TEXT.
+
+      The grid states its summary twice: the tile prints the figure a reader
+      SCANS, and the cell's accessible name spells the whole fraction out —
+      «Oʻrtacha, +1 oy: 28,1% — …» — which is where a figure is reconciled.
+      Both are asserted, and the first is asserted as an equality against the
+      milestone rather than as two regexes that happen to agree: this printed
+      «28,1%» beside the grid's «28» until 2026-09-15, which no regex pair
+      could have caught, because each side matched its own.
     */
     const analyst = render(<CohortHeatmap rows={rows} view="cumulative" />)
     const summaryCell = within(analyst.container).getByLabelText(/^Oʻrtacha, \+1 oy:/)
+    const tile = summaryCell.querySelector('[data-heat]')!.textContent!
+
+    expect(milestone).toBe(`${tile}%`)
+    expect(milestone).toBe('28%')
     expect(summaryCell.getAttribute('aria-label')).toMatch(/28[,.]1/)
+  })
+
+  it('refuses the same column in both modes when one cohort is all the evidence there is', () => {
+    /*
+      TWO FLOORS GUARDING ONE HAZARD, AND ONLY ONE MODE USED TO HAVE THE
+      STRICT ONE.
+
+      «Oddiy» has always refused a milestone standing on fewer than three
+      cohorts (`MIN_COHORTS_FOR_AVERAGE`). The grid only took a summary cell
+      off the ramp when it was thin by HEADCOUNT (`SUMMARY_MIN_BASE`, thirty
+      customers) — so a column averaged over two cohorts of 310 customers
+      between them printed a painted figure in the matrix while the milestone
+      at that same offset printed «yetarli maʼlumot yoʻq». One number, two
+      modes, opposite claims, one press of the toggle apart. §8.2's invariant
+      («Oddiy milestones = the matrix's own summary row at those offsets»)
+      then fails as a CLAIM even where the two figures agree.
+
+      +3 is that column in this fixture: the June cohort stops at +1, so only
+      two of the three rows reach it. +1, where all three do, is the control —
+      both modes speak there, so this case cannot pass by refusing everything.
+    */
+    const atThree = columnAverage(rows, 3, 'cumulative')
+    expect(atThree.cohorts).toBe(2)
+    // Not thin by headcount: the OTHER floor is the only thing that can refuse
+    // this column, which is what makes it the right column to test.
+    expect(atThree.base).toBeGreaterThan(30)
+
+    const manager = render(
+      <ReturnAnswer data={{ repeatCustomers: 127, totalCustomers: 320, rows }} />,
+    )
+    const analyst = render(<CohortHeatmap rows={rows} view="cumulative" />)
+
+    const milestone = (offset: number) =>
+      manager.container.querySelector(`[aria-label*="+${offset} oy"]`)!.textContent!
+    const tile = (offset: number) =>
+      within(analyst.container)
+        .getByLabelText(new RegExp(`^Oʻrtacha, \\+${offset} oy:`))
+        .querySelector('[data-heat]') as HTMLElement
+
+    // Refused on both sides of the toggle.
+    expect(milestone(3)).toMatch(/yetarli maʼlumot yoʻq/i)
+    expect(tile(3).style.background).toBe('var(--surface-sunken)')
+
+    // And answered on both sides of it, one column to the left.
+    expect(milestone(1)).not.toMatch(/yetarli maʼlumot yoʻq/i)
+    expect(tile(1).style.background).not.toBe('var(--surface-sunken)')
   })
 
   it('computes no average of its own', () => {

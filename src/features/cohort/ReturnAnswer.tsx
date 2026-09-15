@@ -1,9 +1,13 @@
 'use client'
 
 import { Sparkline } from '@/components/charts/Sparkline'
-import { columnAverage, type AveragableCohortRow } from '@/components/charts/Heatmap'
+import {
+  columnAverage,
+  MIN_COHORTS_FOR_AVERAGE,
+  sharePercentText,
+  type AveragableCohortRow,
+} from '@/components/charts/Heatmap'
 import { InfoTip } from '@/components/ui/Tooltip'
-import { formatPercent } from '@/lib/format'
 
 /**
  * «Ular qaytadimi?» — the second of the manager's three questions.
@@ -22,14 +26,18 @@ import { formatPercent } from '@/lib/format'
  */
 const MILESTONES = [1, 3, 6, 12] as const
 
-/**
- * Below this many cohorts a milestone prints no figure.
- *
- * The +12 column once had exactly one qualifying cohort and printed that
- * cohort's number as the company average. A sample of one is not an average,
- * and the manager is the reader least equipped to notice.
- */
-const MIN_COHORTS_FOR_AVERAGE = 3
+/*
+  THE FLOOR IS THE GRID'S, LIKE THE AVERAGE ABOVE IT.
+
+  `MIN_COHORTS_FOR_AVERAGE` lived here — «below this many cohorts a milestone
+  prints no figure», because the +12 column once had exactly one qualifying
+  cohort and printed that cohort's number as the company average. The rule was
+  right and its ADDRESS was wrong: the grid's summary row draws the same
+  averages from the same rows and had only its headcount floor, so one cohort
+  of 400 customers was refused here and painted there, one press of the toggle
+  apart. It now sits beside `SUMMARY_MIN_BASE` in `Heatmap.tsx` and both modes
+  read it — one constant, because two copies of a floor are two floors.
+*/
 
 export function ReturnAnswer({
   data,
@@ -80,13 +88,33 @@ export function ReturnAnswer({
     picture on this screen; see `SUMMARY_MIN_BASE` in `Heatmap.tsx` for the
     first, and the production row it was found on.
   */
-  let lastQualifyingOffset = -1
-  curve.forEach((point, offset) => {
-    if (point.cohorts >= MIN_COHORTS_FOR_AVERAGE) lastQualifyingOffset = offset
-  })
-  const sparklineValues = curve
-    .slice(0, lastQualifyingOffset + 1)
-    .map((point) => point.percent ?? 0)
+  /*
+    AND A NULL AVERAGE ENDS THE LINE; IT IS NEVER PLOTTED AS A ZERO.
+
+    `columnAverage(...).percent` is null when NO customer reached the offset
+    at all — the same distinction the matrix draws between a hatched cell and
+    a «0», and the one this block is otherwise strict about. A `?? 0` here
+    drew that absence as a collapse to the floor of the chart: the one shape
+    a reader is guaranteed to react to, standing on nothing. Unreachable on
+    today's payload, which is the only kind of null/zero blur that survives a
+    review.
+
+    The points are collected rather than sliced so the values are numbers by
+    construction and no default has anywhere to hide. `pending` carries the
+    offsets that are inside the line but thin on their own — they are drawn
+    only once a later offset qualifies, which is what keeps the line
+    contiguous without extending it past its evidence.
+  */
+  const sparklineValues: number[] = []
+  let pending: number[] = []
+  for (const point of curve) {
+    if (point.percent === null) break
+    pending.push(point.percent)
+    if (point.cohorts >= MIN_COHORTS_FOR_AVERAGE) {
+      sparklineValues.push(...pending)
+      pending = []
+    }
+  }
 
   return (
     <section>
@@ -146,8 +174,16 @@ export function ReturnAnswer({
                   }
                   style={{ color: enough ? 'var(--ink-primary)' : 'var(--ink-muted)' }}
                 >
-                  {enough && at?.percent !== null && at !== undefined
-                    ? formatPercent(at.percent)
+                  {/*
+                    THE GRID'S OWN SPELLING, NOT `formatPercent`. This printed
+                    «28,1%» where the summary cell one toggle-press away
+                    printed «28» — the same number in two texts, on the one
+                    screen built to prove the two modes agree. `sharePercentText`
+                    is the cell's own formatter; the exact fraction is still in
+                    the grid's hover panel, where a figure is reconciled.
+                  */}
+                  {enough && at !== undefined && at.percent !== null
+                    ? `${sharePercentText(at.percent)}%`
                     : 'yetarli maʼlumot yoʻq'}
                 </span>
                 {/*

@@ -59,6 +59,36 @@ describe('the arrivals block', () => {
     expect(running.getAttribute('data-partial')).toBe('true')
   })
 
+  it('says «oy tugamagan» on the screen, not only in the bar’s label', () => {
+    /*
+      HATCHED **AND LABELLED** — spec §4.1. The words existed only in the
+      bar's `aria-label`, and this block has no month axis and no legend, so a
+      sighted manager had the hatch texture and nothing to convert it into.
+      The caption names the month too: «the striped one» is not findable by
+      counting columns.
+    */
+    const { container } = render(<ArrivalBars rows={rows} currentMonth="2026-09-01" />)
+
+    const caption = within(container).getByText(/oy tugamagan/i)
+    expect(caption.textContent).toMatch(/2026-sen/)
+    // It is not the bar itself — a `role="img"` label is not visible text.
+    expect(caption.getAttribute('role')).toBeNull()
+  })
+
+  it('does not caption a hatched bar it never drew', () => {
+    /*
+      With no rows there is no calendar to anchor on, so the block draws no
+      bars at all — and a caption explaining a mark that is not on screen is
+      noise pointing at a month nothing is drawing. This is the only shape
+      where the running month is absent: the dense calendar always runs
+      THROUGH `currentMonth`, so wherever there are bars, one of them is the
+      hatched one.
+    */
+    render(<ArrivalBars rows={[]} currentMonth="2026-09-01" />)
+
+    expect(screen.queryByText(/oy tugamagan/i)).toBeNull()
+  })
+
   it('keeps the running month out of the comparison sentence', () => {
     render(<ArrivalBars rows={rows} currentMonth="2026-09-01" />)
 
