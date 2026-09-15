@@ -340,7 +340,39 @@ export function CohortPage() {
       description={t.modules.cohort.lead}
       accent="var(--series-7)"
       meta={query.data?.meta}
-      stale={concentration.isPlaceholderData}
+      /*
+        GATED ON THE MODE, LIKE THE QUERY IT READS — and it has to be, now
+        that the query is.
+
+        `stale` dims the WHOLE page and marks it `aria-busy`: it promises that
+        better numbers are on their way. That is only ever true of a LIVE
+        query. This one is `enabled: mode === 'detail'`, and «Oddiy» is the
+        default.
+
+        WHAT MAKES A DISABLED QUERY GO STALE AT ALL: `providers.tsx` gives
+        every query in this application `placeholderData: (previous) =>
+        previous`, and query-core applies placeholder data whenever
+        `data === undefined && status === 'pending'` — it does not consult
+        `enabled`. So press «Batafsil» once (the band fetches and caches),
+        return to «Oddiy» (the query is disabled again), then change the
+        period: `['concentration', apiParams]` gets a key it holds no data
+        for, `isPlaceholderData` turns true, and NOTHING can turn it back,
+        because nothing is going to fetch. The default reading of this screen
+        sat at 60% opacity, announced as busy, with no request outstanding —
+        until somebody pressed «Batafsil» again. `['cohorts']` carries no
+        period, so no other query on the page reacts and no skeleton appears
+        to explain it.
+
+        NOT pointed at `query` instead. `['cohorts']` is a constant key that
+        never changes, so `query.isPlaceholderData` is `false` for the life of
+        the page — a prop that reads like a live signal and is a literal
+        `false`, which is the same kind of claim that left this line here in
+        the first place. And not dropped: in «Batafsil» the band IS this
+        page's period-scoped content, the previous window's shares genuinely
+        stay on screen under the new window's control, and saying so is what
+        `stale` exists for.
+      */
+      stale={mode === 'detail' && concentration.isPlaceholderData}
       /*
         `actions`, not `toolbar`. The toolbar row is for FILTERS — controls
         that narrow rows — and this narrows nothing: it chooses which reading
