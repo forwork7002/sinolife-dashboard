@@ -213,6 +213,27 @@ export interface CustomerStateCounts {
   readonly unbucketedStages: readonly string[]
 }
 
+export interface CustomerFlowRows {
+  readonly summary: {
+    readonly newCustomers: number
+    readonly returningCustomers: number
+    readonly activeCustomers: number
+    readonly newCustomersWon: number
+    readonly firstRevenueMinor: bigint
+    readonly repeatRevenueMinor: bigint
+  }
+  readonly series: readonly {
+    readonly bucket: string // 'YYYY-MM-DD'
+    readonly newCustomers: number
+    readonly returningCustomers: number
+  }[]
+  readonly sources: readonly {
+    readonly key: string // SalesSource id, or '' for no source
+    readonly label: string // source name, or '(manbasiz)'
+    readonly newCustomers: number
+  }[]
+}
+
 /**
  * One grouping of the logistics cohort, whatever it was grouped by.
  *
@@ -1303,6 +1324,160 @@ export class InsightsRepository {
       unbucketedStages: rows
         .filter((row) => row.kind === 1 && row.stage !== null)
         .map((row) => row.stage as string),
+    }
+  }
+
+  /**
+   * How customers arrived in the window: new, returning, and from where.
+   *
+   * THE CLOCK IS THE ORDER DATE — `createdAtSource` — chosen by the client
+   * over the delivered date («buyurtma bergan sana (kelgan kun)»). The cohort
+   * matrix on the same screen is cohorted by `closedAt` on WON deals and
+   * legitimately prints a different customer total (15 867 against 11 512 on
+   * 2026-09-15). Both blocks state their clock in their own heading; neither
+   * is wrong and they must never be summed.
+   *
+   * NEW IS DECIDED AGAINST THE WHOLE HISTORY. `first_ts` carries no date
+   * bound. Bounded to the window every customer in it would look new and the
+   * returning count would be a flat zero.
+   *
+   * STATUS IS FILTERED ONLY FOR MONEY. A refused order is an arrival, not a
+   * soʻm, and 26% of revenue-pipeline orders never reach WON — a status
+   * filter in the wrong place moves a quarter of this band.
+   *
+   * ONE WALK OF "deal", AND HERE THAT IS THE CHEAP SHAPE. `cohorts` measured
+   * the opposite and its note says why: its window function sorts ~180 000
+   * rows against a 2 MB `work_mem` and spills. This statement's set is the
+   * 18 392 revenue-bearing deals, which sorts in memory — measured at 0.4-0.9 s
+   * from this machine including the fra1 round trip.
+   */
+  async customerFlow(options: {
+    period: Period
+    grain: 'day' | 'month'
+  }): Promise<CustomerFlowRows> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        kind: number
+        bucket: Date | null
+        source_key: string | null
+        source_label: string | null
+        new_customers: bigint | null
+        returning_customers: bigint | null
+        active_customers: bigint | null
+        new_customers_won: bigint | null
+        first_revenue: MoneyText
+        repeat_revenue: MoneyText
+      }[]
+    >(
+      `
+      WITH orders AS (
+        SELECT d."customerId" AS cid,
+               d."createdAtSource" AS ts,
+               d."amountMinor" AS amount,
+               d."status" AS status,
+               d."sourceId" AS sid
+        FROM "deal" d
+        WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
+      ),
+      -- NO DATE BOUND HERE, and that is the whole correctness property: a
+      -- customer is new because this is their first order EVER, not because
+      -- it is the earliest one the reader's window happens to contain.
+      ranked AS (
+        SELECT cid, ts, amount, status, sid,
+               row_number() OVER (PARTITION BY cid ORDER BY ts, sid NULLS LAST) AS rn,
+               min(ts) OVER (PARTITION BY cid) AS first_ts
+        FROM orders
+      ),
+      win AS (SELECT * FROM ranked WHERE ts >= $1 AND ts < $2)
+
+      SELECT
+        0 AS kind,
+        NULL::timestamp AS bucket,
+        NULL::text AS source_key,
+        NULL::text AS source_label,
+        count(DISTINCT cid) FILTER (WHERE first_ts >= $1)::bigint AS new_customers,
+        count(DISTINCT cid) FILTER (WHERE first_ts < $1)::bigint AS returning_customers,
+        count(DISTINCT cid)::bigint AS active_customers,
+        -- Of the window's new customers, how many actually bought. Printed
+        -- under the tile because «yangi mijoz» counts arrivals and a quarter
+        -- of them never land.
+        count(DISTINCT cid) FILTER (WHERE first_ts >= $1 AND status = 'WON')::bigint
+          AS new_customers_won,
+        -- The same split the repeat-share gauge on this screen already makes:
+        -- per ORDER, first against later, never per customer.
+        COALESCE(sum(amount) FILTER (WHERE rn = 1 AND status = 'WON'), 0)::text AS first_revenue,
+        COALESCE(sum(amount) FILTER (WHERE rn > 1 AND status = 'WON'), 0)::text AS repeat_revenue
+      FROM win
+
+      UNION ALL
+
+      SELECT
+        1,
+        date_trunc($3, ts AT TIME ZONE 'UTC' AT TIME ZONE $4) AS bucket,
+        NULL, NULL,
+        count(DISTINCT cid) FILTER (WHERE first_ts >= $1)::bigint,
+        count(DISTINCT cid) FILTER (WHERE first_ts < $1)::bigint,
+        NULL, NULL, NULL, NULL
+      FROM win
+      GROUP BY 1, 2
+
+      UNION ALL
+
+      -- WHERE THE WINDOW'S NEW CUSTOMERS CAME FROM.
+      --
+      -- rn = 1 inside the window IS the set of new customers, so these rows
+      -- sum exactly to new_customers above — an invariant the screen relies
+      -- on to print a share. The LEFT JOIN keeps the sourceless row (1.7% of
+      -- orders); dropped, the block would silently lie about its denominator.
+      SELECT
+        2,
+        -- Cast, not a bare NULL: GROUP BY 2 below otherwise forces this
+        -- literal to resolve as text, and the UNION then refuses to match it
+        -- against the timestamp bucket the other two arms carry — a type
+        -- error on every call, never on a shape-only test of the source text.
+        NULL::timestamp,
+        COALESCE(s."id", '') AS source_key,
+        COALESCE(s."name", '(manbasiz)') AS source_label,
+        count(DISTINCT w.cid)::bigint,
+        NULL, NULL, NULL, NULL, NULL
+      FROM win w
+      LEFT JOIN "sales_source" s ON s."id" = w.sid
+      WHERE w.rn = 1
+      GROUP BY 2, 3, 4
+
+      ORDER BY 1, 2, 5 DESC
+      `,
+      options.period.start,
+      options.period.end,
+      options.grain,
+      this.tz,
+    )
+
+    const summary = rows.find((row) => row.kind === 0)
+
+    return {
+      summary: {
+        newCustomers: int(summary?.new_customers ?? 0n),
+        returningCustomers: int(summary?.returning_customers ?? 0n),
+        activeCustomers: int(summary?.active_customers ?? 0n),
+        newCustomersWon: int(summary?.new_customers_won ?? 0n),
+        firstRevenueMinor: money(summary?.first_revenue ?? null),
+        repeatRevenueMinor: money(summary?.repeat_revenue ?? null),
+      },
+      series: rows
+        .filter((row) => row.kind === 1 && row.bucket !== null)
+        .map((row) => ({
+          bucket: (row.bucket as Date).toISOString().slice(0, 10),
+          newCustomers: int(row.new_customers ?? 0n),
+          returningCustomers: int(row.returning_customers ?? 0n),
+        })),
+      sources: rows
+        .filter((row) => row.kind === 2)
+        .map((row) => ({
+          key: row.source_key ?? '',
+          label: row.source_label ?? '(manbasiz)',
+          newCustomers: int(row.new_customers ?? 0n),
+        })),
     }
   }
 
