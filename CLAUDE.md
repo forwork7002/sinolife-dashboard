@@ -1229,6 +1229,22 @@ mixed `100vh` against a shell sized in `100dvh`.
   and the tooltip says whether to wait or to call somebody.
   `findCurrentSyncFailure` only reports a failure NEWER than the last success,
   so a healthy dashboard never wears a red mark for last week.
+  **AND ON 2026-09-15 IT GAINED THE TWO THINGS IT STILL COULD NOT SAY.**
+  `syncError.since` is when the run of failures BEGAN — `at` is the newest
+  failed tick, which during an outage is always seconds old, so a four-hour
+  block and a four-minute blip read identically; the tooltip now says «06:05 dan
+  beri». And `syncError.kind` classifies the refusal SERVER-SIDE
+  (`bitrix24/refusal.ts`), replacing a two-element allowlist of Bitrix24 codes
+  that sat inside `Shell.tsx` — the portal's vocabulary on the wrong side of
+  the one rule, and unreachable from the worker that needs the same judgement.
+  A `CREDENTIAL` failure skips the deliberate five-minute quiet period the chip
+  gives a throttle, turns the dot critical and names the act («portalda yangi
+  kalit ochilib, dashboardga qoʻyilishi kerak»): a revoked webhook will never
+  clear on its own, so waiting it out is exactly wrong. On 2026-09-15 that
+  silence ran from 06:10 until somebody happened to look.
+  `/meta/alerts` also reads its two halves with `allSettled`, so a slow backlog
+  aggregate can no longer take the freshness clock down with it — the moment the
+  database is under strain is the moment the header most needs to answer.
   **The worker exited.** `process.exit(1)` on a failed startup health check
   turned a transient throttle into a restart loop that re-issued the refused
   call every cycle. It logs and starts the tick loop instead; the loop already
@@ -1239,44 +1255,78 @@ mixed `100vh` against a shell sized in `100dvh`.
   hour, which is the case it was written for (a worker that was DOWN); a
   redeploy under a healthy sync is covered by `SKIP_LOOKBACK_MS`.
 
-**A REFUSED TICK WAITS TEN MINUTES, not the failure-count backoff.** Two
-refusals get that pause, and neither is ours to retry out of.
-`OVERLOAD_LIMIT` / `QUERY_LIMIT_EXCEEDED` is the portal refusing its whole REST
-surface — on 2026-09-14 for four hours — and the ordinary backoff (five minutes
-after five consecutive failures) would spend that time issuing ~50 refused
-calls an hour against a counter we cannot see and may be feeding.
-`PORTAL_PAUSE_MS` is a flat ten; the block lifts on the portal's clock, not
-ours, and the header says why meanwhile.
+**A REFUSED PORTAL IS NOT ASKED AGAIN UNTIL A PROBE SAYS IT IS —
+`PortalGate`, and it replaced the flat ten-minute wait on 2026-09-15.**
 
-- **A REVOKED WEBHOOK IS THE SECOND, AND IT NEVER LIFTS BY ITSELF.** On
-  2026-09-15 the portal throttled at 05:50 UTC and from 06:10 answered every
-  call `401 INVALID_CREDENTIALS` — the inbound webhook was gone, and only a
-  person putting a new one in Bitrix24 could end it. The worker asked anyway:
-  twelve entities every three minutes, ~240 calls an hour that could not
-  succeed, at a portal that had blocked this same integration the day before
-  for volume — and the ticket we sent its support promises we back off when
-  refused. `isCredentialFailure` (in `Bitrix24CrmProvider`, matched against the
-  message that lands in `sync_log`) now earns the same flat ten minutes.
-  **It must not claim a throttle:** `OVERLOAD_LIMIT` needs nobody, and telling
-  an operator to fetch a new webhook for one is the 2026-09-14 misdiagnosis
-  running backwards. The log says the act, not the symptom, because the worker
-  log is where an operator looks before the client telephones.
+The old `throttled` flag could not do the job it was written for: it is
+computed from the RESULTS of `runAll`, so by the time it is true every entity
+in that tick has already been refused. Measured that morning under a 401
+`OVERLOAD_LIMIT` — a hot tick sent 3 requests of which **2 left after** the
+portal had already said no, a reference tick sent 12 of which 11 did, and a
+restart inside the block sent 11 more because tick 0 is always a reference
+tick. Over a four-hour block, ~107 requests fired into a door already shut.
+
+The gate sits inside `call()`, BEFORE the rate limiter, so it covers every
+caller — the engine, the sweep, `scripts/import.ts`, a hand-run resync. The
+first refusal shuts it; every later call in that tick throws locally with the
+remembered code and sends nothing. `scripts/syncWorker.ts` then does no work at
+all while it is shut, and asks ONE cheap `profile` question on a ladder:
+**60 s, 120 s, 240 s, 480 s, then 600 s** for a throttle (the ten minutes
+`THROTTLED_WAIT_MS` used to be, now the ladder's ceiling in `portalGate.ts`),
+and a flat **300 s** for a credential failure, which will not clear on its own
+and where backing off only delays noticing that somebody fixed it. A successful
+probe closes the gate and runs a full tick at once, so recovery is 1–3 minutes
+into any block instead of always ten.
+
+**The four refusals are one vocabulary, in `bitrix24/refusal.ts`.** `THROTTLE`
+(OVERLOAD_LIMIT, QUERY_LIMIT_EXCEEDED) and `CREDENTIAL` (a revoked webhook, and
+any unparsable 401) shut the whole gate; `METHOD` (OPERATION_TIME_LIMIT) holds
+ONE method for ten minutes and leaves the rest answering; `TRANSIENT` tolerates
+two failures before shutting. **`null` is the fifth answer and the load-bearing
+one** — `INVALID_ARG_VALUE` is how `batchWalk` learns a chain ran dry, so
+classifying it as a refusal would shut the gate on every SUCCESSFUL pass.
+Branch on the CODE, never on `error_description`, which arrives in the portal's
+interface language.
+
+**The worker starts already knowing.** `lastRefusal()` reads the newest FAILED
+row against the last `FRESHNESS_ENTITIES` success — two index walks, no portal
+call — and seeds the gate shut when a refusal newer than that success is under
+fifteen minutes old. A restart inside a block cost ~11 requests
+re-discovering it, ~17 times a day; seeded, it costs 0 until a probe is due.
+
+**AND THE ERROR MESSAGE STOPPED LYING.** «failed after 4 attempts» was a
+constant, false on every non-retryable error — a 401 breaks out after ONE
+request. That sentence went into `sync_log`, the dashboard tooltip and the
+2026-09-14 incident notes, and it is why that outage first read as «the client
+is hammering the portal four times over». It reports the attempts it made. The
+429/5xx branch also stopped dropping the response body, which is what hid a
+`QUERY_LIMIT_EXCEEDED` behind a bare «Bitrix24 responded 503» and kept the
+ten-minute wait from ever engaging: measured at 40 HTTP requests where 10 were
+expected.
+
 - **THE CHIP NAMED ONE ENTITY FOR A PORTAL-WIDE OUTAGE.** `syncError.entity` is
   whichever pass failed LAST, so an hour with every number on every screen
   frozen was reported as «stage_history» — the narrowest thing on the portal,
   and a reader who knows what it is would have taken the deal figures for
-  current. `findCurrentSyncFailure` now also counts the DISTINCT entities
-  failing since the last success (an index walk bounded by that timestamp,
-  0.3 ms on production, and it does not run at all while the sync is healthy),
-  and `syncFailureScope` prints «9 ta boʻlim» instead of a name whenever the
-  count is known and above one. A null count means *not counted*, never
-  *narrow*, so it falls back to the name rather than inventing a scope.
-- **THE ATTEMPT COUNT IN A FAILURE MESSAGE IS EVIDENCE.** It printed
-  `maxRetries + 1` unconditionally — «failed after 4 attempts» — including for
-  the non-retryable 401s that break out after ONE. Every credential and
-  overload row in `sync_log` overstated our own call volume four-fold, and that
-  log is what this integration hands Bitrix24 support when it is asked what it
-  was doing to the portal. It counts the attempts actually made.
+  current. `findCurrentSyncFailure` also counts the DISTINCT entities failing
+  since the last success (an index walk bounded by that timestamp, 0.3 ms on
+  production, and it does not run at all while the sync is healthy), and
+  `syncFailureScope` prints «9 ta boʻlim» instead of a name whenever the count
+  is known and above one. A null count means *not counted*, never *narrow*, so
+  it falls back to the name rather than inventing a scope. It is read beside
+  `syncError.since`, which says how LONG.
+- **THE ATTEMPT COUNT IN A FAILURE MESSAGE IS EVIDENCE.** `sync_log` is what
+  this integration hands Bitrix24 support when it is asked what load it was
+  putting on the portal, and the ticket opened after the 2026-09-14 block
+  promises in writing that we back off when refused. That is what the gate's
+  probe ladder honours, and what its 600 s ceiling bounds — do not raise it
+  without remembering what it answers to.
+- **`isCredentialFailure` IS STILL EXPORTED, AND IT IS NOW A READING OF
+  `refusal.ts` RATHER THAN A SECOND LIST.** It takes a MESSAGE, because that is
+  what survives into `sync_log`; `classifyRefusal` reads a live error's `code`
+  field first and falls back to the same screen. Two copies of the portal's
+  vocabulary in one repository is exactly the drift this file keeps warning
+  about.
 
 **THE WORKER WAS DYING SEVENTEEN TIMES A DAY, AND THE ROISTAT CHILD WAS THE
 BALLOON.** Measured 2026-09-14 and fixed the same day. DigitalOcean sets
@@ -1318,7 +1368,8 @@ hourly: if it stops, the child is hitting the new 320 MB cap and the log line
 above will say so.
 
 Worker cadence lives in `scripts/syncWorker.ts`: `SYNC_INTERVAL_SEC` 60,
-reference data every 30 ticks, sweep and Roistat every 60, and
+reference data every 30 ticks, Roistat every 60, **the deletion sweep every 360
+(six-hourly since 2026-09-15, was 60)**, and
 `SYNC_HISTORY_BACKFILL_DAYS` 45 — the stage-history cursor is wound back once
 at startup so the ordinary incremental pass repairs arrival rows lost before
 the watermark learned to rewind (`historyBackfillCursor`; it never writes a
@@ -1326,6 +1377,20 @@ cursor where there is none, and never moves one forward). 76 000 of 222 000
 rows, under a minute, once per start. Backoff is a
 **floor**, not an addend — as an addend it disappeared exactly when it was
 needed.
+
+**THE SWEEP WENT SIX-HOURLY, AND A DELETED DEAL NOW SURVIVES UP TO SIX HOURS
+HERE.** `listDealIds` walks all 464 396 deals at 2 500 a round trip = 180
+requests, ninety seconds of continuous traffic at the 2 rps limiter. Hourly
+that was 4 320 requests a day — **32% of the worker's entire HTTP volume** —
+carrying 9 000 `crm.deal.list` invocations an hour against that method's
+ten-minute operating basket, to detect an event the code's own comment calls
+rare. Bitrix24's helpdesk names «an app that checks all CRM activities every
+five minutes» as the kind of thing that earns an administrative block, and this
+portal issued one on 2026-09-14 and again on 2026-09-15. 24 bursts a day became
+4. Nothing about the walk, `sweepByAntiJoin` or the short-read guard changed, so
+correctness is untouched — **read a six-hour-old test deal as `SYNC_SWEEP_EVERY`,
+not as a sync fault**, and set it lower on the deployed app if the client ever
+wants the old latency back.
 
 ---
 

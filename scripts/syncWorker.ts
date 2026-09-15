@@ -52,14 +52,14 @@ import { caCertFromEnv, poolConfig } from '../src/server/db/poolConfig'
 
 import { PrismaClient } from '../src/generated/prisma/client'
 import type { SyncEntityValue } from '../src/server/domain/types'
-import {
-  Bitrix24CrmProvider,
-  isCredentialFailure,
-} from '../src/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
+import { Bitrix24CrmProvider } from '../src/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
 import { createSyncHandlers } from '../src/server/integrations/crm/sync/handlers'
 import { PrismaSyncStore } from '../src/server/integrations/crm/sync/PrismaSyncStore'
 import { SyncEngine } from '../src/server/integrations/crm/sync/SyncEngine'
 import { historyBackfillCursor } from '../src/server/integrations/crm/sync/backfill'
+import { classifyRefusal, refusalCode } from '../src/server/integrations/crm/bitrix24/refusal'
+import type { RefusalClass } from '../src/server/integrations/crm/bitrix24/refusal'
+import { FRESHNESS_ENTITIES } from '../src/server/repositories/referenceRepository'
 
 const DATABASE_URL = process.env.DATABASE_URL
 const WEBHOOK_URL = process.env.BITRIX24_WEBHOOK_URL
@@ -103,9 +103,27 @@ const ROISTAT_EVERY = Number(process.env.SYNC_ROISTAT_EVERY ?? 60)
  * often enough that a test deal does not survive the afternoon, and rare
  * enough that the FULL pass it needs is not competing with the minute tick.
  *
+ * SIX-HOURLY SINCE 2026-09-15, AND THIS IS THE SINGLE BIGGEST THING WE STOPPED
+ * SPENDING ON THE PORTAL.
+ *
+ * Measured: `listDealIds` walks all 464 396 deals at 2 500 a round trip = 180
+ * requests, which at the 2 rps limiter is ninety seconds of continuous traffic.
+ * Hourly, that was 4 320 requests a day — 32% of the worker's ENTIRE volume —
+ * carrying 9 000 `crm.deal.list` invocations an hour against that method's
+ * ten-minute operating basket, to detect an event this comment itself calls
+ * rare. Bitrix24's own helpdesk names «an app that checks all CRM activities
+ * every five minutes» as the kind of thing that earns an administrative block,
+ * and on 2026-09-14 and again on 2026-09-15 this portal issued one.
+ *
+ * 24 bursts a day become 4: 4 320 requests → 720, with no change to the walk,
+ * to `sweepByAntiJoin` or to the short-read guard, so nothing about correctness
+ * moves. WHAT IT COSTS: a deal deleted in the portal can now be counted here
+ * for up to six hours instead of one. That is a deliberate trade — read a
+ * six-hour-old test deal as this setting, not as a sync fault.
+ *
  * Set to 0 to switch it off.
  */
-const SWEEP_EVERY = Number(process.env.SYNC_SWEEP_EVERY ?? 60)
+const SWEEP_EVERY = Number(process.env.SYNC_SWEEP_EVERY ?? 360)
 
 /**
  * How far back the stage history is re-read once, at startup. Default: 45 days.
@@ -138,17 +156,23 @@ const SWEEP_EVERY = Number(process.env.SYNC_SWEEP_EVERY ?? 60)
  */
 const HISTORY_BACKFILL_DAYS = Number(process.env.SYNC_HISTORY_BACKFILL_DAYS ?? 45)
 
-/**
- * How long to wait after the portal has refused a whole tick.
- *
- * Ten minutes, flat, rather than the failure-count backoff: neither refusal
- * this covers is ours to retry out of. An `OVERLOAD_LIMIT` block lifts on the
- * portal's clock; a credential the portal no longer accepts lifts when a
- * person installs a new webhook. Asking sooner cannot shorten either — and on
- * a portal that has already blocked this integration once for sheer volume, it
- * can lengthen the first. See the tick loop for the measurements behind both.
- */
-const PORTAL_PAUSE_MS = 10 * 60_000
+/*
+  THE TEN-MINUTE WAIT MOVED, IT DID NOT GO.
+
+  `THROTTLED_WAIT_MS` lived here — a flat ten minutes after any refusal, put in
+  by the 2026-09-14 incident because a portal refusing the whole REST surface is
+  not our error to retry out of. It is now the CEILING of `PortalGate`'s probe
+  ladder (`THROTTLE_LADDER_MS` in portalGate.ts), which keeps the bound it set
+  while fixing what it could not do: a flat wait cannot notice a block that
+  lifted after ninety seconds, so recovery always cost the full ten minutes.
+
+  THE BOUND IS ALSO A PROMISE MADE IN WRITING. The ticket opened with Bitrix24
+  support after the 2026-09-14 block says this integration backs off when it is
+  refused. The ladder honours that more strictly than the flat wait did — it
+  sends ONE `profile` where a tick sent three to twelve — but the ceiling is
+  what bounds the worst case, and it should not be raised without remembering
+  what it answers to.
+*/
 
 /**
  * The heap the Roistat child is allowed, in megabytes.
@@ -213,6 +237,45 @@ const webhook: string = WEBHOOK_URL
 
 function stamp(): string {
   return new Date().toISOString().slice(11, 19)
+}
+
+/** How recent a logged refusal must be to start the next worker already closed. */
+const SEED_MAX_AGE_MS = 15 * 60_000
+
+/**
+ * What the process that died in the block already wrote down.
+ *
+ * Two index walks on `@@index([status, finishedAt(sort: Desc)])`, no portal
+ * call. Returns nothing unless the newest failure is NEWER than the last
+ * success the freshness clock trusts — a failure sitting behind a success is a
+ * blip that already healed — and unless it is recent enough to still be true.
+ */
+async function lastRefusal(
+  db: PrismaClient,
+  now: Date,
+): Promise<{ kind: RefusalClass; code: string; since: Date } | null> {
+  const [failure, success] = await Promise.all([
+    db.syncLog.findFirst({
+      where: { status: 'FAILED' },
+      orderBy: { finishedAt: 'desc' },
+      select: { finishedAt: true, errorMessage: true },
+    }),
+    db.syncLog.findFirst({
+      where: { status: { in: ['SUCCESS', 'PARTIAL'] }, entity: { in: [...FRESHNESS_ENTITIES] } },
+      orderBy: { finishedAt: 'desc' },
+      select: { finishedAt: true },
+    }),
+  ])
+
+  const at = failure?.finishedAt
+  if (!at) return null
+  if (success?.finishedAt && success.finishedAt >= at) return null
+  if (now.getTime() - at.getTime() > SEED_MAX_AGE_MS) return null
+
+  const kind = classifyRefusal(failure.errorMessage)
+  if (kind !== 'THROTTLE' && kind !== 'CREDENTIAL') return null
+
+  return { kind, code: refusalCode(failure.errorMessage) ?? 'UNKNOWN', since: at }
 }
 
 /**
@@ -481,13 +544,53 @@ async function main() {
     portal's error code (see `AlertsDto.syncError`), which is a better place
     for it than a container nobody is watching.
   */
-  const health = await provider.healthCheck()
-  console.log(`\n  ${health.ok ? '✓' : '✗'} ${health.detail}`)
-  if (!health.ok) {
-    console.warn(
-      `  ${stamp()} ! portal javob bermadi — tsikl baribir boshlanadi,` +
-        ' xatolar har tsiklda qayd etiladi.',
-    )
+  /*
+    START ALREADY KNOWING. The database was told about the block by the process
+    that died in it — reading that back costs two index walks and no portal
+    call at all.
+
+    Measured 2026-09-15: a restart inside a block cost ~11 requests, one for the
+    health check and ten because tick 0 is always a reference tick
+    (`0 % REFERENCE_EVERY === 0`). At the ~17 restarts a day this worker was
+    recording, that is ~187 requests a day spent re-discovering a block we
+    already knew about, issued at exactly the moment the portal is complaining
+    about load. Seeded, the same restart costs 0 until a probe is due.
+
+    THE FIFTEEN-MINUTE BOUND IS WHAT KEEPS THIS HONEST. A database left idle
+    over a weekend must not start the worker blocked on a Friday failure, so
+    only a recent refusal — and only one NEWER than the last success — seeds
+    anything. Anything older, and the worker starts by asking the portal, which
+    is the right default.
+  */
+  try {
+    const seeded = await lastRefusal(prisma, new Date())
+    if (seeded) {
+      provider.gate.seed(seeded.kind, seeded.code, seeded.since, new Date())
+      console.log(
+        `  ${stamp()} oldingi tsikl ${seeded.code} bilan toʻxtagan` +
+          ` (${seeded.since.toISOString()}) — portal zondlanadi, toʻliq tsikl emas.`,
+      )
+    }
+  } catch (error) {
+    // Never fatal: not knowing costs one refused request, which is what the
+    // worker did before this existed.
+    console.warn(`  ${stamp()} ! oldingi holat oʻqilmadi:`, error)
+  }
+
+  /*
+    The health check is SKIPPED when the gate was seeded shut. It is one more
+    request into a door the database just told us is closed, and `probe()` on
+    the ladder asks the same question at a time worth asking it.
+  */
+  if (!provider.gate.isOpen()) {
+    const health = await provider.healthCheck()
+    console.log(`\n  ${health.ok ? '✓' : '✗'} ${health.detail}`)
+    if (!health.ok) {
+      console.warn(
+        `  ${stamp()} ! portal javob bermadi — tsikl baribir boshlanadi,` +
+          ' xatolar har tsiklda qayd etiladi.',
+      )
+    }
   }
 
   /*
@@ -550,13 +653,57 @@ async function main() {
    * block alive; backing off lets it clear.
    */
   let failures = 0
-  /** Whether the LAST tick was refused by the portal's own throttle. */
-  let throttled = false
-  /** Whether the LAST tick was refused for a credential the portal rejects. */
-  let unauthorised = false
 
   while (!stopping) {
     const started = Date.now()
+
+    /*
+      A CLOSED DOOR IS NOT KNOCKED ON — IT IS PROBED, ONCE, ON A LADDER.
+
+      This replaces the `throttled` flag, which could not do the job it was
+      written for: it is computed from the RESULTS of `runAll`, so by the time
+      it is true every entity in that tick has already been refused. Measured
+      on 2026-09-15, a hot tick under `OVERLOAD_LIMIT` sent 3 requests of which
+      2 left after the portal had already said no; a reference tick sent 12 of
+      which 11 did; a restart inside the block sent 11 more. The gate inside
+      `call()` stops those. This is the other half: while the gate is open the
+      worker does no work at all, and asks exactly ONE cheap question when the
+      ladder says it is worth asking.
+
+      `tick` is deliberately NOT incremented here. The counter schedules the
+      reference pass, the deletion sweep and the Roistat import; advancing it
+      through an outage would fire a 180-request sweep into a portal that had
+      just started answering again.
+    */
+    if (provider.gate.isOpen()) {
+      const now = new Date()
+
+      if (!provider.gate.dueForProbe(now)) {
+        const wait = provider.gate.nextWaitMs(now)
+        if (wait > 0 && !stopping) await sleep(wait)
+        continue
+      }
+
+      const state = provider.gate.state()
+      if (!(await provider.probe())) {
+        console.warn(
+          `  ${stamp()} portal hali ham band (${state.code}) —` +
+            ` ${Math.round(provider.gate.nextWaitMs(new Date()) / 1000)}s kutiladi`,
+        )
+        const wait = provider.gate.nextWaitMs(new Date())
+        if (wait > 0 && !stopping) await sleep(wait)
+        continue
+      }
+
+      // `probe()` succeeded, so `call()` has already closed the gate. Fall
+      // straight through into a full tick rather than waiting for the next
+      // boundary: the data is as stale as the outage was long.
+      failures = 0
+      console.log(
+        `  ${stamp()} ✓ portal javob berdi (${state.code} tugadi) — sinxronizatsiya tiklanmoqda`,
+      )
+    }
+
     const entities = tick % REFERENCE_EVERY === 0 ? [...REFERENCE, ...HOT] : HOT
 
     try {
@@ -565,45 +712,16 @@ async function main() {
       const failed = results.filter((r) => r.status === 'FAILED')
 
       /*
-        A PORTAL THAT SAYS «TOO MUCH» IS NOT ASKED AGAIN IN A MINUTE.
+        THE SUBSTRING MATCH IS GONE, AND WITH IT ITS BLIND SPOT.
 
-        `OVERLOAD_LIMIT` and `QUERY_LIMIT_EXCEEDED` are Bitrix24 refusing the
-        whole REST surface, not one entity having a bad second: on 2026-09-14
-        it lasted four hours. The ordinary backoff below reaches five minutes
-        after five consecutive failures, which over a block that long is
-        another ~50 refused calls an hour against a counter we cannot see and
-        may be feeding. There is nothing to gain by asking sooner — the block
-        lifts on the portal's clock, not on ours — so a throttled tick waits
-        ten minutes flat, and the dashboard says why in the header meanwhile.
+        This used to read the two codes out of an error MESSAGE — which only
+        works when the message carries them. It did not for the whole 429/5xx
+        family: that branch of `call()` dropped the response body, so a
+        `QUERY_LIMIT_EXCEEDED` behind a 503 arrived as «Bitrix24 responded 503»,
+        this test was false, and the ten-minute wait it guards never engaged.
+        `PortalGate` is told by `call()` itself, from the error's own `code`
+        field, before any message is formatted.
       */
-      throttled = results.some(
-        (r) =>
-          r.status === 'FAILED' &&
-          (r.errorMessage?.includes('OVERLOAD_LIMIT') ||
-            r.errorMessage?.includes('QUERY_LIMIT_EXCEEDED')),
-      )
-
-      /*
-        A REVOKED WEBHOOK IS NOT A BAD MINUTE, AND WAITING IS NOT OPTIONAL.
-
-        On 2026-09-15 the portal throttled at 05:50 UTC and then began
-        answering `401 INVALID_CREDENTIALS` at 06:10 — the webhook was gone.
-        The ordinary backoff caps at five minutes, so for the next hour this
-        worker asked twelve entities for data with a credential the portal had
-        already refused, roughly 240 calls an hour that could not succeed. The
-        day before, that same portal had blocked the integration for four
-        hours over volume, and the ticket we sent its support promised we back
-        off when refused. This is the promise, kept in code.
-
-        The clock cannot start again until a person installs a new webhook, so
-        there is nothing for a tighter loop to catch. Ten minutes bounds the
-        cost of being broken at roughly seventy refused calls an hour and
-        still picks the new credential up inside one cycle.
-      */
-      unauthorised = results.some(
-        (r) => r.status === 'FAILED' && isCredentialFailure(r.errorMessage),
-      )
-
       if (failed.length > 0) {
         failures += 1
         console.warn(
@@ -618,10 +736,17 @@ async function main() {
           is the only place an operator will be looking before the client
           phones — so it names the act rather than the symptom.
         */
-        if (unauthorised) {
+        const gate = provider.gate.state()
+        if (gate.kind === 'CREDENTIAL') {
           console.error(
-            `  ${stamp()} ✗ Bitrix24 webhook rad etildi (401). Yangi webhook kerak —` +
-              ` qayta urinish yordam bermaydi, ${PORTAL_PAUSE_MS / 60_000} daqiqa kutiladi.`,
+            `  ${stamp()} ✗ Bitrix24 webhook rad etildi (${gate.code}). Yangi webhook kerak —` +
+              ' qayta urinish yordam bermaydi, portal ' +
+              `${Math.round(provider.gate.nextWaitMs(new Date()) / 60_000)} daqiqada zondlanadi.`,
+          )
+        } else if (gate.kind === 'THROTTLE') {
+          console.warn(
+            `  ${stamp()} portal bloklandi (${gate.code}) — soʻrovlar toʻxtatildi,` +
+              ` ${Math.round(provider.gate.nextWaitMs(new Date()) / 1000)}s dan keyin zondlanadi.`,
           )
         }
       } else {
@@ -641,8 +766,6 @@ async function main() {
       }
     } catch (error) {
       failures += 1
-      throttled = false
-      unauthorised = false
       console.error(`  ${stamp()} ✗ tsikl xatosi:`, error)
     }
 
@@ -732,10 +855,15 @@ async function main() {
       waits at least its backoff; a long but SUCCESSFUL tick still starts the
       next one immediately, because `backoff` is zero when nothing failed.
     */
-    const backoff =
-      throttled || unauthorised
-        ? PORTAL_PAUSE_MS
-        : Math.min(failures, 5) * INTERVAL_SEC * 1000
+    /*
+      The gate owns the wait whenever it is open — its ladder is the schedule,
+      and `THROTTLED_WAIT_MS` survives as that ladder's ceiling rather than as a
+      flat wait, so the ten minutes a production incident put there still bounds
+      how long the dashboard can be stale without anyone asking the portal.
+    */
+    const backoff = provider.gate.isOpen()
+      ? provider.gate.nextWaitMs(new Date())
+      : Math.min(failures, 5) * INTERVAL_SEC * 1000
     const remaining = Math.max(INTERVAL_SEC * 1000 - (Date.now() - started), backoff)
 
     if (remaining > 0 && !stopping) await sleep(remaining)

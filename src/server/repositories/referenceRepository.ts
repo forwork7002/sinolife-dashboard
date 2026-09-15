@@ -333,6 +333,8 @@ export class ReferenceRepository {
   async findCurrentSyncFailure(lastSuccess?: Date | null): Promise<{
     readonly entity: string
     readonly at: Date
+    /** When this outage STARTED — the oldest failure in the current run of them. */
+    readonly since: Date
     readonly message: string | null
     /**
      * How many DISTINCT entities are failing right now, or null when there is
@@ -369,32 +371,52 @@ export class ReferenceRepository {
     if (success && success.getTime() >= failure.finishedAt.getTime()) return null
 
     /*
-      ASKED ONLY WHILE SOMETHING IS ACTUALLY WRONG, and bounded when it is.
+      TWO QUESTIONS THE CHIP COULD NOT ANSWER, ASKED TOGETHER.
 
-      This runs on `/meta/alerts`, which every open tab polls once a minute, so
-      a second query here has to earn itself. It does not run at all on a
-      healthy dashboard — the two returns above have already left. When it does
-      run it is the same `[status, finishedAt DESC]` index walk as the read
-      above, over the failures since the last success: fifty-odd rows an hour
-      into an outage, not the log's whole history.
+      HOW WIDE: `entity` above is whichever pass happened to fail LAST, so a
+      portal refusing every REST call was reported as «stage_history» — the
+      narrowest, least consequential thing on the portal, and a reader who
+      knows what that is concludes the deal numbers are fine. Without a last
+      success there is nothing to bound the count by, and an unbounded GROUP BY
+      over 120 000 rows is precisely what that index was added to stop, so it
+      stays null and the chip falls back to naming one entity.
 
-      WITHOUT a last success there is nothing to bound it by, and an unbounded
-      GROUP BY over 120 000 rows is precisely what that index was added to stop
-      — so the count is null and the chip falls back to naming one entity.
+      HOW LONG: `at` is the NEWEST failed row, always seconds old during an
+      outage, so a four-hour block and a four-minute blip were indistinguishable
+      on screen. The OLDEST failure standing after the last success is when this
+      outage actually began.
+
+      ASKED ONLY WHILE SOMETHING IS ACTUALLY WRONG. This runs on `/meta/alerts`,
+      which every open tab polls once a minute, so a query here has to earn
+      itself — and neither of these runs on a healthy dashboard, because the two
+      returns above have already left. In parallel they cost ONE round trip, and
+      both are the same `[status, finishedAt DESC]` index walk (a btree serves
+      the ascending order from a DESC index) over the failures since the last
+      success: fifty-odd rows an hour into an outage, not the log's history.
     */
-    const entities =
+    const [entities, firstFailure] = await Promise.all([
       success === null || success === undefined
-        ? null
-        : (
-            await this.prisma.syncLog.groupBy({
+        ? Promise.resolve(null)
+        : this.prisma.syncLog
+            .groupBy({
               by: ['entity'],
               where: { status: 'FAILED', finishedAt: { gt: success } },
             })
-          ).length
+            .then((rows) => rows.length),
+      this.prisma.syncLog.findFirst({
+        where: {
+          status: 'FAILED',
+          finishedAt: success ? { gt: success } : { not: null },
+        },
+        orderBy: { finishedAt: 'asc' },
+        select: { finishedAt: true },
+      }),
+    ])
 
     return {
       entity: failure.entity,
       at: failure.finishedAt,
+      since: firstFailure?.finishedAt ?? failure.finishedAt,
       message: failure.errorMessage,
       entities,
     }

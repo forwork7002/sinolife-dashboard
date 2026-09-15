@@ -261,10 +261,14 @@ export interface AlertsDto {
   /** Why the sync clock has stopped, when it has. See `AlertsDto` on the server. */
   readonly syncError: {
     readonly code: string
+    /** THROTTLE clears itself; CREDENTIAL needs a person. See the server DTO. */
+    readonly kind: 'THROTTLE' | 'CREDENTIAL' | 'METHOD' | 'TRANSIENT' | 'UNKNOWN'
     readonly entity: string
     /** How many entities are failing; null when it could not be bounded. */
     readonly entities: number | null
     readonly at: string
+    /** When the outage began — `at` is only the newest failed tick. */
+    readonly since: string
   } | null
 }
 
