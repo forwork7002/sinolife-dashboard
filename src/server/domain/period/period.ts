@@ -163,6 +163,49 @@ export function resolvePeriod(
 }
 
 /**
+ * The last N calendar days, ending tonight — a window the READER does not pick.
+ *
+ * WHY AN ENDPOINT WOULD RESOLVE ITS OWN WINDOW. Customer concentration is a
+ * shape, not a total: «how much of the money stands on ten customers», «how
+ * many days between a first and a second purchase». Every one of those needs a
+ * sample, and `/insights/concentration` inherited the dashboard's period
+ * control, which defaults to «Bugun». Measured on production on 2026-09-15
+ * that gave the screen twelve customers, ONE first-to-second pair and a cohort
+ * of four — and it printed «Top-10 mijoz ulushi 89%» in critical red over it.
+ * Every figure was arithmetically correct and the band as a whole was noise.
+ *
+ * So the window is the endpoint's, resolved here from the clock in
+ * `APP_TIMEZONE`, and the screen prints the dates it got back. The preset is
+ * `custom` because that is what a caller-supplied span is; nothing about this
+ * window is a preset the reader could have chosen.
+ */
+export function trailingDays(
+  days: number,
+  options: { readonly timeZone: string; readonly now?: Date },
+): Period {
+  const { timeZone, now = new Date() } = options
+  assertValidDate(now, 'now')
+
+  if (!Number.isInteger(days) || days < 1) {
+    throw new InvalidPeriodError(`trailingDays needs a positive whole number of days, got ${days}`)
+  }
+
+  const zonedNow = new TZDate(now.getTime(), timeZone)
+  const todayStart = startOfDay(zonedNow)
+  /* Half-open like every other window here: [start, end). Today is INSIDE the
+     span — `days = 1` is exactly «Bugun» — so the start is days-1 back. */
+  const end = addDays(todayStart, 1)
+  const start = addDays(todayStart, -(days - 1))
+
+  return Object.freeze({
+    start: toInstant(start),
+    end: toInstant(end),
+    timeZone,
+    preset: 'custom' as const,
+  })
+}
+
+/**
  * The period this one should be compared against.
  *
  * Not simply "the preceding window of equal length". For calendar-anchored

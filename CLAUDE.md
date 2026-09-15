@@ -422,7 +422,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Screen | URL | Feature | Endpoint(s) | Service → Repository | Window filters on |
 |---|---|---|---|---|---|
 | Savdo dinamikasi | `/analytics/sales` | `sales/SalesPage` + `ConfirmationFaktSection` + `DeliveryBoardSection` | `/analytics/sellers` twice (the board, and `?include=faktTrend` for the chart) + `/insights/delivery` | SellerBoard, Pulse → SellerBoard, Pulse | the arrival in `C4:NEW` (`queued_at`) — **except the Доставка board, which has NO window at all**: a kanban column is where orders are standing now |
-| Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` | `/insights/cohorts`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | `closedAt`, on revenue-bearing WON deals only — nothing here reads `createdAtSource` |
+| Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` + `StateBars` | `/insights/cohorts`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | **nothing — the screen is DATELESS since 2026-09-15** (`period={false}`, like Struktura). `closedAt` on revenue-bearing WON deals is the clock both endpoints read; the matrix takes no window at all and `/insights/concentration` resolves its OWN trailing 90 days (`trailingDays`). Nothing here reads `createdAtSource` |
 | Reklama samarasi | `/marketing` | **PAUSED** — `shared/SectionPending`; `marketing/MarketingPage` is held, not mounted | none while paused (`/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` still answer) | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
@@ -467,8 +467,60 @@ Per-screen traps worth knowing before you touch one:
   `tests/http/deliveryBoardSql.test.ts` pins both, and every stage name is
   printed VERBATIM in Russian — the block's whole value is that it reconciles
   against the screen it was copied from.
-- **Mijoz qaytishi** — «Faol bazada» is a separate DISTINCT-customer total, not
-  the sum of the ladder bars.
+- **Mijoz qaytishi** — **REWORKED ON 2026-09-15**, on the client's instruction
+  («kogorta jadvalini … kuchaytirish … oddiylashtirish kerak, mijoz qaytishi
+  boʻlimini toʻliqligicha yaxshilash»). Three things changed and each fixed a
+  reading, not a look.
+  **THE MATRIX DEFAULTS TO CUMULATIVE.** «Jami qaytgan» — of this cohort, how
+  many have come back at least once BY month N — with «Oylik», the old
+  per-month reading, one press away. Measured on production: monthly repeat
+  purchase here runs **0–4%**, so ~250 cells landed in the two palest steps of
+  a five-step ramp and the grid said nothing; the same customers read
+  cumulatively run **0–37%**. It is NOT derivable from the monthly cells — a
+  customer returning in +1 and again in +3 is in two of them — so the
+  repository counts each returner's FIRST return month (`first_return` →
+  `first_by_offset`) and the service runs a total over it. That CTE replaced
+  the old `count(DISTINCT customer_id)` rather than joining it: a count(DISTINCT)
+  already groups by customer inside each cohort, so this is the same work with
+  the month kept. **The identity to check:** a row's last measured cell equals
+  its «Qaytgan» share, because the increments sum to `returned` by
+  construction. The cumulative reading drops the `0` column (100% monthly, 0%
+  cumulatively, for every row there has ever been) and has its OWN colour bands
+  — 0/5/10/20/30 against the monthly 0/2/4/7/12, since one ramp cannot carry
+  both scales. `tests/components/cohortMatrix.test.tsx` pins both readings and
+  the double-count that would send the curve past 100%.
+  **«База» IS FOUR STATES, NOT FIFTEEN STAGES.** The card drew one bar per
+  portal stage under copy promising «1 kun, 3 kun, 10 kun, 20 kun, 30 kun» —
+  five of the fifteen; the other ten were never named. The partition is
+  `src/lib/retentionGroups.ts` (Yangi / Aloqa siklida / Faol mijoz / Sovigan),
+  keyed by **stage id** and read by BOTH sides exactly as `logisticsBuckets` is.
+  Every level is its own `count(DISTINCT customerId)` under one `GROUPING SETS`
+  — stage, group, funnel — because a customer on two stages of one group is one
+  person in it, and summing the level below is how this screen once printed a
+  base 1 660 people too big. The four still **do not** add up to the base
+  (one customer, two open deals, two states) and the card says so rather than
+  presenting them as parts of a whole. An unmapped stage becomes its own
+  «Boshqa bosqichlar» row; `tests/domain/retentionGroups.test.ts` and
+  `tests/http/retentionStagesSql.test.ts` pin the partition and the statement,
+  and `tests/features/retentionStateBars.test.tsx` renders the card — the demo
+  seed has no RETENTION pipeline at all, so production is the only place the
+  bars have ever drawn.
+  **«Faol bazada» LEFT THE TILE ROW**, where it read «12 558» beside «Jami
+  mijozlar 11 512» — two numbers contradicting each other on their faces
+  unless the reader already knew one counts База deals and the other counts
+  first purchases. It is stated on the База card now, over its own denominator.
+  Still a separate DISTINCT-customer total, never the sum of the bars.
+  **AND THE PERIOD CONTROL IS GONE, because it drove nothing.** The matrix
+  needs the whole history, the База bars are today's snapshot — so the only
+  thing the control reached was `/insights/concentration`, which inherited the
+  dashboard default of «Bugun». Read on production 2026-09-15 that gave the
+  band **12 customers, ONE first-to-second pair and a cohort of four**, under
+  «Top-10 mijoz ulushi 89%» painted critical red. Every figure was
+  arithmetically correct and the band as a whole was noise. The endpoint now
+  resolves its own trailing 90 days (`trailingDays` in `period.ts`; `days` is a
+  parameter, wired to no control), and the four tiles refuse to print at all
+  under `MIN_CUSTOMERS` 30 / `MIN_PAIRS` 10 / `MIN_COHORT` 30 — low on purpose,
+  to catch a day's trading rather than a quiet fortnight.
 - **Kanallar** — the dashboard-wide `preset` and `filial` do **not** reach this
   screen; it resolves its own window from `from`/`to`/`today`.
 - **Yalpi marja** — discounts are split by sign in SQL; never net them or

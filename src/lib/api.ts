@@ -425,14 +425,47 @@ export interface CohortDto {
    * each customer's history, so it is not bounded by the matrix's own columns.
    */
   readonly returned: number
+  /**
+   * The share of the cohort that had come back AT LEAST ONCE by each offset.
+   *
+   * The matrix's default reading. Monthly retention on this portal runs 0-4%,
+   * which paints 250 cells in two indistinguishable shades; the same customers
+   * read cumulatively run 0-37% and answer the question the business actually
+   * asks — «how many of August's buyers have we got back so far».
+   *
+   * Monotonic, and its last measured value equals `returned / size`, so the
+   * grid can be checked against the «Qaytgan» column beside it. Index 0 is 0:
+   * nobody has RETURNED in the month they first bought.
+   */
+  readonly cumulative: readonly (number | null)[]
+  /** The headcount behind each `cumulative` share, same offsets, same nulls. */
+  readonly cumulativeCustomers: readonly (number | null)[]
   readonly revenue: readonly MoneyDto[]
   readonly maxOffset: number
 }
 
+/**
+ * One of the four states a customer in База can be in.
+ *
+ * `key` is a `RETENTION_GROUPS` key from `src/lib/retentionGroups.ts` (or
+ * `OTHER`), and the label, the hint and the colour are read from that table
+ * rather than sent — the partition has one definition, and both sides read it.
+ */
+export interface RetentionGroupDto {
+  readonly key: string
+  readonly customers: number
+  readonly openCustomers: number
+  /** The portal's own stages inside this group, in funnel order, for the hover. */
+  readonly stages: readonly { readonly stage: string; readonly customers: number }[]
+}
+
 export interface CohortSummaryDto {
   readonly rows: readonly CohortDto[]
-  readonly stages: readonly { readonly stage: string; readonly customers: number }[]
-  /** Distinct customers on an open retention deal. Never the sum of `stages`. */
+  /** База as four states. NEVER summed: one customer can stand in two of them. */
+  readonly groups: readonly RetentionGroupDto[]
+  /** Distinct customers anywhere in База. Never the sum of `groups`. */
+  readonly baseCustomers: number
+  /** Distinct customers on an open retention deal. Never the sum of `groups`. */
   readonly workedCustomers: number
   /**
    * Repeat money as a share of all money, 0-100. NULL when nothing was measured.

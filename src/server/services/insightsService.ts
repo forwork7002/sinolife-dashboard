@@ -71,14 +71,41 @@ export interface CohortDto {
   readonly size: number
   /** Retention percentage per month offset. Index 0 is the cohort month. */
   readonly retention: readonly (number | null)[]
+  /**
+   * The share of the cohort that has come back AT LEAST ONCE by each offset.
+   *
+   * Monotonic by construction — it is a running sum of first returns over a
+   * fixed denominator — and its last measured value is `returned / size`, the
+   * figure the «Qaytgan» column prints. That identity is what makes the matrix
+   * checkable against its own left-hand column.
+   *
+   * Index 0 is 0, not 100: nobody has RETURNED in the month they first bought.
+   * The monthly array says 100 there, and the two are answering different
+   * questions — which is why the screen hides that column in this reading
+   * rather than printing a zero beside a hundred.
+   */
+  readonly cumulative: readonly (number | null)[]
+  /** The headcount behind each `cumulative` share, same offsets, same nulls. */
+  readonly cumulativeCustomers: readonly (number | null)[]
   readonly revenue: readonly MoneyDto[]
   readonly maxOffset: number
 }
 
+export interface RetentionGroupDto {
+  /** A key from `RETENTION_GROUPS` in `src/lib`, or `OTHER`. */
+  readonly key: string
+  readonly customers: number
+  readonly openCustomers: number
+  readonly stages: readonly { stage: string; customers: number }[]
+}
+
 export interface CohortSummaryDto {
   readonly rows: readonly CohortDto[]
-  readonly stages: readonly { stage: string; customers: number }[]
-  /** Distinct customers on an open retention deal. Never the sum of `stages`. */
+  /** База, as the four states a customer can be in. Never summed — see the DTO. */
+  readonly groups: readonly RetentionGroupDto[]
+  /** Distinct customers anywhere in База. Never the sum of `groups`. */
+  readonly baseCustomers: number
+  /** Distinct customers on an open retention deal. Never the sum of `groups`. */
   readonly workedCustomers: number
   /** Share of revenue that came from customers buying a second time or later. */
   /**
@@ -889,7 +916,12 @@ export class InsightsService {
       const retention: (number | null)[] = []
       /* The countable half of every percentage below — see `CohortDto`. */
       const customers: (number | null)[] = []
+      const cumulative: (number | null)[] = []
+      const cumulativeCustomers: (number | null)[] = []
       const revenue: MoneyDto[] = []
+      /* Running total of customers who have come back at least once. Reset per
+         row, and only ever added to inside the measured span. */
+      let everReturned = 0
       const byOffset = new Map(row.cells.map((c) => [c.monthsSince, c]))
 
       /*
@@ -928,6 +960,29 @@ export class InsightsService {
            has not happened yet has no headcount either, and a 0 beside a blank
            cell would be the one reading this matrix must never have. */
         customers.push(offset > reachable ? null : (cell?.customers ?? 0))
+
+        /*
+          THE CUMULATIVE CURVE, built from FIRST returns and nothing else.
+
+          `cell.firstReturners` counts customers whose first return landed on
+          this offset, so adding them up walks each returning customer in
+          exactly once. Adding `cell.customers` instead would count a monthly
+          buyer once a month and send the curve past 100%.
+
+          The running total is advanced only INSIDE the measured span, so a
+          row's last drawn value equals `returned / size` — the «Qaytgan»
+          column — rather than continuing past the horizon on stale state.
+        */
+        if (offset <= reachable) everReturned += cell?.firstReturners ?? 0
+        cumulative.push(
+          offset > reachable
+            ? null
+            : row.size === 0
+              ? 0
+              : Math.round((everReturned / row.size) * 1000) / 10,
+        )
+        cumulativeCustomers.push(offset > reachable ? null : everReturned)
+
         revenue.push(toMoneyDto(money(cell?.revenueMinor ?? 0n, currency)))
       }
 
@@ -940,6 +995,8 @@ export class InsightsService {
         returned: row.returned,
         retention,
         customers,
+        cumulative,
+        cumulativeCustomers,
         revenue,
         maxOffset: reachable,
       }
@@ -974,7 +1031,8 @@ export class InsightsService {
 
     return {
       rows: dtos,
-      stages: base.stages,
+      groups: base.groups,
+      baseCustomers: base.totalCustomers,
       workedCustomers: base.workedCustomers,
       repeatRevenueShare:
         total === 0n ? null : Math.round(Number((laterRevenue * 1000n) / total)) / 10,
