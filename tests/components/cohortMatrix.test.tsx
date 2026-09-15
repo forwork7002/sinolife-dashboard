@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { CohortHeatmap, type CohortMatrixRow } from '@/components/charts/Heatmap'
@@ -42,6 +42,10 @@ const ROWS: CohortMatrixRow[] = [
     cumulative: [0, null, null],
     cumulativeCustomers: [0, null, null],
     revenue: [{ amount: 1_000_000 }, { amount: 0 }, { amount: 0 }],
+    orders: [120, null, null],
+    revenueTotal: '1,000,000 soʻm',
+    revenuePerCustomer: '10,000 soʻm',
+    ageMonths: 0,
   },
   {
     cohort: '2026-07-01',
@@ -52,6 +56,10 @@ const ROWS: CohortMatrixRow[] = [
     cumulative: [0, 10, null],
     cumulativeCustomers: [0, 5, null],
     revenue: [{ amount: 500_000 }, { amount: 90_000 }, { amount: 0 }],
+    orders: [55, 6, null],
+    revenueTotal: '590,000 soʻm',
+    revenuePerCustomer: '11,800 soʻm',
+    ageMonths: 1,
   },
   {
     /*
@@ -68,6 +76,10 @@ const ROWS: CohortMatrixRow[] = [
     cumulative: [0, 20, 22.5],
     cumulativeCustomers: [0, 40, 45],
     revenue: [{ amount: 2_000_000 }, { amount: 700_000 }, { amount: 150_000 }],
+    orders: [210, 45, 12],
+    revenueTotal: '2,850,000 soʻm',
+    revenuePerCustomer: '14,250 soʻm',
+    ageMonths: 2,
   },
 ]
 
@@ -202,6 +214,10 @@ describe('the summary row refuses to colour a sample of one', () => {
       cumulative: [0, 0, 0],
       cumulativeCustomers: [0, 0, 0],
       revenue: [{ amount: 10_000 }, { amount: 0 }, { amount: 0 }],
+    orders: [1, 0, 0],
+    revenueTotal: '10,000 soʻm',
+    revenuePerCustomer: '10,000 soʻm',
+    ageMonths: 2,
     },
     {
       // A real cohort, but it has only lived one month.
@@ -213,6 +229,10 @@ describe('the summary row refuses to colour a sample of one', () => {
       cumulative: [0, 10, null],
       cumulativeCustomers: [0, 40, null],
       revenue: [{ amount: 4_000_000 }, { amount: 300_000 }, { amount: 0 }],
+    orders: [420, 40, null],
+    revenueTotal: '4,300,000 soʻm',
+    revenuePerCustomer: '10,750 soʻm',
+    ageMonths: 1,
     },
   ]
 
@@ -255,6 +275,10 @@ describe('the matrix shows a window of months rather than every one it is given'
       cumulative: Array.from({ length: 19 }, (_, i) => (i === 0 ? 0 : 2 * i)),
       cumulativeCustomers: Array.from({ length: 19 }, (_, i) => (i === 0 ? 0 : 2 * i)),
       revenue: Array.from({ length: 19 }, () => ({ amount: 10_000 })),
+    orders: Array.from({ length: 19 }, (_, i) => (i === 0 ? 100 : 2)),
+    revenueTotal: '190,000 soʻm',
+    revenuePerCustomer: '1,900 soʻm',
+    ageMonths: 18,
     },
   ]
 
@@ -324,5 +348,180 @@ describe('the cells print figures, and the header carries the unit', () => {
 
     // The «0» column is 100 in every row: the anchor, off the ramp.
     expect(cell(/2026-iyn kogortasi, xarid oyi/).textContent).toBe('100')
+  })
+})
+
+describe('the money columns, and the comparison they invite', () => {
+  /*
+    A COLUMN OF FIGURES IS AN INVITATION TO RANK THE ROWS, and ranking rows on
+    money-to-date ranks them on AGE. The old cohort below has had thirteen
+    months to spend and the young one has had one, so read against each other
+    they say «new customers are worse» — the exact opposite of the finding this
+    screen exists to show. Three defences, and each is asserted here: the
+    heading says «hozirgacha», every money hover states the cohort's age, and a
+    cohort under three months old prints greyed and says why.
+
+    Three months is measured, not chosen: the median inter-purchase gap on this
+    portal is 37.5 days and p75 is 73.9, so a younger cohort has largely not
+    had its second chance yet. See `MONEY_YOUNG_MONTHS`.
+  */
+  const GROWN: CohortMatrixRow[] = [
+    {
+      cohort: '2025-08-01',
+      size: 24,
+      returned: 5,
+      retention: [100, 12.5, 8.3],
+      customers: [24, 3, 2],
+      cumulative: [0, 12.5, 20.8],
+      cumulativeCustomers: [0, 3, 5],
+      revenue: [{ amount: 4_800_000 }, { amount: 900_000 }, { amount: 600_000 }],
+      // Three people came back in +1 and placed FOUR orders between them:
+      // the two counts are different facts and the hover must not merge them.
+      orders: [24, 4, 3],
+      revenueTotal: '6,300,000 soʻm',
+      revenuePerCustomer: '262,500 soʻm',
+      ageMonths: 13,
+    },
+  ]
+
+  const INFANT: CohortMatrixRow[] = [
+    {
+      cohort: '2026-08-01',
+      size: 3,
+      returned: 0,
+      retention: [100, 0, null],
+      customers: [3, 0, null],
+      cumulative: [0, 0, null],
+      cumulativeCustomers: [0, 0, null],
+      revenue: [{ amount: 600_000 }, { amount: 0 }, { amount: 0 }],
+      orders: [3, 0, null],
+      revenueTotal: '600,000 soʻm',
+      revenuePerCustomer: '200,000 soʻm',
+      ageMonths: 1,
+    },
+  ]
+
+  it('prints the cohort’s whole revenue and its per-customer share', () => {
+    render(<CohortHeatmap rows={GROWN} />)
+
+    expect(cell(/kogorta tushumi/i).textContent).toBe('6,300,000 soʻm')
+    expect(cell(/1 mijozga/i).textContent).toBe('262,500 soʻm')
+  })
+
+  it('heads both columns «hozirgacha», because they are money TO DATE', () => {
+    render(<CohortHeatmap rows={GROWN} />)
+
+    expect(screen.getByRole('columnheader', { name: /kogorta tushumi/i }).textContent).toContain(
+      'hozirgacha',
+    )
+    expect(screen.getByRole('columnheader', { name: /1 mijozga/i }).textContent).toContain(
+      'hozirgacha',
+    )
+  })
+
+  it('greys a cohort too young to compare on money-to-date', () => {
+    render(<CohortHeatmap rows={INFANT} />)
+
+    const perCustomer = cell(/1 mijozga/i)
+    expect(perCustomer.getAttribute('data-young')).toBe('true')
+    expect(perCustomer.getAttribute('aria-label')).toMatch(/solishtirib boʻlmaydi/)
+    // Greyed, never withheld: the figure is true, it is simply not comparable.
+    expect(perCustomer.textContent).toBe('200,000 soʻm')
+  })
+
+  it('does not grey a cohort old enough to compare', () => {
+    render(<CohortHeatmap rows={GROWN} />)
+
+    const perCustomer = cell(/1 mijozga/i)
+    expect(perCustomer.getAttribute('data-young')).toBe('false')
+    expect(perCustomer.getAttribute('aria-label')).not.toMatch(/solishtirib boʻlmaydi/)
+  })
+
+  it('states the cohort’s age in the money hover, at every age', () => {
+    render(<CohortHeatmap rows={GROWN} />)
+    fireEvent.mouseEnter(cell(/1 mijozga/i))
+
+    expect(screen.getByText('13 oy')).toBeTruthy()
+    expect(screen.getByText(/13 oy davomida/)).toBeTruthy()
+  })
+
+  it('says in the young cohort’s hover why its figure cannot be ranked', () => {
+    render(<CohortHeatmap rows={INFANT} />)
+    fireEvent.mouseEnter(cell(/1 mijozga/i))
+
+    expect(screen.getByText(/1 oylik — bu raqamni eski kogortalar bilan solishtirib boʻlmaydi/))
+      .toBeTruthy()
+  })
+
+  it('names orders and customers as different things in the hover', () => {
+    render(<CohortHeatmap rows={GROWN} />)
+    fireEvent.mouseEnter(cell(/2025-avg kogortasi, \+1 oy/))
+
+    // Three people, four orders. Printed as one number the cell would be
+    // saying whichever of the two the reader assumed it meant.
+    expect(screen.getByText('3 / 24 mijoz')).toBeTruthy()
+    expect(screen.getByText('Buyurtmalar')).toBeTruthy()
+    expect(screen.getByText('4 ta')).toBeTruthy()
+  })
+
+  it('leaves the summary row’s money blank rather than adding formatted strings', () => {
+    /*
+      The grid is handed money already formatted (see `toMatrixRow` in
+      CohortPage), so it has no number to add — and the per-customer column
+      could not be summed even if it had: a «Jami» under figures that each
+      cover a different span of months is the cross-row comparison the whole
+      block above defends against, printed as a fact.
+    */
+    render(<CohortHeatmap rows={GROWN} />)
+
+    const summary = screen.getByRole('row', { name: /Jami · oʻrtacha/ })
+    const cells = summary.querySelectorAll('td')
+
+    // td[0] «Yangi mijoz», td[1] «Qaytgan», then the two money columns.
+    expect(cells[2]?.textContent).toBe('—')
+    expect(cells[3]?.textContent).toBe('—')
+  })
+})
+
+describe('the pinned block is aligned by construction, not by hand', () => {
+  /*
+    THE FAILURE THIS PINS IS ONE PIXEL WIDE.
+
+    The left columns are sticky, so each one's `left` has to equal the widths
+    that precede it EXACTLY — a pixel of disagreement shows as a sliver of a
+    scrolling cell sitting under a pinned one, which reads as a rendering
+    fault. Those offsets used to be hand-written sums of three width constants
+    at nine sites; they are derived from the `PINNED` list now, and this
+    asserts the derivation against the widths the `<colgroup>` actually
+    declares, in all three bands of the table at once.
+  */
+  const offsets = () => {
+    const widths = Array.from(document.querySelectorAll('col'))
+      .map((col) => Number.parseFloat((col as HTMLElement).style.width))
+      .filter((width) => !Number.isNaN(width))
+
+    return widths.map(
+      (_, i) => `${widths.slice(0, i).reduce((sum, width) => sum + width, 0)}px`,
+    )
+  }
+
+  const stickyLeftsOf = (row: Element, count: number) =>
+    Array.from(row.children)
+      .slice(0, count)
+      .map((cell) => (cell as HTMLElement).style.left)
+
+  it('sets every sticky left to the sum of the widths before it', () => {
+    render(<CohortHeatmap rows={ROWS} />)
+
+    const expected = offsets()
+    expect(expected.length).toBeGreaterThan(3)
+
+    const head = screen.getAllByRole('row')[0]
+    const body = screen.getByRole('row', { name: /2026-iyn kogortasi/ })
+    const summary = screen.getByRole('row', { name: /Jami · oʻrtacha/ })
+
+    expect(stickyLeftsOf(head!, expected.length)).toEqual(expected)
+    expect(stickyLeftsOf(body, expected.length)).toEqual(expected)
+    expect(stickyLeftsOf(summary, expected.length)).toEqual(expected)
   })
 })

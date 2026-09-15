@@ -24,7 +24,15 @@ import {
  *   row     — the month a customer bought for the FIRST time;
  *   `Yangi mijoz` — how many people that month is (the denominator of the row);
  *   `Qaytgan`     — how many of them ever came back, counted once each;
+ *   `Kogorta tushumi` — every month of that cohort's money, added up;
+ *   `1 mijozga`   — that money divided by the cohort — money TO DATE, which is
+ *                   why both headings say «hozirgacha» and why a cohort under
+ *                   `MONEY_YOUNG_MONTHS` prints greyed;
  *   column `+N`   — N months after that first purchase.
+ *
+ * THE MONEY DOES NOT COMPARE DOWN THE PER-CUSTOMER COLUMN, and a column of
+ * figures is an invitation to compare down it. See `MONEY_YOUNG_MONTHS` for the
+ * three defences and the measurement behind the floor.
  *
  * TWO READINGS OF THE SAME CUSTOMERS, and the default is the cumulative one.
  *
@@ -72,19 +80,82 @@ export interface CohortMatrixRow {
   readonly cumulativeCustomers: readonly (number | null)[]
   /** What that offset's purchases were worth. */
   readonly revenue: readonly { readonly amount: number }[]
+  /**
+   * Revenue-bearing WON deals per offset — ORDERS, where `customers` counts
+   * PEOPLE. Same offsets, same nulls, so a hover can say «3 mijoz · 4 ta
+   * buyurtma» without the reader having to guess which of the two a cell meant.
+   */
+  readonly orders: readonly (number | null)[]
+  /**
+   * Every month of this cohort's money added up. PRE-FORMATTED for display.
+   *
+   * The DTO carries a `MoneyDto`; this carries a string, and the boundary is
+   * deliberate — every other figure on this grid arrives formatted, and handing
+   * a chart a currency would put currency logic inside a presentation
+   * component. `toMatrixRow` in `CohortPage.tsx` is where the crossing happens,
+   * beside the `formatUzs` that already lives there.
+   */
+  readonly revenueTotal: string
+  /** `revenueTotal / size`, formatted. See `ageMonths` — it does NOT compare across rows. */
+  readonly revenuePerCustomer: string
+  /** Whole months this cohort has lived. Under `MONEY_YOUNG_MONTHS`, the figure above is noise. */
+  readonly ageMonths: number
 }
 
 /*
-  Fixed widths, and the table is `table-layout: fixed`.
+  THE PINNED BLOCK IS ONE ORDERED LIST, AND EVERY OFFSET IS DERIVED FROM IT.
 
-  The three left columns are sticky, so their `left` offsets have to equal the
-  widths that precede them EXACTLY — a pixel of disagreement shows as a sliver
-  of a scrolling cell under a pinned one. With the widths declared here and the
-  layout fixed, the two can never drift apart.
+  Fixed widths, and the table is `table-layout: fixed`. The left columns are
+  sticky, so their `left` offsets have to equal the widths that precede them
+  EXACTLY — a pixel of disagreement shows as a sliver of a scrolling cell under
+  a pinned one.
+
+  That invariant used to be kept BY HAND. Three constants (`W_COHORT`,
+  `W_SIZE`, `W_RETURNED`) were added up at nine sites — three `<col>`s, three
+  headings, two body cells, the summary row and one `const pinned = A + B + C`
+  — so a fourth column meant writing nine more sums into the file whose own
+  comment names the failure they cause. Adding the two money columns would have
+  doubled that. The list below is now the single declaration; `leftOf` sums the
+  widths BEFORE a column and `LEFT` / `WIDTH` / `PINNED_WIDTH` are read off it,
+  so the offsets cannot disagree with the widths. Adding a pinned column is one
+  entry here plus the cells that draw it — nothing in this file adds a width up.
 */
-const W_COHORT = 112
-const W_SIZE = 72
-const W_RETURNED = 84
+const PINNED = [
+  { key: 'cohort', width: 112 },
+  { key: 'size', width: 72 },
+  { key: 'returned', width: 84 },
+  /*
+    MEASURED, not guessed, because these cells are `whitespace-nowrap`: too
+    narrow and a cohort's money spills out over the heat tiles passing
+    underneath instead of wrapping. Inter at 12px with `tabular-nums`, plus the
+    cell's own 16px of padding: «1,234,567,890 soʻm» (a ten-digit month, which
+    this portal has) is 117.8 + 16, and «12,450,000 soʻm» per customer is
+    99.1 + 16. Both are the widest figure `formatUzs` can print in the column.
+  */
+  { key: 'revenueTotal', width: 136 },
+  { key: 'revenuePerCustomer', width: 116 },
+] as const
+
+type PinnedKey = (typeof PINNED)[number]['key']
+
+/** The sticky `left` of the column at `index` — every width before it, summed. */
+function leftOf(index: number): number {
+  return PINNED.slice(0, index).reduce((sum, column) => sum + column.width, 0)
+}
+
+/** `left` and `width` by name, so no call site writes a sum of its own. */
+const LEFT = Object.fromEntries(PINNED.map((column, i) => [column.key, leftOf(i)])) as Record<
+  PinnedKey,
+  number
+>
+const WIDTH = Object.fromEntries(PINNED.map((column) => [column.key, column.width])) as Record<
+  PinnedKey,
+  number
+>
+
+/** What the pinned block costs. The months share whatever is left of the card. */
+const PINNED_WIDTH = leftOf(PINNED.length)
+
 const W_MONTH = 44
 /*
   AND HOW WIDE A MONTH MAY GROW.
@@ -106,6 +177,23 @@ const W_MONTH_MAX = 72
  * the sample cannot carry. See the `thin` branch of `HeatCell`.
  */
 const SUMMARY_MIN_BASE = 30
+
+/**
+ * Under this many months a cohort's money-to-date is greyed, and says why.
+ *
+ * A column of per-customer figures is an invitation to rank the rows against
+ * each other, and ranking them on money-to-date ranks them on AGE: a
+ * thirteen-month-old cohort has had thirteen months to spend and a one-month-old
+ * has had one. Read that way the column says «new customers are worse», which
+ * is the opposite of the finding this screen exists to show.
+ *
+ * Three is MEASURED, not chosen: the median inter-purchase gap on this portal
+ * is 37.5 days and p75 is 73.9, so under three months most of a cohort has not
+ * yet had its second chance and the figure is mostly noise. The figure is still
+ * PRINTED — it is true, it is simply not comparable — the same treatment the
+ * summary row's thin cells get, and for the same reason.
+ */
+const MONEY_YOUNG_MONTHS = 3
 
 /**
  * Five steps, not a continuous gradient — and a different five per reading.
@@ -223,11 +311,18 @@ function bandOf(view: CohortView, value: number): number {
             : 0
 }
 
+/** The two money columns, hovered. Not a month, so it is off the offset scale. */
+const MONEY_COL = -2
+
 /** Which fact the hover panel is currently describing. */
 interface Hot {
   /** Row index; `-1` is the summary row. */
   readonly row: number
-  /** Month offset; `-1` is the row's own label — the whole-cohort panel. */
+  /**
+   * Month offset; `-1` is the row's own label — the whole-cohort panel — and
+   * `MONEY_COL` is the pair of money columns, which have a panel of their own
+   * because the caveat they need (the cohort's age) belongs to no month.
+   */
   readonly col: number
   readonly x: number
   readonly y: number
@@ -298,9 +393,8 @@ export function CohortHeatmap({
     (i) => (view === 'monthly' || i > 0) && (months === null || i <= months),
   )
   const columns = offsets.length
-  const pinned = W_COHORT + W_SIZE + W_RETURNED
-  const width = pinned + columns * W_MONTH
-  const maxWidth = pinned + columns * W_MONTH_MAX
+  const width = PINNED_WIDTH + columns * W_MONTH
+  const maxWidth = PINNED_WIDTH + columns * W_MONTH_MAX
 
   /** The array this reading draws from. One place decides, everything follows. */
   const valuesOf = (row: CohortMatrixRow) => (view === 'monthly' ? row.retention : row.cumulative)
@@ -360,8 +454,13 @@ export function CohortHeatmap({
         <table
           className="tabular"
           style={{
-            /* The three pinned columns keep their fixed widths — every sticky
-               `left` is a whole sum of them — and only the months flex. */
+            /* The pinned columns keep the fixed widths `PINNED` declares —
+               every sticky `left` is derived from them — and only the months
+               flex. With five of them the block is 520px wide, so a 1280px
+               screen with the rail open gives the twelve months less than
+               their 44px floor and the card scrolls sideways by ~95px; the
+               pinned block is sticky, so the labels stay while it does, and
+               from ~1375px (or with the rail collapsed) it fits again. */
             width: '100%',
             minWidth: width,
             maxWidth,
@@ -381,9 +480,9 @@ export function CohortHeatmap({
           </caption>
 
           <colgroup>
-            <col style={{ width: W_COHORT }} />
-            <col style={{ width: W_SIZE }} />
-            <col style={{ width: W_RETURNED }} />
+            {PINNED.map((column) => (
+              <col key={column.key} style={{ width: column.width }} />
+            ))}
             {offsets.map((i) => (
               <col key={i} />
             ))}
@@ -391,18 +490,45 @@ export function CohortHeatmap({
 
           <thead>
             <tr>
-              <HeadCell rowSpan={2} left={0} width={W_COHORT} align="left">
+              <HeadCell rowSpan={2} left={LEFT.cohort} width={WIDTH.cohort} align="left">
                 Kogorta oyi
               </HeadCell>
-              <HeadCell rowSpan={2} left={W_COHORT} width={W_SIZE} align="right">
+              <HeadCell rowSpan={2} left={LEFT.size} width={WIDTH.size} align="right">
                 Yangi mijoz
               </HeadCell>
               {/* Two lines on purpose: «Qaytgan» alone leaves the reader to
                   guess whether the percentage beside it is of the cohort or of
                   the company. */}
-              <HeadCell rowSpan={2} left={W_COHORT + W_SIZE} width={W_RETURNED} align="right" edge>
+              <HeadCell rowSpan={2} left={LEFT.returned} width={WIDTH.returned} align="right">
                 Qaytgan
                 <span className="block text-[10px] font-normal">shu guruhdan</span>
+              </HeadCell>
+              {/*
+                «HOZIRGACHA» IS THE FIRST OF THE THREE DEFENCES.
+
+                Both of these are money TO DATE, and the second one especially
+                does not compare down the column: see `MONEY_YOUNG_MONTHS`. The
+                word is in the heading rather than only in the hover because the
+                comparison is made by the eye, before anything is hovered.
+              */}
+              <HeadCell
+                rowSpan={2}
+                left={LEFT.revenueTotal}
+                width={WIDTH.revenueTotal}
+                align="right"
+              >
+                Kogorta tushumi
+                <span className="block text-[10px] font-normal">hozirgacha</span>
+              </HeadCell>
+              <HeadCell
+                rowSpan={2}
+                left={LEFT.revenuePerCustomer}
+                width={WIDTH.revenuePerCustomer}
+                align="right"
+                edge
+              >
+                1 mijozga
+                <span className="block text-[10px] font-normal">hozirgacha</span>
               </HeadCell>
               {/*
                 The column group says what the numbers under it ARE. «+1 +2 +3»
@@ -440,6 +566,9 @@ export function CohortHeatmap({
             {rows.map((row, r) => {
               const lit = hot?.row === r
               const share = row.size > 0 ? (row.returned / row.size) * 100 : null
+              /* The third defence. See `MONEY_YOUNG_MONTHS`: the figure still
+                 prints, it simply stops looking like one of the comparable ones. */
+              const young = row.ageMonths < MONEY_YOUNG_MONTHS
 
               return (
                 <tr key={row.cohort}>
@@ -454,7 +583,7 @@ export function CohortHeatmap({
                     {formatMonth(row.cohort)}
                   </PinnedCell>
 
-                  <PinnedCell left={W_COHORT} lit={lit} align="right" onMouseEnter={enter(r, -1)}>
+                  <PinnedCell left={LEFT.size} lit={lit} align="right" onMouseEnter={enter(r, -1)}>
                     {formatNumber(row.size)}
                   </PinnedCell>
 
@@ -469,10 +598,9 @@ export function CohortHeatmap({
                     competing with the figure it supports.
                   */}
                   <PinnedCell
-                    left={W_COHORT + W_SIZE}
+                    left={LEFT.returned}
                     lit={lit}
                     align="right"
-                    edge
                     onMouseEnter={enter(r, -1)}
                     ariaLabel={`${formatMonth(row.cohort)} kogortasi: ${formatNumber(
                       row.size,
@@ -481,6 +609,48 @@ export function CohortHeatmap({
                     }`}
                   >
                     {share === null ? NO_VALUE : `${Math.round(share)}%`}
+                  </PinnedCell>
+
+                  {/*
+                    THE MONEY, AND THE ONE READING IT MUST NOT INVITE.
+
+                    The whole-cohort figure adds up down the column and the
+                    per-customer one does not — it is money TO DATE over an age
+                    that differs by a year from the top of the table to the
+                    bottom. Both open the same panel (`MONEY_COL`), which states
+                    the cohort's age; the second one also carries that age in
+                    its own label, for a reader who cannot hover.
+                  */}
+                  <PinnedCell
+                    left={LEFT.revenueTotal}
+                    lit={lit}
+                    align="right"
+                    onMouseEnter={enter(r, MONEY_COL)}
+                    ariaLabel={`${formatMonth(row.cohort)} kogortasi: kogorta tushumi hozirgacha ${
+                      row.revenueTotal
+                    }`}
+                  >
+                    {row.revenueTotal}
+                  </PinnedCell>
+
+                  <PinnedCell
+                    left={LEFT.revenuePerCustomer}
+                    lit={lit}
+                    align="right"
+                    edge
+                    young={young}
+                    onMouseEnter={enter(r, MONEY_COL)}
+                    ariaLabel={
+                      young
+                        ? `1 mijozga hozirgacha ${row.revenuePerCustomer} — kogorta ${formatNumber(
+                            row.ageMonths,
+                          )} oylik, boshqa qatorlar bilan solishtirib boʻlmaydi`
+                        : `1 mijozga hozirgacha ${row.revenuePerCustomer} — kogorta ${formatNumber(
+                            row.ageMonths,
+                          )} oylik`
+                    }
+                  >
+                    {row.revenuePerCustomer}
                   </PinnedCell>
 
                   {offsets.map((i) => (
@@ -527,7 +697,7 @@ export function CohortHeatmap({
               </PinnedCell>
 
               <PinnedCell
-                left={W_COHORT}
+                left={LEFT.size}
                 lit={hot?.row === -1}
                 align="right"
                 summary
@@ -537,17 +707,51 @@ export function CohortHeatmap({
               </PinnedCell>
 
               <PinnedCell
-                left={W_COHORT + W_SIZE}
+                left={LEFT.returned}
                 lit={hot?.row === -1}
                 align="right"
                 summary
-                edge
                 onMouseEnter={enter(-1, -1)}
                 ariaLabel={`Jami: ${formatNumber(totalSize)} mijozdan ${formatNumber(
                   totalReturned,
                 )} tasi qaytgan${totalShare === null ? '' : ` — ${Math.round(totalShare)}%`}`}
               >
                 {totalShare === null ? NO_VALUE : `${Math.round(totalShare)}%`}
+              </PinnedCell>
+
+              {/*
+                THE MONEY COLUMNS HAVE NO «JAMI», AND THAT IS THE HONEST CELL.
+
+                Two reasons, and either one alone would be enough. The grid is
+                handed money already FORMATTED — the crossing happens once, in
+                `toMatrixRow` — so there is no number here to add; and the
+                per-customer column may not be summed or averaged in any case,
+                because each of its figures covers a different span of months.
+                A total under them would be the cross-row comparison the whole
+                column is built to discourage, printed as a fact. Each cohort's
+                money is on its own row, where it is a measurement.
+              */}
+              <PinnedCell
+                left={LEFT.revenueTotal}
+                lit={hot?.row === -1}
+                align="right"
+                summary
+                onMouseEnter={enter(-1, -1)}
+                label={MONEY_NOT_SUMMED}
+              >
+                {NO_VALUE}
+              </PinnedCell>
+
+              <PinnedCell
+                left={LEFT.revenuePerCustomer}
+                lit={hot?.row === -1}
+                align="right"
+                summary
+                edge
+                onMouseEnter={enter(-1, -1)}
+                label={MONEY_NOT_SUMMED}
+              >
+                {NO_VALUE}
               </PinnedCell>
 
               {offsets.map((i) => {
@@ -590,6 +794,10 @@ export function CohortHeatmap({
     </div>
   )
 }
+
+/** Why the summary row's two money cells are blank. Said on hover, not in a figure. */
+const MONEY_NOT_SUMMED =
+  'Pul ustunlari qator boʻyicha oʻqiladi: har bir kogortaning puli oʻz yoshiga bogʻliq, shuning uchun bu yerda jamlanmaydi.'
 
 /**
  * The edge of the pinned block.
@@ -638,7 +846,7 @@ function HeadCell({
 }
 
 /**
- * One of the three pinned columns of a body or summary row.
+ * One of the pinned columns of a body or summary row — see `PINNED`.
  *
  * `lit` is the row half of the crosshair: hovering anywhere in a row lifts its
  * own label out of eighteen identical ones, which is most of what makes a wide
@@ -654,6 +862,7 @@ function PinnedCell({
   header = false,
   summary = false,
   edge = false,
+  young,
   onMouseEnter,
   label,
   ariaLabel,
@@ -665,7 +874,18 @@ function PinnedCell({
   readonly header?: boolean
   readonly summary?: boolean
   readonly edge?: boolean
+  /**
+   * A figure that is true but not comparable with the ones above and below it.
+   *
+   * Only «1 mijozga hozirgacha» sets it, and only under `MONEY_YOUNG_MONTHS`.
+   * Greyed rather than withheld, and `data-young` is on the cell itself so the
+   * rule is checkable — the ink alone is a claim no test can read. Left
+   * UNDEFINED by every other column: a `data-young="false"` on «Qaytgan» would
+   * claim the rule applies there and happens not to bite.
+   */
+  readonly young?: boolean
   readonly onMouseEnter?: (event: MouseEvent<HTMLElement>) => void
+  /** Hover text. On a `<td>` it is the only place a blank cell can say why. */
   readonly label?: string
   /**
    * The whole fact, for a cell that prints only part of it.
@@ -681,7 +901,11 @@ function PinnedCell({
     /* `--grid` is the house hover tint; `--surface-sunken` is DARKER than the
        card in dark mode, so it painted the hovered row as a black bar. */
     background: lit ? 'var(--grid)' : 'var(--surface-raised)',
-    color: summary || header ? 'var(--ink-primary)' : 'var(--ink-secondary)',
+    color: young
+      ? 'var(--ink-muted)'
+      : summary || header
+        ? 'var(--ink-primary)'
+        : 'var(--ink-secondary)',
     borderTop: summary ? '1px solid var(--border-strong)' : undefined,
     boxShadow: edge ? PINNED_EDGE : undefined,
   } as const
@@ -695,7 +919,14 @@ function PinnedCell({
       {children}
     </th>
   ) : (
-    <td className={className} style={style} onMouseEnter={onMouseEnter} aria-label={ariaLabel}>
+    <td
+      className={className}
+      style={style}
+      onMouseEnter={onMouseEnter}
+      title={label}
+      aria-label={ariaLabel}
+      data-young={young === undefined ? undefined : String(young)}
+    >
       {children}
     </td>
   )
@@ -988,6 +1219,33 @@ function panelFor(
   const row = rows[hot.row]
   if (!row) return null
 
+  /*
+    THE MONEY COLUMNS, AND THE SECOND OF THE THREE DEFENCES.
+
+    Their own panel rather than the whole-cohort one, because what these two
+    figures need said is not a fraction — it is the SPAN they cover. Every
+    money hover therefore states the cohort's age, at every age: saying it only
+    for the young rows would leave the reader to assume the rest are on equal
+    terms with each other, which is the misreading in the first place.
+  */
+  if (hot.col === MONEY_COL) {
+    return {
+      header: `${formatMonth(row.cohort)} kogortasi · pul`,
+      rows: [
+        { label: 'Kogorta tushumi', value: row.revenueTotal },
+        { label: '1 mijozga', value: row.revenuePerCustomer },
+        { label: 'Mijozlar', value: `${formatNumber(row.size)} mijoz` },
+        { label: 'Kogorta yoshi', value: `${formatNumber(row.ageMonths)} oy` },
+      ],
+      footer:
+        row.ageMonths < MONEY_YOUNG_MONTHS
+          ? `Kogorta ${formatNumber(
+              row.ageMonths,
+            )} oylik — bu raqamni eski kogortalar bilan solishtirib boʻlmaydi.`
+          : `Kogorta ${formatNumber(row.ageMonths)} oy davomida shuncha olib kelgan.`,
+    }
+  }
+
   // A whole cohort — hovering its label or either of its two figures.
   if (hot.col === -1) {
     const total = row.revenue.reduce((sum, m, i) => (row.retention[i] === null ? sum : sum + m.amount), 0)
@@ -1008,7 +1266,9 @@ function panelFor(
           label: 'Qaytish ulushi',
           value: formatPercent(row.size > 0 ? (row.returned / row.size) * 100 : null),
         },
-        { label: 'Jami tushum', value: formatUzs(total) },
+        /* The «Kogorta tushumi» column's own string, not a second fold of
+           `revenue` — two places computing one figure is two figures. */
+        { label: 'Jami tushum', value: row.revenueTotal },
         {
           label: 'Shundan takroriy',
           value: `${formatUzs(repeat)}${
@@ -1047,12 +1307,20 @@ function panelFor(
         hot.col,
       )})`,
       rows: [
+        /*
+          MIJOZ AND BUYURTMA ARE DIFFERENT NUMBERS, and the panel now says
+          which is which. The cells always carried both — `customers` counts
+          PEOPLE, `orders` counts revenue-bearing wins — and the panel printed
+          only the first, under a label that named neither unit. Three people
+          placing four orders is the ordinary case, not an edge one.
+        */
         {
           label: 'Shu oyga kelib qaytganlar',
-          value: `${formatNumber(reached)} / ${formatNumber(row.size)}`,
+          value: `${formatNumber(reached)} / ${formatNumber(row.size)} mijoz`,
         },
         { label: 'Ulush', value: formatPercent(share) },
         { label: 'Shu oyda qoʻshilgan', value: added > 0 ? `+${formatNumber(added)}` : '0' },
+        { label: 'Buyurtmalar', value: `${formatNumber(row.orders[hot.col] ?? 0)} ta` },
         { label: 'Shu oydagi tushum', value: formatUzs(amount) },
       ],
       footer:
@@ -1071,7 +1339,8 @@ function panelFor(
     return {
       header: `${formatMonth(row.cohort)} · xarid oyi`,
       rows: [
-        { label: 'Birinchi marta xarid qilganlar', value: formatNumber(row.size) },
+        { label: 'Birinchi marta xarid qilganlar', value: `${formatNumber(row.size)} mijoz` },
+        { label: 'Buyurtmalar', value: `${formatNumber(row.orders[hot.col] ?? 0)} ta` },
         { label: 'Tushum', value: formatUzs(amount) },
       ],
       footer: 'Kogortaning oʻz oyi — shuning uchun har doim 100%.',
@@ -1086,9 +1355,10 @@ function panelFor(
     rows: [
       {
         label: 'Qayta xarid qilganlar',
-        value: `${formatNumber(customers)} / ${formatNumber(row.size)}`,
+        value: `${formatNumber(customers)} / ${formatNumber(row.size)} mijoz`,
       },
       { label: 'Ulush', value: formatPercent(value) },
+      { label: 'Buyurtmalar', value: `${formatNumber(row.orders[hot.col] ?? 0)} ta` },
       { label: 'Tushum', value: formatUzs(amount) },
     ],
     footer:

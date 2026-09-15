@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
-import { CohortHeatmap, type CohortView } from '@/components/charts/Heatmap'
+import { CohortHeatmap, type CohortMatrixRow, type CohortView } from '@/components/charts/Heatmap'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
@@ -13,12 +13,13 @@ import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/State
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import {
+  type CohortDto,
   type CohortSummaryDto,
   type ConcentrationDto,
   type ConcentrationRepeatDto,
   apiGet,
 } from '@/lib/api'
-import { NO_VALUE, formatDate, formatNumber, formatPercent } from '@/lib/format'
+import { NO_VALUE, formatDate, formatNumber, formatPercent, formatUzs } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 /**
@@ -41,6 +42,38 @@ import { t } from '@/lib/messages'
 type MonthWindow = '6' | '12' | 'all'
 
 const MONTH_WINDOWS: Record<MonthWindow, number | null> = { '6': 6, '12': 12, all: null }
+
+/**
+ * The DTO's money, formatted, on its way into a presentation component.
+ *
+ * `CohortDto` used to satisfy `CohortMatrixRow` structurally, so the rows went
+ * to the grid untouched. They stopped the day the payload grew two `MoneyDto`
+ * fields, and there were two ways to repair it: widen the matrix row to take a
+ * `MoneyDto`, or format here. Formatting here, because `Heatmap.tsx` draws — it
+ * has no currency, no locale and no rounding rule, and every other figure on
+ * that grid already arrives as text. `formatUzs` rather than
+ * `formatCompactUzs`: this money is read beside the portal's own figures, and
+ * «6 mln» cannot be reconciled against «6,300,000».
+ *
+ * One named function, and the call site is one `.map`, so hoisting the mapping
+ * further up the page later is a move rather than a rewrite.
+ */
+function toMatrixRow(row: CohortDto): CohortMatrixRow {
+  return {
+    cohort: row.cohort,
+    size: row.size,
+    returned: row.returned,
+    retention: row.retention,
+    customers: row.customers,
+    cumulative: row.cumulative,
+    cumulativeCustomers: row.cumulativeCustomers,
+    revenue: row.revenue,
+    orders: row.orders,
+    revenueTotal: formatUzs(row.revenueTotal.amount),
+    revenuePerCustomer: formatUzs(row.revenuePerCustomer.amount),
+    ageMonths: row.ageMonths,
+  }
+}
 
 export function CohortPage() {
   const query = useQuery({
@@ -338,7 +371,11 @@ export function CohortPage() {
           />
         )}
         {data && data.rows.length > 0 && (
-          <CohortHeatmap rows={data.rows} view={view} months={MONTH_WINDOWS[months]} />
+          <CohortHeatmap
+            rows={data.rows.map(toMatrixRow)}
+            view={view}
+            months={MONTH_WINDOWS[months]}
+          />
         )}
       </ChartCard>
 
