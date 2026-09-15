@@ -453,6 +453,32 @@ export function CohortPage() {
         </div>
 
         {/*
+          THE SECOND CLOCK, NAMED BEFORE ANYBODY GOES LOOKING FOR IT.
+
+          «Jami mijozlar» above is deliberately worded «Yopilgan (WON)» rather
+          than «yetkazilgan» — the comment on that tile says why: borrowing
+          Logistika's word for a 20-25-day-earlier clock invites a
+          reconciliation that can never come out. But «yetkazilgan» is exactly
+          the word the rest of this screen (SimpleView's own clock line) and
+          the floor use for this same first-purchase clock, and elsewhere in
+          this product a customer count keyed to the day an order was PLACED
+          — not closed — is a different, larger population on a different
+          clock. Neither figure is wrong; naming both here, once, is what
+          keeps a reader who meets them side by side from reporting a bug.
+        */}
+        <p
+          data-testid="cohort-total-hint"
+          className="px-1 text-[11px] leading-snug"
+          style={{ color: 'var(--ink-muted)' }}
+        >
+          Bu sahifadagi mijozlar soni <strong>yetkazilgan</strong> sana
+          boʻyicha — mijozning birinchi yopilgan (WON) xaridi asosida —
+          hisoblanadi. Buyurtma <strong>berilgan</strong> sana boʻyicha
+          sanalganda mijozlar soni boshqacha chiqadi — ikkalasi ham toʻgʻri,
+          faqat soati boshqa.
+        </p>
+
+        {/*
           The lead instrument. The matrix is the one thing this page exists to
           show that nothing else in the product can, so it wears the hero
           surface and the registration brackets — once per page, and only here.
