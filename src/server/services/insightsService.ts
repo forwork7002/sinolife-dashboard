@@ -17,7 +17,13 @@ import {
 import { type MoneyDto, currencyExponent, money, toMoneyDto } from '@/server/domain/money/money'
 import type { RowScope } from '@/server/auth/rbac'
 import type { Period } from '@/server/domain/period/period'
-import { allTime, enumerateBuckets, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
+import {
+  allTime,
+  enumerateBuckets,
+  periodLengthInDays,
+  trailingDays,
+  zonedDateKey,
+} from '@/server/domain/period/period'
 import { deliveryStageName } from '@/server/domain/analytics/stageNames'
 import { LOGISTICS_BUCKETS, UNMAPPED_BUCKET } from '@/lib/logisticsBuckets'
 import type {
@@ -37,7 +43,6 @@ import type {
 import { deliveryRateBp, moneyRateBp, rateBp } from '@/server/domain/analytics/rates'
 import type { ConfirmationOutcomeValue, ConfirmationQueueMode } from '@/server/domain/types'
 import { CUSTOMER_STATES } from '@/lib/customerStates'
-import type { CustomerFlowDto } from '@/lib/api'
 import { keyPart, ttlCache } from './ttlCache'
 
 /**
@@ -86,6 +91,20 @@ const sourceRatesCache = ttlCache<Awaited<ReturnType<InsightsRepository['sourceR
 const customerStatesCache = ttlCache<Awaited<ReturnType<InsightsRepository['customerStates']>>>(
   5 * 60_000,
 )
+
+/**
+ * Test seam, same hazard as `resetConfirmationRopCache` above.
+ *
+ * These three are module-level, so they are shared between test FILES inside
+ * one worker — the exact shape that once served `sellerBoardTeams.test.ts`
+ * another case's board with no error anywhere. Anything that swaps the
+ * repository under `InsightsService` between cases must call this first.
+ */
+export function resetCustomerFlowCaches(): void {
+  customerFlowCache.clear()
+  sourceRatesCache.clear()
+  customerStatesCache.clear()
+}
 
 /** Basis points as a percentage, to one decimal. */
 function pct(bp: number | null): number | null {
@@ -148,6 +167,76 @@ export interface CohortSummaryDto {
   readonly repeatRevenueShare: number | null
   readonly repeatCustomers: number
   readonly totalCustomers: number
+}
+
+/**
+ * «Mijozlar oqimi» — the band at the top of «Mijoz qaytishi». Mirrored by
+ * hand in `src/lib/api.ts`; nothing checks the mirror, edit both sides.
+ *
+ * THREE READS, THREE CLOCKS, AND THE SCREEN MUST SAY WHICH IS WHICH:
+ *
+ *   - `summary` and `series` are this band's OWN trailing ninety days, by
+ *     ORDER date (`createdAtSource`). `window` is that span, resolved on the
+ *     server and printed here rather than implied by a control the screen no
+ *     longer has — see `CUSTOMER_FLOW_DAYS` and `InsightsService.customerFlow`.
+ *   - `sources[].repeatPercent` and `.maturedCustomers` are the WHOLE
+ *     history, on a fixed ninety-day maturity horizon, and move with neither
+ *     `window` above nor the calendar below. `sources[].newCustomers` and
+ *     `.sharePercent` DO belong to `window`, same as `summary`.
+ *   - `states` takes no window at all — it is TODAY, a customer's silence
+ *     measured against their own last order as of now.
+ *
+ * `CohortSummaryDto` above counts a customer from when their FIRST ORDER WAS
+ * DELIVERED (`closedAt` on a WON deal), not when they ordered — so its total
+ * and this DTO's `summary.newCustomers` / `states.customers` legitimately
+ * disagree, on purpose. Never sum across them.
+ */
+export interface CustomerFlowSummaryDto {
+  readonly newCustomers: number
+  readonly returningCustomers: number
+  readonly activeCustomers: number
+  readonly newCustomersWon: number
+  readonly firstRevenue: MoneyDto
+  readonly repeatRevenue: MoneyDto
+  /** Null when there is no money at all, never a manufactured zero. */
+  readonly repeatRevenueSharePercent: number | null
+}
+
+export interface CustomerFlowPointDto {
+  readonly bucket: string
+  readonly newCustomers: number
+  readonly returningCustomers: number
+}
+
+export interface CustomerSourceDto {
+  readonly key: string
+  readonly label: string
+  readonly newCustomers: number
+  /** Share of `summary.newCustomers`. Null when there are no new customers to share. */
+  readonly sharePercent: number | null
+  /** The whole history, ninety-day horizon. Null when nobody has matured yet. */
+  readonly repeatPercent: number | null
+  readonly maturedCustomers: number
+}
+
+export interface CustomerStateRowDto {
+  readonly key: string
+  readonly label: string
+  readonly colour: string
+  readonly customers: number
+}
+
+export interface CustomerFlowDto {
+  /** The window this band resolved for itself, so the screen can print it. */
+  readonly window: { readonly start: string; readonly end: string; readonly days: number }
+  readonly summary: CustomerFlowSummaryDto
+  readonly series: readonly CustomerFlowPointDto[]
+  readonly sources: readonly CustomerSourceDto[]
+  readonly states: {
+    readonly customers: number
+    /** In `CUSTOMER_STATES` order — see `src/lib/customerStates.ts`. */
+    readonly rows: readonly CustomerStateRowDto[]
+  }
 }
 
 /**
@@ -855,26 +944,25 @@ export interface InsightsScope extends EmployeeScopeFilter {
 }
 
 /**
- * The band's own ninety days.
+ * The band's own window, ninety days.
  *
  * «Mijoz qaytishi» has no period control — it was removed on 2026-09-15
  * because it drove nothing, and its «Bugun» default had made the
  * concentration band read twelve customers and one first-to-second pair. So
- * this band resolves its own window, as that commit made /insights/
- * concentration do, and the card prints the dates rather than implying a
- * control that is not there.
+ * this band resolves its own window, the way that commit made
+ * `/insights/concentration` do — `trailingDays` in `period.ts` is that same
+ * helper, half-open, anchored to a day boundary in the caller's timezone, and
+ * frozen. There is no second, hand-rolled version of it here: a
+ * `now.getTime() - days * 86_400_000` calculation is timezone-naive and lands
+ * mid-afternoon in Tashkent instead of on a day boundary, which would have
+ * rolled the day-coarsened memo key below over at 05:00 local instead of at
+ * midnight.
  *
  * NINETY, not thirty and not a year, because the source block's repeat column
  * is measured on a ninety-day horizon: one span across the whole card is one
  * fewer thing for a reader to hold.
  */
-export function trailingWindow(now: Date): { start: Date; end: Date; days: number } {
-  const days = 90
-  /* A new Date, never `now` itself: Date is mutable and every other window
-     resolved from the same instant in this request would move with it. */
-  const start = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
-  return { start, end: new Date(now.getTime()), days }
-}
+export const CUSTOMER_FLOW_DAYS = 90
 
 export class InsightsService {
   constructor(private readonly repository: InsightsRepository) {}
@@ -1094,11 +1182,32 @@ export class InsightsService {
    *
    * THREE READS, THREE CLOCKS, AND ONLY ONE OF THEM MOVES.
    *
-   * The window is resolved here and not by the caller, so the key below is
-   * the DAY it lands on rather than the instant: a band that re-queried on
-   * every request would put the most expensive statement on this screen into
-   * a one-vCPU database once per reader per minute. Measured on production:
+   * The window is resolved here and not by the caller (`trailingDays`,
+   * anchored to a day boundary in `timeZone`), so the memo key below is the
+   * DAY it lands on rather than the instant: a band that re-queried on every
+   * request would put the most expensive statement on this screen into a
+   * one-vCPU database once per reader per minute. Measured on production:
    * customerFlow 370-1478 ms warm, 3.7-8 s cold.
+   *
+   * NEITHER `timeZone` NOR `currency` IS IN THE KEY, and both absences are
+   * safe for reasons that would stop being true under a different change:
+   *
+   *   - `currency` is applied AFTER the memo, by `money()`/`toMoneyDto()`
+   *     below — pure tagging with no FX conversion, so the cached rows (raw
+   *     `bigint` minor units) are correct for any currency label. This would
+   *     stop being safe the day `money()` grew currency conversion, because
+   *     then the same cached minor units would need a different answer per
+   *     currency.
+   *   - `timeZone` cannot change this query's result today: this method
+   *     itself resolves the window in `timeZone` (so a different zone WOULD
+   *     shift `period.start`/`period.end`, which the key does carry via
+   *     `period.start`), but `InsightsRepository.customerFlow`'s SQL buckets
+   *     with its own fixed `this.tz` (`env.APP_TIMEZONE`) and never reads
+   *     `options.period.timeZone` at all. `timeZone` is also itself
+   *     process-wide today, with no per-account override. Either one
+   *     changing — the repository honouring `period.timeZone`, or a caller
+   *     passing a per-account zone — would silently serve one account's
+   *     bucketing to another; the day either lands, this key needs the zone.
    *
    * No scope in the key because there is no scope to carry — `cohort` is in
    * COMPANY_WIDE and this endpoint asks for `analytics:read:all`, so every
@@ -1106,15 +1215,12 @@ export class InsightsService {
    * key changes in the same commit or the memo goes.
    */
   async customerFlow(currency: string, now: Date, timeZone: string): Promise<CustomerFlowDto> {
-    const w = trailingWindow(now)
-    const period: Period = { start: w.start, end: w.end, timeZone, preset: 'custom' }
+    const period = trailingDays(CUSTOMER_FLOW_DAYS, { timeZone, now })
 
-    const dayKey = w.end.toISOString().slice(0, 10)
+    const flowKey = `flow|${period.start.toISOString()}|${CUSTOMER_FLOW_DAYS}`
 
     const [flow, rates, states] = await Promise.all([
-      customerFlowCache.get(`flow|${dayKey}|${w.days}|day`, () =>
-        this.repository.customerFlow({ period, grain: 'day' }),
-      ),
+      customerFlowCache.get(flowKey, () => this.repository.customerFlow({ period, grain: 'day' })),
       sourceRatesCache.get('rates', () => this.repository.sourceRepeatRates()),
       customerStatesCache.get('states', () => this.repository.customerStates()),
     ])
@@ -1159,9 +1265,9 @@ export class InsightsService {
 
     return {
       window: {
-        start: w.start.toISOString(),
-        end: w.end.toISOString(),
-        days: w.days,
+        start: period.start.toISOString(),
+        end: period.end.toISOString(),
+        days: periodLengthInDays(period),
       },
       summary: {
         newCustomers: flow.summary.newCustomers,

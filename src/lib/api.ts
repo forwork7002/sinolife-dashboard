@@ -1432,15 +1432,19 @@ export interface ConcentrationDto {
   readonly repeat: ConcentrationRepeatDto
 }
 
+// ---------------------------------------------------------------------------
+// Mijozlar oqimi — the band at the top of «Mijoz qaytishi» (`/analytics/cohort`).
+// Mirrors the DTOs in `src/server/services/insightsService.ts`, beside
+// `customerFlow`.
+// ---------------------------------------------------------------------------
+
 /**
- * «Mijozlar oqimi» — the band at the top of «Mijoz qaytishi».
- *
  * THREE READS, THREE CLOCKS, AND THE SCREEN MUST SAY WHICH IS WHICH:
  *
  *   - `summary` and `series` are this band's OWN trailing ninety days, by
  *     ORDER date (`createdAtSource`). `window` is that span, resolved on the
  *     server and printed here rather than implied by a control the screen no
- *     longer has — see `trailingWindow` in `InsightsService`.
+ *     longer has — see `CUSTOMER_FLOW_DAYS` and `InsightsService.customerFlow`.
  *   - `sources[].repeatPercent` and `.maturedCustomers` are the WHOLE
  *     history, on a fixed ninety-day maturity horizon, and move with neither
  *     `window` above nor the calendar below. `sources[].newCustomers` and
