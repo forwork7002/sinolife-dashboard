@@ -69,9 +69,56 @@ function pct(bp: number | null): number | null {
 export interface CohortDto {
   readonly cohort: string
   readonly size: number
+  /**
+   * How many of this cohort ever came back, counted once each.
+   *
+   * NOT the sum of `customers` — someone who returned in +1 and again in +3 is
+   * in two of those cells — and not `customers[1]` either, which is only the
+   * ones who came back immediately. Measured by the database on the whole of
+   * each customer's history, so it is not bounded by the matrix's own columns.
+   */
+  readonly returned: number
   /** Retention percentage per month offset. Index 0 is the cohort month. */
   readonly retention: readonly (number | null)[]
+  /**
+   * The share of the cohort that has come back AT LEAST ONCE by each offset.
+   *
+   * Monotonic by construction — a running sum of first returns over a fixed
+   * denominator — and its last measured value is `returned / size`, the figure
+   * the «Qaytgan» column prints. That identity is what makes the matrix
+   * checkable against its own left-hand column.
+   *
+   * Index 0 is 0, not 100: nobody has RETURNED in the month they first bought.
+   * The monthly array says 100 there, and the two are answering different
+   * questions — which is why the screen hides that column in this reading
+   * rather than printing a zero beside a hundred.
+   */
+  readonly cumulative: readonly (number | null)[]
+  /** The headcount behind each `cumulative` share, same offsets, same nulls. */
+  readonly cumulativeCustomers: readonly (number | null)[]
+  readonly customers: readonly (number | null)[]
+  /**
+   * Revenue-bearing WON deals per offset — ORDERS, where `customers` counts
+   * PEOPLE. Same offsets, same nulls. The pair is what lets a cell say
+   * «15 mijoz · 23 ta buyurtma» without a third aggregate.
+   */
+  readonly orders: readonly (number | null)[]
   readonly revenue: readonly MoneyDto[]
+  /** Every month of this cohort's money added up — its whole revenue. */
+  readonly revenueTotal: MoneyDto
+  /**
+   * `revenueTotal / size`, and it DOES NOT COMPARE ACROSS ROWS.
+   *
+   * A thirteen-month-old cohort has had thirteen months to spend and a
+   * one-month-old cohort has had one, so ranking rows on this ranks them on
+   * age. The screen defends against that with a label («hozirgacha»), with
+   * `ageMonths` in every hover, and by greying rows under three months old.
+   * Normalising to a fixed horizon was considered and rejected: it would
+   * discard the repeat revenue that is the whole subject of the screen.
+   */
+  readonly revenuePerCustomer: MoneyDto
+  /** How many whole months this cohort has lived. Same number as `maxOffset`. */
+  readonly ageMonths: number
   readonly maxOffset: number
 }
 
@@ -895,6 +942,13 @@ export class InsightsService {
       /* The countable half of every percentage below — see `CohortDto`. */
       const customers: (number | null)[] = []
       const revenue: MoneyDto[] = []
+      const cumulative: (number | null)[] = []
+      const cumulativeCustomers: (number | null)[] = []
+      const orders: (number | null)[] = []
+      /* Running total of customers who have come back at least once. Reset per
+         row, and only ever added to inside the measured span. */
+      let everReturned = 0
+      let revenueMinor = 0n
       const byOffset = new Map(row.cells.map((c) => [c.monthsSince, c]))
 
       /*
@@ -934,6 +988,36 @@ export class InsightsService {
            cell would be the one reading this matrix must never have. */
         customers.push(offset > reachable ? null : (cell?.customers ?? 0))
         revenue.push(toMoneyDto(money(cell?.revenueMinor ?? 0n, currency)))
+
+        orders.push(offset > reachable ? null : (cell?.orders ?? 0))
+
+        /*
+          THE CUMULATIVE CURVE, built from FIRST returns and nothing else.
+
+          `cell.firstReturners` counts customers whose first return landed on
+          this offset, so adding them up walks each returning customer in
+          exactly once. Adding `cell.customers` instead would count a monthly
+          buyer once a month and send the curve past 100%.
+
+          The running total advances only INSIDE the measured span, so a row's
+          last drawn value equals `returned / size` — the «Qaytgan» column —
+          rather than continuing past the horizon on stale state.
+        */
+        if (offset <= reachable) everReturned += cell?.firstReturners ?? 0
+        cumulative.push(
+          offset > reachable
+            ? null
+            : row.size === 0
+              ? 0
+              : Math.round((everReturned / row.size) * 1000) / 10,
+        )
+        cumulativeCustomers.push(offset > reachable ? null : everReturned)
+
+        /* The cohort's WHOLE revenue. The windowed arm bounds `p.cohort`, not
+           `p.months_since`, so a cohort that appears in the matrix appears
+           with all of its months — summing along the row is complete, not
+           partial. The opposite assumption is the natural one and is wrong. */
+        revenueMinor += cell?.revenueMinor ?? 0n
       }
 
       return {
@@ -944,8 +1028,16 @@ export class InsightsService {
            the error the `returners` CTE exists to avoid. */
         returned: row.returned,
         retention,
+        cumulative,
+        cumulativeCustomers,
         customers,
+        orders,
         revenue,
+        revenueTotal: toMoneyDto(money(revenueMinor, currency)),
+        revenuePerCustomer: toMoneyDto(
+          money(row.size === 0 ? 0n : revenueMinor / BigInt(row.size), currency),
+        ),
+        ageMonths: reachable,
         maxOffset: reachable,
       }
     })

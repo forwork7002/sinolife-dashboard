@@ -407,6 +407,22 @@ export interface CohortDto {
   /** Percentage of the cohort still buying, by month offset. Null = not yet reachable. */
   readonly retention: readonly (number | null)[]
   /**
+   * The share of the cohort that has come back AT LEAST ONCE by each offset.
+   *
+   * Monotonic by construction — a running sum of first returns over a fixed
+   * denominator — and its last measured value is `returned / size`, the figure
+   * the «Qaytgan» column prints. That identity is what makes the matrix
+   * checkable against its own left-hand column.
+   *
+   * Index 0 is 0, not 100: nobody has RETURNED in the month they first bought.
+   * The monthly array says 100 there, and the two are answering different
+   * questions — which is why the screen hides that column in this reading
+   * rather than printing a zero beside a hundred.
+   */
+  readonly cumulative: readonly (number | null)[]
+  /** The headcount behind each `cumulative` share, same offsets, same nulls. */
+  readonly cumulativeCustomers: readonly (number | null)[]
+  /**
    * The customers BEHIND each percentage, same offsets, same nulls.
    *
    * A rate on this dashboard prints the fraction it was computed from, and the
@@ -417,6 +433,12 @@ export interface CohortDto {
    */
   readonly customers: readonly (number | null)[]
   /**
+   * Revenue-bearing WON deals per offset — ORDERS, where `customers` counts
+   * PEOPLE. Same offsets, same nulls. The pair is what lets a cell say
+   * «15 mijoz · 23 ta buyurtma» without a third aggregate.
+   */
+  readonly orders: readonly (number | null)[]
+  /**
    * How many of this cohort ever came back, counted once each.
    *
    * NOT the sum of `customers` — someone who returned in +1 and again in +3 is
@@ -426,6 +448,21 @@ export interface CohortDto {
    */
   readonly returned: number
   readonly revenue: readonly MoneyDto[]
+  /** Every month of this cohort's money added up — its whole revenue. */
+  readonly revenueTotal: MoneyDto
+  /**
+   * `revenueTotal / size`, and it DOES NOT COMPARE ACROSS ROWS.
+   *
+   * A thirteen-month-old cohort has had thirteen months to spend and a
+   * one-month-old cohort has had one, so ranking rows on this ranks them on
+   * age. The screen defends against that with a label («hozirgacha»), with
+   * `ageMonths` in every hover, and by greying rows under three months old.
+   * Normalising to a fixed horizon was considered and rejected: it would
+   * discard the repeat revenue that is the whole subject of the screen.
+   */
+  readonly revenuePerCustomer: MoneyDto
+  /** How many whole months this cohort has lived. Same number as `maxOffset`. */
+  readonly ageMonths: number
   readonly maxOffset: number
 }
 
