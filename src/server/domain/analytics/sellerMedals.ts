@@ -223,6 +223,27 @@ export const WORK_MONTH_SHARE = 0.6
 /** 📈 «Sakrash» — o'tgan oyning necha barobari. */
 export const JUMP_GROWTH = 1.5
 
+/** Seriya uchun kerakli ketma-ket YOPILGAN oy soni. */
+export const STREAK_MONTHS = 3
+/** 🔥 «Olov seriyasi» — shu o'rin va undan yuqori. */
+export const STREAK_FIRE_PLACE = 3
+/** ⭐ «Barqaror» — shu o'rin va undan yuqori. */
+export const STREAK_STEADY_PLACE = 10
+
+/** 🚀 «Yangi yulduz» — birinchi to'liq oyda shu o'rin va undan yuqori. */
+export const ROOKIE_PLACE = 10
+
+/**
+ * 🚀 shu oydan OLDIN boshlaganlarga berilmaydi.
+ *
+ * `RECORDS_FROM = '2026-08'` chegarasi tufayli o'sha oyda HAMMA sotuvchi
+ * «birinchi oyida» ko'rinadi — bu portalning atributsiya nuqsoni
+ * (`UF_CRM_1778416910` yozila boshlaguncha bitim joriy mas'ulga yozilgan),
+ * sotuvchining fakti emas. Devor ochilgan oyda medal tarqatish uni faktdek
+ * ko'rsatardi.
+ */
+export const ROOKIE_FROM_MONTH = '2026-09'
+
 interface Draft {
   readonly employeeId: string
   points: number
@@ -393,6 +414,104 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
           percent: (Number(m.deliveredMinor) / Number(past) - 1) * 100,
         })
       }
+    }
+  }
+
+  // --- 🔥 ⭐ seriya -------------------------------------------------------
+  /*
+    QATNASHMAGAN OY KETMA-KETLIKNI UZADI. Bir oy umuman ko'rinmagan sotuvchi
+    «top-3 dan chiqmagan» emas — u ishlamagan, va seriya aynan davomiylik
+    haqidagi medal. Shuning uchun sanoq oylar ro'yxati bo'ylab yuradi, har
+    oyda qatnashuvni ham, o'rinni ham tekshiradi.
+
+    SERIYA TUGAGACH QAYTA BOSHLANADI, ya'ni olti oy ketma-ket ikkita medal
+    beradi — bir marta berilib qoladigan medal barqarorlikni rag'batlantirmay
+    qo'yadi.
+  */
+  const placesOf = new Map<string, Map<string, number>>()
+  for (const monthKey of closedMonths) {
+    for (const m of byMonth.get(monthKey)!) {
+      const seen = placesOf.get(m.employeeId) ?? new Map<string, number>()
+      seen.set(monthKey, m.place)
+      placesOf.set(m.employeeId, seen)
+    }
+  }
+  for (const [employeeId, places] of placesOf) {
+    for (const [cap, code] of [
+      [STREAK_FIRE_PLACE, 'streak-fire'],
+      [STREAK_STEADY_PLACE, 'streak-steady'],
+    ] as const) {
+      let run = 0
+      for (const monthKey of closedMonths) {
+        const place = places.get(monthKey)
+        run = place !== undefined && place <= cap ? run + 1 : 0
+        if (run >= STREAK_MONTHS) {
+          award(employeeId, code, monthKey)
+          run = 0
+        }
+      }
+    }
+  }
+
+  // --- 🏆 yil chempioni, faqat YOPILGAN yil ------------------------------
+  const runningYear = input.runningMonth.slice(0, 4)
+  const byYear = new Map<string, Map<string, bigint>>()
+  for (const monthKey of closedMonths) {
+    const year = monthKey.slice(0, 4)
+    if (year === runningYear) continue
+    const totals = byYear.get(year) ?? new Map<string, bigint>()
+    for (const m of byMonth.get(monthKey)!) {
+      totals.set(m.employeeId, (totals.get(m.employeeId) ?? 0n) + m.deliveredMinor)
+    }
+    byYear.set(year, totals)
+  }
+  for (const [year, totals] of byYear) {
+    let championId: string | null = null
+    let championMinor = 0n
+    for (const [employeeId, minor] of totals) {
+      // Teng bo'lganda `employee.id` — ism 'uz' va 'ru' da boshqacha
+      // saralanadi (`branches.ts`), va ikki so'rov orasida o'rin almashadigan
+      // taxta buzuq ko'rinadi.
+      if (minor > championMinor || (minor === championMinor && championId !== null && employeeId < championId)) {
+        championId = employeeId
+        championMinor = minor
+      }
+    }
+    if (championId !== null && championMinor > 0n) {
+      award(championId, 'year-champion', `${year}-12-01`, { amountMinor: championMinor })
+    }
+  }
+
+  // --- ⚡ 🌅 kun medallari ------------------------------------------------
+  let recordDay: SellerDayFact | null = null
+  for (const d of input.days) {
+    // PULSIZ KUN G'OLIBLIK EMAS. `place` hamma qatnashgan kun uchun
+    // beriladi, shu jumladan hech kim yetkazmagan kun uchun ham — u yerdagi
+    // «1-o'rin» tie-break natijasi, yutuq emas.
+    if (d.place === 1 && d.deliveredMinor > 0n) {
+      award(d.employeeId, 'day-winner', d.day, { amountMinor: d.deliveredMinor })
+    }
+    if (d.deliveredMinor > 0n && (recordDay === null || d.deliveredMinor > recordDay.deliveredMinor)) {
+      recordDay = d
+    }
+  }
+  if (recordDay !== null) {
+    award(recordDay.employeeId, 'day-record', recordDay.day, { amountMinor: recordDay.deliveredMinor })
+  }
+
+  // --- 🚀 yangi yulduz ----------------------------------------------------
+  const firstMonthOf = new Map<string, string>()
+  for (const monthKey of closedMonths) {
+    for (const m of byMonth.get(monthKey)!) {
+      const seen = firstMonthOf.get(m.employeeId)
+      if (seen === undefined || monthKey < seen) firstMonthOf.set(m.employeeId, monthKey)
+    }
+  }
+  for (const [employeeId, firstMonth] of firstMonthOf) {
+    if (firstMonth.slice(0, 7) < ROOKIE_FROM_MONTH) continue
+    const place = placesOf.get(employeeId)?.get(firstMonth)
+    if (place !== undefined && place <= ROOKIE_PLACE) {
+      award(employeeId, 'rookie', firstMonth, { orders: place })
     }
   }
 

@@ -212,3 +212,135 @@ describe('sifat medallari', () => {
     expect(codes(rowOf(rows, 'a'))).not.toContain('jump')
   })
 })
+
+const threeMonths = (id: string, places: [number, number, number]) => [
+  month({ employeeId: id, month: '2026-06-01', place: places[0], deliveredOrders: 1, deliveredMinor: MLN }),
+  month({ employeeId: id, month: '2026-07-01', place: places[1], deliveredOrders: 1, deliveredMinor: MLN }),
+  month({ employeeId: id, month: '2026-08-01', place: places[2], deliveredOrders: 1, deliveredMinor: MLN }),
+]
+
+describe('seriya medallari', () => {
+  it('🔥 3 oy ketma-ket top-3 da', () => {
+    const rows = build(threeMonths('a', [1, 3, 2]))
+    expect(codes(rowOf(rows, 'a'))).toContain('streak-fire')
+  })
+
+  it('2 oy yetarli emas — tarix qisqa bo‘lsa medal yo‘q', () => {
+    const rows = build([
+      month({ employeeId: 'a', month: '2026-07-01', place: 1, deliveredOrders: 1, deliveredMinor: MLN }),
+      month({ employeeId: 'a', month: '2026-08-01', place: 1, deliveredOrders: 1, deliveredMinor: MLN }),
+    ])
+    expect(codes(rowOf(rows, 'a'))).not.toContain('streak-fire')
+  })
+
+  it('uzilgan seriya noldan sanaladi', () => {
+    const rows = build([
+      ...threeMonths('a', [1, 9, 2]),
+      month({ employeeId: 'a', month: '2026-05-01', place: 1, deliveredOrders: 1, deliveredMinor: MLN }),
+    ])
+    expect(codes(rowOf(rows, 'a'))).not.toContain('streak-fire')
+    expect(codes(rowOf(rows, 'a'))).toContain('streak-steady') // 4 oy top-10
+  })
+
+  it('oy TUSHIB QOLSA ham seriya uziladi — qatnashmagan oy ketma-ketlik emas', () => {
+    const rows = build([
+      month({ employeeId: 'a', month: '2026-06-01', place: 1, deliveredOrders: 1, deliveredMinor: MLN }),
+      // 2026-07 yo‘q
+      month({ employeeId: 'a', month: '2026-08-01', place: 1, deliveredOrders: 1, deliveredMinor: MLN }),
+      month({ employeeId: 'b', month: '2026-07-01', place: 1, deliveredOrders: 1, deliveredMinor: MLN }),
+    ])
+    expect(codes(rowOf(rows, 'a'))).not.toContain('streak-fire')
+  })
+
+  it('6 oy ketma-ket ikkita 🔥 beradi — seriya tugagach qaytadan boshlanadi', () => {
+    const months = Array.from({ length: 6 }, (_, i) =>
+      month({
+        employeeId: 'a',
+        month: `2026-0${i + 3}-01`,
+        place: 1,
+        deliveredOrders: 1,
+        deliveredMinor: MLN,
+      }),
+    )
+    const rows = build(months)
+    expect(rowOf(rows, 'a').medals.find((m) => m.code === 'streak-fire')!.count).toBe(2)
+  })
+})
+
+describe('kun medallari', () => {
+  it('🌅 kunning 1-o‘rni, takrorlanadi', () => {
+    const rows = build(
+      [month({ employeeId: 'a', deliveredOrders: 2, deliveredMinor: 2n * MLN })],
+      [
+        day({ employeeId: 'a', day: '2026-08-01', place: 1, deliveredMinor: MLN }),
+        day({ employeeId: 'a', day: '2026-08-02', place: 1, deliveredMinor: MLN }),
+        day({ employeeId: 'a', day: '2026-08-03', place: 2, deliveredMinor: MLN }),
+      ],
+    )
+    expect(rowOf(rows, 'a').medals.find((m) => m.code === 'day-winner')!.count).toBe(2)
+  })
+
+  it('puli yo‘q kun 1-o‘rin bo‘lsa ham medal bermaydi', () => {
+    const rows = build(
+      [month({ employeeId: 'a', confirmedOrders: 1 })],
+      [day({ employeeId: 'a', place: 1, deliveredMinor: 0n })],
+    )
+    expect(codes(rowOf(rows, 'a'))).not.toContain('day-winner')
+  })
+
+  it('⚡ butun tarixdagi eng katta kunga, faqat BITTA kishiga', () => {
+    const rows = build(
+      [
+        month({ employeeId: 'a', deliveredOrders: 1, deliveredMinor: 9n * MLN }),
+        month({ employeeId: 'b', deliveredOrders: 1, deliveredMinor: 5n * MLN }),
+      ],
+      [
+        day({ employeeId: 'a', day: '2026-08-01', place: 1, deliveredMinor: 9n * MLN }),
+        day({ employeeId: 'b', day: '2026-08-02', place: 1, deliveredMinor: 5n * MLN }),
+      ],
+    )
+    expect(codes(rowOf(rows, 'a'))).toContain('day-record')
+    expect(codes(rowOf(rows, 'b'))).not.toContain('day-record')
+  })
+})
+
+describe('yil chempioni va yangi yulduz', () => {
+  it('🏆 faqat YOPILGAN kalendar yil uchun', () => {
+    // 2026 hali tugamagan — joriy oy 2026-09.
+    const rows = build([
+      month({ employeeId: 'a', place: 1, deliveredOrders: 1, deliveredMinor: 100n * MLN }),
+    ])
+    expect(codes(rowOf(rows, 'a'))).not.toContain('year-champion')
+  })
+
+  it('🚀 devor ochilgan oyda berilmaydi — u yerda hamma «yangi» ko‘rinadi', () => {
+    // 2026-08 — RECORDS_FROM. Atributsiya nuqsoni butun floorni yangi qiladi.
+    const rows = build([
+      month({ employeeId: 'a', month: '2026-08-01', place: 2, deliveredOrders: 1, deliveredMinor: MLN }),
+    ])
+    expect(codes(rowOf(rows, 'a'))).not.toContain('rookie')
+  })
+
+  it('🚀 2026-09 dan keyin boshlagan va birinchi to‘liq oyida top-10 ga kirganga', () => {
+    const rows = buildSellerMedals({
+      months: [
+        month({ employeeId: 'a', month: '2026-10-01', place: 7, deliveredOrders: 1, deliveredMinor: MLN }),
+      ],
+      days: [],
+      runningMonth: '2026-11',
+    })
+    expect(codes(rowOf(rows, 'a'))).toContain('rookie')
+  })
+
+  it('🚀 birinchi oyi 11-o‘rin bo‘lsa berilmaydi va keyin ham qaytmaydi', () => {
+    const rows = buildSellerMedals({
+      months: [
+        month({ employeeId: 'a', month: '2026-10-01', place: 11, deliveredOrders: 1, deliveredMinor: MLN }),
+        month({ employeeId: 'a', month: '2026-11-01', place: 2, deliveredOrders: 1, deliveredMinor: MLN }),
+      ],
+      days: [],
+      runningMonth: '2026-12',
+    })
+    expect(codes(rowOf(rows, 'a'))).not.toContain('rookie')
+  })
+})
