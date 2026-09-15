@@ -1,11 +1,12 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
-import { CohortHeatmap } from '@/components/charts/Heatmap'
+import { CohortHeatmap, type CohortView } from '@/components/charts/Heatmap'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { ChartCard } from '@/components/ui/Card'
+import { SegmentedControl } from '@/components/ui/Controls'
 import { GaugeTile, Meter, SectionHeader, StatTile } from '@/components/ui/Stat'
 import { InfoTip } from '@/components/ui/Tooltip'
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
@@ -36,6 +37,11 @@ import { t } from '@/lib/messages'
  * customers return, concentration says how few of them the period's revenue
  * would survive losing — and how fast a first buyer becomes a second one.
  */
+/** The three widths the matrix opens at. `null` draws every month there is. */
+type MonthWindow = '6' | '12' | 'all'
+
+const MONTH_WINDOWS: Record<MonthWindow, number | null> = { '6': 6, '12': 12, all: null }
+
 export function CohortPage() {
   const query = useQuery({
     queryKey: ['cohorts'],
@@ -74,6 +80,26 @@ export function CohortPage() {
     queryFn: ({ signal }) =>
       apiGet<ConcentrationDto>('/insights/concentration', apiParams, signal),
   })
+
+  /**
+   * Which reading of the matrix is on screen.
+   *
+   * Local state, not the URL: it is a way of LOOKING at one answer, both
+   * arrays are already on the payload, and switching costs no request. The
+   * same rule the FAKT 1 / FAKT 2 switch on `/sellers` follows.
+   */
+  const [view, setView] = useState<CohortView>('cumulative')
+
+  /**
+   * How far along the curve the grid opens.
+   *
+   * Local state for the same reason `view` is: the whole payload is already
+   * here, so this changes nothing but how much of it is drawn. Twelve months
+   * by default — the query asks for eighteen, and beyond the first year only
+   * the oldest one or two cohorts have any cells at all, so the columns that
+   * made the table scroll were mostly hatch.
+   */
+  const [months, setMonths] = useState<MonthWindow>('12')
 
   /** One derivation, so no tile can disagree with its own page. */
 
@@ -275,6 +301,31 @@ export function CohortPage() {
            repeats the mechanics. It says the one thing the table cannot: WHY a
            row is a row. */
         hint="Mijozlar birinchi xarid qilgan oyi boʻyicha guruhlanadi — har bir guruh keyin qanchalik qaytib kelgani shu qatorda koʻrinadi."
+        action={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <SegmentedControl
+              value={view}
+              onChange={setView}
+              ariaLabel="Matritsa koʻrinishi"
+              options={[
+                { value: 'cumulative', label: 'Jami qaytgan' },
+                { value: 'monthly', label: 'Oylik' },
+              ]}
+            />
+            {/* The window, beside the reading: both controls change how the
+                same answer is LOOKED at, neither asks the server anything. */}
+            <SegmentedControl
+              value={months}
+              onChange={setMonths}
+              ariaLabel="Nechta oy koʻrsatilsin"
+              options={[
+                { value: '6', label: '6 oy' },
+                { value: '12', label: '12 oy' },
+                { value: 'all', label: 'Hammasi' },
+              ]}
+            />
+          </div>
+        }
       >
         {query.isPending && <ChartSkeleton height={320} />}
         {query.isError && (
@@ -286,7 +337,9 @@ export function CohortPage() {
             body="Yetkazilgan buyurtmalar mijozga bogʻlanmagan boʻlishi mumkin."
           />
         )}
-        {data && data.rows.length > 0 && <CohortHeatmap rows={data.rows} />}
+        {data && data.rows.length > 0 && (
+          <CohortHeatmap rows={data.rows} view={view} months={MONTH_WINDOWS[months]} />
+        )}
       </ChartCard>
 
       <ChartCard

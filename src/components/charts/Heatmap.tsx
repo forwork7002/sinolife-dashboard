@@ -4,6 +4,7 @@ import { useState, type MouseEvent } from 'react'
 
 import { ChartTooltipPanel, type ChartTooltipRow } from '@/components/charts/chartTooltip'
 import {
+  NO_VALUE,
   formatMonth,
   formatMonthOffset,
   formatNumber,
@@ -23,8 +24,23 @@ import {
  *   row     — the month a customer bought for the FIRST time;
  *   `Yangi mijoz` — how many people that month is (the denominator of the row);
  *   `Qaytgan`     — how many of them ever came back, counted once each;
- *   column `+N`   — N months after that first purchase;
- *   cell    — of the row's customers, the share who bought again in THAT month.
+ *   column `+N`   — N months after that first purchase.
+ *
+ * TWO READINGS OF THE SAME CUSTOMERS, and the default is the cumulative one.
+ *
+ * «Jami qaytgan» — of this cohort, how many have come back at least once BY
+ * month N. «Oylik» — of this cohort, how many bought again IN month N.
+ * The monthly reading was the only one for a long time and it is the weaker of
+ * the two on this portal: repeat purchase here runs 0-4% a month, so 250 cells
+ * land in two indistinguishable shades and the grid says almost nothing. The
+ * same customers read cumulatively run 0-37%, which is a curve with a shape.
+ * The monthly reading is kept because it answers a different question — WHEN
+ * they come back, not how many — and it is one press away.
+ *
+ * The cumulative reading drops the `0` column instead of printing a row of
+ * zeros: nobody has RETURNED in the month they first bought. Its last drawn
+ * cell in each row equals that row's «Qaytgan» share by construction, which is
+ * the check a reader can make without leaving the table.
  *
  * Magnitude is encoded on ONE hue, light to dark, because the value is a
  * quantity and not a category — a rainbow here would invent boundaries the
@@ -35,6 +51,9 @@ import {
  * Ink flips to white on the darkest two steps to stay above the contrast
  * floor; a fixed ink colour fails at one end of any sequential ramp.
  */
+
+/** Which of the two readings the grid is drawing. */
+export type CohortView = 'cumulative' | 'monthly'
 
 /** Exactly the fields the matrix draws — the DTO's shape, minus what it ignores. */
 export interface CohortMatrixRow {
@@ -47,6 +66,10 @@ export interface CohortMatrixRow {
   readonly retention: readonly (number | null)[]
   /** The headcount behind each share, same offsets, same nulls. */
   readonly customers: readonly (number | null)[]
+  /** Share that had come back at least once by each offset. Monotonic. */
+  readonly cumulative: readonly (number | null)[]
+  /** The headcount behind each cumulative share, same offsets, same nulls. */
+  readonly cumulativeCustomers: readonly (number | null)[]
   /** What that offset's purchases were worth. */
   readonly revenue: readonly { readonly amount: number }[]
 }
@@ -61,24 +84,47 @@ export interface CohortMatrixRow {
 */
 const W_COHORT = 112
 const W_SIZE = 72
-const W_RETURNED = 96
+const W_RETURNED = 84
 const W_MONTH = 44
+/*
+  AND HOW WIDE A MONTH MAY GROW.
+
+  With the window down to twelve columns the table stopped filling its card —
+  796px of matrix floating in 1888px of hero panel, which reads as a rendering
+  fault rather than as a choice. The month columns now share whatever the card
+  gives them, between these two bounds: below 44 the figures collide, and past
+  64 the cells stretch into bars and the grid stops reading as a grid.
+*/
+const W_MONTH_MAX = 72
 
 /**
- * Five steps, not a continuous gradient.
+ * Below this many customers a «Jami · oʻrtacha» cell is printed but not painted.
+ *
+ * The same floor `WAIT_BAND_MIN_ORDERS` uses on Logistika, for the same
+ * argument: at thirty, one person moves the figure by more than the gap
+ * between two neighbouring bands, so the colour would be claiming a precision
+ * the sample cannot carry. See the `thin` branch of `HeatCell`.
+ */
+const SUMMARY_MIN_BASE = 30
+
+/**
+ * Five steps, not a continuous gradient — and a different five per reading.
  *
  * Banding is a feature: it makes "roughly the same" cells read as the same,
  * which is how a matrix is actually scanned. A continuous ramp invites the eye
  * to distinguish 4% from 5%, a difference that is noise at these cohort sizes.
  *
- * The thresholds are set to THIS business, not to a textbook. Monthly repeat
- * purchase here runs 1–16%; the usual SaaS bands (40/25/12/4) would paint every
- * cell in the lightest step and the matrix would read as a blank grid with a
- * 100% column down the left. They are printed in the legend rather than left
- * implicit, because a colour a reader cannot convert back into a number is
- * decoration.
+ * The thresholds are set to THIS business, not to a textbook, and the two
+ * readings live on different scales so they cannot share one set. Monthly
+ * repeat purchase here runs 0–16%; the usual SaaS bands (40/25/12/4) would
+ * paint every cell in the lightest step. Cumulative return runs 0–37%, and
+ * reusing the monthly bands on it would paint almost every measured cell in
+ * the darkest step — the same blank grid, at the other end of the ramp.
+ *
+ * Both sets are printed in the legend rather than left implicit, because a
+ * colour a reader cannot convert back into a number is decoration.
  */
-const BANDS = [
+const MONTHLY_BANDS = [
   {
     label: '0–2%',
     background: 'color-mix(in oklab, var(--seq-250) 22%, var(--surface))',
@@ -94,6 +140,55 @@ const BANDS = [
   { label: '12% va undan koʻp', background: 'var(--seq-650)', dark: true },
 ] as const
 
+const CUMULATIVE_BANDS = [
+  {
+    label: '0–5%',
+    background: 'color-mix(in oklab, var(--seq-250) 22%, var(--surface))',
+    dark: false,
+  },
+  {
+    label: '5–10%',
+    background: 'color-mix(in oklab, var(--seq-250) 55%, var(--surface))',
+    dark: false,
+  },
+  { label: '10–20%', background: 'var(--seq-350)', dark: false },
+  { label: '20–30%', background: 'var(--seq-550)', dark: true },
+  { label: '30% va undan koʻp', background: 'var(--seq-650)', dark: true },
+] as const
+
+function bandsFor(view: CohortView): readonly { label: string; background: string; dark: boolean }[] {
+  return view === 'monthly' ? MONTHLY_BANDS : CUMULATIVE_BANDS
+}
+
+/*
+  ONE HEAT FIELD, NOT 250 CHIPS.
+
+  Every tile used to sit in a `p-px` cell with a `rounded` corner, so the grid
+  read as a scatter of separate marks: the eye had to assemble a row out of
+  them instead of following it. The tiles now meet, and the separation is a
+  hairline drawn in the card's own colour — which is what makes a heatmap
+  scannable along a row and down a column at the same time.
+*/
+const GRID_LINE = 'inset -1px 0 0 var(--surface-raised), inset 0 -1px 0 var(--surface-raised)'
+
+/*
+  The crosshair. Hovering lifts a row AND a column out of eighteen of each,
+  which is most of what makes a wide matrix answerable — «2025-avg × +3» is a
+  cell nobody can find by counting. The row half is also painted on the pinned
+  cells, which the scrolling tiles pass underneath; this is the half that runs
+  across the grid itself.
+*/
+const CROSS = 'color-mix(in oklab, var(--ink-primary) 45%, transparent)'
+
+function crosshair(litRow: boolean, litCol: boolean): string {
+  const edges = [
+    litCol ? `inset 1px 0 0 ${CROSS}, inset -1px 0 0 ${CROSS}` : null,
+    litRow ? `inset 0 1px 0 ${CROSS}, inset 0 -1px 0 ${CROSS}` : null,
+    GRID_LINE,
+  ].filter(Boolean)
+  return edges.join(', ')
+}
+
 /** What an unmeasured month is drawn in — see the null branch of `HeatCell`. */
 const UNMEASURED =
   'repeating-linear-gradient(135deg, color-mix(in oklab, var(--ink-muted) 16%, transparent) 0 2px, transparent 2px 5px)'
@@ -106,8 +201,26 @@ const UNMEASURED =
   boundary. `--surface` rather than a literal white, so the pale ink follows the
   theme instead of staying white on a light card in dark mode.
 */
-function bandOf(value: number): number {
-  return value >= 12 ? 4 : value >= 7 ? 3 : value >= 4 ? 2 : value >= 2 ? 1 : 0
+function bandOf(view: CohortView, value: number): number {
+  return view === 'monthly'
+    ? value >= 12
+      ? 4
+      : value >= 7
+        ? 3
+        : value >= 4
+          ? 2
+          : value >= 2
+            ? 1
+            : 0
+    : value >= 30
+      ? 4
+      : value >= 20
+        ? 3
+        : value >= 10
+          ? 2
+          : value >= 5
+            ? 1
+            : 0
 }
 
 /** Which fact the hover panel is currently describing. */
@@ -124,6 +237,7 @@ interface Hot {
 
 export function CohortHeatmap({
   rows,
+  view = 'cumulative',
   /*
     WIDE ENOUGH FOR THE DATA IT IS GIVEN.
 
@@ -139,25 +253,76 @@ export function CohortHeatmap({
     payload, not as a display choice.
   */
   maxColumns = 24,
+  /*
+    HOW MANY MONTHS AFTER THE FIRST PURCHASE THE GRID DRAWS. `null` is all of
+    them.
+
+    Counted as an OFFSET, not as a column count, because the two readings draw
+    a different number of columns for the same span: cumulative drops the `0`
+    column and monthly keeps it. A window counted in columns would end on
+    «+12» in one reading and «+11» in the other, under the same label.
+
+    Twelve by default. The page asks for eighteen months of cohorts, so the
+    grid drew up to nineteen columns — and only the oldest cohort has lived
+    long enough to fill them, which made the right half of the table a field of
+    hatch that a reader had to scroll sideways through. The far columns still
+    exist; they are no longer what the screen opens on.
+  */
+  months = 12,
 }: {
   readonly rows: readonly CohortMatrixRow[]
+  /** Which reading to draw. See the module comment; cumulative is the default. */
+  readonly view?: CohortView
   maxColumns?: number
+  readonly months?: number | null
 }) {
   const [hot, setHot] = useState<Hot | null>(null)
 
   if (rows.length === 0) return null
 
-  const columns = Math.min(
+  const span = Math.min(
     maxColumns,
     rows.reduce((max, r) => Math.max(max, r.retention.length), 0),
   )
-  const offsets = Array.from({ length: columns }, (_, i) => i)
-  const width = W_COHORT + W_SIZE + W_RETURNED + columns * W_MONTH
+  /*
+    THE CUMULATIVE READING HAS NO `0` COLUMN.
 
-  const averages = offsets.map((i) => columnAverage(rows, i))
+    Offset 0 is the month the cohort is defined by. Monthly, that is 100% by
+    construction and worth printing as the anchor every other cell is read
+    against; cumulatively it is 0% for every row there has ever been — a column
+    of zeros beside a «Yangi mijoz» count, which reads as a finding and is not
+    one. Dropping it also takes the reader straight to the first month that
+    measures anything.
+  */
+  const offsets = Array.from({ length: span }, (_, i) => i).filter(
+    (i) => (view === 'monthly' || i > 0) && (months === null || i <= months),
+  )
+  const columns = offsets.length
+  const pinned = W_COHORT + W_SIZE + W_RETURNED
+  const width = pinned + columns * W_MONTH
+  const maxWidth = pinned + columns * W_MONTH_MAX
+
+  /** The array this reading draws from. One place decides, everything follows. */
+  const valuesOf = (row: CohortMatrixRow) => (view === 'monthly' ? row.retention : row.cumulative)
+  const countsOf = (row: CohortMatrixRow) =>
+    view === 'monthly' ? row.customers : row.cumulativeCustomers
+
+  const averages = new Map(offsets.map((i) => [i, columnAverage(rows, i, view)]))
   const totalSize = rows.reduce((sum, r) => sum + r.size, 0)
   const totalReturned = rows.reduce((sum, r) => sum + r.returned, 0)
   const totalShare = totalSize > 0 ? (totalReturned / totalSize) * 100 : null
+
+  /*
+    WHETHER THE LEGEND MAY STILL OFFER ITS CROSS-CHECK.
+
+    «Qator oxiridagi katak «Qaytgan» ustuni bilan bir xil boʻladi» is the one
+    check a reader can make without leaving the table — and it is true only of
+    the LAST MEASURED cell, not of the last DRAWN one. With the window on, an
+    old cohort's row ends mid-curve and the claim quietly becomes false: the
+    reader compares a twelve-month figure against an eighteen-month one and
+    finds the table contradicting itself.
+  */
+  const truncated = months !== null && span - 1 > months
 
   /*
     The anchor is taken from the CELL, not from the cursor.
@@ -171,34 +336,35 @@ export function CohortHeatmap({
   const enter = (row: number, col: number) => (event: MouseEvent<HTMLElement>) => {
     const el = event.currentTarget
     const below = row <= 1
+    /* The table flexes between `width` and `maxWidth`, so the clamp has to ask
+       it how wide it actually came out; the constant it used to clamp against
+       was the MINIMUM, and on a wide card it pulled the right-hand columns'
+       panels away from the cells they describe. */
+    const tableWidth = el.closest('table')?.offsetWidth ?? width
     setHot({
       row,
       col,
       // Clamped to half a panel from either edge, so the first and last
       // columns do not open a tip that is cut off by the scroll box.
-      x: Math.min(Math.max(el.offsetLeft + el.offsetWidth / 2, 120), width - 120),
+      x: Math.min(Math.max(el.offsetLeft + el.offsetWidth / 2, 120), tableWidth - 120),
       y: below ? el.offsetTop + el.offsetHeight + 6 : el.offsetTop - 6,
       below,
     })
   }
 
-  const example = readingExample(rows)
-  const panel = hot ? panelFor(hot, rows, averages) : null
+  const panel = hot ? panelFor(hot, rows, averages, view) : null
 
   return (
     <div className="space-y-3">
-      {example && (
-        <p className="text-[11.5px] leading-relaxed" style={{ color: 'var(--ink-secondary)' }}>
-          {example}
-        </p>
-      )}
-
       <div className="relative overflow-x-auto" onMouseLeave={() => setHot(null)}>
         <table
           className="tabular"
           style={{
-            width,
+            /* The three pinned columns keep their fixed widths — every sticky
+               `left` is a whole sum of them — and only the months flex. */
+            width: '100%',
             minWidth: width,
+            maxWidth,
             tableLayout: 'fixed',
             /* `separate` with zero spacing: sticky columns need a separated
                border model, and the 2px gap between heat tiles is drawn by the
@@ -209,9 +375,9 @@ export function CohortHeatmap({
           }}
         >
           <caption className="sr-only">
-            Kogorta matritsasi: har bir qator — mijozlar birinchi marta xarid qilgan oy, har bir
-            ustun — oʻsha oydan keyin oʻtgan oylar soni, katakdagi foiz — oʻsha oyda qayta xarid
-            qilgan mijozlar ulushi.
+            {view === 'monthly'
+              ? 'Kogorta matritsasi: har bir qator — mijozlar birinchi marta xarid qilgan oy, har bir ustun — oʻsha oydan keyin oʻtgan oylar soni, katakdagi foiz — oʻsha oyda qayta xarid qilgan mijozlar ulushi.'
+              : 'Kogorta matritsasi: har bir qator — mijozlar birinchi marta xarid qilgan oy, har bir ustun — oʻsha oydan keyin oʻtgan oylar soni, katakdagi foiz — oʻsha oyga kelib kamida bir marta qaytib kelgan mijozlar ulushi.'}
           </caption>
 
           <colgroup>
@@ -219,7 +385,7 @@ export function CohortHeatmap({
             <col style={{ width: W_SIZE }} />
             <col style={{ width: W_RETURNED }} />
             {offsets.map((i) => (
-              <col key={i} style={{ width: W_MONTH }} />
+              <col key={i} />
             ))}
           </colgroup>
 
@@ -249,7 +415,9 @@ export function CohortHeatmap({
                 className="px-2 pt-0.5 pb-1.5 text-center text-[10.5px] leading-snug font-medium"
                 style={{ color: 'var(--ink-muted)' }}
               >
-                Birinchi xariddan keyin oʻtgan oylar — qayta xarid qilgan mijozlar ulushi, %
+                {view === 'monthly'
+                  ? 'Birinchi xariddan keyin oʻtgan oylar — oʻsha oyda qayta xarid qilganlar ulushi, %'
+                  : 'Birinchi xariddan keyin oʻtgan oylar — shu oyga kelib qaytganlar ulushi, %'}
               </th>
             </tr>
             <tr>
@@ -290,27 +458,42 @@ export function CohortHeatmap({
                     {formatNumber(row.size)}
                   </PinnedCell>
 
+                  {/*
+                    THE SHARE, NOT THE PAIR.
+
+                    This cell used to print «117 · 3%» — two numbers in two
+                    formats in one right-aligned column, the noisiest thing in
+                    the pinned block. The share is what a reader compares down
+                    the column; the count is evidence for it, and it is now in
+                    the cell's label and in the row's hover panel rather than
+                    competing with the figure it supports.
+                  */}
                   <PinnedCell
                     left={W_COHORT + W_SIZE}
                     lit={lit}
                     align="right"
                     edge
                     onMouseEnter={enter(r, -1)}
+                    ariaLabel={`${formatMonth(row.cohort)} kogortasi: ${formatNumber(
+                      row.size,
+                    )} mijozdan ${formatNumber(row.returned)} tasi qaytgan${
+                      share === null ? '' : ` — ${Math.round(share)}%`
+                    }`}
                   >
-                    {formatNumber(row.returned)}
-                    <span className="ml-1" style={{ color: 'var(--ink-muted)' }}>
-                      {share === null ? '' : `· ${Math.round(share)}%`}
-                    </span>
+                    {share === null ? NO_VALUE : `${Math.round(share)}%`}
                   </PinnedCell>
 
                   {offsets.map((i) => (
                     <HeatCell
                       key={i}
-                      value={row.retention[i] ?? null}
-                      customers={row.customers[i] ?? null}
+                      view={view}
+                      value={valuesOf(row)[i] ?? null}
+                      customers={countsOf(row)[i] ?? null}
                       size={row.size}
                       cohort={row.cohort}
                       offset={i}
+                      litRow={lit}
+                      litCol={hot?.col === i}
                       onMouseEnter={enter(r, i)}
                     />
                   ))}
@@ -360,25 +543,31 @@ export function CohortHeatmap({
                 summary
                 edge
                 onMouseEnter={enter(-1, -1)}
+                ariaLabel={`Jami: ${formatNumber(totalSize)} mijozdan ${formatNumber(
+                  totalReturned,
+                )} tasi qaytgan${totalShare === null ? '' : ` — ${Math.round(totalShare)}%`}`}
               >
-                {formatNumber(totalReturned)}
-                <span className="ml-1" style={{ color: 'var(--ink-muted)' }}>
-                  {totalShare === null ? '' : `· ${Math.round(totalShare)}%`}
-                </span>
+                {totalShare === null ? NO_VALUE : `${Math.round(totalShare)}%`}
               </PinnedCell>
 
-              {offsets.map((i) => (
-                <HeatCell
-                  key={i}
-                  summary
-                  value={averages[i].percent}
-                  customers={averages[i].returned}
-                  size={averages[i].base}
-                  cohort={null}
-                  offset={i}
-                  onMouseEnter={enter(-1, i)}
-                />
-              ))}
+              {offsets.map((i) => {
+                const avg = averages.get(i)
+                return (
+                  <HeatCell
+                    key={i}
+                    view={view}
+                    summary
+                    value={avg?.percent ?? null}
+                    customers={avg?.returned ?? null}
+                    size={avg?.base ?? 0}
+                    cohort={null}
+                    offset={i}
+                    litRow={hot?.row === -1}
+                    litCol={hot?.col === i}
+                    onMouseEnter={enter(-1, i)}
+                  />
+                )
+              })}
             </tr>
           </tfoot>
         </table>
@@ -397,7 +586,7 @@ export function CohortHeatmap({
         )}
       </div>
 
-      <Legend />
+      <Legend view={view} truncated={truncated} />
     </div>
   )
 }
@@ -467,6 +656,7 @@ function PinnedCell({
   edge = false,
   onMouseEnter,
   label,
+  ariaLabel,
 }: {
   readonly children: React.ReactNode
   readonly left: number
@@ -477,6 +667,14 @@ function PinnedCell({
   readonly edge?: boolean
   readonly onMouseEnter?: (event: MouseEvent<HTMLElement>) => void
   readonly label?: string
+  /**
+   * The whole fact, for a cell that prints only part of it.
+   *
+   * «Qaytgan» shows the share; the distinct count it divides is here, so a
+   * reader who cannot hover is not left with a percentage whose numerator the
+   * table never states.
+   */
+  readonly ariaLabel?: string
 }) {
   const style = {
     left,
@@ -497,7 +695,7 @@ function PinnedCell({
       {children}
     </th>
   ) : (
-    <td className={className} style={style} onMouseEnter={onMouseEnter}>
+    <td className={className} style={style} onMouseEnter={onMouseEnter} aria-label={ariaLabel}>
       {children}
     </td>
   )
@@ -511,31 +709,39 @@ function PinnedCell({
  * place both are derived.
  */
 function HeatCell({
+  view,
   value,
   customers,
   size,
   cohort,
   offset,
   summary = false,
+  litRow = false,
+  litCol = false,
   onMouseEnter,
 }: {
+  readonly view: CohortView
   readonly value: number | null
   readonly customers: number | null
   readonly size: number
   readonly cohort: string | null
   readonly offset: number
   readonly summary?: boolean
+  /** The two halves of the crosshair. See `crosshair`. */
+  readonly litRow?: boolean
+  readonly litCol?: boolean
   readonly onMouseEnter: (event: MouseEvent<HTMLElement>) => void
 }) {
   if (value === null) {
     return (
       <td
-        className="p-px"
+        className="h-6 p-0"
         style={{ borderTop: summary ? '1px solid var(--border-strong)' : undefined }}
+        onMouseEnter={onMouseEnter}
         aria-label="hali oʻtmagan oy — oʻlchanmagan"
       >
         <div
-          className="h-[22px] rounded"
+          className="h-full min-h-6"
           /*
             HATCHED, NOT PALE.
 
@@ -547,7 +753,9 @@ function HeatCell({
             be mistaken for a small value at any step — and it survives print,
             forced colours and a colourblind reader, none of which the tint did.
           */
-          style={{ background: UNMEASURED }}
+          /* The crosshair runs through the unmeasured months too, or it stops
+             dead halfway down a column and reads as the end of the data. */
+          style={{ background: UNMEASURED, boxShadow: crosshair(litRow, litCol) }}
         />
       </td>
     )
@@ -563,48 +771,78 @@ function HeatCell({
     row that starts at 100% is how a reader anchors the ones that follow, and
     loses its heat.
   */
-  const base = offset === 0
+  /*
+    AND NEITHER IS A SUMMARY CELL STANDING ON A HANDFUL OF PEOPLE.
 
-  const band = BANDS[bandOf(value)]
+    Seen on production the day this shipped. The «Jami · oʻrtacha» row read
+    4 7 9 10 11 11 12 12 13 13 14 19 27 36 **0** — climbing to 36% and then
+    falling off a cliff. Every figure was right: each column averages only the
+    cohorts old enough to have reached it, so the far right of that row is one
+    or two ancient cohorts, and the last column was ONE cohort of ONE customer
+    who never came back. Painted on the ramp beside fourteen real averages, it
+    reads as a collapse in retention. It is a sample of one.
+
+    The figure stays — «0% of 1» is true and the panel says how many cohorts —
+    but it comes off the ramp, the same treatment and for the same reason as
+    the `0` column: a cell nobody should read a trend into must not be coloured
+    like the cells they should. Thirty is the floor `WAIT_BAND_MIN_ORDERS` uses
+    on Logistika, and for the same argument — below it one person moves the
+    figure by more than the gap between two bands.
+  */
+  const thin = summary && size < SUMMARY_MIN_BASE
+
+  const base = (view === 'monthly' && offset === 0) || thin
+
+  const band = bandsFor(view)[bandOf(view, value)] ?? bandsFor(view)[0]
   const shown = value === 0 ? '0' : value < 1 ? '<1' : String(Math.round(value))
 
   return (
     <td
-      className="p-px"
+      className="h-6 p-0"
       style={{ borderTop: summary ? '1px solid var(--border-strong)' : undefined }}
       onMouseEnter={onMouseEnter}
       /* On the CELL, not on the tile inside it: a bare <div aria-label> carries
          no role, and a screen reader announces nothing for it. Here it replaces
          «13%» with the whole fraction, which is the reading a person who cannot
          hover would otherwise have to assemble from the headers. */
-      aria-label={cellSentence({ cohort, offset, value, customers, size, summary })}
+      aria-label={cellSentence({ view, cohort, offset, value, customers, size, summary })}
     >
+      {/*
+        THE UNIT IS SAID ONCE, IN THE HEADER OVER THE COLUMNS.
+
+        A «%» in every cell is 250 glyphs repeating what the column group
+        already states — «…qayta xarid qilganlar ulushi, %» — and they were set
+        at 8.5px and 62% opacity precisely because they were in the way. The
+        cell's own label still spells the figure out as a percentage for anyone
+        who cannot see the header it belongs to.
+      */}
       <div
         data-heat=""
-        className="flex h-[22px] items-center justify-center rounded text-[11px] font-medium"
+        className="flex h-full min-h-6 items-center justify-center text-[11px] font-medium"
         style={{
-          background: base ? 'var(--surface-sunken)' : band.background,
+          background: base ? 'var(--surface-sunken)' : band?.background,
           color: base
             ? 'var(--ink-secondary)'
-            : band.dark
+            : band?.dark
               ? 'var(--surface)'
               : 'var(--ink-primary)',
+          boxShadow: crosshair(litRow, litCol),
         }}
       >
         {shown}
-        {/* The unit, said in every cell but never competing with the digits:
-            a bare «13» in a grid beside a «45 mijoz» column is a count to
-            anyone who has not read the header. */}
-        <span className="ml-px text-[8.5px]" style={{ opacity: 0.62 }}>
-          %
-        </span>
       </div>
     </td>
   )
 }
 
 /** The scale, stated in numbers. A colour a reader cannot convert back is decoration. */
-function Legend() {
+function Legend({
+  view,
+  truncated = false,
+}: {
+  readonly view: CohortView
+  readonly truncated?: boolean
+}) {
   return (
     <div className="space-y-1.5">
       <div
@@ -612,11 +850,11 @@ function Legend() {
         style={{ color: 'var(--ink-muted)' }}
       >
         <span className="font-medium">Qaytish ulushi:</span>
-        {BANDS.map((band) => (
+        {bandsFor(view).map((band) => (
           <span key={band.label} className="inline-flex items-center gap-1.5">
             <span
               aria-hidden="true"
-              className="inline-block h-3 w-5 rounded-[3px]"
+              className="inline-block h-3 w-5 rounded-[1px]"
               style={{ background: band.background }}
             />
             {band.label}
@@ -625,16 +863,24 @@ function Legend() {
         <span className="inline-flex items-center gap-1.5">
           <span
             aria-hidden="true"
-            className="inline-block h-3 w-5 rounded-[3px]"
+            className="inline-block h-3 w-5 rounded-[1px]"
             style={{ background: UNMEASURED }}
           />
           hali oʻtmagan oy — oʻlchanmagan
         </span>
       </div>
+      {/* ONE sentence, and it changes with the reading. The card used to carry
+          a hint, a worked example and two legend lines over one table — four
+          blocks of prose around 250 numbers. The hover panel already spells
+          out every cell's arithmetic, so this says only what the grid cannot:
+          what a cell divides by. */}
       <p className="text-[10.5px] leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
-        Har bir katak = oʻsha oyda qayta xarid qilgan mijozlar ÷ kogortadagi jami mijozlar. «0»
-        ustuni — kogortaning oʻz oyi, u har doim 100%. Katak ustiga sichqonchani olib borsangiz,
-        aniq hisob-kitob — nechta mijozdan nechtasi va qancha tushum — chiqadi.
+        {view === 'monthly'
+          ? 'Har bir katak = oʻsha oyda qayta xarid qilgan mijozlar ÷ kogortadagi jami mijozlar. «0» ustuni — kogortaning oʻz oyi, u har doim 100%.'
+          : truncated
+            ? 'Har bir katak = shu oyga kelib kamida bir marta qaytgan mijozlar ÷ kogortadagi jami mijozlar. «Qaytgan» ustuni butun tarixni hisoblaydi, shuning uchun u koʻrsatilgan oynadan kattaroq boʻlishi mumkin.'
+            : 'Har bir katak = shu oyga kelib kamida bir marta qaytgan mijozlar ÷ kogortadagi jami mijozlar. Qator oxiridagi katak «Qaytgan» ustuni bilan bir xil boʻladi.'}{' '}
+        Katak ustiga sichqonchani olib borsangiz, aniq hisob-kitob chiqadi.
       </p>
     </div>
   )
@@ -665,14 +911,20 @@ interface ColumnAverage {
  * 400-person one; including cohorts that have not lived that long would divide
  * by months nobody has measured yet.
  */
-function columnAverage(rows: readonly CohortMatrixRow[], offset: number): ColumnAverage {
+function columnAverage(
+  rows: readonly CohortMatrixRow[],
+  offset: number,
+  view: CohortView,
+): ColumnAverage {
   let returned = 0
   let base = 0
   let cohorts = 0
 
   for (const row of rows) {
-    if (row.retention[offset] === null || row.retention[offset] === undefined) continue
-    returned += row.customers[offset] ?? 0
+    const values = view === 'monthly' ? row.retention : row.cumulative
+    const counts = view === 'monthly' ? row.customers : row.cumulativeCustomers
+    if (values[offset] === null || values[offset] === undefined) continue
+    returned += counts[offset] ?? 0
     base += row.size
     cohorts += 1
   }
@@ -683,7 +935,8 @@ function columnAverage(rows: readonly CohortMatrixRow[], offset: number): Column
 function panelFor(
   hot: Hot,
   rows: readonly CohortMatrixRow[],
-  averages: readonly ColumnAverage[],
+  averages: ReadonlyMap<number, ColumnAverage>,
+  view: CohortView,
 ): TipPanel | null {
   // The summary row's own label, and its two sums.
   if (hot.row === -1 && hot.col === -1) {
@@ -710,20 +963,25 @@ function panelFor(
 
   // One column of the summary row.
   if (hot.row === -1) {
-    const avg = averages[hot.col]
+    const avg = averages.get(hot.col)
     if (!avg) return null
 
     return {
       header: hot.col === 0 ? 'Oʻrtacha — xarid oyi' : `Oʻrtacha — +${hot.col} oy`,
       rows: [
         {
-          label: 'Qaytgan mijozlar',
+          label: view === 'monthly' ? 'Qaytgan mijozlar' : 'Shu oyga kelib qaytganlar',
           value: `${formatNumber(avg.returned)} / ${formatNumber(avg.base)}`,
         },
         { label: 'Ulush', value: formatPercent(avg.percent) },
         { label: 'Nechta kogortadan', value: `${formatNumber(avg.cohorts)} ta` },
       ],
-      footer: 'Faqat shu oyga yetib ulgurgan kogortalar hisobga olingan.',
+      /* A thin base is the thing to say FIRST — see the `thin` branch of
+         HeatCell for the production row that made this necessary. */
+      footer:
+        avg.base < SUMMARY_MIN_BASE
+          ? `Namuna kichik — bu ustunga atigi ${formatNumber(avg.base)} ta mijoz yetib kelgan, shuning uchun katak rangsiz. Undan tendensiya oʻqimang.`
+          : 'Faqat shu oyga yetib ulgurgan kogortalar hisobga olingan.',
     }
   }
 
@@ -763,11 +1021,51 @@ function panelFor(
     }
   }
 
+  const amount = row.revenue[hot.col]?.amount ?? 0
+
+  /*
+    THE CUMULATIVE CELL SAYS BOTH NUMBERS.
+
+    The grid draws "how many have come back by now"; the reader's next question
+    is always "did anybody come back THIS month" — and that is the increment,
+    which is the monthly reading's whole subject. Stating it here is what lets
+    the default view be the cumulative one without the other becoming a
+    different screen: a flat stretch of colour is explained in the panel rather
+    than by switching the table.
+  */
+  if (view === 'cumulative') {
+    const share = row.cumulative[hot.col]
+    if (share === null || share === undefined) return null
+
+    const reached = row.cumulativeCustomers[hot.col] ?? 0
+    const before = hot.col > 0 ? (row.cumulativeCustomers[hot.col - 1] ?? 0) : 0
+    const added = reached - before
+
+    return {
+      header: `${formatMonth(row.cohort)} kogortasi · +${hot.col} oy (${formatMonthOffset(
+        row.cohort,
+        hot.col,
+      )})`,
+      rows: [
+        {
+          label: 'Shu oyga kelib qaytganlar',
+          value: `${formatNumber(reached)} / ${formatNumber(row.size)}`,
+        },
+        { label: 'Ulush', value: formatPercent(share) },
+        { label: 'Shu oyda qoʻshilgan', value: added > 0 ? `+${formatNumber(added)}` : '0' },
+        { label: 'Shu oydagi tushum', value: formatUzs(amount) },
+      ],
+      footer:
+        added === 0
+          ? 'Bu oyda yangi qaytgan mijoz boʻlmagan — ulush oʻzgarmagan.'
+          : 'Har bir mijoz bir marta sanaladi: birinchi qaytgan oyida.',
+    }
+  }
+
   const value = row.retention[hot.col]
   if (value === null || value === undefined) return null
 
   const customers = row.customers[hot.col] ?? 0
-  const amount = row.revenue[hot.col]?.amount ?? 0
 
   if (hot.col === 0) {
     return {
@@ -802,6 +1100,7 @@ function panelFor(
 
 /** The same sentence the hover panel says, for a reader who cannot hover. */
 function cellSentence({
+  view,
   cohort,
   offset,
   value,
@@ -809,6 +1108,7 @@ function cellSentence({
   size,
   summary,
 }: {
+  readonly view: CohortView
   readonly cohort: string | null
   readonly offset: number
   readonly value: number
@@ -819,38 +1119,11 @@ function cellSentence({
   const who = summary ? 'Oʻrtacha' : cohort ? `${formatMonth(cohort)} kogortasi` : ''
   const when = offset === 0 ? 'xarid oyi' : `+${offset} oy`
   const fraction =
-    customers === null ? '' : ` — ${formatNumber(size)} mijozdan ${formatNumber(customers)} tasi`
+    customers === null
+      ? ''
+      : view === 'monthly'
+        ? ` — ${formatNumber(size)} mijozdan ${formatNumber(customers)} tasi shu oyda qayta xarid qilgan`
+        : ` — ${formatNumber(size)} mijozdan ${formatNumber(customers)} tasi shu oyga kelib qaytgan`
 
   return `${who}, ${when}: ${formatPercent(value)}${fraction}`
-}
-
-/**
- * One worked example, from the reader's own data.
- *
- * A legend explains the encoding; it does not teach the reading. The largest
- * cohort that has lived at least one month is the clearest instance of the
- * sentence every other cell is a copy of, and it names the column it is in so
- * the eye can go and find it.
- */
-function readingExample(rows: readonly CohortMatrixRow[]): string | null {
-  const candidates = rows.filter(
-    (row) => row.size > 0 && row.retention[1] !== null && row.retention[1] !== undefined,
-  )
-  if (candidates.length === 0) return null
-
-  const row = candidates.reduce((best, r) => (r.size > best.size ? r : best))
-  const value = row.retention[1] as number
-  const customers = row.customers[1] ?? Math.round((value / 100) * row.size)
-
-  /* The cell the sentence points at is rounded to a whole percent, so the
-     sentence says so. A reader who checks the example against the cell and
-     finds 25.7% over a cell reading 26% has been given a reason to distrust
-     every other figure on the table. */
-  return `Qanday oʻqiladi: ${formatMonth(row.cohort)} oyida ${formatNumber(
-    row.size,
-  )} ta mijoz birinchi marta xarid qilgan; keyingi oyda ulardan ${formatNumber(
-    customers,
-  )} tasi yana xarid qilgan — bu ${formatPercent(value)}. Shu qatordagi «+1» ustunida u ${Math.round(
-    value,
-  )}% deb yaxlitlangan.`
 }
