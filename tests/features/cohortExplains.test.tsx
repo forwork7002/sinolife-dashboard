@@ -161,7 +161,15 @@ async function openPage() {
 }
 
 describe('the two customer totals', () => {
-  it('states them as two clocks, not as a contradiction', async () => {
+  /*
+    FIX ROUND 1: this used to be framed as "two clocks" — it is not. A deal
+    becomes WON the instant it reaches Успешно, so «yetkazilgan» and
+    «yopilgan (WON)» name the same event. What differs elsewhere is the
+    POPULATION: an order-arrival board counts orders in a bounded window,
+    these two tiles count distinct customers over all history. The tests
+    below assert that reframing, not the old (wrong) one.
+  */
+  it('names «yetkazilgan» and the order-arrival clock as the same instant, not as a contradiction', async () => {
     await openPage()
 
     // «Batafsil» is where the tile row — and the hint beneath it — lives.
@@ -169,14 +177,49 @@ describe('the two customer totals', () => {
 
     const hint = screen.getByTestId('cohort-total-hint').textContent ?? ''
     expect(hint).toMatch(/yetkazilgan/i)
-    expect(hint).toMatch(/buyurtma berilgan/i)
+    // The floor's own established phrase for the order-arrival window — the
+    // same words `LogisticsPage`'s `DailySection` already contrasts
+    // «yetkazilgan sana» against («Kun — buyurtma tasdiqlash navbatiga
+    // TUSHGAN sana, yetkazilgan sana emas.») — reused here rather than a
+    // phrase invented for this sentence alone.
+    expect(hint).toMatch(/tasdiqlash navbatiga tushgan/i)
   })
 
-  it('names both clocks on the SAME element the test id marks, not scattered text', async () => {
+  it('names the population difference — customers vs. orders — not a clock difference', async () => {
+    await openPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
+
+    const hint = screen.getByTestId('cohort-total-hint').textContent ?? ''
+    // The word "soati" (clock/hour) is only used to DENY it is the
+    // difference — "soati emas" — so this checks for the denial rather than
+    // a bare presence, which the old, wrong sentence would also have passed.
+    expect(hint).toMatch(/soati emas/i)
+    expect(hint).toMatch(/mijozlarni emas/i)
+    expect(hint).toMatch(/buyurtmalarni sanaydi/i)
+  })
+
+  it('does not sweep in «Faol bazada», a today-snapshot on a different question', async () => {
     /*
-      A regression this guards against: satisfying both words on the page
-      SOMEWHERE (one in the «Jami mijozlar» tile, one nowhere at all) rather
-      than in the one sentence built to reconcile them.
+      «Faol bazada» is a distinct-customers-with-an-open-deal count, dated by
+      right now — not by a first purchase, and not over all history. An
+      earlier draft of this sentence said «Bu sahifadagi mijozlar soni»,
+      which reads as every tile on the page, this one included.
+    */
+    await openPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
+
+    const hint = screen.getByTestId('cohort-total-hint').textContent ?? ''
+    expect(hint).toMatch(/Jami mijozlar/)
+    expect(hint).toMatch(/Qaytgan mijozlar/)
+    expect(hint).not.toMatch(/Faol bazada/i)
+  })
+
+  it('carries the statement on the element the testid marks, not scattered text', async () => {
+    /*
+      A regression this guards against: satisfying the assertions above
+      because the WORDS happen to appear somewhere on the page (one in the
+      «Jami mijozlar» tile's own hint, one nowhere at all) rather than in the
+      one sentence built to reconcile them.
     */
     await openPage()
     fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))

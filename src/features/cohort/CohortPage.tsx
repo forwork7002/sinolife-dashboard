@@ -53,6 +53,19 @@ type MonthWindow = '6' | '12' | 'all'
 const MONTH_WINDOWS: Record<MonthWindow, number | null> = { '6': 6, '12': 12, all: null }
 
 /**
+ * How much history `/insights/cohorts` is asked for — the ONE number the
+ * matrix's own span is built from, so the section header's prose has to read
+ * it rather than repeat it.
+ *
+ * A literal `18` used to sit in both the query below and in the
+ * `SectionHeader`'s hint two hundred lines away. The portal added a
+ * nineteenth Доставка stage on 2026-09-10 and two places in this product
+ * said «eighteen» on a live screen for a day; a hand-mirrored number is
+ * exactly that failure waiting for the day these two literals disagree.
+ */
+const COHORT_HISTORY_MONTHS = 18
+
+/**
  * The DTO's money, formatted, on its way into a presentation component.
  *
  * `CohortDto` used to satisfy `CohortMatrixRow` structurally, so the rows went
@@ -101,7 +114,8 @@ function toMatrixRow(row: CohortDto): CohortMatrixRow {
 export function CohortPage() {
   const query = useQuery({
     queryKey: ['cohorts'],
-    queryFn: ({ signal }) => apiGet<CohortSummaryDto>('/insights/cohorts', { months: 18 }, signal),
+    queryFn: ({ signal }) =>
+      apiGet<CohortSummaryDto>('/insights/cohorts', { months: COHORT_HISTORY_MONTHS }, signal),
     /*
       EIGHTEEN MONTHS DO NOT MOVE IN A MINUTE.
 
@@ -392,7 +406,7 @@ export function CohortPage() {
         */}
         <SectionHeader
           title="Kogorta tahlili"
-          hint="Koʻrsatkichlar — butun tarix · matritsa — soʻnggi 18 oy · tanlangan davr bu blokka taʼsir qilmaydi."
+          hint={`Koʻrsatkichlar — butun tarix · matritsa — soʻnggi ${COHORT_HISTORY_MONTHS} oy · tanlangan davr bu blokka taʼsir qilmaydi.`}
         />
 
         <div className="stagger grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -432,11 +446,24 @@ export function CohortPage() {
             value={data?.totalCustomers ?? null}
             unit="count"
             /*
-              «Yetkazilgan» is Logistika's word for the Доставлено stage, and this
-              figure is not that: it counts customers whose first WON,
-              revenue-bearing deal closed. On a dashboard where the gap between
-              those two clocks is 20-25 days, borrowing the other screen's word
-              invited a reconciliation that can never come out.
+              «YETKAZILGAN» AND «YOPILGAN (WON)» NAME THE SAME EVENT, not two
+              clocks — a deal becomes WON the instant it reaches Успешно,
+              which is the same instant Logistika would call delivered. An
+              earlier version of this comment claimed a 20-25 day gap between
+              the two; that gap is real but it is order→delivery, and this
+              figure already sits on the delivery side of it (`SimpleView`'s
+              own clock line says so). The word was never the risk.
+
+              What does not reconcile against Logistika is the DENOMINATOR.
+              Logistika counts ORDERS that arrived in a bounded window (the
+              C4:NEW / Тасдиклаш arrival); this figure counts DISTINCT
+              CUSTOMERS by their first purchase, over ALL HISTORY. A customer
+              with three orders is one here and three there, and a customer
+              whose first order predates the window is here and not there.
+              «Yopilgan (WON)» stays this tile's own word because it is the
+              more precise one for a count of PEOPLE rather than orders — see
+              `cohort-total-hint` below for where the population difference is
+              said out loud, to the reader, once.
             */
             hint="Yopilgan (WON) birinchi xaridi boʻlgan mijozlar"
           />
@@ -453,29 +480,33 @@ export function CohortPage() {
         </div>
 
         {/*
-          THE SECOND CLOCK, NAMED BEFORE ANYBODY GOES LOOKING FOR IT.
+          THE POPULATION, NAMED BEFORE ANYBODY GOES LOOKING FOR A DIFFERENT
+          NUMBER — not a second clock, a second DENOMINATOR.
 
-          «Jami mijozlar» above is deliberately worded «Yopilgan (WON)» rather
-          than «yetkazilgan» — the comment on that tile says why: borrowing
-          Logistika's word for a 20-25-day-earlier clock invites a
-          reconciliation that can never come out. But «yetkazilgan» is exactly
-          the word the rest of this screen (SimpleView's own clock line) and
-          the floor use for this same first-purchase clock, and elsewhere in
-          this product a customer count keyed to the day an order was PLACED
-          — not closed — is a different, larger population on a different
-          clock. Neither figure is wrong; naming both here, once, is what
-          keeps a reader who meets them side by side from reporting a bug.
+          «Yetkazilgan» and «yopilgan (WON)» name the same instant (a deal
+          becomes WON the moment it reaches Успешно), so «Jami mijozlar» and
+          «Qaytgan mijozlar» above are not sitting on a clock anybody could
+          dispute. What a reader who has just read Logistika, or any
+          order-arrival board, WILL find different is the population: those
+          screens count ORDERS that arrived in one bounded window; these two
+          tiles count DISTINCT CUSTOMERS by their first purchase, over every
+          month there has ever been. Scoped to exactly the two tiles this
+          sentence reconciles — «Faol bazada» beside them is a today-snapshot
+          on a different question and is not swept in here.
         */}
         <p
           data-testid="cohort-total-hint"
           className="px-1 text-[11px] leading-snug"
           style={{ color: 'var(--ink-muted)' }}
         >
-          Bu sahifadagi mijozlar soni <strong>yetkazilgan</strong> sana
-          boʻyicha — mijozning birinchi yopilgan (WON) xaridi asosida —
-          hisoblanadi. Buyurtma <strong>berilgan</strong> sana boʻyicha
-          sanalganda mijozlar soni boshqacha chiqadi — ikkalasi ham toʻgʻri,
-          faqat soati boshqa.
+          «Jami mijozlar» va «Qaytgan mijozlar» — mijozning birinchi xaridi{' '}
+          <strong>yetkazilgan</strong> (yopilgan, WON) boʻlgan sanaga koʻra,
+          har bir mijozni BITTA marta, butun tarix boʻyicha sanaydi. Boshqa
+          joyda — masalan, buyurtma{' '}
+          <strong>tasdiqlash navbatiga tushgan</strong> sana boʻyicha, bitta
+          davr oynasida — son boshqacha chiqadi, chunki u mijozlarni emas,
+          buyurtmalarni sanaydi. Ikkalasi ham toʻgʻri — soati emas, nima
+          sanalayotgani boshqacha.
         </p>
 
         {/*
