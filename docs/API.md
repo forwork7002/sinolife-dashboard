@@ -237,7 +237,7 @@ product narrowed to the sections the client asked for. `find src/app/api/v1
 | `GET` | `/kpi` | kpi | Targets, attainment, pace-aware status |
 | `GET` | `/insights/cohorts` | `analytics:read:all` | Return-rate ladder by first-purchase cohort |
 | `GET` | `/insights/concentration` | `analytics:read:all` | Customer Pareto, HHI by source and region, repeat-purchase intervals |
-| `GET` | `/insights/customers` | `analytics:read:all` | «Mijozlar oqimi» — arrivals, returns, sources, and who went quiet. **No parameters at all** |
+| `GET` | `/insights/customers` | `analytics:read:all` | «Mijozlar oqimi» — arrivals, returns, sources, and who went quiet. **Resolves its own window, like `/insights/concentration`** |
 | `GET` | `/insights/confirmations/orders` | `analytics:read:all` | The confirmation queue as orders, paginated |
 | `GET` | `/insights/confirmations/regions` | `analytics:read:all` | The РЕГИОН column filter's options, cut from the same cohort |
 | `GET` | `/insights/delivery` | analytics | The Доставка kanban — what is standing where, right now. **No window** |
@@ -320,21 +320,32 @@ UI shows both and reconciles neither.
 
 #### `GET /insights/customers`
 
-**Takes no parameters at all** — not `from`/`to`, not a preset, nothing. The
-«Mijozlar oqimi» screen's period control was removed on 2026-09-15 because it
-drove nothing on the cohort matrix beside it, and this endpoint resolves its
-own trailing ninety days internally (`trailingDays(CUSTOMER_FLOW_DAYS, …)`,
-`InsightsService.customerFlow`) rather than trust a control that nothing sets.
-The window it picked rides back on the payload:
+**Resolves its own window, exactly like `/insights/concentration` beside it,
+and takes the same shape of parameter.** The «Mijozlar oqimi» screen's period
+control was removed on 2026-09-15 because it drove nothing on the cohort
+matrix beside it, and reading a period nothing sets is the failure that made
+`/insights/concentration` report twelve customers under a red gauge — so this
+endpoint calls `trailingDays` at the ROUTE, the same way that sibling does,
+rather than trust a control that nothing sets:
 
 ```
-window  { start, end, days }
-summary { newCustomers, returningCustomers, activeCustomers, newCustomersWon,
-          firstRevenue, repeatRevenue, repeatRevenueSharePercent }
-series  [ { bucket, newCustomers, returningCustomers } ]   one row per day
-sources [ { key, label, newCustomers, sharePercent, repeatPercent,
-            maturedCustomers } ]
-states  { customers, rows: [ { key, label, colour, customers } ] }
+GET /insights/customers?days=90
+```
+
+`days` (30–365, default 90) is not wired to any control — the screen prints
+whatever it gets back. Ninety matches the maturity horizon
+`sources[].repeatPercent` is itself measured on, so one span covers the card.
+The resolved window comes back as `meta.period`, not on the payload:
+
+```
+meta.period { preset, start, end, timeZone, days }
+data:
+  summary { newCustomers, returningCustomers, activeCustomers, newCustomersWon,
+            firstRevenue, repeatRevenue, repeatRevenueSharePercent }
+  series  [ { bucket, newCustomers, returningCustomers } ]   one row per day
+  sources [ { key, label, newCustomers, sharePercent, repeatPercent,
+              maturedCustomers } ]
+  states  { customers, rows: [ { key, label, colour, customers } ] }
 ```
 
 `repeatRevenueSharePercent` is null rather than 0 when there is no money at

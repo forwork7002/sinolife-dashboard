@@ -1441,14 +1441,16 @@ export interface ConcentrationDto {
 /**
  * THREE READS, THREE CLOCKS, AND THE SCREEN MUST SAY WHICH IS WHICH:
  *
- *   - `summary` and `series` are this band's OWN trailing ninety days, by
- *     ORDER date (`createdAtSource`). `window` is that span, resolved on the
- *     server and printed here rather than implied by a control the screen no
- *     longer has — see `CUSTOMER_FLOW_DAYS` and `InsightsService.customerFlow`.
+ *   - `summary` and `series` are this band's OWN trailing window, by ORDER
+ *     date (`createdAtSource`) — ninety days by default, `days` on the
+ *     route. The resolved span is NOT on this DTO: it rides back in the
+ *     response's `meta.period`, the same place `/insights/concentration`
+ *     puts its own self-resolved window, because the ROUTE resolves it, not
+ *     the service. See `InsightsService.customerFlow`.
  *   - `sources[].repeatPercent` and `.maturedCustomers` are the WHOLE
  *     history, on a fixed ninety-day maturity horizon, and move with neither
- *     `window` above nor the calendar below. `sources[].newCustomers` and
- *     `.sharePercent` DO belong to `window`, same as `summary`.
+ *     the resolved window above nor the calendar below. `sources[].newCustomers`
+ *     and `.sharePercent` DO belong to that window, same as `summary`.
  *   - `states` takes no window at all — it is TODAY, a customer's silence
  *     measured against their own last order as of now.
  *
@@ -1493,8 +1495,6 @@ export interface CustomerStateRowDto {
 }
 
 export interface CustomerFlowDto {
-  /** The window this band resolved for itself, so the screen can print it. */
-  readonly window: { readonly start: string; readonly end: string; readonly days: number }
   readonly summary: CustomerFlowSummaryDto
   readonly series: readonly CustomerFlowPointDto[]
   readonly sources: readonly CustomerSourceDto[]

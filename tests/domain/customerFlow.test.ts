@@ -8,14 +8,15 @@ import type {
   InsightsRepository,
   SourceRepeatRate,
 } from '@/server/repositories/insightsRepository'
-import {
-  CUSTOMER_FLOW_DAYS,
-  InsightsService,
-  resetCustomerFlowCaches,
-} from '@/server/services/insightsService'
+import { InsightsService, resetCustomerFlowCaches } from '@/server/services/insightsService'
 
 const TZ = 'Asia/Tashkent'
 const NOW = new Date('2026-09-15T08:00:00+05:00')
+
+// The one `Period` these tests hand the service — built with the same
+// `trailingDays` the route now calls, so it is a realistic window and not a
+// hand-rolled one.
+const PERIOD = trailingDays(90, { timeZone: TZ, now: NOW })
 
 /*
   Module-level caches, same hazard `resetConfirmationRopCache` documents: a
@@ -53,19 +54,24 @@ function fakeRepository(overrides: {
 }
 
 describe('InsightsService.customerFlow', () => {
-  it('resolves its window with trailingDays, not a hand-rolled calculation', async () => {
-    const service = new InsightsService(fakeRepository({}))
+  it('passes the period it is handed straight through to the repository, unchanged', async () => {
+    // The window is resolved by the ROUTE now (`trailingDays`, mirroring
+    // `/insights/concentration`), not by this method — so all this method
+    // owns is passing what it was given on to the one place that reads it.
+    // Re-testing `trailingDays` itself belongs to period.test.ts, not here.
+    let received: unknown
+    const repository: InsightsRepository = {
+      ...fakeRepository({}),
+      customerFlow: async (options: Parameters<InsightsRepository['customerFlow']>[0]) => {
+        received = options.period
+        return emptyFlow()
+      },
+    } as unknown as InsightsRepository
+    const service = new InsightsService(repository)
 
-    const dto = await service.customerFlow('UZS', NOW, TZ)
+    await service.customerFlow('UZS', PERIOD)
 
-    // The one true window this method is allowed to build. Re-testing
-    // `trailingDays` itself belongs to period.test.ts, not here — this just
-    // checks that `customerFlow` actually calls it rather than re-deriving
-    // the same span by hand.
-    const expected = trailingDays(CUSTOMER_FLOW_DAYS, { timeZone: TZ, now: NOW })
-    expect(dto.window.start).toBe(expected.start.toISOString())
-    expect(dto.window.end).toBe(expected.end.toISOString())
-    expect(dto.window.days).toBe(90)
+    expect(received).toBe(PERIOD)
   })
 
   it('builds states.rows in CUSTOMER_STATES order, summing to states.customers', async () => {
@@ -75,7 +81,7 @@ describe('InsightsService.customerFlow', () => {
     }
     const service = new InsightsService(fakeRepository({ states }))
 
-    const dto = await service.customerFlow('UZS', NOW, TZ)
+    const dto = await service.customerFlow('UZS', PERIOD)
 
     expect(dto.states.rows.map((row) => row.key)).toEqual(
       CUSTOMER_STATES.map((state) => state.key),
@@ -97,7 +103,7 @@ describe('InsightsService.customerFlow', () => {
     }
     const service = new InsightsService(fakeRepository({ flow, rates: [] }))
 
-    const dto = await service.customerFlow('UZS', NOW, TZ)
+    const dto = await service.customerFlow('UZS', PERIOD)
 
     expect(dto.sources).toEqual([
       expect.objectContaining({
@@ -115,7 +121,7 @@ describe('InsightsService.customerFlow', () => {
     }
     const service = new InsightsService(fakeRepository({ flow }))
 
-    const dto = await service.customerFlow('UZS', NOW, TZ)
+    const dto = await service.customerFlow('UZS', PERIOD)
 
     expect(dto.summary.newCustomers).toBe(0)
     expect(dto.sources[0]?.sharePercent).toBeNull()

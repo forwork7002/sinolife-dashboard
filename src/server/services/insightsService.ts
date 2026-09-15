@@ -21,7 +21,6 @@ import {
   allTime,
   enumerateBuckets,
   periodLengthInDays,
-  trailingDays,
   zonedDateKey,
 } from '@/server/domain/period/period'
 import { deliveryStageName } from '@/server/domain/analytics/stageNames'
@@ -175,14 +174,16 @@ export interface CohortSummaryDto {
  *
  * THREE READS, THREE CLOCKS, AND THE SCREEN MUST SAY WHICH IS WHICH:
  *
- *   - `summary` and `series` are this band's OWN trailing ninety days, by
- *     ORDER date (`createdAtSource`). `window` is that span, resolved on the
- *     server and printed here rather than implied by a control the screen no
- *     longer has — see `CUSTOMER_FLOW_DAYS` and `InsightsService.customerFlow`.
+ *   - `summary` and `series` are this band's OWN trailing window, by ORDER
+ *     date (`createdAtSource`) — ninety days by default, `days` on the
+ *     route. The resolved span is NOT on this DTO: it rides back in the
+ *     response's `meta.period`, the same place `/insights/concentration`
+ *     puts its own self-resolved window, because `route.ts` — not this
+ *     service — is what resolves it now. See `InsightsService.customerFlow`.
  *   - `sources[].repeatPercent` and `.maturedCustomers` are the WHOLE
  *     history, on a fixed ninety-day maturity horizon, and move with neither
- *     `window` above nor the calendar below. `sources[].newCustomers` and
- *     `.sharePercent` DO belong to `window`, same as `summary`.
+ *     the resolved window above nor the calendar below. `sources[].newCustomers`
+ *     and `.sharePercent` DO belong to that window, same as `summary`.
  *   - `states` takes no window at all — it is TODAY, a customer's silence
  *     measured against their own last order as of now.
  *
@@ -227,8 +228,6 @@ export interface CustomerStateRowDto {
 }
 
 export interface CustomerFlowDto {
-  /** The window this band resolved for itself, so the screen can print it. */
-  readonly window: { readonly start: string; readonly end: string; readonly days: number }
   readonly summary: CustomerFlowSummaryDto
   readonly series: readonly CustomerFlowPointDto[]
   readonly sources: readonly CustomerSourceDto[]
@@ -943,27 +942,6 @@ export interface InsightsScope extends EmployeeScopeFilter {
   readonly branchDepartmentId?: string | null
 }
 
-/**
- * The band's own window, ninety days.
- *
- * «Mijoz qaytishi» has no period control — it was removed on 2026-09-15
- * because it drove nothing, and its «Bugun» default had made the
- * concentration band read twelve customers and one first-to-second pair. So
- * this band resolves its own window, the way that commit made
- * `/insights/concentration` do — `trailingDays` in `period.ts` is that same
- * helper, half-open, anchored to a day boundary in the caller's timezone, and
- * frozen. There is no second, hand-rolled version of it here: a
- * `now.getTime() - days * 86_400_000` calculation is timezone-naive and lands
- * mid-afternoon in Tashkent instead of on a day boundary, which would have
- * rolled the day-coarsened memo key below over at 05:00 local instead of at
- * midnight.
- *
- * NINETY, not thirty and not a year, because the source block's repeat column
- * is measured on a ninety-day horizon: one span across the whole card is one
- * fewer thing for a reader to hold.
- */
-export const CUSTOMER_FLOW_DAYS = 90
-
 export class InsightsService {
   constructor(private readonly repository: InsightsRepository) {}
 
@@ -1182,9 +1160,12 @@ export class InsightsService {
    *
    * THREE READS, THREE CLOCKS, AND ONLY ONE OF THEM MOVES.
    *
-   * The window is resolved here and not by the caller (`trailingDays`,
-   * anchored to a day boundary in `timeZone`), so the memo key below is the
-   * DAY it lands on rather than the instant: a band that re-queried on every
+   * THE WINDOW ARRIVES ALREADY RESOLVED, like `/insights/concentration`'s
+   * own — `route.ts` calls `trailingDays` (anchored to a day boundary in the
+   * caller's timezone) and hands the `Period` down, rather than this method
+   * resolving it from a raw `now`/`timeZone` pair. The memo key below is
+   * still `period.start` plus the span, so the DAY it lands on rather than
+   * the instant is what two requests share: a band that re-queried on every
    * request would put the most expensive statement on this screen into a
    * one-vCPU database once per reader per minute. Measured on production:
    * customerFlow 370-1478 ms warm, 3.7-8 s cold.
@@ -1198,26 +1179,21 @@ export class InsightsService {
    *     stop being safe the day `money()` grew currency conversion, because
    *     then the same cached minor units would need a different answer per
    *     currency.
-   *   - `timeZone` cannot change this query's result today: this method
-   *     itself resolves the window in `timeZone` (so a different zone WOULD
-   *     shift `period.start`/`period.end`, which the key does carry via
-   *     `period.start`), but `InsightsRepository.customerFlow`'s SQL buckets
-   *     with its own fixed `this.tz` (`env.APP_TIMEZONE`) and never reads
-   *     `options.period.timeZone` at all. `timeZone` is also itself
-   *     process-wide today, with no per-account override. Either one
-   *     changing — the repository honouring `period.timeZone`, or a caller
-   *     passing a per-account zone — would silently serve one account's
-   *     bucketing to another; the day either lands, this key needs the zone.
+   *   - `timeZone` PLAYS NO PART IN THIS METHOD AT ALL, now that it does not
+   *     even receive one: the route decides the zone before this is called,
+   *     and `InsightsRepository.customerFlow`'s SQL buckets with its own
+   *     fixed `this.tz` (`env.APP_TIMEZONE`), never reading
+   *     `options.period.timeZone`. That reading is what makes `period.start`
+   *     alone a safe key today; the day the repository starts honouring a
+   *     per-period zone instead of its own fixed one, this key needs it too.
    *
    * No scope in the key because there is no scope to carry — `cohort` is in
    * COMPANY_WIDE and this endpoint asks for `analytics:read:all`, so every
    * caller who gets through reads the same rows. If that ever changes, the
    * key changes in the same commit or the memo goes.
    */
-  async customerFlow(currency: string, now: Date, timeZone: string): Promise<CustomerFlowDto> {
-    const period = trailingDays(CUSTOMER_FLOW_DAYS, { timeZone, now })
-
-    const flowKey = `flow|${period.start.toISOString()}|${CUSTOMER_FLOW_DAYS}`
+  async customerFlow(currency: string, period: Period): Promise<CustomerFlowDto> {
+    const flowKey = `flow|${period.start.toISOString()}|${periodLengthInDays(period)}`
 
     const [flow, rates, states] = await Promise.all([
       customerFlowCache.get(flowKey, () => this.repository.customerFlow({ period, grain: 'day' })),
@@ -1264,11 +1240,6 @@ export class InsightsService {
     const moneyTotal = first + repeat
 
     return {
-      window: {
-        start: period.start.toISOString(),
-        end: period.end.toISOString(),
-        days: periodLengthInDays(period),
-      },
       summary: {
         newCustomers: flow.summary.newCustomers,
         returningCustomers: flow.summary.returningCustomers,
