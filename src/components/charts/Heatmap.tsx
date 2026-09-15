@@ -63,13 +63,13 @@ import {
 /** Which of the two readings the grid is drawing. */
 export type CohortView = 'cumulative' | 'monthly'
 
-/** Exactly the fields the matrix draws — the DTO's shape, minus what it ignores. */
-export interface CohortMatrixRow {
-  /** First day of the cohort month, `YYYY-MM-DD`. */
-  readonly cohort: string
+/**
+ * Exactly the five fields `columnAverage` reads — so a caller that only wants
+ * the grid's column average (see `ReturnAnswer`) does not have to construct a
+ * whole matrix row for the other nine fields it would never look at.
+ */
+export interface AveragableCohortRow {
   readonly size: number
-  /** Ever came back, counted once each. Never the sum of `customers`. */
-  readonly returned: number
   /** Share of the cohort buying again, by offset. Null = the month has not happened. */
   readonly retention: readonly (number | null)[]
   /** The headcount behind each share, same offsets, same nulls. */
@@ -78,6 +78,14 @@ export interface CohortMatrixRow {
   readonly cumulative: readonly (number | null)[]
   /** The headcount behind each cumulative share, same offsets, same nulls. */
   readonly cumulativeCustomers: readonly (number | null)[]
+}
+
+/** Exactly the fields the matrix draws — the DTO's shape, minus what it ignores. */
+export interface CohortMatrixRow extends AveragableCohortRow {
+  /** First day of the cohort month, `YYYY-MM-DD`. */
+  readonly cohort: string
+  /** Ever came back, counted once each. Never the sum of `customers`. */
+  readonly returned: number
   /** What that offset's purchases were worth. */
   readonly revenue: readonly { readonly amount: number }[]
   /**
@@ -1154,7 +1162,7 @@ interface TipPanel {
   readonly footer?: string
 }
 
-interface ColumnAverage {
+export interface ColumnAverage {
   readonly percent: number | null
   /** Customers who came back, over the cohorts that reached this offset. */
   readonly returned: number
@@ -1171,9 +1179,16 @@ interface ColumnAverage {
  * unweighted mean of the percentages would let a 40-person month outvote a
  * 400-person one; including cohorts that have not lived that long would divide
  * by months nobody has measured yet.
+ *
+ * Exported so a caller outside this grid (`ReturnAnswer`) can read the same
+ * average rather than writing a second one — see that file's header comment
+ * for why a hand-written mean is the one thing this design forbids. The
+ * parameter is narrowed to `AveragableCohortRow` rather than the full
+ * `CohortMatrixRow` so such a caller does not have to construct a grid row
+ * just to hand this function the five fields it actually reads.
  */
-function columnAverage(
-  rows: readonly CohortMatrixRow[],
+export function columnAverage(
+  rows: readonly AveragableCohortRow[],
   offset: number,
   view: CohortView,
 ): ColumnAverage {
