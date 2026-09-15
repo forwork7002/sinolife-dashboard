@@ -81,7 +81,7 @@ contrast is the finding the source block exists to make visible.
 
 **The horizon is not cosmetic.** Measured without it, over first orders in the
 last 365 days, the same sources read 8.0 / 10.2 / 14.0 / 9.0 / 15.2 / 19.6 —
-every one understated, and Баз клиент understated by 20 points, because a
+every one understated, and «База клиент» understated by 20 points, because a
 customer acquired last month is counted as having failed to return. §5.3 is
 what makes the column honest.
 
