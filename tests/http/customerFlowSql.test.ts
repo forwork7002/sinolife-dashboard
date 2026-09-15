@@ -151,3 +151,56 @@ describe('the customer flow statement', () => {
     expect([...code().matchAll(/FROM\s+"deal"/gi)].length).toBe(1)
   })
 })
+
+function ratesSql(): string {
+  const at = SOURCE.indexOf('async sourceRepeatRates(')
+  expect(at).toBeGreaterThan(-1)
+  const open = SOURCE.indexOf('`\n', at)
+  const close = SOURCE.indexOf('\n      `,', open)
+  expect(close).toBeGreaterThan(open)
+  return SOURCE.slice(open + 1, close)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/--[^\n]*/g, '')
+}
+
+describe('the source repeat-rate statement', () => {
+  it('gives every customer a complete 90-day horizon', () => {
+    /*
+      THE HORIZON IS NOT COSMETIC. Measured without it over the last 365 days
+      the same sources read 8.0 / 10.2 / 14.0 against 12.4 / 16.9 / 15.6 with
+      it, and «База клиент» reads 19.6 against 40.3 — every source understated,
+      because a customer acquired last month is counted as having failed to
+      return. The concentration card on the same screen already uses this rule.
+    */
+    expect(ratesSql()).toMatch(/interval '90 days'/i)
+  })
+
+  it('takes no period', () => {
+    // A source's repeat rate is a property of the source, not of the window
+    // the reader picked. It must not move with the period control.
+    expect(ratesSql()).not.toMatch(/\$1|\$2/)
+  })
+
+  it('attributes on the FIRST order and counts customers once', () => {
+    expect(ratesSql()).toMatch(/rn = 1/i)
+    expect(ratesSql()).toMatch(/orders\s*>\s*1/i)
+  })
+
+  it('keeps the sourceless row', () => {
+    expect(ratesSql()).toMatch(/LEFT JOIN "sales_source"/i)
+  })
+
+  it('names countsAsRevenue explicitly', () => {
+    expect(ratesSql()).toMatch(/"countsAsRevenue"/)
+  })
+
+  it('breaks the rn = 1 tie deterministically, on the deal id', () => {
+    /*
+      Two orders at the same instant with the same (possibly NULL) source
+      otherwise leave rn = 1 to whichever row the planner happens to produce
+      first — and here that decides which source is credited with acquiring
+      the customer, which is the entire output of this method.
+    */
+    expect(ratesSql()).toMatch(/ORDER BY ts, sid NULLS LAST, deal_id/i)
+  })
+})

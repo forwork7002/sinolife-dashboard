@@ -234,6 +234,12 @@ export interface CustomerFlowRows {
   }[]
 }
 
+export interface SourceRepeatRate {
+  readonly key: string // SalesSource id, or '' for no source
+  readonly maturedCustomers: number
+  readonly repeatPercent: number | null
+}
+
 /**
  * One grouping of the logistics cohort, whatever it was grouped by.
  *
@@ -1531,6 +1537,77 @@ export class InsightsRepository {
           newCustomers: int(row.new_customers ?? 0n),
         })),
     }
+  }
+
+  /**
+   * How often a source's customers come back — a property of the SOURCE.
+   *
+   * NO PERIOD, AND A 90-DAY HORIZON. Only customers whose first order is old
+   * enough to have had a chance to return are counted. Without that horizon a
+   * source that acquired heavily last month reports a near-zero repeat rate
+   * for no reason but the calendar, and every source is understated:
+   * measured on production 2026-09-15 over the last 365 days, Ген лид reads
+   * 8.0% uncontrolled against 12.4% on the horizon, Входящий 10.2% against
+   * 16.9%, and «База клиент» 19.6% against 40.3% — a twenty-point error on
+   * the row a reader would act on first.
+   *
+   * It is the same rule the concentration card on this screen already applies
+   * to `repurchaseWithin90Percent`, which is what stops one screen printing
+   * two different answers to "do they come back".
+   *
+   * THE COLUMN DOES NOT FOLLOW THE PERIOD CONTROL, and the block's hint says
+   * so. A rate that sat beside a period-scoped count and silently ignored it
+   * would be the worst of both.
+   */
+  async sourceRepeatRates(): Promise<readonly SourceRepeatRate[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { source_key: string | null; matured: bigint; returned: bigint }[]
+    >(
+      `
+      WITH orders AS (
+        SELECT d."id" AS deal_id,
+               d."customerId" AS cid,
+               d."createdAtSource" AS ts,
+               d."sourceId" AS sid
+        FROM "deal" d
+        WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
+      ),
+      ranked AS (
+        SELECT cid, ts, sid,
+               -- deal_id breaks the tie when one customer has two orders at
+               -- the same ts AND the same (possibly NULL) sid -- without it,
+               -- which row wins rn = 1 is whatever order the planner happens
+               -- to produce, and here that decides which source is credited
+               -- with acquiring this customer, the entire output of this
+               -- method. customerFlow ends its own ranked ORDER BY the same way.
+               row_number() OVER (PARTITION BY cid ORDER BY ts, sid NULLS LAST, deal_id) AS rn,
+               count(*) OVER (PARTITION BY cid) AS orders
+        FROM orders
+      )
+      SELECT
+        COALESCE(s."id", '') AS source_key,
+        count(*)::bigint AS matured,
+        count(*) FILTER (WHERE r.orders > 1)::bigint AS returned
+      FROM ranked r
+      LEFT JOIN "sales_source" s ON s."id" = r.sid
+      -- The horizon. A first order younger than this has not had its chance.
+      WHERE r.rn = 1 AND r.ts < now() - interval '90 days'
+      GROUP BY 1
+      `,
+    )
+
+    return rows.map((row) => {
+      const matured = int(row.matured)
+      return {
+        key: row.source_key ?? '',
+        maturedCustomers: matured,
+        /* Null, never 0, when nothing has matured: «no answer yet» is not
+           «nobody came back», and the component that draws it renders the
+           two differently. */
+        repeatPercent:
+          matured === 0 ? null : Math.round((int(row.returned) / matured) * 1000) / 10,
+      }
+    })
   }
 
   // -------------------------------------------------------------------------
