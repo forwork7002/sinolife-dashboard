@@ -2144,8 +2144,15 @@ describe('medalReason', () => {
     expect(text).not.toContain('7 buyurtma')
   })
 
-  it('sababsiz medal bo‘sh satr emas', () => {
-    expect(medalReason(medal({ code: 'streak-fire', at: '2026-11-01' }))).not.toBe('')
+  it('faqat oyi bor medal o‘sha oyni yozadi', () => {
+    // `not.toBe('')` yetarli emasdi: u har qanday axlat satrda ham o‘tardi.
+    expect(medalReason(medal({ code: 'streak-fire', at: '2026-11-01' }))).toBe('Noyabr 2026')
+  })
+
+  it('hech qanday fakti yo‘q medal o‘z NOMINI yozadi, bo‘sh satr emas', () => {
+    // Zaxira shoxi: televizorda izohsiz medal javobsiz savol bo‘lib qoladi.
+    const bare = medal({ code: 'streak-fire', at: null })
+    expect(medalReason(bare)).toBe('Olov seriyasi')
   })
 })
 ```
