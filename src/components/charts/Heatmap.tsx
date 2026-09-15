@@ -4,6 +4,7 @@ import { useState, type MouseEvent } from 'react'
 
 import { ChartTooltipPanel, type ChartTooltipRow } from '@/components/charts/chartTooltip'
 import {
+  NO_VALUE,
   formatMonth,
   formatMonthOffset,
   formatNumber,
@@ -83,8 +84,18 @@ export interface CohortMatrixRow {
 */
 const W_COHORT = 112
 const W_SIZE = 72
-const W_RETURNED = 96
+const W_RETURNED = 84
 const W_MONTH = 44
+/*
+  AND HOW WIDE A MONTH MAY GROW.
+
+  With the window down to twelve columns the table stopped filling its card —
+  796px of matrix floating in 1888px of hero panel, which reads as a rendering
+  fault rather than as a choice. The month columns now share whatever the card
+  gives them, between these two bounds: below 44 the figures collide, and past
+  64 the cells stretch into bars and the grid stops reading as a grid.
+*/
+const W_MONTH_MAX = 72
 
 /**
  * Below this many customers a «Jami · oʻrtacha» cell is printed but not painted.
@@ -147,6 +158,35 @@ const CUMULATIVE_BANDS = [
 
 function bandsFor(view: CohortView): readonly { label: string; background: string; dark: boolean }[] {
   return view === 'monthly' ? MONTHLY_BANDS : CUMULATIVE_BANDS
+}
+
+/*
+  ONE HEAT FIELD, NOT 250 CHIPS.
+
+  Every tile used to sit in a `p-px` cell with a `rounded` corner, so the grid
+  read as a scatter of separate marks: the eye had to assemble a row out of
+  them instead of following it. The tiles now meet, and the separation is a
+  hairline drawn in the card's own colour — which is what makes a heatmap
+  scannable along a row and down a column at the same time.
+*/
+const GRID_LINE = 'inset -1px 0 0 var(--surface-raised), inset 0 -1px 0 var(--surface-raised)'
+
+/*
+  The crosshair. Hovering lifts a row AND a column out of eighteen of each,
+  which is most of what makes a wide matrix answerable — «2025-avg × +3» is a
+  cell nobody can find by counting. The row half is also painted on the pinned
+  cells, which the scrolling tiles pass underneath; this is the half that runs
+  across the grid itself.
+*/
+const CROSS = 'color-mix(in oklab, var(--ink-primary) 45%, transparent)'
+
+function crosshair(litRow: boolean, litCol: boolean): string {
+  const edges = [
+    litCol ? `inset 1px 0 0 ${CROSS}, inset -1px 0 0 ${CROSS}` : null,
+    litRow ? `inset 0 1px 0 ${CROSS}, inset 0 -1px 0 ${CROSS}` : null,
+    GRID_LINE,
+  ].filter(Boolean)
+  return edges.join(', ')
 }
 
 /** What an unmeasured month is drawn in — see the null branch of `HeatCell`. */
@@ -213,11 +253,28 @@ export function CohortHeatmap({
     payload, not as a display choice.
   */
   maxColumns = 24,
+  /*
+    HOW MANY MONTHS AFTER THE FIRST PURCHASE THE GRID DRAWS. `null` is all of
+    them.
+
+    Counted as an OFFSET, not as a column count, because the two readings draw
+    a different number of columns for the same span: cumulative drops the `0`
+    column and monthly keeps it. A window counted in columns would end on
+    «+12» in one reading and «+11» in the other, under the same label.
+
+    Twelve by default. The page asks for eighteen months of cohorts, so the
+    grid drew up to nineteen columns — and only the oldest cohort has lived
+    long enough to fill them, which made the right half of the table a field of
+    hatch that a reader had to scroll sideways through. The far columns still
+    exist; they are no longer what the screen opens on.
+  */
+  months = 12,
 }: {
   readonly rows: readonly CohortMatrixRow[]
   /** Which reading to draw. See the module comment; cumulative is the default. */
   readonly view?: CohortView
   maxColumns?: number
+  readonly months?: number | null
 }) {
   const [hot, setHot] = useState<Hot | null>(null)
 
@@ -238,10 +295,12 @@ export function CohortHeatmap({
     measures anything.
   */
   const offsets = Array.from({ length: span }, (_, i) => i).filter(
-    (i) => view === 'monthly' || i > 0,
+    (i) => (view === 'monthly' || i > 0) && (months === null || i <= months),
   )
   const columns = offsets.length
-  const width = W_COHORT + W_SIZE + W_RETURNED + columns * W_MONTH
+  const pinned = W_COHORT + W_SIZE + W_RETURNED
+  const width = pinned + columns * W_MONTH
+  const maxWidth = pinned + columns * W_MONTH_MAX
 
   /** The array this reading draws from. One place decides, everything follows. */
   const valuesOf = (row: CohortMatrixRow) => (view === 'monthly' ? row.retention : row.cumulative)
@@ -252,6 +311,18 @@ export function CohortHeatmap({
   const totalSize = rows.reduce((sum, r) => sum + r.size, 0)
   const totalReturned = rows.reduce((sum, r) => sum + r.returned, 0)
   const totalShare = totalSize > 0 ? (totalReturned / totalSize) * 100 : null
+
+  /*
+    WHETHER THE LEGEND MAY STILL OFFER ITS CROSS-CHECK.
+
+    «Qator oxiridagi katak «Qaytgan» ustuni bilan bir xil boʻladi» is the one
+    check a reader can make without leaving the table — and it is true only of
+    the LAST MEASURED cell, not of the last DRAWN one. With the window on, an
+    old cohort's row ends mid-curve and the claim quietly becomes false: the
+    reader compares a twelve-month figure against an eighteen-month one and
+    finds the table contradicting itself.
+  */
+  const truncated = months !== null && span - 1 > months
 
   /*
     The anchor is taken from the CELL, not from the cursor.
@@ -265,12 +336,17 @@ export function CohortHeatmap({
   const enter = (row: number, col: number) => (event: MouseEvent<HTMLElement>) => {
     const el = event.currentTarget
     const below = row <= 1
+    /* The table flexes between `width` and `maxWidth`, so the clamp has to ask
+       it how wide it actually came out; the constant it used to clamp against
+       was the MINIMUM, and on a wide card it pulled the right-hand columns'
+       panels away from the cells they describe. */
+    const tableWidth = el.closest('table')?.offsetWidth ?? width
     setHot({
       row,
       col,
       // Clamped to half a panel from either edge, so the first and last
       // columns do not open a tip that is cut off by the scroll box.
-      x: Math.min(Math.max(el.offsetLeft + el.offsetWidth / 2, 120), width - 120),
+      x: Math.min(Math.max(el.offsetLeft + el.offsetWidth / 2, 120), tableWidth - 120),
       y: below ? el.offsetTop + el.offsetHeight + 6 : el.offsetTop - 6,
       below,
     })
@@ -284,8 +360,11 @@ export function CohortHeatmap({
         <table
           className="tabular"
           style={{
-            width,
+            /* The three pinned columns keep their fixed widths — every sticky
+               `left` is a whole sum of them — and only the months flex. */
+            width: '100%',
             minWidth: width,
+            maxWidth,
             tableLayout: 'fixed',
             /* `separate` with zero spacing: sticky columns need a separated
                border model, and the 2px gap between heat tiles is drawn by the
@@ -306,7 +385,7 @@ export function CohortHeatmap({
             <col style={{ width: W_SIZE }} />
             <col style={{ width: W_RETURNED }} />
             {offsets.map((i) => (
-              <col key={i} style={{ width: W_MONTH }} />
+              <col key={i} />
             ))}
           </colgroup>
 
@@ -379,17 +458,29 @@ export function CohortHeatmap({
                     {formatNumber(row.size)}
                   </PinnedCell>
 
+                  {/*
+                    THE SHARE, NOT THE PAIR.
+
+                    This cell used to print «117 · 3%» — two numbers in two
+                    formats in one right-aligned column, the noisiest thing in
+                    the pinned block. The share is what a reader compares down
+                    the column; the count is evidence for it, and it is now in
+                    the cell's label and in the row's hover panel rather than
+                    competing with the figure it supports.
+                  */}
                   <PinnedCell
                     left={W_COHORT + W_SIZE}
                     lit={lit}
                     align="right"
                     edge
                     onMouseEnter={enter(r, -1)}
+                    ariaLabel={`${formatMonth(row.cohort)} kogortasi: ${formatNumber(
+                      row.size,
+                    )} mijozdan ${formatNumber(row.returned)} tasi qaytgan${
+                      share === null ? '' : ` — ${Math.round(share)}%`
+                    }`}
                   >
-                    {formatNumber(row.returned)}
-                    <span className="ml-1" style={{ color: 'var(--ink-muted)' }}>
-                      {share === null ? '' : `· ${Math.round(share)}%`}
-                    </span>
+                    {share === null ? NO_VALUE : `${Math.round(share)}%`}
                   </PinnedCell>
 
                   {offsets.map((i) => (
@@ -401,6 +492,8 @@ export function CohortHeatmap({
                       size={row.size}
                       cohort={row.cohort}
                       offset={i}
+                      litRow={lit}
+                      litCol={hot?.col === i}
                       onMouseEnter={enter(r, i)}
                     />
                   ))}
@@ -450,11 +543,11 @@ export function CohortHeatmap({
                 summary
                 edge
                 onMouseEnter={enter(-1, -1)}
+                ariaLabel={`Jami: ${formatNumber(totalSize)} mijozdan ${formatNumber(
+                  totalReturned,
+                )} tasi qaytgan${totalShare === null ? '' : ` — ${Math.round(totalShare)}%`}`}
               >
-                {formatNumber(totalReturned)}
-                <span className="ml-1" style={{ color: 'var(--ink-muted)' }}>
-                  {totalShare === null ? '' : `· ${Math.round(totalShare)}%`}
-                </span>
+                {totalShare === null ? NO_VALUE : `${Math.round(totalShare)}%`}
               </PinnedCell>
 
               {offsets.map((i) => {
@@ -469,6 +562,8 @@ export function CohortHeatmap({
                     size={avg?.base ?? 0}
                     cohort={null}
                     offset={i}
+                    litRow={hot?.row === -1}
+                    litCol={hot?.col === i}
                     onMouseEnter={enter(-1, i)}
                   />
                 )
@@ -491,7 +586,7 @@ export function CohortHeatmap({
         )}
       </div>
 
-      <Legend view={view} />
+      <Legend view={view} truncated={truncated} />
     </div>
   )
 }
@@ -561,6 +656,7 @@ function PinnedCell({
   edge = false,
   onMouseEnter,
   label,
+  ariaLabel,
 }: {
   readonly children: React.ReactNode
   readonly left: number
@@ -571,6 +667,14 @@ function PinnedCell({
   readonly edge?: boolean
   readonly onMouseEnter?: (event: MouseEvent<HTMLElement>) => void
   readonly label?: string
+  /**
+   * The whole fact, for a cell that prints only part of it.
+   *
+   * «Qaytgan» shows the share; the distinct count it divides is here, so a
+   * reader who cannot hover is not left with a percentage whose numerator the
+   * table never states.
+   */
+  readonly ariaLabel?: string
 }) {
   const style = {
     left,
@@ -591,7 +695,7 @@ function PinnedCell({
       {children}
     </th>
   ) : (
-    <td className={className} style={style} onMouseEnter={onMouseEnter}>
+    <td className={className} style={style} onMouseEnter={onMouseEnter} aria-label={ariaLabel}>
       {children}
     </td>
   )
@@ -612,6 +716,8 @@ function HeatCell({
   cohort,
   offset,
   summary = false,
+  litRow = false,
+  litCol = false,
   onMouseEnter,
 }: {
   readonly view: CohortView
@@ -621,17 +727,21 @@ function HeatCell({
   readonly cohort: string | null
   readonly offset: number
   readonly summary?: boolean
+  /** The two halves of the crosshair. See `crosshair`. */
+  readonly litRow?: boolean
+  readonly litCol?: boolean
   readonly onMouseEnter: (event: MouseEvent<HTMLElement>) => void
 }) {
   if (value === null) {
     return (
       <td
-        className="p-px"
+        className="h-6 p-0"
         style={{ borderTop: summary ? '1px solid var(--border-strong)' : undefined }}
+        onMouseEnter={onMouseEnter}
         aria-label="hali oʻtmagan oy — oʻlchanmagan"
       >
         <div
-          className="h-[22px] rounded"
+          className="h-full min-h-6"
           /*
             HATCHED, NOT PALE.
 
@@ -643,7 +753,9 @@ function HeatCell({
             be mistaken for a small value at any step — and it survives print,
             forced colours and a colourblind reader, none of which the tint did.
           */
-          style={{ background: UNMEASURED }}
+          /* The crosshair runs through the unmeasured months too, or it stops
+             dead halfway down a column and reads as the end of the data. */
+          style={{ background: UNMEASURED, boxShadow: crosshair(litRow, litCol) }}
         />
       </td>
     )
@@ -686,7 +798,7 @@ function HeatCell({
 
   return (
     <td
-      className="p-px"
+      className="h-6 p-0"
       style={{ borderTop: summary ? '1px solid var(--border-strong)' : undefined }}
       onMouseEnter={onMouseEnter}
       /* On the CELL, not on the tile inside it: a bare <div aria-label> carries
@@ -695,9 +807,18 @@ function HeatCell({
          hover would otherwise have to assemble from the headers. */
       aria-label={cellSentence({ view, cohort, offset, value, customers, size, summary })}
     >
+      {/*
+        THE UNIT IS SAID ONCE, IN THE HEADER OVER THE COLUMNS.
+
+        A «%» in every cell is 250 glyphs repeating what the column group
+        already states — «…qayta xarid qilganlar ulushi, %» — and they were set
+        at 8.5px and 62% opacity precisely because they were in the way. The
+        cell's own label still spells the figure out as a percentage for anyone
+        who cannot see the header it belongs to.
+      */}
       <div
         data-heat=""
-        className="flex h-[22px] items-center justify-center rounded text-[11px] font-medium"
+        className="flex h-full min-h-6 items-center justify-center text-[11px] font-medium"
         style={{
           background: base ? 'var(--surface-sunken)' : band?.background,
           color: base
@@ -705,22 +826,23 @@ function HeatCell({
             : band?.dark
               ? 'var(--surface)'
               : 'var(--ink-primary)',
+          boxShadow: crosshair(litRow, litCol),
         }}
       >
         {shown}
-        {/* The unit, said in every cell but never competing with the digits:
-            a bare «13» in a grid beside a «45 mijoz» column is a count to
-            anyone who has not read the header. */}
-        <span className="ml-px text-[8.5px]" style={{ opacity: 0.62 }}>
-          %
-        </span>
       </div>
     </td>
   )
 }
 
 /** The scale, stated in numbers. A colour a reader cannot convert back is decoration. */
-function Legend({ view }: { readonly view: CohortView }) {
+function Legend({
+  view,
+  truncated = false,
+}: {
+  readonly view: CohortView
+  readonly truncated?: boolean
+}) {
   return (
     <div className="space-y-1.5">
       <div
@@ -732,7 +854,7 @@ function Legend({ view }: { readonly view: CohortView }) {
           <span key={band.label} className="inline-flex items-center gap-1.5">
             <span
               aria-hidden="true"
-              className="inline-block h-3 w-5 rounded-[3px]"
+              className="inline-block h-3 w-5 rounded-[1px]"
               style={{ background: band.background }}
             />
             {band.label}
@@ -741,7 +863,7 @@ function Legend({ view }: { readonly view: CohortView }) {
         <span className="inline-flex items-center gap-1.5">
           <span
             aria-hidden="true"
-            className="inline-block h-3 w-5 rounded-[3px]"
+            className="inline-block h-3 w-5 rounded-[1px]"
             style={{ background: UNMEASURED }}
           />
           hali oʻtmagan oy — oʻlchanmagan
@@ -755,7 +877,9 @@ function Legend({ view }: { readonly view: CohortView }) {
       <p className="text-[10.5px] leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
         {view === 'monthly'
           ? 'Har bir katak = oʻsha oyda qayta xarid qilgan mijozlar ÷ kogortadagi jami mijozlar. «0» ustuni — kogortaning oʻz oyi, u har doim 100%.'
-          : 'Har bir katak = shu oyga kelib kamida bir marta qaytgan mijozlar ÷ kogortadagi jami mijozlar. Qator oxiridagi katak «Qaytgan» ustuni bilan bir xil boʻladi.'}{' '}
+          : truncated
+            ? 'Har bir katak = shu oyga kelib kamida bir marta qaytgan mijozlar ÷ kogortadagi jami mijozlar. «Qaytgan» ustuni butun tarixni hisoblaydi, shuning uchun u koʻrsatilgan oynadan kattaroq boʻlishi mumkin.'
+            : 'Har bir katak = shu oyga kelib kamida bir marta qaytgan mijozlar ÷ kogortadagi jami mijozlar. Qator oxiridagi katak «Qaytgan» ustuni bilan bir xil boʻladi.'}{' '}
         Katak ustiga sichqonchani olib borsangiz, aniq hisob-kitob chiqadi.
       </p>
     </div>

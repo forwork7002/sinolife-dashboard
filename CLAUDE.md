@@ -498,6 +498,32 @@ Per-screen traps worth knowing before you touch one:
   fourteen real averages that reads as a collapse in retention. Same floor and
   same argument as Logistika's `WAIT_BAND_MIN_ORDERS`; the figure and its
   fraction stay, the colour and the trend do not.
+  **THE GRID OPENS ON TWELVE MONTHS, AND IT IS ONE FIELD RATHER THAN 250
+  CHIPS** — 2026-09-15, a second pass on the same instruction («kogorta
+  jadvalini … tushunarliroq … soddaroq»). The query asks for eighteen months of
+  cohorts, so the table drew up to nineteen columns and only the oldest cohort
+  had cells in them: the right half was hatch a reader scrolled sideways
+  through. `months` on `CohortHeatmap` (12 by default, «6 oy / 12 oy /
+  Hammasi» beside the reading switch) is counted as an **offset, not a column
+  count** — cumulative drops the `0` column and monthly keeps it, so a window
+  counted in columns would end on «+12» in one reading and «+11» in the other
+  under the same label. With the window on, the month columns FLEX between
+  `W_MONTH` 44 and `W_MONTH_MAX` 72 so the matrix still fills its card; the
+  three pinned columns keep fixed widths because every sticky `left` is a whole
+  sum of them, and the hover panel now clamps against the table's MEASURED
+  width rather than that minimum. The tiles meet — `GRID_LINE` draws the
+  separation as a hairline in the card's own colour and `crosshair()` lights the
+  hovered row AND column across the grid, which is what makes «2025-avg × +3» a
+  cell anybody can find. The per-cell «%» is gone (the column group already
+  says «…ulushi, %», and each cell's `aria-label` still states the figure as a
+  percentage), and «Qaytgan» prints the SHARE alone — «117 · 3%» was two
+  numbers in two formats in one right-aligned column — with the distinct count
+  moved to that cell's `aria-label` and to the row's hover panel.
+  **THE IDENTITY ABOVE IS WINDOW-DEPENDENT.** «A row's last cell equals its
+  «Qaytgan» share» is true of the last MEASURED cell, never of the last DRAWN
+  one, so a truncated grid would have a reader compare a twelve-month figure
+  against an eighteen-month one and find the table contradicting itself. The
+  legend swaps that sentence for the caveat whenever `truncated` is set.
   **«База» IS FOUR STATES, NOT FIFTEEN STAGES.** The card drew one bar per
   portal stage under copy promising «1 kun, 3 kun, 10 kun, 20 kun, 30 kun» —
   five of the fifteen; the other ten were never named. The partition is

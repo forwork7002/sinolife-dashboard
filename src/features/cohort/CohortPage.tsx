@@ -48,6 +48,11 @@ import { t } from '@/lib/messages'
  * it must be filtering something; the same reasoning `PageShell` gives for
  * `/users`.
  */
+/** The three widths the matrix opens at. `null` draws every month there is. */
+type MonthWindow = '6' | '12' | 'all'
+
+const MONTH_WINDOWS: Record<MonthWindow, number | null> = { '6': 6, '12': 12, all: null }
+
 export function CohortPage() {
   const query = useQuery({
     queryKey: ['cohorts'],
@@ -93,6 +98,17 @@ export function CohortPage() {
    * same rule the FAKT 1 / FAKT 2 switch on `/sellers` follows.
    */
   const [view, setView] = useState<CohortView>('cumulative')
+
+  /**
+   * How far along the curve the grid opens.
+   *
+   * Local state for the same reason `view` is: the whole payload is already
+   * here, so this changes nothing but how much of it is drawn. Twelve months
+   * by default — the query asks for eighteen, and beyond the first year only
+   * the oldest one or two cohorts have any cells at all, so the columns that
+   * made the table scroll were mostly hatch.
+   */
+  const [months, setMonths] = useState<MonthWindow>('12')
 
   /** One derivation, so no tile can disagree with its own page. */
 
@@ -284,15 +300,29 @@ export function CohortPage() {
            WHY a row is a row. */
         hint="Mijozlar birinchi xarid qilgan oyi boʻyicha guruhlanadi — har bir guruh keyin qanchalik qaytib kelgani shu qatorda koʻrinadi."
         action={
-          <SegmentedControl
-            value={view}
-            onChange={setView}
-            ariaLabel="Matritsa koʻrinishi"
-            options={[
-              { value: 'cumulative', label: 'Jami qaytgan' },
-              { value: 'monthly', label: 'Oylik' },
-            ]}
-          />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <SegmentedControl
+              value={view}
+              onChange={setView}
+              ariaLabel="Matritsa koʻrinishi"
+              options={[
+                { value: 'cumulative', label: 'Jami qaytgan' },
+                { value: 'monthly', label: 'Oylik' },
+              ]}
+            />
+            {/* The window, beside the reading: both controls change how the
+                same answer is LOOKED at, neither asks the server anything. */}
+            <SegmentedControl
+              value={months}
+              onChange={setMonths}
+              ariaLabel="Nechta oy koʻrsatilsin"
+              options={[
+                { value: '6', label: '6 oy' },
+                { value: '12', label: '12 oy' },
+                { value: 'all', label: 'Hammasi' },
+              ]}
+            />
+          </div>
         }
       >
         {query.isPending && <ChartSkeleton height={320} />}
@@ -305,7 +335,9 @@ export function CohortPage() {
             body="Yetkazilgan buyurtmalar mijozga bogʻlanmagan boʻlishi mumkin."
           />
         )}
-        {data && data.rows.length > 0 && <CohortHeatmap rows={data.rows} view={view} />}
+        {data && data.rows.length > 0 && (
+          <CohortHeatmap rows={data.rows} view={view} months={MONTH_WINDOWS[months]} />
+        )}
       </ChartCard>
 
       <ChartCard

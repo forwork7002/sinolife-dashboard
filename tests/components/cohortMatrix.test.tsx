@@ -108,8 +108,19 @@ describe('the cohort matrix, read month by month', () => {
     const row = screen.getByRole('row', { name: /2026-iyn kogortasi/ })
     const returned = row.querySelectorAll('td')[1]
 
-    // 45 distinct people, 23% of 200 — never 50, which is 40 + 10 counted twice.
-    expect(returned?.textContent).toBe('45· 23%')
+    /*
+      45 distinct people, 23% of 200 — never 50, which is 40 + 10 counted twice.
+
+      The column PRINTS the share and carries the count in its own accessible
+      label: two numbers in two formats («45· 23%») in one right-aligned cell
+      was the noisiest thing in the pinned block, and the count is evidence for
+      the share rather than a figure anybody scans down the column. Losing it
+      from the label as well would lose the check this test exists for.
+    */
+    expect(returned?.textContent).toBe('23%')
+    expect(returned?.getAttribute('aria-label')).toBe(
+      '2026-iyn kogortasi: 200 mijozdan 45 tasi qaytgan — 23%',
+    )
   })
 })
 
@@ -134,7 +145,7 @@ describe('the cohort matrix, read cumulatively', () => {
     const row = screen.getByRole('row', { name: /2026-iyn kogortasi/ })
     const returned = row.querySelectorAll('td')[1]
 
-    expect(returned?.textContent).toBe('45· 23%')
+    expect(returned?.getAttribute('aria-label')).toContain('45 tasi')
     expect(cell(/2026-iyn kogortasi, \+2 oy/).getAttribute('aria-label')).toContain('45 tasi')
     expect(screen.queryByLabelText(/2026-iyn kogortasi, \+2 oy: 25/)).toBeNull()
   })
@@ -220,5 +231,98 @@ describe('the summary row refuses to colour a sample of one', () => {
     expect(screen.getByLabelText(/Oʻrtacha, \+2 oy/).getAttribute('aria-label')).toContain(
       '1 mijozdan 0 tasi',
     )
+  })
+})
+
+describe('the matrix shows a window of months rather than every one it is given', () => {
+  /*
+    THE WIDTH WAS THE PROBLEM, not the density.
+
+    `/insights/cohorts` is asked for eighteen months, so the grid drew up to
+    nineteen columns — and because only the oldest cohort has lived that long,
+    the right half of the table was hatch. A reader scrolled sideways past a
+    field of «hali oʻtmagan oy» to reach columns that describe one or two
+    ancient cohorts. The signal is in the first year; the rest is available on
+    request and is no longer the default.
+  */
+  const WIDE: CohortMatrixRow[] = [
+    {
+      cohort: '2025-01-01',
+      size: 100,
+      returned: 30,
+      retention: Array.from({ length: 19 }, (_, i) => (i === 0 ? 100 : 2)),
+      customers: Array.from({ length: 19 }, (_, i) => (i === 0 ? 100 : 2)),
+      cumulative: Array.from({ length: 19 }, (_, i) => (i === 0 ? 0 : 2 * i)),
+      cumulativeCustomers: Array.from({ length: 19 }, (_, i) => (i === 0 ? 0 : 2 * i)),
+      revenue: Array.from({ length: 19 }, () => ({ amount: 10_000 })),
+    },
+  ]
+
+  const header = (name: string) => screen.queryByRole('columnheader', { name })
+
+  it('draws a year of months by default and stops there', () => {
+    render(<CohortHeatmap rows={WIDE} />)
+
+    expect(header('+12')).toBeTruthy()
+    expect(header('+13')).toBeNull()
+    expect(header('+18')).toBeNull()
+  })
+
+  it('draws every month when asked for all of them', () => {
+    render(<CohortHeatmap rows={WIDE} months={null} />)
+
+    expect(header('+18')).toBeTruthy()
+  })
+
+  it('draws six when asked for six', () => {
+    render(<CohortHeatmap rows={WIDE} months={6} />)
+
+    expect(header('+6')).toBeTruthy()
+    expect(header('+7')).toBeNull()
+  })
+
+  it('counts the window in MONTHS SINCE the first purchase, not in columns', () => {
+    /*
+      The cumulative reading drops the `0` column and the monthly one keeps it,
+      so a window counted in columns would end on a different month in each
+      reading — «12 oy» meaning +12 in one and +11 in the other. It is counted
+      as an offset, so both stop on the same month and the monthly grid is one
+      column wider.
+    */
+    const { unmount } = render(<CohortHeatmap rows={WIDE} months={12} view="monthly" />)
+    expect(header('0')).toBeTruthy()
+    expect(header('+12')).toBeTruthy()
+    expect(header('+13')).toBeNull()
+    unmount()
+
+    render(<CohortHeatmap rows={WIDE} months={12} />)
+    expect(header('0')).toBeNull()
+    expect(header('+12')).toBeTruthy()
+  })
+})
+
+describe('the cells print figures, and the header carries the unit', () => {
+  /*
+    A «%» in every cell is 250 glyphs saying what the column group already
+    says once. They were set at 8.5px and 62% opacity precisely because they
+    were in the way — a sign that the right place for them is not the cell.
+  */
+  it('prints a bare number in the cell', () => {
+    render(<CohortHeatmap rows={ROWS} view="monthly" />)
+
+    expect(cell(/2026-iyn kogortasi, \+1 oy/).textContent).toBe('20')
+  })
+
+  it('still says what the figure IS, in the label a screen reader gets', () => {
+    render(<CohortHeatmap rows={ROWS} view="monthly" />)
+
+    expect(cell(/2026-iyn kogortasi, \+1 oy/).getAttribute('aria-label')).toContain('20.0%')
+  })
+
+  it('keeps «<1» and «0» distinguishable without the sign', () => {
+    render(<CohortHeatmap rows={ROWS} view="monthly" />)
+
+    // The «0» column is 100 in every row: the anchor, off the ramp.
+    expect(cell(/2026-iyn kogortasi, xarid oyi/).textContent).toBe('100')
   })
 })
