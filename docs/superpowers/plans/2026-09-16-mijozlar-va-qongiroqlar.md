@@ -26,6 +26,241 @@
 
 ---
 
+## ⚠ Amendment — read before Tasks 6, 7, 10, 11, 12, 13
+
+Added 2026-09-16 during execution, after Tasks 1–5 were committed. See spec §10.
+
+«база не база **мижозларга** call duration» is a CALL cut, and the client also
+kept the customer split («Ikkalasi ham»). Where this section and a task below
+disagree, **this section wins**.
+
+### A1. New Task 5b — `callActivity` gains a side (between Tasks 5 and 6)
+
+**Files:** `src/lib/callQuality.ts`, `src/server/repositories/insightsRepository.ts`,
+`tests/domain/callQuality.test.ts`, `tests/http/callActivitySql.test.ts`.
+
+1. Add to `src/lib/callQuality.ts`:
+
+```ts
+/**
+ * Which side of the base a call landed on — decided at the moment of the call.
+ *
+ * «Baza» means the customer had a База deal created BEFORE the call started.
+ * Membership TODAY would move 376 calls (~9% of the База side, measured above
+ * the floor) across: a lead rung on Monday who buys on Friday enters База
+ * afterwards, and "today" would retroactively make Monday's call a База call.
+ *
+ * Colours are unique within the card that draws them — this screen carries
+ * eleven categorical entities and the palette has eight tokens, one of them the
+ * red reserved for «Yoʻqotilgan». `--ink-muted` for the unlinked side, because
+ * it is not a kind of customer.
+ */
+export const CALL_SIDES = [
+  { key: 'BAZA', label: 'Baza mijozi', colour: '--series-1' },
+  { key: 'NOT_BAZA', label: 'Baza emas', colour: '--series-2' },
+  { key: 'UNLINKED', label: 'Mijozga bogʻlanmagan', colour: '--ink-muted' },
+] as const satisfies readonly { key: string; label: string; colour: string }[]
+
+export type CallSideKey = (typeof CALL_SIDES)[number]['key']
+```
+
+   and a test: three sides, keys exactly `['BAZA', 'NOT_BAZA', 'UNLINKED']`, colours unique.
+
+2. Tests first — amend `tests/http/callActivitySql.test.ts`:
+   * the grouping-sets case now expects
+     `GROUPING SETS ((employee_id), (team), (day), (side), (day, side), ())`;
+   * **new:** `first_baza` reads `p."role" = 'RETENTION'`, never a category id;
+   * **new:** the side compares `f.first_at <= s.started_at` — before the call, not today;
+   * **new:** `first_baza` is bounded to the customers called in the window
+     (`IN (SELECT customer_id FROM called)`), so it does not scan every База deal ever;
+   * the backtick guard stays.
+
+3. SQL changes inside `callActivity`:
+
+```sql
+      WITH scoped AS (
+        SELECT
+          r."employeeId"  AS employee_id,
+          r."customerId"  AS customer_id,
+          r."durationSec" AS duration_sec,
+          r."connected"   AS connected,
+          r."startedAt"   AS started_at,
+          (r."startedAt" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day
+        FROM "call_record" r
+        WHERE r."startedAt" >= $1 AND r."startedAt" < $2
+      ),
+      called AS (
+        SELECT DISTINCT customer_id FROM scoped WHERE customer_id IS NOT NULL
+      ),
+      first_baza AS (
+        SELECT d."customerId" AS customer_id, min(d."createdAtSource") AS first_at
+        FROM "deal" d
+        JOIN "pipeline" p ON p."id" = d."pipelineId"
+        WHERE p."role" = 'RETENTION'
+          AND d."customerId" IN (SELECT customer_id FROM called)
+        GROUP BY d."customerId"
+      ),
+      labelled AS (
+        SELECT
+          s.*,
+          e."fullName" AS employee_name,
+          COALESCE(...unchanged...) AS team,
+          CASE
+            WHEN s.customer_id IS NULL THEN 'UNLINKED'
+            WHEN f.first_at IS NOT NULL AND f.first_at <= s.started_at THEN 'BAZA'
+            ELSE 'NOT_BAZA'
+          END AS side
+        FROM scoped s
+        LEFT JOIN "employee" e ON e."id" = s.employee_id
+        LEFT JOIN "department" dp ON dp."id" = e."departmentId"
+        LEFT JOIN first_baza f ON f.customer_id = s.customer_id
+      )
+      SELECT
+        GROUPING(employee_id)::int AS g_employee,
+        GROUPING(team)::int        AS g_team,
+        GROUPING(day)::int         AS g_day,
+        GROUPING(side)::int        AS g_side,
+        employee_id, min(employee_name) AS employee_name, team, day, side,
+        ...measures unchanged...
+      FROM labelled
+      GROUP BY GROUPING SETS ((employee_id), (team), (day), (side), (day, side), ())
+      ORDER BY g_employee, g_team, g_day, g_side, talk_sec DESC
+```
+
+   Arm identification — **every arm now names all four flags**, or `(day, side)`
+   rows leak into the day series:
+
+   | Arm | Flags |
+   |---|---|
+   | total | all four = 1 |
+   | operators | `g_employee = 0` |
+   | teams | `g_team = 0` |
+   | series | `g_day = 0 && g_side = 1` |
+   | sides | `g_side = 0 && g_day = 1` |
+   | seriesBySide | `g_day = 0 && g_side = 0` |
+
+   `CallActivityRows` gains:
+
+```ts
+  /** In CALL_SIDES order, all three present even when empty. */
+  readonly sides: readonly CallActivityRow[]
+  /** One row per (day, side) that carries calls. */
+  readonly seriesBySide: readonly { readonly day: string; readonly side: CallSideKey; readonly talkSec: number }[]
+```
+
+   `sides` is built by mapping `CALL_SIDES` and filling an absent side with the
+   empty row — a GROUP BY never emits an empty group, and a split missing its
+   quiet side reads as a split with one side.
+
+   Why reading RETENTION here does not breach `35aca08`: that decision protects
+   the **stage partition** of База, which `retentionStages()` owns. This reads
+   one timestamp per customer — when they entered База — which no other
+   statement answers. Say so in the SQL comment (no backticks).
+
+4. Run the method against the local schema (`probe-calls-repo-local.ts`), then
+   `npm run verify`, then commit.
+
+### A2. Task 6 is REPLACED — `customerBaseSplit()`, not a CTE on `customerStates`
+
+**Do not touch `customerStates()` or `tests/http/customerStatesSql.test.ts`.**
+That test's case «no longer reads the retention funnel at all» is a decision from
+commit `35aca08`, and it stays true.
+
+**Files:** `src/server/repositories/insightsRepository.ts`,
+create `tests/http/customerBaseSplitSql.test.ts`.
+
+```ts
+  async customerBaseSplit(): Promise<{
+    readonly customers: number
+    readonly inBase: number
+    readonly notInBase: number
+  }>
+```
+
+```sql
+      WITH cust AS (
+        SELECT DISTINCT d."customerId" AS cid
+        FROM "deal" d
+        WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
+      ),
+      based AS (
+        SELECT DISTINCT d."customerId" AS cid
+        FROM "deal" d
+        JOIN "pipeline" p ON p."id" = d."pipelineId"
+        WHERE p."role" = 'RETENTION' AND d."customerId" IS NOT NULL
+      )
+      SELECT
+        count(*)::bigint AS customers,
+        count(*) FILTER (WHERE b.cid IS NOT NULL)::bigint AS in_base,
+        count(*) FILTER (WHERE b.cid IS NULL)::bigint AS not_in_base
+      FROM cust c
+      LEFT JOIN based b ON b.cid = c.cid
+```
+
+One pass over the buyer set, so the halves sum to `customers` by construction.
+`cust` is the SAME CTE `customerStates` uses, so `customers` here equals
+`states.customers` — Task 13 checks it. **No `countsAsRevenue` on `based`**:
+RETENTION is precisely the role that does not count, and filtering on it empties
+the CTE.
+
+The doc comment must state the measured caveat: of 11 607 customers with a WON
+order, 11 586 (99.8%) are in База, because the portal places every delivered
+customer there automatically — so «Bazada yoʻq» is overwhelmingly customers
+whose order was never delivered.
+
+Test (`tests/http/customerBaseSplitSql.test.ts`, same extraction helper as the
+other SQL tests): no backtick; RETENTION by role; `countsAsRevenue` on `cust`
+and absent from `based`; a `LEFT JOIN` partition (`FILTER (WHERE b.cid IS NOT
+NULL)` and `IS NULL`); no `deal_stage` (this is membership, not the stage
+partition).
+
+### A3. Task 7 additions
+
+* `src/lib/api.ts` and the server-side mirror:
+
+```ts
+export interface CallSideSeriesPointDto {
+  readonly day: string
+  /** Seconds per side; every side present, zero when silent. */
+  readonly talkSec: Readonly<Record<'BAZA' | 'NOT_BAZA' | 'UNLINKED', number>>
+}
+```
+
+  `CallActivityDto` gains `sides: readonly CallRowDto[]` and
+  `seriesBySide: readonly CallSideSeriesPointDto[]` (pivoted in the service, one
+  point per day, ascending). `CustomerFlowDto['states']` gains `inBase` and
+  `notInBase`.
+* Service: `customerBaseCache` beside `customerStatesCache`, keyed `'base'` (a
+  fact about today, like the states), added to `customerFlow`'s `Promise.all`.
+  Row labels for `sides` come from `CALL_SIDES`.
+
+### A4. Task 10 — `CallTalkChart` draws stacked areas by side
+
+Props become `{ data: readonly CallSideSeriesPointDto[]; height?: number }`.
+One `<Area stackId="talk">` per `CALL_SIDES` entry, in that order, hours on one
+axis. **The stack top equals the «Suhbat vaqti» tile**, which is why the unlinked
+side is drawn rather than dropped: without it the stack falls 12.5% short of the
+tile beside it. Tooltip lists all three sides and their total.
+
+### A5. Task 12 additions
+
+* `CallActivitySection`: directly under the five tiles, a `ChartCard`
+  «Baza va baza emas mijozlar» rendering `CallRowTable` over `sides` with
+  `headLabel="Mijoz turi"`. Its hint states the definition — «qoʻngʻiroq
+  paytida bazada boʻlgan mijoz» — because «bazada» alone reads as today.
+* `CustomerFlowSection`: the «Mijozlar holati — bugun» card gains «Bazada» and
+  «Bazada yoʻq» rows under the three state rows, separated by a rule, with the
+  hint «Yetkazilgan har bir mijoz bazaga avtomatik tushadi — «Bazada yoʻq»
+  asosan buyurtmasi yetkazilmagan mijozlar».
+
+### A6. Task 13 — three more invariants
+
+6. `sum(sides[].calls) = total.calls`
+7. `sum over seriesBySide of every side's talkSec = total.talkSec`
+8. `customerBaseSplit().customers = customerStates().customers`
+
+---
+
 ## File Structure
 
 **Create:**

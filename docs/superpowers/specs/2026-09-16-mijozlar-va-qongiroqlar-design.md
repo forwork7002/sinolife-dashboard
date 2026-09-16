@@ -533,3 +533,75 @@ administrator, not handed to the floor by default.
   connected count in the row beside it, which is what lets a reader discount it;
   no minimum is imposed, because a floor that blanks a real figure is the
   mistake `WAIT_BAND_MIN_ORDERS` was allowed to make once.
+
+---
+
+## 10. Amendment, 2026-09-16 — «база не база» is a CALL cut as well
+
+Found during execution, on production data, before Task 6 was written.
+
+### 10.1 What the request actually said
+
+«база не база **мижозларга** call duration» — the dative «мижозларга» attaches
+to «call duration»: *call duration to база and non-база customers*. This spec
+read it as two separate asks. Shown both readings with measurements, the client
+chose **both** («Ikkalasi ham»).
+
+### 10.2 The customer split, as §5.3 specified it, measures delivery
+
+Buyers (`countsAsRevenue`, any status — the same `cust` set `customerStates`
+counts): **15 937**. In База: **11 751**. Not: **4 186**.
+
+But of the **11 607** customers with a WON revenue order, **11 586 — 99.8% —
+are in База**, and 21 are not. The portal places every delivered customer into
+База automatically. So among real buyers the split is a constant, and «Bazada
+yoʻq» is overwhelmingly *customers whose order was never delivered*. It ships
+because the client chose it with that caveat in front of them, and the card
+states it.
+
+**It moves out of `customerStates()`.** That statement's test —
+«no longer reads the retention funnel at all» — records a decision made the day
+before, in commit `35aca08`: `retentionStages()` owns the reading of the funnel,
+and two statements answering overlapping questions is how they start
+disagreeing. The split becomes its own method, `customerBaseSplit()`, so
+neither existing statement nor its test changes.
+
+### 10.3 The call split is informative
+
+Calls above the floor, by whether the called customer **had a База deal created
+before the call started**:
+
+| | Calls | Connected | Talk hours | Mean | **Median** | Customers |
+|---|---|---|---|---|---|---|
+| База | 3 998 | 27.9% | 45.0 | 145 s | **82 s** | 2 872 |
+| Not База | 15 512 | 26.2% | 179.1 | 159 s | **43 s** | 9 086 |
+| No customer | 1 097 | 31.3% | 32.2 | 338 s | 96 s | — |
+
+**A typical call to a База customer runs twice as long.** And the split is
+nearly a team split: `Baza(ROP)` places 3 522 of the 3 998 База calls (88%), and
+every other ROP team calls almost only non-База customers — `Charos(ROP)` is the
+one mixed team (224 against 87).
+
+**"Before the call", not "in База today".** Membership today moves 376 calls
+(~9% of the База side) across: a lead called on Monday who buys on Friday enters
+База afterwards, and "today" would retroactively call Monday's call a База
+call. The honest question is what the customer was *when they were rung*.
+
+### 10.4 What changes
+
+* **`callActivity`** gains a per-row `side` — `BAZA` / `NOT_BAZA` / `UNLINKED` —
+  from a `first_baza` CTE (the earliest RETENTION deal per customer, bounded to
+  the customers called in the window), and two more grouping sets: `(side)` and
+  `(day, side)`. `CallActivityRows` gains `sides` and `seriesBySide`.
+  Reading the RETENTION pipeline here does not breach `35aca08`'s rule: that
+  rule protects the *stage partition* of База; this reads one timestamp per
+  customer, and no other statement answers "when did this customer enter База".
+* **`customerBaseSplit()`** — new repository method, its own SQL test, its own
+  cache in the service; `CustomerFlowDto['states']` gains `inBase` / `notInBase`.
+* **The call block** — a two-row «Baza / Baza emas» table directly under the
+  tiles (the same columns as the operator table), the unlinked calls disclosed
+  beside it.
+* **`CallTalkChart`** — stacked areas by side, in hours, on one axis. The stack
+  top equals the «Suhbat vaqti» tile, so the chart needs no reconciliation line.
+* **«Mijozlar holati — bugun»** — «Bazada» / «Bazada yoʻq» rows, with a hint that
+  every delivered customer enters База automatically.
