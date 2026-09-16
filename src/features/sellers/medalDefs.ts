@@ -222,9 +222,13 @@ export const MEDAL_DEFS = `<path id="m-tab" d="M6 0H26V10L16 5L6 10Z"/>
       <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
       <g transform="translate(6.4 14.4) scale(.8)" style="color:var(--m-glyph)">
         
-        <path d="M4.8 16.4A7.2 7.2 0 0 1 19.2 16.4Z" fill="currentColor"/>
-        <rect x="5.4" y="19.4" width="13.2" height="3.2" rx="1.6" fill="currentColor"/>
-        <path d="M12 6V2.2M17.4 8.6L20.2 5.8M6.6 8.6L3.8 5.8" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round"/>
+        <path d="M4 14A8 8 0 0 1 20 14Z" fill="currentColor"/>
+        <rect x="4" y="14.5" width="16" height="2.4" rx="1.2" fill="currentColor"/>
+        <rect x="10.7" y="1" width="2.6" height="4.2" rx="1.3" fill="currentColor"/>
+        <rect x="10.7" y="1" width="2.6" height="4.2" rx="1.3" fill="currentColor" transform="rotate(40 12 14)"/>
+        <rect x="10.7" y="1" width="2.6" height="4.2" rx="1.3" fill="currentColor" transform="rotate(-40 12 14)"/>
+        <rect x="10.7" y="1" width="2.6" height="4.2" rx="1.3" fill="currentColor" transform="rotate(80 12 14)"/>
+        <rect x="10.7" y="1" width="2.6" height="4.2" rx="1.3" fill="currentColor" transform="rotate(-80 12 14)"/>
       </g>
     </symbol>
 
@@ -287,10 +291,12 @@ export const MEDAL_DEFS = `<path id="m-tab" d="M6 0H26V10L16 5L6 10Z"/>
       <use href="#m-disc" fill="url(#m-sheen-series-6)" style="opacity:var(--m-detail,0)"/>
       <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
       
-      <g transform="translate(6.4 14.4) scale(.8) rotate(45 12 12)" style="fill:var(--m-glyph)">
-        <path fill-rule="evenodd" d="M12 1.6C14.7 1.6 16.2 6.2 16.2 11.4V16.6H7.8V11.4C7.8 6.2 9.3 1.6 12 1.6ZM12 7.3A2.25 2.25 0 1 0 12 11.8A2.25 2.25 0 1 0 12 7.3Z"/>
-        <path d="M7.8 11.2L4.2 15.6V19.2L7.8 17.2ZM16.2 11.2L19.8 15.6V19.2L16.2 17.2Z"/>
-        <path d="M9.6 18.4H14.4L12 23Z"/>
+      <g transform="translate(6.4 14.4) scale(.8)" style="fill:var(--m-glyph)">
+        <path d="M12 1.5C15.5 4.5 16.5 9 16.5 13.5L16.5 17L7.5 17L7.5 13.5C7.5 9 8.5 4.5 12 1.5Z"/>
+        <circle cx="12" cy="10" r="2.4" fill="var(--m-field)"/>
+        <path d="M7.5 13L4 18L7.5 17Z"/>
+        <path d="M16.5 13L20 18L16.5 17Z"/>
+        <path d="M9.5 17.5L12 22.5L14.5 17.5Z"/>
       </g>
     </symbol>
 
@@ -306,9 +312,9 @@ export const MEDAL_DEFS = `<path id="m-tab" d="M6 0H26V10L16 5L6 10Z"/>
       <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
       
       <g transform="translate(6.4 14.4) scale(.8)" style="color:var(--m-glyph)">
-        <path d="M12.2 22.4C12.2 18.4 12.4 13.4 13.2 7.6" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>
-        <path d="M12 16C9.2 18.6 3.6 18 2 13.6C3.4 10.2 8.8 10.4 12 16Z" fill="currentColor"/>
-        <path d="M12.8 10.2C15.6 12.8 21.2 12.2 22.8 7.8C21.4 4.4 16 4.6 12.8 10.2Z" fill="currentColor"/>
+        <rect x="11" y="13" width="2.4" height="9" rx="1.2" fill="currentColor"/>
+        <ellipse cx="7.5" cy="15" rx="5" ry="3.4" transform="rotate(-35 7.5 15)" fill="currentColor"/>
+        <ellipse cx="16.5" cy="7.5" rx="5" ry="3.4" transform="rotate(35 16.5 7.5)" fill="currentColor"/>
       </g>
     </symbol>
 
