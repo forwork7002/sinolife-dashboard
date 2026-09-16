@@ -249,7 +249,7 @@ product narrowed to the sections the client asked for. `find src/app/api/v1
 | `GET` | `/reklama/overview` | `analytics:read:all` | The client's «DM», «Отчёт Т» and lead-quality sheets: Meta campaign-days split by objective, beside the target pages' Регистрация leads per day and stage |
 | `GET` | `/meta/filters` | `employees:read` | Filter dropdown options |
 | `GET` | `/meta/alerts` | none (section `null`) | Freshness and the header's bell |
-| `GET` | `/search` | none (section `null`) | ⌘K — every group section-gated, every row scope-narrowed |
+| `GET` | `/search` | none (section `null`) | ⌘K — every group section-gated, every row scope-narrowed; `q` is a NUMBER (≥5 digits: id, code, phone columns only) or TEXT (≥3 chars: name, code, title, reference tables), never both |
 | `GET`/`POST` | `/users` | `users:manage` | Account administration |
 | `GET`/`PATCH`/`DELETE` | `/users/:id` | `users:manage` | One account |
 

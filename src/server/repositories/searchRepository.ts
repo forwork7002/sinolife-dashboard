@@ -13,6 +13,16 @@
  * the trigram indexes that make them so are in
  * prisma/migrations/20260831150000_global_search_indexes.
  *
+ * ONLY THE ARMS THE TERM CAN BE IN. A term is a NUMBER or TEXT
+ * (`classifySearchTerm`), and the two do not share columns: a phone number is
+ * not in any title or name, a name is not in any phone column. Before this
+ * split every term ran every arm — nine trigram lookups plus three reference
+ * tables — and `pg_stat_statements` on production (2026-09-16) put the deals
+ * statement at 1.2–1.5 s mean and 3.3 s worst, the customers statement the
+ * same, five statements per keystroke on a pool of eight connections. A
+ * number now costs two statements over four arms, text three statements over
+ * four; the reference tables are one statement, read only for text.
+ *
  * EACH ARM IS CAPPED BEFORE THE SORT. Searching a word the company sells —
  * "collagen" matches 146 431 deal titles — would otherwise sort a sixth of the
  * table to show eight rows. The cap means a term that broad returns an
@@ -21,6 +31,7 @@
  */
 
 import type { PrismaClient } from '@/generated/prisma/client'
+import { classifySearchTerm, type SearchTerm } from '@/lib/searchTerm'
 
 /** Money arrives from Postgres as a string: bigint cannot ride JSON. */
 type MoneyText = string | null
@@ -71,13 +82,12 @@ export interface SearchResults {
   readonly sources: readonly SearchNamedRow[]
 }
 
+const EMPTY: SearchResults = { deals: [], customers: [], employees: [], products: [], sources: [] }
+
 /** How many of each kind come back. Eight fills the palette without a scroll. */
 const PER_GROUP = 8
 /** How many rows an arm may contribute before the combined set is ordered. */
 const PER_ARM = 25
-
-/** Below this a trigram index cannot help, and the answer is too broad to read. */
-const MIN_SEARCH_LENGTH = 3
 
 export class SearchRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -91,30 +101,80 @@ export class SearchRepository {
     term: string,
     restrictToEmployeeIds?: readonly string[] | null,
   ): Promise<SearchResults> {
-    const q = term.trim()
+    const what = classifySearchTerm(term)
+    if (what.status !== 'ok') return EMPTY
 
-    if (q.length < MIN_SEARCH_LENGTH) {
-      return { deals: [], customers: [], employees: [], products: [], sources: [] }
-    }
-
-    const like = `%${escapeLike(q)}%`
+    const like = `%${escapeLike(what.needle)}%`
     // Joined to text rather than passed as an array so the two arms below can
     // stay a single `$n::text IS NULL` test — the same grammar every other
     // repository's scope clause uses.
     const mine = restrictToEmployeeIds?.length ? restrictToEmployeeIds.join(',') : null
 
-    const [deals, customers, employees, products, sources] = await Promise.all([
-      this.deals(q, like, mine),
-      this.customers(like, mine),
-      this.named('employee', 'fullName', like, true),
-      this.named('product', 'name', like, false),
-      this.named('sales_source', 'name', like, false),
-    ])
+    if (what.kind === 'number') {
+      const [deals, customers] = await Promise.all([
+        this.deals(what, like, mine),
+        this.customers(what, like, mine),
+      ])
+      return { ...EMPTY, deals, customers }
+    }
 
-    return { deals, customers, employees, products, sources }
+    const [deals, customers, named] = await Promise.all([
+      this.deals(what, like, mine),
+      this.customers(what, like, mine),
+      this.named(like),
+    ])
+    return { deals, customers, ...named }
   }
 
-  private async deals(q: string, like: string, mine: string | null): Promise<SearchDealRow[]> {
+  private async deals(what: SearchTerm, like: string, mine: string | null): Promise<SearchDealRow[]> {
+    /*
+      A NUMBER is a deal id, an order code or a phone. The id arm is exact:
+      anything looser on an id is noise — 9258 is not a prefix of 925842 in any
+      sense a person means when they type it. The `phones` arm is the second
+      and third numbers: only 3 702 customers have any, and the partial index
+      is what stops this reading all 326 859 to find them.
+
+      THE NUMBER IS COMPARED AS DIGITS, and the stored column allows that:
+      counted on production 2026-09-16, 222 969 of 224 313 phones are `+` and
+      digits with nothing between, and 730 carry a space or a dash — those
+      were unfindable by a typed «90 123» before too, unless typed exactly.
+
+      A number skips the title arm on purpose. 2 542 titles carry a phone
+      number and all but 7 of those deals also carry the customer, whose phone
+      column finds them; 712 titles are the deal's own id, which the exact arm
+      finds. What the title arm would add for a number is the cost of reading
+      the 57 MB trigram index, not a row.
+
+      TEXT is a name, a code or a title. `orderCode` sits in both lists because
+      a code is letters and digits — `bx00790` — and people quote either half.
+    */
+    const arms =
+      what.kind === 'number'
+        ? `
+        (SELECT "id" FROM "deal" WHERE "externalId" = $1 LIMIT 1)
+        UNION
+        (SELECT "id" FROM "deal" WHERE "orderCode" ILIKE $2 LIMIT ${PER_ARM})
+        UNION
+        (SELECT d."id" FROM "deal" d
+           JOIN "customer" c ON c."id" = d."customerId"
+          WHERE c."phone" ILIKE $2 LIMIT ${PER_ARM})
+        UNION
+        (SELECT d."id" FROM "deal" d
+           JOIN "customer" c ON c."id" = d."customerId"
+          WHERE array_length(c."phones", 1) > 0
+            AND c."phones"::text ILIKE $2 LIMIT ${PER_ARM})`
+        : `
+        (SELECT "id" FROM "deal" WHERE "orderCode" ILIKE $1 LIMIT ${PER_ARM})
+        UNION
+        (SELECT "id" FROM "deal" WHERE "title" ILIKE $1 LIMIT ${PER_ARM})
+        UNION
+        (SELECT d."id" FROM "deal" d
+           JOIN "customer" c ON c."id" = d."customerId"
+          WHERE c."name" ILIKE $1 LIMIT ${PER_ARM})`
+
+    const scope = what.kind === 'number' ? '$3' : '$2'
+    const params = what.kind === 'number' ? [what.needle, like, mine] : [like, mine]
+
     const rows = await this.prisma.$queryRawUnsafe<
       {
         deal_id: string
@@ -131,29 +191,7 @@ export class SearchRepository {
       }[]
     >(
       `
-      WITH hits AS (
-        -- The deal id, exact. Anything looser on an id is noise: 9258 is not a
-        -- prefix of 925842 in any sense a person means when they type it.
-        (SELECT "id" FROM "deal" WHERE "externalId" = $1 LIMIT 1)
-        UNION
-        (SELECT "id" FROM "deal" WHERE "orderCode" ILIKE $2 LIMIT ${PER_ARM})
-        UNION
-        (SELECT "id" FROM "deal" WHERE "title" ILIKE $2 LIMIT ${PER_ARM})
-        UNION
-        (SELECT d."id" FROM "deal" d
-           JOIN "customer" c ON c."id" = d."customerId"
-          WHERE c."phone" ILIKE $2 LIMIT ${PER_ARM})
-        UNION
-        (SELECT d."id" FROM "deal" d
-           JOIN "customer" c ON c."id" = d."customerId"
-          WHERE c."name" ILIKE $2 LIMIT ${PER_ARM})
-        UNION
-        -- Second and third numbers. Only 3 702 customers have any, and the
-        -- partial index is what stops this reading all 326 859 to find them.
-        (SELECT d."id" FROM "deal" d
-           JOIN "customer" c ON c."id" = d."customerId"
-          WHERE array_length(c."phones", 1) > 0
-            AND c."phones"::text ILIKE $2 LIMIT ${PER_ARM})
+      WITH hits AS (${arms}
       )
       SELECT
         d."id" AS deal_id,
@@ -172,16 +210,11 @@ export class SearchRepository {
       JOIN "deal_stage" st ON st."id" = d."stageId"
       LEFT JOIN "customer" cust ON cust."id" = d."customerId"
       LEFT JOIN "employee" e ON e."id" = d."employeeId"
-      WHERE $3::text IS NULL OR d."employeeId" = ANY(string_to_array($3, ','))
+      WHERE ${scope}::text IS NULL OR d."employeeId" = ANY(string_to_array(${scope}, ','))
       ORDER BY d."createdAtSource" DESC
       LIMIT ${PER_GROUP}
       `,
-      // Only a term that is ALL digits can be a deal id. A space can never be
-      // one, so it is what a non-numeric term is compared against — the arm
-      // then matches nothing instead of matching the wrong order.
-      /^[0-9]+$/.test(q) ? q : ' ',
-      like,
-      mine,
+      ...params,
     )
 
     return rows.map((r) => ({
@@ -199,7 +232,22 @@ export class SearchRepository {
     }))
   }
 
-  private async customers(like: string, mine: string | null): Promise<SearchCustomerRow[]> {
+  private async customers(
+    what: SearchTerm,
+    like: string,
+    mine: string | null,
+  ): Promise<SearchCustomerRow[]> {
+    const arms =
+      what.kind === 'number'
+        ? `
+        (SELECT "id" FROM "customer" WHERE "phone" ILIKE $1 LIMIT ${PER_ARM})
+        UNION
+        (SELECT "id" FROM "customer"
+          WHERE array_length("phones", 1) > 0
+            AND "phones"::text ILIKE $1 LIMIT ${PER_ARM})`
+        : `
+        (SELECT "id" FROM "customer" WHERE "name" ILIKE $1 LIMIT ${PER_ARM})`
+
     const rows = await this.prisma.$queryRawUnsafe<
       {
         customer_id: string
@@ -210,14 +258,7 @@ export class SearchRepository {
       }[]
     >(
       `
-      WITH hits AS (
-        (SELECT "id" FROM "customer" WHERE "phone" ILIKE $1 LIMIT ${PER_ARM})
-        UNION
-        (SELECT "id" FROM "customer" WHERE "name" ILIKE $1 LIMIT ${PER_ARM})
-        UNION
-        (SELECT "id" FROM "customer"
-          WHERE array_length("phones", 1) > 0
-            AND "phones"::text ILIKE $1 LIMIT ${PER_ARM})
+      WITH hits AS (${arms}
       )
       SELECT
         c."id" AS customer_id,
@@ -264,40 +305,60 @@ export class SearchRepository {
 
   /**
    * The small reference tables — hundreds of rows rather than hundreds of
-   * thousands, so they need no index to answer quickly.
+   * thousands, so they need no index to answer quickly. One statement for the
+   * three: each used to be its own round trip and its own pooled connection,
+   * and on eight connections shared with every screen that was the cost that
+   * mattered, not the reads.
    *
-   * The table and column names are chosen from the union types above, never
-   * from a request, which is what keeps them out of reach of the caller.
+   * The employee's `detail` is its PRIMARY unit — `employee."departmentId"` —
+   * which is the one this dashboard credits the person to and therefore the
+   * one to fly the chart to. Membership rows would give several and no way to
+   * choose.
    */
   private async named(
-    table: 'employee' | 'product' | 'sales_source',
-    column: 'fullName' | 'name',
     like: string,
-    withDepartment: boolean,
-  ): Promise<SearchNamedRow[]> {
-    const detail = withDepartment
-      ? '(SELECT dep."name" FROM "department" dep WHERE dep."id" = t."departmentId")'
-      : 'NULL::text'
-    // The PRIMARY unit — `employee."departmentId"` — which is the one this
-    // dashboard credits the person to and therefore the one to fly the chart
-    // to. Membership rows would give several and no way to choose.
-    const departmentId = withDepartment ? 't."departmentId"' : 'NULL::text'
-
-    return this.prisma.$queryRawUnsafe<
-      { id: string; name: string; detail: string | null; departmentId: string | null }[]
+  ): Promise<Pick<SearchResults, 'employees' | 'products' | 'sources'>> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        kind: 'employee' | 'product' | 'source'
+        id: string
+        name: string
+        detail: string | null
+        departmentId: string | null
+      }[]
     >(
       `
-      SELECT t."id" AS id,
-             t."${column}" AS name,
-             ${detail} AS detail,
-             ${departmentId} AS "departmentId"
-        FROM "${table}" t
-       WHERE t."${column}" ILIKE $1
-       ORDER BY t."${column}"
-       LIMIT ${PER_GROUP}
+      (SELECT 'employee' AS kind,
+              t."id" AS id,
+              t."fullName" AS name,
+              (SELECT dep."name" FROM "department" dep WHERE dep."id" = t."departmentId") AS detail,
+              t."departmentId" AS "departmentId"
+         FROM "employee" t
+        WHERE t."fullName" ILIKE $1
+        ORDER BY t."fullName"
+        LIMIT ${PER_GROUP})
+      UNION ALL
+      (SELECT 'product' AS kind, t."id", t."name", NULL::text, NULL::text
+         FROM "product" t
+        WHERE t."name" ILIKE $1
+        ORDER BY t."name"
+        LIMIT ${PER_GROUP})
+      UNION ALL
+      (SELECT 'source' AS kind, t."id", t."name", NULL::text, NULL::text
+         FROM "sales_source" t
+        WHERE t."name" ILIKE $1
+        ORDER BY t."name"
+        LIMIT ${PER_GROUP})
       `,
       like,
     )
+
+    const pick = (kind: 'employee' | 'product' | 'source'): SearchNamedRow[] =>
+      rows
+        .filter((r) => r.kind === kind)
+        .map((r) => ({ id: r.id, name: r.name, detail: r.detail, departmentId: r.departmentId }))
+
+    return { employees: pick('employee'), products: pick('product'), sources: pick('source') }
   }
 }
 

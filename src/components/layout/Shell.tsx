@@ -36,6 +36,7 @@ import { isCompanyWideSection, sectionSpec, type SectionValue } from '@/lib/sect
 import { setTheme, useResolvedTheme } from '@/lib/theme'
 import { useFilterOptions } from '@/features/shared/PageShell'
 import { t } from '@/lib/messages'
+import { classifySearchTerm, shortTermHint } from '@/lib/searchTerm'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { VISIBLE_PRESETS } from './PeriodFilter'
 
@@ -295,15 +296,23 @@ export function Shell({
   /*
     What is being typed in the palette, and what the server makes of it.
 
-    DEBOUNCED, not throttled, and only from three characters. Every keystroke
-    is six indexed lookups on a one-core database; firing them per character
-    would queue five requests to answer the sixth. 220ms is under the gap
-    between keystrokes for anyone typing a phone number and above the noise of
+    DEBOUNCED, not throttled, and only once the term could mean somebody.
+    Every request is two or three statements on a one-core database, and a
+    request the server cannot cancel keeps running there after the browser has
+    moved on — so the ones not sent are the whole saving. `classifySearchTerm`
+    is the same rule the server applies: three letters of a name, five digits
+    of a number. It used to be three characters of anything, and «998» — the
+    first three digits of every phone number in the country — went to Postgres
+    as a substring match over 326 859 customers, again at the fourth digit,
+    and each one queued behind the last. 220ms is under the gap between
+    keystrokes for anyone typing a phone number and above the noise of
     correcting one.
 
     `keepPreviousData` is what stops the list emptying between a term and its
     successor — without it the palette blinks to "nothing found" on every pause
-    and reads as broken.
+    and reads as broken. Five minutes stale because a backspace re-asks a term
+    the palette answered seconds ago, and an order found by its id is the same
+    order five minutes later.
   */
   const [typed, setTyped] = useState('')
   const [lookup, setLookup] = useState('')
@@ -313,13 +322,14 @@ export function Shell({
     return () => window.clearTimeout(timer)
   }, [typed])
 
-  const searchable = lookup.length >= 3
+  const term = classifySearchTerm(lookup)
+  const searchable = term.status === 'ok'
   const results = useQuery({
     queryKey: ['search', lookup],
     queryFn: ({ signal }) => apiGet<SearchDto>('/search', { q: lookup }, signal),
     enabled: paletteOpen && searchable,
     placeholderData: (previous) => previous,
-    staleTime: 30_000,
+    staleTime: 5 * 60_000,
   })
 
   /*
@@ -942,6 +952,7 @@ export function Shell({
         groups={paletteGroups}
         onQueryChange={setTyped}
         busy={searchable && (results.isFetching || lookup !== typed.trim())}
+        emptyHint={shortTermHint(classifySearchTerm(typed))}
         placeholder="Telefon, ID, mijoz, mahsulot yoki boʻlim…"
       />
     </div>
