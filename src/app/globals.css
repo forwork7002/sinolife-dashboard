@@ -3243,196 +3243,61 @@ p {
 .tv-col--teams { --tv-tone: var(--series-3); }
 
 /* ==========================================================================
- * THE RECORD WALL — every month's best seller, crawling through the title line.
+ * THE RECORD WALL — two static bands in the title line (EFIR, spec §7)
  *
- * A TICKER RATHER THAN A CARD, and the client asked for exactly that: «alohida
- * card bo'lib emas… huddi yangiliklarda aylanib turadiku». Two earlier
- * drawings were a plaque showing one month and turning every eight seconds,
- * which hides the rest of the run behind a wait — a reader wanting August has
- * to stand there until August comes round. A crawl carries all of it at once.
- *
- * SO THERE IS NO BOX. The border and fill were what made the strip a separate
- * object sitting in the header. The ceremony travels on the TYPE instead: the
- * medal glyph, the month in the podium's own `--medal-gold`, and a metal
- * lozenge between entries. Nothing here draws a surface.
- *
- * MASKED AT BOTH ENDS rather than clipped. A crawl that vanishes at a hard
- * edge reads as text being cut off; fading it out is what makes the movement
- * look like a designed instrument instead of an overflow.
- *
- * SIZED FROM THE VIEWPORT, like the board below. This is read off a television
- * from a desk away while the header around it is drawn at the house sizes
- * every other screen uses. It shares the `--tv-*` scale declared on :root.
- *
- * NOT DRAWN UNDER 1280 — the same line the board itself draws, and for the
- * same reason. Under 1280 this page stops being a television: the columns
- * stack, the tv-switch appears, and it is read on a phone by one person
- * holding it. A crawl on a phone is a strip of moving text in the tightest
- * part of the page, which is a cost with no reader.
+ * «Sentabr yetakchisi» · «Avgust 2026 rekordi»: the label in the podium's
+ * gold — the one place metal appears in the header, chrome and never a value
+ * — the name and the figure in ink, the note muted. NO CRAWL: nothing on
+ * this page moves at rest (spec §8); under ~1500px the component shows one
+ * band and cuts to the other every ten seconds. Not drawn under 1280, the
+ * width where the page stops being a television. Shares the `--tv-*` scale
+ * on :root.
  * ======================================================================== */
 
 .record-wall {
   display: none;
-  --metal: var(--medal-gold);
-  --record-name: clamp(12px, 0.72vw, 17px);
-  --record-small: clamp(10.5px, 0.6vw, 14px);
-  overflow: hidden;
-  /*
-    The height the title block occupies, so the strip cannot grow the header.
-    Measured: title block is 59px, and an earlier plaque at 88px was setting
-    the header's height for every other element in the row.
-  */
-  height: 59px;
-  /*
-    Clear of the two things it runs between. The header's own `gap-3` is the
-    right distance between controls; it is not the right distance between a
-    page title and a line of moving text, which arrived hard against
-    «Sotuvchilar reytingi» and read as part of it. The mask fades inside this,
-    so the gap is real space and not just a soft edge.
-  */
+  flex: 1;
+  min-width: 0;
+  justify-content: center;
+  align-items: baseline;
+  gap: 28px;
   margin-inline: 26px;
-  /* Both ends fade; the lane is wide enough that a name is never half-lit. */
-  mask-image: linear-gradient(
-    90deg,
-    transparent,
-    #000 44px,
-    #000 calc(100% - 44px),
-    transparent
-  );
+  font-size: var(--tv-m);
+  color: var(--ink-secondary);
+  white-space: nowrap;
+  overflow: hidden;
 }
-
 @media (min-width: 1280px) {
   .record-wall {
     display: flex;
-    align-items: center;
   }
 }
-
-/*
- * The track holds TWO copies of the run and slides exactly one copy's width.
- *
- * That is what makes the loop seamless: at the moment the animation restarts,
- * the second copy is sitting precisely where the first one began, so the join
- * is invisible. `--record-travel` is measured in the component, because the
- * run's width depends on how many months exist and on the viewport the type
- * is ramped against — neither is knowable here.
- *
- * `will-change: transform` promotes the track to its own layer. Without it a
- * strip that never stops moving repaints the header behind it on every frame,
- * which on the single-core box this dashboard is read from is a real cost for
- * a decorative line.
- */
-.record-track {
-  display: flex;
-  width: max-content;
-}
-
-.record-track--crawling {
-  animation-name: record-crawl;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-  will-change: transform;
-}
-
-@keyframes record-crawl {
-  from {
-    transform: translate3d(0, 0, 0);
-  }
-  to {
-    transform: translate3d(calc(-1 * var(--record-travel)), 0, 0);
-  }
-}
-
-/*
- * A hand on the strip holds it still. A television has no pointer so this
- * costs the floor nothing, and on a desk it is the difference between a line
- * you can read and one you chase.
- */
-.record-wall:hover .record-track--crawling,
-.record-wall:focus-within .record-track--crawling {
-  animation-play-state: paused;
-}
-
-/*
- * Reduced motion gets a strip it can scroll by hand — the months are all
- * still reachable, which a merely frozen crawl would not make them.
- */
-@media (prefers-reduced-motion: reduce) {
-  .record-wall {
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .record-track {
-    animation: none;
-  }
-}
-
-.record-run {
-  display: flex;
-  align-items: center;
-  flex: none;
-}
-
-.record-entry {
+.record {
   display: inline-flex;
   align-items: baseline;
-  gap: 7px;
-  white-space: nowrap;
-  font-size: var(--record-small);
-  color: var(--ink-secondary);
+  gap: 10px;
+  min-width: 0;
 }
-
-.record-medal {
-  font-size: var(--record-name);
-  line-height: 1;
-  /* Baseline-aligned with the text beside it rather than sitting on it. */
-  transform: translateY(1px);
+/* The second band is set off by a hairline, never a box. */
+.record + .record {
+  border-left: 1px solid var(--border-strong);
+  padding-left: 28px;
 }
-
-/*
- * The month, in the podium's gold — the one place metal appears in this
- * strip, and the thing that ties it to the seats below at a glance. Metal is
- * chrome here in the same sense it is there: it may carry tint and never a
- * value, which is why «Rekord» and «Yetakchi» are words rather than colours.
- */
-.record-month {
-  color: var(--metal);
-  font-weight: 650;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  font-size: var(--record-small);
+.record__k {
+  color: var(--medal-gold);
+  font-size: var(--tv-s);
+  font-weight: 600;
 }
-
-.record-who {
+.record__n,
+.record__v {
   color: var(--ink-primary);
   font-weight: 600;
-  font-size: var(--record-name);
 }
-
-.record-team {
+.record__v {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.record__note {
   color: var(--ink-muted);
-}
-
-.record-sum {
-  color: var(--ink-primary);
-  font-weight: 600;
-  font-size: var(--record-name);
-  font-variant-numeric: tabular-nums;
-}
-
-.record-note {
-  color: var(--ink-muted);
-}
-
-/*
- * The lozenge between entries, in the metal and generously spaced. It is the
- * only thing separating one month from the next, so it carries the whole job
- * a card's edge used to do.
- */
-.record-sep {
-  color: color-mix(in oklab, var(--metal) 55%, transparent);
-  font-size: calc(var(--record-small) * 0.72);
-  margin: 0 22px;
 }
 
 /*
