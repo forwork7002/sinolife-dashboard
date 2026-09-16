@@ -38,6 +38,10 @@ export const ROLE_HINTS: Readonly<Record<RoleValue, string>> = {
  */
 const ALL_ROUTES = [
   '/analytics/cohort',
+  // Every operator's talk time and median call. ADMIN and MANAGER only by
+  // default — withheld from SALES with cohort, margin and structure — and the
+  // endpoints refuse any account that is not company-wide.
+  '/customers',
   '/logistics',
   '/analytics/sales',
   '/confirmation',
