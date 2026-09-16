@@ -37,6 +37,7 @@ import {
   CUSTOMER_AT_RISK_DAYS,
   type CustomerStateKey,
 } from '@/lib/customerStates'
+import { callWindowStart } from '@/lib/callQuality'
 import { LOGISTICS_BUCKETS, UNMAPPED_BUCKET } from '@/lib/logisticsBuckets'
 import {
   RETENTION_GROUPS,
@@ -222,6 +223,29 @@ export interface RetentionStage {
 export interface CustomerStateCounts {
   readonly customers: number
   readonly ours: Record<CustomerStateKey, number>
+}
+
+export interface CallActivityRow {
+  readonly key: string
+  readonly label: string
+  readonly calls: number
+  readonly connected: number
+  readonly talkSec: number
+  /** Null when nothing in this group connected — never a manufactured zero. */
+  readonly medianSec: number | null
+  readonly p90Sec: number | null
+  readonly customers: number
+}
+
+export interface CallActivityRows {
+  readonly total: CallActivityRow
+  /** Ranked by talk time, descending. */
+  readonly operators: readonly CallActivityRow[]
+  readonly teams: readonly CallActivityRow[]
+  /** One row per Tashkent day, ascending. */
+  readonly series: readonly CallActivityRow[]
+  /** Calls with no customer attached — disclosed, never silently dropped. */
+  readonly unlinkedCalls: number
 }
 
 export interface CustomerFlowRows {
@@ -1409,6 +1433,200 @@ export class InsightsRepository {
         AT_RISK: int(row?.at_risk ?? 0n),
         LOST: int(row?.lost ?? 0n),
       },
+    }
+  }
+
+  /**
+   * Who spoke to customers, for how long, and how that splits four ways.
+   *
+   * ONE SCAN, FOUR ARMS — overall, per operator, per team, per day — because
+   * every one of them is a grouping of the same rows. Asking four questions
+   * would let the block's own tiles disagree with the table under them, which
+   * is the failure `GROUPING SETS` exists here to make impossible. The team
+   * rows and the day rows each sum to the overall row by construction, and
+   * that identity is what makes the block checkable against the portal.
+   *
+   * THE WINDOW IS CLAMPED, NOT VALIDATED. `callWindowStart` moves a start below
+   * `CALL_DATA_FLOOR` up to it; the caller is told through `floorApplied` on
+   * the DTO rather than refused, because a reader who picks «Shu oy» in
+   * September is asking a reasonable question about a month whose first
+   * twelve days we cannot answer. Refusing would leave them an error where a
+   * shorter true answer exists.
+   *
+   * MEASURES THAT LOOK REDUNDANT AND ARE NOT. `calls` counts every leg and
+   * `connected` the ones that reached somebody: about a third connecting is
+   * ordinary here, so a block reporting only connected calls would understate
+   * the work threefold. `talkSec` is summed over connected legs only — above
+   * the floor no failed leg carries seconds, so the FILTER changes no number
+   * today and states the population for the day the portal reports ring time.
+   *
+   * MEDIAN AND P90, AND NO MEAN. Measured above the floor: 167 s mean against a
+   * 50 s median, because 8.4% of calls run past ten minutes and hold 52% of all
+   * talk time. The mean is not queried — the screen divides `talkSec` by
+   * `connected`, so the two cannot be rounded into disagreement.
+   * `percentile_disc` rather than `_cont`: a duration is a whole number of
+   * seconds somebody observed, and interpolating invents a call.
+   *
+   * DIRECTION IS NOT AN ARM. `voximplant.statistic.get` reports the LEG, not
+   * the intent — 338 467 inbound against 27 833 outbound on a floor whose job
+   * is ringing customers, because an operator taking a queued outbound leg is
+   * recorded as receiving a call. A split by direction reads backwards.
+   *
+   * NO SCOPE AND NO CURRENCY. `customers` is COMPANY_WIDE and the route asks
+   * for `analytics:read:all`, so there is no `restrictToEmployeeIds` to thread;
+   * the block states no money. Both absences are what keep the service's memo
+   * key safe — see there.
+   *
+   * Measured from Tashkent (which adds ~1.4 s of round trip): 1 487 ms over
+   * three days and 8 063 ms over thirty. It is memoised for that reason.
+   */
+  async callActivity(options: { period: Period }): Promise<CallActivityRows> {
+    const start = callWindowStart(options.period.start)
+
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        g_employee: number
+        g_team: number
+        g_day: number
+        employee_id: string | null
+        employee_name: string | null
+        team: string | null
+        day: string | null
+        calls: bigint | null
+        connected: bigint | null
+        talk_sec: bigint | null
+        median_sec: number | null
+        p90_sec: number | null
+        customers: bigint | null
+        unlinked: bigint | null
+      }[]
+    >(
+      `
+      WITH scoped AS (
+        SELECT
+          r."employeeId"  AS employee_id,
+          r."customerId"  AS customer_id,
+          r."durationSec" AS duration_sec,
+          r."connected"   AS connected,
+          /*
+            ::text, NOT a bare ::date. A DATE crosses the driver as a JS Date,
+            and node-postgres builds that Date at LOCAL midnight — so on a
+            machine in Tashkent every day key would come back as the day
+            before. Text is what marketingRepository returns for the same
+            reason, and it needs no second conversion on this side.
+
+            (No backticks anywhere in this statement's comments: they close
+            the template literal.)
+          */
+          (r."startedAt" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day
+        FROM "call_record" r
+        WHERE r."startedAt" >= $1 AND r."startedAt" < $2
+      ),
+      labelled AS (
+        SELECT
+          s.*,
+          e."fullName" AS employee_name,
+          /*
+            THE TEAM IS THE PRIMARY DEPARTMENT, WITH «(ROP)» STRIPPED.
+
+            Same spelling as every other screen for a sales team, and complete
+            for the three departments that ring customers without the marker —
+            Регистрация, Операцион, NEWGEN, together 21.4% of the calls. The
+            last arm catches a caller filed nowhere.
+
+            THE BACKSLASHES ARE DOUBLED BECAUSE THIS IS A TEMPLATE LITERAL —
+            see ropNameSql for the trap a single one sets.
+          */
+          COALESCE(
+            NULLIF(btrim(regexp_replace(dp."name", '\\(ROP\\)', '', 'i')), ''),
+            dp."name",
+            $4
+          ) AS team
+        FROM scoped s
+        LEFT JOIN "employee" e ON e."id" = s.employee_id
+        LEFT JOIN "department" dp ON dp."id" = e."departmentId"
+      )
+      SELECT
+        GROUPING(employee_id)::int AS g_employee,
+        GROUPING(team)::int        AS g_team,
+        GROUPING(day)::int         AS g_day,
+        employee_id,
+        min(employee_name) AS employee_name,
+        team,
+        day,
+        count(*)::bigint AS calls,
+        count(*) FILTER (WHERE connected)::bigint AS connected,
+        COALESCE(sum(duration_sec) FILTER (WHERE connected), 0)::bigint AS talk_sec,
+        (percentile_disc(0.5) WITHIN GROUP (ORDER BY duration_sec)
+           FILTER (WHERE connected))::int AS median_sec,
+        (percentile_disc(0.9) WITHIN GROUP (ORDER BY duration_sec)
+           FILTER (WHERE connected))::int AS p90_sec,
+        count(DISTINCT customer_id)::bigint AS customers,
+        count(*) FILTER (WHERE customer_id IS NULL)::bigint AS unlinked
+      FROM labelled
+      GROUP BY GROUPING SETS ((employee_id), (team), (day), ())
+      ORDER BY g_employee, g_team, g_day, talk_sec DESC
+      `,
+      start,
+      options.period.end,
+      this.tz,
+      InsightsRepository.NO_TEAM,
+    )
+
+    const shape = (row: (typeof rows)[number], key: string, label: string): CallActivityRow => ({
+      key,
+      label,
+      calls: int(row.calls),
+      connected: int(row.connected),
+      talkSec: int(row.talk_sec),
+      // NULL when nothing in this group connected. A group with no
+      // conversation has no typical conversation, and 0 would claim one that
+      // lasted zero seconds.
+      medianSec: row.median_sec ?? null,
+      p90Sec: row.p90_sec ?? null,
+      customers: int(row.customers),
+    })
+
+    /*
+      The () arm is always emitted — an aggregate with no GROUP BY columns
+      returns one row even over nothing — so a missing total means the statement
+      changed shape, not that the window was empty.
+    */
+    const totalRow = rows.find((r) => r.g_employee === 1 && r.g_team === 1 && r.g_day === 1)
+
+    return {
+      total: totalRow
+        ? shape(totalRow, 'TOTAL', 'Jami')
+        : {
+            key: 'TOTAL',
+            label: 'Jami',
+            calls: 0,
+            connected: 0,
+            talkSec: 0,
+            medianSec: null,
+            p90Sec: null,
+            customers: 0,
+          },
+      operators: rows
+        .filter((r) => r.g_employee === 0)
+        .map((r) => shape(r, r.employee_id ?? '', r.employee_name ?? 'Nomaʼlum xodim')),
+      teams: rows
+        .filter((r) => r.g_team === 0)
+        .map((r) => {
+          const team = r.team ?? InsightsRepository.NO_TEAM
+          return shape(r, team, team)
+        }),
+      /*
+        ASCENDING, unlike the two ranked arms. A time axis reads left to right;
+        the ORDER BY sorts every arm by talk time because the ranked arms need
+        it, so the series is re-sorted here rather than asked for twice.
+        'YYYY-MM-DD' text sorts chronologically as a string.
+      */
+      series: rows
+        .filter((r) => r.g_day === 0)
+        .map((r) => shape(r, r.day ?? '', r.day ?? ''))
+        .sort((a, b) => a.key.localeCompare(b.key)),
+      unlinkedCalls: int(totalRow?.unlinked),
     }
   }
 
@@ -2601,6 +2819,9 @@ export class InsightsRepository {
    * countable but unreachable.
    */
   static readonly NO_ROP = '(ROP yoʻq)'
+
+  /** A caller the portal files in no department at all. */
+  static readonly NO_TEAM = 'Boʻlimsiz'
 
   /**
    * The label for orders whose customer carries no region.
