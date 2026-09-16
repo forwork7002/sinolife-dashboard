@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs'
 
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MedalDefs } from '@/features/sellers/MedalDefs'
+import { resetCelebrations } from '@/features/sellers/usePromotions'
 import type { SellerBoardDto, SellerMedalRowDto } from '@/lib/api'
 import { formatFullUzs, formatUzs } from '@/lib/format'
 
@@ -743,5 +744,41 @@ describe('lavha va medallar', () => {
     expect(zero.querySelector('.lavha-word')!.className).not.toContain('--near')
     expect(zero.querySelector('.tv-chase')!.textContent).toBe('Birinchi savdo kutilmoqda')
     expect(zero.querySelector('.tv-rowmedals')).toBeNull()
+  })
+})
+
+/**
+ * MAROSIM — ko‘tarilish jamoat voqeasi (spec §6).
+ *
+ * 40-o‘rindagi odam o‘z lavhasining sokin animatsiyasini ko‘rmaydi; ustun
+ * sarlavhasidagi 8 soniyalik e‘lonni hamma ko‘radi. `resetCelebrations()`
+ * har testdan oldin: to‘plam modul darajasida — sahifa sessiyasida bir
+ * marta e‘lon qilish uchun — ya‘ni testlar orasida ham yashaydi.
+ */
+describe('ko‘tarilish marosimi', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    resetCelebrations()
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('bugun ko‘tarilgan seat: e‘lon ustun sarlavhasida, lavha ko‘tarilish sinfida; 8 soniyadan keyin jim', () => {
+    const today = '2026-09-16'
+    const medals = new Map(MEDALS)
+    medals.set('154 Marjona Xayrullayeva', medalRow('154 Marjona Xayrullayeva', { promotedOn: today }))
+    render(<SellersColumn data={RIPE} {...PROPS} medals={medals} medalsToday={today} />)
+    const col = column('tv-sellers')
+    expect(col.getByRole('status').textContent).toContain('154 Marjona Xayrullayeva — endi USTA · 100 mln')
+    expect(document.getElementById('tv-sellers')!.querySelector('.lv-plate--rise')).not.toBeNull()
+    act(() => vi.advanceTimersByTime(8_000))
+    expect(col.queryByRole('status')).toBeNull()
+    expect(document.getElementById('tv-sellers')!.querySelector('.lv-plate--rise')).toBeNull()
+  })
+
+  it('kecha ko‘tarilgan — e‘lon yo‘q', () => {
+    const medals = new Map(MEDALS)
+    medals.set('154 Marjona Xayrullayeva', medalRow('154 Marjona Xayrullayeva', { promotedOn: '2026-09-15' }))
+    render(<SellersColumn data={RIPE} {...PROPS} medals={medals} medalsToday="2026-09-16" />)
+    expect(column('tv-sellers').queryByRole('status')).toBeNull()
   })
 })

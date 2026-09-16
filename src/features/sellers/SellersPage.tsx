@@ -10,14 +10,17 @@ import { LevelBlock, isNearNextLevel, nextLevelSentence } from '@/features/selle
 import { MedalDefs } from '@/features/sellers/MedalDefs'
 import { MedalRail } from '@/features/sellers/MedalRail'
 import { Narvon } from '@/features/sellers/Narvon'
+import { PromotionBanner } from '@/features/sellers/PromotionBanner'
 import { RecordWall } from '@/features/sellers/RecordWall'
 import { RowMedals } from '@/features/sellers/RowMedals'
 import { SpeakingMedal } from '@/features/sellers/SpeakingMedal'
 import { useAutoScroll } from '@/features/sellers/useAutoScroll'
 import { useMedalRotation } from '@/features/sellers/useMedalRotation'
+import { useNewMedals, usePromotions } from '@/features/sellers/usePromotions'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import {
+  type MedalCode,
   type SellerBoardDto,
   type SellerBoardRowDto,
   type SellerMedalDto,
@@ -562,6 +565,7 @@ function BoardColumn({
   onRetry,
   empty,
   medals,
+  medalsToday,
 }: {
   id: string
   /**
@@ -588,9 +592,9 @@ function BoardColumn({
   /** Sotuvchi id si bo'yicha pagon. Komandalar ustuni uchun bo'sh Map. */
   medals: ReadonlyMap<string, SellerMedalRowDto>
   /**
-   * `SellerMedalsDto.today`. IMZODA BOR, DESTRUCTURE'DA YO'Q — e'lon lentasi
-   * (6-vazifa) shu kunni `promotedOn` bilan solishtiradi; ustun uni bugun
-   * o'qimaydi, va o'qilmagan o'zgaruvchi lint'ning ishi.
+   * `SellerMedalsDto.today` — e'lon lentasi shu kunni `promotedOn` bilan
+   * solishtiradi. Sana serverdan keladi, brauzerning soatidan emas: taxta
+   * hisobot mintaqasida yashaydi, televizor esa qayerda bo'lsa o'sha yerda.
    */
   medalsToday: string | null
 }) {
@@ -633,6 +637,17 @@ function BoardColumn({
     ),
   )
 
+  /*
+    MAROSIM — USTUNNING O'ZIDA, chunki e'lon ustun sarlavhasida turadi va
+    ko'tarilgan odam shu ustunning qatorlari orasida. Komandalar ustuni
+    e'lon qilmaydi: daraja shaxsiy, ROP komandasiga berilmaydi — shuning
+    uchun unga bo'sh xarita beriladi (hook shartsiz chaqiriladi).
+  */
+  const promotion = usePromotions(tone === 'sellers' ? medals : EMPTY_MEDALS, medalsToday)
+  const promotedName =
+    promotion === null ? null : (entries.find((e) => e.key === promotion.employeeId)?.name ?? null)
+  const newMedals = useNewMedals(medals)
+
   return (
     <section
       id={id}
@@ -667,6 +682,14 @@ function BoardColumn({
             </div>
           )}
         </div>
+        {/*
+          E'LON — sarlavha ostida, 8 soniya. Podiumdagi yulduz tushishi
+          faqat uchta o'rindiqda ko'rinadi; 40-o'rindagi odamning
+          ko'tarilishini butun ustunga aytadigan yagona joy shu.
+        */}
+        {promotion !== null && promotedName !== null && (
+          <PromotionBanner promotion={promotion} name={promotedName} />
+        )}
       </header>
 
       {status === 'loading' ? (
@@ -705,11 +728,19 @@ function BoardColumn({
             noun={noun}
             onDelivered={onDelivered}
             medals={medals}
+            newMedals={newMedals}
           />
         </>
       ) : (
         <>
-          <Podium winners={winners} onDelivered={onDelivered} medals={medals} speaking={speaking} risingId={null} />
+          <Podium
+            winners={winners}
+            onDelivered={onDelivered}
+            medals={medals}
+            speaking={speaking}
+            risingId={promotion?.employeeId ?? null}
+            newMedals={newMedals}
+          />
           {/*
             NARVON PODIUM OSTIDA, BIR MARTA — «daraja o'rin emas» jumlasining
             o'rnini bosgan chizma. Faqat sotuvchilar ustunida: daraja shaxsiy,
@@ -717,7 +748,14 @@ function BoardColumn({
             hech nima sezmasligi kerak, shuning uchun `medals.size` shart.
           */}
           {tone === 'sellers' && medals.size > 0 && <Narvon />}
-          <BoardList entries={rows} allEntries={ranked} noun={noun} onDelivered={onDelivered} medals={medals} />
+          <BoardList
+            entries={rows}
+            allEntries={ranked}
+            noun={noun}
+            onDelivered={onDelivered}
+            medals={medals}
+            newMedals={newMedals}
+          />
         </>
       )}
     </section>
@@ -802,14 +840,17 @@ function Podium({
   medals,
   speaking,
   risingId,
+  newMedals,
 }: {
   winners: readonly BoardEntry[]
   onDelivered: boolean
   medals: ReadonlyMap<string, SellerMedalRowDto>
   /** Ustunning yagona soati — qaysi seat, qaysi medal. */
   speaking: ReturnType<typeof useMedalRotation>
-  /** Hozirgina ko'tarilgan seat; marosim faqat bittasida. 6-vazifa to'ldiradi. */
+  /** Hozirgina ko'tarilgan seat; marosim faqat bittasida. */
   risingId: string | null
+  /** Oxirgi yangilanishda paydo bo'lgan medallar, sotuvchi id si bo'yicha. */
+  newMedals: ReadonlyMap<string, ReadonlySet<MedalCode>>
 }) {
   const columnOf = (place: number) =>
     winners.length === 3 ? [2, 1, 3][place - 1]! : winners.length === 2 ? place : 1
@@ -826,6 +867,7 @@ function Podium({
           medal={medals.get(entry.key) ?? null}
           speaking={speaking?.employeeId === entry.key ? speaking.medal : null}
           rise={risingId === entry.key}
+          newKeys={newMedals.get(entry.key)}
         />
       ))}
     </div>
@@ -884,6 +926,7 @@ function PodiumSeat({
   medal,
   speaking,
   rise,
+  newKeys,
 }: {
   entry: BoardEntry
   place: number
@@ -895,6 +938,8 @@ function PodiumSeat({
   speaking: SellerMedalDto | null
   /** Ko'tarilish marosimi — yulduzlar tushadi, lavha bir marta yaltiraydi. */
   rise: boolean
+  /** Shu yangilanishda ochilgan medallar — bir marta kattalashib tushadi. */
+  newKeys: ReadonlySet<MedalCode> | undefined
 }) {
   const seat = SEATS[place - 1]!
   const champion = place === 1
@@ -990,7 +1035,7 @@ function PodiumSeat({
         {medal !== null && (
           <>
             <LevelBlock row={medal} ghost={champion} rise={rise} />
-            <MedalRail medals={medal.medals} />
+            <MedalRail medals={medal.medals} newKeys={newKeys} />
             {speaking !== null && <SpeakingMedal medal={speaking} />}
           </>
         )}
@@ -1047,6 +1092,7 @@ function BoardList({
   noun,
   onDelivered,
   medals,
+  newMedals,
 }: {
   entries: readonly BoardEntry[]
   allEntries: readonly BoardEntry[]
@@ -1054,6 +1100,8 @@ function BoardList({
   onDelivered: boolean
   /** Sotuvchi id si bo'yicha pagon. Komandalar ustuni uchun bo'sh Map. */
   medals: ReadonlyMap<string, SellerMedalRowDto>
+  /** Oxirgi yangilanishda paydo bo'lgan medallar, sotuvchi id si bo'yicha. */
+  newMedals: ReadonlyMap<string, ReadonlySet<MedalCode>>
 }) {
   const listRef = useAutoScroll<HTMLDivElement>(entries.length > 0)
   if (entries.length === 0) return null
@@ -1171,7 +1219,9 @@ function BoardList({
                         next={medal === null ? null : nextLevelSentence(medal)}
                       />
                     </div>
-                    {medal !== null && <RowMedals medals={medal.medals} />}
+                    {medal !== null && (
+                      <RowMedals medals={medal.medals} newKeys={newMedals.get(entry.key)} />
+                    )}
                   </div>
                 </td>
                 <td className="tabular text-right">
