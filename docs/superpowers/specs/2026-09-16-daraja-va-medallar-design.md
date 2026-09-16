@@ -170,7 +170,7 @@ eshik faqat yuqori medallarda (Olov seriyasi, Yil chempioni) sezildi.
 Ochilmagan medal qatorda va seat'da ko'rinmaydi; katalog (qaysi darajada nima
 ochiladi) frontend'da statik lug'at — `MEDALS` nomlari kabi.
 
-**Tartib** (seat'da 5 + N, qatorda 3 + N, 1600 px dan pastda qatorda 2 + N):
+**Tartib** (seat'da 5 + N, qatorda 3 + N):
 year-champion › month-gold › streak-fire › month-silver › month-bronze ›
 streak-steady › conversion-master › day-record › clean-month › jump › rookie ›
 day-winner › work-month › first-sale. Oila ichida eng oxirgisi oldin.
@@ -234,13 +234,13 @@ ostida — **daraja bloki**:
   chempion seat'ida** — u kengroq (1,16fr); 2- va 3-o'rinda lavha to'liq
   kenglikda, sharpasiz.
 - Shtamp = keyingi ostonagacha yo'lning 10%; uzoqdan sanaladi, foiz emas.
-- «… qoldi» matni butun so'm emas, mln ga 0,1 gacha yaxlitlangan («139,7 mln»).
+- «… qoldi» matni butun so'm emas, `formatCompactUzs` bilan («139.7 mln», «1.2 mlrd» — ilova o'nlik uchun nuqta ishlatadi).
   Jo'nalish kelishigi: unvon + «ga» («Ustozga», «Legendaga», «Legenda II ga»).
 - 0-darajada: shtrix lavha, shtamplar bo'sh, «Birinchi savdo kutilmoqda».
 
 So'ng **medal tokchasi** — `color-mix(--metal 8%, --surface-raised)` fonli
-band, 5 ta 44 px o'rin (bo'sh o'rin bo'sh turadi, chiziqcha emas), ×N pill,
-`+N` toshish.
+band, 5 tagacha 44 px medal, ×N pill, `+N` toshish. Bo'sh o'rin chizilmaydi;
+medalsiz sotuvchida tokcha umuman yo'q — karta qisqaradi.
 
 So'ng **gapiruvchi karta** (bor bo'lsa): `--surface-sunken` fon, 64 px medal,
 nom (16 px 700), sabab (12,5 px `--ink-secondary`) — `useMedalRotation`
@@ -258,7 +258,7 @@ Ustun qo'shilmaydi. Ism katakchasi ichida uch qism:
 ```
  4 │ [lavha 78×26] │ Umidovna 117 Bonu  Usta          │ (m)(m)(m) +1 │ 53 600 000
    │               │ ▁▁▁▁▁▁▁▁ (bar, avvalgidek)        │              │
-   │               │ Oldingiga +1,2 mln · Ustozga 173,5 mln │         │
+   │               │ Oldingiga +1.2 mln · Ustozga 173.5 mln │         │
 ```
 
 - Chapda lavha (yelka), `flex: none`, 12 px oraliq.
@@ -266,9 +266,9 @@ Ustun qo'shilmaydi. Ism katakchasi ichida uch qism:
   `--seq-550`); 0-darajada «hali savdosiz».
 - `Chase` satri ikkinchi bo'lak oladi: «· Ustozga 173,5 mln» (bir xil tabular
   uslub). Bar va Chase o'z joyida.
-- O'ngda 3 ta 33 px medal + `+N` (ko'krak), `flex: none`; 1600 px dan pastda
-  2 + N; 1280 px dan pastda (telefon) medallar ism ostiga ikkinchi satrga
-  tushadi, lavha chapda qoladi — yon skroll qo'shilmaydi.
+- O'ngda 3 ta 33 px medal + `+N` (ko'krak), `flex: none`; 1280 px dan pastda
+  (telefon) medallar ism ostiga ikkinchi satrga tushadi, lavha chapda qoladi —
+  yon skroll qo'shilmaydi.
 - ×N qatorda yo'q.
 
 ### Ko'tarilish marosimi
@@ -278,7 +278,8 @@ Odatiy holatda **hech narsa qimirlamaydi**. Uch voqea:
 1. **Daraja ko'tarilishi** — `promotedOn === bugun` bo'lgan sotuvchi uchun,
    sahifa sessiyasida bir marta (`employeeId:level` in-memory to'plam):
    seat'da yulduzlar 80 ms oraliqda tushadi (translateY −14 → 0, 1,15 → 1),
-   bitta diagonal yaltirash (0,8 s), so'ng qotadi; jadvalda 300 ms, siljishsiz.
+   bitta diagonal yaltirash (0,8 s), so'ng qotadi; jadval qatori animatsiya
+   qilinmaydi — e'lon yetarli.
    Ustun sarlavhasi satrida **8 s e'lon**: `[lavha 34 px] {Ism} — endi USTA ·
    100 mln`, so'ng sarlavha qaytadi. E'lon seat'dagi ham, qatordagi ham uchun.
 2. **Yangi medal** — oldingi payload bilan farq (ref'da `employeeId:code:count`
