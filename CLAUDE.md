@@ -1966,13 +1966,22 @@ transient run. Pinned by three cases in `portalRefusal.test.ts`.
 **A NEW WEBHOOK DOES NOT LIFT AN ADDRESS BLOCK — 2026-09-16.** After the third
 `OVERLOAD_LIMIT` the webhook was replaced (`/rest/8868/…`). The new key answered
 in 480 ms from an office machine and the deployed worker still could not reach
-the portal: `fetch failed [UND_ERR_CONNECT_TIMEOUT]` — no TCP connection at all,
-so no key was ever read. Bitrix24 had stopped answering the SERVER'S ADDRESS.
-Two things followed. The probe keeps its reason (`lastProbeError`, printed as
-«sabab:» under the worker's wait line) and every failure message carries Node's
-socket code, because «UNKNOWN» was all the log said. And a network failure now
-climbs the throttle ladder with ONE attempt per rung, where it was four attempts
-every 60 s. **Read `UND_ERR_CONNECT_TIMEOUT` / `ECONNRESET` in that line as
+the portal: `fetch failed [UND_ERR_CONNECT_TIMEOUT]`. Measured from the worker:
+TCP opened to all four portal addresses in 44 ms and the TLS handshake never
+completed on any of them — small ClientHello and TLS 1.2 included — while the
+same key answered from an office machine in 250 ms. No key was ever read;
+Bitrix24's protection had stopped answering the SERVER'S ADDRESS.
+The probe keeps its reason (`lastProbeError`, printed as «sabab:» under the
+worker's wait line) and every failure message carries Node's socket code,
+because «UNKNOWN» was all the log said. A network failure climbs its OWN, slower
+ladder (`NETWORK_LADDER_MS`: 2, 5, 15, then every 30 minutes) with ONE attempt
+per rung. **The ban lifted for a moment at 11:35 UTC and the worker answered
+with a full reference tick and was dropped again inside a minute** — so a
+recovery now runs `CALM_TICKS` (3) hot-only ticks before any reference pass or
+sweep, a restart inside the block seeds the gate shut from `sync_log` (and a
+failed startup health check shuts it too), and `reachability.ts` is no longer
+run by the worker: its ~11 simultaneous unfinished handshakes answered the
+question once and afterwards looked like a scan. **Read `UND_ERR_CONNECT_TIMEOUT` / `ECONNRESET` in that line as
 «our address is blocked or the route is down»: rotating the key changes nothing,
 waiting, Bitrix24 support (with the egress IP) or a new egress IP do.**
 
