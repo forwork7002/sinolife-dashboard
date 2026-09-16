@@ -397,9 +397,9 @@ Two duplications the feature cannot avoid, both deliberate:
 
 ---
 
-## The ten screens, and what each one dates by
+## The twelve screens, and what each one dates by
 
-**Two of the ten are PAUSED and two screens were removed.** «Boshqaruv markazi»
+**Two of the twelve are PAUSED and two screens were removed.** «Boshqaruv markazi»
 went entirely on 2026-09-10 («boshqaruv markazi boʻlimini toʻliq olib tashla»);
 «Joʻnatish nuqtalari» and «Reklama samarasi» keep their section, their nav entry
 and their endpoints but render `shared/SectionPending` and issue no request
@@ -423,6 +423,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 |---|---|---|---|---|---|
 | Savdo dinamikasi | `/analytics/sales` | `sales/SalesPage` + `ForecastSection` + `ConfirmationOutcomeSection` + `ConfirmationFaktSection` + `DeliveryBoardSection` | `/analytics/sellers` twice (the board, and `?include=faktTrend` for the chart) + `/insights/delivery` | SellerBoard, Pulse → SellerBoard, Pulse | the arrival in `C4:NEW` (`queued_at`) — **except the Доставка board, which has NO window at all**: a kanban column is where orders are standing now |
 | Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` — ONE reading, the MATRIX FIRST. It had two modes («Oddiy» / «Batafsil», `?mode=`) until 2026-09-16; the manager's view and everything only it read are deleted. The matrix has THREE readings of one fetch — «Jami qaytgan» / «Oylik» / «Pul» — and ONE control that is a different question: `?rop=`, the acquiring team, which is its own cache entry and its own request | `/insights/cohorts`, `/insights/customers`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | **nothing — the screen is DATELESS since 2026-09-15** (`period={false}`, like Struktura), and it now carries TWO CLOCKS, each named on screen. `closedAt` on revenue-bearing WON deals is the clock the matrix and the concentration band read; `/insights/customers` reads `createdAtSource` over its OWN trailing 90 days, so its customer totals legitimately differ — never sum across them; the matrix takes no window at all (`months` bounds which cohort ROWS are drawn and never the totals arm) and `/insights/concentration` resolves its OWN trailing 90 days (`trailingDays`). Nothing here reads `createdAtSource` |
+| Mijozlar va qoʻngʻiroqlar | `/customers` | `customers/CustomersPage` + `CallActivitySection` + `CustomerFlowSection` | `/insights/calls`, `/insights/customers` | Insights → Insights | **two windows, each stated in its own heading.** The call block takes the dashboard window on `call_record."startedAt"`, clamped below at `CALL_DATA_FLOOR` (2026-09-15 00:00 Tashkent); the flow block resolves its OWN trailing 90 days on `createdAtSource`, and its state rows and база split take no window at all |
 | Reklama samarasi | `/marketing` | **PAUSED** — `shared/SectionPending`; `marketing/MarketingPage` is held, not mounted | none while paused (`/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` still answer) | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
@@ -899,6 +900,55 @@ Per-screen traps worth knowing before you touch one:
   biggest thing available. And the 1587 ms recorded for this endpoint is an
   END-TO-END p50 from 2026-09-11, **not** a server-side execution time — do
   not compare it to any figure above. It should be re-timed on the deploy.
+- **Mijozlar va qoʻngʻiroqlar** — **NEW ON 2026-09-16**, the client's words:
+  «sotuvda mijoz soniyam kerak, pritok ottoklar kerak, baza ne baza mijozlarga
+  call duration… aniq malumotlarda», then «call duration toʻliq malumot». They
+  chose a section of its own over «Mijoz qaytishi» and «Savdo dinamikasi».
+  Spec and plan: `docs/superpowers/specs/2026-09-16-mijozlar-va-qongiroqlar-design.md`
+  (read §10 and §11 — they correct §2 and §4).
+  **TWO WINDOWS ON ONE SCREEN, AND THAT IS WHY SAVDO DINAMIKASI WAS REFUSED.**
+  The call block honours the control; the customer block resolves its own 90
+  days and its heading says «qoʻngʻiroqlar davriga bogʻliq emas». Never sum
+  across them.
+  **CALL DURATIONS BEFORE 2026-09-15 ARE WRONG IN THE DATABASE.** The
+  per-minute pass read `voximplant.statistic.get` from its own watermark, so it
+  stored calls mid-conversation and never re-read them: per-day maximum one
+  sync interval, connected share 11.6% against 31%. It ended at 11:00 Tashkent
+  on 2026-09-14, when CALLS moved to the half-hourly pass — found per HOUR by
+  the import lag jumping from 1 to 256 minutes. `CALL_DATA_FLOOR` in
+  `src/lib/callQuality.ts` clamps every call query to the next midnight, and
+  `SETTLE_LOOKBACK_MS` in `SyncEngine.ts` re-reads three hours of calls every
+  pass so it cannot recur. **The first reading put the boundary on 2026-09-13**
+  because its probe bucketed with the one-step `AT TIME ZONE 'Asia/Tashkent'`
+  on a naive UTC column — the rule under *Invariants* exists for exactly this.
+  The client declined a re-read of the bad window; the rows stay wrong and
+  unreachable, and moving the floor after a full CALLS pass is one edit.
+  **A CALL JOINS A CUSTOMER, NEVER AN ORDER** — `dealId` is set on 1 row of
+  366 300 — and **direction is the leg, not the intent** (338 467 inbound
+  against 27 833 outbound), so the block splits by neither.
+  **THE MEDIAN IS ON SCREEN BESIDE THE MEAN, AND THE MEAN IS NOT ON THE WIRE.**
+  169 s mean against 53 s median above the floor: 8.4% of calls hold half the
+  talk time. The screen divides `talkSec` by `connected`, so a tile cannot
+  round into disagreement with its table.
+  **«BAZA / BAZA EMAS» IS TWO THINGS, AND THE CLIENT KEPT BOTH.** «мижозларга»
+  attaches to «call duration», so it is first a CALL cut — a База deal created
+  BEFORE the call (median 86 s against 46 s; Baza(ROP) places 88% of those
+  calls). It is also a BUYER split, `customerBaseSplit()` — which among real
+  buyers is almost a constant, because the portal puts every delivered
+  customer in База (11 586 of 11 607); the card says «Bazada yoʻq» is mostly
+  undelivered orders. That split is its OWN statement: `customerStates`'s test
+  records 35aca08's rule that it does not read the retention funnel.
+  **THE TEAM IS `employee."departmentId"`, NEVER `department_member`**, with
+  «(ROP)» stripped and non-ROP departments KEPT — memberships inflate the
+  total (Azizbek 1 902 → 2 847) and nulling Регистрация, Операцион and NEWGEN
+  drops 21.4% of the calls. Every arm of `callActivity` sums to its total, and
+  seven such invariants were checked against production.
+  **NOTHING OF IT RENDERS LOCALLY** — the demo seed has no calls and no
+  RETENTION pipeline — so `tests/features/callActivityBlock.test.tsx` and
+  `customersSections.test.tsx` carry production figures. Those tests stub
+  `ResizeObserver` rather than guarding `DataTable.tsx`, which reaches
+  «Tasdiqlash navbati». The nav entry lives in `Shell.tsx`'s own list, not in
+  `SECTIONS` — a section is not in the menu until it is added there too.
 - **Kanallar** — the dashboard-wide `preset` and `filial` do **not** reach this
   screen; it resolves its own window from `from`/`to`/`today`.
 - **Yalpi marja** — discounts are split by sign in SQL; never net them or
@@ -1567,14 +1617,17 @@ mixed `100vh` against a shell sized in `100dvh`.
   client kept reporting as «avtomatik yangilanmayapti»: the refresh worked and
   the clock lied. A pass that read zero rows because nothing changed still
   counts — the portal answered for the data the chip is about.
-- **`CALLS`, `STORES` AND `STOCK` ARE NOT SCHEDULED AT ALL SINCE 2026-09-16.**
-  `call_record`, `store` and `stock_level` are written by the sync and read by
-  NOTHING — `/insights/calls` went in the 2026-09-10 cull, «Joʻnatish
-  nuqtalari» is paused, and `catalog.storeproduct.list` returns zero rows on
-  this portal. CALLS left the per-minute list on 2026-09-14 for the reference
-  pass; all three have now left that too. Unscheduled, not deleted: handlers,
-  provider methods and tables stay, and `npm run bitrix:resync -- CALLS` fills
-  one the day a screen needs it.
+- **`STORES` AND `STOCK` ARE NOT SCHEDULED AT ALL SINCE 2026-09-16; `CALLS`
+  WAS UNSCHEDULED THE SAME AFTERNOON AND PUT BACK THE SAME EVENING.**
+  `store` and `stock_level` are written by the sync and read by NOTHING —
+  «Joʻnatish nuqtalari» is paused, and `catalog.storeproduct.list` returns
+  zero rows on this portal. `call_record` was in the same position at 15:32
+  (`35a5354`) and gained a reader hours later: «Mijozlar va qoʻngʻiroqlar».
+  So CALLS is back in `REFERENCE` — the path that commit's own comment
+  prescribed — on the three-hourly reference clock, at roughly 60–120
+  invocations a pass against the 15 000-an-hour `portalBudget`. Unscheduled,
+  not deleted, for the other two: handlers, provider methods and tables stay,
+  and `npm run bitrix:resync -- STORES` fills one the day a screen needs it.
 - The provider **ignores `pageSize`** and returns one page for most entities.
 - Roistat is a second, unrelated source (a `var D = {…}` literal inside a 5.5 MB
   static page, parsed by brace-matching, not regex). It lands in its own tables
@@ -1967,13 +2020,22 @@ transient run. Pinned by three cases in `portalRefusal.test.ts`.
 **A NEW WEBHOOK DOES NOT LIFT AN ADDRESS BLOCK — 2026-09-16.** After the third
 `OVERLOAD_LIMIT` the webhook was replaced (`/rest/8868/…`). The new key answered
 in 480 ms from an office machine and the deployed worker still could not reach
-the portal: `fetch failed [UND_ERR_CONNECT_TIMEOUT]` — no TCP connection at all,
-so no key was ever read. Bitrix24 had stopped answering the SERVER'S ADDRESS.
-Two things followed. The probe keeps its reason (`lastProbeError`, printed as
-«sabab:» under the worker's wait line) and every failure message carries Node's
-socket code, because «UNKNOWN» was all the log said. And a network failure now
-climbs the throttle ladder with ONE attempt per rung, where it was four attempts
-every 60 s. **Read `UND_ERR_CONNECT_TIMEOUT` / `ECONNRESET` in that line as
+the portal: `fetch failed [UND_ERR_CONNECT_TIMEOUT]`. Measured from the worker:
+TCP opened to all four portal addresses in 44 ms and the TLS handshake never
+completed on any of them — small ClientHello and TLS 1.2 included — while the
+same key answered from an office machine in 250 ms. No key was ever read;
+Bitrix24's protection had stopped answering the SERVER'S ADDRESS.
+The probe keeps its reason (`lastProbeError`, printed as «sabab:» under the
+worker's wait line) and every failure message carries Node's socket code,
+because «UNKNOWN» was all the log said. A network failure climbs its OWN, slower
+ladder (`NETWORK_LADDER_MS`: 2, 5, 15, then every 30 minutes) with ONE attempt
+per rung. **The ban lifted for a moment at 11:35 UTC and the worker answered
+with a full reference tick and was dropped again inside a minute** — so a
+recovery now runs `CALM_TICKS` (3) hot-only ticks before any reference pass or
+sweep, a restart inside the block seeds the gate shut from `sync_log` (and a
+failed startup health check shuts it too), and `reachability.ts` is no longer
+run by the worker: its ~11 simultaneous unfinished handshakes answered the
+question once and afterwards looked like a scan. **Read `UND_ERR_CONNECT_TIMEOUT` / `ECONNRESET` in that line as
 «our address is blocked or the route is down»: rotating the key changes nothing,
 waiting, Bitrix24 support (with the egress IP) or a new egress IP do.**
 
@@ -2090,8 +2152,10 @@ output and answers 200 with the database gone.
   `POST /api/v1/sync/run` route that was never built.
 - `docs/API.md` still lists fifteen endpoints that no longer exist — every
   `/analytics/*` but `sellers`, `/dashboard/*`, `/deals*`, `/employees/[id]`,
-  `/finance/overview`, `/insights/{calls,channels,confirmations,flow,pulse,response}`.
-  `find src/app/api/v1 -name route.ts` is the authority; twenty remain.
+  `/finance/overview`, `/insights/{channels,confirmations,flow,pulse,response}`.
+  (`/insights/calls` is listed again since 2026-09-16 — a new endpoint at the
+  old address.) `find src/app/api/v1 -name route.ts` is the authority;
+  twenty-three on 2026-09-16.
 - `docs/DEVELOPMENT.md`'s test count is current as of 2026-09-07 (928) but the
   phase table below it is finished work; `npm run verify` is the authority.
 - `src/lib/sections.ts` cites a `src/server/auth/sections.ts` that does not

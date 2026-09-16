@@ -8,6 +8,7 @@ import { Tooltip } from '@/components/ui/Tooltip'
 import {
   NO_VALUE,
   formatCompactUzs,
+  formatDuration,
   formatFullUzs,
   formatNumber,
   formatPercent,
@@ -39,7 +40,7 @@ export function StatTile({
 }: {
   label: string
   value: number | null
-  unit: 'money' | 'count' | 'percent' | 'hours' | 'days' | 'raw'
+  unit: 'money' | 'count' | 'percent' | 'hours' | 'days' | 'duration' | 'raw'
   hint?: string
   context?: ReactNode
   tone?: 'neutral' | 'good' | 'warning' | 'critical'
@@ -180,7 +181,7 @@ export function StatValue({
   money = 'compact',
 }: {
   value: number | null
-  unit: 'money' | 'count' | 'percent' | 'hours' | 'days' | 'raw'
+  unit: 'money' | 'count' | 'percent' | 'hours' | 'days' | 'duration' | 'raw'
   money?: 'compact' | 'full'
 }) {
   if (value === null) return <>{NO_VALUE}</>
@@ -216,6 +217,14 @@ export function StatValue({
           </span>
         </>
       )
+    /*
+      NOT AnimatedNumber. Every other unit here counts up on first paint, and a
+      duration counting from «0 s» through «0:37» to «2:47» reads as a stopwatch
+      running — a figure that looks live when it is a period aggregate. The
+      number is static and the tiles beside it still animate.
+    */
+    case 'duration':
+      return <>{formatDuration(value)}</>
     case 'count':
       return <AnimatedNumber value={value} format={(v) => formatNumber(Math.round(v))} />
     case 'raw':

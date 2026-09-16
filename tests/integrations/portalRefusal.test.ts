@@ -316,17 +316,17 @@ describe('a network failure names its socket-level reason', () => {
 })
 
 describe('an unreachable portal is probed on the ladder, not every minute', () => {
-  it('climbs 60 → 120 → 240 on consecutive network failures', () => {
+  it('climbs 2 → 5 → 15 → 30 minutes on consecutive network failures', () => {
     const gate = new PortalGate()
     const t0 = new Date('2026-09-16T10:50:00Z')
     const socket = new TypeError('fetch failed')
     for (let i = 0; i < 3; i++) gate.trip(socket, t0)
     expect(gate.isOpen()).toBe(true)
-    expect(gate.nextWaitMs(t0)).toBe(60_000)
+    expect(gate.nextWaitMs(t0)).toBe(120_000)
 
     const waits: number[] = []
     let now = t0
-    for (let rung = 0; rung < 3; rung++) {
+    for (let rung = 0; rung < 4; rung++) {
       now = new Date(now.getTime() + gate.nextWaitMs(now))
       // What `probe()` does: count the rung, send, and fail at socket level —
       // the failure reaches `trip` too, and must not reset the ladder.
@@ -334,6 +334,18 @@ describe('an unreachable portal is probed on the ladder, not every minute', () =
       gate.trip(socket, now)
       waits.push(gate.nextWaitMs(now))
     }
-    expect(waits).toEqual([120_000, 240_000, 480_000])
+    expect(waits).toEqual([300_000, 900_000, 1_800_000, 1_800_000])
+  })
+
+  it('can start already shut on an address block, and never on a method hold', () => {
+    const t0 = new Date('2026-09-16T12:00:00Z')
+    const gate = new PortalGate()
+    gate.seed('TRANSIENT', 'UNKNOWN', t0, t0)
+    expect(gate.isOpen()).toBe(true)
+    expect(gate.nextWaitMs(t0)).toBe(120_000)
+
+    const held = new PortalGate()
+    held.seed('METHOD', 'OPERATION_TIME_LIMIT', t0, t0)
+    expect(held.isOpen()).toBe(false)
   })
 })

@@ -6,8 +6,14 @@ import { insightsService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
 
-/** Who reaches this endpoint: the capability, then the screen it feeds. */
-const ACCESS = { permission: 'analytics:read:all', section: 'cohort' } as const
+/**
+ * Who reaches this endpoint: the capability, then the screen it feeds.
+ *
+ * `customers` since 2026-09-16, not `cohort`: the band this serves was
+ * specified for «Mijoz qaytishi», and the client chose a section of its own
+ * for it. `section` names the screen, so it moves with the screen.
+ */
+const ACCESS = { permission: 'analytics:read:all', section: 'customers' } as const
 
 /**
  * «Mijozlar oqimi» — arrivals, returns, sources and who went quiet.

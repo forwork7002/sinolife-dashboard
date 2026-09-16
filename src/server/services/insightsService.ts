@@ -33,6 +33,7 @@ import type {
   ConfirmationOutcomeTotals,
   ConfirmationRopRow,
   DispatchRow,
+  CallActivityRow,
   InsightsRepository,
   LogisticsCut,
   MarginSummary,
@@ -41,6 +42,13 @@ import type {
 } from '@/server/repositories/insightsRepository'
 import { deliveryRateBp, moneyRateBp, rateBp } from '@/server/domain/analytics/rates'
 import type { ConfirmationOutcomeValue, ConfirmationQueueMode } from '@/server/domain/types'
+import {
+  CALL_CUSTOMER_BANDS,
+  CALL_DURATION_BANDS,
+  CALL_SIDES,
+  type CallSideKey,
+  callFloorApplied,
+} from '@/lib/callQuality'
 import { CUSTOMER_STATES } from '@/lib/customerStates'
 import { keyPart, ttlCache } from './ttlCache'
 
@@ -90,6 +98,31 @@ const sourceRatesCache = ttlCache<Awaited<ReturnType<InsightsRepository['sourceR
 const customerStatesCache = ttlCache<Awaited<ReturnType<InsightsRepository['customerStates']>>>(
   5 * 60_000,
 )
+/** A fact about today, like the states — same clock. */
+const customerBaseCache = ttlCache<Awaited<ReturnType<InsightsRepository['customerBaseSplit']>>>(
+  5 * 60_000,
+)
+
+/**
+ * The call block's three statements, memoised separately because they cost
+ * differently and change together. The dashboard's own refetch cadence, for
+ * `customerFlowCache`'s reason: calls land through the half-hourly reference
+ * pass, and a reader re-asking inside a minute is asking the same question.
+ */
+const callActivityCache = ttlCache<Awaited<ReturnType<InsightsRepository['callActivity']>>>(60_000)
+const callDurationCache = ttlCache<Awaited<ReturnType<InsightsRepository['callDurationBands']>>>(
+  60_000,
+)
+const callCustomerCache = ttlCache<Awaited<ReturnType<InsightsRepository['callCustomerBands']>>>(
+  60_000,
+)
+
+/** Test seam, same hazard as `resetConfirmationRopCache` above. */
+export function resetCallActivityCaches(): void {
+  callActivityCache.clear()
+  callDurationCache.clear()
+  callCustomerCache.clear()
+}
 
 /**
  * Test seam, same hazard as `resetConfirmationRopCache` above.
@@ -103,6 +136,7 @@ export function resetCustomerFlowCaches(): void {
   customerFlowCache.clear()
   sourceRatesCache.clear()
   customerStatesCache.clear()
+  customerBaseCache.clear()
 }
 
 /** Basis points as a percentage, to one decimal. */
@@ -304,7 +338,84 @@ export interface CustomerFlowDto {
     readonly customers: number
     /** In `CUSTOMER_STATES` order — see `src/lib/customerStates.ts`. */
     readonly rows: readonly CustomerStateRowDto[]
+    /**
+     * Buyers with any deal in «База». Nearly every DELIVERED customer is here —
+     * the portal places them automatically — so `notInBase` is overwhelmingly
+     * customers whose order was never delivered.
+     */
+    readonly inBase: number
+    /** Buyers with none. `inBase + notInBase === customers`. */
+    readonly notInBase: number
   }
+}
+
+/**
+ * One row of the telephony block — the whole window, an operator, a team, a
+ * day, or a side of the base.
+ *
+ * THE MEAN IS NOT ON IT. The screen divides `talkSec` by `connected`; carried
+ * here as well, it would be rounded on the way out and again for display, and a
+ * tile would come to disagree with the table under it by a second.
+ */
+export interface CallRowDto {
+  readonly key: string
+  readonly label: string
+  readonly calls: number
+  readonly connected: number
+  /** Null when there were no calls at all — never a manufactured 0%. */
+  readonly connectPercent: number | null
+  readonly talkSec: number
+  /** Null when nothing in the group connected. */
+  readonly medianSec: number | null
+  readonly p90Sec: number | null
+  readonly customers: number
+}
+
+export interface CallDurationBandDto {
+  readonly key: string
+  readonly label: string
+  readonly colour: string
+  readonly calls: number
+  /** Share of `total.connected` — what the bands partition. Null when nothing connected. */
+  readonly sharePercent: number | null
+  readonly talkSec: number
+}
+
+export interface CallCustomerBandDto {
+  readonly key: string
+  readonly label: string
+  readonly customers: number
+  /** Whole seconds; 0 over a band with nobody in it. */
+  readonly avgTalkSec: number
+  readonly talkSec: number
+}
+
+export interface CallSideSeriesPointDto {
+  /** 'YYYY-MM-DD', a Tashkent day. */
+  readonly day: string
+  /** Seconds per side; every side present, zero when silent. */
+  readonly talkSec: Readonly<Record<'BAZA' | 'NOT_BAZA' | 'UNLINKED', number>>
+}
+
+export interface CallActivityDto {
+  readonly total: CallRowDto
+  /** Ranked by talk time, descending. */
+  readonly operators: readonly CallRowDto[]
+  readonly teams: readonly CallRowDto[]
+  /** One per Tashkent day, ascending. */
+  readonly series: readonly CallRowDto[]
+  /** In `CALL_SIDES` order, all three present. */
+  readonly sides: readonly CallRowDto[]
+  /** Pivoted: one point per day, ascending. Stacks to `series[].talkSec`. */
+  readonly seriesBySide: readonly CallSideSeriesPointDto[]
+  /** In `CALL_DURATION_BANDS` order, empty bands present. */
+  readonly durationBands: readonly CallDurationBandDto[]
+  /** In `CALL_CUSTOMER_BANDS` order, empty bands present. */
+  readonly customerBands: readonly CallCustomerBandDto[]
+  /** Calls with no customer attached, disclosed rather than dropped. */
+  readonly unlinkedCalls: number
+  /** True when the requested window began before `CALL_DATA_FLOOR`. */
+  readonly floorApplied: boolean
 }
 
 /**
@@ -1324,10 +1435,11 @@ export class InsightsService {
   async customerFlow(currency: string, period: Period): Promise<CustomerFlowDto> {
     const flowKey = `flow|${period.start.toISOString()}|${periodLengthInDays(period)}`
 
-    const [flow, rates, states] = await Promise.all([
+    const [flow, rates, states, base] = await Promise.all([
       customerFlowCache.get(flowKey, () => this.repository.customerFlow({ period, grain: 'day' })),
       sourceRatesCache.get('rates', () => this.repository.sourceRepeatRates()),
       customerStatesCache.get('states', () => this.repository.customerStates()),
+      customerBaseCache.get('base', () => this.repository.customerBaseSplit()),
     ])
 
     const byKey = new Map(rates.map((rate) => [rate.key, rate]))
@@ -1385,7 +1497,123 @@ export class InsightsService {
       states: {
         customers: states.customers,
         rows,
+        inBase: base.inBase,
+        notInBase: base.notInBase,
       },
+    }
+  }
+
+  /**
+   * «Qoʻngʻiroqlar» — the telephony block, on the dashboard's own window.
+   *
+   * THREE STATEMENTS, ONE KEY SHAPE. All three take the same period, so they
+   * share a key built the same way and cannot answer about different windows.
+   * The key is `period.start` plus the span in days — the DAY it lands on
+   * rather than the instant — matching `customerFlow`'s key and for the same
+   * reason: re-querying per request would put a statement measured at ~14 s
+   * from Tashkent into a one-vCPU database once per reader per minute.
+   *
+   * NEITHER `currency` NOR `timeZone` NOR SCOPE IS IN THE KEY, and each absence
+   * is safe for a reason that would stop being true under a different change:
+   *
+   *   - this block states NO MONEY. The day a soʻm figure appears here, the key
+   *     needs a currency.
+   *   - the repository buckets with its own fixed `this.tz`
+   *     (`env.APP_TIMEZONE`) and never reads `period.timeZone`, so the zone
+   *     cannot vary between two callers sharing an entry.
+   *   - `customers` is COMPANY_WIDE and the route asks for
+   *     `analytics:read:all`, so every caller who gets through reads the same
+   *     rows. Narrow the section and the key gains the scope in the same commit
+   *     or the memo goes.
+   *
+   * THE PRESET IS NOT IN THE KEY EITHER, and here that is right where it was
+   * wrong for the command centre (`ttlCache.ts` tells that story). The preset
+   * mattered there because it chose a COMPARISON window; nothing on this block
+   * compares against a previous period, so «Bugun» and «Shu hafta» resolving to
+   * one window on a Monday are one question.
+   */
+  async callActivity(period: Period): Promise<CallActivityDto> {
+    const key = `calls|${period.start.toISOString()}|${periodLengthInDays(period)}`
+
+    const [activity, durationBands, customerBands] = await Promise.all([
+      callActivityCache.get(key, () => this.repository.callActivity({ period })),
+      callDurationCache.get(key, () => this.repository.callDurationBands({ period })),
+      callCustomerCache.get(key, () => this.repository.callCustomerBands({ period })),
+    ])
+
+    const row = (source: CallActivityRow): CallRowDto => ({
+      key: source.key,
+      label: source.label,
+      calls: source.calls,
+      connected: source.connected,
+      // Null over an empty denominator — see `rateBp`. A day with no calls has
+      // no connect rate; 0% would claim a hundred unanswered dials.
+      connectPercent: pct(rateBp(source.connected, source.calls)),
+      talkSec: source.talkSec,
+      medianSec: source.medianSec,
+      p90Sec: source.p90Sec,
+      customers: source.customers,
+    })
+
+    const bandSpec = new Map(CALL_DURATION_BANDS.map((band) => [band.key as string, band]))
+    const customerSpec = new Map(CALL_CUSTOMER_BANDS.map((band) => [band.key as string, band]))
+
+    /*
+      PIVOTED HERE, NOT IN SQL. The (day, side) arm returns one row per pair that
+      carries calls; a stacked chart wants one point per day with every side
+      present. Filling a silent side with 0 is correct here in a way it is not
+      for a rate: talk time on a day nobody rang a База customer IS zero seconds.
+    */
+    const byDay = new Map<string, Record<CallSideKey, number>>()
+    for (const point of activity.seriesBySide) {
+      const sides =
+        byDay.get(point.day) ??
+        (Object.fromEntries(CALL_SIDES.map((side) => [side.key, 0])) as Record<CallSideKey, number>)
+      sides[point.side] += point.talkSec
+      byDay.set(point.day, sides)
+    }
+
+    return {
+      total: row(activity.total),
+      operators: activity.operators.map(row),
+      teams: activity.teams.map(row),
+      series: activity.series.map(row),
+      sides: activity.sides.map(row),
+      seriesBySide: [...byDay.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([day, talkSec]) => ({ day, talkSec })),
+      durationBands: durationBands.map((band) => {
+        const spec = bandSpec.get(band.key)
+        return {
+          key: band.key,
+          // The repository returns this table's own keys, so a miss is
+          // impossible rather than unlikely; the fallbacks exist so a future
+          // edit to one table shows on screen instead of throwing.
+          label: spec?.label ?? band.key,
+          colour: spec?.colour ?? '--series-1',
+          calls: band.calls,
+          // Against CONNECTED calls, which is what the bands partition. Against
+          // every leg the six would sum to about a third.
+          sharePercent: pct(rateBp(band.calls, activity.total.connected)),
+          talkSec: band.talkSec,
+        }
+      }),
+      customerBands: customerBands.map((band) => ({
+        key: band.key,
+        label: customerSpec.get(band.key)?.label ?? band.key,
+        customers: band.customers,
+        // Whole seconds: a fraction of a second of average talk is not a fact
+        // about anything, and the screen formats it anyway.
+        avgTalkSec: band.customers === 0 ? 0 : Math.round(band.talkSec / band.customers),
+        talkSec: band.talkSec,
+      })),
+      unlinkedCalls: activity.unlinkedCalls,
+      /*
+        From the REQUESTED start, not the clamped one — the clamp is what this
+        reports. Asked of the module rather than compared here, so the screen's
+        caveat and the repository's bound cannot disagree.
+      */
+      floorApplied: callFloorApplied(period.start),
     }
   }
 
