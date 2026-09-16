@@ -2,7 +2,15 @@
 
 **Sana:** 2026-09-16
 **Ekran:** `/sellers` — Sotuvchilar reytingi
-**Holat:** amalga oshirildi — `daraja` branch'i, deploy kutmoqda.
+**Holat:** DEPLOY QILINDI 2026-09-16 17:16 (`1d38148`, `main`).
+**Ko‘rinishi O‘RNI BOSILDI:** o‘sha kuni kechqurun mijoz lavha-pagonni rad etdi va
+`docs/superpowers/specs/2026-09-16-efir-taxta-design.md` (EFIR taxtasi) butun
+ko‘rinishni qayta chizdi. Bu hujjatning §2 dagi KO‘RINISH qismi (lavha, lentali
+medal, belgilar), butun §3 «Ekran» va §6 «Frontend» endi EFIR speci bilan
+almashtirilgan — o‘sha hujjat ustun. KUCHDA QOLGANI: §1 «Daraja» (ostona narvoni
+10 mln … 1 mlrd, Legenda bosqichlari), §2 dagi medal QOIDALARI (14 kod, qachon
+beriladi), §4 «Uzatish» (DTO), §5 «Motor» va §7 «Test» — EFIR ularning hech
+biriga tegmadi, faqat chizilishini o‘zgartirdi.
 **O'rnini bosadi:** `2026-09-15-sotuvchilar-medallari-design.md` ning
 «Ball», «Daraja» va butun «3. Ekran» bo'limlari. O'sha spec'ning
 «1. Ma'lumot» bo'limi (manba, oyna, davr filtri) va medal QOIDALARI

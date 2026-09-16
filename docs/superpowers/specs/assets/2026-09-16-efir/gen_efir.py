@@ -1,9 +1,32 @@
 #!/usr/bin/env python3
-"""EFIR — broadcast-stage mock of /sellers at 1920x1080, generated from board-data.json."""
-import json, html
+"""EFIR — broadcast-stage mock of /sellers at 1920x1080, generated from board-data.json.
 
-SRC = '/tmp/claude-1000/-home-smack-Work/d2262204-4e68-4568-a1e8-723d4985ca3f/scratchpad/redesign/board-data.json'
-OUT = '/tmp/claude-1000/-home-smack-Work/d2262204-4e68-4568-a1e8-723d4985ca3f/scratchpad/redesign/'
+Reads `board-data.json` from THIS directory and writes the HTML mocks back into
+it, so the script runs wherever the repository is checked out. It used to name a
+scratchpad that no longer exists.
+
+`board-data.json` is a 2026-09-16 PRODUCTION snapshot, built by joining the two
+payloads the real screen reads — `GET /api/v1/analytics/sellers?preset=this_month`
+(rows, teams, totals) with the same call under `?include=medals` (level, title,
+delivered, levelFloor, nextAt, nextTitle, promotedOn, medals) — into:
+
+    {period,
+     rows:  [{rank, name, team, fakt2, fakt1, orders, wonOrders, conversion,
+              level, title, delivered, levelFloor, nextAt, nextTitle,
+              promotedOn, medals: [{code, count, at}]}],
+     teams: [{rank, name, sellers, fakt2, fakt1, orders, conversion, share}],
+     totals}
+
+THE COMMITTED `efir.html` / `efir-light.html` ALREADY EMBED THAT SNAPSHOT, so
+they are the mock of record and re-running this script is not needed to read
+them. The file itself is not in the repository; rebuild it from production (or
+from a `?preset=this_month` response saved by hand) before re-running.
+"""
+import json, html, os
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SRC = os.path.join(HERE, 'board-data.json')
+OUT = HERE + os.sep
 d = json.load(open(SRC))
 rows, teams, totals = d['rows'], d['teams'], d['totals']
 

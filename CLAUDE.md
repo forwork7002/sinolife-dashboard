@@ -268,7 +268,7 @@ purpose: `/analytics/sellers`.** The client asked for it on 2026-09-08 —
 bir-birini natijasini ko'ra olishi uchun» — and a leaderboard whose readers
 each see a different league is not a leaderboard. It was scoped for six weeks
 and the trade was made the other way. THREE screens move with it, because they
-are one answer rendered three ways: the board, its record ticker, and the
+are one answer rendered three ways: the board, its record wall, and the
 FAKT 1 / FAKT 2 band on Savdo dinamikasi, whose tiles are built from these
 rows. What that discloses to every account: per seller and per team, FAKT 1 /
 FAKT 2 money, order counts, conversion and rank — no deal rows, no customers,

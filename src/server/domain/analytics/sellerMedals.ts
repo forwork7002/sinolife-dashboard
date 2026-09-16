@@ -1,5 +1,5 @@
 /**
- * Sotuvchilar medallari — lavha, daraja va medallar.
+ * Sotuvchilar medallari — daraja, gerb va medallar.
  *
  * SOF FUNKSIYA, ATAYLAB. Bazaga tegmaydi, React'ga tegmaydi va bitta ham
  * o'zbek so'zi chiqarmaydi — medalning SABABI bu yerda strukturaviy (qaysi
@@ -348,7 +348,7 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
       d.medals[index] = {
         ...seen,
         count: seen.count + 1,
-        // ENG OXIRGI SABAB QOLADI: lavha «qachon oldi» deganda yangisini
+        // ENG OXIRGI SABAB QOLADI: gerb/taxta «qachon oldi» deganda yangisini
         // ko'rsatadi — eskisi hikoya, yangisi yangilik.
         at: at !== null && (seen.at === null || at > seen.at) ? at : seen.at,
         amountMinor: detail.amountMinor ?? seen.amountMinor,
@@ -586,7 +586,7 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
     HOSILA FAKT, XOTIRA EMAS. E'lon («endi USTA») brauzer xotirasiga
     tayansa ikki televizor ikki xil e'lon qilardi; kunlik faktlar esa
     savolga o'zi javob beradi. Kunlik fakt yo'q sotuvchida null — e'lon
-    yo'q, lavha bor.
+    yo'q, daraja bor.
   */
   const daysByEmployee = new Map<string, SellerDayFact[]>()
   for (const d of input.days) {
