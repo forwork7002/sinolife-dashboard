@@ -70,4 +70,36 @@ describe('the television board switches layout on one width', () => {
   it('lights the pressed fact in ink, never in a hue', () => {
     expect(css).toMatch(/\.tv-fakt-tab\[aria-pressed='true'\] \{\s*background: var\(--ink-primary\);\s*color: var\(--surface\);/)
   })
+
+  /*
+    1366 — 720p televizor yoki zoom qilingan panel: ikki ustun saqlanadi, hamma
+    narsa 0.8× (spec §9). Gerb va halqa piksel o'lchamlari CSS'da, shrift
+    shkalasi `:root` da — ikkalasi bitta 1599 chegarasida.
+  */
+  it('scales the crest, halo, seats and rows down under 1600 (spec §9)', () => {
+    const narrow = css.slice(css.indexOf('@media (max-width: 1599px) {\n  .crest--row'))
+    const block = narrow.slice(0, narrow.indexOf('\n}\n') + 3)
+    expect(block).toContain('.crest--row { width: 48px; height: 16px; }')
+    expect(block).toContain('.crest--seat { width: 62px; height: 21px; }')
+    expect(block).toMatch(/\.halo--lg \{[^}]*width: 56px;/)
+    expect(block).toMatch(/\.halo \{[^}]*width: 48px;/)
+    expect(block).toContain('.row { height: 44px; }')
+    expect(block).toMatch(/\.seat--1 \{[^}]*max-width: 365px;/)
+    expect(block).toMatch(/\.seat \{[^}]*max-width: 246px;/)
+  })
+
+  /*
+    Telefon — televizor emas (spec §9): ustunlar bittadan (`.tv-switch`),
+    qator tasma · rank · gerb · ism · FAKT 2; FAKT 1, buyurtma, konv. va
+    medallar yashirin. Markup o'zgarmaydi — uyalar `nth-child` bilan yopiladi.
+  */
+  it('collapses a phone row to band · rank · crest · name · FAKT 2 and hides the desk columns', () => {
+    const phone = css.slice(css.indexOf('@media (max-width: 1279px) {\n  .tv-podium'))
+    const block = phone.slice(0, phone.indexOf('\n}\n') + 3)
+    expect(block).toMatch(/\.tv-cols,\s*\.row \{\s*grid-template-columns: 8px 44px 58px minmax\(0, 1fr\) 132px;/)
+    expect(block).toMatch(/\.tv-cols > span:nth-child\(5\),\s*\.tv-cols > span:nth-child\(7\),\s*\.tv-cols > span:nth-child\(8\),\s*\.tv-cols > span:nth-child\(9\),\s*\.row > \*:nth-child\(5\),\s*\.row > \*:nth-child\(7\),\s*\.row > \*:nth-child\(8\),\s*\.row > \*:nth-child\(9\) \{\s*display: none;/)
+    expect(block).toMatch(/\.tv-tcols,\s*\.trow \{\s*grid-template-columns: 32px minmax\(0, 1fr\) 36px 124px 52px;/)
+    expect(block).toMatch(/\.trow > \*:nth-child\(6\),[\s\S]*?display: none;/)
+    expect(block).toMatch(/\.seat,\s*\.seat--1 \{\s*flex: 1 1 100%;/)
+  })
 })

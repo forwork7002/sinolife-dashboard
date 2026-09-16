@@ -2822,6 +2822,104 @@ p {
   animation: medal-new 400ms var(--ease-out) both;
 }
 
+/* ---- 1366 va tor televizor (spec §9): 0.8× — gerb 48×16 / 62×21, halqa 56/48, qator 44,
+   o'rindiq 0.8× (365 / 246), gridlar torroq; shrift shkalasi `:root` da 36/20/14/12. ---- */
+@media (max-width: 1599px) {
+  .crest--row { width: 48px; height: 16px; }
+  .crest--seat { width: 62px; height: 21px; }
+  .crest--legend { width: 34px; height: 11px; }
+  .halo {
+    width: 48px;
+    height: 48px;
+    font-size: 26px;
+  }
+  .halo--lg {
+    width: 56px;
+    height: 56px;
+    font-size: 30px;
+  }
+  .seat {
+    max-width: 246px;
+    gap: 5px;
+    padding: 10px 12px 10px 20px;
+  }
+  .seat--1 {
+    max-width: 365px;
+    padding: 10px 14px 10px 20px;
+  }
+  .seat::before { width: 8px; }
+  .seat__name { font-size: 18px; }
+  .seat__medals { gap: 10px; }
+  .medal {
+    width: 20px;
+    height: 20px;
+  }
+  .row { height: 44px; }
+  .tv-cols,
+  .row {
+    grid-template-columns: 8px 44px 58px minmax(0, 1fr) 84px 136px 124px 52px 60px;
+    padding-right: 12px;
+  }
+  .trow { height: 52px; }
+  .tv-tcols,
+  .trow {
+    grid-template-columns: 32px minmax(0, 1fr) 36px 124px 52px 92px 44px 52px;
+    column-gap: 6px;
+  }
+  .tv-legend { gap: 10px; }
+}
+
+/* ---- telefon (spec §9): ustunlar bittadan (`.tv-switch`, TV BOARD); o'rindiqlar ustma-ust;
+   qator tasma · rank · gerb · ism · FAKT 2 — FAKT 1, buyurtma, konv., medallar yashirin.
+   Uyalar `nth-child` bilan: 5 medallar, 7 FAKT 1, 8 buyurtma, 9 konv. (sotuvchilar);
+   6 FAKT 1, 7 buyurtma, 8 konv. (komandalar). Markup o'zgarmaydi. ---- */
+@media (max-width: 1279px) {
+  .tv-podium {
+    flex-wrap: wrap;
+    align-items: stretch;
+    padding: 12px 12px 4px;
+  }
+  .seat,
+  .seat--1 {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  .tv-cols,
+  .row {
+    grid-template-columns: 8px 44px 58px minmax(0, 1fr) 132px;
+    padding-right: 12px;
+  }
+  .tv-cols > span:nth-child(5),
+  .tv-cols > span:nth-child(7),
+  .tv-cols > span:nth-child(8),
+  .tv-cols > span:nth-child(9),
+  .row > *:nth-child(5),
+  .row > *:nth-child(7),
+  .row > *:nth-child(8),
+  .row > *:nth-child(9) {
+    display: none;
+  }
+  .tv-tcols,
+  .trow {
+    grid-template-columns: 32px minmax(0, 1fr) 36px 124px 52px;
+  }
+  .tv-tcols > span:nth-child(6),
+  .tv-tcols > span:nth-child(7),
+  .tv-tcols > span:nth-child(8),
+  .trow > *:nth-child(6),
+  .trow > *:nth-child(7),
+  .trow > *:nth-child(8) {
+    display: none;
+  }
+  .tv-legend {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 8px 12px;
+    row-gap: 6px;
+    white-space: normal;
+  }
+}
+
 /* EFIR — kamaytirilgan harakat: hech narsa qimirlamaydi. Keyingi vazifalarning
    bo'laklari SHU izohdan OLDIN qo'shiladi, ya'ni bu blok bo'limning oxirida qoladi. */
 @media (prefers-reduced-motion: reduce) {
