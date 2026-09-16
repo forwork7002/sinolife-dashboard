@@ -610,9 +610,14 @@ describe('watermark after a run that skipped records', () => {
 
   it('leaves entities that cannot lose the race exactly where they were', () => {
     // DEAL_ITEMS reads the state the DEALS pass left in this process rather
-    // than a watermark, and CALLS links its deal optionally instead of
-    // skipping. Rewinding either would be cost with nothing to buy.
-    for (const entity of ['EMPLOYEES', 'CUSTOMERS', 'DEAL_ITEMS', 'CALLS'] as const) {
+    // than a watermark. Rewinding it would be cost with nothing to buy.
+    //
+    // CALLS WAS IN THIS LIST UNTIL 2026-09-16, and it is still true that it
+    // cannot lose THIS race — it links its deal optionally instead of
+    // skipping, so a skip rewind buys it nothing. But it does rewind now, on
+    // every run, for an unrelated reason: see the settle-lookback block at the
+    // end of this file. Asserting it stays put here would pin the bug.
+    for (const entity of ['EMPLOYEES', 'CUSTOMERS', 'DEAL_ITEMS'] as const) {
       expect(nextWatermark(entity, NOW, 5)).toEqual(NOW)
     }
   })
@@ -659,5 +664,49 @@ describe('watermark after a run that skipped records', () => {
     // history table and without the watermark ever standing still.
     expect(table.rows.has('h-1')).toBe(true)
     expect((await store.getCursor('DEMO', 'STAGE_HISTORY'))!.getTime()).toBe(NOW.getTime())
+  })
+})
+
+/**
+ * THE SETTLE LOOKBACK — A RECORD THAT WAS WRITTEN BEFORE IT WAS FINISHED.
+ *
+ * Different from the skip lookback above, and the difference is the point.
+ * That one rewinds after a run that DROPPED a row. CALLS drops nothing: it
+ * writes every call it is shown. The trouble is that
+ * `voximplant.statistic.get` answers with the call's ELAPSED duration, so an
+ * incremental pass reading from its own watermark picks a call up while it is
+ * still being spoken, stores that, and advances past the call for good.
+ *
+ * Production, 2026-08-28 to 2026-09-12: every day imported by the per-minute
+ * pass carries a maximum duration of about one sync interval — a week of
+ * 26 511 calls whose longest conversation was six minutes — and a connected
+ * share of 11.6% against a normal 31%.
+ */
+describe('watermark for a record that settles after it is first read', () => {
+  it('moves CALLS back three hours although nothing was skipped', () => {
+    expect(nextWatermark('CALLS', NOW, 0).getTime()).toBe(NOW.getTime() - 3 * 60 * 60_000)
+  })
+
+  it('leaves an entity with no settle lookback alone on a clean run', () => {
+    expect(nextWatermark('CUSTOMERS', NOW, 0)).toEqual(NOW)
+    expect(nextWatermark('DEALS', NOW, 0)).toEqual(NOW)
+  })
+
+  it('takes the LARGER lookback when both apply, never their sum', () => {
+    /*
+      They are two reasons to re-read the same stretch. Adding them would widen
+      the window for no extra record.
+    */
+    // DEALS skipping wants 95 minutes and has no settle lookback.
+    expect(nextWatermark('DEALS', NOW, 3).getTime()).toBe(NOW.getTime() - 95 * 60_000)
+    // CALLS never skips, and three hours applies whether it did or not.
+    expect(nextWatermark('CALLS', NOW, 3).getTime()).toBe(NOW.getTime() - 3 * 60 * 60_000)
+  })
+
+  it('cannot stall — it is derived from THIS run start, so it advances every tick', () => {
+    const later = new Date(NOW.getTime() + 30 * 60_000)
+    expect(nextWatermark('CALLS', later, 0).getTime()).toBeGreaterThan(
+      nextWatermark('CALLS', NOW, 0).getTime(),
+    )
   })
 })

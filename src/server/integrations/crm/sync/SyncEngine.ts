@@ -82,22 +82,59 @@ const SKIP_LOOKBACK_MS: Partial<Record<SyncEntityValue, number>> = {
 }
 
 /**
+ * How far back an entity re-reads on EVERY run, so a record can settle.
+ *
+ * DIFFERENT FROM `SKIP_LOOKBACK_MS` ABOVE, AND THE DIFFERENCE IS THE WHOLE
+ * POINT. That one fires after a run that dropped something, because the row we
+ * wanted was not written. This one fires always, because the row WAS written
+ * and was not finished: `voximplant.statistic.get` reports a call's ELAPSED
+ * duration, so reading from the watermark picks calls up mid-conversation,
+ * stores `CALL_DURATION` as whatever had happened so far, and then advances
+ * past them for good. CALLS is absent from the table above for a reason that
+ * still holds — it never skips — and present here for one that has nothing to
+ * do with skipping.
+ *
+ * Measured on production: sixteen days imported that way (2026-08-28 to
+ * 2026-09-12) carry a per-day maximum duration of roughly one sync interval —
+ * a week of 26 511 calls whose longest conversation was six minutes — and a
+ * connected share of 11.6% against a normal 31%, because a leg caught mid-dial
+ * has not been given its code 200 yet either. `src/lib/callQuality.ts` dates
+ * that damage for the reader; this is what stops it recurring.
+ *
+ * THREE HOURS, NOT THIRTY MINUTES. CALLS rides the half-hourly reference pass,
+ * so a lookback shorter than the interval leaves a call that started just
+ * before a pass read exactly once. Three hours reads every call at least twice
+ * — roughly 560 rows and twelve requests per pass, against a portal that has
+ * refused us for overload twice this month. The upsert overwrites
+ * `durationSec`, `connected` and `failedCode` on conflict (only `createdAt` is
+ * insert-only in `CALL_COLUMNS`), so the second read corrects the row.
+ */
+const SETTLE_LOOKBACK_MS: Partial<Record<SyncEntityValue, number>> = {
+  CALLS: 3 * 60 * 60_000,
+}
+
+/**
  * Where the next incremental run starts reading.
  *
- * `startedAt`, moved back by this entity's lookback when the run dropped
- * anything — and only then, so a clean run costs nothing and the common case
- * is unchanged. It can never stall: the value is always derived from THIS
- * run's start, so it advances by a whole tick every tick however many records
- * keep being skipped, which is the property blocking on skips did not have.
+ * `startedAt`, moved back by the LARGER of two lookbacks: this entity's skip
+ * lookback when the run dropped anything, and its settle lookback always. A
+ * clean run of an entity with no settle lookback costs nothing and is
+ * unchanged. It can never stall: the value is always derived from THIS run's
+ * start, so it advances by a whole tick every tick however many records keep
+ * being skipped or re-read, which is the property blocking on skips did not
+ * have.
  */
 export function nextWatermark(
   entity: SyncEntityValue,
   startedAt: Date,
   skipped: number,
 ): Date {
-  const lookback = SKIP_LOOKBACK_MS[entity] ?? 0
-  if (skipped === 0 || lookback === 0) return startedAt
-  return new Date(startedAt.getTime() - lookback)
+  const settle = SETTLE_LOOKBACK_MS[entity] ?? 0
+  const skip = skipped === 0 ? 0 : (SKIP_LOOKBACK_MS[entity] ?? 0)
+  // The larger, not the sum: two reasons to re-read the same stretch, and
+  // adding them would widen the window for no extra record.
+  const lookback = Math.max(settle, skip)
+  return lookback === 0 ? startedAt : new Date(startedAt.getTime() - lookback)
 }
 
 // ---------------------------------------------------------------------------
