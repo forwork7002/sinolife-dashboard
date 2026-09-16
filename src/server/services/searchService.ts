@@ -23,6 +23,7 @@ import { toMoneyDto, money, type MoneyDto } from '@/server/domain/money/money'
 import type { Principal } from '@/server/auth/rbac'
 import { canSeeSection, type RowScope } from '@/server/auth/rbac'
 import type { SearchRepository } from '@/server/repositories/searchRepository'
+import { classifySearchTerm } from '@/lib/searchTerm'
 
 export interface SearchHitDto {
   readonly id: string
@@ -173,7 +174,7 @@ export class SearchService {
       query,
       // An empty group would render as a heading with nothing under it.
       groups: groups.filter((group) => group.items.length > 0),
-      tooShort: query.length > 0 && query.length < 3,
+      tooShort: classifySearchTerm(query).status === 'short',
     }
   }
 }

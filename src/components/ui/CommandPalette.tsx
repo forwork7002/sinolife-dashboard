@@ -78,6 +78,7 @@ export function CommandPalette({
   placeholder,
   onQueryChange,
   busy,
+  emptyHint,
 }: {
   readonly open: boolean
   readonly onClose: () => void
@@ -94,6 +95,11 @@ export function CommandPalette({
   readonly onQueryChange?: (query: string) => void
   /** A lookup is in flight; say so rather than showing "nothing found". */
   readonly busy?: boolean
+  /**
+   * Why the box is empty when it is the TERM that is at fault — «kamida 5 ta
+   * raqam» — in place of the generic advice. Null means the generic line.
+   */
+  readonly emptyHint?: string | null
 }) {
   /*
     Closed means UNMOUNTED, not hidden. The dialog below holds its transient
@@ -111,6 +117,7 @@ export function CommandPalette({
       placeholder={placeholder}
       onQueryChange={onQueryChange}
       busy={busy}
+      emptyHint={emptyHint}
     />,
     document.body,
   )
@@ -122,12 +129,14 @@ function PaletteDialog({
   placeholder = 'Qidirish yoki buyruq…',
   onQueryChange,
   busy = false,
+  emptyHint = null,
 }: {
   readonly groups: readonly CommandGroup[]
   readonly onClose: () => void
   readonly placeholder?: string
   readonly onQueryChange?: (query: string) => void
   readonly busy?: boolean
+  readonly emptyHint?: string | null
 }) {
   const [query, setQuery] = useState('')
   /*
@@ -337,7 +346,7 @@ function PaletteDialog({
                 {busy ? 'Qidirilmoqda…' : 'Hech narsa topilmadi'}
               </p>
               <p className="mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
-                {busy ? 'Bir soniya' : 'Telefon raqam, ID yoki ism bilan urinib koʻring'}
+                {busy ? 'Bir soniya' : (emptyHint ?? 'Telefon raqam, ID yoki ism bilan urinib koʻring')}
               </p>
             </div>
           ) : (
