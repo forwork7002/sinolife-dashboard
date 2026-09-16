@@ -154,18 +154,25 @@ envs:
     scope: RUN_TIME
     value: "1"
 
-  # Seconds between sync ticks, and how many ticks between reference-data reads.
+  # Seconds between sync ticks, and how many TICKS between the slower passes.
+  #
+  # THE TICK LENGTH IS A MULTIPLIER ON THE TWO BELOW, and it is the thing that
+  # made the live app and this file disagree without either looking wrong. On
+  # 2026-09-16 the deployed spec carried 180 here while this file said 60 — so
+  # `SYNC_SWEEP_EVERY` counted in ticks meant SIX hours in this file and
+  # EIGHTEEN on the running app. Read all three together or none of them.
   - key: SYNC_INTERVAL_SEC
     scope: RUN_TIME
-    value: "60"
+    value: "120"
   - key: SYNC_REFERENCE_EVERY
     scope: RUN_TIME
-    # Three-hourly since 2026-09-16 — see the constant's comment in
-    # scripts/syncWorker.ts. THIS KEY IS WHY THE CODE DEFAULT ALONE IS NOT
+    # 90 ticks x 120 s = THREE HOURS. The code default is 180, which is the
+    # same three hours at the code's own default 60 s tick — the number differs
+    # here because the tick does. THIS KEY IS WHY THE CODE DEFAULT ALONE IS NOT
     # ENOUGH: it is set here, so it overrides the default, and the live spec
-    # overrides this one. Changing the default without changing both leaves
-    # production reading reference data 48 times a day and nothing says so.
-    value: "180"
+    # overrides this one. Changing one without the others leaves production
+    # reading reference data on a cadence nobody chose, and nothing says so.
+    value: "90"
 
   # The rolling-hour invocation ceiling — the last line before another
   # portal-wide block. Sized for the worker in portalBudget.ts; set it LOWER
@@ -174,12 +181,13 @@ envs:
     scope: RUN_TIME
     value: "15000"
 
-  # One deletion sweep a day. It walks all 464 000 deal ids, so it is the
-  # largest single thing this integration asks the portal for; raise the
-  # frequency only if a deleted deal surviving a day is actually a problem.
+  # 720 ticks x 120 s = ONE DAY. It walks all 464 000 deal ids, so it is the
+  # largest single thing this integration asks the portal for — about 62% of
+  # everything we now spend. Raise the frequency only if a deleted deal
+  # surviving a day is actually a problem for somebody.
   - key: SYNC_SWEEP_EVERY
     scope: RUN_TIME
-    value: "1440"
+    value: "720"
 
   # The single administrator account, created by the post-deploy job.
   - key: ADMIN_NAME

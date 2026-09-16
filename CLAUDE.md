@@ -1719,10 +1719,18 @@ returning a short read, `sweepByAntiJoin` will not delete on an empty source, an
 no watermark advances except after a clean run — so a refusal costs freshness and
 nothing else.
 
-`DEFAULT_HOURLY_INVOCATIONS` is **15 000**, sized against the measured cadence:
-an ordinary hour ≈ 500, a reference hour ≈ 600, the sweep's hour ≈ 9 800 — and
-the OLD hot path alone ≈ 12 000, so a regression to the fixed fifty-command
-chain trips it **inside one hour** instead of surfacing days later as a 401. It
+`DEFAULT_HOURLY_INVOCATIONS` is **15 000**, and the number is set by the one
+expensive hour that is legitimate: the sweep's, at ~9 500. **WHAT IT DOES AND
+DOES NOT CATCH, stated honestly, because an earlier draft of this paragraph
+claimed more than it can deliver.** It does NOT catch a return to the
+fifty-command chain on its own — that is ~6 000 an hour at the deployed tick,
+comfortably under a ceiling the sweep forces to be high. `portalBudget.test.ts`
+is what catches that, and it is why the test pins an EXACT number. What the
+ceiling catches is the shape neither a test nor a comment can: an UNBOUNDED
+loop. A cursor that stops advancing, a restart storm re-reading 45 days of
+stage history over and over, a full walk retried in a tick loop — the
+2026-09-14 pattern, where 94–97% of a day's traffic was the same 45-day window
+read 11–29 times. Any of those crosses 15 000 in minutes. It
 is `BITRIX24_HOURLY_INVOCATIONS`, so a portal under strain can be throttled
 **without a deploy**, which is the one thing nobody could do during either block.
 `scripts/import.ts` raises it to 250 000 — a full import is a deliberate act
@@ -1790,9 +1798,31 @@ again (see *Deploy*: take the live spec, edit it, apply that). A cadence changed
 in one of the three places and not the others is invisible and silent, which is
 how it would come back.
 
-**THE WHOLE DAY, BEFORE AND AFTER:** hot path 288 000 → 11 500, sweep 37 200 →
-9 300, reference ~48 passes → 8. **~330 000 → ~21 000 method invocations a day,
-a 94% cut**, with no change to what any screen reads.
+**THE WHOLE DAY, BEFORE AND AFTER — AND THE TICK LENGTH IS PART OF THE SUM.**
+Every figure above counts INVOCATIONS PER TICK; the day depends on how long a
+tick is, and **the deployed app and this repository disagreed about that until
+2026-09-16**. `.do/app.yaml` said `SYNC_INTERVAL_SEC` 60 and the LIVE spec said
+180, so the same `SYNC_SWEEP_EVERY` meant six hours here and eighteen there, and
+neither file looked wrong on its own. Read the tick and the two tick-COUNTS
+together or none of them.
+
+| | as deployed before | as deployed now |
+|---|---|---|
+| tick | 180 s | **120 s** |
+| hot path | ~96 000 /day | **~5 800** |
+| deletion sweep | ~12 400 /day (18 h) | **~9 300** (24 h) |
+| reference | 16 passes/day (90 min) | **8** (3 h) |
+| **total** | **~108 000** | **~15 000, an 86% cut** |
+
+At the code's own default 60 s tick the old hot path is ~288 000 a day, which is
+the figure the commit message quotes; production was a third of that because its
+tick was three times longer. Both are true and they are not the same number.
+
+The tick went to **120 s** on the client's instruction («2 minutda yangilansin»)
+rather than back to the code's 60: the load cut bought the freshness back, and
+two minutes was what they wanted. **The sweep is now ~62% of everything we
+spend**, so it is where the next cut comes from if one is ever needed. No screen
+reads anything different.
 
 **WHAT THAT LEAVES, AND WHERE THE NEXT LEVER IS.** ~288 000 → ~11 500
 invocations a day on the hot path, against the deletion sweep's unchanged
