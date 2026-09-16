@@ -67,3 +67,74 @@ describe('EFIR shrift shkalasi', () => {
     }
   })
 })
+
+/** EFIR bo'limi — bannerdan TV BOARD bannerigacha. */
+const EFIR = () => CSS.slice(from('* EFIR —'), from('* TV BOARD — the sellers board'))
+/**
+ * Izohlarsiz — bannerlar tokenlarni SO'Z bilan tilga oladi, qoida bilan emas.
+ * Bo'lim BANNER ICHIDAN boshlanadi (marker banner ochilgandan KEYIN turadi),
+ * shuning uchun avval o'sha yopilmagan izohning qolgani tashlanadi — aks holda
+ * bannerning o'z matni qoida bo'lib o'qilardi.
+ */
+const strip = (s: string) => s.replace(/^[\s\S]*?\*\//, '').replace(/\/\*[\s\S]*?\*\//g, '')
+
+describe('EFIR bo‘limi — rang shartnomasi', () => {
+  it('bo‘lim bor va TV BOARD dan oldin turadi; asosiy selektorlar', () => {
+    for (const sel of [
+      '[data-tier="0"]', '[data-tier="6"]', '.crest {', '.crest--row', '.crest--seat', '.crest--legend',
+      '.crest__crown', '.medal {', '.medal.rare', '.medal-count', '.halo {', '.halo--lg', '.tv-legend {',
+      '.legend__rung',
+    ]) {
+      expect(EFIR(), sel).toContain(sel)
+    }
+  })
+
+  it('literal rang yo‘q — faqat var(--…) va color-mix', () => {
+    const code = strip(EFIR())
+    expect(code).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
+    expect(code).not.toMatch(/\brgba?\(/)
+    expect(code).not.toMatch(/\bhsla?\(/)
+  })
+
+  it('`--tier-N` faqat `[data-tier="N"]` orqali o‘qiladi; 0-daraja — kontur', () => {
+    const code = strip(EFIR())
+    for (let n = 1; n <= 6; n += 1) expect(code).toContain(`[data-tier="${n}"] { --tier: var(--tier-${n}); }`)
+    expect(code).toContain('[data-tier="0"] { --tier: var(--border-strong); }')
+    // Boshqa hech qayerda `--tier-N` o'qilmaydi — komponent faqat `--tier` ni biladi.
+    expect(code.match(/var\(--tier-\d\)/g) ?? []).toHaveLength(6)
+  })
+
+  it('seriya rangi yo‘q — daraja ham, medal ham `--series-*` ni o‘qimaydi', () => {
+    expect(strip(EFIR())).not.toContain('--series-')
+  })
+
+  /*
+    PODIUM METALLARI — YOZILGAN ISTISNO RO'YXATI (spec §1, §3): Oy oilasi
+    maydoni va barcha medallarning asosiy oltini (`.medal`), rank halqasi
+    (`.halo`), Legenda toji (`.crest__crown`), komandalar ustunidagi metall
+    raqam (`.trow__rank`), rekord yorlig'i (`.record__k`). Boshqa hech qanday
+    selektor `--medal-*` ni o'qimaydi — tasma, gerb katakchasi, ism, raqam.
+  */
+  it('podium metallari faqat yozilgan istisnolarda', () => {
+    const code = strip(EFIR())
+    const allowed = /^(\.medal\b|\.halo\b|\.crest__crown\b|\.trow__rank\b|\.record__k\b)/
+    const rules = code.match(/[^{}]+\{[^{}]*\}/g) ?? []
+    expect(rules.length).toBeGreaterThan(10)
+    for (const rule of rules) {
+      if (!rule.includes('--medal-')) continue
+      const selector = rule.slice(0, rule.indexOf('{')).trim()
+      expect(selector, rule.trim()).toMatch(allowed)
+    }
+  })
+
+  it('kamaytirilgan harakatda hech narsa qimirlamaydi — blok bo‘limning oxirida', () => {
+    const efir = EFIR()
+    const reduced = efir.slice(efir.lastIndexOf('@media (prefers-reduced-motion: reduce)'))
+    for (const sel of ['.crest__cell--fill', '.medal--new', '.tv-promo', '.row__band', '.seat::before', '.seat__bar i']) {
+      expect(reduced, sel).toContain(sel)
+    }
+    expect(reduced).toContain('animation: none')
+    expect(reduced).toContain('transition: none')
+    expect(efir.indexOf('/* EFIR — kamaytirilgan harakat')).toBeGreaterThan(efir.indexOf('.legend__rung'))
+  })
+})

@@ -3164,6 +3164,158 @@ p {
   }
 }
 
+/* ==========================================================================
+ * EFIR — sotuvchilar taxtasi: gerb, medal, halqa, legenda, o'rindiq, qator, komandalar, e'lon
+ *
+ * Spec: docs/superpowers/specs/2026-09-16-efir-taxta-design.md. Mock:
+ * docs/superpowers/specs/assets/2026-09-16-efir/efir.html — o'lchamlar shundan.
+ *
+ * BITTA AKSENT, BITTA METALL. Daraja `--tier` orqali keladi: `[data-tier="N"]`
+ * uni `--tier-N` ga bog'laydi va komponentlar `--tier-N` ni hech qachon
+ * to'g'ridan-to'g'ri o'qimaydi (oila ORDINAL — token blokidagi izoh).
+ * `--medal-*` faqat yozilgan istisnolarda: `.medal` (Oy oilasi o'z
+ * metallida, qolgan 11 kod oltin), `.halo`, `.crest__crown`, `.trow__rank`,
+ * `.record__k`. `--series-*` bu bo'limda yo'q. Literal rang yo'q.
+ *
+ * O'lchamlar pikselda (1920) va `@media (max-width: 1599px)` da 0.8×
+ * (spec §9) — `--tv-*` shkalasi `:root` da. Sirtlar: ustun `--surface`,
+ * o'rindiq `--surface-raised`, chiziqlar `--border`, bo'sh yo'l `--track`.
+ * ======================================================================== */
+
+/* ---- daraja: 0…6 → --tier. 0-daraja faqat kontur (`--border-strong`). ---- */
+[data-tier="0"] { --tier: var(--border-strong); }
+[data-tier="1"] { --tier: var(--tier-1); }
+[data-tier="2"] { --tier: var(--tier-2); }
+[data-tier="3"] { --tier: var(--tier-3); }
+[data-tier="4"] { --tier: var(--tier-4); }
+[data-tier="5"] { --tier: var(--tier-5); }
+[data-tier="6"] { --tier: var(--tier-6); }
+
+/* ---- gerb (pagon): olti chevron `#ch`, yoniq — --tier, o'chiq — --track ---- */
+.crest {
+  flex: none;
+  display: inline-block;
+  vertical-align: middle;
+  /* Legenda toji oltinchi katakcha USTIDA, viewBox'dan tashqarida. */
+  overflow: visible;
+}
+.crest--row { width: 60px; height: 20px; }
+.crest--seat { width: 78px; height: 26px; }
+.crest--legend { width: 42px; height: 14px; }
+.crest .on { fill: var(--tier); }
+.crest .off { fill: var(--track); }
+.crest__crown { fill: var(--medal-gold); }
+
+/* ---- medal: 24 birlik, faqat-fill, bitta metall; kesib olish — sirt rangi ---- */
+.medal {
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+  overflow: visible;
+  /* Gravyura rangi — medal turgan sirt. Qatorda ustun sirti; o'rindiq o'zinikini beradi. */
+  --cut: var(--surface);
+  fill: var(--medal-gold);
+}
+.medal[data-medal="month-silver"] { fill: var(--medal-silver); }
+.medal[data-medal="month-bronze"] { fill: var(--medal-bronze); }
+.medal .cut,
+.medal .medal__num { fill: var(--cut); }
+.medal .medal__num {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: 11px;
+}
+/* Nodir yettilik — yumshoq oltin soya; yorug'da token shaffof, ya'ni hech narsa. */
+.medal.rare { filter: drop-shadow(0 0 5px var(--glow-rare)); }
+.medal-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.medal-count {
+  font-size: var(--tv-m);
+  font-weight: 600;
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- halqa: rank raqami metall halqada — 3 px halqa + 8 px xira tashqi halqa ---- */
+.halo {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums lining-nums;
+  --metal: var(--ink-muted);
+  color: var(--metal);
+  background: var(--surface);
+  box-shadow:
+    0 0 0 3px var(--metal),
+    0 0 0 8px color-mix(in oklab, var(--metal) 14%, transparent);
+}
+.halo--lg {
+  width: 80px;
+  height: 80px;
+  font-size: var(--tv-xl);
+}
+.halo[data-metal="gold"] { --metal: var(--medal-gold); }
+.halo[data-metal="silver"] { --metal: var(--medal-silver); }
+.halo[data-metal="bronze"] { --metal: var(--medal-bronze); }
+
+/* ---- legenda: ustun pastida 28 px, olti gerb + so'z + ostona ---- */
+.tv-legend {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 28px;
+  padding: 0 16px;
+  border-top: 1px solid var(--border);
+  font-size: var(--tv-s);
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.tv-legend__title {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.legend__rung {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.legend__rung b {
+  color: var(--ink-secondary);
+  font-weight: 600;
+}
+.legend__rung i {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+/* EFIR — kamaytirilgan harakat: hech narsa qimirlamaydi. Keyingi vazifalarning
+   bo'laklari SHU izohdan OLDIN qo'shiladi, ya'ni bu blok bo'limning oxirida qoladi. */
+@media (prefers-reduced-motion: reduce) {
+  .crest__cell--fill,
+  .medal--new,
+  .tv-promo {
+    animation: none;
+  }
+  .row__band,
+  .seat::before,
+  .seat__bar i {
+    transition: none;
+  }
+}
+
 /* ===========================================================================
  * TV BOARD — the sellers board as it is read on the floor's television
  *

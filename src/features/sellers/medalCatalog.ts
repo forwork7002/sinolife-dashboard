@@ -1,4 +1,4 @@
-import type { MedalCode } from '@/lib/api'
+import type { MedalCode, SellerMedalDto } from '@/lib/api'
 import { formatCompactUzs } from '@/lib/format'
 
 /**
@@ -76,19 +76,30 @@ export const MEDAL_ORDER: readonly MedalCode[] = Object.freeze([
 export interface LadderRung {
   readonly level: number
   readonly title: string
-  /** Narvon legendasi ostidagi yozuv — aytiladigan raqam. */
+  /** Eski aytiladigan yorliq («10 mln») — `usePromotions.thresholdLabel` uni hali tashiydi. */
   readonly thresholdLabel: string
+  /** Ostona so'mda — legenda va e'lon to'liq raqam yozadi (spec §1). Yangi — birinchi so'm, raqamsiz. */
+  readonly thresholdSom: number | null
 }
 
 /** Mirrors `sellerMedals.LEVEL_THRESHOLDS_MINOR` / `LEVEL_TITLES`. */
 export const LADDER: readonly LadderRung[] = Object.freeze([
-  { level: 1, title: 'Yangi', thresholdLabel: 'birinchi soʻm' },
-  { level: 2, title: 'Sotuvchi', thresholdLabel: '10 mln' },
-  { level: 3, title: 'Katta sotuvchi', thresholdLabel: '30 mln' },
-  { level: 4, title: 'Usta', thresholdLabel: '100 mln' },
-  { level: 5, title: 'Ustoz', thresholdLabel: '300 mln' },
-  { level: 6, title: 'Legenda', thresholdLabel: '1 mlrd' },
+  { level: 1, title: 'Yangi', thresholdLabel: 'birinchi soʻm', thresholdSom: null },
+  { level: 2, title: 'Sotuvchi', thresholdLabel: '10 mln', thresholdSom: 10_000_000 },
+  { level: 3, title: 'Katta sotuvchi', thresholdLabel: '30 mln', thresholdSom: 30_000_000 },
+  { level: 4, title: 'Usta', thresholdLabel: '100 mln', thresholdSom: 100_000_000 },
+  { level: 5, title: 'Ustoz', thresholdLabel: '300 mln', thresholdSom: 300_000_000 },
+  { level: 6, title: 'Legenda', thresholdLabel: '1 mlrd', thresholdSom: 1_000_000_000 },
 ])
+
+/** Legenda har keyingi milliardda II, III … Mirrors `sellerMedals.LEGENDA_STEP_MINOR`. */
+export const LEGENDA_STEP_SOM = 1_000_000_000
+
+/** Shu darajaning ostonasi so'mda; 1-darajada null (birinchi so'm), 6-darajada bosqich × 1 mlrd. */
+export function thresholdSomOf(level: number, legendaTier: number): number | null {
+  if (level >= 6) return Math.max(1, legendaTier) * LEGENDA_STEP_SOM
+  return LADDER[level - 1]?.thresholdSom ?? null
+}
 
 export function romanOf(n: number): string {
   const table: readonly (readonly [number, string])[] = [
@@ -124,4 +135,67 @@ export function dativeOf(title: string): string {
 /** «127 mln», «9.1 mln», «1.2 mlrd» — `formatCompactUzs` ning o'zi (o'nlik nuqta bilan), nom aniqroq. */
 export function mlnLabel(som: number): string {
   return formatCompactUzs(som)
+}
+/* ---------------------------------------------------------------------------
+ * EFIR — belgi xaritasi va tartib (spec §3). Mirrors `gen_efir.py`
+ * (MEDAL_SYM, MONTH_NUM, RARE, HIDE_IN_ROWS) — mock va taxta bir xil chizsin.
+ * ------------------------------------------------------------------------- */
+
+export type Metal = 'gold' | 'silver' | 'bronze'
+
+/** Nodir yettilik — faqat qorong'i sahnada yumshoq oltin soya (`.medal.rare`). */
+export const RARE_MEDALS: ReadonlySet<MedalCode> = new Set<MedalCode>([
+  'year-champion',
+  'month-gold',
+  'month-silver',
+  'month-bronze',
+  'day-record',
+  'conversion-master',
+  'streak-fire',
+])
+
+/** Qatorda chizilmaydiganlar: 100 dan 92 tasida bor nishon nishon emas. O'rindiqda bor. */
+export const HIDDEN_IN_ROWS: readonly MedalCode[] = Object.freeze(['first-sale'])
+
+/** Kod → mock `<defs>` dagi belgi. Oy oilasi bitta diskni bo'lishadi; raqam `MONTH_NUMERAL` dan. */
+export const MEDAL_SYMBOL: Readonly<Record<MedalCode, string>> = Object.freeze({
+  'month-gold': 'm-month',
+  'month-silver': 'm-month',
+  'month-bronze': 'm-month',
+  'year-champion': 'm-year',
+  'streak-fire': 'm-fire',
+  'streak-steady': 'm-steady',
+  'day-record': 'm-bolt',
+  'day-winner': 'm-sun',
+  'conversion-master': 'm-target',
+  'clean-month': 'm-shield',
+  jump: 'm-jump',
+  rookie: 'm-star',
+  'first-sale': 'm-sprout',
+  'work-month': 'm-cal',
+})
+
+/** Oy diskiga o'yiladigan raqam — 1/2/3. */
+export const MONTH_NUMERAL: Readonly<Partial<Record<MedalCode, '1' | '2' | '3'>>> = Object.freeze({
+  'month-gold': '1',
+  'month-silver': '2',
+  'month-bronze': '3',
+})
+
+/** Oy oilasi O'Z metallida, qolgan 11 kod oltin (spec §3). */
+export function metalOfMedal(code: MedalCode): Metal {
+  if (code === 'month-silver') return 'silver'
+  if (code === 'month-bronze') return 'bronze'
+  return 'gold'
+}
+
+/** `MEDAL_ORDER` bo'yicha (eng nodir avval), `hide` dagilar tashlab yuboriladi; kirish o'zgarmaydi. */
+export function sortMedals(
+  medals: readonly SellerMedalDto[],
+  hide: readonly MedalCode[] = [],
+): readonly SellerMedalDto[] {
+  return medals
+    .filter((m) => !hide.includes(m.code))
+    .slice()
+    .sort((a, b) => MEDAL_ORDER.indexOf(a.code) - MEDAL_ORDER.indexOf(b.code))
 }

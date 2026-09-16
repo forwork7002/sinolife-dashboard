@@ -676,7 +676,7 @@ describe('lavha va medallar', () => {
 
   it('belgilar to‘plami sahifada BIR MARTA', () => {
     render(<Board data={RIPE} />)
-    expect(document.querySelectorAll('#khatam')).toHaveLength(1)
+    expect(document.querySelectorAll('#ch')).toHaveLength(1)
   })
 
   it('medal so‘rovi taxtanikidan alohida kalitda va o‘z soatida', () => {

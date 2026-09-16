@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest'
 import { Lavha } from '@/features/sellers/Lavha'
 import { LevelBlock, isNearNextLevel, nextLevelSentence } from '@/features/sellers/LevelBlock'
 import { Medal } from '@/features/sellers/Medal'
-import { MedalDefs } from '@/features/sellers/MedalDefs'
 import { MedalRail } from '@/features/sellers/MedalRail'
 import { Narvon } from '@/features/sellers/Narvon'
 import { RowMedals } from '@/features/sellers/RowMedals'
@@ -13,20 +12,6 @@ import { SpeakingMedal } from '@/features/sellers/SpeakingMedal'
 import { LADDER, MEDALS, MEDAL_ORDER, MEDAL_UNLOCK_LEVEL, dativeOf, levelTitle, mlnLabel } from '@/features/sellers/medalCatalog'
 import { medalReason } from '@/features/sellers/medalReason'
 import type { SellerMedalDto, SellerMedalRowDto } from '@/lib/api'
-
-describe('MedalDefs — sahifaga bir marta o‘rnatiladigan belgilar to‘plami', () => {
-  it('lavha, xatam va 14 medal belgisini id bilan chizadi', () => {
-    const { container } = render(<MedalDefs />)
-    const svg = container.querySelector('svg')!
-    expect(svg.getAttribute('aria-hidden')).toBe('true')
-    for (const id of ['khatam', 'lavha-stars-1', 'lavha-stars-3', 'lavha-plate-3x1', 'lavha-plate-seat', 'lavha-rim-seat', 'lavha-hi-seat']) {
-      expect(container.querySelector(`#${id}`), id).not.toBeNull()
-    }
-    for (const code of MEDAL_ORDER) expect(container.querySelector(`#medal-${code}`), code).not.toBeNull()
-    expect(container.querySelector('#medal-locked')).not.toBeNull()
-    expect(container.querySelector('#medal-club')).toBeNull()
-  })
-})
 
 describe('Lavha', () => {
   it('qator lavhasi: sinf data-level da, yulduz bandi <use> bilan, yozuvsiz', () => {
