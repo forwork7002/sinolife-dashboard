@@ -13,18 +13,18 @@ describe('the network diagnosis names whose problem it is', () => {
       control: ok('1.1.1.1'),
       portal: [dead('46.235.53.69'), dead('195.208.185.4')],
       tls: [],
-      https: null,
+      https: null, tlsSmall: null, tls12: null,
     })
     expect(line).toContain('Bitrix24 bu server manzilini qabul qilmayapti')
   })
 
   it('blames our egress when even the control host does not open', () => {
-    const line = describeReachability({ host: 'h', control: dead('1.1.1.1'), portal: [dead('a')], tls: [], https: null })
+    const line = describeReachability({ host: 'h', control: dead('1.1.1.1'), portal: [dead('a')], tls: [], https: null, tlsSmall: null, tls12: null })
     expect(line).toContain('DigitalOcean tomoni')
   })
 
   it('says when only some portal addresses are dead', () => {
-    const line = describeReachability({ host: 'h', control: ok('1.1.1.1'), portal: [ok('a'), dead('b')], tls: [], https: null })
+    const line = describeReachability({ host: 'h', control: ok('1.1.1.1'), portal: [ok('a'), dead('b')], tls: [], https: null, tlsSmall: null, tls12: null })
     expect(line).toContain('bir qismi')
   })
 

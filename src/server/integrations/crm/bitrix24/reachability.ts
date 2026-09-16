@@ -33,6 +33,13 @@ export interface Reachability {
   readonly tls: readonly AddressProbe[]
   /** One `profile` through node:https rather than fetch, when a webhook is given. */
   readonly https: AddressProbe | null
+  /**
+   * The same handshake with a SMALL ClientHello: classical curves only, and
+   * TLS 1.2. Node 24's default offers a post-quantum key share that makes the
+   * hello ~1.5 KB, and middleboxes on some routes drop exactly that shape.
+   */
+  readonly tlsSmall: AddressProbe | null
+  readonly tls12: AddressProbe | null
 }
 
 /** Cloudflare's resolver: answers 443 everywhere, belongs to nobody involved. */
@@ -60,10 +67,15 @@ export function tcpProbe(address: string, port = 443, timeoutMs = CONNECT_TIMEOU
   So the question moved one layer up, and these two answer it: does the
   handshake finish, and does a request that does NOT go through undici work.
 */
-export function tlsProbe(address: string, servername: string, timeoutMs = 10_000): Promise<AddressProbe> {
+export function tlsProbe(
+  address: string,
+  servername: string,
+  timeoutMs = 10_000,
+  shape: { ecdhCurve?: string; maxVersion?: 'TLSv1.2' | 'TLSv1.3' } = {},
+): Promise<AddressProbe> {
   return new Promise((resolve) => {
     const started = Date.now()
-    const socket = tlsConnect({ host: address, port: 443, servername })
+    const socket = tlsConnect({ host: address, port: 443, servername, ...shape })
     const done = (error: string | null) => {
       socket.destroy()
       resolve({ address, ms: error ? null : Date.now() - started, error })
@@ -98,8 +110,11 @@ export async function checkReachability(webhookUrl: string): Promise<Reachabilit
     ...addresses.map((a) => tcpProbe(a)),
   ])
   const tls = await Promise.all(addresses.map((a) => tlsProbe(a, host)))
+  const first = addresses[0]
+  const tlsSmall = first ? await tlsProbe(first, host, 10_000, { ecdhCurve: 'X25519:P-256' }) : null
+  const tls12 = first ? await tlsProbe(first, host, 10_000, { maxVersion: 'TLSv1.2' }) : null
   const https = /\/rest\//.test(webhookUrl) ? await httpsProbe(`${webhookUrl}profile.json`) : null
-  return { host, portal, control: control!, tls, https }
+  return { host, portal, control: control!, tls, https, tlsSmall, tls12 }
 }
 
 /** One log line a person can act on. */
@@ -120,6 +135,8 @@ export function describeReachability(r: Reachability): string {
   return (
     `tarmoq: ${verdict} | nazorat ${cell(r.control)} | TCP ${r.portal.map(cell).join(', ')}` +
     ` | TLS ${tlsOpen}/${r.tls.length} ${r.tls.map(cell).join(', ')}` +
+    (r.tlsSmall ? ` | kichik-hello ${r.tlsSmall.ms !== null ? `✓${r.tlsSmall.ms}ms` : `✗${r.tlsSmall.error}`}` : '') +
+    (r.tls12 ? ` | TLS1.2 ${r.tls12.ms !== null ? `✓${r.tls12.ms}ms` : `✗${r.tls12.error}`}` : '') +
     (r.https ? ` | node:https ${r.https.ms !== null ? `${r.https.address} ${r.https.ms}ms` : `✗${r.https.error}`}` : '')
   )
 }
