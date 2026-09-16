@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs'
 
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { SellerBoardDto, SellerMedalRowDto } from '@/lib/api'
+import { MedalDefs } from '@/features/sellers/MedalDefs'
+import { resetCelebrations } from '@/features/sellers/usePromotions'
+import type { MedalCode, SellerBoardDto, SellerMedalDto, SellerMedalRowDto } from '@/lib/api'
 import { formatFullUzs, formatUzs } from '@/lib/format'
 
 /**
@@ -114,6 +116,7 @@ const PROPS = {
   fakt: 'auto' as const,
   onFakt: () => {},
   medals: new Map<string, SellerMedalRowDto>(),   // ← qo'shiladi
+  medalsToday: null,
 }
 
 /**
@@ -128,9 +131,11 @@ function Board({ data }: { data: SellerBoardDto }) {
     fakt,
     onFakt: setFakt,
     medals: new Map<string, SellerMedalRowDto>(),
+    medalsToday: null,
   }
   return (
     <>
+      <MedalDefs />
       <SellersColumn data={data} {...props} />
       <TeamsColumn data={data} {...props} />
     </>
@@ -181,6 +186,11 @@ const RIPE = board({
     seller('Yusupova 139 Mahliyo', 3, 41_000_000, 60_000_000, 'Lola'),
     seller('Nodira 118 Karimova', 4, 39_000_000, 52_000_000, 'Gulzora'),
     seller('Aziza 121 Toshmatova', 5, 20_000_000, 31_000_000, null),
+    /* Qator chekkalari: ostonaga yaqin turgan va hali savdo qilmagan ikki
+       sotuvchi. Ular qatorda qoladi — medal oynasi taxtanikidan boshqa, ya'ni
+       davr puli kichkina bo'lsa ham daraja katta bo'lishi mumkin. */
+    seller('Qodirova 188 Zilola', 6, 8_000_000, 11_000_000, 'Lola'),
+    seller('Rustamov 201 Diyor', 7, 0, 0, 'Azizbek'),
   ],
   teams: [
     team('Gulzora', 1, 12, 165_950_000, 206_350_000),
@@ -506,18 +516,18 @@ function medalRow(
 ): SellerMedalRowDto {
   return {
     employeeId,
-    points: 11_000,
-    level: 15,
+    level: 4,
+    legendaTier: 0,
     rankTitle: 'Usta',
-    levelFloor: 10_500,
-    nextLevelAt: 12_000,
-    nextTitle: 'Master',
+    delivered: money(173_000_000),
+    levelFloor: money(100_000_000),
+    nextLevelAt: money(300_000_000),
+    nextTitle: 'Ustoz',
+    promotedOn: null,
     medals: [
       {
         code: 'month-gold',
         count: 3,
-        tier: null,
-        points: 1500,
         at: '2026-08-01',
         amount: money(128_550_000),
         orders: 74,
@@ -535,75 +545,307 @@ const MEDALS = new Map<string, SellerMedalRowDto>([
   [
     'Nodira 118 Karimova',
     medalRow('Nodira 118 Karimova', {
-      points: 3_000,
-      level: 8,
+      level: 3,
       rankTitle: 'Katta sotuvchi',
-      levelFloor: 2_800,
-      nextLevelAt: 3_600,
-      nextTitle: null,
+      delivered: money(81_300_000),
+      levelFloor: money(30_000_000),
+      nextLevelAt: money(100_000_000),
+      nextTitle: 'Usta',
+    }),
+  ],
+  /* 95 mln, 30..100 oralig'ida — 92.9%, ya'ni unvon so'zi ko'karadi. */
+  [
+    'Qodirova 188 Zilola',
+    medalRow('Qodirova 188 Zilola', {
+      level: 3,
+      rankTitle: 'Katta sotuvchi',
+      delivered: money(95_000_000),
+      levelFloor: money(30_000_000),
+      nextLevelAt: money(100_000_000),
+      nextTitle: 'Usta',
+    }),
+  ],
+  /* Hali savdosiz: 0-daraja, unvonsiz, medalsiz. */
+  [
+    'Rustamov 201 Diyor',
+    medalRow('Rustamov 201 Diyor', {
+      level: 0,
+      rankTitle: null,
+      delivered: money(0),
+      levelFloor: money(0),
+      nextLevelAt: money(0.01),
+      nextTitle: 'Yangi',
+      medals: [],
     }),
   ],
 ])
 
 /**
- * PAGON — VA MIJOZ OLIB TASHLASHNI SO'RAGAN BLOK.
+ * PAGON KETDI — UNING TESTLARI TASHIGAN INVARIANTLAR QOLDI.
  *
- * Seat kartasida bitta fakt uch marta chizilgan edi: «Liderga +100 000»
- * chipi, progress chizig'i va «97%». Uchalasi ham «liderdan qancha
- * orqadaman» degan bitta savolga javob berardi, va yonidagi «0 / 2
- * buyurtma» bilan birga ziddiyatli o'qilardi — mijozning o'z ta'rifi
- * «noaniq keraksiz xolat» (2026-09-15).
- *
- * Bu testlar o'sha blokning YO'QLIGINI va o'rniga kelgan pagonning borligini
- * DOM dan tekshiradi. Manba matni faqat bitta narsa uchun o'qiladi —
- * so'rovning ulanishi, uni DOM ko'rsata olmaydi.
+ * `describe('pagon')` o'sha komponent bilan birga o'chdi, lekin uchta
+ * tekshiruvi pagonga umuman bog'liq emas edi va ular tashigan qarorlar
+ * bugun ham kuchda: medal so'rovining ULANISHI, «Liderga nisbatan»
+ * chizig'ining YO'QLIGI (mijozning 2026-09-15 dagi so'rovi) va jadvalning
+ * olti ustuni. So'rovning ulanishi keyingi bo'limda — «lavha va medallar»
+ * dagi nusxa `MedalDefs` ning joyini ham mixlaydi, ya'ni kengrog'i; bu yerda
+ * ikkitasi qoladi.
  */
-describe('pagon', () => {
-  it('seat kartasi darajani va unvonni chizadi', () => {
-    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
-    expect(column('tv-sellers').getByText(/15-daraja/)).toBeTruthy()
-    expect(column('tv-sellers').getByText(/Master/)).toBeTruthy()
-  })
-
-  it('liderga nisbatan foiz chizig\u2018i seatdan olib tashlangan', () => {
+describe('medallar so‘rovi va o‘rindiq — pagon ketdi, invariantlar qoldi', () => {
+  it('liderga nisbatan foiz chizig‘i seatda yo‘q', () => {
     render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
     expect(document.querySelector('[aria-label="Liderga nisbatan"]')).toBeNull()
   })
 
-  it('jadval qatorida ham pagon bor, lekin qisqasi', () => {
+  it('jadvalda oltita ustun — 390px da yon skroll yomonlashmaydi', () => {
     render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
-    // 4-o'rindagi Nodira jadvalda, seatda emas.
-    expect(column('tv-sellers').getByText(/8-daraja/)).toBeTruthy()
+    expect(column('tv-sellers').getAllByRole('columnheader')).toHaveLength(6)
+  })
+})
+
+/**
+ * LAVHA VA MEDALLAR — 2026-09-16 dizayni (spec §3).
+ *
+ * Seat: daraja bloki (lavha + shtamplar + «… qoldi»), medal tokchasi,
+ * gapiruvchi karta. Narvon podium ostida, BIR MARTA. Qator: chapda lavha,
+ * ism yonida unvon so'zi, o'ngda medallar; ustun qo'shilmagan; chase
+ * chizig'i ikkinchi bo'lak bilan. Medal so'rovi alohida va o'z soatida.
+ */
+describe('lavha va medallar', () => {
+  it('seat kartasi lavhani o‘yma unvon bilan, shtamplarni va «… qoldi»ni chizadi', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    const col = column('tv-sellers')
+    const seat = col.getByText(/154 Marjona Xayrullayeva/).closest('.podium-card')!
+    expect(seat.querySelector('svg.lavha--seat')!.getAttribute('data-level')).toBe('4')
+    expect(seat.querySelector('text.lavha__title')!.textContent).toBe('USTA')
+    expect(seat.querySelectorAll('.lv-stamps i.on')).toHaveLength(3)
+    expect(seat.textContent).toContain('Ustozga 127 mln qoldi')
+    // Chempion — sharpa bor.
+    expect(seat.querySelector('.lv-ghost')).not.toBeNull()
   })
 
-  it('medali yo\u2018q sotuvchida pagon umuman chizilmaydi', () => {
+  it('seat tokchasi medalni ×N bilan chizadi', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    const seat = column('tv-sellers').getByText(/154 Marjona Xayrullayeva/).closest('.podium-card')!
+    expect(seat.querySelector('.medal-rail svg[data-medal="month-gold"]')).not.toBeNull()
+    expect(seat.querySelector('.medal-count')!.textContent).toBe('×3')
+  })
+
+  it('«N / M buyurtma · %» satri seatdan olib tashlangan — mijozning «noaniq keraksiz xolat»i', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    const seat = column('tv-sellers').getByText(/154 Marjona Xayrullayeva/).closest('.podium-card')!
+    expect(seat.textContent).not.toMatch(/\d+ \/ \d+ buyurtma/)
+    expect(document.querySelector('[aria-label="Liderga nisbatan"]')).toBeNull()
+  })
+
+  it('narvon podium ostida BIR MARTA, olti pog‘ona', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    expect(document.getElementById('tv-sellers')!.querySelectorAll('.narvon')).toHaveLength(1)
+    expect(document.getElementById('tv-sellers')!.querySelectorAll('.narvon-rung')).toHaveLength(6)
+  })
+
+  it('medal so‘rovi bo‘sh bo‘lsa — lavha, narvon, tokcha hech qayerda chizilmaydi, reyting o‘z joyida', () => {
     render(<SellersColumn data={RIPE} {...PROPS} />)
-    expect(document.querySelector('.pagon')).toBeNull()
+    expect(document.querySelector('.lavha')).toBeNull()
+    expect(document.querySelector('.narvon')).toBeNull()
+    expect(document.querySelector('.medal-rail')).toBeNull()
+    expect(column('tv-sellers').getByRole('table')).toBeTruthy()
   })
 
-  it('daraja va o\u2018rin farqi ustunda BIR MARTA yozilgan', () => {
+  it('jadval qatori: chapda lavha, ism yonida unvon so‘zi, o‘ngda medal', () => {
     render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
-    expect(column('tv-sellers').getAllByText(/Daraja \u2014 o\u02bbrin emas/)).toHaveLength(1)
+    const rowEl = column('tv-sellers').getByText('Nodira 118 Karimova').closest('tr')!
+    const cell = rowEl.querySelector('.tv-namecell')!
+    expect(cell.querySelector('svg.lavha--row')!.getAttribute('data-level')).toBe('3')
+    expect(cell.querySelector('.lavha-word')!.textContent).toBe('Katta sotuvchi')
+    expect(cell.querySelector('.tv-rowmedals svg[data-medal="month-gold"]')).not.toBeNull()
+    expect(cell.querySelector('.medal-count')).toBeNull()
   })
 
-  it('jadvalga yangi ustun qo\u2018shilmagan \u2014 390px da yon skroll yomonlashmaydi', () => {
+  it('chase chizig‘i ikkinchi bo‘lakni oladi — «Ustaga 18.7 mln»', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    const rowEl = column('tv-sellers').getByText('Nodira 118 Karimova').closest('tr')!
+    expect(rowEl.querySelector('.tv-chase')!.textContent).toContain('Ustaga 18.7 mln')
+    expect(rowEl.querySelector('.tv-chase')!.textContent).toMatch(/Oldingiga|Lider|teng/)
+  })
+
+  it('jadvalga yangi ustun qo‘shilmagan — 390px da yon skroll yomonlashmaydi', () => {
     render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
     expect(column('tv-sellers').getAllByRole('columnheader')).toHaveLength(6)
   })
 
-  it('jadval qatoridagi masofa saqlangan \u2014 mijoz unga e\u2019tiroz bildirmagan', () => {
-    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
-    // `Chase` 4-qatorda bronza seatiga bo'lgan masofani yozadi.
-    expect(column('tv-sellers').getAllByText(/oldinda|ortda|\+/).length).toBeGreaterThan(0)
+  it('belgilar to‘plami sahifada BIR MARTA', () => {
+    render(<Board data={RIPE} />)
+    expect(document.querySelectorAll('#khatam')).toHaveLength(1)
   })
 
-  it('medal so\u2018rovi taxtanikidan alohida kalitda va o\u2018z soatida', () => {
-    // DOM javob bera olmaydigan yagona narsa: so'rovning ulanishi.
+  it('medal so‘rovi taxtanikidan alohida kalitda va o‘z soatida', () => {
     const source = readFileSync('src/features/sellers/SellersPage.tsx', 'utf8')
     expect(source).toContain("queryKey: ['sellers', 'medals']")
     expect(source).toContain('staleTime: 600_000')
-    // Taxta hech qachon medal so'rovining holatiga qaramaydi: u sekin kelsa
-    // yoki xato bersa, reyting hech nima sezmasligi kerak.
     expect(source).not.toMatch(/medals\.(isError|isPending)/)
+    /*
+      VA BELGILAR TO'PLAMINING JOYI. `<use href="#…">` hali e'lon qilinmagan
+      belgiga bog'lansa hech narsa chizilmaydi va hech narsa xato bermaydi,
+      shuning uchun `MedalDefs` — bitta, va taxtaning eng boshida: qobiq
+      ochilgandan keyin, undagi birinchi chinakam blokdan oldin. DOM buni
+      ayta olmaydi (`Board` yordamchisi sahifa emas), shuning uchun manba.
+    */
+    expect(source.match(/<MedalDefs \/>/g)).toHaveLength(1)
+    const defs = source.indexOf('<MedalDefs />')
+    expect(defs).toBeGreaterThan(source.indexOf('tv-board-shell'))
+    expect(defs).toBeLessThan(source.indexOf('tv-switch'))
+  })
+
+  /*
+    PODIUM BO'SH BO'LGANDA HAM NARVON KERAK — sharh 1-topshiriqdan.
+    Taxta kunning birinchi daqiqalarida aynan shu holatda turadi: seat yo'q,
+    lekin jadval bor va qatorlarda lavha bor. Legendasiz plastina esa o'zini
+    tushuntirmaydi. `fakt="fakt2"` — hech kim yetkazmagan taxtani yetkazilgan
+    pulga qadab qo'yish, ya'ni g'olib yo'q.
+  */
+  it('podium bo‘sh bo‘lsa ham narvon turadi — qatorlarda lavha izohsiz qolmaydi', () => {
+    render(<SellersColumn data={FALLBACK} {...PROPS} fakt="fakt2" medals={MEDALS} />)
+    expect(column('tv-sellers').getByText(/Podium hali boʻsh/)).toBeTruthy()
+    expect(document.getElementById('tv-sellers')!.querySelectorAll('.narvon')).toHaveLength(1)
+  })
+
+  it('komandalar ustunida narvon yo‘q — bo‘sh podiumda ham; daraja shaxsiy', () => {
+    render(<TeamsColumn data={TEAM_FALLBACK} {...PROPS} fakt="fakt2" medals={MEDALS} />)
+    expect(column('tv-teams').getByText(/Podium hali boʻsh/)).toBeTruthy()
+    expect(document.getElementById('tv-teams')!.querySelectorAll('.narvon')).toHaveLength(0)
+  })
+
+  /*
+    IKKI CHEKKA. 90% dan oshgan qator unvon so'zini ko'kartiradi — bu
+    `LevelBlock` bilan BITTA qoida (`isNearNextLevel`). Hali savdosiz qator
+    esa plastinani 0-darajada, unvon o'rniga «hali savdosiz» bilan chizadi,
+    va uning chase chizig'ini faqat ikkinchi bo'lak ushlab turadi: oldinda
+    kim borligi 0 so'mlik odamga aytiladigan gap emas.
+  */
+  it('ostonaga yaqin qator ko‘karadi; hali savdosiz qator 0-daraja plastinasi bilan turadi', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+
+    const near = column('tv-sellers').getByText('Qodirova 188 Zilola').closest('tr')!
+    expect(near.querySelector('.lavha-word')!.className).toContain('lavha-word--near')
+
+    const zero = column('tv-sellers').getByText('Rustamov 201 Diyor').closest('tr')!
+    expect(zero.querySelector('svg.lavha--row')!.getAttribute('data-level')).toBe('0')
+    expect(zero.querySelector('.lavha-word')!.textContent).toBe('hali savdosiz')
+    expect(zero.querySelector('.lavha-word')!.className).not.toContain('--near')
+    expect(zero.querySelector('.tv-chase')!.textContent).toBe('Birinchi savdo kutilmoqda')
+    expect(zero.querySelector('.tv-rowmedals')).toBeNull()
+  })
+})
+
+/**
+ * MAROSIM — ko‘tarilish jamoat voqeasi (spec §6).
+ *
+ * 40-o‘rindagi odam o‘z lavhasining sokin animatsiyasini ko‘rmaydi; ustun
+ * sarlavhasidagi 8 soniyalik e‘lonni hamma ko‘radi. `resetCelebrations()`
+ * har testdan oldin: to‘plam modul darajasida — sahifa sessiyasida bir
+ * marta e‘lon qilish uchun — ya‘ni testlar orasida ham yashaydi.
+ */
+describe('ko‘tarilish marosimi', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    resetCelebrations()
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('bugun ko‘tarilgan seat: e‘lon ustun sarlavhasida, lavha ko‘tarilish sinfida; 8 soniyadan keyin jim', () => {
+    const today = '2026-09-16'
+    const medals = new Map(MEDALS)
+    medals.set('154 Marjona Xayrullayeva', medalRow('154 Marjona Xayrullayeva', { promotedOn: today }))
+    render(<SellersColumn data={RIPE} {...PROPS} medals={medals} medalsToday={today} />)
+    const col = column('tv-sellers')
+    expect(col.getByRole('status').textContent).toContain('154 Marjona Xayrullayeva — endi USTA · 100 mln')
+    expect(document.getElementById('tv-sellers')!.querySelector('.lv-plate--rise')).not.toBeNull()
+    act(() => vi.advanceTimersByTime(8_000))
+    expect(col.queryByRole('status')).toBeNull()
+    expect(document.getElementById('tv-sellers')!.querySelector('.lv-plate--rise')).toBeNull()
+  })
+
+  /*
+    IKKINCHI TETIK, USTUNGA ULANGAN. `promotedOn` NAVBAT kuni bo'yicha
+    hisoblanadi (kunlik faktlar `c.queued_at` bilan guruhlanadi), FAKT 2 esa
+    kunlar keyin yopiladi — ya'ni production'da birinchi tetik deyarli hech
+    qachon ishlamaydi. Shuning uchun ustun payloadlar orasidagi DARAJA
+    O'SISHINI ham e'lon qiladi: `medalsToday` null bo'lsa ham.
+  */
+  it('daraja payloadlar orasida OSHDI — e‘lon sarlavhada, seat yulduz tushiradi', () => {
+    const grown = new Map(MEDALS)
+    grown.set(
+      '154 Marjona Xayrullayeva',
+      medalRow('154 Marjona Xayrullayeva', {
+        level: 5,
+        rankTitle: 'Ustoz',
+        delivered: money(310_000_000),
+        levelFloor: money(300_000_000),
+        nextLevelAt: money(1_000_000_000),
+        nextTitle: 'Legenda',
+      }),
+    )
+
+    const { rerender } = render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    expect(column('tv-sellers').queryByRole('status')).toBeNull()
+
+    rerender(<SellersColumn data={RIPE} {...PROPS} medals={grown} />)
+    const col = column('tv-sellers')
+    expect(col.getByRole('status').textContent).toContain('154 Marjona Xayrullayeva — endi USTOZ · 300 mln')
+
+    // E'lon ham shu ismni yozadi, ya'ni seat matn bo'yicha emas, kartadan olinadi.
+    const seat = [...document.getElementById('tv-sellers')!.querySelectorAll('.podium-card')].find(
+      (card) => card.textContent?.includes('154 Marjona Xayrullayeva'),
+    )!
+    expect(seat.querySelectorAll('use.lavha__star--drop')).toHaveLength(2)
+
+    act(() => vi.advanceTimersByTime(8_000))
+    expect(col.queryByRole('status')).toBeNull()
+    expect(seat.querySelector('use.lavha__star--drop')).toBeNull()
+  })
+
+  it('kecha ko‘tarilgan — e‘lon yo‘q', () => {
+    const medals = new Map(MEDALS)
+    medals.set('154 Marjona Xayrullayeva', medalRow('154 Marjona Xayrullayeva', { promotedOn: '2026-09-15' }))
+    render(<SellersColumn data={RIPE} {...PROPS} medals={medals} medalsToday="2026-09-16" />)
+    expect(column('tv-sellers').queryByRole('status')).toBeNull()
+  })
+})
+
+/**
+ * YANGI MEDAL — OXIRGI YANGILANISHDA PAYDO BO'LGANI, va faqat o'sha.
+ *
+ * `useNewMedals` ni hook testlari o'lchaydi, `Medal`/`RowMedals` ning
+ * `newKeys` propini esa `sellersLavha.test.tsx`. Ular orasidagi SIM —
+ * ustun → jadval/podium → tokcha — hech qayerda tortilmagan edi: bir
+ * uchini uzsa, ikkala uchi ham yashil qolardi.
+ */
+describe('yangi medal ustundan tokchagacha', () => {
+  const extra = (key: string, code: MedalCode): SellerMedalRowDto => {
+    const base = MEDALS.get(key)!
+    const added: SellerMedalDto = { code, count: 1, at: '2026-09-16', amount: null, orders: null, percent: null }
+    return { ...base, medals: [...base.medals, added] }
+  }
+
+  it('qo‘shilgan medal seatda ham, qatorda ham kattalashib tushadi — va boshqa hech qayerda', () => {
+    const { rerender } = render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    // Birinchi payload hech narsani «yangi» demaydi.
+    expect(document.querySelectorAll('.medal-slot--new')).toHaveLength(0)
+
+    const grown = new Map(MEDALS)
+    grown.set('154 Marjona Xayrullayeva', extra('154 Marjona Xayrullayeva', 'day-winner')) // chempion seat
+    grown.set('Nodira 118 Karimova', extra('Nodira 118 Karimova', 'day-winner')) // jadval qatori
+    rerender(<SellersColumn data={RIPE} {...PROPS} medals={grown} />)
+
+    const col = document.getElementById('tv-sellers')!
+    const seat = column('tv-sellers').getByText(/154 Marjona Xayrullayeva/).closest('.podium-card')!
+    expect(seat.querySelector('.medal-rail .medal-slot--new svg[data-medal="day-winner"]')).not.toBeNull()
+
+    const rowEl = column('tv-sellers').getByText('Nodira 118 Karimova').closest('tr')!
+    expect(rowEl.querySelector('.tv-rowmedals .medal-slot--new svg[data-medal="day-winner"]')).not.toBeNull()
+
+    // Eski medal yangi emas, va boshqa hech kimniki ham.
+    expect(col.querySelectorAll('.medal-slot--new')).toHaveLength(2)
   })
 })

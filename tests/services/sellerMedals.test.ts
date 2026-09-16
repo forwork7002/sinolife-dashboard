@@ -57,37 +57,30 @@ describe('medal servisi', () => {
     const row = dto.sellers.find((s) => s.employeeId === 'e1')!
 
     /*
-      ANIQ QIYMAT, «noldan katta» EMAS. `toBeGreaterThan(1)` motorni
-      servisga noto‘g‘ri ulagan holatda ham o‘tardi — bu test aynan
-      ulanishni tekshirish uchun bor. Hisob, qadam-baqadam:
-
-        kundalik ish  40·10 + 30·25 + 30·5   = 1 300
-        🥇 oy chempioni (place 1)            =   500
-        🎯 konversiya ustasi (75%, 40 ≥ 20)  =   400
-        🌱 birinchi savdo                    =   100
-        💎 klub: 30 mln → I va II bosqich    =   250
-                                               -----
-                                               2 550
-
-      💯 tushmaydi (75% < 80), 📅 tushmaydi (kun fakti yo‘q), 📈/🔥/⭐/🏆
-      tushmaydi (bitta yopilgan oy), 🚀 tushmaydi (2026-08 < 2026-09).
-      7-daraja 2 100 ballda, 8-daraja 2 800 da.
+      ANIQ QIYMAT. e1 avgustda 30 mln yetkazgan → 3-daraja (30 mln ostonasi
+      AYNAN), keyingi ostona 100 mln (Usta). Medallar: 🥇 (place 1, eshik 2),
+      🎯 (75%, 40 ≥ 20, eshik 3), 🌱 — uchalasi 3-darajada ochiq. 💯 tushmaydi
+      (75% < 80), 📅 tushmaydi (kun fakti yo‘q), 📈/🔥/⭐/🏆/🚀 tushmaydi.
+      Kunlik fakt yo‘q → promotedOn null. today — 2026-09-15T06:00Z Toshkentda
+      2026-09-15.
     */
-    expect(row.points).toBe(2_550)
-    expect(row.level).toBe(7)
-    expect(row.rankTitle).toBe('Sotuvchi')
-    expect(row.nextLevelAt).toBe(2_800)
-    expect(row.nextTitle).toBe('Katta sotuvchi')
-    expect(row.medals.map((m) => m.code).sort()).toEqual([
-      'club',
-      'conversion-master',
-      'first-sale',
-      'month-gold',
-    ])
+    expect(row.level).toBe(3)
+    expect(row.legendaTier).toBe(0)
+    expect(row.rankTitle).toBe('Katta sotuvchi')
+    expect(row.delivered.amount).toBe(30_000_000)
+    expect(row.delivered.currency).toBe('UZS')
+    expect(row.levelFloor.amount).toBe(30_000_000)
+    expect(row.nextLevelAt.amount).toBe(100_000_000)
+    expect(row.nextTitle).toBe('Usta')
+    expect(row.promotedOn).toBeNull()
+    expect(dto.today).toBe('2026-09-15')
+    expect(row.medals.map((m) => m.code)).toEqual(['month-gold', 'conversion-master', 'first-sale'])
     const gold = row.medals.find((m) => m.code === 'month-gold')!
     expect(gold.amount).not.toBeNull()
     expect(gold.amount!.currency).toBe('UZS')
     expect(gold.amount!.amount).toBe(30_000_000)
+    expect('points' in gold).toBe(false)
+    expect('tier' in gold).toBe(false)
   })
 
   it('devorning o‘zi bilan bir oynani o‘qiydi — RECORDS_FROM dan', async () => {

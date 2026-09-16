@@ -1,0 +1,1440 @@
+<meta charset="utf-8">
+<title>Daraja va medallar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap">
+<style>
+:root{
+  --surface:#ffffff; --surface-raised:#ffffff; --surface-sunken:#eef0f4;
+  --ink-primary:#0c0e12; --ink-secondary:#4c525e; --ink-muted:#636d79; --ink-on-series:#ffffff;
+  --border:rgba(12,14,18,.09); --border-strong:rgba(12,14,18,.16); --track:#e8eaee;
+  --seq-550:#2b56db; --series-1:#3d6df4; --accent:var(--series-1);
+  --medal-gold:#b3860e; --medal-silver:#798294; --medal-bronze:#a5663a;
+  --series-2:#ca4c07; --series-3:#00897d; --series-5:#e93882; --series-6:#528118; --series-7:#8749fb;
+  --shadow-card:0 1px 2px rgba(12,14,18,.05),0 1px 3px -1px rgba(12,14,18,.04);
+  --edge-highlight:inset 0 1px 0 rgba(255,255,255,.9);
+  --canvas:#e6e8ee; --canvas-ink:#2a2f3a; --canvas-rule:rgba(12,14,18,.12);
+  --font-sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-serif:"Instrument Serif",Georgia,"Times New Roman",serif;
+  --radius-panel:16px;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --surface:#101217; --surface-raised:#1c2027; --surface-sunken:#0b0d11;
+  --ink-primary:#f5f6f8; --ink-secondary:#a8b0bd; --ink-muted:#8891a0;
+  --border:rgba(255,255,255,.11); --border-strong:rgba(255,255,255,.22); --track:#313845;
+  --seq-550:#7ca4ff; --series-1:#497bff;
+  --medal-gold:#e8c256; --medal-silver:#bac4d3; --medal-bronze:#d89a68;
+  --series-2:#d8591e; --series-3:#32a89c; --series-5:#f6458d; --series-6:#55841d; --series-7:#905eff;
+  --shadow-card:0 1px 2px rgba(0,0,0,.5); --edge-highlight:inset 0 1px 0 rgba(255,255,255,.08);
+  --canvas:#07080b; --canvas-ink:#c9cfda; --canvas-rule:rgba(255,255,255,.14);
+}}
+:root[data-theme="dark"]{
+  --surface:#101217; --surface-raised:#1c2027; --surface-sunken:#0b0d11;
+  --ink-primary:#f5f6f8; --ink-secondary:#a8b0bd; --ink-muted:#8891a0;
+  --border:rgba(255,255,255,.11); --border-strong:rgba(255,255,255,.22); --track:#313845;
+  --seq-550:#7ca4ff; --series-1:#497bff;
+  --medal-gold:#e8c256; --medal-silver:#bac4d3; --medal-bronze:#d89a68;
+  --series-2:#d8591e; --series-3:#32a89c; --series-5:#f6458d; --series-6:#55841d; --series-7:#905eff;
+  --shadow-card:0 1px 2px rgba(0,0,0,.5); --edge-highlight:inset 0 1px 0 rgba(255,255,255,.08);
+  --canvas:#07080b; --canvas-ink:#c9cfda; --canvas-rule:rgba(255,255,255,.14);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--canvas);color:var(--canvas-ink);font-family:var(--font-sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding-block:28px 80px;padding-inline:16px}
+/* ---------- canvas chrome ---------- */
+.masthead{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;padding-bottom:18px;border-bottom:1px solid var(--canvas-rule)}
+.masthead h1{font-family:var(--font-serif);font-weight:400;font-size:44px;line-height:1;margin:0;letter-spacing:-.01em;color:var(--ink-primary)}
+.masthead h1 em{font-style:italic;color:var(--accent)}
+.masthead p{margin:6px 0 0;max-width:62ch;color:var(--canvas-ink)}
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--canvas-rule);border-radius:999px;padding:3px;background:var(--surface-raised)}
+.seg button{border:0;background:transparent;color:var(--ink-secondary);font:600 13px var(--font-sans);padding:6px 12px;border-radius:999px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink-primary);color:var(--surface-raised)}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+section.part{margin-top:44px}
+.eyebrow{font:600 12px/1 var(--font-sans);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-muted);margin:0 0 8px}
+h2{font-family:var(--font-serif);font-weight:400;font-size:32px;line-height:1.1;margin:0 0 6px;color:var(--ink-primary);text-wrap:balance}
+h2 em{font-style:italic;color:var(--accent)}
+.lede{margin:0 0 18px;max-width:70ch;color:var(--canvas-ink)}
+.note{font-size:13px;color:var(--ink-muted);max-width:80ch;margin:10px 0 0}
+.board-scroll{overflow-x:auto;padding-bottom:6px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+/* ---------- the board, mirrored from /sellers ---------- */
+.tv-col{width:920px;flex:none;border:1px solid color-mix(in oklab, var(--series-5) 34%, var(--border));border-radius:var(--radius-panel);
+  background:linear-gradient(180deg,color-mix(in oklab,var(--series-5) 9%,transparent),transparent 180px),var(--surface-raised);
+  box-shadow:inset 0 3px 0 var(--series-5),var(--shadow-card),var(--edge-highlight);color:var(--ink-primary);position:relative}
+.tv-col-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px 0}
+.tv-col-title{display:flex;align-items:center;gap:10px;font-weight:600;font-size:17px}
+.tv-col-glyph{width:30px;height:30px;border-radius:999px;display:grid;place-items:center;background:color-mix(in oklab,var(--series-5) 14%,transparent);color:var(--series-5);font-size:15px}
+.tv-fakt{display:inline-flex;border:1px solid var(--border);border-radius:999px;padding:3px;background:var(--surface-raised);font-size:12px;font-weight:600}
+.tv-fakt span{padding:4px 10px;border-radius:999px;color:var(--ink-secondary)}
+.tv-fakt span.on{background:color-mix(in oklab,var(--series-5) 14%,transparent);color:var(--ink-primary)}
+.tv-podium{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.16fr) minmax(0,1fr);align-items:end;gap:14px;padding:22px 18px 14px}
+.tv-seat{display:flex;flex-direction:column;min-width:0;--tv-step:30px;--tv-pedestal:var(--tv-step)}
+.tv-seat--2{--tv-pedestal:calc(var(--tv-step)*2.4)}.tv-seat--1{--tv-pedestal:calc(var(--tv-step)*1.6)}.tv-seat--3{--tv-pedestal:var(--tv-step)}
+.tv-seat--at-1{order:1}.tv-seat--at-2{order:2}.tv-seat--at-3{order:3}
+.podium-col--gold{--metal:var(--medal-gold)}.podium-col--silver{--metal:var(--medal-silver)}.podium-col--bronze{--metal:var(--medal-bronze)}
+.podium-card{position:relative;border:1px solid color-mix(in oklab,var(--metal) 42%,var(--border));border-radius:var(--radius-panel);
+  background:radial-gradient(130% 85% at 50% -25%,color-mix(in oklab,var(--metal) 13%,transparent),transparent 58%),var(--surface-raised);box-shadow:var(--shadow-card),var(--edge-highlight)}
+.tv-seat-card{display:flex;flex-direction:column;align-items:center;text-align:center;padding:0 12px 14px}
+.podium-plaque{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--ink-primary);
+  background:color-mix(in oklab,var(--metal) 14%,var(--surface-raised));border:1px solid color-mix(in oklab,var(--metal) 40%,transparent);transform:translateY(-50%)}
+.ring{width:56px;height:56px;border-radius:999px;display:grid;place-items:center;font-weight:800;font-size:22px;color:var(--ink-primary);background:var(--surface-raised);
+  box-shadow:0 0 0 3px var(--surface-raised),0 0 0 6px var(--metal);margin-top:4px;position:relative}
+.tv-seat--1 .ring{width:64px;height:64px;font-size:26px}
+.tv-seat-name{font-size:19px;font-weight:600;line-height:1.15;letter-spacing:-.01em;margin:12px 0 0;overflow-wrap:anywhere}
+.tv-seat-figure{font-variant-numeric:tabular-nums lining-nums;font-size:24px;font-weight:700;line-height:1;letter-spacing:-.03em;white-space:nowrap;margin:12px 0 0}
+.tv-seat--1 .tv-seat-figure{font-size:27px}
+.tv-seat-figure small{font-size:12px;font-weight:400;color:var(--ink-muted);margin-left:4px;letter-spacing:0}
+.podium-gold-rule{height:3px;width:120px;border-radius:999px;background:linear-gradient(90deg,var(--metal),color-mix(in oklab,var(--metal) 15%,transparent));margin-top:8px}
+.basis{font-size:11px;color:var(--ink-secondary);margin-top:6px;letter-spacing:.02em}
+.basis b{color:var(--ink-primary);font-weight:600}
+.tv-pedestal{position:relative;height:var(--tv-pedestal);margin:0 8px;display:flex;align-items:center;justify-content:center;border-radius:0 0 12px 12px;
+  background:linear-gradient(180deg,color-mix(in oklab,var(--metal) 38%,var(--surface-raised)),color-mix(in oklab,var(--metal) 14%,var(--surface-raised)));
+  border:1px solid color-mix(in oklab,var(--metal) 55%,var(--border));border-top:3px solid color-mix(in oklab,var(--metal) 70%,#fff);
+  box-shadow:inset 0 -10px 18px -12px color-mix(in oklab,var(--metal) 60%,#000),var(--shadow-card)}
+.tv-pedestal-num{font-weight:800;font-size:calc(var(--tv-pedestal)*.66);line-height:1;letter-spacing:-.04em;color:var(--ink-primary);text-shadow:0 1px 0 color-mix(in oklab,var(--metal) 40%,transparent)}
+/* ---- LEVEL block on the seat ---- */
+.lv-block{width:100%;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);display:flex;flex-direction:column;align-items:center;gap:8px}
+.lv-block .lv-head{display:flex;align-items:center;gap:10px;width:100%;justify-content:center}
+.lv-head .plate-wrap{flex:1 1 auto;min-width:0;max-width:280px}
+.lv-head .plate-wrap svg{width:100%;height:auto}
+.lv-ghost{flex:none}
+.lv-ghost{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;color:var(--ink-muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.stamps{display:flex;gap:4px}
+.stamps i{display:block;width:20px;height:8px;border-radius:3px;background:var(--track)}
+.stamps i.on{background:var(--seq-550)}
+.tv-seat--1 .stamps i{width:24px;height:9px}
+.qoldi{font-size:17px;font-weight:600;color:var(--ink-primary);letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.tv-seat--1 .qoldi{font-size:20px}
+.qoldi.near{color:var(--seq-550)}
+.lv-label{font-size:11px;color:var(--ink-muted);font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+/* ---- medal rail ---- */
+.rail{width:100%;margin-top:12px;padding:10px 8px 8px;border-radius:12px;background:color-mix(in oklab,var(--metal,var(--ink-muted)) 8%,var(--surface-raised));display:flex;justify-content:center;gap:10px}
+.slot{position:relative;width:44px;height:52px;display:grid;place-items:end center}
+.slot .n{position:absolute;top:-4px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--ink-primary);color:var(--surface-raised);font:700 11px/18px var(--font-sans);font-variant-numeric:tabular-nums;text-align:center;box-shadow:0 0 0 2px var(--surface-raised)}
+.speak{width:100%;margin-top:10px;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;background:var(--surface-sunken);text-align:left}
+.speak .t{font-size:16px;font-weight:700;color:var(--ink-primary);line-height:1.15}
+.speak .r{font-size:12.5px;color:var(--ink-secondary);margin-top:2px}
+/* ---- Narvon legend ---- */
+.narvon{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;padding:10px 18px 12px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:color-mix(in oklab,var(--surface-sunken) 55%,var(--surface-raised))}
+.narvon .rung{display:flex;flex-direction:column;align-items:center;gap:5px;text-align:center;min-width:0}
+.narvon .rung b{font-size:12px;font-weight:700;letter-spacing:.02em;color:var(--ink-primary);line-height:1.1}
+.narvon .rung span{font-size:12px;color:var(--ink-secondary);font-variant-numeric:tabular-nums}
+.narvon .rung small{font-size:10.5px;color:var(--ink-muted)}
+/* ---- rows ---- */
+.tv-list{padding:6px 10px 12px}
+.tv-table{width:100%;border-collapse:separate;border-spacing:0}
+.tv-table th{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-muted);text-align:left;padding:8px 8px 6px;border-bottom:1px solid var(--border)}
+.tv-table th.r,.tv-table td.r{text-align:right}
+.tv-row td{padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:middle}
+.tv-row:nth-child(even) td{background:color-mix(in oklab,var(--surface-sunken) 45%,transparent)}
+.tv-rank{font-variant-numeric:tabular-nums;font-size:16px;font-weight:600;color:var(--ink-secondary);width:36px}
+.tv-name{font-size:16px;font-weight:600;line-height:1.2;color:var(--ink-primary)}
+.tv-title{font-size:13px;color:var(--ink-secondary);margin-left:8px;font-weight:500}
+.tv-title b{color:var(--ink-primary);font-weight:600}
+.tv-bar{position:relative;margin-top:4px;height:4px;overflow:hidden;border-radius:999px;background:var(--track);width:180px}
+.tv-bar i{position:absolute;inset:0;width:var(--w);background:var(--seq-550);border-radius:999px}
+.tv-chase{font-size:11.5px;color:var(--ink-muted);margin-top:3px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tv-chase b{color:var(--ink-secondary);font-weight:600}
+.tv-money{font-size:16px;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink-primary)}
+.tv-money small{font-size:11px;color:var(--ink-muted);margin-left:3px}
+.rowmedals{display:flex;align-items:center;gap:6px;min-width:112px}
+.rowmedals .more{font-size:12px;color:var(--ink-secondary);font-variant-numeric:tabular-nums;font-weight:600}
+.dots{text-align:center;color:var(--ink-muted);font-size:13px;padding:6px}
+/* ---- catalogue ---- */
+.cat{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.card{background:var(--surface-raised);border:1px solid var(--border);border-radius:14px;padding:14px;box-shadow:var(--shadow-card);color:var(--ink-primary)}
+.medal-card{display:flex;gap:12px;align-items:flex-start}
+.medal-card .t{font-weight:700;font-size:15px;line-height:1.15}
+.medal-card .h{font-size:12.5px;color:var(--ink-secondary);margin-top:3px;line-height:1.35}
+.medal-card .u{display:inline-block;margin-top:6px;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-muted)}
+.fam{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:2px 7px;border-radius:999px;color:var(--ink-on-series);display:inline-block;margin-bottom:6px}
+.unlock{display:grid;grid-template-columns:repeat(6,minmax(150px,1fr));gap:10px;min-width:960px}
+.unlock .col{background:var(--surface-raised);border:1px solid var(--border);border-radius:14px;padding:12px;color:var(--ink-primary)}
+.unlock .col .h{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:10px}
+.unlock .col .h b{font-size:13px}
+.unlock .col .h span{font-size:12px;color:var(--ink-secondary);font-variant-numeric:tabular-nums}
+.unlock .item{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:4px 0}
+.unlock .item.locked{color:var(--ink-muted)}
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:14px}
+.rules .card p{margin:0;font-size:13.5px;color:var(--ink-secondary)}
+.rules .card b{display:block;font-size:14px;color:var(--ink-primary);margin-bottom:4px}
+/* ---- ceremony ---- */
+.stage{background:var(--surface-raised);border:1px solid var(--border);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:14px;align-items:center;color:var(--ink-primary)}
+.banner{width:100%;display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;background:color-mix(in oklab,var(--accent) 12%,var(--surface-raised));border:1px solid color-mix(in oklab,var(--accent) 40%,transparent);font-weight:600;opacity:0;transform:translateY(-6px);transition:opacity .4s,transform .4s}
+.banner.show{opacity:1;transform:none}
+.banner small{display:block;font-weight:500;color:var(--ink-secondary);font-size:12px}
+.btn{border:1px solid var(--border-strong);background:var(--surface-raised);color:var(--ink-primary);font:600 14px var(--font-sans);padding:10px 16px;border-radius:999px;cursor:pointer}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@keyframes stardrop{0%{transform:translateY(-14px) scale(1.15);opacity:0}60%{transform:translateY(0) scale(1.15);opacity:1}100%{transform:none;opacity:1}}
+@keyframes sheen{0%{transform:translateX(-120%) skewX(-20deg)}100%{transform:translateX(220%) skewX(-20deg)}}
+.plate-wrap{position:relative;display:inline-block;overflow:hidden;border-radius:6px}
+.plate-wrap .sheen{position:absolute;inset:0;width:40%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);opacity:0;pointer-events:none}
+.plate-wrap.play .sheen{opacity:1;animation:sheen .8s ease-out .35s 1 both}
+.plate-wrap.play .khatam-use{animation:stardrop .45s cubic-bezier(.2,.8,.2,1) both}
+@media (prefers-reduced-motion: reduce){.plate-wrap.play .sheen,.plate-wrap.play .khatam-use{animation:none}.banner{transition:none}}
+/* ---- alternates ---- */
+.alt{background:#fff;border:1px solid var(--border);border-radius:14px;padding:12px;overflow-x:auto}
+.alt svg{max-width:100%;height:auto;display:block}
+.alt-meta{margin-top:10px;font-size:13.5px;color:var(--ink-secondary)}
+.alt-meta b{color:var(--ink-primary)}
+.score{display:inline-flex;gap:6px;align-items:baseline;font-variant-numeric:tabular-nums;font-size:12px;color:var(--ink-muted)}
+.score b{font-size:18px;color:var(--ink-primary)}
+.q{background:var(--surface-raised);border:1px solid var(--border);border-radius:14px;padding:16px 18px;color:var(--ink-primary)}
+.q ol{margin:8px 0 0;padding-left:20px}
+.q li{margin:6px 0;color:var(--ink-secondary)}
+.q li b{color:var(--ink-primary)}
+.tv-title.near b{color:var(--seq-550)}
+.seg--mini{margin-left:8px;padding:2px;vertical-align:middle}.seg--mini button{padding:2px 8px;font-size:10.5px;letter-spacing:.04em}
+/* lavha-pagon — level plates for /sellers.
+   Every colour flows through var(--…); the plate never touches --medal-* (those are podium
+   chrome) and never carries a literal hex. Instances are <svg class="lavha lavha--SIZE"
+   data-level="0…6" [data-ghost]> with <use> children classed lavha__plate / lavha__star /
+   lavha__engrave / lavha__hi / lavha__lo and, at seat size, a <text class="lavha__title">. */
+
+.lavha {
+  display: inline-block;
+  vertical-align: middle;
+  flex: none;
+  overflow: visible;
+  /* plate class colours — overridden per level below */
+  --lavha-field: var(--surface-sunken);
+  --lavha-rim: var(--border-strong);
+  --lavha-star: var(--ink-primary);
+  /* bevel tones, derived ONCE from the field and the plate's own ink: mixing toward the ink
+     (not toward white/black) keeps both lines visible on a near-white plate (plain in light,
+     inverted in dark) and on a near-black one (plain in dark, inverted in light). */
+  --lavha-hi: color-mix(in oklab, var(--lavha-field) 70%, var(--lavha-star) 30%);
+  --lavha-lo: color-mix(in oklab, var(--lavha-field) 82%, var(--lavha-star) 18%);
+}
+
+/* ---- sizes, keyed by class on the <svg> ---------------------------------------------- */
+.lavha--row    { width: 78px;  height: 26px; }   /* table row: stars only, title is HTML beside it */
+.lavha--narvon { width: 102px; height: 34px; }   /* ladder legend */
+.lavha--ghost  { width: 120px; height: 40px; }   /* "next plate" on the seat */
+.lavha--seat   { width: 280px; height: 88px; }   /* podium seat: two-storey, engraved title */
+
+/* ---- plate classes -------------------------------------------------------------------- */
+/* plain: L1–L3 — a recessed tile with a fine rim */
+.lavha[data-level="1"],
+.lavha[data-level="2"],
+.lavha[data-level="3"] {
+  --lavha-field: var(--surface-sunken);
+  --lavha-rim: var(--border-strong);
+  --lavha-star: var(--ink-primary);
+}
+/* inverted: L4–L5 — solid ink; on the dark palette this is the ivory plate, by design */
+.lavha[data-level="4"],
+.lavha[data-level="5"] {
+  --lavha-field: var(--ink-primary);
+  --lavha-rim: var(--ink-primary);
+  --lavha-star: var(--surface-raised);
+}
+/* apex: L6 — the only blue plate; blue has headroom both ways, so its shadow line goes to black */
+.lavha[data-level="6"] {
+  --lavha-field: var(--accent);
+  --lavha-rim: var(--accent);
+  --lavha-star: var(--ink-on-series);
+  --lavha-lo: color-mix(in oklab, var(--lavha-field) 65%, black 35%);
+}
+/* L0 — nothing delivered yet: the quiet dashed outline of a first plate, no star, never a warning */
+.lavha[data-level="0"] {
+  --lavha-field: transparent;
+  --lavha-rim: var(--ink-muted);
+  --lavha-star: transparent;
+}
+/* ghost — the next plate: that class's outline, dashed; stars and title in muted ink */
+.lavha[data-ghost] {
+  --lavha-field: transparent;
+  --lavha-star: var(--ink-muted);
+}
+.lavha[data-ghost][data-level="1"],
+.lavha[data-ghost][data-level="2"],
+.lavha[data-ghost][data-level="3"] { --lavha-rim: var(--ink-muted); }
+/* (inverted and apex ghosts keep their class rim — ink-primary and accent — at .55 so they sit behind the real plate) */
+
+/* ---- parts: colours land on the <use>, the symbol geometry inherits them -------------- */
+.lavha__plate {
+  fill: var(--lavha-field);
+  stroke: var(--lavha-rim);
+  stroke-width: 2;
+  stroke-linejoin: miter;
+}
+.lavha[data-level="0"] .lavha__plate,
+.lavha[data-ghost] .lavha__plate {
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  stroke-linecap: butt;
+}
+.lavha--seat[data-level="0"] .lavha__plate,
+.lavha--seat[data-ghost] .lavha__plate { stroke-dasharray: 8 5; }
+.lavha[data-ghost][data-level="4"] .lavha__plate,
+.lavha[data-ghost][data-level="5"] .lavha__plate,
+.lavha[data-ghost][data-level="6"] .lavha__plate { stroke-opacity: 0.55; }
+.lavha__star { fill: var(--lavha-star); }
+/* Legenda's inner engraved rim: 1.5px of the plate's own light at 60% (1px in the 26px row) */
+.lavha__engrave {
+  fill: none;
+  stroke: var(--lavha-star);
+  stroke-opacity: 0.6;
+  stroke-width: 1.5;
+  stroke-linejoin: miter;
+}
+.lavha--row .lavha__engrave { stroke-width: 1; }
+/* seat bevel lines — the only "engraving" besides the rim; no gradients, no filters */
+.lavha__hi { fill: none; stroke: var(--lavha-hi); stroke-width: 1.5; stroke-linejoin: miter; stroke-linecap: round; }
+.lavha__lo { fill: none; stroke: var(--lavha-lo); stroke-width: 1.5; stroke-linejoin: miter; stroke-linecap: round; }
+.lavha[data-level="0"] .lavha__hi, .lavha[data-ghost] .lavha__hi,
+.lavha[data-level="0"] .lavha__lo, .lavha[data-ghost] .lavha__lo { stroke: none; }
+/* engraved title, seat only: spaced caps in the star colour, centred on the plate centroid */
+.lavha__title {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: 2px;
+  fill: var(--lavha-star);
+}
+/* the HTML title word beside a row plate */
+.lavha-word {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  color: var(--ink-secondary);
+  margin-inline-start: 12px;
+  white-space: nowrap;
+}
+
+/* medal.css — /sellers medal set. Pair with medal-defs.html (inlined once per page).
+   Instance:  <svg class="medal medal--row" data-medal="streak-fire" viewBox="0 0 32 40" role="img" aria-label="Olov seriyasi"><use href="#medal-streak-fire"/></svg>
+   Bare disc: <svg class="medal medal--row medal--bare" data-medal="streak-fire" viewBox="0 8 32 32" …>   (crop AND class)
+   Sizes (height incl. ribbon → planchet): medal--row 33px → 23px disc · medal--seat 44px → 31px · medal--speaking 64px → 45px.
+   Bare: medal--row 26.4px (same 23px disc as the ribboned row) · seat 35.2px · speaking 51.2px.
+   Only var(--…) colours; derived tones via color-mix(in oklab, …). */
+
+.medal {
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+  overflow: visible;                    /* the laurel of the year champion spills ~3 units past the box */
+  --m-ring: var(--surface-raised);      /* fimbriation */
+  --m-glyph: var(--ink-on-series);      /* glyph, rim, ribbon stripes */
+  --m-engrave-hi: var(--m-field);       /* bevel highlight; metals override it below */
+  --m-tab: 1;
+  --m-detail: 0;
+  --m-flat: 1;
+}
+.medal--row      { width: 26.4px; height: 33px; }
+.medal--seat     { width: 35.2px; height: 44px; --m-detail: 1; --m-flat: 0; }
+.medal--speaking { width: 51.2px; height: 64px; --m-detail: 1; --m-flat: 0; }
+.medal--bare     { --m-tab: 0; }
+.medal--row.medal--bare      { height: 26.4px; }
+.medal--seat.medal--bare     { height: 35.2px; }
+.medal--speaking.medal--bare { height: 51.2px; }
+
+/* OY — podium metals: field and ribbon in the metal, numeral / crown engraved into it */
+.medal[data-medal="month-gold"],
+.medal[data-medal="year-champion"] {
+  --m-field: var(--medal-gold);
+  --m-glyph: color-mix(in oklab, var(--medal-gold) 35%, black);
+  --m-engrave-hi: color-mix(in oklab, var(--medal-gold) 55%, white);
+}
+.medal[data-medal="month-silver"] {
+  --m-field: var(--medal-silver);
+  --m-glyph: color-mix(in oklab, var(--medal-silver) 35%, black);
+  --m-engrave-hi: color-mix(in oklab, var(--medal-silver) 55%, white);
+}
+.medal[data-medal="month-bronze"] {
+  --m-field: var(--medal-bronze);
+  --m-glyph: color-mix(in oklab, var(--medal-bronze) 35%, black);
+  --m-engrave-hi: color-mix(in oklab, var(--medal-bronze) 55%, white);
+}
+
+/* SERIYA — orange */
+.medal[data-medal="streak-fire"],
+.medal[data-medal="streak-steady"] { --m-field: var(--series-2); }
+
+/* KUN — violet */
+.medal[data-medal="day-record"],
+.medal[data-medal="day-winner"] { --m-field: var(--series-7); }
+
+/* SIFAT — teal */
+.medal[data-medal="conversion-master"],
+.medal[data-medal="clean-month"] { --m-field: var(--series-3); }
+
+/* OʻSISH — green */
+.medal[data-medal="jump"],
+.medal[data-medal="rookie"],
+.medal[data-medal="first-sale"],
+.medal[data-medal="work-month"] { --m-field: var(--series-6); }
+
+/* LOCKED — dashed ghost of the same silhouette, never a warning */
+.medal[data-medal="locked"] { --m-field: var(--ink-muted); }
+
+</style>
+
+
+<svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute">
+  <defs>
+    
+    <symbol id="khatam" viewBox="0 0 24 24" overflow="visible"><path d="M12.0 0.0 L14.7 5.6 L20.5 3.5 L18.4 9.3 L24.0 12.0 L18.4 14.7 L20.5 20.5 L14.7 18.4 L12.0 24.0 L9.3 18.4 L3.5 20.5 L5.6 14.7 L0.0 12.0 L5.6 9.3 L3.5 3.5 L9.3 5.6 Z"/></symbol>
+    
+    <symbol id="lavha-stars-1" viewBox="0 0 16 16" overflow="visible"><use href="#khatam" x="0" y="0" width="16" height="16"/></symbol>
+    <symbol id="lavha-stars-2" viewBox="0 0 36 16" overflow="visible"><use href="#khatam" x="0" y="0" width="16" height="16"/><use href="#khatam" x="20" y="0" width="16" height="16"/></symbol>
+    <symbol id="lavha-stars-3" viewBox="0 0 56 16" overflow="visible"><use href="#khatam" x="0" y="0" width="16" height="16"/><use href="#khatam" x="20" y="0" width="16" height="16"/><use href="#khatam" x="40" y="0" width="16" height="16"/></symbol>
+    
+    <symbol id="lavha-plate-3x1" viewBox="0 0 78 26" overflow="visible"><path d="M5.2 1.0 L66.1 1.0 L77.0 13.0 L66.1 25.0 L5.2 25.0 L1.0 20.8 L1.0 5.2 Z" vector-effect="non-scaling-stroke"/></symbol>
+    
+    <symbol id="lavha-rim-3x1" viewBox="0 0 78 26" overflow="visible"><path d="M6.0 3.0 L65.2 3.0 L74.3 13.0 L65.2 23.0 L6.0 23.0 L3.0 20.0 L3.0 6.0 Z" vector-effect="non-scaling-stroke"/></symbol>
+    
+    <symbol id="lavha-plate-seat" viewBox="0 0 280 88" overflow="visible"><path d="M15.1 1.0 L242.0 1.0 L279.0 44.0 L242.0 87.0 L15.1 87.0 L1.0 72.9 L1.0 15.1 Z" vector-effect="non-scaling-stroke"/></symbol>
+    
+    <symbol id="lavha-rim-seat" viewBox="0 0 280 88" overflow="visible"><path d="M18.4 9.0 L238.3 9.0 L268.4 44.0 L238.3 79.0 L18.4 79.0 L9.0 69.6 L9.0 18.4 Z" vector-effect="non-scaling-stroke"/></symbol>
+    
+    <symbol id="lavha-hi-seat" viewBox="0 0 280 88" overflow="visible"><path d="M4.5 71.5 L4.5 16.5 L16.5 4.5 L240.4 4.5 L274.4 44.0" vector-effect="non-scaling-stroke"/></symbol>
+    <symbol id="lavha-lo-seat" viewBox="0 0 280 88" overflow="visible"><path d="M274.4 44.0 L240.4 83.5 L16.5 83.5 L4.5 71.5" vector-effect="non-scaling-stroke"/></symbol>
+  </defs>
+</svg>
+
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    
+    <path id="m-tab" d="M6 0H26V10L16 5L6 10Z"/>
+    <path id="m-tab-stripes" d="M8.6 0H10.6V7.7L8.6 8.7ZM21.4 0H23.4V8.7L21.4 7.7Z"/>
+    <circle id="m-ring" cx="16" cy="24" r="16"/>
+    <circle id="m-disc" cx="16" cy="24" r="14"/>
+    <circle id="m-rim" cx="16" cy="24" r="12.3" fill="none" stroke-width="1.2" stroke-opacity=".5"/>
+    
+    <path id="m-leaf" d="M0 -2.9C1.5 -1.5 1.7 1 0 2.3C-1.7 1 -1.5 -1.5 0 -2.9Z"/>
+
+    
+    <linearGradient id="m-sheen-gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" style="stop-color:color-mix(in oklab, var(--medal-gold) 55%, white)"/>
+      <stop offset=".5" style="stop-color:var(--medal-gold)"/>
+      <stop offset="1" style="stop-color:color-mix(in oklab, var(--medal-gold) 70%, black)"/>
+    </linearGradient>
+    <linearGradient id="m-sheen-silver" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" style="stop-color:color-mix(in oklab, var(--medal-silver) 55%, white)"/>
+      <stop offset=".5" style="stop-color:var(--medal-silver)"/>
+      <stop offset="1" style="stop-color:color-mix(in oklab, var(--medal-silver) 70%, black)"/>
+    </linearGradient>
+    <linearGradient id="m-sheen-bronze" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" style="stop-color:color-mix(in oklab, var(--medal-bronze) 55%, white)"/>
+      <stop offset=".5" style="stop-color:var(--medal-bronze)"/>
+      <stop offset="1" style="stop-color:color-mix(in oklab, var(--medal-bronze) 70%, black)"/>
+    </linearGradient>
+    <linearGradient id="m-sheen-series-2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" style="stop-color:color-mix(in oklab, var(--series-2) 70%, white)"/>
+      <stop offset=".5" style="stop-color:var(--series-2)"/>
+      <stop offset="1" style="stop-color:color-mix(in oklab, var(--series-2) 76%, black)"/>
+    </linearGradient>
+    <linearGradient id="m-sheen-series-3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" style="stop-color:color-mix(in oklab, var(--series-3) 70%, white)"/>
+      <stop offset=".5" style="stop-color:var(--series-3)"/>
+      <stop offset="1" style="stop-color:color-mix(in oklab, var(--series-3) 76%, black)"/>
+    </linearGradient>
+    <linearGradient id="m-sheen-series-6" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" style="stop-color:color-mix(in oklab, var(--series-6) 70%, white)"/>
+      <stop offset=".5" style="stop-color:var(--series-6)"/>
+      <stop offset="1" style="stop-color:color-mix(in oklab, var(--series-6) 76%, black)"/>
+    </linearGradient>
+    <linearGradient id="m-sheen-series-7" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" style="stop-color:color-mix(in oklab, var(--series-7) 70%, white)"/>
+      <stop offset=".5" style="stop-color:var(--series-7)"/>
+      <stop offset="1" style="stop-color:color-mix(in oklab, var(--series-7) 76%, black)"/>
+    </linearGradient>
+
+    
+    <symbol id="medal-month-gold" overflow="visible">
+      <use href="#m-tab" style="fill:var(--m-field);opacity:var(--m-tab,1)"/>
+      <g style="opacity:var(--m-tab,1)"><g style="opacity:var(--m-detail,0)">
+        <use href="#m-tab" fill="url(#m-sheen-gold)"/>
+        <use href="#m-tab-stripes" fill-opacity=".28" style="fill:var(--m-glyph)"/>
+      </g></g>
+      <use href="#m-ring" style="fill:var(--m-ring)"/>
+      <use href="#m-disc" style="fill:var(--m-field)"/>
+      <use href="#m-disc" fill="url(#m-sheen-gold)" style="opacity:var(--m-detail,0)"/>
+      <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
+      <g transform="translate(6.4 14.4) scale(.8)" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 8L12 4V20M8 20H16" transform="translate(.6 .6)" style="stroke:var(--m-engrave-hi);opacity:var(--m-detail,0)"/>
+        <path d="M8 8L12 4V20M8 20H16" style="stroke:var(--m-glyph)"/>
+      </g>
+    </symbol>
+
+    <symbol id="medal-month-silver" overflow="visible">
+      <use href="#m-tab" style="fill:var(--m-field);opacity:var(--m-tab,1)"/>
+      <g style="opacity:var(--m-tab,1)"><g style="opacity:var(--m-detail,0)">
+        <use href="#m-tab" fill="url(#m-sheen-silver)"/>
+        <use href="#m-tab-stripes" fill-opacity=".28" style="fill:var(--m-glyph)"/>
+      </g></g>
+      <use href="#m-ring" style="fill:var(--m-ring)"/>
+      <use href="#m-disc" style="fill:var(--m-field)"/>
+      <use href="#m-disc" fill="url(#m-sheen-silver)" style="opacity:var(--m-detail,0)"/>
+      <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
+      <g transform="translate(6.4 14.4) scale(.8)" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M7.6 8.4C7.6 5.6 9.6 4 12 4C14.6 4 16.6 5.7 16.6 8.2C16.6 12.6 8.4 14.2 7.4 20H16.8" transform="translate(.6 .6)" style="stroke:var(--m-engrave-hi);opacity:var(--m-detail,0)"/>
+        <path d="M7.6 8.4C7.6 5.6 9.6 4 12 4C14.6 4 16.6 5.7 16.6 8.2C16.6 12.6 8.4 14.2 7.4 20H16.8" style="stroke:var(--m-glyph)"/>
+      </g>
+    </symbol>
+
+    <symbol id="medal-month-bronze" overflow="visible">
+      <use href="#m-tab" style="fill:var(--m-field);opacity:var(--m-tab,1)"/>
+      <g style="opacity:var(--m-tab,1)"><g style="opacity:var(--m-detail,0)">
+        <use href="#m-tab" fill="url(#m-sheen-bronze)"/>
+        <use href="#m-tab-stripes" fill-opacity=".28" style="fill:var(--m-glyph)"/>
+      </g></g>
+      <use href="#m-ring" style="fill:var(--m-ring)"/>
+      <use href="#m-disc" style="fill:var(--m-field)"/>
+      <use href="#m-disc" fill="url(#m-sheen-bronze)" style="opacity:var(--m-detail,0)"/>
+      <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
+      <g transform="translate(6.4 14.4) scale(.8)" fill="none" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M7.6 7.4C8.4 5.2 10.2 4 12.2 4C14.8 4 16.6 5.6 16.6 7.8C16.6 10.2 14.8 11.8 12.2 12H10.8M12.2 12C15.2 12.2 17 13.8 17 16.2C17 18.6 15 20 12.2 20C10 20 8.2 18.9 7.4 17.2" transform="translate(.6 .6)" style="stroke:var(--m-engrave-hi);opacity:var(--m-detail,0)"/>
+        <path d="M7.6 7.4C8.4 5.2 10.2 4 12.2 4C14.8 4 16.6 5.6 16.6 7.8C16.6 10.2 14.8 11.8 12.2 12H10.8M12.2 12C15.2 12.2 17 13.8 17 16.2C17 18.6 15 20 12.2 20C10 20 8.2 18.9 7.4 17.2" style="stroke:var(--m-glyph)"/>
+      </g>
+    </symbol>
+
+    <symbol id="medal-year-champion" overflow="visible">
+      
+      <g style="fill:var(--m-field);opacity:var(--m-detail,0)">
+        <use href="#m-leaf" transform="rotate(172.5 16 24) translate(16 6.6) rotate(-62)"/>
+        <use href="#m-leaf" transform="rotate(157.5 16 24) translate(16 6.6) rotate(-62)"/>
+        <use href="#m-leaf" transform="rotate(142.5 16 24) translate(16 6.6) rotate(-62)"/>
+        <use href="#m-leaf" transform="rotate(127.5 16 24) translate(16 6.6) rotate(-62)"/>
+        <use href="#m-leaf" transform="rotate(112.5 16 24) translate(16 6.6) rotate(-62)"/>
+        <use href="#m-leaf" transform="rotate(97.5 16 24) translate(16 6.6) rotate(-62)"/>
+        <use href="#m-leaf" transform="rotate(82.5 16 24) translate(16 6.6) rotate(-62)"/>
+        <use href="#m-leaf" transform="rotate(67.5 16 24) translate(16 6.6) rotate(-62)"/>
+        <use href="#m-leaf" transform="rotate(52.5 16 24) translate(16 6.6) rotate(-62)"/>
+        <use href="#m-leaf" transform="rotate(-172.5 16 24) translate(16 6.6) rotate(62)"/>
+        <use href="#m-leaf" transform="rotate(-157.5 16 24) translate(16 6.6) rotate(62)"/>
+        <use href="#m-leaf" transform="rotate(-142.5 16 24) translate(16 6.6) rotate(62)"/>
+        <use href="#m-leaf" transform="rotate(-127.5 16 24) translate(16 6.6) rotate(62)"/>
+        <use href="#m-leaf" transform="rotate(-112.5 16 24) translate(16 6.6) rotate(62)"/>
+        <use href="#m-leaf" transform="rotate(-97.5 16 24) translate(16 6.6) rotate(62)"/>
+        <use href="#m-leaf" transform="rotate(-82.5 16 24) translate(16 6.6) rotate(62)"/>
+        <use href="#m-leaf" transform="rotate(-67.5 16 24) translate(16 6.6) rotate(62)"/>
+        <use href="#m-leaf" transform="rotate(-52.5 16 24) translate(16 6.6) rotate(62)"/>
+      </g>
+      <path d="M6 10.25A17 17 0 1 0 26 10.25" fill="none" stroke-width="1.5" stroke-linecap="round" style="stroke:var(--m-field);opacity:var(--m-flat,1)"/>
+      <use href="#m-tab" style="fill:var(--m-field);opacity:var(--m-tab,1)"/>
+      <g style="opacity:var(--m-tab,1)"><g style="opacity:var(--m-detail,0)">
+        <use href="#m-tab" fill="url(#m-sheen-gold)"/>
+        <use href="#m-tab-stripes" fill-opacity=".28" style="fill:var(--m-glyph)"/>
+      </g></g>
+      <use href="#m-ring" style="fill:var(--m-ring)"/>
+      <use href="#m-disc" style="fill:var(--m-field)"/>
+      <use href="#m-disc" fill="url(#m-sheen-gold)" style="opacity:var(--m-detail,0)"/>
+      <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
+      <g transform="translate(6.4 14.4) scale(.8)">
+        <g transform="translate(.6 .6)" style="fill:var(--m-engrave-hi);opacity:var(--m-detail,0)">
+          <path d="M3 15.5V4.5L8 10L12 2.5L16 10L21 4.5V15.5Z"/><rect x="3" y="18.7" width="18" height="3.3" rx="1"/>
+        </g>
+        <g style="fill:var(--m-glyph)">
+          <path d="M3 15.5V4.5L8 10L12 2.5L16 10L21 4.5V15.5Z"/><rect x="3" y="18.7" width="18" height="3.3" rx="1"/>
+        </g>
+      </g>
+    </symbol>
+
+    
+    <symbol id="medal-streak-fire" overflow="visible">
+      <use href="#m-tab" style="fill:var(--m-field);opacity:var(--m-tab,1)"/>
+      <g style="opacity:var(--m-tab,1)"><g style="opacity:var(--m-detail,0)">
+        <use href="#m-tab" fill="url(#m-sheen-series-2)"/>
+        <use href="#m-tab-stripes" fill-opacity=".28" style="fill:var(--m-glyph)"/>
+      </g></g>
+      <use href="#m-ring" style="fill:var(--m-ring)"/>
+      <use href="#m-disc" style="fill:var(--m-field)"/>
+      <use href="#m-disc" fill="url(#m-sheen-series-2)" style="opacity:var(--m-detail,0)"/>
+      <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
+      <g transform="translate(6.4 14.4) scale(.8)">
+        <path d="M12.2 1.8C12.4 6.5 5.3 9.6 5.3 15.6A6.7 6.7 0 0 0 18.7 15.6C18.7 12.4 17 10.6 15.9 8C15.4 10.7 14 11.6 13.4 11.6C13.4 8.3 12.6 5.6 12.2 1.8Z" style="fill:var(--m-glyph)"/>
+        <path d="M12 14.2C10.7 16.1 9.7 17.3 9.7 18.6A2.3 2.3 0 0 0 14.3 18.6C14.3 17.3 13.3 16.1 12 14.2Z" style="fill:var(--m-field);opacity:var(--m-detail,0)"/>
+      </g>
+    </symbol>
+
+    <symbol id="medal-streak-steady" overflow="visible">
+      <use href="#m-tab" style="fill:var(--m-field);opacity:var(--m-tab,1)"/>
+      <g style="opacity:var(--m-tab,1)"><g style="opacity:var(--m-detail,0)">
+        <use href="#m-tab" fill="url(#m-sheen-series-2)"/>
+        <use href="#m-tab-stripes" fill-opacity=".28" style="fill:var(--m-glyph)"/>
+      </g></g>
+      <use href="#m-ring" style="fill:var(--m-ring)"/>
+      <use href="#m-disc" style="fill:var(--m-field)"/>
+      <use href="#m-disc" fill="url(#m-sheen-series-2)" style="opacity:var(--m-detail,0)"/>
+      <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
+      <g transform="translate(6.4 14.4) scale(.8)">
+        
+        <path d="M2.6 21V15.4H8.6V9.4H14.6V3.4H21.4V21Z" style="fill:var(--m-glyph)"/>
+      </g>
+    </symbol>
+
+    
+    <symbol id="medal-day-record" overflow="visible">
+      <use href="#m-tab" style="fill:var(--m-field);opacity:var(--m-tab,1)"/>
+      <g style="opacity:var(--m-tab,1)"><g style="opacity:var(--m-detail,0)">
+        <use href="#m-tab" fill="url(#m-sheen-series-7)"/>
+        <use href="#m-tab-stripes" fill-opacity=".28" style="fill:var(--m-glyph)"/>
+      </g></g>
+      <use href="#m-ring" style="fill:var(--m-ring)"/>
+      <use href="#m-disc" style="fill:var(--m-field)"/>
+      <use href="#m-disc" fill="url(#m-sheen-series-7)" style="opacity:var(--m-detail,0)"/>
+      <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
+      <g transform="translate(6.4 14.4) scale(.8)">
+        <path d="M14.6 1.5L4 13.6H10.4L9.2 22.5L20 10.4H13.6Z" style="fill:var(--m-glyph)"/>
+      </g>
+    </symbol>
+
+    <symbol id="medal-day-winner" overflow="visible">
+      <use href="#m-tab" style="fill:var(--m-field);opacity:var(--m-tab,1)"/>
+      <g style="opacity:var(--m-tab,1)"><g style="opacity:var(--m-detail,0)">
+        <use href="#m-tab" fill="url(#m-sheen-series-7)"/>
+        <use href="#m-tab-stripes" fill-opacity=".28" style="fill:var(--m-glyph)"/>
+      </g></g>
+      <use href="#m-ring" style="fill:var(--m-ring)"/>
+      <use href="#m-disc" style="fill:var(--m-field)"/>
+      <use href="#m-disc" fill="url(#m-sheen-series-7)" style="opacity:var(--m-detail,0)"/>
+      <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
+      <g transform="translate(6.4 14.4) scale(.8)" style="color:var(--m-glyph)">
+        
+        <path d="M4.8 16.4A7.2 7.2 0 0 1 19.2 16.4Z" fill="currentColor"/>
+        <rect x="5.4" y="19.4" width="13.2" height="3.2" rx="1.6" fill="currentColor"/>
+        <path d="M12 6V2.2M17.4 8.6L20.2 5.8M6.6 8.6L3.8 5.8" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round"/>
+      </g>
+    </symbol>
+
+    
+    <symbol id="medal-conversion-master" overflow="visible">
+      <use href="#m-tab" style="fill:var(--m-field);opacity:var(--m-tab,1)"/>
+      <g style="opacity:var(--m-tab,1)"><g style="opacity:var(--m-detail,0)">
+        <use href="#m-tab" fill="url(#m-sheen-series-3)"/>
+        <use href="#m-tab-stripes" fill-opacity=".28" style="fill:var(--m-glyph)"/>
+      </g></g>
+      <use href="#m-ring" style="fill:var(--m-ring)"/>
+      <use href="#m-disc" style="fill:var(--m-field)"/>
+      <use href="#m-disc" fill="url(#m-sheen-series-3)" style="opacity:var(--m-detail,0)"/>
+      <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
+      <g transform="translate(6.4 14.4) scale(.8)" style="color:var(--m-glyph)">
+        <circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="3.2"/>
+        <circle cx="12" cy="12" r="3.5" fill="currentColor"/>
+      </g>
+    </symbol>
+
+    <symbol id="medal-clean-month" overflow="visible">
+      <use href="#m-tab" style="fill:var(--m-field);opacity:var(--m-tab,1)"/>
+      <g style="opacity:var(--m-tab,1)"><g style="opacity:var(--m-detail,0)">
+        <use href="#m-tab" fill="url(#m-sheen-series-3)"/>
+        <use href="#m-tab-stripes" fill-opacity=".28" style="fill:var(--m-glyph)"/>
+      </g></g>
+      <use href="#m-ring" style="fill:var(--m-ring)"/>
+      <use href="#m-disc" style="fill:var(--m-field)"/>
+      <use href="#m-disc" fill="url(#m-sheen-series-3)" style="opacity:var(--m-detail,0)"/>
+      <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
+      <g transform="translate(6.4 14.4) scale(.8)">
+        <path d="M4.6 12.8L9.8 18L19.6 6.4" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--m-glyph)"/>
+      </g>
+    </symbol>
+
+    
+    <symbol id="medal-jump" overflow="visible">
+      <use href="#m-tab" style="fill:var(--m-field);opacity:var(--m-tab,1)"/>
+      <g style="opacity:var(--m-tab,1)"><g style="opacity:var(--m-detail,0)">
+        <use href="#m-tab" fill="url(#m-sheen-series-6)"/>
+        <use href="#m-tab-stripes" fill-opacity=".28" style="fill:var(--m-glyph)"/>
+      </g></g>
+      <use href="#m-ring" style="fill:var(--m-ring)"/>
+      <use href="#m-disc" style="fill:var(--m-field)"/>
+      <use href="#m-disc" fill="url(#m-sheen-series-6)" style="opacity:var(--m-detail,0)"/>
+      <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
+      <g transform="translate(6.4 14.4) scale(.8)">
+        <path d="M3.6 19.8L10.2 13.2L13.8 16.8L20.6 10M14.4 9.8H20.6V16" fill="none" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--m-glyph)"/>
+      </g>
+    </symbol>
+
+    <symbol id="medal-rookie" overflow="visible">
+      <use href="#m-tab" style="fill:var(--m-field);opacity:var(--m-tab,1)"/>
+      <g style="opacity:var(--m-tab,1)"><g style="opacity:var(--m-detail,0)">
+        <use href="#m-tab" fill="url(#m-sheen-series-6)"/>
+        <use href="#m-tab-stripes" fill-opacity=".28" style="fill:var(--m-glyph)"/>
+      </g></g>
+      <use href="#m-ring" style="fill:var(--m-ring)"/>
+      <use href="#m-disc" style="fill:var(--m-field)"/>
+      <use href="#m-disc" fill="url(#m-sheen-series-6)" style="opacity:var(--m-detail,0)"/>
+      <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
+      
+      <g transform="translate(6.4 14.4) scale(.8) rotate(45 12 12)" style="fill:var(--m-glyph)">
+        <path fill-rule="evenodd" d="M12 1.6C14.7 1.6 16.2 6.2 16.2 11.4V16.6H7.8V11.4C7.8 6.2 9.3 1.6 12 1.6ZM12 7.3A2.25 2.25 0 1 0 12 11.8A2.25 2.25 0 1 0 12 7.3Z"/>
+        <path d="M7.8 11.2L4.2 15.6V19.2L7.8 17.2ZM16.2 11.2L19.8 15.6V19.2L16.2 17.2Z"/>
+        <path d="M9.6 18.4H14.4L12 23Z"/>
+      </g>
+    </symbol>
+
+    <symbol id="medal-first-sale" overflow="visible">
+      <use href="#m-tab" style="fill:var(--m-field);opacity:var(--m-tab,1)"/>
+      <g style="opacity:var(--m-tab,1)"><g style="opacity:var(--m-detail,0)">
+        <use href="#m-tab" fill="url(#m-sheen-series-6)"/>
+        <use href="#m-tab-stripes" fill-opacity=".28" style="fill:var(--m-glyph)"/>
+      </g></g>
+      <use href="#m-ring" style="fill:var(--m-ring)"/>
+      <use href="#m-disc" style="fill:var(--m-field)"/>
+      <use href="#m-disc" fill="url(#m-sheen-series-6)" style="opacity:var(--m-detail,0)"/>
+      <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
+      
+      <g transform="translate(6.4 14.4) scale(.8)" style="color:var(--m-glyph)">
+        <path d="M12.2 22.4C12.2 18.4 12.4 13.4 13.2 7.6" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>
+        <path d="M12 16C9.2 18.6 3.6 18 2 13.6C3.4 10.2 8.8 10.4 12 16Z" fill="currentColor"/>
+        <path d="M12.8 10.2C15.6 12.8 21.2 12.2 22.8 7.8C21.4 4.4 16 4.6 12.8 10.2Z" fill="currentColor"/>
+      </g>
+    </symbol>
+
+    <symbol id="medal-work-month" overflow="visible">
+      <use href="#m-tab" style="fill:var(--m-field);opacity:var(--m-tab,1)"/>
+      <g style="opacity:var(--m-tab,1)"><g style="opacity:var(--m-detail,0)">
+        <use href="#m-tab" fill="url(#m-sheen-series-6)"/>
+        <use href="#m-tab-stripes" fill-opacity=".28" style="fill:var(--m-glyph)"/>
+      </g></g>
+      <use href="#m-ring" style="fill:var(--m-ring)"/>
+      <use href="#m-disc" style="fill:var(--m-field)"/>
+      <use href="#m-disc" fill="url(#m-sheen-series-6)" style="opacity:var(--m-detail,0)"/>
+      <use href="#m-rim" style="stroke:var(--m-glyph);opacity:var(--m-detail,0)"/>
+      <g transform="translate(6.4 14.4) scale(.8)" style="fill:var(--m-glyph)">
+        <rect x="2.8" y="2.8" width="5.2" height="5.2" rx="1.3"/><rect x="9.4" y="2.8" width="5.2" height="5.2" rx="1.3"/><rect x="16" y="2.8" width="5.2" height="5.2" rx="1.3"/>
+        <rect x="2.8" y="9.4" width="5.2" height="5.2" rx="1.3"/><rect x="9.4" y="9.4" width="5.2" height="5.2" rx="1.3"/><rect x="16" y="9.4" width="5.2" height="5.2" rx="1.3"/>
+        <rect x="2.8" y="16" width="5.2" height="5.2" rx="1.3"/><rect x="9.4" y="16" width="5.2" height="5.2" rx="1.3"/><rect x="16" y="16" width="5.2" height="5.2" rx="1.3"/>
+      </g>
+    </symbol>
+
+    
+    <symbol id="medal-locked" overflow="visible">
+      <use href="#m-tab" fill="none" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="2.6 2.1" style="stroke:var(--m-field);opacity:var(--m-tab,1)"/>
+      <circle cx="16" cy="24" r="13.25" fill="none" stroke-width="1.5" stroke-dasharray="2.6 2.1" style="stroke:var(--m-field)"/>
+    </symbol>
+  </defs>
+</svg>
+
+
+<div class="wrap">
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">/sellers · qayta dizayn · 16-sentabr 2026</p>
+      <h1>Daraja va <em>medallar</em></h1>
+      <p>Ikki alohida qatlam, ikki xil shakl, ikki xil joy: <b>daraja</b> — yelkadagi lavha-pagon, ishlab topilgan puldan; <b>medallar</b> — ko'krakdagi nishonlar, kuchli tomonlar uchun. Raqamlar production'dan, 16-sentabr holati.</p>
+    </div>
+    <div class="tools">
+      <div class="seg" role="group" aria-label="Mavzu">
+        <button type="button" data-set-theme="light" aria-pressed="false">Yorug'</button>
+        <button type="button" data-set-theme="auto" aria-pressed="true">Tizim</button>
+        <button type="button" data-set-theme="dark" aria-pressed="false">Qorong'i</button>
+      </div>
+    </div>
+  </header>
+
+  <section class="part" id="narvon">
+    <p class="eyebrow">1 · Men qaysi leveldaman?</p>
+    <h2>Olti daraja, uch xil lavha, <em>uchtagacha yulduz</em></h2>
+    <p class="lede">Uzoqdan lavhaning <b>rangi</b> o'qiladi (oddiy · faxriy · ko'k), yaqindan <b>yulduz soni</b> sanaladi. Ostona — 2026-avgustdan beri yetkazilgan jami pul; daraja faqat ko'tariladi. Har qatorda daraja so'z bilan ham yoziladi.</p>
+    <div class="board-scroll"><div id="narvon-board" class="tv-col" style="width:920px"></div></div>
+    <div class="rules">
+      <div class="card"><b>Ostona — aytib yuriladigan raqamlar</b><p>0 → 10 → 30 → 100 → 300 → 1 000 mln. «Yuz million — Usta», «bir milliard — Legenda». Legenda har keyingi milliardda II, III… bo'ladi.</p></div>
+      <div class="card"><b>Bugungi taqsimot (126 sotuvchi)</b><p>5 hali savdosiz · 35 Yangi · 25 Sotuvchi · 47 Katta sotuvchi · 14 Usta · Ustoz va Legenda hali bo'sh — intilish uchun.</p></div>
+      <div class="card"><b>Keyingi qadam doim ko'rinadi</b><p>O'rindiqda 10 ta shtamp + «Ustozga 127 mln qoldi» + keyingi lavhaning sharpasi. Qatorda — chase chizig'ida «Ustaga 10 mln». 90% dan oshganda daraja so'zi ko'k bo'ladi.</p></div>
+    </div>
+  </section>
+
+  <section class="part" id="taxta">
+    <p class="eyebrow">2 · Sahifa yaxlit holda</p>
+    <h2>Sotuvchilar ustuni — <em>podium, narvon, qatorlar</em></h2>
+    <p class="lede">Televizordagi 920 px kenglikdagi ustun, sentabr bo'yicha haqiqiy tartib. O'rindiqda: joy (oltin/kumush/bronza — bu oyning chromi), so'ng <b>daraja bloki</b>, so'ng <b>medal tokchasi</b> va 6 soniyada bittadan «gapiradigan» medal. Qatorlarda: chapda lavha (yelka), o'ngda 3 ta medal (ko'krak).</p>
+    <div class="board-scroll"><div id="board" class="tv-col"></div></div>
+    <p class="note">O'rindiqdagi eski «0 / 2 buyurtma · 97%» bloki yo'q. FAKT 1/FAKT 2 tugmasi, davr filtri, chase chizig'i o'z joyida — daraja va medallar davrga bog'liq emas, avgustdan beri to'plangan.</p>
+  </section>
+
+  <section class="part" id="medallar">
+    <p class="eyebrow">3 · Medallar — kuchli tomonlar uchun</p>
+    <h2>Bir oila, bir shakl, <em>besh rang</em></h2>
+    <p class="lede">Hammasi bir xil planshet: dumaloq disk + qisqa lenta. Oila — rang (Oy · Seriya · Kun · Sifat · O'sish), medal — belgi. Oy podiumi metall (oltin/kumush/bronza) va o'yilgan 1 / 2 / 3 raqam: uzoqdan ham «o'sha oyda 1-o'rin» deb o'qiladi. Hech bir medalda yulduz yo'q — yulduz faqat darajaniki.</p>
+    <div id="catalogue" class="cat"></div>
+  </section>
+
+  <section class="part" id="ochilish">
+    <p class="eyebrow">4 · Daraja medallarni ochadi</p>
+    <h2>Har lavha — <em>yangi medallarga eshik</em></h2>
+    <p class="lede">Sizning taklifingiz: daraja oshgani sari medal olish osonlashadi. Mexanika: har daraja o'z medal turlarini ochadi — Yangi'da boshlang'ich to'rttasi, Sotuvchi'da oy podiumi va sifat, Usta'da seriyalar. Ochilmagan medal qatorda ko'rinmaydi, faqat shu xaritada shtrix bo'lib turadi: «Ustaga chiqsam — Olov seriyasi ochiladi».</p>
+    <div class="board-scroll"><div id="unlock" class="unlock"></div></div>
+    <p class="note">Eshiklar jazo emas, hikoya: oy chempioni bo'lgan sotuvchi oy oxirida baribir 10 mln dan oshgan bo'ladi, ya'ni Sotuvchi darajasi uni ushlab qolmaydi. Eshik faqat yuqori medallarda (Olov seriyasi, Yil chempioni) haqiqatan sezildi.</p>
+  </section>
+
+  <section class="part" id="marosim">
+    <p class="eyebrow">5 · Ko'tarilish marosimi</p>
+    <h2>Yulduz tushadi, lavha ag'dariladi, <em>ustun e'lon qiladi</em></h2>
+    <p class="lede">Odatiy holatda hech narsa qimirlamaydi — 10 soat yonadigan televizorda har qanday takror animatsiya fonga aylanadi. Faqat uch voqea: daraja ko'tarilishi (yulduzlar 80 ms oraliqda tushadi, bir marta yaltirash, 8 soniya ustun sarlavhasida e'lon), yangi medal (bir marta kattalashib joyiga tushadi), gapiradigan medal (6 s, bittadan).</p>
+    <div class="stage">
+      <div class="banner" id="banner"><span id="banner-plate"></span><div><span id="banner-text">Muxtoraliyevna 210 Zulfira — endi USTA · 100 mln</span><small>8 soniya ustun sarlavhasida, keyin jim</small></div></div>
+      <div id="stage-plate"></div>
+      <button class="btn" type="button" id="play">Ko'tarilishni ko'rish: Katta sotuvchi → Usta</button>
+    </div>
+  </section>
+
+  <section class="part" id="boshqa">
+    <p class="eyebrow">6 · Boshqa ikki yo'nalish (hakamlar bahosi bilan)</p>
+    <h2>Nima uchun <em>lavha-pagon</em> tanlandi</h2>
+    <p class="lede">Uchta mustaqil dizayner uch konsept chizdi, uch hakam (sotuvchi · TV dizayneri · muhandis) bir xil mezonda baholadi. Tavsiya — «Sharaf lavhasi» asosi + «Peshtoq»dan medal disklari, lenta, sharpa va e'lon + «Parad»dan pagon uchi va yulduz tushishi. Quyida ikkalasi o'z chizmalari bilan.</p>
+    <div class="grid2">
+      <div>
+        <div class="alt" id="alt-parad"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 690">
+<rect width="1400" height="760" fill="#ffffff"/>
+<g transform="translate(20,20) scale(0.9)">
+<path d="M4,4 H206 L236,32 L206,60 H4 Z" fill="#182a5e" stroke="#b3860e" stroke-width="4" stroke-linejoin="round"/>
+<rect x="8" y="29" width="196" height="6" fill="#b3860e" opacity="0.9"/>
+<path d="M52.00,19.00 L54.09,26.96 L61.19,22.81 L57.04,29.91 L65.00,32.00 L57.04,34.09 L61.19,41.19 L54.09,37.04 L52.00,45.00 L49.91,37.04 L42.81,41.19 L46.96,34.09 L39.00,32.00 L46.96,29.91 L42.81,22.81 L49.91,26.96 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+</g>
+<text x="128" y="110" font-family="Inter, DejaVu Sans, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#0c0e12">YANGI</text>
+<g transform="translate(320,20) scale(0.9)">
+<path d="M4,4 H206 L236,32 L206,60 H4 Z" fill="#182a5e" stroke="#b3860e" stroke-width="4" stroke-linejoin="round"/>
+<rect x="8" y="29" width="196" height="6" fill="#b3860e" opacity="0.9"/>
+<path d="M52.00,19.00 L54.09,26.96 L61.19,22.81 L57.04,29.91 L65.00,32.00 L57.04,34.09 L61.19,41.19 L54.09,37.04 L52.00,45.00 L49.91,37.04 L42.81,41.19 L46.96,34.09 L39.00,32.00 L46.96,29.91 L42.81,22.81 L49.91,26.96 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+<path d="M116.00,19.00 L118.09,26.96 L125.19,22.81 L121.04,29.91 L129.00,32.00 L121.04,34.09 L125.19,41.19 L118.09,37.04 L116.00,45.00 L113.91,37.04 L106.81,41.19 L110.96,34.09 L103.00,32.00 L110.96,29.91 L106.81,22.81 L113.91,26.96 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+</g>
+<text x="428" y="110" font-family="Inter, DejaVu Sans, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#0c0e12">SOTUVCHI</text>
+<g transform="translate(620,20) scale(0.9)">
+<path d="M4,4 H206 L236,32 L206,60 H4 Z" fill="#182a5e" stroke="#b3860e" stroke-width="4" stroke-linejoin="round"/>
+<rect x="8" y="29" width="196" height="6" fill="#b3860e" opacity="0.9"/>
+<path d="M52.00,19.00 L54.09,26.96 L61.19,22.81 L57.04,29.91 L65.00,32.00 L57.04,34.09 L61.19,41.19 L54.09,37.04 L52.00,45.00 L49.91,37.04 L42.81,41.19 L46.96,34.09 L39.00,32.00 L46.96,29.91 L42.81,22.81 L49.91,26.96 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+<path d="M116.00,19.00 L118.09,26.96 L125.19,22.81 L121.04,29.91 L129.00,32.00 L121.04,34.09 L125.19,41.19 L118.09,37.04 L116.00,45.00 L113.91,37.04 L106.81,41.19 L110.96,34.09 L103.00,32.00 L110.96,29.91 L106.81,22.81 L113.91,26.96 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+<path d="M180.00,19.00 L182.09,26.96 L189.19,22.81 L185.04,29.91 L193.00,32.00 L185.04,34.09 L189.19,41.19 L182.09,37.04 L180.00,45.00 L177.91,37.04 L170.81,41.19 L174.96,34.09 L167.00,32.00 L174.96,29.91 L170.81,22.81 L177.91,26.96 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+</g>
+<text x="728" y="110" font-family="Inter, DejaVu Sans, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#0c0e12">KATTA SOTUVCHI</text>
+<g transform="translate(20,160) scale(0.9)">
+<path d="M4,4 H206 L236,32 L206,60 H4 Z" fill="#182a5e" stroke="#b3860e" stroke-width="4" stroke-linejoin="round"/>
+<rect x="8" y="20" width="196" height="6" fill="#b3860e" opacity="0.9"/>
+<rect x="8" y="38" width="196" height="6" fill="#b3860e" opacity="0.9"/>
+<path d="M52.00,13.00 L55.05,24.63 L65.44,18.56 L59.37,28.95 L71.00,32.00 L59.37,35.05 L65.44,45.44 L55.05,39.37 L52.00,51.00 L48.95,39.37 L38.56,45.44 L44.63,35.05 L33.00,32.00 L44.63,28.95 L38.56,18.56 L48.95,24.63 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+</g>
+<text x="128" y="250" font-family="Inter, DejaVu Sans, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#0c0e12">USTA</text>
+<g transform="translate(320,160) scale(0.9)">
+<path d="M4,4 H206 L236,32 L206,60 H4 Z" fill="#182a5e" stroke="#b3860e" stroke-width="4" stroke-linejoin="round"/>
+<rect x="8" y="20" width="196" height="6" fill="#b3860e" opacity="0.9"/>
+<rect x="8" y="38" width="196" height="6" fill="#b3860e" opacity="0.9"/>
+<path d="M52.00,13.00 L55.05,24.63 L65.44,18.56 L59.37,28.95 L71.00,32.00 L59.37,35.05 L65.44,45.44 L55.05,39.37 L52.00,51.00 L48.95,39.37 L38.56,45.44 L44.63,35.05 L33.00,32.00 L44.63,28.95 L38.56,18.56 L48.95,24.63 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+<path d="M116.00,13.00 L119.05,24.63 L129.44,18.56 L123.37,28.95 L135.00,32.00 L123.37,35.05 L129.44,45.44 L119.05,39.37 L116.00,51.00 L112.95,39.37 L102.56,45.44 L108.63,35.05 L97.00,32.00 L108.63,28.95 L102.56,18.56 L112.95,24.63 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+</g>
+<text x="428" y="250" font-family="Inter, DejaVu Sans, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#0c0e12">KATTA USTA</text>
+<g transform="translate(620,160) scale(0.9)">
+<path d="M4,4 H206 L236,32 L206,60 H4 Z" fill="#182a5e" stroke="#b3860e" stroke-width="4" stroke-linejoin="round"/>
+<path d="M4,4 H206 L236,32 L206,60 H4 Z" fill="none" stroke="#b3860e" stroke-width="3" stroke-dasharray="0 9" stroke-linecap="round" transform="translate(0,0)" opacity="0.9"/>
+<path d="M6,22 L18,22 L30,14 L42,22 L54,14 L66,22 L78,14 L90,22 L102,14 L114,22 L126,14 L138,22 L150,14 L162,22 L174,14 L186,22 L198,14" fill="none" stroke="#b3860e" stroke-width="2.5" opacity="0.45"/>
+<path d="M6,42 L18,42 L30,50 L42,42 L54,50 L66,42 L78,50 L90,42 L102,50 L114,42 L126,50 L138,42 L150,50 L162,42 L174,50 L186,42 L198,50" fill="none" stroke="#b3860e" stroke-width="2.5" opacity="0.45"/>
+<path d="M120.00,8.00 L123.86,22.69 L136.97,15.03 L129.31,28.14 L144.00,32.00 L129.31,35.86 L136.97,48.97 L123.86,41.31 L120.00,56.00 L116.14,41.31 L103.03,48.97 L110.69,35.86 L96.00,32.00 L110.69,28.14 L103.03,15.03 L116.14,22.69 Z" fill="#b3860e"/>
+</g>
+<text x="728" y="250" font-family="Inter, DejaVu Sans, sans-serif" font-size="26" font-weight="700" text-anchor="middle" fill="#0c0e12">LEGENDA</text>
+<text x="20" y="310" font-size="16" fill="#0c0e12" font-family="sans-serif">Row site 40px tall, chip 90x24 — six levels, then name at 22px</text>
+<line x1="20" y1="360" x2="700" y2="360" stroke="#0c0e12" stroke-opacity="0.15"/>
+<text x="44" y="347" font-size="22" font-weight="600" text-anchor="end" font-family="sans-serif" fill="#0c0e12" opacity="0.6">4</text>
+<g transform="translate(56,328) scale(0.375)">
+<path d="M4,4 H206 L236,32 L206,60 H4 Z" fill="#182a5e" stroke="#b3860e" stroke-width="4" stroke-linejoin="round"/>
+<rect x="8" y="29" width="196" height="6" fill="#b3860e" opacity="0.9"/>
+<path d="M52.00,19.00 L54.09,26.96 L61.19,22.81 L57.04,29.91 L65.00,32.00 L57.04,34.09 L61.19,41.19 L54.09,37.04 L52.00,45.00 L49.91,37.04 L42.81,41.19 L46.96,34.09 L39.00,32.00 L46.96,29.91 L42.81,22.81 L49.91,26.96 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+</g>
+<text x="160" y="347" font-size="22" font-weight="600" font-family="sans-serif" fill="#0c0e12">Dilnoza Karimova</text>
+<text x="420" y="347" font-size="18" font-family="sans-serif" fill="#0c0e12" opacity="0.7">Yangi</text>
+<line x1="20" y1="400" x2="700" y2="400" stroke="#0c0e12" stroke-opacity="0.15"/>
+<text x="44" y="387" font-size="22" font-weight="600" text-anchor="end" font-family="sans-serif" fill="#0c0e12" opacity="0.6">5</text>
+<g transform="translate(56,368) scale(0.375)">
+<path d="M4,4 H206 L236,32 L206,60 H4 Z" fill="#182a5e" stroke="#b3860e" stroke-width="4" stroke-linejoin="round"/>
+<rect x="8" y="29" width="196" height="6" fill="#b3860e" opacity="0.9"/>
+<path d="M52.00,19.00 L54.09,26.96 L61.19,22.81 L57.04,29.91 L65.00,32.00 L57.04,34.09 L61.19,41.19 L54.09,37.04 L52.00,45.00 L49.91,37.04 L42.81,41.19 L46.96,34.09 L39.00,32.00 L46.96,29.91 L42.81,22.81 L49.91,26.96 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+<path d="M116.00,19.00 L118.09,26.96 L125.19,22.81 L121.04,29.91 L129.00,32.00 L121.04,34.09 L125.19,41.19 L118.09,37.04 L116.00,45.00 L113.91,37.04 L106.81,41.19 L110.96,34.09 L103.00,32.00 L110.96,29.91 L106.81,22.81 L113.91,26.96 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+</g>
+<text x="160" y="387" font-size="22" font-weight="600" font-family="sans-serif" fill="#0c0e12">Dilnoza Karimova</text>
+<text x="420" y="387" font-size="18" font-family="sans-serif" fill="#0c0e12" opacity="0.7">Sotuvchi</text>
+<line x1="20" y1="440" x2="700" y2="440" stroke="#0c0e12" stroke-opacity="0.15"/>
+<text x="44" y="427" font-size="22" font-weight="600" text-anchor="end" font-family="sans-serif" fill="#0c0e12" opacity="0.6">6</text>
+<g transform="translate(56,408) scale(0.375)">
+<path d="M4,4 H206 L236,32 L206,60 H4 Z" fill="#182a5e" stroke="#b3860e" stroke-width="4" stroke-linejoin="round"/>
+<rect x="8" y="29" width="196" height="6" fill="#b3860e" opacity="0.9"/>
+<path d="M52.00,19.00 L54.09,26.96 L61.19,22.81 L57.04,29.91 L65.00,32.00 L57.04,34.09 L61.19,41.19 L54.09,37.04 L52.00,45.00 L49.91,37.04 L42.81,41.19 L46.96,34.09 L39.00,32.00 L46.96,29.91 L42.81,22.81 L49.91,26.96 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+<path d="M116.00,19.00 L118.09,26.96 L125.19,22.81 L121.04,29.91 L129.00,32.00 L121.04,34.09 L125.19,41.19 L118.09,37.04 L116.00,45.00 L113.91,37.04 L106.81,41.19 L110.96,34.09 L103.00,32.00 L110.96,29.91 L106.81,22.81 L113.91,26.96 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+<path d="M180.00,19.00 L182.09,26.96 L189.19,22.81 L185.04,29.91 L193.00,32.00 L185.04,34.09 L189.19,41.19 L182.09,37.04 L180.00,45.00 L177.91,37.04 L170.81,41.19 L174.96,34.09 L167.00,32.00 L174.96,29.91 L170.81,22.81 L177.91,26.96 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+</g>
+<text x="160" y="427" font-size="22" font-weight="600" font-family="sans-serif" fill="#0c0e12">Dilnoza Karimova</text>
+<text x="420" y="427" font-size="18" font-family="sans-serif" fill="#0c0e12" opacity="0.7">Katta sotuvchi</text>
+<line x1="20" y1="480" x2="700" y2="480" stroke="#0c0e12" stroke-opacity="0.15"/>
+<text x="44" y="467" font-size="22" font-weight="600" text-anchor="end" font-family="sans-serif" fill="#0c0e12" opacity="0.6">7</text>
+<g transform="translate(56,448) scale(0.375)">
+<path d="M4,4 H206 L236,32 L206,60 H4 Z" fill="#182a5e" stroke="#b3860e" stroke-width="4" stroke-linejoin="round"/>
+<rect x="8" y="20" width="196" height="6" fill="#b3860e" opacity="0.9"/>
+<rect x="8" y="38" width="196" height="6" fill="#b3860e" opacity="0.9"/>
+<path d="M52.00,13.00 L55.05,24.63 L65.44,18.56 L59.37,28.95 L71.00,32.00 L59.37,35.05 L65.44,45.44 L55.05,39.37 L52.00,51.00 L48.95,39.37 L38.56,45.44 L44.63,35.05 L33.00,32.00 L44.63,28.95 L38.56,18.56 L48.95,24.63 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+</g>
+<text x="160" y="467" font-size="22" font-weight="600" font-family="sans-serif" fill="#0c0e12">Dilnoza Karimova</text>
+<text x="420" y="467" font-size="18" font-family="sans-serif" fill="#0c0e12" opacity="0.7">Usta</text>
+<line x1="20" y1="520" x2="700" y2="520" stroke="#0c0e12" stroke-opacity="0.15"/>
+<text x="44" y="507" font-size="22" font-weight="600" text-anchor="end" font-family="sans-serif" fill="#0c0e12" opacity="0.6">8</text>
+<g transform="translate(56,488) scale(0.375)">
+<path d="M4,4 H206 L236,32 L206,60 H4 Z" fill="#182a5e" stroke="#b3860e" stroke-width="4" stroke-linejoin="round"/>
+<rect x="8" y="20" width="196" height="6" fill="#b3860e" opacity="0.9"/>
+<rect x="8" y="38" width="196" height="6" fill="#b3860e" opacity="0.9"/>
+<path d="M52.00,13.00 L55.05,24.63 L65.44,18.56 L59.37,28.95 L71.00,32.00 L59.37,35.05 L65.44,45.44 L55.05,39.37 L52.00,51.00 L48.95,39.37 L38.56,45.44 L44.63,35.05 L33.00,32.00 L44.63,28.95 L38.56,18.56 L48.95,24.63 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+<path d="M116.00,13.00 L119.05,24.63 L129.44,18.56 L123.37,28.95 L135.00,32.00 L123.37,35.05 L129.44,45.44 L119.05,39.37 L116.00,51.00 L112.95,39.37 L102.56,45.44 L108.63,35.05 L97.00,32.00 L108.63,28.95 L102.56,18.56 L112.95,24.63 Z" fill="#b3860e" stroke="#182a5e" stroke-width="2"/>
+</g>
+<text x="160" y="507" font-size="22" font-weight="600" font-family="sans-serif" fill="#0c0e12">Dilnoza Karimova</text>
+<text x="420" y="507" font-size="18" font-family="sans-serif" fill="#0c0e12" opacity="0.7">Katta usta</text>
+<line x1="20" y1="560" x2="700" y2="560" stroke="#0c0e12" stroke-opacity="0.15"/>
+<text x="44" y="547" font-size="22" font-weight="600" text-anchor="end" font-family="sans-serif" fill="#0c0e12" opacity="0.6">9</text>
+<g transform="translate(56,528) scale(0.375)">
+<path d="M4,4 H206 L236,32 L206,60 H4 Z" fill="#182a5e" stroke="#b3860e" stroke-width="4" stroke-linejoin="round"/>
+<path d="M4,4 H206 L236,32 L206,60 H4 Z" fill="none" stroke="#b3860e" stroke-width="3" stroke-dasharray="0 9" stroke-linecap="round" transform="translate(0,0)" opacity="0.9"/>
+<path d="M6,22 L18,22 L30,14 L42,22 L54,14 L66,22 L78,14 L90,22 L102,14 L114,22 L126,14 L138,22 L150,14 L162,22 L174,14 L186,22 L198,14" fill="none" stroke="#b3860e" stroke-width="2.5" opacity="0.45"/>
+<path d="M6,42 L18,42 L30,50 L42,42 L54,50 L66,42 L78,50 L90,42 L102,50 L114,42 L126,50 L138,42 L150,50 L162,42 L174,50 L186,42 L198,50" fill="none" stroke="#b3860e" stroke-width="2.5" opacity="0.45"/>
+<path d="M120.00,8.00 L123.86,22.69 L136.97,15.03 L129.31,28.14 L144.00,32.00 L129.31,35.86 L136.97,48.97 L123.86,41.31 L120.00,56.00 L116.14,41.31 L103.03,48.97 L110.69,35.86 L96.00,32.00 L110.69,28.14 L103.03,15.03 L116.14,22.69 Z" fill="#b3860e"/>
+</g>
+<text x="160" y="547" font-size="22" font-weight="600" font-family="sans-serif" fill="#0c0e12">Dilnoza Karimova</text>
+<text x="420" y="547" font-size="18" font-family="sans-serif" fill="#0c0e12" opacity="0.7">Legenda</text>
+<text x="20" y="570" font-size="16" fill="#0c0e12" font-family="sans-serif">Medals: seat 44px discs; row 22px discs on 8px ribbons (metal rim, cloth field, metal glyph)</text>
+<rect x="47.9" y="585.9" width="24.2" height="14.1" fill="#b3860e"/>
+<rect x="56.0" y="585.9" width="8.1" height="14.1" fill="#182a5e"/>
+<circle cx="60" cy="620" r="22.0" fill="#182a5e" stroke="#b3860e" stroke-width="5.3"/>
+<g transform="translate(60,620) scale(1.000)" fill="#b3860e"><path d="M-12,8 L-12,-2 L-5,3 L0,-9 L5,3 L12,-2 L12,8 Z"/></g>
+<rect x="117.9" y="585.9" width="24.2" height="14.1" fill="#798294"/>
+<rect x="126.0" y="585.9" width="8.1" height="14.1" fill="#182a5e"/>
+<circle cx="130" cy="620" r="22.0" fill="#182a5e" stroke="#798294" stroke-width="5.3"/>
+<g transform="translate(130,620) scale(1.000)" fill="#798294"><path d="M-12,8 L-12,-2 L-5,3 L0,-9 L5,3 L12,-2 L12,8 Z"/></g>
+<rect x="187.9" y="585.9" width="24.2" height="14.1" fill="#a5663a"/>
+<rect x="196.0" y="585.9" width="8.1" height="14.1" fill="#182a5e"/>
+<circle cx="200" cy="620" r="22.0" fill="#182a5e" stroke="#a5663a" stroke-width="5.3"/>
+<g transform="translate(200,620) scale(1.000)" fill="#a5663a"><path d="M-12,8 L-12,-2 L-5,3 L0,-9 L5,3 L12,-2 L12,8 Z"/></g>
+<rect x="257.9" y="585.9" width="24.2" height="14.1" fill="#b3860e"/>
+<rect x="266.0" y="585.9" width="8.1" height="14.1" fill="#182a5e"/>
+<circle cx="270" cy="620" r="22.0" fill="#182a5e" stroke="#b3860e" stroke-width="5.3"/>
+<g transform="translate(270,620) scale(1.000)" fill="#b3860e"><path d="M0,-11 C6,-4 9,1 6,7 C4,10 -4,10 -6,7 C-9,1 -4,-3 -2,-6 C-1,-2 2,-1 2,-4 C2,-7 0,-9 0,-11 Z"/></g>
+<rect x="327.9" y="585.9" width="24.2" height="14.1" fill="#b3860e"/>
+<rect x="336.0" y="585.9" width="8.1" height="14.1" fill="#182a5e"/>
+<circle cx="340" cy="620" r="22.0" fill="#182a5e" stroke="#b3860e" stroke-width="5.3"/>
+<g transform="translate(340,620) scale(1.000)" fill="#b3860e"><circle r="11" fill="none" stroke="#b3860e" stroke-width="3"/><circle r="4"/></g>
+<rect x="397.9" y="585.9" width="24.2" height="14.1" fill="#b3860e"/>
+<rect x="406.0" y="585.9" width="8.1" height="14.1" fill="#182a5e"/>
+<circle cx="410" cy="620" r="22.0" fill="#182a5e" stroke="#b3860e" stroke-width="5.3"/>
+<g transform="translate(410,620) scale(1.000)" fill="#b3860e"><path d="M2,-12 L-8,2 L-1,2 L-3,12 L8,-3 L1,-3 Z"/></g>
+<rect x="467.9" y="585.9" width="24.2" height="14.1" fill="#b3860e"/>
+<rect x="476.0" y="585.9" width="8.1" height="14.1" fill="#182a5e"/>
+<circle cx="480" cy="620" r="22.0" fill="#182a5e" stroke="#b3860e" stroke-width="5.3"/>
+<g transform="translate(480,620) scale(1.000)" fill="#b3860e"><path d="M0,-11 L10,-3 L0,11 L-10,-3 Z"/></g>
+<rect x="614.0" y="604.0" width="12.1" height="7.0" fill="#b3860e"/>
+<rect x="618.0" y="604.0" width="4.0" height="7.0" fill="#182a5e"/>
+<circle cx="620" cy="620" r="11.0" fill="#182a5e" stroke="#b3860e" stroke-width="2.6"/>
+<g transform="translate(620,620) scale(0.500)" fill="#b3860e"><path d="M-12,8 L-12,-2 L-5,3 L0,-9 L5,3 L12,-2 L12,8 Z"/></g>
+<rect x="644.0" y="604.0" width="12.1" height="7.0" fill="#798294"/>
+<rect x="648.0" y="604.0" width="4.0" height="7.0" fill="#182a5e"/>
+<circle cx="650" cy="620" r="11.0" fill="#182a5e" stroke="#798294" stroke-width="2.6"/>
+<g transform="translate(650,620) scale(0.500)" fill="#798294"><path d="M-12,8 L-12,-2 L-5,3 L0,-9 L5,3 L12,-2 L12,8 Z"/></g>
+<rect x="674.0" y="604.0" width="12.1" height="7.0" fill="#a5663a"/>
+<rect x="678.0" y="604.0" width="4.0" height="7.0" fill="#182a5e"/>
+<circle cx="680" cy="620" r="11.0" fill="#182a5e" stroke="#a5663a" stroke-width="2.6"/>
+<g transform="translate(680,620) scale(0.500)" fill="#a5663a"><path d="M-12,8 L-12,-2 L-5,3 L0,-9 L5,3 L12,-2 L12,8 Z"/></g>
+<rect x="704.0" y="604.0" width="12.1" height="7.0" fill="#b3860e"/>
+<rect x="708.0" y="604.0" width="4.0" height="7.0" fill="#182a5e"/>
+<circle cx="710" cy="620" r="11.0" fill="#182a5e" stroke="#b3860e" stroke-width="2.6"/>
+<g transform="translate(710,620) scale(0.500)" fill="#b3860e"><path d="M0,-11 C6,-4 9,1 6,7 C4,10 -4,10 -6,7 C-9,1 -4,-3 -2,-6 C-1,-2 2,-1 2,-4 C2,-7 0,-9 0,-11 Z"/></g>
+<rect x="734.0" y="604.0" width="12.1" height="7.0" fill="#b3860e"/>
+<rect x="738.0" y="604.0" width="4.0" height="7.0" fill="#182a5e"/>
+<circle cx="740" cy="620" r="11.0" fill="#182a5e" stroke="#b3860e" stroke-width="2.6"/>
+<g transform="translate(740,620) scale(0.500)" fill="#b3860e"><circle r="11" fill="none" stroke="#b3860e" stroke-width="3"/><circle r="4"/></g>
+<rect x="764.0" y="604.0" width="12.1" height="7.0" fill="#b3860e"/>
+<rect x="768.0" y="604.0" width="4.0" height="7.0" fill="#182a5e"/>
+<circle cx="770" cy="620" r="11.0" fill="#182a5e" stroke="#b3860e" stroke-width="2.6"/>
+<g transform="translate(770,620) scale(0.500)" fill="#b3860e"><path d="M2,-12 L-8,2 L-1,2 L-3,12 L8,-3 L1,-3 Z"/></g>
+<rect x="794.0" y="604.0" width="12.1" height="7.0" fill="#b3860e"/>
+<rect x="798.0" y="604.0" width="4.0" height="7.0" fill="#182a5e"/>
+<circle cx="800" cy="620" r="11.0" fill="#182a5e" stroke="#b3860e" stroke-width="2.6"/>
+<g transform="translate(800,620) scale(0.500)" fill="#b3860e"><path d="M0,-11 L10,-3 L0,11 L-10,-3 Z"/></g>
+</svg></div>
+        <p class="alt-meta"><b>Parad — yelkada pagon, ko'krakda medal.</b> Harbiy pagonning o'zi: yo'l-yo'l va yulduz. <span class="score">hakamlar: <b>38 · 35 · 39</b> / 60</span><br>Kuchli: mijozning so'ziga eng yaqin, chiroyli o'rindiq pagoni. Zaif: 40 px qatorda 1–5 darajalar bir xil ko'k-oltin chipga aylanadi (3 m simulyatsiyasida tekshirildi), oltin har qatorga tarqab podiumning oltini ma'nosini yo'qotadi.</p>
+      </div>
+      <div>
+        <div class="alt" id="alt-peshtoq"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 560">
+<rect width="1180" height="560" fill="#ffffff"/>
+<text x="24" y="34" font-family="Inter, Arial, sans-serif" font-size="14" fill="#4c525e">NARVON — legend strip, emblem 64 px, names 28 px</text>
+<g transform="translate(24 50) scale(1.5000)">
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="none" stroke="#636d79" stroke-width="2.5" stroke-linejoin="round"/>
+</g>
+<text x="82" y="72" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#0c0e12">Yangi</text>
+<text x="82" y="94" font-family="Inter, Arial, sans-serif" font-size="20" fill="#4c525e">0</text>
+<g transform="translate(184 50) scale(1.5000)">
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linejoin="round"/>
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="#2b56db" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="16.00,14.50 17.36,18.13 21.23,18.30 18.20,20.71 19.23,24.45 16.00,22.31 12.77,24.45 13.80,20.71 10.77,18.30 14.64,18.13" fill="#ffffff"/>
+</g>
+<text x="242" y="72" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#0c0e12">Sotuvchi</text>
+<text x="242" y="94" font-family="Inter, Arial, sans-serif" font-size="20" fill="#4c525e">10 mln</text>
+<g transform="translate(344 50) scale(1.5000)">
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linejoin="round"/>
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="#2b56db" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="10.00,14.80 11.28,18.23 14.95,18.39 12.08,20.67 13.06,24.21 10.00,22.18 6.94,24.21 7.92,20.67 5.05,18.39 8.72,18.23" fill="#ffffff"/><polygon points="22.00,14.80 23.28,18.23 26.95,18.39 24.08,20.67 25.06,24.21 22.00,22.18 18.94,24.21 19.92,20.67 17.05,18.39 20.72,18.23" fill="#ffffff"/>
+</g>
+<text x="402" y="72" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#0c0e12">Katta</text>
+<text x="402" y="92" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#0c0e12">sotuvchi</text>
+<text x="402" y="112" font-family="Inter, Arial, sans-serif" font-size="20" fill="#4c525e">30 mln</text>
+<g transform="translate(504 50) scale(1.5000)">
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linejoin="round"/>
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="#2b56db" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+<path d="M7 30 V15 C7 11 11 8.5 16 6.5 C21 8.5 25 11 25 15 V30 Z" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="16.00,12.00 17.73,16.62 22.66,16.84 18.80,19.91 20.11,24.66 16.00,21.94 11.89,24.66 13.20,19.91 9.34,16.84 14.27,16.62" fill="#ffffff"/>
+</g>
+<text x="562" y="72" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#0c0e12">Usta</text>
+<text x="562" y="94" font-family="Inter, Arial, sans-serif" font-size="20" fill="#4c525e">100 mln</text>
+<g transform="translate(664 50) scale(1.5000)">
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linejoin="round"/>
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="#2b56db" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+<path d="M7 30 V15 C7 11 11 8.5 16 6.5 C21 8.5 25 11 25 15 V30 Z" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="16.00,10.00 17.73,14.62 22.66,14.84 18.80,17.91 20.11,22.66 16.00,19.94 11.89,22.66 13.20,17.91 9.34,14.84 14.27,14.62" fill="#ffffff"/><rect x="10" y="25.5" width="12" height="2.6" rx="1.3" fill="#ffffff"/>
+</g>
+<text x="722" y="72" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#0c0e12">Ustoz</text>
+<text x="722" y="94" font-family="Inter, Arial, sans-serif" font-size="20" fill="#4c525e">300 mln</text>
+<g transform="translate(824 50) scale(1.5000)">
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="none" stroke="#ffffff" stroke-width="6.5" stroke-linejoin="round"/>
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="#2b56db" stroke="#b3860e" stroke-width="4.5" stroke-linejoin="round"/>
+<polygon points="16.00,11.00 18.14,14.84 22.36,13.64 21.16,17.86 25.00,20.00 21.16,22.14 22.36,26.36 18.14,25.16 16.00,29.00 13.86,25.16 9.64,26.36 10.84,22.14 7.00,20.00 10.84,17.86 9.64,13.64 13.86,14.84" fill="#b3860e"/>
+</g>
+<text x="882" y="72" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#0c0e12">Legenda</text>
+<text x="882" y="94" font-family="Inter, Arial, sans-serif" font-size="20" fill="#4c525e">1 mlrd</text>
+<text x="24" y="170" font-family="Inter, Arial, sans-serif" font-size="14" fill="#4c525e">ROW — emblem 26 px in a 44 px row, name 18 px</text>
+<line x1="24" y1="230" x2="700" y2="230" stroke="#e8eaee"/>
+<text x="44" y="214" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" text-anchor="end" fill="#636d79">4</text>
+<g transform="translate(62 193) scale(0.8125)">
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="none" stroke="#636d79" stroke-width="2.5" stroke-linejoin="round"/>
+</g>
+<text x="104" y="213" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" fill="#0c0e12">Sherzod Rahimov</text>
+<g transform="translate(330 195) scale(0.6875)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#b3860e"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#b3860e"/>
+<text x="16" y="30" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="17" text-anchor="middle" fill="#3b2a05">1</text>
+</g>
+<rect x="339.4" y="190.8" width="21.0" height="14.0" rx="7.0" fill="#0c0e12" stroke="#ffffff" stroke-width="1.5"/>
+<text x="349.9" y="201.2" font-family="Inter, Arial, sans-serif" font-weight="700" font-size="10.1" text-anchor="middle" fill="#ffffff">×2</text>
+<g transform="translate(362 195) scale(0.6875)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#ca4c07"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#ca4c07"/>
+<path d="M16 13 C13 18 11 20 11 25 a5 5 0 0 0 10 0 c0-2.5-1.2-3.6-1.8-5 C18.6 22 17 22.4 16.4 20 16 18 16 15 16 13Z" fill="#ffffff"/>
+</g>
+<g transform="translate(394 195) scale(0.6875)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#00897d"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#00897d"/>
+<circle cx="16" cy="24" r="9" fill="none" stroke="#ffffff" stroke-width="2.6"/><circle cx="16" cy="24" r="3.2" fill="#ffffff"/>
+</g>
+<text x="430" y="214" font-family="Inter, Arial, sans-serif" font-size="15" fill="#636d79">+2</text>
+<text x="600" y="214" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" text-anchor="end" fill="#0c0e12">96 400 000</text>
+<line x1="24" y1="276" x2="700" y2="276" stroke="#e8eaee"/>
+<text x="44" y="260" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" text-anchor="end" fill="#636d79">5</text>
+<g transform="translate(62 239) scale(0.8125)">
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linejoin="round"/>
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="#2b56db" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="16.00,14.50 17.36,18.13 21.23,18.30 18.20,20.71 19.23,24.45 16.00,22.31 12.77,24.45 13.80,20.71 10.77,18.30 14.64,18.13" fill="#ffffff"/>
+</g>
+<text x="104" y="259" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" fill="#0c0e12">Dilnoza Karimova</text>
+<g transform="translate(330 241) scale(0.6875)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#528118"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#528118"/>
+<path d="M16 34 V22" stroke="#ffffff" stroke-width="2.8" stroke-linecap="round"/><path d="M16 24 C16 18 11 15 7 16 C8 21 12 24 16 24Z" fill="#ffffff"/><path d="M16 21 C16 15 21 12 25 13 C24 18 20 21 16 21Z" fill="#ffffff"/>
+</g>
+<g transform="translate(362 241) scale(0.6875)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#528118"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#528118"/>
+<rect x="9" y="18" width="3.6" height="3.6" rx="0.8" fill="#ffffff"/><rect x="9" y="23" width="3.6" height="3.6" rx="0.8" fill="#ffffff"/><rect x="9" y="28" width="3.6" height="3.6" rx="0.8" fill="#ffffff"/><rect x="14" y="18" width="3.6" height="3.6" rx="0.8" fill="#ffffff"/><rect x="14" y="23" width="3.6" height="3.6" rx="0.8" fill="#ffffff"/><rect x="14" y="28" width="3.6" height="3.6" rx="0.8" fill="#ffffff"/><rect x="19" y="18" width="3.6" height="3.6" rx="0.8" fill="#ffffff"/><rect x="19" y="23" width="3.6" height="3.6" rx="0.8" fill="#ffffff"/><rect x="19" y="28" width="3.6" height="3.6" rx="0.8" fill="#ffffff"/>
+</g>
+<text x="600" y="260" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" text-anchor="end" fill="#0c0e12">88 100 000</text>
+<line x1="24" y1="322" x2="700" y2="322" stroke="#e8eaee"/>
+<text x="44" y="306" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" text-anchor="end" fill="#636d79">6</text>
+<g transform="translate(62 285) scale(0.8125)">
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linejoin="round"/>
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="#2b56db" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+<polygon points="10.00,14.80 11.28,18.23 14.95,18.39 12.08,20.67 13.06,24.21 10.00,22.18 6.94,24.21 7.92,20.67 5.05,18.39 8.72,18.23" fill="#ffffff"/><polygon points="22.00,14.80 23.28,18.23 26.95,18.39 24.08,20.67 25.06,24.21 22.00,22.18 18.94,24.21 19.92,20.67 17.05,18.39 20.72,18.23" fill="#ffffff"/>
+</g>
+<text x="104" y="305" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" fill="#0c0e12">Aziz Toshpulatov</text>
+<g transform="translate(330 287) scale(0.6875)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#798294"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#798294"/>
+<text x="16" y="30" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="17" text-anchor="middle" fill="#3b2a05">2</text>
+</g>
+<g transform="translate(362 287) scale(0.6875)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#8749fb"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#8749fb"/>
+<path d="M18 13 L10 25 H15.5 L14 35 L22 22 H16.5 Z" fill="#ffffff"/>
+</g>
+<g transform="translate(394 287) scale(0.6875)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#00897d"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#00897d"/>
+<path d="M8.5 24.5 L13.5 29.5 L23.5 18" fill="none" stroke="#ffffff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<text x="430" y="306" font-family="Inter, Arial, sans-serif" font-size="15" fill="#636d79">+4</text>
+<text x="600" y="306" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" text-anchor="end" fill="#0c0e12">74 250 000</text>
+<line x1="24" y1="368" x2="700" y2="368" stroke="#e8eaee"/>
+<text x="44" y="352" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" text-anchor="end" fill="#636d79">7</text>
+<g transform="translate(62 331) scale(0.8125)">
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linejoin="round"/>
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="#2b56db" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+<path d="M7 30 V15 C7 11 11 8.5 16 6.5 C21 8.5 25 11 25 15 V30 Z" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="16.00,12.00 17.73,16.62 22.66,16.84 18.80,19.91 20.11,24.66 16.00,21.94 11.89,24.66 13.20,19.91 9.34,16.84 14.27,16.62" fill="#ffffff"/>
+</g>
+<text x="104" y="351" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" fill="#0c0e12">Madina Yusupova</text>
+<g transform="translate(330 333) scale(0.6875)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#528118"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#528118"/>
+<path d="M16 34 V22" stroke="#ffffff" stroke-width="2.8" stroke-linecap="round"/><path d="M16 24 C16 18 11 15 7 16 C8 21 12 24 16 24Z" fill="#ffffff"/><path d="M16 21 C16 15 21 12 25 13 C24 18 20 21 16 21Z" fill="#ffffff"/>
+</g>
+<text x="600" y="352" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" text-anchor="end" fill="#0c0e12">61 000 000</text>
+<line x1="24" y1="414" x2="700" y2="414" stroke="#e8eaee"/>
+<text x="44" y="398" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" text-anchor="end" fill="#636d79">8</text>
+<g transform="translate(62 377) scale(0.8125)">
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linejoin="round"/>
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="#2b56db" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+<path d="M7 30 V15 C7 11 11 8.5 16 6.5 C21 8.5 25 11 25 15 V30 Z" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="16.00,10.00 17.73,14.62 22.66,14.84 18.80,17.91 20.11,22.66 16.00,19.94 11.89,22.66 13.20,17.91 9.34,14.84 14.27,14.62" fill="#ffffff"/><rect x="10" y="25.5" width="12" height="2.6" rx="1.3" fill="#ffffff"/>
+</g>
+<text x="104" y="397" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" fill="#0c0e12">Jasur Ergashev</text>
+<g transform="translate(330 379) scale(0.6875)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#b3860e"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#b3860e"/>
+<text x="16" y="30" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="17" text-anchor="middle" fill="#3b2a05">1</text>
+</g>
+<g transform="translate(362 379) scale(0.6875)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#a5663a"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#a5663a"/>
+<text x="16" y="30" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="17" text-anchor="middle" fill="#3b2a05">3</text>
+</g>
+<g transform="translate(394 379) scale(0.6875)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#528118"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#528118"/>
+<path d="M9 30 L15 23 L19 26 L24 18" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M19 17 H25 V23" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<text x="600" y="398" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" text-anchor="end" fill="#0c0e12">55 900 000</text>
+<line x1="24" y1="460" x2="700" y2="460" stroke="#e8eaee"/>
+<text x="44" y="444" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" text-anchor="end" fill="#636d79">9</text>
+<g transform="translate(62 423) scale(0.8125)">
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="none" stroke="#ffffff" stroke-width="6.5" stroke-linejoin="round"/>
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="#2b56db" stroke="#b3860e" stroke-width="4.5" stroke-linejoin="round"/>
+<polygon points="16.00,11.00 18.14,14.84 22.36,13.64 21.16,17.86 25.00,20.00 21.16,22.14 22.36,26.36 18.14,25.16 16.00,29.00 13.86,25.16 9.64,26.36 10.84,22.14 7.00,20.00 10.84,17.86 9.64,13.64 13.86,14.84" fill="#b3860e"/>
+</g>
+<text x="104" y="443" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" fill="#0c0e12">Nilufar Sattorova</text>
+<g transform="translate(330 425) scale(0.6875)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#b3860e"/>
+<circle cx="16" cy="24" r="16" fill="none" stroke="#b3860e" stroke-width="2.4" stroke-dasharray="3 2.2"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#b3860e"/>
+<polygon points="16.00,15.00 18.22,20.94 24.56,21.22 19.59,25.17 21.29,31.28 16.00,27.78 10.71,31.28 12.41,25.17 7.44,21.22 13.78,20.94" fill="#3b2a05"/>
+</g>
+<g transform="translate(362 425) scale(0.6875)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#b3860e"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#b3860e"/>
+<text x="16" y="30" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="17" text-anchor="middle" fill="#3b2a05">1</text>
+</g>
+<rect x="371.4" y="420.8" width="21.0" height="14.0" rx="7.0" fill="#0c0e12" stroke="#ffffff" stroke-width="1.5"/>
+<text x="381.9" y="431.2" font-family="Inter, Arial, sans-serif" font-weight="700" font-size="10.1" text-anchor="middle" fill="#ffffff">×3</text>
+<g transform="translate(394 425) scale(0.6875)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#ca4c07"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#ca4c07"/>
+<path d="M16 13 C13 18 11 20 11 25 a5 5 0 0 0 10 0 c0-2.5-1.2-3.6-1.8-5 C18.6 22 17 22.4 16.4 20 16 18 16 15 16 13Z" fill="#ffffff"/>
+</g>
+<text x="430" y="444" font-family="Inter, Arial, sans-serif" font-size="15" fill="#636d79">+5</text>
+<text x="600" y="444" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" text-anchor="end" fill="#0c0e12">48 300 000</text>
+<rect x="740" y="170" width="400" height="300" rx="14" fill="#ffffff" stroke="#b3860e" stroke-width="2"/>
+<text x="760" y="186" font-family="Inter, Arial, sans-serif" font-size="14" fill="#4c525e">SEAT — level block, emblem 72 px</text>
+<g transform="translate(760 200) scale(2.2500)">
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linejoin="round"/>
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="#2b56db" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round"/>
+<path d="M7 30 V15 C7 11 11 8.5 16 6.5 C21 8.5 25 11 25 15 V30 Z" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="16.00,12.00 17.73,16.62 22.66,16.84 18.80,19.91 20.11,24.66 16.00,21.94 11.89,24.66 13.20,19.91 9.34,16.84 14.27,16.62" fill="#ffffff"/>
+</g>
+<text x="850" y="230" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800" fill="#0c0e12">USTA</text>
+<text x="850" y="258" font-family="Inter, Arial, sans-serif" font-size="22" fill="#4c525e">187 mln · avgustdan</text>
+<rect x="850" y="270" width="13" height="10" rx="2" fill="#2b56db"/>
+<rect x="867" y="270" width="13" height="10" rx="2" fill="#2b56db"/>
+<rect x="884" y="270" width="13" height="10" rx="2" fill="#2b56db"/>
+<rect x="901" y="270" width="13" height="10" rx="2" fill="#2b56db"/>
+<rect x="918" y="270" width="13" height="10" rx="2" fill="#e8eaee"/>
+<rect x="935" y="270" width="13" height="10" rx="2" fill="#e8eaee"/>
+<rect x="952" y="270" width="13" height="10" rx="2" fill="#e8eaee"/>
+<rect x="969" y="270" width="13" height="10" rx="2" fill="#e8eaee"/>
+<rect x="986" y="270" width="13" height="10" rx="2" fill="#e8eaee"/>
+<rect x="1003" y="270" width="13" height="10" rx="2" fill="#e8eaee"/>
+<text x="850" y="310" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="600" fill="#0c0e12">Ustozga 113 mln</text>
+<g opacity="0.55"><g transform="translate(1060 266) scale(1.2500)">
+<path d="M3 34 V14 C3 8 10 5 16 2 C22 5 29 8 29 14 V34 Z" fill="none" stroke="#636d79" stroke-width="2.5" stroke-linejoin="round"/>
+</g></g>
+<text x="1060" y="326" font-family="Inter, Arial, sans-serif" font-size="14" fill="#636d79">Ustoz · 300</text>
+<text x="760" y="356" font-family="Inter, Arial, sans-serif" font-size="14" fill="#4c525e">JAVON — cabinet, 40 px discs</text>
+<g transform="translate(760 368) scale(1.2500)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#b3860e"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#b3860e"/>
+<text x="16" y="30" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="17" text-anchor="middle" fill="#3b2a05">1</text>
+</g>
+<rect x="784.9" y="363.0" width="25.2" height="16.8" rx="8.4" fill="#0c0e12" stroke="#ffffff" stroke-width="1.5"/>
+<text x="797.5" y="375.4" font-family="Inter, Arial, sans-serif" font-weight="700" font-size="12.1" text-anchor="middle" fill="#ffffff">×2</text>
+<g transform="translate(816 368) scale(1.2500)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#b3860e"/>
+<circle cx="16" cy="24" r="16" fill="none" stroke="#b3860e" stroke-width="2.4" stroke-dasharray="3 2.2"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#b3860e"/>
+<polygon points="16.00,15.00 18.22,20.94 24.56,21.22 19.59,25.17 21.29,31.28 16.00,27.78 10.71,31.28 12.41,25.17 7.44,21.22 13.78,20.94" fill="#3b2a05"/>
+</g>
+<g transform="translate(872 368) scale(1.2500)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#ca4c07"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#ca4c07"/>
+<path d="M16 13 C13 18 11 20 11 25 a5 5 0 0 0 10 0 c0-2.5-1.2-3.6-1.8-5 C18.6 22 17 22.4 16.4 20 16 18 16 15 16 13Z" fill="#ffffff"/>
+</g>
+<g transform="translate(928 368) scale(1.2500)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#00897d"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#00897d"/>
+<circle cx="16" cy="24" r="9" fill="none" stroke="#ffffff" stroke-width="2.6"/><circle cx="16" cy="24" r="3.2" fill="#ffffff"/>
+</g>
+<g transform="translate(984 368) scale(1.2500)">
+<path d="M10 0 H22 V11 L16 8 L10 11 Z" fill="#8749fb"/>
+<circle cx="16" cy="24" r="15" fill="#ffffff"/>
+<circle cx="16" cy="24" r="13" fill="#8749fb"/>
+<path d="M18 13 L10 25 H15.5 L14 35 L22 22 H16.5 Z" fill="#ffffff"/>
+</g>
+<text x="1046" y="402" font-family="Inter, Arial, sans-serif" font-size="20" fill="#636d79">+3</text>
+</svg></div>
+        <p class="alt-meta"><b>Peshtoq — Registon darvozasi, liga emblemasi.</b> Bitta ko'k darvoza, darajada bezak qo'shiladi. <span class="score">hakamlar: <b>43 · 47 · 42</b> / 60</span><br>Kuchli: eng original shakl, metall raqamli oy medallari, sharpa va e'lon. Zaif: floor'ning uchdan biri bo'sh kontur bilan boshlaydi; Usta/Katta usta 26 px da farqlanmaydi; eng ko'p mexanizm.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="part" id="qaror">
+    <p class="eyebrow">7 · Tasdiqlash kerak bo'lgan qarorlar</p>
+    <h2>Yettita <em>ha / yo'q</em></h2>
+    <div class="q">
+      <ol>
+        <li><b>Ostona:</b> 10 / 30 / 100 / 300 / 1000 mln (aytiladigan raqamlar). Muqobil: 20 / 50 / 100 / 300 / 1000.</li>
+        <li><b>Nomlar:</b> Yangi · Sotuvchi · Katta sotuvchi · Usta · <b>Ustoz</b> · Legenda (mijoz: «Katta ustaga» g'alati jaranglaydi — Ustoz tanlandi).</li>
+        <li><b>Qatorda lenta:</b> 26 px medalda lenta bor (chiroyliroq) yoki yo'q (tinchroq) — ikkalasi ham chizilgan, ustun 2-bo'limda.</li>
+        <li><b>Klub medali</b> (I–VII, jami pul) olib tashlanadi — uning ishi endi lavhaniki. Bir faktni ikki marta ko'rsatmaymiz.</li>
+        <li><b>Oy podiumi medallari oltin/kumush/bronza</b> — podium o'rindiqlari bilan bir xil ma'no («o'sha davrda 1-o'rin»). Rang shartnomasiga bitta istisno sifatida yoziladi.</li>
+        <li><b>Daraja → medal eshiklari</b> 4-bo'limdagi xarita bo'yicha.</li>
+        <li><b>Qator balandligi</b> 40 → 44 px, chap tomonda 84 px yelka katagi, o'ngda 112 px ko'krak katagi. Bar va chase chizig'i qoladi.</li>
+      </ol>
+    </div>
+  </section>
+</div>
+
+<script>
+/* ---------- theme ---------- */
+(function(){
+  const root=document.documentElement;
+  const btns=[...document.querySelectorAll('[data-set-theme]')];
+  function apply(v){ if(v==='auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme',v); btns.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.setTheme===v))); try{localStorage.setItem('theme',v)}catch(e){} }
+  let saved='auto'; try{saved=localStorage.getItem('theme')||'auto'}catch(e){}
+  apply(saved);
+  btns.forEach(b=>b.addEventListener('click',()=>apply(b.dataset.setTheme)));
+})();
+
+/* ---------- ladder ---------- */
+const LADDER=[
+  {n:0,t:'—',th:0,cls:'none'},
+  {n:1,t:'Yangi',th:0,cls:'plain',stars:1},
+  {n:2,t:'Sotuvchi',th:10,cls:'plain',stars:2},
+  {n:3,t:'Katta sotuvchi',th:30,cls:'plain',stars:3},
+  {n:4,t:'Usta',th:100,cls:'inv',stars:1},
+  {n:5,t:'Ustoz',th:300,cls:'inv',stars:2},
+  {n:6,t:'Legenda',th:1000,cls:'apex',stars:1},
+];
+const TODAY={0:5,1:35,2:25,3:47,4:14,5:0,6:0};
+function levelOf(mln){ if(mln<=0) return 0; let l=1; for(const r of LADDER) if(r.n>=1 && mln>=r.th) l=r.n; return l; }
+function nextOf(l){ return l<6 ? LADDER[l+1] : {t:'Legenda II',th:2000}; }
+function dative(t){ return t+'ga'; }
+function fmtMln(x){ return (Math.round(x*10)/10).toLocaleString('uz-UZ').replace('.',',') }
+function fmtSum(mln){ return Math.round(mln*10)*100000 ? (Math.round(mln*10)*100000).toLocaleString('uz-UZ').replace(/,/g,' ') : '0' }
+
+/* ---------- assets: plate + medal (to be swapped for the crafted symbol sets) ---------- */
+function khatamPath(cx,cy,R){ const pts=[]; for(let k=0;k<16;k++){ const a=Math.PI/8*k - Math.PI/2; const r=k%2?R*0.55:R; pts.push((cx+r*Math.cos(a)).toFixed(2)+','+(cy+r*Math.sin(a)).toFixed(2)); } return 'M'+pts.join('L')+'Z'; }
+function plateHTML(level,size,opts={}){
+  const r=LADDER[level]||LADDER[0]; const ghost=!!opts.ghost; const seat=size==='seat';
+  const dims={row:[78,26],narvon:[102,34],ghost:[120,40],seat:[280,88]}[size]||[78,26]; const [W,H]=dims;
+  const starsN={1:1,2:2,3:3,4:1,5:2}[level]||0; const apex=level===6;
+  let inner='';
+  if(seat){
+    inner+='<use href="#lavha-plate-seat" class="lavha__plate"/>';
+    if(!ghost&&level>0) inner+='<use href="#lavha-hi-seat" class="lavha__hi"/><use href="#lavha-lo-seat" class="lavha__lo"/>';
+    if(apex){ if(!ghost) inner+='<use href="#lavha-rim-seat" class="lavha__engrave"/>'; inner+='<use href="#khatam" class="lavha__star khatam-use" x="114.1" y="11" width="36" height="36"/>'; }
+    else if(opts.animate){ const x0={1:118.1,2:100.6,3:83.1}[starsN]; for(let i=0;i<starsN;i++) inner+=`<use href="#khatam" class="lavha__star khatam-use" style="animation-delay:${i*80}ms" x="${(x0+i*35).toFixed(1)}" y="15" width="28" height="28"/>`; }
+    else if(starsN) inner+=`<use href="#lavha-stars-${starsN}" class="lavha__star" x="${{1:118.1,2:100.6,3:83.1}[starsN]}" y="15" width="${[0,28,63,98][starsN]}" height="28"/>`;
+    if(level>0) inner+=`<text class="lavha__title" x="132.1" y="73" text-anchor="middle">${(opts.title||r.t).toUpperCase()}</text>`;
+  } else {
+    inner+='<use href="#lavha-plate-3x1" class="lavha__plate"/>';
+    if(apex){ if(!ghost) inner+='<use href="#lavha-rim-3x1" class="lavha__engrave"/>'; inner+='<use href="#khatam" class="lavha__star" x="28.7" y="5" width="16" height="16"/>'; }
+    else if(starsN) inner+=`<use href="#lavha-stars-${starsN}" class="lavha__star" x="${{1:28.7,2:18.7,3:8.7}[starsN]}" y="5" width="${[0,16,36,56][starsN]}" height="16"/>`;
+  }
+  const vb=seat?'0 0 280 88':'0 0 78 26';
+  return `<svg class="lavha lavha--${size}" data-level="${level}"${ghost?' data-ghost=""':''} viewBox="${vb}" width="${W}" height="${H}" role="img" aria-label="${level?r.n+'-daraja '+r.t:'hali darajasiz'}">${inner}</svg>`;
+}
+const MEDALS={
+  'month-gold':{name:'Oy chempioni',fam:'OY',col:'var(--medal-gold)',g:'1',how:'Oyning eng katta yetkazilgan summasi',unlock:2},
+  'month-silver':{name:'Kumush oy',fam:'OY',col:'var(--medal-silver)',g:'2',how:'Oyda 2-oʻorin',unlock:2},
+  'month-bronze':{name:'Bronza oy',fam:'OY',col:'var(--medal-bronze)',g:'3',how:'Oyda 3-oʻorin',unlock:2},
+  'year-champion':{name:'Yil chempioni',fam:'OY',col:'var(--medal-gold)',g:'♛',how:'Yil boʻyicha eng katta summa',unlock:5},
+  'streak-fire':{name:'Olov seriyasi',fam:'SERIYA',col:'var(--series-2)',g:'♨',how:'3 oy ketma-ket birinchi uchlikda',unlock:4},
+  'streak-steady':{name:'Barqaror',fam:'SERIYA',col:'var(--series-2)',g:'≡',how:'3 oy ketma-ket birinchi oʻnlikda',unlock:3},
+  'day-record':{name:'Kun rekordi',fam:'KUN',col:'var(--series-7)',g:'⚡',how:'Butun floor tarixidagi eng katta kun',unlock:2},
+  'day-winner':{name:'Kun gʻolibi',fam:'KUN',col:'var(--series-7)',g:'☀',how:'Kunning eng katta summasi (×N)',unlock:1},
+  'conversion-master':{name:'Konversiya ustasi',fam:'SIFAT',col:'var(--series-3)',g:'◎',how:'Oyda eng yuqori tasdiqlash ulushi (≥20 buyurtma)',unlock:3},
+  'clean-month':{name:'Toza oy',fam:'SIFAT',col:'var(--series-3)',g:'✓',how:'Oyda ≥80% buyurtma yetkazilgan',unlock:2},
+  'jump':{name:'Sakrash',fam:'OʻSISH',col:'var(--series-6)',g:'↗',how:'Oʻtgan oyga nisbatan 1,5× oʻsish',unlock:2},
+  'rookie':{name:'Yangi yulduz',fam:'OʻSISH',col:'var(--series-6)',g:'↑',how:'Birinchi oyidayoq birinchi oʻnlikda',unlock:1},
+  'first-sale':{name:'Birinchi savdo',fam:'OʻSISH',col:'var(--series-6)',g:'⚘',how:'Birinchi yetkazilgan buyurtma',unlock:1},
+  'work-month':{name:'Ishchan oy',fam:'OʻSISH',col:'var(--series-6)',g:'☷',how:'Oy kunlarining ≥60% ida buyurtma',unlock:1},
+};
+function medalHTML(code,size,opts={}){
+  const m=MEDALS[code]; const locked=!!opts.locked||!m; const c=locked?'locked':code;
+  const sz={row:'row',seat:'seat',speak:'speaking'}[size]||'row';
+  const bare=opts.tab===false || (sz==='row' && ROW_TAB===false && opts.tab!==true);
+  const vb=bare?'0 8 32 32':'0 0 32 40';
+  return `<svg class="medal medal--${sz}${bare?' medal--bare':''}${locked?' medal--locked':''}" data-medal="${c}" viewBox="${vb}" role="img" aria-label="${m?m.name:'Ochilmagan medal'}"><use href="#medal-${c}"/></svg>`;
+}
+let ROW_TAB=true;
+
+/* ---------- data (production, 2026-09-16, delivered = FAKT 2) ---------- */
+const SELLERS=[
+  {name:'Shahtiyarovna 197 Marjona',sep:79.6,life:173.0,aug:6,medals:['day-record','clean-month','work-month','day-winner×5','first-sale'],speak:['day-record','Kun rekordi','12-sentabr · 18 400 000 soʻm']},
+  {name:'Nuriddinova 134 Niginabonu',sep:60.4,life:160.3,aug:5,medals:['work-month','day-winner','first-sale'],speak:['work-month','Ishchan oy','avgust · 24 kun · davomat 92%']},
+  {name:'Sirojov 115 Davlatbek',sep:54.8,life:164.3,aug:3,medals:['month-bronze','work-month','day-winner','first-sale'],speak:['month-bronze','Bronza oy','avgust · 3-oʻrin · 109 500 000 soʻm']},
+  {name:'Umidovna 117 Bonu',sep:53.6,life:126.5,aug:13,medals:['work-month','first-sale']},
+  {name:'Muxtoraliyevna 210 Zulfira',sep:52.5,life:89.6,aug:37,medals:['day-winner','first-sale']},
+  {name:'Saparboyeva 110 Farida',sep:45.4,life:162.3,aug:2,medals:['month-silver','clean-month','work-month','day-winner×3','first-sale']},
+  {name:'Ashurova 123 Malika',sep:41.7,life:111.1,aug:15,medals:['work-month','day-winner','first-sale']},
+  {name:'Haydarova 267 Muhabbat',sep:37.8,life:79.6,aug:33,medals:['clean-month','first-sale']},
+  {name:'Ravshanov 158 Asilbek',sep:34.9,life:125.8,aug:9,medals:['clean-month','work-month','day-winner×2','first-sale']},
+  {name:'Yusupova 139 Mahliyo',sep:34.6,life:105.5,aug:14,medals:['clean-month','work-month','first-sale']},
+  {name:'Ashrafova 172 Marjona',sep:34.1,life:81.3,aug:28,medals:['work-month','day-winner','first-sale']},
+  {name:'268 Ozoda Yuldosheva',sep:33.8,life:92.9,aug:22,medals:['conversion-master','clean-month','first-sale']},
+];
+const TAIL=[
+  {rank:118,name:'Stajor 191',sep:0.4,life:1.0,medals:['first-sale']},
+  {rank:119,name:'Ubaydullayeva 252 Joziba',sep:0.9,life:0.9,medals:['first-sale']},
+  {rank:121,name:'Xamidova 101 Umida',sep:0,life:0,medals:[]},
+];
+function progress(life){ const l=levelOf(life); if(l===0) return {l,done:0,left:LADDER[1].th,next:LADDER[1]}; const floor=LADDER[l].th; const nx=nextOf(l); const span=nx.th-floor; const done=Math.min(10,Math.floor((life-floor)/span*10)); return {l,done,left:nx.th-life,next:nx,near:(life-floor)/span>=0.9}; }
+function parseMedal(s){ const m=/^(.*?)(?:×(\d+))?$/.exec(s); return {code:m[1],n:m[2]?+m[2]:1}; }
+
+/* ---------- narvon board ---------- */
+(function(){
+  const el=document.getElementById('narvon-board');
+  let rungs='';
+  for(const r of LADDER.slice(1)){
+    rungs+=`<div class="rung">${plateHTML(r.n,'narvon')}<b>${r.n}-daraja · ${r.t}</b><span>${r.th?r.th.toLocaleString('uz-UZ').replace(',',' ')+' mln':'birinchi soʻm'}</span><small>bugun: ${TODAY[r.n]} kishi</small></div>`;
+  }
+  el.innerHTML=`<div class="tv-col-head"><div class="tv-col-title"><span class="tv-col-glyph">▲</span>Narvon — podium ostidagi doimiy legenda</div><div class="tv-fakt"><span class="on">2026-avgustdan</span><span>jami yetkazilgan</span></div></div>
+  <div class="narvon" style="margin-top:12px;border-bottom:0">${rungs}</div>
+  <div style="padding:14px 18px 18px;display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+    <div class="plate-wrap">${plateHTML(4,'seat')}</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div class="stamps">${'<i class="on"></i>'.repeat(4)}${'<i></i>'.repeat(6)}</div>
+      <div class="qoldi">Ustozga 127 mln qoldi</div>
+      <div class="lv-label">Oʻrindiqdagi toʻliq daraja bloki · 280×88 lavha</div>
+    </div>
+    <div class="lv-ghost">${plateHTML(5,'ghost',{ghost:true})}<span>keyingi: Ustoz · 300</span></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-left:auto">${plateHTML(0,'row')}<span style="font-size:12px;color:var(--ink-muted)">hali savdosiz — jim shtrix, ogohlantirish emas</span></div>
+  </div>`;
+})();
+
+/* ---------- the board ---------- */
+function renderBoard(){
+  const el=document.getElementById('board');
+  function seat(s,place,col){
+    const p=progress(s.life); const r=LADDER[p.l]; const nx=p.next;
+    const medals=s.medals.map(parseMedal);
+    const slots=medals.slice(0,5).map(m=>`<div class="slot">${medalHTML(m.code,'seat')}${m.n>1?`<span class="n">×${m.n}</span>`:''}</div>`).join('');
+    const sp=s.speak?`<div class="speak">${medalHTML(s.speak[0],'speak')}<div><div class="t">${s.speak[1]}</div><div class="r">${s.speak[2]}</div></div></div>`:'';
+    const cls={1:'podium-col--gold',2:'podium-col--silver',3:'podium-col--bronze'}[place];
+    return `<div class="${cls} tv-seat tv-seat--${place} tv-seat--at-${col}"><div class="podium-card tv-seat-card">
+      <p class="podium-plaque">${place===1?'🏆':place===2?'🥈':'🥉'} ${place}-oʻrin${place===1?' · Chempion':''}</p>
+      <div class="ring">${place}</div>
+      <p class="tv-seat-name">${s.name}</p>
+      <p class="tv-seat-figure">${fmtSum(s.sep)}<small>soʻm</small></p>
+      ${place===1?'<div class="podium-gold-rule"></div>':''}
+      <div class="basis">FAKT 2 · yetkazilgan · sentabr</div>
+      <div class="lv-block">
+        <div class="lv-head"><div class="plate-wrap">${plateHTML(p.l,'seat')}</div>${place===1?`<div class="lv-ghost">${plateHTML(p.l+1,'ghost',{ghost:true})}<span>keyingi · ${nx.th} mln</span></div>`:''}</div>
+        <div class="stamps">${'<i class="on"></i>'.repeat(p.done)}${'<i></i>'.repeat(10-p.done)}</div>
+        <div class="qoldi${p.near?' near':''}">${dative(nx.t)} ${fmtMln(p.left)} mln qoldi</div>
+      </div>
+      <div class="rail">${slots}</div>
+      ${sp}
+    </div><div class="tv-pedestal"><span class="tv-pedestal-num">${place}</span></div></div>`;
+  }
+  function row(s,rank){
+    const p=progress(s.life); const r=LADDER[p.l]; const nx=p.next;
+    const medals=s.medals.map(parseMedal);
+    const shown=medals.slice(0,3).map(m=>medalHTML(m.code,'row')).join('');
+    const more=medals.length>3?`<span class="more">+${medals.length-3}</span>`:'';
+    const w=Math.round(s.sep/79.6*100);
+    const chase=rank>1?`Oldingiga +${fmtMln(Math.max(0.1,(SELLERS[rank-2]?SELLERS[rank-2].sep:s.sep+1)-s.sep))} mln`:'Lider';
+    const title=p.l===0?'<b>hali savdosiz</b>':`<b>${r.t}</b>`;
+    return `<tr class="tv-row"><td class="tv-rank">${rank}</td><td style="width:92px">${plateHTML(p.l,'row')}</td>
+      <td><div><span class="tv-name">${s.name}</span><span class="tv-title${p.near?' near':''}">${title}</span></div><div class="tv-bar" style="--w:${w}%"><i></i></div><div class="tv-chase">${chase} · <b>${p.l===0?'Birinchi savdo kutilmoqda':dative(nx.t)+' '+fmtMln(p.left)+' mln'}</b></div></td>
+      <td><div class="rowmedals">${shown}${more}</div></td>
+      <td class="r"><span class="tv-money">${fmtSum(s.sep)}<small>soʻm</small></span></td></tr>`;
+  }
+  const seats=`<div class="tv-podium">${seat(SELLERS[1],2,1)}${seat(SELLERS[0],1,2)}${seat(SELLERS[2],3,3)}</div>`;
+  const narvon=`<div class="narvon">${LADDER.slice(1).map(r=>`<div class="rung">${plateHTML(r.n,'narvon')}<b>${r.t}</b><span>${r.th?r.th+' mln':'birinchi soʻm'}</span></div>`).join('')}</div>`;
+  let rows=''; SELLERS.slice(3).forEach((s,i)=>rows+=row(s,i+4));
+  rows+=`<tr><td colspan="5" class="dots">⋯ 106 qator ⋯</td></tr>`;
+  TAIL.forEach(s=>rows+=row(s,s.rank));
+  el.innerHTML=`<div class="tv-col-head"><div class="tv-col-title"><span class="tv-col-glyph">🏆</span>Sotuvchilar</div><div class="tv-fakt"><span>FAKT 1</span><span class="on">FAKT 2</span></div></div>
+    ${seats}${narvon}
+    <div class="tv-list"><table class="tv-table"><thead><tr><th>#</th><th>Daraja</th><th>Sotuvchi</th><th>Medallar <span class="seg seg--mini"><button type="button" data-tab="1" aria-pressed="${ROW_TAB}">lenta</button><button type="button" data-tab="0" aria-pressed="${!ROW_TAB}">disk</button></span></th><th class="r">Yetkazilgan</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  el.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{ROW_TAB=b.dataset.tab==='1';renderBoard();}));
+}
+renderBoard();
+
+/* ---------- catalogue ---------- */
+(function(){
+  const el=document.getElementById('catalogue');
+  const famCol={OY:'var(--medal-gold)',SERIYA:'var(--series-2)',KUN:'var(--series-7)',SIFAT:'var(--series-3)','OʻSISH':'var(--series-6)'};
+  let html='';
+  for(const [code,m] of Object.entries(MEDALS)){
+    html+=`<div class="card medal-card">${medalHTML(code,'speak')}<div><span class="fam" style="background:${famCol[m.fam]}">${m.fam}</span><div class="t">${m.name}</div><div class="h">${m.how}</div><span class="u">ochiladi: ${m.unlock}-daraja · ${LADDER[m.unlock].t}</span></div></div>`;
+  }
+  el.innerHTML=html;
+})();
+
+/* ---------- unlock map ---------- */
+(function(){
+  const el=document.getElementById('unlock');
+  let html='';
+  for(const r of LADDER.slice(1)){
+    const items=Object.entries(MEDALS).filter(([c,m])=>m.unlock===r.n);
+    const list=items.length?items.map(([c,m])=>`<div class="item">${medalHTML(c,'row')}<span>${m.name}</span></div>`).join(''):`<div class="item locked">${medalHTML('x','row',{locked:true})}<span>yangi medal yoʻq — lavhaning oʻzi mukofot</span></div>`;
+    const cum=Object.values(MEDALS).filter(m=>m.unlock<=r.n).length;
+    html+=`<div class="col"><div class="h">${plateHTML(r.n,'narvon')}<b>${r.n}-daraja · ${r.t}</b><span>${r.th?r.th+' mln dan':'birinchi soʻmdan'} · jami ${cum}/14 ochiq</span></div>${list}</div>`;
+  }
+  el.innerHTML=html;
+})();
+
+/* ---------- ceremony ---------- */
+(function(){
+  const stage=document.getElementById('stage-plate'); const banner=document.getElementById('banner'); const bp=document.getElementById('banner-plate');
+  bp.innerHTML=plateHTML(4,'narvon');
+  function draw(level){ stage.innerHTML=`<div class="plate-wrap">${plateHTML(level,'seat',{animate:true})}<span class="sheen"></span></div>`; }
+  draw(3);
+  const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.getElementById('play').addEventListener('click',()=>{
+    draw(4); const w=stage.querySelector('.plate-wrap'); if(!reduced){ void w.offsetWidth; w.classList.add('play'); }
+    banner.classList.add('show'); setTimeout(()=>banner.classList.remove('show'),8000);
+    setTimeout(()=>draw(3),9000);
+  });
+})();
+</script>

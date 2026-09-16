@@ -66,6 +66,21 @@ export interface GateState {
 const THROTTLE_LADDER_MS = [60_000, 120_000, 240_000, 480_000, 600_000]
 
 /**
+ * An unreachable portal is knocked on far less often: 2, 5, 15, then every 30
+ * minutes.
+ *
+ * On 2026-09-16 Bitrix24's protection stopped completing TLS handshakes from the
+ * server's address (TCP opened in 44 ms, TLS timed out on all four addresses,
+ * the same webhook answered from an office machine in 250 ms). The block lifted
+ * for a moment at 11:35 UTC, the worker answered with a full reference tick, and
+ * it was back within a minute. A firewall that bans an address for knocking is
+ * not waited out by knocking every ten minutes — every connection attempt is
+ * one more reason to keep the ban. Nothing on the portal's side is lost by
+ * asking rarely: a lifted ban costs at most thirty minutes of staleness.
+ */
+const NETWORK_LADDER_MS = [120_000, 300_000, 900_000, 1_800_000]
+
+/**
  * A revoked credential probes on a flat five minutes, and the flatness is the
  * point: it will not clear on its own, so backing off further would only delay
  * the moment we notice that somebody has finally issued a new webhook. Five
@@ -234,7 +249,10 @@ export class PortalGate {
    * database already knew about, ~17 times a day at the measured restart rate.
    */
   seed(kind: RefusalClass, code: string, since: Date, now: Date): void {
-    if (kind !== 'THROTTLE' && kind !== 'CREDENTIAL') return
+    // TRANSIENT too since 2026-09-16: a restart inside an address block used to
+    // open with a health check and a full reference tick — a dozen fresh
+    // connections into a firewall that was already dropping us.
+    if (kind === 'METHOD') return
     this.kind = kind
     this.code = code
     this.since = since
@@ -298,10 +316,11 @@ export class PortalGate {
       same key answered from an office machine): Bitrix24 had dropped our
       ADDRESS. A blip clears on the first rung either way, so the ladder costs
       a blip nothing, and an address block gets 26 probes over four hours
-      instead of ~240.
+      instead of ~240. Since the same evening it climbs its OWN, slower ladder —
+      see `NETWORK_LADDER_MS`.
     */
-    const index = Math.min(probes, THROTTLE_LADDER_MS.length - 1)
-    return THROTTLE_LADDER_MS[index]!
+    const ladder = kind === 'TRANSIENT' ? NETWORK_LADDER_MS : THROTTLE_LADDER_MS
+    return ladder[Math.min(probes, ladder.length - 1)]!
   }
 }
 

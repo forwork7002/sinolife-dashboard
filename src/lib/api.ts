@@ -1413,7 +1413,7 @@ export interface SellerRecordsDto {
   readonly from: string
 }
 
-/** Pagonning medal kodlari. Mirrors `sellerMedals.MEDAL_CODES`. */
+/** Medal kodlari. Mirrors `sellerMedals.MEDAL_CODES`. */
 export type MedalCode =
   | 'month-gold'
   | 'month-silver'
@@ -1429,14 +1429,14 @@ export type MedalCode =
   | 'day-record'
   | 'day-winner'
   | 'first-sale'
-  | 'club'
 
 /**
  * Bitta medal va uning sababi, bo'laklarda.
  *
  * TAYYOR MATN EMAS: qaysi oy/kun, qancha pul, necha buyurtma, necha foiz —
- * jumlani `Pagon.tsx` yig'adi. Sabab: domen qatlami o'zbek tilini bilmaydi va
- * bir xil bo'laklardan seat kartasi uzun, jadval qatori qisqa jumla tuzadi.
+ * jumlani `medalReason.ts` yig'adi. Sabab: domen qatlami o'zbek tilini
+ * bilmaydi va bir xil bo'laklardan seat kartasi uzun, jadval qatori qisqa
+ * jumla tuzadi.
  *
  * Mirrors `sellerBoardService.SellerMedalDto`; nothing checks the mirror —
  * edit both sides.
@@ -1445,17 +1445,14 @@ export interface SellerMedalDto {
   readonly code: MedalCode
   /** Takrorlanadiganlar uchun nechta; takrorlanmaydiganda 1. */
   readonly count: number
-  /** Faqat `club` uchun 1..7 — eng yuqori o'tilgan bosqich. */
-  readonly tier: number | null
-  readonly points: number
   /** Sababning oyi yoki kuni, `YYYY-MM-DD`. Takrorlanganda ENG OXIRGISI. */
   readonly at: string | null
   readonly amount: MoneyDto | null
   /**
    * Odatda buyurtma soni — lekin ikki medalda BOSHQA narsani tashiydi:
    * `rookie` da bu sotuvchining o'sha oydagi O'RNI, `work-month` da esa
-   * necha KUN ishlagani. `medalReason` (`Pagon.tsx`) ikkalasini ham
-   * alohida o'qiydi — umumiy yo'ldan o'tsa, ikkalasi ham noto'g'ri chiziladi.
+   * necha KUN ishlagani. `medalReason` ikkalasini ham alohida o'qiydi —
+   * umumiy yo'ldan o'tsa, ikkalasi ham noto'g'ri chiziladi.
    */
   readonly orders: number | null
   readonly percent: number | null
@@ -1463,22 +1460,31 @@ export interface SellerMedalDto {
 
 export interface SellerMedalRowDto {
   readonly employeeId: string
-  readonly points: number
+  /** 0 — hali savdosiz; 1..6. */
   readonly level: number
-  /** «Usta», «Master» — `titleOf`. */
-  readonly rankTitle: string
-  readonly levelFloor: number
-  readonly nextLevelAt: number
-  /** Keyingi daraja unvonni almashtirsa — o'sha unvon; bo'lmasa null. */
-  readonly nextTitle: string | null
-  /** Ball bo'yicha kamayib — pagon qimmatlisini oldin chizadi. */
+  /** 6-darajada 1 = Legenda, 2 = Legenda II …; pastda 0. */
+  readonly legendaTier: number
+  /** «Ustoz», «Legenda II»; 0-darajada null. */
+  readonly rankTitle: string | null
+  /** 2026-avgustdan beri jami FAKT 2 — daraja shundan. */
+  readonly delivered: MoneyDto
+  readonly levelFloor: MoneyDto
+  /** Keyingi ostona — HAR DOIM bor (0-darajada birinchi so'm, Legendada keyingi milliard). */
+  readonly nextLevelAt: MoneyDto
+  readonly nextTitle: string
+  /** Joriy darajaga chiqqan kun, `YYYY-MM-DD` hisobot mintaqasida; null bo'lishi mumkin. */
+  readonly promotedOn: string | null
+  /** Faqat daraja ochgan medallar, chizilish tartibida. */
   readonly medals: readonly SellerMedalDto[]
 }
 
 export interface SellerMedalsDto {
+  /** Jami pul bo'yicha kamayib. */
   readonly sellers: readonly SellerMedalRowDto[]
   /** See `SellerRecordsDto.from` — o'sha chegara, o'sha sabab. */
   readonly from: string
+  /** `YYYY-MM-DD` hisobot mintaqasida — `promotedOn` bilan solishtirish uchun. */
+  readonly today: string
 }
 
 /** One day of one seller's intake. */

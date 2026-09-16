@@ -524,17 +524,14 @@ export interface SellerRecordsDto {
 export interface SellerMedalDto {
   readonly code: SellerMedal['code']
   readonly count: number
-  /** Faqat `club` uchun 1..7. */
-  readonly tier: number | null
-  readonly points: number
   /** Sababning oyi yoki kuni, `YYYY-MM-DD`. */
   readonly at: string | null
   readonly amount: MoneyDto | null
   /**
    * Odatda buyurtma soni — lekin ikki medalda BOSHQA narsani tashiydi:
    * `rookie` da bu sotuvchining o'sha oydagi O'RNI, `work-month` da esa
-   * necha KUN ishlagani. `medalReason` (`Pagon.tsx`) ikkalasini ham
-   * alohida o'qiydi — umumiy yo'ldan o'tsa, ikkalasi ham noto'g'ri chiziladi.
+   * necha KUN ishlagani. `medalReason` ikkalasini ham alohida o'qiydi —
+   * umumiy yo'ldan o'tsa, ikkalasi ham noto'g'ri chiziladi.
    */
   readonly orders: number | null
   readonly percent: number | null
@@ -542,20 +539,31 @@ export interface SellerMedalDto {
 
 export interface SellerMedalRowDto {
   readonly employeeId: string
-  readonly points: number
+  /** 0 — hali savdosiz; 1..6. */
   readonly level: number
-  readonly rankTitle: string
-  readonly levelFloor: number
-  readonly nextLevelAt: number
-  readonly nextTitle: string | null
+  /** 6-darajada 1 = Legenda, 2 = Legenda II …; pastda 0. */
+  readonly legendaTier: number
+  /** «Ustoz», «Legenda II»; 0-darajada null. */
+  readonly rankTitle: string | null
+  /** 2026-avgustdan beri jami FAKT 2 — daraja shundan. */
+  readonly delivered: MoneyDto
+  readonly levelFloor: MoneyDto
+  /** Keyingi ostona — HAR DOIM bor (0-darajada birinchi so'm, Legendada keyingi milliard). */
+  readonly nextLevelAt: MoneyDto
+  readonly nextTitle: string
+  /** Joriy darajaga chiqqan kun, `YYYY-MM-DD` hisobot mintaqasida; null bo'lishi mumkin. */
+  readonly promotedOn: string | null
+  /** Faqat daraja ochgan medallar, chizilish tartibida. */
   readonly medals: readonly SellerMedalDto[]
 }
 
 export interface SellerMedalsDto {
-  /** Ball bo'yicha kamayib. */
+  /** Jami pul bo'yicha kamayib. */
   readonly sellers: readonly SellerMedalRowDto[]
-  /** The first instant the pagon covers. See `RECORDS_FROM`. */
+  /** The first instant the ladder covers. See `RECORDS_FROM`. */
   readonly from: string
+  /** `YYYY-MM-DD` hisobot mintaqasida — `promotedOn` bilan solishtirish uchun. */
+  readonly today: string
 }
 
 /**
@@ -986,7 +994,7 @@ export class SellerBoardService {
   }
 
   /**
-   * Pagonning ma'lumoti — medal, ball, daraja.
+   * Lavhaning ma'lumoti — daraja va medallar.
    *
    * DAVR FILTRIGA BO'YSUNMAYDI, va bu ataylab: oyna doim `RECORDS_FROM` dan
    * bugungacha. Medal butun tarixning fakti, «Bugun» tanlanganda yo'qoladigan
@@ -1032,28 +1040,34 @@ export class SellerBoardService {
   ): Promise<SellerMedalsDto> {
     const facts = await this.insights.sellerMedalFacts(scopedPeriod(period, filters), filters)
 
+    // BITTA KUN, IKKI O'QUVCHI. `runningDay` medal bermaydigan tugamagan kun,
+    // `today` esa ekran `promotedOn` bilan solishtiradigan kun — ular bir xil
+    // bo'lishi SHART, aks holda «bugun Usta bo'ldi» e'loni bir kun surilardi.
+    const today = zonedDateKey(ctx.now, period.timeZone)
+
     const rows = buildSellerMedals({
       months: facts.months,
       days: facts.days,
       runningMonth: monthKey(ctx.now, period.timeZone),
-      runningDay: zonedDateKey(ctx.now, period.timeZone),
+      runningDay: today,
     })
 
     return {
       from: period.start.toISOString(),
+      today,
       sellers: rows.map((row) => ({
         employeeId: row.employeeId,
-        points: row.points,
         level: row.level,
+        legendaTier: row.legendaTier,
         rankTitle: row.rankTitle,
-        levelFloor: row.levelFloor,
-        nextLevelAt: row.nextLevelAt,
+        delivered: toMoneyDto(money(row.deliveredMinor, ctx.currency)),
+        levelFloor: toMoneyDto(money(row.levelFloorMinor, ctx.currency)),
+        nextLevelAt: toMoneyDto(money(row.nextLevelAtMinor, ctx.currency)),
         nextTitle: row.nextTitle,
+        promotedOn: row.promotedOn,
         medals: row.medals.map((m) => ({
           code: m.code,
           count: m.count,
-          tier: m.tier,
-          points: m.points,
           at: m.at,
           amount: m.amountMinor === null ? null : toMoneyDto(money(m.amountMinor, ctx.currency)),
           orders: m.orders,

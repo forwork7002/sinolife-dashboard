@@ -1,75 +1,111 @@
 /**
- * Sotuvchilar medallari — pagon, ball va daraja.
+ * Sotuvchilar medallari — lavha, daraja va medallar.
  *
  * SOF FUNKSIYA, ATAYLAB. Bazaga tegmaydi, React'ga tegmaydi va bitta ham
  * o'zbek so'zi chiqarmaydi — medalning SABABI bu yerda strukturaviy (qaysi
- * oy, qancha pul, necha foiz), matnga aylanishi esa `Pagon.tsx` da bo'ladi.
+ * oy, qancha pul, necha foiz), matnga aylanishi esa `medalReason.ts` da bo'ladi.
  * Sabab: bu qoidalar bazasiz test qilinadi va ular bilan bahslashadigan
  * yagona narsa — raqam, matn emas.
  *
- * KOEFFITSIYENTLAR 2026-09-15 da production'da 126 sotuvchi ustida
- * kalibrlangan va qotirilgan. Bir marta ishga tushgan darajani keyin
- * pasaytirish mumkin emas: floor uni jazo deb o'qiydi. Kalibrlash natijasi va
- * nima uchun aynan bu raqamlar tanlangani spec'da:
- * `docs/superpowers/specs/2026-09-15-sotuvchilar-medallari-design.md`.
+ * NARVON 2026-09-16 da production'da 126 sotuvchi ustida o'lchangan
+ * taqsimotdan tanlangan va qotirilgan (jami yetkazilgan pul: p50 30,8 mln,
+ * p90 102 mln, max 173 mln). Ishga tushgan ostonani keyin ko'tarish mumkin
+ * emas: floor uni jazo deb o'qiydi. Spec:
+ * `docs/superpowers/specs/2026-09-16-daraja-va-medallar-design.md`.
  */
 
+/** 1 so'm = 100 minor; 1 mln so'm. */
+export const MINOR_PER_MLN = 100_000_000n
+
 /**
- * N-darajaga kerak bo'ladigan ball: `50·N² − 50·N`.
+ * Daraja — 2026-avgustdan beri yetkazilgan JAMI FAKT 2 dan, faqat ko'tariladi.
  *
- * KVADRATIK, chunki chiziqli narvon ikki yomonlikdan birini beradi: boshida
- * juda sekin (yangi sotuvchi hech qachon qimirlamaydi) yoki oxirida juda tez
- * (chempion bir yilda 40-darajaga chiqib, narvonni tugatadi). O'lchov:
- * mediana sotuvchi oyiga ~800–1 100 ball yig'adi, ya'ni boshida deyarli har
- * ikki haftada daraja ko'tariladi va 10-darajadan keyin sekinlashadi.
+ * AYTIB YURILADIGAN RAQAMLAR: «yuz million — Usta», «bir milliard — Legenda».
+ * 1-daraja birinchi so'mdan — nol yetkazgan sotuvchi 0-darajada, unvonsiz,
+ * va bu ogohlantirish emas: bitta savdo uni Yangi qiladi.
  */
-export function levelFloorOf(level: number): number {
-  return 50 * level * level - 50 * level
+export const LEVEL_THRESHOLDS_MINOR: readonly bigint[] = Object.freeze([
+  1n, // 1 · Yangi — birinchi so'm
+  10n * MINOR_PER_MLN, // 2 · Sotuvchi
+  30n * MINOR_PER_MLN, // 3 · Katta sotuvchi
+  100n * MINOR_PER_MLN, // 4 · Usta
+  300n * MINOR_PER_MLN, // 5 · Ustoz
+  1000n * MINOR_PER_MLN, // 6 · Legenda
+])
+
+export const LEVEL_TITLES: readonly string[] = Object.freeze([
+  'Yangi',
+  'Sotuvchi',
+  'Katta sotuvchi',
+  'Usta',
+  'Ustoz',
+  'Legenda',
+])
+
+/** Legenda har keyingi milliardda II, III … — narvon hech qachon tugamaydi. */
+export const LEGENDA_STEP_MINOR = 1000n * MINOR_PER_MLN
+
+export interface Level {
+  /** 0 — hali savdosiz; 1..6. */
+  readonly level: number
+  /** 6-darajada 1 = Legenda, 2 = Legenda II …; pastda 0. */
+  readonly legendaTier: number
 }
 
-/**
- * Ballga mos daraja.
- *
- * Yopiq shakl (`levelFloorOf` ni teskarisi) emas, sanoq — narvon 30-daraja
- * atrofida tugaydi, ya'ni sikl eng ko'pi bilan o'ttiz qadam yuradi va
- * kvadrat ildizning suzuvchi nuqtadagi yaxlitlanishi chegaraning AYNAN
- * ustida turgan ballni bir daraja pastga tushirib yuborish xavfini
- * butunlay olib tashlaydi.
- */
-export function levelOf(points: number): number {
-  let level = 1
-  while (levelFloorOf(level + 1) <= points) level++
-  return level
+export function levelOf(deliveredMinor: bigint): Level {
+  let level = 0
+  for (const threshold of LEVEL_THRESHOLDS_MINOR) {
+    if (deliveredMinor >= threshold) level++
+    else break
+  }
+  const legendaTier =
+    level === 6 ? Number((deliveredMinor - LEVEL_THRESHOLDS_MINOR[5]!) / LEGENDA_STEP_MINOR) + 1 : 0
+  return { level, legendaTier }
 }
 
-/**
- * Unvon bandlari, KAMAYIB — o'qilishi «siz o'tgan eng yuqori chegara», va
- * o'sib baholansa 21-darajali Legendaga «Yangi» berilardi.
- */
-export const RANK_TITLES: readonly (readonly [number, string])[] = Object.freeze([
-  [21, "Legenda"],
-  [16, "Master"],
-  [12, "Usta"],
-  [8, "Katta sotuvchi"],
-  [4, "Sotuvchi"],
-  [1, "Yangi"],
-] as const)
-
-export function titleOf(level: number): string {
-  return RANK_TITLES.find(([floor]) => level >= floor)?.[1] ?? "Yangi"
+/** Shu darajaning ostonasi; 0-darajada 0. */
+export function levelFloorMinorOf(l: Level): bigint {
+  if (l.level === 0) return 0n
+  if (l.level < 6) return LEVEL_THRESHOLDS_MINOR[l.level - 1]!
+  return LEVEL_THRESHOLDS_MINOR[5]! + BigInt(l.legendaTier - 1) * LEGENDA_STEP_MINOR
 }
 
-/**
- * Keyingi daraja unvonni almashtirsa — o'sha unvon; almashtirmasa — null.
- *
- * Progress chizig'i har doim KEYINGI DARAJANI ko'rsatadi, chunki u yaqin va
- * erishsa bo'ladigan maqsad. Lekin «13-darajaga 680 ball» dan ko'ra
- * «Master'ga 1 000 ball» ko'proq narsa aytadi, shuning uchun sarlavha o'tish
- * unvonni ko'targan paytdagina unvon nomini oladi.
- */
-export function nextTitleOf(level: number): string | null {
-  const next = titleOf(level + 1)
-  return next === titleOf(level) ? null : next
+/** Keyingi ostona — HAR DOIM bor: 0-darajada birinchi so'm, Legendada keyingi milliard. */
+export function nextLevelAtMinorOf(l: Level): bigint {
+  if (l.level < 6) return LEVEL_THRESHOLDS_MINOR[l.level]!
+  return LEVEL_THRESHOLDS_MINOR[5]! + BigInt(l.legendaTier) * LEGENDA_STEP_MINOR
+}
+
+export function romanOf(n: number): string {
+  const table: readonly (readonly [number, string])[] = [
+    [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'],
+    [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
+  ]
+  let rest = Math.max(0, Math.floor(n))
+  let out = ''
+  for (const [value, glyph] of table) {
+    while (rest >= value) {
+      out += glyph
+      rest -= value
+    }
+  }
+  return out
+}
+
+/** «Ustoz», «Legenda II»; 0-darajada null — unvonsiz. */
+export function titleOf(l: Level): string | null {
+  if (l.level === 0) return null
+  const title = LEVEL_TITLES[l.level - 1]!
+  return l.level === 6 && l.legendaTier > 1 ? `${title} ${romanOf(l.legendaTier)}` : title
+}
+
+/** Keyingi darajaning unvoni — «… ga N mln qoldi» jumlasi uchun; har doim bor. */
+export function nextTitleOf(l: Level): string {
+  const next: Level =
+    l.level < 6
+      ? { level: l.level + 1, legendaTier: l.level + 1 === 6 ? 1 : 0 }
+      : { level: 6, legendaTier: l.legendaTier + 1 }
+  return titleOf(next)!
 }
 
 export const MEDAL_CODES = [
@@ -87,7 +123,6 @@ export const MEDAL_CODES = [
   'day-record',
   'day-winner',
   'first-sale',
-  'club',
 ] as const
 
 export type MedalCode = (typeof MEDAL_CODES)[number]
@@ -121,17 +156,13 @@ export interface SellerDayFact {
  * Bitta medal — va uning SABABI, strukturaviy.
  *
  * `reason` degan tayyor matn yo'q: motor qaysi oy/kun, qancha pul, necha
- * buyurtma va necha foiz ekanini beradi, jumlani `Pagon.tsx` yig'adi. Shu
+ * buyurtma va necha foiz ekanini beradi, jumlani `medalReason.ts` yig'adi. Shu
  * sabab bu fayl o'zbek tilini bilmaydi va test faqat raqam bilan bahslashadi.
  */
 export interface SellerMedal {
   readonly code: MedalCode
   /** Takrorlanadiganlar uchun nechta. Takrorlanmaydiganda 1. */
   readonly count: number
-  /** Faqat `club` uchun 1..7; qolganlarida null. */
-  readonly tier: number | null
-  /** Shu medal(lar) bergan ballning yig'indisi. */
-  readonly points: number
   /** Sababning kuni yoki oyi, `YYYY-MM-DD`. Yo'q bo'lsa null. */
   readonly at: string | null
   readonly amountMinor: bigint | null
@@ -141,62 +172,65 @@ export interface SellerMedal {
 
 export interface SellerMedalRow {
   readonly employeeId: string
-  readonly points: number
+  /** 0 — hali savdosiz; 1..6. */
   readonly level: number
-  readonly rankTitle: string
-  readonly levelFloor: number
-  readonly nextLevelAt: number
-  readonly nextTitle: string | null
-  /** Ball bo'yicha kamayib — pagon qimmatlisini oldin chizadi. */
+  readonly legendaTier: number
+  /** «Ustoz», «Legenda II»; 0-darajada null. */
+  readonly rankTitle: string | null
+  /** 2026-avgustdan beri jami FAKT 2. */
+  readonly deliveredMinor: bigint
+  readonly levelFloorMinor: bigint
+  readonly nextLevelAtMinor: bigint
+  readonly nextTitle: string
+  /** Joriy darajaga chiqqan kun, `YYYY-MM-DD`; 0-darajada yoki kunlik faktsiz null. */
+  readonly promotedOn: string | null
+  /** `MEDAL_ORDER` bo'yicha; oila ichida eng oxirgisi oldin. Faqat OCHILGANLARI. */
   readonly medals: readonly SellerMedal[]
 }
 
-export const POINTS_PER_CONFIRMED_ORDER = 10
-export const POINTS_PER_DELIVERED_ORDER = 25
-export const POINTS_PER_MLN = 5
-
-/** Takrorlanadigan medalning BIR donasi beradigan ball. `club` — pastda. */
-export const MEDAL_POINTS: Readonly<Record<Exclude<MedalCode, 'club'>, number>> = Object.freeze({
-  'month-gold': 500,
-  'month-silver': 300,
-  'month-bronze': 200,
-  'year-champion': 2000,
-  'streak-fire': 750,
-  'streak-steady': 400,
-  'work-month': 250,
-  'conversion-master': 400,
-  'clean-month': 300,
-  jump: 300,
-  rookie: 300,
-  'day-record': 1000,
-  'day-winner': 50,
-  'first-sale': 100,
+/**
+ * DARAJA MEDALLARNI OCHADI — mijozning 2026-09-16 dagi so'zi: «levelga
+ * o'tgani sari medallar olishi ham osonlashadi». Motor medalni avvalgidek
+ * hisoblaydi, lekin sotuvchining darajasi eshikdan past bo'lsa UZATMAYDI.
+ * Daraja faqat ko'tarilgani uchun bir marta ko'ringan medal yo'qolmaydi.
+ *
+ * Eshiklar hikoya, jazo emas: oy chempioni oy oxirida baribir 10 mln dan
+ * oshgan bo'ladi. Eshik faqat yuqori medallarda (🔥, 🏆) haqiqatan sezildi.
+ */
+export const MEDAL_UNLOCK_LEVEL: Readonly<Record<MedalCode, number>> = Object.freeze({
+  'first-sale': 1,
+  'work-month': 1,
+  'day-winner': 1,
+  rookie: 1,
+  'clean-month': 2,
+  jump: 2,
+  'day-record': 2,
+  'month-bronze': 2,
+  'month-silver': 2,
+  'month-gold': 2,
+  'conversion-master': 3,
+  'streak-steady': 3,
+  'streak-fire': 4,
+  'year-champion': 5,
 })
 
-/**
- * Klub bosqichlari — jami FAKT 2 bo'yicha, minor birlikda.
- *
- * RAQOBAT EMAS, CHEGARA: boshqa medallarning hammasi kimdir yutganda
- * boshqasi yutqazadigan turda, va faqat shundaylardan iborat taxta 126
- * sotuvchining 83 tasini medalsiz qoldirardi (o'lchangan, 2026-09-15).
- * Klub esa hammaga ochiq — faqat turli vaqtda keladi.
- *
- * O'sish sur'ati narvonni bir yilga yetkazadi: mediana sotuvchi oyiga ~25 mln
- * qiladi, ya'ni II bosqich birinchi oyda, IV bosqich to'rtinchi oy atrofida,
- * V esa o'n oydan keyin keladi.
- */
-export const CLUB_RUNGS: readonly { readonly tier: number; readonly atMinor: bigint; readonly points: number }[] =
-  Object.freeze([
-    { tier: 1, atMinor: 10n * 100_000_000n, points: 100 },
-    { tier: 2, atMinor: 25n * 100_000_000n, points: 150 },
-    { tier: 3, atMinor: 50n * 100_000_000n, points: 250 },
-    { tier: 4, atMinor: 100n * 100_000_000n, points: 400 },
-    { tier: 5, atMinor: 250n * 100_000_000n, points: 800 },
-    { tier: 6, atMinor: 500n * 100_000_000n, points: 1200 },
-    { tier: 7, atMinor: 1000n * 100_000_000n, points: 2000 },
-  ])
-
-const MINOR_PER_MLN = 100_000_000n
+/** Chizilish tartibi — qimmatlisi oldin. Ball yo'q, shuning uchun tartib ro'yxat. */
+export const MEDAL_ORDER: readonly MedalCode[] = Object.freeze([
+  'year-champion',
+  'month-gold',
+  'streak-fire',
+  'month-silver',
+  'month-bronze',
+  'streak-steady',
+  'conversion-master',
+  'day-record',
+  'clean-month',
+  'jump',
+  'rookie',
+  'day-winner',
+  'work-month',
+  'first-sale',
+])
 
 /**
  * Sifat medallarining eng kam buyurtmasi.
@@ -246,7 +280,6 @@ export const ROOKIE_FROM_MONTH = '2026-09'
 
 interface Draft {
   readonly employeeId: string
-  points: number
   readonly medals: SellerMedal[]
 }
 
@@ -260,9 +293,8 @@ export interface SellerMedalsInput {
    *
    * Xuddi `runningMonth` oylik medallarni chetlab o'tgani kabi, ⚡ va 🌅 shu
    * kunni chetlab o'tadi. Kun tugamaguncha uning `place`i har soatda
-   * o'zgaradi: bugungi yetakchi kechqurun boshqasidan oshirilib, 🌅 ni
-   * yo'qotardi — va 50 ball yo'qotish darajani pasaytirishi mumkin, spec esa
-   * darajaning hech qachon pasaymasligini talab qiladi.
+   * o'zgaradi: bugungi 🌅 kechqurun almashib ketardi — televizorda medal
+   * bir odamdan ikkinchisiga ko'chib yurardi.
    */
   readonly runningDay: string
 }
@@ -272,18 +304,10 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
   const draftOf = (employeeId: string): Draft => {
     let d = drafts.get(employeeId)
     if (!d) {
-      d = { employeeId, points: 0, medals: [] }
+      d = { employeeId, medals: [] }
       drafts.set(employeeId, d)
     }
     return d
-  }
-
-  // --- kundalik ish -------------------------------------------------------
-  for (const m of input.months) {
-    const d = draftOf(m.employeeId)
-    d.points += m.confirmedOrders * POINTS_PER_CONFIRMED_ORDER
-    d.points += m.deliveredOrders * POINTS_PER_DELIVERED_ORDER
-    d.points += Number(m.deliveredMinor / MINOR_PER_MLN) * POINTS_PER_MLN
   }
 
   // --- oylarni guruhlash; joriy oy hech qanday oylik medal bermaydi -------
@@ -312,21 +336,18 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
   /** Bir medalni qo'shadi; takrorlanadigani bo'lsa sanoqni oshiradi. */
   const award = (
     employeeId: string,
-    code: Exclude<MedalCode, 'club'>,
+    code: MedalCode,
     at: string | null,
     detail: { amountMinor?: bigint; orders?: number; percent?: number } = {},
   ): void => {
     const d = draftOf(employeeId)
-    const points = MEDAL_POINTS[code]
-    d.points += points
     const seen = d.medals.find((m) => m.code === code)
     if (seen) {
       const index = d.medals.indexOf(seen)
       d.medals[index] = {
         ...seen,
         count: seen.count + 1,
-        points: seen.points + points,
-        // ENG OXIRGI SABAB QOLADI: pagon «qachon oldi» deganda yangisini
+        // ENG OXIRGI SABAB QOLADI: lavha «qachon oldi» deganda yangisini
         // ko'rsatadi — eskisi hikoya, yangisi yangilik.
         at: at !== null && (seen.at === null || at > seen.at) ? at : seen.at,
         amountMinor: detail.amountMinor ?? seen.amountMinor,
@@ -338,8 +359,6 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
     d.medals.push({
       code,
       count: 1,
-      tier: null,
-      points,
       at,
       amountMinor: detail.amountMinor ?? null,
       orders: detail.orders ?? null,
@@ -531,7 +550,7 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
     }
   }
 
-  // --- 🌱 birinchi savdo va 💎 klub — ikkalasi ham JAMI bo'yicha ----------
+  // --- 🌱 birinchi savdo — JAMI bo'yicha; jami pul darajani ham beradi ----
   const lifetimeMinor = new Map<string, bigint>()
   const lifetimeDelivered = new Map<string, number>()
   const firstDeliveredMonth = new Map<string, string>()
@@ -547,58 +566,77 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
     }
   }
 
-  for (const [employeeId, total] of lifetimeMinor) {
+  for (const [employeeId] of lifetimeMinor) {
     const d = draftOf(employeeId)
-
     if ((lifetimeDelivered.get(employeeId) ?? 0) > 0) {
-      d.points += MEDAL_POINTS['first-sale']
       d.medals.push({
         code: 'first-sale',
         count: 1,
-        tier: null,
-        points: MEDAL_POINTS['first-sale'],
         at: firstDeliveredMonth.get(employeeId) ?? null,
         amountMinor: null,
         orders: null,
         percent: null,
       })
     }
-
-    // O'TILGAN HAR BOSQICH BALL BERADI, lekin CHIZILADIGANI BITTA — eng
-    // yuqorisi. To'rtta klub belgisi bir pagon qatorida turmaydi, va yuqori
-    // bosqich pastdagisini bekor qilishi ham noto'g'ri bo'lardi: 100 mln
-    // qilgan odam 10 mln qilgandan to'rt barobar ko'p mehnat qo'ygan.
-    const passed = CLUB_RUNGS.filter((r) => total >= r.atMinor)
-    if (passed.length > 0) {
-      const top = passed[passed.length - 1]!
-      const points = passed.reduce((sum, r) => sum + r.points, 0)
-      d.points += points
-      d.medals.push({
-        code: 'club',
-        count: 1,
-        tier: top.tier,
-        points,
-        at: null,
-        amountMinor: total,
-        orders: null,
-        percent: null,
-      })
-    }
   }
+
+  // --- promotedOn: kunlik yig'ma joriy daraja ostonasidan oshgan birinchi kun
+  /*
+    HOSILA FAKT, XOTIRA EMAS. E'lon («endi USTA») brauzer xotirasiga
+    tayansa ikki televizor ikki xil e'lon qilardi; kunlik faktlar esa
+    savolga o'zi javob beradi. Kunlik fakt yo'q sotuvchida null — e'lon
+    yo'q, lavha bor.
+  */
+  const daysByEmployee = new Map<string, SellerDayFact[]>()
+  for (const d of input.days) {
+    const list = daysByEmployee.get(d.employeeId)
+    if (list) list.push(d)
+    else daysByEmployee.set(d.employeeId, [d])
+  }
+  const promotedOnOf = (employeeId: string, floorMinor: bigint): string | null => {
+    if (floorMinor <= 0n) return null
+    const days = [...(daysByEmployee.get(employeeId) ?? [])].sort((a, b) =>
+      a.day < b.day ? -1 : a.day > b.day ? 1 : 0,
+    )
+    let sum = 0n
+    for (const d of days) {
+      sum += d.deliveredMinor
+      if (sum >= floorMinor) return d.day
+    }
+    return null
+  }
+
+  const orderIndex = new Map(MEDAL_ORDER.map((code, i) => [code, i] as const))
 
   return [...drafts.values()]
     .map((d) => {
-      const level = levelOf(d.points)
+      const deliveredMinor = lifetimeMinor.get(d.employeeId) ?? 0n
+      const lvl = levelOf(deliveredMinor)
+      const levelFloorMinor = levelFloorMinorOf(lvl)
       return {
         employeeId: d.employeeId,
-        points: d.points,
-        level,
-        rankTitle: titleOf(level),
-        levelFloor: levelFloorOf(level),
-        nextLevelAt: levelFloorOf(level + 1),
-        nextTitle: nextTitleOf(level),
-        medals: [...d.medals].sort((a, b) => b.points - a.points),
+        level: lvl.level,
+        legendaTier: lvl.legendaTier,
+        rankTitle: titleOf(lvl),
+        deliveredMinor,
+        levelFloorMinor,
+        nextLevelAtMinor: nextLevelAtMinorOf(lvl),
+        nextTitle: nextTitleOf(lvl),
+        promotedOn: promotedOnOf(d.employeeId, levelFloorMinor),
+        medals: d.medals
+          .filter((m) => MEDAL_UNLOCK_LEVEL[m.code] <= lvl.level)
+          .sort((a, b) => {
+            const byOrder = orderIndex.get(a.code)! - orderIndex.get(b.code)!
+            if (byOrder !== 0) return byOrder
+            return (b.at ?? '') < (a.at ?? '') ? -1 : (b.at ?? '') > (a.at ?? '') ? 1 : 0
+          }),
       }
     })
-    .sort((a, b) => b.points - a.points)
+    .sort((a, b) => {
+      // TENG PULDA `employeeId` — Map'ning kiritilish tartibi emas. Ikki
+      // so'rov orasida o'rin almashadigan taxta buzuq ko'rinadi, va nol
+      // yetkazgan (0-daraja) sotuvchilarning hammasi aynan shu holatda.
+      if (a.deliveredMinor !== b.deliveredMinor) return a.deliveredMinor > b.deliveredMinor ? -1 : 1
+      return a.employeeId < b.employeeId ? -1 : a.employeeId > b.employeeId ? 1 : 0
+    })
 }

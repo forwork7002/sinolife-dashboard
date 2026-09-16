@@ -70,3 +70,8 @@ bitrix24-final-dup.json
 
 # SDD ish maydoni — ledger va review paketlari, manba emas.
 /.superpowers/
+
+# medal belgilarining render tekshiruvi (docs/superpowers/plans/2026-09-16-daraja-va-medallar.md, 7-vazifa)
+docs/superpowers/specs/assets/2026-09-16-daraja/medal-sheet-*
+docs/superpowers/specs/assets/2026-09-16-daraja/preview-tokens.css
+docs/superpowers/specs/assets/2026-09-16-daraja/__pycache__/

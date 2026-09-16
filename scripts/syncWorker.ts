@@ -63,10 +63,6 @@ import {
   SELF_LIMIT_CODE,
 } from '../src/server/integrations/crm/bitrix24/refusal'
 import type { RefusalClass } from '../src/server/integrations/crm/bitrix24/refusal'
-import {
-  checkReachability,
-  describeReachability,
-} from '../src/server/integrations/crm/bitrix24/reachability'
 import { FRESHNESS_ENTITIES } from '../src/server/repositories/referenceRepository'
 
 const DATABASE_URL = process.env.DATABASE_URL
@@ -278,6 +274,20 @@ function stamp(): string {
   return new Date().toISOString().slice(11, 19)
 }
 
+/** A failure that never reached the portal: a socket, or the gate holding one. */
+const NETWORK_FAILURE = /fetch failed|UND_ERR_|ECONN|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|gate: UNKNOWN/
+
+/**
+ * Ticks after a recovery that run the hot entities only.
+ *
+ * On 2026-09-16 11:35 UTC the address block lifted for a moment, the probe got
+ * through, and the worker answered with a reference tick — twelve entities back
+ * to back — and was dropped again inside a minute. The reference pass, the
+ * sweep and anything else scheduled onto the recovery tick wait until the
+ * portal has taken this many ordinary ticks from us.
+ */
+const CALM_TICKS = 3
+
 /** How recent a logged refusal must be to start the next worker already closed. */
 const SEED_MAX_AGE_MS = 15 * 60_000
 
@@ -311,8 +321,18 @@ async function lastRefusal(
   if (success?.finishedAt && success.finishedAt >= at) return null
   if (now.getTime() - at.getTime() > SEED_MAX_AGE_MS) return null
 
-  const kind = classifyRefusal(failure.errorMessage)
-  if (kind !== 'THROTTLE' && kind !== 'CREDENTIAL') return null
+  /*
+    AN UNREACHABLE PORTAL IS REMEMBERED TOO. Neither «fetch failed
+    [UND_ERR_CONNECT_TIMEOUT]» nor the gate's own «Bitrix24 gate: UNKNOWN …
+    not sent» carries a portal code, so `classifyRefusal` reads both as
+    nothing — and every redeploy inside the 2026-09-16 address block opened
+    with a health check and a reference tick into the firewall that was
+    dropping us.
+  */
+  const kind =
+    classifyRefusal(failure.errorMessage) ??
+    (NETWORK_FAILURE.test(failure.errorMessage ?? '') ? 'TRANSIENT' : null)
+  if (kind !== 'THROTTLE' && kind !== 'CREDENTIAL' && kind !== 'TRANSIENT') return null
 
   return { kind, code: refusalCode(failure.errorMessage) ?? 'UNKNOWN', since: at }
 }
@@ -624,7 +644,12 @@ async function main() {
   if (!provider.gate.isOpen()) {
     const health = await provider.healthCheck()
     console.log(`\n  ${health.ok ? '✓' : '✗'} ${health.detail}`)
-    if (!health.ok) {
+    if (!health.ok && NETWORK_FAILURE.test(health.detail)) {
+      // Unreachable, not refused: shut the gate now rather than following up
+      // with a dozen reference-tick connections. The ladder probes from here.
+      provider.gate.seed('TRANSIENT', 'UNKNOWN', new Date(), new Date())
+      console.warn(`  ${stamp()} ! portalga ulanib boʻlmadi — tekshiruv jadval boʻyicha, toʻliq tsikl emas.`)
+    } else if (!health.ok) {
       console.warn(
         `  ${stamp()} ! portal javob bermadi — tsikl baribir boshlanadi,` +
           ' xatolar har tsiklda qayd etiladi.',
@@ -692,7 +717,10 @@ async function main() {
    * block alive; backing off lets it clear.
    */
   let failures = 0
-  let lastReachabilityAt = 0
+  /** Hot-only ticks left after a recovery; see `CALM_TICKS`. */
+  let calm = 0
+  /** A reference pass that fell inside the calm and still has to run. */
+  let referenceOwed = false
 
   while (!stopping) {
     const started = Date.now()
@@ -733,18 +761,13 @@ async function main() {
     sabab: ${provider.lastProbeError}` : ''),
         )
         /*
-          A NETWORK FAILURE GETS A NETWORK DIAGNOSIS, at most every ten
-          minutes. See `reachability.ts`: a socket timeout alone cannot tell
-          our egress from Bitrix24 dropping our address, and the fix for each
-          is a different person's.
+          THE NETWORK DIAGNOSIS IS NO LONGER RUN FROM HERE. `reachability.ts`
+          answered its question on 2026-09-16 — TCP opens, TLS never completes,
+          Bitrix24 is dropping this address — and each run opened ~11
+          connections to four portal addresses at once, handshakes left
+          unfinished, which is what a scan looks like to the firewall we were
+          waiting on.
         */
-        if (
-          /CONNECT_TIMEOUT|TIMEOUT|ECONN|ENETUNREACH|EHOSTUNREACH/.test(provider.lastProbeError ?? '') &&
-          Date.now() - lastReachabilityAt > 600_000
-        ) {
-          lastReachabilityAt = Date.now()
-          console.warn(`    ${describeReachability(await checkReachability(webhook))}`)
-        }
         const wait = provider.gate.nextWaitMs(new Date())
         if (wait > 0 && !stopping) await sleep(wait)
         continue
@@ -754,12 +777,15 @@ async function main() {
       // straight through into a full tick rather than waiting for the next
       // boundary: the data is as stale as the outage was long.
       failures = 0
+      calm = CALM_TICKS
       console.log(
-        `  ${stamp()} ✓ portal javob berdi (${state.code} tugadi) — sinxronizatsiya tiklanmoqda`,
+        `  ${stamp()} ✓ portal javob berdi (${state.code} tugadi) — sinxronizatsiya sekin tiklanmoqda`,
       )
     }
 
-    const entities = tick % REFERENCE_EVERY === 0 ? [...REFERENCE, ...HOT] : HOT
+    const referenceDue: boolean = tick % REFERENCE_EVERY === 0 || referenceOwed
+    referenceOwed = referenceDue && calm > 0
+    const entities = referenceDue && calm === 0 ? [...REFERENCE, ...HOT] : HOT
 
     // Zeroed per tick, so the line below reports THIS tick's cost rather than
     // the process total. The baskets are kept — they belong to the portal's
@@ -931,7 +957,7 @@ async function main() {
       source returns nothing at all, and `listDealIds` throws rather than
       returning a short read — a failed read must never empty the table.
     */
-    if (SWEEP_EVERY > 0 && tick > 0 && tick % SWEEP_EVERY === 0 && !stopping && dealsHandler) {
+    if (SWEEP_EVERY > 0 && tick > 0 && tick % SWEEP_EVERY === 0 && calm === 0 && !stopping && dealsHandler) {
       const sweepStarted = Date.now()
       try {
         const live = await provider.listDealIds()
@@ -963,6 +989,7 @@ async function main() {
     }
 
     tick += 1
+    if (calm > 0 && !provider.gate.isOpen()) calm -= 1
 
     /**
      * Wait out the rest of the interval, not the whole interval.

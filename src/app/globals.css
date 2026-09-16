@@ -133,6 +133,12 @@
    * encodes a value, never a series or status role. Gold sits near --series-4
    * and --status-warning by nature; tolerable only because these tokens are
    * barred from ever carrying data. See the PODIUM section below.
+   *
+   * ONE WRITTEN EXCEPTION (2026-09-16): the Oy family of seller medals
+   * (`.medal[data-medal="month-gold|month-silver|month-bronze|year-champion"]`)
+   * takes these metals as its FIELD, because the fact it encodes — first,
+   * second, third in a period — is the same fact the podium seats encode.
+   * Nowhere else; the level plate never touches them. See the MEDAL section.
    */
   --medal-gold: #b3860e;
   --medal-silver: #798294;
@@ -2568,183 +2574,521 @@ p {
 }
 
 /* ==========================================================================
- * PAGON — the sellers board's medal strip
- *
- * IT INHERITS THE SEAT'S METAL AND CARRIES NO DATA IN IT. The contract at
- * the top of this file stands: `--metal` is chrome — the strip's frame, the
- * chevron, the club lozenge's rim. The points bar is `--seq-550`, the level
- * number is `--ink-primary`, and neither ever becomes gold. Gold sits near
- * `--series-4` and `--status-warning` by nature; it is tolerable here only
- * because nothing in this block encodes a value.
- * ========================================================================== */
+ * LAVHA — daraja lavhasi (pagon silueti), ranglar faqat token. Manba: docs/superpowers/specs/assets/2026-09-16-daraja/lavha.css
+ * ======================================================================== */
 
-.pagon {
+/* lavha-pagon — level plates for /sellers.
+   Every colour flows through var(--…); the plate never touches --medal-* (those are podium
+   chrome) and never carries a literal hex. Instances are <svg class="lavha lavha--SIZE"
+   data-level="0…6" [data-ghost]> with <use> children classed lavha__plate / lavha__star /
+   lavha__engrave / lavha__hi / lavha__lo and, at seat size, a <text class="lavha__title">. */
+
+.lavha {
+  display: inline-block;
+  vertical-align: middle;
+  flex: none;
+  overflow: visible;
+  /* plate class colours — overridden per level below */
+  --lavha-field: var(--surface-sunken);
+  --lavha-rim: var(--border-strong);
+  --lavha-star: var(--ink-primary);
+  /* bevel tones, derived ONCE from the field and the plate's own ink: mixing toward the ink
+     (not toward white/black) keeps both lines visible on a near-white plate (plain in light,
+     inverted in dark) and on a near-black one (plain in dark, inverted in light). */
+  --lavha-hi: color-mix(in oklab, var(--lavha-field) 70%, var(--lavha-star) 30%);
+  --lavha-lo: color-mix(in oklab, var(--lavha-field) 82%, var(--lavha-star) 18%);
+}
+
+/* ---- sizes, keyed by class on the <svg> ---------------------------------------------- */
+.lavha--row    { width: 78px;  height: 26px; }   /* table row: stars only, title is HTML beside it */
+.lavha--narvon { width: 102px; height: 34px; }   /* ladder legend */
+.lavha--ghost  { width: 120px; height: 40px; }   /* "next plate" on the seat */
+.lavha--seat   { width: 280px; height: 88px; }   /* podium seat: two-storey, engraved title */
+
+/* ---- plate classes -------------------------------------------------------------------- */
+/* plain: L1–L3 — a recessed tile with a fine rim */
+.lavha[data-level="1"],
+.lavha[data-level="2"],
+.lavha[data-level="3"] {
+  --lavha-field: var(--surface-sunken);
+  --lavha-rim: var(--border-strong);
+  --lavha-star: var(--ink-primary);
+}
+/* inverted: L4–L5 — solid ink; on the dark palette this is the ivory plate, by design */
+.lavha[data-level="4"],
+.lavha[data-level="5"] {
+  --lavha-field: var(--ink-primary);
+  --lavha-rim: var(--ink-primary);
+  --lavha-star: var(--surface-raised);
+}
+/* apex: L6 — the only blue plate; blue has headroom both ways, so its shadow line goes to black.
+
+   --series-1 AND NOT --accent, although :root defines one as the other. PageShell sets
+   --accent per page ("page identity"), and /sellers sets it to --series-5 — so the top of
+   the ladder was drawn in the sellers column's own pink, which is the one colour the spec
+   names as never meaning a value here (§ medal colours: «--series-5 (ustunning o'z rangi)»).
+   PageShell's own contract says it: "Exactly two things read it … Nothing that encodes a
+   value does." A plate encodes a value. --ink-on-series beside it is the other half of the
+   tell — that ink is mixed for a series colour, not for whatever a page is wearing. */
+.lavha[data-level="6"] {
+  --lavha-field: var(--series-1);
+  --lavha-rim: var(--series-1);
+  --lavha-star: var(--ink-on-series);
+  --lavha-lo: color-mix(in oklab, var(--lavha-field) 65%, black 35%);
+}
+/* L0 — nothing delivered yet: the quiet dashed outline of a first plate, no star, never a warning */
+.lavha[data-level="0"] {
+  --lavha-field: transparent;
+  --lavha-rim: var(--ink-muted);
+  --lavha-star: transparent;
+}
+/* ghost — the next plate: that class's outline, dashed; stars and title in muted ink */
+.lavha[data-ghost] {
+  --lavha-field: transparent;
+  --lavha-star: var(--ink-muted);
+}
+.lavha[data-ghost][data-level="1"],
+.lavha[data-ghost][data-level="2"],
+.lavha[data-ghost][data-level="3"] { --lavha-rim: var(--ink-muted); }
+/* (inverted and apex ghosts keep their class rim — ink-primary and series-1 — at .55 so they sit behind the real plate) */
+
+/* ---- parts: colours land on the <use>, the symbol geometry inherits them -------------- */
+.lavha__plate {
+  fill: var(--lavha-field);
+  stroke: var(--lavha-rim);
+  stroke-width: 2;
+  stroke-linejoin: miter;
+}
+.lavha[data-level="0"] .lavha__plate,
+.lavha[data-ghost] .lavha__plate {
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  stroke-linecap: butt;
+}
+.lavha--seat[data-level="0"] .lavha__plate,
+.lavha--seat[data-ghost] .lavha__plate { stroke-dasharray: 8 5; }
+.lavha[data-ghost][data-level="4"] .lavha__plate,
+.lavha[data-ghost][data-level="5"] .lavha__plate,
+.lavha[data-ghost][data-level="6"] .lavha__plate { stroke-opacity: 0.55; }
+.lavha__star { fill: var(--lavha-star); }
+/* Legenda's inner engraved rim: 1.5px of the plate's own light at 60% (1px in the 26px row) */
+.lavha__engrave {
+  fill: none;
+  stroke: var(--lavha-star);
+  stroke-opacity: 0.6;
+  stroke-width: 1.5;
+  stroke-linejoin: miter;
+}
+.lavha--row .lavha__engrave { stroke-width: 1; }
+/* seat bevel lines — the only "engraving" besides the rim; no gradients, no filters */
+.lavha__hi { fill: none; stroke: var(--lavha-hi); stroke-width: 1.5; stroke-linejoin: miter; stroke-linecap: round; }
+.lavha__lo { fill: none; stroke: var(--lavha-lo); stroke-width: 1.5; stroke-linejoin: miter; stroke-linecap: round; }
+.lavha[data-level="0"] .lavha__hi, .lavha[data-ghost] .lavha__hi,
+.lavha[data-level="0"] .lavha__lo, .lavha[data-ghost] .lavha__lo { stroke: none; }
+/* engraved title, seat only: spaced caps in the star colour, centred on the plate centroid */
+.lavha__title {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: 2px;
+  fill: var(--lavha-star);
+}
+/* the HTML title word beside a row plate */
+.lavha-word {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  color: var(--ink-secondary);
+  margin-inline-start: 12px;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+ * MEDAL — lentali disk, besh rang oilasi; --medal-* FAQAT Oy oilasida (rang shartnomasining yozilgan istisnosi, spec §3). Manba: docs/superpowers/specs/assets/2026-09-16-daraja/medal.css
+ * ======================================================================== */
+
+/* medal.css — /sellers medal set. Pair with medal-defs.html (inlined once per page).
+   Instance:  <svg class="medal medal--row" data-medal="streak-fire" viewBox="0 0 32 40" role="img" aria-label="Olov seriyasi"><use href="#medal-streak-fire"/></svg>
+   Bare disc: <svg class="medal medal--row medal--bare" data-medal="streak-fire" viewBox="0 8 32 32" …>   (crop AND class)
+   Sizes (height incl. ribbon → planchet): medal--row 33px → 23px disc · medal--seat 44px → 31px · medal--speaking 64px → 45px.
+   Bare: medal--row 26.4px (same 23px disc as the ribboned row) · seat 35.2px · speaking 51.2px.
+   Only var(--…) colours; derived tones via color-mix(in oklab, …). */
+
+.medal {
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+  overflow: visible;                    /* the laurel of the year champion spills ~3 units past the box */
+  --m-ring: var(--surface-raised);      /* fimbriation */
+  --m-glyph: var(--ink-on-series);      /* glyph, rim, ribbon stripes */
+  --m-engrave-hi: var(--m-field);       /* bevel highlight; metals override it below */
+  --m-tab: 1;
+  --m-detail: 0;
+  --m-flat: 1;
+}
+.medal--row      { width: 26.4px; height: 33px; }
+.medal--seat     { width: 35.2px; height: 44px; --m-detail: 1; --m-flat: 0; }
+.medal--speaking { width: 51.2px; height: 64px; --m-detail: 1; --m-flat: 0; }
+.medal--bare     { --m-tab: 0; }
+.medal--row.medal--bare      { height: 26.4px; }
+.medal--seat.medal--bare     { height: 35.2px; }
+.medal--speaking.medal--bare { height: 51.2px; }
+
+/* OY — podium metals: field and ribbon in the metal, numeral / crown engraved into it */
+.medal[data-medal="month-gold"],
+.medal[data-medal="year-champion"] {
+  --m-field: var(--medal-gold);
+  --m-glyph: color-mix(in oklab, var(--medal-gold) 35%, black);
+  --m-engrave-hi: color-mix(in oklab, var(--medal-gold) 55%, white);
+}
+.medal[data-medal="month-silver"] {
+  --m-field: var(--medal-silver);
+  --m-glyph: color-mix(in oklab, var(--medal-silver) 35%, black);
+  --m-engrave-hi: color-mix(in oklab, var(--medal-silver) 55%, white);
+}
+.medal[data-medal="month-bronze"] {
+  --m-field: var(--medal-bronze);
+  --m-glyph: color-mix(in oklab, var(--medal-bronze) 35%, black);
+  --m-engrave-hi: color-mix(in oklab, var(--medal-bronze) 55%, white);
+}
+
+/* SERIYA — orange */
+.medal[data-medal="streak-fire"],
+.medal[data-medal="streak-steady"] { --m-field: var(--series-2); }
+
+/* KUN — violet */
+.medal[data-medal="day-record"],
+.medal[data-medal="day-winner"] { --m-field: var(--series-7); }
+
+/* SIFAT — teal */
+.medal[data-medal="conversion-master"],
+.medal[data-medal="clean-month"] { --m-field: var(--series-3); }
+
+/* OʻSISH — green */
+.medal[data-medal="jump"],
+.medal[data-medal="rookie"],
+.medal[data-medal="first-sale"],
+.medal[data-medal="work-month"] { --m-field: var(--series-6); }
+
+/* LOCKED — dashed ghost of the same silhouette, never a warning */
+.medal[data-medal="locked"] { --m-field: var(--ink-muted); }
+
+/* ==========================================================================
+ * DARAJA BLOKI — seat bloki, tokcha, gapiruvchi karta, narvon, qator, e'lon
+ *
+ * Spec: docs/superpowers/specs/2026-09-16-daraja-va-medallar-design.md §3.
+ * O'lchamlar pikselda va `--tv-*` clamp'laridan MUSTAQIL — 4K DPR 1 da
+ * lavha yarimlanib qolmasin. Ranglar faqat token; `--medal-*` bu bo'limda
+ * yo'q (u faqat Oy oilasi medallarida, MEDAL bo'limida).
+ * ======================================================================== */
+
+/* seat: lavha + sharpa + shtamplar + «… qoldi» */
+.lv-block {
+  width: 100%;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 0.375rem;
+  align-items: center;
+  gap: 8px;
+}
+.lv-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   width: 100%;
 }
-
-/* The chevron — the «pagon» itself. Its BAR COUNT is the rank band, not the
-   level: six bands, one to six bars, so the shape is readable from across a
-   room where a two-digit number is not. */
-.pagon-chevron {
-  display: inline-flex;
-  gap: 2px;
-  align-items: flex-end;
+/* Lavha karta kengligiga qarab kichrayadi: 1280 da seat 145 px, 1920 da 252. */
+.lv-plate {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 280px;
+  overflow: hidden;
+  border-radius: 6px;
 }
-
-/* FALLBACK, NOT A NEW TOKEN: table rows start at rank 4, where `--metal` is
-   never set (only .podium-col--* and .rank-1/2/3 set it), so this color-mix
-   had no value to read, went invalid at computed-value time, and painted as
-   nothing. `var(--metal, var(--ink-muted))` keeps the podium's own metal and
-   gives every other row a neutral chevron instead of none at all. */
-.pagon-chevron span {
-  width: 3px;
-  border-radius: 1px;
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--metal, var(--ink-muted)) 78%, transparent),
-    color-mix(in oklab, var(--metal, var(--ink-muted)) 38%, transparent)
-  );
+.lv-plate .lavha--seat {
+  display: block;
+  width: 100%;
+  height: auto;
 }
-
-.pagon-chevron span:nth-child(1) { height: 8px; }
-.pagon-chevron span:nth-child(2) { height: 10px; }
-.pagon-chevron span:nth-child(3) { height: 12px; }
-.pagon-chevron span:nth-child(4) { height: 14px; }
-.pagon-chevron span:nth-child(5) { height: 16px; }
-.pagon-chevron span:nth-child(6) { height: 18px; }
-
-.pagon-level {
+.lv-ghost {
+  flex: none;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.75rem;
+  gap: 2px;
+  font-size: 10.5px;
   font-weight: 600;
-  color: var(--ink-primary);
-}
-
-.pagon-title {
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--ink-secondary);
-  font-size: 0.6875rem;
+  color: var(--ink-muted);
 }
-
-/* The points bar. --seq-550, the same tone the list's FAKT 2 bar uses, so a
-   reader who already learned that tone on this screen does not learn a second
-   one for the same kind of quantity. */
-.pagon-track {
-  position: relative;
-  height: 4px;
-  border-radius: 999px;
+/* O'nta shtamp — uzoqdan SANALADI, foiz sanalmaydi. Ma'lumot rangi. */
+.lv-stamps {
+  display: flex;
+  gap: 4px;
+}
+.lv-stamps i {
+  display: block;
+  width: 20px;
+  height: 8px;
+  border-radius: 3px;
   background: var(--track);
-  overflow: hidden;
 }
-
-.pagon-fill {
-  position: absolute;
-  inset-block: 0;
-  left: 0;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    color-mix(in oklab, var(--seq-550) 45%, var(--surface-raised)),
-    var(--seq-550)
-  );
-  transition: width var(--duration-enter) var(--ease-out);
-}
-
-.pagon-goal {
-  font-size: 0.6875rem;
-  color: var(--ink-muted);
-}
-
-.pagon-medals {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.pagon-medal {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.125rem;
-  padding: 0.125rem 0.3125rem;
-  border-radius: 999px;
-  font-size: 0.6875rem;
-  line-height: 1.2;
-  background: var(--surface-sunken);
-  border: 1px solid var(--border);
-  color: var(--ink-secondary);
-}
-
-/* The club lozenge is the one medal that earns the metal rim: its tier IS a
-   ceremony rank, and the numeral beside it is a roman ordinal rather than a
-   measured value. Same fallback as the chevron above — this lozenge also
-   sits inside table rows, where `--metal` is unset and the bare var() would
-   otherwise fall back to `currentColor`. */
-.pagon-medal--club {
-  border-color: color-mix(in oklab, var(--metal, var(--ink-muted)) 40%, var(--border));
-}
-
-.pagon-more {
-  font-size: 0.6875rem;
-  color: var(--ink-muted);
-}
-
-/* The speaking medal — one at a time, on the column's own clock. */
-.pagon-speech {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.375rem 0.5rem;
-  border-radius: 0.5rem;
-  background: var(--surface-sunken);
-  border: 1px solid color-mix(in oklab, var(--metal) 28%, var(--border));
-  animation: pagon-speak var(--duration-enter) var(--ease-out);
-}
-
-.pagon-speech-name {
-  font-size: 0.6875rem;
+.lv-stamps i.on { background: var(--seq-550); }
+.tv-seat--1 .lv-stamps i { width: 24px; height: 9px; }
+.lv-qoldi {
+  margin: 0;
+  font-size: 17px;
   font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--ink-primary);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.tv-seat--1 .lv-qoldi { font-size: 20px; }
+/* 90% dan oshganda — «yaqin», ogohlantirish rangisiz: ma'lumot ko'ki. */
+.lv-qoldi--near { color: var(--seq-550); }
+
+/* seat tokchasi — o'rindiqning o'z chromi yuvindisida */
+.medal-rail {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 8px 8px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--metal, var(--ink-muted)) 8%, var(--surface-raised));
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 10px;
+}
+.medal-slot {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.medal-count {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--ink-primary);
+  color: var(--surface-raised);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--surface-raised);
+}
+.medal-more {
+  align-self: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* gapiruvchi karta — ustunning soati bittadan ochadi */
+.medal-speak {
+  width: 100%;
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-sunken);
+  text-align: left;
+  animation: medal-speak-in var(--duration-enter) var(--ease-out);
+}
+.medal-speak-name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.15;
   color: var(--ink-primary);
 }
-
-.pagon-speech-why {
-  font-size: 0.6875rem;
+.medal-speak-why {
+  margin: 2px 0 0;
+  font-size: 12.5px;
   color: var(--ink-secondary);
 }
-
-@keyframes pagon-speak {
+@keyframes medal-speak-in {
   from { opacity: 0; transform: translateY(2px); }
   to { opacity: 1; transform: none; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .pagon-speech { animation: none; }
-  .pagon-fill { transition: none; }
+/* narvon — podium ostidagi doimiy legenda; STATIK, hech qachon animatsiya yo'q */
+.narvon {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 18px 12px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklab, var(--surface-sunken) 55%, var(--surface-raised));
 }
-
-/* The row variant sits inside the name cell, under the bar. Smaller, no
-   speech — 139 rows changing at once is not a board anyone can read. */
-.pagon--row {
-  flex-direction: row;
+.narvon-rung {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.375rem;
-  margin-top: 0.25rem;
+  gap: 5px;
+  min-width: 0;
+  text-align: center;
+}
+.narvon-rung b {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  color: var(--ink-primary);
+}
+.narvon-rung span {
+  font-size: 12px;
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+/* Telefon — televizor emas: 3+3 bo'lib o'raladi. */
+@media (max-width: 1279px) {
+  .narvon { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
-.pagon--row .pagon-level { font-size: 0.6875rem; }
-.pagon--row .pagon-medal { padding: 0 0.25rem; }
+/* qator — chapda lavha (yelka), o'ngda medallar (ko'krak), ustun qo'shilmaydi */
+.tv-namecell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.tv-namecell > .lavha { flex: none; }
+.tv-namecell-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tv-rowmedals {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 96px;
+}
+/* Telefonda medallar ism ostiga tushadi — yon skroll qo'shilmaydi. */
+@media (max-width: 1279px) {
+  .tv-namecell { flex-wrap: wrap; }
+  .tv-rowmedals {
+    width: 100%;
+    min-width: 0;
+    padding-left: 90px;
+  }
+}
+.lavha-word.lavha-word--near { color: var(--seq-550); }
 
-.pagon-note {
-  margin-top: 0.5rem;
-  text-align: center;
-  font-size: 0.6875rem;
-  color: var(--ink-muted);
+/*
+  E'LON — 8 SONIYA USTUN SARLAVHASI USTIDA, OQIMDAN TASHQARIDA: HECH NARSA
+  SURILMAYDI. Oqimda turganda banner paydo bo'lganda podiumni va butun
+  jadvalni ~50px pastga surar, sakkiz soniyadan keyin esa qaytarardi —
+  marosim o'zi tabriklayotgan odamning qatorini ko'zdan qochirardi.
+
+  `left` ga qadalgan va `fit-content`: 1920 da ustun sarlavhasini yopadi-yu,
+  o'ngdagi sanoq va FAKT tugmasi ko'rinib turadi. `pointer-events: none` —
+  banner tugmaning ustidan tushsa ham tugma bosilaveradi.
+
+  QABUL QILINGAN CHEGARA: 1280 dan past ekranda parklangan ustun
+  `display: none`, lekin MOUNT qilingan — ya'ni o'quvchi ikkinchi taxtada
+  turganda e'lon ko'rinmay sarflanishi mumkin. Marosimning auditoriyasi —
+  ikkala ustun ham ko'rinadigan 1920 televizor, shuning uchun shunday
+  qoldirildi.
+*/
+.tv-promo {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-top: 0;
+  max-width: calc(100% - 36px);
+  width: fit-content;
+  z-index: 3;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--accent) 12%, var(--surface-raised));
+  border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
+  font-weight: 600;
+  color: var(--ink-primary);
+  animation: tv-promo-in var(--duration-enter) var(--ease-out);
+}
+.tv-promo small {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-secondary);
+}
+/* `transform` markazlashtirishga ketdi — kirish mustaqil `translate` da,
+   ya'ni u bilan QO'SHILADI, ustiga yozmaydi (aks holda 180 ms suriladi,
+   keyin sakraydi). */
+@keyframes tv-promo-in {
+  from { opacity: 0; translate: 0 -6px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+/* ko'tarilish: yulduzlar 80 ms oraliqda tushadi, bitta yaltirash, keyin qotadi */
+@keyframes lavha-star-drop {
+  0% { transform: translateY(-14px) scale(1.15); opacity: 0; }
+  60% { transform: translateY(0) scale(1.15); opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+@keyframes lavha-sheen {
+  from { transform: translateX(-120%) skewX(-20deg); }
+  to { transform: translateX(220%) skewX(-20deg); }
+}
+.lv-plate--rise .lavha__star--drop {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lavha-star-drop 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.lv-sheen {
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--surface-raised) 55%, transparent),
+    transparent
+  );
+  opacity: 0;
+  pointer-events: none;
+}
+.lv-plate--rise .lv-sheen {
+  opacity: 1;
+  animation: lavha-sheen 0.8s ease-out 0.35s 1 both;
+}
+/* yangi medal — bir marta 0,6 dan kattalashib tushadi */
+@keyframes medal-new {
+  from { transform: scale(0.6); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.medal-slot--new .medal { animation: medal-new 0.4s var(--ease-out) both; }
+
+/* Kamaytirilgan harakat: hech narsa qimirlamaydi; e'lon statik chiqadi. */
+@media (prefers-reduced-motion: reduce) {
+  .lv-plate--rise .lavha__star--drop,
+  .lv-plate--rise .lv-sheen,
+  .medal-slot--new .medal,
+  .medal-speak,
+  .tv-promo {
+    animation: none;
+  }
 }
 
 /* ===========================================================================
@@ -3074,6 +3418,9 @@ p {
 }
 
 .tv-col-head {
+  /* E'lon lentasining tayanchi — `.tv-promo` shu qutiga qadaladi va oqimdan
+     chiqadi. Ichkarida boshqa hech narsa uzoqroq ajdodga qadalmaydi. */
+  position: relative;
   flex-shrink: 0;
   padding: 16px 18px 0;
 }
