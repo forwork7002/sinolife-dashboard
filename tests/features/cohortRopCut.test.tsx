@@ -271,8 +271,12 @@ async function pick(value: string): Promise<void> {
 
 beforeEach(() => {
   requested = []
-  /* «Batafsil», because the matrix and its controls only exist there. */
-  window.history.replaceState(null, '', '/analytics/cohort?mode=detail')
+  /* A bare address. This used to carry `?mode=detail`, because the matrix and
+     its controls only existed under «Batafsil»; that reading is the only one
+     left and the parameter no longer means anything. Reset anyway — every
+     case here reads `?rop=` out of this same URL, and a test that inherits
+     the previous one's query string passes for the wrong reason. */
+  window.history.replaceState(null, '', '/analytics/cohort')
   vi.stubGlobal('fetch', mockFetch())
 })
 
