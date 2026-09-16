@@ -14,6 +14,7 @@ import {
 } from '@/features/sales/ConfirmationFaktSection'
 import { ConfirmationOutcomeSection } from '@/features/sales/ConfirmationOutcomeSection'
 import { DeliveryBoardSection } from '@/features/sales/DeliveryBoardSection'
+import { ForecastSection } from '@/features/sales/ForecastSection'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { apiGet, type FaktTrendPointDto } from '@/lib/api'
@@ -247,6 +248,20 @@ export function SalesPage() {
           ) : (
             <FaktTrendChart
               data={faktPoints}
+              /*
+                THE RUN-RATE, DRAWN PAST TODAY — from the BOARD's payload, not
+                the trend's.
+
+                Both are `/analytics/sellers` on the same window, so the dashed
+                continuation and the solid line it leaves cannot be answers to
+                two different questions. It rides the board because these
+                points must never reach `ConfirmationOutcomeSection` below,
+                which reduces the confirmation rate over every point it is
+                handed and has no way to tell a projection from a measurement.
+                Empty for a finished period, and the chart then draws nothing
+                extra.
+              */
+              forecast={faktBoard.data?.forecast.buckets}
               height={300}
               referenceValue={trendAverage}
               referenceLabel="FAKT 1 · davr oʻrtachasi"
@@ -263,6 +278,21 @@ export function SalesPage() {
         trend points as the hero — no third request — so nothing in it can
         disagree with the figure above it. See `ConfirmationOutcomeSection`.
       */}
+      {/*
+        WHERE THE PACE LANDS — directly under the chart that draws it, and
+        above everything that reports what has already happened.
+
+        The order is the claim's own: the hero states the period to date, this
+        states where that pace ends up, and the three blocks below it break the
+        measurement down. Put after them it would read as an afterthought to
+        the delivery board; put above the hero it would state a projection
+        before the figure it is projected from. Added 2026-09-16.
+
+        NO PROPS AND NO SECOND REQUEST. It reads `useFaktBoard`, the same cache
+        entry the hero and the FAKT band read. See `ForecastSection`.
+      */}
+      <ForecastSection />
+
       <ConfirmationOutcomeSection
         points={faktPoints}
         trendStatus={faktTrend.isPending ? 'loading' : faktTrend.isError ? 'error' : 'ready'}

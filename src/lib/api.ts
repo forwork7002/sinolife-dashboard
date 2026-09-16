@@ -1215,6 +1215,8 @@ export interface SellerBoardRowDto {
   /** Their `fot`. ALWAYS NULL — nothing in this database holds pay. */
   readonly fot: MoneyDto | null
   readonly bonus: SellerBonusDto
+  /** Where this seller's period lands at today's pace. See `SellerForecastDto`. */
+  readonly forecast: SellerForecastDto
 }
 
 export interface SellerTeamRowDto {
@@ -1234,6 +1236,40 @@ export interface SellerTeamRowDto {
   readonly leads: number | null
   /** See `SellerBoardRowDto.leadConversionPercent`. Null with `leads`. */
   readonly leadConversionPercent: number | null
+  /** The team's own money projected once — not its sellers' projections summed. */
+  readonly forecast: SellerForecastDto
+}
+
+/**
+ * One projection — BOTH facts, never one.
+ *
+ * Mirrors `sellerBoardService.SellerForecastDto`. FAKT 2 lags the arrival it
+ * is projected from by about two days, so a team whose FAKT 2 projection is
+ * still near zero on a Tuesday morning may already be on pace by FAKT 1; a
+ * forecast that carried only the second told a working floor it was behind
+ * every morning.
+ *
+ * Null is «prognoz qilib boʻlmaydi» and never a zero — the period is over, too
+ * little of it has elapsed to divide by, or nothing has landed yet. The screen
+ * names which.
+ */
+export interface SellerForecastDto {
+  readonly fakt1: MoneyDto | null
+  readonly fakt2: MoneyDto | null
+}
+
+/**
+ * One projected bucket of the trend chart's dashed continuation.
+ *
+ * Mirrors `sellerBoardService.FaktForecastPointDto`. Same lossy major-unit
+ * money as `FaktTrendPointDto`, because the chart draws both on one axis. No
+ * order count and no queue states: a run-rate projects money, and a projected
+ * count printed beside measured ones is a number a reader will quote.
+ */
+export interface FaktForecastPointDto {
+  readonly date: string
+  readonly fakt1: number
+  readonly fakt2: number
 }
 
 /** One queue state's slice: how many orders, and what they were worth. */
@@ -1284,9 +1320,18 @@ export interface SellerBoardTotalsDto {
   readonly leadConversionPercent: number | null
 }
 
-export interface SellerBoardForecastDto {
+export interface SellerBoardForecastDto extends SellerForecastDto {
+  /** How much of the FULL calendar unit has elapsed, 0-100 — never of the window. */
   readonly elapsedPercent: number
-  readonly projected: MoneyDto | null
+  /** The instant projected TO, ISO and half-open: the first instant NOT projected. */
+  readonly windowEnd: string
+  /**
+   * The dashed continuation for the trend chart, on the same cadence as
+   * `faktTrend`. It rides the BOARD rather than the trend so these points can
+   * never reach `ConfirmationOutcomeSection`, whose rate line reduces over
+   * every point it is handed — see the server-side docblock.
+   */
+  readonly buckets: readonly FaktForecastPointDto[]
 }
 
 export interface SellerBoardDto {

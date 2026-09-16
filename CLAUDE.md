@@ -421,7 +421,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 
 | Screen | URL | Feature | Endpoint(s) | Service → Repository | Window filters on |
 |---|---|---|---|---|---|
-| Savdo dinamikasi | `/analytics/sales` | `sales/SalesPage` + `ConfirmationOutcomeSection` + `ConfirmationFaktSection` + `DeliveryBoardSection` | `/analytics/sellers` twice (the board, and `?include=faktTrend` for the chart) + `/insights/delivery` | SellerBoard, Pulse → SellerBoard, Pulse | the arrival in `C4:NEW` (`queued_at`) — **except the Доставка board, which has NO window at all**: a kanban column is where orders are standing now |
+| Savdo dinamikasi | `/analytics/sales` | `sales/SalesPage` + `ForecastSection` + `ConfirmationOutcomeSection` + `ConfirmationFaktSection` + `DeliveryBoardSection` | `/analytics/sellers` twice (the board, and `?include=faktTrend` for the chart) + `/insights/delivery` | SellerBoard, Pulse → SellerBoard, Pulse | the arrival in `C4:NEW` (`queued_at`) — **except the Доставка board, which has NO window at all**: a kanban column is where orders are standing now |
 | Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` — TWO MODES over ONE fetch: `cohort/SimpleView` («Oddiy», the default) and the matrix + `StateBars` («Batafsil»), chosen by `?mode=` | `/insights/cohorts`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | **nothing — the screen is DATELESS since 2026-09-15** (`period={false}`, like Struktura). `closedAt` on revenue-bearing WON deals is the clock both endpoints read; the matrix takes no window at all (`months` bounds which cohort ROWS are drawn and never the totals arm) and `/insights/concentration` resolves its OWN trailing 90 days (`trailingDays`). Nothing here reads `createdAtSource` |
 | Reklama samarasi | `/marketing` | **PAUSED** — `shared/SectionPending`; `marketing/MarketingPage` is held, not mounted | none while paused (`/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` still answer) | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
@@ -467,6 +467,56 @@ Per-screen traps worth knowing before you touch one:
   `tests/http/deliveryBoardSql.test.ts` pins both, and every stage name is
   printed VERBATIM in Russian — the block's whole value is that it reconciles
   against the screen it was copied from.
+  **«PROGNOZ» — THE RUN-RATE AT EVERY LEVEL THE BOARD REPORTS, since
+  2026-09-16.** Asked for by the client for FAKT 1 and FAKT 2 together, for the
+  company, each ROP team and each seller. What existed before was ONE
+  projection — of FAKT 2, for the company — behind one tile on the queue band,
+  and `forecast.projected` is now `forecast.fakt1` / `forecast.fakt2`, the
+  singular REMOVED rather than kept beside the pair for the same reason
+  `restrictToEmployeeId` was.
+  **IT COSTS NO REQUEST, NO ENDPOINT AND NO SQL.** A straight-line run-rate is
+  `money ÷ elapsed fraction` and that fraction is ONE number for the whole
+  screen, so every figure — 126 sellers, fifteen teams, the company — is
+  arithmetic over rows already on `/analytics/sellers`. `ForecastSection` reads
+  `useFaktBoard`, the same cache entry the hero and the FAKT band read, which
+  is what makes it unable to disagree with the figures above it. The page still
+  makes its two requests.
+  **THE HORIZON IS THE SELECTED PERIOD'S OWN CALENDAR UNIT.**
+  `projectionElapsedFraction` → `fullUnitWindow`, never the report window: a
+  to-date preset is by construction nearly spent, and «Shu oy» on the 9th read
+  94.4% and projected FAKT 2 forward by six percent. A finished preset passes
+  through with an elapsed fraction of 1 and the block SAYS «davr yakunlangan»
+  rather than printing a total under a forecast heading; below
+  `PROJECTION_ELAPSED_FLOOR` (2%, ~the first fourteen hours) it says «erta».
+  **NULL IS NEVER A ZERO, and on this cohort that is not a nicety** — delivery
+  lags the arrival it is projected from by about two days, so «0 soʻm» in a
+  column headed «prognoz» tells a floor that is working normally that its month
+  ends at nothing. Every projection column prints an em dash instead.
+  **A TEAM IS PROJECTED FROM ITS OWN MONEY, not from its sellers' projections
+  summed.** Identical under a straight line, and the reading that stays true to
+  what the column is asked the moment the rule grows a floor or a cap.
+  **THE CHART RUNS PAST TODAY, DASHED, AND THE BUCKETS RIDE THE BOARD RATHER
+  THAN `faktTrend`.** Appended to the trend they would reach
+  `ConfirmationOutcomeSection`, which reduces the confirmation rate over every
+  point it is handed and cannot tell a projection from a measurement — the rate
+  would have been dragged towards zero with nothing on screen saying so. Three
+  things in that continuation print a plausible chart rather than an error and
+  all three are pinned: the granularity is `chooseGranularity(ctx.period)`
+  passed in EXPLICITLY (the default would take it from the full unit — on «Shu
+  yil» in February that is 46 days against 365, one either side of the 62-day
+  threshold, so six weekly dashes would continue forty-six daily points); only
+  buckets starting at or after the report window's end are drawn, so today's
+  half-elapsed bucket is never drawn twice; and `spreadRemainingMinor`
+  distributes the truncation remainder, so the dashed area sums to EXACTLY the
+  tile above it. `tests/services/sellerForecast.test.ts`,
+  `tests/features/faktTrendRows.test.ts`, `tests/domain/spreadRemaining.test.ts`
+  and `tests/features/salesForecast.test.tsx` are what hold all of it; each was
+  checked by mutation.
+  **IT IS A PACE RESTATED AND NOTHING MORE.** No weekday shape, no holiday, no
+  portal outage, no allowance for the FAKT 2 lag. Every projected figure is
+  printed beside what has actually landed and the block names the method and
+  the horizon in its first sentence, which is the only thing that makes the
+  numbers safe to quote.
   **«TASDIQLASH NATIJASI» SITS DIRECTLY UNDER THE HERO, since 2026-09-15**
   («tasdiqlanganlar, tasdiqlanmay chiqdilar bilan tasdiqlanmaganlar nisbati…
   oʻrtachasi»). It is the hero's «navbatda jami N ta» opened up: the queue's

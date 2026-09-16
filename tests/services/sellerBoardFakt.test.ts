@@ -119,7 +119,7 @@ describe('the FAKT 2 run-rate measures the month, not the window', () => {
 
     // 100 mln in 27.9% of the month → ~358 mln by month end. The old reading
     // projected ~107 mln, which is barely a forecast at all.
-    const projected = board.forecast.projected
+    const projected = board.forecast.fakt2
     expect(projected).not.toBeNull()
     expect(projected!.amount / 1_000_000).toBeCloseTo(358, 0)
   })
@@ -134,7 +134,7 @@ describe('the FAKT 2 run-rate measures the month, not the window', () => {
     )
 
     expect(board.forecast.elapsedPercent).toBe(100)
-    expect(board.forecast.projected).toBeNull()
+    expect(board.forecast.fakt2).toBeNull()
   })
 })
 

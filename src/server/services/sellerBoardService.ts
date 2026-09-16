@@ -30,12 +30,23 @@ import {
   toDeltaDto,
 } from '@/server/domain/analytics/metrics'
 import type { KpiDefinition } from '@/server/domain/analytics/performance'
-import { projectionElapsedFraction } from '@/server/domain/analytics/pulse'
+import {
+  fullUnitWindow,
+  projectRevenueMinor,
+  projectionElapsedFraction,
+  spreadRemainingMinor,
+} from '@/server/domain/analytics/pulse'
 import { BONUS_TIERS, bonusEligible } from '@/server/domain/analytics/sellerBonus'
 import { type SellerMedal, buildSellerMedals } from '@/server/domain/analytics/sellerMedals'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import { scopedPeriod } from '@/server/domain/employees/branches'
-import { type Period, enumerateBuckets, sinceMonth, zonedDateKey } from '@/server/domain/period/period'
+import {
+  type Period,
+  chooseGranularity,
+  enumerateBuckets,
+  sinceMonth,
+  zonedDateKey,
+} from '@/server/domain/period/period'
 import type { DeltaDto } from '@/lib/api'
 import { CONFIRMATION_OUTCOMES, type ConfirmationOutcomeValue } from '@/server/domain/types'
 import type { InsightsRepository } from '@/server/repositories/insightsRepository'
@@ -190,6 +201,15 @@ export interface SellerBoardRowDto {
    */
   readonly fot: MoneyDto | null
   readonly bonus: SellerBonusDto
+  /**
+   * Where this seller's month lands at today's pace. See `SellerForecastDto`.
+   *
+   * ONE ELAPSED FRACTION FOR THE WHOLE PAYLOAD, so a row, its team and the
+   * company headline are three readings of one clock. Computed per row rather
+   * than re-derived on the client for the usual reason: a second definition of
+   * a business figure agrees with the first until the day it does not.
+   */
+  readonly forecast: SellerForecastDto
 }
 
 export interface SellerTeamRowDto {
@@ -209,6 +229,16 @@ export interface SellerTeamRowDto {
   readonly leads: number | null
   /** See `SellerBoardRowDto.leadConversionPercent`. Null with `leads`. */
   readonly leadConversionPercent: number | null
+  /**
+   * The team's own projection — summed from its sellers' MONEY and projected
+   * once, never summed from its sellers' projections.
+   *
+   * The two agree under a straight line and would stop agreeing the moment
+   * anything about the rule stopped being one (a floor, a cap, a per-seller
+   * horizon). Projecting the team's own total is the reading that stays true
+   * to «the team ends the month at», which is what the column is asked.
+   */
+  readonly forecast: SellerForecastDto
 }
 
 /** One queue state's slice of the cohort: how many orders, and what they were worth. */
@@ -286,11 +316,73 @@ export interface SellerBoardTotalsDto {
   readonly leadConversionPercent: number | null
 }
 
-export interface SellerBoardForecastDto {
-  /** How much of the period has elapsed, 0-100. */
+/**
+ * One row's or one team's projection — BOTH facts, never one.
+ *
+ * FAKT 2 ALONE WAS THE WHOLE FORECAST UNTIL 2026-09-16, and on this cohort
+ * that is the half that moves last: delivery lags the arrival it is projected
+ * from by about two days, so a team's FAKT 2 projection is still near zero on
+ * a morning its FAKT 1 projection already says the month is on pace. A floor
+ * manager asked «kim orqada» reads the first and acts on it; reading only the
+ * second told them every team was behind, every morning.
+ *
+ * Null rather than zero when there is nothing to project from — see
+ * `forecastMoney`. A zero here would say "this team ends the month at
+ * nothing", which is a claim, and the wrong one.
+ */
+export interface SellerForecastDto {
+  /** Straight-line projection of FAKT 1 to the end of the calendar unit. */
+  readonly fakt1: MoneyDto | null
+  /** The same for FAKT 2 — what `bonus` and the payroll screen are paid on. */
+  readonly fakt2: MoneyDto | null
+}
+
+export interface SellerBoardForecastDto extends SellerForecastDto {
+  /**
+   * How much of the FULL calendar unit has elapsed, 0-100 — never of the
+   * report window. See `forecastOf` for the four-month-old bug that
+   * distinction fixes.
+   */
   readonly elapsedPercent: number
-  /** Straight-line projection of won intake to the period's end. */
-  readonly projected: MoneyDto | null
+  /**
+   * The instant the projection runs TO, ISO — the end of `fullUnitWindow`.
+   *
+   * The screen prints it. «Oyning 53% qismi oʻtdi» does not say WHICH month,
+   * and on «Shu hafta» it is not a month at all; a projection that will not
+   * name its own horizon invites the reader to assume the one they had in
+   * mind. Half-open like every other window here, so this is the first
+   * instant NOT projected.
+   */
+  readonly windowEnd: string
+  /**
+   * The dashed continuation for the trend chart: one point per bucket the
+   * period has left, on the SAME cadence and the SAME calendar as
+   * `faktTrend`.
+   *
+   * IT RIDES THE BOARD RATHER THAN THE TREND, and that is deliberate. Appended
+   * to `faktTrend` these points would reach `ConfirmationOutcomeSection`,
+   * whose tiles and confirmation-rate line reduce over every point they are
+   * given — a forecast bucket has no queue states, so it would have dragged
+   * that rate towards zero with nothing on screen saying a projection had been
+   * counted as a measurement. Empty for a finished period, and empty below the
+   * projection floor.
+   */
+  readonly buckets: readonly FaktForecastPointDto[]
+}
+
+/**
+ * One projected bucket — the same shape and the same lossy major-unit money as
+ * `FaktTrendPointDto`, because the chart draws them on one axis.
+ *
+ * It carries the two series and nothing else: no order count, no queue states.
+ * A run-rate projects money, and a projected order count printed in a tooltip
+ * beside real ones is a number a reader will quote.
+ */
+export interface FaktForecastPointDto {
+  /** Bucket start as an ISO instant, exactly as `FaktTrendPointDto.date`. */
+  readonly date: string
+  readonly fakt1: number
+  readonly fakt2: number
 }
 
 export interface SellerBoardDto {
@@ -618,7 +710,20 @@ export class SellerBoardService {
     const plans = revenueTargets(kpis)
 
     const totalWonMinor = sum(rows, (r) => r.wonMinor)
+    const totalOrderedMinor = sum(rows, (r) => r.orderedMinor)
     const previousWonMinor = sum(previous, (r) => r.wonMinor)
+
+    /*
+      ONE ELAPSED FRACTION FOR EVERY PROJECTION ON THE PAYLOAD.
+
+      Resolved here, once, and handed down to the rows, the teams and the
+      company headline — so the three cannot be read against three different
+      moments. Asked per row it would also be asked 126 times for one answer.
+      `ctx.now` rather than `new Date()` for the reason every clock in this
+      service takes it from the context: a test that cannot move `now` cannot
+      test a forecast at all.
+    */
+    const elapsed = projectionElapsedFraction(ctx.period, ctx.now)
 
     /*
       FAKT 2 FIRST, THEN FAKT 1 — the client's own rule, stated 2026-09-04:
@@ -702,6 +807,7 @@ export class SellerBoardService {
       leadConversionPercent: null,
       fot: null,
       bonus: bonusFor(row.wonMinor, row.fullName, ctx.currency),
+      forecast: forecastFor(row.orderedMinor, row.wonMinor, elapsed, ctx.currency),
     }))
 
     const plannedMinor = sum(
@@ -723,7 +829,7 @@ export class SellerBoardService {
         small company and also one ROP's floor, and the difference decides
         whether «1-oʻrin» means anything.
       */
-      teams: teamRows(rows, totalWonMinor, plans.byEmployee, ctx.currency),
+      teams: teamRows(rows, totalWonMinor, plans.byEmployee, elapsed, ctx.currency),
       totals: {
         sellers: rows.length,
         teams: new Set(rows.map((r) => r.rop).filter((r): r is string => r !== null)).size,
@@ -742,7 +848,7 @@ export class SellerBoardService {
           outcomes === null || cohortOrders === 0
             ? null
             : Math.round((outcomes.CONFIRMED.orders / cohortOrders) * 1000) / 10,
-        ordered: toMoneyDto(money(sum(rows, (r) => r.orderedMinor), ctx.currency)),
+        ordered: toMoneyDto(money(totalOrderedMinor, ctx.currency)),
         won: toMoneyDto(money(totalWonMinor, ctx.currency)),
         wonOrders: rows.reduce((a, r) => a + r.wonOrders, 0),
         open: toMoneyDto(money(sum(rows, (r) => r.openMinor), ctx.currency)),
@@ -783,14 +889,14 @@ export class SellerBoardService {
         plan: planFor(
           plans.byEmployee.size > 0 ? plannedMinor : null,
           totalWonMinor,
-          sum(rows, (r) => r.orderedMinor),
+          totalOrderedMinor,
           ctx.currency,
         ),
         sellersWithPlan: rows.filter((r) => plans.byEmployee.has(r.employeeId)).length,
         leads: null,
         leadConversionPercent: null,
       },
-      forecast: forecastOf(totalWonMinor, ctx),
+      forecast: forecastOf(totalOrderedMinor, totalWonMinor, elapsed, ctx),
       basis: basis === 'queue' ? 'confirmation_queue' : 'created_in_period',
       planWindow: plans.window,
     }
@@ -1279,6 +1385,8 @@ function teamRows(
   rows: readonly SellerBoardRow[],
   totalWonMinor: bigint,
   planByEmployee: ReadonlyMap<string, bigint>,
+  /** The board's ONE elapsed fraction — see `buildBoard`. Never re-derived here. */
+  elapsed: number,
   currency: string,
 ): readonly SellerTeamRowDto[] {
   const byRop = new Map<string, SellerBoardRow[]>()
@@ -1357,6 +1465,9 @@ function teamRows(
         open: toMoneyDto(money(sum(team.members, (m) => m.openMinor), currency)),
         conversionPercent: roundOrNull(ratePercent(wonOrders, wonOrders + lostOrders)),
         sharePercent: roundOrNull(ratePercent(team.wonMinor, totalWonMinor)),
+        /* The team's own money projected once — not its sellers' projections
+           summed. See `SellerTeamRowDto.forecast`. */
+        forecast: forecastFor(team.orderedMinor, team.wonMinor, elapsed, currency),
         /*
           A team's plan is its members' plans summed — but only the members
           who HAVE one. A team of ten where three carry targets has a real
@@ -1409,19 +1520,89 @@ function teamRows(
  * presets through unchanged, where the elapsed fraction is 1 and the
  * "projection" is simply what happened.
  */
-function forecastOf(wonMinor: bigint, ctx: AnalyticsContext): SellerBoardForecastDto {
-  const elapsed = projectionElapsedFraction(ctx.period, ctx.now)
-  const usable = Number.isFinite(elapsed) && elapsed >= 0.02 && elapsed < 1
+function forecastOf(
+  orderedMinor: bigint,
+  wonMinor: bigint,
+  elapsed: number,
+  ctx: AnalyticsContext,
+): SellerBoardForecastDto {
+  const company = forecastFor(orderedMinor, wonMinor, elapsed, ctx.currency)
+  const full = fullUnitWindow(ctx.period)
+
+  /*
+    THE CONTINUATION IS DRAWN ON THE TREND'S OWN CADENCE, AND THE GRANULARITY
+    IS PASSED IN RATHER THAN RE-CHOSEN.
+
+    `enumerateBuckets` defaults to `chooseGranularity(period)`, and the period
+    handed to it here is the FULL unit while `faktTrend` hands it the to-date
+    window. On «Shu yil» in February those are 46 days and 365 — one either
+    side of the 62-day threshold — so the default would have drawn a DAILY
+    measurement and a WEEKLY forecast on one axis, six dashed points continuing
+    a line of forty-six. Asking `chooseGranularity` the SAME question the trend
+    asks is what keeps the two halves of one line the same stride.
+
+    ONLY BUCKETS THAT START AFTER THE REPORT WINDOW ENDS. Today's bucket is
+    half-elapsed and already carries measured money in `faktTrend`; projecting
+    into it as well would draw the same hours twice, and the overlap is
+    invisible — a solid point and a dashed point sitting on one date, both
+    plausible.
+  */
+  const future = enumerateBuckets(full, chooseGranularity(ctx.period)).filter(
+    (bucket) => bucket.start.getTime() >= ctx.period.end.getTime(),
+  )
+
+  const spread = (projected: MoneyDto | null, actualMinor: bigint): readonly bigint[] =>
+    projected === null
+      ? []
+      : spreadRemainingMinor(BigInt(projected.amountMinor) - actualMinor, future.length)
+
+  const fakt1Buckets = spread(company.fakt1, orderedMinor)
+  const fakt2Buckets = spread(company.fakt2, wonMinor)
+
   return {
+    ...company,
     elapsedPercent: roundPercent(Math.min(1, Math.max(0, elapsed)) * 100),
-    projected: usable
-      ? toMoneyDto(
-          money(
-            (wonMinor * BigInt(Math.round(1_000_000 / elapsed))) / 1_000_000n,
-            ctx.currency,
-          ),
-        )
-      : null,
+    windowEnd: full.end.toISOString(),
+    /*
+      Lossy major units, `Number(minor) / 100`, exactly as `faktTrend` writes
+      its own points — the two arrays are concatenated onto one axis by the
+      chart, and a bucket serialised the other way would plot a hundredfold
+      out with no error anywhere.
+    */
+    buckets: future.map((bucket, index) => ({
+      date: bucket.start.toISOString(),
+      fakt1: Number(fakt1Buckets[index] ?? 0n) / 100,
+      fakt2: Number(fakt2Buckets[index] ?? 0n) / 100,
+    })),
+  }
+}
+
+/**
+ * One money figure projected to the end of its calendar unit, or null.
+ *
+ * NULL IS THREE DIFFERENT ABSENCES AND THE SCREEN NAMES EACH ONE: the period
+ * is over (a total is not a forecast), too little of it has elapsed to divide
+ * by (`PROJECTION_ELAPSED_FLOOR`, ~the first fourteen hours of a month), or
+ * there is nothing yet to project from. None of them is a zero, and a zero
+ * printed for any of them is the page telling a floor that is working normally
+ * that the month ends at nothing.
+ */
+function forecastMoney(minor: bigint, elapsed: number, currency: string): MoneyDto | null {
+  if (!(elapsed < 1)) return null
+  const projected = projectRevenueMinor(minor, elapsed)
+  return projected === null ? null : toMoneyDto(money(projected, currency))
+}
+
+/** Both facts of one row, one team or the whole company, on one elapsed clock. */
+function forecastFor(
+  orderedMinor: bigint,
+  wonMinor: bigint,
+  elapsed: number,
+  currency: string,
+): SellerForecastDto {
+  return {
+    fakt1: forecastMoney(orderedMinor, elapsed, currency),
+    fakt2: forecastMoney(wonMinor, elapsed, currency),
   }
 }
 

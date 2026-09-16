@@ -15,7 +15,7 @@ import {
 
 import { endpointDot, endpointLabelWidth } from '@/components/charts/chartEndpoint'
 import { ChartTooltipPanel } from '@/components/charts/chartTooltip'
-import type { FaktTrendPointDto } from '@/lib/api'
+import type { FaktForecastPointDto, FaktTrendPointDto } from '@/lib/api'
 import { formatDateShort, formatFullUzs, formatNumber, formatUzs } from '@/lib/format'
 import { t } from '@/lib/messages'
 import { useReducedMotion } from '@/lib/useReducedMotion'
@@ -57,12 +57,25 @@ import { useReducedMotion } from '@/lib/useReducedMotion'
  */
 export function FaktTrendChart({
   data,
+  forecast,
   height,
   referenceValue,
   referenceLabel,
 }: {
   /** The queue cohort's daily FAKT 1 / FAKT 2, from `/analytics/sellers?include=faktTrend`. */
   data: readonly FaktTrendPointDto[]
+  /**
+   * The run-rate's continuation to the end of the period, drawn dashed —
+   * `SellerBoardDto.forecast.buckets`, one point per bucket the period has
+   * left, on this chart's own cadence.
+   *
+   * MEASUREMENT AND PROJECTION SHARE AN AXIS AND MUST NOT SHARE AN INK. The
+   * dashed stroke is the whole guard: these buckets are arithmetic, not data,
+   * and a solid line running past today would be this chart asserting delivery
+   * that has not happened. Omit or pass an empty array for a finished period —
+   * a total is not a forecast.
+   */
+  forecast?: readonly FaktForecastPointDto[]
   /**
    * Fixed height, or omit to fill the container.
    *
@@ -96,14 +109,46 @@ export function FaktTrendChart({
    */
   const [cursorNearEnd, setCursorNearEnd] = useState(false)
 
-  const points = data.map((point) => ({ ...point, label: formatDateShort(point.date) }))
+  /*
+    ONE ARRAY, TWO SERIES PER FACT, AND THE NULLS ARE THE JOIN.
 
-  const last = points[points.length - 1]
+    Recharts draws one dataset; a second <Line> over a second array cannot
+    share this one's x scale. So each fact rides two keys — `fakt1` for what
+    was measured, `fakt1Projected` for what is projected — and each key is null
+    wherever the other one speaks. Recharts breaks a line at a null
+    (`connectNulls` defaults to false), which is exactly the behaviour wanted:
+    the solid stroke stops at the last measured bucket and the dashed stroke
+    starts there.
+
+    THE LAST MEASURED POINT SEEDS BOTH. Without it the dashed line would begin
+    one bucket to the right of where the solid one ends, leaving a gap the
+    reader reads as missing data rather than as a handover. It is the same
+    value on both keys, so the junction is a single point drawn twice.
+  */
+  const lastActual = data.length - 1
+  const projectedPoints = forecast ?? []
+
+  const points = chartRows(data, projectedPoints)
+
+  const last = data[lastActual]
   // In full, like the axis and the headline above it. `endpointLabelWidth`
   // measures whatever it is given, so the reserved right margin grows with the
   // longer string rather than clipping it.
   const fakt1End = last ? formatFullUzs(last.fakt1) : undefined
   const fakt2End = last ? formatFullUzs(last.fakt2) : undefined
+
+  /*
+    THE FINAL FIGURES STEP ASIDE FOR THE CONTINUATION, and the dot does not.
+
+    `endpointDot` prints its label at `cx + 9` — to the RIGHT of the marker,
+    which is correct while the marker is the last thing on the plot and wrong
+    the moment a dashed line runs on past it: the figure would be laid over the
+    forecast it is not about. The MARKER stays, because "measurement stops
+    here" is the one thing the reader must be able to see without hovering; the
+    figures are on the headline pair directly above, in the tooltip, and in
+    full on «Prognoz» below.
+  */
+  const showEndLabels = projectedPoints.length === 0
 
   /*
     TWO FINAL VALUES SHARE ONE RIGHT EDGE, so they are pushed apart when they
@@ -116,7 +161,7 @@ export function FaktTrendChart({
     share of the plot's own value range, not a fixed soʻm amount, because the
     axis rescales with the window.
   */
-  const span = points.reduce((max, point) => Math.max(max, point.fakt1, point.fakt2), 0)
+  const span = data.reduce((max, point) => Math.max(max, point.fakt1, point.fakt2), 0)
   const endsCollide =
     last !== undefined && span > 0 && Math.abs(last.fakt1 - last.fakt2) < span * 0.06
 
@@ -143,6 +188,13 @@ export function FaktTrendChart({
       >
         <LegendItem color="var(--series-2)" label={t.chart.fakt1} />
         <LegendItem color="var(--series-3)" label={t.chart.fakt2} />
+        {/*
+          NAMED IN THE LEGEND, not left to the dash to explain itself. A reader
+          who has not been told what a broken stroke means on THIS chart reads
+          it as a gap in the data — the one misreading that would turn a
+          forecast into a reported outage.
+        */}
+        {projectedPoints.length > 0 && <LegendItem dashed label="Prognoz" />}
         <span style={{ color: 'var(--ink-muted)' }}>{t.chart.faktBasis}</span>
       </div>
       {/*
@@ -175,10 +227,13 @@ export function FaktTrendChart({
               // the whole plot breathe on every mouse move.
               margin={{
                 top: 8,
-                right: Math.max(
-                  fakt1End ? endpointLabelWidth(fakt1End) : 8,
-                  fakt2End ? endpointLabelWidth(fakt2End) : 8,
-                ),
+                right: showEndLabels
+                  ? Math.max(
+                      fakt1End ? endpointLabelWidth(fakt1End) : 8,
+                      fakt2End ? endpointLabelWidth(fakt2End) : 8,
+                    )
+                  : /* No figure past the right edge to reserve for — the
+                       dashed line runs to the plot's own end. */ 8,
                 left: 0,
                 bottom: 0,
               }}
@@ -273,10 +328,10 @@ export function FaktTrendChart({
                 // chart is stating, and the printed figure beside it ties
                 // shape to number.
                 dot={endpointDot({
-                  lastIndex: points.length - 1,
+                  lastIndex: lastActual,
                   color: 'var(--series-2)',
                   label: fakt1End,
-                  showLabel: !cursorNearEnd,
+                  showLabel: !cursorNearEnd && showEndLabels,
                   labelShift: endsCollide ? -9 : 0,
                 })}
                 activeDot={{
@@ -307,10 +362,10 @@ export function FaktTrendChart({
                 stroke="var(--series-3)"
                 strokeWidth={2}
                 dot={endpointDot({
-                  lastIndex: points.length - 1,
+                  lastIndex: lastActual,
                   color: 'var(--series-3)',
                   label: fakt2End,
-                  showLabel: !cursorNearEnd,
+                  showLabel: !cursorNearEnd && showEndLabels,
                   labelShift: endsCollide ? 9 : 0,
                 })}
                 activeDot={{
@@ -323,6 +378,63 @@ export function FaktTrendChart({
                 animationDuration={520}
                 animationEasing="ease-out"
               />
+
+              {/*
+                THE RUN-RATE, DRAWN — last of the four, so a projection never
+                paints over a measurement where the two overlap at the join.
+
+                Each keeps its fact's own colour, because the reader is
+                following FAKT 1 and FAKT 2 across the join and a recoloured
+                continuation would read as a third and fourth series. What
+                separates them is the STROKE: `strokeDasharray` here,
+                `connectNulls` left at its default false so neither line can
+                bridge the gap the nulls open before the last measured bucket.
+
+                No dots at all. `endpointDot` marks "this is the value the
+                chart is stating", and the honest thing to state at the end of
+                a dashed line is nothing — these buckets are one number divided
+                by the days that are left, not a claim about the 28th.
+              */}
+              {projectedPoints.length > 0 && (
+                <>
+                  <Line
+                    type="monotone"
+                    dataKey="fakt1Projected"
+                    stroke="var(--series-2)"
+                    strokeWidth={2}
+                    strokeDasharray="5 4"
+                    strokeOpacity={0.75}
+                    dot={false}
+                    activeDot={{
+                      r: 4,
+                      fill: 'var(--series-2)',
+                      stroke: 'var(--surface-raised)',
+                      strokeWidth: 2,
+                    }}
+                    isAnimationActive={!reducedMotion}
+                    animationDuration={520}
+                    animationEasing="ease-out"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="fakt2Projected"
+                    stroke="var(--series-3)"
+                    strokeWidth={2}
+                    strokeDasharray="5 4"
+                    strokeOpacity={0.75}
+                    dot={false}
+                    activeDot={{
+                      r: 4,
+                      fill: 'var(--series-3)',
+                      stroke: 'var(--surface-raised)',
+                      strokeWidth: 2,
+                    }}
+                    isAnimationActive={!reducedMotion}
+                    animationDuration={520}
+                    animationEasing="ease-out"
+                  />
+                </>
+              )}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -332,26 +444,119 @@ export function FaktTrendChart({
 }
 
 /** One legend entry: a series dot and its name. */
-function LegendItem({ color, label }: { color: string; label: string }) {
+function LegendItem({
+  color,
+  label,
+  dashed = false,
+}: {
+  /** The series' own colour. Omitted by the dashed item, which belongs to both. */
+  color?: string
+  label: string
+  /**
+   * Draw a broken rule instead of a dot — the forecast, which is not a third
+   * series but a second STATE of the two already listed. In axis ink rather
+   * than a series colour for that reason: one swatch cannot be two colours,
+   * and picking either of them would claim the dash belonged to that fact.
+   */
+  dashed?: boolean
+}) {
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span
-        aria-hidden
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: 999,
-          background: color,
-          display: 'inline-block',
-        }}
-      />
+      {dashed ? (
+        <span
+          aria-hidden
+          style={{
+            width: 14,
+            height: 0,
+            borderTop: '2px dashed var(--ink-muted)',
+            display: 'inline-block',
+          }}
+        />
+      ) : (
+        <span
+          aria-hidden
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 999,
+            background: color,
+            display: 'inline-block',
+          }}
+        />
+      )}
       {label}
     </span>
   )
 }
 
+/**
+ * One row of the dataset Recharts is handed — measurement and projection in
+ * one shape, so the two share an x scale.
+ *
+ * Every money field is nullable because exactly one of each pair speaks per
+ * row; `projected` says which, and is what the tooltip reads to decide whether
+ * it is reporting or forecasting. `orders` is null on a projected row rather
+ * than 0: a run-rate projects money, and this chart has never claimed to
+ * project a count.
+ */
+interface ChartRow {
+  readonly date: string
+  readonly label: string
+  readonly fakt1: number | null
+  readonly fakt2: number | null
+  readonly orders: number | null
+  readonly fakt1Projected: number | null
+  readonly fakt2Projected: number | null
+  readonly projected: boolean
+}
+
+/**
+ * Measurement and projection woven into the one dataset Recharts draws.
+ *
+ * Exported for `tests/features/faktTrendRows.test.ts`: the weave is four lines
+ * of index arithmetic whose every failure mode is a chart that still draws.
+ * Lose the junction and the dashed line starts a bucket to the right of the
+ * solid one, leaving a gap the reader reads as missing data; seed every point
+ * instead of the last and the dashed stroke is laid over the whole measured
+ * line; forget to null the measured keys on a projected row and the solid line
+ * runs to the end of the month asserting delivery that has not happened.
+ */
+export function chartRows(
+  data: readonly FaktTrendPointDto[],
+  forecast: readonly FaktForecastPointDto[],
+): ChartRow[] {
+  const lastActual = data.length - 1
+  const joins = forecast.length > 0
+
+  return [
+    ...data.map((point, index) => ({
+      date: point.date,
+      label: formatDateShort(point.date),
+      fakt1: point.fakt1,
+      fakt2: point.fakt2,
+      orders: point.orders,
+      /* THE JUNCTION. The last measured bucket carries its value on the
+         projected keys as well, so the two strokes meet on one point instead
+         of leaving a bucket-wide hole between them. */
+      fakt1Projected: joins && index === lastActual ? point.fakt1 : null,
+      fakt2Projected: joins && index === lastActual ? point.fakt2 : null,
+      projected: false,
+    })),
+    ...forecast.map((point) => ({
+      date: point.date,
+      label: formatDateShort(point.date),
+      fakt1: null,
+      fakt2: null,
+      orders: null,
+      fakt1Projected: point.fakt1,
+      fakt2Projected: point.fakt2,
+      projected: true,
+    })),
+  ]
+}
+
 interface TooltipPayload {
-  payload?: FaktTrendPointDto & { label: string }
+  payload?: ChartRow
 }
 
 /**
@@ -363,13 +568,45 @@ function FaktTooltip({ active, payload }: { active?: boolean; payload?: TooltipP
   const point = payload[0]?.payload
   if (!point) return null
 
+  /*
+    A PROJECTED BUCKET SAYS SO IN ITS OWN TOOLTIP, and does not print an order
+    count it does not have.
+
+    The dashed stroke marks the projection on the plot; a tooltip that restated
+    the same three rows in the same words would undo that the moment the reader
+    inspects one — which is precisely when they are about to quote the number.
+    The footer replaces the cohort note rather than joining it: what a reader
+    needs here is not which clock the bucket is on, but that nothing has
+    happened in it yet.
+  */
+  if (point.projected) {
+    return (
+      <ChartTooltipPanel
+        header={point.label}
+        rows={[
+          {
+            swatch: 'var(--series-2)',
+            label: `${t.chart.fakt1} · prognoz`,
+            value: formatUzs(point.fakt1Projected ?? 0),
+          },
+          {
+            swatch: 'var(--series-3)',
+            label: `${t.chart.fakt2} · prognoz`,
+            value: formatUzs(point.fakt2Projected ?? 0),
+          },
+        ]}
+        footer="Shu surʼatda davom etsa — oʻlchov emas, hisob"
+      />
+    )
+  }
+
   return (
     <ChartTooltipPanel
       header={point.label}
       rows={[
-        { swatch: 'var(--series-2)', label: t.chart.fakt1, value: formatUzs(point.fakt1) },
-        { swatch: 'var(--series-3)', label: t.chart.fakt2, value: formatUzs(point.fakt2) },
-        { label: 'Buyurtmalar', value: formatNumber(point.orders) },
+        { swatch: 'var(--series-2)', label: t.chart.fakt1, value: formatUzs(point.fakt1 ?? 0) },
+        { swatch: 'var(--series-3)', label: t.chart.fakt2, value: formatUzs(point.fakt2 ?? 0) },
+        { label: 'Buyurtmalar', value: formatNumber(point.orders ?? 0) },
       ]}
       /* Stated on every hover, not only in the legend: the tooltip is where a
          reader compares the figures digit by digit, and that is exactly the

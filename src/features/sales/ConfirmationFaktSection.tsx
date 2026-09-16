@@ -393,7 +393,7 @@ export function QueueBand({
           for its trend indicator, for the same reason.
         */
         value={
-          totals && totals.wonOrders > 0 ? (data?.forecast.projected?.amount ?? null) : null
+          totals && totals.wonOrders > 0 ? (data?.forecast.fakt2?.amount ?? null) : null
         }
         unit="money"
         money="full"
@@ -402,7 +402,7 @@ export function QueueBand({
           totals && data
             ? totals.wonOrders === 0
               ? 'hali yetkazilgan buyurtma yoʻq — prognoz uchun erta'
-              : data.forecast.projected
+              : data.forecast.fakt2
                 ? `Oyning ${formatPercent(data.forecast.elapsedPercent, 0)} qismi oʻtdi — shu surʼatda davom etsa`
                 : 'davr yakunlangan — bu allaqachon natija'
             : undefined
@@ -481,11 +481,38 @@ function TeamsTable({
       render: (row) => `${formatNumber(row.orders)} ta`,
     },
     {
+      key: 'fakt1Forecast',
+      header: 'FAKT 1 prognoz',
+      align: 'right',
+      numeric: true,
+      /*
+        THE PROJECTION SITS BESIDE THE FIGURE IT IS MADE FROM, never at the end
+        of the row.
+
+        «kim orqada» is answered by comparing a team's pace against its own
+        money, and a column eight positions away is compared against nothing —
+        on a table this wide the reader has already scrolled the first number
+        off the screen. Em dash and never a zero: a team with no projection
+        (the period is over, or barely begun) has not been forecast to finish
+        at nothing. See `SellerTeamRowDto.forecast`.
+      */
+      render: (row) =>
+        row.forecast.fakt1 === null ? NO_VALUE : formatFullUzs(row.forecast.fakt1.amount),
+    },
+    {
       key: 'fakt2',
       header: 'FAKT 2',
       align: 'right',
       numeric: true,
       render: (row) => formatFullUzs(row.won.amount),
+    },
+    {
+      key: 'fakt2Forecast',
+      header: 'FAKT 2 prognoz',
+      align: 'right',
+      numeric: true,
+      render: (row) =>
+        row.forecast.fakt2 === null ? NO_VALUE : formatFullUzs(row.forecast.fakt2.amount),
     },
     {
       key: 'wonOrders',
@@ -540,7 +567,10 @@ function TeamsTable({
           the table scrolls sideways inside its own box rather than crushing
           the digits.
         */
-        minWidth={1040}
+        /* 1040 until the two projection columns joined on 2026-09-16; both
+           print money in full, and below this the digits wrap rather than the
+           table scrolling. */
+        minWidth={1320}
         /*
           NO VERTICAL CAP. `DataTable` defaults to 60dvh, and a ranked list
           whose whole question is «kim orqada» would answer it inside a scroll

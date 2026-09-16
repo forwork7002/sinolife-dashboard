@@ -109,7 +109,12 @@ function board(over: {
     },
     forecast: {
       elapsedPercent: 27.9,
-      projected: over.projected === undefined ? money(2_389_000_000) : null,
+      windowEnd: '2026-10-01T00:00:00.000Z',
+      /* FAKT 1 rides beside FAKT 2 since 2026-09-16 — the band still reads
+         only the second, and `ForecastSection` is where both are printed. */
+      fakt1: over.projected === undefined ? money(3_100_000_000) : null,
+      fakt2: over.projected === undefined ? money(2_389_000_000) : null,
+      buckets: [],
     },
   } as unknown as SellerBoardDto
 }

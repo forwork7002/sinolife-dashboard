@@ -147,6 +147,43 @@ export function projectRevenueMinor(
   return (periodToDateMinor * 1_000_000n) / scaled
 }
 
+/**
+ * Split what the run-rate says is still to come across the buckets it has
+ * left, so a dashed continuation drawn from these sums to EXACTLY the
+ * projection printed above it.
+ *
+ * THE REMAINDER IS DISTRIBUTED, NEVER TRUNCATED AWAY. `remaining / count` in
+ * BigInt rounds towards zero, and eleven remaining days each losing up to a
+ * minor unit is a dashed line that stops short of the figure it is drawing
+ * towards — a chart and a headline disagreeing by an amount too small to
+ * notice on any one day and too persistent to explain. The first `remainder`
+ * buckets carry one extra minor unit each, which is the only split that keeps
+ * the sum exact.
+ *
+ * FLAT, AND THAT IS THE CLAIM BEING MADE. A straight-line run-rate says
+ * nothing about which of the remaining days is the busy one; shaping these
+ * buckets — by weekday, by last week's curve — would draw a forecast the
+ * projection above it does not make. The reader is told «shu surʼatda davom
+ * etsa», and a flat line is what that sentence looks like.
+ *
+ * Nothing to draw for a finished period (no buckets) or a projection that is
+ * not ahead of what has already landed: a downward dashed line reads as money
+ * coming back.
+ */
+export function spreadRemainingMinor(
+  remainingMinor: bigint,
+  buckets: number,
+): readonly bigint[] {
+  if (!Number.isInteger(buckets) || buckets <= 0) return []
+  if (remainingMinor <= 0n) return []
+
+  const count = BigInt(buckets)
+  const each = remainingMinor / count
+  const remainder = Number(remainingMinor - each * count)
+
+  return Array.from({ length: buckets }, (_, index) => (index < remainder ? each + 1n : each))
+}
+
 // ---------------------------------------------------------------------------
 // Stage conversion (ever-reached basis)
 // ---------------------------------------------------------------------------

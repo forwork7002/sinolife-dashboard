@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
@@ -34,7 +34,16 @@ function routeFiles(dir: string): string[] {
 
 const routes = routeFiles(API_ROOT).map((path) => ({
   path,
-  relative: path.slice(process.cwd().length + 1),
+  /*
+    POSIX SEPARATORS, ALWAYS — every assertion below is written with them.
+
+    `join` yields `src\app\api\v1\...` on Windows, and the `name()` helper
+    plus the ungated/COMPANY_WIDE/NARROWS arrays all address a route as
+    `meta/alerts`. Left raw, twelve of these cases fail on a Windows checkout
+    with a path in place of a route name and nothing saying why — a gate that
+    reports a platform rather than an access rule.
+  */
+  relative: path.slice(process.cwd().length + 1).split(sep).join('/'),
   source: readFileSync(path, 'utf8'),
 }))
 
