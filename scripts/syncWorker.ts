@@ -715,7 +715,9 @@ async function main() {
       if (!(await provider.probe())) {
         console.warn(
           `  ${stamp()} portal hali ham band (${state.code}) —` +
-            ` ${Math.round(provider.gate.nextWaitMs(new Date()) / 1000)}s kutiladi`,
+            ` ${Math.round(provider.gate.nextWaitMs(new Date()) / 1000)}s kutiladi` +
+            (provider.lastProbeError ? `
+    sabab: ${provider.lastProbeError}` : ''),
         )
         const wait = provider.gate.nextWaitMs(new Date())
         if (wait > 0 && !stopping) await sleep(wait)

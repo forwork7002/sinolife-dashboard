@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import { classifyRefusal, refusalCode } from '@/server/integrations/crm/bitrix24/refusal'
 import { PortalGate } from '@/server/integrations/crm/bitrix24/portalGate'
-import { Bitrix24Error } from '@/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
+import {
+  Bitrix24CrmProvider,
+  Bitrix24Error,
+  networkCause,
+} from '@/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
 
 /**
  * The outage of 2026-09-15, turned into tests.
@@ -278,5 +282,32 @@ describe('PortalGate', () => {
     expect(gate.isOpen()).toBe(true)
     expect(gate.state().since).toEqual(t0)
     expect(gate.hold('crm.deal.list', at(30_000))).not.toBeNull()
+  })
+})
+
+describe('a network failure names its socket-level reason', () => {
+  it('reads the code Node keeps on the cause, and calls an abort a timeout', () => {
+    const failed = new TypeError('fetch failed', { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } })
+    expect(networkCause(failed)).toBe(' [UND_ERR_CONNECT_TIMEOUT]')
+    expect(networkCause(new DOMException('aborted', 'AbortError'))).toBe(' [TIMEOUT]')
+    expect(networkCause(new Error('plain'))).toBe('')
+    expect(networkCause({ cause: { code: 'x; drop' } })).toBe('')
+  })
+
+  it('keeps the probe failure for the worker log and clears it on success', async () => {
+    let fail = true
+    const provider = new Bitrix24CrmProvider({
+      webhookUrl: 'https://portal/rest/1/tok/',
+      maxRetries: 0,
+      fetchImpl: (async () => {
+        if (fail) throw new TypeError('fetch failed', { cause: { code: 'ECONNRESET' } })
+        return new Response(JSON.stringify({ result: {} }), { status: 200 })
+      }) as unknown as typeof fetch,
+    })
+    expect(await provider.probe()).toBe(false)
+    expect(provider.lastProbeError).toContain('ECONNRESET')
+    fail = false
+    expect(await provider.probe()).toBe(true)
+    expect(provider.lastProbeError).toBeNull()
   })
 })

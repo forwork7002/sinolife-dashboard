@@ -635,7 +635,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
     throw new Bitrix24Error(
       `Bitrix24 call "${method}" failed after ${attempts} ${
         attempts === 1 ? 'attempt' : 'attempts'
-      }: ${redact(lastError)}`,
+      }: ${redact(lastError)}${networkCause(lastError)}`,
       cause?.status,
       false,
       cause?.code,
@@ -990,11 +990,26 @@ export class Bitrix24CrmProvider implements CrmProvider {
     this.gate.noteProbe(new Date())
     try {
       await this.call('profile', {}, { bypassGate: true })
+      this.lastProbeError = null
       return true
-    } catch {
+    } catch (error) {
+      this.lastProbeError = redact(error)
       return false
     }
   }
+
+  /**
+   * Why the last probe failed, in words, or null after a success.
+   *
+   * THE GATE'S CODE IS NOT ENOUGH ON ITS OWN. A network failure carries no
+   * portal code, so the worker printed «portal hali ham band (UNKNOWN)» on every
+   * rung after the 2026-09-16 redeploy while the real answer — a connect
+   * timeout from the server's address, with the same webhook answering in
+   * 480 ms from an office laptop — was swallowed here. «Bitrix24 is refusing
+   * us» and «Bitrix24 cannot be reached from this machine» need different
+   * people, and only the message can tell them apart.
+   */
+  lastProbeError: string | null = null
 
   // -------------------------------------------------------------------------
   // Organisation
@@ -2092,6 +2107,24 @@ export function isoLocal(date: Date): string {
  * The webhook URL carries the access token in its path, so any error carrying
  * a URL is a credential leak waiting to happen.
  */
+/**
+ * The socket-level reason under a failed `fetch`, as « [CODE]», or nothing.
+ *
+ * Node's fetch reports every network failure as the same «fetch failed» and
+ * keeps the reason — `UND_ERR_CONNECT_TIMEOUT`, `ECONNRESET`, `ENOTFOUND` — on
+ * `error.cause.code`. `redact` reads only the message, so without this the
+ * sync log could not tell a portal that drops our address from a DNS fault.
+ * Only an uppercase token is taken, so nothing arbitrary reaches the log.
+ */
+export function networkCause(error: unknown): string {
+  const name = error && typeof error === 'object' && 'name' in error ? (error as { name?: unknown }).name : undefined
+  if (name === 'AbortError' || name === 'TimeoutError') return ' [TIMEOUT]'
+  const cause = error instanceof Error ? (error as Error & { cause?: unknown }).cause : undefined
+  const code =
+    cause && typeof cause === 'object' && 'code' in cause ? (cause as { code?: unknown }).code : undefined
+  return typeof code === 'string' && /^[A-Z_]{3,40}$/.test(code) ? ` [${code}]` : ''
+}
+
 export function redact(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
   return message
