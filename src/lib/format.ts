@@ -137,6 +137,25 @@ export function formatNumber(value: number): string {
 }
 
 /**
+ * A call length, as the floor reads one.
+ *
+ * Under a minute reads in seconds and a minute or more as `m:ss`, so a column
+ * of durations sorts by eye without anybody dividing by sixty. Seconds are NOT
+ * zero-padded below a minute («9 s», not «0:09») — the unit is the information
+ * there, and a leading `0:` on a nine-second call reads as a missing value.
+ *
+ * Negative input clamps to zero rather than printing a minus: a duration cannot
+ * be negative, so a negative one is a bug upstream and printing it would put
+ * the bug on the reader.
+ */
+export function formatDuration(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds))
+  if (total < 60) return `${total} s`
+  const minutes = Math.floor(total / 60)
+  return `${minutes}:${String(total % 60).padStart(2, '0')}`
+}
+
+/**
  * A percentage, and never a zero for something that is not zero.
  *
  * Rounding to the requested digits turned real values into "0%" all over the

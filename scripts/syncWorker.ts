@@ -241,8 +241,15 @@ const HOT: SyncEntityValue[] = ['CUSTOMERS', 'DEALS', 'DEAL_ITEMS', 'STAGE_HISTO
 /**
  * Read occasionally. Order matters — deals reference all of these.
  *
- * `STORES`, `STOCK` AND `CALLS` LEFT THIS LIST ON 2026-09-16, and each was a
- * portal method spent on a table NOTHING READS. `store` and `stock_level` have
+ * `STORES` AND `STOCK` LEFT THIS LIST ON 2026-09-16, and each was a portal
+ * method spent on a table NOTHING READS. `CALLS` left with them at 15:32 and
+ * CAME BACK THE SAME EVENING, the way the paragraph below says it should: «Mijozlar
+ * va qoʻngʻiroqlar» reads `call_record` now. It costs roughly 60–120 invocations
+ * a pass on this three-hourly clock — three hours of new calls plus the three
+ * hours `SETTLE_LOOKBACK_MS` re-reads so a call stored mid-conversation gets its
+ * finished duration — against the 15 000-an-hour `portalBudget`. LAST in the
+ * list, so its employee and customer links resolve against the passes above it.
+ * What follows was written about all three and still holds for the other two. `store` and `stock_level` have
  * no reader since «Joʻnatish nuqtalari» was paused, and
  * `catalog.storeproduct.list` returns zero rows on this portal anyway;
  * `call_record` has had no reader since `/insights/calls` went in the
@@ -261,6 +268,7 @@ const REFERENCE: SyncEntityValue[] = [
   'PIPELINES',
   'STAGES',
   'SOURCES',
+  'CALLS',
 ]
 
 const url: string = DATABASE_URL
