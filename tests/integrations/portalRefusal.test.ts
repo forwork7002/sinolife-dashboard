@@ -328,7 +328,10 @@ describe('an unreachable portal is probed on the ladder, not every minute', () =
     let now = t0
     for (let rung = 0; rung < 3; rung++) {
       now = new Date(now.getTime() + gate.nextWaitMs(now))
+      // What `probe()` does: count the rung, send, and fail at socket level —
+      // the failure reaches `trip` too, and must not reset the ladder.
       gate.noteProbe(now)
+      gate.trip(socket, now)
       waits.push(gate.nextWaitMs(now))
     }
     expect(waits).toEqual([120_000, 240_000, 480_000])

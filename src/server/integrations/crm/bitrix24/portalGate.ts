@@ -184,6 +184,15 @@ export class PortalGate {
         of one. The specific one wins, and holding the ladder is the whole point.
       */
       if (this.kind === 'THROTTLE' || this.kind === 'CREDENTIAL') return kind
+      /*
+        AND A FAILED PROBE MAY NOT RE-OPEN THE GATE IT IS PROBING. `probe()`
+        calls `noteProbe` (rung + 1) and then `call()`, whose failure lands
+        here; with the run already past the tolerance this went straight to
+        `openGate`, which zeroes `probes` — so the ladder printed «60s» on every
+        rung, measured on production 2026-09-16 11:15 and 11:16 UTC, one commit
+        after the ladder was supposed to climb.
+      */
+      if (this.kind === 'TRANSIENT') return kind
 
       this.transientRun += 1
       if (this.transientRun < TRANSIENT_TOLERANCE) return kind

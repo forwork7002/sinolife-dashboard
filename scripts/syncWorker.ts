@@ -63,6 +63,10 @@ import {
   SELF_LIMIT_CODE,
 } from '../src/server/integrations/crm/bitrix24/refusal'
 import type { RefusalClass } from '../src/server/integrations/crm/bitrix24/refusal'
+import {
+  checkReachability,
+  describeReachability,
+} from '../src/server/integrations/crm/bitrix24/reachability'
 import { FRESHNESS_ENTITIES } from '../src/server/repositories/referenceRepository'
 
 const DATABASE_URL = process.env.DATABASE_URL
@@ -680,6 +684,7 @@ async function main() {
    * block alive; backing off lets it clear.
    */
   let failures = 0
+  let lastReachabilityAt = 0
 
   while (!stopping) {
     const started = Date.now()
@@ -719,6 +724,19 @@ async function main() {
             (provider.lastProbeError ? `
     sabab: ${provider.lastProbeError}` : ''),
         )
+        /*
+          A NETWORK FAILURE GETS A NETWORK DIAGNOSIS, at most every ten
+          minutes. See `reachability.ts`: a socket timeout alone cannot tell
+          our egress from Bitrix24 dropping our address, and the fix for each
+          is a different person's.
+        */
+        if (
+          /CONNECT_TIMEOUT|TIMEOUT|ECONN|ENETUNREACH|EHOSTUNREACH/.test(provider.lastProbeError ?? '') &&
+          Date.now() - lastReachabilityAt > 600_000
+        ) {
+          lastReachabilityAt = Date.now()
+          console.warn(`    ${describeReachability(await checkReachability(webhook))}`)
+        }
         const wait = provider.gate.nextWaitMs(new Date())
         if (wait > 0 && !stopping) await sleep(wait)
         continue
