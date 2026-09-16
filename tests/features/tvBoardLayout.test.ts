@@ -102,4 +102,59 @@ describe('the television board switches layout on one width', () => {
     expect(block).toMatch(/\.trow > \*:nth-child\(6\),[\s\S]*?display: none;/)
     expect(block).toMatch(/\.seat,\s*\.seat--1 \{\s*flex: 1 1 100%;/)
   })
+
+  /*
+    JONLI TEKSHIRUVDA TOPILDI (2026-09-16, 1920 va 1366, yon panel ochiq).
+    Mock 1920 da ustunni to'liq oladi; haqiqiy sahifada rail va sahifa
+    to'ldirmasi ustunni torroq qiladi (1920 da ~977 px, 1366 da ~645 px) va
+    IKKI narsa indamay kesilardi.
+
+    1. O'RINDIQ RAQAMI. `.seat` da `overflow: hidden` (tasma + radius) va
+       raqam `nowrap`: 2- va 3-o'rindiqda «696 098 504» ning oxirgi raqami
+       yo'q edi. O'rindiq o'z konteyneri — `min()` mock kengligida 44 px ni
+       saqlaydi, torida kesish o'rniga kichraytiradi.
+    2. LEGENDA. Qat'iy 28 px + `overflow: hidden` narvon CHO'QQISINI
+       («Legenda 1 000 000 000») kesardi. Endi o'raladi.
+  */
+  it('never clips the seat figure or the legend when the column is narrower than the mock', () => {
+    expect(css).toMatch(/\.seat \{ container-type: inline-size; \}/)
+    expect(css).toMatch(/\.seat__figure \{[^}]*font-size: min\(var\(--tv-xl\), 14cqi\);/)
+    // O'rindiqning uch nowrap satri ham o'raladi, kesilmaydi.
+    expect(css).toMatch(/\.seat__sub \{[^}]*flex-wrap: wrap;/)
+    expect(css).toMatch(/\.seat__facts \{[^}]*flex-wrap: wrap;/)
+    expect(css).not.toMatch(/\.seat__next \{[^}]*white-space: nowrap;/)
+    expect(css).toMatch(/\.seat__name span \{[^}]*text-overflow: ellipsis;/)
+    const legend = css.slice(css.indexOf('.tv-legend {'))
+    const block = legend.slice(0, legend.indexOf('\n}\n') + 3)
+    expect(block).toContain('flex-wrap: wrap;')
+    expect(block).toContain('min-height: 28px;')
+    // Pog'onaning O'Z matni bo'linmaydi — o'raladigan narsa pog'onalar.
+    expect(block).toContain('white-space: nowrap;')
+    expect(block).not.toContain('overflow: hidden')
+    expect(block).not.toMatch(/\n  height: 28px;/)
+  })
+
+  /*
+    390 px da 40 px ustun sarlavhasi — nom · soni · FAKT kaliti 383 px so'raydi,
+    356 px bor: kalit o'ng chetdan chiqib ketardi va sahifa skroll qilmaydi.
+    Qoida `.tv-col-head` TA'RIFIDAN KEYIN turishi shart — media so'rovi
+    og'irlik qo'shmaydi, oldinda tursa keyingi ta'rif uni bekor qiladi.
+  */
+  it('tightens the column head on a phone, after the rule it overrides', () => {
+    const base = css.indexOf('.tv-col-head {')
+    const phone = css.indexOf('@media (max-width: 1279px) {\n  .tv-col-head')
+    expect(base).toBeGreaterThan(-1)
+    expect(phone).toBeGreaterThan(base)
+    expect(css.slice(phone, phone + 200)).toMatch(/\.tv-col-head \{\s*gap: 8px;\s*padding: 0 10px;/)
+  })
+
+  /*
+    Ustma-ust turgan o'rindiqlar 1-2-3 o'qiladi: `order` 2-1-3 podium
+    kompozitsiyasi uchun, bitta ustunda u chempionni ikkinchi qatorga tushiradi.
+  */
+  it('resets the seat order on a phone so the champion is first', () => {
+    const phone = css.slice(css.indexOf('@media (max-width: 1279px) {\n  .tv-podium'))
+    const block = phone.slice(0, phone.indexOf('\n}\n') + 3)
+    expect(block).toMatch(/\.seat--1,\s*\.seat--2,\s*\.seat--3 \{\s*order: 0;/)
+  })
 })
