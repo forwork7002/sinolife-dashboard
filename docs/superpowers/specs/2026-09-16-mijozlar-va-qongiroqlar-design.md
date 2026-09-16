@@ -45,8 +45,10 @@ instead**, which is the only change the client's choice of location forces.
 
 ## 2. Measured facts this design rests on
 
-Read directly from the production database on 2026-09-16
-(`probe-calls-prod{,2,3,4,5,6}.ts`). Every number below is a count or an
+Read directly from the production database on 2026-09-16, with throwaway
+read-only scripts that are not kept in the repository (see commit 949ebb9 on
+main for why: `next build` type-checks every root `.ts`). Every number below is
+a count or an
 aggregate; no customer name or phone column was selected.
 
 **Volume.** `call_record` holds **366 300** rows spanning 2026-07-29 →

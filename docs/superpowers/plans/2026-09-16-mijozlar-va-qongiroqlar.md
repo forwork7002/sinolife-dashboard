@@ -162,7 +162,7 @@ export type CallSideKey = (typeof CALL_SIDES)[number]['key']
    one timestamp per customer — when they entered База — which no other
    statement answers. Say so in the SQL comment (no backticks).
 
-4. Run the method against the local schema (`probe-calls-repo-local.ts`), then
+4. Run the method against the local schema (a throwaway script, not committed), then
    `npm run verify`, then commit.
 
 ### A2. Task 6 is REPLACED — `customerBaseSplit()`, not a CTE on `customerStates`
@@ -2750,7 +2750,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ### Task 13: Verify against production, then write it down
 
 **Files:**
-- Create: `probe-calls-verify.ts`
+- Create (and do NOT commit): a throwaway verification script — root `.ts` files are type-checked by `next build`
 - Modify: `CLAUDE.md`, `docs/SUPERDASHBOARD.md`, `docs/API.md`
 
 **Interfaces:**
@@ -2833,7 +2833,7 @@ That file's doc-rot entry in `CLAUDE.md` lists `/insights/calls` among endpoints
 - [ ] **Step 7: Commit**
 
 ```bash
-git add probe-calls-verify.ts CLAUDE.md docs/SUPERDASHBOARD.md docs/API.md
+git add CLAUDE.md docs/SUPERDASHBOARD.md docs/API.md
 git commit -m "Verify the call block against production, and correct what the docs claim
 
 Five invariants hold on the live data: the operator, team and day arms each sum
