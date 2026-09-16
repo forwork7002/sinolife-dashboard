@@ -5,6 +5,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { MedalDefs } from '@/features/sellers/MedalDefs'
 import type { SellerBoardDto, SellerMedalRowDto } from '@/lib/api'
 import { formatFullUzs, formatUzs } from '@/lib/format'
 
@@ -114,6 +115,7 @@ const PROPS = {
   fakt: 'auto' as const,
   onFakt: () => {},
   medals: new Map<string, SellerMedalRowDto>(),   // ← qo'shiladi
+  medalsToday: null,
 }
 
 /**
@@ -128,9 +130,11 @@ function Board({ data }: { data: SellerBoardDto }) {
     fakt,
     onFakt: setFakt,
     medals: new Map<string, SellerMedalRowDto>(),
+    medalsToday: null,
   }
   return (
     <>
+      <MedalDefs />
       <SellersColumn data={data} {...props} />
       <TeamsColumn data={data} {...props} />
     </>
@@ -574,5 +578,89 @@ describe('medallar so‘rovi va o‘rindiq — pagon ketdi, invariantlar qoldi',
   it('jadvalda oltita ustun — 390px da yon skroll yomonlashmaydi', () => {
     render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
     expect(column('tv-sellers').getAllByRole('columnheader')).toHaveLength(6)
+  })
+})
+
+/**
+ * LAVHA VA MEDALLAR — 2026-09-16 dizayni (spec §3).
+ *
+ * Seat: daraja bloki (lavha + shtamplar + «… qoldi»), medal tokchasi,
+ * gapiruvchi karta. Narvon podium ostida, BIR MARTA. Qator: chapda lavha,
+ * ism yonida unvon so'zi, o'ngda medallar; ustun qo'shilmagan; chase
+ * chizig'i ikkinchi bo'lak bilan. Medal so'rovi alohida va o'z soatida.
+ */
+describe('lavha va medallar', () => {
+  it('seat kartasi lavhani o‘yma unvon bilan, shtamplarni va «… qoldi»ni chizadi', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    const col = column('tv-sellers')
+    const seat = col.getByText(/154 Marjona Xayrullayeva/).closest('.podium-card')!
+    expect(seat.querySelector('svg.lavha--seat')!.getAttribute('data-level')).toBe('4')
+    expect(seat.querySelector('text.lavha__title')!.textContent).toBe('USTA')
+    expect(seat.querySelectorAll('.lv-stamps i.on')).toHaveLength(3)
+    expect(seat.textContent).toContain('Ustozga 127 mln qoldi')
+    // Chempion — sharpa bor.
+    expect(seat.querySelector('.lv-ghost')).not.toBeNull()
+  })
+
+  it('seat tokchasi medalni ×N bilan chizadi', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    const seat = column('tv-sellers').getByText(/154 Marjona Xayrullayeva/).closest('.podium-card')!
+    expect(seat.querySelector('.medal-rail svg[data-medal="month-gold"]')).not.toBeNull()
+    expect(seat.querySelector('.medal-count')!.textContent).toBe('×3')
+  })
+
+  it('«N / M buyurtma · %» satri seatdan olib tashlangan — mijozning «noaniq keraksiz xolat»i', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    const seat = column('tv-sellers').getByText(/154 Marjona Xayrullayeva/).closest('.podium-card')!
+    expect(seat.textContent).not.toMatch(/\d+ \/ \d+ buyurtma/)
+    expect(document.querySelector('[aria-label="Liderga nisbatan"]')).toBeNull()
+  })
+
+  it('narvon podium ostida BIR MARTA, olti pog‘ona', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    expect(document.getElementById('tv-sellers')!.querySelectorAll('.narvon')).toHaveLength(1)
+    expect(document.getElementById('tv-sellers')!.querySelectorAll('.narvon-rung')).toHaveLength(6)
+  })
+
+  it('medal so‘rovi bo‘sh bo‘lsa — lavha, narvon, tokcha hech qayerda chizilmaydi, reyting o‘z joyida', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} />)
+    expect(document.querySelector('.lavha')).toBeNull()
+    expect(document.querySelector('.narvon')).toBeNull()
+    expect(document.querySelector('.medal-rail')).toBeNull()
+    expect(column('tv-sellers').getByRole('table')).toBeTruthy()
+  })
+
+  it('jadval qatori: chapda lavha, ism yonida unvon so‘zi, o‘ngda medal', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    const rowEl = column('tv-sellers').getByText('Nodira 118 Karimova').closest('tr')!
+    const cell = rowEl.querySelector('.tv-namecell')!
+    expect(cell.querySelector('svg.lavha--row')!.getAttribute('data-level')).toBe('3')
+    expect(cell.querySelector('.lavha-word')!.textContent).toBe('Katta sotuvchi')
+    expect(cell.querySelector('.tv-rowmedals svg[data-medal="month-gold"]')).not.toBeNull()
+    expect(cell.querySelector('.medal-count')).toBeNull()
+  })
+
+  it('chase chizig‘i ikkinchi bo‘lakni oladi — «Ustaga 18.7 mln»', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    const rowEl = column('tv-sellers').getByText('Nodira 118 Karimova').closest('tr')!
+    expect(rowEl.querySelector('.tv-chase')!.textContent).toContain('Ustaga 18.7 mln')
+    expect(rowEl.querySelector('.tv-chase')!.textContent).toMatch(/Oldingiga|Lider|teng/)
+  })
+
+  it('jadvalga yangi ustun qo‘shilmagan — 390px da yon skroll yomonlashmaydi', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    expect(column('tv-sellers').getAllByRole('columnheader')).toHaveLength(6)
+  })
+
+  it('belgilar to‘plami sahifada BIR MARTA', () => {
+    render(<Board data={RIPE} />)
+    expect(document.querySelectorAll('#khatam')).toHaveLength(1)
+  })
+
+  it('medal so‘rovi taxtanikidan alohida kalitda va o‘z soatida', () => {
+    const source = readFileSync('src/features/sellers/SellersPage.tsx', 'utf8')
+    expect(source).toContain("queryKey: ['sellers', 'medals']")
+    expect(source).toContain('staleTime: 600_000')
+    expect(source).not.toMatch(/medals\.(isError|isPending)/)
   })
 })

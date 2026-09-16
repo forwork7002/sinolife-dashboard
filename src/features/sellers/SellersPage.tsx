@@ -5,13 +5,23 @@ import { useQuery } from '@tanstack/react-query'
 
 import { EmptyState, ErrorState } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
+import { Lavha } from '@/features/sellers/Lavha'
+import { LevelBlock } from '@/features/sellers/LevelBlock'
+import { MedalDefs } from '@/features/sellers/MedalDefs'
+import { MedalRail } from '@/features/sellers/MedalRail'
+import { Narvon } from '@/features/sellers/Narvon'
 import { RecordWall } from '@/features/sellers/RecordWall'
+import { RowMedals } from '@/features/sellers/RowMedals'
+import { SpeakingMedal } from '@/features/sellers/SpeakingMedal'
+import { dativeOf, mlnLabel } from '@/features/sellers/medalCatalog'
 import { useAutoScroll } from '@/features/sellers/useAutoScroll'
+import { useMedalRotation } from '@/features/sellers/useMedalRotation'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import {
   type SellerBoardDto,
   type SellerBoardRowDto,
+  type SellerMedalDto,
   type SellerMedalRowDto,
   type SellerMedalsDto,
   type SellerTeamRowDto,
@@ -183,6 +193,13 @@ export function SellersPage() {
         it keeps its own.
       */}
       <div className="tv-board-shell flex min-h-0 flex-col gap-3">
+        {/*
+          SAHIFANING YAGONA <defs>. Lavha ham, medal ham `<use href="#…">`
+          bilan chiziladi, ya'ni belgilar bir marta, taxtaning boshida
+          e'lon qilinishi shart — har qatorga nusxa qo'yilsa id'lar
+          takrorlanadi va `<use>` birinchisiga bog'lanib qoladi.
+        */}
+        <MedalDefs />
 
         <div className="tv-switch" role="tablist" aria-label="Qaysi reyting">
           {(
@@ -215,6 +232,7 @@ export function SellersPage() {
             fakt={fakt}
             onFakt={setFakt}
             medals={medalsById}
+            medalsToday={medals.data?.data.today ?? null}
           />
           <TeamsColumn
             data={data}
@@ -225,6 +243,7 @@ export function SellersPage() {
             fakt={fakt}
             onFakt={setFakt}
             medals={EMPTY_MEDALS}
+            medalsToday={medals.data?.data.today ?? null}
           />
         </div>
 
@@ -330,6 +349,8 @@ interface ColumnProps {
   onFakt: (choice: FaktChoice) => void
   /** Sotuvchi id si bo'yicha pagon. Komandalar ustuni uchun bo'sh Map. */
   medals: ReadonlyMap<string, SellerMedalRowDto>
+  /** `SellerMedalsDto.today` — e'lon `promotedOn` bilan shuni solishtiradi. 6-vazifa ishlatadi. */
+  medalsToday: string | null
 }
 
 /** Exported for the tests, like `TotalsBand` before it. */
@@ -342,6 +363,7 @@ export function SellersColumn({
   fakt,
   onFakt,
   medals,
+  medalsToday,
 }: ColumnProps) {
   const entries = useMemo(() => data?.rows.map(fromSeller) ?? [], [data])
   return (
@@ -361,6 +383,7 @@ export function SellersColumn({
       onRetry={onRetry}
       empty="Tanlangan davrda hech kim buyurtma olmagan — podium keyingi buyurtmani kutmoqda."
       medals={medals}
+      medalsToday={medalsToday}
     />
   )
 }
@@ -374,6 +397,7 @@ export function TeamsColumn({
   fakt,
   onFakt,
   medals,
+  medalsToday,
 }: ColumnProps) {
   const entries = useMemo(() => data?.teams.map(fromTeam) ?? [], [data])
   const teamless = data?.totals.teamlessSellers ?? 0
@@ -398,6 +422,7 @@ export function TeamsColumn({
       onRetry={onRetry}
       empty="Bu davrda hech bir ROP komandasi buyurtma olmagan."
       medals={medals}
+      medalsToday={medalsToday}
     />
   )
 }
@@ -563,6 +588,12 @@ function BoardColumn({
   empty: string
   /** Sotuvchi id si bo'yicha pagon. Komandalar ustuni uchun bo'sh Map. */
   medals: ReadonlyMap<string, SellerMedalRowDto>
+  /**
+   * `SellerMedalsDto.today`. IMZODA BOR, DESTRUCTURE'DA YO'Q — e'lon lentasi
+   * (6-vazifa) shu kunni `promotedOn` bilan solishtiradi; ustun uni bugun
+   * o'qimaydi, va o'qilmagan o'zgaruvchi lint'ning ishi.
+   */
+  medalsToday: string | null
 }) {
   /*
     THE FACT FIRST, THEN THE ORDER — the heading's switch decides both, and
@@ -585,6 +616,23 @@ function BoardColumn({
   const winners = ranked.filter((e) => (onDelivered ? e.won : e.ordered) > 0).slice(0, 3)
   const seated = new Set(winners.map((w) => w.key))
   const rows = ranked.filter((e) => !seated.has(e.key))
+
+  /*
+    USTUNGA BITTA SOAT. Uch seat bir vaqtda o'z medalini almashtirsa,
+    televizorga qarab turgan odam uchta joyda bir vaqtda o'zgarishni ko'radi
+    va hech birini o'qishga ulgurmaydi — navbat esa ritm beradi. Qaysi seat
+    gapirayotganini `useMedalRotation` aytadi; qolgan ikkitasi jim turadi.
+  */
+  const speaking = useMedalRotation(
+    useMemo(
+      () =>
+        winners.map((entry) => ({
+          employeeId: entry.key,
+          medals: medals.get(entry.key)?.medals ?? [],
+        })),
+      [winners, medals],
+    ),
+  )
 
   return (
     <section
@@ -655,7 +703,14 @@ function BoardColumn({
         </>
       ) : (
         <>
-          <Podium winners={winners} onDelivered={onDelivered} />
+          <Podium winners={winners} onDelivered={onDelivered} medals={medals} speaking={speaking} risingId={null} />
+          {/*
+            NARVON PODIUM OSTIDA, BIR MARTA — «daraja o'rin emas» jumlasining
+            o'rnini bosgan chizma. Faqat sotuvchilar ustunida: daraja shaxsiy,
+            ROP komandasiga berilmaydi. Medal so'rovi kelmagan bo'lsa taxta
+            hech nima sezmasligi kerak, shuning uchun `medals.size` shart.
+          */}
+          {tone === 'sellers' && medals.size > 0 && <Narvon />}
           <BoardList entries={rows} allEntries={ranked} noun={noun} onDelivered={onDelivered} medals={medals} />
         </>
       )}
@@ -738,9 +793,17 @@ const SEATS = [
 function Podium({
   winners,
   onDelivered,
+  medals,
+  speaking,
+  risingId,
 }: {
   winners: readonly BoardEntry[]
   onDelivered: boolean
+  medals: ReadonlyMap<string, SellerMedalRowDto>
+  /** Ustunning yagona soati — qaysi seat, qaysi medal. */
+  speaking: ReturnType<typeof useMedalRotation>
+  /** Hozirgina ko'tarilgan seat; marosim faqat bittasida. 6-vazifa to'ldiradi. */
+  risingId: string | null
 }) {
   const columnOf = (place: number) =>
     winners.length === 3 ? [2, 1, 3][place - 1]! : winners.length === 2 ? place : 1
@@ -754,6 +817,9 @@ function Podium({
           place={index + 1}
           column={columnOf(index + 1)}
           onDelivered={onDelivered}
+          medal={medals.get(entry.key) ?? null}
+          speaking={speaking?.employeeId === entry.key ? speaking.medal : null}
+          rise={risingId === entry.key}
         />
       ))}
     </div>
@@ -809,11 +875,20 @@ function PodiumSeat({
   place,
   column,
   onDelivered,
+  medal,
+  speaking,
+  rise,
 }: {
   entry: BoardEntry
   place: number
   column: number
   onDelivered: boolean
+  /** Shu odamning daraja qatori; medal so'rovi kelmagan bo'lsa null. */
+  medal: SellerMedalRowDto | null
+  /** Ustun soati shu seatga navbat bergan medal, yoki null. */
+  speaking: SellerMedalDto | null
+  /** Ko'tarilish marosimi — yulduzlar tushadi, lavha bir marta yaltiraydi. */
+  rise: boolean
 }) {
   const seat = SEATS[place - 1]!
   const champion = place === 1
@@ -879,6 +954,12 @@ function PodiumSeat({
           window where deliveries exist the fact left off the seat is real
           money — so the test is whether it exists, not which way round the
           two are. Nobody delivered, nothing printed, exactly as before.
+
+          «N / M buyurtma · %» SATRI 2026-09-16 DA OLIB TASHLANDI. Mijoz
+          seat'ning shu pastki burchagini «noaniq keraksiz xolat» deb atadi va
+          o'rniga darajani so'radi: buyurtma soni ham, konversiya ham
+          pastdagi jadvalning o'z ustunlarida turibdi, seat esa faqat pulni
+          va odamning darajasini aytadi. Faqat FAKT-boshqa-fakt qatori qoldi.
         */}
         <div className="tabular relative mt-2.5 text-[11px] leading-snug" style={{ color: 'var(--ink-secondary)' }}>
           {(onDelivered ? entry.ordered : entry.won) > 0 && (
@@ -889,16 +970,21 @@ function PodiumSeat({
               </span>
             </p>
           )}
-          <p>
-            {formatNumber(entry.wonOrders)} / {formatNumber(entry.orders)} buyurtma
-            {entry.conversionPercent !== null && (
-              <>
-                <span className="mx-1">·</span>
-                {formatPercent(entry.conversionPercent)}
-              </>
-            )}
-          </p>
         </div>
+
+        {/*
+          DARAJA, TOKCHA, GAPIRUVCHI KARTA — medal so'rovi kelgan seatda.
+          Sharpa faqat chempionda: uchta seatda uchta «keyingi lavha» bir-biri
+          bilan poyga qilib ko'rinardi, va kengroq karta faqat o'rtadagisida
+          joy bor. So'rov kelmasa (`medal === null`) seat avvalgidek chiziladi.
+        */}
+        {medal !== null && (
+          <>
+            <LevelBlock row={medal} ghost={champion} rise={rise} />
+            <MedalRail medals={medal.medals} />
+            {speaking !== null && <SpeakingMedal medal={speaking} />}
+          </>
+        )}
 
         {/* Last child, so the streak passes over the whole seat. */}
         {champion && <div className="podium-shine" aria-hidden="true" />}
@@ -951,6 +1037,7 @@ function BoardList({
   allEntries,
   noun,
   onDelivered,
+  medals,
 }: {
   entries: readonly BoardEntry[]
   allEntries: readonly BoardEntry[]
@@ -1018,35 +1105,60 @@ function BoardList({
                   )}
                 </td>
                 <td>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="tv-name" style={{ color: 'var(--ink-primary)' }}>
-                      {entry.name}
-                    </span>
-                    {entry.badge && <TeamBadge label={entry.badge} />}
+                  {/*
+                    USTUN QO'SHILMAYDI — lavha ham, medallar ham ISM
+                    KATAKCHASINING ichida. Jadval 390px da allaqachon yon
+                    skroll qiladi (oltita nowrap ustun), ettinchisi esa
+                    telefonda ismni ekrandan chiqarib yuborardi: chapda
+                    plastina, o'rtada ism va unvon so'zi, o'ngda medallar.
+                  */}
+                  <div className="tv-namecell">
+                    {medals.get(entry.key) != null && (
+                      <Lavha
+                        level={medals.get(entry.key)!.level}
+                        legendaTier={medals.get(entry.key)!.legendaTier}
+                        size="row"
+                      />
+                    )}
+                    <div className="tv-namecell-main">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="tv-name" style={{ color: 'var(--ink-primary)' }}>
+                          {entry.name}
+                        </span>
+                        {entry.badge && <TeamBadge label={entry.badge} />}
+                        {medals.get(entry.key) != null && (
+                          <span className={`lavha-word${nearOf(medals.get(entry.key)!) ? ' lavha-word--near' : ''}`}>
+                            {medals.get(entry.key)!.rankTitle ?? 'hali savdosiz'}
+                          </span>
+                        )}
+                      </div>
+                      {/* bar — AVVALGIDEK, o'zgarmaydi */}
+                      <div
+                        className="tv-bar relative mt-1 h-1 overflow-hidden rounded-full"
+                        style={{ background: 'var(--track)' }}
+                        aria-hidden="true"
+                      >
+                        <div
+                          className="absolute inset-y-0 left-0 rounded-full"
+                          style={{
+                            width: `${Math.max(1, (entry.ordered / ceiling) * 100)}%`,
+                            background: 'var(--seq-250)',
+                            transition: 'width var(--duration-enter) var(--ease-out)',
+                          }}
+                        />
+                        <div
+                          className="absolute inset-y-0 left-0 rounded-full"
+                          style={{
+                            width: `${Math.max(entry.won > 0 ? 1 : 0, (entry.won / ceiling) * 100)}%`,
+                            background: 'var(--seq-550)',
+                            transition: 'width var(--duration-enter) var(--ease-out)',
+                          }}
+                        />
+                      </div>
+                      <Chase entry={entry} ahead={ahead} figureOf={figureOf} next={nextOf(medals.get(entry.key) ?? null)} />
+                    </div>
+                    {medals.get(entry.key) != null && <RowMedals medals={medals.get(entry.key)!.medals} />}
                   </div>
-                  <div
-                    className="tv-bar relative mt-1 h-1 overflow-hidden rounded-full"
-                    style={{ background: 'var(--track)' }}
-                    aria-hidden="true"
-                  >
-                    <div
-                      className="absolute inset-y-0 left-0 rounded-full"
-                      style={{
-                        width: `${Math.max(1, (entry.ordered / ceiling) * 100)}%`,
-                        background: 'var(--seq-250)',
-                        transition: 'width var(--duration-enter) var(--ease-out)',
-                      }}
-                    />
-                    <div
-                      className="absolute inset-y-0 left-0 rounded-full"
-                      style={{
-                        width: `${Math.max(entry.won > 0 ? 1 : 0, (entry.won / ceiling) * 100)}%`,
-                        background: 'var(--seq-550)',
-                        transition: 'width var(--duration-enter) var(--ease-out)',
-                      }}
-                    />
-                  </div>
-                  <Chase entry={entry} ahead={ahead} figureOf={figureOf} />
                 </td>
                 <td className="tabular text-right">
                   <span
@@ -1120,20 +1232,41 @@ function Th({
   )
 }
 
+/** 90% dan oshgan — unvon so'zi ko'k bo'ladi. `LevelBlock` bilan bir qoida. */
+function nearOf(row: SellerMedalRowDto): boolean {
+  const span = Math.max(1, row.nextLevelAt.amount - row.levelFloor.amount)
+  return row.level > 0 && (row.delivered.amount - row.levelFloor.amount) / span >= 0.9
+}
+
+/** Chase chizig'ining ikkinchi bo'lagi: «Ustaga 18.7 mln»; 0-darajada «Birinchi savdo kutilmoqda». */
+function nextOf(row: SellerMedalRowDto | null): string | null {
+  if (row === null) return null
+  if (row.level === 0) return 'Birinchi savdo kutilmoqda'
+  return `${dativeOf(row.nextTitle)} ${mlnLabel(Math.max(0, row.nextLevelAt.amount - row.delivered.amount))}`
+}
+
 /**
  * The chase, under the name: the distance to the row directly ahead.
  * «+2,100,000» is something to do this afternoon. Within reach (a gap under
  * a tenth of the seller's own figure) the line steps up in ink and weight —
  * proximity emphasis, never a hue.
+ *
+ * IKKI BO'LAK, IKKI POYGA. Birinchisi — oldindagi odam, ikkinchisi —
+ * keyingi daraja. Ular bir-birini almashtirmaydi: lider oldida hech kim
+ * yo'q, lekin keyingi lavha baribir bor, va shu yagona narsa uni bugun ham
+ * ishlashga undaydi.
  */
 function Chase({
   entry,
   ahead,
   figureOf,
+  next,
 }: {
   entry: BoardEntry
   ahead: BoardEntry | null
   figureOf: (e: BoardEntry) => number
+  /** Keyingi darajagacha qolgan pul, so'z bilan. Medal so'rovi kelmasa null. */
+  next?: string | null
 }) {
   const own = figureOf(entry)
   const gap = ahead ? figureOf(ahead) - own : null
@@ -1158,11 +1291,16 @@ function Chase({
       </span>
     )
 
-  if (!chase) return null
+  if (!chase && !next) return null
 
   return (
     <p className="tv-chase tv-small mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
       {chase}
+      {next && (
+        <span className="tabular font-medium" style={{ color: 'var(--ink-secondary)' }}>
+          {next}
+        </span>
+      )}
     </p>
   )
 }
