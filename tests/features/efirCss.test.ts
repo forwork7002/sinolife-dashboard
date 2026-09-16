@@ -138,3 +138,20 @@ describe('EFIR bo‘limi — rang shartnomasi', () => {
     expect(efir.indexOf('/* EFIR — kamaytirilgan harakat')).toBeGreaterThan(efir.indexOf('.legend__rung'))
   })
 })
+
+describe('EFIR — o‘rindiq', () => {
+  it('uchta karta 2-1-3 tartibida, pastlari tekis; tasma va yo‘l `--tier` da; o‘rindiq medali ko‘tarilgan sirtga o‘yiladi', () => {
+    const code = strip(EFIR())
+    expect(code).toMatch(/\.tv-podium \{[^}]*align-items: flex-end;/)
+    expect(code).toContain('.seat--1 {\n  flex: 1.48 1 0;\n  max-width: 456px;')
+    expect(code).toContain('.seat--2 { order: 1; }')
+    expect(code).toContain('.seat--3 { order: 3; }')
+    expect(code).toMatch(/\.seat::before \{[^}]*width: 10px;[^}]*background: var\(--tier\);/)
+    expect(code).toMatch(/\.seat\[data-tier="0"\]::before \{[^}]*box-shadow: inset 1px 0 0 var\(--tier\);/)
+    expect(code).toMatch(/\.seat__bar i \{[^}]*background: var\(--tier\);/)
+    expect(code).toMatch(/\.seat__level \{[^}]*color: var\(--tier\);/)
+    expect(code).toContain('.seat .medal { --cut: var(--surface-raised); }')
+    // Pedestal, bevel, xrom, sharpa, shtamp — hech biri yo'q.
+    for (const gone of ['pedestal', 'lv-stamps', 'lv-ghost', 'lv-sheen', 'podium-shine']) expect(code).not.toContain(gone)
+  })
+})

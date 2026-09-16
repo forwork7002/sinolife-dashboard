@@ -7,7 +7,6 @@ import { LevelBlock, isNearNextLevel, nextLevelSentence } from '@/features/selle
 import { Medal } from '@/features/sellers/Medal'
 import { MedalRail } from '@/features/sellers/MedalRail'
 import { Narvon } from '@/features/sellers/Narvon'
-import { RowMedals } from '@/features/sellers/RowMedals'
 import { SpeakingMedal } from '@/features/sellers/SpeakingMedal'
 import { LADDER, MEDALS, MEDAL_ORDER, MEDAL_UNLOCK_LEVEL, dativeOf, levelTitle, mlnLabel } from '@/features/sellers/medalCatalog'
 import { medalReason } from '@/features/sellers/medalReason'
@@ -299,7 +298,7 @@ describe('isNearNextLevel va nextLevelSentence', () => {
   })
 })
 
-describe('MedalRail va RowMedals', () => {
+describe('MedalRail', () => {
   const seven = [
     medal({ code: 'month-gold', count: 2 }),
     medal({ code: 'streak-fire' }),
@@ -320,14 +319,6 @@ describe('MedalRail va RowMedals', () => {
   it('medalsiz tokcha chizilmaydi — karta qisqaradi', () => {
     const { container } = render(<MedalRail medals={[]} />)
     expect(container.querySelector('.medal-rail')).toBeNull()
-  })
-
-  it('qatorda 3 ta + N, pill yo‘q, yangi medal sinfi', () => {
-    const { container } = render(<RowMedals medals={seven} newKeys={new Set(['streak-fire'])} />)
-    expect(container.querySelectorAll('.tv-rowmedals svg.medal--row')).toHaveLength(3)
-    expect(screen.getByText('+4')).toBeTruthy()
-    expect(container.querySelector('.medal-count')).toBeNull()
-    expect(container.querySelector('.medal-slot--new svg[data-medal="streak-fire"]')).not.toBeNull()
   })
 })
 

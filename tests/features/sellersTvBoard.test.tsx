@@ -658,7 +658,7 @@ describe('lavha va medallar', () => {
     const cell = rowEl.querySelector('.tv-namecell')!
     expect(cell.querySelector('svg.lavha--row')!.getAttribute('data-level')).toBe('3')
     expect(cell.querySelector('.lavha-word')!.textContent).toBe('Katta sotuvchi')
-    expect(cell.querySelector('.tv-rowmedals svg[data-medal="month-gold"]')).not.toBeNull()
+    expect(cell.querySelector('.row__medals svg[data-medal="month-gold"]')).not.toBeNull()
     expect(cell.querySelector('.medal-count')).toBeNull()
   })
 
@@ -734,7 +734,7 @@ describe('lavha va medallar', () => {
     expect(zero.querySelector('.lavha-word')!.textContent).toBe('hali savdosiz')
     expect(zero.querySelector('.lavha-word')!.className).not.toContain('--near')
     expect(zero.querySelector('.tv-chase')!.textContent).toBe('Birinchi savdo kutilmoqda')
-    expect(zero.querySelector('.tv-rowmedals')).toBeNull()
+    expect(zero.querySelector('.row__medals svg')).toBeNull()
   })
 })
 
@@ -843,9 +843,9 @@ describe('yangi medal ustundan tokchagacha', () => {
     expect(seat.querySelector('.medal-rail .medal-slot--new svg[data-medal="day-winner"]')).not.toBeNull()
 
     const rowEl = column('tv-sellers').getByText('Nodira 118 Karimova').closest('tr')!
-    expect(rowEl.querySelector('.tv-rowmedals .medal-slot--new svg[data-medal="day-winner"]')).not.toBeNull()
+    expect(rowEl.querySelector('.row__medals svg.medal--new[data-medal="day-winner"]')).not.toBeNull()
 
     // Eski medal yangi emas, va boshqa hech kimniki ham.
-    expect(col.querySelectorAll('.medal-slot--new')).toHaveLength(2)
+    expect(col.querySelectorAll('.medal-slot--new, .medal--new')).toHaveLength(2)
   })
 })

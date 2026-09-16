@@ -3301,6 +3301,153 @@ p {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- podium: 2-1-3, pastlari tekislangan, ierarxiya massa bilan (spec §4) ---- */
+.tv-podium {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 6px 4px;
+}
+/* O'rindiqlar ustun kengligiga qarab qisqaradi (yon panel ochiq bo'lsa ustun
+   torroq); spec o'lchamlari — maksimum. DOM tartibi 1-2-3 (ekran o'quvchi
+   chempionni birinchi eshitadi), ko'z uchun `order` 2-1-3. */
+.seat {
+  position: relative;
+  flex: 1 1 0;
+  max-width: 308px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px 12px 24px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.seat--1 {
+  flex: 1.48 1 0;
+  max-width: 456px;
+  padding: 12px 16px 12px 24px;
+  order: 2;
+}
+.seat--2 { order: 1; }
+.seat--3 { order: 3; }
+/* Chap chetida 10 px `--tier` tasma; 0-daraja — 1 px kontur. */
+.seat::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  background: var(--tier);
+  transition: background var(--duration-move) var(--ease-out);
+}
+.seat[data-tier="0"]::before {
+  background: transparent;
+  box-shadow: inset 1px 0 0 var(--tier);
+}
+.seat__top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.seat--1 .seat__top { gap: 14px; }
+.seat__who { min-width: 0; }
+.seat__name {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.14;
+  letter-spacing: -0.01em;
+  color: var(--ink-primary);
+}
+.seat--1 .seat__name { font-size: var(--tv-l); }
+.seat__sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 0;
+  font-size: var(--tv-m);
+  color: var(--ink-muted);
+}
+.seat__team {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+/* Daraja so'zi — BIR MARTA, gerb yonida, `--tier` rangida. */
+.seat__level {
+  font-weight: 600;
+  color: var(--tier);
+  white-space: nowrap;
+}
+.seat__figure {
+  display: block;
+  font-size: var(--tv-xl);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--ink-primary);
+  font-variant-numeric: tabular-nums lining-nums;
+  white-space: nowrap;
+}
+.seat__facts {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin: 5px 0 0;
+  white-space: nowrap;
+}
+.seat__cap {
+  font-size: var(--tv-s);
+  color: var(--ink-muted);
+}
+.seat__other {
+  font-size: var(--tv-m);
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.seat__other b {
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+.seat__bar {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--track);
+  overflow: hidden;
+}
+.seat__bar i {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: var(--tier);
+  transition: width var(--duration-move) var(--ease-out);
+}
+.seat__next {
+  margin: 6px 0 0;
+  font-size: var(--tv-m);
+  color: var(--ink-secondary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.seat__medals {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 24px;
+}
+/* Gravyura rangi o'rindiqda — ko'tarilgan sirt. */
+.seat .medal { --cut: var(--surface-raised); }
+
 /* EFIR — kamaytirilgan harakat: hech narsa qimirlamaydi. Keyingi vazifalarning
    bo'laklari SHU izohdan OLDIN qo'shiladi, ya'ni bu blok bo'limning oxirida qoladi. */
 @media (prefers-reduced-motion: reduce) {

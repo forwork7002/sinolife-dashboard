@@ -1,5 +1,5 @@
-import type { MedalCode, SellerMedalDto } from '@/lib/api'
-import { formatCompactUzs } from '@/lib/format'
+import type { MedalCode, SellerMedalDto, SellerMedalRowDto } from '@/lib/api'
+import { formatCompactUzs, formatSomFull } from '@/lib/format'
 
 /**
  * Medal va daraja lug'atlari — frontend nusxasi.
@@ -198,4 +198,30 @@ export function sortMedals(
     .filter((m) => !hide.includes(m.code))
     .slice()
     .sort((a, b) => MEDAL_ORDER.indexOf(a.code) - MEDAL_ORDER.indexOf(b.code))
+}
+
+/**
+ * Keyingi darajagacha bosib o'tilgan yo'l, 0,03…1 ga qisilgan (spec §4).
+ *
+ * PASTDAN 0,03: bo'sh yo'l bilan «endigina boshlandi» bir xil ko'rinmasin —
+ * uch foiz 10 px yo'lda ko'rinadigan eng kichik uch. YUQORIDAN 1: `nextLevelAt`
+ * motordan keladi va bir yetkazishda ostonadan oshib ketish mumkin. 0-daraja
+ * — bo'sh yo'l: kutilayotgan voqea, bosib o'tilgan yo'l emas.
+ */
+export function progressOf(row: SellerMedalRowDto): number {
+  if (row.level === 0) return 0
+  const span = Math.max(1, row.nextLevelAt.amount - row.levelFloor.amount)
+  const share = (row.delivered.amount - row.levelFloor.amount) / span
+  return Math.max(0.03, Math.min(1, share))
+}
+
+/**
+ * «Ustozga 127 010 000 qoldi» — keyingi darajagacha qolgan pul, TO'LIQ SO'M
+ * (spec §1: «mln» sahifadan ketdi). 0-darajada gap boshqacha — qoladigan pul
+ * emas, kutilayotgan voqea. Jo'nalish kelishigi `dativeOf` da («Legenda II ga»).
+ */
+export function nextLevelSentence(row: SellerMedalRowDto): string {
+  if (row.level === 0) return 'Birinchi savdo kutilmoqda'
+  const left = Math.max(0, row.nextLevelAt.amount - row.delivered.amount)
+  return `${dativeOf(row.nextTitle)} ${formatSomFull(left)} qoldi`
 }

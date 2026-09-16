@@ -7,6 +7,8 @@ import { Halo, metalOfRank } from '@/features/sellers/Halo'
 import { MedalDefs } from '@/features/sellers/MedalDefs'
 import { MedalMark } from '@/features/sellers/MedalMark'
 import { TierLegend } from '@/features/sellers/TierLegend'
+import { RowMedals } from '@/features/sellers/RowMedals'
+import { SeatCard, splitSeatName } from '@/features/sellers/SeatCard'
 import {
   HIDDEN_IN_ROWS,
   LADDER,
@@ -16,10 +18,12 @@ import {
   MONTH_NUMERAL,
   RARE_MEDALS,
   metalOfMedal,
+  nextLevelSentence,
+  progressOf,
   sortMedals,
   thresholdSomOf,
 } from '@/features/sellers/medalCatalog'
-import type { SellerMedalDto } from '@/lib/api'
+import type { SellerMedalDto, SellerMedalRowDto } from '@/lib/api'
 import { NARROW_NBSP } from '@/lib/format'
 
 /**
@@ -29,6 +33,68 @@ import { NARROW_NBSP } from '@/lib/format'
  * `sellersTvBoard.test.tsx` da.
  */
 const S = NARROW_NBSP
+
+/*
+  jsdom da `matchMedia` yo'q; `AnimatedNumber` (o'rindiq raqami) uni chaqiradi.
+  Kamaytirilgan harakat «ha»: raqam bir marta yakuniy qiymatini yozadi.
+*/
+window.matchMedia = ((query: string) => ({
+  matches: query.includes('prefers-reduced-motion'),
+  media: query,
+  onchange: null,
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  addListener: () => {},
+  removeListener: () => {},
+  dispatchEvent: () => false,
+})) as unknown as typeof window.matchMedia
+
+const uzs = (amount: number) => ({ amountMinor: String(Math.round(amount * 100)), currency: 'UZS', amount })
+
+const medal = (over: Partial<SellerMedalDto> & { code: SellerMedalDto['code'] }): SellerMedalDto => ({
+  count: 1,
+  at: '2026-08-01',
+  amount: null,
+  orders: null,
+  percent: null,
+  ...over,
+})
+
+const row = (over: Partial<SellerMedalRowDto> = {}): SellerMedalRowDto => ({
+  employeeId: 'e1',
+  level: 4,
+  legendaTier: 0,
+  rankTitle: 'Usta',
+  delivered: uzs(173_000_000),
+  levelFloor: uzs(100_000_000),
+  nextLevelAt: uzs(300_000_000),
+  nextTitle: 'Ustoz',
+  promotedOn: null,
+  medals: [],
+  ...over,
+})
+
+const ZERO = row({ level: 0, rankTitle: null, delivered: uzs(0), levelFloor: uzs(0), nextLevelAt: uzs(0.01), nextTitle: 'Yangi' })
+const LEGENDA = row({
+  level: 6,
+  legendaTier: 1,
+  rankTitle: 'Legenda',
+  delivered: uzs(1_413_000_000),
+  levelFloor: uzs(1_000_000_000),
+  nextLevelAt: uzs(2_000_000_000),
+  nextTitle: 'Legenda II',
+})
+
+/** Mock'dagi chempion — «Shahtiyarovna 197 Marjona», FAKT 2 79 600 000, FAKT 1 103 200 000. */
+const SEAT = {
+  rank: 1,
+  place: 1 as const,
+  name: 'Shahtiyarovna 197 Marjona',
+  team: 'Marjona',
+  won: 79_600_000,
+  ordered: 103_200_000,
+  onDelivered: true,
+}
 
 describe('MedalDefs — sahifaga bir marta o‘rnatiladigan belgilar to‘plami', () => {
   it('#ch chevroni va 12 ta #m-* belgisi — 14 kod uchun (Oy oilasi bitta diskni bo‘lishadi)', () => {
@@ -252,5 +318,204 @@ describe('katalog', () => {
     expect(sorted.map((x) => x.code)).toEqual(['month-gold', 'clean-month', 'day-winner'])
     expect(sortMedals(input).map((x) => x.code)).toEqual(['month-gold', 'clean-month', 'day-winner', 'first-sale'])
     expect(input[0]!.code).toBe('first-sale')
+  })
+})
+
+describe('splitSeatName — ism ikki qatorga', () => {
+  it('Familiya Raqam Ism → Familiya / Raqam Ism', () => {
+    expect(splitSeatName('Shahtiyarovna 197 Marjona')).toEqual(['Shahtiyarovna', '197 Marjona'])
+  })
+
+  it('Raqam Ism Familiya → Raqam Ism / Familiya', () => {
+    expect(splitSeatName('268 Ozoda Yuldosheva')).toEqual(['268 Ozoda', 'Yuldosheva'])
+  })
+
+  it('boshqa shakllar: birinchi so‘z / qolgani; bitta so‘z — ikkinchi qator bo‘sh', () => {
+    expect(splitSeatName('Karimova Aziza Botirovna')).toEqual(['Karimova', 'Aziza Botirovna'])
+    expect(splitSeatName('Karimova')).toEqual(['Karimova', ''])
+    expect(splitSeatName('154')).toEqual(['154', ''])
+    expect(splitSeatName('  Ali   Valiyev ')).toEqual(['Ali', 'Valiyev'])
+  })
+})
+
+describe('progressOf va nextLevelSentence — to‘liq so‘m', () => {
+  it('173 mln Usta → 0,365; «Ustozga 127 000 000 qoldi»', () => {
+    expect(progressOf(row())).toBeCloseTo(0.365, 3)
+    expect(nextLevelSentence(row())).toBe(`Ustozga 127${S}000${S}000 qoldi`)
+  })
+
+  it('qisish: 0,03 dan kam emas, 1 dan ko‘p emas; oshib ketgan — nol qoldi, manfiy emas', () => {
+    expect(progressOf(row({ delivered: uzs(100_100_000) }))).toBe(0.03)
+    expect(progressOf(row({ delivered: uzs(400_000_000) }))).toBe(1)
+    expect(nextLevelSentence(row({ delivered: uzs(400_000_000) }))).toBe('Ustozga 0 qoldi')
+  })
+
+  it('0-daraja — bo‘sh yo‘l va «Birinchi savdo kutilmoqda»', () => {
+    expect(progressOf(ZERO)).toBe(0)
+    expect(nextLevelSentence(ZERO)).toBe('Birinchi savdo kutilmoqda')
+  })
+
+  it('Legenda: «Legenda II ga 587 000 000 qoldi»', () => {
+    expect(nextLevelSentence(LEGENDA)).toBe(`Legenda II ga 587${S}000${S}000 qoldi`)
+  })
+})
+
+describe('SeatCard — o‘rindiq (spec §4)', () => {
+  it('halqa, ikki qatorli ism, komanda · gerb · so‘z, raqam, FAKT 1 satri, progress, medallar ×N bilan', () => {
+    const { container } = render(
+      <SeatCard
+        {...SEAT}
+        medal={row({
+          medals: [medal({ code: 'day-winner', count: 4 }), medal({ code: 'first-sale' }), medal({ code: 'day-record' })],
+        })}
+      />,
+    )
+    const seat = container.querySelector('article.seat.seat--1')!
+    expect(seat.getAttribute('data-tier')).toBe('4')
+    expect(seat.getAttribute('data-seat-name')).toBe('Shahtiyarovna 197 Marjona')
+    expect(seat.getAttribute('aria-label')).toBe('1-oʻrin')
+    expect(seat.querySelector('.halo.halo--lg')!.textContent).toBe('1')
+    expect([...seat.querySelectorAll('.seat__name span')].map((s) => s.textContent)).toEqual([
+      'Shahtiyarovna',
+      '197 Marjona',
+    ])
+    expect(seat.querySelector('.seat__team')!.textContent).toBe('Marjona')
+    expect(seat.querySelector('svg.crest--seat')!.getAttribute('data-tier')).toBe('4')
+    expect(seat.querySelectorAll('.seat__level')).toHaveLength(1)
+    expect(seat.querySelector('.seat__level')!.textContent).toBe('Usta')
+    expect(seat.querySelector('.seat__figure')!.textContent).toContain(`79${S}600${S}000`)
+    expect(seat.querySelector('.seat__cap')!.textContent).toBe('FAKT 2')
+    expect(seat.querySelector('.seat__other')!.textContent).toBe(`FAKT 1 103${S}200${S}000`)
+    expect((seat.querySelector('.seat__bar i') as HTMLElement).style.width).toBe('36.5%')
+    expect(seat.querySelector('.seat__next')!.textContent).toBe(`Ustozga 127${S}000${S}000 qoldi`)
+    // MEDAL_ORDER bo'yicha: day-record, day-winner ×4, first-sale — O'RINDIQDA first-sale BOR.
+    expect([...seat.querySelectorAll('.seat__medals svg.medal')].map((m) => m.getAttribute('data-medal'))).toEqual([
+      'day-record',
+      'day-winner',
+      'first-sale',
+    ])
+    expect(seat.querySelectorAll('.medal-count')).toHaveLength(1)
+    expect(seat.querySelector('.medal-count')!.textContent).toBe('×4')
+    // Buyurtma soni, konversiya, birlik va «mln» o'rindiqda yo'q.
+    expect(seat.textContent).not.toMatch(/mln|soʻm|so‘m|buyurtma|%/)
+  })
+
+  it('2- va 3-o‘rin: kichik halqa', () => {
+    const { container } = render(<SeatCard {...SEAT} rank={2} place={2} medal={row()} />)
+    expect(container.querySelector('.seat--2 .halo--md')!.textContent).toBe('2')
+    expect(container.querySelector('.halo--lg')).toBeNull()
+  })
+
+  it('FAKT 1 rejimida raqam va yorliqlar almashadi', () => {
+    const { container } = render(<SeatCard {...SEAT} onDelivered={false} medal={row()} />)
+    expect(container.querySelector('.seat__figure')!.textContent).toContain(`103${S}200${S}000`)
+    expect(container.querySelector('.seat__cap')!.textContent).toBe('FAKT 1')
+    expect(container.querySelector('.seat__other')!.textContent).toBe(`FAKT 2 79${S}600${S}000`)
+  })
+
+  it('boshqa fakt nol bo‘lsa uning satri chizilmaydi', () => {
+    const { container } = render(<SeatCard {...SEAT} ordered={0} medal={row()} />)
+    expect(container.querySelector('.seat__other')).toBeNull()
+    expect(container.querySelector('.seat__cap')!.textContent).toBe('FAKT 2')
+  })
+
+  it('progress qisiladi: 3,0 % va 100,0 %', () => {
+    const { container, rerender } = render(<SeatCard {...SEAT} medal={row({ delivered: uzs(100_100_000) })} />)
+    expect((container.querySelector('.seat__bar i') as HTMLElement).style.width).toBe('3%')
+    rerender(<SeatCard {...SEAT} medal={row({ delivered: uzs(400_000_000) })} />)
+    expect((container.querySelector('.seat__bar i') as HTMLElement).style.width).toBe('100%')
+  })
+
+  it('0-daraja: bo‘sh gerb, data-tier="0", bo‘sh yo‘l, so‘z yo‘q, «Birinchi savdo kutilmoqda»', () => {
+    const { container } = render(<SeatCard {...SEAT} medal={ZERO} />)
+    const seat = container.querySelector('article.seat')!
+    expect(seat.getAttribute('data-tier')).toBe('0')
+    expect(seat.querySelectorAll('svg.crest use.on')).toHaveLength(0)
+    expect(seat.querySelector('.seat__level')).toBeNull()
+    expect((seat.querySelector('.seat__bar i') as HTMLElement).style.width).toBe('0%')
+    expect(seat.querySelector('.seat__next')!.textContent).toBe('Birinchi savdo kutilmoqda')
+    expect(seat.querySelector('.seat__medals')).toBeNull()
+  })
+
+  it('Legenda II: so‘z, toj, jumla', () => {
+    const { container } = render(<SeatCard {...SEAT} medal={{ ...LEGENDA, legendaTier: 2, rankTitle: 'Legenda II', nextTitle: 'Legenda III', nextLevelAt: uzs(3_000_000_000), levelFloor: uzs(2_000_000_000), delivered: uzs(2_413_000_000) }} />)
+    const seat = container.querySelector('article.seat')!
+    expect(seat.getAttribute('data-tier')).toBe('6')
+    expect(seat.querySelector('.seat__level')!.textContent).toBe('Legenda II')
+    expect(seat.querySelector('.crest__crown')).not.toBeNull()
+    expect(seat.querySelector('.seat__next')!.textContent).toBe(`Legenda III ga 587${S}000${S}000 qoldi`)
+  })
+
+  it('medal qatori bo‘lmagan sotuvchi (yuklanish): faqat halqa, ism, komanda, raqam', () => {
+    const { container } = render(<SeatCard {...SEAT} medal={null} />)
+    const seat = container.querySelector('article.seat')!
+    expect(seat.getAttribute('data-tier')).toBe('0')
+    expect(seat.querySelector('.halo')).not.toBeNull()
+    expect(seat.querySelector('.seat__name')).not.toBeNull()
+    expect(seat.querySelector('.seat__team')!.textContent).toBe('Marjona')
+    expect(seat.querySelector('.seat__figure')).not.toBeNull()
+    expect(seat.querySelector('.crest')).toBeNull()
+    expect(seat.querySelector('.seat__level')).toBeNull()
+    expect(seat.querySelector('.seat__prog')).toBeNull()
+    expect(seat.querySelector('.seat__medals')).toBeNull()
+  })
+
+  it('komandasiz sotuvchi — «komandasiz»; medalsiz — medal qatori yo‘q, progress bor', () => {
+    const { container } = render(<SeatCard {...SEAT} team={null} medal={row({ medals: [] })} />)
+    expect(container.querySelector('.seat__team')!.textContent).toBe('komandasiz')
+    expect(container.querySelector('.seat__prog')).not.toBeNull()
+    expect(container.querySelector('.seat__medals')).toBeNull()
+  })
+
+  it('rise — gerbning eng yangi katakchasi to‘ladi; yangi medal sinfi', () => {
+    const { container } = render(
+      <SeatCard {...SEAT} rise medal={row({ medals: [medal({ code: 'jump' })] })} newKeys={new Set(['jump'])} />,
+    )
+    expect(container.querySelectorAll('use.crest__cell--fill')).toHaveLength(1)
+    expect(container.querySelector('.seat__medals svg.medal--new[data-medal="jump"]')).not.toBeNull()
+  })
+})
+
+describe('RowMedals — qator medallari (spec §3)', () => {
+  const seven = [
+    medal({ code: 'month-gold', count: 2 }),
+    medal({ code: 'streak-fire' }),
+    medal({ code: 'conversion-master' }),
+    medal({ code: 'day-record' }),
+    medal({ code: 'clean-month' }),
+    medal({ code: 'day-winner', count: 5 }),
+    medal({ code: 'first-sale' }),
+  ]
+
+  it('first-sale yashirin, MEDAL_ORDER bo‘yicha 3 ta, qolgani «+N», ×N yo‘q', () => {
+    const { container } = render(<RowMedals medals={[...seven].reverse()} />)
+    expect([...container.querySelectorAll('.row__medals svg.medal')].map((m) => m.getAttribute('data-medal'))).toEqual([
+      'month-gold',
+      'streak-fire',
+      'conversion-master',
+    ])
+    expect(container.querySelector('.row__more')!.textContent).toBe('+3')
+    expect(container.querySelector('.medal-count')).toBeNull()
+    expect(container.querySelector('.medal-group')).toBeNull()
+    expect(container.querySelector('svg[data-medal="month-gold"]')!.getAttribute('aria-label')).toBe('Oy chempioni')
+  })
+
+  it('uchta yoki kamroq — «+N» yo‘q', () => {
+    const { container } = render(<RowMedals medals={seven.slice(0, 3)} />)
+    expect(container.querySelectorAll('svg.medal')).toHaveLength(3)
+    expect(container.querySelector('.row__more')).toBeNull()
+  })
+
+  it('faqat first-sale — uya bo‘sh, lekin konteyner grid uchun qoladi', () => {
+    const { container } = render(<RowMedals medals={[medal({ code: 'first-sale' })]} />)
+    expect(container.querySelector('.row__medals')).not.toBeNull()
+    expect(container.querySelector('svg')).toBeNull()
+    expect(container.querySelector('.row__more')).toBeNull()
+  })
+
+  it('yangi medal sinfi — faqat o‘sha medalda', () => {
+    const { container } = render(<RowMedals medals={seven} newKeys={new Set(['streak-fire'])} />)
+    expect(container.querySelector('svg.medal--new[data-medal="streak-fire"]')).not.toBeNull()
+    expect(container.querySelectorAll('.medal--new')).toHaveLength(1)
   })
 })
