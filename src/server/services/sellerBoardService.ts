@@ -1040,16 +1040,21 @@ export class SellerBoardService {
   ): Promise<SellerMedalsDto> {
     const facts = await this.insights.sellerMedalFacts(scopedPeriod(period, filters), filters)
 
+    // BITTA KUN, IKKI O'QUVCHI. `runningDay` medal bermaydigan tugamagan kun,
+    // `today` esa ekran `promotedOn` bilan solishtiradigan kun — ular bir xil
+    // bo'lishi SHART, aks holda «bugun Usta bo'ldi» e'loni bir kun surilardi.
+    const today = zonedDateKey(ctx.now, period.timeZone)
+
     const rows = buildSellerMedals({
       months: facts.months,
       days: facts.days,
       runningMonth: monthKey(ctx.now, period.timeZone),
-      runningDay: zonedDateKey(ctx.now, period.timeZone),
+      runningDay: today,
     })
 
     return {
       from: period.start.toISOString(),
-      today: zonedDateKey(ctx.now, period.timeZone),
+      today,
       sellers: rows.map((row) => ({
         employeeId: row.employeeId,
         level: row.level,

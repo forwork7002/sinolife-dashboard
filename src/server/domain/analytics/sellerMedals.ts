@@ -633,5 +633,11 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
           }),
       }
     })
-    .sort((a, b) => (a.deliveredMinor > b.deliveredMinor ? -1 : a.deliveredMinor < b.deliveredMinor ? 1 : 0))
+    .sort((a, b) => {
+      // TENG PULDA `employeeId` — Map'ning kiritilish tartibi emas. Ikki
+      // so'rov orasida o'rin almashadigan taxta buzuq ko'rinadi, va nol
+      // yetkazgan (0-daraja) sotuvchilarning hammasi aynan shu holatda.
+      if (a.deliveredMinor !== b.deliveredMinor) return a.deliveredMinor > b.deliveredMinor ? -1 : 1
+      return a.employeeId < b.employeeId ? -1 : a.employeeId > b.employeeId ? 1 : 0
+    })
 }

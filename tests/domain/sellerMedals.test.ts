@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  MEDAL_CODES,
+  MEDAL_ORDER,
   type SellerDayFact,
   type SellerMonthFact,
   buildSellerMedals,
@@ -362,6 +364,22 @@ describe('daraja — jami yetkazilgan puldan', () => {
     ])
     expect(rows.map((r) => r.employeeId)).toEqual(['b', 'a'])
   })
+
+  it('pul teng bo‘lganda `employeeId` hal qiladi — Map tartibi emas', () => {
+    /*
+      IKKI SO‘ROV BIR XIL TAXTA BERISHI KERAK. Teng pul kamdan-kam
+      ko‘rinadigan holat emas: yetkazmagan HAMMA sotuvchi 0 da turadi.
+      Tiebreak bo‘lmasa tartibni `drafts` Map‘ining kiritilish tartibi
+      hal qilardi — ya‘ni SQL qatorlarining kelish tartibi — va
+      televizordagi ro‘yxat o‘n daqiqada bir o‘rin almashtirardi.
+      Fixture ATAYLAB teskari kiritilgan.
+    */
+    const rows = build([
+      month({ employeeId: 'b', deliveredOrders: 1, deliveredMinor: 7n * MLN }),
+      month({ employeeId: 'a', deliveredOrders: 1, deliveredMinor: 7n * MLN }),
+    ])
+    expect(rows.map((r) => r.employeeId)).toEqual(['a', 'b'])
+  })
 })
 
 describe('promotedOn — joriy darajaga chiqqan kun', () => {
@@ -425,6 +443,17 @@ describe('daraja medallarni ochadi', () => {
 })
 
 describe('medal tartibi', () => {
+  it('MEDAL_ORDER har kodni AYNAN bir marta tashiydi', () => {
+    /*
+      `orderIndex.get(code)!` ro‘yxatda yo‘q kod uchun `undefined` beradi,
+      ayirmasi esa NaN — `sort` uni 0 deb o‘qiydi va medallar jim
+      aralashib chiqadi. Yangi kod qo‘shilib bu ro‘yxatga yozilmasa,
+      xato shu yerda ko‘rinadi, taxtada emas.
+    */
+    expect([...MEDAL_ORDER].sort()).toEqual([...MEDAL_CODES].sort())
+    expect(MEDAL_ORDER).toHaveLength(MEDAL_CODES.length)
+  })
+
   it('MEDAL_ORDER bo‘yicha: oltin oy 🌱 dan oldin, 🌅 📅 dan oldin', () => {
     const rows = build(
       [

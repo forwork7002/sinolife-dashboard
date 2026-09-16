@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -542,3 +544,35 @@ const MEDALS = new Map<string, SellerMedalRowDto>([
     }),
   ],
 ])
+
+/**
+ * PAGON KETDI — UNING TESTLARI TASHIGAN INVARIANTLAR QOLDI.
+ *
+ * `describe('pagon')` o'sha komponent bilan birga o'chdi, lekin uchta
+ * tekshiruvi pagonga umuman bog'liq emas edi va ular tashigan qarorlar
+ * bugun ham kuchda: medal so'rovining ULANISHI, «Liderga nisbatan»
+ * chizig'ining YO'QLIGI (mijozning 2026-09-15 dagi so'rovi) va jadvalning
+ * olti ustuni. Yangi lavha qatlamining testlari 5-vazifada keladi; bu
+ * uchtasi oraliqda himoyasiz qolmasligi uchun shu yerda turadi.
+ */
+describe('medallar so‘rovi va o‘rindiq — pagon ketdi, invariantlar qoldi', () => {
+  it('medal so‘rovi taxtanikidan alohida kalitda va o‘z soatida', () => {
+    // DOM javob bera olmaydigan yagona narsa: so'rovning ulanishi.
+    const source = readFileSync('src/features/sellers/SellersPage.tsx', 'utf8')
+    expect(source).toContain("queryKey: ['sellers', 'medals']")
+    expect(source).toContain('staleTime: 600_000')
+    // Taxta hech qachon medal so'rovining holatiga qaramaydi: u sekin kelsa
+    // yoki xato bersa, reyting hech nima sezmasligi kerak.
+    expect(source).not.toMatch(/medals\.(isError|isPending)/)
+  })
+
+  it('liderga nisbatan foiz chizig‘i seatda yo‘q', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    expect(document.querySelector('[aria-label="Liderga nisbatan"]')).toBeNull()
+  })
+
+  it('jadvalda oltita ustun — 390px da yon skroll yomonlashmaydi', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    expect(column('tv-sellers').getAllByRole('columnheader')).toHaveLength(6)
+  })
+})
