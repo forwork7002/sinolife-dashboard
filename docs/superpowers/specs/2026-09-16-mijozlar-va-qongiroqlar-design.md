@@ -322,9 +322,6 @@ The fix below made itself; the floor is where it took effect.
 /** Durations and connect rates below this are truncated — see the spec §4. */
 export const CALL_DATA_FLOOR = new Date('2026-09-13T00:00:00+05:00')
 
-/** How far back an incremental CALLS pass re-reads, so a call is read twice. */
-export const CALL_SETTLE_MS = 3 * 60 * 60 * 1000
-
 /**
  * `maxSec` is EXCLUSIVE and the last band has none, so the six cover every
  * non-negative integer exactly once. `colour` follows the entity, never its
@@ -344,9 +341,28 @@ Client-safe, both sides read it: the repository clamps its window to the floor
 and builds its `CASE` from the bands, the screen draws its labels from the same
 bands and states the floor in the block's hint.
 
-**The importer fix**: `fetchCalls` starts an incremental run at
-`options.updatedSince − CALL_SETTLE_MS` instead of at `options.updatedSince`.
-Every call is then read at least twice, and the second read sees a finished
+**The importer fix belongs in `SyncEngine`, not in the provider.** Watermark
+policy already lives there: `SKIP_LOOKBACK_MS` moves an entity's next
+watermark back *when a run skipped something*, and `nextWatermark(entity,
+startedAt, skipped)` applies it. CALLS needs the same movement
+**unconditionally**, because nothing was skipped — the row was written, with a
+duration that had not happened yet. So a second table beside it:
+
+```ts
+/** How far back an entity re-reads EVERY run, so a record can settle. */
+const SETTLE_LOOKBACK_MS: Partial<Record<SyncEntityValue, number>> = {
+  CALLS: 3 * 60 * 60_000,
+}
+```
+
+and `nextWatermark` returns `startedAt` moved back by the **larger** of the two
+lookbacks that apply. It cannot stall: the value is still derived from THIS
+run's start, so the cursor advances by a whole tick every tick — the property
+the comment above `SKIP_LOOKBACK_MS` says blocking on skips did not have.
+
+Three hours, not thirty minutes: the pass is half-hourly, so anything shorter
+leaves a call that started just before a pass read once and only once. Every
+call is then read at least twice and the later read sees a finished
 `CALL_DURATION`. The upsert corrects the row rather than skipping it — verified:
 `CALL_COLUMNS` marks only `createdAt` `insertOnly`, so `durationSec`,
 `connected`, `failedCode` and `recordUrl` are all overwritten on conflict.
@@ -453,9 +469,11 @@ they cannot be. The lead states that a call is joined to a **customer**, never
 to an order.
 
 `src/lib/sections.ts` gains the `customers` entry and adds it to
-`COMPANY_WIDE`; `ROLE_NAV` gains it for every role that holds `cohort`, so the
-people who already see customer analytics see this too and nobody's menu
-changes shape for a reason they were not told.
+`COMPANY_WIDE`. `src/lib/roles.ts` adds `/customers` to `ALL_ROUTES`, which is
+`ADMIN` and `MANAGER`, and **not** to `SALES` — the same standing `cohort`,
+`margin` and `structure` already have, for that file's own stated reason: a
+screen naming every operator's talk time is granted per account by an
+administrator, not handed to the floor by default.
 
 ---
 
@@ -467,8 +485,10 @@ changes shape for a reason they were not told.
   customer measure, `employee."departmentId"` and **not** `department_member`,
   scope spread last.
 * `tests/domain/callQuality.test.ts` — the six bands cover the whole number
-  line with no gap and no overlap, and `CALL_SETTLE_MS` is positive; the shape
-  `logisticsBuckets.test.ts` uses.
+  line with no gap and no overlap; the shape `logisticsBuckets.test.ts` uses.
+* `tests/integrations/syncEngine.test.ts` — `nextWatermark('CALLS', t, 0)`
+  returns `t − 3 h` although nothing was skipped, and every other entity with
+  no settle lookback still returns `t` on a clean run.
 * `tests/http/routeAccess.test.ts` — the new route in the table, `customers` in
   `COMPANY_WIDE`.
 * `tests/features/customersPage.test.tsx` — both bands render their own hint,
