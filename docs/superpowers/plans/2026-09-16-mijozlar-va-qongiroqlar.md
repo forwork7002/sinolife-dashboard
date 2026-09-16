@@ -28,6 +28,11 @@
 
 ## ⚠ Amendment — read before Tasks 6, 7, 10, 11, 12, 13
 
+> **Floor correction (spec §11):** `CALL_DATA_FLOOR` is **2026-09-15 00:00
+> Tashkent** (`2026-09-14T19:00:00Z`), not 2026-09-13. Every measured figure a
+> later task copies into a comment or a test fixture comes from spec §11.2, not
+> from §2. In particular Task 11's fixture rows and Task 12's comments.
+
 Added 2026-09-16 during execution, after Tasks 1–5 were committed. See spec §10.
 
 «база не база **мижозларга** call duration» is a CALL cut, and the client also

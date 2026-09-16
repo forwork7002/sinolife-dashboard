@@ -45,10 +45,43 @@ describe('the call activity statement', () => {
     expect(activitySql()).not.toContain('`')
   })
 
-  it('is one scan with four grouping sets and no more', () => {
+  it('is one scan with six grouping sets and no more', () => {
     expect(code()).toMatch(
-      /GROUPING SETS\s*\(\s*\(employee_id\)\s*,\s*\(team\)\s*,\s*\(day\)\s*,\s*\(\)\s*\)/i,
+      /GROUPING SETS\s*\(\s*\(employee_id\)\s*,\s*\(team\)\s*,\s*\(day\)\s*,\s*\(side\)\s*,\s*\(day,\s*side\)\s*,\s*\(\)\s*\)/i,
     )
+  })
+
+  it('decides the База side by a deal created BEFORE the call, not by membership today', () => {
+    /*
+      Membership today moves 376 calls (~9% of the База side, measured above the
+      floor) across: a lead rung on Monday who buys on Friday enters База
+      afterwards, and "today" would make Monday's call a База call after the
+      fact. The honest question is what the customer was when they were rung.
+    */
+    expect(code()).toMatch(/f\.first_at\s*<=\s*s\.started_at/i)
+  })
+
+  it('asks for the retention pipeline by ROLE, never by a category id', () => {
+    expect(code()).toMatch(/p\."role"\s*=\s*'RETENTION'/i)
+    expect(code()).not.toMatch(/CATEGORY_ID|"categoryId"/i)
+  })
+
+  it('bounds the База lookup to the customers actually called in the window', () => {
+    /*
+      Without the bound, first_baza scans every retention deal ever recorded to
+      label a few thousand calls.
+    */
+    const cte = code().slice(code().indexOf('first_baza AS ('), code().indexOf('labelled AS ('))
+    expect(cte).toMatch(/IN\s*\(\s*SELECT customer_id FROM called\s*\)/i)
+  })
+
+  it('reads a membership timestamp, not the База stage partition', () => {
+    /*
+      Commit 35aca08 made retentionStages() the one statement that partitions
+      База by stage. This statement reads when a customer entered База — no
+      other statement answers that — and must never grow a stage reading.
+    */
+    expect(code()).not.toMatch(/deal_stage/i)
   })
 
   it('buckets the day through UTC first, never in one step', () => {
@@ -178,7 +211,7 @@ describe('the customer band statement', () => {
 
   it('excludes the unlinked calls rather than bucketing them as one customer', () => {
     /*
-      `customerId` is null on 0.7% of rows. Grouped, every one of them would
+      `customerId` is null on about 1% of rows. Grouped, every one of them would
       collapse into a single enormous customer in the 6+ band. They are
       excluded here and disclosed as `unlinkedCalls` on the activity payload.
     */

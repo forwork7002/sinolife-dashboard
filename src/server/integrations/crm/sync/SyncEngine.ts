@@ -94,8 +94,9 @@ const SKIP_LOOKBACK_MS: Partial<Record<SyncEntityValue, number>> = {
  * still holds — it never skips — and present here for one that has nothing to
  * do with skipping.
  *
- * Measured on production: sixteen days imported that way (2026-08-28 to
- * 2026-09-12) carry a per-day maximum duration of roughly one sync interval —
+ * Measured on production: everything imported that way (2026-08-28 to 11:00
+ * Tashkent on 2026-09-14) carries a per-day maximum duration of roughly one
+ * sync interval —
  * a week of 26 511 calls whose longest conversation was six minutes — and a
  * connected share of 11.6% against a normal 31%, because a leg caught mid-dial
  * has not been given its code 200 yet either. `src/lib/callQuality.ts` dates

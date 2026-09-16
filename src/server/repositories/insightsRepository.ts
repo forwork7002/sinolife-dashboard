@@ -37,7 +37,13 @@ import {
   CUSTOMER_AT_RISK_DAYS,
   type CustomerStateKey,
 } from '@/lib/customerStates'
-import { CALL_CUSTOMER_BANDS, CALL_DURATION_BANDS, callWindowStart } from '@/lib/callQuality'
+import {
+  CALL_CUSTOMER_BANDS,
+  CALL_DURATION_BANDS,
+  CALL_SIDES,
+  type CallSideKey,
+  callWindowStart,
+} from '@/lib/callQuality'
 import { LOGISTICS_BUCKETS, UNMAPPED_BUCKET } from '@/lib/logisticsBuckets'
 import {
   RETENTION_GROUPS,
@@ -246,6 +252,14 @@ export interface CallActivityRows {
   readonly series: readonly CallActivityRow[]
   /** Calls with no customer attached — disclosed, never silently dropped. */
   readonly unlinkedCalls: number
+  /** In CALL_SIDES order, all three present even when empty. */
+  readonly sides: readonly CallActivityRow[]
+  /** One row per (day, side) that carries calls. */
+  readonly seriesBySide: readonly {
+    readonly day: string
+    readonly side: CallSideKey
+    readonly talkSec: number
+  }[]
 }
 
 export interface CallBandRow {
@@ -1472,8 +1486,8 @@ export class InsightsRepository {
    * the floor no failed leg carries seconds, so the FILTER changes no number
    * today and states the population for the day the portal reports ring time.
    *
-   * MEDIAN AND P90, AND NO MEAN. Measured above the floor: 167 s mean against a
-   * 50 s median, because 8.4% of calls run past ten minutes and hold 52% of all
+   * MEDIAN AND P90, AND NO MEAN. Measured above the floor: 169 s mean against a
+   * 53 s median, because 8.4% of calls run past ten minutes and hold 50% of all
    * talk time. The mean is not queried — the screen divides `talkSec` by
    * `connected`, so the two cannot be rounded into disagreement.
    * `percentile_disc` rather than `_cont`: a duration is a whole number of
@@ -1500,10 +1514,12 @@ export class InsightsRepository {
         g_employee: number
         g_team: number
         g_day: number
+        g_side: number
         employee_id: string | null
         employee_name: string | null
         team: string | null
         day: string | null
+        side: CallSideKey | null
         calls: bigint | null
         connected: bigint | null
         talk_sec: bigint | null
@@ -1520,6 +1536,7 @@ export class InsightsRepository {
           r."customerId"  AS customer_id,
           r."durationSec" AS duration_sec,
           r."connected"   AS connected,
+          r."startedAt"   AS started_at,
           /*
             ::text, NOT a bare ::date. A DATE crosses the driver as a JS Date,
             and node-postgres builds that Date at LOCAL midnight — so on a
@@ -1533,6 +1550,30 @@ export class InsightsRepository {
           (r."startedAt" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day
         FROM "call_record" r
         WHERE r."startedAt" >= $1 AND r."startedAt" < $2
+      ),
+      called AS (
+        SELECT DISTINCT customer_id FROM scoped WHERE customer_id IS NOT NULL
+      ),
+      first_baza AS (
+        /*
+          WHEN EACH CALLED CUSTOMER FIRST ENTERED «База».
+
+          Bounded to the customers called in this window, or it scans every
+          retention deal ever recorded to label a few thousand calls. Asked by
+          pipeline ROLE, so a reclassification is an UPDATE and not a redeploy.
+
+          This reads one timestamp per customer and NOT the stage partition of
+          the funnel. Commit 35aca08 made retentionStages() the one statement
+          that partitions База by stage, and that stands: no other statement
+          answers when a customer entered База, and this one never reads a
+          stage.
+        */
+        SELECT d."customerId" AS customer_id, min(d."createdAtSource") AS first_at
+        FROM "deal" d
+        JOIN "pipeline" p ON p."id" = d."pipelineId"
+        WHERE p."role" = 'RETENTION'
+          AND d."customerId" IN (SELECT customer_id FROM called)
+        GROUP BY d."customerId"
       ),
       labelled AS (
         SELECT
@@ -1553,19 +1594,34 @@ export class InsightsRepository {
             NULLIF(btrim(regexp_replace(dp."name", '\\(ROP\\)', '', 'i')), ''),
             dp."name",
             $4
-          ) AS team
+          ) AS team,
+          /*
+            THE SIDE IS DECIDED AT THE MOMENT OF THE CALL. A База deal created
+            before the call makes it a База call; membership today would move
+            376 calls across after the fact, because a lead rung on Monday who
+            buys on Friday enters База afterwards. Both columns are naive UTC,
+            so they compare directly.
+          */
+          CASE
+            WHEN s.customer_id IS NULL THEN 'UNLINKED'
+            WHEN f.first_at IS NOT NULL AND f.first_at <= s.started_at THEN 'BAZA'
+            ELSE 'NOT_BAZA'
+          END AS side
         FROM scoped s
         LEFT JOIN "employee" e ON e."id" = s.employee_id
         LEFT JOIN "department" dp ON dp."id" = e."departmentId"
+        LEFT JOIN first_baza f ON f.customer_id = s.customer_id
       )
       SELECT
         GROUPING(employee_id)::int AS g_employee,
         GROUPING(team)::int        AS g_team,
         GROUPING(day)::int         AS g_day,
+        GROUPING(side)::int        AS g_side,
         employee_id,
         min(employee_name) AS employee_name,
         team,
         day,
+        side,
         count(*)::bigint AS calls,
         count(*) FILTER (WHERE connected)::bigint AS connected,
         COALESCE(sum(duration_sec) FILTER (WHERE connected), 0)::bigint AS talk_sec,
@@ -1576,8 +1632,8 @@ export class InsightsRepository {
         count(DISTINCT customer_id)::bigint AS customers,
         count(*) FILTER (WHERE customer_id IS NULL)::bigint AS unlinked
       FROM labelled
-      GROUP BY GROUPING SETS ((employee_id), (team), (day), ())
-      ORDER BY g_employee, g_team, g_day, talk_sec DESC
+      GROUP BY GROUPING SETS ((employee_id), (team), (day), (side), (day, side), ())
+      ORDER BY g_employee, g_team, g_day, g_side, talk_sec DESC
       `,
       start,
       options.period.end,
@@ -1604,21 +1660,23 @@ export class InsightsRepository {
       returns one row even over nothing — so a missing total means the statement
       changed shape, not that the window was empty.
     */
-    const totalRow = rows.find((r) => r.g_employee === 1 && r.g_team === 1 && r.g_day === 1)
+    const totalRow = rows.find(
+      (r) => r.g_employee === 1 && r.g_team === 1 && r.g_day === 1 && r.g_side === 1,
+    )
+
+    const empty = (key: string, label: string): CallActivityRow => ({
+      key,
+      label,
+      calls: 0,
+      connected: 0,
+      talkSec: 0,
+      medianSec: null,
+      p90Sec: null,
+      customers: 0,
+    })
 
     return {
-      total: totalRow
-        ? shape(totalRow, 'TOTAL', 'Jami')
-        : {
-            key: 'TOTAL',
-            label: 'Jami',
-            calls: 0,
-            connected: 0,
-            talkSec: 0,
-            medianSec: null,
-            p90Sec: null,
-            customers: 0,
-          },
+      total: totalRow ? shape(totalRow, 'TOTAL', 'Jami') : empty('TOTAL', 'Jami'),
       operators: rows
         .filter((r) => r.g_employee === 0)
         .map((r) => shape(r, r.employee_id ?? '', r.employee_name ?? 'Nomaʼlum xodim')),
@@ -1634,11 +1692,29 @@ export class InsightsRepository {
         it, so the series is re-sorted here rather than asked for twice.
         'YYYY-MM-DD' text sorts chronologically as a string.
       */
+      /*
+        EVERY ARM NAMES ALL THE FLAGS IT DEPENDS ON. The (day, side) set clears
+        g_day as well as g_side, so filtering the day series on g_day alone
+        would pour every side's row into it and print each day three times.
+      */
       series: rows
-        .filter((r) => r.g_day === 0)
+        .filter((r) => r.g_day === 0 && r.g_side === 1)
         .map((r) => shape(r, r.day ?? '', r.day ?? ''))
         .sort((a, b) => a.key.localeCompare(b.key)),
       unlinkedCalls: int(totalRow?.unlinked),
+      /*
+        In CALL_SIDES order with the silent sides present — a GROUP BY never
+        emits an empty group, and a split missing its quiet side reads as a
+        split with one side.
+      */
+      sides: CALL_SIDES.map((spec) => {
+        const row = rows.find((r) => r.g_side === 0 && r.g_day === 1 && r.side === spec.key)
+        return row ? shape(row, spec.key, spec.label) : empty(spec.key, spec.label)
+      }),
+      seriesBySide: rows
+        .filter((r) => r.g_day === 0 && r.g_side === 0 && r.side !== null)
+        .map((r) => ({ day: r.day ?? '', side: r.side!, talkSec: int(r.talk_sec) }))
+        .sort((a, b) => a.day.localeCompare(b.day)),
     }
   }
 
@@ -1716,7 +1792,7 @@ export class InsightsRepository {
    * look like this one.
    *
    * CALLS WITH NO CUSTOMER ARE EXCLUDED, NOT BUCKETED. `customerId` is null on
-   * 0.7% of rows; grouped, all of them would collapse into one enormous
+   * about 1% of rows (0.7% of the whole table, 1.2% above the floor); grouped, all of them would collapse into one enormous
    * "customer" in the 6+ band. They are disclosed instead, as `unlinkedCalls`
    * on the activity payload — the way `/insights/concentration` discloses
    * revenue booked with no customer.

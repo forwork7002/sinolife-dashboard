@@ -4,6 +4,7 @@ import {
   CALL_CUSTOMER_BANDS,
   CALL_DATA_FLOOR,
   CALL_DURATION_BANDS,
+  CALL_SIDES,
   callFloorApplied,
   callWindowStart,
 } from '@/lib/callQuality'
@@ -53,12 +54,12 @@ describe('the customer call bands', () => {
 
 describe('the data floor', () => {
   /*
-    2026-09-13 is where the truncated window ends — see the spec §4. Written as
-    a Tashkent midnight, because that is the day boundary every other figure in
-    this product uses.
+    The truncation ends at 11:00 Tashkent on 2026-09-14, when CALLS moved to
+    the half-hourly pass — see the spec §11. The floor is the next whole day,
+    so no bucket on the daily chart is half truncated and reads as a dip.
   */
-  it('is 2026-09-13 Tashkent midnight', () => {
-    expect(CALL_DATA_FLOOR.toISOString()).toBe('2026-09-12T19:00:00.000Z')
+  it('is 2026-09-15 Tashkent midnight — the first whole day imported correctly', () => {
+    expect(CALL_DATA_FLOOR.toISOString()).toBe('2026-09-14T19:00:00.000Z')
   })
 
   it('clamps a window that starts below it, and leaves one above it alone', () => {
@@ -77,5 +78,16 @@ describe('the data floor', () => {
     // they asked for, so the screen must not print the caveat.
     expect(callFloorApplied(CALL_DATA_FLOOR)).toBe(false)
     expect(callWindowStart(CALL_DATA_FLOOR)).toEqual(CALL_DATA_FLOOR)
+  })
+})
+
+describe('the call sides', () => {
+  it('is Baza / Baza emas / unlinked, in that order', () => {
+    expect(CALL_SIDES.map((side) => side.key)).toEqual(['BAZA', 'NOT_BAZA', 'UNLINKED'])
+  })
+
+  it('gives each side its own colour within the card that draws them', () => {
+    const colours = CALL_SIDES.map((side) => side.colour)
+    expect(new Set(colours).size).toBe(colours.length)
   })
 })

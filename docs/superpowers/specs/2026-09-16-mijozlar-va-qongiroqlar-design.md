@@ -605,3 +605,55 @@ call. The honest question is what the customer was *when they were rung*.
   top equals the «Suhbat vaqti» tile, so the chart needs no reconciliation line.
 * **«Mijozlar holati — bugun»** — «Bazada» / «Bazada yoʻq» rows, with a hint that
   every delivered customer enters База automatically.
+
+---
+
+## 11. Correction, 2026-09-16 — the floor is 2026-09-15, and §2's numbers move
+
+Found by running the repository method against production with the correct
+timezone conversion.
+
+### 11.1 Where the truncation actually ends
+
+The probes behind §2 and §4 bucketed days with the one-step
+`AT TIME ZONE 'Asia/Tashkent'`, which reads the naive UTC `startedAt` as
+Tashkent local — CLAUDE.md's third rule. Their day labels were shifted, and the
+floor this spec chose (2026-09-13) sat inside the damage.
+
+Per Tashkent hour, two-step conversion:
+
+| Tashkent hour | Calls | Max duration | Import lag |
+|---|---|---|---|
+| 2026-09-13, every hour | 1 307 in the day | 277 s | 1–2 min |
+| 2026-09-14 09:00 | 467 | 187 s | 1 min |
+| 2026-09-14 10:00 | 543 | 126 s | 1 min |
+| **2026-09-14 11:00** | 964 | **1 677 s** | **256 min** |
+| 2026-09-14 12:00 | 691 | 2 717 s | 293 min |
+
+The import lag jumping from one minute to 256 at 11:00 is CALLS leaving the
+per-minute pass. **The floor is the next whole day, 2026-09-15 00:00 Tashkent**
+(`2026-09-14T19:00:00Z`), so no bucket on the daily chart is half truncated.
+The client's decision — show only data that can be trusted — is unchanged; its
+date was wrong.
+
+### 11.2 Corrected figures, above the real floor
+
+Measured 2026-09-16 over 2026-09-15 00:00 → now: **one whole working day and part
+of the next**, 11 230 calls, 3 261 connected. A small sample; the shape matched
+the wider, partly truncated one to within a few points.
+
+| | §2 said | Correct |
+|---|---|---|
+| Mean / median connected call | 167 s / 50 s | **169 s / 53 s** — 3.2× |
+| Calls past ten minutes | 8.4% holding 52% of talk time | **8.4% holding 50%** |
+| p90 | 514 s | 513 s |
+| База / not-База median | 82 s / 43 s | **86 s / 46 s** |
+| Customer bands 1 / 2-3 / 4-5 / 6+ | 8 323 / 2 773 / 520 / 301 | 5 476 / 1 495 / 246 / 138 (a shorter window) |
+| Calls with no customer | 1 097 (5.3%) | 135 (1.2%) — most unlinked calls sat inside the truncated window |
+
+Facts about the whole table are unaffected: `dealId` on 1 row of 366 300,
+`recordUrl` on none, direction as the leg, the team basis.
+
+All seven repository invariants hold on production above the corrected floor:
+operators, teams, days and sides each sum to the total; the side series sums to
+total talk time; the duration bands sum to the connected count; no day repeats.
