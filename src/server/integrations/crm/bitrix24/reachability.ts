@@ -40,6 +40,13 @@ export interface Reachability {
    */
   readonly tlsSmall: AddressProbe | null
   readonly tls12: AddressProbe | null
+  /**
+   * TLS to hosts that are NOT this portal: a Russian site with no Bitrix24 in
+   * it, Bitrix24's own public site on another network, and its OAuth server in
+   * Ireland. Which of these complete is what says who is dropping us — the
+   * portal's network, the route into Russia, or nothing past our own egress.
+   */
+  readonly tlsControls: readonly AddressProbe[]
 }
 
 /** Cloudflare's resolver: answers 443 everywhere, belongs to nobody involved. */
@@ -113,8 +120,16 @@ export async function checkReachability(webhookUrl: string): Promise<Reachabilit
   const first = addresses[0]
   const tlsSmall = first ? await tlsProbe(first, host, 10_000, { ecdhCurve: 'X25519:P-256' }) : null
   const tls12 = first ? await tlsProbe(first, host, 10_000, { maxVersion: 'TLSv1.2' }) : null
+  const tlsControls = await Promise.all(
+    ['ya.ru', 'www.bitrix24.kz', 'oauth.bitrix.info'].map(async (name) => {
+      const [address] = await resolve4(name).catch(() => [] as string[])
+      if (!address) return { address: name, ms: null, error: 'DNS' }
+      const probe = await tlsProbe(address, name)
+      return { ...probe, address: name }
+    }),
+  )
   const https = /\/rest\//.test(webhookUrl) ? await httpsProbe(`${webhookUrl}profile.json`) : null
-  return { host, portal, control: control!, tls, https, tlsSmall, tls12 }
+  return { host, portal, control: control!, tls, https, tlsSmall, tls12, tlsControls }
 }
 
 /** One log line a person can act on. */
@@ -137,6 +152,7 @@ export function describeReachability(r: Reachability): string {
     ` | TLS ${tlsOpen}/${r.tls.length} ${r.tls.map(cell).join(', ')}` +
     (r.tlsSmall ? ` | kichik-hello ${r.tlsSmall.ms !== null ? `✓${r.tlsSmall.ms}ms` : `✗${r.tlsSmall.error}`}` : '') +
     (r.tls12 ? ` | TLS1.2 ${r.tls12.ms !== null ? `✓${r.tls12.ms}ms` : `✗${r.tls12.error}`}` : '') +
+    (r.tlsControls.length ? ` | TLS nazorat ${r.tlsControls.map(cell).join(', ')}` : '') +
     (r.https ? ` | node:https ${r.https.ms !== null ? `${r.https.address} ${r.https.ms}ms` : `✗${r.https.error}`}` : '')
   )
 }
