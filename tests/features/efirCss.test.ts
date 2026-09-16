@@ -40,10 +40,17 @@ describe('EFIR tokenlari — uchala blokda', () => {
     expect(LIGHT).toMatch(/never a series/i)
   })
 
-  it('nodir medal soyasi: yorug‘da shaffof, qorong‘ida oltin aralashmasi', () => {
+  it('nodir medal soyasi: yorug‘da shaffof, qorong‘ida oltin aralashmasi — va FAQAT o‘rindiqda', () => {
     expect(LIGHT).toContain('--glow-rare: transparent;')
     expect(SYSTEM_DARK).toContain('--glow-rare: color-mix(in oklab, var(--medal-gold) 55%, transparent);')
     expect(FORCED_DARK).toContain('--glow-rare: color-mix(in oklab, var(--medal-gold) 55%, transparent);')
+    // Podiumda eng ko'pi uchta o'rindiq; ro'yxatda 100 qator x 3 medal, va
+    // `filter` har biriga alohida rastr qatlami ochadi. Soya o'rindiqda
+    // qoladi (spec §3), qatorda yo'q — shuning uchun qoida `.seat` bilan
+    // boshlanadi va SATR BOSHIDA turgan `.medal.rare` qoidasi bo'lmasligi shart.
+    const efir = strip(EFIR())
+    expect(efir).toContain('.seat .medal.rare { filter: drop-shadow(0 0 5px var(--glow-rare)); }')
+    expect(efir).not.toMatch(/^\.medal\.rare\s*\{/m)
   })
 })
 
@@ -82,7 +89,7 @@ describe('EFIR bo‘limi — rang shartnomasi', () => {
   it('bo‘lim bor va TV BOARD dan oldin turadi; asosiy selektorlar', () => {
     for (const sel of [
       '[data-tier="0"]', '[data-tier="6"]', '.crest {', '.crest--row', '.crest--seat', '.crest--legend',
-      '.crest__crown', '.medal {', '.medal.rare', '.medal-count', '.halo {', '.halo--lg', '.tv-legend {',
+      '.crest__crown', '.medal {', '.seat .medal.rare', '.medal-count', '.halo {', '.halo--lg', '.tv-legend {',
       '.legend__rung',
     ]) {
       expect(EFIR(), sel).toContain(sel)
@@ -149,7 +156,11 @@ describe('EFIR — o‘rindiq', () => {
     expect(code).toMatch(/\.seat::before \{[^}]*width: 10px;[^}]*background: var\(--tier\);/)
     expect(code).toMatch(/\.seat\[data-tier="0"\]::before \{[^}]*box-shadow: inset 1px 0 0 var\(--tier\);/)
     expect(code).toMatch(/\.seat__bar i \{[^}]*background: var\(--tier\);/)
-    expect(code).toMatch(/\.seat__level \{[^}]*color: var\(--tier\);/)
+    // Daraja so'zi — `--tier` TARTIBI saqlanadi, lekin yorug' mavzuda o'qilsin
+    // deb siyoh aralashtiriladi (spec §13: Ustoz/Legenda oq sirtda oqish).
+    expect(code).toMatch(
+      /\.seat__level \{[^}]*color: color-mix\(in oklab, var\(--tier\) 70%, var\(--ink-primary\)\);/,
+    )
     expect(code).toContain('.seat .medal { --cut: var(--surface-raised); }')
     // Pedestal, bevel, xrom, sharpa, shtamp — hech biri yo'q.
     for (const gone of ['pedestal', 'lv-stamps', 'lv-ghost', 'lv-sheen', 'podium-shine']) expect(code).not.toContain(gone)

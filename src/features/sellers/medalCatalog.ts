@@ -76,9 +76,19 @@ export const MEDAL_ORDER: readonly MedalCode[] = Object.freeze([
 export interface LadderRung {
   readonly level: number
   readonly title: string
-  /** Eski aytiladigan yorliq («10 mln») — `usePromotions.thresholdLabel` uni hali tashiydi. */
+  /**
+   * Qisqa aytiladigan yorliq («10 mln» … «1 mlrd»). IKKI O'QUVCHISI BOR:
+   * `usePromotions` (aytiladigan matn) va `TierLegend` — legenda kaliti spec
+   * §1 ning to'liq-so'm qoidasidan YAGONA istisno, chunki u o'lchov emas,
+   * izoh, va bir qatorga sig'ishi kerak (sabab `TierLegend.tsx` da).
+   */
   readonly thresholdLabel: string
-  /** Ostona so'mda — legenda va e'lon to'liq raqam yozadi (spec §1). Yangi — birinchi so'm, raqamsiz. */
+  /**
+   * Ostona so'mda — TO'LIQ RAQAM YOZADIGAN joylar uchun: e'lon, o'rindiq
+   * jumlasi, progress hisobi (spec §1). Legenda buni faqat «yorliq bormi»
+   * deb o'qiydi — RAQAMINI chizmaydi (yuqoriga qarang). Yangi — birinchi
+   * so'm, ya'ni null va shu sababli yorliqsiz.
+   */
   readonly thresholdSom: number | null
 }
 

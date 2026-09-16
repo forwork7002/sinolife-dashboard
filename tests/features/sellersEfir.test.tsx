@@ -258,23 +258,42 @@ describe('Halo — rank halqasi', () => {
   })
 })
 
-describe('TierLegend — 28 px «DARAJA» qatori', () => {
-  it('olti pog‘ona, so‘z va to‘liq so‘m ostona; Yangi raqamsiz; Legendada toj', () => {
+/*
+  LEGENDA BIR QATOR BO‘LISHI KERAK, VA U YAGONA JOY BO‘LIB QOLADI
+  QAYERDA OSTONA QISQA YOZILADI.
+
+  Spec §1 butun sahifada to‘liq so‘mni talab qiladi, §2 esa kalitning o‘zi
+  uchun istisno qiladi: 1920 da ustun ichi 1053 px, to‘liq so‘mli kalit esa
+  ~1154 px — ya'ni ikkinchi qator, ya'ni narvon cho‘qqisi ko‘zdan pastda.
+  Shuning uchun bu yerda `thresholdLabel` («10 mln» … «1 mlrd») chiziladi,
+  Yangi pog‘onasida esa hech narsa (uning ostonasi — «birinchi so‘m»), va
+  sarlavha yo‘q. Test IKKALA tomonni ham ushlaydi: yorliqlar katalogdan
+  keladi, va kalitda TO‘LIQ SO‘M RAQAMI umuman uchramaydi — aks holda
+  birov qisqartirishni «tuzatib», qatorni yana o‘rab qo‘yadi.
+*/
+describe('TierLegend — 28 px kalit qatori', () => {
+  it('olti pog‘ona, so‘z va qisqa ostona; Yangi yorliqsiz; sarlavhasiz; Legendada toj', () => {
     const { container } = render(<TierLegend />)
     const rungs = container.querySelectorAll('.legend__rung')
     expect(rungs).toHaveLength(6)
     expect([...rungs].map((r) => r.querySelector('b')!.textContent)).toEqual([
       'Yangi', 'Sotuvchi', 'Katta sotuvchi', 'Usta', 'Ustoz', 'Legenda',
     ])
+    // Yangi — yorliq elementi YO‘Q; qolgan beshtasi katalogning o‘z yorlig‘i.
     expect(rungs[0]!.querySelector('i')).toBeNull()
-    expect(rungs[1]!.querySelector('i')!.textContent).toBe(`10${S}000${S}000`)
-    expect(rungs[5]!.querySelector('i')!.textContent).toBe(`1${S}000${S}000${S}000`)
+    for (let i = 1; i <= 5; i += 1) {
+      expect(rungs[i]!.querySelector('i')!.textContent).toBe(LADDER[i]!.thresholdLabel)
+    }
+    expect(rungs[5]!.querySelector('i')!.textContent).toBe('1 mlrd')
     expect(rungs[5]!.querySelector('svg.crest--legend')!.getAttribute('data-tier')).toBe('6')
     expect(rungs[5]!.querySelector('.crest__crown')).not.toBeNull()
     expect(rungs[3]!.querySelectorAll('use.on')).toHaveLength(4)
     expect(container.querySelector('.tv-legend')!.getAttribute('role')).toBe('list')
-    expect(screen.getByText('Daraja')).toBeTruthy()
-    expect(container.textContent).not.toMatch(/mln|mlrd/)
+    // Sarlavha yo‘q — na element, na so‘z.
+    expect(container.querySelector('.tv-legend__title')).toBeNull()
+    expect(screen.queryByText('Daraja')).toBeNull()
+    // Va kalitda to‘liq so‘m raqami yo‘q (`79 600 000` shakli).
+    expect(container.textContent).not.toMatch(new RegExp(`\\d{1,3}(${S}\\d{3}){2,}`))
   })
 })
 

@@ -167,7 +167,8 @@
   --tier-6: #c9ecff;
 
   /* The soft gold under the seven rare medals — dark stage only; daylight
-     has no glow. Read in exactly one place: `.medal.rare`. */
+     has no glow. Read in exactly one place: `.seat .medal.rare` — the podium
+     only, so the hundred drifting rows carry no filter layers. */
   --glow-rare: transparent;
 
   /**
@@ -2334,8 +2335,12 @@ p {
   font-weight: 800;
   font-size: 11px;
 }
-/* Nodir yettilik — yumshoq oltin soya; yorug'da token shaffof, ya'ni hech narsa. */
-.medal.rare { filter: drop-shadow(0 0 5px var(--glow-rare)); }
+/* Nodir yettilik — yumshoq oltin soya; yorug'da token shaffof, ya'ni hech narsa.
+   FAQAT O'RINDIQDA: podiumda eng ko'pi 3 x 14 medal, ro'yxatda esa 100 qator x
+   3 medal — `filter` har biriga alohida rastr qatlami ochadi, va bu soya 3
+   metrdan ko'rinmaydigan joyda 300 ga yaqin qatlam degani. Qator medallari
+   soyasiz chiziladi. */
+.seat .medal.rare { filter: drop-shadow(0 0 5px var(--glow-rare)); }
 .medal-group {
   display: inline-flex;
   align-items: center;
@@ -2377,14 +2382,18 @@ p {
 .halo[data-metal="silver"] { --metal: var(--medal-silver); }
 .halo[data-metal="bronze"] { --metal: var(--medal-bronze); }
 
-/* ---- legenda: ustun pastida 28 px, olti gerb + so'z + ostona ----
+/* ---- legenda: ustun pastida 28 px, olti gerb + so'z + qisqa ostona ----
 
-   O'RALADI, KESILMAYDI. Mock 1920 da ustunni to'liq oladi; haqiqiy sahifada
-   ustun undan tor (yon panel ochiq bo'lsa 1920 da ~977 px, 1366 da ~645 px),
-   va olti pog'ona + sarlavha ~1185 px so'raydi. Qat'iy 28 px + `overflow:
-   hidden` da bu oxirgi pog'onani — aynan «Legenda 1 000 000 000» ni, narvon
-   cho'qqisini — indamay kesib tashlaydi. `flex-wrap` bir qator qo'shadi;
-   `white-space: nowrap` pog'onaning O'Z matnini bo'linishdan saqlaydi. ---- */
+   1920 da BIR QATOR — ostona qisqa yozilgani va sarlavha yo'qligi uchun
+   (`TierLegend.tsx` izohi nimaga shundayligini yozadi: to'liq so'm bilan
+   kalit ~1154 px so'rardi, ustunda esa 1053 px bor).
+
+   AMMO `flex-wrap` QOLADI, VA U XAVFSIZLIK CHORASI. Yon panel ochiq 1366 da
+   ustun ~645 px — kalit u yerda baribir o'raladi, va qat'iy 28 px +
+   `overflow: hidden` da o'ralish o'rniga oxirgi pog'ona — aynan «Legenda»,
+   narvon cho'qqisi — indamay kesilardi. Ikki o'qiladigan qator kesilgan bir
+   qatordan yaxshiroq. `white-space: nowrap` pog'onaning O'Z matnini
+   bo'linishdan saqlaydi. ---- */
 .tv-legend {
   flex: none;
   display: flex;
@@ -2398,11 +2407,6 @@ p {
   font-size: var(--tv-s);
   color: var(--ink-muted);
   white-space: nowrap;
-}
-.tv-legend__title {
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 .legend__rung {
   display: inline-flex;
@@ -2510,10 +2514,14 @@ p {
   text-overflow: ellipsis;
   max-width: 120px;
 }
-/* Daraja so'zi — BIR MARTA, gerb yonida, `--tier` rangida. */
+/* Daraja so'zi — BIR MARTA, gerb yonida, `--tier` rangida. Yorug' mavzuda
+   narvon cho'qqisi («Ustoz», «Legenda») oqish tushadi va oq sirtda o'qilmaydi
+   (spec §13), shuning uchun rang siyoh bilan aralashtiriladi: 70 % `--tier`
+   TARTIBNI ikkala mavzuda ham saqlaydi (Usta har doim Katta sotuvchidan
+   yorug'roq), qolgan 30 % kontrastni qaytaradi. */
 .seat__level {
   font-weight: 600;
-  color: var(--tier);
+  color: color-mix(in oklab, var(--tier) 70%, var(--ink-primary));
   white-space: nowrap;
 }
 /* RAQAM HECH QACHON KESILMAYDI. O'rindiq `overflow: hidden` (tasma + radius)

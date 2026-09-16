@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MedalDefs } from '@/features/sellers/MedalDefs'
+import { LADDER } from '@/features/sellers/medalCatalog'
 import { resetCelebrations } from '@/features/sellers/usePromotions'
 import type { MedalCode, SellerBoardDto, SellerMedalDto, SellerMedalRowDto } from '@/lib/api'
 import { NARROW_NBSP, formatSomFull } from '@/lib/format'
@@ -611,13 +612,24 @@ describe('EFIR — daraja va medallar taxtada', () => {
     expect(zero.querySelector('.row__medals svg')).toBeNull()
   })
 
-  it('legenda ustunning PASTIDA bir marta, olti pog‘ona, to‘liq so‘m — komandalar ustunida yo‘q', () => {
+  it('legenda ustunning PASTIDA bir marta, olti pog‘ona, qisqa ostona — komandalar ustunida yo‘q', () => {
     render(<Board data={RIPE} medals={MEDALS} />)
     const col = document.getElementById('tv-sellers')!
     expect(col.querySelectorAll('.tv-legend')).toHaveLength(1)
-    expect(col.querySelectorAll('.legend__rung')).toHaveLength(6)
+    const rungs = col.querySelectorAll('.legend__rung')
+    expect(rungs).toHaveLength(6)
     expect(col.lastElementChild!.classList.contains('tv-legend')).toBe(true)
-    expect(col.querySelector('.tv-legend')!.textContent).toContain(`100${S}000${S}000`)
+    // KALIT — YAGONA ISTISNO: ostona qisqa yozilgani uchun 1920 da bir qator
+    // (spec §1/§2; `TierLegend.tsx` o‘lchovlarni yozadi). Yangi yorliqsiz.
+    expect(rungs[0]!.querySelector('i')).toBeNull()
+    for (let i = 1; i <= 5; i += 1) {
+      expect(rungs[i]!.querySelector('i')!.textContent).toBe(LADDER[i]!.thresholdLabel)
+    }
+    // Sahifaning boshqa hamma joyida to‘liq so‘m; KALITDA esa hech qachon.
+    expect(col.querySelector('.tv-legend')!.textContent).not.toMatch(
+      new RegExp(`\\d{1,3}(${S}\\d{3}){2,}`),
+    )
+    expect(col.querySelector('.tv-legend__title')).toBeNull()
     expect(document.getElementById('tv-teams')!.querySelector('.tv-legend')).toBeNull()
   })
 
