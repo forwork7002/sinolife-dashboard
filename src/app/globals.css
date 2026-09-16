@@ -2982,9 +2982,32 @@ p {
 }
 .lavha-word.lavha-word--near { color: var(--seq-550); }
 
-/* e'lon — 8 soniya ustun sarlavhasi ostida, keyin jim */
+/*
+  E'LON — 8 SONIYA USTUN SARLAVHASI USTIDA, OQIMDAN TASHQARIDA: HECH NARSA
+  SURILMAYDI. Oqimda turganda banner paydo bo'lganda podiumni va butun
+  jadvalni ~50px pastga surar, sakkiz soniyadan keyin esa qaytarardi —
+  marosim o'zi tabriklayotgan odamning qatorini ko'zdan qochirardi.
+
+  `left` ga qadalgan va `fit-content`: 1920 da ustun sarlavhasini yopadi-yu,
+  o'ngdagi sanoq va FAKT tugmasi ko'rinib turadi. `pointer-events: none` —
+  banner tugmaning ustidan tushsa ham tugma bosilaveradi.
+
+  QABUL QILINGAN CHEGARA: 1280 dan past ekranda parklangan ustun
+  `display: none`, lekin MOUNT qilingan — ya'ni o'quvchi ikkinchi taxtada
+  turganda e'lon ko'rinmay sarflanishi mumkin. Marosimning auditoriyasi —
+  ikkala ustun ham ko'rinadigan 1920 televizor, shuning uchun shunday
+  qoldirildi.
+*/
 .tv-promo {
-  margin-top: 8px;
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-top: 0;
+  max-width: calc(100% - 36px);
+  width: fit-content;
+  z-index: 3;
+  pointer-events: none;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -3002,9 +3025,12 @@ p {
   font-weight: 500;
   color: var(--ink-secondary);
 }
+/* `transform` markazlashtirishga ketdi — kirish mustaqil `translate` da,
+   ya'ni u bilan QO'SHILADI, ustiga yozmaydi (aks holda 180 ms suriladi,
+   keyin sakraydi). */
 @keyframes tv-promo-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; translate: 0 -6px; }
+  to { opacity: 1; translate: 0 0; }
 }
 
 /* ko'tarilish: yulduzlar 80 ms oraliqda tushadi, bitta yaltirash, keyin qotadi */
@@ -3384,6 +3410,9 @@ p {
 }
 
 .tv-col-head {
+  /* E'lon lentasining tayanchi — `.tv-promo` shu qutiga qadaladi va oqimdan
+     chiqadi. Ichkarida boshqa hech narsa uzoqroq ajdodga qadalmaydi. */
+  position: relative;
   flex-shrink: 0;
   padding: 16px 18px 0;
 }

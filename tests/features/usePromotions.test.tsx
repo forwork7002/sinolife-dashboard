@@ -21,6 +21,10 @@ const row = (employeeId: string, over: Partial<SellerMedalRowDto> = {}): SellerM
   ...over,
 })
 const map = (...rows: SellerMedalRowDto[]) => new Map(rows.map((r) => [r.employeeId, r]))
+/* Taxtada chizilgan kalitlar. Har testda BIR MARTA yasaladi: to'plam
+   effektning bog'liqliklarida, ya'ni identifikatori barqaror bo'lishi kerak. */
+const ON_A = new Set(['a'])
+const ON_AB = new Set(['a', 'b'])
 
 describe('usePromotions — e‘lon navbati', () => {
   beforeEach(() => {
@@ -31,7 +35,7 @@ describe('usePromotions — e‘lon navbati', () => {
 
   it('bugun ko‘tarilgan sotuvchi e‘lon qilinadi, 8 soniyadan keyin jim', () => {
     const rows = map(row('a'))
-    const { result } = renderHook(() => usePromotions(rows, '2026-09-16'))
+    const { result } = renderHook(() => usePromotions(rows, '2026-09-16', ON_A))
     expect(result.current).toEqual({ employeeId: 'a', level: 4, legendaTier: 0, rankTitle: 'Usta', thresholdLabel: '100 mln' })
     act(() => vi.advanceTimersByTime(PROMOTION_MS))
     expect(result.current).toBeNull()
@@ -39,7 +43,7 @@ describe('usePromotions — e‘lon navbati', () => {
 
   it('bir xil ko‘tarilish sessiyada IKKI MARTA e‘lon qilinmaydi', () => {
     const rows = map(row('a'))
-    const { result, rerender } = renderHook(({ r }) => usePromotions(r, '2026-09-16'), { initialProps: { r: rows } })
+    const { result, rerender } = renderHook(({ r }) => usePromotions(r, '2026-09-16', ON_A), { initialProps: { r: rows } })
     act(() => vi.advanceTimersByTime(PROMOTION_MS))
     rerender({ r: map(row('a')) }) // yangi payload, o‘sha daraja
     expect(result.current).toBeNull()
@@ -47,7 +51,7 @@ describe('usePromotions — e‘lon navbati', () => {
 
   it('ikki ko‘tarilish navbat bilan, har biri 8 soniya', () => {
     const rows = map(row('a'), row('b', { level: 2, rankTitle: 'Sotuvchi', levelFloor: uzs(10_000_000), nextLevelAt: uzs(30_000_000), nextTitle: 'Katta sotuvchi' }))
-    const { result } = renderHook(() => usePromotions(rows, '2026-09-16'))
+    const { result } = renderHook(() => usePromotions(rows, '2026-09-16', ON_AB))
     const first = result.current!.employeeId
     act(() => vi.advanceTimersByTime(PROMOTION_MS))
     expect(result.current).not.toBeNull()
@@ -57,14 +61,42 @@ describe('usePromotions — e‘lon navbati', () => {
   })
 
   it('kecha ko‘tarilgan yoki sana noma‘lum — e‘lon yo‘q', () => {
-    expect(renderHook(() => usePromotions(map(row('a', { promotedOn: '2026-09-15' })), '2026-09-16')).result.current).toBeNull()
-    expect(renderHook(() => usePromotions(map(row('a')), null)).result.current).toBeNull()
+    expect(renderHook(() => usePromotions(map(row('a', { promotedOn: '2026-09-15' })), '2026-09-16', ON_A)).result.current).toBeNull()
+    expect(renderHook(() => usePromotions(map(row('a')), null, ON_A)).result.current).toBeNull()
   })
 
   it('Legenda II ostonasi — «2 mlrd»', () => {
     const rows = map(row('a', { level: 6, legendaTier: 2, rankTitle: 'Legenda II' }))
-    const { result } = renderHook(() => usePromotions(rows, '2026-09-16'))
+    const { result } = renderHook(() => usePromotions(rows, '2026-09-16', ON_A))
     expect(result.current!.thresholdLabel).toBe('2 mlrd')
+  })
+
+  /*
+    MEDAL OYNASI TAXTA OYNASI EMAS. Daraja 2026-avgustdan beri yig'ilgan
+    puldan, taxta esa tanlangan davrdan — ya'ni bugun ko'tarilgan odam
+    «Bugun» taxtasida umuman bo'lmasligi mumkin. Agar shunday e'lon
+    «nishonlangan» deb belgilansa, o'sha odam taxtaga chiqqanda hech qachon
+    tabriklanmasdi: bir marta ko'rinmay yonib ketardi.
+  */
+  it('taxtada yo‘q ko‘tarilish sarflanmaydi — odam chizilganda e‘lon qilinadi', () => {
+    const rows = map(row('a'))
+    const { result, rerender } = renderHook(({ on }) => usePromotions(rows, '2026-09-16', on), {
+      initialProps: { on: new Set<string>() },
+    })
+    expect(result.current).toBeNull()
+
+    rerender({ on: ON_A })
+    expect(result.current!.employeeId).toBe('a')
+  })
+
+  it('taxtada yo‘q ko‘tarilish 8 soniyalik navbatni band qilmaydi', () => {
+    // 'a' xaritada birinchi, lekin chizilmagan — 'b' DARHOL gapiradi.
+    const rows = map(row('a'), row('b', { level: 2, rankTitle: 'Sotuvchi', levelFloor: uzs(10_000_000), nextLevelAt: uzs(30_000_000), nextTitle: 'Katta sotuvchi' }))
+    const onlyB = new Set(['b'])
+    const { result } = renderHook(() => usePromotions(rows, '2026-09-16', onlyB))
+    expect(result.current!.employeeId).toBe('b')
+    act(() => vi.advanceTimersByTime(PROMOTION_MS))
+    expect(result.current).toBeNull()
   })
 })
 

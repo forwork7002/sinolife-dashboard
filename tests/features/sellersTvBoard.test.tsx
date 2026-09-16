@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MedalDefs } from '@/features/sellers/MedalDefs'
 import { resetCelebrations } from '@/features/sellers/usePromotions'
-import type { SellerBoardDto, SellerMedalRowDto } from '@/lib/api'
+import type { MedalCode, SellerBoardDto, SellerMedalDto, SellerMedalRowDto } from '@/lib/api'
 import { formatFullUzs, formatUzs } from '@/lib/format'
 
 /**
@@ -780,5 +780,42 @@ describe('ko‘tarilish marosimi', () => {
     medals.set('154 Marjona Xayrullayeva', medalRow('154 Marjona Xayrullayeva', { promotedOn: '2026-09-15' }))
     render(<SellersColumn data={RIPE} {...PROPS} medals={medals} medalsToday="2026-09-16" />)
     expect(column('tv-sellers').queryByRole('status')).toBeNull()
+  })
+})
+
+/**
+ * YANGI MEDAL — OXIRGI YANGILANISHDA PAYDO BO'LGANI, va faqat o'sha.
+ *
+ * `useNewMedals` ni hook testlari o'lchaydi, `Medal`/`RowMedals` ning
+ * `newKeys` propini esa `sellersLavha.test.tsx`. Ular orasidagi SIM —
+ * ustun → jadval/podium → tokcha — hech qayerda tortilmagan edi: bir
+ * uchini uzsa, ikkala uchi ham yashil qolardi.
+ */
+describe('yangi medal ustundan tokchagacha', () => {
+  const extra = (key: string, code: MedalCode): SellerMedalRowDto => {
+    const base = MEDALS.get(key)!
+    const added: SellerMedalDto = { code, count: 1, at: '2026-09-16', amount: null, orders: null, percent: null }
+    return { ...base, medals: [...base.medals, added] }
+  }
+
+  it('qo‘shilgan medal seatda ham, qatorda ham kattalashib tushadi — va boshqa hech qayerda', () => {
+    const { rerender } = render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    // Birinchi payload hech narsani «yangi» demaydi.
+    expect(document.querySelectorAll('.medal-slot--new')).toHaveLength(0)
+
+    const grown = new Map(MEDALS)
+    grown.set('154 Marjona Xayrullayeva', extra('154 Marjona Xayrullayeva', 'day-winner')) // chempion seat
+    grown.set('Nodira 118 Karimova', extra('Nodira 118 Karimova', 'day-winner')) // jadval qatori
+    rerender(<SellersColumn data={RIPE} {...PROPS} medals={grown} />)
+
+    const col = document.getElementById('tv-sellers')!
+    const seat = column('tv-sellers').getByText(/154 Marjona Xayrullayeva/).closest('.podium-card')!
+    expect(seat.querySelector('.medal-rail .medal-slot--new svg[data-medal="day-winner"]')).not.toBeNull()
+
+    const rowEl = column('tv-sellers').getByText('Nodira 118 Karimova').closest('tr')!
+    expect(rowEl.querySelector('.tv-rowmedals .medal-slot--new svg[data-medal="day-winner"]')).not.toBeNull()
+
+    // Eski medal yangi emas, va boshqa hech kimniki ham.
+    expect(col.querySelectorAll('.medal-slot--new')).toHaveLength(2)
   })
 })

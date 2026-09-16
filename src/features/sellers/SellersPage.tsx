@@ -351,7 +351,11 @@ interface ColumnProps {
   onFakt: (choice: FaktChoice) => void
   /** Sotuvchi id si bo'yicha pagon. Komandalar ustuni uchun bo'sh Map. */
   medals: ReadonlyMap<string, SellerMedalRowDto>
-  /** `SellerMedalsDto.today` — e'lon `promotedOn` bilan shuni solishtiradi. 6-vazifa ishlatadi. */
+  /**
+   * `SellerMedalsDto.today` — e'lon lentasi `promotedOn` ni shu sana kaliti
+   * bilan solishtiradi, ya'ni «bugun» hisobot mintaqasida, brauzer soatida
+   * emas. So'rov kelmagan bo'lsa null va hech kim e'lon qilinmaydi.
+   */
   medalsToday: string | null
 }
 
@@ -642,8 +646,13 @@ function BoardColumn({
     ko'tarilgan odam shu ustunning qatorlari orasida. Komandalar ustuni
     e'lon qilmaydi: daraja shaxsiy, ROP komandasiga berilmaydi — shuning
     uchun unga bo'sh xarita beriladi (hook shartsiz chaqiriladi).
+
+    `onBoard` — shu ustunda chizilgan kalitlar: taxtada yo'q odamning
+    ko'tarilishi sarflanmaydi, chunki medal oynasi taxta oynasi emas.
+    `useMemo` SHART — to'plam effektning bog'liqliklarida turibdi.
   */
-  const promotion = usePromotions(tone === 'sellers' ? medals : EMPTY_MEDALS, medalsToday)
+  const onBoard = useMemo(() => new Set(entries.map((e) => e.key)), [entries])
+  const promotion = usePromotions(tone === 'sellers' ? medals : EMPTY_MEDALS, medalsToday, onBoard)
   const promotedName =
     promotion === null ? null : (entries.find((e) => e.key === promotion.employeeId)?.name ?? null)
   const newMedals = useNewMedals(medals)

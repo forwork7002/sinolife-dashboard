@@ -11,6 +11,12 @@ import type { MedalCode, SellerMedalRowDto } from '@/lib/api'
  * ko'radi. Manba — serverning `promotedOn` hosila fakti, brauzer xotirasi
  * emas: ikki televizor ham bir xil e'lon qiladi, tozalangan brauzer qayta
  * e'lon qilmaydi (sahifa sessiyasida bir marta — modul darajasidagi to'plam).
+ *
+ * «BIR MARTA» — KO'RINGAN BIR MARTA. Medal oynasi (2026-avgustdan beri) taxta
+ * oynasi emas, ya'ni bugun ko'tarilgan odam «Bugun» taxtasida umuman
+ * bo'lmasligi mumkin. Shuning uchun `onBoard` — shu ustunda HOZIR chizilgan
+ * kalitlar; unda yo'q ko'tarilish na navbatga qo'yiladi, na «nishonlangan»
+ * deb belgilanadi, ya'ni odam taxtaga chiqqan payload'da e'lon qilinadi.
  */
 export const PROMOTION_MS = 8_000
 
@@ -38,6 +44,8 @@ function thresholdLabelOf(level: number, legendaTier: number): string {
 export function usePromotions(
   rows: ReadonlyMap<string, SellerMedalRowDto>,
   today: string | null,
+  /** Shu ustunda hozir chizilgan kalitlar — memoizatsiya qilingan bo'lishi SHART. */
+  onBoard: ReadonlySet<string>,
 ): Promotion | null {
   const [queue, setQueue] = useState<readonly Promotion[]>([])
   const [current, setCurrent] = useState<Promotion | null>(null)
@@ -55,6 +63,13 @@ export function usePromotions(
         ko'pi bilan o'n daqiqa), lekin hech qachon erta emas.
       */
       if (row.promotedOn !== today || row.rankTitle === null) continue
+      /*
+        TAXTADA YO'Q ODAM SARFLANMAYDI — `celebrated.add` DAN OLDIN. Aks
+        holda ko'rinmaydigan e'lon o'z kalitini yoqib yuborardi va o'sha
+        odam taxtaga chiqqanda hech qachon tabriklanmasdi. Chetlab
+        o'tilgan qator keyingi payload'da yana ko'riladi.
+      */
+      if (!onBoard.has(row.employeeId)) continue
       const key = `${row.employeeId}:${row.level}:${row.legendaTier}`
       if (celebrated.has(key)) continue
       celebrated.add(key)
@@ -75,7 +90,7 @@ export function usePromotions(
     */
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (fresh.length > 0) setQueue((q) => [...q, ...fresh])
-  }, [rows, today])
+  }, [rows, today, onBoard])
 
   // Navbatdan bittasi ekranda; bo'shaganda keyingisi.
   useEffect(() => {

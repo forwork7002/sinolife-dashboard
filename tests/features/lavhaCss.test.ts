@@ -45,6 +45,21 @@ describe('lavha va medal — stylesheet', () => {
     expect(lavhaPart).not.toContain('--medal-')
   })
 
+  /*
+    E'LON USTUNNI SURMAYDI. Oqimda turgan banner paydo bo'lganda podiumni
+    ~50px pastga surar, sakkiz soniyadan keyin qaytarardi. Endi sarlavha
+    USTIDA suzadi — va kirish animatsiyasi `transform` ga TEGMASLIGI kerak,
+    chunki markazlashtirish ham o'sha xususiyatda: `transform` li keyframe
+    180 ms davomida uni bosib turib, keyin sakrardi.
+  */
+  it('e‘lon oqimdan tashqarida va kirishi `transform` ni bosmaydi', () => {
+    const rule = REGION.slice(REGION.indexOf('.tv-promo {'))
+    expect(rule.slice(0, rule.indexOf('\n}') + 2)).toContain('position: absolute')
+
+    const kf = REGION.slice(REGION.indexOf('@keyframes tv-promo-in'))
+    expect(kf.slice(0, kf.indexOf('\n}') + 2)).not.toContain('transform:')
+  })
+
   it('kamaytirilgan harakatda hech narsa qimirlamaydi', () => {
     const reduced = REGION.slice(REGION.lastIndexOf('@media (prefers-reduced-motion: reduce)'))
     for (const sel of ['.lavha__star--drop', '.lv-sheen', '.medal-slot--new', '.medal-speak', '.tv-promo']) expect(reduced, sel).toContain(sel)
