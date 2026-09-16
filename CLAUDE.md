@@ -422,7 +422,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Screen | URL | Feature | Endpoint(s) | Service → Repository | Window filters on |
 |---|---|---|---|---|---|
 | Savdo dinamikasi | `/analytics/sales` | `sales/SalesPage` + `ForecastSection` + `ConfirmationOutcomeSection` + `ConfirmationFaktSection` + `DeliveryBoardSection` | `/analytics/sellers` twice (the board, and `?include=faktTrend` for the chart) + `/insights/delivery` | SellerBoard, Pulse → SellerBoard, Pulse | the arrival in `C4:NEW` (`queued_at`) — **except the Доставка board, which has NO window at all**: a kanban column is where orders are standing now |
-| Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` — TWO MODES over ONE fetch: `cohort/SimpleView` («Oddiy», the default) and the matrix + `StateBars` («Batafsil»), chosen by `?mode=` | `/insights/cohorts`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | **nothing — the screen is DATELESS since 2026-09-15** (`period={false}`, like Struktura). `closedAt` on revenue-bearing WON deals is the clock both endpoints read; the matrix takes no window at all (`months` bounds which cohort ROWS are drawn and never the totals arm) and `/insights/concentration` resolves its OWN trailing 90 days (`trailingDays`). Nothing here reads `createdAtSource` |
+| Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` — TWO MODES over ONE fetch: `cohort/SimpleView` («Oddiy», the default) and the matrix + `StateBars` («Batafsil»), chosen by `?mode=`. The matrix itself has THREE readings of that one fetch — «Jami qaytgan» / «Oylik» / «Pul» — and ONE control that is a different question: `?rop=`, the acquiring team, which is its own cache entry and its own request | `/insights/cohorts`, `/insights/customers`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | **nothing — the screen is DATELESS since 2026-09-15** (`period={false}`, like Struktura), and it now carries TWO CLOCKS, each named on screen. `closedAt` on revenue-bearing WON deals is the clock the matrix and the concentration band read; `/insights/customers` reads `createdAtSource` over its OWN trailing 90 days, so its customer totals legitimately differ — never sum across them; the matrix takes no window at all (`months` bounds which cohort ROWS are drawn and never the totals arm) and `/insights/concentration` resolves its OWN trailing 90 days (`trailingDays`). Nothing here reads `createdAtSource` |
 | Reklama samarasi | `/marketing` | **PAUSED** — `shared/SectionPending`; `marketing/MarketingPage` is held, not mounted | none while paused (`/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` still answer) | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
@@ -677,6 +677,140 @@ Per-screen traps worth knowing before you touch one:
   wider — the grid's own `months` prop bounds COLUMNS, so the figure does not
   move under the 6 / 12 / Hammasi control. Both were re-measured against
   production on 2026-09-15 and held on every cohort.
+  **«MIJOZLAR OQIMI» IS MOUNTED — 2026-09-16.** The endpoint, the service, the
+  three repository statements, `src/lib/customerStates.ts`, `CustomerFlowChart`
+  and two test files had all shipped on 2026-09-15 and **nothing rendered
+  them**: the screen was one `useQuery` and a band away from the work being
+  finished. It is the first thing under «Batafsil» now — four tiles, the
+  new-vs-returning chart, sources, and today's silence.
+  **IT INTRODUCES THE SCREEN'S SECOND CLOCK, and both are named out loud.** The
+  band dates a customer from the day they ORDERED (`createdAtSource`);
+  everything below dates them from the day their first order was DELIVERED.
+  «Kogorta tahlili»'s hint gained «Yetkazilgan sana boʻyicha» in the same
+  change. The two customer totals differ on purpose and **must never be
+  summed**; unlabelled, they read as one of them being broken, which is the
+  first conclusion a reader reaches and the one nothing else corrects.
+  `cohortExplains.test.tsx` pins both sentences present at once.
+  **IT RESOLVES ITS OWN NINETY DAYS, server-side**, exactly as
+  `/insights/concentration` does and for the reason that route records: the
+  period control was removed on 2026-09-15, and an endpoint wired to a control
+  that does not exist is how the sibling came to report twelve customers under
+  a critical-red gauge. The span is printed from `meta.period`, not from the
+  literal 90, so changing the default moves the sentence with it.
+  **THE QUERY IS `enabled: mode === 'detail'` WITH A LITERAL KEY**, and both
+  halves matter. Gated, because every consumer is inside «Batafsil» and the
+  default is «Oddiy» — the plan's own snippet omitted this and it would have
+  been a discarded request on every cold load. Literal, because
+  `cohortStale.test.tsx` exists for the hazard a CHANGING key creates under a
+  DISABLED query: `providers.tsx` gives every query `placeholderData`, which
+  query-core applies with no `enabled` check, so `isPlaceholderData` latches
+  and nothing clears it. That file's source pin now names this key too, and
+  `stale=` is still absent from the page.
+  **THE BAND CARRIES SOʼM, NOT A THIRD «TAKRORIY TUSHUM ULUSHI»** — a
+  deliberate departure from the plan, which asked for a gauge there. That label
+  was already on this screen TWICE (whole history, and `RepeatShareCard`'s own
+  ninety days), and two was only acceptable because each names its own SPAN; a
+  third reading «soʻnggi 90 kun» would have put two ninety-day repeat shares,
+  on two different clocks, under one name. «Takroriy xarid tushumi» collides
+  with nothing and is the figure that share divides.
+  `cohortExplains.test.tsx` pins the count at exactly two.
+  **AND TWO PHRASES ARE OWNED BY ONE BLOCK EACH.** «bugungi holat» belongs to
+  the База card; the band's silence tile says «davrga bogʻliq emas» instead,
+  although it is also a snapshot. `getByText` throws on a second match, which
+  is what enforces it. The states block likewise does NOT redraw the portal's
+  own four-state verdict — it measures silence from order dates and points at
+  the База card rather than inviting a comparison.
+  **The sources card is TWO PANELS ON TWO CLOCKS, IN ONE ROW ORDER.** The count
+  is the band's ninety days; the repeat rate is the whole history on a fixed
+  ninety-day maturity horizon. The lower panel is never re-sorted — what makes
+  the pair readable as one answer is that the eye runs down ONE column of
+  labels, and sorting it would quietly turn one card into two.
+  **STILL UNVERIFIED AGAINST PRODUCTION** — the plan's Task 10 (a probe
+  asserting four invariants, then the timing) has not run: this checkout
+  cannot reach the database. The statements themselves were measured when they
+  shipped; what has never been checked is the band drawn end to end.
+  **EVERY CELL NOW PRINTS ITS OWN DENOMINATOR — 2026-09-16, on the client's
+  instruction to rebuild the screen around «foizlar va raqamlar bilan
+  koʻrsatilgan» matrix.** A cell said «12» and kept the headcount in a tooltip
+  and an `aria-label`, so the module's own opening claim — nothing here is a
+  number whose denominator the reader has to guess — was true only of a reader
+  with a pointer, and this table is read by a manager scanning a column.
+  «12 · 47» states both. `W_MONTH` 44 → **66**, measured from the widest pair
+  the grid can produce («100» at 11px tabular is 20.5px, the count at 9px
+  carries «11 500» in 32 — the summary row's «Oylik +0» cell is every
+  first-time buyer in the matrix at once). **The cost was taken deliberately:**
+  twelve months plus the 460px pinned block is 1 252px against ~988 on a
+  1280px laptop with the rail open, so that screen scrolls by ~264px where it
+  scrolled by ~10. The pinned block is sticky and «6 oy» is one press away.
+  The share is `data-share` and the count `data-count`, because «the grid's
+  figure» used to be `[data-heat]`'s whole `textContent` — which is what
+  `cohortAgreement.test.tsx` compares against «Oddiy»'s milestone to pin the
+  invariant the screen is built on. **A cell the reading cannot measure prints
+  no count either**: `· 0` under an em dash would report a measured zero where
+  the grid means «this month has not happened».
+  **A THIRD READING, «PUL», AND IT COSTS NO REQUEST.** `revenue` has ridden
+  every row since the matrix learned to print a cohort's money, so the money
+  view is arithmetic in the browser over the payload the other two readings
+  draw — the page still makes its two requests and the three readings cannot
+  disagree. A cell is the cohort's money **through** that month divided by the
+  cohort («13,5 ming»), with the multiple against its OWN first month beside
+  it («×1,4»). **CUMULATIVE ONLY, deliberately**: a single later month is
+  0–4% of the customers times one order, which is a sawtooth across a row and
+  noise down a column. **THE RAMP IS ON THE MULTIPLE, NOT ON THE SOʼM** — soʼm
+  cannot be banded (product mix and inflation move it and the grid goes one
+  colour), the multiple is scale-free, and it is printed in the cell so the
+  colour converts back. **«0» IS KEPT HERE AND DROPPED CUMULATIVELY, and the
+  two absences mean opposite things**: cumulatively that column is 0% for
+  every row there has ever been, in money it is the denominator every other
+  cell divides by — so it keeps its soʼm, loses its multiple (×1,00 is a
+  definition, not a measurement) and comes off the ramp. **AND THE COLUMN
+  COMPARES DOWN, which is the point**: the pinned «1 mijozga» column may not
+  be read down its column (`MONEY_YOUNG_MONTHS` — it ranks rows by AGE), and a
+  matrix column has no such defect because every cell in «+6» is a cohort at
+  six months old. The legend says so, because a reader who has taken the first
+  rule to heart will not assume the exception. The row's identity: **the last
+  MEASURED money cell equals the pinned «1 mijozga» figure**, by construction.
+  **THE FIVE MONEY BANDS ARE NOT MEASURED AGAINST PRODUCTION** (1,02 / 1,1 /
+  1,25 / 1,5) — the customer ramps were cut from measured ranges and nothing
+  has yet read the money curve on the live portal. A grid in one step is the
+  symptom and those five numbers are the whole fix.
+  **AND THE MATRIX CAN BE CUT BY THE TEAM THAT BROUGHT THE CUSTOMER IN —
+  `?rop=`, 2026-09-16.** The team is whoever made the customer's FIRST
+  delivered order, read from `deal."operatorTeamSource"` with the seller's
+  current department as the fallback: the same basis, in the same order, as
+  Logistika's per-ROP strip, so the two screens name teams identically.
+  **RETURNS ARE NOT RE-ATTRIBUTED** — a customer Sevinch acquired who buys
+  again from Charos is still Sevinch's returning customer. That makes it a
+  measure of WHOSE CUSTOMERS COME BACK and not of who does the retention work,
+  which on this portal is whoever answers the phone; the screen says so in
+  three sentences above the grid, built from the response's echoed `rop` and
+  never from the control, which holds the new team for one render while the
+  old rows are still drawn.
+  **A DIMENSION, NOT A SCOPE.** The route still declares `analytics:read:all`,
+  still refuses a narrowed account outright, and `ctx.scope` still reaches
+  nothing — cohort stays in the still-refusing list above and belongs there.
+  A ROP choosing to look at their own team and a ROP restricted to it are
+  different mechanisms and only the first exists.
+  **THE DEFAULT STATEMENT IS BYTE-IDENTICAL TO THE MEASURED ONE.** The
+  attribution CTEs, the `$3` filter and the team-list arm are INTERPOLATED, not
+  parameterised away, so a page that did not ask for the cut runs what it ran
+  before. This endpoint's plan is measured, not assumed — 566 ms once hid in a
+  single mis-estimated join — and charging every cold load a grouping, two
+  joins and a regexp per customer for a cut most readers never open is the
+  trade the wrong way round. `cohortsSql.test.ts` builds BOTH forms through a
+  fake client and pins it: the default statement contains no `employee` at
+  all. That file's old blanket ban on the word (a source-text assertion) is
+  gone; what it forbids now is a SCOPE predicate, in either form.
+  **THE SCOPED PATH IS UNMEASURED.** Nothing has run `EXPLAIN` on it — there is
+  no production database reachable from the checkout it was written in. Time
+  it from the app or from beside the database, never from a laptop in Tashkent
+  (see the payroll note for the probe that lied by a factor of ten).
+  **THE TEAM LIST RIDES `?include=rops`**, the same choice `/users` made for
+  its department heads, and the picker fetches it on the FIRST reach rather
+  than on load — its own cache key, `staleTime` five minutes, `months=3`
+  because that request throws its own matrix away. `База` and the
+  concentration band are NOT cut and say so: the follow-up cycle is run
+  centrally, so there is no acquiring team to partition it by.
   **TWO DIFFERENT THINGS ARE BOTH CALLED `months`, and confusing them is how
   you write a wrong sentence about this screen.** The **API parameter**
   (`COHORT_HISTORY_MONTHS` = 18 in `CohortPage`, `$2` in the statement) bounds
@@ -1510,6 +1644,165 @@ is hammering the portal four times over». It reports the attempts it made. The
 `QUERY_LIMIT_EXCEEDED` behind a bare «Bitrix24 responded 503» and kept the
 ten-minute wait from ever engaging: measured at 40 HTTP requests where 10 were
 expected.
+
+**THE GAUGE WAS ALWAYS ON THE WIRE AND NOTHING EVER READ IT — `portalMeter.ts`,
+2026-09-16.** Every successful Bitrix24 answer carries `time.operating` (seconds
+of operating time this method has already spent in the current basket, against
+the 480 s the portal allows per method per ten minutes) and
+`time.operating_reset_at` (when the basket empties). `Bitrix24Response` had no
+field for either, so `response.json()` parsed and discarded both on every call
+this integration has ever made. **Everything this file says about our own
+load — the 2 rps limiter, «107 requests into a closed door», the volumes in the
+support ticket — was therefore an estimate made from OUR side of the wire,
+against a limit only the portal can see**, and both blocks (2026-09-14, four
+hours; 2026-09-16 11:53, three entities) were diagnosed after the fact from
+`sync_log` row counts.
+
+`PortalGate` is what happens AFTER a refusal; the meter is what keeps us off
+the wall. They are deliberately separate — a tripped gate is a fact about the
+past, a basket at 70% is a fact about the next minute. Above `SOFT_FRACTION`
+(60%) `call()` paces, spreading what is left of the basket over what is left of
+the window; above `HARD_FRACTION` (85%) it waits the basket out, because there
+is nothing to pace INTO when the wall empties on a clock the portal hands us.
+**A stale reading is no reading** — once its `resetAt` passes it is discarded,
+or the meter would invent an outage of its own.
+
+**IT BILLS THE METHOD THAT WAS SPENT, NEVER THE TRANSPORT.** A chained walk
+sends `batch` and drains `crm.deal.list`'s basket fifty times over; filing that
+under «batch» would hide the only method the portal was ever going to refuse,
+which is exactly the blindness that made 2026-09-14 take a live probe against
+the portal to diagnose. The sub-readings come from `result.result_time` and the
+WORST is taken — the lowest is the state that method was in before this batch
+ran. `OVERLOAD_LIMIT` is administrative and portal-wide with no published
+threshold, so nothing here can promise to avoid it; what it can do is make our
+consumption a measured number. `meter.stats().peak` is what the next support
+ticket quotes.
+
+**`npm run bitrix:meter` asks `profile` once and prints all of it** — answering
+or refused, which code, whether to wait or to issue a new webhook, and how full
+the basket is. Safe during a block: it is the same method the gate probes with.
+
+**AND THE WALK STOPPED SENDING 48 COMMANDS NOBODY NEEDED — `CHAIN_MIN`.**
+`batchWalk` sent a fixed chain of FIFTY id-chained seeks on every call,
+including the once-a-minute incremental tick where the first command covers 50
+changed rows and the portal has perhaps five. Each of the other 49 resolves a
+`$result` reference to a row that does not exist; the portal executes,
+validates and refuses each one with `INVALID_ARG_VALUE` — which the walk
+correctly reads as «the data ended», and which is also fifty invocations of
+`crm.deal.list` billed to read five rows. **From here that is invisible**: one
+HTTP request a minute per entity, comfortably inside our own 2 rps limiter, is
+all our side of the wire sees. Counted at the deployed cadence — four HOT
+entities, one tick a minute, stage history walking two passes — it is **~288 000
+method invocations a day of which ~277 000 exist only to discover there was
+nothing more to read**, the largest single thing this integration does to the
+portal.
+
+A walk now OPENS at `CHAIN_MIN` (2) and WIDENS ×4 only when a chain comes back
+FULL, which is the walk proving there is more; a chain that runs dry ends the
+walk and **resets the width**, so the six-hourly sweep's widening cannot leave
+every tick after it paying fifty. The floor is 2 rather than 1 so an ordinary
+busy minute of 51–100 changed rows still finishes in one round trip. A full
+import pays three extra round trips at the start (2 + 8 + 32 + 50 + 50 …):
+`listDealIds` reaches 464 000 deals in 188 requests against the old 186. A
+quiet tick costs **8 invocations instead of 200**.
+
+**AND THE CEILING THAT MAKES IT NOT COME BACK — `portalBudget.ts`.** Everything
+else in that directory limits a RATE, and **the rate was never the problem**: 2
+requests a second was true for every second of both blocks. What earned them was
+VOLUME, and a rate limiter has no memory — it answers «may this leave now», never
+«how much have we asked for today». `PortalBudget` is that memory: a rolling
+60-minute ceiling on INVOCATIONS, enforced inside `call()` below every caller
+(the engine, the sweep, `scripts/import.ts`, a hand-run resync). Above 70% it
+paces; at the ceiling it **refuses locally and sends nothing** until the window
+drains. Refusing is safe wherever it lands — `listDealIds` throws rather than
+returning a short read, `sweepByAntiJoin` will not delete on an empty source, and
+no watermark advances except after a clean run — so a refusal costs freshness and
+nothing else.
+
+`DEFAULT_HOURLY_INVOCATIONS` is **15 000**, sized against the measured cadence:
+an ordinary hour ≈ 500, a reference hour ≈ 600, the sweep's hour ≈ 9 800 — and
+the OLD hot path alone ≈ 12 000, so a regression to the fixed fifty-command
+chain trips it **inside one hour** instead of surfacing days later as a 401. It
+is `BITRIX24_HOURLY_INVOCATIONS`, so a portal under strain can be throttled
+**without a deploy**, which is the one thing nobody could do during either block.
+`scripts/import.ts` raises it to 250 000 — a full import is a deliberate act
+somebody is watching, and sizing the worker's ceiling for a run that happens
+twice a year would defeat having one. **A budget refusal must not trip
+`PortalGate`**: the portal never said no, we did, and tripping it would put
+«Bitrix24 band» on the freshness chip over our own accounting.
+`classifyRefusal` returns `null` for `LOCAL_BUDGET_EXCEEDED` — listed BY NAME in
+`NOT_A_REFUSAL`, because the bare-401 fallback would otherwise sweep it into
+`CREDENTIAL` and tell an operator to go and issue a new webhook for a portal that
+is answering every call.
+
+**AND A SELF-IMPOSED STOP READS AS OURS, ALL THE WAY TO THE CHIP.** Three things
+had to line up or it would have reported as a Bitrix24 outage:
+*the code has to survive the MESSAGE* — `sync_log` stores text and
+`syncErrorCode` recovers the code from it with a regex, so a code carried only on
+the error's `code` field reaches the header as «UNKNOWN», which is the one word
+nobody can act on; `SELF_LIMIT_CODE` is therefore one exported constant and it is
+printed at the front of the thrown message.
+*the chip needs a fifth reading* — `AlertsDto.syncError.kind` gains `SELF_LIMIT`,
+and **it is NOT a `RefusalClass`**: that union answers «what should the CALLER
+do» and `PortalGate` switches on it, so a fifth member there would fall into the
+THROTTLE/CREDENTIAL branch and shut the gate over our own accounting. The two
+were already joined by `?? 'UNKNOWN'`, which is the seam. The union is
+hand-mirrored in `src/lib/api.ts` and `Shell.tsx` — **nothing checks the mirror**.
+*and the sentence has to say so*: «Dashboard oʻzini toʻxtatdi… Bitrix24 sogʻlom»,
+not «Bitrix24 dan maʼlumot olinmayapti — texnik yordam kerak».
+The worker prints the same judgement with the remedy attached, naming the three
+methods that spent the hour.
+
+**THE HONEST COST OF THE CEILING: a cold start on an EMPTY database will hit
+it.** The first walks are millions of rows — ~9 300 invocations for the deals
+alone and far more for stage history — so an unattended worker filling a fresh
+database makes progress at 15 000 invocations an hour instead of running flat
+out. That is the intended behaviour and not a bug to route around:
+`npm run bitrix:import` is the path built for that case and raises the ceiling
+to 250 000. The worker's log says exactly this when it trips.
+
+**THE TEST IS THE GUARANTEE, NOT THE COMMENT.** `portalBudget.test.ts` walks a
+simulated hour of the deployed cadence against a portal where nothing changed
+and counts what would have been asked for: **241 requests, 481 invocations** —
+pinned EXACTLY rather than bounded, because a range absorbs a new pass without
+anybody noticing it was added, and «one more entity, it is only fifty commands»
+is how the old number reached ~15 000 an hour in the first place. Widen the chain back, add a pass nobody costed, or make
+a walk re-read its window, and the number moves THERE before it moves on the
+portal.
+
+**TWO CADENCES WENT WITH IT, 2026-09-16.** The **deletion sweep** is DAILY
+(`SYNC_SWEEP_EVERY` 1440, was 360): the narrow chain took the hot path to
+~11 500 a day and did not touch the sweep, which walks a fixed 464 396 ids
+however narrow the chain is — so at four bursts a day it had become **three
+quarters of everything we spend** (37 200 against 11 500). One burst is ~9 300.
+A deleted deal can now be counted here for up to a DAY; read a day-old test deal
+as this setting. The **reference pass** is THREE-HOURLY (`SYNC_REFERENCE_EVERY`
+180, was 30): departments, employees, products, pipelines, stages, sources and
+stores change a few times a MONTH and were being re-read 48 times a day, and
+`PRODUCTS`/`STOCK` page `catalog.*` fifty rows at a time so the pass is dozens of
+requests, not one. A new department head now reaches the org chart and a TEAM
+account's scope up to three hours later; `npm run bitrix:resync -- DEPARTMENTS
+EMPLOYEES` does it in seconds when a hand-over has to land now.
+
+**`SYNC_REFERENCE_EVERY` IS SET IN `.do/app.yaml`, SO THE CODE DEFAULT ALONE
+CHANGES NOTHING IN PRODUCTION** — and the LIVE spec overrides the committed one
+again (see *Deploy*: take the live spec, edit it, apply that). A cadence changed
+in one of the three places and not the others is invisible and silent, which is
+how it would come back.
+
+**THE WHOLE DAY, BEFORE AND AFTER:** hot path 288 000 → 11 500, sweep 37 200 →
+9 300, reference ~48 passes → 8. **~330 000 → ~21 000 method invocations a day,
+a 94% cut**, with no change to what any screen reads.
+
+**WHAT THAT LEAVES, AND WHERE THE NEXT LEVER IS.** ~288 000 → ~11 500
+invocations a day on the hot path, against the deletion sweep's unchanged
+~37 200 (4 runs × 186 requests × 50 commands). **The sweep is now ~75% of
+everything we spend**, so if blocks continue it is the next thing to cut, and
+it is one environment variable: `SYNC_SWEEP_EVERY` (360 today, see the
+six-hourly note above for what raising it costs — a deleted deal survives that
+much longer here). `tests/integrations/portalMeter.test.ts` pins the gauge and
+the request-versus-invocation gap; `bitrix24.test.ts` pins the narrow opening
+and the widening, by counting the commands the walk actually sent.
 
 - **THE CHIP NAMED ONE ENTITY FOR A PORTAL-WIDE OUTAGE.** `syncError.entity` is
   whichever pass failed LAST, so an hour with every number on every screen

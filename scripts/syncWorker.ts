@@ -57,7 +57,11 @@ import { createSyncHandlers } from '../src/server/integrations/crm/sync/handlers
 import { PrismaSyncStore } from '../src/server/integrations/crm/sync/PrismaSyncStore'
 import { SyncEngine } from '../src/server/integrations/crm/sync/SyncEngine'
 import { historyBackfillCursor } from '../src/server/integrations/crm/sync/backfill'
-import { classifyRefusal, refusalCode } from '../src/server/integrations/crm/bitrix24/refusal'
+import {
+  classifyRefusal,
+  refusalCode,
+  SELF_LIMIT_CODE,
+} from '../src/server/integrations/crm/bitrix24/refusal'
 import type { RefusalClass } from '../src/server/integrations/crm/bitrix24/refusal'
 import { FRESHNESS_ENTITIES } from '../src/server/repositories/referenceRepository'
 
@@ -72,8 +76,27 @@ if (!DATABASE_URL || !WEBHOOK_URL) {
 /** Seconds between ticks. One minute is the design point. */
 const INTERVAL_SEC = Number(process.env.SYNC_INTERVAL_SEC ?? 60)
 
-/** How many ticks between reference-data refreshes. Default: every 30 minutes. */
-const REFERENCE_EVERY = Number(process.env.SYNC_REFERENCE_EVERY ?? 30)
+/**
+ * How many ticks between reference-data refreshes. Default: every three hours.
+ *
+ * WAS THIRTY MINUTES, AND NOTHING IT READS MOVES THAT FAST. Departments,
+ * employees, products, pipelines, stages, sources and stores change a few times
+ * a MONTH — the file header says so — and this pass was asking the portal about
+ * all of them 48 times a day. `PRODUCTS` and `STOCK` page through
+ * `catalog.*` fifty rows at a time, so the pass is not one request but dozens.
+ *
+ * Three-hourly is 8 passes a day instead of 48. What that delays: a new
+ * department head named in Bitrix24 reaches the org chart, the ROP picker and
+ * a TEAM account's scope up to three hours later instead of thirty minutes.
+ * Nobody's money moves — every analytic reads `employee."departmentId"`, which
+ * this pass writes, and a head appointed at eleven who appears at two is not a
+ * reporting error. If a specific hand-over needs to land now,
+ * `npm run bitrix:resync -- DEPARTMENTS EMPLOYEES` does it in seconds.
+ *
+ * `CALLS` rides this clock too (see HOT below), so call history now accumulates
+ * eight times a day rather than 48. Nothing reads `call_record`.
+ */
+const REFERENCE_EVERY = Number(process.env.SYNC_REFERENCE_EVERY ?? 180)
 
 /**
  * How many ticks between Roistat imports. Default: hourly.
@@ -117,13 +140,31 @@ const ROISTAT_EVERY = Number(process.env.SYNC_ROISTAT_EVERY ?? 60)
  *
  * 24 bursts a day become 4: 4 320 requests → 720, with no change to the walk,
  * to `sweepByAntiJoin` or to the short-read guard, so nothing about correctness
- * moves. WHAT IT COSTS: a deal deleted in the portal can now be counted here
- * for up to six hours instead of one. That is a deliberate trade — read a
- * six-hour-old test deal as this setting, not as a sync fault.
+ * moves.
+ *
+ * DAILY SINCE 2026-09-16, FOR THE SAME REASON ONE STEP FURTHER, AND BECAUSE IT
+ * IS NOW THE LARGEST THING LEFT.
+ *
+ * The narrow chain (`CHAIN_MIN` in the provider) took the hot path from
+ * ~288 000 method invocations a day to ~11 500. That did not touch the sweep,
+ * which walks a fixed 464 396 ids however narrow the chain is — so at six
+ * bursts a day it went from a third of our volume to about THREE QUARTERS of
+ * it: 37 200 invocations against the hot path's 11 500. Cutting the biggest
+ * remaining item is the whole of this instruction.
+ *
+ * One burst a day, ~9 300 invocations. Nothing about the walk,
+ * `sweepByAntiJoin` or the short-read guard moves; correctness is untouched.
+ *
+ * WHAT IT COSTS, SAID PLAINLY: a deal deleted in the portal can be counted
+ * here for up to a DAY. Read a day-old test deal as this setting, not as a
+ * sync fault — and if the client wants the old latency back, it is
+ * `SYNC_SWEEP_EVERY` on the deployed app and no deploy. The cheaper thing to
+ * do first is to ask whether the number they are checking is one a deletion
+ * would move at all.
  *
  * Set to 0 to switch it off.
  */
-const SWEEP_EVERY = Number(process.env.SYNC_SWEEP_EVERY ?? 360)
+const SWEEP_EVERY = Number(process.env.SYNC_SWEEP_EVERY ?? 1440)
 
 /**
  * How far back the stage history is re-read once, at startup. Default: 45 days.
@@ -706,6 +747,11 @@ async function main() {
 
     const entities = tick % REFERENCE_EVERY === 0 ? [...REFERENCE, ...HOT] : HOT
 
+    // Zeroed per tick, so the line below reports THIS tick's cost rather than
+    // the process total. The baskets are kept — they belong to the portal's
+    // ten-minute clock, not to ours.
+    provider.meter.resetCounters()
+
     try {
       const results = await engine.runAll(entities, 'INCREMENTAL')
       const changed = results.reduce((sum, r) => sum + r.recordsCreated + r.recordsUpdated, 0)
@@ -736,6 +782,32 @@ async function main() {
           is the only place an operator will be looking before the client
           phones — so it names the act rather than the symptom.
         */
+        /*
+          OUR OWN CEILING NAMES ITSELF, AND NAMES THE REMEDY.
+
+          A budget refusal is not a portal fault and not something to wait out —
+          either a regression is spending the hour or the ceiling is genuinely
+          too low for what this worker has been asked to do (a cold start on an
+          empty database is the honest case: the first walks are millions of
+          rows and `npm run bitrix:import` is the path built for it). Both are
+          acted on, not waited on, so the line says which and what to look at.
+        */
+        const budgetNow = provider.budget.state(new Date())
+        if (failed.some((r) => r.errorMessage?.includes(SELF_LIMIT_CODE))) {
+          console.error(
+            `  ${stamp()} ✗ soatlik chaqiruv chegarasi toʻldi` +
+              ` (${budgetNow.spent}/${budgetNow.ceiling}) — portal aybdor EMAS.` +
+              ` Eng koʻp sarflagan: ${
+                budgetNow.byMethod
+                  .slice(0, 3)
+                  .map((m) => `${m.method} ${m.invocations}`)
+                  .join(', ') || 'yoʻq'
+              }.` +
+              ' Regressiya boʻlmasa BITRIX24_HOURLY_INVOCATIONS ni koʻtaring;' +
+              ' toʻliq import uchun `npm run bitrix:import` ishlating.',
+          )
+        }
+
         const gate = provider.gate.state()
         if (gate.kind === 'CREDENTIAL') {
           console.error(
@@ -751,6 +823,47 @@ async function main() {
         }
       } else {
         failures = 0
+        /*
+          WHAT THIS TICK COST THE PORTAL, IN THE PORTAL'S OWN UNITS.
+
+          Two portal-wide blocks were diagnosed after the fact from `sync_log`
+          row counts, and the support ticket opened after the first one had to
+          estimate our request volume from this side of the wire. It is a
+          measurement now: HTTP requests, the method invocations they carried
+          (a `batch` is one of the first and up to fifty of the second), and
+          the fullest basket the portal reported.
+
+          Printed only when a basket is worth reporting or a pace was applied,
+          so a healthy idle minute stays silent — the same rule as `changed`
+          below, and for the same reason.
+        */
+        const cost = provider.meter.stats()
+        const hottest = cost.peak[0]
+        const budget = provider.budget.state(new Date())
+        if (cost.waits > 0 || (hottest && hottest.pct >= 25) || budget.pct >= 50) {
+          console.log(
+            `  ${stamp()} portal: ${cost.requests} soʻrov / ${cost.invocations} chaqiruv` +
+              `, soatlik ${budget.spent}/${budget.ceiling} (${budget.pct}%)` +
+              (hottest ? `, eng band: ${hottest.method} ${hottest.operating}s (${hottest.pct}%)` : '') +
+              (cost.waits > 0 ? `, ${cost.waits} marta sekinlashtirildi` : ''),
+          )
+        }
+        /*
+          THE CEILING IS NOT A QUIET SETTING. It sits ~30× above an ordinary
+          hour, so reaching three quarters of it means something regressed —
+          the chain width, a restart loop, a new pass nobody costed. Said here,
+          once, with the spenders named, because the alternative is finding out
+          from a 401 several days later, which is how both blocks were found.
+        */
+        if (budget.pct >= 75) {
+          console.warn(
+            `  ${stamp()} ⚠ soatlik chaqiruv chegarasiga yaqin: ${budget.pct}% —` +
+              ` ${budget.byMethod
+                .slice(0, 3)
+                .map((m) => `${m.method} ${m.invocations}`)
+                .join(', ')}`,
+          )
+        }
         // Silent when nothing moved: a worker that logs every idle minute
         // buries the ticks that did something.
         if (changed > 0) {

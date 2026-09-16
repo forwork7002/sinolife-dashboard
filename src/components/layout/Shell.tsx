@@ -1476,7 +1476,7 @@ function DataSourceBadge({
    */
   syncError?: {
     readonly code: string
-    readonly kind: 'THROTTLE' | 'CREDENTIAL' | 'METHOD' | 'TRANSIENT' | 'UNKNOWN'
+    readonly kind: 'THROTTLE' | 'CREDENTIAL' | 'METHOD' | 'TRANSIENT' | 'SELF_LIMIT' | 'UNKNOWN'
     readonly entity: string
     readonly entities: number | null
     readonly at: string
@@ -1530,6 +1530,13 @@ function DataSourceBadge({
   const credential = syncError?.kind === 'CREDENTIAL'
   const blocked = !isDemo && syncError != null && (sync.stale || credential)
   const throttled = syncError?.kind === 'THROTTLE'
+  /*
+    OUR OWN CEILING, NOT THE PORTAL'S — see `portalBudget.ts`. Reported as an
+    outage it would read «Bitrix24 dan maʼlumot olinmayapti» over a portal that
+    is answering every call, and send somebody to open a support ticket about
+    a number this repository chose.
+  */
+  const selfLimited = syncError?.kind === 'SELF_LIMIT'
 
   const badge = (
     <span
@@ -1615,7 +1622,9 @@ function DataSourceBadge({
             ? 'Bitrix24 oʻz API sini vaqtincha bloklagan — yangilanish oʻzi tiklanadi, hech narsa qilish shart emas.'
             : credential
               ? 'Bitrix24 webhook kaliti ishlamayapti — portalda yangi kalit ochilib, dashboardga qoʻyilishi kerak. Oʻzi tiklanmaydi.'
-              : 'Bitrix24 dan maʼlumot olinmayapti — texnik yordam kerak.'
+              : selfLimited
+                ? 'Dashboard oʻzini toʻxtatdi: soatlik soʻrov chegarasi toʻldi. Bitrix24 sogʻlom — sabab bizda, logdagi «eng band» metodga qarang.'
+                : 'Bitrix24 dan maʼlumot olinmayapti — texnik yordam kerak.'
         }${outageSince ? ` ${outageSince} dan beri.` : ''} (${syncError?.code}, ${failingScope})`
       : lastSyncHint
 

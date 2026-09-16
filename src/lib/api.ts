@@ -262,7 +262,8 @@ export interface AlertsDto {
   readonly syncError: {
     readonly code: string
     /** THROTTLE clears itself; CREDENTIAL needs a person. See the server DTO. */
-    readonly kind: 'THROTTLE' | 'CREDENTIAL' | 'METHOD' | 'TRANSIENT' | 'UNKNOWN'
+    // Mirrors AlertsDto.syncError.kind вЂ” nothing checks the mirror, edit both.
+    readonly kind: 'THROTTLE' | 'CREDENTIAL' | 'METHOD' | 'TRANSIENT' | 'SELF_LIMIT' | 'UNKNOWN'
     readonly entity: string
     /** How many entities are failing; null when it could not be bounded. */
     readonly entities: number | null

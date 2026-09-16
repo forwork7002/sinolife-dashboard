@@ -87,6 +87,17 @@ async function main() {
       rateLimitRps: Number(process.env.BITRIX24_RATE_LIMIT_RPS ?? 2),
       requestTimeoutMs: Number(process.env.BITRIX24_REQUEST_TIMEOUT_MS ?? 30_000),
       callHistoryMonths: Number(process.env.BITRIX24_CALL_MONTHS ?? 1),
+      /*
+        A FULL IMPORT IS ALLOWED TO BE EXPENSIVE, BECAUSE SOMEBODY IS WATCHING IT.
+
+        The rolling-hour ceiling in `portalBudget.ts` is sized for the worker —
+        an unattended process that must never spend its way into another
+        portal-wide block. This is the opposite case: a person ran it, on
+        purpose, and knows what it costs. Raising the ceiling here is better
+        than setting the worker's high enough to cover a run that happens twice
+        a year, which would defeat the whole point of having one.
+      */
+      hourlyInvocations: Number(process.env.BITRIX24_HOURLY_INVOCATIONS ?? 250_000),
       onProgress: (m) => console.log(`  ${stamp()} ${m}`),
     })
 

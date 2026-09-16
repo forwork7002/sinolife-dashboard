@@ -64,11 +64,20 @@ import {
 } from './mapping'
 import { RateLimiter, backoffDelayMs, sleep } from './rateLimiter'
 import { PortalGate } from './portalGate'
+import { PortalMeter, type PortalTime } from './portalMeter'
+import { PortalBudget } from './portalBudget'
+import { SELF_LIMIT_CODE } from './refusal'
 import { classifyRefusal } from './refusal'
 
 export interface Bitrix24ProviderOptions {
   readonly webhookUrl: string
   readonly rateLimitRps?: number
+  /**
+   * Invocations per rolling hour before calls are refused locally. Defaults to
+   * `DEFAULT_HOURLY_INVOCATIONS`, which is sized for the worker; a deliberate
+   * full import raises it.
+   */
+  readonly hourlyInvocations?: number
   readonly requestTimeoutMs?: number
   readonly maxRetries?: number
   readonly fetchImpl?: typeof fetch
@@ -118,6 +127,13 @@ interface Bitrix24Response<T> {
   readonly total?: number
   readonly error?: string
   readonly error_description?: string
+  /**
+   * The portal's own meter, parsed and discarded on every call this
+   * integration has ever made until 2026-09-16. See `portalMeter.ts`: this is
+   * the number `OPERATION_TIME_LIMIT` is measured against, and the only
+   * evidence about our load that comes from the side that does the blocking.
+   */
+  readonly time?: PortalTime
 }
 
 export class Bitrix24Error extends Error {
@@ -173,6 +189,38 @@ export function isCredentialFailure(message: string | null | undefined): boolean
 const LIST_PAGE = 50
 /** Commands per batch request. The portal's hard limit. */
 const BATCH_SIZE = 50
+
+/**
+ * Commands a walk opens with, and how fast it widens.
+ *
+ * THE 48 COMMANDS NOBODY NEEDED. Every `batchWalk` sent a fixed chain of fifty
+ * seeks, on a once-a-minute incremental tick where the first one covers 50
+ * changed rows and the portal has perhaps five. The other 49 each resolve a
+ * `$result` reference to a row that does not exist, and the portal executes,
+ * validates and refuses each of them — `INVALID_ARG_VALUE`, which the walk
+ * reads as «the data ended» and which is exactly right. It is also fifty
+ * invocations of `crm.deal.list` billed for five rows.
+ *
+ * Counted over a day at the deployed cadence — four hot entities, one tick a
+ * minute, plus a second pass for stage history — that is ~360 000 method
+ * invocations a day, of which ~355 000 exist only to discover that there was
+ * nothing more to read. It is the largest single thing this integration does
+ * to the portal, and it is invisible from here: one HTTP request a minute per
+ * entity, well inside our own 2 rps limiter, is what our side of the wire sees.
+ *
+ * So a walk OPENS narrow and WIDENS only when it proves it needs to. A chain
+ * that comes back full means there is more data, and the next round trip asks
+ * for four times as much; a chain that runs dry ends the walk and resets. A
+ * quiet tick costs 2 invocations instead of 50. A full import pays three extra
+ * round trips at the start of a 186-request walk and is otherwise unchanged —
+ * measured against `listDealIds`: 2 + 8 + 32 + 50 + 50 … reaches 464 000 deals
+ * in 188 requests against the old 186.
+ *
+ * The floor is 2 rather than 1 so a tick with 51–100 changed rows still
+ * finishes in one round trip, which is the ordinary busy minute on this portal.
+ */
+const CHAIN_MIN = 2
+const CHAIN_GROWTH = 4
 const DEAL_SELECT = [
   'ID', 'TITLE', 'CATEGORY_ID', 'STAGE_ID', 'STAGE_SEMANTIC_ID',
   'OPPORTUNITY', 'CURRENCY_ID', 'ASSIGNED_BY_ID', 'CONTACT_ID',
@@ -246,6 +294,30 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * state; everything else in the system reaches it only through `call()`.
    */
   readonly gate = new PortalGate()
+  /**
+   * Separate from the gate on purpose: the gate is a fact about a refusal that
+   * has already happened, the meter is a fact about the basket we are spending
+   * right now. Public because the worker prints it and the support ticket
+   * quotes it.
+   */
+  readonly meter = new PortalMeter()
+
+  /**
+   * How wide each method's walk is currently asking. Keyed by METHOD, so the
+   * six-hourly sweep's widening resets the moment its walk ends and the next
+   * incremental tick opens narrow again.
+   */
+  private readonly chains = new Map<string, number>()
+
+  /**
+   * The last line: what this process may ask for in any rolling hour.
+   *
+   * The chain width and the meter are what keep us far below it. If this ever
+   * refuses a call, something has regressed — and refusing is the point, because
+   * the alternative is spending our way into another portal-wide block and
+   * finding out days later from a 401.
+   */
+  readonly budget: PortalBudget
   private readonly timeoutMs: number
   private readonly maxRetries: number
   private readonly fetchImpl: typeof fetch
@@ -292,6 +364,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
 
     this.webhookUrl = options.webhookUrl.replace(/\/+$/, '') + '/'
     this.limiter = new RateLimiter(options.rateLimitRps ?? 2)
+    this.budget = new PortalBudget(options.hourlyInvocations)
     this.timeoutMs = options.requestTimeoutMs ?? 30_000
     this.maxRetries = options.maxRetries ?? 3
     this.fetchImpl = options.fetchImpl ?? fetch
@@ -309,8 +382,17 @@ export class Bitrix24CrmProvider implements CrmProvider {
   private async call<T>(
     method: string,
     params: Record<string, unknown>,
-    options: { bypassGate?: boolean } = {},
+    options: { bypassGate?: boolean; meterAs?: string; invocations?: number } = {},
   ): Promise<Bitrix24Response<T>> {
+    /*
+      THE METERED METHOD IS NOT ALWAYS THE TRANSPORT.
+
+      A chained walk sends `batch` and spends `crm.deal.list`'s basket fifty
+      times over. Filing that under «batch» would hide the only method the
+      portal was ever going to refuse, which is exactly the blindness that made
+      2026-09-14 take a live probe to diagnose.
+    */
+    const metered = options.meterAs ?? method
     let lastError: unknown
     /*
       THE ATTEMPTS MADE, NOT THE ATTEMPTS ALLOWED.
@@ -341,8 +423,78 @@ export class Bitrix24CrmProvider implements CrmProvider {
         }
       }
 
+      /*
+        THE CEILING, AND IT IS DELIBERATELY THE LAST LINE.
+
+        Everything above limits a RATE, and the rate was never what earned the
+        blocks — 2 rps was true for every second of both of them. This is the
+        only thing in the process that remembers how much we have asked for,
+        and the only thing a regression cannot quietly walk past. A refusal
+        here is safe wherever it lands: `listDealIds` throws rather than
+        returning a short read, the sweep will not delete on an empty source,
+        and no watermark advances except after a clean run.
+      */
+      if (!options.bypassGate) {
+        const invocations = options.invocations ?? 1
+        const budgetWait = this.budget.waitMs(invocations, new Date())
+        if (!Number.isFinite(budgetWait)) {
+          const state = this.budget.state(new Date())
+          throw new Bitrix24Error(
+            /*
+              THE CODE GOES IN THE MESSAGE, because the message is what survives.
+              `sync_log` stores text, and `syncErrorCode` recovers the code from
+              it with a regex — so a code that lives only on the error's `code`
+              field reaches the header chip as «UNKNOWN», which is the one thing
+              an operator cannot act on.
+            */
+            `${SELF_LIMIT_CODE}: soatlik cheklov ${state.spent}/${state.ceiling} chaqiruv` +
+              ` — "${metered}" yuborilmadi (eng koʻp: ${
+                state.byMethod
+                  .slice(0, 3)
+                  .map((m) => `${m.method} ${m.invocations}`)
+                  .join(', ') || 'yoʻq'
+              })`,
+            undefined,
+            false,
+            SELF_LIMIT_CODE,
+            method,
+          )
+        }
+        if (budgetWait > 0) await sleep(budgetWait)
+        /*
+          ATTRIBUTED TO THE WALKED METHOD, NOT TO `batch`, for the same reason
+          the meter is. A trip exists to NAME the regression, and every chained
+          walk in this file sends `batch` — so a breakdown keyed on the
+          transport would report «batch 14 900» and leave whoever is reading it
+          exactly where they started.
+        */
+        this.budget.spend(metered, invocations, new Date())
+      }
+
+      /*
+        PACE AGAINST THE PORTAL'S BASKET, NOT AGAINST OUR OWN GUESS.
+
+        The rate limiter answers «how fast may we send», which is a rule we
+        chose. This answers «how much has the portal already billed this
+        method», which is the rule the portal enforces — and it is the one that
+        was never consulted. A probe is exempt: its entire job is to ask
+        whether the door has opened, and holding it back would only lengthen an
+        outage we can already see.
+      */
+      if (!options.bypassGate) {
+        const meterWait = this.meter.waitMs(metered, new Date())
+        if (meterWait > 0) {
+          this.progress(
+            `  portal hisoblagichi: ${metered} ${this.meter.operating(metered)}s —` +
+              ` ${Math.round(meterWait / 1000)}s kutiladi`,
+          )
+          await sleep(meterWait)
+        }
+      }
+
       attempts += 1
       await this.limiter.acquire()
+      this.meter.countRequest(options.invocations ?? 1)
       const controller = new AbortController()
       /**
        * A batch is fifty queries in one request, so it deserves fifty times
@@ -430,6 +582,17 @@ export class Bitrix24CrmProvider implements CrmProvider {
         // The door is open. Whatever we were waiting out is over — and this is
         // also how a successful probe closes the gate.
         this.gate.noteSuccess(method, new Date())
+        /*
+          READ THE METER BEFORE HANDING THE ROWS ON.
+
+          A batch reports the basket of each command it carried under
+          `result.result_time`, and the outer `time` describes the batch method
+          itself. Both are filed: the sub-readings under the method that was
+          actually spent, which is the one that gets refused.
+        */
+        const at = new Date()
+        this.meter.record(method, payload.time, at)
+        if (metered !== method) this.meter.record(metered, subcommandTime(payload.result), at)
         return payload
       } catch (error) {
         lastError = error
@@ -555,18 +718,26 @@ export class Bitrix24CrmProvider implements CrmProvider {
     const base = encodeParams(params)
     const prefix = `${method}?${base ? `${base}&` : ''}${orderQuery}`
 
+    // Narrow until proven otherwise — see CHAIN_MIN. `refPath` still reaches
+    // the 50th row of the previous command, because that is the page size the
+    // portal returns, not the number of commands we sent.
+    const chain = Math.min(BATCH_SIZE, Math.max(CHAIN_MIN, this.chains.get(method) ?? CHAIN_MIN))
+
     const cmd: Record<string, string> = {
       // `>ID` needs no encoding: it contains no `=`, which is the character
       // that would otherwise split the key from the value.
       c0: `${prefix}&${filterKey}[>ID]=${encodeURIComponent(afterId)}&start=-1`,
     }
-    for (let i = 1; i < BATCH_SIZE; i++) {
+    for (let i = 1; i < chain; i++) {
       cmd[`c${i}`] = `${prefix}&${filterKey}[>ID]=$result[c${i - 1}]${refPath}&start=-1`
     }
 
     const payload = await this.call<{ result?: Record<string, unknown>; result_error?: unknown }>(
       'batch',
       { halt: 0, cmd },
+      // Billed to the walked method's basket, and `chain` invocations — not
+      // the one HTTP request our own limiter counts.
+      { meterAs: method, invocations: chain },
     )
 
     const errors = (payload.result?.result_error ?? {}) as Record<
@@ -578,7 +749,13 @@ export class Bitrix24CrmProvider implements CrmProvider {
     const rows: T[] = []
     const seen = new Set<string>()
 
-    for (let i = 0; i < BATCH_SIZE; i++) {
+    /** A walk that ended: reset the width so the next one opens narrow. */
+    const ended = (): { rows: T[]; done: true } => {
+      this.chains.delete(method)
+      return { rows, done: true }
+    }
+
+    for (let i = 0; i < chain; i++) {
       const error = errors[`c${i}`]
 
       if (error) {
@@ -596,7 +773,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
          * a short page here would look identical to "no more data" and would
          * truncate the import without a word.
          */
-        if (i > 0 && error.error === 'INVALID_ARG_VALUE') return { rows, done: true }
+        if (i > 0 && error.error === 'INVALID_ARG_VALUE') return ended()
 
         throw new Bitrix24Error(
           `Bitrix24 batch of ${method} failed at command ${i}: ${JSON.stringify(error).slice(0, 200)}`,
@@ -614,9 +791,13 @@ export class Bitrix24CrmProvider implements CrmProvider {
         rows.push(row)
       }
 
-      if (batch.length < LIST_PAGE) return { rows, done: true }
+      if (batch.length < LIST_PAGE) return ended()
     }
 
+    // The chain filled, so there is more. Ask for four times as much next
+    // round trip — the widening is what keeps a full import the same price it
+    // was while leaving a quiet tick at two commands.
+    this.chains.set(method, Math.min(BATCH_SIZE, chain * CHAIN_GROWTH))
     return { rows, done: false }
   }
 
@@ -633,7 +814,11 @@ export class Bitrix24CrmProvider implements CrmProvider {
 
     for (let i = 0; i < entries.length; i += BATCH_SIZE) {
       const chunk = Object.fromEntries(entries.slice(i, i + BATCH_SIZE))
-      const payload = await this.call<{ result?: Record<string, T> }>('batch', { halt: 0, cmd: chunk })
+      const payload = await this.call<{ result?: Record<string, T> }>(
+        'batch',
+        { halt: 0, cmd: chunk },
+        { invocations: Object.keys(chunk).length },
+      )
       Object.assign(results, payload.result?.result ?? {})
       if (i % (BATCH_SIZE * 20) === 0) this.progress(`  ${label}: ${i}/${entries.length}`)
     }
@@ -1925,5 +2110,28 @@ function discountOf(
   if (rateBp === 0 && perUnit === -unitPriceMinor && perUnit !== 0n) return 0n
 
   return perUnit * BigInt(quantity)
+}
+
+/**
+ * The worst basket reading among a batch's sub-commands.
+ *
+ * `result.result_time` is one `time` block per command, and a chained walk's
+ * fifty commands all spend ONE method's basket — so the highest reading is the
+ * state that method is actually in, and the one the portal will refuse on. The
+ * lowest would be the reading from before this batch ran.
+ */
+function subcommandTime(result: unknown): PortalTime | undefined {
+  if (!result || typeof result !== 'object') return undefined
+  const times = (result as { result_time?: unknown }).result_time
+  if (!times || typeof times !== 'object') return undefined
+
+  let worst: PortalTime | undefined
+  for (const value of Object.values(times as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object') continue
+    const time = value as PortalTime
+    if (typeof time.operating !== 'number') continue
+    if (!worst || time.operating > (worst.operating ?? 0)) worst = time
+  }
+  return worst
 }
 

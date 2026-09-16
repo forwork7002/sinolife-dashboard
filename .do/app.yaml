@@ -160,7 +160,26 @@ envs:
     value: "60"
   - key: SYNC_REFERENCE_EVERY
     scope: RUN_TIME
-    value: "30"
+    # Three-hourly since 2026-09-16 — see the constant's comment in
+    # scripts/syncWorker.ts. THIS KEY IS WHY THE CODE DEFAULT ALONE IS NOT
+    # ENOUGH: it is set here, so it overrides the default, and the live spec
+    # overrides this one. Changing the default without changing both leaves
+    # production reading reference data 48 times a day and nothing says so.
+    value: "180"
+
+  # The rolling-hour invocation ceiling — the last line before another
+  # portal-wide block. Sized for the worker in portalBudget.ts; set it LOWER
+  # here to throttle a portal under strain without a deploy.
+  - key: BITRIX24_HOURLY_INVOCATIONS
+    scope: RUN_TIME
+    value: "15000"
+
+  # One deletion sweep a day. It walks all 464 000 deal ids, so it is the
+  # largest single thing this integration asks the portal for; raise the
+  # frequency only if a deleted deal surviving a day is actually a problem.
+  - key: SYNC_SWEEP_EVERY
+    scope: RUN_TIME
+    value: "1440"
 
   # The single administrator account, created by the post-deploy job.
   - key: ADMIN_NAME

@@ -22,6 +22,7 @@
     "verify": "npm run typecheck && npm run lint && npm run test",
     "bitrix:import": "tsx scripts/import.ts",
     "bitrix:worker": "node --import tsx scripts/syncWorker.ts",
+    "bitrix:meter": "tsx scripts/portalMeter.ts",
     "roistat:import": "tsx scripts/importRoistat.ts",
     "roistat:verify": "tsx scripts/verifyRoistat.ts",
     "branch:verify": "tsx scripts/verifyBranchScope.ts"
