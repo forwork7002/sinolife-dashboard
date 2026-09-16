@@ -304,17 +304,43 @@ exist and balances appear with no code change.
 
 ## 6. Qoʻngʻiroqlar — who spoke to customers
 
-**Source.** `voximplant.statistic.get`. The portal logs roughly **12 400 calls
-a day**, so a year is 4.5 million rows for a question nobody asks. One month is
+**Source.** `voximplant.statistic.get`. The portal logs roughly **9 000 calls a
+working day** now (it was ~12 400 when this was first written). One month is
 imported by default (`BITRIX24_CALL_MONTHS`).
 
-**Ranked by talk time, not call count.** Dialling a hundred numbers and
-reaching none of them is not work with customers.
+**On screen since 2026-09-16**, on «Mijozlar va qoʻngʻiroqlar» (`/customers`,
+`/insights/calls`). Its measured facts, all read from production that day:
 
-**Not scored.** Call quality rating would need a rubric nobody has agreed. The
-recordings are stored and the schema carries null-ready `transcript` and
-`score` columns, so a scorer added later reads this table instead of facing a
-year-long gap.
+- **A call joins a customer, never an order.** `employeeId` is set on 100% of
+  rows and `customerId` on 99.3%, but `dealId` on **1 row of 366 300**: the
+  portal answers `CRM_ENTITY_TYPE = 'CONTACT'` for effectively every call. The
+  per-order questions in the removed block below cannot be asked of this table.
+- **Direction is the leg, not the intent** — 338 467 inbound against 27 833
+  outbound on a floor whose job is ringing customers. The screen does not split
+  by it.
+- **Durations before 2026-09-15 are not trustworthy.** Everything imported by
+  the per-minute pass (2026-08-28 to 11:00 Tashkent on 2026-09-14) was read
+  mid-call: `CALL_DURATION` is whatever had elapsed, and the watermark moved
+  past the call for good. The per-day maximum was one sync interval and the
+  connected share 11.6% against a normal 31%. `CALL_DATA_FLOOR` hides that
+  window from the screen; `SETTLE_LOOKBACK_MS` in `SyncEngine.ts` (every CALLS
+  pass re-reads three hours) stops it recurring. The rows themselves are still
+  wrong — a full CALLS pass over the window would correct them, since the
+  upsert overwrites `durationSec`.
+- **The mean is not the figure.** Above the floor the mean connected call runs
+  169 s and the median 53 s: 8.4% of calls pass ten minutes and hold half of
+  all talk time. The screen prints both, and six duration bands.
+- **База customers talk twice as long** — median 86 s against 46 s, where «База»
+  is a База deal created before the call. It is nearly a team split: Baza(ROP)
+  places 88% of those calls.
+
+**Not scored, and the recordings are NOT stored.** `recordUrl` is populated on
+**0 of 366 300 rows** although the importer maps `CALL_RECORD_URL`. An earlier
+version of this section said the recordings were collected from day one so a
+scorer "reads this table instead of facing a year-long gap"; that was never
+true. `transcript` and `score` remain null-ready columns. Whether the portal
+returns the URL under another field, or withholds it from this webhook's
+scopes, is unanswered.
 
 **Connect rate is shown neutral, not graded.** A third of outbound calls
 connecting is ordinary for this kind of dialling and there is no agreed target

@@ -397,9 +397,9 @@ Two duplications the feature cannot avoid, both deliberate:
 
 ---
 
-## The ten screens, and what each one dates by
+## The twelve screens, and what each one dates by
 
-**Two of the ten are PAUSED and two screens were removed.** «Boshqaruv markazi»
+**Two of the twelve are PAUSED and two screens were removed.** «Boshqaruv markazi»
 went entirely on 2026-09-10 («boshqaruv markazi boʻlimini toʻliq olib tashla»);
 «Joʻnatish nuqtalari» and «Reklama samarasi» keep their section, their nav entry
 and their endpoints but render `shared/SectionPending` and issue no request
@@ -423,6 +423,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 |---|---|---|---|---|---|
 | Savdo dinamikasi | `/analytics/sales` | `sales/SalesPage` + `ConfirmationFaktSection` + `DeliveryBoardSection` | `/analytics/sellers` twice (the board, and `?include=faktTrend` for the chart) + `/insights/delivery` | SellerBoard, Pulse → SellerBoard, Pulse | the arrival in `C4:NEW` (`queued_at`) — **except the Доставка board, which has NO window at all**: a kanban column is where orders are standing now |
 | Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` + `StateBars` | `/insights/cohorts`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | **nothing — the screen is DATELESS since 2026-09-15** (`period={false}`, like Struktura). `closedAt` on revenue-bearing WON deals is the clock both endpoints read; the matrix takes no window at all and `/insights/concentration` resolves its OWN trailing 90 days (`trailingDays`). Nothing here reads `createdAtSource` |
+| Mijozlar va qoʻngʻiroqlar | `/customers` | `customers/CustomersPage` + `CallActivitySection` + `CustomerFlowSection` | `/insights/calls`, `/insights/customers` | Insights → Insights | **two windows, each stated in its own heading.** The call block takes the dashboard window on `call_record."startedAt"`, clamped below at `CALL_DATA_FLOOR` (2026-09-15 00:00 Tashkent); the flow block resolves its OWN trailing 90 days on `createdAtSource`, and its state rows and база split take no window at all |
 | Reklama samarasi | `/marketing` | **PAUSED** — `shared/SectionPending`; `marketing/MarketingPage` is held, not mounted | none while paused (`/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` still answer) | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
@@ -530,6 +531,55 @@ Per-screen traps worth knowing before you touch one:
   parameter, wired to no control), and the four tiles refuse to print at all
   under `MIN_CUSTOMERS` 30 / `MIN_PAIRS` 10 / `MIN_COHORT` 30 — low on purpose,
   to catch a day's trading rather than a quiet fortnight.
+- **Mijozlar va qoʻngʻiroqlar** — **NEW ON 2026-09-16**, the client's words:
+  «sotuvda mijoz soniyam kerak, pritok ottoklar kerak, baza ne baza mijozlarga
+  call duration… aniq malumotlarda», then «call duration toʻliq malumot». They
+  chose a section of its own over «Mijoz qaytishi» and «Savdo dinamikasi».
+  Spec and plan: `docs/superpowers/specs/2026-09-16-mijozlar-va-qongiroqlar-design.md`
+  (read §10 and §11 — they correct §2 and §4).
+  **TWO WINDOWS ON ONE SCREEN, AND THAT IS WHY SAVDO DINAMIKASI WAS REFUSED.**
+  The call block honours the control; the customer block resolves its own 90
+  days and its heading says «qoʻngʻiroqlar davriga bogʻliq emas». Never sum
+  across them.
+  **CALL DURATIONS BEFORE 2026-09-15 ARE WRONG IN THE DATABASE.** The
+  per-minute pass read `voximplant.statistic.get` from its own watermark, so it
+  stored calls mid-conversation and never re-read them: per-day maximum one
+  sync interval, connected share 11.6% against 31%. It ended at 11:00 Tashkent
+  on 2026-09-14, when CALLS moved to the half-hourly pass — found per HOUR by
+  the import lag jumping from 1 to 256 minutes. `CALL_DATA_FLOOR` in
+  `src/lib/callQuality.ts` clamps every call query to the next midnight, and
+  `SETTLE_LOOKBACK_MS` in `SyncEngine.ts` re-reads three hours of calls every
+  pass so it cannot recur. **The first reading put the boundary on 2026-09-13**
+  because its probe bucketed with the one-step `AT TIME ZONE 'Asia/Tashkent'`
+  on a naive UTC column — the rule under *Invariants* exists for exactly this.
+  The client declined a re-read of the bad window; the rows stay wrong and
+  unreachable, and moving the floor after a full CALLS pass is one edit.
+  **A CALL JOINS A CUSTOMER, NEVER AN ORDER** — `dealId` is set on 1 row of
+  366 300 — and **direction is the leg, not the intent** (338 467 inbound
+  against 27 833 outbound), so the block splits by neither.
+  **THE MEDIAN IS ON SCREEN BESIDE THE MEAN, AND THE MEAN IS NOT ON THE WIRE.**
+  169 s mean against 53 s median above the floor: 8.4% of calls hold half the
+  talk time. The screen divides `talkSec` by `connected`, so a tile cannot
+  round into disagreement with its table.
+  **«BAZA / BAZA EMAS» IS TWO THINGS, AND THE CLIENT KEPT BOTH.** «мижозларга»
+  attaches to «call duration», so it is first a CALL cut — a База deal created
+  BEFORE the call (median 86 s against 46 s; Baza(ROP) places 88% of those
+  calls). It is also a BUYER split, `customerBaseSplit()` — which among real
+  buyers is almost a constant, because the portal puts every delivered
+  customer in База (11 586 of 11 607); the card says «Bazada yoʻq» is mostly
+  undelivered orders. That split is its OWN statement: `customerStates`'s test
+  records 35aca08's rule that it does not read the retention funnel.
+  **THE TEAM IS `employee."departmentId"`, NEVER `department_member`**, with
+  «(ROP)» stripped and non-ROP departments KEPT — memberships inflate the
+  total (Azizbek 1 902 → 2 847) and nulling Регистрация, Операцион and NEWGEN
+  drops 21.4% of the calls. Every arm of `callActivity` sums to its total, and
+  seven such invariants were checked against production.
+  **NOTHING OF IT RENDERS LOCALLY** — the demo seed has no calls and no
+  RETENTION pipeline — so `tests/features/callActivityBlock.test.tsx` and
+  `customersSections.test.tsx` carry production figures. Those tests stub
+  `ResizeObserver` rather than guarding `DataTable.tsx`, which reaches
+  «Tasdiqlash navbati». The nav entry lives in `Shell.tsx`'s own list, not in
+  `SECTIONS` — a section is not in the menu until it is added there too.
 - **Kanallar** — the dashboard-wide `preset` and `filial` do **not** reach this
   screen; it resolves its own window from `from`/`to`/`today`.
 - **Yalpi marja** — discounts are split by sign in SQL; never net them or
@@ -1197,10 +1247,12 @@ mixed `100vh` against a shell sized in `100dvh`.
   client kept reporting as «avtomatik yangilanmayapti»: the refresh worked and
   the clock lied. A pass that read zero rows because nothing changed still
   counts — the portal answered for the data the chip is about.
-- **`CALLS` LEFT THE PER-MINUTE LIST ON 2026-09-14.** `call_record` is written
-  by the sync and read by NOTHING — `/insights/calls` went in the 2026-09-10
-  cull with the screen it fed, and the only other mentions are a proof script
-  and the importer's row count. It was costing a portal call a minute for data
+- **`CALLS` LEFT THE PER-MINUTE LIST ON 2026-09-14.** At the time `call_record`
+  was written by the sync and read by NOTHING — `/insights/calls` had gone in
+  the 2026-09-10 cull with the screen it fed. **It is read again since
+  2026-09-16**, by «Mijozlar va qoʻngʻiroqlar», and the move turned out to have
+  fixed a second thing nobody knew about: the per-minute pass had been storing
+  calls mid-conversation (see that screen above, and `SETTLE_LOOKBACK_MS`). It was costing a portal call a minute for data
   no reader has seen since, on the portal that spent that afternoon refusing
   us for overload, and it was the last entity still being refused. It rides
   the reference pass now (half-hourly, and LAST in that list so its links
@@ -1428,8 +1480,10 @@ output and answers 200 with the database gone.
   `POST /api/v1/sync/run` route that was never built.
 - `docs/API.md` still lists fifteen endpoints that no longer exist — every
   `/analytics/*` but `sellers`, `/dashboard/*`, `/deals*`, `/employees/[id]`,
-  `/finance/overview`, `/insights/{calls,channels,confirmations,flow,pulse,response}`.
-  `find src/app/api/v1 -name route.ts` is the authority; twenty remain.
+  `/finance/overview`, `/insights/{channels,confirmations,flow,pulse,response}`.
+  (`/insights/calls` is listed again since 2026-09-16 — a new endpoint at the
+  old address.) `find src/app/api/v1 -name route.ts` is the authority;
+  twenty-three on 2026-09-16.
 - `docs/DEVELOPMENT.md`'s test count is current as of 2026-09-07 (928) but the
   phase table below it is finished work; `npm run verify` is the authority.
 - `src/lib/sections.ts` cites a `src/server/auth/sections.ts` that does not

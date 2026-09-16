@@ -237,7 +237,8 @@ product narrowed to the sections the client asked for. `find src/app/api/v1
 | `GET` | `/kpi` | kpi | Targets, attainment, pace-aware status |
 | `GET` | `/insights/cohorts` | `analytics:read:all` | Return-rate ladder by first-purchase cohort |
 | `GET` | `/insights/concentration` | `analytics:read:all` | Customer Pareto, HHI by source and region, repeat-purchase intervals |
-| `GET` | `/insights/customers` | `analytics:read:all` | «Mijozlar oqimi» — arrivals, returns, sources, and who went quiet. **Resolves its own window, like `/insights/concentration`** |
+| `GET` | `/insights/calls` | `analytics:read:all` | «Qoʻngʻiroqlar» — calls, connect rate, talk time, mean/median/p90 duration, by operator, team, day and База side; duration and per-customer bands. **Takes the dashboard window, clamped at `CALL_DATA_FLOOR` (2026-09-15)** |
+| `GET` | `/insights/customers` | `analytics:read:all` | «Mijozlar oqimi» — arrivals, returns, sources, who went quiet, and the база split. **Resolves its own window, like `/insights/concentration`** |
 | `GET` | `/insights/confirmations/orders` | `analytics:read:all` | The confirmation queue as orders, paginated |
 | `GET` | `/insights/confirmations/regions` | `analytics:read:all` | The РЕГИОН column filter's options, cut from the same cohort |
 | `GET` | `/insights/delivery` | analytics | The Доставка kanban — what is standing where, right now. **No window** |
@@ -318,6 +319,45 @@ same repeat-revenue claim from Bitrix24's own `isReturnCustomer` flag;
 divergence from `repeatRevenueSharePercent` is a data-quality signal, so the
 UI shows both and reconciles neither.
 
+#### `GET /insights/calls`
+
+Section `customers` («Mijozlar va qoʻngʻiroqlar»). Added 2026-09-16 at the
+address the 2026-09-10 cull freed; nothing of the old endpoint survives — it
+answered response-speed questions that need a call joined to a deal, and
+`call_record."dealId"` is set on 1 row of 366 300.
+
+**Takes the dashboard window** (`periodQuerySchema` only — not the filter half,
+because `filial` has a non-empty default no call column can honour), and the
+repository clamps its lower bound to `CALL_DATA_FLOOR` in `src/lib/
+callQuality.ts`: everything imported before 2026-09-14 11:00 Tashkent carries
+a truncated duration and connected flag, and the floor is the next whole day.
+
+```
+GET /insights/calls?preset=this_month
+
+meta.period { preset, start, end, timeZone, days }     — the window ASKED for
+data:
+  total        CallRow
+  operators    [ CallRow ]     ranked by talk time
+  teams        [ CallRow ]     employee's PRIMARY department, «(ROP)» stripped
+  series       [ CallRow ]     one per Tashkent day, ascending
+  sides        [ CallRow ]     BAZA, NOT_BAZA, UNLINKED — all three always
+  seriesBySide [ { day, talkSec: { BAZA, NOT_BAZA, UNLINKED } } ]
+  durationBands [ { key, label, colour, calls, sharePercent, talkSec } ]
+  customerBands [ { key, label, customers, avgTalkSec, talkSec } ]
+  unlinkedCalls  number
+  floorApplied   boolean      — the window began before the floor
+
+CallRow { key, label, calls, connected, connectPercent, talkSec,
+          medianSec, p90Sec, customers }
+```
+
+No mean on the wire: the screen divides `talkSec` by `connected`.
+`connectPercent` and the durations are null over an empty group, never 0.
+«Baza» is a База deal created BEFORE the call started. `durationBands[].
+sharePercent` is a share of `total.connected`. Operators, teams, days and sides
+each sum to `total`. Memoised 60 s per window.
+
 #### `GET /insights/customers`
 
 **Resolves its own window, exactly like `/insights/concentration` beside it,
@@ -345,8 +385,16 @@ data:
   series  [ { bucket, newCustomers, returningCustomers } ]   one row per day
   sources [ { key, label, newCustomers, sharePercent, repeatPercent,
               maturedCustomers } ]
-  states  { customers, rows: [ { key, label, colour, customers } ] }
+  states  { customers, rows: [ { key, label, colour, customers } ],
+            inBase, notInBase }
 ```
+
+`states.inBase + states.notInBase === states.customers` — buyers with any deal
+in the RETENTION pipeline against those with none (`customerBaseSplit`). Nearly
+every DELIVERED customer is in База, because the portal places them there
+automatically (11 586 of 11 607 on 2026-09-16), so `notInBase` is
+overwhelmingly customers whose order was never delivered. Section `customers`
+since 2026-09-16; it was `cohort`.
 
 `repeatRevenueSharePercent` is null rather than 0 when there is no money at
 all in the window. `sources[].sharePercent` is a share of `summary.
