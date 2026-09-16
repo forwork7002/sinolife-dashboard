@@ -132,7 +132,8 @@
    * the pedestal numerals — never text that must be read, never a mark that
    * encodes a value, never a series or status role. Gold sits near --series-4
    * and --status-warning by nature; tolerable only because these tokens are
-   * barred from ever carrying data. See the PODIUM section below.
+   * barred from ever carrying data. See the EFIR section's halo and medal
+   * rules below (`.halo`, `.medal`) for every place they are drawn.
    *
    * THE WRITTEN EXCEPTIONS (EFIR, 2026-09-16): the seller medals (`.medal` —
    * the Oy family in its own metal, every other code in gold), the seats'

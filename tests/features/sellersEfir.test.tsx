@@ -460,11 +460,23 @@ describe('SeatCard — o‘rindiq (spec §4)', () => {
     expect(seat.querySelector('.seat__medals')).toBeNull()
   })
 
-  it('komandasiz sotuvchi — «komandasiz»; medalsiz — medal qatori yo‘q, progress bor', () => {
-    const { container } = render(<SeatCard {...SEAT} team={null} medal={row({ medals: [] })} />)
-    expect(container.querySelector('.seat__team')!.textContent).toBe('komandasiz')
+  /*
+    Komandasiz sotuvchi — komanda uyasi YO‘Q, so‘z ham yo‘q. 308 px o‘rindiqda
+    komanda · gerb · daraja so‘zi bir satrda turadi va qisqaradigan yagona uya
+    komanda (`overflow: hidden`), yaʼni «komandasiz» gerb yonida «kom…» bo‘lib
+    qolardi. Haqiqiy nom (≤ 10 harf) o‘z joyida chiziladi.
+  */
+  it('komandasiz sotuvchi komanda uyasini chizmaydi; medalsiz — medal qatori yo‘q, progress bor', () => {
+    const { container, rerender } = render(<SeatCard {...SEAT} team={null} medal={row({ medals: [] })} />)
+    expect(container.querySelector('.seat__team')).toBeNull()
+    expect(container.querySelector('.seat__sub')!.textContent).not.toContain('komandasiz')
+    // Gerb va daraja so'zi o'z joyida — satr bo'shab qolmaydi.
+    expect(container.querySelector('.seat__sub svg.crest--seat')).not.toBeNull()
+    expect(container.querySelector('.seat__level')!.textContent).toBe('Usta')
     expect(container.querySelector('.seat__prog')).not.toBeNull()
     expect(container.querySelector('.seat__medals')).toBeNull()
+    rerender(<SeatCard {...SEAT} team="Sadriddin" medal={row({ medals: [] })} />)
+    expect(container.querySelector('.seat__team')!.textContent).toBe('Sadriddin')
   })
 
   it('rise — gerbning eng yangi katakchasi to‘ladi; yangi medal sinfi', () => {

@@ -429,7 +429,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Tasdiqlash navbati | `/confirmation` | `confirmation/ConfirmationPage` | `/insights/confirmations/orders` | Insights → Insights | **the arrival in `C4:NEW`** — the latest `deal_stage_history` row whose stage signals `CONFIRM_NEW`; `?queue=backlog` (where the bell lands) drops the window entirely |
 | Joʻnatish nuqtalari | `/warehouse` | **PAUSED** — `shared/SectionPending`; `warehouse/WarehousePage` is held, not mounted | none while paused (`/insights/dispatch` still answers) | Insights → Insights | `createdAtSource` — a creation cohort graded by the deal's **current** stage |
 | Sotuvchilar oyligi | `/payroll` | `payroll/PayrollPage` | `/payroll/sellers` | Payroll → Insights | **a payroll period — a calendar month or one half of it**, resolved on the server from `month` + `half`. No dashboard preset reaches it |
-| Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | the arrival in `C4:NEW` (`queued_at`) — the confirmation queue's own cohort. **The television board**: two podiums and two ranked lists (sellers left, teams right) and ONE control, the FAKT 1 / FAKT 2 switch in each heading; the FAKT 1 / FAKT 2 totals, conversion, bonus fund and ladder render on Savdo dinamikasi (`sales/ConfirmationFaktSection`), which is why the route lists both sections |
+| Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | the arrival in `C4:NEW` (`queued_at`) — the confirmation queue's own cohort. **The television board**: a podium of three seats over a timing-tower list (sellers) and a one-line ranked list (teams), and ONE control, the FAKT 1 / FAKT 2 switch in each heading; the FAKT 1 / FAKT 2 totals, conversion, bonus fund and ladder render on Savdo dinamikasi (`sales/ConfirmationFaktSection`), which is why the route lists both sections |
 | KPI rejalari | `/kpi` | `kpi/KpiPage` | `/kpi` | Kpi, Analytics → Reference, Deal | **the plan's own `periodStart`/`periodEnd`** — the dashboard window only *selects* which plan is live |
 | Struktura | `/structure` | `structure/StructurePage` | `/insights/structure`, `/insights/structure/roster` | Insights → Insights | **nothing — the screen is DATELESS.** `period={false}`, no window control, and neither endpoint takes one |
 
@@ -1006,7 +1006,8 @@ Per-screen traps worth knowing before you touch one:
   FAKT 2 it asserts the ranks the service sent, shared ranks and skips
   included. The choice lives on the page, not in the column, because a team's
   money is its sellers' money summed and two halves reading different facts is
-  the reconciliation `PodiumBasis` exists to prevent, one column deep. It
+  the reconciliation the seat's own FAKT caption exists to prevent, one column
+  deep. It
   opens on 'auto' — the board's old behaviour, FAKT 2 once anybody has
   delivered — so a television nobody touches is unchanged.
 - **Sotuvchilar oyligi** — **NEW ON 2026-09-14**, the client's own pay scheme

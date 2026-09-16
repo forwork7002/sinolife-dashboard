@@ -87,7 +87,7 @@ const schema = analyticsQuerySchema.and(
       the close date and whose payload the chart's area already comes from.
     */
     /*
-      'medals' — lavhaning fakti: daraja va medallar.
+      'medals' — gerb/darajaning fakti: daraja va medallar.
 
       OPT-IN va ALMASHTIRUVCHI, xuddi 'records' kabi va xuddi shu ikki sabab
       bilan: o'quvchi allaqachon taxtani ushlab turgan ikkinchi react-query

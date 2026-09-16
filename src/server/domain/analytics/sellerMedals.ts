@@ -3,8 +3,8 @@
  *
  * SOF FUNKSIYA, ATAYLAB. Bazaga tegmaydi, React'ga tegmaydi va bitta ham
  * o'zbek so'zi chiqarmaydi — medalning SABABI bu yerda strukturaviy (qaysi
- * oy, qancha pul, necha foiz), matnga aylanishi esa `medalReason.ts` da bo'ladi.
- * Sabab: bu qoidalar bazasiz test qilinadi va ular bilan bahslashadigan
+ * oy, qancha pul, necha foiz), nomga aylanishi esa UI da — `medalCatalog.ts`
+ * (nomlar) va `MedalMark.tsx` (chizadi). Sabab: bu qoidalar bazasiz test qilinadi va ular bilan bahslashadigan
  * yagona narsa — raqam, matn emas.
  *
  * NARVON 2026-09-16 da production'da 126 sotuvchi ustida o'lchangan
@@ -156,7 +156,8 @@ export interface SellerDayFact {
  * Bitta medal — va uning SABABI, strukturaviy.
  *
  * `reason` degan tayyor matn yo'q: motor qaysi oy/kun, qancha pul, necha
- * buyurtma va necha foiz ekanini beradi, jumlani `medalReason.ts` yig'adi. Shu
+ * buyurtma va necha foiz ekanini beradi; nom UI tarafida
+ * (`medalCatalog.ts`, `MedalMark.tsx`). Shu
  * sabab bu fayl o'zbek tilini bilmaydi va test faqat raqam bilan bahslashadi.
  */
 export interface SellerMedal {

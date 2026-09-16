@@ -1433,10 +1433,10 @@ export type MedalCode =
 /**
  * Bitta medal va uning sababi, bo'laklarda.
  *
- * TAYYOR MATN EMAS: qaysi oy/kun, qancha pul, necha buyurtma, necha foiz —
- * jumlani `medalReason.ts` yig'adi. Sabab: domen qatlami o'zbek tilini
- * bilmaydi va bir xil bo'laklardan seat kartasi uzun, jadval qatori qisqa
- * jumla tuzadi.
+ * TAYYOR MATN EMAS: qaysi oy/kun, qancha pul, necha buyurtma, necha foiz
+ * bo'lak bo'lib keladi. Sabab: domen qatlami o'zbek tilini bilmaydi — nom
+ * `medalCatalog.ts` da, uni `MedalMark.tsx` chizadi. EFIR jumla tuzmaydi
+ * (nom + «×N»), lekin bo'laklar DTO'da qoladi: motor tegilmagan.
  *
  * Mirrors `sellerBoardService.SellerMedalDto`; nothing checks the mirror —
  * edit both sides.
@@ -1451,7 +1451,7 @@ export interface SellerMedalDto {
   /**
    * Odatda buyurtma soni — lekin ikki medalda BOSHQA narsani tashiydi:
    * `rookie` da bu sotuvchining o'sha oydagi O'RNI, `work-month` da esa
-   * necha KUN ishlagani. `medalReason` ikkalasini ham alohida o'qiydi —
+   * necha KUN ishlagani. `medalCatalog.ts` ikkalasini ham alohida o'qiydi —
    * umumiy yo'ldan o'tsa, ikkalasi ham noto'g'ri chiziladi.
    */
   readonly orders: number | null

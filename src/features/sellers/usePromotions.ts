@@ -6,7 +6,7 @@ import { LADDER } from '@/features/sellers/medalCatalog'
 import type { MedalCode, SellerMedalRowDto } from '@/lib/api'
 
 /**
- * Ko'tarilish — jamoat voqeasi. 40-o'rindagi odam o'z lavhasining sokin
+ * Ko'tarilish — jamoat voqeasi. 40-o'rindagi odam o'z gerbining sokin
  * animatsiyasini ko'rmaydi; ustun sarlavhasidagi 8 soniyalik e'lonni hamma
  * ko'radi.
  *

@@ -34,6 +34,12 @@ export function splitSeatName(name: string): readonly [string, string] {
  *
  * `data-seat-name` — testlar va ism bo'linishidan mustaqil bitta o'qish
  * (ikki <span> ning textContent'i orasida bo'sh joy yo'q).
+ *
+ * KOMANDASIZ SOTUVCHI KOMANDA UYASINI CHIZMAYDI. 308 px o'rindiqda bu satrda
+ * komanda · gerb · daraja so'zi yonma-yon turadi va faqat komanda qisqaradi
+ * (`overflow: hidden`, ya'ni eng kichik o'lchami 0) — «komandasiz» so'zi
+ * «kom…» bo'lib, gerb yonida ma'nosiz qoldiq bo'lib qolardi. Yo'qligi
+ * o'zi ma'lumot: komandalar ustunining pastki jumlasi nechtasini aytadi.
  */
 export function SeatCard({
   rank,
@@ -83,7 +89,7 @@ export function SeatCard({
             {line2 !== '' && <span>{line2}</span>}
           </h3>
           <p className="seat__sub">
-            <span className="seat__team">{team ?? 'komandasiz'}</span>
+            {team !== null && <span className="seat__team">{team}</span>}
             {medal !== null && (
               <>
                 <Crest level={medal.level} legendaTier={medal.legendaTier} size="seat" animate={rise} />

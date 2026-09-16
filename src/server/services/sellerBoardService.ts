@@ -530,7 +530,7 @@ export interface SellerMedalDto {
   /**
    * Odatda buyurtma soni — lekin ikki medalda BOSHQA narsani tashiydi:
    * `rookie` da bu sotuvchining o'sha oydagi O'RNI, `work-month` da esa
-   * necha KUN ishlagani. `medalReason` ikkalasini ham alohida o'qiydi —
+   * necha KUN ishlagani. `medalCatalog.ts` ikkalasini ham alohida o'qiydi —
    * umumiy yo'ldan o'tsa, ikkalasi ham noto'g'ri chiziladi.
    */
   readonly orders: number | null
@@ -994,7 +994,7 @@ export class SellerBoardService {
   }
 
   /**
-   * Lavhaning ma'lumoti — daraja va medallar.
+   * Gerb va darajaning ma'lumoti — daraja va medallar.
    *
    * DAVR FILTRIGA BO'YSUNMAYDI, va bu ataylab: oyna doim `RECORDS_FROM` dan
    * bugungacha. Medal butun tarixning fakti, «Bugun» tanlanganda yo'qoladigan
