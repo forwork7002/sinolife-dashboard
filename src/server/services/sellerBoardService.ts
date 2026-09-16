@@ -32,6 +32,7 @@ import {
 import type { KpiDefinition } from '@/server/domain/analytics/performance'
 import { projectionElapsedFraction } from '@/server/domain/analytics/pulse'
 import { BONUS_TIERS, bonusEligible } from '@/server/domain/analytics/sellerBonus'
+import { type SellerMedal, buildSellerMedals } from '@/server/domain/analytics/sellerMedals'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import { scopedPeriod } from '@/server/domain/employees/branches'
 import { type Period, enumerateBuckets, sinceMonth, zonedDateKey } from '@/server/domain/period/period'
@@ -420,6 +421,61 @@ export interface SellerRecordsDto {
   readonly months: readonly SellerRecordDto[]
   /** The first instant the wall covers. See `RECORDS_FROM`. */
   readonly from: string
+}
+
+/**
+ * Bitta medal — va uning sababi, ekran yig'ib oladigan bo'laklarda.
+ *
+ * Mirrored in `src/lib/api.ts` as `SellerMedalDto`. Nothing checks the
+ * mirror — edit both sides.
+ */
+export interface SellerMedalDto {
+  readonly code: SellerMedal['code']
+  readonly count: number
+  /** Faqat `club` uchun 1..7. */
+  readonly tier: number | null
+  readonly points: number
+  /** Sababning oyi yoki kuni, `YYYY-MM-DD`. */
+  readonly at: string | null
+  readonly amount: MoneyDto | null
+  /**
+   * Odatda buyurtma soni — lekin ikki medalda BOSHQA narsani tashiydi:
+   * `rookie` da bu sotuvchining o'sha oydagi O'RNI, `work-month` da esa
+   * necha KUN ishlagani. `medalReason` (`Pagon.tsx`) ikkalasini ham
+   * alohida o'qiydi — umumiy yo'ldan o'tsa, ikkalasi ham noto'g'ri chiziladi.
+   */
+  readonly orders: number | null
+  readonly percent: number | null
+}
+
+export interface SellerMedalRowDto {
+  readonly employeeId: string
+  readonly points: number
+  readonly level: number
+  readonly rankTitle: string
+  readonly levelFloor: number
+  readonly nextLevelAt: number
+  readonly nextTitle: string | null
+  readonly medals: readonly SellerMedalDto[]
+}
+
+export interface SellerMedalsDto {
+  /** Ball bo'yicha kamayib. */
+  readonly sellers: readonly SellerMedalRowDto[]
+  /** The first instant the pagon covers. See `RECORDS_FROM`. */
+  readonly from: string
+}
+
+/**
+ * Medal rekord devori bilan bir xil sekin fakt, va uning kogortasi shu
+ * ekrandagi eng keng o'qish. Taxtaning oltmish soniyasi emas, devorning
+ * o'n daqiqasi.
+ */
+const medalsCache = ttlCache<SellerMedalsDto>(600_000)
+
+/** Test seam only — see `resetSellerBoardCache`, same hazard. */
+export function resetSellerMedalsCache(): void {
+  medalsCache.clear()
 }
 
 /**
@@ -820,6 +876,84 @@ export class SellerBoardService {
           deliveredOrders: r.deliveredOrders,
         }
       }),
+    }
+  }
+
+  /**
+   * Pagonning ma'lumoti — medal, ball, daraja.
+   *
+   * DAVR FILTRIGA BO'YSUNMAYDI, va bu ataylab: oyna doim `RECORDS_FROM` dan
+   * bugungacha. Medal butun tarixning fakti, «Bugun» tanlanganda yo'qoladigan
+   * narsa emas — aks holda filtr motivatsiyani o'chirib qo'yadigan tugmaga
+   * aylanardi. Devor ham aynan shu sababdan o'z oynasida yashaydi.
+   *
+   * Kesh kaliti `records()` ning kalitidan ATAYLAB bitta joyda farq qiladi —
+   * pastdagi izohga qarang.
+   */
+  async medals(ctx: AnalyticsContext): Promise<SellerMedalsDto> {
+    const filters = boardFilters(ctx)
+    const period = recordWindow(ctx.now, ctx.period.timeZone)
+
+    /*
+      `period.end` BU YERDA ATAYLAB YO'Q. `recordWindow` uni `ctx.now`dan
+      quradi — har so'rovda yangi `new Date()` — ya'ni kalitga qo'shilsa,
+      kalit har millisekundda boshqacha bo'lib, kesh HECH QACHON hit
+      bo'lmasdi: ikkala kogorta qurilishi ham (~2 s o'lchangan) HAR
+      SO'ROVDA ishga tushardi, va `ttlCache`ning promise'ni qo'shib
+      yuborishi — butun floor bir vaqtda ochganda ishlashi uchun
+      yozilgan — hech qachon ishlamas edi. O'N DAQIQALIK TTL javobni yangi
+      ushlab turadi; kalitga esa faqat SAVOLNI aniqlash kerak, savol esa
+      "RECORDS_FROM dan buyon qaysi medallar, shu filtrlar ostida" — buni
+      `period.start` (RECORDS_FROM ning o'zi), mintaqa, valyuta va filtrlar
+      to'liq aytib beradi, `end`siz ham.
+    */
+    const key = [
+      period.start.toISOString(),
+      period.timeZone,
+      ctx.currency,
+      keyPart(filters.employeeIds),
+      keyPart(filters.departmentIds),
+      keyPart(filters.sourceIds),
+    ].join('|')
+
+    return medalsCache.get(key, () => this.buildMedals(ctx, period, filters))
+  }
+
+  private async buildMedals(
+    ctx: AnalyticsContext,
+    period: Period,
+    filters: SellerBoardFilters,
+  ): Promise<SellerMedalsDto> {
+    const facts = await this.insights.sellerMedalFacts(scopedPeriod(period, filters), filters)
+
+    const rows = buildSellerMedals({
+      months: facts.months,
+      days: facts.days,
+      runningMonth: monthKey(ctx.now, period.timeZone),
+      runningDay: zonedDateKey(ctx.now, period.timeZone),
+    })
+
+    return {
+      from: period.start.toISOString(),
+      sellers: rows.map((row) => ({
+        employeeId: row.employeeId,
+        points: row.points,
+        level: row.level,
+        rankTitle: row.rankTitle,
+        levelFloor: row.levelFloor,
+        nextLevelAt: row.nextLevelAt,
+        nextTitle: row.nextTitle,
+        medals: row.medals.map((m) => ({
+          code: m.code,
+          count: m.count,
+          tier: m.tier,
+          points: m.points,
+          at: m.at,
+          amount: m.amountMinor === null ? null : toMoneyDto(money(m.amountMinor, ctx.currency)),
+          orders: m.orders,
+          percent: m.percent === null ? null : roundPercent(m.percent),
+        })),
+      })),
     }
   }
 

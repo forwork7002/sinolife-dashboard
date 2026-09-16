@@ -67,3 +67,6 @@ bitrix24-final-dup.json
 
 # Written by scripts/writeBuildId.mjs at build time.
 /public/build-id.json
+
+# SDD ish maydoni — ledger va review paketlari, manba emas.
+/.superpowers/
