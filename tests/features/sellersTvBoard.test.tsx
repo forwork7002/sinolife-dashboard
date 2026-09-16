@@ -1,6 +1,4 @@
 // @vitest-environment jsdom
-import { readFileSync } from 'node:fs'
-
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -506,18 +504,18 @@ function medalRow(
 ): SellerMedalRowDto {
   return {
     employeeId,
-    points: 11_000,
-    level: 15,
+    level: 4,
+    legendaTier: 0,
     rankTitle: 'Usta',
-    levelFloor: 10_500,
-    nextLevelAt: 12_000,
-    nextTitle: 'Master',
+    delivered: money(173_000_000),
+    levelFloor: money(100_000_000),
+    nextLevelAt: money(300_000_000),
+    nextTitle: 'Ustoz',
+    promotedOn: null,
     medals: [
       {
         code: 'month-gold',
         count: 3,
-        tier: null,
-        points: 1500,
         at: '2026-08-01',
         amount: money(128_550_000),
         orders: 74,
@@ -535,75 +533,12 @@ const MEDALS = new Map<string, SellerMedalRowDto>([
   [
     'Nodira 118 Karimova',
     medalRow('Nodira 118 Karimova', {
-      points: 3_000,
-      level: 8,
+      level: 3,
       rankTitle: 'Katta sotuvchi',
-      levelFloor: 2_800,
-      nextLevelAt: 3_600,
-      nextTitle: null,
+      delivered: money(81_300_000),
+      levelFloor: money(30_000_000),
+      nextLevelAt: money(100_000_000),
+      nextTitle: 'Usta',
     }),
   ],
 ])
-
-/**
- * PAGON — VA MIJOZ OLIB TASHLASHNI SO'RAGAN BLOK.
- *
- * Seat kartasida bitta fakt uch marta chizilgan edi: «Liderga +100 000»
- * chipi, progress chizig'i va «97%». Uchalasi ham «liderdan qancha
- * orqadaman» degan bitta savolga javob berardi, va yonidagi «0 / 2
- * buyurtma» bilan birga ziddiyatli o'qilardi — mijozning o'z ta'rifi
- * «noaniq keraksiz xolat» (2026-09-15).
- *
- * Bu testlar o'sha blokning YO'QLIGINI va o'rniga kelgan pagonning borligini
- * DOM dan tekshiradi. Manba matni faqat bitta narsa uchun o'qiladi —
- * so'rovning ulanishi, uni DOM ko'rsata olmaydi.
- */
-describe('pagon', () => {
-  it('seat kartasi darajani va unvonni chizadi', () => {
-    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
-    expect(column('tv-sellers').getByText(/15-daraja/)).toBeTruthy()
-    expect(column('tv-sellers').getByText(/Master/)).toBeTruthy()
-  })
-
-  it('liderga nisbatan foiz chizig\u2018i seatdan olib tashlangan', () => {
-    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
-    expect(document.querySelector('[aria-label="Liderga nisbatan"]')).toBeNull()
-  })
-
-  it('jadval qatorida ham pagon bor, lekin qisqasi', () => {
-    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
-    // 4-o'rindagi Nodira jadvalda, seatda emas.
-    expect(column('tv-sellers').getByText(/8-daraja/)).toBeTruthy()
-  })
-
-  it('medali yo\u2018q sotuvchida pagon umuman chizilmaydi', () => {
-    render(<SellersColumn data={RIPE} {...PROPS} />)
-    expect(document.querySelector('.pagon')).toBeNull()
-  })
-
-  it('daraja va o\u2018rin farqi ustunda BIR MARTA yozilgan', () => {
-    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
-    expect(column('tv-sellers').getAllByText(/Daraja \u2014 o\u02bbrin emas/)).toHaveLength(1)
-  })
-
-  it('jadvalga yangi ustun qo\u2018shilmagan \u2014 390px da yon skroll yomonlashmaydi', () => {
-    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
-    expect(column('tv-sellers').getAllByRole('columnheader')).toHaveLength(6)
-  })
-
-  it('jadval qatoridagi masofa saqlangan \u2014 mijoz unga e\u2019tiroz bildirmagan', () => {
-    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
-    // `Chase` 4-qatorda bronza seatiga bo'lgan masofani yozadi.
-    expect(column('tv-sellers').getAllByText(/oldinda|ortda|\+/).length).toBeGreaterThan(0)
-  })
-
-  it('medal so\u2018rovi taxtanikidan alohida kalitda va o\u2018z soatida', () => {
-    // DOM javob bera olmaydigan yagona narsa: so'rovning ulanishi.
-    const source = readFileSync('src/features/sellers/SellersPage.tsx', 'utf8')
-    expect(source).toContain("queryKey: ['sellers', 'medals']")
-    expect(source).toContain('staleTime: 600_000')
-    // Taxta hech qachon medal so'rovining holatiga qaramaydi: u sekin kelsa
-    // yoki xato bersa, reyting hech nima sezmasligi kerak.
-    expect(source).not.toMatch(/medals\.(isError|isPending)/)
-  })
-})

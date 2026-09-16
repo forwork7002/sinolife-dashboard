@@ -33,8 +33,6 @@ window.matchMedia = ((query: string) => ({
 const medal = (code: SellerMedalDto['code']): SellerMedalDto => ({
   code,
   count: 1,
-  tier: null,
-  points: 100,
   at: '2026-08-01',
   amount: null,
   orders: null,
@@ -51,7 +49,7 @@ describe('medal aylanishi', () => {
   it('bir vaqtda faqat BITTA medal gapiradi', () => {
     const { result } = renderHook(() =>
       useMedalRotation([
-        { employeeId: 'a', medals: [medal('month-gold'), medal('club')] },
+        { employeeId: 'a', medals: [medal('month-gold'), medal('first-sale')] },
         { employeeId: 'b', medals: [medal('clean-month')] },
       ]),
     )

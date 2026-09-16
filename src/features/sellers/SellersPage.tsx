@@ -5,16 +5,13 @@ import { useQuery } from '@tanstack/react-query'
 
 import { EmptyState, ErrorState } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
-import { Pagon } from '@/features/sellers/Pagon'
 import { RecordWall } from '@/features/sellers/RecordWall'
 import { useAutoScroll } from '@/features/sellers/useAutoScroll'
-import { useMedalRotation } from '@/features/sellers/useMedalRotation'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import {
   type SellerBoardDto,
   type SellerBoardRowDto,
-  type SellerMedalDto,
   type SellerMedalRowDto,
   type SellerMedalsDto,
   type SellerTeamRowDto,
@@ -589,21 +586,6 @@ function BoardColumn({
   const seated = new Set(winners.map((w) => w.key))
   const rows = ranked.filter((e) => !seated.has(e.key))
 
-  /*
-    USTUNGA BITTA SOAT. Uch seatning medallari bitta navbatga yig'iladi va
-    bir vaqtda faqat bittasi gapiradi.
-  */
-  const speaking = useMedalRotation(
-    useMemo(
-      () =>
-        winners.map((entry) => ({
-          employeeId: entry.key,
-          medals: medals.get(entry.key)?.medals ?? [],
-        })),
-      [winners, medals],
-    ),
-  )
-
   return (
     <section
       id={id}
@@ -673,27 +655,7 @@ function BoardColumn({
         </>
       ) : (
         <>
-          <Podium
-            winners={winners}
-            onDelivered={onDelivered}
-            medals={medals}
-            speaking={speaking}
-          />
-          {/*
-            DARAJA — O'RIN EMAS, va buni aytish kerak.
-
-            O'rin — bu tanlangan davrdagi pul, ertaga boshqacha. Daraja —
-            2026-avgustdan buyon to'plangan mehnat, va u davr filtriga
-            bo'ysunmaydi. Ya'ni 8-o'rindagi odam 12-darajada bo'lishi mumkin va
-            bu xato emas. Aytilmasa, floor buni nosozlik deb o'qiydi va
-            taxtaning ishonchi shunga ketadi — shuning uchun jumla ustunda bir
-            marta, seat'larning ostida turadi.
-          */}
-          {medals.size > 0 && (
-            <p className="pagon-note">
-              Daraja — oʻrin emas: 2026-avgustdan buyon toʻplangan ball
-            </p>
-          )}
+          <Podium winners={winners} onDelivered={onDelivered} />
           <BoardList entries={rows} allEntries={ranked} noun={noun} onDelivered={onDelivered} medals={medals} />
         </>
       )}
@@ -776,15 +738,9 @@ const SEATS = [
 function Podium({
   winners,
   onDelivered,
-  medals,
-  speaking,
 }: {
   winners: readonly BoardEntry[]
   onDelivered: boolean
-  /** Sotuvchi id si bo'yicha pagon. Komandalar ustuni uchun bo'sh Map. */
-  medals: ReadonlyMap<string, SellerMedalRowDto>
-  /** Ustunning soati shu seatga navbat berganida — ochiladigan medal. */
-  speaking: ReturnType<typeof useMedalRotation>
 }) {
   const columnOf = (place: number) =>
     winners.length === 3 ? [2, 1, 3][place - 1]! : winners.length === 2 ? place : 1
@@ -798,8 +754,6 @@ function Podium({
           place={index + 1}
           column={columnOf(index + 1)}
           onDelivered={onDelivered}
-          medal={medals.get(entry.key) ?? null}
-          speaking={speaking?.employeeId === entry.key ? speaking.medal : null}
         />
       ))}
     </div>
@@ -855,16 +809,11 @@ function PodiumSeat({
   place,
   column,
   onDelivered,
-  medal,
-  speaking,
 }: {
   entry: BoardEntry
   place: number
   column: number
   onDelivered: boolean
-  medal: SellerMedalRowDto | null
-  /** Ustunning soati shu seatga navbat berganida — ochiladigan medal. */
-  speaking: SellerMedalDto | null
 }) {
   const seat = SEATS[place - 1]!
   const champion = place === 1
@@ -951,30 +900,6 @@ function PodiumSeat({
           </p>
         </div>
 
-        {/*
-          PAGON — MIJOZNING O'Z SO'ROVI, 2026-09-15.
-
-          Bu yerda ilgari bitta fakt uch marta chizilgan edi: «Liderga
-          +100 000» chipi, progress chizig'i va «97%». Uchalasi ham «liderdan
-          qancha orqada» degan bitta savolga javob berardi, va yonidagi
-          «0 / 2 buyurtma» bilan birga o'qilganda ziddiyatli ko'rinardi —
-          mijozning o'z ta'rifi «noaniq keraksiz xolat».
-
-          O'RNIGA TO'PLANGAN NARSA. Masofa — bugungi holat, ertaga boshqacha;
-          medal va daraja esa avgustdan buyon qilingan ishning o'zi, va
-          aynan shu podiumdan tashqaridagi 123 sotuvchiga ham tegadigan
-          yagona narsa.
-
-          MEDALSIZDA FAQAT DARAJA CHIZIG'I qoladi va karta qisqaradi — bu
-          ham mijozning qarori. Jadval qatoridagi `Chase` esa o'z joyida:
-          u boshqa komponent va unga e'tiroz bo'lmagan.
-        */}
-        {medal !== null && (
-          <div className="relative mt-3 w-full">
-            <Pagon row={medal} variant="seat" speaking={speaking} />
-          </div>
-        )}
-
         {/* Last child, so the streak passes over the whole seat. */}
         {champion && <div className="podium-shine" aria-hidden="true" />}
       </div>
@@ -1026,7 +951,6 @@ function BoardList({
   allEntries,
   noun,
   onDelivered,
-  medals,
 }: {
   entries: readonly BoardEntry[]
   allEntries: readonly BoardEntry[]
@@ -1123,9 +1047,6 @@ function BoardList({
                     />
                   </div>
                   <Chase entry={entry} ahead={ahead} figureOf={figureOf} />
-                  {medals.get(entry.key) != null && (
-                    <Pagon row={medals.get(entry.key)!} variant="row" />
-                  )}
                 </td>
                 <td className="tabular text-right">
                   <span
