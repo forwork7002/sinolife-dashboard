@@ -2621,10 +2621,18 @@ p {
   --lavha-rim: var(--ink-primary);
   --lavha-star: var(--surface-raised);
 }
-/* apex: L6 — the only blue plate; blue has headroom both ways, so its shadow line goes to black */
+/* apex: L6 — the only blue plate; blue has headroom both ways, so its shadow line goes to black.
+
+   --series-1 AND NOT --accent, although :root defines one as the other. PageShell sets
+   --accent per page ("page identity"), and /sellers sets it to --series-5 — so the top of
+   the ladder was drawn in the sellers column's own pink, which is the one colour the spec
+   names as never meaning a value here (§ medal colours: «--series-5 (ustunning o'z rangi)»).
+   PageShell's own contract says it: "Exactly two things read it … Nothing that encodes a
+   value does." A plate encodes a value. --ink-on-series beside it is the other half of the
+   tell — that ink is mixed for a series colour, not for whatever a page is wearing. */
 .lavha[data-level="6"] {
-  --lavha-field: var(--accent);
-  --lavha-rim: var(--accent);
+  --lavha-field: var(--series-1);
+  --lavha-rim: var(--series-1);
   --lavha-star: var(--ink-on-series);
   --lavha-lo: color-mix(in oklab, var(--lavha-field) 65%, black 35%);
 }

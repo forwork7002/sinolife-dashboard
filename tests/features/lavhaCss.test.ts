@@ -33,6 +33,22 @@ describe('lavha va medal — stylesheet', () => {
     expect(CODE).not.toMatch(/\bhsla?\(/)
   })
 
+  /*
+    LAVHA SAHIFA RANGINI O'QIMAYDI. `--accent` ni PageShell har sahifada
+    o'zgartiradi va `/sellers` uni `--series-5` qiladi, shuning uchun
+    narvonning eng tepasi — Legenda — ustunning o'z pushtisida chizilardi.
+    Spec jadvali «ko'k (apex)» deydi, PageShell sharhi esa: «Nothing that
+    encodes a value does». Lavha qiymat kodlaydi. Jim buziladi: rang
+    to'g'ri ko'rinadi, faqat noto'g'ri narsani anglatadi.
+  */
+  it('apex lavha — sahifa `--accent` i emas, barqaror `--series-1`', () => {
+    const rule = CODE.slice(CODE.indexOf('.lavha[data-level="6"]'))
+    const body = rule.slice(0, rule.indexOf('}') + 1)
+    expect(body).toContain('--lavha-field: var(--series-1)')
+    expect(body).toContain('--lavha-rim: var(--series-1)')
+    expect(body).not.toContain('var(--accent)')
+  })
+
   it('podium metallari faqat Oy oilasi medallarida — lavha ularga tegmaydi', () => {
     const lines = CODE.split('\n')
     let inMonthRule = false
