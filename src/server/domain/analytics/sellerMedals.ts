@@ -7,69 +7,105 @@
  * Sabab: bu qoidalar bazasiz test qilinadi va ular bilan bahslashadigan
  * yagona narsa — raqam, matn emas.
  *
- * KOEFFITSIYENTLAR 2026-09-15 da production'da 126 sotuvchi ustida
- * kalibrlangan va qotirilgan. Bir marta ishga tushgan darajani keyin
- * pasaytirish mumkin emas: floor uni jazo deb o'qiydi. Kalibrlash natijasi va
- * nima uchun aynan bu raqamlar tanlangani spec'da:
- * `docs/superpowers/specs/2026-09-15-sotuvchilar-medallari-design.md`.
+ * NARVON 2026-09-16 da production'da 126 sotuvchi ustida o'lchangan
+ * taqsimotdan tanlangan va qotirilgan (jami yetkazilgan pul: p50 30,8 mln,
+ * p90 102 mln, max 173 mln). Ishga tushgan ostonani keyin ko'tarish mumkin
+ * emas: floor uni jazo deb o'qiydi. Spec:
+ * `docs/superpowers/specs/2026-09-16-daraja-va-medallar-design.md`.
  */
 
+/** 1 so'm = 100 minor; 1 mln so'm. */
+export const MINOR_PER_MLN = 100_000_000n
+
 /**
- * N-darajaga kerak bo'ladigan ball: `50·N² − 50·N`.
+ * Daraja — 2026-avgustdan beri yetkazilgan JAMI FAKT 2 dan, faqat ko'tariladi.
  *
- * KVADRATIK, chunki chiziqli narvon ikki yomonlikdan birini beradi: boshida
- * juda sekin (yangi sotuvchi hech qachon qimirlamaydi) yoki oxirida juda tez
- * (chempion bir yilda 40-darajaga chiqib, narvonni tugatadi). O'lchov:
- * mediana sotuvchi oyiga ~800–1 100 ball yig'adi, ya'ni boshida deyarli har
- * ikki haftada daraja ko'tariladi va 10-darajadan keyin sekinlashadi.
+ * AYTIB YURILADIGAN RAQAMLAR: «yuz million — Usta», «bir milliard — Legenda».
+ * 1-daraja birinchi so'mdan — nol yetkazgan sotuvchi 0-darajada, unvonsiz,
+ * va bu ogohlantirish emas: bitta savdo uni Yangi qiladi.
  */
-export function levelFloorOf(level: number): number {
-  return 50 * level * level - 50 * level
+export const LEVEL_THRESHOLDS_MINOR: readonly bigint[] = Object.freeze([
+  1n, // 1 · Yangi — birinchi so'm
+  10n * MINOR_PER_MLN, // 2 · Sotuvchi
+  30n * MINOR_PER_MLN, // 3 · Katta sotuvchi
+  100n * MINOR_PER_MLN, // 4 · Usta
+  300n * MINOR_PER_MLN, // 5 · Ustoz
+  1000n * MINOR_PER_MLN, // 6 · Legenda
+])
+
+export const LEVEL_TITLES: readonly string[] = Object.freeze([
+  'Yangi',
+  'Sotuvchi',
+  'Katta sotuvchi',
+  'Usta',
+  'Ustoz',
+  'Legenda',
+])
+
+/** Legenda har keyingi milliardda II, III … — narvon hech qachon tugamaydi. */
+export const LEGENDA_STEP_MINOR = 1000n * MINOR_PER_MLN
+
+export interface Level {
+  /** 0 — hali savdosiz; 1..6. */
+  readonly level: number
+  /** 6-darajada 1 = Legenda, 2 = Legenda II …; pastda 0. */
+  readonly legendaTier: number
 }
 
-/**
- * Ballga mos daraja.
- *
- * Yopiq shakl (`levelFloorOf` ni teskarisi) emas, sanoq — narvon 30-daraja
- * atrofida tugaydi, ya'ni sikl eng ko'pi bilan o'ttiz qadam yuradi va
- * kvadrat ildizning suzuvchi nuqtadagi yaxlitlanishi chegaraning AYNAN
- * ustida turgan ballni bir daraja pastga tushirib yuborish xavfini
- * butunlay olib tashlaydi.
- */
-export function levelOf(points: number): number {
-  let level = 1
-  while (levelFloorOf(level + 1) <= points) level++
-  return level
+export function levelOf(deliveredMinor: bigint): Level {
+  let level = 0
+  for (const threshold of LEVEL_THRESHOLDS_MINOR) {
+    if (deliveredMinor >= threshold) level++
+    else break
+  }
+  const legendaTier =
+    level === 6 ? Number((deliveredMinor - LEVEL_THRESHOLDS_MINOR[5]!) / LEGENDA_STEP_MINOR) + 1 : 0
+  return { level, legendaTier }
 }
 
-/**
- * Unvon bandlari, KAMAYIB — o'qilishi «siz o'tgan eng yuqori chegara», va
- * o'sib baholansa 21-darajali Legendaga «Yangi» berilardi.
- */
-export const RANK_TITLES: readonly (readonly [number, string])[] = Object.freeze([
-  [21, "Legenda"],
-  [16, "Master"],
-  [12, "Usta"],
-  [8, "Katta sotuvchi"],
-  [4, "Sotuvchi"],
-  [1, "Yangi"],
-] as const)
-
-export function titleOf(level: number): string {
-  return RANK_TITLES.find(([floor]) => level >= floor)?.[1] ?? "Yangi"
+/** Shu darajaning ostonasi; 0-darajada 0. */
+export function levelFloorMinorOf(l: Level): bigint {
+  if (l.level === 0) return 0n
+  if (l.level < 6) return LEVEL_THRESHOLDS_MINOR[l.level - 1]!
+  return LEVEL_THRESHOLDS_MINOR[5]! + BigInt(l.legendaTier - 1) * LEGENDA_STEP_MINOR
 }
 
-/**
- * Keyingi daraja unvonni almashtirsa — o'sha unvon; almashtirmasa — null.
- *
- * Progress chizig'i har doim KEYINGI DARAJANI ko'rsatadi, chunki u yaqin va
- * erishsa bo'ladigan maqsad. Lekin «13-darajaga 680 ball» dan ko'ra
- * «Master'ga 1 000 ball» ko'proq narsa aytadi, shuning uchun sarlavha o'tish
- * unvonni ko'targan paytdagina unvon nomini oladi.
- */
-export function nextTitleOf(level: number): string | null {
-  const next = titleOf(level + 1)
-  return next === titleOf(level) ? null : next
+/** Keyingi ostona — HAR DOIM bor: 0-darajada birinchi so'm, Legendada keyingi milliard. */
+export function nextLevelAtMinorOf(l: Level): bigint {
+  if (l.level < 6) return LEVEL_THRESHOLDS_MINOR[l.level]!
+  return LEVEL_THRESHOLDS_MINOR[5]! + BigInt(l.legendaTier) * LEGENDA_STEP_MINOR
+}
+
+export function romanOf(n: number): string {
+  const table: readonly (readonly [number, string])[] = [
+    [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'],
+    [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
+  ]
+  let rest = Math.max(0, Math.floor(n))
+  let out = ''
+  for (const [value, glyph] of table) {
+    while (rest >= value) {
+      out += glyph
+      rest -= value
+    }
+  }
+  return out
+}
+
+/** «Ustoz», «Legenda II»; 0-darajada null — unvonsiz. */
+export function titleOf(l: Level): string | null {
+  if (l.level === 0) return null
+  const title = LEVEL_TITLES[l.level - 1]!
+  return l.level === 6 && l.legendaTier > 1 ? `${title} ${romanOf(l.legendaTier)}` : title
+}
+
+/** Keyingi darajaning unvoni — «… ga N mln qoldi» jumlasi uchun; har doim bor. */
+export function nextTitleOf(l: Level): string {
+  const next: Level =
+    l.level < 6
+      ? { level: l.level + 1, legendaTier: l.level + 1 === 6 ? 1 : 0 }
+      : { level: 6, legendaTier: l.legendaTier + 1 }
+  return titleOf(next)!
 }
 
 export const MEDAL_CODES = [
@@ -195,8 +231,6 @@ export const CLUB_RUNGS: readonly { readonly tier: number; readonly atMinor: big
     { tier: 6, atMinor: 500n * 100_000_000n, points: 1200 },
     { tier: 7, atMinor: 1000n * 100_000_000n, points: 2000 },
   ])
-
-const MINOR_PER_MLN = 100_000_000n
 
 /**
  * Sifat medallarining eng kam buyurtmasi.
@@ -588,15 +622,15 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
 
   return [...drafts.values()]
     .map((d) => {
-      const level = levelOf(d.points)
+      const lvl = levelOf(lifetimeMinor.get(d.employeeId) ?? 0n)
       return {
         employeeId: d.employeeId,
         points: d.points,
-        level,
-        rankTitle: titleOf(level),
-        levelFloor: levelFloorOf(level),
-        nextLevelAt: levelFloorOf(level + 1),
-        nextTitle: nextTitleOf(level),
+        level: lvl.level,
+        rankTitle: titleOf(lvl) ?? 'Yangi',
+        levelFloor: 0,
+        nextLevelAt: 0,
+        nextTitle: null,
         medals: [...d.medals].sort((a, b) => b.points - a.points),
       }
     })

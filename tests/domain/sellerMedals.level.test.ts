@@ -1,64 +1,90 @@
 import { describe, expect, it } from 'vitest'
 
-import { levelFloorOf, levelOf, nextTitleOf, titleOf } from '@/server/domain/analytics/sellerMedals'
+import {
+  LEGENDA_STEP_MINOR,
+  LEVEL_THRESHOLDS_MINOR,
+  LEVEL_TITLES,
+  MINOR_PER_MLN,
+  levelFloorMinorOf,
+  levelOf,
+  nextLevelAtMinorOf,
+  nextTitleOf,
+  romanOf,
+  titleOf,
+} from '@/server/domain/analytics/sellerMedals'
 
 /**
- * The level ladder, pinned to the numbers calibrated on production 2026-09-15.
- *
- * A level that moves after the board has shipped reads as a punishment to the
- * floor — «kecha 9-daraja edim» — so the curve is a fact this file defends,
- * not a tuning knob.
+ * Narvon — 2026-09-16 da production'da 126 sotuvchi ustida o'lchangan
+ * taqsimotdan tanlangan va QOTIRILGAN (spec §1). Ishga tushgan darajani
+ * ko'tarish floor uchun jazo — bu fayl raqamlarni himoya qiladi.
  */
-describe('daraja narvoni', () => {
-  it('N-darajaning chegarasi 50·N² − 50·N', () => {
-    expect(levelFloorOf(1)).toBe(0)
-    expect(levelFloorOf(2)).toBe(100)
-    expect(levelFloorOf(3)).toBe(300)
-    expect(levelFloorOf(5)).toBe(1_000)
-    expect(levelFloorOf(10)).toBe(4_500)
-    expect(levelFloorOf(12)).toBe(6_600)
-    expect(levelFloorOf(15)).toBe(10_500)
-    expect(levelFloorOf(20)).toBe(19_000)
+const MLN = MINOR_PER_MLN
+
+describe('narvon ostonalari', () => {
+  it('olti ostona: birinchi so‘m, 10, 30, 100, 300, 1000 mln', () => {
+    expect(LEVEL_THRESHOLDS_MINOR).toEqual([1n, 10n * MLN, 30n * MLN, 100n * MLN, 300n * MLN, 1000n * MLN])
+    expect(LEVEL_TITLES).toEqual(['Yangi', 'Sotuvchi', 'Katta sotuvchi', 'Usta', 'Ustoz', 'Legenda'])
+    expect(LEGENDA_STEP_MINOR).toBe(1000n * MLN)
   })
 
-  it('nol ball — 1-daraja, chunki 1-daraja «hali savdosi yo‘q» degani', () => {
-    expect(levelOf(0)).toBe(1)
-    expect(levelOf(99)).toBe(1)
+  it('nol — 0-daraja, unvonsiz; birinchi so‘m — Yangi', () => {
+    expect(levelOf(0n)).toEqual({ level: 0, legendaTier: 0 })
+    expect(titleOf(levelOf(0n))).toBeNull()
+    expect(levelOf(1n)).toEqual({ level: 1, legendaTier: 0 })
+    expect(titleOf(levelOf(1n))).toBe('Yangi')
   })
 
-  it('chegaraning aynan ustida keyingi darajaga o‘tadi', () => {
-    expect(levelOf(100)).toBe(2)
-    expect(levelOf(299)).toBe(2)
-    expect(levelOf(300)).toBe(3)
+  it('ostonaning AYNAN ustida ko‘tariladi, bir minor pastda ko‘tarilmaydi', () => {
+    expect(levelOf(10n * MLN - 1n).level).toBe(1)
+    expect(levelOf(10n * MLN).level).toBe(2)
+    expect(levelOf(30n * MLN - 1n).level).toBe(2)
+    expect(levelOf(30n * MLN).level).toBe(3)
+    expect(levelOf(100n * MLN).level).toBe(4)
+    expect(levelOf(300n * MLN).level).toBe(5)
+    expect(levelOf(1000n * MLN).level).toBe(6)
   })
 
-  it('kalibrlangan haqiqiy ballar o‘lchangan darajani beradi', () => {
-    // probe-medals3.mts, production, 2026-09-15
-    expect(levelOf(7_700)).toBe(12) // Shahtiyarovna 197 Marjona
-    expect(levelOf(1_130)).toBe(5) // mediana
+  it('production‘dagi haqiqiy raqamlar (2026-09-16): 173 mln — Usta, 30,8 mln — Katta sotuvchi, 7,1 mln — Yangi', () => {
+    expect(titleOf(levelOf(173n * MLN))).toBe('Usta')
+    expect(titleOf(levelOf(308n * MLN / 10n))).toBe('Katta sotuvchi')
+    expect(titleOf(levelOf(71n * MLN / 10n))).toBe('Yangi')
   })
 
-  it('unvon bandlari: 1–3 Yangi, 4–7 Sotuvchi, 8–11 Katta sotuvchi, 12–15 Usta, 16–20 Master, 21+ Legenda', () => {
-    expect(titleOf(1)).toBe('Yangi')
-    expect(titleOf(3)).toBe('Yangi')
-    expect(titleOf(4)).toBe('Sotuvchi')
-    expect(titleOf(7)).toBe('Sotuvchi')
-    expect(titleOf(8)).toBe('Katta sotuvchi')
-    expect(titleOf(11)).toBe('Katta sotuvchi')
-    expect(titleOf(12)).toBe('Usta')
-    expect(titleOf(15)).toBe('Usta')
-    expect(titleOf(16)).toBe('Master')
-    expect(titleOf(20)).toBe('Master')
-    expect(titleOf(21)).toBe('Legenda')
-    expect(titleOf(99)).toBe('Legenda')
+  it('Legenda har keyingi milliardda rim raqami oladi, lavha o‘zgarmaydi', () => {
+    expect(levelOf(1000n * MLN)).toEqual({ level: 6, legendaTier: 1 })
+    expect(titleOf(levelOf(1000n * MLN))).toBe('Legenda')
+    expect(levelOf(2000n * MLN)).toEqual({ level: 6, legendaTier: 2 })
+    expect(titleOf(levelOf(2000n * MLN))).toBe('Legenda II')
+    expect(levelOf(3999n * MLN)).toEqual({ level: 6, legendaTier: 3 })
+    expect(titleOf(levelOf(3999n * MLN))).toBe('Legenda III')
   })
 
-  it('keyingi unvon faqat keyingi daraja uni almashtirganda aytiladi', () => {
-    // 12-darajadan 13-ga o‘tish hamon Usta — aytadigan yangilik yo‘q.
-    expect(nextTitleOf(12)).toBeNull()
-    // 15-dan 16-ga o‘tish Master qiladi — aytiladi.
-    expect(nextTitleOf(15)).toBe('Master')
-    expect(nextTitleOf(3)).toBe('Sotuvchi')
-    expect(nextTitleOf(20)).toBe('Legenda')
+  it('shu darajaning ostonasi va keyingi ostona — pul bilan', () => {
+    expect(levelFloorMinorOf(levelOf(0n))).toBe(0n)
+    expect(nextLevelAtMinorOf(levelOf(0n))).toBe(1n)
+    expect(levelFloorMinorOf(levelOf(5n * MLN))).toBe(1n)
+    expect(nextLevelAtMinorOf(levelOf(5n * MLN))).toBe(10n * MLN)
+    expect(levelFloorMinorOf(levelOf(173n * MLN))).toBe(100n * MLN)
+    expect(nextLevelAtMinorOf(levelOf(173n * MLN))).toBe(300n * MLN)
+    // Legenda II ning ostonasi 2 mlrd, keyingisi 3 mlrd — narvon tugamaydi.
+    expect(levelFloorMinorOf(levelOf(2500n * MLN))).toBe(2000n * MLN)
+    expect(nextLevelAtMinorOf(levelOf(2500n * MLN))).toBe(3000n * MLN)
+  })
+
+  it('keyingi unvon HAR DOIM bor — «… ga N mln qoldi» jumlasi hech qachon bo‘sh qolmaydi', () => {
+    expect(nextTitleOf(levelOf(0n))).toBe('Yangi')
+    expect(nextTitleOf(levelOf(5n * MLN))).toBe('Sotuvchi')
+    expect(nextTitleOf(levelOf(173n * MLN))).toBe('Ustoz')
+    expect(nextTitleOf(levelOf(300n * MLN))).toBe('Legenda')
+    expect(nextTitleOf(levelOf(1000n * MLN))).toBe('Legenda II')
+    expect(nextTitleOf(levelOf(2000n * MLN))).toBe('Legenda III')
+  })
+
+  it('rim raqamlari', () => {
+    expect(romanOf(1)).toBe('I')
+    expect(romanOf(4)).toBe('IV')
+    expect(romanOf(9)).toBe('IX')
+    expect(romanOf(14)).toBe('XIV')
+    expect(romanOf(40)).toBe('XL')
   })
 })
