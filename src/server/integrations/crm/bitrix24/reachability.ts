@@ -47,6 +47,22 @@ export interface Reachability {
    * portal's network, the route into Russia, or nothing past our own egress.
    */
   readonly tlsControls: readonly AddressProbe[]
+  /**
+   * The address the portal sees us as. On App Platform without a dedicated
+   * egress IP it is shared and can change on a redeploy, so it is read, not
+   * configured — and it is the one fact Bitrix24 support needs to lift a block.
+   */
+  readonly egressIp: string | null
+}
+
+async function egressAddress(): Promise<string | null> {
+  try {
+    const response = await fetch('https://api.ipify.org', { signal: AbortSignal.timeout(5_000) })
+    const text = (await response.text()).trim()
+    return /^[\d.]{7,15}$/.test(text) ? text : null
+  } catch {
+    return null
+  }
 }
 
 /** Cloudflare's resolver: answers 443 everywhere, belongs to nobody involved. */
@@ -129,7 +145,8 @@ export async function checkReachability(webhookUrl: string): Promise<Reachabilit
     }),
   )
   const https = /\/rest\//.test(webhookUrl) ? await httpsProbe(`${webhookUrl}profile.json`) : null
-  return { host, portal, control: control!, tls, https, tlsSmall, tls12, tlsControls }
+  const egressIp = await egressAddress()
+  return { host, portal, control: control!, tls, https, tlsSmall, tls12, tlsControls, egressIp }
 }
 
 /** One log line a person can act on. */
@@ -148,7 +165,7 @@ export function describeReachability(r: Reachability): string {
             : 'TCP hamma manzilga ochiladi — muammo ulanishdan keyin'
   const tlsOpen = r.tls.filter((p) => p.ms !== null).length
   return (
-    `tarmoq: ${verdict} | nazorat ${cell(r.control)} | TCP ${r.portal.map(cell).join(', ')}` +
+    `tarmoq: ${verdict} | chiqish IP ${r.egressIp ?? '?'} | nazorat ${cell(r.control)} | TCP ${r.portal.map(cell).join(', ')}` +
     ` | TLS ${tlsOpen}/${r.tls.length} ${r.tls.map(cell).join(', ')}` +
     (r.tlsSmall ? ` | kichik-hello ${r.tlsSmall.ms !== null ? `✓${r.tlsSmall.ms}ms` : `✗${r.tlsSmall.error}`}` : '') +
     (r.tls12 ? ` | TLS1.2 ${r.tls12.ms !== null ? `✓${r.tls12.ms}ms` : `✗${r.tls12.error}`}` : '') +
