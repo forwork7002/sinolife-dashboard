@@ -185,6 +185,11 @@ const RIPE = board({
     seller('Yusupova 139 Mahliyo', 3, 41_000_000, 60_000_000, 'Lola'),
     seller('Nodira 118 Karimova', 4, 39_000_000, 52_000_000, 'Gulzora'),
     seller('Aziza 121 Toshmatova', 5, 20_000_000, 31_000_000, null),
+    /* Qator chekkalari: ostonaga yaqin turgan va hali savdo qilmagan ikki
+       sotuvchi. Ular qatorda qoladi — medal oynasi taxtanikidan boshqa, ya'ni
+       davr puli kichkina bo'lsa ham daraja katta bo'lishi mumkin. */
+    seller('Qodirova 188 Zilola', 6, 8_000_000, 11_000_000, 'Lola'),
+    seller('Rustamov 201 Diyor', 7, 0, 0, 'Azizbek'),
   ],
   teams: [
     team('Gulzora', 1, 12, 165_950_000, 206_350_000),
@@ -547,6 +552,31 @@ const MEDALS = new Map<string, SellerMedalRowDto>([
       nextTitle: 'Usta',
     }),
   ],
+  /* 95 mln, 30..100 oralig'ida — 92.9%, ya'ni unvon so'zi ko'karadi. */
+  [
+    'Qodirova 188 Zilola',
+    medalRow('Qodirova 188 Zilola', {
+      level: 3,
+      rankTitle: 'Katta sotuvchi',
+      delivered: money(95_000_000),
+      levelFloor: money(30_000_000),
+      nextLevelAt: money(100_000_000),
+      nextTitle: 'Usta',
+    }),
+  ],
+  /* Hali savdosiz: 0-daraja, unvonsiz, medalsiz. */
+  [
+    'Rustamov 201 Diyor',
+    medalRow('Rustamov 201 Diyor', {
+      level: 0,
+      rankTitle: null,
+      delivered: money(0),
+      levelFloor: money(0),
+      nextLevelAt: money(0.01),
+      nextTitle: 'Yangi',
+      medals: [],
+    }),
+  ],
 ])
 
 /**
@@ -662,5 +692,56 @@ describe('lavha va medallar', () => {
     expect(source).toContain("queryKey: ['sellers', 'medals']")
     expect(source).toContain('staleTime: 600_000')
     expect(source).not.toMatch(/medals\.(isError|isPending)/)
+    /*
+      VA BELGILAR TO'PLAMINING JOYI. `<use href="#…">` hali e'lon qilinmagan
+      belgiga bog'lansa hech narsa chizilmaydi va hech narsa xato bermaydi,
+      shuning uchun `MedalDefs` — bitta, va taxtaning eng boshida: qobiq
+      ochilgandan keyin, undagi birinchi chinakam blokdan oldin. DOM buni
+      ayta olmaydi (`Board` yordamchisi sahifa emas), shuning uchun manba.
+    */
+    expect(source.match(/<MedalDefs \/>/g)).toHaveLength(1)
+    const defs = source.indexOf('<MedalDefs />')
+    expect(defs).toBeGreaterThan(source.indexOf('tv-board-shell'))
+    expect(defs).toBeLessThan(source.indexOf('tv-switch'))
+  })
+
+  /*
+    PODIUM BO'SH BO'LGANDA HAM NARVON KERAK — sharh 1-topshiriqdan.
+    Taxta kunning birinchi daqiqalarida aynan shu holatda turadi: seat yo'q,
+    lekin jadval bor va qatorlarda lavha bor. Legendasiz plastina esa o'zini
+    tushuntirmaydi. `fakt="fakt2"` — hech kim yetkazmagan taxtani yetkazilgan
+    pulga qadab qo'yish, ya'ni g'olib yo'q.
+  */
+  it('podium bo‘sh bo‘lsa ham narvon turadi — qatorlarda lavha izohsiz qolmaydi', () => {
+    render(<SellersColumn data={FALLBACK} {...PROPS} fakt="fakt2" medals={MEDALS} />)
+    expect(column('tv-sellers').getByText(/Podium hali boʻsh/)).toBeTruthy()
+    expect(document.getElementById('tv-sellers')!.querySelectorAll('.narvon')).toHaveLength(1)
+  })
+
+  it('komandalar ustunida narvon yo‘q — bo‘sh podiumda ham; daraja shaxsiy', () => {
+    render(<TeamsColumn data={TEAM_FALLBACK} {...PROPS} fakt="fakt2" medals={MEDALS} />)
+    expect(column('tv-teams').getByText(/Podium hali boʻsh/)).toBeTruthy()
+    expect(document.getElementById('tv-teams')!.querySelectorAll('.narvon')).toHaveLength(0)
+  })
+
+  /*
+    IKKI CHEKKA. 90% dan oshgan qator unvon so'zini ko'kartiradi — bu
+    `LevelBlock` bilan BITTA qoida (`isNearNextLevel`). Hali savdosiz qator
+    esa plastinani 0-darajada, unvon o'rniga «hali savdosiz» bilan chizadi,
+    va uning chase chizig'ini faqat ikkinchi bo'lak ushlab turadi: oldinda
+    kim borligi 0 so'mlik odamga aytiladigan gap emas.
+  */
+  it('ostonaga yaqin qator ko‘karadi; hali savdosiz qator 0-daraja plastinasi bilan turadi', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+
+    const near = column('tv-sellers').getByText('Qodirova 188 Zilola').closest('tr')!
+    expect(near.querySelector('.lavha-word')!.className).toContain('lavha-word--near')
+
+    const zero = column('tv-sellers').getByText('Rustamov 201 Diyor').closest('tr')!
+    expect(zero.querySelector('svg.lavha--row')!.getAttribute('data-level')).toBe('0')
+    expect(zero.querySelector('.lavha-word')!.textContent).toBe('hali savdosiz')
+    expect(zero.querySelector('.lavha-word')!.className).not.toContain('--near')
+    expect(zero.querySelector('.tv-chase')!.textContent).toBe('Birinchi savdo kutilmoqda')
+    expect(zero.querySelector('.tv-rowmedals')).toBeNull()
   })
 })

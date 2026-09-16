@@ -6,14 +6,13 @@ import { useQuery } from '@tanstack/react-query'
 import { EmptyState, ErrorState } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Lavha } from '@/features/sellers/Lavha'
-import { LevelBlock } from '@/features/sellers/LevelBlock'
+import { LevelBlock, isNearNextLevel, nextLevelSentence } from '@/features/sellers/LevelBlock'
 import { MedalDefs } from '@/features/sellers/MedalDefs'
 import { MedalRail } from '@/features/sellers/MedalRail'
 import { Narvon } from '@/features/sellers/Narvon'
 import { RecordWall } from '@/features/sellers/RecordWall'
 import { RowMedals } from '@/features/sellers/RowMedals'
 import { SpeakingMedal } from '@/features/sellers/SpeakingMedal'
-import { dativeOf, mlnLabel } from '@/features/sellers/medalCatalog'
 import { useAutoScroll } from '@/features/sellers/useAutoScroll'
 import { useMedalRotation } from '@/features/sellers/useMedalRotation'
 import { PageShell } from '@/features/shared/PageShell'
@@ -693,6 +692,13 @@ function BoardColumn({
             </span>
             Podium hali boʻsh — oʻrinlar hammaga ochiq
           </p>
+          {/*
+            NARVON SHU YERDA HAM. Seat yo'q, lekin qatorlarda lavha bor — va
+            izohsiz plastina o'zini tushuntirmaydi. Birinchi daqiqalarda taxta
+            aynan shu holatda turadi, ya'ni ko'pchilik narvonni birinchi marta
+            shu yerda ko'radi. Sharti tayyor branchdagining aynan o'zi.
+          */}
+          {tone === 'sellers' && medals.size > 0 && <Narvon />}
           <BoardList
             entries={ranked}
             allEntries={ranked}
@@ -959,18 +965,21 @@ function PodiumSeat({
           seat'ning shu pastki burchagini «noaniq keraksiz xolat» deb atadi va
           o'rniga darajani so'radi: buyurtma soni ham, konversiya ham
           pastdagi jadvalning o'z ustunlarida turibdi, seat esa faqat pulni
-          va odamning darajasini aytadi. Faqat FAKT-boshqa-fakt qatori qoldi.
+          va odamning darajasini aytadi. Faqat FAKT-boshqa-fakt qatori qoldi —
+          va u endi o'ralmaydi: yagona bolasi chizilmaydigan o'ram `mt-2.5` ni
+          baribir olib kelardi, ya'ni yo'q satr ostida bo'sh joy qolardi.
         */}
-        <div className="tabular relative mt-2.5 text-[11px] leading-snug" style={{ color: 'var(--ink-secondary)' }}>
-          {(onDelivered ? entry.ordered : entry.won) > 0 && (
-            <p>
-              {onDelivered ? 'FAKT 1' : 'FAKT 2'}{' '}
-              <span style={{ color: 'var(--ink-primary)' }}>
-                {formatFullUzs(onDelivered ? entry.ordered : entry.won)}
-              </span>
-            </p>
-          )}
-        </div>
+        {(onDelivered ? entry.ordered : entry.won) > 0 && (
+          <p
+            className="tabular relative mt-2.5 text-[11px] leading-snug"
+            style={{ color: 'var(--ink-secondary)' }}
+          >
+            {onDelivered ? 'FAKT 1' : 'FAKT 2'}{' '}
+            <span style={{ color: 'var(--ink-primary)' }}>
+              {formatFullUzs(onDelivered ? entry.ordered : entry.won)}
+            </span>
+          </p>
+        )}
 
         {/*
           DARAJA, TOKCHA, GAPIRUVCHI KARTA — medal so'rovi kelgan seatda.
@@ -1092,6 +1101,10 @@ function BoardList({
             const index = allEntries.findIndex((e) => e.key === entry.key)
             const ahead = index > 0 ? allEntries[index - 1]! : null
             const ranked = entry.won > 0 || entry.ordered > 0
+            // BIR MARTA QIDIRILADI. Katakcha uni sakkiz joyda o'qiydi, va
+            // `medals.get(...)!` ning sakkizta nusxasi bir kun bittasi
+            // yangilanmay qolib, `undefined` ustida yorilishi uchun turadi.
+            const medal = medals.get(entry.key) ?? null
             return (
               <tr key={entry.key} className="tv-row">
                 <td className="tabular text-right" style={{ color: 'var(--ink-muted)' }}>
@@ -1113,12 +1126,8 @@ function BoardList({
                     plastina, o'rtada ism va unvon so'zi, o'ngda medallar.
                   */}
                   <div className="tv-namecell">
-                    {medals.get(entry.key) != null && (
-                      <Lavha
-                        level={medals.get(entry.key)!.level}
-                        legendaTier={medals.get(entry.key)!.legendaTier}
-                        size="row"
-                      />
+                    {medal !== null && (
+                      <Lavha level={medal.level} legendaTier={medal.legendaTier} size="row" />
                     )}
                     <div className="tv-namecell-main">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -1126,9 +1135,9 @@ function BoardList({
                           {entry.name}
                         </span>
                         {entry.badge && <TeamBadge label={entry.badge} />}
-                        {medals.get(entry.key) != null && (
-                          <span className={`lavha-word${nearOf(medals.get(entry.key)!) ? ' lavha-word--near' : ''}`}>
-                            {medals.get(entry.key)!.rankTitle ?? 'hali savdosiz'}
+                        {medal !== null && (
+                          <span className={`lavha-word${isNearNextLevel(medal) ? ' lavha-word--near' : ''}`}>
+                            {medal.rankTitle ?? 'hali savdosiz'}
                           </span>
                         )}
                       </div>
@@ -1155,9 +1164,14 @@ function BoardList({
                           }}
                         />
                       </div>
-                      <Chase entry={entry} ahead={ahead} figureOf={figureOf} next={nextOf(medals.get(entry.key) ?? null)} />
+                      <Chase
+                        entry={entry}
+                        ahead={ahead}
+                        figureOf={figureOf}
+                        next={medal === null ? null : nextLevelSentence(medal)}
+                      />
                     </div>
-                    {medals.get(entry.key) != null && <RowMedals medals={medals.get(entry.key)!.medals} />}
+                    {medal !== null && <RowMedals medals={medal.medals} />}
                   </div>
                 </td>
                 <td className="tabular text-right">
@@ -1230,19 +1244,6 @@ function Th({
       {children}
     </th>
   )
-}
-
-/** 90% dan oshgan — unvon so'zi ko'k bo'ladi. `LevelBlock` bilan bir qoida. */
-function nearOf(row: SellerMedalRowDto): boolean {
-  const span = Math.max(1, row.nextLevelAt.amount - row.levelFloor.amount)
-  return row.level > 0 && (row.delivered.amount - row.levelFloor.amount) / span >= 0.9
-}
-
-/** Chase chizig'ining ikkinchi bo'lagi: «Ustaga 18.7 mln»; 0-darajada «Birinchi savdo kutilmoqda». */
-function nextOf(row: SellerMedalRowDto | null): string | null {
-  if (row === null) return null
-  if (row.level === 0) return 'Birinchi savdo kutilmoqda'
-  return `${dativeOf(row.nextTitle)} ${mlnLabel(Math.max(0, row.nextLevelAt.amount - row.delivered.amount))}`
 }
 
 /**

@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { Lavha } from '@/features/sellers/Lavha'
-import { LevelBlock } from '@/features/sellers/LevelBlock'
+import { LevelBlock, isNearNextLevel, nextLevelSentence } from '@/features/sellers/LevelBlock'
 import { Medal } from '@/features/sellers/Medal'
 import { MedalDefs } from '@/features/sellers/MedalDefs'
 import { MedalRail } from '@/features/sellers/MedalRail'
@@ -247,6 +247,42 @@ describe('LevelBlock — seat bloki', () => {
     expect(container.querySelector('.lv-plate.lv-plate--rise')).not.toBeNull()
     expect(container.querySelector('.lv-sheen')).not.toBeNull()
     expect(container.querySelectorAll('use.lavha__star--drop')).toHaveLength(1)
+  })
+})
+
+/**
+ * DARAJA QOIDASI BITTA. Seat bloki ham, jadval qatori ham shu ikki funksiyani
+ * o'qiydi — nusxa bo'lganda bir odam bir ekranda «yaqin», ikkinchisida
+ * «yaqin emas» bo'lib chiqishi mumkin edi, va hech narsa xato bermasdi.
+ */
+describe('isNearNextLevel va nextLevelSentence', () => {
+  it('«yaqin» 90% dan boshlanadi; 0-daraja hech qachon yaqin emas', () => {
+    // 173 mln, 100..300 oralig'ida — 36.5%.
+    expect(isNearNextLevel(row())).toBe(false)
+    // 95 mln, 30..100 oralig'ida — 92.9%.
+    expect(
+      isNearNextLevel(row({ level: 3, delivered: uzs(95_000_000), levelFloor: uzs(30_000_000), nextLevelAt: uzs(100_000_000) })),
+    ).toBe(true)
+    // Ostonadan oshib ketgan qator ham yaqin: ulush qisiladi, aylanib ketmaydi.
+    expect(isNearNextLevel(row({ delivered: uzs(400_000_000) }))).toBe(true)
+    expect(isNearNextLevel(row({ level: 0, rankTitle: null, delivered: uzs(0), levelFloor: uzs(0), nextLevelAt: uzs(0.01) }))).toBe(false)
+  })
+
+  it('jumla « qoldi» siz keladi — gapni seat tugatadi, chase chizig‘i esa yo‘q', () => {
+    expect(nextLevelSentence(row())).toBe('Ustozga 127 mln')
+    expect(
+      nextLevelSentence(row({ level: 3, rankTitle: 'Katta sotuvchi', delivered: uzs(81_300_000), levelFloor: uzs(30_000_000), nextLevelAt: uzs(100_000_000), nextTitle: 'Usta' })),
+    ).toBe('Ustaga 18.7 mln')
+    expect(
+      nextLevelSentence(row({ level: 0, rankTitle: null, delivered: uzs(0), levelFloor: uzs(0), nextLevelAt: uzs(0.01), nextTitle: 'Yangi' })),
+    ).toBe('Birinchi savdo kutilmoqda')
+    // Ostonadan oshgan sotuvchi manfiy pul emas, nol ko'radi.
+    expect(nextLevelSentence(row({ delivered: uzs(400_000_000) }))).not.toContain('-')
+  })
+
+  it('seat bloki o‘sha jumlani gap qilib tugatadi', () => {
+    render(<LevelBlock row={row()} ghost={false} />)
+    expect(screen.getByText(`${nextLevelSentence(row())} qoldi`)).toBeTruthy()
   })
 })
 
