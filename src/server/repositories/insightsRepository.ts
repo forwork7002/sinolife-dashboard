@@ -1463,6 +1463,69 @@ export class InsightsRepository {
   }
 
   /**
+   * How many of our buyers are in «База», and how many are not.
+   *
+   * ITS OWN STATEMENT, NOT A CTE ON `customerStates`. That statement's test
+   * records the decision of commit 35aca08 — it no longer reads the retention
+   * funnel at all, because `retentionStages` owns that reading and two
+   * statements answering overlapping questions is how they start disagreeing.
+   * This reads MEMBERSHIP, one yes-or-no per buyer, and never the stage
+   * partition.
+   *
+   * WHAT «BAZADA YOʻQ» MEASURES, AND WHY THE SCREEN HAS TO SAY SO. Of the
+   * 11 607 customers with a WON revenue order, 11 586 — 99.8% — are in База,
+   * because the portal places every delivered customer there automatically
+   * (measured on production, 2026-09-16). So among real buyers this split is a
+   * constant, and «Bazada yoʻq» is overwhelmingly customers whose order was
+   * never delivered. The client chose to keep it with that caveat in front of
+   * them; the card states it.
+   *
+   * ONE PASS OVER THE BUYER SET, so the halves sum to `customers` by
+   * construction. `cust` is the same CTE `customerStates` counts, so
+   * `customers` here equals `states.customers` — which is the check. NO
+   * `countsAsRevenue` on `based`: RETENTION is precisely the role that does not
+   * count, and filtering on it would empty the CTE.
+   *
+   * No period and no scope: a fact about today, company-wide, like the states.
+   */
+  async customerBaseSplit(): Promise<{
+    readonly customers: number
+    readonly inBase: number
+    readonly notInBase: number
+  }> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { customers: bigint | null; in_base: bigint | null; not_in_base: bigint | null }[]
+    >(
+      `
+      WITH cust AS (
+        SELECT DISTINCT d."customerId" AS cid
+        FROM "deal" d
+        WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
+      ),
+      based AS (
+        SELECT DISTINCT d."customerId" AS cid
+        FROM "deal" d
+        JOIN "pipeline" p ON p."id" = d."pipelineId"
+        WHERE p."role" = 'RETENTION' AND d."customerId" IS NOT NULL
+      )
+      SELECT
+        count(*)::bigint AS customers,
+        count(*) FILTER (WHERE b.cid IS NOT NULL)::bigint AS in_base,
+        count(*) FILTER (WHERE b.cid IS NULL)::bigint AS not_in_base
+      FROM cust c
+      LEFT JOIN based b ON b.cid = c.cid
+      `,
+    )
+
+    const row = rows[0]
+    return {
+      customers: int(row?.customers),
+      inBase: int(row?.in_base),
+      notInBase: int(row?.not_in_base),
+    }
+  }
+
+  /**
    * Who spoke to customers, for how long, and how that splits four ways.
    *
    * ONE SCAN, FOUR ARMS — overall, per operator, per team, per day — because

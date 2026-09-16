@@ -73,6 +73,16 @@ async function main() {
   console.table(customerBands)
   console.log(`unlinkedCalls ${a.unlinkedCalls}, operators ${a.operators.length}`)
 
+  console.log('\n— база split —')
+  t = Date.now()
+  const split = await repo.customerBaseSplit()
+  console.log(`customerBaseSplit ${Date.now() - t}ms`, split)
+  t = Date.now()
+  const states = await repo.customerStates()
+  console.log(`customerStates ${Date.now() - t}ms`, states)
+  check('inBase + notInBase = customers', split.inBase + split.notInBase, split.customers)
+  check('customerBaseSplit.customers = customerStates.customers', split.customers, states.customers)
+
   await prisma.$disconnect()
 }
 
