@@ -83,6 +83,72 @@ describe('classifyRefusal', () => {
 })
 
 describe('PortalGate', () => {
+  /**
+   * THE LADDER HAS TO ACTUALLY CLIMB, AND ON PRODUCTION IT DID NOT.
+   *
+   * Measured 2026-09-16 under a live `OVERLOAD_LIMIT`: the worker printed
+   * «60s kutiladi» on every probe instead of 60 → 120 → 240 → 480 → 600. The
+   * startup health check had failed three times at network level, which left
+   * `transientRun` at the tolerance for the rest of the outage — only a success
+   * reset it, and there are none during a block — so any later stray socket
+   * error called `openGate` and rewrote a THROTTLE gate as a TRANSIENT one, flat
+   * 60 s, `probes` back to zero. The next OVERLOAD_LIMIT then saw a kind
+   * mismatch and opened at rung zero again.
+   *
+   * ~860 probes a day at a portal that had refused us, under a support ticket
+   * promising in writing that we back off. The ladder IS that promise.
+   */
+  it('climbs the ladder across repeated refusals of the same kind', () => {
+    const gate = new PortalGate()
+    const now = new Date('2026-09-16T09:00:00Z')
+    const overload = { code: 'OVERLOAD_LIMIT', message: 'blocked', status: 401 }
+
+    gate.trip(overload, now)
+    expect(gate.nextWaitMs(now)).toBe(60_000)
+
+    gate.noteProbe(now)
+    gate.trip(overload, now)
+    expect(gate.nextWaitMs(now)).toBe(120_000)
+
+    gate.noteProbe(now)
+    gate.trip(overload, now)
+    expect(gate.nextWaitMs(now)).toBe(240_000)
+  })
+
+  it('does not let a socket error demote a throttle gate or reset its rung', () => {
+    const gate = new PortalGate()
+    const now = new Date('2026-09-16T09:00:00Z')
+    const overload = { code: 'OVERLOAD_LIMIT', message: 'blocked', status: 401 }
+
+    gate.trip(overload, now)
+    gate.noteProbe(now)
+    gate.trip(overload, now)
+    expect(gate.nextWaitMs(now)).toBe(120_000)
+
+    // Three nameless failures — the count that used to open a TRANSIENT gate.
+    for (let i = 0; i < 3; i++) gate.trip(new Error('socket hang up'), now)
+
+    expect(gate.state().kind).toBe('THROTTLE')
+    expect(gate.state().code).toBe('OVERLOAD_LIMIT')
+    expect(gate.nextWaitMs(now)).toBe(120_000)
+  })
+
+  /** And a named refusal ends the transient run, so the trigger is not left armed. */
+  it('clears the transient run when the portal names a refusal', () => {
+    const gate = new PortalGate()
+    const now = new Date('2026-09-16T09:00:00Z')
+
+    gate.trip(new Error('socket hang up'), now)
+    gate.trip(new Error('socket hang up'), now)
+    // A named refusal in between resets the count...
+    gate.trip({ code: 'OPERATION_TIME_LIMIT', message: 'slow', method: 'crm.deal.list' }, now)
+    // ...so two more transients are still under tolerance and shut nothing.
+    gate.trip(new Error('socket hang up'), now)
+    gate.trip(new Error('socket hang up'), now)
+
+    expect(gate.state().kind).toBeNull()
+  })
+
   const t0 = new Date('2026-09-15T06:00:00.000Z')
   const at = (ms: number) => new Date(t0.getTime() + ms)
   const overload = new Bitrix24Error('x', 401, false, 'OVERLOAD_LIMIT', 'crm.deal.list')

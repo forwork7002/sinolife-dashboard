@@ -1678,9 +1678,27 @@ threshold, so nothing here can promise to avoid it; what it can do is make our
 consumption a measured number. `meter.stats().peak` is what the next support
 ticket quotes.
 
-**`npm run bitrix:meter` asks `profile` once and prints all of it** — answering
+**`npm run bitrix:meter` asks the portal once and prints all of it** — answering
 or refused, which code, whether to wait or to issue a new webhook, and how full
-the basket is. Safe during a block: it is the same method the gate probes with.
+the basket is. Safe during a block: it is the cheapest call there is.
+
+**IT CALLS `healthCheck`, NEVER `probe`, AND THE FIRST VERSION GOT THAT WRONG.**
+`probe()` exists for the gate: it swallows the error and answers a bare boolean,
+because the gate only needs «is the door open». A diagnostic needs the REASON —
+and the first version called `probe()` inside a try/catch and printed «✓ portal
+javob berdi» on the strength of nothing having been thrown. Measured 2026-09-16
+against a webhook the portal answers `INVALID_CREDENTIALS`: it reported the
+portal healthy in 508 ms. **A tool whose whole job is to say «wait» or «issue a
+new key» must not fail open.**
+
+**AND THIS PORTAL SENDS NO `time` AT ALL.** Measured the same day against
+`obey.bitrix24.kz`: neither `profile` nor `crm.deal.fields` carries a `time`
+block. The meter degrades to admitting every call, which is the behaviour this
+integration had for its whole life, so nothing is lost — but it means **the
+gauge is not available here and `PortalBudget` is the operative guard**, not a
+backstop. Do not quote `meter.stats().peak` to Bitrix24 support from this
+portal; quote the budget's own counts instead, and ask support for the figures
+in their «Статистика» panel.
 
 **AND THE WALK STOPPED SENDING 48 COMMANDS NOBODY NEEDED — `CHAIN_MIN`.**
 `batchWalk` sent a fixed chain of FIFTY id-chained seeks on every call,
@@ -1845,7 +1863,23 @@ and the widening, by counting the commands the walk actually sent.
   is known and above one. A null count means *not counted*, never *narrow*, so
   it falls back to the name rather than inventing a scope. It is read beside
   `syncError.since`, which says how LONG.
-- **THE ATTEMPT COUNT IN A FAILURE MESSAGE IS EVIDENCE.** `sync_log` is what
+- **THE LADDER HAS TO ACTUALLY CLIMB, AND UNTIL 2026-09-16 IT DID NOT.** Watched
+on production under a live `OVERLOAD_LIMIT`, the worker printed «60s kutiladi»
+on EVERY probe instead of 60 → 120 → 240 → 480 → 600. Two things combined. The
+startup health check failed three times at network level, and `transientRun` was
+only ever reset by a SUCCESS — of which there are none during a block — so the
+count sat at the tolerance for the whole outage. And the TRANSIENT branch called
+`openGate`, which REWRITES `kind`: one stray socket error turned a THROTTLE gate
+into a TRANSIENT one, whose delay is a flat 60 s and whose `probes` counter
+starts again at zero, and the next `OVERLOAD_LIMIT` then saw a kind mismatch and
+opened at rung zero. Round and round, ~860 probes a day at a portal that had
+administratively blocked us. **THROTTLE and CREDENTIAL are specific diagnoses
+and TRANSIENT is the absence of one, so the specific one wins**: a transient no
+longer demotes a named gate, and any named refusal — `OPERATION_TIME_LIMIT`
+included, which is why the reset sits ABOVE the METHOD branch — ends the
+transient run. Pinned by three cases in `portalRefusal.test.ts`.
+
+**THE ATTEMPT COUNT IN A FAILURE MESSAGE IS EVIDENCE.** `sync_log` is what
   this integration hands Bitrix24 support when it is asked what load it was
   putting on the portal, and the ticket opened after the 2026-09-14 block
   promises in writing that we back off when refused. That is what the gate's

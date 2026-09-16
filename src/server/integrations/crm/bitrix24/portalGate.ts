@@ -144,6 +144,19 @@ export class PortalGate {
 
     const code = refusalCode(error) ?? 'UNKNOWN'
 
+    /*
+      ANY REFUSAL THE PORTAL NAMED ENDS THE TRANSIENT RUN.
+
+      `transientRun` counts CONSECUTIVE nameless failures — a socket, a DNS
+      miss, an abort. A code in the body is proof the portal is talking to us,
+      and that includes `OPERATION_TIME_LIMIT`, which is why this sits above the
+      METHOD branch rather than below it. Without the reset the only thing that
+      ever cleared the count was a SUCCESS, so three network errors at startup
+      armed a hair trigger that then survived the whole outage — see the
+      TRANSIENT branch below for what it did to the ladder.
+    */
+    if (kind !== 'TRANSIENT') this.transientRun = 0
+
     if (kind === 'METHOD') {
       const method = methodOf(error)
       if (method) this.methodHolds.set(method, new Date(now.getTime() + METHOD_HOLD_MS))
@@ -151,6 +164,28 @@ export class PortalGate {
     }
 
     if (kind === 'TRANSIENT') {
+      /*
+        A SOCKET ERROR MAY NOT DEMOTE A GATE THAT ALREADY NAMES ITS REFUSAL.
+
+        Measured on production 2026-09-16, under a live `OVERLOAD_LIMIT`: the
+        printed wait stayed at 60 s across every probe instead of climbing
+        60 → 120 → 240 → 480 → 600. Two things combined to do that. The startup
+        health check failed at network level three times, which left
+        `transientRun` at the tolerance FOREVER — it is only ever reset by a
+        success, and there are none during a block — so every later transient
+        went straight to `openGate`. And `openGate` rewrites `kind`, so a single
+        stray socket error turned a THROTTLE gate into a TRANSIENT one, whose
+        probe delay is a flat 60 s and whose `probes` counter starts again at
+        zero. The next `OVERLOAD_LIMIT` then saw a kind MISMATCH and opened at
+        rung zero. Round and round, at ~860 probes a day against a portal that
+        had administratively blocked us — while the support ticket opened after
+        2026-09-14 promises in writing that we back off when refused.
+
+        THROTTLE and CREDENTIAL are specific diagnoses; TRANSIENT is the absence
+        of one. The specific one wins, and holding the ladder is the whole point.
+      */
+      if (this.kind === 'THROTTLE' || this.kind === 'CREDENTIAL') return kind
+
       this.transientRun += 1
       if (this.transientRun < TRANSIENT_TOLERANCE) return kind
       this.openGate(kind, code, now, TRANSIENT_PROBE_MS)

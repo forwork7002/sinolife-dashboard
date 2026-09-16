@@ -45,10 +45,25 @@ async function main(): Promise<void> {
   const provider = new Bitrix24CrmProvider({ webhookUrl })
   const started = Date.now()
 
-  try {
-    await provider.probe()
+  /*
+    `healthCheck`, NOT `probe` — AND THIS SCRIPT GOT IT WRONG ONCE ALREADY.
+
+    `probe()` exists for the gate: it swallows the error and answers a bare
+    boolean, because the gate only needs «is the door open». This script needs
+    the REASON, and its first version called `probe()` inside a try/catch and
+    printed «✓ portal javob berdi» on the strength of nothing having been
+    thrown. Measured 2026-09-16 against a webhook the portal answers
+    `INVALID_CREDENTIALS`: the diagnostic reported the portal healthy in 508 ms.
+    A tool whose entire job is to say whether to wait or to issue a new key
+    cannot fail open.
+  */
+  const health = await provider.healthCheck()
+
+  if (health.ok) {
     console.log(`✓ portal javob berdi (${Date.now() - started} ms)`)
-  } catch (error) {
+    console.log(`  ${health.detail}`)
+  } else {
+    const error = health.detail
     const code = refusalCode(error) ?? 'UNKNOWN'
     const kind = classifyRefusal(error)
     console.error(`✗ portal rad etdi — ${code} (${kind ?? 'tasniflanmagan'})`)
@@ -63,12 +78,12 @@ async function main(): Promise<void> {
         ? '  → portalda yangi webhook ochib, BITRIX24_WEBHOOK_URL ni yangilash kerak. Kutish yordam bermaydi.'
         : '  → portal oʻzi tiklanadi. Vorker zondlab turadi; hech narsa qilish shart emas.',
     )
-    console.error(`  ${error instanceof Error ? error.message : String(error)}`)
+    console.error(`  ${error}`)
     process.exitCode = 1
     return
   }
 
-  const operating = provider.meter.operating('profile')
+  const operating = provider.meter.operating('scope')
   if (operating === null) {
     /*
       NOT AN ERROR, AND WORTH SAYING OUT LOUD. Bitrix24 omits `time` on some
@@ -81,7 +96,7 @@ async function main(): Promise<void> {
   }
 
   const pct = Math.round((operating / OPERATING_BUDGET_S) * 100)
-  console.log(`  profile savati: ${operating}s / ${OPERATING_BUDGET_S}s (${pct}%)`)
+  console.log(`  scope savati: ${operating}s / ${OPERATING_BUDGET_S}s (${pct}%)`)
 
   const { requests, invocations } = provider.meter.stats()
   console.log(`  bu zond: ${requests} soʻrov / ${invocations} chaqiruv`)
