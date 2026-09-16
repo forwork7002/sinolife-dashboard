@@ -15,7 +15,9 @@
  * REST layer never sees it, so it costs nothing against any Bitrix24 limit.
  */
 import { resolve4 } from 'node:dns/promises'
+import { request } from 'node:https'
 import { connect } from 'node:net'
+import { connect as tlsConnect } from 'node:tls'
 
 export interface AddressProbe {
   readonly address: string
@@ -27,6 +29,10 @@ export interface Reachability {
   readonly host: string
   readonly portal: readonly AddressProbe[]
   readonly control: AddressProbe
+  /** TLS handshake per portal address — TCP opening proves nothing past SYN. */
+  readonly tls: readonly AddressProbe[]
+  /** One `profile` through node:https rather than fetch, when a webhook is given. */
+  readonly https: AddressProbe | null
 }
 
 /** Cloudflare's resolver: answers 443 everywhere, belongs to nobody involved. */
@@ -47,6 +53,43 @@ export function tcpProbe(address: string, port = 443, timeoutMs = CONNECT_TIMEOU
   })
 }
 
+/*
+  WHY TLS AND HTTPS TOO. On production 2026-09-16 11:26 UTC every portal
+  address opened TCP in 44 ms from the worker while `fetch` kept failing with
+  UND_ERR_CONNECT_TIMEOUT — and undici's «connect» includes the TLS handshake.
+  So the question moved one layer up, and these two answer it: does the
+  handshake finish, and does a request that does NOT go through undici work.
+*/
+export function tlsProbe(address: string, servername: string, timeoutMs = 10_000): Promise<AddressProbe> {
+  return new Promise((resolve) => {
+    const started = Date.now()
+    const socket = tlsConnect({ host: address, port: 443, servername })
+    const done = (error: string | null) => {
+      socket.destroy()
+      resolve({ address, ms: error ? null : Date.now() - started, error })
+    }
+    socket.setTimeout(timeoutMs, () => done('TIMEOUT'))
+    socket.once('secureConnect', () => done(null))
+    socket.once('error', (e: NodeJS.ErrnoException) => done(e.code ?? 'ERROR'))
+  })
+}
+
+export function httpsProbe(url: string, timeoutMs = 15_000): Promise<AddressProbe> {
+  return new Promise((resolve) => {
+    const started = Date.now()
+    const req = request(url, { method: 'POST', headers: { 'content-type': 'application/json' } }, (res) => {
+      res.resume()
+      res.once('end', () => resolve({ address: `https ${res.statusCode}`, ms: Date.now() - started, error: null }))
+    })
+    req.setTimeout(timeoutMs, () => {
+      req.destroy()
+      resolve({ address: 'https', ms: null, error: 'TIMEOUT' })
+    })
+    req.once('error', (e: NodeJS.ErrnoException) => resolve({ address: 'https', ms: null, error: e.code ?? 'ERROR' }))
+    req.end('{}')
+  })
+}
+
 export async function checkReachability(webhookUrl: string): Promise<Reachability> {
   const host = new URL(webhookUrl).hostname
   const addresses = await resolve4(host).catch(() => [] as string[])
@@ -54,7 +97,9 @@ export async function checkReachability(webhookUrl: string): Promise<Reachabilit
     tcpProbe(CONTROL_ADDRESS),
     ...addresses.map((a) => tcpProbe(a)),
   ])
-  return { host, portal, control: control! }
+  const tls = await Promise.all(addresses.map((a) => tlsProbe(a, host)))
+  const https = /\/rest\//.test(webhookUrl) ? await httpsProbe(`${webhookUrl}profile.json`) : null
+  return { host, portal, control: control!, tls, https }
 }
 
 /** One log line a person can act on. */
@@ -71,5 +116,10 @@ export function describeReachability(r: Reachability): string {
           : open < r.portal.length
             ? 'Bitrix24 manzillarining bir qismi bu serverdan ochilmayapti'
             : 'TCP hamma manzilga ochiladi — muammo ulanishdan keyin'
-  return `tarmoq: ${verdict} | nazorat ${cell(r.control)} | ${r.portal.map(cell).join(', ')}`
+  const tlsOpen = r.tls.filter((p) => p.ms !== null).length
+  return (
+    `tarmoq: ${verdict} | nazorat ${cell(r.control)} | TCP ${r.portal.map(cell).join(', ')}` +
+    ` | TLS ${tlsOpen}/${r.tls.length} ${r.tls.map(cell).join(', ')}` +
+    (r.https ? ` | node:https ${r.https.ms !== null ? `${r.https.address} ${r.https.ms}ms` : `✗${r.https.error}`}` : '')
+  )
 }
