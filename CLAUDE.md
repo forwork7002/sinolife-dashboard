@@ -1673,6 +1673,63 @@ is hammering the portal four times over». It reports the attempts it made. The
 ten-minute wait from ever engaging: measured at 40 HTTP requests where 10 were
 expected.
 
+**THE ROOT CAUSE OF THE THREE BLOCKS, MEASURED — `npm run bitrix:cost`.**
+`obey.bitrix24.kz` blocked this integration three mornings running: 2026-09-14
+11:20 (six hours), 2026-09-15 10:50, 2026-09-16 11:53, all `OVERLOAD_LIMIT`.
+Every investigation before this one counted REQUESTS and RECORDS — the numbers
+our side of the wire can see — and by both the integration looked modest. The
+cause was found only by asking a third question: **how long does the PORTAL
+spend answering us.** `sync_log` had held the answer since the day it was
+written, because `finishedAt − startedAt` on a pass is almost entirely the
+portal's execution time. Nobody had summed it. Over the three days ending
+2026-09-16:
+
+| entity | passes | avg | **total portal time** | records read | **s per record** |
+|---|---|---|---|---|---|
+| **DEALS** | 1 968 | **31.8 s** | **17.4 h** | 32 778 | **1.91** |
+| STAGE_HISTORY | 1 969 | 1.2 s | 38 min | 1 465 859 | 0.0015 |
+| CUSTOMERS | 1 975 | 0.9 s | 30 min | 8 739 | 0.21 |
+
+**DEALS read 45× fewer records than STAGE_HISTORY and spent 28× more of the
+portal's time — 1 200× more per record.** The cost was not the data; it was the
+fixed fifty-command chain, and it was specific to `crm.deal.list`, whose
+`CATEGORY_ID` filter and wide `select` over 464 000 rows make each command cost
+**~0.64 s** of portal execution against `crm.contact.list`'s ~0.018 s. Forty-eight
+of those fifty existed only to learn there was nothing more to read. Sustained,
+that was **145 s of portal time per ten minutes on one method, day and night** —
+30% of the 480 s Bitrix24 nominally allows, and three times that before the tick
+was slowed from 60 s to 180 s on 2026-09-14. **Every block landed between 10:50
+and 11:59** because that is when the client's own sales floor is working
+`crm.deal.*` hardest: our steady 30% plus their morning emptied the method's
+basket. It is also why cutting our REQUEST volume 7× after the first block did
+not stop the next two — the requests were never the expensive part.
+
+**THE HISTORICAL CAUSE WAS DIFFERENT AND IS ALSO GONE.** Before 2026-09-14 the
+worker restarted **45–65 times a day** (`DEPARTMENTS` rows per day in `sync_log`:
+57, 67, 59, 61 against a scheduled 16) and each restart wound the stage-history
+cursor back 45 days: STAGE_HISTORY read **1 372 072 rows on 2026-09-13** from a
+222 000-row table, six full re-reads a day. The Roistat heap cap stopped the
+restarts and `historyBackfillCursor` stopped the re-reads: **2 730 rows on
+2026-09-16, a 500× cut.** That is what the support ticket describes. It was
+real, it was fixed, and it was not what caused the two blocks that followed.
+
+**THE CURE AND THE GUARD, AND WHICH IS WHICH.** The cure is `CHAIN_MIN`: an idle
+DEALS pass sends 2 commands, ~1.3 s instead of ~32 s, which at the 120 s tick is
+~6.5 s per ten minutes — **from 30% of the method's budget to ~1.4%.** The guard
+is the measured fallback in `portalMeter.ts`, because **this portal sends no
+`time` block** and the gauge had nothing to read: `call()` now times every
+successful request and bills it to the WALKED method, and above 60 s of our own
+time per ten minutes a method is paced, above 120 s it waits. Those rungs are set
+BELOW the 145 s that got blocked, deliberately — the portal's own users share the
+basket and we cannot see their half. `portalMeter.test.ts` replays the incident
+(a 36 s DEALS pass every 180 s is stopped) and the cure (a 1.3 s pass every 120 s
+is never touched).
+
+**HOW TO KNOW IT HELD, WITHOUT TRUSTING THIS PARAGRAPH:** `npm run bitrix:cost`
+against production. The DEALS row's `o‘rt s` must read ~1–2, not ~32, and its
+`sek/10daq` single digits, not 145. If it creeps back up, read the chain width
+first.
+
 **THE GAUGE WAS ALWAYS ON THE WIRE AND NOTHING EVER READ IT — `portalMeter.ts`,
 2026-09-16.** Every successful Bitrix24 answer carries `time.operating` (seconds
 of operating time this method has already spent in the current basket, against

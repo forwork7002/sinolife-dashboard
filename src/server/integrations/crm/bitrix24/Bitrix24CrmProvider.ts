@@ -495,6 +495,11 @@ export class Bitrix24CrmProvider implements CrmProvider {
       attempts += 1
       await this.limiter.acquire()
       this.meter.countRequest(options.invocations ?? 1)
+      /*
+        STARTED AFTER THE LIMITER, NOT BEFORE IT. The wait for a token is ours;
+        what the portal is billed for starts when the request leaves.
+      */
+      const sentAt = Date.now()
       const controller = new AbortController()
       /**
        * A batch is fifty queries in one request, so it deserves fifty times
@@ -593,6 +598,16 @@ export class Bitrix24CrmProvider implements CrmProvider {
         const at = new Date()
         this.meter.record(method, payload.time, at)
         if (metered !== method) this.meter.record(metered, subcommandTime(payload.result), at)
+        /*
+          AND WHAT WE MEASURED, BECAUSE THIS PORTAL REPORTS NOTHING.
+
+          Filed under the METERED method, so a fifty-command walk bills
+          `crm.deal.list` and not `batch` — that is the method whose thirty-six
+          seconds a tick got `obey.bitrix24.kz` blocked three mornings running.
+          Successes only: a refusal returns in milliseconds and would drag the
+          measurement down exactly when the portal is under strain.
+        */
+        this.meter.recordDuration(metered, (Date.now() - sentAt) / 1000, at)
         return payload
       } catch (error) {
         lastError = error

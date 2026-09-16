@@ -23,6 +23,7 @@
     "bitrix:import": "tsx scripts/import.ts",
     "bitrix:worker": "node --import tsx scripts/syncWorker.ts",
     "bitrix:meter": "tsx scripts/portalMeter.ts",
+    "bitrix:cost": "tsx scripts/portalCost.ts",
     "roistat:import": "tsx scripts/importRoistat.ts",
     "roistat:verify": "tsx scripts/verifyRoistat.ts",
     "branch:verify": "tsx scripts/verifyBranchScope.ts"
