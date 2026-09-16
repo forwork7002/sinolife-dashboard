@@ -2,8 +2,7 @@
 
 **Sana:** 2026-09-16
 **Ekran:** `/sellers` — Sotuvchilar reytingi
-**Holat:** dizayn mijoz tomonidan tasdiqlangan («menga yoqdi»), bitta tuzatish
-bilan (5-daraja nomi «Katta usta» emas — **Ustoz**). Reja yozilmagan.
+**Holat:** amalga oshirildi — `daraja` branch'i, deploy kutmoqda.
 **O'rnini bosadi:** `2026-09-15-sotuvchilar-medallari-design.md` ning
 «Ball», «Daraja» va butun «3. Ekran» bo'limlari. O'sha spec'ning
 «1. Ma'lumot» bo'limi (manba, oyna, davr filtri) va medal QOIDALARI
