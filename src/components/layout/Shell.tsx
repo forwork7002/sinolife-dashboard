@@ -111,6 +111,7 @@ const NAV_GROUPS: readonly { readonly label: string | null; readonly items: read
     label: 'Tahlil',
     items: [
       { href: '/analytics/cohort', label: t.nav.cohort, icon: LayersIcon },
+      { href: '/customers', label: t.nav.customers, icon: PhoneIcon },
       { href: '/analytics/sales', label: t.nav.sales, icon: ChartIcon },
       { href: '/margin', label: t.nav.margin, icon: CoinIcon },
     ],
@@ -1725,6 +1726,26 @@ function MegaphoneIcon() {
         stroke="currentColor"
         strokeWidth="1.7"
         strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+/**
+ * «Mijozlar va qoʻngʻiroqlar» — a handset, at 15px.
+ *
+ * The screen's customer half shares its subject with «Mijoz qaytishi» beside
+ * it, so the icon names what only this one has: the calls. `PeopleIcon` is
+ * already «Foydalanuvchilar».
+ */
+function PhoneIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M6.6 3.5h2.6l1.5 4-2 1.3a11 11 0 005.5 5.5l1.3-2 4 1.5v2.6a2 2 0 01-2.2 2A15.5 15.5 0 014.6 5.7a2 2 0 012-2.2z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
       />
     </svg>
   )

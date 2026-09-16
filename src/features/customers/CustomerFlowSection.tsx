@@ -120,7 +120,10 @@ export function CustomerFlowSection({
           ) : status === 'error' ? (
             <ErrorState message={errorMessage} onRetry={onRetry} />
           ) : (data?.series.length ?? 0) === 0 ? (
-            <EmptyState title="Bu davrda buyurtma yoʻq" />
+            <EmptyState
+              title="Bu davrda buyurtma yoʻq"
+              body="Soʻnggi 90 kunda hech bir mijoz buyurtma bermagan."
+            />
           ) : (
             <CustomerFlowChart data={data?.series ?? []} height={260} />
           )}
@@ -174,7 +177,9 @@ function StateRows({
     )
   }
   if (status === 'error') return <ErrorState message={errorMessage} onRetry={onRetry} />
-  if (!data || data.states.customers === 0) return <EmptyState title="Mijoz topilmadi" />
+  if (!data || data.states.customers === 0) {
+    return <EmptyState title="Mijoz topilmadi" body="Hali birorta xaridor yoʻq." />
+  }
 
   const { customers } = data.states
   const share = (value: number) => (customers > 0 ? (value / customers) * 100 : null)

@@ -167,7 +167,10 @@ export function CallActivitySection({
           ) : status === 'error' ? (
             <ErrorState message={errorMessage} onRetry={onRetry} />
           ) : !hasSeries ? (
-            <EmptyState title="Bu davrda qoʻngʻiroq yoʻq" />
+            <EmptyState
+              title="Bu davrda qoʻngʻiroq yoʻq"
+              body="Tanlangan davrda portal hech qanday ulangan suhbat yozmagan."
+            />
           ) : (
             <CallTalkChart data={data?.seriesBySide ?? []} height={260} />
           )}
