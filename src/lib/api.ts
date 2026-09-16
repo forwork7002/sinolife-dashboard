@@ -1502,5 +1502,82 @@ export interface CustomerFlowDto {
     readonly customers: number
     /** In `CUSTOMER_STATES` order — see `src/lib/customerStates.ts`. */
     readonly rows: readonly CustomerStateRowDto[]
+    /**
+     * Buyers with any deal in «База». Nearly every DELIVERED customer is here —
+     * the portal places them automatically — so `notInBase` is overwhelmingly
+     * customers whose order was never delivered.
+     */
+    readonly inBase: number
+    /** Buyers with none. `inBase + notInBase === customers`. */
+    readonly notInBase: number
   }
+}
+
+/**
+ * One row of the telephony block — the whole window, an operator, a team, a
+ * day, or a side of the base.
+ *
+ * THE MEAN IS NOT ON IT. The screen divides `talkSec` by `connected`; carried
+ * here as well, it would be rounded on the way out and again for display, and a
+ * tile would come to disagree with the table under it by a second.
+ */
+export interface CallRowDto {
+  readonly key: string
+  readonly label: string
+  readonly calls: number
+  readonly connected: number
+  /** Null when there were no calls at all — never a manufactured 0%. */
+  readonly connectPercent: number | null
+  readonly talkSec: number
+  /** Null when nothing in the group connected. */
+  readonly medianSec: number | null
+  readonly p90Sec: number | null
+  readonly customers: number
+}
+
+export interface CallDurationBandDto {
+  readonly key: string
+  readonly label: string
+  readonly colour: string
+  readonly calls: number
+  /** Share of `total.connected` — what the bands partition. Null when nothing connected. */
+  readonly sharePercent: number | null
+  readonly talkSec: number
+}
+
+export interface CallCustomerBandDto {
+  readonly key: string
+  readonly label: string
+  readonly customers: number
+  /** Whole seconds; 0 over a band with nobody in it. */
+  readonly avgTalkSec: number
+  readonly talkSec: number
+}
+
+export interface CallSideSeriesPointDto {
+  /** 'YYYY-MM-DD', a Tashkent day. */
+  readonly day: string
+  /** Seconds per side; every side present, zero when silent. */
+  readonly talkSec: Readonly<Record<'BAZA' | 'NOT_BAZA' | 'UNLINKED', number>>
+}
+
+export interface CallActivityDto {
+  readonly total: CallRowDto
+  /** Ranked by talk time, descending. */
+  readonly operators: readonly CallRowDto[]
+  readonly teams: readonly CallRowDto[]
+  /** One per Tashkent day, ascending. */
+  readonly series: readonly CallRowDto[]
+  /** In `CALL_SIDES` order, all three present. */
+  readonly sides: readonly CallRowDto[]
+  /** Pivoted: one point per day, ascending. Stacks to `series[].talkSec`. */
+  readonly seriesBySide: readonly CallSideSeriesPointDto[]
+  /** In `CALL_DURATION_BANDS` order, empty bands present. */
+  readonly durationBands: readonly CallDurationBandDto[]
+  /** In `CALL_CUSTOMER_BANDS` order, empty bands present. */
+  readonly customerBands: readonly CallCustomerBandDto[]
+  /** Calls with no customer attached, disclosed rather than dropped. */
+  readonly unlinkedCalls: number
+  /** True when the requested window began before `CALL_DATA_FLOOR`. */
+  readonly floorApplied: boolean
 }
