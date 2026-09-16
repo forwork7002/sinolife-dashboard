@@ -58,10 +58,8 @@ describe('the television board switches layout on one width', () => {
     the house size, the seats would spill sideways again — silently, since
     nothing clips them.
   */
-  it('steps the seat type down over the narrow two-column band only', () => {
-    expect(css).toMatch(
-      /@media \(min-width: 1280px\) and \(max-width: 1599px\) \{[\s\S]*?--tv-seat-figure: clamp\(13px/,
-    )
+  it('steps the television scale down under 1600 and drops the two desk columns over the narrow band', () => {
+    expect(css).toMatch(/@media \(max-width: 1599px\) \{\s*:root \{\s*--tv-xl: 36px;/)
     expect(css).toMatch(
       /@media \(min-width: 1280px\) and \(max-width: 1599px\) \{[\s\S]*?\.tv-col-optional \{\s*display: none;/,
     )

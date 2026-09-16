@@ -132,6 +132,50 @@ export function formatUzs(amount: number): string {
   return `${formatFullUzs(amount)} soʻm`
 }
 
+/**
+ * U+202F NARROW NO-BREAK SPACE — the EFIR board's group separator.
+ *
+ * A narrow non-breaking space rather than the house `,`: the sellers board
+ * prints every figure in full at 24–44 px and reads it from across a room,
+ * where «79,600,000» is a string of commas and «79 600 000» is three groups.
+ * Non-breaking, so a figure never wraps inside itself. Exported for the
+ * tests, which spell the expected strings with it.
+ */
+export const NARROW_NBSP = ' '
+
+/**
+ * Full soʻm for the EFIR board — «79 600 000», U+202F groups, no unit.
+ *
+ * ONE FORMATTER FOR THE WHOLE PAGE (spec §1): the seat's figure, the row's
+ * two facts, the progress sentence, the legend's thresholds and the record
+ * wall all go through this, so no reader ever has to reconcile «106 mln»
+ * beside «106 432 000». Rounds like `formatFullUzs`; money arrives exact.
+ */
+export function formatSomFull(amount: number): string {
+  const rounded = Math.round(amount)
+  const digits = String(Math.abs(rounded)).replace(/\B(?=(\d{3})+(?!\d))/g, NARROW_NBSP)
+  return rounded < 0 ? `-${digits}` : digits
+}
+
+/**
+ * A percentage the Uzbek way — «91,3 %»: comma decimal, U+202F before the
+ * sign, and no trailing «,0». Same honesty rule as `formatPercent`: a value
+ * that would round to zero without being zero prints «<0,1 %».
+ */
+export function formatPercentUz(value: number | null, digits = 1): string {
+  if (value === null || !Number.isFinite(value)) return NO_VALUE
+
+  const smallest = 0.5 / 10 ** digits
+  if (value !== 0 && Math.abs(value) < smallest) {
+    const floor = (smallest * 2).toFixed(digits).replace('.', ',')
+    return `${value < 0 ? '>-' : '<'}${floor}${NARROW_NBSP}%`
+  }
+
+  const fixed = value.toFixed(digits)
+  const trimmed = fixed.includes('.') ? fixed.replace(/0+$/, '').replace(/\.$/, '') : fixed
+  return `${trimmed.replace('.', ',')}${NARROW_NBSP}%`
+}
+
 export function formatNumber(value: number): string {
   return separators(numberFormat.format(value))
 }

@@ -145,6 +145,43 @@
   --medal-bronze: #a5663a;
 
   /**
+   * Level ramp for the sellers board — `--tier-1` … `--tier-6`.
+   *
+   * ORDINAL, like `--seq`: one hue (ice blue) ordered by LIGHTNESS, so a
+   * higher level is always the lighter cell and the ramp reads as a ladder
+   * from across a room. Never a series colour, never a status, never mixed
+   * with the medal metals. Components read it only through `--tier`, which
+   * `[data-tier="N"]` sets in the EFIR section; nothing reads `--tier-N`
+   * directly. The polarity is the same in both themes — Usta is lighter than
+   * Katta sotuvchi on a dark stage and on a light one — so the family is
+   * re-anchored per theme rather than inverted. (`--tier-4` on the dark
+   * stage sits near `--seq-550`, which is why the ORDINAL note exists.)
+   */
+  --tier-1: #3a4557;
+  --tier-2: #4a6085;
+  --tier-3: #2b86c2;
+  --tier-4: #2bb1ee;
+  --tier-5: #8ed3f5;
+  --tier-6: #c9ecff;
+
+  /* The soft gold under the seven rare medals — dark stage only; daylight
+     has no glow. Read in exactly one place: `.medal.rare`. */
+  --glow-rare: transparent;
+
+  /**
+   * The television board's type scale — three information sizes and one
+   * caption size (spec §1): xl the seat figure, l names and money, m the
+   * secondary line, s captions. Declared on :root rather than on the board,
+   * because the record wall in the page header shares the scale. Narrower
+   * than 1600px (a 1366 laptop, a 720p panel, a phone) the four step down
+   * together — see the media block after the dark tokens.
+   */
+  --tv-xl: 44px;
+  --tv-l: 24px;
+  --tv-m: 16px;
+  --tv-s: 13px;
+
+  /**
    * Ink that sits ON a series colour — a filled chip, a badge, a bar label.
    *
    * A literal `#fff` in a component is a colour the palette cannot reach: it
@@ -318,6 +355,18 @@
     --medal-silver: #bac4d3;
     --medal-bronze: #d89a68;
 
+    /* Level ramp, re-anchored for the dark stage — same lightness ORDER as
+       the light block (Usta lighter than Katta sotuvchi), lighter values
+       because the stage is near-black. See the light block. */
+    --tier-1: #3f4a5c;
+    --tier-2: #506480;
+    --tier-3: #3e8fc4;
+    --tier-4: #7fd0ff;
+    --tier-5: #bde8ff;
+    --tier-6: #f2fbff;
+
+    --glow-rare: color-mix(in oklab, var(--medal-gold) 55%, transparent);
+
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
     --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px -8px rgba(0, 0, 0, 0.7);
     --shadow-float: 0 2px 4px rgba(0, 0, 0, 0.5), 0 20px 44px -12px rgba(0, 0, 0, 0.8);
@@ -385,6 +434,16 @@
   --medal-silver: #bac4d3;
   --medal-bronze: #d89a68;
 
+  /* Level ramp — kept in lockstep with the media-query block above. */
+  --tier-1: #3f4a5c;
+  --tier-2: #506480;
+  --tier-3: #3e8fc4;
+  --tier-4: #7fd0ff;
+  --tier-5: #bde8ff;
+  --tier-6: #f2fbff;
+
+  --glow-rare: color-mix(in oklab, var(--medal-gold) 55%, transparent);
+
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px -8px rgba(0, 0, 0, 0.7);
   --shadow-float: 0 2px 4px rgba(0, 0, 0, 0.5), 0 20px 44px -12px rgba(0, 0, 0, 0.8);
@@ -395,6 +454,20 @@
   --atmos-mix-violet: 11%;
   --grain-alpha: 0.04;
   --glow-hero-mix: 18%;
+}
+
+/*
+ * The television scale, narrower than 1600px: 36/20/14/12. One query for
+ * the four, so a 1366 laptop and a 720p panel get the same board a step
+ * smaller rather than four sizes that drift apart.
+ */
+@media (max-width: 1599px) {
+  :root {
+    --tv-xl: 36px;
+    --tv-l: 20px;
+    --tv-m: 14px;
+    --tv-s: 12px;
+  }
 }
 
 /**
@@ -3164,12 +3237,6 @@ p {
     inset 0 3px 0 var(--tv-tone),
     var(--shadow-card),
     var(--edge-highlight);
-  --tv-name: clamp(13px, 0.88vw, 18px);
-  --tv-money: clamp(13px, 0.88vw, 18px);
-  --tv-small: clamp(11px, 0.62vw, 13px);
-  --tv-seat-scale: 1;
-  --tv-seat-name: clamp(14px, calc(1.05vw * var(--tv-seat-scale)), 21px);
-  --tv-seat-figure: clamp(17px, calc(1.35vw * var(--tv-seat-scale)), 28px);
 }
 
 .tv-col--sellers { --tv-tone: var(--series-5); }
@@ -3195,10 +3262,7 @@ p {
  *
  * SIZED FROM THE VIEWPORT, like the board below. This is read off a television
  * from a desk away while the header around it is drawn at the house sizes
- * every other screen uses. It cannot borrow the `--tv-*` tokens — those are
- * declared on `.tv-col`, inside the page body — so it declares its own ramp on
- * the same principle, clamped at both ends so a laptop gets an ordinary strip
- * and a 4K wall does not print a seller larger than the page title.
+ * every other screen uses. It shares the `--tv-*` scale declared on :root.
  *
  * NOT DRAWN UNDER 1280 — the same line the board itself draws, and for the
  * same reason. Under 1280 this page stops being a television: the columns
@@ -3536,7 +3600,7 @@ p {
   gap: 6px;
   padding: 5px 12px;
   border-radius: 999px;
-  font-size: var(--tv-small);
+  font-size: var(--tv-s);
   font-weight: 700;
   letter-spacing: 0.03em;
   font-variant-numeric: tabular-nums;
@@ -3776,17 +3840,10 @@ p {
  * floor reads; the other two are for the desk, which has the width for them.
  */
 @media (min-width: 1280px) and (max-width: 1599px) {
-  .tv-col {
-    --tv-seat-name: clamp(12px, calc(0.95vw * var(--tv-seat-scale)), 16px);
-    --tv-seat-figure: clamp(13px, calc(1.05vw * var(--tv-seat-scale)), 18px);
-  }
   .tv-col-optional {
     display: none;
   }
 }
-
-.tv-seat--2 { --tv-seat-scale: 0.9; }
-.tv-seat--3 { --tv-seat-scale: 0.82; }
 
 .tv-seat-card {
   display: flex;
@@ -3859,7 +3916,7 @@ p {
 }
 
 .tv-seat-name {
-  font-size: var(--tv-seat-name);
+  font-size: var(--tv-m);
   font-weight: 600;
   line-height: 1.15;
   letter-spacing: -0.01em;
@@ -3870,7 +3927,7 @@ p {
    the rest; tight tracking because it is set well above body size. */
 .tv-seat-figure {
   font-variant-numeric: tabular-nums lining-nums;
-  font-size: var(--tv-seat-figure);
+  font-size: var(--tv-l);
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.03em;
@@ -3998,20 +4055,20 @@ p {
 }
 .tv-rank {
   font-variant-numeric: tabular-nums lining-nums;
-  font-size: var(--tv-money);
+  font-size: var(--tv-m);
   font-weight: 600;
 }
 .tv-name {
-  font-size: var(--tv-name);
+  font-size: var(--tv-m);
   font-weight: 600;
   line-height: 1.2;
 }
 .tv-money {
-  font-size: var(--tv-money);
+  font-size: var(--tv-m);
   white-space: nowrap;
 }
 .tv-small {
-  font-size: var(--tv-small);
+  font-size: var(--tv-s);
 }
 .tv-bar {
   max-width: 260px;
