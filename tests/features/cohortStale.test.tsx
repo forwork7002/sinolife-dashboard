@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -11,13 +11,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * the previous window and better ones are on their way. It is therefore only
  * ever true of a query that is LIVE — something has to be able to resolve it.
  *
- * `/insights/concentration` is not live in both modes. It is `enabled: mode
- * === 'detail'`, and «Oddiy» is the default. What makes that dangerous is a
- * setting two files away: `src/app/providers.tsx` gives EVERY query in the
- * application `placeholderData: (previous) => previous`, and query-core applies
+ * THE MODES WENT ON 2026-09-16 AND HALF THE MECHANISM WENT WITH THEM — the
+ * half that is left is the half worth guarding.
+ *
+ * `/insights/concentration` used to be `enabled: mode === 'detail'` with
+ * «Oddiy» as the default. What made that dangerous is a setting two files
+ * away: `src/app/providers.tsx` gives EVERY query in the application
+ * `placeholderData: (previous) => previous`, and query-core applies
  * placeholder data whenever `data === undefined && status === 'pending'` —
  * with no `enabled` check at all (`queryObserver.js`). So a key change on a
  * DISABLED query sets `isPlaceholderData` and nothing can ever clear it.
+ *
+ * No query on this page is disabled any more. The KEY CHANGE is still the
+ * live half: give any of these reads a key that moves — a period, a filter —
+ * and the same latch is one `enabled` away from being reachable again.
  *
  * On 2026-09-15 that was reachable in three ordinary clicks — «Batafsil»,
  * «Oddiy», then a new period — and the DEFAULT mode of this screen sat at 60%
@@ -130,9 +137,6 @@ const COHORTS = {
   repeatRevenueShare: 65.2,
   repeatCustomers: 159,
   totalCustomers: 203,
-  currentMonth: '2026-09-01',
-  revenueTotalAll: { amount: 253_750_000, amountMinor: '25375000000', currency: 'UZS' },
-  revenuePerCustomerAll: { amount: 1_250_000, amountMinor: '125000000', currency: 'UZS' },
 }
 
 const CONCENTRATION = {
@@ -163,6 +167,48 @@ const META = {
 /** Every `/api/v1` URL the page asked for, newest last. */
 let requested: string[] = []
 
+/*
+  «Mijozlar oqimi», the band at the top of «Batafsil». Its query is
+  `enabled: mode === 'detail'` — the very pattern this file exists to guard —
+  so it has to answer here, and answer with the shape its DTO promises. An
+  empty object is truthy: the band would render and throw on `states.rows`,
+  and every case below would fail for a reason that has nothing to do with
+  staleness.
+*/
+const FLOW = {
+  summary: {
+    newCustomers: 180,
+    returningCustomers: 64,
+    activeCustomers: 244,
+    newCustomersWon: 138,
+    firstRevenue: { amount: 42_000_000, amountMinor: '4200000000', currency: 'UZS' },
+    repeatRevenue: { amount: 18_000_000, amountMinor: '1800000000', currency: 'UZS' },
+    repeatRevenueSharePercent: 30.0,
+  },
+  series: [
+    { bucket: '2026-08-01', newCustomers: 90, returningCustomers: 30 },
+    { bucket: '2026-08-02', newCustomers: 90, returningCustomers: 34 },
+  ],
+  sources: [
+    {
+      key: 'instagram',
+      label: 'Instagram',
+      newCustomers: 120,
+      sharePercent: 66.7,
+      repeatPercent: 21.4,
+      maturedCustomers: 900,
+    },
+  ],
+  states: {
+    customers: 500,
+    rows: [
+      { key: 'ACTIVE', label: 'Faol', colour: '--series-3', customers: 300 },
+      { key: 'AT_RISK', label: 'Xavf ostida', colour: '--series-5', customers: 120 },
+      { key: 'LOST', label: 'Yoʻqotilgan', colour: '--series-8', customers: 80 },
+    ],
+  },
+}
+
 function mockFetch() {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
@@ -172,7 +218,9 @@ function mockFetch() {
       ? COHORTS
       : concentration
         ? CONCENTRATION
-        : {}
+        : url.includes('/insights/customers')
+          ? FLOW
+          : {}
     return {
       ok: true,
       status: 200,
@@ -243,35 +291,40 @@ const isDimmed = (container: HTMLElement) => pageBody(container).style.opacity =
 const isBusy = (container: HTMLElement) =>
   pageBody(container).getAttribute('aria-busy') === 'true'
 
-describe('«Oddiy» after a visit to «Batafsil»', () => {
-  it('is readable — not dimmed and not busy — with nothing outstanding', async () => {
-    /*
-      The two clicks that are still possible. Before the page went dateless
-      the third one dimmed «Oddiy» permanently; with a constant concentration
-      key there is nothing left that could, and this is what says so.
-    */
+describe('the page, with nothing outstanding', () => {
+  /*
+    THE TWO CLICKS THAT USED TO BE POSSIBLE ARE GONE, AND SO IS THE HAZARD.
+
+    This case pressed «Batafsil» and then «Oddiy», because the concentration
+    query was `enabled: mode === 'detail'` and a DISABLED query holding
+    placeholder data is what dimmed the default reading permanently. Both
+    modes were removed on 2026-09-16: there is no toggle to press, no query
+    on this page is disabled, and every key is a literal. The claim the case
+    was making — the page is not dimmed and not announced as busy — is still
+    worth asserting, so it is asserted on the page as it now loads rather
+    than deleted along with the route to breaking it.
+  */
+  it('is readable — not dimmed and not busy', async () => {
     const { container } = openPage()
 
-    await screen.findByText(/Qancha yangi mijoz keladi\?/)
-    expect(isDimmed(container)).toBe(false)
-
-    // 1. «Batafsil» — the band fetches and caches under its constant key.
-    fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
-    await screen.findByText(/10 ta eng yirik mijoz/)
-    expect(isDimmed(container)).toBe(false)
-
-    // 2. Back to the default reading. The query is disabled from here on.
-    fireEvent.click(screen.getByRole('button', { name: 'Oddiy' }))
-    await screen.findByText(/Qancha yangi mijoz keladi\?/)
+    await screen.findByText('Jami · oʻrtacha')
     await settle()
 
     expect(isDimmed(container)).toBe(false)
     expect(isBusy(container)).toBe(false)
   })
 
-  it('offers no period control to change the band’s window under a disabled query', async () => {
+  /*
+    AND THE CONTROL THAT WOULD PUT A WINDOW BACK IS STILL ABSENT.
+
+    `period={false}` is what keeps every key on this page a literal. A period
+    control would give the band a key that CHANGES, and a changing key is the
+    other half of the hazard above — the half that survives the modes going,
+    because `providers.tsx` applies placeholder data on any key change.
+  */
+  it('offers no period control that could give a query a changing key', async () => {
     openPage()
-    await screen.findByText(/Qancha yangi mijoz keladi\?/)
+    await screen.findByText('Jami · oʻrtacha')
 
     expect(screen.queryByRole('button', { name: 'Kecha' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Bugun' })).toBeNull()
@@ -291,6 +344,17 @@ describe('what keeps the path closed', () => {
     expect(page).not.toMatch(/\bstale=/)
     expect(page).toMatch(/period=\{false\}/)
     expect(page).toMatch(/queryKey: \['concentration', 'trailing-90'\]/)
+    /*
+      AND THE SECOND QUERY THAT IS DISABLED IN THE DEFAULT MODE.
+
+      «Mijozlar oqimi» arrived at the top of «Batafsil» with the same
+      `enabled: mode === 'detail'`, so it carries the same hazard: a key that
+      could CHANGE under a disabled query latches `isPlaceholderData` and
+      nothing can clear it. A literal key cannot change. If this band ever
+      grows a parameter, it grows this bug with it — and `stale=` must still
+      be absent from the file, which is asserted above and covers both.
+    */
+    expect(page).toMatch(/queryKey: \['customer-flow'\]/)
     expect(page).not.toMatch(/\['concentration', apiParams\]/)
   })
 

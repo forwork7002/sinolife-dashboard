@@ -31,6 +31,16 @@
 export type RefusalClass = 'THROTTLE' | 'CREDENTIAL' | 'METHOD' | 'TRANSIENT'
 
 /**
+ * The code a locally-refused call carries — see `portalBudget.ts`.
+ *
+ * ONE SPELLING, because it travels a long way: the provider stamps it on the
+ * error, the message carries it into `sync_log`, `syncErrorCode` reads it back
+ * out of that message with a regex, and the header chip prints it. A second
+ * spelling anywhere on that path reads as `UNKNOWN` to an operator.
+ */
+export const SELF_LIMIT_CODE = 'LOCAL_BUDGET_EXCEEDED'
+
+/**
  * Codes the portal answers with, grouped by what they oblige us to do.
  *
  * Matched on the CODE only — never on `error_description`, which arrives in the
@@ -64,6 +74,15 @@ const NOT_A_REFUSAL = new Set([
   'ERROR_BATCH_LENGTH_EXCEEDED',
   'ERROR_METHOD_NOT_FOUND',
   'ERROR_MANIFEST_IS_NOT_AVAILABLE',
+  /*
+    OURS, NOT THE PORTAL'S — and listed here by name for exactly the reason the
+    comment above gives. `PortalBudget` refuses a call locally when this process
+    has spent its rolling-hour ceiling; the portal was never asked and has said
+    nothing. Left to the 401 fallback it would be swept into `CREDENTIAL`, which
+    would shut `PortalGate` over our own accounting and tell an operator to go
+    and issue a new webhook.
+  */
+  SELF_LIMIT_CODE,
 ])
 
 /** The uppercase token the portal uses as its error code, if the error carries one. */

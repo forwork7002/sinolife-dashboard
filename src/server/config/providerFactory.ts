@@ -31,6 +31,7 @@ export function createCrmProvider(): CrmProvider {
         rateLimitRps: env.BITRIX24_RATE_LIMIT_RPS,
         requestTimeoutMs: env.BITRIX24_REQUEST_TIMEOUT_MS,
         maxRetries: env.BITRIX24_MAX_RETRIES,
+        hourlyInvocations: env.BITRIX24_HOURLY_INVOCATIONS,
       })
 
     case DataSource.Demo:

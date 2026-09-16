@@ -334,10 +334,61 @@ describe('stage history walk', () => {
   it('keeps the pass in the cursor while that pass is still running', async () => {
     const page = await reader(FULL_BATCH).provider.fetchStageHistory({ cursor: '1:0' })
 
-    // '2500' rather than '1:2500' would send the next call back to the funnels
+    // '100' rather than '1:100' would send the next call back to the funnels
     // and walk their 87 000 rows again on every tick.
-    expect(page.nextCursor).toBe('1:2500')
-    expect(page.items).toHaveLength(2500)
+    //
+    // 100 and not 2 500 because a walk OPENS at CHAIN_MIN commands: the fixed
+    // fifty were fifty invocations of `crm.stagehistory.list` billed to read
+    // an incremental tick's handful of rows. The mock answers all fifty
+    // commands; the walk reads the two it sent.
+    expect(page.nextCursor).toBe('1:100')
+    expect(page.items).toHaveLength(100)
+  })
+
+  /**
+   * THE WIDENING IS WHAT KEEPS A FULL IMPORT THE PRICE IT WAS.
+   *
+   * Opening narrow only pays if a walk with real data behind it stops being
+   * narrow — otherwise 464 000 deals would arrive 100 at a time, which is
+   * 4 644 round trips instead of 186 and a far worse thing to do to the portal
+   * than the waste it replaced. A chain that comes back FULL is the walk
+   * proving there is more, and the next round trip asks for four times as much.
+   */
+  it('widens the chain when the chain came back full, and resets when it runs dry', async () => {
+    const widths: number[] = []
+
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? '{}')) as { cmd?: Record<string, string> }
+      const width = Object.keys(body.cmd ?? {}).length
+      widths.push(width)
+      // Full while the chain is under 32, dry once it widens past that — so
+      // the walk grows, ends, and the next walk has to open narrow again.
+      const result = width < 32 ? FULL_BATCH : NO_ROWS
+      return new Response(JSON.stringify({ result: { result } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }) as unknown as typeof fetch
+
+    const provider = new Bitrix24CrmProvider({
+      webhookUrl: 'https://portal/rest/1/tok/',
+      fetchImpl,
+      historyPipelines: [6],
+      historyStages: [],
+    })
+
+    let cursor: string | undefined = '0'
+    for (let guard = 0; guard < 6 && cursor !== undefined; guard++) {
+      const page: { nextCursor?: string } = await provider.fetchStageHistory({ cursor })
+      cursor = page.nextCursor
+    }
+
+    expect(widths.slice(0, 3)).toEqual([2, 8, 32])
+    // The walk ended on the 32-wide round trip, so the next one opens narrow
+    // again. Without the reset, a six-hourly sweep would leave every
+    // incremental tick after it paying the full fifty.
+    await provider.fetchStageHistory({ cursor: '0' })
+    expect(widths[widths.length - 1]).toBe(2)
   })
 
   it('reads a cursor written before the second pass existed as pass 0', async () => {

@@ -162,6 +162,15 @@ const schema = z
     BITRIX24_MAX_RETRIES: blankAsUndefined(
       z.coerce.number().int().min(0).max(10).default(3),
     ),
+    /*
+      The rolling-hour invocation ceiling — see `portalBudget.ts`. Exposed as a
+      setting so the ceiling can be lowered on a portal that is already under
+      strain WITHOUT a deploy, which is the one thing nobody could do during
+      either block.
+    */
+    BITRIX24_HOURLY_INVOCATIONS: blankAsUndefined(
+      z.coerce.number().int().positive().default(15_000),
+    ),
   })
   .superRefine((value, ctx) => {
     if (value.DATA_SOURCE !== DataSource.Bitrix24) return

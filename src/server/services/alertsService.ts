@@ -28,7 +28,10 @@ import type { Principal, RowScope } from '@/server/auth/rbac'
 import { canSeeSection } from '@/server/auth/rbac'
 import { scopedPeriod } from '@/server/domain/employees/branches'
 import { allTime } from '@/server/domain/period/period'
-import { classifyRefusal } from '@/server/integrations/crm/bitrix24/refusal'
+import {
+  classifyRefusal,
+  SELF_LIMIT_CODE,
+} from '@/server/integrations/crm/bitrix24/refusal'
 import type { RefusalClass } from '@/server/integrations/crm/bitrix24/refusal'
 import type { InsightsRepository } from '@/server/repositories/insightsRepository'
 import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
@@ -72,7 +75,16 @@ export interface AlertsDto {
      * inside a React component, which is the portal's vocabulary on the wrong
      * side of the one rule.
      */
-    readonly kind: RefusalClass | 'UNKNOWN'
+    /*
+      `SELF_LIMIT` IS NOT A `RefusalClass`, AND THAT IS THE POINT.
+
+      `RefusalClass` answers «what should the CALLER do» and `PortalGate`
+      switches on it — adding a member there would fall into the
+      THROTTLE/CREDENTIAL branch and shut the gate over our own accounting.
+      This field answers a different question: «what should the READER do». The
+      two were already joined by a `?? 'UNKNOWN'`, which is the seam.
+    */
+    readonly kind: RefusalClass | 'SELF_LIMIT' | 'UNKNOWN'
     /** Which entity was being read when it failed. */
     readonly entity: string
     /**
@@ -315,7 +327,16 @@ export class AlertsService {
           ? null
           : {
               code: syncErrorCode(failure.message),
-              kind: classifyRefusal(failure.message) ?? 'UNKNOWN',
+              /*
+                OUR CEILING READS AS OURS. A budget refusal never reached the
+                portal, so classifying it would be wrong and reporting it as
+                «Bitrix24 dan maʼlumot olinmayapti» sends somebody to diagnose a
+                portal that is answering perfectly.
+              */
+              kind:
+                syncErrorCode(failure.message) === SELF_LIMIT_CODE
+                  ? 'SELF_LIMIT'
+                  : (classifyRefusal(failure.message) ?? 'UNKNOWN'),
               entity: failure.entity,
               entities: failure.entities,
               at: failure.at.toISOString(),

@@ -488,21 +488,23 @@ export function useDashboardFilters() {
       narrower list.
     */
     /*
-      AND `mode` — WHICH READING OF A SCREEN IS ON, not which rows it keeps.
+      AND `view` — WHICH READING OF A SCREEN IS ON, not which rows it keeps.
 
-      `/analytics/cohort` carries «Oddiy» / «Batafsil» in the address
-      (`useCohortMode`), for the same reason `queue` is there: a manager is
-      sent a link to what somebody is looking at. Rebuilt from an allowlist
-      that omitted it, «Filtrlarni tozalash» would DELETE it — and that route
-      is shallow, so the deletion lands through `replaceState`, fires no
-      `popstate`, and never reaches the hook's own `publish()`. The screen
-      would go on drawing «Batafsil» while the address said «Oddiy», which is
-      precisely the divergence a URL-backed toggle exists to prevent, and the
-      next reload or shared link would flip it without anybody touching it.
+      `/structure` carries Chizma / Roʻyxat in the address for the same reason
+      `queue` is there: somebody is sent a link to what they are looking at.
+      Rebuilt from an allowlist that omitted it, «Filtrlarni tozalash» would
+      DELETE it — and that route is shallow, so the deletion lands through
+      `replaceState`, fires no `popstate`, and never reaches a URL-backed
+      store's own `publish()`. The screen would go on drawing one reading
+      while the address named the other, which is precisely the divergence a
+      URL-backed toggle exists to prevent, and the next reload or shared link
+      would flip it without anybody touching it.
 
-      Latent today only because `CohortPage` passes no filter props, so the
-      button does not render there. That is an accident of one page's props,
-      not a property of this hook.
+      `mode` WAS IN THIS LIST UNTIL 2026-09-16, for `/analytics/cohort`'s
+      «Oddiy» / «Batafsil». That reading is gone, nothing writes `?mode=` any
+      more, and a key kept here for a parameter no page can produce is an
+      allowlist entry nobody can test. The rule it was an instance of is the
+      paragraph above — add the key in the same commit that adds the toggle.
     */
     for (const key of [
       'preset',
@@ -510,7 +512,6 @@ export function useDashboardFilters() {
       'to',
       'queue',
       'view',
-      'mode',
       'sort',
       'order',
       'pageSize',

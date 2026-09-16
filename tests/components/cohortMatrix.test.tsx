@@ -406,11 +406,42 @@ describe('the cells print figures, and the header carries the unit', () => {
     A «%» in every cell is 250 glyphs saying what the column group already
     says once. They were set at 8.5px and 62% opacity precisely because they
     were in the way — a sign that the right place for them is not the cell.
+
+    THE HEADCOUNT IS THE OPPOSITE CASE, and this pair of assertions is what
+    keeps the two apart. The unit is a constant and the column heading carries
+    it; the denominator changes every cell, and «20» on a 200-person cohort
+    and «20» on a 5-person one are the same glyph over two findings. It is
+    printed from 2026-09-16, and printed SMALLER — the share is what the eye
+    takes first.
   */
-  it('prints a bare number in the cell', () => {
+  it('prints the share and the headcount it was computed from', () => {
     render(<CohortHeatmap rows={ROWS} view="monthly" />)
 
-    expect(cell(/2026-iyn kogortasi, \+1 oy/).textContent).toBe('20')
+    const tile = cell(/2026-iyn kogortasi, \+1 oy/).querySelector('[data-heat]')!
+
+    expect(tile.querySelector('[data-share]')!.textContent).toBe('20')
+    /* The separator is a middot and a thin space, so the count is asserted on
+       its digits rather than on the whole span's text. */
+    expect(tile.querySelector('[data-count]')!.textContent).toContain('40')
+  })
+
+  /*
+    A CELL THE READING CANNOT MEASURE PRINTS NO COUNT EITHER.
+
+    `customers` is null wherever the share is, and a «· 0» under an em dash
+    would report a measured zero where the grid means «this month has not
+    happened» — the same distinction `rateBp` draws and the reason the
+    unmeasured cells are hatched rather than painted pale.
+  */
+  it('prints no headcount where there is no share', () => {
+    render(<CohortHeatmap rows={ROWS} view="monthly" />)
+
+    const tiles = document.querySelectorAll('[data-heat]')
+    for (const tile of tiles) {
+      if (tile.querySelector('[data-share]') === null) {
+        expect(tile.querySelector('[data-count]')).toBeNull()
+      }
+    }
   })
 
   it('still says what the figure IS, in the label a screen reader gets', () => {
@@ -422,8 +453,11 @@ describe('the cells print figures, and the header carries the unit', () => {
   it('keeps «<1» and «0» distinguishable without the sign', () => {
     render(<CohortHeatmap rows={ROWS} view="monthly" />)
 
-    // The «0» column is 100 in every row: the anchor, off the ramp.
-    expect(cell(/2026-iyn kogortasi, xarid oyi/).textContent).toBe('100')
+    // The «0» column is 100 in every row: the anchor, off the ramp. Read off
+    // `data-share`, not the tile: the tile also carries the headcount now.
+    expect(
+      cell(/2026-iyn kogortasi, xarid oyi/).querySelector('[data-share]')!.textContent,
+    ).toBe('100')
   })
 })
 
@@ -685,5 +719,118 @@ describe('the pinned block is aligned by construction, not by hand', () => {
     expect(stickyLeftsOf(head!, expected.length)).toEqual(expected)
     expect(stickyLeftsOf(body, expected.length)).toEqual(expected)
     expect(stickyLeftsOf(summary, expected.length)).toEqual(expected)
+  })
+})
+
+/**
+ * The money reading — the third rendering of the same payload.
+ *
+ * It shares a fetch, a row and a grid with the two customer readings and
+ * shares NONE of their arithmetic, which is exactly the shape a wrong number
+ * hides in: every cell here would still render, and would still be a plausible
+ * sum of money, if it were measuring the wrong thing.
+ *
+ * Four claims, and each fails differently:
+ *
+ *   1. a cell is CUMULATIVE money per customer. Read as the month's own money
+ *      the figures fall instead of rising, and the ramp inverts;
+ *   2. the multiple is against the cohort's OWN first month, not against the
+ *      table's. A shared anchor would rank the rows by order value;
+ *   3. the summary row divides two sums and never averages the rows' ratios;
+ *   4. the row's last measured cell equals the pinned «1 mijozga» column. That
+ *      is the check a reader makes without leaving the table — the money
+ *      view's counterpart of «Qaytgan» — and it holds only while the curve is
+ *      a running total over the same revenue the server added up.
+ */
+describe('the cohort matrix, read in money', () => {
+  const moneyCell = (label: RegExp) => screen.getByLabelText(label)
+
+  it('prints what one customer had brought by that month, and by what multiple it grew', () => {
+    render(<CohortHeatmap rows={ROWS} view="money" />)
+
+    const tile = moneyCell(/2026-iyn kogortasi, \+1 oy/).querySelector('[data-heat]')!
+
+    // 2 000 000 + 700 000 over 200 customers — a running total, not the
+    // month's own 700 000, which would print «3.5 ming» here.
+    expect(tile.querySelector('[data-money]')!.textContent).toBe('13.5 ming')
+    expect(tile.querySelector('[data-multiple]')!.textContent).toContain('×1,4')
+  })
+
+  it('anchors every row on its own first month, and prints no multiple there', () => {
+    render(<CohortHeatmap rows={ROWS} view="money" />)
+
+    const tile = moneyCell(/2026-iyn kogortasi, xarid oyi/).querySelector('[data-heat]')!
+
+    expect(tile.querySelector('[data-money]')!.textContent).toBe('10 ming')
+    expect(tile.querySelector('[data-multiple]')).toBeNull()
+  })
+
+  /*
+    THE IDENTITY, ON EVERY ROW THE FIXTURE HAS.
+
+    The curve's last MEASURED cell is the whole cohort's money over the whole
+    cohort — which is the pinned column, computed on the server. They are
+    derived from different arrays (`revenue` folded here, `revenuePerCustomer`
+    sent), so an off-by-one in the running sum, a dropped offset or a division
+    by the wrong base breaks this and nothing on screen would say so.
+  */
+  it('ends each row on the figure the pinned «1 mijozga» column prints', () => {
+    render(<CohortHeatmap rows={ROWS} view="money" />)
+
+    const last: Record<string, RegExp> = {
+      '10 ming': /2026-avg kogortasi, xarid oyi/,
+      '11.8 ming': /2026-iyl kogortasi, \+1 oy/,
+      '14.3 ming': /2026-iyn kogortasi, \+2 oy/,
+    }
+
+    for (const [expected, label] of Object.entries(last)) {
+      const tile = moneyCell(label).querySelector('[data-heat]')!
+      expect(tile.querySelector('[data-money]')!.textContent).toBe(expected)
+    }
+
+    // …and that is what each row's pinned column says, from the payload.
+    expect(ROWS.map((row) => row.revenuePerCustomer)).toEqual([
+      '10 ming',
+      '11.8 ming',
+      '14.3 ming',
+    ])
+  })
+
+  it('leaves an unreached month unmeasured here too', () => {
+    render(<CohortHeatmap rows={ROWS} view="money" />)
+
+    expect(screen.getAllByLabelText('hali oʻtmagan oy — oʻlchanmagan')).toHaveLength(3)
+  })
+
+  /*
+    TWO SUMS DIVIDED, NOT A MEAN OF TWO RATIOS.
+
+    At +1 the reaching cohorts are July (50 people, 590 000 by then, 500 000 in
+    its own month) and June (200, 2 700 000, 2 000 000). Two sums: 3 290 000
+    over 250 people is 13 160, and 3 290 000 over 2 500 000 is ×1,32. The mean
+    of the two rows' own multiples is ×1,27 — a different number, printed in
+    the same place, and right for nothing.
+  */
+  it('weights the summary row by cohort size', () => {
+    render(<CohortHeatmap rows={ROWS} view="money" />)
+
+    expect(moneyCell(/^Oʻrtacha, \+1 oy:/).getAttribute('aria-label')).toBe(
+      'Oʻrtacha, +1 oy: 1 mijozga 13,160 soʻm — birinchi oyga nisbatan ×1,3',
+    )
+  })
+
+  /*
+    THE MONEY READING KEEPS THE `0` COLUMN AND THE CUMULATIVE ONE DROPS IT,
+    and the two absences mean opposite things: cumulatively that column is 0%
+    for every row there has ever been, in money it is the denominator every
+    other cell divides by.
+  */
+  it('keeps the anchor column that the cumulative reading drops', () => {
+    const { unmount } = render(<CohortHeatmap rows={ROWS} view="money" />)
+    expect(screen.queryByRole('columnheader', { name: '0' })).toBeTruthy()
+    unmount()
+
+    render(<CohortHeatmap rows={ROWS} view="cumulative" />)
+    expect(screen.queryByRole('columnheader', { name: '0' })).toBeNull()
   })
 })

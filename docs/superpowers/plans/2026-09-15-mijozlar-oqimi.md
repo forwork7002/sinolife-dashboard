@@ -1640,7 +1640,7 @@ EOF
 
 **Read the file first.** It was rewritten on 2026-09-15: the cohort matrix is cumulative, «База — mijozlar hozir qayerda» draws `<StateBars>` from upstream's four-way partition, the concentration band resolves its own trailing ninety days, and **`useDashboardFilters` is gone**. Your band adds to that screen; it does not restore anything that was removed.
 
-- [ ] **Step 1: Add the query**
+- [x] **Step 1: Add the query**
 
 ```tsx
   const flow = useQuery({
@@ -1655,7 +1655,7 @@ EOF
 
 A literal key with no `apiParams`, like the concentration read above it — there is no period to carry, and a key that could carry one would invite somebody to pass one.
 
-- [ ] **Step 2: Put the band at the TOP, above «Kogorta tahlili»**
+- [x] **Step 2: Put the band at the TOP, above «Kogorta tahlili»**
 
 - `SectionHeader` «Mijozlar oqimi», hint naming the window and the clock: «Buyurtma berilgan sana boʻyicha · soʻnggi 90 kun» with the resolved dates from `data.window`.
 - Four tiles: **Yangi mijozlar** (`summary.newCustomers`, hint `${newCustomersWon} tasi xarid qildi` — the headline counts arrivals and a quarter of orders never land), **Qaytgan mijozlar**, **Takroriy tushum ulushi** as a `GaugeTile` with `tone="neutral"` (no benchmark exists; the two gauges below it already do this), and **Yoʻqotilgan mijozlar** (the `LOST` row of `states.rows`, hint «150 kundan beri buyurtma yoʻq · bugungi holat» — it is the one tile in the row that is not about the window).
@@ -1663,11 +1663,11 @@ A literal key with no `apiParams`, like the concentration read above it — ther
 - `ChartCard` «Mijoz qayerdan kelayapti» → two `CategoryBarList` panels, `magnitude` above (new customers per source) and `share` below (that source's repeat %), **in the same row order, the lower panel never re-sorted** — the mechanism is that the reader's eye runs down one column of labels. Hint must say the two panels are on different clocks: the count is the band's ninety days, the rate is the whole history on a ninety-day maturity horizon.
 - `ChartCard` «Mijozlar holati — bugun» → the three time bands as hand-drawn rows with their `colour` from the shared table, over a caption saying the total and pointing at the other card: «Портал oʻz hukmini «База — mijozlar hozir qayerda» kartasida aytadi». **Do not redraw the portal's groups** — `StateBars` already does, further down the same page.
 
-- [ ] **Step 3: Name the other clock on the existing cohort header**
+- [x] **Step 3: Name the other clock on the existing cohort header**
 
 The «Kogorta tahlili» hint gains «yetkazilgan sana boʻyicha» at the front. Add a comment above it saying the band at the top counts a customer from the day they ORDERED and this block from the day their first order was DELIVERED, so the two customer totals differ on purpose. Change nothing else in that block.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 `npm run typecheck && npm run lint && npx vitest run`, then run the app and open `http://localhost:3000/analytics/cohort` — **`localhost`, never `127.0.0.1`**, or better-auth rejects the origin as untrusted and the sign-in form silently re-renders. Note that this worktree cannot run `next dev` while the main checkout's server is running; if it is, verify on production in Task 10 instead and say so.
 

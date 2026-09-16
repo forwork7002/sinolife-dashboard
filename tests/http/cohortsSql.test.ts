@@ -3,6 +3,21 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+/*
+  The repository reads `env` at module scope for APP_TIMEZONE, and `env`
+  refuses to load without a complete configuration — deliberately, so a
+  misconfigured deployment fails at boot rather than at midnight. A unit test
+  about SQL shape has no database and no secrets, so it supplies the four
+  required names first and imports afterwards. Same preamble, same reason, as
+  `confirmationQueueSql.test.ts`.
+*/
+process.env.DATABASE_URL ??= 'postgresql://test@127.0.0.1:5432/test'
+process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
+process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
+process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
+
+const { InsightsRepository } = await import('@/server/repositories/insightsRepository')
+
 /**
  * WHAT THE COHORT STATEMENT PROMISES, AND ONE THING IT DELIBERATELY DOES NOT.
  *
@@ -256,7 +271,111 @@ describe('the cohort statement', () => {
       cannot carry. Deleted rather than implemented: one customer's purchases
       are spread across sellers, so narrowing a retention curve by employee
       produces a figure with no business meaning.
+
+      THIS USED TO BAN THE WORD «employee» FROM THE SOURCE, and that is no
+      longer the right shape for the claim — see the block below, which pins
+      the same promise against the BUILT statement instead. What must never
+      appear is a SCOPE predicate: those three names are how this repository
+      spells «restricted to whoever is asking», and none of them may reach a
+      statement whose route answers `analytics:read:all` and nothing narrower.
     */
-    expect(code()).not.toMatch(/assignee|ownerId|restrictTo|employee/i)
+    expect(code()).not.toMatch(/assignee|ownerId|restrictTo/i)
+  })
+})
+
+/**
+ * THE DEFAULT STATEMENT IS THE MEASURED ONE, AND THE TEAM CUT IS NOT IN IT.
+ *
+ * `/insights/cohorts` grew an optional team dimension on 2026-09-16 — cut the
+ * matrix to the customers ONE team first sold to — and the whole safety of
+ * that change rests on a claim the source text cannot show: a page that did
+ * not ask for the cut runs the statement it ran before, character for
+ * character. The CTEs are interpolated, so reading the template literal sees
+ * BOTH branches at once and every assertion above is blind to which one a
+ * given request actually executes.
+ *
+ * So these build the statement for real, through a fake client that records
+ * what it is handed. The default form has no attribution join, no `$3` and no
+ * fourth arm; the scoped form has all three. If a later edit hoists any of it
+ * out of the conditional to tidy the string up, the endpoint quietly takes on
+ * a grouping, two joins and a regexp per customer on every cold load of the
+ * page — on the slowest statement in the product, whose plan is measured and
+ * whose regressions have historically been invisible until somebody timed it.
+ */
+describe('the team cut is absent unless it was asked for', () => {
+  async function built(options: {
+    months: number
+    rop?: string | null
+    includeRops?: boolean
+  }): Promise<string> {
+    let sql = ''
+    const prisma = {
+      $queryRawUnsafe: async (text: string) => {
+        sql = text
+        return []
+      },
+    }
+    await new InsightsRepository(prisma as never).cohorts(options)
+    return sql
+  }
+
+  it('leaves the default statement free of every part of the cut', async () => {
+    const sql = await built({ months: 18 })
+
+    /*
+      «employee» IS THE ONE TO ASSERT, and it is asserted on the BUILT string
+      because that is the only place the claim is true. The attribution join
+      is the statement's only reason to touch that table at all, so its
+      absence is the whole of «this is the statement we measured».
+    */
+    expect(sql).not.toMatch(/employee/i)
+    expect(sql).not.toContain('owner_rop')
+    expect(sql).not.toContain('first_owner')
+    /* No third parameter, and nothing to bind it to. A `$3` left in the text
+       of an unscoped call is not a silent defect — the driver refuses the
+       bind — but it is the failure this conditional is one edit away from. */
+    expect(sql).not.toContain('$3')
+    expect(sql).not.toContain('3 AS is_total')
+  })
+
+  it('adds the attribution, the filter and the arm only when they are wanted', async () => {
+    const scoped = await built({ months: 18, rop: 'Sevinch', includeRops: true })
+
+    expect(scoped).toContain('owner_rop')
+    expect(scoped).toContain('$3')
+    expect(scoped).toContain('3 AS is_total')
+    /* The team comes off the DEAL's own stamp first and the seller's current
+       department only as a fallback — the same basis, and the same order,
+       Logistika's per-ROP strip reads. Reversed, a seller who changes team
+       drags their whole acquisition history across with them. */
+    expect(scoped.indexOf('operatorTeamSource')).toBeLessThan(scoped.indexOf('departmentId'))
+  })
+
+  it('cuts the cohort at its source, so nothing downstream can fall out of step', async () => {
+    const scoped = await built({ months: 18, rop: 'Sevinch' })
+
+    /*
+      BOTH PASSTHROUGHS, OR NEITHER. `sized` counts `first_win` and the matrix
+      arm reads `purchases`; filtering only one of them prints a cohort of the
+      whole company's size with one team's cells in it — every percentage
+      wrong, nothing empty, no error. `first_return`, `returners` and
+      `revenue_totals` inherit the cut through `purchases` and are untouched
+      by the change, which is why this is the only place it has to be right.
+    */
+    const first = scoped.slice(scoped.indexOf('first_win AS ('), scoped.indexOf('purchases AS ('))
+    const purchases = scoped.slice(scoped.indexOf('purchases AS ('), scoped.indexOf('sized AS ('))
+
+    expect(first).toContain('JOIN owner_rop o')
+    expect(purchases).toContain('JOIN owner_rop o')
+  })
+
+  it('never lets the cut become a scope', async () => {
+    const scoped = await built({ months: 18, rop: 'Sevinch', includeRops: true })
+
+    /* A DIMENSION, NOT A SCOPE — the route still declares
+       `analytics:read:all` and refuses a narrowed account outright. The team
+       cut is a question the reader asked, and it may never start looking like
+       a restriction the reader cannot lift. */
+    expect(scoped).not.toMatch(/assignee|ownerId|restrictTo/i)
   })
 })
