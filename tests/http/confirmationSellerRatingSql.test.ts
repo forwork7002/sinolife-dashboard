@@ -82,7 +82,20 @@ describe('confirmation seller rating SQL', () => {
       both.
     */
     expect(BARE_SQL).toContain("c.outcome IN ('CONFIRMED', 'UNCONFIRMED_SHIPPED')")
-    expect(BARE_SQL).not.toContain("WHERE c.outcome = 'CONFIRMED'")
+    /*
+      THE FAKT 1 COLUMNS THEMSELVES, BY NAME. A bare «no single-state CONFIRMED
+      filter anywhere» guard stood here until 2026-09-15; it cannot any more,
+      because the five-state split below counts Тасдиқланди on its own. What
+      the guard protected is that FAKT 1's count and money are graded on the
+      PAIR — so that is what is asserted, on the two columns that carry it.
+    */
+    expect(BARE_SQL).toContain(
+      "count(*) FILTER (WHERE c.outcome IN ('CONFIRMED', 'UNCONFIRMED_SHIPPED'))::bigint AS confirmed_orders",
+    )
+    expect(BARE_SQL).toContain(
+      `sum(d."amountMinor") FILTER (WHERE c.outcome IN ('CONFIRMED', 'UNCONFIRMED_SHIPPED'))::text AS confirmed,`,
+    )
+    expect(BARE_SQL).not.toContain("WHERE c.outcome = 'CONFIRMED')::bigint AS confirmed_orders")
     expect(BARE_SQL).not.toContain('UC_YUKVF1')
     expect(BARE_SQL).not.toContain('SETTLED')
   })
@@ -143,6 +156,26 @@ describe('confirmation seller rating SQL', () => {
     */
     expect(BARE_SQL).toContain("WHERE c.outcome = 'REJECTED'")
     expect(BARE_SQL).not.toContain("'CONFIRMED', 'UNCONFIRMED_SHIPPED', 'REJECTED'")
+  })
+
+  it('keeps the five queue states apart beside FAKT 1, so the screen can print the ratio', () => {
+    /*
+      2026-09-15, the client: «tasdiqlanganlar, tasdiqlanmay chiqdilar bilan
+      tasdiqlanmaganlar nisbati». FAKT 1 folds Тасдиқланди and Тасдиқланмай
+      чиқди into one figure on purpose (see above); the ratio the client asked
+      for is that fold undone, beside it. Measured over the SAME rows in the
+      SAME statement, so on every row the five parts add up to `cohort_orders`
+      — a partition the screen can check rather than trust. Money too, because
+      the Тасдиқлаш board prints what each state is worth and this must agree
+      with it to the soʻm.
+    */
+    for (const state of ['CONFIRM_NEW', 'NO_ANSWER', 'CONFIRMED', 'REJECTED', 'UNCONFIRMED_SHIPPED']) {
+      const column = `state_${state.toLowerCase()}`
+      expect(BARE_SQL).toContain(`count(*) FILTER (WHERE c.outcome = '${state}')::bigint AS ${column}`)
+      expect(BARE_SQL).toContain(
+        `sum(d."amountMinor") FILTER (WHERE c.outcome = '${state}')::text AS ${column}_amount`,
+      )
+    }
   })
 
   it('does not name countsAsRevenue', () => {

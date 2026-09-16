@@ -27,7 +27,19 @@ import { SellerBoardService } from '@/server/services/sellerBoardService'
 const TZ = 'Asia/Tashkent'
 const NOW = new Date('2026-09-08T09:00:00+05:00')
 
-type FaktDayRow = { date: string; confirmedMinor: bigint; deliveredMinor: bigint; orders: number }
+type States = Record<
+  'CONFIRM_NEW' | 'NO_ANSWER' | 'CONFIRMED' | 'REJECTED' | 'UNCONFIRMED_SHIPPED',
+  number
+>
+type FaktDayRow = {
+  date: string
+  confirmedMinor: bigint
+  deliveredMinor: bigint
+  orders: number
+  byOutcome?: Partial<States>
+}
+
+const NONE: States = { CONFIRM_NEW: 0, NO_ANSWER: 0, CONFIRMED: 0, REJECTED: 0, UNCONFIRMED_SHIPPED: 0 }
 
 const mln = (n: number) => BigInt(n) * 1_000_000n * 100n
 
@@ -36,7 +48,10 @@ function serviceOver(rows: readonly FaktDayRow[]) {
   const insights = {
     confirmationFaktDays: async (...args: unknown[]) => {
       calls.push(args)
-      return [...rows]
+      // The repository always carries the five states; a fixture that names
+      // none of them is a day with orders in no state, which is what an
+      // older test meant by leaving them out.
+      return rows.map((row) => ({ ...row, byOutcome: { ...NONE, ...row.byOutcome } }))
     },
   } as unknown as InsightsRepository
   const reference = { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository
@@ -167,5 +182,66 @@ describe('the FAKT trend lands on the revenue chart’s own buckets', () => {
     const points = await run('this_month')
 
     expect(points.every((p) => p.fakt1 === 0 && p.fakt2 === 0 && p.orders === 0)).toBe(true)
+  })
+})
+
+describe('the trend carries the five queue states per bucket', () => {
+  /*
+    The confirmation-rate line under the hero divides these counts; they ride
+    on the same points as FAKT 1 / FAKT 2 so a day's share and the period's
+    share are one arithmetic over one cohort — no third request, no second
+    chance to disagree.
+  */
+  it('sums each state into its bucket and totals them as the bucket’s cohort', async () => {
+    const { run } = serviceOver([
+      {
+        date: '2026-09-02',
+        confirmedMinor: mln(120),
+        deliveredMinor: mln(80),
+        orders: 70,
+        byOutcome: { CONFIRMED: 66, UNCONFIRMED_SHIPPED: 4, REJECTED: 9, NO_ANSWER: 1 },
+      },
+    ])
+
+    const points = await run('this_month')
+
+    expect(points[1]!.byOutcome).toEqual({
+      CONFIRM_NEW: 0,
+      NO_ANSWER: 1,
+      CONFIRMED: 66,
+      REJECTED: 9,
+      UNCONFIRMED_SHIPPED: 4,
+    })
+    expect(points[1]!.cohortOrders).toBe(80)
+    // A quiet bucket is all zeros, not a missing map.
+    expect(points[0]!.byOutcome).toEqual(NONE)
+    expect(points[0]!.cohortOrders).toBe(0)
+  })
+
+  it('keeps a day whose every order was refused — a 0% point, not a gap', async () => {
+    const { run } = serviceOver([
+      { date: '2026-09-05', confirmedMinor: 0n, deliveredMinor: 0n, orders: 0, byOutcome: { REJECTED: 5 } },
+    ])
+
+    const points = await run('this_month')
+
+    expect(points[4]).toMatchObject({ fakt1: 0, fakt2: 0, orders: 0, cohortOrders: 5 })
+    expect(points[4]!.byOutcome.REJECTED).toBe(5)
+  })
+
+  it('adds the states across the days of a wider bucket', async () => {
+    const { run } = serviceOver([
+      { date: '2026-03-03', confirmedMinor: mln(10), deliveredMinor: mln(4), orders: 5, byOutcome: { CONFIRMED: 5, REJECTED: 1 } },
+      { date: '2026-03-05', confirmedMinor: mln(20), deliveredMinor: mln(6), orders: 9, byOutcome: { CONFIRMED: 8, UNCONFIRMED_SHIPPED: 1, REJECTED: 2 } },
+    ])
+
+    const points = await run('custom', {}, {
+      customStart: new Date('2026-01-01T00:00:00+05:00'),
+      customEnd: new Date('2026-06-30T00:00:00+05:00'),
+    })
+
+    const march = points.find((p) => p.cohortOrders > 0)!
+    expect(march.byOutcome).toMatchObject({ CONFIRMED: 13, UNCONFIRMED_SHIPPED: 1, REJECTED: 3 })
+    expect(march.cohortOrders).toBe(17)
   })
 })

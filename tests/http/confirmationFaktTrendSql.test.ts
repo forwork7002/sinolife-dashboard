@@ -81,14 +81,26 @@ describe('the FAKT trend speaks the board’s language', () => {
     expect(filtered).toContain(`AND e."id" = ANY(string_to_array($4, ','))`)
   })
 
-  it('keeps a day whose only money was delivered without a confirmation', () => {
-    // FAKT 2 is not a subset of FAKT 1 — an order refused in the queue and
-    // revived afterwards delivers on a day that confirmed nothing. Dropping
-    // that day would break the line where the two series cross.
-    expect(BARE).toContain('HAVING count(*) FILTER')
-    expect(BARE).toContain(
-      `OR count(*) FILTER (WHERE ds."logisticsRole" = 'DELIVERED') > 0`,
-    )
+  it('returns every day the cohort touched — a day of pure refusals included', () => {
+    /*
+      A HAVING stood here until 2026-09-15, keeping only the days that carried
+      FAKT 1 or FAKT 2 money. It bought the FAKT chart nothing — the service
+      zero-fills every bucket regardless — and it would have cost the
+      confirmation-rate line the one day it most needs to show: a day whose
+      every order was refused is a 0% point, not a gap. The service's own
+      zero-fill is now the only place an empty day is decided.
+    */
+    expect(BARE).not.toContain('HAVING')
+  })
+
+  it('keeps the five queue states apart per day, so the rate line divides exact counts', () => {
+    // The same five columns `ratingSql` carries, so the day's share and the
+    // period's share on Savdo dinamikasi are one arithmetic over one cohort.
+    for (const state of ['CONFIRM_NEW', 'NO_ANSWER', 'CONFIRMED', 'REJECTED', 'UNCONFIRMED_SHIPPED']) {
+      expect(BARE).toContain(
+        `count(*) FILTER (WHERE c.outcome = '${state}')::bigint AS state_${state.toLowerCase()}`,
+      )
+    }
   })
 
   it('joins the stage the delivery role is read from', () => {

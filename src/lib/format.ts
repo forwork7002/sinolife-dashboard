@@ -278,3 +278,27 @@ export function formatDateTime(iso: string): string {
 
 /** Em dash for "no value". Deliberately distinct from a zero. */
 export const NO_VALUE = '—'
+
+/**
+ * How wide a stopped sync is, in the words the header puts in its tooltip.
+ *
+ * ONE ENTITY NAME IS A CLAIM, AND USUALLY THE WRONG ONE. `entity` is whichever
+ * pass failed LAST, so a portal refusing every REST call surfaced as
+ * «stage_history» — on 2026-09-15 all twelve entities were down for an hour
+ * under that one word, and a reader who knows what stage history is would have
+ * taken the deal figures for current. When the count is known and larger than
+ * one it replaces the name: somebody deciding whether to phone for help needs
+ * the SCOPE, and by then the name of the last importer tells them nothing.
+ *
+ * Null count means it could not be bounded cheaply (see
+ * `findCurrentSyncFailure`), not that the outage is narrow — so it falls back
+ * to the name rather than inventing a number.
+ */
+export function syncFailureScope(
+  error: { readonly entity: string; readonly entities: number | null } | null | undefined,
+): string {
+  if (error == null) return ''
+  return error.entities !== null && error.entities > 1
+    ? `${error.entities} ta boʻlim`
+    : error.entity.toLowerCase()
+}

@@ -63,6 +63,8 @@ import {
   toMinorUnits,
 } from './mapping'
 import { RateLimiter, backoffDelayMs, sleep } from './rateLimiter'
+import { PortalGate } from './portalGate'
+import { classifyRefusal } from './refusal'
 
 export interface Bitrix24ProviderOptions {
   readonly webhookUrl: string
@@ -119,10 +121,52 @@ interface Bitrix24Response<T> {
 }
 
 export class Bitrix24Error extends Error {
-  constructor(message: string, readonly status?: number, readonly retryable = false) {
+  /**
+   * `code` and `method` are carried as FIELDS, not left to be read back out of
+   * the message.
+   *
+   * Every decision about a refusal used to be a regex over English prose — the
+   * worker substring-matched `OVERLOAD_LIMIT`, a React component kept a
+   * two-element allowlist of codes, and the 429/5xx branch below threw the body
+   * away before anyone could match anything. `classifyRefusal` reads these
+   * fields first and falls back to the message only for errors raised elsewhere.
+   */
+  constructor(
+    message: string,
+    readonly status?: number,
+    readonly retryable = false,
+    readonly code?: string,
+    readonly method?: string,
+  ) {
     super(message)
     this.name = 'Bitrix24Error'
   }
+}
+
+/**
+ * A REFUSAL THAT WILL NOT CLEAR ON ITS OWN, and that is the whole distinction.
+ *
+ * `OVERLOAD_LIMIT` lifts on the portal's clock, so waiting is the right act.
+ * A revoked or replaced webhook never lifts: every retry until somebody
+ * installs a new one is a call that CANNOT succeed, and on 2026-09-15 that was
+ * twelve entities asked again every three minutes — against a portal that had
+ * blocked this same integration for four hours the day before, for volume.
+ *
+ * So the caller backs off exactly as it does for a throttle. Nothing here
+ * decides HOW long; it decides only that no amount of asking is the answer.
+ *
+ * ONE VOCABULARY, NOT TWO. This kept its own list of the portal's codes until
+ * `refusal.ts` arrived with the same list plus the three other kinds of refusal
+ * and the `null` case that must never trip anything. Two lists of the same
+ * codes in one repository is the drift CLAUDE.md keeps warning about, so this
+ * is now a named reading of the shared classifier — the name is worth keeping,
+ * the second copy of the vocabulary is not. It takes a MESSAGE because that is
+ * what survives into `sync_log` and is all a later reader has; `classifyRefusal`
+ * also reads the error's own `code` field when handed a live error.
+ */
+export function isCredentialFailure(message: string | null | undefined): boolean {
+  if (!message) return false
+  return classifyRefusal(message) === 'CREDENTIAL'
 }
 
 /** Rows a single list call returns. Fixed by the portal, not configurable. */
@@ -143,18 +187,21 @@ const DEAL_SELECT = [
  * Never throws: the body of a failed response is best-effort context, and a
  * parse error here would replace a real HTTP status with a JSON one.
  */
-async function errorDetail(response: Response): Promise<string> {
+async function errorDetail(response: Response): Promise<{ code: string | null; detail: string }> {
   try {
     const body = (await response.json()) as {
       error?: string
       error_description?: string
     }
-    if (!body?.error) return ''
-    return body.error_description
-      ? ` — ${body.error}: ${body.error_description}`
-      : ` — ${body.error}`
+    if (!body?.error) return { code: null, detail: '' }
+    return {
+      code: String(body.error).toUpperCase(),
+      detail: body.error_description
+        ? ` — ${body.error}: ${body.error_description}`
+        : ` — ${body.error}`,
+    }
   } catch {
-    return ''
+    return { code: null, detail: '' }
   }
 }
 
@@ -192,6 +239,13 @@ export class Bitrix24CrmProvider implements CrmProvider {
 
   private readonly webhookUrl: string
   private readonly limiter: RateLimiter
+  /**
+   * The circuit breaker, per provider instance.
+   *
+   * Public because the sync worker drives its probe ladder and reports its
+   * state; everything else in the system reaches it only through `call()`.
+   */
+  readonly gate = new PortalGate()
   private readonly timeoutMs: number
   private readonly maxRetries: number
   private readonly fetchImpl: typeof fetch
@@ -252,10 +306,42 @@ export class Bitrix24CrmProvider implements CrmProvider {
   // Transport
   // -------------------------------------------------------------------------
 
-  private async call<T>(method: string, params: Record<string, unknown>): Promise<Bitrix24Response<T>> {
+  private async call<T>(
+    method: string,
+    params: Record<string, unknown>,
+    options: { bypassGate?: boolean } = {},
+  ): Promise<Bitrix24Response<T>> {
     let lastError: unknown
+    /*
+      THE ATTEMPTS MADE, NOT THE ATTEMPTS ALLOWED.
+
+      This message printed `maxRetries + 1` unconditionally — «failed after 4
+      attempts» — including for the non-retryable 401s that break out of the
+      loop after ONE. Every credential and overload failure in `sync_log` has
+      therefore overstated our own call volume four-fold, and that log is the
+      evidence this integration hands Bitrix24 when it asks what we were doing
+      to its portal. A number offered as proof has to be the measured one.
+    */
+    let attempts = 0
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      /*
+        THE CHEAPEST REQUEST IS THE ONE NEVER SENT.
+
+        Consulted BEFORE the rate limiter, because a held call should not even
+        occupy a token — during a block the limiter would otherwise pace our
+        refusals at a tidy two per second. `bypassGate` is for the probe alone:
+        it is the one call whose entire job is to find out whether the door has
+        opened.
+      */
+      if (!options.bypassGate) {
+        const held = this.gate.hold(method, new Date())
+        if (held) {
+          throw new Bitrix24Error(held.message, undefined, false, held.code, method)
+        }
+      }
+
+      attempts += 1
       await this.limiter.acquire()
       const controller = new AbortController()
       /**
@@ -276,7 +362,31 @@ export class Bitrix24CrmProvider implements CrmProvider {
         })
 
         if (response.status === 429 || response.status >= 500) {
-          throw new Bitrix24Error(`Bitrix24 responded ${response.status}`, response.status, true)
+          /*
+            THIS BRANCH USED TO THROW THE BODY AWAY, AND IT IS THE SAME BUG THE
+            LONG COMMENT BELOW FIXED ONE BRANCH LOWER.
+
+            Bitrix24 sends `QUERY_LIMIT_EXCEEDED` behind a 503 and
+            `OPERATION_TIME_LIMIT` behind a 429 — both with the code in the
+            body — and this line reported them as a bare «Bitrix24 responded
+            503». Measured on 2026-09-15: eleven entity fetches issued 40 HTTP
+            requests instead of 10, because the full retry ladder ran AND the
+            worker's substring match for a code that never arrived meant its
+            ten-minute wait never engaged. Reading the body costs nothing and
+            makes both the retry decision and the gate correct.
+
+            Retryability now comes from the CODE, not the status: a plain 5xx is
+            worth retrying, an OVERLOAD_LIMIT behind one is not.
+          */
+          const { code, detail } = await errorDetail(response)
+          const retryable = code === null || code === 'QUERY_LIMIT_EXCEEDED'
+          throw new Bitrix24Error(
+            `Bitrix24 responded ${response.status}${detail}`,
+            response.status,
+            retryable,
+            code ?? undefined,
+            method,
+          )
         }
         if (!response.ok) {
           /*
@@ -296,10 +406,13 @@ export class Bitrix24CrmProvider implements CrmProvider {
             sentence; neither carries a secret, and `redact` still runs over
             the message on the way out.
           */
+          const { code, detail } = await errorDetail(response)
           throw new Bitrix24Error(
-            `Bitrix24 responded ${response.status}${await errorDetail(response)}`,
+            `Bitrix24 responded ${response.status}${detail}`,
             response.status,
             false,
+            code ?? undefined,
+            method,
           )
         }
 
@@ -310,11 +423,19 @@ export class Bitrix24CrmProvider implements CrmProvider {
             response.status,
             // The portal throttles with this code rather than a 429.
             payload.error === 'QUERY_LIMIT_EXCEEDED',
+            String(payload.error).toUpperCase(),
+            method,
           )
         }
+        // The door is open. Whatever we were waiting out is over — and this is
+        // also how a successful probe closes the gate.
+        this.gate.noteSuccess(method, new Date())
         return payload
       } catch (error) {
         lastError = error
+        // Told BEFORE the retry decision, so a refusal shuts the door for every
+        // other entity in this tick rather than only for the next one.
+        this.gate.trip(error, new Date())
         const retryable = error instanceof Bitrix24Error ? error.retryable : true
         if (!retryable || attempt === this.maxRetries) break
         await sleep(backoffDelayMs(attempt))
@@ -323,8 +444,24 @@ export class Bitrix24CrmProvider implements CrmProvider {
       }
     }
 
+    /*
+      `attempts`, not `maxRetries + 1`.
+
+      The constant was a lie on every non-retryable error: a 401 breaks out of
+      the loop after ONE request, and the message still read «failed after 4
+      attempts». That sentence went into `sync_log`, into the dashboard tooltip
+      and into the 2026-09-14 incident notes, and it is why the first reading of
+      that outage was «the client is hammering the portal four times over».
+    */
+    const cause = lastError instanceof Bitrix24Error ? lastError : undefined
     throw new Bitrix24Error(
-      `Bitrix24 call "${method}" failed after ${this.maxRetries + 1} attempts: ${redact(lastError)}`,
+      `Bitrix24 call "${method}" failed after ${attempts} ${
+        attempts === 1 ? 'attempt' : 'attempts'
+      }: ${redact(lastError)}`,
+      cause?.status,
+      false,
+      cause?.code,
+      method,
     )
   }
 
@@ -521,14 +658,41 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * change — and NOT granting it leaves them explicitly unavailable instead of
    * quietly empty.
    */
+  /**
+   * A REFUSAL IS NOT AN ANSWER OF «NO SCOPES».
+   *
+   * This memo used to be written in the `catch` as well as the `try`, so a
+   * `scope` call refused during a block cached `new Set()` for the LIFE OF THE
+   * PROCESS. Every consequence was silent: `STORES` and `STOCK` stayed false,
+   * the API then correctly reported warehouse and cost data as *unavailable*
+   * rather than zero, and it stayed that way long after the portal had
+   * recovered — until somebody redeployed. On 2026-09-15 a worker started
+   * inside the outage, which is exactly the case that triggers it.
+   *
+   * Now only a real answer is remembered. A refusal is rethrown, so the entity
+   * fails honestly and `sync_log` says so, and a short negative cooldown keeps
+   * the four call sites from turning one refused tick into four `scope` calls.
+   */
+  private scopeRetryAfter: Date | null = null
+
   async detectScopes(): Promise<ReadonlySet<string>> {
     if (this.grantedScopes) return this.grantedScopes
+
+    if (this.scopeRetryAfter && new Date() < this.scopeRetryAfter) {
+      throw new Bitrix24Error(
+        `Bitrix24 scope unknown — retry after ${this.scopeRetryAfter.toISOString()}`,
+        undefined,
+        false,
+      )
+    }
 
     try {
       const payload = await this.call<string[]>('scope', {})
       this.grantedScopes = new Set(payload.result ?? [])
-    } catch {
-      this.grantedScopes = new Set()
+      this.scopeRetryAfter = null
+    } catch (error) {
+      this.scopeRetryAfter = new Date(Date.now() + 60_000)
+      throw error
     }
 
     const hasCatalog = this.grantedScopes.has('catalog')
@@ -579,17 +743,56 @@ export class Bitrix24CrmProvider implements CrmProvider {
   // Health
   // -------------------------------------------------------------------------
 
+  /**
+   * One call, not two — and the one that was dropped is the one that told us
+   * least.
+   *
+   * `profile` existed here only to print `user #8868` into a single startup log
+   * line. `detectScopes()` on the next line proves connectivity AND authorisation
+   * on its own, so the second request bought a decoration. It was also issued at
+   * precisely the worst moment: at the measured ~17 restarts a day, a worker
+   * starting inside a block spent its first request on the decoration.
+   *
+   * Worse, it was issued FIRST, so during a block it threw and `detectScopes()`
+   * never ran — leaving STORES and STOCK false for that worker's entire life and
+   * the warehouse screens reporting data as unavailable long after the portal
+   * had recovered. Order alone caused that; dropping the call fixes it.
+   *
+   * `profile` survives as `probe()` below, where being the cheapest method on the
+   * portal is exactly the property wanted.
+   */
   async healthCheck(): Promise<ProviderHealth> {
     try {
-      const profile = await this.call<{ ID: string; NAME?: string }>('profile', {})
       const scopes = await this.detectScopes()
       const names = this.pipelines.map((p) => PIPELINE_NAMES[p] ?? p).join(', ')
       return {
         ok: true,
-        detail: `Bitrix24 ulandi (user #${profile.result?.ID}). Voronkalar: ${names}. Ruxsatlar: ${[...scopes].join(', ')}.`,
+        detail: `Bitrix24 ulandi. Voronkalar: ${names}. Ruxsatlar: ${[...scopes].join(', ')}.`,
       }
     } catch (error) {
       return { ok: false, detail: `Bitrix24 unreachable: ${redact(error)}` }
+    }
+  }
+
+  /**
+   * Is the door open again?
+   *
+   * The ONLY call allowed past the gate, and the cheapest method the portal
+   * offers: no CRM table is touched, no operating time accrues that matters. It
+   * replaces the old design where the worker waited a flat ten minutes and then
+   * discovered the answer by running a whole tick — four entities and their
+   * pages — into whatever it found.
+   *
+   * A success closes the gate through the ordinary `noteSuccess` path in
+   * `call()`, so recovery needs no separate bookkeeping.
+   */
+  async probe(): Promise<boolean> {
+    this.gate.noteProbe(new Date())
+    try {
+      await this.call('profile', {}, { bypassGate: true })
+      return true
+    } catch {
+      return false
     }
   }
 
@@ -625,7 +828,22 @@ export class Bitrix24CrmProvider implements CrmProvider {
           isActive: true,
         })),
       )
-    } catch {
+    } catch (error) {
+      /*
+        «SCOPE YOʻQ» IS A GUESS, AND UNDER A BLOCK IT WAS THE WRONG ONE.
+
+        This catch was unconditional, so a refused `department.get` resolved
+        with ZERO departments — and an empty page is a successful page: the
+        engine records SUCCESS and ADVANCES the watermark. That is one of the
+        two passes that made the freshness chip read «2 daqiqa oldin» over
+        four-hour-old deals on 2026-09-14, which the client reported as
+        «avtomatik yangilanmayapti». The chip was not lying about its own
+        measurement; this line was manufacturing the measurement.
+
+        A portal refusal is rethrown so the entity fails and says why. Only a
+        genuine permission problem still takes the quiet path.
+      */
+      if (classifyRefusal(error) !== null) throw error
       this.progress('  departments: scope yoʻq, oʻtkazib yuborildi')
       return this.page([])
     }
@@ -810,6 +1028,11 @@ export class Bitrix24CrmProvider implements CrmProvider {
 
       return rows
     } catch (error) {
+      // Same correction as `fetchDepartments`: a refused catalogue is not an
+      // empty catalogue. Swallowing it here let `handlers.ts` write
+      // `costMinor: null` over every product that had a cost, so every margin
+      // figure on the dashboard read «no cost» while the run finished SUCCESS.
+      if (classifyRefusal(error) !== null) throw error
       this.progress(`  katalog oʻqilmadi: ${redact(error)}`)
       return []
     }
@@ -859,15 +1082,48 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * falls back to the id suffix — without it "Доставлено" and "Отказ" both land
    * in IN_PROGRESS and the funnel shows nothing ever finishing.
    */
+  /**
+   * NINE PIPELINES, ONE REQUEST.
+   *
+   * This was a `for` loop of nine bare calls — 31% of the whole reference pass
+   * and 432 requests a day — over a helper that already packs fifty DIFFERENT
+   * commands into a single request. The calls are independent and their results
+   * are only pushed into one array, so nothing about the loop needed the round
+   * trips. Under a block it also means one refusal instead of nine.
+   *
+   * THE MISSING-KEY CHECK IS NOT DEFENSIVE, IT IS LOAD-BEARING. `batch()` reads
+   * `payload.result?.result` and ignores `result_error`, and `halt: 0` makes the
+   * portal answer HTTP 200 with per-command failures buried in the body. Without
+   * this throw, one refused pipeline would import as «that funnel has no stages»
+   * — and CLAUDE.md records what that costs: with no stage semantics
+   * «Доставлено» and «Отказ» both land in IN_PROGRESS and the funnel shows
+   * nothing ever finishing.
+   */
   async fetchStages(_o?: FetchOptions): Promise<Page<RawStage>> {
     const stages: RawStage[] = []
 
+    const commands: Record<string, string> = {}
     for (const pipelineId of this.pipelines) {
-      const payload = await this.call<
-        { STATUS_ID: string; NAME: string; SORT?: string; SEMANTICS?: string }[]
-      >('crm.dealcategory.stage.list', { id: pipelineId })
+      commands[`p${pipelineId}`] = `crm.dealcategory.stage.list?id=${pipelineId}`
+    }
 
-      const rows = payload.result ?? []
+    const answered = await this.batch<
+      { STATUS_ID: string; NAME: string; SORT?: string; SEMANTICS?: string }[]
+    >(commands)
+
+    const missing = this.pipelines.filter((id) => answered[`p${id}`] === undefined)
+    if (missing.length > 0) {
+      throw new Bitrix24Error(
+        `Bitrix24 crm.dealcategory.stage.list javob bermadi: voronka ${missing.join(', ')}`,
+        undefined,
+        false,
+        undefined,
+        'crm.dealcategory.stage.list',
+      )
+    }
+
+    for (const pipelineId of this.pipelines) {
+      const rows = answered[`p${pipelineId}`] ?? []
       rows.forEach((s, index) => {
         stages.push({
           externalId: s.STATUS_ID,

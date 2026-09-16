@@ -36,6 +36,7 @@ import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import { scopedPeriod } from '@/server/domain/employees/branches'
 import { type Period, enumerateBuckets, sinceMonth, zonedDateKey } from '@/server/domain/period/period'
 import type { DeltaDto } from '@/lib/api'
+import { CONFIRMATION_OUTCOMES, type ConfirmationOutcomeValue } from '@/server/domain/types'
 import type { InsightsRepository } from '@/server/repositories/insightsRepository'
 import { keyPart, ttlCache } from './ttlCache'
 import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
@@ -209,6 +210,12 @@ export interface SellerTeamRowDto {
   readonly leadConversionPercent: number | null
 }
 
+/** One queue state's slice of the cohort: how many orders, and what they were worth. */
+export interface SellerOutcomeDto {
+  readonly orders: number
+  readonly amount: MoneyDto
+}
+
 export interface SellerBoardTotalsDto {
   readonly sellers: number
   readonly teams: number
@@ -223,6 +230,26 @@ export interface SellerBoardTotalsDto {
   readonly orders: number
   /** Every order in the cohort — what the confirmation queue counts. */
   readonly cohortOrders: number
+  /**
+   * WHERE THE WHOLE QUEUE WENT — the five states apart, each with its count
+   * and its money, summed over the rows exactly as `cohortOrders` is, so the
+   * five counts add up to it and the screen prints a partition rather than a
+   * remainder. Asked for on 2026-09-15 for Savdo dinamikasi: FAKT 1 folds
+   * Тасдиқланди and Тасдиқланмай чиқди together on purpose, and the client
+   * wanted the fold undone beside it («tasdiqlanganlar, tasdiqlanmay
+   * chiqdilar bilan tasdiqlanmaganlar nisbati»). Null on the intake basis,
+   * which has no queue to have states in.
+   */
+  readonly outcomes: Readonly<Record<ConfirmationOutcomeValue, SellerOutcomeDto>> | null
+  /**
+   * «Тасдиқланиш %» — Тасдиқланди over everything that entered the queue,
+   * 0–100 to one decimal. The Тасдиқлаш board's own rate, computed the same
+   * way (`confirmedRate` in `insightsService`), so the two screens cannot
+   * print two rates for one month. Тасдиқланди ALONE: an order shipped
+   * without reaching the customer earns FAKT 1 money but is not a
+   * confirmation. Null when nothing entered, and on the intake basis.
+   */
+  readonly confirmedRate: number | null
   readonly ordered: MoneyDto
   readonly won: MoneyDto
   readonly wonOrders: number
@@ -327,6 +354,14 @@ export interface FaktTrendPointDto {
   readonly fakt2: number
   /** FAKT 1's own order count. Not the cohort — see `SellerBoardTotalsDto`. */
   readonly orders: number
+  /**
+   * The bucket's five queue states, counts only — what the confirmation-rate
+   * line under the hero divides. On the SAME point as FAKT 1 / FAKT 2 so a
+   * day's share and the period's share are one arithmetic over one cohort.
+   */
+  readonly byOutcome: Readonly<Record<ConfirmationOutcomeValue, number>>
+  /** Every order that entered the queue in the bucket — the five states summed. */
+  readonly cohortOrders: number
 }
 
 // ---------------------------------------------------------------------------
@@ -618,6 +653,13 @@ export class SellerBoardService {
       (r) => plans.byEmployee.get(r.employeeId)!,
     )
 
+    /*
+      Summed here, beside every other total, and only on the queue basis —
+      the intake rows carry null for the same reason the DTO field can be.
+    */
+    const outcomes = basis === 'queue' ? outcomeTotals(rows, ctx.currency) : null
+    const cohortOrders = rows.reduce((a, r) => a + r.cohortOrders, 0)
+
     return {
       rows: boardRows,
       /*
@@ -631,7 +673,19 @@ export class SellerBoardService {
         teams: new Set(rows.map((r) => r.rop).filter((r): r is string => r !== null)).size,
         teamlessSellers: rows.filter((r) => r.rop === null).length,
         orders: rows.reduce((a, r) => a + r.orders, 0),
-        cohortOrders: rows.reduce((a, r) => a + r.cohortOrders, 0),
+        cohortOrders,
+        outcomes,
+        /*
+          The queue board's own arithmetic, to the digit: one decimal, over
+          the whole cohort, null over nothing. Not `ratePercent` +
+          `roundOrNull` — those round to SHARE_DECIMALS, and a rate that the
+          two screens print differently in the last place is the kind of
+          disagreement this figure exists to prevent.
+        */
+        confirmedRate:
+          outcomes === null || cohortOrders === 0
+            ? null
+            : Math.round((outcomes.CONFIRMED.orders / cohortOrders) * 1000) / 10,
         ordered: toMoneyDto(money(sum(rows, (r) => r.orderedMinor), ctx.currency)),
         won: toMoneyDto(money(totalWonMinor, ctx.currency)),
         wonOrders: rows.reduce((a, r) => a + r.wonOrders, 0),
@@ -849,6 +903,13 @@ export class SellerBoardService {
       let fakt1 = 0n
       let fakt2 = 0n
       let orders = 0
+      const byOutcome: Record<ConfirmationOutcomeValue, number> = {
+        CONFIRM_NEW: 0,
+        NO_ANSWER: 0,
+        CONFIRMED: 0,
+        REJECTED: 0,
+        UNCONFIRMED_SHIPPED: 0,
+      }
       /*
         A scan per bucket rather than an index: the widest window this chart
         draws is a year of days against 53 weekly buckets, so the whole thing
@@ -860,6 +921,7 @@ export class SellerBoardService {
         fakt1 += day.confirmedMinor
         fakt2 += day.deliveredMinor
         orders += day.orders
+        for (const state of CONFIRMATION_OUTCOMES) byOutcome[state] += day.byOutcome[state]
       }
 
       return {
@@ -867,6 +929,8 @@ export class SellerBoardService {
         fakt1: Number(fakt1) / 100,
         fakt2: Number(fakt2) / 100,
         orders,
+        byOutcome,
+        cohortOrders: CONFIRMATION_OUTCOMES.reduce((a, state) => a + byOutcome[state], 0),
       }
     })
   }
@@ -923,6 +987,8 @@ export class SellerBoardService {
         // dropped here until 2026-09-09 — see `SellerBoardRow`.
         lostAfterConfirmMinor: r.lostAfterConfirmMinor,
         cohortOrders: r.cohortOrders,
+        byOutcome: r.byOutcome,
+        byOutcomeMinor: r.byOutcomeMinor,
       }),
     )
   }
@@ -1237,4 +1303,26 @@ function sum<T>(rows: readonly T[], pick: (row: T) => bigint): bigint {
  */
 function roundOrNull(value: number | null): number | null {
   return value === null ? null : roundPercent(value, SHARE_DECIMALS)
+}
+
+/**
+ * The five queue states summed over the board's rows — the same reduction
+ * `cohortOrders` is, state by state, so the parts add up to the whole.
+ *
+ * A row with no states (the intake basis) counts as nothing rather than
+ * poisoning the sum; the caller has already decided the whole map is null on
+ * that basis, so this only ever meets nulls in a mixed fixture.
+ */
+function outcomeTotals(
+  rows: readonly SellerBoardRow[],
+  currency: string,
+): Readonly<Record<ConfirmationOutcomeValue, SellerOutcomeDto>> {
+  const totals = {} as Record<ConfirmationOutcomeValue, SellerOutcomeDto>
+  for (const state of CONFIRMATION_OUTCOMES) {
+    totals[state] = {
+      orders: rows.reduce((a, r) => a + (r.byOutcome?.[state] ?? 0), 0),
+      amount: toMoneyDto(money(sum(rows, (r) => r.byOutcomeMinor?.[state] ?? 0n), currency)),
+    }
+  }
+  return totals
 }

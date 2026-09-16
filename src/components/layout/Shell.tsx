@@ -29,7 +29,7 @@ import { Tooltip } from '@/components/ui/Tooltip'
 import { apiGet, type AlertsDto, type SearchDto } from '@/lib/api'
 import { sessionUser, signOut, useSession } from '@/lib/authClient'
 import { useNewBuildAvailable } from '@/lib/buildVersion'
-import { formatCompactUzs, formatDateTime } from '@/lib/format'
+import { formatCompactUzs, formatDateTime, syncFailureScope } from '@/lib/format'
 import { ROLE_LABELS, canSeeHref, type RoleValue } from '@/lib/roles'
 import { useServerViewer } from '@/lib/viewer'
 import { isCompanyWideSection, sectionSpec, type SectionValue } from '@/lib/sections'
@@ -216,7 +216,9 @@ export function Shell({
     current clock is a log entry, not something to put in front of the floor.
     Five minutes is the worker's own threshold (five missed ticks).
   */
-  const syncBlocked = alerts?.syncError != null && (alerts?.syncAgeMinutes ?? 0) >= 5
+  const syncBlocked =
+    alerts?.syncError != null &&
+    ((alerts?.syncAgeMinutes ?? 0) >= 5 || alerts.syncError.kind === 'CREDENTIAL')
   const busy = useIsFetching() > 0
 
   /*
@@ -1472,7 +1474,14 @@ function DataSourceBadge({
    * bug report; with the cause it is a five-word sentence and, for a portal
    * throttle, an instruction to do nothing at all.
    */
-  syncError?: { readonly code: string; readonly entity: string; readonly at: string } | null
+  syncError?: {
+    readonly code: string
+    readonly kind: 'THROTTLE' | 'CREDENTIAL' | 'METHOD' | 'TRANSIENT' | 'UNKNOWN'
+    readonly entity: string
+    readonly entities: number | null
+    readonly at: string
+    readonly since: string
+  } | null
 }) {
   const isDemo = source !== 'BITRIX24'
 
@@ -1504,9 +1513,23 @@ function DataSourceBadge({
     it matters. Failures on a healthy clock belong in the sync log, where the
     person who can act on them is looking.
   */
-  const blocked = !isDemo && syncError != null && sync.stale
-  const throttled =
-    syncError?.code === 'OVERLOAD_LIMIT' || syncError?.code === 'QUERY_LIMIT_EXCEEDED'
+  /*
+    A DEAD CREDENTIAL DOES NOT GET THE QUIET PERIOD, BECAUSE IT WILL NOT CLEAR.
+
+    The `sync.stale` pairing above is right for a THROTTLE and was wrong for the
+    other case. On 2026-09-15 the portal's overload block was replaced at 06:10
+    by a DELETED webhook, and this chip stayed silent for the first five minutes
+    of an outage that could not end on its own — the sync did not resume until
+    somebody was told. A throttle keeps its five minutes of quiet, deliberately;
+    a credential failure says so on the next poll, within sixty seconds.
+
+    `kind` now comes from the server (`AlertsDto.syncError.kind`). It used to be
+    this two-element allowlist of Bitrix24 codes, which put the portal's
+    vocabulary in a React component — the wrong side of the one rule.
+  */
+  const credential = syncError?.kind === 'CREDENTIAL'
+  const blocked = !isDemo && syncError != null && (sync.stale || credential)
+  const throttled = syncError?.kind === 'THROTTLE'
 
   const badge = (
     <span
@@ -1526,7 +1549,11 @@ function DataSourceBadge({
         aria-hidden="true"
         className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
         style={{
-          background: isDemo || sync.stale ? 'var(--status-warning)' : 'var(--status-good)',
+          background: credential
+            ? 'var(--status-critical)'
+            : isDemo || sync.stale
+              ? 'var(--status-warning)'
+              : 'var(--status-good)',
         }}
       />
       {isDemo ? t.badge.demo : t.badge.live}
@@ -1568,14 +1595,28 @@ function DataSourceBadge({
 
   const lastSyncHint = syncedAt ? `${t.badge.lastSync}: ${formatDateTime(syncedAt)}` : t.badge.live
 
+  /*
+    HOW WIDE, AND HOW LONG — the two things a stopped clock would not say.
+
+    `syncFailureScope` answers the first: `entity` alone is whichever pass
+    failed LAST, so a portal refusing everything was reported as the narrowest
+    thing on it. And `since` answers the second — `at` is the newest failed
+    tick, always seconds old during an outage, so a four-hour block read exactly
+    like a four-minute blip.
+  */
+  const failingScope = syncFailureScope(syncError)
+  const outageSince = syncError?.since ? clockOf(Date.parse(syncError.since)) : null
+
   const hint = isDemo
     ? t.badge.demoHint
     : blocked
       ? `${lastSyncHint}. ${
           throttled
             ? 'Bitrix24 oʻz API sini vaqtincha bloklagan — yangilanish oʻzi tiklanadi, hech narsa qilish shart emas.'
-            : 'Bitrix24 dan maʼlumot olinmayapti — texnik yordam kerak.'
-        } (${syncError?.code}, ${syncError?.entity.toLowerCase()})`
+            : credential
+              ? 'Bitrix24 webhook kaliti ishlamayapti — portalda yangi kalit ochilib, dashboardga qoʻyilishi kerak. Oʻzi tiklanmaydi.'
+              : 'Bitrix24 dan maʼlumot olinmayapti — texnik yordam kerak.'
+        }${outageSince ? ` ${outageSince} dan beri.` : ''} (${syncError?.code}, ${failingScope})`
       : lastSyncHint
 
   return <Tooltip content={hint}>{badge}</Tooltip>

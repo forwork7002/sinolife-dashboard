@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs'
-
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -20,24 +19,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * with no `enabled` check at all (`queryObserver.js`). So a key change on a
  * DISABLED query sets `isPlaceholderData` and nothing can ever clear it.
  *
- * The reachable path is three clicks, all of them ordinary:
+ * On 2026-09-15 that was reachable in three ordinary clicks — «Batafsil»,
+ * «Oddiy», then a new period — and the DEFAULT mode of this screen sat at 60%
+ * opacity, announced as busy, with no request outstanding.
  *
- *   1. «Batafsil» — the concentration query runs and caches under
- *      `['concentration', apiParams]`;
- *   2. «Oddiy» — the query is disabled again, still holding that data;
- *   3. a new period — `apiParams` changes, so the key changes, so the query
- *      has no data under the new key and is `pending`. `['cohorts']` carries
- *      no period, so nothing else on the screen reacts and nothing refetches.
- *
- * At that point the DEFAULT mode of this screen sat at 60% opacity, announced
- * as busy, with no request outstanding and no way back except pressing
- * «Batafsil» again. The gate on the query could not see it: the query was
- * correctly not running, and that was the problem.
- *
- * Both halves are pinned below: the page is not dimmed when the band is not on
- * screen, AND it still dims when it is — because dropping the prop outright
- * would also pass the first case while quietly deleting the one thing `stale`
- * is for.
+ * THE SCREEN HAS NO PERIOD CONTROL ANY MORE (`period={false}`, since the same
+ * day: nothing on it reads a window, and the concentration band resolves its
+ * own ninety days on the server), so the third click no longer exists and
+ * the concentration key is a constant. That closes the path — as long as
+ * nobody re-points `stale` at a query that is disabled in the default mode,
+ * and nobody gives the band a key that can change under a disabled query.
+ * Both are pinned below, one in the DOM and one in the source.
  */
 
 /*
@@ -132,7 +124,8 @@ const COHORTS = {
     cohortRow('2025-09-01', 17, [0, 18, 35, 35, 41, 41, 53]),
     cohortRow('2025-10-01', 15, [0, 13, 27, 33, 47, 47, 60]),
   ],
-  stages: [{ stage: '1 kun', customers: 40 }],
+  groups: [],
+  baseCustomers: 120,
   workedCustomers: 90,
   repeatRevenueShare: 65.2,
   repeatCustomers: 159,
@@ -170,30 +163,11 @@ const META = {
 /** Every `/api/v1` URL the page asked for, newest last. */
 let requested: string[] = []
 
-/**
- * Concentration answers held in the hand, so the dimmed moment can be READ.
- *
- * In «Batafsil» the dim is real and transient — it lasts exactly as long as
- * the request under the new key. A mock that resolves in a microtask would
- * make the second case a race against the fetch it is measuring.
- */
-let holdConcentration = false
-let held: (() => void)[] = []
-
-function releaseConcentration() {
-  const waiting = held
-  held = []
-  for (const resolve of waiting) resolve()
-}
-
 function mockFetch() {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
     requested.push(url)
     const concentration = url.includes('/insights/concentration')
-    if (concentration && holdConcentration) {
-      await new Promise<void>((resolve) => held.push(resolve))
-    }
     const data = url.includes('/insights/cohorts')
       ? COHORTS
       : concentration
@@ -212,8 +186,6 @@ const nativeReplaceState = window.history.replaceState.bind(window.history)
 
 beforeEach(() => {
   requested = []
-  held = []
-  holdConcentration = false
   /*
     No remembered window: `useRestoreRememberedPeriod` would otherwise write
     one over the bare address this page opens on, and `rememberPeriod` writes
@@ -271,87 +243,62 @@ const isDimmed = (container: HTMLElement) => pageBody(container).style.opacity =
 const isBusy = (container: HTMLElement) =>
   pageBody(container).getAttribute('aria-busy') === 'true'
 
-describe('the period control on «Mijoz qaytishi»', () => {
-  it('leaves «Oddiy» readable after a visit to «Batafsil» and a new window', async () => {
+describe('«Oddiy» after a visit to «Batafsil»', () => {
+  it('is readable — not dimmed and not busy — with nothing outstanding', async () => {
     /*
-      THE REACHABLE PATH, three ordinary clicks, on the mode this page opens
-      on. Before the gate on `stale` the page ended this test at 60% opacity
-      and `aria-busy="true"`, permanently: the concentration query is disabled
-      in «Oddiy», so the placeholder state its new key produced had nothing
-      able to clear it.
+      The two clicks that are still possible. Before the page went dateless
+      the third one dimmed «Oddiy» permanently; with a constant concentration
+      key there is nothing left that could, and this is what says so.
     */
     const { container } = openPage()
 
     await screen.findByText(/Qancha yangi mijoz keladi\?/)
     expect(isDimmed(container)).toBe(false)
 
-    // 1. «Batafsil» — the band fetches and caches under this period's key.
+    // 1. «Batafsil» — the band fetches and caches under its constant key.
     fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
     await screen.findByText(/10 ta eng yirik mijoz/)
+    expect(isDimmed(container)).toBe(false)
 
     // 2. Back to the default reading. The query is disabled from here on.
     fireEvent.click(screen.getByRole('button', { name: 'Oddiy' }))
     await screen.findByText(/Qancha yangi mijoz keladi\?/)
-
-    // 3. A new window. `['concentration', apiParams]` gets a key it has never
-    //    fetched — and, being disabled, never will.
-    const before = requested.length
-    fireEvent.click(screen.getByRole('button', { name: 'Kecha' }))
     await settle()
-
-    // Nothing is outstanding: this is the page's resting state, not a moment
-    // in a transition. If a request had gone out, the dim would be honest.
-    expect(requested).toHaveLength(before)
-    expect(screen.getByText(/Qancha yangi mijoz keladi\?/)).toBeDefined()
 
     expect(isDimmed(container)).toBe(false)
     expect(isBusy(container)).toBe(false)
   })
 
-  it('still dims «Batafsil» while the band’s new window is in flight', async () => {
-    /*
-      THE OTHER HALF, so the first case cannot be satisfied by deleting the
-      prop. In «Batafsil» the concentration band IS the period-scoped content
-      of this screen, the query is live, and `placeholderData` means the
-      previous window's shares stay on screen under the new window's control.
-      Dimming is exactly what `stale` is for — and it clears when the answer
-      lands.
-    */
-    const { container } = openPage()
+  it('offers no period control to change the band’s window under a disabled query', async () => {
+    openPage()
     await screen.findByText(/Qancha yangi mijoz keladi\?/)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
-    await screen.findByText(/10 ta eng yirik mijoz/)
-    expect(isDimmed(container)).toBe(false)
-
-    holdConcentration = true
-    fireEvent.click(screen.getByRole('button', { name: 'Kecha' }))
-    await settle()
-
-    // The previous window's figures are still on screen, so the page says so.
-    expect(isDimmed(container)).toBe(true)
-    expect(isBusy(container)).toBe(true)
-
-    releaseConcentration()
-    await settle()
-
-    expect(isDimmed(container)).toBe(false)
-    expect(isBusy(container)).toBe(false)
+    expect(screen.queryByRole('button', { name: 'Kecha' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Bugun' })).toBeNull()
   })
 })
 
-describe('why a disabled query can go stale at all', () => {
+describe('what keeps the path closed', () => {
+  it('passes no `stale` to PageShell and keys the band on a constant', () => {
+    /*
+      STRUCTURAL, by reading the source: a `stale` prop pointed at a query
+      that is disabled in the default mode is exactly the claim this file
+      exists to keep off the page, and a key carrying `apiParams` is the one
+      thing that could change under it.
+    */
+    const page = readFileSync('src/features/cohort/CohortPage.tsx', 'utf8')
+
+    expect(page).not.toMatch(/\bstale=/)
+    expect(page).toMatch(/period=\{false\}/)
+    expect(page).toMatch(/queryKey: \['concentration', 'trailing-90'\]/)
+    expect(page).not.toMatch(/\['concentration', apiParams\]/)
+  })
+
   it('keeps the application-wide placeholderData the cases above stand on', () => {
     /*
-      THE DEFAULT THAT MAKES THIS REACHABLE, asserted so the two cases above
-      cannot go quietly vacuous.
-
-      `stale={concentration.isPlaceholderData}` was once defended as harmless
-      on the grounds that no `placeholderData` was configured. It is configured
-      — globally, for every query in the product, in `providers.tsx` — and
-      query-core applies it on `data === undefined && status === 'pending'`
-      without consulting `enabled`. Delete this default and the cases above
-      would still pass while testing nothing at all.
+      THE DEFAULT THAT MADE THIS REACHABLE, asserted so the cases above cannot
+      go quietly vacuous: query-core applies it on `data === undefined &&
+      status === 'pending'` without consulting `enabled`.
     */
     const providers = readFileSync('src/app/providers.tsx', 'utf8')
 

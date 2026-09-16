@@ -57,6 +57,14 @@ function rating(employeeId: string, rop: string, minor: bigint): ConfirmationSel
     lostAfterConfirmOrders: 0,
     lostAfterConfirmMinor: 0n,
     rejectedOrders: 0,
+    byOutcome: { CONFIRM_NEW: 0, NO_ANSWER: 0, CONFIRMED: 0, REJECTED: 0, UNCONFIRMED_SHIPPED: 0 },
+    byOutcomeMinor: {
+      CONFIRM_NEW: 0n,
+      NO_ANSWER: 0n,
+      CONFIRMED: 0n,
+      REJECTED: 0n,
+      UNCONFIRMED_SHIPPED: 0n,
+    },
   }
 }
 

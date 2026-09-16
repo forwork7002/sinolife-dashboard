@@ -36,11 +36,13 @@ import {
   CUSTOMER_ACTIVE_DAYS,
   CUSTOMER_AT_RISK_DAYS,
   type CustomerStateKey,
-  RETENTION_STATE_STAGES,
-  STATE_BUCKET,
-  UNBUCKETED_BUCKET,
 } from '@/lib/customerStates'
 import { LOGISTICS_BUCKETS, UNMAPPED_BUCKET } from '@/lib/logisticsBuckets'
+import {
+  RETENTION_GROUPS,
+  RETENTION_GROUP_ORDER,
+  UNMAPPED_RETENTION_GROUP,
+} from '@/lib/retentionGroups'
 import { env } from '@/server/config/env'
 import {
   NO_EMPLOYEE_IN_SCOPE,
@@ -222,9 +224,6 @@ export interface RetentionStage {
 export interface CustomerStateCounts {
   readonly customers: number
   readonly ours: Record<CustomerStateKey, number>
-  readonly portal: Record<CustomerStateKey, number> & { readonly ABSENT: number }
-  /** RETENTION stages the table does not name. Expected empty; see the method. */
-  readonly unbucketedStages: readonly string[]
 }
 
 export interface CustomerFlowRows {
@@ -252,6 +251,25 @@ export interface SourceRepeatRate {
   readonly key: string // SalesSource id, or '' for no source
   readonly maturedCustomers: number
   readonly repeatPercent: number | null
+}
+
+/**
+ * One of the four states a customer in База can be in, and the stages inside it.
+ *
+ * Counted DISTINCT inside the group rather than summed from `stages`: a
+ * customer holding two open База deals sits on two stages, so adding the stage
+ * rows up counts them twice. The same caveat still holds BETWEEN groups — two
+ * deals in two groups put one person in both — which is why nothing on the
+ * screen presents these four as parts of a whole.
+ */
+export interface RetentionGroupRow {
+  /** A key from `RETENTION_GROUPS`, or `OTHER` for a stage the table has never seen. */
+  readonly key: string
+  readonly customers: number
+  /** Of those, the ones whose deal here is still OPEN — the ones being worked. */
+  readonly openCustomers: number
+  /** The portal's own stages inside this group, in funnel order. */
+  readonly stages: readonly RetentionStage[]
 }
 
 /**
@@ -589,6 +607,16 @@ export interface ConfirmationOrderRow {
 export type ConfirmationOutcomeTotals = Readonly<Record<ConfirmationOutcomeValue, number>>
 
 /**
+ * The same five states in minor units, keyed the way the counts are.
+ *
+ * Not `ConfirmationOutcomeMoneyMinor` below, whose keys are the ROP panel's
+ * column names: a consumer that walks CONFIRMATION_OUTCOMES to print a
+ * partition needs the count and the money under ONE key per state, or it has
+ * to carry a translation table between the two.
+ */
+export type ConfirmationOutcomeMinor = Readonly<Record<ConfirmationOutcomeValue, bigint>>
+
+/**
  * The five states in MONEY — minor units, summed from each deal's own
  * `amountMinor`, one entry per state and nothing outside them.
  *
@@ -749,6 +777,32 @@ export interface ConfirmationSellerRatingRow {
   readonly lostAfterConfirmMinor: bigint
   /** Тасдиқланмади — refused in the queue. Outside FAKT 1, shown so the exclusion is visible. */
   readonly rejectedOrders: number
+  /**
+   * EVERY STATE ON ITS OWN, count and money — the partition of `cohortOrders`.
+   *
+   * `CONFIRMED + UNCONFIRMED_SHIPPED` is `confirmedOrders` (FAKT 1) and
+   * `REJECTED` is `rejectedOrders`, restated here so a consumer reading the
+   * split never has to know which of the other columns to add. The five sum
+   * to `cohortOrders` on every row; `tests/services/sellerBoardFakt.test.ts`
+   * pins that the totals keep it so.
+   */
+  readonly byOutcome: ConfirmationOutcomeTotals
+  readonly byOutcomeMinor: ConfirmationOutcomeMinor
+}
+
+/**
+ * One day of the whole floor's arrivals in the queue — what `faktTrend` sums
+ * into the hero chart's buckets.
+ *
+ * `byOutcome` is the day's five-state partition, counts only; every state
+ * summed is the day's cohort, which is why no separate total rides here.
+ */
+export interface FaktDayRow {
+  readonly date: string
+  readonly orders: number
+  readonly confirmedMinor: bigint
+  readonly deliveredMinor: bigint
+  readonly byOutcome: ConfirmationOutcomeTotals
 }
 
 /**
@@ -944,9 +998,9 @@ export class InsightsRepository {
         size: bigint | null
         months_since: number | null
         customers: bigint | null
+        first_returners: bigint | null
         revenue: MoneyText
         orders: bigint | null
-        first_returners: bigint | null
         returned: bigint | null
         total_customers: bigint | null
         total_returned: bigint | null
@@ -1334,7 +1388,16 @@ export class InsightsRepository {
    * worked" in the team's own vocabulary, which the cohort matrix cannot.
    */
   async retentionStages(): Promise<{
-    readonly stages: RetentionStage[]
+    /** The four states, in `RETENTION_GROUPS` order, each carrying its stages. */
+    readonly groups: RetentionGroupRow[]
+    /**
+     * Distinct customers anywhere in База, counted once each.
+     *
+     * The honest denominator for the four groups, and NOT their sum: one
+     * customer with two open deals sits in two groups, so the bars add up to
+     * more than the base they came from.
+     */
+    readonly totalCustomers: number
     /**
      * Distinct customers on an OPEN retention deal — the ones actually being
      * worked, counted once each.
@@ -1346,89 +1409,128 @@ export class InsightsRepository {
      */
     readonly workedCustomers: number
   }> {
+    /*
+      THREE LEVELS FROM ONE PASS — stage, group, and the whole funnel.
+
+      Every level has to be a `count(DISTINCT customerId)` of its own, because
+      a customer is in a group once however many of its stages they stand on,
+      and in the base once however many groups they are in. GROUPING SETS is
+      what makes that one walk of the funnel instead of three; summing the
+      level below is the error this shape exists to make impossible, and it is
+      the one that produced a "base" bigger than the customer list.
+    */
     const rows = await this.prisma.$queryRawUnsafe<
-      { stage: string | null; is_total: number; customers: bigint; open_customers: bigint }[]
+      {
+        grp: string | null
+        stage: string | null
+        g_stage: number
+        g_grp: number
+        customers: bigint
+        open_customers: bigint
+        sort_order: number | null
+      }[]
     >(
       `
+      WITH labelled AS (
+        SELECT
+          d."customerId" AS customer_id,
+          d."status" AS status,
+          ${InsightsRepository.retentionGroupCaseSql('s."externalId"')} AS grp,
+          s."name" AS stage,
+          s."sortOrder" AS sort_order
+        FROM "deal" d
+        JOIN "deal_stage" s ON s."id" = d."stageId"
+        JOIN "pipeline" p ON p."id" = d."pipelineId"
+        WHERE p."role" = 'RETENTION' AND d."customerId" IS NOT NULL
+      )
       SELECT
-        s."name" AS stage,
-        GROUPING(s."name")::int AS is_total,
-        count(DISTINCT d."customerId")::bigint AS customers,
-        count(DISTINCT d."customerId") FILTER (WHERE d."status" = 'OPEN')::bigint
-          AS open_customers
-      FROM "deal" d
-      JOIN "deal_stage" s ON s."id" = d."stageId"
-      JOIN "pipeline" p ON p."id" = d."pipelineId"
-      WHERE p."role" = 'RETENTION' AND d."customerId" IS NOT NULL
-      GROUP BY GROUPING SETS ((s."name", s."sortOrder"), ())
-      ORDER BY is_total, min(s."sortOrder")
+        grp,
+        stage,
+        GROUPING(stage)::int AS g_stage,
+        GROUPING(grp)::int AS g_grp,
+        count(DISTINCT customer_id)::bigint AS customers,
+        count(DISTINCT customer_id) FILTER (WHERE status = 'OPEN')::bigint AS open_customers,
+        min(sort_order)::int AS sort_order
+      FROM labelled
+      GROUP BY GROUPING SETS ((grp, stage), (grp), ())
+      ORDER BY g_grp, g_stage, min(sort_order)
       `,
     )
 
+    const order = new Map(RETENTION_GROUP_ORDER.map((key, i) => [key, i]))
+    const groups: RetentionGroupRow[] = rows
+      .filter((r) => r.g_grp === 0 && r.g_stage === 1 && r.grp !== null)
+      .map((r) => ({
+        key: r.grp as string,
+        customers: int(r.customers),
+        openCustomers: int(r.open_customers),
+        stages: rows
+          .filter((s) => s.g_stage === 0 && s.grp === r.grp)
+          .map((s) => ({ stage: s.stage ?? '', customers: int(s.customers) })),
+      }))
+      /* The table's order, not the funnel's: `OTHER` is last wherever its
+         stages happen to sit in the portal's ladder. */
+      .sort((a, b) => (order.get(a.key) ?? 99) - (order.get(b.key) ?? 99))
+
+    const total = rows.find((r) => r.g_grp === 1)
+
     return {
-      stages: rows
-        .filter((r) => r.is_total === 0)
-        .map((r) => ({ stage: r.stage ?? '', customers: int(r.customers) })),
-      workedCustomers: int(rows.find((r) => r.is_total === 1)?.open_customers ?? 0n),
+      groups,
+      totalCustomers: int(total?.customers ?? 0n),
+      workedCustomers: int(total?.open_customers ?? 0n),
     }
   }
 
   /**
-   * ONE CASE, GENERATED FROM THE STATE TABLE.
+   * The four-way partition of База, as SQL, from the one table that defines it.
    *
-   * Hand-writing the stage-to-bucket mapping here would be a second
-   * definition of something the screen also reads, and the two would agree
-   * right up until somebody moved a stage. `ELSE ${UNBUCKETED_BUCKET}` is the
-   * honesty valve and is not optional: a stage this table does not name is
-   * reported by name rather than quietly counted as healthy.
-   *
-   * The stage names come from our own constant, never from a caller, but the
-   * quote doubling stays — a table that grows an apostrophe should produce a
-   * wrong row rather than a broken statement.
+   * Same trick and the same reason as `bucketCaseSql` below: `src/lib` holds
+   * the business partition, both sides read it, and nothing hand-mirrors a
+   * CASE. The ids are asserted to be portal stage ids before they are
+   * interpolated — this string goes into `$queryRawUnsafe`, and a table that
+   * lives one import away is exactly the kind of thing a later edit widens
+   * without thinking about the SQL it feeds.
    */
-  private static stateCaseSql(stageColumn: string): string {
-    const arms = RETENTION_STATE_STAGES.flatMap((row) =>
-      row.stages.map(
-        (stage) => `WHEN '${stage.replace(/'/g, "''")}' THEN ${STATE_BUCKET[row.state]}`,
-      ),
-    ).join(`
-            `)
-    return `CASE ${stageColumn}
-            ${arms}
-            ELSE ${UNBUCKETED_BUCKET}
-          END`
+  private static retentionGroupCaseSql(column: string): string {
+    const arms = RETENTION_GROUPS.map((group) => {
+      for (const id of group.stages) {
+        if (!/^[A-Z0-9_:]+$/.test(id)) throw new Error(`Invalid retention stage id: ${id}`)
+      }
+      const list = group.stages.map((id) => `'${id}'`).join(', ')
+      return `WHEN ${column} IN (${list}) THEN '${group.key}'`
+    }).join('\n          ')
+
+    return `CASE\n          ${arms}\n          ELSE '${UNMAPPED_RETENTION_GROUP}'\n        END`
   }
 
   /**
-   * Where every customer stands TODAY, by two verdicts that disagree.
+   * How long each customer has gone silent, on the order clock — nothing
+   * about which База stage they sit on.
    *
-   * NO PERIOD, ON PURPOSE. Churn is a state as of now — exactly like the
-   * «База — mijozlar hozir qayerda» ladder beside it on the same screen.
-   * A customer who went quiet in March did not become un-quiet because the
+   * THE PORTAL'S OWN VERDICT ON THE SAME PEOPLE IS ALREADY ON THIS SCREEN,
+   * drawn from `retentionGroupCaseSql` above and `src/features/cohort/
+   * StateBars.tsx`. This statement used to carry a second, competing
+   * partition of that same funnel and lost it on 2026-09-15: two statements
+   * answering the same question is how they start disagreeing. What is left
+   * is the one reading no stage table can give.
+   *
+   * NO PERIOD, ON PURPOSE. Silence is a state as of now — exactly like the
+   * «База — mijozlar hozir qayerda» ladder beside it on the same screen. A
+   * customer who went quiet in March did not become un-quiet because the
    * reader picked August.
    *
-   * THE TWO COLUMNS ARE NOT MEANT TO AGREE. Measured on production
-   * 2026-09-15: the portal calls 7 609 customers active where their order
-   * dates say 4 753, and calls 3 452 dead where the order dates say 6 062 —
-   * some 2 900 people sitting in an active-looking stage who have not ordered
-   * in five months. One column reports what the retention desk believes, the
-   * other what the customers did. Averaging them would delete the finding.
-   *
-   * ONE STATEMENT, TWO ARMS: the counts, then the unrecognised stage names.
+   * THE THREE COUNTS MUST SUM TO `customers`: `ours` partitions every row of
+   * `last_order`, which shares its WHERE clause with `cust`, so every
+   * customer in the denominator lands in exactly one of ACTIVE, AT_RISK or
+   * LOST.
    */
   async customerStates(): Promise<CustomerStateCounts> {
     const rows = await this.prisma.$queryRawUnsafe<
       {
-        kind: number
-        stage: string | null
         customers: bigint | null
-        ours_active: bigint | null
-        ours_at_risk: bigint | null
-        ours_lost: bigint | null
-        portal_active: bigint | null
-        portal_at_risk: bigint | null
-        portal_lost: bigint | null
-        portal_absent: bigint | null
+        active: bigint | null
+        at_risk: bigint | null
+        lost: bigint | null
       }[]
     >(
       `
@@ -1449,75 +1551,35 @@ export class InsightsRepository {
       ours AS (
         SELECT l.cid,
           CASE
-            WHEN l.last_ts >= now() - make_interval(days => $1::int) THEN ${STATE_BUCKET.ACTIVE}
-            WHEN l.last_ts >= now() - make_interval(days => $2::int) THEN ${STATE_BUCKET.AT_RISK}
-            ELSE ${STATE_BUCKET.LOST}
-          END AS bucket
+            WHEN l.last_ts >= now() - make_interval(days => $1::int) THEN 'ACTIVE'
+            WHEN l.last_ts >= now() - make_interval(days => $2::int) THEN 'AT_RISK'
+            ELSE 'LOST'
+          END AS state
         FROM last_order l
-      ),
-      baza AS (
-        SELECT d."customerId" AS cid, s."name" AS stage,
-               ${InsightsRepository.stateCaseSql('s."name"')} AS bucket
-        FROM "deal" d
-        JOIN "deal_stage" s ON s."id" = d."stageId"
-        JOIN "pipeline" p ON p."id" = d."pipelineId"
-        WHERE p."role" = 'RETENTION'
-          AND d."status" = 'OPEN'
-          AND d."customerId" IS NOT NULL
-      ),
-      -- ONE ROW PER CUSTOMER, IN THEIR BEST BUCKET. A person on two open
-      -- stages is one person; min() is correct only because ACTIVE < AT_RISK
-      -- < LOST < UNBUCKETED, which customerStates.test.ts pins.
-      best AS (SELECT cid, min(bucket) AS bucket FROM baza GROUP BY cid),
-      -- LEFT JOIN, so a customer who never entered База is counted rather
-      -- than dropped: without it the two columns carry different
-      -- denominators and cannot be read against each other.
-      portal AS (
-        SELECT c.cid, COALESCE(b.bucket, 0) AS bucket
-        FROM cust c LEFT JOIN best b ON b.cid = c.cid
       )
       SELECT
-        0 AS kind,
-        NULL::text AS stage,
         (SELECT count(*) FROM cust)::bigint AS customers,
-        (SELECT count(*) FROM ours WHERE bucket = ${STATE_BUCKET.ACTIVE})::bigint AS ours_active,
-        (SELECT count(*) FROM ours WHERE bucket = ${STATE_BUCKET.AT_RISK})::bigint AS ours_at_risk,
-        (SELECT count(*) FROM ours WHERE bucket = ${STATE_BUCKET.LOST})::bigint AS ours_lost,
-        (SELECT count(*) FROM portal WHERE bucket = ${STATE_BUCKET.ACTIVE})::bigint AS portal_active,
-        -- An unrecognised stage counts as at risk: not knowing where somebody
-        -- stands is not evidence that they are fine.
-        (SELECT count(*) FROM portal
-          WHERE bucket IN (${STATE_BUCKET.AT_RISK}, ${UNBUCKETED_BUCKET}))::bigint AS portal_at_risk,
-        (SELECT count(*) FROM portal WHERE bucket = ${STATE_BUCKET.LOST})::bigint AS portal_lost,
-        (SELECT count(*) FROM portal WHERE bucket = 0)::bigint AS portal_absent
-
-      UNION ALL
-
-      SELECT 1, u.stage, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
-      FROM (SELECT DISTINCT stage FROM baza WHERE bucket = ${UNBUCKETED_BUCKET}) u
+        count(*) FILTER (WHERE state = 'ACTIVE')::bigint AS active,
+        count(*) FILTER (WHERE state = 'AT_RISK')::bigint AS at_risk,
+        count(*) FILTER (WHERE state = 'LOST')::bigint AS lost
+      FROM ours
       `,
       CUSTOMER_ACTIVE_DAYS,
       CUSTOMER_AT_RISK_DAYS,
     )
 
-    const summary = rows.find((row) => row.kind === 0)
+    const row = rows[0]
 
     return {
-      customers: int(summary?.customers ?? 0n),
+      customers: int(row?.customers ?? 0n),
+      // The three state literals above are exactly the CustomerStateKey
+      // values, and they partition `ours` — one row per customer, one
+      // FILTER matches each — so active + at_risk + lost sums to customers.
       ours: {
-        ACTIVE: int(summary?.ours_active ?? 0n),
-        AT_RISK: int(summary?.ours_at_risk ?? 0n),
-        LOST: int(summary?.ours_lost ?? 0n),
+        ACTIVE: int(row?.active ?? 0n),
+        AT_RISK: int(row?.at_risk ?? 0n),
+        LOST: int(row?.lost ?? 0n),
       },
-      portal: {
-        ACTIVE: int(summary?.portal_active ?? 0n),
-        AT_RISK: int(summary?.portal_at_risk ?? 0n),
-        LOST: int(summary?.portal_lost ?? 0n),
-        ABSENT: int(summary?.portal_absent ?? 0n),
-      },
-      unbucketedStages: rows
-        .filter((row) => row.kind === 1 && row.stage !== null)
-        .map((row) => row.stage as string),
     }
   }
 
@@ -3810,7 +3872,32 @@ export class InsightsRepository {
            WHERE ${InsightsRepository.FAKT1_OUTCOMES} AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
              AND d."status" = 'LOST'
          )::text AS lost_after_confirm,
-         count(*) FILTER (WHERE c.outcome = 'REJECTED')::bigint AS rejected_orders
+         /*
+           THE FIVE STATES, KEPT APART — the fold FAKT 1 makes, undone beside it.
+
+           Asked for on 2026-09-15 («tasdiqlanganlar, tasdiqlanmay chiqdilar
+           bilan tasdiqlanmaganlar nisbati»). FAKT 1 deliberately adds
+           Тасдиқланди and Тасдиқланмай чиқди together; what the client wants
+           to see is how much of the queue each state took, and it is measured
+           HERE, over the same rows as every column above, so the five counts
+           add up to cohort_orders on every row and the screen prints a
+           partition rather than a remainder. Money per state too: the
+           Тасдиқлаш board prints what each state is worth, and this has to
+           agree with it to the soʻm.
+
+           state_rejected is the count rejected_orders carried until now — one
+           column, one name, read into both places downstream.
+         */
+         count(*) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::bigint AS state_confirm_new,
+         count(*) FILTER (WHERE c.outcome = 'NO_ANSWER')::bigint AS state_no_answer,
+         count(*) FILTER (WHERE c.outcome = 'CONFIRMED')::bigint AS state_confirmed,
+         count(*) FILTER (WHERE c.outcome = 'REJECTED')::bigint AS state_rejected,
+         count(*) FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::bigint AS state_unconfirmed_shipped,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRM_NEW')::text AS state_confirm_new_amount,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'NO_ANSWER')::text AS state_no_answer_amount,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRMED')::text AS state_confirmed_amount,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'REJECTED')::text AS state_rejected_amount,
+         sum(d."amountMinor") FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::text AS state_unconfirmed_shipped_amount
        FROM scoped c
        JOIN "deal" d ON d."id" = c.deal_id
        JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
@@ -3914,7 +4001,16 @@ export class InsightsRepository {
         in_transit: MoneyText
         lost_after_confirm_orders: bigint
         lost_after_confirm: MoneyText
-        rejected_orders: bigint
+        state_confirm_new: bigint
+        state_no_answer: bigint
+        state_confirmed: bigint
+        state_rejected: bigint
+        state_unconfirmed_shipped: bigint
+        state_confirm_new_amount: MoneyText
+        state_no_answer_amount: MoneyText
+        state_confirmed_amount: MoneyText
+        state_rejected_amount: MoneyText
+        state_unconfirmed_shipped_amount: MoneyText
       }[]
     >(
       `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.ratingSql(filterClause)}`,
@@ -3934,7 +4030,21 @@ export class InsightsRepository {
       inTransitMinor: money(r.in_transit),
       lostAfterConfirmOrders: int(r.lost_after_confirm_orders),
       lostAfterConfirmMinor: money(r.lost_after_confirm),
-      rejectedOrders: int(r.rejected_orders),
+      rejectedOrders: int(r.state_rejected),
+      byOutcome: {
+        CONFIRM_NEW: int(r.state_confirm_new),
+        NO_ANSWER: int(r.state_no_answer),
+        CONFIRMED: int(r.state_confirmed),
+        REJECTED: int(r.state_rejected),
+        UNCONFIRMED_SHIPPED: int(r.state_unconfirmed_shipped),
+      },
+      byOutcomeMinor: {
+        CONFIRM_NEW: money(r.state_confirm_new_amount),
+        NO_ANSWER: money(r.state_no_answer_amount),
+        CONFIRMED: money(r.state_confirmed_amount),
+        REJECTED: money(r.state_rejected_amount),
+        UNCONFIRMED_SHIPPED: money(r.state_unconfirmed_shipped_amount),
+      },
     }))
   }
 
@@ -4040,7 +4150,18 @@ export class InsightsRepository {
          (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS date,
          count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS orders,
          sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::text AS confirmed,
-         sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')})::text AS delivered
+         sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')})::text AS delivered,
+         /*
+           The same five columns ratingSql carries, per day, so the day's
+           share on the confirmation-rate line and the period's share in the
+           tiles above it are one arithmetic over one cohort. Counts only: the
+           line divides orders, and the tiles already print the money.
+         */
+         count(*) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::bigint AS state_confirm_new,
+         count(*) FILTER (WHERE c.outcome = 'NO_ANSWER')::bigint AS state_no_answer,
+         count(*) FILTER (WHERE c.outcome = 'CONFIRMED')::bigint AS state_confirmed,
+         count(*) FILTER (WHERE c.outcome = 'REJECTED')::bigint AS state_rejected,
+         count(*) FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::bigint AS state_unconfirmed_shipped
        FROM scoped c
        JOIN "deal" d ON d."id" = c.deal_id
        /*
@@ -4056,11 +4177,14 @@ export class InsightsRepository {
        WHERE TRUE
          ${filterClause}
        GROUP BY 1
-       -- The same gate as the per-seller series: a day whose only money was
-       -- delivered without a confirmation still belongs to FAKT 2's line, and
-       -- dropping it would break the chart exactly where the two cross.
-       HAVING count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}) > 0
-           OR count(*) FILTER (WHERE ${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')}) > 0
+       /*
+         NO HAVING, since 2026-09-15. The gate that kept only days carrying
+         FAKT 1 or FAKT 2 money bought nothing — faktTrend zero-fills every
+         bucket regardless — and it would have cost the confirmation-rate line
+         the one day it most needs to show: a day whose every order was refused
+         is a 0% point on that line, not a gap. ratingDaysSql keeps its gate;
+         one operator's drill-down has no rate line under it.
+       */
        ORDER BY 1`
   }
 
@@ -4079,7 +4203,7 @@ export class InsightsRepository {
   async confirmationFaktDays(
     period: ScopedWindow,
     filters: ConfirmationSellerRatingFilters = {},
-  ): Promise<{ date: string; confirmedMinor: bigint; deliveredMinor: bigint; orders: number }[]> {
+  ): Promise<FaktDayRow[]> {
     // Scope first, at the fixed slot $3 — same reason as
     // `confirmationSellerRating`: `queueSql` needs its placeholder while the
     // string is being built, and the caller's filters number from $4 onwards.
@@ -4087,7 +4211,17 @@ export class InsightsRepository {
     const filterClause = InsightsRepository.ratingFilterSql(filters, params)
 
     const rows = await this.prisma.$queryRawUnsafe<
-      { date: string; confirmed: MoneyText; delivered: MoneyText; orders: bigint }[]
+      {
+        date: string
+        confirmed: MoneyText
+        delivered: MoneyText
+        orders: bigint
+        state_confirm_new: bigint
+        state_no_answer: bigint
+        state_confirmed: bigint
+        state_rejected: bigint
+        state_unconfirmed_shipped: bigint
+      }[]
     >(
       `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.faktTrendSql(filterClause)}`,
       ...params,
@@ -4098,6 +4232,13 @@ export class InsightsRepository {
       orders: int(r.orders),
       confirmedMinor: money(r.confirmed),
       deliveredMinor: money(r.delivered),
+      byOutcome: {
+        CONFIRM_NEW: int(r.state_confirm_new),
+        NO_ANSWER: int(r.state_no_answer),
+        CONFIRMED: int(r.state_confirmed),
+        REJECTED: int(r.state_rejected),
+        UNCONFIRMED_SHIPPED: int(r.state_unconfirmed_shipped),
+      },
     }))
   }
 

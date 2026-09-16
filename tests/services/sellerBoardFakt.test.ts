@@ -54,9 +54,26 @@ function rating(
     lostAfterConfirmOrders: 0,
     lostAfterConfirmMinor: 0n,
     rejectedOrders: 0,
+    byOutcome: ZERO_STATES,
+    byOutcomeMinor: ZERO_STATES_MINOR,
     ...over,
   }
 }
+
+const ZERO_STATES = {
+  CONFIRM_NEW: 0,
+  NO_ANSWER: 0,
+  CONFIRMED: 0,
+  REJECTED: 0,
+  UNCONFIRMED_SHIPPED: 0,
+} as const
+const ZERO_STATES_MINOR = {
+  CONFIRM_NEW: 0n,
+  NO_ANSWER: 0n,
+  CONFIRMED: 0n,
+  REJECTED: 0n,
+  UNCONFIRMED_SHIPPED: 0n,
+} as const
 
 async function boardOver(
   rows: readonly ConfirmationSellerRatingRow[],
@@ -192,5 +209,135 @@ describe('the totals carry the loss the page prints', () => {
     expect(a.lostAfterConfirmOrders).toBe(1)
     expect(a.lostAfterConfirm.amountMinor).toBe(mln(10).toString())
     expect(a.lostAfterConfirm.currency).toBe('UZS')
+  })
+})
+
+describe('the totals keep the five queue states apart', () => {
+  /*
+    2026-09-15, the client: «tasdiqlanganlar, tasdiqlanmay chiqdilar bilan
+    tasdiqlanmaganlar nisbati». FAKT 1 folds Тасдиқланди and Тасдиқланмай
+    чиқди into one count on purpose; Savdo dinamikasi now prints the fold
+    undone, and what this file guards is the arithmetic: the five parts are
+    summed the way `cohortOrders` is, so they add up to it, and the rate is
+    the Тасдиқлаш board's own — Тасдиқланди over everything that entered.
+  */
+  const ROWS = [
+    rating({
+      employeeId: 'a',
+      rop: 'Lola',
+      cohortOrders: 10,
+      confirmedOrders: 8,
+      confirmedMinor: mln(80),
+      rejectedOrders: 2,
+      byOutcome: { CONFIRM_NEW: 0, NO_ANSWER: 0, CONFIRMED: 7, REJECTED: 2, UNCONFIRMED_SHIPPED: 1 },
+      byOutcomeMinor: {
+        CONFIRM_NEW: 0n,
+        NO_ANSWER: 0n,
+        CONFIRMED: mln(70),
+        REJECTED: mln(20),
+        UNCONFIRMED_SHIPPED: mln(10),
+      },
+    }),
+    rating({
+      employeeId: 'b',
+      rop: 'Sevinch',
+      cohortOrders: 6,
+      confirmedOrders: 4,
+      confirmedMinor: mln(40),
+      rejectedOrders: 1,
+      byOutcome: { CONFIRM_NEW: 1, NO_ANSWER: 0, CONFIRMED: 3, REJECTED: 1, UNCONFIRMED_SHIPPED: 1 },
+      byOutcomeMinor: {
+        CONFIRM_NEW: mln(5),
+        NO_ANSWER: 0n,
+        CONFIRMED: mln(30),
+        REJECTED: mln(9),
+        UNCONFIRMED_SHIPPED: mln(10),
+      },
+    }),
+  ]
+
+  it('sums each state over the rows, count and money', async () => {
+    const { totals } = await boardOver(ROWS)
+
+    expect(totals.outcomes).not.toBeNull()
+    expect(totals.outcomes!.CONFIRMED.orders).toBe(10)
+    expect(totals.outcomes!.UNCONFIRMED_SHIPPED.orders).toBe(2)
+    expect(totals.outcomes!.REJECTED.orders).toBe(3)
+    expect(totals.outcomes!.CONFIRM_NEW.orders).toBe(1)
+    expect(totals.outcomes!.NO_ANSWER.orders).toBe(0)
+
+    expect(totals.outcomes!.CONFIRMED.amount.amountMinor).toBe(mln(100).toString())
+    expect(totals.outcomes!.UNCONFIRMED_SHIPPED.amount.amountMinor).toBe(mln(20).toString())
+    expect(totals.outcomes!.REJECTED.amount.amountMinor).toBe(mln(29).toString())
+    expect(totals.outcomes!.NO_ANSWER.amount.amount).toBe(0)
+  })
+
+  it('partitions the cohort — the five counts add up to cohortOrders', async () => {
+    const { totals } = await boardOver(ROWS)
+
+    const parts = Object.values(totals.outcomes!).reduce((sum, state) => sum + state.orders, 0)
+    expect(parts).toBe(totals.cohortOrders)
+    expect(parts).toBe(16)
+    // And FAKT 1's count is the two shipped states, nothing else.
+    expect(totals.outcomes!.CONFIRMED.orders + totals.outcomes!.UNCONFIRMED_SHIPPED.orders).toBe(
+      totals.orders,
+    )
+  })
+
+  it('states the confirmation rate over everything that entered the queue', async () => {
+    const { totals } = await boardOver(ROWS)
+
+    // 10 of 16 — Тасдиқланди alone, not FAKT 1: an order shipped without
+    // reaching the customer is not a confirmation, whatever it earns.
+    expect(totals.confirmedRate).toBe(62.5)
+  })
+
+  it('has no rate over an empty queue, and zero states rather than none', async () => {
+    const { totals } = await boardOver([])
+
+    expect(totals.confirmedRate).toBeNull()
+    expect(totals.outcomes).not.toBeNull()
+    expect(totals.outcomes!.CONFIRMED.orders).toBe(0)
+  })
+
+  it('carries no states on the intake basis, which has no queue to split', async () => {
+    const repo = {
+      board: async () => [
+        {
+          employeeId: 'a',
+          fullName: 'a',
+          rop: 'Lola',
+          departmentName: 'Lola(ROP)',
+          orders: 3,
+          orderedMinor: mln(30),
+          wonOrders: 1,
+          wonMinor: mln(10),
+          openOrders: 2,
+          openMinor: mln(20),
+          lostOrders: 0,
+          lostAfterConfirmOrders: 0,
+          lostAfterConfirmMinor: 0n,
+          cohortOrders: 3,
+          byOutcome: null,
+          byOutcomeMinor: null,
+        },
+      ],
+    } as unknown as SellerBoardRepository
+    const reference = { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository
+    const service = new SellerBoardService(repo, {} as InsightsRepository, reference)
+    const period = resolvePeriod('this_month', { timeZone: TZ, now: NOW })
+    const ctx = {
+      period,
+      comparison: previousEquivalent(period),
+      currency: 'UZS',
+      filters: {},
+      now: NOW,
+    } as unknown as AnalyticsContext
+
+    const { totals, basis } = await service.board(ctx, 'intake')
+
+    expect(basis).toBe('created_in_period')
+    expect(totals.outcomes).toBeNull()
+    expect(totals.confirmedRate).toBeNull()
   })
 })

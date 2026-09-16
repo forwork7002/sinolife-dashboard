@@ -261,8 +261,14 @@ export interface AlertsDto {
   /** Why the sync clock has stopped, when it has. See `AlertsDto` on the server. */
   readonly syncError: {
     readonly code: string
+    /** THROTTLE clears itself; CREDENTIAL needs a person. See the server DTO. */
+    readonly kind: 'THROTTLE' | 'CREDENTIAL' | 'METHOD' | 'TRANSIENT' | 'UNKNOWN'
     readonly entity: string
+    /** How many entities are failing; null when it could not be bounded. */
+    readonly entities: number | null
     readonly at: string
+    /** When the outage began — `at` is only the newest failed tick. */
+    readonly since: string
   } | null
 }
 
@@ -447,6 +453,18 @@ export interface CohortDto {
    * each customer's history, so it is not bounded by the matrix's own columns.
    */
   readonly returned: number
+  /**
+   * The share of the cohort that had come back AT LEAST ONCE by each offset.
+   *
+   * The matrix's default reading. Monthly retention on this portal runs 0-4%,
+   * which paints 250 cells in two indistinguishable shades; the same customers
+   * read cumulatively run 0-37% and answer the question the business actually
+   * asks — «how many of August's buyers have we got back so far».
+   *
+   * Monotonic, and its last measured value equals `returned / size`, so the
+   * grid can be checked against the «Qaytgan» column beside it. Index 0 is 0:
+   * nobody has RETURNED in the month they first bought.
+   */
   readonly revenue: readonly MoneyDto[]
   /** Every month of this cohort's money added up — its whole revenue. */
   readonly revenueTotal: MoneyDto
@@ -466,10 +484,28 @@ export interface CohortDto {
   readonly maxOffset: number
 }
 
+/**
+ * One of the four states a customer in База can be in.
+ *
+ * `key` is a `RETENTION_GROUPS` key from `src/lib/retentionGroups.ts` (or
+ * `OTHER`), and the label, the hint and the colour are read from that table
+ * rather than sent — the partition has one definition, and both sides read it.
+ */
+export interface RetentionGroupDto {
+  readonly key: string
+  readonly customers: number
+  readonly openCustomers: number
+  /** The portal's own stages inside this group, in funnel order, for the hover. */
+  readonly stages: readonly { readonly stage: string; readonly customers: number }[]
+}
+
 export interface CohortSummaryDto {
   readonly rows: readonly CohortDto[]
-  readonly stages: readonly { readonly stage: string; readonly customers: number }[]
-  /** Distinct customers on an open retention deal. Never the sum of `stages`. */
+  /** База as four states. NEVER summed: one customer can stand in two of them. */
+  readonly groups: readonly RetentionGroupDto[]
+  /** Distinct customers anywhere in База. Never the sum of `groups`. */
+  readonly baseCustomers: number
+  /** Distinct customers on an open retention deal. Never the sum of `groups`. */
   readonly workedCustomers: number
   /**
    * Repeat money as a share of all money, 0-100. NULL when nothing was measured.
@@ -1200,6 +1236,12 @@ export interface SellerTeamRowDto {
   readonly leadConversionPercent: number | null
 }
 
+/** One queue state's slice: how many orders, and what they were worth. */
+export interface SellerOutcomeDto {
+  readonly orders: number
+  readonly amount: MoneyDto
+}
+
 export interface SellerBoardTotalsDto {
   readonly sellers: number
   readonly teams: number
@@ -1208,6 +1250,14 @@ export interface SellerBoardTotalsDto {
   readonly orders: number
   /** Every order in the cohort — what the confirmation queue counts. */
   readonly cohortOrders: number
+  /**
+   * The five queue states apart — count and money each — summed the way
+   * `cohortOrders` is, so they add up to it. Null on the intake basis. See
+   * `SellerBoardTotalsDto.outcomes` in `sellerBoardService`.
+   */
+  readonly outcomes: Readonly<Record<ConfirmationOutcome, SellerOutcomeDto>> | null
+  /** «Тасдиқланиш %» — Тасдиқланди over the whole cohort, one decimal. Null over nothing. */
+  readonly confirmedRate: number | null
   readonly ordered: MoneyDto
   readonly won: MoneyDto
   readonly wonOrders: number
@@ -1337,6 +1387,10 @@ export interface FaktTrendPointDto {
   /** Доставланди — what a courier actually delivered. */
   readonly fakt2: number
   readonly orders: number
+  /** The bucket's five queue states, counts — what the confirmation-rate line divides. */
+  readonly byOutcome: Readonly<Record<ConfirmationOutcome, number>>
+  /** Every order that entered the queue in the bucket — the five summed. */
+  readonly cohortOrders: number
 }
 
 // ---------------------------------------------------------------------------
@@ -1446,4 +1500,77 @@ export interface ConcentrationDto {
   readonly pareto: ConcentrationParetoDto
   readonly hhi: ConcentrationHhiDto
   readonly repeat: ConcentrationRepeatDto
+}
+
+// ---------------------------------------------------------------------------
+// Mijozlar oqimi — the band at the top of «Mijoz qaytishi» (`/analytics/cohort`).
+// Mirrors the DTOs in `src/server/services/insightsService.ts`, beside
+// `customerFlow`.
+// ---------------------------------------------------------------------------
+
+/**
+ * THREE READS, THREE CLOCKS, AND THE SCREEN MUST SAY WHICH IS WHICH:
+ *
+ *   - `summary` and `series` are this band's OWN trailing window, by ORDER
+ *     date (`createdAtSource`) — ninety days by default, `days` on the
+ *     route. The resolved span is NOT on this DTO: it rides back in the
+ *     response's `meta.period`, the same place `/insights/concentration`
+ *     puts its own self-resolved window, because the ROUTE resolves it, not
+ *     the service. See `InsightsService.customerFlow`.
+ *   - `sources[].repeatPercent` and `.maturedCustomers` are the WHOLE
+ *     history, on a fixed ninety-day maturity horizon, and move with neither
+ *     the resolved window above nor the calendar below. `sources[].newCustomers`
+ *     and `.sharePercent` DO belong to that window, same as `summary`.
+ *   - `states` takes no window at all — it is TODAY, a customer's silence
+ *     measured against their own last order as of now.
+ *
+ * `CohortSummaryDto` on the same screen counts a customer from when their
+ * FIRST ORDER WAS DELIVERED (`closedAt` on a WON deal), not when they
+ * ordered — so its total and this DTO's `summary.newCustomers` /
+ * `states.customers` legitimately disagree, on purpose. Never sum across them.
+ */
+export interface CustomerFlowSummaryDto {
+  readonly newCustomers: number
+  readonly returningCustomers: number
+  readonly activeCustomers: number
+  readonly newCustomersWon: number
+  readonly firstRevenue: MoneyDto
+  readonly repeatRevenue: MoneyDto
+  /** Null when there is no money at all, never a manufactured zero. */
+  readonly repeatRevenueSharePercent: number | null
+}
+
+export interface CustomerFlowPointDto {
+  readonly bucket: string
+  readonly newCustomers: number
+  readonly returningCustomers: number
+}
+
+export interface CustomerSourceDto {
+  readonly key: string
+  readonly label: string
+  readonly newCustomers: number
+  /** Share of `summary.newCustomers`. Null when there are no new customers to share. */
+  readonly sharePercent: number | null
+  /** The whole history, ninety-day horizon. Null when nobody has matured yet. */
+  readonly repeatPercent: number | null
+  readonly maturedCustomers: number
+}
+
+export interface CustomerStateRowDto {
+  readonly key: string
+  readonly label: string
+  readonly colour: string
+  readonly customers: number
+}
+
+export interface CustomerFlowDto {
+  readonly summary: CustomerFlowSummaryDto
+  readonly series: readonly CustomerFlowPointDto[]
+  readonly sources: readonly CustomerSourceDto[]
+  readonly states: {
+    readonly customers: number
+    /** In `CUSTOMER_STATES` order — see `src/lib/customerStates.ts`. */
+    readonly rows: readonly CustomerStateRowDto[]
+  }
 }

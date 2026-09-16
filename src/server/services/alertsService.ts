@@ -28,6 +28,8 @@ import type { Principal, RowScope } from '@/server/auth/rbac'
 import { canSeeSection } from '@/server/auth/rbac'
 import { scopedPeriod } from '@/server/domain/employees/branches'
 import { allTime } from '@/server/domain/period/period'
+import { classifyRefusal } from '@/server/integrations/crm/bitrix24/refusal'
+import type { RefusalClass } from '@/server/integrations/crm/bitrix24/refusal'
 import type { InsightsRepository } from '@/server/repositories/insightsRepository'
 import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import { keyPart, ttlCache } from './ttlCache'
@@ -57,9 +59,31 @@ export interface AlertsDto {
   readonly syncError: {
     /** The portal's code where it gave one, else the HTTP status. */
     readonly code: string
+    /**
+     * What the reader is supposed to DO about it — and the reason this lives on
+     * the server.
+     *
+     * `THROTTLE` clears on the portal's own clock: wait, and the worker's probe
+     * ladder will pick the sync back up without anybody touching anything.
+     * `CREDENTIAL` never clears on its own — somebody has to issue a new webhook
+     * in Bitrix24 and set it on the deployed app — so it deserves to be loud
+     * immediately rather than after the five-minute quiet period a throttle
+     * earns. That distinction used to be a two-element allowlist of Bitrix codes
+     * inside a React component, which is the portal's vocabulary on the wrong
+     * side of the one rule.
+     */
+    readonly kind: RefusalClass | 'UNKNOWN'
     /** Which entity was being read when it failed. */
     readonly entity: string
+    /**
+     * How many entities are failing, so the chip can say whether this is one
+     * pass or the whole portal. Null when it could not be bounded cheaply —
+     * see `findCurrentSyncFailure`.
+     */
+    readonly entities: number | null
     readonly at: string
+    /** When the outage began, so the header can say «06:05 dan beri». */
+    readonly since: string
   } | null
 }
 
@@ -211,7 +235,17 @@ export class AlertsService {
     */
     const syncedAt = await this.reference.findLastSuccessfulSync()
 
-    const [failure, queue] = await Promise.all([
+    /*
+      allSettled, NOT all — the clock must not be taken down by the backlog.
+
+      `Promise.all` rejects as a whole, so a slow or failing queue aggregate
+      took `syncedAt` and `syncError` with it and the endpoint answered
+      INTERNAL_ERROR. That is precisely backwards: the moment the database is
+      under strain is the moment the header most needs to say how stale the
+      numbers are. The bell is the optional half of this payload; the freshness
+      clock is not.
+    */
+    const [failureResult, queueResult] = await Promise.allSettled([
       /*
         NOT CACHED, for the same reason `syncedAt` is not: this is the honest
         answer to "is the dashboard still being fed", and a minute-old copy of
@@ -251,6 +285,16 @@ export class AlertsService {
         : Promise.resolve(null),
     ])
 
+    if (failureResult.status === 'rejected') {
+      console.error('[alerts] sinx xatosini oʻqib boʻlmadi', failureResult.reason)
+    }
+    if (queueResult.status === 'rejected') {
+      console.error('[alerts] navbat hisobini oʻqib boʻlmadi', queueResult.reason)
+    }
+
+    const failure = failureResult.status === 'fulfilled' ? failureResult.value : null
+    const queue = queueResult.status === 'fulfilled' ? queueResult.value : null
+
     return {
       syncedAt: syncedAt?.toISOString() ?? null,
       /*
@@ -271,8 +315,11 @@ export class AlertsService {
           ? null
           : {
               code: syncErrorCode(failure.message),
+              kind: classifyRefusal(failure.message) ?? 'UNKNOWN',
               entity: failure.entity,
+              entities: failure.entities,
               at: failure.at.toISOString(),
+              since: failure.since.toISOString(),
             },
     }
   }

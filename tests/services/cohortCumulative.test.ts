@@ -75,7 +75,7 @@ const MATRIX: CohortMatrix = {
 function service(matrix: CohortMatrix): InsightsService {
   const repository = {
     cohorts: async () => matrix,
-    retentionStages: async () => ({ stages: [], workedCustomers: 0 }),
+    retentionStages: async () => ({ groups: [], totalCustomers: 0, workedCustomers: 0 }),
   } as unknown as InsightsRepository
   return new InsightsService(repository)
 }

@@ -233,10 +233,11 @@ product narrowed to the sections the client asked for. `find src/app/api/v1
 
 | Method | Path | Permission | Returns |
 |---|---|---|---|
-| `GET` | `/analytics/sellers` | `leaderboard:read` | The sellers' and teams' board on the FAKT 1 / FAKT 2 basis. **Company-wide for every caller, on purpose** |
+| `GET` | `/analytics/sellers` | `leaderboard:read` | The sellers' and teams' board on the FAKT 1 / FAKT 2 basis. **Company-wide for every caller, on purpose.** Since 2026-09-15 `totals.outcomes` carries the queue's five states apart (count + money each, summing to `totals.cohortOrders`; `null` on `basis=intake`) with `totals.confirmedRate` — Тасдиқланди over the cohort, the queue board's own rounding — and `?include=faktTrend` points carry `byOutcome` + `cohortOrders` per bucket |
 | `GET` | `/kpi` | kpi | Targets, attainment, pace-aware status |
 | `GET` | `/insights/cohorts` | `analytics:read:all` | Return-rate ladder by first-purchase cohort |
 | `GET` | `/insights/concentration` | `analytics:read:all` | Customer Pareto, HHI by source and region, repeat-purchase intervals |
+| `GET` | `/insights/customers` | `analytics:read:all` | «Mijozlar oqimi» — arrivals, returns, sources, and who went quiet. **Resolves its own window, like `/insights/concentration`** |
 | `GET` | `/insights/confirmations/orders` | `analytics:read:all` | The confirmation queue as orders, paginated |
 | `GET` | `/insights/confirmations/regions` | `analytics:read:all` | The РЕГИОН column filter's options, cut from the same cohort |
 | `GET` | `/insights/delivery` | analytics | The Доставка kanban — what is standing where, right now. **No window** |
@@ -316,3 +317,46 @@ days, so no member is censored mid-horizon. `bitrixFlagSharePercent` is the
 same repeat-revenue claim from Bitrix24's own `isReturnCustomer` flag;
 divergence from `repeatRevenueSharePercent` is a data-quality signal, so the
 UI shows both and reconciles neither.
+
+#### `GET /insights/customers`
+
+**Resolves its own window, exactly like `/insights/concentration` beside it,
+and takes the same shape of parameter.** The «Mijozlar oqimi» screen's period
+control was removed on 2026-09-15 because it drove nothing on the cohort
+matrix beside it, and reading a period nothing sets is the failure that made
+`/insights/concentration` report twelve customers under a red gauge — so this
+endpoint calls `trailingDays` at the ROUTE, the same way that sibling does,
+rather than trust a control that nothing sets:
+
+```
+GET /insights/customers?days=90
+```
+
+`days` (30–365, default 90) is not wired to any control — the screen prints
+whatever it gets back. Ninety matches the maturity horizon
+`sources[].repeatPercent` is itself measured on, so one span covers the card.
+The resolved window comes back as `meta.period`, not on the payload:
+
+```
+meta.period { preset, start, end, timeZone, days }
+data:
+  summary { newCustomers, returningCustomers, activeCustomers, newCustomersWon,
+            firstRevenue, repeatRevenue, repeatRevenueSharePercent }
+  series  [ { bucket, newCustomers, returningCustomers } ]   one row per day
+  sources [ { key, label, newCustomers, sharePercent, repeatPercent,
+              maturedCustomers } ]
+  states  { customers, rows: [ { key, label, colour, customers } ] }
+```
+
+`repeatRevenueSharePercent` is null rather than 0 when there is no money at
+all in the window. `sources[].sharePercent` is a share of `summary.
+newCustomers` and is null when there are none to share; `repeatPercent` is
+null until a source has customers who have crossed the ninety-day repeat
+horizon. `states.rows` is in `CUSTOMER_STATES` order (`src/lib/
+customerStates.ts`).
+
+**This endpoint counts a customer by ORDER date (`createdAtSource`);
+`/insights/cohorts` counts by DELIVERED date (`closedAt` on WON deals).** That
+is why the two report different customer totals on the same screen
+(15 867 against 11 512, measured 2026-09-15) — neither is wrong, and they must
+never be summed or reconciled against each other.

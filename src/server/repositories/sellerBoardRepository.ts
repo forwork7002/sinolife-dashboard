@@ -36,6 +36,10 @@
 
 import type { Period } from '@/server/domain/period/period'
 import type { PrismaClient } from '@/generated/prisma/client'
+import type {
+  ConfirmationOutcomeMinor,
+  ConfirmationOutcomeTotals,
+} from '@/server/repositories/insightsRepository'
 
 /** Money arrives from Postgres as a string: bigint cannot ride JSON. */
 type MoneyText = string | null
@@ -101,6 +105,16 @@ export interface SellerBoardRow {
    * the same figure and this simply repeats it.
    */
   readonly cohortOrders: number
+  /**
+   * THE FIVE QUEUE STATES APART, count and money — the partition of
+   * `cohortOrders` on the queue basis, summed into `totals.outcomes` for
+   * Savdo dinamikasi. NULL on this basis: an intake cohort never passes
+   * through Тасдиқлаш, so it has no states to split by, and a map of zeros
+   * beside a non-zero `cohortOrders` would be a partition that does not add
+   * up — null says "not measured here", which is the truth.
+   */
+  readonly byOutcome: ConfirmationOutcomeTotals | null
+  readonly byOutcomeMinor: ConfirmationOutcomeMinor | null
 }
 
 /** One day of one seller's intake, for the per-seller detail. */
@@ -182,6 +196,9 @@ export class SellerBoardRepository {
       // after one. Stated rather than left to a default.
       lostAfterConfirmOrders: 0,
       lostAfterConfirmMinor: 0n,
+      // No queue on this clock, so no states — see `SellerBoardRow`.
+      byOutcome: null,
+      byOutcomeMinor: null,
       orderedMinor: money(r.ordered),
       wonOrders: int(r.won_orders),
       wonMinor: money(r.won),
