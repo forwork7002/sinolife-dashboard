@@ -296,18 +296,41 @@ describe('a network failure names its socket-level reason', () => {
 
   it('keeps the probe failure for the worker log and clears it on success', async () => {
     let fail = true
+    let sent = 0
     const provider = new Bitrix24CrmProvider({
       webhookUrl: 'https://portal/rest/1/tok/',
-      maxRetries: 0,
       fetchImpl: (async () => {
+        sent += 1
         if (fail) throw new TypeError('fetch failed', { cause: { code: 'ECONNRESET' } })
         return new Response(JSON.stringify({ result: {} }), { status: 200 })
       }) as unknown as typeof fetch,
     })
     expect(await provider.probe()).toBe(false)
+    // One knock per rung: the ladder is the retry.
+    expect(sent).toBe(1)
     expect(provider.lastProbeError).toContain('ECONNRESET')
     fail = false
     expect(await provider.probe()).toBe(true)
     expect(provider.lastProbeError).toBeNull()
+  })
+})
+
+describe('an unreachable portal is probed on the ladder, not every minute', () => {
+  it('climbs 60 → 120 → 240 on consecutive network failures', () => {
+    const gate = new PortalGate()
+    const t0 = new Date('2026-09-16T10:50:00Z')
+    const socket = new TypeError('fetch failed')
+    for (let i = 0; i < 3; i++) gate.trip(socket, t0)
+    expect(gate.isOpen()).toBe(true)
+    expect(gate.nextWaitMs(t0)).toBe(60_000)
+
+    const waits: number[] = []
+    let now = t0
+    for (let rung = 0; rung < 3; rung++) {
+      now = new Date(now.getTime() + gate.nextWaitMs(now))
+      gate.noteProbe(now)
+      waits.push(gate.nextWaitMs(now))
+    }
+    expect(waits).toEqual([120_000, 240_000, 480_000])
   })
 })

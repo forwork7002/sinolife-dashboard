@@ -382,7 +382,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
   private async call<T>(
     method: string,
     params: Record<string, unknown>,
-    options: { bypassGate?: boolean; meterAs?: string; invocations?: number } = {},
+    options: { bypassGate?: boolean; meterAs?: string; invocations?: number; retries?: number } = {},
   ): Promise<Bitrix24Response<T>> {
     /*
       THE METERED METHOD IS NOT ALWAYS THE TRANSPORT.
@@ -405,8 +405,9 @@ export class Bitrix24CrmProvider implements CrmProvider {
       to its portal. A number offered as proof has to be the measured one.
     */
     let attempts = 0
+    const maxRetries = options.retries ?? this.maxRetries
 
-    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
       /*
         THE CHEAPEST REQUEST IS THE ONE NEVER SENT.
 
@@ -615,7 +616,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
         // other entity in this tick rather than only for the next one.
         this.gate.trip(error, new Date())
         const retryable = error instanceof Bitrix24Error ? error.retryable : true
-        if (!retryable || attempt === this.maxRetries) break
+        if (!retryable || attempt === maxRetries) break
         await sleep(backoffDelayMs(attempt))
       } finally {
         clearTimeout(timer)
@@ -989,7 +990,12 @@ export class Bitrix24CrmProvider implements CrmProvider {
   async probe(): Promise<boolean> {
     this.gate.noteProbe(new Date())
     try {
-      await this.call('profile', {}, { bypassGate: true })
+      /*
+        ONE ATTEMPT. The ladder IS the retry: four back-to-back connection
+        attempts per rung is four knocks on a firewall that has already
+        dropped our address, and it made each rung ~40 s longer than printed.
+      */
+      await this.call('profile', {}, { bypassGate: true, retries: 0 })
       this.lastProbeError = null
       return true
     } catch (error) {

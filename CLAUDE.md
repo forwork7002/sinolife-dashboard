@@ -1963,6 +1963,19 @@ longer demotes a named gate, and any named refusal — `OPERATION_TIME_LIMIT`
 included, which is why the reset sits ABOVE the METHOD branch — ends the
 transient run. Pinned by three cases in `portalRefusal.test.ts`.
 
+**A NEW WEBHOOK DOES NOT LIFT AN ADDRESS BLOCK — 2026-09-16.** After the third
+`OVERLOAD_LIMIT` the webhook was replaced (`/rest/8868/…`). The new key answered
+in 480 ms from an office machine and the deployed worker still could not reach
+the portal: `fetch failed [UND_ERR_CONNECT_TIMEOUT]` — no TCP connection at all,
+so no key was ever read. Bitrix24 had stopped answering the SERVER'S ADDRESS.
+Two things followed. The probe keeps its reason (`lastProbeError`, printed as
+«sabab:» under the worker's wait line) and every failure message carries Node's
+socket code, because «UNKNOWN» was all the log said. And a network failure now
+climbs the throttle ladder with ONE attempt per rung, where it was four attempts
+every 60 s. **Read `UND_ERR_CONNECT_TIMEOUT` / `ECONNRESET` in that line as
+«our address is blocked or the route is down»: rotating the key changes nothing,
+waiting, Bitrix24 support (with the egress IP) or a new egress IP do.**
+
 **THE ATTEMPT COUNT IN A FAILURE MESSAGE IS EVIDENCE.** `sync_log` is what
   this integration hands Bitrix24 support when it is asked what load it was
   putting on the portal, and the ticket opened after the 2026-09-14 block

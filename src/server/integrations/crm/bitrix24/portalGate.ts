@@ -84,7 +84,6 @@ const METHOD_HOLD_MS = 600_000
 
 /** Consecutive transient failures before the door shuts. */
 const TRANSIENT_TOLERANCE = 3
-const TRANSIENT_PROBE_MS = 60_000
 
 export class PortalGate {
   private kind: RefusalClass | null = null
@@ -188,7 +187,7 @@ export class PortalGate {
 
       this.transientRun += 1
       if (this.transientRun < TRANSIENT_TOLERANCE) return kind
-      this.openGate(kind, code, now, TRANSIENT_PROBE_MS)
+      this.openGate(kind, code, now, this.probeDelayMs(kind, 0))
       return kind
     }
 
@@ -282,7 +281,16 @@ export class PortalGate {
 
   private probeDelayMs(kind: RefusalClass, probes: number): number {
     if (kind === 'CREDENTIAL') return CREDENTIAL_PROBE_MS
-    if (kind === 'TRANSIENT') return TRANSIENT_PROBE_MS
+    /*
+      A NETWORK FAILURE CLIMBS THE SAME LADDER AS A THROTTLE — since
+      2026-09-16. It was a flat 60 s on the theory that a socket error is a
+      blip. After the webhook swap that afternoon the server could not open a
+      TCP connection to the portal at all (`UND_ERR_CONNECT_TIMEOUT`, while the
+      same key answered from an office machine): Bitrix24 had dropped our
+      ADDRESS. A blip clears on the first rung either way, so the ladder costs
+      a blip nothing, and an address block gets 26 probes over four hours
+      instead of ~240.
+    */
     const index = Math.min(probes, THROTTLE_LADDER_MS.length - 1)
     return THROTTLE_LADDER_MS[index]!
   }
