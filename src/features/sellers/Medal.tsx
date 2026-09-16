@@ -6,6 +6,15 @@ import { formatNumber } from '@/lib/format'
  * Bitta medal — lentali dumaloq disk. Belgi `medalDefs.ts` da, rang
  * `.medal[data-medal]` da. ×N — HTML pill, SVG emas (tabular raqam, mavzu
  * tokenlari); QATORDA chizilmaydi — 26 px da o'qilish chegarasida.
+ *
+ * NOMI BIR MARTA AYTILADI. `role="img"` + `aria-label` diskning nomini o'zi
+ * e'lon qiladi, shuning uchun yonida `sr-only` nusxa YO'Q — u bor edi va
+ * ekran o'quvchi nomni ikki marta o'qirdi. Nomni yonida o'zi yozadigan karta
+ * `label={false}` beradi: unda disk bezak (`aria-hidden`) va takror yo'q.
+ *
+ * `bare` va `locked` (va ular bilan `#medal-locked` belgisi) hali hech kim
+ * chaqirmaydi — katalog ko'rinishi uchun saqlanadi (spec §2: «faqat
+ * katalogda»).
  */
 export type MedalSize = 'row' | 'seat' | 'speaking'
 
@@ -25,7 +34,7 @@ export function Medal({
   bare?: boolean
   /** Hali ochilmagan medal — shtrix kontur, belgisiz. */
   locked?: boolean
-  /** `sr-only` nom; nomni yonida o'zi yozadigan karta `false` beradi. */
+  /** Diskning o'z nomi; nomni yonida o'zi yozadigan karta `false` beradi. */
   label?: boolean
   /** Oxirgi yangilanishda paydo bo'lgan — bir marta kattalashib tushadi. */
   isNew?: boolean
@@ -39,13 +48,13 @@ export function Medal({
         className={`medal medal--${size}${bare ? ' medal--bare' : ''}`}
         data-medal={id}
         viewBox={bare ? '0 8 32 32' : '0 0 32 40'}
-        role="img"
-        aria-label={name}
+        role={label ? 'img' : undefined}
+        aria-label={label ? name : undefined}
+        aria-hidden={label ? undefined : true}
       >
         <use href={`#medal-${id}`} />
       </svg>
       {showCount && <span className="medal-count tabular">×{formatNumber(count)}</span>}
-      {label && <span className="sr-only">{name}</span>}
     </span>
   )
 }

@@ -48,7 +48,18 @@ export function Lavha({
   const apex = level === 6
   const stars = STARS_OF[level]
   const label = title === undefined ? levelTitle(level, legendaTier) : title
-  const ariaLabel = level === 0 || label === null ? 'Hali darajasiz' : `${level}-daraja · ${label}`
+  /*
+    QATORDA UNVON SO'ZI PLASTINA YONIDA HTML bilan yozilgan (`.lavha-word`),
+    ya'ni to'liq yozuv uni ikkinchi marta aytardi — «3-daraja · Katta
+    sotuvchi. Katta sotuvchi». Qatorda faqat daraja; seat, narvon va sharpa
+    yonida hech qanday takroriy so'z yo'q, ular to'liq yozuvni saqlaydi.
+  */
+  const noRank = level === 0 || label === null
+  const ariaLabel = noRank
+    ? 'Hali darajasiz'
+    : size === 'row'
+      ? `${level}-daraja`
+      : `${level}-daraja · ${label}`
 
   return (
     <svg

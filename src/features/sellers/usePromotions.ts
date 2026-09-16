@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { LADDER } from '@/features/sellers/medalCatalog'
 import type { MedalCode, SellerMedalRowDto } from '@/lib/api'
@@ -8,15 +8,36 @@ import type { MedalCode, SellerMedalRowDto } from '@/lib/api'
 /**
  * Ko'tarilish — jamoat voqeasi. 40-o'rindagi odam o'z lavhasining sokin
  * animatsiyasini ko'rmaydi; ustun sarlavhasidagi 8 soniyalik e'lonni hamma
- * ko'radi. Manba — serverning `promotedOn` hosila fakti, brauzer xotirasi
- * emas: ikki televizor ham bir xil e'lon qiladi, tozalangan brauzer qayta
- * e'lon qilmaydi (sahifa sessiyasida bir marta — modul darajasidagi to'plam).
+ * ko'radi.
+ *
+ * IKKI TETIK, VA IKKINCHISI — PRODUCTION'DA ISHLAYDIGANI.
+ *
+ * 1. `promotedOn === today` — serverning hosila fakti. Sahifa o'sha kuni
+ *    ochilganda ko'tarilishni ushlaydi.
+ * 2. OLDINGI PAYLOAD BILAN FARQ: `level` (6-darajada `legendaTier`) OSHGAN
+ *    sotuvchi — `useNewMedals` medal kodlarini solishtirgani kabi.
+ *
+ * Ikkinchisi nima uchun kerak: `promotedOn` — NAVBAT KUNI. Kunlik faktlar
+ * `insightsRepository.sellerMedalFacts` da `date_trunc(grain, c.queued_at …)`
+ * bilan guruhlanadi, ya'ni buyurtma navbatga tushgan kun bo'yicha; FAKT 2 esa
+ * bir necha kundan keyin yopiladi. Shuning uchun `promotedOn === today`
+ * production'da deyarli hech qachon rost bo'lmaydi va faqat shu tetik bilan
+ * marosim jim turardi. Farq tetigini esa sinx pul yetkazilganini ko'rgan
+ * paytda payload o'zgaradi — e'lon o'n daqiqa ichida chiqadi. Sana aniqroq
+ * bo'lishi uchun yetkazish-kuni statement'i kerak (spec §5, §9).
+ *
+ * MANBA — SERVER PAYLOAD'I, brauzer xotirasi emas: ikki televizor ham bir xil
+ * e'lon qiladi. «Bir marta» — sahifa sessiyasida bir marta (modul darajasidagi
+ * `celebrated` to'plami, kaliti `employeeId:level:legendaTier`), ya'ni sahifa
+ * qayta yuklansa ham farq tetigi o'zi hech narsa e'lon qilmaydi: birinchi
+ * payload'da taqqoslashga hech narsa yo'q.
  *
  * «BIR MARTA» — KO'RINGAN BIR MARTA. Medal oynasi (2026-avgustdan beri) taxta
  * oynasi emas, ya'ni bugun ko'tarilgan odam «Bugun» taxtasida umuman
  * bo'lmasligi mumkin. Shuning uchun `onBoard` — shu ustunda HOZIR chizilgan
  * kalitlar; unda yo'q ko'tarilish na navbatga qo'yiladi, na «nishonlangan»
- * deb belgilanadi, ya'ni odam taxtaga chiqqan payload'da e'lon qilinadi.
+ * deb belgilanadi, na suratga yoziladi — ya'ni odam taxtaga chiqqan payload'da
+ * e'lon qilinadi.
  */
 export const PROMOTION_MS = 8_000
 
@@ -41,6 +62,23 @@ function thresholdLabelOf(level: number, legendaTier: number): string {
   return LADDER[level - 1]?.thresholdLabel ?? ''
 }
 
+/** Suratdagi bitta yozuv — narvondagi o'rin. */
+interface Rank {
+  readonly level: number
+  readonly legendaTier: number
+}
+
+/**
+ * KO'TARILDIMI. 6-darajada narvon tugaydi va o'sish `legendaTier` da davom
+ * etadi (Legenda I → Legenda II), shuning uchun taqqoslash ikki bosqichli.
+ * Pasayish — ko'tarilish emas; motor darajani pasaytirmaydi, lekin filtr yoki
+ * qayta hisob payloadni orqaga surishi mumkin va u e'lon emas.
+ */
+function rose(before: Rank, now: Rank): boolean {
+  if (now.level !== before.level) return now.level > before.level
+  return now.level === 6 && now.legendaTier > before.legendaTier
+}
+
 export function usePromotions(
   rows: ReadonlyMap<string, SellerMedalRowDto>,
   today: string | null,
@@ -49,12 +87,25 @@ export function usePromotions(
 ): Promotion | null {
   const [queue, setQueue] = useState<readonly Promotion[]>([])
   const [current, setCurrent] = useState<Promotion | null>(null)
+  /*
+    OLDINGI PAYLOAD'DAGI DARAJALAR. `useNewMedals` xuddi shu farqni render
+    vaqtida oladi; bu yerda REF va effekt, chunki yonidagi `celebrated.add`
+    modul darajasidagi yon ta'sir — React tashlab yuborishi mumkin bo'lgan
+    renderda bajarilsa, ko'tarilish «nishonlangan» deb belgilanib e'lon
+    butunlay yo'qolardi. `null` — hali bironta payload ko'rilmagan: birinchi
+    payload hech kimni ko'tarilgan demaydi.
+  */
+  const seen = useRef<ReadonlyMap<string, Rank> | null>(null)
 
-  // Yangi payload — bugungi, hali nishonlanmagan ko'tarilishlar navbatga.
+  // Yangi payload — hali nishonlanmagan ko'tarilishlar navbatga.
   useEffect(() => {
-    if (today === null) return
+    const before = seen.current
+    const next = new Map(before ?? [])
     const fresh: Promotion[] = []
     for (const row of rows.values()) {
+      const rank: Rank = { level: row.level, legendaTier: row.legendaTier }
+      const previous = before?.get(row.employeeId)
+      const risen = previous !== undefined && rose(previous, rank)
       /*
         MA'LUM CHEGARA, TUZATILMAYDI: `SellerMedalsDto.today` o'n daqiqalik
         server keshida keladi va kesh kaliti vaqtni tashimaydi, ya'ni yarim
@@ -62,14 +113,26 @@ export function usePromotions(
         mumkin. Shuning uchun `promotedOn === today` KECHIKIB ishlaydi (eng
         ko'pi bilan o'n daqiqa), lekin hech qachon erta emas.
       */
-      if (row.promotedOn !== today || row.rankTitle === null) continue
+      const promotedToday = today !== null && row.promotedOn === today
+      if ((!risen && !promotedToday) || row.rankTitle === null) {
+        next.set(row.employeeId, rank)
+        continue
+      }
       /*
         TAXTADA YO'Q ODAM SARFLANMAYDI — `celebrated.add` DAN OLDIN. Aks
         holda ko'rinmaydigan e'lon o'z kalitini yoqib yuborardi va o'sha
-        odam taxtaga chiqqanda hech qachon tabriklanmasdi. Chetlab
-        o'tilgan qator keyingi payload'da yana ko'riladi.
+        odam taxtaga chiqqanda hech qachon tabriklanmasdi.
+
+        VA SURAT HAM SURILMAYDI (`continue` — `next.set` dan oldin). Farq
+        tetigi faqat ikki payload ORASIDAGI o'zgarishni ko'radi: surat yangi
+        darajani yozib qo'ysa, keyingi payloadda farq qolmasdi va odam
+        taxtaga chiqqanda e'lon butunlay yo'qolardi. Narxi — o'sha farq har
+        payloadda qayta topiladi (odam taxtada paydo bo'lgunicha), lekin u
+        faqat shu tsiklda ko'riladi: `fresh` bo'sh qoladi, hech qanday holat
+        yangilanmaydi, hech narsa qayta chizilmaydi.
       */
       if (!onBoard.has(row.employeeId)) continue
+      next.set(row.employeeId, rank)
       const key = `${row.employeeId}:${row.level}:${row.legendaTier}`
       if (celebrated.has(key)) continue
       celebrated.add(key)
@@ -81,12 +144,11 @@ export function usePromotions(
         thresholdLabel: thresholdLabelOf(row.level, row.legendaTier),
       })
     }
+    seen.current = next
     /*
-      `celebrated` — MODUL DARAJASIDAGI YON TA'SIR, ya'ni bu ish effektda
-      turishi SHART. `useNewMedals` dagi kabi render vaqtida bajarilsa,
-      React tashlab yuborishi mumkin bo'lgan renderda ko'tarilish
-      «nishonlangan» deb belgilanib, e'lon butunlay yo'qolardi. Shuning
-      uchun qoida shu yerda o'chiriladi, kod emas.
+      `celebrated` va `seen` — RENDER'DAN TASHQARIDAGI YOZUVLAR, ya'ni bu ish
+      effektda turishi SHART (yuqoridagi sharh). Shuning uchun qoida shu yerda
+      o'chiriladi, kod emas.
     */
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (fresh.length > 0) setQueue((q) => [...q, ...fresh])

@@ -37,7 +37,25 @@ describe('Lavha', () => {
     expect(svg.querySelector('use[href="#lavha-plate-3x1"]')).not.toBeNull()
     expect(svg.querySelector('use[href="#lavha-stars-3"]')).not.toBeNull()
     expect(svg.querySelector('text')).toBeNull()
-    expect(svg.getAttribute('aria-label')).toBe('3-daraja · Katta sotuvchi')
+    /*
+      QATORDA FAQAT DARAJA. Unvon so'zi plastina yonida HTML bilan yozilgan
+      (`.lavha-word`), ya'ni to'liq yozuv uni ikkinchi marta aytardi.
+    */
+    expect(svg.getAttribute('aria-label')).toBe('3-daraja')
+  })
+
+  it('seat, narvon va sharpa to‘liq yozuvni saqlaydi — yonida takroriy so‘z yo‘q', () => {
+    const { container } = render(
+      <>
+        <Lavha level={3} size="seat" />
+        <Lavha level={3} size="narvon" />
+        <Lavha level={4} size="ghost" ghost />
+      </>,
+    )
+    const [seat, narvon, ghost] = container.querySelectorAll('svg.lavha')
+    expect(seat!.getAttribute('aria-label')).toBe('3-daraja · Katta sotuvchi')
+    expect(narvon!.getAttribute('aria-label')).toBe('3-daraja · Katta sotuvchi')
+    expect(ghost!.getAttribute('aria-label')).toBe('4-daraja · Usta')
   })
 
   it('faxriy lavha (4–5) bir xil siluet, yulduz soni 1 va 2', () => {
@@ -104,7 +122,13 @@ describe('Medal', () => {
     expect(svg.getAttribute('data-medal')).toBe('streak-fire')
     expect(svg.getAttribute('viewBox')).toBe('0 0 32 40')
     expect(svg.querySelector('use')!.getAttribute('href')).toBe('#medal-streak-fire')
-    expect(screen.getByText('Olov seriyasi', { selector: '.sr-only' })).toBeTruthy()
+    /*
+      NOMI BIR MARTA. `role="img"` + `aria-label` nomni o'zi e'lon qiladi;
+      yonidagi `sr-only` nusxa olib tashlandi — u nomni ikki marta o'qitardi.
+    */
+    expect(svg.getAttribute('role')).toBe('img')
+    expect(svg.getAttribute('aria-label')).toBe('Olov seriyasi')
+    expect(container.querySelector('.sr-only')).toBeNull()
   })
 
   it('×N faqat seat va gapiruvchi o‘lchamda — qatorda yo‘q', () => {
@@ -125,11 +149,15 @@ describe('Medal', () => {
   it('qulflangan medal — data-medal="locked", nomi «Ochilmagan medal»', () => {
     const { container } = render(<Medal code="year-champion" size="speaking" locked />)
     expect(container.querySelector('svg')!.getAttribute('data-medal')).toBe('locked')
-    expect(screen.getByText('Ochilmagan medal', { selector: '.sr-only' })).toBeTruthy()
+    expect(container.querySelector('svg')!.getAttribute('aria-label')).toBe('Ochilmagan medal')
   })
 
-  it('label={false} sr-only nomni chizmaydi (gapiruvchi karta nomni o‘zi yozadi)', () => {
+  it('label={false} — disk bezak (gapiruvchi karta nomni o‘zi yozadi)', () => {
     const { container } = render(<Medal code="jump" size="speaking" label={false} />)
+    const svg = container.querySelector('svg')!
+    expect(svg.getAttribute('aria-hidden')).toBe('true')
+    expect(svg.getAttribute('aria-label')).toBeNull()
+    expect(svg.getAttribute('role')).toBeNull()
     expect(container.querySelector('.sr-only')).toBeNull()
   })
 

@@ -89,6 +89,111 @@ describe('usePromotions — e‘lon navbati', () => {
     expect(result.current!.employeeId).toBe('a')
   })
 
+  /*
+    IKKINCHI TETIK — OLDINGI PAYLOAD BILAN FARQ, va production'da e'lon
+    aynan shundan chiqadi. `promotedOn` NAVBAT kuni (kunlik faktlar
+    `c.queued_at` bo'yicha guruhlanadi), FAKT 2 esa bir necha kundan keyin
+    yopiladi — ya'ni `promotedOn === bugun` deyarli hech qachon rost emas.
+    Shuning uchun bu testlarda `promotedOn` ataylab o'tgan kun: birinchi
+    tetik jim, ikkinchisi gapiradi.
+  */
+  const TODAY = '2026-09-16'
+  const NAVBAT_KUNI = '2026-09-10'
+  const at = (level: number, rankTitle: string, over: Partial<SellerMedalRowDto> = {}) =>
+    map(row('a', { level, rankTitle, promotedOn: NAVBAT_KUNI, ...over }))
+
+  it('daraja OSHDI — birinchi payload jim, ikkinchisi e‘lon qiladi', () => {
+    const { result, rerender } = renderHook(({ r }) => usePromotions(r, TODAY, ON_A), {
+      initialProps: { r: at(3, 'Katta sotuvchi') },
+    })
+    expect(result.current).toBeNull()
+
+    rerender({ r: at(4, 'Usta') })
+    expect(result.current).toEqual({
+      employeeId: 'a',
+      level: 4,
+      legendaTier: 0,
+      rankTitle: 'Usta',
+      thresholdLabel: '100 mln',
+    })
+    act(() => vi.advanceTimersByTime(PROMOTION_MS))
+    expect(result.current).toBeNull()
+
+    // O'sha daraja yana kelsa — `celebrated` ushlaydi.
+    rerender({ r: at(4, 'Usta') })
+    expect(result.current).toBeNull()
+  })
+
+  it('e‘lon ko‘rinib turganda yangi ko‘tarilish orqasida navbatga turadi', () => {
+    const b = (level: number, rankTitle: string) => row('b', { level, rankTitle, promotedOn: NAVBAT_KUNI })
+    const a = (level: number, rankTitle: string) => row('a', { level, rankTitle, promotedOn: NAVBAT_KUNI })
+    const { result, rerender } = renderHook(({ r }) => usePromotions(r, TODAY, ON_AB), {
+      initialProps: { r: map(a(3, 'Katta sotuvchi'), b(2, 'Sotuvchi')) },
+    })
+    expect(result.current).toBeNull()
+
+    rerender({ r: map(a(4, 'Usta'), b(2, 'Sotuvchi')) })
+    expect(result.current!.employeeId).toBe('a')
+
+    rerender({ r: map(a(4, 'Usta'), b(3, 'Katta sotuvchi')) })
+    expect(result.current!.employeeId).toBe('a') // hali birinchisi ekranda
+    act(() => vi.advanceTimersByTime(PROMOTION_MS))
+    expect(result.current!.employeeId).toBe('b')
+  })
+
+  it('orqaga qaytgan daraja qayta ko‘tarilsa — ikkinchi marta e‘lon yo‘q', () => {
+    const { result, rerender } = renderHook(({ r }) => usePromotions(r, TODAY, ON_A), {
+      initialProps: { r: at(3, 'Katta sotuvchi') },
+    })
+    rerender({ r: at(4, 'Usta') })
+    expect(result.current!.level).toBe(4)
+    act(() => vi.advanceTimersByTime(PROMOTION_MS))
+
+    rerender({ r: at(3, 'Katta sotuvchi') }) // pasayish e'lon emas
+    expect(result.current).toBeNull()
+    rerender({ r: at(4, 'Usta') })
+    expect(result.current).toBeNull()
+  })
+
+  /*
+    TAXTADA YO'Q KO'TARILISH — SURAT HAM SURILMAYDI. Farq faqat ikki payload
+    orasida ko'rinadi, ya'ni surat yangi darajani yozib qo'ysa, o'sha odam
+    taxtaga chiqqanda taqqoslashda hech qanday farq qolmasdi.
+  */
+  it('taxtada yo‘q daraja o‘sishi sarflanmaydi — odam chizilganda e‘lon qilinadi', () => {
+    const OFF = new Set<string>()
+    const { result, rerender } = renderHook(({ r, on }) => usePromotions(r, TODAY, on), {
+      initialProps: { r: at(3, 'Katta sotuvchi'), on: OFF },
+    })
+    rerender({ r: at(4, 'Usta'), on: OFF })
+    expect(result.current).toBeNull()
+
+    rerender({ r: at(4, 'Usta'), on: ON_A })
+    expect(result.current).toEqual({
+      employeeId: 'a',
+      level: 4,
+      legendaTier: 0,
+      rankTitle: 'Usta',
+      thresholdLabel: '100 mln',
+    })
+  })
+
+  it('Legenda bosqichi oshdi — 6/I dan 6/II ga «Legenda II»', () => {
+    const { result, rerender } = renderHook(({ r }) => usePromotions(r, TODAY, ON_A), {
+      initialProps: { r: at(6, 'Legenda', { legendaTier: 1 }) },
+    })
+    expect(result.current).toBeNull()
+
+    rerender({ r: at(6, 'Legenda II', { legendaTier: 2 }) })
+    expect(result.current).toEqual({
+      employeeId: 'a',
+      level: 6,
+      legendaTier: 2,
+      rankTitle: 'Legenda II',
+      thresholdLabel: '2 mlrd',
+    })
+  })
+
   it('taxtada yo‘q ko‘tarilish 8 soniyalik navbatni band qilmaydi', () => {
     // 'a' xaritada birinchi, lekin chizilmagan — 'b' DARHOL gapiradi.
     const rows = map(row('a'), row('b', { level: 2, rankTitle: 'Sotuvchi', levelFloor: uzs(10_000_000), nextLevelAt: uzs(30_000_000), nextTitle: 'Katta sotuvchi' }))

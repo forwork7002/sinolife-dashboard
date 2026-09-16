@@ -587,20 +587,11 @@ const MEDALS = new Map<string, SellerMedalRowDto>([
  * tekshiruvi pagonga umuman bog'liq emas edi va ular tashigan qarorlar
  * bugun ham kuchda: medal so'rovining ULANISHI, «Liderga nisbatan»
  * chizig'ining YO'QLIGI (mijozning 2026-09-15 dagi so'rovi) va jadvalning
- * olti ustuni. Yangi lavha qatlamining testlari 5-vazifada keladi; bu
- * uchtasi oraliqda himoyasiz qolmasligi uchun shu yerda turadi.
+ * olti ustuni. So'rovning ulanishi keyingi bo'limda — «lavha va medallar»
+ * dagi nusxa `MedalDefs` ning joyini ham mixlaydi, ya'ni kengrog'i; bu yerda
+ * ikkitasi qoladi.
  */
 describe('medallar so‘rovi va o‘rindiq — pagon ketdi, invariantlar qoldi', () => {
-  it('medal so‘rovi taxtanikidan alohida kalitda va o‘z soatida', () => {
-    // DOM javob bera olmaydigan yagona narsa: so'rovning ulanishi.
-    const source = readFileSync('src/features/sellers/SellersPage.tsx', 'utf8')
-    expect(source).toContain("queryKey: ['sellers', 'medals']")
-    expect(source).toContain('staleTime: 600_000')
-    // Taxta hech qachon medal so'rovining holatiga qaramaydi: u sekin kelsa
-    // yoki xato bersa, reyting hech nima sezmasligi kerak.
-    expect(source).not.toMatch(/medals\.(isError|isPending)/)
-  })
-
   it('liderga nisbatan foiz chizig‘i seatda yo‘q', () => {
     render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
     expect(document.querySelector('[aria-label="Liderga nisbatan"]')).toBeNull()
@@ -773,6 +764,45 @@ describe('ko‘tarilish marosimi', () => {
     act(() => vi.advanceTimersByTime(8_000))
     expect(col.queryByRole('status')).toBeNull()
     expect(document.getElementById('tv-sellers')!.querySelector('.lv-plate--rise')).toBeNull()
+  })
+
+  /*
+    IKKINCHI TETIK, USTUNGA ULANGAN. `promotedOn` NAVBAT kuni bo'yicha
+    hisoblanadi (kunlik faktlar `c.queued_at` bilan guruhlanadi), FAKT 2 esa
+    kunlar keyin yopiladi — ya'ni production'da birinchi tetik deyarli hech
+    qachon ishlamaydi. Shuning uchun ustun payloadlar orasidagi DARAJA
+    O'SISHINI ham e'lon qiladi: `medalsToday` null bo'lsa ham.
+  */
+  it('daraja payloadlar orasida OSHDI — e‘lon sarlavhada, seat yulduz tushiradi', () => {
+    const grown = new Map(MEDALS)
+    grown.set(
+      '154 Marjona Xayrullayeva',
+      medalRow('154 Marjona Xayrullayeva', {
+        level: 5,
+        rankTitle: 'Ustoz',
+        delivered: money(310_000_000),
+        levelFloor: money(300_000_000),
+        nextLevelAt: money(1_000_000_000),
+        nextTitle: 'Legenda',
+      }),
+    )
+
+    const { rerender } = render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    expect(column('tv-sellers').queryByRole('status')).toBeNull()
+
+    rerender(<SellersColumn data={RIPE} {...PROPS} medals={grown} />)
+    const col = column('tv-sellers')
+    expect(col.getByRole('status').textContent).toContain('154 Marjona Xayrullayeva — endi USTOZ · 300 mln')
+
+    // E'lon ham shu ismni yozadi, ya'ni seat matn bo'yicha emas, kartadan olinadi.
+    const seat = [...document.getElementById('tv-sellers')!.querySelectorAll('.podium-card')].find(
+      (card) => card.textContent?.includes('154 Marjona Xayrullayeva'),
+    )!
+    expect(seat.querySelectorAll('use.lavha__star--drop')).toHaveLength(2)
+
+    act(() => vi.advanceTimersByTime(8_000))
+    expect(col.queryByRole('status')).toBeNull()
+    expect(seat.querySelector('use.lavha__star--drop')).toBeNull()
   })
 
   it('kecha ko‘tarilgan — e‘lon yo‘q', () => {

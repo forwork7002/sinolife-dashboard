@@ -107,14 +107,14 @@ export function SellersPage() {
   })
 
   /*
-    PAGON O'Z SO'ROVIDA VA O'Z SOATIDA — devorning naqshi.
+    LAVHA VA MEDALLAR O'Z SO'ROVIDA VA O'Z SOATIDA — devorning naqshi.
 
     Uch sabab. Oynasi boshqa: medal `RECORDS_FROM` dan bugungacha, taxta esa
     tanlangan davr — bir payloadga solish medalni filtr tugmasi bilan
     o'chiradigan qilib qo'yardi. Sur'ati boshqa: taxta oltmish soniyada,
     medal o'n daqiqada o'zgaradi. Va eng muhimi — BUZILMASLIK: bu so'rov
     xato bersa yoki kechiksa, televizordagi reyting hech nima sezmaydi,
-    faqat pagon ko'rinmaydi.
+    faqat lavha va medallar ko'rinmaydi.
 
     `staleTime` va `refetchInterval` — ikkalasi ham, chunki `refetchInterval`
     staleness'ni hech qachon so'ramaydi va bittasini qo'yish hech narsa
@@ -349,12 +349,14 @@ interface ColumnProps {
   /** Which fact BOTH columns are read on — the page owns it, not the column. */
   fakt: FaktChoice
   onFakt: (choice: FaktChoice) => void
-  /** Sotuvchi id si bo'yicha pagon. Komandalar ustuni uchun bo'sh Map. */
+  /** Sotuvchi id si bo'yicha daraja va medallar. Komandalar ustuni uchun bo'sh Map. */
   medals: ReadonlyMap<string, SellerMedalRowDto>
   /**
-   * `SellerMedalsDto.today` — e'lon lentasi `promotedOn` ni shu sana kaliti
-   * bilan solishtiradi, ya'ni «bugun» hisobot mintaqasida, brauzer soatida
-   * emas. So'rov kelmagan bo'lsa null va hech kim e'lon qilinmaydi.
+   * `SellerMedalsDto.today` — e'lon lentasining BIRINCHI tetigi `promotedOn`
+   * ni shu sana kaliti bilan solishtiradi, ya'ni «bugun» hisobot
+   * mintaqasida, brauzer soatida emas. So'rov kelmagan bo'lsa null va shu
+   * tetik jim qoladi; IKKINCHI tetik — payloadlar orasidagi daraja o'sishi —
+   * sanadan mustaqil ishlaydi (`usePromotions`).
    */
   medalsToday: string | null
 }
@@ -593,12 +595,14 @@ function BoardColumn({
   errorMessage?: string
   onRetry: () => void
   empty: string
-  /** Sotuvchi id si bo'yicha pagon. Komandalar ustuni uchun bo'sh Map. */
+  /** Sotuvchi id si bo'yicha daraja va medallar. Komandalar ustuni uchun bo'sh Map. */
   medals: ReadonlyMap<string, SellerMedalRowDto>
   /**
-   * `SellerMedalsDto.today` — e'lon lentasi shu kunni `promotedOn` bilan
-   * solishtiradi. Sana serverdan keladi, brauzerning soatidan emas: taxta
-   * hisobot mintaqasida yashaydi, televizor esa qayerda bo'lsa o'sha yerda.
+   * `SellerMedalsDto.today` — e'lon lentasining birinchi tetigi shu kunni
+   * `promotedOn` bilan solishtiradi. Sana serverdan keladi, brauzerning
+   * soatidan emas: taxta hisobot mintaqasida yashaydi, televizor esa qayerda
+   * bo'lsa o'sha yerda. Ikkinchi tetik — payloadlar orasidagi daraja o'sishi
+   * — bu sanani so'ramaydi (`usePromotions`).
    */
   medalsToday: string | null
 }) {
@@ -692,9 +696,11 @@ function BoardColumn({
           )}
         </div>
         {/*
-          E'LON — sarlavha ostida, 8 soniya. Podiumdagi yulduz tushishi
-          faqat uchta o'rindiqda ko'rinadi; 40-o'rindagi odamning
-          ko'tarilishini butun ustunga aytadigan yagona joy shu.
+          E'LON — sarlavha satrining USTIDA, uni 8 soniyaga yopib turadi
+          (`.tv-promo` absolyut, `.tv-col-head` esa relative): ustunni
+          surmaslik uchun. Podiumdagi yulduz tushishi faqat uchta
+          o'rindiqda ko'rinadi; 40-o'rindagi odamning ko'tarilishini butun
+          ustunga aytadigan yagona joy shu.
         */}
         {promotion !== null && promotedName !== null && (
           <PromotionBanner promotion={promotion} name={promotedName} />
@@ -1107,7 +1113,7 @@ function BoardList({
   allEntries: readonly BoardEntry[]
   noun: string
   onDelivered: boolean
-  /** Sotuvchi id si bo'yicha pagon. Komandalar ustuni uchun bo'sh Map. */
+  /** Sotuvchi id si bo'yicha daraja va medallar. Komandalar ustuni uchun bo'sh Map. */
   medals: ReadonlyMap<string, SellerMedalRowDto>
   /** Oxirgi yangilanishda paydo bo'lgan medallar, sotuvchi id si bo'yicha. */
   newMedals: ReadonlyMap<string, ReadonlySet<MedalCode>>

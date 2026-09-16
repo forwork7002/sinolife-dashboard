@@ -2650,7 +2650,7 @@ p {
 .lavha[data-ghost][data-level="1"],
 .lavha[data-ghost][data-level="2"],
 .lavha[data-ghost][data-level="3"] { --lavha-rim: var(--ink-muted); }
-/* (inverted and apex ghosts keep their class rim — ink-primary and accent — at .55 so they sit behind the real plate) */
+/* (inverted and apex ghosts keep their class rim — ink-primary and series-1 — at .55 so they sit behind the real plate) */
 
 /* ---- parts: colours land on the <use>, the symbol geometry inherits them -------------- */
 .lavha__plate {

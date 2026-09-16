@@ -293,9 +293,8 @@ export interface SellerMedalsInput {
    *
    * Xuddi `runningMonth` oylik medallarni chetlab o'tgani kabi, ⚡ va 🌅 shu
    * kunni chetlab o'tadi. Kun tugamaguncha uning `place`i har soatda
-   * o'zgaradi: bugungi yetakchi kechqurun boshqasidan oshirilib, 🌅 ni
-   * yo'qotardi — va 50 ball yo'qotish darajani pasaytirishi mumkin, spec esa
-   * darajaning hech qachon pasaymasligini talab qiladi.
+   * o'zgaradi: bugungi 🌅 kechqurun almashib ketardi — televizorda medal
+   * bir odamdan ikkinchisiga ko'chib yurardi.
    */
   readonly runningDay: string
 }

@@ -825,7 +825,7 @@ export interface ConfirmationMonthlyRecordRow {
   readonly deliveredMinor: bigint
 }
 
-/** Bir sotuvchining bir oyi, pagon uchun. Rekord devoridan farqi: HAR o'rin. */
+/** Bir sotuvchining bir oyi, daraja va medallar uchun. Rekord devoridan farqi: HAR o'rin. */
 export interface SellerMedalMonthRow {
   /** Oyning birinchi kuni, `APP_TIMEZONE` da, `YYYY-MM-DD`. */
   readonly month: string
@@ -4337,7 +4337,7 @@ export class InsightsRepository {
   }
 
   /**
-   * Pagonning fakti — bir kogorta, ikki kesim.
+   * Daraja va medallarning fakti — bir kogorta, ikki kesim.
    *
    * `confirmationSellerRecords` BILAN QO'SHILMAGAN, ATAYLAB. Rekord devori
    * `place = 1` ni qoldiradi va uning SQL satri `confirmationRecordsSql.test.ts`
@@ -4450,9 +4450,9 @@ export class InsightsRepository {
              The podium's rule, as a window: FAKT 2 decides, FAKT 1 decides
              the buckets nobody has delivered in yet. The tie-break is the
              employee id rather than the name — a name collates differently
-             under 'uz' and 'ru' (see branches.ts), and a pagon that
-             reordered itself between two polls of identical data would look
-             broken.
+             under 'uz' and 'ru' (see branches.ts), and a level-and-medal
+             cut that reordered itself between two polls of identical data
+             would look broken.
            */
            row_number() OVER (
              PARTITION BY ${bucket}

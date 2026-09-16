@@ -104,8 +104,9 @@ burchaklari qirqilgan (balandlikning 16%). Uch sinf, yulduz soni sinf ichida:
 - **Faxriy** (4–5): `--ink-primary` maydon, romsiz, `--surface-raised` yulduz
   va yozuv. Qorong'i mavzuda bu fil suyagi rangli lavha — ataylab; nusxada
   hech qachon «qora karta» deyilmaydi.
-- **Apex** (6): `--accent` maydon, ichki o'yma rom (1,5 px, 60% oq),
-  `--ink-on-series` katta yulduz.
+- **Apex** (6): `--series-1` maydon (ko'k; `--accent` EMAS — `PageShell` uni
+  sahifaga qarab qayta belgilaydi, /sellers da `--series-5`), ichki o'yma rom
+  (1,5 px, 60% oq), `--ink-on-series` katta yulduz.
 - **0-daraja:** shtrix kontur (`--ink-muted`, 4 3), yulduzsiz — jim, ogohlantirish
   emas.
 - **Sharpa** (keyingi lavha): shu sinfning shtrix konturi, yulduzlari
@@ -187,7 +188,7 @@ Bitta planshet: dumaloq disk (r 13 / 32×40 katak) + qisqa **tishli lenta**
   o'lchamda; qatorda oddiy ingichka halqa).
 - **Seriya** — `--series-2` (to'q sariq). **Kun** — `--series-7` (binafsha).
   **Sifat** — `--series-3` (ko'k-yashil). **O'sish** — `--series-6` (yashil).
-- Hech qachon: `--series-1` (accent), `--series-5` (ustunning o'z rangi),
+- Hech qachon: `--series-1` (apex lavhaniki), `--series-5` (ustunning o'z rangi),
   `--series-8` (qizil — qatorda ogohlantirish bo'lib o'qiladi).
 - Seat va gapiruvchi o'lchamda barcha disklarda bir xil yo'nalishli yaltirash
   (bir marta `<defs>` da e'lon qilingan `linearGradient`, uch `color-mix`
@@ -274,8 +275,17 @@ Ustun qo'shilmaydi. Ism katakchasi ichida uch qism:
 
 Odatiy holatda **hech narsa qimirlamaydi**. Uch voqea:
 
-1. **Daraja ko'tarilishi** — `promotedOn === bugun` bo'lgan sotuvchi uchun,
-   sahifa sessiyasida bir marta (`employeeId:level` in-memory to'plam):
+1. **Daraja ko'tarilishi** — IKKI TETIK, sahifa sessiyasida bir marta
+   (`employeeId:level:legendaTier` in-memory to'plam):
+   **(a)** `promotedOn === bugun` bo'lgan sotuvchi — sahifa o'sha kuni
+   ochilganda; **(b)** oldingi payload bilan solishtirganda `level`
+   (6-darajada `legendaTier`) **oshgan** sotuvchi — `useNewMedals` medal
+   kodlarini solishtirgani kabi, sahifa birinchi yuklanganida hech kim
+   «ko'tarildi» emas. Ikkinchisi — production'da ishlaydigani: `promotedOn`
+   NAVBAT kuni (§5), ya'ni «bugun» bilan deyarli hech qachon teng kelmaydi.
+   Taxtada yo'q odamning ko'tarilishi na sarflanadi, na suratga yoziladi —
+   u taxtaga chiqqan payloadda e'lon qilinadi.
+   Marosim:
    seat'da yulduzlar 80 ms oraliqda tushadi (translateY −14 → 0, 1,15 → 1),
    bitta diagonal yaltirash (0,8 s), so'ng qotadi; jadval qatori animatsiya
    qilinmaydi — e'lon yetarli.
@@ -365,6 +375,19 @@ interface SellerMedalDto {
 - `promotedOn`: kunlik faktlar sotuvchi bo'yicha sanaga saralanib, yig'ma
   FAKT 2 joriy daraja ostonasidan oshgan birinchi kun. Kunlik fakt bo'lmagan
   sotuvchida (oylik bor, kunlik yo'q — nazariy) `null`.
+
+  **`promotedOn` — NAVBAT KUNI, yetkazish kuni emas.** Kunlik faktlarni
+  `insightsRepository.sellerMedalFacts` `date_trunc(grain, c.queued_at …)`
+  bilan guruhlaydi, ya'ni pul buyurtma NAVBATGA TUSHGAN kunga yoziladi; FAKT 2
+  esa bir necha kundan keyin yopiladi. Shuning uchun `promotedOn === bugun`
+  production'da deyarli hech qachon rost bo'lmaydi va faqat shu tetikka
+  tayangan marosim jim turardi. Sana aniq bo'lishi uchun **yetkazish-kuni
+  statement'i** kerak (yetkazilgan pulni bitim yetkazish roliga o'tgan kun —
+  `closedAt` — bo'yicha guruhlaydigan ikkinchi kesim) — bu keyingi ish;
+  o'shanda «bugun» aynan bugun bo'ladi. Shu paytgacha televizor ko'tarilishni
+  §3 ning (b) tetigi bilan, sinx uni ko'rgandan keyin **o'n daqiqa ichida**
+  (medal so'rovining o'z soati) aytadi — va hech qachon sahifa qayta
+  yuklanganida emas: farq faqat ikki payload orasida ko'rinadi.
 - Medal tartibi — yuqoridagi ro'yxat (`MEDAL_ORDER`), ball emas.
 - Qolgan hamma qoida, chegaralar (`MEDAL_MIN_ORDERS`, `WORK_MONTH_SHARE`,
   `STREAK_*`, `ROOKIE_*`) va joriy oy/kun istisnolari **aynan qoladi**.
@@ -434,3 +457,12 @@ Gate: `npm run verify` + `npm run build` + `npm run db:check`.
 - **Qator kengligi 1280–1599** — 2 + N qoidasi; o'lchab ko'riladi.
 - **Belgi sayqali** (quyosh, nihol, raketa) — amalga oshirishda, hakam
   izohlari bo'yicha.
+- **`promotedOn` sanasi NAVBAT kunida.** Kunlik faktlar `c.queued_at` bo'yicha
+  guruhlanadi, FAKT 2 esa kunlar keyin yopiladi — ya'ni bu sana
+  ko'tarilishning haqiqiy kunidan oldinda turadi va `promotedOn === bugun`
+  tetigi production'da deyarli hech qachon ishlamaydi. Shuning uchun marosim
+  ikkinchi tetikka — payloadlar orasidagi daraja o'sishiga — tayanadi: e'lon
+  sinx yetkazishni ko'rgandan keyin o'n daqiqa ichida chiqadi va sahifa qayta
+  yuklanganida takrorlanmaydi. «Bugun» ni aniq qiladigan yechim — yetkazilgan
+  pulni `closedAt` bo'yicha guruhlaydigan kunlik statement (§5), keyingi ish.
+  Shu ishgacha e'londagi «bugun» so'zi ko'tarilish KO'RILGAN kunni bildiradi.
