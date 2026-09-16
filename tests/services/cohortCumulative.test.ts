@@ -70,6 +70,9 @@ const MATRIX: CohortMatrix = {
   // June 2026: the Jan cohort has lived five whole months, +0 … +5; the grid
   // is drawn to that span even though May has lived only one of them.
   currentMonth: '2026-06-01',
+  /* Not asked for — `includeRops` is a request, and the service never
+     makes it. Empty here means the same thing it means on the wire. */
+  rops: [],
 }
 
 function service(matrix: CohortMatrix): InsightsService {

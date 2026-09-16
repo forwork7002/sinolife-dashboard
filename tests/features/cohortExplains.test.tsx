@@ -119,6 +119,57 @@ const CONCENTRATION = {
 
 const META = { dataSource: 'DEMO', generatedAt: '2026-09-15T06:00:00.000Z' }
 
+/*
+  «Mijozlar oqimi», the band at the top of «Batafsil».
+
+  A STUB THAT ANSWERED `{}` WOULD NOT BE A LIGHTER FIXTURE, IT WOULD BE A LIE
+  ABOUT THE CONTRACT: `apiGet<CustomerFlowDto>` promises these fields and the
+  page reads them the way every other block on it reads its own payload —
+  unguarded past the response itself. An empty object is truthy, so the band
+  rendered and threw on `states.rows`, taking the whole page with it.
+*/
+const FLOW = {
+  summary: {
+    newCustomers: 180,
+    returningCustomers: 64,
+    activeCustomers: 244,
+    newCustomersWon: 138,
+    firstRevenue: { amount: 42_000_000, amountMinor: '4200000000', currency: 'UZS' },
+    repeatRevenue: { amount: 18_000_000, amountMinor: '1800000000', currency: 'UZS' },
+    repeatRevenueSharePercent: 30.0,
+  },
+  series: [
+    { bucket: '2026-08-01', newCustomers: 90, returningCustomers: 30 },
+    { bucket: '2026-08-02', newCustomers: 90, returningCustomers: 34 },
+  ],
+  sources: [
+    {
+      key: 'instagram',
+      label: 'Instagram',
+      newCustomers: 120,
+      sharePercent: 66.7,
+      repeatPercent: 21.4,
+      maturedCustomers: 900,
+    },
+    {
+      key: 'telefon',
+      label: 'Telefon',
+      newCustomers: 60,
+      sharePercent: 33.3,
+      repeatPercent: 12.1,
+      maturedCustomers: 410,
+    },
+  ],
+  states: {
+    customers: 500,
+    rows: [
+      { key: 'ACTIVE', label: 'Faol', colour: '--series-3', customers: 300 },
+      { key: 'AT_RISK', label: 'Xavf ostida', colour: '--series-5', customers: 120 },
+      { key: 'LOST', label: 'Yoʻqotilgan', colour: '--series-8', customers: 80 },
+    ],
+  },
+}
+
 function mockFetch() {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
@@ -126,7 +177,9 @@ function mockFetch() {
       ? COHORTS
       : url.includes('/insights/concentration')
         ? CONCENTRATION
-        : {}
+        : url.includes('/insights/customers')
+          ? FLOW
+          : {}
     return {
       ok: true,
       status: 200,
@@ -279,6 +332,52 @@ describe('the matrix and «База» already name their own clock', () => {
     await openPage()
     fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
 
+    /*
+      ONE BLOCK OWNS THIS SENTENCE. «Mijozlar oqimi» at the top also reports a
+      today-snapshot (who has gone quiet), and its tile hint deliberately does
+      NOT say «bugungi holat» — two blocks wearing one phrase over two
+      populations is an invitation to compare numbers that were never
+      comparable. `getByText` is what enforces that: it throws on a second match.
+    */
     expect(screen.getByText(/bugungi holat/i)).toBeDefined()
+  })
+
+  /*
+    TWO CLOCKS ON ONE SCREEN, AND EACH NAMES ITSELF.
+
+    «Mijozlar oqimi» counts a customer from the day they ORDERED
+    (`createdAtSource`); everything under «Kogorta tahlili» counts them from
+    the day their first order was DELIVERED (`closedAt` on a WON deal). The
+    two totals therefore differ on purpose — and unlabelled they read as one
+    of them being broken, which is the first conclusion a reader reaches and
+    the one nothing else on the page would correct.
+
+    Asserted as two DIFFERENT sentences present at once rather than as two
+    regexes that might both match one heading: the failure this guards is
+    exactly that one clock's words get copied onto the other block.
+  */
+  it('names the order clock on the band and the delivered clock on the matrix', async () => {
+    await openPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
+
+    expect(screen.getByText(/Buyurtma berilgan sana boʻyicha/i)).toBeDefined()
+    expect(screen.getByText(/Yetkazilgan sana boʻyicha/i)).toBeDefined()
+  })
+
+  /*
+    AND THE BAND DOES NOT ADD A THIRD «TAKRORIY TUSHUM ULUSHI».
+
+    The label is already on this screen twice — over the whole history, and
+    over the last ninety days on the concentration band — and two was only
+    acceptable because each names its own SPAN. A third reading «soʻnggi 90
+    kun» would put two ninety-day repeat shares, on two different clocks, under
+    one name. The band carries the soʼm instead, which collides with nothing.
+  */
+  it('keeps the repeat-share label to the two blocks that already own it', async () => {
+    await openPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
+
+    expect(screen.getAllByText(/Takroriy tushum ulushi/i)).toHaveLength(2)
+    expect(screen.getByText(/Takroriy xarid tushumi/i)).toBeDefined()
   })
 })

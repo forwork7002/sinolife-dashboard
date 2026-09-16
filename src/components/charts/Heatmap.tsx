@@ -5,6 +5,7 @@ import { useState, type MouseEvent } from 'react'
 import { ChartTooltipPanel, type ChartTooltipRow } from '@/components/charts/chartTooltip'
 import {
   NO_VALUE,
+  formatCompactUzs,
   formatMonth,
   formatMonthOffset,
   formatNumber,
@@ -60,8 +61,19 @@ import {
  * floor; a fixed ink colour fails at one end of any sequential ramp.
  */
 
-/** Which of the two readings the grid is drawing. */
-export type CohortView = 'cumulative' | 'monthly'
+/**
+ * Which of the THREE readings the grid is drawing.
+ *
+ * Two of them count PEOPLE and divide by the cohort, so they share a scale, a
+ * ramp and a cell. The third counts MONEY and shares none of the three — see
+ * `MONEY_BANDS` and `MoneyCell`, which are its half of this file.
+ */
+export type CohortView = 'cumulative' | 'monthly' | 'money'
+
+/** True for the two readings that print a share of the cohort. */
+function isShareView(view: CohortView): view is 'cumulative' | 'monthly' {
+  return view !== 'money'
+}
 
 /**
  * Exactly the five fields `columnAverage` reads — so a caller that only wants
@@ -193,17 +205,71 @@ const WIDTH = Object.fromEntries(PINNED.map((column) => [column.key, column.widt
 /** What the pinned block costs. The months share whatever is left of the card. */
 const PINNED_WIDTH = leftOf(PINNED.length)
 
-const W_MONTH = 44
+/*
+  A MONTH COLUMN CARRIES TWO FIGURES NOW, AND THAT IS WHAT SET THIS WIDTH.
+
+  Until 2026-09-16 a cell printed the share alone, and 44px held it. The
+  headcount that share was computed from was reachable only by hovering —
+  which is to say, not reachable at all on the screen this table is actually
+  read on, where a manager scans a column and never touches the mouse. Every
+  other rate on this dashboard prints the fraction it came from beside itself;
+  this one deferred it to a tooltip and to an `aria-label`, and the module's
+  own opening claim — «nothing on this table is a number whose denominator the
+  reader has to guess» — was true only of a reader with a pointer.
+
+  «12 · 47» states both in the cell. The unit is still said once, in the
+  column group's heading, and the second figure is set smaller and lighter so
+  the eye takes the share first and the count second.
+
+  MEASURED, not chosen. Inter 11px tabular carries «100» in 20.5px and the
+  separator in 5px; the count at 9px carries five digits and a separating
+  space — «11 500» — in 32px, which is the SUMMARY row's «Oylik +0» cell,
+  every first-time buyer in the matrix at once. 57.5px of glyph plus the 6px
+  the tiles need to stay apart is 63.5, so 66 holds the widest cell this grid
+  can produce.
+
+  WHAT IT COSTS IS SIDEWAYS SCROLL, and the cost was taken deliberately.
+  Twelve months at 66 plus the 460px pinned block is 1 252px against the
+  card's ~988 on a 1280px laptop with the rail open, so that screen scrolls by
+  ~264px where it used to scroll by ~10. The pinned block is sticky, so the
+  cohort, its size and its «Qaytgan» share stay on screen the whole way across,
+  and «6 oy» is one press away. On the 27-inch screen this page is read on the
+  table still fits whole.
+*/
+const W_MONTH = 66
 /*
   AND HOW WIDE A MONTH MAY GROW.
 
   With the window down to twelve columns the table stopped filling its card —
   796px of matrix floating in 1888px of hero panel, which reads as a rendering
   fault rather than as a choice. The month columns now share whatever the card
-  gives them, between these two bounds: below 44 the figures collide, and past
-  64 the cells stretch into bars and the grid stops reading as a grid.
+  gives them, between these two bounds: below 66 the two figures collide, and
+  past 92 the cells stretch into bars and the grid stops reading as a grid.
 */
-const W_MONTH_MAX = 72
+const W_MONTH_MAX = 92
+
+/*
+  AND THE MONEY READING NEEDS TWELVE MORE PIXELS THAN THE SHARE ONES.
+
+  A share cell's widest pair is «100 · 11 500»; a money cell's is
+  «12,3 mlrd · ×2,4», and a compact money figure carries a unit word the
+  share does not. Measured the same way: 46px for the figure at 11px tabular,
+  5 for the separator, 20 for the multiple at 9px, 6 of padding — 77.
+
+  It is a THIRD width rather than one width for all three readings because the
+  money view is opt-in and the two share readings are what the page opens on.
+  Charging every reader of the default view twelve pixels of sideways scroll
+  for a view they have not asked for is the trade the wrong way round.
+*/
+const W_MONTH_MONEY = 78
+const W_MONTH_MONEY_MAX = 104
+
+/** The month-column bounds for a reading. One place decides; the table follows. */
+function widthsFor(view: CohortView): { readonly min: number; readonly max: number } {
+  return view === 'money'
+    ? { min: W_MONTH_MONEY, max: W_MONTH_MONEY_MAX }
+    : { min: W_MONTH, max: W_MONTH_MAX }
+}
 
 /**
  * Below this many customers a «Jami · oʻrtacha» cell is printed but not painted.
@@ -302,8 +368,105 @@ const CUMULATIVE_BANDS = [
   { label: '30% va undan koʻp', background: 'var(--seq-650)', dark: true },
 ] as const
 
+/**
+ * The money reading's five steps — BANDED ON THE MULTIPLE, NOT ON THE SOʼM.
+ *
+ * A cell prints what one customer of the cohort had brought by that month, and
+ * soʼm cannot be banded: the figure depends on the product mix and on
+ * inflation, and a fixed set of thresholds in soʼm would paint the whole grid
+ * one colour the first time either moved. The multiple — that figure over the
+ * SAME cohort's first month — is scale-free, is what the column is actually
+ * asked («how much more did they bring us after the first sale»), and is
+ * printed in the cell beside the money, so the colour converts back into a
+ * number the reader can see.
+ *
+ * ×1,00 IS THE FLOOR AND IT IS A REAL VALUE, not an empty cell: it is a
+ * cohort that has bought once and not come back. Every row starts there at
+ * offset 0 by construction, which is why that column comes off the ramp
+ * exactly as the monthly reading's «0» column does.
+ *
+ * THE THRESHOLDS ARE NOT MEASURED AGAINST PRODUCTION, and this note is the
+ * honest half of shipping them. The customer readings' bands were set from
+ * measured ranges (monthly 0–16%, cumulative 0–37%); nothing in this
+ * repository has yet read the money curve on the live portal, so these are
+ * derived from what the customer curve implies — a 37% cumulative return rate
+ * at an order value near the cohort's first cannot put many rows past ×1,5 —
+ * and they should be re-cut against the first production reading. A ramp with
+ * every cell in one step is the symptom; the fix is these five numbers and
+ * nothing else.
+ */
+const MONEY_BANDS = [
+  {
+    label: 'birinchi xariddan oshmagan',
+    background: 'color-mix(in oklab, var(--seq-250) 22%, var(--surface))',
+    dark: false,
+  },
+  {
+    label: '×1,02–×1,1',
+    background: 'color-mix(in oklab, var(--seq-250) 55%, var(--surface))',
+    dark: false,
+  },
+  { label: '×1,1–×1,25', background: 'var(--seq-350)', dark: false },
+  { label: '×1,25–×1,5', background: 'var(--seq-550)', dark: true },
+  { label: '×1,5 va undan koʻp', background: 'var(--seq-650)', dark: true },
+] as const
+
 function bandsFor(view: CohortView): readonly { label: string; background: string; dark: boolean }[] {
-  return view === 'monthly' ? MONTHLY_BANDS : CUMULATIVE_BANDS
+  return view === 'money' ? MONEY_BANDS : view === 'monthly' ? MONTHLY_BANDS : CUMULATIVE_BANDS
+}
+
+/** Which `MONEY_BANDS` step a multiple falls in. See that table for the cuts. */
+function bandOfMultiple(multiple: number): number {
+  return multiple >= 1.5 ? 4 : multiple >= 1.25 ? 3 : multiple >= 1.1 ? 2 : multiple >= 1.02 ? 1 : 0
+}
+
+/**
+ * One money cell: what a customer of this cohort had brought in by month N.
+ *
+ * CUMULATIVE, ALWAYS — there is no monthly money reading and that is a
+ * decision, not an omission. A cohort's money in a single later month is
+ * 0–4% of its customers times one order each; read down a column those cells
+ * are noise, and read across a row they are a sawtooth. The question the money
+ * view exists for is «what is a customer of this month worth by now», and that
+ * is a running total.
+ */
+interface MoneyPoint {
+  /** Revenue through this offset ÷ the cohort. Major units, lossy, for display. */
+  readonly perCustomer: number
+  /** That figure over the same cohort's offset 0. Exactly 1 at offset 0. */
+  readonly multiple: number | null
+}
+
+/**
+ * The money curve of one row, offset by offset.
+ *
+ * REACHABILITY IS TAKEN FROM `retention`, not from `revenue`. The two arrays
+ * are the same length and the same nulls mean the same thing, but a month that
+ * HAPPENED and in which nobody bought is a measured zero — the running total
+ * simply does not move — while a month that has not happened has no cell at
+ * all. Reading `revenue[i]` for the distinction would merge them, which is the
+ * same null-is-not-zero rule `rateBp` keeps on the server.
+ */
+function moneyPointsOf(row: CohortMatrixRow): readonly (MoneyPoint | null)[] {
+  const points: (MoneyPoint | null)[] = []
+  let running = 0
+  let first: number | null = null
+
+  for (let i = 0; i < row.retention.length; i += 1) {
+    if (row.retention[i] === null || row.retention[i] === undefined) {
+      points.push(null)
+      continue
+    }
+    running += row.revenue[i]?.amount ?? 0
+    const perCustomer = row.size > 0 ? running / row.size : 0
+    if (first === null) first = perCustomer
+    points.push({
+      perCustomer,
+      multiple: first > 0 ? perCustomer / first : null,
+    })
+  }
+
+  return points
 }
 
 /*
@@ -477,19 +640,39 @@ export function CohortHeatmap({
     one. Dropping it also takes the reader straight to the first month that
     measures anything.
   */
+  /* The money reading keeps its `0` column for the opposite reason the
+     cumulative one drops it: there it is a zero for every row there has ever
+     been, here it is the denominator every other cell divides by. */
   const offsets = Array.from({ length: span }, (_, i) => i).filter(
-    (i) => (view === 'monthly' || i > 0) && (months === null || i <= months),
+    (i) => (view !== 'cumulative' || i > 0) && (months === null || i <= months),
   )
   const columns = offsets.length
-  const width = PINNED_WIDTH + columns * W_MONTH
-  const maxWidth = PINNED_WIDTH + columns * W_MONTH_MAX
+  const bounds = widthsFor(view)
+  const width = PINNED_WIDTH + columns * bounds.min
+  const maxWidth = PINNED_WIDTH + columns * bounds.max
 
   /** The array this reading draws from. One place decides, everything follows. */
   const valuesOf = (row: CohortMatrixRow) => (view === 'monthly' ? row.retention : row.cumulative)
   const countsOf = (row: CohortMatrixRow) =>
     view === 'monthly' ? row.customers : row.cumulativeCustomers
 
-  const averages = new Map(offsets.map((i) => [i, columnAverage(rows, i, view)]))
+  /*
+    TWO SUMMARY MAPS, AND ONLY THE ONE THIS READING USES IS BUILT.
+
+    `columnAverage` reads `retention`/`cumulative` and would answer the money
+    view with the cumulative share — a real number, of the wrong fact, printed
+    under a money heading. The branch is here rather than inside that function
+    so the share readings' own helper keeps taking a `CohortView` it can
+    actually satisfy, and so `ReturnAnswer`, which calls it from outside this
+    file, cannot be handed a view it has no milestone for.
+  */
+  const averages = isShareView(view)
+    ? new Map(offsets.map((i) => [i, columnAverage(rows, i, view)]))
+    : new Map<number, ColumnAverage>()
+  const moneyAverages =
+    view === 'money'
+      ? new Map(offsets.map((i) => [i, columnMoneyAverage(rows, i)]))
+      : new Map<number, MoneyColumnAverage>()
   const totalSize = rows.reduce((sum, r) => sum + r.size, 0)
   const totalReturned = rows.reduce((sum, r) => sum + r.returned, 0)
   const totalShare = totalSize > 0 ? (totalReturned / totalSize) * 100 : null
@@ -504,7 +687,7 @@ export function CohortHeatmap({
     reader compares a twelve-month figure against an eighteen-month one and
     finds the table contradicting itself.
   */
-  const truncated = months !== null && span - 1 > months
+  const truncated = view === 'cumulative' && months !== null && span - 1 > months
 
   /*
     The anchor is taken from the CELL, not from the cursor.
@@ -534,7 +717,7 @@ export function CohortHeatmap({
     })
   }
 
-  const panel = hot ? panelFor(hot, rows, averages, view) : null
+  const panel = hot ? panelFor(hot, rows, averages, moneyAverages, view) : null
 
   return (
     <div className="space-y-3">
@@ -562,9 +745,11 @@ export function CohortHeatmap({
           }}
         >
           <caption className="sr-only">
-            {view === 'monthly'
-              ? 'Kogorta matritsasi: har bir qator — mijozlar birinchi marta xarid qilgan oy, har bir ustun — oʻsha oydan keyin oʻtgan oylar soni, katakdagi foiz — oʻsha oyda qayta xarid qilgan mijozlar ulushi.'
-              : 'Kogorta matritsasi: har bir qator — mijozlar birinchi marta xarid qilgan oy, har bir ustun — oʻsha oydan keyin oʻtgan oylar soni, katakdagi foiz — oʻsha oyga kelib kamida bir marta qaytib kelgan mijozlar ulushi.'}
+            {view === 'money'
+              ? 'Kogorta matritsasi: har bir qator — mijozlar birinchi marta xarid qilgan oy, har bir ustun — oʻsha oydan keyin oʻtgan oylar soni, katakdagi summa — oʻsha oyga kelib shu guruhning bitta mijozi olib kelgan jami tushum.'
+              : view === 'monthly'
+                ? 'Kogorta matritsasi: har bir qator — mijozlar birinchi marta xarid qilgan oy, har bir ustun — oʻsha oydan keyin oʻtgan oylar soni, katakdagi foiz — oʻsha oyda qayta xarid qilgan mijozlar ulushi.'
+                : 'Kogorta matritsasi: har bir qator — mijozlar birinchi marta xarid qilgan oy, har bir ustun — oʻsha oydan keyin oʻtgan oylar soni, katakdagi foiz — oʻsha oyga kelib kamida bir marta qaytib kelgan mijozlar ulushi.'}
           </caption>
 
           <colgroup>
@@ -629,9 +814,11 @@ export function CohortHeatmap({
                 className="px-2 pt-0.5 pb-1.5 text-center text-[10.5px] leading-snug font-medium"
                 style={{ color: 'var(--ink-muted)' }}
               >
-                {view === 'monthly'
-                  ? 'Birinchi xariddan keyin oʻtgan oylar — oʻsha oyda qayta xarid qilganlar ulushi, %'
-                  : 'Birinchi xariddan keyin oʻtgan oylar — shu oyga kelib qaytganlar ulushi, %'}
+                {view === 'money'
+                  ? 'Birinchi xariddan keyin oʻtgan oylar — shu oyga kelib 1 mijoz olib kelgan jami tushum'
+                  : view === 'monthly'
+                    ? 'Birinchi xariddan keyin oʻtgan oylar — oʻsha oyda qayta xarid qilganlar ulushi, %'
+                    : 'Birinchi xariddan keyin oʻtgan oylar — shu oyga kelib qaytganlar ulushi, %'}
               </th>
             </tr>
             <tr>
@@ -743,20 +930,33 @@ export function CohortHeatmap({
                     {row.revenuePerCustomer}
                   </PinnedCell>
 
-                  {offsets.map((i) => (
-                    <HeatCell
-                      key={i}
-                      view={view}
-                      value={valuesOf(row)[i] ?? null}
-                      customers={countsOf(row)[i] ?? null}
-                      size={row.size}
-                      cohort={row.cohort}
-                      offset={i}
-                      litRow={lit}
-                      litCol={hot?.col === i}
-                      onMouseEnter={enter(r, i)}
-                    />
-                  ))}
+                  {offsets.map((i) =>
+                    view === 'money' ? (
+                      <MoneyCell
+                        key={i}
+                        point={moneyPointsOf(row)[i] ?? null}
+                        base={row.size}
+                        cohort={row.cohort}
+                        offset={i}
+                        litRow={lit}
+                        litCol={hot?.col === i}
+                        onMouseEnter={enter(r, i)}
+                      />
+                    ) : (
+                      <HeatCell
+                        key={i}
+                        view={view}
+                        value={valuesOf(row)[i] ?? null}
+                        customers={countsOf(row)[i] ?? null}
+                        size={row.size}
+                        cohort={row.cohort}
+                        offset={i}
+                        litRow={lit}
+                        litCol={hot?.col === i}
+                        onMouseEnter={enter(r, i)}
+                      />
+                    ),
+                  )}
                 </tr>
               )
             })}
@@ -862,6 +1062,27 @@ export function CohortHeatmap({
               </PinnedCell>
 
               {offsets.map((i) => {
+                if (view === 'money') {
+                  const avg = moneyAverages.get(i)
+                  return (
+                    <MoneyCell
+                      key={i}
+                      summary
+                      point={
+                        avg && avg.perCustomer !== null
+                          ? { perCustomer: avg.perCustomer, multiple: avg.multiple }
+                          : null
+                      }
+                      base={avg?.base ?? 0}
+                      cohorts={avg?.cohorts ?? 0}
+                      cohort={null}
+                      offset={i}
+                      litRow={hot?.row === -1}
+                      litCol={hot?.col === i}
+                      onMouseEnter={enter(-1, i)}
+                    />
+                  )
+                }
                 const avg = averages.get(i)
                 return (
                   <HeatCell
@@ -1193,17 +1414,31 @@ function HeatCell({
       aria-label={cellSentence({ view, cohort, offset, value, customers, size, summary })}
     >
       {/*
-        THE UNIT IS SAID ONCE, IN THE HEADER OVER THE COLUMNS.
+        THE UNIT IS SAID ONCE, IN THE HEADER OVER THE COLUMNS — BUT THE
+        DENOMINATOR IS NOT, SO THE COUNT IS PRINTED HERE.
 
         A «%» in every cell is 250 glyphs repeating what the column group
         already states — «…qayta xarid qilganlar ulushi, %» — and they were set
-        at 8.5px and 62% opacity precisely because they were in the way. The
-        cell's own label still spells the figure out as a percentage for anyone
-        who cannot see the header it belongs to.
+        at 8.5px and 62% opacity precisely because they were in the way. That
+        stays true of the unit and was never true of the HEADCOUNT: «12» and
+        «12 · 47» are not the same claim, and the second is the one every other
+        rate on this dashboard makes. A 3% cell on a 45-person cohort is one
+        customer, and a reader who cannot see that is being invited to read a
+        trend into a single person changing their mind.
+
+        TWO SIZES, NOT TWO CELLS. The share keeps 11px and the weight; the
+        count is 9px at 72% opacity, which is enough to read and not enough to
+        compete. Baseline-aligned, so the digits sit on one line rather than
+        the small text floating in the middle of the tile.
+
+        The opacity is applied to the span and not baked into a colour because
+        the ink underneath it flips — white on the darkest two bands, ink
+        elsewhere — and a second hard-coded colour would fail at one end of the
+        ramp exactly as a fixed ink colour does.
       */}
       <div
         data-heat=""
-        className="flex h-full min-h-6 items-center justify-center text-[11px] font-medium"
+        className="flex h-full min-h-6 items-baseline justify-center gap-[3px] text-[11px] font-medium leading-6"
         style={{
           background: base ? 'var(--surface-sunken)' : band?.background,
           color: base
@@ -1214,10 +1449,163 @@ function HeatCell({
           boxShadow: crosshair(litRow, litCol),
         }}
       >
-        {shown}
+        {/*
+          `data-share` AND `data-count` ARE ADDRESSES, NOT DECORATION.
+
+          A tile used to hold one string, so «the grid's figure» was
+          `[data-heat]`'s whole `textContent` — which is what
+          `cohortAgreement.test.tsx` compares against «Oddiy»'s milestone to
+          pin the invariant this screen is built on: two modes, one number,
+          spelled the same. With two figures in the tile that comparison reads
+          «28· 90» against «28%» and fails for a reason that has nothing to do
+          with the invariant. The share is marked so the pin keeps pointing at
+          the figure it is about, and the count is marked beside it so a test
+          can assert the denominator is PRESENT rather than infer it from a
+          concatenation.
+        */}
+        <span data-share="">{shown}</span>
+        {customers === null ? null : (
+          <span data-count="" className="text-[9px] font-normal" style={{ opacity: 0.72 }}>
+            {'· '}
+            {formatNumber(customers)}
+          </span>
+        )}
       </div>
     </td>
   )
+}
+
+/**
+ * One cell of the money reading.
+ *
+ * ITS OWN COMPONENT RATHER THAN A BRANCH INSIDE `HeatCell`, because almost
+ * nothing is shared: a different value, a different ramp, a different pair of
+ * printed figures and a different sentence. What IS shared — the hatched
+ * unmeasured month, the crosshair, the summary rule and the two floors — is
+ * shared by calling the same helpers, not by threading a third mode through a
+ * component whose every comment is about the two.
+ *
+ * THE COLUMN COMPARES DOWN, AND THAT IS THE WHOLE POINT OF THIS VIEW.
+ *
+ * The pinned «1 mijozga» column does NOT compare down — `MONEY_YOUNG_MONTHS`
+ * exists because a thirteen-month-old cohort has had thirteen months to spend
+ * and a one-month-old has had one, so ranking that column ranks the rows by
+ * age. A MATRIX column has no such defect: every cell in «+6» is a cohort at
+ * exactly six months old. The comparison the pinned column spends three
+ * defences discouraging is the one this grid is built to allow, which is why
+ * the young-cohort greying is deliberately NOT applied here.
+ */
+function MoneyCell({
+  point,
+  cohorts = 0,
+  cohort,
+  offset,
+  base: cohortSize,
+  summary = false,
+  litRow = false,
+  litCol = false,
+  onMouseEnter,
+}: {
+  readonly point: MoneyPoint | null
+  /** Summary cells only — see `HeatCell`'s prop of the same name. */
+  readonly cohorts?: number
+  readonly cohort: string | null
+  readonly offset: number
+  /** The cohort behind the figure, or the summed cohorts on the summary row. */
+  readonly base: number
+  readonly summary?: boolean
+  readonly litRow?: boolean
+  readonly litCol?: boolean
+  readonly onMouseEnter: (event: MouseEvent<HTMLElement>) => void
+}) {
+  if (point === null) {
+    return (
+      <td
+        className="h-6 p-0"
+        style={{ borderTop: summary ? '1px solid var(--border-strong)' : undefined }}
+        onMouseEnter={onMouseEnter}
+        aria-label="hali oʻtmagan oy — oʻlchanmagan"
+      >
+        <div
+          className="h-full min-h-6"
+          style={{ background: UNMEASURED, boxShadow: crosshair(litRow, litCol) }}
+        />
+      </td>
+    )
+  }
+
+  /*
+    OFFSET 0 IS THE ANCHOR HERE TOO, AND FOR A STRICTER REASON.
+
+    Every other reading's «0» column is 100% by construction; this one is ×1,00
+    by DEFINITION — it is the denominator every other cell in the row divides
+    by. Painted at the bottom of the ramp it would read as fifteen cohorts that
+    never came back. It keeps its money, which is the first purchase's value
+    per customer and the one figure a reader needs to make sense of the row,
+    and comes off the ramp.
+  */
+  const thin = summary && (cohortSize < SUMMARY_MIN_BASE || cohorts < MIN_COHORTS_FOR_AVERAGE)
+  const flat = offset === 0 || point.multiple === null || thin
+
+  const band = MONEY_BANDS[bandOfMultiple(point.multiple ?? 1)] ?? MONEY_BANDS[0]
+
+  return (
+    <td
+      className="h-6 p-0"
+      style={{ borderTop: summary ? '1px solid var(--border-strong)' : undefined }}
+      onMouseEnter={onMouseEnter}
+      aria-label={moneyCellSentence({ cohort, offset, point, summary })}
+    >
+      <div
+        data-heat=""
+        className="flex h-full min-h-6 items-baseline justify-center gap-[3px] text-[11px] font-medium leading-6"
+        style={{
+          background: flat ? 'var(--surface-sunken)' : band?.background,
+          color: flat
+            ? 'var(--ink-secondary)'
+            : band?.dark
+              ? 'var(--surface)'
+              : 'var(--ink-primary)',
+          boxShadow: crosshair(litRow, litCol),
+        }}
+      >
+        {/* `data-money` and `data-multiple` are addresses, exactly as
+            `data-share` and `data-count` are on the share cell. */}
+        <span data-money="">{formatCompactUzs(point.perCustomer)}</span>
+        {/* ×1,00 IS NOT A MEASUREMENT AT OFFSET 0. It is the definition of the
+            denominator, true of every row there has ever been, and printed it
+            would be a column of identical figures competing with the money
+            beside them for a 78px cell. The anchor keeps its soʼm alone. */}
+        {point.multiple === null || offset === 0 ? null : (
+          <span data-multiple="" className="text-[9px] font-normal" style={{ opacity: 0.72 }}>
+            {'· '}
+            {multipleText(point.multiple)}
+          </span>
+        )}
+      </div>
+    </td>
+  )
+}
+
+/** The whole claim of a money cell, for a reader who cannot hover. */
+function moneyCellSentence({
+  cohort,
+  offset,
+  point,
+  summary,
+}: {
+  readonly cohort: string | null
+  readonly offset: number
+  readonly point: MoneyPoint
+  readonly summary: boolean
+}): string {
+  const who = summary ? 'Oʻrtacha' : cohort ? `${formatMonth(cohort)} kogortasi` : ''
+  const when = offset === 0 ? 'xarid oyi' : `+${offset} oy`
+  const grown =
+    point.multiple === null || offset === 0
+      ? ''
+      : ` — birinchi oyga nisbatan ${multipleText(point.multiple)}`
+  return `${who}, ${when}: 1 mijozga ${formatUzs(point.perCustomer)}${grown}`
 }
 
 /** The scale, stated in numbers. A colour a reader cannot convert back is decoration. */
@@ -1234,7 +1622,13 @@ function Legend({
         className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[10.5px]"
         style={{ color: 'var(--ink-muted)' }}
       >
-        <span className="font-medium">Qaytish ulushi:</span>
+        {/* THE RAMP NAMES WHAT IT ENCODES, and in the money reading that is
+            NOT the figure the cell prints first. The tile leads with soʼm and
+            is coloured by the multiple, so a legend reading «Qaytish ulushi»
+            over ×-labelled swatches would be two mislabels in one line. */}
+        <span className="font-medium">
+          {view === 'money' ? 'Birinchi oyga nisbatan:' : 'Qaytish ulushi:'}
+        </span>
         {bandsFor(view).map((band) => (
           <span key={band.label} className="inline-flex items-center gap-1.5">
             <span
@@ -1260,12 +1654,44 @@ function Legend({
           out every cell's arithmetic, so this says only what the grid cannot:
           what a cell divides by. */}
       <p className="text-[10.5px] leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
-        {view === 'monthly'
-          ? 'Har bir katak = oʻsha oyda qayta xarid qilgan mijozlar ÷ kogortadagi jami mijozlar. «0» ustuni — kogortaning oʻz oyi, u har doim 100%.'
-          : truncated
-            ? 'Har bir katak = shu oyga kelib kamida bir marta qaytgan mijozlar ÷ kogortadagi jami mijozlar. «Qaytgan» ustuni butun tarixni hisoblaydi, shuning uchun u koʻrsatilgan oynadan kattaroq boʻlishi mumkin.'
-            : 'Har bir katak = shu oyga kelib kamida bir marta qaytgan mijozlar ÷ kogortadagi jami mijozlar. Qator oxiridagi katak «Qaytgan» ustuni bilan bir xil boʻladi.'}{' '}
-        Katak ustiga sichqonchani olib borsangiz, aniq hisob-kitob chiqadi.
+        {view === 'money' ? (
+          <>
+            Har bir katak = kogortaning birinchi xariddan shu oygacha boʻlgan jami
+            tushumi ÷ kogortadagi mijozlar soni. «0» ustuni — birinchi xarid oyi,
+            qatordagi qolgan kataklar shunga nisbatan oʻlchanadi.{' '}
+            {/*
+              THE ONE COMPARISON THIS SCREEN OTHERWISE FORBIDS, PERMITTED HERE
+              — and said out loud, because the pinned column two inches to the
+              left forbids it. «1 mijozga hozirgacha» cannot be read down its
+              column (`MONEY_YOUNG_MONTHS`); a matrix column can, because every
+              cell in it is a cohort at the same age. A reader who has taken
+              the first rule to heart will not assume the exception.
+            */}
+            Bu ustunlarni solishtirsa boʻladi: bitta ustundagi barcha kogortalar
+            bir xil yoshda.{' '}
+            <strong>Har katakda: summa</strong> ·{' '}
+            <strong>birinchi oyga nisbatan necha barobar</strong>. Katak ustiga
+            sichqonchani olib borsangiz, aniq hisob-kitob chiqadi.
+          </>
+        ) : (
+          <>
+            {view === 'monthly'
+              ? 'Har bir katak = oʻsha oyda qayta xarid qilgan mijozlar ÷ kogortadagi jami mijozlar. «0» ustuni — kogortaning oʻz oyi, u har doim 100%.'
+              : truncated
+                ? 'Har bir katak = shu oyga kelib kamida bir marta qaytgan mijozlar ÷ kogortadagi jami mijozlar. «Qaytgan» ustuni butun tarixni hisoblaydi, shuning uchun u koʻrsatilgan oynadan kattaroq boʻlishi mumkin.'
+                : 'Har bir katak = shu oyga kelib kamida bir marta qaytgan mijozlar ÷ kogortadagi jami mijozlar. Qator oxiridagi katak «Qaytgan» ustuni bilan bir xil boʻladi.'}{' '}
+            {/*
+              WHAT THE SECOND NUMBER IN A CELL IS, SAID ONCE.
+
+              «12 · 47» is two figures in one tile and the column heading names
+              only the first. Without this line the small one reads as a
+              decimal, a rank, or the month's order count — every one of which
+              is a number this screen also has somewhere.
+            */}
+            <strong>Har katakda: ulush, %</strong> · <strong>mijoz soni</strong>.
+            Katak ustiga sichqonchani olib borsangiz, aniq hisob-kitob chiqadi.
+          </>
+        )}
       </p>
     </div>
   )
@@ -1324,6 +1750,72 @@ export function columnAverage(
   return { percent: base > 0 ? (returned / base) * 100 : null, returned, base, cohorts }
 }
 
+/** One column of the money reading's «Jami · oʻrtachaʻ row. */
+export interface MoneyColumnAverage {
+  /** Every reaching cohort's money through this offset ÷ all their customers. */
+  readonly perCustomer: number | null
+  /** The same two sums at offset 0, divided into it. */
+  readonly multiple: number | null
+  /** The denominator — those cohorts' sizes. Read by the thin-cell floor. */
+  readonly base: number
+  /** How many cohorts that is. The claim is only as wide as this number. */
+  readonly cohorts: number
+}
+
+/**
+ * The money column's average, weighted the same way the share column's is.
+ *
+ * TWO SUMS DIVIDED, NEVER A MEAN OF THE ROWS' OWN FIGURES. Averaging
+ * per-customer money across cohorts would weight a 40-person month the same
+ * as a 400-person one; the multiple is likewise the ratio of two company-wide
+ * sums, not the mean of fifteen ratios. Same argument as `columnAverage`,
+ * which is directly above this, and the same floors apply to the cell.
+ *
+ * It walks `moneyPointsOf` again per row rather than taking a prepared array,
+ * because there are tens of rows and one definition of the curve is worth more
+ * than the walk it saves.
+ */
+export function columnMoneyAverage(
+  rows: readonly CohortMatrixRow[],
+  offset: number,
+): MoneyColumnAverage {
+  let money = 0
+  let firstMoney = 0
+  let base = 0
+  let cohorts = 0
+
+  for (const row of rows) {
+    const points = moneyPointsOf(row)
+    const point = points[offset]
+    const anchor = points[0]
+    if (!point || !anchor) continue
+    money += point.perCustomer * row.size
+    firstMoney += anchor.perCustomer * row.size
+    base += row.size
+    cohorts += 1
+  }
+
+  return {
+    perCustomer: base > 0 ? money / base : null,
+    multiple: firstMoney > 0 ? money / firstMoney : null,
+    base,
+    cohorts,
+  }
+}
+
+/**
+ * How a MULTIPLE is printed — one function, the cell and the legend both.
+ *
+ * Two decimals below ×1,1 and one above it. The band edges down there are
+ * ×1,02 and ×1,1, so a single decimal would print ×1,0 on either side of the
+ * first cut and the ramp would appear to disagree with the figure it is
+ * encoding; past ×1,1 the second decimal is precision nobody scans in a 78px
+ * cell. The comma is the decimal mark this application prints everywhere.
+ */
+export function multipleText(multiple: number): string {
+  return `×${multiple.toFixed(multiple < 1.1 ? 2 : 1).replace('.', ',')}`
+}
+
 /**
  * How a share is PRINTED on this screen — one function, both modes.
  *
@@ -1355,6 +1847,7 @@ function panelFor(
   hot: Hot,
   rows: readonly CohortMatrixRow[],
   averages: ReadonlyMap<number, ColumnAverage>,
+  moneyAverages: ReadonlyMap<number, MoneyColumnAverage>,
   view: CohortView,
 ): TipPanel | null {
   // The summary row's own label, and its two sums.
@@ -1389,6 +1882,31 @@ function panelFor(
       */
       footer:
         'Chapdagi ustunlar — shu kogortalar boʻyicha jami; jamlab boʻlmaydigan ustun «—» koʻrsatadi. Oylar boʻyicha qator — mijozlar soniga tortilgan oʻrtacha ulush.',
+    }
+  }
+
+  // One column of the summary row, money reading.
+  if (hot.row === -1 && view === 'money') {
+    const avg = moneyAverages.get(hot.col)
+    if (!avg || avg.perCustomer === null) return null
+
+    return {
+      header: hot.col === 0 ? 'Oʻrtacha — xarid oyi' : `Oʻrtacha — +${hot.col} oy`,
+      rows: [
+        { label: '1 mijozga jami', value: formatUzs(avg.perCustomer) },
+        {
+          label: 'Birinchi oyga nisbatan',
+          value: avg.multiple === null ? NO_VALUE : multipleText(avg.multiple),
+        },
+        { label: 'Nechta mijozdan', value: `${formatNumber(avg.base)} mijoz` },
+        { label: 'Nechta kogortadan', value: `${formatNumber(avg.cohorts)} ta` },
+      ],
+      footer:
+        avg.base < SUMMARY_MIN_BASE
+          ? `Namuna kichik — bu ustunga atigi ${formatNumber(avg.base)} ta mijoz yetib kelgan, shuning uchun katak rangsiz. Undan tendensiya oʻqimang.`
+          : avg.cohorts < MIN_COHORTS_FOR_AVERAGE
+            ? `Namuna tor — bu ustunga atigi ${formatNumber(avg.cohorts)} ta kogorta yetib kelgan, shuning uchun katak rangsiz. Undan tendensiya oʻqimang.`
+            : 'Faqat shu oyga yetib ulgurgan kogortalar hisobga olingan; summalar mijozlar soniga tortilgan.',
     }
   }
 
@@ -1498,6 +2016,38 @@ function panelFor(
   }
 
   const amount = row.revenue[hot.col]?.amount ?? 0
+
+  /*
+    THE MONEY CELL SAYS THE RUNNING TOTAL AND THE MONTH THAT MOVED IT.
+
+    The tile prints a cumulative figure, so the reader's next question is the
+    same one the cumulative share view gets: did anything happen THIS month.
+    The increment is `revenue[hot.col]`, which the panel already had in hand.
+  */
+  if (view === 'money') {
+    const point = moneyPointsOf(row)[hot.col]
+    if (!point) return null
+
+    return {
+      header: `${formatMonth(row.cohort)} kogortasi · ${
+        hot.col === 0 ? 'xarid oyi' : `+${hot.col} oy (${formatMonthOffset(row.cohort, hot.col)})`
+      }`,
+      rows: [
+        { label: '1 mijozga shu oyga kelib', value: formatUzs(point.perCustomer) },
+        {
+          label: 'Birinchi oyga nisbatan',
+          value: point.multiple === null || hot.col === 0 ? NO_VALUE : multipleText(point.multiple),
+        },
+        { label: 'Shu oydagi tushum', value: formatUzs(amount) },
+        { label: 'Shu oydagi buyurtmalar', value: `${formatNumber(row.orders[hot.col] ?? 0)} ta` },
+        { label: 'Kogorta', value: `${formatNumber(row.size)} mijoz` },
+      ],
+      footer:
+        hot.col === 0
+          ? 'Kogortaning oʻz oyi — qatordagi boshqa kataklar shu summaga nisbatan oʻlchanadi.'
+          : 'Jamlangan summa: birinchi xariddan shu oygacha boʻlgan barcha xaridlar, kogortadagi mijozlar soniga boʻlingan.',
+    }
+  }
 
   /*
     THE CUMULATIVE CELL SAYS BOTH NUMBERS.

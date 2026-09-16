@@ -187,6 +187,25 @@ export interface CohortMatrix {
   readonly totals: CohortTotals
   /** `YYYY-MM-DD`, first day of the current month in APP_TIMEZONE. */
   readonly currentMonth: string
+  /**
+   * The teams a customer can be attributed to, biggest first — EMPTY unless
+   * `includeRops` was asked for.
+   *
+   * Empty means «not asked», never «no teams»: the arm that fills it is not
+   * in the statement at all on a default request. A caller that renders a
+   * picker from this must therefore keep its own «whether we asked», which
+   * is why the page fetches it under its own query key rather than reading it
+   * off the matrix response.
+   */
+  readonly rops: readonly CohortRopDto[]
+}
+
+/** One team on the cohort picker, and the cohort choosing it would produce. */
+export interface CohortRopDto {
+  /** The team's own name with the «(ROP)» marker stripped, or the NO_ROP sentinel. */
+  readonly rop: string
+  /** Customers whose FIRST delivered order this team made. Whole history. */
+  readonly customers: number
 }
 
 /** Folded over EVERY cohort, whatever window the matrix was cut to. */
@@ -1013,10 +1032,63 @@ export class InsightsRepository {
    *
    * One statement, not three: the CTEs are built once and both arms read them.
    */
-  async cohorts(options: { months: number }): Promise<CohortMatrix> {
+  async cohorts(options: {
+    months: number
+    /**
+     * Narrow the matrix to the customers ONE team brought in, or null for all.
+     *
+     * THE TEAM IS THE ONE THAT MADE THE FIRST SALE, and the returns are NOT
+     * re-attributed — a customer acquired by Sevinch who buys again from
+     * Charos is still Sevinch's returning customer here. That is the only
+     * reading that answers the question the cut is for («whose customers come
+     * back») and it is deliberately NOT a measure of who does the retention
+     * work, which on this portal is answered by whoever picks up the phone.
+     * The screen says so; see `CohortPage`.
+     *
+     * THIS IS A DIMENSION, NOT A SCOPE. `/insights/cohorts` still declares
+     * `analytics:read:all` and still refuses a narrowed account outright —
+     * `ctx.scope` reaches nothing here. A ROP choosing to look at their own
+     * team and a ROP being restricted to it are different mechanisms, and only
+     * the first exists.
+     */
+    rop?: string | null
+    /** Also emit the list of teams and how many customers each brought in. */
+    includeRops?: boolean
+  }): Promise<CohortMatrix> {
+    /*
+      THE ROP CTEs ARE INTERPOLATED, NOT PARAMETERISED AWAY — so a page that
+      did not ask for them runs the statement it ran before, character for
+      character.
+
+      This endpoint is the slowest in the product and its plan is measured, not
+      assumed: 566 ms once hid in a single LEFT JOIN the planner mis-estimated
+      (see the statement's own note). Attributing a cohort to a team needs
+      another grouping, two joins and a regexp per row, and charging that to
+      every reader of the default view — which is every cold load of the page
+      — to serve a cut most of them will never open is the trade the wrong way
+      round.
+
+      So the default path is byte-identical to the measured one, and the ROP
+      path is a different, slower statement that only a reader who asked for it
+      ever runs. The shared CTEs are shared, not copied: the two forms differ
+      by two optional CTEs, one optional JOIN on each of two passthroughs, and
+      one optional UNION arm.
+
+      NOT MEASURED AGAINST PRODUCTION. Nothing in this repository has yet run
+      EXPLAIN on the scoped form; the default form is unchanged and is
+      therefore still covered by the 2026-09-15 measurements. Before this cut
+      is relied on, time it — from the app or from beside the database, never
+      from a laptop in Tashkent (see the payroll note in CLAUDE.md for why that
+      probe lied by a factor of ten).
+    */
+    const scoped = typeof options.rop === 'string'
+    const wantsRops = options.includeRops === true
+    const needsOwner = scoped || wantsRops
+
     const rows = await this.prisma.$queryRawUnsafe<
       {
         is_total: number
+        rop: string | null
         cohort: Date | null
         size: bigint | null
         months_since: number | null
@@ -1077,7 +1149,7 @@ export class InsightsRepository {
       -- index-only scans and touch a small fraction of the pages -- but it is
       -- a migration, a separate decision, and no longer the biggest thing
       -- available. An index could not have fixed what was actually wrong here.
-      WITH first_win AS (
+      WITH first_win_all AS (
         SELECT
           d."customerId" AS customer_id,
           date_trunc('month', min(d."closedAt") AT TIME ZONE 'UTC' AT TIME ZONE $1) AS cohort
@@ -1086,14 +1158,22 @@ export class InsightsRepository {
           AND d."customerId" IS NOT NULL AND d."closedAt" IS NOT NULL
         GROUP BY 1
       ),
-      sized AS (
-        SELECT cohort, count(*)::bigint AS size FROM first_win GROUP BY cohort
-      ),
-      purchases AS (
+      purchases_all AS (
         SELECT
           f.cohort,
           d."customerId" AS customer_id,
-          d."amountMinor" AS amount,
+          d."amountMinor" AS amount,${
+            needsOwner
+              ? `
+          /* Carried only when a team is asked about. The portal stamps
+             \`Организация сотрудника\` at the moment of sale and never rewrites
+             it, which is the whole reason this cut can be trusted across a
+             seller changing team — the same field and the same fallback
+             Logistika's per-ROP strip reads. */
+          d."operatorTeamSource" AS team_source,
+          d."employeeId" AS employee_id,`
+              : ''
+          }
           (
             (EXTRACT(YEAR FROM date_trunc('month', d."closedAt" AT TIME ZONE 'UTC' AT TIME ZONE $1)) -
              EXTRACT(YEAR FROM f.cohort)) * 12 +
@@ -1101,8 +1181,80 @@ export class InsightsRepository {
              EXTRACT(MONTH FROM f.cohort))
           )::int AS months_since
         FROM "deal" d
-        JOIN first_win f ON f.customer_id = d."customerId"
+        JOIN first_win_all f ON f.customer_id = d."customerId"
         WHERE d."countsAsRevenue" AND d."status" = 'WON' AND d."closedAt" IS NOT NULL
+      ),${
+        needsOwner
+          ? `
+      /*
+        WHICH TEAM BROUGHT EACH CUSTOMER IN.
+
+        Read off the customer's OWN cohort month rather than off \`min(closedAt)\`,
+        because picking the earliest row again would need a sort over every
+        revenue-bearing deal — which is the exact rewrite that was measured 48%
+        SLOWER on this statement and reverted (see the note at the top).
+        \`months_since = 0\` is that same month, already computed, and is tens of
+        thousands of rows rather than hundreds of thousands.
+
+        \`min()\` picks deterministically when one customer's first month holds
+        more than one order, which is the minority case. The two \`min\`s cannot
+        disagree in a way that matters: \`min\` ignores NULLs, so a month with any
+        stamped team takes a stamped team, and \`employee_id\` is only read when
+        NO row in that month carried one — where any of them is as good as any
+        other.
+
+        THE STRIP RUNS AFTER THE GROUPING, on one row per customer instead of
+        one per deal. \`ropNameSql\` is two regexps; over the ~180 000 rows of
+        \`purchases_all\` that is real time, and over one row per customer it is
+        not.
+      */
+      first_owner AS (
+        SELECT
+          p.customer_id,
+          min(p.team_source) AS team_source,
+          min(p.employee_id) AS employee_id
+        FROM purchases_all p
+        WHERE p.months_since = 0
+        GROUP BY p.customer_id
+      ),
+      owner_rop AS (
+        SELECT
+          o.customer_id,
+          COALESCE(
+            ${InsightsRepository.ropNameSql('o.team_source')},
+            ${InsightsRepository.ropNameSql('dep."name"')},
+            '${InsightsRepository.NO_ROP}'
+          ) AS rop
+        FROM first_owner o
+        LEFT JOIN "employee" e ON e."id" = o.employee_id
+        LEFT JOIN "department" dep ON dep."id" = e."departmentId"
+      ),`
+          : ''
+      }
+      /*
+        THE TWO PASSTHROUGHS ARE WHERE THE CUT HAPPENS, AND WHERE IT DOES NOT.
+
+        Unfiltered they are \`SELECT * FROM <base>\`, referenced once each, which
+        Postgres inlines — the default statement's plan is the measured one.
+        Filtered, ONE join on each narrows the cohort at its source and every
+        CTE below inherits it: \`sized\`, \`first_return\`, \`returners\` and
+        \`revenue_totals\` are untouched by this change and cannot fall out of
+        step with the matrix, because none of them reaches past these two.
+      */
+      first_win AS (
+        SELECT f.* FROM first_win_all f${
+          scoped ? `
+        JOIN owner_rop o ON o.customer_id = f.customer_id AND o.rop = $3` : ''
+        }
+      ),
+      purchases AS (
+        SELECT p.* FROM purchases_all p${
+          scoped ? `
+        JOIN owner_rop o ON o.customer_id = p.customer_id AND o.rop = $3` : ''
+        }
+      ),
+      sized AS (
+        SELECT cohort, count(*)::bigint AS size FROM first_win GROUP BY cohort
       ),
       /*
         EACH RETURNING CUSTOMER'S FIRST RETURN, AND THE TWO THINGS BUILT ON IT.
@@ -1196,7 +1348,10 @@ export class InsightsRepository {
         NULL::bigint AS total_returned,
         NULL::text AS first_revenue,
         NULL::text AS later_revenue,
-        NULL::timestamp AS current_month
+        NULL::timestamp AS current_month,
+        /* LAST, and that position is load-bearing: the ORDER BY below is by
+           ordinal, so a column added earlier would quietly re-point it. */
+        NULL::text AS rop
       FROM purchases p
       JOIN sized s ON s.cohort = p.cohort
       LEFT JOIN returners r ON r.cohort = p.cohort
@@ -1250,7 +1405,8 @@ export class InsightsRepository {
         -- The horizon, from the clock. A month with no first-time buyer emits
         -- no cohort row, so the newest key in the data is not "now" and the
         -- service must not read it as one.
-        date_trunc('month', (now() AT TIME ZONE $1)) AS current_month
+        date_trunc('month', (now() AT TIME ZONE $1)) AS current_month,
+        NULL::text AS rop
       FROM revenue_totals t
 
       UNION ALL
@@ -1288,13 +1444,57 @@ export class InsightsRepository {
         NULL::bigint AS total_returned,
         NULL::text AS first_revenue,
         NULL::text AS later_revenue,
-        NULL::timestamp AS current_month
-      FROM first_offsets fo
+        NULL::timestamp AS current_month,
+        NULL::text AS rop
+      FROM first_offsets fo${
+        wantsRops
+          ? `
+
+      UNION ALL
+
+      /*
+        THE TEAMS, AND HOW MANY CUSTOMERS EACH ONE BROUGHT IN.
+
+        The picker's options, answered from the SAME \`owner_rop\` the filter
+        compares against — so an option can never name a team the filter then
+        finds nothing for, and the count beside a team is the size of the
+        cohort choosing it produces. A second query for the list would agree
+        with this one until the first time one of them changed.
+
+        WHOLE HISTORY, like the totals arm, and not the \`months\` window: the
+        list is the portal's teams, which do not appear and disappear with the
+        matrix's scroll-back. It rides \`?include=rops\` rather than a second
+        endpoint — the same choice, for the same reason, that \`/users\` made for
+        its department heads.
+
+        \`size\` carries the count so the arm keeps the shared column list. It is
+        a count of CUSTOMERS, which is what every other use of that column on
+        this statement is too.
+      */
+      SELECT
+        3 AS is_total,
+        NULL::timestamp AS cohort,
+        count(*)::bigint AS size,
+        NULL::int AS months_since,
+        NULL::bigint AS customers,
+        NULL::text AS revenue,
+        NULL::bigint AS orders,
+        NULL::bigint AS first_returners,
+        NULL::bigint AS returned,
+        NULL::bigint AS total_customers,
+        NULL::bigint AS total_returned,
+        NULL::text AS first_revenue,
+        NULL::text AS later_revenue,
+        NULL::timestamp AS current_month,
+        o.rop AS rop
+      FROM owner_rop o
+      GROUP BY o.rop`
+          : ''
+      }
 
       ORDER BY 1 ASC, 2 DESC, 4 ASC
       `,
-      this.tz,
-      options.months,
+      ...([this.tz, options.months, ...(scoped ? [options.rop] : [])] as unknown[]),
     )
 
     /*
@@ -1324,6 +1524,16 @@ export class InsightsRepository {
     const byCohort = new Map<string, { size: number; returned: number; cells: Map<number, Cell> }>()
     const summary = rows.find((row) => row.is_total === 1)
     const curve: { cohort: string; monthsSince: number; firstReturners: number }[] = []
+    /*
+      THE TEAMS, SORTED HERE RATHER THAN IN THE STATEMENT.
+
+      \`ORDER BY\` is by ordinal and shared by four arms, so it cannot also
+      order this one; and the order this list wants is not the order the grid
+      wants. Biggest first, because the picker is scanned for «my team» and
+      the teams that brought in most customers are the ones most readers are
+      looking for.
+    */
+    const rops: { rop: string; customers: number }[] = []
 
     for (const row of rows) {
       /* The totals arm is read once, through `summary` above. */
@@ -1336,6 +1546,13 @@ export class InsightsRepository {
         so it would fold into a cohort of zeros and print as data. Three arms
         are what this method emits; anything else is a bug in the statement.
       */
+      if (row.is_total === 3) {
+        /* The arm is only emitted under `includeRops`, so an arm with no `rop`
+           is a bug in the statement rather than a team with no name — the
+           COALESCE in `owner_rop` cannot produce one. */
+        if (row.rop !== null) rops.push({ rop: row.rop, customers: int(row.size) })
+        continue
+      }
       if (row.is_total !== 0 && row.is_total !== 2) {
         throw new Error(`cohorts(): unknown UNION arm is_total=${row.is_total}`)
       }
@@ -1399,6 +1616,20 @@ export class InsightsRepository {
         blank the whole matrix — a louder failure than a stale-looking grid.
       */
       currentMonth: summary?.current_month?.toISOString().slice(0, 10) ?? '',
+      /*
+        BIGGEST FIRST, THEN BY NAME.
+
+        Not \`localeCompare(…, 'ru')\` as the department-head picker sorts:
+        that list is the whole org chart and is read alphabetically, this one
+        is fifteen teams and is read for size. The tie-break is the name so the
+        order is stable between two teams that brought in the same number —
+        without it the list re-shuffles under the reader on every sync.
+
+        The NO_ROP sentinel sorts with the rest. It is a real bucket (orders
+        whose seller belongs to no ROP unit) and hiding it would make the
+        teams' counts fail to add up to the company's.
+      */
+      rops: rops.sort((a, b) => b.customers - a.customers || a.rop.localeCompare(b.rop, 'ru')),
     }
   }
 

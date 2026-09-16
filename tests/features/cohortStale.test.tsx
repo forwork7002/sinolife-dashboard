@@ -163,6 +163,48 @@ const META = {
 /** Every `/api/v1` URL the page asked for, newest last. */
 let requested: string[] = []
 
+/*
+  «Mijozlar oqimi», the band at the top of «Batafsil». Its query is
+  `enabled: mode === 'detail'` — the very pattern this file exists to guard —
+  so it has to answer here, and answer with the shape its DTO promises. An
+  empty object is truthy: the band would render and throw on `states.rows`,
+  and every case below would fail for a reason that has nothing to do with
+  staleness.
+*/
+const FLOW = {
+  summary: {
+    newCustomers: 180,
+    returningCustomers: 64,
+    activeCustomers: 244,
+    newCustomersWon: 138,
+    firstRevenue: { amount: 42_000_000, amountMinor: '4200000000', currency: 'UZS' },
+    repeatRevenue: { amount: 18_000_000, amountMinor: '1800000000', currency: 'UZS' },
+    repeatRevenueSharePercent: 30.0,
+  },
+  series: [
+    { bucket: '2026-08-01', newCustomers: 90, returningCustomers: 30 },
+    { bucket: '2026-08-02', newCustomers: 90, returningCustomers: 34 },
+  ],
+  sources: [
+    {
+      key: 'instagram',
+      label: 'Instagram',
+      newCustomers: 120,
+      sharePercent: 66.7,
+      repeatPercent: 21.4,
+      maturedCustomers: 900,
+    },
+  ],
+  states: {
+    customers: 500,
+    rows: [
+      { key: 'ACTIVE', label: 'Faol', colour: '--series-3', customers: 300 },
+      { key: 'AT_RISK', label: 'Xavf ostida', colour: '--series-5', customers: 120 },
+      { key: 'LOST', label: 'Yoʻqotilgan', colour: '--series-8', customers: 80 },
+    ],
+  },
+}
+
 function mockFetch() {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
@@ -172,7 +214,9 @@ function mockFetch() {
       ? COHORTS
       : concentration
         ? CONCENTRATION
-        : {}
+        : url.includes('/insights/customers')
+          ? FLOW
+          : {}
     return {
       ok: true,
       status: 200,
@@ -291,6 +335,17 @@ describe('what keeps the path closed', () => {
     expect(page).not.toMatch(/\bstale=/)
     expect(page).toMatch(/period=\{false\}/)
     expect(page).toMatch(/queryKey: \['concentration', 'trailing-90'\]/)
+    /*
+      AND THE SECOND QUERY THAT IS DISABLED IN THE DEFAULT MODE.
+
+      «Mijozlar oqimi» arrived at the top of «Batafsil» with the same
+      `enabled: mode === 'detail'`, so it carries the same hazard: a key that
+      could CHANGE under a disabled query latches `isPlaceholderData` and
+      nothing can clear it. A literal key cannot change. If this band ever
+      grows a parameter, it grows this bug with it — and `stale=` must still
+      be absent from the file, which is asserted above and covers both.
+    */
+    expect(page).toMatch(/queryKey: \['customer-flow'\]/)
     expect(page).not.toMatch(/\['concentration', apiParams\]/)
   })
 

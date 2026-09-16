@@ -112,7 +112,16 @@ describe('the two readings of one payload', () => {
     */
     const analyst = render(<CohortHeatmap rows={rows} view="cumulative" />)
     const summaryCell = within(analyst.container).getByLabelText(/^Oʻrtacha, \+1 oy:/)
-    const tile = summaryCell.querySelector('[data-heat]')!.textContent!
+    /*
+      `[data-share]`, NOT THE TILE'S WHOLE TEXT.
+
+      The tile carries the share and the headcount behind it since 2026-09-16,
+      so its `textContent` is «28· 90» — a concatenation, and comparing it
+      against a milestone would fail for a reason that has nothing to do with
+      the invariant this test exists for. The share is separately addressable
+      precisely so the pin keeps pointing at the figure it is about.
+    */
+    const tile = summaryCell.querySelector('[data-share]')!.textContent!
 
     expect(milestone).toBe(`${tile}%`)
     expect(milestone).toBe('28%')

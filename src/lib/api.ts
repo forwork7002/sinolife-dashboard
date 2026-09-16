@@ -262,7 +262,7 @@ export interface AlertsDto {
   readonly syncError: {
     readonly code: string
     /** THROTTLE clears itself; CREDENTIAL needs a person. See the server DTO. */
-    // Mirrors AlertsDto.syncError.kind вЂ” nothing checks the mirror, edit both.
+    // Mirrors AlertsDto.syncError.kind — nothing checks the mirror, edit both.
     readonly kind: 'THROTTLE' | 'CREDENTIAL' | 'METHOD' | 'TRANSIENT' | 'SELF_LIMIT' | 'UNKNOWN'
     readonly entity: string
     /** How many entities are failing; null when it could not be bounded. */
@@ -540,6 +540,35 @@ export interface CohortSummaryDto {
    * same two figures, so the manager's two money facts are one read.
    */
   readonly revenuePerCustomerAll: MoneyDto
+  /**
+   * The teams the matrix can be cut by, biggest first — EMPTY unless asked.
+   *
+   * A team here is whoever made the customer's FIRST delivered order, read
+   * from the deal's own «Организация сотрудника» stamp with the seller's
+   * current department as the fallback — the same basis Logistika's per-ROP
+   * strip reads, so the two screens name teams identically.
+   *
+   * EMPTY MEANS «NOT ASKED», NEVER «NO TEAMS». The arm that fills it is only
+   * in the statement under `?include=rops`.
+   */
+  readonly rops: readonly CohortRopDto[]
+  /**
+   * Which team this response was cut to, or null for the whole company.
+   *
+   * ECHOED BACK rather than assumed from the control: a reader who picks a
+   * team sees the previous cohort for one render while the new one is in
+   * flight, and a heading built from the control would name the team whose
+   * rows are not on screen yet.
+   */
+  readonly rop: string | null
+}
+
+/** One option on the cohort matrix's team picker. */
+export interface CohortRopDto {
+  /** The team's own name, «(ROP)» stripped, or the «no team» sentinel. */
+  readonly rop: string
+  /** Customers whose FIRST delivered order this team made. Whole history. */
+  readonly customers: number
 }
 
 /**

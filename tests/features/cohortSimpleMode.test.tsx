@@ -152,6 +152,57 @@ const META = { dataSource: 'DEMO', generatedAt: '2026-09-15T06:00:00.000Z' }
 /** Every `/api/v1` URL the page asked for, newest last. */
 let requested: string[] = []
 
+/*
+  «Mijozlar oqimi», the band at the top of «Batafsil».
+
+  A STUB THAT ANSWERED `{}` WOULD NOT BE A LIGHTER FIXTURE, IT WOULD BE A LIE
+  ABOUT THE CONTRACT: `apiGet<CustomerFlowDto>` promises these fields and the
+  page reads them the way every other block on it reads its own payload —
+  unguarded past the response itself. An empty object is truthy, so the band
+  rendered and threw on `states.rows`, taking the whole page with it.
+*/
+const FLOW = {
+  summary: {
+    newCustomers: 180,
+    returningCustomers: 64,
+    activeCustomers: 244,
+    newCustomersWon: 138,
+    firstRevenue: { amount: 42_000_000, amountMinor: '4200000000', currency: 'UZS' },
+    repeatRevenue: { amount: 18_000_000, amountMinor: '1800000000', currency: 'UZS' },
+    repeatRevenueSharePercent: 30.0,
+  },
+  series: [
+    { bucket: '2026-08-01', newCustomers: 90, returningCustomers: 30 },
+    { bucket: '2026-08-02', newCustomers: 90, returningCustomers: 34 },
+  ],
+  sources: [
+    {
+      key: 'instagram',
+      label: 'Instagram',
+      newCustomers: 120,
+      sharePercent: 66.7,
+      repeatPercent: 21.4,
+      maturedCustomers: 900,
+    },
+    {
+      key: 'telefon',
+      label: 'Telefon',
+      newCustomers: 60,
+      sharePercent: 33.3,
+      repeatPercent: 12.1,
+      maturedCustomers: 410,
+    },
+  ],
+  states: {
+    customers: 500,
+    rows: [
+      { key: 'ACTIVE', label: 'Faol', colour: '--series-3', customers: 300 },
+      { key: 'AT_RISK', label: 'Xavf ostida', colour: '--series-5', customers: 120 },
+      { key: 'LOST', label: 'Yoʻqotilgan', colour: '--series-8', customers: 80 },
+    ],
+  },
+}
+
 function mockFetch() {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
@@ -160,7 +211,9 @@ function mockFetch() {
       ? COHORTS
       : url.includes('/insights/concentration')
         ? CONCENTRATION
-        : {}
+        : url.includes('/insights/customers')
+          ? FLOW
+          : {}
     return {
       ok: true,
       status: 200,
@@ -354,7 +407,18 @@ describe('switching between «Oddiy» and «Batafsil»', () => {
     const cohortQueries = queryClient
       .getQueryCache()
       .getAll()
-      .filter((q) => q.queryKey[0] === 'cohorts')
+      /*
+        THE MATRIX READS, WHICH IS NOT EVERY KEY BEGINNING «cohorts».
+
+        The team picker's options live at `['cohorts', 'rops']` — a different
+        question, answered by a different arm of the same statement, fetched
+        only when somebody reaches for the control (it is `enabled: false`
+        here, so it registers a cache entry and issues nothing; `cohortReads()`
+        above is what proves that). What this test is about is that the two
+        MODES share one matrix read: a second matrix key is how a refetch on
+        one half of the screen leaves the other half on the older answer.
+      */
+      .filter((q) => q.queryKey[0] === 'cohorts' && q.queryKey[1] !== 'rops')
     expect(cohortQueries).toHaveLength(1)
   })
 

@@ -248,6 +248,35 @@ export interface CohortSummaryDto {
    * nothing the empty state does not already say.
    */
   readonly revenuePerCustomerAll: MoneyDto
+  /**
+   * The teams the matrix can be cut by, biggest first — EMPTY unless asked.
+   *
+   * A team here is whoever made the customer's FIRST delivered order, read
+   * from the deal's own «Организация сотрудника» stamp with the seller's
+   * current department as the fallback — the same basis Logistika's per-ROP
+   * strip reads, so the two screens name teams identically.
+   *
+   * EMPTY MEANS «NOT ASKED», NEVER «NO TEAMS». The arm that fills it is only
+   * in the statement under `?include=rops`.
+   */
+  readonly rops: readonly CohortRopDto[]
+  /**
+   * Which team this response was cut to, or null for the whole company.
+   *
+   * ECHOED BACK rather than assumed from the control: a reader who picks a
+   * team sees the previous cohort for one render while the new one is in
+   * flight, and a heading built from the control would name the team whose
+   * rows are not on screen yet.
+   */
+  readonly rop: string | null
+}
+
+/** One option on the cohort matrix's team picker. */
+export interface CohortRopDto {
+  /** The team's own name, «(ROP)» stripped, or the «no team» sentinel. */
+  readonly rop: string
+  /** Customers whose FIRST delivered order this team made. Whole history. */
+  readonly customers: number
 }
 
 /**
@@ -1069,11 +1098,27 @@ export class InsightsService {
    * «did this seller's customers come back» asks about customers that seller
    * no longer owns. There is no honest branch answer to give.
    */
-  async cohorts(currency: string, months = 18): Promise<CohortSummaryDto> {
+  async cohorts(
+    currency: string,
+    months = 18,
+    options: { rop?: string | null; includeRops?: boolean } = {},
+  ): Promise<CohortSummaryDto> {
     // DELIBERATELY UNSCOPED — see the doc comment above: a cohort is a
     // company-wide fact about a customer, not a per-seller one.
+    //
+    // «UNSCOPED» IS ABOUT AUTHORISATION, AND `options.rop` IS NOT. One is a
+    // restriction the caller cannot lift, the other a question the caller
+    // asked; this endpoint still refuses a narrowed account outright and
+    // `ctx.scope` still reaches nothing below this line.
+    //
+    // THE BASE CARD IS NOT CUT WITH THE MATRIX, and that is deliberate rather
+    // than pending. «База» counts customers standing on an open retention
+    // deal TODAY, by stage — a snapshot of the follow-up cycle, which is run
+    // centrally and not by the team that first sold to the customer. Cutting
+    // it by acquiring team would print a partition of a different population
+    // under the same heading. The screen says which blocks the cut reaches.
     const [matrix, base] = await Promise.all([
-      this.repository.cohorts({ months }),
+      this.repository.cohorts({ months, rop: options.rop, includeRops: options.includeRops }),
       this.repository.retentionStages(),
     ])
 
@@ -1264,6 +1309,14 @@ export class InsightsService {
       revenuePerCustomerAll: toMoneyDto(
         money(totalCustomers === 0 ? 0n : total / BigInt(totalCustomers), currency),
       ),
+      /* Empty unless asked for — see `CohortMatrix.rops`. It travels on the
+         same response as the matrix so the option a reader picks and the rows
+         they then see are one read of the table. */
+      rops: matrix.rops,
+      /* Echoed back so the screen states the cut it is DRAWING rather than the
+         one the control happens to hold. The two differ for one render after
+         every change, which is exactly when a reader is looking. */
+      rop: options.rop ?? null,
     }
   }
 
