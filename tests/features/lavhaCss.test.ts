@@ -1,0 +1,53 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { describe, expect, it } from 'vitest'
+
+/**
+ * Lavha va medal bo'limlarining stylesheet faktlari — `recordWallCss.test.ts`
+ * naqshi. Hech biri TypeScript'dan ko'rinmaydi va buzilishi jim.
+ */
+const CSS = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
+
+const from = (marker: string) => {
+  const i = CSS.indexOf(marker)
+  expect(i, `${marker} yo'q`).toBeGreaterThan(-1)
+  return i
+}
+const REGION = CSS.slice(from('* LAVHA —'), from('* TV BOARD — the sellers board'))
+/** Izohlarsiz — bannerlar `--medal-*` ni SO'Z bilan tilga oladi, qoida bilan emas. */
+const CODE = REGION.replace(/\/\*[\s\S]*?\*\//g, '')
+
+describe('lavha va medal — stylesheet', () => {
+  it('eski PAGON bo‘limi yo‘q, yangi bo‘limlar TV BOARD dan oldin', () => {
+    expect(CSS).not.toMatch(/^\.pagon\b/m)
+    expect(CSS).not.toContain('* PAGON —')
+    for (const sel of ['.lavha {', '.lavha--row', '.lavha--seat', '.medal {', '.medal--row', '.medal--speaking', '.lv-block', '.medal-rail', '.narvon {', '.tv-namecell', '.tv-promo']) {
+      expect(REGION, sel).toContain(sel)
+    }
+  })
+
+  it('literal rang yo‘q — faqat var(--…) va color-mix', () => {
+    expect(CODE).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
+    expect(CODE).not.toMatch(/\brgba?\(/)
+    expect(CODE).not.toMatch(/\bhsla?\(/)
+  })
+
+  it('podium metallari faqat Oy oilasi medallarida — lavha ularga tegmaydi', () => {
+    const lines = CODE.split('\n')
+    let inMonthRule = false
+    for (const line of lines) {
+      if (/\.medal\[data-medal="(month-gold|month-silver|month-bronze|year-champion)"\]/.test(line)) inMonthRule = true
+      if (line.includes('}')) { if (line.includes('--medal-') && !inMonthRule) throw new Error(line); inMonthRule = false; continue }
+      if (line.includes('--medal-') && !inMonthRule) throw new Error(`--medal-* Oy qoidasidan tashqarida: ${line.trim()}`)
+    }
+    const lavhaPart = CODE.slice(0, CODE.indexOf('.medal {'))
+    expect(lavhaPart).not.toContain('--medal-')
+  })
+
+  it('kamaytirilgan harakatda hech narsa qimirlamaydi', () => {
+    const reduced = REGION.slice(REGION.lastIndexOf('@media (prefers-reduced-motion: reduce)'))
+    for (const sel of ['.lavha__star--drop', '.lv-sheen', '.medal-slot--new', '.medal-speak', '.tv-promo']) expect(reduced, sel).toContain(sel)
+    expect(reduced).toContain('animation: none')
+  })
+})
