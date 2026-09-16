@@ -1,6 +1,6 @@
 # EFIR — «Sotuvchilar reytingi» televizor taxtasining qayta dizayni
 
-**Sana:** 2026-09-16 (kechqurun). **Holat:** tasdiqlangan konsepsiya, amalga oshirish rejasi yozilmoqda.
+**Sana:** 2026-09-16 (kechqurun). **Holat:** amalga oshirildi — `efir` branch’i, deploy kutmoqda.
 **Oldingi spec:** `2026-09-16-daraja-va-medallar-design.md` — MOTOR, DTO va API qismi (§1 Daraja, §2 Medallar ro‘yxati va ochilish, §4 Uzatish, §5 Motor) o‘z kuchida qoladi; uning VIZUAL qismi (§2 ko‘rinish, §3 Ekran, §6 fayl xaritasi) shu hujjat bilan ALMASHTIRILADI.
 **Aktivlar:** `docs/superpowers/specs/assets/2026-09-16-efir/efir.html` (qorong‘i, asosiy) va `efir-light.html` (yorug‘) — haqiqiy 16-sentabr ma’lumoti bilan 1920×1080 to‘liq sahifa mocki; `gen_efir.py` generatori. Mock — o‘lchamlar, kompozitsiya va SVG belgilar uchun BIRLAMCHI manba; matn ziddiyatlarida shu hujjat ustun.
 
