@@ -138,10 +138,22 @@ export function CustomerFlowSection({
         title="Mijoz qayerdan kelayapti"
         hint="Yuqorida — yangi mijozlar manba boʻyicha, pastda — shu manbadan kelganlarning 90 kun ichida qayta xarid qilgani. Qatorlar tartibi bir xil."
       >
-        <div className="flex flex-col gap-4">
-          <CategoryBarList rows={sourceRows} mode="magnitude" status={status} />
-          <CategoryBarList rows={repeatRows} mode="share" status={status} />
-        </div>
+        {/*
+          ONE empty state for the pair. Both panels read the same rows, so when
+          there are none each would print its own «Maʼlumot yoʻq» and the card
+          would say the same nothing twice.
+        */}
+        {status === 'ready' && sourceRows.length === 0 ? (
+          <EmptyState
+            title="Manba maʼlumoti yoʻq"
+            body="Soʻnggi 90 kunda manbasi yozilgan yangi mijoz topilmadi."
+          />
+        ) : (
+          <div className="flex flex-col gap-4">
+            <CategoryBarList rows={sourceRows} mode="magnitude" status={status} />
+            <CategoryBarList rows={repeatRows} mode="share" status={status} />
+          </div>
+        )}
       </ChartCard>
     </section>
   )
