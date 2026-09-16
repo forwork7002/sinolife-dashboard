@@ -3,9 +3,16 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { Lavha } from '@/features/sellers/Lavha'
+import { LevelBlock } from '@/features/sellers/LevelBlock'
 import { Medal } from '@/features/sellers/Medal'
 import { MedalDefs } from '@/features/sellers/MedalDefs'
+import { MedalRail } from '@/features/sellers/MedalRail'
+import { Narvon } from '@/features/sellers/Narvon'
+import { RowMedals } from '@/features/sellers/RowMedals'
+import { SpeakingMedal } from '@/features/sellers/SpeakingMedal'
 import { LADDER, MEDALS, MEDAL_ORDER, MEDAL_UNLOCK_LEVEL, dativeOf, levelTitle, mlnLabel } from '@/features/sellers/medalCatalog'
+import { medalReason } from '@/features/sellers/medalReason'
+import type { SellerMedalDto, SellerMedalRowDto } from '@/lib/api'
 
 describe('MedalDefs — sahifaga bir marta o‘rnatiladigan belgilar to‘plami', () => {
   it('lavha, xatam va 14 medal belgisini id bilan chizadi', () => {
@@ -165,5 +172,158 @@ describe('katalog', () => {
     expect(mlnLabel(127_000_000)).toBe('127 mln')
     expect(mlnLabel(9_100_000)).toBe('9.1 mln')
     expect(mlnLabel(1_240_000_000)).toBe('1.2 mlrd')
+  })
+})
+
+const uzs = (amount: number) => ({ amountMinor: String(Math.round(amount * 100)), currency: 'UZS', amount })
+
+const medal = (over: Partial<SellerMedalDto> & { code: SellerMedalDto['code'] }): SellerMedalDto => ({
+  count: 1,
+  at: '2026-08-01',
+  amount: null,
+  orders: null,
+  percent: null,
+  ...over,
+})
+
+const row = (over: Partial<SellerMedalRowDto> = {}): SellerMedalRowDto => ({
+  employeeId: 'e1',
+  level: 4,
+  legendaTier: 0,
+  rankTitle: 'Usta',
+  delivered: uzs(173_000_000),
+  levelFloor: uzs(100_000_000),
+  nextLevelAt: uzs(300_000_000),
+  nextTitle: 'Ustoz',
+  promotedOn: null,
+  medals: [],
+  ...over,
+})
+
+describe('LevelBlock — seat bloki', () => {
+  it('lavha, shtamplar va «… ga N mln qoldi»: 173 mln Usta → 3 shtamp, Ustozga 127 mln', () => {
+    const { container } = render(<LevelBlock row={row()} ghost={false} />)
+    expect(container.querySelector('svg.lavha--seat')!.getAttribute('data-level')).toBe('4')
+    expect(container.querySelectorAll('.lv-stamps i')).toHaveLength(10)
+    expect(container.querySelectorAll('.lv-stamps i.on')).toHaveLength(3)
+    expect(screen.getByText('Ustozga 127 mln qoldi')).toBeTruthy()
+    expect(container.querySelector('.lv-ghost')).toBeNull()
+  })
+
+  it('sharpa faqat so‘ralganda (chempion seat), keyingi lavha va ostonasi bilan', () => {
+    const { container } = render(<LevelBlock row={row()} ghost />)
+    const ghost = container.querySelector('.lv-ghost')!
+    const svg = ghost.querySelector('svg.lavha--ghost')!
+    expect(svg.hasAttribute('data-ghost')).toBe(true)
+    expect(svg.getAttribute('data-level')).toBe('5')
+    expect(ghost.textContent).toContain('Ustoz')
+    expect(ghost.textContent).toContain('300 mln')
+  })
+
+  it('90% dan oshganda «yaqin» — 9 shtamp va ko‘k matn', () => {
+    const near = row({ level: 3, rankTitle: 'Katta sotuvchi', delivered: uzs(95_000_000), levelFloor: uzs(30_000_000), nextLevelAt: uzs(100_000_000), nextTitle: 'Usta' })
+    const { container } = render(<LevelBlock row={near} ghost={false} />)
+    expect(container.querySelectorAll('.lv-stamps i.on')).toHaveLength(9)
+    expect(container.querySelector('.lv-qoldi--near')!.textContent).toBe('Ustaga 5 mln qoldi')
+  })
+
+  it('0-daraja: shtrix lavha, shtamplar bo‘sh, «Birinchi savdo kutilmoqda»', () => {
+    const zero = row({ level: 0, rankTitle: null, delivered: uzs(0), levelFloor: uzs(0), nextLevelAt: uzs(0.01), nextTitle: 'Yangi' })
+    const { container } = render(<LevelBlock row={zero} ghost />)
+    expect(container.querySelector('svg.lavha--seat')!.getAttribute('data-level')).toBe('0')
+    expect(container.querySelectorAll('.lv-stamps i.on')).toHaveLength(0)
+    expect(screen.getByText('Birinchi savdo kutilmoqda')).toBeTruthy()
+    expect(container.querySelector('.lv-ghost')!.textContent).toContain('birinchi soʻm')
+  })
+
+  it('Legenda: keyingi milliardgacha, «Legenda II ga … qoldi»', () => {
+    const leg = row({ level: 6, legendaTier: 1, rankTitle: 'Legenda', delivered: uzs(1_413_000_000), levelFloor: uzs(1_000_000_000), nextLevelAt: uzs(2_000_000_000), nextTitle: 'Legenda II' })
+    render(<LevelBlock row={leg} ghost={false} />)
+    expect(screen.getByText('Legenda II ga 587 mln qoldi')).toBeTruthy()
+  })
+
+  it('rise — plastina ko‘tarilish sinfi va yaltirash qatlami', () => {
+    const { container } = render(<LevelBlock row={row()} ghost={false} rise />)
+    expect(container.querySelector('.lv-plate.lv-plate--rise')).not.toBeNull()
+    expect(container.querySelector('.lv-sheen')).not.toBeNull()
+    expect(container.querySelectorAll('use.lavha__star--drop')).toHaveLength(1)
+  })
+})
+
+describe('MedalRail va RowMedals', () => {
+  const seven = [
+    medal({ code: 'month-gold', count: 2 }),
+    medal({ code: 'streak-fire' }),
+    medal({ code: 'conversion-master' }),
+    medal({ code: 'day-record' }),
+    medal({ code: 'clean-month' }),
+    medal({ code: 'day-winner', count: 5 }),
+    medal({ code: 'first-sale' }),
+  ]
+
+  it('tokcha 5 ta chizadi, qolgani +N, ×N pill seat o‘lchamida bor', () => {
+    const { container } = render(<MedalRail medals={seven} />)
+    expect(container.querySelectorAll('.medal-rail svg.medal--seat')).toHaveLength(5)
+    expect(screen.getByText('+2')).toBeTruthy()
+    expect(container.querySelector('.medal-count')!.textContent).toBe('×2')
+  })
+
+  it('medalsiz tokcha chizilmaydi — karta qisqaradi', () => {
+    const { container } = render(<MedalRail medals={[]} />)
+    expect(container.querySelector('.medal-rail')).toBeNull()
+  })
+
+  it('qatorda 3 ta + N, pill yo‘q, yangi medal sinfi', () => {
+    const { container } = render(<RowMedals medals={seven} newKeys={new Set(['streak-fire'])} />)
+    expect(container.querySelectorAll('.tv-rowmedals svg.medal--row')).toHaveLength(3)
+    expect(screen.getByText('+4')).toBeTruthy()
+    expect(container.querySelector('.medal-count')).toBeNull()
+    expect(container.querySelector('.medal-slot--new svg[data-medal="streak-fire"]')).not.toBeNull()
+  })
+})
+
+describe('SpeakingMedal va Narvon', () => {
+  it('gapiruvchi karta — 64 px medal, nom va sabab; nom ikki marta emas', () => {
+    const { container } = render(<SpeakingMedal medal={medal({ code: 'conversion-master', percent: 82, orders: 41 })} />)
+    expect(container.querySelector('svg.medal--speaking')).not.toBeNull()
+    expect(screen.getByText('Konversiya ustasi', { selector: '.medal-speak-name' })).toBeTruthy()
+    expect(screen.getAllByText('Konversiya ustasi')).toHaveLength(1)
+    expect(container.querySelector('.medal-speak-why')!.textContent).toContain('82')
+  })
+
+  it('narvon — olti pog‘ona, unvon va ostona, Legenda ko‘k', () => {
+    const { container } = render(<Narvon />)
+    const rungs = container.querySelectorAll('.narvon-rung')
+    expect(rungs).toHaveLength(6)
+    expect(rungs[0]!.textContent).toContain('Yangi')
+    expect(rungs[0]!.textContent).toContain('birinchi soʻm')
+    expect(rungs[5]!.querySelector('svg.lavha--narvon')!.getAttribute('data-level')).toBe('6')
+    expect(rungs[5]!.textContent).toContain('1 mlrd')
+  })
+})
+
+describe('medalReason', () => {
+  it('oy medali — oy nomi, summa va buyurtma', () => {
+    const text = medalReason(medal({ code: 'month-gold', amount: uzs(128_550_000), orders: 74 }))
+    expect(text).toContain('Avgust 2026')
+    expect(text).toContain('74')
+  })
+
+  it('🚀 ning orders maydoni o‘rin deb chiziladi, buyurtma deb emas', () => {
+    const text = medalReason(medal({ code: 'rookie', at: '2026-10-01', orders: 7 }))
+    expect(text).toContain('7-oʻrin')
+    expect(text).not.toContain('7 buyurtma')
+  })
+
+  it('📅 «ishchan oy» — «N kun · davomat NN%», buyurtma emas', () => {
+    const text = medalReason(medal({ code: 'work-month', orders: 24, percent: 77 }))
+    expect(text).toContain('24 kun')
+    expect(text).toContain('davomat')
+    expect(text).not.toContain('24 buyurtma')
+  })
+
+  it('faqat oyi bor medal o‘sha oyni yozadi; hech narsasi yo‘q medal o‘z nomini', () => {
+    expect(medalReason(medal({ code: 'streak-fire', at: '2026-11-01' }))).toBe('Noyabr 2026')
+    expect(medalReason(medal({ code: 'streak-fire', at: null }))).toBe('Olov seriyasi')
   })
 })
