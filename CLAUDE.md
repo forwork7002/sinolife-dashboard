@@ -422,7 +422,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Screen | URL | Feature | Endpoint(s) | Service → Repository | Window filters on |
 |---|---|---|---|---|---|
 | Savdo dinamikasi | `/analytics/sales` | `sales/SalesPage` + `ForecastSection` + `ConfirmationOutcomeSection` + `ConfirmationFaktSection` + `DeliveryBoardSection` | `/analytics/sellers` twice (the board, and `?include=faktTrend` for the chart) + `/insights/delivery` | SellerBoard, Pulse → SellerBoard, Pulse | the arrival in `C4:NEW` (`queued_at`) — **except the Доставка board, which has NO window at all**: a kanban column is where orders are standing now |
-| Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` — TWO MODES over ONE fetch: `cohort/SimpleView` («Oddiy», the default) and the matrix + `StateBars` («Batafsil»), chosen by `?mode=`. The matrix itself has THREE readings of that one fetch — «Jami qaytgan» / «Oylik» / «Pul» — and ONE control that is a different question: `?rop=`, the acquiring team, which is its own cache entry and its own request | `/insights/cohorts`, `/insights/customers`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | **nothing — the screen is DATELESS since 2026-09-15** (`period={false}`, like Struktura), and it now carries TWO CLOCKS, each named on screen. `closedAt` on revenue-bearing WON deals is the clock the matrix and the concentration band read; `/insights/customers` reads `createdAtSource` over its OWN trailing 90 days, so its customer totals legitimately differ — never sum across them; the matrix takes no window at all (`months` bounds which cohort ROWS are drawn and never the totals arm) and `/insights/concentration` resolves its OWN trailing 90 days (`trailingDays`). Nothing here reads `createdAtSource` |
+| Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` — ONE reading, the MATRIX FIRST. It had two modes («Oddiy» / «Batafsil», `?mode=`) until 2026-09-16; the manager's view and everything only it read are deleted. The matrix has THREE readings of one fetch — «Jami qaytgan» / «Oylik» / «Pul» — and ONE control that is a different question: `?rop=`, the acquiring team, which is its own cache entry and its own request | `/insights/cohorts`, `/insights/customers`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | **nothing — the screen is DATELESS since 2026-09-15** (`period={false}`, like Struktura), and it now carries TWO CLOCKS, each named on screen. `closedAt` on revenue-bearing WON deals is the clock the matrix and the concentration band read; `/insights/customers` reads `createdAtSource` over its OWN trailing 90 days, so its customer totals legitimately differ — never sum across them; the matrix takes no window at all (`months` bounds which cohort ROWS are drawn and never the totals arm) and `/insights/concentration` resolves its OWN trailing 90 days (`trailingDays`). Nothing here reads `createdAtSource` |
 | Reklama samarasi | `/marketing` | **PAUSED** — `shared/SectionPending`; `marketing/MarketingPage` is held, not mounted | none while paused (`/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` still answer) | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
@@ -633,21 +633,46 @@ Per-screen traps worth knowing before you touch one:
   parameter, wired to no control), and the four tiles refuse to print at all
   under `MIN_CUSTOMERS` 30 / `MIN_PAIRS` 10 / `MIN_COHORT` 30 — low on purpose,
   to catch a day's trading rather than a quiet fortnight.
-  **TWO MODES, ONE FETCH, AND THAT IS WHY THEY CANNOT DISAGREE.** «Oddiy»
-  (`SimpleView` — three questions in sentences and shapes) and «Batafsil» (the
-  matrix and the bands under it) are two renderings of the SAME
-  `/insights/cohorts` response, mapped once by `toMatrixRow` in `CohortPage`
-  and handed to both. The toggle costs no request, no cache key and no
-  permission; it rides `?mode=` through `useCohortMode`, written with
-  `replaceState` rather than a router push, because a push re-runs the server
-  component and that is 521 ms of frozen UI per click on this product. The
-  manager's milestones call the grid's OWN `columnAverage` rather than folding
-  a mean of their own — an unweighted mean would let a 40-person month outvote
-  a 400-person one, and two averaging implementations agree on the day they
-  are written and drift on the first change to either.
-  `tests/features/cohortAgreement.test.tsx` pins both halves: the two
-  renderings printing one figure, and — structurally, by reading the source —
-  that `ReturnAnswer` still has no mean of its own.
+  **THE MATRIX IS THE FIRST THING ON THE PAGE, AND «ODDIY» IS GONE —
+  2026-09-16, on the client's instruction («kogorta jadvali tepaga chiqarish
+  kerak va oddiy degan narsa kerak emas»).** The screen carried TWO renderings
+  of one fetch: «Oddiy» (`SimpleView` — three questions in sentences and
+  shapes) and «Batafsil» (the matrix and the bands under it), chosen by
+  `?mode=`. Both are removed, the toggle with them, and the matrix now opens
+  the page with nothing above it.
+  **WHAT WENT WITH THE MODE, because it had no other reader.**
+  `SimpleView.tsx`, `ReturnAnswer.tsx` and `ArrivalBars.tsx`; the mode half of
+  `useCohortMode.ts`, whose file is now `useCohortRop.ts` and carries the team
+  cut alone; five test files (`cohortSimpleMode`, `cohortAgreement`,
+  `cohortArrivals`, `cohortReturnAnswer`, `cohortMode`); and THREE DTO FIELDS
+  — `currentMonth`, `revenueTotalAll`, `revenuePerCustomerAll` — which
+  «Oddiy» was the only reader of, in BOTH mirrors. Net **−2 100 lines**.
+  `currentMonth` is still COMPUTED on the server (it is the horizon every
+  row's `ageMonths` is measured from); it simply no longer travels, and the
+  statement underneath is unchanged.
+  **FIVE EXPORTS IN `Heatmap.tsx` BECAME INTERNAL** — `columnAverage`,
+  `MIN_COHORTS_FOR_AVERAGE`, `sharePercentText`, `columnMoneyAverage`,
+  `multipleText` and their three types. Every one was exported for
+  `ReturnAnswer`, so that «Oddiy»'s milestone and the grid's summary row could
+  not drift apart. With one reading left there is nothing to keep in step, and
+  an export with no importer is an invitation to build a second reading again.
+  **AND BOTH QUERY GATES WENT.** `/insights/concentration` and
+  `/insights/customers` were `enabled: mode === 'detail'`, which earned its
+  place while most visits never opened the analyst's view. Every consumer is
+  now drawn on every visit, so the gate would be a condition that is always
+  true. **The keys stay literals**, and that is the half of
+  `cohortStale.test.tsx` that survives: no query here is disabled any more, but
+  `providers.tsx` still applies `placeholderData` on any KEY CHANGE, so giving
+  one of these reads a moving key puts the latch one `enabled` away from
+  being reachable again. That file's DOM cases were rewritten rather than
+  deleted — the page must still never be dimmed — and its source pins kept.
+  **ONE TEST WAS DELETED RATHER THAN RE-POINTED**: the «izoh» tooltip audit in
+  `cohortExplains.test.tsx`. Every tip it checked lived in «Oddiy»; the one
+  tooltip left is `RepeatShareCard`'s, which is not in that set, and the
+  deleted test's own comment says asserting over an empty set is vacuous.
+  **AND ITS `openPage` NOW WAITS ON «Jami · oʻrtacha», NOT ON A CARD TITLE** —
+  the title renders before the fetch resolves, so waiting on it would let every
+  assertion race the data and fail as «the page does not say this».
   **«YETKAZILGAN» AND «YOPILGAN (WON)» NAME THE SAME EVENT.** A deal becomes
   WON the instant it reaches Успешно, which is the instant Logistika would
   call it delivered; there is no second clock here and an earlier comment
@@ -681,8 +706,8 @@ Per-screen traps worth knowing before you touch one:
   three repository statements, `src/lib/customerStates.ts`, `CustomerFlowChart`
   and two test files had all shipped on 2026-09-15 and **nothing rendered
   them**: the screen was one `useQuery` and a band away from the work being
-  finished. It is the first thing under «Batafsil» now — four tiles, the
-  new-vs-returning chart, sources, and today's silence.
+  finished. Four tiles, the new-vs-returning chart, sources and today's
+  silence, directly under the matrix.
   **IT INTRODUCES THE SCREEN'S SECOND CLOCK, and both are named out loud.** The
   band dates a customer from the day they ORDERED (`createdAtSource`);
   everything below dates them from the day their first order was DELIVERED.
@@ -697,14 +722,13 @@ Per-screen traps worth knowing before you touch one:
   that does not exist is how the sibling came to report twelve customers under
   a critical-red gauge. The span is printed from `meta.period`, not from the
   literal 90, so changing the default moves the sentence with it.
-  **THE QUERY IS `enabled: mode === 'detail'` WITH A LITERAL KEY**, and both
-  halves matter. Gated, because every consumer is inside «Batafsil» and the
-  default is «Oddiy» — the plan's own snippet omitted this and it would have
-  been a discarded request on every cold load. Literal, because
-  `cohortStale.test.tsx` exists for the hazard a CHANGING key creates under a
-  DISABLED query: `providers.tsx` gives every query `placeholderData`, which
+  **ITS KEY IS A LITERAL, AND THAT IS THE HALF THAT STILL MATTERS.** It
+  shipped `enabled: mode === 'detail'` and lost the gate hours later with the
+  mode; every consumer is on the page unconditionally now. The literal key
+  stays, because `cohortStale.test.tsx` exists for the hazard a CHANGING key
+  creates: `providers.tsx` gives every query `placeholderData`, which
   query-core applies with no `enabled` check, so `isPlaceholderData` latches
-  and nothing clears it. That file's source pin now names this key too, and
+  and nothing clears it. That file's source pin names this key too, and
   `stale=` is still absent from the page.
   **THE BAND CARRIES SOʼM, NOT A THIRD «TAKRORIY TUSHUM ULUSHI»** — a
   deliberate departure from the plan, which asked for a gauge there. That label
@@ -743,9 +767,11 @@ Per-screen traps worth knowing before you touch one:
   1280px laptop with the rail open, so that screen scrolls by ~264px where it
   scrolled by ~10. The pinned block is sticky and «6 oy» is one press away.
   The share is `data-share` and the count `data-count`, because «the grid's
-  figure» used to be `[data-heat]`'s whole `textContent` — which is what
-  `cohortAgreement.test.tsx` compares against «Oddiy»'s milestone to pin the
-  invariant the screen is built on. **A cell the reading cannot measure prints
+  figure» used to be `[data-heat]`'s whole `textContent`, which
+  `cohortAgreement.test.tsx` compared against «Oddiy»'s milestone. That test
+  and that milestone are both gone; the addresses stay, because a tile holding
+  two figures needs each of them separately reachable whatever asserts on it
+  next. **A cell the reading cannot measure prints
   no count either**: `· 0` under an em dash would report a measured zero where
   the grid means «this month has not happened».
   **A THIRD READING, «PUL», AND IT COSTS NO REQUEST.** `revenue` has ridden
@@ -821,10 +847,12 @@ Per-screen traps worth knowing before you touch one:
   move a row total, and the eighteen-month request cannot move a column.
   **TWO FLOORS, AND NEITHER IS DECORATION.** Per-customer money prints greyed
   under `MONEY_YOUNG_MONTHS` = 3 (a three-month-old cohort's lifetime value is
-  noise, and a money column is an invitation to compare down it); a milestone
-  in «Oddiy» prints «yetarli maʼlumot yoʻq» rather than a figure under
-  `MIN_COHORTS_FOR_AVERAGE` = 3 cohorts, after +12 once printed one cohort's
-  number as the company average. The sparkline is truncated on that same floor
+  noise, and a money column is an invitation to compare down it); a summary
+  cell comes off the ramp under `MIN_COHORTS_FOR_AVERAGE` = 3 cohorts, after
+  +12 once printed one cohort's number as the company average. That floor was
+  shared with «Oddiy»'s milestone, which refused outright below it — the
+  milestone is gone, the floor is not. The sparkline was truncated on that
+  same floor
   rather than drawn past it. A third, `SUMMARY_MIN_BASE` = 30, takes a thin
   summary cell off the colour ramp.
   **A STATED LIMIT: DUPLICATE IDENTITIES.** Bitrix24 holds the same human

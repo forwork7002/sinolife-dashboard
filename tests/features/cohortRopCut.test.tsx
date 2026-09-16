@@ -182,9 +182,6 @@ function mockFetch() {
           repeatRevenueShare: 65.2,
           repeatCustomers: 40,
           totalCustomers: 70,
-          currentMonth: '2026-09-01',
-          revenueTotalAll: { amount: 6_000_000, amountMinor: '600000000', currency: 'UZS' },
-          revenuePerCustomerAll: { amount: 500_000, amountMinor: '50000000', currency: 'UZS' },
           rop,
           rops: url.includes('include=rops')
             ? [

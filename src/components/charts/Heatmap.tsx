@@ -81,7 +81,7 @@ function isShareView(view: CohortView): view is 'cumulative' | 'monthly' {
  * whole matrix row for the fields beyond these five, which it would never
  * look at.
  */
-export interface AveragableCohortRow {
+interface AveragableCohortRow {
   readonly size: number
   /** Share of the cohort buying again, by offset. Null = the month has not happened. */
   readonly retention: readonly (number | null)[]
@@ -300,7 +300,7 @@ const SUMMARY_MIN_BASE = 30
  *
  * Three, because two cohorts is a pair and a pair has no middle.
  */
-export const MIN_COHORTS_FOR_AVERAGE = 3
+const MIN_COHORTS_FOR_AVERAGE = 3
 
 /**
  * Under this many months a cohort's money-to-date is greyed, and says why.
@@ -1704,7 +1704,7 @@ interface TipPanel {
   readonly footer?: string
 }
 
-export interface ColumnAverage {
+interface ColumnAverage {
   readonly percent: number | null
   /** Customers who came back, over the cohorts that reached this offset. */
   readonly returned: number
@@ -1729,7 +1729,7 @@ export interface ColumnAverage {
  * `CohortMatrixRow` so such a caller does not have to construct a grid row
  * just to hand this function the five fields it actually reads.
  */
-export function columnAverage(
+function columnAverage(
   rows: readonly AveragableCohortRow[],
   offset: number,
   view: CohortView,
@@ -1751,7 +1751,7 @@ export function columnAverage(
 }
 
 /** One column of the money reading's «Jami · oʻrtachaʻ row. */
-export interface MoneyColumnAverage {
+interface MoneyColumnAverage {
   /** Every reaching cohort's money through this offset ÷ all their customers. */
   readonly perCustomer: number | null
   /** The same two sums at offset 0, divided into it. */
@@ -1775,7 +1775,7 @@ export interface MoneyColumnAverage {
  * because there are tens of rows and one definition of the curve is worth more
  * than the walk it saves.
  */
-export function columnMoneyAverage(
+function columnMoneyAverage(
   rows: readonly CohortMatrixRow[],
   offset: number,
 ): MoneyColumnAverage {
@@ -1812,7 +1812,7 @@ export function columnMoneyAverage(
  * encoding; past ×1,1 the second decimal is precision nobody scans in a 78px
  * cell. The comma is the decimal mark this application prints everywhere.
  */
-export function multipleText(multiple: number): string {
+function multipleText(multiple: number): string {
   return `×${multiple.toFixed(multiple < 1.1 ? 2 : 1).replace('.', ',')}`
 }
 
@@ -1839,7 +1839,7 @@ export function multipleText(multiple: number): string {
  * The unit is said once in the column header, so this returns the digits
  * alone and a caller outside the grid appends its own «%».
  */
-export function sharePercentText(value: number): string {
+function sharePercentText(value: number): string {
   return value === 0 ? '0' : value < 1 ? '<1' : String(Math.round(value))
 }
 

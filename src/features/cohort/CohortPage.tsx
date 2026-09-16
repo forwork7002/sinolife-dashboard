@@ -12,10 +12,9 @@ import { SegmentedControl } from '@/components/ui/Controls'
 import { GaugeTile, Meter, SectionHeader, StatTile } from '@/components/ui/Stat'
 import { InfoTip } from '@/components/ui/Tooltip'
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
-import { SimpleView } from '@/features/cohort/SimpleView'
 import { StateBars } from '@/features/cohort/StateBars'
 import { RopPicker } from '@/features/cohort/RopPicker'
-import { useCohortMode, useCohortRop } from '@/features/cohort/useCohortMode'
+import { useCohortRop } from '@/features/cohort/useCohortRop'
 import { PageShell } from '@/features/shared/PageShell'
 import {
   type CohortDto,
@@ -231,27 +230,6 @@ export function CohortPage() {
     refetchInterval: 5 * 60_000,
   })
 
-  /**
-   * Which reading of this screen is on — the manager's or the analyst's.
-   *
-   * URL-backed (`useCohortMode`), unlike `view` and `months` below, and the
-   * difference is what each one is FOR: those two decide how one card draws an
-   * answer, this decides which answer the page opens on, and a manager is sent
-   * a link to the latter. It is written with `replaceState`, so it costs no
-   * navigation.
-   *
-   * BOTH MODES READ THE SAME `useQuery(['cohorts'])` RESULT — that key is
-   * above this hook and does not mention the mode, so switching readings
-   * issues no cohort request, shows no skeleton and cannot produce a second
-   * answer. That is not a convenience: a second endpoint for the manager's
-   * view would have doubled the most expensive read in this product to print
-   * numbers that were already in the first response — and the two views would
-   * then have been free to disagree about the same customers across a sync.
-   *
-   * It is read BEFORE the concentration query below, which is the one query
-   * on this page the mode does gate. See that query's own comment.
-   */
-  const { mode, setMode } = useCohortMode()
 
   /*
     NO `apiParams`, AND NO KEY THAT COULD CARRY ONE.
@@ -262,27 +240,13 @@ export function CohortPage() {
     entries that all hold the same answer. Same cadence as the matrix above: a
     ninety-day shape does not move in a minute either.
 
-    AND IT IS ONLY ASKED FOR IN «BATAFSIL», WHICH IS NOT THE DEFAULT.
+    IT USED TO BE ASKED FOR ONLY IN «BATAFSIL», AND THAT MODE IS GONE.
 
-    Every consumer of this response — the four tiles and `RepeatShareCard` —
-    is inside the `detail` branch. When «Batafsil» was the whole page that
-    made this a rendered query; making «Oddiy» the default turned it into a
-    DISCARDED one on every first load of the slowest screen in the product,
-    for the majority of visits, which never press the toggle at all.
-
-    THE TRADE, STATED: the first press of «Batafsil» now waits for this
-    request instead of finding it already in hand. That cost is paid once —
-    TanStack caches the result under the constant key, so toggling back and
-    forth afterwards costs nothing and the band redraws from cache — and it
-    is paid by the reader who asked for the analyst's view, which is the
-    reader who is prepared to wait for it. A prefetch on every load spends a
-    real query on every manager who never asks, and the band already degrades
-    to honest skeletons while it loads (`concStatus`), so what the waiting
-    reader sees is the state the page was built to show.
-
-    The gate is on the MODE and not on the query key: a key mentioning the
-    mode would be a second cache entry for one answer, which is the mistake
-    the cohort read's own comment is about.
+    The gate earned its place while most visits never opened the analyst's
+    view: it turned a rendered query into a discarded one on every first load
+    of the slowest screen in the product. With one reading left, every
+    consumer of this response is drawn on every visit, and the gate would be a
+    condition that is always true.
   */
   /*
     «MIJOZLAR OQIMI» — THE BAND AT THE TOP, AND ITS OWN CLOCK.
@@ -294,14 +258,11 @@ export function CohortPage() {
     the sibling endpoint came to report twelve customers under a critical-red
     gauge). A key that COULD carry a window would invite somebody to pass one.
 
-    GATED ON «Batafsil», which the plan's own snippet did not do — and this
-    is a deliberate departure from it, for the reason the concentration query
-    beside it already gives at length: every consumer of this response is
-    inside the `detail` branch, so on the default «Oddiy» view an ungated
-    read would be a discarded request on every first load of the slowest
-    screen in the product. The trade is the same one, paid by the same
-    reader: the first press of «Batafsil» waits for it, once, and TanStack
-    caches it under this constant key afterwards.
+    IT WAS GATED ON «Batafsil» UNTIL THAT MODE WENT (2026-09-16). Every
+    consumer of this response is now on the page unconditionally, so a gate
+    would be a condition that is always true — and one more thing able to fall
+    out of step with what is drawn. The key stays a literal for the reason
+    `cohortStale.test.tsx` gives.
   */
   const flow = useQuery({
     queryKey: ['customer-flow'],
@@ -310,7 +271,6 @@ export function CohortPage() {
        this window lands on. Matched to the cohort read below. */
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
-    enabled: mode === 'detail',
   })
 
   const concentration = useQuery({
@@ -318,7 +278,6 @@ export function CohortPage() {
     queryFn: ({ signal }) => apiGet<ConcentrationDto>('/insights/concentration', {}, signal),
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
-    enabled: mode === 'detail',
   })
 
   /**
@@ -499,70 +458,171 @@ export function CohortPage() {
         nothing able to clear it).
       */
       period={false}
-      /*
-        `actions`, not `toolbar`. The toolbar row is for FILTERS — controls
-        that narrow rows — and this narrows nothing: it chooses which reading
-        of one answer the page opens on. It is also the first thing a reader
-        needs to find, which is what the slot beside the title is for.
-      */
-      actions={
-        <SegmentedControl
-          value={mode}
-          onChange={setMode}
-          ariaLabel="Sahifa koʻrinishi"
-          options={[
-            { value: 'simple', label: 'Oddiy' },
-            { value: 'detail', label: 'Batafsil' },
-          ]}
-        />
-      }
     >
-      {/*
-        ONE FETCH, TWO READINGS — and the switch is directly below the title.
+        {/*
+          THE LEAD INSTRUMENT, AND SINCE 2026-09-16 THE FIRST THING ON THE PAGE.
 
-        «Oddiy» opens on the three questions a manager asks out loud; «Batafsil»
-        is the matrix and the bands under it. Neither is a permission and
-        neither is a second question: both are drawn from the `['cohorts']`
-        result already in hand, off the SAME mapped rows, so pressing the
-        toggle redraws and asks nothing.
+          It is the one thing this screen shows that nothing else in the
+          product can, so it wears the hero surface and the registration
+          brackets — once per page, and only here. Everything under it stays an
+          ordinary card on purpose: the treatment ranks the panel because
+          nothing else wears it.
 
-        The empty and error states are stated in whichever mode is on, rather
-        than only under the matrix. A manager who never opens «Batafsil» still
-        has to be told the difference between "no customer was linked to a
-        delivered order" and "we could not ask".
-      */}
-      {mode === 'simple' ? (
-        <>
-          {query.isPending && <ChartSkeleton height={360} />}
+          IT USED TO OPEN BELOW THREE TILES, and before that below a whole
+          second reading of the same payload. Both were context FOR the table,
+          and both put the table itself under the fold on the screen it is
+          actually read on. Context that costs the reader the thing it is
+          context for is not a trade worth making twice.
+        */}
+        <ChartCard
+          title="Kogorta matritsasi"
+          className="card-hero brackets"
+          /* The matrix now carries its own column group, its own legend and a
+             worked example from the reader's own data, so the card hint no longer
+             repeats the mechanics. It says the one thing the table cannot: WHY a
+             row is a row. */
+          hint="Mijozlar birinchi xarid qilgan oyi boʻyicha guruhlanadi — har bir guruh keyin qanchalik qaytib kelgani shu qatorda koʻrinadi."
+          action={
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {/* FIRST, because it is the only one of the three that changes
+                  the ANSWER. The two beside it change how that answer is
+                  drawn, and putting a question and two renderings of it in one
+                  row without ordering them leaves the reader to discover which
+                  is which by pressing. */}
+              <RopPicker
+                value={rop}
+                options={ropList}
+                loading={ropOptions.isFetching}
+                onOpen={() => setPicking(true)}
+                onChange={setRop}
+              />
+              <SegmentedControl
+                value={view}
+                onChange={setView}
+                ariaLabel="Matritsa koʻrinishi"
+                /*
+                  THREE READINGS OF ONE PAYLOAD, AND THE THIRD COSTS NOTHING
+                  EITHER.
+
+                  «Pul» is built in the browser from `revenue`, which has
+                  ridden every row of this response since the matrix learned to
+                  print a cohort's money — so the page still makes the two
+                  requests it made before, and the money reading cannot
+                  disagree with the customer readings beside it. Same argument
+                  as «Oddiy» / «Batafsil» one level up, and as the FAKT 1 /
+                  FAKT 2 switch on the sellers board: a second question would
+                  be a second answer, and two answers straddle a sync.
+
+                  It is a THIRD OPTION on this control rather than a control of
+                  its own. The card already carries two, and «what is in a
+                  cell» is one question with three answers, not two questions.
+                */
+                options={[
+                  { value: 'cumulative', label: 'Jami qaytgan' },
+                  { value: 'monthly', label: 'Oylik' },
+                  { value: 'money', label: 'Pul' },
+                ]}
+              />
+              {/* The window, beside the reading: both controls change how the
+                  same answer is LOOKED at, neither asks the server anything. */}
+              <SegmentedControl
+                value={months}
+                onChange={setMonths}
+                ariaLabel="Nechta oy koʻrsatilsin"
+                options={[
+                  { value: '6', label: '6 oy' },
+                  { value: '12', label: '12 oy' },
+                  { value: 'all', label: 'Hammasi' },
+                ]}
+              />
+            </div>
+          }
+        >
+          {query.isPending && <ChartSkeleton height={320} />}
           {query.isError && (
-            <ErrorState
-              message={(query.error as Error).message}
-              onRetry={() => void query.refetch()}
-            />
+            <ErrorState message={(query.error as Error).message} onRetry={() => void query.refetch()} />
           )}
           {data && data.rows.length === 0 && <CohortEmpty rop={data.rop} />}
+          {/*
+            WHAT THE CUT MEANS, AND WHAT IT DOES NOT REACH.
+
+            Printed from `data.rop` — the response's own echo — and never from
+            the control, which holds the team the reader has just picked while
+            the rows on screen are still the previous one's. For the one render
+            that differs, a heading built from the control names a team whose
+            numbers are not there yet.
+
+            THREE SENTENCES, AND EACH ONE ANSWERS A WRONG READING THIS CUT
+            INVITES. That the returns are not re-attributed is the one a reader
+            will otherwise assume the other way round and use to judge a team's
+            follow-up work. That «База» and the concentration band below are
+            NOT cut is the one that would otherwise have them reading a
+            company-wide partition under a team's heading — the retention cycle
+            is run centrally, so there is no acquiring team to cut it by.
+          */}
+          {/* TRUTHY, not `!== null`. The field is typed non-optional, which is
+              a promise about the SERVER and not about every object that ever
+              reaches this component: a fixture or an older cached payload
+              carries `undefined`, and `undefined !== null` drew the whole
+              banner with an empty «» where the team name goes. A cut is a team
+              NAME; the absence of one is the absence of a cut, whichever way
+              it is spelled. */}
+          {data && data.rop && (
+            <p
+              className="mb-3 text-[11px] leading-relaxed"
+              style={{ color: 'var(--ink-secondary)' }}
+            >
+              Faqat <strong>{data.rop}</strong> birinchi marta sotgan mijozlar.{' '}
+              Qaytib kelgan xaridni keyin kim sotgani muhim emas — u ham shu
+              jamoaga yoziladi, chunki bu «kim mijoz olib keladi» savoli,
+              «kim ushlab qoladi» emas.{' '}
+              Pastdagi «База» va mijozlar kontsentratsiyasi bloklari
+              kesilmaydi — ular butun kompaniya boʻyicha qoladi.
+            </p>
+          )}
           {data && data.rows.length > 0 && (
-            <SimpleView
-              data={{
-                /* THE GRID'S OWN ROWS. Mapped once, above. */
-                rows: matrixRows,
-                repeatCustomers: data.repeatCustomers,
-                totalCustomers: data.totalCustomers,
-                repeatRevenueShare: data.repeatRevenueShare,
-                /* From the server, in APP_TIMEZONE. Never `new Date()` —
-                   see `CohortSummaryDto.currentMonth`. */
-                currentMonth: data.currentMonth,
-                revenuePerCustomerAll: data.revenuePerCustomerAll,
-                /* The bound the query above asked for, so the view can state
-                   the window it draws without carrying a second copy of the
-                   number. */
-                historyMonths: COHORT_HISTORY_MONTHS,
+            <CohortHeatmap
+              rows={matrixRows}
+              view={view}
+              months={MONTH_WINDOWS[months]}
+              /*
+                THE SUMMARY ROW'S «Kogorta tushumi», which printed «—» until
+                now because the grid is handed money already formatted and had
+                nothing to add. So it is added HERE, beside the formatters —
+                and what is added is the column the reader can see.
+
+                NOT `revenueTotalAll`, although the DTO now carries it. That is
+                the company's whole history, and it would have made its only
+                appearance on this screen in a table FOOTER, whose grammar
+                already promises «the column, added up». The tiles at the top
+                can carry a whole-history figure because each wears a visible
+                hint line naming its span; this cell has a `title` and an
+                `aria-label` and no visible marker at all, so a sighted reader
+                scanning the column would see one number under a column of
+                numbers and read it as their total. It would have been right
+                far more often than it looked wrong, which is the worst way for
+                a figure to be wrong.
+
+                Well-defined, and it stays well-defined: `months` bounds the
+                grid's COLUMNS, not its rows, so every row handed over is drawn
+                whichever width the reader picks and this sum does not move
+                under the 6 / 12 / Hammasi control. `revenueTotalAmount` is the
+                lossy major-unit number, which is exactly the right one here —
+                it is the same number already printed in every cell of this
+                column.
+
+                «1 mijozga» keeps its «—» and its sentence. A mean of
+                per-customer figures across cohorts of different ages is not a
+                fact about anything.
+              */
+              totalRevenue={{
+                compact: formatCompactUzs(visibleRevenueTotal),
+                exact: formatUzs(visibleRevenueTotal),
               }}
             />
           )}
-        </>
-      ) : (
-        <>
+        </ChartCard>
+
         {/*
           «MIJOZLAR OQIMI» — THE BAND THIS SCREEN WAS MISSING, AND THE SECOND
           CLOCK IT INTRODUCES.
@@ -928,162 +988,6 @@ export function CohortPage() {
           sanalayotgani boshqacha.
         </p>
 
-        {/*
-          The lead instrument. The matrix is the one thing this page exists to
-          show that nothing else in the product can, so it wears the hero
-          surface and the registration brackets — once per page, and only here.
-          The tiles above and the band below stay ordinary cards on purpose:
-          the treatment ranks the panel because nothing else wears it.
-        */}
-        <ChartCard
-          title="Kogorta matritsasi"
-          className="card-hero brackets"
-          /* The matrix now carries its own column group, its own legend and a
-             worked example from the reader's own data, so the card hint no longer
-             repeats the mechanics. It says the one thing the table cannot: WHY a
-             row is a row. */
-          hint="Mijozlar birinchi xarid qilgan oyi boʻyicha guruhlanadi — har bir guruh keyin qanchalik qaytib kelgani shu qatorda koʻrinadi."
-          action={
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {/* FIRST, because it is the only one of the three that changes
-                  the ANSWER. The two beside it change how that answer is
-                  drawn, and putting a question and two renderings of it in one
-                  row without ordering them leaves the reader to discover which
-                  is which by pressing. */}
-              <RopPicker
-                value={rop}
-                options={ropList}
-                loading={ropOptions.isFetching}
-                onOpen={() => setPicking(true)}
-                onChange={setRop}
-              />
-              <SegmentedControl
-                value={view}
-                onChange={setView}
-                ariaLabel="Matritsa koʻrinishi"
-                /*
-                  THREE READINGS OF ONE PAYLOAD, AND THE THIRD COSTS NOTHING
-                  EITHER.
-
-                  «Pul» is built in the browser from `revenue`, which has
-                  ridden every row of this response since the matrix learned to
-                  print a cohort's money — so the page still makes the two
-                  requests it made before, and the money reading cannot
-                  disagree with the customer readings beside it. Same argument
-                  as «Oddiy» / «Batafsil» one level up, and as the FAKT 1 /
-                  FAKT 2 switch on the sellers board: a second question would
-                  be a second answer, and two answers straddle a sync.
-
-                  It is a THIRD OPTION on this control rather than a control of
-                  its own. The card already carries two, and «what is in a
-                  cell» is one question with three answers, not two questions.
-                */
-                options={[
-                  { value: 'cumulative', label: 'Jami qaytgan' },
-                  { value: 'monthly', label: 'Oylik' },
-                  { value: 'money', label: 'Pul' },
-                ]}
-              />
-              {/* The window, beside the reading: both controls change how the
-                  same answer is LOOKED at, neither asks the server anything. */}
-              <SegmentedControl
-                value={months}
-                onChange={setMonths}
-                ariaLabel="Nechta oy koʻrsatilsin"
-                options={[
-                  { value: '6', label: '6 oy' },
-                  { value: '12', label: '12 oy' },
-                  { value: 'all', label: 'Hammasi' },
-                ]}
-              />
-            </div>
-          }
-        >
-          {query.isPending && <ChartSkeleton height={320} />}
-          {query.isError && (
-            <ErrorState message={(query.error as Error).message} onRetry={() => void query.refetch()} />
-          )}
-          {data && data.rows.length === 0 && <CohortEmpty rop={data.rop} />}
-          {/*
-            WHAT THE CUT MEANS, AND WHAT IT DOES NOT REACH.
-
-            Printed from `data.rop` — the response's own echo — and never from
-            the control, which holds the team the reader has just picked while
-            the rows on screen are still the previous one's. For the one render
-            that differs, a heading built from the control names a team whose
-            numbers are not there yet.
-
-            THREE SENTENCES, AND EACH ONE ANSWERS A WRONG READING THIS CUT
-            INVITES. That the returns are not re-attributed is the one a reader
-            will otherwise assume the other way round and use to judge a team's
-            follow-up work. That «База» and the concentration band below are
-            NOT cut is the one that would otherwise have them reading a
-            company-wide partition under a team's heading — the retention cycle
-            is run centrally, so there is no acquiring team to cut it by.
-          */}
-          {/* TRUTHY, not `!== null`. The field is typed non-optional, which is
-              a promise about the SERVER and not about every object that ever
-              reaches this component: a fixture or an older cached payload
-              carries `undefined`, and `undefined !== null` drew the whole
-              banner with an empty «» where the team name goes. A cut is a team
-              NAME; the absence of one is the absence of a cut, whichever way
-              it is spelled. */}
-          {data && data.rop && (
-            <p
-              className="mb-3 text-[11px] leading-relaxed"
-              style={{ color: 'var(--ink-secondary)' }}
-            >
-              Faqat <strong>{data.rop}</strong> birinchi marta sotgan mijozlar.{' '}
-              Qaytib kelgan xaridni keyin kim sotgani muhim emas — u ham shu
-              jamoaga yoziladi, chunki bu «kim mijoz olib keladi» savoli,
-              «kim ushlab qoladi» emas.{' '}
-              Pastdagi «База» va mijozlar kontsentratsiyasi bloklari
-              kesilmaydi — ular butun kompaniya boʻyicha qoladi.
-            </p>
-          )}
-          {data && data.rows.length > 0 && (
-            <CohortHeatmap
-              rows={matrixRows}
-              view={view}
-              months={MONTH_WINDOWS[months]}
-              /*
-                THE SUMMARY ROW'S «Kogorta tushumi», which printed «—» until
-                now because the grid is handed money already formatted and had
-                nothing to add. So it is added HERE, beside the formatters —
-                and what is added is the column the reader can see.
-
-                NOT `revenueTotalAll`, although the DTO now carries it. That is
-                the company's whole history, and it would have made its only
-                appearance on this screen in a table FOOTER, whose grammar
-                already promises «the column, added up». The tiles at the top
-                can carry a whole-history figure because each wears a visible
-                hint line naming its span; this cell has a `title` and an
-                `aria-label` and no visible marker at all, so a sighted reader
-                scanning the column would see one number under a column of
-                numbers and read it as their total. It would have been right
-                far more often than it looked wrong, which is the worst way for
-                a figure to be wrong.
-
-                Well-defined, and it stays well-defined: `months` bounds the
-                grid's COLUMNS, not its rows, so every row handed over is drawn
-                whichever width the reader picks and this sum does not move
-                under the 6 / 12 / Hammasi control. `revenueTotalAmount` is the
-                lossy major-unit number, which is exactly the right one here —
-                it is the same number already printed in every cell of this
-                column.
-
-                «1 mijozga» keeps its «—» and its sentence. A mean of
-                per-customer figures across cohorts of different ages is not a
-                fact about anything.
-              */
-              totalRevenue={{
-                compact: formatCompactUzs(visibleRevenueTotal),
-                exact: formatUzs(visibleRevenueTotal),
-              }}
-            />
-          )}
-        </ChartCard>
-
         <ChartCard
           title="База — mijozlar hozir qayerda"
           /*
@@ -1237,8 +1141,6 @@ export function CohortPage() {
         </div>
 
         <RepeatShareCard status={concStatus} repeat={conc?.repeat} />
-        </>
-      )}
     </PageShell>
   )
 }

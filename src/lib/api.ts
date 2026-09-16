@@ -523,24 +523,6 @@ export interface CohortSummaryDto {
   readonly repeatCustomers: number
   readonly totalCustomers: number
   /**
-   * The month the screen is read against — first day, `YYYY-MM-DD`.
-   *
-   * COMPUTED ON THE SERVER, IN `APP_TIMEZONE`, and that is the whole point of
-   * it being on the wire. `ArrivalBars` walks a dense calendar up to this
-   * month and hatches it as unfinished; a `new Date()` here would be the
-   * reader's own clock, and near a month boundary a reader outside Tashkent
-   * would hatch the wrong month and drop the wrong one from the comparison.
-   */
-  readonly currentMonth: string
-  /** Every cohort's money added up — whole history, like the two counts above. */
-  readonly revenueTotalAll: MoneyDto
-  /**
-   * That total per customer — money TO DATE, which is why the sentence that
-   * prints it says «hozirgacha». Built beside `repeatRevenueShare` from the
-   * same two figures, so the manager's two money facts are one read.
-   */
-  readonly revenuePerCustomerAll: MoneyDto
-  /**
    * The teams the matrix can be cut by, biggest first — EMPTY unless asked.
    *
    * A team here is whoever made the customer's FIRST delivered order, read

@@ -207,48 +207,6 @@ export interface CohortSummaryDto {
   readonly repeatCustomers: number
   readonly totalCustomers: number
   /**
-   * The month the whole screen is read against — first day, `YYYY-MM-DD`.
-   *
-   * COMPUTED IN SQL, IN `APP_TIMEZONE`, and shipped rather than re-derived.
-   * `InsightsRepository.cohorts` takes it from `date_trunc('month', now() AT
-   * TIME ZONE $1)`, in the same statement as the cells, and the service has
-   * always consumed it internally (it is the horizon every row's `ageMonths`
-   * is measured from). It now travels, because the arrival band draws a dense
-   * calendar and has to know where that calendar ENDS.
-   *
-   * A `new Date()` in the browser would be the reader's own timezone. Near a
-   * month boundary a reader outside Tashkent would hatch the wrong month as
-   * «oy tugamagan» and drop the wrong month out of the comparison — a wrong
-   * answer wearing an entirely ordinary face. Every window in this product is
-   * computed in `APP_TIMEZONE`; this one is no exception for being a month.
-   */
-  readonly currentMonth: string
-  /**
-   * Every cohort's money, added up — the company's whole-history revenue that
-   * is attached to a customer at all.
-   *
-   * WHOLE HISTORY, like `repeatCustomers` and `totalCustomers` beside it and
-   * unlike `rows`, which honour the `months` bound. It is the same
-   * `firstRevenue + laterRevenue` that `repeatRevenueShare` divides, so the
-   * share and the total it is a share OF can never be built from two reads.
-   */
-  readonly revenueTotalAll: MoneyDto
-  /**
-   * That total divided by every customer there has ever been.
-   *
-   * MONEY TO DATE, which is why the screen says «hozirgacha»: the business is
-   * still running, so this is a lifetime value only in the sense that the
-   * lifetimes are not over. Computed here, beside `repeatRevenueShare`, off
-   * the same two BigInts — the two money facts the manager's view prints have
-   * to come from one read or they will disagree about the same customers.
-   *
-   * Zero customers yields zero rather than a division: this DTO's own
-   * `repeatRevenueShare` is `null` when nothing was measured, and the matrix
-   * below it already says so; a second null to thread through a sentence buys
-   * nothing the empty state does not already say.
-   */
-  readonly revenuePerCustomerAll: MoneyDto
-  /**
    * The teams the matrix can be cut by, biggest first — EMPTY unless asked.
    *
    * A team here is whoever made the customer's FIRST delivered order, read
@@ -1300,15 +1258,21 @@ export class InsightsService {
         total === 0n ? null : Math.round(Number((laterRevenue * 1000n) / total)) / 10,
       repeatCustomers,
       totalCustomers,
-      currentMonth,
-      revenueTotalAll: toMoneyDto(money(total, currency)),
-      /* Guarded, not divided: `total` is 0n whenever `totalCustomers` is, so
-         the branch only ever picks between two zeroes — but BigInt division by
-         0n throws, and a screen that cannot draw is worse than one that says
-         nothing. */
-      revenuePerCustomerAll: toMoneyDto(
-        money(totalCustomers === 0 ? 0n : total / BigInt(totalCustomers), currency),
-      ),
+      /*
+        THREE FIELDS LEFT THIS DTO ON 2026-09-16 WITH THE READER THAT WANTED
+        THEM.
+
+        «Oddiy» — the manager's reading — printed the company's whole-history
+        money two ways (`revenueTotalAll`, `revenuePerCustomerAll`), and its
+        arrival chart walked a dense calendar up to `currentMonth`. The mode
+        was removed; nothing on the screen reads any of the three.
+
+        `currentMonth` is still COMPUTED — it is the horizon every row's
+        `ageMonths` is measured from, a few lines above — it simply no longer
+        travels. The two money figures came from `total`, which
+        `repeatRevenueShare` still divides, so the statement underneath is
+        unchanged: what went is the folding and the wire, not the query.
+      */
       /* Empty unless asked for — see `CohortMatrix.rops`. It travels on the
          same response as the matrix so the option a reader picks and the rows
          they then see are one read of the table. */

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -93,9 +93,6 @@ const COHORTS = {
   repeatRevenueShare: 65.2,
   repeatCustomers: 159,
   totalCustomers: 203,
-  currentMonth: '2026-09-01',
-  revenueTotalAll: { amount: 253_750_000, amountMinor: '25375000000', currency: 'UZS' },
-  revenuePerCustomerAll: { amount: 1_250_000, amountMinor: '125000000', currency: 'UZS' },
 }
 
 const CONCENTRATION = {
@@ -209,8 +206,19 @@ async function openPage() {
       <CohortPage />
     </QueryClientProvider>,
   )
-  // The manager's view resolves first — both queries have landed.
-  await screen.findByText(/Qancha yangi mijoz keladi\?/)
+  /*
+    WAIT FOR THE MATRIX'S SUMMARY ROW, NOT FOR ITS CARD TITLE.
+
+    The title renders before the fetch resolves, so waiting on it would let
+    every assertion below race the data — and the ones that lost would fail as
+    «the page does not say this» rather than «the page has not loaded».
+    «Jami · oʻrtacha» is drawn from rows, so it cannot appear until they do.
+
+    This used to wait for «Oddiy»'s opening question and then press
+    «Batafsil». That mode was removed on 2026-09-16; every assertion in this
+    file was always about what the one remaining reading draws.
+  */
+  await screen.findByText('Jami · oʻrtacha')
   return view
 }
 
@@ -227,7 +235,6 @@ describe('the two customer totals', () => {
     await openPage()
 
     // «Batafsil» is where the tile row — and the hint beneath it — lives.
-    fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
 
     const hint = screen.getByTestId('cohort-total-hint').textContent ?? ''
     expect(hint).toMatch(/yetkazilgan/i)
@@ -241,7 +248,6 @@ describe('the two customer totals', () => {
 
   it('names the population difference — customers vs. orders — not a clock difference', async () => {
     await openPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
 
     const hint = screen.getByTestId('cohort-total-hint').textContent ?? ''
     // The word "soati" (clock/hour) is only used to DENY it is the
@@ -260,7 +266,6 @@ describe('the two customer totals', () => {
       which reads as every tile on the page, this one included.
     */
     await openPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
 
     const hint = screen.getByTestId('cohort-total-hint').textContent ?? ''
     expect(hint).toMatch(/Jami mijozlar/)
@@ -276,7 +281,6 @@ describe('the two customer totals', () => {
       one sentence built to reconcile them.
     */
     await openPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
 
     const el = screen.getByTestId('cohort-total-hint')
     expect(el.tagName.toLowerCase()).toBe('p')
@@ -284,31 +288,20 @@ describe('the two customer totals', () => {
   })
 })
 
-describe('every tip names its own question', () => {
-  /*
-    THE MANAGER'S VIEW, ONLY. «Batafsil» carries exactly one `InfoTip` today
-    (`RepeatShareCard`'s «Nega ikkita raqam», which does not label itself
-    «Izoh» and so is out of this query's reach on purpose — the matrix and
-    «База» explain themselves through always-visible `ChartCard` hint text
-    instead, see the describe block below). Switching to «Batafsil» before
-    this assertion would make `getAllByRole` match nothing there and throw
-    on an empty result — a jsdom bug in its own error-formatting path
-    (`role-helpers.js`'s `prettyRoles`, which `cloneNode`s every candidate
-    button to build the debug dump) turns that empty match into an unrelated
-    `TypeError` rather than a clean assertion failure. Asserting on an empty
-    set would also be vacuous, so this stays where the brief's own draft put
-    it: the view that actually carries the tips.
-  */
-  it('never answers with «kogorta tahlili» or «retention»', async () => {
-    await openPage()
+/*
+  THE TIP AUDIT LEFT WITH THE VIEW THAT CARRIED THE TIPS.
 
-    const tips = screen.getAllByRole('button', { name: /izoh/i })
-    expect(tips.length).toBeGreaterThan(0)
-    for (const tip of tips) {
-      expect(tip.getAttribute('aria-label')).not.toMatch(/kogorta tahlili|retention/i)
-    }
-  })
-})
+  A `describe` here asserted that no «izoh» tooltip answers a question with
+  the words «kogorta tahlili» or «retention» — jargon that names the block
+  rather than the reading. Every one of those tips lived in «Oddiy» and went
+  with it on 2026-09-16; the one tooltip left on this page is
+  `RepeatShareCard`'s «Nega ikkita raqam», which is not in that set.
+
+  Removed rather than re-pointed, in the deleted test's own words: asserting
+  over an empty set is vacuous, and `getAllByRole` on a set that cannot match
+  throws inside jsdom's error formatter rather than failing cleanly. If
+  «izoh» tips come back, so should it.
+*/
 
 describe('the matrix and «База» already name their own clock', () => {
   /*
@@ -323,14 +316,12 @@ describe('the matrix and «База» already name their own clock', () => {
   */
   it('states the matrix is grouped by first purchase, with its denominator', async () => {
     await openPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
 
     expect(screen.getByText(/kogortadagi jami mijozlar/i)).toBeDefined()
   })
 
   it('states «База» is a snapshot, not a historical curve', async () => {
     await openPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
 
     /*
       ONE BLOCK OWNS THIS SENTENCE. «Mijozlar oqimi» at the top also reports a
@@ -358,7 +349,6 @@ describe('the matrix and «База» already name their own clock', () => {
   */
   it('names the order clock on the band and the delivered clock on the matrix', async () => {
     await openPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
 
     expect(screen.getByText(/Buyurtma berilgan sana boʻyicha/i)).toBeDefined()
     expect(screen.getByText(/Yetkazilgan sana boʻyicha/i)).toBeDefined()
@@ -375,7 +365,6 @@ describe('the matrix and «База» already name their own clock', () => {
   */
   it('keeps the repeat-share label to the two blocks that already own it', async () => {
     await openPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Batafsil' }))
 
     expect(screen.getAllByText(/Takroriy tushum ulushi/i)).toHaveLength(2)
     expect(screen.getByText(/Takroriy xarid tushumi/i)).toBeDefined()
