@@ -33,7 +33,9 @@ describe('daraja narvoni', () => {
   })
 
   it('kalibrlangan haqiqiy ballar o‘lchangan darajani beradi', () => {
-    // probe-medals3.mts, production, 2026-09-15
+    // Measured against production, 2026-09-15, by a throwaway probe since
+    // deleted with the rest of them — the figures are the record, the script
+    // was not.
     expect(levelOf(7_700)).toBe(12) // Shahtiyarovna 197 Marjona
     expect(levelOf(1_130)).toBe(5) // mediana
   })
