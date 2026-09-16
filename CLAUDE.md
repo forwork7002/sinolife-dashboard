@@ -996,7 +996,7 @@ Per-screen traps worth knowing before you touch one:
   komandalar boʻyichasini fakt 1 va fakt 2 boʻyicha koʻrish mumkin boʻlsin».
   Every row is already on the payload carrying both facts, so this is one
   answer read two ways and not a second question: no parameter, no request, no
-  cache key, nothing that can straddle a sync. `rankedBy` in `SellersPage`
+  cache key, nothing that can straddle a sync. `rankedBy` in `sellers/board.ts`
   therefore MIRRORS `SellerBoardService` — `buildBoard` for the sellers and
   `teamRows` for the teams — the fact being read, then the other one, then the
   key, with competition ranking over BOTH figures; change that rule on the

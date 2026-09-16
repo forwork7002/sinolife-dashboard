@@ -1,5 +1,5 @@
 import type { MedalCode, SellerMedalDto, SellerMedalRowDto } from '@/lib/api'
-import { formatCompactUzs, formatSomFull } from '@/lib/format'
+import { formatSomFull } from '@/lib/format'
 
 /**
  * Medal va daraja lug'atlari — frontend nusxasi.
@@ -132,10 +132,6 @@ export function dativeOf(title: string): string {
   return /\s[IVXLCDM]+$/.test(title) ? `${title} ga` : `${title}ga`
 }
 
-/** «127 mln», «9.1 mln», «1.2 mlrd» — `formatCompactUzs` ning o'zi (o'nlik nuqta bilan), nom aniqroq. */
-export function mlnLabel(som: number): string {
-  return formatCompactUzs(som)
-}
 /* ---------------------------------------------------------------------------
  * EFIR — belgi xaritasi va tartib (spec §3). Mirrors `gen_efir.py`
  * (MEDAL_SYM, MONTH_NUM, RARE, HIDE_IN_ROWS) — mock va taxta bir xil chizsin.

@@ -155,3 +155,74 @@ describe('EFIR — o‘rindiq', () => {
     for (const gone of ['pedestal', 'lv-stamps', 'lv-ghost', 'lv-sheen', 'podium-shine']) expect(code).not.toContain(gone)
   })
 })
+
+describe('EFIR — qator, komandalar, e‘lon', () => {
+  it('eski bo‘limlar yo‘q: PODIUM, LAVHA, MEDAL, DARAJA BLOKI', () => {
+    for (const banner of ['* PODIUM —', '* LAVHA —', '* MEDAL —', '* DARAJA BLOKI']) expect(CSS, banner).not.toContain(banner)
+    expect(CSS).not.toContain('--tv-tone')
+  })
+
+  it('qator gridi spec §5 bo‘yicha, yorliq qatori bilan bir xil; tasma `--tier`; o‘qilayotgan fakt qalin', () => {
+    const code = strip(EFIR())
+    expect(code).toContain('.tv-cols,\n.row {\n  display: grid;\n  grid-template-columns: 10px 52px 70px minmax(0, 1fr) 84px 160px 146px 60px 68px;')
+    expect(code).toMatch(/\.row \{[^}]*height: 50px;/)
+    expect(code).toMatch(/\.row__band \{[^}]*background: var\(--tier\);/)
+    expect(code).toMatch(/\.row\[data-tier="0"\] \.row__band \{[^}]*box-shadow: inset 1px 0 0 var\(--tier\);/)
+    expect(code).toContain('.tv-rows[data-read="fakt2"] .row__f2,\n.tv-rows[data-read="fakt1"] .row__f1 {')
+    expect(code).toMatch(/\.row__name \{[^}]*text-overflow: ellipsis;/)
+  })
+
+  it('komandalar: 62 px qatorlar, ulush chizig‘i `--share`, metall raqamlar faqat 1–3', () => {
+    const code = strip(EFIR())
+    expect(code).toContain('.tv-tcols,\n.trow {\n  display: grid;\n  grid-template-columns: 36px minmax(0, 1fr) 40px 146px 58px 104px 48px 58px;')
+    expect(code).toMatch(/\.trow \{[^}]*height: 62px;/)
+    expect(code).toMatch(/\.trow::after \{[^}]*width: calc\(\(100% - 56px\) \* var\(--share, 0\)\);/)
+    expect(code).toContain('.trow__rank[data-metal="gold"] { color: var(--medal-gold); font-weight: 700; }')
+    expect(code).toContain('.trow__rank[data-metal="silver"] { color: var(--medal-silver); font-weight: 700; }')
+    expect(code).toContain('.trow__rank[data-metal="bronze"] { color: var(--medal-bronze); font-weight: 700; }')
+  })
+
+  /*
+    E'LON USTUNNI SURMAYDI: sarlavha USTIDA absolyut, kirishi `translate` da
+    (`transform` markazlashtirishga ketgan — keyframe uni bosmasin).
+  */
+  it('e‘lon oqimdan tashqarida, tasma va gerb bilan; kirishi `transform` ni bosmaydi', () => {
+    const code = strip(EFIR())
+    const rule = code.slice(code.indexOf('.tv-promo {'))
+    expect(rule.slice(0, rule.indexOf('\n}') + 2)).toContain('position: absolute')
+    expect(code).toMatch(/\.tv-promo__band \{[^}]*background: var\(--tier\);/)
+    const kf = code.slice(code.indexOf('@keyframes tv-promo-in'))
+    expect(kf.slice(0, kf.indexOf('\n}') + 2)).not.toContain('transform:')
+    expect(kf.slice(0, kf.indexOf('\n}') + 2)).toContain('translate:')
+  })
+
+  it('voqea harakati: gerb katakchasi 400 ms to‘ladi, yangi medal 0,6 → 1; yaltirash, marquee, pulsatsiya yo‘q', () => {
+    const code = strip(EFIR())
+    expect(code).toMatch(/@keyframes crest-fill \{\s*from \{ fill: var\(--track\); \}\s*to \{ fill: var\(--tier\); \}\s*\}/)
+    expect(code).toMatch(/\.crest__cell--fill \{ animation: crest-fill 400ms var\(--ease-out\) both; \}/)
+    expect(code).toMatch(/@keyframes medal-new \{\s*from \{ transform: scale\(0\.6\); opacity: 0; \}/)
+    expect(code).not.toMatch(/shine|sheen|marquee|pulse|infinite/)
+  })
+})
+
+/*
+  Rekord devori TV BOARD bo'limida turadi; metall shartnomasi unga ham
+  tegishli — mintaqa EFIR bannerdan ORG CHART bannerigacha kengaytiriladi.
+*/
+describe('EFIR — sahifa sarlavhasi va rekord devori', () => {
+  it('podium metallari EFIR + TV BOARD bo‘ylab faqat yozilgan istisnolarda; `.record__k` shulardan biri', () => {
+    const code = strip(CSS.slice(from('* EFIR —'), from('* ORG CHART')))
+    const allowed = /^(\.medal\b|\.halo\b|\.crest__crown\b|\.trow__rank\b|\.record__k\b)/
+    const rules = code.match(/[^{}]+\{[^{}]*\}/g) ?? []
+    let metalRules = 0
+    for (const rule of rules) {
+      if (!rule.includes('--medal-')) continue
+      metalRules += 1
+      const selector = rule.slice(0, rule.indexOf('{')).trim()
+      expect(selector, rule.trim()).toMatch(allowed)
+    }
+    expect(metalRules).toBeGreaterThanOrEqual(7)
+    expect(code).not.toContain('--series-')
+    expect(code).not.toContain('--tv-tone')
+  })
+})
