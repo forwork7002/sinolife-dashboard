@@ -37,7 +37,7 @@ import {
   CUSTOMER_AT_RISK_DAYS,
   type CustomerStateKey,
 } from '@/lib/customerStates'
-import { callWindowStart } from '@/lib/callQuality'
+import { CALL_CUSTOMER_BANDS, CALL_DURATION_BANDS, callWindowStart } from '@/lib/callQuality'
 import { LOGISTICS_BUCKETS, UNMAPPED_BUCKET } from '@/lib/logisticsBuckets'
 import {
   RETENTION_GROUPS,
@@ -246,6 +246,18 @@ export interface CallActivityRows {
   readonly series: readonly CallActivityRow[]
   /** Calls with no customer attached — disclosed, never silently dropped. */
   readonly unlinkedCalls: number
+}
+
+export interface CallBandRow {
+  readonly key: string
+  readonly calls: number
+  readonly talkSec: number
+}
+
+export interface CallCustomerBandRow {
+  readonly key: string
+  readonly customers: number
+  readonly talkSec: number
 }
 
 export interface CustomerFlowRows {
@@ -1628,6 +1640,134 @@ export class InsightsRepository {
         .sort((a, b) => a.key.localeCompare(b.key)),
       unlinkedCalls: int(totalRow?.unlinked),
     }
+  }
+
+  /**
+   * How the window's conversations distribute by length.
+   *
+   * A SECOND STATEMENT RATHER THAN A FIFTH GROUPING ARM. The four arms of
+   * `callActivity` are groupings of a row; this is a `CASE` over one. Measured
+   * at 144 ms on production, so merging them would buy nothing and would put a
+   * `CASE` into a statement whose whole readability is that every arm carries
+   * the same measures.
+   *
+   * THE `CASE` IS GENERATED FROM `CALL_DURATION_BANDS`, never typed out. The
+   * screen reads the same table, and a hand-written copy here would agree with
+   * it until somebody moved a bound — the arrangement `logisticsBuckets` uses.
+   *
+   * Connected calls only: an unanswered leg has no length to band.
+   */
+  async callDurationBands(options: { period: Period }): Promise<readonly CallBandRow[]> {
+    const start = callWindowStart(options.period.start)
+
+    /*
+      Ascending and evaluated in order, so each band's lower bound is its
+      predecessor's `maxSec` and only the upper one is written. The last band
+      has `maxSec: null` and becomes the ELSE. The bounds are integers from a
+      constant table, never from a request, so interpolating them is safe.
+    */
+    const cases = CALL_DURATION_BANDS.filter((band) => band.maxSec !== null)
+      .map((band) => `WHEN duration_sec < ${band.maxSec} THEN '${band.key}'`)
+      .join('\n          ')
+    const fallback = CALL_DURATION_BANDS[CALL_DURATION_BANDS.length - 1]!.key
+
+    const rows = await this.prisma.$queryRawUnsafe<
+      { band: string; calls: bigint | null; talk_sec: bigint | null }[]
+    >(
+      `
+      SELECT
+        CASE
+          ${cases}
+          ELSE '${fallback}'
+        END AS band,
+        count(*)::bigint AS calls,
+        COALESCE(sum(duration_sec), 0)::bigint AS talk_sec
+      FROM (
+        SELECT r."durationSec" AS duration_sec
+        FROM "call_record" r
+        WHERE r."startedAt" >= $1 AND r."startedAt" < $2 AND r."connected"
+      ) c
+      GROUP BY band
+      `,
+      start,
+      options.period.end,
+    )
+
+    const byKey = new Map(rows.map((row) => [row.band, row]))
+
+    /*
+      RETURNED IN BAND ORDER, WITH THE EMPTY BANDS PRESENT AND ZERO. GROUP BY
+      never emits an empty group, and a distribution missing its quiet bands is
+      read as a distribution with fewer bands — here the shape is the
+      information.
+    */
+    return CALL_DURATION_BANDS.map((band) => {
+      const row = byKey.get(band.key)
+      return { key: band.key, calls: int(row?.calls), talkSec: int(row?.talk_sec) }
+    })
+  }
+
+  /**
+   * How many calls one customer takes, and how long those add up to.
+   *
+   * THE GROUPING IS PER CUSTOMER FIRST. The question is about a person, not a
+   * leg, so the inner query collapses each customer to a count and the `CASE`
+   * bands that. Banding calls directly would answer a different question and
+   * look like this one.
+   *
+   * CALLS WITH NO CUSTOMER ARE EXCLUDED, NOT BUCKETED. `customerId` is null on
+   * 0.7% of rows; grouped, all of them would collapse into one enormous
+   * "customer" in the 6+ band. They are disclosed instead, as `unlinkedCalls`
+   * on the activity payload — the way `/insights/concentration` discloses
+   * revenue booked with no customer.
+   *
+   * There is no per-ORDER equivalent and there cannot be: `dealId` is set on 1
+   * row of 366 300, because the portal answers `CRM_ENTITY_TYPE = 'CONTACT'`
+   * for effectively every call.
+   */
+  async callCustomerBands(options: { period: Period }): Promise<readonly CallCustomerBandRow[]> {
+    const start = callWindowStart(options.period.start)
+
+    // INCLUSIVE bounds — see CALL_CUSTOMER_BANDS.
+    const cases = CALL_CUSTOMER_BANDS.filter((band) => band.maxCalls !== null)
+      .map((band) => `WHEN calls <= ${band.maxCalls} THEN '${band.key}'`)
+      .join('\n          ')
+    const fallback = CALL_CUSTOMER_BANDS[CALL_CUSTOMER_BANDS.length - 1]!.key
+
+    const rows = await this.prisma.$queryRawUnsafe<
+      { band: string; customers: bigint | null; talk_sec: bigint | null }[]
+    >(
+      `
+      WITH per_customer AS (
+        SELECT
+          r."customerId" AS customer_id,
+          count(*)::int AS calls,
+          COALESCE(sum(r."durationSec") FILTER (WHERE r."connected"), 0)::bigint AS talk_sec
+        FROM "call_record" r
+        WHERE r."startedAt" >= $1 AND r."startedAt" < $2
+          AND r."customerId" IS NOT NULL
+        GROUP BY customer_id
+      )
+      SELECT
+        CASE
+          ${cases}
+          ELSE '${fallback}'
+        END AS band,
+        count(*)::bigint AS customers,
+        COALESCE(sum(talk_sec), 0)::bigint AS talk_sec
+      FROM per_customer
+      GROUP BY band
+      `,
+      start,
+      options.period.end,
+    )
+
+    const byKey = new Map(rows.map((row) => [row.band, row]))
+
+    return CALL_CUSTOMER_BANDS.map((band) => {
+      const row = byKey.get(band.key)
+      return { key: band.key, customers: int(row?.customers), talkSec: int(row?.talk_sec) }
+    })
   }
 
   /**

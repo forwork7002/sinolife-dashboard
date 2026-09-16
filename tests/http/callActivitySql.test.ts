@@ -118,3 +118,75 @@ describe('the call activity statement', () => {
     expect(body.slice(0, 1200)).toMatch(/callWindowStart\(/)
   })
 })
+
+function namedSql(marker: string): string {
+  const at = SOURCE.indexOf(marker)
+  expect(at, marker).toBeGreaterThan(-1)
+  const open = SOURCE.indexOf('`\n', at)
+  const close = SOURCE.indexOf('\n      `,', open)
+  expect(close, marker).toBeGreaterThan(open)
+  return SOURCE.slice(open + 1, close)
+}
+
+function namedCode(marker: string): string {
+  return namedSql(marker)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/--[^\n]*/g, '')
+}
+
+describe('the duration band statement', () => {
+  it('carries no backtick inside the SQL', () => {
+    expect(namedSql('async callDurationBands(')).not.toContain('`')
+  })
+
+  it('builds its CASE from CALL_DURATION_BANDS rather than typing bounds out', () => {
+    /*
+      The bands are a business definition with one home. A CASE written by hand
+      here would be a second copy, and the two would agree until the day
+      somebody moved a bound.
+    */
+    const body = SOURCE.slice(SOURCE.indexOf('async callDurationBands('))
+    expect(body.slice(0, 1500)).toMatch(/CALL_DURATION_BANDS/)
+    expect(namedCode('async callDurationBands(')).not.toMatch(/<\s*600\b/)
+  })
+
+  it('bands connected calls only', () => {
+    expect(namedCode('async callDurationBands(')).toMatch(/WHERE[\s\S]{0,120}"connected"/i)
+  })
+
+  it('clamps at the floor', () => {
+    const body = SOURCE.slice(SOURCE.indexOf('async callDurationBands('))
+    expect(body.slice(0, 1500)).toMatch(/callWindowStart\(/)
+  })
+})
+
+describe('the customer band statement', () => {
+  it('carries no backtick inside the SQL', () => {
+    expect(namedSql('async callCustomerBands(')).not.toContain('`')
+  })
+
+  it('aggregates per customer before banding, not per call', () => {
+    /*
+      The question is how many calls ONE customer takes, so the GROUP BY on the
+      customer has to happen first and the CASE reads its count. Banding the
+      calls directly would answer a different question and look like this one.
+    */
+    const sql = namedCode('async callCustomerBands(')
+    expect(sql).toMatch(/GROUP BY\s+customer_id/i)
+    expect(sql).toMatch(/count\(\*\)/i)
+  })
+
+  it('excludes the unlinked calls rather than bucketing them as one customer', () => {
+    /*
+      `customerId` is null on 0.7% of rows. Grouped, every one of them would
+      collapse into a single enormous customer in the 6+ band. They are
+      excluded here and disclosed as `unlinkedCalls` on the activity payload.
+    */
+    expect(namedCode('async callCustomerBands(')).toMatch(/"customerId" IS NOT NULL/i)
+  })
+
+  it('clamps at the floor', () => {
+    const body = SOURCE.slice(SOURCE.indexOf('async callCustomerBands('))
+    expect(body.slice(0, 1500)).toMatch(/callWindowStart\(/)
+  })
+})

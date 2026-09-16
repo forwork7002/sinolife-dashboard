@@ -25,6 +25,14 @@ async function main() {
   console.log(`callActivity ${Date.now() - t}ms`)
   console.log(JSON.stringify(activity, null, 2))
 
+  const t2 = Date.now()
+  const durationBands = await repo.callDurationBands({ period })
+  console.log(`callDurationBands ${Date.now() - t2}ms`, JSON.stringify(durationBands))
+
+  const t3 = Date.now()
+  const customerBands = await repo.callCustomerBands({ period })
+  console.log(`callCustomerBands ${Date.now() - t3}ms`, JSON.stringify(customerBands))
+
   await prisma.$disconnect()
 }
 
