@@ -80,9 +80,9 @@ const INTERVAL_SEC = Number(process.env.SYNC_INTERVAL_SEC ?? 60)
  * How many ticks between reference-data refreshes. Default: every three hours.
  *
  * WAS THIRTY MINUTES, AND NOTHING IT READS MOVES THAT FAST. Departments,
- * employees, products, pipelines, stages, sources and stores change a few times
+ * employees, products, pipelines, stages and sources change a few times
  * a MONTH — the file header says so — and this pass was asking the portal about
- * all of them 48 times a day. `PRODUCTS` and `STOCK` page through
+ * all of them 48 times a day. `PRODUCTS` pages through
  * `catalog.*` fifty rows at a time, so the pass is not one request but dozens.
  *
  * Three-hourly is 8 passes a day instead of 48. What that delays: a new
@@ -92,9 +92,6 @@ const INTERVAL_SEC = Number(process.env.SYNC_INTERVAL_SEC ?? 60)
  * this pass writes, and a head appointed at eleven who appears at two is not a
  * reporting error. If a specific hand-over needs to land now,
  * `npm run bitrix:resync -- DEPARTMENTS EMPLOYEES` does it in seconds.
- *
- * `CALLS` rides this clock too (see HOT below), so call history now accumulates
- * eight times a day rather than 48. Nothing reads `call_record`.
  */
 const REFERENCE_EVERY = Number(process.env.SYNC_REFERENCE_EVERY ?? 180)
 
@@ -228,29 +225,31 @@ const HISTORY_BACKFILL_DAYS = Number(process.env.SYNC_HISTORY_BACKFILL_DAYS ?? 4
 const ROISTAT_HEAP_MB = 320
 
 /**
- * Read on every tick — and CALLS is deliberately NOT among them.
+ * Read on every tick.
  *
  * These four are what every screen in the product is built on: the deal, its
  * items, its stage history and the customer. A minute late on any of them is
  * a minute the confirmation queue, the sellers board and the payroll are
  * wrong, which is the whole reason this worker runs at all.
- *
- * `call_record` is read by NOTHING. `/insights/calls` went in the 2026-09-10
- * cull with the screen it fed, and `grep -rn "prisma.callRecord" src` now
- * returns the sync handler that writes it and nothing else — the only other
- * readers are a proof script and the importer's row count. So a per-minute
- * portal call was being spent on data no reader has seen since that cull, on
- * a portal that spent the afternoon of 2026-09-14 refusing us for overload —
- * and CALLS was the last entity it was still refusing.
- *
- * IT IS MOVED, NOT DELETED. The rows keep arriving with the reference pass
- * below, which is half-hourly rather than per-minute, so call history goes on
- * accumulating for whoever asks for it next and costs 1/30th of what it did.
- * Deleting the entity would throw away the history with the cost.
  */
 const HOT: SyncEntityValue[] = ['CUSTOMERS', 'DEALS', 'DEAL_ITEMS', 'STAGE_HISTORY']
 
-/** Read occasionally. Order matters — deals reference all of these. */
+/**
+ * Read occasionally. Order matters — deals reference all of these.
+ *
+ * `STORES`, `STOCK` AND `CALLS` LEFT THIS LIST ON 2026-09-16, and each was a
+ * portal method spent on a table NOTHING READS. `store` and `stock_level` have
+ * no reader since «Joʻnatish nuqtalari» was paused, and
+ * `catalog.storeproduct.list` returns zero rows on this portal anyway;
+ * `call_record` has had no reader since `/insights/calls` went in the
+ * 2026-09-10 cull. On a portal that blocked us three mornings running, a
+ * request for data nobody renders is the one kind with no argument for it.
+ *
+ * REMOVED FROM THE SCHEDULE, NOT FROM THE CODE. The handlers, the provider
+ * methods and the tables stay, so the day a screen needs one of them again it
+ * is `npm run bitrix:resync -- CALLS` to fill it and one line here to keep it
+ * current — and the history already imported is not thrown away.
+ */
 const REFERENCE: SyncEntityValue[] = [
   'DEPARTMENTS',
   'EMPLOYEES',
@@ -258,19 +257,6 @@ const REFERENCE: SyncEntityValue[] = [
   'PIPELINES',
   'STAGES',
   'SOURCES',
-  'STORES',
-  'STOCK',
-  /*
-    NOT reference data, and LAST on purpose.
-
-    It rides this clock for the reason HOT gives above — nothing renders a
-    call, so a minute's freshness buys nothing — and it goes at the end
-    because its rows link to employees, customers and deals. The links are
-    resolved from the DATABASE and an unresolved one is written as null, so
-    the order cannot lose a row; it only decides whether a call recorded
-    minutes ago finds the deal it belongs to on this pass or the next.
-  */
-  'CALLS',
 ]
 
 const url: string = DATABASE_URL

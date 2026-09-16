@@ -1566,16 +1566,14 @@ mixed `100vh` against a shell sized in `100dvh`.
   client kept reporting as «avtomatik yangilanmayapti»: the refresh worked and
   the clock lied. A pass that read zero rows because nothing changed still
   counts — the portal answered for the data the chip is about.
-- **`CALLS` LEFT THE PER-MINUTE LIST ON 2026-09-14.** `call_record` is written
-  by the sync and read by NOTHING — `/insights/calls` went in the 2026-09-10
-  cull with the screen it fed, and the only other mentions are a proof script
-  and the importer's row count. It was costing a portal call a minute for data
-  no reader has seen since, on the portal that spent that afternoon refusing
-  us for overload, and it was the last entity still being refused. It rides
-  the reference pass now (half-hourly, and LAST in that list so its links
-  resolve against freshly imported deals), so the history keeps accumulating
-  at a thirtieth of the cost. Moved, not deleted: deleting the entity would
-  throw the history away with the cost.
+- **`CALLS`, `STORES` AND `STOCK` ARE NOT SCHEDULED AT ALL SINCE 2026-09-16.**
+  `call_record`, `store` and `stock_level` are written by the sync and read by
+  NOTHING — `/insights/calls` went in the 2026-09-10 cull, «Joʻnatish
+  nuqtalari» is paused, and `catalog.storeproduct.list` returns zero rows on
+  this portal. CALLS left the per-minute list on 2026-09-14 for the reference
+  pass; all three have now left that too. Unscheduled, not deleted: handlers,
+  provider methods and tables stay, and `npm run bitrix:resync -- CALLS` fills
+  one the day a screen needs it.
 - The provider **ignores `pageSize`** and returns one page for most entities.
 - Roistat is a second, unrelated source (a `var D = {…}` literal inside a 5.5 MB
   static page, parsed by brace-matching, not regex). It lands in its own tables
@@ -1776,14 +1774,15 @@ against a webhook the portal answers `INVALID_CREDENTIALS`: it reported the
 portal healthy in 508 ms. **A tool whose whole job is to say «wait» or «issue a
 new key» must not fail open.**
 
-**AND THIS PORTAL SENDS NO `time` AT ALL.** Measured the same day against
-`obey.bitrix24.kz`: neither `profile` nor `crm.deal.fields` carries a `time`
-block. The meter degrades to admitting every call, which is the behaviour this
-integration had for its whole life, so nothing is lost — but it means **the
-gauge is not available here and `PortalBudget` is the operative guard**, not a
-backstop. Do not quote `meter.stats().peak` to Bitrix24 support from this
-portal; quote the budget's own counts instead, and ask support for the figures
-in their «Статистика» panel.
+**THE PORTAL DOES SEND `time` — THE «IT SENDS NONE» READING WAS AN ERROR
+RESPONSE.** It was measured against a webhook the portal answered
+`INVALID_CREDENTIALS`, and an error body carries no `time` block. Against the
+live webhook (`/rest/8868/…`, issued 2026-09-16) every success carries
+`time.operating` and `operating_reset_at`, so the gauge READS here and the
+measured fallback is a backstop again. Measured through the new chain that
+afternoon: an incremental DEALS read of 18 changed rows took **1.6–2.2 s**
+(against 31.8 s at the fixed fifty) and `crm.deal.list` stood at 5.9 s of 480
+(1%) after three of them. Never measure the portal through a key it refuses.
 
 **AND THE WALK STOPPED SENDING 48 COMMANDS NOBODY NEEDED — `CHAIN_MIN`.**
 `batchWalk` sent a fixed chain of FIFTY id-chained seeks on every call,
