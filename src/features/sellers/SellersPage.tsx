@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { type FaktChoice, fromSeller, fromTeam } from '@/features/sellers/board'
+import { todayDateLine } from '@/features/sellers/dateLine'
 import { MedalDefs } from '@/features/sellers/MedalDefs'
 import { RecordWall } from '@/features/sellers/RecordWall'
 import { SellersBoard, type Status } from '@/features/sellers/SellersBoard'
@@ -103,10 +104,25 @@ export function SellersPage() {
   */
   const [fakt, setFakt] = useState<FaktChoice>('auto')
 
+  /*
+    «BUGUN» NAMES ITS DAY (EFIR Premium spec §7): «17-sentabr 2026, payshanba ·
+    bugun» instead of the shell's «17-sen 2026 – 17-sen 2026». PageShell is
+    shared chrome and reaches /confirmation, so it is not edited: on the today
+    window the page hands the line over as `description` and passes `meta`
+    WITHOUT its period, which is what stops the shell printing the range after
+    it. Everything else meta carries — the data source, the truncation badge —
+    still travels. The window is read from the RESPONSE (`meta.period`), not
+    from the control, so the words never name a day the numbers are not from.
+  */
+  const meta = board.data?.meta
+  const today = meta?.period?.preset === 'today' ? meta.period : undefined
+  const shellMeta = useMemo(() => (today && meta ? { ...meta, period: undefined } : meta), [meta, today])
+
   return (
     <PageShell
       title={t.nav.sellers}
-      meta={board.data?.meta}
+      description={today ? todayDateLine(today.start) : undefined}
+      meta={shellMeta}
       /* THE RECORD WALL RIDES THE TITLE LINE — two static bands between the
          title and the period control (spec §7), on its own ten-minute clock. */
       banner={<RecordWall />}
@@ -168,8 +184,26 @@ export function SellersPage() {
           />
         </div>
 
-        {/* The one line on this board that is not a rank: who made it. */}
-        <p className="tv-credit">Developed by Yusuf</p>
+        {/*
+          THE PAGE FOOT (EFIR Premium spec §7): the three definitions the
+          numbers on this board rest on, and who made it. Nothing here is a
+          rank and nothing here moves. No «hozircha» definition — the client
+          declined that word everywhere on this screen (2026-09-17).
+        */}
+        <footer className="tv-foot">
+          <p className="tv-foot__defs">
+            <span>
+              <b>Konv.</b> = yetkazilgan ÷ (yetkazilgan + barcha bekor)
+            </span>
+            <span>
+              <b>Buyurt.</b> = FAKT 1 buyurtmalari
+            </span>
+            <span>
+              <b>Daraja</b> — avgustdan beri yetkazilgan pul boʻyicha
+            </span>
+          </p>
+          <p className="tv-credit">Developed by Yusuf</p>
+        </footer>
       </div>
     </PageShell>
   )

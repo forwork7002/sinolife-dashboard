@@ -3,6 +3,8 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
+import { MedalMark } from '@/features/sellers/MedalMark'
+import { parseSellerName } from '@/features/sellers/sellerName'
 import { type SellerRecordDto, type SellerRecordsDto, apiGet } from '@/lib/api'
 import { formatNumber, formatSomFull } from '@/lib/format'
 import { useReducedMotion } from '@/lib/useReducedMotion'
@@ -10,14 +12,18 @@ import { useReducedMotion } from '@/lib/useReducedMotion'
 /**
  * The record wall — the two newest months, standing still in the title line.
  *
- * TWO STATIC BANDS, NOT A TICKER (EFIR, spec §7 / §8): «Sentabr yetakchisi ·
- * name · figure · 57 ta yetkazilgan» and «Avgust 2026 rekordi · …», a hairline
- * between them. The crawl it replaces was the one thing on this page that
- * moved at rest, and the redesign's rule is that nothing does: the list
- * drifts, everything else stands. The running month is a LEAD, the closed
- * one a RECORD, and the word says which.
+ * TWO PLAQUES, NOT A TICKER (EFIR Premium, spec §7). Each is a 58 px raised
+ * plate: a 32 px medal (the running month's lead wears month-gold, a closed
+ * month's record wears day-record), a caps label in neutral ink — never gold,
+ * the medal is the metal — with «57 ta yetkazilgan» at its right, and a value
+ * line of name · code · amount. Nothing on this page moves at rest.
  *
- * NARROWER THAN ~1500px THE HEADER HOLDS ONE BAND, and it CUTS to the other
+ * THE AMOUNT NEVER TRUNCATES. Each plaque is its own inline-size container:
+ * under 400 px the count drops, under 320 px the code drops, and only then
+ * does the NAME ellipsise. The figure is one text node with its U+202F group
+ * separators inside it.
+ *
+ * NARROWER THAN ~1500px THE HEADER HOLDS ONE PLAQUE, and it CUTS to the other
  * every ten seconds — a cut, never a slide. Reduced motion stops the cut and
  * leaves the lead on screen. Under 1280 the wall is not drawn at all (CSS):
  * the page stops being a television there.
@@ -86,7 +92,7 @@ export function RecordWallView({
   const items = wide ? shown : [shown[tick % shown.length]!]
 
   return (
-    <div className="record-wall" aria-label="Har oyning eng yaxshi sotuvchisi">
+    <div className="record-wall" data-bands={items.length} aria-label="Har oyning eng yaxshi sotuvchisi">
       {items.map((m) => (
         <RecordItem key={m.month} record={m} />
       ))}
@@ -96,27 +102,36 @@ export function RecordWallView({
 
 function RecordItem({ record }: { record: SellerRecordDto }) {
   /*
-    THE MONTH'S STATE, IN THE WORD. «rekordi» is a month that is over and can
-    no longer change; «yetakchisi» is the month still running, whose leader
-    may yet lose the place. Without it a running month's smaller figure reads
-    as a record having collapsed.
+    THE MONTH'S STATE, IN THE WORD AND THE MEDAL. «rekordi» is a month that is
+    over and can no longer change; «yetakchisi» is the month still running,
+    whose leader may yet lose the place. Without it a running month's smaller
+    figure reads as a record having collapsed.
   */
   const label = record.running ? `${monthName(record.month)} yetakchisi` : `${monthLabel(record.month)} rekordi`
+  const { name, code } = parseSellerName(record.fullName)
   return (
-    <span className="record">
-      <span className="record__k">{label}</span>
-      <span className="record__n">{record.fullName}</span>
-      <span className="record__v">{formatSomFull(record.amount.amount)}</span>
-      {/*
-        WHICH FIGURE THIS IS, ALWAYS SAID. The wall switches between FAKT 2
-        and FAKT 1 by the podium's rule — FAKT 2 decides, FAKT 1 only where
-        nobody has delivered yet — so a month can print a bigger number purely
-        because none of it is on the road.
-      */}
-      <span className="record__note">
-        {formatNumber(record.orders)} ta {record.basis === 'delivered' ? 'yetkazilgan' : 'tasdiqlangan'}
-      </span>
-    </span>
+    <div className="plaque" data-running={record.running || undefined}>
+      <MedalMark code={record.running ? 'month-gold' : 'day-record'} size={32} />
+      <div className="plaque__t">
+        <p className="plaque__k">
+          <span className="plaque__label">{label}</span>
+          {/*
+            WHICH FIGURE THIS IS, ALWAYS SAID. The wall switches between FAKT 2
+            and FAKT 1 by the podium's rule — FAKT 2 decides, FAKT 1 only where
+            nobody has delivered yet — so a month can print a bigger number
+            purely because none of it is on the road.
+          */}
+          <i className="plaque__count">
+            {formatNumber(record.orders)} ta {record.basis === 'delivered' ? 'yetkazilgan' : 'tasdiqlangan'}
+          </i>
+        </p>
+        <p className="plaque__v">
+          <span className="nm">{name}</span>
+          {code !== null && <span className="code">{code}</span>}
+          <b className="plaque__amount">{formatSomFull(record.amount.amount)}</b>
+        </p>
+      </div>
+    </div>
   )
 }
 

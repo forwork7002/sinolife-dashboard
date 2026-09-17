@@ -53,7 +53,7 @@ function money(amount: number) {
   return { amountMinor: String(Math.round(amount * 100)), currency: 'UZS', amount }
 }
 
-/** A money figure prints twice — the animated copy and the `sr-only` one. */
+/** How many times a money figure is printed (`AnimatedNumber` prints it once). */
 const figure = (value: string) => screen.getAllByText(value).length
 
 function seller(over: {
