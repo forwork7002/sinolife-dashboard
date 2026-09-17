@@ -17,7 +17,7 @@ export function PromotionBanner({ promotion, name }: { promotion: Promotion; nam
   return (
     <div className="tv-promo" role="status" data-tier={promotion.level}>
       <span className="tv-promo__band" aria-hidden="true" />
-      <Crest level={promotion.level} legendaTier={promotion.legendaTier} size="row" />
+      <Crest level={promotion.level} legendaTier={promotion.legendaTier} height={20} />
       <span className="tv-promo__text">
         {name} — endi {promotion.rankTitle.toUpperCase()}
         {threshold !== null && ` · ${formatSomFull(threshold)}`}

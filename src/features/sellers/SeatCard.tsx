@@ -2,7 +2,7 @@ import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Crest } from '@/features/sellers/Crest'
 import { Halo } from '@/features/sellers/Halo'
 import { MedalMark } from '@/features/sellers/MedalMark'
-import { nextLevelSentence, progressOf, sortMedals } from '@/features/sellers/medalCatalog'
+import { nextLevelSentence, progressOf, seatMedals } from '@/features/sellers/medalCatalog'
 import type { MedalCode, SellerMedalRowDto } from '@/lib/api'
 import { formatSomFull } from '@/lib/format'
 
@@ -82,7 +82,7 @@ export function SeatCard({
       aria-label={`${rank}-oʻrin`}
     >
       <div className="seat__top">
-        <Halo rank={rank} size={place === 1 ? 'lg' : 'md'} />
+        <Halo rank={rank} size={place === 1 ? 66 : 56} wreath={place === 1} />
         <div className="seat__who">
           <h3 className="seat__name">
             <span>{line1}</span>
@@ -92,7 +92,13 @@ export function SeatCard({
             {team !== null && <span className="seat__team">{team}</span>}
             {medal !== null && (
               <>
-                <Crest level={medal.level} legendaTier={medal.legendaTier} size="seat" animate={rise} />
+                <Crest
+                  level={medal.level}
+                  legendaTier={medal.legendaTier}
+                  height={place === 1 ? 20 : 18}
+                  plated
+                  animate={rise}
+                />
                 {medal.rankTitle !== null && <span className="seat__level">{medal.rankTitle}</span>}
               </>
             )}
@@ -126,8 +132,15 @@ export function SeatCard({
           </div>
           {medal.medals.length > 0 && (
             <div className="seat__medals">
-              {sortMedals(medal.medals).map((m) => (
-                <MedalMark key={m.code} code={m.code} count={m.count} isNew={newKeys?.has(m.code) ?? false} />
+              {seatMedals(medal.medals, place === 1 ? 4 : 3).map((m) => (
+                <MedalMark
+                  key={m.code}
+                  code={m.code}
+                  size={place === 1 ? 48 : 40}
+                  count={m.count}
+                  seat
+                  isNew={newKeys?.has(m.code) ?? false}
+                />
               ))}
             </div>
           )}

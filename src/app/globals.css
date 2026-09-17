@@ -126,50 +126,123 @@
   --delta-down: #c31d1d;
 
   /**
-   * Medal metals — the sellers podium's chrome. The client's own ask
-   * (2026-09-03): the board the floor opens every morning must crown its top
-   * three visibly. CHROME ONLY, by contract: rims, washes, avatar rings and
-   * the pedestal numerals — never text that must be read, never a mark that
-   * encodes a value, never a series or status role. Gold sits near --series-4
-   * and --status-warning by nature; tolerable only because these tokens are
-   * barred from ever carrying data. See the EFIR section's halo and medal
-   * rules below (`.halo`, `.medal`) for every place they are drawn.
+   * Medal metals — the sellers board's minted chrome (EFIR Premium, «ZARB»,
+   * 2026-09-17). The client's own ask (2026-09-03): the board the floor opens
+   * every morning must crown its top three visibly. CHROME ONLY, by contract:
+   * rims, fields, sheens and washes — never text that must be read, never a
+   * mark that encodes a value, never a series or status role. Gold sits near
+   * --series-4 and --status-warning by nature; tolerable only because these
+   * tokens are barred from ever carrying data.
    *
-   * THE WRITTEN EXCEPTIONS (EFIR, 2026-09-16): the seller medals (`.medal` —
-   * the Oy family in its own metal, every other code in gold), the seats'
-   * rank halos (`.halo`), the Legenda crown (`.crest__crown`), the teams'
-   * metal rank numerals (`.trow__rank`) and the record wall's labels
-   * (`.record__k`). Nowhere else — never the level band, the crest cells, a
-   * name or a figure. `tests/features/efirCss.test.ts` holds the list.
+   * `--medal-gold/silver/bronze` stay the MID tones so any older reader keeps
+   * working; each metal (and steel, the commons' body) adds `-hi`, `-lo`,
+   * `-sh`, `-patina` and `-well`; gilt is the champagne device on a steel body.
+   * Every mix is PRE-COMPUTED here — the SVG <defs> read these inside a <use>
+   * shadow tree, where an old TV Chromium can drop a `color-mix()` stop.
+   *
+   * THE WRITTEN EXCEPTIONS: the medals (`.medal` and its ×N plate), the rank
+   * coins (`.halo`), the Legenda crown baked into `#crest-6`, the seat keyline
+   * and metal wash (`[data-metal]`), and the team share bars for ranks 1–3.
+   * Nowhere else — never the level band, the crest cells, a name or a figure.
+   * `tests/features/efirCss.test.ts` holds the list.
    */
-  --medal-gold: #b3860e;
-  --medal-silver: #798294;
-  --medal-bronze: #a5663a;
+  --medal-gold-hi: #f8e4a2;
+  --medal-gold: #cf9f2a;
+  --medal-gold-lo: #7e5b0d;
+  --medal-gold-sh: #3f2d06;
+  --medal-gold-patina: #423d29;
+  --medal-gold-well: #594009;
+  --medal-silver-hi: #f8fafc;
+  --medal-silver: #a3aebe;
+  --medal-silver-lo: #55606e;
+  --medal-silver-sh: #272e38;
+  --medal-silver-patina: #2e3e52;
+  --medal-silver-well: #3a434f;
+  --medal-bronze-hi: #f3c79f;
+  --medal-bronze: #bb7640;
+  --medal-bronze-lo: #693c1d;
+  --medal-bronze-sh: #2e1a0b;
+  --medal-bronze-patina: #342e2d;
+  --medal-bronze-well: #472813;
+  --medal-steel-hi: #c9d5e3;
+  --medal-steel: #71839a;
+  --medal-steel-lo: #3a4657;
+  --medal-steel-sh: #171d25;
+  --medal-steel-patina: #1d2835;
+  --medal-steel-well: #262e3a;
+  --medal-gilt-hi: #f3e6bf;
+  --medal-gilt: #c4a862;
+  --medal-gold-wash: rgba(207, 159, 42, 0.12);
+  --medal-silver-wash: rgba(163, 174, 190, 0.16);
+  --medal-bronze-wash: rgba(187, 118, 64, 0.12);
+  --medal-gold-wash-p1: rgba(207, 159, 42, 0.2);
+  --medal-key: rgba(12, 14, 18, .55);
+  --medal-cast: rgba(12, 14, 18, .2);
+  --medal-glint: rgba(255, 255, 255, .7);
+  --medal-edge: rgba(255, 255, 255, .62);
 
   /**
-   * Level ramp for the sellers board — `--tier-1` … `--tier-6`.
+   * Level ramp for the sellers board — `--tier-1` … `--tier-6`, each with
+   * `-hi`, `-lo` (the band's bevel) and `-wash` (the row's 88px level wash).
    *
-   * ORDINAL, like `--seq`: one hue (ice blue) ordered by LIGHTNESS, so a
-   * higher level is always the lighter cell and the ramp reads as a ladder
-   * from across a room. Never a series colour, never a status, never mixed
-   * with the medal metals. Components read it only through `--tier`, which
-   * `[data-tier="N"]` sets in the EFIR section; nothing reads `--tier-N`
-   * directly. The polarity is the same in both themes — Usta is lighter than
-   * Katta sotuvchi on a dark stage and on a light one — so the family is
-   * re-anchored per theme rather than inverted. (`--tier-4` on the dark
-   * stage sits near `--seq-550`, which is why the ORDINAL note exists.)
+   * ORDINAL, like `--seq`: one hue (ice blue) ordered by CONTRAST —
+   * never a series colour, never a status, never mixed with the medal metals.
+   * Components read it only through `--tier`, which `[data-tier="N"]` sets in
+   * the EFIR section; nothing reads `--tier-N` directly.
+   *
+   * THE RULE IS «A HIGHER LEVEL HAS MORE CONTRAST AGAINST THE PANEL», and so
+   * the polarity is NOT the same in both themes: on the dark panel the ladder
+   * runs dim → glowing (2.44 … 18.30:1 against `--efir-panel`), on the light
+   * one pale → navy (1.72 … 13.23:1). A lighter Legenda on white would read as
+   * the weakest level. `efirCss.test.ts` pins both sequences.
    */
-  --tier-1: #3a4557;
-  --tier-2: #4a6085;
-  --tier-3: #2b86c2;
-  --tier-4: #2bb1ee;
-  --tier-5: #8ed3f5;
-  --tier-6: #c9ecff;
+  --tier-1: #b9c4d4;
+  --tier-1-hi: #cbd3df;
+  --tier-1-lo: #8d95a1;
+  --tier-1-wash: rgba(185, 196, 212, 0.13);
+  --tier-2: #8aa1c2;
+  --tier-2-hi: #a8b9d2;
+  --tier-2-lo: #697a93;
+  --tier-2-wash: rgba(138, 161, 194, 0.13);
+  --tier-3: #4f88c6;
+  --tier-3-hi: #7da7d5;
+  --tier-3-lo: #3c6796;
+  --tier-3-wash: rgba(79, 136, 198, 0.13);
+  --tier-4: #1f70bf;
+  --tier-4-hi: #5995d0;
+  --tier-4-lo: #185591;
+  --tier-4-wash: rgba(31, 112, 191, 0.13);
+  --tier-5: #124f97;
+  --tier-5-hi: #507db2;
+  --tier-5-lo: #0e3c73;
+  --tier-5-wash: rgba(18, 79, 151, 0.13);
+  --tier-6: #0a2c61;
+  --tier-6-hi: #4a638a;
+  --tier-6-lo: #08234e;
+  --tier-6-wash: rgba(10, 44, 97, 0.13);
 
-  /* The soft gold under the seven rare medals — dark stage only; daylight
-     has no glow. Read in exactly one place: `.seat .medal.rare` — the podium
-     only, so the hundred drifting rows carry no filter layers. */
-  --glow-rare: transparent;
+  /* Minted-surface tokens for the EFIR <defs> — sheen, bloom, ribbon, recess,
+     empty slot, crest plate and unlit cell, coin field. Plain colours, no
+     mixes (see the medal note above). */
+  --sheen-hi: rgba(255, 255, 255, .26);
+  --sheen-lo: rgba(0, 0, 0, .22);
+  --sheen-none-hi: rgba(255, 255, 255, 0);
+  --sheen-none-lo: rgba(0, 0, 0, 0);
+  --bloom: rgba(255, 255, 255, .11);
+  --ribbon-a: #2a6fb0;
+  --ribbon-shade: rgba(0, 0, 0, .3);
+  --recess-hi: #ffffff;
+  --recess-lo: rgba(12, 14, 18, .28);
+  --recess-none: rgba(0, 0, 0, 0);
+  --slot-field: #e4e8ee;
+  --slot-dash: rgba(12, 14, 18, .26);
+  --slot-glyph: #bfc7d2;
+  --crest-plate: #e7eaf0;
+  --crest-off: #dfe4ec;
+  --crest-glint: rgba(255, 255, 255, .6);
+  --crest-shade: rgba(12, 14, 18, .3);
+  --halo-field-hi: #2b323e;
+  --halo-field-lo: #10141a;
 
   /**
    * The television board's type scale — three information sizes and one
@@ -293,6 +366,40 @@
   --duration-move: 380ms;
 }
 
+/*
+ * EFIR material — the sellers board's OBSIDIAN chassis (EFIR Premium §1).
+ * Scoped to the board root, so no other screen can read a panel, ink or
+ * shadow tuned for a television. Light here; both dark mechanisms below
+ * (`prefers-color-scheme` guarded by `:not([data-theme="light"])`, and
+ * `[data-theme="dark"]`) re-declare the same names. Values are copied from
+ * the approved mock's token file; every mix is pre-computed.
+ */
+.tv-board-shell {
+  --efir-page-glow: rgba(255, 255, 255, .9);
+  --efir-panel: #fbfcfe;
+  --efir-panel-sheen: rgba(255, 255, 255, 1);
+  --efir-raised: #ffffff;
+  --efir-raised-hi: #ffffff;
+  --efir-sunken: #edf0f5;
+  --efir-ink: #0a0f17;
+  --efir-ink-name: #1c2431;
+  --efir-ink-ctx: #333d4c;
+  --efir-ink-2: #556072;
+  --efir-ink-3: #677285;
+  --efir-ink-4: #ccd3de;
+  --efir-hairline: rgba(12, 18, 28, .07);
+  --efir-edge-hi: rgba(255, 255, 255, 1);
+  --efir-edge-ring: rgba(12, 18, 28, .07);
+  --efir-shadow-panel: 0 30px 50px -34px rgba(24, 38, 66, .35), 0 1px 2px rgba(24, 38, 66, .08);
+  --efir-shadow-seat: 0 22px 36px -24px rgba(24, 38, 66, .5), 0 2px 5px -1px rgba(24, 38, 66, .14);
+  --efir-seg-well: inset 0 1px 2px rgba(12, 18, 28, .1), inset 0 0 0 1px rgba(12, 18, 28, .07);
+  --efir-seg-on: 0 1px 2px rgba(24, 38, 66, .2), inset 0 0 0 1px rgba(12, 18, 28, .07);
+  --efir-track: rgba(12, 18, 28, .1);
+  --efir-stage-light: rgba(255, 255, 255, 0);
+  --efir-plate-well: #10151d;
+  --efir-p1-keyline: rgba(207, 159, 42, 0.34);
+}
+
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
@@ -354,21 +461,87 @@
     --delta-down: #f56b62;
 
     /* Medal chrome, re-anchored for the dark surface — see the light block. */
-    --medal-gold: #e8c256;
-    --medal-silver: #bac4d3;
-    --medal-bronze: #d89a68;
+    --medal-gold-hi: #f9e8ae;
+    --medal-gold: #dcb24a;
+    --medal-gold-lo: #8d6a1c;
+    --medal-gold-sh: #3a2b0b;
+    --medal-gold-patina: #3b3c2e;
+    --medal-gold-well: #5d4512;
+    --medal-silver-hi: #f4f7fb;
+    --medal-silver: #b3bece;
+    --medal-silver-lo: #626d7c;
+    --medal-silver-sh: #252c36;
+    --medal-silver-patina: #293d51;
+    --medal-silver-well: #3f4753;
+    --medal-bronze-hi: #f5cba4;
+    --medal-bronze: #c98450;
+    --medal-bronze-lo: #744525;
+    --medal-bronze-sh: #301d0e;
+    --medal-bronze-patina: #323130;
+    --medal-bronze-well: #4d2e18;
+    --medal-steel-hi: #b6c6d9;
+    --medal-steel: #6c8096;
+    --medal-steel-lo: #364354;
+    --medal-steel-sh: #12181f;
+    --medal-steel-patina: #162430;
+    --medal-steel-well: #212a35;
+    --medal-gilt-hi: #efe3c2;
+    --medal-gilt: #bfa873;
+    --medal-gold-wash: rgba(220, 178, 74, 0.09);
+    --medal-silver-wash: rgba(179, 190, 206, 0.09);
+    --medal-bronze-wash: rgba(201, 132, 80, 0.09);
+    --medal-gold-wash-p1: rgba(220, 178, 74, 0.15);
+    --medal-key: rgba(0, 0, 0, .6);
+    --medal-cast: rgba(0, 0, 0, .45);
+    --medal-glint: rgba(255, 255, 255, .5);
+    --medal-edge: rgba(255, 255, 255, .5);
 
-    /* Level ramp, re-anchored for the dark stage — same lightness ORDER as
-       the light block (Usta lighter than Katta sotuvchi), lighter values
-       because the stage is near-black. See the light block. */
-    --tier-1: #3f4a5c;
-    --tier-2: #506480;
-    --tier-3: #3e8fc4;
-    --tier-4: #7fd0ff;
-    --tier-5: #bde8ff;
+    /* Level ramp on the dark panel: dim → glowing — see the light block. */
+    --tier-1: #465268;
+    --tier-1-hi: #767f8f;
+    --tier-1-lo: #353e4f;
+    --tier-1-wash: rgba(70, 82, 104, 0.16);
+    --tier-2: #4c6c94;
+    --tier-2-hi: #7b92b0;
+    --tier-2-lo: #3a5270;
+    --tier-2-wash: rgba(76, 108, 148, 0.16);
+    --tier-3: #3d8bcb;
+    --tier-3-hi: #6fa9d9;
+    --tier-3-lo: #2e6a9a;
+    --tier-3-wash: rgba(61, 139, 203, 0.16);
+    --tier-4: #6cc3f2;
+    --tier-4-hi: #92d3f5;
+    --tier-4-lo: #5294b8;
+    --tier-4-wash: rgba(108, 195, 242, 0.16);
+    --tier-5: #b5e6fc;
+    --tier-5-hi: #c8ecfd;
+    --tier-5-lo: #8aafc0;
+    --tier-5-wash: rgba(181, 230, 252, 0.16);
     --tier-6: #f2fbff;
+    --tier-6-hi: #f5fcff;
+    --tier-6-lo: #c2c9cc;
+    --tier-6-wash: rgba(242, 251, 255, 0.16);
 
-    --glow-rare: color-mix(in oklab, var(--medal-gold) 55%, transparent);
+    /* Minted-surface tokens — see the light block. */
+    --sheen-hi: rgba(255, 255, 255, .28);
+    --sheen-lo: rgba(0, 0, 0, .3);
+    --sheen-none-hi: rgba(255, 255, 255, 0);
+    --sheen-none-lo: rgba(0, 0, 0, 0);
+    --bloom: rgba(255, 255, 255, .12);
+    --ribbon-a: #2c6aa2;
+    --ribbon-shade: rgba(0, 0, 0, .34);
+    --recess-hi: rgba(255, 255, 255, .14);
+    --recess-lo: rgba(0, 0, 0, .7);
+    --recess-none: rgba(0, 0, 0, 0);
+    --slot-field: #0b0d11;
+    --slot-dash: rgba(255, 255, 255, .16);
+    --slot-glyph: #262d38;
+    --crest-plate: #07090c;
+    --crest-off: #1b212b;
+    --crest-glint: rgba(255, 255, 255, .5);
+    --crest-shade: rgba(0, 0, 0, .4);
+    --halo-field-hi: #262c37;
+    --halo-field-lo: #0b0e13;
 
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
     --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px -8px rgba(0, 0, 0, 0.7);
@@ -383,6 +556,32 @@
     --atmos-mix-violet: 11%;
     --grain-alpha: 0.04;
     --glow-hero-mix: 18%;
+  }
+
+  :root:where(:not([data-theme="light"])) .tv-board-shell {
+    --efir-page-glow: rgba(116, 160, 224, .075);
+    --efir-panel: #0c0f14;
+    --efir-panel-sheen: rgba(255, 255, 255, .03);
+    --efir-raised: #141921;
+    --efir-raised-hi: #1d232e;
+    --efir-sunken: #07090c;
+    --efir-ink: #f2f5fa;
+    --efir-ink-name: #d9dfe8;
+    --efir-ink-ctx: #c2cad6;
+    --efir-ink-2: #939db0;
+    --efir-ink-3: #737e92;
+    --efir-ink-4: #2f3743;
+    --efir-hairline: rgba(255, 255, 255, .05);
+    --efir-edge-hi: rgba(255, 255, 255, .095);
+    --efir-edge-ring: rgba(255, 255, 255, .035);
+    --efir-shadow-panel: 0 30px 60px -30px rgba(0, 0, 0, .9);
+    --efir-shadow-seat: 0 24px 40px -22px rgba(0, 0, 0, .95), 0 2px 5px -1px rgba(0, 0, 0, .55);
+    --efir-seg-well: inset 0 1px 2px rgba(0, 0, 0, .35), inset 0 0 0 1px rgba(255, 255, 255, .035);
+    --efir-seg-on: inset 0 1px 0 rgba(255, 255, 255, .095), 0 1px 2px rgba(0, 0, 0, .35);
+    --efir-track: rgba(255, 255, 255, .09);
+    --efir-stage-light: rgba(150, 185, 235, .07);
+    --efir-plate-well: #07090c;
+    --efir-p1-keyline: rgba(249, 232, 174, 0.13);
   }
 }
 
@@ -433,19 +632,87 @@
   --delta-down: #f56b62;
 
   /* Medal chrome — kept in lockstep with the media-query block above. */
-  --medal-gold: #e8c256;
-  --medal-silver: #bac4d3;
-  --medal-bronze: #d89a68;
+  --medal-gold-hi: #f9e8ae;
+  --medal-gold: #dcb24a;
+  --medal-gold-lo: #8d6a1c;
+  --medal-gold-sh: #3a2b0b;
+  --medal-gold-patina: #3b3c2e;
+  --medal-gold-well: #5d4512;
+  --medal-silver-hi: #f4f7fb;
+  --medal-silver: #b3bece;
+  --medal-silver-lo: #626d7c;
+  --medal-silver-sh: #252c36;
+  --medal-silver-patina: #293d51;
+  --medal-silver-well: #3f4753;
+  --medal-bronze-hi: #f5cba4;
+  --medal-bronze: #c98450;
+  --medal-bronze-lo: #744525;
+  --medal-bronze-sh: #301d0e;
+  --medal-bronze-patina: #323130;
+  --medal-bronze-well: #4d2e18;
+  --medal-steel-hi: #b6c6d9;
+  --medal-steel: #6c8096;
+  --medal-steel-lo: #364354;
+  --medal-steel-sh: #12181f;
+  --medal-steel-patina: #162430;
+  --medal-steel-well: #212a35;
+  --medal-gilt-hi: #efe3c2;
+  --medal-gilt: #bfa873;
+  --medal-gold-wash: rgba(220, 178, 74, 0.09);
+  --medal-silver-wash: rgba(179, 190, 206, 0.09);
+  --medal-bronze-wash: rgba(201, 132, 80, 0.09);
+  --medal-gold-wash-p1: rgba(220, 178, 74, 0.15);
+  --medal-key: rgba(0, 0, 0, .6);
+  --medal-cast: rgba(0, 0, 0, .45);
+  --medal-glint: rgba(255, 255, 255, .5);
+  --medal-edge: rgba(255, 255, 255, .5);
 
   /* Level ramp — kept in lockstep with the media-query block above. */
-  --tier-1: #3f4a5c;
-  --tier-2: #506480;
-  --tier-3: #3e8fc4;
-  --tier-4: #7fd0ff;
-  --tier-5: #bde8ff;
+  --tier-1: #465268;
+  --tier-1-hi: #767f8f;
+  --tier-1-lo: #353e4f;
+  --tier-1-wash: rgba(70, 82, 104, 0.16);
+  --tier-2: #4c6c94;
+  --tier-2-hi: #7b92b0;
+  --tier-2-lo: #3a5270;
+  --tier-2-wash: rgba(76, 108, 148, 0.16);
+  --tier-3: #3d8bcb;
+  --tier-3-hi: #6fa9d9;
+  --tier-3-lo: #2e6a9a;
+  --tier-3-wash: rgba(61, 139, 203, 0.16);
+  --tier-4: #6cc3f2;
+  --tier-4-hi: #92d3f5;
+  --tier-4-lo: #5294b8;
+  --tier-4-wash: rgba(108, 195, 242, 0.16);
+  --tier-5: #b5e6fc;
+  --tier-5-hi: #c8ecfd;
+  --tier-5-lo: #8aafc0;
+  --tier-5-wash: rgba(181, 230, 252, 0.16);
   --tier-6: #f2fbff;
+  --tier-6-hi: #f5fcff;
+  --tier-6-lo: #c2c9cc;
+  --tier-6-wash: rgba(242, 251, 255, 0.16);
 
-  --glow-rare: color-mix(in oklab, var(--medal-gold) 55%, transparent);
+  /* Minted-surface tokens — kept in lockstep with the media-query block above. */
+  --sheen-hi: rgba(255, 255, 255, .28);
+  --sheen-lo: rgba(0, 0, 0, .3);
+  --sheen-none-hi: rgba(255, 255, 255, 0);
+  --sheen-none-lo: rgba(0, 0, 0, 0);
+  --bloom: rgba(255, 255, 255, .12);
+  --ribbon-a: #2c6aa2;
+  --ribbon-shade: rgba(0, 0, 0, .34);
+  --recess-hi: rgba(255, 255, 255, .14);
+  --recess-lo: rgba(0, 0, 0, .7);
+  --recess-none: rgba(0, 0, 0, 0);
+  --slot-field: #0b0d11;
+  --slot-dash: rgba(255, 255, 255, .16);
+  --slot-glyph: #262d38;
+  --crest-plate: #07090c;
+  --crest-off: #1b212b;
+  --crest-glint: rgba(255, 255, 255, .5);
+  --crest-shade: rgba(0, 0, 0, .4);
+  --halo-field-hi: #262c37;
+  --halo-field-lo: #0b0e13;
 
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px -8px rgba(0, 0, 0, 0.7);
@@ -457,6 +724,32 @@
   --atmos-mix-violet: 11%;
   --grain-alpha: 0.04;
   --glow-hero-mix: 18%;
+}
+
+:root[data-theme="dark"] .tv-board-shell {
+  --efir-page-glow: rgba(116, 160, 224, .075);
+  --efir-panel: #0c0f14;
+  --efir-panel-sheen: rgba(255, 255, 255, .03);
+  --efir-raised: #141921;
+  --efir-raised-hi: #1d232e;
+  --efir-sunken: #07090c;
+  --efir-ink: #f2f5fa;
+  --efir-ink-name: #d9dfe8;
+  --efir-ink-ctx: #c2cad6;
+  --efir-ink-2: #939db0;
+  --efir-ink-3: #737e92;
+  --efir-ink-4: #2f3743;
+  --efir-hairline: rgba(255, 255, 255, .05);
+  --efir-edge-hi: rgba(255, 255, 255, .095);
+  --efir-edge-ring: rgba(255, 255, 255, .035);
+  --efir-shadow-panel: 0 30px 60px -30px rgba(0, 0, 0, .9);
+  --efir-shadow-seat: 0 24px 40px -22px rgba(0, 0, 0, .95), 0 2px 5px -1px rgba(0, 0, 0, .55);
+  --efir-seg-well: inset 0 1px 2px rgba(0, 0, 0, .35), inset 0 0 0 1px rgba(255, 255, 255, .035);
+  --efir-seg-on: inset 0 1px 0 rgba(255, 255, 255, .095), 0 1px 2px rgba(0, 0, 0, .35);
+  --efir-track: rgba(255, 255, 255, .09);
+  --efir-stage-light: rgba(150, 185, 235, .07);
+  --efir-plate-well: #07090c;
+  --efir-p1-keyline: rgba(249, 232, 174, 0.13);
 }
 
 /*
@@ -2277,148 +2570,113 @@ p {
 /* ==========================================================================
  * EFIR — sotuvchilar taxtasi: gerb, medal, halqa, legenda, o'rindiq, qator, komandalar, e'lon
  *
- * Spec: docs/superpowers/specs/2026-09-16-efir-taxta-design.md. Mock:
- * docs/superpowers/specs/assets/2026-09-16-efir/efir.html — o'lchamlar shundan.
+ * Spec: docs/superpowers/specs/2026-09-17-efir-premium-design.md (EFIR Premium,
+ * ustida 2026-09-16-efir-taxta-design.md). Mock va barcha qoidalar:
+ * docs/superpowers/specs/assets/2026-09-17-efir-premium/final.css — o'lchamlar shundan.
  *
- * BITTA AKSENT, BITTA METALL. Daraja `--tier` orqali keladi: `[data-tier="N"]`
- * uni `--tier-N` ga bog'laydi va komponentlar `--tier-N` ni hech qachon
- * to'g'ridan-to'g'ri o'qimaydi (oila ORDINAL — token blokidagi izoh).
- * `--medal-*` faqat yozilgan istisnolarda: `.medal` (Oy oilasi o'z
- * metallida, qolgan 11 kod oltin), `.halo`, `.crest__crown`, `.trow__rank`,
- * `.record__k`. `--series-*` bu bo'limda yo'q. Literal rang yo'q.
+ * BITTA YORUG'LIK, BITTA METALL TIZIMI. Daraja `--tier` orqali keladi:
+ * `[data-tier="N"]` uni `--tier-N` (va `-hi/-lo/-wash`) ga bog'laydi va
+ * komponentlar `--tier-N` ni hech qachon to'g'ridan-to'g'ri o'qimaydi (oila
+ * ORDINAL — token blokidagi izoh). Metall xuddi shunday `[data-metal]` →
+ * `--metal`. `--medal-*` faqat yozilgan istisnolarda (token blokidagi ro'yxat;
+ * test ushlaydi). `--series-*` bu bo'limda yo'q. Literal rang YO'Q va
+ * `color-mix()` ham YO'Q — aralashmalar tokenlarda oldindan hisoblangan.
  *
- * O'lchamlar pikselda (1920) va `@media (max-width: 1599px)` da 0.8×
- * (spec §9) — `--tv-*` shkalasi `:root` da. Sirtlar: ustun `--surface`,
- * o'rindiq `--surface-raised`, chiziqlar `--border`, bo'sh yo'l `--track`.
+ * Medal, gerb va tanga o'zini `<defs>` ichida bo'yaydi (`medalDefs.ts`,
+ * inline uslub — hujjat selektori `<use>` soya daraxtiga yetmaydi); bu yerda
+ * faqat instance qoidalari. `--efir-*` material tokenlari `.tv-board-shell`
+ * ostida (token bloklari, uchala mavzu mexanizmi).
  * ======================================================================== */
 
-/* ---- daraja: 0…6 → --tier. 0-daraja faqat kontur (`--border-strong`). ---- */
-[data-tier="0"] { --tier: var(--border-strong); }
-[data-tier="1"] { --tier: var(--tier-1); }
-[data-tier="2"] { --tier: var(--tier-2); }
-[data-tier="3"] { --tier: var(--tier-3); }
-[data-tier="4"] { --tier: var(--tier-4); }
-[data-tier="5"] { --tier: var(--tier-5); }
-[data-tier="6"] { --tier: var(--tier-6); }
+/* ---- daraja: 0…6 → --tier (+ -hi/-lo/-wash). 0-daraja — shaffof (tasma konturi o'zi chiziladi). ---- */
+[data-tier="0"] { --tier: transparent; --tier-hi: transparent; --tier-lo: transparent; --tier-wash: transparent; }
+[data-tier="1"] { --tier: var(--tier-1); --tier-hi: var(--tier-1-hi); --tier-lo: var(--tier-1-lo); --tier-wash: var(--tier-1-wash); }
+[data-tier="2"] { --tier: var(--tier-2); --tier-hi: var(--tier-2-hi); --tier-lo: var(--tier-2-lo); --tier-wash: var(--tier-2-wash); }
+[data-tier="3"] { --tier: var(--tier-3); --tier-hi: var(--tier-3-hi); --tier-lo: var(--tier-3-lo); --tier-wash: var(--tier-3-wash); }
+[data-tier="4"] { --tier: var(--tier-4); --tier-hi: var(--tier-4-hi); --tier-lo: var(--tier-4-lo); --tier-wash: var(--tier-4-wash); }
+[data-tier="5"] { --tier: var(--tier-5); --tier-hi: var(--tier-5-hi); --tier-lo: var(--tier-5-lo); --tier-wash: var(--tier-5-wash); }
+[data-tier="6"] { --tier: var(--tier-6); --tier-hi: var(--tier-6-hi); --tier-lo: var(--tier-6-lo); --tier-wash: var(--tier-6-wash); }
 
-/* ---- gerb (pagon): olti chevron `#ch`, yoniq — --tier, o'chiq — --track ---- */
-.crest {
-  flex: none;
-  display: inline-block;
-  vertical-align: middle;
-  /* Legenda toji oltinchi katakcha USTIDA, viewBox'dan tashqarida. */
-  overflow: visible;
-}
-.crest--row { width: 60px; height: 20px; }
-.crest--seat { width: 78px; height: 26px; }
-.crest--legend { width: 42px; height: 14px; }
-.crest .on { fill: var(--tier); }
-.crest .off { fill: var(--track); }
-.crest__crown { fill: var(--medal-gold); }
+/* ---- metall: 1 oltin, 2 kumush, 3 bronza → --metal (+ -hi/-lo/-wash). O'rindiq keyline'i va yuvishi,
+   komandalar 1–3 ulush chizig'i shuni o'qiydi. ---- */
+[data-metal="gold"] { --metal: var(--medal-gold); --metal-hi: var(--medal-gold-hi); --metal-lo: var(--medal-gold-lo); --metal-wash: var(--medal-gold-wash); }
+[data-metal="silver"] { --metal: var(--medal-silver); --metal-hi: var(--medal-silver-hi); --metal-lo: var(--medal-silver-lo); --metal-wash: var(--medal-silver-wash); }
+[data-metal="bronze"] { --metal: var(--medal-bronze); --metal-hi: var(--medal-bronze-hi); --metal-lo: var(--medal-bronze-lo); --metal-wash: var(--medal-bronze-wash); }
 
-/* ---- medal: 24 birlik, faqat-fill, bitta metall; kesib olish — sirt rangi ---- */
-.medal {
-  display: inline-block;
-  flex: none;
-  vertical-align: middle;
-  overflow: visible;
-  /* Gravyura rangi — medal turgan sirt. Qatorda ustun sirti; o'rindiq o'zinikini beradi. */
-  --cut: var(--surface);
-  fill: var(--medal-gold);
-}
-.medal[data-medal="month-silver"] { fill: var(--medal-silver); }
-.medal[data-medal="month-bronze"] { fill: var(--medal-bronze); }
-.medal .cut,
-.medal .medal__num { fill: var(--cut); }
-.medal .medal__num {
-  font-family: var(--font-sans);
-  font-weight: 800;
-  font-size: 11px;
-}
-/* Nodir yettilik — yumshoq oltin soya; yorug'da token shaffof, ya'ni hech narsa.
-   FAQAT O'RINDIQDA: podiumda eng ko'pi 3 x 14 medal, ro'yxatda esa 100 qator x
-   3 medal — `filter` har biriga alohida rastr qatlami ochadi, va bu soya 3
-   metrdan ko'rinmaydigan joyda 300 ga yaqin qatlam degani. Qator medallari
-   soyasiz chiziladi. */
-.seat .medal.rare { filter: drop-shadow(0 0 5px var(--glow-rare)); }
-.medal-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.medal-count {
-  font-size: var(--tv-m);
-  font-weight: 600;
-  color: var(--ink-secondary);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ---- halqa: rank raqami metall halqada — 3 px halqa + 8 px xira tashqi halqa ---- */
+/* ---- zarb qilingan bo'laklar: gerb, medal, tanga. O'lcham — atributlarda (height/size), CSS'da emas. ---- */
+.crest,
+.medal,
 .halo {
+  display: block;
   flex: none;
-  display: grid;
-  place-items: center;
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  font-size: 32px;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.04em;
-  font-variant-numeric: tabular-nums lining-nums;
-  --metal: var(--ink-muted);
-  color: var(--metal);
-  background: var(--surface);
-  box-shadow:
-    0 0 0 3px var(--metal),
-    0 0 0 8px color-mix(in oklab, var(--metal) 14%, transparent);
+  overflow: visible;
 }
-.halo--lg {
-  width: 80px;
-  height: 80px;
-  font-size: var(--tv-xl);
+/* Yoniq katakchalar `currentColor` bilan bo'yaladi — `<use>` soya daraxtini ranglashning eng ko'chma yo'li. */
+.crest { color: var(--tier); }
+
+/* ×N plastinkasi — faqat o'rindiqda, SVG ichida, instance (yorug' DOM) — oddiy CSS yetadi. */
+.medal__plate-rim {
+  stroke: var(--medal-key);
+  stroke-width: 0.5;
 }
-.halo[data-metal="gold"] { --metal: var(--medal-gold); }
-.halo[data-metal="silver"] { --metal: var(--medal-silver); }
-.halo[data-metal="bronze"] { --metal: var(--medal-bronze); }
+.medal__plate-well {
+  fill: var(--efir-plate-well);
+  stroke: var(--medal-key);
+  stroke-width: 0.4;
+}
+.medal__count use { stroke: var(--medal-gold-hi); }
+.medal__count[data-dev="gilt"] use { stroke: var(--medal-gilt-hi); }
+.medal__count[data-dev="steel"] use { stroke: var(--medal-steel-hi); }
+.medal__count[data-dev="silver"] use { stroke: var(--medal-silver-hi); }
+.medal__count[data-dev="bronze"] use { stroke: var(--medal-bronze-hi); }
 
-/* ---- legenda: ustun pastida 28 px, olti gerb + so'z + qisqa ostona ----
+.halo-box {
+  position: relative;
+  flex: none;
+  display: block;
+}
 
-   1920 da BIR QATOR — ostona qisqa yozilgani va sarlavha yo'qligi uchun
-   (`TierLegend.tsx` izohi nimaga shundayligini yozadi: to'liq so'm bilan
-   kalit ~1154 px so'rardi, ustunda esa 1053 px bor).
+/* ---- legenda: ustun pastida 36 px botiq tasma, olti gerb (15 px) + so'z + qisqa ostona ----
+
+   1920 da BIR QATOR, `space-between` — ostona qisqa yozilgani va sarlavha
+   yo'qligi uchun (`TierLegend.tsx` izohi nimaga shundayligini yozadi).
 
    AMMO `flex-wrap` QOLADI, VA U XAVFSIZLIK CHORASI. Yon panel ochiq 1366 da
-   ustun ~645 px — kalit u yerda baribir o'raladi, va qat'iy 28 px +
+   ustun ~645 px — kalit u yerda baribir o'raladi, va qat'iy balandlik +
    `overflow: hidden` da o'ralish o'rniga oxirgi pog'ona — aynan «Legenda»,
-   narvon cho'qqisi — indamay kesilardi. Ikki o'qiladigan qator kesilgan bir
-   qatordan yaxshiroq. `white-space: nowrap` pog'onaning O'Z matnini
-   bo'linishdan saqlaydi. ---- */
+   narvon cho'qqisi — indamay kesilardi. Shuning uchun `min-height`.
+   `white-space: nowrap` pog'onaning O'Z matnini bo'linishdan saqlaydi. ---- */
 .tv-legend {
   flex: none;
   display: flex;
   flex-wrap: wrap;
+  justify-content: space-between;
   align-items: center;
   align-content: center;
   gap: 5px 14px;
-  min-height: 28px;
-  padding: 3px 16px;
-  border-top: 1px solid var(--border);
-  font-size: var(--tv-s);
-  color: var(--ink-muted);
+  min-height: 36px;
+  margin-top: auto;
+  padding: 0 20px;
+  background: var(--efir-sunken);
+  box-shadow: inset 0 1px 0 var(--efir-hairline);
   white-space: nowrap;
 }
 .legend__rung {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
+  white-space: nowrap;
 }
 .legend__rung b {
-  color: var(--ink-secondary);
+  font-size: 12px;
   font-weight: 600;
+  color: var(--efir-ink-2);
 }
 .legend__rung i {
+  margin-left: -2px;
+  font-size: 12px;
   font-style: normal;
+  color: var(--efir-ink-3);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2514,14 +2772,12 @@ p {
   text-overflow: ellipsis;
   max-width: 120px;
 }
-/* Daraja so'zi — BIR MARTA, gerb yonida, `--tier` rangida. Yorug' mavzuda
-   narvon cho'qqisi («Ustoz», «Legenda») oqish tushadi va oq sirtda o'qilmaydi
-   (spec §13), shuning uchun rang siyoh bilan aralashtiriladi: 70 % `--tier`
-   TARTIBNI ikkala mavzuda ham saqlaydi (Usta har doim Katta sotuvchidan
-   yorug'roq), qolgan 30 % kontrastni qaytaradi. */
+/* Daraja so'zi — BIR MARTA, gerb yonida. EFIR Premium: endi `--tier` rangida
+   EMAS, sokin `--efir-ink-2` (spec §4) — darajani plastinali gerb aytadi, va
+   bo'limda `color-mix()` yo'q. */
 .seat__level {
   font-weight: 600;
-  color: color-mix(in oklab, var(--tier) 70%, var(--ink-primary));
+  color: var(--efir-ink-2);
   white-space: nowrap;
 }
 /* RAQAM HECH QACHON KESILMAYDI. O'rindiq `overflow: hidden` (tasma + radius)
@@ -2589,8 +2845,6 @@ p {
   gap: 12px;
   min-height: 24px;
 }
-/* Gravyura rangi o'rindiqda — ko'tarilgan sirt. */
-.seat .medal { --cut: var(--surface-raised); }
 
 /* ---- ro'yxat: timing tower (spec §5). Yorliq qatori STATIK, skroll qutisi TASHQARISIDA. ---- */
 .tv-cols,
@@ -2664,15 +2918,14 @@ p {
   font-weight: 400;
   color: var(--ink-muted);
 }
+/* O'ngdan chapga: eng nodir medal pul yonida — yuzta qatorning eng qimmati bitta vertikal ustun. */
 .row__medals {
   display: flex;
+  flex-direction: row-reverse;
   align-items: center;
   gap: 6px;
+  height: 28px;
   overflow: visible;
-}
-.row__more {
-  font-size: var(--tv-s);
-  color: var(--ink-muted);
 }
 .row__f2,
 .row__f1 {
@@ -2845,7 +3098,7 @@ p {
 /* ---- voqea harakati (spec §8): yangi chevron 400 ms da bir marta to'ladi, yangi medal 0,6 → 1.
    Yaltirash, marquee, pulsatsiya yo'q. ---- */
 @keyframes crest-fill {
-  from { fill: var(--track); }
+  from { fill: var(--crest-off); }
   to { fill: var(--tier); }
 }
 .crest__cell--fill { animation: crest-fill 400ms var(--ease-out) both; }
@@ -2858,22 +3111,10 @@ p {
   animation: medal-new 400ms var(--ease-out) both;
 }
 
-/* ---- 1366 va tor televizor (spec §9): 0.8× — gerb 48×16 / 62×21, halqa 56/48, qator 44,
+/* ---- 1366 va tor televizor (spec §9): 0.8× — qator 44 (gerb, medal va tanga o'lchami atributda,
+   bu yerda kichraymaydi),
    o'rindiq 0.8× (365 / 246), gridlar torroq; shrift shkalasi `:root` da 36/20/14/12. ---- */
 @media (max-width: 1599px) {
-  .crest--row { width: 48px; height: 16px; }
-  .crest--seat { width: 62px; height: 21px; }
-  .crest--legend { width: 34px; height: 11px; }
-  .halo {
-    width: 48px;
-    height: 48px;
-    font-size: 26px;
-  }
-  .halo--lg {
-    width: 56px;
-    height: 56px;
-    font-size: 30px;
-  }
   .seat {
     max-width: 246px;
     gap: 5px;
@@ -2886,10 +3127,6 @@ p {
   .seat::before { width: 8px; }
   .seat__name { font-size: 18px; }
   .seat__medals { gap: 10px; }
-  .medal {
-    width: 20px;
-    height: 20px;
-  }
   .row { height: 44px; }
   .tv-cols,
   .row {
