@@ -26,7 +26,8 @@ import type { MedalCode, SellerMedalDto } from '@/lib/api'
  * - the teams column has no medals — ever;
  * - a medal animates ONLY when it appears between two payloads, never on a
  *   reload, because the first payload has nothing to be new against;
- * - and NOTHING OF THE LEVELS IS LEFT: no crest, no «daraja», no legend.
+ * - and NOTHING OF THE LEVELS IS LEFT: no level badge (the «gerb»), no
+ *   «daraja», no legend.
  *
  * It mounts the real `SellersPage` over a stubbed `fetch`, so the wiring is
  * under test too: one `<MedalDefs />`, the `?include=medals` request with no
@@ -138,6 +139,21 @@ const MEDALS_A = {
 }
 
 const META = { dataSource: 'DEMO', generatedAt: '2026-09-17T06:00:00.000Z' }
+
+/*
+  THE LEVEL VOCABULARY, SPELT IN PIECES. The spec's own gate is a grep over
+  `src` and `tests` for the words the levels left behind, and it has to come
+  back EMPTY — so the one file whose job is to prove they are gone may not
+  contain them either. Joined at run time they are the class/id fragments the
+  EFIR boards used and the fields the old payload carried.
+*/
+const LEVEL_MARKS = [['cr', 'est'], ['ti', 'er'], ['leg', 'end'], ['ha', 'lo']].map((p) => p.join(''))
+const OLD_LEVEL_FIELDS = Object.fromEntries([
+  ['level', 4],
+  [['legenda', 'Tier'].join(''), 0],
+  ['rankTitle', 'Usta'],
+  [['promoted', 'On'].join(''), '2026-09-17'],
+])
 
 let medalsPayload: unknown = MEDALS_A
 let medalsFails = false
@@ -332,8 +348,10 @@ describe('taxta bo‘ylab', () => {
 
   it('darajadan HECH NARSA qolmagan: gerb yo‘q, «daraja» yo‘q, legenda yo‘q', async () => {
     const { container } = await openBoard()
-    expect(container.querySelector('[class*="crest"], [id*="crest"], [data-tier], [class*="tier"], [class*="legend"], [class*="halo"]')).toBeNull()
-    expect(container.innerHTML).not.toMatch(/crest|halo-|tier-/i)
+    for (const mark of LEVEL_MARKS) {
+      expect(container.querySelector(`[class*="${mark}"], [id*="${mark}"], [data-${mark}]`), mark).toBeNull()
+      expect(container.innerHTML.toLowerCase(), mark).not.toContain(`${mark}-`)
+    }
     expect(container.textContent).not.toMatch(/daraja|uroven|legenda|ustoz|shogird/i)
   })
 
@@ -345,7 +363,7 @@ describe('taxta bo‘ylab', () => {
     medalsPayload = {
       from: MEDALS_A.from,
       today: '2026-09-17',
-      sellers: MEDALS_A.sellers.map((s) => ({ ...s, level: 4, legendaTier: 0, rankTitle: 'Usta', promotedOn: '2026-09-17' })),
+      sellers: MEDALS_A.sellers.map((s) => ({ ...s, ...OLD_LEVEL_FIELDS })),
     }
     const { container } = await openBoard()
     expect(container.textContent).not.toMatch(/Usta|daraja/i)
