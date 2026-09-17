@@ -1569,8 +1569,20 @@ mixed `100vh` against a shell sized in `100dvh`.
   sees just the changed records, so "not seen" says nothing about existence.
 - **The production sweep bypasses the SyncEngine on purpose** — it collects ids
   and calls `deleteMissing` directly, because a FULL engine run also re-upserts
-  all 434 000 deals. It must not run at tick 0 (`0 % N === 0`); reference data
-  loading at tick 0 *is* intended.
+  all 434 000 deals. It must not run at tick 0.
+- **THE REFERENCE PASS AND THE SWEEP RUN ON THE WALL CLOCK, NOT THE TICK
+  COUNTER — 2026-09-17** (`sync/schedule.ts`). `tick` restarts at zero in every
+  process, so every deploy re-ran the reference pass (sixteen a day against
+  eight scheduled) and a day with two deploys never reached the sweep's tick
+  720 — no sweep ran in the 48 hours before this was measured. The worker now
+  reads when each last ran from `sync_log` at startup: the reference pass is
+  dated by its first entity's row, and the sweep writes its own `DEALS` /
+  `FULL` / `SUCCESS` row (`recordsRead` = portal deals, `recordsUpdated` =
+  rows deleted). A failed sweep retries after an hour, never on the next tick.
+  The env vars still count TICKS and are converted with `SYNC_INTERVAL_SEC`.
+  **A deploy now costs the portal nothing beyond the hot tick.**
+- **`sync_log` keeps 30 days**, and a `RUNNING` row older than a day (a process
+  killed mid-pass) is deleted — at startup and after each sweep.
 - **The sweep's temp table lives inside one interactive transaction.**
   `CREATE TEMP TABLE … ON COMMIT DROP` outside a transaction vanishes at commit;
   the next `TRUNCATE` then raised `42P01`, which the engine swallowed as a

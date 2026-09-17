@@ -57,6 +57,7 @@ import { createSyncHandlers } from '../src/server/integrations/crm/sync/handlers
 import { PrismaSyncStore } from '../src/server/integrations/crm/sync/PrismaSyncStore'
 import { SyncEngine } from '../src/server/integrations/crm/sync/SyncEngine'
 import { historyBackfillCursor } from '../src/server/integrations/crm/sync/backfill'
+import { isPassDue, SWEEP_RETRY_MS } from '../src/server/integrations/crm/sync/schedule'
 import {
   classifyRefusal,
   refusalCode,
@@ -287,6 +288,36 @@ const NETWORK_FAILURE = /fetch failed|UND_ERR_|ECONN|ETIMEDOUT|ENETUNREACH|EHOST
  * portal has taken this many ordinary ticks from us.
  */
 const CALM_TICKS = 3
+
+/** How long `sync_log` keeps a row. Every diagnostic in CLAUDE.md reads days, not months. */
+const SYNC_LOG_RETENTION_MS = 30 * 86_400_000
+
+/**
+ * Keep `sync_log` a working log rather than an archive.
+ *
+ * It grows ~3 000 rows a day at the 120 s tick and nothing ever deleted one:
+ * 126 000 rows by 2026-09-17, every query on it an index walk that gets longer.
+ * And ~270 of them were `RUNNING` forever — a pass whose process was killed
+ * mid-tick (a deploy, the OOM kills of 2026-09-14) never writes its ending. A
+ * pass cannot run for a day, so a day-old `RUNNING` row is a dead process, not
+ * a slow one. Run at startup and after each daily sweep; never fatal.
+ */
+async function pruneSyncLog(db: PrismaClient): Promise<void> {
+  const now = Date.now()
+  try {
+    const { count } = await db.syncLog.deleteMany({
+      where: {
+        OR: [
+          { startedAt: { lt: new Date(now - SYNC_LOG_RETENTION_MS) } },
+          { status: 'RUNNING', startedAt: { lt: new Date(now - 86_400_000) } },
+        ],
+      },
+    })
+    if (count > 0) console.log(`  ${stamp()} sync_log: ${count} ta eski yozuv oʻchirildi`)
+  } catch (error) {
+    console.warn(`  ${stamp()} ! sync_log tozalanmadi:`, error)
+  }
+}
 
 /** How recent a logged refusal must be to start the next worker already closed. */
 const SEED_MAX_AGE_MS = 15 * 60_000
@@ -688,8 +719,68 @@ async function main() {
     console.warn(`  ${stamp()} ! tarixni qaytarib boʻlmadi:`, error)
   }
 
+  /*
+    THE SLOW CLOCKS ARE INHERITED, NOT RESTARTED — see `schedule.ts`.
+
+    `REFERENCE_EVERY` and `SWEEP_EVERY` keep their meaning in TICKS so the
+    deployed spec needs no edit; they are converted to wall time here and
+    measured from what the previous process wrote to `sync_log`. Both reads are
+    bounded to twice their period so they stay short walks of the
+    `[status, finishedAt DESC]` index on a log of 120 000 rows.
+
+    A reference pass is dated by its FIRST entity, whatever became of the rest:
+    that is the moment the pass was attempted, which is what the tick counter
+    measured too. Dating it by a later entity that failed would re-run the whole
+    pass on every tick for as long as that one entity kept failing.
+
+    The sweep writes its own `DEALS` / `FULL` row (below), because until now it
+    left no trace in the database at all.
+  */
+  const REFERENCE_MS = REFERENCE_EVERY * INTERVAL_SEC * 1000
+  const SWEEP_MS = SWEEP_EVERY * INTERVAL_SEC * 1000
+  let lastReferenceAt: Date | null = null
+  let lastSweepAt: Date | null = null
+  let lastSweepFailedAt: Date | null = null
+  try {
+    const now = Date.now()
+    const [reference, sweep] = await Promise.all([
+      REFERENCE_MS > 0
+        ? prisma.syncLog.findFirst({
+            where: {
+              status: { in: ['SUCCESS', 'PARTIAL'] },
+              entity: REFERENCE[0],
+              finishedAt: { gt: new Date(now - 2 * REFERENCE_MS) },
+            },
+            orderBy: { finishedAt: 'desc' },
+            select: { finishedAt: true },
+          })
+        : null,
+      SWEEP_MS > 0
+        ? prisma.syncLog.findFirst({
+            where: {
+              status: 'SUCCESS',
+              entity: 'DEALS',
+              mode: 'FULL',
+              finishedAt: { gt: new Date(now - 2 * SWEEP_MS) },
+            },
+            orderBy: { finishedAt: 'desc' },
+            select: { finishedAt: true },
+          })
+        : null,
+    ])
+    lastReferenceAt = reference?.finishedAt ?? null
+    lastSweepAt = sweep?.finishedAt ?? null
+  } catch (error) {
+    // Not fatal: unknown means «due», which is exactly what a restart did before.
+    console.warn(`  ${stamp()} ! oxirgi maʼlumotnoma/tozalash vaqti oʻqilmadi:`, error)
+  }
+
+  await pruneSyncLog(prisma)
+
   console.log(
-    `  Sinxronizatsiya har ${INTERVAL_SEC}s. Maʼlumotnomalar har ${REFERENCE_EVERY} tsiklda.` +
+    `  Sinxronizatsiya har ${INTERVAL_SEC}s. Maʼlumotnomalar har ${REFERENCE_EVERY} tsiklda` +
+      ` (oxirgisi: ${lastReferenceAt?.toISOString() ?? 'yozilmagan'}).` +
+      (SWEEP_EVERY > 0 ? ` Oxirgi tozalash: ${lastSweepAt?.toISOString() ?? 'yozilmagan'}.` : '') +
       (ROISTAT_EVERY > 0 ? ` Roistat har ${ROISTAT_EVERY} tsiklda.` : ' Roistat oʻchirilgan.') +
       (SWEEP_EVERY > 0
         ? ` Oʻchirilganlarni tozalash har ${SWEEP_EVERY} tsiklda.`
@@ -738,10 +829,10 @@ async function main() {
       worker does no work at all, and asks exactly ONE cheap question when the
       ladder says it is worth asking.
 
-      `tick` is deliberately NOT incremented here. The counter schedules the
-      reference pass, the deletion sweep and the Roistat import; advancing it
-      through an outage would fire a 180-request sweep into a portal that had
-      just started answering again.
+      `tick` is deliberately NOT incremented here. It schedules the Roistat
+      import; the reference pass and the sweep run on the wall clock
+      (`schedule.ts`), and what keeps THEM off a portal that has just started
+      answering again is `CALM_TICKS`.
     */
     if (provider.gate.isOpen()) {
       const now = new Date()
@@ -783,9 +874,12 @@ async function main() {
       )
     }
 
-    const referenceDue: boolean = tick % REFERENCE_EVERY === 0 || referenceOwed
+    const referenceDue: boolean = isPassDue(lastReferenceAt, new Date(), REFERENCE_MS) || referenceOwed
     referenceOwed = referenceDue && calm > 0
-    const entities = referenceDue && calm === 0 ? [...REFERENCE, ...HOT] : HOT
+    const withReference = referenceDue && calm === 0
+    const entities = withReference ? [...REFERENCE, ...HOT] : HOT
+    // Stamped when the pass is ATTEMPTED — see the startup read for why.
+    if (withReference) lastReferenceAt = new Date()
 
     // Zeroed per tick, so the line below reports THIS tick's cost rather than
     // the process total. The baskets are kept — they belong to the portal's
@@ -951,17 +1045,52 @@ async function main() {
       the first tick after every start, restart and redeploy. With deploys
       landing more often than the old sweep could finish, the worker spent its
       whole life sweeping and the dashboard never saw a second minute-tick.
-      Reference data still loads at tick 0 by design; this must not.
+      Reference data loads at tick 0 only when its wall clock says it is due;
+      the sweep never does.
 
       Guarded, because `sweepByAntiJoin` refuses to delete anything when the
       source returns nothing at all, and `listDealIds` throws rather than
       returning a short read — a failed read must never empty the table.
     */
-    if (SWEEP_EVERY > 0 && tick > 0 && tick % SWEEP_EVERY === 0 && calm === 0 && !stopping && dealsHandler) {
+    /*
+      ON THE WALL CLOCK SINCE 2026-09-17 (`schedule.ts`): the tick counter
+      restarts with every deploy, and with more than one deploy a day this
+      never reached tick 720 at all. A failure is retried after
+      `SWEEP_RETRY_MS`, never on the next tick — ~9 300 invocations every two
+      minutes into a portal that just refused one is the loop to avoid.
+    */
+    const sweepNow = new Date()
+    const sweepDue =
+      isPassDue(lastSweepAt, sweepNow, SWEEP_MS) &&
+      (lastSweepFailedAt === null || sweepNow.getTime() - lastSweepFailedAt.getTime() >= SWEEP_RETRY_MS)
+    if (sweepDue && tick > 0 && calm === 0 && !provider.gate.isOpen() && !stopping && dealsHandler) {
       const sweepStarted = Date.now()
       try {
         const live = await provider.listDealIds()
         const deleted = (await dealsHandler.deleteMissing?.(live)) ?? 0
+        lastSweepAt = new Date()
+        lastSweepFailedAt = null
+        /*
+          THE SWEEP'S OWN RECORD — the next process reads it back at startup.
+          `recordsRead` is the portal's deal count and `recordsUpdated` the
+          rows deleted here. A write failure costs one early sweep after the
+          next restart, so it is reported and not fatal.
+        */
+        await prisma.syncLog
+          .create({
+            data: {
+              provider: 'BITRIX24',
+              entity: 'DEALS',
+              mode: 'FULL',
+              status: 'SUCCESS',
+              startedAt: new Date(sweepStarted),
+              finishedAt: lastSweepAt,
+              recordsRead: live.size,
+              recordsUpdated: deleted,
+            },
+          })
+          .catch((error: unknown) => console.warn(`  ${stamp()} ! tozalash yozuvi saqlanmadi:`, error))
+        await pruneSyncLog(prisma)
         // Logged unconditionally, including the zero. The old code logged only
         // when something was deleted, so a sweep that silently deleted nothing
         // for months was indistinguishable from one that had nothing to do.
@@ -972,6 +1101,7 @@ async function main() {
       } catch (error) {
         // Never fatal: a failed sweep leaves stale rows, which is the state we
         // were already in. Losing the tick loop over it would be worse.
+        lastSweepFailedAt = new Date()
         console.warn(`  ${stamp()} tozalash muvaffaqiyatsiz: ${(error as Error).message}`)
       }
     }
