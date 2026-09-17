@@ -2939,9 +2939,8 @@ export class InsightsRepository {
    *
    * Takes a `ScopedWindow` rather than a `Period` so the caller's employee
    * scope reaches the SQL through the same door every other reading built on
-   * `queueSql` uses. The route is company-wide today, so the scope is the
-   * whole company — but the plumbing is here, and widening the endpoint later
-   * is a line in the route rather than a rewrite of this query.
+   * `queueSql` uses. Since 2026-09-17 the route threads `ctx.scope` in, so a
+   * ROP reads their own team's funnel and an ALL account the company's.
    */
   /**
    * WHAT IS STANDING AT A POST OFFICE RIGHT NOW — every parcel, no window.
@@ -2994,6 +2993,7 @@ export class InsightsRepository {
         ) e ON true
        WHERE s."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER')
          AND s."externalId" LIKE 'C6:%'
+         AND ${InsightsRepository.dealOperatorScopeMatch('$1')}
        GROUP BY s."name"
        ORDER BY sort
       `
@@ -3021,7 +3021,7 @@ export class InsightsRepository {
    *
    * NO CUSTOMER DATA. The Bitrix24 id and the order code are enough to open the
    * deal in the portal, which is where the phone number already is. This screen
-   * is company-wide (analytics:read:all) and has never disclosed a customer;
+   * has never disclosed a customer;
    * adding a name or a number here would change what the whole screen is
    * allowed to show, for no gain over a link the reader follows anyway.
    *
@@ -3048,13 +3048,16 @@ export class InsightsRepository {
          AND s."logisticsRole" IN ('REGIONAL_HUB', 'CARRIER')
          AND s."externalId" LIKE 'C6:%'
          AND h."enteredAt" < now() - interval '7 days'
+         AND ${InsightsRepository.dealOperatorScopeMatch('$1')}
        ORDER BY d."amountMinor" DESC, h."enteredAt" ASC
        LIMIT 25
       `
   }
 
   /** The 25 richest parcels standing at a post office for more than a week. */
-  async logisticsStandingOrders(): Promise<readonly LogisticsStandingOrder[]> {
+  async logisticsStandingOrders(
+    scope: Pick<ScopedWindow, 'restrictToEmployeeIds'>,
+  ): Promise<readonly LogisticsStandingOrder[]> {
     const rows = await this.prisma.$queryRawUnsafe<
       {
         bitrix_id: string | null
@@ -3064,7 +3067,7 @@ export class InsightsRepository {
         amount: MoneyText
         days: number
       }[]
-    >(InsightsRepository.logisticsStandingOrdersSql())
+    >(InsightsRepository.logisticsStandingOrdersSql(), InsightsRepository.scopeValue(scope))
 
     return rows.map((r) => ({
       bitrixId: r.bitrix_id,
@@ -3077,7 +3080,9 @@ export class InsightsRepository {
   }
 
   /** Every parcel standing at a Доставка post office, whatever month it was ordered in. */
-  async logisticsStanding(): Promise<readonly LogisticsStandingRow[]> {
+  async logisticsStanding(
+    scope: Pick<ScopedWindow, 'restrictToEmployeeIds'>,
+  ): Promise<readonly LogisticsStandingRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<
       {
         post: string
@@ -3087,7 +3092,7 @@ export class InsightsRepository {
         aged_amount: MoneyText
         median_days: number | null
       }[]
-    >(InsightsRepository.logisticsStandingSql())
+    >(InsightsRepository.logisticsStandingSql(), InsightsRepository.scopeValue(scope))
 
     return rows.map((r) => ({
       post: r.post,
@@ -3414,6 +3419,22 @@ export class InsightsRepository {
   }
 
   /**
+   * `scopeMatch` for a statement that reads `deal d` directly rather than the
+   * queue cohort — the two standing blocks on Logistika.
+   *
+   * THE SAME PERSON, SPELLED WHERE THE COHORT CANNOT REACH. `classified`
+   * resolves the operator as `COALESCE(d."operatorEmployeeId", d."employeeId")`
+   * and projects it as operator_id; a parcel standing at a post office has no
+   * row in that cohort to borrow it from. So the expression is repeated here,
+   * character for character, and logisticsSql.test.ts pins both spellings —
+   * a ROP must not see a parcel in the standing list that their own funnel
+   * above it attributes to someone else.
+   */
+  private static dealOperatorScopeMatch(param: string): string {
+    return `(${param}::text IS NULL OR COALESCE(d."operatorEmployeeId", d."employeeId") = ANY(string_to_array(${param}, ',')))`
+  }
+
+  /**
    * The scope as one bind value: a comma-joined list, or null for everybody.
    *
    * AN EMPTY LIST IS «NOBODY», NEVER «EVERYBODY». Every other id filter in
@@ -3423,7 +3444,7 @@ export class InsightsRepository {
    * has to be said deliberately, and `[]` resolves to the sentinel, which
    * matches no employee row.
    */
-  private static scopeValue(window: ScopedWindow): string | null {
+  private static scopeValue(window: Pick<ScopedWindow, 'restrictToEmployeeIds'>): string | null {
     const ids = window.restrictToEmployeeIds
     if (ids === null) return null
     return ids.length > 0 ? ids.join(',') : NO_EMPLOYEE_IN_SCOPE

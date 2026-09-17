@@ -43,7 +43,7 @@ import { can, canSeeSection, type Principal } from './rbac'
  * administrator handed over the screen; the account's data scope says whether
  * its endpoint has an answer to give. Five screens aggregate across the whole
  * company and refuse anybody narrower — and `effectiveSections` hands an
- * unconfigured SALES account the whole SALES role default, Logistika included.
+ * unconfigured SALES account the whole SALES role default, whatever it holds.
  *
  * So without this filter the feature's own account walks into a wall: an
  * administrator creates the ROP, ticks nothing (the documented "follow the

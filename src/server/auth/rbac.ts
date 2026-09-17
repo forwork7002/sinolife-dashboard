@@ -102,8 +102,8 @@ const READ_ANY: readonly Permission[] = Object.freeze([
 /**
  * Reads that only a company-wide account holds.
  *
- * These gate the endpoints that CANNOT narrow their rows — the confirmation
- * queue, logistics, margin, the command centre. They aggregate across the
+ * These gate the endpoints that CANNOT narrow their rows — margin, dispatch,
+ * the cohort screens, marketing, payroll. They aggregate across the
  * whole company by construction, so there is no honest way to serve them to
  * an account scoped to one salesperson: the answer would either be the
  * company's, which leaks, or silently blank, which lies. Refusing is the third

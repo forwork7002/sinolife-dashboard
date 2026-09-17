@@ -406,11 +406,10 @@ function UserDialog({
     silent mismatch this form exists to prevent.
 
     THE ROP TICKS ARE NOT EMPTY, and that is deliberate. An empty list means
-    "follow the role", and a SALES role's defaults include the command centre
-    and Logistika — two screens that aggregate across the whole company and
-    refuse a narrowed account outright. Tasdiqlash and Sotuvchilar both narrow
-    correctly and are the two the client asked for the account for. Every tick
-    stays editable.
+    "follow the role", and a SALES role's defaults are wider than the two
+    screens the client asked for the account for: Tasdiqlash and Sotuvchilar.
+    Logistika and KPI narrow too and are one tick away. Every tick stays
+    editable.
   */
   const switchKind = (next: AccountKind) => {
     setKind(next)

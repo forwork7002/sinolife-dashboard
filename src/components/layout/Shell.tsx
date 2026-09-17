@@ -401,7 +401,7 @@ export function Shell({
   /*
     A NARROWED ACCOUNT LOSES THE LINKS ITS SCOPE CANNOT OPEN.
 
-    The command centre, logistics, margin, dispatch and Mijoz qaytishi answer
+    Margin, dispatch, Mijoz qaytishi, marketing and payroll answer
     only an ALL-scoped caller — they aggregate across the whole company and
     have no employee filter to narrow by, so their endpoints refuse rather than
     hand a ROP the firm's figures. An administrator can still TICK those

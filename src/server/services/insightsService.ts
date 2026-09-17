@@ -1541,8 +1541,9 @@ export class InsightsService {
     */
     const [cuts, standing, standingOrders] = await Promise.all([
       this.repository.logisticsCohort(this.window(period, scope)),
-      this.repository.logisticsStanding(),
-      this.repository.logisticsStandingOrders(),
+      // Not windowed, but narrowed: a ROP's standing parcels are their team's.
+      this.repository.logisticsStanding(this.window(period, scope)),
+      this.repository.logisticsStandingOrders(this.window(period, scope)),
     ])
 
     const cash = (minor: bigint): MoneyDto => toMoneyDto(money(minor, currency))
