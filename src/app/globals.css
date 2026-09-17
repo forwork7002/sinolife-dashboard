@@ -2680,170 +2680,342 @@ p {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---- podium: 2-1-3, pastlari tekislangan, ierarxiya massa bilan (spec §4) ---- */
+/* ---- podium: uch o'rindiq bitta yuqori yorug'lik ostida (EFIR Premium §4, delta 9–9g).
+   291 = 8 + 277 + 6. Grid ustunlari 1fr · 1.24fr · 1fr; DOM tartibi 1-2-3
+   (ekran o'quvchi chempionni birinchi eshitadi), joyi `grid-column` bilan 2-1-3. ---- */
 .tv-podium {
   flex: none;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.24fr) minmax(0, 1fr);
   gap: 12px;
-  padding: 12px 6px 4px;
+  align-items: end;
+  height: 291px;
+  padding: 8px 12px 6px;
+  background: radial-gradient(460px 280px at 50% -40px, var(--efir-stage-light), transparent 72%);
 }
-/* O'rindiqlar ustun kengligiga qarab qisqaradi (yon panel ochiq bo'lsa ustun
-   torroq); spec o'lchamlari — maksimum. DOM tartibi 1-2-3 (ekran o'quvchi
-   chempionni birinchi eshitadi), ko'z uchun `order` 2-1-3. */
+.seat--2 { grid-area: 1 / 1; }
+.seat--1 { grid-area: 1 / 2; }
+.seat--3 { grid-area: 1 / 3; }
+/* RAMKA YO'Q — uch qatlamli fon: 2 px metall keyline, radial metall yuvish,
+   vertikal ko'tarilgan gradient; ichki halqa va soya. Metall `[data-metal]`
+   (rank bo'yicha) dan, daraja `[data-tier]` dan. */
 .seat {
   position: relative;
-  flex: 1 1 0;
-  max-width: 308px;
   min-width: 0;
+  height: 255px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px 12px 24px;
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
+  padding: 12px 16px 10px 26px;
+  border-radius: 14px;
+  background:
+    linear-gradient(90deg, transparent 4%, var(--metal-hi) 26%, var(--metal) 52%, transparent 94%) top / 100% 2px no-repeat,
+    radial-gradient(130% 70% at 50% 0%, var(--metal-wash), transparent 70%),
+    linear-gradient(180deg, var(--efir-raised-hi) 0%, var(--efir-raised) 40%, var(--efir-panel) 100%);
+  box-shadow: inset 0 0 0 1px var(--efir-edge-ring), var(--efir-shadow-seat);
+  container-type: inline-size;
 }
 .seat--1 {
-  flex: 1.48 1 0;
-  max-width: 456px;
-  padding: 12px 16px 12px 24px;
-  order: 2;
+  height: 277px;
+  background:
+    linear-gradient(90deg, transparent 4%, var(--metal-hi) 26%, var(--metal) 52%, transparent 94%) top / 100% 2px no-repeat,
+    radial-gradient(300px 180px at 50% 0%, var(--medal-gold-wash-p1), transparent 72%),
+    linear-gradient(180deg, var(--efir-raised-hi) 0%, var(--efir-raised) 40%, var(--efir-panel) 100%);
 }
-.seat--2 { order: 1; }
-.seat--3 { order: 3; }
-/* Chap chetida 10 px `--tier` tasma; 0-daraja — 1 px kontur. */
-.seat::before {
+/* Faqat P1: zargarning ichki keyline'i, chetdan 6 px — bitta token, niqob yo'q. */
+.seat--1::after {
   content: "";
+  position: absolute;
+  inset: 6px 6px 6px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--efir-p1-keyline);
+  pointer-events: none;
+}
+/* 6 px inley tasma — daraja rangi; 0-daraja shaffof. */
+.seat__band {
+  position: absolute;
+  left: 0;
+  top: 16px;
+  bottom: 16px;
+  width: 6px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--tier-hi), var(--tier) 45%, var(--tier-lo));
+}
+.seat__id {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 60px;
+}
+.seat--1 .seat__id {
+  height: 72px;
+  gap: 20px;
+  padding-left: 4px;
+}
+.seat__who {
+  min-width: 0;
+  flex: 1;
+}
+.seat__name {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.16;
+  font-weight: 560;
+  letter-spacing: -0.012em;
+  color: var(--efir-ink-name);
+}
+.seat--1 .seat__name { font-size: 22px; }
+/* Bir bo'lakli uzun familiya tor o'rindiqda — ellipsis, ustiga chiqmaydi. */
+.seat__name > span {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.seat__name .code {
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--efir-ink-3);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+/* TUSHISH TARTIBI: komanda sig'masa 20 px oynadan tashqariga o'raladi va
+   BUTUNLAY yo'qoladi — hech narsa ellipsis bo'lmaydi, «A…» chiqmaydi. */
+.seat__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 20px;
+  min-width: 0;
+  height: 20px;
+  margin: 5px 0 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.seat__meta > * {
+  display: flex;
+  align-items: center;
+  height: 20px;
+}
+/* Daraja so'zi — BIR MARTA, gerb yonida; 11 px caps, sokin siyoh (darajani
+   plastinali gerb aytadi). */
+.seat__meta .lvl {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--efir-ink-2);
+}
+.seat__meta .team {
+  padding-left: 8px;
+  font-size: 13px;
+  color: var(--efir-ink-3);
+  box-shadow: inset 1px 0 0 var(--efir-hairline);
+}
+/* PUL HECH QACHON KESILMAYDI. Mock kengligida 40 / 52 px; o'rindiq o'z
+   konteyneri, shuning uchun tor ustunda (rail, 1366) `cqi` bilan kichrayadi.
+   O'lchangan (Inter, tnum, -0.03em): 8 xona 5,51em → 17,5cqi; 9 xona 6,15em
+   → 16cqi; 10 xona 6,97em → 14cqi (`data-digits`, `SeatCard.digitsBand`).
+   U+202F guruh ajratgichlari o'ralmaydi va toraytirilmaydi. */
+.seat__money {
+  margin: 4px 0 0;
+  font-size: min(40px, 17.5cqi);
+  line-height: 44px;
+  font-weight: 560;
+  letter-spacing: -0.03em;
+  color: var(--efir-ink);
+  font-variant-numeric: tabular-nums lining-nums;
+  white-space: nowrap;
+}
+.seat--1 .seat__money {
+  font-size: min(52px, 17.5cqi);
+  line-height: 52px;
+  letter-spacing: -0.034em;
+}
+.seat__money[data-digits="9"] { font-size: min(40px, 16cqi); }
+.seat--1 .seat__money[data-digits="9"] { font-size: min(52px, 16cqi); }
+.seat__money[data-digits="10"] { font-size: min(40px, 14cqi); }
+.seat--1 .seat__money[data-digits="10"] { font-size: min(52px, 14cqi); }
+.seat__fakt {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  height: 16px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--efir-ink-3);
+  white-space: nowrap;
+}
+.seat__fakt b {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  color: var(--efir-ink-2);
+}
+.seat__fakt em {
+  margin-left: 4px;
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 500;
+  color: var(--efir-ink-name);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.seat__prog { margin-top: 10px; }
+.seat__left {
+  margin: 0;
+  font-size: 13px;
+  line-height: 17px;
+  color: var(--efir-ink-2);
+  white-space: nowrap;
+}
+.seat__left em {
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 600;
+  color: var(--efir-ink-name);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.seat__left em.seat__none {
+  font-weight: 400;
+  color: var(--efir-ink-3);
+}
+/* 4 px metr: `--tier-hi` → `--tier`, oxirida siyoh belgisi. */
+.meter {
+  position: relative;
+  height: 4px;
+  margin: 5px 0;
+  border-radius: 2px;
+  background: var(--efir-track);
+}
+.meter i {
   position: absolute;
   left: 0;
   top: 0;
   bottom: 0;
-  width: 10px;
-  background: var(--tier);
-  transition: background var(--duration-move) var(--ease-out);
-}
-.seat[data-tier="0"]::before {
-  background: transparent;
-  box-shadow: inset 1px 0 0 var(--tier);
-}
-.seat__top {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.seat--1 .seat__top { gap: 14px; }
-.seat__who { min-width: 0; }
-.seat__name {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  font-size: 22px;
-  font-weight: 600;
-  line-height: 1.14;
-  letter-spacing: -0.01em;
-  color: var(--ink-primary);
-}
-.seat--1 .seat__name { font-size: var(--tv-l); }
-/* Bir bo'lakli familiya («Fayzullayeva») bo'linolmaydi — tor o'rindiqda
-   gerb ustiga chiqib ketardi; ellipsis kesishdan ko'ra o'qiladi. */
-.seat__name span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* KESILMAYDI, O'RALADI. Ustun mock'dagidan tor bo'lganda (rail, 1366, 1280)
-   bu uch satr — komanda · gerb · so'z, FAKT juftligi va «… qoldi» — o'rindiq
-   eniga sig'may qolardi va `overflow: hidden` ularni indamay kesardi. */
-.seat__sub {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-  margin: 6px 0 0;
-  font-size: var(--tv-m);
-  color: var(--ink-muted);
-}
-.seat__team {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 120px;
-}
-/* Daraja so'zi — BIR MARTA, gerb yonida. EFIR Premium: endi `--tier` rangida
-   EMAS, sokin `--efir-ink-2` (spec §4) — darajani plastinali gerb aytadi, va
-   bo'limda `color-mix()` yo'q. */
-.seat__level {
-  font-weight: 600;
-  color: var(--efir-ink-2);
-  white-space: nowrap;
-}
-/* RAQAM HECH QACHON KESILMAYDI. O'rindiq `overflow: hidden` (tasma + radius)
-   va raqam `nowrap` — ya'ni sig'masa oxirgi raqam indamay yo'qoladi, va bu
-   taxtaning YAGONA eng muhim soni. Eng uzun satr («1 298 091 698») shu
-   shriftda 6,82em; o'rindiq o'z konteyneri bo'lgani uchun 14cqi = kengligining
-   14 % i har 13 belgiga ~4 % zaxira qoldiradi. `min()` — mock kengligida
-   hech narsa o'zgarmaydi (44 px), tor ustunda esa kesish o'rniga kichrayadi. */
-.seat { container-type: inline-size; }
-.seat__figure {
-  display: block;
-  font-size: min(var(--tv-xl), 14cqi);
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.03em;
-  color: var(--ink-primary);
-  font-variant-numeric: tabular-nums lining-nums;
-  white-space: nowrap;
-}
-.seat__facts {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 2px 12px;
-  margin: 5px 0 0;
-  white-space: nowrap;
-}
-.seat__cap {
-  font-size: var(--tv-s);
-  color: var(--ink-muted);
-}
-.seat__other {
-  font-size: var(--tv-m);
-  color: var(--ink-secondary);
-  font-variant-numeric: tabular-nums;
-}
-.seat__other b {
-  color: var(--ink-primary);
-  font-weight: 600;
-}
-.seat__bar {
-  height: 10px;
-  border-radius: 5px;
-  background: var(--track);
-  overflow: hidden;
-}
-.seat__bar i {
-  display: block;
-  height: 100%;
-  border-radius: 5px;
-  background: var(--tier);
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--tier-hi), var(--tier));
   transition: width var(--duration-move) var(--ease-out);
 }
-/* Jumla o'ralishi mumkin; pul o'zi bo'linmaydi — guruhlar orasida U+202F. */
-.seat__next {
-  margin: 6px 0 0;
-  font-size: var(--tv-m);
-  color: var(--ink-secondary);
-  font-variant-numeric: tabular-nums;
+.meter i::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: -3px;
+  width: 2px;
+  height: 10px;
+  border-radius: 1px;
+  background: var(--efir-ink-name);
 }
-.seat__medals {
+/* «Avgustdan beri {delivered} / {nextLevelAt}» — daraja qaysi puldan. */
+.seat__life {
   display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 14px;
+  color: var(--efir-ink-3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.seat__life em {
+  font-style: normal;
+  font-weight: 500;
+  color: var(--efir-ink-2);
+}
+/* Tokcha: medallar va izoh. Izoh sig'masa 40 px oynadan tashqariga o'raladi
+   va butunlay yo'qoladi (`.seat__meta` dagi komanda qoidasi); `clip` +
+   `overflow-clip-margin` dafna uchlarini (viewBox dan ~1 px tashqarida)
+   kesmaydi. */
+.seat__rack {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  min-height: 24px;
+  column-gap: 8px;
+  row-gap: 40px;
+  height: 40px;
+  margin-top: auto;
+  overflow: hidden;
+  overflow: clip;
+  overflow-clip-margin: 6px;
+}
+.seat--1 .seat__rack {
+  row-gap: 48px;
+  height: 48px;
+}
+.seat__cap {
+  margin-left: auto;
+  text-align: right;
+  white-space: nowrap;
+}
+.seat__cap b {
+  display: block;
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--efir-ink-name);
+}
+.seat__cap i {
+  display: block;
+  font-size: 12px;
+  line-height: 15px;
+  font-style: normal;
+  color: var(--efir-ink-3);
+}
+
+/* ---- o'rindiq, 1366 va tor televizor (spec §10): tanga, gerb va medal
+   o'lchami ATRIBUTDA — bu yerda kichraymaydi. Ustun ~645 px bo'lganda
+   o'rindiq balandligi mazmunga ergashadi (qat'iy 255 / 277 satrlarni
+   kesardi), FAKT va «Avgustdan beri» satrlari o'raladi, pul `cqi` bilan
+   kichrayadi (yuqorida). ---- */
+@media (max-width: 1599px) {
+  .tv-podium {
+    height: auto;
+    gap: 8px;
+    padding: 8px 8px 6px;
+  }
+  .seat {
+    height: auto;
+    min-height: 216px;
+    padding: 10px 12px 10px 20px;
+  }
+  .seat--1 { min-height: 236px; }
+  .seat__id { gap: 10px; }
+  .seat--1 .seat__id {
+    gap: 14px;
+    padding-left: 0;
+  }
+  .seat__name { font-size: 15px; }
+  .seat--1 .seat__name { font-size: 18px; }
+  .seat__fakt {
+    flex-wrap: wrap;
+    row-gap: 0;
+    height: auto;
+  }
+  .seat__left { white-space: normal; }
+  .seat__life {
+    flex-wrap: wrap;
+    column-gap: 6px;
+  }
+}
+
+/* ---- o'rindiq, telefon: ustma-ust, 1-2-3 o'qiladi (DOM tartibi). 2-1-3
+   podium KOMPOZITSIYASI uchun; bitta ustunda u chempionni ikkinchi qatorga
+   tushirib qo'yardi. ---- */
+@media (max-width: 1279px) {
+  .tv-podium {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px 12px 4px;
+  }
+  .seat--1,
+  .seat--2,
+  .seat--3 {
+    grid-area: auto;
+    min-height: 0;
+  }
+  .seat__rack { margin-top: 10px; }
 }
 
 /* ---- ro'yxat: timing tower (spec §5). Yorliq qatori STATIK, skroll qutisi TASHQARISIDA. ---- */
@@ -3112,21 +3284,8 @@ p {
 }
 
 /* ---- 1366 va tor televizor (spec §9): 0.8× — qator 44 (gerb, medal va tanga o'lchami atributda,
-   bu yerda kichraymaydi),
-   o'rindiq 0.8× (365 / 246), gridlar torroq; shrift shkalasi `:root` da 36/20/14/12. ---- */
+   bu yerda kichraymaydi), gridlar torroq (o'rindiq — o'z bo'limida); shrift shkalasi `:root` da 36/20/14/12. ---- */
 @media (max-width: 1599px) {
-  .seat {
-    max-width: 246px;
-    gap: 5px;
-    padding: 10px 12px 10px 20px;
-  }
-  .seat--1 {
-    max-width: 365px;
-    padding: 10px 14px 10px 20px;
-  }
-  .seat::before { width: 8px; }
-  .seat__name { font-size: 18px; }
-  .seat__medals { gap: 10px; }
   .row { height: 44px; }
   .tv-cols,
   .row {
@@ -3147,16 +3306,6 @@ p {
    Uyalar `nth-child` bilan: 5 medallar, 7 FAKT 1, 8 buyurtma, 9 konv. (sotuvchilar);
    6 FAKT 1, 7 buyurtma, 8 konv. (komandalar). Markup o'zgarmaydi. ---- */
 @media (max-width: 1279px) {
-  .tv-podium {
-    flex-wrap: wrap;
-    align-items: stretch;
-    padding: 12px 12px 4px;
-  }
-  .seat,
-  .seat--1 {
-    flex: 1 1 100%;
-    max-width: none;
-  }
   .tv-cols,
   .row {
     grid-template-columns: 8px 44px 58px minmax(0, 1fr) 132px;
@@ -3189,14 +3338,6 @@ p {
     row-gap: 6px;
     white-space: normal;
   }
-  /* Ustma-ust turgan o'rindiqlar 1-2-3 o'qiladi. `order` 2-1-3 podium
-     KOMPOZITSIYASI uchun (chempion o'rtada, massa bilan); bitta ustunda u
-     chempionni ikkinchi qatorga tushirib qo'yadi. DOM tartibi 1-2-3. */
-  .seat--1,
-  .seat--2,
-  .seat--3 {
-    order: 0;
-  }
 }
 
 /* EFIR — kamaytirilgan harakat: hech narsa qimirlamaydi. Keyingi vazifalarning
@@ -3208,8 +3349,7 @@ p {
     animation: none;
   }
   .row__band,
-  .seat::before,
-  .seat__bar i {
+  .meter i {
     transition: none;
   }
 }
@@ -3379,10 +3519,10 @@ p {
 
 /* Skeleton — the ready layout's shape: three seats, then rows. */
 .tv-skeleton-seat {
-  height: 200px;
+  height: 255px;
 }
 .seat--1.tv-skeleton-seat {
-  height: 240px;
+  height: 277px;
 }
 .tv-skeleton-rows {
   display: flex;

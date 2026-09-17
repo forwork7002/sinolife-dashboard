@@ -342,14 +342,14 @@ const MEDALS = new Map<string, SellerMedalRowDto>([
 describe('o‘rindiq qaysi faktni aytadi', () => {
   it('yetkazilgan pul o‘rin bergan bo‘lsa — «FAKT 2» yozuvi, yonida FAKT 1 raqami', () => {
     render(<SellersColumn data={THIN} {...PROPS} />)
-    const caps = [...document.querySelectorAll('#tv-sellers .seat__cap')].map((c) => c.textContent)
+    const caps = [...document.querySelectorAll('#tv-sellers .seat__fakt > span:first-child > b')].map((c) => c.textContent)
     expect(caps).toEqual(['FAKT 2', 'FAKT 2', 'FAKT 2'])
     expect(seatOf('Sotuvchi 156').querySelector('.seat__other')!.textContent).toBe(`FAKT 1 4${S}300${S}000`)
   })
 
   it('hech kim yetkazmagan bo‘lsa — «FAKT 1» yozuvi, FAKT 2 satri chizilmaydi', () => {
     render(<SellersColumn data={FALLBACK} {...PROPS} />)
-    const caps = [...document.querySelectorAll('#tv-sellers .seat__cap')].map((c) => c.textContent)
+    const caps = [...document.querySelectorAll('#tv-sellers .seat__fakt > span:first-child > b')].map((c) => c.textContent)
     expect(caps).toEqual(['FAKT 1', 'FAKT 1'])
     expect(document.querySelector('#tv-sellers .seat__other')).toBeNull()
   })
@@ -389,9 +389,9 @@ describe('o‘rindiqda nima bor, nima yo‘q', () => {
   it('daraja so‘zi HAR o‘rindiqda bir marta, qatorlarda hech qachon', () => {
     render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
     const seat = seatOf('154 Marjona Xayrullayeva')
-    expect(seat.querySelectorAll('.seat__level')).toHaveLength(1)
-    expect(seat.querySelector('.seat__level')!.textContent).toBe('Usta')
-    expect(document.querySelectorAll('#tv-sellers .tv-rows .seat__level')).toHaveLength(0)
+    expect(seat.querySelectorAll('.seat__meta .lvl')).toHaveLength(1)
+    expect(seat.querySelector('.seat__meta .lvl')!.textContent).toBe('Usta')
+    expect(document.querySelectorAll('#tv-sellers .tv-rows .lvl')).toHaveLength(0)
     const rows = document.getElementById('tv-sellers')!.querySelector('.tv-rows')!
     expect(rows.textContent).not.toMatch(/Katta sotuvchi|Usta|hali savdosiz/)
   })
@@ -529,11 +529,11 @@ describe('bir taxtani boshqa faktda o‘qish', () => {
     press('tv-sellers', 'FAKT 1')
 
     expect(seatsOf()).toEqual(['Saparboyeva 110 Farida', 'Nodira 118 Karimova', 'Ashrafova 172 Marjona'])
-    expect([...document.querySelectorAll('#tv-sellers .seat__cap')].map((c) => c.textContent)).toEqual([
+    expect([...document.querySelectorAll('#tv-sellers .seat__fakt > span:first-child > b')].map((c) => c.textContent)).toEqual([
       'FAKT 1', 'FAKT 1', 'FAKT 1',
     ])
     // The champion's seat prints the figure it was seated on, to the last digit.
-    expect(document.querySelector('#tv-sellers .seat--1 .seat__figure')!.textContent).toContain(
+    expect(document.querySelector('#tv-sellers .seat--1 .seat__money')!.textContent).toContain(
       formatSomFull(240_000_000),
     )
     // The seller the delivered board seated third is a row now.
@@ -588,11 +588,11 @@ describe('EFIR — daraja va medallar taxtada', () => {
     expect([...seat.querySelector('svg.crest')!.querySelectorAll('use')].map((u) => u.getAttribute('href'))).toEqual([
       '#crest-plate', '#crest-4',
     ])
-    expect(seat.querySelector('.seat__level')!.textContent).toBe('Usta')
-    expect(seat.querySelector('.seat__next')!.textContent).toBe(`Ustozga 127${S}000${S}000 qoldi`)
-    expect((seat.querySelector('.seat__bar i') as HTMLElement).style.width).toBe('36.5%')
+    expect(seat.querySelector('.seat__meta .lvl')!.textContent).toBe('Usta')
+    expect(seat.querySelector('.seat__left')!.textContent).toBe(`Ustozga 127${S}000${S}000 qoldi`)
+    expect((seat.querySelector('.meter i') as HTMLElement).style.width).toBe('36.5%')
     // seatMedals: oltin oy — nodir, shuning uchun first-sale tokchadan tushadi.
-    const rack = [...seat.querySelectorAll('.seat__medals svg.medal')]
+    const rack = [...seat.querySelectorAll('.seat__rack svg.medal')]
     expect(rack.map((m) => m.getAttribute('data-medal'))).toEqual(['month-gold'])
     // ×N — medal soni aria-label'dan; plastinka SVG ichida, HTML sanoq yo'q.
     expect(rack[0]!.getAttribute('aria-label')).toBe('Oy chempioni ×3')
@@ -613,7 +613,7 @@ describe('EFIR — daraja va medallar taxtada', () => {
     expect(rowMedals[0]!.getAttribute('aria-label')).toBe('Oy chempioni')
     expect(row.querySelector('.medal-count')).toBeNull()
     expect(row.querySelector('.row__medals')!.textContent).toBe('')
-    expect(row.querySelector('.seat__level')).toBeNull()
+    expect(row.querySelector('.lvl')).toBeNull()
 
     // Faqat «Birinchi savdo»si bor — uya ataylab bo'sh.
     const only = rowOf('Qodirova 188 Zilola')
@@ -651,7 +651,7 @@ describe('EFIR — daraja va medallar taxtada', () => {
   it('medal so‘rovi bo‘sh bo‘lsa — gerb, so‘z, progress, legenda hech qayerda; reyting o‘z joyida', () => {
     render(<SellersColumn data={RIPE} {...PROPS} />)
     expect(document.querySelector('.crest')).toBeNull()
-    expect(document.querySelector('.seat__level')).toBeNull()
+    expect(document.querySelector('.seat__meta .lvl')).toBeNull()
     expect(document.querySelector('.seat__prog')).toBeNull()
     expect(document.querySelector('.tv-legend')).toBeNull()
     expect(document.querySelectorAll('#tv-sellers li.row')).toHaveLength(4)
@@ -768,7 +768,7 @@ describe('yangi medal ustundan uyagacha', () => {
     grown.set('Nodira 118 Karimova', extra('Nodira 118 Karimova', 'day-winner'))
     rerender(<SellersColumn data={RIPE} {...PROPS} medals={grown} />)
 
-    expect(seatOf('154 Marjona Xayrullayeva').querySelector('.seat__medals svg.medal--new[data-medal="day-winner"]')).not.toBeNull()
+    expect(seatOf('154 Marjona Xayrullayeva').querySelector('.seat__rack svg.medal--new[data-medal="day-winner"]')).not.toBeNull()
     expect(rowOf('Nodira 118 Karimova').querySelector('.row__medals svg.medal--new[data-medal="day-winner"]')).not.toBeNull()
     expect(document.querySelectorAll('.medal--new')).toHaveLength(2)
   })

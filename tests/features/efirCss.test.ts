@@ -173,12 +173,14 @@ describe('EFIR shrift shkalasi', () => {
   METALL — YOZILGAN ISTISNO RO'YXATI (spec §1, §3; token blokidagi izoh):
   medal va uning ×N plastinkasi (`.medal`, `.medal__*`), rank tangasi
   (`.halo`), metall bog'lovchisi (`[data-metal="…"]` → `--metal`, o'rindiq
-  keyline'i va yuvishi, komandalar 1–3 chizig'i shuni o'qiydi). Legenda toji
+  keyline'i va yuvishi, komandalar 1–3 chizig'i shuni o'qiydi). 1-o'rindiq
+  (`.seat--1`) — har doim 1-rank, uning keng oltin yuvishi to'g'ridan-to'g'ri
+  `--medal-gold-wash-p1` ni o'qiydi (delta 9b). Legenda toji
   endi `#crest-6` belgisining ICHIDA. `.trow__rank` va `.record__k` — EFIR
   Premium'da ro'yxatdan chiqadi; ularning qoidalari komandalar va rekord devori
   qayta qurilganda o'chiriladi, shu vaqtgacha ro'yxatda turadi.
 */
-const METAL_ALLOWED = /^(\.medal\b|\.medal__|\.halo\b|\[data-metal="(gold|silver|bronze)"\]|\.trow__rank\b|\.record__k\b)/
+const METAL_ALLOWED = /^(\.medal\b|\.medal__|\.halo\b|\.seat--1$|\[data-metal="(gold|silver|bronze)"\]|\.trow__rank\b|\.record__k\b)/
 
 describe('EFIR bo‘limi — rang shartnomasi', () => {
   it('bo‘lim bor va TV BOARD dan oldin turadi; asosiy selektorlar', () => {
@@ -260,7 +262,7 @@ describe('EFIR bo‘limi — rang shartnomasi', () => {
   it('kamaytirilgan harakatda hech narsa qimirlamaydi — blok bo‘limning oxirida', () => {
     const efir = EFIR()
     const reduced = efir.slice(efir.lastIndexOf('@media (prefers-reduced-motion: reduce)'))
-    for (const sel of ['.crest__cell--fill', '.medal--new', '.tv-promo', '.row__band', '.seat::before', '.seat__bar i']) {
+    for (const sel of ['.crest__cell--fill', '.medal--new', '.tv-promo', '.row__band', '.meter i']) {
       expect(reduced, sel).toContain(sel)
     }
     expect(reduced).toContain('animation: none')
@@ -270,19 +272,51 @@ describe('EFIR bo‘limi — rang shartnomasi', () => {
 })
 
 describe('EFIR — o‘rindiq', () => {
-  it('uchta karta 2-1-3 tartibida, pastlari tekis; tasma va yo‘l `--tier` da; daraja so‘zi sokin siyohda', () => {
+  it('podium grid 1fr · 1.24fr · 1fr, balandlik 291; DOM 1-2-3, ko‘z uchun 2-1-3', () => {
     const code = strip(EFIR())
-    expect(code).toMatch(/\.tv-podium \{[^}]*align-items: flex-end;/)
-    expect(code).toContain('.seat--1 {\n  flex: 1.48 1 0;\n  max-width: 456px;')
-    expect(code).toContain('.seat--2 { order: 1; }')
-    expect(code).toContain('.seat--3 { order: 3; }')
-    expect(code).toMatch(/\.seat::before \{[^}]*width: 10px;[^}]*background: var\(--tier\);/)
-    expect(code).toMatch(/\.seat\[data-tier="0"\]::before \{[^}]*box-shadow: inset 1px 0 0 var\(--tier\);/)
-    expect(code).toMatch(/\.seat__bar i \{[^}]*background: var\(--tier\);/)
-    // EFIR Premium §4: daraja so'zi `--efir-ink-2` da — `--tier` aralashmasi ketdi.
-    expect(code).toMatch(/\.seat__level \{[^}]*color: var\(--efir-ink-2\);/)
-    // Pedestal, bevel, xrom, sharpa, shtamp — hech biri yo'q.
+    expect(code).toMatch(
+      /\.tv-podium \{[^}]*display: grid;[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1\.24fr\) minmax\(0, 1fr\);[^}]*gap: 12px;[^}]*align-items: end;[^}]*height: 291px;[^}]*padding: 8px 12px 6px;/,
+    )
+    expect(code).toContain('.seat--2 { grid-area: 1 / 1; }')
+    expect(code).toContain('.seat--1 { grid-area: 1 / 2; }')
+    expect(code).toContain('.seat--3 { grid-area: 1 / 3; }')
+  })
+
+  it('o‘rindiq 255 / 277, ramka yo‘q — uch qatlamli fon, ichki halqa + soya; P1 ichki keyline', () => {
+    const code = strip(EFIR())
+    const seat = code.match(/\n\.seat \{[^}]*\}/)![0]
+    expect(seat).toContain('height: 255px;')
+    expect(seat).toContain('padding: 12px 16px 10px 26px;')
+    expect(seat).not.toMatch(/\bborder:/)
+    expect(seat).toMatch(/linear-gradient\(90deg, transparent 4%, var\(--metal-hi\) 26%, var\(--metal\) 52%, transparent 94%\) top \/ 100% 2px no-repeat,/)
+    expect(seat).toContain('radial-gradient(130% 70% at 50% 0%, var(--metal-wash), transparent 70%)')
+    expect(seat).toContain('linear-gradient(180deg, var(--efir-raised-hi) 0%, var(--efir-raised) 40%, var(--efir-panel) 100%)')
+    expect(seat).toContain('box-shadow: inset 0 0 0 1px var(--efir-edge-ring), var(--efir-shadow-seat);')
+    expect(code).toMatch(/\.seat--1 \{[^}]*height: 277px;[^}]*var\(--medal-gold-wash-p1\)/)
+    expect(code).toMatch(/\.seat--1::after \{[^}]*inset: 6px 6px 6px 14px;[^}]*border-radius: 9px;[^}]*border: 1px solid var\(--efir-p1-keyline\);/)
+    expect(code).toMatch(/\.seat__band \{[^}]*width: 6px;[^}]*background: linear-gradient\(180deg, var\(--tier-hi\), var\(--tier\) 45%, var\(--tier-lo\)\);/)
+    // Eski tasma, yo'l va `--cut` / `.rare` qoidalari ketdi.
+    for (const gone of ['.seat::before', '.seat__bar', '.seat__medals', '.seat__figure', '.seat .medal', '--cut']) {
+      expect(code, gone).not.toContain(gone)
+    }
     for (const gone of ['pedestal', 'lv-stamps', 'lv-ghost', 'lv-sheen', 'podium-shine']) expect(code).not.toContain(gone)
+  })
+
+  it('meta 20 px o‘raladigan oyna (komanda butunlay tushadi); daraja so‘zi 11 px caps sokin siyohda', () => {
+    const code = strip(EFIR())
+    expect(code).toMatch(/\.seat__meta \{[^}]*flex-wrap: wrap;[^}]*row-gap: 20px;[^}]*height: 20px;[^}]*overflow: hidden;/)
+    expect(code).toMatch(/\.seat__meta \.lvl \{[^}]*font-size: 11px;[^}]*text-transform: uppercase;[^}]*color: var\(--efir-ink-2\);/)
+    expect(code).toMatch(/\.seat__rack \{[^}]*flex-wrap: wrap;[^}]*height: 40px;/)
+  })
+
+  it('pul 40 / 52 px 560, tor ustunda `cqi` bilan kichrayadi; metr 4 px `--tier-hi` → `--tier`', () => {
+    const code = strip(EFIR())
+    expect(code).toMatch(/\.seat__money \{[^}]*font-size: min\(40px, 17\.5cqi\);[^}]*font-weight: 560;[^}]*letter-spacing: -0\.03em;[^}]*white-space: nowrap;/)
+    expect(code).toMatch(/\.seat--1 \.seat__money \{[^}]*font-size: min\(52px, 17\.5cqi\);[^}]*letter-spacing: -0\.034em;/)
+    expect(code).toMatch(/\.seat \{[^}]*container-type: inline-size;/)
+    expect(code).toMatch(/\.meter \{[^}]*height: 4px;/)
+    expect(code).toMatch(/\.meter i \{[^}]*background: linear-gradient\(180deg, var\(--tier-hi\), var\(--tier\)\);/)
+    expect(code).toMatch(/\.meter i::after \{[^}]*background: var\(--efir-ink-name\);/)
   })
 })
 

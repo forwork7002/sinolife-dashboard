@@ -81,12 +81,18 @@ describe('the television board switches layout on one width', () => {
     aks holda atribut bilan CSS ikki xil o'lcham aytadi.
   */
   it('scales the seats and rows down under 1600 (spec §9); the minted marks keep their attribute sizes', () => {
-    const narrow = css.slice(css.indexOf('@media (max-width: 1599px) {\n  .seat {'))
+    const narrow = css.slice(css.indexOf('@media (max-width: 1599px) {\n  .row {'))
     const block = narrow.slice(0, narrow.indexOf('\n}\n') + 3)
     expect(block).not.toMatch(/\.crest|\.halo|\.medal \{/)
     expect(block).toContain('.row { height: 44px; }')
-    expect(block).toMatch(/\.seat--1 \{[^}]*max-width: 365px;/)
-    expect(block).toMatch(/\.seat \{[^}]*max-width: 246px;/)
+    // O'rindiq o'z blokida: balandlik mazmunga ergashadi, satrlar o'raladi.
+    const seats = css.slice(css.indexOf('@media (max-width: 1599px) {\n  .tv-podium {'))
+    const seatBlock = seats.slice(0, seats.indexOf('\n}\n') + 3)
+    expect(seatBlock).not.toMatch(/\.crest|\.halo|\.medal \{/)
+    expect(seatBlock).toMatch(/\.tv-podium \{[^}]*height: auto;/)
+    expect(seatBlock).toMatch(/\.seat \{[^}]*height: auto;[^}]*min-height: 216px;/)
+    expect(seatBlock).toMatch(/\.seat--1 \{ min-height: 236px; \}/)
+    expect(seatBlock).toMatch(/\.seat__fakt \{[^}]*flex-wrap: wrap;/)
   })
 
   /*
@@ -95,13 +101,12 @@ describe('the television board switches layout on one width', () => {
     medallar yashirin. Markup o'zgarmaydi — uyalar `nth-child` bilan yopiladi.
   */
   it('collapses a phone row to band · rank · crest · name · FAKT 2 and hides the desk columns', () => {
-    const phone = css.slice(css.indexOf('@media (max-width: 1279px) {\n  .tv-podium'))
+    const phone = css.slice(css.indexOf('@media (max-width: 1279px) {\n  .tv-cols,'))
     const block = phone.slice(0, phone.indexOf('\n}\n') + 3)
     expect(block).toMatch(/\.tv-cols,\s*\.row \{\s*grid-template-columns: 8px 44px 58px minmax\(0, 1fr\) 132px;/)
     expect(block).toMatch(/\.tv-cols > span:nth-child\(5\),\s*\.tv-cols > span:nth-child\(7\),\s*\.tv-cols > span:nth-child\(8\),\s*\.tv-cols > span:nth-child\(9\),\s*\.row > \*:nth-child\(5\),\s*\.row > \*:nth-child\(7\),\s*\.row > \*:nth-child\(8\),\s*\.row > \*:nth-child\(9\) \{\s*display: none;/)
     expect(block).toMatch(/\.tv-tcols,\s*\.trow \{\s*grid-template-columns: 32px minmax\(0, 1fr\) 36px 124px 52px;/)
     expect(block).toMatch(/\.trow > \*:nth-child\(6\),[\s\S]*?display: none;/)
-    expect(block).toMatch(/\.seat,\s*\.seat--1 \{\s*flex: 1 1 100%;/)
   })
 
   /*
@@ -118,13 +123,15 @@ describe('the television board switches layout on one width', () => {
        («Legenda 1 000 000 000») kesardi. Endi o'raladi.
   */
   it('never clips the seat figure or the legend when the column is narrower than the mock', () => {
-    expect(css).toMatch(/\.seat \{ container-type: inline-size; \}/)
-    expect(css).toMatch(/\.seat__figure \{[^}]*font-size: min\(var\(--tv-xl\), 14cqi\);/)
-    // O'rindiqning uch nowrap satri ham o'raladi, kesilmaydi.
-    expect(css).toMatch(/\.seat__sub \{[^}]*flex-wrap: wrap;/)
-    expect(css).toMatch(/\.seat__facts \{[^}]*flex-wrap: wrap;/)
-    expect(css).not.toMatch(/\.seat__next \{[^}]*white-space: nowrap;/)
-    expect(css).toMatch(/\.seat__name span \{[^}]*text-overflow: ellipsis;/)
+    expect(css).toMatch(/\n\.seat \{[^}]*container-type: inline-size;/)
+    expect(css).toMatch(/\.seat__money \{[^}]*font-size: min\(40px, 17\.5cqi\);/)
+    // Milliard (o'n xona) — torroq `cqi`, kesilmaydi.
+    expect(css).toMatch(/\.seat__money\[data-digits="9"\] \{ font-size: min\(40px, 16cqi\); \}/)
+    expect(css).toMatch(/\.seat__money\[data-digits="10"\] \{ font-size: min\(40px, 14cqi\); \}/)
+    // Meta va tokcha: sig'magan komanda / izoh butunlay tushadi, ellipsis emas.
+    expect(css).toMatch(/\.seat__meta \{[^}]*flex-wrap: wrap;/)
+    expect(css).toMatch(/\.seat__rack \{[^}]*flex-wrap: wrap;/)
+    expect(css).toMatch(/\.seat__name > span \{[^}]*text-overflow: ellipsis;/)
     const legend = css.slice(css.indexOf('.tv-legend {'))
     const block = legend.slice(0, legend.indexOf('\n}\n') + 3)
     expect(block).toContain('flex-wrap: wrap;')
@@ -150,12 +157,13 @@ describe('the television board switches layout on one width', () => {
   })
 
   /*
-    Ustma-ust turgan o'rindiqlar 1-2-3 o'qiladi: `order` 2-1-3 podium
+    Ustma-ust turgan o'rindiqlar 1-2-3 o'qiladi: `grid-area` 2-1-3 podium
     kompozitsiyasi uchun, bitta ustunda u chempionni ikkinchi qatorga tushiradi.
   */
   it('resets the seat order on a phone so the champion is first', () => {
     const phone = css.slice(css.indexOf('@media (max-width: 1279px) {\n  .tv-podium'))
     const block = phone.slice(0, phone.indexOf('\n}\n') + 3)
-    expect(block).toMatch(/\.seat--1,\s*\.seat--2,\s*\.seat--3 \{\s*order: 0;/)
+    expect(block).toMatch(/\.tv-podium \{\s*grid-template-columns: minmax\(0, 1fr\);/)
+    expect(block).toMatch(/\.seat--1,\s*\.seat--2,\s*\.seat--3 \{\s*grid-area: auto;/)
   })
 })
