@@ -3502,9 +3502,23 @@ export class InsightsRepository {
    * REJECTED. Null while it is still inside Тасдиклаш — which is the truth.
    */
   private static standingSql(signal: string, stageExternalId: string): string {
+    /*
+      AND A DECIDED ORDER THE PORTAL HAS SINCE MOVED AGAINST ITS DECISION
+      follows the portal too — asked for by the client on 2026-09-17 («o'sha
+      8 tasini ham bitrix24dagidek hisobla»): a confirmed order that now stands
+      in «Регистрация» (un-prefixed ids) or «Первичный отдел» (C12) is
+      REJECTED, a refused one now in Доставка is CONFIRMED. База (C10) is NOT
+      a reversal — delivered customers are handed there for repeat sales, 628
+      of them — so a confirmed order standing in База stays confirmed.
+    */
     return `(CASE
           WHEN ${signal}::text IN ('CONFIRM_NEW', 'NO_ANSWER') AND ${stageExternalId} NOT LIKE 'C4:%'
             THEN CASE WHEN ${stageExternalId} LIKE 'C6:%' THEN 'CONFIRMED' ELSE 'REJECTED' END
+          WHEN ${signal}::text = 'CONFIRMED'
+               AND (${stageExternalId} LIKE 'C12:%' OR ${stageExternalId} !~ '^C[0-9]+:')
+            THEN 'REJECTED'
+          WHEN ${signal}::text = 'REJECTED' AND ${stageExternalId} LIKE 'C6:%'
+            THEN 'CONFIRMED'
         END)`
   }
 

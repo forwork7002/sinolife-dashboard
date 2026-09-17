@@ -491,7 +491,7 @@ describe('an order that leaves Тасдиклаш past the signal stages', () =>
       // Numbered funnels only, and never a stage inside Тасдиклаш itself.
       expect(sql).toContain(`xs."externalId" ~ '^C[0-9]+:'`)
       expect(sql).toContain(`xs."externalId" NOT LIKE 'C4:%'`)
-      expect(sql).toContain("'REJECTED' END\n        END), w.signal::text) AS signal")
+      expect(sql).toMatch(/END\), w\.signal::text\) AS signal/)
     }
   })
 
@@ -502,6 +502,14 @@ describe('an order that leaves Тасдиклаш past the signal stages', () =>
     }
     expect(REPEAT).toContain('JOIN "deal_stage" cs ON cs."id" = d."stageId"')
     expect(REPEAT).toContain('CASE WHEN g.next_queued_at IS NULL')
+  })
+
+  it('reverses a decision the portal has since moved against, but never for База', () => {
+    for (const sql of [WINDOW_SQL, BACKLOG_SQL]) {
+      expect(sql).toContain(`LIKE 'C12:%' OR cs."externalId" !~ '^C[0-9]+:')`)
+      expect(sql).toContain(`::text = 'REJECTED' AND cs."externalId" LIKE 'C6:%'`)
+      expect(sql).not.toContain(`LIKE 'C10:%'`)
+    }
   })
 
   it('drops a decided order from the backlog, and only there', () => {
