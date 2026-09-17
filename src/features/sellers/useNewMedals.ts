@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import type { MedalCode } from '@/lib/api'
 
@@ -15,6 +15,14 @@ export interface MedalHolder {
 }
 
 export type NewMedals = ReadonlyMap<string, ReadonlySet<MedalCode>>
+
+const NONE: NewMedals = new Map()
+
+/**
+ * «Yangi» belgisi shuncha yashaydi — animatsiya 400 ms (`medal-mark-new`),
+ * qolgani zaxira. Keyin belgi o'chadi, medal joyida qoladi.
+ */
+export const NEW_MEDAL_MS = 1_000
 
 const keysOf = (rows: ReadonlyMap<string, MedalHolder>): ReadonlySet<string> => {
   const keys = new Set<string>()
@@ -32,14 +40,30 @@ const keysOf = (rows: ReadonlyMap<string, MedalHolder>): ReadonlySet<string> => 
  * bo'lgan medalni ko'rsatadi. Manba — server payload'i, brauzer xotirasi emas:
  * ikki televizor bir xil ko'radi.
  *
+ * BIR MARTA — VA FAQAT BIR MARTA. Belgi `NEW_MEDAL_MS` dan keyin o'zi o'chadi.
+ * Keyingi payload'gacha (10 daqiqa) turganida, shu oraliqda qayta MOUNT
+ * bo'lgan har bir medal animatsiyani qaytadan o'ynardi: FAKT 1 / FAKT 2
+ * bosilganda sotuvchi o'rindiqdan qatorga o'tadi, har daqiqalik reyting
+ * yangilanishi qatorlarni almashtiradi, telefonda ustun `display: none` dan
+ * qaytadi — CSS animatsiyasi har safar boshidan boshlanadi.
+ *
  * Render vaqtida holatni moslash — React'ning o'z naqshi, effektda setState
  * emas. `rows` memoizatsiya qilingan bo'lishi SHART: identifikatori har
  * renderda o'zgarsa, har render «yangi payload» bo'lib ko'rinadi.
  */
 export function useNewMedals(rows: ReadonlyMap<string, MedalHolder>): NewMedals {
   const [snapshot, setSnapshot] = useState<{ rows: ReadonlyMap<string, MedalHolder>; fresh: NewMedals }>(
-    () => ({ rows, fresh: new Map() }),
+    () => ({ rows, fresh: NONE }),
   )
+  const { fresh: current } = snapshot
+  useEffect(() => {
+    if (current.size === 0) return
+    const timer = setTimeout(() => {
+      // Shu orada yangi payload kelgan bo'lsa, uning belgisiga tegilmaydi.
+      setSnapshot((s) => (s.fresh === current ? { rows: s.rows, fresh: NONE } : s))
+    }, NEW_MEDAL_MS)
+    return () => clearTimeout(timer)
+  }, [current])
   if (snapshot.rows !== rows) {
     const fresh = new Map<string, Set<MedalCode>>()
     if (snapshot.rows.size > 0) {

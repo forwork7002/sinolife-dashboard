@@ -391,12 +391,12 @@
     --medal-bronze-sh: #301d0e;
     --medal-bronze-patina: #323130;
     --medal-bronze-well: #4d2e18;
-    --medal-steel-hi: #b6c6d9;
-    --medal-steel: #6c8096;
-    --medal-steel-lo: #364354;
+    --medal-steel-hi: #c6d4e4;
+    --medal-steel: #8296ad;
+    --medal-steel-lo: #4a5b70;
     --medal-steel-sh: #12181f;
-    --medal-steel-patina: #162430;
-    --medal-steel-well: #212a35;
+    --medal-steel-patina: #2a3f55;
+    --medal-steel-well: #33414f;
     --medal-gilt-hi: #efe3c2;
     --medal-gilt: #bfa873;
     --medal-key: rgba(0, 0, 0, .6);
@@ -498,12 +498,12 @@
   --medal-bronze-sh: #301d0e;
   --medal-bronze-patina: #323130;
   --medal-bronze-well: #4d2e18;
-  --medal-steel-hi: #b6c6d9;
-  --medal-steel: #6c8096;
-  --medal-steel-lo: #364354;
+  --medal-steel-hi: #c6d4e4;
+  --medal-steel: #8296ad;
+  --medal-steel-lo: #4a5b70;
   --medal-steel-sh: #12181f;
-  --medal-steel-patina: #162430;
-  --medal-steel-well: #212a35;
+  --medal-steel-patina: #2a3f55;
+  --medal-steel-well: #33414f;
   --medal-gilt-hi: #efe3c2;
   --medal-gilt: #bfa873;
   --medal-key: rgba(0, 0, 0, .6);
@@ -3286,12 +3286,24 @@ p {
     television. Bronze is the unit.
   */
   /*
-    THE STEP WAS clamp(22px, 1.55vw, 32px) — 29.8px on the television. The
-    medal shelf needs 46px of the champion's seat and the podium may not grow
-    (spec §1.5), so the blocks gave up a quarter of their height and kept
-    their 1 : 1.6 : 2.4 — the staircase is the same staircase, a little lower.
+    THE STEP WAS clamp(22px, 1.55vw, 32px) — 29.8px on the television — AND IT
+    IS 28.6 NOW: the staircase is the old board's to within 4%. The medal shelf
+    needs 46px of the champion's seat and the podium may not grow (spec §1.5);
+    nearly all of that came out of the seat's gaps and paddings, and this is
+    the last 3px. With it the sellers' podium at 1920×1080 is the old board's
+    489px TO THE PIXEL, medals included.
+
+    IT WAS clamp(18px, 1.1vw, 22px) FOR A DAY — blocks a quarter lower
+    (71 / 48 / 30 → 51 / 34 / 21px), which bought a fifth WHOLE row under the
+    sellers' podium. The review measured what that cost: numerals 47 → 33px,
+    blocks that read from three metres as strips rather than steps, and on
+    «Shu oy» the bronze card standing 3.5px HIGHER than the silver one, because
+    0.6 of a step no longer covered the difference in what the two cards hold.
+    §1.6 allows a squeeze of a tenth «ko'rinish o'zgarmasdan»; 29% was not
+    that. The list shows four whole rows and 0.8 of the fifth (the old board:
+    four and a half) and it auto-scrolls, so a part row is on screen either way.
   */
-  --tv-step: clamp(18px, 1.1vw, 22px);
+  --tv-step: clamp(20px, 1.49vw, 28.6px);
   --tv-pedestal: var(--tv-step);
 }
 .tv-seat--1 { --tv-pedestal: calc(var(--tv-step) * 2.4); }
@@ -3427,6 +3439,23 @@ p {
     font-size: 10px;
     padding-left: 6px;
     padding-right: 6px;
+  }
+  /*
+   * …AND SO DOES THE MEDAL SHELF. The champion's sum is ~17px of type here
+   * against 28 on the television, and a 40px medal over it is 2.4 times the
+   * height of the money it decorates (1.4 on the television) — the shelf
+   * out-shouted the figure the seat exists to show. 36 / 32 on this band only;
+   * the television keeps the spec's 40 / 36, which ride the width/height
+   * attributes. The shelf already lets a medal shrink and stay round
+   * (`flex: 0 1 auto; height: auto`), so a `max-width` is all this takes, and
+   * the podium gets 4px SHORTER here, never taller. The champion's rule is
+   * written second: the two selectors weigh the same.
+   */
+  .tv-seat-card .seat-medals > .medal-mark {
+    max-width: 32px;
+  }
+  .tv-seat--1 .seat-medals > .medal-mark {
+    max-width: 36px;
   }
 }
 

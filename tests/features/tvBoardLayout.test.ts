@@ -97,6 +97,26 @@ describe('the television board switches layout on one width', () => {
   })
 
   /*
+    THE STAIRCASE IS THE OLD BOARD'S. The step was clamp(22px, 1.55vw, 32px) at
+    912fc63 — 29.76px on a 1920 television. The medal shelf may take a little
+    of it (the podium may not grow, klassik spec §1.5), but for a day it took
+    29%, the blocks read as strips and bronze stood above silver. Spec §1.6
+    allows a tenth; this holds the television's step within that of the old
+    one, and never above it.
+  */
+  it('keeps the television’s pedestal step within a tenth of the old board’s', () => {
+    const step = css.match(/--tv-step: clamp\(([\d.]+)px, ([\d.]+)vw, ([\d.]+)px\);/)
+    expect(step).not.toBeNull()
+    const [min, vw, max] = step!.slice(1).map(Number)
+    const at = (width: number) => Math.min(max, Math.max(min, (vw * width) / 100))
+    const old = (width: number) => Math.min(32, Math.max(22, (1.55 * width) / 100))
+    for (const width of [1366, 1600, 1920, 2560]) {
+      expect(at(width), `${width}px`).toBeLessThanOrEqual(old(width))
+      expect(at(width), `${width}px`).toBeGreaterThanOrEqual(old(width) * 0.88)
+    }
+  })
+
+  /*
     Under 1280 a phone sees one board through a switch; the switch must be
     gone exactly where both boards are on screen, and a parked column must
     be hidden exactly where the switch is drawn — one width for both, or a

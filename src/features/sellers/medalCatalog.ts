@@ -13,33 +13,24 @@ import type { MedalCode, SellerMedalDto } from '@/lib/api'
  * narvon, unvonlar, ochilish darajalari va ularning yordamchilari shu faylda
  * edi — o'chirildi. Medal hech narsaning ortiga yashirilmaydi.
  */
-export type MedalFamily = 'oy' | 'seriya' | 'kun' | 'sifat' | 'osish'
-
-export const MEDALS: Readonly<Record<MedalCode, { readonly name: string; readonly family: MedalFamily }>> =
+/** Medal nomi — `MedalMark` ning `aria-label` i shuni o'qiydi; boshqa matn yo'q. */
+export const MEDALS: Readonly<Record<MedalCode, { readonly name: string }>> =
   Object.freeze({
-    'month-gold': { name: 'Oy chempioni', family: 'oy' },
-    'month-silver': { name: 'Kumush oy', family: 'oy' },
-    'month-bronze': { name: 'Bronza oy', family: 'oy' },
-    'year-champion': { name: 'Yil chempioni', family: 'oy' },
-    'streak-fire': { name: 'Olov seriyasi', family: 'seriya' },
-    'streak-steady': { name: 'Barqaror', family: 'seriya' },
-    'day-record': { name: 'Kun rekordi', family: 'kun' },
-    'day-winner': { name: 'Kun gʻolibi', family: 'kun' },
-    'conversion-master': { name: 'Konversiya ustasi', family: 'sifat' },
-    'clean-month': { name: 'Toza oy', family: 'sifat' },
-    jump: { name: 'Sakrash', family: 'osish' },
-    rookie: { name: 'Yangi yulduz', family: 'osish' },
-    'first-sale': { name: 'Birinchi savdo', family: 'osish' },
-    'work-month': { name: 'Ishchan oy', family: 'osish' },
+    'month-gold': { name: 'Oy chempioni' },
+    'month-silver': { name: 'Kumush oy' },
+    'month-bronze': { name: 'Bronza oy' },
+    'year-champion': { name: 'Yil chempioni' },
+    'streak-fire': { name: 'Olov seriyasi' },
+    'streak-steady': { name: 'Barqaror' },
+    'day-record': { name: 'Kun rekordi' },
+    'day-winner': { name: 'Kun gʻolibi' },
+    'conversion-master': { name: 'Konversiya ustasi' },
+    'clean-month': { name: 'Toza oy' },
+    jump: { name: 'Sakrash' },
+    rookie: { name: 'Yangi yulduz' },
+    'first-sale': { name: 'Birinchi savdo' },
+    'work-month': { name: 'Ishchan oy' },
   })
-
-export const FAMILY_NAMES: Readonly<Record<MedalFamily, string>> = Object.freeze({
-  oy: 'Oy',
-  seriya: 'Seriya',
-  kun: 'Kun',
-  sifat: 'Sifat',
-  osish: 'Oʻsish',
-})
 
 /**
  * Chizilish tartibi. Mirrors `sellerMedals.MEDAL_ORDER` — ikkala tomon BIR

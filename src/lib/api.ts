@@ -1451,8 +1451,9 @@ export interface SellerMedalDto {
   /**
    * Odatda buyurtma soni — lekin ikki medalda BOSHQA narsani tashiydi:
    * `rookie` da bu sotuvchining o'sha oydagi O'RNI, `work-month` da esa
-   * necha KUN ishlagani. `medalCatalog.ts` ikkalasini ham alohida o'qiydi —
-   * umumiy yo'ldan o'tsa, ikkalasi ham noto'g'ri chiziladi.
+   * necha KUN ishlagani. Taxta bu maydonni HOZIR O'QIMAYDI (medal faqat nomi
+   * va ×N ini ko'rsatadi); kelajakdagi o'quvchi shu ikki medalni alohida
+   * o'qishi shart — umumiy yo'ldan o'tsa, ikkalasi ham noto'g'ri chiziladi.
    */
   readonly orders: number | null
   readonly percent: number | null

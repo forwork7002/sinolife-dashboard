@@ -132,30 +132,6 @@ export function formatUzs(amount: number): string {
   return `${formatFullUzs(amount)} soʻm`
 }
 
-/**
- * U+202F NARROW NO-BREAK SPACE — the group separator of `formatSomFull`.
- *
- * A narrow non-breaking space rather than the house `,`: read from across a
- * room, «79,600,000» is a string of commas and «79 600 000» is three groups.
- * Non-breaking, so a figure never wraps inside itself. Exported for the
- * tests, which spell the expected strings with it.
- */
-export const NARROW_NBSP = ' '
-
-/**
- * Full soʻm with U+202F groups and no unit — «79 600 000».
- *
- * NOT what the sellers board prints: since the board went back to its
- * original design (2026-09-17) every figure there is `formatFullUzs`, the
- * house «79,600,000». This one stays for the readers it still has. Rounds
- * like `formatFullUzs`; money arrives exact.
- */
-export function formatSomFull(amount: number): string {
-  const rounded = Math.round(amount)
-  const digits = String(Math.abs(rounded)).replace(/\B(?=(\d{3})+(?!\d))/g, NARROW_NBSP)
-  return rounded < 0 ? `-${digits}` : digits
-}
-
 export function formatNumber(value: number): string {
   return separators(numberFormat.format(value))
 }

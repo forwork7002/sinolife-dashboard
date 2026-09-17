@@ -231,6 +231,29 @@ describe('globals.css — MEDALS bo‘limi', () => {
     }
   })
 
+  /*
+    Po'lat medallar qatorlarning ~95% ini tashkil qiladi. Qorong'i mavzuda tana
+    va qator foni orasidagi kontrast 1.6–2.4:1 edi (well tokeni deyarli qator
+    rangi) — 26 px da uch metrdan faqat gilt belgi qolardi. Beshta token
+    ko'tarildi, FAQAT qorong'i bloklarda, va ikki qorong'i blok bir xil bo'lishi
+    shart: biri tizim mavzusi, ikkinchisi majburiy `data-theme="dark"`.
+  */
+  it('qorong‘i po‘lat ko‘tarilgan va ikki qorong‘i blokda bir xil; yorug‘ blok o‘z qiymatida', () => {
+    const lifted: Record<string, string> = {
+      '--medal-steel-hi': '#c6d4e4',
+      '--medal-steel': '#8296ad',
+      '--medal-steel-lo': '#4a5b70',
+      '--medal-steel-patina': '#2a3f55',
+      '--medal-steel-well': '#33414f',
+    }
+    for (const [token, value] of Object.entries(lifted)) {
+      const values = [...css.matchAll(new RegExp(`^\\s*${token}: (#[0-9a-f]{6});`, 'gm'))].map((m) => m[1])
+      expect(values, token).toHaveLength(3)
+      expect(values.slice(1), token).toEqual([value, value])
+      expect(values[0], token).not.toBe(value)
+    }
+  })
+
   it('×N plastinkasi tokenlardan bo‘yaladi; raqam belgi metallida', () => {
     expect(code).toMatch(/\.medal-mark__plate-rim \{[^}]*stroke: var\(--medal-key\);/)
     expect(code).toMatch(/\.medal-mark__plate-well \{[^}]*fill: var\(--medal-plate-well\);/)

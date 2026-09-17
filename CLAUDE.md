@@ -430,7 +430,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Tasdiqlash navbati | `/confirmation` | `confirmation/ConfirmationPage` | `/insights/confirmations/orders` | Insights → Insights | **the arrival in `C4:NEW`** — the latest `deal_stage_history` row whose stage signals `CONFIRM_NEW`; `?queue=backlog` (where the bell lands) drops the window entirely |
 | Joʻnatish nuqtalari | `/warehouse` | **PAUSED** — `shared/SectionPending`; `warehouse/WarehousePage` is held, not mounted | none while paused (`/insights/dispatch` still answers) | Insights → Insights | `createdAtSource` — a creation cohort graded by the deal's **current** stage |
 | Sotuvchilar oyligi | `/payroll` | `payroll/PayrollPage` | `/payroll/sellers` | Payroll → Insights | **a payroll period — a calendar month or one half of it**, resolved on the server from `month` + `half`. No dashboard preset reaches it |
-| Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | the arrival in `C4:NEW` (`queued_at`) — the confirmation queue's own cohort. **The television board**: a podium of three seats over a timing-tower list (sellers) and a one-line ranked list (teams), and ONE control, the FAKT 1 / FAKT 2 switch in each heading; the FAKT 1 / FAKT 2 totals, conversion, bonus fund and ladder render on Savdo dinamikasi (`sales/ConfirmationFaktSection`), which is why the route lists both sections |
+| Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | the arrival in `C4:NEW` (`queued_at`) — the confirmation queue's own cohort. **The television board**: two podiums and two ranked lists (sellers left, teams right) — the sellers' seats and rows carry medals, the teams' carry none — and ONE control, the FAKT 1 / FAKT 2 switch in each heading; the FAKT 1 / FAKT 2 totals, conversion, bonus fund and ladder render on Savdo dinamikasi (`sales/ConfirmationFaktSection`), which is why the route lists both sections |
 | KPI rejalari | `/kpi` | `kpi/KpiPage` | `/kpi` | Kpi, Analytics → Reference, Deal | **the plan's own `periodStart`/`periodEnd`** — the dashboard window only *selects* which plan is live |
 | Struktura | `/structure` | `structure/StructurePage` | `/insights/structure`, `/insights/structure/roster` | Insights → Insights | **nothing — the screen is DATELESS.** `period={false}`, no window control, and neither endpoint takes one |
 
@@ -1079,10 +1079,17 @@ Per-screen traps worth knowing before you touch one:
   drawn there). **No «+N» and no caption anywhere; `TeamsColumn` has no prop
   that could receive a medal.** The three promises are CSS, in the MEDALS
   block of `globals.css`, and each was measured against the old board running
-  beside it: **the podium does not grow** (489 → 471px at 1920×1080 — the
-  shelf's 46px came out of the seat's gaps, its bottom padding and pedestals a
-  quarter lower, still 1 : 1.6 : 2.4; the gap ABOVE the ring was left alone,
-  because 4px less slides the crown under the plaque); **the row does not
+  beside it: **the podium does not grow** (489.0 → 489.0px at 1920×1080, to
+  the thousandth, on «Shu oy», «Bugun» and the morning alike — the shelf's
+  46px came out of the seat's gaps, its paddings and a pedestal step of 28.6px
+  where the old board had 29.8, still 1 : 1.6 : 2.4; the gap ABOVE the ring
+  was left alone, because 4px less slides the crown under the plaque. **The
+  step was 22px for a day** — blocks a quarter lower, which bought a fifth
+  whole row — and the review measured the cost: numerals 47 → 33px, blocks
+  that read as strips, bronze standing 3.5px above silver. §1.6 allows a
+  tenth; `tvBoardLayout.test.ts` now holds the step within that of the old
+  one. The teams' podium carries no shelf and is 46px SHORTER than it was,
+  443 → 397); **the row does not
   grow** (the holder is exactly one 26px medal tall inside the 27.9 / 26.5px
   the bar and chase lines already took — 28px would not fit a laptop); **the
   number columns do not move** (`contain: inline-size` plus margins on the
@@ -1097,18 +1104,28 @@ Per-screen traps worth knowing before you touch one:
   the table gains columns, where the name cell is ~190px against a ~160px
   chase: no medal fits there, so no bar gives anything up and the rows are the
   old board's. Spec §1.6 also
-  bought a fifth visible row at 1920×1080 (4 → 5, teams 5 → 6) and turned the
+  tightened the rows by a tenth (65.4 → 61.5px): at 1920×1080 the sellers'
+  list shows 4 whole rows and 0.8 of the fifth (it was 4 and a half), the
+  teams' 6 whole (it was 5); and it turned the
   «Bugun» morning's bold «0» into a muted «—» on rows with nothing on EITHER
-  fact. `tests/features/sellersMedals.test.tsx` holds all of it, the CSS
+  fact. **On a 1366 laptop the seat's shelf steps down to 36 / 32px** with the
+  rest of the seat type (a 40px medal over a 17px sum out-shouted the money);
+  the television keeps 40 / 36. **Steel medals — ~95% of what rows wear — were
+  lifted in the two DARK token blocks only**: their body stood 1.6–2.4:1
+  against the row and only the gilt device survived at 26px. **A new medal
+  lands ONCE**: `useNewMedals` drops its flag after `NEW_MEDAL_MS`, because a
+  flag that lived until the next ten-minute payload replayed the animation on
+  every remount — a FAKT press, a re-rank, the phone's tab. `tests/features/sellersMedals.test.tsx` holds all of it, the CSS
   included, and was checked by mutation. **One old-board defect the audit DID
   fix:** the champion's pill «+21,500,000 soʻm oldinda» was one 150px nowrap
   run in a pill a 1366 laptop caps at 148px, so the words stood 1.2px outside
   it on both sides (9px at 1280). Between 1280 and 1599 the seat's pill now
   steps down with the rest of the seat type (10px, 6px pill padding, 8px card
-  side padding — two lines at 1366, podium 437 → 435px), and the run may part
+  side padding — two lines at 1366, where the podium is 437px against the old
+  board's 444), and the run may part
   before «oldinda», never inside the sum, so under ~1345px it takes a third
   line instead of spilling; pinned in `sellersTvBoard.test.tsx`. **Still the
-  old board's and not fixed:** at 1366×768 the list is 70px tall (it was 61)
+  old board's and not fixed:** at 1366×768 the list is 68px tall (it was 61)
   and no row is whole; the phone's `.tv-seat-card` 8px side padding is a dead
   rule (the card's `padding` shorthand is written after it), on both boards.
 - **Sotuvchilar oyligi** — **NEW ON 2026-09-14**, the client's own pay scheme

@@ -287,6 +287,23 @@ describe('what the seats carry, and what they do not', () => {
     expect(css).toMatch(/\.tv-seat-card \.chase-chip \{\s*max-width: 100%;\s*flex-wrap: wrap;/)
   })
 
+  /*
+    On a 1366 laptop the champion's sum is ~17px of type and a 40px medal over
+    it out-shouted the money (review, 2026-09-17). The shelf steps down with the
+    rest of the seat on that band only; the television's 40 / 36 ride the
+    width/height attributes and no rule outside the band may cap them. The
+    champion's rule must come second — the two selectors weigh the same.
+  */
+  it('steps the seat’s medal shelf down to 36 / 32 between 1280 and 1599, and nowhere else', () => {
+    const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    const band = css.slice(css.indexOf('@media (min-width: 1280px) and (max-width: 1599px) {\n  .tv-col {'))
+    const block = band.slice(0, band.indexOf('\n}\n'))
+    expect(block).toMatch(
+      /\.tv-seat-card \.seat-medals > \.medal-mark \{\s*max-width: 32px;\s*\}\s*\.tv-seat--1 \.seat-medals > \.medal-mark \{\s*max-width: 36px;\s*\}/,
+    )
+    expect(css.match(/\.seat-medals > \.medal-mark \{[^}]*max-width/g) ?? []).toHaveLength(2)
+  })
+
   it('stands every seat on a pedestal numbered by its place', () => {
     const { container } = render(<SellersColumn data={RIPE} {...PROPS} />)
 
