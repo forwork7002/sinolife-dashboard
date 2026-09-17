@@ -4,7 +4,17 @@ import type { FaktChoice } from '@/features/sellers/board'
 import { FaktSwitch } from '@/features/sellers/FaktSwitch'
 
 /**
- * 40 px ustun sarlavhasi (spec §6/§7): nom · soni · FAKT kaliti. `children`
+ * Kalit yonidagi izoh — lit tugma NIMA ekanini so'z bilan aytadi (EFIR Premium
+ * §7, delta 20b). Tor sarlavhada (telefon, 1366 dagi komandalar ustuni) CSS
+ * container query uni yashiradi; kalit o'zi qoladi.
+ */
+const FAKT_HINT = {
+  fakt2: { label: 'FAKT 2', meaning: 'yetkazilgan pul' },
+  fakt1: { label: 'FAKT 1', meaning: 'tasdiqlangan pul' },
+} as const
+
+/**
+ * 42 px ustun sarlavhasi (spec §6/§7): nom · soni · izoh · FAKT kaliti. `children`
  * — e'lon (`PromotionBanner`), sarlavha USTIDA absolyut (`.tv-col-head`
  * relative). Kalit faqat taxta tayyor bo'lganda (`count !== null`): bo'sh yoki
  * xato holatda bosadigan narsa yo'q.
@@ -36,7 +46,14 @@ export function ColumnHead({
       </h2>
       {count !== null && <span className="tv-col-head__count">{count}</span>}
       <span className="tv-col-head__spacer" />
-      {count !== null && <FaktSwitch fakt={fakt} onFakt={onFakt} />}
+      {count !== null && (
+        <>
+          <span className="tv-col-head__hint">
+            <b>{FAKT_HINT[fakt].label}</b> — {FAKT_HINT[fakt].meaning}
+          </span>
+          <FaktSwitch fakt={fakt} onFakt={onFakt} />
+        </>
+      )}
       {children}
     </header>
   )

@@ -69,8 +69,38 @@ describe('the television board switches layout on one width', () => {
     expect(css).toMatch(/@media \(max-width: 1599px\) \{\s*:root \{\s*--tv-xl: 36px;/)
   })
 
-  it('lights the pressed fact in ink, never in a hue', () => {
-    expect(css).toMatch(/\.tv-fakt-tab\[aria-pressed='true'\] \{\s*background: var\(--ink-primary\);\s*color: var\(--surface\);/)
+  it('sinks the FAKT track and raises the lit tab with a 2 px tier-4 underline — never a white or ink fill', () => {
+    expect(css).toMatch(/\.tv-fakt \{[^}]*background: var\(--efir-sunken\);\s*box-shadow: var\(--efir-seg-well\);/)
+    expect(css).toMatch(
+      /\.tv-fakt-tab\[aria-pressed='true'\] \{\s*background: linear-gradient\(180deg, var\(--efir-raised-hi\), var\(--efir-raised\)\);\s*box-shadow: var\(--efir-seg-on\);\s*color: var\(--efir-ink\);/,
+    )
+    expect(css).toMatch(/\.tv-fakt-tab\[aria-pressed='true'\]::after,\s*\.tv-cols \.on::after \{[^}]*height: 2px;[^}]*background: var\(--tier-4\);/)
+    expect(css).toMatch(/\.tv-cols \.on::after \{[^}]*bottom: -6px;\s*width: 22px;/)
+    expect(css).not.toMatch(/\.tv-fakt-tab\[aria-pressed='true'\] \{[^}]*var\(--ink-primary\)/)
+  })
+
+  it('draws the column as a lifted panel — no border, radius 14, sheen, inset edge and ring, long shadow; the page glows', () => {
+    const rule = css.slice(css.indexOf('.tv-col {\n  position: relative;'))
+    const block = rule.slice(0, rule.indexOf('\n}\n') + 3)
+    expect(block).not.toContain('border:')
+    expect(block).toContain('border-radius: 14px;')
+    expect(block).toContain('overflow: hidden;')
+    expect(block).toContain('background: linear-gradient(180deg, var(--efir-panel-sheen), transparent 150px), var(--efir-panel);')
+    expect(block).toMatch(/box-shadow:\s*inset 0 1px 0 var\(--efir-edge-hi\),\s*inset 0 0 0 1px var\(--efir-edge-ring\),\s*var\(--efir-shadow-panel\);/)
+    expect(css).toContain('.tv-board-shell {\n  background: radial-gradient(1100px 420px at 46% -120px, var(--efir-page-glow), transparent 70%);\n}')
+  })
+
+  it('heads the column at 42 px with a hint that leaves a narrow head on its own', () => {
+    expect(css).toMatch(/\.tv-col-head \{[^}]*height: 42px;[^}]*container: tv-head \/ inline-size;/)
+    expect(css).toMatch(/\.tv-col-head__title \{[^}]*font-size: 15px;[^}]*font-weight: 600;/)
+    expect(css).toMatch(/\.tv-col-head__count \{[^}]*font-size: 13px;[^}]*color: var\(--efir-ink-3\);/)
+    expect(css).toMatch(/@container tv-head \(max-width: 559px\) \{\s*\.tv-col-head__hint \{ display: none; \}/)
+  })
+
+  it('sizes the rows from their slot, from the two-column width only', () => {
+    expect(queryFor('.tv-rows-slot {\n    flex: 1;\n    min-height: 0;')).toBe(1280)
+    expect(queryFor('height: var(--rows-h, 100%);')).toBe(1280)
+    expect(css.match(/var\(--rows-h/g)).toHaveLength(1)
   })
 
   /*
@@ -81,10 +111,13 @@ describe('the television board switches layout on one width', () => {
     aks holda atribut bilan CSS ikki xil o'lcham aytadi.
   */
   it('scales the seats and rows down under 1600 (spec §9); the minted marks keep their attribute sizes', () => {
-    const narrow = css.slice(css.indexOf('@media (max-width: 1599px) {\n  .row {'))
+    const narrow = css.slice(css.indexOf('@media (max-width: 1599px) {\n  /* Qator 43 px'))
     const block = narrow.slice(0, narrow.indexOf('\n}\n') + 3)
     expect(block).not.toMatch(/\.crest|\.halo|\.medal \{/)
-    expect(block).toContain('.row { height: 44px; }')
+    // Qator 43 px QOLADI — `ROW_H` karrasi hamma kenglikda bir raqam.
+    expect(block).not.toMatch(/\.row \{[^}]*height:/)
+    expect(block).toMatch(/\.tv-cols,\s*\.row \{\s*grid-template-columns: 5px 28px 58px minmax\(0, 1fr\) 62px 108px 88px 34px 48px;/)
+    expect(block).toMatch(/\.tv-cols > span:nth-child\(5\),\s*\.row > \*:nth-child\(5\) \{\s*display: none;/)
     // O'rindiq o'z blokida: balandlik mazmunga ergashadi, satrlar o'raladi.
     const seats = css.slice(css.indexOf('@media (max-width: 1599px) {\n  .tv-podium {'))
     const seatBlock = seats.slice(0, seats.indexOf('\n}\n') + 3)
@@ -100,11 +133,12 @@ describe('the television board switches layout on one width', () => {
     qator tasma · rank · gerb · ism · FAKT 2; FAKT 1, buyurtma, konv. va
     medallar yashirin. Markup o'zgarmaydi — uyalar `nth-child` bilan yopiladi.
   */
-  it('collapses a phone row to band · rank · crest · name · FAKT 2 and hides the desk columns', () => {
+  it('collapses a phone row to band · rank · crest · name · hero and hides the desk columns', () => {
     const phone = css.slice(css.indexOf('@media (max-width: 1279px) {\n  .tv-cols,'))
     const block = phone.slice(0, phone.indexOf('\n}\n') + 3)
-    expect(block).toMatch(/\.tv-cols,\s*\.row \{\s*grid-template-columns: 8px 44px 58px minmax\(0, 1fr\) 132px;/)
-    expect(block).toMatch(/\.tv-cols > span:nth-child\(5\),\s*\.tv-cols > span:nth-child\(7\),\s*\.tv-cols > span:nth-child\(8\),\s*\.tv-cols > span:nth-child\(9\),\s*\.row > \*:nth-child\(5\),\s*\.row > \*:nth-child\(7\),\s*\.row > \*:nth-child\(8\),\s*\.row > \*:nth-child\(9\) \{\s*display: none;/)
+    expect(block).toMatch(/\.tv-cols,\s*\.row \{\s*grid-template-columns: 5px 26px 58px minmax\(0, 1fr\) 104px;/)
+    // 5 komanda, 6 medallar, 8 boshqa fakt, 9 buyurt., 10 konv. — 7 qahramon qoladi.
+    expect(block).toMatch(/\.tv-cols > span:nth-child\(5\),\s*\.tv-cols > span:nth-child\(6\),\s*\.tv-cols > span:nth-child\(8\),\s*\.tv-cols > span:nth-child\(9\),\s*\.tv-cols > span:nth-child\(10\),\s*\.row > \*:nth-child\(5\),\s*\.row > \*:nth-child\(6\),\s*\.row > \*:nth-child\(8\),\s*\.row > \*:nth-child\(9\),\s*\.row > \*:nth-child\(10\) \{\s*display: none;/)
     expect(block).toMatch(/\.tv-tcols,\s*\.trow \{\s*grid-template-columns: 32px minmax\(0, 1fr\) 36px 124px 52px;/)
     expect(block).toMatch(/\.trow > \*:nth-child\(6\),[\s\S]*?display: none;/)
   })

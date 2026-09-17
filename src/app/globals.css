@@ -3018,77 +3018,109 @@ p {
   .seat__rack { margin-top: 10px; }
 }
 
-/* ---- ro'yxat: timing tower (spec §5). Yorliq qatori STATIK, skroll qutisi TASHQARISIDA. ---- */
+/* ---- ro'yxat: timing tower (EFIR Premium §5). Yorliq qatori STATIK, skroll qutisi TASHQARISIDA.
+   978 = 8 + [6 38 68 1fr 80 96 148 104 40 60] + 9×8 + 16. O'qish tartibi: tasma · rank · gerb ·
+   ism(+kod) · komanda · medallar · QAHRAMON (faol fakt) · boshqa fakt · buyurt. · konv. ---- */
 .tv-cols,
 .row {
   display: grid;
-  grid-template-columns: 10px 52px 70px minmax(0, 1fr) 84px 160px 146px 60px 68px;
+  grid-template-columns: 6px 38px 68px minmax(0, 1fr) 80px 96px 148px 104px 40px 60px;
+  column-gap: 8px;
   align-items: center;
-  padding-right: 16px;
+  padding: 0 16px 0 8px;
 }
 .tv-cols {
   flex: none;
-  height: 24px;
-  font-size: var(--tv-s);
-  color: var(--ink-muted);
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap;
-}
-.tv-cols__c { text-align: center; }
-.tv-cols__name { padding-left: 12px; }
-.tv-cols__r {
-  text-align: right;
-  padding-left: 8px;
-}
-.tv-cols[data-read="fakt2"] .tv-cols__f2,
-.tv-cols[data-read="fakt1"] .tv-cols__f1 {
-  color: var(--ink-secondary);
+  height: 28px;
+  font-size: 10.5px;
   font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--efir-ink-3);
+  white-space: nowrap;
+  background: linear-gradient(90deg, var(--efir-hairline), transparent 85%) bottom / 100% 1px no-repeat;
+}
+.tv-cols__r { text-align: right; }
+/* Faol ustun yorlig'i — nom siyohida; 22×2 belgi (`--tier-4`, bitta xrom urg'usi) TV BOARD
+   bo'limida, FAKT kalitining chizig'i yonida. */
+.tv-cols .on {
+  position: relative;
+  color: var(--efir-ink-name);
 }
 .tv-rows {
   list-style: none;
   margin: 0;
   padding: 0;
+  scroll-snap-type: y mandatory;
 }
+/* Drift paytida snap o'chadi — aks holda brauzer har sub-piksel `scrollTop` ni qatorga tortadi
+   (`useAutoScroll`). */
+.tv-rows[data-drifting] { scroll-snap-type: none; }
+/* Qator — BITTA tekis quti, soyasiz: pastki 1 px chiziq va chapdagi 88 px daraja yuvishi fon
+   qatlamlari, shuning uchun yuzta qator arzon skroll qiladi. */
 .row {
-  height: 50px;
-  border-bottom: 1px solid var(--border);
-}
-/* Tasma — 10 px to'liq balandlikda `--tier`; 3 metrdan ro'yxat rang bo'yicha
-   saralangan umurtqa bo'lib o'qiladi. Ko'tarilishda yangi darajaga 380 ms da o'tadi. */
-.row__band {
-  align-self: stretch;
-  background: var(--tier);
-  transition: background var(--duration-move) var(--ease-out);
-}
-.row[data-tier="0"] .row__band {
-  background: transparent;
-  box-shadow: inset 1px 0 0 var(--tier);
-}
-.row__rank {
-  font-size: var(--tv-l);
-  font-weight: 600;
-  text-align: center;
-  letter-spacing: -0.02em;
-  color: var(--ink-primary);
+  position: relative;
+  height: 43px;
+  scroll-snap-align: start;
+  background:
+    linear-gradient(var(--efir-hairline), var(--efir-hairline)) bottom / 100% 1px no-repeat,
+    linear-gradient(90deg, var(--tier-wash), transparent) left / 88px 100% no-repeat;
   font-variant-numeric: tabular-nums lining-nums;
 }
-.row .crest { margin-left: 6px; }
+.row__band {
+  align-self: stretch;
+  margin: 6px 0;
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--tier-hi), var(--tier) 50%, var(--tier-lo));
+}
+.row[data-tier="0"] .row__band {
+  box-shadow: inset 0 0 0 1px var(--efir-ink-4);
+}
+.row__rank {
+  padding-right: 4px;
+  font-size: 17px;
+  font-weight: 500;
+  text-align: right;
+  color: var(--efir-ink-2);
+}
+/* Ism uyasi: kod tokeni ism kesilishidan OLDIN tushadi — sig'masa ikkinchi (26 px pastdagi,
+   yashirin) qatorga o'raladi, ism esa butun kenglikni olib, oxirida ellipsis bilan kesiladi. */
 .row__name {
-  padding-left: 12px;
-  font-size: var(--tv-l);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--ink-primary);
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  height: 26px;
+  row-gap: 26px;
+  overflow: hidden;
+  white-space: nowrap;
+  padding-left: 2px;
+}
+.row__name .nm {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 19px;
+  line-height: 26px;
+  font-weight: 500;
+  letter-spacing: -0.012em;
+  color: var(--efir-ink-name);
+}
+.row__name .code {
+  flex: none;
+  margin-left: 0.5em;
+  font-size: 12.5px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: var(--efir-ink-3);
+}
+.row__team {
+  font-size: 13px;
+  color: var(--efir-ink-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.row__team {
-  margin-left: 14px;
-  font-size: var(--tv-m);
-  font-weight: 400;
-  color: var(--ink-muted);
 }
 /* O'ngdan chapga: eng nodir medal pul yonida — yuzta qatorning eng qimmati bitta vertikal ustun. */
 .row__medals {
@@ -3099,28 +3131,26 @@ p {
   height: 28px;
   overflow: visible;
 }
-.row__f2,
-.row__f1 {
-  font-size: var(--tv-m);
-  color: var(--ink-secondary);
+.row__hero,
+.row__sec {
   text-align: right;
   white-space: nowrap;
-  font-variant-numeric: tabular-nums lining-nums;
 }
-/* O'qilayotgan fakt — 24 px qalin; ustun tartibi o'zgarmaydi. */
-.tv-rows[data-read="fakt2"] .row__f2,
-.tv-rows[data-read="fakt1"] .row__f1 {
-  font-size: var(--tv-l);
-  font-weight: 700;
-  color: var(--ink-primary);
-  letter-spacing: -0.02em;
+.row__hero {
+  font-size: 23px;
+  font-weight: 620;
+  letter-spacing: -0.022em;
+  color: var(--efir-ink);
 }
-.row__orders,
-.row__conv {
-  font-size: var(--tv-m);
-  text-align: right;
-  color: var(--ink-muted);
-  font-variant-numeric: tabular-nums;
+.row__sec {
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--efir-ink-2);
+}
+/* Nol yoki null — xira chiziqcha, hech qachon qalin «0» (spec §2). */
+.row__none {
+  font-weight: 400;
+  color: var(--efir-ink-4);
 }
 
 /* ---- komandalar (spec §6): bir qatorli 62 px, ulush chizig'i, metall raqam faqat 1–3 ---- */
@@ -3286,12 +3316,30 @@ p {
 /* ---- 1366 va tor televizor (spec §9): 0.8× — qator 44 (gerb, medal va tanga o'lchami atributda,
    bu yerda kichraymaydi), gridlar torroq (o'rindiq — o'z bo'limida); shrift shkalasi `:root` da 36/20/14/12. ---- */
 @media (max-width: 1599px) {
-  .row { height: 44px; }
+  /* Qator 43 px QOLADI — ro'yxat balandligi `ROW_H` karrasi (SellersBoard.tsx). ~645 px ustunda
+     komanda uyasi tushadi, medallar uyasi 2 ta joyga torayadi (row-reverse: eng nodiri qoladi). */
   .tv-cols,
   .row {
-    grid-template-columns: 8px 44px 58px minmax(0, 1fr) 84px 136px 124px 52px 60px;
-    padding-right: 12px;
+    grid-template-columns: 5px 28px 58px minmax(0, 1fr) 62px 108px 88px 34px 48px;
+    column-gap: 6px;
+    padding: 0 10px 0 6px;
   }
+  .tv-cols > span:nth-child(5),
+  .row > *:nth-child(5) {
+    display: none;
+  }
+  .row__medals {
+    width: 62px;
+    overflow: hidden;
+  }
+  .row__rank { font-size: 14px; }
+  .row__name .nm { font-size: 16px; }
+  .row__hero { font-size: 18px; }
+  .tv-cols {
+    font-size: 9.5px;
+    letter-spacing: 0.05em;
+  }
+  .row__sec { font-size: 13px; }
   .trow { height: 52px; }
   .tv-tcols,
   .trow {
@@ -3302,25 +3350,31 @@ p {
 }
 
 /* ---- telefon (spec §9): ustunlar bittadan (`.tv-switch`, TV BOARD); o'rindiqlar ustma-ust;
-   qator tasma · rank · gerb · ism · FAKT 2 — FAKT 1, buyurtma, konv., medallar yashirin.
-   Uyalar `nth-child` bilan: 5 medallar, 7 FAKT 1, 8 buyurtma, 9 konv. (sotuvchilar);
+   qator tasma · rank · gerb · ism · QAHRAMON (faol fakt); komanda, medallar, boshqa fakt,
+   buyurt., konv. yashirin. Uyalar `nth-child` bilan: 5 komanda, 6 medallar, 8 boshqa fakt,
+   9 buyurt., 10 konv. (sotuvchilar, EFIR Premium §10);
    6 FAKT 1, 7 buyurtma, 8 konv. (komandalar). Markup o'zgarmaydi. ---- */
 @media (max-width: 1279px) {
   .tv-cols,
   .row {
-    grid-template-columns: 8px 44px 58px minmax(0, 1fr) 132px;
-    padding-right: 12px;
+    grid-template-columns: 5px 26px 58px minmax(0, 1fr) 104px;
+    column-gap: 6px;
+    padding: 0 10px 0 6px;
   }
   .tv-cols > span:nth-child(5),
-  .tv-cols > span:nth-child(7),
+  .tv-cols > span:nth-child(6),
   .tv-cols > span:nth-child(8),
   .tv-cols > span:nth-child(9),
+  .tv-cols > span:nth-child(10),
   .row > *:nth-child(5),
-  .row > *:nth-child(7),
+  .row > *:nth-child(6),
   .row > *:nth-child(8),
-  .row > *:nth-child(9) {
+  .row > *:nth-child(9),
+  .row > *:nth-child(10) {
     display: none;
   }
+  .row__name .nm { font-size: 16px; }
+  .row__hero { font-size: 17px; }
   .tv-tcols,
   .trow {
     grid-template-columns: 32px minmax(0, 1fr) 36px 124px 52px;
@@ -3364,10 +3418,12 @@ p {
  * box shrink below its content, and `grid-auto-rows: minmax(0, 1fr)` is the
  * same rule for the grid track; drop either and the page scrolls instead.
  *
- * EFIR (2026-09-16): the column is a plain surface with a hairline — no tone,
- * no frame colour, no glyph disc. Level is the only hue on the board and it
- * rides on the rows and seats (see the EFIR section), never on the chrome.
- * The pressed FAKT segment is ink. Type is the `--tv-*` scale on :root.
+ * EFIR Premium (2026-09-17, spec §1, delta 21): the column is a PANEL lifted
+ * off the page by light, not drawn by a line — no border; a 150 px top sheen
+ * over `--efir-panel`, an inset top edge, an inset ring and a long shadow.
+ * The page behind it carries one soft radial glow. Level rides on the rows
+ * and seats (see the EFIR section); the one hue on the chrome is the 2 px
+ * `--tier-4` mark under the lit FAKT tab and the active label.
  * ======================================================================== */
 
 .tv-board {
@@ -3376,15 +3432,22 @@ p {
   gap: 16px;
 }
 
+.tv-board-shell {
+  background: radial-gradient(1100px 420px at 46% -120px, var(--efir-page-glow), transparent 70%);
+}
+
 .tv-col {
   position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
+  background: linear-gradient(180deg, var(--efir-panel-sheen), transparent 150px), var(--efir-panel);
+  box-shadow:
+    inset 0 1px 0 var(--efir-edge-hi),
+    inset 0 0 0 1px var(--efir-edge-ring),
+    var(--efir-shadow-panel);
 }
 
 /*
@@ -3425,34 +3488,49 @@ p {
   }
 }
 
-/* 40 px column head: title · count · FAKT switch. `position: relative` is
+/* 42 px column head: title · count · hint · FAKT switch. `position: relative` is
    load-bearing — the promotion banner (`.tv-promo`, EFIR section) is pinned
-   to this box and floats over it. */
+   to this box and floats over it. The head is its own inline-size container
+   so the hint can leave a narrow head (the teams column at 1366) on its own. */
 .tv-col-head {
   position: relative;
   flex: none;
   display: flex;
   align-items: center;
-  gap: 14px;
-  height: 40px;
-  padding: 0 16px 0 20px;
-  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  height: 42px;
+  padding: 0 12px 0 20px;
+  container: tv-head / inline-size;
 }
 .tv-col-head__title {
   margin: 0;
-  font-size: var(--tv-l);
+  font-size: 15px;
   font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--ink-primary);
+  letter-spacing: -0.005em;
+  color: var(--efir-ink-name);
   white-space: nowrap;
 }
 .tv-col-head__count {
-  font-size: var(--tv-m);
-  color: var(--ink-muted);
+  font-size: 13px;
+  color: var(--efir-ink-3);
   white-space: nowrap;
 }
 .tv-col-head__spacer {
   flex: 1;
+}
+/* «FAKT 2 — yetkazilgan pul»: what the lit tab means, in words (delta 20b). */
+.tv-col-head__hint {
+  font-size: 12px;
+  color: var(--efir-ink-3);
+  white-space: nowrap;
+}
+.tv-col-head__hint b {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--efir-ink-2);
+}
+@container tv-head (max-width: 559px) {
+  .tv-col-head__hint { display: none; }
 }
 /* TELEFONDA KALIT SIG'MAYDI (spec §9). 390 px da nom · soni · FAKT kaliti
    birgalikda 383 px so'raydi va 356 px bor — kalit o'ng chetdan chiqib
@@ -3469,34 +3547,59 @@ p {
 /*
  * FAKT 1 / FAKT 2 — which fact the board is ranked on, in each column's head.
  * Drawn at every width. The lit segment is the fact the board is ACTUALLY
- * ranked on (under the opening 'auto' the data decides — `FaktSwitch`), and
- * it is INK: no hue is spent on chrome on this board.
+ * ranked on (under the opening 'auto' the data decides — `FaktSwitch`).
+ * EFIR Premium (delta 20c): a SUNKEN track; the lit tab is RAISED — a light
+ * gradient and its own shadow — with a 2 px `--tier-4` underline. Never a
+ * white or ink fill.
  */
 .tv-fakt {
-  display: flex;
+  display: inline-flex;
   flex: none;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--efir-sunken);
+  box-shadow: var(--efir-seg-well);
 }
 .tv-fakt-tab {
-  padding: 4px 12px;
-  border-radius: 7px;
-  font-size: var(--tv-s);
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  position: relative;
+  height: 28px;
+  padding: 0 13px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  color: var(--ink-secondary);
-  transition: background var(--duration-enter) var(--ease-out), color var(--duration-enter) var(--ease-out);
+  color: var(--efir-ink-3);
+  transition: color var(--duration-enter) var(--ease-out);
 }
 .tv-fakt-tab:hover {
-  color: var(--ink-primary);
+  color: var(--efir-ink-name);
 }
 .tv-fakt-tab[aria-pressed='true'] {
-  background: var(--ink-primary);
-  color: var(--surface);
+  background: linear-gradient(180deg, var(--efir-raised-hi), var(--efir-raised));
+  box-shadow: var(--efir-seg-on);
+  color: var(--efir-ink);
+}
+/* The lit tab's underline and the active column label's 22×2 tick — the same
+   mark, the board's one chrome hue. */
+.tv-fakt-tab[aria-pressed='true']::after,
+.tv-cols .on::after {
+  content: "";
+  position: absolute;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--tier-4);
+}
+.tv-fakt-tab[aria-pressed='true']::after {
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+}
+.tv-cols .on::after {
+  right: 0;
+  bottom: -6px;
+  width: 22px;
 }
 /* Forced colours discard the ink wash; `aria-pressed` gets a border the mode keeps. */
 @media (forced-colors: active) {
@@ -3562,12 +3665,18 @@ p {
   }
   /* ONLY THE ROWS SCROLL — the label strip above them is a sibling and stays
      put, so the fourth rank is never hidden under a sticky header. */
+  /* The rows' SLOT takes what the column leaves; the list inside it is a whole
+     number of 43 px rows (`--rows-h`, from `useAvailableHeight` on the slot —
+     never on the list, or it would ratchet). Unmeasured, it fills the slot. */
+  .tv-rows-slot {
+    flex: 1;
+    min-height: 0;
+  }
   .tv-rows {
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-width: none;
-    flex: 1;
-    min-height: 0;
+    height: var(--rows-h, 100%);
   }
   .tv-trows {
     overflow: auto;

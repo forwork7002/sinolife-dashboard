@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { type CSSProperties, useMemo } from 'react'
 
 import { EmptyState, ErrorState } from '@/components/states/States'
 import { type BoardEntry, type FaktChoice, figureOf, rankedBy, resolveOnDelivered } from '@/features/sellers/board'
@@ -10,7 +10,9 @@ import { PromotionBanner } from '@/features/sellers/PromotionBanner'
 import { RowMedals } from '@/features/sellers/RowMedals'
 import { SeatCard } from '@/features/sellers/SeatCard'
 import { TierLegend } from '@/features/sellers/TierLegend'
+import { parseSellerName } from '@/features/sellers/sellerName'
 import { useAutoScroll } from '@/features/sellers/useAutoScroll'
+import { useAvailableHeight } from '@/features/sellers/useAvailableHeight'
 import { useNewMedals, usePromotions } from '@/features/sellers/usePromotions'
 import type { MedalCode, SellerMedalDto, SellerMedalRowDto } from '@/lib/api'
 import { NO_VALUE, formatNumber, formatPercentUz, formatSomFull } from '@/lib/format'
@@ -138,13 +140,34 @@ export function SellersBoard({
 }
 
 /**
+ * Qator balandligi, px — CSS dagi `.row { height: 43px; }` bilan BIR raqam
+ * (`efirCss.test.ts` ikkalasini pinlaydi). Ro'yxat balandligi shuning butun
+ * karrasi (spec §5, delta 13): drift ikki chetda to'xtaganda yarim qator
+ * ko'rinmaydi.
+ */
+export const ROW_H = 43
+
+/**
+ * Ro'yxat oladigan balandlik: bo'sh joyga sig'adigan BUTUN qatorlar. 0 —
+ * «hali o'lchanmagan» (`useAvailableHeight`), shunda null va CSS o'z
+ * tabiiy o'lchamida qoladi. 1920 / rail ochiq: 500 → 473 = 11 × 43.
+ */
+export function wholeRowsHeight(available: number): number | null {
+  if (available <= 0) return null
+  return Math.floor(available / ROW_H) * ROW_H
+}
+
+/**
  * Qatorlar — timing tower (spec §5). Yorliq qatori `.tv-cols` STATIK va
  * skroll qutisi `.tv-rows` ning TASHQARISIDA, ya'ni 4-rank hech qachon
- * yashirinmaydi. Bitta baseline: tasma · rank · gerb · ism + komanda ·
- * medallar · FAKT 2 · FAKT 1 · buyurtma · konv. «Oldingiga +…» satri YO'Q.
+ * yashirinmaydi. O'QISH TARTIBI: tasma · rank · gerb · ism(+kod) · komanda ·
+ * medallar · QAHRAMON (faol fakt) · boshqa fakt · buyurt. · konv.
  *
- * `data-read` — o'qilayotgan fakt; CSS o'sha ustunni qalin qiladi, tartib
- * o'zgarmaydi (FAKT 2 har doim chapda).
+ * FAOL FAKT HAR DOIM QAHRAMON USTUNIDA. FAKT 1 o'qilganda ikki fakt uyasi
+ * almashadi — ustun tartibi emas, MAZMUN: 148 px uyada doim o'rin bergan
+ * raqam turadi, shuning uchun jonli kadrdagi «FAKT 1 raqami Buyurtma ustiga
+ * chiqadi» xatosi yo'qoladi. `data-read` faqat belgi — CSS undan og'irlik
+ * o'qimaydi (delta 11d).
  */
 function SellerRows({
   rows,
@@ -157,57 +180,114 @@ function SellerRows({
   medals: ReadonlyMap<string, SellerMedalRowDto>
   newMedals: ReadonlyMap<string, ReadonlySet<MedalCode>>
 }) {
-  const listRef = useAutoScroll<HTMLOListElement>(rows.length > 0)
   if (rows.length === 0) return null
   const read = onDelivered ? 'fakt2' : 'fakt1'
+  const [hero, other] = onDelivered ? (['FAKT 2', 'FAKT 1'] as const) : (['FAKT 1', 'FAKT 2'] as const)
 
   return (
     <>
       <div className="tv-cols" data-read={read}>
         <span />
-        <span className="tv-cols__c">#</span>
+        <span className="tv-cols__r">#</span>
         <span>Daraja</span>
-        <span className="tv-cols__name">Sotuvchi</span>
-        <span>Medallar</span>
-        <span className="tv-cols__r tv-cols__f2">FAKT 2, yetkazilgan</span>
-        <span className="tv-cols__r tv-cols__f1">FAKT 1, tasdiqlangan</span>
-        <span className="tv-cols__r">Buyurtma</span>
+        <span>Sotuvchi</span>
+        <span>Komanda</span>
+        <span className="tv-cols__r">Medallar</span>
+        <span className="tv-cols__r on">{hero}</span>
+        <span className="tv-cols__r">{other}</span>
+        <span className="tv-cols__r">Buyurt.</span>
         <span className="tv-cols__r">Konv.</span>
       </div>
-      <ol ref={listRef} className="tv-rows" data-read={read} aria-label="Reyting qatorlari">
-        {rows.map((entry) => {
-          // A place is only a place once there is money to rank on; a row
-          // with none prints a dash, not a rank it was handed by the tie-break.
-          const ranked = entry.won > 0 || entry.ordered > 0
-          // BIR MARTA QIDIRILADI — katakcha uni bir necha joyda o'qiydi.
-          const medal = medals.get(entry.key) ?? null
-          return (
-            <li key={entry.key} className="row" data-tier={medal?.level ?? 0}>
-              <span className="row__band" aria-hidden="true" />
-              <span className="row__rank">
-                {ranked ? entry.rank : <span aria-label="Hali puli yoʻq">—</span>}
-              </span>
-              {medal !== null ? (
-                <Crest level={medal.level} legendaTier={medal.legendaTier} height={20} />
-              ) : (
-                <span />
-              )}
-              <span className="row__name">
-                {entry.name}
-                {entry.badge && <span className="row__team">{entry.badge}</span>}
-              </span>
-              <RowMedals medals={medal?.medals ?? NO_MEDALS} newKeys={newMedals.get(entry.key)} />
-              <span className="row__f2">{formatSomFull(entry.won)}</span>
-              <span className="row__f1">{formatSomFull(entry.ordered)}</span>
-              <span className="row__orders">{formatNumber(entry.orders)}</span>
-              <span className="row__conv">
-                {entry.conversionPercent === null ? NO_VALUE : formatPercentUz(entry.conversionPercent)}
-              </span>
-            </li>
-          )
-        })}
-      </ol>
+      <RowList rows={rows} onDelivered={onDelivered} medals={medals} newMedals={newMedals} read={read} />
     </>
+  )
+}
+
+/**
+ * Skroll qutisi o'z uyasida. `useAvailableHeight` UYANI o'lchaydi (ro'yxatning
+ * ota elementi), ro'yxat o'sha raqamdan butun qatorlar balandligini oladi —
+ * hook ro'yxat elementini chizadigan komponentda turishi shart (ref bir marta,
+ * mount'dan keyin o'qiladi), shuning uchun bu alohida komponent.
+ */
+function RowList({
+  rows,
+  onDelivered,
+  medals,
+  newMedals,
+  read,
+}: {
+  rows: readonly BoardEntry[]
+  onDelivered: boolean
+  medals: ReadonlyMap<string, SellerMedalRowDto>
+  newMedals: ReadonlyMap<string, ReadonlySet<MedalCode>>
+  read: 'fakt1' | 'fakt2'
+}) {
+  const listRef = useAutoScroll<HTMLOListElement>(true)
+  const height = wholeRowsHeight(useAvailableHeight(listRef))
+  const style = height === null ? undefined : ({ '--rows-h': `${height}px` } as CSSProperties)
+
+  return (
+    <div className="tv-rows-slot">
+      <ol ref={listRef} className="tv-rows" data-read={read} aria-label="Reyting qatorlari" style={style}>
+        {rows.map((entry) => (
+          <SellerRow
+            key={entry.key}
+            entry={entry}
+            onDelivered={onDelivered}
+            medal={medals.get(entry.key) ?? null}
+            newKeys={newMedals.get(entry.key)}
+          />
+        ))}
+      </ol>
+    </div>
+  )
+}
+
+/** Faint dash for a zero or missing figure — never a bold «0» (spec §2). */
+function None() {
+  return <span className="row__none">{NO_VALUE}</span>
+}
+
+function SellerRow({
+  entry,
+  onDelivered,
+  medal,
+  newKeys,
+}: {
+  entry: BoardEntry
+  onDelivered: boolean
+  medal: SellerMedalRowDto | null
+  newKeys: ReadonlySet<MedalCode> | undefined
+}) {
+  // A place is only a place once there is money to rank on. A row with none
+  // prints NO rank at all — not a dash, not the place the tie-break handed it.
+  const ranked = entry.won > 0 || entry.ordered > 0
+  const heroFigure = figureOf(entry, onDelivered)
+  const otherFigure = figureOf(entry, !onDelivered)
+  const { name, code } = parseSellerName(entry.name)
+
+  return (
+    <li className="row" data-tier={medal?.level ?? 0} data-row-name={entry.name}>
+      <span className="row__band" aria-hidden="true" />
+      <span className="row__rank">{ranked ? entry.rank : null}</span>
+      {medal !== null ? <Crest level={medal.level} legendaTier={medal.legendaTier} height={20} /> : <span />}
+      <span className="row__name">
+        <span className="nm">{name}</span>
+        {code !== null && <span className="code">{code}</span>}
+      </span>
+      <span className="row__team">{entry.badge ?? ''}</span>
+      <RowMedals medals={medal?.medals ?? NO_MEDALS} newKeys={newKeys} />
+      <span className="row__hero">{heroFigure > 0 ? formatSomFull(heroFigure) : <None />}</span>
+      <span className="row__sec">{otherFigure > 0 ? formatSomFull(otherFigure) : <None />}</span>
+      <span className="row__sec">{entry.orders > 0 ? formatNumber(entry.orders) : <None />}</span>
+      <span className="row__sec">
+        {entry.conversionPercent === null || entry.conversionPercent === 0 ? (
+          <None />
+        ) : (
+          formatPercentUz(entry.conversionPercent)
+        )}
+      </span>
+    </li>
   )
 }
 

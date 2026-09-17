@@ -80,6 +80,24 @@ export function useAutoScroll<T extends HTMLElement>(enabled: boolean) {
     let releaseAt = performance.now() + DWELL_MS
     const holding = (now: number) => hovering || focused || now < releaseAt
 
+    /*
+      SNAP AND DRIFT MAY NOT BOTH BE ON. The rows snap to whole rows
+      (`scroll-snap-type`, EFIR Premium delta 12f) so a hand that scrolls the
+      list lets go on a row edge. But a browser snaps PROGRAMMATIC scrolls
+      too: every sub-pixel `scrollTop` write below would be pulled back to the
+      nearest row and the drift would turn into a row-by-row jerk. So while
+      the list moves on its own it carries `data-drifting`, and the CSS turns
+      snapping off under it; the two dwell positions are whole rows anyway
+      (the list height is a multiple of the row height).
+    */
+    let isDrifting = false
+    const drifting = (on: boolean) => {
+      if (on === isDrifting) return
+      isDrifting = on
+      if (on) el.setAttribute('data-drifting', '')
+      else el.removeAttribute('data-drifting')
+    }
+
     const step = (now: number) => {
       frame = requestAnimationFrame(step)
       const elapsed = last ? Math.min(now - last, MAX_STEP_MS) : 0
@@ -88,12 +106,14 @@ export function useAutoScroll<T extends HTMLElement>(enabled: boolean) {
       if (holding(now)) {
         // Follow the reader's own scrolling while held, so the drift resumes
         // from where they left the list and not from where it was.
+        drifting(false)
         position = el.scrollTop
         return
       }
 
       const range = el.scrollHeight - el.clientHeight
       if (range <= 0) return
+      drifting(true)
 
       position += direction * (PACE * elapsed) / 1_000
       if (position >= range) {
@@ -138,6 +158,7 @@ export function useAutoScroll<T extends HTMLElement>(enabled: boolean) {
 
     return () => {
       cancelAnimationFrame(frame)
+      drifting(false)
       el.removeEventListener('pointerenter', enter)
       el.removeEventListener('pointerleave', leave)
       el.removeEventListener('focusin', focus)
