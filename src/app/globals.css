@@ -3439,76 +3439,264 @@ p {
 }
 
 /*
- * THE CREDIT LINE — who built the board, in the quietest voice the page has.
- * Never a link, never a colour the board uses for a value.
+ * THE PAGE FOOT (EFIR Premium spec §7) — the three definitions the board's
+ * numbers rest on at the left, the credit at the right, in the quietest voice
+ * the page has. Never a link, never a colour the board uses for a value.
+ * Inside `.tv-board-shell`, so the `--efir-*` inks resolve; each still carries
+ * a global fallback. Wraps on a phone rather than running off the edge.
  */
+.tv-foot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-width: 0;
+  padding: 2px 6px 0;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--efir-ink-3, var(--ink-muted));
+  white-space: nowrap;
+}
+.tv-foot__defs {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tv-foot__defs span + span {
+  margin-left: 18px;
+}
+.tv-foot__defs b {
+  font-weight: 600;
+  color: var(--efir-ink-2, var(--ink-secondary));
+}
 .tv-credit {
   flex-shrink: 0;
-  padding: 2px 4px 0;
-  text-align: right;
-  font-size: 10px;
+  margin: 0;
+  font-size: 11px;
   letter-spacing: 0.06em;
-  line-height: 1.2;
-  color: color-mix(in oklab, var(--ink-secondary) 45%, transparent);
+  color: var(--efir-ink-4, var(--ink-muted));
   user-select: none;
+}
+@media (max-width: 1279px) {
+  .tv-foot {
+    flex-wrap: wrap;
+    gap: 4px 18px;
+    white-space: normal;
+  }
+  .tv-foot__defs span {
+    display: inline-block;
+  }
+}
+
+/*
+ * THE SHARED CHROME, ON THIS PAGE ONLY (EFIR Premium delta 20d–20e).
+ *
+ * `PageShell` and `PeriodFilter` reach /confirmation and are not edited. The
+ * sellers board is recognised from the page container that HOLDS it —
+ * `.page-container:has(.tv-board-shell)` — so every rule below is inert on
+ * every other screen. Two things change here:
+ *
+ * - the pink accent dash over the title is hidden: on the television the
+ *   title needs no page identity, and pink is a hue the board never spends;
+ * - from 1280px the period control takes the FAKT switch's treatment — a
+ *   sunken track, the lit preset a raised gradient with a 2px `--tier-4`
+ *   underline, never a white or ink fill. `PeriodFilter` paints its buttons
+ *   with INLINE styles, which only `!important` can outrank; the properties
+ *   so marked are exactly the ones it sets inline. Under 1280 the phone keeps
+ *   the control as it is, 36px targets included.
+ *
+ * The header sits OUTSIDE `.tv-board-shell`, so each `--efir-*` read carries a
+ * global fallback. Colours only through `var(--…)`; no `color-mix()`.
+ */
+.page-container:has(.tv-board-shell) .accent-rule {
+  display: none;
+}
+@media (min-width: 1280px) {
+  .page-container:has(.tv-board-shell) header [role="group"][aria-label="Davr"] {
+    gap: 0;
+    padding: 3px;
+    border-width: 0;
+    border-radius: 8px;
+    background: var(--efir-sunken, var(--surface-sunken)) !important;
+    box-shadow: var(--efir-seg-well, inset 0 0 0 1px var(--border));
+  }
+  .page-container:has(.tv-board-shell) header [role="group"][aria-label="Davr"] > button {
+    position: relative;
+    height: 28px;
+    padding: 0 13px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    background: transparent !important;
+    color: var(--efir-ink-3, var(--ink-muted)) !important;
+  }
+  .page-container:has(.tv-board-shell) header [role="group"][aria-label="Davr"] > button[aria-pressed="true"] {
+    background: linear-gradient(
+      180deg,
+      var(--efir-raised-hi, var(--surface-raised)),
+      var(--efir-raised, var(--surface-raised))
+    ) !important;
+    color: var(--efir-ink, var(--ink-primary)) !important;
+    box-shadow: var(--efir-seg-on, inset 0 0 0 1px var(--border));
+  }
+  .page-container:has(.tv-board-shell) header [role="group"][aria-label="Davr"] > button[aria-pressed="true"]::after {
+    content: "";
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 0;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--tier-4);
+  }
+  .page-container:has(.tv-board-shell) header button[aria-haspopup="dialog"] {
+    height: 34px;
+    padding: 0 13px;
+    border-width: 0;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    background: var(--efir-sunken, var(--surface-sunken)) !important;
+    color: var(--efir-ink-3, var(--ink-muted)) !important;
+    box-shadow: var(--efir-seg-well, inset 0 0 0 1px var(--border));
+  }
+}
+@media (min-width: 1280px) and (forced-colors: active) {
+  .page-container:has(.tv-board-shell) header [role="group"][aria-label="Davr"] > button[aria-pressed="true"] {
+    border: 2px solid CanvasText;
+  }
 }
 
 /* ==========================================================================
- * THE RECORD WALL — two static bands in the title line (EFIR, spec §7)
+ * THE RECORD WALL — two plaques in the title line (EFIR Premium, spec §7)
  *
- * «Sentabr yetakchisi» · «Avgust 2026 rekordi»: the label in the podium's
- * gold — the one place metal appears in the header, chrome and never a value
- * — the name and the figure in ink, the note muted. NO CRAWL: nothing on
- * this page moves at rest (spec §8); under ~1500px the component shows one
- * band and cuts to the other every ten seconds. Not drawn under 1280, the
- * width where the page stops being a television. Shares the `--tv-*` scale
- * on :root.
+ * «Sentabr yetakchisi» · «Avgust 2026 rekordi»: a 58 px raised plate each,
+ * the medal the only metal on it — the caps label is NEUTRAL ink, never gold.
+ * Every plaque is an inline-size container, and the drop order is fixed: the
+ * count goes under 400 px, the code under 320 px, the name ellipsises last,
+ * the AMOUNT NEVER (`flex: none`). NO CRAWL: nothing on this page moves at
+ * rest; under ~1500px the component shows one plaque (`data-bands="1"`) and
+ * cuts to the other every ten seconds. Not drawn under 1280, the width where
+ * the page stops being a television.
+ *
+ * THE WALL SITS IN THE SHARED HEADER, OUTSIDE `.tv-board-shell`, so every
+ * `--efir-*` read here carries a fallback to the global palette: the plaque
+ * stays legible whether or not the material tokens reach the header. Colours
+ * only through `var(--…)`; no `color-mix()`.
  * ======================================================================== */
 
 .record-wall {
   display: none;
   flex: 1;
+  align-self: center;
   min-width: 0;
-  justify-content: center;
-  align-items: baseline;
-  gap: 28px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
   margin-inline: 26px;
-  font-size: var(--tv-m);
-  color: var(--ink-secondary);
-  white-space: nowrap;
-  overflow: hidden;
 }
 @media (min-width: 1280px) {
   .record-wall {
-    display: flex;
+    display: grid;
   }
 }
-.record {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 10px;
+.record-wall[data-bands="1"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.plaque {
+  container-type: inline-size;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  height: 58px;
+  min-width: 0;
+  padding: 0 18px 0 14px;
+  border-radius: 8px;
+  background: linear-gradient(
+    180deg,
+    var(--efir-raised, var(--surface-raised)) 0%,
+    var(--efir-panel, var(--surface)) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 var(--efir-edge-hi, transparent),
+    inset 0 0 0 1px var(--efir-edge-ring, var(--border)),
+    var(--efir-shadow-seat, 0 0 0 transparent);
+}
+.plaque__t {
+  display: block;
   min-width: 0;
 }
-/* The second band is set off by a hairline, never a box. */
-.record + .record {
-  border-left: 1px solid var(--border-strong);
-  padding-left: 28px;
-}
-.record__k {
-  color: var(--medal-gold);
-  font-size: var(--tv-s);
+.plaque__k {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--efir-ink-3, var(--ink-muted));
+  white-space: nowrap;
 }
-.record__n,
-.record__v {
-  color: var(--ink-primary);
-  font-weight: 600;
-}
-.record__v {
+.plaque__count {
+  margin-left: auto;
+  padding-left: 12px;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--efir-ink-2, var(--ink-secondary));
   font-variant-numeric: tabular-nums lining-nums;
 }
-.record__note {
-  color: var(--ink-muted);
+.plaque__v {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  margin: 2px 0 0;
+  white-space: nowrap;
+}
+.plaque__v .nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--efir-ink-name, var(--ink-primary));
+}
+.plaque__v .code {
+  flex: none;
+  margin-left: 6px;
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--efir-ink-3, var(--ink-muted));
+}
+/* One text node; the U+202F separators are never wrapped or tightened. */
+.plaque__amount {
+  flex: none;
+  margin-left: auto;
+  padding-left: 16px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--efir-ink, var(--ink-primary));
+}
+@container (max-width: 400px) {
+  .plaque__count {
+    display: none;
+  }
+}
+@container (max-width: 320px) {
+  .plaque__v .code {
+    display: none;
+  }
 }
 
 /* ===========================================================================

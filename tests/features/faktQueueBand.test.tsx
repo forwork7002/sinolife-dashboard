@@ -57,14 +57,12 @@ window.matchMedia = ((query: string) => ({
 afterEach(cleanup)
 
 /**
- * A money figure appears TWICE in the DOM, and both copies are correct.
+ * A money figure appears ONCE in the DOM.
  *
- * `AnimatedNumber` counts up behind `aria-hidden` and prints a settled
- * `sr-only` copy beside it, so a screen reader is read one final figure
- * instead of forty frames of one. `getByText` therefore throws "found
- * multiple" on every soʻm figure on this band — which is a fact about the
- * primitive, not about the tile, so it is stated here once and the assertions
- * below read the visible copy.
+ * `AnimatedNumber` renders one text node (EFIR Premium spec §9) — it used to
+ * print a settled `sr-only` copy beside an `aria-hidden` counting one, and
+ * every figure on this band was counted twice. Counting them here pins that
+ * the doubled copy does not come back.
  */
 const figure = (value: string) => screen.getAllByText(value).length
 
@@ -137,7 +135,7 @@ describe('the orders that never left the queue as an order', () => {
 
     // 811 reached the queue, 669 left it as an order — the 142 in between are
     // what Tasdiqlash navbati counts and this page did not.
-    expect(figure('142')).toBe(2)
+    expect(figure('142')).toBe(1)
     // 156 resolved losses, 29 of which died AFTER confirmation and are
     // therefore inside FAKT 1 — so 127 were refused at the door, and the rest
     // of the 142 are still waiting or did not pick up.
@@ -175,7 +173,7 @@ describe('«confirmed, then cancelled»', () => {
   it('prints the measured money, not the gap between the other three', () => {
     render(<QueueBand data={LIVE} status="ready" />)
 
-    expect(figure(formatFullUzs(46_350_000))).toBe(2)
+    expect(figure(formatFullUzs(46_350_000))).toBe(1)
     expect(screen.getByText('29 ta buyurtma navbatdan chiqqach bekor boʻldi')).toBeDefined()
 
     /*
@@ -190,7 +188,7 @@ describe('«confirmed, then cancelled»', () => {
   it('separates what is on the road from what died', () => {
     render(<QueueBand data={LIVE} status="ready" />)
 
-    expect(figure(formatFullUzs(390_540_001))).toBe(2)
+    expect(figure(formatFullUzs(390_540_001))).toBe(1)
     expect(
       screen.getByText('233 ta buyurtma yoʻlda — tasdiqlangan, hali yetkazilmagan'),
     ).toBeDefined()
@@ -201,7 +199,7 @@ describe('the FAKT 2 run-rate', () => {
   it('projects the month once something has landed', () => {
     render(<QueueBand data={LIVE} status="ready" />)
 
-    expect(figure(formatFullUzs(2_389_000_000))).toBe(2)
+    expect(figure(formatFullUzs(2_389_000_000))).toBe(1)
     expect(screen.getByText('Oyning 28% qismi oʻtdi — shu surʼatda davom etsa')).toBeDefined()
   })
 

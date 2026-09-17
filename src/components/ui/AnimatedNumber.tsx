@@ -75,13 +75,21 @@ export function AnimatedNumber({
   }, [value, duration])
 
   /*
-    Real text for assistive tech, not aria-label.
+    ONE TEXT NODE, ONE FIGURE (EFIR Premium spec §9).
 
-    ARIA prohibits naming a generic <span>, and screen readers that honour
-    that drop the label — which would leave the visible digits aria-hidden and
-    the value announced as NOTHING. A visually-hidden span holding the final
-    formatted value is plain text: every reader speaks it, copy-paste sees it,
-    and the counting stays presentation-only beside it.
+    This used to print the value twice — a visually-hidden settled copy for
+    assistive tech beside an `aria-hidden` counting copy — and the audit of
+    the television board found the doubled figure in `textContent`: anything
+    that reads the node as text (copy-paste, reader mode, a test, a scraper)
+    saw «79 600 00079 600 000». Now there is exactly one: the tween writes the
+    same text node it settles in. The count-up lasts under a second, and a
+    screen reader that reads the node reads a number that is either final or
+    about to be; the server renders the final value, so no HTML reader ever
+    sees a half-counted one.
+
+    The U+202F group separators arrive inside the formatted string and are
+    never wrapped in elements of their own: tightening them breaks the group
+    gap in Firefox.
   */
   return (
     <span
@@ -92,13 +100,10 @@ export function AnimatedNumber({
          from splitting after the «3.2» when it does. */
       className={flash > 0 ? 'value-flash whitespace-nowrap' : 'whitespace-nowrap'}
     >
-      <span className="sr-only">{format(value)}</span>
       {/* The tween passes through fractions on its way; a count of orders
           must never print one. Rounded when the target is whole, left alone
           for a rate that genuinely carries decimals. */}
-      <span aria-hidden="true">
-        {format(Number.isInteger(value) ? Math.round(display) : display)}
-      </span>
+      {format(Number.isInteger(value) ? Math.round(display) : display)}
     </span>
   )
 }

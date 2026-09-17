@@ -7,7 +7,8 @@ import type { SellerRecordDto } from '@/lib/api'
 import { NARROW_NBSP } from '@/lib/format'
 
 /**
- * Rekord devori — sahifa sarlavhasining o'rtasida IKKI STATIK band (spec §7):
+ * Rekord devori — sahifa sarlavhasining o'rtasida IKKI PLAKET (EFIR Premium
+ * spec §7): 32 px medal, neytral caps yorliq, sanoq, ism · kod · summa;
  * sudralmaydi, tor sarlavhada bittasi 10 s da KESIB almashadi, kamaytirilgan
  * harakatda birinchisi turadi. So'rov `RecordWall` da; bu yerda ko'rinish.
  */
@@ -45,27 +46,58 @@ const MONTHS = [
   record('2026-07-01', false, 'Saparboyeva 110 Farida', 90_000_000, 40, 'confirmed'),
 ]
 
-const labels = (c: HTMLElement) => [...c.querySelectorAll('.record')].map((r) => r.querySelector('.record__k')!.textContent)
+const labels = (c: HTMLElement) =>
+  [...c.querySelectorAll('.plaque')].map((r) => r.querySelector('.plaque__label')!.textContent)
 
-describe('rekord devori — ikki statik band (spec §7)', () => {
-  it('keng sarlavhada eng yangi ikki oy: yetakchi va rekord; to‘liq so‘m; «57 ta yetkazilgan»', () => {
+describe('rekord devori — ikki plaket (spec §7)', () => {
+  it('keng sarlavhada eng yangi ikki oy: yetakchi va rekord; ism · kod · to‘liq so‘m; «57 ta yetkazilgan»', () => {
     const { container } = render(<RecordWallView months={MONTHS} wide reduced={false} />)
     expect(labels(container)).toEqual(['Sentabr yetakchisi', 'Avgust 2026 rekordi'])
-    const [lead, rec] = container.querySelectorAll('.record')
-    expect(lead!.querySelector('.record__n')!.textContent).toBe('Shahtiyarovna 197 Marjona')
-    expect(lead!.querySelector('.record__v')!.textContent).toBe(`79${S}600${S}000`)
-    expect(lead!.querySelector('.record__note')!.textContent).toBe('57 ta yetkazilgan')
-    expect(rec!.querySelector('.record__v')!.textContent).toBe(`128${S}550${S}000`)
-    expect(container.querySelector('.record-wall')!.getAttribute('aria-label')).toBe('Har oyning eng yaxshi sotuvchisi')
-    // Marquee, lozenge, kubok — hech biri yo'q.
-    expect(container.querySelector('.record-track')).toBeNull()
-    expect(container.textContent).not.toMatch(/mln|soʻm|🏆|◆|Rekord ·|Yetakchi ·/)
+    const wall = container.querySelector('.record-wall')!
+    expect(wall.getAttribute('aria-label')).toBe('Har oyning eng yaxshi sotuvchisi')
+    expect(wall.getAttribute('data-bands')).toBe('2')
+    const [lead, rec] = container.querySelectorAll('.plaque')
+    expect(lead!.querySelector('.nm')!.textContent).toBe('Shahtiyarovna Marjona')
+    expect(lead!.querySelector('.code')!.textContent).toBe('197')
+    expect(lead!.querySelector('.plaque__amount')!.textContent).toBe(`79${S}600${S}000`)
+    expect(lead!.querySelector('.plaque__count')!.textContent).toBe('57 ta yetkazilgan')
+    expect(rec!.querySelector('.nm')!.textContent).toBe('Marjona Xayrullayeva')
+    expect(rec!.querySelector('.code')!.textContent).toBe('154')
+    expect(rec!.querySelector('.plaque__amount')!.textContent).toBe(`128${S}550${S}000`)
+    // Marquee, lozenge, kubok, «hozircha» — hech biri yo'q.
+    expect(container.querySelector('.record-track, .tag')).toBeNull()
+    expect(container.textContent).not.toMatch(/mln|soʻm|🏆|◆|Rekord ·|Yetakchi ·|hozircha/)
+  })
+
+  it('medal: joriy oy yetakchisi — month-gold, yopiq oy rekordi — day-record; 32 px', () => {
+    const { container } = render(<RecordWallView months={MONTHS} wide reduced={false} />)
+    const medals = [...container.querySelectorAll('.plaque svg.medal')]
+    expect(medals.map((m) => m.getAttribute('data-medal'))).toEqual(['month-gold', 'day-record'])
+    for (const m of medals) {
+      expect(m.getAttribute('width')).toBe('32')
+      expect(m.getAttribute('height')).toBe('32')
+    }
+  })
+
+  it('summa BITTA matn tuguni; ajratgichlar o‘ralmaydi', () => {
+    const { container } = render(<RecordWallView months={MONTHS} wide reduced={false} />)
+    for (const amount of container.querySelectorAll('.plaque__amount')) {
+      expect(amount.childNodes).toHaveLength(1)
+      expect(amount.firstChild!.nodeType).toBe(Node.TEXT_NODE)
+    }
+  })
+
+  it('kodsiz ism kod tokenini chizmaydi', () => {
+    const months = [record('2026-09-01', true, 'Содиков Мурод', 5_000_000, 3)]
+    const { container } = render(<RecordWallView months={months} wide reduced={false} />)
+    expect(container.querySelector('.nm')!.textContent).toBe('Содиков Мурод')
+    expect(container.querySelector('.code')).toBeNull()
   })
 
   it('tasdiqlangan pul bilan o‘lchangan oy «tasdiqlangan» deb yoziladi', () => {
     const { container } = render(<RecordWallView months={MONTHS.slice(2)} wide reduced={false} />)
     expect(labels(container)).toEqual(['Iyul 2026 rekordi'])
-    expect(container.querySelector('.record__note')!.textContent).toBe('40 ta tasdiqlangan')
+    expect(container.querySelector('.plaque__count')!.textContent).toBe('40 ta tasdiqlangan')
   })
 
   it('oy yo‘q — hech narsa chizilmaydi', () => {
@@ -80,6 +112,7 @@ describe('rekord devori — ikki statik band (spec §7)', () => {
     it('avval yetakchi, 10 s dan keyin rekord, yana 10 s dan keyin yetakchi', () => {
       const { container } = render(<RecordWallView months={MONTHS} wide={false} reduced={false} />)
       expect(labels(container)).toEqual(['Sentabr yetakchisi'])
+      expect(container.querySelector('.record-wall')!.getAttribute('data-bands')).toBe('1')
       act(() => vi.advanceTimersByTime(RECORD_CUT_MS))
       expect(labels(container)).toEqual(['Avgust 2026 rekordi'])
       act(() => vi.advanceTimersByTime(RECORD_CUT_MS))
