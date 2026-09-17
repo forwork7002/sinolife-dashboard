@@ -275,6 +275,19 @@ describe('sotuvchilar ustuni — siyrak holat', () => {
     render(<SellersColumn data={MORNING} {...PROPS} />)
     expect(col('tv-sellers').querySelector('.tv-col-head__count')!.textContent).toBe('5 sotuvchi')
   })
+
+  /*
+    FE'L O'QILAYOTGAN FAKTDA (real-data audit, 2026-09-17): production «Bugun» da
+    FAKT 2 bosilganda sarlavha «bugun 0 sotuvchi savdo qildi» derdi, ostida esa
+    15 sotuvchining FAKT 1 puli turardi. `earners` faol faktdagi pul — FAKT 2 da
+    ular yetkazganlar.
+  */
+  it('FAKT 2 o‘qilganda sanoq «yetkazdi» deydi — «savdo qildi» emas', () => {
+    render(<SellersColumn data={MORNING} {...PROPS} fakt="fakt2" today />)
+    expect(col('tv-sellers').querySelector('.tv-col-head__count')!.textContent).toBe(
+      'bugun 0 sotuvchi yetkazdi · 2 tasi tasdiq kutmoqda',
+    )
+  })
 })
 
 describe('komandalar ustuni — siyrak holat', () => {
@@ -306,5 +319,10 @@ describe('komandalar ustuni — siyrak holat', () => {
     expect(col('tv-teams').querySelector('.jami__k')!.textContent).toBe('Bugun jami · FAKT 1')
     expect(col('tv-teams').querySelector('.jami__v')!.textContent).toBe(`1${S}600${S}000`)
     expect(col('tv-teams').querySelector('.tv-col-head__count')!.textContent).toBe('bugun 1 komanda savdo qildi')
+  })
+
+  it('FAKT 2 o‘qilganda komandalar sanog‘i ham «yetkazdi»', () => {
+    render(<TeamsColumn data={MORNING} {...PROPS} fakt="fakt2" today />)
+    expect(col('tv-teams').querySelector('.tv-col-head__count')!.textContent).toBe('bugun 0 komanda yetkazdi')
   })
 })

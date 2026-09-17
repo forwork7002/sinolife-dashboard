@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { fromSeller, fromTeam } from '@/features/sellers/board'
-import { teamTotals } from '@/features/sellers/TeamsBoard'
+import { teamRowLayout, teamTotals } from '@/features/sellers/TeamsBoard'
 import type { SellerBoardDto, SellerMedalRowDto } from '@/lib/api'
 import { NARROW_NBSP } from '@/lib/format'
 
@@ -172,7 +172,8 @@ describe('komandalar qatori (spec §6)', () => {
     expect(name.querySelector('.nm')!.textContent).toBe('Gulzora')
     expect(name.querySelector('.cnt')!.textContent).toBe('12')
     expect(col().querySelector('.trow__cnt')).toBeNull()
-    const labels = [...col().querySelectorAll('.tv-tcols span')].map((s) => s.textContent)
+    // Yorliq UYALARI — `.tv-tcols` ning bolalari (CSS `nth-child` shularni sanaydi).
+    const labels = [...col().querySelectorAll('.tv-tcols > span')].map((s) => s.textContent)
     expect(labels).toEqual(['#', 'Komanda · sotuvchi', 'FAKT 2', 'Ulush', 'FAKT 1', 'Buyurt.', 'Konv.'])
     expect(col().querySelector('.tv-tcols .on')!.textContent).toBe('FAKT 2')
   })
@@ -188,7 +189,7 @@ describe('komandalar qatori (spec §6)', () => {
     expect(names()).toEqual(['Lola', 'Gulzora', 'Sevinch', 'Azizbek'])
     // 220 000 000 / 600 850 000 = 36,6 %.
     expect(cells(rows()[0]!)).toEqual([`220${S}000${S}000`, `36,6${S}%`, `41${S}000${S}000`, '10', `70${S}%`])
-    expect([...col().querySelectorAll('.tv-tcols span')].map((s) => s.textContent)).toEqual([
+    expect([...col().querySelectorAll('.tv-tcols > span')].map((s) => s.textContent)).toEqual([
       '#', 'Komanda · sotuvchi', 'FAKT 1', 'Ulush', 'FAKT 2', 'Buyurt.', 'Konv.',
     ])
     expect(col().querySelector('.tv-trows')!.getAttribute('data-read')).toBe('fakt1')
@@ -243,6 +244,68 @@ describe('komandalar qatori (spec §6)', () => {
     height = 1000
     render(<Teams data={many(30)} />)
     expect(trowH()).toBe('40px')
+  })
+
+  /*
+    1366 AUDITI (2026-09-17, production «Shu oy», 14 komanda): uya 386 px,
+    40 px dan 14 qator sig'maydi — ro'yxat uyani to'ldirib 386 px bo'lgan va
+    o'ninchi komanda dam olish nuqtasida yarmida kesilgan. Sig'maganda ro'yxat
+    BUTUN qatorlar balandligida: 9 × 42 = 378.
+  */
+  it('sig‘magan ro‘yxat butun qatorlar balandligida — dam olish nuqtasida yarim qator yo‘q', () => {
+    expect(teamRowLayout(702, 14)).toEqual({ row: 50, list: null })
+    expect(teamRowLayout(520, 10)).toEqual({ row: 52, list: null })
+    expect(teamRowLayout(386, 14)).toEqual({ row: 42, list: 378 })
+    expect(teamRowLayout(1000, 30)).toEqual({ row: 40, list: 1000 })
+    expect(teamRowLayout(0, 14)).toBeNull()
+    expect(teamRowLayout(500, 0)).toBeNull()
+    for (const room of [300, 386, 413, 559, 600]) {
+      for (const n of [11, 14, 20, 40]) {
+        const layout = teamRowLayout(room, n)!
+        const shown = layout.list ?? room
+        // ko'rinadigan qism doim butun qatorlar (yoki hammasi sig'adi) va uyadan oshmaydi
+        if (layout.list !== null) expect(layout.list % layout.row).toBe(0)
+        else expect(n * layout.row).toBeLessThanOrEqual(room)
+        expect(shown).toBeLessThanOrEqual(room)
+        expect(layout.row).toBeGreaterThanOrEqual(40)
+        expect(layout.row).toBeLessThanOrEqual(52)
+      }
+    }
+
+    globalThis.ResizeObserver = class {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe() {
+        this.callback([{ contentRect: { height: 386 } } as ResizeObserverEntry], this as unknown as ResizeObserver)
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver
+    const many = board({
+      teams: Array.from({ length: 14 }, (_, i) => team(`K${String(i).padStart(2, '0')}`, i + 1, 3, 1_000_000 * (14 - i), 2_000_000)),
+    })
+    render(<Teams data={many} />)
+    const list = col().querySelector('.tv-trows') as HTMLElement
+    expect(list.classList.contains('tv-trows--whole')).toBe(true)
+    expect(list.style.getPropertyValue('--trow-h')).toBe('42px')
+    expect(list.style.getPropertyValue('--trows-h')).toBe('378px')
+  })
+
+  it('konversiya nol — xira chiziqcha, «0 %» emas (sotuvchi qatori qoidasi, spec §2)', () => {
+    const zero = board({
+      teams: [team('Sevinch', 1, 2, 0, 2_600_000, 0), team('Lola', 2, 3, 0, 1_000_000, 50)],
+    })
+    render(<Teams data={zero} />)
+    const conv = (row: HTMLElement) => [...row.querySelectorAll('.trow__sec')].at(-1)!
+    expect(conv(rows()[0]!).textContent).toBe('—')
+    expect(conv(rows()[0]!).classList.contains('trow__none')).toBe(true)
+    expect(conv(rows()[1]!).textContent).toBe(`50${S}%`)
+  })
+
+  it('yorliqning « · sotuvchi» qismi alohida uyachada — telefonda shu qism tushadi', () => {
+    render(<Teams data={LEDGER} />)
+    const name = col().querySelector('.tv-tcols > .tv-tcols__name')!
+    expect(name.textContent).toBe('Komanda · sotuvchi')
+    expect(name.querySelector('.tv-tcols__cnt')!.textContent).toBe(' · sotuvchi')
   })
 })
 

@@ -72,7 +72,7 @@ export function TeamsBoard({
   const count = !ready
     ? null
     : today
-      ? `bugun ${formatNumber(earning)} komanda savdo qildi`
+      ? `bugun ${formatNumber(earning)} komanda ${onDelivered ? 'yetkazdi' : 'savdo qildi'}`
       : `${formatNumber(entries.length)} komanda`
   const active = onDelivered ? 'FAKT 2' : 'FAKT 1'
   const other = onDelivered ? 'FAKT 1' : 'FAKT 2'
@@ -106,7 +106,10 @@ export function TeamsBoard({
           {ranked.length > 0 && (
             <div className="tv-tcols" data-read={read}>
               <span className="tv-tcols__r">#</span>
-              <span className="tv-tcols__name">Komanda · sotuvchi</span>
+              {/* « · sotuvchi» — tor ustunda (telefon) tushadigan qism; to'liq yorliq matni o'zgarmaydi. */}
+              <span className="tv-tcols__name">
+                Komanda<span className="tv-tcols__cnt"> · sotuvchi</span>
+              </span>
               <span className="tv-tcols__r on">{active}</span>
               <span className="tv-tcols__r">Ulush</span>
               <span className="tv-tcols__r">{other}</span>
@@ -176,6 +179,33 @@ function None({ className }: { className: string }) {
 /** «Hali savdosiz» satrining balandligi, px — CSS dagi `.quiet { height: 40px }` bilan bir raqam. */
 const QUIET_H = 40
 
+/** Komanda qatorining eng past va eng baland balandligi, px (spec §6). */
+const TROW_MIN = 40
+const TROW_MAX = 52
+
+/**
+ * Komanda qatorlari joyga qanday tushadi (spec §6, §10).
+ *
+ * Hammasi 40 px dan sig'sa — `clamp(40, floor(joy / n), 52)`, ro'yxat skroll
+ * qilmaydi. SIG'MASA ro'yxat skroll qiladi va shunda DAM OLISH NUQTASIDA YARIM
+ * QATOR BO'LMASLIGI kerak — sotuvchilar ro'yxati qoidasi: ko'rinadigan qatorlar
+ * soni `k = floor(joy / 40)`, qator balandligi `floor(joy / k)` (52 dan
+ * oshmaydi) va ro'yxat balandligi aynan `k × qator`. 1366 auditi (2026-09-17):
+ * 386 px ga 14 komanda 40 px dan tushib, o'ninchisi yarmida kesilgan edi —
+ * endi 9 × 42 = 378.
+ *
+ * `null` — hali o'lchanmagan (0) yoki qator yo'q: CSS o'z 50 px ida qoladi.
+ * `list: null` — ro'yxat uyani to'ldiradi (hammasi sig'adi).
+ */
+export function teamRowLayout(room: number, rows: number): { row: number; list: number | null } | null {
+  if (room <= 0 || rows <= 0) return null
+  const even = Math.floor(room / rows)
+  if (even >= TROW_MIN) return { row: Math.min(TROW_MAX, even), list: null }
+  const visible = Math.max(1, Math.floor(room / TROW_MIN))
+  const row = Math.min(TROW_MAX, Math.floor(room / visible))
+  return { row, list: visible * row }
+}
+
 function TeamRows({
   ranked,
   onDelivered,
@@ -199,18 +229,25 @@ function TeamRows({
   const total = ranked.reduce((sum, e) => sum + figureOf(e, onDelivered), 0)
   const leader = ranked.length > 0 ? figureOf(ranked[0]!, onDelivered) : 0
   const room = available - (after === null ? 0 : QUIET_H)
-  const rowHeight =
-    room > 0 && ranked.length > 0 ? Math.min(52, Math.max(40, Math.floor(room / ranked.length))) : null
+  const layout = teamRowLayout(room, ranked.length)
+  const style =
+    layout === null
+      ? undefined
+      : ({
+          '--trow-h': `${layout.row}px`,
+          ...(layout.list === null ? {} : { '--trows-h': `${layout.list}px` }),
+        } as CSSProperties)
+  const className = [
+    'tv-trows',
+    after === null ? '' : 'tv-trows--fit',
+    layout?.list == null ? '' : 'tv-trows--whole',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
     <div className="tv-tslot">
-      <ol
-        ref={listRef}
-        className={after === null ? 'tv-trows' : 'tv-trows tv-trows--fit'}
-        data-read={read}
-        aria-label="Komandalar reytingi"
-        style={rowHeight === null ? undefined : ({ '--trow-h': `${rowHeight}px` } as CSSProperties)}
-      >
+      <ol ref={listRef} className={className} data-read={read} aria-label="Komandalar reytingi" style={style}>
         {ranked.map((entry) => {
           const figure = figureOf(entry, onDelivered)
           const second = figureOf(entry, !onDelivered)
@@ -258,7 +295,8 @@ function TeamRows({
               ) : (
                 <None className="trow__sec" />
               )}
-              {entry.conversionPercent === null ? (
+              {/* Nol ham xira chiziqcha — sotuvchi qatoridagi qoida (spec §2); jonli «Bugun» da «0 %» edi. */}
+              {entry.conversionPercent === null || entry.conversionPercent === 0 ? (
                 <None className="trow__sec" />
               ) : (
                 <span className="trow__sec">{formatPercentUz(entry.conversionPercent)}</span>

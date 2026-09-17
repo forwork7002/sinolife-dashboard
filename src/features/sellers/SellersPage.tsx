@@ -131,7 +131,16 @@ export function SellersPage() {
       controlsAlign="end"
       fill
     >
-      <div className="tv-board-shell flex min-h-0 flex-col gap-3">
+      {/*
+        `gap-2`, NOT `gap-3` — THE FOUR PIXELS ARE A ROW. At the television's
+        own frame (1920×1080, rail open or closed) the board is 872 px tall
+        with an 8 px gap above the page foot, which leaves the sellers' rows
+        slot 475 px: eleven whole 43 px rows (473, spec §5) and the teams'
+        rows 50 px each, the mock's geometry. With 12 px the slot was 471 and
+        `wholeRowsHeight` took TEN rows, leaving a 41 px empty band over the
+        legend that read as a missing seller (real-data audit, 2026-09-17).
+      */}
+      <div className="tv-board-shell flex min-h-0 flex-col gap-2">
         {/*
           SAHIFANING YAGONA <defs>. Gerb ham, medal ham `<use href="#…">`
           bilan chiziladi — belgilar bir marta, taxtaning boshida.

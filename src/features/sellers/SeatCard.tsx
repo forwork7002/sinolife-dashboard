@@ -1,16 +1,12 @@
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Crest } from '@/features/sellers/Crest'
+import { UZ_MONTHS as MONTHS } from '@/features/sellers/dateLine'
 import { Halo, metalOfRank } from '@/features/sellers/Halo'
 import { MedalMark } from '@/features/sellers/MedalMark'
 import { MEDALS, dativeOf, nextLevelSentence, progressOf, seatMedals } from '@/features/sellers/medalCatalog'
 import { parseSellerName } from '@/features/sellers/sellerName'
 import type { MedalCode, SellerMedalDto, SellerMedalRowDto } from '@/lib/api'
 import { NO_VALUE, formatSomFull } from '@/lib/format'
-
-const MONTHS = [
-  'yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun',
-  'iyul', 'avgust', 'sentabr', 'oktabr', 'noyabr', 'dekabr',
-] as const
 
 /** Kun bilan sanalanadigan medallar — qolganlarining `at` i oy boshi (`YYYY-MM-01`). */
 const DAY_MEDALS: ReadonlySet<MedalCode> = new Set<MedalCode>(['day-winner', 'day-record'])
@@ -114,9 +110,12 @@ export function SeatCard({
         <div className="seat__who">
           <h3 className="seat__name">
             <span>{first}</span>
+            {/* Ikkinchi qator — o'raladigan qator: sig'masa KOD butunlay tushadi
+                (yashirin ikkinchi qatorga), ism esa o'z kengligida ellipsis
+                bo'ladi. Hech qachon «Davlatbek 11…» (1366 auditi). */}
             {(second !== '' || parsed.code !== null) && (
-              <span>
-                {second}
+              <span className="seat__name2">
+                {second !== '' && <span className="nm">{second}</span>}
                 {parsed.code !== null && (
                   <>
                     {second !== '' && ' '}

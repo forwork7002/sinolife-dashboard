@@ -185,6 +185,23 @@ describe('SeatCard — ism uch shaklda (parseSellerName)', () => {
     // data-seat-name xom ismda qoladi.
     expect(container.querySelector('article.seat')!.getAttribute('data-seat-name')).toBe('154 Marjona')
   })
+
+  /*
+    1366 AUDITI (2026-09-17): tor o'rindiqda ikkinchi qator bitta ellipsisli span
+    edi — «Davlatbek 11…», «Niginabon…», kod yarmida kesilgan. Endi ikkinchi qator
+    o'raladigan uya: ism (`.nm`) va kod (`.code`) ALOHIDA bolalar, kod sig'masa
+    butunlay yashirin qatorga tushadi (CSS `efirCss`/`tvBoardLayout` pinlaydi).
+  */
+  it('ikkinchi qator: ism va kod alohida bolalar — kod ismdan oldin tushadi', () => {
+    const { container, rerender } = render(<SeatCard {...SEAT} name="Sirojov 115 Davlatbek" medal={null} />)
+    const line = container.querySelector('.seat__name > .seat__name2')!
+    expect([...line.children].map((c) => c.className)).toEqual(['nm', 'code'])
+    expect(line.querySelector('.nm')!.textContent).toBe('Davlatbek')
+    expect(line.textContent).toBe('Davlatbek 115')
+
+    rerender(<SeatCard {...SEAT} name="154 Marjona" medal={null} />)
+    expect([...container.querySelector('.seat__name2')!.children].map((c) => c.className)).toEqual(['code'])
+  })
 })
 
 describe('SeatCard — pul va FAKT qatori', () => {

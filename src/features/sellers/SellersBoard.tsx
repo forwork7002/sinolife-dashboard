@@ -96,10 +96,15 @@ export function SellersBoard({
   const newMedals = useNewMedals(medals)
   const ready = status === 'ready' && entries.length > 0
   const waiting = queued.length > 0 ? ` · ${formatNumber(queued.length)} tasi tasdiq kutmoqda` : ''
+  /*
+    FE'L O'QILAYOTGAN FAKTNI AYTADI. `earners` — faol faktda puli borlar; FAKT 2 da
+    ular yetkazganlar. «bugun 0 sotuvchi savdo qildi» FAKT 2 kaliti ostida 15 kishi
+    FAKT 1 da savdo qilgan kunni yolg'on aytardi (real-data audit, 2026-09-17).
+  */
   const count = !ready
     ? null
     : today
-      ? `bugun ${formatNumber(earners.length)} sotuvchi savdo qildi${waiting}`
+      ? `bugun ${formatNumber(earners.length)} sotuvchi ${onDelivered ? 'yetkazdi' : 'savdo qildi'}${waiting}`
       : `${formatNumber(entries.length)} sotuvchi`
   // So'z o'qilayotgan faktni aytadi: boshqa faktda pul bo'lsa «savdo yoʻq» yolg'on bo'lardi.
   const what = ranked.length === 0 ? 'savdo' : onDelivered ? 'yetkazilgan pul' : 'tasdiqlangan pul'
