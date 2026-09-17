@@ -57,23 +57,16 @@ describe('medal servisi', () => {
     const row = dto.sellers.find((s) => s.employeeId === 'e1')!
 
     /*
-      ANIQ QIYMAT. e1 avgustda 30 mln yetkazgan → 3-daraja (30 mln ostonasi
-      AYNAN), keyingi ostona 100 mln (Usta). Medallar: 🥇 (place 1, eshik 2),
-      🎯 (75%, 40 ≥ 20, eshik 3), 🌱 — uchalasi 3-darajada ochiq. 💯 tushmaydi
-      (75% < 80), 📅 tushmaydi (kun fakti yo‘q), 📈/🔥/⭐/🏆/🚀 tushmaydi.
-      Kunlik fakt yo‘q → promotedOn null. today — 2026-09-15T06:00Z Toshkentda
-      2026-09-15.
+      ANIQ QIYMAT. e1 avgustda 1-o‘rin, 40 tasdiqlangandan 30 tasi yetkazilgan.
+      Medallar: 🥇 (place 1), 🎯 (75%, 40 ≥ 20), 🌱. 💯 tushmaydi (75% < 80),
+      📅 tushmaydi (kun fakti yo‘q), 📈/🔥/⭐/🏆/🚀 tushmaydi.
+
+      PAYLOAD DARAJASIZ — `{ sellers: [{ employeeId, medals }], from }` va
+      boshqa hech narsa (2026-09-17, mijoz: «uroven kerak emas»). Kalitlar
+      AYNAN sanab o‘tilgan: daraja maydonlaridan biri qaytsa, shu yerda yiqiladi.
     */
-    expect(row.level).toBe(3)
-    expect(row.legendaTier).toBe(0)
-    expect(row.rankTitle).toBe('Katta sotuvchi')
-    expect(row.delivered.amount).toBe(30_000_000)
-    expect(row.delivered.currency).toBe('UZS')
-    expect(row.levelFloor.amount).toBe(30_000_000)
-    expect(row.nextLevelAt.amount).toBe(100_000_000)
-    expect(row.nextTitle).toBe('Usta')
-    expect(row.promotedOn).toBeNull()
-    expect(dto.today).toBe('2026-09-15')
+    expect(Object.keys(dto).sort()).toEqual(['from', 'sellers'])
+    expect(Object.keys(row).sort()).toEqual(['employeeId', 'medals'])
     expect(row.medals.map((m) => m.code)).toEqual(['month-gold', 'conversion-master', 'first-sale'])
     const gold = row.medals.find((m) => m.code === 'month-gold')!
     expect(gold.amount).not.toBeNull()
@@ -81,6 +74,46 @@ describe('medal servisi', () => {
     expect(gold.amount!.amount).toBe(30_000_000)
     expect('points' in gold).toBe(false)
     expect('tier' in gold).toBe(false)
+  })
+
+  it('ESHIK YO‘Q: jami 3 mln yetkazgan sotuvchi 🔥 ni oladi — ilgari 100 mln kerak edi', async () => {
+    const tiny = ['2026-06-01', '2026-07-01', '2026-08-01'].map((month) => ({
+      month,
+      employeeId: 'e2',
+      fullName: 'Kichik Pul',
+      confirmedOrders: 1,
+      confirmedMinor: 1n * MLN,
+      deliveredOrders: 1,
+      deliveredMinor: 1n * MLN,
+      place: 2,
+    }))
+    const service = new SellerBoardService(
+      {} as never,
+      repoWith(tiny, [], { n: 0 }) as never,
+      {} as never,
+    )
+    const dto = await service.medals(contextAt(new Date('2026-09-15T06:00:00Z')))
+    const row = dto.sellers.find((s) => s.employeeId === 'e2')!
+    expect(row.medals.map((m) => m.code)).toEqual([
+      'month-silver',
+      'streak-fire',
+      'streak-steady',
+      'first-sale',
+    ])
+    expect(row.medals.find((m) => m.code === 'month-silver')!.count).toBe(3)
+  })
+
+  it('medalsiz sotuvchi ham ro‘yxatda — `medals: []` bilan', async () => {
+    // SHARTNOMA: oynada oy fakti bor har sotuvchi qator oladi. Ekran javobni
+    // `employeeId` bo‘yicha xaritaga yig‘adi, shuning uchun bo‘sh qator zararsiz.
+    const idle = [{ ...months[0]!, employeeId: 'e3', confirmedOrders: 3, deliveredOrders: 0, deliveredMinor: 0n, place: 40 }]
+    const service = new SellerBoardService(
+      {} as never,
+      repoWith(idle, [], { n: 0 }) as never,
+      {} as never,
+    )
+    const dto = await service.medals(contextAt(new Date('2026-09-15T06:00:00Z')))
+    expect(dto.sellers).toEqual([{ employeeId: 'e3', medals: [] }])
   })
 
   it('devorning o‘zi bilan bir oynani o‘qiydi — RECORDS_FROM dan', async () => {

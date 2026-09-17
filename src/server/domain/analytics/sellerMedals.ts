@@ -1,5 +1,5 @@
 /**
- * Sotuvchilar medallari — daraja, gerb va medallar.
+ * Sotuvchilar medallari.
  *
  * SOF FUNKSIYA, ATAYLAB. Bazaga tegmaydi, React'ga tegmaydi va bitta ham
  * o'zbek so'zi chiqarmaydi — medalning SABABI bu yerda strukturaviy (qaysi
@@ -7,106 +7,14 @@
  * (nomlar) va `MedalMark.tsx` (chizadi). Sabab: bu qoidalar bazasiz test qilinadi va ular bilan bahslashadigan
  * yagona narsa — raqam, matn emas.
  *
- * NARVON 2026-09-16 da production'da 126 sotuvchi ustida o'lchangan
- * taqsimotdan tanlangan va qotirilgan (jami yetkazilgan pul: p50 30,8 mln,
- * p90 102 mln, max 173 mln). Ishga tushgan ostonani keyin ko'tarish mumkin
- * emas: floor uni jazo deb o'qiydi. Spec:
- * `docs/superpowers/specs/2026-09-16-daraja-va-medallar-design.md`.
+ * DARAJA (UROVEN) YO'Q — 2026-09-17, mijoz: «uroven kerak emas, medallar
+ * qolsin». Narvon, unvonlar, «darajaga chiqqan kun» va medallarni daraja
+ * ortiga yashirgan eshik shu kuni o'chirildi: ko'rinmaydigan daraja medalni
+ * yashira olmaydi, shuning uchun motor topgan HAR BIR medal uzatiladi — jami
+ * puli qancha bo'lishidan qat'i nazar. Medal qoidalari va chegaralari
+ * o'zgarmagan — ular production'da o'lchangan. Spec:
+ * `docs/superpowers/specs/2026-09-17-klassik-taxta-medallar-design.md`.
  */
-
-/** 1 so'm = 100 minor; 1 mln so'm. */
-export const MINOR_PER_MLN = 100_000_000n
-
-/**
- * Daraja — 2026-avgustdan beri yetkazilgan JAMI FAKT 2 dan, faqat ko'tariladi.
- *
- * AYTIB YURILADIGAN RAQAMLAR: «yuz million — Usta», «bir milliard — Legenda».
- * 1-daraja birinchi so'mdan — nol yetkazgan sotuvchi 0-darajada, unvonsiz,
- * va bu ogohlantirish emas: bitta savdo uni Yangi qiladi.
- */
-export const LEVEL_THRESHOLDS_MINOR: readonly bigint[] = Object.freeze([
-  1n, // 1 · Yangi — birinchi so'm
-  10n * MINOR_PER_MLN, // 2 · Sotuvchi
-  30n * MINOR_PER_MLN, // 3 · Katta sotuvchi
-  100n * MINOR_PER_MLN, // 4 · Usta
-  300n * MINOR_PER_MLN, // 5 · Ustoz
-  1000n * MINOR_PER_MLN, // 6 · Legenda
-])
-
-export const LEVEL_TITLES: readonly string[] = Object.freeze([
-  'Yangi',
-  'Sotuvchi',
-  'Katta sotuvchi',
-  'Usta',
-  'Ustoz',
-  'Legenda',
-])
-
-/** Legenda har keyingi milliardda II, III … — narvon hech qachon tugamaydi. */
-export const LEGENDA_STEP_MINOR = 1000n * MINOR_PER_MLN
-
-export interface Level {
-  /** 0 — hali savdosiz; 1..6. */
-  readonly level: number
-  /** 6-darajada 1 = Legenda, 2 = Legenda II …; pastda 0. */
-  readonly legendaTier: number
-}
-
-export function levelOf(deliveredMinor: bigint): Level {
-  let level = 0
-  for (const threshold of LEVEL_THRESHOLDS_MINOR) {
-    if (deliveredMinor >= threshold) level++
-    else break
-  }
-  const legendaTier =
-    level === 6 ? Number((deliveredMinor - LEVEL_THRESHOLDS_MINOR[5]!) / LEGENDA_STEP_MINOR) + 1 : 0
-  return { level, legendaTier }
-}
-
-/** Shu darajaning ostonasi; 0-darajada 0. */
-export function levelFloorMinorOf(l: Level): bigint {
-  if (l.level === 0) return 0n
-  if (l.level < 6) return LEVEL_THRESHOLDS_MINOR[l.level - 1]!
-  return LEVEL_THRESHOLDS_MINOR[5]! + BigInt(l.legendaTier - 1) * LEGENDA_STEP_MINOR
-}
-
-/** Keyingi ostona — HAR DOIM bor: 0-darajada birinchi so'm, Legendada keyingi milliard. */
-export function nextLevelAtMinorOf(l: Level): bigint {
-  if (l.level < 6) return LEVEL_THRESHOLDS_MINOR[l.level]!
-  return LEVEL_THRESHOLDS_MINOR[5]! + BigInt(l.legendaTier) * LEGENDA_STEP_MINOR
-}
-
-export function romanOf(n: number): string {
-  const table: readonly (readonly [number, string])[] = [
-    [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'],
-    [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
-  ]
-  let rest = Math.max(0, Math.floor(n))
-  let out = ''
-  for (const [value, glyph] of table) {
-    while (rest >= value) {
-      out += glyph
-      rest -= value
-    }
-  }
-  return out
-}
-
-/** «Ustoz», «Legenda II»; 0-darajada null — unvonsiz. */
-export function titleOf(l: Level): string | null {
-  if (l.level === 0) return null
-  const title = LEVEL_TITLES[l.level - 1]!
-  return l.level === 6 && l.legendaTier > 1 ? `${title} ${romanOf(l.legendaTier)}` : title
-}
-
-/** Keyingi darajaning unvoni — «… ga N mln qoldi» jumlasi uchun; har doim bor. */
-export function nextTitleOf(l: Level): string {
-  const next: Level =
-    l.level < 6
-      ? { level: l.level + 1, legendaTier: l.level + 1 === 6 ? 1 : 0 }
-      : { level: 6, legendaTier: l.legendaTier + 1 }
-  return titleOf(next)!
-}
 
 export const MEDAL_CODES = [
   'month-gold',
@@ -173,52 +81,18 @@ export interface SellerMedal {
 
 export interface SellerMedalRow {
   readonly employeeId: string
-  /** 0 — hali savdosiz; 1..6. */
-  readonly level: number
-  readonly legendaTier: number
-  /** «Ustoz», «Legenda II»; 0-darajada null. */
-  readonly rankTitle: string | null
-  /** 2026-avgustdan beri jami FAKT 2. */
-  readonly deliveredMinor: bigint
-  readonly levelFloorMinor: bigint
-  readonly nextLevelAtMinor: bigint
-  readonly nextTitle: string
-  /** Joriy darajaga chiqqan kun, `YYYY-MM-DD`; 0-darajada yoki kunlik faktsiz null. */
-  readonly promotedOn: string | null
-  /** `MEDAL_ORDER` bo'yicha; oila ichida eng oxirgisi oldin. Faqat OCHILGANLARI. */
+  /**
+   * `MEDAL_ORDER` bo'yicha; oila ichida eng oxirgisi oldin. Motor topgan
+   * HAMMASI — eshik yo'q. Bo'sh bo'lishi mumkin: oynada oy fakti bor har
+   * sotuvchi qator oladi, medali bo'lmasa ham.
+   */
   readonly medals: readonly SellerMedal[]
 }
 
 /**
- * DARAJA MEDALLARNI OCHADI — mijozning 2026-09-16 dagi so'zi: «levelga
- * o'tgani sari medallar olishi ham osonlashadi». Motor medalni avvalgidek
- * hisoblaydi, lekin sotuvchining darajasi eshikdan past bo'lsa UZATMAYDI.
- * Daraja faqat ko'tarilgani uchun bir marta ko'ringan medal yo'qolmaydi.
- *
- * Eshiklar hikoya, jazo emas: oy chempioni oy oxirida baribir 10 mln dan
- * oshgan bo'ladi. Eshik faqat yuqori medallarda (🔥, 🏆) haqiqatan sezildi.
- */
-export const MEDAL_UNLOCK_LEVEL: Readonly<Record<MedalCode, number>> = Object.freeze({
-  'first-sale': 1,
-  'work-month': 1,
-  'day-winner': 1,
-  rookie: 1,
-  'clean-month': 2,
-  jump: 2,
-  'day-record': 2,
-  'month-bronze': 2,
-  'month-silver': 2,
-  'month-gold': 2,
-  'conversion-master': 3,
-  'streak-steady': 3,
-  'streak-fire': 4,
-  'year-champion': 5,
-})
-
-/**
  * Chizilish tartibi — qimmatlisi oldin. Ball yo'q, shuning uchun tartib ro'yxat.
  *
- * HAQIQIY METALL AVVAL (EFIR Premium, 2026-09-17, mijoz tasdiqlagan): nodir
+ * HAQIQIY METALL AVVAL (ZARB to'plami, 2026-09-17, mijoz tasdiqlagan): nodir
  * yettilik (oltin/kumush/bronza tanalar), keyin gilt belgili po'lat beshlik,
  * oxirida po'lat ikkilik. Qatorda uchtadan ortig'i chizilmaydi va «+N» yo'q —
  * shuning uchun kumush/bronza oy olov seriyasidan OLDIN, kun g'olibi yangi
@@ -357,7 +231,7 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
       d.medals[index] = {
         ...seen,
         count: seen.count + 1,
-        // ENG OXIRGI SABAB QOLADI: gerb/taxta «qachon oldi» deganda yangisini
+        // ENG OXIRGI SABAB QOLADI: taxta «qachon oldi» deganda yangisini
         // ko'rsatadi — eskisi hikoya, yangisi yangilik.
         at: at !== null && (seen.at === null || at > seen.at) ? at : seen.at,
         amountMinor: detail.amountMinor ?? seen.amountMinor,
@@ -560,12 +434,10 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
     }
   }
 
-  // --- 🌱 birinchi savdo — JAMI bo'yicha; jami pul darajani ham beradi ----
-  const lifetimeMinor = new Map<string, bigint>()
+  // --- 🌱 birinchi savdo — JAMI bo'yicha, joriy oy ham kiradi --------------
   const lifetimeDelivered = new Map<string, number>()
   const firstDeliveredMonth = new Map<string, string>()
   for (const m of input.months) {
-    lifetimeMinor.set(m.employeeId, (lifetimeMinor.get(m.employeeId) ?? 0n) + m.deliveredMinor)
     lifetimeDelivered.set(
       m.employeeId,
       (lifetimeDelivered.get(m.employeeId) ?? 0) + m.deliveredOrders,
@@ -576,9 +448,15 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
     }
   }
 
-  for (const [employeeId] of lifetimeMinor) {
+  /*
+    OY FAKTI BOR HAR SOTUVCHI QATOR OLADI — medali bo'lmasa ham (`medals: []`).
+    `draftOf` shu yerda chaqirilgani uchun: ekran javobni `employeeId` bo'yicha
+    xaritaga yig'adi va «qator bor, medal yo'q» bilan «qator yo'q» unga bir xil,
+    lekin shartnoma o'zgarmagani ma'qul — ro'yxat oynadagi floor, g'oliblar emas.
+  */
+  for (const [employeeId, delivered] of lifetimeDelivered) {
     const d = draftOf(employeeId)
-    if ((lifetimeDelivered.get(employeeId) ?? 0) > 0) {
+    if (delivered > 0) {
       d.medals.push({
         code: 'first-sale',
         count: 1,
@@ -590,63 +468,27 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
     }
   }
 
-  // --- promotedOn: kunlik yig'ma joriy daraja ostonasidan oshgan birinchi kun
-  /*
-    HOSILA FAKT, XOTIRA EMAS. E'lon («endi USTA») brauzer xotirasiga
-    tayansa ikki televizor ikki xil e'lon qilardi; kunlik faktlar esa
-    savolga o'zi javob beradi. Kunlik fakt yo'q sotuvchida null — e'lon
-    yo'q, daraja bor.
-  */
-  const daysByEmployee = new Map<string, SellerDayFact[]>()
-  for (const d of input.days) {
-    const list = daysByEmployee.get(d.employeeId)
-    if (list) list.push(d)
-    else daysByEmployee.set(d.employeeId, [d])
-  }
-  const promotedOnOf = (employeeId: string, floorMinor: bigint): string | null => {
-    if (floorMinor <= 0n) return null
-    const days = [...(daysByEmployee.get(employeeId) ?? [])].sort((a, b) =>
-      a.day < b.day ? -1 : a.day > b.day ? 1 : 0,
-    )
-    let sum = 0n
-    for (const d of days) {
-      sum += d.deliveredMinor
-      if (sum >= floorMinor) return d.day
-    }
-    return null
-  }
-
   const orderIndex = new Map(MEDAL_ORDER.map((code, i) => [code, i] as const))
 
+  /*
+    ESHIK YO'Q: motor topgan har bir medal uzatiladi (2026-09-17 — daraja
+    olib tashlandi). Uch oy ketma-ket top-3 da turgan, lekin jami puli kichik
+    sotuvchi ham 🔥 ni oladi; ilgari uni ko'rinmas daraja yashirardi.
+  */
   return [...drafts.values()]
-    .map((d) => {
-      const deliveredMinor = lifetimeMinor.get(d.employeeId) ?? 0n
-      const lvl = levelOf(deliveredMinor)
-      const levelFloorMinor = levelFloorMinorOf(lvl)
-      return {
-        employeeId: d.employeeId,
-        level: lvl.level,
-        legendaTier: lvl.legendaTier,
-        rankTitle: titleOf(lvl),
-        deliveredMinor,
-        levelFloorMinor,
-        nextLevelAtMinor: nextLevelAtMinorOf(lvl),
-        nextTitle: nextTitleOf(lvl),
-        promotedOn: promotedOnOf(d.employeeId, levelFloorMinor),
-        medals: d.medals
-          .filter((m) => MEDAL_UNLOCK_LEVEL[m.code] <= lvl.level)
-          .sort((a, b) => {
-            const byOrder = orderIndex.get(a.code)! - orderIndex.get(b.code)!
-            if (byOrder !== 0) return byOrder
-            return (b.at ?? '') < (a.at ?? '') ? -1 : (b.at ?? '') > (a.at ?? '') ? 1 : 0
-          }),
-      }
-    })
-    .sort((a, b) => {
-      // TENG PULDA `employeeId` — Map'ning kiritilish tartibi emas. Ikki
-      // so'rov orasida o'rin almashadigan taxta buzuq ko'rinadi, va nol
-      // yetkazgan (0-daraja) sotuvchilarning hammasi aynan shu holatda.
-      if (a.deliveredMinor !== b.deliveredMinor) return a.deliveredMinor > b.deliveredMinor ? -1 : 1
-      return a.employeeId < b.employeeId ? -1 : a.employeeId > b.employeeId ? 1 : 0
-    })
+    .map((d) => ({
+      employeeId: d.employeeId,
+      medals: [...d.medals].sort((a, b) => {
+        const byOrder = orderIndex.get(a.code)! - orderIndex.get(b.code)!
+        if (byOrder !== 0) return byOrder
+        return (b.at ?? '') < (a.at ?? '') ? -1 : (b.at ?? '') > (a.at ?? '') ? 1 : 0
+      }),
+    }))
+    .sort((a, b) =>
+      // `employeeId` BO'YICHA — Map'ning kiritilish tartibi (ya'ni SQL
+      // qatorlarining kelish tartibi) emas. Tartib ma'no tashimaydi: ekran
+      // qatorlarni id bo'yicha xaritaga yig'adi; kerak bo'lgani — ikki so'rov
+      // bir xil javob berishi.
+      a.employeeId < b.employeeId ? -1 : a.employeeId > b.employeeId ? 1 : 0,
+    )
 }

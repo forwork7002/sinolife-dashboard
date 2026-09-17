@@ -872,7 +872,7 @@ export interface ConfirmationMonthlyRecordRow {
   readonly deliveredMinor: bigint
 }
 
-/** Bir sotuvchining bir oyi, daraja va medallar uchun. Rekord devoridan farqi: HAR o'rin. */
+/** Bir sotuvchining bir oyi, medallar uchun. Rekord devoridan farqi: HAR o'rin. */
 export interface SellerMedalMonthRow {
   /** Oyning birinchi kuni, `APP_TIMEZONE` da, `YYYY-MM-DD`. */
   readonly month: string
@@ -4951,7 +4951,7 @@ export class InsightsRepository {
   }
 
   /**
-   * Daraja va medallarning fakti — bir kogorta, ikki kesim.
+   * Medallarning fakti — bir kogorta, ikki kesim.
    *
    * `confirmationSellerRecords` BILAN QO'SHILMAGAN, ATAYLAB. Rekord devori
    * `place = 1` ni qoldiradi va uning SQL satri `confirmationRecordsSql.test.ts`
@@ -4961,9 +4961,9 @@ export class InsightsRepository {
    * ishlayotgan taxtani sindirish xavfidan arzon.
    *
    * IKKI SO'ROV, BIR TRANZAKSIYA EMAS. Ikkalasi ham bir xil oynani o'qiydi va
-   * javob 10 daqiqa keshlanadi; oralarida yozilgan bitta buyurtma medalni
-   * emas, faqat ballni bir necha ballga o'zgartiradi va keyingi keshda
-   * tuzaladi. Bitta statement'ga yig'ish esa ikki `row_number()` oynasini bir
+   * javob 10 daqiqa keshlanadi; oralarida yozilgan bitta buyurtma eng ko'pi
+   * bitta kesimda ko'rinmay qoladi va keyingi keshda tuzaladi. Bitta
+   * statement'ga yig'ish esa ikki `row_number()` oynasini bir
    * natija to'plamiga tiqishni talab qiladi — o'qilishi qiyinroq, tezligi
    * o'lchovda bir xil.
    *
@@ -5064,7 +5064,7 @@ export class InsightsRepository {
              The podium's rule, as a window: FAKT 2 decides, FAKT 1 decides
              the buckets nobody has delivered in yet. The tie-break is the
              employee id rather than the name — a name collates differently
-             under 'uz' and 'ru' (see branches.ts), and a level-and-medal
+             under 'uz' and 'ru' (see branches.ts), and a medal
              cut that reordered itself between two polls of identical data
              would look broken.
            */

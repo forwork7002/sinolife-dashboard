@@ -537,33 +537,30 @@ export interface SellerMedalDto {
   readonly percent: number | null
 }
 
+/**
+ * Bir sotuvchi va uning medallari — boshqa hech narsa.
+ *
+ * DARAJA YO'Q (2026-09-17, mijoz: «uroven kerak emas, medallar qolsin»):
+ * daraja, unvon, jami pul, ostonalar va «bugun» maydoni payload'dan olib
+ * tashlandi, va ular bilan birga medallarni yashirgan eshik ham. Mirrored in
+ * `src/lib/api.ts` — nothing checks the mirror, edit both sides.
+ */
 export interface SellerMedalRowDto {
   readonly employeeId: string
-  /** 0 — hali savdosiz; 1..6. */
-  readonly level: number
-  /** 6-darajada 1 = Legenda, 2 = Legenda II …; pastda 0. */
-  readonly legendaTier: number
-  /** «Ustoz», «Legenda II»; 0-darajada null. */
-  readonly rankTitle: string | null
-  /** 2026-avgustdan beri jami FAKT 2 — daraja shundan. */
-  readonly delivered: MoneyDto
-  readonly levelFloor: MoneyDto
-  /** Keyingi ostona — HAR DOIM bor (0-darajada birinchi so'm, Legendada keyingi milliard). */
-  readonly nextLevelAt: MoneyDto
-  readonly nextTitle: string
-  /** Joriy darajaga chiqqan kun, `YYYY-MM-DD` hisobot mintaqasida; null bo'lishi mumkin. */
-  readonly promotedOn: string | null
-  /** Faqat daraja ochgan medallar, chizilish tartibida. */
+  /**
+   * Motor topgan HAR BIR medal, chizilish tartibida (`MEDAL_ORDER`) — eshiksiz.
+   * BO'SH BO'LISHI MUMKIN: oynada oy fakti bor har sotuvchi ro'yxatda, medali
+   * bo'lmasa ham. Ekran javobni `employeeId` bo'yicha xaritaga yig'adi, ya'ni
+   * bo'sh qator va yo'q qator unga bir xil — lekin ro'yxat oynadagi floor.
+   */
   readonly medals: readonly SellerMedalDto[]
 }
 
 export interface SellerMedalsDto {
-  /** Jami pul bo'yicha kamayib. */
+  /** `employeeId` bo'yicha — tartib ma'no tashimaydi, faqat ikki so'rov bir xil javob bersin. */
   readonly sellers: readonly SellerMedalRowDto[]
-  /** The first instant the ladder covers. See `RECORDS_FROM`. */
+  /** The first instant the medals cover. See `RECORDS_FROM`. */
   readonly from: string
-  /** `YYYY-MM-DD` hisobot mintaqasida — `promotedOn` bilan solishtirish uchun. */
-  readonly today: string
 }
 
 /**
@@ -994,7 +991,7 @@ export class SellerBoardService {
   }
 
   /**
-   * Gerb va darajaning ma'lumoti — daraja va medallar.
+   * Medallar — `{ sellers: [{ employeeId, medals }], from }`, darajasiz.
    *
    * DAVR FILTRIGA BO'YSUNMAYDI, va bu ataylab: oyna doim `RECORDS_FROM` dan
    * bugungacha. Medal butun tarixning fakti, «Bugun» tanlanganda yo'qoladigan
@@ -1040,31 +1037,18 @@ export class SellerBoardService {
   ): Promise<SellerMedalsDto> {
     const facts = await this.insights.sellerMedalFacts(scopedPeriod(period, filters), filters)
 
-    // BITTA KUN, IKKI O'QUVCHI. `runningDay` medal bermaydigan tugamagan kun,
-    // `today` esa ekran `promotedOn` bilan solishtiradigan kun — ular bir xil
-    // bo'lishi SHART, aks holda «bugun Usta bo'ldi» e'loni bir kun surilardi.
-    const today = zonedDateKey(ctx.now, period.timeZone)
-
     const rows = buildSellerMedals({
       months: facts.months,
       days: facts.days,
       runningMonth: monthKey(ctx.now, period.timeZone),
-      runningDay: today,
+      // Tugamagan kun ⚡ ham, 🌅 ham bermaydi — hisobot mintaqasidagi bugun.
+      runningDay: zonedDateKey(ctx.now, period.timeZone),
     })
 
     return {
       from: period.start.toISOString(),
-      today,
       sellers: rows.map((row) => ({
         employeeId: row.employeeId,
-        level: row.level,
-        legendaTier: row.legendaTier,
-        rankTitle: row.rankTitle,
-        delivered: toMoneyDto(money(row.deliveredMinor, ctx.currency)),
-        levelFloor: toMoneyDto(money(row.levelFloorMinor, ctx.currency)),
-        nextLevelAt: toMoneyDto(money(row.nextLevelAtMinor, ctx.currency)),
-        nextTitle: row.nextTitle,
-        promotedOn: row.promotedOn,
         medals: row.medals.map((m) => ({
           code: m.code,
           count: m.count,

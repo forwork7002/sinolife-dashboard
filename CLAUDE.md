@@ -1049,6 +1049,22 @@ Per-screen traps worth knowing before you touch one:
   deep. It
   opens on 'auto' — the board's old behaviour, FAKT 2 once anybody has
   delivered — so a television nobody touches is unchanged.
+  **MEDALS, AND NO LEVELS — 2026-09-17** («uroven kerak emas, medallar
+  qolsin»). Four redesigns of this board were rejected and the client asked
+  for the pre-medal board (`912fc63`) back with medals on it; spec
+  `docs/superpowers/specs/2026-09-17-klassik-taxta-medallar-design.md`.
+  `?include=medals` answers `{ sellers: [{ employeeId, medals }], from }` and
+  nothing else: the level ladder, its titles, the promotion date and the
+  per-medal unlock table were DELETED from `domain/analytics/sellerMedals.ts`,
+  the service, both DTO mirrors and `sellers/medalCatalog.ts`, so **every
+  medal the engine finds is transmitted** — an invisible level cannot hide a
+  medal. The fourteen rules and their thresholds were calibrated on production
+  and did not move; `MEDAL_ORDER` (true metal first) is pinned on both sides
+  by `tests/features/medalCatalogMirror.test.ts`. A seller with a month fact
+  in the window is listed even with `medals: []`, rows sort by `employeeId`
+  (the reader keys a map by id), the window is fixed to `RECORDS_FROM` → now
+  whatever the period filter says, and the 10-minute memo is keyed on the
+  window START — never its end, which is `ctx.now` and would never hit.
 - **Sotuvchilar oyligi** — **NEW ON 2026-09-14**, the client's own pay scheme
   («hodimlar oyligi ni hisoblovchi bo'lim kerak… sotuvchilar oyligi fakt 2 ga
   qarab olinadi»). Three parts, three columns, each checkable: **8% of FAKT 2
