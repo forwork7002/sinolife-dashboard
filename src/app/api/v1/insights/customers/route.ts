@@ -9,11 +9,12 @@ export const dynamic = 'force-dynamic'
 /**
  * Who reaches this endpoint: the capability, then the screen it feeds.
  *
- * `customers` since 2026-09-16, not `cohort`: the band this serves was
- * specified for «Mijoz qaytishi», and the client chose a section of its own
- * for it. `section` names the screen, so it moves with the screen.
+ * `cohort` again since 2026-09-17. It moved to `customers` on 2026-09-16 with
+ * a band on «Mijozlar va qoʻngʻiroqlar»; that screen became «Qoʻngʻiroqlar»
+ * and dropped the band, and «Mijoz qaytishi» is the only reader left.
+ * `section` names the screen, so it moves with the screen.
  */
-const ACCESS = { permission: 'analytics:read:all', section: 'customers' } as const
+const ACCESS = { permission: 'analytics:read:all', section: 'cohort' } as const
 
 /**
  * «Mijozlar oqimi» — arrivals, returns, sources and who went quiet.

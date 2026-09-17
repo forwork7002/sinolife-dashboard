@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 
-import { CustomersPage } from '@/features/customers/CustomersPage'
+import { CallsPage } from '@/features/calls/CallsPage'
 import { requireSection } from '@/server/auth/pageGuard'
 
 // Authenticated and URL-filtered: never statically prerendered.
@@ -13,7 +13,7 @@ export default async function Page() {
   return (
     // URL filtrlari klientda oʻqiladi; Suspense prerender paytida qobiqni chiqaradi.
     <Suspense fallback={null}>
-      <CustomersPage />
+      <CallsPage />
     </Suspense>
   )
 }

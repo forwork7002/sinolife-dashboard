@@ -299,10 +299,10 @@ const SHALLOW_ROUTES: ReadonlySet<string> = new Set([
   '/warehouse',
   '/marketing',
   /*
-    «Mijozlar va qoʻngʻiroqlar», 2026-09-16, checked against the same condition:
+    «Qoʻngʻiroqlar» (URL `/customers`), checked against the same condition:
     `src/app/customers/page.tsx` reads no searchParams — `requireSection` plus a
-    client component. Its call block is on the dashboard window, so every
-    preset press would otherwise pay the round trip.
+    client component. It is on the dashboard window, so every preset press
+    would otherwise pay the round trip.
   */
   '/customers',
 ])

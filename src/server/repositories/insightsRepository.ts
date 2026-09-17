@@ -37,13 +37,7 @@ import {
   CUSTOMER_AT_RISK_DAYS,
   type CustomerStateKey,
 } from '@/lib/customerStates'
-import {
-  CALL_CUSTOMER_BANDS,
-  CALL_DURATION_BANDS,
-  CALL_SIDES,
-  type CallSideKey,
-  callWindowStart,
-} from '@/lib/callQuality'
+import { callWindowStart } from '@/lib/callQuality'
 import { LOGISTICS_BUCKETS, UNMAPPED_BUCKET } from '@/lib/logisticsBuckets'
 import {
   RETENTION_GROUPS,
@@ -255,13 +249,17 @@ export interface CustomerStateCounts {
 export interface CallActivityRow {
   readonly key: string
   readonly label: string
+  /** The operator's primary team. Null on every other arm. */
+  readonly team: string | null
   readonly calls: number
   readonly connected: number
   readonly talkSec: number
   /** Null when nothing in this group connected — never a manufactured zero. */
   readonly medianSec: number | null
-  readonly p90Sec: number | null
   readonly customers: number
+  /** ISO UTC instants of the group's first and last call. Null over nothing. */
+  readonly firstCallAt: string | null
+  readonly lastCallAt: string | null
 }
 
 export interface CallActivityRows {
@@ -269,30 +267,10 @@ export interface CallActivityRows {
   /** Ranked by talk time, descending. */
   readonly operators: readonly CallActivityRow[]
   readonly teams: readonly CallActivityRow[]
-  /** One row per Tashkent day, ascending. */
-  readonly series: readonly CallActivityRow[]
-  /** Calls with no customer attached — disclosed, never silently dropped. */
-  readonly unlinkedCalls: number
-  /** In CALL_SIDES order, all three present even when empty. */
-  readonly sides: readonly CallActivityRow[]
-  /** One row per (day, side) that carries calls. */
-  readonly seriesBySide: readonly {
-    readonly day: string
-    readonly side: CallSideKey
-    readonly talkSec: number
-  }[]
-}
-
-export interface CallBandRow {
-  readonly key: string
-  readonly calls: number
-  readonly talkSec: number
-}
-
-export interface CallCustomerBandRow {
-  readonly key: string
-  readonly customers: number
-  readonly talkSec: number
+  /** One row per Tashkent day that carries calls, ascending. Key 'YYYY-MM-DD'. */
+  readonly days: readonly CallActivityRow[]
+  /** One row per Tashkent hour of day that carries calls, ascending. Key '0'…'23'. */
+  readonly hours: readonly CallActivityRow[]
 }
 
 export interface CustomerFlowRows {
@@ -1888,111 +1866,57 @@ export class InsightsRepository {
   }
 
   /**
-   * How many of our buyers are in «База», and how many are not.
+   * Who spoke to customers, for how long, and when.
    *
-   * ITS OWN STATEMENT, NOT A CTE ON `customerStates`. That statement's test
-   * records the decision of commit 35aca08 — it no longer reads the retention
-   * funnel at all, because `retentionStages` owns that reading and two
-   * statements answering overlapping questions is how they start disagreeing.
-   * This reads MEMBERSHIP, one yes-or-no per buyer, and never the stage
-   * partition.
+   * ONE SCAN, FIVE ARMS — overall, per operator, per team, per Tashkent day and
+   * per Tashkent hour of the day — because every one of them is a grouping of
+   * the same rows. Asking five questions would let the screen's tiles disagree
+   * with the tables under them, which is the failure `GROUPING SETS` exists
+   * here to make impossible. The team rows, the day rows and the hour rows each
+   * sum to the overall row by construction, and that identity is what makes the
+   * screen checkable against the portal.
    *
-   * WHAT «BAZADA YOʻQ» MEASURES, AND WHY THE SCREEN HAS TO SAY SO. Of the
-   * 11 607 customers with a WON revenue order, 11 586 — 99.8% — are in База,
-   * because the portal places every delivered customer there automatically
-   * (measured on production, 2026-09-16). So among real buyers this split is a
-   * constant, and «Bazada yoʻq» is overwhelmingly customers whose order was
-   * never delivered. The client chose to keep it with that caveat in front of
-   * them; the card states it.
-   *
-   * ONE PASS OVER THE BUYER SET, so the halves sum to `customers` by
-   * construction. `cust` is the same CTE `customerStates` counts, so
-   * `customers` here equals `states.customers` — which is the check. NO
-   * `countsAsRevenue` on `based`: RETENTION is precisely the role that does not
-   * count, and filtering on it would empty the CTE.
-   *
-   * No period and no scope: a fact about today, company-wide, like the states.
-   */
-  async customerBaseSplit(): Promise<{
-    readonly customers: number
-    readonly inBase: number
-    readonly notInBase: number
-  }> {
-    const rows = await this.prisma.$queryRawUnsafe<
-      { customers: bigint | null; in_base: bigint | null; not_in_base: bigint | null }[]
-    >(
-      `
-      WITH cust AS (
-        SELECT DISTINCT d."customerId" AS cid
-        FROM "deal" d
-        WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
-      ),
-      based AS (
-        SELECT DISTINCT d."customerId" AS cid
-        FROM "deal" d
-        JOIN "pipeline" p ON p."id" = d."pipelineId"
-        WHERE p."role" = 'RETENTION' AND d."customerId" IS NOT NULL
-      )
-      SELECT
-        count(*)::bigint AS customers,
-        count(*) FILTER (WHERE b.cid IS NOT NULL)::bigint AS in_base,
-        count(*) FILTER (WHERE b.cid IS NULL)::bigint AS not_in_base
-      FROM cust c
-      LEFT JOIN based b ON b.cid = c.cid
-      `,
-    )
-
-    const row = rows[0]
-    return {
-      customers: int(row?.customers),
-      inBase: int(row?.in_base),
-      notInBase: int(row?.not_in_base),
-    }
-  }
-
-  /**
-   * Who spoke to customers, for how long, and how that splits four ways.
-   *
-   * ONE SCAN, FOUR ARMS — overall, per operator, per team, per day — because
-   * every one of them is a grouping of the same rows. Asking four questions
-   * would let the block's own tiles disagree with the table under them, which
-   * is the failure `GROUPING SETS` exists here to make impossible. The team
-   * rows and the day rows each sum to the overall row by construction, and
-   * that identity is what makes the block checkable against the portal.
+   * THE OPERATOR ARM IS GROUPED ON (employee_id, team). The team is a function
+   * of the employee — one primary department — so the pair emits exactly one
+   * row per operator and hands it its team name without a second lookup. It
+   * clears `GROUPING(team)` as well, which is why the team arm is told apart by
+   * `g_employee = 1 AND g_team = 0` and never by `g_team` alone.
    *
    * THE WINDOW IS CLAMPED, NOT VALIDATED. `callWindowStart` moves a start below
    * `CALL_DATA_FLOOR` up to it; the caller is told through `floorApplied` on
    * the DTO rather than refused, because a reader who picks «Shu oy» in
    * September is asking a reasonable question about a month whose first
-   * twelve days we cannot answer. Refusing would leave them an error where a
-   * shorter true answer exists.
+   * fourteen days we cannot answer.
    *
    * MEASURES THAT LOOK REDUNDANT AND ARE NOT. `calls` counts every leg and
    * `connected` the ones that reached somebody: about a third connecting is
-   * ordinary here, so a block reporting only connected calls would understate
+   * ordinary here, so a screen reporting only connected calls would understate
    * the work threefold. `talkSec` is summed over connected legs only — above
    * the floor no failed leg carries seconds, so the FILTER changes no number
    * today and states the population for the day the portal reports ring time.
    *
-   * MEDIAN AND P90, AND NO MEAN. Measured above the floor: 169 s mean against a
+   * THE MEDIAN, AND NO MEAN. Measured above the floor: 169 s mean against a
    * 53 s median, because 8.4% of calls run past ten minutes and hold 50% of all
    * talk time. The mean is not queried — the screen divides `talkSec` by
    * `connected`, so the two cannot be rounded into disagreement.
    * `percentile_disc` rather than `_cont`: a duration is a whole number of
    * seconds somebody observed, and interpolating invents a call.
    *
+   * FIRST AND LAST CALL COME BACK AS UTC TEXT WITH A Z. `startedAt` is a naive
+   * UTC column; a zoneless timestamp read by `new Date` is LOCAL time and moves
+   * every figure five hours on a Tashkent laptop — `utcText`'s reason. The
+   * total arm's `last_at` is the newest call the sync has written, which is
+   * what tells a reader how current «Bugun» is: CALLS arrives on the
+   * three-hourly reference pass, not on the two-minute tick.
+   *
    * DIRECTION IS NOT AN ARM. `voximplant.statistic.get` reports the LEG, not
    * the intent — 338 467 inbound against 27 833 outbound on a floor whose job
-   * is ringing customers, because an operator taking a queued outbound leg is
-   * recorded as receiving a call. A split by direction reads backwards.
+   * is ringing customers. A split by direction reads backwards.
    *
    * NO SCOPE AND NO CURRENCY. `customers` is COMPANY_WIDE and the route asks
    * for `analytics:read:all`, so there is no `restrictToEmployeeIds` to thread;
-   * the block states no money. Both absences are what keep the service's memo
+   * the screen states no money. Both absences are what keep the service's memo
    * key safe — see there.
-   *
-   * Measured from Tashkent (which adds ~1.4 s of round trip): 1 487 ms over
-   * three days and 8 063 ms over thirty. It is memoised for that reason.
    */
   async callActivity(options: { period: Period }): Promise<CallActivityRows> {
     const start = callWindowStart(options.period.start)
@@ -2002,19 +1926,19 @@ export class InsightsRepository {
         g_employee: number
         g_team: number
         g_day: number
-        g_side: number
+        g_hour: number
         employee_id: string | null
         employee_name: string | null
         team: string | null
         day: string | null
-        side: CallSideKey | null
+        hour: number | null
         calls: bigint | null
         connected: bigint | null
         talk_sec: bigint | null
         median_sec: number | null
-        p90_sec: number | null
         customers: bigint | null
-        unlinked: bigint | null
+        first_at: string | null
+        last_at: string | null
       }[]
     >(
       `
@@ -2029,39 +1953,15 @@ export class InsightsRepository {
             ::text, NOT a bare ::date. A DATE crosses the driver as a JS Date,
             and node-postgres builds that Date at LOCAL midnight — so on a
             machine in Tashkent every day key would come back as the day
-            before. Text is what marketingRepository returns for the same
-            reason, and it needs no second conversion on this side.
+            before.
 
             (No backticks anywhere in this statement's comments: they close
             the template literal.)
           */
-          (r."startedAt" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day
+          (r."startedAt" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day,
+          extract(hour FROM (r."startedAt" AT TIME ZONE 'UTC' AT TIME ZONE $3))::int AS hour
         FROM "call_record" r
         WHERE r."startedAt" >= $1 AND r."startedAt" < $2
-      ),
-      called AS (
-        SELECT DISTINCT customer_id FROM scoped WHERE customer_id IS NOT NULL
-      ),
-      first_baza AS (
-        /*
-          WHEN EACH CALLED CUSTOMER FIRST ENTERED «База».
-
-          Bounded to the customers called in this window, or it scans every
-          retention deal ever recorded to label a few thousand calls. Asked by
-          pipeline ROLE, so a reclassification is an UPDATE and not a redeploy.
-
-          This reads one timestamp per customer and NOT the stage partition of
-          the funnel. Commit 35aca08 made retentionStages() the one statement
-          that partitions База by stage, and that stands: no other statement
-          answers when a customer entered База, and this one never reads a
-          stage.
-        */
-        SELECT d."customerId" AS customer_id, min(d."createdAtSource") AS first_at
-        FROM "deal" d
-        JOIN "pipeline" p ON p."id" = d."pipelineId"
-        WHERE p."role" = 'RETENTION'
-          AND d."customerId" IN (SELECT customer_id FROM called)
-        GROUP BY d."customerId"
       ),
       labelled AS (
         SELECT
@@ -2082,46 +1982,32 @@ export class InsightsRepository {
             NULLIF(btrim(regexp_replace(dp."name", '\\(ROP\\)', '', 'i')), ''),
             dp."name",
             $4
-          ) AS team,
-          /*
-            THE SIDE IS DECIDED AT THE MOMENT OF THE CALL. A База deal created
-            before the call makes it a База call; membership today would move
-            376 calls across after the fact, because a lead rung on Monday who
-            buys on Friday enters База afterwards. Both columns are naive UTC,
-            so they compare directly.
-          */
-          CASE
-            WHEN s.customer_id IS NULL THEN 'UNLINKED'
-            WHEN f.first_at IS NOT NULL AND f.first_at <= s.started_at THEN 'BAZA'
-            ELSE 'NOT_BAZA'
-          END AS side
+          ) AS team
         FROM scoped s
         LEFT JOIN "employee" e ON e."id" = s.employee_id
         LEFT JOIN "department" dp ON dp."id" = e."departmentId"
-        LEFT JOIN first_baza f ON f.customer_id = s.customer_id
       )
       SELECT
         GROUPING(employee_id)::int AS g_employee,
         GROUPING(team)::int        AS g_team,
         GROUPING(day)::int         AS g_day,
-        GROUPING(side)::int        AS g_side,
+        GROUPING(hour)::int        AS g_hour,
         employee_id,
         min(employee_name) AS employee_name,
         team,
         day,
-        side,
+        hour,
         count(*)::bigint AS calls,
         count(*) FILTER (WHERE connected)::bigint AS connected,
         COALESCE(sum(duration_sec) FILTER (WHERE connected), 0)::bigint AS talk_sec,
         (percentile_disc(0.5) WITHIN GROUP (ORDER BY duration_sec)
            FILTER (WHERE connected))::int AS median_sec,
-        (percentile_disc(0.9) WITHIN GROUP (ORDER BY duration_sec)
-           FILTER (WHERE connected))::int AS p90_sec,
         count(DISTINCT customer_id)::bigint AS customers,
-        count(*) FILTER (WHERE customer_id IS NULL)::bigint AS unlinked
+        to_char(min(started_at), 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS first_at,
+        to_char(max(started_at), 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_at
       FROM labelled
-      GROUP BY GROUPING SETS ((employee_id), (team), (day), (side), (day, side), ())
-      ORDER BY g_employee, g_team, g_day, g_side, talk_sec DESC
+      GROUP BY GROUPING SETS ((employee_id, team), (team), (day), (hour), ())
+      ORDER BY g_employee, g_team, g_day, g_hour, talk_sec DESC
       `,
       start,
       options.period.end,
@@ -2132,6 +2018,7 @@ export class InsightsRepository {
     const shape = (row: (typeof rows)[number], key: string, label: string): CallActivityRow => ({
       key,
       label,
+      team: null,
       calls: int(row.calls),
       connected: int(row.connected),
       talkSec: int(row.talk_sec),
@@ -2139,8 +2026,9 @@ export class InsightsRepository {
       // conversation has no typical conversation, and 0 would claim one that
       // lasted zero seconds.
       medianSec: row.median_sec ?? null,
-      p90Sec: row.p90_sec ?? null,
       customers: int(row.customers),
+      firstCallAt: row.first_at ?? null,
+      lastCallAt: row.last_at ?? null,
     })
 
     /*
@@ -2149,27 +2037,37 @@ export class InsightsRepository {
       changed shape, not that the window was empty.
     */
     const totalRow = rows.find(
-      (r) => r.g_employee === 1 && r.g_team === 1 && r.g_day === 1 && r.g_side === 1,
+      (r) => r.g_employee === 1 && r.g_team === 1 && r.g_day === 1 && r.g_hour === 1,
     )
 
-    const empty = (key: string, label: string): CallActivityRow => ({
-      key,
-      label,
+    const empty: CallActivityRow = {
+      key: 'TOTAL',
+      label: 'Jami',
+      team: null,
       calls: 0,
       connected: 0,
       talkSec: 0,
       medianSec: null,
-      p90Sec: null,
       customers: 0,
-    })
+      firstCallAt: null,
+      lastCallAt: null,
+    }
 
     return {
-      total: totalRow ? shape(totalRow, 'TOTAL', 'Jami') : empty('TOTAL', 'Jami'),
+      total: totalRow ? shape(totalRow, 'TOTAL', 'Jami') : empty,
       operators: rows
         .filter((r) => r.g_employee === 0)
-        .map((r) => shape(r, r.employee_id ?? '', r.employee_name ?? 'Nomaʼlum xodim')),
+        .map((r) => ({
+          ...shape(r, r.employee_id ?? '', r.employee_name ?? 'Nomaʼlum xodim'),
+          team: r.team ?? InsightsRepository.NO_TEAM,
+        })),
+      /*
+        EVERY ARM NAMES ALL THE FLAGS IT DEPENDS ON. The operator set clears
+        g_team as well as g_employee, so filtering the team arm on g_team alone
+        would pour every operator into the team table.
+      */
       teams: rows
-        .filter((r) => r.g_team === 0)
+        .filter((r) => r.g_employee === 1 && r.g_team === 0)
         .map((r) => {
           const team = r.team ?? InsightsRepository.NO_TEAM
           return shape(r, team, team)
@@ -2177,161 +2075,18 @@ export class InsightsRepository {
       /*
         ASCENDING, unlike the two ranked arms. A time axis reads left to right;
         the ORDER BY sorts every arm by talk time because the ranked arms need
-        it, so the series is re-sorted here rather than asked for twice.
+        it, so the series are re-sorted here rather than asked for twice.
         'YYYY-MM-DD' text sorts chronologically as a string.
       */
-      /*
-        EVERY ARM NAMES ALL THE FLAGS IT DEPENDS ON. The (day, side) set clears
-        g_day as well as g_side, so filtering the day series on g_day alone
-        would pour every side's row into it and print each day three times.
-      */
-      series: rows
-        .filter((r) => r.g_day === 0 && r.g_side === 1)
+      days: rows
+        .filter((r) => r.g_day === 0)
         .map((r) => shape(r, r.day ?? '', r.day ?? ''))
         .sort((a, b) => a.key.localeCompare(b.key)),
-      unlinkedCalls: int(totalRow?.unlinked),
-      /*
-        In CALL_SIDES order with the silent sides present — a GROUP BY never
-        emits an empty group, and a split missing its quiet side reads as a
-        split with one side.
-      */
-      sides: CALL_SIDES.map((spec) => {
-        const row = rows.find((r) => r.g_side === 0 && r.g_day === 1 && r.side === spec.key)
-        return row ? shape(row, spec.key, spec.label) : empty(spec.key, spec.label)
-      }),
-      seriesBySide: rows
-        .filter((r) => r.g_day === 0 && r.g_side === 0 && r.side !== null)
-        .map((r) => ({ day: r.day ?? '', side: r.side!, talkSec: int(r.talk_sec) }))
-        .sort((a, b) => a.day.localeCompare(b.day)),
+      hours: rows
+        .filter((r) => r.g_hour === 0 && r.hour !== null)
+        .map((r) => shape(r, String(r.hour), String(r.hour)))
+        .sort((a, b) => Number(a.key) - Number(b.key)),
     }
-  }
-
-  /**
-   * How the window's conversations distribute by length.
-   *
-   * A SECOND STATEMENT RATHER THAN A FIFTH GROUPING ARM. The four arms of
-   * `callActivity` are groupings of a row; this is a `CASE` over one. Measured
-   * at 144 ms on production, so merging them would buy nothing and would put a
-   * `CASE` into a statement whose whole readability is that every arm carries
-   * the same measures.
-   *
-   * THE `CASE` IS GENERATED FROM `CALL_DURATION_BANDS`, never typed out. The
-   * screen reads the same table, and a hand-written copy here would agree with
-   * it until somebody moved a bound — the arrangement `logisticsBuckets` uses.
-   *
-   * Connected calls only: an unanswered leg has no length to band.
-   */
-  async callDurationBands(options: { period: Period }): Promise<readonly CallBandRow[]> {
-    const start = callWindowStart(options.period.start)
-
-    /*
-      Ascending and evaluated in order, so each band's lower bound is its
-      predecessor's `maxSec` and only the upper one is written. The last band
-      has `maxSec: null` and becomes the ELSE. The bounds are integers from a
-      constant table, never from a request, so interpolating them is safe.
-    */
-    const cases = CALL_DURATION_BANDS.filter((band) => band.maxSec !== null)
-      .map((band) => `WHEN duration_sec < ${band.maxSec} THEN '${band.key}'`)
-      .join('\n          ')
-    const fallback = CALL_DURATION_BANDS[CALL_DURATION_BANDS.length - 1]!.key
-
-    const rows = await this.prisma.$queryRawUnsafe<
-      { band: string; calls: bigint | null; talk_sec: bigint | null }[]
-    >(
-      `
-      SELECT
-        CASE
-          ${cases}
-          ELSE '${fallback}'
-        END AS band,
-        count(*)::bigint AS calls,
-        COALESCE(sum(duration_sec), 0)::bigint AS talk_sec
-      FROM (
-        SELECT r."durationSec" AS duration_sec
-        FROM "call_record" r
-        WHERE r."startedAt" >= $1 AND r."startedAt" < $2 AND r."connected"
-      ) c
-      GROUP BY band
-      `,
-      start,
-      options.period.end,
-    )
-
-    const byKey = new Map(rows.map((row) => [row.band, row]))
-
-    /*
-      RETURNED IN BAND ORDER, WITH THE EMPTY BANDS PRESENT AND ZERO. GROUP BY
-      never emits an empty group, and a distribution missing its quiet bands is
-      read as a distribution with fewer bands — here the shape is the
-      information.
-    */
-    return CALL_DURATION_BANDS.map((band) => {
-      const row = byKey.get(band.key)
-      return { key: band.key, calls: int(row?.calls), talkSec: int(row?.talk_sec) }
-    })
-  }
-
-  /**
-   * How many calls one customer takes, and how long those add up to.
-   *
-   * THE GROUPING IS PER CUSTOMER FIRST. The question is about a person, not a
-   * leg, so the inner query collapses each customer to a count and the `CASE`
-   * bands that. Banding calls directly would answer a different question and
-   * look like this one.
-   *
-   * CALLS WITH NO CUSTOMER ARE EXCLUDED, NOT BUCKETED. `customerId` is null on
-   * about 1% of rows (0.7% of the whole table, 1.2% above the floor); grouped, all of them would collapse into one enormous
-   * "customer" in the 6+ band. They are disclosed instead, as `unlinkedCalls`
-   * on the activity payload — the way `/insights/concentration` discloses
-   * revenue booked with no customer.
-   *
-   * There is no per-ORDER equivalent and there cannot be: `dealId` is set on 1
-   * row of 366 300, because the portal answers `CRM_ENTITY_TYPE = 'CONTACT'`
-   * for effectively every call.
-   */
-  async callCustomerBands(options: { period: Period }): Promise<readonly CallCustomerBandRow[]> {
-    const start = callWindowStart(options.period.start)
-
-    // INCLUSIVE bounds — see CALL_CUSTOMER_BANDS.
-    const cases = CALL_CUSTOMER_BANDS.filter((band) => band.maxCalls !== null)
-      .map((band) => `WHEN calls <= ${band.maxCalls} THEN '${band.key}'`)
-      .join('\n          ')
-    const fallback = CALL_CUSTOMER_BANDS[CALL_CUSTOMER_BANDS.length - 1]!.key
-
-    const rows = await this.prisma.$queryRawUnsafe<
-      { band: string; customers: bigint | null; talk_sec: bigint | null }[]
-    >(
-      `
-      WITH per_customer AS (
-        SELECT
-          r."customerId" AS customer_id,
-          count(*)::int AS calls,
-          COALESCE(sum(r."durationSec") FILTER (WHERE r."connected"), 0)::bigint AS talk_sec
-        FROM "call_record" r
-        WHERE r."startedAt" >= $1 AND r."startedAt" < $2
-          AND r."customerId" IS NOT NULL
-        GROUP BY customer_id
-      )
-      SELECT
-        CASE
-          ${cases}
-          ELSE '${fallback}'
-        END AS band,
-        count(*)::bigint AS customers,
-        COALESCE(sum(talk_sec), 0)::bigint AS talk_sec
-      FROM per_customer
-      GROUP BY band
-      `,
-      start,
-      options.period.end,
-    )
-
-    const byKey = new Map(rows.map((row) => [row.band, row]))
-
-    return CALL_CUSTOMER_BANDS.map((band) => {
-      const row = byKey.get(band.key)
-      return { key: band.key, customers: int(row?.customers), talkSec: int(row?.talk_sec) }
-    })
   }
 
   /**

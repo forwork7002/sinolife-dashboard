@@ -44,14 +44,12 @@ function fakeRepository(overrides: {
   flow?: CustomerFlowRows
   rates?: readonly SourceRepeatRate[]
   states?: CustomerStateCounts
-  base?: { customers: number; inBase: number; notInBase: number }
 }): InsightsRepository {
   return {
     customerFlow: async () => overrides.flow ?? emptyFlow(),
     sourceRepeatRates: async () => overrides.rates ?? [],
     customerStates: async () =>
       overrides.states ?? { customers: 0, ours: { ACTIVE: 0, AT_RISK: 0, LOST: 0 } },
-    customerBaseSplit: async () => overrides.base ?? { customers: 0, inBase: 0, notInBase: 0 },
   } as unknown as InsightsRepository
 }
 
@@ -127,24 +125,5 @@ describe('InsightsService.customerFlow', () => {
 
     expect(dto.summary.newCustomers).toBe(0)
     expect(dto.sources[0]?.sharePercent).toBeNull()
-  })
-
-  it('carries the база split through, halves summing to the buyer total', async () => {
-    /*
-      Production, 2026-09-16: 15 937 buyers, 11 751 in База, 4 186 not — and the
-      buyer total equals customerStates' own, because both count the same CTE.
-    */
-    const service = new InsightsService(
-      fakeRepository({
-        states: { customers: 15_937, ours: { ACTIVE: 4_719, AT_RISK: 5_130, LOST: 6_088 } },
-        base: { customers: 15_937, inBase: 11_751, notInBase: 4_186 },
-      }),
-    )
-
-    const dto = await service.customerFlow('UZS', PERIOD)
-
-    expect(dto.states.inBase).toBe(11_751)
-    expect(dto.states.notInBase).toBe(4_186)
-    expect(dto.states.inBase + dto.states.notInBase).toBe(dto.states.customers)
   })
 })
