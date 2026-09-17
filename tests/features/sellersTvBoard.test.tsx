@@ -62,14 +62,29 @@ function money(amount: number) {
   return { amountMinor: String(Math.round(amount * 100)), currency: 'UZS', amount }
 }
 
-/** Only the fields the seats and rows read. */
-function seller(fullName: string, rank: number, won: number, ordered: number, rop: string | null = null) {
+/**
+ * Only the fields the seats and rows read. `queued` — orders still waiting in
+ * the confirmation queue: the cohort carries them beside the three FAKT 1
+ * orders, with nothing lost (`queuedOf`).
+ */
+function seller(
+  fullName: string,
+  rank: number,
+  won: number,
+  ordered: number,
+  rop: string | null = null,
+  queued = 0,
+  orders = 3,
+) {
   return {
     employeeId: fullName,
     rank,
     fullName,
     rop,
-    orders: 3,
+    orders,
+    cohortOrders: orders + queued,
+    lostOrders: 0,
+    lostAfterConfirmOrders: 0,
     wonOrders: won > 0 ? 2 : 0,
     openOrders: 0,
     ordered: money(ordered),
@@ -220,7 +235,7 @@ const RIPE = board({
        sotuvchi. Medal oynasi taxtanikidan boshqa — davr puli kichkina bo'lsa
        ham daraja katta bo'lishi mumkin. */
     seller('Qodirova 188 Zilola', 6, 8_000_000, 11_000_000, 'Lola'),
-    seller('Rustamov 201 Diyor', 7, 0, 0, 'Azizbek'),
+    seller('Rustamov 201 Diyor', 7, 0, 0, 'Azizbek', 2, 0),
   ],
   teams: [
     team('Gulzora', 1, 12, 165_950_000, 206_350_000),
@@ -341,10 +356,10 @@ describe('o‘rindiq qaysi faktni aytadi', () => {
     expect(seatOf('Sotuvchi 156').querySelector('.seat__other')!.textContent).toBe(`FAKT 1 4${S}300${S}000`)
   })
 
-  it('hech kim yetkazmagan bo‘lsa — «FAKT 1» yozuvi, FAKT 2 satri chizilmaydi', () => {
+  it('hech kim yetkazmagan bo‘lsa — sahnada «FAKT 1» yozuvi, FAKT 2 o‘rnida «hali yoʻq», raqam emas', () => {
     render(<SellersColumn data={FALLBACK} {...PROPS} />)
-    const caps = [...document.querySelectorAll('#tv-sellers .seat__fakt > span:first-child > b')].map((c) => c.textContent)
-    expect(caps).toEqual(['FAKT 1', 'FAKT 1'])
+    const lines = [...document.querySelectorAll('#tv-sellers .stage__fakt > span')].map((c) => c.textContent)
+    expect(lines).toEqual(['FAKT 1tasdiqlangan · 3 buyurtma', 'FAKT 2hali yoʻq — yetkazish kutilmoqda'])
     expect(document.querySelector('#tv-sellers .seat__other')).toBeNull()
   })
 
@@ -465,18 +480,21 @@ describe('o‘rindiq ostidagi qatorlar (spec §5)', () => {
     expect(other('Aziza 121 Toshmatova')).toBe(formatSomFull(5_000_000))
   })
 
-  it('puli yo‘q qator: rank yozilmaydi (chiziqcha ham emas), qiymatlar xira chiziqcha — qalin «0» hech qayerda', () => {
+  it('puli yo‘q, navbatda buyurtmasi bor qator: «Tasdiq kutilmoqda» guruhida, rank ham, «—» ham, «0» ham yo‘q', () => {
     render(<SellersColumn data={RIPE} {...PROPS} />)
     const zero = rowOf('Rustamov 201 Diyor')
+    expect(zero.classList.contains('row--queue')).toBe(true)
     expect(zero.querySelector('.row__rank')!.textContent).toBe('')
-    // Qahramon, boshqa fakt, konv. — nol/null; buyurtma (fixture'da 3) raqam bo'lib qoladi.
-    const [hero, other, orders, conv] = [...zero.querySelectorAll('.row__hero, .row__sec')]
-    for (const cell of [hero!, other!, conv!]) {
-      expect(cell.textContent).toBe('—')
-      expect(cell.querySelector('.row__none')).not.toBeNull()
-    }
-    expect(orders!.textContent).toBe('3')
-    for (const cell of document.querySelectorAll('#tv-sellers .row__hero, #tv-sellers .row__sec, #tv-sellers .row__rank')) {
+    expect(zero.querySelectorAll('.row__hero, .row__sec')).toHaveLength(0)
+    expect(zero.querySelector('.row__wait')!.textContent).toBe('2 buyurtma tasdiq navbatida')
+    // Guruh sarlavhasi navbat qatorlaridan OLDIN, rank qatorlaridan KEYIN.
+    const items = [...document.querySelectorAll('#tv-sellers .tv-rows > li')]
+    const group = items.findIndex((li) => li.classList.contains('group'))
+    expect(items[group]!.querySelector('h4')!.textContent).toBe('Tasdiq kutilmoqda')
+    expect(items.indexOf(zero)).toBe(group + 1)
+    expect(items.slice(0, group).every((li) => !li.classList.contains('row--queue'))).toBe(true)
+    for (const cell of zero.querySelectorAll('span')) {
+      expect(cell.textContent).not.toBe('—')
       expect(cell.textContent).not.toBe('0')
     }
   })
@@ -717,7 +735,7 @@ describe('EFIR — daraja va medallar taxtada', () => {
 
   it('podium bo‘sh bo‘lsa ham legenda turadi — qatorlarda gerb izohsiz qolmaydi', () => {
     render(<SellersColumn data={FALLBACK} {...PROPS} fakt="fakt2" medals={MEDALS} />)
-    expect(column('tv-sellers').getByText(/Podium hali boʻsh/)).toBeTruthy()
+    expect(column('tv-sellers').getByText('Bu davrda hali yetkazilgan pul yoʻq')).toBeTruthy()
     expect(document.querySelectorAll('#tv-sellers .tv-legend')).toHaveLength(1)
     expect(document.querySelectorAll('#tv-sellers li.row')).toHaveLength(2)
   })

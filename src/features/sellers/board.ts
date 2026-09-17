@@ -37,6 +37,12 @@ export interface BoardEntry {
   readonly orders: number
   /** Null where the DTO does not carry it (teams). */
   readonly openOrders: number | null
+  /**
+   * Orders still IN THE CONFIRMATION QUEUE — nobody has decided them yet
+   * (`C4:NEW` and «no answer»). Null on a team row, and null where the row
+   * does not carry the four counts it is derived from. See `queuedOf`.
+   */
+  readonly queuedOrders: number | null
   readonly conversionPercent: number | null
   readonly sharePercent: number | null
 }
@@ -53,6 +59,7 @@ export function fromSeller(row: SellerBoardRowDto): BoardEntry {
     wonOrders: row.wonOrders,
     orders: row.orders,
     openOrders: row.openOrders,
+    queuedOrders: queuedOf(row),
     conversionPercent: row.conversionPercent,
     sharePercent: row.sharePercent,
   }
@@ -70,8 +77,69 @@ export function fromTeam(row: SellerTeamRowDto): BoardEntry {
     wonOrders: row.wonOrders,
     orders: row.orders,
     openOrders: null,
+    queuedOrders: null,
     conversionPercent: row.conversionPercent,
     sharePercent: row.sharePercent,
+  }
+}
+
+/**
+ * How many of a seller's orders are waiting in the confirmation queue NOW.
+ *
+ * NOT `openOrders`: on the queue basis that is `inTransitOrders` — orders
+ * already CONFIRMED and on the road (`insightsRepository`, «In FAKT 1, not
+ * delivered, still OPEN»). The row does not carry the five queue states
+ * apart, but it carries enough to recover the undecided two:
+ *
+ *   cohortOrders = CONFIRM_NEW + NO_ANSWER + CONFIRMED + REJECTED + UNCONFIRMED_SHIPPED
+ *   orders       = CONFIRMED + UNCONFIRMED_SHIPPED                 (FAKT 1)
+ *   lostOrders   = REJECTED + lostAfterConfirmOrders               (service `rowsFor`)
+ *
+ * so `cohortOrders − orders − (lostOrders − lostAfterConfirmOrders)` is
+ * CONFIRM_NEW + NO_ANSWER. Checked against production «Bugun» on 2026-09-17:
+ * the rows sum to 8, and `totals.outcomes` says 5 + 3.
+ *
+ * Null when a count is missing (an older payload) or the arithmetic comes out
+ * negative — a number that cannot be vouched for is not printed.
+ */
+export function queuedOf(row: SellerBoardRowDto): number | null {
+  const { cohortOrders, orders, lostOrders, lostAfterConfirmOrders } = row
+  if (![cohortOrders, orders, lostOrders, lostAfterConfirmOrders].every((n) => Number.isFinite(n))) return null
+  const queued = cohortOrders - orders - (lostOrders - lostAfterConfirmOrders)
+  return queued >= 0 ? queued : null
+}
+
+/**
+ * The board's four kinds of line (EFIR Premium §8), over the fact being read:
+ *
+ * - `earners` — the fact being read is above zero. They take the seats (or
+ *   the stage) and the ranked rows.
+ * - `ranked` — everyone who has money in EITHER fact, in the board's order;
+ *   `earners` is its head. A row with only the other fact keeps its rank and
+ *   a faint dash in the hero cell, as it always did.
+ * - `queued` — no money in either fact, but orders waiting in the
+ *   confirmation queue. No rank, no zero: one sentence.
+ *
+ * - `idle` — none of the above: no money, nothing waiting (a day of refusals).
+ *   On «Bugun» it is not on the board at all; over a longer window it keeps
+ *   its unranked row, because a seller whose whole month was refused is a row
+ *   a floor manager needs (`insightsRepository` `ratingSql`, «EVERY OPERATOR
+ *   IN THE COHORT»).
+ */
+export interface BoardSplit {
+  readonly earners: readonly BoardEntry[]
+  readonly ranked: readonly BoardEntry[]
+  readonly queued: readonly BoardEntry[]
+  readonly idle: readonly BoardEntry[]
+}
+
+export function splitBoard(ranked: readonly BoardEntry[], onDelivered: boolean): BoardSplit {
+  const moneyed = ranked.filter((e) => e.won > 0 || e.ordered > 0)
+  return {
+    earners: moneyed.filter((e) => figureOf(e, onDelivered) > 0),
+    ranked: moneyed,
+    queued: ranked.filter((e) => e.won <= 0 && e.ordered <= 0 && (e.queuedOrders ?? 0) > 0),
+    idle: ranked.filter((e) => e.won <= 0 && e.ordered <= 0 && !((e.queuedOrders ?? 0) > 0)),
   }
 }
 

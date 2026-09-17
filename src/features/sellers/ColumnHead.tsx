@@ -13,6 +13,9 @@ const FAKT_HINT = {
   fakt1: { label: 'FAKT 1', meaning: 'tasdiqlangan pul' },
 } as const
 
+/** Shundan uzun sanoq («bugun N sotuvchi savdo qildi · M tasi …») tor sarlavhada izohni siqib chiqaradi. */
+const LONG_COUNT = 24
+
 /**
  * 42 px ustun sarlavhasi (spec §6/§7): nom · soni · izoh · FAKT kaliti. `children`
  * — e'lon (`PromotionBanner`), sarlavha USTIDA absolyut (`.tv-col-head`
@@ -40,7 +43,7 @@ export function ColumnHead({
   children?: ReactNode
 }) {
   return (
-    <header className="tv-col-head">
+    <header className="tv-col-head" data-long={count !== null && count.length > LONG_COUNT ? '' : undefined}>
       <h2 id={`${id}-heading`} className="tv-col-head__title">
         {title}
       </h2>

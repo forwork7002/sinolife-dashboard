@@ -3,12 +3,20 @@
 import { type CSSProperties, useMemo } from 'react'
 
 import { EmptyState, ErrorState } from '@/components/states/States'
-import { type BoardEntry, type FaktChoice, figureOf, rankedBy, resolveOnDelivered } from '@/features/sellers/board'
+import {
+  type BoardEntry,
+  type FaktChoice,
+  figureOf,
+  rankedBy,
+  resolveOnDelivered,
+  splitBoard,
+} from '@/features/sellers/board'
 import { ColumnHead } from '@/features/sellers/ColumnHead'
 import { Crest } from '@/features/sellers/Crest'
 import { PromotionBanner } from '@/features/sellers/PromotionBanner'
 import { RowMedals } from '@/features/sellers/RowMedals'
 import { SeatCard } from '@/features/sellers/SeatCard'
+import { GhostStage, StageCard } from '@/features/sellers/StageCard'
 import { TierLegend } from '@/features/sellers/TierLegend'
 import { parseSellerName } from '@/features/sellers/sellerName'
 import { useAutoScroll } from '@/features/sellers/useAutoScroll'
@@ -28,9 +36,11 @@ const NO_MEDALS: readonly SellerMedalDto[] = []
  * har o'rindiq va qatorga uzatadi, ikkalasi birlik haqida kelisha olmasligi
  * uchun.
  *
- * THE TOP THREE OF WHOEVER HAS THE FACT BEING READ. An empty podium is an
- * answer — «hech kim yetkazmagan hali» — and the branch below has words for
- * it; the rows then start at first place.
+ * THE TOP THREE OF WHOEVER HAS THE FACT BEING READ — when there are three.
+ * One or two earners take ONE full-width stage (`StageCard`) and the second
+ * is the first ranked row; nobody at all is a quiet stage (`GhostStage`) that
+ * says so in words. Sellers with no money but orders in the confirmation
+ * queue follow the ranked rows under «Tasdiq kutilmoqda» (EFIR Premium §8).
  *
  * MAROSIM SHU YERDA: e'lon ustun sarlavhasi USTIDA (`ColumnHead` children),
  * ko'tarilgan odam o'rindiqda bo'lsa gerbi to'ladi. `onBoard` — shu ustunda
@@ -46,6 +56,7 @@ export function SellersBoard({
   onFakt,
   medals,
   medalsToday,
+  today = false,
 }: {
   entries: readonly BoardEntry[]
   status: Status
@@ -59,12 +70,24 @@ export function SellersBoard({
   medals: ReadonlyMap<string, SellerMedalRowDto>
   /** `SellerMedalsDto.today` — e'lonning birinchi tetigi (`usePromotions`). */
   medalsToday: string | null
+  /** Javob «Bugun» oynasidan — sarlavha sanog'i va sahna so'zlari kunni aytadi. */
+  today?: boolean
 }) {
   const onDelivered = resolveOnDelivered(entries, fakt)
-  const ranked = useMemo(() => rankedBy(entries, onDelivered), [entries, onDelivered])
-  const winners = ranked.filter((e) => figureOf(e, onDelivered) > 0).slice(0, 3)
-  const seated = new Set(winners.map((w) => w.key))
-  const rows = winners.length === 0 ? ranked : ranked.filter((e) => !seated.has(e.key))
+  const ordered = useMemo(() => rankedBy(entries, onDelivered), [entries, onDelivered])
+  const { earners, ranked, queued, idle } = splitBoard(ordered, onDelivered)
+  /*
+    SIYRAK HOLAT (EFIR Premium §8): uch va undan ko'p earner — odatdagi uchlik;
+    bir-ikki — bitta sahna, ikkinchisi birinchi rank qatori; hech kim — sokin
+    sahna. Qolgan qatorlar: pulli (qaysi faktda bo'lmasin) — rank bilan; puli
+    yo'q-u tasdiq navbatida buyurtmasi bor — «Tasdiq kutilmoqda» guruhida;
+    hech narsasi yo'q — «Bugun» da taxtada umuman yo'q, uzunroq davrda rank-siz
+    qatori qoladi (`BoardSplit.idle`).
+  */
+  const mode = earners.length >= 3 ? 'podium' : earners.length > 0 ? 'stage' : 'ghost'
+  const seated = earners.slice(0, mode === 'podium' ? 3 : 1)
+  const seatedKeys = new Set(seated.map((w) => w.key))
+  const rows = [...ranked.filter((e) => !seatedKeys.has(e.key)), ...(today ? [] : idle)]
 
   const onBoard = useMemo(() => new Set(entries.map((e) => e.key)), [entries])
   const promotion = usePromotions(medals, medalsToday, onBoard)
@@ -72,6 +95,15 @@ export function SellersBoard({
     promotion === null ? null : (entries.find((e) => e.key === promotion.employeeId)?.name ?? null)
   const newMedals = useNewMedals(medals)
   const ready = status === 'ready' && entries.length > 0
+  const waiting = queued.length > 0 ? ` · ${formatNumber(queued.length)} tasi tasdiq kutmoqda` : ''
+  const count = !ready
+    ? null
+    : today
+      ? `bugun ${formatNumber(earners.length)} sotuvchi savdo qildi${waiting}`
+      : `${formatNumber(entries.length)} sotuvchi`
+  // So'z o'qilayotgan faktni aytadi: boshqa faktda pul bo'lsa «savdo yoʻq» yolg'on bo'lardi.
+  const what = ranked.length === 0 ? 'savdo' : onDelivered ? 'yetkazilgan pul' : 'tasdiqlangan pul'
+  const ghostTitle = `${today ? 'Bugun' : 'Bu davrda'} hali ${what} yoʻq`
 
   return (
     <section
@@ -82,7 +114,7 @@ export function SellersBoard({
       <ColumnHead
         id="tv-sellers"
         title="Sotuvchilar"
-        count={ready ? `${formatNumber(entries.length)} sotuvchi` : null}
+        count={count}
         fakt={onDelivered ? 'fakt2' : 'fakt1'}
         onFakt={onFakt}
       >
@@ -106,13 +138,9 @@ export function SellersBoard({
         </div>
       ) : (
         <>
-          {winners.length === 0 ? (
-            <p className="tv-empty-podium">
-              <span aria-hidden="true">🏁</span> Podium hali boʻsh — oʻrinlar hammaga ochiq
-            </p>
-          ) : (
+          {mode === 'podium' ? (
             <div className="tv-podium">
-              {winners.map((entry, index) => (
+              {seated.map((entry, index) => (
                 <SeatCard
                   key={entry.key}
                   rank={entry.rank}
@@ -128,8 +156,22 @@ export function SellersBoard({
                 />
               ))}
             </div>
+          ) : (
+            <div className="tv-stage">
+              {seated[0] !== undefined ? (
+                <StageCard
+                  entry={seated[0]}
+                  onDelivered={onDelivered}
+                  medal={medals.get(seated[0].key) ?? null}
+                  rise={promotion?.employeeId === seated[0].key}
+                  newKeys={newMedals.get(seated[0].key)}
+                />
+              ) : (
+                <GhostStage title={ghostTitle} />
+              )}
+            </div>
           )}
-          <SellerRows rows={rows} onDelivered={onDelivered} medals={medals} newMedals={newMedals} />
+          <SellerRows rows={rows} queued={queued} onDelivered={onDelivered} medals={medals} newMedals={newMedals} />
           {/* LEGENDA USTUN PASTIDA, BIR MARTA — medal so'rovi kelganda. Podium
               bilan ro'yxat orasida hech qachon emas (spec §2). */}
           {medals.size > 0 && <TierLegend />}
@@ -171,34 +213,47 @@ export function wholeRowsHeight(available: number): number | null {
  */
 function SellerRows({
   rows,
+  queued,
   onDelivered,
   medals,
   newMedals,
 }: {
   rows: readonly BoardEntry[]
+  /** «Tasdiq kutilmoqda» — rank qatorlaridan keyin, o'sha skroll qutisida. */
+  queued: readonly BoardEntry[]
   onDelivered: boolean
   medals: ReadonlyMap<string, SellerMedalRowDto>
   newMedals: ReadonlyMap<string, ReadonlySet<MedalCode>>
 }) {
-  if (rows.length === 0) return null
+  if (rows.length === 0 && queued.length === 0) return null
   const read = onDelivered ? 'fakt2' : 'fakt1'
   const [hero, other] = onDelivered ? (['FAKT 2', 'FAKT 1'] as const) : (['FAKT 1', 'FAKT 2'] as const)
 
   return (
     <>
-      <div className="tv-cols" data-read={read}>
-        <span />
-        <span className="tv-cols__r">#</span>
-        <span>Daraja</span>
-        <span>Sotuvchi</span>
-        <span>Komanda</span>
-        <span className="tv-cols__r">Medallar</span>
-        <span className="tv-cols__r on">{hero}</span>
-        <span className="tv-cols__r">{other}</span>
-        <span className="tv-cols__r">Buyurt.</span>
-        <span className="tv-cols__r">Konv.</span>
-      </div>
-      <RowList rows={rows} onDelivered={onDelivered} medals={medals} newMedals={newMedals} read={read} />
+      {/* Yorliq qatori faqat rank qatorlari uchun — navbat qatorlarida ustun yo'q. */}
+      {rows.length > 0 && (
+        <div className="tv-cols" data-read={read}>
+          <span />
+          <span className="tv-cols__r">#</span>
+          <span>Daraja</span>
+          <span>Sotuvchi</span>
+          <span>Komanda</span>
+          <span className="tv-cols__r">Medallar</span>
+          <span className="tv-cols__r on">{hero}</span>
+          <span className="tv-cols__r">{other}</span>
+          <span className="tv-cols__r">Buyurt.</span>
+          <span className="tv-cols__r">Konv.</span>
+        </div>
+      )}
+      <RowList
+        rows={rows}
+        queued={queued}
+        onDelivered={onDelivered}
+        medals={medals}
+        newMedals={newMedals}
+        read={read}
+      />
     </>
   )
 }
@@ -211,12 +266,14 @@ function SellerRows({
  */
 function RowList({
   rows,
+  queued,
   onDelivered,
   medals,
   newMedals,
   read,
 }: {
   rows: readonly BoardEntry[]
+  queued: readonly BoardEntry[]
   onDelivered: boolean
   medals: ReadonlyMap<string, SellerMedalRowDto>
   newMedals: ReadonlyMap<string, ReadonlySet<MedalCode>>
@@ -234,6 +291,22 @@ function RowList({
             key={entry.key}
             entry={entry}
             onDelivered={onDelivered}
+            medal={medals.get(entry.key) ?? null}
+            newKeys={newMedals.get(entry.key)}
+          />
+        ))}
+        {/* Guruh sarlavhasi ro'yxat ICHIDA va bir qator balandligida — ro'yxat
+            balandligi `ROW_H` karrasi bo'lib qoladi, drift yarim qatorda to'xtamaydi. */}
+        {queued.length > 0 && (
+          <li className="group">
+            <h4>Tasdiq kutilmoqda</h4>
+            <span>buyurtma bor, pul hali tasdiqlanmagan — tasdiqlangach reytingga kiradi</span>
+          </li>
+        )}
+        {queued.map((entry) => (
+          <QueueRow
+            key={entry.key}
+            entry={entry}
             medal={medals.get(entry.key) ?? null}
             newKeys={newMedals.get(entry.key)}
           />
@@ -285,6 +358,47 @@ function SellerRow({
           <None />
         ) : (
           formatPercentUz(entry.conversionPercent)
+        )}
+      </span>
+    </li>
+  )
+}
+
+/**
+ * Navbatdagi sotuvchi (delta 16d): tasma, gerb, ism, komanda va medallar
+ * odatdagidek — faqat qiymat uyalari BITTA keng jumlaga aylanadi. Rank uyasi
+ * bo'sh (chiziqcha ham emas), nol hech qayerda. Son tasdiqlab bo'lmasa
+ * (`queuedOrders` null) jumla sonsiz.
+ */
+function QueueRow({
+  entry,
+  medal,
+  newKeys,
+}: {
+  entry: BoardEntry
+  medal: SellerMedalRowDto | null
+  newKeys: ReadonlySet<MedalCode> | undefined
+}) {
+  const { name, code } = parseSellerName(entry.name)
+  const n = entry.queuedOrders
+  return (
+    <li className="row row--queue" data-tier={medal?.level ?? 0} data-row-name={entry.name}>
+      <span className="row__band" aria-hidden="true" />
+      <span className="row__rank" />
+      {medal !== null ? <Crest level={medal.level} legendaTier={medal.legendaTier} height={20} /> : <span />}
+      <span className="row__name">
+        <span className="nm">{name}</span>
+        {code !== null && <span className="code">{code}</span>}
+      </span>
+      <span className="row__team">{entry.badge ?? ''}</span>
+      <RowMedals medals={medal?.medals ?? NO_MEDALS} newKeys={newKeys} />
+      <span className="row__wait">
+        {n !== null && n > 0 ? (
+          <>
+            <b>{formatNumber(n)}</b> buyurtma tasdiq navbatida
+          </>
+        ) : (
+          'buyurtmasi tasdiq navbatida'
         )}
       </span>
     </li>

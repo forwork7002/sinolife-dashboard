@@ -3500,6 +3500,232 @@ p {
   }
 }
 
+/* ---- siyrak «Bugun» (EFIR Premium §8, delta 16–17a): sahna, sokin sahna, «Tasdiq kutilmoqda»
+   guruhi va navbat qatorlari, komandalarning «Hali savdosiz» satri. Faqat bugungi ma'lumot —
+   oy konteksti bloklari YO'Q (mijoz qarori 2); qolgan joy panel materiali bilan sokin bo'sh. ---- */
+.tv-stage {
+  flex: none;
+  height: 167px;
+  padding: 8px 12px 7px;
+  background: radial-gradient(620px 240px at 50% -40px, var(--efir-stage-light), transparent 72%);
+}
+/* O'rindiq materiali, bir kishi uchun keng: metall keyline, P1 oltin yuvishi, ko'tarilgan gradient. */
+.stage {
+  position: relative;
+  height: 152px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 34px;
+  align-items: center;
+  padding: 0 32px 0 44px;
+  border-radius: 14px;
+  background:
+    linear-gradient(90deg, transparent 4%, var(--metal-hi) 26%, var(--metal) 52%, transparent 94%) top / 100% 2px no-repeat,
+    radial-gradient(520px 200px at 12% 0%, var(--medal-gold-wash-p1), transparent 72%),
+    linear-gradient(180deg, var(--efir-raised-hi) 0%, var(--efir-raised) 40%, var(--efir-panel) 100%);
+  box-shadow: inset 0 0 0 1px var(--efir-edge-ring), var(--efir-shadow-seat);
+}
+.stage::after {
+  content: "";
+  position: absolute;
+  inset: 6px 6px 6px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--efir-p1-keyline);
+  pointer-events: none;
+}
+.stage__who { min-width: 0; }
+.stage__name {
+  margin: 0;
+  font-size: 26px;
+  line-height: 30px;
+  font-weight: 560;
+  letter-spacing: -0.018em;
+  color: var(--efir-ink-name);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stage__name .code {
+  margin-left: 0.5em;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--efir-ink-3);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.stage__prog {
+  margin-top: 8px;
+  max-width: 400px;
+}
+.stage__money { text-align: right; }
+.stage__money .seat__money {
+  margin: 0;
+  font-size: 56px;
+  line-height: 56px;
+  letter-spacing: -0.034em;
+}
+.stage__fakt {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  line-height: 16px;
+  color: var(--efir-ink-3);
+  white-space: nowrap;
+}
+.stage__fakt span { display: block; }
+.stage__fakt b {
+  margin-right: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  color: var(--efir-ink-2);
+}
+.stage__fakt em {
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 500;
+  color: var(--efir-ink-name);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.stage__rack {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  height: 40px;
+  margin-top: 6px;
+}
+.stage__rack .seat__cap {
+  margin-left: 0;
+  text-align: left;
+}
+/* Hech kim pul qilmagan: metall yo'q, faqat ko'tarilgan gradient va zarbsiz tanga. */
+.stage--ghost {
+  grid-template-columns: auto minmax(0, 1fr);
+  background: linear-gradient(180deg, var(--efir-raised-hi) 0%, var(--efir-raised) 40%, var(--efir-panel) 100%);
+}
+.stage--ghost::after { display: none; }
+.stage__ghost {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.012em;
+  color: var(--efir-ink-2);
+}
+/* Guruh sarlavhasi — ro'yxat ICHIDA, bitta qator balandligida (`ROW_H`), snap nuqtasi. */
+.tv-board-shell .group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 43px;
+  padding: 0 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  scroll-snap-align: start;
+}
+.tv-board-shell .group h4 {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--efir-ink-2);
+}
+.tv-board-shell .group span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--efir-ink-3);
+}
+.tv-board-shell .group::after {
+  content: "";
+  flex: 1;
+  min-width: 24px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--efir-hairline), transparent);
+}
+/* Navbatdagi sotuvchi ism, daraja va medallarni to'liq ovozda saqlaydi — faqat qiymat uyasi
+   o'zgaradi: 376 = 148 + 104 + 40 + 60 + 3 × 8. */
+.row--queue {
+  grid-template-columns: 6px 38px 68px minmax(0, 1fr) 80px 96px 376px;
+}
+.row__wait {
+  text-align: right;
+  white-space: nowrap;
+  font-size: 14px;
+  color: var(--efir-ink-2);
+}
+.row__wait b {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--efir-ink-name);
+}
+/* «Hali savdosiz: A, B — navbatda K tadan buyurtma» — oxirgi komanda qatorining tagida. */
+.tv-trows.tv-trows--fit { flex: 0 1 auto; }
+.tv-board-shell .quiet {
+  flex: none;
+  height: 40px;
+  line-height: 40px;
+  margin: 0;
+  padding: 0 20px 0 58px;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--efir-ink-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: linear-gradient(var(--efir-hairline), var(--efir-hairline)) bottom / 100% 1px no-repeat;
+}
+.tv-board-shell .quiet b {
+  font-weight: 500;
+  color: var(--efir-ink-2);
+}
+@media (max-width: 1599px) {
+  .tv-stage { height: auto; }
+  .stage {
+    height: auto;
+    min-height: 132px;
+    gap: 20px;
+    padding: 12px 20px 12px 28px;
+  }
+  .stage__name { font-size: 22px; }
+  .stage__money .seat__money {
+    font-size: 44px;
+    line-height: 48px;
+  }
+  /* Komanda uyasi (5-bola) bu kenglikda yashirin: medallar 62 px, jumla o'z kengligida. */
+  .row--queue {
+    grid-template-columns: 5px 28px 58px minmax(0, 1fr) 62px max-content;
+  }
+  .tv-board-shell .quiet { padding-left: 20px; }
+}
+@media (max-width: 1279px) {
+  .stage {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 12px 12px 12px 20px;
+  }
+  .stage__money {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+  .stage__rack { justify-content: flex-start; }
+  .row--queue {
+    grid-template-columns: 5px 26px 58px minmax(0, 1fr) 112px;
+  }
+  /* Telefonda jumla ikki qatorga o'raladi — ism o'z joyini oladi. */
+  .row__wait {
+    font-size: 12px;
+    line-height: 14px;
+    white-space: normal;
+  }
+  .row__wait b { font-size: 13px; }
+  .tv-board-shell .group span { display: none; }
+  .tv-board-shell .quiet {
+    height: auto;
+    min-height: 40px;
+    padding: 8px 12px;
+    line-height: 1.4;
+    white-space: normal;
+  }
+}
+
 /* EFIR — kamaytirilgan harakat: hech narsa qimirlamaydi. Keyingi vazifalarning
    bo'laklari SHU izohdan OLDIN qo'shiladi, ya'ni bu blok bo'limning oxirida qoladi. */
 @media (prefers-reduced-motion: reduce) {
@@ -3616,7 +3842,13 @@ p {
   color: var(--efir-ink-name);
   white-space: nowrap;
 }
+/* The count is the one part of the head that yields: «bugun 1 sotuvchi savdo qildi · 2 tasi
+   tasdiq kutmoqda» (EFIR Premium §8) is long, and a head that cannot fit it must still show
+   the whole FAKT switch — so the count ellipsizes, never the switch. */
 .tv-col-head__count {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 13px;
   color: var(--efir-ink-3);
   white-space: nowrap;
@@ -3637,6 +3869,11 @@ p {
 }
 @container tv-head (max-width: 559px) {
   .tv-col-head__hint { display: none; }
+}
+/* A long count (`data-long`) takes the hint's room one step earlier — at 1366 the sellers head
+   is ~645 px and the count reads better whole than the hint does. */
+@container tv-head (max-width: 759px) {
+  .tv-col-head[data-long] .tv-col-head__hint { display: none; }
 }
 /* TELEFONDA KALIT SIG'MAYDI (spec §9). 390 px da nom · soni · FAKT kaliti
    birgalikda 383 px so'raydi va 356 px bor — kalit o'ng chetdan chiqib

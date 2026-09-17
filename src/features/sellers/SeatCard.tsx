@@ -208,7 +208,7 @@ export function SeatCard({
  * oshib ketgan lahza (motor keyingi darajani hali yozmagan) qalin «0» emas,
  * xira chiziqcha. 0-darajada gap boshqacha — `nextLevelSentence`.
  */
-function NextLevel({ medal }: { medal: SellerMedalRowDto }) {
+export function NextLevel({ medal }: { medal: SellerMedalRowDto }) {
   if (medal.level === 0) return <p className="seat__left">{nextLevelSentence(medal)}</p>
   const left = Math.max(0, medal.nextLevelAt.amount - medal.delivered.amount)
   return (

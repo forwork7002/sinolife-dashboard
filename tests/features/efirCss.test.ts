@@ -179,7 +179,7 @@ describe('EFIR shrift shkalasi', () => {
   endi `#crest-6` belgisining ICHIDA. `.trow__rank` ro'yxatdan chiqdi (komanda
   ranki endi tanga); `.record__k` — rekord devori qayta qurilganda o'chiriladi.
 */
-const METAL_ALLOWED = /^(\.medal\b|\.medal__|\.halo\b|\.seat--1$|\[data-metal="(gold|silver|bronze)"\]|\.record__k\b)/
+const METAL_ALLOWED = /^(\.medal\b|\.medal__|\.halo\b|\.seat--1$|\.stage$|\[data-metal="(gold|silver|bronze)"\]|\.record__k\b)/
 
 describe('EFIR bo‘limi — rang shartnomasi', () => {
   it('bo‘lim bor va TV BOARD dan oldin turadi; asosiy selektorlar', () => {
@@ -412,5 +412,23 @@ describe('EFIR — sahifa sarlavhasi va rekord devori', () => {
     expect(metalRules).toBeGreaterThanOrEqual(7)
     expect(code).not.toContain('--series-')
     expect(code).not.toContain('--tv-tone')
+  })
+})
+
+/* Siyrak «Bugun» (EFIR Premium §8): sahna, guruh sarlavhasi, navbat qatori. */
+describe('EFIR — siyrak holat', () => {
+  it('sahna 152 px uch ustunli grid ichida 167 px blokda; guruh ro‘yxatda bir qator (43 px) balandligida', () => {
+    const code = strip(EFIR())
+    expect(code).toMatch(/\.tv-stage \{[^}]*height: 167px;/)
+    expect(code).toMatch(/\n\.stage \{[^}]*height: 152px;[^}]*grid-template-columns: auto minmax\(0, 1fr\) auto;/)
+    expect(code).toMatch(/\.stage__money \.seat__money \{[^}]*font-size: 56px;/)
+    expect(code).toMatch(/\.stage__name \{[^}]*font-size: 26px;/)
+    expect(code).toMatch(/\.tv-board-shell \.group \{[^}]*height: 43px;/)
+  })
+
+  it('navbat qatori: 376 px keng uya = 148 + 104 + 40 + 60 + 3 × 8', () => {
+    const code = strip(EFIR())
+    expect(code).toMatch(/\n\.row--queue \{\s*grid-template-columns: 6px 38px 68px minmax\(0, 1fr\) 80px 96px 376px;/)
+    expect(code).toMatch(/\.tv-board-shell \.quiet \{[^}]*height: 40px;/)
   })
 })

@@ -170,6 +170,7 @@ export function SellersPage() {
             onFakt={setFakt}
             medals={medalsById}
             medalsToday={medals.data?.data.today ?? null}
+            today={today !== undefined}
           />
           <TeamsColumn
             data={data}
@@ -181,6 +182,7 @@ export function SellersPage() {
             onFakt={setFakt}
             medals={medalsById}
             medalsToday={medals.data?.data.today ?? null}
+            today={today !== undefined}
           />
         </div>
 
@@ -226,6 +228,12 @@ export interface ColumnProps {
   medals: ReadonlyMap<string, SellerMedalRowDto>
   /** `SellerMedalsDto.today` — e'lonning birinchi tetigi; komandalar ustuni o'qimaydi. */
   medalsToday: string | null
+  /**
+   * The response is the «Bugun» window (`meta.period.preset`). The heads then
+   * count «bugun N … savdo qildi» and the teams' plaque reads «Bugun jami»
+   * (EFIR Premium §8); every other window keeps its plain count.
+   */
+  today?: boolean
 }
 
 /** Exported for the tests. */
@@ -239,6 +247,7 @@ export function SellersColumn({
   onFakt,
   medals,
   medalsToday,
+  today = false,
 }: ColumnProps) {
   const entries = useMemo(() => data?.rows.map(fromSeller) ?? [], [data])
   return (
@@ -252,11 +261,21 @@ export function SellersColumn({
       onFakt={onFakt}
       medals={medals}
       medalsToday={medalsToday}
+      today={today}
     />
   )
 }
 
-export function TeamsColumn({ data, status, errorMessage, onRetry, parked = false, fakt, onFakt }: ColumnProps) {
+export function TeamsColumn({
+  data,
+  status,
+  errorMessage,
+  onRetry,
+  parked = false,
+  fakt,
+  onFakt,
+  today = false,
+}: ColumnProps) {
   const entries = useMemo(() => data?.teams.map(fromTeam) ?? [], [data])
   // Komandasizlar puli = `rop === null` sotuvchi qatorlari (spec §6) — DTO o'zgarmaydi.
   const sellers = useMemo(() => data?.rows.map(fromSeller) ?? [], [data])
@@ -271,6 +290,7 @@ export function TeamsColumn({ data, status, errorMessage, onRetry, parked = fals
       parked={parked}
       fakt={fakt}
       onFakt={onFakt}
+      today={today}
     />
   )
 }
