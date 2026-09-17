@@ -10,8 +10,8 @@ import type { FaktChoice } from '@/features/sellers/board'
  * one the board is actually ranked on, and pressing it changes nothing but
  * the fact that it is now pinned. Two buttons and no way back to 'auto'.
  *
- * EFIR: the lit segment is INK on the stage (spec §7) — no hue is spent on
- * chrome; the band and the crest are the only coloured things on the board.
+ * EFIR Premium (spec §7, delta 20c): a sunken track; the lit segment is a
+ * RAISED tab with a 2 px `--tier-4` underline — never a white or ink fill.
  */
 export function FaktSwitch({
   fakt,

@@ -292,14 +292,34 @@ describe('EFIR — qator, komandalar, e‘lon', () => {
     expect(CSS).not.toContain('--tv-tone')
   })
 
-  it('qator gridi spec §5 bo‘yicha, yorliq qatori bilan bir xil; tasma `--tier`; o‘qilayotgan fakt qalin', () => {
+  it('qator gridi spec §5 bo‘yicha, yorliq qatori bilan bir xil; 43 px; fon chizig‘i + daraja yuvishi; o‘qish og‘irligi yo‘q', () => {
     const code = strip(EFIR())
-    expect(code).toContain('.tv-cols,\n.row {\n  display: grid;\n  grid-template-columns: 10px 52px 70px minmax(0, 1fr) 84px 160px 146px 60px 68px;')
-    expect(code).toMatch(/\.row \{[^}]*height: 50px;/)
-    expect(code).toMatch(/\.row__band \{[^}]*background: var\(--tier\);/)
-    expect(code).toMatch(/\.row\[data-tier="0"\] \.row__band \{[^}]*box-shadow: inset 1px 0 0 var\(--tier\);/)
-    expect(code).toContain('.tv-rows[data-read="fakt2"] .row__f2,\n.tv-rows[data-read="fakt1"] .row__f1 {')
-    expect(code).toMatch(/\.row__name \{[^}]*text-overflow: ellipsis;/)
+    expect(code).toContain(
+      '.tv-cols,\n.row {\n  display: grid;\n  grid-template-columns: 6px 38px 68px minmax(0, 1fr) 80px 96px 148px 104px 40px 60px;\n  column-gap: 8px;\n  align-items: center;\n  padding: 0 16px 0 8px;',
+    )
+    // 43 — `ROW_H` (SellersBoard.tsx) bilan bir raqam; ro'yxat balandligi uning karrasi.
+    expect(code).toMatch(/\.row \{[^}]*height: 43px;[^}]*scroll-snap-align: start;/)
+    expect(readFileSync(join(process.cwd(), 'src/features/sellers/SellersBoard.tsx'), 'utf8')).toContain('export const ROW_H = 43')
+    expect(code).toMatch(
+      /\.row \{[^}]*background:\s*linear-gradient\(var\(--efir-hairline\), var\(--efir-hairline\)\) bottom \/ 100% 1px no-repeat,\s*linear-gradient\(90deg, var\(--tier-wash\), transparent\) left \/ 88px 100% no-repeat;/,
+    )
+    expect(code).not.toMatch(/\.row \{[^}]*box-shadow/)
+    expect(code).toMatch(/\.row__band \{[^}]*margin: 6px 0;[^}]*border-radius: 3px;[^}]*background: linear-gradient\(180deg, var\(--tier-hi\), var\(--tier\) 50%, var\(--tier-lo\)\);/)
+    expect(code).toMatch(/\.row\[data-tier="0"\] \.row__band \{[^}]*box-shadow: inset 0 0 0 1px var\(--efir-ink-4\);/)
+    // Ism uyasi: kod ism kesilishidan OLDIN o'ralib tushadi.
+    expect(code).toMatch(/\.row__name \{[^}]*flex-wrap: wrap;[^}]*height: 26px;[^}]*row-gap: 26px;[^}]*overflow: hidden;/)
+    expect(code).toMatch(/\.row__name \.nm \{[^}]*max-width: 100%;[^}]*text-overflow: ellipsis;[^}]*font-size: 19px;[^}]*font-weight: 500;/)
+    expect(code).toMatch(/\.row__hero \{[^}]*font-size: 23px;[^}]*font-weight: 620;[^}]*letter-spacing: -0\.022em;/)
+    expect(code).toMatch(/\.row__sec \{[^}]*font-size: 15px;[^}]*color: var\(--efir-ink-2\);/)
+    expect(code).toMatch(/\.row__none \{[^}]*color: var\(--efir-ink-4\);/)
+    // O'qish og'irligi yo'q — faol fakt QAHRAMON uyasida (delta 11d).
+    expect(code).not.toContain('.tv-rows[data-read=')
+    expect(code).not.toContain('.tv-cols[data-read=')
+    expect(code).not.toContain('.row__f1')
+    expect(code).not.toContain('.row__f2')
+    // Snap — qatorlarga; drift paytida o'chadi (`useAutoScroll` `data-drifting`).
+    expect(code).toMatch(/\.tv-rows \{[^}]*scroll-snap-type: y mandatory;/)
+    expect(code).toContain('.tv-rows[data-drifting] { scroll-snap-type: none; }')
   })
 
   it('komandalar: 62 px qatorlar, ulush chizig‘i `--share`, metall raqamlar faqat 1–3', () => {

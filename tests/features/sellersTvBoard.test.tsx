@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs'
 
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, within } from '@testing-library/react'
 import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -54,6 +54,7 @@ window.matchMedia = ((query: string) => ({
 })) as unknown as typeof window.matchMedia
 
 const { SellersColumn, TeamsColumn } = await import('@/features/sellers/SellersPage')
+const { ROW_H, wholeRowsHeight } = await import('@/features/sellers/SellersBoard')
 
 const S = NARROW_NBSP
 
@@ -165,12 +166,17 @@ const seatsOf = () =>
 const ranksOf = () =>
   [...document.querySelectorAll('#tv-sellers article.seat')].map((s) => s.getAttribute('aria-label')!.replace(/-oʻrin$/, ''))
 
+/**
+ * Qator nomlari DOM tartibida. Sotuvchi qatori ismni `.nm` + `.code` ga bo'ladi
+ * (`parseSellerName`), shuning uchun uning to'liq portal nomi `li` ning
+ * `data-row-name` idan o'qiladi; komanda qatorida nom uyasining birinchi bolasi.
+ */
 const rowNamesOf = (id: 'tv-sellers' | 'tv-teams') =>
   [...document.querySelectorAll(`#${id} .row__name, #${id} .trow__name`)].map(
-    (n) => n.firstChild?.textContent ?? '',
+    (n) => n.closest('li.row')?.getAttribute('data-row-name') ?? n.firstChild?.textContent ?? '',
   )
 
-const rowOf = (name: string) => screen.getByText(name, { selector: '.row__name' }).closest('li.row')!
+const rowOf = (name: string) => document.querySelector(`#tv-sellers li.row[data-row-name="${name}"]`)!
 const seatOf = (name: string) => document.querySelector(`#tv-sellers .seat[data-seat-name="${name}"]`)!
 
 /* «Shu oy» on 2026-09-04: 22 of 263 orders delivered, so 8% decides the rank. */
@@ -403,7 +409,9 @@ describe('o‘rindiq ostidagi qatorlar (spec §5)', () => {
     const col = document.getElementById('tv-sellers')!
     const strip = col.querySelector('.tv-cols')!
     const rows = col.querySelector('ol.tv-rows')!
-    expect(strip.nextElementSibling).toBe(rows)
+    // Yorliq qatori, keyin ro'yxat UYASI (o'lchanadigan quti), uning ichida skroll qutisi.
+    expect(strip.nextElementSibling).toBe(rows.parentElement)
+    expect(rows.parentElement!.classList.contains('tv-rows-slot')).toBe(true)
     expect(rows.contains(strip)).toBe(false)
     expect(rows.querySelector('.tv-cols')).toBeNull()
     expect(rowNamesOf('tv-sellers')[0]).toBe('Nodira 118 Karimova')
@@ -411,34 +419,87 @@ describe('o‘rindiq ostidagi qatorlar (spec §5)', () => {
     expect(rowOf('Nodira 118 Karimova').querySelector('.row__rank')!.textContent).toBe('4')
   })
 
-  it('sakkizta yorliq: # Daraja Sotuvchi Medallar FAKT 2 FAKT 1 Buyurtma Konv.', () => {
-    render(<SellersColumn data={RIPE} {...PROPS} />)
-    const labels = [...document.querySelectorAll('#tv-sellers .tv-cols span')]
-      .map((s) => s.textContent)
-      .filter((t) => t !== '')
-    expect(labels).toEqual([
-      '#', 'Daraja', 'Sotuvchi', 'Medallar', 'FAKT 2, yetkazilgan', 'FAKT 1, tasdiqlangan', 'Buyurtma', 'Konv.',
+  it('to‘qqizta yorliq o‘qish tartibida: faol fakt qahramon uyasida, `.on` belgisi bilan', () => {
+    render(<Board data={CROSSED} />)
+    const labels = () =>
+      [...document.querySelectorAll('#tv-sellers .tv-cols span')].map((s) => s.textContent).filter((t) => t !== '')
+    expect(labels()).toEqual(['#', 'Daraja', 'Sotuvchi', 'Komanda', 'Medallar', 'FAKT 2', 'FAKT 1', 'Buyurt.', 'Konv.'])
+    expect([...document.querySelectorAll('#tv-sellers .tv-cols .on')].map((s) => s.textContent)).toEqual(['FAKT 2'])
+    press('tv-sellers', 'FAKT 1')
+    expect(labels()).toEqual(['#', 'Daraja', 'Sotuvchi', 'Komanda', 'Medallar', 'FAKT 1', 'FAKT 2', 'Buyurt.', 'Konv.'])
+    expect([...document.querySelectorAll('#tv-sellers .tv-cols .on')].map((s) => s.textContent)).toEqual(['FAKT 1'])
+  })
+
+  it('qator o‘qish tartibida: tasma · rank · gerb · ism(+kod) · komanda · medallar · qahramon · boshqa fakt · buyurt. · konv.', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} medals={MEDALS} />)
+    const row = rowOf('Nodira 118 Karimova')
+    expect([...row.children].map((c) => c.getAttribute('class'))).toEqual([
+      'row__band', 'row__rank', 'crest', 'row__name', 'row__team', 'row__medals', 'row__hero', 'row__sec', 'row__sec', 'row__sec',
     ])
+    // Ism va kod alohida uyada — kod ism kesilishidan oldin tushadi (CSS).
+    expect(row.querySelector('.row__name .nm')!.textContent).toBe('Nodira Karimova')
+    expect(row.querySelector('.row__name .code')!.textContent).toBe('118')
+    // Kodsiz ism — `.code` chizilmaydi.
+    render(<SellersColumn data={TIED} {...PROPS} />)
+    const plain = document.querySelector('li.row[data-row-name="Yusupova Dilnoza"]')!
+    expect(plain.querySelector('.code')).toBeNull()
   })
 
   it('har qatorda ikkala fakt to‘liq so‘mda, buyurtma va konversiya «91,3 %»; «Oldingiga» satri yo‘q', () => {
     render(<SellersColumn data={RIPE} {...PROPS} />)
     const row = rowOf('Nodira 118 Karimova')
-    expect(row.querySelector('.row__f2')!.textContent).toBe(`39${S}000${S}000`)
-    expect(row.querySelector('.row__f1')!.textContent).toBe(`52${S}000${S}000`)
-    expect(row.querySelector('.row__orders')!.textContent).toBe('3')
-    expect(row.querySelector('.row__conv')!.textContent).toBe(`91,3${S}%`)
+    const [other, orders, conv] = [...row.querySelectorAll('.row__sec')]
+    expect(row.querySelector('.row__hero')!.textContent).toBe(`39${S}000${S}000`)
+    expect(other!.textContent).toBe(`52${S}000${S}000`)
+    expect(orders!.textContent).toBe('3')
+    expect(conv!.textContent).toBe(`91,3${S}%`)
     expect(row.querySelector('.row__team')!.textContent).toBe('Gulzora')
     expect(document.querySelector('.tv-chase')).toBeNull()
     expect(document.body.textContent).not.toMatch(/Oldingiga|Lider/)
     expect(document.body.textContent).not.toMatch(/mln|soʻm|so‘m/)
   })
 
-  it('puli yo‘q qator rank o‘rniga chiziqcha, konversiyasi chiziqcha', () => {
+  /*
+    FAOL FAKT HAR DOIM QAHRAMON UYASIDA — ikkala o'qishda. Jonli EFIR FAKT 1
+    rejimida ustunlarni joyida qoldirib og'irlikni ko'chirardi va raqam
+    «Buyurtma» ustiga chiqardi; endi uyalar MAZMUNI almashadi.
+  */
+  it('qahramon uyasi ikkala o‘qishda faol faktni tashiydi', () => {
+    render(<Board data={CROSSED} />)
+    const hero = (name: string) => rowOf(name).querySelector('.row__hero')!.textContent
+    const other = (name: string) => rowOf(name).querySelector('.row__sec')!.textContent
+    expect(hero('Nodira 118 Karimova')).toBe(formatSomFull(10_000_000))
+    expect(other('Nodira 118 Karimova')).toBe(formatSomFull(200_000_000))
+    press('tv-sellers', 'FAKT 1')
+    expect(hero('Yusupova 139 Mahliyo')).toBe(formatSomFull(70_000_000))
+    expect(other('Yusupova 139 Mahliyo')).toBe(formatSomFull(60_000_000))
+    expect(hero('Aziza 121 Toshmatova')).toBe(formatSomFull(20_000_000))
+    expect(other('Aziza 121 Toshmatova')).toBe(formatSomFull(5_000_000))
+  })
+
+  it('puli yo‘q qator: rank yozilmaydi (chiziqcha ham emas), qiymatlar xira chiziqcha — qalin «0» hech qayerda', () => {
     render(<SellersColumn data={RIPE} {...PROPS} />)
     const zero = rowOf('Rustamov 201 Diyor')
-    expect(zero.querySelector('.row__rank')!.textContent).toBe('—')
-    expect(zero.querySelector('.row__conv')!.textContent).toBe('—')
+    expect(zero.querySelector('.row__rank')!.textContent).toBe('')
+    // Qahramon, boshqa fakt, konv. — nol/null; buyurtma (fixture'da 3) raqam bo'lib qoladi.
+    const [hero, other, orders, conv] = [...zero.querySelectorAll('.row__hero, .row__sec')]
+    for (const cell of [hero!, other!, conv!]) {
+      expect(cell.textContent).toBe('—')
+      expect(cell.querySelector('.row__none')).not.toBeNull()
+    }
+    expect(orders!.textContent).toBe('3')
+    for (const cell of document.querySelectorAll('#tv-sellers .row__hero, #tv-sellers .row__sec, #tv-sellers .row__rank')) {
+      expect(cell.textContent).not.toBe('0')
+    }
+  })
+
+  it('faol fakti nol, boshqasi bor qator — qahramon uyasida xira chiziqcha, rank bor', () => {
+    // FALLBACK da hech kim yetkazmagan — FAKT 2 ga majburlab o'qiladi, podium bo'sh.
+    render(<SellersColumn data={FALLBACK} {...PROPS} fakt="fakt2" />)
+    const row = document.querySelector('li.row[data-row-name="Saparboyeva 110 Farida"]')!
+    expect(row.querySelector('.row__rank')!.textContent).toBe('1')
+    expect(row.querySelector('.row__hero .row__none')!.textContent).toBe('—')
+    expect(row.querySelector('.row__sec')!.textContent).toBe(formatSomFull(12_900_000))
   })
 
   it('podium hammani o‘tqazganda qatorlar ham, yorliq qatori ham chizilmaydi', () => {
@@ -447,12 +508,67 @@ describe('o‘rindiq ostidagi qatorlar (spec §5)', () => {
     expect(document.querySelector('.tv-cols')).toBeNull()
   })
 
-  it('o‘qilayotgan fakt qatorda `data-read` bilan belgilanadi', () => {
+  it('o‘qilayotgan fakt ro‘yxatda `data-read` bilan belgilanadi (CSS undan og‘irlik o‘qimaydi)', () => {
     render(<Board data={CROSSED} />)
     expect(document.querySelector('#tv-sellers .tv-rows')!.getAttribute('data-read')).toBe('fakt2')
     expect(document.querySelector('#tv-sellers .tv-cols')!.getAttribute('data-read')).toBe('fakt2')
     press('tv-sellers', 'FAKT 1')
     expect(document.querySelector('#tv-sellers .tv-rows')!.getAttribute('data-read')).toBe('fakt1')
+  })
+})
+
+/*
+  RO'YXAT BALANDLIGI QATOR BALANDLIGINING BUTUN KARRASI (EFIR Premium §5,
+  delta 13). Drift ikki chetda to'xtaydi — 0 va oxiri; ikkalasi butun qator
+  bo'lishi uchun ro'yxat uyadan o'lchangan joyga sig'adigan butun qatorlarni
+  oladi. jsdom da `ResizeObserver` yo'q — qo'lda yuritiladigan stub.
+*/
+describe('ro‘yxat balandligi butun qatorlar', () => {
+  const observers: { target: Element; fire: (h: number) => void }[] = []
+  const original = globalThis.ResizeObserver
+  beforeEach(() => {
+    observers.length = 0
+    globalThis.ResizeObserver = class {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        observers.push({
+          target,
+          fire: (h) =>
+            this.callback(
+              [{ target, contentRect: { height: h }, contentBoxSize: [{ blockSize: h, inlineSize: 978 }] } as unknown as ResizeObserverEntry],
+              this as unknown as ResizeObserver,
+            ),
+        })
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver
+  })
+  afterEach(() => {
+    globalThis.ResizeObserver = original
+  })
+
+  it('uya o‘lchanadi (ro‘yxat emas); 1920 / rail ochiq: 500 → 473 = 11 × 43', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} />)
+    const list = document.querySelector<HTMLElement>('#tv-sellers ol.tv-rows')!
+    const slot = observers.find((o) => o.target === list.parentElement)
+    expect(slot, 'uya kuzatilmayapti').toBeDefined()
+    expect(observers.some((o) => o.target === list)).toBe(false)
+    // O'lchanmagan — CSS tabiiy o'lchamda (uyani to'ldiradi).
+    expect(list.style.getPropertyValue('--rows-h')).toBe('')
+    act(() => slot!.fire(500.7))
+    expect(list.style.getPropertyValue('--rows-h')).toBe('473px')
+    expect(ROW_H).toBe(43)
+  })
+
+  it('har qanday bo‘sh joyda balandlik qator balandligiga bo‘linadi va joydan oshmaydi', () => {
+    expect(wholeRowsHeight(0)).toBeNull()
+    for (let available = 1; available <= 1200; available += 1) {
+      const h = wholeRowsHeight(available)!
+      expect(h % ROW_H).toBe(0)
+      expect(h).toBeLessThanOrEqual(available)
+      expect(available - h).toBeLessThan(ROW_H)
+    }
   })
 })
 
@@ -520,6 +636,14 @@ describe('bir taxtani boshqa faktda o‘qish', () => {
       expect(column(id).getByRole('button', { name: 'FAKT 2' }).getAttribute('aria-pressed')).toBe('true')
     }
     expect(document.querySelector('.tv-fakt-dot')).toBeNull()
+  })
+
+  it('kalit yonida izoh — lit tugma nima ekanini so‘z bilan aytadi, ikkala sarlavhada', () => {
+    render(<Board data={CROSSED} />)
+    const hints = () => [...document.querySelectorAll('.tv-col-head__hint')].map((h) => h.textContent)
+    expect(hints()).toEqual(['FAKT 2 — yetkazilgan pul', 'FAKT 2 — yetkazilgan pul'])
+    press('tv-teams', 'FAKT 1')
+    expect(hints()).toEqual(['FAKT 1 — tasdiqlangan pul', 'FAKT 1 — tasdiqlangan pul'])
   })
 
   it('tasdiqlangan pulga qayta o‘tqazadi va har o‘rindiqda aytadi', () => {
@@ -611,6 +735,7 @@ describe('EFIR — daraja va medallar taxtada', () => {
     // Qatorda bitta <use>, sanoq yo'q — aria'da ham, «+N» ham.
     expect(rowMedals[0]!.querySelectorAll('use')).toHaveLength(1)
     expect(rowMedals[0]!.getAttribute('aria-label')).toBe('Oy chempioni')
+    expect(row.textContent).not.toMatch(/\+\d/)
     expect(row.querySelector('.medal-count')).toBeNull()
     expect(row.querySelector('.row__medals')!.textContent).toBe('')
     expect(row.querySelector('.seat__level')).toBeNull()
