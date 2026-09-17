@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="uz" data-theme="dark">
+<head><meta charset="utf-8"><title>EFIR premium — tekshiruv (FAKT 1, fixture)</title>
+<meta name="viewport" content="width=1920">
+<style>
+/* ==========================================================================
+   EFIR · PREMIUM (final) — OBSIDIAN chassis + ZARB mint.
+   Every colour is a custom property in the generated token block below
+   (gen_final.py). Every mix is pre-computed; nothing is blurred, clipped or
+   animated: one light from the top; depth = inner highlight + gradient +
+   long shadow. Board-scoped names (--efir-*) live under the sellers root in
+   production; --tier-* and --medal-* keep their existing global names.
+   ========================================================================== */
+:root {
+  --page: #050609;
+  --chrome-rail: #0b0d11;
+  --chrome-active: #171b22;
+  --chrome-accent: #4f7cff;
+  --chrome-on-accent: #ffffff;
+  --chrome-ok: #3fb37f;
+  --efir-page-glow: rgba(116, 160, 224, .075);
+  --efir-panel: #0c0f14;
+  --efir-panel-sheen: rgba(255, 255, 255, .03);
+  --efir-raised: #141921;
+  --efir-raised-hi: #1d232e;
+  --efir-sunken: #07090c;
+  --efir-ink: #f2f5fa;
+  --efir-ink-name: #d9dfe8;
+  --efir-ink-ctx: #c2cad6;
+  --efir-ink-2: #939db0;
+  --efir-ink-3: #737e92;
+  --efir-ink-4: #2f3743;
+  --efir-hairline: rgba(255, 255, 255, .05);
+  --efir-edge-hi: rgba(255, 255, 255, .095);
+  --efir-edge-ring: rgba(255, 255, 255, .035);
+  --efir-shadow-panel: 0 30px 60px -30px rgba(0, 0, 0, .9);
+  --efir-shadow-seat: 0 24px 40px -22px rgba(0, 0, 0, .95), 0 2px 5px -1px rgba(0, 0, 0, .55);
+  --efir-seg-well: inset 0 1px 2px rgba(0, 0, 0, .35), inset 0 0 0 1px rgba(255, 255, 255, .035);
+  --efir-seg-on: inset 0 1px 0 rgba(255, 255, 255, .095), 0 1px 2px rgba(0, 0, 0, .35);
+  --efir-track: rgba(255, 255, 255, .09);
+  --efir-stage-light: rgba(150, 185, 235, .07);
+  --efir-plate-well: #07090c;
+  --tier-1: #465268;
+  --tier-1-hi: #767f8f;
+  --tier-1-lo: #353e4f;
+  --tier-1-wash: rgba(70, 82, 104, 0.16);
+  --tier-2: #4c6c94;
+  --tier-2-hi: #7b92b0;
+  --tier-2-lo: #3a5270;
+  --tier-2-wash: rgba(76, 108, 148, 0.16);
+  --tier-3: #3d8bcb;
+  --tier-3-hi: #6fa9d9;
+  --tier-3-lo: #2e6a9a;
+  --tier-3-wash: rgba(61, 139, 203, 0.16);
+  --tier-4: #6cc3f2;
+  --tier-4-hi: #92d3f5;
+  --tier-4-lo: #5294b8;
+  --tier-4-wash: rgba(108, 195, 242, 0.16);
+  --tier-5: #b5e6fc;
+  --tier-5-hi: #c8ecfd;
+  --tier-5-lo: #8aafc0;
+  --tier-5-wash: rgba(181, 230, 252, 0.16);
+  --tier-6: #f2fbff;
+  --tier-6-hi: #f5fcff;
+  --tier-6-lo: #c2c9cc;
+  --tier-6-wash: rgba(242, 251, 255, 0.16);
+  --medal-gold-hi: #f9e8ae;
+  --medal-gold: #dcb24a;
+  --medal-gold-lo: #8d6a1c;
+  --medal-gold-sh: #3a2b0b;
+  --medal-gold-patina: #3b3c2e;
+  --medal-gold-well: #5d4512;
+  --medal-silver-hi: #f4f7fb;
+  --medal-silver: #b3bece;
+  --medal-silver-lo: #626d7c;
+  --medal-silver-sh: #252c36;
+  --medal-silver-patina: #293d51;
+  --medal-silver-well: #3f4753;
+  --medal-bronze-hi: #f5cba4;
+  --medal-bronze: #c98450;
+  --medal-bronze-lo: #744525;
+  --medal-bronze-sh: #301d0e;
+  --medal-bronze-patina: #323130;
+  --medal-bronze-well: #4d2e18;
+  --medal-steel-hi: #b6c6d9;
+  --medal-steel: #6c8096;
+  --medal-steel-lo: #364354;
+  --medal-steel-sh: #12181f;
+  --medal-steel-patina: #162430;
+  --medal-steel-well: #212a35;
+  --medal-gilt-hi: #efe3c2;
+  --medal-gilt: #bfa873;
+  --medal-gold-wash: rgba(220, 178, 74, 0.09);
+  --medal-silver-wash: rgba(179, 190, 206, 0.09);
+  --medal-bronze-wash: rgba(201, 132, 80, 0.09);
+  --medal-gold-wash-p1: rgba(220, 178, 74, 0.15);
+  --efir-p1-keyline: rgba(249, 232, 174, 0.13);
+  --medal-key: rgba(0, 0, 0, .6);
+  --medal-cast: rgba(0, 0, 0, .45);
+  --medal-glint: rgba(255, 255, 255, .5);
+  --medal-edge: rgba(255, 255, 255, .5);
+  --sheen-hi: rgba(255, 255, 255, .28);
+  --sheen-lo: rgba(0, 0, 0, .3);
+  --sheen-none-hi: rgba(255, 255, 255, 0);
+  --sheen-none-lo: rgba(0, 0, 0, 0);
+  --bloom: rgba(255, 255, 255, .12);
+  --ribbon-a: #2c6aa2;
+  --ribbon-shade: rgba(0, 0, 0, .34);
+  --recess-hi: rgba(255, 255, 255, .14);
+  --recess-lo: rgba(0, 0, 0, .7);
+  --recess-none: rgba(0, 0, 0, 0);
+  --slot-field: #0b0d11;
+  --slot-dash: rgba(255, 255, 255, .16);
+  --slot-glyph: #262d38;
+  --crest-plate: #07090c;
+  --crest-off: #1b212b;
+  --crest-glint: rgba(255, 255, 255, .5);
+  --crest-shade: rgba(0, 0, 0, .4);
+  --halo-field-hi: #262c37;
+  --halo-field-lo: #0b0e13;
+}
+:root[data-theme="light"] {
+  --page: #f6f7f9;
+  --chrome-rail: #ffffff;
+  --chrome-active: #eef0f4;
+  --chrome-accent: #2f5fe0;
+  --chrome-on-accent: #ffffff;
+  --chrome-ok: #1f9d63;
+  --efir-page-glow: rgba(255, 255, 255, .9);
+  --efir-panel: #fbfcfe;
+  --efir-panel-sheen: rgba(255, 255, 255, 1);
+  --efir-raised: #ffffff;
+  --efir-raised-hi: #ffffff;
+  --efir-sunken: #edf0f5;
+  --efir-ink: #0a0f17;
+  --efir-ink-name: #1c2431;
+  --efir-ink-ctx: #333d4c;
+  --efir-ink-2: #556072;
+  --efir-ink-3: #677285;
+  --efir-ink-4: #ccd3de;
+  --efir-hairline: rgba(12, 18, 28, .07);
+  --efir-edge-hi: rgba(255, 255, 255, 1);
+  --efir-edge-ring: rgba(12, 18, 28, .07);
+  --efir-shadow-panel: 0 30px 50px -34px rgba(24, 38, 66, .35), 0 1px 2px rgba(24, 38, 66, .08);
+  --efir-shadow-seat: 0 22px 36px -24px rgba(24, 38, 66, .5), 0 2px 5px -1px rgba(24, 38, 66, .14);
+  --efir-seg-well: inset 0 1px 2px rgba(12, 18, 28, .1), inset 0 0 0 1px rgba(12, 18, 28, .07);
+  --efir-seg-on: 0 1px 2px rgba(24, 38, 66, .2), inset 0 0 0 1px rgba(12, 18, 28, .07);
+  --efir-track: rgba(12, 18, 28, .1);
+  --efir-stage-light: rgba(255, 255, 255, 0);
+  --efir-plate-well: #10151d;
+  --tier-1: #b9c4d4;
+  --tier-1-hi: #cbd3df;
+  --tier-1-lo: #8d95a1;
+  --tier-1-wash: rgba(185, 196, 212, 0.13);
+  --tier-2: #8aa1c2;
+  --tier-2-hi: #a8b9d2;
+  --tier-2-lo: #697a93;
+  --tier-2-wash: rgba(138, 161, 194, 0.13);
+  --tier-3: #4f88c6;
+  --tier-3-hi: #7da7d5;
+  --tier-3-lo: #3c6796;
+  --tier-3-wash: rgba(79, 136, 198, 0.13);
+  --tier-4: #1f70bf;
+  --tier-4-hi: #5995d0;
+  --tier-4-lo: #185591;
+  --tier-4-wash: rgba(31, 112, 191, 0.13);
+  --tier-5: #124f97;
+  --tier-5-hi: #507db2;
+  --tier-5-lo: #0e3c73;
+  --tier-5-wash: rgba(18, 79, 151, 0.13);
+  --tier-6: #0a2c61;
+  --tier-6-hi: #4a638a;
+  --tier-6-lo: #08234e;
+  --tier-6-wash: rgba(10, 44, 97, 0.13);
+  --medal-gold-hi: #f8e4a2;
+  --medal-gold: #cf9f2a;
+  --medal-gold-lo: #7e5b0d;
+  --medal-gold-sh: #3f2d06;
+  --medal-gold-patina: #423d29;
+  --medal-gold-well: #594009;
+  --medal-silver-hi: #f8fafc;
+  --medal-silver: #a3aebe;
+  --medal-silver-lo: #55606e;
+  --medal-silver-sh: #272e38;
+  --medal-silver-patina: #2e3e52;
+  --medal-silver-well: #3a434f;
+  --medal-bronze-hi: #f3c79f;
+  --medal-bronze: #bb7640;
+  --medal-bronze-lo: #693c1d;
+  --medal-bronze-sh: #2e1a0b;
+  --medal-bronze-patina: #342e2d;
+  --medal-bronze-well: #472813;
+  --medal-steel-hi: #c9d5e3;
+  --medal-steel: #71839a;
+  --medal-steel-lo: #3a4657;
+  --medal-steel-sh: #171d25;
+  --medal-steel-patina: #1d2835;
+  --medal-steel-well: #262e3a;
+  --medal-gilt-hi: #f3e6bf;
+  --medal-gilt: #c4a862;
+  --medal-gold-wash: rgba(207, 159, 42, 0.12);
+  --medal-silver-wash: rgba(163, 174, 190, 0.16);
+  --medal-bronze-wash: rgba(187, 118, 64, 0.12);
+  --medal-gold-wash-p1: rgba(207, 159, 42, 0.2);
+  --efir-p1-keyline: rgba(207, 159, 42, 0.34);
+  --medal-key: rgba(12, 14, 18, .55);
+  --medal-cast: rgba(12, 14, 18, .2);
+  --medal-glint: rgba(255, 255, 255, .7);
+  --medal-edge: rgba(255, 255, 255, .62);
+  --sheen-hi: rgba(255, 255, 255, .26);
+  --sheen-lo: rgba(0, 0, 0, .22);
+  --sheen-none-hi: rgba(255, 255, 255, 0);
+  --sheen-none-lo: rgba(0, 0, 0, 0);
+  --bloom: rgba(255, 255, 255, .11);
+  --ribbon-a: #2a6fb0;
+  --ribbon-shade: rgba(0, 0, 0, .3);
+  --recess-hi: #ffffff;
+  --recess-lo: rgba(12, 14, 18, .28);
+  --recess-none: rgba(0, 0, 0, 0);
+  --slot-field: #e4e8ee;
+  --slot-dash: rgba(12, 14, 18, .26);
+  --slot-glyph: #bfc7d2;
+  --crest-plate: #e7eaf0;
+  --crest-off: #dfe4ec;
+  --crest-glint: rgba(255, 255, 255, .6);
+  --crest-shade: rgba(12, 14, 18, .3);
+  --halo-field-hi: #2b323e;
+  --halo-field-lo: #10141a;
+}
+
+/* ---- level: [data-tier] is the ONLY reader of --tier-N ---- */
+[data-tier="0"]{--tier:transparent;--tier-hi:transparent;--tier-lo:transparent;--tier-wash:transparent}
+[data-tier="1"]{--tier:var(--tier-1);--tier-hi:var(--tier-1-hi);--tier-lo:var(--tier-1-lo);--tier-wash:var(--tier-1-wash)}
+[data-tier="2"]{--tier:var(--tier-2);--tier-hi:var(--tier-2-hi);--tier-lo:var(--tier-2-lo);--tier-wash:var(--tier-2-wash)}
+[data-tier="3"]{--tier:var(--tier-3);--tier-hi:var(--tier-3-hi);--tier-lo:var(--tier-3-lo);--tier-wash:var(--tier-3-wash)}
+[data-tier="4"]{--tier:var(--tier-4);--tier-hi:var(--tier-4-hi);--tier-lo:var(--tier-4-lo);--tier-wash:var(--tier-4-wash)}
+[data-tier="5"]{--tier:var(--tier-5);--tier-hi:var(--tier-5-hi);--tier-lo:var(--tier-5-lo);--tier-wash:var(--tier-5-wash)}
+[data-tier="6"]{--tier:var(--tier-6);--tier-hi:var(--tier-6-hi);--tier-lo:var(--tier-6-lo);--tier-wash:var(--tier-6-wash)}
+[data-metal="gold"]{--metal:var(--medal-gold);--metal-hi:var(--medal-gold-hi);--metal-lo:var(--medal-gold-lo);--metal-wash:var(--medal-gold-wash)}
+[data-metal="silver"]{--metal:var(--medal-silver);--metal-hi:var(--medal-silver-hi);--metal-lo:var(--medal-silver-lo);--metal-wash:var(--medal-silver-wash)}
+[data-metal="bronze"]{--metal:var(--medal-bronze);--metal-hi:var(--medal-bronze-hi);--metal-lo:var(--medal-bronze-lo);--metal-wash:var(--medal-bronze-wash)}
+
+/* ---- minted pieces (instances live in the light DOM; symbols are self-painted) ---- */
+.medal,.halo,.crest{display:block;flex:none;overflow:visible}
+.crest{color:var(--tier)}
+.medal__plate-rim{stroke:var(--medal-key);stroke-width:.5}
+.medal__plate-well{fill:var(--efir-plate-well);stroke:var(--medal-key);stroke-width:.4}
+.medal__count use{stroke:var(--medal-gold-hi)}
+.medal__count[data-dev="gilt"] use{stroke:var(--medal-gilt-hi)}
+.medal__count[data-dev="steel"] use{stroke:var(--medal-steel-hi)}
+.medal__count[data-dev="silver"] use{stroke:var(--medal-silver-hi)}
+.medal__count[data-dev="bronze"] use{stroke:var(--medal-bronze-hi)}
+.halo-box{position:relative;flex:none;display:block}
+.defs{position:absolute}
+
+/* ---- ground ---- */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden}
+body{
+  background:var(--page);color:var(--efir-ink-name);
+  font:400 15px/1.3 Inter,"Inter Variable",system-ui,sans-serif;
+  font-optical-sizing:auto;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  font-feature-settings:"cv01","cv03","cv04","cv05","cv11","ss03";
+}
+ol,ul{list-style:none}
+i,em{font-style:normal}
+/* the app's own figure set (globals.css `.num`): tabular + the disambiguation quartet — no ss01 */
+.num{font-variant-numeric:tabular-nums lining-nums;font-feature-settings:"tnum","lnum","cv01","cv03","cv04","cv05","cv11";white-space:nowrap}
+.code{color:var(--efir-ink-3);font-weight:400;font-size:.68em;margin-left:.5em;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+
+/* ---- app chrome: placeholders in the app's REAL tokens (--page, --surface-sunken) ---- */
+.rail{position:fixed;inset:0 auto 0 0;width:240px;background:var(--chrome-rail);box-shadow:inset -1px 0 0 var(--efir-hairline);padding:16px 12px;display:flex;flex-direction:column;gap:2px}
+.rail__brand{display:flex;gap:12px;align-items:center;padding:0 4px 18px;color:var(--efir-ink-name);font-size:14px}
+.rail__brand small{display:block;color:var(--efir-ink-3);font-size:11.5px}
+.rail__logo{width:32px;height:32px;border-radius:8px;background:var(--chrome-accent);display:grid;place-items:center;font-weight:600;color:var(--chrome-on-accent)}
+.rail__g{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--efir-ink-3);padding:14px 10px 8px}
+.rail__i{display:flex;gap:14px;align-items:center;height:38px;padding:0 12px;border-radius:8px;color:var(--efir-ink-2);font-size:13.5px}
+.rail__i i{width:14px;height:14px;border-radius:4px;box-shadow:inset 0 0 0 1.5px var(--efir-ink-4)}
+.rail__i.is-on{background:var(--chrome-active);color:var(--efir-ink)}
+.rail__i.is-on i{box-shadow:inset 0 0 0 1.5px var(--chrome-accent)}
+.rail__sep{height:1px;background:var(--efir-hairline);margin:10px 0}
+.rail__me{margin-top:auto;display:flex;gap:12px;align-items:center;padding:14px 8px 4px;box-shadow:inset 0 1px 0 var(--efir-hairline);font-size:13px;color:var(--efir-ink-2)}
+.rail__av{width:30px;height:30px;border-radius:50%;background:var(--efir-raised);display:grid;place-items:center;font-size:12px}
+.top{position:fixed;left:240px;right:0;top:0;height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;box-shadow:inset 0 -1px 0 var(--efir-hairline)}
+.chip{display:inline-flex;gap:8px;align-items:center;height:24px;padding:0 10px;border-radius:12px;background:var(--efir-raised);font-size:12px;color:var(--efir-ink-2)}
+.chip i{width:6px;height:6px;border-radius:50%;background:var(--chrome-ok)}
+.chip small{color:var(--efir-ink-3);font-size:11px}
+.top__r{display:flex;gap:22px;align-items:center;color:var(--efir-ink-3);font-size:13px}
+.top__s kbd{font:inherit;font-size:10.5px;padding:1px 5px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--efir-ink-4);margin-left:6px}
+.dot{width:16px;height:16px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--efir-ink-4)}
+
+.page{position:fixed;left:240px;top:60px;right:0;bottom:0;padding:0 16px;
+  background:radial-gradient(1100px 420px at 46% -120px,var(--efir-page-glow),transparent 70%)}
+
+/* ---- page header: title · record wall · period ---- */
+.hdr{height:100px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:28px;align-items:center}
+.hdr h1{font-size:24px;font-weight:600;letter-spacing:-.015em;color:var(--efir-ink);white-space:nowrap}
+.hdr__t p{margin-top:5px;font-size:13px;color:var(--efir-ink-3);white-space:nowrap}
+.wall{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;min-width:0}
+.plaque{container-type:inline-size;display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:center;height:58px;padding:0 18px 0 14px;border-radius:8px;
+  background:linear-gradient(180deg,var(--efir-raised) 0%,var(--efir-panel) 100%);
+  box-shadow:inset 0 1px 0 var(--efir-edge-hi),inset 0 0 0 1px var(--efir-edge-ring),var(--efir-shadow-seat);min-width:0}
+.plaque__t{min-width:0;display:block}
+.plaque__k{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--efir-ink-3);white-space:nowrap}
+.tag{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--efir-ink-2);padding:1px 6px 1px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--efir-ink-4)}
+.plaque__k i{margin-left:auto;padding-left:12px;font-size:12px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--efir-ink-2)}
+.plaque__v{display:flex;align-items:baseline;gap:0;margin-top:2px;white-space:nowrap;min-width:0}
+.plaque__v .nm{font-size:15px;font-weight:500;color:var(--efir-ink-name);overflow:hidden;text-overflow:ellipsis;min-width:0}
+.plaque__v .code{font-size:11.5px;margin-left:6px;flex:none}
+.plaque__v b{flex:none;font-size:17px;font-weight:600;color:var(--efir-ink);margin-left:auto;padding-left:16px;letter-spacing:-.01em}
+/* drop order by container width: the count first, then the id; the name ellipsises last; the amount NEVER */
+@container (max-width: 400px){.plaque__k i{display:none}}
+@container (max-width: 320px){.plaque__v .code{display:none}}
+
+/* segmented control: never a white fill */
+.seg{display:inline-flex;padding:3px;border-radius:8px;background:var(--efir-sunken);box-shadow:var(--efir-seg-well)}
+.seg__i{position:relative;height:28px;padding:0 13px;display:grid;place-items:center;border-radius:6px;font-size:12.5px;font-weight:500;letter-spacing:.04em;color:var(--efir-ink-3);white-space:nowrap}
+.seg__i.is-on{color:var(--efir-ink);background:linear-gradient(180deg,var(--efir-raised-hi),var(--efir-raised));box-shadow:var(--efir-seg-on)}
+.seg__i.is-on::after{content:"";position:absolute;left:12px;right:12px;bottom:0;height:2px;border-radius:1px;background:var(--tier-4)}
+.period{display:flex;gap:8px;align-items:center}
+.pick{margin-left:auto;display:flex;align-items:center;gap:12px}
+.pick__hint{font-size:12px;color:var(--efir-ink-3);white-space:nowrap}
+.pick__hint b{font-weight:600;color:var(--efir-ink-2);letter-spacing:.04em}
+
+/* ---- board frame: 978 + 18 + 652, 870 tall ---- */
+.board{display:grid;grid-template-columns:978px 652px;gap:18px;height:870px}
+.panel{position:relative;height:870px;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;
+  background:linear-gradient(180deg,var(--efir-panel-sheen),transparent 150px),var(--efir-panel);
+  box-shadow:inset 0 1px 0 var(--efir-edge-hi),inset 0 0 0 1px var(--efir-edge-ring),var(--efir-shadow-panel)}
+.phead{flex:none;height:42px;display:flex;align-items:center;gap:12px;padding:0 12px 0 20px}
+.phead h2{font-size:15px;font-weight:600;color:var(--efir-ink-name);letter-spacing:-.005em}
+.phead__n{font-size:13px;color:var(--efir-ink-3);white-space:nowrap}
+.phead__n b{font-weight:500;color:var(--efir-ink-2)}
+
+/* ---- seats: three plinths under one top light. 291 = 8 + 277 + 6 ---- */
+.seats{flex:none;height:291px;padding:8px 12px 6px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.24fr) minmax(0,1fr);gap:12px;align-items:end;
+  background:radial-gradient(460px 280px at 50% -40px,var(--efir-stage-light),transparent 72%)}
+.seat,.stage{position:relative;border-radius:14px;
+  background:
+    linear-gradient(90deg,transparent 4%,var(--metal-hi) 26%,var(--metal) 52%,transparent 94%) top/100% 2px no-repeat,
+    radial-gradient(130% 70% at 50% 0%,var(--metal-wash),transparent 70%),
+    linear-gradient(180deg,var(--efir-raised-hi) 0%,var(--efir-raised) 40%,var(--efir-panel) 100%);
+  box-shadow:inset 0 0 0 1px var(--efir-edge-ring),var(--efir-shadow-seat)}
+.seat{min-width:0;height:255px;padding:12px 16px 10px 26px;display:flex;flex-direction:column}
+.seat--p1{height:277px;
+  background:
+    linear-gradient(90deg,transparent 4%,var(--metal-hi) 26%,var(--metal) 52%,transparent 94%) top/100% 2px no-repeat,
+    radial-gradient(300px 180px at 50% 0%,var(--medal-gold-wash-p1),transparent 72%),
+    linear-gradient(180deg,var(--efir-raised-hi) 0%,var(--efir-raised) 40%,var(--efir-panel) 100%)}
+/* P1 alone: a jeweller's inner keyline, 6px inside the edge — one token, no mask, no literal */
+.seat--p1::after,.stage::after{content:"";position:absolute;inset:6px 6px 6px 14px;border-radius:9px;pointer-events:none;border:1px solid var(--efir-p1-keyline)}
+.seat__band{position:absolute;left:0;top:16px;bottom:16px;width:6px;border-radius:0 3px 3px 0;
+  background:linear-gradient(180deg,var(--tier-hi),var(--tier) 45%,var(--tier-lo))}
+.seat__id{display:flex;gap:14px;align-items:center;height:60px;flex:none}
+.seat--p1 .seat__id{height:72px;gap:20px;padding-left:4px}
+.seat__who{min-width:0;flex:1}
+.seat__name{font-size:18px;line-height:1.16;font-weight:560;color:var(--efir-ink-name);letter-spacing:-.012em}
+.seat__name span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seat__name .code{display:inline;font-size:12.5px}
+.seat--p1 .seat__name{font-size:22px}
+/* drop order: the team LEAVES (wraps out of the 20px window) before anything is ellipsised */
+.seat__meta{display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;row-gap:20px;margin-top:5px;height:20px;overflow:hidden;white-space:nowrap;min-width:0}
+.seat__meta>*{height:20px;display:flex;align-items:center}
+.seat__meta .lvl{font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--efir-ink-2)}
+.seat__meta .team{font-size:13px;color:var(--efir-ink-3);padding-left:8px;box-shadow:inset 1px 0 0 var(--efir-hairline)}
+.seat__money{margin-top:4px;font-size:40px;line-height:44px;font-weight:560;letter-spacing:-.03em;color:var(--efir-ink)}
+.seat--p1 .seat__money{font-size:52px;line-height:52px;font-weight:560;letter-spacing:-.034em}
+.seat__fakt{display:flex;justify-content:space-between;align-items:baseline;gap:10px;height:16px;font-size:12px;color:var(--efir-ink-3);white-space:nowrap}
+.seat__fakt b{font-size:10.5px;font-weight:600;letter-spacing:.09em;color:var(--efir-ink-2)}
+.seat__fakt em{font-size:14px;font-weight:500;color:var(--efir-ink-name);margin-left:4px}
+.seat__prog{margin-top:10px}
+.seat__left{font-size:13px;line-height:17px;color:var(--efir-ink-2);white-space:nowrap}
+.seat__left em{font-weight:600;color:var(--efir-ink-name);font-size:14px}
+.meter{position:relative;height:4px;margin:5px 0;border-radius:2px;background:var(--efir-track)}
+.meter i{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:linear-gradient(180deg,var(--tier-hi),var(--tier))}
+.meter i::after{content:"";position:absolute;right:-1px;top:-3px;width:2px;height:10px;border-radius:1px;background:var(--efir-ink-name)}
+.seat__life{display:flex;justify-content:space-between;font-size:11.5px;line-height:14px;color:var(--efir-ink-3);white-space:nowrap}
+.seat__life em{color:var(--efir-ink-2);font-weight:500}
+.seat__rack{margin-top:auto;display:flex;align-items:center;gap:8px;height:40px}
+.seat--p1 .seat__rack{height:48px}
+.seat__cap{margin-left:auto;text-align:right;white-space:nowrap}
+.seat__cap b{display:block;font-size:13px;line-height:16px;font-weight:500;color:var(--efir-ink-name)}
+.seat__cap i{display:block;font-size:12px;line-height:15px;color:var(--efir-ink-3)}
+
+/* ---- column labels + timing tower. 978 = 8 + [6 38 68 1fr 80 96 148 104 40 60] + 9×8 + 16 ---- */
+.cols,.row{display:grid;grid-template-columns:6px 38px 68px minmax(0,1fr) 80px 96px 148px 104px 40px 60px;column-gap:8px;align-items:center;padding:0 16px 0 8px}
+.cols{flex:none;height:28px;font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--efir-ink-3);white-space:nowrap;
+  background:linear-gradient(90deg,var(--efir-hairline),transparent 85%) bottom/100% 1px no-repeat}
+.cols .r,.tcols .r{text-align:right}
+.cols .on,.tcols .on{color:var(--efir-ink-name);position:relative}
+.cols .on::after,.tcols .on::after{content:"";position:absolute;right:0;bottom:-6px;width:22px;height:2px;border-radius:1px;background:var(--tier-4)}
+.list{flex:none;height:473px;overflow:hidden;scroll-snap-type:y mandatory}
+/* a row is ONE flat box — hairline and level wash are background layers, so 100 rows scroll cheaply */
+.row{height:43px;position:relative;scroll-snap-align:start;
+  background:
+    linear-gradient(var(--efir-hairline),var(--efir-hairline)) bottom/100% 1px no-repeat,
+    linear-gradient(90deg,var(--tier-wash),transparent) left/88px 100% no-repeat}
+.row__band{align-self:stretch;margin:6px 0;border-radius:3px;background:linear-gradient(180deg,var(--tier-hi),var(--tier) 50%,var(--tier-lo))}
+.row[data-tier="0"] .row__band{box-shadow:inset 0 0 0 1px var(--efir-ink-4)}
+.row__rank{text-align:right;font-size:17px;font-weight:500;color:var(--efir-ink-2);padding-right:4px}
+.row__name{min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;height:26px;row-gap:26px;overflow:hidden;white-space:nowrap;padding-left:2px}
+.row__name .nm{font-size:19px;line-height:26px;font-weight:500;color:var(--efir-ink-name);letter-spacing:-.012em;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:100%}
+.row__name .code{font-size:12.5px;flex:none}
+.row__team{font-size:13px;color:var(--efir-ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rack{display:flex;flex-direction:row-reverse;align-items:center;gap:6px;height:28px}
+.row__hero{text-align:right;font-size:23px;font-weight:620;letter-spacing:-.022em;color:var(--efir-ink)}
+.row__sec{text-align:right;font-size:15px;font-weight:400;color:var(--efir-ink-2)}
+.row__none{color:var(--efir-ink-4)}
+
+/* ---- legend ---- */
+.legend{flex:none;height:36px;margin-top:auto;display:flex;justify-content:space-between;align-items:center;padding:0 20px;background:var(--efir-sunken);
+  box-shadow:inset 0 1px 0 var(--efir-hairline)}
+.legend li{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.legend b{font-size:12px;font-weight:600;color:var(--efir-ink-2)}
+.legend i{font-size:12px;color:var(--efir-ink-3);font-variant-numeric:tabular-nums;margin-left:-2px}
+
+/* ---- teams: same chassis, one line. 652 = 12 + [36 1fr 136 56 92 36 56] + 6×10 + 16 ---- */
+.tcols,.trow{display:grid;grid-template-columns:36px minmax(0,1fr) 136px 56px 92px 36px 56px;column-gap:10px;align-items:center;padding:0 16px 0 12px}
+.tcols{flex:none;height:28px;font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--efir-ink-3);white-space:nowrap;
+  background:linear-gradient(90deg,var(--efir-hairline),transparent 85%) bottom/100% 1px no-repeat}
+.tlist{flex:none;--trow-h:50px}
+.trow{position:relative;height:var(--trow-h);padding-bottom:9px;background:linear-gradient(var(--efir-hairline),var(--efir-hairline)) bottom/100% 1px no-repeat}
+.trow__rank{display:grid;place-items:center;font-size:17px;font-weight:500;color:var(--efir-ink-2)}
+.trow__name{min-width:0;display:flex;align-items:baseline;gap:8px;white-space:nowrap}
+.trow__name .nm{font-size:20px;font-weight:500;color:var(--efir-ink-name);letter-spacing:-.012em;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.trow__name .cnt{font-size:12.5px;color:var(--efir-ink-3)}
+.trow__hero{text-align:right;font-size:22px;font-weight:620;letter-spacing:-.022em;color:var(--efir-ink)}
+.trow__sec{text-align:right;font-size:14.5px;color:var(--efir-ink-2)}
+.trow__none{color:var(--efir-ink-4)}
+/* the share bar is a real mark ON A TRACK: 4px, under name + money, scaled to the leader */
+.trow__bar{position:absolute;left:58px;right:296px;bottom:8px;height:4px;border-radius:2px;background:var(--efir-track)}
+.trow__bar i{position:absolute;inset:0 auto 0 0;border-radius:2px;background:linear-gradient(90deg,var(--tier-3),var(--tier-4))}
+.trow[data-metal] .trow__bar i{background:linear-gradient(90deg,var(--metal-lo),var(--metal) 70%,var(--metal-hi))}
+.jami{flex:none;margin-top:auto;height:100px;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:0 20px;background:var(--efir-sunken);box-shadow:inset 0 1px 0 var(--efir-hairline)}
+.jami__k{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--efir-ink-3);white-space:nowrap}
+.jami__v{margin-top:3px;font-size:30px;line-height:34px;font-weight:560;letter-spacing:-.028em;color:var(--efir-ink)}
+.jami__o{margin-top:3px;font-size:12.5px;color:var(--efir-ink-3);white-space:nowrap}
+.jami__o b{font-size:10.5px;font-weight:600;letter-spacing:.09em;margin-right:6px;color:var(--efir-ink-3)}
+.jami__o span{font-size:14px;color:var(--efir-ink-name);font-weight:500}
+.jami__r{display:grid;grid-template-columns:auto auto;column-gap:16px;row-gap:3px;font-size:12.5px;color:var(--efir-ink-3);white-space:nowrap;align-items:baseline}
+.jami__r dt{text-align:right}
+.jami__r dd{text-align:right;font-size:14px;font-weight:500;color:var(--efir-ink-name)}
+.jami__r .sum dt,.jami__r dt.sum{color:var(--efir-ink-2)}
+.jami__r dd.jami__note{grid-column:1/-1;text-align:right;font-size:11.5px;font-weight:400;color:var(--efir-ink-3);margin-top:3px}
+
+/* ---- page foot: the definitions the numbers rest on, and the credit ---- */
+.foot{position:absolute;left:16px;right:16px;top:970px;height:50px;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:0 6px 8px;font-size:11.5px;color:var(--efir-ink-3);white-space:nowrap}
+.foot b{font-weight:600;color:var(--efir-ink-2)}
+.foot span+span{margin-left:18px}
+.credit{font-size:11px;letter-spacing:.06em;color:var(--efir-ink-4)}
+
+/* ---- «Bugun» sparse state ---- */
+.seats--stage{display:block;height:167px;padding:8px 12px 7px;background:radial-gradient(620px 240px at 50% -40px,var(--efir-stage-light),transparent 72%)}
+.stage{height:152px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:34px;align-items:center;padding:0 32px 0 44px;
+  background:
+    linear-gradient(90deg,transparent 4%,var(--metal-hi) 26%,var(--metal) 52%,transparent 94%) top/100% 2px no-repeat,
+    radial-gradient(520px 200px at 12% 0%,var(--medal-gold-wash-p1),transparent 72%),
+    linear-gradient(180deg,var(--efir-raised-hi) 0%,var(--efir-raised) 40%,var(--efir-panel) 100%)}
+.stage__who{min-width:0}
+.stage__name{font-size:26px;line-height:30px;font-weight:560;letter-spacing:-.018em;color:var(--efir-ink-name);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stage__prog{margin-top:8px;max-width:400px}
+.stage__money{text-align:right}
+.stage__money .seat__money{margin-top:0;font-size:56px;line-height:56px;font-weight:560;letter-spacing:-.034em}
+.stage__fakt{margin-top:2px;font-size:12.5px;line-height:16px;color:var(--efir-ink-3);white-space:nowrap}
+.stage__fakt span{display:block}
+.stage__fakt b{font-size:10.5px;font-weight:600;letter-spacing:.09em;color:var(--efir-ink-2);margin-right:4px}
+.stage__rack{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:6px}
+.stage__rack .seat__cap{margin-left:0;text-align:left}
+.group{flex:none;height:32px;display:flex;align-items:center;gap:12px;padding:0 20px;white-space:nowrap}
+.group h4{font-size:12.5px;font-weight:600;color:var(--efir-ink-2)}
+.group span{font-size:12px;color:var(--efir-ink-3)}
+.group em{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--efir-ink-3);padding:1px 6px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--efir-ink-4)}
+.group::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--efir-hairline),transparent)}
+.list--queue{height:auto}
+/* a queued seller keeps name, level and medals at full voice — only the value cell changes */
+.row--queue{grid-template-columns:6px 38px 68px minmax(0,1fr) 80px 96px 376px}
+.row__wait{text-align:right;font-size:14px;color:var(--efir-ink-2)}
+.row__wait b{font-weight:600;color:var(--efir-ink-name);font-size:15px}
+.cols--ctx{height:24px}
+.cols--ctx .on{color:var(--efir-ink-2)}
+.cols--ctx .on::after{display:none}
+.list--ctx{height:451px}
+.row--ctx{height:41px}
+.row--ctx .nm{font-size:17px;color:var(--efir-ink-ctx)}
+.row--ctx .row__hero{font-size:18px;font-weight:500;color:var(--efir-ink-name);letter-spacing:-.015em}
+.row--ctx .row__sec{font-size:14px;color:var(--efir-ink-3)}
+.quiet{flex:none;height:40px;display:flex;align-items:center;padding:0 20px 0 58px;font-size:13px;color:var(--efir-ink-3);white-space:nowrap;background:linear-gradient(var(--efir-hairline),var(--efir-hairline)) bottom/100% 1px no-repeat}
+.quiet b{font-weight:500;color:var(--efir-ink-2)}
+.tcols--ctx{height:24px}
+.tcols--ctx .on{color:var(--efir-ink-2)}
+.tcols--ctx .on::after{display:none}
+.tlist--ctx{--trow-h:41px}
+.tlist--ctx .trow{padding-bottom:7px}
+.tlist--ctx .nm{font-size:17px;color:var(--efir-ink-ctx)}
+.tlist--ctx .trow__hero{font-size:18px;font-weight:500;color:var(--efir-ink-name);letter-spacing:-.015em}
+.tlist--ctx .trow__sec{font-size:13.5px;color:var(--efir-ink-3)}
+.tlist--ctx .trow__bar{bottom:6px;height:3px}
+.jami--ctx{height:78px}
+.jami--ctx .jami__v{font-size:24px;line-height:28px}
+
+/* ---- verification fixtures (check page only) ---- */
+.fixture-note{position:absolute;left:16px;top:6px;font-size:11px;color:var(--efir-ink-3)}
+
+</style></head>
+<body>
+<svg class="defs" width="0" height="0" aria-hidden="true" focusable="false"><defs><linearGradient id="mg-gold-rim" x1=".18" y1="0" x2=".82" y2="1"><stop offset="0" style="stop-color:var(--medal-gold-hi)"/><stop offset="0.3" style="stop-color:var(--medal-gold)"/><stop offset="0.58" style="stop-color:var(--medal-gold-lo)"/><stop offset="0.82" style="stop-color:var(--medal-gold)"/><stop offset="1" style="stop-color:var(--medal-gold-hi)"/></linearGradient><linearGradient id="mg-gold-bevel" x1=".18" y1="0" x2=".82" y2="1"><stop offset="0" style="stop-color:var(--medal-gold-sh)"/><stop offset="0.5" style="stop-color:var(--medal-gold-lo)"/><stop offset="1" style="stop-color:var(--medal-gold-hi)"/></linearGradient><linearGradient id="mg-gold-field" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--medal-gold-patina)"/><stop offset="1" style="stop-color:var(--medal-gold-well)"/></linearGradient><linearGradient id="mg-gold-dev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--medal-gold-hi)"/><stop offset="1" style="stop-color:var(--medal-gold)"/></linearGradient><linearGradient id="mg-silver-rim" x1=".18" y1="0" x2=".82" y2="1"><stop offset="0" style="stop-color:var(--medal-silver-hi)"/><stop offset="0.3" style="stop-color:var(--medal-silver)"/><stop offset="0.58" style="stop-color:var(--medal-silver-lo)"/><stop offset="0.82" style="stop-color:var(--medal-silver)"/><stop offset="1" style="stop-color:var(--medal-silver-hi)"/></linearGradient><linearGradient id="mg-silver-bevel" x1=".18" y1="0" x2=".82" y2="1"><stop offset="0" style="stop-color:var(--medal-silver-sh)"/><stop offset="0.5" style="stop-color:var(--medal-silver-lo)"/><stop offset="1" style="stop-color:var(--medal-silver-hi)"/></linearGradient><linearGradient id="mg-silver-field" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--medal-silver-patina)"/><stop offset="1" style="stop-color:var(--medal-silver-well)"/></linearGradient><linearGradient id="mg-silver-dev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--medal-silver-hi)"/><stop offset="1" style="stop-color:var(--medal-silver)"/></linearGradient><linearGradient id="mg-bronze-rim" x1=".18" y1="0" x2=".82" y2="1"><stop offset="0" style="stop-color:var(--medal-bronze-hi)"/><stop offset="0.3" style="stop-color:var(--medal-bronze)"/><stop offset="0.58" style="stop-color:var(--medal-bronze-lo)"/><stop offset="0.82" style="stop-color:var(--medal-bronze)"/><stop offset="1" style="stop-color:var(--medal-bronze-hi)"/></linearGradient><linearGradient id="mg-bronze-bevel" x1=".18" y1="0" x2=".82" y2="1"><stop offset="0" style="stop-color:var(--medal-bronze-sh)"/><stop offset="0.5" style="stop-color:var(--medal-bronze-lo)"/><stop offset="1" style="stop-color:var(--medal-bronze-hi)"/></linearGradient><linearGradient id="mg-bronze-field" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--medal-bronze-patina)"/><stop offset="1" style="stop-color:var(--medal-bronze-well)"/></linearGradient><linearGradient id="mg-bronze-dev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--medal-bronze-hi)"/><stop offset="1" style="stop-color:var(--medal-bronze)"/></linearGradient><linearGradient id="mg-steel-rim" x1=".18" y1="0" x2=".82" y2="1"><stop offset="0" style="stop-color:var(--medal-steel-hi)"/><stop offset="0.3" style="stop-color:var(--medal-steel)"/><stop offset="0.58" style="stop-color:var(--medal-steel-lo)"/><stop offset="0.82" style="stop-color:var(--medal-steel)"/><stop offset="1" style="stop-color:var(--medal-steel-hi)"/></linearGradient><linearGradient id="mg-steel-bevel" x1=".18" y1="0" x2=".82" y2="1"><stop offset="0" style="stop-color:var(--medal-steel-sh)"/><stop offset="0.5" style="stop-color:var(--medal-steel-lo)"/><stop offset="1" style="stop-color:var(--medal-steel-hi)"/></linearGradient><linearGradient id="mg-steel-field" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--medal-steel-patina)"/><stop offset="1" style="stop-color:var(--medal-steel-well)"/></linearGradient><linearGradient id="mg-steel-dev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--medal-steel-hi)"/><stop offset="1" style="stop-color:var(--medal-steel)"/></linearGradient><linearGradient id="mg-gilt-dev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--medal-gilt-hi)"/><stop offset="1" style="stop-color:var(--medal-gilt)"/></linearGradient><linearGradient id="mg-sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--sheen-hi)"/><stop offset="0.42" style="stop-color:var(--sheen-none-hi)"/><stop offset="0.58" style="stop-color:var(--sheen-none-lo)"/><stop offset="1" style="stop-color:var(--sheen-lo)"/></linearGradient><radialGradient id="mg-bloom" cx="0.42" cy="0.2" r="0.75"><stop offset="0" style="stop-color:var(--bloom)"/><stop offset="1" style="stop-color:var(--sheen-none-hi)"/></radialGradient><linearGradient id="mg-recess" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--recess-lo)"/><stop offset="0.55" style="stop-color:var(--recess-none)"/><stop offset="1" style="stop-color:var(--recess-hi)"/></linearGradient><radialGradient id="hg-field" cx="0.42" cy="0.24" r="0.8"><stop offset="0" style="stop-color:var(--halo-field-hi)"/><stop offset="1" style="stop-color:var(--halo-field-lo)"/></radialGradient><circle id="pl-coin" cx="16" cy="21" r="10.5"/><circle id="pl-coin-f" cx="16" cy="21" r="7.9"/><path id="pl-shield" d="M16 1.4 28.4 5.2V15.2C28.4 22.7 23.4 28.1 16 30.7 8.6 28.1 3.6 22.7 3.6 15.2V5.2Z"/><path id="pl-hex" d="M16 0.8L29.16 8.4L29.16 23.6L16 31.2L2.84 23.6L2.84 8.4Z"/><path id="pl-burst" d="M16 0.5L19.18 4.12L23.75 2.58L24.7 7.3L29.42 8.25L27.88 12.82L31.5 16L27.88 19.18L29.42 23.75L24.7 24.7L23.75 29.42L19.18 27.88L16 31.5L12.82 27.88L8.25 29.42L7.3 24.7L2.58 23.75L4.12 19.18L0.5 16L4.12 12.82L2.58 8.25L7.3 7.3L8.25 2.58L12.82 4.12Z"/><path id="pl-burst2" d="M19.68 2.28L22.15 5.35L26.04 5.96L26.65 9.85L29.72 12.32L28.3 16L29.72 19.68L26.65 22.15L26.04 26.04L22.15 26.65L19.68 29.72L16 28.3L12.32 29.72L9.85 26.65L5.96 26.04L5.35 22.15L2.28 19.68L3.7 16L2.28 12.32L5.35 9.85L5.96 5.96L9.85 5.35L12.32 2.28L16 3.7Z"/><path id="pl-year" d="M16 0.2L18.07 5.6L21.13 3.62L21.89 7.19L27.17 4.83L24.81 10.11L28.38 10.87L26.4 13.93L31.8 16L26.4 18.07L28.38 21.13L24.81 21.89L27.17 27.17L21.89 24.81L21.13 28.38L18.07 26.4L16 31.8L13.93 26.4L10.87 28.38L10.11 24.81L4.83 27.17L7.19 21.89L3.62 21.13L5.6 18.07L0.2 16L5.6 13.93L3.62 10.87L7.19 10.11L4.83 4.83L10.11 7.19L10.87 3.62L13.93 5.6Z"/><rect id="pl-tab" x="3" y="3" width="26" height="26" rx="6.2"/><rect id="pl-tab-f" x="6" y="6" width="20" height="20" rx="3.7"/><path id="dv-crown" fill-rule="evenodd" d="M2.6 17.6 3.8 6.2 8.8 10.8 12 3 15.2 10.8 20.2 6.2 21.4 17.6ZM3.6 19.2H20.4V22H3.6Z"/><path id="dv-bolt" fill-rule="evenodd" d="M14.2 1 3 14.2H10L8.8 23 21 9.6H13.4Z"/><path id="dv-fire" fill-rule="evenodd" d="M12 1c1.2 4.5 7.2 6.6 7.2 13.1a7.2 7.2 0 0 1-14.4 0c0-2.7 1.1-4.5 2.4-6 .4 1.9 1.4 3 2.7 3.4C9.3 8 12.2 6 12 1zm0 11.4c-1.9 2-3.1 3.2-3.1 4.9a3.1 3.1 0 0 0 6.2 0c0-1.7-1.2-2.9-3.1-4.9z"/><path id="dv-steady" fill-rule="evenodd" d="M2 14.5h5.6V22H2zM9.2 9h5.6v13H9.2zM16.4 3H22v19h-5.6z"/><path id="dv-sun" fill-rule="evenodd" d="M4.2 17.4a7.8 7.8 0 0 1 15.6 0zM12 2.2L14.5 7.6L9.5 7.6ZM0.85 7.16L6.54 8.92L3.2 12.64ZM23.15 7.16L20.8 12.64L17.46 8.92ZM1.5 19.2h21v3h-21z"/><path id="dv-target" fill-rule="evenodd" d="M12 1.2a10.8 10.8 0 1 0 0 21.6a10.8 10.8 0 1 0 0-21.6zM12 5.4a6.6 6.6 0 1 1 0 13.2a6.6 6.6 0 1 1 0-13.2zM12 8.6a3.4 3.4 0 1 0 0 6.8a3.4 3.4 0 1 0 0-6.8z"/><path id="dv-check" fill-rule="evenodd" d="M1.8 12.6 6 8.4 9.8 12.2 18 4 22.2 8.2 9.8 20.6Z"/><path id="dv-jump" fill-rule="evenodd" d="M12 1 21.5 11.6H15.8V23H8.2V11.6H2.5Z"/><path id="dv-star" fill-rule="evenodd" d="M12 1l3.3 7.3 7.9.8-5.9 5.4 1.7 7.8L12 18.2l-7 4.1 1.7-7.8L.8 9.1l7.9-.8z"/><path id="dv-sprout" fill-rule="evenodd" d="M10.4 22.6h3.2V12h-3.2zM12 14.4C12 8 7.4 4.4 1 4.4c0 6.4 4.6 10 11 10zM12 12.2c0-5.8 4.2-9.4 10.8-9.4 0 6-4.2 9.4-10.8 9.4z"/><path id="dv-cal" fill-rule="evenodd" d="M2 5.2h20V22.5H2zM4.6 10.4h14.8v2.2H4.6zM4.6 15h3.8v4.6H4.6zM10.1 15h3.8v4.6h-3.8zM15.6 15h3.8v4.6h-3.8zM6 1.2h3.4v6.2H6zM14.6 1.2H18v6.2h-3.4z"/><path id="n0" fill="none" stroke-width="2.35" stroke-linejoin="round" stroke-linecap="butt" d="M0 -5.5C4.5 -5.5 4.5 5.5 0 5.5C-4.5 5.5 -4.5 -5.5 0 -5.5Z"/><path id="n1" fill="none" stroke-width="2.35" stroke-linejoin="round" stroke-linecap="butt" d="M-3.1 -2.8 0.3 -5.5V5.5M-3.3 5.5H3.7"/><path id="n2" fill="none" stroke-width="2.35" stroke-linejoin="round" stroke-linecap="butt" d="M-3.5 -2.4C-3.5 -6.6 3.5 -6.6 3.5 -2.3C3.5 0.9 -3.5 2 -3.5 5.5H3.8"/><path id="n3" fill="none" stroke-width="2.35" stroke-linejoin="round" stroke-linecap="butt" d="M-3.4 -5.5H3.2L-0.7 -1.2C4.8 -1.7 4.9 5.6 -0.2 5.6C-2 5.6 -3.3 4.7 -3.8 3.3"/><path id="n4" fill="none" stroke-width="2.35" stroke-linejoin="round" stroke-linecap="butt" d="M1.7 5.5V-5.5L-3.9 2.3H4.1"/><path id="n5" fill="none" stroke-width="2.35" stroke-linejoin="round" stroke-linecap="butt" d="M3.2 -5.5H-2.7L-3.3 -0.7C-0.9 -2.3 3.8 -1.4 3.8 2C3.8 6.4 -2.4 6.6 -3.8 3.4"/><path id="n6" fill="none" stroke-width="2.35" stroke-linejoin="round" stroke-linecap="butt" d="M2.4 -5.6C-1.6 -4.4 -3.6 -1 -3.6 2.1A3.6 3.45 0 1 0 3.6 2.1A3.6 3.45 0 0 0 -3.6 2.1"/><path id="n7" fill="none" stroke-width="2.35" stroke-linejoin="round" stroke-linecap="butt" d="M-3.6 -5.5H3.6L-0.9 5.5"/><path id="n8" fill="none" stroke-width="2.35" stroke-linejoin="round" stroke-linecap="butt" d="M0 -0.5A2.9 2.5 0 1 1 0 -5.5A2.9 2.5 0 1 1 0 -0.5A3.5 3 0 1 1 0 5.5A3.5 3 0 1 1 0 -0.5Z"/><path id="nx" fill="none" stroke-width="2.35" stroke-linejoin="round" stroke-linecap="butt" d="M-2.7 -2.7 2.7 2.7M2.7 -2.7-2.7 2.7"/><path id="n9" fill="none" stroke-width="2.35" stroke-linejoin="round" transform="rotate(180)" d="M2.4 -5.6C-1.6 -4.4 -3.6 -1 -3.6 2.1A3.6 3.45 0 1 0 3.6 2.1A3.6 3.45 0 0 0 -3.6 2.1"/><path id="ch" d="M0 0H7L12 10L7 20H0L5 10Z"/><symbol id="m-month-gold" viewBox="0 0 32 32"><use href="#pl-coin" style="fill:var(--medal-cast)" y="1"/><path d="M25.8 1.4H19.2L13.2 11.4H19.8Z" style="fill:var(--ribbon-a)"/><path d="M23.5 1.4H21.5L15.5 11.4H17.5Z" style="fill:var(--medal-gold)"/><path d="M25.8 1.4H19.2L13.2 11.4H19.8Z" style="fill:var(--ribbon-shade)"/><path d="M6.2 1.4H12.8L18.8 11.4H12.2Z" style="fill:var(--ribbon-a)"/><path d="M8.5 1.4H10.5L16.5 11.4H14.5Z" style="fill:var(--medal-gold)"/><path d="M6.2 1.4H12.8L18.8 11.4H12.2ZM25.8 1.4H19.2L13.2 11.4H19.8Z" style="fill:url(#mg-sheen)"/><rect x="5.2" y="0.3" width="21.6" height="2.1" rx=".7" style="fill:url(#mg-gold-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><circle cx="16" cy="10.6" r="1.7" style="fill:none;stroke:var(--medal-gold);stroke-width:1"/><use href="#pl-coin" style="fill:url(#mg-gold-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><circle cx="16" cy="21" r="9.75" style="fill:none;stroke:var(--medal-gold-sh);stroke-width:1.1;stroke-dasharray:.55 .75;opacity:.6"/><use href="#pl-coin-f" style="fill:url(#mg-gold-field);stroke:url(#mg-gold-bevel);stroke-width:.85;stroke-linejoin:round"/><use href="#pl-coin-f" style="fill:url(#mg-bloom)"/><g transform="translate(16 21.05) scale(0.93)"><use href="#n1" style="stroke:var(--medal-gold-sh)" x="0.23" y="0.65"/><use href="#n1" style="stroke:var(--medal-edge)" x="-0.16" y="-0.45"/><use href="#n1" style="stroke:url(#mg-gold-dev)"/></g><path d="M8.46 15.91A9.1 9.1 0 0 1 20.55 13.12" style="fill:none;stroke:var(--medal-glint);stroke-width:.8;stroke-linecap:round;stroke-linejoin:round"/></symbol><symbol id="m-month-silver" viewBox="0 0 32 32"><use href="#pl-coin" style="fill:var(--medal-cast)" y="1"/><path d="M25.8 1.4H19.2L13.2 11.4H19.8Z" style="fill:var(--ribbon-a)"/><path d="M23.5 1.4H21.5L15.5 11.4H17.5Z" style="fill:var(--medal-silver)"/><path d="M25.8 1.4H19.2L13.2 11.4H19.8Z" style="fill:var(--ribbon-shade)"/><path d="M6.2 1.4H12.8L18.8 11.4H12.2Z" style="fill:var(--ribbon-a)"/><path d="M8.5 1.4H10.5L16.5 11.4H14.5Z" style="fill:var(--medal-silver)"/><path d="M6.2 1.4H12.8L18.8 11.4H12.2ZM25.8 1.4H19.2L13.2 11.4H19.8Z" style="fill:url(#mg-sheen)"/><rect x="5.2" y="0.3" width="21.6" height="2.1" rx=".7" style="fill:url(#mg-silver-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><circle cx="16" cy="10.6" r="1.7" style="fill:none;stroke:var(--medal-silver);stroke-width:1"/><use href="#pl-coin" style="fill:url(#mg-silver-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><circle cx="16" cy="21" r="9.75" style="fill:none;stroke:var(--medal-silver-sh);stroke-width:1.1;stroke-dasharray:.55 .75;opacity:.6"/><use href="#pl-coin-f" style="fill:url(#mg-silver-field);stroke:url(#mg-silver-bevel);stroke-width:.85;stroke-linejoin:round"/><use href="#pl-coin-f" style="fill:url(#mg-bloom)"/><g transform="translate(16 21.05) scale(0.93)"><use href="#n2" style="stroke:var(--medal-silver-sh)" x="0.23" y="0.65"/><use href="#n2" style="stroke:var(--medal-edge)" x="-0.16" y="-0.45"/><use href="#n2" style="stroke:url(#mg-silver-dev)"/></g><path d="M8.46 15.91A9.1 9.1 0 0 1 20.55 13.12" style="fill:none;stroke:var(--medal-glint);stroke-width:.8;stroke-linecap:round;stroke-linejoin:round"/></symbol><symbol id="m-month-bronze" viewBox="0 0 32 32"><use href="#pl-coin" style="fill:var(--medal-cast)" y="1"/><path d="M25.8 1.4H19.2L13.2 11.4H19.8Z" style="fill:var(--ribbon-a)"/><path d="M23.5 1.4H21.5L15.5 11.4H17.5Z" style="fill:var(--medal-bronze)"/><path d="M25.8 1.4H19.2L13.2 11.4H19.8Z" style="fill:var(--ribbon-shade)"/><path d="M6.2 1.4H12.8L18.8 11.4H12.2Z" style="fill:var(--ribbon-a)"/><path d="M8.5 1.4H10.5L16.5 11.4H14.5Z" style="fill:var(--medal-bronze)"/><path d="M6.2 1.4H12.8L18.8 11.4H12.2ZM25.8 1.4H19.2L13.2 11.4H19.8Z" style="fill:url(#mg-sheen)"/><rect x="5.2" y="0.3" width="21.6" height="2.1" rx=".7" style="fill:url(#mg-bronze-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><circle cx="16" cy="10.6" r="1.7" style="fill:none;stroke:var(--medal-bronze);stroke-width:1"/><use href="#pl-coin" style="fill:url(#mg-bronze-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><circle cx="16" cy="21" r="9.75" style="fill:none;stroke:var(--medal-bronze-sh);stroke-width:1.1;stroke-dasharray:.55 .75;opacity:.6"/><use href="#pl-coin-f" style="fill:url(#mg-bronze-field);stroke:url(#mg-bronze-bevel);stroke-width:.85;stroke-linejoin:round"/><use href="#pl-coin-f" style="fill:url(#mg-bloom)"/><g transform="translate(16 21.05) scale(0.93)"><use href="#n3" style="stroke:var(--medal-bronze-sh)" x="0.23" y="0.65"/><use href="#n3" style="stroke:var(--medal-edge)" x="-0.16" y="-0.45"/><use href="#n3" style="stroke:url(#mg-bronze-dev)"/></g><path d="M8.46 15.91A9.1 9.1 0 0 1 20.55 13.12" style="fill:none;stroke:var(--medal-glint);stroke-width:.8;stroke-linecap:round;stroke-linejoin:round"/></symbol><symbol id="m-laurel-gold" viewBox="0 0 32 32"><path d="M12.63 31.37C11.41 33.06 9.23 33.06 7.88 32.04C8.9 30.68 11 30.09 12.63 31.37ZM9.51 29.75C7.82 30.96 5.75 30.27 4.79 28.87C6.19 27.91 8.37 28.01 9.51 29.75ZM7.06 27.23C5.07 27.84 3.33 26.52 2.87 24.89C4.5 24.43 6.53 25.22 7.06 27.23ZM5.54 24.06C3.46 24 2.23 22.2 2.31 20.51C4.01 20.59 5.68 21.99 5.54 24.06ZM5.11 20.57C3.16 19.85 2.56 17.76 3.18 16.18C4.76 16.79 5.9 18.65 5.11 20.57ZM5.81 17.12C4.19 15.82 4.29 13.64 5.38 12.34C6.68 13.43 7.17 15.55 5.81 17.12ZM7.58 14.08C6.46 12.33 7.25 10.3 8.69 9.41C9.58 10.86 9.37 13.03 7.58 14.08ZM10.22 11.76C9.71 9.74 11.11 8.07 12.76 7.69C13.15 9.34 12.26 11.33 10.22 11.76ZM10.22 11.76C10.65 9.72 12.64 8.83 14.29 9.22C13.91 10.87 12.24 12.27 10.22 11.76ZM19.37 31.37C21 30.09 23.1 30.68 24.12 32.04C22.77 33.06 20.59 33.06 19.37 31.37ZM22.49 29.75C23.63 28.01 25.81 27.91 27.21 28.87C26.25 30.27 24.18 30.96 22.49 29.75ZM24.94 27.23C25.47 25.22 27.5 24.43 29.13 24.89C28.67 26.52 26.93 27.84 24.94 27.23ZM26.46 24.06C26.32 21.99 27.99 20.59 29.69 20.51C29.77 22.2 28.54 24 26.46 24.06ZM26.89 20.57C26.1 18.65 27.24 16.79 28.82 16.18C29.44 17.76 28.84 19.85 26.89 20.57ZM26.19 17.12C24.83 15.55 25.32 13.43 26.62 12.34C27.71 13.64 27.81 15.82 26.19 17.12ZM24.42 14.08C22.63 13.03 22.42 10.86 23.31 9.41C24.75 10.3 25.54 12.33 24.42 14.08ZM21.78 11.76C19.74 11.33 18.85 9.34 19.24 7.69C20.89 8.07 22.29 9.74 21.78 11.76ZM21.78 11.76C19.76 12.27 18.09 10.87 17.71 9.22C19.36 8.83 21.35 9.72 21.78 11.76Z" style="fill:var(--medal-gold);stroke:var(--medal-gold-sh);stroke-width:.4;stroke-linejoin:round"/></symbol><symbol id="m-laurel-silver" viewBox="0 0 32 32"><path d="M12.63 31.37C11.41 33.06 9.23 33.06 7.88 32.04C8.9 30.68 11 30.09 12.63 31.37ZM9.51 29.75C7.82 30.96 5.75 30.27 4.79 28.87C6.19 27.91 8.37 28.01 9.51 29.75ZM7.06 27.23C5.07 27.84 3.33 26.52 2.87 24.89C4.5 24.43 6.53 25.22 7.06 27.23ZM5.54 24.06C3.46 24 2.23 22.2 2.31 20.51C4.01 20.59 5.68 21.99 5.54 24.06ZM5.11 20.57C3.16 19.85 2.56 17.76 3.18 16.18C4.76 16.79 5.9 18.65 5.11 20.57ZM5.81 17.12C4.19 15.82 4.29 13.64 5.38 12.34C6.68 13.43 7.17 15.55 5.81 17.12ZM7.58 14.08C6.46 12.33 7.25 10.3 8.69 9.41C9.58 10.86 9.37 13.03 7.58 14.08ZM10.22 11.76C9.71 9.74 11.11 8.07 12.76 7.69C13.15 9.34 12.26 11.33 10.22 11.76ZM10.22 11.76C10.65 9.72 12.64 8.83 14.29 9.22C13.91 10.87 12.24 12.27 10.22 11.76ZM19.37 31.37C21 30.09 23.1 30.68 24.12 32.04C22.77 33.06 20.59 33.06 19.37 31.37ZM22.49 29.75C23.63 28.01 25.81 27.91 27.21 28.87C26.25 30.27 24.18 30.96 22.49 29.75ZM24.94 27.23C25.47 25.22 27.5 24.43 29.13 24.89C28.67 26.52 26.93 27.84 24.94 27.23ZM26.46 24.06C26.32 21.99 27.99 20.59 29.69 20.51C29.77 22.2 28.54 24 26.46 24.06ZM26.89 20.57C26.1 18.65 27.24 16.79 28.82 16.18C29.44 17.76 28.84 19.85 26.89 20.57ZM26.19 17.12C24.83 15.55 25.32 13.43 26.62 12.34C27.71 13.64 27.81 15.82 26.19 17.12ZM24.42 14.08C22.63 13.03 22.42 10.86 23.31 9.41C24.75 10.3 25.54 12.33 24.42 14.08ZM21.78 11.76C19.74 11.33 18.85 9.34 19.24 7.69C20.89 8.07 22.29 9.74 21.78 11.76ZM21.78 11.76C19.76 12.27 18.09 10.87 17.71 9.22C19.36 8.83 21.35 9.72 21.78 11.76Z" style="fill:var(--medal-silver);stroke:var(--medal-silver-sh);stroke-width:.4;stroke-linejoin:round"/></symbol><symbol id="m-laurel-bronze" viewBox="0 0 32 32"><path d="M12.63 31.37C11.41 33.06 9.23 33.06 7.88 32.04C8.9 30.68 11 30.09 12.63 31.37ZM9.51 29.75C7.82 30.96 5.75 30.27 4.79 28.87C6.19 27.91 8.37 28.01 9.51 29.75ZM7.06 27.23C5.07 27.84 3.33 26.52 2.87 24.89C4.5 24.43 6.53 25.22 7.06 27.23ZM5.54 24.06C3.46 24 2.23 22.2 2.31 20.51C4.01 20.59 5.68 21.99 5.54 24.06ZM5.11 20.57C3.16 19.85 2.56 17.76 3.18 16.18C4.76 16.79 5.9 18.65 5.11 20.57ZM5.81 17.12C4.19 15.82 4.29 13.64 5.38 12.34C6.68 13.43 7.17 15.55 5.81 17.12ZM7.58 14.08C6.46 12.33 7.25 10.3 8.69 9.41C9.58 10.86 9.37 13.03 7.58 14.08ZM10.22 11.76C9.71 9.74 11.11 8.07 12.76 7.69C13.15 9.34 12.26 11.33 10.22 11.76ZM10.22 11.76C10.65 9.72 12.64 8.83 14.29 9.22C13.91 10.87 12.24 12.27 10.22 11.76ZM19.37 31.37C21 30.09 23.1 30.68 24.12 32.04C22.77 33.06 20.59 33.06 19.37 31.37ZM22.49 29.75C23.63 28.01 25.81 27.91 27.21 28.87C26.25 30.27 24.18 30.96 22.49 29.75ZM24.94 27.23C25.47 25.22 27.5 24.43 29.13 24.89C28.67 26.52 26.93 27.84 24.94 27.23ZM26.46 24.06C26.32 21.99 27.99 20.59 29.69 20.51C29.77 22.2 28.54 24 26.46 24.06ZM26.89 20.57C26.1 18.65 27.24 16.79 28.82 16.18C29.44 17.76 28.84 19.85 26.89 20.57ZM26.19 17.12C24.83 15.55 25.32 13.43 26.62 12.34C27.71 13.64 27.81 15.82 26.19 17.12ZM24.42 14.08C22.63 13.03 22.42 10.86 23.31 9.41C24.75 10.3 25.54 12.33 24.42 14.08ZM21.78 11.76C19.74 11.33 18.85 9.34 19.24 7.69C20.89 8.07 22.29 9.74 21.78 11.76ZM21.78 11.76C19.76 12.27 18.09 10.87 17.71 9.22C19.36 8.83 21.35 9.72 21.78 11.76Z" style="fill:var(--medal-bronze);stroke:var(--medal-bronze-sh);stroke-width:.4;stroke-linejoin:round"/></symbol><symbol id="m-year-champion" viewBox="0 0 32 32"><use href="#pl-year" style="fill:var(--medal-cast)" y="1"/><use href="#pl-year" style="fill:url(#mg-gold-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><path d="M16 1.4L20.06 6.21L26.32 5.68L25.79 11.94L30.6 16L25.79 20.06L26.32 26.32L20.06 25.79L16 30.6L11.94 25.79L5.68 26.32L6.21 20.06L1.4 16L6.21 11.94L5.68 5.68L11.94 6.21Z" style="fill:url(#mg-gold-dev);opacity:.55"/><circle cx="16" cy="16" r="10.2" style="fill:url(#mg-gold-rim);stroke:var(--medal-gold-sh);stroke-width:.45"/><circle cx="16" cy="16" r="9.5" style="fill:none;stroke:var(--medal-gold-sh);stroke-width:1.1;stroke-dasharray:.55 .75;opacity:.6"/><circle cx="16" cy="16" r="7.7" style="fill:url(#mg-gold-field);stroke:url(#mg-gold-bevel);stroke-width:.85;stroke-linejoin:round"/><circle cx="16" cy="16" r="7.7" style="fill:url(#mg-bloom)"/><g transform="translate(10.36 10.26) scale(0.47)"><use href="#dv-crown" style="fill:var(--medal-gold-sh)" x="0.46" y="1.32"/><use href="#dv-crown" style="fill:var(--medal-edge)" x="-0.33" y="-0.92"/><use href="#dv-crown" style="fill:url(#mg-gold-dev)"/></g><path d="M8.62 11.02A8.9 8.9 0 0 1 20.45 8.29" style="fill:none;stroke:var(--medal-glint);stroke-width:.8;stroke-linecap:round;stroke-linejoin:round"/></symbol><symbol id="m-day-record" viewBox="0 0 32 32"><use href="#pl-burst" style="fill:var(--medal-cast)" y="1"/><use href="#pl-burst2" style="fill:var(--medal-gold-lo);stroke:var(--medal-key);stroke-width:.4"/><use href="#pl-burst" style="fill:url(#mg-gold-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><circle cx="16" cy="16" r="11.1" style="fill:url(#mg-gold-rim);stroke:var(--medal-gold-sh);stroke-width:.45"/><circle cx="16" cy="16" r="8.7" style="fill:url(#mg-gold-field);stroke:url(#mg-gold-bevel);stroke-width:.85;stroke-linejoin:round"/><circle cx="16" cy="16" r="8.7" style="fill:url(#mg-bloom)"/><g transform="translate(9.4 9.4) scale(0.55)"><use href="#dv-bolt" style="fill:var(--medal-gold-sh)" x="0.4" y="1.13"/><use href="#dv-bolt" style="fill:var(--medal-edge)" x="-0.28" y="-0.79"/><use href="#dv-bolt" style="fill:url(#mg-gold-dev)"/></g><path d="M7.79 10.46A9.9 9.9 0 0 1 20.95 7.43" style="fill:none;stroke:var(--medal-glint);stroke-width:.8;stroke-linecap:round;stroke-linejoin:round"/></symbol><symbol id="m-day-winner" viewBox="0 0 32 32"><use href="#pl-burst" style="fill:var(--medal-cast)" y="1"/><use href="#pl-burst" style="fill:url(#mg-steel-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><circle cx="16" cy="16" r="11.1" style="fill:url(#mg-steel-rim);stroke:var(--medal-steel-sh);stroke-width:.45"/><circle cx="16" cy="16" r="8.7" style="fill:url(#mg-steel-field);stroke:url(#mg-steel-bevel);stroke-width:.85;stroke-linejoin:round"/><circle cx="16" cy="16" r="8.7" style="fill:url(#mg-bloom)"/><g transform="translate(9.52 9.12) scale(0.54)"><use href="#dv-sun" style="fill:var(--medal-steel-sh)" x="0.4" y="1.15"/><use href="#dv-sun" style="fill:var(--medal-edge)" x="-0.29" y="-0.8"/><use href="#dv-sun" style="fill:url(#mg-gilt-dev)"/></g><path d="M7.79 10.46A9.9 9.9 0 0 1 20.95 7.43" style="fill:none;stroke:var(--medal-glint);stroke-width:.8;stroke-linecap:round;stroke-linejoin:round"/></symbol><symbol id="m-streak-fire" viewBox="0 0 32 32"><use href="#pl-hex" style="fill:var(--medal-cast)" y="1"/><use href="#pl-hex" style="fill:url(#mg-gold-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><use href="#pl-hex" style="fill:url(#mg-gold-field);stroke:url(#mg-gold-bevel);stroke-width:.85;stroke-linejoin:round" transform="translate(3.68 3.68) scale(0.77)"/><use href="#pl-hex" style="fill:url(#mg-bloom)" transform="translate(3.68 3.68) scale(0.77)"/><g transform="translate(8.56 8.36) scale(0.62)"><use href="#dv-fire" style="fill:var(--medal-gold-sh)" x="0.35" y="1"/><use href="#dv-fire" style="fill:var(--medal-edge)" x="-0.25" y="-0.7"/><use href="#dv-fire" style="fill:url(#mg-gold-dev)"/></g><path d="M6.2 8.4 16 2.7 21.4 5.8" style="fill:none;stroke:var(--medal-glint);stroke-width:.8;stroke-linecap:round;stroke-linejoin:round"/></symbol><symbol id="m-streak-steady" viewBox="0 0 32 32"><use href="#pl-hex" style="fill:var(--medal-cast)" y="1"/><use href="#pl-hex" style="fill:url(#mg-steel-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><use href="#pl-hex" style="fill:url(#mg-steel-field);stroke:url(#mg-steel-bevel);stroke-width:.85;stroke-linejoin:round" transform="translate(3.68 3.68) scale(0.77)"/><use href="#pl-hex" style="fill:url(#mg-bloom)" transform="translate(3.68 3.68) scale(0.77)"/><g transform="translate(9.28 8.88) scale(0.56)"><use href="#dv-steady" style="fill:var(--medal-steel-sh)" x="0.39" y="1.11"/><use href="#dv-steady" style="fill:var(--medal-edge)" x="-0.28" y="-0.78"/><use href="#dv-steady" style="fill:url(#mg-gilt-dev)"/></g><path d="M6.2 8.4 16 2.7 21.4 5.8" style="fill:none;stroke:var(--medal-glint);stroke-width:.8;stroke-linecap:round;stroke-linejoin:round"/></symbol><symbol id="m-conversion-master" viewBox="0 0 32 32"><use href="#pl-shield" style="fill:var(--medal-cast)" y="1"/><use href="#pl-shield" style="fill:url(#mg-gold-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><use href="#pl-shield" style="fill:url(#mg-gold-field);stroke:url(#mg-gold-bevel);stroke-width:.85;stroke-linejoin:round" transform="translate(3.68 3.5) scale(0.77)"/><use href="#pl-shield" style="fill:url(#mg-bloom)" transform="translate(3.68 3.5) scale(0.77)"/><g transform="translate(8.8 7.4) scale(0.6)"><use href="#dv-target" style="fill:var(--medal-gold-sh)" x="0.36" y="1.03"/><use href="#dv-target" style="fill:var(--medal-edge)" x="-0.26" y="-0.72"/><use href="#dv-target" style="fill:url(#mg-gold-dev)"/></g><path d="M6.2 6 16 3 22.4 5" style="fill:none;stroke:var(--medal-glint);stroke-width:.8;stroke-linecap:round;stroke-linejoin:round"/></symbol><symbol id="m-clean-month" viewBox="0 0 32 32"><use href="#pl-shield" style="fill:var(--medal-cast)" y="1"/><use href="#pl-shield" style="fill:url(#mg-steel-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><use href="#pl-shield" style="fill:url(#mg-steel-field);stroke:url(#mg-steel-bevel);stroke-width:.85;stroke-linejoin:round" transform="translate(3.68 3.5) scale(0.77)"/><use href="#pl-shield" style="fill:url(#mg-bloom)" transform="translate(3.68 3.5) scale(0.77)"/><g transform="translate(9.04 7.44) scale(0.58)"><use href="#dv-check" style="fill:var(--medal-steel-sh)" x="0.37" y="1.07"/><use href="#dv-check" style="fill:var(--medal-edge)" x="-0.27" y="-0.75"/><use href="#dv-check" style="fill:url(#mg-gilt-dev)"/></g><path d="M6.2 6 16 3 22.4 5" style="fill:none;stroke:var(--medal-glint);stroke-width:.8;stroke-linecap:round;stroke-linejoin:round"/></symbol><symbol id="m-jump" viewBox="0 0 32 32"><use href="#pl-tab" style="fill:var(--medal-cast)" y="1"/><use href="#pl-tab" style="fill:url(#mg-steel-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><use href="#pl-tab-f" style="fill:url(#mg-steel-field);stroke:url(#mg-steel-bevel);stroke-width:.85;stroke-linejoin:round"/><use href="#pl-tab-f" style="fill:url(#mg-bloom)"/><g transform="translate(8.8 8.8) scale(0.6)"><use href="#dv-jump" style="fill:var(--medal-steel-sh)" x="0.36" y="1.03"/><use href="#dv-jump" style="fill:var(--medal-edge)" x="-0.26" y="-0.72"/><use href="#dv-jump" style="fill:url(#mg-gilt-dev)"/></g><path d="M5.4 8.2A4.1 4.1 0 0 1 9 4.9H21" style="fill:none;stroke:var(--medal-glint);stroke-width:.8;stroke-linecap:round;stroke-linejoin:round"/></symbol><symbol id="m-rookie" viewBox="0 0 32 32"><use href="#pl-tab" style="fill:var(--medal-cast)" y="1"/><use href="#pl-tab" style="fill:url(#mg-steel-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><use href="#pl-tab-f" style="fill:url(#mg-steel-field);stroke:url(#mg-steel-bevel);stroke-width:.85;stroke-linejoin:round"/><use href="#pl-tab-f" style="fill:url(#mg-bloom)"/><g transform="translate(8.32 8.52) scale(0.64)"><use href="#dv-star" style="fill:var(--medal-steel-sh)" x="0.34" y="0.97"/><use href="#dv-star" style="fill:var(--medal-edge)" x="-0.24" y="-0.68"/><use href="#dv-star" style="fill:url(#mg-gilt-dev)"/></g><path d="M5.4 8.2A4.1 4.1 0 0 1 9 4.9H21" style="fill:none;stroke:var(--medal-glint);stroke-width:.8;stroke-linecap:round;stroke-linejoin:round"/></symbol><symbol id="m-first-sale" viewBox="0 0 32 32"><use href="#pl-tab" style="fill:var(--medal-cast)" y="1"/><use href="#pl-tab" style="fill:url(#mg-steel-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><use href="#pl-tab-f" style="fill:url(#mg-steel-field);stroke:url(#mg-steel-bevel);stroke-width:.85;stroke-linejoin:round"/><use href="#pl-tab-f" style="fill:url(#mg-bloom)"/><g transform="translate(8.56 8.56) scale(0.62)"><use href="#dv-sprout" style="fill:var(--medal-steel-sh)" x="0.35" y="1"/><use href="#dv-sprout" style="fill:var(--medal-edge)" x="-0.25" y="-0.7"/><use href="#dv-sprout" style="fill:url(#mg-steel-dev)"/></g><path d="M5.4 8.2A4.1 4.1 0 0 1 9 4.9H21" style="fill:none;stroke:var(--medal-glint);stroke-width:.8;stroke-linecap:round;stroke-linejoin:round"/></symbol><symbol id="m-work-month" viewBox="0 0 32 32"><use href="#pl-tab" style="fill:var(--medal-cast)" y="1"/><use href="#pl-tab" style="fill:url(#mg-steel-rim);stroke:var(--medal-key);stroke-width:.55;stroke-linejoin:round"/><use href="#pl-tab-f" style="fill:url(#mg-steel-field);stroke:url(#mg-steel-bevel);stroke-width:.85;stroke-linejoin:round"/><use href="#pl-tab-f" style="fill:url(#mg-bloom)"/><g transform="translate(8.8 8.8) scale(0.6)"><use href="#dv-cal" style="fill:var(--medal-steel-sh)" x="0.36" y="1.03"/><use href="#dv-cal" style="fill:var(--medal-edge)" x="-0.26" y="-0.72"/><use href="#dv-cal" style="fill:url(#mg-steel-dev)"/></g><path d="M5.4 8.2A4.1 4.1 0 0 1 9 4.9H21" style="fill:none;stroke:var(--medal-glint);stroke-width:.8;stroke-linecap:round;stroke-linejoin:round"/></symbol><symbol id="crest-0" viewBox="-3 -3 72 26"><path d="M0 0H7L12 10L7 20H0L5 10ZM11 0H18L23 10L18 20H11L16 10ZM22 0H29L34 10L29 20H22L27 10ZM33 0H40L45 10L40 20H33L38 10ZM44 0H51L56 10L51 20H44L49 10ZM55 0H62L67 10L62 20H55L60 10Z" style="fill:var(--crest-off)"/><path d="M0.5 0.45H6.8L11.4 9.7M11.5 0.45H17.8L22.4 9.7M22.5 0.45H28.8L33.4 9.7M33.5 0.45H39.8L44.4 9.7M44.5 0.45H50.8L55.4 9.7M55.5 0.45H61.8L66.4 9.7" style="fill:none;stroke:var(--recess-lo);stroke-width:.7"/><path d="M0.5 19.55H6.8L11.4 10.3M11.5 19.55H17.8L22.4 10.3M22.5 19.55H28.8L33.4 10.3M33.5 19.55H39.8L44.4 10.3M44.5 19.55H50.8L55.4 10.3M55.5 19.55H61.8L66.4 10.3" style="fill:none;stroke:var(--recess-hi);stroke-width:.7"/></symbol><symbol id="crest-1" viewBox="-3 -3 72 26"><path d="M11 0H18L23 10L18 20H11L16 10ZM22 0H29L34 10L29 20H22L27 10ZM33 0H40L45 10L40 20H33L38 10ZM44 0H51L56 10L51 20H44L49 10ZM55 0H62L67 10L62 20H55L60 10Z" style="fill:var(--crest-off)"/><path d="M11.5 0.45H17.8L22.4 9.7M22.5 0.45H28.8L33.4 9.7M33.5 0.45H39.8L44.4 9.7M44.5 0.45H50.8L55.4 9.7M55.5 0.45H61.8L66.4 9.7" style="fill:none;stroke:var(--recess-lo);stroke-width:.7"/><path d="M11.5 19.55H17.8L22.4 10.3M22.5 19.55H28.8L33.4 10.3M33.5 19.55H39.8L44.4 10.3M44.5 19.55H50.8L55.4 10.3M55.5 19.55H61.8L66.4 10.3" style="fill:none;stroke:var(--recess-hi);stroke-width:.7"/><path d="M0 0H7L12 10L7 20H0L5 10Z" style="fill:currentColor"/><path d="M0 0H7L12 10L7 20H0L5 10Z" style="fill:url(#mg-sheen)"/><path d="M0.5 0.45H6.8L11.4 9.7" style="fill:none;stroke:var(--crest-glint);stroke-width:.8;stroke-linejoin:round"/><path d="M0.5 19.55H6.8L11.4 10.3" style="fill:none;stroke:var(--crest-shade);stroke-width:.8;stroke-linejoin:round"/></symbol><symbol id="crest-2" viewBox="-3 -3 72 26"><path d="M22 0H29L34 10L29 20H22L27 10ZM33 0H40L45 10L40 20H33L38 10ZM44 0H51L56 10L51 20H44L49 10ZM55 0H62L67 10L62 20H55L60 10Z" style="fill:var(--crest-off)"/><path d="M22.5 0.45H28.8L33.4 9.7M33.5 0.45H39.8L44.4 9.7M44.5 0.45H50.8L55.4 9.7M55.5 0.45H61.8L66.4 9.7" style="fill:none;stroke:var(--recess-lo);stroke-width:.7"/><path d="M22.5 19.55H28.8L33.4 10.3M33.5 19.55H39.8L44.4 10.3M44.5 19.55H50.8L55.4 10.3M55.5 19.55H61.8L66.4 10.3" style="fill:none;stroke:var(--recess-hi);stroke-width:.7"/><path d="M0 0H7L12 10L7 20H0L5 10ZM11 0H18L23 10L18 20H11L16 10Z" style="fill:currentColor"/><path d="M0 0H7L12 10L7 20H0L5 10ZM11 0H18L23 10L18 20H11L16 10Z" style="fill:url(#mg-sheen)"/><path d="M0.5 0.45H6.8L11.4 9.7M11.5 0.45H17.8L22.4 9.7" style="fill:none;stroke:var(--crest-glint);stroke-width:.8;stroke-linejoin:round"/><path d="M0.5 19.55H6.8L11.4 10.3M11.5 19.55H17.8L22.4 10.3" style="fill:none;stroke:var(--crest-shade);stroke-width:.8;stroke-linejoin:round"/></symbol><symbol id="crest-3" viewBox="-3 -3 72 26"><path d="M33 0H40L45 10L40 20H33L38 10ZM44 0H51L56 10L51 20H44L49 10ZM55 0H62L67 10L62 20H55L60 10Z" style="fill:var(--crest-off)"/><path d="M33.5 0.45H39.8L44.4 9.7M44.5 0.45H50.8L55.4 9.7M55.5 0.45H61.8L66.4 9.7" style="fill:none;stroke:var(--recess-lo);stroke-width:.7"/><path d="M33.5 19.55H39.8L44.4 10.3M44.5 19.55H50.8L55.4 10.3M55.5 19.55H61.8L66.4 10.3" style="fill:none;stroke:var(--recess-hi);stroke-width:.7"/><path d="M0 0H7L12 10L7 20H0L5 10ZM11 0H18L23 10L18 20H11L16 10ZM22 0H29L34 10L29 20H22L27 10Z" style="fill:currentColor"/><path d="M0 0H7L12 10L7 20H0L5 10ZM11 0H18L23 10L18 20H11L16 10ZM22 0H29L34 10L29 20H22L27 10Z" style="fill:url(#mg-sheen)"/><path d="M0.5 0.45H6.8L11.4 9.7M11.5 0.45H17.8L22.4 9.7M22.5 0.45H28.8L33.4 9.7" style="fill:none;stroke:var(--crest-glint);stroke-width:.8;stroke-linejoin:round"/><path d="M0.5 19.55H6.8L11.4 10.3M11.5 19.55H17.8L22.4 10.3M22.5 19.55H28.8L33.4 10.3" style="fill:none;stroke:var(--crest-shade);stroke-width:.8;stroke-linejoin:round"/></symbol><symbol id="crest-4" viewBox="-3 -3 72 26"><path d="M44 0H51L56 10L51 20H44L49 10ZM55 0H62L67 10L62 20H55L60 10Z" style="fill:var(--crest-off)"/><path d="M44.5 0.45H50.8L55.4 9.7M55.5 0.45H61.8L66.4 9.7" style="fill:none;stroke:var(--recess-lo);stroke-width:.7"/><path d="M44.5 19.55H50.8L55.4 10.3M55.5 19.55H61.8L66.4 10.3" style="fill:none;stroke:var(--recess-hi);stroke-width:.7"/><path d="M0 0H7L12 10L7 20H0L5 10ZM11 0H18L23 10L18 20H11L16 10ZM22 0H29L34 10L29 20H22L27 10ZM33 0H40L45 10L40 20H33L38 10Z" style="fill:currentColor"/><path d="M0 0H7L12 10L7 20H0L5 10ZM11 0H18L23 10L18 20H11L16 10ZM22 0H29L34 10L29 20H22L27 10ZM33 0H40L45 10L40 20H33L38 10Z" style="fill:url(#mg-sheen)"/><path d="M0.5 0.45H6.8L11.4 9.7M11.5 0.45H17.8L22.4 9.7M22.5 0.45H28.8L33.4 9.7M33.5 0.45H39.8L44.4 9.7" style="fill:none;stroke:var(--crest-glint);stroke-width:.8;stroke-linejoin:round"/><path d="M0.5 19.55H6.8L11.4 10.3M11.5 19.55H17.8L22.4 10.3M22.5 19.55H28.8L33.4 10.3M33.5 19.55H39.8L44.4 10.3" style="fill:none;stroke:var(--crest-shade);stroke-width:.8;stroke-linejoin:round"/></symbol><symbol id="crest-5" viewBox="-3 -3 72 26"><path d="M55 0H62L67 10L62 20H55L60 10Z" style="fill:var(--crest-off)"/><path d="M55.5 0.45H61.8L66.4 9.7" style="fill:none;stroke:var(--recess-lo);stroke-width:.7"/><path d="M55.5 19.55H61.8L66.4 10.3" style="fill:none;stroke:var(--recess-hi);stroke-width:.7"/><path d="M0 0H7L12 10L7 20H0L5 10ZM11 0H18L23 10L18 20H11L16 10ZM22 0H29L34 10L29 20H22L27 10ZM33 0H40L45 10L40 20H33L38 10ZM44 0H51L56 10L51 20H44L49 10Z" style="fill:currentColor"/><path d="M0 0H7L12 10L7 20H0L5 10ZM11 0H18L23 10L18 20H11L16 10ZM22 0H29L34 10L29 20H22L27 10ZM33 0H40L45 10L40 20H33L38 10ZM44 0H51L56 10L51 20H44L49 10Z" style="fill:url(#mg-sheen)"/><path d="M0.5 0.45H6.8L11.4 9.7M11.5 0.45H17.8L22.4 9.7M22.5 0.45H28.8L33.4 9.7M33.5 0.45H39.8L44.4 9.7M44.5 0.45H50.8L55.4 9.7" style="fill:none;stroke:var(--crest-glint);stroke-width:.8;stroke-linejoin:round"/><path d="M0.5 19.55H6.8L11.4 10.3M11.5 19.55H17.8L22.4 10.3M22.5 19.55H28.8L33.4 10.3M33.5 19.55H39.8L44.4 10.3M44.5 19.55H50.8L55.4 10.3" style="fill:none;stroke:var(--crest-shade);stroke-width:.8;stroke-linejoin:round"/></symbol><symbol id="crest-6" viewBox="-3 -3 88 26"><path d="M0 0H7L12 10L7 20H0L5 10ZM11 0H18L23 10L18 20H11L16 10ZM22 0H29L34 10L29 20H22L27 10ZM33 0H40L45 10L40 20H33L38 10ZM44 0H51L56 10L51 20H44L49 10ZM55 0H62L67 10L62 20H55L60 10Z" style="fill:currentColor"/><path d="M0 0H7L12 10L7 20H0L5 10ZM11 0H18L23 10L18 20H11L16 10ZM22 0H29L34 10L29 20H22L27 10ZM33 0H40L45 10L40 20H33L38 10ZM44 0H51L56 10L51 20H44L49 10ZM55 0H62L67 10L62 20H55L60 10Z" style="fill:url(#mg-sheen)"/><path d="M0.5 0.45H6.8L11.4 9.7M11.5 0.45H17.8L22.4 9.7M22.5 0.45H28.8L33.4 9.7M33.5 0.45H39.8L44.4 9.7M44.5 0.45H50.8L55.4 9.7M55.5 0.45H61.8L66.4 9.7" style="fill:none;stroke:var(--crest-glint);stroke-width:.8;stroke-linejoin:round"/><path d="M0.5 19.55H6.8L11.4 10.3M11.5 19.55H17.8L22.4 10.3M22.5 19.55H28.8L33.4 10.3M33.5 19.55H39.8L44.4 10.3M44.5 19.55H50.8L55.4 10.3M55.5 19.55H61.8L66.4 10.3" style="fill:none;stroke:var(--crest-shade);stroke-width:.8;stroke-linejoin:round"/><path d="M68.6 15.2 69.8 4.2 73.8 8.8 76.4 1.6 79 8.8 83 4.2 84.2 15.2ZM69.2 16.6H83.6V19.6H69.2Z" style="fill:var(--medal-gold-sh)" transform="translate(.3 .8)"/><path d="M68.6 15.2 69.8 4.2 73.8 8.8 76.4 1.6 79 8.8 83 4.2 84.2 15.2ZM69.2 16.6H83.6V19.6H69.2Z" style="fill:url(#mg-gold-rim);stroke:var(--medal-key);stroke-width:.5;stroke-linejoin:round"/><path d="M69.9 4.9 73.7 9.4 76.4 2.2" style="fill:none;stroke:var(--medal-glint);stroke-width:.7;stroke-linejoin:round"/></symbol><symbol id="crest-plate" viewBox="-3 -3 72 26"><rect x="-2.5" y="-2.5" width="71" height="25" rx="4.5" style="fill:var(--crest-plate);stroke:url(#mg-recess);stroke-width:.9"/></symbol><symbol id="crest-plate-6" viewBox="-3 -3 88 26"><rect x="-2.5" y="-2.5" width="87" height="25" rx="4.5" style="fill:var(--crest-plate);stroke:url(#mg-recess);stroke-width:.9"/></symbol><symbol id="halo-1" viewBox="0 0 64 64"><circle cx="32" cy="33.4" r="30.5" style="fill:var(--medal-cast)"/><circle cx="32" cy="32" r="30.5" style="fill:url(#mg-gold-rim);stroke:var(--medal-key);stroke-width:1"/><circle cx="32" cy="32" r="28.9" style="fill:none;stroke:var(--medal-gold-sh);stroke-width:2.2;stroke-dasharray:1.05 1.35;opacity:.55"/><circle cx="32" cy="32" r="24" style="fill:url(#hg-field);stroke:url(#mg-gold-bevel);stroke-width:1.7"/><circle cx="32" cy="32" r="21" style="fill:none;stroke:var(--medal-gold-lo);stroke-width:.6;opacity:.8"/><path d="M8.89 17.56A27.25 27.25 0 0 1 46.44 8.89" style="fill:none;stroke:var(--medal-glint);stroke-width:1.4;stroke-linecap:round"/><g transform="translate(32.6 32.2) scale(2.45)"><use href="#n1" style="stroke:var(--medal-gold-sh)" x="0.16" y="0.45"/><use href="#n1" style="stroke:var(--medal-edge)" x="-0.11" y="-0.31"/><use href="#n1" style="stroke:url(#mg-gold-dev)"/></g></symbol><symbol id="halo-sm-1" viewBox="0 0 64 64"><circle cx="32" cy="33.4" r="30.5" style="fill:var(--medal-cast)"/><circle cx="32" cy="32" r="30.5" style="fill:url(#mg-gold-rim);stroke:var(--medal-key);stroke-width:1"/><circle cx="32" cy="32" r="22.5" style="fill:url(#hg-field);stroke:url(#mg-gold-bevel);stroke-width:1.7"/><path d="M9.53 17.96A26.5 26.5 0 0 1 46.04 9.53" style="fill:none;stroke:var(--medal-glint);stroke-width:1.4;stroke-linecap:round"/><g transform="translate(32.8 32.2) scale(2.5)"><use href="#n1" style="stroke:var(--medal-gold-sh)" x="0.18" y="0.52"/><use href="#n1" style="stroke:var(--medal-edge)" x="-0.13" y="-0.36"/><use href="#n1" style="stroke:url(#mg-gold-dev)"/></g></symbol><symbol id="halo-2" viewBox="0 0 64 64"><circle cx="32" cy="33.4" r="30.5" style="fill:var(--medal-cast)"/><circle cx="32" cy="32" r="30.5" style="fill:url(#mg-silver-rim);stroke:var(--medal-key);stroke-width:1"/><circle cx="32" cy="32" r="28.9" style="fill:none;stroke:var(--medal-silver-sh);stroke-width:2.2;stroke-dasharray:1.05 1.35;opacity:.55"/><circle cx="32" cy="32" r="24" style="fill:url(#hg-field);stroke:url(#mg-silver-bevel);stroke-width:1.7"/><circle cx="32" cy="32" r="21" style="fill:none;stroke:var(--medal-silver-lo);stroke-width:.6;opacity:.8"/><path d="M8.89 17.56A27.25 27.25 0 0 1 46.44 8.89" style="fill:none;stroke:var(--medal-glint);stroke-width:1.4;stroke-linecap:round"/><g transform="translate(32 32.2) scale(2.45)"><use href="#n2" style="stroke:var(--medal-silver-sh)" x="0.16" y="0.45"/><use href="#n2" style="stroke:var(--medal-edge)" x="-0.11" y="-0.31"/><use href="#n2" style="stroke:url(#mg-silver-dev)"/></g></symbol><symbol id="halo-sm-2" viewBox="0 0 64 64"><circle cx="32" cy="33.4" r="30.5" style="fill:var(--medal-cast)"/><circle cx="32" cy="32" r="30.5" style="fill:url(#mg-silver-rim);stroke:var(--medal-key);stroke-width:1"/><circle cx="32" cy="32" r="22.5" style="fill:url(#hg-field);stroke:url(#mg-silver-bevel);stroke-width:1.7"/><path d="M9.53 17.96A26.5 26.5 0 0 1 46.04 9.53" style="fill:none;stroke:var(--medal-glint);stroke-width:1.4;stroke-linecap:round"/><g transform="translate(32 32.2) scale(2.5)"><use href="#n2" style="stroke:var(--medal-silver-sh)" x="0.18" y="0.52"/><use href="#n2" style="stroke:var(--medal-edge)" x="-0.13" y="-0.36"/><use href="#n2" style="stroke:url(#mg-silver-dev)"/></g></symbol><symbol id="halo-3" viewBox="0 0 64 64"><circle cx="32" cy="33.4" r="30.5" style="fill:var(--medal-cast)"/><circle cx="32" cy="32" r="30.5" style="fill:url(#mg-bronze-rim);stroke:var(--medal-key);stroke-width:1"/><circle cx="32" cy="32" r="28.9" style="fill:none;stroke:var(--medal-bronze-sh);stroke-width:2.2;stroke-dasharray:1.05 1.35;opacity:.55"/><circle cx="32" cy="32" r="24" style="fill:url(#hg-field);stroke:url(#mg-bronze-bevel);stroke-width:1.7"/><circle cx="32" cy="32" r="21" style="fill:none;stroke:var(--medal-bronze-lo);stroke-width:.6;opacity:.8"/><path d="M8.89 17.56A27.25 27.25 0 0 1 46.44 8.89" style="fill:none;stroke:var(--medal-glint);stroke-width:1.4;stroke-linecap:round"/><g transform="translate(32 32.2) scale(2.45)"><use href="#n3" style="stroke:var(--medal-bronze-sh)" x="0.16" y="0.45"/><use href="#n3" style="stroke:var(--medal-edge)" x="-0.11" y="-0.31"/><use href="#n3" style="stroke:url(#mg-bronze-dev)"/></g></symbol><symbol id="halo-sm-3" viewBox="0 0 64 64"><circle cx="32" cy="33.4" r="30.5" style="fill:var(--medal-cast)"/><circle cx="32" cy="32" r="30.5" style="fill:url(#mg-bronze-rim);stroke:var(--medal-key);stroke-width:1"/><circle cx="32" cy="32" r="22.5" style="fill:url(#hg-field);stroke:url(#mg-bronze-bevel);stroke-width:1.7"/><path d="M9.53 17.96A26.5 26.5 0 0 1 46.04 9.53" style="fill:none;stroke:var(--medal-glint);stroke-width:1.4;stroke-linecap:round"/><g transform="translate(32 32.2) scale(2.5)"><use href="#n3" style="stroke:var(--medal-bronze-sh)" x="0.18" y="0.52"/><use href="#n3" style="stroke:var(--medal-edge)" x="-0.13" y="-0.36"/><use href="#n3" style="stroke:url(#mg-bronze-dev)"/></g></symbol><symbol id="halo-laurel" viewBox="-10 -10 84 84"><path d="M27.32 65.27C25.86 68.55 22.09 69.54 19.35 68.49C20.59 65.83 23.99 63.92 27.32 65.27ZM17.67 62.39C15.31 65.1 11.41 64.92 9.1 63.1C11.08 60.93 14.89 60.11 17.67 62.39ZM9.3 56.77C6.24 58.65 2.57 57.33 0.9 54.91C3.44 53.42 7.32 53.77 9.3 56.77ZM2.98 48.93C-0.5 49.82 -3.61 47.47 -4.49 44.66C-1.63 43.99 1.98 45.48 2.98 48.93ZM-0.74 39.56C-4.33 39.38 -6.6 36.21 -6.61 33.27C-3.68 33.48 -0.67 35.97 -0.74 39.56ZM-1.51 29.51C-4.88 28.27 -6.11 24.57 -5.25 21.76C-2.51 22.83 -0.38 26.1 -1.51 29.51ZM0.74 19.69C-2.11 17.51 -2.19 13.61 -0.53 11.18C1.76 13.02 2.83 16.77 0.74 19.69ZM5.8 10.97C3.72 8.04 4.8 4.29 7.11 2.47C8.76 4.9 8.66 8.8 5.8 10.97ZM13.21 4.14C12.09 0.73 14.24 -2.53 16.98 -3.59C17.84 -0.78 16.59 2.92 13.21 4.14ZM13.21 4.14C13.95 0.62 17.44 -1.12 20.34 -0.67C19.68 2.19 16.75 4.77 13.21 4.14ZM36.68 65.27C40.01 63.92 43.41 65.83 44.65 68.49C41.91 69.54 38.14 68.55 36.68 65.27ZM46.33 62.39C49.11 60.11 52.92 60.93 54.9 63.1C52.59 64.92 48.69 65.1 46.33 62.39ZM54.7 56.77C56.68 53.77 60.56 53.42 63.1 54.91C61.43 57.33 57.76 58.65 54.7 56.77ZM61.02 48.93C62.02 45.48 65.63 43.99 68.49 44.66C67.61 47.47 64.5 49.82 61.02 48.93ZM64.74 39.56C64.67 35.97 67.68 33.48 70.61 33.27C70.6 36.21 68.33 39.38 64.74 39.56ZM65.51 29.51C64.38 26.1 66.51 22.83 69.25 21.76C70.11 24.57 68.88 28.27 65.51 29.51ZM63.26 19.69C61.17 16.77 62.24 13.02 64.53 11.18C66.19 13.61 66.11 17.51 63.26 19.69ZM58.2 10.97C55.34 8.8 55.24 4.9 56.89 2.47C59.2 4.29 60.28 8.04 58.2 10.97ZM50.79 4.14C47.41 2.92 46.16 -0.78 47.02 -3.59C49.76 -2.53 51.91 0.73 50.79 4.14ZM50.79 4.14C47.25 4.77 44.32 2.19 43.66 -0.67C46.56 -1.12 50.05 0.62 50.79 4.14Z" style="fill:var(--medal-gold);stroke:var(--medal-gold-sh);stroke-width:.5;stroke-linejoin:round"/><path d="M27.32 65.27C25.86 68.55 22.09 69.54 19.35 68.49C20.59 65.83 23.99 63.92 27.32 65.27ZM17.67 62.39C15.31 65.1 11.41 64.92 9.1 63.1C11.08 60.93 14.89 60.11 17.67 62.39ZM9.3 56.77C6.24 58.65 2.57 57.33 0.9 54.91C3.44 53.42 7.32 53.77 9.3 56.77ZM2.98 48.93C-0.5 49.82 -3.61 47.47 -4.49 44.66C-1.63 43.99 1.98 45.48 2.98 48.93ZM-0.74 39.56C-4.33 39.38 -6.6 36.21 -6.61 33.27C-3.68 33.48 -0.67 35.97 -0.74 39.56ZM-1.51 29.51C-4.88 28.27 -6.11 24.57 -5.25 21.76C-2.51 22.83 -0.38 26.1 -1.51 29.51ZM0.74 19.69C-2.11 17.51 -2.19 13.61 -0.53 11.18C1.76 13.02 2.83 16.77 0.74 19.69ZM5.8 10.97C3.72 8.04 4.8 4.29 7.11 2.47C8.76 4.9 8.66 8.8 5.8 10.97ZM13.21 4.14C12.09 0.73 14.24 -2.53 16.98 -3.59C17.84 -0.78 16.59 2.92 13.21 4.14ZM13.21 4.14C13.95 0.62 17.44 -1.12 20.34 -0.67C19.68 2.19 16.75 4.77 13.21 4.14ZM36.68 65.27C40.01 63.92 43.41 65.83 44.65 68.49C41.91 69.54 38.14 68.55 36.68 65.27ZM46.33 62.39C49.11 60.11 52.92 60.93 54.9 63.1C52.59 64.92 48.69 65.1 46.33 62.39ZM54.7 56.77C56.68 53.77 60.56 53.42 63.1 54.91C61.43 57.33 57.76 58.65 54.7 56.77ZM61.02 48.93C62.02 45.48 65.63 43.99 68.49 44.66C67.61 47.47 64.5 49.82 61.02 48.93ZM64.74 39.56C64.67 35.97 67.68 33.48 70.61 33.27C70.6 36.21 68.33 39.38 64.74 39.56ZM65.51 29.51C64.38 26.1 66.51 22.83 69.25 21.76C70.11 24.57 68.88 28.27 65.51 29.51ZM63.26 19.69C61.17 16.77 62.24 13.02 64.53 11.18C66.19 13.61 66.11 17.51 63.26 19.69ZM58.2 10.97C55.34 8.8 55.24 4.9 56.89 2.47C59.2 4.29 60.28 8.04 58.2 10.97ZM50.79 4.14C47.41 2.92 46.16 -0.78 47.02 -3.59C49.76 -2.53 51.91 0.73 50.79 4.14ZM50.79 4.14C47.25 4.77 44.32 2.19 43.66 -0.67C46.56 -1.12 50.05 0.62 50.79 4.14Z" style="fill:url(#mg-sheen)"/></symbol><symbol id="halo-ghost" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" style="fill:var(--slot-field);stroke:url(#mg-recess);stroke-width:1.6"/><circle cx="32" cy="32" r="24" style="fill:none;stroke:var(--slot-dash);stroke-width:1.2;stroke-dasharray:2.6 3.2;stroke-linecap:round"/><g transform="translate(32.6 32.2) scale(2.3)"><use href="#n1" style="stroke:var(--recess-hi)" y=".5"/><use href="#n1" style="stroke:var(--slot-glyph)"/></g></symbol></defs></svg>
+
+<aside class="rail"><div class="rail__brand"><span class="rail__logo">S</span><span><b>SinoLife</b><small>Savdo tahlili</small></span></div>
+<p class="rail__g">Tahlil</p><span class="rail__i"><i></i>Mijoz qaytishi</span><span class="rail__i"><i></i>Mijozlar va qoʻngʻiroqlar</span><span class="rail__i"><i></i>Savdo dinamikasi</span><span class="rail__i"><i></i>Yalpi marja</span><p class="rail__g">Bajarish</p><span class="rail__i"><i></i>Tasdiqlash navbati</span><span class="rail__i"><i></i>Logistika natijasi</span><span class="rail__i"><i></i>Joʻnatish nuqtalari</span><p class="rail__g">Jamoa</p><span class="rail__i"><i></i>KPI rejalari</span><span class="rail__i is-on"><i></i>Sotuvchilar reytingi</span><span class="rail__i"><i></i>Sotuvchilar oyligi</span><span class="rail__i"><i></i>Kadrlar tuzilmasi</span><p class="rail__g">Marketing</p><span class="rail__i"><i></i>Reklama samarasi</span><span class="rail__sep"></span><span class="rail__i"><i></i>Foydalanuvchilar</span>
+<div class="rail__me"><span class="rail__av">A</span>Administrator</div></aside>
+<header class="top"><span class="chip"><i></i>Bitrix24 <small>· hozirgina</small></span>
+<span class="top__r"><span class="top__s">Qidiruv <kbd>Ctrl</kbd><kbd>K</kbd></span><i class="dot"></i><i class="dot"></i><i class="dot"></i></span></header>
+<div class="page">
+<section class="hdr"><div class="hdr__t"><h1>Sotuvchilar reytingi</h1><p>1–17 sentabr 2026</p></div><div class="wall" aria-label="Har oyning eng yaxshi sotuvchisi"><div class="plaque"><svg class="medal" data-medal="month-gold" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="Oy chempioni"><use href="#m-month-gold"/></svg><div class="plaque__t"><p class="plaque__k">Sentabr yetakchisi<i>57 ta yetkazilgan</i></p><p class="plaque__v"><span class="nm">Shahtiyarovna Marjona</span><span class="code">197</span><b class="num">79 600 000</b></p></div></div><div class="plaque"><svg class="medal" data-medal="day-record" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="Kun rekordi"><use href="#m-day-record"/></svg><div class="plaque__t"><p class="plaque__k">Avgust 2026 rekordi<span class="tag">hozircha</span><i>74 ta yetkazilgan</i></p><p class="plaque__v"><span class="nm">Raxmatullayeva Ruxshona Tolib qizi</span><span class="code">253</span><b class="num">128 550 000</b></p></div></div></div><div class="period"><div class="seg"><span class="seg__i">Bugun</span><span class="seg__i">Kecha</span><span class="seg__i is-on">Shu oy</span></div><span class="seg"><span class="seg__i">Sana</span></span></div></section>
+<main class="board">
+  <section class="panel panel--sellers">
+    <header class="phead"><h2>Sotuvchilar</h2><span class="phead__n"><b class="num">101</b> sotuvchi</span><div class="pick"><span class="pick__hint"><b>FAKT 1</b> — tasdiqlangan pul</span><div class="seg" role="group" aria-label="Reyting qaysi fakt boʻyicha"><span class="seg__i is-on">FAKT 1</span><span class="seg__i">FAKT 2</span></div></div></header>
+    <div class="seats">
+<article class="seat seat--p2" data-tier="4" data-metal="silver" aria-label="2-oʻrin">
+  <span class="seat__band"></span>
+  <div class="seat__id">
+    <span class="halo-box" style="width:56px;height:56px"><svg class="halo" viewBox="0 0 64 64" width="56" height="56" aria-hidden="true"><use href="#halo-2"/></svg></span>
+    <div class="seat__who">
+      <h3 class="seat__name"><span>Sirojov</span><span>Davlatbek <span class="code">115</span></span></h3>
+      <p class="seat__meta"><svg class="crest" data-tier="4" viewBox="-3 -3 72 26" width="49.85" height="18" role="img" aria-label="4-daraja · Usta"><use href="#crest-plate"/><use href="#crest-4"/></svg><b class="lvl">Usta</b><span class="team">Sevinch</span></p>
+    </div>
+  </div>
+  <p class="seat__money"><span class="num">76 700 000</span></p>
+  <p class="seat__fakt"><span><b>FAKT 1</b></span><span><b>FAKT 2</b> <em class="num">56 400 000</em></span></p>
+  <div class="seat__prog">
+    <p class="seat__left"><span>Ustozga</span> <em class="num">134 100 000</em> <span>qoldi</span></p>
+    <div class="meter"><i style="width:33.0%"></i></div>
+    <p class="seat__life"><span>Avgustdan beri</span><span><em class="num">165 900 000</em> / <span class="num">300 000 000</span></span></p>
+  </div>
+  <div class="seat__rack"><svg class="medal" data-medal="month-bronze" viewBox="0 0 32 32" width="40" height="40" role="img" aria-label="Bronza oy"><use href="#m-laurel-bronze"/><use href="#m-month-bronze"/></svg><svg class="medal" data-medal="day-winner" viewBox="0 0 32 32" width="40" height="40" role="img" aria-label="Kun gʻolibi"><use href="#m-day-winner"/></svg><span class="seat__cap"><b>Bronza oy</b><i>avgust · hozircha</i></span></div>
+</article>
+<article class="seat seat--p1" data-tier="4" data-metal="gold" aria-label="1-oʻrin">
+  <span class="seat__band"></span>
+  <div class="seat__id">
+    <span class="halo-box" style="width:66px;height:66px"><svg class="halo" viewBox="0 0 64 64" width="66" height="66" aria-hidden="true"><use href="#halo-laurel" x="-10" y="-10" width="84" height="84"/><use href="#halo-1"/></svg></span>
+    <div class="seat__who">
+      <h3 class="seat__name"><span>Shahtiyarovna</span><span>Marjona <span class="code">197</span></span></h3>
+      <p class="seat__meta"><svg class="crest" data-tier="4" viewBox="-3 -3 72 26" width="55.38" height="20" role="img" aria-label="4-daraja · Usta"><use href="#crest-plate"/><use href="#crest-4"/></svg><b class="lvl">Usta</b><span class="team">Marjona</span></p>
+    </div>
+  </div>
+  <p class="seat__money"><span class="num">109 800 000</span></p>
+  <p class="seat__fakt"><span><b>FAKT 1</b></span><span><b>FAKT 2</b> <em class="num">79 600 000</em></span></p>
+  <div class="seat__prog">
+    <p class="seat__left"><span>Ustozga</span> <em class="num">127 010 000</em> <span>qoldi</span></p>
+    <div class="meter"><i style="width:36.5%"></i></div>
+    <p class="seat__life"><span>Avgustdan beri</span><span><em class="num">172 990 000</em> / <span class="num">300 000 000</span></span></p>
+  </div>
+  <div class="seat__rack"><svg class="medal" data-medal="day-record" viewBox="0 0 32 32" width="48" height="48" role="img" aria-label="Kun rekordi"><use href="#m-day-record"/></svg><svg class="medal" data-medal="clean-month" viewBox="0 0 32 32" width="48" height="48" role="img" aria-label="Toza oy"><use href="#m-clean-month"/></svg><svg class="medal" data-medal="day-winner" viewBox="0 0 32 32" width="48" height="48" role="img" aria-label="Kun gʻolibi ×4"><use href="#m-day-winner"/><rect class="medal__plate-rim" x="16.80" y="21.2" width="15.0" height="10.6" rx="2.6" fill="url(#mg-steel-rim)"/><rect class="medal__plate-well" x="17.90" y="22.3" width="12.80" height="8.4" rx="1.7"/><g class="medal__count" data-dev="gilt"><use href="#nx" transform="translate(21.85 26.7) scale(0.421)"/><use href="#n4" transform="translate(26.75 26.7) scale(0.540)"/></g></svg><span class="seat__cap"><b>Kun rekordi</b><i>9-sentabr</i></span></div>
+</article>
+<article class="seat seat--p3" data-tier="4" data-metal="bronze" aria-label="3-oʻrin">
+  <span class="seat__band"></span>
+  <div class="seat__id">
+    <span class="halo-box" style="width:56px;height:56px"><svg class="halo" viewBox="0 0 64 64" width="56" height="56" aria-hidden="true"><use href="#halo-3"/></svg></span>
+    <div class="seat__who">
+      <h3 class="seat__name"><span>Nuriddinova</span><span>Niginabonu <span class="code">134</span></span></h3>
+      <p class="seat__meta"><svg class="crest" data-tier="4" viewBox="-3 -3 72 26" width="49.85" height="18" role="img" aria-label="4-daraja · Usta"><use href="#crest-plate"/><use href="#crest-4"/></svg><b class="lvl">Usta</b><span class="team">Lola</span></p>
+    </div>
+  </div>
+  <p class="seat__money"><span class="num">74 500 000</span></p>
+  <p class="seat__fakt"><span><b>FAKT 1</b></span><span><b>FAKT 2</b> <em class="num">60 400 000</em></span></p>
+  <div class="seat__prog">
+    <p class="seat__left"><span>Ustozga</span> <em class="num">139 750 000</em> <span>qoldi</span></p>
+    <div class="meter"><i style="width:30.1%"></i></div>
+    <p class="seat__life"><span>Avgustdan beri</span><span><em class="num">160 250 000</em> / <span class="num">300 000 000</span></span></p>
+  </div>
+  <div class="seat__rack"><svg class="medal" data-medal="day-winner" viewBox="0 0 32 32" width="40" height="40" role="img" aria-label="Kun gʻolibi"><use href="#m-day-winner"/></svg><span class="seat__cap"><b>Kun gʻolibi</b><i>5-sentabr</i></span></div>
+</article></div>
+    <div class="cols "><span></span><span class="r">#</span><span>Daraja</span><span>Sotuvchi</span><span>Komanda</span><span class="r">Medallar</span><span class="r on">FAKT 1</span><span class="r">FAKT 2</span><span class="r">Buyurt.</span><span class="r">Konv.</span></div>
+    <ol class="list"><li class="row " data-tier="6"><span class="row__band"></span><span class="row__rank num">fx</span><svg class="crest" data-tier="6" viewBox="-3 -3 88 26" width="67.69" height="20" role="img" aria-label="6-daraja · Legenda"><use href="#crest-6"/></svg><span class="row__name"><span class="nm">FIXTURE Legenda Sinov</span><span class="code">901</span></span><span class="row__team">Shohjaxon</span><span class="rack"><svg class="medal" data-medal="year-champion" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Yil chempioni"><use href="#m-year-champion"/></svg><svg class="medal" data-medal="month-gold" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Oy chempioni"><use href="#m-month-gold"/></svg><svg class="medal" data-medal="streak-fire" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Olov seriyasi"><use href="#m-streak-fire"/></svg></span><span class="row__hero num">987 654 000</span><span class="row__sec num">912 345 000</span><span class="row__sec num">412</span><span class="row__sec num">88,4 %</span></li><li class="row " data-tier="5"><span class="row__band"></span><span class="row__rank num">fx</span><svg class="crest" data-tier="5" viewBox="-3 -3 72 26" width="55.38" height="20" role="img" aria-label="5-daraja · Ustoz"><use href="#crest-5"/></svg><span class="row__name"><span class="nm">FIXTURE Ustoz Sinov</span><span class="code">902</span></span><span class="row__team">Kompaniya</span><span class="rack"><svg class="medal" data-medal="conversion-master" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Konversiya ustasi"><use href="#m-conversion-master"/></svg><svg class="medal" data-medal="streak-steady" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Barqaror"><use href="#m-streak-steady"/></svg><svg class="medal" data-medal="jump" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Sakrash"><use href="#m-jump"/></svg></span><span class="row__hero num">355 000 000</span><span class="row__sec num">301 000 000</span><span class="row__sec num">210</span><span class="row__sec num">80 %</span></li><li class="row " data-tier="1"><span class="row__band"></span><span class="row__rank num">fx</span><svg class="crest" data-tier="1" viewBox="-3 -3 72 26" width="55.38" height="20" role="img" aria-label="1-daraja · Yangi"><use href="#crest-1"/></svg><span class="row__name"><span class="nm">FIXTURE Yangi Sinov</span><span class="code">903</span></span><span class="row__team">Sadriddin</span><span class="rack"><svg class="medal" data-medal="month-bronze" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Bronza oy"><use href="#m-month-bronze"/></svg><svg class="medal" data-medal="day-record" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Kun rekordi"><use href="#m-day-record"/></svg><svg class="medal" data-medal="rookie" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Yangi yulduz"><use href="#m-rookie"/></svg></span><span class="row__hero num">6 100 000</span><span class="row__sec num">4 200 000</span><span class="row__sec num">5</span><span class="row__sec num">60 %</span></li><li class="row " data-tier="0"><span class="row__band"></span><span class="row__rank num">fx</span><svg class="crest" data-tier="0" viewBox="-3 -3 72 26" width="55.38" height="20" role="img" aria-label="Hali darajasiz"><use href="#crest-0"/></svg><span class="row__name"><span class="nm">FIXTURE Darajasiz Sinov</span><span class="code">904</span></span><span class="row__team"></span><span class="rack"><svg class="medal" data-medal="month-silver" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Kumush oy"><use href="#m-month-silver"/></svg><svg class="medal" data-medal="clean-month" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Toza oy"><use href="#m-clean-month"/></svg><svg class="medal" data-medal="day-winner" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Kun gʻolibi"><use href="#m-day-winner"/></svg></span><span class="row__hero num">900 000</span><span class="row__sec row__none">—</span><span class="row__sec num">1</span><span class="row__sec num">—</span></li><li class="row " data-tier="4"><span class="row__band"></span><span class="row__rank num">17</span><svg class="crest" data-tier="4" viewBox="-3 -3 72 26" width="55.38" height="20" role="img" aria-label="4-daraja · Usta"><use href="#crest-4"/></svg><span class="row__name"><span class="nm">Yusupova Mahliyo</span><span class="code">139</span></span><span class="row__team">Lola</span><span class="rack"><svg class="medal" data-medal="clean-month" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Toza oy"><use href="#m-clean-month"/></svg><svg class="medal" data-medal="work-month" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Ishchan oy"><use href="#m-work-month"/></svg></span><span class="row__hero num">41 350 000</span><span class="row__sec num">34 600 000</span><span class="row__sec num">23</span><span class="row__sec num">94,7 %</span></li><li class="row " data-tier="3"><span class="row__band"></span><span class="row__rank num">18</span><svg class="crest" data-tier="3" viewBox="-3 -3 72 26" width="55.38" height="20" role="img" aria-label="3-daraja · Katta sotuvchi"><use href="#crest-3"/></svg><span class="row__name"><span class="nm">Rasulova Bashorat</span><span class="code">135</span></span><span class="row__team">Lola</span><span class="rack"><svg class="medal" data-medal="work-month" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Ishchan oy"><use href="#m-work-month"/></svg></span><span class="row__hero num">39 600 000</span><span class="row__sec num">30 200 000</span><span class="row__sec num">22</span><span class="row__sec num">64 %</span></li><li class="row " data-tier="3"><span class="row__band"></span><span class="row__rank num">19</span><svg class="crest" data-tier="3" viewBox="-3 -3 72 26" width="55.38" height="20" role="img" aria-label="3-daraja · Katta sotuvchi"><use href="#crest-3"/></svg><span class="row__name"><span class="nm">Raxmatullayeva Ruxshona Tolib qizi</span><span class="code">253</span></span><span class="row__team">Saidaziz</span><span class="rack"><svg class="medal" data-medal="day-winner" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Kun gʻolibi"><use href="#m-day-winner"/></svg><svg class="medal" data-medal="work-month" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Ishchan oy"><use href="#m-work-month"/></svg></span><span class="row__hero num">38 350 000</span><span class="row__sec num">29 950 000</span><span class="row__sec num">22</span><span class="row__sec num">58,6 %</span></li><li class="row " data-tier="3"><span class="row__band"></span><span class="row__rank num">20</span><svg class="crest" data-tier="3" viewBox="-3 -3 72 26" width="55.38" height="20" role="img" aria-label="3-daraja · Katta sotuvchi"><use href="#crest-3"/></svg><span class="row__name"><span class="nm">Mardonov Shaxzod</span><span class="code">162</span></span><span class="row__team">Azizbek</span><span class="rack"><svg class="medal" data-medal="clean-month" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Toza oy"><use href="#m-clean-month"/></svg></span><span class="row__hero num">38 250 000</span><span class="row__sec num">28 750 000</span><span class="row__sec num">27</span><span class="row__sec num">71,4 %</span></li><li class="row " data-tier="3"><span class="row__band"></span><span class="row__rank num">21</span><svg class="crest" data-tier="3" viewBox="-3 -3 72 26" width="55.38" height="20" role="img" aria-label="3-daraja · Katta sotuvchi"><use href="#crest-3"/></svg><span class="row__name"><span class="nm">Butayev Ali</span><span class="code">212</span></span><span class="row__team">Sadriddin</span><span class="rack"></span><span class="row__hero num">36 400 000</span><span class="row__sec num">31 600 000</span><span class="row__sec num">18</span><span class="row__sec num">71,4 %</span></li><li class="row " data-tier="3"><span class="row__band"></span><span class="row__rank num">22</span><svg class="crest" data-tier="3" viewBox="-3 -3 72 26" width="55.38" height="20" role="img" aria-label="3-daraja · Katta sotuvchi"><use href="#crest-3"/></svg><span class="row__name"><span class="nm">Pulatova Sitora</span><span class="code">146</span></span><span class="row__team">Lola</span><span class="rack"></span><span class="row__hero num">36 200 000</span><span class="row__sec num">30 200 000</span><span class="row__sec num">22</span><span class="row__sec num">81,8 %</span></li><li class="row " data-tier="3"><span class="row__band"></span><span class="row__rank num">23</span><svg class="crest" data-tier="3" viewBox="-3 -3 72 26" width="55.38" height="20" role="img" aria-label="3-daraja · Katta sotuvchi"><use href="#crest-3"/></svg><span class="row__name"><span class="nm">Shamsiyev Namozjon</span><span class="code">254</span></span><span class="row__team">Saidaziz</span><span class="rack"><svg class="medal" data-medal="work-month" viewBox="0 0 32 32" width="28" height="28" role="img" aria-label="Ishchan oy"><use href="#m-work-month"/></svg></span><span class="row__hero num">36 000 000</span><span class="row__sec num">24 200 000</span><span class="row__sec num">21</span><span class="row__sec num">62,5 %</span></li></ol>
+    <ul class="legend" aria-label="Daraja legendasi"><li><svg class="crest" data-tier="1" viewBox="-3 -3 72 26" width="41.54" height="15" role="img" aria-label="1-daraja · Yangi"><use href="#crest-1"/></svg><b>Yangi</b></li><li><svg class="crest" data-tier="2" viewBox="-3 -3 72 26" width="41.54" height="15" role="img" aria-label="2-daraja · Sotuvchi"><use href="#crest-2"/></svg><b>Sotuvchi</b><i>10 mln</i></li><li><svg class="crest" data-tier="3" viewBox="-3 -3 72 26" width="41.54" height="15" role="img" aria-label="3-daraja · Katta sotuvchi"><use href="#crest-3"/></svg><b>Katta sotuvchi</b><i>30 mln</i></li><li><svg class="crest" data-tier="4" viewBox="-3 -3 72 26" width="41.54" height="15" role="img" aria-label="4-daraja · Usta"><use href="#crest-4"/></svg><b>Usta</b><i>100 mln</i></li><li><svg class="crest" data-tier="5" viewBox="-3 -3 72 26" width="41.54" height="15" role="img" aria-label="5-daraja · Ustoz"><use href="#crest-5"/></svg><b>Ustoz</b><i>300 mln</i></li><li><svg class="crest" data-tier="6" viewBox="-3 -3 88 26" width="50.77" height="15" role="img" aria-label="6-daraja · Legenda"><use href="#crest-6"/></svg><b>Legenda</b><i>1 mlrd</i></li></ul>
+  </section>
+  <section class="panel panel--teams">
+    <header class="phead"><h2>Komandalar</h2><span class="phead__n"><b class="num">14</b> komanda</span><div class="pick"><span class="pick__hint"><b>FAKT 1</b> — tasdiqlangan pul</span><div class="seg" role="group" aria-label="Reyting qaysi fakt boʻyicha"><span class="seg__i is-on">FAKT 1</span><span class="seg__i">FAKT 2</span></div></div></header>
+    <div class="tcols "><span class="r">#</span><span>Komanda · sotuvchi</span><span class="r on">FAKT 1</span><span class="r">Ulush</span><span class="r">FAKT 2</span><span class="r">Buyurt.</span><span class="r">Konv.</span></div>
+    <ol class="tlist" style="--trow-h:50px"><li class="trow" data-metal="gold"><span class="trow__rank"><span class="halo-box" style="width:30px;height:30px"><svg class="halo" viewBox="0 0 64 64" width="30" height="30" aria-hidden="true"><use href="#halo-sm-1"/></svg></span></span><span class="trow__name"><span class="nm">Sevinch</span><span class="cnt num">9</span></span><span class="trow__hero num">319 850 000</span><span class="trow__sec num">14,8 %</span><span class="trow__sec num">234 850 000</span><span class="trow__sec num">202</span><span class="trow__sec num">68,8 %</span><span class="trow__bar"><i style="width:100.0%"></i></span></li><li class="trow" data-metal="silver"><span class="trow__rank"><span class="halo-box" style="width:30px;height:30px"><svg class="halo" viewBox="0 0 64 64" width="30" height="30" aria-hidden="true"><use href="#halo-sm-2"/></svg></span></span><span class="trow__name"><span class="nm">Lola</span><span class="cnt num">9</span></span><span class="trow__hero num">312 180 000</span><span class="trow__sec num">14,5 %</span><span class="trow__sec num">240 100 000</span><span class="trow__sec num">196</span><span class="trow__sec num">75,8 %</span><span class="trow__bar"><i style="width:97.6%"></i></span></li><li class="trow" data-metal="bronze"><span class="trow__rank"><span class="halo-box" style="width:30px;height:30px"><svg class="halo" viewBox="0 0 64 64" width="30" height="30" aria-hidden="true"><use href="#halo-sm-3"/></svg></span></span><span class="trow__name"><span class="nm">Azizbek</span><span class="cnt num">11</span></span><span class="trow__hero num">291 930 000</span><span class="trow__sec num">13,5 %</span><span class="trow__sec num">211 030 000</span><span class="trow__sec num">195</span><span class="trow__sec num">71,8 %</span><span class="trow__bar"><i style="width:91.3%"></i></span></li><li class="trow"><span class="trow__rank"><span class="num">4</span></span><span class="trow__name"><span class="nm">Sadriddin</span><span class="cnt num">10</span></span><span class="trow__hero num">247 330 001</span><span class="trow__sec num">11,5 %</span><span class="trow__sec num">184 730 000</span><span class="trow__sec num">120</span><span class="trow__sec num">66,9 %</span><span class="trow__bar"><i style="width:77.3%"></i></span></li><li class="trow"><span class="trow__rank"><span class="num">5</span></span><span class="trow__name"><span class="nm">Gulzora</span><span class="cnt num">10</span></span><span class="trow__hero num">213 550 000</span><span class="trow__sec num">9,9 %</span><span class="trow__sec num">120 800 000</span><span class="trow__sec num">138</span><span class="trow__sec num">51 %</span><span class="trow__bar"><i style="width:66.8%"></i></span></li><li class="trow"><span class="trow__rank"><span class="num">6</span></span><span class="trow__name"><span class="nm">Baza</span><span class="cnt num">9</span></span><span class="trow__hero num">177 150 000</span><span class="trow__sec num">8,2 %</span><span class="trow__sec num">136 200 000</span><span class="trow__sec num">113</span><span class="trow__sec num">87,8 %</span><span class="trow__bar"><i style="width:55.4%"></i></span></li><li class="trow"><span class="trow__rank"><span class="num">7</span></span><span class="trow__name"><span class="nm">Charos</span><span class="cnt num">5</span></span><span class="trow__hero num">155 165 000</span><span class="trow__sec num">7,2 %</span><span class="trow__sec num">128 465 000</span><span class="trow__sec num">78</span><span class="trow__sec num">92,9 %</span><span class="trow__bar"><i style="width:48.5%"></i></span></li><li class="trow"><span class="trow__rank"><span class="num">8</span></span><span class="trow__name"><span class="nm">Saidaziz</span><span class="cnt num">8</span></span><span class="trow__hero num">153 300 000</span><span class="trow__sec num">7,1 %</span><span class="trow__sec num">115 600 000</span><span class="trow__sec num">95</span><span class="trow__sec num">58,1 %</span><span class="trow__bar"><i style="width:47.9%"></i></span></li><li class="trow"><span class="trow__rank"><span class="num">9</span></span><span class="trow__name"><span class="nm">Marjona</span><span class="cnt num">1</span></span><span class="trow__hero num">109 800 000</span><span class="trow__sec num">5,1 %</span><span class="trow__sec num">79 600 000</span><span class="trow__sec num">78</span><span class="trow__sec num">72,2 %</span><span class="trow__bar"><i style="width:34.3%"></i></span></li><li class="trow"><span class="trow__rank"><span class="num">10</span></span><span class="trow__name"><span class="nm">Asliddin</span><span class="cnt num">8</span></span><span class="trow__hero num">78 100 000</span><span class="trow__sec num">3,6 %</span><span class="trow__sec num">55 500 000</span><span class="trow__sec num">39</span><span class="trow__sec num">60 %</span><span class="trow__bar"><i style="width:24.4%"></i></span></li><li class="trow"><span class="trow__rank"><span class="num">11</span></span><span class="trow__name"><span class="nm">Maftuna</span><span class="cnt num">8</span></span><span class="trow__hero num">76 300 000</span><span class="trow__sec num">3,5 %</span><span class="trow__sec num">62 000 000</span><span class="trow__sec num">51</span><span class="trow__sec num">75 %</span><span class="trow__bar"><i style="width:23.9%"></i></span></li><li class="trow"><span class="trow__rank"><span class="num">12</span></span><span class="trow__name"><span class="nm">Shohjaxon</span><span class="cnt num">4</span></span><span class="trow__hero num">11 700 000</span><span class="trow__sec num">0,5 %</span><span class="trow__sec num">4 700 000</span><span class="trow__sec num">6</span><span class="trow__sec num">60 %</span><span class="trow__bar"><i style="width:3.7%"></i></span></li><li class="trow"><span class="trow__rank"><span class="num">13</span></span><span class="trow__name"><span class="nm">Kompaniya</span><span class="cnt num">1</span></span><span class="trow__hero num">8 200 000</span><span class="trow__sec num">0,4 %</span><span class="trow__sec num">5 100 000</span><span class="trow__sec num">6</span><span class="trow__sec num">100 %</span><span class="trow__bar"><i style="width:2.6%"></i></span></li><li class="trow"><span class="trow__rank"><span class="num">14</span></span><span class="trow__name"><span class="nm">Hayot</span><span class="cnt num">1</span></span><span class="trow__hero num">1 600 000</span><span class="trow__sec num">0,1 %</span><span class="trow__sec num">1 600 000</span><span class="trow__sec num">1</span><span class="trow__sec num">100 %</span><span class="trow__bar"><i style="width:0.5%"></i></span></li></ol>
+    <footer class="jami"><div class="jami__l"><p class="jami__k">14 komanda jami · FAKT 1</p><p class="jami__v num">2 156 155 001</p><p class="jami__o"><b>FAKT 2</b><span class="num">1 580 275 000</span></p></div><dl class="jami__r"><dt>Komandasiz · 7 sotuvchi</dt><dd class="num">6 400 000</dd><dt class="sum">Barcha sotuvchilar</dt><dd class="num">2 162 555 001</dd><dd class="jami__note">Ulush 14 komanda jamidan hisoblanadi</dd></dl></footer>
+  </section></main><footer class="foot"><p><span><b>Konv.</b> = yetkazilgan ÷ (yetkazilgan + barcha bekor)</span><span><b>Buyurt.</b> = FAKT 1 buyurtmalari</span><span><b>Daraja</b> — avgustdan beri yetkazilgan pul boʻyicha</span><span><b>hozircha</b> — avgustdan 191 buyurtma yoʻlda: rekord va avgust medallari oʻzgarishi mumkin</span></p><p class="credit">Developed by Yusuf</p></footer></div>
+</body></html>

@@ -1,0 +1,2803 @@
+{
+ "period": "1–17 sentabr 2026",
+ "rows": [
+  {
+   "rank": 1,
+   "name": "Shahtiyarovna 197 Marjona",
+   "team": "Marjona",
+   "fakt2": 79600000,
+   "fakt1": 109800000,
+   "orders": 78,
+   "wonOrders": 57,
+   "conversion": 72.1519,
+   "level": 4,
+   "title": "Usta",
+   "delivered": 172990000,
+   "levelFloor": 100000000,
+   "nextAt": 300000000,
+   "nextTitle": "Ustoz",
+   "medals": [
+    {
+     "code": "day-record",
+     "count": 1,
+     "at": "2026-09-09"
+    },
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "day-winner",
+     "count": 4,
+     "at": "2026-09-12"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 2,
+   "name": "Nuriddinova 134 Niginabonu",
+   "team": "Lola",
+   "fakt2": 60400000,
+   "fakt1": 74500000,
+   "orders": 41,
+   "wonOrders": 33,
+   "conversion": 76.7442,
+   "level": 4,
+   "title": "Usta",
+   "delivered": 160250000,
+   "levelFloor": 100000000,
+   "nextAt": 300000000,
+   "nextTitle": "Ustoz",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 1,
+     "at": "2026-09-05"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 3,
+   "name": "Sirojov 115 Davlatbek",
+   "team": "Sevinch",
+   "fakt2": 56400000,
+   "fakt1": 76700000,
+   "orders": 48,
+   "wonOrders": 34,
+   "conversion": 73.913,
+   "level": 4,
+   "title": "Usta",
+   "delivered": 165900000,
+   "levelFloor": 100000000,
+   "nextAt": 300000000,
+   "nextTitle": "Ustoz",
+   "medals": [
+    {
+     "code": "month-bronze",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "day-winner",
+     "count": 1,
+     "at": "2026-09-11"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 4,
+   "name": "Muxtoraliyevna 210 Zulfira",
+   "team": "Sadriddin",
+   "fakt2": 54050000,
+   "fakt1": 60550000,
+   "orders": 25,
+   "wonOrders": 21,
+   "conversion": 91.3043,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 91150000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 1,
+     "at": "2026-09-10"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 5,
+   "name": "Umidovna 117 Bonu",
+   "team": "Sevinch",
+   "fakt2": 53650000,
+   "fakt1": 65850000,
+   "orders": 40,
+   "wonOrders": 33,
+   "conversion": 78.5714,
+   "level": 4,
+   "title": "Usta",
+   "delivered": 126450000,
+   "levelFloor": 100000000,
+   "nextAt": 300000000,
+   "nextTitle": "Ustoz",
+   "medals": [
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 6,
+   "name": "Saparboyeva 110 Farida",
+   "team": "Sevinch",
+   "fakt2": 45400000,
+   "fakt1": 66100000,
+   "orders": 38,
+   "wonOrders": 26,
+   "conversion": 72.2222,
+   "level": 4,
+   "title": "Usta",
+   "delivered": 162300000,
+   "levelFloor": 100000000,
+   "nextAt": 300000000,
+   "nextTitle": "Ustoz",
+   "medals": [
+    {
+     "code": "month-silver",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "day-winner",
+     "count": 3,
+     "at": "2026-08-19"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 7,
+   "name": "Ashurova 123 Malika",
+   "team": "Gulzora",
+   "fakt2": 41700000,
+   "fakt1": 56400000,
+   "orders": 33,
+   "wonOrders": 25,
+   "conversion": 64.1026,
+   "level": 4,
+   "title": "Usta",
+   "delivered": 111100000,
+   "levelFloor": 100000000,
+   "nextAt": 300000000,
+   "nextTitle": "Ustoz",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 1,
+     "at": "2026-09-07"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 8,
+   "name": "Haydarova 267 Muhabbat",
+   "team": "Charos",
+   "fakt2": 37765000,
+   "fakt1": 45765000,
+   "orders": 17,
+   "wonOrders": 14,
+   "conversion": 100,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 79565000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 9,
+   "name": "Ashrafova 172 Marjona",
+   "team": "Baza",
+   "fakt2": 35750000,
+   "fakt1": 44150000,
+   "orders": 26,
+   "wonOrders": 21,
+   "conversion": 95.4545,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 82850001,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 1,
+     "at": "2026-09-04"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 10,
+   "name": "Ravshanov 158 Asilbek",
+   "team": "Azizbek",
+   "fakt2": 34850000,
+   "fakt1": 50650000,
+   "orders": 34,
+   "wonOrders": 23,
+   "conversion": 62.1622,
+   "level": 4,
+   "title": "Usta",
+   "delivered": 125800000,
+   "levelFloor": 100000000,
+   "nextAt": 300000000,
+   "nextTitle": "Ustoz",
+   "medals": [
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "day-winner",
+     "count": 2,
+     "at": "2026-09-01"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 11,
+   "name": "Yusupova 139 Mahliyo",
+   "team": "Lola",
+   "fakt2": 34600000,
+   "fakt1": 41350000,
+   "orders": 23,
+   "wonOrders": 18,
+   "conversion": 94.7368,
+   "level": 4,
+   "title": "Usta",
+   "delivered": 105500000,
+   "levelFloor": 100000000,
+   "nextAt": 300000000,
+   "nextTitle": "Ustoz",
+   "medals": [
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 12,
+   "name": "268 Ozoda Yuldosheva",
+   "team": "Charos",
+   "fakt2": 33800000,
+   "fakt1": 44400000,
+   "orders": 23,
+   "wonOrders": 19,
+   "conversion": 95,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 92900000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "conversion-master",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 13,
+   "name": "Djanukolava 136 Nilufar",
+   "team": "Lola",
+   "fakt2": 33700000,
+   "fakt1": 43530000,
+   "orders": 41,
+   "wonOrders": 30,
+   "conversion": 83.3333,
+   "level": 4,
+   "title": "Usta",
+   "delivered": 125320000,
+   "levelFloor": 100000000,
+   "nextAt": 300000000,
+   "nextTitle": "Ustoz",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 1,
+     "at": "2026-08-25"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 14,
+   "name": "266 Abdulloh O'tkirovich",
+   "team": "Charos",
+   "fakt2": 32800000,
+   "fakt1": 33700000,
+   "orders": 20,
+   "wonOrders": 19,
+   "conversion": 86.3636,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 56700000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 15,
+   "name": "212 Butayev Ali",
+   "team": "Sadriddin",
+   "fakt2": 31600000,
+   "fakt1": 36400000,
+   "orders": 18,
+   "wonOrders": 15,
+   "conversion": 71.4286,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 38000000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 16,
+   "name": "Quldosheva 122 Dilshoda",
+   "team": "Gulzora",
+   "fakt2": 30350000,
+   "fakt1": 60400000,
+   "orders": 40,
+   "wonOrders": 20,
+   "conversion": 62.5,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 96600000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 1,
+     "at": "2026-08-12"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 17,
+   "name": "Rasulova 135 Bashorat",
+   "team": "Lola",
+   "fakt2": 30200000,
+   "fakt1": 39600000,
+   "orders": 22,
+   "wonOrders": 16,
+   "conversion": 64,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 70900000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 18,
+   "name": "Pulatova 146 Sitora",
+   "team": "Lola",
+   "fakt2": 30200000,
+   "fakt1": 36200000,
+   "orders": 22,
+   "wonOrders": 18,
+   "conversion": 81.8182,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 44650000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 19,
+   "name": "Mansurova 112 Zebiniso",
+   "team": "Sevinch",
+   "fakt2": 30100000,
+   "fakt1": 50600000,
+   "orders": 33,
+   "wonOrders": 20,
+   "conversion": 62.5,
+   "level": 4,
+   "title": "Usta",
+   "delivered": 120750000,
+   "levelFloor": 100000000,
+   "nextAt": 300000000,
+   "nextTitle": "Ustoz",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 2,
+     "at": "2026-08-23"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 20,
+   "name": "Raxmatullayeva 253 Ruxshona Tolib qizi",
+   "team": "Saidaziz",
+   "fakt2": 29950000,
+   "fakt1": 38350000,
+   "orders": 22,
+   "wonOrders": 17,
+   "conversion": 58.6207,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 93150000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 1,
+     "at": "2026-09-08"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 21,
+   "name": "141 Lobar Muxitdinova",
+   "team": "Lola",
+   "fakt2": 29400000,
+   "fakt1": 44600000,
+   "orders": 29,
+   "wonOrders": 19,
+   "conversion": 76,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 69750000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 22,
+   "name": "Mardonov 162 Shaxzod",
+   "team": "Azizbek",
+   "fakt2": 28750000,
+   "fakt1": 38250000,
+   "orders": 27,
+   "wonOrders": 20,
+   "conversion": 71.4286,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 59500000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 23,
+   "name": "Shoimova 157 Salomat",
+   "team": "Azizbek",
+   "fakt2": 28020000,
+   "fakt1": 31620000,
+   "orders": 22,
+   "wonOrders": 19,
+   "conversion": 70.3704,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 77870000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "day-winner",
+     "count": 2,
+     "at": "2026-09-13"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 24,
+   "name": "Hamroyeva 255 Madina",
+   "team": "Saidaziz",
+   "fakt2": 27600000,
+   "fakt1": 33200000,
+   "orders": 24,
+   "wonOrders": 19,
+   "conversion": 61.2903,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 56550000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 25,
+   "name": "Xushvaqtova 120 Marjona",
+   "team": "Gulzora",
+   "fakt2": 27300000,
+   "fakt1": 60600000,
+   "orders": 43,
+   "wonOrders": 22,
+   "conversion": 46.8085,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 55050000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 1,
+     "at": "2026-09-15"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 26,
+   "name": "Avriyev 160 Muhammad",
+   "team": "Azizbek",
+   "fakt2": 25950000,
+   "fakt1": 28450000,
+   "orders": 20,
+   "wonOrders": 18,
+   "conversion": 85.7143,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 86320000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 27,
+   "name": "Hakimov 207 Suhrob",
+   "team": "Asliddin",
+   "fakt2": 25600000,
+   "fakt1": 28800000,
+   "orders": 11,
+   "wonOrders": 9,
+   "conversion": 69.2308,
+   "level": 4,
+   "title": "Usta",
+   "delivered": 100750000,
+   "levelFloor": 100000000,
+   "nextAt": 300000000,
+   "nextTitle": "Ustoz",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 2,
+     "at": "2026-09-03"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 28,
+   "name": "Mirzayeva 114 Ozoda",
+   "team": "Sevinch",
+   "fakt2": 24600000,
+   "fakt1": 31300000,
+   "orders": 23,
+   "wonOrders": 18,
+   "conversion": 64.2857,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 38000000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 29,
+   "name": "Shamsiyev 254 Namozjon",
+   "team": "Saidaziz",
+   "fakt2": 24200000,
+   "fakt1": 36000000,
+   "orders": 21,
+   "wonOrders": 15,
+   "conversion": 62.5,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 62400000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 30,
+   "name": "215 Qo'chqorov Azamat",
+   "team": "Sadriddin",
+   "fakt2": 22680000,
+   "fakt1": 33080001,
+   "orders": 16,
+   "wonOrders": 12,
+   "conversion": 57.1429,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 38680000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 1,
+     "at": "2026-08-30"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 31,
+   "name": "Ashirova 170 Ziyoda",
+   "team": "Baza",
+   "fakt2": 22050000,
+   "fakt1": 28750000,
+   "orders": 18,
+   "wonOrders": 14,
+   "conversion": 93.3333,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 75400000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 32,
+   "name": "161 Shahnoza",
+   "team": "Azizbek",
+   "fakt2": 21900000,
+   "fakt1": 29900000,
+   "orders": 22,
+   "wonOrders": 16,
+   "conversion": 64,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 64800000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 33,
+   "name": "213 Kadirkulova Shahnoza",
+   "team": "Sadriddin",
+   "fakt2": 20200000,
+   "fakt1": 22600000,
+   "orders": 13,
+   "wonOrders": 12,
+   "conversion": 92.3077,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 86850000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "day-winner",
+     "count": 2,
+     "at": "2026-09-14"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 34,
+   "name": "Sobirova 188 Etibor",
+   "team": "Maftuna",
+   "fakt2": 19200000,
+   "fakt1": 23200000,
+   "orders": 16,
+   "wonOrders": 14,
+   "conversion": 77.7778,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 43000000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 35,
+   "name": "Shoximardonova 159 Yayra",
+   "team": "Azizbek",
+   "fakt2": 19100000,
+   "fakt1": 32800000,
+   "orders": 21,
+   "wonOrders": 12,
+   "conversion": 75,
+   "level": 4,
+   "title": "Usta",
+   "delivered": 110270000,
+   "levelFloor": 100000000,
+   "nextAt": 300000000,
+   "nextTitle": "Ustoz",
+   "medals": [
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "day-winner",
+     "count": 2,
+     "at": "2026-08-21"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 36,
+   "name": "219 Quvondiqova Gulmira",
+   "team": "Baza",
+   "fakt2": 18100000,
+   "fakt1": 28600000,
+   "orders": 19,
+   "wonOrders": 12,
+   "conversion": 70.5882,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 74850000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "day-winner",
+     "count": 1,
+     "at": "2026-08-31"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 37,
+   "name": "Amanova 155 Nilufar",
+   "team": "Azizbek",
+   "fakt2": 18100000,
+   "fakt1": 24800000,
+   "orders": 14,
+   "wonOrders": 10,
+   "conversion": 83.3333,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 51000000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 38,
+   "name": "Shoimova   257 Ruxshona",
+   "team": "Saidaziz",
+   "fakt2": 17950000,
+   "fakt1": 24750000,
+   "orders": 15,
+   "wonOrders": 11,
+   "conversion": 64.7059,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 43600000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 39,
+   "name": "Axtamova 177 Sabina",
+   "team": "Baza",
+   "fakt2": 16300000,
+   "fakt1": 22450000,
+   "orders": 13,
+   "wonOrders": 9,
+   "conversion": 90,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 44650000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "day-winner",
+     "count": 1,
+     "at": "2026-08-20"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 40,
+   "name": "Jurakulova 174 Dinora",
+   "team": "Baza",
+   "fakt2": 15450000,
+   "fakt1": 15450000,
+   "orders": 9,
+   "wonOrders": 9,
+   "conversion": 100,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 27200000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 41,
+   "name": "Sotuvchi 156",
+   "team": "Azizbek",
+   "fakt2": 15060000,
+   "fakt1": 30660000,
+   "orders": 19,
+   "wonOrders": 10,
+   "conversion": 83.3333,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 59400000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 42,
+   "name": "214 Abdurahimov Barkamol",
+   "team": "Sadriddin",
+   "fakt2": 14600000,
+   "fakt1": 32200000,
+   "orders": 11,
+   "wonOrders": 6,
+   "conversion": 40,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 38800000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 43,
+   "name": "154 Marjona Xayrullayeva",
+   "team": "Asliddin",
+   "fakt2": 14400000,
+   "fakt1": 23300000,
+   "orders": 12,
+   "wonOrders": 8,
+   "conversion": 57.1429,
+   "level": 4,
+   "title": "Usta",
+   "delivered": 142950000,
+   "levelFloor": 100000000,
+   "nextAt": 300000000,
+   "nextTitle": "Ustoz",
+   "medals": [
+    {
+     "code": "month-gold",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "day-winner",
+     "count": 5,
+     "at": "2026-08-26"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 44,
+   "name": "221 Alimova Nafisa",
+   "team": "Baza",
+   "fakt2": 13700000,
+   "fakt1": 17700000,
+   "orders": 13,
+   "wonOrders": 10,
+   "conversion": 90.9091,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 38500000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 45,
+   "name": "275 Davlatov Sardor",
+   "team": "Sadriddin",
+   "fakt2": 13600000,
+   "fakt1": 16800000,
+   "orders": 10,
+   "wonOrders": 8,
+   "conversion": 66.6667,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 13600000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-09-01"
+    }
+   ]
+  },
+  {
+   "rank": 46,
+   "name": "Artikova 180 Dilnoza",
+   "team": "Maftuna",
+   "fakt2": 13000000,
+   "fakt1": 15600000,
+   "orders": 9,
+   "wonOrders": 7,
+   "conversion": 87.5,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 25900000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 47,
+   "name": "264 Malika Rahmonova",
+   "team": "Charos",
+   "fakt2": 12900000,
+   "fakt1": 14500000,
+   "orders": 6,
+   "wonOrders": 5,
+   "conversion": 100,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 40600000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 48,
+   "name": "143 Diyora Inoyatullayeva",
+   "team": "Lola",
+   "fakt2": 12800000,
+   "fakt1": 14500000,
+   "orders": 9,
+   "wonOrders": 8,
+   "conversion": 53.3333,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 21200000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 49,
+   "name": "Jurayev 259 Murodjon",
+   "team": "Saidaziz",
+   "fakt2": 12700000,
+   "fakt1": 17800000,
+   "orders": 11,
+   "wonOrders": 8,
+   "conversion": 72.7273,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 61400000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 50,
+   "name": "Yarasheva 189 Mohigul",
+   "team": "Maftuna",
+   "fakt2": 11600000,
+   "fakt1": 18300000,
+   "orders": 12,
+   "wonOrders": 8,
+   "conversion": 88.8889,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 15300000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 51,
+   "name": "164 Sotuvchi",
+   "team": "Azizbek",
+   "fakt2": 11500000,
+   "fakt1": 12500000,
+   "orders": 7,
+   "wonOrders": 6,
+   "conversion": 85.7143,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 30750000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 1,
+     "at": "2026-09-02"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 52,
+   "name": "Ashurmatova 269 Ruxsora",
+   "team": "Charos",
+   "fakt2": 11200000,
+   "fakt1": 16800000,
+   "orders": 12,
+   "wonOrders": 8,
+   "conversion": 88.8889,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 34450000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 1,
+     "at": "2026-08-27"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 53,
+   "name": "217 Artikova Sevara",
+   "team": "Sadriddin",
+   "fakt2": 10400000,
+   "fakt1": 18200000,
+   "orders": 11,
+   "wonOrders": 6,
+   "conversion": 42.8571,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 18400000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 54,
+   "name": "Nazarova Shirin 107",
+   "team": "Sevinch",
+   "fakt2": 10400000,
+   "fakt1": 14000000,
+   "orders": 9,
+   "wonOrders": 7,
+   "conversion": 100,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 38200000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 55,
+   "name": "Nurullayeva 176 (stajor) Sadoqat",
+   "team": "Baza",
+   "fakt2": 10300000,
+   "fakt1": 11300000,
+   "orders": 8,
+   "wonOrders": 7,
+   "conversion": 87.5,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 42000000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 56,
+   "name": "Toshnazarova 182 Shahrizoda",
+   "team": "Maftuna",
+   "fakt2": 9700000,
+   "fakt1": 9700000,
+   "orders": 6,
+   "wonOrders": 6,
+   "conversion": 54.5455,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 33700000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 57,
+   "name": "Xurramova 108 NIlufar",
+   "team": "Sevinch",
+   "fakt2": 9500000,
+   "fakt1": 9500000,
+   "orders": 6,
+   "wonOrders": 6,
+   "conversion": 37.5,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 13500000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 58,
+   "name": "131 sotuvchi 131",
+   "team": "Gulzora",
+   "fakt2": 9200000,
+   "fakt1": 15400000,
+   "orders": 9,
+   "wonOrders": 6,
+   "conversion": 42.8571,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 52000000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 2,
+     "at": "2026-08-07"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 59,
+   "name": "Abdumannobov 152 Muzaffar",
+   "team": "Asliddin",
+   "fakt2": 8900000,
+   "fakt1": 13700000,
+   "orders": 9,
+   "wonOrders": 6,
+   "conversion": 66.6667,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 94650000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 3,
+     "at": "2026-08-28"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 60,
+   "name": "145 Mohigul Bekova",
+   "team": "Lola",
+   "fakt2": 8800000,
+   "fakt1": 17900000,
+   "orders": 9,
+   "wonOrders": 5,
+   "conversion": 62.5,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 25000000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 61,
+   "name": "209 Mamayusupov Sadriddin",
+   "team": "Sadriddin",
+   "fakt2": 8000000,
+   "fakt1": 12800000,
+   "orders": 7,
+   "wonOrders": 5,
+   "conversion": 62.5,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 21650000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 62,
+   "name": "216 Anorboyeva Mohira",
+   "team": "Sadriddin",
+   "fakt2": 6400000,
+   "fakt1": 9700000,
+   "orders": 6,
+   "wonOrders": 4,
+   "conversion": 66.6667,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 34700000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 63,
+   "name": "121 sotuvchi",
+   "team": "Gulzora",
+   "fakt2": 6350000,
+   "fakt1": 7350000,
+   "orders": 3,
+   "wonOrders": 2,
+   "conversion": 66.6667,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 15450000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 64,
+   "name": "Содиков Мурод",
+   "team": "Kompaniya",
+   "fakt2": 5100000,
+   "fakt1": 8200000,
+   "orders": 6,
+   "wonOrders": 4,
+   "conversion": 100,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 18200000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 65,
+   "name": "Asqarov 118 Shohjahon",
+   "team": "Sevinch",
+   "fakt2": 4800000,
+   "fakt1": 5800000,
+   "orders": 5,
+   "wonOrders": 4,
+   "conversion": 57.1429,
+   "level": 1,
+   "title": "Yangi",
+   "delivered": 8500000,
+   "levelFloor": 0.01,
+   "nextAt": 10000000,
+   "nextTitle": "Sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 66,
+   "name": "Vahobjonova 231 Parizoda",
+   "team": "Shohjaxon",
+   "fakt2": 4700000,
+   "fakt1": 4700000,
+   "orders": 3,
+   "wonOrders": 3,
+   "conversion": 100,
+   "level": 1,
+   "title": "Yangi",
+   "delivered": 4700000,
+   "levelFloor": 0.01,
+   "nextAt": 10000000,
+   "nextTitle": "Sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-09-01"
+    }
+   ]
+  },
+  {
+   "rank": 67,
+   "name": "131-Hulkar Norquvvatova",
+   "team": "Azizbek",
+   "fakt2": 4200000,
+   "fakt1": 8700000,
+   "orders": 6,
+   "wonOrders": 3,
+   "conversion": 50,
+   "level": 1,
+   "title": "Yangi",
+   "delivered": 4200000,
+   "levelFloor": 0.01,
+   "nextAt": 10000000,
+   "nextTitle": "Sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-09-01"
+    }
+   ]
+  },
+  {
+   "rank": 68,
+   "name": "Nodirov 163 Asilbek",
+   "team": "Azizbek",
+   "fakt2": 3600000,
+   "fakt1": 3600000,
+   "orders": 3,
+   "wonOrders": 3,
+   "conversion": 75,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 11350000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 69,
+   "name": "Ikromaliyeva 151 Feruza",
+   "team": "Asliddin",
+   "fakt2": 3400000,
+   "fakt1": 3400000,
+   "orders": 2,
+   "wonOrders": 2,
+   "conversion": 100,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 50700000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 70,
+   "name": "Abduxamidova 220 (stajor) Ruxshona",
+   "team": "Baza",
+   "fakt2": 3350000,
+   "fakt1": 7550000,
+   "orders": 6,
+   "wonOrders": 3,
+   "conversion": 60,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 33300000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "clean-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 71,
+   "name": "Shuxratovna 178 Maftuna",
+   "team": "Maftuna",
+   "fakt2": 3300000,
+   "fakt1": 3300000,
+   "orders": 2,
+   "wonOrders": 2,
+   "conversion": 100,
+   "level": 1,
+   "title": "Yangi",
+   "delivered": 3300000,
+   "levelFloor": 0.01,
+   "nextAt": 10000000,
+   "nextTitle": "Sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-09-01"
+    }
+   ]
+  },
+  {
+   "rank": 71,
+   "name": "Mahmudovna 206 Marjona",
+   "team": null,
+   "fakt2": 3300000,
+   "fakt1": 3300000,
+   "orders": 2,
+   "wonOrders": 2,
+   "conversion": 100,
+   "level": 1,
+   "title": "Yangi",
+   "delivered": 9900000,
+   "levelFloor": 0.01,
+   "nextAt": 10000000,
+   "nextTitle": "Sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 73,
+   "name": "211 Arislonova Shaxlo",
+   "team": "Sadriddin",
+   "fakt2": 3200000,
+   "fakt1": 5000000,
+   "orders": 3,
+   "wonOrders": 2,
+   "conversion": 66.6667,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 47900000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 74,
+   "name": "Yorqinovich 153 Ibrohim",
+   "team": "Asliddin",
+   "fakt2": 3200000,
+   "fakt1": 3200000,
+   "orders": 2,
+   "wonOrders": 2,
+   "conversion": 100,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 68600000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 1,
+     "at": "2026-08-10"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 74,
+   "name": "Nurmurotova 260 Zarina",
+   "team": "Saidaziz",
+   "fakt2": 3200000,
+   "fakt1": 3200000,
+   "orders": 2,
+   "wonOrders": 2,
+   "conversion": 100,
+   "level": 1,
+   "title": "Yangi",
+   "delivered": 3200000,
+   "levelFloor": 0.01,
+   "nextAt": 10000000,
+   "nextTitle": "Sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-09-01"
+    }
+   ]
+  },
+  {
+   "rank": 76,
+   "name": "Badalova 130 Dinora",
+   "team": "Gulzora",
+   "fakt2": 3100000,
+   "fakt1": 8400000,
+   "orders": 6,
+   "wonOrders": 2,
+   "conversion": 20,
+   "level": 1,
+   "title": "Yangi",
+   "delivered": 4700000,
+   "levelFloor": 0.01,
+   "nextAt": 10000000,
+   "nextTitle": "Sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 77,
+   "name": "Yusupova 183 Sevara",
+   "team": "Maftuna",
+   "fakt2": 2000000,
+   "fakt1": 3000000,
+   "orders": 3,
+   "wonOrders": 2,
+   "conversion": 66.6667,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 20900000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 78,
+   "name": "Stajor 185",
+   "team": "Maftuna",
+   "fakt2": 2000000,
+   "fakt1": 2000000,
+   "orders": 2,
+   "wonOrders": 2,
+   "conversion": 100,
+   "level": 1,
+   "title": "Yangi",
+   "delivered": 6700000,
+   "levelFloor": 0.01,
+   "nextAt": 10000000,
+   "nextTitle": "Sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 78,
+   "name": "Fazliddinov Bunyodjon",
+   "team": null,
+   "fakt2": 2000000,
+   "fakt1": 2000000,
+   "orders": 2,
+   "wonOrders": 2,
+   "conversion": 100,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 15800000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 80,
+   "name": "Murodova 133 Gulzora",
+   "team": "Gulzora",
+   "fakt2": 1800000,
+   "fakt1": 1800000,
+   "orders": 1,
+   "wonOrders": 1,
+   "conversion": 100,
+   "level": 1,
+   "title": "Yangi",
+   "delivered": 1800000,
+   "levelFloor": 0.01,
+   "nextAt": 10000000,
+   "nextTitle": "Sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-09-01"
+    }
+   ]
+  },
+  {
+   "rank": 81,
+   "name": "Bahodirjonova 239 Ezoza",
+   "team": "Hayot",
+   "fakt2": 1600000,
+   "fakt1": 1600000,
+   "orders": 1,
+   "wonOrders": 1,
+   "conversion": 100,
+   "level": 1,
+   "title": "Yangi",
+   "delivered": 3600000,
+   "levelFloor": 0.01,
+   "nextAt": 10000000,
+   "nextTitle": "Sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 82,
+   "name": "Mahmudova 184 Xurshida",
+   "team": "Maftuna",
+   "fakt2": 1200000,
+   "fakt1": 1200000,
+   "orders": 1,
+   "wonOrders": 1,
+   "conversion": 33.3333,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 12400000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 82,
+   "name": "Sanaqulova 222 (stajor) Rayxona",
+   "team": "Baza",
+   "fakt2": 1200000,
+   "fakt1": 1200000,
+   "orders": 1,
+   "wonOrders": 1,
+   "conversion": 100,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 14500000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 84,
+   "name": "Azimova 193 Sabina",
+   "team": null,
+   "fakt2": 1100000,
+   "fakt1": 1100000,
+   "orders": 1,
+   "wonOrders": 1,
+   "conversion": 100,
+   "level": 1,
+   "title": "Yangi",
+   "delivered": 1100000,
+   "levelFloor": 0.01,
+   "nextAt": 10000000,
+   "nextTitle": "Sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-09-01"
+    }
+   ]
+  },
+  {
+   "rank": 85,
+   "name": "124 Sotuvchi",
+   "team": "Gulzora",
+   "fakt2": 1000000,
+   "fakt1": 1000000,
+   "orders": 1,
+   "wonOrders": 1,
+   "conversion": 100,
+   "level": 1,
+   "title": "Yangi",
+   "delivered": 2800000,
+   "levelFloor": 0.01,
+   "nextAt": 10000000,
+   "nextTitle": "Sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 86,
+   "name": "Baxtiyarova 234 Kamola",
+   "team": "Shohjaxon",
+   "fakt2": 0,
+   "fakt1": 3800000,
+   "orders": 1,
+   "wonOrders": 0,
+   "conversion": null,
+   "level": 0,
+   "title": null,
+   "delivered": 0,
+   "levelFloor": 0,
+   "nextAt": 0.01,
+   "nextTitle": "Yangi",
+   "medals": []
+  },
+  {
+   "rank": 87,
+   "name": "Jorayev 150 Javohir",
+   "team": "Asliddin",
+   "fakt2": 0,
+   "fakt1": 3200000,
+   "orders": 1,
+   "wonOrders": 0,
+   "conversion": 0,
+   "level": 4,
+   "title": "Usta",
+   "delivered": 102250000,
+   "levelFloor": 100000000,
+   "nextAt": 300000000,
+   "nextTitle": "Ustoz",
+   "medals": [
+    {
+     "code": "day-winner",
+     "count": 2,
+     "at": "2026-08-18"
+    },
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 87,
+   "name": "Ziyayev 233 Abdulloh",
+   "team": "Shohjaxon",
+   "fakt2": 0,
+   "fakt1": 3200000,
+   "orders": 2,
+   "wonOrders": 0,
+   "conversion": 0,
+   "level": 0,
+   "title": null,
+   "delivered": 0,
+   "levelFloor": 0,
+   "nextAt": 0.01,
+   "nextTitle": "Yangi",
+   "medals": []
+  },
+  {
+   "rank": 89,
+   "name": "127 Odina Isoqulova",
+   "team": "Gulzora",
+   "fakt2": 0,
+   "fakt1": 2200000,
+   "orders": 2,
+   "wonOrders": 0,
+   "conversion": 0,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 17000000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 90,
+   "name": "Karimberdiyev 148 Asliddin",
+   "team": "Asliddin",
+   "fakt2": 0,
+   "fakt1": 1600000,
+   "orders": 1,
+   "wonOrders": 0,
+   "conversion": 0,
+   "level": 1,
+   "title": "Yangi",
+   "delivered": 3200000,
+   "levelFloor": 0.01,
+   "nextAt": 10000000,
+   "nextTitle": "Sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 91,
+   "name": "Nuriddinov 149 Omad",
+   "team": "Asliddin",
+   "fakt2": 0,
+   "fakt1": 900000,
+   "orders": 1,
+   "wonOrders": 0,
+   "conversion": 0,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 27200000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 92,
+   "name": "Дониер Рустамов",
+   "team": null,
+   "fakt2": 0,
+   "fakt1": 0,
+   "orders": 0,
+   "wonOrders": 0,
+   "conversion": 0,
+   "level": null,
+   "title": null,
+   "delivered": null,
+   "levelFloor": null,
+   "nextAt": null,
+   "nextTitle": null,
+   "medals": []
+  },
+  {
+   "rank": 92,
+   "name": "Жавохирбек Абдурахимов",
+   "team": null,
+   "fakt2": 0,
+   "fakt1": 0,
+   "orders": 0,
+   "wonOrders": 0,
+   "conversion": 0,
+   "level": 0,
+   "title": null,
+   "delivered": 0,
+   "levelFloor": 0,
+   "nextAt": 0.01,
+   "nextTitle": "Yangi",
+   "medals": []
+  },
+  {
+   "rank": 92,
+   "name": "Turdiyeva 105 Dilafruz",
+   "team": null,
+   "fakt2": 0,
+   "fakt1": 0,
+   "orders": 0,
+   "wonOrders": 0,
+   "conversion": 0,
+   "level": null,
+   "title": null,
+   "delivered": null,
+   "levelFloor": null,
+   "nextAt": null,
+   "nextTitle": null,
+   "medals": []
+  },
+  {
+   "rank": 92,
+   "name": "Murodov 109 Ma'ruf",
+   "team": "Sevinch",
+   "fakt2": 0,
+   "fakt1": 0,
+   "orders": 0,
+   "wonOrders": 0,
+   "conversion": 0,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 10350000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 92,
+   "name": "Shodiyeva126 Muqaddam",
+   "team": "Gulzora",
+   "fakt2": 0,
+   "fakt1": 0,
+   "orders": 0,
+   "wonOrders": 0,
+   "conversion": 0,
+   "level": null,
+   "title": null,
+   "delivered": null,
+   "levelFloor": null,
+   "nextAt": null,
+   "nextTitle": null,
+   "medals": []
+  },
+  {
+   "rank": 92,
+   "name": "138 Stajor",
+   "team": "Lola",
+   "fakt2": 0,
+   "fakt1": 0,
+   "orders": 0,
+   "wonOrders": 0,
+   "conversion": 0,
+   "level": 2,
+   "title": "Sotuvchi",
+   "delivered": 21900000,
+   "levelFloor": 10000000,
+   "nextAt": 30000000,
+   "nextTitle": "Katta sotuvchi",
+   "medals": [
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 92,
+   "name": "Nazarov 228 Shohjaxon",
+   "team": "Shohjaxon",
+   "fakt2": 0,
+   "fakt1": 0,
+   "orders": 0,
+   "wonOrders": 0,
+   "conversion": 0,
+   "level": null,
+   "title": null,
+   "delivered": null,
+   "levelFloor": null,
+   "nextAt": null,
+   "nextTitle": null,
+   "medals": []
+  },
+  {
+   "rank": 92,
+   "name": "Gamidova 250 Halima",
+   "team": "Saidaziz",
+   "fakt2": 0,
+   "fakt1": 0,
+   "orders": 0,
+   "wonOrders": 0,
+   "conversion": 0,
+   "level": 3,
+   "title": "Katta sotuvchi",
+   "delivered": 59100000,
+   "levelFloor": 30000000,
+   "nextAt": 100000000,
+   "nextTitle": "Usta",
+   "medals": [
+    {
+     "code": "work-month",
+     "count": 1,
+     "at": "2026-08-01"
+    },
+    {
+     "code": "first-sale",
+     "count": 1,
+     "at": "2026-08-01"
+    }
+   ]
+  },
+  {
+   "rank": 92,
+   "name": "Narzullayev 261 Jasurbek",
+   "team": "Saidaziz",
+   "fakt2": 0,
+   "fakt1": 0,
+   "orders": 0,
+   "wonOrders": 0,
+   "conversion": 0,
+   "level": null,
+   "title": null,
+   "delivered": null,
+   "levelFloor": null,
+   "nextAt": null,
+   "nextTitle": null,
+   "medals": []
+  },
+  {
+   "rank": 92,
+   "name": "276 Javohir Jo'rayev",
+   "team": null,
+   "fakt2": 0,
+   "fakt1": 0,
+   "orders": 0,
+   "wonOrders": 0,
+   "conversion": 0,
+   "level": null,
+   "title": null,
+   "delivered": null,
+   "levelFloor": null,
+   "nextAt": null,
+   "nextTitle": null,
+   "medals": []
+  }
+ ],
+ "teams": [
+  {
+   "rank": 1,
+   "name": "Lola",
+   "sellers": 9,
+   "fakt2": 240100000,
+   "fakt1": 312180000,
+   "orders": 196,
+   "conversion": 75.7732
+  },
+  {
+   "rank": 2,
+   "name": "Sevinch",
+   "sellers": 9,
+   "fakt2": 234850000,
+   "fakt1": 319850000,
+   "orders": 202,
+   "conversion": 68.8372
+  },
+  {
+   "rank": 3,
+   "name": "Azizbek",
+   "sellers": 11,
+   "fakt2": 211030000,
+   "fakt1": 291930000,
+   "orders": 195,
+   "conversion": 71.7949
+  },
+  {
+   "rank": 4,
+   "name": "Sadriddin",
+   "sellers": 10,
+   "fakt2": 184730000,
+   "fakt1": 247330001,
+   "orders": 120,
+   "conversion": 66.9118
+  },
+  {
+   "rank": 5,
+   "name": "Baza",
+   "sellers": 9,
+   "fakt2": 136200000,
+   "fakt1": 177150000,
+   "orders": 113,
+   "conversion": 87.7551
+  },
+  {
+   "rank": 6,
+   "name": "Charos",
+   "sellers": 5,
+   "fakt2": 128465000,
+   "fakt1": 155165000,
+   "orders": 78,
+   "conversion": 92.8571
+  },
+  {
+   "rank": 7,
+   "name": "Gulzora",
+   "sellers": 10,
+   "fakt2": 120800000,
+   "fakt1": 213550000,
+   "orders": 138,
+   "conversion": 50.9677
+  },
+  {
+   "rank": 8,
+   "name": "Saidaziz",
+   "sellers": 8,
+   "fakt2": 115600000,
+   "fakt1": 153300000,
+   "orders": 95,
+   "conversion": 58.0645
+  },
+  {
+   "rank": 9,
+   "name": "Marjona",
+   "sellers": 1,
+   "fakt2": 79600000,
+   "fakt1": 109800000,
+   "orders": 78,
+   "conversion": 72.1519
+  },
+  {
+   "rank": 10,
+   "name": "Maftuna",
+   "sellers": 8,
+   "fakt2": 62000000,
+   "fakt1": 76300000,
+   "orders": 51,
+   "conversion": 75
+  },
+  {
+   "rank": 11,
+   "name": "Asliddin",
+   "sellers": 8,
+   "fakt2": 55500000,
+   "fakt1": 78100000,
+   "orders": 39,
+   "conversion": 60
+  },
+  {
+   "rank": 12,
+   "name": "Kompaniya",
+   "sellers": 1,
+   "fakt2": 5100000,
+   "fakt1": 8200000,
+   "orders": 6,
+   "conversion": 100
+  },
+  {
+   "rank": 13,
+   "name": "Shohjaxon",
+   "sellers": 4,
+   "fakt2": 4700000,
+   "fakt1": 11700000,
+   "orders": 6,
+   "conversion": 60
+  },
+  {
+   "rank": 14,
+   "name": "Hayot",
+   "sellers": 1,
+   "fakt2": 1600000,
+   "fakt1": 1600000,
+   "orders": 1,
+   "conversion": 100
+  }
+ ],
+ "records": null
+}
