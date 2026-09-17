@@ -212,7 +212,12 @@ describe('globals.css — MEDALS bo‘limi', () => {
     expect(code).not.toMatch(/rgba?\(/)
     expect(code).not.toContain('color-mix')
     const selectors = [...code.matchAll(/(^|\n)\s*([.@][^{\n]+?)\s*[{,]/g)].map((m) => m[2]!.trim())
-    for (const s of selectors) expect(s, s).toMatch(/^(\.medal-defs|\.medal-mark|\.row-medals|@keyframes medal-mark-new|@media \(prefers-reduced-motion: no-preference\))/)
+    // Medalning o'zi, va uning taxtadagi ikki joyi: o'rindiq tokchasi va qator katagi.
+    for (const s of selectors) {
+      expect(s, s).toMatch(
+        /^(\.medal-defs|\.medal-mark|\.row-medals|\.seat-medals|\.tv-cell--medals|\.tv-cell--bare|\.tv-list--medals|@keyframes medal-mark-new|@media \(prefers-reduced-motion: no-preference\)|@media \(min-width: 1280px\) and \(max-width: 1799px\)|@media \(max-width: 639px\))/,
+      )
+    }
   })
 
   it('o‘rta ton FAQAT ikki joyda qayta bog‘lanadi: `.medal-defs` (gradientlar) va `.medal-mark` (instance)', () => {
@@ -236,7 +241,7 @@ describe('globals.css — MEDALS bo‘limi', () => {
   })
 
   it('qator medallari o‘ngdan chapga; yangi medal animatsiyasi faqat `no-preference` ichida', () => {
-    expect(code).toMatch(/\.row-medals \{[^}]*flex-direction: row-reverse;/)
+    expect(code).toMatch(/\.row-medals \{[^}]*flex-flow: row-reverse wrap;/)
     const guarded = code.slice(code.indexOf('@media (prefers-reduced-motion: no-preference)'))
     expect(guarded).toMatch(/\.medal-mark--new \{[^}]*animation: medal-mark-new 400ms var\(--ease-out\) both;/)
     // Himoyadan tashqarida `animation` yo'q.

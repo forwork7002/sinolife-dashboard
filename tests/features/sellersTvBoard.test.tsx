@@ -290,6 +290,65 @@ describe('the rows under the seats', () => {
 
     expect(screen.queryByRole('table')).toBeNull()
   })
+
+  /*
+    THE «BUGUN» MORNING (klassik spec §1.6). Most of the floor has confirmed
+    nothing yet, and the old board printed «0» for each of them — in the
+    row's heaviest ink under the fact being read, forty bold zeros down the
+    column the eye goes to first. A row with nothing on EITHER fact now prints
+    the muted dash its rank cell already printed. Three things it must not do:
+    touch a row that has money on one fact (that «0» is a measurement), move
+    anybody (the order is the service's), or drop a row.
+  */
+  it('prints a muted dash, not a bold zero, on a row with no money on either fact', () => {
+    const MORNING = board({
+      orders: 9,
+      wonOrders: 0,
+      rows: [
+        seller('Aziz 101', 1, 0, 5_000_000),
+        seller('Bonu 102', 2, 0, 4_000_000),
+        seller('Charos 103', 3, 0, 3_000_000),
+        seller('Dilnoza 104', 4, 0, 2_000_000),
+        seller('Eldor 105', 5, 0, 0),
+        seller('Farida 106', 5, 0, 0),
+      ],
+    })
+    render(<SellersColumn data={MORNING} {...PROPS} />)
+
+    const rows = within(screen.getByRole('table')).getAllByRole('row').slice(1)
+    const cells = (row: HTMLElement) => within(row).getAllByRole('cell')
+    // Same rows, same order.
+    expect(rows.map((r) => cells(r)[1]!.textContent)).toEqual([
+      expect.stringContaining('Dilnoza 104'),
+      expect.stringContaining('Eldor 105'),
+      expect.stringContaining('Farida 106'),
+    ])
+
+    // Confirmed money, nothing delivered: FAKT 2 stays a real «0».
+    const paid = cells(rows[0]!)
+    expect(paid[2]!.textContent).toBe('0')
+    expect(paid[3]!.textContent).toBe(formatFullUzs(2_000_000))
+
+    for (const row of rows.slice(1)) {
+      const [rank, , fakt2, fakt1] = cells(row)
+      expect(rank!.textContent).toBe('—')
+      for (const money of [fakt2!, fakt1!]) {
+        expect(money.textContent).toBe('—')
+        const dash = money.querySelector('span')!
+        expect(dash.getAttribute('aria-label')).toBe('Hali puli yoʻq')
+        expect(dash.className).not.toContain('font-semibold')
+        expect(dash.style.color).toBe('var(--ink-muted)')
+      }
+    }
+  })
+
+  it('draws no medal and no medal holder when the column is handed none', () => {
+    const { container } = render(<SellersColumn data={RIPE} {...PROPS} />)
+
+    expect(container.querySelector('.medal-mark, .seat-medals, .row-medals, .tv-list--medals')).toBeNull()
+    // Every name cell is the plain block the old board had.
+    for (const cell of container.querySelectorAll('.tv-cell')) expect(cell.className).toBe('tv-cell')
+  })
 })
 
 describe('the teams column', () => {

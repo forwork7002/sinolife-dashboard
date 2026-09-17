@@ -5,14 +5,23 @@ import { useQuery } from '@tanstack/react-query'
 
 import { EmptyState, ErrorState } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
+import { MedalDefs } from '@/features/sellers/MedalDefs'
+import { MedalMark } from '@/features/sellers/MedalMark'
 import { RecordWall } from '@/features/sellers/RecordWall'
+import { RowMedals, rowMedalsOf } from '@/features/sellers/RowMedals'
+import { seatMedals } from '@/features/sellers/medalCatalog'
 import { useAutoScroll } from '@/features/sellers/useAutoScroll'
+import { type NewMedals, useNewMedals } from '@/features/sellers/useNewMedals'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import {
+  type MedalCode,
   type SellerBoardDto,
   type SellerBoardRowDto,
   type SellerBoardTotalsDto,
+  type SellerMedalDto,
+  type SellerMedalRowDto,
+  type SellerMedalsDto,
   type SellerTeamRowDto,
   apiGet,
 } from '@/lib/api'
@@ -88,6 +97,42 @@ export function SellersPage() {
     placeholderData: (previous) => previous,
   })
 
+  /*
+    THE MEDALS RIDE THEIR OWN REQUEST, ON THEIR OWN CLOCK — the record wall's
+    pattern, for the record wall's reasons.
+
+    A different WINDOW: a medal is earned over the seller's whole history
+    (`from` on the payload), the board over the selected period — so the query
+    takes no filter and its key carries none. «Bugun», «Kecha» and «Shu oy» all
+    show the same medals, and pressing a period button cannot make one vanish.
+    A different PACE: the board moves every minute, a medal a few times a day,
+    and the server memoises this answer for ten minutes anyway.
+    AND IT CANNOT HURT THE BOARD: if this request fails or is slow the
+    television shows the ranking exactly as it did before medals existed —
+    `medalsById` is simply empty and nothing below draws a rack.
+
+    `staleTime` AND `refetchInterval`, both: `refetchInterval` never consults
+    staleness, so setting one of them alone changes nothing (see providers.tsx).
+  */
+  const medals = useQuery({
+    queryKey: ['sellers', 'medals'],
+    queryFn: ({ signal }) =>
+      apiGet<SellerMedalsDto>('/analytics/sellers', { include: 'medals' }, signal),
+    staleTime: 600_000,
+    refetchInterval: 600_000,
+    placeholderData: (previous) => previous,
+  })
+
+  // Joined to the rows by `employeeId`. MEMOISED ON THE PAYLOAD, which is what
+  // `useNewMedals` compares by identity — a fresh Map per render would read as
+  // a fresh payload per render.
+  const medalsById = useMemo(() => {
+    const map = new Map<string, SellerMedalRowDto>()
+    for (const row of medals.data?.data.sellers ?? []) map.set(row.employeeId, row)
+    return map
+  }, [medals.data])
+  const newMedals = useNewMedals(medalsById)
+
   const data = board.data?.data
   const status = board.isPending ? 'loading' : board.isError ? 'error' : 'ready'
   const errorMessage = (board.error as Error | null)?.message
@@ -149,6 +194,9 @@ export function SellersPage() {
         it keeps its own.
       */}
       <div className="tv-board-shell flex min-h-0 flex-col gap-3">
+        {/* ONE <defs> FOR EVERY MEDAL ON THE PAGE — each medal is a
+            `<use href="#m-…">` into it; see `MedalDefs` for why once. */}
+        <MedalDefs />
 
         <div className="tv-switch" role="tablist" aria-label="Qaysi reyting">
           {(
@@ -180,6 +228,8 @@ export function SellersPage() {
             parked={shown !== 'sellers'}
             fakt={fakt}
             onFakt={setFakt}
+            medals={medalsById}
+            newMedals={newMedals}
           />
           <TeamsColumn
             data={data}
@@ -294,6 +344,19 @@ interface ColumnProps {
   onFakt: (choice: FaktChoice) => void
 }
 
+/**
+ * The medals, as the sellers column takes them — and ONLY the sellers column.
+ * A team has no medals (spec §1.5), and the way that is kept true is that
+ * `TeamsColumn` has no prop to receive them through: a team's key is a ROP's
+ * name and could never match an `employeeId`, but nothing here relies on that.
+ */
+interface MedalProps {
+  /** `?include=medals`, keyed by `employeeId`. Empty until it lands — and if it never does. */
+  medals?: ReadonlyMap<string, SellerMedalRowDto>
+  /** What appeared between the last two payloads — see `useNewMedals`. */
+  newMedals?: NewMedals
+}
+
 /** Exported for the tests, like `TotalsBand` before it. */
 export function SellersColumn({
   data,
@@ -303,7 +366,9 @@ export function SellersColumn({
   parked = false,
   fakt,
   onFakt,
-}: ColumnProps) {
+  medals,
+  newMedals,
+}: ColumnProps & MedalProps) {
   const entries = useMemo(() => data?.rows.map(fromSeller) ?? [], [data])
   return (
     <BoardColumn
@@ -322,6 +387,8 @@ export function SellersColumn({
       errorMessage={errorMessage}
       onRetry={onRetry}
       empty="Tanlangan davrda hech kim buyurtma olmagan — podium keyingi buyurtmani kutmoqda."
+      medals={medals}
+      newMedals={newMedals}
     />
   )
 }
@@ -498,7 +565,9 @@ function BoardColumn({
   errorMessage,
   onRetry,
   empty,
-}: {
+  medals,
+  newMedals,
+}: MedalProps & {
   id: string
   /**
    * Which of the two boards this is, as a colour. People and teams are two
@@ -609,12 +678,27 @@ function BoardColumn({
             allEntries={ranked}
             noun={noun}
             onDelivered={onDelivered}
+            medals={medals}
+            newMedals={newMedals}
           />
         </>
       ) : (
         <>
-          <Podium winners={winners} onDelivered={onDelivered} totalWon={totals?.won.amount ?? 0} />
-          <BoardList entries={rows} allEntries={ranked} noun={noun} onDelivered={onDelivered} />
+          <Podium
+            winners={winners}
+            onDelivered={onDelivered}
+            totalWon={totals?.won.amount ?? 0}
+            medals={medals}
+            newMedals={newMedals}
+          />
+          <BoardList
+            entries={rows}
+            allEntries={ranked}
+            noun={noun}
+            onDelivered={onDelivered}
+            medals={medals}
+            newMedals={newMedals}
+          />
         </>
       )}
     </section>
@@ -670,10 +754,16 @@ function PodiumBasis({ onDelivered, className = '' }: { onDelivered: boolean; cl
   )
 }
 
+/*
+  `rack` AND `mark` ARE THE SEAT'S MEDAL SHELF (spec §1.5): the champion shows
+  up to four at 40px, silver and bronze up to three at 36px. Whatever does not
+  fit is NOT DRAWN — no «+N», no caption; `seatMedals` decides which survive
+  (rarest first, and a plain steel badge steps aside for a real award).
+*/
 const SEATS = [
-  { col: 'podium-col--gold', medal: '🥇', ring: 60 },
-  { col: 'podium-col--silver', medal: '🥈', ring: 46 },
-  { col: 'podium-col--bronze', medal: '🥉', ring: 40 },
+  { col: 'podium-col--gold', medal: '🥇', ring: 56, rack: 4, mark: 40 },
+  { col: 'podium-col--silver', medal: '🥈', ring: 43, rack: 3, mark: 36 },
+  { col: 'podium-col--bronze', medal: '🥉', ring: 37, rack: 3, mark: 36 },
 ] as const
 
 /**
@@ -697,7 +787,9 @@ function Podium({
   winners,
   onDelivered,
   totalWon,
-}: {
+  medals,
+  newMedals,
+}: MedalProps & {
   winners: readonly BoardEntry[]
   onDelivered: boolean
   totalWon: number
@@ -718,6 +810,8 @@ function Podium({
           runnerUp={index === 0 ? (winners[1] ?? null) : null}
           onDelivered={onDelivered}
           totalWon={totalWon}
+          medals={medals?.get(entry.key)?.medals}
+          newMedals={newMedals?.get(entry.key)}
         />
       ))}
     </div>
@@ -776,7 +870,12 @@ function PodiumSeat({
   runnerUp,
   onDelivered,
   totalWon,
+  medals,
+  newMedals,
 }: {
+  /** This seller's medals — absent for a team, and until `?include=medals` lands. */
+  medals?: readonly SellerMedalDto[]
+  newMedals?: ReadonlySet<MedalCode>
   entry: BoardEntry
   place: number
   column: number
@@ -794,6 +893,7 @@ function PodiumSeat({
   const gap = leaderFigure - figure
   const closeness = leaderFigure > 0 ? (figure / leaderFigure) * 100 : 0
   const lead = runnerUp ? figure - figureOf(runnerUp) : null
+  const rack = medals ? seatMedals(medals, seat.rack) : []
 
   return (
     <div className={`${seat.col} tv-seat tv-seat--${place} tv-seat--at-${column}`}>
@@ -820,30 +920,62 @@ function PodiumSeat({
           </span>
         </p>
 
+        {/*
+          THE SEAT'S VERTICAL RHYTHM IS ONE NOTCH TIGHTER THAN IT WAS — every
+          gap below the ring stepped down one Tailwind stop (12 → 8, 10 → 6,
+          8 → 6, 6 → 4). That, the card's bottom padding and the shorter
+          pedestals are where the medal shelf's 46px came from: the podium is
+          measured against the old board at 1920×1080 and may not be taller
+          than it was (spec §1.5). THE GAP ABOVE THE RING IS NOT ONE OF THEM:
+          the crown stands 16px over the ring and the plaque hangs 12px into
+          the card, and four pixels less put the crown half under the plaque.
+        */}
         <div className="relative mt-1">
           {champion && <span className="podium-aura" aria-hidden="true" />}
           <PodiumAvatar place={place} size={seat.ring} crowned={champion} />
         </div>
 
-        <p className="tv-seat-name relative mt-3" style={{ color: 'var(--ink-primary)' }}>
+        <p className="tv-seat-name relative mt-2" style={{ color: 'var(--ink-primary)' }}>
           {entry.name}
         </p>
         {entry.badge && (
-          <div className="relative mt-1.5">
+          <div className="relative mt-1">
             <TeamBadge label={entry.badge} />
+          </div>
+        )}
+
+        {/*
+          THE MEDAL SHELF — one line under the team chip, and only when there
+          is something to put on it: a seat with no medal is the old seat to
+          the pixel. Each medal says its own name (and its ×N) through its
+          `aria-label`, so the shelf prints no words at all; a repeat is the
+          ×N plate struck INSIDE the medal, never a number beside it.
+        */}
+        {rack.length > 0 && (
+          <div className="seat-medals relative">
+            {rack.map((m) => (
+              <MedalMark
+                key={m.code}
+                code={m.code}
+                size={seat.mark}
+                count={m.count}
+                seat
+                isNew={newMedals?.has(m.code) ?? false}
+              />
+            ))}
           </div>
         )}
 
         {/* THE WHOLE SUM — no tooltip, no tab stop; the digits ARE the reading
             this board reconciles against the floor's own. */}
-        <p className="tv-seat-figure relative mt-3" style={{ color: 'var(--ink-primary)' }}>
+        <p className="tv-seat-figure relative mt-2" style={{ color: 'var(--ink-primary)' }}>
           <AnimatedNumber value={figure} format={formatFullUzs} duration={900} />
           <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
             soʻm
           </span>
         </p>
-        {champion && <div className="podium-gold-rule relative mt-2" aria-hidden="true" />}
-        <PodiumBasis onDelivered={onDelivered} className="relative mt-1.5" />
+        {champion && <div className="podium-gold-rule relative mt-1.5" aria-hidden="true" />}
+        <PodiumBasis onDelivered={onDelivered} className="relative mt-1" />
 
         {/*
           What the number is made of. THE OTHER FACT, WHEN THERE IS ONE TO
@@ -855,7 +987,7 @@ function PodiumSeat({
           money — so the test is whether it exists, not which way round the
           two are. Nobody delivered, nothing printed, exactly as before.
         */}
-        <div className="tabular relative mt-2.5 text-[11px] leading-snug" style={{ color: 'var(--ink-secondary)' }}>
+        <div className="tabular relative mt-1.5 text-[11px] leading-snug" style={{ color: 'var(--ink-secondary)' }}>
           {(onDelivered ? entry.ordered : entry.won) > 0 && (
             <p>
               {onDelivered ? 'FAKT 1' : 'FAKT 2'}{' '}
@@ -876,7 +1008,7 @@ function PodiumSeat({
         </div>
 
         {champion ? (
-          <div className="relative mt-3 w-full">
+          <div className="relative mt-2 w-full">
             {/*
               THE CHAMPION'S DISTANCE IS THE ONE BEHIND THEM. A leader with
               nothing to read stops being motivated exactly at the top, and
@@ -914,7 +1046,7 @@ function PodiumSeat({
             ) : null}
           </div>
         ) : (
-          <div className="relative mt-3 w-full">
+          <div className="relative mt-2 w-full">
             {/* The chase — the one number a runner-up can act on — in the
                 pill the board already uses for it; `--seq-550`, no new hue. */}
             <span className="chase-chip inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold">
@@ -980,7 +1112,7 @@ function PodiumSeat({
 function TeamBadge({ label }: { label: string }) {
   return (
     <span
-      className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap"
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] leading-[1.3] font-medium whitespace-nowrap"
       style={{
         background: 'var(--surface-sunken)',
         color: 'var(--ink-secondary)',
@@ -1007,7 +1139,9 @@ function BoardList({
   allEntries,
   noun,
   onDelivered,
-}: {
+  medals,
+  newMedals,
+}: MedalProps & {
   entries: readonly BoardEntry[]
   allEntries: readonly BoardEntry[]
   noun: string
@@ -1015,6 +1149,19 @@ function BoardList({
 }) {
   const listRef = useAutoScroll<HTMLDivElement>(entries.length > 0)
   if (entries.length === 0) return null
+
+  /*
+    DOES ANY ROW IN THIS LIST WEAR A MEDAL? Asked once for the whole list,
+    because the answer shortens EVERY bar in it and not only the medalled
+    rows' (`.tv-list--medals` in globals.css): the bars share one scale so
+    that one can be read against the one above it, and a track that was 260px
+    on one row and 200px on the next would break exactly that. The teams list
+    never has one, so its bars are the old board's to the pixel.
+  */
+  const rowMedals = new Map(
+    entries.map((e) => [e.key, rowMedalsOf(medals?.get(e.key)?.medals)] as const),
+  )
+  const anyMedals = [...rowMedals.values()].some((m) => m.length > 0)
 
   // One scale for the whole column — the biggest intake — so a bar can be
   // read against the bar above it. Two layers from the same edge, each the
@@ -1028,7 +1175,7 @@ function BoardList({
   const figureOf = (e: BoardEntry) => (onDelivered ? e.won : e.ordered)
 
   return (
-    <div ref={listRef} className="tv-list">
+    <div ref={listRef} className={anyMedals ? 'tv-list tv-list--medals' : 'tv-list'}>
       <table className="tv-table">
         <thead>
           <tr>
@@ -1059,6 +1206,16 @@ function BoardList({
             const index = allEntries.findIndex((e) => e.key === entry.key)
             const ahead = index > 0 ? allEntries[index - 1]! : null
             const ranked = entry.won > 0 || entry.ordered > 0
+            const worn = rowMedals.get(entry.key) ?? []
+            // `Chase` prints nothing for a row with no money on the fact being
+            // read, and the medals stand on the chase line — so the cell has
+            // to know which of its two shapes it is. See `.tv-cell--bare`.
+            const cell =
+              worn.length === 0
+                ? 'tv-cell'
+                : figureOf(entry) > 0
+                  ? 'tv-cell tv-cell--medals'
+                  : 'tv-cell tv-cell--medals tv-cell--bare'
             return (
               <tr key={entry.key} className="tv-row">
                 <td className="tabular text-right" style={{ color: 'var(--ink-muted)' }}>
@@ -1072,43 +1229,59 @@ function BoardList({
                   )}
                 </td>
                 <td>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="tv-name" style={{ color: 'var(--ink-primary)' }}>
-                      {entry.name}
-                    </span>
-                    {entry.badge && <TeamBadge label={entry.badge} />}
-                  </div>
-                  <div
-                    className="tv-bar relative mt-1 h-1 overflow-hidden rounded-full"
-                    style={{ background: 'var(--track)' }}
-                    aria-hidden="true"
-                  >
+                  {/*
+                    ONE WRAPPER, AND ON A ROW WITHOUT MEDALS IT IS A PLAIN
+                    BLOCK — the old cell, unchanged. With medals it becomes a
+                    two-column grid whose second column is whatever the chase
+                    line leaves free; the medals stand there, across the bar
+                    and chase lines, so the row is exactly as tall as it was.
+                  */}
+                  <div className={cell}>
+                    <div className="tv-nameline flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="tv-name" style={{ color: 'var(--ink-primary)' }}>
+                        {entry.name}
+                      </span>
+                      {entry.badge && <TeamBadge label={entry.badge} />}
+                    </div>
                     <div
-                      className="absolute inset-y-0 left-0 rounded-full"
-                      style={{
-                        width: `${Math.max(1, (entry.ordered / ceiling) * 100)}%`,
-                        background: 'var(--seq-250)',
-                        transition: 'width var(--duration-enter) var(--ease-out)',
-                      }}
-                    />
-                    <div
-                      className="absolute inset-y-0 left-0 rounded-full"
-                      style={{
-                        width: `${Math.max(entry.won > 0 ? 1 : 0, (entry.won / ceiling) * 100)}%`,
-                        background: 'var(--seq-550)',
-                        transition: 'width var(--duration-enter) var(--ease-out)',
-                      }}
-                    />
+                      className="tv-bar relative mt-1 h-1 overflow-hidden rounded-full"
+                      style={{ background: 'var(--track)' }}
+                      aria-hidden="true"
+                    >
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full"
+                        style={{
+                          width: `${Math.max(1, (entry.ordered / ceiling) * 100)}%`,
+                          background: 'var(--seq-250)',
+                          transition: 'width var(--duration-enter) var(--ease-out)',
+                        }}
+                      />
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full"
+                        style={{
+                          width: `${Math.max(entry.won > 0 ? 1 : 0, (entry.won / ceiling) * 100)}%`,
+                          background: 'var(--seq-550)',
+                          transition: 'width var(--duration-enter) var(--ease-out)',
+                        }}
+                      />
+                    </div>
+                    <Chase entry={entry} ahead={ahead} figureOf={figureOf} />
+                    {worn.length > 0 && (
+                      <RowMedals medals={worn} newKeys={newMedals?.get(entry.key)} />
+                    )}
                   </div>
-                  <Chase entry={entry} ahead={ahead} figureOf={figureOf} />
                 </td>
                 <td className="tabular text-right">
-                  <span
-                    className={`tv-money ${onDelivered ? 'font-semibold' : ''}`}
-                    style={{ color: onDelivered ? 'var(--ink-primary)' : 'var(--ink-secondary)' }}
-                  >
-                    {formatFullUzs(entry.won)}
-                  </span>
+                  {ranked ? (
+                    <span
+                      className={`tv-money ${onDelivered ? 'font-semibold' : ''}`}
+                      style={{ color: onDelivered ? 'var(--ink-primary)' : 'var(--ink-secondary)' }}
+                    >
+                      {formatFullUzs(entry.won)}
+                    </span>
+                  ) : (
+                    <NoMoneyYet />
+                  )}
                   {entry.sharePercent !== null && entry.won > 0 && (
                     <span className="tv-small ml-1.5" style={{ color: 'var(--ink-muted)' }}>
                       {formatPercent(entry.sharePercent, 1)}
@@ -1116,12 +1289,16 @@ function BoardList({
                   )}
                 </td>
                 <td className="tabular text-right">
-                  <span
-                    className={`tv-money ${onDelivered ? '' : 'font-semibold'}`}
-                    style={{ color: onDelivered ? 'var(--ink-secondary)' : 'var(--ink-primary)' }}
-                  >
-                    {formatFullUzs(entry.ordered)}
-                  </span>
+                  {ranked ? (
+                    <span
+                      className={`tv-money ${onDelivered ? '' : 'font-semibold'}`}
+                      style={{ color: onDelivered ? 'var(--ink-secondary)' : 'var(--ink-primary)' }}
+                    >
+                      {formatFullUzs(entry.ordered)}
+                    </span>
+                  ) : (
+                    <NoMoneyYet />
+                  )}
                 </td>
                 <td className="tv-col-optional tabular text-right">
                   <span className="tv-money" style={{ color: 'var(--ink-primary)' }}>
@@ -1146,6 +1323,26 @@ function BoardList({
         </tbody>
       </table>
     </div>
+  )
+}
+
+/**
+ * A money cell on a row that has no money on EITHER fact — the «Bugun»
+ * morning, when most of the floor has not confirmed an order yet.
+ *
+ * The old board printed «0» there, and under the fact being read it printed it
+ * in the row's heaviest ink: forty bold zeros down the column the eye goes to
+ * first. A muted dash says the same thing — nothing yet — at the volume it
+ * deserves, and it is the mark the rank cell of the very same row already
+ * uses. ONLY for a row with nothing on both facts, the rank cell's own test: a
+ * seller with confirmed money and no delivery keeps a real «0» under FAKT 2,
+ * because that zero is a measurement. Order and meaning are untouched.
+ */
+function NoMoneyYet() {
+  return (
+    <span className="tv-money" style={{ color: 'var(--ink-muted)' }} aria-label="Hali puli yoʻq">
+      {NO_VALUE}
+    </span>
   )
 }
 

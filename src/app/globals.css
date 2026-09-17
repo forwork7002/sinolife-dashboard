@@ -3254,7 +3254,10 @@ p {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.16fr) minmax(0, 1fr);
   align-items: end;
   gap: 14px;
-  padding: 22px 18px 14px;
+  /* 22/14 on the old board. The difference is part of what pays for the
+     medal shelf — see the pedestal note below. 18 still clears the plaque,
+     which rides 12px above the card's top edge. */
+  padding: 18px 18px 10px;
 }
 .tv-podium--2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3282,7 +3285,13 @@ p {
     like the type, so the staircase is the same shape on a laptop and on the
     television. Bronze is the unit.
   */
-  --tv-step: clamp(22px, 1.55vw, 32px);
+  /*
+    THE STEP WAS clamp(22px, 1.55vw, 32px) — 29.8px on the television. The
+    medal shelf needs 46px of the champion's seat and the podium may not grow
+    (spec §1.5), so the blocks gave up a quarter of their height and kept
+    their 1 : 1.6 : 2.4 — the staircase is the same staircase, a little lower.
+  */
+  --tv-step: clamp(18px, 1.1vw, 22px);
   --tv-pedestal: var(--tv-step);
 }
 .tv-seat--1 { --tv-pedestal: calc(var(--tv-step) * 2.4); }
@@ -3406,7 +3415,7 @@ p {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 16px 12px 14px;
+  padding: 16px 12px 10px;
 }
 /*
  * THE SEAT KEEPS WHAT IS IN IT. The breakpoint above sizes the seats so the
@@ -3427,11 +3436,14 @@ p {
      top lip, so no radius and no rail of its own down there. */
   border-bottom-left-radius: 4px;
   border-bottom-right-radius: 4px;
-  padding-top: 22px;
+  padding-top: 18px;
 }
+/* THE TOP PADDING IS THE OLD BOARD'S 28: the crown stands 16px above the ring
+   and the plaque hangs 12px into the card — two pixels tighter and the crown
+   slides under the plaque. Only the bottom gave way to the medal shelf. */
 .tv-seat--1 .tv-seat-card {
   padding-top: 28px;
-  padding-bottom: 18px;
+  padding-bottom: 10px;
 }
 
 /*
@@ -3578,7 +3590,9 @@ p {
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 8px 8px 8px;
+  /* 8px on the old board; one of the three places the fifth visible row came
+     from (spec §1.6) — see `.tv-row > td`. */
+  padding: 7px 8px 7px;
   background: var(--surface-raised);
   box-shadow: inset 0 -1px 0 var(--grid);
 }
@@ -3599,8 +3613,15 @@ p {
 
 /* Figures never wrap — «10 (5 yoʻlda)» broke across two lines the first
    time a name column took its share. The name cell is the one that may. */
+/*
+ * 6.2px, WHERE THE OLD BOARD HAD 7 — spec §1.6 allows the rows' inner spacing
+ * to tighten by a tenth so that MORE ROWS ARE ON SCREEN, and that is what this
+ * is for. Measured at 1920×1080 on «Shu oy»: the old board showed four whole
+ * rows under the sellers' podium; with this, the header's 7px and the team
+ * chip's tighter leading it shows five.
+ */
 .tv-row > td {
-  padding: 7px 8px;
+  padding: 6.2px 8px;
   border-bottom: 1px solid var(--grid);
   vertical-align: top;
   white-space: nowrap;
@@ -3703,14 +3724,180 @@ p {
 .medal-mark__count[data-dev="silver"] use { stroke: var(--medal-silver-hi); }
 .medal-mark__count[data-dev="bronze"] use { stroke: var(--medal-bronze-hi); }
 
-/* A row's medals: the rarest sits at the right-hand end, so down a hundred
-   rows the most valuable medals read as one vertical column. */
-.row-medals {
-  display: inline-flex;
-  flex: none;
-  flex-direction: row-reverse;
+/*
+ * THE SEAT'S SHELF — one line of medals under the team chip (spec §1.5).
+ *
+ * Centred like everything else on the seat, rarest on the left, and it prints
+ * nothing but the medals: no caption, no «+N». The size rides each medal's
+ * width/height attributes (40 on the champion, 36 beside it), and the ONE
+ * thing CSS adds is permission to shrink: a seat is 250px wide on the
+ * television and 148px on a 1366 laptop, where four 40px medals do not fit.
+ * `flex: 0 1 auto` + `height: auto` lets them give way together and stay
+ * round, rather than leave the card sideways the way the chase pill once did.
+ */
+.seat-medals {
+  display: flex;
+  justify-content: center;
   align-items: center;
   gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+}
+.seat-medals > .medal-mark {
+  flex: 0 1 auto;
+  min-width: 0;
+  height: auto;
+}
+
+/*
+ * A ROW'S MEDALS — at the right-hand end of the name cell, standing across
+ * the bar line and the chase line (spec §1.5). Three promises, and each one is
+ * a rule below rather than a hope:
+ *
+ * THE ROW DOES NOT GROW. The bar line and the chase line are 27.9px together
+ * on the television and 26.5px on a laptop; a row medal is 26px
+ * (`ROW_MEDAL_SIZE`) and spans both lines, so it takes height that was there.
+ *
+ * THE NUMBER COLUMNS DO NOT MOVE. The name column is whatever the four nowrap
+ * figure columns leave, so anything that widens this cell's MINIMUM pushes
+ * them — and between 1280 and 1799 the cell is already at its minimum. The
+ * holder therefore declares `contain: inline-size`: it contributes nothing to
+ * the cell's intrinsic width and simply takes what the chase leaves free.
+ *
+ * NOTHING IS EVER CLIPPED OR LAID OVER THE CHASE. What the chase leaves may be
+ * room for three medals, or one, or none. The holder is a WRAPPING flex line
+ * exactly one medal tall with its overflow hidden, led by a zero-width
+ * sentinel: a medal that does not fit beside the chase wraps to a second line
+ * that is never painted, so it disappears WHOLE. `row-reverse` puts the rarest
+ * at the right-hand end — down a hundred rows the best medals read as one
+ * column — and makes the least rare the first to go.
+ */
+/*
+ * `auto 1fr`, AND NOT `minmax(0, …)` ON EITHER. The cell's minimum width is
+ * what the table sizes this column by, and it has to stay what it was: the
+ * chase (nowrap) and the longest word of the name. `auto` keeps the chase in
+ * the first track's minimum; a plain `1fr` has an `auto` minimum, which is
+ * what lets the name line — it spans both tracks — count at all. With
+ * `minmax(0, 1fr)` a spanning item is ignored, the column came out 10px
+ * narrower on a phone and «Muxtoraliyevna» left its cell.
+ */
+.tv-cell--medals {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+/*
+ * EVERY LINE NAMES ITS ROW. The medals share row 2 with the bar on purpose,
+ * and auto-placement never lets two items share a cell: left to itself it
+ * moved the bar BELOW the medals and the row grew by a whole medal.
+ */
+.tv-cell--medals > .tv-nameline {
+  grid-area: 1 / 1 / 2 / -1;
+}
+.tv-cell--medals > .tv-bar {
+  grid-area: 2 / 1 / 3 / -1;
+}
+.tv-cell--medals > .tv-chase {
+  grid-area: 3 / 1 / 4 / 2;
+}
+.tv-cell--medals > .row-medals {
+  grid-area: 2 / 2 / 4 / 3;
+}
+/*
+ * A ROW WITH NO MONEY HAS NO CHASE LINE — the whole «Bugun» morning. The bar
+ * line alone is 8px, so there the medals stand across the NAME line and the
+ * bar line (30.5px) and take what the name and its team chip leave free.
+ */
+.tv-cell--bare > .tv-nameline {
+  grid-area: 1 / 1 / 2 / 2;
+}
+.tv-cell--bare > .row-medals {
+  grid-area: 1 / 2 / 3 / 3;
+}
+
+.row-medals {
+  contain: inline-size;
+  justify-self: end;
+  width: 100%;
+  max-width: var(--row-medals-room);
+  min-width: 0;
+  height: 26px;
+  overflow: hidden;
+  display: flex;
+  flex-flow: row-reverse wrap;
+  align-content: flex-start;
+  row-gap: 26px;
+}
+/*
+ * THE SPACING IS EACH MEDAL'S OWN MARGIN, on the side that faces the chase —
+ * not a `gap` and not padding on the holder. A medal then fits only if its 6px
+ * of air fits with it, so the chase always keeps its distance; and the holder
+ * itself stays at ZERO intrinsic width. Padding would not: 10px of it became
+ * the second track's minimum, took 10px from a name line that fitted exactly,
+ * and dropped «Gamidova 250 Halima»'s team chip to a second line at 1366.
+ */
+.row-medals > .medal-mark {
+  margin-left: 6px;
+}
+/* The sentinel: it makes the first line exist, so a medal that does not fit
+   has somewhere to wrap TO — out of sight, whole. */
+.row-medals::before {
+  content: "";
+  flex: none;
+  width: 0;
+  height: 26px;
+}
+
+/*
+ * THE BAR GIVES THE MEDALS THEIR ROOM, AND EVERY BAR IN THE LIST GIVES THE
+ * SAME — the tracks share one scale so a bar can be read against the one above
+ * it, and a track shortened only on the medalled rows would end that.
+ * `--row-medals-room` is three medals with their margins (3 × (26 + 6)); the
+ * holder's own `max-width` is the same variable,
+ * which is what makes a medal over a bar impossible rather than unlikely.
+ *
+ * BETWEEN 1280 AND 1799 THE ROOM IS TWO MEDALS. Measured at 1366: the name
+ * cell is 222px and «Oldingiga +4,550,000 soʻm» takes ~160 of it, so a third
+ * medal never fits beside the chase — reserving its 32px anyway would only
+ * shorten every bar on a laptop for a medal that is never drawn there.
+ */
+.tv-list--medals {
+  --row-medals-room: 96px;
+}
+@media (min-width: 1280px) and (max-width: 1799px) {
+  .tv-list--medals {
+    --row-medals-room: 64px;
+  }
+}
+.tv-list--medals .tv-bar {
+  max-width: min(260px, calc(100% - var(--row-medals-room)));
+}
+
+/*
+ * A PHONE'S NAME CELL IS 126px AND PINNED, so nothing stands beside a chase
+ * there. The page scrolls on a phone — the row-height promise is the
+ * television's — so the medals take a line of their own under the chase,
+ * rarest first from the left, and the bar keeps its old length.
+ */
+@media (max-width: 639px) {
+  /* No grid at all: the phone's cell is the old cell with one line added. */
+  .tv-cell--medals {
+    display: block;
+  }
+  .row-medals {
+    /* `start` out loud: a current Chrome honours `justify-self` on a plain
+       block too, and the television's `end` pushed the line to the right. */
+    justify-self: start;
+    flex-flow: row wrap;
+    margin-top: 4px;
+  }
+  .row-medals > .medal-mark {
+    margin-left: 0;
+    margin-right: 6px;
+  }
+  .tv-list--medals .tv-bar {
+    max-width: 260px;
+  }
 }
 
 /*
