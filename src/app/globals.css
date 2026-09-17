@@ -3153,106 +3153,201 @@ p {
   color: var(--efir-ink-4);
 }
 
-/* ---- komandalar (spec §6): bir qatorli 62 px, ulush chizig'i, metall raqam faqat 1–3 ---- */
+/* ---- komandalar (EFIR Premium spec §6): tanga 1–3, nom + soni bitta uyada, qahramon = faol fakt,
+   4 px ulush chizig'i (ulush ÷ yetakchi ulushi; 1–3 da metall), `footer.jami` plaketi.
+   Qator balandligi `--trow-h` komponentdan: clamp(40, floor(joy / n), 52). ---- */
 .tv-tcols,
 .trow {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) 40px 146px 58px 104px 48px 58px;
-  column-gap: 8px;
+  grid-template-columns: 36px minmax(0, 1fr) 136px 56px 92px 36px 56px;
+  column-gap: 10px;
   align-items: center;
-  padding-right: 12px;
+  padding: 0 16px 0 12px;
 }
 .tv-tcols {
   flex: none;
-  height: 24px;
-  font-size: var(--tv-s);
-  color: var(--ink-muted);
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap;
-}
-.tv-tcols__c { text-align: center; }
-.tv-tcols__name { padding-left: 2px; }
-.tv-tcols__r { text-align: right; }
-.tv-tcols[data-read="fakt2"] .tv-tcols__f2,
-.tv-tcols[data-read="fakt1"] .tv-tcols__f1 {
-  color: var(--ink-secondary);
+  height: 28px;
+  font-size: 10.5px;
   font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--efir-ink-3);
+  white-space: nowrap;
+  background: linear-gradient(90deg, var(--efir-hairline), transparent 85%) bottom / 100% 1px no-repeat;
+}
+.tv-tcols__r { text-align: right; }
+.tv-tcols .on {
+  position: relative;
+  color: var(--efir-ink-name);
+}
+.tv-tcols .on::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -6px;
+  width: 22px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--tier-4);
+}
+/* Ro'yxat uyasi — o'lchami ro'yxatga bog'liq emas; `useAvailableHeight` shuni o'lchaydi. */
+.tv-tslot {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .tv-trows {
+  --trow-h: 50px;
   list-style: none;
   margin: 0;
   padding: 0;
 }
 .trow {
   position: relative;
-  height: 62px;
-  border-bottom: 1px solid var(--border);
-}
-/* Ulush chizig'i — ulush ÷ yetakchi ulushi, 40 % siyoh, qator pastida 2 px. */
-.trow::after {
-  content: "";
-  position: absolute;
-  left: 44px;
-  bottom: -1px;
-  height: 2px;
-  width: calc((100% - 56px) * var(--share, 0));
-  background: var(--ink-muted);
-  opacity: 0.4;
+  height: var(--trow-h);
+  padding-bottom: 9px;
+  background: linear-gradient(var(--efir-hairline), var(--efir-hairline)) bottom / 100% 1px no-repeat;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 .trow__rank {
-  font-size: var(--tv-l);
-  font-weight: 600;
-  text-align: center;
-  color: var(--ink-muted);
-  font-variant-numeric: tabular-nums lining-nums;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--efir-ink-2);
 }
-.trow__rank[data-metal="gold"] { color: var(--medal-gold); font-weight: 700; }
-.trow__rank[data-metal="silver"] { color: var(--medal-silver); font-weight: 700; }
-.trow__rank[data-metal="bronze"] { color: var(--medal-bronze); font-weight: 700; }
 .trow__name {
-  padding-left: 2px;
-  font-size: var(--tv-l);
-  font-weight: 600;
-  color: var(--ink-primary);
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   white-space: nowrap;
+}
+.trow__name .nm {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.012em;
+  color: var(--efir-ink-name);
 }
-.trow__cnt,
-.trow__share,
-.trow__orders,
-.trow__conv {
-  font-size: var(--tv-m);
-  text-align: right;
-  color: var(--ink-muted);
-  font-variant-numeric: tabular-nums;
+.trow__name .cnt {
+  font-size: 12.5px;
+  color: var(--efir-ink-3);
 }
-.trow__f2,
-.trow__f1 {
-  font-size: var(--tv-m);
-  color: var(--ink-secondary);
+.trow__hero {
   text-align: right;
   white-space: nowrap;
-  font-variant-numeric: tabular-nums lining-nums;
+  font-size: 22px;
+  font-weight: 620;
+  letter-spacing: -0.022em;
+  color: var(--efir-ink);
 }
-.tv-trows[data-read="fakt2"] .trow__f2,
-.tv-trows[data-read="fakt1"] .trow__f1 {
-  font-size: var(--tv-l);
-  font-weight: 700;
-  color: var(--ink-primary);
-  letter-spacing: -0.02em;
+.trow__sec {
+  text-align: right;
+  white-space: nowrap;
+  font-size: 14.5px;
+  color: var(--efir-ink-2);
 }
-.tv-tfoot {
+.trow__none { color: var(--efir-ink-4); }
+.trow__bar {
+  position: absolute;
+  left: 58px;
+  right: 296px;
+  bottom: 8px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--efir-track);
+}
+.trow__bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--tier-3), var(--tier-4));
+}
+.trow[data-metal] .trow__bar i {
+  background: linear-gradient(90deg, var(--metal-lo), var(--metal) 70%, var(--metal-hi));
+}
+.jami {
   flex: none;
+  margin-top: auto;
+  height: 100px;
   display: flex;
   align-items: center;
-  height: 28px;
-  margin: 0;
+  justify-content: space-between;
+  gap: 20px;
   padding: 0 20px;
-  border-top: 1px solid var(--border);
-  font-size: var(--tv-s);
-  color: var(--ink-muted);
+  background: var(--efir-sunken);
+  box-shadow: inset 0 1px 0 var(--efir-hairline);
+  font-variant-numeric: tabular-nums lining-nums;
 }
+.jami p,
+.jami dl,
+.jami dd { margin: 0; }
+.jami__l { min-width: 0; }
+.jami__k {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--efir-ink-3);
+  white-space: nowrap;
+}
+.jami .jami__v {
+  margin-top: 3px;
+  font-size: 30px;
+  line-height: 34px;
+  font-weight: 560;
+  letter-spacing: -0.028em;
+  color: var(--efir-ink);
+  white-space: nowrap;
+}
+.jami .jami__o {
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--efir-ink-3);
+  white-space: nowrap;
+}
+.jami__o b {
+  margin-right: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  color: var(--efir-ink-3);
+}
+.jami__o span {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--efir-ink-name);
+}
+.jami__r {
+  display: grid;
+  grid-template-columns: auto auto;
+  column-gap: 16px;
+  row-gap: 3px;
+  align-items: baseline;
+  font-size: 12.5px;
+  color: var(--efir-ink-3);
+  white-space: nowrap;
+}
+.jami__r dt { text-align: right; }
+.jami__r dd {
+  text-align: right;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--efir-ink-name);
+}
+.jami__r dt.sum { color: var(--efir-ink-2); }
+.jami__r dd.jami__note {
+  grid-column: 1 / -1;
+  margin-top: 3px;
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--efir-ink-3);
+}
+.jami .trow__none { color: var(--efir-ink-4); }
 
 /* ---- e'lon (spec §8): ustun sarlavhasi USTIDA 8 s, oqimdan tashqarida — hech narsa surilmaydi.
    `left` ga qadalgan, `fit-content`; `pointer-events: none` — tugma ostida bosilaveradi.
@@ -3313,7 +3408,7 @@ p {
   animation: medal-new 400ms var(--ease-out) both;
 }
 
-/* ---- 1366 va tor televizor (spec §9): 0.8× — qator 44 (gerb, medal va tanga o'lchami atributda,
+/* ---- 1366 va tor televizor (spec §9): 0.8× — qator 43 (gerb, medal va tanga o'lchami atributda,
    bu yerda kichraymaydi), gridlar torroq (o'rindiq — o'z bo'limida); shrift shkalasi `:root` da 36/20/14/12. ---- */
 @media (max-width: 1599px) {
   /* Qator 43 px QOLADI — ro'yxat balandligi `ROW_H` karrasi (SellersBoard.tsx). ~645 px ustunda
@@ -3340,12 +3435,15 @@ p {
     letter-spacing: 0.05em;
   }
   .row__sec { font-size: 13px; }
-  .trow { height: 52px; }
   .tv-tcols,
   .trow {
-    grid-template-columns: 32px minmax(0, 1fr) 36px 124px 52px 92px 44px 52px;
-    column-gap: 6px;
+    grid-template-columns: 32px minmax(0, 1fr) 120px 50px 84px 32px 50px;
+    column-gap: 8px;
   }
+  .trow__name .nm { font-size: 18px; }
+  .trow__hero { font-size: 19px; }
+  .trow__sec { font-size: 13px; }
+  .trow__bar { left: 52px; right: 264px; }
   .tv-legend { gap: 10px; }
 }
 
@@ -3353,7 +3451,7 @@ p {
    qator tasma · rank · gerb · ism · QAHRAMON (faol fakt); komanda, medallar, boshqa fakt,
    buyurt., konv. yashirin. Uyalar `nth-child` bilan: 5 komanda, 6 medallar, 8 boshqa fakt,
    9 buyurt., 10 konv. (sotuvchilar, EFIR Premium §10);
-   6 FAKT 1, 7 buyurtma, 8 konv. (komandalar). Markup o'zgarmaydi. ---- */
+   5 boshqa fakt, 6 buyurt., 7 konv. (komandalar). Markup o'zgarmaydi. ---- */
 @media (max-width: 1279px) {
   .tv-cols,
   .row {
@@ -3377,15 +3475,23 @@ p {
   .row__hero { font-size: 17px; }
   .tv-tcols,
   .trow {
-    grid-template-columns: 32px minmax(0, 1fr) 36px 124px 52px;
+    grid-template-columns: 32px minmax(0, 1fr) 124px 52px;
+    column-gap: 8px;
+    padding: 0 12px;
   }
+  .tv-tcols > span:nth-child(5),
   .tv-tcols > span:nth-child(6),
   .tv-tcols > span:nth-child(7),
-  .tv-tcols > span:nth-child(8),
+  .trow > *:nth-child(5),
   .trow > *:nth-child(6),
-  .trow > *:nth-child(7),
-  .trow > *:nth-child(8) {
+  .trow > *:nth-child(7) {
     display: none;
+  }
+  .trow__bar { left: 52px; right: 72px; }
+  .jami {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 12px;
   }
   .tv-legend {
     padding: 8px 12px;

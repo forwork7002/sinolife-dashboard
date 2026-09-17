@@ -176,11 +176,10 @@ describe('EFIR shrift shkalasi', () => {
   keyline'i va yuvishi, komandalar 1–3 chizig'i shuni o'qiydi). 1-o'rindiq
   (`.seat--1`) — har doim 1-rank, uning keng oltin yuvishi to'g'ridan-to'g'ri
   `--medal-gold-wash-p1` ni o'qiydi (delta 9b). Legenda toji
-  endi `#crest-6` belgisining ICHIDA. `.trow__rank` va `.record__k` — EFIR
-  Premium'da ro'yxatdan chiqadi; ularning qoidalari komandalar va rekord devori
-  qayta qurilganda o'chiriladi, shu vaqtgacha ro'yxatda turadi.
+  endi `#crest-6` belgisining ICHIDA. `.trow__rank` ro'yxatdan chiqdi (komanda
+  ranki endi tanga); `.record__k` — rekord devori qayta qurilganda o'chiriladi.
 */
-const METAL_ALLOWED = /^(\.medal\b|\.medal__|\.halo\b|\.seat--1$|\[data-metal="(gold|silver|bronze)"\]|\.trow__rank\b|\.record__k\b)/
+const METAL_ALLOWED = /^(\.medal\b|\.medal__|\.halo\b|\.seat--1$|\[data-metal="(gold|silver|bronze)"\]|\.record__k\b)/
 
 describe('EFIR bo‘limi — rang shartnomasi', () => {
   it('bo‘lim bor va TV BOARD dan oldin turadi; asosiy selektorlar', () => {
@@ -220,7 +219,10 @@ describe('EFIR bo‘limi — rang shartnomasi', () => {
     }
     expect(code).toContain('[data-tier="0"] { --tier: transparent; --tier-hi: transparent; --tier-lo: transparent; --tier-wash: transparent; }')
     // Boshqa hech qayerda `--tier-N` o'qilmaydi — komponent faqat `--tier` ni biladi.
-    expect(code.match(/var\(--tier-\d(-hi|-lo|-wash)?\)/g) ?? []).toHaveLength(24)
+    // Istisno: komandalar ulush chizig'i `--tier-3 → --tier-4` va faol yorliq belgisi `--tier-4`
+    // (qatorga bog'lanmagan, rampaning o'zi — Premium §6).
+    const tierReads = code.replace(/\.trow__bar i \{[^}]*\}/, '').replace(/\.tv-tcols \.on::after \{[^}]*\}/, '')
+    expect(tierReads.match(/var\(--tier-\d(-hi|-lo|-wash)?\)/g) ?? []).toHaveLength(24)
     expect(code).toContain('.crest { color: var(--tier); }')
   })
 
@@ -356,14 +358,17 @@ describe('EFIR — qator, komandalar, e‘lon', () => {
     expect(code).toContain('.tv-rows[data-drifting] { scroll-snap-type: none; }')
   })
 
-  it('komandalar: 62 px qatorlar, ulush chizig‘i `--share`, metall raqamlar faqat 1–3', () => {
+  it('komandalar (Premium §6): grid, `--trow-h` qatori, 4 px `.trow__bar` metall 1–3 da, `footer.jami` plaketi', () => {
     const code = strip(EFIR())
-    expect(code).toContain('.tv-tcols,\n.trow {\n  display: grid;\n  grid-template-columns: 36px minmax(0, 1fr) 40px 146px 58px 104px 48px 58px;')
-    expect(code).toMatch(/\.trow \{[^}]*height: 62px;/)
-    expect(code).toMatch(/\.trow::after \{[^}]*width: calc\(\(100% - 56px\) \* var\(--share, 0\)\);/)
-    expect(code).toContain('.trow__rank[data-metal="gold"] { color: var(--medal-gold); font-weight: 700; }')
-    expect(code).toContain('.trow__rank[data-metal="silver"] { color: var(--medal-silver); font-weight: 700; }')
-    expect(code).toContain('.trow__rank[data-metal="bronze"] { color: var(--medal-bronze); font-weight: 700; }')
+    expect(code).toContain('.tv-tcols,\n.trow {\n  display: grid;\n  grid-template-columns: 36px minmax(0, 1fr) 136px 56px 92px 36px 56px;')
+    expect(code).toMatch(/\.tv-trows \{[^}]*--trow-h: 50px;/)
+    expect(code).toMatch(/\.trow \{[^}]*height: var\(--trow-h\);/)
+    expect(code).toMatch(/\.tv-tslot \{[^}]*flex: 1;[^}]*min-height: 0;/)
+    expect(code).toMatch(/\.trow__bar \{[^}]*left: 58px;[^}]*right: 296px;[^}]*bottom: 8px;[^}]*height: 4px;[^}]*background: var\(--efir-track\);/)
+    expect(code).toContain('.trow[data-metal] .trow__bar i {\n  background: linear-gradient(90deg, var(--metal-lo), var(--metal) 70%, var(--metal-hi));')
+    expect(code).toMatch(/\.jami \{[^}]*margin-top: auto;[^}]*height: 100px;[^}]*background: var\(--efir-sunken\);/)
+    expect(code).toMatch(/\.jami \.jami__v \{[^}]*font-size: 30px;/)
+    for (const gone of ['.trow::after', '.trow__rank[data-metal', '.trow__cnt', '.tv-tfoot']) expect(code, gone).not.toContain(gone)
   })
 
   /*

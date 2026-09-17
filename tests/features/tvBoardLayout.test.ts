@@ -139,8 +139,8 @@ describe('the television board switches layout on one width', () => {
     expect(block).toMatch(/\.tv-cols,\s*\.row \{\s*grid-template-columns: 5px 26px 58px minmax\(0, 1fr\) 104px;/)
     // 5 komanda, 6 medallar, 8 boshqa fakt, 9 buyurt., 10 konv. — 7 qahramon qoladi.
     expect(block).toMatch(/\.tv-cols > span:nth-child\(5\),\s*\.tv-cols > span:nth-child\(6\),\s*\.tv-cols > span:nth-child\(8\),\s*\.tv-cols > span:nth-child\(9\),\s*\.tv-cols > span:nth-child\(10\),\s*\.row > \*:nth-child\(5\),\s*\.row > \*:nth-child\(6\),\s*\.row > \*:nth-child\(8\),\s*\.row > \*:nth-child\(9\),\s*\.row > \*:nth-child\(10\) \{\s*display: none;/)
-    expect(block).toMatch(/\.tv-tcols,\s*\.trow \{\s*grid-template-columns: 32px minmax\(0, 1fr\) 36px 124px 52px;/)
-    expect(block).toMatch(/\.trow > \*:nth-child\(6\),[\s\S]*?display: none;/)
+    expect(block).toMatch(/\.tv-tcols,\s*\.trow \{\s*grid-template-columns: 32px minmax\(0, 1fr\) 124px 52px;/)
+    expect(block).toMatch(/\.trow > \*:nth-child\(5\),\s*\.trow > \*:nth-child\(6\),\s*\.trow > \*:nth-child\(7\) \{\s*display: none;/)
   })
 
   /*

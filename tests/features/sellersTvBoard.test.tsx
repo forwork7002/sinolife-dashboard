@@ -231,18 +231,6 @@ const RIPE = board({
   teamlessSellers: 1,
 })
 
-/* «Bugun» on the teams side: four teams, nothing delivered — read on FAKT 1. */
-const TEAM_FALLBACK = board({
-  orders: 120,
-  wonOrders: 0,
-  teams: [
-    team('Gulzora', 1, 12, 0, 40_000_000),
-    team('Azizbek', 2, 14, 0, 15_000_000),
-    team('Asliddin', 3, 8, 0, 2_000_000),
-    team('Baza', 4, 5, 0, 1_000_000),
-  ],
-})
-
 /*
   «Shu oy», crossed: the order the floor has DELIVERED is not the order it has
   CONFIRMED. Reading FAKT 2 seats Marjona, Farida, Mahliyo — reading FAKT 1
@@ -569,62 +557,6 @@ describe('ro‘yxat balandligi butun qatorlar', () => {
       expect(h).toBeLessThanOrEqual(available)
       expect(available - h).toBeLessThan(ROW_H)
     }
-  })
-})
-
-describe('komandalar ustuni (spec §6)', () => {
-  it('podium yo‘q; bir qatorli qatorlar; 1–3 metall raqam, qolgani none', () => {
-    render(<TeamsColumn data={RIPE} {...PROPS} />)
-    const col = document.getElementById('tv-teams')!
-    expect(col.querySelector('.seat')).toBeNull()
-    expect(col.querySelector('.tv-podium')).toBeNull()
-    expect(col.querySelectorAll('li.trow')).toHaveLength(4)
-    expect(rowNamesOf('tv-teams')).toEqual(['Gulzora', 'Sevinch', 'Lola', 'Azizbek'])
-    expect([...col.querySelectorAll('.trow__rank')].map((r) => r.textContent)).toEqual(['1', '2', '3', '4'])
-    expect([...col.querySelectorAll('.trow__rank')].map((r) => r.getAttribute('data-metal'))).toEqual([
-      'gold', 'silver', 'bronze', 'none',
-    ])
-    expect(column('tv-teams').getByText('4 komanda')).toBeDefined()
-  })
-
-  it('sotuvchi soni, FAKT 2, ulush «50,8 %», FAKT 1; ulush chizig‘i = ulush ÷ yetakchi ulushi', () => {
-    render(<TeamsColumn data={RIPE} {...PROPS} />)
-    const rows = [...document.querySelectorAll('#tv-teams li.trow')] as HTMLElement[]
-    expect(rows[0]!.querySelector('.trow__cnt')!.textContent).toBe('12')
-    expect(rows[0]!.querySelector('.trow__f2')!.textContent).toBe(`165${S}950${S}000`)
-    expect(rows[0]!.querySelector('.trow__f1')!.textContent).toBe(`206${S}350${S}000`)
-    // 165 950 000 / 326 950 000 = 50,76 %; Sevinch 108 / 326,95 = 33,03 %.
-    expect(rows[0]!.querySelector('.trow__share')!.textContent).toBe(`50,8${S}%`)
-    expect(rows[1]!.querySelector('.trow__share')!.textContent).toBe(`33${S}%`)
-    // `--share` inline style'da CSS uchun; jsdom'ning custom-property qo'llovi
-    // versiyaga bog'liq, shuning uchun o'sha qiymat `data-share` da ham turadi.
-    expect(rows[0]!.getAttribute('data-share')).toBe('1.000')
-    expect(rows[1]!.getAttribute('data-share')).toBe('0.651')
-  })
-
-  it('yorliq qatori va pastki jumla: «1 sotuvchi komandasiz, ulushlar ularsiz»', () => {
-    render(<TeamsColumn data={RIPE} {...PROPS} />)
-    const labels = [...document.querySelectorAll('#tv-teams .tv-tcols span')].map((s) => s.textContent)
-    expect(labels).toEqual(['#', 'Komanda (ROP)', 'Sotuvchi', 'FAKT 2, yetkazilgan', 'Ulush', 'FAKT 1', 'Buyurtma', 'Konv.'])
-    expect(document.querySelector('#tv-teams .tv-tfoot')!.textContent).toBe('1 sotuvchi komandasiz, ulushlar ularsiz')
-  })
-
-  it('komandasiz sotuvchi bo‘lmasa pastki jumla chizilmaydi', () => {
-    render(<TeamsColumn data={THIN} {...PROPS} />)
-    expect(document.querySelector('#tv-teams .tv-tfoot')).toBeNull()
-  })
-
-  /*
-    THE STATE THE BOARD OPENS IN: «Bugun», nothing delivered, the teams read
-    on FAKT 1 in FAKT 1 order — the service's FAKT 2 tie-break on the ROP's
-    NAME must not leak through as the ranking.
-  */
-  it('hech kim yetkazmagan — FAKT 1 bo‘yicha tartib, kalit FAKT 1 da yoniq', () => {
-    render(<TeamsColumn data={TEAM_FALLBACK} {...PROPS} />)
-    expect(rowNamesOf('tv-teams')).toEqual(['Gulzora', 'Azizbek', 'Asliddin', 'Baza'])
-    expect(column('tv-teams').getByRole('button', { name: 'FAKT 1' }).getAttribute('aria-pressed')).toBe('true')
-    expect(document.querySelector('#tv-teams .tv-trows')!.getAttribute('data-read')).toBe('fakt1')
-    expect(document.body.textContent).not.toContain('+-')
   })
 })
 

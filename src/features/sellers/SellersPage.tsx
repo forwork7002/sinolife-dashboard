@@ -258,9 +258,12 @@ export function SellersColumn({
 
 export function TeamsColumn({ data, status, errorMessage, onRetry, parked = false, fakt, onFakt }: ColumnProps) {
   const entries = useMemo(() => data?.teams.map(fromTeam) ?? [], [data])
+  // Komandasizlar puli = `rop === null` sotuvchi qatorlari (spec §6) — DTO o'zgarmaydi.
+  const sellers = useMemo(() => data?.rows.map(fromSeller) ?? [], [data])
   return (
     <TeamsBoard
       entries={entries}
+      sellers={sellers}
       teamless={data?.totals.teamlessSellers ?? 0}
       status={status}
       errorMessage={errorMessage}
