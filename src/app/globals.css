@@ -126,40 +126,53 @@
   --delta-down: #c31d1d;
 
   /**
-   * Medal metals — the sellers board's minted chrome (EFIR Premium, «ZARB»,
-   * 2026-09-17). The client's own ask (2026-09-03): the board the floor opens
-   * every morning must crown its top three visibly. CHROME ONLY, by contract:
-   * rims, fields, sheens and washes — never text that must be read, never a
-   * mark that encodes a value, never a series or status role. Gold sits near
-   * --series-4 and --status-warning by nature; tolerable only because these
-   * tokens are barred from ever carrying data.
-   *
-   * `--medal-gold/silver/bronze` stay the MID tones so any older reader keeps
-   * working; each metal (and steel, the commons' body) adds `-hi`, `-lo`,
-   * `-sh`, `-patina` and `-well`; gilt is the champagne device on a steel body.
-   * Every mix is PRE-COMPUTED here — the SVG <defs> read these inside a <use>
-   * shadow tree, where an old TV Chromium can drop a `color-mix()` stop.
-   *
-   * THE WRITTEN EXCEPTIONS: the medals (`.medal` and its ×N plate), the rank
-   * coins (`.halo`), the Legenda crown baked into `#crest-6`, the seat keyline
-   * and metal wash (`[data-metal]`), and the team share bars for ranks 1–3.
-   * Nowhere else — never the level band, the crest cells, a name or a figure.
-   * `tests/features/efirCss.test.ts` holds the list.
+   * Medal metals — the sellers podium's chrome. The client's own ask
+   * (2026-09-03): the board the floor opens every morning must crown its top
+   * three visibly. CHROME ONLY, by contract: rims, washes, avatar rings and
+   * the pedestal numerals — never text that must be read, never a mark that
+   * encodes a value, never a series or status role. Gold sits near --series-4
+   * and --status-warning by nature; tolerable only because these tokens are
+   * barred from ever carrying data. See the PODIUM section below.
    */
+  --medal-gold: #b3860e;
+  --medal-silver: #798294;
+  --medal-bronze: #a5663a;
+
+  /**
+   * «ZARB» — the metal the minted MEDALS are struck from (`MedalMark`,
+   * `medalDefs.ts`; the look the client approved on 2026-09-17). The same
+   * contract as the podium chrome above: never text that must be read, never
+   * a mark that encodes a value, never a series or status role.
+   *
+   * Each body metal — gold, silver, bronze, and steel for the common medals —
+   * has a mid tone plus `-hi`, `-lo`, `-sh`, `-patina` and `-well`; gilt is
+   * the champagne device on a steel body; sheen, bloom and ribbon are the
+   * minted surface. Every mix is PRE-COMPUTED here: the SVG <defs> read these
+   * inside a <use> shadow tree, where an old TV Chromium can drop a
+   * `color-mix()` stop.
+   *
+   * THE THREE MID TONES ARE `--zarb-*`, NOT `--medal-gold/silver/bronze`. The
+   * medal drawing names its mid tone `--medal-gold`, and that name is already
+   * the podium's chrome — a different colour, tuned for a rim on a card rather
+   * than the middle stop of a struck gradient. So the medal's values live here
+   * under their own names, and the MEDALS section hands them to the two
+   * places a medal is painted (`.medal-defs`, `.medal-mark`) and nowhere else.
+   * The podium keeps the colour it has always had.
+   */
+  --zarb-gold: #cf9f2a;
+  --zarb-silver: #a3aebe;
+  --zarb-bronze: #bb7640;
   --medal-gold-hi: #f8e4a2;
-  --medal-gold: #cf9f2a;
   --medal-gold-lo: #7e5b0d;
   --medal-gold-sh: #3f2d06;
   --medal-gold-patina: #423d29;
   --medal-gold-well: #594009;
   --medal-silver-hi: #f8fafc;
-  --medal-silver: #a3aebe;
   --medal-silver-lo: #55606e;
   --medal-silver-sh: #272e38;
   --medal-silver-patina: #2e3e52;
   --medal-silver-well: #3a434f;
   --medal-bronze-hi: #f3c79f;
-  --medal-bronze: #bb7640;
   --medal-bronze-lo: #693c1d;
   --medal-bronze-sh: #2e1a0b;
   --medal-bronze-patina: #342e2d;
@@ -172,58 +185,10 @@
   --medal-steel-well: #262e3a;
   --medal-gilt-hi: #f3e6bf;
   --medal-gilt: #c4a862;
-  --medal-gold-wash: rgba(207, 159, 42, 0.12);
-  --medal-silver-wash: rgba(163, 174, 190, 0.16);
-  --medal-bronze-wash: rgba(187, 118, 64, 0.12);
-  --medal-gold-wash-p1: rgba(207, 159, 42, 0.2);
   --medal-key: rgba(12, 14, 18, .55);
   --medal-cast: rgba(12, 14, 18, .2);
   --medal-glint: rgba(255, 255, 255, .7);
   --medal-edge: rgba(255, 255, 255, .62);
-
-  /**
-   * Level ramp for the sellers board — `--tier-1` … `--tier-6`, each with
-   * `-hi`, `-lo` (the band's bevel) and `-wash` (the row's 88px level wash).
-   *
-   * ORDINAL, like `--seq`: one hue (ice blue) ordered by CONTRAST —
-   * never a series colour, never a status, never mixed with the medal metals.
-   * Components read it only through `--tier`, which `[data-tier="N"]` sets in
-   * the EFIR section; nothing reads `--tier-N` directly.
-   *
-   * THE RULE IS «A HIGHER LEVEL HAS MORE CONTRAST AGAINST THE PANEL», and so
-   * the polarity is NOT the same in both themes: on the dark panel the ladder
-   * runs dim → glowing (2.44 … 18.30:1 against `--efir-panel`), on the light
-   * one pale → navy (1.72 … 13.23:1). A lighter Legenda on white would read as
-   * the weakest level. `efirCss.test.ts` pins both sequences.
-   */
-  --tier-1: #b9c4d4;
-  --tier-1-hi: #cbd3df;
-  --tier-1-lo: #8d95a1;
-  --tier-1-wash: rgba(185, 196, 212, 0.13);
-  --tier-2: #8aa1c2;
-  --tier-2-hi: #a8b9d2;
-  --tier-2-lo: #697a93;
-  --tier-2-wash: rgba(138, 161, 194, 0.13);
-  --tier-3: #4f88c6;
-  --tier-3-hi: #7da7d5;
-  --tier-3-lo: #3c6796;
-  --tier-3-wash: rgba(79, 136, 198, 0.13);
-  --tier-4: #1f70bf;
-  --tier-4-hi: #5995d0;
-  --tier-4-lo: #185591;
-  --tier-4-wash: rgba(31, 112, 191, 0.13);
-  --tier-5: #124f97;
-  --tier-5-hi: #507db2;
-  --tier-5-lo: #0e3c73;
-  --tier-5-wash: rgba(18, 79, 151, 0.13);
-  --tier-6: #0a2c61;
-  --tier-6-hi: #4a638a;
-  --tier-6-lo: #08234e;
-  --tier-6-wash: rgba(10, 44, 97, 0.13);
-
-  /* Minted-surface tokens for the EFIR <defs> — sheen, bloom, ribbon, recess,
-     empty slot, crest plate and unlit cell, coin field. Plain colours, no
-     mixes (see the medal note above). */
   --sheen-hi: rgba(255, 255, 255, .26);
   --sheen-lo: rgba(0, 0, 0, .22);
   --sheen-none-hi: rgba(255, 255, 255, 0);
@@ -231,31 +196,7 @@
   --bloom: rgba(255, 255, 255, .11);
   --ribbon-a: #2a6fb0;
   --ribbon-shade: rgba(0, 0, 0, .3);
-  --recess-hi: #ffffff;
-  --recess-lo: rgba(12, 14, 18, .28);
-  --recess-none: rgba(0, 0, 0, 0);
-  --slot-field: #e4e8ee;
-  --slot-dash: rgba(12, 14, 18, .26);
-  --slot-glyph: #bfc7d2;
-  --crest-plate: #e7eaf0;
-  --crest-off: #dfe4ec;
-  --crest-glint: rgba(255, 255, 255, .6);
-  --crest-shade: rgba(12, 14, 18, .3);
-  --halo-field-hi: #2b323e;
-  --halo-field-lo: #10141a;
-
-  /**
-   * The television board's type scale — three information sizes and one
-   * caption size (spec §1): xl the seat figure, l names and money, m the
-   * secondary line, s captions. Declared on :root rather than on the board,
-   * because the record wall in the page header shares the scale. Narrower
-   * than 1600px (a 1366 laptop, a 720p panel, a phone) the four step down
-   * together — see the media block after the dark tokens.
-   */
-  --tv-xl: 44px;
-  --tv-l: 24px;
-  --tv-m: 16px;
-  --tv-s: 13px;
+  --medal-plate-well: #10151d;
 
   /**
    * Ink that sits ON a series colour — a filled chip, a badge, a bar label.
@@ -366,52 +307,6 @@
   --duration-move: 380ms;
 }
 
-/*
- * EFIR material — the sellers board's OBSIDIAN chassis (EFIR Premium §1).
- * Scoped to the sellers page, so no other screen can read a panel, ink or
- * shadow tuned for a television. Light here; both dark mechanisms below
- * (`prefers-color-scheme` guarded by `:not([data-theme="light"])`, and
- * `[data-theme="dark"]`) re-declare the same names. Values are copied from
- * the approved mock's token file; every mix is pre-computed.
- *
- * TWO ROOTS, ONE LIST. `.tv-board-shell` is the board; `main:has(.tv-board-shell)`
- * is the page around it, and it is there for the SHARED HEADER — the record
- * wall's plaques and the period control sit in PageShell's header, outside
- * the board, and read `--efir-raised`, `--efir-edge-*` and the inks too. Declared
- * on the board alone, every one of those reads fell back to the dashboard's
- * global palette and the plaques drew as flat outlined boxes (premium review,
- * 2026-09-17). `main` rather than the page container because the page glow
- * paints on `main` itself — a custom property only reaches descendants.
- * The list sits inside `:is()`, whose argument list is FORGIVING: a browser
- * without `:has()` drops that one argument and keeps the board's tokens,
- * where a plain selector list would have discarded the whole rule.
- */
-:is(.tv-board-shell, main:has(.tv-board-shell)) {
-  --efir-page-glow: rgba(255, 255, 255, .9);
-  --efir-panel: #fbfcfe;
-  --efir-panel-sheen: rgba(255, 255, 255, 1);
-  --efir-raised: #ffffff;
-  --efir-raised-hi: #ffffff;
-  --efir-sunken: #edf0f5;
-  --efir-ink: #0a0f17;
-  --efir-ink-name: #1c2431;
-  --efir-ink-ctx: #333d4c;
-  --efir-ink-2: #556072;
-  --efir-ink-3: #5f6a7c;
-  --efir-ink-4: #ccd3de;
-  --efir-hairline: rgba(12, 18, 28, .07);
-  --efir-edge-hi: rgba(255, 255, 255, 1);
-  --efir-edge-ring: rgba(12, 18, 28, .07);
-  --efir-shadow-panel: 0 30px 50px -34px rgba(24, 38, 66, .35), 0 1px 2px rgba(24, 38, 66, .08);
-  --efir-shadow-seat: 0 22px 36px -24px rgba(24, 38, 66, .5), 0 2px 5px -1px rgba(24, 38, 66, .14);
-  --efir-seg-well: inset 0 1px 2px rgba(12, 18, 28, .1), inset 0 0 0 1px rgba(12, 18, 28, .07);
-  --efir-seg-on: 0 1px 2px rgba(24, 38, 66, .2), inset 0 0 0 1px rgba(12, 18, 28, .07);
-  --efir-track: rgba(12, 18, 28, .1);
-  --efir-stage-light: rgba(255, 255, 255, 0);
-  --efir-plate-well: #10151d;
-  --efir-p1-keyline: rgba(207, 159, 42, 0.34);
-}
-
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
@@ -473,20 +368,25 @@
     --delta-down: #f56b62;
 
     /* Medal chrome, re-anchored for the dark surface — see the light block. */
+    --medal-gold: #e8c256;
+    --medal-silver: #bac4d3;
+    --medal-bronze: #d89a68;
+
+    /* «ZARB» medal metal on the dark surface — see the light block. */
+    --zarb-gold: #dcb24a;
+    --zarb-silver: #b3bece;
+    --zarb-bronze: #c98450;
     --medal-gold-hi: #f9e8ae;
-    --medal-gold: #dcb24a;
     --medal-gold-lo: #8d6a1c;
     --medal-gold-sh: #3a2b0b;
     --medal-gold-patina: #3b3c2e;
     --medal-gold-well: #5d4512;
     --medal-silver-hi: #f4f7fb;
-    --medal-silver: #b3bece;
     --medal-silver-lo: #626d7c;
     --medal-silver-sh: #252c36;
     --medal-silver-patina: #293d51;
     --medal-silver-well: #3f4753;
     --medal-bronze-hi: #f5cba4;
-    --medal-bronze: #c98450;
     --medal-bronze-lo: #744525;
     --medal-bronze-sh: #301d0e;
     --medal-bronze-patina: #323130;
@@ -499,42 +399,10 @@
     --medal-steel-well: #212a35;
     --medal-gilt-hi: #efe3c2;
     --medal-gilt: #bfa873;
-    --medal-gold-wash: rgba(220, 178, 74, 0.09);
-    --medal-silver-wash: rgba(179, 190, 206, 0.09);
-    --medal-bronze-wash: rgba(201, 132, 80, 0.09);
-    --medal-gold-wash-p1: rgba(220, 178, 74, 0.15);
     --medal-key: rgba(0, 0, 0, .6);
     --medal-cast: rgba(0, 0, 0, .45);
     --medal-glint: rgba(255, 255, 255, .5);
     --medal-edge: rgba(255, 255, 255, .5);
-
-    /* Level ramp on the dark panel: dim → glowing — see the light block. */
-    --tier-1: #465268;
-    --tier-1-hi: #767f8f;
-    --tier-1-lo: #353e4f;
-    --tier-1-wash: rgba(70, 82, 104, 0.16);
-    --tier-2: #4c6c94;
-    --tier-2-hi: #7b92b0;
-    --tier-2-lo: #3a5270;
-    --tier-2-wash: rgba(76, 108, 148, 0.16);
-    --tier-3: #3d8bcb;
-    --tier-3-hi: #6fa9d9;
-    --tier-3-lo: #2e6a9a;
-    --tier-3-wash: rgba(61, 139, 203, 0.16);
-    --tier-4: #6cc3f2;
-    --tier-4-hi: #92d3f5;
-    --tier-4-lo: #5294b8;
-    --tier-4-wash: rgba(108, 195, 242, 0.16);
-    --tier-5: #b5e6fc;
-    --tier-5-hi: #c8ecfd;
-    --tier-5-lo: #8aafc0;
-    --tier-5-wash: rgba(181, 230, 252, 0.16);
-    --tier-6: #f2fbff;
-    --tier-6-hi: #f5fcff;
-    --tier-6-lo: #c2c9cc;
-    --tier-6-wash: rgba(242, 251, 255, 0.16);
-
-    /* Minted-surface tokens — see the light block. */
     --sheen-hi: rgba(255, 255, 255, .28);
     --sheen-lo: rgba(0, 0, 0, .3);
     --sheen-none-hi: rgba(255, 255, 255, 0);
@@ -542,18 +410,7 @@
     --bloom: rgba(255, 255, 255, .12);
     --ribbon-a: #2c6aa2;
     --ribbon-shade: rgba(0, 0, 0, .34);
-    --recess-hi: rgba(255, 255, 255, .14);
-    --recess-lo: rgba(0, 0, 0, .7);
-    --recess-none: rgba(0, 0, 0, 0);
-    --slot-field: #0b0d11;
-    --slot-dash: rgba(255, 255, 255, .16);
-    --slot-glyph: #262d38;
-    --crest-plate: #07090c;
-    --crest-off: #1b212b;
-    --crest-glint: rgba(255, 255, 255, .5);
-    --crest-shade: rgba(0, 0, 0, .4);
-    --halo-field-hi: #262c37;
-    --halo-field-lo: #0b0e13;
+    --medal-plate-well: #07090c;
 
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
     --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px -8px rgba(0, 0, 0, 0.7);
@@ -568,32 +425,6 @@
     --atmos-mix-violet: 11%;
     --grain-alpha: 0.04;
     --glow-hero-mix: 18%;
-  }
-
-  :root:where(:not([data-theme="light"])) :is(.tv-board-shell, main:has(.tv-board-shell)) {
-    --efir-page-glow: rgba(116, 160, 224, .075);
-    --efir-panel: #0c0f14;
-    --efir-panel-sheen: rgba(255, 255, 255, .03);
-    --efir-raised: #141921;
-    --efir-raised-hi: #1d232e;
-    --efir-sunken: #07090c;
-    --efir-ink: #f2f5fa;
-    --efir-ink-name: #d9dfe8;
-    --efir-ink-ctx: #c2cad6;
-    --efir-ink-2: #939db0;
-    --efir-ink-3: #8691a5;
-    --efir-ink-4: #2f3743;
-    --efir-hairline: rgba(255, 255, 255, .05);
-    --efir-edge-hi: rgba(255, 255, 255, .095);
-    --efir-edge-ring: rgba(255, 255, 255, .035);
-    --efir-shadow-panel: 0 30px 60px -30px rgba(0, 0, 0, .9);
-    --efir-shadow-seat: 0 24px 40px -22px rgba(0, 0, 0, .95), 0 2px 5px -1px rgba(0, 0, 0, .55);
-    --efir-seg-well: inset 0 1px 2px rgba(0, 0, 0, .35), inset 0 0 0 1px rgba(255, 255, 255, .035);
-    --efir-seg-on: inset 0 1px 0 rgba(255, 255, 255, .095), 0 1px 2px rgba(0, 0, 0, .35);
-    --efir-track: rgba(255, 255, 255, .09);
-    --efir-stage-light: rgba(150, 185, 235, .07);
-    --efir-plate-well: #07090c;
-    --efir-p1-keyline: rgba(249, 232, 174, 0.13);
   }
 }
 
@@ -644,20 +475,25 @@
   --delta-down: #f56b62;
 
   /* Medal chrome — kept in lockstep with the media-query block above. */
+  --medal-gold: #e8c256;
+  --medal-silver: #bac4d3;
+  --medal-bronze: #d89a68;
+
+  /* «ZARB» medal metal — kept in lockstep with the media-query block above. */
+  --zarb-gold: #dcb24a;
+  --zarb-silver: #b3bece;
+  --zarb-bronze: #c98450;
   --medal-gold-hi: #f9e8ae;
-  --medal-gold: #dcb24a;
   --medal-gold-lo: #8d6a1c;
   --medal-gold-sh: #3a2b0b;
   --medal-gold-patina: #3b3c2e;
   --medal-gold-well: #5d4512;
   --medal-silver-hi: #f4f7fb;
-  --medal-silver: #b3bece;
   --medal-silver-lo: #626d7c;
   --medal-silver-sh: #252c36;
   --medal-silver-patina: #293d51;
   --medal-silver-well: #3f4753;
   --medal-bronze-hi: #f5cba4;
-  --medal-bronze: #c98450;
   --medal-bronze-lo: #744525;
   --medal-bronze-sh: #301d0e;
   --medal-bronze-patina: #323130;
@@ -670,42 +506,10 @@
   --medal-steel-well: #212a35;
   --medal-gilt-hi: #efe3c2;
   --medal-gilt: #bfa873;
-  --medal-gold-wash: rgba(220, 178, 74, 0.09);
-  --medal-silver-wash: rgba(179, 190, 206, 0.09);
-  --medal-bronze-wash: rgba(201, 132, 80, 0.09);
-  --medal-gold-wash-p1: rgba(220, 178, 74, 0.15);
   --medal-key: rgba(0, 0, 0, .6);
   --medal-cast: rgba(0, 0, 0, .45);
   --medal-glint: rgba(255, 255, 255, .5);
   --medal-edge: rgba(255, 255, 255, .5);
-
-  /* Level ramp — kept in lockstep with the media-query block above. */
-  --tier-1: #465268;
-  --tier-1-hi: #767f8f;
-  --tier-1-lo: #353e4f;
-  --tier-1-wash: rgba(70, 82, 104, 0.16);
-  --tier-2: #4c6c94;
-  --tier-2-hi: #7b92b0;
-  --tier-2-lo: #3a5270;
-  --tier-2-wash: rgba(76, 108, 148, 0.16);
-  --tier-3: #3d8bcb;
-  --tier-3-hi: #6fa9d9;
-  --tier-3-lo: #2e6a9a;
-  --tier-3-wash: rgba(61, 139, 203, 0.16);
-  --tier-4: #6cc3f2;
-  --tier-4-hi: #92d3f5;
-  --tier-4-lo: #5294b8;
-  --tier-4-wash: rgba(108, 195, 242, 0.16);
-  --tier-5: #b5e6fc;
-  --tier-5-hi: #c8ecfd;
-  --tier-5-lo: #8aafc0;
-  --tier-5-wash: rgba(181, 230, 252, 0.16);
-  --tier-6: #f2fbff;
-  --tier-6-hi: #f5fcff;
-  --tier-6-lo: #c2c9cc;
-  --tier-6-wash: rgba(242, 251, 255, 0.16);
-
-  /* Minted-surface tokens — kept in lockstep with the media-query block above. */
   --sheen-hi: rgba(255, 255, 255, .28);
   --sheen-lo: rgba(0, 0, 0, .3);
   --sheen-none-hi: rgba(255, 255, 255, 0);
@@ -713,18 +517,7 @@
   --bloom: rgba(255, 255, 255, .12);
   --ribbon-a: #2c6aa2;
   --ribbon-shade: rgba(0, 0, 0, .34);
-  --recess-hi: rgba(255, 255, 255, .14);
-  --recess-lo: rgba(0, 0, 0, .7);
-  --recess-none: rgba(0, 0, 0, 0);
-  --slot-field: #0b0d11;
-  --slot-dash: rgba(255, 255, 255, .16);
-  --slot-glyph: #262d38;
-  --crest-plate: #07090c;
-  --crest-off: #1b212b;
-  --crest-glint: rgba(255, 255, 255, .5);
-  --crest-shade: rgba(0, 0, 0, .4);
-  --halo-field-hi: #262c37;
-  --halo-field-lo: #0b0e13;
+  --medal-plate-well: #07090c;
 
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px -8px rgba(0, 0, 0, 0.7);
@@ -736,46 +529,6 @@
   --atmos-mix-violet: 11%;
   --grain-alpha: 0.04;
   --glow-hero-mix: 18%;
-}
-
-:root[data-theme="dark"] :is(.tv-board-shell, main:has(.tv-board-shell)) {
-  --efir-page-glow: rgba(116, 160, 224, .075);
-  --efir-panel: #0c0f14;
-  --efir-panel-sheen: rgba(255, 255, 255, .03);
-  --efir-raised: #141921;
-  --efir-raised-hi: #1d232e;
-  --efir-sunken: #07090c;
-  --efir-ink: #f2f5fa;
-  --efir-ink-name: #d9dfe8;
-  --efir-ink-ctx: #c2cad6;
-  --efir-ink-2: #939db0;
-  --efir-ink-3: #8691a5;
-  --efir-ink-4: #2f3743;
-  --efir-hairline: rgba(255, 255, 255, .05);
-  --efir-edge-hi: rgba(255, 255, 255, .095);
-  --efir-edge-ring: rgba(255, 255, 255, .035);
-  --efir-shadow-panel: 0 30px 60px -30px rgba(0, 0, 0, .9);
-  --efir-shadow-seat: 0 24px 40px -22px rgba(0, 0, 0, .95), 0 2px 5px -1px rgba(0, 0, 0, .55);
-  --efir-seg-well: inset 0 1px 2px rgba(0, 0, 0, .35), inset 0 0 0 1px rgba(255, 255, 255, .035);
-  --efir-seg-on: inset 0 1px 0 rgba(255, 255, 255, .095), 0 1px 2px rgba(0, 0, 0, .35);
-  --efir-track: rgba(255, 255, 255, .09);
-  --efir-stage-light: rgba(150, 185, 235, .07);
-  --efir-plate-well: #07090c;
-  --efir-p1-keyline: rgba(249, 232, 174, 0.13);
-}
-
-/*
- * The television scale, narrower than 1600px: 36/20/14/12. One query for
- * the four, so a 1366 laptop and a 720p panel get the same board a step
- * smaller rather than four sizes that drift apart.
- */
-@media (max-width: 1599px) {
-  :root {
-    --tv-xl: 36px;
-    --tv-l: 20px;
-    --tv-m: 14px;
-    --tv-s: 12px;
-  }
 }
 
 /**
@@ -2579,1319 +2332,422 @@ p {
   }
 }
 
-/* ==========================================================================
- * EFIR — sotuvchilar taxtasi: gerb, medal, halqa, legenda, o'rindiq, qator, komandalar, e'lon
+/* ===========================================================================
+ * PODIUM — the sellers board's ceremony layer
  *
- * Spec: docs/superpowers/specs/2026-09-17-efir-premium-design.md (EFIR Premium,
- * ustida 2026-09-16-efir-taxta-design.md). Mock va barcha qoidalar:
- * docs/superpowers/specs/assets/2026-09-17-efir-premium/final.css — o'lchamlar shundan.
+ * The one screen whose audience is the sellers themselves, and the client's
+ * explicit ask: first place must be unmistakable from across the room. The
+ * three medal metals (--medal-*) are chrome here in the same sense the kbd
+ * chip and the scrim are chrome — they may borrow elevation and tint, and
+ * they may never encode a value. Rank itself still travels on the licensed
+ * channels (size, elevation, position, the ordinal, the emoji medals); the
+ * metal is varnish over that, so a colourblind reader loses nothing.
  *
- * BITTA YORUG'LIK, BITTA METALL TIZIMI. Daraja `--tier` orqali keladi:
- * `[data-tier="N"]` uni `--tier-N` (va `-hi/-lo/-wash`) ga bog'laydi va
- * komponentlar `--tier-N` ni hech qachon to'g'ridan-to'g'ri o'qimaydi (oila
- * ORDINAL — token blokidagi izoh). Metall xuddi shunday `[data-metal]` →
- * `--metal`. `--medal-*` faqat yozilgan istisnolarda (token blokidagi ro'yxat;
- * test ushlaydi). `--series-*` bu bo'limda yo'q. Literal rang YO'Q va
- * `color-mix()` ham YO'Q — aralashmalar tokenlarda oldindan hisoblangan.
- *
- * Medal, gerb va tanga o'zini `<defs>` ichida bo'yaydi (`medalDefs.ts`,
- * inline uslub — hujjat selektori `<use>` soya daraxtiga yetmaydi); bu yerda
- * faqat instance qoidalari. `--efir-*` material tokenlari `.tv-board-shell`
- * va `main:has(.tv-board-shell)` ostida (token bloklari, uchala mavzu
- * mexanizmi) — ikkinchisi umumiy sarlavhadagi rekord devori uchun.
+ * --metal is set by the WRAPPER (.podium-col--*), not the card, so the seat
+ * assigns its metal once and everything inside — card, ring, plaque, ghost
+ * numeral, base rail — reads the same token.
  * ======================================================================== */
 
-/* ---- daraja: 0…6 → --tier (+ -hi/-lo/-wash). 0-daraja — shaffof (tasma konturi o'zi chiziladi). ---- */
-[data-tier="0"] { --tier: transparent; --tier-hi: transparent; --tier-lo: transparent; --tier-wash: transparent; }
-[data-tier="1"] { --tier: var(--tier-1); --tier-hi: var(--tier-1-hi); --tier-lo: var(--tier-1-lo); --tier-wash: var(--tier-1-wash); }
-[data-tier="2"] { --tier: var(--tier-2); --tier-hi: var(--tier-2-hi); --tier-lo: var(--tier-2-lo); --tier-wash: var(--tier-2-wash); }
-[data-tier="3"] { --tier: var(--tier-3); --tier-hi: var(--tier-3-hi); --tier-lo: var(--tier-3-lo); --tier-wash: var(--tier-3-wash); }
-[data-tier="4"] { --tier: var(--tier-4); --tier-hi: var(--tier-4-hi); --tier-lo: var(--tier-4-lo); --tier-wash: var(--tier-4-wash); }
-[data-tier="5"] { --tier: var(--tier-5); --tier-hi: var(--tier-5-hi); --tier-lo: var(--tier-5-lo); --tier-wash: var(--tier-5-wash); }
-[data-tier="6"] { --tier: var(--tier-6); --tier-hi: var(--tier-6-hi); --tier-lo: var(--tier-6-lo); --tier-wash: var(--tier-6-wash); }
+.podium-col--gold { --metal: var(--medal-gold); }
+.podium-col--silver { --metal: var(--medal-silver); }
+.podium-col--bronze { --metal: var(--medal-bronze); }
 
-/* ---- metall: 1 oltin, 2 kumush, 3 bronza → --metal (+ -hi/-lo/-wash). O'rindiq keyline'i va yuvishi,
-   komandalar 1–3 ulush chizig'i shuni o'qiydi. ---- */
-[data-metal="gold"] { --metal: var(--medal-gold); --metal-hi: var(--medal-gold-hi); --metal-lo: var(--medal-gold-lo); --metal-wash: var(--medal-gold-wash); }
-[data-metal="silver"] { --metal: var(--medal-silver); --metal-hi: var(--medal-silver-hi); --metal-lo: var(--medal-silver-lo); --metal-wash: var(--medal-silver-wash); }
-[data-metal="bronze"] { --metal: var(--medal-bronze); --metal-hi: var(--medal-bronze-hi); --metal-lo: var(--medal-bronze-lo); --metal-wash: var(--medal-bronze-wash); }
-
-/* ---- zarb qilingan bo'laklar: gerb, medal, tanga. O'lcham — atributlarda (height/size), CSS'da emas. ---- */
-.crest,
-.medal,
-.halo {
-  display: block;
-  flex: none;
-  overflow: visible;
-}
-/* Yoniq katakchalar `currentColor` bilan bo'yaladi — `<use>` soya daraxtini ranglashning eng ko'chma yo'li. */
-.crest { color: var(--tier); }
-
-/* ×N plastinkasi — faqat o'rindiqda, SVG ichida, instance (yorug' DOM) — oddiy CSS yetadi. */
-.medal__plate-rim {
-  stroke: var(--medal-key);
-  stroke-width: 0.5;
-}
-.medal__plate-well {
-  fill: var(--efir-plate-well);
-  stroke: var(--medal-key);
-  stroke-width: 0.4;
-}
-.medal__count use { stroke: var(--medal-gold-hi); }
-.medal__count[data-dev="gilt"] use { stroke: var(--medal-gilt-hi); }
-.medal__count[data-dev="steel"] use { stroke: var(--medal-steel-hi); }
-.medal__count[data-dev="silver"] use { stroke: var(--medal-silver-hi); }
-.medal__count[data-dev="bronze"] use { stroke: var(--medal-bronze-hi); }
-
-.halo-box {
+/**
+ * The ceremony card. A raised surface with a metal-tinted crown-light washing
+ * down from the top edge and a metal hairline — this page's answer to
+ * .card-hero's gradient rim, scoped to its own metal.
+ *
+ * position: relative is load-bearing (the .podium-shine and .podium-ghost
+ * children need this box as their containing block) and this unlayered file
+ * beats a Tailwind position utility — wrap the card if a call site ever
+ * needs it positioned otherwise. No `display` here on purpose: the call
+ * site's responsive utilities keep that decision.
+ */
+.podium-card {
   position: relative;
-  flex: none;
-  display: block;
-}
-
-/* ---- legenda: ustun pastida 36 px botiq tasma, olti gerb (15 px) + so'z + qisqa ostona ----
-
-   1920 da BIR QATOR, `space-between` — ostona qisqa yozilgani va sarlavha
-   yo'qligi uchun (`TierLegend.tsx` izohi nimaga shundayligini yozadi).
-
-   AMMO `flex-wrap` QOLADI, VA U XAVFSIZLIK CHORASI. Yon panel ochiq 1366 da
-   ustun ~645 px — kalit u yerda baribir o'raladi, va qat'iy balandlik +
-   `overflow: hidden` da o'ralish o'rniga oxirgi pog'ona — aynan «Legenda»,
-   narvon cho'qqisi — indamay kesilardi. Shuning uchun `min-height`.
-   `white-space: nowrap` pog'onaning O'Z matnini bo'linishdan saqlaydi. ---- */
-.tv-legend {
-  flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  align-content: center;
-  gap: 5px 14px;
-  min-height: 36px;
-  margin-top: auto;
-  padding: 0 20px;
-  background: var(--efir-sunken);
-  box-shadow: inset 0 1px 0 var(--efir-hairline);
-  white-space: nowrap;
-}
-.legend__rung {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-}
-.legend__rung b {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--efir-ink-2);
-}
-.legend__rung i {
-  margin-left: -2px;
-  font-size: 12px;
-  font-style: normal;
-  color: var(--efir-ink-3);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ---- podium: uch o'rindiq bitta yuqori yorug'lik ostida (EFIR Premium §4, delta 9–9g).
-   291 = 8 + 277 + 6. Grid ustunlari 1fr · 1.24fr · 1fr; DOM tartibi 1-2-3
-   (ekran o'quvchi chempionni birinchi eshitadi), joyi `grid-column` bilan 2-1-3. ---- */
-.tv-podium {
-  flex: none;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.24fr) minmax(0, 1fr);
-  gap: 12px;
-  align-items: end;
-  height: 291px;
-  padding: 8px 12px 6px;
-  background: radial-gradient(460px 280px at 50% -40px, var(--efir-stage-light), transparent 72%);
-}
-.seat--2 { grid-area: 1 / 1; }
-.seat--1 { grid-area: 1 / 2; }
-.seat--3 { grid-area: 1 / 3; }
-/* RAMKA YO'Q — uch qatlamli fon: 2 px metall keyline, radial metall yuvish,
-   vertikal ko'tarilgan gradient; ichki halqa va soya. Metall `[data-metal]`
-   (rank bo'yicha) dan, daraja `[data-tier]` dan. */
-.seat {
-  position: relative;
-  min-width: 0;
-  height: 255px;
-  display: flex;
-  flex-direction: column;
-  padding: 12px 16px 10px 26px;
-  border-radius: 14px;
+  border: 1px solid color-mix(in oklab, var(--metal) 42%, var(--border));
+  border-radius: var(--radius-panel);
   background:
-    linear-gradient(90deg, transparent 4%, var(--metal-hi) 26%, var(--metal) 52%, transparent 94%) top / 100% 2px no-repeat,
-    radial-gradient(130% 70% at 50% 0%, var(--metal-wash), transparent 70%),
-    linear-gradient(180deg, var(--efir-raised-hi) 0%, var(--efir-raised) 40%, var(--efir-panel) 100%);
-  box-shadow: inset 0 0 0 1px var(--efir-edge-ring), var(--efir-shadow-seat);
-  container-type: inline-size;
+    radial-gradient(
+      130% 85% at 50% -25%,
+      color-mix(in oklab, var(--metal) 13%, transparent),
+      transparent 58%
+    ),
+    var(--surface-raised);
+  box-shadow: var(--shadow-card), var(--edge-highlight);
+  /* For the hover-lift below — harmless on a card nothing ever hovers. */
+  transition: transform var(--duration-enter) var(--ease-out), box-shadow var(--duration-enter) var(--ease-out);
 }
-.seat--1 {
-  height: 277px;
+
+/*
+ * The champion outranks the flankers in elevation too, and now in wash: the
+ * same crown-light every card carries, turned up from 13% to 24% on the one
+ * card the client wants "unmistakable from across the room". Still the seat's
+ * own metal at the same angle — a brighter instance of the shared rule, not a
+ * second rule, so silver and bronze are untouched.
+ */
+.podium-col--gold .podium-card {
   background:
-    linear-gradient(90deg, transparent 4%, var(--metal-hi) 26%, var(--metal) 52%, transparent 94%) top / 100% 2px no-repeat,
-    radial-gradient(300px 180px at 50% 0%, var(--medal-gold-wash-p1), transparent 72%),
-    linear-gradient(180deg, var(--efir-raised-hi) 0%, var(--efir-raised) 40%, var(--efir-panel) 100%);
-}
-/* Faqat P1: zargarning ichki keyline'i, chetdan 6 px — bitta token, niqob yo'q. */
-.seat--1::after {
-  content: "";
-  position: absolute;
-  inset: 6px 6px 6px 14px;
-  border-radius: 9px;
-  border: 1px solid var(--efir-p1-keyline);
-  pointer-events: none;
-}
-/* 6 px inley tasma — daraja rangi; 0-daraja shaffof. */
-.seat__band {
-  position: absolute;
-  left: 0;
-  top: 16px;
-  bottom: 16px;
-  width: 6px;
-  border-radius: 0 3px 3px 0;
-  background: linear-gradient(180deg, var(--tier-hi), var(--tier) 45%, var(--tier-lo));
-}
-.seat__id {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  height: 60px;
-}
-.seat--1 .seat__id {
-  height: 72px;
-  gap: 20px;
-  padding-left: 4px;
-}
-.seat__who {
-  min-width: 0;
-  flex: 1;
-}
-.seat__name {
-  margin: 0;
-  font-size: 18px;
-  line-height: 1.16;
-  font-weight: 560;
-  letter-spacing: -0.012em;
-  color: var(--efir-ink-name);
-}
-.seat--1 .seat__name { font-size: 22px; }
-/* Bir bo'lakli uzun familiya tor o'rindiqda — ellipsis, ustiga chiqmaydi. */
-.seat__name > span {
-  display: block;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.seat__name .code {
-  font-size: 12.5px;
-  font-weight: 500;
-  letter-spacing: 0;
-  color: var(--efir-ink-3);
-  font-variant-numeric: tabular-nums lining-nums;
-}
-/* Ikkinchi qator: KOD ISMDAN OLDIN TUSHADI (qatordagi `.row__name` qoidasi). Bir qator
-   balandligida o'raladigan flex — sig'magan kod pastki, yashirin qatorga o'tadi, ism o'z
-   kengligida ellipsis bo'ladi. 1366 auditi: «Davlatbek 11…» / «Niginabon…» edi. */
-.seat__name > .seat__name2 {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  height: 1.16em;
-}
-.seat__name2 .nm {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.seat__name2 .code { flex: none; }
-.seat__name2 .nm + .code { margin-left: 0.4em; }
-/* TUSHISH TARTIBI: komanda sig'masa 20 px oynadan tashqariga o'raladi va
-   BUTUNLAY yo'qoladi — hech narsa ellipsis bo'lmaydi, «A…» chiqmaydi. */
-.seat__meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  column-gap: 8px;
-  row-gap: 20px;
-  min-width: 0;
-  height: 20px;
-  margin: 5px 0 0;
-  overflow: hidden;
-  white-space: nowrap;
-}
-.seat__meta > * {
-  display: flex;
-  align-items: center;
-  height: 20px;
-}
-/* Daraja so'zi — BIR MARTA, gerb yonida; 11 px caps, sokin siyoh (darajani
-   plastinali gerb aytadi). */
-.seat__meta .lvl {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--efir-ink-2);
-}
-.seat__meta .team {
-  padding-left: 8px;
-  font-size: 13px;
-  color: var(--efir-ink-3);
-  box-shadow: inset 1px 0 0 var(--efir-hairline);
-}
-/* PUL HECH QACHON KESILMAYDI. Mock kengligida 40 / 52 px; o'rindiq o'z
-   konteyneri, shuning uchun tor ustunda (rail, 1366) `cqi` bilan kichrayadi.
-   O'lchangan (Inter, tnum, -0.03em): 8 xona 5,51em → 17,5cqi; 9 xona 6,15em
-   → 16cqi; 10 xona 6,97em → 14cqi (`data-digits`, `SeatCard.digitsBand`).
-   U+202F guruh ajratgichlari o'ralmaydi va toraytirilmaydi. */
-.seat__money {
-  margin: 4px 0 0;
-  font-size: min(40px, 17.5cqi);
-  line-height: 44px;
-  font-weight: 560;
-  letter-spacing: -0.03em;
-  color: var(--efir-ink);
-  font-variant-numeric: tabular-nums lining-nums;
-  white-space: nowrap;
-}
-.seat--1 .seat__money {
-  font-size: min(52px, 17.5cqi);
-  line-height: 52px;
-  letter-spacing: -0.034em;
-}
-.seat__money[data-digits="9"] { font-size: min(40px, 16cqi); }
-.seat--1 .seat__money[data-digits="9"] { font-size: min(52px, 16cqi); }
-.seat__money[data-digits="10"] { font-size: min(40px, 14cqi); }
-.seat--1 .seat__money[data-digits="10"] { font-size: min(52px, 14cqi); }
-.seat__fakt {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 10px;
-  height: 16px;
-  margin: 0;
-  font-size: 12px;
-  color: var(--efir-ink-3);
-  white-space: nowrap;
-}
-.seat__fakt b {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  color: var(--efir-ink-2);
-}
-.seat__fakt em {
-  margin-left: 4px;
-  font-size: 14px;
-  font-style: normal;
-  font-weight: 500;
-  color: var(--efir-ink-name);
-  font-variant-numeric: tabular-nums lining-nums;
-}
-.seat__prog { margin-top: 10px; }
-.seat__left {
-  margin: 0;
-  font-size: 13px;
-  line-height: 17px;
-  color: var(--efir-ink-2);
-  white-space: nowrap;
-}
-.seat__left em {
-  font-size: 14px;
-  font-style: normal;
-  font-weight: 600;
-  color: var(--efir-ink-name);
-  font-variant-numeric: tabular-nums lining-nums;
-}
-.seat__left em.seat__none {
-  font-weight: 400;
-  color: var(--efir-ink-3);
-}
-/* 4 px metr: `--tier-hi` → `--tier`, oxirida siyoh belgisi. */
-.meter {
-  position: relative;
-  height: 4px;
-  margin: 5px 0;
-  border-radius: 2px;
-  background: var(--efir-track);
-}
-.meter i {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  border-radius: 2px;
-  background: linear-gradient(180deg, var(--tier-hi), var(--tier));
-  transition: width var(--duration-move) var(--ease-out);
-}
-.meter i::after {
-  content: "";
-  position: absolute;
-  right: -1px;
-  top: -3px;
-  width: 2px;
-  height: 10px;
-  border-radius: 1px;
-  background: var(--efir-ink-name);
-}
-/* «Avgustdan beri {delivered} / {nextLevelAt}» — daraja qaysi puldan.
-   10,5 px, mockdagi 11,5 emas: jonli Inter (next/font) raqami mock shriftidan ~5 % keng.
-   O'lchangan (real-data audit, 2026-09-17), P2/P3 ichki kengligi 245 px: 11,5 px da satr
-   86 + 8 + 168 = 254 px bo'lib o'rindiqning o'ng to'ldirmasiga 8,6 px kirardi; 11 px da
-   82 + 6 + 158 = 246 — bir piksel bilan ikkinchi qatorga o'ralardi; 10,5 px da ~235.
-   O'n xonali ostona («/ 1 000 000 000») baribir sig'masa — raqamlar ikkinchi qatorga,
-   o'ngga o'raladi; P2/P3 da tokcha ustida 14 px bo'sh joy bor. */
-.seat__life {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  column-gap: 6px;
-  margin: 0;
-  font-size: 10.5px;
-  line-height: 14px;
-  color: var(--efir-ink-3);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums lining-nums;
-}
-.seat__life > span:last-child { margin-left: auto; }
-.seat__life em {
-  font-style: normal;
-  font-weight: 500;
-  color: var(--efir-ink-2);
-}
-/* Tokcha: medallar va izoh. Izoh sig'masa 40 px oynadan tashqariga o'raladi
-   va butunlay yo'qoladi (`.seat__meta` dagi komanda qoidasi); `clip` +
-   `overflow-clip-margin` dafna uchlarini (viewBox dan ~1 px tashqarida)
-   kesmaydi. */
-.seat__rack {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  column-gap: 8px;
-  row-gap: 40px;
-  height: 40px;
-  margin-top: auto;
-  overflow: hidden;
-  overflow: clip;
-  overflow-clip-margin: 6px;
-}
-.seat--1 .seat__rack {
-  row-gap: 48px;
-  height: 48px;
-}
-.seat__cap {
-  margin-left: auto;
-  text-align: right;
-  white-space: nowrap;
-}
-.seat__cap b {
-  display: block;
-  font-size: 13px;
-  line-height: 16px;
-  font-weight: 500;
-  color: var(--efir-ink-name);
-}
-.seat__cap i {
-  display: block;
-  font-size: 12px;
-  line-height: 15px;
-  font-style: normal;
-  color: var(--efir-ink-3);
+    radial-gradient(
+      130% 90% at 50% -25%,
+      color-mix(in oklab, var(--metal) 24%, transparent),
+      transparent 60%
+    ),
+    var(--surface-raised);
+  box-shadow: var(--shadow-raised), var(--edge-highlight);
 }
 
-/* ---- o'rindiq, 1366 va tor televizor (spec §10): tanga, gerb va medal
-   o'lchami ATRIBUTDA — bu yerda kichraymaydi. Ustun ~645 px bo'lganda
-   o'rindiq balandligi mazmunga ergashadi (qat'iy 255 / 277 satrlarni
-   kesardi), pul `cqi` bilan kichrayadi (yuqorida).
-
-   HAR SATR BIR QATORDA TURADI, CHUNKI HAR O'RALISH RO'YXATDAN QATOR OLADI.
-   1366×768 da P2/P3 ichki kengligi ~158 px edi: FAKT satri, «… qoldi» va
-   «Avgustdan beri» uchalasi ikki qatorga o'ralib podium ~295 px bo'lgan va
-   reyting ro'yxatiga UCH qator qolgan (real-data audit, 2026-09-17). Endi
-   to'ldirma torroq (ichki ~164 px), yorliqlar kichikroq, va «Avgustdan beri»
-   so'zi tushadi — raqamlar («170 100 000 / 300 000 000») qoladi, asosni
-   sahifa tagi aytadi («Daraja — avgustdan beri yetkazilgan pul boʻyicha»).
-   Sig'masa (o'n xonali ostona) satrlar baribir o'raladi — kesilmaydi. ---- */
-@media (max-width: 1599px) {
-  .tv-podium {
-    height: auto;
-    gap: 6px;
-    padding: 8px 6px 6px;
-  }
-  .seat {
-    height: auto;
-    min-height: 216px;
-    padding: 10px 10px 10px 16px;
-  }
-  .seat--1 { min-height: 236px; }
-  .seat__id { gap: 10px; }
-  .seat--1 .seat__id {
-    gap: 14px;
-    padding-left: 0;
-  }
-  .seat__name { font-size: 15px; }
-  .seat--1 .seat__name { font-size: 18px; }
-  .seat__fakt {
-    flex-wrap: wrap;
-    column-gap: 6px;
-    row-gap: 0;
-    height: auto;
-  }
-  .seat__fakt b {
-    font-size: 9.5px;
-    letter-spacing: 0.06em;
-  }
-  .seat__fakt em {
-    margin-left: 3px;
-    font-size: 12.5px;
-  }
-  .seat__left {
-    font-size: 11.5px;
-    line-height: 15px;
-    white-space: normal;
-  }
-  .seat__left em { font-size: 12.5px; }
-  .seat__life { font-size: 10.5px; }
-  /* Pul bu kenglikda `cqi` bilan ~29 / 37 px — 44 / 52 px qator balandligi bo'sh joy edi.
-     QATOR BALANDLIGI SHRIFTGA NISBATAN, piksel emas: o'rindiq keng bo'lsa (telefonda 334 px,
-     rail yopiq 1599 da) `min(52px, 17.5cqi)` yana 52 px ga qaytadi, va qat'iy 40 px qator
-     raqamni tepadagi meta va pastdagi FAKT satri ustiga chiqarardi (390 da 12 px, premium
-     review 2026-09-17). 1,08 × 37 = 40 — 1366 dagi o'lchov o'zgarmaydi. */
-  .seat__money,
-  .seat--1 .seat__money { line-height: 1.08; }
+/*
+ * Hovering (or keyboard-focusing) the name lifts the WHOLE card, not just the
+ * text — `:has()` reaches up from `.podium-name` so the affordance matches
+ * what actually happens on click, rather than a card-wide hover promising an
+ * action only the name delivers. No transform on touch: nothing here fires
+ * without a real `:hover`/`:focus-visible`, so a tap goes straight to
+ * `onOpen` with no lift to wait out.
+ */
+.podium-card:has(.podium-name:hover),
+.podium-card:has(.podium-name:focus-visible) {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-raised), var(--edge-highlight),
+    0 0 0 1px color-mix(in oklab, var(--metal) 32%, transparent);
 }
 
-/* ---- ikki ustunli tor kadr (1280–1599): FAQAT shu yerda tushadigan va qayta yig'iladiganlar.
-   Telefon (≤ 1279) bu blokka kirmaydi — u yerda o'rindiq ~334 px, joy yetadi. ---- */
-@media (min-width: 1280px) and (max-width: 1599px) {
-  /* «Avgustdan beri» so'zi ~164 px ichki kenglikda tushadi (yuqoridagi izoh); raqamlar qoladi,
-     asosni sahifa tagi aytadi. Telefonda so'z QOLADI — spec §4/§9 to'g'rilik satri. */
-  .seat__life > span:first-child { display: none; }
-  /* LEGENDA 3 × 2 JADVAL. Olti pog'ona ~835 px so'raydi, bu kadrda ustun ≤ ~850: `space-between`
-     o'ralishi 4 + 2 berib, «Ustoz» chapga, «Legenda» o'ng chetga, orasida ~300 px bo'shliq
-     qolardi (1366 auditi). Uch ustunli grid ikki qatorni bir xil tekislaydi. */
-  .tv-legend {
-    display: grid;
-    grid-template-columns: repeat(3, auto);
-    justify-content: space-between;
-  }
-}
-
-/* ---- o'rindiq, telefon: ustma-ust, 1-2-3 o'qiladi (DOM tartibi). 2-1-3
-   podium KOMPOZITSIYASI uchun; bitta ustunda u chempionni ikkinchi qatorga
-   tushirib qo'yardi. ---- */
-@media (max-width: 1279px) {
-  .tv-podium {
-    grid-template-columns: minmax(0, 1fr);
-    padding: 12px 12px 4px;
-  }
-  .seat--1,
-  .seat--2,
-  .seat--3 {
-    grid-area: auto;
-    min-height: 0;
-  }
-  .seat__rack { margin-top: 10px; }
-}
-
-/* ---- ro'yxat: timing tower (EFIR Premium §5). Yorliq qatori STATIK, skroll qutisi TASHQARISIDA.
-   978 = 8 + [6 38 68 1fr 80 96 148 104 40 60] + 9×8 + 16. O'qish tartibi: tasma · rank · gerb ·
-   ism(+kod) · komanda · medallar · QAHRAMON (faol fakt) · boshqa fakt · buyurt. · konv. ---- */
-.tv-cols,
-.row {
-  display: grid;
-  grid-template-columns: 6px 38px 68px minmax(0, 1fr) 80px 96px 148px 104px 40px 60px;
-  column-gap: 8px;
-  align-items: center;
-  padding: 0 16px 0 8px;
-}
-.tv-cols {
-  flex: none;
-  height: 28px;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--efir-ink-3);
-  white-space: nowrap;
-  background: linear-gradient(90deg, var(--efir-hairline), transparent 85%) bottom / 100% 1px no-repeat;
-}
-.tv-cols__r { text-align: right; }
-/* Faol ustun yorlig'i — nom siyohida; 22×2 belgi (`--tier-4`, bitta xrom urg'usi) TV BOARD
-   bo'limida, FAKT kalitining chizig'i yonida. */
-.tv-cols .on {
-  position: relative;
-  color: var(--efir-ink-name);
-}
-.tv-rows {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  scroll-snap-type: y mandatory;
-}
-/* Drift paytida snap o'chadi — aks holda brauzer har sub-piksel `scrollTop` ni qatorga tortadi
-   (`useAutoScroll`). */
-.tv-rows[data-drifting] { scroll-snap-type: none; }
-/* Qator — BITTA tekis quti, soyasiz: pastki 1 px chiziq va chapdagi 88 px daraja yuvishi fon
-   qatlamlari, shuning uchun yuzta qator arzon skroll qiladi. */
-.row {
-  position: relative;
-  height: 43px;
-  scroll-snap-align: start;
-  background:
-    linear-gradient(var(--efir-hairline), var(--efir-hairline)) bottom / 100% 1px no-repeat,
-    linear-gradient(90deg, var(--tier-wash), transparent) left / 88px 100% no-repeat;
-  font-variant-numeric: tabular-nums lining-nums;
-}
-.row__band {
-  align-self: stretch;
-  margin: 6px 0;
-  border-radius: 3px;
-  background: linear-gradient(180deg, var(--tier-hi), var(--tier) 50%, var(--tier-lo));
-}
-.row[data-tier="0"] .row__band {
-  box-shadow: inset 0 0 0 1px var(--efir-ink-4);
-}
-.row__rank {
-  padding-right: 4px;
-  font-size: 17px;
-  font-weight: 500;
-  text-align: right;
-  color: var(--efir-ink-2);
-}
-/* Ism uyasi: kod tokeni ism kesilishidan OLDIN tushadi — sig'masa ikkinchi (26 px pastdagi,
-   yashirin) qatorga o'raladi, ism esa butun kenglikni olib, oxirida ellipsis bilan kesiladi. */
-.row__name {
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  height: 26px;
-  row-gap: 26px;
-  overflow: hidden;
-  white-space: nowrap;
-  padding-left: 2px;
-}
-.row__name .nm {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 19px;
-  line-height: 26px;
-  font-weight: 500;
-  letter-spacing: -0.012em;
-  color: var(--efir-ink-name);
-}
-.row__name .code {
-  flex: none;
-  margin-left: 0.5em;
-  font-size: 12.5px;
-  font-weight: 400;
-  letter-spacing: 0.02em;
-  color: var(--efir-ink-3);
-}
-.row__team {
-  font-size: 13px;
-  color: var(--efir-ink-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* O'ngdan chapga: eng nodir medal pul yonida — yuzta qatorning eng qimmati bitta vertikal ustun. */
-.row__medals {
-  display: flex;
-  flex-direction: row-reverse;
+/** The place plaque: medal emoji + ordinal on a soft metal tint. The words
+    stay in primary ink — the metal may not carry text. */
+.podium-plaque {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
-  overflow: visible;
-}
-.row__hero,
-.row__sec {
-  text-align: right;
-  white-space: nowrap;
-}
-.row__hero {
-  font-size: 23px;
-  font-weight: 620;
-  letter-spacing: -0.022em;
-  color: var(--efir-ink);
-}
-.row__sec {
-  font-size: 15px;
-  font-weight: 400;
-  color: var(--efir-ink-2);
-}
-/* Nol yoki null — xira chiziqcha, hech qachon qalin «0» (spec §2). */
-.row__none {
-  font-weight: 400;
-  color: var(--efir-ink-4);
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-primary);
+  background: color-mix(in oklab, var(--metal) 14%, transparent);
+  border: 1px solid color-mix(in oklab, var(--metal) 40%, transparent);
 }
 
-/* ---- komandalar (EFIR Premium spec §6): tanga 1–3, nom + soni bitta uyada, qahramon = faol fakt,
-   4 px ulush chizig'i (ulush ÷ yetakchi ulushi; 1–3 da metall), `footer.jami` plaketi.
-   Qator balandligi `--trow-h` komponentdan: clamp(40, floor(joy / n), 52). ---- */
-.tv-tcols,
-.trow {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) 136px 56px 92px 36px 56px;
-  column-gap: 10px;
-  align-items: center;
-  padding: 0 16px 0 12px;
-}
-.tv-tcols {
-  flex: none;
-  height: 28px;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--efir-ink-3);
-  white-space: nowrap;
-  background: linear-gradient(90deg, var(--efir-hairline), transparent 85%) bottom / 100% 1px no-repeat;
-}
-.tv-tcols__r { text-align: right; }
-.tv-tcols .on {
-  position: relative;
-  color: var(--efir-ink-name);
-}
-.tv-tcols .on::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  bottom: -6px;
-  width: 22px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--tier-4);
-}
-/* Ro'yxat uyasi — o'lchami ro'yxatga bog'liq emas; `useAvailableHeight` shuni o'lchaydi. */
-.tv-tslot {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.tv-trows {
-  --trow-h: 50px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.trow {
-  position: relative;
-  height: var(--trow-h);
-  padding-bottom: 9px;
-  background: linear-gradient(var(--efir-hairline), var(--efir-hairline)) bottom / 100% 1px no-repeat;
-  font-variant-numeric: tabular-nums lining-nums;
-}
-.trow__rank {
-  display: grid;
-  place-items: center;
-  font-size: 17px;
-  font-weight: 500;
-  color: var(--efir-ink-2);
-}
-.trow__name {
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  white-space: nowrap;
-}
-.trow__name .nm {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 20px;
-  font-weight: 500;
-  letter-spacing: -0.012em;
-  color: var(--efir-ink-name);
-}
-.trow__name .cnt {
-  font-size: 12.5px;
-  color: var(--efir-ink-3);
-}
-.trow__hero {
-  text-align: right;
-  white-space: nowrap;
-  font-size: 22px;
-  font-weight: 620;
-  letter-spacing: -0.022em;
-  color: var(--efir-ink);
-}
-.trow__sec {
-  text-align: right;
-  white-space: nowrap;
-  font-size: 14.5px;
-  color: var(--efir-ink-2);
-}
-.trow__none { color: var(--efir-ink-4); }
-.trow__bar {
-  position: absolute;
-  left: 58px;
-  right: 296px;
-  bottom: 8px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--efir-track);
-}
-.trow__bar i {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: 2px;
-  background: linear-gradient(90deg, var(--tier-3), var(--tier-4));
-}
-.trow[data-metal] .trow__bar i {
-  background: linear-gradient(90deg, var(--metal-lo), var(--metal) 70%, var(--metal-hi));
-}
-.jami {
-  flex: none;
-  margin-top: auto;
-  height: 100px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 0 20px;
-  background: var(--efir-sunken);
-  box-shadow: inset 0 1px 0 var(--efir-hairline);
-  font-variant-numeric: tabular-nums lining-nums;
-}
-.jami p,
-.jami dl,
-.jami dd { margin: 0; }
-.jami__l { min-width: 0; }
-.jami__k {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--efir-ink-3);
-  white-space: nowrap;
-}
-.jami .jami__v {
-  margin-top: 3px;
-  font-size: 30px;
-  line-height: 34px;
-  font-weight: 560;
-  letter-spacing: -0.028em;
-  color: var(--efir-ink);
-  white-space: nowrap;
-}
-.jami .jami__o {
-  margin-top: 3px;
-  font-size: 12.5px;
-  color: var(--efir-ink-3);
-  white-space: nowrap;
-}
-.jami__o b {
-  margin-right: 6px;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  color: var(--efir-ink-3);
-}
-.jami__o span {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--efir-ink-name);
-}
-.jami__r {
-  display: grid;
-  grid-template-columns: auto auto;
-  column-gap: 16px;
-  row-gap: 3px;
-  align-items: baseline;
-  font-size: 12.5px;
-  color: var(--efir-ink-3);
-  white-space: nowrap;
-}
-.jami__r dt { text-align: right; }
-.jami__r dd {
-  text-align: right;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--efir-ink-name);
-}
-.jami__r dt.sum { color: var(--efir-ink-2); }
-.jami__r dd.jami__note {
-  grid-column: 1 / -1;
-  margin-top: 3px;
-  font-size: 11.5px;
-  font-weight: 400;
-  color: var(--efir-ink-3);
-}
-.jami .trow__none { color: var(--efir-ink-4); }
-
-/* ---- e'lon (spec §8): ustun sarlavhasi USTIDA 8 s, oqimdan tashqarida — hech narsa surilmaydi.
-   `left` ga qadalgan, `fit-content`; `pointer-events: none` — tugma ostida bosilaveradi.
-   `transform` markazlashtirishga ketgan — kirish MUSTAQIL `translate` da.
-   MATERIAL — O'RINDIQNIKI (spec §1 «ramka bilan emas, ko'tarilish bilan»): ko'tarilgan gradient,
-   ichki yuqori chiziq, ichki halqa va soya. Global 1 px `--border-strong` ramkasi taxtadagi
-   yagona ramkali quti edi (premium review, 2026-09-17). ---- */
-.tv-promo {
-  position: absolute;
-  left: 18px;
-  top: 50%;
-  transform: translateY(-50%);
-  max-width: calc(100% - 36px);
-  width: fit-content;
-  z-index: 3;
-  pointer-events: none;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 32px;
-  padding: 0 14px 0 0;
-  border-radius: 8px;
-  overflow: hidden;
-  background: linear-gradient(180deg, var(--efir-raised-hi), var(--efir-raised));
+/**
+ * The avatar's metal ring — a conic sweep through lighter and darker cuts of
+ * the same metal, which is what reads as metallic without a single literal
+ * hex per theme. The halo underneath is the ring's own light, not elevation.
+ */
+.medal-ring {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 9999px;
+  background: conic-gradient(
+    from 220deg,
+    var(--metal),
+    color-mix(in oklab, var(--metal) 45%, #fff) 22%,
+    var(--metal) 47%,
+    color-mix(in oklab, var(--metal) 55%, #000) 72%,
+    var(--metal)
+  );
   box-shadow:
-    inset 0 1px 0 var(--efir-edge-hi),
-    inset 0 0 0 1px var(--efir-edge-ring),
-    var(--efir-shadow-seat);
-  font-size: var(--tv-m);
-  font-weight: 600;
-  color: var(--efir-ink);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-  animation: tv-promo-in var(--duration-enter) var(--ease-out);
-}
-.tv-promo__band {
-  align-self: stretch;
-  width: 10px;
-  background: var(--tier);
-}
-.tv-promo .crest { flex: none; }
-.tv-promo__text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-@keyframes tv-promo-in {
-  from { opacity: 0; translate: 0 -6px; }
-  to { opacity: 1; translate: 0 0; }
+    0 0 0 1px color-mix(in oklab, var(--metal) 24%, transparent),
+    0 6px 18px -8px color-mix(in oklab, var(--metal) 60%, transparent);
 }
 
-/* ---- voqea harakati (spec §8): yangi chevron 400 ms da bir marta to'ladi, yangi medal 0,6 → 1.
-   Yaltirash, marquee, pulsatsiya yo'q. ---- */
-@keyframes crest-fill {
-  from { fill: var(--crest-off); }
-  to { fill: var(--tier); }
-}
-.crest__cell--fill { animation: crest-fill 400ms var(--ease-out) both; }
-@keyframes medal-new {
-  from { transform: scale(0.6); opacity: 0; }
-  to { transform: none; opacity: 1; }
-}
-.medal--new {
-  transform-origin: center;
-  animation: medal-new 400ms var(--ease-out) both;
+/*
+ * The champion's ring, lit wider — a third, more diffuse shadow layer added
+ * to the shared one above rather than a replacement, so silver and bronze
+ * keep exactly the halo they had. Static, on purpose: MOTION above says
+ * motion is the delivery and never the message, and a glow that pulsed all
+ * day would stop being noticed by the second hour and just be a battery cost.
+ */
+.medal-ring--crowned {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--metal) 30%, transparent),
+    0 6px 18px -8px color-mix(in oklab, var(--metal) 60%, transparent),
+    0 0 30px 4px color-mix(in oklab, var(--metal) 32%, transparent);
 }
 
-/* ---- 1366 va tor televizor (spec §9): 0.8× — qator 43 (gerb, medal va tanga o'lchami atributda,
-   bu yerda kichraymaydi), gridlar torroq (o'rindiq — o'z bo'limida); shrift shkalasi `:root` da 36/20/14/12. ---- */
-@media (max-width: 1599px) {
-  /* Qator 43 px QOLADI — ro'yxat balandligi `ROW_H` karrasi (SellersBoard.tsx). ~645 px ustunda
-     komanda uyasi tushadi, medallar uyasi 2 ta joyga torayadi (row-reverse: eng nodiri qoladi). */
-  .tv-cols,
-  .row {
-    grid-template-columns: 5px 28px 58px minmax(0, 1fr) 62px 108px 88px 34px 48px;
-    column-gap: 6px;
-    padding: 0 10px 0 6px;
-  }
-  .tv-cols > span:nth-child(5),
-  .row > *:nth-child(5) {
-    display: none;
-  }
-  .row__medals {
-    width: 62px;
-    overflow: hidden;
-  }
-  .row__rank { font-size: 14px; }
-  .row__name .nm { font-size: 16px; }
-  .row__hero { font-size: 18px; }
-  .tv-cols {
-    font-size: 9.5px;
-    letter-spacing: 0.05em;
-  }
-  .row__sec { font-size: 13px; }
-  /* KOMANDALAR, 1366 (spec §10): ustun ~431 px (rail ochiq). Yetti trek u yerga sig'maydi —
-     eski `32 1fr 120 50 84 32 50` qatorida nom treki 0 px ga tushib, komanda NOMI umuman
-     ko'rinmas, soni esa qahramon raqami ostida qolardi (real-data audit, 2026-09-17).
-     Endi rank · nom+soni · QAHRAMON · ulush · konv.; boshqa fakt (5) va buyurt. (6) tushadi —
-     boshqa fakt jami plaketida qoladi. 431 = 12 + [30 1fr 118 46 46] + 4×8 + 16 → nom 131 px
-     («Kompaniya 1» 18 px da 106). Qahramon 19 px da «247 200 000» 118 px (22 px da 136 o'lchangan). */
-  .tv-tcols,
-  .trow {
-    grid-template-columns: 30px minmax(0, 1fr) 118px 46px 46px;
-    column-gap: 8px;
-  }
-  .tv-tcols > span:nth-child(5),
-  .tv-tcols > span:nth-child(6),
-  .trow > *:nth-child(5),
-  .trow > *:nth-child(6) {
-    display: none;
-  }
-  .tv-tcols {
-    font-size: 9.5px;
-    letter-spacing: 0.05em;
-  }
-  .trow__name .nm { font-size: 18px; }
-  .trow__hero { font-size: 19px; }
-  .trow__sec { font-size: 13px; }
-  /* Chiziq nom + qahramon ostida: chapda 12 + 30 + 8, o'ngda 16 + 46 + 46 + 2×8. */
-  .trow__bar { left: 50px; right: 94px; }
-  /* Jami plaketi ~431 px ga: 30 px qiymat va 12,5 px izohlar yonma-yon 493 px so'raydi va
-     «1 639 325 000» «Barcha sotuvchilar» ustiga chiqardi. Kichikroq shkala (410 px) va o'ralish —
-     sig'masa o'ng tomon pastga tushadi, ustma-ust chiqmaydi. */
-  .jami {
-    flex-wrap: wrap;
-    align-content: center;
-    gap: 6px 12px;
-    height: auto;
-    min-height: 100px;
-    padding: 8px 12px;
-  }
-  .jami__k { font-size: 9.5px; }
-  .jami .jami__v {
-    font-size: 22px;
-    line-height: 26px;
-  }
-  .jami__r {
-    column-gap: 10px;
-    margin-left: auto;
-    font-size: 11px;
-  }
-  .jami__r dd { font-size: 12.5px; }
-  .jami__r dd.jami__note { font-size: 10.5px; }
-  /* ~645 px ustunda legenda ikki qatorga o'raladi; qatorlar orasi 2 px — har piksel ro'yxatga. */
-  .tv-legend { gap: 2px 10px; }
-}
-
-/* ---- telefon (spec §9): ustunlar bittadan (`.tv-switch`, TV BOARD); o'rindiqlar ustma-ust;
-   qator tasma · rank · gerb · ism · QAHRAMON (faol fakt); komanda, medallar, boshqa fakt,
-   buyurt., konv. yashirin. Uyalar `nth-child` bilan: 5 komanda, 6 medallar, 8 boshqa fakt,
-   9 buyurt., 10 konv. (sotuvchilar, EFIR Premium §10);
-   5 boshqa fakt, 6 buyurt., 7 konv. (komandalar). Markup o'zgarmaydi. ---- */
-@media (max-width: 1279px) {
-  .tv-cols,
-  .row {
-    grid-template-columns: 5px 26px 58px minmax(0, 1fr) 104px;
-    column-gap: 6px;
-    padding: 0 10px 0 6px;
-  }
-  .tv-cols > span:nth-child(5),
-  .tv-cols > span:nth-child(6),
-  .tv-cols > span:nth-child(8),
-  .tv-cols > span:nth-child(9),
-  .tv-cols > span:nth-child(10),
-  .row > *:nth-child(5),
-  .row > *:nth-child(6),
-  .row > *:nth-child(8),
-  .row > *:nth-child(9),
-  .row > *:nth-child(10) {
-    display: none;
-  }
-  .row__name .nm { font-size: 16px; }
-  .row__hero { font-size: 17px; }
-  .tv-tcols,
-  .trow {
-    grid-template-columns: 32px minmax(0, 1fr) 124px 52px;
-    column-gap: 8px;
-    padding: 0 12px;
-  }
-  .tv-tcols > span:nth-child(5),
-  .tv-tcols > span:nth-child(6),
-  .tv-tcols > span:nth-child(7),
-  .trow > *:nth-child(5),
-  .trow > *:nth-child(6),
-  .trow > *:nth-child(7) {
-    display: none;
-  }
-  /* 102 px nom trekiga «KOMANDA · SOTUVCHI» (143 px) sig'maydi — qahramon yorlig'i ustiga
-     osilib turardi; telefonda faqat «Komanda». */
-  .tv-tcols__cnt { display: none; }
-  /* Nom + soni 102 px trekda: 18 px da «Kompaniya 1» 106 px bo'lib «Kompan…» chiqardi; 17 px da
-     ham 0,4 px oshib ellipsis qolardi. 16 px — telefondagi sotuvchi ismi bilan bir o'lcham. */
-  .trow__name { gap: 6px; }
-  .trow__name .nm { font-size: 16px; }
-  .trow__bar { left: 52px; right: 72px; }
-  .jami {
-    flex-wrap: wrap;
-    height: auto;
-    padding: 12px;
-  }
-  .tv-legend {
-    padding: 8px 12px;
-    row-gap: 6px;
-    white-space: normal;
-  }
-}
-
-/* ---- siyrak «Bugun» (EFIR Premium §8, delta 16–17a): sahna, sokin sahna, «Tasdiq kutilmoqda»
-   guruhi va navbat qatorlari, komandalarning «Hali savdosiz» satri. Faqat bugungi ma'lumot —
-   oy konteksti bloklari YO'Q (mijoz qarori 2); qolgan joy panel materiali bilan sokin bo'sh. ---- */
-.tv-stage {
-  flex: none;
-  height: 167px;
-  padding: 8px 12px 7px;
-  background: radial-gradient(620px 240px at 50% -40px, var(--efir-stage-light), transparent 72%);
-}
-/* O'rindiq materiali, bir kishi uchun keng: metall keyline, P1 oltin yuvishi, ko'tarilgan gradient. */
-.stage {
-  position: relative;
-  height: 152px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 34px;
-  align-items: center;
-  padding: 0 32px 0 44px;
-  border-radius: 14px;
-  background:
-    linear-gradient(90deg, transparent 4%, var(--metal-hi) 26%, var(--metal) 52%, transparent 94%) top / 100% 2px no-repeat,
-    radial-gradient(520px 200px at 12% 0%, var(--medal-gold-wash-p1), transparent 72%),
-    linear-gradient(180deg, var(--efir-raised-hi) 0%, var(--efir-raised) 40%, var(--efir-panel) 100%);
-  box-shadow: inset 0 0 0 1px var(--efir-edge-ring), var(--efir-shadow-seat);
-}
-.stage::after {
+/*
+ * Hit-slop for the podium name, not a visible style: the button's own text
+ * stays exactly where it draws, and `::before` pads a real ten-plus pixels of
+ * tappable area past its edges without pushing the team badge beside it or
+ * the money below it — an absolutely-positioned layer costs the flow nothing.
+ * A thumb aiming just off «Saparboyeva 110 Farida» still opens the drill-down.
+ */
+.podium-name::before {
   content: "";
   position: absolute;
-  inset: 6px 6px 6px 14px;
-  border-radius: 9px;
-  border: 1px solid var(--efir-p1-keyline);
-  pointer-events: none;
+  inset: -8px -10px;
 }
-.stage__who { min-width: 0; }
-.stage__name {
-  margin: 0;
-  font-size: 26px;
-  line-height: 30px;
-  font-weight: 560;
-  letter-spacing: -0.018em;
-  color: var(--efir-ink-name);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+
+/**
+ * The runner-up's one call to action, in a tinted pill rather than a plain
+ * line — see the call site for why `--seq-550` and not a new colour.
+ */
+.chase-chip {
+  color: var(--ink-primary);
+  background: color-mix(in oklab, var(--seq-550) 14%, transparent);
+  border: 1px solid color-mix(in oklab, var(--seq-550) 38%, transparent);
 }
-.stage__name .code {
-  margin-left: 0.5em;
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0;
-  color: var(--efir-ink-3);
-  font-variant-numeric: tabular-nums lining-nums;
+
+/**
+ * The base rail — the podium's steps, folded into the cards' own bottom
+ * edges. 4px under gold, 3 under silver, 2 under bronze: the staircase
+ * survives the banner layout as a thickness the eye reads without naming,
+ * and unlike the old free-standing pedestals it costs no vertical space and
+ * ranks correctly even when the cards stack on a phone.
+ */
+.podium-banner {
+  border-bottom: 4px solid color-mix(in oklab, var(--metal) 62%, var(--border));
 }
-.stage__prog {
-  margin-top: 8px;
-  max-width: 400px;
+
+.podium-col--silver .podium-card {
+  border-bottom: 3px solid color-mix(in oklab, var(--metal) 55%, var(--border));
 }
-.stage__money { text-align: right; }
-.stage__money .seat__money {
-  margin: 0;
-  font-size: 56px;
-  line-height: 56px;
-  letter-spacing: -0.034em;
+
+.podium-col--bronze .podium-card {
+  border-bottom: 2px solid color-mix(in oklab, var(--metal) 50%, var(--border));
 }
-.stage__fakt {
-  margin: 2px 0 0;
-  font-size: 12.5px;
-  line-height: 16px;
-  color: var(--efir-ink-3);
-  white-space: nowrap;
+
+/* The banner's own track is the hall, not a grid column — let its figure
+   climb past the runner scale. Sized in the figure block above; this is only
+   the context override. */
+.podium-banner .figure-sum-hero {
+  font-size: 34px;
 }
-.stage__fakt span { display: block; }
-/* Yorliqdan keyin HAQIQIY bo'shliq bor (`StageCard`: «FAKT 1 tasdiqlangan», ekran o'quvchi va
-   nusxa uchun); 1 px + bo'shliq ≈ mockdagi 4 px chekka. */
-.stage__fakt b {
-  margin-right: 1px;
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  color: var(--efir-ink-2);
-}
-.stage__fakt em {
-  font-size: 14px;
-  font-style: normal;
-  font-weight: 500;
-  color: var(--efir-ink-name);
-  font-variant-numeric: tabular-nums lining-nums;
-}
-.stage__rack {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  height: 40px;
-  margin-top: 6px;
-}
-.stage__rack .seat__cap {
-  margin-left: 0;
-  text-align: left;
-}
-/* Hech kim pul qilmagan: metall yo'q, faqat ko'tarilgan gradient va zarbsiz tanga. */
-.stage--ghost {
-  grid-template-columns: auto minmax(0, 1fr);
-  background: linear-gradient(180deg, var(--efir-raised-hi) 0%, var(--efir-raised) 40%, var(--efir-panel) 100%);
-}
-.stage--ghost::after { display: none; }
-.stage__ghost {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 500;
-  letter-spacing: -0.012em;
-  color: var(--efir-ink-2);
-}
-/* Guruh sarlavhasi — ro'yxat ICHIDA, bitta qator balandligida (`ROW_H`), snap nuqtasi. */
-.tv-board-shell .group {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: 43px;
-  padding: 0 20px;
-  white-space: nowrap;
-  overflow: hidden;
-  scroll-snap-align: start;
-}
-.tv-board-shell .group h4 {
-  margin: 0;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--efir-ink-2);
-}
-.tv-board-shell .group span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 12px;
-  color: var(--efir-ink-3);
-}
-.tv-board-shell .group::after {
-  content: "";
-  flex: 1;
-  min-width: 24px;
-  height: 1px;
-  background: linear-gradient(90deg, var(--efir-hairline), transparent);
-}
-/* Navbatdagi sotuvchi ism, daraja va medallarni to'liq ovozda saqlaydi — faqat qiymat uyasi
-   o'zgaradi: 376 = 148 + 104 + 40 + 60 + 3 × 8. */
-.row--queue {
-  grid-template-columns: 6px 38px 68px minmax(0, 1fr) 80px 96px 376px;
-}
-.row__wait {
-  text-align: right;
-  white-space: nowrap;
-  font-size: 14px;
-  color: var(--efir-ink-2);
-}
-.row__wait b {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--efir-ink-name);
-}
-/* «Hali savdosiz: A, B — navbatda K tadan buyurtma» — oxirgi komanda qatorining tagida. */
-.tv-trows.tv-trows--fit { flex: 0 1 auto; }
-.tv-board-shell .quiet {
-  flex: none;
-  height: 40px;
-  line-height: 40px;
-  margin: 0;
-  padding: 0 20px 0 58px;
-  overflow: hidden;
-  font-size: 13px;
-  color: var(--efir-ink-3);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  background: linear-gradient(var(--efir-hairline), var(--efir-hairline)) bottom / 100% 1px no-repeat;
-}
-.tv-board-shell .quiet b {
-  font-weight: 500;
-  color: var(--efir-ink-2);
-}
-@media (max-width: 1599px) {
-  .tv-stage { height: auto; }
-  .stage {
-    height: auto;
-    min-height: 132px;
-    gap: 20px;
-    padding: 12px 20px 12px 28px;
-  }
-  .stage__name { font-size: 22px; }
-  .stage__money .seat__money {
-    font-size: 44px;
-    line-height: 48px;
-  }
-  /* Komanda uyasi (5-bola) bu kenglikda yashirin: medallar 62 px, jumla o'z kengligida. */
-  .row--queue {
-    grid-template-columns: 5px 28px 58px minmax(0, 1fr) 62px max-content;
-  }
-  .tv-board-shell .quiet { padding-left: 20px; }
-}
-@media (max-width: 1279px) {
-  .stage {
-    grid-template-columns: auto minmax(0, 1fr);
-    padding: 12px 12px 12px 20px;
-  }
-  .stage__money {
-    grid-column: 1 / -1;
-    text-align: left;
-  }
-  .stage__rack { justify-content: flex-start; }
-  .row--queue {
-    grid-template-columns: 5px 26px 58px minmax(0, 1fr) 112px;
-  }
-  /* Telefonda jumla ikki qatorga o'raladi — ism o'z joyini oladi. */
-  .row__wait {
-    font-size: 12px;
-    line-height: 14px;
-    white-space: normal;
-  }
-  .row__wait b { font-size: 13px; }
-  .tv-board-shell .group span { display: none; }
-  .tv-board-shell .quiet {
-    height: auto;
-    min-height: 40px;
-    padding: 8px 12px;
-    line-height: 1.4;
-    white-space: normal;
+
+@media (min-width: 640px) {
+  .podium-banner .figure-sum-hero {
+    font-size: clamp(28px, calc(2.8vw + 6px), 48px);
   }
 }
 
-/* EFIR — kamaytirilgan harakat: hech narsa qimirlamaydi. Keyingi vazifalarning
-   bo'laklari SHU izohdan OLDIN qo'shiladi, ya'ni bu blok bo'limning oxirida qoladi. */
-@media (prefers-reduced-motion: reduce) {
-  .crest__cell--fill,
-  .medal--new,
-  .tv-promo {
-    animation: none;
+/**
+ * The ghost numeral — the place, restated at architectural scale in the
+ * card's quiet corner. Painted at 15% metal so it is texture, not text
+ * (the plaque and the ring already state the ordinal legibly), and clipped
+ * by its own layer for the same reason .podium-shine is: the card must not
+ * carry overflow:hidden.
+ */
+.podium-ghost {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.podium-ghost-num {
+  position: absolute;
+  right: 12px;
+  bottom: -0.2em;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  font-size: clamp(96px, 11vw, 150px);
+  color: color-mix(in oklab, var(--metal) 15%, transparent);
+  user-select: none;
+}
+
+.podium-ghost-num--runner {
+  font-size: clamp(72px, 8vw, 112px);
+}
+
+/**
+ * The champion ring's light, pooled behind it. Static on purpose — the same
+ * reasoning as .medal-ring--crowned: a glow that pulsed all day would stop
+ * being seen by the second hour. It reads under the ring because the ring's
+ * own halo shadow paints over it, so together they make one light source.
+ */
+.podium-aura {
+  position: absolute;
+  inset: -24px;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--metal) 24%, transparent),
+    transparent 68%
+  );
+  pointer-events: none;
+}
+
+/**
+ * The stand under the champion's figure: a short rule fading out to the
+ * right, pure metal. Licensed exactly because it carries NO value — the
+ * digits above it already state everything; this is the plinth they sit on.
+ */
+.podium-gold-rule {
+  height: 3px;
+  width: 120px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--metal),
+    color-mix(in oklab, var(--metal) 15%, transparent)
+  );
+}
+
+/**
+ * The banner's story column, seated as its own panel by a metal hairline:
+ * left of the column from sm, above it when the banner stacks on a phone.
+ * A border, not a background — a filled plate inside the gold wash would
+ * compete with the ghost numeral living in the same corner.
+ */
+.podium-story {
+  border-top: 1px solid color-mix(in oklab, var(--metal) 30%, transparent);
+  padding-top: 12px;
+}
+
+@media (min-width: 640px) {
+  .podium-story {
+    border-top: 0;
+    padding-top: 0;
+    border-left: 1px solid color-mix(in oklab, var(--metal) 30%, transparent);
+    padding-left: 20px;
   }
-  .meter i {
-    transition: none;
+}
+
+/**
+ * One pass of light across the champion's card on arrival — the ceremony's
+ * camera flash: 1.1s, once, after the stagger has seated everyone. A child
+ * layer rather than ::after on the card itself, so the card never needs
+ * overflow:hidden (the wash and rim must not be clipped, and the layer clips
+ * only its own streak). Motion-guarded: under reduced motion the streak is
+ * never painted at all.
+ */
+.podium-shine {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .podium-shine::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      115deg,
+      transparent 38%,
+      color-mix(in oklab, var(--metal) 22%, transparent) 50%,
+      transparent 62%
+    );
+    transform: translateX(-140%);
+    animation: podium-shine 1100ms var(--ease-out) 600ms both;
   }
+}
+
+@keyframes podium-shine {
+  to {
+    transform: translateX(140%);
+  }
+}
+
+/**
+ * The ranked rows, which are the podium's continuation and not a table.
+ *
+ * The client's ask on 2026-09-04: this is the screen the sellers themselves
+ * open for motivation, and the top places have to feel like places. The
+ * podium above already crowns three people; below it the table used to flatten
+ * them back into rows differing by an 8% wash, so the ceremony stopped at the
+ * fold.
+ *
+ * Same contract as the PODIUM block — the metal is CHROME. It rims, washes and
+ * rails; the rank itself still travels on size, weight, position, the ordinal
+ * and the medal glyph, so a colourblind reader loses nothing when the varnish
+ * is gone. --metal is set per row by .rank-1/2/3.
+ */
+.rank-1 { --metal: var(--medal-gold); }
+.rank-2 { --metal: var(--medal-silver); }
+.rank-3 { --metal: var(--medal-bronze); }
+
+/**
+ * A ranked row: metal rail down the leading edge, and a wash that fades out
+ * across the row rather than tinting it flat — the light comes from where the
+ * rank is, the same direction the podium's crown-light falls.
+ *
+ * THE WASH IS ON THE ROW, NOT THE CELLS. Painted per `td` the gradient
+ * restarts in every column and the row reads as a set of bands instead of one
+ * lit edge — which is exactly what it looked like on the first attempt. The
+ * cells keep no background of their own, so the row's own paint shows through.
+ *
+ * The rail is a box-shadow rather than a border so it cannot change the row's
+ * box and shift every column by four pixels.
+ */
+.rank-row {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in oklab, var(--metal) 15%, transparent),
+    transparent 34%
+  );
+}
+.rank-row > td:first-child {
+  box-shadow: inset 4px 0 0 var(--metal);
+}
+/* First place carries it a little further and a little brighter — the one row
+   that should be readable from across the room. */
+.rank-row.rank-1 {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in oklab, var(--metal) 22%, transparent),
+    transparent 46%
+  );
+}
+
+/**
+ * The ordinal on a ranked row. Metal, larger, and DECORATIVE — the medal glyph
+ * and the aria-label beside it carry the rank for anyone who cannot see hue,
+ * which is what licenses the colour here.
+ */
+.rank-num {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-weight: 800;
+  font-size: 19px;
+  line-height: 1;
+  color: var(--metal);
+  letter-spacing: -0.02em;
 }
 
 /* ===========================================================================
  * TV BOARD — the sellers board as it is read on the floor's television
  *
- * `/sellers` is two columns — sellers left (60 %), teams right (40 %) — from
- * 1280px, one column at a time below it. From 1280 the board takes the height
- * the shell leaves it (`PageShell fill`) and each column's ROWS scroll inside
- * it: `min-height: 0` on every flex and grid ancestor is what lets an overflow
- * box shrink below its content, and `grid-auto-rows: minmax(0, 1fr)` is the
- * same rule for the grid track; drop either and the page scrolls instead.
+ * `/sellers` is two columns of one card each: sellers left, teams right, a
+ * three-seat podium at the top of both and the ranked rows under it. The
+ * client's ask of 2026-09-07 — the screen lives on a TV on the sales floor,
+ * shows the sellers their own places, and carries nothing that is not a rank.
  *
- * EFIR Premium (2026-09-17, spec §1, delta 21): the column is a PANEL lifted
- * off the page by light, not drawn by a line — no border; a 150 px top sheen
- * over `--efir-panel`, an inset top edge, an inset ring and a long shadow.
- * The page behind it carries one soft radial glow (on `main`, in the shared
- * chrome block below). Level rides on the rows and seats (see the EFIR
- * section); the one hue on the chrome is the 2 px `--tier-4` mark under the
- * lit FAKT tab and the active label.
+ * TWO LAYOUTS, ONE BREAKPOINT — AND THE BREAKPOINT IS 1280px, NOT lg.
+ * Under it the columns stack and the page scrolls like any other. From it the
+ * board takes the height the shell leaves it (`PageShell fill`) and each LIST
+ * scrolls inside its own column — `min-height: 0` on every flex and grid
+ * ancestor is what lets an overflow box shrink below its content, and
+ * `grid-auto-rows: minmax(0, 1fr)` is the same rule for the grid track; drop
+ * either and the list grows to its rows and the page scrolls instead of the
+ * column.
+ *
+ * 1280 IS WHERE THE CLIENT'S ASK STOPS BEING POSSIBLE, and the two columns
+ * are the ask: «chap tarafda sotuvchilar, oʻng tomonda komandalar». So the
+ * board keeps them wherever three seats can be made to fit, and is measured
+ * rather than assumed. Two columns beside a 240px rail leave each one
+ * (vw − 240 − 32 − 16) / 2, and a seat is a third of that less 60px of
+ * padding and gaps: 145px at 1280, 159px at 1366, 188px at 1536, 252px at
+ * 1920. A seat carries a full-digit sum by design, and «126,950,000 soʻm» is
+ * 134px at the 17px house size — which does not fit 119px of card at 1280, so
+ * the seats spilled sideways into each other, 33px past the card edge,
+ * measured in a headless browser.
+ *
+ * THE FIX IS TYPE, NOT LAYOUT, because a television is not always 1920: a
+ * 720p panel reports 1280, and a floor manager who zooms the browser to read
+ * it from further away reports less than the panel does. Stacking the columns
+ * there would answer the client's own requirement with the wrong drawing, so
+ * between 1280 and 1599 the seat type steps down a notch and the two columns
+ * stay. Under 1280 — a tablet or a phone, never the TV — they stack and the
+ * page scrolls like any other screen.
+ *
+ * SIZED FROM THE VIEWPORT. A 1920px television is read from a desk away and
+ * a 1366px laptop from arm's length, and one pixel size cannot serve both:
+ * the `--tv-*` tokens ramp with vw between house sizes and a TV reading, so
+ * the board is legible across the room on the one screen and ordinary on
+ * every other. Clamped, so a 4K wall does not print names at 40px.
  * ======================================================================== */
 
 .tv-board {
@@ -3901,23 +2757,243 @@ p {
 }
 
 .tv-col {
-  position: relative;
   display: flex;
   flex-direction: column;
-  min-width: 0;
-  border-radius: 14px;
-  overflow: hidden;
-  background: linear-gradient(180deg, var(--efir-panel-sheen), transparent 150px), var(--efir-panel);
+  position: relative;
+  /*
+    THE COLUMN'S OWN COLOUR — on its frame, its wash and its glyph, never on
+    a number. Sellers and teams are two kinds of thing, so each board wears
+    one categorical hue (two of the palette's eight) and a reader tells the
+    halves apart from the doorway, which the client asked for outright:
+    «komanda va sotuvchilar ajralib tursin bir-biridan».
+  */
+  --tv-tone: var(--series-5);
+  border-color: color-mix(in oklab, var(--tv-tone) 34%, var(--border));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--tv-tone) 9%, transparent),
+      transparent 180px
+    ),
+    var(--surface-raised);
   box-shadow:
-    inset 0 1px 0 var(--efir-edge-hi),
-    inset 0 0 0 1px var(--efir-edge-ring),
-    var(--efir-shadow-panel);
+    inset 0 3px 0 var(--tv-tone),
+    var(--shadow-card),
+    var(--edge-highlight);
+  --tv-name: clamp(13px, 0.88vw, 18px);
+  --tv-money: clamp(13px, 0.88vw, 18px);
+  --tv-small: clamp(11px, 0.62vw, 13px);
+  --tv-seat-scale: 1;
+  --tv-seat-name: clamp(14px, calc(1.05vw * var(--tv-seat-scale)), 21px);
+  --tv-seat-figure: clamp(17px, calc(1.35vw * var(--tv-seat-scale)), 28px);
+}
+
+.tv-col--sellers { --tv-tone: var(--series-5); }
+.tv-col--teams { --tv-tone: var(--series-3); }
+
+/* ==========================================================================
+ * THE RECORD WALL — every month's best seller, crawling through the title line.
+ *
+ * A TICKER RATHER THAN A CARD, and the client asked for exactly that: «alohida
+ * card bo'lib emas… huddi yangiliklarda aylanib turadiku». Two earlier
+ * drawings were a plaque showing one month and turning every eight seconds,
+ * which hides the rest of the run behind a wait — a reader wanting August has
+ * to stand there until August comes round. A crawl carries all of it at once.
+ *
+ * SO THERE IS NO BOX. The border and fill were what made the strip a separate
+ * object sitting in the header. The ceremony travels on the TYPE instead: the
+ * medal glyph, the month in the podium's own `--medal-gold`, and a metal
+ * lozenge between entries. Nothing here draws a surface.
+ *
+ * MASKED AT BOTH ENDS rather than clipped. A crawl that vanishes at a hard
+ * edge reads as text being cut off; fading it out is what makes the movement
+ * look like a designed instrument instead of an overflow.
+ *
+ * SIZED FROM THE VIEWPORT, like the board below. This is read off a television
+ * from a desk away while the header around it is drawn at the house sizes
+ * every other screen uses. It cannot borrow the `--tv-*` tokens — those are
+ * declared on `.tv-col`, inside the page body — so it declares its own ramp on
+ * the same principle, clamped at both ends so a laptop gets an ordinary strip
+ * and a 4K wall does not print a seller larger than the page title.
+ *
+ * NOT DRAWN UNDER 1280 — the same line the board itself draws, and for the
+ * same reason. Under 1280 this page stops being a television: the columns
+ * stack, the tv-switch appears, and it is read on a phone by one person
+ * holding it. A crawl on a phone is a strip of moving text in the tightest
+ * part of the page, which is a cost with no reader.
+ * ======================================================================== */
+
+.record-wall {
+  display: none;
+  --metal: var(--medal-gold);
+  --record-name: clamp(12px, 0.72vw, 17px);
+  --record-small: clamp(10.5px, 0.6vw, 14px);
+  overflow: hidden;
+  /*
+    The height the title block occupies, so the strip cannot grow the header.
+    Measured: title block is 59px, and an earlier plaque at 88px was setting
+    the header's height for every other element in the row.
+  */
+  height: 59px;
+  /*
+    Clear of the two things it runs between. The header's own `gap-3` is the
+    right distance between controls; it is not the right distance between a
+    page title and a line of moving text, which arrived hard against
+    «Sotuvchilar reytingi» and read as part of it. The mask fades inside this,
+    so the gap is real space and not just a soft edge.
+  */
+  margin-inline: 26px;
+  /* Both ends fade; the lane is wide enough that a name is never half-lit. */
+  mask-image: linear-gradient(
+    90deg,
+    transparent,
+    #000 44px,
+    #000 calc(100% - 44px),
+    transparent
+  );
+}
+
+@media (min-width: 1280px) {
+  .record-wall {
+    display: flex;
+    align-items: center;
+  }
+}
+
+/*
+ * The track holds TWO copies of the run and slides exactly one copy's width.
+ *
+ * That is what makes the loop seamless: at the moment the animation restarts,
+ * the second copy is sitting precisely where the first one began, so the join
+ * is invisible. `--record-travel` is measured in the component, because the
+ * run's width depends on how many months exist and on the viewport the type
+ * is ramped against — neither is knowable here.
+ *
+ * `will-change: transform` promotes the track to its own layer. Without it a
+ * strip that never stops moving repaints the header behind it on every frame,
+ * which on the single-core box this dashboard is read from is a real cost for
+ * a decorative line.
+ */
+.record-track {
+  display: flex;
+  width: max-content;
+}
+
+.record-track--crawling {
+  animation-name: record-crawl;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
+@keyframes record-crawl {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(calc(-1 * var(--record-travel)), 0, 0);
+  }
+}
+
+/*
+ * A hand on the strip holds it still. A television has no pointer so this
+ * costs the floor nothing, and on a desk it is the difference between a line
+ * you can read and one you chase.
+ */
+.record-wall:hover .record-track--crawling,
+.record-wall:focus-within .record-track--crawling {
+  animation-play-state: paused;
+}
+
+/*
+ * Reduced motion gets a strip it can scroll by hand — the months are all
+ * still reachable, which a merely frozen crawl would not make them.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .record-wall {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .record-track {
+    animation: none;
+  }
+}
+
+.record-run {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+.record-entry {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
+  font-size: var(--record-small);
+  color: var(--ink-secondary);
+}
+
+.record-medal {
+  font-size: var(--record-name);
+  line-height: 1;
+  /* Baseline-aligned with the text beside it rather than sitting on it. */
+  transform: translateY(1px);
+}
+
+/*
+ * The month, in the podium's gold — the one place metal appears in this
+ * strip, and the thing that ties it to the seats below at a glance. Metal is
+ * chrome here in the same sense it is there: it may carry tint and never a
+ * value, which is why «Rekord» and «Yetakchi» are words rather than colours.
+ */
+.record-month {
+  color: var(--metal);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: var(--record-small);
+}
+
+.record-who {
+  color: var(--ink-primary);
+  font-weight: 600;
+  font-size: var(--record-name);
+}
+
+.record-team {
+  color: var(--ink-muted);
+}
+
+.record-sum {
+  color: var(--ink-primary);
+  font-weight: 600;
+  font-size: var(--record-name);
+  font-variant-numeric: tabular-nums;
+}
+
+.record-note {
+  color: var(--ink-muted);
+}
+
+/*
+ * The lozenge between entries, in the metal and generously spaced. It is the
+ * only thing separating one month from the next, so it carries the whole job
+ * a card's edge used to do.
+ */
+.record-sep {
+  color: color-mix(in oklab, var(--metal) 55%, transparent);
+  font-size: calc(var(--record-small) * 0.72);
+  margin: 0 22px;
 }
 
 /*
  * THE PHONE'S SWITCH — «Sotuvchilar | Komandalar», one board at a time
- * under 1280px. Not drawn from 1280, where both boards are on screen.
- * The selected tab is ink on the surface, like every other lit control here.
+ * under 1280px, where the columns would otherwise stack into a page of two
+ * podiums and two lists. Drawn in the two columns' own tones so the tab
+ * and the board it opens are the same colour. Not drawn at all from 1280,
+ * where both boards are on screen and a switch would promise a choice the
+ * layout does not offer.
  */
 .tv-switch {
   display: flex;
@@ -3937,9 +3013,14 @@ p {
   color: var(--ink-secondary);
   transition: background var(--duration-enter) var(--ease-out), color var(--duration-enter) var(--ease-out);
 }
+.tv-switch-tab--sellers { --tv-tone: var(--series-5); }
+.tv-switch-tab--teams { --tv-tone: var(--series-3); }
 .tv-switch-tab[aria-selected="true"] {
-  color: var(--surface);
-  background: var(--ink-primary);
+  color: var(--ink-primary);
+  background: color-mix(in oklab, var(--tv-tone) 18%, var(--surface-raised));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--tv-tone) 50%, transparent),
+    var(--shadow-card);
 }
 @media (min-width: 1280px) {
   .tv-switch {
@@ -3952,544 +3033,699 @@ p {
   }
 }
 
-/* 42 px column head: title · count · hint slot · FAKT switch. `position: relative`
-   is load-bearing — the promotion banner (`.tv-promo`, EFIR section) is pinned
-   to this box and floats over it. */
 .tv-col-head {
-  position: relative;
-  flex: none;
-  display: flex;
+  flex-shrink: 0;
+  padding: 16px 18px 0;
+}
+/* The heading's glyph in a tinted disc of the column's colour. */
+.tv-col-glyph {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  height: 42px;
-  padding: 0 12px 0 20px;
-}
-.tv-col-head__title {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.005em;
-  color: var(--efir-ink-name);
-  white-space: nowrap;
-}
-/* The count is the one part of the head that yields: «bugun 1 sotuvchi savdo qildi · 2 tasi
-   tasdiq kutmoqda» (EFIR Premium §8) is long, and a head that cannot fit it must still show
-   the whole FAKT switch — so the count gives way, never the switch. It WRAPS to a second
-   line inside the 42 px head before it ellipsizes: on one line the teams head at 1366
-   (~431 px) read «bugun 10 koma…», the number and nothing after it (real-data audit,
-   2026-09-17). Two lines of 15 px fit the head; a third is clamped. */
-.tv-col-head__count {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 13px;
-  line-height: 15px;
-  color: var(--efir-ink-3);
-}
-/* The numbers in the count, a step up (mock `.phead__n b`). */
-.tv-col-head__count b {
-  font-weight: 500;
-  color: var(--efir-ink-2);
-}
-/*
- * «FAKT 2 — yetkazilgan pul»: what the lit tab means, in words (delta 20b).
- *
- * THE HINT YIELDS BY WIDTH, NEVER BY A CHARACTER COUNT. The slot takes only
- * the room the title, the WHOLE count and the switch leave (`flex: 1 1 0`, so
- * it never squeezes the count), and it is a wrapping row one head tall behind
- * `overflow: hidden`: a zero-width first item holds line one, so a hint that
- * does not fit the room wraps to line two and is simply not drawn — whole,
- * never ellipsised. It replaced a 24-character count threshold plus two
- * container queries, which hid the teams hint on «Bugun» at 1920 where the
- * mock shows it and 165 px stood free for its 159 (premium review,
- * 2026-09-17). The slot is also the spacer that pushes the switch right.
- */
-.tv-col-head__hint-slot {
-  flex: 1 1 0;
-  min-width: 0;
-  height: 42px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: center;
-  overflow: hidden;
-}
-.tv-col-head__hint-slot::before {
-  content: "";
-  width: 0;
-  height: 42px;
-}
-.tv-col-head__hint {
-  font-size: 12px;
-  color: var(--efir-ink-3);
-  white-space: nowrap;
-}
-.tv-col-head__hint b {
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--efir-ink-2);
-}
-/* TELEFONDA KALIT SIG'MAYDI (spec §9). 390 px da nom · soni · FAKT kaliti
-   birgalikda 383 px so'raydi va 356 px bor — kalit o'ng chetdan chiqib
-   ketardi, sahifa esa skroll qilmaydi, ya'ni «FAKT 2» yarmigacha ko'rinardi.
-   Bu qoida `.tv-col-head` dan KEYIN turishi shart: media so'rovi og'irlik
-   qo'shmaydi, EFIR bo'lagidagi nusxa keyingi ta'rif bilan bekor bo'lardi. */
-@media (max-width: 1279px) {
-  .tv-col-head {
-    flex-wrap: wrap;
-    gap: 2px 8px;
-    height: auto;
-    min-height: 42px;
-    padding: 6px 10px;
-  }
-  /* Telefonda sanoq o'z qatorida, sarlavha va kalit ostida, butun kenglikda — 390 px da
-     nom va kalit orasida ~100 px qolib, «bugun 1 sotuvchi savdo qildi · 2 tasi …» dan
-     faqat «bugun 1 sotu…» ko'rinardi. */
-  .tv-col-head__count {
-    order: 5;
-    flex-basis: 100%;
-  }
-  /* The slot as tall as the switch, so the head's first line stays 34 px. */
-  .tv-col-head__hint-slot,
-  .tv-col-head__hint-slot::before {
-    height: 34px;
-  }
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  font-size: 17px;
+  background: color-mix(in oklab, var(--tv-tone) 16%, transparent);
+  border: 1px solid color-mix(in oklab, var(--tv-tone) 45%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--tv-tone) 7%, transparent);
 }
 
 /*
  * FAKT 1 / FAKT 2 — which fact the board is ranked on, in each column's head.
- * Drawn at every width. The lit segment is the fact the board is ACTUALLY
- * ranked on (under the opening 'auto' the data decides — `FaktSwitch`).
- * EFIR Premium (delta 20c): a SUNKEN track; the lit tab is RAISED — a light
- * gradient and its own shadow — with a 2 px `--tier-4` underline. Never a
- * white or ink fill.
+ *
+ * THE PHONE'S SWITCH WEARS THE SAME SHAPE and this one is deliberately a size
+ * quieter: `.tv-switch` chooses which BOARD is on screen and takes a full row
+ * to do it, while this chooses which FIGURE that board is read on and rides
+ * the heading beside the count. Same pill, same tone, half the type.
+ *
+ * DRAWN AT EVERY WIDTH, unlike `.tv-switch`, which is a phone's answer to two
+ * columns that do not fit. Both boards carry this control at 1920 and at 390,
+ * because the fact is a question about the numbers and not about the layout.
+ *
+ * The lit button is the fact the board is ACTUALLY ranked on, which under the
+ * opening 'auto' is decided by the data — see `FaktSwitch`. It is `--tv-tone`,
+ * so each column lights its own hue and the control belongs to the board it
+ * sits on; chrome, never a value.
+ *
+ * ONE PILL THAT SLIDES, NOT A BACKGROUND THAT REAPPEARS. The lit state used to
+ * be painted on whichever button had won, so a press swapped two washes and
+ * the eye had nothing to follow between them. It is now a single thumb on the
+ * track — `.tv-fakt::before`, moved by `data-fakt` — and a press reads as the
+ * one movement it is. Two consequences worth keeping:
+ *   · The buttons are `flex: 1 1 0`, so both take the width of the wider label
+ *     and the thumb's `translateX(100%)` lands exactly on the second seat. Do
+ *     not give them intrinsic widths — «FAKT 1» is narrower than «FAKT 2» in a
+ *     proportional font and the thumb would stop short of it.
+ *   · The lit button no longer carries a `box-shadow`, which is what the focus
+ *     ring is drawn with. `.focusable:focus-visible` and the pressed rule have
+ *     equal specificity and the pressed one is written later, so it used to
+ *     win outright and a keyboard reader landing on the lit fact saw no ring.
+ *
+ * THE DOT IS THE PART THAT READS FROM THE DOORWAY. This board is a television;
+ * an 18% wash is a hint at two metres and nothing at five. A filled disc in the
+ * column's hue against a hollow one survives the distance — and it is the same
+ * mark the Savdo dinamikasi legend already puts beside these two words.
  */
 .tv-fakt {
-  display: inline-flex;
-  flex: none;
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
   padding: 3px;
-  border-radius: 8px;
-  background: var(--efir-sunken);
-  box-shadow: var(--efir-seg-well);
+  border-radius: 999px;
+  /*
+    THE TRACK TAKES NO TONE WASH, ONLY A TINTED BORDER. A tint here belongs to
+    the harmony — `.tv-col` tints its own frame the same way — but the track is
+    also what the UNLIT label sits on, and that label has no surface of its own
+    to lift it. Washing the track 7% put `--ink-muted` on a tinted
+    `--surface-sunken` at ~4.4:1 in light mode, under the 4.5:1 that 13px bold
+    text needs. On the border the same hue costs the text nothing.
+  */
+  background: var(--surface-sunken);
+  border: 1px solid color-mix(in oklab, var(--tv-tone) 22%, var(--border));
 }
+
+/*
+ * The thumb. `calc(50% - 3px)` is one seat exactly: the track is two seats
+ * plus its own 3px of padding on each side, so half of it overshoots by that
+ * padding and the subtraction hands it back.
+ */
+.tv-fakt::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--tv-tone) 26%, var(--surface-raised)),
+    color-mix(in oklab, var(--tv-tone) 14%, var(--surface-raised))
+  );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--tv-tone) 52%, transparent),
+    var(--edge-highlight),
+    var(--shadow-card);
+}
+.tv-fakt[data-fakt='fakt2']::before {
+  transform: translateX(100%);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tv-fakt::before {
+    transition: transform var(--duration-enter) var(--ease-out);
+  }
+}
+
 .tv-fakt-tab {
   position: relative;
-  height: 28px;
-  padding: 0 13px;
-  border-radius: 6px;
-  font-size: 12.5px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
+  /* Over the thumb, which is the track's own ::before. */
+  z-index: 1;
+  /* Equal seats — see the block above. */
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: var(--tv-small);
+  font-weight: 700;
+  letter-spacing: 0.03em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  color: var(--efir-ink-3);
+  color: var(--ink-muted);
   transition: color var(--duration-enter) var(--ease-out);
 }
 .tv-fakt-tab:hover {
-  color: var(--efir-ink-name);
+  color: var(--ink-secondary);
 }
 .tv-fakt-tab[aria-pressed='true'] {
-  background: linear-gradient(180deg, var(--efir-raised-hi), var(--efir-raised));
-  box-shadow: var(--efir-seg-on);
-  color: var(--efir-ink);
+  color: var(--ink-primary);
 }
-/* The lit tab's underline and the active column label's 22×2 tick — the same
-   mark, the board's one chrome hue. */
-.tv-fakt-tab[aria-pressed='true']::after,
-.tv-cols .on::after {
-  content: "";
-  position: absolute;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--tier-4);
+.tv-fakt-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--ink-muted) 40%, transparent);
+  transition:
+    background var(--duration-enter) var(--ease-out),
+    box-shadow var(--duration-enter) var(--ease-out);
 }
-.tv-fakt-tab[aria-pressed='true']::after {
-  left: 12px;
-  right: 12px;
-  bottom: 0;
+.tv-fakt-tab[aria-pressed='true'] .tv-fakt-dot {
+  background: var(--tv-tone);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--tv-tone) 22%, transparent);
 }
-.tv-cols .on::after {
-  right: 0;
-  bottom: -6px;
-  width: 22px;
-}
-/* Forced colours discard the ink wash; `aria-pressed` gets a border the mode keeps. */
+/*
+ * Forced colours discard the thumb, its wash and its ring alike, so the lit
+ * button would be told apart by nothing at all. `aria-pressed` is already on
+ * the element; this gives that state a border the mode keeps. Box sizing is
+ * border-box and the seats are equal-width, so it costs no layout.
+ */
 @media (forced-colors: active) {
   .tv-fakt-tab[aria-pressed='true'] {
     border: 2px solid CanvasText;
   }
 }
 
-/* Empty, error and «podium hali bo'sh» states. */
-.tv-empty {
-  padding: 24px 16px;
-}
-.tv-empty-podium {
-  margin: 0;
-  padding: 12px 20px 8px;
-  font-size: var(--tv-m);
-  font-weight: 600;
-  color: var(--ink-primary);
-}
-
-/* Skeleton — the ready layout's shape: three seats, then rows. */
-.tv-skeleton-seat {
-  height: 255px;
-}
-.seat--1.tv-skeleton-seat {
-  height: 277px;
-}
-.tv-skeleton-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 16px;
-}
-.tv-skeleton-row {
-  height: 42px;
-  border-radius: 6px;
-}
-.tv-skeleton-row--team {
-  height: 54px;
-}
-
 /*
  * `min-height: 0` ONLY FROM the two-column width. Under it the page scrolls
  * as a whole, and a shrinkable board inside a viewport-high wrapper squeezed
- * both lists to nothing on a phone.
+ * both lists to nothing on a phone — the podium was there, the rows were a
+ * two-pixel scroll box under it, and nothing errored.
  */
 @media (min-width: 1280px) {
   /* The page's own column, so the viewport-height layout and the two-column
-     one switch on ONE query. */
+     one switch on ONE query rather than on a Tailwind `lg:` that no longer
+     matches it. */
   .tv-board-shell {
     height: 100%;
   }
   .tv-board {
     display: grid;
-    grid-template-columns: minmax(0, 60fr) minmax(0, 40fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-auto-rows: minmax(0, 1fr);
-    /* `flex: 1`, not `height: 100%`: the shell also carries the credit line. */
+    /* `flex: 1`, not `height: 100%`: the shell also carries the credit line
+       under the board, and a 100%-high board would push it off the screen. */
     flex: 1;
     min-height: 0;
   }
   .tv-col {
     min-height: 0;
   }
-  /* ONLY THE ROWS SCROLL — the label strip above them is a sibling and stays
-     put, so the fourth rank is never hidden under a sticky header. */
-  /* The rows' SLOT takes what the column leaves; the list inside it is a whole
-     number of 43 px rows (`--rows-h`, from `useAvailableHeight` on the slot —
-     never on the list, or it would ratchet). Unmeasured, it fills the slot. */
-  .tv-rows-slot {
+  .tv-list {
     flex: 1;
     min-height: 0;
-  }
-  .tv-rows {
-    overflow: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: none;
-    height: var(--rows-h, 100%);
-  }
-  .tv-trows {
-    overflow: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: none;
-    flex: 1;
-    min-height: 0;
-  }
-  /* Komandalar sig'magan kadr (1366): ro'yxat butun qatorlar balandligida
-     (`teamRowLayout` → `--trows-h` = k × qator), uyani to'ldirmaydi — dam olish
-     nuqtasida yarim qator yo'q. */
-  .tv-trows.tv-trows--whole {
-    flex: none;
-    height: var(--trows-h);
   }
 }
 
 /*
- * THE PAGE FOOT (EFIR Premium spec §7) — the three definitions the board's
- * numbers rest on at the left, the credit at the right, in the quietest voice
- * the page has. Never a link, never a colour the board uses for a value.
- * Inside `.tv-board-shell`, so the `--efir-*` inks resolve; each still carries
- * a global fallback. Wraps on a phone rather than running off the edge.
+ * THE CREDIT LINE — who built the board, in the quietest voice the page has.
+ * It sits under both columns, right-aligned and in English, so a floor
+ * reading its own rank off the television never reads it by accident and a
+ * visitor standing at the screen still can. Never a link, never a colour the
+ * board uses for a value.
  */
-.tv-foot {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  min-width: 0;
-  padding: 2px 6px 0;
-  font-size: 11.5px;
-  line-height: 1.3;
-  color: var(--efir-ink-3, var(--ink-muted));
-  white-space: nowrap;
-}
-.tv-foot__defs {
-  margin: 0;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.tv-foot__defs span + span {
-  margin-left: 18px;
-}
-.tv-foot__defs b {
-  font-weight: 600;
-  color: var(--efir-ink-2, var(--ink-secondary));
-}
 .tv-credit {
   flex-shrink: 0;
-  margin: 0;
-  font-size: 11px;
+  padding: 2px 4px 0;
+  text-align: right;
+  font-size: 10px;
   letter-spacing: 0.06em;
-  color: var(--efir-ink-4, var(--ink-muted));
+  line-height: 1.2;
+  color: color-mix(in oklab, var(--ink-secondary) 45%, transparent);
   user-select: none;
 }
-@media (max-width: 1279px) {
-  .tv-foot {
-    flex-wrap: wrap;
-    gap: 4px 18px;
-    white-space: normal;
-  }
-  /* One definition per line, flush left: as wrapping inline-blocks each kept its 18 px
-     left margin, so the second and third lines stood indented under the first (390 audit). */
-  .tv-foot__defs span {
-    display: block;
-  }
-  .tv-foot__defs span + span {
-    margin-left: 0;
-  }
+
+/**
+ * The seats: a three-column grid with the bottoms aligned, so the champion's
+ * extra padding makes it a step TALLER — the podium's own shape — rather than
+ * a card floating higher. Silver and bronze step their type and ring down a
+ * notch each (`--tv-seat-scale`), which is what keeps first place readable
+ * as first from across the room with every card the same width.
+ */
+.tv-podium {
+  flex-shrink: 0;
+  display: grid;
+  /* The champion's column a step wider — rank on size, as the podium block
+     header licenses — and the three bottoms level, so the pedestals read as
+     one floor and the cards as three heights standing on it. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.16fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 14px;
+  padding: 22px 18px 14px;
+}
+.tv-podium--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.tv-podium--1 {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 62%;
+  margin-inline: auto;
 }
 
 /*
- * THE SHARED CHROME, ON THIS PAGE ONLY (EFIR Premium delta 20d–20e).
- *
- * `PageShell`, `Shell` and `PeriodFilter` reach /confirmation and are not
- * edited. The sellers board is recognised from the box that HOLDS it —
- * `.page-container:has(.tv-board-shell)`, and `main:has(.tv-board-shell)` for
- * the one rule that paints the page itself — so every rule below is inert on
- * every other screen. Four things change here:
- *
- * - the pink accent dash over the title is hidden: on the television the
- *   title needs no page identity, and pink is a hue the board never spends;
- * - the shell's aurora is not drawn. Its first blob is mixed from `--accent`
- *   (pink here) over a 70 px blur, and it left a magenta smudge over the title
- *   and the record wall that the approved mock does not have (premium review,
- *   2026-09-17);
- * - in its place, the mock's one cool light: a radial glow from above the top
- *   of `main`, so it falls behind the header the way the mock's `.page` glow
- *   does. On `main` and not on the page container, whose top edge sits 24 px
- *   under the top bar and would cut the glow with a visible line;
- * - from 1280px the period control takes the FAKT switch's treatment — a
- *   sunken track, the lit preset a raised gradient with a 2px `--tier-4`
- *   underline, never a white or ink fill. `PeriodFilter` paints its buttons
- *   with INLINE styles, which only `!important` can outrank; the properties
- *   so marked are exactly the ones it sets inline. Under 1280 the phone keeps
- *   the control as it is, 36px targets included.
- *
- * The `--efir-*` tokens reach this header because they are declared on
- * `main:has(.tv-board-shell)` as well as on the board (token block). Each read
- * still carries a global fallback, for a browser without `:has()`. Colours
- * only through `var(--…)`; no `color-mix()`.
+ * ONE ROW, STATED. The seats are placed by `grid-column` (gold in the
+ * middle, DOM order 1-2-3), and auto-placement only ever moves its cursor
+ * forward: after seating gold in column 2 it would put silver — column 1 —
+ * on the NEXT row, and the podium became a staircase of three rows the
+ * first time it rendered. Every seat names row 1 so the cursor has no say.
  */
-.page-container:has(.tv-board-shell) .accent-rule {
-  display: none;
-}
-.page-container:has(.tv-board-shell) .page-atmosphere {
-  display: none;
-}
-main:has(.tv-board-shell) {
-  background: radial-gradient(1100px 420px at 46% -120px, var(--efir-page-glow), transparent 70%);
-}
-@media (min-width: 1280px) {
-  .page-container:has(.tv-board-shell) header [role="group"][aria-label="Davr"] {
-    gap: 0;
-    padding: 3px;
-    border-width: 0;
-    border-radius: 8px;
-    background: var(--efir-sunken, var(--surface-sunken)) !important;
-    box-shadow: var(--efir-seg-well, inset 0 0 0 1px var(--border));
-  }
-  .page-container:has(.tv-board-shell) header [role="group"][aria-label="Davr"] > button {
-    position: relative;
-    height: 28px;
-    padding: 0 13px;
-    border-radius: 6px;
-    font-size: 12.5px;
-    font-weight: 500;
-    letter-spacing: 0.04em;
-    background: transparent !important;
-    color: var(--efir-ink-3, var(--ink-muted)) !important;
-  }
-  .page-container:has(.tv-board-shell) header [role="group"][aria-label="Davr"] > button[aria-pressed="true"] {
-    background: linear-gradient(
-      180deg,
-      var(--efir-raised-hi, var(--surface-raised)),
-      var(--efir-raised, var(--surface-raised))
-    ) !important;
-    color: var(--efir-ink, var(--ink-primary)) !important;
-    box-shadow: var(--efir-seg-on, inset 0 0 0 1px var(--border));
-  }
-  .page-container:has(.tv-board-shell) header [role="group"][aria-label="Davr"] > button[aria-pressed="true"]::after {
-    content: "";
-    position: absolute;
-    left: 12px;
-    right: 12px;
-    bottom: 0;
-    height: 2px;
-    border-radius: 1px;
-    background: var(--tier-4);
-  }
-  .page-container:has(.tv-board-shell) header button[aria-haspopup="dialog"] {
-    height: 34px;
-    padding: 0 13px;
-    border-width: 0;
-    border-radius: 8px;
-    font-size: 12.5px;
-    font-weight: 500;
-    letter-spacing: 0.04em;
-    background: var(--efir-sunken, var(--surface-sunken)) !important;
-    color: var(--efir-ink-3, var(--ink-muted)) !important;
-    box-shadow: var(--efir-seg-well, inset 0 0 0 1px var(--border));
-  }
-}
-@media (min-width: 1280px) and (forced-colors: active) {
-  .page-container:has(.tv-board-shell) header [role="group"][aria-label="Davr"] > button[aria-pressed="true"] {
-    border: 2px solid CanvasText;
-  }
-}
-
-/* ==========================================================================
- * THE RECORD WALL — two plaques in the title line (EFIR Premium, spec §7)
- *
- * «Sentabr yetakchisi» · «Avgust 2026 rekordi»: a 58 px raised plate each,
- * the medal the only metal on it — the caps label is NEUTRAL ink, never gold.
- * Every plaque is an inline-size container, and the drop order is fixed: the
- * count goes under 400 px, the code under 320 px, the name ellipsises last,
- * the AMOUNT NEVER (`flex: none`). NO CRAWL: nothing on this page moves at
- * rest; under ~1500px the component shows one plaque (`data-bands="1"`) and
- * cuts to the other every ten seconds. Not drawn under 1280, the width where
- * the page stops being a television.
- *
- * THE WALL SITS IN THE SHARED HEADER, OUTSIDE `.tv-board-shell`. The material
- * tokens reach it through `main:has(.tv-board-shell)` (token block) — until
- * 2026-09-17 they did not, and every plaque drew in the dashboard's global
- * palette: a flat gradient, a bright 1 px ring, no top light, no shadow. Each
- * `--efir-*` read keeps a fallback for a browser without `:has()`. Colours
- * only through `var(--…)`; no `color-mix()`.
- * ======================================================================== */
-
-.record-wall {
-  display: none;
-  flex: 1;
-  align-self: center;
+.tv-seat {
+  grid-row: 1;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px;
-  margin-inline: 26px;
+  display: flex;
+  flex-direction: column;
+  /*
+    THE PEDESTAL HEIGHTS — 1 : 1.6 : 2.4 of one step, sized from the viewport
+    like the type, so the staircase is the same shape on a laptop and on the
+    television. Bronze is the unit.
+  */
+  --tv-step: clamp(22px, 1.55vw, 32px);
+  --tv-pedestal: var(--tv-step);
 }
-@media (min-width: 1280px) {
-  .record-wall {
-    display: grid;
-  }
-}
-.record-wall[data-bands="1"] {
-  grid-template-columns: minmax(0, 1fr);
-}
-.plaque {
-  container-type: inline-size;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
+.tv-seat--1 { --tv-pedestal: calc(var(--tv-step) * 2.4); }
+.tv-seat--2 { --tv-pedestal: calc(var(--tv-step) * 1.6); }
+
+/*
+ * The block under the card. Its top lip is the one lit edge — a real
+ * podium's chrome strip — and the numeral is cut into the face large enough
+ * to be the first thing seen from across the room, in ink on the metal's
+ * wash so the metal never carries the glyph itself.
+ */
+.tv-pedestal {
+  position: relative;
+  height: var(--tv-pedestal);
+  margin: 0 8px;
+  display: flex;
   align-items: center;
-  height: 58px;
-  min-width: 0;
-  padding: 0 18px 0 14px;
-  border-radius: 8px;
+  justify-content: center;
+  border-radius: 0 0 12px 12px;
   background: linear-gradient(
     180deg,
-    var(--efir-raised, var(--surface-raised)) 0%,
-    var(--efir-panel, var(--surface)) 100%
+    color-mix(in oklab, var(--metal) 38%, var(--surface-raised)),
+    color-mix(in oklab, var(--metal) 14%, var(--surface-raised))
   );
+  border: 1px solid color-mix(in oklab, var(--metal) 55%, var(--border));
+  border-top: 3px solid color-mix(in oklab, var(--metal) 70%, #fff);
   box-shadow:
-    inset 0 1px 0 var(--efir-edge-hi, transparent),
-    inset 0 0 0 1px var(--efir-edge-ring, var(--border)),
-    var(--efir-shadow-seat, 0 0 0 transparent);
+    inset 0 -10px 18px -12px color-mix(in oklab, var(--metal) 60%, #000),
+    var(--shadow-card);
 }
-.plaque__t {
-  display: block;
-  min-width: 0;
+.tv-pedestal-num {
+  font-weight: 800;
+  font-size: calc(var(--tv-pedestal) * 0.66);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--ink-primary);
+  font-variant-numeric: lining-nums;
+  text-shadow: 0 1px 0 color-mix(in oklab, var(--metal) 40%, transparent);
+  user-select: none;
 }
-.plaque__k {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--efir-ink-3, var(--ink-muted));
-  white-space: nowrap;
+/* The bronze block is too short for a numeral at two thirds of its height. */
+.tv-seat--3 .tv-pedestal-num {
+  font-size: calc(var(--tv-pedestal) * 0.78);
 }
-.plaque__count {
-  margin-left: auto;
-  padding-left: 12px;
-  font-size: 12px;
-  font-style: normal;
-  font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--efir-ink-2, var(--ink-secondary));
-  font-variant-numeric: tabular-nums lining-nums;
+.tv-seat--at-1 { grid-column: 1; }
+.tv-seat--at-2 { grid-column: 2; }
+.tv-seat--at-3 { grid-column: 3; }
+
+/*
+ * A PHONE CANNOT SEAT THREE ACROSS, and three full-width cards in a column
+ * put the list a thousand pixels down. So the champion takes the top row at
+ * full width and silver and bronze share the row beneath — two rows of
+ * podium instead of three cards, the champion still the biggest by a whole
+ * width. Placed by PLACE here (`.tv-seat--N`), not by the desktop column
+ * classes, which is why the seat carries both.
+ */
+@media (max-width: 639px) {
+  .tv-podium,
+  .tv-podium--2,
+  .tv-podium--1 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: none;
+    gap: 10px;
+    padding: 20px 12px 12px;
+  }
+  .tv-seat--1 {
+    grid-row: 1;
+    grid-column: 1 / -1;
+  }
+  .tv-seat--2 {
+    grid-row: 2;
+    grid-column: 1;
+  }
+  .tv-seat--3 {
+    grid-row: 2;
+    grid-column: 2;
+  }
+  /* Two winners: silver alone on the second row takes the whole of it. */
+  .tv-podium--2 .tv-seat--2 {
+    grid-column: 1 / -1;
+  }
+  /* Side by side, a staircase of blocks is a staircase of gaps; one short
+     block under every card keeps the plinth without the empty height. */
+  .tv-seat--1,
+  .tv-seat--2 {
+    --tv-pedestal: var(--tv-step);
+  }
+  .tv-seat-card {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
 }
-.plaque__v {
-  display: flex;
-  align-items: baseline;
-  min-width: 0;
-  margin: 2px 0 0;
-  white-space: nowrap;
-}
-.plaque__v .nm {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--efir-ink-name, var(--ink-primary));
-}
-.plaque__v .code {
-  flex: none;
-  margin-left: 6px;
-  font-size: 11.5px;
-  font-weight: 400;
-  letter-spacing: 0.02em;
-  font-variant-numeric: tabular-nums lining-nums;
-  color: var(--efir-ink-3, var(--ink-muted));
-}
-/* One text node; the U+202F separators are never wrapped or tightened. */
-.plaque__amount {
-  flex: none;
-  margin-left: auto;
-  padding-left: 16px;
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums lining-nums;
-  color: var(--efir-ink, var(--ink-primary));
-}
-@container (max-width: 400px) {
-  .plaque__count {
+/*
+ * THE NARROW TWO-COLUMN BAND — 1280 to 1599, a 720p television or a zoomed
+ * one. The seats stay three across (see the block header) and the type steps
+ * down to fit the sum: 13.4px at 1280 puts «126,950,000 soʻm» at ~106px
+ * inside 119px of card, where the house 17px needed 134px.
+ *
+ * The list drops «Buyurtma» and «Konv.» over the same band. Its own columns
+ * are nowrap by necessity — a wrapped money figure is unreadable at a
+ * distance — so a table that does not fit gets a horizontal scrollbar, and a
+ * television has no pointer to move it: the right-hand columns would simply
+ * be gone with nothing saying so. Rank, name, FAKT 2 and FAKT 1 are what the
+ * floor reads; the other two are for the desk, which has the width for them.
+ */
+@media (min-width: 1280px) and (max-width: 1599px) {
+  .tv-col {
+    --tv-seat-name: clamp(12px, calc(0.95vw * var(--tv-seat-scale)), 16px);
+    --tv-seat-figure: clamp(13px, calc(1.05vw * var(--tv-seat-scale)), 18px);
+  }
+  .tv-col-optional {
     display: none;
   }
 }
-@container (max-width: 320px) {
-  .plaque__v .code {
-    display: none;
+
+.tv-seat--2 { --tv-seat-scale: 0.9; }
+.tv-seat--3 { --tv-seat-scale: 0.82; }
+
+.tv-seat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 16px 12px 14px;
+}
+/*
+ * THE SEAT KEEPS WHAT IS IN IT. The breakpoint above sizes the seats so the
+ * figure and the chase pill fit, but a rail, a zoom level or a browser's own
+ * font size can still narrow one — and an `inline-flex` pill has no wrapping
+ * of its own, so it left the card sideways and overlapped its neighbour
+ * rather than growing taller. Wrapping is the honest failure here: two lines
+ * of «Liderga +108,000,000» is readable, half of it under the next seat is
+ * not.
+ */
+.tv-seat-card .chase-chip {
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.tv-seat .tv-seat-card {
+  /* Standing on the block: the card's own bottom edge is the pedestal's
+     top lip, so no radius and no rail of its own down there. */
+  border-bottom-left-radius: 4px;
+  border-bottom-right-radius: 4px;
+  padding-top: 22px;
+}
+.tv-seat--1 .tv-seat-card {
+  padding-top: 28px;
+  padding-bottom: 18px;
+}
+
+/*
+ * THE CHAMPION'S CARD IS FRAMED IN ITS METAL, the other two only rimmed.
+ * A second, sharper ring outside the border and a wider pool of gold light
+ * under it — the seat the client wants «unmistakable from across the room»
+ * differs from its flankers in outline, not only in size.
+ */
+.tv-seat--1 .tv-seat-card {
+  border-color: color-mix(in oklab, var(--metal) 72%, var(--border));
+  box-shadow:
+    0 0 0 3px color-mix(in oklab, var(--metal) 22%, transparent),
+    0 18px 40px -18px color-mix(in oklab, var(--metal) 70%, transparent),
+    var(--shadow-raised),
+    var(--edge-highlight);
+}
+.tv-seat--2 .tv-seat-card,
+.tv-seat--3 .tv-seat-card {
+  border-color: color-mix(in oklab, var(--metal) 50%, var(--border));
+}
+
+/* The plaque rides the card's top edge like a medal on its ribbon. */
+.tv-seat .podium-plaque {
+  white-space: nowrap;
+}
+.tv-seat-plaque {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  background: color-mix(in oklab, var(--metal) 22%, var(--surface-raised));
+  box-shadow: var(--shadow-card);
+}
+.tv-seat--1 .tv-seat-plaque {
+  font-size: 12px;
+  padding: 4px 12px;
+}
+
+.tv-seat-name {
+  font-size: var(--tv-seat-name);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+/* The whole sum. Tabular so a refetch that moves one digit does not move
+   the rest; tight tracking because it is set well above body size. */
+.tv-seat-figure {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: var(--tv-seat-figure);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+
+/* The champion's own distance, in the leader's tint rather than the chase blue. */
+.chase-chip--lead {
+  background: color-mix(in oklab, var(--metal) 18%, transparent);
+  border-color: color-mix(in oklab, var(--metal) 50%, transparent);
+}
+
+/**
+ * The rows. A real table (the header IS a header) inside a box that scrolls
+ * on its own — and drifts on its own, see `useAutoScroll`. The header sticks
+ * on the card's surface, not `--surface-sunken`: this table sits directly on
+ * the card with no sunken well around it, so the sunken token would draw a
+ * band across the top of the list.
+ */
+.tv-list {
+  scrollbar-width: thin;
+  padding: 0 10px 8px;
+}
+/*
+ * TWO KINDS OF SCROLL BOX, AND THE AXIS IS THE WHOLE DIFFERENCE.
+ *
+ * From 1280 the column is viewport-high and the rows drift inside it, so
+ * the list scrolls on both axes and contains its own overscroll — a wheel
+ * that reaches the end of the list has no page to hand the scroll to.
+ *
+ * Under 1280 the page scrolls, and the list may scroll SIDEWAYS ONLY. Six
+ * nowrap columns are wider than a phone and the client wants every one of
+ * them reachable — «chapga-oʻngga scroll qilib boʻlmadi» — but the first
+ * version of this box used the `overscroll-behavior: contain` shorthand,
+ * which contains BOTH axes: a container that cannot scroll vertically is
+ * always at its vertical edge, so a thumb swiping down on the table never
+ * reached the page. That was «scroll qilish qiyinlashgan». Contain the x
+ * axis alone (so a sideways over-scroll does not become the browser's back
+ * gesture) and leave y to chain to the page.
+ */
+@media (min-width: 1280px) {
+  .tv-list {
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+}
+@media (max-width: 1279px) {
+  .tv-list {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+  /*
+   * THE RANK AND THE NAME STAY PUT while the figures slide under them —
+   * a sideways scroll that carried the name off the left edge would leave
+   * a column of sums with nobody's name on them. The rank cell is given a
+   * fixed width so the name knows where to stop; both are opaque so the
+   * moving cells pass underneath rather than through.
+   */
+  .tv-table th:nth-child(1),
+  .tv-row > td:nth-child(1) {
+    position: sticky;
+    left: 0;
+    width: 40px;
+    min-width: 40px;
+    z-index: 2;
+    background: var(--surface-raised);
+  }
+  .tv-table th:nth-child(2),
+  .tv-row > td:nth-child(2) {
+    position: sticky;
+    left: 40px;
+    z-index: 2;
+    background: var(--surface-raised);
+    box-shadow: 4px 0 8px -6px color-mix(in oklab, var(--ink-primary) 25%, transparent);
+  }
+  .tv-table th:nth-child(1),
+  .tv-table th:nth-child(2) {
+    z-index: 3;
+  }
+  .tv-row:hover > td:nth-child(1),
+  .tv-row:hover > td:nth-child(2) {
+    background: var(--surface-sunken);
+  }
+}
+
+.tv-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.tv-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 8px 8px;
+  background: var(--surface-raised);
+  box-shadow: inset 0 -1px 0 var(--grid);
+}
+/*
+ * On a phone the pinned name cell has to be narrow, or the sums slide under
+ * it before they can be read: the chase may break between «Oldingiga» and
+ * its figure (the figure itself never breaks — see `Chase`), which brings
+ * the cell down from the width of one long line to the width of the sum.
+ */
+@media (max-width: 639px) {
+  .tv-list {
+    padding: 0 4px 8px;
+  }
+  .tv-row > td {
+    padding: 8px 6px;
+  }
+}
+
+/* Figures never wrap — «10 (5 yoʻlda)» broke across two lines the first
+   time a name column took its share. The name cell is the one that may. */
+.tv-row > td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--grid);
+  vertical-align: top;
+  white-space: nowrap;
+}
+.tv-row > td:nth-child(2) {
+  white-space: normal;
+  width: 100%;
+}
+.tv-row:last-child > td {
+  border-bottom: 0;
+}
+.tv-row:hover > td {
+  background: var(--surface-sunken);
+}
+.tv-rank {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: var(--tv-money);
+  font-weight: 600;
+}
+.tv-name {
+  font-size: var(--tv-name);
+  font-weight: 600;
+  line-height: 1.2;
+}
+.tv-money {
+  font-size: var(--tv-money);
+  white-space: nowrap;
+}
+.tv-small {
+  font-size: var(--tv-small);
+}
+.tv-bar {
+  max-width: 260px;
+}
+/* «Oldingiga +27,627,672» is one fact; the two halves may wrap between
+   the chase and the bonus, never inside either. */
+.tv-chase,
+.tv-chase > span {
+  white-space: nowrap;
+}
+/* …except on a phone, where the pinned name cell must be narrow or the sums
+   slide under it before they can be read: the line may break between
+   «Oldingiga» and its figure, and the figure itself still never breaks (it
+   is its own nowrap span — see `Chase`). After the rule above on purpose:
+   same specificity, and source order is what lets this one win. */
+@media (max-width: 639px) {
+  .tv-row .tv-chase > span {
+    white-space: normal;
+  }
+}
+
+/* ===========================================================================
+ * MEDALS — «ZARB», the minted medal set (klassik taxta spec §1.4)
+ *
+ * A medal paints ITSELF: metal, planchet and device are baked into its
+ * `m-<code>` symbol in `medalDefs.ts`, styled inline, because a document
+ * selector never reaches a `<use>` shadow tree. What is here is only what the
+ * INSTANCE needs — the box, the ×N plate (light DOM inside the medal's own
+ * <svg>), the row's holder, and the one movement a medal ever makes.
+ *
+ * No literal colour and no `color-mix()`: every tone is a token from the
+ * «ZARB» family in the DESIGN TOKENS section, in all three theme blocks.
+ * ======================================================================== */
+
+/*
+ * THE ONE PLACE `--medal-gold/silver/bronze` MEAN THE MEDAL'S MID TONE.
+ * Two hosts, and both are needed: the gradients resolve their stops where
+ * they are DEFINED (the hidden <svg> `MedalDefs` mounts once), while a
+ * symbol's own strokes resolve where it is INSTANTIATED (the `<use>` inside
+ * each `.medal-mark`). Everywhere else the three names stay the podium's
+ * chrome — see the «ZARB» note beside the tokens.
+ */
+.medal-defs,
+.medal-mark {
+  --medal-gold: var(--zarb-gold);
+  --medal-silver: var(--zarb-silver);
+  --medal-bronze: var(--zarb-bronze);
+}
+
+/* The size rides the width/height attributes, never CSS. */
+.medal-mark {
+  display: block;
+  flex: none;
+  overflow: visible;
+}
+
+/* ×N plate — a seat-only piece, drawn inside the medal's <svg>. */
+.medal-mark__plate-rim {
+  stroke: var(--medal-key);
+  stroke-width: 0.5;
+}
+.medal-mark__plate-well {
+  fill: var(--medal-plate-well);
+  stroke: var(--medal-key);
+  stroke-width: 0.4;
+}
+.medal-mark__count use { stroke: var(--medal-gold-hi); }
+.medal-mark__count[data-dev="gilt"] use { stroke: var(--medal-gilt-hi); }
+.medal-mark__count[data-dev="steel"] use { stroke: var(--medal-steel-hi); }
+.medal-mark__count[data-dev="silver"] use { stroke: var(--medal-silver-hi); }
+.medal-mark__count[data-dev="bronze"] use { stroke: var(--medal-bronze-hi); }
+
+/* A row's medals: the rarest sits at the right-hand end, so down a hundred
+   rows the most valuable medals read as one vertical column. */
+.row-medals {
+  display: inline-flex;
+  flex: none;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: 6px;
+}
+
+/*
+ * A medal that appeared between two payloads lands once, 0.6 → 1. Inside
+ * `no-preference`, like every animation in this file: with reduced motion the
+ * class is inert and the medal is simply there.
+ */
+@keyframes medal-mark-new {
+  from { transform: scale(0.6); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .medal-mark--new {
+    transform-origin: center;
+    animation: medal-mark-new 400ms var(--ease-out) both;
   }
 }
 
