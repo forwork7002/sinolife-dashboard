@@ -2,7 +2,7 @@
 
 **Sana:** 2026-09-16
 **Ekran:** `/sellers` — Sotuvchilar reytingi
-**Holat:** DEPLOY QILINDI 2026-09-16 17:16 (`1d38148`, `main`).
+**Holat:** BEKOR — 2026-09-17-klassik-taxta-medallar-design.md bilan almashtirildi. (Avval: deploy qilingan 2026-09-16 17:16, `1d38148`, `main`.)
 **Ko‘rinishi O‘RNI BOSILDI:** o‘sha kuni kechqurun mijoz lavha-pagonni rad etdi va
 `docs/superpowers/specs/2026-09-16-efir-taxta-design.md` (EFIR taxtasi) butun
 ko‘rinishni qayta chizdi. Bu hujjatning §2 dagi KO‘RINISH qismi (lavha, lentali
