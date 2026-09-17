@@ -1024,10 +1024,22 @@ function PodiumSeat({
                   '2-oʻrin bilan teng'
                 ) : (
                   /* Two halves that may part between them and never inside
-                     either: a team's margin runs to thirteen digits. */
+                     either: a team's margin runs to thirteen digits.
+
+                     …AND THE SECOND HALF MAY PART ONCE MORE, BEFORE «oldinda»,
+                     NEVER INSIDE THE SUM. As one nowrap run it was 150px of
+                     text in a pill that a 1366 laptop caps at 148 and a 720p
+                     television at 132: the words left the pill on both sides
+                     (1.2px and 9px, measured) because a nowrap flex item
+                     cannot shrink and had nothing to wrap. Where it fits —
+                     every width the type below is sized for — it is the same
+                     one line it always was. */
                   <>
                     <span className="whitespace-nowrap">2-oʻrindan</span>
-                    <span className="tabular whitespace-nowrap">+{formatUzs(lead)} oldinda</span>
+                    <span className="tabular">
+                      <span className="whitespace-nowrap">+{formatUzs(lead)}</span>{' '}
+                      <span className="whitespace-nowrap">oldinda</span>
+                    </span>
                   </>
                 )}
               </span>

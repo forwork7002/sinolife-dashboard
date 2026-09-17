@@ -3405,6 +3405,29 @@ p {
   .tv-col-optional {
     display: none;
   }
+  /*
+   * …AND THE CHASE PILL STEPS DOWN WITH THEM. The champion's pill reads
+   * «+21,500,000 soʻm oldinda» — 150px at the house 11px — and its seat leaves
+   * it 148px at 1366: the words stood 1.2px outside the pill on either side,
+   * on the old board and on this one, measured on production figures. Same
+   * answer as the sum above it, type rather than layout: 10px of type, 6px of
+   * pill padding instead of 10, and the card's side padding at the 8px a phone
+   * already uses. That is 136px of text in 142px of pill at 1366, two lines as
+   * before, and the podium is not a pixel taller. Under ~1340 even that does
+   * not fit, and there the pill WRAPS before «oldinda» (see `PodiumSeat`)
+   * instead of spilling.
+   */
+  /* `.tv-seat .tv-seat-card`, not the bare class: the card's own `padding`
+     shorthand is written further down at equal specificity and would win. */
+  .tv-seat .tv-seat-card {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .tv-seat-card .chase-chip {
+    font-size: 10px;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
 }
 
 .tv-seat--2 { --tv-seat-scale: 0.9; }

@@ -1100,8 +1100,17 @@ Per-screen traps worth knowing before you touch one:
   bought a fifth visible row at 1920×1080 (4 → 5, teams 5 → 6) and turned the
   «Bugun» morning's bold «0» into a muted «—» on rows with nothing on EITHER
   fact. `tests/features/sellersMedals.test.tsx` holds all of it, the CSS
-  included, and was checked by mutation. **Still the old board's and not
-  fixed:** at 1366×768 the list is 68px tall (it was 61) and no row is whole.
+  included, and was checked by mutation. **One old-board defect the audit DID
+  fix:** the champion's pill «+21,500,000 soʻm oldinda» was one 150px nowrap
+  run in a pill a 1366 laptop caps at 148px, so the words stood 1.2px outside
+  it on both sides (9px at 1280). Between 1280 and 1599 the seat's pill now
+  steps down with the rest of the seat type (10px, 6px pill padding, 8px card
+  side padding — two lines at 1366, podium 437 → 435px), and the run may part
+  before «oldinda», never inside the sum, so under ~1345px it takes a third
+  line instead of spilling; pinned in `sellersTvBoard.test.tsx`. **Still the
+  old board's and not fixed:** at 1366×768 the list is 70px tall (it was 61)
+  and no row is whole; the phone's `.tv-seat-card` 8px side padding is a dead
+  rule (the card's `padding` shorthand is written after it), on both boards.
 - **Sotuvchilar oyligi** — **NEW ON 2026-09-14**, the client's own pay scheme
   («hodimlar oyligi ni hisoblovchi bo'lim kerak… sotuvchilar oyligi fakt 2 ga
   qarab olinadi»). Three parts, three columns, each checkable: **8% of FAKT 2

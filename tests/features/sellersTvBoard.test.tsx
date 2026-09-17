@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -247,7 +250,41 @@ describe('what the seats carry, and what they do not', () => {
     render(<SellersColumn data={RIPE} {...PROPS} />)
 
     // 126 950 000 − 108 000 000, on the FAKT 2 figure the seats were decided by.
-    expect(screen.getByText(`+${formatUzs(18_950_000)} oldinda`)).toBeDefined()
+    const pill = document.querySelector('#tv-sellers .tv-seat--1 .chase-chip--lead')!
+    expect(pill.textContent).toBe(`🚀2-oʻrindan+${formatUzs(18_950_000)} oldinda`)
+  })
+
+  /*
+    THE PILL HOLDS ITS OWN WORDS. «+21,500,000 soʻm oldinda» was ONE nowrap run,
+    150px wide, inside a pill a 1366 laptop caps at 148px and a 720p television
+    at 132px — a nowrap flex item cannot shrink and had nothing to wrap, so the
+    words stood outside the pill on both sides (1.2px and 9px, measured on
+    production figures on the old board and on this one). Two halves now: the
+    sum with its unit, and «oldinda», each unbreakable, with an ordinary space
+    between them — the one place the line may part. jsdom lays nothing out, so
+    what is pinned is the structure that lets it, and the stylesheet's half.
+  */
+  it('lets the champion’s margin part before «oldinda», never inside the sum', () => {
+    render(<SellersColumn data={RIPE} {...PROPS} />)
+
+    const pill = document.querySelector('#tv-sellers .tv-seat--1 .chase-chip--lead')!
+    const halves = [...pill.querySelectorAll('span.tabular > span')]
+    expect(halves.map((h) => h.textContent)).toEqual([`+${formatUzs(18_950_000)}`, 'oldinda'])
+    for (const half of halves) expect(half.className).toContain('whitespace-nowrap')
+    // The wrapper itself must be free to break, or the two halves are one run again.
+    expect(pill.querySelector('span.tabular')!.className).not.toContain('whitespace-nowrap')
+    expect(pill.querySelector('span.tabular')!.textContent).toBe(`+${formatUzs(18_950_000)} oldinda`)
+  })
+
+  it('steps the seat’s pill down with the rest of the seat type between 1280 and 1599', () => {
+    const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    const band = css.slice(css.indexOf('@media (min-width: 1280px) and (max-width: 1599px) {\n  .tv-col {'))
+    const block = band.slice(0, band.indexOf('\n}\n'))
+    expect(block).toMatch(/\.tv-seat-card \.chase-chip \{\s*font-size: 10px;\s*padding-left: 6px;\s*padding-right: 6px;\s*\}/)
+    // `.tv-seat .tv-seat-card`: the bare class loses to the card's own `padding` shorthand further down.
+    expect(block).toMatch(/\.tv-seat \.tv-seat-card \{\s*padding-left: 8px;\s*padding-right: 8px;\s*\}/)
+    // And the pill may always wrap inside its seat rather than leave it.
+    expect(css).toMatch(/\.tv-seat-card \.chase-chip \{\s*max-width: 100%;\s*flex-wrap: wrap;/)
   })
 
   it('stands every seat on a pedestal numbered by its place', () => {
