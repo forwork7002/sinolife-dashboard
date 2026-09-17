@@ -3488,6 +3488,26 @@ export class InsightsRepository {
         )`
   }
 
+  /**
+   * The same decision read off the deal's CURRENT stage, for when the history
+   * does not hold the move out.
+   *
+   * Only the Тасдиклаш funnel and the signal stages have their history
+   * imported, so an order that was sent from the queue to «Первичный отдел»
+   * (any stage but Тасдикланмаган) or back to «Регистрация» left no row to
+   * find. Measured 2026-09-17: 102 such orders (74 and 28) still read
+   * Кутилмоқда, some from 2025, while Bitrix24 had them nowhere near the
+   * queue. A still-waiting order whose deal stands outside C4 today is
+   * decided by where it stands: Доставка is CONFIRMED, anything else
+   * REJECTED. Null while it is still inside Тасдиклаш — which is the truth.
+   */
+  private static standingSql(signal: string, stageExternalId: string): string {
+    return `(CASE
+          WHEN ${signal}::text IN ('CONFIRM_NEW', 'NO_ANSWER') AND ${stageExternalId} NOT LIKE 'C4:%'
+            THEN CASE WHEN ${stageExternalId} LIKE 'C6:%' THEN 'CONFIRMED' ELSE 'REJECTED' END
+        END)`
+  }
+
   private static queueSql(mode: ConfirmationQueueMode, scopeParam: string): string {
     /*
       Backlog mode keeps LIVE orders only, and it applies that AFTER the
@@ -3632,7 +3652,8 @@ export class InsightsRepository {
       board.
     */
     arrived AS (
-      SELECT a.deal_id, d."createdAtSource" AS created_at, a.moved_at, a.queued_at, a.signal
+      SELECT a.deal_id, d."createdAtSource" AS created_at, a.moved_at, a.queued_at, a.signal,
+             d."stageId" AS stage_id
         FROM agg a
         JOIN "deal" d ON d."id" = a.deal_id
        ${cohort}
@@ -3645,10 +3666,11 @@ export class InsightsRepository {
       SELECT w.deal_id, w.created_at,
              COALESCE(x.moved_at, w.moved_at) AS moved_at,
              w.queued_at,
-             COALESCE(x.signal, w.signal::text) AS signal
+             COALESCE(x.signal, ${InsightsRepository.standingSql('w.signal', 'cs."externalId"')}, w.signal::text) AS signal
         FROM arrived w
+        JOIN "deal_stage" cs ON cs."id" = w.stage_id
         LEFT JOIN LATERAL ${InsightsRepository.exitSql('w.deal_id', 'w.signal', 'w.moved_at', null)} x ON true
-       ${mode === 'backlog' ? `WHERE x.signal IS NULL` : ''}
+       ${mode === 'backlog' ? `WHERE x.signal IS NULL AND ${InsightsRepository.standingSql('w.signal', 'cs."externalId"')} IS NULL` : ''}
     ),
     classified AS (
       SELECT
@@ -4028,8 +4050,19 @@ export class InsightsRepository {
                which is what keeps visits[0] identical to classified.outcome.
              */
              SELECT g.visit_no, g.queued_at,
-                    COALESCE(x.signal, g.outcome::text) AS outcome,
-                    COALESCE(x.moved_at, g.decided_at) AS decided_at
+                    COALESCE(
+                      x.signal,
+                      CASE WHEN g.next_queued_at IS NULL
+                        THEN ${InsightsRepository.standingSql('g.outcome', 'cs."externalId"')} END,
+                      g.outcome::text
+                    ) AS outcome,
+                    COALESCE(
+                      x.moved_at,
+                      g.decided_at,
+                      CASE WHEN g.next_queued_at IS NULL
+                           AND ${InsightsRepository.standingSql('g.outcome', 'cs."externalId"')} IS NOT NULL
+                        THEN g.last_at END
+                    ) AS decided_at
              FROM (
              SELECT gg.*, lead(gg.queued_at) OVER (ORDER BY gg.visit_no) AS next_queued_at
              FROM (
@@ -4081,6 +4114,7 @@ export class InsightsRepository {
             GROUP BY m.visit_no
              ) gg
              ) g
+             JOIN "deal_stage" cs ON cs."id" = d."stageId"
              LEFT JOIN LATERAL ${InsightsRepository.exitSql('d."id"', 'g.outcome', 'g.last_at', 'g.next_queued_at')} x ON true
            ) v
          ) visits

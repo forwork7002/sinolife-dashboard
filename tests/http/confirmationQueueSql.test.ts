@@ -491,8 +491,17 @@ describe('an order that leaves Тасдиклаш past the signal stages', () =>
       // Numbered funnels only, and never a stage inside Тасдиклаш itself.
       expect(sql).toContain(`xs."externalId" ~ '^C[0-9]+:'`)
       expect(sql).toContain(`xs."externalId" NOT LIKE 'C4:%'`)
-      expect(sql).toContain('COALESCE(x.signal, w.signal::text) AS signal')
+      expect(sql).toContain("'REJECTED' END\n        END), w.signal::text) AS signal")
     }
+  })
+
+  it('falls back to where the deal stands in Bitrix24 today', () => {
+    for (const sql of [WINDOW_SQL, BACKLOG_SQL]) {
+      expect(sql).toContain('JOIN "deal_stage" cs ON cs."id" = w.stage_id')
+      expect(sql).toContain(`cs."externalId" NOT LIKE 'C4:%'`)
+    }
+    expect(REPEAT).toContain('JOIN "deal_stage" cs ON cs."id" = d."stageId"')
+    expect(REPEAT).toContain('CASE WHEN g.next_queued_at IS NULL')
   })
 
   it('drops a decided order from the backlog, and only there', () => {
@@ -501,7 +510,7 @@ describe('an order that leaves Тасдиклаш past the signal stages', () =>
   })
 
   it('applies the same rule to the visit chain, bounded by the next arrival', () => {
-    expect(REPEAT).toContain('COALESCE(x.signal, g.outcome::text) AS outcome')
+    expect(REPEAT).toMatch(/COALESCE\(\s*x.signal,/)
     expect(REPEAT).toContain('g.next_queued_at IS NULL OR xh."enteredAt" < g.next_queued_at')
   })
 })
