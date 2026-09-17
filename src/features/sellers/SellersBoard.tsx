@@ -188,7 +188,7 @@ function SellerRows({
                 {ranked ? entry.rank : <span aria-label="Hali puli yoʻq">—</span>}
               </span>
               {medal !== null ? (
-                <Crest level={medal.level} legendaTier={medal.legendaTier} size="row" />
+                <Crest level={medal.level} legendaTier={medal.legendaTier} height={20} />
               ) : (
                 <span />
               )}

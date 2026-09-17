@@ -37,7 +37,9 @@ describe('the television board switches layout on one width', () => {
   })
 
   it('gives the page its viewport-height column on the same query', () => {
-    expect(queryFor('.tv-board-shell {')).toBe(1280)
+    // `.tv-board-shell {` alone is the EFIR material token block (light theme,
+    // top of the file); the layout rule is the one that sets a height.
+    expect(queryFor('.tv-board-shell {\n    height: 100%;')).toBe(1280)
   })
 
   it('draws the switch and parks a column on the same width', () => {
@@ -73,16 +75,15 @@ describe('the television board switches layout on one width', () => {
 
   /*
     1366 — 720p televizor yoki zoom qilingan panel: ikki ustun saqlanadi, hamma
-    narsa 0.8× (spec §9). Gerb va halqa piksel o'lchamlari CSS'da, shrift
-    shkalasi `:root` da — ikkalasi bitta 1599 chegarasida.
+    narsa 0.8× (spec §9). Shrift shkalasi `:root` da, bitta 1599 chegarasida.
+    EFIR Premium: gerb, medal va tanga o'lchami ATRIBUTDA (`height`/`size`),
+    shuning uchun bu blok ularni kichraytirmaydi — va kichraytirmasligi shart,
+    aks holda atribut bilan CSS ikki xil o'lcham aytadi.
   */
-  it('scales the crest, halo, seats and rows down under 1600 (spec §9)', () => {
-    const narrow = css.slice(css.indexOf('@media (max-width: 1599px) {\n  .crest--row'))
+  it('scales the seats and rows down under 1600 (spec §9); the minted marks keep their attribute sizes', () => {
+    const narrow = css.slice(css.indexOf('@media (max-width: 1599px) {\n  .seat {'))
     const block = narrow.slice(0, narrow.indexOf('\n}\n') + 3)
-    expect(block).toContain('.crest--row { width: 48px; height: 16px; }')
-    expect(block).toContain('.crest--seat { width: 62px; height: 21px; }')
-    expect(block).toMatch(/\.halo--lg \{[^}]*width: 56px;/)
-    expect(block).toMatch(/\.halo \{[^}]*width: 48px;/)
+    expect(block).not.toMatch(/\.crest|\.halo|\.medal \{/)
     expect(block).toContain('.row { height: 44px; }')
     expect(block).toMatch(/\.seat--1 \{[^}]*max-width: 365px;/)
     expect(block).toMatch(/\.seat \{[^}]*max-width: 246px;/)
@@ -127,11 +128,11 @@ describe('the television board switches layout on one width', () => {
     const legend = css.slice(css.indexOf('.tv-legend {'))
     const block = legend.slice(0, legend.indexOf('\n}\n') + 3)
     expect(block).toContain('flex-wrap: wrap;')
-    expect(block).toContain('min-height: 28px;')
+    expect(block).toContain('min-height: 36px;')
     // Pog'onaning O'Z matni bo'linmaydi — o'raladigan narsa pog'onalar.
     expect(block).toContain('white-space: nowrap;')
     expect(block).not.toContain('overflow: hidden')
-    expect(block).not.toMatch(/\n  height: 28px;/)
+    expect(block).not.toMatch(/\n  height: 36px;/)
   })
 
   /*

@@ -215,16 +215,24 @@ export const MEDAL_UNLOCK_LEVEL: Readonly<Record<MedalCode, number>> = Object.fr
   'year-champion': 5,
 })
 
-/** Chizilish tartibi — qimmatlisi oldin. Ball yo'q, shuning uchun tartib ro'yxat. */
+/**
+ * Chizilish tartibi — qimmatlisi oldin. Ball yo'q, shuning uchun tartib ro'yxat.
+ *
+ * HAQIQIY METALL AVVAL (EFIR Premium, 2026-09-17, mijoz tasdiqlagan): nodir
+ * yettilik (oltin/kumush/bronza tanalar), keyin gilt belgili po'lat beshlik,
+ * oxirida po'lat ikkilik. Qatorda uchtadan ortig'i chizilmaydi va «+N» yo'q —
+ * shuning uchun kumush/bronza oy olov seriyasidan, kun g'olibi yangi yulduzdan
+ * keyin turadi. Frontend nusxasi `medalCatalog.ts` — BIR commit'da o'zgaradi.
+ */
 export const MEDAL_ORDER: readonly MedalCode[] = Object.freeze([
   'year-champion',
   'month-gold',
-  'streak-fire',
   'month-silver',
   'month-bronze',
-  'streak-steady',
+  'streak-fire',
   'conversion-master',
   'day-record',
+  'streak-steady',
   'clean-month',
   'jump',
   'rookie',

@@ -15,42 +15,136 @@ const from = (marker: string) => {
   return i
 }
 
-/** Uchala token bloki: yorug' `:root`, tizim-qorong'i media bloki, majburiy qorong'i. */
+/**
+ * Uchala token bloki: yorug' `:root`, tizim-qorong'i media bloki, majburiy
+ * qorong'i. Har biri o'z `.tv-board-shell` (EFIR material) qoidasini ham
+ * o'z ichiga oladi — ular shu tartibda, o'z mexanizmi yonida turadi.
+ */
 const LIGHT = CSS.slice(from(':root {\n  color-scheme: light;'), from('@media (prefers-color-scheme: dark)'))
-const SYSTEM_DARK = CSS.slice(from('@media (prefers-color-scheme: dark)'), from(':root[data-theme="dark"]'))
-const FORCED_DARK = CSS.slice(from(':root[data-theme="dark"]'), from('@theme inline'))
+const SYSTEM_DARK = CSS.slice(from('@media (prefers-color-scheme: dark)'), from(':root[data-theme="dark"] {'))
+const FORCED_DARK = CSS.slice(from(':root[data-theme="dark"] {'), from('@theme inline'))
+
+/** EFIR bo'limi — bannerdan TV BOARD bannerigacha. */
+const EFIR = () => CSS.slice(from('* EFIR —'), from('* TV BOARD — the sellers board'))
+/**
+ * Izohlarsiz — bannerlar tokenlarni SO'Z bilan tilga oladi, qoida bilan emas.
+ * Bo'lim BANNER ICHIDAN boshlanadi (marker banner ochilgandan KEYIN turadi),
+ * shuning uchun avval o'sha yopilmagan izohning qolgani tashlanadi — aks holda
+ * bannerning o'z matni qoida bo'lib o'qilardi.
+ */
+const strip = (s: string) => s.replace(/^[\s\S]*?\*\//, '').replace(/\/\*[\s\S]*?\*\//g, '')
+
+/** WCAG 2.x nisbiy yorug'lik va kontrast — `#rrggbb` uchun. */
+const luminance = (hex: string) => {
+  const channel = (i: number) => {
+    const c = parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2)
+}
+const contrast = (a: string, b: string) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number]
+  return (hi + 0.05) / (lo + 0.05)
+}
+/** Blokdagi token qiymati — birinchi e'lon; hex bo'lishi shart. */
+const hexOf = (block: string, name: string): string => {
+  const m = block.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6});`))
+  expect(m, `${name} blokda hex sifatida yo'q`).not.toBeNull()
+  return m![1]!
+}
+
+const BLOCKS = { LIGHT, SYSTEM_DARK, FORCED_DARK } as const
 
 describe('EFIR tokenlari — uchala blokda', () => {
-  it('`--tier-1..6` yorug‘ blokda, yorug‘lik tartibida', () => {
-    const light = ['#3a4557', '#4a6085', '#2b86c2', '#2bb1ee', '#8ed3f5', '#c9ecff']
-    light.forEach((hex, i) => expect(LIGHT).toContain(`--tier-${i + 1}: ${hex};`))
-  })
+  /*
+    QOIDA: «yuqori daraja panelga nisbatan KO'PROQ kontrast» (spec §1). Qutbi
+    mavzuga qarab teskari — qorong'ida xira → yorqin, yorug'da och → to'q
+    ko'k — shuning uchun yorug'lik emas, KONTRAST tartibi pinlanadi.
+  */
+  const EXPECTED: Record<keyof typeof BLOCKS, readonly string[]> = {
+    LIGHT: ['1.72', '2.57', '3.61', '4.96', '7.90', '13.23'],
+    SYSTEM_DARK: ['2.44', '3.55', '5.26', '9.80', '14.34', '18.30'],
+    FORCED_DARK: ['2.44', '3.55', '5.26', '9.80', '14.34', '18.30'],
+  }
 
-  it('`--tier-1..6` ikkala qorong‘i blokda bir xil va yorug‘ blokdan boshqa', () => {
-    const dark = ['#3f4a5c', '#506480', '#3e8fc4', '#7fd0ff', '#bde8ff', '#f2fbff']
-    dark.forEach((hex, i) => {
-      expect(SYSTEM_DARK).toContain(`--tier-${i + 1}: ${hex};`)
-      expect(FORCED_DARK).toContain(`--tier-${i + 1}: ${hex};`)
-      expect(LIGHT).not.toContain(`--tier-${i + 1}: ${hex};`)
+  for (const key of Object.keys(BLOCKS) as (keyof typeof BLOCKS)[]) {
+    const block = BLOCKS[key]
+
+    it(`${key}: \`--tier-1..6\` \`--efir-panel\` ga nisbatan qat’iy o‘suvchi kontrast — spec raqamlari`, () => {
+      const panel = hexOf(block, '--efir-panel')
+      const ratios = [1, 2, 3, 4, 5, 6].map((n) => contrast(hexOf(block, `--tier-${n}`), panel))
+      for (let i = 1; i < ratios.length; i += 1) expect(ratios[i]!).toBeGreaterThan(ratios[i - 1]!)
+      expect(ratios.map((r) => r.toFixed(2))).toEqual(EXPECTED[key])
     })
+
+    it(`${key}: siyoh kontrastlari — \`--efir-ink-3\` ≥ 4.5:1, \`--efir-ink-2\` ≥ 6:1`, () => {
+      const panel = hexOf(block, '--efir-panel')
+      expect(contrast(hexOf(block, '--efir-ink-3'), panel)).toBeGreaterThanOrEqual(4.5)
+      expect(contrast(hexOf(block, '--efir-ink-2'), panel)).toBeGreaterThanOrEqual(6)
+    })
+
+    it(`${key}: daraja va metall oilasi to‘liq — -hi/-lo/-wash, po‘lat, gilt, zarb tokenlari; aralashma yo‘q`, () => {
+      const names: string[] = []
+      for (let n = 1; n <= 6; n += 1) names.push(`--tier-${n}`, `--tier-${n}-hi`, `--tier-${n}-lo`, `--tier-${n}-wash`)
+      for (const m of ['gold', 'silver', 'bronze', 'steel']) {
+        names.push(`--medal-${m}`, ...['hi', 'lo', 'sh', 'patina', 'well'].map((t) => `--medal-${m}-${t}`))
+      }
+      names.push(
+        '--medal-gilt', '--medal-gilt-hi', '--medal-gold-wash', '--medal-silver-wash', '--medal-bronze-wash',
+        '--medal-gold-wash-p1', '--medal-key', '--medal-cast', '--medal-glint', '--medal-edge',
+        '--sheen-hi', '--sheen-lo', '--sheen-none-hi', '--sheen-none-lo', '--bloom', '--ribbon-a', '--ribbon-shade',
+        '--recess-hi', '--recess-lo', '--recess-none', '--slot-field', '--slot-dash', '--slot-glyph',
+        '--crest-plate', '--crest-off', '--crest-glint', '--crest-shade', '--halo-field-hi', '--halo-field-lo',
+        '--efir-panel', '--efir-raised', '--efir-raised-hi', '--efir-sunken', '--efir-ink', '--efir-ink-name',
+        '--efir-ink-4', '--efir-hairline', '--efir-track', '--efir-plate-well', '--efir-p1-keyline',
+      )
+      for (const token of names) expect(block, token).toMatch(new RegExp(`${token}:\\s`))
+      // Metall va daraja tokenlari `<use>` soya daraxtida o'qiladi — eski TV
+      // Chromium u yerda `color-mix()` to'xtashini tashlab yuborishi mumkin.
+      for (const line of block.split('\n')) {
+        if (/^\s*--(tier|medal|sheen|bloom|ribbon|recess|slot|crest|halo|efir)-?/.test(line)) {
+          expect(line).not.toContain('color-mix')
+        }
+      }
+    })
+  }
+
+  it('qorong‘i bloklar lockstep: ikkala mexanizmda bir xil qiymatlar, yorug‘dan boshqa', () => {
+    for (let n = 1; n <= 6; n += 1) {
+      expect(hexOf(SYSTEM_DARK, `--tier-${n}`)).toBe(hexOf(FORCED_DARK, `--tier-${n}`))
+      expect(hexOf(LIGHT, `--tier-${n}`)).not.toBe(hexOf(SYSTEM_DARK, `--tier-${n}`))
+    }
+    for (const token of ['--medal-gold', '--medal-steel', '--efir-panel', '--efir-ink-2', '--crest-off']) {
+      expect(hexOf(SYSTEM_DARK, token), token).toBe(hexOf(FORCED_DARK, token))
+    }
   })
 
-  it('oila ORDINAL deb hujjatlashtirilgan — `--seq` uslubida, seriya emas', () => {
+  it('`--efir-*` faqat `.tv-board-shell` ostida — uchala mavzu mexanizmi bilan, boshqa hech qayerda', () => {
+    const code = CSS.replace(/\/\*[\s\S]*?\*\//g, '')
+    const rules = code.match(/[^{}]+\{[^{}]*\}/g) ?? []
+    const selectors: string[] = []
+    for (const rule of rules) {
+      if (!/--efir-[a-z0-9-]+\s*:/.test(rule)) continue
+      const selector = rule.slice(0, rule.indexOf('{')).trim()
+      expect(selector, rule.slice(0, 120)).toMatch(/\.tv-board-shell$/)
+      selectors.push(selector)
+    }
+    expect(selectors).toEqual([
+      '.tv-board-shell',
+      ':root:where(:not([data-theme="light"])) .tv-board-shell',
+      ':root[data-theme="dark"] .tv-board-shell',
+    ])
+  })
+
+  it('oila ORDINAL deb hujjatlashtirilgan — `--seq` uslubida, seriya emas; qutb qoidasi yozilgan', () => {
     expect(LIGHT).toMatch(/ORDINAL/)
     expect(LIGHT).toMatch(/never a series/i)
+    expect(LIGHT).toMatch(/MORE CONTRAST AGAINST THE PANEL/)
   })
 
-  it('nodir medal soyasi: yorug‘da shaffof, qorong‘ida oltin aralashmasi — va FAQAT o‘rindiqda', () => {
-    expect(LIGHT).toContain('--glow-rare: transparent;')
-    expect(SYSTEM_DARK).toContain('--glow-rare: color-mix(in oklab, var(--medal-gold) 55%, transparent);')
-    expect(FORCED_DARK).toContain('--glow-rare: color-mix(in oklab, var(--medal-gold) 55%, transparent);')
-    // Podiumda eng ko'pi uchta o'rindiq; ro'yxatda 100 qator x 3 medal, va
-    // `filter` har biriga alohida rastr qatlami ochadi. Soya o'rindiqda
-    // qoladi (spec §3), qatorda yo'q — shuning uchun qoida `.seat` bilan
-    // boshlanadi va SATR BOSHIDA turgan `.medal.rare` qoidasi bo'lmasligi shart.
-    const efir = strip(EFIR())
-    expect(efir).toContain('.seat .medal.rare { filter: drop-shadow(0 0 5px var(--glow-rare)); }')
-    expect(efir).not.toMatch(/^\.medal\.rare\s*\{/m)
+  it('`--glow-rare` yo‘q — nodir medal soyasi ham, uning `filter` i ham ketdi', () => {
+    expect(CSS).not.toContain('--glow-rare')
+    expect(strip(EFIR())).not.toMatch(/\.medal\.rare|drop-shadow/)
   })
 })
 
@@ -75,63 +169,92 @@ describe('EFIR shrift shkalasi', () => {
   })
 })
 
-/** EFIR bo'limi — bannerdan TV BOARD bannerigacha. */
-const EFIR = () => CSS.slice(from('* EFIR —'), from('* TV BOARD — the sellers board'))
-/**
- * Izohlarsiz — bannerlar tokenlarni SO'Z bilan tilga oladi, qoida bilan emas.
- * Bo'lim BANNER ICHIDAN boshlanadi (marker banner ochilgandan KEYIN turadi),
- * shuning uchun avval o'sha yopilmagan izohning qolgani tashlanadi — aks holda
- * bannerning o'z matni qoida bo'lib o'qilardi.
- */
-const strip = (s: string) => s.replace(/^[\s\S]*?\*\//, '').replace(/\/\*[\s\S]*?\*\//g, '')
+/*
+  METALL — YOZILGAN ISTISNO RO'YXATI (spec §1, §3; token blokidagi izoh):
+  medal va uning ×N plastinkasi (`.medal`, `.medal__*`), rank tangasi
+  (`.halo`), metall bog'lovchisi (`[data-metal="…"]` → `--metal`, o'rindiq
+  keyline'i va yuvishi, komandalar 1–3 chizig'i shuni o'qiydi). Legenda toji
+  endi `#crest-6` belgisining ICHIDA. `.trow__rank` va `.record__k` — EFIR
+  Premium'da ro'yxatdan chiqadi; ularning qoidalari komandalar va rekord devori
+  qayta qurilganda o'chiriladi, shu vaqtgacha ro'yxatda turadi.
+*/
+const METAL_ALLOWED = /^(\.medal\b|\.medal__|\.halo\b|\[data-metal="(gold|silver|bronze)"\]|\.trow__rank\b|\.record__k\b)/
 
 describe('EFIR bo‘limi — rang shartnomasi', () => {
   it('bo‘lim bor va TV BOARD dan oldin turadi; asosiy selektorlar', () => {
     for (const sel of [
-      '[data-tier="0"]', '[data-tier="6"]', '.crest {', '.crest--row', '.crest--seat', '.crest--legend',
-      '.crest__crown', '.medal {', '.seat .medal.rare', '.medal-count', '.halo {', '.halo--lg', '.tv-legend {',
-      '.legend__rung',
+      '[data-tier="0"]', '[data-tier="6"]', '[data-metal="gold"]', '.crest,', '.crest { color: var(--tier); }',
+      '.medal__plate-rim', '.medal__plate-well', '.medal__count[data-dev="gilt"] use', '.halo-box {',
+      '.tv-legend {', '.legend__rung',
     ]) {
       expect(EFIR(), sel).toContain(sel)
     }
   })
 
-  it('literal rang yo‘q — faqat var(--…) va color-mix', () => {
+  it('eski selektorlar yo‘q: o‘lcham sinflari, CSS halqa, `.cut` gravyura, «+N», ×N guruhi', () => {
+    const code = strip(CSS)
+    for (const gone of [
+      '.crest--row', '.crest--seat', '.crest--legend', '.crest .on', '.crest .off', '.crest__crown', '.halo--lg',
+      '.halo[data-metal', '.medal .cut', '.medal__num', '.medal-group', '.medal-count', '.row__more', '--cut',
+    ]) {
+      expect(code, gone).not.toContain(gone)
+    }
+  })
+
+  it('literal rang yo‘q — faqat var(--…); `color-mix()` ham yo‘q (aralashmalar tokenlarda)', () => {
     const code = strip(EFIR())
+    expect(code).not.toContain('color-mix(')
     expect(code).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
     expect(code).not.toMatch(/\brgba?\(/)
     expect(code).not.toMatch(/\bhsla?\(/)
   })
 
-  it('`--tier-N` faqat `[data-tier="N"]` orqali o‘qiladi; 0-daraja — kontur', () => {
+  it('`--tier-N` faqat `[data-tier="N"]` orqali o‘qiladi; 0-daraja — shaffof; gerb `currentColor` = `--tier`', () => {
     const code = strip(EFIR())
-    for (let n = 1; n <= 6; n += 1) expect(code).toContain(`[data-tier="${n}"] { --tier: var(--tier-${n}); }`)
-    expect(code).toContain('[data-tier="0"] { --tier: var(--border-strong); }')
+    for (let n = 1; n <= 6; n += 1) {
+      expect(code).toContain(
+        `[data-tier="${n}"] { --tier: var(--tier-${n}); --tier-hi: var(--tier-${n}-hi); --tier-lo: var(--tier-${n}-lo); --tier-wash: var(--tier-${n}-wash); }`,
+      )
+    }
+    expect(code).toContain('[data-tier="0"] { --tier: transparent; --tier-hi: transparent; --tier-lo: transparent; --tier-wash: transparent; }')
     // Boshqa hech qayerda `--tier-N` o'qilmaydi — komponent faqat `--tier` ni biladi.
-    expect(code.match(/var\(--tier-\d\)/g) ?? []).toHaveLength(6)
+    expect(code.match(/var\(--tier-\d(-hi|-lo|-wash)?\)/g) ?? []).toHaveLength(24)
+    expect(code).toContain('.crest { color: var(--tier); }')
   })
 
   it('seriya rangi yo‘q — daraja ham, medal ham `--series-*` ni o‘qimaydi', () => {
     expect(strip(EFIR())).not.toContain('--series-')
   })
 
-  /*
-    PODIUM METALLARI — YOZILGAN ISTISNO RO'YXATI (spec §1, §3): Oy oilasi
-    maydoni va barcha medallarning asosiy oltini (`.medal`), rank halqasi
-    (`.halo`), Legenda toji (`.crest__crown`), komandalar ustunidagi metall
-    raqam (`.trow__rank`), rekord yorlig'i (`.record__k`). Boshqa hech qanday
-    selektor `--medal-*` ni o'qimaydi — tasma, gerb katakchasi, ism, raqam.
-  */
-  it('podium metallari faqat yozilgan istisnolarda', () => {
+  it('metall faqat yozilgan istisnolarda', () => {
     const code = strip(EFIR())
-    const allowed = /^(\.medal\b|\.halo\b|\.crest__crown\b|\.trow__rank\b|\.record__k\b)/
     const rules = code.match(/[^{}]+\{[^{}]*\}/g) ?? []
     expect(rules.length).toBeGreaterThan(10)
     for (const rule of rules) {
       if (!rule.includes('--medal-')) continue
       const selector = rule.slice(0, rule.indexOf('{')).trim()
-      expect(selector, rule.trim()).toMatch(allowed)
+      expect(selector, rule.trim()).toMatch(METAL_ALLOWED)
     }
+  })
+
+  it('×N plastinkasi: rim `--medal-key` chizig‘i, quduq `--efir-plate-well`, raqam belgi metallida', () => {
+    const code = strip(EFIR())
+    expect(code).toMatch(/\.medal__plate-rim \{[^}]*stroke: var\(--medal-key\);/)
+    expect(code).toMatch(/\.medal__plate-well \{[^}]*fill: var\(--efir-plate-well\);/)
+    expect(code).toContain('.medal__count use { stroke: var(--medal-gold-hi); }')
+    for (const dev of ['gilt', 'steel', 'silver', 'bronze']) {
+      expect(code).toContain(`.medal__count[data-dev="${dev}"] use { stroke: var(--medal-${dev}-hi); }`)
+    }
+  })
+
+  it('qator medallari o‘ngdan chapga, 28 px; legenda 36 px botiq tasma, `space-between`', () => {
+    const code = strip(EFIR())
+    expect(code).toMatch(/\.row__medals \{[^}]*flex-direction: row-reverse;[^}]*height: 28px;/)
+    expect(code).toMatch(
+      /\.tv-legend \{[^}]*justify-content: space-between;[^}]*min-height: 36px;[^}]*padding: 0 20px;[^}]*background: var\(--efir-sunken\);/,
+    )
+    expect(code).toMatch(/\.legend__rung b \{[^}]*font-size: 12px;[^}]*color: var\(--efir-ink-2\);/)
+    expect(code).toMatch(/\.legend__rung i \{[^}]*font-size: 12px;[^}]*color: var\(--efir-ink-3\);/)
   })
 
   it('kamaytirilgan harakatda hech narsa qimirlamaydi — blok bo‘limning oxirida', () => {
@@ -147,7 +270,7 @@ describe('EFIR bo‘limi — rang shartnomasi', () => {
 })
 
 describe('EFIR — o‘rindiq', () => {
-  it('uchta karta 2-1-3 tartibida, pastlari tekis; tasma va yo‘l `--tier` da; o‘rindiq medali ko‘tarilgan sirtga o‘yiladi', () => {
+  it('uchta karta 2-1-3 tartibida, pastlari tekis; tasma va yo‘l `--tier` da; daraja so‘zi sokin siyohda', () => {
     const code = strip(EFIR())
     expect(code).toMatch(/\.tv-podium \{[^}]*align-items: flex-end;/)
     expect(code).toContain('.seat--1 {\n  flex: 1.48 1 0;\n  max-width: 456px;')
@@ -156,12 +279,8 @@ describe('EFIR — o‘rindiq', () => {
     expect(code).toMatch(/\.seat::before \{[^}]*width: 10px;[^}]*background: var\(--tier\);/)
     expect(code).toMatch(/\.seat\[data-tier="0"\]::before \{[^}]*box-shadow: inset 1px 0 0 var\(--tier\);/)
     expect(code).toMatch(/\.seat__bar i \{[^}]*background: var\(--tier\);/)
-    // Daraja so'zi — `--tier` TARTIBI saqlanadi, lekin yorug' mavzuda o'qilsin
-    // deb siyoh aralashtiriladi (spec §13: Ustoz/Legenda oq sirtda oqish).
-    expect(code).toMatch(
-      /\.seat__level \{[^}]*color: color-mix\(in oklab, var\(--tier\) 70%, var\(--ink-primary\)\);/,
-    )
-    expect(code).toContain('.seat .medal { --cut: var(--surface-raised); }')
+    // EFIR Premium §4: daraja so'zi `--efir-ink-2` da — `--tier` aralashmasi ketdi.
+    expect(code).toMatch(/\.seat__level \{[^}]*color: var\(--efir-ink-2\);/)
     // Pedestal, bevel, xrom, sharpa, shtamp — hech biri yo'q.
     for (const gone of ['pedestal', 'lv-stamps', 'lv-ghost', 'lv-sheen', 'podium-shine']) expect(code).not.toContain(gone)
   })
@@ -209,7 +328,7 @@ describe('EFIR — qator, komandalar, e‘lon', () => {
 
   it('voqea harakati: gerb katakchasi 400 ms to‘ladi, yangi medal 0,6 → 1; yaltirash, marquee, pulsatsiya yo‘q', () => {
     const code = strip(EFIR())
-    expect(code).toMatch(/@keyframes crest-fill \{\s*from \{ fill: var\(--track\); \}\s*to \{ fill: var\(--tier\); \}\s*\}/)
+    expect(code).toMatch(/@keyframes crest-fill \{\s*from \{ fill: var\(--crest-off\); \}\s*to \{ fill: var\(--tier\); \}\s*\}/)
     expect(code).toMatch(/\.crest__cell--fill \{ animation: crest-fill 400ms var\(--ease-out\) both; \}/)
     expect(code).toMatch(/@keyframes medal-new \{\s*from \{ transform: scale\(0\.6\); opacity: 0; \}/)
     expect(code).not.toMatch(/shine|sheen|marquee|pulse|infinite/)
@@ -221,16 +340,15 @@ describe('EFIR — qator, komandalar, e‘lon', () => {
   tegishli — mintaqa EFIR bannerdan ORG CHART bannerigacha kengaytiriladi.
 */
 describe('EFIR — sahifa sarlavhasi va rekord devori', () => {
-  it('podium metallari EFIR + TV BOARD bo‘ylab faqat yozilgan istisnolarda; `.record__k` shulardan biri', () => {
+  it('metall EFIR + TV BOARD bo‘ylab faqat yozilgan istisnolarda', () => {
     const code = strip(CSS.slice(from('* EFIR —'), from('* ORG CHART')))
-    const allowed = /^(\.medal\b|\.halo\b|\.crest__crown\b|\.trow__rank\b|\.record__k\b)/
     const rules = code.match(/[^{}]+\{[^{}]*\}/g) ?? []
     let metalRules = 0
     for (const rule of rules) {
       if (!rule.includes('--medal-')) continue
       metalRules += 1
       const selector = rule.slice(0, rule.indexOf('{')).trim()
-      expect(selector, rule.trim()).toMatch(allowed)
+      expect(selector, rule.trim()).toMatch(METAL_ALLOWED)
     }
     expect(metalRules).toBeGreaterThanOrEqual(7)
     expect(code).not.toContain('--series-')

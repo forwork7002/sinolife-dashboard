@@ -454,6 +454,25 @@ describe('medal tartibi', () => {
     expect(MEDAL_ORDER).toHaveLength(MEDAL_CODES.length)
   })
 
+  it('MEDAL_ORDER — haqiqiy metall avval, keyin gilt, keyin po‘lat (EFIR Premium, mijoz qarori)', () => {
+    expect(MEDAL_ORDER).toEqual([
+      'year-champion',
+      'month-gold',
+      'month-silver',
+      'month-bronze',
+      'streak-fire',
+      'conversion-master',
+      'day-record',
+      'streak-steady',
+      'clean-month',
+      'jump',
+      'rookie',
+      'day-winner',
+      'work-month',
+      'first-sale',
+    ])
+  })
+
   it('MEDAL_ORDER bo‘yicha: oltin oy 🌱 dan oldin, 🌅 📅 dan oldin', () => {
     const rows = build(
       [

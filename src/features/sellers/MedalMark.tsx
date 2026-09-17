@@ -1,57 +1,92 @@
-import { MEDALS, MEDAL_SYMBOL, MONTH_NUMERAL, RARE_MEDALS, metalOfMedal } from '@/features/sellers/medalCatalog'
+import { MEDALS, MEDAL_METAL, isMonthMedal } from '@/features/sellers/medalCatalog'
 import type { MedalCode } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
 
+/** ×N plastinkasidagi eng katta son — ikki raqamdan ortig'i plastinkaga sig'maydi. */
+const COUNT_CAP = 99
+
 /**
- * Bitta medal — 24 birlik quti, faqat-fill, bitta metall (spec §3). Belgi
- * `medalDefs.ts` da, rang `.medal[data-metal]` da; Oy oilasi diskiga 1/2/3
- * raqami <text> bilan o'yiladi (`class="cut"` — sirt rangi).
+ * Bitta medal — «ZARB» (spec §3). 32 birlik quti, tanasi BITTA
+ * `<use href="#m-<code>">`: metall, planchet va belgi `medalDefs.ts` dagi
+ * belgining ichida, instance hech narsa bo'yamaydi.
  *
- * ×N — SVG TASHQARISIDA, HTML <b>: tabular raqam, mavzu tokenlari. Faqat
- * `count > 1` da va faqat chaqiruvchi `count` bersa — qator uni bermaydi
- * (spec §3: qatorda ×N yo'q).
+ * O'RINDIQDA (`seat`) ikki qo'shimcha, ikkalasi ham SVG ICHIDA:
+ * - Oy oilasi ≥ 40 px da dafna (`#m-laurel-<metal>`) tanadan OLDIN chiziladi;
+ * - `count > 1` da ×N plastinkasi — tana metallining rim gradienti, botiq
+ *   quduq va yo'l-raqamlar (`#nx`, `#n0..n9`; shrift yo'q), 99 da qisiladi.
+ * Qatorda (`seat` yo'q) ikkalasi ham YO'Q — qator hech qachon sanoq bermaydi.
  *
- * NOMI BIR MARTA. `role="img"` + `aria-label` nomni (va ×N ni) o'zi aytadi.
+ * NOMI BIR MARTA. `role="img"` + `aria-label` nomni va ×N ni o'zi aytadi.
  */
 export function MedalMark({
   code,
+  size = 28,
   count = 1,
-  size = 24,
+  seat = false,
   isNew = false,
 }: {
   code: MedalCode
-  count?: number
   size?: number
+  count?: number
+  /** O'rindiq tokchasi: dafna (oy, ≥ 40 px) va ×N plastinkasi faqat shu yerda. */
+  seat?: boolean
   /** Oxirgi yangilanishda paydo bo'lgan — bir marta 0,6 → 1 kattalashadi. */
   isNew?: boolean
 }) {
-  const name = MEDALS[code].name
-  const numeral = MONTH_NUMERAL[code]
-  const label = count > 1 ? `${name} ×${formatNumber(count)}` : name
-  const svg = (
+  const { body, dev } = MEDAL_METAL[code]
+  const label = count > 1 ? `${MEDALS[code].name} ×${formatNumber(count)}` : MEDALS[code].name
+  return (
     <svg
-      className={`medal${RARE_MEDALS.has(code) ? ' rare' : ''}${isNew ? ' medal--new' : ''}`}
+      className={isNew ? 'medal medal--new' : 'medal'}
       data-medal={code}
-      data-metal={metalOfMedal(code)}
+      viewBox="0 0 32 32"
       width={size}
       height={size}
-      viewBox="0 0 24 24"
       role="img"
       aria-label={label}
     >
-      <use href={`#${MEDAL_SYMBOL[code]}`} />
-      {numeral !== undefined && (
-        <text className="cut medal__num" x="12" y="18.6" textAnchor="middle">
-          {numeral}
-        </text>
-      )}
+      {seat && size >= 40 && isMonthMedal(code) && <use href={`#m-laurel-${body}`} />}
+      <use href={`#m-${code}`} />
+      {seat && count > 1 && <CountPlate count={count} body={body} dev={dev} />}
     </svg>
   )
-  if (count <= 1) return svg
+}
+
+/** Mirrors `gen_final.py` `medal()` — plastinka geometriyasi aynan mockdagidek. */
+function CountPlate({ count, body, dev }: { count: number; body: string; dev: string }) {
+  const digits = String(Math.min(count, COUNT_CAP)).split('')
+  const w = digits.length === 1 ? 15 : 19.8
+  const x0 = 31.8 - w
+  const glyphs = ['x', ...digits]
+  const step = 4.9
+  const scale = 0.54
+  let gx = x0 + (w - glyphs.length * step) / 2 + step / 2
+  const uses = glyphs.map((g, i) => {
+    const x = gx
+    gx += step
+    return (
+      <use
+        key={i}
+        href={`#n${g}`}
+        transform={`translate(${x.toFixed(2)} 26.7) scale(${(g === 'x' ? scale * 0.78 : scale).toFixed(3)})`}
+      />
+    )
+  })
   return (
-    <span className="medal-group">
-      {svg}
-      <b className="medal-count">×{formatNumber(count)}</b>
-    </span>
+    <>
+      <rect
+        className="medal__plate-rim"
+        x={x0.toFixed(2)}
+        y="21.2"
+        width={w}
+        height="10.6"
+        rx="2.6"
+        fill={`url(#mg-${body}-rim)`}
+      />
+      <rect className="medal__plate-well" x={(x0 + 1.1).toFixed(2)} y="22.3" width={(w - 2.2).toFixed(2)} height="8.4" rx="1.7" />
+      <g className="medal__count" data-dev={dev}>
+        {uses}
+      </g>
+    </>
   )
 }

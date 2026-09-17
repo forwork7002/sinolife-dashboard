@@ -13,13 +13,12 @@ import {
   HIDDEN_IN_ROWS,
   LADDER,
   MEDALS,
+  MEDAL_METAL,
   MEDAL_ORDER,
-  MEDAL_SYMBOL,
-  MONTH_NUMERAL,
   RARE_MEDALS,
-  metalOfMedal,
   nextLevelSentence,
   progressOf,
+  seatMedals,
   sortMedals,
   thresholdSomOf,
 } from '@/features/sellers/medalCatalog'
@@ -27,10 +26,10 @@ import type { SellerMedalDto, SellerMedalRowDto } from '@/lib/api'
 import { NARROW_NBSP } from '@/lib/format'
 
 /**
- * EFIR belgilari (spec §2, §3): gerb — olti chevron, daraja `--tier` orqali;
- * medal — bitta metall, gravyura; halqa — rank raqami metallda; legenda —
- * olti pog'ona to'liq so'mda. Bu yerda faqat komponentlar; taxtaga ulanish
- * `sellersTvBoard.test.tsx` da.
+ * EFIR Premium «ZARB» belgilari (spec §3): gerb — bitta `#crest-N`, daraja
+ * `--tier` orqali; medal — metall belgining ichida, o'rindiqda dafna va ×N
+ * plastinkasi; tanga — zarb qilingan rank; legenda — olti pog'ona. Bu yerda
+ * faqat komponentlar; taxtaga ulanish `sellersTvBoard.test.tsx` da.
  */
 const S = NARROW_NBSP
 
@@ -97,138 +96,165 @@ const SEAT = {
 }
 
 describe('MedalDefs — sahifaga bir marta o‘rnatiladigan belgilar to‘plami', () => {
-  it('#ch chevroni va 12 ta #m-* belgisi — 14 kod uchun (Oy oilasi bitta diskni bo‘lishadi)', () => {
+  it('bitta yashirin <svg>: 14 ta `m-<code>`, dafnalar, gerb 0…6, tangalar va #ch', () => {
     const { container } = render(<MedalDefs />)
     const svg = container.querySelector('svg')!
     expect(svg.getAttribute('aria-hidden')).toBe('true')
-    expect(container.querySelector('path#ch')).not.toBeNull()
+    expect((svg as unknown as HTMLElement).style.position).toBe('absolute')
     expect(container.querySelector('path#ch')!.getAttribute('d')).toBe('M0 0H7L12 10L7 20H0L5 10Z')
-    const ids = new Set(Object.values(MEDAL_SYMBOL))
-    expect(ids.size).toBe(12)
-    for (const id of ids) expect(container.querySelector(`symbol#${id}`), id).not.toBeNull()
-    expect(container.querySelectorAll('symbol')).toHaveLength(12)
-    // Eski lavha va lentali medal belgilari yo'q.
+    for (const code of MEDAL_ORDER) expect(container.querySelector(`symbol#m-${code}`), code).not.toBeNull()
+    for (const m of ['gold', 'silver', 'bronze']) expect(container.querySelector(`symbol#m-laurel-${m}`)).not.toBeNull()
+    for (let n = 0; n <= 6; n += 1) expect(container.querySelector(`symbol#crest-${n}`)).not.toBeNull()
+    for (const id of ['halo-1', 'halo-sm-3', 'halo-laurel', 'halo-ghost', 'crest-plate', 'crest-plate-6']) {
+      expect(container.querySelector(`symbol#${id}`), id).not.toBeNull()
+    }
+    // Eski umumiy oy diski va lavha belgilari yo'q.
+    expect(container.querySelector('#m-month')).toBeNull()
     expect(container.querySelector('#khatam')).toBeNull()
-    expect(container.querySelector('#medal-month-gold')).toBeNull()
   })
 })
 
 describe('Crest — gerb', () => {
-  it('yoniq katakchalar soni = daraja; qolganlari o‘chiq; data-tier va aria', () => {
-    const { container } = render(<Crest level={4} size="row" />)
-    const svg = container.querySelector('svg.crest.crest--row')!
+  it('bitta <use href="#crest-N">, data-tier va aria; viewBox 72×26; balandlik 20 standart', () => {
+    const { container } = render(<Crest level={4} />)
+    const svg = container.querySelector('svg.crest')!
     expect(svg.getAttribute('data-tier')).toBe('4')
-    expect(svg.getAttribute('viewBox')).toBe('0 -1 66 22')
-    expect(svg.querySelectorAll('use[href="#ch"]')).toHaveLength(6)
-    expect(svg.querySelectorAll('use.on')).toHaveLength(4)
-    expect(svg.querySelectorAll('use.off')).toHaveLength(2)
+    expect(svg.getAttribute('viewBox')).toBe('-3 -3 72 26')
+    expect(svg.getAttribute('height')).toBe('20')
+    expect(svg.getAttribute('width')).toBe('55.38')
+    expect([...svg.querySelectorAll('use')].map((u) => u.getAttribute('href'))).toEqual(['#crest-4'])
     expect(svg.getAttribute('aria-label')).toBe('4-daraja · Usta')
-    expect(svg.querySelector('.crest__crown')).toBeNull()
   })
 
-  it('katakchalar x = 0/11/22/33/44/55', () => {
-    const { container } = render(<Crest level={2} size="row" />)
-    expect([...container.querySelectorAll('use')].map((u) => u.getAttribute('x'))).toEqual([
-      '0', '11', '22', '33', '44', '55',
-    ])
-  })
-
-  it('o‘lchamlar: qator 60×20, o‘rindiq 78×26, legenda 42×14', () => {
+  it('balandlik: legenda 15 → 41.54, o‘rindiq 18 → 49.85; Legenda 88/26 quti', () => {
     const { container } = render(
       <>
-        <Crest level={1} size="row" />
-        <Crest level={1} size="seat" />
-        <Crest level={1} size="legend" />
+        <Crest level={1} height={15} />
+        <Crest level={2} height={18} />
+        <Crest level={6} legendaTier={1} height={15} />
       </>,
     )
-    const [row, seat, legend] = container.querySelectorAll('svg.crest')
-    expect([row!.getAttribute('width'), row!.getAttribute('height')]).toEqual(['60', '20'])
-    expect([seat!.getAttribute('width'), seat!.getAttribute('height')]).toEqual(['78', '26'])
-    expect([legend!.getAttribute('width'), legend!.getAttribute('height')]).toEqual(['42', '14'])
-    expect(seat!.classList.contains('crest--seat')).toBe(true)
+    const [legend, seat, top] = container.querySelectorAll('svg.crest')
+    expect([legend!.getAttribute('width'), legend!.getAttribute('height')]).toEqual(['41.54', '15'])
+    expect([seat!.getAttribute('width'), seat!.getAttribute('height')]).toEqual(['49.85', '18'])
+    expect(top!.getAttribute('viewBox')).toBe('-3 -3 88 26')
+    expect([top!.getAttribute('width'), top!.getAttribute('height')]).toEqual(['50.77', '15'])
   })
 
-  it('Legenda: oltita yoniq va oltinchi katakcha ustida toj; Legenda II aria', () => {
-    const { container } = render(<Crest level={6} legendaTier={2} size="seat" />)
-    const svg = container.querySelector('svg.crest')!
-    expect(svg.querySelectorAll('use.on')).toHaveLength(6)
-    expect(svg.querySelector('path.crest__crown')).not.toBeNull()
-    expect(svg.getAttribute('aria-label')).toBe('6-daraja · Legenda II')
+  it('plated — plastinka gerbdan OLDIN; 6-darajada keng plastinka; Legenda II aria', () => {
+    const { container } = render(
+      <>
+        <Crest level={3} height={18} plated />
+        <Crest level={6} legendaTier={2} height={20} plated />
+      </>,
+    )
+    const [three, six] = container.querySelectorAll('svg.crest')
+    expect([...three!.querySelectorAll('use')].map((u) => u.getAttribute('href'))).toEqual(['#crest-plate', '#crest-3'])
+    expect([...six!.querySelectorAll('use')].map((u) => u.getAttribute('href'))).toEqual(['#crest-plate-6', '#crest-6'])
+    expect(six!.getAttribute('aria-label')).toBe('6-daraja · Legenda II')
   })
 
-  it('0-daraja: hammasi o‘chiq, data-tier="0", «Hali darajasiz»', () => {
-    const { container } = render(<Crest level={0} size="row" />)
-    const svg = container.querySelector('svg.crest')!
-    expect(svg.getAttribute('data-tier')).toBe('0')
-    expect(svg.querySelectorAll('use.on')).toHaveLength(0)
-    expect(svg.querySelectorAll('use.off')).toHaveLength(6)
-    expect(svg.getAttribute('aria-label')).toBe('Hali darajasiz')
+  it('0-daraja: #crest-0, data-tier="0", «Hali darajasiz»; 6 dan katta — 6', () => {
+    const { container } = render(
+      <>
+        <Crest level={0} />
+        <Crest level={9} />
+      </>,
+    )
+    const [zero, over] = container.querySelectorAll('svg.crest')
+    expect(zero!.getAttribute('data-tier')).toBe('0')
+    expect(zero!.querySelector('use')!.getAttribute('href')).toBe('#crest-0')
+    expect(zero!.getAttribute('aria-label')).toBe('Hali darajasiz')
+    expect(over!.getAttribute('data-tier')).toBe('6')
   })
 
-  it('animate — faqat ENG YANGI katakcha to‘lish sinfini oladi', () => {
-    const { container } = render(<Crest level={4} size="seat" animate />)
+  it('animate — eng yangi katakcha ustida bitta #ch qoplamasi; 0-darajada yo‘q', () => {
+    const { container, rerender } = render(<Crest level={4} height={18} animate />)
     const fills = container.querySelectorAll('use.crest__cell--fill')
     expect(fills).toHaveLength(1)
+    expect(fills[0]!.getAttribute('href')).toBe('#ch')
     expect(fills[0]!.getAttribute('x')).toBe('33')
-    expect(fills[0]!.classList.contains('on')).toBe(true)
+    expect((fills[0] as unknown as HTMLElement).style.fill).toBe('currentcolor')
+    rerender(<Crest level={0} animate />)
+    expect(container.querySelector('use.crest__cell--fill')).toBeNull()
   })
 })
 
 describe('MedalMark — bitta medal', () => {
-  it('kod data-medal da, belgi href da, metall data-metal da; nomi bir marta', () => {
+  it('32 birlik quti, bitta <use href="#m-<code>">, 28 px standart; nomi bir marta', () => {
     const { container } = render(<MedalMark code="streak-fire" />)
     const svg = container.querySelector('svg.medal')!
     expect(svg.getAttribute('data-medal')).toBe('streak-fire')
-    expect(svg.getAttribute('data-metal')).toBe('gold')
-    expect(svg.getAttribute('viewBox')).toBe('0 0 24 24')
-    expect(svg.getAttribute('width')).toBe('24')
-    expect(svg.querySelector('use')!.getAttribute('href')).toBe('#m-fire')
+    expect(svg.getAttribute('viewBox')).toBe('0 0 32 32')
+    expect(svg.getAttribute('width')).toBe('28')
+    expect([...svg.querySelectorAll('use')].map((u) => u.getAttribute('href'))).toEqual(['#m-streak-fire'])
     expect(svg.getAttribute('role')).toBe('img')
     expect(svg.getAttribute('aria-label')).toBe('Olov seriyasi')
     expect(svg.querySelector('text')).toBeNull()
-    expect(container.querySelector('.medal-count')).toBeNull()
+    expect(svg.classList.contains('rare')).toBe(false)
   })
 
-  it('Oy oilasi: bitta disk, o‘yma 1/2/3 raqami, o‘z metalli', () => {
+  it('oy oilasi: o‘rindiqda ≥ 40 px dafna o‘z metallida, tanadan OLDIN; qatorda va 32 px da yo‘q', () => {
     const { container } = render(
       <>
-        <MedalMark code="month-gold" />
-        <MedalMark code="month-silver" />
-        <MedalMark code="month-bronze" />
+        <MedalMark code="month-silver" size={40} seat />
+        <MedalMark code="month-bronze" size={48} seat />
+        <MedalMark code="month-gold" size={32} seat />
+        <MedalMark code="month-gold" size={48} />
+        <MedalMark code="day-record" size={48} seat />
       </>,
     )
-    const [g, s, b] = container.querySelectorAll('svg.medal')
-    for (const m of [g, s, b]) expect(m!.querySelector('use')!.getAttribute('href')).toBe('#m-month')
-    expect(g!.querySelector('text.medal__num')!.textContent).toBe('1')
-    expect(s!.querySelector('text.medal__num')!.textContent).toBe('2')
-    expect(b!.querySelector('text.medal__num')!.textContent).toBe('3')
-    expect(g!.querySelector('text')!.getAttribute('text-anchor')).toBe('middle')
-    expect([g, s, b].map((m) => m!.getAttribute('data-metal'))).toEqual(['gold', 'silver', 'bronze'])
-    expect(g!.getAttribute('aria-label')).toBe('Oy chempioni')
+    const hrefs = [...container.querySelectorAll('svg.medal')].map((m) =>
+      [...m.querySelectorAll('use')].map((u) => u.getAttribute('href')),
+    )
+    expect(hrefs).toEqual([
+      ['#m-laurel-silver', '#m-month-silver'],
+      ['#m-laurel-bronze', '#m-month-bronze'],
+      ['#m-month-gold'],
+      ['#m-month-gold'],
+      ['#m-day-record'],
+    ])
   })
 
-  it('×N faqat count > 1 da, svg TASHQARISIDA; aria nomga ×N qo‘shadi', () => {
-    const { container, rerender } = render(<MedalMark code="day-winner" count={4} />)
-    const group = container.querySelector('.medal-group')!
-    expect(group.querySelector('svg.medal')).not.toBeNull()
-    expect(group.querySelector('b.medal-count')!.textContent).toBe('×4')
-    expect(group.querySelector('svg .medal-count')).toBeNull()
-    expect(group.querySelector('svg')!.getAttribute('aria-label')).toBe('Kun gʻolibi ×4')
-    rerender(<MedalMark code="day-winner" count={1} />)
+  it('×N plastinkasi — faqat o‘rindiqda va count > 1 da, SVG ICHIDA; aria nomga ×N qo‘shadi', () => {
+    const { container } = render(<MedalMark code="day-winner" size={48} count={4} seat />)
+    const svg = container.querySelector('svg.medal')!
+    expect(svg.getAttribute('aria-label')).toBe('Kun gʻolibi ×4')
+    const rim = svg.querySelector('rect.medal__plate-rim')!
+    expect([rim.getAttribute('x'), rim.getAttribute('y'), rim.getAttribute('width'), rim.getAttribute('height')]).toEqual([
+      '16.80', '21.2', '15', '10.6',
+    ])
+    // Po'lat tana — rim gradienti tana metallida; raqam belgi metallida (gilt).
+    expect(rim.getAttribute('fill')).toBe('url(#mg-steel-rim)')
+    expect(svg.querySelector('rect.medal__plate-well')!.getAttribute('x')).toBe('17.90')
+    const count = svg.querySelector('g.medal__count')!
+    expect(count.getAttribute('data-dev')).toBe('gilt')
+    expect([...count.querySelectorAll('use')].map((u) => [u.getAttribute('href'), u.getAttribute('transform')])).toEqual([
+      ['#nx', 'translate(21.85 26.7) scale(0.421)'],
+      ['#n4', 'translate(26.75 26.7) scale(0.540)'],
+    ])
+    // Tashqarida HTML sanoq yo'q.
+    expect(container.querySelector('.medal-count')).toBeNull()
     expect(container.querySelector('.medal-group')).toBeNull()
-    expect(container.querySelector('.medal-count')).toBeNull()
   })
 
-  it('nodir yettilik `rare` sinfini oladi, qolganlari olmaydi', () => {
+  it('ikki raqam — keng plastinka; 99 da qisiladi; qatorda (seat yo‘q) plastinka yo‘q, aria baribir ×N', () => {
     const { container } = render(
       <>
-        <MedalMark code="day-record" />
-        <MedalMark code="work-month" />
+        <MedalMark code="month-gold" size={48} count={12} seat />
+        <MedalMark code="rookie" size={40} count={140} seat />
+        <MedalMark code="jump" count={3} />
+        <MedalMark code="jump" size={48} count={1} seat />
       </>,
     )
-    const [rare, plain] = container.querySelectorAll('svg.medal')
-    expect(rare!.classList.contains('rare')).toBe(true)
-    expect(plain!.classList.contains('rare')).toBe(false)
+    const [twelve, many, row, one] = container.querySelectorAll('svg.medal')
+    expect(twelve!.querySelector('rect.medal__plate-rim')!.getAttribute('width')).toBe('19.8')
+    expect(twelve!.querySelector('rect.medal__plate-rim')!.getAttribute('fill')).toBe('url(#mg-gold-rim)')
+    expect(twelve!.querySelector('g.medal__count')!.getAttribute('data-dev')).toBe('gold')
+    expect([...many!.querySelectorAll('g.medal__count use')].map((u) => u.getAttribute('href'))).toEqual(['#nx', '#n9', '#n9'])
+    expect(row!.querySelector('rect')).toBeNull()
+    expect(row!.getAttribute('aria-label')).toBe('Sakrash ×3')
+    expect(one!.querySelector('rect')).toBeNull()
   })
 
   it('yangi medal sinfi va o‘lcham', () => {
@@ -239,22 +265,38 @@ describe('MedalMark — bitta medal', () => {
   })
 })
 
-describe('Halo — rank halqasi', () => {
-  it('raqam, o‘lcham sinfi va metall: 1 oltin, 2 kumush, 3 bronza, qolgani none', () => {
+describe('Halo — rank tangasi', () => {
+  it('1–3: quti + 64 birlik tanga SVG, `#halo-N`; P1 dafna bilan; kichik — `#halo-sm-N`', () => {
     const { container } = render(
       <>
-        <Halo rank={1} size="lg" />
-        <Halo rank={2} size="md" />
-        <Halo rank={3} size="md" />
-        <Halo rank={7} size="md" />
+        <Halo rank={1} size={66} wreath />
+        <Halo rank={2} size={56} />
+        <Halo rank={3} size={30} small />
       </>,
     )
-    const halos = [...container.querySelectorAll('.halo')]
-    expect(halos.map((h) => h.textContent)).toEqual(['1', '2', '3', '7'])
-    expect(halos.map((h) => h.getAttribute('data-metal'))).toEqual(['gold', 'silver', 'bronze', 'none'])
-    expect(halos[0]!.classList.contains('halo--lg')).toBe(true)
-    expect(halos[1]!.classList.contains('halo--md')).toBe(true)
-    expect(metalOfRank(2)).toBe('silver')
+    const boxes = [...container.querySelectorAll('span.halo-box')] as HTMLElement[]
+    expect(boxes.map((b) => [b.style.width, b.style.height])).toEqual([
+      ['66px', '66px'], ['56px', '56px'], ['30px', '30px'],
+    ])
+    const svgs = boxes.map((b) => b.querySelector('svg.halo')!)
+    for (const svg of svgs) {
+      expect(svg.getAttribute('viewBox')).toBe('0 0 64 64')
+      expect(svg.getAttribute('aria-hidden')).toBe('true')
+    }
+    expect(svgs[0]!.getAttribute('width')).toBe('66')
+    expect([...svgs[0]!.querySelectorAll('use')].map((u) => u.getAttribute('href'))).toEqual(['#halo-laurel', '#halo-1'])
+    const laurel = svgs[0]!.querySelector('use')!
+    expect(['x', 'y', 'width', 'height'].map((a) => laurel.getAttribute(a))).toEqual(['-10', '-10', '84', '84'])
+    expect([...svgs[1]!.querySelectorAll('use')].map((u) => u.getAttribute('href'))).toEqual(['#halo-2'])
+    expect([...svgs[2]!.querySelectorAll('use')].map((u) => u.getAttribute('href'))).toEqual(['#halo-sm-3'])
+    // Raqam matn emas — yo'l-raqam belgining ichida.
+    expect(container.textContent).toBe('')
+  })
+
+  it('3 dan katta rank — hech narsa chizilmaydi; metalOfRank', () => {
+    const { container } = render(<Halo rank={7} size={56} />)
+    expect(container.innerHTML).toBe('')
+    expect([1, 2, 3, 4].map(metalOfRank)).toEqual(['gold', 'silver', 'bronze', 'none'])
   })
 })
 
@@ -262,17 +304,16 @@ describe('Halo — rank halqasi', () => {
   LEGENDA BIR QATOR BO‘LISHI KERAK, VA U YAGONA JOY BO‘LIB QOLADI
   QAYERDA OSTONA QISQA YOZILADI.
 
-  Spec §1 butun sahifada to‘liq so‘mni talab qiladi, §2 esa kalitning o‘zi
-  uchun istisno qiladi: 1920 da ustun ichi 1053 px, to‘liq so‘mli kalit esa
-  ~1154 px — ya'ni ikkinchi qator, ya'ni narvon cho‘qqisi ko‘zdan pastda.
-  Shuning uchun bu yerda `thresholdLabel` («10 mln» … «1 mlrd») chiziladi,
-  Yangi pog‘onasida esa hech narsa (uning ostonasi — «birinchi so‘m»), va
-  sarlavha yo‘q. Test IKKALA tomonni ham ushlaydi: yorliqlar katalogdan
-  keladi, va kalitda TO‘LIQ SO‘M RAQAMI umuman uchramaydi — aks holda
-  birov qisqartirishni «tuzatib», qatorni yana o‘rab qo‘yadi.
+  Spec §1 butun sahifada to‘liq so‘mni talab qiladi, legenda esa kalitning
+  o‘zi uchun istisno: to‘liq so‘mli kalit ustun enidan oshadi — ya'ni ikkinchi
+  qator, ya'ni narvon cho‘qqisi ko‘zdan pastda. Shuning uchun bu yerda
+  `thresholdLabel` («10 mln» … «1 mlrd») chiziladi, Yangi pog‘onasida esa hech
+  narsa (uning ostonasi — «birinchi so‘m»), va sarlavha yo‘q. Test IKKALA
+  tomonni ham ushlaydi: yorliqlar katalogdan keladi, va kalitda TO‘LIQ SO‘M
+  RAQAMI umuman uchramaydi.
 */
-describe('TierLegend — 28 px kalit qatori', () => {
-  it('olti pog‘ona, so‘z va qisqa ostona; Yangi yorliqsiz; sarlavhasiz; Legendada toj', () => {
+describe('TierLegend — 36 px kalit tasmasi', () => {
+  it('olti pog‘ona, 15 px gerb, so‘z va qisqa ostona; Yangi yorliqsiz; sarlavhasiz', () => {
     const { container } = render(<TierLegend />)
     const rungs = container.querySelectorAll('.legend__rung')
     expect(rungs).toHaveLength(6)
@@ -285,9 +326,13 @@ describe('TierLegend — 28 px kalit qatori', () => {
       expect(rungs[i]!.querySelector('i')!.textContent).toBe(LADDER[i]!.thresholdLabel)
     }
     expect(rungs[5]!.querySelector('i')!.textContent).toBe('1 mlrd')
-    expect(rungs[5]!.querySelector('svg.crest--legend')!.getAttribute('data-tier')).toBe('6')
-    expect(rungs[5]!.querySelector('.crest__crown')).not.toBeNull()
-    expect(rungs[3]!.querySelectorAll('use.on')).toHaveLength(4)
+    for (const [i, rung] of [...rungs].entries()) {
+      const crest = rung.querySelector('svg.crest')!
+      expect(crest.getAttribute('height')).toBe('15')
+      expect(crest.getAttribute('data-tier')).toBe(String(i + 1))
+      expect(crest.querySelector('use')!.getAttribute('href')).toBe(`#crest-${i + 1}`)
+      expect(crest.querySelector('use[href^="#crest-plate"]')).toBeNull()
+    }
     expect(container.querySelector('.tv-legend')!.getAttribute('role')).toBe('list')
     // Sarlavha yo‘q — na element, na so‘z.
     expect(container.querySelector('.tv-legend__title')).toBeNull()
@@ -298,24 +343,25 @@ describe('TierLegend — 28 px kalit qatori', () => {
 })
 
 describe('katalog', () => {
-  it('14 kod, tartib motor bilan bir xil; belgi va nom hammasida', () => {
-    expect(MEDAL_ORDER).toHaveLength(14)
-    for (const code of MEDAL_ORDER) {
-      expect(MEDALS[code].name).toBeTruthy()
-      expect(MEDAL_SYMBOL[code]).toMatch(/^m-[a-z]+$/)
-    }
+  it('14 kod, tartib motor bilan bir xil: haqiqiy metall avval, keyin gilt, keyin po‘lat', () => {
+    expect(MEDAL_ORDER).toEqual([
+      'year-champion', 'month-gold', 'month-silver', 'month-bronze', 'streak-fire', 'conversion-master',
+      'day-record', 'streak-steady', 'clean-month', 'jump', 'rookie', 'day-winner', 'work-month', 'first-sale',
+    ])
+    for (const code of MEDAL_ORDER) expect(MEDALS[code].name).toBeTruthy()
   })
 
-  it('nodir yettilik, qatorda yashirin first-sale, Oy raqamlari, metall', () => {
-    expect([...RARE_MEDALS].sort()).toEqual([
-      'conversion-master', 'day-record', 'month-bronze', 'month-gold', 'month-silver', 'streak-fire', 'year-champion',
-    ])
+  it('MEDAL_METAL: oltin beshlik, kumush/bronza oy, gilt beshlik, po‘lat ikkilik; tana hech qachon gilt emas', () => {
+    const by = (body: string, dev: string) =>
+      MEDAL_ORDER.filter((c) => MEDAL_METAL[c].body === body && MEDAL_METAL[c].dev === dev).sort()
+    expect(by('gold', 'gold')).toEqual(['conversion-master', 'day-record', 'month-gold', 'streak-fire', 'year-champion'])
+    expect(by('silver', 'silver')).toEqual(['month-silver'])
+    expect(by('bronze', 'bronze')).toEqual(['month-bronze'])
+    expect(by('steel', 'gilt')).toEqual(['clean-month', 'day-winner', 'jump', 'rookie', 'streak-steady'])
+    expect(by('steel', 'steel')).toEqual(['first-sale', 'work-month'])
+    // Tartib = metall: nodir yettilik birinchi yettita.
+    expect([...RARE_MEDALS].sort()).toEqual([...MEDAL_ORDER.slice(0, 7)].sort())
     expect(HIDDEN_IN_ROWS).toEqual(['first-sale'])
-    expect(MONTH_NUMERAL).toEqual({ 'month-gold': '1', 'month-silver': '2', 'month-bronze': '3' })
-    expect(metalOfMedal('month-silver')).toBe('silver')
-    expect(metalOfMedal('month-bronze')).toBe('bronze')
-    expect(metalOfMedal('year-champion')).toBe('gold')
-    expect(metalOfMedal('first-sale')).toBe('gold')
   })
 
   it('narvon ostonalari so‘mda; Legenda bosqichi milliardlab', () => {
@@ -332,11 +378,29 @@ describe('katalog', () => {
     const m = (code: SellerMedalDto['code']): SellerMedalDto => ({
       code, count: 1, at: null, amount: null, orders: null, percent: null,
     })
-    const input = [m('first-sale'), m('day-winner'), m('month-gold'), m('clean-month')]
-    const sorted = sortMedals(input, HIDDEN_IN_ROWS)
-    expect(sorted.map((x) => x.code)).toEqual(['month-gold', 'clean-month', 'day-winner'])
-    expect(sortMedals(input).map((x) => x.code)).toEqual(['month-gold', 'clean-month', 'day-winner', 'first-sale'])
+    const input = [m('first-sale'), m('day-winner'), m('streak-fire'), m('month-silver'), m('clean-month')]
+    expect(sortMedals(input, HIDDEN_IN_ROWS).map((x) => x.code)).toEqual([
+      'month-silver', 'streak-fire', 'clean-month', 'day-winner',
+    ])
+    expect(sortMedals(input).map((x) => x.code)).toEqual([
+      'month-silver', 'streak-fire', 'clean-month', 'day-winner', 'first-sale',
+    ])
     expect(input[0]!.code).toBe('first-sale')
+  })
+
+  it('seatMedals — nodir yoki gilt bor bo‘lsa first-sale va work-month tushadi; cap bo‘yicha kesiladi', () => {
+    const m = (code: SellerMedalDto['code']): SellerMedalDto => ({
+      code, count: 1, at: null, amount: null, orders: null, percent: null,
+    })
+    const commons = [m('work-month'), m('first-sale')]
+    expect(seatMedals(commons, 4).map((x) => x.code)).toEqual(['work-month', 'first-sale'])
+    expect(seatMedals([...commons, m('rookie')], 4).map((x) => x.code)).toEqual(['rookie'])
+    expect(seatMedals([...commons, m('day-record')], 4).map((x) => x.code)).toEqual(['day-record'])
+    const many = [m('first-sale'), m('jump'), m('day-winner'), m('month-gold'), m('clean-month'), m('streak-fire')]
+    expect(seatMedals(many, 3).map((x) => x.code)).toEqual(['month-gold', 'streak-fire', 'clean-month'])
+    expect(seatMedals(many, 4).map((x) => x.code)).toEqual(['month-gold', 'streak-fire', 'clean-month', 'jump'])
+    expect(seatMedals([], 4)).toEqual([])
+    expect(many[0]!.code).toBe('first-sale')
   })
 })
 
@@ -393,13 +457,16 @@ describe('SeatCard — o‘rindiq (spec §4)', () => {
     expect(seat.getAttribute('data-tier')).toBe('4')
     expect(seat.getAttribute('data-seat-name')).toBe('Shahtiyarovna 197 Marjona')
     expect(seat.getAttribute('aria-label')).toBe('1-oʻrin')
-    expect(seat.querySelector('.halo.halo--lg')!.textContent).toBe('1')
+    expect([...seat.querySelectorAll('svg.halo use')].map((u) => u.getAttribute('href'))).toEqual(['#halo-laurel', '#halo-1'])
     expect([...seat.querySelectorAll('.seat__name span')].map((s) => s.textContent)).toEqual([
       'Shahtiyarovna',
       '197 Marjona',
     ])
     expect(seat.querySelector('.seat__team')!.textContent).toBe('Marjona')
-    expect(seat.querySelector('svg.crest--seat')!.getAttribute('data-tier')).toBe('4')
+    const crest = seat.querySelector('svg.crest')!
+    expect(crest.getAttribute('data-tier')).toBe('4')
+    expect(crest.getAttribute('height')).toBe('20')
+    expect([...crest.querySelectorAll('use')].map((u) => u.getAttribute('href'))).toEqual(['#crest-plate', '#crest-4'])
     expect(seat.querySelectorAll('.seat__level')).toHaveLength(1)
     expect(seat.querySelector('.seat__level')!.textContent).toBe('Usta')
     expect(seat.querySelector('.seat__figure')!.textContent).toContain(`79${S}600${S}000`)
@@ -407,22 +474,32 @@ describe('SeatCard — o‘rindiq (spec §4)', () => {
     expect(seat.querySelector('.seat__other')!.textContent).toBe(`FAKT 1 103${S}200${S}000`)
     expect((seat.querySelector('.seat__bar i') as HTMLElement).style.width).toBe('36.5%')
     expect(seat.querySelector('.seat__next')!.textContent).toBe(`Ustozga 127${S}000${S}000 qoldi`)
-    // MEDAL_ORDER bo'yicha: day-record, day-winner ×4, first-sale — O'RINDIQDA first-sale BOR.
-    expect([...seat.querySelectorAll('.seat__medals svg.medal')].map((m) => m.getAttribute('data-medal'))).toEqual([
-      'day-record',
-      'day-winner',
-      'first-sale',
-    ])
-    expect(seat.querySelectorAll('.medal-count')).toHaveLength(1)
-    expect(seat.querySelector('.medal-count')!.textContent).toBe('×4')
+    // seatMedals: day-record (nodir) va day-winner ×4 (gilt) bor — first-sale TUSHADI; P1 da 48 px.
+    const rack = [...seat.querySelectorAll('.seat__medals svg.medal')]
+    expect(rack.map((m) => m.getAttribute('data-medal'))).toEqual(['day-record', 'day-winner'])
+    expect(rack.map((m) => m.getAttribute('width'))).toEqual(['48', '48'])
+    // ×N — SVG ichidagi plastinka va aria; HTML sanoq yo'q.
+    expect(rack.map((m) => m.getAttribute('aria-label'))).toEqual(['Kun rekordi', 'Kun gʻolibi ×4'])
+    expect(seat.querySelectorAll('rect.medal__plate-rim')).toHaveLength(1)
+    expect(seat.querySelector('.medal-count')).toBeNull()
     // Buyurtma soni, konversiya, birlik va «mln» o'rindiqda yo'q.
     expect(seat.textContent).not.toMatch(/mln|soʻm|so‘m|buyurtma|%/)
   })
 
-  it('2- va 3-o‘rin: kichik halqa', () => {
-    const { container } = render(<SeatCard {...SEAT} rank={2} place={2} medal={row()} />)
-    expect(container.querySelector('.seat--2 .halo--md')!.textContent).toBe('2')
-    expect(container.querySelector('.halo--lg')).toBeNull()
+  it('2- va 3-o‘rin: 56 px tanga dafnasiz, 18 px plastinali gerb, 40 px medallar, eng ko‘pi 3 ta', () => {
+    const medals = [
+      medal({ code: 'month-silver' }), medal({ code: 'jump' }), medal({ code: 'rookie' }), medal({ code: 'clean-month' }),
+    ]
+    const { container } = render(<SeatCard {...SEAT} rank={2} place={2} medal={row({ medals })} />)
+    const halo = container.querySelector('.seat--2 svg.halo')!
+    expect(halo.getAttribute('width')).toBe('56')
+    expect([...halo.querySelectorAll('use')].map((u) => u.getAttribute('href'))).toEqual(['#halo-2'])
+    expect(container.querySelector('svg.crest')!.getAttribute('height')).toBe('18')
+    const rack = [...container.querySelectorAll('.seat__medals svg.medal')]
+    expect(rack.map((m) => m.getAttribute('data-medal'))).toEqual(['month-silver', 'clean-month', 'jump'])
+    expect(rack.map((m) => m.getAttribute('width'))).toEqual(['40', '40', '40'])
+    // Oy medali o'rindiqda 40 px da dafna oladi.
+    expect(rack[0]!.querySelector('use')!.getAttribute('href')).toBe('#m-laurel-silver')
   })
 
   it('FAKT 1 rejimida raqam va yorliqlar almashadi', () => {
@@ -449,7 +526,7 @@ describe('SeatCard — o‘rindiq (spec §4)', () => {
     const { container } = render(<SeatCard {...SEAT} medal={ZERO} />)
     const seat = container.querySelector('article.seat')!
     expect(seat.getAttribute('data-tier')).toBe('0')
-    expect(seat.querySelectorAll('svg.crest use.on')).toHaveLength(0)
+    expect(seat.querySelector('svg.crest use[href="#crest-0"]')).not.toBeNull()
     expect(seat.querySelector('.seat__level')).toBeNull()
     expect((seat.querySelector('.seat__bar i') as HTMLElement).style.width).toBe('0%')
     expect(seat.querySelector('.seat__next')!.textContent).toBe('Birinchi savdo kutilmoqda')
@@ -461,7 +538,8 @@ describe('SeatCard — o‘rindiq (spec §4)', () => {
     const seat = container.querySelector('article.seat')!
     expect(seat.getAttribute('data-tier')).toBe('6')
     expect(seat.querySelector('.seat__level')!.textContent).toBe('Legenda II')
-    expect(seat.querySelector('.crest__crown')).not.toBeNull()
+    expect(seat.querySelector('svg.crest use[href="#crest-6"]')).not.toBeNull()
+    expect(seat.querySelector('svg.crest')!.getAttribute('aria-label')).toBe('6-daraja · Legenda II')
     expect(seat.querySelector('.seat__next')!.textContent).toBe(`Legenda III ga 587${S}000${S}000 qoldi`)
   })
 
@@ -490,7 +568,7 @@ describe('SeatCard — o‘rindiq (spec §4)', () => {
     expect(container.querySelector('.seat__team')).toBeNull()
     expect(container.querySelector('.seat__sub')!.textContent).not.toContain('komandasiz')
     // Gerb va daraja so'zi o'z joyida — satr bo'shab qolmaydi.
-    expect(container.querySelector('.seat__sub svg.crest--seat')).not.toBeNull()
+    expect(container.querySelector('.seat__sub svg.crest')).not.toBeNull()
     expect(container.querySelector('.seat__level')!.textContent).toBe('Usta')
     expect(container.querySelector('.seat__prog')).not.toBeNull()
     expect(container.querySelector('.seat__medals')).toBeNull()
@@ -503,6 +581,8 @@ describe('SeatCard — o‘rindiq (spec §4)', () => {
       <SeatCard {...SEAT} rise medal={row({ medals: [medal({ code: 'jump' })] })} newKeys={new Set(['jump'])} />,
     )
     expect(container.querySelectorAll('use.crest__cell--fill')).toHaveLength(1)
+    // jump — gilt; first-sale/work-month yo'q, ya'ni u yolg'iz tokchada.
+    expect(container.querySelectorAll('.seat__medals svg.medal')).toHaveLength(1)
     expect(container.querySelector('.seat__medals svg.medal--new[data-medal="jump"]')).not.toBeNull()
   })
 })
@@ -518,30 +598,38 @@ describe('RowMedals — qator medallari (spec §3)', () => {
     medal({ code: 'first-sale' }),
   ]
 
-  it('first-sale yashirin, MEDAL_ORDER bo‘yicha 3 ta, qolgani «+N», ×N yo‘q', () => {
+  it('first-sale yashirin, MEDAL_ORDER bo‘yicha eng ko‘pi 3 ta, 28 px; «+N» yo‘q, ×N yo‘q', () => {
     const { container } = render(<RowMedals medals={[...seven].reverse()} />)
-    expect([...container.querySelectorAll('.row__medals svg.medal')].map((m) => m.getAttribute('data-medal'))).toEqual([
-      'month-gold',
-      'streak-fire',
-      'conversion-master',
-    ])
-    expect(container.querySelector('.row__more')!.textContent).toBe('+3')
+    const shown = [...container.querySelectorAll('.row__medals svg.medal')]
+    expect(shown.map((m) => m.getAttribute('data-medal'))).toEqual(['month-gold', 'streak-fire', 'conversion-master'])
+    expect(shown.map((m) => m.getAttribute('width'))).toEqual(['28', '28', '28'])
+    // Har medalga AYNAN bitta <use> — dafna yo'q, plastinka yo'q.
+    for (const m of shown) {
+      expect(m.querySelectorAll('use')).toHaveLength(1)
+      expect(m.querySelector('rect')).toBeNull()
+    }
+    // Sanoq aria'da ham yo'q (count berilmaydi).
+    expect(shown[0]!.getAttribute('aria-label')).toBe('Oy chempioni')
+    expect(container.textContent).not.toMatch(/\+\d/)
+    expect(container.querySelector('.row__more')).toBeNull()
     expect(container.querySelector('.medal-count')).toBeNull()
-    expect(container.querySelector('.medal-group')).toBeNull()
-    expect(container.querySelector('svg[data-medal="month-gold"]')!.getAttribute('aria-label')).toBe('Oy chempioni')
   })
 
-  it('uchta yoki kamroq — «+N» yo‘q', () => {
-    const { container } = render(<RowMedals medals={seven.slice(0, 3)} />)
-    expect(container.querySelectorAll('svg.medal')).toHaveLength(3)
-    expect(container.querySelector('.row__more')).toBeNull()
+  it('haqiqiy metall avval: kumush oy olov seriyasidan, gilt po‘latdan oldin', () => {
+    const { container } = render(
+      <RowMedals
+        medals={[medal({ code: 'work-month' }), medal({ code: 'rookie' }), medal({ code: 'streak-fire' }), medal({ code: 'month-silver' })]}
+      />,
+    )
+    expect([...container.querySelectorAll('svg.medal')].map((m) => m.getAttribute('data-medal'))).toEqual([
+      'month-silver', 'streak-fire', 'rookie',
+    ])
   })
 
   it('faqat first-sale — uya bo‘sh, lekin konteyner grid uchun qoladi', () => {
     const { container } = render(<RowMedals medals={[medal({ code: 'first-sale' })]} />)
     expect(container.querySelector('.row__medals')).not.toBeNull()
     expect(container.querySelector('svg')).toBeNull()
-    expect(container.querySelector('.row__more')).toBeNull()
   })
 
   it('yangi medal sinfi — faqat o‘sha medalda', () => {
