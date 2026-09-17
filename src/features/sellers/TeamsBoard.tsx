@@ -5,26 +5,33 @@ import { type CSSProperties, useMemo } from 'react'
 import { EmptyState, ErrorState } from '@/components/states/States'
 import { type BoardEntry, type FaktChoice, figureOf, rankedBy, resolveOnDelivered } from '@/features/sellers/board'
 import { ColumnHead } from '@/features/sellers/ColumnHead'
-import { metalOfRank } from '@/features/sellers/Halo'
+import { Halo, metalOfRank } from '@/features/sellers/Halo'
 import type { Status } from '@/features/sellers/SellersBoard'
 import { useAutoScroll } from '@/features/sellers/useAutoScroll'
+import { useAvailableHeight } from '@/features/sellers/useAvailableHeight'
 import { NO_VALUE, formatNumber, formatPercentUz, formatSomFull } from '@/lib/format'
 
 /**
- * Komandalar ustuni — EFIR (spec §6): podium YO'Q, 40 px sarlavha, 24 px
- * statik yorliq qatori, bir qatorli 62 px qatorlar — rank (1–3 metall raqam)
- * · nom · sotuvchi soni · FAKT 2 · ulush · FAKT 1 · buyurtma · konv.; har
- * qator pastida ulush chizig'i (ulush ÷ yetakchi ulushi). Sotuvchilar
- * ro'yxati bilan bir xil lug'at; plastina, chip, qizil delta yo'q.
+ * Komandalar ustuni — EFIR Premium (spec §6): podium YO'Q, 28 px statik
+ * yorliq qatori, bir qatorli qatorlar — rank (1–3 zarb qilingan 30 px tanga,
+ * qolgani sokin raqam) · nom + sotuvchi soni BITTA uyada · QAHRAMON (faol
+ * fakt) · ulush · boshqa fakt · buyurt. · konv.; har qator pastida 4 px ulush
+ * chizig'i (ulush ÷ yetakchi ulushi, 1–3 da metall). Pastda `footer.jami`
+ * plaketi: komandalar jami, komandasizlar puli va barcha sotuvchilar jami.
  *
  * ULUSH BRAUZERDA, O'QILAYOTGAN FAKT USTIDA: komanda puli ÷ komandalar
  * jami puli. Servisning `sharePercent` i FAKT 2 ulushi — FAKT 1 rejimida u
- * yolg'on bo'lardi. Komandasiz sotuvchilar jamiga kirmaydi (pastdagi jumla
+ * yolg'on bo'lardi. Komandasiz sotuvchilar jamiga kirmaydi (plaket izohi
  * shuni aytadi). Daraja shaxsiy — komandalar ustunida gerb, e'lon, legenda
  * yo'q.
+ *
+ * QATOR BALANDLIGI USTUNDAN: `clamp(40, floor(joy / n), 52)` — 14 komanda
+ * 1920 da 50 px da ustunni scrollsiz to'ldiradi. O'lchanmaguncha (0) CSS
+ * dagi 50 px qoladi.
  */
 export function TeamsBoard({
   entries,
+  sellers,
   teamless,
   status,
   errorMessage,
@@ -34,7 +41,9 @@ export function TeamsBoard({
   onFakt,
 }: {
   entries: readonly BoardEntry[]
-  /** `totals.teamlessSellers` — pastdagi jumla uchun. */
+  /** Sotuvchi qatorlari — komandasizlar puli va barcha sotuvchilar jami shulardan. */
+  sellers: readonly BoardEntry[]
+  /** `totals.teamlessSellers` — plaketdagi «Komandasiz · k sotuvchi». */
   teamless: number
   status: Status
   errorMessage?: string
@@ -45,11 +54,10 @@ export function TeamsBoard({
 }) {
   const onDelivered = resolveOnDelivered(entries, fakt)
   const ranked = useMemo(() => rankedBy(entries, onDelivered), [entries, onDelivered])
-  const listRef = useAutoScroll<HTMLOListElement>(ranked.length > 0)
-  const total = ranked.reduce((sum, e) => sum + figureOf(e, onDelivered), 0)
-  const leader = ranked.length > 0 ? figureOf(ranked[0]!, onDelivered) : 0
   const read = onDelivered ? 'fakt2' : 'fakt1'
   const ready = status === 'ready' && entries.length > 0
+  const active = onDelivered ? 'FAKT 2' : 'FAKT 1'
+  const other = onDelivered ? 'FAKT 1' : 'FAKT 2'
 
   return (
     <section
@@ -78,50 +86,206 @@ export function TeamsBoard({
       ) : (
         <>
           <div className="tv-tcols" data-read={read}>
-            <span className="tv-tcols__c">#</span>
-            <span className="tv-tcols__name">Komanda (ROP)</span>
-            <span className="tv-tcols__r">Sotuvchi</span>
-            <span className="tv-tcols__r tv-tcols__f2">FAKT 2, yetkazilgan</span>
+            <span className="tv-tcols__r">#</span>
+            <span className="tv-tcols__name">Komanda · sotuvchi</span>
+            <span className="tv-tcols__r on">{active}</span>
             <span className="tv-tcols__r">Ulush</span>
-            <span className="tv-tcols__r tv-tcols__f1">FAKT 1</span>
-            <span className="tv-tcols__r">Buyurtma</span>
+            <span className="tv-tcols__r">{other}</span>
+            <span className="tv-tcols__r">Buyurt.</span>
             <span className="tv-tcols__r">Konv.</span>
           </div>
-          <ol ref={listRef} className="tv-trows" data-read={read} aria-label="Komandalar reytingi">
-            {ranked.map((entry) => {
-              const figure = figureOf(entry, onDelivered)
-              const isRanked = entry.won > 0 || entry.ordered > 0
-              const share = total > 0 ? (figure / total) * 100 : null
-              const rel = leader > 0 ? (figure / leader).toFixed(3) : '0.000'
-              return (
-                <li
-                  key={entry.key}
-                  className="trow"
-                  data-share={rel}
-                  style={{ '--share': rel } as CSSProperties}
-                >
-                  <span className="trow__rank" data-metal={isRanked ? metalOfRank(entry.rank) : 'none'}>
-                    {isRanked ? entry.rank : '—'}
-                  </span>
-                  <span className="trow__name">{entry.name}</span>
-                  <span className="trow__cnt">{entry.sellers === null ? NO_VALUE : formatNumber(entry.sellers)}</span>
-                  <span className="trow__f2">{formatSomFull(entry.won)}</span>
-                  <span className="trow__share">{share === null ? NO_VALUE : formatPercentUz(share)}</span>
-                  <span className="trow__f1">{formatSomFull(entry.ordered)}</span>
-                  <span className="trow__orders">{formatNumber(entry.orders)}</span>
-                  <span className="trow__conv">
-                    {entry.conversionPercent === null ? NO_VALUE : formatPercentUz(entry.conversionPercent)}
-                  </span>
-                </li>
-              )
-            })}
-          </ol>
-          {teamless > 0 && (
-            <p className="tv-tfoot">{formatNumber(teamless)} sotuvchi komandasiz, ulushlar ularsiz</p>
-          )}
+          <TeamRows ranked={ranked} onDelivered={onDelivered} read={read} />
+          <TeamsFooter
+            ranked={ranked}
+            sellers={sellers}
+            teamless={teamless}
+            onDelivered={onDelivered}
+          />
         </>
       )}
     </section>
+  )
+}
+
+/**
+ * Plaket raqamlari, bir joyda — test ayniyatni shu yerda ushlaydi:
+ * `teams + teamless === all` (ikkala fakt), bitta komanda puli uning
+ * sotuvchilari yig'indisi bo'lgani uchun.
+ */
+export interface TeamTotals {
+  /** Komandalar jami, faol faktda. */
+  readonly teams: number
+  /** Komandalar jami, boshqa faktda. */
+  readonly teamsOther: number
+  /** `rop === null` sotuvchi qatorlari yig'indisi, faol faktda. */
+  readonly teamless: number
+  /** Barcha sotuvchi qatorlari, faol faktda. */
+  readonly all: number
+}
+
+export function teamTotals(
+  teams: readonly BoardEntry[],
+  sellers: readonly BoardEntry[],
+  onDelivered: boolean,
+): TeamTotals {
+  const sum = (list: readonly BoardEntry[], delivered: boolean) =>
+    list.reduce((total, e) => total + figureOf(e, delivered), 0)
+  return {
+    teams: sum(teams, onDelivered),
+    teamsOther: sum(teams, !onDelivered),
+    teamless: sum(
+      sellers.filter((s) => s.badge === null),
+      onDelivered,
+    ),
+    all: sum(sellers, onDelivered),
+  }
+}
+
+/** Nol yoki null ikkinchi darajali qiymat — xira chiziqcha, hech qachon qalin «0». */
+function None({ className }: { className: string }) {
+  return <span className={`${className} trow__none`}>{NO_VALUE}</span>
+}
+
+function TeamRows({
+  ranked,
+  onDelivered,
+  read,
+}: {
+  ranked: readonly BoardEntry[]
+  onDelivered: boolean
+  read: 'fakt1' | 'fakt2'
+}) {
+  // Ro'yxat shu komponentda tug'iladi — shuning uchun ikkala hook ham shu yerda
+  // (`useAvailableHeight` ref'ni mount'dan keyin bir marta o'qiydi).
+  const listRef = useAutoScroll<HTMLOListElement>(ranked.length > 0)
+  const available = useAvailableHeight(listRef)
+  const total = ranked.reduce((sum, e) => sum + figureOf(e, onDelivered), 0)
+  const leader = ranked.length > 0 ? figureOf(ranked[0]!, onDelivered) : 0
+  const rowHeight =
+    available > 0 && ranked.length > 0 ? Math.min(52, Math.max(40, Math.floor(available / ranked.length))) : null
+
+  return (
+    <div className="tv-tslot">
+      <ol
+        ref={listRef}
+        className="tv-trows"
+        data-read={read}
+        aria-label="Komandalar reytingi"
+        style={rowHeight === null ? undefined : ({ '--trow-h': `${rowHeight}px` } as CSSProperties)}
+      >
+        {ranked.map((entry) => {
+          const figure = figureOf(entry, onDelivered)
+          const second = figureOf(entry, !onDelivered)
+          const share = total > 0 && figure > 0 ? (figure / total) * 100 : null
+          const rel = leader > 0 ? figure / leader : 0
+          const metal = figure > 0 ? metalOfRank(entry.rank) : 'none'
+          return (
+            <li
+              key={entry.key}
+              className="trow"
+              data-metal={metal === 'none' ? undefined : metal}
+              data-share={rel.toFixed(3)}
+            >
+              <span className="trow__rank">
+                {metal === 'none' ? (
+                  entry.rank
+                ) : (
+                  <>
+                    <Halo rank={entry.rank} size={30} small />
+                    <span className="sr-only">{entry.rank}</span>
+                  </>
+                )}
+              </span>
+              <span className="trow__name">
+                <span className="nm">{entry.name}</span>
+                {entry.sellers !== null && <span className="cnt">{formatNumber(entry.sellers)}</span>}
+              </span>
+              {figure > 0 ? (
+                <span className="trow__hero">{formatSomFull(figure)}</span>
+              ) : (
+                <None className="trow__hero" />
+              )}
+              {share === null ? (
+                <None className="trow__sec" />
+              ) : (
+                <span className="trow__sec">{formatPercentUz(share)}</span>
+              )}
+              {second > 0 ? (
+                <span className="trow__sec">{formatSomFull(second)}</span>
+              ) : (
+                <None className="trow__sec" />
+              )}
+              {entry.orders > 0 ? (
+                <span className="trow__sec">{formatNumber(entry.orders)}</span>
+              ) : (
+                <None className="trow__sec" />
+              )}
+              {entry.conversionPercent === null ? (
+                <None className="trow__sec" />
+              ) : (
+                <span className="trow__sec">{formatPercentUz(entry.conversionPercent)}</span>
+              )}
+              <span className="trow__bar" aria-hidden="true">
+                <i style={{ width: `${(rel * 100).toFixed(1)}%` }} />
+              </span>
+            </li>
+          )
+        })}
+      </ol>
+    </div>
+  )
+}
+
+function TeamsFooter({
+  ranked,
+  sellers,
+  teamless,
+  onDelivered,
+}: {
+  ranked: readonly BoardEntry[]
+  sellers: readonly BoardEntry[]
+  teamless: number
+  onDelivered: boolean
+}) {
+  const totals = teamTotals(ranked, sellers, onDelivered)
+  const n = formatNumber(ranked.length)
+  const active = onDelivered ? 'FAKT 2' : 'FAKT 1'
+  const other = onDelivered ? 'FAKT 1' : 'FAKT 2'
+  const money = (value: number, className = '') =>
+    value > 0 ? (
+      <dd className={className || undefined}>{formatSomFull(value)}</dd>
+    ) : (
+      <dd className={`${className} trow__none`.trim()}>{NO_VALUE}</dd>
+    )
+
+  return (
+    <footer className="jami">
+      <div className="jami__l">
+        <p className="jami__k">
+          {n} komanda jami · {active}
+        </p>
+        <p className={`jami__v${totals.teams > 0 ? '' : ' trow__none'}`}>
+          {totals.teams > 0 ? formatSomFull(totals.teams) : NO_VALUE}
+        </p>
+        <p className="jami__o">
+          <b>{other}</b>
+          <span className={totals.teamsOther > 0 ? undefined : 'trow__none'}>
+            {totals.teamsOther > 0 ? formatSomFull(totals.teamsOther) : NO_VALUE}
+          </span>
+        </p>
+      </div>
+      <dl className="jami__r">
+        {teamless > 0 && (
+          <>
+            <dt>Komandasiz · {formatNumber(teamless)} sotuvchi</dt>
+            {money(totals.teamless)}
+          </>
+        )}
+        <dt className="sum">Barcha sotuvchilar</dt>
+        {money(totals.all)}
+        <dd className="jami__note">Ulush {n} komanda jamidan hisoblanadi</dd>
+      </dl>
+    </footer>
   )
 }
 

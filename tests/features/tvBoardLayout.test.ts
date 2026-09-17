@@ -99,8 +99,8 @@ describe('the television board switches layout on one width', () => {
     const block = phone.slice(0, phone.indexOf('\n}\n') + 3)
     expect(block).toMatch(/\.tv-cols,\s*\.row \{\s*grid-template-columns: 8px 44px 58px minmax\(0, 1fr\) 132px;/)
     expect(block).toMatch(/\.tv-cols > span:nth-child\(5\),\s*\.tv-cols > span:nth-child\(7\),\s*\.tv-cols > span:nth-child\(8\),\s*\.tv-cols > span:nth-child\(9\),\s*\.row > \*:nth-child\(5\),\s*\.row > \*:nth-child\(7\),\s*\.row > \*:nth-child\(8\),\s*\.row > \*:nth-child\(9\) \{\s*display: none;/)
-    expect(block).toMatch(/\.tv-tcols,\s*\.trow \{\s*grid-template-columns: 32px minmax\(0, 1fr\) 36px 124px 52px;/)
-    expect(block).toMatch(/\.trow > \*:nth-child\(6\),[\s\S]*?display: none;/)
+    expect(block).toMatch(/\.tv-tcols,\s*\.trow \{\s*grid-template-columns: 32px minmax\(0, 1fr\) 124px 52px;/)
+    expect(block).toMatch(/\.trow > \*:nth-child\(5\),\s*\.trow > \*:nth-child\(6\),\s*\.trow > \*:nth-child\(7\) \{\s*display: none;/)
     expect(block).toMatch(/\.seat,\s*\.seat--1 \{\s*flex: 1 1 100%;/)
   })
 
