@@ -6,9 +6,9 @@ import { describe, expect, it } from 'vitest'
 /**
  * WHAT THE CALL-ACTIVITY STATEMENT PROMISES.
  *
- * Four arms over one scan — the window's totals, per operator, per team and per
- * day — so nothing on the block can disagree with anything else on it. Every
- * arm carries the same measures for the same reason.
+ * Five arms over one scan — the window's totals, per operator, per team, per
+ * day and per hour of the day — so nothing on «Qoʻngʻiroqlar» can disagree with
+ * anything else on it. Every arm carries the same measures for the same reason.
  *
  * This reads the source text rather than running the query, like every other
  * test in this directory: no test here touches a database, and the mistakes
@@ -45,46 +45,41 @@ describe('the call activity statement', () => {
     expect(activitySql()).not.toContain('`')
   })
 
-  it('is one scan with six grouping sets and no more', () => {
+  it('is one scan with five grouping sets and no more', () => {
     expect(code()).toMatch(
-      /GROUPING SETS\s*\(\s*\(employee_id\)\s*,\s*\(team\)\s*,\s*\(day\)\s*,\s*\(side\)\s*,\s*\(day,\s*side\)\s*,\s*\(\)\s*\)/i,
+      /GROUPING SETS\s*\(\s*\(employee_id,\s*team\)\s*,\s*\(team\)\s*,\s*\(day\)\s*,\s*\(hour\)\s*,\s*\(\)\s*\)/i,
     )
   })
 
-  it('decides the База side by a deal created BEFORE the call, not by membership today', () => {
+  it('tells the team arm from the operator arm by BOTH grouping flags', () => {
     /*
-      Membership today moves 376 calls (~9% of the База side, measured above the
-      floor) across: a lead rung on Monday who buys on Friday enters База
-      afterwards, and "today" would make Monday's call a База call after the
-      fact. The honest question is what the customer was when they were rung.
+      The (employee_id, team) set clears GROUPING(team) as well, so a team
+      filter on g_team alone would pour every operator into the team table and
+      the team rows would stop summing to the total.
     */
-    expect(code()).toMatch(/f\.first_at\s*<=\s*s\.started_at/i)
+    const body = SOURCE.slice(SOURCE.indexOf('async callActivity('))
+    expect(body).toMatch(/r\.g_employee === 1 && r\.g_team === 0/)
   })
 
-  it('asks for the retention pipeline by ROLE, never by a category id', () => {
-    expect(code()).toMatch(/p\."role"\s*=\s*'RETENTION'/i)
-    expect(code()).not.toMatch(/CATEGORY_ID|"categoryId"/i)
-  })
-
-  it('bounds the База lookup to the customers actually called in the window', () => {
+  it('no longer reads the deal table or the База funnel at all', () => {
     /*
-      Without the bound, first_baza scans every retention deal ever recorded to
-      label a few thousand calls.
+      The Baza / not-Baza split left the screen on 2026-09-17. A leftover join
+      to deal would cost a scan of the retention pipeline for nothing.
     */
-    const cte = code().slice(code().indexOf('first_baza AS ('), code().indexOf('labelled AS ('))
-    expect(cte).toMatch(/IN\s*\(\s*SELECT customer_id FROM called\s*\)/i)
+    expect(code()).not.toMatch(/"deal"|RETENTION|first_baza/i)
   })
 
-  it('reads a membership timestamp, not the База stage partition', () => {
+  it('returns first and last call as UTC text marked Z, never a bare timestamp', () => {
     /*
-      Commit 35aca08 made retentionStages() the one statement that partitions
-      База by stage. This statement reads when a customer entered База — no
-      other statement answers that — and must never grow a stage reading.
+      startedAt is naive UTC. A zoneless value read by new Date is local time,
+      which on a Tashkent laptop moves every first and last call five hours.
     */
-    expect(code()).not.toMatch(/deal_stage/i)
+    const sql = code()
+    expect(sql).toMatch(/to_char\(min\(started_at\),\s*'YYYY-MM-DD"T"HH24:MI:SS"Z"'\)/)
+    expect(sql).toMatch(/to_char\(max\(started_at\),\s*'YYYY-MM-DD"T"HH24:MI:SS"Z"'\)/)
   })
 
-  it('buckets the day through UTC first, never in one step', () => {
+  it('buckets the day AND the hour through UTC first, never in one step', () => {
     /*
       `startedAt` is a naive UTC timestamp. The one-step form
       `AT TIME ZONE 'Asia/Tashkent'` READS the column as Tashkent local and
@@ -94,7 +89,7 @@ describe('the call activity statement', () => {
       the one-step form, and their day boundaries were wrong for exactly this
       reason.
     */
-    expect(code()).toMatch(/"startedAt"\s+AT TIME ZONE 'UTC'\s+AT TIME ZONE/i)
+    expect([...code().matchAll(/"startedAt"\s+AT TIME ZONE 'UTC'\s+AT TIME ZONE/gi)]).toHaveLength(2)
     expect(code()).not.toMatch(/"startedAt"\s+AT TIME ZONE\s+'Asia/i)
   })
 
@@ -106,7 +101,7 @@ describe('the call activity statement', () => {
     */
     const sql = code()
     expect(sql).toMatch(/sum\(duration_sec\)\s+FILTER \(WHERE connected\)/i)
-    expect([...sql.matchAll(/FILTER \(WHERE connected\)/gi)].length).toBeGreaterThanOrEqual(4)
+    expect([...sql.matchAll(/FILTER \(WHERE connected\)/gi)].length).toBeGreaterThanOrEqual(3)
   })
 
   it('uses percentile_disc, never percentile_cont', () => {
@@ -115,7 +110,6 @@ describe('the call activity statement', () => {
       Interpolating between two of them invents a call that did not happen.
     */
     expect(code()).toMatch(/percentile_disc\(0\.5\)/i)
-    expect(code()).toMatch(/percentile_disc\(0\.9\)/i)
     expect(code()).not.toMatch(/percentile_cont/i)
   })
 
@@ -149,77 +143,5 @@ describe('the call activity statement', () => {
     // The clamp is in TypeScript, not SQL — assert the method reads it.
     const body = SOURCE.slice(SOURCE.indexOf('async callActivity('))
     expect(body.slice(0, 1200)).toMatch(/callWindowStart\(/)
-  })
-})
-
-function namedSql(marker: string): string {
-  const at = SOURCE.indexOf(marker)
-  expect(at, marker).toBeGreaterThan(-1)
-  const open = SOURCE.indexOf('`\n', at)
-  const close = SOURCE.indexOf('\n      `,', open)
-  expect(close, marker).toBeGreaterThan(open)
-  return SOURCE.slice(open + 1, close)
-}
-
-function namedCode(marker: string): string {
-  return namedSql(marker)
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/--[^\n]*/g, '')
-}
-
-describe('the duration band statement', () => {
-  it('carries no backtick inside the SQL', () => {
-    expect(namedSql('async callDurationBands(')).not.toContain('`')
-  })
-
-  it('builds its CASE from CALL_DURATION_BANDS rather than typing bounds out', () => {
-    /*
-      The bands are a business definition with one home. A CASE written by hand
-      here would be a second copy, and the two would agree until the day
-      somebody moved a bound.
-    */
-    const body = SOURCE.slice(SOURCE.indexOf('async callDurationBands('))
-    expect(body.slice(0, 1500)).toMatch(/CALL_DURATION_BANDS/)
-    expect(namedCode('async callDurationBands(')).not.toMatch(/<\s*600\b/)
-  })
-
-  it('bands connected calls only', () => {
-    expect(namedCode('async callDurationBands(')).toMatch(/WHERE[\s\S]{0,120}"connected"/i)
-  })
-
-  it('clamps at the floor', () => {
-    const body = SOURCE.slice(SOURCE.indexOf('async callDurationBands('))
-    expect(body.slice(0, 1500)).toMatch(/callWindowStart\(/)
-  })
-})
-
-describe('the customer band statement', () => {
-  it('carries no backtick inside the SQL', () => {
-    expect(namedSql('async callCustomerBands(')).not.toContain('`')
-  })
-
-  it('aggregates per customer before banding, not per call', () => {
-    /*
-      The question is how many calls ONE customer takes, so the GROUP BY on the
-      customer has to happen first and the CASE reads its count. Banding the
-      calls directly would answer a different question and look like this one.
-    */
-    const sql = namedCode('async callCustomerBands(')
-    expect(sql).toMatch(/GROUP BY\s+customer_id/i)
-    expect(sql).toMatch(/count\(\*\)/i)
-  })
-
-  it('excludes the unlinked calls rather than bucketing them as one customer', () => {
-    /*
-      `customerId` is null on about 1% of rows. Grouped, every one of them would
-      collapse into a single enormous customer in the 6+ band. They are
-      excluded here and disclosed as `unlinkedCalls` on the activity payload.
-    */
-    expect(namedCode('async callCustomerBands(')).toMatch(/"customerId" IS NOT NULL/i)
-  })
-
-  it('clamps at the floor', () => {
-    const body = SOURCE.slice(SOURCE.indexOf('async callCustomerBands('))
-    expect(body.slice(0, 1500)).toMatch(/callWindowStart\(/)
   })
 })

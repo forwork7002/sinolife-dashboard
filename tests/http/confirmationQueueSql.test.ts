@@ -79,6 +79,7 @@ describe('confirmation queue SQL', () => {
       'signal_stage',
       'moves',
       'agg',
+      'arrived',
       'dated',
       'classified',
       'scoped',
@@ -477,6 +478,43 @@ describe('the repeat mark', () => {
  * two ROW queries, and every number on the screen still comes from the single
  * `outcome` the cohort already agreed on.
  */
+describe('an order that leaves Тасдиклаш past the signal stages', () => {
+  /*
+    2026-09-16: 999218 and 999194 went from the queue straight into Доставка
+    («В пути», «Заказ в мой склад») past C6:NEW, 999778 into База — and the
+    board kept all three as Кутилмоқда / Кутармади.
+  */
+  it('decides a still-waiting order by the first move into another funnel', () => {
+    for (const sql of [WINDOW_SQL, BACKLOG_SQL]) {
+      expect(sql).toContain(`::text IN ('CONFIRM_NEW', 'NO_ANSWER')`)
+      expect(sql).toContain(`CASE WHEN xs."externalId" LIKE 'C6:%' THEN 'CONFIRMED' ELSE 'REJECTED' END`)
+      // Numbered funnels only, and never a stage inside Тасдиклаш itself.
+      expect(sql).toContain(`xs."externalId" ~ '^C[0-9]+:'`)
+      expect(sql).toContain(`xs."externalId" NOT LIKE 'C4:%'`)
+      expect(sql).toContain("'REJECTED' END\n        END), w.signal::text) AS signal")
+    }
+  })
+
+  it('falls back to where the deal stands in Bitrix24 today', () => {
+    for (const sql of [WINDOW_SQL, BACKLOG_SQL]) {
+      expect(sql).toContain('JOIN "deal_stage" cs ON cs."id" = w.stage_id')
+      expect(sql).toContain(`cs."externalId" NOT LIKE 'C4:%'`)
+    }
+    expect(REPEAT).toContain('JOIN "deal_stage" cs ON cs."id" = d."stageId"')
+    expect(REPEAT).toContain('CASE WHEN g.next_queued_at IS NULL')
+  })
+
+  it('drops a decided order from the backlog, and only there', () => {
+    expect(BACKLOG_SQL).toContain('WHERE x.signal IS NULL')
+    expect(WINDOW_SQL).not.toContain('WHERE x.signal IS NULL')
+  })
+
+  it('applies the same rule to the visit chain, bounded by the next arrival', () => {
+    expect(REPEAT).toMatch(/COALESCE\(\s*x.signal,/)
+    expect(REPEAT).toContain('g.next_queued_at IS NULL OR xh."enteredAt" < g.next_queued_at')
+  })
+})
+
 describe('the queue history on a row', () => {
   it('splits the deal into visits, one per arrival', () => {
     // The running count of arrivals IS the visit number.

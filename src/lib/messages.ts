@@ -27,7 +27,7 @@ export const t = {
    */
   nav: {
     cohort: 'Mijoz qaytishi',
-    customers: 'Mijozlar va qoʻngʻiroqlar',
+    customers: 'Qoʻngʻiroqlar',
     logistics: 'Logistika natijasi',
     sales: 'Savdo dinamikasi',
     confirmation: 'Tasdiqlash navbati',
@@ -64,15 +64,15 @@ export const t = {
       lead: 'Har oy birinchi marta xarid qilgan mijozlarning qanchasi keyingi oylarda qaytgani — kogorta tahlili.',
     },
     /*
-      THE LEAD NAMES WHAT A CALL IS JOINED TO, because the obvious reading of
-      this screen is wrong. A reader who sees call counts beside customer
-      counts assumes a call can be traced to an order; `call_record."dealId"`
-      is set on 1 row of 366 300, so it cannot. Saying it here is cheaper than
-      the question it prevents.
+      THE LEAD NAMES WHAT A CALL IS JOINED TO AND WHICH CLOCK IT IS ON.
+      `call_record."dealId"` is set on 1 row of 366 300, so a call cannot be
+      traced to an order, and every figure is dated by the call's START in
+      Tashkent time. The key stays `calls` while the URL and section stay
+      `customers` — see CallsPage.
     */
-    customers: {
-      title: 'Mijozlar va qoʻngʻiroqlar',
-      lead: 'Mijozlar qanday kelayapti va ketayapti, operatorlar ular bilan qancha gaplashgani. Qoʻngʻiroq mijozga bogʻlanadi — buyurtmaga emas.',
+    calls: {
+      title: 'Qoʻngʻiroqlar',
+      lead: 'Kim qancha gaplashgani — qoʻngʻiroq boshlangan vaqt boʻyicha, Toshkent vaqti. Qoʻngʻiroq mijozga bogʻlanadi, buyurtmaga emas.',
     },
     /*
       WHICH DATE THE WINDOW IS APPLIED TO, on the screens that disagree.

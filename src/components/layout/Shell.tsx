@@ -1741,11 +1741,7 @@ function MegaphoneIcon() {
 }
 
 /**
- * «Mijozlar va qoʻngʻiroqlar» — a handset, at 15px.
- *
- * The screen's customer half shares its subject with «Mijoz qaytishi» beside
- * it, so the icon names what only this one has: the calls. `PeopleIcon` is
- * already «Foydalanuvchilar».
+ * «Qoʻngʻiroqlar» — a handset, at 15px.
  */
 function PhoneIcon() {
   return (

@@ -181,12 +181,13 @@ export function formatNumber(value: number): string {
 }
 
 /**
- * A call length, as the floor reads one.
+ * A length of talk, spelled out: «45 s», «2 daq 47 s», «3 soat 12 daq».
  *
- * Under a minute reads in seconds and a minute or more as `m:ss`, so a column
- * of durations sorts by eye without anybody dividing by sixty. Seconds are NOT
- * zero-padded below a minute («9 s», not «0:09») — the unit is the information
- * there, and a leading `0:` on a nine-second call reads as a missing value.
+ * WORDS, NOT `m:ss`. The client asked for every figure on «Qoʻngʻiroqlar» to
+ * be exact at a glance (2026-09-17), and `2:47` beside a table's talk-time
+ * column of «3:12» read as either minutes or hours. Naming the unit settles it
+ * with no header to consult. Past an hour the seconds are dropped — nobody
+ * reconciles a team's working day to the second, and the column stays narrow.
  *
  * Negative input clamps to zero rather than printing a minus: a duration cannot
  * be negative, so a negative one is a bug upstream and printing it would put
@@ -195,8 +196,15 @@ export function formatNumber(value: number): string {
 export function formatDuration(seconds: number): string {
   const total = Math.max(0, Math.round(seconds))
   if (total < 60) return `${total} s`
-  const minutes = Math.floor(total / 60)
-  return `${minutes}:${String(total % 60).padStart(2, '0')}`
+  if (total < 3600) {
+    const minutes = Math.floor(total / 60)
+    const rest = total % 60
+    return rest === 0 ? `${minutes} daq` : `${minutes} daq ${rest} s`
+  }
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const h = formatNumber(hours)
+  return minutes === 0 ? `${h} soat` : `${h} soat ${minutes} daq`
 }
 
 /**
@@ -332,6 +340,12 @@ export function formatMonthOffset(iso: string, offset: number): string {
 export function formatDateShort(iso: string): string {
   const { day, month } = appZoneParts(iso)
   return `${day}-${UZ_MONTHS_SHORT[month]}`
+}
+
+/** Wall-clock time in Tashkent, «09:05». */
+export function formatTime(iso: string): string {
+  const { hour, minute } = appZoneParts(iso)
+  return `${hour}:${minute}`
 }
 
 export function formatDateTime(iso: string): string {

@@ -1,57 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  CALL_CUSTOMER_BANDS,
-  CALL_DATA_FLOOR,
-  CALL_DURATION_BANDS,
-  CALL_SIDES,
-  callFloorApplied,
-  callWindowStart,
-} from '@/lib/callQuality'
+import { CALL_DATA_FLOOR, callFloorApplied, callWindowStart } from '@/lib/callQuality'
 
 /**
- * THE BANDS ARE A PARTITION, AND THE FLOOR IS A MEASURED DATE.
- *
- * `logisticsBuckets.test.ts` is the shape this follows: the business
- * definition has one home, and this file is where the definition itself is
- * checked rather than the SQL built from it. A band added with an overlapping
- * bound would produce a distribution whose shares sum past 100% — a plausible
- * table rather than an error.
+ * THE FLOOR IS A MEASURED DATE, and every call query is clamped to it.
  */
-describe('the call duration bands', () => {
-  it('covers every non-negative duration exactly once', () => {
-    expect(CALL_DURATION_BANDS).toHaveLength(6)
-
-    // Ascending, with the open-ended band last and only there.
-    const bounds = CALL_DURATION_BANDS.map((band) => band.maxSec)
-    expect(bounds[bounds.length - 1]).toBeNull()
-    expect(bounds.slice(0, -1)).toEqual([10, 30, 60, 180, 600])
-
-    // No duration falls through, and none matches twice. 0 is a real value —
-    // 18 connected calls above the floor carry it.
-    for (const seconds of [0, 9, 10, 29, 30, 59, 60, 179, 180, 599, 600, 3600]) {
-      const matches = CALL_DURATION_BANDS.filter(
-        (band, i) =>
-          seconds >= (i === 0 ? 0 : (CALL_DURATION_BANDS[i - 1]!.maxSec ?? 0)) &&
-          (band.maxSec === null || seconds < band.maxSec),
-      )
-      expect(matches, `${seconds}s`).toHaveLength(1)
-    }
-  })
-
-  it('gives every band its own palette token, none of them the page accent', () => {
-    const colours = CALL_DURATION_BANDS.map((band) => band.colour)
-    expect(new Set(colours).size).toBe(colours.length)
-    for (const colour of colours) expect(colour).toMatch(/^--series-\d$/)
-  })
-})
-
-describe('the customer call bands', () => {
-  it('is 1 / 2-3 / 4-5 / 6+, open-ended last', () => {
-    expect(CALL_CUSTOMER_BANDS.map((band) => band.maxCalls)).toEqual([1, 3, 5, null])
-  })
-})
-
 describe('the data floor', () => {
   /*
     The truncation ends at 11:00 Tashkent on 2026-09-14, when CALLS moved to
@@ -78,16 +31,5 @@ describe('the data floor', () => {
     // they asked for, so the screen must not print the caveat.
     expect(callFloorApplied(CALL_DATA_FLOOR)).toBe(false)
     expect(callWindowStart(CALL_DATA_FLOOR)).toEqual(CALL_DATA_FLOOR)
-  })
-})
-
-describe('the call sides', () => {
-  it('is Baza / Baza emas / unlinked, in that order', () => {
-    expect(CALL_SIDES.map((side) => side.key)).toEqual(['BAZA', 'NOT_BAZA', 'UNLINKED'])
-  })
-
-  it('gives each side its own colour within the card that draws them', () => {
-    const colours = CALL_SIDES.map((side) => side.colour)
-    expect(new Set(colours).size).toBe(colours.length)
   })
 })

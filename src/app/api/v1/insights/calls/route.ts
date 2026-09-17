@@ -27,7 +27,7 @@ const ACCESS = { permission: 'analytics:read:all', section: 'customers' } as con
  * for the same reason: a control that changes nothing is worse than none.
  *
  * IT HONOURS THE DASHBOARD WINDOW, AND «Bugun» IS A GOOD QUESTION HERE.
- * `/insights/customers` beside it resolves its own ninety days because its
+ * `/insights/customers` resolves its own ninety days because its
  * sibling `/insights/concentration` once inherited «Bugun» and reported twelve
  * customers under a critical-red gauge. Nothing about a day of telephony is
  * degenerate — «who spoke to customers today» is the floor's own question — so

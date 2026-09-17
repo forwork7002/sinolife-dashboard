@@ -39,12 +39,8 @@ export interface SectionSpec {
 
 export const SECTIONS = [
   { id: 'cohort', route: '/analytics/cohort', label: 'Mijoz qaytishi', group: 'Tahlil' },
-  {
-    id: 'customers',
-    route: '/customers',
-    label: 'Mijozlar va qoʻngʻiroqlar',
-    group: 'Tahlil',
-  },
+  // The id and route stay `customers` — ids are stored on account grants.
+  { id: 'customers', route: '/customers', label: 'Qoʻngʻiroqlar', group: 'Tahlil' },
   { id: 'sales', route: '/analytics/sales', label: 'Savdo dinamikasi', group: 'Tahlil' },
   { id: 'margin', route: '/margin', label: 'Yalpi marja', group: 'Tahlil' },
   { id: 'confirmation', route: '/confirmation', label: 'Tasdiqlash navbati', group: 'Bajarish' },
@@ -138,19 +134,11 @@ const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
   */
   'payroll',
   /*
-    «MIJOZLAR VA QOʻNGʻIROQLAR» IS HERE FOR BOTH REASONS AT ONCE, and the second
-    is the one that keeps it here.
-
-    The customer-flow half genuinely cannot narrow: «new» is decided against a
-    customer's whole history and «lost» against today, neither of which a team
-    scope can cut without changing what the words mean — the argument `cohort`
-    already stands on.
-
-    The telephony half COULD narrow, and is refused the way `payroll` is: its
+    «QOʻNGʻIROQLAR» COULD NARROW, and is refused the way `payroll` is: its
     operators table names a person and states their talk time, their connect
     rate and their median call. Opening it to a ROP takes the same three
-    changes in one commit — both routes' permission, the scope threaded
-    through the service, and the scope added to the memo keys.
+    changes in one commit — the route's permission, the scope threaded
+    through the service, and the scope added to the memo key.
   */
   'customers',
 ])
