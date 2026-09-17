@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { classifyRefusal, refusalCode } from '@/server/integrations/crm/bitrix24/refusal'
 import { PortalGate } from '@/server/integrations/crm/bitrix24/portalGate'
@@ -6,6 +6,7 @@ import {
   Bitrix24CrmProvider,
   Bitrix24Error,
   networkCause,
+  PORTAL_REQUEST_LIMIT_MS,
 } from '@/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
 
 /**
@@ -347,5 +348,41 @@ describe('an unreachable portal is probed on the ladder, not every minute', () =
     const held = new PortalGate()
     held.seed('METHOD', 'OPERATION_TIME_LIMIT', t0, t0)
     expect(held.isOpen()).toBe(false)
+  })
+})
+
+/**
+ * Bitrix24 cuts any single REST request at 60 s (apidocs.bitrix24.ru/limits.html).
+ * A batch used to wait 180 s locally — two minutes on an answer the portal had
+ * already abandoned, which is how CUSTOMERS sat 165–177 s during the
+ * 2026-09-16 address block.
+ */
+describe('no request outlives the portal’s own 60 s cut-off', () => {
+  it('aborts a hung batch at 65 s, not 180 s', async () => {
+    vi.useFakeTimers()
+    try {
+      let aborted = -1
+      const provider = new Bitrix24CrmProvider({
+        webhookUrl: 'https://portal/rest/1/tok/',
+        maxRetries: 0,
+        rateLimitRps: 100_000,
+        fetchImpl: ((_url: string, init?: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => {
+              aborted = Date.now()
+              reject(new DOMException('aborted', 'AbortError'))
+            })
+          })) as unknown as typeof fetch,
+      })
+      const started = Date.now()
+      const pending = provider.fetchStageHistory().catch((e: unknown) => e)
+      await vi.advanceTimersByTimeAsync(64_000)
+      expect(aborted).toBe(-1)
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(aborted - started).toBe(PORTAL_REQUEST_LIMIT_MS + 5_000)
+      expect(String(await pending)).toContain('TIMEOUT')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -2017,6 +2017,33 @@ longer demotes a named gate, and any named refusal — `OPERATION_TIME_LIMIT`
 included, which is why the reset sits ABOVE the METHOD branch — ends the
 transient run. Pinned by three cases in `portalRefusal.test.ts`.
 
+**BITRIX24'S PUBLISHED LIMITS, AND WHERE THIS INTEGRATION STANDS — measured
+2026-09-17** against apidocs.bitrix24.ru/limits.html. Three documented limits
+and one that is not:
+- **Intensity** — a leaky bucket on HTTP REQUESTS per source IP per portal
+  (`batch` is one request): Enterprise drains 5/s with 250 of headroom, every
+  other plan 2/s with 50. `QUERY_LIMIT_EXCEEDED`, 503. Our `RateLimiter` is 2/s,
+  the lower plan's drain rate, so it holds on either plan; a hot tick is ~5
+  requests every 120 s.
+- **Execution time of one request** — 60 s on the cloud, after which the portal
+  interrupts it. `PORTAL_REQUEST_LIMIT_MS`; our local abort is 65 s (it was
+  180 s for a `batch`), pinned by `portalRefusal.test.ts`.
+- **Operating time** — per METHOD, per WEBHOOK, over ten one-minute baskets;
+  `OPERATION_TIME_LIMIT`, 429, blocks that method for that webhook only.
+  **It is not shared with the portal's own users**, which corrects the reading
+  above that «our steady 30% plus their morning emptied the method's basket»:
+  the three blocks were `OVERLOAD_LIMIT`, which that page does not mention at
+  all — an administrative, portal-wide protection. Our basket for
+  `crm.deal.list` read **6.6 s** (1.4%) on 2026-09-17 09:18 Tashkent.
+- **`OVERLOAD_LIMIT` is undocumented**, so no setting can promise to avoid it;
+  keeping our share of the portal's load small is the only lever.
+Steady state that morning, 16 h with no failure: DEALS 1.5–1.8 s a pass
+(~8 s per 10 min), CUSTOMERS 0.95 s, STAGE_HISTORY 0.8 s; reference EMPLOYEES
+15.5 s and PRODUCTS 14 s, eight times a day. The deletion sweep is cheap per
+command — eight `select: ['ID']` seeks cost ~0.06 s of portal time against
+~0.23 s for the hot `select` — and dropping the nine-pipeline `CATEGORY_ID`
+filter was measured and changes nothing.
+
 **A NEW WEBHOOK DOES NOT LIFT AN ADDRESS BLOCK — 2026-09-16.** After the third
 `OVERLOAD_LIMIT` the webhook was replaced (`/rest/8868/…`). The new key answered
 in 480 ms from an office machine and the deployed worker still could not reach

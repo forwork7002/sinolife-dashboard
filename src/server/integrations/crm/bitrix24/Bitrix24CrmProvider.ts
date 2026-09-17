@@ -221,6 +221,16 @@ const BATCH_SIZE = 50
  */
 const CHAIN_MIN = 2
 const CHAIN_GROWTH = 4
+
+/**
+ * The longest a single REST request may run on a cloud portal before Bitrix24
+ * interrupts it — «не дольше чем за 60 секунд», apidocs.bitrix24.ru/limits.html.
+ * Waiting past it only waits on an answer that has already been abandoned.
+ */
+export const PORTAL_REQUEST_LIMIT_MS = 60_000
+
+/** Room for the portal's own interruption to arrive before we give up locally. */
+const PORTAL_REQUEST_GRACE_MS = 5_000
 const DEAL_SELECT = [
   'ID', 'TITLE', 'CATEGORY_ID', 'STAGE_ID', 'STAGE_SEMANTIC_ID',
   'OPPORTUNITY', 'CURRENCY_ID', 'ASSIGNED_BY_ID', 'CONTACT_ID',
@@ -503,12 +513,21 @@ export class Bitrix24CrmProvider implements CrmProvider {
       const sentAt = Date.now()
       const controller = new AbortController()
       /**
-       * A batch is fifty queries in one request, so it deserves fifty times
-       * the patience. Holding it to the single-call timeout aborts work the
-       * portal is still doing and then retries it, which is how a slow read
-       * turns into a rate-limit block.
+       * A batch is fifty queries in one request, so it deserves more patience
+       * than a single call. Holding it to the single-call timeout aborts work
+       * the portal is still doing and then retries it, which is how a slow
+       * read turns into a rate-limit block.
+       *
+       * BUT NEVER PAST THE PORTAL'S OWN CUT-OFF. Bitrix24's limits page
+       * (apidocs.bitrix24.ru/limits.html): «один REST-запрос должен
+       * выполниться не дольше чем за 60 секунд» — the portal interrupts it
+       * itself. This was `timeoutMs × 6` = 180 s, so a request the portal had
+       * already abandoned held the tick for two more minutes: during the
+       * 2026-09-16 address block CUSTOMERS sat 165–177 s on sockets that were
+       * never going to answer.
        */
-      const timeout = method === 'batch' ? this.timeoutMs * 6 : this.timeoutMs
+      const ceiling = PORTAL_REQUEST_LIMIT_MS + PORTAL_REQUEST_GRACE_MS
+      const timeout = Math.min(method === 'batch' ? this.timeoutMs * 6 : this.timeoutMs, ceiling)
       const timer = setTimeout(() => controller.abort(), timeout)
 
       try {
