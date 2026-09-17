@@ -54,6 +54,7 @@ describe('logisticsCohortSql', () => {
       'signal_stage',
       'moves',
       'agg',
+      'arrived',
       'dated',
       'classified',
       'scoped',

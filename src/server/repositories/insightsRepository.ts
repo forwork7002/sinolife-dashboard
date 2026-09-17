@@ -3436,6 +3436,58 @@ export class InsightsRepository {
    *   this argument is the failure this whole mechanism exists to prevent, and
    *   a missing argument is the one kind the compiler can catch.
    */
+  /**
+   * The move that took a still-waiting order OUT of Тасдиклаш (C4) without
+   * touching a signal stage — as a LATERAL subquery yielding
+   * `(moved_at, signal)`, or no row.
+   *
+   * THE FIVE SIGNAL STAGES ARE NOT THE ONLY WAY OUT. From 2026-09-16 the floor
+   * started dragging confirmed orders straight from the queue into
+   * «Заказ в мой склад» or «В пути», past «Подготовка товара» (`C6:NEW`), and
+   * the board kept them as Кутилмоқда / Кутармади forever. Measured on
+   * production 2026-09-17: all three of the 16th's unsettled orders were this
+   * — 999218 and 999194 (Доставка, «Тастиклаш анализ» = Тастикланган) and
+   * 999778 (moved to База within a minute) — and two of the 17th's already
+   * were too. In the two and a half months before, it happened three times.
+   *
+   * THE RULE: only when the order's latest signal is still CONFIRM_NEW or
+   * NO_ANSWER, the first move after it into another numbered funnel decides
+   * it — Доставка (C6) is CONFIRMED (and the UNCONFIRMED_SHIPPED refinement
+   * still applies on top), any other funnel is REJECTED. Stages inside C4 are
+   * skipped (SMS, Пропущенный, XATOLIK, Сделка успешна), and so is Регистрация
+   * (pipeline 0, un-prefixed ids): a deal sent back there is re-queued through
+   * C4:NEW, which is a signal of its own.
+   *
+   * ONLY PENDING ORDERS PAY FOR IT — a decided order's lookup is cut by the
+   * first predicate — so the cost is one (dealId, enteredAt) probe per waiting
+   * order, not per move.
+   *
+   * @param before Upper bound on the move (exclusive), or null for none —
+   *   the visit chain passes the next arrival so an exit is filed under the
+   *   visit it ended.
+   */
+  private static exitSql(
+    dealId: string,
+    signal: string,
+    after: string,
+    before: string | null,
+  ): string {
+    return `(
+          SELECT xh."enteredAt" AS moved_at,
+                 CASE WHEN xs."externalId" LIKE 'C6:%' THEN 'CONFIRMED' ELSE 'REJECTED' END AS signal
+            FROM "deal_stage_history" xh
+            JOIN "deal_stage" xs ON xs."id" = xh."stageId"
+           WHERE ${signal}::text IN ('CONFIRM_NEW', 'NO_ANSWER')
+             AND xh."dealId" = ${dealId}
+             AND xh."enteredAt" > ${after}
+             ${before === null ? '' : `AND (${before} IS NULL OR xh."enteredAt" < ${before})`}
+             AND xs."externalId" ~ '^C[0-9]+:'
+             AND xs."externalId" NOT LIKE 'C4:%'
+           ORDER BY xh."enteredAt"
+           LIMIT 1
+        )`
+  }
+
   private static queueSql(mode: ConfirmationQueueMode, scopeParam: string): string {
     /*
       Backlog mode keeps LIVE orders only, and it applies that AFTER the
@@ -3579,11 +3631,24 @@ export class InsightsRepository {
       the row, and still sortable — it just no longer decides who is on the
       board.
     */
-    dated AS (
+    arrived AS (
       SELECT a.deal_id, d."createdAtSource" AS created_at, a.moved_at, a.queued_at, a.signal
         FROM agg a
         JOIN "deal" d ON d."id" = a.deal_id
        ${cohort}
+    ),
+    /*
+      AN ORDER THAT LEFT THE CONFIRMATION FUNNEL HAS BEEN DECIDED, whether or
+      not it passed through a signal stage on the way out. See exitSql.
+    */
+    dated AS (
+      SELECT w.deal_id, w.created_at,
+             COALESCE(x.moved_at, w.moved_at) AS moved_at,
+             w.queued_at,
+             COALESCE(x.signal, w.signal::text) AS signal
+        FROM arrived w
+        LEFT JOIN LATERAL ${InsightsRepository.exitSql('w.deal_id', 'w.signal', 'w.moved_at', null)} x ON true
+       ${mode === 'backlog' ? `WHERE x.signal IS NULL` : ''}
     ),
     classified AS (
       SELECT
@@ -3957,8 +4022,20 @@ export class InsightsRepository {
              -- «Тастиклаш анализ» is allowed to refine.
              lead(v.queued_at) OVER (ORDER BY v.visit_no) IS NULL AS is_last
            FROM (
+             /*
+               The same exit rule queueSql applies to the row, bounded by the
+               next arrival so the move is filed under the visit it ended —
+               which is what keeps visits[0] identical to classified.outcome.
+             */
+             SELECT g.visit_no, g.queued_at,
+                    COALESCE(x.signal, g.outcome::text) AS outcome,
+                    COALESCE(x.moved_at, g.decided_at) AS decided_at
+             FROM (
+             SELECT gg.*, lead(gg.queued_at) OVER (ORDER BY gg.visit_no) AS next_queued_at
+             FROM (
              SELECT
                m.visit_no,
+               max(m.entered_at) AS last_at,
                min(m.entered_at) FILTER (WHERE m.signal = 'CONFIRM_NEW') AS queued_at,
                -- The visit's last word, tie-broken exactly as agg breaks it,
                -- so the newest visit and the row's own outcome cannot differ.
@@ -4002,6 +4079,9 @@ export class InsightsRepository {
              ) m
             WHERE m.visit_no > 0
             GROUP BY m.visit_no
+             ) gg
+             ) g
+             LEFT JOIN LATERAL ${InsightsRepository.exitSql('d."id"', 'g.outcome', 'g.last_at', 'g.next_queued_at')} x ON true
            ) v
          ) visits
        ) rep ON true`
