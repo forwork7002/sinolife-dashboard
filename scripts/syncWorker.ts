@@ -959,7 +959,7 @@ async function main() {
     sabab: ${provider.lastProbeError}` : ''),
         )
         /*
-          THE NETWORK DIAGNOSIS IS NO LONGER RUN FROM HERE. `reachability.ts`
+          THE NETWORK DIAGNOSIS IS NO LONGER RUN (reachability.ts, deleted 2026-09-17).
           answered its question on 2026-09-16 — TCP opens, TLS never completes,
           Bitrix24 is dropping this address — and each run opened ~11
           connections to four portal addresses at once, handshakes left

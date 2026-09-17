@@ -701,10 +701,3 @@ export function extractOrderCode(title: unknown): string | undefined {
  * which would be false.
  */
 export const PAYMENTS_AVAILABLE = false
-
-export class MappingIncompleteError extends Error {
-  constructor(public readonly gaps: readonly { entity: string; missing: readonly string[] }[]) {
-    super('Bitrix24 mapping incomplete')
-    this.name = 'MappingIncompleteError'
-  }
-}

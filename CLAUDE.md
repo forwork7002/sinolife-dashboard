@@ -2323,7 +2323,7 @@ per rung. **The ban lifted for a moment at 11:35 UTC and the worker answered
 with a full reference tick and was dropped again inside a minute** — so a
 recovery now runs `CALM_TICKS` (3) hot-only ticks before any reference pass or
 sweep, a restart inside the block seeds the gate shut from `sync_log` (and a
-failed startup health check shuts it too), and `reachability.ts` is no longer
+failed startup health check shuts it too), and `reachability.ts` (deleted 2026-09-17 as dead code) is no longer
 run by the worker: its ~11 simultaneous unfinished handshakes answered the
 question once and afterwards looked like a scan. **Read `UND_ERR_CONNECT_TIMEOUT` / `ECONNRESET` in that line as
 «our address is blocked or the route is down»: rotating the key changes nothing,

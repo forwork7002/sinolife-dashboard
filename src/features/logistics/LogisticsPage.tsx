@@ -27,7 +27,7 @@ import {
   apiGet,
 } from '@/lib/api'
 import { NO_VALUE, formatCompactUzs, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
-import { LOGISTICS_BUCKETS, bucketColour, bucketLabel } from '@/lib/logisticsBuckets'
+import { bucketColour, bucketLabel } from '@/lib/logisticsBuckets'
 import { t } from '@/lib/messages'
 
 /**
@@ -989,5 +989,3 @@ function rateRow(point: LogisticsPointDto): CategoryBarRow {
   }
 }
 
-/** The six columns, in the client's order — exported for the tests that pin it. */
-export const LOGISTICS_COLUMN_ORDER = LOGISTICS_BUCKETS.map((bucket) => bucket.key)

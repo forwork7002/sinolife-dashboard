@@ -368,20 +368,4 @@ export interface CrmProvider {
   fetchStockLevels(options?: FetchOptions): Promise<Page<RawStockLevel>>
 }
 
-/** Raised when a provider is asked for an entity it does not support. */
-export class UnsupportedEntityError extends Error {
-  constructor(source: string, entity: SyncEntityValue) {
-    super(`Provider "${source}" does not supply ${entity}.`)
-    this.name = 'UnsupportedEntityError'
-  }
-}
-
-/** Raised when a provider cannot classify source data into our vocabulary. */
-export class ProviderMappingError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'ProviderMappingError'
-  }
-}
-
 export const EMPTY_PAGE: Page<never> = Object.freeze({ items: Object.freeze([]) })

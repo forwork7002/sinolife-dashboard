@@ -15,7 +15,7 @@ import {
 } from '@/server/http/envelope'
 import {
   analyticsQuerySchema,
-  dealsQuerySchema,
+  confirmationOrdersQuerySchema,
   periodQuerySchema,
   searchParamsToObject,
 } from '@/server/http/queryParams'
@@ -182,29 +182,29 @@ describe('filter query validation', () => {
 
 describe('pagination query validation', () => {
   it('applies sensible defaults', () => {
-    const parsed = dealsQuerySchema.parse({})
+    const parsed = confirmationOrdersQuerySchema.parse({})
     expect(parsed.page).toBe(1)
     expect(parsed.pageSize).toBe(25)
-    expect(parsed.sort).toBe('createdAtSource')
+    expect(parsed.sort).toBe('queuedAt')
     expect(parsed.order).toBe('desc')
   })
 
   it('caps page size so one request cannot pull the whole table', () => {
-    expect(() => dealsQuerySchema.parse({ pageSize: '1000000' })).toThrow()
+    expect(() => confirmationOrdersQuerySchema.parse({ pageSize: '1000000' })).toThrow()
   })
 
   it('rejects a zero or negative page', () => {
-    expect(() => dealsQuerySchema.parse({ page: '0' })).toThrow()
-    expect(() => dealsQuerySchema.parse({ page: '-3' })).toThrow()
+    expect(() => confirmationOrdersQuerySchema.parse({ page: '0' })).toThrow()
+    expect(() => confirmationOrdersQuerySchema.parse({ page: '-3' })).toThrow()
   })
 
   it('only allows sorting by allowlisted columns', () => {
-    expect(() => dealsQuerySchema.parse({ sort: 'passwordHash' })).toThrow()
-    expect(dealsQuerySchema.parse({ sort: 'amountMinor' }).sort).toBe('amountMinor')
+    expect(() => confirmationOrdersQuerySchema.parse({ sort: 'passwordHash' })).toThrow()
+    expect(confirmationOrdersQuerySchema.parse({ sort: 'decidedAt' }).sort).toBe('decidedAt')
   })
 
   it('coerces numeric strings from the query string', () => {
-    const parsed = dealsQuerySchema.parse({ page: '3', pageSize: '50' })
+    const parsed = confirmationOrdersQuerySchema.parse({ page: '3', pageSize: '50' })
     expect(parsed.page).toBe(3)
     expect(parsed.pageSize).toBe(50)
   })
@@ -222,7 +222,7 @@ describe('searchParamsToObject', () => {
 
   it('parses end to end from a real query string', () => {
     const params = new URLSearchParams('preset=custom&from=2026-08-01&to=2026-08-23&pageSize=10')
-    const parsed = dealsQuerySchema.parse(searchParamsToObject(params))
+    const parsed = confirmationOrdersQuerySchema.parse(searchParamsToObject(params))
     expect(parsed.preset).toBe('custom')
     expect(parsed.pageSize).toBe(10)
   })

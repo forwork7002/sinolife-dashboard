@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { rowScopeFor, type Principal } from '@/server/auth/rbac'
-import { dealsQuerySchema, searchParamsToObject } from '@/server/http/queryParams'
+import { analyticsQuerySchema, searchParamsToObject } from '@/server/http/queryParams'
 
 /**
  * Query-contract and scoping tests.
@@ -48,7 +48,7 @@ function buildFilters(
   principal: Principal,
   team: readonly string[] | null = null,
 ) {
-  const query = dealsQuerySchema.parse(
+  const query = analyticsQuerySchema.parse(
     searchParamsToObject(new URLSearchParams(queryString)),
   )
   return { ...query, ...rowScopeFor(principal, team) }
@@ -101,7 +101,7 @@ describe('scope composition in route handlers', () => {
 describe('filter parsing end to end', () => {
   it('parses a realistic dashboard query string', () => {
     const filters = buildFilters(
-      'preset=custom&from=2026-08-01&to=2026-08-23&employeeIds=a,b&stageIds=s1&status=WON&q=Oq+Yo%CA%BBl&page=2&pageSize=50&sort=amountMinor&order=asc',
+      'preset=custom&from=2026-08-01&to=2026-08-23&employeeIds=a,b&stageIds=s1&status=WON&q=Oq+Yo%CA%BBl',
       manager,
     )
 
@@ -111,21 +111,6 @@ describe('filter parsing end to end', () => {
     expect(filters.stageIds).toEqual(['s1'])
     expect(filters.status).toBe('WON')
     expect(filters.q).toBe('Oq Yoʻl')
-    expect(filters.page).toBe(2)
-    expect(filters.pageSize).toBe(50)
-    expect(filters.sort).toBe('amountMinor')
-    expect(filters.order).toBe('asc')
-  })
-
-  it('rejects a sort column outside the allowlist', () => {
-    // An arbitrary sort column is an information leak, so it is enumerated
-    // rather than passed through.
-    expect(() => buildFilters('sort=passwordHash', manager)).toThrow()
-    expect(() => buildFilters('sort=user.email', manager)).toThrow()
-  })
-
-  it('rejects a page size large enough to pull the whole table', () => {
-    expect(() => buildFilters('pageSize=100000', manager)).toThrow()
   })
 
   it('rejects an unknown status rather than ignoring it', () => {
@@ -145,9 +130,6 @@ describe('filter parsing end to end', () => {
   it('applies defaults for an empty query string', () => {
     const filters = buildFilters('', manager)
     expect(filters.preset).toBe('today')
-    expect(filters.page).toBe(1)
-    expect(filters.pageSize).toBe(25)
-    expect(filters.order).toBe('desc')
     expect(filters.employeeIds).toBeUndefined()
   })
 })

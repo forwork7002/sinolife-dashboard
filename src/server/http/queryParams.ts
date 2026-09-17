@@ -140,23 +140,6 @@ export const filterQuerySchema = z.object({
   filial: z.string().trim().min(1).max(64).optional(),
 })
 
-/** Columns a client may sort by. An allowlist, never the raw parameter. */
-export const DEAL_SORT_FIELDS = [
-  'createdAtSource',
-  'closedAt',
-  'amountMinor',
-  'title',
-  'status',
-] as const
-
-export const paginationQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).max(10_000).default(1),
-  // Capped: without an upper bound, one request could pull the whole table.
-  pageSize: z.coerce.number().int().min(1).max(200).default(25),
-  sort: z.enum(DEAL_SORT_FIELDS).default('createdAtSource'),
-  order: z.enum(['asc', 'desc']).default('desc'),
-})
-
 export const analyticsQuerySchema = periodQuerySchema.and(filterQuerySchema)
 
 /**
@@ -193,16 +176,11 @@ export const departmentRosterQuerySchema = periodQuerySchema
   .and(filterQuerySchema)
   .and(z.object({ departmentId: z.string().min(1).max(64) }))
 
-export const dealsQuerySchema = periodQuerySchema
-  .and(filterQuerySchema)
-  .and(paginationQuerySchema)
-
 /**
  * The confirmation queue's own page contract.
  *
- * It cannot ride `paginationQuerySchema`: that one's sort allowlist is the
- * deal table's columns, and this list is ordered by when an order entered the
- * queue — a column no deal query has.
+ * Its sort allowlist is its own: this list is ordered by when an order
+ * entered the queue — a column no deal query has.
  */
 export const confirmationOrdersQuerySchema = periodQuerySchema
   .and(filterQuerySchema)
