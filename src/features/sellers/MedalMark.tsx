@@ -6,11 +6,13 @@ import { formatNumber } from '@/lib/format'
 const COUNT_CAP = 99
 
 /**
- * Bitta medal — «ZARB» (spec §3). 32 birlik quti, tanasi BITTA
+ * Bitta medal — «ZARB» (klassik taxta spec §1.4). 32 birlik quti, tanasi BITTA
  * `<use href="#m-<code>">`: metall, planchet va belgi `medalDefs.ts` dagi
- * belgining ichida, instance hech narsa bo'yamaydi.
+ * belgining ichida, instance hech narsa bo'yamaydi. Sahifada `MedalDefs`
+ * bir marta o'rnatilgan bo'lishi SHART — usiz `<use>` hech narsaga ishora
+ * qilmaydi.
  *
- * O'RINDIQDA (`seat`) ikki qo'shimcha, ikkalasi ham SVG ICHIDA:
+ * PODIUM KARTASIDA (`seat`) ikki qo'shimcha, ikkalasi ham SVG ICHIDA:
  * - Oy oilasi ≥ 40 px da dafna (`#m-laurel-<metal>`) tanadan OLDIN chiziladi;
  * - `count > 1` da ×N plastinkasi — tana metallining rim gradienti, botiq
  *   quduq va yo'l-raqamlar (`#nx`, `#n0..n9`; shrift yo'q), 99 da qisiladi.
@@ -28,7 +30,7 @@ export function MedalMark({
   code: MedalCode
   size?: number
   count?: number
-  /** O'rindiq tokchasi: dafna (oy, ≥ 40 px) va ×N plastinkasi faqat shu yerda. */
+  /** Podium kartasining tokchasi: dafna (oy, ≥ 40 px) va ×N plastinkasi faqat shu yerda. */
   seat?: boolean
   /** Oxirgi yangilanishda paydo bo'lgan — bir marta 0,6 → 1 kattalashadi. */
   isNew?: boolean
@@ -39,7 +41,7 @@ export function MedalMark({
   const label = count > 1 ? `${MEDALS[code].name} ×${formatNumber(count)}` : MEDALS[code].name
   return (
     <svg
-      className={isNew ? 'medal medal--new' : 'medal'}
+      className={isNew ? 'medal-mark medal-mark--new' : 'medal-mark'}
       data-medal={code}
       viewBox="0 0 32 32"
       width={size}
@@ -77,7 +79,7 @@ function CountPlate({ count, body, dev }: { count: number; body: string; dev: st
   return (
     <>
       <rect
-        className="medal__plate-rim"
+        className="medal-mark__plate-rim"
         x={x0.toFixed(2)}
         y="21.2"
         width={w}
@@ -85,8 +87,8 @@ function CountPlate({ count, body, dev }: { count: number; body: string; dev: st
         rx="2.6"
         fill={`url(#mg-${body}-rim)`}
       />
-      <rect className="medal__plate-well" x={(x0 + 1.1).toFixed(2)} y="22.3" width={(w - 2.2).toFixed(2)} height="8.4" rx="1.7" />
-      <g className="medal__count" data-dev={dev}>
+      <rect className="medal-mark__plate-well" x={(x0 + 1.1).toFixed(2)} y="22.3" width={(w - 2.2).toFixed(2)} height="8.4" rx="1.7" />
+      <g className="medal-mark__count" data-dev={dev}>
         {uses}
       </g>
     </>
