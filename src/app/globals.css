@@ -3869,6 +3869,21 @@ p {
     --row-medals-room: 64px;
   }
 }
+/*
+ * …AND IN TWO PLACES THERE IS NO ROOM AT ALL. The name cell is at its
+ * narrowest just after each point where the table gains columns: 195px at
+ * 1280 (two columns appear) and 189px at 1600 («Buyurtma» and «Konv.» come
+ * back), against a chase of ~160. Measured with every top seller holding
+ * three medals: 2 of 73 medals found room at 1280 and 1 of 73 at 1600 — so
+ * there the bars would have given up 64px for nothing. With the room at zero
+ * the holder's `max-width` is zero too: no medal is drawn in a row, every bar
+ * is the old board's, and the seats above still carry theirs.
+ */
+@media (min-width: 1280px) and (max-width: 1319px), (min-width: 1600px) and (max-width: 1659px) {
+  .tv-list--medals {
+    --row-medals-room: 0px;
+  }
+}
 .tv-list--medals .tv-bar {
   max-width: min(260px, calc(100% - var(--row-medals-room)));
 }

@@ -215,7 +215,7 @@ describe('globals.css — MEDALS bo‘limi', () => {
     // Medalning o'zi, va uning taxtadagi ikki joyi: o'rindiq tokchasi va qator katagi.
     for (const s of selectors) {
       expect(s, s).toMatch(
-        /^(\.medal-defs|\.medal-mark|\.row-medals|\.seat-medals|\.tv-cell--medals|\.tv-cell--bare|\.tv-list--medals|@keyframes medal-mark-new|@media \(prefers-reduced-motion: no-preference\)|@media \(min-width: 1280px\) and \(max-width: 1799px\)|@media \(max-width: 639px\))/,
+        /^(\.medal-defs|\.medal-mark|\.row-medals|\.seat-medals|\.tv-cell--medals|\.tv-cell--bare|\.tv-list--medals|@keyframes medal-mark-new|@media \(prefers-reduced-motion: no-preference\)|@media \(min-width: 1280px\) and \(max-width: (1799|1319)px\)|@media \(max-width: 639px\))/,
       )
     }
   })

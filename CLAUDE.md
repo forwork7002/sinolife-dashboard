@@ -1035,7 +1035,9 @@ Per-screen traps worth knowing before you touch one:
   komandalar boʻyichasini fakt 1 va fakt 2 boʻyicha koʻrish mumkin boʻlsin».
   Every row is already on the payload carrying both facts, so this is one
   answer read two ways and not a second question: no parameter, no request, no
-  cache key, nothing that can straddle a sync. `rankedBy` in `sellers/board.ts`
+  cache key, nothing that can straddle a sync. `rankedBy` in
+  `sellers/SellersPage.tsx` (it lived in `sellers/board.ts` only while the EFIR
+  redesigns did)
   therefore MIRRORS `SellerBoardService` — `buildBoard` for the sellers and
   `teamRows` for the teams — the fact being read, then the other one, then the
   key, with competition ranking over BOTH figures; change that rule on the
@@ -1065,6 +1067,41 @@ Per-screen traps worth knowing before you touch one:
   (the reader keys a map by id), the window is fixed to `RECORDS_FROM` → now
   whatever the period filter says, and the 10-minute memo is keyed on the
   window START — never its end, which is `ctx.now` and would never hit.
+  **WHERE THE MEDALS STAND, AND THE THREE THINGS THEY MAY NOT DO.** The board
+  is `912fc63`'s to the pixel wherever there is no medal; `SellersPage` mounts
+  one `<MedalDefs />`, asks `?include=medals` on its own ten-minute clock with
+  NO period on the key (the record wall's pattern — a failed medal request
+  leaves the ranking exactly as it was), and joins by `employeeId`. A seat
+  carries ONE shelf under the team chip — champion up to 4 at 40px, the
+  other two up to 3 at 36px (`seatMedals`), a repeat as the ×N plate struck
+  inside the SVG; a row carries up to 3 at 26px at the right-hand end of the
+  name cell, across the bar and chase lines (`rowMedalsOf`, `first-sale` never
+  drawn there). **No «+N» and no caption anywhere; `TeamsColumn` has no prop
+  that could receive a medal.** The three promises are CSS, in the MEDALS
+  block of `globals.css`, and each was measured against the old board running
+  beside it: **the podium does not grow** (489 → 471px at 1920×1080 — the
+  shelf's 46px came out of the seat's gaps, its bottom padding and pedestals a
+  quarter lower, still 1 : 1.6 : 2.4; the gap ABOVE the ring was left alone,
+  because 4px less slides the crown under the plaque); **the row does not
+  grow** (the holder is exactly one 26px medal tall inside the 27.9 / 26.5px
+  the bar and chase lines already took — 28px would not fit a laptop); **the
+  number columns do not move** (`contain: inline-size` plus margins on the
+  medals rather than padding on the holder, so the cell's minimum width is
+  what it was — 10px of padding once dropped a team chip to a second line at
+  1366). A medal that does not fit beside the chase wraps to a line that is
+  never painted and so disappears WHOLE: three fit on the television, one or
+  two on a 1366 laptop, and a phone gives them a line of their own. **Every
+  bar in a list with medals shortens by the same `--row-medals-room`**,
+  because the bars share one scale — 96px from 1800, 64px between 1280 and
+  1799, and ZERO over 1280–1319 and 1600–1659, the two stretches just after
+  the table gains columns, where the name cell is ~190px against a ~160px
+  chase: no medal fits there, so no bar gives anything up and the rows are the
+  old board's. Spec §1.6 also
+  bought a fifth visible row at 1920×1080 (4 → 5, teams 5 → 6) and turned the
+  «Bugun» morning's bold «0» into a muted «—» on rows with nothing on EITHER
+  fact. `tests/features/sellersMedals.test.tsx` holds all of it, the CSS
+  included, and was checked by mutation. **Still the old board's and not
+  fixed:** at 1366×768 the list is 68px tall (it was 61) and no row is whole.
 - **Sotuvchilar oyligi** — **NEW ON 2026-09-14**, the client's own pay scheme
   («hodimlar oyligi ni hisoblovchi bo'lim kerak… sotuvchilar oyligi fakt 2 ga
   qarab olinadi»). Three parts, three columns, each checkable: **8% of FAKT 2

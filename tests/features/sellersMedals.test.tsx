@@ -434,6 +434,18 @@ describe('globals.css — medallarning taxtadagi joyi', () => {
     expect(code).toMatch(/@media \(min-width: 1280px\) and \(max-width: 1799px\) \{\s*\.tv-list--medals \{\s*--row-medals-room: 64px;/)
   })
 
+  /*
+    Ism katagi jadval ustun qo'shgan ikki nuqtadan keyin eng tor: 1280 da 195 px,
+    1600 da 189 px — chase ~160 px. U yerda medalga joy yo'q, shuning uchun chiziq
+    ham qisqarmaydi: joy nol, tutqichning `max-width` i ham nol. Tartib MUHIM —
+    bu qoida 64 px qoidasidan KEYIN turishi kerak, aks holda u yutqazadi.
+  */
+  it('medal sig‘maydigan ikki tor oraliqda joy NOL: chiziq eski uzunligida, qatorda medal yo‘q', () => {
+    const none = code.indexOf('@media (min-width: 1280px) and (max-width: 1319px), (min-width: 1600px) and (max-width: 1659px)')
+    expect(none).toBeGreaterThan(code.indexOf('--row-medals-room: 64px;'))
+    expect(code.slice(none)).toMatch(/^[^{]*\{\s*\.tv-list--medals \{\s*--row-medals-room: 0px;/)
+  })
+
   it('telefonda grid yo‘q: medallar o‘z satrida, chapdan, chiziq eski uzunligida', () => {
     expect(phone).toMatch(/\.tv-cell--medals \{\s*display: block;/)
     expect(phone).toMatch(/\.row-medals \{[^}]*justify-self: start;[^}]*flex-flow: row wrap;/)
