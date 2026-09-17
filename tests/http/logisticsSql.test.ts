@@ -362,9 +362,26 @@ describe('the standing snapshot', () => {
 
   it('takes no window, in either statement', () => {
     for (const sql of [STANDING, ORDERS]) {
-      expect(sql).not.toContain('$1')
       expect(sql).not.toContain('$2')
+      expect(sql).not.toContain('$3')
     }
+  })
+
+  /*
+    THE CALLER'S SCOPE, AND ONLY IT, IS THE ONE PARAMETER.
+
+    A ROP opening Logistika reads their own team's parcels. The person a parcel
+    belongs to is the ОПЕРАТОР the confirmation cohort names — the snapshot
+    field first, the assignee when it is empty — so the two blocks on one
+    screen cannot disagree about whose order it is. NULL is the company.
+  */
+  it('narrows both statements to the caller, on the cohort\'s own operator', () => {
+    for (const sql of [STANDING, ORDERS]) {
+      expect(sql).toContain(
+        `($1::text IS NULL OR COALESCE(d."operatorEmployeeId", d."employeeId") = ANY(string_to_array($1, ',')))`,
+      )
+    }
+    expect(BARE).toContain('JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")')
   })
 
   /*

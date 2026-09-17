@@ -85,7 +85,7 @@ export const LANDING_ROUTE = '/sellers'
 /**
  * The screens that only exist company-wide.
  *
- * Their endpoints aggregate across everyone — a logistics funnel, a margin
+ * Their endpoints aggregate across everyone — a dispatch board, a margin
  * ladder, a cohort's return rate — and take no employee filter, so there is no
  * honest answer to give an account scoped to one team or one salesperson: the
  * company's figures would leak, and a blank page would lie. Those endpoints
@@ -106,7 +106,11 @@ export const LANDING_ROUTE = '/sellers'
 const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
   'cohort',
   'margin',
-  'logistics',
+  /*
+    «LOGISTIKA NATIJASI» LEFT THE SET ON 2026-09-17, for the reason «Tasdiqlash»
+    did: its funnel IS the confirmation cohort, and the standing parcels cut on
+    the same operator. A ROP it was ticked for had never seen the link.
+  */
   'warehouse',
   /*
     «REKLAMA SAMARASI» JOINED THE SET WHEN «TASDIQLASH» LEFT IT.

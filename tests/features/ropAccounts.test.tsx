@@ -229,7 +229,7 @@ describe('opening a ROP account', () => {
     expect(write.body.dataScope).toBe('TEAM')
     expect(write.body.employeeId).toBe('emp-rop')
     expect(write.body.role).toBe('SALES')
-    expect(write.body.sections).toEqual(['confirmation', 'sellers'])
+    expect(write.body.sections).toEqual(['confirmation', 'logistics', 'sellers'])
   })
 
   /*

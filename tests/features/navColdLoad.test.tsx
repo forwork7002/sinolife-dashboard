@@ -94,6 +94,27 @@ describe('the sidebar before the session has answered', () => {
   })
 
   /*
+    LOGISTIKA NARROWS NOW, SO A ROP GIVEN IT SEES IT.
+
+    Production, 2026-09-17: a ROP account had «Logistika natijasi» ticked and
+    the link never appeared — the sidebar dropped every company-wide section
+    for a narrowed account, and logistics was one. Its endpoint reads the
+    caller's own team since then, so the tick has to reach the menu.
+  */
+  it('offers a ROP the logistics section it was given', () => {
+    renderRail({
+      userId: 'u-rop',
+      role: 'SALES',
+      sections: ['confirmation', 'logistics', 'margin'],
+      dataScope: 'TEAM',
+      canManageUsers: false,
+    })
+
+    // Yalpi marja is still company-wide, so it stays out of a ROP's menu.
+    expect(railLinks()).toEqual([t.nav.confirmation, t.nav.logistics])
+  })
+
+  /*
     THE ONE LINK THAT IS NOT A SECTION. Account administration is a permission,
     so it is the entry a ticked-sections list can never explain away — and the
     one the client actually named.
