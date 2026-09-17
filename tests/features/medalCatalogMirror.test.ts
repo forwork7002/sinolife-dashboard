@@ -19,23 +19,22 @@ describe('medalCatalog mirrors sellerMedals', () => {
     expect([...frontend.MEDAL_ORDER]).toEqual([...server.MEDAL_ORDER])
   })
 
-  it('MEDAL_UNLOCK_LEVEL — the same level for every code', () => {
-    expect({ ...frontend.MEDAL_UNLOCK_LEVEL }).toEqual({ ...server.MEDAL_UNLOCK_LEVEL })
-  })
-
   it('every engine code has a name, a metal and nothing extra', () => {
     const codes = [...server.MEDAL_CODES].sort()
     expect(Object.keys(frontend.MEDALS).sort()).toEqual(codes)
     expect(Object.keys(frontend.MEDAL_METAL).sort()).toEqual(codes)
   })
 
-  it('the ladder — titles, thresholds and the Legenda step', () => {
-    expect(frontend.LADDER.map((r) => r.title)).toEqual([...server.LEVEL_TITLES])
-    // Yangi opens at the first soʻm (1 minor unit), which the frontend states as «no threshold».
-    expect(frontend.LADDER.map((r) => r.thresholdSom)).toEqual(
-      server.LEVEL_THRESHOLDS_MINOR.map((minor) => (minor === 1n ? null : Number(minor / 100n))),
-    )
-    expect(frontend.LEGENDA_STEP_SOM).toBe(Number(server.LEGENDA_STEP_MINOR / 100n))
+  it('no level vocabulary survives on either side — medals are ungated (2026-09-17)', () => {
+    /*
+      The client: «uroven kerak emas, medallar qolsin». The ladder, the titles
+      and the per-medal unlock table were deleted from BOTH modules; an export
+      whose name speaks of levels coming back on one side is how a gate gets
+      rebuilt one helper at a time.
+    */
+    const levelish = /level|ladder|legenda|unlock|promot|tier/i
+    expect(Object.keys(frontend).filter((name) => levelish.test(name))).toEqual([])
+    expect(Object.keys(server).filter((name) => levelish.test(name))).toEqual([])
   })
 
   it('an unknown code (a server deployed ahead of an open tab) is dropped, never looked up', () => {

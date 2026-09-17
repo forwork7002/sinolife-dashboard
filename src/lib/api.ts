@@ -1435,7 +1435,7 @@ export type MedalCode =
  *
  * TAYYOR MATN EMAS: qaysi oy/kun, qancha pul, necha buyurtma, necha foiz
  * bo'lak bo'lib keladi. Sabab: domen qatlami o'zbek tilini bilmaydi — nom
- * `medalCatalog.ts` da, uni `MedalMark.tsx` chizadi. EFIR jumla tuzmaydi
+ * `medalCatalog.ts` da, uni `MedalMark.tsx` chizadi. Taxta jumla tuzmaydi
  * (nom + «×N»), lekin bo'laklar DTO'da qoladi: motor tegilmagan.
  *
  * Mirrors `sellerBoardService.SellerMedalDto`; nothing checks the mirror —
@@ -1458,33 +1458,29 @@ export interface SellerMedalDto {
   readonly percent: number | null
 }
 
+/**
+ * Bir sotuvchi va uning medallari — boshqa hech narsa. DARAJA YO'Q
+ * (2026-09-17, mijoz: «uroven kerak emas, medallar qolsin»): daraja, unvon,
+ * jami pul, ostonalar va «bugun» maydoni payload'dan olib tashlandi.
+ *
+ * Mirrors `sellerBoardService.SellerMedalRowDto`; nothing checks the mirror —
+ * edit both sides.
+ */
 export interface SellerMedalRowDto {
   readonly employeeId: string
-  /** 0 — hali savdosiz; 1..6. */
-  readonly level: number
-  /** 6-darajada 1 = Legenda, 2 = Legenda II …; pastda 0. */
-  readonly legendaTier: number
-  /** «Ustoz», «Legenda II»; 0-darajada null. */
-  readonly rankTitle: string | null
-  /** 2026-avgustdan beri jami FAKT 2 — daraja shundan. */
-  readonly delivered: MoneyDto
-  readonly levelFloor: MoneyDto
-  /** Keyingi ostona — HAR DOIM bor (0-darajada birinchi so'm, Legendada keyingi milliard). */
-  readonly nextLevelAt: MoneyDto
-  readonly nextTitle: string
-  /** Joriy darajaga chiqqan kun, `YYYY-MM-DD` hisobot mintaqasida; null bo'lishi mumkin. */
-  readonly promotedOn: string | null
-  /** Faqat daraja ochgan medallar, chizilish tartibida. */
+  /**
+   * Motor topgan HAR BIR medal, chizilish tartibida (`MEDAL_ORDER`) — eshiksiz.
+   * BO'SH BO'LISHI MUMKIN: oynada oy fakti bor har sotuvchi ro'yxatda, medali
+   * bo'lmasa ham; ro'yxatda yo'q sotuvchi ham — medalsiz.
+   */
   readonly medals: readonly SellerMedalDto[]
 }
 
 export interface SellerMedalsDto {
-  /** Jami pul bo'yicha kamayib. */
+  /** `employeeId` bo'yicha — tartib ma'no tashimaydi; o'quvchi id bo'yicha xarita quradi. */
   readonly sellers: readonly SellerMedalRowDto[]
   /** See `SellerRecordsDto.from` — o'sha chegara, o'sha sabab. */
   readonly from: string
-  /** `YYYY-MM-DD` hisobot mintaqasida — `promotedOn` bilan solishtirish uchun. */
-  readonly today: string
 }
 
 /** One day of one seller's intake. */
