@@ -359,7 +359,7 @@ describe('o‘rindiq qaysi faktni aytadi', () => {
   it('hech kim yetkazmagan bo‘lsa — sahnada «FAKT 1» yozuvi, FAKT 2 o‘rnida «hali yoʻq», raqam emas', () => {
     render(<SellersColumn data={FALLBACK} {...PROPS} />)
     const lines = [...document.querySelectorAll('#tv-sellers .stage__fakt > span')].map((c) => c.textContent)
-    expect(lines).toEqual(['FAKT 1tasdiqlangan · 3 buyurtma', 'FAKT 2hali yoʻq — yetkazish kutilmoqda'])
+    expect(lines).toEqual(['FAKT 1 tasdiqlangan · 3 buyurtma', 'FAKT 2 hali yoʻq — yetkazish kutilmoqda'])
     expect(document.querySelector('#tv-sellers .seat__other')).toBeNull()
   })
 
@@ -369,7 +369,10 @@ describe('o‘rindiq qaysi faktni aytadi', () => {
     expect(text).not.toMatch(/oʻrinlar hozircha/)
     expect(text).not.toMatch(/Avval FAKT 2/)
     expect(document.querySelector('.tv-legend-swatch')).toBeNull()
-    expect(column('tv-sellers').getByText('3 sotuvchi')).toBeDefined()
+    // Sanoqdagi raqam `<b>` da (mock `.phead__n b`) — jumla matni o'zgarmaydi.
+    const count = document.querySelector('#tv-sellers .tv-col-head__count')!
+    expect(count.textContent).toBe('3 sotuvchi')
+    expect([...count.querySelectorAll('b')].map((b) => b.textContent)).toEqual(['3'])
   })
 })
 

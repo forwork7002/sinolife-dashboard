@@ -119,21 +119,39 @@ describe('EFIR tokenlari — uchala blokda', () => {
     }
   })
 
-  it('`--efir-*` faqat `.tv-board-shell` ostida — uchala mavzu mexanizmi bilan, boshqa hech qayerda', () => {
+  /*
+    IKKI ILDIZ, BITTA RO'YXAT: taxta va uni ushlagan `main`. Rekord devori va davr
+    boshqaruvi PageShell sarlavhasida — taxtadan TASHQARIDA — va tokenlar faqat
+    `.tv-board-shell` da e'lon qilinganda ularning har bir `--efir-*` o'qishi global
+    palitraga tushib, plaketlar tekis ramkali quti bo'lib chizilardi (premium review,
+    2026-09-17). `:is()` — kechirimli ro'yxat: `:has()` ni bilmaydigan brauzer faqat
+    o'sha argumentni tashlaydi, taxta tokenlari qoladi.
+  */
+  it('`--efir-*` faqat sotuvchilar sahifasi ostida — taxta va uning `main` i, uchala mavzu mexanizmi bilan', () => {
     const code = CSS.replace(/\/\*[\s\S]*?\*\//g, '')
     const rules = code.match(/[^{}]+\{[^{}]*\}/g) ?? []
     const selectors: string[] = []
+    const ROOTS = ':is(.tv-board-shell, main:has(.tv-board-shell))'
     for (const rule of rules) {
       if (!/--efir-[a-z0-9-]+\s*:/.test(rule)) continue
       const selector = rule.slice(0, rule.indexOf('{')).trim()
-      expect(selector, rule.slice(0, 120)).toMatch(/\.tv-board-shell$/)
+      expect(selector.endsWith(ROOTS), rule.slice(0, 120)).toBe(true)
       selectors.push(selector)
     }
     expect(selectors).toEqual([
-      '.tv-board-shell',
-      ':root:where(:not([data-theme="light"])) .tv-board-shell',
-      ':root[data-theme="dark"] .tv-board-shell',
+      ROOTS,
+      `:root:where(:not([data-theme="light"])) ${ROOTS}`,
+      `:root[data-theme="dark"] ${ROOTS}`,
     ])
+  })
+
+  it('sarlavhadagi material o‘qishlari (rekord devori, davr boshqaruvi) token ildizi ICHIDA', () => {
+    // Sarlavha `main` ichida — PageShell `.page-container` ni `<main>` ga joylaydi (Shell).
+    const shell = readFileSync(join(process.cwd(), 'src/components/layout/Shell.tsx'), 'utf8')
+    expect(shell).toMatch(/<main\s[^>]*id="main"/)
+    const wall = CSS.slice(CSS.indexOf('* THE RECORD WALL'), CSS.indexOf('* ORG CHART'))
+    expect(wall).toContain('var(--efir-raised')
+    expect(wall).toContain('var(--efir-shadow-seat')
   })
 
   it('oila ORDINAL deb hujjatlashtirilgan — `--seq` uslubida, seriya emas; qutb qoidasi yozilgan', () => {
@@ -177,9 +195,9 @@ describe('EFIR shrift shkalasi', () => {
   (`.seat--1`) — har doim 1-rank, uning keng oltin yuvishi to'g'ridan-to'g'ri
   `--medal-gold-wash-p1` ni o'qiydi (delta 9b). Legenda toji
   endi `#crest-6` belgisining ICHIDA. `.trow__rank` ro'yxatdan chiqdi (komanda
-  ranki endi tanga); `.record__k` — rekord devori qayta qurilganda o'chiriladi.
+  ranki endi tanga). Rekord devori yorlig'i neytral siyohda — istisno emas.
 */
-const METAL_ALLOWED = /^(\.medal\b|\.medal__|\.halo\b|\.seat--1$|\.stage$|\[data-metal="(gold|silver|bronze)"\]|\.record__k\b)/
+const METAL_ALLOWED = /^(\.medal\b|\.medal__|\.halo\b|\.seat--1$|\.stage$|\[data-metal="(gold|silver|bronze)"\])/
 
 describe('EFIR bo‘limi — rang shartnomasi', () => {
   it('bo‘lim bor va TV BOARD dan oldin turadi; asosiy selektorlar', () => {
@@ -264,9 +282,12 @@ describe('EFIR bo‘limi — rang shartnomasi', () => {
   it('kamaytirilgan harakatda hech narsa qimirlamaydi — blok bo‘limning oxirida', () => {
     const efir = EFIR()
     const reduced = efir.slice(efir.lastIndexOf('@media (prefers-reduced-motion: reduce)'))
-    for (const sel of ['.crest__cell--fill', '.medal--new', '.tv-promo', '.row__band', '.meter i']) {
+    for (const sel of ['.crest__cell--fill', '.medal--new', '.tv-promo', '.meter i']) {
       expect(reduced, sel).toContain(sel)
     }
+    // `.row__band` o'tishsiz — ro'yxatda turishi yolg'on bo'lardi.
+    expect(reduced).not.toContain('.row__band')
+    expect(strip(efir)).not.toMatch(/\.row__band \{[^}]*transition/)
     expect(reduced).toContain('animation: none')
     expect(reduced).toContain('transition: none')
     expect(efir.indexOf('/* EFIR — kamaytirilgan harakat')).toBeGreaterThan(efir.indexOf('.legend__rung'))
@@ -378,7 +399,12 @@ describe('EFIR — qator, komandalar, e‘lon', () => {
   it('e‘lon oqimdan tashqarida, tasma va gerb bilan; kirishi `transform` ni bosmaydi', () => {
     const code = strip(EFIR())
     const rule = code.slice(code.indexOf('.tv-promo {'))
-    expect(rule.slice(0, rule.indexOf('\n}') + 2)).toContain('position: absolute')
+    const promo = rule.slice(0, rule.indexOf('\n}') + 2)
+    expect(promo).toContain('position: absolute')
+    // Material o'rindiqniki — ko'tarilish, 1 px ramka emas (spec §1).
+    expect(promo).toContain('background: linear-gradient(180deg, var(--efir-raised-hi), var(--efir-raised));')
+    expect(promo).toMatch(/box-shadow:\s*inset 0 1px 0 var\(--efir-edge-hi\),\s*inset 0 0 0 1px var\(--efir-edge-ring\),\s*var\(--efir-shadow-seat\);/)
+    expect(promo).not.toMatch(/\bborder:|--surface-raised|--border-strong|--ink-primary/)
     expect(code).toMatch(/\.tv-promo__band \{[^}]*background: var\(--tier\);/)
     const kf = code.slice(code.indexOf('@keyframes tv-promo-in'))
     expect(kf.slice(0, kf.indexOf('\n}') + 2)).not.toContain('transform:')

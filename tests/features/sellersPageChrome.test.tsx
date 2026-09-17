@@ -92,12 +92,18 @@ describe('the «Bugun» title line', () => {
     expect(line.textContent).not.toContain('–')
   })
 
-  it('leaves every other window to the shell’s own range', async () => {
+  /*
+    EVERY OTHER WINDOW IN WORDS TOO (premium review, 2026-09-17): the shell's range
+    is `Intl` 'uz' short months, and the television's Chromium printed «1-sen 2026 –
+    17-sen 2026» where the mock prints «1–17 sentabr 2026». The shell's own range
+    must not follow it — meta travels without its period on every window.
+  */
+  it('names «Shu oy» as «1–17 sentabr 2026», and the shell prints no second range', async () => {
     preset = 'this_month'
     renderPage()
     const title = screen.getByRole('heading', { level: 1 })
-    await vi.waitFor(() => expect(title.nextElementSibling?.textContent).toContain('–'))
-    expect(title.nextElementSibling!.textContent).not.toMatch(/payshanba|bugun/)
+    await vi.waitFor(() => expect(title.nextElementSibling?.textContent).toBe('1–17 sentabr 2026'))
+    expect(title.nextElementSibling!.textContent).not.toMatch(/payshanba|bugun|sen /)
   })
 })
 
@@ -127,8 +133,38 @@ describe('the shared chrome, styled from the page', () => {
     expect(rules).toContain('.page-container:has(.tv-board-shell) .accent-rule {\n  display: none;')
     const selectors = rules.match(/^[^@{}\n][^{}\n]*\{/gm)!.map((s) => s.trim())
     expect(selectors.length).toBeGreaterThan(3)
-    for (const sel of selectors) expect(sel.startsWith('.page-container:has(.tv-board-shell) ')).toBe(true)
+    // Every rule is scoped to the page that holds the board; the page glow is the ONE rule on `main`.
+    const onMain = selectors.filter((sel) => sel.startsWith('main:has(.tv-board-shell) '))
+    expect(onMain).toEqual(['main:has(.tv-board-shell) {'])
+    for (const sel of selectors) {
+      if (onMain.includes(sel)) continue
+      expect(sel.startsWith('.page-container:has(.tv-board-shell) ')).toBe(true)
+    }
     expect(rules).toContain('var(--tier-4)')
+  })
+
+  /*
+    THE PINK AURORA IS NOT DRAWN HERE (premium review, 2026-09-17). PageShell mixes
+    its first blob from `--accent` — pink on this page — over a 70 px blur, and it
+    smudged the title and the record wall. The mock's one cool light replaces it,
+    from above `main`, reading the page's own `--efir-page-glow`.
+  */
+  it('replaces the shell aurora with the mock’s one cool glow, on `main`', () => {
+    expect(rules).toContain('.page-container:has(.tv-board-shell) .page-atmosphere {\n  display: none;')
+    expect(rules).toContain(
+      'main:has(.tv-board-shell) {\n  background: radial-gradient(1100px 420px at 46% -120px, var(--efir-page-glow), transparent 70%);',
+    )
+  })
+
+  it('puts the header — record wall and period control — inside the `--efir-*` token root', async () => {
+    const { t } = await import('@/lib/messages')
+    preset = 'this_month'
+    const { container } = renderPage()
+    const root = container.querySelector('main:has(.tv-board-shell)')
+    expect(root).not.toBeNull()
+    expect(root!.querySelector(`header [role="group"][aria-label="${t.period.label}"]`)).not.toBeNull()
+    const tokens = CSS.match(/:is\(\.tv-board-shell, main:has\(\.tv-board-shell\)\) \{/g) ?? []
+    expect(tokens).toHaveLength(3)
   })
 
   it('reaches the control by the label PeriodFilter actually renders', async () => {

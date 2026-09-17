@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { type FaktChoice, fromSeller, fromTeam } from '@/features/sellers/board'
-import { todayDateLine } from '@/features/sellers/dateLine'
+import { rangeDateLine, todayDateLine } from '@/features/sellers/dateLine'
 import { MedalDefs } from '@/features/sellers/MedalDefs'
 import { RecordWall } from '@/features/sellers/RecordWall'
 import { SellersBoard, type Status } from '@/features/sellers/SellersBoard'
@@ -105,23 +105,33 @@ export function SellersPage() {
   const [fakt, setFakt] = useState<FaktChoice>('auto')
 
   /*
-    «BUGUN» NAMES ITS DAY (EFIR Premium spec §7): «17-sentabr 2026, payshanba ·
-    bugun» instead of the shell's «17-sen 2026 – 17-sen 2026». PageShell is
-    shared chrome and reaches /confirmation, so it is not edited: on the today
-    window the page hands the line over as `description` and passes `meta`
-    WITHOUT its period, which is what stops the shell printing the range after
-    it. Everything else meta carries — the data source, the truncation badge —
-    still travels. The window is read from the RESPONSE (`meta.period`), not
-    from the control, so the words never name a day the numbers are not from.
+    THE TITLE LINE NAMES ITS WINDOW IN WORDS (EFIR Premium spec §7): «17-sentabr
+    2026, payshanba · bugun» on «Bugun», «1–17 sentabr 2026» on «Shu oy» —
+    instead of the shell's «17-sen 2026 – 17-sen 2026», whose short months
+    come from an ICU the television's Chromium does not carry. PageShell is
+    shared chrome and reaches /confirmation, so it is not edited: the page
+    hands the line over as `description` and passes `meta` WITHOUT its period,
+    which is what stops the shell printing its range after it. Everything else
+    meta carries — the data source, the truncation badge — still travels. The
+    window is read from the RESPONSE (`meta.period`), not from the control, so
+    the words never name a day the numbers are not from. Until it answers the
+    description is undefined and the shell holds the line open as before.
   */
   const meta = board.data?.meta
-  const today = meta?.period?.preset === 'today' ? meta.period : undefined
-  const shellMeta = useMemo(() => (today && meta ? { ...meta, period: undefined } : meta), [meta, today])
+  const period = meta?.period
+  const today = period?.preset === 'today' ? period : undefined
+  const shellMeta = useMemo(() => (meta ? { ...meta, period: undefined } : meta), [meta])
+  const dateLine =
+    period === undefined
+      ? undefined
+      : today !== undefined
+        ? todayDateLine(today.start)
+        : rangeDateLine(period.start, period.end)
 
   return (
     <PageShell
       title={t.nav.sellers}
-      description={today ? todayDateLine(today.start) : undefined}
+      description={dateLine}
       meta={shellMeta}
       /* THE RECORD WALL RIDES THE TITLE LINE — two static bands between the
          title and the period control (spec §7), on its own ten-minute clock. */

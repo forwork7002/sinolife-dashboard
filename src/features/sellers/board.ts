@@ -124,7 +124,9 @@ export function queuedOf(row: SellerBoardRowDto): number | null {
  *   On «Bugun» it is not on the board at all; over a longer window it keeps
  *   its unranked row, because a seller whose whole month was refused is a row
  *   a floor manager needs (`insightsRepository` `ratingSql`, «EVERY OPERATOR
- *   IN THE COHORT»).
+ *   IN THE COHORT») — LAST, under its own «Savdosiz» heading, after the
+ *   queue group (`SellersBoard`), never between the ranked rows and the
+ *   sellers still waiting on a decision.
  */
 export interface BoardSplit {
   readonly earners: readonly BoardEntry[]

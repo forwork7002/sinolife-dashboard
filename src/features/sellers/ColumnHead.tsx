@@ -5,16 +5,22 @@ import { FaktSwitch } from '@/features/sellers/FaktSwitch'
 
 /**
  * Kalit yonidagi izoh — lit tugma NIMA ekanini so'z bilan aytadi (EFIR Premium
- * §7, delta 20b). Tor sarlavhada (telefon, 1366 dagi komandalar ustuni) CSS
- * container query uni yashiradi; kalit o'zi qoladi.
+ * §7, delta 20b). Sig'masa CSS uni butunlay tushiradi (`.tv-col-head__hint-slot`
+ * — joyga qarab, belgi soniga qarab emas); kalit o'zi qoladi.
  */
 const FAKT_HINT = {
   fakt2: { label: 'FAKT 2', meaning: 'yetkazilgan pul' },
   fakt1: { label: 'FAKT 1', meaning: 'tasdiqlangan pul' },
 } as const
 
-/** Shundan uzun sanoq («bugun N sotuvchi savdo qildi · M tasi …») tor sarlavhada izohni siqib chiqaradi. */
-const LONG_COUNT = 24
+/**
+ * «bugun **1** sotuvchi savdo qildi · **2** tasi tasdiq kutmoqda» — sanoqdagi
+ * raqamlar bir pog'ona yuqori (mock `.phead__n b`). Matn o'zgarmaydi: `<b>`
+ * faqat raqam bo'laklarini o'raydi, `textContent` avvalgidek bitta jumla.
+ */
+function countWithFigures(count: string): ReactNode {
+  return count.split(/(\d[\d ]*)/).map((part, i) => (i % 2 === 1 ? <b key={i}>{part}</b> : part))
+}
 
 /**
  * 42 px ustun sarlavhasi (spec §6/§7): nom · soni · izoh · FAKT kaliti. `children`
@@ -43,20 +49,20 @@ export function ColumnHead({
   children?: ReactNode
 }) {
   return (
-    <header className="tv-col-head" data-long={count !== null && count.length > LONG_COUNT ? '' : undefined}>
+    <header className="tv-col-head">
       <h2 id={`${id}-heading`} className="tv-col-head__title">
         {title}
       </h2>
-      {count !== null && <span className="tv-col-head__count">{count}</span>}
-      <span className="tv-col-head__spacer" />
-      {count !== null && (
-        <>
+      {count !== null && <span className="tv-col-head__count">{countWithFigures(count)}</span>}
+      {/* Izoh uyasi — kalitni o'ngga suradigan bo'sh joy ham shu. */}
+      <span className="tv-col-head__hint-slot">
+        {count !== null && (
           <span className="tv-col-head__hint">
             <b>{FAKT_HINT[fakt].label}</b> — {FAKT_HINT[fakt].meaning}
           </span>
-          <FaktSwitch fakt={fakt} onFakt={onFakt} />
-        </>
-      )}
+        )}
+      </span>
+      {count !== null && <FaktSwitch fakt={fakt} onFakt={onFakt} />}
       {children}
     </header>
   )

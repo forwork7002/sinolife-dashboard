@@ -259,6 +259,12 @@ describe('komandalar qatori (spec §6)', () => {
     expect(teamRowLayout(1000, 30)).toEqual({ row: 40, list: 1000 })
     expect(teamRowLayout(0, 14)).toBeNull()
     expect(teamRowLayout(500, 0)).toBeNull()
+    // Joy bitta qatorga ham yetmaydi — qator baribir 40, hech qachon `floor(joy)` (30) emas.
+    expect(teamRowLayout(30, 1)).toEqual({ row: 40, list: 40 })
+    expect(teamRowLayout(39, 14)).toEqual({ row: 40, list: 40 })
+    for (const room of [1, 20, 39]) {
+      for (const n of [1, 5, 14]) expect(teamRowLayout(room, n)!.row).toBe(40)
+    }
     for (const room of [300, 386, 413, 559, 600]) {
       for (const n of [11, 14, 20, 40]) {
         const layout = teamRowLayout(room, n)!

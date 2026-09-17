@@ -81,15 +81,31 @@ export function SellersBoard({
     bir-ikki — bitta sahna, ikkinchisi birinchi rank qatori; hech kim — sokin
     sahna. Qolgan qatorlar: pulli (qaysi faktda bo'lmasin) — rank bilan; puli
     yo'q-u tasdiq navbatida buyurtmasi bor — «Tasdiq kutilmoqda» guruhida;
-    hech narsasi yo'q — «Bugun» da taxtada umuman yo'q, uzunroq davrda rank-siz
-    qatori qoladi (`BoardSplit.idle`).
+    hech narsasi yo'q — «Bugun» da taxtada umuman yo'q, uzunroq davrda ENG
+    OXIRDA, o'z «Savdosiz» guruhi ostida (`BoardSplit.idle`).
+
+    NAVBATDAN KEYIN, NAVBATDAN OLDIN EMAS. Idle qatorlar rank qatorlari
+    ortidan keladigan edi — ya'ni butun oyi bekor bo'lgan sotuvchi rank-siz,
+    to'rt chiziqcha bilan, hali buyurtmasi kutayotganlarning USTIDA, rank
+    qatorlariga o'xshagan blokda turardi (premium review, 2026-09-17).
   */
   const mode = earners.length >= 3 ? 'podium' : earners.length > 0 ? 'stage' : 'ghost'
   const seated = earners.slice(0, mode === 'podium' ? 3 : 1)
   const seatedKeys = new Set(seated.map((w) => w.key))
-  const rows = [...ranked.filter((e) => !seatedKeys.has(e.key)), ...(today ? [] : idle)]
+  const rows = ranked.filter((e) => !seatedKeys.has(e.key))
+  const idleRows = today ? [] : idle
 
-  const onBoard = useMemo(() => new Set(entries.map((e) => e.key)), [entries])
+  /*
+    E'LON FAQAT EKRANDA BOR ODAMGA. `onBoard` — shu ustunda HAQIQATAN chizilgan
+    kalitlar (o'rindiq/sahna, rank, navbat va idle qatorlari), barcha kirishlar
+    emas: «Bugun» da idle sotuvchi chizilmaydi, va uning «endi USTA» e'loni
+    taxtada topib bo'lmaydigan odamni aytardi. To'plam kalitlar satridan
+    memoizatsiya qilinadi — `usePromotions` effekti uni bog'liqlik sifatida
+    o'qiydi, har renderda yangi to'plam effektni har safar qayta ishga
+    tushirardi.
+  */
+  const shownKeys = [...seated, ...rows, ...queued, ...idleRows].map((e) => e.key).join('\n')
+  const onBoard = useMemo(() => new Set(shownKeys === '' ? [] : shownKeys.split('\n')), [shownKeys])
   const promotion = usePromotions(medals, medalsToday, onBoard)
   const promotedName =
     promotion === null ? null : (entries.find((e) => e.key === promotion.employeeId)?.name ?? null)
@@ -176,7 +192,14 @@ export function SellersBoard({
               )}
             </div>
           )}
-          <SellerRows rows={rows} queued={queued} onDelivered={onDelivered} medals={medals} newMedals={newMedals} />
+          <SellerRows
+            rows={rows}
+            queued={queued}
+            idle={idleRows}
+            onDelivered={onDelivered}
+            medals={medals}
+            newMedals={newMedals}
+          />
           {/* LEGENDA USTUN PASTIDA, BIR MARTA — medal so'rovi kelganda. Podium
               bilan ro'yxat orasida hech qachon emas (spec §2). */}
           {medals.size > 0 && <TierLegend />}
@@ -219,6 +242,7 @@ export function wholeRowsHeight(available: number): number | null {
 function SellerRows({
   rows,
   queued,
+  idle,
   onDelivered,
   medals,
   newMedals,
@@ -226,18 +250,20 @@ function SellerRows({
   rows: readonly BoardEntry[]
   /** «Tasdiq kutilmoqda» — rank qatorlaridan keyin, o'sha skroll qutisida. */
   queued: readonly BoardEntry[]
+  /** «Savdosiz» — navbatdan keyin, ro'yxat oxirida; «Bugun» da bo'sh. */
+  idle: readonly BoardEntry[]
   onDelivered: boolean
   medals: ReadonlyMap<string, SellerMedalRowDto>
   newMedals: ReadonlyMap<string, ReadonlySet<MedalCode>>
 }) {
-  if (rows.length === 0 && queued.length === 0) return null
+  if (rows.length === 0 && queued.length === 0 && idle.length === 0) return null
   const read = onDelivered ? 'fakt2' : 'fakt1'
   const [hero, other] = onDelivered ? (['FAKT 2', 'FAKT 1'] as const) : (['FAKT 1', 'FAKT 2'] as const)
 
   return (
     <>
-      {/* Yorliq qatori faqat rank qatorlari uchun — navbat qatorlarida ustun yo'q. */}
-      {rows.length > 0 && (
+      {/* Yorliq qatori ustunli qatorlar uchun (rank va «Savdosiz») — navbat qatorlarida ustun yo'q. */}
+      {(rows.length > 0 || idle.length > 0) && (
         <div className="tv-cols" data-read={read}>
           <span />
           <span className="tv-cols__r">#</span>
@@ -254,6 +280,7 @@ function SellerRows({
       <RowList
         rows={rows}
         queued={queued}
+        idle={idle}
         onDelivered={onDelivered}
         medals={medals}
         newMedals={newMedals}
@@ -272,6 +299,7 @@ function SellerRows({
 function RowList({
   rows,
   queued,
+  idle,
   onDelivered,
   medals,
   newMedals,
@@ -279,6 +307,7 @@ function RowList({
 }: {
   rows: readonly BoardEntry[]
   queued: readonly BoardEntry[]
+  idle: readonly BoardEntry[]
   onDelivered: boolean
   medals: ReadonlyMap<string, SellerMedalRowDto>
   newMedals: ReadonlyMap<string, ReadonlySet<MedalCode>>
@@ -312,6 +341,24 @@ function RowList({
           <QueueRow
             key={entry.key}
             entry={entry}
+            medal={medals.get(entry.key) ?? null}
+            newKeys={newMedals.get(entry.key)}
+          />
+        ))}
+        {/* Hech narsasi yo'q (uzunroq davrda): pul ham, navbat ham yo'q — buyurtmalari
+            bekor bo'lgan. Ro'yxat OXIRIDA va o'z sarlavhasi ostida, rank qatorlariga
+            yoki navbatga qo'shilib ketmasin; guruh sarlavhasi yana bir qator balandligida. */}
+        {idle.length > 0 && (
+          <li className="group">
+            <h4>Savdosiz</h4>
+            <span>bu davrda tasdiqlangan ham, yetkazilgan ham pul yoʻq</span>
+          </li>
+        )}
+        {idle.map((entry) => (
+          <SellerRow
+            key={entry.key}
+            entry={entry}
+            onDelivered={onDelivered}
             medal={medals.get(entry.key) ?? null}
             newKeys={newMedals.get(entry.key)}
           />
@@ -372,8 +419,9 @@ function SellerRow({
 /**
  * Navbatdagi sotuvchi (delta 16d): tasma, gerb, ism, komanda va medallar
  * odatdagidek — faqat qiymat uyalari BITTA keng jumlaga aylanadi. Rank uyasi
- * bo'sh (chiziqcha ham emas), nol hech qayerda. Son tasdiqlab bo'lmasa
- * (`queuedOrders` null) jumla sonsiz.
+ * bo'sh (chiziqcha ham emas), nol hech qayerda. Son har doim bor: `splitBoard`
+ * qatorni navbatga faqat `queuedOrders > 0` bo'lganda qo'yadi — soni
+ * kafolatlanmagan (null) sotuvchi navbat qatori bo'lmaydi.
  */
 function QueueRow({
   entry,
@@ -385,7 +433,7 @@ function QueueRow({
   newKeys: ReadonlySet<MedalCode> | undefined
 }) {
   const { name, code } = parseSellerName(entry.name)
-  const n = entry.queuedOrders
+  const n = entry.queuedOrders ?? 0
   return (
     <li className="row row--queue" data-tier={medal?.level ?? 0} data-row-name={entry.name}>
       <span className="row__band" aria-hidden="true" />
@@ -398,13 +446,7 @@ function QueueRow({
       <span className="row__team">{entry.badge ?? ''}</span>
       <RowMedals medals={medal?.medals ?? NO_MEDALS} newKeys={newKeys} />
       <span className="row__wait">
-        {n !== null && n > 0 ? (
-          <>
-            <b>{formatNumber(n)}</b> buyurtma tasdiq navbatida
-          </>
-        ) : (
-          'buyurtmasi tasdiq navbatida'
-        )}
+        <b>{formatNumber(n)}</b> buyurtma tasdiq navbatida
       </span>
     </li>
   )

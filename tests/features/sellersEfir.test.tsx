@@ -453,6 +453,22 @@ describe('RowMedals — qator medallari (spec §3)', () => {
     ])
   })
 
+  /*
+    TELEVIZOR TABI DEPLOYLAR ORASIDA KUNLAB OCHIQ (premium review, 2026-09-17): server
+    yangi medal kodini frontend nusxasidan oldin yuborsa, `MEDAL_METAL[code]` undefined
+    edi va uni destrukturlash butun ustunni yiqitardi. Notanish kod chizilmaydi.
+  */
+  it('notanish medal kodi — qator ham, belgi ham yiqilmaydi, u chizilmaydi', () => {
+    const future = medal({ code: 'future-medal' as unknown as 'rookie' })
+    const { container } = render(
+      <>
+        <RowMedals medals={[future, medal({ code: 'rookie' })]} />
+        <MedalMark code={'future-medal' as unknown as 'rookie'} size={48} seat />
+      </>,
+    )
+    expect([...container.querySelectorAll('svg.medal')].map((m) => m.getAttribute('data-medal'))).toEqual(['rookie'])
+  })
+
   it('faqat first-sale — uya bo‘sh, lekin konteyner grid uchun qoladi', () => {
     const { container } = render(<RowMedals medals={[medal({ code: 'first-sale' })]} />)
     expect(container.querySelector('.row__medals')).not.toBeNull()

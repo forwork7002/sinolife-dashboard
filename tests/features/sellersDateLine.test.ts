@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { todayDateLine, weekdayOf } from '@/features/sellers/dateLine'
+import { rangeDateLine, todayDateLine, weekdayOf } from '@/features/sellers/dateLine'
 
 /**
  * The «Bugun» title line (EFIR Premium spec §7): the weekday is computed in
@@ -52,6 +52,33 @@ describe('the today date line', () => {
     const fresh = await import('@/features/sellers/dateLine')
     expect(fresh.todayDateLine('2026-09-16T19:00:00.000Z')).toBe('17-sentabr 2026, payshanba · bugun')
     expect(fresh.weekdayOf('2026-09-18T12:00:00+05:00')).toBe('juma')
+  })
+
+  /*
+    EVERY OTHER WINDOW, IN THE MOCK'S WORDS (premium review, 2026-09-17). The end is
+    the API's EXCLUSIVE bound — Tashkent midnight after the last day — so the last
+    day printed is the instant before it, as PageShell reads the same field.
+  */
+  it('prints any other window from the same tables — one day, one month, one year, across years', () => {
+    // «Shu oy» on 2026-09-17: 1 Sep 00:00 → 18 Sep 00:00 Tashkent.
+    expect(rangeDateLine('2026-08-31T19:00:00.000Z', '2026-09-17T19:00:00.000Z')).toBe('1–17 sentabr 2026')
+    // «Kecha»: one day names its weekday, without «bugun».
+    expect(rangeDateLine('2026-09-15T19:00:00.000Z', '2026-09-16T19:00:00.000Z')).toBe('16-sentabr 2026, chorshanba')
+    expect(rangeDateLine('2026-08-27T19:00:00.000Z', '2026-09-03T19:00:00.000Z')).toBe('28 avgust – 3 sentabr 2026')
+    expect(rangeDateLine('2025-12-27T19:00:00.000Z', '2026-01-03T19:00:00.000Z')).toBe('28 dekabr 2025 – 3 yanvar 2026')
+  })
+
+  it('the range does not depend on Uzbek locale data either', async () => {
+    const Real = Intl.DateTimeFormat
+    function NoUzbek(this: unknown, locales?: string | string[], options?: Intl.DateTimeFormatOptions) {
+      const asked = Array.isArray(locales) ? locales[0] : locales
+      return new Real(asked !== undefined && /^uz/i.test(asked) ? 'en-US' : locales, options)
+    }
+    NoUzbek.supportedLocalesOf = Real.supportedLocalesOf
+    vi.stubGlobal('Intl', { ...Intl, DateTimeFormat: NoUzbek })
+    vi.resetModules()
+    const fresh = await import('@/features/sellers/dateLine')
+    expect(fresh.rangeDateLine('2026-08-31T19:00:00.000Z', '2026-09-17T19:00:00.000Z')).toBe('1–17 sentabr 2026')
   })
 
   it('asks Intl for no Uzbek names at all', () => {

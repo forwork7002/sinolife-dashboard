@@ -87,14 +87,35 @@ describe('the television board switches layout on one width', () => {
     expect(block).toContain('overflow: hidden;')
     expect(block).toContain('background: linear-gradient(180deg, var(--efir-panel-sheen), transparent 150px), var(--efir-panel);')
     expect(block).toMatch(/box-shadow:\s*inset 0 1px 0 var\(--efir-edge-hi\),\s*inset 0 0 0 1px var\(--efir-edge-ring\),\s*var\(--efir-shadow-panel\);/)
-    expect(css).toContain('.tv-board-shell {\n  background: radial-gradient(1100px 420px at 46% -120px, var(--efir-page-glow), transparent 70%);\n}')
+    // The glow paints on `main` (the shared-chrome block), so it falls behind the header as the
+    // mock's `.page` glow does — not on the board, which starts under the header.
+    expect(css).toContain('main:has(.tv-board-shell) {\n  background: radial-gradient(1100px 420px at 46% -120px, var(--efir-page-glow), transparent 70%);\n}')
+    expect(css).not.toMatch(/\.tv-board-shell \{\s*background:/)
   })
 
-  it('heads the column at 42 px with a hint that leaves a narrow head on its own', () => {
-    expect(css).toMatch(/\.tv-col-head \{[^}]*height: 42px;[^}]*container: tv-head \/ inline-size;/)
+  /*
+    THE HINT YIELDS BY WIDTH. It left the head by a 24-character guess and two
+    container queries, and on «Bugun» at 1920 the teams head hid a hint it had
+    165 px of room for (premium review, 2026-09-17). Now the slot takes only
+    what the whole count and the switch leave (`flex: 1 1 0`), and a hint that
+    does not fit wraps to a second line one head tall behind `overflow: hidden`
+    — gone whole, never ellipsised.
+  */
+  it('heads the column at 42 px with a hint that leaves a head it does not fit, by width', () => {
+    expect(css).toMatch(/\.tv-col-head \{[^}]*height: 42px;/)
     expect(css).toMatch(/\.tv-col-head__title \{[^}]*font-size: 15px;[^}]*font-weight: 600;/)
     expect(css).toMatch(/\.tv-col-head__count \{[^}]*font-size: 13px;[^}]*color: var\(--efir-ink-3\);/)
-    expect(css).toMatch(/@container tv-head \(max-width: 559px\) \{\s*\.tv-col-head__hint \{ display: none; \}/)
+    expect(css).toMatch(/\.tv-col-head__count b \{\s*font-weight: 500;\s*color: var\(--efir-ink-2\);/)
+    expect(css).toMatch(
+      /\.tv-col-head__hint-slot \{\s*flex: 1 1 0;\s*min-width: 0;\s*height: 42px;\s*display: flex;\s*flex-wrap: wrap;\s*justify-content: flex-end;\s*align-items: center;\s*overflow: hidden;/,
+    )
+    expect(css).toMatch(/\.tv-col-head__hint-slot::before \{\s*content: "";\s*width: 0;\s*height: 42px;/)
+    expect(css).not.toMatch(/\.tv-col-head__hint[^{]*\{[^}]*(text-overflow|display: none)/)
+    for (const gone of ['container: tv-head', '@container tv-head', 'data-long', '.tv-col-head__spacer']) {
+      expect(css, gone).not.toContain(gone)
+    }
+    const head = readFileSync(new URL('../../src/features/sellers/ColumnHead.tsx', import.meta.url), 'utf8')
+    expect(head).not.toMatch(/LONG_COUNT|data-long/)
   })
 
   it('sizes the rows from their slot, from the two-column width only', () => {
@@ -285,6 +306,17 @@ describe('EFIR Premium — the grids re-summed for every frame the board is read
     expect(narrow).toMatch(/\.trow__bar \{ left: 50px; right: 94px; \}/)
   })
 
+  /*
+    Olti pog'ona ~835 px so'raydi; 1280–1599 dagi eng keng sotuvchilar ustuni ~850. `space-between`
+    o'ralishi 4 + 2 berib, ikkinchi qatorning ikki pog'onasini ikki chetga surib qo'yardi (1366 auditi).
+  */
+  it('1280–1599: the legend is a 3 × 2 table, not a wrapped row with an orphan line', () => {
+    const twoColumn = mediaBlock('@media (min-width: 1280px) and (max-width: 1599px) {')
+    expect(twoColumn).toMatch(/\.tv-legend \{\s*display: grid;\s*grid-template-columns: repeat\(3, auto\);\s*justify-content: space-between;/)
+    // The phone keeps its wrapping flex row — three columns would not fit 358 px.
+    expect(phone).not.toContain('grid-template-columns: repeat(3')
+  })
+
   it('1366: the team plaque wraps rather than overprinting; the lists rest on whole rows', () => {
     const jami = ruleIn(narrow, '  .jami {')
     expect(jami).toContain('flex-wrap: wrap;')
@@ -297,8 +329,14 @@ describe('EFIR Premium — the grids re-summed for every frame the board is read
   it('1366: every seat line stays one line — the «Avgustdan beri» word gives way to the foot', () => {
     const seats = mediaBlock("@media (max-width: 1599px) {\n  .tv-podium {")
     expect(seats).toMatch(/\.seat \{[^}]*padding: 10px 10px 10px 16px;/)
-    expect(seats).toMatch(/\.seat__life > span:first-child \{ display: none; \}/)
-    expect(seats).toMatch(/\.seat__money,\s*\.seat--1 \.seat__money \{ line-height: 40px; \}/)
+    // The word drops in the two-column narrow frame ONLY — the phone's 334 px seat keeps it (spec §4/§9).
+    expect(seats).not.toContain('.seat__life > span:first-child')
+    const twoColumn = mediaBlock('@media (min-width: 1280px) and (max-width: 1599px) {')
+    expect(twoColumn).toMatch(/\.seat__life > span:first-child \{ display: none; \}/)
+    // A line box relative to the font: a wide seat (phone, rail-closed 1599) brings `min(52px, 17.5cqi)`
+    // back to 52 px, and a fixed 40 px line put the figure over the meta and FAKT lines (390 audit).
+    expect(seats).toMatch(/\.seat__money,\s*\.seat--1 \.seat__money \{ line-height: 1\.08; \}/)
+    expect(seats).not.toMatch(/\.seat__money[^{]*\{[^}]*line-height: \d+px/)
     // Asos sahifa tagida aytilgan — so'z tushishi mumkin, chunki ma'no yo'qolmaydi.
     const page = readFileSync(new URL('../../src/features/sellers/SellersPage.tsx', import.meta.url), 'utf8')
     expect(page).toContain('avgustdan beri yetkazilgan pul boʻyicha')

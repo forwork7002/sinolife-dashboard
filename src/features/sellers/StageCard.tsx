@@ -90,20 +90,20 @@ export function StageCard({
           <AnimatedNumber value={figure} format={formatSomFull} duration={900} />
         </p>
         <p className="stage__fakt">
+          {/* Yorliq va matn orasida HAQIQIY bo'shliq — `textContent` «FAKT 1 tasdiqlangan»,
+              «FAKT 1tasdiqlangan» emas (ekran o'quvchi, nusxa); ko'rinadigan oraliq CSS da. */}
           <span>
-            <b>{onDelivered ? 'FAKT 2' : 'FAKT 1'}</b>
-            {onDelivered ? 'yetkazilgan' : 'tasdiqlangan'}
+            <b>{onDelivered ? 'FAKT 2' : 'FAKT 1'}</b> {onDelivered ? 'yetkazilgan' : 'tasdiqlangan'}
             {count > 0 && ` · ${formatNumber(count)} buyurtma`}
           </span>
           {other > 0 ? (
             <span>
-              <b>{onDelivered ? 'FAKT 1' : 'FAKT 2'}</b>
-              <em>{formatSomFull(other)}</em>
+              <b>{onDelivered ? 'FAKT 1' : 'FAKT 2'}</b> <em>{formatSomFull(other)}</em>
             </span>
           ) : (
             !onDelivered && (
               <span>
-                <b>FAKT 2</b>hali yoʻq — yetkazish kutilmoqda
+                <b>FAKT 2</b> hali yoʻq — yetkazish kutilmoqda
               </span>
             )
           )}

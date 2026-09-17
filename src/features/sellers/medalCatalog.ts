@@ -6,8 +6,10 @@ import { formatSomFull } from '@/lib/format'
  *
  * Mirrors `sellerMedals.ts` (`MEDAL_UNLOCK_LEVEL`, `MEDAL_ORDER`,
  * `LEVEL_TITLES`, `titleOf`, `romanOf`). Frontend server domenini import
- * qilmaydi (qatlam qoidasi), shuning uchun nusxa; hech narsa nusxani
- * tekshirmaydi — ikkala tomonni birga o'zgartiring.
+ * qilmaydi (qatlam qoidasi), shuning uchun nusxa. Testlar qatlam qoidasidan
+ * ozod, va `tests/features/medalCatalogMirror.test.ts` nusxani aslidan
+ * tekshiradi (tartib, ochilish darajasi, kodlar, narvon) — lekin ikkala
+ * tomonni baribir BIR commit'da o'zgartiring.
  */
 export type MedalFamily = 'oy' | 'seriya' | 'kun' | 'sifat' | 'osish'
 
@@ -202,13 +204,26 @@ export function isMonthMedal(code: MedalCode): code is 'month-gold' | 'month-sil
   return code === 'month-gold' || code === 'month-silver' || code === 'month-bronze'
 }
 
-/** `MEDAL_ORDER` bo'yicha (eng nodir avval), `hide` dagilar tashlab yuboriladi; kirish o'zgarmaydi. */
+/**
+ * Shu nusxa taniydigan kod. Server bu fayldan OLDIN deploy bo'lishi mumkin, va
+ * televizor tabi deploylar orasida kunlab ochiq turadi: yangi kodli medal
+ * kelganda `MEDAL_METAL[code]` undefined bo'lib, uni destrukturlash butun
+ * ustunni yiqitardi. Notanish medal CHIZILMAYDI — sahifa yangilanganda chiqadi.
+ */
+export function isKnownMedal(code: string): code is MedalCode {
+  return Object.prototype.hasOwnProperty.call(MEDAL_METAL, code)
+}
+
+/**
+ * `MEDAL_ORDER` bo'yicha (eng nodir avval), `hide` dagilar va notanish kodlar
+ * (`isKnownMedal`) tashlab yuboriladi; kirish o'zgarmaydi.
+ */
 export function sortMedals(
   medals: readonly SellerMedalDto[],
   hide: readonly MedalCode[] = [],
 ): readonly SellerMedalDto[] {
   return medals
-    .filter((m) => !hide.includes(m.code))
+    .filter((m) => isKnownMedal(m.code) && !hide.includes(m.code))
     .slice()
     .sort((a, b) => MEDAL_ORDER.indexOf(a.code) - MEDAL_ORDER.indexOf(b.code))
 }

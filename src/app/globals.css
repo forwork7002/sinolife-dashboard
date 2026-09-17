@@ -368,13 +368,25 @@
 
 /*
  * EFIR material — the sellers board's OBSIDIAN chassis (EFIR Premium §1).
- * Scoped to the board root, so no other screen can read a panel, ink or
+ * Scoped to the sellers page, so no other screen can read a panel, ink or
  * shadow tuned for a television. Light here; both dark mechanisms below
  * (`prefers-color-scheme` guarded by `:not([data-theme="light"])`, and
  * `[data-theme="dark"]`) re-declare the same names. Values are copied from
  * the approved mock's token file; every mix is pre-computed.
+ *
+ * TWO ROOTS, ONE LIST. `.tv-board-shell` is the board; `main:has(.tv-board-shell)`
+ * is the page around it, and it is there for the SHARED HEADER — the record
+ * wall's plaques and the period control sit in PageShell's header, outside
+ * the board, and read `--efir-raised`, `--efir-edge-*` and the inks too. Declared
+ * on the board alone, every one of those reads fell back to the dashboard's
+ * global palette and the plaques drew as flat outlined boxes (premium review,
+ * 2026-09-17). `main` rather than the page container because the page glow
+ * paints on `main` itself — a custom property only reaches descendants.
+ * The list sits inside `:is()`, whose argument list is FORGIVING: a browser
+ * without `:has()` drops that one argument and keeps the board's tokens,
+ * where a plain selector list would have discarded the whole rule.
  */
-.tv-board-shell {
+:is(.tv-board-shell, main:has(.tv-board-shell)) {
   --efir-page-glow: rgba(255, 255, 255, .9);
   --efir-panel: #fbfcfe;
   --efir-panel-sheen: rgba(255, 255, 255, 1);
@@ -558,7 +570,7 @@
     --glow-hero-mix: 18%;
   }
 
-  :root:where(:not([data-theme="light"])) .tv-board-shell {
+  :root:where(:not([data-theme="light"])) :is(.tv-board-shell, main:has(.tv-board-shell)) {
     --efir-page-glow: rgba(116, 160, 224, .075);
     --efir-panel: #0c0f14;
     --efir-panel-sheen: rgba(255, 255, 255, .03);
@@ -726,7 +738,7 @@
   --glow-hero-mix: 18%;
 }
 
-:root[data-theme="dark"] .tv-board-shell {
+:root[data-theme="dark"] :is(.tv-board-shell, main:has(.tv-board-shell)) {
   --efir-page-glow: rgba(116, 160, 224, .075);
   --efir-panel: #0c0f14;
   --efir-panel-sheen: rgba(255, 255, 255, .03);
@@ -2585,7 +2597,8 @@ p {
  * Medal, gerb va tanga o'zini `<defs>` ichida bo'yaydi (`medalDefs.ts`,
  * inline uslub — hujjat selektori `<use>` soya daraxtiga yetmaydi); bu yerda
  * faqat instance qoidalari. `--efir-*` material tokenlari `.tv-board-shell`
- * ostida (token bloklari, uchala mavzu mexanizmi).
+ * va `main:has(.tv-board-shell)` ostida (token bloklari, uchala mavzu
+ * mexanizmi) — ikkinchisi umumiy sarlavhadagi rekord devori uchun.
  * ======================================================================== */
 
 /* ---- daraja: 0…6 → --tier (+ -hi/-lo/-wash). 0-daraja — shaffof (tasma konturi o'zi chiziladi). ---- */
@@ -3043,10 +3056,29 @@ p {
   }
   .seat__left em { font-size: 12.5px; }
   .seat__life { font-size: 10.5px; }
-  .seat__life > span:first-child { display: none; }
-  /* Pul bu kenglikda `cqi` bilan ~29 / 37 px — 44 / 52 px qator balandligi bo'sh joy edi. */
+  /* Pul bu kenglikda `cqi` bilan ~29 / 37 px — 44 / 52 px qator balandligi bo'sh joy edi.
+     QATOR BALANDLIGI SHRIFTGA NISBATAN, piksel emas: o'rindiq keng bo'lsa (telefonda 334 px,
+     rail yopiq 1599 da) `min(52px, 17.5cqi)` yana 52 px ga qaytadi, va qat'iy 40 px qator
+     raqamni tepadagi meta va pastdagi FAKT satri ustiga chiqarardi (390 da 12 px, premium
+     review 2026-09-17). 1,08 × 37 = 40 — 1366 dagi o'lchov o'zgarmaydi. */
   .seat__money,
-  .seat--1 .seat__money { line-height: 40px; }
+  .seat--1 .seat__money { line-height: 1.08; }
+}
+
+/* ---- ikki ustunli tor kadr (1280–1599): FAQAT shu yerda tushadigan va qayta yig'iladiganlar.
+   Telefon (≤ 1279) bu blokka kirmaydi — u yerda o'rindiq ~334 px, joy yetadi. ---- */
+@media (min-width: 1280px) and (max-width: 1599px) {
+  /* «Avgustdan beri» so'zi ~164 px ichki kenglikda tushadi (yuqoridagi izoh); raqamlar qoladi,
+     asosni sahifa tagi aytadi. Telefonda so'z QOLADI — spec §4/§9 to'g'rilik satri. */
+  .seat__life > span:first-child { display: none; }
+  /* LEGENDA 3 × 2 JADVAL. Olti pog'ona ~835 px so'raydi, bu kadrda ustun ≤ ~850: `space-between`
+     o'ralishi 4 + 2 berib, «Ustoz» chapga, «Legenda» o'ng chetga, orasida ~300 px bo'shliq
+     qolardi (1366 auditi). Uch ustunli grid ikki qatorni bir xil tekislaydi. */
+  .tv-legend {
+    display: grid;
+    grid-template-columns: repeat(3, auto);
+    justify-content: space-between;
+  }
 }
 
 /* ---- o'rindiq, telefon: ustma-ust, 1-2-3 o'qiladi (DOM tartibi). 2-1-3
@@ -3399,7 +3431,10 @@ p {
 
 /* ---- e'lon (spec §8): ustun sarlavhasi USTIDA 8 s, oqimdan tashqarida — hech narsa surilmaydi.
    `left` ga qadalgan, `fit-content`; `pointer-events: none` — tugma ostida bosilaveradi.
-   `transform` markazlashtirishga ketgan — kirish MUSTAQIL `translate` da. ---- */
+   `transform` markazlashtirishga ketgan — kirish MUSTAQIL `translate` da.
+   MATERIAL — O'RINDIQNIKI (spec §1 «ramka bilan emas, ko'tarilish bilan»): ko'tarilgan gradient,
+   ichki yuqori chiziq, ichki halqa va soya. Global 1 px `--border-strong` ramkasi taxtadagi
+   yagona ramkali quti edi (premium review, 2026-09-17). ---- */
 .tv-promo {
   position: absolute;
   left: 18px;
@@ -3416,11 +3451,14 @@ p {
   padding: 0 14px 0 0;
   border-radius: 8px;
   overflow: hidden;
-  background: var(--surface-raised);
-  border: 1px solid var(--border-strong);
+  background: linear-gradient(180deg, var(--efir-raised-hi), var(--efir-raised));
+  box-shadow:
+    inset 0 1px 0 var(--efir-edge-hi),
+    inset 0 0 0 1px var(--efir-edge-ring),
+    var(--efir-shadow-seat);
   font-size: var(--tv-m);
   font-weight: 600;
-  color: var(--ink-primary);
+  color: var(--efir-ink);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   animation: tv-promo-in var(--duration-enter) var(--ease-out);
@@ -3668,8 +3706,10 @@ p {
   white-space: nowrap;
 }
 .stage__fakt span { display: block; }
+/* Yorliqdan keyin HAQIQIY bo'shliq bor (`StageCard`: «FAKT 1 tasdiqlangan», ekran o'quvchi va
+   nusxa uchun); 1 px + bo'shliq ≈ mockdagi 4 px chekka. */
 .stage__fakt b {
-  margin-right: 4px;
+  margin-right: 1px;
   font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.09em;
@@ -3830,7 +3870,6 @@ p {
   .tv-promo {
     animation: none;
   }
-  .row__band,
   .meter i {
     transition: none;
   }
@@ -3849,19 +3888,16 @@ p {
  * EFIR Premium (2026-09-17, spec §1, delta 21): the column is a PANEL lifted
  * off the page by light, not drawn by a line — no border; a 150 px top sheen
  * over `--efir-panel`, an inset top edge, an inset ring and a long shadow.
- * The page behind it carries one soft radial glow. Level rides on the rows
- * and seats (see the EFIR section); the one hue on the chrome is the 2 px
- * `--tier-4` mark under the lit FAKT tab and the active label.
+ * The page behind it carries one soft radial glow (on `main`, in the shared
+ * chrome block below). Level rides on the rows and seats (see the EFIR
+ * section); the one hue on the chrome is the 2 px `--tier-4` mark under the
+ * lit FAKT tab and the active label.
  * ======================================================================== */
 
 .tv-board {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.tv-board-shell {
-  background: radial-gradient(1100px 420px at 46% -120px, var(--efir-page-glow), transparent 70%);
 }
 
 .tv-col {
@@ -3916,10 +3952,9 @@ p {
   }
 }
 
-/* 42 px column head: title · count · hint · FAKT switch. `position: relative` is
-   load-bearing — the promotion banner (`.tv-promo`, EFIR section) is pinned
-   to this box and floats over it. The head is its own inline-size container
-   so the hint can leave a narrow head (the teams column at 1366) on its own. */
+/* 42 px column head: title · count · hint slot · FAKT switch. `position: relative`
+   is load-bearing — the promotion banner (`.tv-promo`, EFIR section) is pinned
+   to this box and floats over it. */
 .tv-col-head {
   position: relative;
   flex: none;
@@ -3928,7 +3963,6 @@ p {
   gap: 12px;
   height: 42px;
   padding: 0 12px 0 20px;
-  container: tv-head / inline-size;
 }
 .tv-col-head__title {
   margin: 0;
@@ -3954,10 +3988,39 @@ p {
   line-height: 15px;
   color: var(--efir-ink-3);
 }
-.tv-col-head__spacer {
-  flex: 1;
+/* The numbers in the count, a step up (mock `.phead__n b`). */
+.tv-col-head__count b {
+  font-weight: 500;
+  color: var(--efir-ink-2);
 }
-/* «FAKT 2 — yetkazilgan pul»: what the lit tab means, in words (delta 20b). */
+/*
+ * «FAKT 2 — yetkazilgan pul»: what the lit tab means, in words (delta 20b).
+ *
+ * THE HINT YIELDS BY WIDTH, NEVER BY A CHARACTER COUNT. The slot takes only
+ * the room the title, the WHOLE count and the switch leave (`flex: 1 1 0`, so
+ * it never squeezes the count), and it is a wrapping row one head tall behind
+ * `overflow: hidden`: a zero-width first item holds line one, so a hint that
+ * does not fit the room wraps to line two and is simply not drawn — whole,
+ * never ellipsised. It replaced a 24-character count threshold plus two
+ * container queries, which hid the teams hint on «Bugun» at 1920 where the
+ * mock shows it and 165 px stood free for its 159 (premium review,
+ * 2026-09-17). The slot is also the spacer that pushes the switch right.
+ */
+.tv-col-head__hint-slot {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 42px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  overflow: hidden;
+}
+.tv-col-head__hint-slot::before {
+  content: "";
+  width: 0;
+  height: 42px;
+}
 .tv-col-head__hint {
   font-size: 12px;
   color: var(--efir-ink-3);
@@ -3967,14 +4030,6 @@ p {
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--efir-ink-2);
-}
-@container tv-head (max-width: 559px) {
-  .tv-col-head__hint { display: none; }
-}
-/* A long count (`data-long`) takes the hint's room one step earlier — at 1366 the sellers head
-   is ~645 px and the count reads better whole than the hint does. */
-@container tv-head (max-width: 759px) {
-  .tv-col-head[data-long] .tv-col-head__hint { display: none; }
 }
 /* TELEFONDA KALIT SIG'MAYDI (spec §9). 390 px da nom · soni · FAKT kaliti
    birgalikda 383 px so'raydi va 356 px bor — kalit o'ng chetdan chiqib
@@ -3995,6 +4050,11 @@ p {
   .tv-col-head__count {
     order: 5;
     flex-basis: 100%;
+  }
+  /* The slot as tall as the switch, so the head's first line stays 34 px. */
+  .tv-col-head__hint-slot,
+  .tv-col-head__hint-slot::before {
+    height: 34px;
   }
 }
 
@@ -4208,13 +4268,22 @@ p {
 /*
  * THE SHARED CHROME, ON THIS PAGE ONLY (EFIR Premium delta 20d–20e).
  *
- * `PageShell` and `PeriodFilter` reach /confirmation and are not edited. The
- * sellers board is recognised from the page container that HOLDS it —
- * `.page-container:has(.tv-board-shell)` — so every rule below is inert on
- * every other screen. Two things change here:
+ * `PageShell`, `Shell` and `PeriodFilter` reach /confirmation and are not
+ * edited. The sellers board is recognised from the box that HOLDS it —
+ * `.page-container:has(.tv-board-shell)`, and `main:has(.tv-board-shell)` for
+ * the one rule that paints the page itself — so every rule below is inert on
+ * every other screen. Four things change here:
  *
  * - the pink accent dash over the title is hidden: on the television the
  *   title needs no page identity, and pink is a hue the board never spends;
+ * - the shell's aurora is not drawn. Its first blob is mixed from `--accent`
+ *   (pink here) over a 70 px blur, and it left a magenta smudge over the title
+ *   and the record wall that the approved mock does not have (premium review,
+ *   2026-09-17);
+ * - in its place, the mock's one cool light: a radial glow from above the top
+ *   of `main`, so it falls behind the header the way the mock's `.page` glow
+ *   does. On `main` and not on the page container, whose top edge sits 24 px
+ *   under the top bar and would cut the glow with a visible line;
  * - from 1280px the period control takes the FAKT switch's treatment — a
  *   sunken track, the lit preset a raised gradient with a 2px `--tier-4`
  *   underline, never a white or ink fill. `PeriodFilter` paints its buttons
@@ -4222,11 +4291,19 @@ p {
  *   so marked are exactly the ones it sets inline. Under 1280 the phone keeps
  *   the control as it is, 36px targets included.
  *
- * The header sits OUTSIDE `.tv-board-shell`, so each `--efir-*` read carries a
- * global fallback. Colours only through `var(--…)`; no `color-mix()`.
+ * The `--efir-*` tokens reach this header because they are declared on
+ * `main:has(.tv-board-shell)` as well as on the board (token block). Each read
+ * still carries a global fallback, for a browser without `:has()`. Colours
+ * only through `var(--…)`; no `color-mix()`.
  */
 .page-container:has(.tv-board-shell) .accent-rule {
   display: none;
+}
+.page-container:has(.tv-board-shell) .page-atmosphere {
+  display: none;
+}
+main:has(.tv-board-shell) {
+  background: radial-gradient(1100px 420px at 46% -120px, var(--efir-page-glow), transparent 70%);
 }
 @media (min-width: 1280px) {
   .page-container:has(.tv-board-shell) header [role="group"][aria-label="Davr"] {
@@ -4298,9 +4375,11 @@ p {
  * cuts to the other every ten seconds. Not drawn under 1280, the width where
  * the page stops being a television.
  *
- * THE WALL SITS IN THE SHARED HEADER, OUTSIDE `.tv-board-shell`, so every
- * `--efir-*` read here carries a fallback to the global palette: the plaque
- * stays legible whether or not the material tokens reach the header. Colours
+ * THE WALL SITS IN THE SHARED HEADER, OUTSIDE `.tv-board-shell`. The material
+ * tokens reach it through `main:has(.tv-board-shell)` (token block) — until
+ * 2026-09-17 they did not, and every plaque drew in the dashboard's global
+ * palette: a flat gradient, a bright 1 px ring, no top light, no shadow. Each
+ * `--efir-*` read keeps a fallback for a browser without `:has()`. Colours
  * only through `var(--…)`; no `color-mix()`.
  * ======================================================================== */
 

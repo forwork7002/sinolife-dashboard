@@ -18,8 +18,12 @@
  * calendar fields in Tashkent — from an `en-GB` formatter, whose numeric parts
  * and English weekday every ICU build carries — and the words come from here.
  *
- * Only the `today` preset reads this; every other window keeps the shell's
- * own «1-sen 2026 – 17-sen 2026» range.
+ * EVERY WINDOW, NOT ONLY «BUGUN». The first version wrote the words for the
+ * today preset alone and left the rest to PageShell's `formatDate`, which is
+ * `Intl` with 'uz' short months — so in the television's Chromium «Shu oy»
+ * read «1-sen 2026 – 17-sen 2026», where the mock prints «1–17 sentabr 2026»
+ * (premium review, 2026-09-17). `rangeDateLine` is that line from the same
+ * tables.
  */
 const ZONE = 'Asia/Tashkent'
 
@@ -69,4 +73,28 @@ export function weekdayOf(iso: string): string {
 export function todayDateLine(iso: string): string {
   const { day, month, year, weekday } = tashkentParts(iso)
   return `${day}-${UZ_MONTHS[month - 1] ?? ''} ${year}, ${UZ_WEEKDAYS[weekday] ?? ''} · bugun`
+}
+
+/**
+ * Any other window, in the mock's words (EFIR Premium spec §7):
+ *
+ *   one day            «16-sentabr 2026, chorshanba»
+ *   within a month     «1–17 sentabr 2026»
+ *   within a year      «28 avgust – 3 sentabr 2026»
+ *   across a year      «28 dekabr 2025 – 3 yanvar 2026»
+ *
+ * `end` is the window's EXCLUSIVE bound, as the API sends it (Tashkent
+ * midnight after the last day); the last day printed is the instant before
+ * it — PageShell's own reading of the same field.
+ */
+export function rangeDateLine(startIso: string, endIsoExclusive: string): string {
+  const a = tashkentParts(startIso)
+  const b = tashkentParts(new Date(new Date(endIsoExclusive).getTime() - 1).toISOString())
+  const month = (m: number) => UZ_MONTHS[m - 1] ?? ''
+  if (a.year === b.year && a.month === b.month && a.day >= b.day) {
+    return `${a.day}-${month(a.month)} ${a.year}, ${UZ_WEEKDAYS[a.weekday] ?? ''}`
+  }
+  if (a.year === b.year && a.month === b.month) return `${a.day}–${b.day} ${month(a.month)} ${a.year}`
+  if (a.year === b.year) return `${a.day} ${month(a.month)} – ${b.day} ${month(b.month)} ${a.year}`
+  return `${a.day} ${month(a.month)} ${a.year} – ${b.day} ${month(b.month)} ${b.year}`
 }

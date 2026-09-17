@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { fromSeller, queuedOf, rankedBy, splitBoard } from '@/features/sellers/board'
 import { idleTeamGroups } from '@/features/sellers/TeamsBoard'
+import { resetCelebrations } from '@/features/sellers/usePromotions'
 import type { SellerBoardDto, SellerBoardRowDto, SellerMedalRowDto } from '@/lib/api'
 import { NARROW_NBSP, formatSomFull } from '@/lib/format'
 
@@ -165,9 +166,10 @@ describe('sotuvchilar ustuni — siyrak holat', () => {
     expect(stage.querySelector('use[href="#halo-laurel"]')).not.toBeNull()
     expect(stage.querySelector('.halo')!.getAttribute('width')).toBe('84')
     expect(stage.querySelector('.seat__money')!.textContent).toBe(`1${S}600${S}000`)
+    // Yorliq va matn orasida haqiqiy bo'shliq — ekran o'quvchi «FAKT 1tasdiqlangan» demaydi.
     expect([...stage.querySelectorAll('.stage__fakt > span')].map((s) => s.textContent)).toEqual([
-      'FAKT 1tasdiqlangan · 1 buyurtma',
-      'FAKT 2hali yoʻq — yetkazish kutilmoqda',
+      'FAKT 1 tasdiqlangan · 1 buyurtma',
+      'FAKT 2 hali yoʻq — yetkazish kutilmoqda',
     ])
     // Rank qatori yo'q — yorliq qatori ham yo'q; faqat navbat.
     expect(col('tv-sellers').querySelector('.tv-cols')).toBeNull()
@@ -255,15 +257,81 @@ describe('sotuvchilar ustuni — siyrak holat', () => {
     expect(col('tv-sellers').textContent).not.toMatch(/hozircha|Shu oy yetakchilari/)
   })
 
-  it('uzunroq davrda hech narsasi yo‘q qator rank-siz qoladi (butun oyi rad etilgan sotuvchi kerakli qator)', () => {
+  /*
+    NAVBATDAN KEYIN, O'Z SARLAVHASI OSTIDA (premium review, 2026-09-17). Idle qatorlar
+    rank qatorlari ortidan — navbatdagilarning USTIDA — rank-siz, chiziqchali blok
+    bo'lib turardi: butun oyi bekor bo'lgan sotuvchi hali buyurtmasi kutayotganlardan
+    oldin. Endi tartib: rank qatorlari · «Tasdiq kutilmoqda» · «Savdosiz».
+  */
+  it('uzunroq davrda hech narsasi yo‘q qator rank-siz qoladi — ro‘yxat OXIRIDA, «Savdosiz» ostida, navbatdan keyin', () => {
     render(<SellersColumn data={MORNING} {...PROPS} />)
     expect(rowNames()).toEqual([
-      'Karimova 140 Nodira',
-      'Toshmatov 141 Bekzod',
       'Ravshanov 158 Asilbek',
       'Yusupova 139 Mahliyo',
+      'Karimova 140 Nodira',
+      'Toshmatov 141 Bekzod',
     ])
     expect(col('tv-sellers').querySelector('li[data-row-name="Karimova 140 Nodira"] .row__rank')!.textContent).toBe('')
+    const list = col('tv-sellers').querySelector('ol.tv-rows')!
+    const order = [...list.children].map((li) =>
+      li.classList.contains('group') ? `# ${li.querySelector('h4')!.textContent}` : li.getAttribute('data-row-name'),
+    )
+    expect(order).toEqual([
+      '# Tasdiq kutilmoqda',
+      'Ravshanov 158 Asilbek',
+      'Yusupova 139 Mahliyo',
+      '# Savdosiz',
+      'Karimova 140 Nodira',
+      'Toshmatov 141 Bekzod',
+    ])
+    // Rank qatori yo'q, lekin idle qatorlar ustunli — yorliq qatori ular uchun chiziladi.
+    expect(col('tv-sellers').querySelector('.tv-cols')).not.toBeNull()
+  })
+
+  /*
+    E'LON FAQAT EKRANDAGI ODAMGA (premium review, 2026-09-17): `onBoard` barcha
+    kirishlardan qurilardi, ya'ni «Bugun» da chizilmagan idle sotuvchi uchun ham
+    «endi USTA» chiqardi — taxtada topib bo'lmaydigan ism.
+  */
+  it('«Bugun» da chizilmagan sotuvchining ko‘tarilishi e‘lon qilinmaydi; u chizilgan davrda qilinadi', () => {
+    const day = '2026-09-17'
+    const promoted = new Map<string, SellerMedalRowDto>([
+      [
+        'Karimova 140 Nodira',
+        {
+          employeeId: 'Karimova 140 Nodira',
+          level: 4,
+          legendaTier: 0,
+          rankTitle: 'Usta',
+          delivered: money(120_000_000),
+          levelFloor: money(100_000_000),
+          nextLevelAt: money(300_000_000),
+          nextTitle: 'Ustoz',
+          promotedOn: day,
+          medals: [],
+        },
+      ],
+    ])
+    resetCelebrations()
+    const hidden = render(<SellersColumn data={MORNING} {...PROPS} medals={promoted} medalsToday={day} today />)
+    expect(rowNames()).not.toContain('Karimova 140 Nodira')
+    expect(col('tv-sellers').querySelector('.tv-promo')).toBeNull()
+    hidden.unmount()
+    render(<SellersColumn data={MORNING} {...PROPS} medals={promoted} medalsToday={day} />)
+    expect(col('tv-sellers').querySelector('.tv-promo')!.textContent).toMatch(/^Karimova 140 Nodira — endi USTA/)
+  })
+
+  it('sarlavha sanog‘idagi raqamlar `<b>` da — jumla matni o‘zgarmaydi', () => {
+    render(<SellersColumn data={MORNING} {...PROPS} today />)
+    const count = col('tv-sellers').querySelector('.tv-col-head__count')!
+    expect([...count.querySelectorAll('b')].map((b) => b.textContent)).toEqual(['1', '2'])
+    expect(count.textContent).toBe('bugun 1 sotuvchi savdo qildi · 2 tasi tasdiq kutmoqda')
+  })
+
+  it('«Bugun» da «Savdosiz» guruhi ham, uning qatorlari ham yo‘q', () => {
+    render(<SellersColumn data={MORNING} {...PROPS} today />)
+    const heads = [...col('tv-sellers').querySelectorAll('.group h4')].map((h) => h.textContent)
+    expect(heads).toEqual(['Tasdiq kutilmoqda'])
   })
 
   it('sarlavha sanog‘i: «bugun N sotuvchi savdo qildi · M tasi tasdiq kutmoqda»; boshqa davrda oddiy son', () => {

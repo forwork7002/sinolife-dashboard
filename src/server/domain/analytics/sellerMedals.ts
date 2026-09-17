@@ -221,8 +221,9 @@ export const MEDAL_UNLOCK_LEVEL: Readonly<Record<MedalCode, number>> = Object.fr
  * HAQIQIY METALL AVVAL (EFIR Premium, 2026-09-17, mijoz tasdiqlagan): nodir
  * yettilik (oltin/kumush/bronza tanalar), keyin gilt belgili po'lat beshlik,
  * oxirida po'lat ikkilik. Qatorda uchtadan ortig'i chizilmaydi va «+N» yo'q —
- * shuning uchun kumush/bronza oy olov seriyasidan, kun g'olibi yangi yulduzdan
- * keyin turadi. Frontend nusxasi `medalCatalog.ts` — BIR commit'da o'zgaradi.
+ * shuning uchun kumush/bronza oy olov seriyasidan OLDIN, kun g'olibi yangi
+ * yulduzdan KEYIN turadi. Frontend nusxasi `medalCatalog.ts` — BIR commit'da
+ * o'zgaradi; `tests/features/medalCatalogMirror.test.ts` ikkalasini solishtiradi.
  */
 export const MEDAL_ORDER: readonly MedalCode[] = Object.freeze([
   'year-champion',

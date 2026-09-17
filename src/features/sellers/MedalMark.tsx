@@ -1,4 +1,4 @@
-import { MEDALS, MEDAL_METAL, isMonthMedal } from '@/features/sellers/medalCatalog'
+import { MEDALS, MEDAL_METAL, isKnownMedal, isMonthMedal } from '@/features/sellers/medalCatalog'
 import type { MedalCode } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
 
@@ -33,6 +33,8 @@ export function MedalMark({
   /** Oxirgi yangilanishda paydo bo'lgan — bir marta 0,6 → 1 kattalashadi. */
   isNew?: boolean
 }) {
+  // Notanish kod (server bu nusxadan oldin deploy bo'lgan) — hech narsa chizilmaydi, ustun yiqilmaydi.
+  if (!isKnownMedal(code)) return null
   const { body, dev } = MEDAL_METAL[code]
   const label = count > 1 ? `${MEDALS[code].name} ×${formatNumber(count)}` : MEDALS[code].name
   return (

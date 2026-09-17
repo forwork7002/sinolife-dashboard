@@ -196,12 +196,17 @@ const TROW_MAX = 52
  *
  * `null` — hali o'lchanmagan (0) yoki qator yo'q: CSS o'z 50 px ida qoladi.
  * `list: null` — ro'yxat uyani to'ldiradi (hammasi sig'adi).
+ *
+ * QATOR HECH QACHON 40 DAN PAST EMAS, joy bir qatorga ham yetmasa ham
+ * (juda past ustun): bitta 40 px qator, ro'yxat 40 px — uya uni kesadi, lekin
+ * qator o'z o'lchamini buzmaydi. Avval `floor(joy / 1)` 30 px qator qaytarardi.
  */
 export function teamRowLayout(room: number, rows: number): { row: number; list: number | null } | null {
   if (room <= 0 || rows <= 0) return null
   const even = Math.floor(room / rows)
   if (even >= TROW_MIN) return { row: Math.min(TROW_MAX, even), list: null }
-  const visible = Math.max(1, Math.floor(room / TROW_MIN))
+  if (room < TROW_MIN) return { row: TROW_MIN, list: TROW_MIN }
+  const visible = Math.floor(room / TROW_MIN)
   const row = Math.min(TROW_MAX, Math.floor(room / visible))
   return { row, list: visible * row }
 }
