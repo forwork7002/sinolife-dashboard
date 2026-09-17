@@ -105,10 +105,12 @@ describe('the television board switches layout on one width', () => {
     one, and never above it.
   */
   it('keeps the television’s pedestal step within a tenth of the old board’s', () => {
-    const step = css.match(/--tv-step: clamp\(([\d.]+)px, ([\d.]+)vw, ([\d.]+)px\);/)
+    const step = css.match(/--tv-step: clamp\(([\d.]+)px, calc\(([\d.]+)vw - ([\d.]+)px\), ([\d.]+)px\);/)
     expect(step).not.toBeNull()
-    const [min, vw, max] = step!.slice(1).map(Number)
-    const at = (width: number) => Math.min(max, Math.max(min, (vw * width) / 100))
+    const [min, vw, less, max] = step!.slice(1).map(Number)
+    // The old slope, less a constant: the shelf's debt is the same at every width.
+    expect(vw).toBe(1.55)
+    const at = (width: number) => Math.min(max, Math.max(min, (vw * width) / 100 - less))
     const old = (width: number) => Math.min(32, Math.max(22, (1.55 * width) / 100))
     for (const width of [1366, 1600, 1920, 2560]) {
       expect(at(width), `${width}px`).toBeLessThanOrEqual(old(width))

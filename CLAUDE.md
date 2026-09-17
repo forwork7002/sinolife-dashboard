@@ -1079,10 +1079,11 @@ Per-screen traps worth knowing before you touch one:
   drawn there). **No «+N» and no caption anywhere; `TeamsColumn` has no prop
   that could receive a medal.** The three promises are CSS, in the MEDALS
   block of `globals.css`, and each was measured against the old board running
-  beside it: **the podium does not grow** (489.0 → 489.0px at 1920×1080, to
-  the thousandth, on «Shu oy», «Bugun» and the morning alike — the shelf's
-  46px came out of the seat's gaps, its paddings and a pedestal step of 28.6px
-  where the old board had 29.8, still 1 : 1.6 : 2.4; the gap ABOVE the ring
+  beside it: **the podium does not grow** (489.0 → 488.9px at 1920×1080, and the same
+  0.1px under the old board at 1600 and 2560, on «Shu oy», «Bugun» and the
+  morning alike — the shelf's 46px came out of the seat's gaps, its paddings
+  and a pedestal step that is the old expression LESS 1.2px, 28.6 where the
+  old board had 29.8, still 1 : 1.6 : 2.4; the gap ABOVE the ring
   was left alone, because 4px less slides the crown under the plaque. **The
   step was 22px for a day** — blocks a quarter lower, which bought a fifth
   whole row — and the review measured the cost: numerals 47 → 33px, blocks
@@ -1121,11 +1122,11 @@ Per-screen traps worth knowing before you touch one:
   run in a pill a 1366 laptop caps at 148px, so the words stood 1.2px outside
   it on both sides (9px at 1280). Between 1280 and 1599 the seat's pill now
   steps down with the rest of the seat type (10px, 6px pill padding, 8px card
-  side padding — two lines at 1366, where the podium is 437px against the old
+  side padding — two lines at 1366, where the podium is 436px against the old
   board's 444), and the run may part
   before «oldinda», never inside the sum, so under ~1345px it takes a third
   line instead of spilling; pinned in `sellersTvBoard.test.tsx`. **Still the
-  old board's and not fixed:** at 1366×768 the list is 68px tall (it was 61)
+  old board's and not fixed:** at 1366×768 the list is 69px tall (it was 61)
   and no row is whole; the phone's `.tv-seat-card` 8px side padding is a dead
   rule (the card's `padding` shorthand is written after it), on both boards.
 - **Sotuvchilar oyligi** — **NEW ON 2026-09-14**, the client's own pay scheme

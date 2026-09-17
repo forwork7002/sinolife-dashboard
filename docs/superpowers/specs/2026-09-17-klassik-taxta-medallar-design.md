@@ -1,6 +1,6 @@
 # Klassik taxta + medallar — `/sellers` eski ko'rinishiga qaytadi, daraja olib tashlanadi
 
-**Holat:** qurilmoqda — `klassik` branch'i (2026-09-17).
+**Holat:** amalga oshirildi — klassik branch'i, deploy kutmoqda (2026-09-17).
 **O'rnini bosadi:** `2026-09-16-daraja-va-medallar-design.md`, `2026-09-16-efir-taxta-design.md`,
 `2026-09-17-efir-premium-design.md` — uchalasi ham BEKOR (tarix sifatida qoladi).
 
@@ -74,3 +74,42 @@ Eski taxtaning jonli nusxasi taqqoslash uchun: `http://localhost:3011/sellers` (
 - Eski taxta (`:3011`) bilan yonma-yon: podium balandligi o'smagan, ko'rinadigan qatorlar soni kamaymagan.
 - Deploy faqat foydalanuvchi «deploy qil» deganda; keyin televizor tabi bir marta yangilanadi
   (eski bundle darajasiz payload'ni o'qiy olmaydi).
+
+## 4. Chetlanishlar
+
+Ataylab qilingan, o'lchangan. Har biri eski taxta (`:3011`) bilan yonma-yon, production fixture'larida,
+dpr 1 da tekshirilgan.
+
+1. **§1.6 «≤ 10–12 %» — o'rindiq ichki bo'shliqlari undan ko'proq siqilgan.** Podium `padding` 22/14 → 18/10,
+   karta pastki bo'shlig'i 14 → 10 (chempionda 18 → 10), yon o'rindiqlar ustki bo'shlig'i 22 → 18, halqa
+   ostidagi oraliqlar bir Tailwind pog'ona tor, halqalar 60/46/40 → 56/43/37. Sabab — §1.5: tokcha 46 px
+   oladi va podium o'smasligi shart; §1.5 bu joyni aynan shu bo'shliqlardan olishni buyuradi va son
+   bermaydi. **Pog'ona esa chegarada:** eski ifoda minus 1.2 px (televizorda 28.6 px, eski 29.8 — 96 %).
+   Bir kun u 22 px edi (−29 %, beshinchi butun qator evaziga) — review buni qaytardi: bloklar chiziqdek
+   ko'rinardi, bronza kartasi kumushdan baland turardi.
+2. **Beshinchi BUTUN qator yo'q.** 1920×1080 «Shu oy»: sotuvchilar 4 butun + 0.82 (eski 4 + 0.50),
+   komandalar 6 butun (eski 5). Qatorlar 65.4 → 61.5 px (−6 %). «Kamaymagan» sharti bajarilgan; beshinchi
+   butun qator faqat zinani buzish evaziga kelardi.
+3. **Komandalar podiumi eskisidan 46 px PAST** (443 → 397): siqilgan bo'shliqlar umumiy, tokcha esa yo'q.
+   Komandalar ro'yxati shundan bir qator yutadi.
+4. **1280–1599 da o'rindiq medallari 36/32 px** (§1.5 «36–40 px» deydi). 1366 noutbukda summa ~17 px,
+   ustidagi 40 px medal pulni bosib ketardi. Televizor (≥ 1600) 40/36 da. To'rtta medal sig'maganda ular
+   baribir birga kichrayadi (dumaloq qoladi).
+5. **Qatorda «3 tagacha» — kenglikka qarab 3, 1–2 yoki 0.** Televizorda 3; 1280–1799 da 2 tagacha;
+   1280–1319 va 1600–1659 da umuman chizilmaydi (ism katagi ~190 px, chase ~160 px — joy yo'q, shuning
+   uchun chiziq ham qisqarmaydi). Sig'magan medal BUTUNLIGICHA tushadi, kesilmaydi.
+6. **Telefonda medalli qator 26–30 px o'sadi** — medallar chase ostida o'z satrida. §1.5 ning «qator
+   o'smaydi» va'dasi televizor/noutbukniki; telefonda sahifa skroll bo'ladi, ism katagi 126 px.
+7. **Qorong'i mavzuda po'lat medal tokenlari tasdiqlangan ZARB maketidagidan yorug'roq** (beshta token,
+   faqat ikki qorong'i blokda; chizma va yorug' mavzu o'zgarmagan). 26 px da tana/qator kontrasti
+   1.6–2.4:1 edi, qatorlardagi medallarning ~95 % i po'lat.
+8. **Chempion pilyulasi 1280–1345 px oralig'ida uchinchi satrga o'tadi** (toshib chiqish o'rniga) — u yerda
+   sotuvchilar podiumi eskisidan 7 px baland (464 vs 457, 1280 da). Matritsadan tashqari kenglik;
+   1366 va 1920 da podium eskisidan past yoki teng (436 vs 444; 488.9 vs 489.0).
+9. **Yolg'iz `first-sale` o'rindiqda QOLADI.** Review uni yashirishni taklif qildi (kichik po'lat kvadrat,
+   127 sotuvchidan 121 tasida bor); rad etildi — §1.3/§1.5 o'rindiqdan hech bir medalni chiqarmaydi va
+   sotuvchining yagona medalini yashirish mahsulot qarori. `seatMedals` uni faqat nodir yoki gilt medal
+   yonida tushiradi.
+
+**Ochiq qolgani (eski taxtadan meros, bu partiyada tuzatilmagan):** 1366×768 da ro'yxat 69 px (eski 61),
+birorta butun qator yo'q; telefondagi `.tv-seat-card` 8 px yon bo'shlig'i o'lik qoida (ikkala taxtada).

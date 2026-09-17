@@ -3287,11 +3287,14 @@ p {
   */
   /*
     THE STEP WAS clamp(22px, 1.55vw, 32px) — 29.8px on the television — AND IT
-    IS 28.6 NOW: the staircase is the old board's to within 4%. The medal shelf
-    needs 46px of the champion's seat and the podium may not grow (spec §1.5);
-    nearly all of that came out of the seat's gaps and paddings, and this is
-    the last 3px. With it the sellers' podium at 1920×1080 is the old board's
-    489px TO THE PIXEL, medals included.
+    IS THAT STEP LESS 1.2px: the staircase is the old board's to within 4%. The
+    medal shelf needs 46px of the champion's seat and the podium may not grow
+    (spec §1.5); nearly all of it came out of the seat's gaps and paddings, and
+    the blocks owe the last 2.8px — 1.16px of step under a 2.4-step champion.
+    Written as the old expression minus a constant, not as a new slope, because
+    the debt is the same 2.8px at every width: with it the sellers' podium is
+    the old board's height at 1600, at 1920 (489px, medals included) and on a
+    4K wall alike, where a flatter slope was right at one width only.
 
     IT WAS clamp(18px, 1.1vw, 22px) FOR A DAY — blocks a quarter lower
     (71 / 48 / 30 → 51 / 34 / 21px), which bought a fifth WHOLE row under the
@@ -3303,7 +3306,7 @@ p {
     that. The list shows four whole rows and 0.8 of the fifth (the old board:
     four and a half) and it auto-scrolls, so a part row is on screen either way.
   */
-  --tv-step: clamp(20px, 1.49vw, 28.6px);
+  --tv-step: clamp(20px, calc(1.55vw - 1.2px), 30.8px);
   --tv-pedestal: var(--tv-step);
 }
 .tv-seat--1 { --tv-pedestal: calc(var(--tv-step) * 2.4); }
