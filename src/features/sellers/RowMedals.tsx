@@ -40,14 +40,17 @@ export function rowMedalsOf(medals: readonly SellerMedalDto[] | undefined): read
 export function RowMedals({
   medals,
   newKeys,
+  owner,
 }: {
   medals: readonly SellerMedalDto[]
   newKeys?: ReadonlySet<MedalCode>
+  /** The seller's `employeeId` — how the hover card (`MedalTip`) finds this seller's instance. */
+  owner?: string
 }) {
   const shown = rowMedalsOf(medals)
   if (shown.length === 0) return null
   return (
-    <span className="row-medals">
+    <span className="row-medals" data-employee={owner}>
       {shown.map((m) => (
         <MedalMark key={m.code} code={m.code} size={ROW_MEDAL_SIZE} isNew={newKeys?.has(m.code) ?? false} />
       ))}

@@ -144,3 +144,45 @@ export function seatMedals(medals: readonly SellerMedalDto[], cap: number): read
   }
   return visible.slice(0, Math.max(0, cap))
 }
+
+/**
+ * Har medalning QOIDASI, floor tilida — pastdagi «Medallar tasnifi» lentasi
+ * (`MedalTasnif`) va medal ustidagi tooltip (`MedalTip`) BIR xil gapni shu
+ * yerdan o'qiydi. Motordan (`domain/analytics/sellerMedals.ts`) qo'lda
+ * ko'chirilgan — qatlam qoidasi importni taqiqlaydi —
+ * `tests/features/medalTasnif.test.tsx` chegaralarni motor konstantalari va
+ * motorning o'zi bilan solishtiradi.
+ */
+export const MEDAL_RULES: Readonly<Record<MedalCode, string>> = Object.freeze({
+  'year-champion': 'yil yakunida 1-oʻrin',
+  'month-gold': 'oy yakunida 1-oʻrin',
+  'month-silver': 'oy yakunida 2-oʻrin',
+  'month-bronze': 'oy yakunida 3-oʻrin',
+  'streak-fire': '3 oy ketma-ket top-3 da',
+  'conversion-master': 'oyning eng yuqori konversiyasi (20+ buyurtma)',
+  'day-record': 'eng katta kunlik savdo rekordi',
+  'streak-steady': '3 oy ketma-ket top-10 da',
+  'clean-month': 'oyda 80% va undan koʻp yetkazilgan (20+ buyurtma)',
+  jump: 'oʻtgan oydan 1,5 barobar koʻp savdo',
+  rookie: 'birinchi toʻliq oyida top-10 da',
+  'day-winner': 'kun yakunida 1-oʻrin',
+  'work-month': 'ish kunlarining 60% va undan koʻpida savdo',
+  'first-sale': 'birinchi yetkazilgan savdo',
+})
+
+/** Uch guruh — medalning o'zida metall aytadi: to'liq disk, oltin halqa, po'lat halqa. */
+export type MedalGroup = 'honour' | 'rare' | 'daily'
+
+export const MEDAL_GROUP_LABEL: Readonly<Record<MedalGroup, string>> = Object.freeze({
+  honour: 'Oliy mukofot',
+  rare: 'Nodir',
+  daily: 'Kundalik',
+})
+
+/** The four awards struck as a solid metal disc — a year or a month won outright. */
+const HONOURS: ReadonlySet<MedalCode> = new Set<MedalCode>(['year-champion', 'month-gold', 'month-silver', 'month-bronze'])
+
+/** Solid metal disc → honour; a gold ring → rare; a steel ring → daily. `RARE_MEDALS` is the catalog's own set. */
+export function medalGroupOf(code: MedalCode): MedalGroup {
+  return HONOURS.has(code) ? 'honour' : RARE_MEDALS.has(code) ? 'rare' : 'daily'
+}

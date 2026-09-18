@@ -79,13 +79,16 @@ const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffec
  * Where the tip goes, measured — not guessed.
  *
  * Two-pass on purpose: the tip mounts hidden at 0,0, this measures both
- * rectangles, then positions it. Guessing the tip's size instead would break
+ * rectangles, then positions it. Exported for `sellers/MedalTip`, which has
+ * one tip for a whole board rather than one wrapper per medal. Guessing the tip's size instead would break
  * the flip decision exactly when it matters — on long content near the top
  * edge.
  */
-function useTipPosition(
+export function useTipPosition(
   open: boolean,
-  anchorRef: RefObject<HTMLElement | null>,
+  // `Element`, not `HTMLElement`: the medal tip anchors on an <svg>, and all
+  // this reads from the anchor is its bounding rectangle.
+  anchorRef: RefObject<Element | null>,
   tipRef: RefObject<HTMLElement | null>,
   side: TipSide = 'auto',
 ): TipPosition | null {

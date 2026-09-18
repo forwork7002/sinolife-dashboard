@@ -8,6 +8,7 @@ import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { BoardIcon, type BoardIconName } from '@/features/sellers/BoardIcon'
 import { MedalDefs } from '@/features/sellers/MedalDefs'
 import { MedalTasnif } from '@/features/sellers/MedalTasnif'
+import { MedalTip } from '@/features/sellers/MedalTip'
 import { MedalMark } from '@/features/sellers/MedalMark'
 import { RecordWall } from '@/features/sellers/RecordWall'
 import { RowMedals, rowMedalsOf } from '@/features/sellers/RowMedals'
@@ -199,6 +200,8 @@ export function SellersPage() {
         {/* ONE <defs> FOR EVERY MEDAL ON THE PAGE — each medal is a
             `<use href="#m-…">` into it; see `MedalDefs` for why once. */}
         <MedalDefs />
+        {/* ONE hover card for every medal on the board — see `MedalTip` for why not one per medal. */}
+        <MedalTip medals={medalsById} />
 
         <div className="tv-switch" role="tablist" aria-label="Qaysi reyting">
           {(
@@ -252,7 +255,7 @@ export function SellersPage() {
           seller looking for their own row.
         */}
         <div className="tv-foot">
-          <MedalTasnif />
+          <MedalTasnif from={medals.data?.data.from} />
           <p className="tv-credit">Developed by Yusuf</p>
         </div>
       </div>
@@ -957,7 +960,7 @@ function PodiumSeat({
           ×N chip (`CountChip`) inside the medal's SVG, never a number beside it.
         */}
         {rack.length > 0 && (
-          <div className="seat-medals relative">
+          <div className="seat-medals relative" data-employee={entry.key}>
             {rack.map((m) => (
               <MedalMark
                 key={m.code}
@@ -1284,7 +1287,7 @@ function BoardList({
                     </div>
                     <Chase entry={entry} ahead={ahead} figureOf={figureOf} />
                     {worn.length > 0 && (
-                      <RowMedals medals={worn} newKeys={newMedals?.get(entry.key)} />
+                      <RowMedals medals={worn} newKeys={newMedals?.get(entry.key)} owner={entry.key} />
                     )}
                   </div>
                 </td>

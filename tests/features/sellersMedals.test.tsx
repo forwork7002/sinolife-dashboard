@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ROW_MEDAL_SIZE } from '@/features/sellers/RowMedals'
@@ -492,3 +492,66 @@ describe('globals.css — medallarning taxtadagi joyi', () => {
     expect(code).toMatch(/\.seat-medals > \.medal-mark \{\s*flex: 0 1 auto;\s*min-width: 0;\s*height: auto;/)
   })
 })
+
+/*
+  «MEDAL USTIGA OLIB BORGANDA MEDAL TASNIFI KELIB CHIQSIN» (mijoz, 2026-09-18).
+  Bitta karta butun taxta uchun (`MedalTip`): nom (×N), guruh, qoida va SHU
+  sotuvchining oxirgi medali — qachon va nechta. Karta `document.body` ga
+  chiziladi, shuning uchun `screen` emas, `document` dan qidiriladi.
+*/
+describe('medal ustidagi karta — tasnif va shu sotuvchining medali', () => {
+  const tip = () => document.querySelector('[role="tooltip"].medal-tip')
+
+  it('kursor medal ustida — nom ×N, guruh, qoida, necha marta va oxirgisi qachon; ketganda yopiladi', async () => {
+    const { container } = await openBoard()
+    const gold = seat(container, 1).querySelector('svg.medal-mark[data-medal="month-gold"]')!
+    fireEvent.pointerOver(gold)
+    await waitFor(() => expect(tip()).not.toBeNull())
+    const card = tip()!
+    expect(card.querySelector('.medal-tip-name')!.textContent).toBe('Oy chempioni ×3')
+    expect(card.querySelector('.medal-tasnif-group')!.textContent).toBe('Oliy mukofot')
+    expect(card.querySelector('.medal-tip-rule')!.textContent).toBe('oy yakunida 1-oʻrin')
+    expect(card.querySelector('.medal-tip-when')!.textContent).toBe('3 marta · oxirgisi Avgust 2026')
+    // Kartadagi medal chizmasi jim — nomni matn aytadi.
+    expect(card.querySelector('svg.medal-mark')!.closest('[aria-hidden="true"]')).not.toBeNull()
+    fireEvent.pointerOut(gold, { relatedTarget: container })
+    await waitFor(() => expect(tip()).toBeNull())
+  })
+
+  it('qatordagi medal ham: egasi `data-employee` orqali topiladi; kun medali KUNNI va o‘z summasini aytadi', async () => {
+    const day: SellerMedalDto = { ...medal('day-winner', 4), at: '2026-08-12', amount: money(12_500_000) }
+    medalsPayload = {
+      ...MEDALS_A,
+      sellers: MEDALS_A.sellers.map((s) => (s.employeeId === 'e4' ? { employeeId: 'e4', medals: [day] } : s)),
+    }
+    const { container } = await openBoard()
+    const row = [...container.querySelectorAll('#tv-sellers .tv-row')].find((r) => r.textContent!.includes('Sotuvchi e4'))!
+    expect(row.querySelector('.row-medals')!.getAttribute('data-employee')).toBe('e4')
+    fireEvent.pointerOver(row.querySelector('svg.medal-mark[data-medal="day-winner"]')!)
+    await waitFor(() => expect(tip()).not.toBeNull())
+    expect(tip()!.querySelector('.medal-tip-name')!.textContent).toBe('Kun gʻolibi ×4')
+    expect(tip()!.querySelector('.medal-tasnif-group')!.textContent).toBe('Kundalik')
+    expect(tip()!.querySelector('.medal-tip-when')!.textContent).toBe('4 marta · oxirgisi 12-avg 2026 · 12,500,000 soʻm')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(tip()).toBeNull())
+  })
+
+  it('pastdagi tasnif lentasi karta ochmaydi — u o‘sha gapni o‘zi yozadi; lenta hisob boshini aytadi', async () => {
+    const { container } = await openBoard()
+    fireEvent.pointerOver(container.querySelector('.medal-tasnif svg.medal-mark')!)
+    await new Promise((r) => setTimeout(r, 250))
+    expect(tip()).toBeNull()
+    await waitFor(() => expect(container.querySelector('.medal-tasnif-since')).not.toBeNull())
+    expect(container.querySelector('.medal-tasnif-since')!.textContent).toMatch(/^1-avg 2026 dan$/)
+  })
+
+  it('telefonda bosish ochadi, yana bosish yopadi', async () => {
+    const { container } = await openBoard()
+    const gold = seat(container, 1).querySelector('svg.medal-mark[data-medal="month-gold"]')!
+    fireEvent.pointerDown(gold, { pointerType: 'touch' })
+    await waitFor(() => expect(tip()).not.toBeNull())
+    fireEvent.pointerDown(gold, { pointerType: 'touch' })
+    await waitFor(() => expect(tip()).toBeNull())
+  })
+})
+

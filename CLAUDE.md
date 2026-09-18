@@ -1177,7 +1177,21 @@ Per-screen traps worth knowing before you touch one:
   six states (1920 dark/light, 1366, 1440, a phone): identical, except the
   table heads' `font-feature-settings`, whose one rule (`"case"`) the shipped
   Inter subset cannot honour — the heads are byte-identical in a screenshot
-  with and without it. **NOT MEASURED ON A FULL BOARD**: the local
+  with and without it.
+  **A MEDAL OPENS ITS OWN CARD ON HOVER** (the client, the same day: «medal
+  ustiga olib borganda medal tasnifi kelib chiqsin»): name ×N, group, rule and
+  THIS seller's latest instance — «3 marta · oxirgisi Avgust 2026 · 1,065,…
+  soʻm». ONE `MedalTip` for the whole board, listening on the document for
+  `.tv-board svg.medal-mark`, NOT the shared `Tooltip` around each medal: its
+  `inline-flex` wrapper would break the MEDALS block's direct-child rules and
+  with them the row-height and column promises. The seller is found through
+  `data-employee` on the seat shelf and the row holder (sellers only — a team
+  key is a ROP name). The rule text is `MEDAL_RULES` in `medalCatalog.ts`, the
+  ONE source for the card and the strip. `orders` is read per medal and never
+  generically (place on `rookie`, days on `work-month`). A TV has no pointer,
+  so nothing depends on it; a phone opens it on a tap. The strip's title now
+  says where the count starts («1-avg 2026 dan», the payload's `from`).
+  **NOT MEASURED ON A FULL BOARD**: the local
   database seats two sellers, so the whole-rows count at 1920×1080 after the
   strip is arithmetic (4 whole and ~0.4 of a fifth for sellers), not a reading.
 - **Sotuvchilar oyligi** — **NEW ON 2026-09-14**, the client's own pay scheme

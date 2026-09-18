@@ -3,8 +3,8 @@
 import { Fragment, useLayoutEffect, useRef, useState } from 'react'
 
 import { MedalMark } from '@/features/sellers/MedalMark'
-import { MEDALS, MEDAL_ORDER, RARE_MEDALS } from '@/features/sellers/medalCatalog'
-import type { MedalCode } from '@/lib/api'
+import { MEDALS, MEDAL_GROUP_LABEL, MEDAL_ORDER, MEDAL_RULES, medalGroupOf } from '@/features/sellers/medalCatalog'
+import { formatDate } from '@/lib/format'
 import { useReducedMotion } from '@/lib/useReducedMotion'
 
 /**
@@ -30,8 +30,9 @@ import { useReducedMotion } from '@/lib/useReducedMotion'
  * knows how to parse; this carries a rule, which is a sentence to be read
  * once and understood. 38 px/s is a full loop in about two minutes.
  *
- * THE RULES ARE RESTATED FROM THE ENGINE, NOT INVENTED HERE. Each line below
- * is `domain/analytics/sellerMedals.ts` in the floor's words — the thresholds
+ * THE RULES ARE RESTATED FROM THE ENGINE, NOT INVENTED HERE. Each line
+ * (`MEDAL_RULES`, medalCatalog.ts — the medal tooltip reads the same one) is
+ * `domain/analytics/sellerMedals.ts` in the floor's words — the thresholds
  * (`MEDAL_MIN_ORDERS` 20, `CLEAN_MONTH_PERCENT` 80, `WORK_MONTH_SHARE` 60%,
  * `JUMP_GROWTH` ×1,5, three CLOSED months for a streak, top-3 / top-10) are
  * the numbers the medals are actually awarded on. The frontend may not import
@@ -57,40 +58,16 @@ const PIXELS_PER_SECOND = 38
 /** The strip's medal size, px — a row medal's sibling, so what is explained is what is seen. */
 const TASNIF_MEDAL_SIZE = 28
 
-const RULES: Readonly<Record<MedalCode, string>> = Object.freeze({
-  'year-champion': 'yil yakunida 1-oʻrin',
-  'month-gold': 'oy yakunida 1-oʻrin',
-  'month-silver': 'oy yakunida 2-oʻrin',
-  'month-bronze': 'oy yakunida 3-oʻrin',
-  'streak-fire': '3 oy ketma-ket top-3 da',
-  'conversion-master': 'oyning eng yuqori konversiyasi (20+ buyurtma)',
-  'day-record': 'eng katta kunlik savdo rekordi',
-  'streak-steady': '3 oy ketma-ket top-10 da',
-  'clean-month': 'oyda 80% va undan koʻp yetkazilgan (20+ buyurtma)',
-  jump: 'oʻtgan oydan 1,5 barobar koʻp savdo',
-  rookie: 'birinchi toʻliq oyida top-10 da',
-  'day-winner': 'kun yakunida 1-oʻrin',
-  'work-month': 'ish kunlarining 60% va undan koʻpida savdo',
-  'first-sale': 'birinchi yetkazilgan savdo',
-})
-
-type Group = 'honour' | 'rare' | 'daily'
-
-const GROUP_LABEL: Readonly<Record<Group, string>> = Object.freeze({
-  honour: 'Oliy mukofot',
-  rare: 'Nodir',
-  daily: 'Kundalik',
-})
-
-/** The four awards struck as a solid metal disc — a year or a month won outright. */
-const HONOURS: ReadonlySet<MedalCode> = new Set<MedalCode>(['year-champion', 'month-gold', 'month-silver', 'month-bronze'])
-
-/** Solid metal disc → honour; a gold ring → rare; a steel ring → daily. `RARE_MEDALS` is the catalog's own set. */
-function groupOf(code: MedalCode): Group {
-  return HONOURS.has(code) ? 'honour' : RARE_MEDALS.has(code) ? 'rare' : 'daily'
-}
-
-export function MedalTasnif() {
+export function MedalTasnif({
+  from,
+}: {
+  /**
+   * Where the medal count starts — the payload's own `from` (an instant, read
+   * in Tashkent by `formatDate`). Printed under the title because the floor
+   * asks it first: «qaysi paytdan beri?». Absent until `?include=medals` lands.
+   */
+  from?: string
+}) {
   const reduced = useReducedMotion()
   const runRef = useRef<HTMLDivElement>(null)
   const [travel, setTravel] = useState(0)
@@ -120,7 +97,10 @@ export function MedalTasnif() {
     <div className="medal-tasnif" role="group" aria-label="Medallar tasnifi" aria-live="off">
       {/* Fixed, not crawling: the strip's own name, so a reader who looks up
           mid-loop knows what the moving line is a list OF. */}
-      <span className="medal-tasnif-title">Medallar</span>
+      <span className="medal-tasnif-title">
+        Medallar
+        {from && <span className="medal-tasnif-since">{formatDate(from)} dan</span>}
+      </span>
       <div className="medal-tasnif-window">
         <div
           className={`medal-tasnif-track${crawling ? ' medal-tasnif-track--crawling' : ''}`}
@@ -146,13 +126,13 @@ function TasnifRun({ ref, hidden = false }: { ref?: React.Ref<HTMLDivElement>; h
   return (
     <div className="medal-tasnif-run" ref={ref} aria-hidden={hidden ? 'true' : undefined} role={hidden ? undefined : 'list'}>
       {MEDAL_ORDER.map((code, index) => {
-        const group = groupOf(code)
-        const opensGroup = index === 0 || groupOf(MEDAL_ORDER[index - 1]!) !== group
+        const group = medalGroupOf(code)
+        const opensGroup = index === 0 || medalGroupOf(MEDAL_ORDER[index - 1]!) !== group
         return (
           <Fragment key={code}>
             {opensGroup && (
               <span className="medal-tasnif-group" data-group={group}>
-                {GROUP_LABEL[group]}
+                {MEDAL_GROUP_LABEL[group]}
               </span>
             )}
             <span className="medal-tasnif-entry" role={hidden ? undefined : 'listitem'}>
@@ -161,7 +141,7 @@ function TasnifRun({ ref, hidden = false }: { ref?: React.Ref<HTMLDivElement>; h
                 <MedalMark code={code} size={TASNIF_MEDAL_SIZE} />
               </span>
               <span className="medal-tasnif-name">{MEDALS[code].name}</span>
-              <span className="medal-tasnif-rule">{RULES[code]}</span>
+              <span className="medal-tasnif-rule">{MEDAL_RULES[code]}</span>
             </span>
           </Fragment>
         )
