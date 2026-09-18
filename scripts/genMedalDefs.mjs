@@ -1,41 +1,44 @@
 /**
- * Regenerate `src/features/sellers/medalDefs.ts` from the «ZARB» medal asset.
+ * Regenerate `src/features/sellers/medalDefs.ts` from the «EMAL» medal asset.
  *
  * THE ASSET IS THE SINGLE SOURCE. `final-defs.svg.html` is itself written by
- * `gen-final-defs.js` (same folder) — geometry, gradients, the metal baked into
- * every `m-<code>` symbol. This script lifts the MEDAL part of its `<defs>`
- * into a TypeScript string, so the board and the approved mock can never draw
- * two different medals. Change the drawing in the generator, re-run it, then
- * run this:
+ * `gen-defs.js` (same folder) — geometry, gradients, the enamel field and the
+ * metal baked into every `m-<code>` symbol. This script lifts the MEDAL part
+ * of its `<defs>` into a TypeScript string, so the board and the approved mock
+ * can never draw two different medals. Change the drawing in the generator,
+ * re-run it, then run this:
  *
  *   node scripts/genMedalDefs.mjs
  *
- * ONLY WHAT A MEDAL NEEDS (klassik taxta spec §1.4). The asset was drawn for a
- * board that also had level marks and minted rank coins; that board is gone
- * and the medals stayed. So the output is a CLOSURE, not a copy: it starts
- * from what `MedalMark` instantiates — every `m-*` symbol (the fourteen medals
- * and the three laurels), the path-digits of the ×N plate (`n0..n9`, `nx`) and
- * the four body rims the plate is filled with — and keeps exactly the
- * gradients, planchets and devices those reference, transitively, in the
- * asset's own order. Everything else in the asset is left behind, and a symbol
- * added to the asset for some other purpose stays out without anybody
- * remembering to exclude it.
+ * ONLY WHAT A MEDAL NEEDS. The output is a CLOSURE, not a copy: it starts from
+ * what `MedalMark` instantiates — the fourteen `m-<code>` symbols, and nothing
+ * else (EMAL, 2026-09-18: no laurels, no path-digits `n0..n9`/`nx` and no
+ * `mg-*-rim` any more — the ×N count is the board's own `CountChip`, drawn in
+ * the light DOM with the page's font) — and keeps exactly the gradients those
+ * reference, transitively, in the asset's own order. A symbol added to the
+ * asset for some other purpose stays out without anybody remembering to
+ * exclude it.
  *
  * It refuses to write a string the page cannot mount safely: `color-mix()`,
- * `filter`, a per-instance `var(--m-…)` or `class="cut"` inside `<defs>` (a
- * document selector never reaches a `<use>` shadow tree), a reference to an id
- * the asset does not define, or a character that would end the template
- * literal.
+ * `filter`, `mask`, `stop-opacity`, a nested `<use>`, a presentation-attribute
+ * paint (`fill="…"` — every paint must be an inline `style`, where `var()`
+ * resolves the same on every Chromium the television runs), a per-instance
+ * `var(--m-…)` or `class="cut"` inside `<defs>` (a document selector never
+ * reaches a `<use>` shadow tree), a reference to an id the asset does not
+ * define, or a character that would end the template literal. The ONE
+ * per-instance custom property the asset reads is `--emal-seat-o` (default 1;
+ * `.row-medals` sets it to 0 to switch the seat-only jewellery off) — it is
+ * `var(--emal-seat-o,1)`, not `var(--m-…)`, so the refusal does not fire.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const ROOT = process.cwd()
-const ASSET = 'docs/superpowers/specs/assets/2026-09-17-efir-premium/final-defs.svg.html'
+const ASSET = 'docs/superpowers/specs/assets/2026-09-18-emal-medallar/final-defs.svg.html'
 const OUT = 'src/features/sellers/medalDefs.ts'
 
-/** What `MedalMark` points a `<use>` or a `fill` at directly. */
-const isRoot = (id) => /^m-/.test(id) || /^n[0-9x]$/.test(id) || /^mg-(gold|silver|bronze|steel)-rim$/.test(id)
+/** What `MedalMark` points a `<use>` at directly: the fourteen `m-<code>` symbols. */
+const isRoot = (id) => /^m-/.test(id)
 
 const html = readFileSync(join(ROOT, ASSET), 'utf8')
 // The asset's header comment names `<defs>` in prose — start at the <svg>.
@@ -95,27 +98,32 @@ const inner = elements
   .map((e) => e.text)
   .join('')
 
-for (const bad of ['color-mix', 'filter', 'var(--m-', 'class="cut"', '`', '${']) {
+for (const bad of ['color-mix', 'filter', 'mask', 'stop-opacity', '<use', 'var(--m-', 'class="cut"', '`', '${']) {
   if (inner.includes(bad)) throw new Error(`${ASSET}: <defs> ichida taqiqlangan «${bad}»`)
 }
+// Every paint is an inline `style` — a presentation attribute carrying `var()` is not the same thing on every Chromium.
+const attributePaint = /\s(?:fill|stroke|stop-color|fill-opacity|stroke-opacity)="/.exec(inner)
+if (attributePaint) throw new Error(`${ASSET}: <defs> ichida atribut bo'yoq «${attributePaint[0].trim()}» — faqat inline style`)
 const ids = (inner.match(/ id="/g) ?? []).length
-const medals = [...keep].filter((id) => /^m-/.test(id) && !id.startsWith('m-laurel-')).length
+const medals = [...keep].filter(isRoot).length
 
 const ts = `/**
- * «ZARB» medal belgilari — \`<defs>\` ichi, sahifaga BIR MARTA o'rnatiladi
- * (\`MedalDefs\`). ${ids} id: metall gradientlari \`mg-*\`, planchetlar \`pl-*\`,
- * qurilmalar \`dv-*\`, yo'l-raqamlar \`n0..n9\` va \`nx\` (×N plastinkasi),
- * \`m-<code>\` ×${medals} (metall belgining ICHIGA pishirilgan) va \`m-laurel-*\`.
- * Boshqa hech narsa: generator aktivdan faqat \`MedalMark\` chizadigan
- * belgilarni va ular ishora qilgan bo'laklarni oladi.
+ * «EMAL» medal belgilari — \`<defs>\` ichi, sahifaga BIR MARTA o'rnatiladi
+ * (\`MedalDefs\`). ${ids} id: halqa, belgi va tana gradientlari \`eg-*\`, emal
+ * maydonlari \`eg-field*\` va \`m-<code>\` ×${medals} (halqa, maydon va belgi —
+ * metall bilan birga — belgining ICHIGA pishirilgan). Boshqa hech narsa:
+ * generator aktivdan faqat \`MedalMark\` chizadigan belgilarni va ular ishora
+ * qilgan bo'laklarni oladi. Dafna yo'q, yo'l-raqam yo'q — ×N taxtaning o'z
+ * chipi (\`CountChip\`, \`MedalMark.tsx\`).
  *
  * Hammasi inline uslublangan: hujjat selektori \`<use>\` soya daraxtiga
- * yetmaydi. \`color-mix\`, \`filter\`, \`class="cut"\` va custom-property ichida
- * \`url()\` YO'Q — rang faqat \`--medal-*\`, \`--sheen-*\`, \`--bloom\` va
- * \`--ribbon-*\` tokenlaridan (globals.css, uchala mavzu bloki).
+ * yetmaydi. \`color-mix\`, \`filter\`, \`mask\`, \`stop-opacity\`, ichma-ich \`<use>\`
+ * va atribut bo'yoq YO'Q — rang faqat \`--emal-*\` tokenlaridan (globals.css,
+ * uchala mavzu bloki), \`:root\` da hal bo'ladi. Instance'dan keladigan yagona
+ * xususiyat \`--emal-seat-o\` (o'rindiq bezagi; qatorda 0).
  *
  * GENERATSIYA QILINGAN. Manba: ${ASSET}
- * (uni \`gen-final-defs.js\` yozadi). Qo'lda tahrirlamang —
+ * (uni \`gen-defs.js\` yozadi). Qo'lda tahrirlamang —
  * \`node scripts/genMedalDefs.mjs\`.
  */
 export const MEDAL_DEFS = \`${inner}\`

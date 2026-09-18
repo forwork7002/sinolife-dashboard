@@ -251,7 +251,9 @@ describe('what the seats carry, and what they do not', () => {
 
     // 126 950 000 − 108 000 000, on the FAKT 2 figure the seats were decided by.
     const pill = document.querySelector('#tv-sellers .tv-seat--1 .chase-chip--lead')!
-    expect(pill.textContent).toBe(`🚀2-oʻrindan+${formatUzs(18_950_000)} oldinda`)
+    expect(pill.textContent).toBe(`2-oʻrindan+${formatUzs(18_950_000)} oldinda`)
+    // «Oldinda» is a drawn double chevron now (`BoardIcon`), not a colour emoji — decorative, so it adds no text.
+    expect(pill.querySelector('.bi.bi--lead[aria-hidden="true"] svg')).not.toBeNull()
   })
 
   /*

@@ -21,7 +21,7 @@ import type { MedalCode, SellerMedalDto } from '@/lib/api'
  * - a seat's shelf holds 4 / 3 / 3 and a row holds 3 — what does not fit is
  *   NOT DRAWN, and nothing anywhere says «+N»;
  * - `first-sale` (92 of 100 sellers hold it) is never drawn in a row;
- * - a repeat is the ×N plate struck inside the medal, on a seat only;
+ * - a repeat is the ×N chip (`CountChip`) inside the medal, on a seat only;
  * - every medal says its own Uzbek name, and the shelf prints no words;
  * - the teams column has no medals — ever;
  * - a medal animates ONLY when it appears between two payloads, never on a
@@ -234,17 +234,22 @@ describe('podium tokchasi — 4 / 3 / 3, «+N» yo‘q, izoh yo‘q', () => {
     expect(after(shelf[0]!, card.querySelector('.tv-seat-figure')!)).toBe(true)
   })
 
-  it('takror — medalning ICHIDAGI ×N plastinkasi va aria’dagi «×N»; tokchada bitta ham so‘z yo‘q', async () => {
+  it('takror — medalning ICHIDAGI ×N chipi va aria’dagi «×N»; tokchada medaldan tashqari bitta ham so‘z yo‘q', async () => {
     const { container } = await openBoard()
     const gold = seat(container, 1).querySelector('svg.medal-mark[data-medal="month-gold"]')!
     expect(gold.getAttribute('aria-label')).toBe('Oy chempioni ×3')
-    expect(gold.querySelector('rect.medal-mark__plate-rim')).not.toBeNull()
-    expect(gold.querySelector('.medal-mark__count')).not.toBeNull()
-    // Bir martalik medalda plastinka yo'q.
+    expect(gold.querySelector('g.medal-mark__n')).not.toBeNull()
+    expect(gold.querySelector('text.medal-mark__n-text')!.textContent).toBe('×3')
+    // Bir martalik medalda chip yo'q.
     const silver = seat(container, 1).querySelector('svg.medal-mark[data-medal="month-silver"]')!
     expect(silver.getAttribute('aria-label')).toBe('Kumush oy')
     expect(silver.querySelector('rect')).toBeNull()
-    for (const shelf of container.querySelectorAll('.seat-medals')) expect(shelf.textContent).toBe('')
+    // Tokchadagi yagona matn — chiplarning o'z «×N» i; medaldan tashqarida so'z yo'q.
+    for (const shelf of container.querySelectorAll('.seat-medals')) {
+      const chips = [...shelf.querySelectorAll('text.medal-mark__n-text')].map((t) => t.textContent).join('')
+      expect(shelf.textContent).toBe(chips)
+      expect(chips).toMatch(/^(×\d{1,2})*$/)
+    }
   })
 
   it('medali yo‘q o‘rindiq — tokcha ham yo‘q: karta eski kartaning o‘zi', async () => {
@@ -341,9 +346,19 @@ describe('taxta bo‘ylab', () => {
     )
     await waitFor(() => expect(container.querySelectorAll('#tv-sellers .tv-seat')).toHaveLength(3))
     await waitFor(() => expect(asked.some((u) => u.includes('include=medals'))).toBe(true))
-    expect(container.querySelector('svg.medal-mark')).toBeNull()
+    // TAXTADA medal yo'q. Pastdagi «Medallar tasnifi» lentasi payload'ga bog'liq emas —
+    // u medalning MA'NOSINI aytadi, kimda borligini emas — shuning uchun o'z joyida turadi.
+    expect(container.querySelector('.tv-board svg.medal-mark')).toBeNull()
     expect(container.querySelector('.tv-list--medals')).toBeNull()
+    expect(container.querySelectorAll('.medal-tasnif svg.medal-mark').length).toBeGreaterThan(0)
     expect(container.querySelectorAll('#tv-sellers .tv-row')).toHaveLength(3)
+  })
+
+  it('tasnif lentasi kredit bilan BITTA .tv-foot satrida, taxtadan keyin — butun satr olmaydi', async () => {
+    const { container } = await openBoard()
+    expect(container.querySelector('.tv-board-shell > .tv-board + .tv-foot > .medal-tasnif + .tv-credit')).not.toBeNull()
+    expect(container.querySelectorAll('.medal-tasnif')).toHaveLength(1)
+    expect(container.querySelector('.medal-tasnif')!.getAttribute('role')).toBe('group')
   })
 
   it('darajadan HECH NARSA qolmagan: gerb yo‘q, «daraja» yo‘q, legenda yo‘q', async () => {
@@ -366,7 +381,9 @@ describe('taxta bo‘ylab', () => {
       sellers: MEDALS_A.sellers.map((s) => ({ ...s, ...OLD_LEVEL_FIELDS })),
     }
     const { container } = await openBoard()
-    expect(container.textContent).not.toMatch(/Usta|daraja/i)
+    // Payload faqat TAXTAGA (.tv-board) tushadi. «Konversiya ustasi» — pastdagi tasnif lentasidagi
+    // medal nomi (.tv-foot), payload'ni o'qimaydi — shuning uchun qo'riqchi taxtada, qisqartirilmagan holda.
+    expect(container.querySelector('.tv-board')!.textContent).not.toMatch(/Usta|daraja/i)
     expect(codes(seat(container, 1))).toHaveLength(4)
   })
 })
@@ -411,7 +428,7 @@ describe('yangi medal — faqat ikki payload orasida', () => {
 
 describe('globals.css — medallarning taxtadagi joyi', () => {
   const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
-  const title = css.indexOf(' * MEDALS — «ZARB»')
+  const title = css.indexOf(' * MEDALS — «EMAL»')
   const section = css.slice(css.lastIndexOf('/* =====', title), css.indexOf('/* =====', title))
   const code = section.replace(/\/\*[\s\S]*?\*\//g, '')
   const phone = code.slice(code.indexOf('@media (max-width: 639px)'))

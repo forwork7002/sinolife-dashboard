@@ -12,7 +12,7 @@ import { MEDAL_ORDER } from '@/features/sellers/medalCatalog'
 import type { SellerMedalDto } from '@/lib/api'
 
 /**
- * «ZARB» medal bo'laklari (klassik taxta spec §1.4–1.5): sahifaning yagona
+ * «EMAL» medal bo'laklari (klassik taxta spec §1.4–1.5; EMAL spec 2026-09-18): sahifaning yagona
  * `<defs>` i, bitta medal va qatorning medal to'plami. Bu yerda faqat
  * komponentlar va ularning CSS bo'limi — taxtaga ulanish o'z testida.
  */
@@ -26,19 +26,17 @@ const medal = (over: Partial<SellerMedalDto> & { code: SellerMedalDto['code'] })
 })
 
 describe('MedalDefs — sahifaga bir marta o‘rnatiladigan belgilar to‘plami', () => {
-  it('bitta yashirin <svg class="medal-defs">: 14 ta `m-<code>`, uch dafna, ×N raqamlari — va boshqa belgi yo‘q', () => {
+  it('bitta yashirin <svg class="medal-defs">: 14 ta `m-<code>` — dafna yo‘q, yo‘l-raqam yo‘q, boshqa belgi yo‘q', () => {
     const { container } = render(<MedalDefs />)
     const svg = container.querySelector('svg')!
     expect(svg.getAttribute('aria-hidden')).toBe('true')
     expect((svg as unknown as HTMLElement).style.position).toBe('absolute')
-    // Gradientlar o'rta tonni SHU sinfdan meros oladi — globals.css, MEDALS bo'limi.
     expect(svg.classList.contains('medal-defs')).toBe(true)
     for (const code of MEDAL_ORDER) expect(container.querySelector(`symbol#m-${code}`), code).not.toBeNull()
-    for (const m of ['gold', 'silver', 'bronze']) expect(container.querySelector(`symbol#m-laurel-${m}`)).not.toBeNull()
-    expect(container.querySelector('path#nx')).not.toBeNull()
-    expect(container.querySelector('path#n7')).not.toBeNull()
+    expect(container.querySelector('[id^="m-laurel-"]')).toBeNull()
+    expect(container.querySelector('#nx, #n7')).toBeNull()
     const symbols = [...container.querySelectorAll('symbol')].map((s) => s.id)
-    expect(symbols).toHaveLength(17)
+    expect(symbols).toHaveLength(14)
     for (const id of symbols) expect(id, id).toMatch(/^m-/)
   })
 })
@@ -56,66 +54,54 @@ describe('MedalMark — bitta medal', () => {
     expect(svg.querySelector('text')).toBeNull()
   })
 
-  it('oy oilasi: podium kartasida ≥ 40 px dafna o‘z metallida, tanadan OLDIN; qatorda va 32 px da yo‘q', () => {
+  it('dafna yo‘q: oy medali ham, o‘rindiqda ham, har medalda aynan bitta <use>', () => {
     const { container } = render(
       <>
         <MedalMark code="month-silver" size={40} seat />
-        <MedalMark code="month-bronze" size={48} seat />
-        <MedalMark code="month-gold" size={32} seat />
-        <MedalMark code="month-gold" size={48} />
+        <MedalMark code="month-gold" size={48} seat />
         <MedalMark code="day-record" size={48} seat />
       </>,
     )
     const hrefs = [...container.querySelectorAll('svg.medal-mark')].map((m) =>
       [...m.querySelectorAll('use')].map((u) => u.getAttribute('href')),
     )
-    expect(hrefs).toEqual([
-      ['#m-laurel-silver', '#m-month-silver'],
-      ['#m-laurel-bronze', '#m-month-bronze'],
-      ['#m-month-gold'],
-      ['#m-month-gold'],
-      ['#m-day-record'],
-    ])
+    expect(hrefs).toEqual([['#m-month-silver'], ['#m-month-gold'], ['#m-day-record']])
   })
 
-  it('×N plastinkasi — faqat podium kartasida va count > 1 da, SVG ICHIDA; aria nomga ×N qo‘shadi', () => {
-    const { container } = render(<MedalMark code="day-winner" size={48} count={4} seat />)
+  it('×N chipi — faqat podium kartasida va count > 1 da, SVG ICHIDA; aria nomga ×N qo‘shadi', () => {
+    const { container } = render(<MedalMark code="day-winner" size={40} count={4} seat />)
     const svg = container.querySelector('svg.medal-mark')!
     expect(svg.getAttribute('aria-label')).toBe('Kun gʻolibi ×4')
-    const rim = svg.querySelector('rect.medal-mark__plate-rim')!
-    expect([rim.getAttribute('x'), rim.getAttribute('y'), rim.getAttribute('width'), rim.getAttribute('height')]).toEqual([
-      '16.80', '21.2', '15', '10.6',
+    const chip = svg.querySelector('g.medal-mark__n')!
+    // Po'lat tana — chipning hairline'i tana metallida.
+    expect(chip.getAttribute('data-metal')).toBe('steel')
+    const pill = chip.querySelector('rect.medal-mark__n-pill')!
+    expect([pill.getAttribute('x'), pill.getAttribute('y'), pill.getAttribute('width'), pill.getAttribute('height')]).toEqual([
+      '19.00', '23.60', '15.4', '10.4',
     ])
-    // Po'lat tana — rim gradienti tana metallida; raqam belgi metallida (gilt).
-    expect(rim.getAttribute('fill')).toBe('url(#mg-steel-rim)')
-    expect(svg.querySelector('rect.medal-mark__plate-well')!.getAttribute('x')).toBe('17.90')
-    const count = svg.querySelector('g.medal-mark__count')!
-    expect(count.getAttribute('data-dev')).toBe('gilt')
-    expect([...count.querySelectorAll('use')].map((u) => [u.getAttribute('href'), u.getAttribute('transform')])).toEqual([
-      ['#nx', 'translate(21.85 26.7) scale(0.421)'],
-      ['#n4', 'translate(26.75 26.7) scale(0.540)'],
-    ])
-    // Tashqarida HTML sanoq yo'q — «+N» ham, matnli izoh ham.
-    expect(container.textContent).toBe('')
+    expect(chip.querySelector('rect.medal-mark__n-gap')).not.toBeNull()
+    const text = chip.querySelector('text.medal-mark__n-text')!
+    expect(text.querySelector('tspan.medal-mark__n-x')!.textContent).toBe('×')
+    expect(text.textContent).toBe('×4')
   })
 
-  it('ikki raqam — keng plastinka; 99 da qisiladi; qatorda (seat yo‘q) plastinka yo‘q, aria baribir ×N', () => {
+  it('ikki raqam — keng chip; 99 da qisiladi; qatorda (seat yo‘q) chip yo‘q, aria baribir ×N', () => {
     const { container } = render(
       <>
-        <MedalMark code="month-gold" size={48} count={12} seat />
+        <MedalMark code="month-gold" size={40} count={12} seat />
         <MedalMark code="rookie" size={40} count={140} seat />
         <MedalMark code="jump" count={3} />
-        <MedalMark code="jump" size={48} count={1} seat />
+        <MedalMark code="jump" size={40} count={1} seat />
       </>,
     )
     const [twelve, many, row, one] = container.querySelectorAll('svg.medal-mark')
-    expect(twelve!.querySelector('rect.medal-mark__plate-rim')!.getAttribute('width')).toBe('19.8')
-    expect(twelve!.querySelector('rect.medal-mark__plate-rim')!.getAttribute('fill')).toBe('url(#mg-gold-rim)')
-    expect(twelve!.querySelector('g.medal-mark__count')!.getAttribute('data-dev')).toBe('gold')
-    expect([...many!.querySelectorAll('g.medal-mark__count use')].map((u) => u.getAttribute('href'))).toEqual(['#nx', '#n9', '#n9'])
-    expect(row!.querySelector('rect')).toBeNull()
+    expect(twelve!.querySelector('rect.medal-mark__n-pill')!.getAttribute('width')).toBe('20.2')
+    expect(twelve!.querySelector('g.medal-mark__n')!.getAttribute('data-metal')).toBe('gold')
+    expect(many!.querySelector('text.medal-mark__n-text')!.textContent).toBe('×99')
+    expect(many!.getAttribute('aria-label')).toBe('Yangi yulduz ×140')
+    expect(row!.querySelector('g.medal-mark__n')).toBeNull()
     expect(row!.getAttribute('aria-label')).toBe('Sakrash ×3')
-    expect(one!.querySelector('rect')).toBeNull()
+    expect(one!.querySelector('g.medal-mark__n')).toBeNull()
   })
 
   it('yangi medal sinfi va o‘lcham', () => {
@@ -145,10 +131,10 @@ describe('RowMedals — qator medallari (spec §1.5)', () => {
     const shown = [...container.querySelectorAll('.row-medals svg.medal-mark')]
     expect(shown.map((m) => m.getAttribute('data-medal'))).toEqual(['month-gold', 'streak-fire', 'conversion-master'])
     expect(shown.map((m) => m.getAttribute('width'))).toEqual(Array(3).fill(String(ROW_MEDAL_SIZE)))
-    // Har medalga AYNAN bitta <use> — dafna yo'q, plastinka yo'q.
+    // Har medalga AYNAN bitta <use> — dafna yo'q, chip yo'q.
     for (const m of shown) {
       expect(m.querySelectorAll('use')).toHaveLength(1)
-      expect(m.querySelector('rect')).toBeNull()
+      expect(m.querySelector('g.medal-mark__n')).toBeNull()
     }
     // Sanoq aria'da ham yo'q (count berilmaydi).
     expect(shown[0]!.getAttribute('aria-label')).toBe('Oy chempioni')
@@ -201,7 +187,7 @@ describe('RowMedals — qator medallari (spec §1.5)', () => {
 
 describe('globals.css — MEDALS bo‘limi', () => {
   const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
-  const title = css.indexOf(' * MEDALS — «ZARB»')
+  const title = css.indexOf(' * MEDALS — «EMAL»')
   const start = css.lastIndexOf('/* =====', title)
   const section = css.slice(start, css.indexOf('/* =====', title))
   const code = section.replace(/\/\*[\s\S]*?\*\//g, '')
@@ -215,51 +201,35 @@ describe('globals.css — MEDALS bo‘limi', () => {
     // Medalning o'zi, va uning taxtadagi ikki joyi: o'rindiq tokchasi va qator katagi.
     for (const s of selectors) {
       expect(s, s).toMatch(
-        /^(\.medal-defs|\.medal-mark|\.row-medals|\.seat-medals|\.tv-cell--medals|\.tv-cell--bare|\.tv-list--medals|@keyframes medal-mark-new|@media \(prefers-reduced-motion: no-preference\)|@media \(min-width: 1280px\) and \(max-width: (1799|1319)px\)|@media \(max-width: 639px\))/,
+        /^(\.medal-mark|\.row-medals|\.seat-medals|\.tv-cell--medals|\.tv-cell--bare|\.tv-list--medals|@keyframes medal-mark-new|@media \(prefers-reduced-motion: no-preference\)|@media \(min-width: 1280px\) and \(max-width: (1799|1319)px\)|@media \(max-width: 639px\))/,
       )
     }
   })
 
-  it('o‘rta ton FAQAT ikki joyda qayta bog‘lanadi: `.medal-defs` (gradientlar) va `.medal-mark` (instance)', () => {
-    expect(code).toMatch(/\.medal-defs,\s*\.medal-mark \{\s*--medal-gold: var\(--zarb-gold\);\s*--medal-silver: var\(--zarb-silver\);\s*--medal-bronze: var\(--zarb-bronze\);\s*\}/)
-    // Podium xromi o'z qiymatida qoladi — `:root` dagi uch qiymat eski taxtaniki.
+  it('hech narsa qayta bog‘lanmaydi: belgilar `--emal-*` ni `:root` dan o‘qiydi; podium xromi o‘z qiymatida', () => {
+    expect(code).not.toMatch(/--medal-(gold|silver|bronze):/)
+    expect(code).not.toMatch(/\.medal-defs\s*[,{]/)
     expect(css).toContain('--medal-gold: #b3860e;')
     expect((css.match(/--medal-gold: #e8c256;/g) ?? [])).toHaveLength(2)
-    // …va `--zarb-*` uchala mavzu blokida.
-    for (const token of ['--zarb-gold', '--zarb-silver', '--zarb-bronze', '--medal-plate-well']) {
-      expect((css.match(new RegExp(`^\\s*${token}:`, 'gm')) ?? []).length, token).toBe(3)
-    }
+    expect(css).not.toMatch(/--zarb-|--medal-plate-well|--sheen-|--ribbon-/)
   })
 
   /*
-    Po'lat medallar qatorlarning ~95% ini tashkil qiladi. Qorong'i mavzuda tana
-    va qator foni orasidagi kontrast 1.6–2.4:1 edi (well tokeni deyarli qator
-    rangi) — 26 px da uch metrdan faqat gilt belgi qolardi. Beshta token
-    ko'tarildi, FAQAT qorong'i bloklarda, va ikki qorong'i blok bir xil bo'lishi
-    shart: biri tizim mavzusi, ikkinchisi majburiy `data-theme="dark"`.
+    Po'lat medallar qatorlarning ~95% ini tashkil qiladi — qorong'i mavzuda
+    halqa qator fonidan ko'tarilgan bo'lishi SHART, va ikki qorong'i blok bir
+    xil: biri tizim mavzusi, ikkinchisi majburiy `data-theme="dark"`.
   */
   it('qorong‘i po‘lat ko‘tarilgan va ikki qorong‘i blokda bir xil; yorug‘ blok o‘z qiymatida', () => {
-    const lifted: Record<string, string> = {
-      '--medal-steel-hi': '#c6d4e4',
-      '--medal-steel': '#8296ad',
-      '--medal-steel-lo': '#4a5b70',
-      '--medal-steel-patina': '#2a3f55',
-      '--medal-steel-well': '#33414f',
-    }
-    for (const [token, value] of Object.entries(lifted)) {
-      const values = [...css.matchAll(new RegExp(`^\\s*${token}: (#[0-9a-f]{6});`, 'gm'))].map((m) => m[1])
-      expect(values, token).toHaveLength(3)
-      expect(values.slice(1), token).toEqual([value, value])
-      expect(values[0], token).not.toBe(value)
-    }
+    const values = [...css.matchAll(/^\s*--emal-steel: (#[0-9a-f]{6});/gm)].map((m) => m[1])
+    expect(values).toEqual(['#5b6a80', '#8496ad', '#8496ad'])
   })
 
-  it('×N plastinkasi tokenlardan bo‘yaladi; raqam belgi metallida', () => {
-    expect(code).toMatch(/\.medal-mark__plate-rim \{[^}]*stroke: var\(--medal-key\);/)
-    expect(code).toMatch(/\.medal-mark__plate-well \{[^}]*fill: var\(--medal-plate-well\);/)
-    expect(code).toContain('.medal-mark__count use { stroke: var(--medal-gold-hi); }')
-    for (const dev of ['gilt', 'steel', 'silver', 'bronze']) {
-      expect(code).toContain(`.medal-mark__count[data-dev="${dev}"] use { stroke: var(--medal-${dev}-hi); }`)
+  it('×N chipi tokenlardan bo‘yaladi; hairline tana metallida', () => {
+    expect(code).toMatch(/\.medal-mark__n-gap \{[^}]*fill: var\(--surface-raised\);/)
+    expect(code).toMatch(/\.medal-mark__n-pill \{[^}]*fill: var\(--surface-sunken\);[^}]*stroke: var\(--emal-steel\);/)
+    expect(code).toMatch(/\.medal-mark__n-text \{[^}]*fill: var\(--ink-primary\);/)
+    for (const metal of ['gold', 'silver', 'bronze']) {
+      expect(code).toContain(`.medal-mark__n[data-metal="${metal}"] > .medal-mark__n-pill { stroke: var(--emal-${metal}); }`)
     }
   })
 

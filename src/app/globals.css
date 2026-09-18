@@ -139,64 +139,89 @@
   --medal-bronze: #a5663a;
 
   /**
-   * «ZARB» — the metal the minted MEDALS are struck from (`MedalMark`,
-   * `medalDefs.ts`; the look the client approved on 2026-09-17). The same
+   * «EMAL» — the enamel-and-ring MEDALS (`MedalMark`, `medalDefs.ts`; the look
+   * the client chose on 2026-09-18, «Yangi medallar + sayqal»). The same
    * contract as the podium chrome above: never text that must be read, never
    * a mark that encodes a value, never a series or status role.
    *
-   * Each body metal — gold, silver, bronze, and steel for the common medals —
-   * has a mid tone plus `-hi`, `-lo`, `-sh`, `-patina` and `-well`; gilt is
-   * the champagne device on a steel body; sheen, bloom and ribbon are the
-   * minted surface. Every mix is PRE-COMPUTED here: the SVG <defs> read these
-   * inside a <use> shadow tree, where an old TV Chromium can drop a
-   * `color-mix()` stop.
+   * The medal is the rank disc's small sibling — an enamel field, a thin
+   * turned metal ring, a metal device — so the family reads as the podium's.
+   * Four ring metals (gold, silver, bronze, steel: mid + `-hi` + `-lo`), three
+   * device metals (`-d`: gold, gilt on steel, steel), three solid satin bodies
+   * for the honours (`-f1..f3` + the near-black `-ink` the crescent and the
+   * crown are engraved in), two enamel fields (`-field*`), a key line, a seat
+   * line and the three halo colours the seat's shelf reads. EVERY value is a
+   * literal: the SVG <defs> read these inside a <use> shadow tree, where an
+   * old TV Chromium can drop a `color-mix()` stop. All 42 in all three
+   * theme blocks, generated from one object (assets/2026-09-18-emal-medallar/
+   * medals.css) — `tests/features/medalDefs.test.ts` counts them.
    *
-   * THE THREE MID TONES ARE `--zarb-*`, NOT `--medal-gold/silver/bronze`. The
-   * medal drawing names its mid tone `--medal-gold`, and that name is already
-   * the podium's chrome — a different colour, tuned for a rim on a card rather
-   * than the middle stop of a struck gradient. So the medal's values live here
-   * under their own names, and the MEDALS section hands them to the two
-   * places a medal is painted (`.medal-defs`, `.medal-mark`) and nowhere else.
-   * The podium keeps the colour it has always had.
+   * THESE ARE NOT `--medal-gold/silver/bronze`. Those three names are the
+   * podium's chrome — rims, pedestals, plaques — and stay exactly what they
+   * were; the medal family lives under its own prefix and nothing re-binds
+   * anything.
    */
-  --zarb-gold: #cf9f2a;
-  --zarb-silver: #a3aebe;
-  --zarb-bronze: #bb7640;
-  --medal-gold-hi: #f8e4a2;
-  --medal-gold-lo: #7e5b0d;
-  --medal-gold-sh: #3f2d06;
-  --medal-gold-patina: #423d29;
-  --medal-gold-well: #594009;
-  --medal-silver-hi: #f8fafc;
-  --medal-silver-lo: #55606e;
-  --medal-silver-sh: #272e38;
-  --medal-silver-patina: #2e3e52;
-  --medal-silver-well: #3a434f;
-  --medal-bronze-hi: #f3c79f;
-  --medal-bronze-lo: #693c1d;
-  --medal-bronze-sh: #2e1a0b;
-  --medal-bronze-patina: #342e2d;
-  --medal-bronze-well: #472813;
-  --medal-steel-hi: #c9d5e3;
-  --medal-steel: #71839a;
-  --medal-steel-lo: #3a4657;
-  --medal-steel-sh: #171d25;
-  --medal-steel-patina: #1d2835;
-  --medal-steel-well: #262e3a;
-  --medal-gilt-hi: #f3e6bf;
-  --medal-gilt: #c4a862;
-  --medal-key: rgba(12, 14, 18, .55);
-  --medal-cast: rgba(12, 14, 18, .2);
-  --medal-glint: rgba(255, 255, 255, .7);
-  --medal-edge: rgba(255, 255, 255, .62);
-  --sheen-hi: rgba(255, 255, 255, .26);
-  --sheen-lo: rgba(0, 0, 0, .22);
-  --sheen-none-hi: rgba(255, 255, 255, 0);
-  --sheen-none-lo: rgba(0, 0, 0, 0);
-  --bloom: rgba(255, 255, 255, .11);
-  --ribbon-a: #2a6fb0;
-  --ribbon-shade: rgba(0, 0, 0, .3);
-  --medal-plate-well: #10151d;
+  --emal-gold-hi: #e2c25f;
+  --emal-gold: #b3860e;
+  --emal-gold-lo: #785709;
+  --emal-silver-hi: #d9e0e8;
+  --emal-silver: #8f9aab;
+  --emal-silver-lo: #535d6e;
+  --emal-bronze-hi: #e6b58d;
+  --emal-bronze: #ad6d45;
+  --emal-bronze-lo: #74421f;
+  --emal-steel-hi: #8a99ac;
+  --emal-steel: #5b6a80;
+  --emal-steel-lo: #37424f;
+  --emal-gold-dhi: #b5851a;
+  --emal-gold-d: #8e6710;
+  --emal-gold-dlo: #684a08;
+  --emal-gilt-dhi: #b8860b;
+  --emal-gilt-d: #9c700a;
+  --emal-gilt-dlo: #7a5708;
+  --emal-steel-dhi: #4b5b72;
+  --emal-steel-d: #33415a;
+  --emal-steel-dlo: #222c3c;
+  --emal-gold-f1: #f6e2a0;
+  --emal-gold-f2: #dcb040;
+  --emal-gold-f3: #b3872a;
+  --emal-gold-ink: #2d2106;
+  --emal-silver-f1: #f8fafc;
+  --emal-silver-f2: #d2d9e2;
+  --emal-silver-f3: #a1acbb;
+  --emal-silver-ink: #1d242e;
+  --emal-bronze-f1: #f1c9a5;
+  --emal-bronze-f2: #d29767;
+  --emal-bronze-f3: #ab6e3f;
+  --emal-bronze-ink: #2a170a;
+  --emal-field-a: #ffffff;
+  --emal-field-b: #e9edf3;
+  --emal-field-rare-a: #fffdf6;
+  --emal-field-rare-b: #f3e8cb;
+  --emal-key: rgba(12, 14, 18, 0.12);
+  --emal-seat: rgba(12, 14, 18, 0.22);
+  --emal-glow-gold: rgba(179, 134, 14, 0.45);
+  --emal-glow-silver: rgba(110, 120, 138, 0.4);
+  --emal-glow-bronze: rgba(165, 102, 58, 0.4);
+  /* The board's icons (`BoardIcon`): the crown is struck from the year champion's
+     gold, the «teng» flame from the gilt device, the chase target wears the
+     chase bar's own blue (already themed — `:root` only). */
+  --bi-crown-hi: var(--emal-gold-f1);
+  --bi-crown-edge: var(--emal-gold-ink);
+  --bi-ember: var(--emal-gilt-d);
+  --bi-chase: var(--seq-550);
+  /* «Sayqal» — the board's surface finish (SAYQAL section): hairlines, the
+     set-in well, the champion's bezel gap, the pedestal's satin sheen and the
+     FAKT switch's well and key. Same names, all three theme blocks. */
+  --px-hair: rgba(255, 255, 255, 0.95);
+  --px-hair-soft: rgba(255, 255, 255, 0.6);
+  --px-well: inset 0 1px 2px rgba(12, 14, 18, 0.14), inset 0 0 0 1px rgba(12, 14, 18, 0.05);
+  --px-bezel-gap: #ffffff;
+  --px-sheen: rgba(255, 255, 255, 0.5);
+  --px-engrave: 0 1px 0 rgba(255, 255, 255, 0.75);
+  --px4-track: inset 0 1px 2px rgba(12, 14, 18, 0.12);
+  --px4-thumb-hi: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --px4-thumb-drop: 0 1px 2px rgba(12, 14, 18, 0.16);
 
   /**
    * Ink that sits ON a series colour — a filled chip, a badge, a bar label.
@@ -372,45 +397,62 @@
     --medal-silver: #bac4d3;
     --medal-bronze: #d89a68;
 
-    /* «ZARB» medal metal on the dark surface — see the light block. */
-    --zarb-gold: #dcb24a;
-    --zarb-silver: #b3bece;
-    --zarb-bronze: #c98450;
-    --medal-gold-hi: #f9e8ae;
-    --medal-gold-lo: #8d6a1c;
-    --medal-gold-sh: #3a2b0b;
-    --medal-gold-patina: #3b3c2e;
-    --medal-gold-well: #5d4512;
-    --medal-silver-hi: #f4f7fb;
-    --medal-silver-lo: #626d7c;
-    --medal-silver-sh: #252c36;
-    --medal-silver-patina: #293d51;
-    --medal-silver-well: #3f4753;
-    --medal-bronze-hi: #f5cba4;
-    --medal-bronze-lo: #744525;
-    --medal-bronze-sh: #301d0e;
-    --medal-bronze-patina: #323130;
-    --medal-bronze-well: #4d2e18;
-    --medal-steel-hi: #c6d4e4;
-    --medal-steel: #8296ad;
-    --medal-steel-lo: #4a5b70;
-    --medal-steel-sh: #12181f;
-    --medal-steel-patina: #2a3f55;
-    --medal-steel-well: #33414f;
-    --medal-gilt-hi: #efe3c2;
-    --medal-gilt: #bfa873;
-    --medal-key: rgba(0, 0, 0, .6);
-    --medal-cast: rgba(0, 0, 0, .45);
-    --medal-glint: rgba(255, 255, 255, .5);
-    --medal-edge: rgba(255, 255, 255, .5);
-    --sheen-hi: rgba(255, 255, 255, .28);
-    --sheen-lo: rgba(0, 0, 0, .3);
-    --sheen-none-hi: rgba(255, 255, 255, 0);
-    --sheen-none-lo: rgba(0, 0, 0, 0);
-    --bloom: rgba(255, 255, 255, .12);
-    --ribbon-a: #2c6aa2;
-    --ribbon-shade: rgba(0, 0, 0, .34);
-    --medal-plate-well: #07090c;
+    /* «EMAL» medal metal on the dark surface — see the light block. */
+    --emal-gold-hi: #f8e6a6;
+    --emal-gold: #e2bb50;
+    --emal-gold-lo: #8b6a1f;
+    --emal-silver-hi: #ffffff;
+    --emal-silver: #c8d1dc;
+    --emal-silver-lo: #6f7b8c;
+    --emal-bronze-hi: #f6d2b2;
+    --emal-bronze: #cf9161;
+    --emal-bronze-lo: #8e5833;
+    --emal-steel-hi: #cfd9e4;
+    --emal-steel: #8496ad;
+    --emal-steel-lo: #4a5666;
+    --emal-gold-dhi: #fbe9ad;
+    --emal-gold-d: #e6c05a;
+    --emal-gold-dlo: #a8842a;
+    --emal-gilt-dhi: #f7ebc4;
+    --emal-gilt-d: #e0c47a;
+    --emal-gilt-dlo: #a58a45;
+    --emal-steel-dhi: #eef3f8;
+    --emal-steel-d: #c3cfdc;
+    --emal-steel-dlo: #8d9cae;
+    --emal-gold-f1: #f9e6a6;
+    --emal-gold-f2: #e0b64c;
+    --emal-gold-f3: #b4872a;
+    --emal-gold-ink: #2a1f07;
+    --emal-silver-f1: #f4f7fb;
+    --emal-silver-f2: #c5ceda;
+    --emal-silver-f3: #8e9aab;
+    --emal-silver-ink: #1b222c;
+    --emal-bronze-f1: #f3c9a3;
+    --emal-bronze-f2: #d2925f;
+    --emal-bronze-f3: #9d6036;
+    --emal-bronze-ink: #2a170a;
+    --emal-field-a: #1f2531;
+    --emal-field-b: #10141b;
+    --emal-field-rare-a: #252013;
+    --emal-field-rare-b: #0f0d08;
+    --emal-key: rgba(0, 0, 0, 0.4);
+    --emal-seat: rgba(0, 0, 0, 0.55);
+    --emal-glow-gold: rgba(232, 194, 86, 0.6);
+    --emal-glow-silver: rgba(197, 206, 218, 0.5);
+    --emal-glow-bronze: rgba(207, 145, 97, 0.5);
+    --bi-crown-hi: var(--emal-gold-f1);
+    --bi-crown-edge: var(--emal-gold-ink);
+    --bi-ember: var(--emal-gilt-d);
+    /* «Sayqal» on the dark surface — see the light block. */
+    --px-hair: rgba(255, 255, 255, 0.1);
+    --px-hair-soft: rgba(255, 255, 255, 0.05);
+    --px-well: inset 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+    --px-bezel-gap: #0b0d11;
+    --px-sheen: rgba(255, 255, 255, 0.07);
+    --px-engrave: 0 -1px 0 rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.08);
+    --px4-track: inset 0 1px 3px rgba(0, 0, 0, 0.65);
+    --px4-thumb-hi: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    --px4-thumb-drop: 0 1px 2px rgba(0, 0, 0, 0.6);
 
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
     --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px -8px rgba(0, 0, 0, 0.7);
@@ -479,45 +521,62 @@
   --medal-silver: #bac4d3;
   --medal-bronze: #d89a68;
 
-  /* «ZARB» medal metal — kept in lockstep with the media-query block above. */
-  --zarb-gold: #dcb24a;
-  --zarb-silver: #b3bece;
-  --zarb-bronze: #c98450;
-  --medal-gold-hi: #f9e8ae;
-  --medal-gold-lo: #8d6a1c;
-  --medal-gold-sh: #3a2b0b;
-  --medal-gold-patina: #3b3c2e;
-  --medal-gold-well: #5d4512;
-  --medal-silver-hi: #f4f7fb;
-  --medal-silver-lo: #626d7c;
-  --medal-silver-sh: #252c36;
-  --medal-silver-patina: #293d51;
-  --medal-silver-well: #3f4753;
-  --medal-bronze-hi: #f5cba4;
-  --medal-bronze-lo: #744525;
-  --medal-bronze-sh: #301d0e;
-  --medal-bronze-patina: #323130;
-  --medal-bronze-well: #4d2e18;
-  --medal-steel-hi: #c6d4e4;
-  --medal-steel: #8296ad;
-  --medal-steel-lo: #4a5b70;
-  --medal-steel-sh: #12181f;
-  --medal-steel-patina: #2a3f55;
-  --medal-steel-well: #33414f;
-  --medal-gilt-hi: #efe3c2;
-  --medal-gilt: #bfa873;
-  --medal-key: rgba(0, 0, 0, .6);
-  --medal-cast: rgba(0, 0, 0, .45);
-  --medal-glint: rgba(255, 255, 255, .5);
-  --medal-edge: rgba(255, 255, 255, .5);
-  --sheen-hi: rgba(255, 255, 255, .28);
-  --sheen-lo: rgba(0, 0, 0, .3);
-  --sheen-none-hi: rgba(255, 255, 255, 0);
-  --sheen-none-lo: rgba(0, 0, 0, 0);
-  --bloom: rgba(255, 255, 255, .12);
-  --ribbon-a: #2c6aa2;
-  --ribbon-shade: rgba(0, 0, 0, .34);
-  --medal-plate-well: #07090c;
+  /* «EMAL» medal metal — kept in lockstep with the media-query block above. */
+  --emal-gold-hi: #f8e6a6;
+  --emal-gold: #e2bb50;
+  --emal-gold-lo: #8b6a1f;
+  --emal-silver-hi: #ffffff;
+  --emal-silver: #c8d1dc;
+  --emal-silver-lo: #6f7b8c;
+  --emal-bronze-hi: #f6d2b2;
+  --emal-bronze: #cf9161;
+  --emal-bronze-lo: #8e5833;
+  --emal-steel-hi: #cfd9e4;
+  --emal-steel: #8496ad;
+  --emal-steel-lo: #4a5666;
+  --emal-gold-dhi: #fbe9ad;
+  --emal-gold-d: #e6c05a;
+  --emal-gold-dlo: #a8842a;
+  --emal-gilt-dhi: #f7ebc4;
+  --emal-gilt-d: #e0c47a;
+  --emal-gilt-dlo: #a58a45;
+  --emal-steel-dhi: #eef3f8;
+  --emal-steel-d: #c3cfdc;
+  --emal-steel-dlo: #8d9cae;
+  --emal-gold-f1: #f9e6a6;
+  --emal-gold-f2: #e0b64c;
+  --emal-gold-f3: #b4872a;
+  --emal-gold-ink: #2a1f07;
+  --emal-silver-f1: #f4f7fb;
+  --emal-silver-f2: #c5ceda;
+  --emal-silver-f3: #8e9aab;
+  --emal-silver-ink: #1b222c;
+  --emal-bronze-f1: #f3c9a3;
+  --emal-bronze-f2: #d2925f;
+  --emal-bronze-f3: #9d6036;
+  --emal-bronze-ink: #2a170a;
+  --emal-field-a: #1f2531;
+  --emal-field-b: #10141b;
+  --emal-field-rare-a: #252013;
+  --emal-field-rare-b: #0f0d08;
+  --emal-key: rgba(0, 0, 0, 0.4);
+  --emal-seat: rgba(0, 0, 0, 0.55);
+  --emal-glow-gold: rgba(232, 194, 86, 0.6);
+  --emal-glow-silver: rgba(197, 206, 218, 0.5);
+  --emal-glow-bronze: rgba(207, 145, 97, 0.5);
+  --bi-crown-hi: var(--emal-gold-f1);
+  --bi-crown-edge: var(--emal-gold-ink);
+  --bi-ember: var(--emal-gilt-d);
+  /* «Sayqal» — kept in lockstep with the media-query block above. */
+  --px-hair: rgba(255, 255, 255, 0.1);
+  --px-hair-soft: rgba(255, 255, 255, 0.05);
+  --px-well: inset 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+  --px-bezel-gap: #0b0d11;
+  --px-sheen: rgba(255, 255, 255, 0.07);
+  --px-engrave: 0 -1px 0 rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.08);
+  --px4-track: inset 0 1px 3px rgba(0, 0, 0, 0.65);
+  --px4-thumb-hi: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  --px4-thumb-drop: 0 1px 2px rgba(0, 0, 0, 0.6);
 
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px -8px rgba(0, 0, 0, 0.7);
@@ -782,47 +841,6 @@ body {
 @media (min-width: 1280px) {
   :root {
     --figure-sum-size: clamp(20px, 1.55vw, 28px);
-  }
-}
-
-/**
- * THE PODIUM, PRINTED IN FULL — the champion's figure and the two under it.
- *
- * `.figure-hero` is sized for «7.9 mln» and overruns on thirteen grouped
- * digits. The champion's figure now lives in a full-width banner (its track
- * is the hall minus a 76px ring and a 230px story column), so it can climb
- * well past the old three-column cap; the runners each hold half the hall
- * from sm and step down one notch further for bronze.
- *
- * A runner stays visibly smaller than the champion at every width, and
- * bronze stays visibly smaller than silver. That ordering is the point of a
- * podium, so it is a constraint on these numbers, not a coincidence of them.
- */
-.figure-sum-hero {
-  font-size: 32px;
-  letter-spacing: -0.03em;
-}
-
-.figure-sum-runner {
-  font-size: 18px;
-  letter-spacing: -0.03em;
-}
-
-.figure-sum-runner--bronze {
-  font-size: 16px;
-}
-
-@media (min-width: 640px) {
-  .figure-sum-hero {
-    font-size: clamp(24px, calc(2.6vw + 4px), 44px);
-  }
-
-  .figure-sum-runner {
-    font-size: clamp(16px, 1.8vw, 26px);
-  }
-
-  .figure-sum-runner--bronze {
-    font-size: clamp(14px, 1.6vw, 22px);
   }
 }
 
@@ -2340,12 +2358,12 @@ p {
  * three medal metals (--medal-*) are chrome here in the same sense the kbd
  * chip and the scrim are chrome — they may borrow elevation and tint, and
  * they may never encode a value. Rank itself still travels on the licensed
- * channels (size, elevation, position, the ordinal, the emoji medals); the
+ * channels (size, elevation, position, the ordinal, the rosette icon); the
  * metal is varnish over that, so a colourblind reader loses nothing.
  *
  * --metal is set by the WRAPPER (.podium-col--*), not the card, so the seat
- * assigns its metal once and everything inside — card, ring, plaque, ghost
- * numeral, base rail — reads the same token.
+ * assigns its metal once and everything inside — card, ring, plaque,
+ * pedestal, base rail — reads the same token.
  * ======================================================================== */
 
 .podium-col--gold { --metal: var(--medal-gold); }
@@ -2357,7 +2375,7 @@ p {
  * down from the top edge and a metal hairline — this page's answer to
  * .card-hero's gradient rim, scoped to its own metal.
  *
- * position: relative is load-bearing (the .podium-shine and .podium-ghost
+ * position: relative is load-bearing (the .podium-shine and .podium-aura
  * children need this box as their containing block) and this unlayered file
  * beats a Tailwind position utility — wrap the card if a call site ever
  * needs it positioned otherwise. No `display` here on purpose: the call
@@ -2374,8 +2392,8 @@ p {
       transparent 58%
     ),
     var(--surface-raised);
-  box-shadow: var(--shadow-card), var(--edge-highlight);
-  /* For the hover-lift below — harmless on a card nothing ever hovers. */
+  /* The shadow is SAYQAL's (`.tv-col .podium-card`, 2c). The transition is
+     what eases it when the theme flips — the shadow tokens differ per theme. */
   transition: transform var(--duration-enter) var(--ease-out), box-shadow var(--duration-enter) var(--ease-out);
 }
 
@@ -2394,25 +2412,9 @@ p {
       transparent 60%
     ),
     var(--surface-raised);
-  box-shadow: var(--shadow-raised), var(--edge-highlight);
 }
 
-/*
- * Hovering (or keyboard-focusing) the name lifts the WHOLE card, not just the
- * text — `:has()` reaches up from `.podium-name` so the affordance matches
- * what actually happens on click, rather than a card-wide hover promising an
- * action only the name delivers. No transform on touch: nothing here fires
- * without a real `:hover`/`:focus-visible`, so a tap goes straight to
- * `onOpen` with no lift to wait out.
- */
-.podium-card:has(.podium-name:hover),
-.podium-card:has(.podium-name:focus-visible) {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow-raised), var(--edge-highlight),
-    0 0 0 1px color-mix(in oklab, var(--metal) 32%, transparent);
-}
-
-/** The place plaque: medal emoji + ordinal on a soft metal tint. The words
+/** The place plaque: rosette (`BoardIcon`) + ordinal on a soft metal tint. The words
     stay in primary ink — the metal may not carry text. */
 .podium-plaque {
   display: inline-flex;
@@ -2464,19 +2466,6 @@ p {
     0 0 30px 4px color-mix(in oklab, var(--metal) 32%, transparent);
 }
 
-/*
- * Hit-slop for the podium name, not a visible style: the button's own text
- * stays exactly where it draws, and `::before` pads a real ten-plus pixels of
- * tappable area past its edges without pushing the team badge beside it or
- * the money below it — an absolutely-positioned layer costs the flow nothing.
- * A thumb aiming just off «Saparboyeva 110 Farida» still opens the drill-down.
- */
-.podium-name::before {
-  content: "";
-  position: absolute;
-  inset: -8px -10px;
-}
-
 /**
  * The runner-up's one call to action, in a tinted pill rather than a plain
  * line — see the call site for why `--seq-550` and not a new colour.
@@ -2489,65 +2478,14 @@ p {
 
 /**
  * The base rail — the podium's steps, folded into the cards' own bottom
- * edges. 4px under gold, 3 under silver, 2 under bronze: the staircase
- * survives the banner layout as a thickness the eye reads without naming,
- * and unlike the old free-standing pedestals it costs no vertical space and
- * ranks correctly even when the cards stack on a phone.
+ * edges: 3px under silver, 2 under bronze.
  */
-.podium-banner {
-  border-bottom: 4px solid color-mix(in oklab, var(--metal) 62%, var(--border));
-}
-
 .podium-col--silver .podium-card {
   border-bottom: 3px solid color-mix(in oklab, var(--metal) 55%, var(--border));
 }
 
 .podium-col--bronze .podium-card {
   border-bottom: 2px solid color-mix(in oklab, var(--metal) 50%, var(--border));
-}
-
-/* The banner's own track is the hall, not a grid column — let its figure
-   climb past the runner scale. Sized in the figure block above; this is only
-   the context override. */
-.podium-banner .figure-sum-hero {
-  font-size: 34px;
-}
-
-@media (min-width: 640px) {
-  .podium-banner .figure-sum-hero {
-    font-size: clamp(28px, calc(2.8vw + 6px), 48px);
-  }
-}
-
-/**
- * The ghost numeral — the place, restated at architectural scale in the
- * card's quiet corner. Painted at 15% metal so it is texture, not text
- * (the plaque and the ring already state the ordinal legibly), and clipped
- * by its own layer for the same reason .podium-shine is: the card must not
- * carry overflow:hidden.
- */
-.podium-ghost {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.podium-ghost-num {
-  position: absolute;
-  right: 12px;
-  bottom: -0.2em;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.05em;
-  font-size: clamp(96px, 11vw, 150px);
-  color: color-mix(in oklab, var(--metal) 15%, transparent);
-  user-select: none;
-}
-
-.podium-ghost-num--runner {
-  font-size: clamp(72px, 8vw, 112px);
 }
 
 /**
@@ -2582,26 +2520,6 @@ p {
     var(--metal),
     color-mix(in oklab, var(--metal) 15%, transparent)
   );
-}
-
-/**
- * The banner's story column, seated as its own panel by a metal hairline:
- * left of the column from sm, above it when the banner stacks on a phone.
- * A border, not a background — a filled plate inside the gold wash would
- * compete with the ghost numeral living in the same corner.
- */
-.podium-story {
-  border-top: 1px solid color-mix(in oklab, var(--metal) 30%, transparent);
-  padding-top: 12px;
-}
-
-@media (min-width: 640px) {
-  .podium-story {
-    border-top: 0;
-    padding-top: 0;
-    border-left: 1px solid color-mix(in oklab, var(--metal) 30%, transparent);
-    padding-left: 20px;
-  }
 }
 
 /**
@@ -2640,71 +2558,6 @@ p {
   to {
     transform: translateX(140%);
   }
-}
-
-/**
- * The ranked rows, which are the podium's continuation and not a table.
- *
- * The client's ask on 2026-09-04: this is the screen the sellers themselves
- * open for motivation, and the top places have to feel like places. The
- * podium above already crowns three people; below it the table used to flatten
- * them back into rows differing by an 8% wash, so the ceremony stopped at the
- * fold.
- *
- * Same contract as the PODIUM block — the metal is CHROME. It rims, washes and
- * rails; the rank itself still travels on size, weight, position, the ordinal
- * and the medal glyph, so a colourblind reader loses nothing when the varnish
- * is gone. --metal is set per row by .rank-1/2/3.
- */
-.rank-1 { --metal: var(--medal-gold); }
-.rank-2 { --metal: var(--medal-silver); }
-.rank-3 { --metal: var(--medal-bronze); }
-
-/**
- * A ranked row: metal rail down the leading edge, and a wash that fades out
- * across the row rather than tinting it flat — the light comes from where the
- * rank is, the same direction the podium's crown-light falls.
- *
- * THE WASH IS ON THE ROW, NOT THE CELLS. Painted per `td` the gradient
- * restarts in every column and the row reads as a set of bands instead of one
- * lit edge — which is exactly what it looked like on the first attempt. The
- * cells keep no background of their own, so the row's own paint shows through.
- *
- * The rail is a box-shadow rather than a border so it cannot change the row's
- * box and shift every column by four pixels.
- */
-.rank-row {
-  background-image: linear-gradient(
-    to right,
-    color-mix(in oklab, var(--metal) 15%, transparent),
-    transparent 34%
-  );
-}
-.rank-row > td:first-child {
-  box-shadow: inset 4px 0 0 var(--metal);
-}
-/* First place carries it a little further and a little brighter — the one row
-   that should be readable from across the room. */
-.rank-row.rank-1 {
-  background-image: linear-gradient(
-    to right,
-    color-mix(in oklab, var(--metal) 22%, transparent),
-    transparent 46%
-  );
-}
-
-/**
- * The ordinal on a ranked row. Metal, larger, and DECORATIVE — the medal glyph
- * and the aria-label beside it carry the rank for anyone who cannot see hue,
- * which is what licenses the colour here.
- */
-.rank-num {
-  font-variant-numeric: tabular-nums lining-nums;
-  font-weight: 800;
-  font-size: 19px;
-  line-height: 1;
-  color: var(--metal);
-  letter-spacing: -0.02em;
 }
 
 /* ===========================================================================
@@ -2935,10 +2788,9 @@ p {
 }
 
 .record-medal {
+  /* The cup's box is SAYQAL's `.record-medal.bi` (sized in em, from this). */
   font-size: var(--record-name);
   line-height: 1;
-  /* Baseline-aligned with the text beside it rather than sitting on it. */
-  transform: translateY(1px);
 }
 
 /*
@@ -2982,8 +2834,8 @@ p {
  * a card's edge used to do.
  */
 .record-sep {
+  /* Drawn, not a glyph — the lozenge itself is SAYQAL 4a. */
   color: color-mix(in oklab, var(--metal) 55%, transparent);
-  font-size: calc(var(--record-small) * 0.72);
   margin: 0 22px;
 }
 
@@ -3039,16 +2891,11 @@ p {
 }
 /* The heading's glyph in a tinted disc of the column's colour. */
 .tv-col-glyph {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
+  /* The box is `.bi` + `.tv-col-glyph.bi`; the enamel field, the ring's colour
+     and the halo are SAYQAL 2b. */
   border-radius: 999px;
   font-size: 17px;
-  background: color-mix(in oklab, var(--tv-tone) 16%, transparent);
   border: 1px solid color-mix(in oklab, var(--tv-tone) 45%, transparent);
-  box-shadow: 0 0 0 4px color-mix(in oklab, var(--tv-tone) 7%, transparent);
 }
 
 /*
@@ -3123,10 +2970,7 @@ p {
     color-mix(in oklab, var(--tv-tone) 26%, var(--surface-raised)),
     color-mix(in oklab, var(--tv-tone) 14%, var(--surface-raised))
   );
-  box-shadow:
-    inset 0 0 0 1px color-mix(in oklab, var(--tv-tone) 52%, transparent),
-    var(--edge-highlight),
-    var(--shadow-card);
+  /* The key's edge and drop are SAYQAL 4b. */
 }
 .tv-fakt[data-fakt='fakt2']::before {
   transform: translateX(100%);
@@ -3174,8 +3018,8 @@ p {
     box-shadow var(--duration-enter) var(--ease-out);
 }
 .tv-fakt-tab[aria-pressed='true'] .tv-fakt-dot {
+  /* The lamp's glow is SAYQAL 4b. */
   background: var(--tv-tone);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--tv-tone) 22%, transparent);
 }
 /*
  * Forced colours discard the thumb, its wash and its ring alike, so the lit
@@ -3228,8 +3072,7 @@ p {
  * board uses for a value.
  */
 .tv-credit {
-  flex-shrink: 0;
-  padding: 2px 4px 0;
+  /* Its box in the foot line is `.tv-foot > .tv-credit` (MEDALLAR TASNIFI). */
   text-align: right;
   font-size: 10px;
   letter-spacing: 0.06em;
@@ -3326,16 +3169,9 @@ p {
   align-items: center;
   justify-content: center;
   border-radius: 0 0 12px 12px;
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--metal) 38%, var(--surface-raised)),
-    color-mix(in oklab, var(--metal) 14%, var(--surface-raised))
-  );
+  /* The satin face, its lit lip and its shade are SAYQAL 2d. */
   border: 1px solid color-mix(in oklab, var(--metal) 55%, var(--border));
   border-top: 3px solid color-mix(in oklab, var(--metal) 70%, #fff);
-  box-shadow:
-    inset 0 -10px 18px -12px color-mix(in oklab, var(--metal) 60%, #000),
-    var(--shadow-card);
 }
 .tv-pedestal-num {
   font-weight: 800;
@@ -3344,7 +3180,6 @@ p {
   letter-spacing: -0.04em;
   color: var(--ink-primary);
   font-variant-numeric: lining-nums;
-  text-shadow: 0 1px 0 color-mix(in oklab, var(--metal) 40%, transparent);
   user-select: none;
 }
 /* The bronze block is too short for a numeral at two thirds of its height. */
@@ -3502,18 +3337,13 @@ p {
 }
 
 /*
- * THE CHAMPION'S CARD IS FRAMED IN ITS METAL, the other two only rimmed.
- * A second, sharper ring outside the border and a wider pool of gold light
- * under it — the seat the client wants «unmistakable from across the room»
- * differs from its flankers in outline, not only in size.
+ * THE CHAMPION'S CARD IS FRAMED IN ITS METAL, the other two only rimmed —
+ * the seat the client wants «unmistakable from across the room» differs from
+ * its flankers in outline, not only in size. The frame itself (a dark gap, a
+ * fine metal line, a pool of gold light under it) is SAYQAL 2c's bezel.
  */
 .tv-seat--1 .tv-seat-card {
   border-color: color-mix(in oklab, var(--metal) 72%, var(--border));
-  box-shadow:
-    0 0 0 3px color-mix(in oklab, var(--metal) 22%, transparent),
-    0 18px 40px -18px color-mix(in oklab, var(--metal) 70%, transparent),
-    var(--shadow-raised),
-    var(--edge-highlight);
 }
 .tv-seat--2 .tv-seat-card,
 .tv-seat--3 .tv-seat-card {
@@ -3729,32 +3559,22 @@ p {
 }
 
 /* ===========================================================================
- * MEDALS — «ZARB», the minted medal set (klassik taxta spec §1.4)
+ * MEDALS — «EMAL», the enamel-and-ring medal set (klassik taxta spec §1.4;
+ * EMAL spec 2026-09-18, IMPLEMENT.md §3)
  *
- * A medal paints ITSELF: metal, planchet and device are baked into its
+ * A medal paints ITSELF: ring, enamel field and device are baked into its
  * `m-<code>` symbol in `medalDefs.ts`, styled inline, because a document
  * selector never reaches a `<use>` shadow tree. What is here is only what the
- * INSTANCE needs — the box, the ×N plate (light DOM inside the medal's own
- * <svg>), the row's holder, and the one movement a medal ever makes.
+ * INSTANCE needs — the box, the ×N chip (light DOM inside the medal's own
+ * <svg>), the seat's halo, the row's holder, and the one movement a medal
+ * ever makes.
  *
  * No literal colour and no `color-mix()`: every tone is a token from the
- * «ZARB» family in the DESIGN TOKENS section, in all three theme blocks.
+ * «EMAL» family in the DESIGN TOKENS section, in all three theme blocks — and
+ * the symbols read those tokens on `:root` directly, so NOTHING is re-bound
+ * here (the ZARB set re-bound `--medal-gold/silver/bronze` on `.medal-defs`
+ * and `.medal-mark`; that block is gone with it).
  * ======================================================================== */
-
-/*
- * THE ONE PLACE `--medal-gold/silver/bronze` MEAN THE MEDAL'S MID TONE.
- * Two hosts, and both are needed: the gradients resolve their stops where
- * they are DEFINED (the hidden <svg> `MedalDefs` mounts once), while a
- * symbol's own strokes resolve where it is INSTANTIATED (the `<use>` inside
- * each `.medal-mark`). Everywhere else the three names stay the podium's
- * chrome — see the «ZARB» note beside the tokens.
- */
-.medal-defs,
-.medal-mark {
-  --medal-gold: var(--zarb-gold);
-  --medal-silver: var(--zarb-silver);
-  --medal-bronze: var(--zarb-bronze);
-}
 
 /* The size rides the width/height attributes, never CSS. */
 .medal-mark {
@@ -3763,21 +3583,40 @@ p {
   overflow: visible;
 }
 
-/* ×N plate — a seat-only piece, drawn inside the medal's <svg>. */
-.medal-mark__plate-rim {
-  stroke: var(--medal-key);
-  stroke-width: 0.5;
+/*
+ * ×N — the board's own chip, set into the ring's lower right (seat only; rows
+ * never carry a count). A knock-out gap in the card's colour, a pill in the
+ * sunken surface with a 1px hairline in the medal's OWN metal, the figure in
+ * the page's font. The hairline is `1px` with `vector-effect:
+ * non-scaling-stroke`, so it is exactly the board's 1px chip border at 40, 36
+ * and 32px alike. Mirrors `chip()` in `docs/superpowers/specs/assets/2026-09-18-emal-medallar/lib.js` — the approved mock.
+ */
+.medal-mark__n-gap {
+  fill: var(--surface-raised);
 }
-.medal-mark__plate-well {
-  fill: var(--medal-plate-well);
-  stroke: var(--medal-key);
-  stroke-width: 0.4;
+.medal-mark__n-pill {
+  fill: var(--surface-sunken);
+  stroke: var(--emal-steel);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
 }
-.medal-mark__count use { stroke: var(--medal-gold-hi); }
-.medal-mark__count[data-dev="gilt"] use { stroke: var(--medal-gilt-hi); }
-.medal-mark__count[data-dev="steel"] use { stroke: var(--medal-steel-hi); }
-.medal-mark__count[data-dev="silver"] use { stroke: var(--medal-silver-hi); }
-.medal-mark__count[data-dev="bronze"] use { stroke: var(--medal-bronze-hi); }
+.medal-mark__n[data-metal="gold"] > .medal-mark__n-pill { stroke: var(--emal-gold); }
+.medal-mark__n[data-metal="silver"] > .medal-mark__n-pill { stroke: var(--emal-silver); }
+.medal-mark__n[data-metal="bronze"] > .medal-mark__n-pill { stroke: var(--emal-bronze); }
+.medal-mark__n-text {
+  fill: var(--ink-primary);
+  font-family: inherit;
+  font-size: 8.6px; /* user units of the 32 box: 10.75px on a 40px medal, 9.7px at 36 */
+  font-weight: 700;
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: 0;
+  text-anchor: middle;
+}
+.medal-mark__n-x {
+  fill: var(--ink-muted);
+  font-weight: 600;
+  font-size: 7.2px;
+}
 
 /*
  * THE SEAT'S SHELF — one line of medals under the team chip (spec §1.5).
@@ -3802,6 +3641,27 @@ p {
   flex: 0 1 auto;
   min-width: 0;
   height: auto;
+  /* Round, so the halo below is round; the chip that overhangs the box carries no shadow. */
+  border-radius: 50%;
+}
+/*
+ * THE SEAT'S HALO: honours and the rare golds get the rank disc's own glow —
+ * a plain `box-shadow` on at most ten elements, no filter — steel gets none.
+ * The seat-only jewellery inside the symbol (the rare tier's second hairline,
+ * the year champion's bead ring) rides `--emal-seat-o`, default 1.
+ */
+.seat-medals > .medal-mark[data-medal="year-champion"],
+.seat-medals > .medal-mark[data-medal="month-gold"],
+.seat-medals > .medal-mark[data-medal="streak-fire"],
+.seat-medals > .medal-mark[data-medal="conversion-master"],
+.seat-medals > .medal-mark[data-medal="day-record"] {
+  box-shadow: 0 6px 16px -8px var(--emal-glow-gold);
+}
+.seat-medals > .medal-mark[data-medal="month-silver"] {
+  box-shadow: 0 6px 16px -8px var(--emal-glow-silver);
+}
+.seat-medals > .medal-mark[data-medal="month-bronze"] {
+  box-shadow: 0 6px 16px -8px var(--emal-glow-bronze);
 }
 
 /*
@@ -3894,6 +3754,12 @@ p {
 .row-medals > .medal-mark {
   margin-left: 6px;
 }
+/* The seat-only jewellery (the rare tier's second hairline, the year champion's
+   bead ring) is switched off in rows: custom properties inherit into the <use>
+   shadow tree, so one declaration reaches every symbol. */
+.row-medals {
+  --emal-seat-o: 0;
+}
 /* The sentinel: it makes the first line exist, so a medal that does not fit
    has somewhere to wrap TO — out of sight, whole. */
 .row-medals::before {
@@ -3983,6 +3849,315 @@ p {
   .medal-mark--new {
     transform-origin: center;
     animation: medal-mark-new 400ms var(--ease-out) both;
+  }
+}
+
+/* ===========================================================================
+ * SAYQAL — the sellers board's finish (EMAL spec 2026-09-18, IMPLEMENT.md §5)
+ *
+ * The part of the polish pass the client chose with the new medals («Yangi
+ * medallar + sayqal»): line icons where colour emoji stood, the heading disc,
+ * the seat cards' hairlines and the champion's bezel, the pedestal's satin,
+ * one cut of numerals, a drawn lozenge on the record wall and the FAKT switch
+ * as a well and a key. Dropped, each for a measured reason: the tone-bar
+ * strip, the list-foot fade (it veiled row 8 and changed scrollHeight), the
+ * «soʻm» scaling (moved the seat sum 1.3px) and the month tracking (+16.7px
+ * of marquee run).
+ *
+ * AFTER EVERYTHING ELSE ON THE BOARD, ON PURPOSE. Several rules here tie the
+ * specificity of the rule they refine (`.tv-col-glyph`, `.record-wall
+ * .record-sep`) and win on source order — which is how the approved mock was
+ * built and measured (polish.css appended to the frozen production page).
+ * Moving a rule up into PODIUM / TV BOARD silently hands the win back.
+ *
+ * WHAT IT MAY NOT DO — measured against the frozen production page at 1920
+ * and 1366, dark and light: number columns Δ 0, row height Δ 0, no new
+ * truncated name, podium 1px SHORTER at 1920 and 2px at 1366 (the emoji's
+ * line-box slop is gone; it is never taller). The `.bi` box is the emoji's own
+ * advance (1.27em; 1.29em the plaque rosette; 1.45em the record wall's cup),
+ * which is what keeps the text beside every icon where it was.
+ *
+ * Tokens: `--px-*`, `--px4-*`, `--bi-*` in DESIGN TOKENS, all three blocks.
+ * `color-mix()` is fine HERE — it is only inside `<defs>` that it is refused.
+ * ======================================================================== */
+
+/* 1 · ICONS — `BoardIcon`: emoji → line-work in the medals' hand (round caps, 1.5 stroke, ring + bull). */
+.bi {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.27em; /* the colour-emoji advance it replaces — the text beside it does not move */
+  height: 1.27em;
+  line-height: 1;
+  vertical-align: -0.28em;
+}
+.bi > svg { display: block; width: 1.12em; height: 1.12em; overflow: visible; }
+.bi--target { color: var(--bi-chase); }
+/* a row whose chase line is secondary ink keeps its target in that ink — the medals stay the only jewel in the row */
+.bi--target.bi--dim { color: inherit; }
+.bi--flame { color: var(--bi-ember); }
+.bi--lead { color: var(--metal, var(--medal-gold)); }
+.bi--medal { color: var(--metal, var(--medal-gold)); }
+.bi--medal { width: 1.29em; } /* the 🥇 advance at the plaque size — measured: the plaque keeps its width */
+.bi--medal > svg { width: 1.2em; height: 1.2em; }
+/* the heading disc: the icon in the column's own tone, lifted toward ink so it holds at 3 m */
+.tv-col-glyph.bi { width: 34px; height: 34px; color: color-mix(in oklab, var(--tv-tone) 62%, var(--ink-primary)); }
+.tv-col-glyph.bi > svg { width: 19px; height: 19px; }
+/* the record wall's cup, in the wall's metal */
+.record-medal.bi { color: var(--metal); width: 1.45em; height: 1em; vertical-align: baseline; transform: translateY(2px); } /* the 🏆 advance at --record-name — measured: the marquee entry keeps its width */
+.record-medal.bi > svg { width: 1.22em; height: 1.22em; stroke-width: 1.7; }
+/* THE CROWN. Same box the emoji had (25×20 at top:-16px), upright, centred by MARGIN — `.rise` (fill-mode both) ends
+   on `transform: none` and wipes an inline translateX(-50%): the shipped crown stands 12.5px right of the ring.
+   Drawn 18 % larger than the first polish pass (33×23.6) and lifted so its band still seats on the ring. No filter. */
+.bi--crown { width: 25px; height: 20px; margin-left: -12.5px; }
+.bi--crown > svg { width: 33px; height: 23.6px; flex: none; transform: translateY(-2px); }
+
+/* 2 · SURFACE FINISH. Same colours, same boxes. */
+
+/* 2b · the heading disc, drawn by the hand that drew the rank discs and the medals: an enamel field in a tone ring */
+.tv-col-glyph {
+  background: radial-gradient(circle at 32% 24%,
+    color-mix(in oklab, var(--tv-tone) 24%, var(--surface-raised)),
+    color-mix(in oklab, var(--tv-tone) 9%, var(--surface-sunken)) 78%);
+  border-color: color-mix(in oklab, var(--tv-tone) 58%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--tv-tone) 7%, transparent), var(--px-well);
+}
+
+/* 2c · seat cards: a lit top hairline + a hairline inside the metal rim. Backgrounds are NOT restated. */
+.tv-col .podium-card {
+  box-shadow: var(--shadow-card), inset 0 1px 0 var(--px-hair), inset 0 0 0 1px var(--px-hair-soft);
+}
+/* the champion's frame: a jeweller's bezel — dark gap, fine metal line — in the same 3px the halo used */
+.tv-col .tv-seat--1 .tv-seat-card {
+  box-shadow:
+    0 0 0 2px var(--px-bezel-gap),
+    0 0 0 3px color-mix(in oklab, var(--metal) 58%, transparent),
+    0 18px 40px -18px color-mix(in oklab, var(--metal) 70%, transparent),
+    var(--shadow-raised),
+    inset 0 1px 0 var(--px-hair),
+    inset 0 0 0 1px var(--px-hair-soft);
+}
+/* the rank disc's field is set INTO its ring */
+.tv-col .medal-ring > span { box-shadow: var(--px-well); }
+
+/* 2d · pedestal material: satin metal — a soft vertical sheen, a lit lip, a quietly engraved numeral */
+.tv-col .tv-pedestal {
+  background:
+    linear-gradient(90deg, transparent 8%, var(--px-sheen) 36%, transparent 60%),
+    linear-gradient(180deg,
+      color-mix(in oklab, var(--metal) 40%, var(--surface-raised)),
+      color-mix(in oklab, var(--metal) 13%, var(--surface-raised)));
+  box-shadow:
+    inset 0 1px 0 var(--px-hair),
+    inset 0 -10px 18px -12px color-mix(in oklab, var(--metal) 60%, #000),
+    var(--shadow-card);
+}
+.tv-col .tv-pedestal-num { text-shadow: var(--px-engrave); }
+
+/* 3 · TYPOGRAPHIC FINISH. Nothing reflows. */
+/* 3a · one cut of numerals everywhere on the board (rows already use these alternates via .tabular) */
+.tv-col .tv-seat-figure,
+.tv-col .tv-pedestal-num,
+.record-wall .record-sum {
+  font-feature-settings: "tnum" 1, "lnum" 1, "cv01" 1, "cv03" 1, "cv04" 1, "cv05" 1, "cv11" 1;
+}
+/* 3c · heads: the ranked column reads one step brighter. (The mock also set "case" on the caps; the
+   shipped Inter subset has no `case` feature, so that rule drew nothing and is not carried.) */
+.tv-col .tv-table th[aria-sort] { color: var(--ink-secondary); }
+
+/* 4 · RECORD MARQUEE lozenge + FAKT SWITCH. */
+/* 4a · the lozenge is DRAWN, not a font's ◆ (the month label keeps its shipped tracking and size) */
+.record-wall .record-sep {
+  font-size: 0;
+  width: 6px;
+  height: 6px;
+  align-self: center;
+  transform: rotate(45deg);
+  border-radius: 1px;
+  background: linear-gradient(135deg, color-mix(in oklab, var(--metal) 85%, #fff), color-mix(in oklab, var(--metal) 45%, transparent));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--metal) 9%, transparent);
+}
+/* 4b · FAKT: the track is a well, the thumb a raised key, the lit dot a small lamp */
+.tv-col .tv-fakt { box-shadow: var(--px4-track); }
+.tv-col .tv-fakt::before {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--tv-tone) 52%, transparent),
+    var(--px4-thumb-hi),
+    var(--px4-thumb-drop);
+}
+.tv-col .tv-fakt-tab[aria-pressed='true'] .tv-fakt-dot {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--tv-tone) 22%, transparent), 0 0 8px color-mix(in oklab, var(--tv-tone) 60%, transparent);
+}
+
+/* ===========================================================================
+ * MEDALLAR TASNIFI — the medal key, crawling along the foot of the board
+ *
+ * The client, 2026-09-18: «medallar tasnifi pastda aylanib turishi kerak».
+ * The record wall's mechanism to the letter (`MedalTasnif` ↔ `RecordWall`):
+ * two copies of the run, one copy's width of travel, the pace set in pixels
+ * by the component, paused under a pointer, and reduced motion hands back a
+ * strip scrolled by hand. See `MedalTasnif` for why a crawl and why a key.
+ *
+ * IT SHARES ITS LINE WITH THE CREDIT (`.tv-foot`), which is what keeps the
+ * cost to the lists small: the credit already held ~14px of the column, so the
+ * foot grows by about a third of a row, not by a whole strip.
+ *
+ * THE SEAT-ONLY JEWELLERY IS OFF (`--emal-seat-o: 0`), as in rows: the key
+ * shows a medal the way a row shows it, at a row's size.
+ * ======================================================================== */
+.tv-foot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.tv-foot > .tv-credit {
+  flex: none;
+  padding: 0 4px 0 0;
+}
+
+.medal-tasnif {
+  --tasnif-name: clamp(12px, 0.74vw, 17px);
+  --tasnif-rule: clamp(11px, 0.66vw, 15px);
+  --tasnif-medal: clamp(24px, 1.46vw, 28px);
+  --emal-seat-o: 0;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  /* 38px on the television: a 28px medal and 5px of air. Every pixel here is a
+     pixel off the two lists, so the strip is as low as its medal allows. */
+  height: clamp(34px, 1.98vw, 40px);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-card), inset 0 1px 0 var(--px-hair);
+  overflow: hidden;
+}
+/* The strip's own name — fixed, in the podium's gold, behind a hairline. */
+.medal-tasnif-title {
+  flex: none;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  font-size: var(--tasnif-rule);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--emal-gold-d);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--medal-gold) 12%, transparent), color-mix(in oklab, var(--medal-gold) 5%, transparent));
+  border-right: 1px solid color-mix(in oklab, var(--medal-gold) 35%, var(--border));
+}
+.medal-tasnif-window {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent, #000 32px, #000 calc(100% - 32px), transparent);
+}
+.medal-tasnif-track {
+  display: flex;
+  width: max-content;
+}
+.medal-tasnif-track--crawling {
+  animation-name: medal-tasnif-crawl;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+@keyframes medal-tasnif-crawl {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(calc(-1 * var(--tasnif-travel)), 0, 0);
+  }
+}
+.medal-tasnif:hover .medal-tasnif-track--crawling {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .medal-tasnif-window {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .medal-tasnif-track {
+    animation: none;
+  }
+}
+.medal-tasnif-run {
+  display: flex;
+  align-items: center;
+  flex: none;
+  padding-left: 18px;
+}
+.medal-tasnif-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 34px;
+  white-space: nowrap;
+}
+.medal-tasnif-mark {
+  display: inline-flex;
+  flex: none;
+}
+/* The size rides the attributes everywhere else; here it ramps with the strip. */
+.medal-tasnif-mark > .medal-mark {
+  width: var(--tasnif-medal);
+  height: var(--tasnif-medal);
+}
+.medal-tasnif-name {
+  color: var(--ink-primary);
+  font-weight: 650;
+  font-size: var(--tasnif-name);
+}
+.medal-tasnif-rule {
+  color: var(--ink-secondary);
+  font-size: var(--tasnif-rule);
+}
+.medal-tasnif-rule::before {
+  content: "—";
+  margin-right: 8px;
+  color: var(--ink-muted);
+}
+/* THE GROUP, SAID ONCE at the head of its group — the metal says it on every medal after that. */
+.medal-tasnif-group {
+  flex: none;
+  margin-right: 16px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: calc(var(--tasnif-rule) * 0.86);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--emal-steel-d);
+  border: 1px solid color-mix(in oklab, var(--emal-steel) 55%, transparent);
+  background: color-mix(in oklab, var(--emal-steel) 10%, transparent);
+}
+.medal-tasnif-group[data-group="honour"],
+.medal-tasnif-group[data-group="rare"] {
+  color: var(--emal-gold-d);
+  border-color: color-mix(in oklab, var(--emal-gold) 60%, transparent);
+  background: color-mix(in oklab, var(--emal-gold) 12%, transparent);
+}
+.medal-tasnif-group[data-group="rare"] {
+  background: transparent;
+}
+/* A phone: the key takes the line, the credit the one under it. */
+@media (max-width: 639px) {
+  .tv-foot {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .medal-tasnif {
+    flex-basis: 100%;
+  }
+  .tv-foot > .tv-credit {
+    margin-left: auto;
   }
 }
 

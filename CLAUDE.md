@@ -1073,7 +1073,7 @@ Per-screen traps worth knowing before you touch one:
   NO period on the key (the record wall's pattern — a failed medal request
   leaves the ranking exactly as it was), and joins by `employeeId`. A seat
   carries ONE shelf under the team chip — champion up to 4 at 40px, the
-  other two up to 3 at 36px (`seatMedals`), a repeat as the ×N plate struck
+  other two up to 3 at 36px (`seatMedals`), a repeat as the ×N chip (`CountChip`)
   inside the SVG; a row carries up to 3 at 26px at the right-hand end of the
   name cell, across the bar and chase lines (`rowMedalsOf`, `first-sale` never
   drawn there). **No «+N» and no caption anywhere; `TeamsColumn` has no prop
@@ -1129,6 +1129,57 @@ Per-screen traps worth knowing before you touch one:
   old board's and not fixed:** at 1366×768 the list is 69px tall (it was 61)
   and no row is whole; the phone's `.tv-seat-card` 8px side padding is a dead
   rule (the card's `padding` shorthand is written after it), on both boards.
+  **«EMAL» MEDALS, LINE ICONS AND THE MEDAL KEY — 2026-09-18.** The client
+  found the ZARB coins «oʻyinchoqdek» and chose «Yangi medallar + sayqal» on a
+  frozen copy of the production page; spec
+  `docs/superpowers/specs/2026-09-18-emal-medallar-design.md`, and its
+  `assets/…/IMPLEMENT.md` wins any disagreement. A medal is the rank disc's
+  small sibling now — an enamel field in a thin metal ring, three tiers told by
+  the METAL (a solid disc for a year or a month won, a gold ring for the rare
+  three, a steel ring for the daily seven); no laurels, no path-digits, and the
+  ×N is the board's own chip (`CountChip`, real text inside the medal's SVG —
+  so a seat's shelf now has `textContent`, and only that). `medalDefs.ts` is
+  generated (`node scripts/genMedalDefs.mjs`), 26 ids, every colour a
+  `--emal-*` token read on `:root` in all three theme blocks; NOTHING is
+  re-bound on `.medal-defs` / `.medal-mark` any more. Every colour emoji on the
+  board is a `BoardIcon` (one span, the emoji's own advance, so nothing beside
+  it moved), and **the crown is centred by MARGIN**: `.rise` ends on
+  `transform: none` with fill-mode `both`, which had been wiping the inline
+  `translateX(-50%)` and leaving the shipped crown 12.5px right of its ring.
+  **The SAYQAL section sits AFTER every other board rule on purpose** — several
+  of its rules tie the specificity of what they refine and win on source order,
+  which is how the mock was measured (podium −1px at 1920, −2px at 1366,
+  number columns and row height Δ 0).
+  **«MEDALLAR TASNIFI» CRAWLS ALONG THE FOOT** («medallar tasnifi pastda
+  aylanib turishi kerak», the same day): `MedalTasnif` — all fourteen medals,
+  drawing + name + the rule it is awarded on, in three named groups, on the
+  record wall's mechanism to the letter. It shares its line with the credit
+  (`.tv-foot`), so the two lists gave up 24px at 1920×1080 (a 38px strip where
+  a 14px credit stood), not a whole row. **Its sentences restate the engine's
+  thresholds by hand** — the layer rule forbids the import — and
+  `tests/features/medalTasnif.test.tsx` checks them against
+  `sellerMedals.ts`' constants; change a threshold and that test names the
+  sentence. **At 1366×768 the strip sits at its 34px floor** and the lists
+  give up 20px — the sellers' list, already 69px there with no whole row,
+  keeps about 51px, i.e. its sticky header and a sliver of the first row. Not
+  hidden there on purpose: the floor's television may be a 720p panel, and
+  the client asked for the key ON the television.
+  It is a key to the MEDALS, not the level ladder returning: the
+  level guard in `sellersMedals.test.tsx` still refuses that board's class
+  vocabulary anywhere on the page, which is why the component and its CSS are
+  named «tasnif» and «group». **The same deploy removed the board's dead CSS**:
+  the PODIUM block's rules for classes no component has rendered since the
+  television board replaced the banner podium (`.podium-name`, `.podium-banner`,
+  `.podium-ghost*`, `.podium-story`, `.rank-1/2/3`, `.rank-row`, `.rank-num`,
+  `.figure-sum-hero/-runner`), and every base declaration SAYQAL always
+  overrides — each base rule now names the SAYQAL item that paints it.
+  Verified by diffing the computed style of every element under `<main>` in
+  six states (1920 dark/light, 1366, 1440, a phone): identical, except the
+  table heads' `font-feature-settings`, whose one rule (`"case"`) the shipped
+  Inter subset cannot honour — the heads are byte-identical in a screenshot
+  with and without it. **NOT MEASURED ON A FULL BOARD**: the local
+  database seats two sellers, so the whole-rows count at 1920×1080 after the
+  strip is arithmetic (4 whole and ~0.4 of a fifth for sellers), not a reading.
 - **Sotuvchilar oyligi** — **NEW ON 2026-09-14**, the client's own pay scheme
   («hodimlar oyligi ni hisoblovchi bo'lim kerak… sotuvchilar oyligi fakt 2 ga
   qarab olinadi»). Three parts, three columns, each checkable: **8% of FAKT 2

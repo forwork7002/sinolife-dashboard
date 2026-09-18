@@ -6,11 +6,11 @@ import { MEDAL_DEFS } from '@/features/sellers/medalDefs'
  * takrorlanib, <use> birinchisiga bog'lanib qoladi va mavzu almashganda
  * yarmi eski rangda qoladi. Shuning uchun BIR MARTA, taxtaning boshida.
  *
- * `medal-defs` SINFI BEZAK EMAS. Gradientlar o'z to'xtash ranglarini SHU
- * elementdan meros oladi (instance'dan emas), va medalning o'rta toni
- * `--medal-gold/silver/bronze` ga globals.css dagi MEDALS bo'limi aynan shu
- * sinf orqali beriladi. Sinf olib tashlansa, medallar podium xromi rangida
- * chiziladi — xato emas, faqat noto'g'ri metall.
+ * `medal-defs` SINFI RANG BERMAYDI (EMAL, 2026-09-18). Belgilar `--emal-*`
+ * tokenlarini to'g'ridan-to'g'ri `:root` dan o'qiydi va hech narsa qayta
+ * bog'lanmaydi — globals.css da `.medal-defs` qoidasi yo'q va bo'lmasligi
+ * kerak. Sinf faqat testlar yashirin `<defs>` ni topadigan ilgak
+ * (`medalMark.test.tsx`, `sellersMedals.test.tsx`) — olib tashlamang.
  *
  * `dangerouslySetInnerHTML` — statik, repo'dagi generatsiya qilingan satr,
  * foydalanuvchi matni emas.

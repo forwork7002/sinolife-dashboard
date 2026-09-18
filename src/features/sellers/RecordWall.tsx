@@ -3,6 +3,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
+import { BoardIcon } from '@/features/sellers/BoardIcon'
 import { useReducedMotion } from '@/lib/useReducedMotion'
 import { type SellerRecordDto, type SellerRecordsDto, apiGet } from '@/lib/api'
 import { formatNumber, formatUzs } from '@/lib/format'
@@ -157,9 +158,7 @@ export function RecordWall() {
 function RecordEntry({ record }: { record: SellerRecordDto }) {
   return (
     <span className="record-entry">
-      <span aria-hidden="true" className="record-medal">
-        🏆
-      </span>
+      <BoardIcon name="trophy" className="record-medal" />
       <span className="record-month">
         {/*
           THE MONTH'S STATE, IN THE WORD. «Rekord» is a month that is over and
@@ -183,9 +182,8 @@ function RecordEntry({ record }: { record: SellerRecordDto }) {
         */}
         {record.basis === 'delivered' ? 'yetkazilgan' : 'tasdiqlangan'}
       </span>
-      <span aria-hidden="true" className="record-sep">
-        ◆
-      </span>
+      {/* A drawn lozenge (`.record-sep`), not a font's ◆ — empty on purpose. */}
+      <span aria-hidden="true" className="record-sep" />
     </span>
   )
 }

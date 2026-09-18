@@ -5,7 +5,9 @@ import { useQuery } from '@tanstack/react-query'
 
 import { EmptyState, ErrorState } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
+import { BoardIcon, type BoardIconName } from '@/features/sellers/BoardIcon'
 import { MedalDefs } from '@/features/sellers/MedalDefs'
+import { MedalTasnif } from '@/features/sellers/MedalTasnif'
 import { MedalMark } from '@/features/sellers/MedalMark'
 import { RecordWall } from '@/features/sellers/RecordWall'
 import { RowMedals, rowMedalsOf } from '@/features/sellers/RowMedals'
@@ -61,7 +63,7 @@ import { t } from '@/lib/messages'
  * the middle and a step taller, silver left, bronze right, the shape a floor
  * recognises from across a room — and the same ceremony chrome the board has
  * worn since the client asked for gold on top (see the PODIUM block in
- * globals.css: metal on rims, rings, washes and ghost numerals, never on a
+ * globals.css: metal on rims, rings, washes and pedestals, never on a
  * value). Places are decided by the client's own rule, FAKT 2 first and
  * FAKT 1 when nobody has delivered, and every seat prints which of the two
  * put it there — the reasoning is on `PodiumBasis`.
@@ -201,8 +203,8 @@ export function SellersPage() {
         <div className="tv-switch" role="tablist" aria-label="Qaysi reyting">
           {(
             [
-              ['sellers', '🏆', 'Sotuvchilar'],
-              ['teams', '🛡️', 'Komandalar'],
+              ['sellers', 'trophy', 'Sotuvchilar'],
+              ['teams', 'shield', 'Komandalar'],
             ] as const
           ).map(([key, glyph, label]) => (
             <button
@@ -214,7 +216,7 @@ export function SellersPage() {
               className={`tv-switch-tab tv-switch-tab--${key}`}
               onClick={() => setShown(key)}
             >
-              <span aria-hidden="true">{glyph}</span> {label}
+              <BoardIcon name={glyph} /> {label}
             </button>
           ))}
         </div>
@@ -243,11 +245,16 @@ export function SellersPage() {
         </div>
 
         {/*
-          The one line on this board that is not a rank: who made it. English,
-          right-aligned and at the page's smallest size — see `.tv-credit` —
-          so it stays out of the way of a seller looking for their own row.
+          THE FOOT OF THE BOARD: what every medal means, crawling — see
+          `MedalTasnif` — and beside it the one line on this board that is not
+          a rank: who made it. English, right-aligned and at the page's
+          smallest size — see `.tv-credit` — so it stays out of the way of a
+          seller looking for their own row.
         */}
-        <p className="tv-credit">Developed by Yusuf</p>
+        <div className="tv-foot">
+          <MedalTasnif />
+          <p className="tv-credit">Developed by Yusuf</p>
+        </div>
       </div>
     </PageShell>
   )
@@ -377,7 +384,7 @@ export function SellersColumn({
       parked={parked}
       fakt={fakt}
       onFakt={onFakt}
-      glyph="🏆"
+      glyph="trophy"
       title="Sotuvchilar"
       noun="Sotuvchi"
       count={(n) => `${formatNumber(n)} ta sotuvchi`}
@@ -411,7 +418,7 @@ export function TeamsColumn({
       parked={parked}
       fakt={fakt}
       onFakt={onFakt}
-      glyph="🛡️"
+      glyph="shield"
       title="Komandalar"
       noun="Komanda (ROP)"
       count={(n) =>
@@ -580,7 +587,7 @@ function BoardColumn({
   parked?: boolean
   fakt: FaktChoice
   onFakt: (choice: FaktChoice) => void
-  glyph: string
+  glyph: BoardIconName
   title: string
   /** The name column's header. */
   noun: string
@@ -627,9 +634,7 @@ function BoardColumn({
             className="display flex items-center gap-2.5 text-[18px] font-semibold"
             style={{ color: 'var(--ink-primary)' }}
           >
-            <span aria-hidden="true" className="tv-col-glyph">
-              {glyph}
-            </span>
+            <BoardIcon name={glyph} className="tv-col-glyph" />
             {title}
           </h2>
           {status === 'ready' && entries.length > 0 && (
@@ -668,9 +673,7 @@ function BoardColumn({
         */
         <>
           <p className="px-5 pt-3 text-sm font-semibold" style={{ color: 'var(--ink-primary)' }}>
-            <span aria-hidden="true" className="mr-1">
-              🏁
-            </span>
+            <BoardIcon name="flag" className="mr-1" />
             Podium hali boʻsh — oʻrinlar hammaga ochiq
           </p>
           <BoardList
@@ -761,9 +764,9 @@ function PodiumBasis({ onDelivered, className = '' }: { onDelivered: boolean; cl
   (rarest first, and a plain steel badge steps aside for a real award).
 */
 const SEATS = [
-  { col: 'podium-col--gold', medal: '🥇', ring: 56, rack: 4, mark: 40 },
-  { col: 'podium-col--silver', medal: '🥈', ring: 43, rack: 3, mark: 36 },
-  { col: 'podium-col--bronze', medal: '🥉', ring: 37, rack: 3, mark: 36 },
+  { col: 'podium-col--gold', ring: 56, rack: 4, mark: 40 },
+  { col: 'podium-col--silver', ring: 43, rack: 3, mark: 36 },
+  { col: 'podium-col--bronze', ring: 37, rack: 3, mark: 36 },
 ] as const
 
 /**
@@ -828,19 +831,20 @@ function Podium({
 function PodiumAvatar({ place, size, crowned }: { place: number; size: number; crowned: boolean }) {
   return (
     <span className="relative inline-flex" aria-hidden="true">
+      {/*
+        CENTRED BY MARGIN, NEVER BY AN INLINE TRANSFORM. `.rise` ends on
+        `transform: none` with fill-mode `both`, so the inline
+        `translateX(-50%) rotate(-12deg)` this span used to carry was wiped the
+        moment the animation finished and the crown stood 12.5px right of the
+        ring for the rest of the day. `.bi--crown` centres it with a margin,
+        which no keyframe touches — and upright: the tilt was the cartoon.
+      */}
       {crowned && (
-        <span
+        <BoardIcon
+          name="crown"
           className="rise absolute z-[1] leading-none"
-          style={{
-            top: -16,
-            left: '50%',
-            transform: 'translateX(-50%) rotate(-12deg)',
-            fontSize: 20,
-            animationDelay: '650ms',
-          }}
-        >
-          👑
-        </span>
+          style={{ top: -16, left: '50%', animationDelay: '650ms' }}
+        />
       )}
       <span className={`medal-ring ${crowned ? 'medal-ring--crowned' : ''}`}>
         <span
@@ -904,7 +908,8 @@ function PodiumSeat({
           on the seat and is not mistaken for a line of the name.
         */}
         <p className="podium-plaque tv-seat-plaque">
-          <span aria-hidden="true">{seat.medal}</span>
+          {/* ONE rosette in three metals — it wears the seat's own `--metal`. */}
+          <BoardIcon name="medal" />
           <span className="sr-only">{entry.rank}-oʻrin:</span>
           {/*
             THE RANK, NOT THE SEAT. Ranking is competition-style and shared
@@ -949,7 +954,7 @@ function PodiumSeat({
           is something to put on it: a seat with no medal is the old seat to
           the pixel. Each medal says its own name (and its ×N) through its
           `aria-label`, so the shelf prints no words at all; a repeat is the
-          ×N plate struck INSIDE the medal, never a number beside it.
+          ×N chip (`CountChip`) inside the medal's SVG, never a number beside it.
         */}
         {rack.length > 0 && (
           <div className="seat-medals relative">
@@ -1019,7 +1024,7 @@ function PodiumSeat({
             */}
             {lead !== null ? (
               <span className="chase-chip chase-chip--lead inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold">
-                <span aria-hidden="true">{lead === 0 ? '🔥' : '🚀'}</span>
+                <BoardIcon name={lead === 0 ? 'flame' : 'lead'} />
                 {lead === 0 ? (
                   '2-oʻrin bilan teng'
                 ) : (
@@ -1062,7 +1067,7 @@ function PodiumSeat({
             {/* The chase — the one number a runner-up can act on — in the
                 pill the board already uses for it; `--seq-550`, no new hue. */}
             <span className="chase-chip inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold">
-              <span aria-hidden="true">{gap === 0 ? '🔥' : '🎯'}</span>
+              <BoardIcon name={gap === 0 ? 'flame' : 'target'} />
               {gap === 0 ? (
                 'Lider bilan teng'
               ) : (
@@ -1409,14 +1414,16 @@ function Chase({
       </span>
     ) : gap === 0 ? (
       <span style={{ color: 'var(--ink-secondary)' }}>
-        <span aria-hidden="true">🔥</span> Oldingi bilan teng
+        <BoardIcon name="flame" /> Oldingi bilan teng
       </span>
     ) : (
       <span
         className={`tabular ${near ? 'font-semibold' : ''}`}
         style={{ color: near ? 'var(--ink-primary)' : 'var(--ink-secondary)' }}
       >
-        <span aria-hidden="true">🎯</span> Oldingiga{' '}
+        {/* The target keeps the line's own ink on a secondary-ink line; only a
+            chase within reach wears the chase bar's blue. */}
+        <BoardIcon name="target" dim={!near} /> Oldingiga{' '}
         <span className="whitespace-nowrap">+{formatUzs(gap)}</span>
       </span>
     )

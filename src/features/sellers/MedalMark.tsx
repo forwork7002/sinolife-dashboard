@@ -1,22 +1,22 @@
-import { MEDALS, MEDAL_METAL, isKnownMedal, isMonthMedal } from '@/features/sellers/medalCatalog'
+import { MEDALS, MEDAL_METAL, isKnownMedal, type Metal } from '@/features/sellers/medalCatalog'
 import type { MedalCode } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
 
-/** ×N plastinkasidagi eng katta son — ikki raqamdan ortig'i plastinkaga sig'maydi. */
+/** ×N chipidagi eng katta son — ikki raqamdan ortig'i chipga sig'maydi. */
 const COUNT_CAP = 99
 
 /**
- * Bitta medal — «ZARB» (klassik taxta spec §1.4). 32 birlik quti, tanasi BITTA
- * `<use href="#m-<code>">`: metall, planchet va belgi `medalDefs.ts` dagi
- * belgining ichida, instance hech narsa bo'yamaydi. Sahifada `MedalDefs`
- * bir marta o'rnatilgan bo'lishi SHART — usiz `<use>` hech narsaga ishora
- * qilmaydi.
+ * Bitta medal — «EMAL» (klassik taxta spec §1.4; EMAL spec 2026-09-18). 32
+ * birlik quti, tanasi BITTA `<use href="#m-<code>">`: halqa, emal maydon va
+ * belgi `medalDefs.ts` dagi belgining ichida, instance hech narsa bo'yamaydi.
+ * Sahifada `MedalDefs` bir marta o'rnatilgan bo'lishi SHART — usiz `<use>`
+ * hech narsaga ishora qilmaydi.
  *
- * PODIUM KARTASIDA (`seat`) ikki qo'shimcha, ikkalasi ham SVG ICHIDA:
- * - Oy oilasi ≥ 40 px da dafna (`#m-laurel-<metal>`) tanadan OLDIN chiziladi;
- * - `count > 1` da ×N plastinkasi — tana metallining rim gradienti, botiq
- *   quduq va yo'l-raqamlar (`#nx`, `#n0..n9`; shrift yo'q), 99 da qisiladi.
- * Qatorda (`seat` yo'q) ikkalasi ham YO'Q — qator hech qachon sanoq bermaydi.
+ * PODIUM KARTASIDA (`seat`) bitta qo'shimcha, SVG ICHIDA: `count > 1` da ×N
+ * chipi — taxtaning o'z chipi (halqaning pastki o'ng chetiga o'rnatilgan
+ * pilyula, hairline'i tana metallida, raqami sahifa shriftida), 99 da qisiladi.
+ * Qatorda (`seat` yo'q) chip YO'Q — qator hech qachon sanoq bermaydi. Dafna
+ * yo'q (EMAL: oy medali to'liq metall disk, o'rinni metall aytadi).
  *
  * NOMI BIR MARTA. `role="img"` + `aria-label` nomni va ×N ni o'zi aytadi.
  */
@@ -30,14 +30,14 @@ export function MedalMark({
   code: MedalCode
   size?: number
   count?: number
-  /** Podium kartasining tokchasi: dafna (oy, ≥ 40 px) va ×N plastinkasi faqat shu yerda. */
+  /** Podium kartasining tokchasi: ×N chipi faqat shu yerda. */
   seat?: boolean
   /** Oxirgi yangilanishda paydo bo'lgan — bir marta 0,6 → 1 kattalashadi. */
   isNew?: boolean
 }) {
   // Notanish kod (server bu nusxadan oldin deploy bo'lgan) — hech narsa chizilmaydi, ustun yiqilmaydi.
   if (!isKnownMedal(code)) return null
-  const { body, dev } = MEDAL_METAL[code]
+  const { body } = MEDAL_METAL[code]
   const label = count > 1 ? `${MEDALS[code].name} ×${formatNumber(count)}` : MEDALS[code].name
   return (
     <svg
@@ -49,48 +49,29 @@ export function MedalMark({
       role="img"
       aria-label={label}
     >
-      {seat && size >= 40 && isMonthMedal(code) && <use href={`#m-laurel-${body}`} />}
       <use href={`#m-${code}`} />
-      {seat && count > 1 && <CountPlate count={count} body={body} dev={dev} />}
+      {seat && count > 1 && <CountChip count={count} body={body} />}
     </svg>
   )
 }
 
-/** Mirrors `gen_final.py` `medal()` — plastinka geometriyasi aynan mockdagidek. */
-function CountPlate({ count, body, dev }: { count: number; body: string; dev: string }) {
-  const digits = String(Math.min(count, COUNT_CAP)).split('')
-  const w = digits.length === 1 ? 15 : 19.8
-  const x0 = 31.8 - w
-  const glyphs = ['x', ...digits]
-  const step = 4.9
-  const scale = 0.54
-  let gx = x0 + (w - glyphs.length * step) / 2 + step / 2
-  const uses = glyphs.map((g, i) => {
-    const x = gx
-    gx += step
-    return (
-      <use
-        key={i}
-        href={`#n${g}`}
-        transform={`translate(${x.toFixed(2)} 26.7) scale(${(g === 'x' ? scale * 0.78 : scale).toFixed(3)})`}
-      />
-    )
-  })
+/** ×N — the board's own chip set into the ring's lower right. 32-box units. Mirrors chip() in docs/superpowers/specs/assets/2026-09-18-emal-medallar/lib.js. */
+function CountChip({ count, body }: { count: number; body: Exclude<Metal, 'gilt'> }) {
+  const n = String(Math.min(count, COUNT_CAP))
+  const w = n.length === 1 ? 15.4 : 20.2
+  const h = 10.4
+  const x0 = 34.4 - w // right edge x = 34.4: the chip leaves the 32 box by 2.4u right and 2u below (3 px / 2.5 px at 40 px)
+  const y0 = 23.6
+  const g = 1 // the knock-out gap, in the card's colour
+  const r = (v: number) => v.toFixed(2)
   return (
-    <>
-      <rect
-        className="medal-mark__plate-rim"
-        x={x0.toFixed(2)}
-        y="21.2"
-        width={w}
-        height="10.6"
-        rx="2.6"
-        fill={`url(#mg-${body}-rim)`}
-      />
-      <rect className="medal-mark__plate-well" x={(x0 + 1.1).toFixed(2)} y="22.3" width={(w - 2.2).toFixed(2)} height="8.4" rx="1.7" />
-      <g className="medal-mark__count" data-dev={dev}>
-        {uses}
-      </g>
-    </>
+    <g className="medal-mark__n" data-metal={body}>
+      <rect className="medal-mark__n-gap" x={r(x0 - g)} y={r(y0 - g)} width={r(w + 2 * g)} height={r(h + 2 * g)} rx={r(h / 2 + g)} />
+      <rect className="medal-mark__n-pill" x={r(x0)} y={r(y0)} width={w} height={h} rx={r(h / 2)} />
+      <text className="medal-mark__n-text" x={r(x0 + w / 2 - 0.15)} y={r(y0 + h / 2 + 3.05)}>
+        <tspan className="medal-mark__n-x">×</tspan>
+        {n}
+      </text>
+    </g>
   )
 }

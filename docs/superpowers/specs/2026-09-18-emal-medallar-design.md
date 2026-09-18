@@ -1,6 +1,6 @@
 # EMAL medallar + sayqal — `/sellers` klassik taxtasida premium medallar
 
-**Holat:** qurilmoqda — `emal` branch'i (2026-09-18).
+**Holat:** amalga oshirildi — `emal` branch'i (2026-09-18), commit va deploy kutmoqda.
 **Asos:** `2026-09-17-klassik-taxta-medallar-design.md` (taxta) — o'zgarmaydi. Bu spec faqat medal
 ko'rinishi va emoji o'rnidagi ikonkalar haqida.
 **Majburiy hujjat:** `assets/2026-09-18-emal-medallar/IMPLEMENT.md` — muhandis uchun to'liq yo'riqnoma
@@ -44,3 +44,38 @@ production ma'lumoti bilan) **«Yangi medallar + sayqal»** variantini tanladi.
 - Deploy: foydalanuvchi 2026-09-18 da tanlov bilan birga ruxsat berdi («1-yo'l bilan davom ettir va
   deploy qil») — gate yashil bo'lsa qayta so'ramasdan push. DTO o'zgarmaydi; TV tabi «Yangi versiya»
   tugmasi orqali yoki bir marta yangilash bilan yangi bundle'ni oladi.
+
+## 3. Qo'shimcha — «Medallar tasnifi» lentasi (mijoz, 2026-09-18, o'sha kuni)
+
+> «medallar tasnifi pastda aylanib turishi kerak … TV da ko'rinadi»
+
+- `MedalTasnif` — taxtaning pastida, kredit bilan BIR satrda (`.tv-foot`): 14 medal, `MEDAL_ORDER`
+  tartibida, har biri belgi + nom + qoida; uch guruh bir martadan nomlanadi («Oliy mukofot» — to'liq
+  metall disk, «Nodir» — oltin halqa, «Kundalik» — po'lat halqa).
+- Mexanizm rekord devoriniki: ikki nusxa, bir nusxa kengligida siljish, tezlik PIKSELDA (38 px/s),
+  kursor ostida pauza, `prefers-reduced-motion` da qo'lda suriladigan lenta.
+- Qoidalar motordan (`sellerMedals.ts`) qo'lda ko'chirilgan — qatlam qoidasi importni taqiqlaydi;
+  `tests/features/medalTasnif.test.tsx` ularni motor konstantalari bilan solishtiradi.
+- Narxi: 1920×1080 da ikki ro'yxatdan 24 px (38 px lenta, 14 px kredit o'rnida). Lokal bazada ikki
+  sotuvchi bor — to'liq taxtada butun qatorlar soni O'LCHANMAGAN, hisoblangan.
+- Mock'da yo'q bitta ikonka qo'shildi: `flag` (🏁 «Podium hali boʻsh» — muzlatilgan sahifada podium
+  to'la edi, emoji sahifaga chiqmagan).
+- Daraja tizimi QAYTMADI: bu medal kaliti, sotuvchi darajasi emas; `sellersMedals.test.tsx` dagi
+  daraja qo'riqchisi o'zgarmagan.
+
+## 4. Chetlanishlar (deploy oldi tekshiruvi, 2026-09-18)
+
+Besh mustaqil ko'rib chiquvchi + har topilmaga skeptik; tasdiqlanganlari tuzatildi:
+
+- **O'lik taxalluslar olib tashlandi:** `--bi-crown`, `--bi-crown-lo` (IMPLEMENT.md §2 da bor, hech narsa
+  o'qimaydi). `medalDefs.test.ts` endi `--bi-*` oilasining HAR nomi `var()` bilan o'qilishini talab qiladi.
+- **SAYQAL 3c dagi `"case"` tashlandi:** yuborilayotgan Inter subsetida `case` xususiyati yo'q — qoida hech
+  narsa chizmasdi (sarlavha skrinshoti u bilan va usiz bayt-bayt bir xil).
+- **Bezel qoidasidagi `:has(.podium-name…)` selektorlari tashlandi** — `.podium-name` ni hech narsa chizmaydi.
+- **Lenta pauzasi faqat `:hover`** — ichida fokuslanadigan narsa yo'q, `:focus-within` hech qachon ishlamasdi.
+- **Lenta `role="group"`** — nomlangan `div` (generic) nomini ARIA 1.2 taqiqlaydi.
+- **1366×768 da lenta yashirilmadi** (taklif qilingan edi): TV 720p bo'lishi mumkin, mijoz kalitni TV'da
+  so'ragan. Narxi CLAUDE.md da yozilgan.
+- **Taxtaning eski o'lik CSS i** (PODIUM bloki, banner podiumdan qolgan) va SAYQAL doim yutadigan asos
+  e'lonlari o'chirildi; hisoblangan uslublar 6 holatda bir xil.
+

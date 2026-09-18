@@ -57,13 +57,14 @@ export const MEDAL_ORDER: readonly MedalCode[] = Object.freeze([
 ])
 
 /* ---------------------------------------------------------------------------
- * «ZARB» medal tizimi (zarb qilingan tanga to'plami). Mirrors `gen_final.py`
- * (METAL_OF, ORDER, RARE, seat_medals) — mock va taxta bir xil chizsin.
+ * «EMAL» medal tizimi (emal maydon + metall halqa; 2026-09-18, ZARB o'rnida).
+ * Mirrors `gen-defs.js` TIER/METAL va `lib.js` BODY (assets/2026-09-18-emal-
+ * medallar) — mock va taxta bir xil chizsin.
  *
  * SHAKL OILANI, METALL NODIRLIKNI AYTADI. Metall `<defs>` dagi `m-<code>`
  * belgisining ichiga pishirilgan (`medalDefs.ts`); bu xarita faqat instance
- * tomonida kerak bo'lgan joylar uchun: ×N plastinkasining rim gradienti
- * (`body`), uning raqam rangi (`dev`), oy dafnasi va o'rindiqdagi yashirish.
+ * tomonida kerak bo'lgan joylar uchun: ×N chipining hairline rangi (`body`)
+ * va o'rindiqdagi yashirish (`dev === 'gilt'`, `seatMedals`). Dafna yo'q.
  * ------------------------------------------------------------------------- */
 
 export type Metal = 'gold' | 'silver' | 'bronze' | 'steel' | 'gilt'
@@ -89,8 +90,9 @@ export const MEDAL_METAL: Readonly<
 })
 
 /**
- * Nodir yettilik — haqiqiy metall tanalar. Endi faqat o'rindiq yashirish
- * qoidasi o'qiydi (`seatMedals`); soya ham, `.rare` sinfi ham yo'q.
+ * Nodir yettilik — haqiqiy metall tanalar. O'qiydiganlar: o'rindiq yashirish
+ * qoidasi (`seatMedals`) va medallar tasnifining guruhlari (`MedalTasnif`,
+ * «Nodir»); soya ham, `.rare` sinfi ham yo'q.
  */
 export const RARE_MEDALS: ReadonlySet<MedalCode> = new Set<MedalCode>([
   'year-champion',
@@ -104,11 +106,6 @@ export const RARE_MEDALS: ReadonlySet<MedalCode> = new Set<MedalCode>([
 
 /** Qatorda chizilmaydiganlar: 100 dan 92 tasida bor nishon nishon emas. O'rindiqda bor. */
 export const HIDDEN_IN_ROWS: readonly MedalCode[] = Object.freeze(['first-sale'])
-
-/** Oy oilasi — o'rindiqda (≥ 40 px) dafna oladi. */
-export function isMonthMedal(code: MedalCode): code is 'month-gold' | 'month-silver' | 'month-bronze' {
-  return code === 'month-gold' || code === 'month-silver' || code === 'month-bronze'
-}
 
 /**
  * Shu nusxa taniydigan kod. Server bu fayldan OLDIN deploy bo'lishi mumkin, va
