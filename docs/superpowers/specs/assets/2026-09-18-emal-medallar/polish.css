@@ -1,0 +1,174 @@
+/* ==========================================================================
+ * SAYQAL — the kept part of the POLISH pass (only what ≥ 2 judges kept and nobody dropped for a fidelity reason).
+ * KEPT:    1 icons (+ crown fix) · 2b heading disc · 2c bezel / set-in rank disc / lit + inner hairline · 2d pedestal ·
+ *          3a one numeral cut · 3c heads · 4a lozenge ONLY · 4b FAKT.
+ * DROPPED: 2a tone-bar strip · 2c foot shade + pill top edges · 2e list-foot fade · 3b «soʻm» scaling · 4a month tracking.
+ * Tokens: ':root' = light, dark = ':root[data-theme="dark"]' AND the prefers-color-scheme block (same values).
+ * Needs medals.css (the crown and the ember borrow the medals' gold).
+ * ======================================================================== */
+
+/* @item 1 — ICONS (emoji → line-work, the medals' hand: round caps, 1.5 stroke, ring + bull). Needs postprocess.js / <BoardIcon>. */
+:root {
+  --bi-chase: var(--seq-550); /* the chase target wears the chase bar's own blue */
+  --bi-ember: #a9760a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    --bi-ember: #f0b64a;
+  }
+}
+:root[data-theme="dark"] {
+  --bi-ember: #f0b64a;
+}
+.bi {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.27em; /* the colour-emoji advance it replaces — the text beside it does not move */
+  height: 1.27em;
+  line-height: 1;
+  vertical-align: -0.28em;
+}
+.bi > svg { display: block; width: 1.12em; height: 1.12em; overflow: visible; }
+.bi--target { color: var(--bi-chase); }
+/* a row whose chase line is secondary ink keeps its target in that ink — the medals stay the only jewel in the row */
+.bi--target.bi--dim { color: inherit; }
+.bi--flame { color: var(--bi-ember); }
+.bi--lead { color: var(--metal, var(--medal-gold)); }
+.bi--medal { color: var(--metal, var(--medal-gold)); }
+.bi--medal { width: 1.29em; } /* the 🥇 advance at the plaque size — measured: the plaque keeps its width */
+.bi--medal > svg { width: 1.2em; height: 1.2em; }
+/* the heading disc: the icon in the column's own tone, lifted toward ink so it holds at 3 m */
+.tv-col-glyph.bi { width: 34px; height: 34px; color: color-mix(in oklab, var(--tv-tone) 62%, var(--ink-primary)); }
+.tv-col-glyph.bi > svg { width: 19px; height: 19px; }
+/* the record wall's cup, in the wall's metal */
+.record-medal.bi { color: var(--metal); width: 1.45em; height: 1em; vertical-align: baseline; transform: translateY(2px); } /* the 🏆 advance at --record-name — measured: the marquee entry keeps its width */
+.record-medal.bi > svg { width: 1.22em; height: 1.22em; stroke-width: 1.7; }
+/* THE CROWN. Same box the emoji had (25×20 at top:-16px), upright, centred by MARGIN — `.rise` (fill-mode both) ends
+   on `transform: none` and wipes an inline translateX(-50%): the shipped crown stands 12.5px right of the ring.
+   Drawn 18 % larger than the first polish pass (33×23.6) and lifted so its band still seats on the ring. No filter. */
+.bi--crown { width: 25px; height: 20px; margin-left: -12.5px; }
+.bi--crown > svg { width: 33px; height: 23.6px; flex: none; transform: translateY(-2px); }
+
+/* @item 2 — SURFACE FINISH. Same colours, same boxes. */
+:root {
+  --px-hair: rgba(255, 255, 255, 0.95);
+  --px-hair-soft: rgba(255, 255, 255, 0.6);
+  --px-well: inset 0 1px 2px rgba(12, 14, 18, 0.14), inset 0 0 0 1px rgba(12, 14, 18, 0.05);
+  --px-bezel-gap: #ffffff;
+  --px-sheen: rgba(255, 255, 255, 0.5);
+  --px-engrave: 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    --px-hair: rgba(255, 255, 255, 0.1);
+    --px-hair-soft: rgba(255, 255, 255, 0.05);
+    --px-well: inset 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+    --px-bezel-gap: #0b0d11;
+    --px-sheen: rgba(255, 255, 255, 0.07);
+    --px-engrave: 0 -1px 0 rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+}
+:root[data-theme="dark"] {
+  --px-hair: rgba(255, 255, 255, 0.1);
+  --px-hair-soft: rgba(255, 255, 255, 0.05);
+  --px-well: inset 0 2px 4px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+  --px-bezel-gap: #0b0d11;
+  --px-sheen: rgba(255, 255, 255, 0.07);
+  --px-engrave: 0 -1px 0 rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* 2b · the heading disc, drawn by the hand that drew the rank discs and the medals: an enamel field in a tone ring */
+.tv-col-glyph {
+  background: radial-gradient(circle at 32% 24%,
+    color-mix(in oklab, var(--tv-tone) 24%, var(--surface-raised)),
+    color-mix(in oklab, var(--tv-tone) 9%, var(--surface-sunken)) 78%);
+  border-color: color-mix(in oklab, var(--tv-tone) 58%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--tv-tone) 7%, transparent), var(--px-well);
+}
+
+/* 2c · seat cards: a lit top hairline + a hairline inside the metal rim. Backgrounds are NOT restated. */
+.tv-col .podium-card {
+  box-shadow: var(--shadow-card), inset 0 1px 0 var(--px-hair), inset 0 0 0 1px var(--px-hair-soft);
+}
+/* the champion's frame: a jeweller's bezel — dark gap, fine metal line — in the same 3px the halo used */
+.tv-col .tv-seat--1 .tv-seat-card,
+.tv-col .tv-seat--1 .tv-seat-card:has(.podium-name:hover),
+.tv-col .tv-seat--1 .tv-seat-card:has(.podium-name:focus-visible) {
+  box-shadow:
+    0 0 0 2px var(--px-bezel-gap),
+    0 0 0 3px color-mix(in oklab, var(--metal) 58%, transparent),
+    0 18px 40px -18px color-mix(in oklab, var(--metal) 70%, transparent),
+    var(--shadow-raised),
+    inset 0 1px 0 var(--px-hair),
+    inset 0 0 0 1px var(--px-hair-soft);
+}
+/* the rank disc's field is set INTO its ring */
+.tv-col .medal-ring > span { box-shadow: var(--px-well); }
+
+/* 2d · pedestal material: satin metal — a soft vertical sheen, a lit lip, a quietly engraved numeral */
+.tv-col .tv-pedestal {
+  background:
+    linear-gradient(90deg, transparent 8%, var(--px-sheen) 36%, transparent 60%),
+    linear-gradient(180deg,
+      color-mix(in oklab, var(--metal) 40%, var(--surface-raised)),
+      color-mix(in oklab, var(--metal) 13%, var(--surface-raised)));
+  box-shadow:
+    inset 0 1px 0 var(--px-hair),
+    inset 0 -10px 18px -12px color-mix(in oklab, var(--metal) 60%, #000),
+    var(--shadow-card);
+}
+.tv-col .tv-pedestal-num { text-shadow: var(--px-engrave); }
+
+/* @item 3 — TYPOGRAPHIC FINISH. Nothing reflows. */
+/* 3a · one cut of numerals everywhere on the board (rows already use these alternates via .tabular) */
+.tv-col .tv-seat-figure,
+.tv-col .tv-pedestal-num,
+.record-wall .record-sum {
+  font-feature-settings: "tnum" 1, "lnum" 1, "cv01" 1, "cv03" 1, "cv04" 1, "cv05" 1, "cv11" 1;
+}
+/* 3c · heads: case-sensitive punctuation for the caps, and the ranked column reads one step brighter */
+.tv-col .tv-table th.eyebrow { font-feature-settings: "case" 1; }
+.tv-col .tv-table th[aria-sort] { color: var(--ink-secondary); }
+
+/* @item 4 — RECORD MARQUEE lozenge + FAKT SWITCH. */
+:root {
+  --px4-track: inset 0 1px 2px rgba(12, 14, 18, 0.12);
+  --px4-thumb-hi: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --px4-thumb-drop: 0 1px 2px rgba(12, 14, 18, 0.16);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    --px4-track: inset 0 1px 3px rgba(0, 0, 0, 0.65);
+    --px4-thumb-hi: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    --px4-thumb-drop: 0 1px 2px rgba(0, 0, 0, 0.6);
+  }
+}
+:root[data-theme="dark"] {
+  --px4-track: inset 0 1px 3px rgba(0, 0, 0, 0.65);
+  --px4-thumb-hi: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  --px4-thumb-drop: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+/* 4a · the lozenge is DRAWN, not a font's ◆ (the month label keeps its shipped tracking and size) */
+.record-wall .record-sep {
+  font-size: 0;
+  width: 6px;
+  height: 6px;
+  align-self: center;
+  transform: rotate(45deg);
+  border-radius: 1px;
+  background: linear-gradient(135deg, color-mix(in oklab, var(--metal) 85%, #fff), color-mix(in oklab, var(--metal) 45%, transparent));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--metal) 9%, transparent);
+}
+/* 4b · FAKT: the track is a well, the thumb a raised key, the lit dot a small lamp */
+.tv-col .tv-fakt { box-shadow: var(--px4-track); }
+.tv-col .tv-fakt::before {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--tv-tone) 52%, transparent),
+    var(--px4-thumb-hi),
+    var(--px4-thumb-drop);
+}
+.tv-col .tv-fakt-tab[aria-pressed='true'] .tv-fakt-dot {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--tv-tone) 22%, transparent), 0 0 8px color-mix(in oklab, var(--tv-tone) 60%, transparent);
+}
