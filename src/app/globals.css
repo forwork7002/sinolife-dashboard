@@ -3999,23 +3999,29 @@ p {
  * by the component, paused under a pointer, and reduced motion hands back a
  * strip scrolled by hand. See `MedalTasnif` for why a crawl and why a key.
  *
- * IT SHARES ITS LINE WITH THE CREDIT (`.tv-foot`), which is what keeps the
- * cost to the lists small: the credit already held ~14px of the column, so the
- * foot grows by about a third of a row, not by a whole strip.
+ * THE STRIP RUNS THE FULL WIDTH, AND THE CREDIT SITS UNDER ITS RIGHT END, in
+ * the 24px of `main`'s bottom padding that was empty at every width (measured
+ * 1920, 1366, 1280 and a phone) — the client, 2026-09-18: «pastiga koʻchir,
+ * kichikroq qilib … medallarni ful oxirigacha». Positioned absolutely, so it
+ * costs the lists nothing: the foot is the strip's own 38px (34 on a laptop),
+ * which is what the 14px credit line grew into when the strip arrived.
  *
  * THE SEAT-ONLY JEWELLERY IS OFF (`--emal-seat-o: 0`), as in rows: the key
  * shows a medal the way a row shows it, at a row's size.
  * ======================================================================== */
 .tv-foot {
+  position: relative;
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 14px;
   min-width: 0;
 }
 .tv-foot > .tv-credit {
-  flex: none;
-  padding: 0 4px 0 0;
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 6px;
+  font-size: 9px;
+  line-height: 1;
 }
 
 .medal-tasnif {
@@ -4160,19 +4166,6 @@ p {
   color: var(--ink-muted);
 }
 
-/* A phone: the key takes the line, the credit the one under it. */
-@media (max-width: 639px) {
-  .tv-foot {
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .medal-tasnif {
-    flex-basis: 100%;
-  }
-  .tv-foot > .tv-credit {
-    margin-left: auto;
-  }
-}
 
 /* ===========================================================================
  * MEDAL TIP — a medal's own card on hover (`MedalTip`)

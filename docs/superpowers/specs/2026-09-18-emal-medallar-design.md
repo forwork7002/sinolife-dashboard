@@ -49,7 +49,7 @@ production ma'lumoti bilan) **«Yangi medallar + sayqal»** variantini tanladi.
 
 > «medallar tasnifi pastda aylanib turishi kerak … TV da ko'rinadi»
 
-- `MedalTasnif` — taxtaning pastida, kredit bilan BIR satrda (`.tv-foot`): 14 medal, `MEDAL_ORDER`
+- `MedalTasnif` — taxtaning pastida, to'liq kenglikda (`.tv-foot`); kredit lenta ostida, sahifaning pastki chekkasida (joy olmaydi): 14 medal, `MEDAL_ORDER`
   tartibida, har biri belgi + nom + qoida; uch guruh bir martadan nomlanadi («Oliy mukofot» — to'liq
   metall disk, «Nodir» — oltin halqa, «Kundalik» — po'lat halqa).
 - Mexanizm rekord devoriniki: ikki nusxa, bir nusxa kengligida siljish, tezlik PIKSELDA (38 px/s),

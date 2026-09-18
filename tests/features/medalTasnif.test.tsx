@@ -172,9 +172,11 @@ describe('globals.css — tasnif lentasi va sayqal', () => {
     expect(reduced).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.medal-tasnif-window \{\s*overflow-x: auto;[\s\S]*?\.medal-tasnif-track \{\s*animation: none;/)
   })
 
-  it('lenta kredit bilan BIR satrda — taxtadan butun bir satr olmaydi', () => {
-    expect(code).toMatch(/\.tv-foot \{[^}]*flex-shrink: 0;[^}]*display: flex;/)
+  it('lenta to‘liq kenglikda; kredit uning ostida, sahifa chekkasida — ro‘yxatlardan joy olmaydi', () => {
+    expect(code).toMatch(/\.tv-foot \{[^}]*position: relative;[^}]*flex-shrink: 0;[^}]*display: flex;/)
     expect(code).toMatch(/\.medal-tasnif \{[^}]*flex: 1 1 0;[^}]*min-width: 0;/)
+    // Oqimdan tashqarida: lenta butun kenglikni oladi, kredit uning o'ng chetining ostida.
+    expect(code).toMatch(/\.tv-foot > \.tv-credit \{[^}]*position: absolute;[^}]*top: calc\(100% \+ 5px\);[^}]*right: 6px;/)
   })
 
   it('sayqal tokenlari uchala mavzu blokida, ikki qorong‘i blok bir xil', () => {

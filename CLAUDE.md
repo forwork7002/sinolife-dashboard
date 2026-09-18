@@ -1153,9 +1153,11 @@ Per-screen traps worth knowing before you touch one:
   **«MEDALLAR TASNIFI» CRAWLS ALONG THE FOOT** («medallar tasnifi pastda
   aylanib turishi kerak», the same day): `MedalTasnif` — all fourteen medals,
   drawing + name + the rule it is awarded on, in three named groups, on the
-  record wall's mechanism to the letter. It shares its line with the credit
-  (`.tv-foot`), so the two lists gave up 24px at 1920×1080 (a 38px strip where
-  a 14px credit stood), not a whole row. **Its sentences restate the engine's
+  record wall's mechanism to the letter. It runs the full width of the foot
+  (`.tv-foot`) and the credit sits under its right end, absolutely placed in
+  `main`'s 24px bottom padding (client: «pastiga koʻchir, kichikroq … medallarni
+  ful oxirigacha»), so the two lists gave up 24px at 1920×1080 (a 38px strip
+  where a 14px credit stood), not a whole row, and the credit costs nothing. **Its sentences restate the engine's
   thresholds by hand** — the layer rule forbids the import — and
   `tests/features/medalTasnif.test.tsx` checks them against
   `sellerMedals.ts`' constants; change a threshold and that test names the

@@ -248,11 +248,11 @@ export function SellersPage() {
         </div>
 
         {/*
-          THE FOOT OF THE BOARD: what every medal means, crawling — see
-          `MedalTasnif` — and beside it the one line on this board that is not
-          a rank: who made it. English, right-aligned and at the page's
-          smallest size — see `.tv-credit` — so it stays out of the way of a
-          seller looking for their own row.
+          THE FOOT OF THE BOARD: what every medal means, crawling the full
+          width — see `MedalTasnif` — and under its right end the one line on
+          this board that is not a rank: who made it. English, at the page's
+          smallest size, in the page's bottom margin — see `.tv-foot >
+          .tv-credit` — so it takes no room from a seller's row.
         */}
         <div className="tv-foot">
           <MedalTasnif from={medals.data?.data.from} />
