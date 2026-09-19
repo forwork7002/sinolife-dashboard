@@ -114,15 +114,42 @@ export interface MetaDayDto {
 }
 
 /** A targetolog on one product, over the window. */
-export interface MetaOwnerDto extends MetaColumnDto {
+/** Meta's delivery figures for any slice, with the rates derived from them. */
+export interface MetaMetricsDto {
   readonly spendUsd: number
   readonly metaLeads: number
   /** spend ÷ Meta's leads. */
   readonly metaCplUsd: number | null
   readonly impressions: number
   readonly clicks: number
+  /** clicks ÷ impressions. */
   readonly ctrPercent: number | null
+  /** spend ÷ clicks. */
+  readonly cpcUsd: number | null
+  /** spend ÷ impressions × 1 000. */
+  readonly cpmUsd: number | null
+}
+
+/** A targetolog on one product, over the window. */
+export interface MetaOwnerDto extends MetaColumnDto, MetaMetricsDto {
   /** The ad accounts behind it, by name — so a reader can find them in Meta. */
+  readonly accounts: readonly string[]
+}
+
+/**
+ * ONE PERSON, BOTH PRODUCTS — «this targetolog spent this much».
+ *
+ * The sheet splits a targetolog across two columns when they run both
+ * products, and the question the client asks first is the person's own
+ * total. `products` keeps the split underneath it.
+ */
+export interface MetaTargetologDto extends MetaMetricsDto {
+  readonly targetolog: string
+  readonly products: readonly {
+    readonly product: MetaProduct
+    readonly spendUsd: number
+    readonly metaLeads: number
+  }[]
   readonly accounts: readonly string[]
 }
 
@@ -152,6 +179,8 @@ export interface MetaBlockDto {
   readonly window: { readonly from: string; readonly to: string }
   readonly columns: readonly MetaColumnDto[]
   readonly days: readonly MetaDayDto[]
+  /** One row per person, biggest spender first. */
+  readonly targetologs: readonly MetaTargetologDto[]
   readonly owners: readonly MetaOwnerDto[]
   readonly products: readonly MetaProductDto[]
   readonly total: Omit<MetaProductDto, 'product'>
@@ -273,6 +302,21 @@ function ratio(numerator: number, denominator: number): number | null {
 
 const PRODUCT_ORDER: readonly MetaProduct[] = ['Collagen', 'Zextra', 'Boshqa']
 
+/** Spend, leads and delivery for one slice, with every rate null over nothing. */
+function metrics(spend: bigint, leads: number, impressions: number, clicks: number): MetaMetricsDto {
+  const dollars = Number(spend) / MICRO
+  return {
+    spendUsd: usd(spend),
+    metaLeads: leads,
+    metaCplUsd: ratio(dollars, leads),
+    impressions,
+    clicks,
+    ctrPercent: impressions > 0 ? (clicks / impressions) * 100 : null,
+    cpcUsd: ratio(dollars, clicks),
+    cpmUsd: impressions > 0 ? (dollars / impressions) * 1000 : null,
+  }
+}
+
 /**
  * The «Лид база» block: Meta spend by day × targetolog × product, and each
  * product's spend beside the Bitrix24 leads and money its own pages produced.
@@ -365,6 +409,26 @@ export function metaBlock(input: {
     }
   }
 
+  /*
+    The person across products. An unmapped account is its own «person» — its
+    name — so it is never folded into somebody else's total.
+  */
+  const people = new Map<
+    string,
+    { targetolog: string; spend: bigint; leads: number; impressions: number; clicks: number; parts: Acc[] }
+  >()
+  for (const a of ordered) {
+    const person =
+      people.get(a.column.targetolog) ??
+      { targetolog: a.column.targetolog, spend: 0n, leads: 0, impressions: 0, clicks: 0, parts: [] }
+    person.spend += a.spend
+    person.leads += a.leads
+    person.impressions += a.impressions
+    person.clicks += a.clicks
+    person.parts.push(a)
+    people.set(a.column.targetolog, person)
+  }
+
   const products = PRODUCT_ORDER.filter((p) => ordered.some((a) => a.column.product === p)).map(
     (product) => ({ product, ...productTotals(product) }),
   )
@@ -374,14 +438,21 @@ export function metaBlock(input: {
     window: input.window,
     columns,
     days,
+    targetologs: [...people.values()]
+      .sort((a, b) => Number(b.spend - a.spend))
+      .map((p) => ({
+        targetolog: p.targetolog,
+        ...metrics(p.spend, p.leads, p.impressions, p.clicks),
+        products: p.parts.map((a) => ({
+          product: a.column.product,
+          spendUsd: usd(a.spend),
+          metaLeads: a.leads,
+        })),
+        accounts: [...new Set(p.parts.flatMap((a) => [...a.accounts]))].sort(),
+      })),
     owners: ordered.map((a) => ({
       ...a.column,
-      spendUsd: usd(a.spend),
-      metaLeads: a.leads,
-      metaCplUsd: ratio(Number(a.spend) / MICRO, a.leads),
-      impressions: a.impressions,
-      clicks: a.clicks,
-      ctrPercent: a.impressions > 0 ? (a.clicks / a.impressions) * 100 : null,
+      ...metrics(a.spend, a.leads, a.impressions, a.clicks),
       accounts: [...a.accounts].sort(),
     })),
     products,

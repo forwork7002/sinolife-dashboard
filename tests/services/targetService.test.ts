@@ -197,6 +197,31 @@ describe('metaBlock — the «Лид база» sheet', () => {
     expect(block.total.bitrixLeads).toBe(500)
   })
 
+  it('gives each person one total across both products, biggest spender first', () => {
+    const both = metaBlock({
+      rows: [
+        row('2804901113001448', 'Collagen Sobirjon #2', '2026-08-01', 44_460_000n, 38),
+        row('4401744916740587', 'Zextra Sobirjon', '2026-08-01', 107_500_000n, 53),
+        row('926218346480236', 'Zextra Kamron 1', '2026-08-01', 221_930_000n, 81),
+      ],
+      importedAt: null,
+      window: { from: '2026-08-01', to: '2026-08-01' },
+      sources: [],
+      productOfSource: new Map(),
+      usdRate: null,
+      usdRateDate: null,
+    })
+    expect(both.targetologs.map((t) => t.targetolog)).toEqual(['Kamron', 'Sobirjon'])
+    const sobirjon = both.targetologs[1]!
+    expect(sobirjon.spendUsd).toBe(151.96)
+    expect(sobirjon.metaLeads).toBe(91)
+    expect(sobirjon.products.map((p) => p.product)).toEqual(['Collagen', 'Zextra'])
+    // Each fixture row carries 1 000 impressions and 10 clicks.
+    expect(sobirjon.clicks).toBe(20)
+    expect(sobirjon.cpcUsd).toBeCloseTo(151.96 / 20, 6)
+    expect(sobirjon.cpmUsd).toBeCloseTo((151.96 / 2000) * 1000, 6)
+  })
+
   it('prints no ROAS without a rate rather than a wrong one', () => {
     const noRate = metaBlock({
       rows,

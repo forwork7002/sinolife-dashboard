@@ -48,10 +48,11 @@ const PAGE_SIZE = 50
  * first-source fields the target team fills in — and, below them, Meta Ads
  * spend per targetolog.
  *
- * READING ORDER: the money first (tiles), then how the leads thin out into
- * orders (funnel, daily), then WHO — by page, by targetolog, by creative —
- * then where the leads and the sales stand now, then what the ads cost (Meta
- * Ads, the «Лид база» sheet read from the API), and last every lead. Clicking a row in the «who» table narrows
+ * READING ORDER: the money first (tiles), then what each targetolog spent
+ * and what it bought on Meta — the question the client asks first (2026-09-19:
+ * «bu targetolog shuncha sarf… klik…») — then how the leads thin out into
+ * orders, WHO by page / targetolog / creative, where the leads and sales stand
+ * now, and last every lead. Clicking a row in the «who» table narrows
  * the lead list to it.
  *
  * TWO REQUESTS FOR THE PORTAL HALF, one clock. The overview is every counter
@@ -152,6 +153,8 @@ export function TargetPage() {
 
             <MoneyTiles total={data?.total} status={status} />
 
+            <TargetMeta meta={data?.meta} status={status} />
+
             <div className="grid gap-3 xl:grid-cols-3">
               <ChartCard
                 title="Voronka"
@@ -248,7 +251,6 @@ export function TargetPage() {
               </ChartCard>
             </div>
 
-            <TargetMeta meta={data?.meta} status={status} />
           </>
         )}
 

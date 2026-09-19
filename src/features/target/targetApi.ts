@@ -73,13 +73,29 @@ export interface MetaDayDto {
   readonly cells: readonly number[]
 }
 
-export interface MetaOwnerDto extends MetaColumnDto {
+export interface MetaMetricsDto {
   readonly spendUsd: number
   readonly metaLeads: number
   readonly metaCplUsd: number | null
   readonly impressions: number
   readonly clicks: number
   readonly ctrPercent: number | null
+  readonly cpcUsd: number | null
+  readonly cpmUsd: number | null
+}
+
+export interface MetaOwnerDto extends MetaColumnDto, MetaMetricsDto {
+  readonly accounts: readonly string[]
+}
+
+/** One person across both products. */
+export interface MetaTargetologDto extends MetaMetricsDto {
+  readonly targetolog: string
+  readonly products: readonly {
+    readonly product: MetaProduct
+    readonly spendUsd: number
+    readonly metaLeads: number
+  }[]
   readonly accounts: readonly string[]
 }
 
@@ -98,6 +114,7 @@ export interface MetaBlockDto {
   readonly window: { readonly from: string; readonly to: string }
   readonly columns: readonly MetaColumnDto[]
   readonly days: readonly MetaDayDto[]
+  readonly targetologs: readonly MetaTargetologDto[]
   readonly owners: readonly MetaOwnerDto[]
   readonly products: readonly (MetaProductTotalsDto & { readonly product: MetaProduct })[]
   readonly total: MetaProductTotalsDto

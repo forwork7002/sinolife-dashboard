@@ -12,7 +12,13 @@ import {
   formatPercent,
 } from '@/lib/format'
 
-import type { MetaBlockDto, MetaOwnerDto, MetaProduct, MetaProductTotalsDto } from './targetApi'
+import type {
+  MetaBlockDto,
+  MetaOwnerDto,
+  MetaProduct,
+  MetaProductTotalsDto,
+  MetaTargetologDto,
+} from './targetApi'
 
 /**
  * «Reklama xarajati» — Meta Ads spend per targetolog, read from the Marketing
@@ -83,6 +89,8 @@ export function TargetMeta({
             : 'Meta Ads Manager’dan, har soatda.'
         }
       />
+
+      <TargetologCards people={meta?.targetologs ?? []} status={status} />
 
       <div className="stagger grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <Tile
@@ -302,13 +310,155 @@ const OWNER_COLUMNS: readonly Column<MetaOwnerDto>[] = [
     render: (row) => formatNumber(row.impressions),
   },
   {
+    key: 'clicks',
+    header: 'Klik',
+    align: 'right',
+    numeric: true,
+    render: (row) => formatNumber(row.clicks),
+  },
+  {
     key: 'ctr',
     header: 'CTR',
     align: 'right',
     numeric: true,
     render: (row) => formatPercent(row.ctrPercent),
   },
+  {
+    key: 'cpc',
+    header: '1 klik narxi',
+    align: 'right',
+    numeric: true,
+    render: (row) => usd(row.cpcUsd),
+  },
 ]
+
+/**
+ * «THIS TARGETOLOG SPENT THIS MUCH» — one card per person, the first thing in
+ * the block, because it is the first question the client asks of it.
+ *
+ * The spend is the headline; under it, what the money bought on Meta's own
+ * count (leads, clicks, impressions) and what each of those cost. A person who
+ * runs both products gets a thin split bar, so Sobirjon's Zextra and Collagen
+ * are one card and still two numbers. Biggest spender first, as the server
+ * sent them.
+ */
+function TargetologCards({
+  people,
+  status,
+}: {
+  people: readonly MetaTargetologDto[]
+  status: 'loading' | 'error' | 'ready'
+}) {
+  if (status === 'loading') {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="skeleton h-[200px] rounded-[var(--radius-panel)]" />
+        ))}
+      </div>
+    )
+  }
+  if (people.length === 0) return null
+
+  const total = people.reduce((n, p) => n + p.spendUsd, 0)
+
+  return (
+    <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="targetolog-cards">
+      {people.map((p) => (
+        <Card key={p.targetolog} className="flex flex-col gap-3 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-[15px] font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                {p.targetolog}
+              </p>
+              <p className="truncate text-[11px]" style={muted} title={p.accounts.join(', ')}>
+                {p.accounts.join(', ')}
+              </p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p
+                className="display tabular text-[24px] leading-tight font-semibold"
+                style={{ color: 'var(--ink-primary)' }}
+                title={usd(p.spendUsd, true)}
+              >
+                {usd(p.spendUsd)}
+              </p>
+              <p className="text-[11px]" style={muted}>
+                sarf · jamining {formatPercent(total > 0 ? (p.spendUsd / total) * 100 : null)}
+              </p>
+            </div>
+          </div>
+
+          {p.products.length > 1 && (
+            <div className="flex flex-col gap-1">
+              <div
+                className="flex h-1.5 w-full overflow-hidden rounded-full"
+                style={{ background: 'var(--track)' }}
+                aria-hidden
+              >
+                {p.products.map((part) => (
+                  <span
+                    key={part.product}
+                    style={{
+                      width: `${p.spendUsd > 0 ? (part.spendUsd / p.spendUsd) * 100 : 0}%`,
+                      background: PRODUCT_TONE[part.product],
+                    }}
+                  />
+                ))}
+              </div>
+              <p className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px]" style={muted}>
+                {p.products.map((part) => (
+                  <span key={part.product} className="inline-flex items-center gap-1.5">
+                    <span
+                      aria-hidden
+                      className="inline-block h-2 w-2 rounded-sm"
+                      style={{ background: PRODUCT_TONE[part.product] }}
+                    />
+                    {PRODUCT_LABEL[part.product]} {usd(part.spendUsd)} · {formatNumber(part.metaLeads)} lead
+                  </span>
+                ))}
+              </p>
+            </div>
+          )}
+          {p.products.length === 1 && (
+            <p className="inline-flex items-center gap-1.5 text-[11px]" style={muted}>
+              <span
+                aria-hidden
+                className="inline-block h-2 w-2 rounded-sm"
+                style={{ background: PRODUCT_TONE[p.products[0]!.product] }}
+              />
+              faqat {PRODUCT_LABEL[p.products[0]!.product]}
+            </p>
+          )}
+
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12.5px]">
+            <Metric label="Meta leadlari" value={formatNumber(p.metaLeads)} />
+            <Metric label="1 lead narxi" value={usd(p.metaCplUsd)} strong />
+            <Metric label="Kliklar" value={formatNumber(p.clicks)} />
+            <Metric label="1 klik narxi" value={usd(p.cpcUsd)} />
+            <Metric label="Koʻrsatishlar" value={formatNumber(p.impressions)} />
+            <Metric label="1 000 koʻrsatish" value={usd(p.cpmUsd)} />
+            <Metric label="CTR" value={formatPercent(p.ctrPercent)} />
+          </dl>
+        </Card>
+      ))}
+    </div>
+  )
+}
+
+function Metric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <dt style={muted}>{label}</dt>
+      <dd
+        className="tabular-nums"
+        style={{ color: 'var(--ink-primary)', fontWeight: strong ? 600 : 400 }}
+      >
+        {value}
+      </dd>
+    </div>
+  )
+}
 
 /**
  * The «Лид база» sheet itself: a row per day, a column per targetolog per
