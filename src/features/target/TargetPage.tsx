@@ -15,8 +15,8 @@ import { apiGet } from '@/lib/api'
 import { formatCompactUzs, formatNumber, formatPercent } from '@/lib/format'
 import { t } from '@/lib/messages'
 
-import { TargetAds } from './TargetAds'
 import { TargetGroupTable } from './TargetGroupTable'
+import { TargetMeta } from './TargetMeta'
 import { EMPTY_FILTERS, type LeadFilters, TargetLeadTable } from './TargetLeadTable'
 import type {
   TargetCountersDto,
@@ -45,13 +45,13 @@ const PAGE_SIZE = 50
  * client's «Target» sheet could not be read (it is private), so the screen is
  * built from what that sheet is itself built from: the portal's Регистрация
  * deals on the seven target SOURCE_IDs, with the targetolog, creative and
- * first-source fields the target team fills in — and, below them, the ad
- * ledger's spend and campaigns.
+ * first-source fields the target team fills in — and, below them, Meta Ads
+ * spend per targetolog.
  *
  * READING ORDER: the money first (tiles), then how the leads thin out into
  * orders (funnel, daily), then WHO — by page, by targetolog, by creative —
- * then where the leads and the sales stand now, then what the ads cost, and
- * last every lead, one row each. Clicking a row in the «who» table narrows
+ * then where the leads and the sales stand now, then what the ads cost (Meta
+ * Ads, the «Лид база» sheet read from the API), and last every lead. Clicking a row in the «who» table narrows
  * the lead list to it.
  *
  * TWO REQUESTS FOR THE PORTAL HALF, one clock. The overview is every counter
@@ -113,7 +113,7 @@ export function TargetPage() {
     leadListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const targetSources = data?.sources.filter((s) => s.isTarget).map((s) => s.name) ?? []
+  const targetSources = data?.targetSources ?? []
 
   return (
     <PageShell
@@ -248,7 +248,7 @@ export function TargetPage() {
               </ChartCard>
             </div>
 
-            <TargetAds ads={data?.ads} bitrixLeads={data?.total.leads ?? null} status={status} />
+            <TargetMeta meta={data?.meta} status={status} />
           </>
         )}
 
@@ -354,7 +354,7 @@ function MoneyTiles({ total, status }: { total: TargetCountersDto | undefined; s
 }
 
 /** The funnel as bars — each step against the leads it started from. */
-export function funnelRows(total: TargetCountersDto | undefined): CategoryBarRow[] {
+function funnelRows(total: TargetCountersDto | undefined): CategoryBarRow[] {
   if (!total) return []
   const share = (n: number) => (total.leads > 0 ? ` · ${formatPercent((n / total.leads) * 100)}` : '')
   return [
@@ -391,7 +391,7 @@ export function funnelRows(total: TargetCountersDto | undefined): CategoryBarRow
 }
 
 /** Stage bars, in the portal's own order and words; a sale names its pipeline. */
-export function stageRows(
+function stageRows(
   stages: readonly TargetStageDto[],
   kind: 'lead' | 'sale',
   total: number,

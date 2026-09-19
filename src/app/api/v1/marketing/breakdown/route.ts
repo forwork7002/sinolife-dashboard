@@ -19,11 +19,7 @@ export const dynamic = 'force-dynamic'
  * un-narrowable screen uses to refuse; the answer for a ROP here is «no», not
  * «all of it».
  */
-const ACCESS = {
-  permission: 'analytics:read:all',
-  // «Target tahlili» draws the ad ledger's campaigns with this same endpoint.
-  section: ['marketing', 'target'],
-} as const
+const ACCESS = { permission: 'analytics:read:all', section: 'marketing' } as const
 
 /**
  * One dimension's rows, plus the JAMI totals.

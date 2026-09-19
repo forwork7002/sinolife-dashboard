@@ -57,7 +57,14 @@ import { createSyncHandlers } from '../src/server/integrations/crm/sync/handlers
 import { PrismaSyncStore } from '../src/server/integrations/crm/sync/PrismaSyncStore'
 import { SyncEngine } from '../src/server/integrations/crm/sync/SyncEngine'
 import { historyBackfillCursor } from '../src/server/integrations/crm/sync/backfill'
-import { isPassDue, SWEEP_RETRY_MS } from '../src/server/integrations/crm/sync/schedule'
+import { importMetaSpend } from '../src/server/integrations/meta/metaImport'
+import { zonedDateKey } from '../src/server/domain/period/period'
+import {
+  type DealsBackfill,
+  isBackfillDue,
+  isPassDue,
+  SWEEP_RETRY_MS,
+} from '../src/server/integrations/crm/sync/schedule'
 import {
   classifyRefusal,
   refusalCode,
@@ -115,6 +122,15 @@ const REFERENCE_EVERY = Number(process.env.SYNC_REFERENCE_EVERY ?? 180)
  * Set to 0 to turn it off.
  */
 const ROISTAT_EVERY = Number(process.env.SYNC_ROISTAT_EVERY ?? 60)
+
+/**
+ * Meta Ads spend, every N ticks — hourly at the one-minute tick. Off without
+ * `META_ACCESS_TOKEN`. In-process, unlike Roistat: fourteen accounts' daily
+ * rows are a few hundred small objects, not a five-megabyte page, and the
+ * calls go to Meta, never to Bitrix24, so the portal's budget is untouched.
+ */
+const META_EVERY = Number(process.env.SYNC_META_EVERY ?? 60)
+const META_TOKEN = process.env.META_ACCESS_TOKEN?.trim() || null
 
 /**
  * How many ticks between deletion sweeps. Default: 60 = hourly.
@@ -318,6 +334,25 @@ async function pruneSyncLog(db: PrismaClient): Promise<void> {
     console.warn(`  ${stamp()} ! sync_log tozalanmadi:`, error)
   }
 }
+
+/**
+ * THE ONE-OFF DEALS RE-READ, requested in code. Null when nothing is owed.
+ *
+ * Set on 2026-09-19 for «Target tahlili»: three new deal columns (targetolog,
+ * creative, primarySource) that the sync fills only on deals the portal
+ * touches again. This re-reads everything modified since 1 August, once, in
+ * the night window, through THIS process's provider — the same 2 rps limiter,
+ * hourly ceiling and refusal gate as the minute tick, so there is never a
+ * second process asking the portal for anything. Settled by a `DEALS /
+ * BACKFILL` success in `sync_log` after `requestedAt`; dropped unserved after
+ * `BACKFILL_EXPIRES_MS`. The next column that needs one replaces this value.
+ */
+const DEALS_BACKFILL: DealsBackfill | null = {
+  since: new Date('2026-08-01T00:00:00+05:00'),
+  requestedAt: new Date('2026-09-19T00:00:00+05:00'),
+}
+
+const WORKER_TIME_ZONE = process.env.APP_TIMEZONE ?? 'Asia/Tashkent'
 
 /** How recent a logged refusal must be to start the next worker already closed. */
 const SEED_MAX_AGE_MS = 15 * 60_000
@@ -777,11 +812,33 @@ async function main() {
 
   await pruneSyncLog(prisma)
 
+  // Unknown reads as «not yet settled»: a second backfill costs a night's
+  // invocations, a skipped one leaves the columns empty for good.
+  let backfillSettled = DEALS_BACKFILL === null
+  let backfillFailedAt: Date | null = null
+  if (DEALS_BACKFILL) {
+    try {
+      backfillSettled =
+        (await prisma.syncLog.findFirst({
+          where: {
+            entity: 'DEALS',
+            mode: 'BACKFILL',
+            status: { in: ['SUCCESS', 'PARTIAL'] },
+            startedAt: { gte: DEALS_BACKFILL.requestedAt },
+          },
+          select: { id: true },
+        })) !== null
+    } catch (error) {
+      console.warn(`  ${stamp()} ! backfill holati oʻqilmadi:`, error)
+    }
+  }
+
   console.log(
     `  Sinxronizatsiya har ${INTERVAL_SEC}s. Maʼlumotnomalar har ${REFERENCE_EVERY} tsiklda` +
       ` (oxirgisi: ${lastReferenceAt?.toISOString() ?? 'yozilmagan'}).` +
       (SWEEP_EVERY > 0 ? ` Oxirgi tozalash: ${lastSweepAt?.toISOString() ?? 'yozilmagan'}.` : '') +
       (ROISTAT_EVERY > 0 ? ` Roistat har ${ROISTAT_EVERY} tsiklda.` : ' Roistat oʻchirilgan.') +
+      (META_TOKEN && META_EVERY > 0 ? ` Meta har ${META_EVERY} tsiklda.` : ' Meta oʻchirilgan (token yoʻq).') +
       (SWEEP_EVERY > 0
         ? ` Oʻchirilganlarni tozalash har ${SWEEP_EVERY} tsiklda.`
         : ' Tozalash oʻchirilgan.') +
@@ -1107,6 +1164,41 @@ async function main() {
     }
 
     /*
+      THE ONE-OFF BACKFILL — see `DEALS_BACKFILL`. Same guards as the sweep:
+      never tick 0, never while recovering from a block, never with the gate
+      shut; plus the night window. PARTIAL settles it like SUCCESS — a skipped
+      deal is one the portal no longer resolves, and re-reading the window
+      would skip it again.
+    */
+    const backfillNow = new Date()
+    if (
+      DEALS_BACKFILL &&
+      tick > 0 &&
+      calm === 0 &&
+      !provider.gate.isOpen() &&
+      !stopping &&
+      isBackfillDue(DEALS_BACKFILL, backfillSettled, backfillNow, WORKER_TIME_ZONE, backfillFailedAt)
+    ) {
+      const backfillStarted = Date.now()
+      console.log(
+        `  ${stamp()} backfill: ${DEALS_BACKFILL.since.toISOString().slice(0, 10)} dan beri` +
+          ' oʻzgargan bitimlar qayta oʻqilmoqda',
+      )
+      const r = await engine.runEntity('DEALS', 'BACKFILL', { updatedSince: DEALS_BACKFILL.since })
+      if (r.status === 'SUCCESS' || r.status === 'PARTIAL') {
+        backfillSettled = true
+        console.log(
+          `  ${stamp()} backfill tugadi: ${r.recordsRead} bitim oʻqildi, ${r.recordsUpdated} yangilandi` +
+            `  (${((Date.now() - backfillStarted) / 1000).toFixed(1)}s,` +
+            ` soatlik ${provider.budget.state(new Date()).spent}/${provider.budget.state(new Date()).ceiling})`,
+        )
+      } else {
+        backfillFailedAt = new Date()
+        console.warn(`  ${stamp()} backfill muvaffaqiyatsiz: ${r.errorMessage ?? r.status} — bir soatdan keyin`)
+      }
+    }
+
+    /*
       After the Bitrix tick, never instead of it: the portal sync is what the
       dashboard is judged on, and an hourly page fetch must not delay it.
 
@@ -1116,6 +1208,35 @@ async function main() {
     */
     if (ROISTAT_EVERY > 0 && tick > 0 && tick % ROISTAT_EVERY === 0 && !stopping) {
       await runRoistatImport()
+    }
+
+    /*
+      Meta, on the same «after the tick, never tick 0» rule. Offset by half a
+      period from Roistat so the two passengers never ride the same tick. A
+      failure is logged and forgotten until the next hour — Meta being down
+      must never cost a Bitrix24 tick.
+    */
+    if (
+      META_TOKEN &&
+      META_EVERY > 0 &&
+      tick > 0 &&
+      (tick + Math.floor(META_EVERY / 2)) % META_EVERY === 0 &&
+      !stopping
+    ) {
+      const metaStarted = Date.now()
+      try {
+        const r = await importMetaSpend(
+          prisma,
+          META_TOKEN,
+          zonedDateKey(new Date(), WORKER_TIME_ZONE),
+        )
+        console.log(
+          `  ${stamp()} meta: ${r.accounts} akkaunt, ${r.rows} kun-qator (${r.since} – ${r.until})` +
+            `  (${((Date.now() - metaStarted) / 1000).toFixed(1)}s)`,
+        )
+      } catch (error) {
+        console.warn(`  ${stamp()} meta muvaffaqiyatsiz: ${(error as Error).message}`)
+      }
     }
 
     tick += 1

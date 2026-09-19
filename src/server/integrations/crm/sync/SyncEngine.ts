@@ -285,19 +285,16 @@ export class SyncEngine {
     options: {
       sweepDeleted?: boolean
       /**
-       * Read only what changed since this instant, whatever the mode says.
-       *
-       * For a backfill after a new column lands: `resync -- DEALS --since=`
-       * re-reads the weeks a screen needs instead of all ~420 000 deals. A
-       * sweep over a partial read would delete every row outside the window,
-       * so the two cannot be combined.
+       * Where a BACKFILL starts reading: everything the portal modified since
+       * this instant. Required by BACKFILL and ignored by the other modes.
        */
       updatedSince?: Date
     } = {},
   ): Promise<SyncResult> {
-    if (options.updatedSince && options.sweepDeleted) {
-      throw new Error('runEntity: a deletion sweep needs a complete read, not updatedSince')
+    if (mode === 'BACKFILL' && !options.updatedSince) {
+      throw new Error('runEntity: BACKFILL needs updatedSince')
     }
+
     const handler = this.handlers.get(entity)
 
     if (!handler) {
@@ -326,10 +323,11 @@ export class SyncEngine {
     const startedAt = this.now()
 
     const watermark =
-      options.updatedSince ??
-      (mode === 'INCREMENTAL'
-        ? await this.store.getCursor(this.provider.source, entity)
-        : undefined)
+      mode === 'BACKFILL'
+        ? options.updatedSince
+        : mode === 'INCREMENTAL'
+          ? await this.store.getCursor(this.provider.source, entity)
+          : undefined
 
     let read = 0
     let created = 0
@@ -442,11 +440,11 @@ export class SyncEngine {
      * failed to write.
      */
     /*
-      A windowed backfill (`updatedSince`) never moves the watermark: it says
-      nothing about what changed BEFORE its window, and if the worker's own
-      cursor sits earlier than that window, advancing it would skip the gap.
+      A BACKFILL never moves the watermark: it says nothing about what changed
+      BEFORE its window, and if the worker's own cursor sits earlier than that
+      window, advancing it would skip the gap.
     */
-    if (!fatal && failed === 0 && !options.updatedSince) {
+    if (!fatal && failed === 0 && mode !== 'BACKFILL') {
       await this.store.setCursor(
         this.provider.source,
         entity,

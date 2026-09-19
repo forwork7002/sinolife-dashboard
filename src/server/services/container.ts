@@ -74,7 +74,7 @@ export const marketingService = new MarketingService(marketingRepository)
   header of targetService.ts.
 */
 export const targetRepository = new TargetRepository(prisma)
-export const targetService = new TargetService(targetRepository, marketingService)
+export const targetService = new TargetService(targetRepository, marketingRepository)
 export const sellerBoardService = new SellerBoardService(
   sellerBoardRepository,
   insightsRepository,

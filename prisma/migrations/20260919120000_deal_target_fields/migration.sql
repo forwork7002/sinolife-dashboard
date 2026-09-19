@@ -17,3 +17,10 @@ ALTER TABLE "deal" ADD COLUMN "primarySource" TEXT;
 
 -- The screen reads one set of sources over a creation window.
 CREATE INDEX "deal_sourceId_createdAtSource_idx" ON "deal" ("sourceId", "createdAtSource");
+
+/*
+  The sync_log mode that pass writes. Its own value rather than FULL, because
+  the worker reads its last DEALS / FULL row as «when did the deletion sweep
+  last run» — a backfill logged as FULL would postpone the sweep by a day.
+*/
+ALTER TYPE "SyncMode" ADD VALUE 'BACKFILL';

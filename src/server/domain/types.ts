@@ -130,6 +130,13 @@ export const TARGET_SCOPES = ['target', 'all'] as const
 export type TargetScope = (typeof TARGET_SCOPES)[number]
 
 /**
+ * The two products the ads sell, as the client's «Лид база» sheet splits them.
+ * A Meta ad account and a target page each belong to exactly one.
+ */
+export const TARGET_PRODUCTS = ['Collagen', 'Zextra'] as const
+export type TargetProduct = (typeof TARGET_PRODUCTS)[number]
+
+/**
  * What a single stage move says about an order's confirmation.
  *
  * The outcomes above are what an ORDER ends up in; these are what a STAGE
@@ -234,7 +241,7 @@ export const SYNC_ORDER: readonly SyncEntityValue[] = [
   'CALLS',
 ]
 
-export const SYNC_MODES = ['FULL', 'INCREMENTAL'] as const
+export const SYNC_MODES = ['FULL', 'INCREMENTAL', 'BACKFILL'] as const
 export type SyncModeValue = (typeof SYNC_MODES)[number]
 
 export const SYNC_STATUSES = ['RUNNING', 'SUCCESS', 'PARTIAL', 'FAILED'] as const

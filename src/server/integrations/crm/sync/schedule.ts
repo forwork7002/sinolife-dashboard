@@ -43,3 +43,56 @@ export function isPassDue(
  * cannot turn into a loop and short enough that a blip does not cost a day.
  */
 export const SWEEP_RETRY_MS = 60 * 60_000
+
+/**
+ * A one-off re-read of recent deals, requested in code when a new deal column
+ * lands — «Target tahlili»'s `targetolog`, `creative` and `primarySource` on
+ * 2026-09-19. Without it those columns fill only on deals the portal happens
+ * to touch again, and last month's leads stay «Koʻrsatilmagan» forever.
+ */
+export interface DealsBackfill {
+  /** Tashkent midnight of the first day to re-read (by DATE_MODIFY). */
+  readonly since: Date
+  /** When it was asked for; a success logged after this settles it. */
+  readonly requestedAt: Date
+}
+
+/**
+ * A request nobody has served in two weeks is dropped, not kept alive.
+ *
+ * Shorter than `sync_log`'s 30-day retention on purpose: the success row that
+ * settles a request must outlive the request, or a pruned log would re-run it.
+ */
+export const BACKFILL_EXPIRES_MS = 14 * 86_400_000
+
+/**
+ * The night hours a backfill may run in, Tashkent time: [01:00, 06:00).
+ *
+ * A windowed re-read is thousands of invocations the minute tick would never
+ * spend. Bitrix24's OVERLOAD_LIMIT is portal-wide and shared with the client's
+ * other integrations, and both blocks we have seen came in working hours — so
+ * the one expensive thing we choose to do, we do while the floor is asleep.
+ */
+const BACKFILL_NIGHT = { fromHour: 1, toHour: 6 } as const
+
+function hourIn(now: Date, timeZone: string): number {
+  return Number(
+    new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone }).format(now),
+  )
+}
+
+/** Whether the backfill should run on this tick. */
+export function isBackfillDue(
+  backfill: DealsBackfill | null,
+  settled: boolean,
+  now: Date,
+  timeZone: string,
+  lastFailedAt: Date | null,
+): boolean {
+  if (backfill === null || settled) return false
+  if (now.getTime() - backfill.requestedAt.getTime() > BACKFILL_EXPIRES_MS) return false
+  const hour = hourIn(now, timeZone)
+  if (hour < BACKFILL_NIGHT.fromHour || hour >= BACKFILL_NIGHT.toHour) return false
+  // A refusal waits an hour, the sweep's rule — never a retry on the next tick.
+  return lastFailedAt === null || now.getTime() - lastFailedAt.getTime() >= SWEEP_RETRY_MS
+}

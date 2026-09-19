@@ -14,6 +14,7 @@ import type {
   LogisticsRoleValue,
   PipelineRoleValue,
   StageCategoryValue,
+  TargetProduct,
 } from '@/server/domain/types'
 
 // ---------------------------------------------------------------------------
@@ -410,15 +411,23 @@ export const UF_FIELDS: readonly string[] = Object.freeze(Object.values(UF))
  * Ids, not names: a page renamed next month keeps its id, and the name is read
  * from `sales_source` at query time.
  */
-export const TARGET_SOURCE_IDS: readonly string[] = Object.freeze([
-  'UC_0FMQ5Q', // sinolife_otziv
-  'UC_1X1J24', // sinolifeuz
-  'UC_A8LE21', // zextrauzb
-  'UC_LBSZDU', // zextra.sinolife
-  '38|NEXTBOT', // zextrasure.uz
-  'UC_A4WINR', // sinolifeuzb (Telegram)
-  'UC_U9KZG8', // sinolifeofficial (Telegram)
-])
+export const TARGET_SOURCE_PRODUCT: Readonly<Record<string, TargetProduct>> = Object.freeze({
+  UC_0FMQ5Q: 'Collagen', // sinolife_otziv
+  UC_1X1J24: 'Collagen', // sinolifeuz
+  UC_A4WINR: 'Collagen', // sinolifeuzb (Telegram)
+  UC_U9KZG8: 'Collagen', // sinolifeofficial (Telegram)
+  UC_A8LE21: 'Zextra', // zextrauzb
+  UC_LBSZDU: 'Zextra', // zextra.sinolife
+  '38|NEXTBOT': 'Zextra', // zextrasure.uz
+})
+
+/**
+ * The same seven ids as a list. Which product each page sells is the map
+ * above: the Sinolife pages advertise the collagen, the Zextra pages Zextra —
+ * the split the «Лид база» sheet makes, so a product's Meta spend can stand
+ * beside the leads its own pages brought in.
+ */
+export const TARGET_SOURCE_IDS: readonly string[] = Object.freeze(Object.keys(TARGET_SOURCE_PRODUCT))
 
 /**
  * Confirmation outcome, from the label rather than the item id.

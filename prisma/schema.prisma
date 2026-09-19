@@ -241,6 +241,10 @@ enum SyncEntity {
 enum SyncMode {
   FULL
   INCREMENTAL
+  /// A windowed re-read after a new column lands: everything the portal
+  /// modified since a stated day, upserted like any run. Never moves the
+  /// watermark and is never read as a deletion sweep (those are DEALS / FULL).
+  BACKFILL
 }
 
 enum SyncStatus {
@@ -1291,6 +1295,42 @@ model MarketingSnapshot {
   rowCount   Int
 
   @@map("marketing_snapshot")
+}
+
+// ---------------------------------------------------------------------------
+// Marketing · Meta Ads, read directly
+//
+// The client's «Лид база» sheet is typed by hand from Meta Ads Manager: one
+// column per targetolog per product, one row per day, in dollars. This table
+// is that source read straight from the Marketing API (GET only — the token can
+// write and nothing here ever does), by `importMetaSpend` from the sync worker.
+//
+// ACCOUNT-DAY GRAIN, NO PRODUCT AND NO TARGETOLOG. Which targetolog and which
+// product an ad account belongs to is decided at read time by
+// `META_ACCOUNT_OWNERS`, so correcting the mapping never needs a re-import.
+// Like MarketingDaily, never joined to a Bitrix24 row.
+// ---------------------------------------------------------------------------
+
+/// One Meta ad account on one day, as the Insights API reports it.
+model MetaAdDaily {
+  id          String   @id @default(cuid())
+  /// `account_id` without the `act_` prefix.
+  accountId   String
+  /// The account's name when last imported — «Zextra Eldor», «Umar - 64».
+  accountName String
+  /// The account's own reporting day (its timezone is UTC+5, as Tashkent's).
+  date        DateTime @db.Date
+  /// USD micro units (1e6 per dollar), MarketingDaily's convention.
+  spendMicroUsd BigInt @default(0)
+  impressions   BigInt @default(0)
+  clicks        BigInt @default(0)
+  /// Leads as META counts them (`actions` of type `lead`) — not Bitrix24's.
+  leads         Int    @default(0)
+  importedAt    DateTime @default(now())
+
+  @@unique([accountId, date])
+  @@index([date])
+  @@map("meta_ad_daily")
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isPassDue } from '@/server/integrations/crm/sync/schedule'
+import { isBackfillDue, isPassDue } from '@/server/integrations/crm/sync/schedule'
 
 /**
  * A DEPLOY MUST NOT COST THE PORTAL A PASS.
@@ -36,5 +36,35 @@ describe('slow-clock passes', () => {
   it('never runs a pass that is switched off', () => {
     expect(isPassDue(null, NOW, 0)).toBe(false)
     expect(isPassDue(null, NOW, Number.NaN)).toBe(false)
+  })
+})
+
+describe('isBackfillDue — the one-off deals re-read', () => {
+  const backfill = {
+    since: new Date('2026-08-01T00:00:00+05:00'),
+    requestedAt: new Date('2026-09-19T00:00:00+05:00'),
+  }
+  const at = (iso: string) => new Date(iso)
+  const TZ = 'Asia/Tashkent'
+
+  it('runs only in the Tashkent night, 01:00 to 06:00', () => {
+    expect(isBackfillDue(backfill, false, at('2026-09-20T00:59:00+05:00'), TZ, null)).toBe(false)
+    expect(isBackfillDue(backfill, false, at('2026-09-20T01:00:00+05:00'), TZ, null)).toBe(true)
+    expect(isBackfillDue(backfill, false, at('2026-09-20T05:59:00+05:00'), TZ, null)).toBe(true)
+    expect(isBackfillDue(backfill, false, at('2026-09-20T06:00:00+05:00'), TZ, null)).toBe(false)
+    expect(isBackfillDue(backfill, false, at('2026-09-20T14:00:00+05:00'), TZ, null)).toBe(false)
+  })
+
+  it('never runs twice, never with nothing asked for, never after the request expires', () => {
+    const night = at('2026-09-20T02:00:00+05:00')
+    expect(isBackfillDue(backfill, true, night, TZ, null)).toBe(false)
+    expect(isBackfillDue(null, false, night, TZ, null)).toBe(false)
+    expect(isBackfillDue(backfill, false, at('2026-10-04T02:00:00+05:00'), TZ, null)).toBe(false)
+  })
+
+  it('waits an hour after a failure — never a retry on the next tick', () => {
+    const night = at('2026-09-20T02:00:00+05:00')
+    expect(isBackfillDue(backfill, false, night, TZ, at('2026-09-20T01:30:00+05:00'))).toBe(false)
+    expect(isBackfillDue(backfill, false, night, TZ, at('2026-09-20T00:59:00+05:00'))).toBe(true)
   })
 })

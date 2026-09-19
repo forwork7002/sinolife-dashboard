@@ -425,7 +425,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` — ONE reading, the MATRIX FIRST. It had two modes («Oddiy» / «Batafsil», `?mode=`) until 2026-09-16; the manager's view and everything only it read are deleted. The matrix has THREE readings of one fetch — «Jami qaytgan» / «Oylik» / «Pul» — and ONE control that is a different question: `?rop=`, the acquiring team, which is its own cache entry and its own request | `/insights/cohorts`, `/insights/customers`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | **nothing — the screen is DATELESS since 2026-09-15** (`period={false}`, like Struktura), and it now carries TWO CLOCKS, each named on screen. `closedAt` on revenue-bearing WON deals is the clock the matrix and the concentration band read; `/insights/customers` reads `createdAtSource` over its OWN trailing 90 days, so its customer totals legitimately differ — never sum across them; the matrix takes no window at all (`months` bounds which cohort ROWS are drawn and never the totals arm) and `/insights/concentration` resolves its OWN trailing 90 days (`trailingDays`). Nothing here reads `createdAtSource` |
 | Qoʻngʻiroqlar | `/customers` | `calls/CallsPage` + `CallTable` | `/insights/calls` | Insights → Insights | `call_record."startedAt"` on the dashboard window, clamped below at `CALL_DATA_FLOOR` (2026-09-15 00:00 Tashkent). One clock, one request |
 | Reklama samarasi | `/marketing` | **PAUSED** — `shared/SectionPending`; `marketing/MarketingPage` is held, not mounted | none while paused (`/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` still answer) | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
-| Target tahlili | `/target` | `target/TargetPage` + `TargetGroupTable` + `TargetLeadTable` + `TargetAds` | `/target/overview`, `/target/leads`, and `/marketing/breakdown` (which admits `['marketing', 'target']`) for the campaign table | Target → Target, Marketing → Marketing | **the deal's creation, `createdAtSource`** — a lead on the day it was registered, a sale on the day the seller's deal was opened. The ad block is the Roistat ledger over the same calendar days, on `marketing_daily."date"` |
+| Target tahlili | `/target` | `target/TargetPage` + `TargetGroupTable` + `TargetLeadTable` + `TargetMeta` | `/target/overview`, `/target/leads` | Target → Target | **the deal's creation, `createdAtSource`** — a lead on the day it was registered, a sale on the day the seller's deal was opened. The Meta block reads `meta_ad_daily."date"` over the same Tashkent calendar days |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
 | Tasdiqlash navbati | `/confirmation` | `confirmation/ConfirmationPage` | `/insights/confirmations/orders` | Insights → Insights | **the arrival in `C4:NEW`** — the latest `deal_stage_history` row whose stage signals `CONFIRM_NEW`; `?queue=backlog` (where the bell lands) drops the window entirely |
@@ -463,12 +463,29 @@ Per-screen traps worth knowing before you touch one:
   `creative` and `primarySource` (type unknown while empty, read with
   `labelOrText`). Null is «Koʻrsatilmagan», never organic; 5% of target leads
   carried a targetolog on 16.08–15.09.2026 and the screen prints that share.
-  Backfill a window with `npm run bitrix:resync -- DEALS --since=YYYY-MM-DD`
-  (`runEntity`'s `updatedSince`, which never moves the worker's watermark).
-  **THE AD BLOCK IS THE ROISTAT LEDGER, SIDE BY SIDE.** Its lead count is
-  printed beside the portal's, never divided into it. On 2026-09-19 the blob
-  had 13 M September impressions and $0 / 0 leads — the sheet's spend is
-  filled later — so `TargetAds` says so instead of printing a bare «$0.00».
+  They are backfilled by the WORKER, once: `DEALS_BACKFILL` in
+  `syncWorker.ts` re-reads every deal modified since 2026-08-01 in the
+  Tashkent night (01:00–06:00), through the worker's own provider — same
+  limiter, hourly ceiling and refusal gate, never a second process on the
+  portal. It runs as sync mode `BACKFILL` (new enum value): never moves the
+  watermark and is never mistaken for the DEALS / FULL deletion sweep. A
+  BACKFILL success after `requestedAt` settles it; unserved requests expire in
+  14 days. By hand: `npm run bitrix:resync -- DEALS --since=YYYY-MM-DD`.
+  **THE AD SPEND IS META, READ DIRECTLY — the client's «Лид база» sheet.**
+  `importMetaSpend` (src/server/integrations/meta) reads Meta Ads Insights per
+  ad account per day into `meta_ad_daily`, hourly from the worker
+  (`SYNC_META_EVERY`, off without `META_ACCESS_TOKEN`). GET ONLY: the
+  client's system-user token also carries `ads_management`, and nothing here
+  may ever write. `META_ACCOUNT_OWNERS` maps each account to a targetolog and
+  a product AT READ TIME (fix the map, history follows); an unmapped account
+  shows as «Boshqa», never dropped. Checked 2026-09-19 against the sheet: Aug 1
+  and 2 match to the cent per column; July's Timur columns did not reconcile
+  (Zextra 4 846,7 $ vs 5 353,4 $). The sheet's Organic / Telegram / Аббос
+  columns are outside these accounts, and the screen says so. Each product's
+  spend is set beside its own pages' Bitrix24 leads and delivered money
+  (`TARGET_SOURCE_PRODUCT`) — «1 Bitrix24 lead narxi» and ROAS name both
+  sources; ROAS borrows the Roistat snapshot's UZS rate. The Roistat page's
+  own ad figures are NOT on this screen: they run weeks behind Meta.
   Company-wide (`analytics:read:all`, in `COMPANY_WIDE`): it names customers
   and phones, and neither half has a team to narrow by.
 

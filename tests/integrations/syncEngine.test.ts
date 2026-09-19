@@ -710,3 +710,30 @@ describe('watermark for a record that settles after it is first read', () => {
     )
   })
 })
+
+describe('BACKFILL — the windowed re-read after a new column lands', () => {
+  it('reads only what changed since the stated day, and never moves the watermark', async () => {
+    const table = new FakeTable()
+    const store = new FakeStore()
+    const source = rows(30)
+    const { engine } = engineWith([makeHandler('DEALS', source, table)], store)
+    const cursorBefore = new Date(NOW.getTime() - 5 * 60_000)
+    await store.setCursor('DEMO', 'DEALS', cursorBefore)
+
+    const since = source[19]!.updatedAtSource!
+    const result = await engine.runEntity('DEALS', 'BACKFILL', { updatedSince: since })
+
+    expect(result.status).toBe('SUCCESS')
+    expect(result.recordsRead).toBe(11)
+    expect(store.runs.at(-1)!.mode).toBe('BACKFILL')
+    // The minute tick's bookmark is exactly where it was: a backfill says
+    // nothing about what changed before its own window.
+    expect(await store.getCursor('DEMO', 'DEALS')).toEqual(cursorBefore)
+  })
+
+  it('refuses to run without a window rather than re-reading everything', async () => {
+    const { engine, store } = engineWith([makeHandler('DEALS', rows(3), new FakeTable())])
+    await expect(engine.runEntity('DEALS', 'BACKFILL')).rejects.toThrow(/updatedSince/)
+    expect(store.runs).toHaveLength(0)
+  })
+})

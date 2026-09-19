@@ -1,28 +1,37 @@
 /**
  * «Target tahlili» — the service behind `/target/overview` and `/target/leads`.
  *
- * TWO LEDGERS, SIDE BY SIDE AND NEVER ADDED. The Bitrix24 half is the leads
- * the target pages brought in and what became of them (`TargetRepository`).
- * The ad half — spend, the cost of a lead, ROAS, campaigns — is the Roistat
- * ledger (`MarketingService`), the client's own Google Sheets plus Meta Ads.
- * The two count leads by different rules on different clocks, so the screen
- * prints both lead counts next to each other and never divides one ledger's
- * money by the other's count. See the Marketing block in `schema.prisma`.
+ * TWO SOURCES, SIDE BY SIDE AND NEVER ADDED. The Bitrix24 half is the leads
+ * the target pages brought in and what became of them. The ad half is Meta
+ * Ads spend per targetolog per day, read from the Marketing API into
+ * `meta_ad_daily` — the numbers the client's «Лид база» sheet is typed from.
+ * Where one is divided by the other (a product's spend per Bitrix24 lead, its
+ * ROAS) the screen names both sources on the figure.
+ *
+ * The Roistat page's own ad figures are NOT on this screen: they stop weeks
+ * behind Meta (on 2026-09-19 September carried impressions and not a dollar),
+ * and two spend figures for one day would contradict each other. Only its
+ * UZS/USD rate is borrowed, for ROAS.
  */
 
-import { TARGET_SOURCE_IDS } from '@/server/integrations/crm/bitrix24/mapping'
+import {
+  TARGET_SOURCE_IDS,
+  TARGET_SOURCE_PRODUCT,
+} from '@/server/integrations/crm/bitrix24/mapping'
+import { type MetaProduct, ownerOf } from '@/server/integrations/meta/accounts'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
 import {
   NOT_STATED,
   type TargetCountersRow,
   type TargetGroupRow,
+  type MetaSpendRow,
   type TargetLeadRow,
   type TargetRepository,
 } from '@/server/repositories/targetRepository'
 import type { TargetScope } from '@/server/domain/types'
 
-import type { MarketingOverviewDto, MarketingService } from './marketingService'
+import type { MarketingRepository } from '@/server/repositories/marketingRepository'
 import { keyPart, ttlCache } from './ttlCache'
 
 // ---------------------------------------------------------------------------
@@ -40,7 +49,6 @@ export interface TargetCountersDto {
   readonly leads: number
   readonly leadCustomers: number
   readonly leadWon: number
-  readonly leadLost: number
   /** leadWon / leads — the registrar passed the lead on. */
   readonly passPercent: number | null
   readonly sales: number
@@ -54,9 +62,6 @@ export interface TargetCountersDto {
   readonly returnedMoney: MoneyDto
   /** delivered / (delivered + returned) — of the parcels that resolved. */
   readonly buyoutPercent: number | null
-  readonly inTransit: number
-  readonly confirming: number
-  readonly sellerLost: number
   /** deliveredMoney / delivered. */
   readonly averageCheque: MoneyDto | null
   /** deliveredMoney / leads — what one lead brought in, on average. */
@@ -71,20 +76,13 @@ export interface TargetStageDto {
   readonly kind: 'lead' | 'sale'
   readonly pipeline: string
   readonly stage: string
-  readonly category: string
   readonly deals: number
   readonly amount: MoneyDto
 }
 
-export interface TargetSourceDto {
-  readonly name: string
-  readonly isTarget: boolean
-}
-
 export interface TargetOverviewDto {
-  readonly scope: TargetScope
-  /** Every source the portal names; `isTarget` marks the seven ad pages. */
-  readonly sources: readonly TargetSourceDto[]
+  /** The seven ad pages' names, as the portal spells them — what «target» means. */
+  readonly targetSources: readonly string[]
   readonly total: TargetCountersDto
   readonly bySource: readonly TargetGroupDto[]
   readonly byTargetolog: readonly TargetGroupDto[]
@@ -94,20 +92,76 @@ export interface TargetOverviewDto {
   readonly stages: readonly TargetStageDto[]
   /** What an empty targetolog / creative / source is filed under. */
   readonly notStated: string
-  /**
-   * The ad ledger over the same calendar days, or null when it was never
-   * imported. Its own window: the ledger clamps to the days it holds.
-   */
-  readonly ads: Pick<
-    MarketingOverviewDto,
-    'snapshot' | 'window' | 'current' | 'previous' | 'daily' | 'feedCoverage'
-  > | null
+  /** Meta Ads spend over the same calendar days — the «Лид база» sheet. */
+  readonly meta: MetaBlockDto
+}
+
+/** One «Лид база» column: a targetolog's spend on one product. */
+export interface MetaColumnDto {
+  readonly key: string
+  readonly product: MetaProduct
+  readonly targetolog: string
+}
+
+/**
+ * One day of the sheet, in dollars. `cells` lines up with `columns`; a
+ * targetolog who spent nothing that day is 0, which is what the sheet shows.
+ */
+export interface MetaDayDto {
+  readonly date: string
+  readonly total: number
+  readonly cells: readonly number[]
+}
+
+/** A targetolog on one product, over the window. */
+export interface MetaOwnerDto extends MetaColumnDto {
+  readonly spendUsd: number
+  readonly metaLeads: number
+  /** spend ÷ Meta's leads. */
+  readonly metaCplUsd: number | null
+  readonly impressions: number
+  readonly clicks: number
+  readonly ctrPercent: number | null
+  /** The ad accounts behind it, by name — so a reader can find them in Meta. */
+  readonly accounts: readonly string[]
+}
+
+/**
+ * One product: its Meta spend beside the Bitrix24 leads and money its own
+ * pages brought in over the same days. Two ledgers, one row, each figure
+ * named for its source; the ratios between them are labelled as such.
+ */
+export interface MetaProductDto {
+  readonly product: MetaProduct
+  readonly spendUsd: number
+  readonly metaLeads: number
+  readonly metaCplUsd: number | null
+  /** Регистрация leads from this product's target pages. */
+  readonly bitrixLeads: number
+  /** Meta spend ÷ Bitrix24 leads — what one registered lead cost. */
+  readonly costPerBitrixLeadUsd: number | null
+  /** Delivered money from those pages' sales deals, soʻm. */
+  readonly deliveredMoney: MoneyDto
+  /** deliveredMoney ÷ (spend × rate). Null without a rate or a spend. */
+  readonly roas: number | null
+}
+
+export interface MetaBlockDto {
+  /** When Meta was last read; null means never — the token is not set up. */
+  readonly importedAt: string | null
+  readonly window: { readonly from: string; readonly to: string }
+  readonly columns: readonly MetaColumnDto[]
+  readonly days: readonly MetaDayDto[]
+  readonly owners: readonly MetaOwnerDto[]
+  readonly products: readonly MetaProductDto[]
+  readonly total: Omit<MetaProductDto, 'product'>
+  /** UZS per USD used for ROAS — the ad ledger's rate, with its date. */
+  readonly usdRate: number | null
+  readonly usdRateDate: string | null
 }
 
 export interface TargetLeadSaleDto {
   readonly bitrixId: string | null
-  readonly createdAt: string
-  readonly pipeline: string
   readonly role: string
   readonly stage: string
   readonly status: string
@@ -153,7 +207,6 @@ export function countersDto(row: TargetCountersRow): TargetCountersDto {
     leads: row.leads,
     leadCustomers: row.leadCustomers,
     leadWon: row.leadWon,
-    leadLost: row.leadLost,
     passPercent: percent(row.leadWon, row.leads),
     sales: row.sales,
     orders: row.orders,
@@ -164,9 +217,6 @@ export function countersDto(row: TargetCountersRow): TargetCountersDto {
     returned: row.returned,
     returnedMoney: uzs(row.returnedMinor),
     buyoutPercent: percent(row.delivered, resolved),
-    inTransit: row.inTransit,
-    confirming: row.confirming,
-    sellerLost: row.sellerLost,
     averageCheque: perUnit(row.deliveredMinor, row.delivered),
     revenuePerLead: perUnit(row.deliveredMinor, row.leads),
   }
@@ -176,7 +226,6 @@ const ZERO: TargetCountersRow = {
   leads: 0,
   leadCustomers: 0,
   leadWon: 0,
-  leadLost: 0,
   sales: 0,
   orders: 0,
   orderedMinor: 0n,
@@ -184,9 +233,6 @@ const ZERO: TargetCountersRow = {
   deliveredMinor: 0n,
   returned: 0,
   returnedMinor: 0n,
-  inTransit: 0,
-  confirming: 0,
-  sellerLost: 0,
 }
 
 /**
@@ -214,6 +260,137 @@ export function fillDays(period: Period, rows: readonly TargetGroupRow[]): Targe
   return out
 }
 
+const MICRO = 1_000_000
+
+/** Micro-dollars summed exactly, then printed as dollars with cents. */
+function usd(micro: bigint): number {
+  return Math.round(Number(micro) / 10_000) / 100
+}
+
+function ratio(numerator: number, denominator: number): number | null {
+  return denominator > 0 ? numerator / denominator : null
+}
+
+const PRODUCT_ORDER: readonly MetaProduct[] = ['Collagen', 'Zextra', 'Boshqa']
+
+/**
+ * The «Лид база» block: Meta spend by day × targetolog × product, and each
+ * product's spend beside the Bitrix24 leads and money its own pages produced.
+ *
+ * Exported for its test: every total here is summed from micro-dollars and
+ * converted once, so the day totals, the column totals and the grand total
+ * agree to the cent the way the sheet's «Итог» row does.
+ */
+export function metaBlock(input: {
+  rows: readonly MetaSpendRow[]
+  importedAt: Date | null
+  window: { from: string; to: string }
+  sources: readonly TargetGroupRow[]
+  productOfSource: ReadonlyMap<string, MetaProduct | undefined>
+  usdRate: number | null
+  usdRateDate: string | null
+}): MetaBlockDto {
+  interface Acc {
+    column: MetaColumnDto
+    spend: bigint
+    leads: number
+    impressions: number
+    clicks: number
+    accounts: Set<string>
+  }
+  const owners = new Map<string, Acc>()
+  const byDay = new Map<string, Map<string, bigint>>()
+
+  for (const row of input.rows) {
+    const owner = ownerOf(row.accountId, row.accountName)
+    const key = `${owner.product}|${owner.targetolog}`
+    const acc =
+      owners.get(key) ??
+      ({
+        column: { key, product: owner.product, targetolog: owner.targetolog },
+        spend: 0n,
+        leads: 0,
+        impressions: 0,
+        clicks: 0,
+        accounts: new Set<string>(),
+      } satisfies Acc)
+    acc.spend += row.spendMicroUsd
+    acc.leads += row.leads
+    acc.impressions += row.impressions
+    acc.clicks += row.clicks
+    acc.accounts.add(row.accountName)
+    owners.set(key, acc)
+
+    const day = byDay.get(row.date) ?? new Map<string, bigint>()
+    day.set(key, (day.get(key) ?? 0n) + row.spendMicroUsd)
+    byDay.set(row.date, day)
+  }
+
+  // The sheet's order: product first, then the biggest spender first.
+  const ordered = [...owners.values()].sort(
+    (a, b) =>
+      PRODUCT_ORDER.indexOf(a.column.product) - PRODUCT_ORDER.indexOf(b.column.product) ||
+      Number(b.spend - a.spend),
+  )
+  const columns = ordered.map((a) => a.column)
+
+  const days: MetaDayDto[] = [...byDay.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, cells]) => {
+      let total = 0n
+      for (const v of cells.values()) total += v
+      return { date, total: usd(total), cells: columns.map((c) => usd(cells.get(c.key) ?? 0n)) }
+    })
+
+  const productTotals = (product: MetaProduct | null) => {
+    const accs = ordered.filter((a) => product === null || a.column.product === product)
+    const spend = accs.reduce((n, a) => n + a.spend, 0n)
+    const leads = accs.reduce((n, a) => n + a.leads, 0)
+    const sources = input.sources.filter((s) => {
+      const p = input.productOfSource.get(s.key)
+      return p !== undefined && (product === null || p === product)
+    })
+    const bitrixLeads = sources.reduce((n, s) => n + s.leads, 0)
+    const delivered = sources.reduce((n, s) => n + s.deliveredMinor, 0n)
+    const spendUsd = usd(spend)
+    const spendUzs = input.usdRate !== null ? spendUsd * input.usdRate : 0
+    return {
+      spendUsd,
+      metaLeads: leads,
+      metaCplUsd: ratio(Number(spend) / MICRO, leads),
+      bitrixLeads,
+      costPerBitrixLeadUsd: ratio(Number(spend) / MICRO, bitrixLeads),
+      deliveredMoney: uzs(delivered),
+      roas: spendUzs > 0 ? Number(delivered) / 100 / spendUzs : null,
+    }
+  }
+
+  const products = PRODUCT_ORDER.filter((p) => ordered.some((a) => a.column.product === p)).map(
+    (product) => ({ product, ...productTotals(product) }),
+  )
+
+  return {
+    importedAt: input.importedAt?.toISOString() ?? null,
+    window: input.window,
+    columns,
+    days,
+    owners: ordered.map((a) => ({
+      ...a.column,
+      spendUsd: usd(a.spend),
+      metaLeads: a.leads,
+      metaCplUsd: ratio(Number(a.spend) / MICRO, a.leads),
+      impressions: a.impressions,
+      clicks: a.clicks,
+      ctrPercent: a.impressions > 0 ? (a.clicks / a.impressions) * 100 : null,
+      accounts: [...a.accounts].sort(),
+    })),
+    products,
+    total: productTotals(null),
+    usdRate: input.usdRate,
+    usdRateDate: input.usdRateDate,
+  }
+}
+
 function leadDto(row: TargetLeadRow): TargetLeadDto {
   return {
     bitrixId: row.bitrixId,
@@ -231,8 +408,6 @@ function leadDto(row: TargetLeadRow): TargetLeadDto {
     sale: row.sale
       ? {
           bitrixId: row.sale.bitrixId,
-          createdAt: row.sale.createdAt.toISOString(),
-          pipeline: row.sale.pipeline,
           role: row.sale.role,
           stage: row.sale.stage,
           status: row.sale.status,
@@ -269,7 +444,7 @@ export interface TargetLeadsQuery {
 export class TargetService {
   constructor(
     private readonly repository: TargetRepository,
-    private readonly marketing: MarketingService,
+    private readonly marketing: MarketingRepository,
   ) {}
 
   private sourceIds(scope: TargetScope): readonly string[] | null {
@@ -280,7 +455,6 @@ export class TargetService {
     period: Period,
     scope: TargetScope,
     timeZone: string,
-    now: Date,
   ): Promise<TargetOverviewDto> {
     const sourceIds = this.sourceIds(scope)
     const key = [
@@ -295,18 +469,24 @@ export class TargetService {
       to: zonedDateKey(new Date(period.end.getTime() - 1), timeZone),
     }
 
-    const [summary, sources, ads] = await Promise.all([
+    const [summary, targetSources, snapshot, metaRows, metaImportedAt] = await Promise.all([
       summaryCache.get(key, () => this.repository.summary({ period, sourceIds })),
-      this.repository.sources(TARGET_SOURCE_IDS),
-      this.marketing.overview(window, timeZone, now),
+      this.repository.targetSources(TARGET_SOURCE_IDS),
+      this.marketing.snapshot(),
+      this.repository.metaSpend(window.from, window.to),
+      this.repository.metaImportedAt(),
     ])
 
     const group = (rows: readonly TargetGroupRow[]): TargetGroupDto[] =>
       rows.map((row) => ({ key: row.key, ...countersDto(row) }))
 
+    // Which product each of this window's source rows sells, by the page's id.
+    const productOfSource = new Map(
+      targetSources.map((s) => [s.name, TARGET_SOURCE_PRODUCT[s.externalId]] as const),
+    )
+
     return {
-      scope,
-      sources: sources.map((s) => ({ name: s.name, isTarget: s.isTarget })),
+      targetSources: targetSources.map((s) => s.name),
       total: countersDto(summary.total),
       bySource: group(summary.sources),
       byTargetolog: group(summary.targetologs),
@@ -316,21 +496,20 @@ export class TargetService {
         kind: s.kind,
         pipeline: s.pipeline,
         stage: s.stage,
-        category: s.category,
         deals: s.deals,
         amount: uzs(s.amountMinor),
       })),
       notStated: NOT_STATED,
-      ads: ads.snapshot
-        ? {
-            snapshot: ads.snapshot,
-            window: ads.window,
-            current: ads.current,
-            previous: ads.previous,
-            daily: ads.daily,
-            feedCoverage: ads.feedCoverage,
-          }
-        : null,
+      meta: metaBlock({
+        rows: metaRows,
+        importedAt: metaImportedAt,
+        window,
+        sources: summary.sources,
+        productOfSource,
+        // Micro-soʻm per dollar, as the ledger stores it.
+        usdRate: snapshot ? Number(snapshot.usdRateMicro) / 1_000_000 : null,
+        usdRateDate: snapshot?.rateDate ?? null,
+      }),
     }
   }
 

@@ -69,7 +69,6 @@ const ZERO = {
   leads: 0n,
   lead_customers: 0n,
   lead_won: 0n,
-  lead_lost: 0n,
   sales: 0n,
   orders: 0n,
   ordered_minor: '0',
@@ -77,9 +76,6 @@ const ZERO = {
   delivered_minor: '0',
   returned: 0n,
   returned_minor: '0',
-  in_transit: 0n,
-  confirming: 0n,
-  seller_lost: 0n,
   stage_amount: '0',
 }
 
@@ -134,7 +130,6 @@ describe('the target summary statement', () => {
         kind: 'lead',
         pipeline: 'Регистрация',
         stage: 'Дубликат',
-        category: 'LOST',
         stage_order: 4,
         pipeline_order: 1,
         leads: 2n,
@@ -145,7 +140,6 @@ describe('the target summary statement', () => {
         kind: 'lead',
         pipeline: 'Регистрация',
         stage: 'Обработка',
-        category: 'IN_PROGRESS',
         stage_order: 0,
         pipeline_order: 1,
         leads: 8n,
@@ -235,15 +229,13 @@ describe('the lead list statements', () => {
             {
               ...lead,
               sale_bitrix_id: '1405147',
-              sale_created_at: new Date('2026-09-19T06:00:00Z'),
-              sale_pipeline: 'Доставка',
               sale_role: 'REVENUE',
               sale_stage: 'Доставлено',
               sale_status: 'WON',
               sale_amount: '69000000',
               sale_seller: 'Aziz M.',
             },
-            { ...lead, bitrix_id: '905148', sale_pipeline: null },
+            { ...lead, bitrix_id: '905148', sale_bitrix_id: null, sale_role: null },
           ],
     )
     const { rows, total } = await repository.leads({

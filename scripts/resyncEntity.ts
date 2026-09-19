@@ -84,7 +84,9 @@ async function main() {
 
     for (const entity of requested) {
       if (since) console.log(`\n  ${entity}: faqat ${sinceArg} dan beri oʻzgarganlar`)
-      const r = await engine.runEntity(entity, 'FULL', since ? { updatedSince: since } : {})
+      const r = since
+        ? await engine.runEntity(entity, 'BACKFILL', { updatedSince: since })
+        : await engine.runEntity(entity, 'FULL')
       console.log(
         `\n  ${r.entity}: ${r.status}  read=${r.recordsRead}` +
           `  created=${r.recordsCreated} updated=${r.recordsUpdated}` +

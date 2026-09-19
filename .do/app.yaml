@@ -144,6 +144,15 @@ envs:
     type: SECRET
     value: CHANGE_ME
 
+  # Meta Marketing API, read-only use (GET only) — «Target tahlili»'s spend per
+  # targetolog, imported hourly by the sync worker into meta_ad_daily. A
+  # system-user token that does not expire. Unset means the import is off and
+  # the screen says so; nothing else depends on it.
+  - key: META_ACCESS_TOKEN
+    scope: RUN_TIME
+    type: SECRET
+    value: CHANGE_ME
+
   - key: BITRIX24_RATE_LIMIT_RPS
     scope: RUN_TIME
     value: "2"

@@ -201,7 +201,7 @@ function StageText({ stage, category }: { stage: string; category: string }) {
 }
 
 /** Where the sale stands, in the floor's words. */
-export function saleState(sale: TargetLeadSaleDto): { label: string; tone: string | undefined } {
+function saleState(sale: TargetLeadSaleDto): { label: string; tone: string | undefined } {
   if (sale.role === 'REVENUE') {
     if (sale.status === 'WON') return { label: 'Yetkazildi', tone: 'var(--status-good)' }
     if (sale.status === 'LOST') return { label: 'Qaytdi / bekor', tone: 'var(--status-critical)' }

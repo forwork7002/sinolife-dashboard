@@ -3,19 +3,11 @@
  *
  * Mirrors `src/server/services/targetService.ts`. Client code may not import
  * from `@/server/*`, so the DTOs are written out again here, the way
- * `marketingApi.ts` does for the ad ledger. Nothing checks the mirror — edit
+ * `marketingApi.ts` does for its ledger. Nothing checks the mirror — edit
  * both sides.
  */
 
 import type { MoneyDto } from '@/lib/api'
-
-import type {
-  MarketingDayDto,
-  MarketingFeedCoverageDto,
-  MarketingMetricsDto,
-  MarketingSnapshotDto,
-  MarketingWindowDto,
-} from '@/features/marketing/marketingApi'
 
 export type TargetScope = 'target' | 'all'
 
@@ -25,7 +17,6 @@ export interface TargetCountersDto {
   readonly leadCustomers: number
   /** «Сделка успешна» — the registrar passed the lead on to a seller. */
   readonly leadWon: number
-  readonly leadLost: number
   readonly passPercent: number | null
   readonly sales: number
   /** Sales deals that reached Тасдиклаш or Доставка. */
@@ -37,9 +28,6 @@ export interface TargetCountersDto {
   readonly returned: number
   readonly returnedMoney: MoneyDto
   readonly buyoutPercent: number | null
-  readonly inTransit: number
-  readonly confirming: number
-  readonly sellerLost: number
   readonly averageCheque: MoneyDto | null
   readonly revenuePerLead: MoneyDto | null
 }
@@ -52,15 +40,13 @@ export interface TargetStageDto {
   readonly kind: 'lead' | 'sale'
   readonly pipeline: string
   readonly stage: string
-  /** NEW | IN_PROGRESS | WON | LOST */
-  readonly category: string
   readonly deals: number
   readonly amount: MoneyDto
 }
 
 export interface TargetOverviewDto {
-  readonly scope: TargetScope
-  readonly sources: readonly { readonly name: string; readonly isTarget: boolean }[]
+  /** The seven ad pages' names, as the portal spells them. */
+  readonly targetSources: readonly string[]
   readonly total: TargetCountersDto
   readonly bySource: readonly TargetGroupDto[]
   readonly byTargetolog: readonly TargetGroupDto[]
@@ -68,20 +54,59 @@ export interface TargetOverviewDto {
   readonly days: readonly TargetGroupDto[]
   readonly stages: readonly TargetStageDto[]
   readonly notStated: string
-  readonly ads: {
-    readonly snapshot: MarketingSnapshotDto | null
-    readonly window: MarketingWindowDto
-    readonly current: MarketingMetricsDto
-    readonly previous: MarketingMetricsDto
-    readonly daily: readonly MarketingDayDto[]
-    readonly feedCoverage: MarketingFeedCoverageDto
-  } | null
+  readonly meta: MetaBlockDto
+}
+
+export type MetaProduct = 'Collagen' | 'Zextra' | 'Boshqa'
+
+export interface MetaColumnDto {
+  readonly key: string
+  readonly product: MetaProduct
+  readonly targetolog: string
+}
+
+export interface MetaDayDto {
+  readonly date: string
+  /** Dollars. */
+  readonly total: number
+  /** Dollars, one per `columns` entry. */
+  readonly cells: readonly number[]
+}
+
+export interface MetaOwnerDto extends MetaColumnDto {
+  readonly spendUsd: number
+  readonly metaLeads: number
+  readonly metaCplUsd: number | null
+  readonly impressions: number
+  readonly clicks: number
+  readonly ctrPercent: number | null
+  readonly accounts: readonly string[]
+}
+
+export interface MetaProductTotalsDto {
+  readonly spendUsd: number
+  readonly metaLeads: number
+  readonly metaCplUsd: number | null
+  readonly bitrixLeads: number
+  readonly costPerBitrixLeadUsd: number | null
+  readonly deliveredMoney: MoneyDto
+  readonly roas: number | null
+}
+
+export interface MetaBlockDto {
+  readonly importedAt: string | null
+  readonly window: { readonly from: string; readonly to: string }
+  readonly columns: readonly MetaColumnDto[]
+  readonly days: readonly MetaDayDto[]
+  readonly owners: readonly MetaOwnerDto[]
+  readonly products: readonly (MetaProductTotalsDto & { readonly product: MetaProduct })[]
+  readonly total: MetaProductTotalsDto
+  readonly usdRate: number | null
+  readonly usdRateDate: string | null
 }
 
 export interface TargetLeadSaleDto {
   readonly bitrixId: string | null
-  readonly createdAt: string
-  readonly pipeline: string
   /** QUALIFICATION | CONFIRMATION | REVENUE */
   readonly role: string
   readonly stage: string

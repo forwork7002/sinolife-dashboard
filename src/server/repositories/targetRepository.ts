@@ -61,8 +61,6 @@ export interface TargetCountersRow {
   readonly leadCustomers: number
   /** Leads the registrar passed on («Сделка успешна»). */
   readonly leadWon: number
-  /** Leads closed as lost: refused, duplicate, unreachable, foreign number. */
-  readonly leadLost: number
   /** Sales deals opened from these sources. */
   readonly sales: number
   /** …that reached confirmation or delivery — an ORDER. */
@@ -72,12 +70,6 @@ export interface TargetCountersRow {
   readonly deliveredMinor: bigint
   readonly returned: number
   readonly returnedMinor: bigint
-  /** In Доставка, not yet delivered or refused. */
-  readonly inTransit: number
-  /** In Тасдиклаш right now. */
-  readonly confirming: number
-  /** Closed by the seller without an order. */
-  readonly sellerLost: number
 }
 
 export interface TargetGroupRow extends TargetCountersRow {
@@ -88,7 +80,6 @@ export interface TargetStageRow {
   readonly kind: 'lead' | 'sale'
   readonly pipeline: string
   readonly stage: string
-  readonly category: string
   readonly deals: number
   readonly amountMinor: bigint
 }
@@ -101,6 +92,18 @@ export interface TargetSummaryRows {
   /** `YYYY-MM-DD` in the app timezone, oldest first. */
   readonly days: readonly TargetGroupRow[]
   readonly stages: readonly TargetStageRow[]
+}
+
+export interface MetaSpendRow {
+  readonly accountId: string
+  readonly accountName: string
+  /** `YYYY-MM-DD`, the account's reporting day. */
+  readonly date: string
+  readonly spendMicroUsd: bigint
+  readonly impressions: number
+  readonly clicks: number
+  /** Meta's own lead count. */
+  readonly leads: number
 }
 
 export interface TargetLeadFilter extends TargetWindow {
@@ -132,20 +135,12 @@ export interface TargetLeadRow {
   /** The first sales deal this contact opened on or after the lead. */
   readonly sale: {
     readonly bitrixId: string | null
-    readonly createdAt: Date
-    readonly pipeline: string
     readonly role: string
     readonly stage: string
     readonly status: string
     readonly amountMinor: bigint
     readonly seller: string | null
   } | null
-}
-
-export interface TargetSourceOption {
-  readonly externalId: string
-  readonly name: string
-  readonly isTarget: boolean
 }
 
 /**
@@ -199,13 +194,11 @@ export class TargetRepository {
         kind: string | null
         pipeline: string | null
         stage: string | null
-        category: string | null
         stage_order: number | null
         pipeline_order: number | null
         leads: bigint
         lead_customers: bigint
         lead_won: bigint
-        lead_lost: bigint
         sales: bigint
         orders: bigint
         ordered_minor: string | null
@@ -213,9 +206,6 @@ export class TargetRepository {
         delivered_minor: string | null
         returned: bigint
         returned_minor: string | null
-        in_transit: bigint
-        confirming: bigint
-        seller_lost: bigint
         stage_amount: string | null
       }[]
     >(
@@ -228,7 +218,6 @@ export class TargetRepository {
           p."sortOrder" AS pipeline_order,
           d."status"::text AS status,
           st."name" AS stage,
-          st."category"::text AS category,
           st."sortOrder" AS stage_order,
           COALESCE(s."name", $5) AS source,
           COALESCE(NULLIF(btrim(d."targetolog"), ''), $5) AS targetolog,
@@ -250,13 +239,11 @@ export class TargetRepository {
         GROUPING(day)::int        AS g_day,
         GROUPING(stage)::int      AS g_stage,
         source, targetolog, creative, day, kind, pipeline, stage,
-        min(category)       AS category,
         min(stage_order)    AS stage_order,
         min(pipeline_order) AS pipeline_order,
         count(*) FILTER (WHERE kind = 'lead')::bigint AS leads,
         count(DISTINCT customer_id) FILTER (WHERE kind = 'lead')::bigint AS lead_customers,
         count(*) FILTER (WHERE kind = 'lead' AND status = 'WON')::bigint AS lead_won,
-        count(*) FILTER (WHERE kind = 'lead' AND status = 'LOST')::bigint AS lead_lost,
         count(*) FILTER (WHERE kind = 'sale')::bigint AS sales,
         count(*) FILTER (WHERE role IN ('CONFIRMATION', 'REVENUE'))::bigint AS orders,
         COALESCE(sum(amount) FILTER (WHERE role IN ('CONFIRMATION', 'REVENUE')), 0)::text AS ordered_minor,
@@ -264,9 +251,6 @@ export class TargetRepository {
         COALESCE(sum(amount) FILTER (WHERE role = 'REVENUE' AND status = 'WON'), 0)::text AS delivered_minor,
         count(*) FILTER (WHERE role = 'REVENUE' AND status = 'LOST')::bigint AS returned,
         COALESCE(sum(amount) FILTER (WHERE role = 'REVENUE' AND status = 'LOST'), 0)::text AS returned_minor,
-        count(*) FILTER (WHERE role = 'REVENUE' AND status = 'OPEN')::bigint AS in_transit,
-        count(*) FILTER (WHERE role = 'CONFIRMATION')::bigint AS confirming,
-        count(*) FILTER (WHERE role = 'QUALIFICATION' AND status = 'LOST')::bigint AS seller_lost,
         COALESCE(sum(amount), 0)::text AS stage_amount
       FROM base
       GROUP BY GROUPING SETS (
@@ -284,7 +268,6 @@ export class TargetRepository {
       leads: int(row.leads),
       leadCustomers: int(row.lead_customers),
       leadWon: int(row.lead_won),
-      leadLost: int(row.lead_lost),
       sales: int(row.sales),
       orders: int(row.orders),
       orderedMinor: money(row.ordered_minor),
@@ -292,9 +275,6 @@ export class TargetRepository {
       deliveredMinor: money(row.delivered_minor),
       returned: int(row.returned),
       returnedMinor: money(row.returned_minor),
-      inTransit: int(row.in_transit),
-      confirming: int(row.confirming),
-      sellerLost: int(row.seller_lost),
     })
 
     const only = (flag: keyof Pick<(typeof rows)[number], 'g_source' | 'g_targetolog' | 'g_creative' | 'g_day' | 'g_stage'>) =>
@@ -339,7 +319,6 @@ export class TargetRepository {
             kind: r.kind === 'lead' ? ('lead' as const) : ('sale' as const),
             pipeline: r.pipeline ?? '',
             stage: r.stage ?? '',
-            category: r.category ?? 'IN_PROGRESS',
             deals: int(r.leads) + int(r.sales),
             amountMinor: money(r.stage_amount),
           },
@@ -404,8 +383,6 @@ export class TargetRepository {
           category: string
           registrar: string | null
           sale_bitrix_id: string | null
-          sale_created_at: Date | null
-          sale_pipeline: string | null
           sale_role: string | null
           sale_stage: string | null
           sale_status: string | null
@@ -439,8 +416,6 @@ export class TargetRepository {
         SELECT
           page.*,
           sale.bitrix_id  AS sale_bitrix_id,
-          sale.created_at AS sale_created_at,
-          sale.pipeline   AS sale_pipeline,
           sale.role       AS sale_role,
           sale.stage      AS sale_stage,
           sale.status     AS sale_status,
@@ -450,8 +425,6 @@ export class TargetRepository {
         LEFT JOIN LATERAL (
           SELECT
             x."externalId" AS bitrix_id,
-            x."createdAtSource" AS created_at,
-            xp."name" AS pipeline,
             xp."role"::text AS role,
             xs."name" AS stage,
             x."status"::text AS status,
@@ -502,13 +475,11 @@ export class TargetRepository {
         stageCategory: r.category,
         registrar: r.registrar,
         sale:
-          r.sale_pipeline === null
+          r.sale_role === null
             ? null
             : {
                 bitrixId: r.sale_bitrix_id,
-                createdAt: r.sale_created_at ?? r.created_at,
-                pipeline: r.sale_pipeline,
-                role: r.sale_role ?? '',
+                role: r.sale_role,
                 stage: r.sale_stage ?? '',
                 status: r.sale_status ?? 'OPEN',
                 amountMinor: money(r.sale_amount),
@@ -519,20 +490,54 @@ export class TargetRepository {
     }
   }
 
-  /** Every source the portal names, flagged when it is paid targeting. */
-  async sources(targetIds: readonly string[]): Promise<TargetSourceOption[]> {
+  /** The target pages as the portal names them today: id → name. */
+  async targetSources(targetIds: readonly string[]): Promise<{ externalId: string; name: string }[]> {
     const rows = await this.prisma.salesSource.findMany({
-      where: { externalId: { not: null } },
+      where: { externalId: { in: [...targetIds] } },
       select: { externalId: true, name: true },
       orderBy: { name: 'asc' },
     })
-    const wanted = new Set(targetIds)
+    return rows.map((r) => ({ externalId: r.externalId!, name: r.name }))
+  }
+
+  /**
+   * Meta Ads spend per ad account per day over a window of calendar days.
+   *
+   * Bare dates on both sides — `meta_ad_daily."date"` is the account's own
+   * reporting day, never an instant — so the window is the dashboard period's
+   * first and last Tashkent day, inclusive.
+   */
+  async metaSpend(from: string, to: string): Promise<MetaSpendRow[]> {
+    const rows = await this.prisma.metaAdDaily.findMany({
+      where: { date: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) } },
+      select: {
+        accountId: true,
+        accountName: true,
+        date: true,
+        spendMicroUsd: true,
+        impressions: true,
+        clicks: true,
+        leads: true,
+      },
+      orderBy: { date: 'asc' },
+    })
     return rows.map((r) => ({
-      externalId: r.externalId!,
-      name: r.name,
-      isTarget: wanted.has(r.externalId!),
+      accountId: r.accountId,
+      accountName: r.accountName,
+      date: r.date.toISOString().slice(0, 10),
+      spendMicroUsd: r.spendMicroUsd,
+      impressions: Number(r.impressions),
+      clicks: Number(r.clicks),
+      leads: r.leads,
     }))
   }
+
+  /** When Meta was last read — the freshness the ad block states. */
+  async metaImportedAt(): Promise<Date | null> {
+    const latest = await this.prisma.metaAdDaily.aggregate({ _max: { importedAt: true } })
+    return latest._max.importedAt
+  }
+
 }
 
 /** A search term as a LIKE literal: its own % and _ are text, not wildcards. */
