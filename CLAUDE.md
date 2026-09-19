@@ -397,9 +397,9 @@ Two duplications the feature cannot avoid, both deliberate:
 
 ---
 
-## The twelve screens, and what each one dates by
+## The thirteen screens, and what each one dates by
 
-**Two of the twelve are PAUSED and two screens were removed.** «Boshqaruv markazi»
+**Two of the thirteen are PAUSED and two screens were removed.** «Boshqaruv markazi»
 went entirely on 2026-09-10 («boshqaruv markazi boʻlimini toʻliq olib tashla»);
 «Joʻnatish nuqtalari» and «Reklama samarasi» keep their section, their nav entry
 and their endpoints but render `shared/SectionPending` and issue no request
@@ -425,6 +425,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` — ONE reading, the MATRIX FIRST. It had two modes («Oddiy» / «Batafsil», `?mode=`) until 2026-09-16; the manager's view and everything only it read are deleted. The matrix has THREE readings of one fetch — «Jami qaytgan» / «Oylik» / «Pul» — and ONE control that is a different question: `?rop=`, the acquiring team, which is its own cache entry and its own request | `/insights/cohorts`, `/insights/customers`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | **nothing — the screen is DATELESS since 2026-09-15** (`period={false}`, like Struktura), and it now carries TWO CLOCKS, each named on screen. `closedAt` on revenue-bearing WON deals is the clock the matrix and the concentration band read; `/insights/customers` reads `createdAtSource` over its OWN trailing 90 days, so its customer totals legitimately differ — never sum across them; the matrix takes no window at all (`months` bounds which cohort ROWS are drawn and never the totals arm) and `/insights/concentration` resolves its OWN trailing 90 days (`trailingDays`). Nothing here reads `createdAtSource` |
 | Qoʻngʻiroqlar | `/customers` | `calls/CallsPage` + `CallTable` | `/insights/calls` | Insights → Insights | `call_record."startedAt"` on the dashboard window, clamped below at `CALL_DATA_FLOOR` (2026-09-15 00:00 Tashkent). One clock, one request |
 | Reklama samarasi | `/marketing` | **PAUSED** — `shared/SectionPending`; `marketing/MarketingPage` is held, not mounted | none while paused (`/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` still answer) | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
+| Target tahlili | `/target` | `target/TargetPage` + `TargetGroupTable` + `TargetLeadTable` + `TargetAds` | `/target/overview`, `/target/leads`, and `/marketing/breakdown` (which admits `['marketing', 'target']`) for the campaign table | Target → Target, Marketing → Marketing | **the deal's creation, `createdAtSource`** — a lead on the day it was registered, a sale on the day the seller's deal was opened. The ad block is the Roistat ledger over the same calendar days, on `marketing_daily."date"` |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
 | Tasdiqlash navbati | `/confirmation` | `confirmation/ConfirmationPage` | `/insights/confirmations/orders` | Insights → Insights | **the arrival in `C4:NEW`** — the latest `deal_stage_history` row whose stage signals `CONFIRM_NEW`; `?queue=backlog` (where the bell lands) drops the window entirely |
@@ -443,6 +444,33 @@ after signing in is a decision and not an ordering detail. An account that does
 not hold it falls through to the first section it does, then to `/account`.
 
 Per-screen traps worth knowing before you touch one:
+
+- **Target tahlili** — added 2026-09-19 («targetingni toʻliq qanday
+  boʻlayapti koʻrish uchun… pul maʼlumotlari… toʻliq leadlar haqida»). The
+  client's «Target» Google Sheet is private and was never read; the screen is
+  built from what that sheet is built from (`~/bitrix-sheets/Bitrix24Sync.gs`):
+  deals on the seven `TARGET_SOURCE_IDS` in `mapping.ts`.
+  **A LEAD AND ITS SALE ARE TWO DEALS.** The lead is the Регистрация (LEAD)
+  deal; «Сделка успешна» makes the portal open a SECOND deal for the same
+  contact in Первичный отдел, copying SOURCE_ID and the targetolog, and that
+  deal id moves on to Тасдиклаш and Доставка. The summary counts both sets over
+  one creation window and never adds them — per-source and per-targetolog rows
+  pair them by the fields the portal copied, not by a join. Only the lead LIST
+  joins, per row after the LIMIT (`LEFT JOIN LATERAL` on `customerId`).
+  База is never read. «Buyurtma» = a sales deal now in CONFIRMATION or REVENUE;
+  «Tushum» = REVENUE + WON.
+  **THREE NEW DEAL COLUMNS** — `targetolog` (enum, `UF_CRM_1772197583641`),
+  `creative` and `primarySource` (type unknown while empty, read with
+  `labelOrText`). Null is «Koʻrsatilmagan», never organic; 5% of target leads
+  carried a targetolog on 16.08–15.09.2026 and the screen prints that share.
+  Backfill a window with `npm run bitrix:resync -- DEALS --since=YYYY-MM-DD`
+  (`runEntity`'s `updatedSince`, which never moves the worker's watermark).
+  **THE AD BLOCK IS THE ROISTAT LEDGER, SIDE BY SIDE.** Its lead count is
+  printed beside the portal's, never divided into it. On 2026-09-19 the blob
+  had 13 M September impressions and $0 / 0 leads — the sheet's spend is
+  filled later — so `TargetAds` says so instead of printing a bare «$0.00».
+  Company-wide (`analytics:read:all`, in `COMPANY_WIDE`): it names customers
+  and phones, and neither half has a team to narrow by.
 
 - **Savdo dinamikasi** — **stripped to FAKT 1 / FAKT 2 on 2026-09-10**, on the
   client's instruction («bu boʻlimda koʻp malumotlar ortiqcha boʻlib ketgan…

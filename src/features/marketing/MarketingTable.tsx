@@ -573,9 +573,13 @@ function RowName({
   const label = isDays ? (monthly ? `${monthLabel(name)} (oy)` : dayLabel(name)) : name
 
   const body = (
-    <span className="inline-flex min-w-0 flex-col items-start">
-      <span className="inline-flex min-w-0 items-center gap-1.5">
-        <span className="truncate">{label}</span>
+    // Capped at the column's own 260px: a campaign name runs to ~50 characters
+    // and, uncapped, spilled over the spend column beside it.
+    <span className="inline-flex max-w-[260px] min-w-0 flex-col items-start">
+      <span className="inline-flex max-w-full min-w-0 items-center gap-1.5">
+        <span className="truncate" title={label}>
+          {label}
+        </span>
         {incomplete && (
           <span
             className="inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"

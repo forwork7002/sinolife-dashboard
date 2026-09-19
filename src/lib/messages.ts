@@ -38,6 +38,7 @@ export const t = {
     payroll: 'Sotuvchilar oyligi',
     margin: 'Yalpi marja',
     marketing: 'Reklama samarasi',
+    target: 'Target tahlili',
     /** Not one of the nine: account administration, shown only to an admin. */
     users: 'Foydalanuvchilar',
   },
@@ -70,6 +71,10 @@ export const t = {
       Tashkent time. The key stays `calls` while the URL and section stay
       `customers` — see CallsPage.
     */
+    target: {
+      title: 'Target tahlili',
+      lead: 'Target sahifalaridan kelgan leadlar — qaysi manba, targetolog va kreativdan kelgani, qanchasi buyurtmaga aylangani va qancha pul keltirgani. Bitrix24 dagi yaratilgan sana boʻyicha, Toshkent vaqti.',
+    },
     calls: {
       title: 'Qoʻngʻiroqlar',
       lead: 'Kim qancha gaplashgani — qoʻngʻiroq boshlangan vaqt boʻyicha, Toshkent vaqti. Qoʻngʻiroq mijozga bogʻlanadi, buyurtmaga emas.',

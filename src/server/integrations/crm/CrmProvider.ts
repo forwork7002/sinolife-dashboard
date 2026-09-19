@@ -214,6 +214,12 @@ export interface RawDeal extends ExternalRecord {
   readonly operatorNameSource?: string
   /** That operator's team at the time of sale, e.g. «Sevinch(ROP)». */
   readonly operatorTeamSource?: string
+  /** Who ran the ad this lead answered — «Umar», «Элдор». See `UF.TARGETOLOG`. */
+  readonly targetolog?: string
+  /** The ad creative, as the portal names it. */
+  readonly creative?: string
+  /** The lead's first source, before a re-registration rewrote SOURCE_ID. */
+  readonly primarySource?: string
   readonly isReturnCustomer?: boolean
   /** When the deal was created in the SOURCE system, not when we imported it. */
   readonly createdAtSource: Date

@@ -51,6 +51,9 @@ const ALL_ROUTES = [
   '/sellers',
   '/margin',
   '/marketing',
+  // Leads with customer names and phones. ADMIN and MANAGER only by default,
+  // and the endpoints refuse any account that is not company-wide.
+  '/target',
   // Salaries. ADMIN and MANAGER only by default, and the endpoint refuses any
   // account that is not company-wide however the sections are ticked.
   '/payroll',

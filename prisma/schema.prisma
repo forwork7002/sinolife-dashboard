@@ -838,6 +838,15 @@ model Deal {
   /// August 10%) or the badge is ambiguous, and every reader must then fall
   /// back to `employeeId`. See domain/employees/floorNumber.
   operatorEmployeeId String?
+  /// UF_CRM_1772197583641 «Таргетолог» — who ran the ad this lead answered.
+  /// Copied by the portal from the Регистрация deal to the Первичный отдел deal
+  /// it opens, so a lead and its sale carry the same name. Sparse; null is
+  /// «not stated», never «organic». Read by «Target tahlili».
+  targetolog         String?
+  /// UF_CRM_1788351136068 «Креатив» — the ad creative, as the portal names it.
+  creative           String?
+  /// UF_CRM_1789470922140 «Бирламчи источник» — the lead's first source.
+  primarySource      String?
   /// IS_RETURN_CUSTOMER — Bitrix24's own repeat-purchase flag.
   isReturnCustomer Boolean        @default(false)
 
@@ -884,6 +893,8 @@ model Deal {
   @@index([countsAsRevenue, status, closedAt])
   @@index([countsAsRevenue, region, closedAt])
   @@index([confirmStatus, createdAtSource])
+  /// «Target tahlili» reads one source set over a creation window.
+  @@index([sourceId, createdAtSource])
   @@map("deal")
 }
 

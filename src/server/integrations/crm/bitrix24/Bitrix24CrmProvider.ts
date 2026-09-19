@@ -959,6 +959,28 @@ export class Bitrix24CrmProvider implements CrmProvider {
     return this.enumLabels?.get(field)?.get(String(value)) ?? undefined
   }
 
+  /**
+   * A field whose type is not known in advance: an enumeration resolves to its
+   * label, anything else is kept as the text the operator typed.
+   *
+   * For fields added to the portal while still empty, where neither reading
+   * could be checked. `label()` alone would silently discard every free-text
+   * value; `nonEmpty()` alone would store «117» for a list item. A multiple
+   * field arrives as an array and is joined.
+   */
+  private labelOrText(field: string, value: unknown): string | undefined {
+    if (Array.isArray(value)) {
+      const parts = value
+        .map((v) => this.labelOrText(field, v))
+        .filter((v): v is string => v !== undefined)
+      return parts.length > 0 ? parts.join(', ') : undefined
+    }
+    if (value === null || value === undefined || value === '') return undefined
+    const items = this.enumLabels?.get(field)
+    if (items && items.size > 0) return items.get(String(value)) ?? nonEmpty(value)
+    return nonEmpty(value)
+  }
+
   // -------------------------------------------------------------------------
   // Health
   // -------------------------------------------------------------------------
@@ -1502,6 +1524,9 @@ export class Bitrix24CrmProvider implements CrmProvider {
         // return undefined for every one of these. Same trap as ADDRESS.
         operatorNameSource: nonEmpty(d[UF.OPERATOR_NAME]),
         operatorTeamSource: nonEmpty(d[UF.OPERATOR_TEAM]),
+        targetolog: this.label(UF.TARGETOLOG, d[UF.TARGETOLOG]),
+        creative: this.labelOrText(UF.CREATIVE, d[UF.CREATIVE]),
+        primarySource: this.labelOrText(UF.PRIMARY_SOURCE, d[UF.PRIMARY_SOURCE]),
         isReturnCustomer: d.IS_RETURN_CUSTOMER === 'Y',
         createdAtSource: toDate(d.DATE_CREATE) ?? new Date(),
         updatedAtSource: toDate(d.DATE_MODIFY),

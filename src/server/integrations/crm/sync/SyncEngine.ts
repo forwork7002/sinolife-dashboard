@@ -282,8 +282,22 @@ export class SyncEngine {
   async runEntity(
     entity: SyncEntityValue,
     mode: SyncModeValue,
-    options: { sweepDeleted?: boolean } = {},
+    options: {
+      sweepDeleted?: boolean
+      /**
+       * Read only what changed since this instant, whatever the mode says.
+       *
+       * For a backfill after a new column lands: `resync -- DEALS --since=`
+       * re-reads the weeks a screen needs instead of all ~420 000 deals. A
+       * sweep over a partial read would delete every row outside the window,
+       * so the two cannot be combined.
+       */
+      updatedSince?: Date
+    } = {},
   ): Promise<SyncResult> {
+    if (options.updatedSince && options.sweepDeleted) {
+      throw new Error('runEntity: a deletion sweep needs a complete read, not updatedSince')
+    }
     const handler = this.handlers.get(entity)
 
     if (!handler) {
@@ -312,9 +326,10 @@ export class SyncEngine {
     const startedAt = this.now()
 
     const watermark =
-      mode === 'INCREMENTAL'
+      options.updatedSince ??
+      (mode === 'INCREMENTAL'
         ? await this.store.getCursor(this.provider.source, entity)
-        : undefined
+        : undefined)
 
     let read = 0
     let created = 0
@@ -426,7 +441,12 @@ export class SyncEngine {
      * A fatal error still blocks it, and so does any record that genuinely
      * failed to write.
      */
-    if (!fatal && failed === 0) {
+    /*
+      A windowed backfill (`updatedSince`) never moves the watermark: it says
+      nothing about what changed BEFORE its window, and if the worker's own
+      cursor sits earlier than that window, advancing it would skip the gap.
+    */
+    if (!fatal && failed === 0 && !options.updatedSince) {
       await this.store.setCursor(
         this.provider.source,
         entity,

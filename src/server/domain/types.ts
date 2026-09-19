@@ -122,6 +122,14 @@ export const CONFIRMATION_QUEUE_MODES = ['window', 'backlog'] as const
 export type ConfirmationQueueMode = (typeof CONFIRMATION_QUEUE_MODES)[number]
 
 /**
+ * Which leads «Target tahlili» counts: the seven SOURCE_IDs paid targeting
+ * points at (`TARGET_SOURCE_IDS`), or every source the portal names — the
+ * second is how a reader checks the first against the whole inflow.
+ */
+export const TARGET_SCOPES = ['target', 'all'] as const
+export type TargetScope = (typeof TARGET_SCOPES)[number]
+
+/**
  * What a single stage move says about an order's confirmation.
  *
  * The outcomes above are what an ORDER ends up in; these are what a STAGE

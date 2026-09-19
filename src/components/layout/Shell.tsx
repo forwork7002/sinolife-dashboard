@@ -135,7 +135,10 @@ const NAV_GROUPS: readonly { readonly label: string | null; readonly items: read
   },
   {
     label: 'Marketing',
-    items: [{ href: '/marketing', label: t.nav.marketing, icon: MegaphoneIcon }],
+    items: [
+      { href: '/marketing', label: t.nav.marketing, icon: MegaphoneIcon },
+      { href: '/target', label: t.nav.target, icon: FunnelIcon },
+    ],
   },
   {
     label: null,
@@ -1735,6 +1738,26 @@ function MegaphoneIcon() {
         stroke="currentColor"
         strokeWidth="1.7"
         strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+/**
+ * «Target tahlili» — a funnel, at 15px.
+ *
+ * The screen's own shape: many leads in at the top, the few that became
+ * orders out of the spout. Deliberately not a target (KPI already wears the
+ * rings) and not a second megaphone beside its neighbour.
+ */
+function FunnelIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 5h16l-6.2 7.4V18.5l-3.6 1.5v-7.6L4 5z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
       />
     </svg>
   )

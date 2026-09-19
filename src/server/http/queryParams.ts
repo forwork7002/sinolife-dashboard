@@ -19,6 +19,7 @@ import {
   CONFIRMATION_OUTCOMES,
   CONFIRMATION_QUEUE_MODES,
   DEAL_STATUSES,
+  TARGET_SCOPES,
 } from '@/server/domain/types'
 
 /** Comma-separated ids -> string[]. Empty entries dropped. */
@@ -305,3 +306,39 @@ export function searchParamsToObject(params: URLSearchParams): Record<string, st
   for (const [key, value] of params.entries()) result[key] = value
   return result
 }
+
+// ---------------------------------------------------------------------------
+// «Target tahlili»
+// ---------------------------------------------------------------------------
+
+/** «Faqat target» by default — the screen is about the seven ad pages. */
+const targetScope = z.enum(TARGET_SCOPES).default('target')
+
+/** Free text reaching a WHERE clause: trimmed, bounded, empty means absent. */
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .optional()
+    .transform((value) => (value ? value : undefined))
+
+export const targetOverviewQuerySchema = periodQuerySchema.and(
+  z.object({ scope: targetScope }),
+)
+
+export const targetLeadsQuerySchema = periodQuerySchema.and(
+  z.object({
+    scope: targetScope,
+    /** A source NAME, as the overview groups it. */
+    source: optionalText(200),
+    /** A targetolog, or «Koʻrsatilmagan» for the leads that carry none. */
+    targetolog: optionalText(200),
+    /** A Регистрация stage name. */
+    stage: optionalText(200),
+    /** Deal id, title, customer name or phone. */
+    q: optionalText(100),
+    page: z.coerce.number().int().min(1).max(10_000).default(1),
+    pageSize: z.coerce.number().int().min(1).max(200).default(50),
+  }),
+)

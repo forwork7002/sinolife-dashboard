@@ -51,6 +51,7 @@ export const SECTIONS = [
   { id: 'sellers', route: '/sellers', label: 'Sotuvchilar reytingi', group: 'Jamoa' },
   { id: 'payroll', route: '/payroll', label: 'Sotuvchilar oyligi', group: 'Jamoa' },
   { id: 'marketing', route: '/marketing', label: 'Reklama samarasi', group: 'Marketing' },
+  { id: 'target', route: '/target', label: 'Target tahlili', group: 'Marketing' },
 ] as const satisfies readonly {
   id: string
   route: string
@@ -123,6 +124,13 @@ const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
     for exactly that reason.
   */
   'marketing',
+  /*
+    «TARGET TAHLILI» FOR THE SAME REASON, TWICE OVER. Its leads sit in
+    Регистрация with whichever registrar picked them up — nobody's sales team —
+    and half the screen is the Roistat ledger above. It also names customers
+    and their phone numbers, which no narrowed screen hands out.
+  */
+  'target',
   /*
     «SOTUVCHILAR OYLIGI» IS COMPANY-WIDE BECAUSE OF WHAT IT STATES, not
     because of what it can aggregate.

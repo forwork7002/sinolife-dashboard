@@ -14,6 +14,7 @@ import { PulseRepository } from '@/server/repositories/pulseRepository'
 import { ConcentrationRepository } from '@/server/repositories/concentrationRepository'
 import { MarketingRepository } from '@/server/repositories/marketingRepository'
 import { SearchRepository } from '@/server/repositories/searchRepository'
+import { TargetRepository } from '@/server/repositories/targetRepository'
 import { ScopeRepository } from '@/server/repositories/scopeRepository'
 import { AlertsService } from '@/server/services/alertsService'
 import { SearchService } from '@/server/services/searchService'
@@ -27,6 +28,7 @@ import { ConcentrationService } from './concentrationService'
 import { MarketingService } from './marketingService'
 import { SellerBoardService } from './sellerBoardService'
 import { ScopeService } from './scopeService'
+import { TargetService } from './targetService'
 
 export const dealRepository = new DealRepository(prisma)
 export const referenceRepository = new ReferenceRepository(prisma)
@@ -66,6 +68,13 @@ export const searchService = new SearchService(searchRepository)
 export const alertsService = new AlertsService(insightsRepository, referenceRepository)
 export const concentrationService = new ConcentrationService(concentrationRepository)
 export const marketingService = new MarketingService(marketingRepository)
+/*
+  «Target tahlili» reads the Bitrix24 leads through its own repository and the
+  ad ledger through `marketingService` — side by side, never added. See the
+  header of targetService.ts.
+*/
+export const targetRepository = new TargetRepository(prisma)
+export const targetService = new TargetService(targetRepository, marketingService)
 export const sellerBoardService = new SellerBoardService(
   sellerBoardRepository,
   insightsRepository,

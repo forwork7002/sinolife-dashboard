@@ -370,9 +370,55 @@ export const UF = Object.freeze({
    * history to whichever team they sit in today.
    */
   OPERATOR_TEAM: 'UF_CRM_1778416806',
+  /**
+   * «Таргетолог» — who ran the ad the lead came from. An ENUMERATION (Umar,
+   * Элдор, Sobirjon, Kamron, Timur …), resolved through `label()`.
+   *
+   * The registrar stamps it on the Регистрация deal and Bitrix24 copies it on
+   * to the Первичный отдел deal that «Сделка успешна» opens, so the lead and
+   * the sale it became carry the same name. Sparse: 5% of the target leads of
+   * 16.08–15.09.2026 carry one — the rest are «ko'rsatilmagan», and the screen
+   * says so instead of dropping them.
+   */
+  TARGETOLOG: 'UF_CRM_1772197583641',
+  /**
+   * «Креатив» — which ad creative the lead answered. Added to the portal on
+   * 2026-09-03 and still empty on every sampled lead; read with
+   * `labelOrText()` because its type (list or free text) was not observable
+   * on an empty field.
+   */
+  CREATIVE: 'UF_CRM_1788351136068',
+  /**
+   * «Бирламчи источник» — the lead's FIRST source, before any re-registration
+   * rewrote SOURCE_ID. Added 2026-09-15, empty so far, same reading as CREATIVE.
+   */
+  PRIMARY_SOURCE: 'UF_CRM_1789470922140',
 } as const)
 
 export const UF_FIELDS: readonly string[] = Object.freeze(Object.values(UF))
+
+/**
+ * The SOURCE_ID values that are paid targeting — «Target tahlili» counts these.
+ *
+ * Taken from the client's own Bitrix24 → Google Sheets export
+ * (`Bitrix24Sync.gs`, the sheet the target team works from), which filters on
+ * exactly these seven: the Instagram and Telegram pages the ads point at. Every
+ * other source on the portal — Входящий, Ген лид, repeat-customer re-entries —
+ * is somebody who arrived WITHOUT an ad, and counting them would hand the
+ * targetologists leads they did not buy.
+ *
+ * Ids, not names: a page renamed next month keeps its id, and the name is read
+ * from `sales_source` at query time.
+ */
+export const TARGET_SOURCE_IDS: readonly string[] = Object.freeze([
+  'UC_0FMQ5Q', // sinolife_otziv
+  'UC_1X1J24', // sinolifeuz
+  'UC_A8LE21', // zextrauzb
+  'UC_LBSZDU', // zextra.sinolife
+  '38|NEXTBOT', // zextrasure.uz
+  'UC_A4WINR', // sinolifeuzb (Telegram)
+  'UC_U9KZG8', // sinolifeofficial (Telegram)
+])
 
 /**
  * Confirmation outcome, from the label rather than the item id.
