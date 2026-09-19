@@ -358,6 +358,51 @@ jobs:
   #     npm run roistat:import
   # It is idempotent and refuses a blob that shrank, so re-running is safe.
 
+  # Nightly off-site copy of the whole database, kept two years
+  # (backup/backup.sh). DigitalOcean's own cluster backups reach back seven
+  # days and live in this same account; this copy goes to a bucket elsewhere
+  # and survives a deleted cluster or a lost account. Restoring: docs/BACKUP.md.
+  #
+  # 04:30 Tashkent: after the worker's 01:00–06:00 backfill window has had its
+  # busiest hours, before the floor starts work. pg_dump only reads, from one
+  # consistent snapshot, so the worker keeps syncing while it runs.
+  #
+  # Its bucket keys are set HERE, on the job, not at app level: the web service
+  # and the worker have no business holding a key that can delete backups.
+  - name: backup
+    kind: SCHEDULED
+    schedule:
+      cron: "30 4 * * *"
+      time_zone: Asia/Tashkent
+    instance_size_slug: basic-xxs
+    github:
+      repo: forwork7002/sinolife-dashboard
+      branch: main
+    dockerfile_path: backup/Dockerfile
+    envs:
+      # Any S3-compatible store. Backblaze B2, for example:
+      #   endpoint https://s3.eu-central-003.backblazeb2.com, region eu-central-003
+      - key: BACKUP_S3_ENDPOINT
+        scope: RUN_TIME
+        value: CHANGE_ME
+      - key: BACKUP_S3_REGION
+        scope: RUN_TIME
+        value: CHANGE_ME
+      - key: BACKUP_S3_BUCKET
+        scope: RUN_TIME
+        value: CHANGE_ME
+      - key: BACKUP_S3_PREFIX
+        scope: RUN_TIME
+        value: sinolife
+      - key: BACKUP_S3_ACCESS_KEY_ID
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME
+      - key: BACKUP_S3_SECRET_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME
+
 databases:
   - name: db
     engine: PG

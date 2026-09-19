@@ -278,6 +278,9 @@ Managed Postgres takes a daily backup with seven days of point-in-time
 recovery, on by default. Nothing to configure; check it exists under
 **Databases → your cluster → Backups** before you trust it.
 
+Seven days, in this same account, is all that covers. The two-year off-site
+copy is the `backup` job — [BACKUP.md](BACKUP.md) sets it up and restores it.
+
 ---
 
 ## 8. Running a command against the deployment

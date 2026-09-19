@@ -2350,8 +2350,11 @@ wants the old latency back.
 ## Deploy
 
 `.do/app.yaml` is the entire deployment: `web`, the `sync` worker
-(`instance_count: 1`), a PRE_DEPLOY `migrate` job and a POST_DEPLOY
-`provision-admin` job. No Dockerfile, no CI.
+(`instance_count: 1`), a PRE_DEPLOY `migrate` job, a POST_DEPLOY
+`provision-admin` job and a SCHEDULED `backup` job — the one Dockerfile
+(`backup/Dockerfile`, pg_dump + rclone): a nightly dump to an off-site bucket,
+60 daily and two years of monthly copies. `docs/BACKUP.md` is setup and
+restore. No CI.
 
 **Never re-apply the committed spec over a running app.** Its secrets say
 `CHANGE_ME`, and `doctl apps update --spec` replaces the whole spec — the app
