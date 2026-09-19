@@ -29,7 +29,7 @@ import {
   type TargetLeadRow,
   type TargetRepository,
 } from '@/server/repositories/targetRepository'
-import type { TargetScope } from '@/server/domain/types'
+import type { TargetProductFilter, TargetScope } from '@/server/domain/types'
 
 import type { MarketingRepository } from '@/server/repositories/marketingRepository'
 import { keyPart, ttlCache } from './ttlCache'
@@ -158,17 +158,37 @@ export interface MetaTargetologDto extends MetaMetricsDto {
  * pages brought in over the same days. Two ledgers, one row, each figure
  * named for its source; the ratios between them are labelled as such.
  */
-export interface MetaProductDto {
+export interface MetaProductDto extends MetaProductTotalsDto {
   readonly product: MetaProduct
-  readonly spendUsd: number
-  readonly metaLeads: number
-  readonly metaCplUsd: number | null
+}
+
+/**
+ * Everything the Collagen-against-Zextra comparison needs for one product —
+ * or for both, as the total. Meta's delivery on the left, the product's own
+ * pages in Bitrix24 on the right, and the costs that divide one by the other.
+ */
+export interface MetaProductTotalsDto extends MetaMetricsDto {
   /** Регистрация leads from this product's target pages. */
   readonly bitrixLeads: number
-  /** Meta spend ÷ Bitrix24 leads — what one registered lead cost. */
-  readonly costPerBitrixLeadUsd: number | null
+  /** …of which the registrar passed on («Сделка успешна»). */
+  readonly bitrixLeadWon: number
+  /** Sales deals from those pages that reached Тасдиклаш or Доставка. */
+  readonly orders: number
+  readonly ordered: MoneyDto
+  readonly delivered: number
   /** Delivered money from those pages' sales deals, soʻm. */
   readonly deliveredMoney: MoneyDto
+  readonly returned: number
+  /** orders ÷ Bitrix24 leads. */
+  readonly orderPercent: number | null
+  /** delivered ÷ (delivered + returned). */
+  readonly buyoutPercent: number | null
+  /** Meta spend ÷ Bitrix24 leads — what one registered lead cost. */
+  readonly costPerBitrixLeadUsd: number | null
+  /** Meta spend ÷ orders. */
+  readonly costPerOrderUsd: number | null
+  /** Meta spend ÷ delivered orders. */
+  readonly costPerDeliveredUsd: number | null
   /** deliveredMoney ÷ (spend × rate). Null without a rate or a spend. */
   readonly roas: number | null
 }
@@ -183,7 +203,7 @@ export interface MetaBlockDto {
   readonly targetologs: readonly MetaTargetologDto[]
   readonly owners: readonly MetaOwnerDto[]
   readonly products: readonly MetaProductDto[]
-  readonly total: Omit<MetaProductDto, 'product'>
+  readonly total: MetaProductTotalsDto
   /** UZS per USD used for ROAS — the ad ledger's rate, with its date. */
   readonly usdRate: number | null
   readonly usdRateDate: string | null
@@ -386,26 +406,42 @@ export function metaBlock(input: {
       return { date, total: usd(total), cells: columns.map((c) => usd(cells.get(c.key) ?? 0n)) }
     })
 
-  const productTotals = (product: MetaProduct | null) => {
+  const productTotals = (product: MetaProduct | null): MetaProductTotalsDto => {
     const accs = ordered.filter((a) => product === null || a.column.product === product)
     const spend = accs.reduce((n, a) => n + a.spend, 0n)
-    const leads = accs.reduce((n, a) => n + a.leads, 0)
     const sources = input.sources.filter((s) => {
       const p = input.productOfSource.get(s.key)
       return p !== undefined && (product === null || p === product)
     })
-    const bitrixLeads = sources.reduce((n, s) => n + s.leads, 0)
-    const delivered = sources.reduce((n, s) => n + s.deliveredMinor, 0n)
-    const spendUsd = usd(spend)
-    const spendUzs = input.usdRate !== null ? spendUsd * input.usdRate : 0
+    const sum = (pick: (s: TargetGroupRow) => number) => sources.reduce((n, s) => n + pick(s), 0)
+    const bitrixLeads = sum((s) => s.leads)
+    const orders = sum((s) => s.orders)
+    const delivered = sum((s) => s.delivered)
+    const returned = sum((s) => s.returned)
+    const deliveredMinor = sources.reduce((n, s) => n + s.deliveredMinor, 0n)
+    const orderedMinor = sources.reduce((n, s) => n + s.orderedMinor, 0n)
+    const dollars = Number(spend) / MICRO
+    const spendUzs = input.usdRate !== null ? dollars * input.usdRate : 0
     return {
-      spendUsd,
-      metaLeads: leads,
-      metaCplUsd: ratio(Number(spend) / MICRO, leads),
+      ...metrics(
+        spend,
+        accs.reduce((n, a) => n + a.leads, 0),
+        accs.reduce((n, a) => n + a.impressions, 0),
+        accs.reduce((n, a) => n + a.clicks, 0),
+      ),
       bitrixLeads,
-      costPerBitrixLeadUsd: ratio(Number(spend) / MICRO, bitrixLeads),
-      deliveredMoney: uzs(delivered),
-      roas: spendUzs > 0 ? Number(delivered) / 100 / spendUzs : null,
+      bitrixLeadWon: sum((s) => s.leadWon),
+      orders,
+      ordered: uzs(orderedMinor),
+      delivered,
+      deliveredMoney: uzs(deliveredMinor),
+      returned,
+      orderPercent: percent(orders, bitrixLeads),
+      buyoutPercent: percent(delivered, delivered + returned),
+      costPerBitrixLeadUsd: ratio(dollars, bitrixLeads),
+      costPerOrderUsd: ratio(dollars, orders),
+      costPerDeliveredUsd: ratio(dollars, delivered),
+      roas: spendUzs > 0 ? Number(deliveredMinor) / 100 / spendUzs : null,
     }
   }
 
@@ -504,6 +540,7 @@ export function resetTargetCaches(): void {
 /** What `/target/leads` narrows by, already validated by `targetLeadsQuerySchema`. */
 export interface TargetLeadsQuery {
   readonly scope: TargetScope
+  readonly product: TargetProductFilter
   readonly source?: string
   readonly targetolog?: string
   readonly stage?: string
@@ -518,16 +555,24 @@ export class TargetService {
     private readonly marketing: MarketingRepository,
   ) {}
 
-  private sourceIds(scope: TargetScope): readonly string[] | null {
+  /**
+   * Which pages the Bitrix24 half counts. A product is defined only on the
+   * target pages, so choosing one overrides «Barcha manbalar».
+   */
+  private sourceIds(scope: TargetScope, product: TargetProductFilter): readonly string[] | null {
+    if (product !== 'all') {
+      return TARGET_SOURCE_IDS.filter((id) => TARGET_SOURCE_PRODUCT[id] === product)
+    }
     return scope === 'target' ? TARGET_SOURCE_IDS : null
   }
 
   async overview(
     period: Period,
     scope: TargetScope,
+    product: TargetProductFilter,
     timeZone: string,
   ): Promise<TargetOverviewDto> {
-    const sourceIds = this.sourceIds(scope)
+    const sourceIds = this.sourceIds(scope, product)
     const key = [
       period.preset,
       period.start.toISOString(),
@@ -557,7 +602,10 @@ export class TargetService {
     )
 
     return {
-      targetSources: targetSources.map((s) => s.name),
+      // The pages the screen is counting — one product's, when one is chosen.
+      targetSources: targetSources
+        .filter((s) => product === 'all' || TARGET_SOURCE_PRODUCT[s.externalId] === product)
+        .map((s) => s.name),
       total: countersDto(summary.total),
       bySource: group(summary.sources),
       byTargetolog: group(summary.targetologs),
@@ -572,7 +620,11 @@ export class TargetService {
       })),
       notStated: NOT_STATED,
       meta: metaBlock({
-        rows: metaRows,
+        // One product's accounts only, when one product is asked for.
+        rows:
+          product === 'all'
+            ? metaRows
+            : metaRows.filter((r) => ownerOf(r.accountId, r.accountName).product === product),
         importedAt: metaImportedAt,
         window,
         sources: summary.sources,
@@ -590,7 +642,7 @@ export class TargetService {
   ): Promise<{ items: TargetLeadDto[]; totalItems: number }> {
     const { rows, total } = await this.repository.leads({
       period,
-      sourceIds: this.sourceIds(query.scope),
+      sourceIds: this.sourceIds(query.scope, query.product),
       source: query.source,
       targetolog: query.targetolog,
       stage: query.stage,

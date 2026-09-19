@@ -19,6 +19,7 @@ import {
   CONFIRMATION_OUTCOMES,
   CONFIRMATION_QUEUE_MODES,
   DEAL_STATUSES,
+  TARGET_PRODUCT_FILTERS,
   TARGET_SCOPES,
 } from '@/server/domain/types'
 
@@ -314,6 +315,13 @@ export function searchParamsToObject(params: URLSearchParams): Record<string, st
 /** «Faqat target» by default — the screen is about the seven ad pages. */
 const targetScope = z.enum(TARGET_SCOPES).default('target')
 
+/**
+ * One product, or both. A product narrows BOTH halves: the leads to that
+ * product's own target pages and the spend to its own ad accounts — and it
+ * overrides `scope`, because a product is only defined on the target pages.
+ */
+const targetProduct = z.enum(TARGET_PRODUCT_FILTERS).default('all')
+
 /** Free text reaching a WHERE clause: trimmed, bounded, empty means absent. */
 const optionalText = (max: number) =>
   z
@@ -324,12 +332,13 @@ const optionalText = (max: number) =>
     .transform((value) => (value ? value : undefined))
 
 export const targetOverviewQuerySchema = periodQuerySchema.and(
-  z.object({ scope: targetScope }),
+  z.object({ scope: targetScope, product: targetProduct }),
 )
 
 export const targetLeadsQuerySchema = periodQuerySchema.and(
   z.object({
     scope: targetScope,
+    product: targetProduct,
     /** A source NAME, as the overview groups it. */
     source: optionalText(200),
     /** A targetolog, or «Koʻrsatilmagan» for the leads that carry none. */

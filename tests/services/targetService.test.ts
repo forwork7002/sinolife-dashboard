@@ -114,20 +114,27 @@ describe('TargetService.overview', () => {
   })
 
   it('counts the seven target pages by default and every source when asked', async () => {
-    await service.overview(PERIOD, 'target', 'Asia/Tashkent')
-    await service.overview(PERIOD, 'all', 'Asia/Tashkent')
+    await service.overview(PERIOD, 'target', 'all', 'Asia/Tashkent')
+    await service.overview(PERIOD, 'all', 'all', 'Asia/Tashkent')
     expect(asked.map((w) => w.sourceIds)).toEqual([TARGET_SOURCE_IDS, null])
   })
 
+  it('narrows the leads to one product\'s own pages, whatever the scope says', async () => {
+    await service.overview(PERIOD, 'all', 'Zextra', 'Asia/Tashkent')
+    await service.overview(PERIOD, 'target', 'Collagen', 'Asia/Tashkent')
+    expect([...asked[0]!.sourceIds!].sort()).toEqual(['38|NEXTBOT', 'UC_A8LE21', 'UC_LBSZDU'])
+    expect([...asked[1]!.sourceIds!].sort()).toEqual(['UC_0FMQ5Q', 'UC_1X1J24', 'UC_A4WINR', 'UC_U9KZG8'])
+  })
+
   it('keys the memo on the scope — «all» never serves the target answer', async () => {
-    await service.overview(PERIOD, 'target', 'Asia/Tashkent')
-    await service.overview(PERIOD, 'target', 'Asia/Tashkent')
-    await service.overview(PERIOD, 'all', 'Asia/Tashkent')
+    await service.overview(PERIOD, 'target', 'all', 'Asia/Tashkent')
+    await service.overview(PERIOD, 'target', 'all', 'Asia/Tashkent')
+    await service.overview(PERIOD, 'all', 'all', 'Asia/Tashkent')
     expect(asked).toHaveLength(2)
   })
 
   it('says «never imported» for Meta rather than printing zero spend', async () => {
-    const dto = await service.overview(PERIOD, 'target', 'Asia/Tashkent')
+    const dto = await service.overview(PERIOD, 'target', 'all', 'Asia/Tashkent')
     expect(dto.meta.importedAt).toBeNull()
     expect(dto.meta.window).toEqual({ from: '2026-09-01', to: '2026-09-03' })
     expect(dto.targetSources).toEqual(['sinolifeuz', 'zextrauzb'])

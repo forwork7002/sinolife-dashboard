@@ -11,6 +11,9 @@ import type { MoneyDto } from '@/lib/api'
 
 export type TargetScope = 'target' | 'all'
 
+/** The product switch: both, or one. */
+export type TargetProductFilter = 'all' | 'Collagen' | 'Zextra'
+
 export interface TargetCountersDto {
   readonly leads: number
   /** Distinct contacts among the leads. */
@@ -99,13 +102,20 @@ export interface MetaTargetologDto extends MetaMetricsDto {
   readonly accounts: readonly string[]
 }
 
-export interface MetaProductTotalsDto {
-  readonly spendUsd: number
-  readonly metaLeads: number
-  readonly metaCplUsd: number | null
+/** One product (or both, as the total): Meta's delivery and the pages' results. */
+export interface MetaProductTotalsDto extends MetaMetricsDto {
   readonly bitrixLeads: number
-  readonly costPerBitrixLeadUsd: number | null
+  readonly bitrixLeadWon: number
+  readonly orders: number
+  readonly ordered: MoneyDto
+  readonly delivered: number
   readonly deliveredMoney: MoneyDto
+  readonly returned: number
+  readonly orderPercent: number | null
+  readonly buyoutPercent: number | null
+  readonly costPerBitrixLeadUsd: number | null
+  readonly costPerOrderUsd: number | null
+  readonly costPerDeliveredUsd: number | null
   readonly roas: number | null
 }
 

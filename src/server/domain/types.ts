@@ -136,6 +136,10 @@ export type TargetScope = (typeof TARGET_SCOPES)[number]
 export const TARGET_PRODUCTS = ['Collagen', 'Zextra'] as const
 export type TargetProduct = (typeof TARGET_PRODUCTS)[number]
 
+/** The product switch on «Target tahlili»: both, or one of them. */
+export const TARGET_PRODUCT_FILTERS = ['all', ...TARGET_PRODUCTS] as const
+export type TargetProductFilter = (typeof TARGET_PRODUCT_FILTERS)[number]
+
 /**
  * What a single stage move says about an order's confirmation.
  *

@@ -16,15 +16,18 @@ import { formatCompactUzs, formatNumber, formatPercent } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 import { TargetGroupTable } from './TargetGroupTable'
+import { ProductCompare } from './ProductCompare'
 import { TargetMeta } from './TargetMeta'
 import { EMPTY_FILTERS, type LeadFilters, TargetLeadTable } from './TargetLeadTable'
 import type {
   TargetCountersDto,
   TargetLeadsDto,
   TargetOverviewDto,
+  TargetProductFilter,
   TargetScope,
   TargetStageDto,
 } from './targetApi'
+import { PRODUCT_FILTER_OPTIONS, PRODUCT_TONE } from './targetTheme'
 
 /** recharts rides with the chart, not with the page — see CallsPage. */
 const TargetDailyChart = dynamic(
@@ -63,17 +66,18 @@ const PAGE_SIZE = 50
 export function TargetPage() {
   const { apiParams } = useDashboardFilters()
   const [scope, setScope] = useState<TargetScope>('target')
+  const [product, setProduct] = useState<TargetProductFilter>('all')
   const [cut, setCut] = useState<Cut>('source')
   const [filters, setFilters] = useState<LeadFilters>(EMPTY_FILTERS)
   const [page, setPage] = useState(1)
   const leadListRef = useRef<HTMLDivElement>(null)
 
   const windowParams = useMemo(() => {
-    const out: Record<string, string | number> = { preset: apiParams.preset, scope }
+    const out: Record<string, string | number> = { preset: apiParams.preset, scope, product }
     if (apiParams.from !== undefined) out.from = apiParams.from
     if (apiParams.to !== undefined) out.to = apiParams.to
     return out
-  }, [apiParams.preset, apiParams.from, apiParams.to, scope])
+  }, [apiParams.preset, apiParams.from, apiParams.to, scope, product])
 
   const overview = useQuery({
     queryKey: ['target-overview', windowParams],
@@ -124,19 +128,33 @@ export function TargetPage() {
       meta={overview.data?.meta}
       stale={overview.isPlaceholderData}
       toolbar={
-        <SegmentedControl<TargetScope>
-          ariaLabel="Qaysi manbalar"
-          value={scope}
-          options={[
-            { value: 'target', label: 'Target manbalari' },
-            { value: 'all', label: 'Barcha manbalar' },
-          ]}
-          onChange={(next) => {
-            setScope(next)
-            setFilters(EMPTY_FILTERS)
-            setPage(1)
-          }}
-        />
+        <>
+          <ProductSwitch
+            value={product}
+            onChange={(next) => {
+              setProduct(next)
+              setFilters(EMPTY_FILTERS)
+              setPage(1)
+            }}
+          />
+          {/* A product is defined only on the target pages, so the source
+              scope means something only while both products are shown. */}
+          {product === 'all' && (
+            <SegmentedControl<TargetScope>
+              ariaLabel="Qaysi manbalar"
+              value={scope}
+              options={[
+                { value: 'target', label: 'Target manbalari' },
+                { value: 'all', label: 'Barcha manbalar' },
+              ]}
+              onChange={(next) => {
+                setScope(next)
+                setFilters(EMPTY_FILTERS)
+                setPage(1)
+              }}
+            />
+          )}
+        </>
       }
     >
       <div className="flex flex-col gap-4">
@@ -149,11 +167,18 @@ export function TargetPage() {
           </Card>
         ) : (
           <>
-            <SourcesLine scope={scope} names={targetSources} />
+            <SourcesLine scope={product === 'all' ? scope : 'target'} names={targetSources} />
 
-            <MoneyTiles total={data?.total} status={status} />
+            <ProductCompare meta={data?.meta} status={status} />
 
             <TargetMeta meta={data?.meta} status={status} />
+
+            <SectionHeader
+              title="Leadlar va sotuv · Bitrix24"
+              hint="Target sahifalaridan Регистрация ga tushgan leadlar va ulardan ochilgan sotuv bitimlari — yaratilgan kuni boʻyicha."
+            />
+
+            <MoneyTiles total={data?.total} status={status} />
 
             <div className="grid gap-3 xl:grid-cols-3">
               <ChartCard
@@ -281,6 +306,56 @@ export function TargetPage() {
         </section>
       </div>
     </PageShell>
+  )
+}
+
+/**
+ * «Hammasi · Collagen · Zextra» — narrows the whole screen to one product.
+ *
+ * The house segmented control, with each product's identity colour as a dot,
+ * so the switch already speaks the colour the comparison and the charts use.
+ */
+function ProductSwitch({
+  value,
+  onChange,
+}: {
+  value: TargetProductFilter
+  onChange: (next: TargetProductFilter) => void
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Mahsulot"
+      className="flex items-center gap-0.5 rounded-lg p-0.5"
+      style={{ background: 'var(--grid)' }}
+    >
+      {PRODUCT_FILTER_OPTIONS.map((option) => {
+        const active = option.value === value
+        return (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(option.value)}
+            className="focusable inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors"
+            style={{
+              background: active ? 'var(--surface-raised)' : 'transparent',
+              boxShadow: active ? 'var(--shadow-card)' : 'none',
+              color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
+            }}
+          >
+            {option.value !== 'all' && (
+              <span
+                aria-hidden
+                className="inline-block h-2 w-2 rounded-sm"
+                style={{ background: PRODUCT_TONE[option.value] }}
+              />
+            )}
+            {option.label}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 

@@ -26,6 +26,6 @@ const ACCESS = { permission: 'analytics:read:all', section: 'target' } as const
  */
 export const GET = getHandler(ACCESS, targetOverviewQuerySchema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
-  const data = await targetService.overview(period, ctx.query.scope, ctx.timeZone)
+  const data = await targetService.overview(period, ctx.query.scope, ctx.query.product, ctx.timeZone)
   return { data, meta: { period: toPeriodDto(period) } }
 })

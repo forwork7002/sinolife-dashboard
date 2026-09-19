@@ -486,6 +486,15 @@ Per-screen traps worth knowing before you touch one:
   (`TARGET_SOURCE_PRODUCT`) — «1 Bitrix24 lead narxi» and ROAS name both
   sources; ROAS borrows the Roistat snapshot's UZS rate. The Roistat page's
   own ad figures are NOT on this screen: they run weeks behind Meta.
+  **COLLAGEN AND ZEXTRA, SEPARATELY OR SIDE BY SIDE (2026-09-19).** `?product=`
+  (`all` | `Collagen` | `Zextra`) narrows BOTH halves — leads to that
+  product's own pages (`TARGET_SOURCE_PRODUCT`), spend to its own accounts —
+  and overrides `scope`. The lead instrument is `ProductCompare`: spend at hero
+  size, 100 % share bars (spend / leads / orders / money), the two products in
+  columns with «yaxshiroq» on the four cost-and-return rows only, and
+  `productVerdicts` writing the conclusion in sentences from figures already on
+  screen. Collagen is `--series-4`, Zextra `--series-1`, everywhere
+  (`targetTheme.ts`).
   Company-wide (`analytics:read:all`, in `COMPANY_WIDE`): it names customers
   and phones, and neither half has a team to narrow by.
 
