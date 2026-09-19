@@ -1,6 +1,9 @@
 'use client'
 
+import { useMemo, useState } from 'react'
+
 import { ChartCard } from '@/components/ui/Card'
+import { SegmentedControl } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { Meter } from '@/components/ui/Stat'
 import type { LogisticsRopDto } from '@/lib/api'
@@ -43,6 +46,13 @@ import { formatFullUzs, formatNumber } from '@/lib/format'
  * HAND-DRAWN, like four of the five comparisons on this page. Fifteen teams
  * and three figures is a table; a chart of it is an axis nobody reads and a
  * hover that hides the numbers.
+ *
+ * A RANKING, ON WHICHEVER FIGURE THE READER PICKS. Asked for on 2026-09-19:
+ * «toplik toplik tuzib ber nomer qilib… fakt1 boyicha kim 1 chi o'rinda…
+ * fakt 2 boyicha… qamroq bo'icha ham». The server still sends the rows by
+ * ЗАКАЗ (see `ropRow` in `insightsService`); the order and the place numbers
+ * are drawn here, because they are a way of reading fifteen rows the screen
+ * already has, not a new figure. ЖАМИ stays the server's.
  */
 export function RopSection({
   rops,
@@ -65,10 +75,14 @@ export function RopSection({
     department Bitrix24 might one day be renamed to, and a table that silently
     treats one team as its own total is a fault nobody would look for.
   */
-  const lines: RopLine[] = [
-    ...rops.map((row): RopLine => ({ kind: 'rop', row })),
-    ...(total ? [{ kind: 'total', row: total } as RopLine] : []),
-  ]
+  const [metric, setMetric] = useState<RankMetric>('ordered')
+  const lines: RopLine[] = useMemo(
+    () => [
+      ...rankRops(rops, metric),
+      ...(total ? [{ kind: 'total', row: total, place: null } as RopLine] : []),
+    ],
+    [rops, total, metric],
+  )
 
   return (
     <ChartCard
@@ -96,9 +110,29 @@ export function RopSection({
         content would have put the slack back as white space between a name
         and its money.
       */}
-      <div className="max-w-[760px]">
+      <div className="max-w-[800px]">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            Oʻrin boʻyicha:
+          </span>
+          <SegmentedControl<RankMetric>
+            value={metric}
+            options={RANK_OPTIONS}
+            onChange={setMetric}
+            ariaLabel="ROP reytingi qaysi koʻrsatkich boʻyicha"
+          />
+        </div>
         <DataTable<RopLine>
           columns={ROP_COLUMNS}
+          /*
+            THE HEADERS SORT TOO, onto the same three choices — a reader who
+            clicks «Успешно» expects the table to answer, and a second way to
+            the same state cannot disagree with the first. Always descending:
+            the question is «who is first», never «who is last».
+          */
+          sort={metric}
+          order="desc"
+          onSort={(key) => setMetric(key as RankMetric)}
           rows={lines}
           rowKey={(line) => (line.kind === 'total' ? TOTAL_ROW_KEY : line.row.rop)}
           status={status}
@@ -106,10 +140,10 @@ export function RopSection({
           onRetry={onRetry}
           emptyTitle="ROP maʼlumoti yoʻq"
           emptyBody="Bu davrda tasdiqlash navbatiga tushgan buyurtma topilmadi."
-          // 160 РОП + 2 × 200 full soʻm with its count + 150 Qamrov. Below
-          // that the two sums would wrap, which is the one thing this table
-          // may not do — it exists to be read across.
-          minWidth={710}
+          // 44 # + 160 РОП + 2 × 200 full soʻm with its count + 150 Qamrov.
+          // Below that the two sums would wrap, which is the one thing this
+          // table may not do — it exists to be read across.
+          minWidth={754}
           /*
             EVERY ROP AT ONCE, AND NO INNER SCROLL — the client asked for each
             of them by name, and the default 60dvh cap showed nine of fifteen
@@ -130,16 +164,114 @@ export function RopSection({
             sideways on a phone, and unpinned the reader who scrolls to read
             Успешно is looking at a column of ten-digit sums with nobody's name
             on it. ONE column, which is the whole of a row's identity here:
-            pinning half an identity is worse than pinning none of it.
+            pinning half an identity is worse than pinning none of it. The place
+            number is part of that identity since 2026-09-19, so it pins too.
           */
-          stickyColumns={1}
+          stickyColumns={2}
         />
       </div>
     </ChartCard>
   )
 }
 
-type RopLine = { readonly kind: 'rop' | 'total'; readonly row: LogisticsRopDto }
+type RopLine = {
+  readonly kind: 'rop' | 'total'
+  readonly row: LogisticsRopDto
+  /** 1-based place on the chosen figure; null for ЖАМИ, «(ROP yoʻq)» and a zero. */
+  readonly place: number | null
+}
+
+type RankMetric = 'ordered' | 'won' | 'coverage'
+
+const RANK_OPTIONS: readonly { readonly value: RankMetric; readonly label: string }[] = [
+  { value: 'ordered', label: 'FAKT 1' },
+  { value: 'won', label: 'FAKT 2' },
+  { value: 'coverage', label: 'Qamrov' },
+]
+
+/** The server's sentinel team — `InsightsRepository.NO_ROP`. */
+const NO_ROP = '(ROP yoʻq)'
+
+function metricValue(row: LogisticsRopDto, metric: RankMetric): number | null {
+  if (metric === 'ordered') return row.ordered.amount
+  if (metric === 'won') return row.won.amount
+  return row.coveragePercent
+}
+
+/**
+ * The teams in place order on `metric`, each with its place.
+ *
+ * TIES SHARE A PLACE (1, 2, 2, 4): two teams level on the money are level, and
+ * numbering them 2 and 3 would award a place the figures do not. The order
+ * within a tie is ЗАКАЗ, then name, so it does not jump between two reads.
+ *
+ * ON QAMROV, ЗАКАЗ BREAKS THE TIE — the reason `insightsService` gives for not
+ * sorting by coverage at all is real: one delivered order out of one is 100%.
+ * The reader asked for this order anyway; what it can still do is put the
+ * team carrying more of the month first among equals.
+ *
+ * NO PLACE FOR NOTHING. A team at zero, or with no ЗАКАЗ to measure coverage
+ * on, sits at the foot unnumbered — «8-oʻrin» for nobody's money is a place
+ * nobody earned. «(ROP yoʻq)» is not a team and never gets one either, but
+ * stays in the table because the rows must still add up to ЖАМИ.
+ */
+function rankRops(rops: readonly LogisticsRopDto[], metric: RankMetric): RopLine[] {
+  const ranked = rops.filter((row) => row.rop !== NO_ROP && (metricValue(row, metric) ?? 0) > 0)
+  const rest = rops.filter((row) => !ranked.includes(row))
+
+  ranked.sort(
+    (a, b) =>
+      metricValue(b, metric)! - metricValue(a, metric)! ||
+      b.ordered.amount - a.ordered.amount ||
+      a.rop.localeCompare(b.rop, 'ru'),
+  )
+  // The sentinel last among the unranked, so the real teams read as one list.
+  rest.sort((a, b) => Number(a.rop === NO_ROP) - Number(b.rop === NO_ROP))
+
+  let place = 0
+  const lines = ranked.map((row, index): RopLine => {
+    if (index === 0 || metricValue(row, metric) !== metricValue(ranked[index - 1]!, metric)) {
+      place = index + 1
+    }
+    return { kind: 'rop', row, place }
+  })
+  return [...lines, ...rest.map((row): RopLine => ({ kind: 'rop', row, place: null }))]
+}
+
+const PODIUM_METAL = ['var(--medal-gold)', 'var(--medal-silver)', 'var(--medal-bronze)']
+
+/**
+ * The place, as a disc for the first three and a plain figure after.
+ *
+ * The podium's own three metals, so «1» here is the same gold the sellers'
+ * board gives first place — one meaning for one colour across the product.
+ */
+function Place({ place }: { place: number | null }) {
+  if (place === null) {
+    return <span style={{ color: 'var(--ink-muted)' }}>—</span>
+  }
+  const metal = PODIUM_METAL[place - 1]
+  if (!metal) {
+    return (
+      <span className="tabular text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
+        {place}
+      </span>
+    )
+  }
+  return (
+    <span
+      aria-label={`${place}-oʻrin`}
+      className="tabular inline-flex h-[22px] w-[22px] items-center justify-center rounded-full text-[11px] font-bold"
+      style={{
+        color: metal,
+        border: `1.5px solid ${metal}`,
+        background: `color-mix(in srgb, ${metal} 14%, transparent)`,
+      }}
+    >
+      {place}
+    </span>
+  )
+}
 
 /** Nothing in the ROP column can collide with it — a real name is never this. */
 const TOTAL_ROW_KEY = '__jami__'
@@ -175,6 +307,12 @@ function Sum({ amount, orders }: { amount: number; orders: number }) {
 
 const ROP_COLUMNS: Column<RopLine>[] = [
   {
+    key: 'place',
+    header: '#',
+    width: '44px',
+    render: (line) => (line.kind === 'total' ? null : <Place place={line.place} />),
+  },
+  {
     key: 'rop',
     header: 'РОП',
     rowHeader: true,
@@ -204,6 +342,7 @@ const ROP_COLUMNS: Column<RopLine>[] = [
   {
     key: 'ordered',
     header: 'ЗАКАЗ · FAKT 1',
+    sortKey: 'ordered',
     align: 'right',
     numeric: true,
     width: '200px',
@@ -212,6 +351,7 @@ const ROP_COLUMNS: Column<RopLine>[] = [
   {
     key: 'won',
     header: 'Успешно · FAKT 2',
+    sortKey: 'won',
     align: 'right',
     numeric: true,
     width: '200px',
@@ -220,6 +360,7 @@ const ROP_COLUMNS: Column<RopLine>[] = [
   {
     key: 'coverage',
     header: 'Qamrov',
+    sortKey: 'coverage',
     align: 'right',
     /*
       150px, THE WIDTH THE OTHER TWO BREAKDOWN TABLES ON THIS PAGE USE.
