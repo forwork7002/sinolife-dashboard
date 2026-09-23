@@ -251,6 +251,8 @@ product narrowed to the sections the client asked for. `find src/app/api/v1
 | `GET` | `/marketing/breakdown` | `analytics:read:all` | The same ledger cut by campaign / ad set / creative |
 | `GET` | `/marketing/verify` | `analytics:read:all` | Roistat's own totals against ours, for reconciliation |
 | `GET` | `/reklama/overview` | `analytics:read:all` | The client's «DM», «Отчёт Т» and lead-quality sheets: Meta campaign-days split by objective, beside the target pages' Регистрация leads per day and stage |
+| `GET` | `/sales-team/overview` | `analytics:read:all` | «Sotuv · ROP»: every ROP team's month day by day and one day seller by seller, against the typed-in plans (`?month=YYYY-MM&day=`) |
+| `POST` | `/sales-team/plans` | `analytics:read:all` + `kpi:manage` | Save one month's plans for a team: FAKT 1 / FAKT 2 month plan, each seller's day plan |
 | `GET` | `/meta/filters` | `employees:read` | Filter dropdown options |
 | `GET` | `/meta/alerts` | none (section `null`) | Freshness and the header's bell |
 | `GET` | `/search` | none (section `null`) | ⌘K — every group section-gated, every row scope-narrowed |

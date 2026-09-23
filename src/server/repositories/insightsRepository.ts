@@ -1043,6 +1043,20 @@ export interface DepartmentMemberRow {
   readonly isHead: boolean
 }
 
+/** One seller's queue day, as `salesTeamDays` reads it. */
+export interface SalesTeamDayRow {
+  /** `YYYY-MM-DD`, Tashkent. */
+  readonly day: string
+  readonly employeeId: string
+  /** The seller's ROP team, or null for a unit that is not one. */
+  readonly rop: string | null
+  readonly cohortOrders: number
+  readonly confirmedOrders: number
+  readonly confirmedMinor: bigint
+  readonly deliveredOrders: number
+  readonly deliveredMinor: bigint
+}
+
 export class InsightsRepository {
   private readonly tz: string
 
@@ -3344,7 +3358,7 @@ export class InsightsRepository {
    * Регистрация and Операцион, the two back-office ones, leaked onto 25
    * orders and into the ROP filter list. NULL is the honest answer for them.
    */
-  private static ropNameSql(column: string): string {
+  static ropNameSql(column: string): string {
     /*
       The strip is case-INSENSITIVE, like the ILIKE guard beside it.
 
@@ -5186,6 +5200,62 @@ export class InsightsRepository {
         place: int(r.place),
       })),
     }
+  }
+
+  /**
+   * FAKT 1 and FAKT 2 per queue day × seller × ROP team, company-wide — the
+   * «Sotuv · ROP» sheets on «Reklama samarasi».
+   *
+   * THE BOARD'S OWN COHORT AND PREDICATES, CUT ONE WAY FINER. The same
+   * `queueSql` prelude, the same `FAKT1_OUTCOMES` and `faktDeliveredSql`, the
+   * same operator and the same `c.rop` the sellers board reads — so a team's
+   * month here sums to its row on Sotuvchilar reytingi to the soʻm. Unlike
+   * `medalFactsSql` no day is dropped: a day of pure refusals is still a day
+   * the seller worked, and «Xodim soni» counts it.
+   */
+  async salesTeamDays(period: Period): Promise<SalesTeamDayRow[]> {
+    const params: unknown[] = [period.start, period.end, null]
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        day: string
+        employee_id: string
+        rop: string | null
+        cohort_orders: bigint
+        confirmed_orders: bigint
+        confirmed: MoneyText
+        delivered_orders: bigint
+        delivered: MoneyText
+      }[]
+    >(`${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.salesTeamDaysSql()}`, ...params)
+    return rows.map((r) => ({
+      day: r.day,
+      employeeId: r.employee_id,
+      rop: r.rop,
+      cohortOrders: int(r.cohort_orders),
+      confirmedOrders: int(r.confirmed_orders),
+      confirmedMinor: money(r.confirmed),
+      deliveredOrders: int(r.delivered_orders),
+      deliveredMinor: money(r.delivered),
+    }))
+  }
+
+  /** Isolated so a test can pin it against the board's own predicates. */
+  static salesTeamDaysSql(): string {
+    const fakt2 = InsightsRepository.faktDeliveredSql('ds."logisticsRole"')
+    return `
+       SELECT
+         (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS day,
+         c.operator_id AS employee_id,
+         c.rop,
+         count(*)::bigint AS cohort_orders,
+         count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS confirmed_orders,
+         COALESCE(sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}), 0)::text AS confirmed,
+         count(*) FILTER (WHERE ${fakt2})::bigint AS delivered_orders,
+         COALESCE(sum(d."amountMinor") FILTER (WHERE ${fakt2}), 0)::text AS delivered
+       FROM scoped c
+       JOIN "deal" d ON d."id" = c.deal_id
+       LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
+       GROUP BY 1, 2, 3`
   }
 
   /**

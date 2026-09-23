@@ -16,6 +16,7 @@ import { MarketingRepository } from '@/server/repositories/marketingRepository'
 import { SearchRepository } from '@/server/repositories/searchRepository'
 import { TargetRepository } from '@/server/repositories/targetRepository'
 import { ReklamaRepository } from '@/server/repositories/reklamaRepository'
+import { SalesTeamRepository } from '@/server/repositories/salesTeamRepository'
 import { ScopeRepository } from '@/server/repositories/scopeRepository'
 import { AlertsService } from '@/server/services/alertsService'
 import { SearchService } from '@/server/services/searchService'
@@ -31,6 +32,7 @@ import { SellerBoardService } from './sellerBoardService'
 import { ScopeService } from './scopeService'
 import { TargetService } from './targetService'
 import { ReklamaService } from './reklamaService'
+import { SalesTeamService } from './salesTeamService'
 
 export const dealRepository = new DealRepository(prisma)
 export const referenceRepository = new ReferenceRepository(prisma)
@@ -83,6 +85,12 @@ export const targetService = new TargetService(targetRepository, marketingReposi
   from Meta's campaign grain and the Регистрация leads. See reklamaService.ts.
 */
 export const reklamaService = new ReklamaService(new ReklamaRepository(prisma))
+/*
+  «Sotuv · ROP» — the client's ROP sheets. FAKT 1 / FAKT 2 from the sellers
+  board's own cohort (insightsRepository), leads and plans from its own
+  repository. See salesTeamService.ts.
+*/
+export const salesTeamService = new SalesTeamService(insightsRepository, new SalesTeamRepository(prisma))
 export const sellerBoardService = new SellerBoardService(
   sellerBoardRepository,
   insightsRepository,

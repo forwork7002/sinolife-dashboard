@@ -573,6 +573,7 @@ model Employee {
   /// not the same set as `deals`, the ones they own today. See Deal.operatorEmployeeId.
   soldDeals  Deal[]      @relation("DealOperator")
   kpis       Kpi[]
+  dayPlans   SellerDayPlan[]
   calls      CallRecord[]
   heads      Department[] @relation("DepartmentHead")
   /// Every unit this person belongs to. `departmentId` above is only the first
@@ -1366,6 +1367,51 @@ model MetaCampaignDaily {
   @@unique([campaignId, date])
   @@index([date])
   @@map("meta_campaign_daily")
+}
+
+// ---------------------------------------------------------------------------
+// Sales plans — typed in by an administrator on «Reklama samarasi · Sotuv»
+//
+// The client's ROP sheets carry two plans the portal knows nothing about: a
+// seller's plan for ONE day (5 000 000, 3 500 000 — set by the seller's
+// grade) and a ROP team's plan for the MONTH, once for FAKT 1 and once for
+// FAKT 2. Neither fits `kpi`, whose periods are months and up and whose team
+// rows have no team to name, so they are their own two tables.
+//
+// A month is its first day (`YYYY-MM-01`), a bare date. A team is the name
+// `ropNameSql` gives it — «Husniddin», not the department id — because that
+// is the key every sales screen groups by; a department renamed in Bitrix24
+// starts a new plan row rather than silently inheriting another team's.
+// ---------------------------------------------------------------------------
+
+/// One seller's plan for each day of one month, in soʻm minor units.
+model SellerDayPlan {
+  id          String   @id @default(cuid())
+  month       DateTime @db.Date
+  employeeId  String
+  amountMinor BigInt
+  updatedAt   DateTime @updatedAt
+  /// The account that last saved it — its user id.
+  updatedBy   String?
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([month, employeeId])
+  @@map("seller_day_plan")
+}
+
+/// One ROP team's plan for one month, FAKT 1 and FAKT 2, in soʻm minor units.
+model TeamMonthPlan {
+  id         String   @id @default(cuid())
+  month      DateTime @db.Date
+  rop        String
+  fakt1Minor BigInt?
+  fakt2Minor BigInt?
+  updatedAt  DateTime @updatedAt
+  updatedBy  String?
+
+  @@unique([month, rop])
+  @@map("team_month_plan")
 }
 
 // ---------------------------------------------------------------------------

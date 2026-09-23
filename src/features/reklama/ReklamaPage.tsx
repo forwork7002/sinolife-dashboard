@@ -1,10 +1,11 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
 import { ErrorState } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
+import { SegmentedControl } from '@/components/ui/Controls'
 import { SectionHeader, StatTile } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -17,6 +18,7 @@ import { CampaignSection } from './CampaignSection'
 import { DmSection } from './DmSection'
 import { FormSection } from './FormSection'
 import { QualitySection } from './QualitySection'
+import { SalesTeamSection } from './SalesTeamSection'
 import type { ReklamaOverviewDto } from './reklamaApi'
 import { type Status, UsdTile } from './reklamaUi'
 
@@ -26,14 +28,26 @@ import { type Status, UsdTile } from './reklamaUi'
  * Asked for on 2026-09-23 with five screenshots of the Google Sheets the
  * client analysed ads in: «shu jadvallar orqali men analysis qilar edim endi
  * sen menga shuni reklama samarasi boʻlimiga chiqarishing kerak». This is the
- * first three — «DM», «Отчёт Т» and lead quality — in that order, each as a
- * table of totals and a table of days, the way the sheets read.
+ * three ad sheets — «DM», «Отчёт Т» and lead quality — each as a table of
+ * totals and a table of days, the way the sheets read, then every campaign.
+ * The other two, the ROP sheets, are the «Sotuv · ROP» tab
+ * (`SalesTeamSection`).
  *
- * ONE REQUEST. Every table is built from the same Meta rows and the same lead
- * scan, so the tiles, the page totals and the day rows sum to each other.
+ * ONE REQUEST PER TAB. Every ad table is built from the same Meta rows and
+ * the same lead scan, so the tiles, the page totals and the day rows sum to
+ * each other.
  */
+type Tab = 'ads' | 'sales'
+
 export function ReklamaPage() {
   const { apiParams } = useDashboardFilters()
+  /*
+    TWO SHEETS OF SHEETS. «Reklama» is the ad side (DM, «Отчёт Т», lead
+    quality, campaigns) on the dashboard period; «Sotuv · ROP» is the ROP
+    side on its own calendar month. The ad request does not go out while the
+    sales tab is open, and the other way round.
+  */
+  const [tab, setTab] = useState<Tab>('ads')
 
   const params = useMemo(() => {
     const out: Record<string, string | number> = { preset: apiParams.preset }
@@ -45,6 +59,7 @@ export function ReklamaPage() {
   const overview = useQuery({
     queryKey: ['reklama-overview', params],
     queryFn: ({ signal }) => apiGet<ReklamaOverviewDto>('/reklama/overview', params, signal),
+    enabled: tab === 'ads',
   })
 
   const status: Status = overview.isPending ? 'loading' : overview.isError ? 'error' : 'ready'
@@ -55,11 +70,25 @@ export function ReklamaPage() {
       title={t.modules.reklama.title}
       description={t.modules.reklama.lead}
       accent="var(--series-7)"
-      meta={overview.data?.meta}
-      stale={overview.isPlaceholderData}
+      meta={tab === 'ads' ? overview.data?.meta : undefined}
+      stale={tab === 'ads' && overview.isPlaceholderData}
+      period={tab === 'ads'}
+      toolbar={
+        <SegmentedControl<Tab>
+          ariaLabel="Qaysi jadvallar"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'ads', label: 'Reklama' },
+            { value: 'sales', label: 'Sotuv · ROP' },
+          ]}
+        />
+      }
     >
       <div className="flex min-w-0 flex-col gap-6">
-        {status === 'error' ? (
+        {tab === 'sales' ? (
+          <SalesTeamSection />
+        ) : status === 'error' ? (
           <Card className="p-5">
             <ErrorState
               message={overview.error instanceof Error ? overview.error.message : undefined}
