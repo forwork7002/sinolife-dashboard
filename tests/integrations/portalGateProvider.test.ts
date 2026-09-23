@@ -264,3 +264,82 @@ describe('detectScopes', () => {
     }
   })
 })
+
+describe('a refusal inside a batch', () => {
+  /**
+   * A REFUSAL INSIDE A BATCH IS A REFUSAL. `halt: 0` makes the portal answer
+   * HTTP 200 and bury it in `result_error`, so it never passed through the
+   * catch that tells the gate — and the hold was keyed on `batch`, not on the
+   * walked method. Seen on production 2026-09-23: CUSTOMERS was refused
+   * `OPERATION_TIME_LIMIT` at 05:00:31 and sent again at 05:02:34.
+   */
+  it('holds the WALKED method when a batch command is refused, and nothing else', async () => {
+    const sent: string[] = []
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      const body = `${String(url)} ${String(init?.body ?? '')}`
+      sent.push(body)
+      const refused = body.includes('crm.contact.list')
+      return new Response(
+        JSON.stringify(
+          refused
+            ? {
+                result: {
+                  result: {},
+                  result_error: {
+                    c0: {
+                      error: 'OPERATION_TIME_LIMIT',
+                      error_description: 'Method is blocked due to operation time limit.',
+                    },
+                  },
+                },
+              }
+            : { result: { result: { c0: [] }, result_error: {} } },
+        ),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as unknown as typeof fetch
+
+    const provider = new Bitrix24CrmProvider({
+      webhookUrl: 'https://portal/rest/1/tok/',
+      fetchImpl,
+      maxRetries: 0,
+    })
+
+    await expect(provider.fetchCustomers()).rejects.toThrow(/OPERATION_TIME_LIMIT/)
+    const afterFirst = sent.length
+
+    // The next tick asks again and the batch never leaves.
+    await expect(provider.fetchCustomers()).rejects.toThrow(/not sent/)
+    expect(sent).toHaveLength(afterFirst)
+
+    // One method's budget is not the portal's: deals still walk.
+    await provider.fetchDeals()
+    expect(sent.length).toBeGreaterThan(afterFirst)
+    // `isOpen` means the whole gate has tripped — a method hold is not that.
+    expect(provider.gate.isOpen()).toBe(false)
+  })
+
+  it('shuts the whole gate when a batch command says the portal is overloaded', async () => {
+    const sent: string[] = []
+    const fetchImpl = (async (url: string) => {
+      sent.push(String(url))
+      return new Response(
+        JSON.stringify({ result: { result: {}, result_error: { c0: OVERLOAD } } }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as unknown as typeof fetch
+
+    const provider = new Bitrix24CrmProvider({
+      webhookUrl: 'https://portal/rest/1/tok/',
+      fetchImpl,
+      maxRetries: 0,
+    })
+
+    await expect(provider.fetchCustomers()).rejects.toThrow(/OVERLOAD_LIMIT/)
+    await expect(provider.fetchDeals()).rejects.toThrow()
+    await expect(provider.fetchStageHistory()).rejects.toThrow()
+
+    expect(sent).toHaveLength(1)
+    expect(provider.gate.isOpen()).toBe(true)
+  })
+})

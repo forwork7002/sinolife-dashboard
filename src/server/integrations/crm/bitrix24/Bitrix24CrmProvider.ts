@@ -428,9 +428,21 @@ export class Bitrix24CrmProvider implements CrmProvider {
         opened.
       */
       if (!options.bypassGate) {
-        const held = this.gate.hold(method, new Date())
+        /*
+          THE WALKED METHOD IS HELD TOO, NOT ONLY THE TRANSPORT.
+
+          `OPERATION_TIME_LIMIT` blocks ONE method, and for a chained walk that
+          method is `crm.contact.list`, never `batch` — so a hold keyed on the
+          walked method was never consulted here, and every tick sent another
+          batch into a method the portal had already blocked. Seen on
+          production 2026-09-23: CUSTOMERS refused at 05:00:31 and asked again
+          at 05:02:34.
+        */
+        const now = new Date()
+        const held =
+          (metered !== method ? this.gate.hold(metered, now) : null) ?? this.gate.hold(method, now)
         if (held) {
-          throw new Bitrix24Error(held.message, undefined, false, held.code, method)
+          throw new Bitrix24Error(held.message, undefined, false, held.code, metered)
         }
       }
 
@@ -810,9 +822,27 @@ export class Bitrix24CrmProvider implements CrmProvider {
          */
         if (i > 0 && error.error === 'INVALID_ARG_VALUE') return ended()
 
-        throw new Bitrix24Error(
+        /*
+          THE REFUSAL IS TOLD TO THE GATE, WITH ITS CODE AND ITS METHOD.
+
+          `halt: 0` makes the portal answer HTTP 200 and bury a refusal in
+          `result_error`, so it never passes through `call()`'s catch — the one
+          place the gate used to hear about refusals. Thrown bare, it carried
+          neither the code nor the method: an `OPERATION_TIME_LIMIT` on
+          `crm.contact.list` held nothing, and an `OVERLOAD_LIMIT` here would
+          not have shut the door for the rest of the tick. Named and tripped,
+          it holds this method for ten minutes (or shuts the gate) exactly as
+          the same refusal would from a top-level answer.
+        */
+        const refusal = new Bitrix24Error(
           `Bitrix24 batch of ${method} failed at command ${i}: ${JSON.stringify(error).slice(0, 200)}`,
+          undefined,
+          false,
+          typeof error.error === 'string' && error.error.length > 0 ? error.error : undefined,
+          method,
         )
+        this.gate.trip(refusal, new Date())
+        throw refusal
       }
 
       const batch = unwrap(results?.[`c${i}`])
