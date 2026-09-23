@@ -76,7 +76,7 @@ import type { CrmProvider, FetchOptions, Page } from '@/server/integrations/crm/
  * first place only because the upsert no longer rewrites a row's primary key;
  * see `identityColumns` in handlers.ts.
  */
-const SKIP_LOOKBACK_MS: Partial<Record<SyncEntityValue, number>> = {
+export const SKIP_LOOKBACK_MS: Partial<Record<SyncEntityValue, number>> = {
   DEALS: 95 * 60_000,
   STAGE_HISTORY: 35 * 60_000,
 }

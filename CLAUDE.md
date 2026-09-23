@@ -1877,8 +1877,14 @@ mixed `100vh` against a shell sized in `100dvh`.
   **And the restart itself was expensive.** `historyBackfillCursor` re-read 45
   days of stage history on EVERY start — five deploys in two hours is five
   such passes. It now runs only when the cursor has been still for half an
-  hour, which is the case it was written for (a worker that was DOWN); a
-  redeploy under a healthy sync is covered by `SKIP_LOOKBACK_MS`.
+  hour PLUS the 35 minutes the engine itself sets it back
+  (`HISTORY_IDLE_MS` = 65 min), which is the case it was written for (a worker
+  that was DOWN); a redeploy under a healthy sync is covered by
+  `SKIP_LOOKBACK_MS`. **The bare half hour was wrong until 2026-09-23:**
+  stage history skips rows on nearly every tick, so its stored watermark is
+  `startedAt − 35 min` and read as idle the moment it was written — the deploy
+  that day re-read 81 970 rows under a worker that had synced two minutes
+  earlier.
 
 **A REFUSED PORTAL IS NOT ASKED AGAIN UNTIL A PROBE SAYS IT IS —
 `PortalGate`, and it replaced the flat ten-minute wait on 2026-09-15.**

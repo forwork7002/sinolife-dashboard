@@ -1,3 +1,20 @@
+import { SKIP_LOOKBACK_MS } from './SyncEngine'
+
+/**
+ * How long the cursor must have stood still before a start counts as a
+ * RECOVERY: half an hour of real idleness, PLUS the distance the engine itself
+ * sets the cursor back.
+ *
+ * Stage history finishes PARTIAL on nearly every run (rows pointing at stages
+ * and deals the portal has deleted), so the engine stores `startedAt − 35 min`
+ * as its watermark after an ordinary healthy tick. Measured against a bare
+ * thirty minutes, that cursor looked idle the instant it was written: the
+ * deploy of 2026-09-23 06:36 UTC, under a worker that had synced two minutes
+ * earlier, wound back 45 days and re-read 81 970 rows from the portal in one
+ * tick — the redeploy cost this rule was written to stop.
+ */
+export const HISTORY_IDLE_MS = 30 * 60_000 + (SKIP_LOOKBACK_MS.STAGE_HISTORY ?? 0)
+
 /**
  * Where the stage-history cursor should be wound back to at startup, if at all.
  *
@@ -19,10 +36,10 @@ export function historyBackfillCursor(
   now: Date,
   days: number,
   /**
-   * How recently the sync must have run for this to be treated as a RESTART
-   * rather than a RECOVERY. Default thirty minutes.
+   * How long the cursor must have stood still for this to be treated as a
+   * RECOVERY rather than a RESTART. `HISTORY_IDLE_MS` by default.
    */
-  minIdleMs = 30 * 60_000,
+  minIdleMs = HISTORY_IDLE_MS,
 ): Date | null {
   // Switched off.
   if (!Number.isFinite(days) || days <= 0) return null

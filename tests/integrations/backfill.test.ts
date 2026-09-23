@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { historyBackfillCursor } from '@/server/integrations/crm/sync/backfill'
+import { nextWatermark } from '@/server/integrations/crm/sync/SyncEngine'
 
 /**
  * THE REPAIR THAT CANNOT MAKE THINGS WORSE.
@@ -38,12 +39,26 @@ describe('the stage-history backfill cursor', () => {
   it('leaves the cursor alone when the sync was healthy moments ago', () => {
     const cursor = new Date('2026-09-03T11:55:00.000Z')
     expect(historyBackfillCursor(cursor, NOW, DAYS)).toBeNull()
-    // Just past the threshold, it is a repair again.
-    expect(historyBackfillCursor(new Date('2026-09-03T11:29:00.000Z'), NOW, DAYS)).toEqual(
+    // Just past the threshold — 65 minutes still — it is a repair again.
+    expect(historyBackfillCursor(new Date('2026-09-03T10:54:00.000Z'), NOW, DAYS)).toEqual(
       WINDOW_START,
     )
     // The threshold is a parameter, so a worker can be told to repair always.
     expect(historyBackfillCursor(cursor, NOW, DAYS, 0)).toEqual(WINDOW_START)
+  })
+
+  /*
+    THE CURSOR A HEALTHY TICK LEAVES IS 35 MINUTES OLD.
+
+    Stage history skips rows on nearly every run, and after a skip the engine
+    stores `startedAt − SKIP_LOOKBACK_MS` (35 min). The deploy of 2026-09-23
+    06:36 UTC restarted a worker that had synced two minutes earlier, read that
+    cursor as half an hour idle, and re-read 81 970 rows from the portal.
+  */
+  it('treats the cursor a skipped-but-healthy tick leaves as a restart', () => {
+    const healthyTick = new Date(NOW.getTime() - 2 * 60_000)
+    const watermark = nextWatermark('STAGE_HISTORY', healthyTick, 12)
+    expect(historyBackfillCursor(watermark, NOW, DAYS)).toBeNull()
   })
 
   it('leaves a cursor that is already older than the window alone', () => {
