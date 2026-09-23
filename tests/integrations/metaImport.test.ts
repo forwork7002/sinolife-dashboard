@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PrismaClient } from '@/generated/prisma/client'
 
 import {
+  campaignStarts,
   dateSlices,
   importMetaSpend,
   metaConversations,
@@ -85,6 +86,7 @@ describe('importMetaSpend — one refused account does not stop the rest', () =>
     const prisma = {
       metaAdDaily: {
         aggregate: async () => ({ _max: { date: new Date('2026-09-20T00:00:00Z') } }),
+        groupBy: async () => [],
         findMany: async () => [
           { accountId: '990016692137088', accountName: 'Umar - 64' },
           { accountId: '440073592484616', accountName: 'Zextra Umar' },
@@ -93,7 +95,7 @@ describe('importMetaSpend — one refused account does not stop the rest', () =>
         createMany: () => 'create',
       },
       metaCampaignDaily: {
-        aggregate: async () => ({ _max: { date: new Date('2026-09-20T00:00:00Z') } }),
+        groupBy: async () => [],
         deleteMany: (args: { where: { accountId: string } }) => `delete ${args.where.accountId}`,
         createMany: () => 'create',
       },
@@ -156,5 +158,48 @@ describe('importMetaSpend — one refused account does not stop the rest', () =>
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(refusal), { status: 400 })))
     const { prisma } = fakePrisma()
     await expect(importMetaSpend(prisma, 'token', '2026-09-23')).rejects.toThrow(/hech bir akkaunt/)
+  })
+})
+
+describe('campaignStarts — every account gets its whole campaign history, even after an interrupted run', () => {
+  const d = (iso: string) => new Date(`${iso}T00:00:00Z`)
+  const adMin = new Map([
+    ['full', d('2026-07-01')],
+    ['cut', d('2026-07-01')],
+    ['new', d('2026-07-01')],
+    ['young', d('2026-08-15')],
+  ])
+  const from = campaignStarts(
+    adMin,
+    new Map([
+      // Backfilled before the 07:08 deploy killed the worker.
+      ['full', { min: d('2026-07-01'), max: d('2026-09-23') }],
+      // Only the week the next pass read.
+      ['cut', { min: d('2026-09-16'), max: d('2026-09-23') }],
+      ['young', { min: d('2026-08-15'), max: d('2026-09-23') }],
+    ]),
+  )
+
+  it('refreshes one week for an account that already has its history', () => {
+    expect(from('full')).toBe('2026-09-16')
+    expect(from('young')).toBe('2026-09-16')
+  })
+
+  it('reads from the history start an account whose campaign rows start late — the 2026-09-23 gap', () => {
+    expect(from('cut')).toBe('2026-07-01')
+  })
+
+  it('does not re-read forever an account whose early campaigns Meta no longer reports', () => {
+    const f = campaignStarts(
+      new Map([['old', d('2026-07-01')]]),
+      // Backfilled once; Meta returned nothing before 10 August.
+      new Map([['old', { min: d('2026-08-10'), max: d('2026-09-23') }]]),
+    )
+    expect(f('old')).toBe('2026-09-16')
+  })
+
+  it('reads an account with no campaign rows from the history start', () => {
+    expect(from('new')).toBe('2026-07-01')
+    expect(from('never-seen')).toBe('2026-07-01')
   })
 })

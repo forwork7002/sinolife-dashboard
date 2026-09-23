@@ -118,6 +118,44 @@ export function dateSlices(since: string, until: string, days: number): { since:
   return out
 }
 
+/**
+ * Where each account's CAMPAIGN rows start being read — per account, never
+ * one date for all.
+ *
+ * One table-wide «latest» broke the first backfill on 2026-09-23: the hourly
+ * pass started it at 07:06 UTC, a deploy killed the worker at 07:08 with some
+ * accounts written back to July and the rest untouched, and the next pass saw
+ * a non-empty table and read one week for everybody. The untouched accounts
+ * would never have had their history.
+ *
+ * So an account whose campaign rows begin LATER than its own account-grain
+ * rows (`meta_ad_daily`, which has the full history) and span only one
+ * refresh window is missing its start and is read from there; one with no campaign rows at all from the history
+ * start; anyone else refreshes its last week, as before.
+ */
+export function campaignStarts(
+  adMin: ReadonlyMap<string, Date | null>,
+  campaigns: ReadonlyMap<string, { min: Date | null; max: Date | null }>,
+): (accountId: string) => string {
+  const day = (d: Date) => d.toISOString().slice(0, 10)
+  return (accountId) => {
+    const have = campaigns.get(accountId)
+    const adStart = adMin.get(accountId) ?? null
+    const historyStart = adStart && day(adStart) > META_HISTORY_FROM ? day(adStart) : META_HISTORY_FROM
+    if (!have?.min || !have.max) return historyStart
+    /*
+      ONLY THE INTERRUPTED-RUN SIGNATURE: rows that start late AND cover no
+      more than one refresh window. An account whose older campaigns Meta no
+      longer reports at campaign level (deleted ones) also starts late, but
+      after one backfill its span is long — without the span test it would be
+      re-read from July every hour, forever.
+    */
+    const span = (have.max.getTime() - have.min.getTime()) / 86_400_000
+    if (day(have.min) > historyStart && span <= META_REFRESH_DAYS + 1) return historyStart
+    return sinceOf(have.max)
+  }
+}
+
 /** First day to (re)read: the history start on an empty table, else a week back. */
 function sinceOf(latest: Date | null): string {
   const since = latest
@@ -142,17 +180,16 @@ export async function importMetaSpend(
   token: string,
   today: string,
 ): Promise<MetaImportResult> {
-  const [latest, latestCampaign] = await Promise.all([
+  const [latest, adSpans, campaignSpans] = await Promise.all([
     prisma.metaAdDaily.aggregate({ _max: { date: true } }),
-    prisma.metaCampaignDaily.aggregate({ _max: { date: true } }),
+    prisma.metaAdDaily.groupBy({ by: ['accountId'], _min: { date: true } }),
+    prisma.metaCampaignDaily.groupBy({ by: ['accountId'], _min: { date: true }, _max: { date: true } }),
   ])
   const from = sinceOf(latest._max.date)
-  /*
-    Its own start: the campaign table arrived after the account table, so on
-    its first run it backfills from the history start while the account table
-    only refreshes its week.
-  */
-  const campaignFrom = sinceOf(latestCampaign._max.date)
+  const campaignFromOf = campaignStarts(
+    new Map(adSpans.map((a) => [a.accountId, a._min.date])),
+    new Map(campaignSpans.map((c) => [c.accountId, { min: c._min.date, max: c._max.date }])),
+  )
 
   const accounts = await listAccounts(prisma, token)
   const failed: string[] = []
@@ -161,6 +198,7 @@ export async function importMetaSpend(
   let campaignRows = 0
   for (const account of accounts) {
     try {
+      const campaignFrom = campaignFromOf(account.account_id)
       const imported = await importAccount(prisma, token, account, { from, campaignFrom, today })
       rows += imported.rows
       campaignRows += imported.campaignRows
