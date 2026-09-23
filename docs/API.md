@@ -250,6 +250,7 @@ product narrowed to the sections the client asked for. `find src/app/api/v1
 | `GET` | `/marketing/overview` | `analytics:read:all` | Roistat spend, leads and return |
 | `GET` | `/marketing/breakdown` | `analytics:read:all` | The same ledger cut by campaign / ad set / creative |
 | `GET` | `/marketing/verify` | `analytics:read:all` | Roistat's own totals against ours, for reconciliation |
+| `GET` | `/reklama/overview` | `analytics:read:all` | The client's «DM», «Отчёт Т» and lead-quality sheets: Meta campaign-days split by objective, beside the target pages' Регистрация leads per day and stage |
 | `GET` | `/meta/filters` | `employees:read` | Filter dropdown options |
 | `GET` | `/meta/alerts` | none (section `null`) | Freshness and the header's bell |
 | `GET` | `/search` | none (section `null`) | ⌘K — every group section-gated, every row scope-narrowed |
@@ -257,9 +258,10 @@ product narrowed to the sections the client asked for. `find src/app/api/v1
 | `GET`/`PATCH`/`DELETE` | `/users/:id` | `users:manage` | One account |
 
 The three `/marketing/*` routes still answer, but **nothing calls them**: the
-screen was paused on 2026-09-10 and renders `shared/SectionPending` instead. The
-same is true of `/insights/dispatch`. Both are held rather than removed, so
-switching either screen back on needs no server work.
+Roistat screen was paused on 2026-09-10, and since 2026-09-23 `/marketing`
+renders «Reklama samarasi» from `/reklama/overview` instead. The same is
+true of `/insights/dispatch`, whose screen renders `shared/SectionPending`. Both
+are held rather than removed, so switching either back on needs no server work.
 
 "analytics" means either `analytics:read:all` or `analytics:read:own` — access
 is the same question for both roles; how much data comes back is decided

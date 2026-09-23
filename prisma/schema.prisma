@@ -1333,6 +1333,41 @@ model MetaAdDaily {
   @@map("meta_ad_daily")
 }
 
+/// One Meta CAMPAIGN on one day — what «Reklama samarasi» splits spend by.
+///
+/// The account grain above cannot tell the client's two sheets apart, and
+/// they are cut by exactly this: «Отчёт Т» carries the targetolog's
+/// lead-form campaigns (objective OUTCOME_LEADS — Umar on 02.09.2026 is
+/// 93.1 $ + 96.0 $ = the sheet's 189.0 $ to the dime), «DM» carries the
+/// Instagram-message campaigns (OUTCOME_ENGAGEMENT), less the hiring ones.
+/// The objective and the name are kept per row so that rule is applied at
+/// read time (`campaignChannel`), never baked into the import.
+model MetaCampaignDaily {
+  id           String   @id @default(cuid())
+  accountId    String
+  accountName  String
+  campaignId   String
+  /// As last imported — renamed campaigns carry their newest name.
+  campaignName String
+  /// Meta's objective, e.g. OUTCOME_LEADS, OUTCOME_ENGAGEMENT.
+  objective    String
+  date         DateTime @db.Date
+  spendMicroUsd BigInt  @default(0)
+  impressions   BigInt  @default(0)
+  clicks        BigInt  @default(0)
+  /// The `lead` action — Meta's own count.
+  leads         Int     @default(0)
+  /// `onsite_conversion.messaging_conversation_started_7d` — a person who
+  /// wrote to the page from this ad. The sheet's «Кол мурожат» counts every
+  /// message the page got, paid or not, so this runs below it.
+  conversations Int     @default(0)
+  importedAt    DateTime @default(now())
+
+  @@unique([campaignId, date])
+  @@index([date])
+  @@map("meta_campaign_daily")
+}
+
 // ---------------------------------------------------------------------------
 // KPI
 // ---------------------------------------------------------------------------

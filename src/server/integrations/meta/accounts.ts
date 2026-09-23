@@ -50,3 +50,51 @@ export const META_ACCOUNT_OWNERS: Readonly<Record<string, MetaAccountOwner>> = O
 export function ownerOf(accountId: string, accountName: string): MetaAccountOwner {
   return META_ACCOUNT_OWNERS[accountId] ?? { product: 'Boshqa', targetolog: accountName }
 }
+
+/**
+ * Which of the client's sheets a campaign's money belongs on.
+ *
+ *   form   — «Отчёт Т», the targetolog's lead-form campaigns (OUTCOME_LEADS).
+ *            Checked against the sheet on 02–04.09.2026: Umar's two Collagen
+ *            accounts' OUTCOME_LEADS spend is 189.1 / 229.9 / 200.1 $ against
+ *            the sheet's 189.0 / 229.8 / 200.0 $.
+ *   dm     — «DM», the Instagram-message campaigns (OUTCOME_ENGAGEMENT).
+ *            Checked on 01–04.08.2026: Collagen's DM spend less the hiring
+ *            campaign is 142.6 / 232.8 / 185.1 / 159.5 $ against the sheet's
+ *            142.7 / 231.7 / 184.7 / 159.0 $ — within Meta's own later
+ *            revisions of a day.
+ *   hiring — a DM campaign that recruits staff, not customers
+ *            («EX - Sinolife (vakansiya) - DM»). On neither sheet; that one
+ *            campaign is exactly the gap between Meta's DM total and the
+ *            sheet's on 01.08 (7.4 $).
+ *   other  — traffic, awareness, sales objectives: on neither sheet, still
+ *            counted in the grand total so no dollar vanishes.
+ *
+ * Read at query time from the objective and name stored per row, so moving a
+ * campaign between sheets corrects history without a re-import.
+ */
+export type CampaignChannel = 'form' | 'dm' | 'hiring' | 'other'
+
+const HIRING = /vakans|вакан|ishga\s+olish|\bhr\b/i
+
+export function campaignChannel(objective: string, name: string): CampaignChannel {
+  if (HIRING.test(name)) return 'hiring'
+  if (objective === 'OUTCOME_LEADS' || objective === 'LEAD_GENERATION') return 'form'
+  if (objective === 'OUTCOME_ENGAGEMENT' || objective === 'MESSAGES') return 'dm'
+  return 'other'
+}
+
+/**
+ * The Instagram page a product's DM money is shown against, by portal
+ * SOURCE_ID. The «DM» sheet puts all of Collagen's DM spend on «sinolifeuz»
+ * and none on «sinolife_otziv». It leaves «zextrauzb» at 0 $, though Umar
+ * runs a Zextra DM campaign (~100 $ in August); that money is shown on
+ * «zextrauzb» rather than dropped. The ads cannot say which page they ran on
+ * without the `ads_management` budget (see metaImport.ts), so the page is
+ * stated here. An unmapped account's DM money has no page and is reported
+ * as such, never folded into one.
+ */
+export const DM_PAGE_OF_PRODUCT: Readonly<Record<TargetProduct, string>> = Object.freeze({
+  Collagen: 'UC_1X1J24', // sinolifeuz
+  Zextra: 'UC_A8LE21', // zextrauzb
+})

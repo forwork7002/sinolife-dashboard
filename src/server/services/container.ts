@@ -15,6 +15,7 @@ import { ConcentrationRepository } from '@/server/repositories/concentrationRepo
 import { MarketingRepository } from '@/server/repositories/marketingRepository'
 import { SearchRepository } from '@/server/repositories/searchRepository'
 import { TargetRepository } from '@/server/repositories/targetRepository'
+import { ReklamaRepository } from '@/server/repositories/reklamaRepository'
 import { ScopeRepository } from '@/server/repositories/scopeRepository'
 import { AlertsService } from '@/server/services/alertsService'
 import { SearchService } from '@/server/services/searchService'
@@ -29,6 +30,7 @@ import { MarketingService } from './marketingService'
 import { SellerBoardService } from './sellerBoardService'
 import { ScopeService } from './scopeService'
 import { TargetService } from './targetService'
+import { ReklamaService } from './reklamaService'
 
 export const dealRepository = new DealRepository(prisma)
 export const referenceRepository = new ReferenceRepository(prisma)
@@ -75,6 +77,12 @@ export const marketingService = new MarketingService(marketingRepository)
 */
 export const targetRepository = new TargetRepository(prisma)
 export const targetService = new TargetService(targetRepository, marketingRepository)
+
+/*
+  «Reklama samarasi» — the client's DM, «Отчёт Т» and lead-quality sheets,
+  from Meta's campaign grain and the Регистрация leads. See reklamaService.ts.
+*/
+export const reklamaService = new ReklamaService(new ReklamaRepository(prisma))
 export const sellerBoardService = new SellerBoardService(
   sellerBoardRepository,
   insightsRepository,

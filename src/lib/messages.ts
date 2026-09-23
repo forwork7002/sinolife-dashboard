@@ -71,6 +71,10 @@ export const t = {
       Tashkent time. The key stays `calls` while the URL and section stay
       `customers` — see CallsPage.
     */
+    reklama: {
+      title: 'Reklama samarasi',
+      lead: 'DM, targetologlar va lid sifati — mijozning oʻz jadvallari, Meta Ads va Bitrix24 dan har kuni oʻzi yigʻiladi. Kunlar Toshkent vaqti boʻyicha.',
+    },
     target: {
       title: 'Target tahlili',
       lead: 'Target sahifalaridan kelgan leadlar — qaysi manba, targetolog va kreativdan kelgani, qanchasi buyurtmaga aylangani va qancha pul keltirgani. Bitrix24 dagi yaratilgan sana boʻyicha, Toshkent vaqti.',

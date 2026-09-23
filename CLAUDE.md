@@ -399,14 +399,16 @@ Two duplications the feature cannot avoid, both deliberate:
 
 ## The thirteen screens, and what each one dates by
 
-**Two of the thirteen are PAUSED and two screens were removed.** «Boshqaruv markazi»
+**One of the thirteen is PAUSED and two screens were removed.** «Boshqaruv markazi»
 went entirely on 2026-09-10 («boshqaruv markazi boʻlimini toʻliq olib tashla»);
-«Joʻnatish nuqtalari» and «Reklama samarasi» keep their section, their nav entry
-and their endpoints but render `shared/SectionPending` and issue no request
-(«hozircha api qilmay tur… bitta bitta keyinchalik toʻgʻrilab chiqaman»). The
-feature files under `features/warehouse` and `features/marketing` are HELD, not
-dead: switching one back on is an import and a `<Suspense>` in its
-`src/app/<name>/page.tsx`, and that page's own comment says so.
+«Joʻnatish nuqtalari» keeps its section, its nav entry and its endpoint but
+renders `shared/SectionPending` and issues no request («hozircha api qilmay
+tur… bitta bitta keyinchalik toʻgʻrilab chiqaman»). «Reklama samarasi» was
+paused the same day and came back on 2026-09-23 as a DIFFERENT screen — the
+client's own «DM», «Отчёт Т» and lead-quality sheets (`features/reklama`),
+not the Roistat ledger. The feature files under `features/warehouse` and
+`features/marketing` (Roistat) are HELD, not dead: switching one back on is an
+import and a `<Suspense>` in its `src/app/<name>/page.tsx`.
 
 
 Every page is a thin shell under `src/app/`, the UI lives in
@@ -424,7 +426,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Savdo dinamikasi | `/analytics/sales` | `sales/SalesPage` + `ForecastSection` + `ConfirmationOutcomeSection` + `ConfirmationFaktSection` + `DeliveryBoardSection` | `/analytics/sellers` twice (the board, and `?include=faktTrend` for the chart) + `/insights/delivery` | SellerBoard, Pulse → SellerBoard, Pulse | the arrival in `C4:NEW` (`queued_at`) — **except the Доставка board, which has NO window at all**: a kanban column is where orders are standing now |
 | Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` — ONE reading, the MATRIX FIRST. It had two modes («Oddiy» / «Batafsil», `?mode=`) until 2026-09-16; the manager's view and everything only it read are deleted. The matrix has THREE readings of one fetch — «Jami qaytgan» / «Oylik» / «Pul» — and ONE control that is a different question: `?rop=`, the acquiring team, which is its own cache entry and its own request | `/insights/cohorts`, `/insights/customers`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | **nothing — the screen is DATELESS since 2026-09-15** (`period={false}`, like Struktura), and it now carries TWO CLOCKS, each named on screen. `closedAt` on revenue-bearing WON deals is the clock the matrix and the concentration band read; `/insights/customers` reads `createdAtSource` over its OWN trailing 90 days, so its customer totals legitimately differ — never sum across them; the matrix takes no window at all (`months` bounds which cohort ROWS are drawn and never the totals arm) and `/insights/concentration` resolves its OWN trailing 90 days (`trailingDays`). Nothing here reads `createdAtSource` |
 | Qoʻngʻiroqlar | `/customers` | `calls/CallsPage` + `CallTable` | `/insights/calls` | Insights → Insights | `call_record."startedAt"` on the dashboard window, clamped below at `CALL_DATA_FLOOR` (2026-09-15 00:00 Tashkent). One clock, one request |
-| Reklama samarasi | `/marketing` | **PAUSED** — `shared/SectionPending`; `marketing/MarketingPage` is held, not mounted | none while paused (`/marketing/overview`, `/marketing/breakdown`, `/marketing/verify` still answer) | Marketing → Marketing | `marketing_daily."date"` — the Roistat sheet's own lead date. **Not Bitrix24 data at all** |
+| Reklama samarasi | `/marketing` | `reklama/ReklamaPage` + `DmSection` + `FormSection` + `QualitySection`. The Roistat `marketing/MarketingPage` is held, not mounted | `/reklama/overview` (the Roistat `/marketing/*` three still answer, uncalled) | Reklama → Reklama | **two clocks, one Tashkent calendar day.** Meta: `meta_campaign_daily."date"`, the ad account's reporting day, split by `campaignChannel` (OUTCOME_LEADS → «Отчёт Т», OUTCOME_ENGAGEMENT → «DM», hiring campaigns → neither). Bitrix24: the Регистрация lead's `createdAtSource`, bucketed by the stage it sits in NOW (`leadQuality.ts`). Never joined — they meet on the day and the page |
 | Target tahlili | `/target` | `target/TargetPage` + `TargetGroupTable` + `TargetLeadTable` + `TargetMeta` | `/target/overview`, `/target/leads` | Target → Target | **the deal's creation, `createdAtSource`** — a lead on the day it was registered, a sale on the day the seller's deal was opened. The Meta block reads `meta_ad_daily."date"` over the same Tashkent calendar days |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |

@@ -31,9 +31,10 @@ async function main() {
     const today = zonedDateKey(new Date(), process.env.APP_TIMEZONE ?? 'Asia/Tashkent')
     const r = await importMetaSpend(prisma, token!, today)
     console.log(
-      `\n  Meta: ${r.accounts} akkaunt, ${r.rows} kun-qator (${r.since} – ${r.until})` +
+      `\n  Meta: ${r.accounts} akkaunt, ${r.rows} kun-qator, ${r.campaignRows} kampaniya-kun (${r.since} – ${r.until})` +
         `  ${((Date.now() - started) / 1000).toFixed(1)}s\n`,
     )
+    for (const refused of r.failed) console.warn(`  ✗ oʻqilmadi — ${refused}`)
   } finally {
     await prisma.$disconnect()
     await pool.end()
