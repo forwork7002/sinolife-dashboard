@@ -497,3 +497,28 @@ describe('the attempt count in a failure message', () => {
     expect(calls()).toBe(2)
   })
 })
+
+describe('dealUtm — the ad tags a lead carries', () => {
+  it('keeps the non-empty UTM tags and the source note, trimmed', async () => {
+    const { dealUtm } = await import('@/server/integrations/crm/bitrix24/Bitrix24CrmProvider')
+    expect(
+      dealUtm({
+        ID: '1',
+        UTM_SOURCE: 'facebook',
+        UTM_CAMPAIGN: ' 120253370951640432 ',
+        UTM_MEDIUM: '',
+        UTM_CONTENT: null,
+        SOURCE_DESCRIPTION: 'Lead form «Collagen»',
+      }),
+    ).toEqual({
+      UTM_SOURCE: 'facebook',
+      UTM_CAMPAIGN: '120253370951640432',
+      SOURCE_DESCRIPTION: 'Lead form «Collagen»',
+    })
+  })
+
+  it('is null for a deal with no tags, so metadata does not fill with empty objects', async () => {
+    const { dealUtm } = await import('@/server/integrations/crm/bitrix24/Bitrix24CrmProvider')
+    expect(dealUtm({ ID: '1', UTM_SOURCE: '', TITLE: 'x' })).toBeNull()
+  })
+})

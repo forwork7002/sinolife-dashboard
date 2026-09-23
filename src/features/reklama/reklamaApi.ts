@@ -19,6 +19,7 @@ export interface DmCellsDto {
   readonly costPerQualifiedUsd: number | null
   readonly qualifiedPercent: number | null
   readonly conversationToQualifiedPercent: number | null
+  readonly costPerConversationUsd: number | null
 }
 
 export interface DmDayDto extends DmCellsDto {
@@ -45,6 +46,11 @@ export interface FormCellsDto {
   readonly spendUsd: number
   readonly metaLeads: number
   readonly costPerLeadUsd: number | null
+  readonly impressions: number
+  readonly clicks: number
+  readonly ctrPercent: number | null
+  readonly cpcUsd: number | null
+  readonly cpmUsd: number | null
 }
 
 export interface FormDayDto extends FormCellsDto {
@@ -107,6 +113,27 @@ export interface SpendSplitDto {
   readonly otherUsd: number
 }
 
+export type CampaignChannel = 'form' | 'dm' | 'hiring' | 'other'
+
+export interface CampaignDto {
+  readonly id: string
+  readonly name: string
+  readonly account: string
+  readonly targetolog: string
+  readonly product: MetaProduct
+  readonly channel: CampaignChannel
+  readonly spendUsd: number
+  readonly metaLeads: number
+  readonly conversations: number
+  readonly results: number
+  readonly costPerResultUsd: number | null
+  readonly impressions: number
+  readonly clicks: number
+  readonly ctrPercent: number | null
+  readonly activeDays: number
+  readonly lastActive: string | null
+}
+
 export interface ReklamaOverviewDto {
   readonly importedAt: string | null
   readonly window: { readonly from: string; readonly to: string }
@@ -114,4 +141,5 @@ export interface ReklamaOverviewDto {
   readonly dm: DmBlockDto
   readonly form: FormBlockDto
   readonly quality: QualityBlockDto
+  readonly campaigns: readonly CampaignDto[]
 }

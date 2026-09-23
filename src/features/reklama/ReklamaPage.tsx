@@ -13,6 +13,7 @@ import { apiGet } from '@/lib/api'
 import { formatDateTime, formatNumber } from '@/lib/format'
 import { t } from '@/lib/messages'
 
+import { CampaignSection } from './CampaignSection'
 import { DmSection } from './DmSection'
 import { FormSection } from './FormSection'
 import { QualitySection } from './QualitySection'
@@ -71,6 +72,7 @@ export function ReklamaPage() {
             <DmSection dm={data?.dm} status={status} />
             <FormSection form={data?.form} status={status} />
             <QualitySection quality={data?.quality} status={status} />
+            <CampaignSection campaigns={data?.campaigns} status={status} />
           </>
         )}
       </div>

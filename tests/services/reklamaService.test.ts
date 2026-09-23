@@ -37,17 +37,23 @@ const lead = (day: string, sourceId: string, stage: string, status: string, lead
   leads,
 })
 
-const campaign = (over: Partial<CampaignDayRow>): CampaignDayRow => ({
-  date: '2026-08-01',
-  accountId: '990016692137088', // Umar - 64 · Collagen
-  accountName: 'Umar - 64',
-  campaignName: 'Sms-001',
-  objective: 'OUTCOME_ENGAGEMENT',
-  spendMicroUsd: 0n,
-  leads: 0,
-  conversations: 0,
-  ...over,
-})
+const campaign = (over: Partial<CampaignDayRow>): CampaignDayRow => {
+  const row = {
+    date: '2026-08-01',
+    accountId: '990016692137088', // Umar - 64 · Collagen
+    accountName: 'Umar - 64',
+    campaignName: 'Sms-001',
+    objective: 'OUTCOME_ENGAGEMENT',
+    spendMicroUsd: 0n,
+    impressions: 0,
+    clicks: 0,
+    leads: 0,
+    conversations: 0,
+    ...over,
+  }
+  // One campaign per account and name unless a test says otherwise.
+  return { campaignId: `${row.accountId}:${row.campaignName}`, ...row }
+}
 
 describe('leadBucket — the lead-quality sheet, from the Регистрация stage', () => {
   it('reads the four sheet columns and a fifth for leads still being worked', () => {
@@ -180,6 +186,45 @@ describe('reklamaOverview', () => {
     expect(umar.dmConversations).toBe(120)
     expect(umar.accounts).toEqual(['Umar - 64', 'Umar 63'])
     expect(out.form.total.spendUsd).toBe(189.1)
+  })
+
+  it('adds Meta\'s delivery to «Отчёт Т» and prices a DM conversation', () => {
+    const out = build(
+      [],
+      [
+        campaign({ objective: 'OUTCOME_LEADS', campaignName: 'A', spendMicroUsd: 50_000_000n, leads: 40, impressions: 20_000, clicks: 400 }),
+        campaign({ spendMicroUsd: 10_000_000n, conversations: 80 }),
+      ],
+    )
+    expect(out.form.total).toMatchObject({ spendUsd: 50, impressions: 20_000, clicks: 400 })
+    expect(out.form.total.ctrPercent).toBeCloseTo(2, 9)
+    expect(out.form.total.cpcUsd).toBeCloseTo(0.125, 9)
+    expect(out.form.total.cpmUsd).toBeCloseTo(2.5, 9)
+    expect(out.dm.total.costPerConversationUsd).toBeCloseTo(0.125, 9)
+  })
+
+  it('lists campaigns biggest first, each priced by its own channel\'s result', () => {
+    const out = build(
+      [],
+      [
+        campaign({ objective: 'OUTCOME_LEADS', campaignName: 'Form', spendMicroUsd: 30_000_000n, leads: 10 }),
+        campaign({ date: '2026-08-02', objective: 'OUTCOME_LEADS', campaignName: 'Form', spendMicroUsd: 20_000_000n, leads: 15 }),
+        campaign({ campaignName: 'Sms-1', spendMicroUsd: 5_000_000n, conversations: 50, leads: 0 }),
+        campaign({ campaignName: 'Paused', spendMicroUsd: 0n }),
+      ],
+    )
+    expect(out.campaigns.map((c) => c.name)).toEqual(['Form', 'Sms-1'])
+    expect(out.campaigns[0]).toMatchObject({
+      channel: 'form',
+      targetolog: 'Umar',
+      spendUsd: 50,
+      results: 25,
+      activeDays: 2,
+      lastActive: '2026-08-02',
+    })
+    expect(out.campaigns[0]!.costPerResultUsd).toBeCloseTo(2, 9)
+    expect(out.campaigns[1]).toMatchObject({ channel: 'dm', results: 50 })
+    expect(out.campaigns[1]!.costPerResultUsd).toBeCloseTo(0.1, 9)
   })
 
   it('sums the lead-quality buckets to the leads, with the sheet\'s % over them', () => {

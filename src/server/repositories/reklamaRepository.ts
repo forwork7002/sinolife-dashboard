@@ -33,9 +33,12 @@ export interface CampaignDayRow {
   readonly date: string
   readonly accountId: string
   readonly accountName: string
+  readonly campaignId: string
   readonly campaignName: string
   readonly objective: string
   readonly spendMicroUsd: bigint
+  readonly impressions: number
+  readonly clicks: number
   readonly leads: number
   readonly conversations: number
 }
@@ -121,9 +124,12 @@ export class ReklamaRepository {
         date: true,
         accountId: true,
         accountName: true,
+        campaignId: true,
         campaignName: true,
         objective: true,
         spendMicroUsd: true,
+        impressions: true,
+        clicks: true,
         leads: true,
         conversations: true,
       },
@@ -133,9 +139,12 @@ export class ReklamaRepository {
       date: r.date.toISOString().slice(0, 10),
       accountId: r.accountId,
       accountName: r.accountName,
+      campaignId: r.campaignId,
       campaignName: r.campaignName,
       objective: r.objective,
       spendMicroUsd: r.spendMicroUsd,
+      impressions: Number(r.impressions),
+      clicks: Number(r.clicks),
       leads: r.leads,
       conversations: r.conversations,
     }))

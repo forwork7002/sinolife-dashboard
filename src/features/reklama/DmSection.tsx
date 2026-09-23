@@ -59,7 +59,7 @@ export function DmSection({ dm, status }: { dm: DmBlockDto | undefined; status: 
           rowKey={(r) => r.key}
           status={status}
           emptyTitle="Bu davrda maʼlumot yoʻq"
-          minWidth={860}
+          minWidth={960}
           maxHeight="none"
           stickyColumns={1}
           stickyLastRow
@@ -84,7 +84,7 @@ export function DmSection({ dm, status }: { dm: DmBlockDto | undefined; status: 
           rowKey={(r) => r.key}
           status={status}
           emptyTitle="Bu davrda maʼlumot yoʻq"
-          minWidth={760}
+          minWidth={860}
           maxHeight="60dvh"
           stickyColumns={1}
           stickyLastRow
@@ -119,6 +119,13 @@ const cellColumns = <R,>(pick: (row: R) => DmCellsDto): Column<R>[] => [
     render: (r) => pct(pick(r).conversationToQualifiedPercent),
   },
   { key: 'spend', header: 'Reklama', align: 'right', numeric: true, render: (r) => money(pick(r).spendUsd) },
+  {
+    key: 'cpc',
+    header: 'Murojat narxi',
+    align: 'right',
+    numeric: true,
+    render: (r) => money(pick(r).costPerConversationUsd),
+  },
   {
     key: 'cpq',
     header: 'Kval narxi',

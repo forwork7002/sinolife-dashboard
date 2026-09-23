@@ -8,7 +8,7 @@ import { formatNumber } from '@/lib/format'
 import { PRODUCT_LABEL, PRODUCT_TONE } from '@/features/target/targetTheme'
 
 import type { FormBlockDto, FormCellsDto, FormOwnerDto } from './reklamaApi'
-import { type DayRow, DayCell, type Status, TableCard, SlicePicker, count, dayRows, money, muted } from './reklamaUi'
+import { type DayRow, DayCell, type Status, TableCard, SlicePicker, count, dayRows, money, muted, pct } from './reklamaUi'
 
 /**
  * «Отчёт Т» — the targetologs' lead-form advertising, per person per product.
@@ -54,7 +54,7 @@ export function FormSection({ form, status }: { form: FormBlockDto | undefined; 
     <section className="flex min-w-0 flex-col gap-3">
       <SectionHeader
         title="Targetologlar · lid-forma («Отчёт Т»)"
-        hint="Har targetologning lid-forma kampaniyalari (Meta, OUTCOME_LEADS): sarf, Meta hisoblagan lidlar va bitta lid narxi."
+        hint="Har targetologning lid-forma kampaniyalari (Meta, OUTCOME_LEADS): sarf, Meta hisoblagan lidlar, lid narxi, klik, CTR, klik narxi va 1 000 koʻrsatish narxi (CPM)."
       />
 
       <TableCard
@@ -68,7 +68,7 @@ export function FormSection({ form, status }: { form: FormBlockDto | undefined; 
           rowKey={(r) => r.key}
           status={status}
           emptyTitle="Bu davrda lid-forma sarfi yoʻq"
-          minWidth={880}
+          minWidth={1180}
           maxHeight="none"
           stickyColumns={1}
           stickyLastRow
@@ -93,7 +93,7 @@ export function FormSection({ form, status }: { form: FormBlockDto | undefined; 
           rowKey={(r) => r.key}
           status={status}
           emptyTitle="Bu davrda lid-forma sarfi yoʻq"
-          minWidth={520}
+          minWidth={820}
           maxHeight="60dvh"
           stickyColumns={1}
           stickyLastRow
@@ -113,6 +113,10 @@ const formColumns = <R,>(pick: (row: R) => FormCellsDto): Column<R>[] => [
     numeric: true,
     render: (r) => <span className="font-medium">{money(pick(r).costPerLeadUsd)}</span>,
   },
+  { key: 'clicks', header: 'Klik', align: 'right', numeric: true, render: (r) => count(pick(r).clicks) },
+  { key: 'ctr', header: 'CTR', align: 'right', numeric: true, render: (r) => pct(pick(r).ctrPercent) },
+  { key: 'cpcUsd', header: 'Klik narxi', align: 'right', numeric: true, render: (r) => money(pick(r).cpcUsd) },
+  { key: 'cpm', header: 'CPM', align: 'right', numeric: true, render: (r) => money(pick(r).cpmUsd) },
 ]
 
 const ownerColumns: readonly Column<{

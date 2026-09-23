@@ -231,12 +231,41 @@ export const PORTAL_REQUEST_LIMIT_MS = 60_000
 
 /** Room for the portal's own interruption to arrive before we give up locally. */
 const PORTAL_REQUEST_GRACE_MS = 5_000
+/**
+ * Where an ad lead says it came from, beyond SOURCE_ID — the UTM tags the
+ * landing page or lead form passed, and the portal's free-text source note.
+ *
+ * Read since 2026-09-23 for «Reklama samarasi»: the client's «Отчёт Т» counts
+ * leads and qualified leads PER TARGETOLOG, and the targetolog field is filled
+ * on about one lead in twenty, so a lead has to be tied to its ad some other
+ * way. If these carry the campaign (or its id), a lead joins to
+ * `meta_campaign_daily` and from there to its account's targetolog.
+ *
+ * Six more fields on a request the worker already makes — no extra request,
+ * no extra basket time worth measuring. Kept in `metadata.utm`, not promoted
+ * to columns, until a measurement says they are filled at all.
+ */
+export const DEAL_UTM_FIELDS = Object.freeze([
+  'UTM_SOURCE', 'UTM_MEDIUM', 'UTM_CAMPAIGN', 'UTM_CONTENT', 'UTM_TERM', 'SOURCE_DESCRIPTION',
+] as const)
+
+/** The non-empty UTM tags of a deal row, or null when it carries none. */
+export function dealUtm(row: Readonly<Record<string, unknown>>): Record<string, string> | null {
+  const out: Record<string, string> = {}
+  for (const field of DEAL_UTM_FIELDS) {
+    const value = row[field]
+    if (typeof value === 'string' && value.trim() !== '') out[field] = value.trim().slice(0, 500)
+  }
+  return Object.keys(out).length > 0 ? out : null
+}
+
 const DEAL_SELECT = [
   'ID', 'TITLE', 'CATEGORY_ID', 'STAGE_ID', 'STAGE_SEMANTIC_ID',
   'OPPORTUNITY', 'CURRENCY_ID', 'ASSIGNED_BY_ID', 'CONTACT_ID',
   'SOURCE_ID', 'DATE_CREATE', 'DATE_MODIFY', 'CLOSEDATE', 'CLOSED',
   'IS_RETURN_CUSTOMER',
   ...UF_FIELDS,
+  ...DEAL_UTM_FIELDS,
 ]
 
 /**
@@ -1586,6 +1615,8 @@ export class Bitrix24CrmProvider implements CrmProvider {
            * 415 591 deals from the portal a second time.
            */
           contactId: d.CONTACT_ID ? String(d.CONTACT_ID) : null,
+          /** See `DEAL_UTM_FIELDS`. Null when the portal sent none. */
+          utm: dealUtm(d),
         },
       })
     }

@@ -62,6 +62,8 @@ export interface DmCellsDto {
   readonly qualifiedPercent: number | null
   /** qualified ÷ conversations. */
   readonly conversationToQualifiedPercent: number | null
+  /** spend ÷ conversations — what one person writing to the page cost. */
+  readonly costPerConversationUsd: number | null
 }
 
 export interface DmDayDto extends DmCellsDto {
@@ -94,6 +96,14 @@ export interface FormCellsDto {
   readonly metaLeads: number
   /** spend ÷ Meta leads. */
   readonly costPerLeadUsd: number | null
+  readonly impressions: number
+  readonly clicks: number
+  /** clicks ÷ impressions. */
+  readonly ctrPercent: number | null
+  /** spend ÷ clicks. */
+  readonly cpcUsd: number | null
+  /** spend ÷ impressions × 1 000. */
+  readonly cpmUsd: number | null
 }
 
 export interface FormDayDto extends FormCellsDto {
@@ -159,6 +169,31 @@ export interface SpendSplitDto {
   readonly otherUsd: number
 }
 
+/**
+ * One Meta campaign over the window — which ads the money actually went to.
+ * `results` is the channel's own result: Meta leads on a lead-form campaign,
+ * conversations on a DM one.
+ */
+export interface CampaignDto {
+  readonly id: string
+  readonly name: string
+  readonly account: string
+  readonly targetolog: string
+  readonly product: MetaProduct
+  readonly channel: CampaignChannel
+  readonly spendUsd: number
+  readonly metaLeads: number
+  readonly conversations: number
+  readonly results: number
+  readonly costPerResultUsd: number | null
+  readonly impressions: number
+  readonly clicks: number
+  readonly ctrPercent: number | null
+  /** Days in the window the campaign spent anything. */
+  readonly activeDays: number
+  readonly lastActive: string | null
+}
+
 export interface ReklamaOverviewDto {
   /** When Meta's campaign grain was last read; null means never. */
   readonly importedAt: string | null
@@ -167,6 +202,8 @@ export interface ReklamaOverviewDto {
   readonly dm: DmBlockDto
   readonly form: FormBlockDto
   readonly quality: QualityBlockDto
+  /** Every campaign that spent in the window, biggest first. */
+  readonly campaigns: readonly CampaignDto[]
 }
 
 // ---------------------------------------------------------------------------
@@ -221,6 +258,7 @@ function dmCells(a: DmAcc): DmCellsDto {
     costPerQualifiedUsd: perUnit(a.spend, a.qualified),
     qualifiedPercent: percent(a.qualified, a.leads),
     conversationToQualifiedPercent: percent(a.qualified, a.conversations),
+    costPerConversationUsd: perUnit(a.spend, a.conversations),
   }
 }
 
@@ -247,13 +285,33 @@ function qualityCells(a: QualityAcc): QualityCellsDto {
 interface FormAcc {
   spend: bigint
   leads: number
+  impressions: number
+  clicks: number
 }
 
-const formZero = (): FormAcc => ({ spend: 0n, leads: 0 })
+const formZero = (): FormAcc => ({ spend: 0n, leads: 0, impressions: 0, clicks: 0 })
+
+function addForm(into: FormAcc, from: { spendMicroUsd: bigint; leads: number; impressions: number; clicks: number }): void {
+  into.spend += from.spendMicroUsd
+  into.leads += from.leads
+  into.impressions += from.impressions
+  into.clicks += from.clicks
+}
 
 function formCells(a: FormAcc): FormCellsDto {
-  return { spendUsd: usd(a.spend), metaLeads: a.leads, costPerLeadUsd: perUnit(a.spend, a.leads) }
+  return {
+    spendUsd: usd(a.spend),
+    metaLeads: a.leads,
+    costPerLeadUsd: perUnit(a.spend, a.leads),
+    impressions: a.impressions,
+    clicks: a.clicks,
+    ctrPercent: percent(a.clicks, a.impressions),
+    cpcUsd: perUnit(a.spend, a.clicks),
+    cpmUsd: a.impressions > 0 ? (Number(a.spend) / MICRO / a.impressions) * 1000 : null,
+  }
 }
+
+const asForm = (a: FormAcc) => ({ spendMicroUsd: a.spend, leads: a.leads, impressions: a.impressions, clicks: a.clicks })
 
 const PRODUCT_ORDER: readonly MetaProduct[] = ['Collagen', 'Zextra', 'Boshqa']
 
@@ -348,11 +406,9 @@ export function reklamaOverview(input: {
       owners.set(key, acc)
       acc.accounts.add(row.accountName)
       if (channel === 'form') {
-        acc.total.spend += row.spendMicroUsd
-        acc.total.leads += row.leads
+        addForm(acc.total, row)
         const day = acc.days.get(row.date) ?? formZero()
-        day.spend += row.spendMicroUsd
-        day.leads += row.leads
+        addForm(day, row)
         acc.days.set(row.date, day)
       } else {
         acc.dmSpend += row.spendMicroUsd
@@ -403,6 +459,61 @@ export function reklamaOverview(input: {
   })
 
   // --- form block: product first, then the biggest spender.
+  // Per campaign, every channel — the drill-down under all three sheets.
+  interface CampaignAcc {
+    row: CampaignDayRow
+    channel: CampaignChannel
+    total: FormAcc
+    conversations: number
+    days: Set<string>
+    lastActive: string | null
+  }
+  const byCampaign = new Map<string, CampaignAcc>()
+  for (const row of input.campaignRows) {
+    const acc =
+      byCampaign.get(row.campaignId) ??
+      ({
+        row,
+        channel: campaignChannel(row.objective, row.campaignName),
+        total: formZero(),
+        conversations: 0,
+        days: new Set<string>(),
+        lastActive: null,
+      } satisfies CampaignAcc)
+    byCampaign.set(row.campaignId, acc)
+    addForm(acc.total, row)
+    acc.conversations += row.conversations
+    if (row.spendMicroUsd > 0n) {
+      acc.days.add(row.date)
+      if (acc.lastActive === null || row.date > acc.lastActive) acc.lastActive = row.date
+    }
+  }
+  const campaigns: CampaignDto[] = [...byCampaign.values()]
+    .filter((c) => c.total.spend > 0n)
+    .sort((a, b) => Number(b.total.spend - a.total.spend))
+    .map((c) => {
+      const owner = ownerOf(c.row.accountId, c.row.accountName)
+      const results = c.channel === 'dm' || c.channel === 'hiring' ? c.conversations : c.total.leads
+      return {
+        id: c.row.campaignId,
+        name: c.row.campaignName,
+        account: c.row.accountName,
+        targetolog: owner.targetolog,
+        product: owner.product,
+        channel: c.channel,
+        spendUsd: usd(c.total.spend),
+        metaLeads: c.total.leads,
+        conversations: c.conversations,
+        results,
+        costPerResultUsd: perUnit(c.total.spend, results),
+        impressions: c.total.impressions,
+        clicks: c.total.clicks,
+        ctrPercent: percent(c.total.clicks, c.total.impressions),
+        activeDays: c.days.size,
+        lastActive: c.lastActive,
+      }
+    })
+
   const ordered = [...owners.values()]
     .filter((o) => o.total.spend > 0n || o.total.leads > 0 || o.dmSpend > 0n)
     .sort(
@@ -414,8 +525,7 @@ export function reklamaOverview(input: {
   const formTotal = formZero()
   const formTotalDays = days.map(() => formZero())
   const formOwners: FormOwnerDto[] = ordered.map((o) => {
-    formTotal.spend += o.total.spend
-    formTotal.leads += o.total.leads
+    addForm(formTotal, asForm(o.total))
     return {
       key: o.key,
       targetolog: o.targetolog,
@@ -426,8 +536,7 @@ export function reklamaOverview(input: {
       dmConversations: o.dmConversations,
       days: days.map((date, i) => {
         const cell = o.days.get(date) ?? formZero()
-        formTotalDays[i]!.spend += cell.spend
-        formTotalDays[i]!.leads += cell.leads
+        addForm(formTotalDays[i]!, asForm(cell))
         return { date, ...formCells(cell) }
       }),
     }
@@ -462,6 +571,7 @@ export function reklamaOverview(input: {
         .map(([stage, s]) => ({ stage, bucket: s.bucket, leads: s.leads }))
         .sort((a, b) => b.leads - a.leads || a.stage.localeCompare(b.stage, 'ru')),
     },
+    campaigns,
   }
 }
 
