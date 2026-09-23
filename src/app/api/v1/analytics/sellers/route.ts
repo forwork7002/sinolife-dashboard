@@ -100,7 +100,14 @@ const schema = analyticsQuerySchema.and(
       sababi `sellerBoardService.medals()` ustida: «Bugun» tanlanganda
       hamma medalini yo'qotadigan taxta motivatsiya asbobi bo'la olmaydi.
     */
-    include: z.enum(['records', 'faktTrend', 'medals']).optional(),
+    /*
+      'sources' — the FAKT 1 / FAKT 2 cohort cut by the deal's source, for
+      «Manbalar boʻyicha» on Savdo dinamikasi (2026-09-23). Opt-in and
+      replacing like 'faktTrend': a separate key on that screen, and the
+      television never asks for it, so its once-a-minute poll does not pay
+      for a GROUP BY it would throw away.
+    */
+    include: z.enum(['records', 'faktTrend', 'medals', 'sources']).optional(),
   }),
 )
 
@@ -174,6 +181,13 @@ export const GET = getHandler(ACCESS, schema, async (ctx) => {
   if (ctx.query.include === 'faktTrend') {
     return {
       data: await sellerBoardService.faktTrend(context),
+      meta: AnalyticsService.periodMeta(context),
+    }
+  }
+
+  if (ctx.query.include === 'sources') {
+    return {
+      data: await sellerBoardService.sources(context),
       meta: AnalyticsService.periodMeta(context),
     }
   }

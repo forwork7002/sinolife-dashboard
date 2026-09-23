@@ -13,11 +13,12 @@ process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
  * va ikkalasi ham shu marshrutdan boshqa manzilni bilmaydi.
  */
 describe('sellers marshrutining include parametri', () => {
-  it('medals, records va faktTrend — uchalasi ham qabul qilinadi', async () => {
+  it('medals, records, faktTrend va sources — toʻrttalasi ham qabul qilinadi', async () => {
     const source = await import('node:fs').then((fs) =>
       fs.readFileSync('src/app/api/v1/analytics/sellers/route.ts', 'utf8'),
     )
-    expect(source).toContain(`z.enum(['records', 'faktTrend', 'medals'])`)
+    expect(source).toContain(`z.enum(['records', 'faktTrend', 'medals', 'sources'])`)
     expect(source).toContain(`ctx.query.include === 'medals'`)
+    expect(source).toContain(`ctx.query.include === 'sources'`)
   })
 })

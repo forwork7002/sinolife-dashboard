@@ -49,7 +49,10 @@ import {
 } from '@/server/domain/period/period'
 import type { DeltaDto } from '@/lib/api'
 import { CONFIRMATION_OUTCOMES, type ConfirmationOutcomeValue } from '@/server/domain/types'
-import type { InsightsRepository } from '@/server/repositories/insightsRepository'
+import type {
+  ConfirmationSourceRatingRow,
+  InsightsRepository,
+} from '@/server/repositories/insightsRepository'
 import { keyPart, ttlCache } from './ttlCache'
 import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type {
@@ -238,6 +241,44 @@ export interface SellerTeamRowDto {
    * horizon). Projecting the team's own total is the reading that stays true
    * to «the team ends the month at», which is what the column is asked.
    */
+  readonly forecast: SellerForecastDto
+}
+
+/**
+ * One source on «Manbalar boʻyicha» — the teams table's columns, cut by the
+ * deal's source instead of the operator's ROP.
+ *
+ * Asked for on 2026-09-23: every source in the «Manba» filter as a ranked row
+ * with its full figures. Ranked by the teams' own rule — FAKT 2, then FAKT 1,
+ * then the name — so the two tables under one hero cannot disagree about what
+ * «1-oʻrin» means.
+ *
+ * `sourceId` null is the deals with no source set, named on the screen rather
+ * than dropped: the rows are a partition of the cohort and add up to the hero.
+ */
+export interface SellerSourceRowDto {
+  readonly rank: number
+  readonly sourceId: string | null
+  readonly name: string | null
+  /** Operators holding at least one order from this source. */
+  readonly sellers: number
+  /** Every order from this source that entered the queue. */
+  readonly cohortOrders: number
+  /** FAKT 1's order count — Тасдиқланди + Тасдиқланмай чиқди. */
+  readonly orders: number
+  readonly ordered: MoneyDto
+  readonly won: MoneyDto
+  readonly wonOrders: number
+  readonly open: MoneyDto
+  readonly lostAfterConfirm: MoneyDto
+  /** Тасдиқланмади — refused in the queue. */
+  readonly rejectedOrders: number
+  /** Resolved orders only, the board's own denominator. Null over nothing. */
+  readonly conversionPercent: number | null
+  /** Of the whole cohort's FAKT 1 — early in a day FAKT 2 is zero everywhere. */
+  readonly fakt1SharePercent: number | null
+  /** Of the whole cohort's FAKT 2, as `SellerTeamRowDto.sharePercent`. */
+  readonly sharePercent: number | null
   readonly forecast: SellerForecastDto
 }
 
@@ -612,6 +653,17 @@ const recordsCache = ttlCache<SellerRecordsDto>(600_000)
 /** Test seam only — see `resetSellerBoardCache`, same hazard. */
 export function resetSellerRecordsCache(): void {
   recordsCache.clear()
+}
+
+/**
+ * The sources table moves on the board's clock — same cohort, same sync tick —
+ * so it keeps the board's sixty seconds.
+ */
+const sourcesCache = ttlCache<readonly SellerSourceRowDto[]>(60_000)
+
+/** Test seam only — see `resetSellerBoardCache`, same hazard. */
+export function resetSellerSourcesCache(): void {
+  sourcesCache.clear()
 }
 
 function recordWindow(now: Date, timeZone: string): Period {
@@ -1174,6 +1226,39 @@ export class SellerBoardService {
     })
   }
 
+  /**
+   * FAKT 1 / FAKT 2 by source — «Manbalar boʻyicha» on Savdo dinamikasi.
+   *
+   * Queue basis only: the table sits under the hero, which is FAKT 1 / FAKT 2,
+   * and the intake reading has no such words to print.
+   *
+   * KEYED LIKE THE BOARD, and unscoped like it, for the same reason — see
+   * `board()`. `boardFilters` drops the scope here too, so a ROP reading this
+   * table reads the company's sources exactly as they read the company's
+   * teams one table above.
+   */
+  async sources(ctx: AnalyticsContext): Promise<readonly SellerSourceRowDto[]> {
+    const filters = boardFilters(ctx)
+
+    const key = [
+      ctx.period.preset,
+      ctx.period.start.toISOString(),
+      ctx.period.end.toISOString(),
+      ctx.currency,
+      keyPart(filters.employeeIds),
+      keyPart(filters.departmentIds),
+      keyPart(filters.sourceIds),
+    ].join('|')
+
+    return sourcesCache.get(key, async () => {
+      const rows = await this.insights.confirmationSourceRating(
+        scopedPeriod(ctx.period, filters),
+        filters,
+      )
+      return sourceRows(rows, projectionElapsedFraction(ctx.period, ctx.now), ctx.currency)
+    })
+  }
+
   /** One row per operator, on whichever clock `basis` names. */
   private async rowsFor(
     period: Period,
@@ -1491,6 +1576,69 @@ function teamRows(
         leadConversionPercent: null,
       }
     })
+}
+
+/**
+ * The sources ranked by the teams' rule — FAKT 2, then FAKT 1, then the name —
+ * with competition ranking over both figures. See `teamRows` for why FAKT 1 is
+ * the second key: on «Bugun» FAKT 2 is zero for every row and the name alone
+ * would be ordering the table.
+ *
+ * The unnamed row sorts on its money like any other; only a tie on both
+ * figures puts it after the named ones.
+ */
+function sourceRows(
+  rows: readonly ConfirmationSourceRatingRow[],
+  elapsed: number,
+  currency: string,
+): readonly SellerSourceRowDto[] {
+  const totalOrderedMinor = sum(rows, (r) => r.confirmedMinor)
+  const totalWonMinor = sum(rows, (r) => r.deliveredMinor)
+
+  const ordered = [...rows].sort(
+    (a, b) =>
+      (b.deliveredMinor > a.deliveredMinor ? 1 : b.deliveredMinor < a.deliveredMinor ? -1 : 0) ||
+      (b.confirmedMinor > a.confirmedMinor ? 1 : b.confirmedMinor < a.confirmedMinor ? -1 : 0) ||
+      (a.sourceName === null ? 1 : 0) - (b.sourceName === null ? 1 : 0) ||
+      (a.sourceName ?? '').localeCompare(b.sourceName ?? ''),
+  )
+
+  const rankOf = ordered.map((row, index) => {
+    const previous = index > 0 ? ordered[index - 1] : undefined
+    return previous &&
+      previous.deliveredMinor === row.deliveredMinor &&
+      previous.confirmedMinor === row.confirmedMinor
+      ? -1
+      : index + 1
+  })
+  for (let i = 1; i < rankOf.length; i++) {
+    if (rankOf[i] === -1) rankOf[i] = rankOf[i - 1]!
+  }
+
+  return ordered.map<SellerSourceRowDto>((row, index) => {
+    // Both kinds of loss, as on a seller's row — see `rowsFor`.
+    const lostOrders = row.rejectedOrders + row.lostAfterConfirmOrders
+    return {
+      rank: rankOf[index]!,
+      sourceId: row.sourceId,
+      name: row.sourceName,
+      sellers: row.sellers,
+      cohortOrders: row.cohortOrders,
+      orders: row.confirmedOrders,
+      ordered: toMoneyDto(money(row.confirmedMinor, currency)),
+      won: toMoneyDto(money(row.deliveredMinor, currency)),
+      wonOrders: row.deliveredOrders,
+      open: toMoneyDto(money(row.inTransitMinor, currency)),
+      lostAfterConfirm: toMoneyDto(money(row.lostAfterConfirmMinor, currency)),
+      rejectedOrders: row.rejectedOrders,
+      conversionPercent: roundOrNull(
+        ratePercent(row.deliveredOrders, row.deliveredOrders + lostOrders),
+      ),
+      fakt1SharePercent: roundOrNull(ratePercent(row.confirmedMinor, totalOrderedMinor)),
+      sharePercent: roundOrNull(ratePercent(row.deliveredMinor, totalWonMinor)),
+      forecast: forecastFor(row.confirmedMinor, row.deliveredMinor, elapsed, currency),
+    }
+  })
 }
 
 /**

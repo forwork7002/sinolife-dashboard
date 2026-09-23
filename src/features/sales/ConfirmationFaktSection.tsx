@@ -11,6 +11,7 @@ import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type SellerBoardDto, type SellerTeamRowDto, apiGet } from '@/lib/api'
 import { NO_VALUE, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 import { FaktBasisNote, FaktFigure, QUEUE_BASIS } from '@/features/shared/faktVocabulary'
+import { SourceFaktTable } from '@/features/sales/SourceFaktTable'
 
 /**
  * FAKT 1 / FAKT 2 — the spine of Savdo dinamikasi, and the floor's own
@@ -247,6 +248,9 @@ export function ConfirmationFaktSection() {
       <FaktBasisNote />
 
       <TeamsTable data={data} status={status} />
+
+      {/* The same cohort cut by source — see `SourceFaktTable`. */}
+      <SourceFaktTable />
     </section>
   )
 }

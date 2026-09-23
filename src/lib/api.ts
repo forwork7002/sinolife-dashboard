@@ -1253,6 +1253,31 @@ export interface SellerTeamRowDto {
 }
 
 /**
+ * One source on «Manbalar boʻyicha» — `/analytics/sellers?include=sources`.
+ *
+ * Mirrors `sellerBoardService.SellerSourceRowDto`; nothing checks the mirror,
+ * so edit both sides. `name` null is the deals with no source set.
+ */
+export interface SellerSourceRowDto {
+  readonly rank: number
+  readonly sourceId: string | null
+  readonly name: string | null
+  readonly sellers: number
+  readonly cohortOrders: number
+  readonly orders: number
+  readonly ordered: MoneyDto
+  readonly won: MoneyDto
+  readonly wonOrders: number
+  readonly open: MoneyDto
+  readonly lostAfterConfirm: MoneyDto
+  readonly rejectedOrders: number
+  readonly conversionPercent: number | null
+  readonly fakt1SharePercent: number | null
+  readonly sharePercent: number | null
+  readonly forecast: SellerForecastDto
+}
+
+/**
  * One projection — BOTH facts, never one.
  *
  * Mirrors `sellerBoardService.SellerForecastDto`. FAKT 2 lags the arrival it

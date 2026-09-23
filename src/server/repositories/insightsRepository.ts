@@ -853,6 +853,36 @@ export interface FaktDayRow {
 }
 
 /**
+ * One source's share of the confirmation cohort — a row of «Manbalar boʻyicha»
+ * on Savdo dinamikasi.
+ *
+ * THE SAME COLUMNS AS `ConfirmationSellerRatingRow`, grouped by the deal's
+ * source instead of its operator. FAKT 1, FAKT 2, «yoʻlda» and «bekor» are
+ * read through the same predicates (`sourceRatingSql`), so the rows add up to
+ * the hero's totals.
+ *
+ * `sourceId` null is a deal with no source set. It is a row, not dropped:
+ * without it the table would not add up to the figures above it.
+ */
+export interface ConfirmationSourceRatingRow {
+  readonly sourceId: string | null
+  /** `sales_source.name` — the label the «Manba» filter lists it under. */
+  readonly sourceName: string | null
+  /** Operators holding at least one order from this source. */
+  readonly sellers: number
+  readonly cohortOrders: number
+  readonly confirmedOrders: number
+  readonly confirmedMinor: bigint
+  readonly deliveredOrders: number
+  readonly deliveredMinor: bigint
+  readonly inTransitOrders: number
+  readonly inTransitMinor: bigint
+  readonly lostAfterConfirmOrders: number
+  readonly lostAfterConfirmMinor: bigint
+  readonly rejectedOrders: number
+}
+
+/**
  * The best month one seller has had — one row per calendar month.
  *
  * The same two figures the board and the podium carry, cut by the month of the
@@ -4897,6 +4927,114 @@ export class InsightsRepository {
         REJECTED: int(r.state_rejected),
         UNCONFIRMED_SHIPPED: int(r.state_unconfirmed_shipped),
       },
+    }))
+  }
+
+  /**
+   * «Manbalar boʻyicha» — `ratingSql` cut by the deal's source instead of its
+   * operator. Asked for on 2026-09-23: every source in the «Manba» filter as a
+   * ranked row, the way the teams table ranks ROPs.
+   *
+   * THE PREDICATES ARE SHARED, NOT COPIED: `FAKT1_OUTCOMES` and
+   * `faktDeliveredSql` are the definitions the rating, the trend and the
+   * record wall read, so the rows here add up to the hero's FAKT 1 / FAKT 2
+   * to the soʻm — one cohort, one clock, another cut.
+   *
+   * THE EMPLOYEE IS JOINED although nothing groups by it: `ratingFilterSql`
+   * writes `e."id"` and `e."departmentId"`, so without the join an employee or
+   * department filter would be a syntax error. The operator the portal
+   * snapshotted, as in `ratingSql`.
+   *
+   * NO HAVING. A source whose every order was refused is a row — it is the
+   * one that says «what comes from here does not get confirmed».
+   */
+  private static sourceRatingSql(filterClause: string): string {
+    return `
+       SELECT
+         d."sourceId" AS source_id,
+         src."name" AS source_name,
+         count(DISTINCT e."id")::bigint AS sellers,
+         count(*)::bigint AS cohort_orders,
+         count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS confirmed_orders,
+         sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::text AS confirmed,
+         count(*) FILTER (WHERE ${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')})::bigint AS delivered_orders,
+         sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')})::text AS delivered,
+         count(*) FILTER (
+           WHERE ${InsightsRepository.FAKT1_OUTCOMES} AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
+             AND d."status" = 'OPEN'
+         )::bigint AS in_transit_orders,
+         sum(d."amountMinor") FILTER (
+           WHERE ${InsightsRepository.FAKT1_OUTCOMES} AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
+             AND d."status" = 'OPEN'
+         )::text AS in_transit,
+         count(*) FILTER (
+           WHERE ${InsightsRepository.FAKT1_OUTCOMES} AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
+             AND d."status" = 'LOST'
+         )::bigint AS lost_after_confirm_orders,
+         sum(d."amountMinor") FILTER (
+           WHERE ${InsightsRepository.FAKT1_OUTCOMES} AND ds."logisticsRole" IS DISTINCT FROM 'DELIVERED'
+             AND d."status" = 'LOST'
+         )::text AS lost_after_confirm,
+         count(*) FILTER (WHERE c.outcome = 'REJECTED')::bigint AS state_rejected
+       FROM scoped c
+       JOIN "deal" d ON d."id" = c.deal_id
+       JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
+       LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
+       LEFT JOIN "sales_source" src ON src."id" = d."sourceId"
+       WHERE TRUE
+         ${filterClause}
+       GROUP BY d."sourceId", src."name"`
+  }
+
+  /**
+   * The confirmation cohort by source — `confirmationSellerRating`, cut the
+   * other way.
+   *
+   * Scope first, at the fixed slot $3, and the reader's filters from $4 — the
+   * reason is above `confirmationSellerRating`.
+   */
+  async confirmationSourceRating(
+    period: ScopedWindow,
+    filters: ConfirmationSellerRatingFilters = {},
+  ): Promise<ConfirmationSourceRatingRow[]> {
+    const params: unknown[] = [period.start, period.end, InsightsRepository.scopeValue(period)]
+    const filterClause = InsightsRepository.ratingFilterSql(filters, params)
+
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        source_id: string | null
+        source_name: string | null
+        sellers: bigint
+        cohort_orders: bigint
+        confirmed_orders: bigint
+        confirmed: MoneyText
+        delivered_orders: bigint
+        delivered: MoneyText
+        in_transit_orders: bigint
+        in_transit: MoneyText
+        lost_after_confirm_orders: bigint
+        lost_after_confirm: MoneyText
+        state_rejected: bigint
+      }[]
+    >(
+      `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.sourceRatingSql(filterClause)}`,
+      ...params,
+    )
+
+    return rows.map((r) => ({
+      sourceId: r.source_id,
+      sourceName: r.source_name,
+      sellers: int(r.sellers),
+      cohortOrders: int(r.cohort_orders),
+      confirmedOrders: int(r.confirmed_orders),
+      confirmedMinor: money(r.confirmed),
+      deliveredOrders: int(r.delivered_orders),
+      deliveredMinor: money(r.delivered),
+      inTransitOrders: int(r.in_transit_orders),
+      inTransitMinor: money(r.in_transit),
+      lostAfterConfirmOrders: int(r.lost_after_confirm_orders),
+      lostAfterConfirmMinor: money(r.lost_after_confirm),
+      rejectedOrders: int(r.state_rejected),
     }))
   }
 
