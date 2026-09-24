@@ -57,6 +57,7 @@ import { createSyncHandlers } from '../src/server/integrations/crm/sync/handlers
 import { PrismaSyncStore } from '../src/server/integrations/crm/sync/PrismaSyncStore'
 import { SyncEngine } from '../src/server/integrations/crm/sync/SyncEngine'
 import { historyBackfillCursor } from '../src/server/integrations/crm/sync/backfill'
+import { sweepRecentConfirmations } from '../src/server/integrations/crm/sync/recentDeletions'
 import { importMetaSpend } from '../src/server/integrations/meta/metaImport'
 import { zonedDateKey } from '../src/server/domain/period/period'
 import {
@@ -179,6 +180,26 @@ const META_TOKEN = process.env.META_ACCESS_TOKEN?.trim() || null
  * Set to 0 to switch it off.
  */
 const SWEEP_EVERY = Number(process.env.SYNC_SWEEP_EVERY ?? 1440)
+
+/**
+ * THE TASDIQLASH QUEUE'S OWN DELETION CHECK — see `recentDeletions.ts`.
+ *
+ * The day-long latency above was fine until the client deleted an order they
+ * had just posted and watched it stay on the board (2026-09-24). So the
+ * queue's recent orders are checked by id, in two reaches:
+ *
+ *   near   orders that moved through confirmation in the last 2 days, every
+ *          5 minutes — ~250 ids, ~5 invocations, ≈ 60 an hour;
+ *   wide   the last 62 days (this month and the whole of last), hourly —
+ *          ~7 000 ids, ~140 invocations.
+ *
+ * About 200 invocations an hour together, against the ~500 of an ordinary
+ * hour and the 15 000 ceiling. Minutes; 0 switches a reach off.
+ */
+const RECENT_SWEEPS = [
+  { label: 'yaqin', days: 2, everyMs: Number(process.env.SYNC_RECENT_SWEEP_MIN ?? 5) * 60_000 },
+  { label: 'keng', days: 62, everyMs: Number(process.env.SYNC_WIDE_SWEEP_MIN ?? 60) * 60_000 },
+] as const
 
 /**
  * How far back the stage history is re-read once, at startup. Default: 45 days.
@@ -779,6 +800,8 @@ async function main() {
   let lastReferenceAt: Date | null = null
   let lastSweepAt: Date | null = null
   let lastSweepFailedAt: Date | null = null
+  // In memory only: a restart costs one near and one wide check, ~150 invocations.
+  const recentSweepAt = new Map<string, Date>()
   try {
     const now = Date.now()
     const [reference, sweep] = await Promise.all([
@@ -1163,6 +1186,45 @@ async function main() {
         // were already in. Losing the tick loop over it would be worse.
         lastSweepFailedAt = new Date()
         console.warn(`  ${stamp()} tozalash muvaffaqiyatsiz: ${(error as Error).message}`)
+      }
+    }
+
+    /*
+      THE QUEUE'S RECENT ORDERS, CHECKED BY ID — see `RECENT_SWEEPS`. Same
+      guards as the full sweep. The clock records the ATTEMPT, so a refusal
+      waits out the reach's own interval rather than retrying every tick; a
+      failure deletes nothing and leaves the rows for the next check.
+    */
+    for (const reach of RECENT_SWEEPS) {
+      const reachNow = new Date()
+      if (
+        !isPassDue(recentSweepAt.get(reach.label) ?? null, reachNow, reach.everyMs) ||
+        tick === 0 ||
+        calm !== 0 ||
+        provider.gate.isOpen() ||
+        stopping
+      ) {
+        continue
+      }
+      recentSweepAt.set(reach.label, reachNow)
+      const reachStarted = Date.now()
+      try {
+        const r = await sweepRecentConfirmations(
+          prisma,
+          'BITRIX24',
+          (ids) => provider.existingDealIds(ids),
+          new Date(reachNow.getTime() - reach.days * 86_400_000),
+        )
+        // Quiet when nothing was deleted: the near reach runs 288 times a day.
+        if (r.deleted > 0) {
+          console.log(
+            `  ${stamp()} tasdiqlash tozalash (${reach.label}): ${r.checked} bitim tekshirildi,` +
+              ` ${r.deleted} ta portalda oʻchirilgan — bu yerda ham oʻchirildi` +
+              `  (${((Date.now() - reachStarted) / 1000).toFixed(1)}s)`,
+          )
+        }
+      } catch (error) {
+        console.warn(`  ${stamp()} tasdiqlash tozalash (${reach.label}) muvaffaqiyatsiz: ${(error as Error).message}`)
       }
     }
 

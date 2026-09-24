@@ -1780,6 +1780,16 @@ mixed `100vh` against a shell sized in `100dvh`.
 - **The production sweep bypasses the SyncEngine on purpose** — it collects ids
   and calls `deleteMissing` directly, because a FULL engine run also re-upserts
   all 434 000 deals. It must not run at tick 0.
+- **THE TASDIQLASH QUEUE HAS ITS OWN DELETION CHECK — 2026-09-24**
+  («bitrix24dan udalit qilinsa dashboarda shu narsa qolib ketayapti»). The
+  daily sweep let a deleted order stand on the board for up to a day.
+  `sweepRecentConfirmations` (`sync/recentDeletions.ts`) takes the deals that
+  moved through a confirmation stage recently and asks the portal about THOSE
+  ids only (`existingDealIds`, one `crm.deal.list` per 50 ids): the last 2
+  days every 5 minutes, the last 62 days hourly (`RECENT_SWEEPS` in
+  `syncWorker.ts`), ~200 invocations an hour together. It throws — deleting
+  nothing — on a refused or missing command, on a row it did not ask for (an
+  ignored ID filter), and when more than `goneLimit` deals look gone at once.
 - **THE REFERENCE PASS AND THE SWEEP RUN ON THE WALL CLOCK, NOT THE TICK
   COUNTER — 2026-09-17** (`sync/schedule.ts`). `tick` restarts at zero in every
   process, so every deploy re-ran the reference pass (sixteen a day against

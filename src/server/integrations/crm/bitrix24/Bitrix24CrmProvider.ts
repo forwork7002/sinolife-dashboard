@@ -1528,6 +1528,95 @@ export class Bitrix24CrmProvider implements CrmProvider {
     return ids
   }
 
+  /**
+   * Which of THESE deal ids the portal still holds — the recent-deletion check.
+   *
+   * WHY NOT `listDealIds`. That walk answers for all 464 000 deals and costs
+   * ~9 300 invocations, which is why it runs once a day — and why a test order
+   * posted to the Тасдиклаш queue and deleted a minute later sat on the board
+   * until the next night. The queue's recent orders are a few hundred to a few
+   * thousand ids we already know, so we ask about exactly those: one
+   * `crm.deal.list` per 50 ids, filtered by ID, selecting only ID. 300 ids is
+   * six invocations in one round trip.
+   *
+   * The filter carries `CATEGORY_ID` exactly as `listDealIds` does, so the two
+   * sweeps agree on what «gone» means: a deal moved into a pipeline we do not
+   * import is gone to both.
+   *
+   * THROWS RATHER THAN GUESSING, because the caller deletes whatever is not
+   * returned. A refused command, a missing answer, or a row outside the ids
+   * asked for — the last is what a silently ignored ID filter looks like — all
+   * abort the whole check before anything is deleted.
+   */
+  async existingDealIds(ids: readonly string[]): Promise<Set<string>> {
+    const wanted = [...new Set(ids)]
+    const live = new Set<string>()
+    const method = 'crm.deal.list'
+
+    const chunks: string[][] = []
+    for (let i = 0; i < wanted.length; i += LIST_PAGE) chunks.push(wanted.slice(i, i + LIST_PAGE))
+
+    for (let first = 0; first < chunks.length; first += BATCH_SIZE) {
+      const part = chunks.slice(first, first + BATCH_SIZE)
+      const cmd: Record<string, string> = {}
+      part.forEach((chunk, k) => {
+        const query = encodeParams({
+          filter: { ID: chunk, CATEGORY_ID: [...this.pipelines] },
+          select: ['ID'],
+        })
+        // `start=-1` skips the row count, as in `batchWalk`; 50 ids can never
+        // need a second page.
+        cmd[`c${k}`] = `${method}?${query}&start=-1`
+      })
+
+      const payload = await this.call<{ result?: Record<string, unknown>; result_error?: unknown }>(
+        'batch',
+        { halt: 0, cmd },
+        { meterAs: method, invocations: part.length },
+      )
+
+      const errors = (payload.result?.result_error ?? {}) as Record<string, { error?: string } | undefined>
+      const results = (payload.result?.result ?? {}) as Record<string, unknown>
+
+      part.forEach((chunk, k) => {
+        const error = errors[`c${k}`]
+        if (error) {
+          // Same as `batchWalk`: a refusal buried in `result_error` is told to
+          // the gate with its code and method, then thrown.
+          const refusal = new Bitrix24Error(
+            `Bitrix24 ${method} (ID tekshiruvi) rad etdi: ${JSON.stringify(error).slice(0, 200)}`,
+            undefined,
+            false,
+            typeof error.error === 'string' && error.error.length > 0 ? error.error : undefined,
+            method,
+          )
+          this.gate.trip(refusal, new Date())
+          throw refusal
+        }
+
+        const answer = results[`c${k}`]
+        if (!Array.isArray(answer)) {
+          throw new Bitrix24Error(`Bitrix24 ${method} (ID tekshiruvi) javobsiz qoldi: c${k}`, undefined, false)
+        }
+
+        const asked = new Set(chunk)
+        for (const row of answer as { ID?: unknown }[]) {
+          const id = String(row?.ID ?? '')
+          if (!asked.has(id)) {
+            throw new Bitrix24Error(
+              `Bitrix24 ${method} (ID tekshiruvi) soʻralmagan bitimni qaytardi: ${id} — filtr eʼtiborsiz qoldi`,
+              undefined,
+              false,
+            )
+          }
+          live.add(id)
+        }
+      })
+    }
+
+    return live
+  }
+
   async fetchDeals(options: FetchOptions = {}): Promise<Page<RawDeal>> {
     await this.loadEnumLabels()
 
