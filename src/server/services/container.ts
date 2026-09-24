@@ -15,6 +15,7 @@ import { ConcentrationRepository } from '@/server/repositories/concentrationRepo
 import { MarketingRepository } from '@/server/repositories/marketingRepository'
 import { SearchRepository } from '@/server/repositories/searchRepository'
 import { TargetRepository } from '@/server/repositories/targetRepository'
+import { LeadCohortRepository } from '@/server/repositories/leadCohortRepository'
 import { ReklamaRepository } from '@/server/repositories/reklamaRepository'
 import { SalesTeamRepository } from '@/server/repositories/salesTeamRepository'
 import { ScopeRepository } from '@/server/repositories/scopeRepository'
@@ -31,6 +32,7 @@ import { MarketingService } from './marketingService'
 import { SellerBoardService } from './sellerBoardService'
 import { ScopeService } from './scopeService'
 import { TargetService } from './targetService'
+import { LeadCohortService } from './leadCohortService'
 import { ReklamaService } from './reklamaService'
 import { SalesTeamService } from './salesTeamService'
 
@@ -91,6 +93,10 @@ export const reklamaService = new ReklamaService(new ReklamaRepository(prisma))
   repository. See salesTeamService.ts.
 */
 export const salesTeamService = new SalesTeamService(insightsRepository, new SalesTeamRepository(prisma))
+/*
+  «Lid kogortasi» — arrival → distribution of routed leads. See leadCohortService.ts.
+*/
+export const leadCohortService = new LeadCohortService(new LeadCohortRepository(prisma))
 export const sellerBoardService = new SellerBoardService(
   sellerBoardRepository,
   insightsRepository,

@@ -394,6 +394,28 @@ export const UF = Object.freeze({
    * rewrote SOURCE_ID. Added 2026-09-15, empty so far, same reading as CREATIVE.
    */
   PRIMARY_SOURCE: 'UF_CRM_1789470922140',
+  /*
+    «Lid kogortasi» — five routing fields added 2026-09-14/15. Stamped on the
+    Первичный отдел deal and copied on to Тасдиклаш and Доставка with it.
+  */
+  /** «Лид тушган сана» — datetime; when the lead arrived. */
+  LEAD_ARRIVED_AT: 'UF_CRM_1789453947',
+  /**
+   * «Лид таркатилган сана» — a DATE, no time: the day the lead was handed to
+   * a seller. Read through `calendarDate()`, never `toDate()`: the portal
+   * sends it as its own midnight («2026-09-24T00:00:00+03:00»), and turning
+   * that into an instant and back through Tashkent is a way to move it.
+   */
+  LEAD_DISTRIBUTED_ON: 'UF_CRM_1770642221743',
+  /**
+   * «ИИ квал сана» — datetime; when the AI qualified the lead. Only on leads
+   * that went through the AI, about two hours after arrival. NOT the arrival.
+   */
+  AI_QUALIFIED_AT: 'UF_CRM_1789654225347',
+  /** «РОП (Первичка)» — an employee field: the portal user id of the ROP. */
+  LEAD_ROP: 'UF_CRM_1789454012',
+  /** «Такрор лид» — enumeration; empty is a new lead. See `repeatLeadKind()`. */
+  REPEAT_LEAD: 'UF_CRM_178973948309676',
 } as const)
 
 export const UF_FIELDS: readonly string[] = Object.freeze(Object.values(UF))
@@ -587,6 +609,50 @@ export function toDate(value: unknown): Date | undefined {
   if (!value) return undefined
   const d = new Date(String(value))
   return Number.isNaN(d.getTime()) ? undefined : d
+}
+
+/**
+ * A portal DATE field as the calendar day it names, `YYYY-MM-DD`.
+ *
+ * The date part is taken as written: «2026-09-24T00:00:00+03:00» is the 24th
+ * whatever zone reads it. `24.09.2026` (the portal's display format, which
+ * some REST paths echo) is accepted too. Anything else is undefined — a
+ * guessed day would put a lead in the wrong cohort column silently.
+ */
+export function calendarDate(value: unknown): string | undefined {
+  if (value === null || value === undefined) return undefined
+  const text = String(value).trim()
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(text)
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`
+  const ru = /^(\d{2})\.(\d{2})\.(\d{4})/.exec(text)
+  if (ru) return `${ru[3]}-${ru[2]}-${ru[1]}`
+  return undefined
+}
+
+/** Portal user id out of an employee field: `123`, `"123"` or `"user_123"`. */
+export function portalUserId(value: unknown): string | undefined {
+  if (Array.isArray(value)) return portalUserId(value[0])
+  if (value === null || value === undefined) return undefined
+  const match = /(\d+)/.exec(String(value))
+  return match && match[1] !== '0' ? match[1] : undefined
+}
+
+export type RepeatLeadKind = 'BOUGHT' | 'PROCESSING' | 'OTHER'
+
+/**
+ * «Такрор лид» as a kind. By label first — the item ids are portal-local —
+ * and by the two ids the client named (744, 746) when no label resolved.
+ * A value that is neither is still a repeat lead, just not one of the two
+ * the screen names: OTHER, never dropped into «new».
+ */
+export function repeatLeadKind(id: unknown, label: string | undefined): RepeatLeadKind | undefined {
+  if (id === null || id === undefined || id === '' || id === '0' || id === 0 || id === false) return undefined
+  const text = (label ?? '').toLowerCase()
+  if (text.includes('харид')) return 'BOUGHT'
+  if (text.includes('обработ')) return 'PROCESSING'
+  if (String(id) === '744') return 'BOUGHT'
+  if (String(id) === '746') return 'PROCESSING'
+  return 'OTHER'
 }
 
 /**

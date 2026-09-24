@@ -572,6 +572,8 @@ model Employee {
   /// Deals this person SOLD, as the portal's own snapshot names them — which is
   /// not the same set as `deals`, the ones they own today. See Deal.operatorEmployeeId.
   soldDeals  Deal[]      @relation("DealOperator")
+  /// Leads the portal routed to this person as ROP. See Deal.leadRopEmployeeId.
+  routedLeads Deal[]     @relation("DealLeadRop")
   kpis       Kpi[]
   dayPlans   SellerDayPlan[]
   calls      CallRecord[]
@@ -852,6 +854,26 @@ model Deal {
   creative           String?
   /// UF_CRM_1789470922140 «Бирламчи источник» — the lead's first source.
   primarySource      String?
+  /// «Lid kogortasi» (Reklama samarasi). Five lead-routing fields the portal
+  /// stamps on the Первичный отдел deal and copies on to Тасдиклаш and
+  /// Доставка, so one lead is up to three rows here — the screen folds them
+  /// on (customerId, leadArrivedAt). Filled since 2026-09-14; null before.
+  ///
+  /// UF_CRM_1789453947 «Лид тушган сана» — when the lead arrived. The cohort ROW.
+  leadArrivedAt      DateTime?
+  /// UF_CRM_1770642221743 «Лид таркатилган сана» — the day it was handed to a
+  /// seller. A DATE with no time on the portal, so a DATE here: converting it
+  /// through a zone could only move it. The cohort COLUMN.
+  leadDistributedOn  DateTime? @db.Date
+  /// UF_CRM_1789654225347 «ИИ квал сана» — when the AI qualified it. Only on
+  /// leads that went through the AI; always after `leadArrivedAt`, never it.
+  aiQualifiedAt      DateTime?
+  /// UF_CRM_1789454012 «РОП (Первичка)» — the ROP the lead was routed to.
+  leadRopEmployeeId  String?
+  /// UF_CRM_178973948309676 «Такрор лид» — BOUGHT («Такрор - харид қилган»),
+  /// PROCESSING («Такрор - обработка»), OTHER for an item added later. Null is
+  /// a NEW lead, and that is the portal's own meaning of the empty field.
+  repeatLead         String?
   /// IS_RETURN_CUSTOMER — Bitrix24's own repeat-purchase flag.
   isReturnCustomer Boolean        @default(false)
 
@@ -873,6 +895,7 @@ model Deal {
   /// SetNull, not Restrict: this is a denormalised convenience, and a deleted
   /// employee must not block the delete of a row that still has a real owner.
   operatorEmployee Employee?       @relation("DealOperator", fields: [operatorEmployeeId], references: [id], onDelete: SetNull)
+  leadRop          Employee?       @relation("DealLeadRop", fields: [leadRopEmployeeId], references: [id], onDelete: SetNull)
   customer     Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
   source       SalesSource?       @relation(fields: [sourceId], references: [id], onDelete: SetNull)
   items        DealItem[]
@@ -900,6 +923,9 @@ model Deal {
   @@index([confirmStatus, createdAtSource])
   /// «Target tahlili» reads one source set over a creation window.
   @@index([sourceId, createdAtSource])
+  /// «Lid kogortasi» reads an arrival window and a distribution window.
+  @@index([leadArrivedAt])
+  @@index([leadDistributedOn])
   @@map("deal")
 }
 

@@ -338,18 +338,21 @@ async function pruneSyncLog(db: PrismaClient): Promise<void> {
 /**
  * THE ONE-OFF DEALS RE-READ, requested in code. Null when nothing is owed.
  *
- * Set on 2026-09-19 for «Target tahlili»: three new deal columns (targetolog,
- * creative, primarySource) that the sync fills only on deals the portal
- * touches again. This re-reads everything modified since 1 August, once, in
- * the night window, through THIS process's provider — the same 2 rps limiter,
- * hourly ceiling and refusal gate as the minute tick, so there is never a
- * second process asking the portal for anything. Settled by a `DEALS /
- * BACKFILL` success in `sync_log` after `requestedAt`; dropped unserved after
- * `BACKFILL_EXPIRES_MS`. The next column that needs one replaces this value.
+ * Set on 2026-09-24 for «Lid kogortasi»: five new deal columns (leadArrivedAt,
+ * leadDistributedOn, aiQualifiedAt, leadRopEmployeeId, repeatLead) that the
+ * sync fills only on deals the portal touches again. The portal started
+ * filling those fields on 2026-09-14, so everything modified since the 13th
+ * is re-read — once, in the night window, through THIS process's provider:
+ * the same 2 rps limiter, hourly ceiling and refusal gate as the minute tick,
+ * so there is never a second process asking the portal for anything. Settled
+ * by a `DEALS / BACKFILL` success in `sync_log` after `requestedAt`; dropped
+ * unserved after `BACKFILL_EXPIRES_MS`. The next column that needs one
+ * replaces this value. (It was 2026-08-01 / 2026-09-19 for «Target tahlili»,
+ * long since served.)
  */
 const DEALS_BACKFILL: DealsBackfill | null = {
-  since: new Date('2026-08-01T00:00:00+05:00'),
-  requestedAt: new Date('2026-09-19T00:00:00+05:00'),
+  since: new Date('2026-09-13T00:00:00+05:00'),
+  requestedAt: new Date('2026-09-24T00:00:00+05:00'),
 }
 
 const WORKER_TIME_ZONE = process.env.APP_TIMEZONE ?? 'Asia/Tashkent'

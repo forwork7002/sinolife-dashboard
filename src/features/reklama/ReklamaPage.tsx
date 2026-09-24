@@ -17,6 +17,7 @@ import { t } from '@/lib/messages'
 import { CampaignSection } from './CampaignSection'
 import { DmSection } from './DmSection'
 import { FormSection } from './FormSection'
+import { LeadCohortSection } from './LeadCohortSection'
 import { QualitySection } from './QualitySection'
 import { SalesTeamSection } from './SalesTeamSection'
 import type { ReklamaOverviewDto } from './reklamaApi'
@@ -31,13 +32,15 @@ import { type Status, UsdTile } from './reklamaUi'
  * three ad sheets — «DM», «Отчёт Т» and lead quality — each as a table of
  * totals and a table of days, the way the sheets read, then every campaign.
  * The other two, the ROP sheets, are the «Sotuv · ROP» tab
- * (`SalesTeamSection`).
+ * (`SalesTeamSection`). «Lid kogortasi» (2026-09-24) is the third tab: a
+ * lead's arrival day against the day it was handed to a seller
+ * (`LeadCohortSection`), on its own fourteen-day window.
  *
  * ONE REQUEST PER TAB. Every ad table is built from the same Meta rows and
  * the same lead scan, so the tiles, the page totals and the day rows sum to
  * each other.
  */
-type Tab = 'ads' | 'sales'
+type Tab = 'ads' | 'sales' | 'leads'
 
 export function ReklamaPage() {
   const { apiParams } = useDashboardFilters()
@@ -81,6 +84,7 @@ export function ReklamaPage() {
           options={[
             { value: 'ads', label: 'Reklama' },
             { value: 'sales', label: 'Sotuv · ROP' },
+            { value: 'leads', label: 'Lid kogortasi' },
           ]}
         />
       }
@@ -88,6 +92,8 @@ export function ReklamaPage() {
       <div className="flex min-w-0 flex-col gap-6">
         {tab === 'sales' ? (
           <SalesTeamSection />
+        ) : tab === 'leads' ? (
+          <LeadCohortSection />
         ) : status === 'error' ? (
           <Card className="p-5">
             <ErrorState

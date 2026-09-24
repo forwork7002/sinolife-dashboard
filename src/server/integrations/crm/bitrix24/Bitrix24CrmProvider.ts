@@ -51,6 +51,7 @@ import {
   PIPELINE_NAMES,
   UF,
   UF_FIELDS,
+  calendarDate,
   callDirection,
   categoryFromSemantic,
   confirmStatusFromLabel,
@@ -59,6 +60,8 @@ import {
   extractOrderCode,
   logisticsRole,
   pipelineRole,
+  portalUserId,
+  repeatLeadKind,
   toDate,
   toMinorUnits,
 } from './mapping'
@@ -1586,6 +1589,13 @@ export class Bitrix24CrmProvider implements CrmProvider {
         targetolog: this.label(UF.TARGETOLOG, d[UF.TARGETOLOG]),
         creative: this.labelOrText(UF.CREATIVE, d[UF.CREATIVE]),
         primarySource: this.labelOrText(UF.PRIMARY_SOURCE, d[UF.PRIMARY_SOURCE]),
+        // «Lid kogortasi». Datetimes arrive with the portal's +03:00 and
+        // `toDate` keeps the instant; the Tashkent day is taken at query time.
+        leadArrivedAt: toDate(d[UF.LEAD_ARRIVED_AT]),
+        leadDistributedOn: calendarDate(d[UF.LEAD_DISTRIBUTED_ON]),
+        aiQualifiedAt: toDate(d[UF.AI_QUALIFIED_AT]),
+        leadRopExternalId: portalUserId(d[UF.LEAD_ROP]),
+        repeatLead: repeatLeadKind(d[UF.REPEAT_LEAD], this.label(UF.REPEAT_LEAD, d[UF.REPEAT_LEAD])),
         isReturnCustomer: d.IS_RETURN_CUSTOMER === 'Y',
         createdAtSource: toDate(d.DATE_CREATE) ?? new Date(),
         updatedAtSource: toDate(d.DATE_MODIFY),

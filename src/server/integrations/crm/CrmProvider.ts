@@ -220,6 +220,16 @@ export interface RawDeal extends ExternalRecord {
   readonly creative?: string
   /** The lead's first source, before a re-registration rewrote SOURCE_ID. */
   readonly primarySource?: string
+  /** «Лид тушган сана». See `UF.LEAD_ARRIVED_AT`. */
+  readonly leadArrivedAt?: Date
+  /** «Лид таркатилган сана», `YYYY-MM-DD` — a calendar day, not an instant. */
+  readonly leadDistributedOn?: string
+  /** «ИИ квал сана». */
+  readonly aiQualifiedAt?: Date
+  /** «РОП (Первичка)» — the ROP's portal user id; resolved to an employee on write. */
+  readonly leadRopExternalId?: string
+  /** «Такрор лид»; undefined is a new lead. */
+  readonly repeatLead?: 'BOUGHT' | 'PROCESSING' | 'OTHER'
   readonly isReturnCustomer?: boolean
   /** When the deal was created in the SOURCE system, not when we imported it. */
   readonly createdAtSource: Date
