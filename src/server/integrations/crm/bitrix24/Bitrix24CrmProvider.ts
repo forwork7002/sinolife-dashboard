@@ -1508,24 +1508,61 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * tell a short read from a small portal.
    */
   async listDealIds(): Promise<Set<string>> {
+    return new Set((await this.listDealContacts()).keys())
+  }
+
+  /**
+   * Every deal id the portal holds, with the contact it points at NOW.
+   *
+   * THE SAME WALK AS `listDealIds`, ONE MORE COLUMN. The daily sweep already
+   * pays for this walk; carrying `CONTACT_ID` on it costs a few bytes a row and
+   * not a single extra invocation.
+   *
+   * WHY THE SWEEP NEEDS IT. Merging duplicate contacts in Bitrix24 moves the
+   * loser's deals onto the survivor WITHOUT touching the deals' DATE_MODIFY —
+   * measured 2026-09-25: deal 35736, created and last modified 2025-07-12, now
+   * points at contact 579290, created 2026-08-05. The incremental pass asks
+   * only for `>=DATE_MODIFY`, so it never sees a merge, and one buyer stays
+   * two «customers» here forever — which is exactly what «Mijoz qaytishi»
+   * counts. See `relinkDealContacts`.
+   *
+   * Throws when the walk came back without the column at all: an ignored
+   * `select` would read as «every deal lost its contact».
+   */
+  async listDealContacts(): Promise<Map<string, string | null>> {
     const filter: Record<string, unknown> = { CATEGORY_ID: [...this.pipelines] }
-    const ids = new Set<string>()
+    const deals = new Map<string, string | null>()
+    let sawColumn = false
 
     let afterId = '0'
     for (;;) {
-      const { rows, done } = await this.batchWalk<Record<string, string>>(
+      const { rows, done } = await this.batchWalk<Record<string, string | null>>(
         'crm.deal.list',
-        { filter, select: ['ID'] },
+        { filter, select: ['ID', 'CONTACT_ID'] },
         afterId,
       )
 
-      for (const row of rows) ids.add(String(row.ID))
+      for (const row of rows) {
+        if ('CONTACT_ID' in row) sawColumn = true
+        // Read exactly as `fetchDeals` reads it, so the two can be compared.
+        deals.set(String(row.ID), row.CONTACT_ID ? String(row.CONTACT_ID) : null)
+      }
 
       if (done || rows.length === 0) break
       afterId = String(rows[rows.length - 1]!.ID)
     }
 
-    return ids
+    if (deals.size > 0 && !sawColumn) {
+      throw new Bitrix24Error(
+        'Bitrix24 crm.deal.list CONTACT_ID ustunini qaytarmadi — kontakt bogʻlanishlari tekshirilmadi',
+        undefined,
+        false,
+        undefined,
+        'crm.deal.list',
+      )
+    }
+
+    return deals
   }
 
   /**

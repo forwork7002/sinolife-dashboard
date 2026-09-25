@@ -57,6 +57,7 @@ import { createSyncHandlers } from '../src/server/integrations/crm/sync/handlers
 import { PrismaSyncStore } from '../src/server/integrations/crm/sync/PrismaSyncStore'
 import { SyncEngine } from '../src/server/integrations/crm/sync/SyncEngine'
 import { historyBackfillCursor } from '../src/server/integrations/crm/sync/backfill'
+import { relinkDealContacts } from '../src/server/integrations/crm/sync/contactRelink'
 import { sweepRecentConfirmations } from '../src/server/integrations/crm/sync/recentDeletions'
 import { importMetaSpend } from '../src/server/integrations/meta/metaImport'
 import { zonedDateKey } from '../src/server/domain/period/period'
@@ -1149,7 +1150,8 @@ async function main() {
     if (sweepDue && tick > 0 && calm === 0 && !provider.gate.isOpen() && !stopping && dealsHandler) {
       const sweepStarted = Date.now()
       try {
-        const live = await provider.listDealIds()
+        const contacts = await provider.listDealContacts()
+        const live = new Set(contacts.keys())
         const deleted = (await dealsHandler.deleteMissing?.(live)) ?? 0
         lastSweepAt = new Date()
         lastSweepFailedAt = null
@@ -1181,6 +1183,21 @@ async function main() {
           `  ${stamp()} tozalash: portalda ${live.size} bitim, ${deleted} ta oʻchirildi` +
             `  (${((Date.now() - sweepStarted) / 1000).toFixed(1)}s)`,
         )
+
+        /*
+          MERGED CONTACTS, FROM THE SAME READ — see `contactRelink.ts`. Its own
+          try: the deletions above are done and recorded, and a relink that
+          refuses must not make the sweep look failed and run again in an hour.
+        */
+        try {
+          const r = await relinkDealContacts(prisma, 'BITRIX24', contacts)
+          console.log(
+            `  ${stamp()} kontakt bogʻlanishi: ${r.checked} bitim tekshirildi, ${r.relinked} tasi` +
+              ` birlashtirilgan kontaktga oʻtkazildi (${r.customersBefore} ta eski mijozdan)`,
+          )
+        } catch (error) {
+          console.warn(`  ${stamp()} kontakt bogʻlanishi muvaffaqiyatsiz: ${(error as Error).message}`)
+        }
       } catch (error) {
         // Never fatal: a failed sweep leaves stale rows, which is the state we
         // were already in. Losing the tick loop over it would be worse.
