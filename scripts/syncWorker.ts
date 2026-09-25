@@ -372,6 +372,9 @@ async function pruneSyncLog(db: PrismaClient): Promise<void> {
  * replaces this value. (It was 2026-08-01 / 2026-09-19 for «Target tahlili»,
  * long since served.)
  */
+/** The day contact relinking shipped; see the startup read of `lastSweepAt`. */
+const CONTACT_RELINK_SINCE = new Date('2026-09-25T00:00:00Z')
+
 const DEALS_BACKFILL: DealsBackfill | null = {
   since: new Date('2026-09-13T00:00:00+05:00'),
   requestedAt: new Date('2026-09-24T00:00:00+05:00'),
@@ -832,6 +835,26 @@ async function main() {
     ])
     lastReferenceAt = reference?.finishedAt ?? null
     lastSweepAt = sweep?.finishedAt ?? null
+    /*
+      THE FIRST RELINK IS NOT LEFT TO THE DAILY CLOCK. The client merged its
+      duplicate contacts across the whole base in September 2026, and until
+      the sweep re-points those deals «Mijoz qaytishi» counts one buyer as two
+      — so a worker that has never recorded a relink sweeps on its first
+      eligible tick (never tick 0, same guards as always), once. After that the
+      relink's own row keeps this false and the daily clock is back in charge.
+    */
+    if (SWEEP_MS > 0) {
+      const relinked = await prisma.syncLog.findFirst({
+        where: {
+          status: 'SUCCESS',
+          entity: 'CUSTOMERS',
+          mode: 'BACKFILL',
+          finishedAt: { gte: CONTACT_RELINK_SINCE },
+        },
+        select: { id: true },
+      })
+      if (relinked === null) lastSweepAt = null
+    }
   } catch (error) {
     // Not fatal: unknown means «due», which is exactly what a restart did before.
     console.warn(`  ${stamp()} ! oxirgi maʼlumotnoma/tozalash vaqti oʻqilmadi:`, error)
@@ -1190,7 +1213,24 @@ async function main() {
           refuses must not make the sweep look failed and run again in an hour.
         */
         try {
+          const relinkStarted = new Date()
           const r = await relinkDealContacts(prisma, 'BITRIX24', contacts)
+          /* Its own row, read back at startup above. CUSTOMERS / BACKFILL:
+             nothing else writes that pair, and no watermark lives in sync_log. */
+          await prisma.syncLog
+            .create({
+              data: {
+                provider: 'BITRIX24',
+                entity: 'CUSTOMERS',
+                mode: 'BACKFILL',
+                status: 'SUCCESS',
+                startedAt: relinkStarted,
+                finishedAt: new Date(),
+                recordsRead: r.checked,
+                recordsUpdated: r.relinked,
+              },
+            })
+            .catch((error: unknown) => console.warn(`  ${stamp()} ! relink yozuvi saqlanmadi:`, error))
           console.log(
             `  ${stamp()} kontakt bogʻlanishi: ${r.checked} bitim tekshirildi, ${r.relinked} tasi` +
               ` birlashtirilgan kontaktga oʻtkazildi (${r.customersBefore} ta eski mijozdan)`,
