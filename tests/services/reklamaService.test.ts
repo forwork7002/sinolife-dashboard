@@ -154,7 +154,7 @@ describe('reklamaOverview', () => {
   it('reports an unmapped account\'s DM money as unattributed instead of guessing a page', () => {
     const out = build(
       [],
-      [campaign({ accountId: '4016900891780426', accountName: 'Collagen AI targetolog', spendMicroUsd: 5_000_000n, conversations: 9 })],
+      [campaign({ accountId: '1306271057053174', accountName: 'Newgen_davi01', spendMicroUsd: 5_000_000n, conversations: 9 })],
     )
     expect(out.dm.total.spendUsd).toBe(0)
     expect(out.dm.unattributed).toEqual({ spendUsd: 5, conversations: 9 })

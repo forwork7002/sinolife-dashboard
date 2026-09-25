@@ -81,7 +81,7 @@ describe('leadSourcesOverview', () => {
       // A DM campaign is not a form: its money and conversations stay off this tab.
       campaign({ objective: 'OUTCOME_ENGAGEMENT', campaignName: 'DM', leads: 0, conversations: 99, spendMicroUsd: 9_000_000n }),
       // An account nobody mapped still gets a row, under its own name.
-      campaign({ accountId: '4016900891780426', accountName: 'Collagen AI targetolog', leads: 4, spendMicroUsd: 1_000_000n }),
+      campaign({ accountId: '1306271057053174', accountName: 'Newgen_davi01', leads: 4, spendMicroUsd: 1_000_000n }),
     ],
   })
 
@@ -115,7 +115,7 @@ describe('leadSourcesOverview', () => {
   })
 
   it('keeps an unmapped account visible with no Bitrix24 leads', () => {
-    const ai = data.forms.owners.find((o) => o.targetolog === 'Collagen AI targetolog')!
+    const ai = data.forms.owners.find((o) => o.targetolog === 'Newgen_davi01')!
     expect(ai.product).toBe('Boshqa')
     expect(ai.metaLeads).toBe(4)
     expect(ai.outcome.leads).toBe(0)
