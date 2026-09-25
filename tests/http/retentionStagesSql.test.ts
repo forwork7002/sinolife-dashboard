@@ -110,4 +110,13 @@ describe('the База statement', () => {
     expect(code()).not.toContain('retentionGroupCaseSql(\'s."name"\')')
   })
 
+  it('leaves «Дубль заказы» out of the base entirely', () => {
+    /* Duplicate orders are not customers of the base: filtered in `labelled`,
+       so no bar, no group and no base count ever sees them. */
+    expect(code()).toContain('AND s."externalId" NOT IN (${InsightsRepository.excludedRetentionStagesSql()})')
+    const list = (InsightsRepository as unknown as { excludedRetentionStagesSql: () => string })
+      .excludedRetentionStagesSql()
+    expect(list).toBe("'C10:UC_085NVA'")
+  })
+
 })

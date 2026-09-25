@@ -78,6 +78,17 @@ export const RETENTION_GROUPS = [
 
 export type RetentionGroupKey = (typeof RETENTION_GROUPS)[number]['key']
 
+/**
+ * База stages that are not customers of the base at all, and are left out of
+ * every count on the card — bars and base alike.
+ *
+ * «Дубль заказы» (C10:UC_085NVA) appeared on the portal in September 2026: the
+ * team files duplicate orders there when it cleans up. Its 273 customers
+ * (2026-09-25) were drawn under «Boshqa bosqichlar» and added to the base; the
+ * client asked on 2026-09-25 for them to leave the base altogether.
+ */
+export const EXCLUDED_RETENTION_STAGES: readonly string[] = ['C10:UC_085NVA']
+
 /** Where a stage this table has never heard of is counted. Drawn, never dropped. */
 export const UNMAPPED_RETENTION_GROUP = 'OTHER'
 

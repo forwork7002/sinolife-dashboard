@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  EXCLUDED_RETENTION_STAGES,
   RETENTION_GROUPS,
   RETENTION_GROUP_ORDER,
   UNMAPPED_RETENTION_GROUP,
@@ -53,6 +54,13 @@ describe('the retention groups partition База', () => {
     */
     const all = RETENTION_GROUPS.flatMap((g) => g.stages)
     expect(new Set(all).size).toBe(all.length)
+  })
+
+  it('files no excluded stage in any group', () => {
+    // «Дубль заказы» leaves the base; filing it too would count it back in.
+    const filed = RETENTION_GROUPS.flatMap((g) => g.stages as readonly string[])
+    for (const id of EXCLUDED_RETENTION_STAGES) expect(filed).not.toContain(id)
+    expect(EXCLUDED_RETENTION_STAGES).toContain('C10:UC_085NVA')
   })
 
   it('files every stage of the live funnel', () => {

@@ -40,6 +40,7 @@ import {
 import { callWindowStart } from '@/lib/callQuality'
 import { LOGISTICS_BUCKETS, UNMAPPED_BUCKET } from '@/lib/logisticsBuckets'
 import {
+  EXCLUDED_RETENTION_STAGES,
   RETENTION_GROUPS,
   RETENTION_GROUP_ORDER,
   UNMAPPED_RETENTION_GROUP,
@@ -1768,6 +1769,7 @@ export class InsightsRepository {
         JOIN "deal_stage" s ON s."id" = d."stageId"
         JOIN "pipeline" p ON p."id" = d."pipelineId"
         WHERE p."role" = 'RETENTION' AND d."customerId" IS NOT NULL
+          AND s."externalId" NOT IN (${InsightsRepository.excludedRetentionStagesSql()})
       )
       SELECT
         grp,
@@ -1817,6 +1819,14 @@ export class InsightsRepository {
    * lives one import away is exactly the kind of thing a later edit widens
    * without thinking about the SQL it feeds.
    */
+  /** `EXCLUDED_RETENTION_STAGES` as a SQL list — ids checked like the CASE's. */
+  private static excludedRetentionStagesSql(): string {
+    for (const id of EXCLUDED_RETENTION_STAGES) {
+      if (!/^[A-Z0-9_:]+$/.test(id)) throw new Error(`Invalid retention stage id: ${id}`)
+    }
+    return EXCLUDED_RETENTION_STAGES.map((id) => `'${id}'`).join(', ')
+  }
+
   private static retentionGroupCaseSql(column: string): string {
     const arms = RETENTION_GROUPS.map((group) => {
       for (const id of group.stages) {
