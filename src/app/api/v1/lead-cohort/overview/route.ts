@@ -9,11 +9,11 @@ export const dynamic = 'force-dynamic'
 /**
  * Who reaches this endpoint: the capability, then the screen it feeds.
  *
- * COMPANY-WIDE, like the rest of «Reklama samarasi»: every ROP's leads side
+ * COMPANY-WIDE, like the rest of «Lidlar»: every ROP's leads side
  * by side. A ROP given TEAM scope is refused rather than handed the company —
  * the «ROP» filter here is a dimension the reader picks, not a scope.
  */
-const ACCESS = { permission: 'analytics:read:all', section: 'marketing' } as const
+const ACCESS = { permission: 'analytics:read:all', section: 'leads' } as const
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
 

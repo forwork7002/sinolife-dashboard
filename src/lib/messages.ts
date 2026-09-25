@@ -38,6 +38,7 @@ export const t = {
     payroll: 'Sotuvchilar oyligi',
     margin: 'Yalpi marja',
     marketing: 'Reklama samarasi',
+    leads: 'Lidlar',
     target: 'Target tahlili',
     /** Not one of the nine: account administration, shown only to an admin. */
     users: 'Foydalanuvchilar',
@@ -74,6 +75,10 @@ export const t = {
     reklama: {
       title: 'Reklama samarasi',
       lead: 'DM, targetologlar va lid sifati — mijozning oʻz jadvallari, Meta Ads va Bitrix24 dan har kuni oʻzi yigʻiladi. Kunlar Toshkent vaqti boʻyicha.',
+    },
+    leads: {
+      title: 'Lidlar',
+      lead: 'Bitrix24 ga tushgan har bir lid — qaysi manbadan kelgani, qanchasi kval boʻlgani, qachon tarqatilgani va ROP jamoalari rejasi. Kunlar Toshkent vaqti boʻyicha.',
     },
     target: {
       title: 'Target tahlili',

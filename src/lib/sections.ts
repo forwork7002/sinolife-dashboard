@@ -51,6 +51,7 @@ export const SECTIONS = [
   { id: 'sellers', route: '/sellers', label: 'Sotuvchilar reytingi', group: 'Jamoa' },
   { id: 'payroll', route: '/payroll', label: 'Sotuvchilar oyligi', group: 'Jamoa' },
   { id: 'marketing', route: '/marketing', label: 'Reklama samarasi', group: 'Marketing' },
+  { id: 'leads', route: '/leads', label: 'Lidlar', group: 'Marketing' },
   { id: 'target', route: '/target', label: 'Target tahlili', group: 'Marketing' },
 ] as const satisfies readonly {
   id: string
@@ -124,6 +125,14 @@ const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
     for exactly that reason.
   */
   'marketing',
+  /*
+    «LIDLAR» (2026-09-25) FOR THE SAME REASON. Its three tabs moved here from
+    «Reklama samarasi» or were built for it: a Регистрация lead sits with
+    the registrar who picked it up, a conversation with the bot, Meta rows
+    with nobody — and «Sotuv · ROP» / «Lid kogortasi» set every team side by
+    side on purpose. Its endpoints ask for `analytics:read:all`.
+  */
+  'leads',
   /*
     «TARGET TAHLILI» FOR THE SAME REASON, TWICE OVER. Its leads sit in
     Регистрация with whichever registrar picked them up — nobody's sales team —

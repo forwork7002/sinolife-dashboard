@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
  * handed the other teams — narrowing it is a decision for the client, and
  * one that would have to reach the memo key too.
  */
-const ACCESS = { permission: 'analytics:read:all', section: 'marketing' } as const
+const ACCESS = { permission: 'analytics:read:all', section: 'leads' } as const
 
 const querySchema = z.object({
   /** `YYYY-MM`. The month the ROP sheet covers. */

@@ -1,11 +1,10 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
 import { ErrorState } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
-import { SegmentedControl } from '@/components/ui/Controls'
 import { SectionHeader, StatTile } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -17,9 +16,7 @@ import { t } from '@/lib/messages'
 import { CampaignSection } from './CampaignSection'
 import { DmSection } from './DmSection'
 import { FormSection } from './FormSection'
-import { LeadCohortSection } from './LeadCohortSection'
 import { QualitySection } from './QualitySection'
-import { SalesTeamSection } from './SalesTeamSection'
 import type { ReklamaOverviewDto } from './reklamaApi'
 import { type Status, UsdTile } from './reklamaUi'
 
@@ -31,26 +28,17 @@ import { type Status, UsdTile } from './reklamaUi'
  * sen menga shuni reklama samarasi boʻlimiga chiqarishing kerak». This is the
  * three ad sheets — «DM», «Отчёт Т» and lead quality — each as a table of
  * totals and a table of days, the way the sheets read, then every campaign.
- * The other two, the ROP sheets, are the «Sotuv · ROP» tab
- * (`SalesTeamSection`). «Lid kogortasi» (2026-09-24) is the third tab: a
- * lead's arrival day against the day it was handed to a seller
- * (`LeadCohortSection`), on its own fourteen-day window.
  *
- * ONE REQUEST PER TAB. Every ad table is built from the same Meta rows and
- * the same lead scan, so the tiles, the page totals and the day rows sum to
- * each other.
+ * THE TWO OTHER TABS MOVED ON 2026-09-25 to their own section, «Lidlar»
+ * (`features/leads`): «Sotuv · ROP», the client's ROP sheets, and «Lid
+ * kogortasi». This page is the Meta side alone now, and one request.
+ *
+ * Every ad table is built from the same Meta rows and the same lead scan, so
+ * the tiles, the page totals and the day rows sum to each other.
  */
-type Tab = 'ads' | 'sales' | 'leads'
 
 export function ReklamaPage() {
   const { apiParams } = useDashboardFilters()
-  /*
-    TWO SHEETS OF SHEETS. «Reklama» is the ad side (DM, «Отчёт Т», lead
-    quality, campaigns) on the dashboard period; «Sotuv · ROP» is the ROP
-    side on its own calendar month. The ad request does not go out while the
-    sales tab is open, and the other way round.
-  */
-  const [tab, setTab] = useState<Tab>('ads')
 
   const params = useMemo(() => {
     const out: Record<string, string | number> = { preset: apiParams.preset }
@@ -62,7 +50,6 @@ export function ReklamaPage() {
   const overview = useQuery({
     queryKey: ['reklama-overview', params],
     queryFn: ({ signal }) => apiGet<ReklamaOverviewDto>('/reklama/overview', params, signal),
-    enabled: tab === 'ads',
   })
 
   const status: Status = overview.isPending ? 'loading' : overview.isError ? 'error' : 'ready'
@@ -73,28 +60,12 @@ export function ReklamaPage() {
       title={t.modules.reklama.title}
       description={t.modules.reklama.lead}
       accent="var(--series-7)"
-      meta={tab === 'ads' ? overview.data?.meta : undefined}
-      stale={tab === 'ads' && overview.isPlaceholderData}
-      period={tab === 'ads'}
-      toolbar={
-        <SegmentedControl<Tab>
-          ariaLabel="Qaysi jadvallar"
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: 'ads', label: 'Reklama' },
-            { value: 'sales', label: 'Sotuv · ROP' },
-            { value: 'leads', label: 'Lid kogortasi' },
-          ]}
-        />
-      }
+      meta={overview.data?.meta}
+      stale={overview.isPlaceholderData}
+      period
     >
       <div className="flex min-w-0 flex-col gap-6">
-        {tab === 'sales' ? (
-          <SalesTeamSection />
-        ) : tab === 'leads' ? (
-          <LeadCohortSection />
-        ) : status === 'error' ? (
+        {status === 'error' ? (
           <Card className="p-5">
             <ErrorState
               message={overview.error instanceof Error ? overview.error.message : undefined}

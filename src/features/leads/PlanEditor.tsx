@@ -8,7 +8,7 @@ import { apiWrite } from '@/lib/api'
 import { formatFullUzs } from '@/lib/format'
 
 import type { SalesTeamDto, SavePlansBody } from './salesTeamApi'
-import { TableCard, muted } from './reklamaUi'
+import { TableCard, muted } from '@/features/reklama/reklamaUi'
 
 /**
  * «Rejalar» — the plans the ROP sheets are measured against, typed in here

@@ -18,7 +18,7 @@ import {
   type LeadCohortRowDto,
   type LeadRopDto,
 } from './leadCohortApi'
-import { type Status, SlicePicker, TableCard, count, muted } from './reklamaUi'
+import { type Status, SlicePicker, TableCard, count, muted } from '@/features/reklama/reklamaUi'
 
 /**
  * «Lid kogortasi» — a lead's arrival day against the day it was handed to a

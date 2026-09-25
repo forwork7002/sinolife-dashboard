@@ -42,7 +42,7 @@ import type {
 import { ttlCache } from './ttlCache'
 
 // ---------------------------------------------------------------------------
-// DTOs — mirrored in `src/features/reklama/salesTeamApi.ts`
+// DTOs — mirrored in `src/features/leads/salesTeamApi.ts`
 // ---------------------------------------------------------------------------
 
 /** What a set of sellers did over a span — one day, or the month. */

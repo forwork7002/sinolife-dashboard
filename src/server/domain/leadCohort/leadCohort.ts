@@ -65,7 +65,7 @@ export interface Lead {
 }
 
 // ---------------------------------------------------------------------------
-// DTO — mirrored in `src/features/reklama/leadCohortApi.ts`
+// DTO — mirrored in `src/features/leads/leadCohortApi.ts`
 // ---------------------------------------------------------------------------
 
 export interface LeadCohortRowDto {

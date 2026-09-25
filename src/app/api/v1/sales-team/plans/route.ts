@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic'
  * `kpi:manage`, checked inside: of the company-wide readers, only the
  * administrators and managers the KPI plans were always meant for.
  */
-const ACCESS = { permission: 'analytics:read:all', section: 'marketing' } as const
+const ACCESS = { permission: 'analytics:read:all', section: 'leads' } as const
 
 /** Whole soʻm, as the form types it; up to a trillion, never negative. */
 const som = z.number().int().min(0).max(1_000_000_000_000).nullable()

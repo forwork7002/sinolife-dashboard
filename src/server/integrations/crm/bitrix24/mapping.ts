@@ -16,6 +16,7 @@ import type {
   StageCategoryValue,
   TargetProduct,
 } from '@/server/domain/types'
+import type { LeadSourceVocabulary } from '@/server/domain/leads/leadSources'
 
 // ---------------------------------------------------------------------------
 // Pipelines
@@ -450,6 +451,23 @@ export const TARGET_SOURCE_PRODUCT: Readonly<Record<string, TargetProduct>> = Ob
  * beside the leads its own pages brought in.
  */
 export const TARGET_SOURCE_IDS: readonly string[] = Object.freeze(Object.keys(TARGET_SOURCE_PRODUCT))
+
+/**
+ * The rest of Регистрация's sources, by what they mean — «Lid manbalari»
+ * shows every lead in the pipeline, not just the ad pages, so the total reads
+ * whole. Read off `crm.status.list` (ENTITY_ID SOURCE) on 2026-09-25:
+ *
+ *   CALL «Входящий», UC_CKXAZS «Входящий collagen», UC_AA84D0 «Входящий
+ *   zextra» — a customer rang in. UC_KPZA32 «Исход» — an operator's own
+ *   outgoing call (2 096 deals that week). REPEAT_SALE «Ген лид» — what a
+ *   Meta CRM form writes, and what operators type leads in under by hand.
+ */
+export const LEAD_SOURCE_VOCABULARY: LeadSourceVocabulary = Object.freeze({
+  pages: new Set(TARGET_SOURCE_IDS),
+  inbound: new Set(['CALL', 'UC_CKXAZS', 'UC_AA84D0']),
+  outbound: new Set(['UC_KPZA32']),
+  generated: 'REPEAT_SALE',
+})
 
 /**
  * Confirmation outcome, from the label rather than the item id.

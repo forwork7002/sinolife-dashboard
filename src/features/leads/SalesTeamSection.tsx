@@ -13,7 +13,7 @@ import { formatDate, formatFullUzs, formatPercent } from '@/lib/format'
 
 import { PlanEditor } from './PlanEditor'
 import type { SalesDayDto, SalesSellerDto, SalesTeamDto, SalesTeamOverviewDto } from './salesTeamApi'
-import { type Status, SlicePicker, TableCard, count, muted, pct } from './reklamaUi'
+import { type Status, SlicePicker, TableCard, count, muted, pct } from '@/features/reklama/reklamaUi'
 
 /**
  * «Sotuv · ROP» — the client's two ROP sheets, from Bitrix24 and the plans

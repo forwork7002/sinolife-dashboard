@@ -15,9 +15,10 @@ import { type DayRow, DayCell, type Status, TableCard, SlicePicker, count, dayRo
  *
  * The sheet's $ column is these campaigns' spend to the dime (Umar,
  * 02.09.2026: 93.1 $ + 96.0 $ against the sheet's 189.0 $). Its «лид» is not
- * Meta's lead count and its «кв лид» is not in Bitrix24 per targetolog, so
- * the table says «Meta lid» and has no kval column — the note under it says
- * why, instead of the reader finding a number that does not match.
+ * Meta's lead count, so the table says «Meta lid». The per-targetolog
+ * Bitrix24 лид / кв лид the sheet also carries were found on 2026-09-25 —
+ * the CRM form's NAME carries the targetolog — and live on «Lidlar» →
+ * «Lid manbalari»; the note under the table points there.
  */
 export function FormSection({ form, status }: { form: FormBlockDto | undefined; status: Status }) {
   const [slice, setSlice] = useState<string>('total')
@@ -60,7 +61,7 @@ export function FormSection({ form, status }: { form: FormBlockDto | undefined; 
       <TableCard
         title="Targetologlar — davr boʻyicha"
         hint="DM ustunlari — shu targetologning DM kampaniyalari; ular yuqoridagi DM jadvaliga ham kiradi."
-        footer="Kval lid ustuni hozircha yoʻq: Bitrix24 da targetolog maydoni leadlarning taxminan 5% ida toʻldirilgan, shuning uchun targetolog boʻyicha kval undan toʻgʻri chiqmaydi. Jadvaldagi «кв лид» qayerdan olinishi aniqlashtirilmoqda."
+        footer="Targetolog boʻyicha Bitrix24 lid va kval — «Lidlar» boʻlimining «Lid manbalari» jadvalida: ular targetologning CRM-formasi nomidan olinadi."
       >
         <DataTable<OwnerRow>
           columns={ownerColumns}

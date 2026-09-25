@@ -426,7 +426,8 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Savdo dinamikasi | `/analytics/sales` | `sales/SalesPage` + `ForecastSection` + `ConfirmationOutcomeSection` + `ConfirmationFaktSection` + `DeliveryBoardSection` | `/analytics/sellers` twice (the board, and `?include=faktTrend` for the chart) + `/insights/delivery` | SellerBoard, Pulse → SellerBoard, Pulse | the arrival in `C4:NEW` (`queued_at`) — **except the Доставка board, which has NO window at all**: a kanban column is where orders are standing now |
 | Mijoz qaytishi | `/analytics/cohort` | `cohort/CohortPage` — ONE reading, the MATRIX FIRST. It had two modes («Oddiy» / «Batafsil», `?mode=`) until 2026-09-16; the manager's view and everything only it read are deleted. The matrix has THREE readings of one fetch — «Jami qaytgan» / «Oylik» / «Pul» — and ONE control that is a different question: `?rop=`, the acquiring team, which is its own cache entry and its own request | `/insights/cohorts`, `/insights/customers`, `/insights/concentration` | Insights, Concentration → Insights, Concentration | **nothing — the screen is DATELESS since 2026-09-15** (`period={false}`, like Struktura), and it now carries TWO CLOCKS, each named on screen. `closedAt` on revenue-bearing WON deals is the clock the matrix and the concentration band read; `/insights/customers` reads `createdAtSource` over its OWN trailing 90 days, so its customer totals legitimately differ — never sum across them; the matrix takes no window at all (`months` bounds which cohort ROWS are drawn and never the totals arm) and `/insights/concentration` resolves its OWN trailing 90 days (`trailingDays`). Nothing here reads `createdAtSource` |
 | Qoʻngʻiroqlar | `/customers` | `calls/CallsPage` + `CallTable` | `/insights/calls` | Insights → Insights | `call_record."startedAt"` on the dashboard window, clamped below at `CALL_DATA_FLOOR` (2026-09-15 00:00 Tashkent). One clock, one request |
-| Reklama samarasi | `/marketing` | `reklama/ReklamaPage` — three tabs. «Reklama»: `DmSection` + `FormSection` + `QualitySection` + `CampaignSection`. «Sotuv · ROP»: `SalesTeamSection` + `PlanEditor` (the client's ROP sheets; plans typed in here, `seller_day_plan` / `team_month_plan`). «Lid kogortasi»: `LeadCohortSection` (2026-09-24). The Roistat `marketing/MarketingPage` is held, not mounted | `/reklama/overview`; `/sales-team/overview`, `POST /sales-team/plans` (`analytics:read:all` at the gate, `kpi:manage` inside); `/lead-cohort/overview` (the Roistat `/marketing/*` three still answer, uncalled) | Reklama → Reklama | **two clocks, one Tashkent calendar day.** Meta: `meta_campaign_daily."date"`, the ad account's reporting day, split by `campaignChannel` (OUTCOME_LEADS → «Отчёт Т», OUTCOME_ENGAGEMENT → «DM», hiring campaigns → neither). Bitrix24: the Регистрация lead's `createdAtSource`, bucketed by the stage it sits in NOW (`leadQuality.ts`). Never joined — they meet on the day and the page. «Sotuv · ROP» takes its OWN calendar month (not the preset): FAKT 1 / FAKT 2 on the sellers board's queue cohort (`salesTeamDays`), a seller's leads on Первичный отдел `createdAtSource`. «Lid kogortasi» takes its OWN day window (default the last 14): the row is `deal."leadArrivedAt"`'s Tashkent day, the column `"leadDistributedOn"` (a DATE, never zoned) minus it |
+| Reklama samarasi | `/marketing` | `reklama/ReklamaPage` — ONE page since 2026-09-25 (its «Sotuv · ROP» and «Lid kogortasi» tabs moved to «Lidlar»): `DmSection` + `FormSection` + `QualitySection` + `CampaignSection`. The Roistat `marketing/MarketingPage` is held, not mounted | `/reklama/overview` (the Roistat `/marketing/*` three still answer, uncalled) | Reklama → Reklama | **two clocks, one Tashkent calendar day.** Meta: `meta_campaign_daily."date"`, the ad account's reporting day, split by `campaignChannel` (OUTCOME_LEADS → «Отчёт Т», OUTCOME_ENGAGEMENT → «DM», hiring campaigns → neither). Bitrix24: the Регистрация lead's `createdAtSource`, bucketed by the stage it sits in NOW (`leadQuality.ts`). Never joined — they meet on the day and the page |
+| Lidlar | `/leads` (section `leads`, 2026-09-25) | `leads/LeadsPage` — three tabs. «Lid manbalari»: `LeadSourcesSection`. «Lid kogortasi»: `LeadCohortSection`. «Sotuv · ROP»: `SalesTeamSection` + `PlanEditor` (the client's ROP sheets; plans typed in here, `seller_day_plan` / `team_month_plan`) | `/leads/overview`; `/lead-cohort/overview`; `/sales-team/overview`, `POST /sales-team/plans` (`analytics:read:all` at the gate, `kpi:manage` inside) | LeadSources (+ Reklama's Meta rows), LeadCohort, SalesTeam | «Lid manbalari» is on the dashboard period: Регистрация (role LEAD) and «ИИ обработка» (role AI_TRIAGE) by `createdAtSource`'s Tashkent day; Meta lead-form campaigns by `meta_campaign_daily."date"`, met on the targetolog, never joined per deal. «Lid kogortasi» takes its OWN day window (default the last 14): the row is `deal."leadArrivedAt"`'s Tashkent day, the column `"leadDistributedOn"` (a DATE, never zoned) minus it. «Sotuv · ROP» takes its OWN calendar month (not the preset): FAKT 1 / FAKT 2 on the sellers board's queue cohort (`salesTeamDays`), a seller's leads on Первичный отдел `createdAtSource` |
 | Target tahlili | `/target` | `target/TargetPage` + `TargetGroupTable` + `TargetLeadTable` + `TargetMeta` | `/target/overview`, `/target/leads` | Target → Target | **the deal's creation, `createdAtSource`** — a lead on the day it was registered, a sale on the day the seller's deal was opened. The Meta block reads `meta_ad_daily."date"` over the same Tashkent calendar days |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
@@ -500,7 +501,31 @@ Per-screen traps worth knowing before you touch one:
   Company-wide (`analytics:read:all`, in `COMPANY_WIDE`): it names customers
   and phones, and neither half has a team to narrow by.
 
-- **Lid kogortasi** (third tab of «Reklama samarasi») — added 2026-09-24 from
+- **Lidlar** — a section of its own since 2026-09-25 («yangi bir boʻlim ochamiz
+  lidlar deb, oʻsha yerga koʻchiramiz lid kogortasini ham … Sotuv ROP ni ham»).
+  Migration `20260925120000_leads_section` grants `leads` to every account
+  that held `marketing` explicitly, so nobody lost a tab in the move; the
+  role default gained `/leads` beside `/marketing`.
+  **«LID MANBALARI» WAS BUILT FROM A WEEK READ OFF THE PORTAL** (18–24.09.2026,
+  through the read-only Bitrix24 MCP in `~/Work/bitrix24-mcp`);
+  `domain/leads/leadSources.ts` carries the numbers. A Meta lead form lands
+  in Регистрация as «Ген лид» (`REPEAT_SALE`) titled «Заполнение CRM-формы
+  "<form>"», and the FORM NAME carries the targetolog («… Eldor», «(UMAR)
+  777», «Kamron …»): the per-targetolog лид / кв лид of the client's «Отчёт
+  Т», which the 5%-filled targetolog field never could give. **Only
+  Регистрация is read**: the same title is copied onto a Первичный отдел deal
+  once the lead is WON (263 of 263), so reading both counts every kval twice.
+  Every Instagram conversation is a deal in «ИИ обработка» on the page's
+  source — the client's «Кол мурожат», where Meta's conversation count runs
+  at about half. `crm.lead` holds only Asterisk call records and is not read;
+  UTM_* was empty on every deal.
+  **A LOW «Yetib keldi» (Bitrix24 lid ÷ Meta lid) IS THE FINDING, not a
+  fault of the screen**: that week Collagen Eldor's «IF-15.01» campaigns and
+  Umar 63's campaigns created from 21.09 on had no Bitrix24 deals at all —
+  forms not linked to the portal — while linked forms ran ~80%. Company-wide.
+  The UI was read on a throwaway copy DB with synthetic deals; the figures
+  were NOT compared against production after deploy.
+- **Lid kogortasi** (a tab of «Lidlar»; of «Reklama samarasi» until 2026-09-25) — added 2026-09-24 from
   the client's written spec («Lid tushgan kuni bilan tarqatilgan kuni
   o'rtasidagi bog'liqlik»). FIVE NEW DEAL COLUMNS: `leadArrivedAt`
   (`UF_CRM_1789453947`), `leadDistributedOn` (`UF_CRM_1770642221743`, a DATE —

@@ -16,6 +16,7 @@ import { MarketingRepository } from '@/server/repositories/marketingRepository'
 import { SearchRepository } from '@/server/repositories/searchRepository'
 import { TargetRepository } from '@/server/repositories/targetRepository'
 import { LeadCohortRepository } from '@/server/repositories/leadCohortRepository'
+import { LeadSourcesRepository } from '@/server/repositories/leadSourcesRepository'
 import { ReklamaRepository } from '@/server/repositories/reklamaRepository'
 import { SalesTeamRepository } from '@/server/repositories/salesTeamRepository'
 import { ScopeRepository } from '@/server/repositories/scopeRepository'
@@ -33,6 +34,7 @@ import { SellerBoardService } from './sellerBoardService'
 import { ScopeService } from './scopeService'
 import { TargetService } from './targetService'
 import { LeadCohortService } from './leadCohortService'
+import { LeadSourcesService } from './leadSourcesService'
 import { ReklamaService } from './reklamaService'
 import { SalesTeamService } from './salesTeamService'
 
@@ -86,15 +88,23 @@ export const targetService = new TargetService(targetRepository, marketingReposi
   «Reklama samarasi» — the client's DM, «Отчёт Т» and lead-quality sheets,
   from Meta's campaign grain and the Регистрация leads. See reklamaService.ts.
 */
-export const reklamaService = new ReklamaService(new ReklamaRepository(prisma))
+const reklamaRepository = new ReklamaRepository(prisma)
+export const reklamaService = new ReklamaService(reklamaRepository)
 /*
-  «Sotuv · ROP» — the client's ROP sheets. FAKT 1 / FAKT 2 from the sellers
+  «Lid manbalari» (the first tab of «Lidlar») — every Регистрация lead by
+  source, the lead forms per targetolog against Meta's lead count (Meta rows
+  through the reklama repository), and the DM pages' «ИИ обработка»
+  conversations. See leadSourcesService.ts.
+*/
+export const leadSourcesService = new LeadSourcesService(new LeadSourcesRepository(prisma), reklamaRepository)
+/*
+  «Sotuv · ROP» (a tab of «Lidlar» since 2026-09-25) — the client's ROP sheets. FAKT 1 / FAKT 2 from the sellers
   board's own cohort (insightsRepository), leads and plans from its own
   repository. See salesTeamService.ts.
 */
 export const salesTeamService = new SalesTeamService(insightsRepository, new SalesTeamRepository(prisma))
 /*
-  «Lid kogortasi» — arrival → distribution of routed leads. See leadCohortService.ts.
+  «Lid kogortasi» (a tab of «Lidlar» since 2026-09-25) — arrival → distribution of routed leads. See leadCohortService.ts.
 */
 export const leadCohortService = new LeadCohortService(new LeadCohortRepository(prisma))
 export const sellerBoardService = new SellerBoardService(

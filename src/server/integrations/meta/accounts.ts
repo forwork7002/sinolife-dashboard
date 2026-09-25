@@ -45,6 +45,15 @@ export const META_ACCOUNT_OWNERS: Readonly<Record<string, MetaAccountOwner>> = O
   '658227179132894': { product: 'Zextra', targetolog: 'Timur' }, // Timuro - zextra - 66
   '4401744916740587': { product: 'Zextra', targetolog: 'Sobirjon' }, // Zextra Sobirjon
   '926218346480236': { product: 'Zextra', targetolog: 'Kamron' }, // Zextra Kamron 1
+  /*
+    Three accounts the token gained after 2026-09-19, mapped by the name their
+    owner gave them (read through the Meta MCP on 2026-09-25). «Zextra Kamron
+    3» was spending that week (~95 Meta leads). «Collagen AI targetolog» and
+    «Newgen_davi01» name nobody and stay «Boshqa» until the client says whose.
+  */
+  '1075542260705572': { product: 'Zextra', targetolog: 'Kamron' }, // Zextra Kamron 2
+  '1356045995688768': { product: 'Zextra', targetolog: 'Kamron' }, // Zextra Kamron 3
+  '1592588735796463': { product: 'Zextra', targetolog: 'Umar' }, // Zextra Umar 3
 })
 
 export function ownerOf(accountId: string, accountName: string): MetaAccountOwner {

@@ -51,6 +51,10 @@ const ALL_ROUTES = [
   '/sellers',
   '/margin',
   '/marketing',
+  // Leads by source, the lead cohort and the ROP sheets. ADMIN and MANAGER
+  // only by default, and the endpoints refuse any account that is not
+  // company-wide.
+  '/leads',
   // Leads with customer names and phones. ADMIN and MANAGER only by default,
   // and the endpoints refuse any account that is not company-wide.
   '/target',
