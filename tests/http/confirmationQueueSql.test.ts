@@ -842,3 +842,33 @@ describe('what each column filter is allowed to narrow', () => {
     expect(range).toContain('$11::bigint IS NULL OR d."amountMinor" <= $11::bigint')
   })
 })
+
+/**
+ * THE TEAM COMES OFF THE DEAL CARD — 2026-09-26 («jamoani ham bitimdagi
+ * maydondan olsin, logistikadagidek qil»). `c.rop` reads the portal's own
+ * «Организация сотрудника (не удалять)» snapshot first and the operator's
+ * department only when it is empty, so every reader of the cohort — the
+ * board's РОП column, filter, panel and daily numbering, the sellers board's
+ * teams, the record wall, Logistika — names a team the way the deal does.
+ */
+describe('the queue names the team the deal was sold under', () => {
+  const rop = WINDOW_SQL.slice(WINDOW_SQL.indexOf('classified AS'), WINDOW_SQL.indexOf(') AS rop,') + 9)
+
+  it('reads the deal snapshot before the department, in both modes', () => {
+    for (const sql of [WINDOW_SQL, BACKLOG_SQL]) {
+      const snapshot = sql.indexOf(`WHEN d."operatorTeamSource" ILIKE '%(ROP)%'`)
+      const department = sql.indexOf(`WHEN dep."name" ILIKE '%(ROP)%'`)
+      expect(snapshot).toBeGreaterThan(-1)
+      expect(department).toBeGreaterThan(snapshot)
+    }
+  })
+
+  it('strips the marker off the snapshot with an escaped paren, like the department', () => {
+    expect(rop).toContain("regexp_replace(d.\"operatorTeamSource\", '\\(ROP\\)', '', 'gi')")
+    expect(rop).not.toContain("regexp_replace(d.\"operatorTeamSource\", '(ROP)', '', 'gi')")
+  })
+
+  it('is one COALESCE, so an empty field falls back instead of leaving the team', () => {
+    expect(rop).toMatch(/COALESCE\(\s*CASE\s+WHEN d\."operatorTeamSource"/)
+  })
+})

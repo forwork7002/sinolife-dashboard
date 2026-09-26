@@ -22,6 +22,7 @@
  * payroll fortnight's leader is not necessarily the month's.
  */
 
+import { mergeSellerTeamSlices } from '@/server/domain/analytics/sellerTeams'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import type { Period } from '@/server/domain/period/period'
 import type { PayrollHalfValue } from '@/server/domain/period/period'
@@ -132,10 +133,18 @@ export class PayrollService {
       to a default so the one screen in this product that states salaries says
       whose rows it is asking for in its own source.
     */
-    const rows = await this.insights.confirmationSellerRating({
-      ...period,
-      restrictToEmployeeIds: null,
-    })
+    /*
+      FOLDED TO ONE ROW PER PERSON. The rating hands back a slice per seller
+      and team since the team became the deal's own snapshot (2026-09-26),
+      and pay is a person's: two slices would split one FAKT 2 across the
+      tiers and rank one seller twice. See `mergeSellerTeamSlices`.
+    */
+    const rows = mergeSellerTeamSlices(
+      await this.insights.confirmationSellerRating({
+        ...period,
+        restrictToEmployeeIds: null,
+      }),
+    )
 
     /*
       FAKT 2 FIRST, THEN FAKT 1, THEN THE ID — the sellers board's rule,

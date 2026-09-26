@@ -348,3 +348,16 @@ describe('confirmation seller rating day series SQL', () => {
     expect((DAYS_SQL.match(/\(/g) ?? []).length).toBe((DAYS_SQL.match(/\)/g) ?? []).length)
   })
 })
+
+/**
+ * ONE SLICE PER SELLER AND TEAM — 2026-09-26. The team is the deal's own
+ * snapshot now, so grouping by it is what lets the team table keep each
+ * order with the team on its card; `last_queued_at` is what
+ * `mergeSellerTeamSlices` labels the folded seller row by.
+ */
+describe('the rating hands back per-team slices', () => {
+  it('groups by the seller and the team, and carries the newest arrival', () => {
+    expect(BARE_SQL).toContain('GROUP BY e."id", e."fullName", c.rop')
+    expect(BARE_SQL).toContain('max(c.queued_at) AS last_queued_at')
+  })
+})
