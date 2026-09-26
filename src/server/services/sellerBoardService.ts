@@ -37,6 +37,7 @@ import {
   spreadRemainingMinor,
 } from '@/server/domain/analytics/pulse'
 import { BONUS_TIERS, bonusEligible } from '@/server/domain/analytics/sellerBonus'
+import { mergeSellerTeamSlices } from '@/server/domain/analytics/sellerTeams'
 import { type SellerMedal, buildSellerMedals } from '@/server/domain/analytics/sellerMedals'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import { scopedPeriod } from '@/server/domain/employees/branches'
@@ -50,6 +51,7 @@ import {
 import type { DeltaDto } from '@/lib/api'
 import { CONFIRMATION_OUTCOMES, type ConfirmationOutcomeValue } from '@/server/domain/types'
 import type {
+  ConfirmationSellerRatingRow,
   ConfirmationSourceRatingRow,
   InsightsRepository,
 } from '@/server/repositories/insightsRepository'
@@ -751,7 +753,7 @@ export class SellerBoardService {
       second round trip for either could straddle a sync and score one
       window's money against another's cohort.
     */
-    const [rows, previous, kpis] = await Promise.all([
+    const [{ rows, teamSlices }, { rows: previous }, kpis] = await Promise.all([
       this.rowsFor(ctx.period, basis, filters),
       this.rowsFor(ctx.comparison, basis, filters),
       this.reference.findKpisForPeriod(ctx.period),
@@ -879,10 +881,24 @@ export class SellerBoardService {
         small company and also one ROP's floor, and the difference decides
         whether «1-oʻrin» means anything.
       */
-      teams: teamRows(rows, totalWonMinor, plans.byEmployee, elapsed, ctx.currency),
+      /*
+        FROM THE SLICES, NOT FROM THE SELLERS' ROWS. On the queue basis an
+        order counts for the team on its own deal card, so a seller who
+        moved team mid-window is in both tables' worth of money — see
+        `mergeSellerTeamSlices`. The team plan still charges each seller's
+        target once, to the team their row is labelled with.
+      */
+      teams: teamRows(
+        teamSlices,
+        totalWonMinor,
+        plans.byEmployee,
+        new Map(rows.map((r) => [r.employeeId, r.rop])),
+        elapsed,
+        ctx.currency,
+      ),
       totals: {
         sellers: rows.length,
-        teams: new Set(rows.map((r) => r.rop).filter((r): r is string => r !== null)).size,
+        teams: new Set(teamSlices.map((r) => r.rop).filter((r): r is string => r !== null)).size,
         teamlessSellers: rows.filter((r) => r.rop === null).length,
         orders: rows.reduce((a, r) => a + r.orders, 0),
         cohortOrders,
@@ -1251,13 +1267,24 @@ export class SellerBoardService {
     })
   }
 
-  /** One row per operator, on whichever clock `basis` names. */
+  /**
+   * One row per operator, on whichever clock `basis` names — and the per-team
+   * slices those rows were folded from, for the team table.
+   *
+   * On the intake basis the two are the same array: that query groups by the
+   * assignee alone and names the team off their department, so a seller has
+   * one team by construction. On the queue basis the team is the deal's own
+   * snapshot and a seller can have several — see `mergeSellerTeamSlices`.
+   */
   private async rowsFor(
     period: Period,
     basis: SellerBoardBasisValue,
     filters: SellerBoardFilters,
-  ): Promise<SellerBoardRow[]> {
-    if (basis === 'intake') return this.repo.board(period, filters)
+  ): Promise<{ rows: SellerBoardRow[]; teamSlices: SellerBoardRow[] }> {
+    if (basis === 'intake') {
+      const rows = await this.repo.board(period, filters)
+      return { rows, teamSlices: rows }
+    }
 
     /*
       THE SAME RESTRICTION, TWICE, BECAUSE THE TWO BASES SCOPE ON TWO PEOPLE.
@@ -1271,12 +1298,11 @@ export class SellerBoardService {
       of a team boundary, which is the same drift the operator column exists
       to fix.
     */
-    const rows = await this.insights.confirmationSellerRating(
+    const slices = await this.insights.confirmationSellerRating(
       scopedPeriod(period, filters),
       filters,
     )
-    return rows.map(
-      (r): SellerBoardRow => ({
+    const toBoardRow = (r: ConfirmationSellerRatingRow): SellerBoardRow => ({
         employeeId: r.employeeId,
         fullName: r.fullName,
         rop: r.rop,
@@ -1305,8 +1331,11 @@ export class SellerBoardService {
         cohortOrders: r.cohortOrders,
         byOutcome: r.byOutcome,
         byOutcomeMinor: r.byOutcomeMinor,
-      }),
-    )
+      })
+    return {
+      rows: mergeSellerTeamSlices(slices).map(toBoardRow),
+      teamSlices: slices.map(toBoardRow),
+    }
   }
 }
 
@@ -1458,9 +1487,16 @@ function bonusFor(wonMinor: bigint, fullName: string, currency: string): SellerB
  * by a key the other does not is a disagreement a reader can see.
  */
 function teamRows(
+  /** One row per seller AND team — see `rowsFor`. A seller may be in two teams. */
   rows: readonly SellerBoardRow[],
   totalWonMinor: bigint,
   planByEmployee: ReadonlyMap<string, bigint>,
+  /**
+   * The team each seller's own row is labelled with. A target belongs to the
+   * PERSON, so it is charged to one team — this one — even when their orders
+   * are split across two; charging it to both would count one plan twice.
+   */
+  planTeamOf: ReadonlyMap<string, string | null>,
   /** The board's ONE elapsed fraction — see `buildBoard`. Never re-derived here. */
   elapsed: number,
   currency: string,
@@ -1526,6 +1562,11 @@ function teamRows(
     if (rankOf[i] === -1) rankOf[i] = rankOf[i - 1]!
   }
 
+  const planned = (members: readonly SellerBoardRow[]) =>
+    members.filter(
+      (m) => planByEmployee.has(m.employeeId) && planTeamOf.get(m.employeeId) === m.rop,
+    )
+
   return ordered
     .map<SellerTeamRowDto>((team, index) => {
       const wonOrders = team.members.reduce((a, m) => a + m.wonOrders, 0)
@@ -1554,11 +1595,8 @@ function teamRows(
           "no target" rather than "0 soʻm, and you have beaten it".
         */
         plan: planFor(
-          team.members.some((m) => planByEmployee.has(m.employeeId))
-            ? sum(
-                team.members.filter((m) => planByEmployee.has(m.employeeId)),
-                (m) => planByEmployee.get(m.employeeId)!,
-              )
+          planned(team.members).length > 0
+            ? sum(planned(team.members), (m) => planByEmployee.get(m.employeeId)!)
             : null,
           team.wonMinor,
           team.orderedMinor,

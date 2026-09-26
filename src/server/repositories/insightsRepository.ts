@@ -792,8 +792,21 @@ export interface ConfirmationSellerRatingFilters {
 export interface ConfirmationSellerRatingRow {
   readonly employeeId: string
   readonly fullName: string
-  /** The ROP's own name — see `queueSql`'s `classified.rop`. Null off a team. */
+  /**
+   * The ROP's own name — see `queueSql`'s `classified.rop`. Null off a team.
+   *
+   * ONE ROW PER OPERATOR AND TEAM, NOT PER OPERATOR. Since 2026-09-26 the team
+   * is the deal's own snapshot, so a seller who moved team inside the window
+   * arrives as one slice per team. Readers that print a seller once fold the
+   * slices with `mergeSellerTeamSlices`; the team table sums them as they are.
+   */
   readonly rop: string | null
+  /**
+   * The slice's newest arrival in the queue — which of a seller's teams is the
+   * current one when the slices are folded. Optional so a hand-built row in a
+   * test stays one slice without inventing a date.
+   */
+  readonly lastQueuedAt?: Date | null
   /**
    * EVERY order this operator has in the cohort — the count the confirmation
    * queue shows for the same period. FAKT 1 counts only the ones that left
@@ -2715,9 +2728,10 @@ export class InsightsRepository {
           money vanishing out of a table whose rows have to add up to the hero
           above them. Same question, newest evidence first.
 
-          ONLY THIS SCREEN READS IT THIS WAY. c.rop itself is untouched, so
-          the Тасдиклаш board, its РОП filter, its daily numbering and the
-          sellers board keep naming teams exactly as they do today.
+          SINCE 2026-09-26 c.rop ITSELF READS THE FIELD FIRST, so the
+          first arm below is now the same answer c.rop gives. It is kept
+          spelled out so this screen states its own source rather than
+          inheriting it silently, and it costs one regexp per FAKT 1 row.
 
           COALESCEd to the sentinel the confirmation queue's РОП filter
           offers, for the same reason it exists there. The orders that answer
@@ -3799,8 +3813,36 @@ export class InsightsRepository {
           column headed РОП — Регистрация and Операцион, the two back-office
           units, leaked onto 25 orders and into the ROP filter list.
         */
-        /* The expression itself is ropNameSql, which both bases read. */
-        ${InsightsRepository.ropNameSql('dep."name"')} AS rop,
+        /*
+          THE TEAM IS THE DEAL'S OWN «Организация сотрудника (не удалять)»,
+          and the operator's department only where that field is empty.
+
+          Logistika's per-ROP strip moved to this on 2026-09-14; the rest of
+          the queue followed on 2026-09-26 at the client's request («jamoani
+          ham bitimdagi maydondan olsin, logistikadagidek qil»). The field is
+          a snapshot the portal stamps at the moment of sale and never
+          rewrites, so a seller who changes team no longer drags a settled
+          month across with them — measured on 01-25.09, 22 orders and
+          53.9 mln of FAKT 1 sold under Sevinchxon(ROP) were being printed
+          under Sadriddin, the seller's team today.
+
+          The department stays as the second arm because the portal only
+          began writing the field in 2026: without it older orders would
+          fall out of every team at once.
+
+          ONE COLUMN FOR EVERY READER. The Тасдиклаш board, its РОП filter
+          and panel, its daily numbering, the sellers board's team table,
+          the record wall and Logistika all read this c.rop, so a ROP sees
+          the same order under the same team on every screen. A seller who
+          sold for two teams in one window therefore has two slices here;
+          see mergeSellerTeamSlices for how the per-seller readers fold them.
+
+          The expression is ropNameSql, the one home of the (ROP) strip.
+        */
+        COALESCE(
+          ${InsightsRepository.ropNameSql('d."operatorTeamSource"')},
+          ${InsightsRepository.ropNameSql('dep."name"')}
+        ) AS rop,
         /*
           Shipped without anyone reaching the customer.
 
@@ -4535,6 +4577,8 @@ export class InsightsRepository {
            confirmed ones.
          */
          count(*)::bigint AS cohort_orders,
+         -- Which slice is the seller's current team; see mergeSellerTeamSlices.
+         max(c.queued_at) AS last_queued_at,
          count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS confirmed_orders,
          sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::text AS confirmed,
          /*
@@ -4713,6 +4757,7 @@ export class InsightsRepository {
         full_name: string
         rop: string | null
         cohort_orders: bigint
+        last_queued_at: Date | null
         confirmed_orders: bigint
         confirmed: MoneyText
         delivered_orders: bigint
@@ -4741,6 +4786,7 @@ export class InsightsRepository {
       employeeId: r.employee_id,
       fullName: r.full_name,
       rop: r.rop,
+      lastQueuedAt: r.last_queued_at,
       cohortOrders: int(r.cohort_orders),
       confirmedOrders: int(r.confirmed_orders),
       confirmedMinor: money(r.confirmed),
@@ -5444,7 +5490,15 @@ export class InsightsRepository {
            ${month} AS month,
            e."id" AS employee_id,
            e."fullName" AS full_name,
-           c.rop AS rop,
+           /*
+             ONE ROW PER SELLER AND MONTH, whatever teams they sold for.
+             Since 2026-09-26 c.rop is the deal's own team snapshot, so a
+             seller who moved team mid-month holds orders under two names;
+             grouping by it would split their month in two and could hand
+             the record to someone with less. The label is the team of
+             their newest order that names one.
+           */
+           (array_agg(c.rop ORDER BY c.queued_at DESC) FILTER (WHERE c.rop IS NOT NULL))[1] AS rop,
            count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS confirmed_orders,
            ${fakt1} AS confirmed,
            count(*) FILTER (WHERE ${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')})::bigint AS delivered_orders,
@@ -5466,7 +5520,7 @@ export class InsightsRepository {
          LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
          WHERE TRUE
            ${filterClause}
-         GROUP BY 1, e."id", e."fullName", c.rop
+         GROUP BY 1, e."id", e."fullName"
          -- A month of pure refusals is a row on the board and not a record.
          HAVING count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}) > 0
              OR count(*) FILTER (WHERE ${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')}) > 0

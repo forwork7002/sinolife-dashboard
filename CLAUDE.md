@@ -1263,11 +1263,26 @@ Per-screen traps worth knowing before you touch one:
   fallback, for the older orders the portal wrote no field on. Under the
   department basis a seller who changes team drags their whole history across
   and a settled month moves; one sampled July order still names
-  «Husniddin(ROP)», a department the portal no longer has. **This screen only** —
-  `c.rop` itself is untouched, so `/confirmation`, its РОП filter, its daily
-  numbering and `/sellers` name teams exactly as before. The strip now has one
+  «Husniddin(ROP)», a department the portal no longer has. The strip has one
   home, `InsightsRepository.ropNameSql`, read by both bases; pinned by
   `tests/http/logisticsSql.test.ts` and `tests/http/confirmationQueueSql.test.ts`.
+  **SINCE 2026-09-26 THE WHOLE QUEUE READS IT THIS WAY** («jamoani ham
+  bitimdagi maydondan olsin, logistikadagidek qil»): `classified.rop` itself is
+  `COALESCE(snapshot, department)`, so `/confirmation` (РОП column, filter,
+  Статистика panel, daily numbering), `/sellers`' team table, Savdo
+  dinamikasi's teams and the record wall name a team the way the deal card
+  does. Measured on 01–25.09.2026 before the change: 22 orders /
+  53.9 mln of FAKT 1 sold under Sevinchxon(ROP) were printed under Sadriddin,
+  the seller's team today. **A seller can therefore hold orders under two teams
+  in one window**, and `ratingSql` groups by (seller, team) and returns SLICES:
+  the team table sums them as they are, while everything that prints a PERSON
+  — the board's rows, payroll, ranks — folds them first with
+  `domain/analytics/sellerTeams.ts` `mergeSellerTeamSlices`, labelled with the
+  team of the newest order. Forgetting the fold puts one seller on the board
+  twice and splits their FAKT 2 across the payroll tiers;
+  `tests/services/sellerBoardTeams.test.ts` and
+  `tests/services/payrollTeamSlices.test.ts` pin both. `recordsSql` groups by
+  the seller alone for the same reason.
 - **Sotuvchilar reytingi** — company-wide on purpose, and it is the ONLY route
   that admits a narrowed caller without narrowing: it passes `ctx.query` and
   never `ctx.scope`, and `boardFilters` drops `restrictToEmployeeIds` a second

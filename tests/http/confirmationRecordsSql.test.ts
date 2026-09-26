@@ -108,3 +108,16 @@ describe('the record wall speaks the board’s language', () => {
     expect(filtered.indexOf('string_to_array($4')).toBeLessThan(filtered.indexOf('GROUP BY'))
   })
 })
+
+/**
+ * ONE ROW PER SELLER AND MONTH, whatever teams they sold for — 2026-09-26.
+ * With the team on the deal, grouping by it would split a mid-month mover's
+ * month in two and could hand their record to somebody who sold less.
+ */
+describe('the record wall does not split a seller across teams', () => {
+  it('groups by the seller alone and labels them with their newest named team', () => {
+    expect(BARE).toContain('GROUP BY 1, e."id", e."fullName"')
+    expect(BARE).not.toMatch(/GROUP BY 1, e\."id", e\."fullName", c\.rop/)
+    expect(BARE).toContain('(array_agg(c.rop ORDER BY c.queued_at DESC) FILTER (WHERE c.rop IS NOT NULL))[1] AS rop')
+  })
+})

@@ -146,3 +146,65 @@ describe('competition ranking between teams', () => {
     expect(board.teams.map((t) => t.rop)).toEqual(['Beta', 'Alfa'])
   })
 })
+
+/**
+ * THE TEAM IS THE DEAL'S, THE ROW IS THE PERSON'S — 2026-09-26.
+ *
+ * The rating hands back one slice per seller AND team since the team became
+ * the deal's own «Организация сотрудника» snapshot. The team table must sum
+ * the slices as they are — money sold for Sevinchxon stays Sevinchxon's after
+ * the seller moves — while the sellers' table must print that person once.
+ * Measured on 01–25.09.2026: 22 orders, 53.9 mln FAKT 1.
+ */
+describe('a seller who sold for two teams in one window', () => {
+  const moved = [
+    rating({
+      employeeId: 's',
+      rop: 'Sevinchxon',
+      lastQueuedAt: new Date('2026-09-10T10:00:00+05:00'),
+      cohortOrders: 22,
+      confirmedOrders: 22,
+      confirmedMinor: mln(54),
+      deliveredOrders: 16,
+      deliveredMinor: mln(35),
+    }),
+    rating({
+      employeeId: 's',
+      rop: 'Sadriddin',
+      lastQueuedAt: new Date('2026-09-25T10:00:00+05:00'),
+      cohortOrders: 5,
+      confirmedOrders: 5,
+      confirmedMinor: mln(8),
+    }),
+    rating({ employeeId: 'd', rop: 'Sadriddin', confirmedMinor: mln(20) }),
+  ]
+
+  it('prints the seller once, with both teams’ money, under the newest team', async () => {
+    const board = await boardOver(moved)
+    const rows = board.rows.filter((r) => r.employeeId === 's')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.rop).toBe('Sadriddin')
+    expect(rows[0]!.ordered.amount).toBe(62_000_000)
+    expect(rows[0]!.won.amount).toBe(35_000_000)
+    expect(rows[0]!.cohortOrders).toBe(27)
+    expect(board.totals.sellers).toBe(2)
+  })
+
+  it('leaves each order with the team on its deal card', async () => {
+    const board = await boardOver(moved)
+    const team = (rop: string) => board.teams.find((t) => t.rop === rop)!
+    expect(team('Sevinchxon').ordered.amount).toBe(54_000_000)
+    expect(team('Sevinchxon').won.amount).toBe(35_000_000)
+    expect(team('Sadriddin').ordered.amount).toBe(28_000_000)
+    expect(team('Sadriddin').sellers).toBe(2)
+    expect(board.totals.teams).toBe(2)
+  })
+
+  it('adds up: the teams sum to the same totals the sellers do', async () => {
+    const board = await boardOver(moved)
+    const teams = board.teams.reduce((a, t) => a + t.ordered.amount, 0)
+    const sellers = board.rows.reduce((a, r) => a + r.ordered.amount, 0)
+    expect(teams).toBe(sellers)
+    expect(teams).toBe(board.totals.ordered.amount)
+  })
+})
