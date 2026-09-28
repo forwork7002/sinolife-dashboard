@@ -250,7 +250,8 @@ describe('buildRnpSheet — days the portal did not record whole', () => {
     const reach = row(dto, 'team:Sevinch', 'team:Sevinch:reach')
     const conv = row(dto, 'team:Sevinch', 'team:Sevinch:conv1')
     expect(on(reach, '2026-09-05')).toBe(1)
-    expect(on(conv, '2026-09-05')).toBe(500)
+    // The count is drawn; the rate over it is not — 500% is not a measurement.
+    expect(on(conv, '2026-09-05')).toBeNull()
     // The month reads 16.09 on: 7 leads, 5 orders — the 05.09 burst is not in it.
     expect(reach.fact).toBe(7)
     expect(conv.fact).toBeCloseTo((5 / 7) * 100, 6)

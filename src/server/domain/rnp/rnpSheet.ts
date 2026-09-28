@@ -353,9 +353,15 @@ function additive(clock: Clock, o: RowOptions, values: readonly number[]): RnpRo
  */
 function ratio(clock: Clock, o: RowOptions, num: readonly number[], den: readonly number[], scale = 1): RnpRowDto {
   const cell = (a: number, b: number) => (b > 0 ? (a / b) * scale : null)
-  const days: Series = num.map((a, i) => (i <= clock.todayIndex ? cell(a, den[i]!) : null))
-  const upto = Math.min(clock.todayIndex + 1, clock.n)
   const s = startOf(clock, o)
+  /*
+    A rate on a day its denominator was not recorded whole is not a muted
+    figure, it is a wrong one: on production Sevinch's 04.09 read «2 000%»
+    conversion over the one lead in five the portal carried. The counts stay
+    drawn (muted) before `reliableFrom`; the rates built on them are empty.
+  */
+  const days: Series = num.map((a, i) => (i >= s && i <= clock.todayIndex ? cell(a, den[i]!) : null))
+  const upto = Math.min(clock.todayIndex + 1, clock.n)
   const fact = upto <= s ? null : cell(sum(num.slice(s, upto)), sum(den.slice(s, upto)))
   const plan = o.plan ?? null
   return {
