@@ -26,8 +26,11 @@
  *     «Заказ в мой склад» (Logistika's «не собран») when the day ended.
  */
 
+import { TZDate } from '@date-fns/tz'
+
 import type { PrismaClient } from '@/generated/prisma/client'
 import { env } from '@/server/config/env'
+import { NOT_PACKED_STAGES } from '@/server/integrations/crm/bitrix24/mapping'
 
 import { InsightsRepository } from './insightsRepository'
 
@@ -249,67 +252,76 @@ export class RnpRepository {
   }
 
   async warehouseDays(from: string, to: string, now: Date): Promise<RnpWarehouseDayRow[]> {
-    const rows = await this.prisma.$queryRawUnsafe<{ day: string; entered: bigint; not_packed: bigint }[]>(
-      RnpRepository.warehouseDaysSql(),
-      from,
-      to,
-      this.tz,
-      now,
+    const [entered, stays] = await Promise.all([
+      this.prisma.$queryRawUnsafe<{ day: string; entered: bigint }[]>(RnpRepository.enteredDaysSql(), from, to, this.tz),
+      this.prisma.$queryRawUnsafe<{ deal_id: string; entered_at: Date; left_at: Date | null }[]>(
+        RnpRepository.packingStaysSql(),
+        from,
+        to,
+        this.tz,
+        NOT_PACKED_STAGES,
+      ),
+    ])
+    const enteredOn = new Map(entered.map((r) => [r.day, Number(r.entered)]))
+    const ends = dayEnds(from, to, this.tz, now)
+    const standing = notPackedAt(
+      stays.map((r) => ({ dealId: r.deal_id, enteredAt: r.entered_at, leftAt: r.left_at })),
+      ends.map((e) => e.end),
     )
-    return rows.map((r) => ({ day: r.day, entered: Number(r.entered), notPacked: Number(r.not_packed) }))
+    return ends.map((e, i) => ({ day: e.day, entered: enteredOn.get(e.day) ?? 0, notPacked: standing[i]! }))
   }
 
   /**
-   * Both halves read Доставка's stage history, which the sync keeps whole
-   * for that pipeline (`historyPipelines` 6/14/10/4). «Entered» is an order's
-   * FIRST Доставка row, so an order bounced back and forth is counted once,
-   * on the day it first arrived. «Not packed» is a snapshot at each day's
-   * end — rows in a WAREHOUSE-role stage entered before it and not left by
-   * it — and at `now` for a day not yet over, so today reads the kanban.
+   * An order's FIRST arrival in Доставка, per Tashkent day. The rows of the
+   * month are read off the (stageId, enteredAt) index and each one is kept
+   * only if the deal had no earlier Доставка row — one probe on
+   * (dealId, enteredAt) apiece. The first version grouped the pipeline's
+   * whole history per deal and ran 9–77 s on production (2026-09-28).
    */
-  static warehouseDaysSql(): string {
+  static enteredDaysSql(): string {
+    const lo = `(($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
+    const hi = `(($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
     return `
-      WITH days AS (
-        SELECT g::date AS day,
-               LEAST((g::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC', $4::timestamp) AS day_end
-        FROM generate_series($1::date, $2::date, interval '1 day') g
-      ),
-      first_entry AS (
-        SELECT h."dealId", min(h."enteredAt") AS entered_at
-        FROM "deal_stage_history" h
-        JOIN "deal_stage" s ON s."id" = h."stageId"
-        JOIN "pipeline" p ON p."id" = s."pipelineId" AND p."externalId" = '6'
-        /* Only deals that moved inside Доставка this month can have arrived in it. */
-        WHERE h."dealId" IN (
-          SELECT h2."dealId"
-          FROM "deal_stage_history" h2
-          JOIN "deal_stage" s2 ON s2."id" = h2."stageId"
-          JOIN "pipeline" p2 ON p2."id" = s2."pipelineId" AND p2."externalId" = '6'
-          WHERE h2."enteredAt" >= (($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
-            AND h2."enteredAt" < (($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
+      SELECT (h."enteredAt" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day,
+             count(DISTINCT h."dealId")::bigint AS entered
+      FROM "deal_stage_history" h
+      JOIN "deal_stage" s ON s."id" = h."stageId"
+      JOIN "pipeline" p ON p."id" = s."pipelineId" AND p."externalId" = '6'
+      WHERE h."enteredAt" >= ${lo} AND h."enteredAt" < ${hi}
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "deal_stage_history" h0
+          JOIN "deal_stage" s0 ON s0."id" = h0."stageId" AND s0."pipelineId" = s."pipelineId"
+          WHERE h0."dealId" = h."dealId" AND h0."enteredAt" < h."enteredAt"
         )
-        GROUP BY h."dealId"
-        HAVING min(h."enteredAt") >= (($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
-           AND min(h."enteredAt") < (($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
-      ),
-      entered AS (
-        SELECT (entered_at AT TIME ZONE 'UTC' AT TIME ZONE $3)::date AS day, count(*) AS n
-        FROM first_entry GROUP BY 1
-      ),
-      waiting AS (
-        SELECT h."dealId", h."enteredAt", h."leftAt"
-        FROM "deal_stage_history" h
-        JOIN "deal_stage" s ON s."id" = h."stageId" AND s."logisticsRole" = 'WAREHOUSE'
-        WHERE h."enteredAt" < (($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
-          AND (h."leftAt" IS NULL OR h."leftAt" >= (($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC'))
+      GROUP BY 1`
+  }
+
+  /**
+   * Every stay in a packing stage that overlaps the month: those that began
+   * in the 62 days before it or inside it, plus the stays still open on a
+   * deal standing there now however old — an order parked since spring is
+   * «не собран» on every day of this month, and a lower bound alone would
+   * lose it.
+   */
+  static packingStaysSql(): string {
+    const lo = `(($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
+    const hi = `(($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
+    return `
+      WITH packing AS (
+        SELECT s."id" FROM "deal_stage" s WHERE s."externalId" = ANY($4::text[])
       )
-      SELECT d.day::text AS day,
-             COALESCE(e.n, 0)::bigint AS entered,
-             (SELECT count(DISTINCT w."dealId") FROM waiting w
-               WHERE w."enteredAt" < d.day_end AND (w."leftAt" IS NULL OR w."leftAt" >= d.day_end))::bigint AS not_packed
-      FROM days d
-      LEFT JOIN entered e ON e.day = d.day
-      WHERE d.day_end > (d.day::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
+      SELECT h."dealId" AS deal_id, h."enteredAt" AS entered_at, h."leftAt" AS left_at
+      FROM "deal_stage_history" h
+      WHERE h."stageId" IN (SELECT "id" FROM packing)
+        AND h."enteredAt" >= ${lo} - interval '62 days' AND h."enteredAt" < ${hi}
+        AND (h."leftAt" IS NULL OR h."leftAt" >= ${lo})
+      UNION
+      SELECT h."dealId", h."enteredAt", h."leftAt"
+      FROM "deal" d
+      JOIN "deal_stage_history" h ON h."dealId" = d."id" AND h."stageId" = d."stageId" AND h."leftAt" IS NULL
+      WHERE d."stageId" IN (SELECT "id" FROM packing)
+        AND h."enteredAt" < ${hi}`
   }
 
   /** Every active ROP department, with its head. */
@@ -379,4 +391,44 @@ export class RnpRepository {
       }),
     ])
   }
+}
+
+/**
+ * Each day of [from, to] with the instant it ends — Tashkent midnight, or
+ * `now` for a day not over yet. Days that have not begun are left out.
+ */
+export function dayEnds(from: string, to: string, timeZone: string, now: Date): { day: string; end: Date }[] {
+  const out: { day: string; end: Date }[] = []
+  for (let d = new Date(`${from}T00:00:00Z`); d.toISOString().slice(0, 10) <= to; d = new Date(d.getTime() + 86_400_000)) {
+    const day = d.toISOString().slice(0, 10)
+    const start = zonedMidnight(day, timeZone)
+    if (start >= now) break
+    const next = zonedMidnight(new Date(d.getTime() + 86_400_000).toISOString().slice(0, 10), timeZone)
+    out.push({ day, end: next < now ? next : now })
+  }
+  return out
+}
+
+/** The instant a calendar day begins in `timeZone`. */
+function zonedMidnight(day: string, timeZone: string): Date {
+  const [y, m, d] = day.split('-').map(Number)
+  return new Date(new TZDate(y!, m! - 1, d!, timeZone).getTime())
+}
+
+/**
+ * How many distinct orders were standing in a packing stage at each instant:
+ * a stay covers an instant it began before and had not left by. Exported for
+ * its test.
+ */
+export function notPackedAt(
+  stays: readonly { dealId: string; enteredAt: Date; leftAt: Date | null }[],
+  instants: readonly Date[],
+): number[] {
+  return instants.map((t) => {
+    const standing = new Set<string>()
+    for (const s of stays) {
+      if (s.enteredAt < t && (s.leftAt === null || s.leftAt >= t)) standing.add(s.dealId)
+    }
+    return standing.size
+  })
 }

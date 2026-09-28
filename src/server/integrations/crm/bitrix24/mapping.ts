@@ -422,6 +422,16 @@ export const UF = Object.freeze({
 export const UF_FIELDS: readonly string[] = Object.freeze(Object.values(UF))
 
 /**
+ * «Не собран» on the client's РНП sheet: an order still in Доставка's
+ * packing stages when the day ends — «Подготовка товара» and «Заказ в мой
+ * склад» (the spec's reading of the sheet, 2026-09-28). By stage id, not by
+ * logistics role: PREPARING also holds «Обработка заказов» (C6:EXECUTING),
+ * where 1 813 old orders stand parked, and «Заказ в мой склад» alone is
+ * passed through within the day (2 553 entries in September, 1 standing).
+ */
+export const NOT_PACKED_STAGES: readonly string[] = Object.freeze(['C6:NEW', 'C6:UC_IAU4Q5'])
+
+/**
  * The SOURCE_ID values that are paid targeting — «Target tahlili» counts these.
  *
  * Taken from the client's own Bitrix24 → Google Sheets export

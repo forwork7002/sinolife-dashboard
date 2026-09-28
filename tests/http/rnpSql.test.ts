@@ -59,11 +59,17 @@ describe('RnpRepository statements', () => {
     expect(sql).toContain(`c."direction" IN ('INBOUND', 'OUTBOUND')`)
   })
 
-  it('reads «не собран» from the WAREHOUSE role at each day\'s end, capped at now', () => {
-    const sql = bare(RnpRepository.warehouseDaysSql())
-    expect(sql).toContain(`s."logisticsRole" = 'WAREHOUSE'`)
-    expect(sql).toContain(`LEAST((g::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC', $4::timestamp)`)
+  it('dates an order by its FIRST Доставка row, probing each one rather than grouping the history', () => {
+    const sql = bare(RnpRepository.enteredDaysSql())
     expect(sql).toContain(`p."externalId" = '6'`)
+    expect(sql).toMatch(/NOT EXISTS \([\s\S]*h0\."dealId" = h\."dealId" AND h0\."enteredAt" < h\."enteredAt"/)
+    expect(sql).not.toMatch(/GROUP BY h\."dealId"/)
+  })
+
+  it('reads packing stays by stage id, and keeps a stay still open however old', () => {
+    const sql = bare(RnpRepository.packingStaysSql())
+    expect(sql).toContain(`s."externalId" = ANY($4::text[])`)
+    expect(sql).toContain(`h."stageId" = d."stageId" AND h."leftAt" IS NULL`)
   })
 })
 
@@ -72,14 +78,15 @@ describe('RnpRepository statements', () => {
   makes Postgres cast the column through the SESSION's TimeZone, which is
   Asia/Tashkent on the local cluster and unmeasured in production: an order
   that left the warehouse at 02:00 on the 22nd (Tashkent) could drop out of
-  the 21st's «не собран» under one setting and not the other. Measured on 2026-09-28 by running the
-  same fixture under both settings.
+  the 21st's «не собран» under one setting and not the other. Measured on
+  2026-09-28 by running the same fixture under both settings.
 */
 describe('RnpRepository bounds', () => {
   it.each([
     ['registrationDaysSql', RnpRepository.registrationDaysSql()],
     ['callDaysSql', RnpRepository.callDaysSql()],
-    ['warehouseDaysSql', RnpRepository.warehouseDaysSql()],
+    ['enteredDaysSql', RnpRepository.enteredDaysSql()],
+    ['packingStaysSql', RnpRepository.packingStaysSql()],
   ])('%s turns every Tashkent midnight back into naive UTC', (_, raw) => {
     const sql = bare(raw)
     const local = sql.match(/::timestamp AT TIME ZONE \$3(?! AT TIME ZONE 'UTC')/g)

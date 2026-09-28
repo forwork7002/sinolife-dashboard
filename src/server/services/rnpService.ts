@@ -58,8 +58,59 @@ interface MonthRows {
 */
 const monthCache = ttlCache<MonthRows>(60_000)
 
+/*
+  THE REGISTRATION DESK'S CLOSED DAYS, KEPT HALF AN HOUR AND SERVED STALE.
+
+  Регистрация is the one scan that cannot be made cheap: a month is ~44 000
+  LEAD / AI_TRIAGE deals spread over ~30 000 heap pages, and on production
+  (2026-09-28) it read them from disk in 7–10 s — alone. Beside the other
+  six reads it ran past the pool's 20 s statement timeout and the screen
+  failed. Its past days hardly move (a lead is registered once; a duplicate
+  is re-staged now and then), so they are read once per half hour, and after
+  that a reader is handed the previous answer at once while the next one is
+  built behind them. Today is its own one-day read, inside `monthCache`.
+*/
+const REGISTRATION_HISTORY_MS = 30 * 60_000
+const registrationHistory = staleWhileRevalidate<RnpRegistrationDayRow[]>(REGISTRATION_HISTORY_MS)
+
 export function resetRnpCaches(): void {
   monthCache.clear()
+  registrationHistory.clear()
+}
+
+/**
+ * A memo that, once its answer is older than `ttlMs`, still returns it at
+ * once and rebuilds it in the background; a failed rebuild keeps the old
+ * answer. Only the very first reader of a key waits. Exported for its test.
+ */
+export function staleWhileRevalidate<T>(ttlMs: number, clock: () => number = Date.now) {
+  const entries = new Map<string, { at: number; value: Promise<T>; refreshing: boolean }>()
+  return {
+    get(key: string, build: () => Promise<T>): Promise<T> {
+      const hit = entries.get(key)
+      if (!hit) {
+        const value = build()
+        entries.set(key, { at: clock(), value, refreshing: false })
+        value.catch(() => {
+          if (entries.get(key)?.value === value) entries.delete(key)
+        })
+        return value
+      }
+      if (clock() - hit.at >= ttlMs && !hit.refreshing) {
+        hit.refreshing = true
+        build().then(
+          (fresh) => entries.set(key, { at: clock(), value: Promise.resolve(fresh), refreshing: false }),
+          () => {
+            hit.refreshing = false
+          },
+        )
+      }
+      return hit.value
+    },
+    clear(): void {
+      entries.clear()
+    },
+  }
 }
 
 export class RnpService {
@@ -99,10 +150,12 @@ export class RnpService {
   }
 
   private async monthRows(month: string, from: string, to: string, timeZone: string, now: Date): Promise<MonthRows> {
+    const today = zonedDateKey(now, timeZone)
+    const closedTo = today > to ? to : previousDay(today)
     const [fakt, leads, registration, calls, warehouse, campaigns, teams] = await Promise.all([
       this.insights.rnpTeamDays(monthPeriod(month, timeZone, now)),
       this.repository.leadDays(from, to),
-      this.repository.registrationDays(from, to),
+      this.registration(from, to, today, closedTo),
       this.repository.callDays(from, to),
       this.repository.warehouseDays(from, to, now),
       this.reklama.campaignDays(from, to),
@@ -117,4 +170,25 @@ export class RnpService {
     }
     return { fakt, leads, registration, calls, warehouse, meta, teams }
   }
+
+  /** The closed days from the half-hour memo, today read live. */
+  private async registration(from: string, to: string, today: string, closedTo: string): Promise<RnpRegistrationDayRow[]> {
+    const [closed, live] = await Promise.all([
+      closedTo >= from
+        ? registrationHistory.get(`${from}|${closedTo}`, () => this.repository.registrationDays(from, closedTo))
+        : Promise.resolve([]),
+      today >= from && today <= to ? this.repository.registrationDays(today, today) : Promise.resolve([]),
+    ])
+    /*
+      A kval closed today on a lead from last week is today's row in the live
+      read and nobody's in the closed one, so the two never overlap: each
+      statement buckets by its own day and is bounded to its own days.
+    */
+    return [...closed.filter((r) => r.day <= closedTo), ...live.filter((r) => r.day === today)]
+  }
+}
+
+/** `YYYY-MM-DD` of the day before. */
+function previousDay(day: string): string {
+  return new Date(new Date(`${day}T00:00:00Z`).getTime() - 86_400_000).toISOString().slice(0, 10)
 }
