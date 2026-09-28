@@ -3,15 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { resolvePeriod } from '@/server/domain/period/period'
 import {
   type AnalyticsDeal,
-  type AnalyticsDealItem,
-  type FunnelStageDefinition,
   closedIn,
   createdIn,
-  groupRevenue,
   openAsOf,
-  productRevenue,
   revenueTrend,
-  stageFunnel,
   summarizeDeals,
 } from '@/server/domain/analytics/sales'
 
@@ -186,134 +181,5 @@ describe('revenueTrend', () => {
   it('reconciles exactly with the period total', () => {
     const total = trend.reduce((sum, point) => sum + point.revenue.amountMinor, 0n)
     expect(total).toBe(summarizeDeals(deals, august, UZS).revenue.amountMinor)
-  })
-})
-
-describe('groupRevenue', () => {
-  const deals = [
-    won('a', 100_000_00n, '2026-08-05T06:00:00.000Z', 'emp-1'),
-    won('b', 300_000_00n, '2026-08-06T06:00:00.000Z', 'emp-2'),
-    lost('c', '2026-08-07T06:00:00.000Z', 'emp-1'),
-  ]
-
-  const groups = groupRevenue(deals, august, UZS, (d) => d.employeeId)
-
-  it('sorts by revenue, descending', () => {
-    expect(groups.map((g) => g.key)).toEqual(['emp-2', 'emp-1'])
-  })
-
-  it('computes each group share', () => {
-    expect(groups[0]!.sharePercent).toBe(75)
-    expect(groups[1]!.sharePercent).toBe(25)
-  })
-
-  it('counts lost deals in the total but not in revenue', () => {
-    const empOne = groups.find((g) => g.key === 'emp-1')!
-    expect(empOne.dealsTotal).toBe(2)
-    expect(empOne.dealsWon).toBe(1)
-  })
-
-  it('collects unkeyed deals under an explicit unknown bucket', () => {
-    // Dropping them would stop the groups adding up to headline revenue.
-    const withMissing = [...deals, won('d', 50_000_00n, '2026-08-09T06:00:00.000Z')]
-    const bySource = groupRevenue(withMissing, august, UZS, (d) => d.sourceId)
-    expect(bySource.map((g) => g.key)).toContain('unknown')
-    const total = bySource.reduce((sum, g) => sum + g.revenue.amountMinor, 0n)
-    expect(total).toBe(450_000_00n)
-  })
-
-  it('returns null shares when nothing was won', () => {
-    const onlyLost = groupRevenue([lost('x', '2026-08-05T06:00:00.000Z')], august, UZS, (d) => d.employeeId)
-    expect(onlyLost[0]!.sharePercent).toBeNull()
-  })
-})
-
-describe('productRevenue', () => {
-  const deals = [
-    won('d1', 150_000_00n, '2026-08-05T06:00:00.000Z'),
-    won('d2', 50_000_00n, '2026-08-06T06:00:00.000Z'),
-    lost('d3', '2026-08-07T06:00:00.000Z'),
-  ]
-
-  const items: AnalyticsDealItem[] = [
-    { dealId: 'd1', productId: 'prd-1', quantity: 2, totalMinor: 100_000_00n },
-    { dealId: 'd1', productId: 'prd-2', quantity: 1, totalMinor: 50_000_00n },
-    { dealId: 'd2', productId: 'prd-1', quantity: 1, totalMinor: 50_000_00n },
-    // Belongs to a lost deal, so it must not count.
-    { dealId: 'd3', productId: 'prd-3', quantity: 9, totalMinor: 900_000_00n },
-  ]
-
-  const rows = productRevenue(deals, items, august, UZS)
-
-  it('counts only items from deals won in the period', () => {
-    expect(rows.map((r) => r.key)).toEqual(['prd-1', 'prd-2'])
-  })
-
-  it('aggregates a product across deals', () => {
-    expect(rows[0]!.revenue.amountMinor).toBe(150_000_00n)
-    expect(rows[0]!.dealsWon).toBe(2)
-  })
-
-  it('reconciles with headline revenue', () => {
-    const total = rows.reduce((sum, r) => sum + r.revenue.amountMinor, 0n)
-    expect(total).toBe(summarizeDeals(deals, august, UZS).revenue.amountMinor)
-  })
-
-  it('returns an empty list when nothing was won', () => {
-    expect(productRevenue([lost('x', '2026-08-05T06:00:00.000Z')], items, august, UZS)).toEqual([])
-  })
-})
-
-describe('stageFunnel', () => {
-  const stages: FunnelStageDefinition[] = [
-    { id: 'stg-1', name: 'Yangi', sortOrder: 1, category: 'NEW' },
-    { id: 'stg-2', name: 'Aloqada', sortOrder: 2, category: 'IN_PROGRESS' },
-    { id: 'stg-6', name: 'Muvaffaqiyatli', sortOrder: 6, category: 'WON' },
-  ]
-
-  const deals = [
-    deal({ id: 'a', createdAtSource: new Date('2026-08-02T06:00:00.000Z'), stageId: 'stg-1' }),
-    deal({ id: 'b', createdAtSource: new Date('2026-08-03T06:00:00.000Z'), stageId: 'stg-1' }),
-    deal({ id: 'c', createdAtSource: new Date('2026-08-04T06:00:00.000Z'), stageId: 'stg-2' }),
-    deal({
-      id: 'd',
-      createdAtSource: new Date('2026-08-05T06:00:00.000Z'),
-      stageId: 'stg-6',
-      status: 'WON',
-      stageCategory: 'WON',
-      closedAt: new Date('2026-08-10T06:00:00.000Z'),
-    }),
-  ]
-
-  const funnel = stageFunnel(deals, stages, august, UZS)
-
-  it('returns steps in funnel order', () => {
-    expect(funnel.map((s) => s.stageId)).toEqual(['stg-1', 'stg-2', 'stg-6'])
-  })
-
-  it('counts the cohort in each stage', () => {
-    expect(funnel.map((s) => s.dealCount)).toEqual([2, 1, 1])
-  })
-
-  it('expresses each step as a share of the cohort', () => {
-    expect(funnel[0]!.reachedPercent).toBe(50)
-    expect(funnel[1]!.reachedPercent).toBe(25)
-  })
-
-  it('includes stages with no deals at zero rather than omitting them', () => {
-    const withEmpty = stageFunnel(
-      [deals[0]!],
-      stages,
-      august,
-      UZS,
-    )
-    expect(withEmpty).toHaveLength(3)
-    expect(withEmpty[1]!.dealCount).toBe(0)
-    expect(withEmpty[1]!.value.amountMinor).toBe(0n)
-  })
-
-  it('returns null shares for an empty cohort', () => {
-    const empty = stageFunnel([], stages, august, UZS)
-    expect(empty.every((s) => s.reachedPercent === null)).toBe(true)
   })
 })

@@ -21,10 +21,9 @@
  */
 
 import { Prisma, type PrismaClient } from '@/generated/prisma/client'
-import type { AnalyticsDeal, AnalyticsDealItem } from '@/server/domain/analytics/sales'
-import type { FunnelStageDefinition } from '@/server/domain/analytics/sales'
+import type { AnalyticsDeal } from '@/server/domain/analytics/sales'
 import type { Period } from '@/server/domain/period/period'
-import type { DealStatusValue, PipelineRoleValue } from '@/server/domain/types'
+import type { DealStatusValue } from '@/server/domain/types'
 
 export interface DealFilters {
   readonly employeeIds?: readonly string[]
@@ -199,32 +198,6 @@ export class DealRepository {
 
   /** See findForAnalysis. Keyed by the serialised where clause. */
   private readonly analysisInFlight = new Map<string, Promise<AnalyticsDeal[]>>()
-
-  /** See findItemsForDeals. */
-  private readonly itemsInFlight = new Map<string, Promise<AnalyticsDealItem[]>>()
-
-  /**
-   * Stage definitions for the funnel, in pipeline order.
-   *
-   * Scoped to revenue pipelines by default. The portal defines 108 stages
-   * across nine pipelines, and a funnel listing all of them is not a funnel —
-   * it is a five-thousand-pixel column in which the twelve rows that matter
-   * are invisible. Registration, triage and HR have their own stages and no
-   * business being on a sales funnel.
-   */
-  async findStages(
-    options: { pipelineRoles?: readonly PipelineRoleValue[] } = {},
-  ): Promise<FunnelStageDefinition[]> {
-    const roles = options.pipelineRoles ?? ['REVENUE']
-
-    const rows = await this.prisma.dealStage.findMany({
-      where: { isActive: true, pipeline: { role: { in: [...roles] } } },
-      orderBy: { sortOrder: 'asc' },
-      select: { id: true, name: true, sortOrder: true, category: true },
-    })
-    return rows
-  }
-
 }
 
 function toAnalyticsDeal(row: {
