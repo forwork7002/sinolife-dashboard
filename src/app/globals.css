@@ -28,6 +28,13 @@
  *   light on #ffffff   CVD ΔE 11.5   normal ΔE 20.9   contrast: all 8 ≥ 3:1
  *   dark  on #131519   CVD ΔE 10.9   normal ΔE 18.6   contrast: all 8 ≥ 3:1
  *
+ * 2026-09-28, the «koʻk» re-tint (the client's reference boards: deep navy
+ * glass, electric blue and cyan): every SURFACE moved to a navy hue, and
+ * three slots moved with it — 1 (blue) brighter, 3 (teal → cyan) and 7
+ * (violet) lighter — so the marks keep their hue family on the new ground.
+ * Re-measured on the new surfaces: every series slot ≥ 4.7:1 on the dark
+ * raised card and ≥ 3.6:1 on the light page; the slot ORDER is unchanged.
+ *
  * The previous set cleared CVD at 9.1 and left three slots below 3:1 contrast,
  * so every one of those numbers is an improvement rather than a repaint. The
  * slot ORDER is unchanged, so nothing that already reads a slot moved hue.
@@ -43,13 +50,13 @@
   color-scheme: light;
 
   /* --- Surfaces and ink ------------------------------------------------- */
-  --page: #f6f7f9;
-  --surface: #ffffff;
+  --page: #edf0fa;
+  --surface: #f7f8fd;
   --surface-raised: #ffffff;
   /* Sunken: table headers, inset panels, the well behind a chart. */
-  --surface-sunken: #eef0f4;
-  --ink-primary: #0c0e12;
-  --ink-secondary: #4c525e;
+  --surface-sunken: #e8ebf6;
+  --ink-primary: #0f1533;
+  --ink-secondary: #454f74;
   /**
    * Chosen against the WORST surface it lands on, not against white.
    *
@@ -58,20 +65,20 @@
    * cleared 4.83:1 there and 4.24:1 on `--surface-sunken`, which is the table
    * header — the place a column label most needs to be legible.
    *
-   *   on --surface #ffffff        5.26:1
-   *   on --page    #f6f7f9        4.90:1
-   *   on --sunken  #eef0f4        4.61:1   ← the one that decides the value
+   *   on --raised  #ffffff        5.62:1
+   *   on --page    #edf0fa        4.94:1
+   *   on --sunken  #e8ebf6        4.73:1   ← the one that decides the value
    */
-  --ink-muted: #636d79;
-  --grid: #e8eaee;
+  --ink-muted: #5c6785;
+  --grid: #e1e5f2;
   /* What an empty track is drawn in. Same as --grid in light; dark needs its
      own step because --grid on a raised card measured 1.07:1 there — a ring's
      remainder simply vanished and a 29% arc floated with nothing saying what
      it was 29% OF. */
-  --track: #e8eaee;
-  --axis: #c8ccd4;
-  --border: rgba(12, 14, 18, 0.09);
-  --border-strong: rgba(12, 14, 18, 0.16);
+  --track: #e1e5f2;
+  --axis: #c3cae0;
+  --border: rgba(30, 50, 120, 0.11);
+  --border-strong: rgba(30, 50, 120, 0.2);
 
   /* The 1px light along a card's top edge. Real elevation, not a shadow. */
   --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
@@ -97,7 +104,7 @@
   --kbd-edge: inset 0 -1px 0 color-mix(in oklab, var(--ink-primary) 16%, transparent);
 
   /* --- Categorical series, in fixed slot order -------------------------- */
-  --series-1: #3d6df4; /* blue */
+  --series-1: #2f66f0; /* blue */
   --series-2: #ca4c07; /* orange */
   --series-3: #00897d; /* teal */
   --series-4: #be8b1e; /* amber */
@@ -117,7 +124,7 @@
   /* Each step clears 4.5:1 on its surface, so a status may carry TEXT and not
      only a mark. It still ships with an icon or a word; colour alone is not a
      channel. */
-  --status-good: #007e3b;
+  --status-good: #00733a;
   --status-warning: #915c00;
   --status-serious: #ab4500;
   --status-critical: #d02222;
@@ -283,6 +290,18 @@
   --glow-hero-mix: 0%;
 
   /**
+   * «Koʻk» finish (2026-09-28) — the client's reference boards are navy glass
+   * with a lit top edge and neon plot lines. Two strengths, both 0 in light:
+   * a card's top-edge sheen (ink mixed over the card, so it is white on the
+   * navy card and would be a smudge on a white one) and the glow under a
+   * plot line. The gradient behind the active rail item is theme-free: white
+   * text on both stops measures 4.9:1 and 5.9:1.
+   */
+  --card-sheen: 0%;
+  --line-glow: none;
+  --rail-active-bg: linear-gradient(135deg, #2f66f0, #6a3df0);
+
+  /**
    * House radii, deliberately NOT named --radius-sm / --radius-lg.
    *
    * Tailwind v4 ships its own --radius-sm/md/lg/xl inside `@layer theme`, and
@@ -292,9 +311,9 @@
    * these are ours, Tailwind's scale is untouched, and the two cannot collide
    * again.
    */
-  --radius-panel-sm: 10px;
-  --radius-panel: 14px;
-  --radius-panel-lg: 18px;
+  --radius-panel-sm: 12px;
+  --radius-panel: 16px;
+  --radius-panel-lg: 20px;
 
   /**
    * The size of a soʻm figure printed to the last digit.
@@ -336,23 +355,23 @@
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
 
-    --page: #050609;
-    --surface: #101217;
-    --surface-raised: #1c2027;
-    --surface-sunken: #0b0d11;
-    --ink-primary: #f5f6f8;
-    --ink-secondary: #a8b0bd;
-    /* 5.89 surface · 5.14 raised · 6.12 sunken · 6.37 page. Raised decides it:
+    --page: #070b1c;
+    --surface: #0c1229;
+    --surface-raised: #121a38;
+    --surface-sunken: #080d20;
+    --ink-primary: #f2f5ff;
+    --ink-secondary: #aab4d4;
+    /* 6.75 surface · 6.22 raised · 7.03 sunken · 7.13 page. Raised decides it:
        a card in dark mode is the lightest surface, and the previous value
        cleared only 4.32:1 there. */
-    --ink-muted: #8891a0;
-    --grid: #23272f;
-    --track: #313845;
-    --axis: #333944;
-    --border: rgba(255, 255, 255, 0.11);
-    --border-strong: rgba(255, 255, 255, 0.22);
+    --ink-muted: #8f9bc4;
+    --grid: #1d2649;
+    --track: #2a3563;
+    --axis: #34406e;
+    --border: rgba(122, 150, 255, 0.16);
+    --border-strong: rgba(122, 150, 255, 0.30);
 
-    --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    --edge-highlight: inset 0 1px 0 rgba(150, 180, 255, 0.13);
     /* Black, not an ink mix — a keycap's shadow falls below the key in both
        themes; see the light-mode note on the token. The [data-theme="dark"]
        block always carried this override; the system-preference path had
@@ -360,13 +379,13 @@
        in dark, i.e. a key lit from below. */
     --kbd-edge: inset 0 -1px 0 rgba(0, 0, 0, 0.55);
 
-    --series-1: #497bff;
+    --series-1: #4f8bff;
     --series-2: #d8591e;
-    --series-3: #32a89c;
+    --series-3: #22c7cf;
     --series-4: #bd8a1c;
     --series-5: #f6458d;
     --series-6: #55841d;
-    --series-7: #905eff;
+    --series-7: #9a6bff;
     --series-8: #ec3934;
 
     /* Anchor flipped for dark: 650 is the most visible step in BOTH themes.
@@ -454,8 +473,8 @@
     --px4-thumb-hi: inset 0 1px 0 rgba(255, 255, 255, 0.14);
     --px4-thumb-drop: 0 1px 2px rgba(0, 0, 0, 0.6);
 
-    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
-    --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px -8px rgba(0, 0, 0, 0.7);
+    --shadow-card: 0 1px 2px rgba(2, 5, 20, 0.55), 0 8px 24px -12px rgba(40, 80, 220, 0.25);
+    --shadow-raised: 0 1px 2px rgba(2, 5, 20, 0.55), 0 12px 32px -10px rgba(40, 80, 220, 0.35);
     --shadow-float: 0 2px 4px rgba(0, 0, 0, 0.5), 0 20px 44px -12px rgba(0, 0, 0, 0.8);
 
     /* Night physics: no sun, so floating chrome swaps its directional stack
@@ -463,42 +482,44 @@
        canvas is where a flat hex wall is most visibly flat; the hero number
        gains its whisper of glow. See the light block for what each does. */
     --shadow-ambient: 0 0 15px rgba(0, 0, 0, 0.35), 0 0 3px rgba(0, 0, 0, 0.5);
-    --atmos-mix-accent: 12%;
-    --atmos-mix-violet: 11%;
+    --atmos-mix-accent: 22%;
+    --atmos-mix-violet: 18%;
     --grain-alpha: 0.04;
-    --glow-hero-mix: 18%;
+    --glow-hero-mix: 40%;
+    --card-sheen: 5%;
+    --line-glow: drop-shadow(0 0 6px rgba(80, 140, 255, 0.55));
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --page: #050609;
-  --surface: #101217;
-  --surface-raised: #1c2027;
-  --surface-sunken: #0b0d11;
-  --ink-primary: #f5f6f8;
-  --ink-secondary: #a8b0bd;
-  --ink-muted: #8891a0;
-  --grid: #23272f;
-  --track: #313845;
-  --axis: #333944;
-  --border: rgba(255, 255, 255, 0.11);
-  --border-strong: rgba(255, 255, 255, 0.22);
+  --page: #070b1c;
+  --surface: #0c1229;
+  --surface-raised: #121a38;
+  --surface-sunken: #080d20;
+  --ink-primary: #f2f5ff;
+  --ink-secondary: #aab4d4;
+  --ink-muted: #8f9bc4;
+  --grid: #1d2649;
+  --track: #2a3563;
+  --axis: #34406e;
+  --border: rgba(122, 150, 255, 0.16);
+  --border-strong: rgba(122, 150, 255, 0.30);
 
-  --edge-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --edge-highlight: inset 0 1px 0 rgba(150, 180, 255, 0.13);
   /* Black, not an ink mix — see the light-mode note: a keycap's bottom edge
      is a shadow in both themes. (--edge-hero-* needs no override; it mixes
      from ink and flips by construction.) */
   --kbd-edge: inset 0 -1px 0 rgba(0, 0, 0, 0.55);
 
-  --series-1: #497bff;
+  --series-1: #4f8bff;
   --series-2: #d8591e;
-  --series-3: #32a89c;
+  --series-3: #22c7cf;
   --series-4: #bd8a1c;
   --series-5: #f6458d;
   --series-6: #55841d;
-  --series-7: #905eff;
+  --series-7: #9a6bff;
   --series-8: #ec3934;
 
   /* Anchor flipped for dark — see the note in the media-query block above. */
@@ -578,16 +599,18 @@
   --px4-thumb-hi: inset 0 1px 0 rgba(255, 255, 255, 0.14);
   --px4-thumb-drop: 0 1px 2px rgba(0, 0, 0, 0.6);
 
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 16px -8px rgba(0, 0, 0, 0.7);
+  --shadow-card: 0 1px 2px rgba(2, 5, 20, 0.55), 0 8px 24px -12px rgba(40, 80, 220, 0.25);
+  --shadow-raised: 0 1px 2px rgba(2, 5, 20, 0.55), 0 12px 32px -10px rgba(40, 80, 220, 0.35);
   --shadow-float: 0 2px 4px rgba(0, 0, 0, 0.5), 0 20px 44px -12px rgba(0, 0, 0, 0.8);
 
   /* Night physics — kept in lockstep with the media-query block above. */
   --shadow-ambient: 0 0 15px rgba(0, 0, 0, 0.35), 0 0 3px rgba(0, 0, 0, 0.5);
-  --atmos-mix-accent: 12%;
-  --atmos-mix-violet: 11%;
+  --atmos-mix-accent: 22%;
+  --atmos-mix-violet: 18%;
   --grain-alpha: 0.04;
-  --glow-hero-mix: 18%;
+  --glow-hero-mix: 40%;
+  --card-sheen: 5%;
+  --line-glow: drop-shadow(0 0 6px rgba(80, 140, 255, 0.55));
 }
 
 /**
@@ -869,6 +892,14 @@ body {
  * are. `:focus-visible` shows the house ring for the keyboard and stays out of
  * the way for the mouse.
  */
+/* Neon under a plot line — dark only (--line-glow is `none` in light). A
+   filter on a handful of paths, never on bars or grid: cheap, and the glow
+   never touches a mark that has to be measured against its neighbour. */
+.recharts-line-curve,
+.recharts-area-curve {
+  filter: var(--line-glow);
+}
+
 .recharts-wrapper:focus,
 .recharts-surface:focus {
   outline: none;
@@ -1183,7 +1214,16 @@ body::after {
  * more readily than it reads a blur underneath.
  */
 .card {
-  background: var(--surface-raised);
+  /* The sheen is the second «koʻk» cue after the lit edge: the top ~40% of
+     the card is a whisper brighter, as glass is where the light lands. It
+     mixes to nothing in light (--card-sheen 0%). */
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--ink-primary) var(--card-sheen), transparent),
+      transparent 42%
+    ),
+    var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-panel);
   box-shadow: var(--shadow-card), var(--edge-highlight);
@@ -1212,7 +1252,18 @@ body::after {
 .card-hero {
   border: 1px solid transparent;
   border-radius: var(--radius-panel-lg);
+  /* The «koʻk» bloom: the page's accent pooled in the top-left corner, at
+     the atmosphere's own strength (--atmos-mix-accent — 5% in light, so it
+     reads as the hint of a light source; 22% in dark, where it is the
+     reference boards' backlit hero card). Read at the element, so it follows
+     the page accent PageShell sets, like the aurora above the title. */
   background:
+    radial-gradient(
+        42rem 18rem at 0% 0%,
+        color-mix(in oklab, var(--accent) var(--atmos-mix-accent), transparent),
+        transparent 70%
+      )
+      padding-box,
     linear-gradient(var(--surface-raised), var(--surface-raised)) padding-box,
     linear-gradient(180deg, var(--edge-hero-top), var(--edge-hero-bottom)) border-box;
   box-shadow: var(--shadow-raised), var(--edge-highlight);
@@ -2251,11 +2302,15 @@ p {
   transform: scale(0.98);
 }
 .rail-item[aria-current='page'] {
-  color: var(--ink-primary);
-  background: color-mix(in oklab, var(--series-1) 10%, transparent);
+  color: var(--ink-on-series);
+  background: var(--rail-active-bg);
+  box-shadow:
+    0 8px 18px -8px rgba(47, 102, 240, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 .rail-item[aria-current='page']:hover {
-  background: color-mix(in oklab, var(--series-1) 14%, transparent);
+  color: var(--ink-on-series);
+  filter: brightness(1.08);
 }
 
 .rail-icon {
@@ -2271,8 +2326,9 @@ p {
 .rail-item:hover .rail-icon {
   color: var(--ink-primary);
 }
-.rail-item[aria-current='page'] .rail-icon {
-  color: var(--series-1);
+.rail-item[aria-current='page'] .rail-icon,
+.rail-item[aria-current='page']:hover .rail-icon {
+  color: var(--ink-on-series);
 }
 
 /* Folded to icons: the glyph grows from 15px to 18px so a 40px square does
