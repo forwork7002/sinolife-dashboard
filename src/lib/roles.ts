@@ -55,6 +55,9 @@ const ALL_ROUTES = [
   // only by default, and the endpoints refuse any account that is not
   // company-wide.
   '/leads',
+  // The client's «РНП» sheet, day by day, every team. ADMIN and MANAGER only
+  // by default; the endpoints refuse any account that is not company-wide.
+  '/rnp',
   // Leads with customer names and phones. ADMIN and MANAGER only by default,
   // and the endpoints refuse any account that is not company-wide.
   '/target',

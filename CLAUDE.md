@@ -428,6 +428,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Qoʻngʻiroqlar | `/customers` | `calls/CallsPage` + `CallTable` | `/insights/calls` | Insights → Insights | `call_record."startedAt"` on the dashboard window, clamped below at `CALL_DATA_FLOOR` (2026-09-15 00:00 Tashkent). One clock, one request |
 | Reklama samarasi | `/marketing` | `reklama/ReklamaPage` — ONE page since 2026-09-25 (its «Sotuv · ROP» and «Lid kogortasi» tabs moved to «Lidlar»): `DmSection` + `FormSection` + `QualitySection` + `CampaignSection`, with `SideSection` beside them (xl) or above them — the client's narrow «HR · Kosmetika» day table, 2026-09-28: HR = every hiring campaign plus the HR Eldor account, Kosmetika = Kosmetika Eldor (`sideColumn` in `meta/accounts.ts`). The Roistat `marketing/MarketingPage` is held, not mounted | `/reklama/overview` (the Roistat `/marketing/*` three still answer, uncalled) | Reklama → Reklama | **two clocks, one Tashkent calendar day.** Meta: `meta_campaign_daily."date"`, the ad account's reporting day, split by `campaignChannel` (OUTCOME_LEADS → «Отчёт Т», OUTCOME_ENGAGEMENT → «DM», hiring campaigns → neither). Bitrix24: the Регистрация lead's `createdAtSource`, bucketed by the stage it sits in NOW (`leadQuality.ts`). Never joined — they meet on the day and the page |
 | Lidlar | `/leads` (section `leads`, 2026-09-25) | `leads/LeadsPage` — three tabs. «Lid manbalari»: `LeadSourcesSection`. «Lid kogortasi»: `LeadCohortSection`. «Sotuv · ROP»: `SalesTeamSection` + `PlanEditor` (the client's ROP sheets; plans typed in here, `seller_day_plan` / `team_month_plan`) | `/leads/overview`; `/lead-cohort/overview`; `/sales-team/overview`, `POST /sales-team/plans` (`analytics:read:all` at the gate, `kpi:manage` inside) | LeadSources (+ Reklama's Meta rows), LeadCohort, SalesTeam | «Lid manbalari» is on the dashboard period: Регистрация (role LEAD) and «ИИ обработка» (role AI_TRIAGE) by `createdAtSource`'s Tashkent day; Meta lead-form campaigns by `meta_campaign_daily."date"`, met on the targetolog, never joined per deal. «Lid kogortasi» takes its OWN day window (default the last 14): the row is `deal."leadArrivedAt"`'s Tashkent day, the column `"leadDistributedOn"` (a DATE, never zoned) minus it. «Sotuv · ROP» takes its OWN calendar month (not the preset): FAKT 1 / FAKT 2 on the sellers board's queue cohort (`salesTeamDays`), a seller's leads on Первичный отдел `createdAtSource` |
+| RNP jadvali | `/rnp` (section `rnp`, 2026-09-28) | `rnp/RnpPage` + `RnpPlanEditor` — the client's «СентябрРНП» sheet: a row per metric, a column per day, plan / day plan / fact / forecast / index before the days | `/rnp/overview`, `POST /rnp/plans` (`analytics:read:all` at the gate, `kpi:manage` inside) | Rnp → Insights (`rnpTeamDays`), Rnp, Reklama (Meta) | its OWN calendar month. FAKT 1 / FAKT 2 / refusals on the queue cohort (`queued_at`), team off the deal as on Logistika; handed-out leads on `leadDistributedOn`; Регистрация on `createdAtSource` (kval on `closedAt` of WON); calls on `startedAt`; Склад on Доставка stage history; Meta on `meta_campaign_daily."date"` |
 | Target tahlili | `/target` | `target/TargetPage` + `TargetGroupTable` + `TargetLeadTable` + `TargetMeta` | `/target/overview`, `/target/leads` | Target → Target | **the deal's creation, `createdAtSource`** — a lead on the day it was registered, a sale on the day the seller's deal was opened. The Meta block reads `meta_ad_daily."date"` over the same Tashkent calendar days |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
@@ -501,6 +502,39 @@ Per-screen traps worth knowing before you touch one:
   Company-wide (`analytics:read:all`, in `COMPANY_WIDE`): it names customers
   and phones, and neither half has a team to narrow by.
 
+- **RNP jadvali** — added 2026-09-28 from the client's written spec of every
+  cell of «СентябрРНП 26» («huddi shu jadvaldek har bir malumot bitrix24 dan
+  tortiladi»). The user chose, that day: FAKT 1 / FAKT 2 are the DASHBOARD's
+  (the queue cohort), not the spec's «качонки сделка» date, so this screen can
+  never disagree with Savdo dinamikasi or Logistika; the team is the deal's
+  «Организация сотрудника» with the department as fallback (Logistika's
+  basis, `rnpTeamDays`); plans are typed in here — FAKT plans stay in
+  `team_month_plan` (shared with «Sotuv · ROP»), every other plan and the
+  header settings (`usd_rate`, `lead_value` with a `fromDay`) are `rnp_plan`,
+  values × 100; rows with no Bitrix24 / Meta source (followers, HR, bloggers)
+  are NOT on the screen; a team is its department name plus its head.
+  **The sheet's arithmetic is not copied** (its own audit found 27 errors):
+  the forecast is the fact through the last FULL day ÷ those days × the
+  month's real length, every rate is ΣA ÷ ΣB for a day and the month alike,
+  a snapshot row (headcount, «не собран») is never summed.
+  **Portal facts it rests on**, measured 2026-09-28 through the MCP: for a
+  COUNT BY DISTRIBUTION DAY a handed-out lead is ONE deal (it keeps its id
+  from Первичный отдел on; 21.09: 338 deals in pipelines 12/4/6, two sharing a
+  contact) — Sevinch 38, Saidaziz 41, Maftuna 27 that day. This does not
+  contradict «Lid kogortasi»'s «up to three deals»: that fold is keyed on the
+  ARRIVAL, and pipeline 10 (База) is not read here, so do not «fix»
+  `leadDaysSql` into a fold without re-measuring. «РОП (Первичка)» is filled
+  on every lead only from 16.09 (`LEAD_ROP_RELIABLE_FROM`) and calls are
+  wrong before 15.09 (`CALLS_RELIABLE_FROM`, = `CALL_DATA_FLOOR`): days before
+  a row's `reliableFrom` are DRAWN muted but never enter its month cell, its
+  pooled rate or its forecast pace. «ИИ квал» is NOT a
+  kval — the AI hands the deal back to Регистрация and the registrar's WON is
+  the kval. БАЗА teams (`BASE_TEAMS`: Charos = «Малика БАЗА», Baza = «Фаррух
+  БАЗА») are measured by connected calls, not leads.
+  **A duplicate stage is matched `~ '[Дд]убл'`, never `~*`**: Cyrillic case
+  folding follows the ctype, and under a C locale every duplicate was a lead.
+  The SQL was run on a local cluster with a portal-shaped fixture and matched
+  hand-worked figures; it has NOT been compared with production yet.
 - **Lidlar** — a section of its own since 2026-09-25 («yangi bir boʻlim ochamiz
   lidlar deb, oʻsha yerga koʻchiramiz lid kogortasini ham … Sotuv ROP ni ham»).
   Migration `20260925120000_leads_section` grants `leads` to every account

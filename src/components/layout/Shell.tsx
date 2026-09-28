@@ -128,6 +128,7 @@ const NAV_GROUPS: readonly { readonly label: string | null; readonly items: read
     label: 'Jamoa',
     items: [
       { href: '/kpi', label: t.nav.kpi, icon: TargetIcon },
+      { href: '/rnp', label: t.nav.rnp, icon: GridIcon },
       { href: '/sellers', label: t.nav.sellers, icon: TrophyIcon },
       { href: '/payroll', label: t.nav.payroll, icon: WalletIcon },
       { href: '/structure', label: t.nav.structure, icon: TreeIcon },
@@ -1683,6 +1684,19 @@ function InboxIcon() {
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M4 13l2.2-7.2A1.5 1.5 0 017.6 4.8h8.8a1.5 1.5 0 011.4 1L20 13" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
       <path d="M4 13v5a1.5 1.5 0 001.5 1.5h13A1.5 1.5 0 0020 18v-5h-4.5l-1.2 2h-4.6l-1.2-2H4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/**
+ * «RNP jadvali» — a sheet: a header row and day columns, which is what the
+ * client's «РНП» is and what the screen reproduces.
+ */
+function GridIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="4" y="5" width="16" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M4 9.5h16M9 9.5V19M14.5 9.5V19" stroke="currentColor" strokeWidth="1.7" />
     </svg>
   )
 }

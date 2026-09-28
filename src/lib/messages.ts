@@ -33,6 +33,7 @@ export const t = {
     confirmation: 'Tasdiqlash navbati',
     warehouse: 'Joʻnatish nuqtalari',
     kpi: 'KPI rejalari',
+    rnp: 'RNP jadvali',
     structure: 'Kadrlar tuzilmasi',
     sellers: 'Sotuvchilar reytingi',
     payroll: 'Sotuvchilar oyligi',
@@ -75,6 +76,10 @@ export const t = {
     reklama: {
       title: 'Reklama samarasi',
       lead: 'DM, targetologlar va lid sifati — mijozning oʻz jadvallari, Meta Ads va Bitrix24 dan har kuni oʻzi yigʻiladi. Kunlar Toshkent vaqti boʻyicha.',
+    },
+    rnp: {
+      title: 'RNP jadvali',
+      lead: 'Mijozning «РНП» jadvali — har bir koʻrsatkich kunma-kun, fakt, prognoz va reja bilan. Hammasi Bitrix24 va Meta Ads dan oʻzi yigʻiladi, kunlar Toshkent vaqti boʻyicha.',
     },
     leads: {
       title: 'Lidlar',

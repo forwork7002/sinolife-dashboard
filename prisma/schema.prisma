@@ -1440,6 +1440,34 @@ model TeamMonthPlan {
   @@map("team_month_plan")
 }
 
+/// «RNP» — every other plan and setting of the client's «СентябрРНП» sheet:
+/// its C column (the month's plan per row) and the two figures the sheet
+/// types into its header — the dollar rate and what one lead is worth.
+///
+/// FAKT 1 and FAKT 2 plans are NOT here: they stay in `team_month_plan`, so
+/// «Sotuv · ROP» and «RNP» read one plan and cannot disagree.
+///
+/// `team` is the `ropNameSql` name, or '' for a company-wide row. `metric` is
+/// the row's key (`leads`, `orders`, `usd_rate`, `lead_value` …). `fromDay`
+/// is the day of the month the value starts on — 1 for a plan; a lead's
+/// value changed on 19.09.2026 (400 000 → 500 000), so a setting may carry
+/// more than one. `valueCenti` is the figure × 100 in the row's own unit:
+/// soʻm minor units for money, cents for dollars, basis points for a rate,
+/// hundredths for a count.
+model RnpPlan {
+  id         String   @id @default(cuid())
+  month      DateTime @db.Date
+  team       String   @default("")
+  metric     String
+  fromDay    Int      @default(1)
+  valueCenti BigInt
+  updatedAt  DateTime @updatedAt
+  updatedBy  String?
+
+  @@unique([month, team, metric, fromDay])
+  @@map("rnp_plan")
+}
+
 // ---------------------------------------------------------------------------
 // KPI
 // ---------------------------------------------------------------------------

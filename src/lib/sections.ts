@@ -47,6 +47,7 @@ export const SECTIONS = [
   { id: 'logistics', route: '/logistics', label: 'Logistika natijasi', group: 'Bajarish' },
   { id: 'warehouse', route: '/warehouse', label: 'Joʻnatish nuqtalari', group: 'Bajarish' },
   { id: 'kpi', route: '/kpi', label: 'KPI rejalari', group: 'Jamoa' },
+  { id: 'rnp', route: '/rnp', label: 'RNP jadvali', group: 'Jamoa' },
   { id: 'structure', route: '/structure', label: 'Kadrlar tuzilmasi', group: 'Jamoa' },
   { id: 'sellers', route: '/sellers', label: 'Sotuvchilar reytingi', group: 'Jamoa' },
   { id: 'payroll', route: '/payroll', label: 'Sotuvchilar oyligi', group: 'Jamoa' },
@@ -133,6 +134,12 @@ const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
     side on purpose. Its endpoints ask for `analytics:read:all`.
   */
   'leads',
+  /*
+    «RNP JADVALI» (2026-09-28) FOR THE SAME REASON: the client's «СентябрРНП»
+    sheet sets every ROP team, the registration desk and the Meta spend side
+    by side, and its plans are every team's. `analytics:read:all`.
+  */
+  'rnp',
   /*
     «TARGET TAHLILI» FOR THE SAME REASON, TWICE OVER. Its leads sit in
     Регистрация with whichever registrar picked them up — nobody's sales team —

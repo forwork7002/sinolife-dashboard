@@ -1058,6 +1058,21 @@ export interface SalesTeamDayRow {
   readonly deliveredMinor: bigint
 }
 
+/** One ROP team's queue day, as `rnpTeamDays` reads it. */
+export interface RnpTeamDayRow {
+  /** `YYYY-MM-DD`, Tashkent. */
+  readonly day: string
+  /** The team on the deal («Организация сотрудника»), as Logistika names it. */
+  readonly rop: string
+  readonly fakt1Orders: number
+  readonly fakt1Minor: bigint
+  readonly fakt2Orders: number
+  readonly fakt2Minor: bigint
+  /** FAKT 1 orders now in «Отказ» (refused or cancelled, `LOGISTICS_BUCKETS`). */
+  readonly refusedOrders: number
+  readonly refusedMinor: bigint
+}
+
 export class InsightsRepository {
   private readonly tz: string
 
@@ -5247,6 +5262,64 @@ export class InsightsRepository {
       deliveredOrders: int(r.delivered_orders),
       deliveredMinor: money(r.delivered),
     }))
+  }
+
+  /**
+   * FAKT 1, FAKT 2 and the refusals per queue day × ROP team, company-wide —
+   * the ROP blocks, the logistics block and the summary of «RNP jadvali».
+   *
+   * THE BOARD'S COHORT AND PREDICATES, LOGISTIKA'S TEAM. The same `queueSql`
+   * prelude, `FAKT1_OUTCOMES` and `faktDeliveredSql` as `salesTeamDays`, so a
+   * day's company total here equals Savdo dinamikasi's to the soʻm. The team
+   * is the one the deal names («Организация сотрудника», stamped at the sale),
+   * with the operator's current department as the fallback — the user chose
+   * it on 2026-09-28, and it is how Logistika's per-ROP strip already reads,
+   * so the two screens name every order's team identically.
+   */
+  async rnpTeamDays(period: Period): Promise<RnpTeamDayRow[]> {
+    const params: unknown[] = [period.start, period.end, null]
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        day: string
+        rop: string
+        fakt1_orders: bigint
+        fakt1: MoneyText
+        fakt2_orders: bigint
+        fakt2: MoneyText
+        refused_orders: bigint
+        refused: MoneyText
+      }[]
+    >(`${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.rnpTeamDaysSql()}`, ...params)
+    return rows.map((r) => ({
+      day: r.day,
+      rop: r.rop,
+      fakt1Orders: int(r.fakt1_orders),
+      fakt1Minor: money(r.fakt1),
+      fakt2Orders: int(r.fakt2_orders),
+      fakt2Minor: money(r.fakt2),
+      refusedOrders: int(r.refused_orders),
+      refusedMinor: money(r.refused),
+    }))
+  }
+
+  /** Isolated so a test can pin it against the board's own predicates. */
+  static rnpTeamDaysSql(): string {
+    const fakt2 = InsightsRepository.faktDeliveredSql('ds."logisticsRole"')
+    const refused = `(${InsightsRepository.FAKT1_OUTCOMES}) AND ${InsightsRepository.bucketCaseSql('ds."logisticsRole"::text')} = 'REFUSED'`
+    return `
+       SELECT
+         (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS day,
+         COALESCE(${InsightsRepository.ropNameSql('d."operatorTeamSource"')}, c.rop, '${InsightsRepository.NO_ROP}') AS rop,
+         count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS fakt1_orders,
+         COALESCE(sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}), 0)::text AS fakt1,
+         count(*) FILTER (WHERE ${fakt2})::bigint AS fakt2_orders,
+         COALESCE(sum(d."amountMinor") FILTER (WHERE ${fakt2}), 0)::text AS fakt2,
+         count(*) FILTER (WHERE ${refused})::bigint AS refused_orders,
+         COALESCE(sum(d."amountMinor") FILTER (WHERE ${refused}), 0)::text AS refused
+       FROM scoped c
+       JOIN "deal" d ON d."id" = c.deal_id
+       LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
+       GROUP BY 1, 2`
   }
 
   /** Isolated so a test can pin it against the board's own predicates. */

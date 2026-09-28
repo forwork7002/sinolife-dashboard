@@ -18,6 +18,7 @@ import { TargetRepository } from '@/server/repositories/targetRepository'
 import { LeadCohortRepository } from '@/server/repositories/leadCohortRepository'
 import { LeadSourcesRepository } from '@/server/repositories/leadSourcesRepository'
 import { ReklamaRepository } from '@/server/repositories/reklamaRepository'
+import { RnpRepository } from '@/server/repositories/rnpRepository'
 import { SalesTeamRepository } from '@/server/repositories/salesTeamRepository'
 import { ScopeRepository } from '@/server/repositories/scopeRepository'
 import { AlertsService } from '@/server/services/alertsService'
@@ -36,6 +37,7 @@ import { TargetService } from './targetService'
 import { LeadCohortService } from './leadCohortService'
 import { LeadSourcesService } from './leadSourcesService'
 import { ReklamaService } from './reklamaService'
+import { RnpService } from './rnpService'
 import { SalesTeamService } from './salesTeamService'
 
 export const dealRepository = new DealRepository(prisma)
@@ -103,6 +105,12 @@ export const leadSourcesService = new LeadSourcesService(new LeadSourcesReposito
   repository. See salesTeamService.ts.
 */
 export const salesTeamService = new SalesTeamService(insightsRepository, new SalesTeamRepository(prisma))
+/*
+  «RNP jadvali» (2026-09-28) — the client's «СентябрРНП» sheet. FAKT 1 / FAKT 2
+  from the queue cohort (insightsRepository), Meta through the reklama
+  repository, everything else and the plans from its own. See rnpService.ts.
+*/
+export const rnpService = new RnpService(insightsRepository, new RnpRepository(prisma), reklamaRepository)
 /*
   «Lid kogortasi» (a tab of «Lidlar» since 2026-09-25) — arrival → distribution of routed leads. See leadCohortService.ts.
 */
