@@ -134,6 +134,13 @@ export interface CampaignDto {
   readonly lastActive: string | null
 }
 
+export interface SideColumnDto {
+  readonly key: 'hr' | 'kosmetika'
+  readonly name: string
+  readonly totalUsd: number
+  readonly days: readonly { readonly date: string; readonly spendUsd: number }[]
+}
+
 export interface ReklamaOverviewDto {
   readonly importedAt: string | null
   readonly window: { readonly from: string; readonly to: string }
@@ -142,4 +149,5 @@ export interface ReklamaOverviewDto {
   readonly form: FormBlockDto
   readonly quality: QualityBlockDto
   readonly campaigns: readonly CampaignDto[]
+  readonly side: readonly SideColumnDto[]
 }

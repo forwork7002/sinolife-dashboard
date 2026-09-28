@@ -77,16 +77,22 @@ describe('leadBucket — the lead-quality sheet, from the Регистрация
 
 describe('campaignChannel — which sheet a campaign belongs on', () => {
   it('puts lead-form campaigns on «Отчёт Т» and message campaigns on «DM»', () => {
-    expect(campaignChannel('OUTCOME_LEADS', '10/08 B')).toBe('form')
-    expect(campaignChannel('OUTCOME_ENGAGEMENT', 'Sms-021')).toBe('dm')
+    expect(campaignChannel('OUTCOME_LEADS', '10/08 B', '990016692137088')).toBe('form')
+    expect(campaignChannel('OUTCOME_ENGAGEMENT', 'Sms-021', '990016692137088')).toBe('dm')
   })
 
   it('keeps the hiring DM campaign off both — the 7.4 $ gap on 01.08', () => {
-    expect(campaignChannel('OUTCOME_ENGAGEMENT', 'EX - Sinolife (vakansiya) - DM - 23.04')).toBe('hiring')
+    expect(campaignChannel('OUTCOME_ENGAGEMENT', 'EX - Sinolife (vakansiya) - DM - 23.04', '714191238260025')).toBe(
+      'hiring',
+    )
+  })
+
+  it('files every campaign on HR Eldor as hiring, whatever it is called', () => {
+    expect(campaignChannel('OUTCOME_LEADS', 'IF - 28.09', '1657709689205277')).toBe('hiring')
   })
 
   it('files any other objective as other, so it is still counted in the total', () => {
-    expect(campaignChannel('OUTCOME_TRAFFIC', 'x')).toBe('other')
+    expect(campaignChannel('OUTCOME_TRAFFIC', 'x', '990016692137088')).toBe('other')
   })
 })
 
@@ -149,6 +155,63 @@ describe('reklamaOverview', () => {
     )
     expect(out.dm.total.spendUsd).toBe(10)
     expect(out.spend).toEqual({ totalUsd: 111.5, formUsd: 93.1, dmUsd: 10, hiringUsd: 7.4, otherUsd: 1 })
+  })
+
+  it('builds the side table — HR from every hiring campaign, Kosmetika from its own account', () => {
+    const out = build(
+      [],
+      [
+        campaign({ campaignName: 'EX - Sinolife (vakansiya) - DM - 23.04', spendMicroUsd: 10_770_000n }),
+        campaign({
+          date: '2026-08-02',
+          accountId: '1657709689205277',
+          accountName: 'HR Eldor',
+          objective: 'OUTCOME_LEADS',
+          campaignName: 'IF - 28.09',
+          spendMicroUsd: 11_000_000n,
+        }),
+        campaign({
+          date: '2026-08-02',
+          accountId: '517245084208402',
+          accountName: 'Kosmetika Eldor',
+          objective: 'OUTCOME_LEADS',
+          campaignName: 'EX - TOF - Lipss - IF - 26.09',
+          spendMicroUsd: 5_760_000n,
+        }),
+        campaign({
+          date: '2026-08-02',
+          accountId: '517245084208402',
+          accountName: 'Kosmetika Eldor',
+          campaignName: 'Vakansiya — new 18:09',
+          spendMicroUsd: 2_000_000n,
+        }),
+        campaign({ spendMicroUsd: 50_000_000n }),
+      ],
+    )
+    expect(out.side).toEqual([
+      {
+        key: 'hr',
+        name: 'HR',
+        totalUsd: 23.77,
+        days: [
+          { date: '2026-08-01', spendUsd: 10.77 },
+          { date: '2026-08-02', spendUsd: 13 },
+        ],
+      },
+      {
+        key: 'kosmetika',
+        name: 'Kosmetika',
+        totalUsd: 5.76,
+        days: [
+          { date: '2026-08-01', spendUsd: 0 },
+          { date: '2026-08-02', spendUsd: 5.76 },
+        ],
+      },
+    ])
+    // Kosmetika's lead form stays in «Отчёт Т» under «Boshqa»; HR money leaves both sheets.
+    expect(out.form.owners.find((o) => o.key === 'Boshqa|Элдор')!.total.spendUsd).toBe(5.76)
+    expect(out.spend.hiringUsd).toBe(23.77)
+    expect(out.dm.total.spendUsd).toBe(50)
   })
 
   it('reports an unmapped account\'s DM money as unattributed instead of guessing a page', () => {

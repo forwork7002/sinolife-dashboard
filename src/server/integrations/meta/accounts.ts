@@ -60,6 +60,16 @@ export const META_ACCOUNT_OWNERS: Readonly<Record<string, MetaAccountOwner>> = O
     spends nothing; named now so its first dollar lands on its own row.
   */
   '4016900891780426': { product: 'Collagen', targetolog: 'AI targetolog' }, // Collagen AI targetolog
+  /*
+    Eldor's two accounts outside Collagen and Zextra, asked for on 2026-09-28
+    («HR Eldor … kosmetika eldor shu larni tortaan … hr jadvalcha»). Neither
+    is a product page's money: HR Eldor recruits staff, Kosmetika Eldor sells
+    cosmetics. Each gets a narrow column of its own beside the ad sheets
+    (`SIDE_COLUMNS`); a Kosmetika lead-form campaign still counts in «Отчёт
+    Т» under «Boshqa», so no dollar leaves the totals.
+  */
+  '1657709689205277': { product: 'Boshqa', targetolog: 'Элдор' }, // HR Eldor
+  '517245084208402': { product: 'Boshqa', targetolog: 'Элдор' }, // Kosmetika Eldor
 })
 
 export function ownerOf(accountId: string, accountName: string): MetaAccountOwner {
@@ -92,8 +102,11 @@ export type CampaignChannel = 'form' | 'dm' | 'hiring' | 'other'
 
 const HIRING = /vakans|вакан|ishga\s+olish|\bhr\b/i
 
-export function campaignChannel(objective: string, name: string): CampaignChannel {
-  if (HIRING.test(name)) return 'hiring'
+/** Accounts that only ever recruit — every campaign on them is hiring, whatever its name. */
+const HIRING_ACCOUNTS: ReadonlySet<string> = new Set(['1657709689205277']) // HR Eldor
+
+export function campaignChannel(objective: string, name: string, accountId: string): CampaignChannel {
+  if (HIRING_ACCOUNTS.has(accountId) || HIRING.test(name)) return 'hiring'
   if (objective === 'OUTCOME_LEADS' || objective === 'LEAD_GENERATION') return 'form'
   if (objective === 'OUTCOME_ENGAGEMENT' || objective === 'MESSAGES') return 'dm'
   return 'other'
@@ -113,3 +126,24 @@ export const DM_PAGE_OF_PRODUCT: Readonly<Record<TargetProduct, string>> = Objec
   Collagen: 'UC_1X1J24', // sinolifeuz
   Zextra: 'UC_A8LE21', // zextrauzb
 })
+
+/**
+ * The narrow columns set beside the ad sheets — the client's own side table
+ * («Сентябрь 269,0$ / Навой HR», one row a day). Checked 2026-09-28: the
+ * sheet's «Навой HR» 02–18.09 is «EX - Sinolife (vakansiya) - DM - 23.04» on
+ * Sinolife family Eldor to within a dollar a day (169,7 $ both); 21–26.09
+ * (100 $) is on no account the Meta MCP could read that day — HR Eldor had
+ * never spent.
+ *
+ *   hr        — every hiring campaign on any account (`campaignChannel`).
+ *   kosmetika — Kosmetika Eldor's other campaigns; its «Vakansiya» ones are HR.
+ */
+export type SideColumn = 'hr' | 'kosmetika'
+
+const KOSMETIKA_ACCOUNTS: ReadonlySet<string> = new Set(['517245084208402']) // Kosmetika Eldor
+
+export function sideColumn(channel: CampaignChannel, accountId: string): SideColumn | null {
+  if (channel === 'hiring') return 'hr'
+  if (KOSMETIKA_ACCOUNTS.has(accountId)) return 'kosmetika'
+  return null
+}

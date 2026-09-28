@@ -19,6 +19,7 @@ import { FormSection } from './FormSection'
 import { QualitySection } from './QualitySection'
 import type { ReklamaOverviewDto } from './reklamaApi'
 import { type Status, UsdTile } from './reklamaUi'
+import { SideSection } from './SideSection'
 
 /**
  * «Reklama samarasi» — the client's own ad sheets, without anybody typing them.
@@ -75,10 +76,18 @@ export function ReklamaPage() {
         ) : (
           <>
             <Tiles data={data} status={status} />
-            <DmSection dm={data?.dm} status={status} />
-            <FormSection form={data?.form} status={status} />
-            <QualitySection quality={data?.quality} status={status} />
-            <CampaignSection campaigns={data?.campaigns} status={status} />
+            {/* The HR · Kosmetika table sits beside the sheets on a wide screen, above them on a phone. */}
+            <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-start">
+              <aside className="min-w-0 xl:sticky xl:top-0 xl:col-start-2 xl:row-start-1">
+                <SideSection side={data?.side} status={status} />
+              </aside>
+              <div className="flex min-w-0 flex-col gap-6 xl:col-start-1 xl:row-start-1">
+                <DmSection dm={data?.dm} status={status} />
+                <FormSection form={data?.form} status={status} />
+                <QualitySection quality={data?.quality} status={status} />
+                <CampaignSection campaigns={data?.campaigns} status={status} />
+              </div>
+            </div>
           </>
         )}
       </div>

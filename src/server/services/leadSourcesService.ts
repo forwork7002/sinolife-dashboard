@@ -293,7 +293,7 @@ export function leadSourcesOverview(input: {
 
   // --- Meta: lead-form campaigns only, onto the owner their account maps to
   for (const row of input.campaigns) {
-    if (campaignChannel(row.objective, row.campaignName) !== 'form') continue
+    if (campaignChannel(row.objective, row.campaignName, row.accountId) !== 'form') continue
     const owner = ownerOf(row.accountId, row.accountName)
     const acc = ownerAcc({ key: `${owner.product}|${owner.targetolog}`, ...owner })
     acc.accounts.add(row.accountName)

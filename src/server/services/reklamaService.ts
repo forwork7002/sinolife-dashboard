@@ -28,8 +28,10 @@ import {
   type CampaignChannel,
   DM_PAGE_OF_PRODUCT,
   type MetaProduct,
+  type SideColumn,
   campaignChannel,
   ownerOf,
+  sideColumn,
 } from '@/server/integrations/meta/accounts'
 import { LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
@@ -194,6 +196,17 @@ export interface CampaignDto {
   readonly lastActive: string | null
 }
 
+/**
+ * A narrow side column — the client's «Навой HR» table: the month's dollars
+ * at the head, then one row a day. See `sideColumn`.
+ */
+export interface SideColumnDto {
+  readonly key: SideColumn
+  readonly name: string
+  readonly totalUsd: number
+  readonly days: readonly { readonly date: string; readonly spendUsd: number }[]
+}
+
 export interface ReklamaOverviewDto {
   /** When Meta's campaign grain was last read; null means never. */
   readonly importedAt: string | null
@@ -204,6 +217,8 @@ export interface ReklamaOverviewDto {
   readonly quality: QualityBlockDto
   /** Every campaign that spent in the window, biggest first. */
   readonly campaigns: readonly CampaignDto[]
+  /** HR, then Kosmetika — always both, so the side table never changes shape. */
+  readonly side: readonly SideColumnDto[]
 }
 
 // ---------------------------------------------------------------------------
@@ -315,6 +330,8 @@ const asForm = (a: FormAcc) => ({ spendMicroUsd: a.spend, leads: a.leads, impres
 
 const PRODUCT_ORDER: readonly MetaProduct[] = ['Collagen', 'Zextra', 'Boshqa']
 
+const SIDE_NAMES: Readonly<Record<SideColumn, string>> = { hr: 'HR', kosmetika: 'Kosmetika' }
+
 /**
  * The whole screen from the two ledgers' rows. Exported for its test.
  *
@@ -371,11 +388,15 @@ export function reklamaOverview(input: {
     days: Map<string, FormAcc>
   }
   const owners = new Map<string, OwnerAcc>()
+  const side: Record<SideColumn, Map<string, bigint>> = { hr: new Map(), kosmetika: new Map() }
 
   for (const row of input.campaignRows) {
-    const channel = campaignChannel(row.objective, row.campaignName)
+    const channel = campaignChannel(row.objective, row.campaignName, row.accountId)
     split[channel] += row.spendMicroUsd
     const owner = ownerOf(row.accountId, row.accountName)
+
+    const column = sideColumn(channel, row.accountId)
+    if (column !== null) side[column].set(row.date, (side[column].get(row.date) ?? 0n) + row.spendMicroUsd)
 
     if (channel === 'dm') {
       const page = owner.product === 'Boshqa' ? undefined : dmPageOf.get(owner.product)
@@ -474,7 +495,7 @@ export function reklamaOverview(input: {
       byCampaign.get(row.campaignId) ??
       ({
         row,
-        channel: campaignChannel(row.objective, row.campaignName),
+        channel: campaignChannel(row.objective, row.campaignName, row.accountId),
         total: formZero(),
         conversations: 0,
         days: new Set<string>(),
@@ -572,6 +593,15 @@ export function reklamaOverview(input: {
         .sort((a, b) => b.leads - a.leads || a.stage.localeCompare(b.stage, 'ru')),
     },
     campaigns,
+    side: (Object.keys(SIDE_NAMES) as SideColumn[]).map((key) => {
+      const byDay = side[key]
+      return {
+        key,
+        name: SIDE_NAMES[key],
+        totalUsd: usd(days.reduce((n, date) => n + (byDay.get(date) ?? 0n), 0n)),
+        days: days.map((date) => ({ date, spendUsd: usd(byDay.get(date) ?? 0n) })),
+      }
+    }),
   }
 }
 
