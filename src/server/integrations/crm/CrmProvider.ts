@@ -27,7 +27,6 @@ import type {
   PaymentMethodValue,
   PipelineRoleValue,
   StageCategoryValue,
-  SyncEntityValue,
 } from '@/server/domain/types'
 
 // ---------------------------------------------------------------------------
@@ -324,13 +323,6 @@ export interface ProviderCapabilities {
   readonly [entity: string]: boolean
 }
 
-export function supports(
-  capabilities: ProviderCapabilities,
-  entity: SyncEntityValue,
-): boolean {
-  return capabilities[entity] === true
-}
-
 export type ProviderHealth =
   | { readonly ok: true; readonly detail: string }
   | { readonly ok: false; readonly detail: string }
@@ -367,5 +359,3 @@ export interface CrmProvider {
   fetchStores(options?: FetchOptions): Promise<Page<RawStore>>
   fetchStockLevels(options?: FetchOptions): Promise<Page<RawStockLevel>>
 }
-
-export const EMPTY_PAGE: Page<never> = Object.freeze({ items: Object.freeze([]) })

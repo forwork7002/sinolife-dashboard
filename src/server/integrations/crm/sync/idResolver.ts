@@ -55,26 +55,6 @@ export class IdResolver {
     return map
   }
 
-  /**
-   * Resolve one reference, or throw.
-   *
-   * Throwing is intentional: the sync engine isolates the failing record,
-   * counts it, and marks the run PARTIAL so the gap is visible.
-   */
-  async require(entity: Entity, externalId: string): Promise<string> {
-    const map = await this.map(entity)
-    const id = map.get(externalId)
-
-    if (!id) {
-      throw new Error(
-        `Unresolved ${entity} reference "${externalId}" from ${this.source}. ` +
-          `Sync ${entity} before the entity that references it.`,
-      )
-    }
-
-    return id
-  }
-
   /** Resolve an optional reference. Absent input yields undefined, not an error. */
   async optional(entity: Entity, externalId?: string): Promise<string | undefined> {
     if (!externalId) return undefined
