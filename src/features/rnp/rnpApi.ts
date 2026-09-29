@@ -2,8 +2,7 @@
  * «RNP jadvali» — the wire shapes, restated for the client.
  *
  * Mirrors the DTOs of `src/server/domain/rnp/rnpSheet.ts`, and the bodies of
- * `src/app/api/v1/rnp/plans/route.ts`, `…/inputs/route.ts` and
- * `…/registrars/route.ts`.
+ * `src/app/api/v1/rnp/plans/route.ts` and `…/registrars/route.ts`.
  * Nothing checks the mirror — edit both sides.
  */
 
@@ -39,10 +38,11 @@ export interface RnpRowDto {
   /** What the plan form writes for this row; null when nothing is planned. */
   readonly planKey: RnpPlanKey | null
   /**
-   * What a typed day cell of this row is stored under; null when every cell
-   * comes from Bitrix24 or Meta. A typed cell overrides Bitrix24 for its day.
+   * Where this row sits on the client's «РНП» sheet — its row number and its
+   * label there. «Jadvaldagidek» shows only the rows that have one, in that
+   * order, under that label; null = a dashboard addition.
    */
-  readonly inputKey: RnpPlanKey | null
+  readonly sheet: RnpSheetRef | null
   /** This row's share of its column's total, in percent (the «Свод»). */
   readonly share: number | null
   readonly tone: 'total' | 'plain'
@@ -52,17 +52,12 @@ export interface RnpRowDto {
   readonly reliableFrom: string | null
 }
 
-export type RnpBlockKind =
-  | 'marketing'
-  | 'social'
-  | 'registration'
-  | 'team'
-  | 'company'
-  | 'warehouse'
-  | 'logistics'
-  | 'hr'
-  | 'summary'
-  | 'project'
+export interface RnpSheetRef {
+  readonly row: number
+  readonly label: string
+}
+
+export type RnpBlockKind = 'marketing' | 'registration' | 'team' | 'company' | 'warehouse' | 'logistics' | 'project' | 'summary'
 
 export interface RnpBlockDto {
   readonly id: string
@@ -71,6 +66,8 @@ export interface RnpBlockDto {
   readonly subtitle: string | null
   /** The ROP team the block is about; null for a company block. */
   readonly team: string | null
+  /** The block's first row on the sheet and its title there; null = not on the sheet. */
+  readonly sheet: RnpSheetRef | null
   readonly rows: readonly RnpRowDto[]
 }
 
@@ -132,14 +129,6 @@ export interface SaveRnpPlansBody {
   readonly month: string
   readonly rows: readonly { team: string; metric: string; fromDay: number; value: number | null }[]
   readonly fakt: readonly { rop: string; fakt1: number | null; fakt2: number | null }[]
-}
-
-/**
- * What a typed day cell posts to `/rnp/inputs`: the figure in the row's own
- * unit, up to two decimals, may be negative. Null clears the cell.
- */
-export interface SaveRnpInputsBody {
-  readonly rows: readonly { day: string; team: string; metric: string; value: number | null }[]
 }
 
 /** What the registrar → «guruh» form posts to `/rnp/registrars`: changed rows only; null takes the registrar out of every group. */

@@ -1,16 +1,16 @@
 'use client'
 
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { type CSSProperties, type ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { type ReactNode, memo, useId, useMemo, useState } from 'react'
 
 import { Card } from '@/components/ui/Card'
-import { ChevronDownGlyph, PencilGlyph } from '@/components/ui/Icons'
+import { ChevronDownGlyph } from '@/components/ui/Icons'
 import { InfoTip } from '@/components/ui/Tooltip'
-import { apiWrite } from '@/lib/api'
 import { formatCompactUzs, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
-import type { RnpBlockDto, RnpPlanKey, RnpRowDto, RnpUnit, SaveRnpInputsBody } from './rnpApi'
-import { type RnpTone, dayMonth, dayTone, indexTone, isSunday, weekday } from './rnpDerive'
+import type { RnpBlockDto, RnpRowDto, RnpUnit } from './rnpApi'
+import { ColumnResizer } from './RnpColumnResizer'
+import { type RnpColumnKind, widthCss } from './rnpColumnWidths'
+import { type RnpTone, TONE_COLOR, dayMonth, dayTone, indexTone, isSunday, weekday } from './rnpDerive'
 import { TableCard, muted } from '@/features/reklama/reklamaUi'
 
 /**
@@ -32,40 +32,28 @@ import { TableCard, muted } from '@/features/reklama/reklamaUi'
  *
  * `collapsible` turns the heading into a disclosure button; the grid is not
  * rendered at all while closed, and the one-line `summary` stands in for it.
- *
- * TYPED ROWS. A row with an `inputKey` is (partly) typed by a person — the
- * followers, the HR funnel, a ROP's early leads and headcount — and wears a
- * pencil beside its label for everybody. With `canEdit` (the page's
- * `canEditPlans`) each of its days that has begun is edited IN PLACE: the
- * cell becomes a number field of the column's own width, Enter or leaving it
- * saves only a changed figure, Escape gives up, Tab saves and opens the next
- * day. An emptied field clears the cell. Days still to come stay read-only.
  */
 export function RnpBlockTable({
   block,
   days,
   today,
-  canEdit = false,
   collapsible,
 }: {
   block: RnpBlockDto
   days: readonly string[]
   today: string
-  /** Whether typed rows may be edited here — the page's `canEditPlans`. */
-  canEdit?: boolean
   collapsible?: { readonly summary: ReactNode; readonly defaultOpen?: boolean }
 }) {
-  const grid = <Grid block={block} days={days} today={today} canEdit={canEdit} />
   if (collapsible) {
     return (
       <Collapsible block={block} summary={collapsible.summary} defaultOpen={collapsible.defaultOpen ?? false}>
-        {grid}
+        <Grid block={block} days={days} today={today} />
       </Collapsible>
     )
   }
   return (
     <TableCard title={block.title} hint={block.subtitle ?? undefined}>
-      {grid}
+      <Grid block={block} days={days} today={today} />
     </TableCard>
   )
 }
@@ -132,42 +120,83 @@ function Collapsible({
   )
 }
 
-function Grid({
-  block,
-  days,
-  today,
-  canEdit,
-}: {
-  block: RnpBlockDto
-  days: readonly string[]
-  today: string
-  canEdit: boolean
-}) {
+/**
+ * THE GRID, 2026-09-29 («professional, tushunarli, rangli … raqamlar kattaroq,
+ * har bir ustunni kengaytirish mumkin boʻlsin»).
+ *
+ * `table-layout: fixed` over a `<colgroup>` whose widths are CSS variables set
+ * once on the page (`RnpColumnScope`), and the table as wide as its columns
+ * summed — never `width: 100%`, which would hand the spare width out unevenly
+ * and knock «Fakt» in one block out of line with «Fakt» in the next. Every
+ * header cell carries a `ColumnResizer` on its right edge; all the day
+ * columns share one width (`rnpColumnWidths.ts` says why).
+ *
+ * Colour is tokens only, and each tint is a `color-mix` against transparent
+ * or against the surface, so the light and the dark palette both carry it:
+ * the summary columns (C…F) sit on a faint accent band with an accent-washed
+ * header, a stronger rule divides them from the days, today is the accent
+ * with a rule down both sides, a total row is washed and ruled on top, and
+ * the index is a pill in its status colour.
+ *
+ * Memoised on the block object: a re-render of the page that keeps the same
+ * payload (a width reset, the view switch's own state) skips the grids. A
+ * refetch hands in new objects, so every grid redraws then.
+ */
+const Grid = memo(function Grid({ block, days, today }: { block: RnpBlockDto; days: readonly string[]; today: string }) {
   // The divider on the pinned column is drawn only once the days have moved.
   const [scrolledX, setScrolledX] = useState(false)
   const withShare = block.rows.some((r) => r.share !== null)
+  const summary = useMemo(() => SUMMARY.filter((c) => withShare || c.key !== 'share'), [withShare])
   const edge = `tcol-sticky is-edge${scrolledX ? ' is-scrolled-x' : ''}`
+  const width = useMemo(
+    () => `calc(${[widthCss('label'), ...summary.map((c) => widthCss(c.key))].join(' + ')} + ${days.length} * ${widthCss('day')})`,
+    [summary, days.length],
+  )
 
   return (
     <div
+      data-rnp-grid=""
       className="relative max-h-[min(72vh,46rem)] overflow-auto pb-3"
       onScroll={(e) => {
         const next = e.currentTarget.scrollLeft > 0
         if (next !== scrolledX) setScrolledX(next)
       }}
     >
-      <table className="w-full border-collapse text-sm">
+      <table className="table-fixed border-collapse text-[13px] sm:text-sm" style={{ width }}>
+        <colgroup>
+          <col style={{ width: widthCss('label') }} />
+          {summary.map((c) => (
+            <col key={c.key} style={{ width: widthCss(c.key) }} />
+          ))}
+          {days.map((d) => (
+            <col key={d} style={{ width: widthCss('day') }} />
+          ))}
+        </colgroup>
         <thead>
           <tr style={{ color: 'var(--ink-muted)' }}>
-            <th scope="col" className={`thead-sticky ${edge} py-2 pr-2 pl-5 text-left text-[11px] font-medium tracking-wide uppercase`}
+            <th
+              scope="col"
+              className={`thead-sticky ${edge} h-12 py-2 pr-3 pl-4 text-left text-[11px] font-semibold tracking-wide uppercase sm:pl-5`}
               // `.tcol-sticky` paints the card; the corner belongs to the header band.
               style={{ left: 0, background: 'var(--surface-sunken)' }}
             >
               Koʻrsatkich
+              <ColumnResizer kind="label" name="Koʻrsatkich" />
             </th>
-            {SUMMARY.filter((c) => withShare || c.key !== 'share').map((c) => (
-              <th key={c.key} scope="col" className="thead-sticky px-2 py-2 text-right text-[11px] font-medium tracking-wide whitespace-nowrap uppercase">
+            {summary.map((c, i) => (
+              <th
+                key={c.key}
+                scope="col"
+                title={c.header}
+                className="thead-sticky overflow-hidden px-3 py-2 text-right text-[11px] font-semibold tracking-wide text-ellipsis whitespace-nowrap uppercase"
+                style={{
+                  background: SUMMARY_HEAD,
+                  color: c.key === 'fact' ? 'var(--accent-ink)' : 'var(--ink-secondary)',
+                  boxShadow: i === summary.length - 1 ? DIVIDER_RIGHT : undefined,
+                }}
+              >
                 {c.header}
+                <ColumnResizer kind={c.key} name={c.header} />
               </th>
             ))}
             {days.map((d, i) => {
@@ -178,17 +207,21 @@ function Grid({
                   key={d}
                   scope="col"
                   aria-current={isToday ? 'date' : undefined}
-                  title={sunday ? 'Yakshanba' : undefined}
-                  className={`thead-sticky tabular px-2 py-2 text-right text-[11px] font-medium whitespace-nowrap ${i === days.length - 1 ? 'pr-5' : ''}`}
+                  title={isToday ? 'Bugun' : sunday ? 'Yakshanba' : undefined}
+                  className={`thead-sticky tabular overflow-hidden px-3 py-1.5 text-right whitespace-nowrap ${i === days.length - 1 ? 'pr-5' : ''}`}
                   style={
                     isToday
-                      ? { background: TODAY_HEAD, color: 'var(--ink-primary)' }
+                      ? { background: TODAY_HEAD, color: 'var(--accent-ink)', boxShadow: TODAY_HEAD_RULE }
                       : sunday
                         ? { background: SUNDAY_HEAD, color: 'var(--ink-secondary)' }
                         : undefined
                   }
                 >
-                  {Number(d.slice(8, 10))} {weekday(d)}
+                  <span className={`block text-[13px] leading-tight ${isToday ? 'font-bold' : 'font-semibold'}`} style={isToday || sunday ? undefined : { color: 'var(--ink-secondary)' }}>
+                    {Number(d.slice(8, 10))}
+                  </span>
+                  <span className="block text-[10px] leading-tight font-medium tracking-wide uppercase">{weekday(d)}</span>
+                  <ColumnResizer kind="day" name="kunlar" tabbable={i === 0} />
                 </th>
               )
             })}
@@ -196,54 +229,45 @@ function Grid({
         </thead>
         <tbody>
           {block.rows.map((row) => (
-            <Row key={row.key} row={row} days={days} today={today} withShare={withShare} edge={edge} canEdit={canEdit} />
+            <Row key={row.key} row={row} days={days} today={today} withShare={withShare} edge={edge} />
           ))}
         </tbody>
       </table>
     </div>
   )
-}
+})
 
-function Row({
+const Row = memo(function Row({
   row,
   days,
   today,
   withShare,
   edge,
-  canEdit,
 }: {
   row: RnpRowDto
   days: readonly string[]
   today: string
   withShare: boolean
   edge: string
-  canEdit: boolean
 }) {
   const total = row.tone === 'total'
+  const unreliable = row.reliableFrom ? `Bitrix24 da bu maydon ${dayMonth(row.reliableFrom)} dan toʻliq` : undefined
 
   return (
     <tr
       className={`border-t transition-colors hover:bg-[var(--surface-sunken)] ${total ? 'font-semibold' : ''}`}
-      style={{ borderColor: 'var(--border)' }}
+      style={total ? { borderColor: 'var(--border-strong)', background: TOTAL_ROW } : { borderColor: 'var(--border)' }}
     >
       <th
         scope="row"
-        className={`${edge} min-w-[10rem] max-w-[12rem] py-2 pr-2 pl-5 text-left text-[13px] leading-snug sm:max-w-[20rem] ${total ? 'font-semibold' : 'font-medium'}`}
-        style={{ left: 0, color: 'var(--ink-primary)' }}
+        title={row.label}
+        className={`${edge} py-2 pr-3 pl-4 text-left text-[13px] leading-snug break-words sm:pl-5 ${total ? 'font-semibold' : 'font-medium'}`}
+        // A total's label cell takes the row's wash, opaque, or the days would show through it.
+        style={{ left: 0, color: 'var(--ink-primary)', ...(total ? { background: TOTAL_LABEL } : {}) }}
       >
+        {total && <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px]" style={{ background: 'var(--accent)' }} />}
         <span className="inline-flex items-start gap-1">
           <span>{row.label}</span>
-          {row.inputKey !== null && (
-            <span
-              role="img"
-              aria-label={TYPED_LABEL}
-              title={TYPED_LABEL}
-              className="mt-[3px] inline-flex shrink-0"
-              style={{ color: 'var(--ink-muted)' }}
-            >
-              <PencilGlyph size={11} />
-            </span>
-          )}
           {row.hint && <InfoTip content={row.hint} label={`${row.label} — izoh`} className="-my-0.5" />}
         </span>
       </th>
@@ -251,313 +275,41 @@ function Row({
       <Cell>{full(row.dayPlan, row.unit)}</Cell>
       <Cell strong>{full(row.fact, row.unit)}</Cell>
       <Cell>{full(row.forecast, row.unit)}</Cell>
-      <Cell>{index(row.index, row.better)}</Cell>
-      {withShare && <Cell>{row.share === null ? dash : formatPercent(row.share)}</Cell>}
-      {canEdit && row.inputKey !== null ? (
-        <TypedDays row={row} inputKey={row.inputKey} days={days} today={today} />
-      ) : (
-        row.days.map((value, i) => {
-          const day = days[i] ?? ''
-          const look = dayLook(row, value, day, today, i === days.length - 1)
-          return (
-            <td key={day || i} title={look.title} className={look.className} style={look.style}>
-              {compact(value, row.unit)}
-            </td>
-          )
-        })
-      )}
-    </tr>
-  )
-}
-
-const TYPED_LABEL = 'Qoʻlda kiritiladi'
-
-/** How a day cell reads — its title, box and colours — the same whether or not it can be typed. */
-function dayLook(
-  row: RnpRowDto,
-  value: number | null,
-  day: string,
-  today: string,
-  last: boolean,
-): { title: string | undefined; className: string; style: CSSProperties } {
-  const total = row.tone === 'total'
-  const early = row.reliableFrom !== null && day < row.reliableFrom
-  const tone = dayTone(row, value, day, today)
-  return {
-    title: early
-      ? `Bitrix24 da bu maydon ${dayMonth(row.reliableFrom ?? day)} dan toʻliq`
-      : tone !== 'neutral' && row.dayPlan !== null
-        ? `Kunlik reja: ${plain(row.dayPlan, row.unit)}`
-        : undefined,
-    className: `tabular px-2 py-2 text-right whitespace-nowrap ${last ? 'pr-5' : ''}`,
-    style: {
-      color: early ? 'var(--ink-muted)' : total ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-      background: day === today ? TODAY_CELL : tone !== 'neutral' ? TINT[tone] : isSunday(day) ? SUNDAY_CELL : undefined,
-    },
-  }
-}
-
-// --- typed day cells --------------------------------------------------------
-
-type CellState =
-  | { readonly status: 'saving'; readonly value: number | null; readonly seq: number }
-  | { readonly status: 'error'; readonly message: string; readonly seq: number }
-
-interface SaveVars {
-  readonly i: number
-  readonly value: number | null
-  readonly seq: number
-  readonly body: SaveRnpInputsBody
-}
-
-/**
- * The day cells of a typed row, for somebody who may type them. One save per
- * committed cell; the figure being saved stands in the cell, faded, until the
- * sheet has been read again, so nothing flickers back to the old number. A
- * refused save puts the old number back and rings the cell in red, the
- * server's sentence in its title.
- */
-function TypedDays({
-  row,
-  inputKey,
-  days,
-  today,
-}: {
-  row: RnpRowDto
-  inputKey: RnpPlanKey
-  days: readonly string[]
-  today: string
-}) {
-  const queryClient = useQueryClient()
-  const [editing, setEditing] = useState<number | null>(null)
-  const [cells, setCells] = useState<ReadonlyMap<number, CellState>>(() => new Map())
-  const seq = useRef(0)
-  const buttons = useRef(new Map<number, HTMLButtonElement>())
-  /** A cell left by the keyboard gets the focus back; one left by a click elsewhere does not. */
-  const refocus = useRef<number | null>(null)
-
-  const put = (i: number, state: CellState | null) =>
-    setCells((prev) => {
-      const next = new Map(prev)
-      if (state === null) next.delete(i)
-      else next.set(i, state)
-      return next
-    })
-  /** Only the newest save of a cell may settle it. */
-  const settle = (i: number, at: number, state: CellState | null) =>
-    setCells((prev) => {
-      if (prev.get(i)?.seq !== at) return prev
-      const next = new Map(prev)
-      if (state === null) next.delete(i)
-      else next.set(i, state)
-      return next
-    })
-
-  const save = useMutation({
-    mutationFn: (vars: SaveVars) => apiWrite<{ saved: boolean }>('POST', '/rnp/inputs', vars.body),
-    onMutate: (vars) => put(vars.i, { status: 'saving', value: vars.value, seq: vars.seq }),
-    onSuccess: async (_data, vars) => {
-      await queryClient.invalidateQueries({ queryKey: ['rnp-overview'] })
-      settle(vars.i, vars.seq, null)
-    },
-    onError: (error, vars) =>
-      settle(vars.i, vars.seq, {
-        status: 'error',
-        message: error instanceof Error ? error.message : 'Saqlab boʻlmadi',
-        seq: vars.seq,
-      }),
-  })
-
-  useEffect(() => {
-    if (editing !== null || refocus.current === null) return
-    buttons.current.get(refocus.current)?.focus()
-    refocus.current = null
-  }, [editing])
-
-  const open = (i: number) => {
-    const day = days[i]
-    return day !== undefined && day <= today
-  }
-
-  const commit = (i: number, text: string) => {
-    const day = days[i]
-    if (day === undefined) return
-    const value = parseCell(text)
-    if (Number.isNaN(value)) {
-      put(i, { status: 'error', message: 'Son notoʻgʻri — masalan 12, -16 yoki 3,5', seq: ++seq.current })
-      return
-    }
-    if (value === roundCell(row.days[i] ?? null)) {
-      // Nothing changed: the cell is left as it was, and a stale error with it goes.
-      if (cells.get(i)?.status === 'error') put(i, null)
-      return
-    }
-    const at = ++seq.current
-    save.mutate({ i, value, seq: at, body: { rows: [{ day, team: inputKey.team, metric: inputKey.metric, value }] } })
-  }
-
-  const finish = (i: number, text: string | null, how: 'enter' | 'escape' | 'blur' | 'next' | 'prev') => {
-    if (text !== null) commit(i, text)
-    const target = how === 'next' ? i + 1 : how === 'prev' ? i - 1 : null
-    if (target !== null && open(target)) {
-      setEditing(target)
-      return
-    }
-    if (how !== 'blur') refocus.current = i
-    setEditing(null)
-  }
-
-  return (
-    <>
+      <Cell last={!withShare}>{index(row.index, row.better)}</Cell>
+      {withShare && <Cell last>{row.share === null ? dash : formatPercent(row.share)}</Cell>}
       {row.days.map((value, i) => {
         const day = days[i] ?? ''
-        const state = cells.get(i)
-        const shown = state?.status === 'saving' ? state.value : value
-        const look = dayLook(row, shown, day, today, i === days.length - 1)
-        if (!open(i)) {
-          return (
-            <td key={day || i} title={look.title} className={look.className} style={look.style}>
-              {compact(value, row.unit)}
-            </td>
-          )
-        }
-        const where = `${row.label} · ${dayMonth(day)}`
-        const failed = state?.status === 'error' ? state.message : null
+        const early = row.reliableFrom !== null && day < row.reliableFrom
+        const tone = dayTone(row, value, day, today)
+        const isToday = day === today
         return (
           <td
             key={day || i}
-            title={failed ?? look.title}
-            aria-busy={state?.status === 'saving' || undefined}
-            // The padding moves onto the button, so the whole cell is the target and the column keeps its width.
-            className={`${look.className} relative`}
+            title={early ? unreliable : tone !== 'neutral' && row.dayPlan !== null ? `Kunlik reja: ${plain(row.dayPlan, row.unit)}` : undefined}
+            className={`tabular h-10 overflow-hidden px-3 py-1.5 text-right text-ellipsis whitespace-nowrap ${i === days.length - 1 ? 'pr-5' : ''}`}
             style={{
-              ...look.style,
-              padding: 0,
-              boxShadow: failed ? 'inset 0 0 0 1.5px var(--status-critical)' : undefined,
+              color: early ? 'var(--ink-muted)' : 'var(--ink-primary)',
+              background: isToday ? TODAY_CELL : tone !== 'neutral' ? TINT[tone] : isSunday(day) ? SUNDAY_CELL : undefined,
+              boxShadow: isToday ? TODAY_RULE : undefined,
             }}
           >
-            <button
-              type="button"
-              ref={(el) => {
-                if (el) buttons.current.set(i, el)
-                else buttons.current.delete(i)
-              }}
-              aria-label={`${where}: ${value === null ? 'boʻsh' : plainCell(value, row.unit)} — tahrirlash`}
-              // Not `disabled`: that would drop the focus the keyboard just handed back.
-              aria-disabled={state?.status === 'saving' || undefined}
-              onClick={() => {
-                if (state?.status !== 'saving') setEditing(i)
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'F2' && state?.status !== 'saving') {
-                  e.preventDefault()
-                  setEditing(i)
-                }
-              }}
-              className={`focusable tabular block w-full cursor-text px-2 py-2 text-right whitespace-nowrap transition-shadow hover:shadow-[inset_0_0_0_1px_var(--border-strong)] aria-disabled:cursor-progress ${i === days.length - 1 ? 'pr-5' : ''} ${editing === i ? 'invisible' : ''}`}
-              style={{ color: 'inherit', opacity: state?.status === 'saving' ? 0.55 : undefined }}
-            >
-              {compact(shown, row.unit)}
-            </button>
-            {editing === i && (
-              <DayInput
-                label={where}
-                initial={value === null ? '' : String(roundCell(value))}
-                onDone={(text, how) => finish(i, text, how)}
-              />
-            )}
-            {failed && (
-              <span role="alert" className="sr-only">
-                {where}: {failed}
-              </span>
-            )}
+            {compact(value, row.unit)}
           </td>
         )
       })}
-    </>
+    </tr>
   )
-}
+})
 
-/**
- * The field a typed cell becomes. Laid OVER the cell rather than in it, so the
- * column cannot change width while somebody types. The full keyboard, not the
- * decimal pad: an iPhone's decimal pad has no minus, and a subscriber saldo
- * can be negative.
- */
-function DayInput({
-  label,
-  initial,
-  onDone,
-}: {
-  label: string
-  initial: string
-  onDone: (text: string | null, how: 'enter' | 'escape' | 'blur' | 'next' | 'prev') => void
-}) {
-  const [text, setText] = useState(initial)
-  const ref = useRef<HTMLInputElement>(null)
-  // Enter, Escape and Tab unmount the field, and a browser may blur it on the way out: one ending only.
-  const done = useRef(false)
-  const end = (value: string | null, how: 'enter' | 'escape' | 'blur' | 'next' | 'prev') => {
-    if (done.current) return
-    done.current = true
-    onDone(value, how)
-  }
-
-  useEffect(() => {
-    ref.current?.focus()
-    ref.current?.select()
-  }, [])
-
-  return (
-    <input
-      ref={ref}
-      type="text"
-      autoComplete="off"
-      enterKeyHint="done"
-      aria-label={label}
-      value={text}
-      onChange={(e) => setText(e.target.value.replace(/[^\d.,\s-]/g, '').slice(0, 16))}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault()
-          end(text, 'enter')
-        } else if (e.key === 'Escape') {
-          e.preventDefault()
-          end(null, 'escape')
-        } else if (e.key === 'Tab') {
-          e.preventDefault()
-          end(text, e.shiftKey ? 'prev' : 'next')
-        }
-      }}
-      onBlur={() => end(text, 'blur')}
-      className="tabular absolute inset-0.5 w-[calc(100%-4px)] min-w-0 rounded-[var(--radius-panel-sm)] border px-1.5 text-right text-sm outline-none"
-      style={{ background: 'var(--surface-raised)', borderColor: 'var(--accent)', color: 'var(--ink-primary)' }}
-    />
-  )
-}
-
-/** A typed figure: empty is null (clear the cell); NaN is a typo, never sent. */
-export function parseCell(text: string): number | null {
-  const clean = text.replace(/\s/g, '').replace(',', '.')
-  if (clean === '') return null
-  return /^-?\d+(\.\d{1,2})?$/.test(clean) ? Number(clean) : Number.NaN
-}
-
-/** A figure as the server keeps it — two decimals — for the «changed?» test and the field. */
-function roundCell(value: number | null): number | null {
-  return value === null ? null : Math.round(value * 100) / 100
-}
-
-/** A cell's figure spoken whole — the compact form drops what a person typed. */
-function plainCell(value: number, unit: RnpUnit): string {
-  return unit === 'count' ? formatNumber(roundCell(value) ?? 0) : plain(value, unit)
-}
-
-function Cell({ children, strong = false }: { children: ReactNode; strong?: boolean }) {
+function Cell({ children, strong = false, last = false }: { children: ReactNode; strong?: boolean; last?: boolean }) {
   return (
     <td
-      className="tabular px-2 py-2 text-right whitespace-nowrap"
-      style={{ color: strong ? 'var(--ink-primary)' : 'var(--ink-secondary)' }}
+      className={`tabular h-10 overflow-hidden px-3 py-1.5 text-right text-ellipsis whitespace-nowrap ${strong ? 'font-semibold' : ''}`}
+      style={{
+        color: strong ? 'var(--ink-primary)' : 'var(--ink-secondary)',
+        background: strong ? FACT_CELL : SUMMARY_CELL,
+        boxShadow: last ? DIVIDER_RIGHT : undefined,
+      }}
     >
       {children}
     </td>
@@ -573,21 +325,35 @@ const SUMMARY = [
   { key: 'forecast', header: 'Prognoz' },
   { key: 'index', header: 'Indeks' },
   { key: 'share', header: 'Ulush' },
-] as const
+] as const satisfies readonly { key: RnpColumnKind; header: string }[]
 
-/** Today's column: the page accent, opaque in the header so rows cannot show through. */
-const TODAY_HEAD = 'color-mix(in oklab, var(--accent) 14%, var(--surface-sunken))'
-const TODAY_CELL = 'var(--accent-soft)'
+/** The summary columns' header band: the page accent over the header's own recess, opaque. */
+const SUMMARY_HEAD = 'color-mix(in oklab, var(--accent) 12%, var(--surface-sunken))'
+/** …and their cells: a whisper of the same, so C…F read as one block beside the days. */
+const SUMMARY_CELL = 'color-mix(in oklab, var(--accent) 4%, transparent)'
+const FACT_CELL = 'color-mix(in oklab, var(--accent) 8%, transparent)'
+/** The rule between the summary block and the days. A shadow, not a border: see `.tcol-sticky`. */
+const DIVIDER_RIGHT = 'inset -1px 0 0 var(--border-strong)'
+
+/** Today's column: the accent, opaque in the header so rows cannot show through, ruled down both sides. */
+const TODAY_HEAD = 'color-mix(in oklab, var(--accent) 24%, var(--surface-sunken))'
+const TODAY_HEAD_RULE = 'inset 0 -2px 0 var(--accent)'
+const TODAY_CELL = 'color-mix(in oklab, var(--accent) 13%, transparent)'
+const TODAY_RULE = 'inset 1px 0 0 var(--accent-line), inset -1px 0 0 var(--accent-line)'
 
 /** Sunday: a whisper of ink, opaque in the header for the same reason as today's. */
 const SUNDAY_HEAD = 'color-mix(in oklab, var(--ink-muted) 12%, var(--surface-sunken))'
-const SUNDAY_CELL = 'color-mix(in oklab, var(--ink-muted) 7%, transparent)'
+const SUNDAY_CELL = 'color-mix(in oklab, var(--ink-muted) 6%, transparent)'
 
-/** A day against its day plan — faint, so the figure stays the thing read. */
+/** A total row: washed with the accent and ruled on top; its pinned label cell opaque. */
+const TOTAL_ROW = 'color-mix(in oklab, var(--accent) 7%, transparent)'
+const TOTAL_LABEL = 'color-mix(in oklab, var(--accent) 7%, var(--surface-raised))'
+
+/** A day against its day plan — soft, one strength for all three, so the figure stays the thing read. */
 const TINT: Record<Exclude<RnpTone, 'neutral'>, string> = {
-  good: 'color-mix(in oklab, var(--status-good) 12%, transparent)',
-  warning: 'color-mix(in oklab, var(--status-warning) 14%, transparent)',
-  critical: 'color-mix(in oklab, var(--status-critical) 12%, transparent)',
+  good: 'color-mix(in oklab, var(--status-good) 11%, transparent)',
+  warning: 'color-mix(in oklab, var(--status-warning) 13%, transparent)',
+  critical: 'color-mix(in oklab, var(--status-critical) 11%, transparent)',
 }
 
 const dash = <span style={muted}>—</span>
@@ -639,9 +405,12 @@ function compact(value: number | null, unit: RnpUnit): ReactNode {
  */
 function index(value: number | null, better: 'up' | 'down'): ReactNode {
   if (value === null) return dash
-  const tone = `var(--status-${indexTone(value, better)})`
+  const tone = TONE_COLOR[indexTone(value, better)]
   return (
-    <span className="font-medium" style={{ color: tone }}>
+    <span
+      className="inline-block rounded-full px-2 py-0.5 text-[12px] leading-5 font-semibold sm:text-[13px]"
+      style={{ color: tone, background: `color-mix(in oklab, ${tone} 14%, transparent)` }}
+    >
       {formatPercent(value)}
     </span>
   )

@@ -65,7 +65,7 @@ function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRo
     index: null,
     days: [null, null, null],
     planKey: null,
-    inputKey: null,
+    sheet: null,
     share: null,
     tone: 'plain',
     hint: null,
@@ -90,6 +90,7 @@ const FIXTURE: RnpOverviewDto = {
       title: 'Регистрация',
       subtitle: null,
       team: null,
+      sheet: null,
       rows: [
         row({ key: 'reg:leads', label: 'Лидлар', fact: 12, days: [12, null, null] }),
         row({ key: 'reg:qualified', label: 'Квал лид', fact: 8, days: [2, 6, null] }),
@@ -102,6 +103,7 @@ const FIXTURE: RnpOverviewDto = {
       title: 'Sevinch РОП',
       subtitle: 'Sevinch Aliyeva',
       team: 'Sevinch',
+      sheet: null,
       rows: [
         row({
           key: 'team:Sevinch:conv1',
@@ -123,6 +125,7 @@ const FIXTURE: RnpOverviewDto = {
       title: 'Charos РОП — БАЗА',
       subtitle: 'Malika Rahmonova',
       team: 'Charos',
+      sheet: null,
       rows: [
         row({ key: 'team:Charos:reach', label: 'Дозвон', fact: 40, days: [40, null, null] }),
         // A БАЗА team's orders are not the leads' — the funnel leaves them out.
@@ -183,7 +186,9 @@ function chip(name: RegExp) {
   return within(rail).getByRole('button', { name })
 }
 
-describe('RnpPage', () => {
+describe('RnpPage — Kengaytirilgan', () => {
+  beforeEach(() => window.history.replaceState(null, '', '/rnp?view=full'))
+
   it('draws each block, a dash for a day with no figure, and a rate as a percent', async () => {
     await draw()
 
@@ -234,13 +239,13 @@ describe('RnpPage', () => {
   })
 
   it('opens the team a shared ?rop= link names', async () => {
-    window.history.replaceState(null, '', '/rnp?rop=Sevinch')
+    window.history.replaceState(null, '', '/rnp?view=full&rop=Sevinch')
     await draw('Sevinch РОП')
     expect(screen.queryByRole('heading', { name: 'Регистрация' })).toBeNull()
   })
 
   it('says so when the link names a team the month does not have', async () => {
-    window.history.replaceState(null, '', '/rnp?rop=Nobody')
+    window.history.replaceState(null, '', '/rnp?view=full&rop=Nobody')
     await draw()
     expect(screen.getByText(/«Nobody» jamoasi bu oyda yoʻq/)).toBeTruthy()
   })
@@ -296,6 +301,7 @@ describe('RnpPage', () => {
           title: 'Маркетинг',
           subtitle: null,
           team: null,
+          sheet: null,
           rows: [row({ key: 'meta:spend', label: 'Жами бюджет, $', unit: 'usd', planKey: { team: '', metric: 'budget' } })],
         },
         {
@@ -304,12 +310,13 @@ describe('RnpPage', () => {
           title: 'Sevinch РОП',
           subtitle: null,
           team: 'Sevinch',
+          sheet: null,
           rows: [
             fakt1('Сумма ФАКТ 1', 100_000_000),
             row({ key: 'f2', label: 'Сумма ФАКТ 2', unit: 'uzs', plan: 80_000_000, planKey: { team: 'Sevinch', metric: 'fakt2' } }),
           ],
         },
-        { id: 'summary', kind: 'summary', title: 'Свод', subtitle: null, team: null, rows: [fakt1('ФАКТ 1 · Sevinch', 100_000_000)] },
+        { id: 'summary', kind: 'summary', title: 'Свод', subtitle: null, team: null, sheet: null, rows: [fakt1('ФАКТ 1 · Sevinch', 100_000_000)] },
       ],
     }
     await draw('Маркетинг')
@@ -423,6 +430,7 @@ describe('RnpPage', () => {
           title: 'Коллаген проект',
           subtitle: null,
           team: null,
+          sheet: null,
           rows: [
             row({ key: 'pj:collagen:fakt2', label: 'Сумма ФАКТ 2 (успешка)', unit: 'uzs', fact: 12_400_000 }),
             row({ key: 'pj:collagen:cost_fact', label: 'Маркетинг харажат факт', unit: 'uzs', fact: 2_000_000 }),
@@ -438,128 +446,104 @@ describe('RnpPage', () => {
   })
 })
 
-describe('RnpPage — typed day cells', () => {
-  const SOCIAL = 'Маркетинг — ижтимоий тармоқлар'
-  const typedFixture = (canEditPlans: boolean): RnpOverviewDto => ({
+describe('RnpPage — Jadvaldagidek (the default)', () => {
+  const at = (row: number, label: string) => ({ row, label })
+  const SHEET: RnpOverviewDto = {
     ...FIXTURE,
-    canEditPlans,
     blocks: [
       {
-        id: 'social',
-        kind: 'social',
-        title: SOCIAL,
+        id: 'registration',
+        kind: 'registration',
+        title: 'Регистрация',
         subtitle: null,
         team: null,
+        sheet: at(47, 'Регистрация (жадвал)'),
         rows: [
-          row({
-            key: 'in:ig_followers_otziv',
-            label: 'Кол подпис otziv',
-            fact: 5,
-            days: [5, null, null],
-            inputKey: { team: '', metric: 'ig_followers_otziv' },
-          }),
-          row({ key: 'in:other', label: 'Bitrix qatori', fact: 3, days: [3, null, null] }),
+          // Out of order on purpose: the sheet's row number decides.
+          row({ key: 'reg:qualified', label: 'Квал лид', fact: 8, days: [2, 6, null], sheet: at(48, 'Регистрация COLLAGEN') }),
+          row({ key: 'reg:extra', label: 'Dashboard qatori', fact: 1, days: [1, null, null] }),
+          row({ key: 'reg:leads', label: 'Лидлар', fact: 12, days: [12, null, null], sheet: at(47, 'Количество лид') }),
         ],
       },
-      ...FIXTURE.blocks,
+      {
+        id: 'marketing',
+        kind: 'marketing',
+        title: 'Маркетинг',
+        subtitle: null,
+        team: null,
+        sheet: at(4, 'Маркетинг (жадвал)'),
+        rows: [row({ key: 'meta:spend', label: 'Жами бюджет, $', unit: 'usd', fact: 10, sheet: at(42, 'Бюджет') })],
+      },
+      {
+        id: 'warehouse',
+        kind: 'warehouse',
+        title: 'Склад',
+        subtitle: null,
+        team: null,
+        sheet: null,
+        rows: [row({ key: 'wh:entered', label: 'Zakaz', fact: 3, sheet: at(300, 'Заказ') })],
+      },
+      { ...FIXTURE.blocks[1]!, sheet: at(100, 'Севинч РОП'), rows: [row({ key: 'team:Sevinch:orders1', label: 'Буюртма сони (ФАКТ 1)', fact: 4, sheet: at(103, 'Буюртма сони') })] },
     ],
-  })
-
-  async function openSocial(canEditPlans: boolean) {
-    fixture = typedFixture(canEditPlans)
-    await draw(SOCIAL)
-    fireEvent.click(screen.getByRole('button', { name: SOCIAL }))
   }
 
-  const cell = (day: string) => screen.queryByRole('button', { name: new RegExp(`^Кол подпис otziv · ${day}: .* — tahrirlash$`) })
+  const headings = () => screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+  /** The row labels of the card a block heading sits in. */
+  const rowLabels = (title: string) => {
+    let card: HTMLElement | null = screen.getByRole('heading', { name: title })
+    while (card && !card.querySelector('table')) card = card.parentElement
+    return [...card!.querySelectorAll('tbody th')].map((th) => th.textContent)
+  }
 
-  it('marks a typed row for every reader, and a reader who cannot edit gets no editable cell', async () => {
-    await openSocial(false)
+  it('is the sheet: its blocks and rows in sheet order under sheet labels, nothing else', async () => {
+    fixture = SHEET
+    await draw('Регистрация (жадвал)')
 
-    expect(screen.getAllByRole('img', { name: 'Qoʻlda kiritiladi' })).toHaveLength(1)
-    // The folded header sums the Instagram follower rows.
-    expect(screen.getAllByText('Instagram obunachi 5').length).toBeGreaterThan(0)
-    expect(cell('01.09')).toBeNull()
-    expect(screen.queryAllByRole('button', { name: /tahrirlash$/ })).toHaveLength(0)
+    expect(chipGroup()).toBeNull()
+    expect(screen.queryByText('Kval lid')).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Jamoalar reytingi' })).toBeNull()
+    expect(screen.queryByRole('list', { name: 'Lid voronkasi bosqichlari' })).toBeNull()
+
+    // Block order by `sheet.row`; a block with `sheet: null` is not drawn; team blocks are.
+    expect(headings()).toEqual(['Маркетинг (жадвал)', 'Регистрация (жадвал)', 'Севинч РОП'])
+    // Open, not folded.
+    expect(screen.queryByRole('button', { name: 'Регистрация (жадвал)' })).toBeNull()
+    expect(rowLabels('Регистрация (жадвал)')).toEqual(['Количество лид', 'Регистрация COLLAGEN'])
+    expect(screen.queryByText('Dashboard qatori')).toBeNull()
+
+    const pressed = within(screen.getByRole('group', { name: 'Koʻrinish' })).getByRole('button', { name: 'Jadvaldagidek' })
+    expect(pressed.getAttribute('aria-pressed')).toBe('true')
   })
 
-  it('types a negative figure into a lived day and posts exactly that cell', async () => {
-    await openSocial(true)
+  it('switches to Kengaytirilgan, keeps it in the URL, and shows the dashboard rows there', async () => {
+    fixture = SHEET
+    await draw('Регистрация (жадвал)')
 
-    // A day still to come is not editable; today is.
-    expect(cell('03.09')).toBeNull()
-    expect(cell('02.09')).toBeTruthy()
-    // A row with no inputKey stays read-only.
-    expect(screen.queryByRole('button', { name: /^Bitrix qatori/ })).toBeNull()
-
-    fireEvent.click(cell('01.09')!)
-    const input = screen.getByRole('textbox', { name: 'Кол подпис otziv · 01.09' }) as HTMLInputElement
-    expect(input.value).toBe('5')
-    fireEvent.change(input, { target: { value: '-16' } })
     await act(async () => {
-      fireEvent.keyDown(input, { key: 'Enter' })
+      fireEvent.click(within(screen.getByRole('group', { name: 'Koʻrinish' })).getByRole('button', { name: 'Kengaytirilgan' }))
     })
+    expect(new URL(window.location.href).searchParams.get('view')).toBe('full')
+    expect(chipGroup()).toBeTruthy()
 
-    await waitFor(() => expect(posted).toHaveLength(1))
-    expect(postedTo).toEqual(['/api/v1/rnp/inputs'])
-    expect(posted[0]).toEqual({ rows: [{ day: '2026-09-01', team: '', metric: 'ig_followers_otziv', value: -16 }] })
-    expect(screen.queryByRole('textbox')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Регистрация' }))
+    expect(screen.getByText('Dashboard qatori')).toBeTruthy()
+    expect(screen.getByText('Лидлар')).toBeTruthy()
+
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole('group', { name: 'Koʻrinish' })).getByRole('button', { name: 'Jadvaldagidek' }))
+    })
+    expect(new URL(window.location.href).searchParams.has('view')).toBe(false)
   })
 
-  it('clears a cell when the field is emptied', async () => {
-    await openSocial(true)
-
-    fireEvent.click(cell('01.09')!)
-    const input = screen.getByRole('textbox', { name: 'Кол подпис otziv · 01.09' })
-    fireEvent.change(input, { target: { value: '' } })
-    await act(async () => {
-      fireEvent.keyDown(input, { key: 'Enter' })
-    })
-
-    await waitFor(() => expect(posted).toHaveLength(1))
-    expect(posted[0]).toEqual({ rows: [{ day: '2026-09-01', team: '', metric: 'ig_followers_otziv', value: null }] })
-  })
-
-  it('sends nothing for an unchanged figure or Escape, and Tab opens the next day', async () => {
-    await openSocial(true)
-
-    fireEvent.click(cell('01.09')!)
-    const first = screen.getByRole('textbox', { name: 'Кол подпис otziv · 01.09' })
-    fireEvent.change(first, { target: { value: '5,0' } })
-    await act(async () => {
-      fireEvent.keyDown(first, { key: 'Tab' })
-    })
-    const second = screen.getByRole('textbox', { name: 'Кол подпис otziv · 02.09' })
-    fireEvent.change(second, { target: { value: '7' } })
-    await act(async () => {
-      fireEvent.keyDown(second, { key: 'Escape' })
-    })
-
-    expect(screen.queryByRole('textbox')).toBeNull()
-    expect(posted).toHaveLength(0)
-  })
-
-  it('puts the old figure back and says why when the save is refused', async () => {
-    await openSocial(true)
-    const answer = vi.mocked(fetch).getMockImplementation()!
-    vi.mocked(fetch).mockImplementation(async (url, init) => {
-      if (init?.method !== 'POST') return answer(url, init)
-      return {
-        ok: false,
-        status: 403,
-        json: async () => ({ error: { code: 'FORBIDDEN', message: 'Kataklarni faqat administrator oʻzgartira oladi.' }, meta: {} }),
-      } as Response
-    })
-
-    fireEvent.click(cell('01.09')!)
-    const input = screen.getByRole('textbox', { name: 'Кол подпис otziv · 01.09' })
-    fireEvent.change(input, { target: { value: '9' } })
-    await act(async () => {
-      fireEvent.keyDown(input, { key: 'Enter' })
-    })
-
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('faqat administrator'))
-    expect(cell('01.09')!.textContent).toBe('5')
-    expect(cell('01.09')!.closest('td')!.getAttribute('title')).toBe('Kataklarni faqat administrator oʻzgartira oladi.')
+  it('opens Kengaytirilgan from a ?view=full link', async () => {
+    window.history.replaceState(null, '', '/rnp?view=full')
+    fixture = SHEET
+    await draw('Регистрация')
+    expect(chipGroup()).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Регистрация (жадвал)' })).toBeNull()
   })
 })
+
+function chipGroup() {
+  return screen.queryByRole('group', { name: 'ROP tanlash' })
+}

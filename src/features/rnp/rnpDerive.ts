@@ -216,3 +216,28 @@ export function dayTone(row: RnpRowDto, value: number | null, day: string, today
   if (row.reliableFrom !== null && day < row.reliableFrom) return 'neutral'
   return indexTone((value / row.dayPlan) * 100, row.better)
 }
+
+// ---------------------------------------------------------------------------
+// The sheet as the client keeps it
+// ---------------------------------------------------------------------------
+
+/**
+ * The payload as the client's «РНП» sheet lays it out: only the blocks and
+ * rows the sheet has, in its row order, under its own labels. Everything
+ * with `sheet: null` is a dashboard addition and waits for «Kengaytirilgan».
+ * Nothing is recomputed — a row is the same row, relabelled.
+ */
+export function sheetBlocks(data: RnpOverviewDto): RnpBlockDto[] {
+  return data.blocks
+    .flatMap((b) => (b.sheet === null ? [] : [{ block: b, at: b.sheet }]))
+    .sort((a, b) => a.at.row - b.at.row)
+    .map(({ block, at }) => ({
+      ...block,
+      title: at.label,
+      rows: block.rows
+        .flatMap((r) => (r.sheet === null ? [] : [{ row: r, at: r.sheet }]))
+        .sort((a, b) => a.at.row - b.at.row)
+        .map(({ row, at: rowAt }) => ({ ...row, label: rowAt.label })),
+    }))
+    .filter((b) => b.rows.length > 0)
+}

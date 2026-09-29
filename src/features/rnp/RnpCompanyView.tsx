@@ -33,7 +33,7 @@ export function RnpCompanyView({
   const cac = row('meta:cac')
   const qualifiedPct = row('reg:qualified_pct')
   const orders2 = row('co:orders2')
-  // In the server's order, which is the sheet's: «ижтимоий тармоқлар» before «Маркетинг», HR just before the «Свод», the brand projects after it.
+  // In the server's order, which is the sheet's: the «Свод», then the brand projects.
   const sections = data.blocks.filter((b) => b.team === null && b.kind !== 'team')
 
   return (
@@ -79,14 +79,7 @@ export function RnpCompanyView({
             hint={`Mijozning «РНП» jadvali, blokma-blok. Prognoz — oxirgi toʻliq kungacha boʻlgan fakt ÷ ${data.elapsedDays} kun × ${data.days.length} kun; nisbatlar yigʻindilar nisbati.`}
           />
           {sections.map((b) => (
-            <RnpBlockTable
-              key={b.id}
-              block={b}
-              days={data.days}
-              today={data.today}
-              canEdit={data.canEditPlans}
-              collapsible={{ summary: summaryOf(b) }}
-            />
+            <RnpBlockTable key={b.id} block={b} days={data.days} today={data.today} collapsible={{ summary: summaryOf(b) }} />
           ))}
         </section>
       )}
@@ -126,10 +119,6 @@ const SUMMARY: Record<string, readonly (readonly [string, string])[]> = {
     ['lg:refused_pct', 'Отказ'],
     ['lg:open_pct', 'Jarayonda'],
   ],
-  hr: [
-    ['in:hr_applications', 'Мурожаат'],
-    ['in:hr_hired', 'Ишга олинган'],
-  ],
   summary: [
     ['sv:fakt1', 'FAKT 1'],
     ['sv:fakt2', 'FAKT 2'],
@@ -137,7 +126,6 @@ const SUMMARY: Record<string, readonly (readonly [string, string])[]> = {
 }
 
 function summaryOf(block: RnpBlockDto): string {
-  if (block.id === 'social') return socialSummary(block)
   const parts = (block.kind === 'project' ? projectSummary(block) : (SUMMARY[block.id] ?? []))
     .map(([key, label]) => {
       const r = block.rows.find((x) => x.key === key)
@@ -157,17 +145,6 @@ function projectSummary(block: RnpBlockDto): readonly (readonly [string, string]
     [`${k}:cost_fact`, 'Маркетинг харажат'],
     [`${k}:cac`, 'CAC'],
   ]
-}
-
-/**
- * The social block folded: the month's Instagram follower gain, every
- * account's typed «Кол подпис» row summed. Nobody typed any — the rows count.
- */
-function socialSummary(block: RnpBlockDto): string {
-  const followers = block.rows.filter((r) => r.inputKey?.metric.startsWith('ig_followers') && r.fact !== null)
-  if (followers.length === 0) return `${formatNumber(block.rows.length)} ta koʻrsatkich`
-  const total = followers.reduce((s, r) => s + (r.fact ?? 0), 0)
-  return `Instagram obunachi ${formatNumber(Math.round(total))}`
 }
 
 /** Skeleton of the company view, card for card. */

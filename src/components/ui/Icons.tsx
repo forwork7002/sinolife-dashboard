@@ -319,16 +319,6 @@ export function TrashGlyph(props: GlyphProps) {
   )
 }
 
-/** Typed in by a person, not measured. A pencil, for «qoʻlda» rows. */
-export function PencilGlyph(props: GlyphProps) {
-  return (
-    <Glyph {...props}>
-      <path d="M15.5 5.5 18.5 8.5 8.5 18.5 4.8 19.2 5.5 15.5Z" {...mark} />
-      <path d="M13.3 7.7 16.3 10.7" {...mark} />
-    </Glyph>
-  )
-}
-
 /**
  * A bell, for work that is waiting.
  *

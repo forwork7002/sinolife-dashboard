@@ -126,8 +126,8 @@ export function RnpTeamView({
         </ChartCard>
       </div>
 
-      {block && <RnpBlockTable block={block} days={data.days} today={data.today} canEdit={data.canEditPlans} />}
-      {logistics && <RnpBlockTable block={logistics} days={data.days} today={data.today} canEdit={data.canEditPlans} />}
+      {block && <RnpBlockTable block={block} days={data.days} today={data.today} />}
+      {logistics && <RnpBlockTable block={logistics} days={data.days} today={data.today} />}
     </div>
   )
 }
