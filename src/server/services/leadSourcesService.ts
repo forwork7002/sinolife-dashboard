@@ -24,7 +24,14 @@
 
 import { LEAD_SOURCE_VOCABULARY, TARGET_SOURCE_PRODUCT } from '@/server/integrations/crm/bitrix24/mapping'
 import { type MetaProduct, campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
-import { type LeadChannel, LEAD_CHANNELS, formNameOf, formOwner, leadChannel } from '@/server/domain/leads/leadSources'
+import {
+  type LeadChannel,
+  LEAD_CHANNELS,
+  formNameOf,
+  formOwner,
+  leadChannel,
+  nonAdTotal,
+} from '@/server/domain/leads/leadSources'
 import { LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
 import type { TargetProduct } from '@/server/domain/types'
@@ -116,6 +123,11 @@ export interface LeadSourcesOverviewDto {
     readonly registration: LeadOutcomeDto
     /** Of those, the ad leads: forms plus the ad pages. */
     readonly ads: LeadOutcomeDto
+    /**
+     * The leads nobody paid for: Ген лид by hand, incoming calls, Telegram,
+     * SMM and the rest (`NON_AD_CHANNELS`). Not «Исход» — see there.
+     */
+    readonly nonAd: LeadOutcomeDto
     /** «ИИ обработка» deals — Instagram conversations. */
     readonly conversations: number
     readonly metaFormLeads: number
@@ -135,6 +147,7 @@ export interface LeadSourcesOverviewDto {
     readonly conversations: number
     readonly outcome: LeadOutcomeDto
   }
+  /** Every channel of `LEAD_CHANNELS`, in its order — a channel with no leads is there at zero. */
   readonly channels: readonly { readonly channel: LeadChannel; readonly outcome: LeadOutcomeDto }[]
   readonly sources: readonly SourceRowDto[]
 }
@@ -389,6 +402,7 @@ export function leadSourcesOverview(input: {
     totals: {
       registration: outcomeCells(registration),
       ads: outcomeCells(ads),
+      nonAd: outcomeCells(nonAdTotal(channels, LEAD_BUCKETS)),
       conversations,
       metaFormLeads,
       formLeads,

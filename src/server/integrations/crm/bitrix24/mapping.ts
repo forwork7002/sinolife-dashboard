@@ -498,11 +498,19 @@ export const LEAD_SOURCE_BRAND: Readonly<Record<string, TargetProduct>> = Object
  *   zextra» — a customer rang in. UC_KPZA32 «Исход» — an operator's own
  *   outgoing call (2 096 deals that week). REPEAT_SALE «Ген лид» — what a
  *   Meta CRM form writes, and what operators type leads in under by hand.
+ *
+ * Telegram and SMM read off the same list on 2026-09-29, when the client
+ * asked for them as tiles of their own: UC_8NZNYM «Телеграмм», 2|TELEGRAM
+ * «Telegram - Открытая линия», UC_Z1OF0D «sinolif_tg»; UC_5JW4YK «Сммщик
+ * sinolifeuz», UC_HCZ9YU «Сммщик sinolife_sedana». The Telegram AD pages
+ * (UC_A4WINR, UC_U9KZG8) are pages above and stay so — a page wins first.
  */
 export const LEAD_SOURCE_VOCABULARY: LeadSourceVocabulary = Object.freeze({
   pages: new Set(TARGET_SOURCE_IDS),
   inbound: new Set(['CALL', 'UC_CKXAZS', 'UC_AA84D0']),
   outbound: new Set(['UC_KPZA32']),
+  telegram: new Set(['UC_8NZNYM', '2|TELEGRAM', 'UC_Z1OF0D']),
+  smm: new Set(['UC_5JW4YK', 'UC_HCZ9YU']),
   generated: 'REPEAT_SALE',
 })
 

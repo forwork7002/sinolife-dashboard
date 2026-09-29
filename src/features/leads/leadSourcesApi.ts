@@ -10,7 +10,7 @@
 import type { MetaProduct } from '@/features/target/targetApi'
 import type { TargetProduct } from '@/features/reklama/reklamaApi'
 
-export type LeadChannel = 'form' | 'page' | 'inbound' | 'outbound' | 'manual' | 'other'
+export type LeadChannel = 'form' | 'page' | 'inbound' | 'manual' | 'telegram' | 'smm' | 'other' | 'outbound'
 
 export interface LeadOutcomeDto {
   readonly leads: number
@@ -75,6 +75,8 @@ export interface LeadSourcesOverviewDto {
   readonly totals: {
     readonly registration: LeadOutcomeDto
     readonly ads: LeadOutcomeDto
+    /** inbound + manual + telegram + smm + other — not the ads, not «Исход». */
+    readonly nonAd: LeadOutcomeDto
     readonly conversations: number
     readonly metaFormLeads: number
     readonly formLeads: number

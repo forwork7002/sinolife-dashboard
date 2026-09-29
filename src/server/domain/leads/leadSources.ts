@@ -28,16 +28,47 @@
 import type { TargetProduct } from '../types'
 
 /** How a Регистрация deal reached the portal. */
-export type LeadChannel = 'form' | 'page' | 'inbound' | 'outbound' | 'manual' | 'other'
+export type LeadChannel = 'form' | 'page' | 'inbound' | 'manual' | 'telegram' | 'smm' | 'other' | 'outbound'
 
+/**
+ * In the order the screen reads them: the ad channels, then the ones nobody
+ * paid for, then «Исход» last — an operator's own call is not a lead that
+ * came in, so it stands apart from both (and from the non-ad total below).
+ */
 export const LEAD_CHANNELS: readonly LeadChannel[] = Object.freeze([
   'form',
   'page',
   'inbound',
-  'outbound',
   'manual',
+  'telegram',
+  'smm',
   'other',
+  'outbound',
 ])
+
+/**
+ * The channels «Boshqa kanallar · Jami» adds up: every lead that came in on
+ * its own. Not `form` or `page` — those are «Reklama lidlari» already — and
+ * not `outbound`: the client decided on 2026-09-29 that «Исход» gets its own
+ * tile and stays out of this total, since the operator dialled it.
+ */
+export const NON_AD_CHANNELS: readonly LeadChannel[] = Object.freeze(['inbound', 'manual', 'telegram', 'smm', 'other'])
+
+/**
+ * The non-ad total from per-channel counts, bucket by bucket. A channel
+ * missing from the map counts as zero, so the total is always whole.
+ */
+export function nonAdTotal<B extends string>(
+  byChannel: ReadonlyMap<LeadChannel, Readonly<Record<B, number>>>,
+  buckets: readonly B[],
+): Record<B, number> {
+  const total = Object.fromEntries(buckets.map((b) => [b, 0])) as Record<B, number>
+  for (const channel of NON_AD_CHANNELS) {
+    const counts = byChannel.get(channel)
+    if (counts) for (const b of buckets) total[b] += counts[b]
+  }
+  return total
+}
 
 /**
  * The portal's SOURCE_IDs by what they mean, handed in rather than imported:
@@ -51,6 +82,10 @@ export interface LeadSourceVocabulary {
   readonly inbound: ReadonlySet<string>
   /** An operator's own outgoing call opening a deal. */
   readonly outbound: ReadonlySet<string>
+  /** Telegram that is not an ad page: the bot, the open line, the brand's own channel. */
+  readonly telegram: ReadonlySet<string>
+  /** Leads the SMM managers («Сммщик») bring in from the brand's pages. */
+  readonly smm: ReadonlySet<string>
   /** «Ген лид» — what a CRM form writes, and what operators type leads under by hand. */
   readonly generated: string
 }
@@ -79,6 +114,8 @@ export function leadChannel(
   if (vocabulary.pages.has(sourceId)) return 'page'
   if (vocabulary.inbound.has(sourceId)) return 'inbound'
   if (vocabulary.outbound.has(sourceId)) return 'outbound'
+  if (vocabulary.telegram.has(sourceId)) return 'telegram'
+  if (vocabulary.smm.has(sourceId)) return 'smm'
   if (sourceId === vocabulary.generated) return 'manual'
   return 'other'
 }

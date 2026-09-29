@@ -69,6 +69,10 @@ describe('leadSourcesOverview', () => {
       reg({ sourceId: 'REPEAT_SALE', source: 'Ген лид', leads: 2 }),
       // A non-ad page that chats: its leads join its DM row.
       reg({ sourceId: 'UC_NBCV5K', source: 'collagen.sinolife', leads: 1 }),
+      // The non-ad channels of 2026-09-29: an incoming call, Telegram (one kval).
+      reg({ sourceId: 'CALL', source: 'Входящий', stage: 'Недозвон', status: 'OPEN', leads: 3 }),
+      reg({ sourceId: 'UC_8NZNYM', source: 'Телеграмм', leads: 1 }),
+      reg({ sourceId: 'UC_8NZNYM', source: 'Телеграмм', stage: 'Обработка', status: 'OPEN', leads: 1 }),
     ],
     triage: [
       triage({ conversations: 40 }),
@@ -86,7 +90,7 @@ describe('leadSourcesOverview', () => {
   })
 
   it('counts every Регистрация lead, and splits the ad ones out', () => {
-    expect(data.totals.registration.leads).toBe(19)
+    expect(data.totals.registration.leads).toBe(24)
     // forms (5) + the ad page (4); calls, «Ген лид» by hand and collagen.sinolife are not ads.
     expect(data.totals.ads.leads).toBe(9)
     expect(data.totals.ads.success).toBe(4)
@@ -94,6 +98,36 @@ describe('leadSourcesOverview', () => {
     expect(data.channels.find((c) => c.channel === 'manual')!.outcome.leads).toBe(2)
     const summed = data.sources.reduce((n, s) => n + s.outcome.leads, 0)
     expect(summed).toBe(data.totals.registration.leads)
+  })
+
+  it('carries every channel, a quiet one at zero, in LEAD_CHANNELS order', () => {
+    expect(data.channels.map((c) => c.channel)).toEqual([
+      'form',
+      'page',
+      'inbound',
+      'manual',
+      'telegram',
+      'smm',
+      'other',
+      'outbound',
+    ])
+    const smm = data.channels.find((c) => c.channel === 'smm')!.outcome
+    expect(smm.leads).toBe(0)
+    expect(smm.successPercent).toBeNull()
+    const tg = data.channels.find((c) => c.channel === 'telegram')!.outcome
+    expect(tg).toMatchObject({ leads: 2, success: 1, open: 1, successPercent: 50 })
+    expect(data.sources.find((s) => s.key === 'source|UC_8NZNYM')!.channel).toBe('telegram')
+  })
+
+  it('totals the non-ad channels without the ads and without «Исход»', () => {
+    // inbound 3 + manual 2 + telegram 2 + smm 0 + other (collagen.sinolife) 1
+    expect(data.totals.nonAd.leads).toBe(8)
+    // manual 2 WON + telegram 1 + collagen.sinolife 1
+    expect(data.totals.nonAd.success).toBe(4)
+    expect(data.totals.nonAd.noAnswer).toBe(3)
+    expect(data.totals.nonAd.successPercent).toBe(50)
+    const outbound = data.channels.find((c) => c.channel === 'outbound')!.outcome.leads
+    expect(data.totals.ads.leads + data.totals.nonAd.leads + outbound).toBe(data.totals.registration.leads)
   })
 
   it('puts the form and the Meta account on one targetolog, and reads the reach', () => {

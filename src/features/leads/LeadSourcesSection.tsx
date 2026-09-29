@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { type Column, DataTable } from '@/components/ui/DataTable'
 import { SectionHeader, StatTile } from '@/components/ui/Stat'
-import { formatDateTime, formatNumber } from '@/lib/format'
+import { NO_VALUE, formatDateTime, formatNumber, formatPercent } from '@/lib/format'
 import { PRODUCT_LABEL, PRODUCT_TONE } from '@/features/target/targetTheme'
 import {
   type DayRow,
@@ -50,15 +50,18 @@ const CHANNEL_LABEL: Readonly<Record<LeadChannel, string>> = {
   form: 'Lid-forma',
   page: 'Reklama sahifasi',
   inbound: 'Kiruvchi qoʻngʻiroq',
-  outbound: 'Chiquvchi qoʻngʻiroq',
   manual: 'Ген лид (qoʻlda)',
+  telegram: 'Telegram',
+  smm: 'Сммщик',
   other: 'Boshqa',
+  outbound: 'Исход (chiquvchi)',
 }
 
 export function LeadSourcesSection({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
   return (
     <>
       <Tiles data={data} status={status} />
+      <ChannelTiles data={data} status={status} />
       <FormsBlock data={data} status={status} />
       <DmBlock data={data} status={status} />
       <SourcesBlock data={data} status={status} />
@@ -118,6 +121,88 @@ function Tiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; sta
           {formatDateTime(data.importedAt)}.
         </p>
       )}
+    </section>
+  )
+}
+
+// --- the channels no ad paid for --------------------------------------------
+
+/** The channels «Jami» adds up (the server's `NON_AD_CHANNELS`), one tile each; «Jami» follows them. */
+const NON_AD_TILES: readonly LeadChannel[] = ['manual', 'inbound', 'telegram', 'smm', 'other']
+
+/** «N kval · X%» — a dash for the rate when the channel had no leads. */
+const kvalHint = (o: LeadOutcomeDto) =>
+  `${formatNumber(o.success)} kval · ${o.leads > 0 ? formatPercent(o.successPercent) : NO_VALUE}`
+
+/**
+ * Every lead that did not come from an ad, by channel, and their total.
+ *
+ * «Исход» is set apart on purpose: the client decided (2026-09-29) that an
+ * operator's own outgoing call is not a lead that came in, so it has its own
+ * tile and «Jami» (`totals.nonAd`, summed on the server) leaves it out.
+ * Every channel is on the wire even at zero, so a quiet channel reads 0.
+ */
+export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
+  const byChannel = new Map(data?.channels.map((c) => [c.channel, c.outcome]))
+  const outbound = byChannel.get('outbound')
+  const nonAd = data?.totals.nonAd
+
+  return (
+    <section className="flex min-w-0 flex-col gap-3" aria-labelledby="lead-channel-tiles">
+      <h2 id="lead-channel-tiles" className="eyebrow">
+        Boshqa kanallar lidlari
+      </h2>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        {NON_AD_TILES.map((channel) => {
+          const o = byChannel.get(channel)
+          return (
+            <StatTile
+              key={channel}
+              status={status}
+              label={CHANNEL_LABEL[channel]}
+              value={o?.leads ?? null}
+              unit="count"
+              hint={o ? kvalHint(o) : undefined}
+            />
+          )
+        })}
+        {/* The total wears a ring in the page's accent, so the eye finds the sum of the row. */}
+        <div
+          className="grid rounded-[var(--radius-panel)]"
+          style={{ boxShadow: '0 0 0 1.5px var(--accent-line)' }}
+          data-testid="lead-channel-total"
+        >
+          <StatTile
+            status={status}
+            label="Jami"
+            value={nonAd?.leads ?? null}
+            unit="count"
+            hint={nonAd ? kvalHint(nonAd) : undefined}
+            context={
+              <p className="text-[11px] leading-snug" style={muted}>
+                Reklama va Исход kirmaydi
+              </p>
+            }
+          />
+        </div>
+      </div>
+      {/* Its own row, two tiles wide, so it reads as apart from the sum above rather than a seventh term of it. */}
+      <div className="mt-1 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6" data-testid="lead-channel-outbound">
+        <div className="col-span-2 grid">
+          <StatTile
+            status={status}
+            label={CHANNEL_LABEL.outbound}
+            value={outbound?.leads ?? null}
+            unit="count"
+            hint={outbound ? kvalHint(outbound) : undefined}
+            context={
+              <p className="text-[11px] leading-snug" style={muted}>
+                operator oʻzi qoʻngʻiroq qilgan · Jamiga kirmaydi
+              </p>
+            }
+          />
+        </div>
+      </div>
     </section>
   )
 }
