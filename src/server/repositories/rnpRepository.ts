@@ -43,6 +43,9 @@ export interface RnpLeadDayRow {
 
 export interface RnpRegistrationDayRow {
   readonly day: string
+  /** The lead's SOURCE_ID, and the CRM form's full title when it came from one — what decides its brand. */
+  readonly sourceId: string | null
+  readonly formTitle: string | null
   /** Регистрация deals created, «Дубликат» stages excluded. */
   readonly leads: number
   readonly duplicates: number
@@ -79,6 +82,24 @@ export interface RnpPlanRow {
   readonly team: string
   readonly metric: string
   readonly fromDay: number
+  readonly valueCenti: bigint
+}
+
+export interface RnpRegistrarKvalRow {
+  readonly day: string
+  readonly registrar: string | null
+  readonly qualified: number
+}
+
+export interface RnpRegistrarGroupRow {
+  readonly registrar: string
+  readonly group: string
+}
+
+export interface RnpManualDayRow {
+  readonly day: string
+  readonly team: string
+  readonly metric: string
   readonly valueCenti: bigint
 }
 
@@ -158,10 +179,20 @@ export class RnpRepository {
 
   async registrationDays(from: string, to: string): Promise<RnpRegistrationDayRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<
-      { day: string; leads: bigint; duplicates: bigint; qualified: bigint; ai: bigint }[]
+      {
+        day: string
+        source_id: string | null
+        form_title: string | null
+        leads: bigint
+        duplicates: bigint
+        qualified: bigint
+        ai: bigint
+      }[]
     >(RnpRepository.registrationDaysSql(), from, to, this.tz)
     return rows.map((r) => ({
       day: r.day,
+      sourceId: r.source_id,
+      formTitle: r.form_title,
       leads: Number(r.leads),
       duplicates: Number(r.duplicates),
       qualified: Number(r.qualified),
@@ -184,32 +215,48 @@ export class RnpRepository {
     const day = (col: string) => `(${col} AT TIME ZONE 'UTC' AT TIME ZONE $3)::date`
     const lo = `(($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
     const hi = `(($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
+    /*
+      Grouped by source and CRM-form title as well as the day, so the P&L can
+      tell a Collagen lead from a Zextra one — the SAME scan, which is the
+      whole cost of this statement; a form's deals share one title, so the
+      rows stay a few hundred. Two arms UNIONed and summed rather than a FULL
+      JOIN: the join key would hold nulls, and a FULL JOIN will not hash on
+      IS NOT DISTINCT FROM.
+    */
+    const form = `CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END`
     return `
-      WITH created AS (
+      WITH arms AS (
         SELECT ${day('d."createdAtSource"')} AS day,
+               s."externalId" AS source_id,
+               ${form} AS form_title,
                count(*) FILTER (WHERE p."role" = 'LEAD' AND COALESCE(st."name", '') !~ '[Дд]убл') AS leads,
                count(*) FILTER (WHERE p."role" = 'LEAD' AND COALESCE(st."name", '') ~ '[Дд]убл') AS duplicates,
+               0::bigint AS qualified,
                count(*) FILTER (WHERE p."role" = 'AI_TRIAGE') AS ai
         FROM "deal" d
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" IN ('LEAD', 'AI_TRIAGE')
         LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
+        LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
         WHERE d."createdAtSource" >= ${lo} AND d."createdAtSource" < ${hi}
-        GROUP BY 1
-      ),
-      won AS (
-        SELECT ${day('d."closedAt"')} AS day, count(*) AS qualified
+        GROUP BY 1, 2, 3
+        UNION ALL
+        SELECT ${day('d."closedAt"')} AS day,
+               s."externalId" AS source_id,
+               ${form} AS form_title,
+               0, 0, count(*), 0
         FROM "deal" d
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
+        LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
         WHERE d."status" = 'WON' AND d."closedAt" >= ${lo} AND d."closedAt" < ${hi}
-        GROUP BY 1
+        GROUP BY 1, 2, 3
       )
-      SELECT COALESCE(c.day, w.day)::text AS day,
-             COALESCE(c.leads, 0)::bigint AS leads,
-             COALESCE(c.duplicates, 0)::bigint AS duplicates,
-             COALESCE(w.qualified, 0)::bigint AS qualified,
-             COALESCE(c.ai, 0)::bigint AS ai
-      FROM created c
-      FULL JOIN won w ON w.day = c.day`
+      SELECT day::text AS day, source_id, form_title,
+             sum(leads)::bigint AS leads,
+             sum(duplicates)::bigint AS duplicates,
+             sum(qualified)::bigint AS qualified,
+             sum(ai)::bigint AS ai
+      FROM arms
+      GROUP BY 1, 2, 3`
   }
 
   async callDays(from: string, to: string): Promise<RnpCallDayRow[]> {
@@ -334,6 +381,124 @@ export class RnpRepository {
       WHERE dep."isActive" AND t.rop IS NOT NULL
       ORDER BY t.rop, (e."fullName" IS NULL)`)
     return rows.map((r) => ({ rop: r.rop, head: r.head }))
+  }
+
+  /**
+   * The registrar's kval per Tashkent day: Регистрация deals (role LEAD) at
+   * «Сделка успешна», by the day they were closed, per «Регистрация» label.
+   * A WON deal the backfill has not reached yet has no registrar and is
+   * counted under null — the screen shows it, so the rows still add up to
+   * «Квал лид».
+   */
+  async registrarKvalDays(from: string, to: string): Promise<RnpRegistrarKvalRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<{ day: string; registrar: string | null; qualified: bigint }[]>(
+      RnpRepository.registrarKvalDaysSql(),
+      from,
+      to,
+      this.tz,
+    )
+    return rows.map((r) => ({ day: r.day, registrar: r.registrar, qualified: Number(r.qualified) }))
+  }
+
+  static registrarKvalDaysSql(): string {
+    return `
+      SELECT (d."closedAt" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day,
+             d."registrar",
+             count(*)::bigint AS qualified
+      FROM "deal" d
+      JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
+      WHERE d."status" = 'WON'
+        AND d."closedAt" >= (($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
+        AND d."closedAt" < (($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
+      GROUP BY 1, 2`
+  }
+
+  /**
+   * The month's registrar → «guruh» assignments — or, for a month nobody has
+   * grouped yet, the latest earlier month's: the desk does not reshuffle on
+   * the 1st, and without this every October kval would fall to «Guruhsiz»
+   * until somebody retyped September's groups. Saving the form writes the
+   * month's own rows, which then win.
+   */
+  async registrarGroups(month: string): Promise<RnpRegistrarGroupRow[]> {
+    const own = await this.prisma.rnpRegistrarGroup.findMany({
+      where: { month: monthDate(month) },
+      select: { registrar: true, group: true },
+    })
+    if (own.length > 0) return own
+    const previous = await this.prisma.rnpRegistrarGroup.findFirst({
+      where: { month: { lt: monthDate(month) } },
+      orderBy: { month: 'desc' },
+      select: { month: true },
+    })
+    if (!previous) return []
+    return this.prisma.rnpRegistrarGroup.findMany({
+      where: { month: previous.month },
+      select: { registrar: true, group: true },
+    })
+  }
+
+  /** Replace what the form names; a null group removes the registrar from every group. */
+  async saveRegistrarGroups(
+    month: string,
+    rows: readonly { registrar: string; group: string | null }[],
+    by: string,
+  ): Promise<void> {
+    const m = monthDate(month)
+    /*
+      The form sends only what changed. On a month still reading the previous
+      month's groups, write those down first — or the one change saved would
+      become the month's only row and every inherited group would vanish.
+    */
+    const hasOwn = (await this.prisma.rnpRegistrarGroup.count({ where: { month: m } })) > 0
+    const inherited = hasOwn ? [] : await this.registrarGroups(month)
+    await this.prisma.$transaction([
+      ...inherited.map((g) =>
+        this.prisma.rnpRegistrarGroup.create({ data: { month: m, registrar: g.registrar, group: g.group, updatedBy: by } }),
+      ),
+      ...rows.map((r) =>
+        r.group === null
+          ? this.prisma.rnpRegistrarGroup.deleteMany({ where: { month: m, registrar: r.registrar } })
+          : this.prisma.rnpRegistrarGroup.upsert({
+              where: { month_registrar: { month: m, registrar: r.registrar } },
+              create: { month: m, registrar: r.registrar, group: r.group, updatedBy: by },
+              update: { group: r.group, updatedBy: by },
+            }),
+      ),
+    ])
+  }
+
+  /** Every typed day cell of [from, to] (inclusive `YYYY-MM-DD`). */
+  async manualDays(from: string, to: string): Promise<RnpManualDayRow[]> {
+    const rows = await this.prisma.rnpManualDay.findMany({
+      where: { day: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) } },
+      select: { day: true, team: true, metric: true, valueCenti: true },
+    })
+    return rows.map((r) => ({ day: r.day.toISOString().slice(0, 10), team: r.team, metric: r.metric, valueCenti: r.valueCenti }))
+  }
+
+  /**
+   * Write what the screen sent, in ONE transaction. Null deletes the cell —
+   * «nobody typed it» is the absence of a row. Unlike a plan, ZERO and
+   * NEGATIVE values are kept: a Telegram channel that lost 16 subscribers
+   * typed -16, and a day with no posts typed 0.
+   */
+  async saveManualDays(
+    rows: readonly { day: string; team: string; metric: string; valueCenti: bigint | null }[],
+    by: string,
+  ): Promise<void> {
+    await this.prisma.$transaction(
+      rows.map((r) => {
+        const key = { day: new Date(`${r.day}T00:00:00Z`), team: r.team, metric: r.metric }
+        return r.valueCenti === null
+          ? this.prisma.rnpManualDay.deleteMany({ where: key })
+          : this.prisma.rnpManualDay.upsert({
+              where: { day_team_metric: key },
+              create: { ...key, valueCenti: r.valueCenti, updatedBy: by },
+              update: { valueCenti: r.valueCenti, updatedBy: by },
+            })
+      }),
+    )
   }
 
   async plans(month: string): Promise<{ rows: RnpPlanRow[]; fakt: RnpTeamFaktPlan[] }> {

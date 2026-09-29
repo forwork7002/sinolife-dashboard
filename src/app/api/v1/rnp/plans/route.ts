@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { RNP_PLAN_METRICS, SETTING_LEAD_VALUE, SETTING_USD_RATE } from '@/server/domain/rnp/rnpSheet'
+import { RNP_PLAN_KEYS, SETTING_LEAD_VALUE, SETTING_USD_RATE } from '@/server/domain/rnp/rnpSheet'
 import { can } from '@/server/auth/rbac'
 import { ApiError } from '@/server/http/errors'
 import { mutationHandler } from '@/server/http/handler'
@@ -28,8 +28,8 @@ const bodySchema = z.object({
     .array(
       z.object({
         team: z.string().trim().max(200),
-        /** Only the keys the sheet reads — see RNP_PLAN_METRICS. */
-        metric: z.enum(RNP_PLAN_METRICS),
+        /** Only the keys the sheet reads — plan keys and the typed rows' own (RNP_PLAN_KEYS). */
+        metric: z.string().max(64).refine((k) => RNP_PLAN_KEYS.includes(k), 'Unknown plan key'),
         fromDay: z.number().int().min(1).max(31),
         value: figure,
       }),

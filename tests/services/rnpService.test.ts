@@ -40,3 +40,17 @@ describe('staleWhileRevalidate', () => {
     expect(await memo.get('x', () => Promise.resolve(1))).toBe(1)
   })
 })
+
+const { leadBrand } = await import('@/server/services/rnpService')
+
+describe('leadBrand', () => {
+  it('takes the page first, then the form', () => {
+    expect(leadBrand('UC_1X1J24', null)).toBe('Collagen')
+    expect(leadBrand('UC_AA84D0', null)).toBe('Zextra')
+    expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы «Sinolife Collagen - 30.04 Eldor»')).toBe('Collagen')
+    expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы «Zextra Umar 3»')).toBe('Zextra')
+    // Kamron runs only Zextra accounts; his form names no product.
+    expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы «Kamron 6 etap filt forma 05.07»')).toBe('Zextra')
+    expect(leadBrand('UC_KPZA32', null)).toBeNull()
+  })
+})

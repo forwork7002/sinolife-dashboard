@@ -80,6 +80,9 @@ function input(over: Partial<RnpSheetInput> = {}): RnpSheetInput {
       ],
       fakt: [{ rop: 'Sevinch', fakt1Minor: som(30_000_000), fakt2Minor: null }],
     },
+    manual: [],
+    registrarKval: [],
+    registrarGroups: [],
     noRop: '(ROP yoʻq)',
     canEditPlans: false,
     ...over,
@@ -327,5 +330,223 @@ describe('buildRnpSheet — the sheet\'s own names and plans', () => {
     // 21.09: 2 kval × 500 000 (the value from the 19th in this fixture).
     expect(on(plan, '2026-09-21')).toBe(1_000_000)
     expect(row(dto, 'summary', 'sv:budget').fact).toBe(140)
+  })
+})
+
+describe('buildRnpSheet — typed day cells', () => {
+  it('prints an untyped day as a dash, sums what was typed, and keeps negatives', () => {
+    const dto = buildRnpSheet(
+      input({
+        manual: [
+          { day: '2026-09-01', team: '', metric: 'tg_subscribers', value: -16 },
+          { day: '2026-09-03', team: '', metric: 'tg_subscribers', value: 18 },
+        ],
+      }),
+    )
+    const tg = row(dto, 'social', 'in:tg_subscribers')
+    expect(tg.inputKey).toEqual({ team: '', metric: 'tg_subscribers' })
+    expect(on(tg, '2026-09-01')).toBe(-16)
+    expect(on(tg, '2026-09-02')).toBeNull()
+    expect(tg.fact).toBe(2)
+  })
+
+  it('takes a ROP\'s typed early leads over Bitrix24 and reads the month from the 1st', () => {
+    const base = input()
+    const dto = buildRnpSheet({
+      ...base,
+      leads: [...base.leads, { day: '2026-09-05', rop: 'Sevinch', leads: 1 }],
+      manual: [{ day: '2026-09-05', team: 'Sevinch', metric: 'leads', value: 40 }],
+    })
+    const reach = row(dto, 'team:Sevinch', 'team:Sevinch:reach')
+    expect(reach.inputKey).toEqual({ team: 'Sevinch', metric: 'leads' })
+    expect(reach.reliableFrom).toBeNull()
+    expect(on(reach, '2026-09-05')).toBe(40)
+    // An untyped early day is the sheet's blank, not Bitrix24's partial count.
+    expect(on(reach, '2026-09-06')).toBe(0)
+    // From 16.09 Bitrix24 stands: 4 on the 17th, 3 on the 21st.
+    expect(reach.fact).toBe(40 + 4 + 3)
+  })
+
+  it('leaves the early days muted for a team nobody typed', () => {
+    const dto = buildRnpSheet(input())
+    expect(row(dto, 'team:Sevinch', 'team:Sevinch:reach').reliableFrom).toBe('2026-09-16')
+  })
+
+  it('lets a typed headcount override the call log', () => {
+    const dto = buildRnpSheet(input({ manual: [{ day: '2026-09-21', team: 'Sevinch', metric: 'headcount', value: 7 }] }))
+    const hc = row(dto, 'team:Sevinch', 'team:Sevinch:headcount')
+    expect(on(hc, '2026-09-21')).toBe(7)
+    expect(hc.inputKey).toEqual({ team: 'Sevinch', metric: 'headcount' })
+  })
+
+  it('rates the HR interviews as a ratio of sums', () => {
+    const dto = buildRnpSheet(
+      input({
+        manual: [
+          { day: '2026-09-03', team: '', metric: 'hr_invited', value: 52 },
+          { day: '2026-09-03', team: '', metric: 'hr_attended', value: 4 },
+          { day: '2026-09-04', team: '', metric: 'hr_invited', value: 15 },
+          { day: '2026-09-04', team: '', metric: 'hr_attended', value: 18 },
+        ],
+      }),
+    )
+    expect(row(dto, 'hr', 'hr:attended_pct').fact).toBeCloseTo((22 / 67) * 100, 6)
+  })
+})
+
+describe('buildRnpSheet — registration «guruh» rows', () => {
+  const dto = () =>
+    buildRnpSheet(
+      input({
+        registration: [{ day: '2026-09-02', leads: 819, duplicates: 0, qualified: 150, aiConversations: 0 }],
+        registrarKval: [
+          { day: '2026-09-02', registrar: 'Фарангиз', qualified: 33 },
+          { day: '2026-09-02', registrar: 'Назокат', qualified: 25 },
+          { day: '2026-09-02', registrar: 'Рухшона', qualified: 17 },
+          { day: '2026-09-02', registrar: 'Ситора', qualified: 20 },
+          { day: '2026-09-02', registrar: 'Умида', qualified: 40 },
+          { day: '2026-09-02', registrar: null, qualified: 15 },
+        ],
+        registrarGroups: [
+          { registrar: 'Фарангиз', group: 'Sevinch' },
+          { registrar: 'Назокат', group: 'Sevinch' },
+          { registrar: 'Рухшона', group: 'Zextra' },
+          { registrar: 'Ситора', group: 'Zextra' },
+        ],
+        manual: [
+          { day: '2026-09-02', team: 'Sevinch', metric: 'reg_group_intake', value: 156 },
+          { day: '2026-09-02', team: '', metric: 'reg_zextra_leads', value: 139 },
+        ],
+      }),
+    )
+
+  it('counts a group\'s kval over its registrars — the sheet\'s 58 on 02.09', () => {
+    const d = dto()
+    expect(on(row(d, 'registration', 'reg:group:Sevinch:qualified'), '2026-09-02')).toBe(58)
+    expect(on(row(d, 'registration', 'reg:group:Sevinch:pct'), '2026-09-02')).toBeCloseTo((58 / 156) * 100, 6)
+    expect(row(d, 'registration', 'reg:group:Sevinch:intake').inputKey).toEqual({ team: 'Sevinch', metric: 'reg_group_intake' })
+  })
+
+  it('splits the desk into Collagen and Zextra and names each Zextra registrar', () => {
+    const d = dto()
+    expect(on(row(d, 'registration', 'reg:zextra:qualified'), '2026-09-02')).toBe(37)
+    expect(on(row(d, 'registration', 'reg:qualified_collagen'), '2026-09-02')).toBe(150 - 37)
+    expect(on(row(d, 'registration', 'reg:registrar:Рухшона'), '2026-09-02')).toBe(17)
+    expect(on(row(d, 'registration', 'reg:zextra:pct'), '2026-09-02')).toBeCloseTo((37 / 139) * 100, 6)
+  })
+
+  it('keeps the kval of an unassigned registrar visible so the rows still add up', () => {
+    const d = dto()
+    // Умида (no group yet) 40 + a WON deal with no registrar 15.
+    expect(on(row(d, 'registration', 'reg:group:none:qualified'), '2026-09-02')).toBe(55)
+    expect(on(row(d, 'registration', 'reg:group:Gulzora:qualified'), '2026-09-02')).toBe(0)
+    expect(d.registration.registrars).toContain('Умида')
+    expect(d.registration.groupNames).toEqual(['Sevinch', 'Gulzora', 'Aziz', 'Maftuna', 'Lola', 'Saidaziz', 'Zextra'])
+  })
+})
+
+describe('buildRnpSheet — the brand P&L (rows 394–445)', () => {
+  const dto = () => {
+    const base = input()
+    return buildRnpSheet({
+      ...base,
+      fakt: [
+        fakt('2026-09-21', 'Sevinch', { brand: 'Collagen', fakt1Orders: 2, fakt1Minor: som(3_000_000), fakt2Orders: 1, fakt2Minor: som(2_000_000) }),
+        fakt('2026-09-21', 'Charos', { brand: 'Collagen', fakt1Orders: 1, fakt1Minor: som(1_000_000), fakt2Orders: 1, fakt2Minor: som(1_000_000) }),
+        fakt('2026-09-21', 'Sevinch', { brand: 'Zextra', fakt1Orders: 1, fakt1Minor: som(1_500_000) }),
+        fakt('2026-09-21', 'Sevinch', { brand: null, fakt1Orders: 1, fakt1Minor: som(500_000) }),
+      ],
+      registration: [
+        { day: '2026-09-21', brand: 'Collagen', leads: 10, duplicates: 0, qualified: 4, aiConversations: 0 },
+        { day: '2026-09-21', brand: null, leads: 3, duplicates: 0, qualified: 1, aiConversations: 0 },
+      ],
+      manual: [{ day: '2026-09-21', team: 'Collagen', metric: 'cost_blogger', value: 1_000_000 }],
+      plans: {
+        ...base.plans,
+        rows: [
+          ...base.plans.rows,
+          { team: '', metric: 'marketing_plan_pct', fromDay: 1, valueCenti: 1_100n },
+          { team: '', metric: 'targetolog_pct', fromDay: 1, valueCenti: 1_000n },
+          { team: '', metric: 'marketer_pct', fromDay: 1, valueCenti: 100n },
+        ],
+      },
+    })
+  }
+  const d21 = (d: ReturnType<typeof buildRnpSheet>, key: string) => on(row(d, key.split(':').slice(0, 2).join(':').replace('pj:', 'project:'), key), '2026-09-21')
+
+  it('splits the money by the order\'s brand, первичка from БАЗА', () => {
+    const d = dto()
+    expect(d21(d, 'pj:collagen:fakt1')).toBe(4_000_000)
+    expect(d21(d, 'pj:collagen:primary_fakt2')).toBe(2_000_000)
+    expect(d21(d, 'pj:collagen:base_fakt2')).toBe(1_000_000)
+    expect(d21(d, 'pj:zextra:fakt1')).toBe(1_500_000)
+    expect(on(row(d, 'project:none', 'pj:none:fakt1'), '2026-09-21')).toBe(500_000)
+  })
+
+  it('costs the marketing as the sheet does: budget × rate, +10 %, + typed lines, +1 % of ФАКТ 2', () => {
+    const d = dto()
+    const spendUzs = 100 * 12_200
+    expect(d21(d, 'pj:collagen:spend_uzs')).toBe(spendUzs)
+    expect(d21(d, 'pj:collagen:cost_targetolog')).toBe(spendUzs * 0.1)
+    expect(d21(d, 'pj:collagen:cost_marketer')).toBe(3_000_000 * 0.01)
+    expect(d21(d, 'pj:collagen:cost_fact')).toBe(spendUzs * 1.1 + 1_000_000 + 30_000)
+    expect(d21(d, 'pj:collagen:cost_plan')).toBe(3_000_000 * 0.11)
+    expect(row(d, 'project:collagen', 'pj:collagen:cost_blogger').inputKey).toEqual({ team: 'Collagen', metric: 'cost_blogger' })
+    // CAC in dollars over the первичка orders delivered.
+    expect(d21(d, 'pj:collagen:cac')).toBeCloseTo((spendUzs * 1.1 + 1_030_000) / 12_200 / 1, 6)
+  })
+
+  it('counts leads by brand and puts the P&L after «Свод»', () => {
+    const d = dto()
+    expect(d21(d, 'pj:collagen:leads')).toBe(10)
+    expect(d21(d, 'pj:collagen:qualified_pct')).toBe(40)
+    const ids = d.blocks.map((b) => b.id)
+    expect(ids.indexOf('project:collagen')).toBeGreaterThan(ids.indexOf('summary'))
+    expect(d.settings.marketingPlanPct).toBe(11)
+  })
+})
+
+describe('buildRnpSheet — review fixes', () => {
+  it('rates a group only over the days its intake was typed', () => {
+    const d = buildRnpSheet(
+      input({
+        registrarKval: [
+          { day: '2026-09-02', registrar: 'Маржона', qualified: 70 },
+          { day: '2026-09-10', registrar: 'Маржона', qualified: 70 },
+        ],
+        registrarGroups: [{ registrar: 'Маржона', group: 'Aziz' }],
+        manual: [{ day: '2026-09-02', team: 'Aziz', metric: 'reg_group_intake', value: 250 }],
+      }),
+    )
+    expect(row(d, 'registration', 'reg:group:Aziz:pct').fact).toBeCloseTo((70 / 250) * 100, 6)
+  })
+
+  it('reads the last TYPED day for a snapshot row, not an untyped today', () => {
+    const d = buildRnpSheet(input({ manual: [{ day: '2026-09-10', team: '', metric: 'hr_navoiy_sellers', value: 12 }] }))
+    expect(row(d, 'hr', 'in:hr_navoiy_sellers').fact).toBe(12)
+  })
+
+  it('draws dashes, not zeros, where the dollar rate is missing', () => {
+    const d = buildRnpSheet(input({ plans: { rows: [], fakt: [] } }))
+    const spend = row(d, 'project:collagen', 'pj:collagen:spend_uzs')
+    expect(spend.fact).toBeNull()
+    expect(on(spend, '2026-09-21')).toBeNull()
+    expect(row(d, 'project:collagen', 'pj:collagen:cac').fact).toBeNull()
+  })
+
+  it('counts a ROP\'s typed leads in the company total too', () => {
+    const d = buildRnpSheet(input({ manual: [{ day: '2026-09-21', team: 'Sevinch', metric: 'leads', value: 10 }] }))
+    expect(on(row(d, 'team:Sevinch', 'team:Sevinch:reach'), '2026-09-21')).toBe(10)
+    expect(on(row(d, 'summary', 'sv:rop_leads'), '2026-09-21')).toBe(10)
+  })
+
+  it('takes the kval total from the per-registrar read when it has one', () => {
+    const d = buildRnpSheet(
+      input({
+        registration: [{ day: '2026-09-21', leads: 4, duplicates: 0, qualified: 9, aiConversations: 0 }],
+        registrarKval: [{ day: '2026-09-21', registrar: 'Умида', qualified: 7 }],
+      }),
+    )
+    expect(on(row(d, 'registration', 'reg:qualified'), '2026-09-21')).toBe(7)
   })
 })

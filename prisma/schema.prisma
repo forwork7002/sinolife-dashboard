@@ -850,6 +850,9 @@ model Deal {
   /// it opens, so a lead and its sale carry the same name. Sparse; null is
   /// «not stated», never «organic». Read by «Target tahlili».
   targetolog         String?
+  /// «Регистрация» (UF_CRM_1747975291848): the registrar who qualified this
+  /// lead. Set by the portal at «Сделка успешна» only. See mapping.ts UF.REGISTRAR.
+  registrar          String?
   /// UF_CRM_1788351136068 «Креатив» — the ad creative, as the portal names it.
   creative           String?
   /// UF_CRM_1789470922140 «Бирламчи источник» — the lead's first source.
@@ -1466,6 +1469,46 @@ model RnpPlan {
 
   @@unique([month, team, metric, fromDay])
   @@map("rnp_plan")
+}
+
+/// «RNP jadvali» — a day cell a person types: Instagram followers, Telegram
+/// posts, the HR funnel, and a ROP's own leads, calls or headcount where
+/// Bitrix24 was not whole (before 16.09 / 15.09) or the ROP corrects it.
+/// `team` is the `ropNameSql` name, or '' for a company row; `metric` is one
+/// of `RNP_MANUAL_METRICS`. `valueCenti` is the figure × 100 and may be zero
+/// or NEGATIVE (a Telegram channel loses subscribers); a cell nobody typed
+/// has no row — the absence is what the screen prints as a dash.
+model RnpManualDay {
+  id         String   @id @default(cuid())
+  day        DateTime @db.Date
+  team       String   @default("")
+  metric     String
+  valueCenti BigInt
+  updatedAt  DateTime @updatedAt
+  updatedBy  String?
+
+  @@unique([day, team, metric])
+  @@index([day])
+  @@map("rnp_manual_day")
+}
+
+/// «RNP jadvali» — which registration «guruh» a registrar belongs to in a
+/// month. The client's sheet counts its registration rows per group of
+/// registrars («Sevinch guruh» = Фарангиз + Назокат, measured 02–03.09.2026),
+/// and nothing in Bitrix24 holds that grouping, so it is typed here and can
+/// change month to month. `registrar` is the «Регистрация» enum label
+/// (deal.registrar); `group` is the sheet's group name, or 'Zextra' for the
+/// Zextra desk.
+model RnpRegistrarGroup {
+  id         String   @id @default(cuid())
+  month      DateTime @db.Date
+  registrar  String
+  group      String
+  updatedAt  DateTime @updatedAt
+  updatedBy  String?
+
+  @@unique([month, registrar])
+  @@map("rnp_registrar_group")
 }
 
 // ---------------------------------------------------------------------------

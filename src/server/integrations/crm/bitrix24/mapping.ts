@@ -415,6 +415,17 @@ export const UF = Object.freeze({
   AI_QUALIFIED_AT: 'UF_CRM_1789654225347',
   /** «РОП (Первичка)» — an employee field: the portal user id of the ROP. */
   LEAD_ROP: 'UF_CRM_1789454012',
+  /**
+   * «Регистрация» — which registrar qualified the lead: an ENUMERATION of 17
+   * names (Умида 638, Эъзоза 640, … Рухшона 720, Ситора 722, Маржона 730),
+   * resolved through `label()`. Written only when the Регистрация deal goes
+   * to «Сделка успешна» — 577 of 582 unqualified deals of 02.09.2026 carried
+   * none, every WON deal carried one — so it counts a registrar's KVAL and
+   * never their intake. The client's «РНП» sheet groups registrars into
+   * «guruh» rows by it (measured 02–03.09: Sevinch guruh = Фарангиз +
+   * Назокат, Lola guruh = Дилафруз + Мафтуна, Aziz guruh = Маржона, exact).
+   */
+  REGISTRAR: 'UF_CRM_1747975291848',
   /** «Такрор лид» — enumeration; empty is a new lead. See `repeatLeadKind()`. */
   REPEAT_LEAD: 'UF_CRM_178973948309676',
 } as const)
@@ -461,6 +472,22 @@ export const TARGET_SOURCE_PRODUCT: Readonly<Record<string, TargetProduct>> = Ob
  * beside the leads its own pages brought in.
  */
 export const TARGET_SOURCE_IDS: readonly string[] = Object.freeze(Object.keys(TARGET_SOURCE_PRODUCT))
+
+/**
+ * A Регистрация lead's brand by where it came in, for «RNP jadvali»'s P&L
+ * (sheet rows 399 / 426). The ad pages of `TARGET_SOURCE_PRODUCT`, plus the
+ * two brands' own inbound lines and the pages added since («collagen.marine»
+ * UC_MWIKOC, the second Zextra bot 46|NEXTBOT — read off crm.status.list on
+ * 2026-09-28). A source outside this map decides nothing; the lead's form, if
+ * any, is asked next (see rnpService).
+ */
+export const LEAD_SOURCE_BRAND: Readonly<Record<string, TargetProduct>> = Object.freeze({
+  ...TARGET_SOURCE_PRODUCT,
+  UC_CKXAZS: 'Collagen', // Входящий collagen
+  UC_MWIKOC: 'Collagen', // collagen.marine
+  UC_AA84D0: 'Zextra', // Входящий zextra
+  '46|NEXTBOT': 'Zextra', // NEXTBOT - zextra.sinolife
+})
 
 /**
  * The rest of Регистрация's sources, by what they mean — «Lid manbalari»

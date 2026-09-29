@@ -33,6 +33,12 @@ describe('rnpTeamDaysSql', () => {
     expect(sql).toContain(`= 'REFUSED'`)
   })
 
+  it('brands an order by its most expensive product line and still groups day × team × brand', () => {
+    expect(sql).toMatch(/LEFT JOIN LATERAL \([\s\S]*FROM "deal_item" i[\s\S]*ORDER BY i\."totalMinor" DESC, i\."id"[\s\S]*LIMIT 1\s*\) b ON true/)
+    expect(sql).toContain(`pr."name" ~* 'zextra'`)
+    expect(sql).toMatch(/GROUP BY 1, 2, 3\s*$/)
+  })
+
   it('buckets by the Tashkent queue day', () => {
     expect(sql).toMatch(/c\.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '[^']+'\)::date::text AS day/)
   })
@@ -46,11 +52,25 @@ describe('RnpRepository statements', () => {
     expect(sql).toContain(`d."leadDistributedOn" BETWEEN $1::date AND $2::date`)
   })
 
+  it('reads leads and kval in one UNION of two arms, summed per day × source × form', () => {
+    const sql = bare(RnpRepository.registrationDaysSql())
+    expect(sql).toContain('UNION ALL')
+    expect(sql).not.toContain('FULL JOIN')
+    expect(sql).toMatch(/sum\(leads\)::bigint AS leads[\s\S]*sum\(qualified\)::bigint AS qualified[\s\S]*GROUP BY 1, 2, 3\s*$/)
+  })
+
   it('spells the duplicate stage\'s case out rather than trusting the locale', () => {
     const sql = bare(RnpRepository.registrationDaysSql())
     expect(sql).toContain(`!~ '[Дд]убл'`)
     expect(sql).not.toContain('~*')
     expect(sql).toMatch(/d\."status" = 'WON' AND d\."closedAt"/)
+  })
+
+  it('counts a registrar\'s kval at «Сделка успешна», by the day it closed', () => {
+    const sql = bare(RnpRepository.registrarKvalDaysSql())
+    expect(sql).toContain(`p."role" = 'LEAD'`)
+    expect(sql).toContain(`d."status" = 'WON'`)
+    expect(sql).toContain(`d."registrar"`)
   })
 
   it('counts connected customer calls only — never a callback leg', () => {
@@ -87,6 +107,7 @@ describe('RnpRepository bounds', () => {
     ['callDaysSql', RnpRepository.callDaysSql()],
     ['enteredDaysSql', RnpRepository.enteredDaysSql()],
     ['packingStaysSql', RnpRepository.packingStaysSql()],
+    ['registrarKvalDaysSql', RnpRepository.registrarKvalDaysSql()],
   ])('%s turns every Tashkent midnight back into naive UTC', (_, raw) => {
     const sql = bare(raw)
     const local = sql.match(/::timestamp AT TIME ZONE \$3(?! AT TIME ZONE 'UTC')/g)

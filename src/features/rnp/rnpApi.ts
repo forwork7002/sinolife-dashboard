@@ -1,9 +1,10 @@
 /**
  * «RNP jadvali» — the wire shapes, restated for the client.
  *
- * Mirrors the DTOs of `src/server/domain/rnp/rnpSheet.ts`, and the body of
- * `src/app/api/v1/rnp/plans/route.ts`. Nothing checks the mirror — edit both
- * sides.
+ * Mirrors the DTOs of `src/server/domain/rnp/rnpSheet.ts`, and the bodies of
+ * `src/app/api/v1/rnp/plans/route.ts`, `…/inputs/route.ts` and
+ * `…/registrars/route.ts`.
+ * Nothing checks the mirror — edit both sides.
  */
 
 /** How a row's numbers read. Money is whole soʻm (or dollars) as a number. */
@@ -37,6 +38,11 @@ export interface RnpRowDto {
   readonly days: readonly (number | null)[]
   /** What the plan form writes for this row; null when nothing is planned. */
   readonly planKey: RnpPlanKey | null
+  /**
+   * What a typed day cell of this row is stored under; null when every cell
+   * comes from Bitrix24 or Meta. A typed cell overrides Bitrix24 for its day.
+   */
+  readonly inputKey: RnpPlanKey | null
   /** This row's share of its column's total, in percent (the «Свод»). */
   readonly share: number | null
   readonly tone: 'total' | 'plain'
@@ -46,7 +52,17 @@ export interface RnpRowDto {
   readonly reliableFrom: string | null
 }
 
-export type RnpBlockKind = 'marketing' | 'registration' | 'team' | 'company' | 'warehouse' | 'logistics' | 'summary'
+export type RnpBlockKind =
+  | 'marketing'
+  | 'social'
+  | 'registration'
+  | 'team'
+  | 'company'
+  | 'warehouse'
+  | 'logistics'
+  | 'hr'
+  | 'summary'
+  | 'project'
 
 export interface RnpBlockDto {
   readonly id: string
@@ -83,13 +99,29 @@ export interface RnpOverviewDto {
     readonly usdRate: number | null
     /** What one handed-out lead is worth, from each day it starts on. */
     readonly leadValues: readonly { readonly team: string; readonly fromDay: number; readonly value: number }[]
+    /** The brand P&L's percentages; null when nobody set them. */
+    readonly marketingPlanPct: number | null
+    readonly targetologPct: number | null
+    readonly marketerPct: number | null
   }
   readonly canEditPlans: boolean
+  /** What the registrar → «guruh» form edits. */
+  readonly registration: {
+    /** Every registrar the month's kval names, and every one already assigned. */
+    readonly registrars: readonly string[]
+    readonly groups: readonly { readonly registrar: string; readonly group: string }[]
+    /** The groups the sheet has rows for, in its order, the Zextra desk last. */
+    readonly groupNames: readonly string[]
+  }
 }
 
 /** Metric keys of the company-wide settings, never a plan. */
 export const SETTING_USD_RATE = 'usd_rate'
 export const SETTING_LEAD_VALUE = 'lead_value'
+/** The brand P&L's three percentages — company-wide, from day 1, like the dollar rate. */
+export const SETTING_MARKETING_PLAN_PCT = 'marketing_plan_pct'
+export const SETTING_TARGETOLOG_PCT = 'targetolog_pct'
+export const SETTING_MARKETER_PCT = 'marketer_pct'
 
 /**
  * What the «Rejalar» form posts. `rows` carry the row's own unit, up to two
@@ -100,4 +132,18 @@ export interface SaveRnpPlansBody {
   readonly month: string
   readonly rows: readonly { team: string; metric: string; fromDay: number; value: number | null }[]
   readonly fakt: readonly { rop: string; fakt1: number | null; fakt2: number | null }[]
+}
+
+/**
+ * What a typed day cell posts to `/rnp/inputs`: the figure in the row's own
+ * unit, up to two decimals, may be negative. Null clears the cell.
+ */
+export interface SaveRnpInputsBody {
+  readonly rows: readonly { day: string; team: string; metric: string; value: number | null }[]
+}
+
+/** What the registrar → «guruh» form posts to `/rnp/registrars`: changed rows only; null takes the registrar out of every group. */
+export interface SaveRnpRegistrarsBody {
+  readonly month: string
+  readonly rows: readonly { registrar: string; group: string | null }[]
 }

@@ -65,6 +65,7 @@ function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRo
     index: null,
     days: [null, null, null],
     planKey: null,
+    inputKey: null,
     share: null,
     tone: 'plain',
     hint: null,
@@ -129,21 +130,27 @@ const FIXTURE: RnpOverviewDto = {
       ],
     },
   ],
-  settings: { usdRate: null, leadValues: [] },
+  settings: { usdRate: null, leadValues: [], marketingPlanPct: null, targetologPct: null, marketerPct: null },
   canEditPlans: false,
+  registration: { registrars: [], groups: [], groupNames: ['Sevinch', 'Gulzora', 'Aziz', 'Maftuna', 'Lola', 'Saidaziz', 'Zextra'] },
 }
 
 let fixture: RnpOverviewDto = FIXTURE
 let posted: unknown[] = []
+let postedTo: string[] = []
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/rnp')
   fixture = FIXTURE
   posted = []
+  postedTo = []
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (_url: string, init?: RequestInit) => {
-      if (init?.method === 'POST') posted.push(JSON.parse(String(init.body)))
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        posted.push(JSON.parse(String(init.body)))
+        postedTo.push(url)
+      }
       return {
         ok: true,
         status: 200,
@@ -275,7 +282,13 @@ describe('RnpPage', () => {
     fixture = {
       ...FIXTURE,
       canEditPlans: true,
-      settings: { usdRate: 12650, leadValues: [{ team: '', fromDay: 1, value: 50000 }] },
+      settings: {
+        usdRate: 12650,
+        leadValues: [{ team: '', fromDay: 1, value: 50000 }],
+        marketingPlanPct: 12,
+        targetologPct: null,
+        marketerPct: null,
+      },
       blocks: [
         {
           id: 'marketing',
@@ -314,9 +327,239 @@ describe('RnpPage', () => {
       rows: [
         { team: '', metric: 'budget', fromDay: 1, value: 1500.5 },
         { team: '', metric: 'usd_rate', fromDay: 1, value: 12650 },
+        { team: '', metric: 'marketing_plan_pct', fromDay: 1, value: 12 },
+        { team: '', metric: 'targetolog_pct', fromDay: 1, value: null },
+        { team: '', metric: 'marketer_pct', fromDay: 1, value: null },
         { team: '', metric: 'lead_value', fromDay: 1, value: 50000 },
       ],
       fakt: [{ rop: 'Sevinch', fakt1: 120_000_000, fakt2: 80_000_000 }],
     })
+  })
+
+  it('prefills the P&L percentages and saves a typed one as a company row', async () => {
+    fixture = { ...FIXTURE, canEditPlans: true }
+    await draw()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rejalar' }))
+    const targetolog = screen.getByRole('textbox', { name: /^Targetolog ФОТ, % byudjetdan/ }) as HTMLInputElement
+    expect(targetolog.value).toBe('')
+    fireEvent.change(targetolog, { target: { value: '10,5' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Saqlash' }))
+    })
+
+    await waitFor(() => expect(posted).toHaveLength(1))
+    expect((posted[0] as { rows: unknown[] }).rows).toContainEqual({ team: '', metric: 'targetolog_pct', fromDay: 1, value: 10.5 })
+  })
+
+  describe('registrar groups', () => {
+    const withRegistrars: RnpOverviewDto = {
+      ...FIXTURE,
+      canEditPlans: true,
+      registration: {
+        registrars: ['Aziza', 'Dilnoza'],
+        // «Eski» is only in a group this month — still offered.
+        groups: [
+          { registrar: 'Aziza', group: 'Sevinch' },
+          { registrar: 'Eski', group: 'Lola' },
+        ],
+        groupNames: ['Sevinch', 'Gulzora', 'Aziz', 'Maftuna', 'Lola', 'Saidaziz', 'Zextra'],
+      },
+    }
+
+    async function openForm() {
+      fixture = withRegistrars
+      await draw()
+      fireEvent.click(screen.getByRole('button', { name: 'Rejalar' }))
+    }
+
+    const select = (name: string) => screen.getByRole('combobox', { name: `${name} — guruh` }) as HTMLSelectElement
+
+    it('prefills each registrar and posts only the changed row', async () => {
+      await openForm()
+      expect(select('Aziza').value).toBe('Sevinch')
+      expect(select('Dilnoza').value).toBe('')
+      expect(select('Eski').value).toBe('Lola')
+
+      fireEvent.change(select('Dilnoza'), { target: { value: 'Maftuna' } })
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Saqlash' }))
+      })
+
+      await waitFor(() => expect(posted).toHaveLength(2))
+      expect(postedTo).toEqual(['/api/v1/rnp/plans', '/api/v1/rnp/registrars'])
+      expect(posted[1]).toEqual({ month: '2026-09', rows: [{ registrar: 'Dilnoza', group: 'Maftuna' }] })
+    })
+
+    it('sends null for «—», and nothing to /rnp/registrars when no group changed', async () => {
+      await openForm()
+      fireEvent.change(select('Eski'), { target: { value: '' } })
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Saqlash' }))
+      })
+      await waitFor(() => expect(posted).toHaveLength(2))
+      expect(posted[1]).toEqual({ month: '2026-09', rows: [{ registrar: 'Eski', group: null }] })
+
+      cleanup()
+      posted = []
+      postedTo = []
+      await openForm()
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Saqlash' }))
+      })
+      await waitFor(() => expect(posted).toHaveLength(1))
+      expect(postedTo).toEqual(['/api/v1/rnp/plans'])
+    })
+  })
+
+  it('folds a brand project to its FAKT 2, marketing cost and CAC', async () => {
+    fixture = {
+      ...FIXTURE,
+      blocks: [
+        ...FIXTURE.blocks,
+        {
+          id: 'project:collagen',
+          kind: 'project',
+          title: 'Коллаген проект',
+          subtitle: null,
+          team: null,
+          rows: [
+            row({ key: 'pj:collagen:fakt2', label: 'Сумма ФАКТ 2 (успешка)', unit: 'uzs', fact: 12_400_000 }),
+            row({ key: 'pj:collagen:cost_fact', label: 'Маркетинг харажат факт', unit: 'uzs', fact: 2_000_000 }),
+            row({ key: 'pj:collagen:cac', label: 'CAC, $', unit: 'usd', additive: false, fact: 15.5 }),
+          ],
+        },
+      ],
+    }
+    await draw('Коллаген проект')
+
+    const summaries = screen.getAllByText(/^ФАКТ 2 .+ soʻm · Маркетинг харажат .+ soʻm · CAC \$15\.5$/)
+    expect(summaries.length).toBeGreaterThan(0)
+  })
+})
+
+describe('RnpPage — typed day cells', () => {
+  const SOCIAL = 'Маркетинг — ижтимоий тармоқлар'
+  const typedFixture = (canEditPlans: boolean): RnpOverviewDto => ({
+    ...FIXTURE,
+    canEditPlans,
+    blocks: [
+      {
+        id: 'social',
+        kind: 'social',
+        title: SOCIAL,
+        subtitle: null,
+        team: null,
+        rows: [
+          row({
+            key: 'in:ig_followers_otziv',
+            label: 'Кол подпис otziv',
+            fact: 5,
+            days: [5, null, null],
+            inputKey: { team: '', metric: 'ig_followers_otziv' },
+          }),
+          row({ key: 'in:other', label: 'Bitrix qatori', fact: 3, days: [3, null, null] }),
+        ],
+      },
+      ...FIXTURE.blocks,
+    ],
+  })
+
+  async function openSocial(canEditPlans: boolean) {
+    fixture = typedFixture(canEditPlans)
+    await draw(SOCIAL)
+    fireEvent.click(screen.getByRole('button', { name: SOCIAL }))
+  }
+
+  const cell = (day: string) => screen.queryByRole('button', { name: new RegExp(`^Кол подпис otziv · ${day}: .* — tahrirlash$`) })
+
+  it('marks a typed row for every reader, and a reader who cannot edit gets no editable cell', async () => {
+    await openSocial(false)
+
+    expect(screen.getAllByRole('img', { name: 'Qoʻlda kiritiladi' })).toHaveLength(1)
+    // The folded header sums the Instagram follower rows.
+    expect(screen.getAllByText('Instagram obunachi 5').length).toBeGreaterThan(0)
+    expect(cell('01.09')).toBeNull()
+    expect(screen.queryAllByRole('button', { name: /tahrirlash$/ })).toHaveLength(0)
+  })
+
+  it('types a negative figure into a lived day and posts exactly that cell', async () => {
+    await openSocial(true)
+
+    // A day still to come is not editable; today is.
+    expect(cell('03.09')).toBeNull()
+    expect(cell('02.09')).toBeTruthy()
+    // A row with no inputKey stays read-only.
+    expect(screen.queryByRole('button', { name: /^Bitrix qatori/ })).toBeNull()
+
+    fireEvent.click(cell('01.09')!)
+    const input = screen.getByRole('textbox', { name: 'Кол подпис otziv · 01.09' }) as HTMLInputElement
+    expect(input.value).toBe('5')
+    fireEvent.change(input, { target: { value: '-16' } })
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' })
+    })
+
+    await waitFor(() => expect(posted).toHaveLength(1))
+    expect(postedTo).toEqual(['/api/v1/rnp/inputs'])
+    expect(posted[0]).toEqual({ rows: [{ day: '2026-09-01', team: '', metric: 'ig_followers_otziv', value: -16 }] })
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
+  it('clears a cell when the field is emptied', async () => {
+    await openSocial(true)
+
+    fireEvent.click(cell('01.09')!)
+    const input = screen.getByRole('textbox', { name: 'Кол подпис otziv · 01.09' })
+    fireEvent.change(input, { target: { value: '' } })
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' })
+    })
+
+    await waitFor(() => expect(posted).toHaveLength(1))
+    expect(posted[0]).toEqual({ rows: [{ day: '2026-09-01', team: '', metric: 'ig_followers_otziv', value: null }] })
+  })
+
+  it('sends nothing for an unchanged figure or Escape, and Tab opens the next day', async () => {
+    await openSocial(true)
+
+    fireEvent.click(cell('01.09')!)
+    const first = screen.getByRole('textbox', { name: 'Кол подпис otziv · 01.09' })
+    fireEvent.change(first, { target: { value: '5,0' } })
+    await act(async () => {
+      fireEvent.keyDown(first, { key: 'Tab' })
+    })
+    const second = screen.getByRole('textbox', { name: 'Кол подпис otziv · 02.09' })
+    fireEvent.change(second, { target: { value: '7' } })
+    await act(async () => {
+      fireEvent.keyDown(second, { key: 'Escape' })
+    })
+
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(posted).toHaveLength(0)
+  })
+
+  it('puts the old figure back and says why when the save is refused', async () => {
+    await openSocial(true)
+    const answer = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      if (init?.method !== 'POST') return answer(url, init)
+      return {
+        ok: false,
+        status: 403,
+        json: async () => ({ error: { code: 'FORBIDDEN', message: 'Kataklarni faqat administrator oʻzgartira oladi.' }, meta: {} }),
+      } as Response
+    })
+
+    fireEvent.click(cell('01.09')!)
+    const input = screen.getByRole('textbox', { name: 'Кол подпис otziv · 01.09' })
+    fireEvent.change(input, { target: { value: '9' } })
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' })
+    })
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('faqat administrator'))
+    expect(cell('01.09')!.textContent).toBe('5')
+    expect(cell('01.09')!.closest('td')!.getAttribute('title')).toBe('Kataklarni faqat administrator oʻzgartira oladi.')
   })
 })

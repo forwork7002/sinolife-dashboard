@@ -370,14 +370,20 @@ async function pruneSyncLog(db: PrismaClient): Promise<void> {
  * by a `DEALS / BACKFILL` success in `sync_log` after `requestedAt`; dropped
  * unserved after `BACKFILL_EXPIRES_MS`. The next column that needs one
  * replaces this value. (It was 2026-08-01 / 2026-09-19 for «Target tahlili»,
- * long since served.)
+ * and 2026-09-13 / 2026-09-24 for «Lid kogortasi», both served.)
+ *
+ * NOW (2026-09-29) for «RNP jadvali»: `deal.registrar` («Регистрация»,
+ * UF_CRM_1747975291848), which the registration «guruh» rows count by. The
+ * sheet is a calendar month, so everything modified since 1 September is
+ * re-read — a superset of the lead-cohort window, so that request loses
+ * nothing by being replaced.
  */
 /** The day contact relinking shipped; see the startup read of `lastSweepAt`. */
 const CONTACT_RELINK_SINCE = new Date('2026-09-25T00:00:00Z')
 
 const DEALS_BACKFILL: DealsBackfill | null = {
-  since: new Date('2026-09-13T00:00:00+05:00'),
-  requestedAt: new Date('2026-09-24T00:00:00+05:00'),
+  since: new Date('2026-09-01T00:00:00+05:00'),
+  requestedAt: new Date('2026-09-29T00:00:00+05:00'),
 }
 
 const WORKER_TIME_ZONE = process.env.APP_TIMEZONE ?? 'Asia/Tashkent'

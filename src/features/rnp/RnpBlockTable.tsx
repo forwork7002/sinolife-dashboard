@@ -1,13 +1,15 @@
 'use client'
 
-import { type ReactNode, useId, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { type CSSProperties, type ReactNode, useEffect, useId, useRef, useState } from 'react'
 
 import { Card } from '@/components/ui/Card'
-import { ChevronDownGlyph } from '@/components/ui/Icons'
+import { ChevronDownGlyph, PencilGlyph } from '@/components/ui/Icons'
 import { InfoTip } from '@/components/ui/Tooltip'
+import { apiWrite } from '@/lib/api'
 import { formatCompactUzs, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
-import type { RnpBlockDto, RnpRowDto, RnpUnit } from './rnpApi'
+import type { RnpBlockDto, RnpPlanKey, RnpRowDto, RnpUnit, SaveRnpInputsBody } from './rnpApi'
 import { type RnpTone, dayMonth, dayTone, indexTone, isSunday, weekday } from './rnpDerive'
 import { TableCard, muted } from '@/features/reklama/reklamaUi'
 
@@ -30,28 +32,40 @@ import { TableCard, muted } from '@/features/reklama/reklamaUi'
  *
  * `collapsible` turns the heading into a disclosure button; the grid is not
  * rendered at all while closed, and the one-line `summary` stands in for it.
+ *
+ * TYPED ROWS. A row with an `inputKey` is (partly) typed by a person — the
+ * followers, the HR funnel, a ROP's early leads and headcount — and wears a
+ * pencil beside its label for everybody. With `canEdit` (the page's
+ * `canEditPlans`) each of its days that has begun is edited IN PLACE: the
+ * cell becomes a number field of the column's own width, Enter or leaving it
+ * saves only a changed figure, Escape gives up, Tab saves and opens the next
+ * day. An emptied field clears the cell. Days still to come stay read-only.
  */
 export function RnpBlockTable({
   block,
   days,
   today,
+  canEdit = false,
   collapsible,
 }: {
   block: RnpBlockDto
   days: readonly string[]
   today: string
+  /** Whether typed rows may be edited here — the page's `canEditPlans`. */
+  canEdit?: boolean
   collapsible?: { readonly summary: ReactNode; readonly defaultOpen?: boolean }
 }) {
+  const grid = <Grid block={block} days={days} today={today} canEdit={canEdit} />
   if (collapsible) {
     return (
       <Collapsible block={block} summary={collapsible.summary} defaultOpen={collapsible.defaultOpen ?? false}>
-        <Grid block={block} days={days} today={today} />
+        {grid}
       </Collapsible>
     )
   }
   return (
     <TableCard title={block.title} hint={block.subtitle ?? undefined}>
-      <Grid block={block} days={days} today={today} />
+      {grid}
     </TableCard>
   )
 }
@@ -118,7 +132,17 @@ function Collapsible({
   )
 }
 
-function Grid({ block, days, today }: { block: RnpBlockDto; days: readonly string[]; today: string }) {
+function Grid({
+  block,
+  days,
+  today,
+  canEdit,
+}: {
+  block: RnpBlockDto
+  days: readonly string[]
+  today: string
+  canEdit: boolean
+}) {
   // The divider on the pinned column is drawn only once the days have moved.
   const [scrolledX, setScrolledX] = useState(false)
   const withShare = block.rows.some((r) => r.share !== null)
@@ -172,7 +196,7 @@ function Grid({ block, days, today }: { block: RnpBlockDto; days: readonly strin
         </thead>
         <tbody>
           {block.rows.map((row) => (
-            <Row key={row.key} row={row} days={days} today={today} withShare={withShare} edge={edge} />
+            <Row key={row.key} row={row} days={days} today={today} withShare={withShare} edge={edge} canEdit={canEdit} />
           ))}
         </tbody>
       </table>
@@ -186,15 +210,16 @@ function Row({
   today,
   withShare,
   edge,
+  canEdit,
 }: {
   row: RnpRowDto
   days: readonly string[]
   today: string
   withShare: boolean
   edge: string
+  canEdit: boolean
 }) {
   const total = row.tone === 'total'
-  const unreliable = row.reliableFrom ? `Bitrix24 da bu maydon ${dayMonth(row.reliableFrom)} dan toʻliq` : undefined
 
   return (
     <tr
@@ -208,6 +233,17 @@ function Row({
       >
         <span className="inline-flex items-start gap-1">
           <span>{row.label}</span>
+          {row.inputKey !== null && (
+            <span
+              role="img"
+              aria-label={TYPED_LABEL}
+              title={TYPED_LABEL}
+              className="mt-[3px] inline-flex shrink-0"
+              style={{ color: 'var(--ink-muted)' }}
+            >
+              <PencilGlyph size={11} />
+            </span>
+          )}
           {row.hint && <InfoTip content={row.hint} label={`${row.label} — izoh`} className="-my-0.5" />}
         </span>
       </th>
@@ -217,27 +253,304 @@ function Row({
       <Cell>{full(row.forecast, row.unit)}</Cell>
       <Cell>{index(row.index, row.better)}</Cell>
       {withShare && <Cell>{row.share === null ? dash : formatPercent(row.share)}</Cell>}
+      {canEdit && row.inputKey !== null ? (
+        <TypedDays row={row} inputKey={row.inputKey} days={days} today={today} />
+      ) : (
+        row.days.map((value, i) => {
+          const day = days[i] ?? ''
+          const look = dayLook(row, value, day, today, i === days.length - 1)
+          return (
+            <td key={day || i} title={look.title} className={look.className} style={look.style}>
+              {compact(value, row.unit)}
+            </td>
+          )
+        })
+      )}
+    </tr>
+  )
+}
+
+const TYPED_LABEL = 'Qoʻlda kiritiladi'
+
+/** How a day cell reads — its title, box and colours — the same whether or not it can be typed. */
+function dayLook(
+  row: RnpRowDto,
+  value: number | null,
+  day: string,
+  today: string,
+  last: boolean,
+): { title: string | undefined; className: string; style: CSSProperties } {
+  const total = row.tone === 'total'
+  const early = row.reliableFrom !== null && day < row.reliableFrom
+  const tone = dayTone(row, value, day, today)
+  return {
+    title: early
+      ? `Bitrix24 da bu maydon ${dayMonth(row.reliableFrom ?? day)} dan toʻliq`
+      : tone !== 'neutral' && row.dayPlan !== null
+        ? `Kunlik reja: ${plain(row.dayPlan, row.unit)}`
+        : undefined,
+    className: `tabular px-2 py-2 text-right whitespace-nowrap ${last ? 'pr-5' : ''}`,
+    style: {
+      color: early ? 'var(--ink-muted)' : total ? 'var(--ink-primary)' : 'var(--ink-secondary)',
+      background: day === today ? TODAY_CELL : tone !== 'neutral' ? TINT[tone] : isSunday(day) ? SUNDAY_CELL : undefined,
+    },
+  }
+}
+
+// --- typed day cells --------------------------------------------------------
+
+type CellState =
+  | { readonly status: 'saving'; readonly value: number | null; readonly seq: number }
+  | { readonly status: 'error'; readonly message: string; readonly seq: number }
+
+interface SaveVars {
+  readonly i: number
+  readonly value: number | null
+  readonly seq: number
+  readonly body: SaveRnpInputsBody
+}
+
+/**
+ * The day cells of a typed row, for somebody who may type them. One save per
+ * committed cell; the figure being saved stands in the cell, faded, until the
+ * sheet has been read again, so nothing flickers back to the old number. A
+ * refused save puts the old number back and rings the cell in red, the
+ * server's sentence in its title.
+ */
+function TypedDays({
+  row,
+  inputKey,
+  days,
+  today,
+}: {
+  row: RnpRowDto
+  inputKey: RnpPlanKey
+  days: readonly string[]
+  today: string
+}) {
+  const queryClient = useQueryClient()
+  const [editing, setEditing] = useState<number | null>(null)
+  const [cells, setCells] = useState<ReadonlyMap<number, CellState>>(() => new Map())
+  const seq = useRef(0)
+  const buttons = useRef(new Map<number, HTMLButtonElement>())
+  /** A cell left by the keyboard gets the focus back; one left by a click elsewhere does not. */
+  const refocus = useRef<number | null>(null)
+
+  const put = (i: number, state: CellState | null) =>
+    setCells((prev) => {
+      const next = new Map(prev)
+      if (state === null) next.delete(i)
+      else next.set(i, state)
+      return next
+    })
+  /** Only the newest save of a cell may settle it. */
+  const settle = (i: number, at: number, state: CellState | null) =>
+    setCells((prev) => {
+      if (prev.get(i)?.seq !== at) return prev
+      const next = new Map(prev)
+      if (state === null) next.delete(i)
+      else next.set(i, state)
+      return next
+    })
+
+  const save = useMutation({
+    mutationFn: (vars: SaveVars) => apiWrite<{ saved: boolean }>('POST', '/rnp/inputs', vars.body),
+    onMutate: (vars) => put(vars.i, { status: 'saving', value: vars.value, seq: vars.seq }),
+    onSuccess: async (_data, vars) => {
+      await queryClient.invalidateQueries({ queryKey: ['rnp-overview'] })
+      settle(vars.i, vars.seq, null)
+    },
+    onError: (error, vars) =>
+      settle(vars.i, vars.seq, {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Saqlab boʻlmadi',
+        seq: vars.seq,
+      }),
+  })
+
+  useEffect(() => {
+    if (editing !== null || refocus.current === null) return
+    buttons.current.get(refocus.current)?.focus()
+    refocus.current = null
+  }, [editing])
+
+  const open = (i: number) => {
+    const day = days[i]
+    return day !== undefined && day <= today
+  }
+
+  const commit = (i: number, text: string) => {
+    const day = days[i]
+    if (day === undefined) return
+    const value = parseCell(text)
+    if (Number.isNaN(value)) {
+      put(i, { status: 'error', message: 'Son notoʻgʻri — masalan 12, -16 yoki 3,5', seq: ++seq.current })
+      return
+    }
+    if (value === roundCell(row.days[i] ?? null)) {
+      // Nothing changed: the cell is left as it was, and a stale error with it goes.
+      if (cells.get(i)?.status === 'error') put(i, null)
+      return
+    }
+    const at = ++seq.current
+    save.mutate({ i, value, seq: at, body: { rows: [{ day, team: inputKey.team, metric: inputKey.metric, value }] } })
+  }
+
+  const finish = (i: number, text: string | null, how: 'enter' | 'escape' | 'blur' | 'next' | 'prev') => {
+    if (text !== null) commit(i, text)
+    const target = how === 'next' ? i + 1 : how === 'prev' ? i - 1 : null
+    if (target !== null && open(target)) {
+      setEditing(target)
+      return
+    }
+    if (how !== 'blur') refocus.current = i
+    setEditing(null)
+  }
+
+  return (
+    <>
       {row.days.map((value, i) => {
         const day = days[i] ?? ''
-        const early = row.reliableFrom !== null && day < row.reliableFrom
-        const tone = dayTone(row, value, day, today)
+        const state = cells.get(i)
+        const shown = state?.status === 'saving' ? state.value : value
+        const look = dayLook(row, shown, day, today, i === days.length - 1)
+        if (!open(i)) {
+          return (
+            <td key={day || i} title={look.title} className={look.className} style={look.style}>
+              {compact(value, row.unit)}
+            </td>
+          )
+        }
+        const where = `${row.label} · ${dayMonth(day)}`
+        const failed = state?.status === 'error' ? state.message : null
         return (
           <td
             key={day || i}
-            title={early ? unreliable : tone !== 'neutral' && row.dayPlan !== null ? `Kunlik reja: ${plain(row.dayPlan, row.unit)}` : undefined}
-            className={`tabular px-2 py-2 text-right whitespace-nowrap ${i === days.length - 1 ? 'pr-5' : ''}`}
+            title={failed ?? look.title}
+            aria-busy={state?.status === 'saving' || undefined}
+            // The padding moves onto the button, so the whole cell is the target and the column keeps its width.
+            className={`${look.className} relative`}
             style={{
-              color: early ? 'var(--ink-muted)' : total ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-              background:
-                day === today ? TODAY_CELL : tone !== 'neutral' ? TINT[tone] : isSunday(day) ? SUNDAY_CELL : undefined,
+              ...look.style,
+              padding: 0,
+              boxShadow: failed ? 'inset 0 0 0 1.5px var(--status-critical)' : undefined,
             }}
           >
-            {compact(value, row.unit)}
+            <button
+              type="button"
+              ref={(el) => {
+                if (el) buttons.current.set(i, el)
+                else buttons.current.delete(i)
+              }}
+              aria-label={`${where}: ${value === null ? 'boʻsh' : plainCell(value, row.unit)} — tahrirlash`}
+              // Not `disabled`: that would drop the focus the keyboard just handed back.
+              aria-disabled={state?.status === 'saving' || undefined}
+              onClick={() => {
+                if (state?.status !== 'saving') setEditing(i)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'F2' && state?.status !== 'saving') {
+                  e.preventDefault()
+                  setEditing(i)
+                }
+              }}
+              className={`focusable tabular block w-full cursor-text px-2 py-2 text-right whitespace-nowrap transition-shadow hover:shadow-[inset_0_0_0_1px_var(--border-strong)] aria-disabled:cursor-progress ${i === days.length - 1 ? 'pr-5' : ''} ${editing === i ? 'invisible' : ''}`}
+              style={{ color: 'inherit', opacity: state?.status === 'saving' ? 0.55 : undefined }}
+            >
+              {compact(shown, row.unit)}
+            </button>
+            {editing === i && (
+              <DayInput
+                label={where}
+                initial={value === null ? '' : String(roundCell(value))}
+                onDone={(text, how) => finish(i, text, how)}
+              />
+            )}
+            {failed && (
+              <span role="alert" className="sr-only">
+                {where}: {failed}
+              </span>
+            )}
           </td>
         )
       })}
-    </tr>
+    </>
   )
+}
+
+/**
+ * The field a typed cell becomes. Laid OVER the cell rather than in it, so the
+ * column cannot change width while somebody types. The full keyboard, not the
+ * decimal pad: an iPhone's decimal pad has no minus, and a subscriber saldo
+ * can be negative.
+ */
+function DayInput({
+  label,
+  initial,
+  onDone,
+}: {
+  label: string
+  initial: string
+  onDone: (text: string | null, how: 'enter' | 'escape' | 'blur' | 'next' | 'prev') => void
+}) {
+  const [text, setText] = useState(initial)
+  const ref = useRef<HTMLInputElement>(null)
+  // Enter, Escape and Tab unmount the field, and a browser may blur it on the way out: one ending only.
+  const done = useRef(false)
+  const end = (value: string | null, how: 'enter' | 'escape' | 'blur' | 'next' | 'prev') => {
+    if (done.current) return
+    done.current = true
+    onDone(value, how)
+  }
+
+  useEffect(() => {
+    ref.current?.focus()
+    ref.current?.select()
+  }, [])
+
+  return (
+    <input
+      ref={ref}
+      type="text"
+      autoComplete="off"
+      enterKeyHint="done"
+      aria-label={label}
+      value={text}
+      onChange={(e) => setText(e.target.value.replace(/[^\d.,\s-]/g, '').slice(0, 16))}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          end(text, 'enter')
+        } else if (e.key === 'Escape') {
+          e.preventDefault()
+          end(null, 'escape')
+        } else if (e.key === 'Tab') {
+          e.preventDefault()
+          end(text, e.shiftKey ? 'prev' : 'next')
+        }
+      }}
+      onBlur={() => end(text, 'blur')}
+      className="tabular absolute inset-0.5 w-[calc(100%-4px)] min-w-0 rounded-[var(--radius-panel-sm)] border px-1.5 text-right text-sm outline-none"
+      style={{ background: 'var(--surface-raised)', borderColor: 'var(--accent)', color: 'var(--ink-primary)' }}
+    />
+  )
+}
+
+/** A typed figure: empty is null (clear the cell); NaN is a typo, never sent. */
+export function parseCell(text: string): number | null {
+  const clean = text.replace(/\s/g, '').replace(',', '.')
+  if (clean === '') return null
+  return /^-?\d+(\.\d{1,2})?$/.test(clean) ? Number(clean) : Number.NaN
+}
+
+/** A figure as the server keeps it — two decimals — for the «changed?» test and the field. */
+function roundCell(value: number | null): number | null {
+  return value === null ? null : Math.round(value * 100) / 100
+}
+
+/** A cell's figure spoken whole — the compact form drops what a person typed. */
+function plainCell(value: number, unit: RnpUnit): string {
+  return unit === 'count' ? formatNumber(roundCell(value) ?? 0) : plain(value, unit)
 }
 
 function Cell({ children, strong = false }: { children: ReactNode; strong?: boolean }) {

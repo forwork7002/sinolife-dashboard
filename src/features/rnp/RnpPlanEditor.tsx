@@ -13,8 +13,12 @@ import {
   type RnpOverviewDto,
   type RnpUnit,
   SETTING_LEAD_VALUE,
+  SETTING_MARKETER_PCT,
+  SETTING_MARKETING_PLAN_PCT,
+  SETTING_TARGETOLOG_PCT,
   SETTING_USD_RATE,
   type SaveRnpPlansBody,
+  type SaveRnpRegistrarsBody,
 } from './rnpApi'
 import { muted } from '@/features/reklama/reklamaUi'
 
@@ -32,6 +36,11 @@ import { muted } from '@/features/reklama/reklamaUi'
  *
  * A TEAM'S FAKT 1 / FAKT 2 GO TO `fakt`, not `rows`: the server keeps them in
  * the plan «Sotuv · ROP» reads, so the two screens cannot disagree.
+ *
+ * REGISTRARS → «GURUH» is the month's grouping of the Регистрация desk, which
+ * nothing in Bitrix24 holds either. It posts to `/rnp/registrars`, after the
+ * plans and only the rows somebody changed; «—» takes a registrar out of
+ * every group.
  */
 export function RnpPlanEditor({ data }: { data: RnpOverviewDto }) {
   const [open, setOpen] = useState(false)
@@ -63,6 +72,15 @@ interface PlanGroup {
   readonly title: string
   readonly rows: readonly { key: string; label: string; field: PlanField }[]
 }
+
+/** The brand P&L's three percentages, in the order «Sozlamalar» prints them. */
+const PCT_SETTINGS = [
+  { metric: SETTING_MARKETING_PLAN_PCT, key: 'marketingPlanPct', label: 'Marketing rejasi, % ФАКТ 2 dan' },
+  { metric: SETTING_TARGETOLOG_PCT, key: 'targetologPct', label: 'Targetolog ФОТ, % byudjetdan' },
+  { metric: SETTING_MARKETER_PCT, key: 'marketerPct', label: 'Marketolog ФОТ, % ФАКТ 2 dan' },
+] as const
+
+type PctMetric = (typeof PCT_SETTINGS)[number]['metric']
 
 interface LeadRow {
   readonly id: number
@@ -112,9 +130,17 @@ function PlanDialog({ data, onClose }: { data: RnpOverviewDto; onClose: () => vo
       .map((v, i) => ({ id: i, fromDay: String(v.fromDay), value: toText(v.value, 'uzs') })),
   )
   const monthDays = data.days.length
+  const [pcts, setPcts] = useState<Record<PctMetric, string>>(
+    () => Object.fromEntries(PCT_SETTINGS.map((p) => [p.metric, toText(data.settings[p.key], 'percent')])) as Record<PctMetric, string>,
+  )
+  const [{ registrars, initialGroups }] = useState(() => registrarsOf(data))
+  const [registrarGroups, setRegistrarGroups] = useState<Record<string, string>>(() => ({ ...initialGroups }))
 
   const save = useMutation({
-    mutationFn: (body: SaveRnpPlansBody) => apiWrite<{ saved: boolean }>('POST', '/rnp/plans', body),
+    mutationFn: async ({ plans, registrars }: { plans: SaveRnpPlansBody; registrars: SaveRnpRegistrarsBody }) => {
+      await apiWrite<{ saved: boolean }>('POST', '/rnp/plans', plans)
+      if (registrars.rows.length > 0) await apiWrite<{ saved: boolean }>('POST', '/rnp/registrars', registrars)
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['rnp-overview'] })
       onClose()
@@ -141,6 +167,9 @@ function PlanDialog({ data, onClose }: { data: RnpOverviewDto; onClose: () => vo
     if (Number.isNaN(parse(values[f.id] ?? '', f.unit))) problems.push(`«${f.label}» — son notoʻgʻri`)
   }
   if (Number.isNaN(parse(usdRate, 'usd'))) problems.push('Dollar kursi — son notoʻgʻri')
+  for (const p of PCT_SETTINGS) {
+    if (Number.isNaN(parse(pcts[p.metric], 'percent'))) problems.push(`${p.label} — son notoʻgʻri`)
+  }
   const seenDays = new Set<number>()
   for (const r of leadRows) {
     const day = Number(r.fromDay)
@@ -152,7 +181,10 @@ function PlanDialog({ data, onClose }: { data: RnpOverviewDto; onClose: () => vo
 
   const submit = () => {
     if (problems.length > 0) return
-    save.mutate(bodyOf(data.month, fields, values, usdRate, leadRows, initialLeadDays))
+    save.mutate({
+      plans: bodyOf(data.month, fields, values, usdRate, leadRows, initialLeadDays, pcts),
+      registrars: registrarsBodyOf(data.month, initialGroups, registrarGroups),
+    })
   }
 
   return (
@@ -189,6 +221,16 @@ function PlanDialog({ data, onClose }: { data: RnpOverviewDto; onClose: () => vo
           <fieldset className="flex min-w-0 flex-col gap-3">
             <legend className="eyebrow mb-2">Sozlamalar</legend>
             <NumberField label="Dollar kursi" unit="usd" suffix="soʻm / $" value={usdRate} onChange={setUsdRate} />
+            {PCT_SETTINGS.map((p) => (
+              <NumberField
+                key={p.metric}
+                label={p.label}
+                unit="percent"
+                suffix="%"
+                value={pcts[p.metric]}
+                onChange={(v) => setPcts((s) => ({ ...s, [p.metric]: v }))}
+              />
+            ))}
             <div className="flex flex-col gap-2">
               <span className="text-xs font-medium" style={{ color: 'var(--ink-secondary)' }}>
                 Bitta lid qiymati
@@ -260,6 +302,39 @@ function PlanDialog({ data, onClose }: { data: RnpOverviewDto; onClose: () => vo
                 </Button>
               </div>
             </div>
+          </fieldset>
+
+          <fieldset className="flex min-w-0 flex-col gap-2">
+            <legend className="eyebrow mb-2">Registratorlar → guruh</legend>
+            {registrars.length === 0 ? (
+              <p className="text-xs" style={muted}>
+                Bu oyda registrator yoʻq.
+              </p>
+            ) : (
+              <div className="grid gap-x-5 gap-y-2 sm:grid-cols-2">
+                {registrars.map((name) => (
+                  <label key={name} className="flex min-w-0 items-center justify-between gap-3 text-xs">
+                    <span className="min-w-0 truncate" style={{ color: 'var(--ink-secondary)' }} title={name}>
+                      {name}
+                    </span>
+                    <select
+                      value={registrarGroups[name] ?? ''}
+                      aria-label={`${name} — guruh`}
+                      onChange={(e) => setRegistrarGroups((s) => ({ ...s, [name]: e.target.value }))}
+                      className="focusable h-9 w-32 shrink-0 rounded-[var(--radius-panel-sm)] border px-2 text-xs sm:h-8"
+                      style={INPUT_STYLE}
+                    >
+                      <option value="">—</option>
+                      {data.registration.groupNames.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+            )}
           </fieldset>
 
           <fieldset className="flex min-w-0 flex-col gap-4">
@@ -382,6 +457,31 @@ function parse(text: string, unit: RnpUnit): number | null {
   return /^\d+(\.\d{0,2})?$/.test(clean) ? Number(clean) : Number.NaN
 }
 
+/**
+ * Every registrar the form offers — the month's, then any only a group still
+ * names — and the group each opened with ('' for none).
+ */
+function registrarsOf(data: RnpOverviewDto): { registrars: string[]; initialGroups: Readonly<Record<string, string>> } {
+  const initialGroups: Record<string, string> = {}
+  for (const g of data.registration.groups) initialGroups[g.registrar] = g.group
+  const registrars = [...new Set([...data.registration.registrars, ...data.registration.groups.map((g) => g.registrar)])]
+  return { registrars, initialGroups }
+}
+
+/** Only the registrars whose group changed; «—» is null, out of every group. */
+export function registrarsBodyOf(
+  month: string,
+  initial: Readonly<Record<string, string>>,
+  current: Readonly<Record<string, string>>,
+): SaveRnpRegistrarsBody {
+  const rows: { registrar: string; group: string | null }[] = []
+  for (const [registrar, group] of Object.entries(current)) {
+    if (group === (initial[registrar] ?? '')) continue
+    rows.push({ registrar, group: group === '' ? null : group })
+  }
+  return { month, rows }
+}
+
 function nextFreeDay(rows: readonly LeadRow[], monthDays: number): number {
   const taken = new Set(rows.map((r) => Number(r.fromDay)))
   for (let d = 1; d <= monthDays; d++) if (!taken.has(d)) return d
@@ -389,7 +489,8 @@ function nextFreeDay(rows: readonly LeadRow[], monthDays: number): number {
 }
 
 /**
- * Only what changed, plus every setting. A team's FAKT 1 / FAKT 2 travel as
+ * Only what changed, plus every setting — the dollar rate, the P&L's three
+ * percentages and the lead values. A team's FAKT 1 / FAKT 2 travel as
  * one `fakt` entry carrying BOTH figures — the server replaces the pair, so
  * sending one alone would erase the other.
  */
@@ -400,6 +501,7 @@ export function bodyOf(
   usdRate: string,
   leadRows: readonly LeadRow[],
   initialLeadDays: readonly number[],
+  pcts: Readonly<Record<PctMetric, string>>,
 ): SaveRnpPlansBody {
   const rows = new Map<string, SaveRnpPlansBody['rows'][number]>()
   const put = (team: string, metric: string, fromDay: number, value: number | null) =>
@@ -422,6 +524,7 @@ export function bodyOf(
   }
 
   put('', SETTING_USD_RATE, 1, parse(usdRate, 'usd'))
+  for (const p of PCT_SETTINGS) put('', p.metric, 1, parse(pcts[p.metric], 'percent'))
   const kept = new Set<number>()
   for (const r of leadRows) {
     const day = Number(r.fromDay)

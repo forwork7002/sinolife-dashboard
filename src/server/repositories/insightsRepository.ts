@@ -1064,6 +1064,13 @@ export interface RnpTeamDayRow {
   readonly day: string
   /** The team on the deal («Организация сотрудника»), as Logistika names it. */
   readonly rop: string
+  /**
+   * The order's brand: its most expensive product line's, by name — Zextra
+   * («Zextra sure», «Zextra maz») or Collagen (every name with «collagen»:
+   * marine, kakao, tabletka — the client's choice on 2026-09-29). Null: an
+   * order with no product line, or neither brand.
+   */
+  readonly brand: 'Collagen' | 'Zextra' | null
   readonly fakt1Orders: number
   readonly fakt1Minor: bigint
   readonly fakt2Orders: number
@@ -5282,6 +5289,7 @@ export class InsightsRepository {
       {
         day: string
         rop: string
+        brand: 'Collagen' | 'Zextra' | null
         fakt1_orders: bigint
         fakt1: MoneyText
         fakt2_orders: bigint
@@ -5293,6 +5301,7 @@ export class InsightsRepository {
     return rows.map((r) => ({
       day: r.day,
       rop: r.rop,
+      brand: r.brand,
       fakt1Orders: int(r.fakt1_orders),
       fakt1Minor: money(r.fakt1),
       fakt2Orders: int(r.fakt2_orders),
@@ -5310,6 +5319,7 @@ export class InsightsRepository {
        SELECT
          (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS day,
          COALESCE(${InsightsRepository.ropNameSql('d."operatorTeamSource"')}, c.rop, '${InsightsRepository.NO_ROP}') AS rop,
+         b.brand,
          count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS fakt1_orders,
          COALESCE(sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}), 0)::text AS fakt1,
          count(*) FILTER (WHERE ${fakt2})::bigint AS fakt2_orders,
@@ -5319,7 +5329,26 @@ export class InsightsRepository {
        FROM scoped c
        JOIN "deal" d ON d."id" = c.deal_id
        LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
-       GROUP BY 1, 2`
+       /*
+         THE BRAND IS THE BIGGEST LINE'S, AND THE ORDER IS CREDITED WHOLE.
+         «Товары» (UF_CRM_1750413928942) is filled on 5 of 90 sales of
+         21.09.2026, so the product rows decide: a sampled order is
+         «Sinolife collagen marine kakao» beside a free «omega» gift line, or
+         «Zextra sure» twice. One probe on deal_item(dealId) per order; the
+         order's money is never split by line — FAKT 1 is the order total.
+       */
+       LEFT JOIN LATERAL (
+         SELECT CASE
+                  WHEN pr."name" ~* 'zextra' THEN 'Zextra'
+                  WHEN pr."name" ~* 'collagen' OR pr."name" ~ '[Кк]оллаген' THEN 'Collagen'
+                END AS brand
+         FROM "deal_item" i
+         JOIN "product" pr ON pr."id" = i."productId"
+         WHERE i."dealId" = d."id"
+         ORDER BY i."totalMinor" DESC, i."id"
+         LIMIT 1
+       ) b ON true
+       GROUP BY 1, 2, 3`
   }
 
   /** Isolated so a test can pin it against the board's own predicates. */

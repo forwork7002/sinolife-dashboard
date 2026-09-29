@@ -1713,6 +1713,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
         operatorNameSource: nonEmpty(d[UF.OPERATOR_NAME]),
         operatorTeamSource: nonEmpty(d[UF.OPERATOR_TEAM]),
         targetolog: this.label(UF.TARGETOLOG, d[UF.TARGETOLOG]),
+        registrar: this.label(UF.REGISTRAR, d[UF.REGISTRAR]),
         creative: this.labelOrText(UF.CREATIVE, d[UF.CREATIVE]),
         primarySource: this.labelOrText(UF.PRIMARY_SOURCE, d[UF.PRIMARY_SOURCE]),
         // «Lid kogortasi». Datetimes arrive with the portal's +03:00 and

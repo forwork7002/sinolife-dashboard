@@ -215,6 +215,8 @@ export interface RawDeal extends ExternalRecord {
   readonly operatorTeamSource?: string
   /** Who ran the ad this lead answered — «Umar», «Элдор». See `UF.TARGETOLOG`. */
   readonly targetolog?: string
+  /** «Регистрация» — the registrar who qualified the lead (set at WON only). */
+  readonly registrar?: string
   /** The ad creative, as the portal names it. */
   readonly creative?: string
   /** The lead's first source, before a re-registration rewrote SOURCE_ID. */

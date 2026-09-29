@@ -533,8 +533,41 @@ Per-screen traps worth knowing before you touch one:
   БАЗА») are measured by connected calls, not leads.
   **A duplicate stage is matched `~ '[Дд]убл'`, never `~*`**: Cyrillic case
   folding follows the ctype, and under a C locale every duplicate was a lead.
-  The SQL was run on a local cluster with a portal-shaped fixture and matched
-  hand-worked figures; it has NOT been compared with production yet.
+  Compared with production on 2026-09-28: FAKT 1 to the soʻm on 27 of 27
+  days, handed-out leads per team per day, registration and calls all match
+  the portal. **The screen once timed out there** (registration 7–10 s, the
+  old warehouse statement 9–77 s against the pool's 20 s): the registration
+  scan's closed days are a 30-minute stale-while-revalidate memo, and
+  «не собран» is counted in TypeScript from the packing stays.
+  **2026-09-29: THE WHOLE SHEET** («to'liqligicha, formula va boshqa narsalar
+  bilan»), every one of its 445 rows mapped. What that added, and the traps:
+  · `rnp_manual_day` — DAY CELLS A PERSON TYPES (Instagram/Telegram rows,
+    the HR funnel, the P&L cost lines, a registration group's «без квал»),
+    edited in place on the grid (`POST /rnp/inputs`). ZERO is kept and a
+    NEGATIVE only for a Telegram subscriber change; null deletes; an untyped
+    lived day is a DASH, never a zero. A rate over a typed denominator
+    (guruh %, Zextra %) counts only the days that were typed. A P&L row that
+    needs the dollar rate or a percentage nobody set is dashes, not zeros.
+    Registrar groups carry over from the latest grouped month. A typed `leads` / `calls` / `headcount` cell of
+    a ROP OVERRIDES Bitrix24 for its day, and once any early day is typed the
+    early days are the typed ones (a blank = the sheet's holiday = 0).
+  · September imported from the sheet by migration: column C plans (the
+    ×10 «Средний чек факт 2», the plans derived from it and zero plans left
+    out; Мафтуна's 400 000 → 400 mln), and the typed day cells. The lead's
+    value changes on **14.09**, from the sheet's column T.
+  · Teams read as the sheet names them (`SHEET_TEAM_NAMES`), and
+    `TEAM_ALIASES` folds old snapshot names — Sevinchxon → Sadriddin,
+    Malika → Charos — BEFORE anything is summed.
+  · Registration «guruh» rows = groups of REGISTRARS by the «Регистрация»
+    enum (`deal.registrar`, UF_CRM_1747975291848, set at WON only; one-off
+    `DEALS_BACKFILL` since 2026-09-01), grouped per month in
+    `rnp_registrar_group` (`POST /rnp/registrars`). Gulzora and Maftuna
+    groups were left for the client to assign.
+  · Brand P&L: an ORDER's brand is its most expensive `deal_item` line's
+    product name (zextra / collagen) — «Товары» is filled on 5 of 90 sales;
+    a LEAD's brand is its source (`LEAD_SOURCE_BRAND`), else its CRM form
+    («zextra» in the name, or a Kamron form), else none. A «Brendsiz» block
+    carries what neither brand claims, so the three add up to the company.
 - **Lidlar** — a section of its own since 2026-09-25 («yangi bir boʻlim ochamiz
   lidlar deb, oʻsha yerga koʻchiramiz lid kogortasini ham … Sotuv ROP ni ham»).
   Migration `20260925120000_leads_section` grants `leads` to every account

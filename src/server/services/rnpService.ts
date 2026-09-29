@@ -26,12 +26,15 @@
 import { type RnpOverviewDto, buildRnpSheet } from '@/server/domain/rnp/rnpSheet'
 import { zonedDateKey } from '@/server/domain/period/period'
 import type { TargetProduct } from '@/server/domain/types'
+import { formNameOf, formOwner } from '@/server/domain/leads/leadSources'
+import { LEAD_SOURCE_BRAND } from '@/server/integrations/crm/bitrix24/mapping'
 import { campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
 import { InsightsRepository, type RnpTeamDayRow } from '@/server/repositories/insightsRepository'
 import type { ReklamaRepository } from '@/server/repositories/reklamaRepository'
 import type {
   RnpCallDayRow,
   RnpLeadDayRow,
+  RnpRegistrarKvalRow,
   RnpRegistrationDayRow,
   RnpRepository,
   RnpTeam,
@@ -45,6 +48,7 @@ interface MonthRows {
   fakt: RnpTeamDayRow[]
   leads: RnpLeadDayRow[]
   registration: RnpRegistrationDayRow[]
+  registrarKval: RnpRegistrarKvalRow[]
   calls: RnpCallDayRow[]
   warehouse: RnpWarehouseDayRow[]
   meta: { day: string; product: TargetProduct; spendMicroUsd: bigint; leads: number }[]
@@ -124,9 +128,12 @@ export class RnpService {
     const days = monthDays(input.month)
     const from = days[0]!
     const to = days[days.length - 1]!
-    const [rows, plans] = await Promise.all([
+    /* Plans and typed cells are read fresh: what somebody just saved shows on the next load. */
+    const [rows, plans, manual, registrarGroups] = await Promise.all([
       monthCache.get(input.month, () => this.monthRows(input.month, from, to, input.timeZone, input.now)),
       this.repository.plans(input.month),
+      this.repository.manualDays(from, to),
+      this.repository.registrarGroups(input.month),
     ])
     return buildRnpSheet({
       month: input.month,
@@ -135,14 +142,25 @@ export class RnpService {
       teams: rows.teams,
       fakt: rows.fakt,
       leads: rows.leads,
-      registration: rows.registration,
+      registration: rows.registration.map((r) => ({ ...r, brand: leadBrand(r.sourceId, r.formTitle) })),
+      registrarKval: rows.registrarKval,
+      registrarGroups,
       calls: rows.calls,
       warehouse: rows.warehouse,
       meta: rows.meta,
       plans,
+      manual: manual.map((m) => ({ day: m.day, team: m.team, metric: m.metric, value: Number(m.valueCenti) / 100 })),
       noRop: InsightsRepository.NO_ROP,
       canEditPlans: input.canEditPlans,
     })
+  }
+
+  saveRegistrarGroups: RnpRepository['saveRegistrarGroups'] = async (month, rows, by) => {
+    await this.repository.saveRegistrarGroups(month, rows, by)
+  }
+
+  saveManualDays: RnpRepository['saveManualDays'] = async (rows, by) => {
+    await this.repository.saveManualDays(rows, by)
   }
 
   savePlans: RnpRepository['savePlans'] = async (month, input, by) => {
@@ -152,10 +170,11 @@ export class RnpService {
   private async monthRows(month: string, from: string, to: string, timeZone: string, now: Date): Promise<MonthRows> {
     const today = zonedDateKey(now, timeZone)
     const closedTo = today > to ? to : previousDay(today)
-    const [fakt, leads, registration, calls, warehouse, campaigns, teams] = await Promise.all([
+    const [fakt, leads, registration, registrarKval, calls, warehouse, campaigns, teams] = await Promise.all([
       this.insights.rnpTeamDays(monthPeriod(month, timeZone, now)),
       this.repository.leadDays(from, to),
       this.registration(from, to, today, closedTo),
+      this.repository.registrarKvalDays(from, to),
       this.repository.callDays(from, to),
       this.repository.warehouseDays(from, to, now),
       this.reklama.campaignDays(from, to),
@@ -168,7 +187,7 @@ export class RnpService {
       if (campaignChannel(c.objective, c.campaignName, c.accountId) === 'hiring') continue
       meta.push({ day: c.date, product, spendMicroUsd: c.spendMicroUsd, leads: c.leads })
     }
-    return { fakt, leads, registration, calls, warehouse, meta, teams }
+    return { fakt, leads, registration, registrarKval, calls, warehouse, meta, teams }
   }
 
   /** The closed days from the half-hour memo, today read live. */
@@ -186,6 +205,25 @@ export class RnpService {
     */
     return [...closed.filter((r) => r.day <= closedTo), ...live.filter((r) => r.day === today)]
   }
+}
+
+/**
+ * A Регистрация lead's brand: its source when the source is a brand's page or
+ * line; else its CRM form's — «zextra» in the name, or a Kamron form (his
+ * Meta accounts are all Zextra; «Kamron 6 etap filt forma» names no product);
+ * any other form sold the collagen (every form of 18–24.09 without «zextra»
+ * did). Null: a lead nothing ties to a brand (an operator's outgoing call, a
+ * lead typed in by hand) — the P&L prints those as «brendsiz».
+ */
+export function leadBrand(sourceId: string | null, formTitle: string | null): TargetProduct | null {
+  const bySource = sourceId === null ? undefined : LEAD_SOURCE_BRAND[sourceId]
+  if (bySource) return bySource
+  const form = formNameOf(formTitle)
+  if (form === null) return null
+  if (/zextra/i.test(form)) return 'Zextra'
+  const owner = formOwner(form)
+  if (owner?.targetolog === 'Kamron') return 'Zextra'
+  return 'Collagen'
 }
 
 /** `YYYY-MM-DD` of the day before. */
