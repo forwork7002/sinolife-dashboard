@@ -157,7 +157,7 @@ describe('the store', () => {
 })
 
 describe('widthCss', () => {
-  it('reads the scope variable and falls back to the default', () => {
-    expect(widthCss('day')).toBe(`var(--rnp-w-day, ${DEFAULT_WIDTH.day}px)`)
+  it('reads the scope variable, falls back to the default, and never goes under the widest figure', () => {
+    expect(widthCss('day')).toBe(`max(var(--rnp-w-day, ${DEFAULT_WIDTH.day}px), var(--rnp-min-day, 0px))`)
   })
 })

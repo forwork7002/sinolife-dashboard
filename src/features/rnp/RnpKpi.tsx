@@ -4,10 +4,9 @@ import type { ReactNode } from 'react'
 
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { StatusChip } from '@/components/ui/Stat'
-import { Tooltip } from '@/components/ui/Tooltip'
-import { NO_VALUE, formatCompactUzs, formatNumber, formatPercent, formatUzs } from '@/lib/format'
+import { NO_VALUE, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
-import { formatUsd } from './RnpBlockTable'
+import { formatUsd } from './rnpFigures'
 import type { RnpRowDto, RnpUnit } from './rnpApi'
 import { dayMonth, indexTone } from './rnpDerive'
 
@@ -37,7 +36,7 @@ export function RnpKpiCard({
 }) {
   const reliable = row?.reliableFrom ? `${dayMonth(row.reliableFrom)} dan` : null
   return (
-    <div className="card flex min-w-0 flex-col px-4 py-3.5">
+    <div className="card @container flex min-w-0 flex-col px-4 py-3.5">
       <div className="flex min-w-0 items-start justify-between gap-2">
         <p className="min-w-0 truncate text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }} title={label}>
           {label}
@@ -84,22 +83,24 @@ function Figure({ value, unit, additive }: { value: number | null; unit: RnpUnit
     )
   }
   if (unit === 'uzs') {
-    // Compact on the tile; the exact soʻm rides the Tooltip, as on StatTile.
+    // To the last soʻm (the client, 2026-09-29: «sonlar to'liq yozilishi
+    // kerak»). Thirteen grouped digits do not fit a 28px figure in a sixth of
+    // a laptop or half a phone, so the size follows the TILE's width (`cqi`,
+    // the card is a size container) divided by the figure's own length — a
+    // tabular digit is ~0.62em, the separators less — and tops out at the
+    // other tiles' 28px. «soʻm» drops under the figure rather than pushing it
+    // out of the card.
+    const fit = (100 / (formatFullUzs(value).length * 0.62)).toFixed(2)
     return (
-      <div className="mt-2">
-        <Tooltip content={<span className="tabular">{formatUzs(value)}</span>}>
-          <span
-            tabIndex={0}
-            className="focusable figure figure-wrap block rounded-[var(--radius-panel-sm)] text-[24px] leading-none font-semibold sm:text-[28px]"
-            style={{ color: 'var(--ink-primary)' }}
-          >
-            <AnimatedNumber value={value} format={formatCompactUzs} />
-            <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
-              soʻm
-            </span>
-          </span>
-        </Tooltip>
-      </div>
+      <p
+        className="figure figure-wrap mt-2 leading-none font-semibold"
+        style={{ color: 'var(--ink-primary)', fontSize: `min(28px, ${fit}cqi)` }}
+      >
+        <AnimatedNumber value={value} format={formatFullUzs} />
+        <span className="ml-1 inline-block text-xs font-normal tracking-normal" style={{ color: 'var(--ink-muted)' }}>
+          soʻm
+        </span>
+      </p>
     )
   }
   return (
@@ -113,7 +114,7 @@ function Figure({ value, unit, additive }: { value: number | null; unit: RnpUnit
 export function formatValue(value: number, unit: RnpUnit, additive = true): string {
   switch (unit) {
     case 'uzs':
-      return formatCompactUzs(value)
+      return formatFullUzs(value)
     case 'usd':
       return formatUsd(value)
     case 'percent':
@@ -133,7 +134,7 @@ function PlanMeter({ row }: { row: RnpRowDto }) {
   const forecastText = row.forecast !== null ? `Prognoz ${formatValue(row.forecast, row.unit, row.additive)}` : null
   if (plan === null || plan <= 0) {
     return (
-      <p className="mt-2.5 truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+      <p className="tabular mt-2.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
         {[forecastText, 'reja yoʻq'].filter(Boolean).join(' · ')}
       </p>
     )

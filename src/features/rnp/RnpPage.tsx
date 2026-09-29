@@ -19,6 +19,7 @@ import { RnpRopRail, RnpRopRailSkeleton } from './RnpRopRail'
 import { RnpTeamView } from './RnpTeamView'
 import type { RnpOverviewDto } from './rnpApi'
 import { findRow, teamSummaries } from './rnpDerive'
+import { canvasMeasure, contentMinWidths } from './rnpFigures'
 
 /**
  * «RNP jadvali» — the client's «СентябрРНП» sheet, one calendar month, every
@@ -59,6 +60,13 @@ export function RnpPage() {
   const status: Status = overview.isPending ? 'loading' : overview.isError ? 'error' : 'ready'
   const data = overview.data?.data
   const teams = useMemo(() => (data ? teamSummaries(data) : []), [data])
+  // How wide each column kind must be so that no figure on the page is cut — over
+  // EVERY block, so the columns stay in line when a team is picked. Data only
+  // exists in the browser, so the canvas is there when this runs.
+  const minWidths = useMemo(
+    () => (data ? contentMinWidths(data.blocks, canvasMeasure(getComputedStyle(document.body).fontFamily)) : undefined),
+    [data],
+  )
   const at = teams.findIndex((s) => s.team.rop === rop)
   const selected = at >= 0 ? teams[at]! : null
   const missing = rop !== null && data !== undefined && selected === null
@@ -96,7 +104,7 @@ export function RnpPage() {
       }
     >
       {/* Every grid below reads its column widths from here (`RnpColumnScope`). */}
-      <RnpColumnScope ref={top} className="flex min-w-0 scroll-mt-4 flex-col gap-4">
+      <RnpColumnScope ref={top} minWidths={minWidths} className="flex min-w-0 scroll-mt-4 flex-col gap-4">
         {status === 'error' ? (
           <Card className="p-5">
             <ErrorState

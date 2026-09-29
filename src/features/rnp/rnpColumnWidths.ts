@@ -61,8 +61,9 @@ export const DEFAULT_WIDTH: Readonly<Record<RnpColumnKind, number>> = {
 
 const MIN_NUMBER = 56
 const MIN_LABEL = 140
-const MAX_NUMBER = 320
-const MAX_LABEL = 520
+// Generous on purpose: «maksimal cho'zilsa ham farqi yo'q … cho'zib ko'raverishadi».
+const MAX_NUMBER = 1200
+const MAX_LABEL = 900
 
 export function minWidth(kind: RnpColumnKind): number {
   return kind === 'label' ? MIN_LABEL : MIN_NUMBER
@@ -83,9 +84,18 @@ export function widthVar(kind: RnpColumnKind): `--rnp-w-${RnpColumnKind}` {
   return `--rnp-w-${kind}`
 }
 
-/** A kind's width as CSS: the stored one when the scope sets it, else the default. */
+/** The CSS custom property carrying the narrowest a kind may be without clipping a figure (`rnpFigures.ts`). */
+export function minVar(kind: RnpColumnKind): `--rnp-min-${RnpColumnKind}` {
+  return `--rnp-min-${kind}`
+}
+
+/**
+ * A kind's width as CSS: the stored one when the scope sets it, else the
+ * default — and never less than the widest figure that kind prints, so a
+ * narrowed column can not cut a number.
+ */
 export function widthCss(kind: RnpColumnKind): string {
-  return `var(${widthVar(kind)}, ${DEFAULT_WIDTH[kind]}px)`
+  return `max(var(${widthVar(kind)}, ${DEFAULT_WIDTH[kind]}px), var(${minVar(kind)}, 0px))`
 }
 
 // ---------------------------------------------------------------------------

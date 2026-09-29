@@ -5,12 +5,14 @@ import { type ReactNode, memo, useId, useMemo, useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { ChevronDownGlyph } from '@/components/ui/Icons'
 import { InfoTip } from '@/components/ui/Tooltip'
-import { formatCompactUzs, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
+import { formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
 import type { RnpBlockDto, RnpRowDto, RnpUnit } from './rnpApi'
 import { ColumnResizer } from './RnpColumnResizer'
 import { type RnpColumnKind, widthCss } from './rnpColumnWidths'
 import { type RnpTone, TONE_COLOR, dayMonth, dayTone, indexTone, isSunday, weekday } from './rnpDerive'
+import { figureText, formatUsd } from './rnpFigures'
+import { useDragScroll } from './useDragScroll'
 import { TableCard, muted } from '@/features/reklama/reklamaUi'
 
 /**
@@ -124,12 +126,20 @@ function Collapsible({
  * THE GRID, 2026-09-29 («professional, tushunarli, rangli … raqamlar kattaroq,
  * har bir ustunni kengaytirish mumkin boʻlsin»).
  *
- * `table-layout: fixed` over a `<colgroup>` whose widths are CSS variables set
- * once on the page (`RnpColumnScope`), and the table as wide as its columns
- * summed — never `width: 100%`, which would hand the spare width out unevenly
- * and knock «Fakt» in one block out of line with «Fakt» in the next. Every
- * header cell carries a `ColumnResizer` on its right edge; all the day
- * columns share one width (`rnpColumnWidths.ts` says why).
+ * A `<colgroup>` whose widths are CSS variables set once on the page
+ * (`RnpColumnScope`), and the table as wide as its columns summed — never
+ * `width: 100%`, which would hand the spare width out unevenly and knock
+ * «Fakt» in one block out of line with «Fakt» in the next. Every header cell
+ * carries a `ColumnResizer` on its right edge; all the day columns share one
+ * width (`rnpColumnWidths.ts` says why).
+ *
+ * NO FIGURE IS EVER CUT (2026-09-29, «sonlar to'liq yozilishi kerak»). Every
+ * number is written in full (`rnpFigures.ts`), each column is at least as wide
+ * as the widest figure its kind prints anywhere on the page (`--rnp-min-*`,
+ * so the blocks stay in line), and the layout is `table-layout: auto` with
+ * `nowrap` cells — so even a figure that estimate missed widens its column
+ * rather than being clipped. The mouse can grab the figures and pan the month
+ * sideways (`useDragScroll`).
  *
  * Colour is tokens only, and each tint is a `color-mix` against transparent
  * or against the surface, so the light and the dark palette both carry it:
@@ -153,16 +163,20 @@ const Grid = memo(function Grid({ block, days, today }: { block: RnpBlockDto; da
     [summary, days.length],
   )
 
+  const dragScroll = useDragScroll<HTMLDivElement>()
+
   return (
     <div
       data-rnp-grid=""
-      className="relative max-h-[min(72vh,46rem)] overflow-auto pb-3"
+      // The figures are the handle: grab them to pan the month sideways (`useDragScroll`).
+      className="relative max-h-[min(72vh,46rem)] overflow-auto pb-3 [&_td]:cursor-grab data-[panning]:cursor-grabbing data-[panning]:select-none data-[panning]:[&_td]:cursor-grabbing"
+      {...dragScroll}
       onScroll={(e) => {
         const next = e.currentTarget.scrollLeft > 0
         if (next !== scrolledX) setScrolledX(next)
       }}
     >
-      <table className="table-fixed border-collapse text-[13px] sm:text-sm" style={{ width }}>
+      <table className="table-auto border-collapse text-[13px] sm:text-sm" style={{ width }}>
         <colgroup>
           <col style={{ width: widthCss('label') }} />
           {summary.map((c) => (
@@ -188,7 +202,7 @@ const Grid = memo(function Grid({ block, days, today }: { block: RnpBlockDto; da
                 key={c.key}
                 scope="col"
                 title={c.header}
-                className="thead-sticky overflow-hidden px-3 py-2 text-right text-[11px] font-semibold tracking-wide text-ellipsis whitespace-nowrap uppercase"
+                className="thead-sticky px-3 py-2 text-right text-[11px] font-semibold tracking-wide whitespace-nowrap uppercase"
                 style={{
                   background: SUMMARY_HEAD,
                   color: c.key === 'fact' ? 'var(--accent-ink)' : 'var(--ink-secondary)',
@@ -208,7 +222,7 @@ const Grid = memo(function Grid({ block, days, today }: { block: RnpBlockDto; da
                   scope="col"
                   aria-current={isToday ? 'date' : undefined}
                   title={isToday ? 'Bugun' : sunday ? 'Yakshanba' : undefined}
-                  className={`thead-sticky tabular overflow-hidden px-3 py-1.5 text-right whitespace-nowrap ${i === days.length - 1 ? 'pr-5' : ''}`}
+                  className={`thead-sticky tabular px-3 py-1.5 text-right whitespace-nowrap ${i === days.length - 1 ? 'pr-5' : ''}`}
                   style={
                     isToday
                       ? { background: TODAY_HEAD, color: 'var(--accent-ink)', boxShadow: TODAY_HEAD_RULE }
@@ -271,10 +285,10 @@ const Row = memo(function Row({
           {row.hint && <InfoTip content={row.hint} label={`${row.label} — izoh`} className="-my-0.5" />}
         </span>
       </th>
-      <Cell>{full(row.plan, row.unit)}</Cell>
-      <Cell>{full(row.dayPlan, row.unit)}</Cell>
-      <Cell strong>{full(row.fact, row.unit)}</Cell>
-      <Cell>{full(row.forecast, row.unit)}</Cell>
+      <Cell>{figure(row.plan, row.unit)}</Cell>
+      <Cell>{figure(row.dayPlan, row.unit)}</Cell>
+      <Cell strong>{figure(row.fact, row.unit)}</Cell>
+      <Cell>{figure(row.forecast, row.unit)}</Cell>
       <Cell last={!withShare}>{index(row.index, row.better)}</Cell>
       {withShare && <Cell last>{row.share === null ? dash : formatPercent(row.share)}</Cell>}
       {row.days.map((value, i) => {
@@ -286,14 +300,14 @@ const Row = memo(function Row({
           <td
             key={day || i}
             title={early ? unreliable : tone !== 'neutral' && row.dayPlan !== null ? `Kunlik reja: ${plain(row.dayPlan, row.unit)}` : undefined}
-            className={`tabular h-10 overflow-hidden px-3 py-1.5 text-right text-ellipsis whitespace-nowrap ${i === days.length - 1 ? 'pr-5' : ''}`}
+            className={`tabular h-10 px-3 py-1.5 text-right whitespace-nowrap ${i === days.length - 1 ? 'pr-5' : ''}`}
             style={{
               color: early ? 'var(--ink-muted)' : 'var(--ink-primary)',
               background: isToday ? TODAY_CELL : tone !== 'neutral' ? TINT[tone] : isSunday(day) ? SUNDAY_CELL : undefined,
               boxShadow: isToday ? TODAY_RULE : undefined,
             }}
           >
-            {compact(value, row.unit)}
+            {figure(value, row.unit)}
           </td>
         )
       })}
@@ -304,7 +318,7 @@ const Row = memo(function Row({
 function Cell({ children, strong = false, last = false }: { children: ReactNode; strong?: boolean; last?: boolean }) {
   return (
     <td
-      className={`tabular h-10 overflow-hidden px-3 py-1.5 text-right text-ellipsis whitespace-nowrap ${strong ? 'font-semibold' : ''}`}
+      className={`tabular h-10 px-3 py-1.5 text-right whitespace-nowrap ${strong ? 'font-semibold' : ''}`}
       style={{
         color: strong ? 'var(--ink-primary)' : 'var(--ink-secondary)',
         background: strong ? FACT_CELL : SUMMARY_CELL,
@@ -358,16 +372,9 @@ const TINT: Record<Exclude<RnpTone, 'neutral'>, string> = {
 
 const dash = <span style={muted}>—</span>
 
-/** Dollars to one decimal, «$1,234.5». */
-export function formatUsd(value: number): string {
-  return `$${formatNumber(Math.round(value * 10) / 10)}`
-}
-
-/** The plan, fact and forecast columns: money to the last soʻm. */
-function full(value: number | null, unit: RnpUnit): ReactNode {
-  if (value === null) return dash
-  if (unit === 'uzs') return formatFullUzs(value)
-  return compact(value, unit)
+/** Any figure of the grid, in full («3,589,815,001», never «3.6 mlrd»): `rnpFigures.ts`. */
+function figure(value: number | null, unit: RnpUnit): ReactNode {
+  return value === null ? dash : figureText(value, unit)
 }
 
 /** The day plan as plain text, for a cell's title. */
@@ -381,21 +388,6 @@ function plain(value: number, unit: RnpUnit): string {
       return formatPercent(value)
     case 'count':
       return formatNumber(Math.round(value * 10) / 10)
-  }
-}
-
-/** A day cell: money compact («12.4 mln»), everything else as the column reads. */
-function compact(value: number | null, unit: RnpUnit): ReactNode {
-  if (value === null) return dash
-  switch (unit) {
-    case 'uzs':
-      return formatCompactUzs(value)
-    case 'usd':
-      return formatUsd(value)
-    case 'percent':
-      return formatPercent(value)
-    case 'count':
-      return formatNumber(Math.round(value))
   }
 }
 

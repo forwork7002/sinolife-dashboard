@@ -3,7 +3,7 @@
 import { type KeyboardEvent, useEffect, useRef } from 'react'
 
 import { DotGlyph, RingGlyph, SquareGlyph, TriangleGlyph } from '@/components/ui/Icons'
-import { formatCompactUzs, formatNumber, formatPercent } from '@/lib/format'
+import { formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
 import type { RnpRowDto } from './rnpApi'
 import { type RnpTeamSummary, type RnpTone, TONE_COLOR, indexTone } from './rnpDerive'
@@ -111,7 +111,7 @@ function Chip({
   const tone = indexTone(fakt1?.index ?? null, 'up')
   const Glyph = GLYPH[tone]
   const status = fakt1?.index != null ? `FAKT 1 indeksi ${formatPercent(fakt1.index)}, ${TONE_WORD[tone]}` : TONE_WORD[tone]
-  const money = fakt1?.fact != null ? `${formatCompactUzs(fakt1.fact)} soʻm` : '—'
+  const money = fakt1?.fact != null ? `${formatFullUzs(fakt1.fact)} soʻm` : '—'
   return (
     <button
       type="button"

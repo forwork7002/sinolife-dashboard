@@ -15,6 +15,7 @@ import {
   resetColumnWidths,
   setColumnWidth,
   useColumnWidths,
+  minVar,
   useStoredWidth,
   widthVar,
 } from './rnpColumnWidths'
@@ -38,10 +39,13 @@ import {
 export function RnpColumnScope({
   children,
   className = '',
+  minWidths,
   ref,
 }: {
   children: ReactNode
   className?: string
+  /** The narrowest each kind may be without clipping a figure (`contentMinWidths`). */
+  minWidths?: Partial<Record<RnpColumnKind, number>>
   ref?: Ref<HTMLDivElement>
 }) {
   const widths = useColumnWidths()
@@ -50,9 +54,11 @@ export function RnpColumnScope({
     for (const kind of RNP_COLUMN_KINDS) {
       const px = widths[kind]
       if (px !== undefined) out[widthVar(kind)] = `${px}px`
+      const min = minWidths?.[kind]
+      if (min !== undefined) out[minVar(kind)] = `${min}px`
     }
     return out as CSSProperties
-  }, [widths])
+  }, [widths, minWidths])
   return (
     <div
       ref={ref}
@@ -94,14 +100,27 @@ export function ColumnResizer({
   tabbable?: boolean
 }) {
   const stored = useStoredWidth(kind)
-  const drag = useRef<{ startX: number; startW: number; width: number; frame: number } | null>(null)
+  const drag = useRef<{ startX: number; startW: number; width: number; floor: number; frame: number } | null>(null)
 
-  /** The column's width as laid out now — the stored one, or the default CSS resolved to. */
+  /**
+   * The column's width as laid out now. Measured first: a stored width under
+   * the widest figure is drawn at that figure's width, and a drag has to start
+   * from what is on screen.
+   */
   const current = (handle: HTMLElement): number => {
     const cell = handle.parentElement
     const measured = cell ? cell.getBoundingClientRect().width : 0
-    return stored ?? (measured > 0 ? Math.round(measured) : DEFAULT_WIDTH[kind])
+    return measured > 0 ? Math.round(measured) : (stored ?? DEFAULT_WIDTH[kind])
   }
+
+  /** The widest figure this kind prints (`--rnp-min-*` on the scope), 0 when unknown. */
+  const contentMin = (handle: HTMLElement): number => {
+    const px = Number.parseFloat(getComputedStyle(scopeOf(handle)).getPropertyValue(minVar(kind)))
+    return Number.isFinite(px) ? px : 0
+  }
+
+  /** The kind's width, clamped — and never under the widest figure it prints, so a drag cannot cut a number. */
+  const clampFor = (px: number, floor: number): number => clampWidth(kind, Math.max(px, floor))
 
   const scopeOf = (handle: HTMLElement): HTMLElement =>
     handle.closest<HTMLElement>('[data-rnp-cols]') ?? handle.closest<HTMLElement>('[data-rnp-grid]') ?? handle
@@ -118,7 +137,7 @@ export function ColumnResizer({
     const handle = e.currentTarget
     handle.setPointerCapture?.(e.pointerId)
     const startW = current(handle)
-    drag.current = { startX: e.clientX, startW, width: startW, frame: 0 }
+    drag.current = { startX: e.clientX, startW, width: startW, floor: contentMin(handle), frame: 0 }
     handle.dataset.dragging = ''
   }
 
@@ -126,7 +145,7 @@ export function ColumnResizer({
     const d = drag.current
     if (!d) return
     const handle = e.currentTarget
-    d.width = clampWidth(kind, d.startW + e.clientX - d.startX)
+    d.width = clampFor(d.startW + e.clientX - d.startX, d.floor)
     // One write per frame, however many moves the pointer reports.
     if (d.frame) return
     d.frame = requestAnimationFrame(() => {
@@ -155,7 +174,7 @@ export function ColumnResizer({
     if (delta === 0) return
     e.preventDefault()
     const handle = e.currentTarget
-    const next = clampWidth(kind, current(handle) + delta)
+    const next = clampFor(current(handle) + delta, contentMin(handle))
     show(handle, next)
     setColumnWidth(kind, next)
   }
