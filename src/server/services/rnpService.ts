@@ -42,7 +42,6 @@ import type {
 } from '@/server/repositories/rnpRepository'
 
 import { monthDays, monthPeriod } from './salesTeamService'
-import { ttlCache } from './ttlCache'
 
 interface MonthRows {
   fakt: RnpTeamDayRow[]
@@ -56,11 +55,20 @@ interface MonthRows {
 }
 
 /*
-  A memo keyed by the month. Company-wide by construction — the route refuses
+  Keyed by the month. Company-wide by construction — the route refuses
   a narrowed account — and the plans are read fresh every time, so a saved
   plan shows on the next load rather than a minute later.
+
+  SERVED STALE, REBUILT BEHIND THE READER. A month's rows take seconds to
+  build (the queue cohort, a month of leads, calls and stage history), and
+  the sheet is read all day by people who open it and wait. After the first
+  build a reader always gets the last answer at once; once it is a minute old
+  the next reader triggers a rebuild in the background and the one after
+  gets the new rows. Rows older than ten minutes (a quiet night) are not
+  handed out at all — their «today» and live cells would be wrong — so that
+  reader waits for a fresh build, as the first reader after a deploy does.
 */
-const monthCache = ttlCache<MonthRows>(60_000)
+const monthCache = staleWhileRevalidate<MonthRows>(60_000, Date.now, 10 * 60_000)
 
 /*
   THE REGISTRATION DESK'S CLOSED DAYS, KEPT HALF AN HOUR AND SERVED STALE.
@@ -87,11 +95,13 @@ export function resetRnpCaches(): void {
  * once and rebuilds it in the background; a failed rebuild keeps the old
  * answer. Only the very first reader of a key waits. Exported for its test.
  */
-export function staleWhileRevalidate<T>(ttlMs: number, clock: () => number = Date.now) {
+export function staleWhileRevalidate<T>(ttlMs: number, clock: () => number = Date.now, maxStaleMs = Infinity) {
   const entries = new Map<string, { at: number; value: Promise<T>; refreshing: boolean }>()
   return {
     get(key: string, build: () => Promise<T>): Promise<T> {
-      const hit = entries.get(key)
+      const found = entries.get(key)
+      // Too old to show even while rebuilding: drop it and build in the open.
+      const hit = found && clock() - found.at >= maxStaleMs ? undefined : found
       if (!hit) {
         const value = build()
         entries.set(key, { at: clock(), value, refreshing: false })
@@ -128,11 +138,10 @@ export class RnpService {
     const days = monthDays(input.month)
     const from = days[0]!
     const to = days[days.length - 1]!
-    /* Plans and typed cells are read fresh: what somebody just saved shows on the next load. */
-    const [rows, plans, manual, registrarGroups] = await Promise.all([
+    /* Plans and registrar groups are read fresh: what somebody just saved shows on the next load. */
+    const [rows, plans, registrarGroups] = await Promise.all([
       monthCache.get(input.month, () => this.monthRows(input.month, from, to, input.timeZone, input.now)),
       this.repository.plans(input.month),
-      this.repository.manualDays(from, to),
       this.repository.registrarGroups(input.month),
     ])
     return buildRnpSheet({
@@ -149,7 +158,6 @@ export class RnpService {
       warehouse: rows.warehouse,
       meta: rows.meta,
       plans,
-      manual: manual.map((m) => ({ day: m.day, team: m.team, metric: m.metric, value: Number(m.valueCenti) / 100 })),
       noRop: InsightsRepository.NO_ROP,
       canEditPlans: input.canEditPlans,
     })
@@ -157,10 +165,6 @@ export class RnpService {
 
   saveRegistrarGroups: RnpRepository['saveRegistrarGroups'] = async (month, rows, by) => {
     await this.repository.saveRegistrarGroups(month, rows, by)
-  }
-
-  saveManualDays: RnpRepository['saveManualDays'] = async (rows, by) => {
-    await this.repository.saveManualDays(rows, by)
   }
 
   savePlans: RnpRepository['savePlans'] = async (month, input, by) => {

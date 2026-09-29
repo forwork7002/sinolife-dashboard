@@ -27,6 +27,19 @@ describe('staleWhileRevalidate', () => {
     expect(await memo.get('k', build)).toBe(2)
   })
 
+  it('waits for a fresh build once the answer is older than the hard limit', async () => {
+    let now = 0
+    let builds = 0
+    const memo = staleWhileRevalidate<number>(1_000, () => now, 10_000)
+    const build = () => Promise.resolve(++builds)
+    expect(await memo.get('k', build)).toBe(1)
+    now = 5_000
+    expect(await memo.get('k', build)).toBe(1) // stale but young enough
+    await Promise.resolve()
+    now = 20_000
+    expect(await memo.get('k', build)).toBe(3) // too old: built in the open
+  })
+
   it('keeps the old answer when a rebuild fails, and forgets a first build that failed', async () => {
     let now = 0
     const memo = staleWhileRevalidate<number>(1_000, () => now)

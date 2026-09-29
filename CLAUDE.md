@@ -541,20 +541,25 @@ Per-screen traps worth knowing before you touch one:
   «не собран» is counted in TypeScript from the packing stays.
   **2026-09-29: THE WHOLE SHEET** («to'liqligicha, formula va boshqa narsalar
   bilan»), every one of its 445 rows mapped. What that added, and the traps:
-  · `rnp_manual_day` — DAY CELLS A PERSON TYPES (Instagram/Telegram rows,
-    the HR funnel, the P&L cost lines, a registration group's «без квал»),
-    edited in place on the grid (`POST /rnp/inputs`). ZERO is kept and a
-    NEGATIVE only for a Telegram subscriber change; null deletes; an untyped
-    lived day is a DASH, never a zero. A rate over a typed denominator
-    (guruh %, Zextra %) counts only the days that were typed. A P&L row that
-    needs the dollar rate or a percentage nobody set is dashes, not zeros.
-    Registrar groups carry over from the latest grouped month. A typed `leads` / `calls` / `headcount` cell of
-    a ROP OVERRIDES Bitrix24 for its day, and once any early day is typed the
-    early days are the typed ones (a blank = the sheet's holiday = 0).
-  · September imported from the sheet by migration: column C plans (the
-    ×10 «Средний чек факт 2», the plans derived from it and zero plans left
-    out; Мафтуна's 400 000 → 400 mln), and the typed day cells. The lead's
-    value changes on **14.09**, from the sheet's column T.
+  · **NO TYPED DATA — the client's rule of 2026-09-29 evening** («qo'lda
+    malumot kiritilmaydi umuman … raqam har doim bitrix24dagi … formula
+    qilib hisoblangan»). A day of the sheet is shown only if Bitrix24 or Meta
+    can compute it; the sheet's typed rows (Instagram/Telegram 5–10, HR
+    335–343, the P&L cost lines 411–415 / 438–442, a group's «без квал»,
+    Zextra's lead count) are NOT on the screen, and a ROP's early leads stay
+    muted rather than being filled from the sheet. `rnp_manual_day` and its
+    September import were built the same day and then retired: the table is
+    still in the database, unread (dropping it was not asked for). Plans
+    (column C) and the registrar→group mapping stay — targets and settings,
+    not data.
+  · **«Jadvaldagidek» is the default view**: every row and block carries
+    `sheet: { row, label }` — its place and label on «СентябрРНП 26», null for
+    a dashboard addition — and the view shows only those, in sheet order,
+    under sheet labels. «Kengaytirilgan» (`?view=full`) is the full screen.
+  · September's column C plans are imported by migration (the ×10 «Средний
+    чек факт 2», the plans derived from it and zero plans left out; Мафтуна's
+    400 000 → 400 mln). The lead's value changes on **14.09**, from the
+    sheet's column T.
   · Teams read as the sheet names them (`SHEET_TEAM_NAMES`), and
     `TEAM_ALIASES` folds old snapshot names — Sevinchxon → Sadriddin,
     Malika → Charos — BEFORE anything is summed.

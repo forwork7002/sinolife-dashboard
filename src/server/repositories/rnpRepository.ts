@@ -96,13 +96,6 @@ export interface RnpRegistrarGroupRow {
   readonly group: string
 }
 
-export interface RnpManualDayRow {
-  readonly day: string
-  readonly team: string
-  readonly metric: string
-  readonly valueCenti: bigint
-}
-
 export interface RnpTeamFaktPlan {
   readonly rop: string
   readonly fakt1Minor: bigint | null
@@ -466,39 +459,6 @@ export class RnpRepository {
             }),
       ),
     ])
-  }
-
-  /** Every typed day cell of [from, to] (inclusive `YYYY-MM-DD`). */
-  async manualDays(from: string, to: string): Promise<RnpManualDayRow[]> {
-    const rows = await this.prisma.rnpManualDay.findMany({
-      where: { day: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) } },
-      select: { day: true, team: true, metric: true, valueCenti: true },
-    })
-    return rows.map((r) => ({ day: r.day.toISOString().slice(0, 10), team: r.team, metric: r.metric, valueCenti: r.valueCenti }))
-  }
-
-  /**
-   * Write what the screen sent, in ONE transaction. Null deletes the cell —
-   * «nobody typed it» is the absence of a row. Unlike a plan, ZERO and
-   * NEGATIVE values are kept: a Telegram channel that lost 16 subscribers
-   * typed -16, and a day with no posts typed 0.
-   */
-  async saveManualDays(
-    rows: readonly { day: string; team: string; metric: string; valueCenti: bigint | null }[],
-    by: string,
-  ): Promise<void> {
-    await this.prisma.$transaction(
-      rows.map((r) => {
-        const key = { day: new Date(`${r.day}T00:00:00Z`), team: r.team, metric: r.metric }
-        return r.valueCenti === null
-          ? this.prisma.rnpManualDay.deleteMany({ where: key })
-          : this.prisma.rnpManualDay.upsert({
-              where: { day_team_metric: key },
-              create: { ...key, valueCenti: r.valueCenti, updatedBy: by },
-              update: { valueCenti: r.valueCenti, updatedBy: by },
-            })
-      }),
-    )
   }
 
   async plans(month: string): Promise<{ rows: RnpPlanRow[]; fakt: RnpTeamFaktPlan[] }> {
