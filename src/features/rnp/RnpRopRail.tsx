@@ -73,7 +73,7 @@ export function RnpRopRail({
       {teams.map((s) => (
         <Chip
           key={s.team.rop}
-          name={s.team.rop}
+          name={s.team.label}
           sub={s.team.head ?? 'rahbar koʻrsatilmagan'}
           base={s.team.isBase}
           fakt1={s.fakt1}

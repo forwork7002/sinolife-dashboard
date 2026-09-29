@@ -60,6 +60,8 @@ export interface RnpBlockDto {
 
 export interface RnpTeamDto {
   readonly rop: string
+  /** The name the client's sheet gives the team («Чарос РОП»); the department name when it gives none. */
+  readonly label: string
   readonly head: string | null
   /** A БАЗА team: works the existing customers, measured by calls, not leads. */
   readonly isBase: boolean

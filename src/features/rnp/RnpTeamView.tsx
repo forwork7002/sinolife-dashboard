@@ -47,7 +47,7 @@ export function RnpTeamView({
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <h2 className="display truncate text-xl font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                {team.rop}
+                {team.label}
               </h2>
               {team.isBase && <BaseTag />}
               <span

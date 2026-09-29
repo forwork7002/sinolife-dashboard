@@ -84,13 +84,13 @@ export function RnpRanking({
                       onSelect(s.team.rop)
                     }}
                     className="focusable flex min-h-[44px] w-[9rem] items-center gap-2 rounded-[var(--radius-panel-sm)] px-1 text-left sm:w-[14rem]"
-                    aria-label={`${s.team.rop} — ROP ni ochish`}
+                    aria-label={`${s.team.label} — ROP ni ochish`}
                   >
                     <RankBadge rank={s.rank} />
                     <span className="min-w-0 flex-1">
                       <span className="flex min-w-0 items-center gap-1.5">
                         <span className="truncate text-[13px] font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                          {s.team.rop}
+                          {s.team.label}
                         </span>
                         {s.team.isBase && <BaseTag />}
                       </span>
@@ -120,7 +120,7 @@ export function RnpRanking({
                       values={livedValues(s.fakt1, days, today)}
                       color="var(--series-2)"
                       height={24}
-                      label={`${s.team.rop}: FAKT 1 kunma-kun`}
+                      label={`${s.team.label}: FAKT 1 kunma-kun`}
                     />
                   </div>
                 </td>

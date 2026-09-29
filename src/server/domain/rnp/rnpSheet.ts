@@ -85,6 +85,8 @@ export interface RnpBlockDto {
 
 export interface RnpTeamDto {
   readonly rop: string
+  /** The name the client's sheet gives the team («Чарос РОП»); the department name when it gives none. */
+  readonly label: string
   readonly head: string | null
   /** A БАЗА team: works the existing customers, measured by calls, not leads. */
   readonly isBase: boolean
@@ -174,6 +176,44 @@ export interface RnpSheetInput {
 export const BASE_TEAMS: ReadonlySet<string> = new Set(['Charos', 'Baza'])
 
 /**
+ * Team names the deals still carry from before a department was renamed,
+ * folded into the team that is the same people today. Both are the sheet's
+ * own reading: its «Чарос РОП» block sums «Sevinchxon(ROP)» beside the
+ * current department (row 151), and its «Малика РОП – БАЗА» block reads
+ * «Malika(ROP)» (row 163) — the department Malika Rahmonova heads is
+ * «Charos(ROP)». Applied to every source row before anything is summed, so a
+ * folded team's money can only be counted once.
+ */
+export const TEAM_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  Sevinchxon: 'Sadriddin',
+  Malika: 'Charos',
+})
+
+/**
+ * What the client's «РНП» sheet calls each team, by department name. The
+ * sheet names teams by their ROP as the floor knows them, which is not always
+ * the department's name: «Чарос РОП» is the department «Sadriddin(ROP)»,
+ * «Малика РОП – БАЗА» is «Charos(ROP)» (spec §3.4, 2026-09-28). A team the
+ * sheet has no block for keeps its department name.
+ */
+export const SHEET_TEAM_NAMES: Readonly<Record<string, string>> = Object.freeze({
+  Gulzora: 'Гулзора РОП',
+  Sevinch: 'Севинч РОП',
+  Lola: 'Лола РОП',
+  Saidaziz: 'Саидазиз РОП',
+  Asliddin: 'Аслиддин РОП',
+  Sadriddin: 'Чарос РОП',
+  Charos: 'Малика РОП – БАЗА',
+  Marjona: 'Маржона РОП',
+  Azizbek: 'Азизбек РОП',
+  Maftuna: 'Мафтуна РОП',
+  Saida: 'Саида РОП',
+  Hayot: 'Ҳаёт РОП',
+  Baza: 'Фаррух БАЗА',
+  Shohjaxon: 'Шохжахон РОП',
+})
+
+/**
  * «РОП (Первичка)» is filled on every handed-out lead only from 16.09.2026;
  * before it about one lead in five carries it, so those days undercount and
  * are drawn muted rather than presented as the team's leads.
@@ -226,7 +266,9 @@ export const RNP_PLAN_METRICS = [
   'fakt1',
   'fakt2',
   'headcount',
+  'plan_pct',
   'success_rate',
+  'refusal_rate',
   'primary_orders2',
   'primary_fakt2',
   'primary_conversion',
@@ -472,12 +514,13 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     }
     return t
   }
-  for (const t of input.teams) teamOf(t.rop)
+  const canonical = (rop: string) => TEAM_ALIASES[rop] ?? rop
+  for (const t of input.teams) teamOf(canonical(t.rop))
 
   for (const r of input.fakt) {
     const i = at.get(r.day)
     if (i === undefined) continue
-    const t = teamOf(r.rop)
+    const t = teamOf(canonical(r.rop))
     t.fakt1Orders[i]! += r.fakt1Orders
     t.fakt1[i]! += minorToSom(r.fakt1Minor)
     t.fakt2Orders[i]! += r.fakt2Orders
@@ -490,17 +533,21 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     const i = at.get(r.day)
     if (i === undefined) continue
     if (r.rop === null) undistributed[i]! += r.leads
-    else teamOf(r.rop).leads[i]! += r.leads
+    else teamOf(canonical(r.rop)).leads[i]! += r.leads
   }
   for (const r of input.calls) {
     const i = at.get(r.day)
-    if (i === undefined || !grid.has(r.rop)) continue
-    const t = teamOf(r.rop)
+    const rop = canonical(r.rop)
+    if (i === undefined || !grid.has(rop)) continue
+    const t = teamOf(rop)
     t.calls[i]! += r.connected
     if (!r.isHead) t.heads[i]!.add(r.employeeId)
   }
 
-  const heads = new Map(input.teams.map((t) => [t.rop, t.head]))
+  const heads = new Map(input.teams.filter((t) => !(t.rop in TEAM_ALIASES)).map((t) => [t.rop, t.head]))
+  const labelOf = (rop: string) => SHEET_TEAM_NAMES[rop] ?? rop
+  /** The department behind a sheet name, and its head: «Sadriddin(ROP) · Mamayusupov Sadriddin». */
+  const subtitleOf = (rop: string) => [`${rop}(ROP)`, heads.get(rop)].filter(Boolean).join(' · ')
   const monthFakt1 = (t: TeamDays) => sum(t.fakt1)
   const active = (t: TeamDays) => sum(t.fakt1Orders) + sum(t.fakt2Orders) + sum(t.leads) + sum(t.calls) > 0
   /*
@@ -645,8 +692,8 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     blocks.push({
       id: k,
       kind: 'team',
-      title: `${rop} РОП${baseTeam ? ' — БАЗА' : ''}`,
-      subtitle: heads.get(rop) ?? null,
+      title: labelOf(rop) === rop ? `${rop} РОП${baseTeam ? ' — БАЗА' : ''}` : labelOf(rop),
+      subtitle: subtitleOf(rop),
       team: rop,
       rows: [
         additive(clock, { key: `${k}:reach`, label: reachLabel, unit: 'count', ...planned(rop, baseTeam ? 'calls' : 'leads'), hint: reachHint, reliableFrom: reachFrom }, reach),
@@ -654,7 +701,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
         ratio(clock, { key: `${k}:cheque1`, label: 'Ўртача чек (ФАКТ 1)', unit: 'uzs', ...planned(rop, 'avg_cheque1') }, t.fakt1, t.fakt1Orders),
         additive(clock, { key: `${k}:orders1`, label: 'Буюртма сони (ФАКТ 1)', unit: 'count', ...planned(rop, 'orders') }, t.fakt1Orders),
         additive(clock, { key: `${k}:fakt1`, label: 'Сумма ФАКТ 1', unit: 'uzs', tone: 'total', ...planned(rop, 'fakt1'), hint: 'Tasdiqlandi + Tasdiqlanmay chiqdi — Tasdiqlash navbati kogortasi, jamoa bitimdagi «Организация сотрудника» boʻyicha.' }, t.fakt1),
-        ...(baseTeam && !ownLeadValue ? [] : [ratio(clock, { key: `${k}:plan_pct`, label: 'План бажарилиши, %', unit: 'percent', reliableFrom: reachFrom, hint: `ФАКТ 1 ÷ (${baseTeam ? 'дозвон' : 'lid'} × bitta lid qiymati). Lid qiymati «Rejalar» formasida.` }, t.fakt1, expected, 100)]),
+        ...(baseTeam && !ownLeadValue ? [] : [ratio(clock, { key: `${k}:plan_pct`, label: 'План бажарилиши, %', unit: 'percent', ...planned(rop, 'plan_pct'), reliableFrom: reachFrom, hint: `ФАКТ 1 ÷ (${baseTeam ? 'дозвон' : 'lid'} × bitta lid qiymati). Lid qiymati «Rejalar» formasida.` }, t.fakt1, expected, 100)]),
         ...(baseTeam ? [ratio(clock, { key: `${k}:per_call`, label: 'Дозвонга ўртача сумма', unit: 'uzs', reliableFrom: CALLS_RELIABLE_FROM }, t.fakt1, t.calls)] : []),
         level(clock, { key: `${k}:headcount`, label: 'Ходим сони', unit: 'count', ...planned(rop, 'headcount'), reliableFrom: CALLS_RELIABLE_FROM, hint: 'Shu kuni kamida bitta ulangan qoʻngʻirogʻi boʻlgan xodimlar, ROP ning oʻzisiz. Oy ustuni — kunlik oʻrtacha.' }, headcount, 'mean'),
         additive(clock, { key: `${k}:fakt2`, label: 'Сумма ФАКТ 2 (Доставлено)', unit: 'uzs', tone: 'total', ...planned(rop, 'fakt2') }, t.fakt2),
@@ -718,7 +765,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       additive(clock, { key: `${k}:fakt2`, label: 'Успешка сумма ФАКТ 2', unit: 'uzs', tone }, t.fakt2),
       ratio(clock, { key: `${k}:success`, label: 'Успешность, %', unit: 'percent', ...(team === input.noRop ? {} : planned(team, 'success_rate')) }, t.fakt2, t.fakt1, 100),
       additive(clock, { key: `${k}:refused`, label: 'Отказ сумма', unit: 'uzs', better: 'down' }, t.refused),
-      ratio(clock, { key: `${k}:refused_pct`, label: 'Отказ, %', unit: 'percent', better: 'down', hint: 'Возврат получен + Отказ (Logistika «Отказ» ustuni) ÷ ФАКТ 1.' }, t.refused, t.fakt1, 100),
+      ratio(clock, { key: `${k}:refused_pct`, label: 'Отказ, %', unit: 'percent', better: 'down', ...(team === input.noRop ? {} : planned(team, 'refusal_rate')), hint: 'Возврат получен + Отказ (Logistika «Отказ» ustuni) ÷ ФАКТ 1.' }, t.refused, t.fakt1, 100),
       ratio(clock, { key: `${k}:open_pct`, label: 'Жараёнда, %', unit: 'percent', better: 'down', hint: 'Hali yetkazilmagan va rad etilmagan (yoʻlda, pochtada) buyurtmalar ulushi.' }, open, t.fakt1, 100),
     ]
   }
@@ -736,14 +783,16 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     blocks.push({
       id: `logistics:${rop}`,
       kind: 'logistics',
-      title: `Логистика — ${rop}`,
-      subtitle: heads.get(rop) ?? null,
+      title: `Логистика — ${labelOf(rop)}`,
+      subtitle: rop === input.noRop ? null : subtitleOf(rop),
       team: rop,
       rows: logisticsRows(`lg:${rop}`, t, 'plain', rop),
     })
   }
 
   // --- Свод -----------------------------------------------------------------
+  const companyLeadValue = leadValueDays('')
+  const companySalesPlan = days.map((_, i) => reg.qualified[i]! * companyLeadValue[i]!)
   const monthTotal1 = sum(lived(clock, fakt1All))
   const monthTotal2 = sum(lived(clock, fakt2All))
   /* «(ROP yoʻq)» is not a team anyone plans for; a plan typed there would land in team_month_plan. */
@@ -759,12 +808,15 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     subtitle: 'Har bir jamoaning ФАКТ 1 va ФАКТ 2 si va umumiydagi ulushi',
     team: null,
     rows: [
+      additive(clock, { key: 'sv:reg_qualified', label: 'Квал лид сони (Регистрация)', unit: 'count', ...planned('', 'reg_qualified') }, reg.qualified),
+      additive(clock, { key: 'sv:sales_plan', label: 'План продаж (квал лид × лид қиймати)', unit: 'uzs', hint: 'Jadvalning 347-qatori: registratsiya kval lidi × bitta lid qiymati (shu kundagi qiymat, «Rejalar» formasida).' }, companySalesPlan),
+      ratio(clock, { key: 'sv:sales_plan_pct', label: 'ФАКТ 1 ÷ План продаж, %', unit: 'percent' }, fakt1All, companySalesPlan, 100),
       additive(clock, { key: 'sv:fakt1', label: 'ФАКТ 1 — жами', unit: 'uzs', tone: 'total', ...planned('', 'fakt1') }, fakt1All),
-      ...withNoRop.map((rop) => shareOf(additive(clock, { key: `sv:fakt1:${rop}`, label: `ФАКТ 1 · ${rop}`, unit: 'uzs', ...teamPlan(rop, 'fakt1') }, grid.get(rop)!.fakt1), monthTotal1)),
+      ...withNoRop.map((rop) => shareOf(additive(clock, { key: `sv:fakt1:${rop}`, label: `ФАКТ 1 · ${labelOf(rop)}`, unit: 'uzs', ...teamPlan(rop, 'fakt1') }, grid.get(rop)!.fakt1), monthTotal1)),
       additive(clock, { key: 'sv:fakt2', label: 'ФАКТ 2 — жами', unit: 'uzs', tone: 'total', ...planned('', 'fakt2') }, fakt2All),
-      ...withNoRop.map((rop) => shareOf(additive(clock, { key: `sv:fakt2:${rop}`, label: `ФАКТ 2 · ${rop}`, unit: 'uzs', ...teamPlan(rop, 'fakt2') }, grid.get(rop)!.fakt2), monthTotal2)),
+      ...withNoRop.map((rop) => shareOf(additive(clock, { key: `sv:fakt2:${rop}`, label: `ФАКТ 2 · ${labelOf(rop)}`, unit: 'uzs', ...teamPlan(rop, 'fakt2') }, grid.get(rop)!.fakt2), monthTotal2)),
+      additive(clock, { key: 'sv:budget', label: 'Бюджет (Meta), $', unit: 'usd', better: 'down', ...planned('', 'budget'), hint: 'Marketing blokidagi «Жами бюджет» bilan bir xil qator.' }, spendAll),
       additive(clock, { key: 'sv:rop_leads', label: 'РОП олган лид — жами', unit: 'count', reliableFrom: LEAD_ROP_RELIABLE_FROM }, ropLeads),
-      additive(clock, { key: 'sv:reg_qualified', label: 'Регистрация квал лид', unit: 'count' }, reg.qualified),
       additive(clock, { key: 'sv:difference', label: 'Разница', unit: 'count', reliableFrom: LEAD_ROP_RELIABLE_FROM }, difference),
     ],
   })
@@ -774,7 +826,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     days,
     today: input.today,
     elapsedDays: clock.elapsed,
-    teams: teamNames.map((rop) => ({ rop, head: heads.get(rop) ?? null, isBase: isBase(rop) })),
+    teams: teamNames.map((rop) => ({ rop, label: labelOf(rop), head: heads.get(rop) ?? null, isBase: isBase(rop) })),
     blocks,
     settings: {
       usdRate,

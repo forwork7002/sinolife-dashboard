@@ -165,7 +165,8 @@ describe('buildRnpSheet — teams', () => {
       ['Charos', true],
     ])
     const charos = block(dto, 'team:Charos')
-    expect(charos.subtitle).toBe('Malika Rahmonova')
+    expect(charos.title).toBe('Малика РОП – БАЗА')
+    expect(charos.subtitle).toBe('Charos(ROP) · Malika Rahmonova')
     const reach = charos.rows[0]!
     expect(reach.label).toMatch(/Дозвон/)
     expect(on(reach, '2026-09-21')).toBe(4)
@@ -290,5 +291,41 @@ describe('buildRnpSheet — plans nobody can mean', () => {
     expect(noRop).toHaveLength(2)
     expect(noRop.every((r) => r.planKey === null)).toBe(true)
     expect(row(dto, 'logistics:(ROP yoʻq)', 'lg:(ROP yoʻq):success').planKey).toBeNull()
+  })
+})
+
+describe('buildRnpSheet — the sheet\'s own names and plans', () => {
+  it('folds a renamed department\'s deals into the team it is today, once', () => {
+    const base = input()
+    const dto = buildRnpSheet({
+      ...base,
+      teams: [...base.teams, { rop: 'Sadriddin', head: 'Mamayusupov Sadriddin' }],
+      fakt: [
+        ...base.fakt,
+        fakt('2026-09-21', 'Sadriddin', { fakt1Orders: 1, fakt1Minor: som(2_000_000) }),
+        fakt('2026-09-21', 'Sevinchxon', { fakt1Orders: 1, fakt1Minor: som(3_000_000) }),
+      ],
+    })
+    expect(dto.blocks.some((b) => b.id === 'team:Sevinchxon')).toBe(false)
+    const sadriddin = block(dto, 'team:Sadriddin')
+    expect(sadriddin.title).toBe('Чарос РОП')
+    expect(on(row(dto, 'team:Sadriddin', 'team:Sadriddin:fakt1'), '2026-09-21')).toBe(5_000_000)
+    // The company total counts the folded order once.
+    expect(on(row(dto, 'company', 'co:fakt1'), '2026-09-21')).toBe(3_500_000 + 1_000_000 + 200_000 + 5_000_000)
+    expect(dto.teams.find((t) => t.rop === 'Sadriddin')?.label).toBe('Чарос РОП')
+  })
+
+  it('lets «План бажарилиши» and «Отказ %» carry a plan', () => {
+    const dto = buildRnpSheet(input())
+    expect(row(dto, 'team:Sevinch', 'team:Sevinch:plan_pct').planKey).toEqual({ team: 'Sevinch', metric: 'plan_pct' })
+    expect(row(dto, 'logistics:Sevinch', 'lg:Sevinch:refused_pct').planKey).toEqual({ team: 'Sevinch', metric: 'refusal_rate' })
+  })
+
+  it('prices the registrar\'s kval by the day\'s lead value in «План продаж» (row 347)', () => {
+    const dto = buildRnpSheet(input())
+    const plan = row(dto, 'summary', 'sv:sales_plan')
+    // 21.09: 2 kval × 500 000 (the value from the 19th in this fixture).
+    expect(on(plan, '2026-09-21')).toBe(1_000_000)
+    expect(row(dto, 'summary', 'sv:budget').fact).toBe(140)
   })
 })

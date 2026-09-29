@@ -79,8 +79,8 @@ const FIXTURE: RnpOverviewDto = {
   today: '2026-09-02',
   elapsedDays: 1,
   teams: [
-    { rop: 'Sevinch', head: 'Sevinch Aliyeva', isBase: false },
-    { rop: 'Charos', head: 'Malika Rahmonova', isBase: true },
+    { rop: 'Sevinch', label: 'Sevinch', head: 'Sevinch Aliyeva', isBase: false },
+    { rop: 'Charos', label: 'Charos', head: 'Malika Rahmonova', isBase: true },
   ],
   blocks: [
     {
