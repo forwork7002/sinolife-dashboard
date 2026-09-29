@@ -139,7 +139,7 @@ function Collapsible({
  * the index is a pill in its status colour.
  *
  * Memoised on the block object: a re-render of the page that keeps the same
- * payload (a width reset, the view switch's own state) skips the grids. A
+ * payload (a width reset, a team switch) skips the grids that kept theirs. A
  * refetch hands in new objects, so every grid redraws then.
  */
 const Grid = memo(function Grid({ block, days, today }: { block: RnpBlockDto; days: readonly string[]; today: string }) {

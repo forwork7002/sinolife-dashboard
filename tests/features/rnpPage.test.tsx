@@ -187,7 +187,7 @@ function chip(name: RegExp) {
 }
 
 describe('RnpPage — Kengaytirilgan', () => {
-  beforeEach(() => window.history.replaceState(null, '', '/rnp?view=full'))
+  beforeEach(() => window.history.replaceState(null, '', '/rnp'))
 
   it('draws each block, a dash for a day with no figure, and a rate as a percent', async () => {
     await draw()
@@ -239,13 +239,13 @@ describe('RnpPage — Kengaytirilgan', () => {
   })
 
   it('opens the team a shared ?rop= link names', async () => {
-    window.history.replaceState(null, '', '/rnp?view=full&rop=Sevinch')
+    window.history.replaceState(null, '', '/rnp?rop=Sevinch')
     await draw('Sevinch РОП')
     expect(screen.queryByRole('heading', { name: 'Регистрация' })).toBeNull()
   })
 
   it('says so when the link names a team the month does not have', async () => {
-    window.history.replaceState(null, '', '/rnp?view=full&rop=Nobody')
+    window.history.replaceState(null, '', '/rnp?rop=Nobody')
     await draw()
     expect(screen.getByText(/«Nobody» jamoasi bu oyda yoʻq/)).toBeTruthy()
   })
@@ -445,105 +445,3 @@ describe('RnpPage — Kengaytirilgan', () => {
     expect(summaries.length).toBeGreaterThan(0)
   })
 })
-
-describe('RnpPage — Jadvaldagidek (the default)', () => {
-  const at = (row: number, label: string) => ({ row, label })
-  const SHEET: RnpOverviewDto = {
-    ...FIXTURE,
-    blocks: [
-      {
-        id: 'registration',
-        kind: 'registration',
-        title: 'Регистрация',
-        subtitle: null,
-        team: null,
-        sheet: at(47, 'Регистрация (жадвал)'),
-        rows: [
-          // Out of order on purpose: the sheet's row number decides.
-          row({ key: 'reg:qualified', label: 'Квал лид', fact: 8, days: [2, 6, null], sheet: at(48, 'Регистрация COLLAGEN') }),
-          row({ key: 'reg:extra', label: 'Dashboard qatori', fact: 1, days: [1, null, null] }),
-          row({ key: 'reg:leads', label: 'Лидлар', fact: 12, days: [12, null, null], sheet: at(47, 'Количество лид') }),
-        ],
-      },
-      {
-        id: 'marketing',
-        kind: 'marketing',
-        title: 'Маркетинг',
-        subtitle: null,
-        team: null,
-        sheet: at(4, 'Маркетинг (жадвал)'),
-        rows: [row({ key: 'meta:spend', label: 'Жами бюджет, $', unit: 'usd', fact: 10, sheet: at(42, 'Бюджет') })],
-      },
-      {
-        id: 'warehouse',
-        kind: 'warehouse',
-        title: 'Склад',
-        subtitle: null,
-        team: null,
-        sheet: null,
-        rows: [row({ key: 'wh:entered', label: 'Zakaz', fact: 3, sheet: at(300, 'Заказ') })],
-      },
-      { ...FIXTURE.blocks[1]!, sheet: at(100, 'Севинч РОП'), rows: [row({ key: 'team:Sevinch:orders1', label: 'Буюртма сони (ФАКТ 1)', fact: 4, sheet: at(103, 'Буюртма сони') })] },
-    ],
-  }
-
-  const headings = () => screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
-  /** The row labels of the card a block heading sits in. */
-  const rowLabels = (title: string) => {
-    let card: HTMLElement | null = screen.getByRole('heading', { name: title })
-    while (card && !card.querySelector('table')) card = card.parentElement
-    return [...card!.querySelectorAll('tbody th')].map((th) => th.textContent)
-  }
-
-  it('is the sheet: its blocks and rows in sheet order under sheet labels, nothing else', async () => {
-    fixture = SHEET
-    await draw('Регистрация (жадвал)')
-
-    expect(chipGroup()).toBeNull()
-    expect(screen.queryByText('Kval lid')).toBeNull()
-    expect(screen.queryByRole('heading', { name: 'Jamoalar reytingi' })).toBeNull()
-    expect(screen.queryByRole('list', { name: 'Lid voronkasi bosqichlari' })).toBeNull()
-
-    // Block order by `sheet.row`; a block with `sheet: null` is not drawn; team blocks are.
-    expect(headings()).toEqual(['Маркетинг (жадвал)', 'Регистрация (жадвал)', 'Севинч РОП'])
-    // Open, not folded.
-    expect(screen.queryByRole('button', { name: 'Регистрация (жадвал)' })).toBeNull()
-    expect(rowLabels('Регистрация (жадвал)')).toEqual(['Количество лид', 'Регистрация COLLAGEN'])
-    expect(screen.queryByText('Dashboard qatori')).toBeNull()
-
-    const pressed = within(screen.getByRole('group', { name: 'Koʻrinish' })).getByRole('button', { name: 'Jadvaldagidek' })
-    expect(pressed.getAttribute('aria-pressed')).toBe('true')
-  })
-
-  it('switches to Kengaytirilgan, keeps it in the URL, and shows the dashboard rows there', async () => {
-    fixture = SHEET
-    await draw('Регистрация (жадвал)')
-
-    await act(async () => {
-      fireEvent.click(within(screen.getByRole('group', { name: 'Koʻrinish' })).getByRole('button', { name: 'Kengaytirilgan' }))
-    })
-    expect(new URL(window.location.href).searchParams.get('view')).toBe('full')
-    expect(chipGroup()).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Регистрация' }))
-    expect(screen.getByText('Dashboard qatori')).toBeTruthy()
-    expect(screen.getByText('Лидлар')).toBeTruthy()
-
-    await act(async () => {
-      fireEvent.click(within(screen.getByRole('group', { name: 'Koʻrinish' })).getByRole('button', { name: 'Jadvaldagidek' }))
-    })
-    expect(new URL(window.location.href).searchParams.has('view')).toBe(false)
-  })
-
-  it('opens Kengaytirilgan from a ?view=full link', async () => {
-    window.history.replaceState(null, '', '/rnp?view=full')
-    fixture = SHEET
-    await draw('Регистрация')
-    expect(chipGroup()).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: 'Регистрация (жадвал)' })).toBeNull()
-  })
-})
-
-function chipGroup() {
-  return screen.queryByRole('group', { name: 'ROP tanlash' })
-}

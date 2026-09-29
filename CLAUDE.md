@@ -552,10 +552,11 @@ Per-screen traps worth knowing before you touch one:
     still in the database, unread (dropping it was not asked for). Plans
     (column C) and the registrar→group mapping stay — targets and settings,
     not data.
-  · **«Jadvaldagidek» is the default view**: every row and block carries
+  · **One view (the extended one).** Every row and block carries
     `sheet: { row, label }` — its place and label on «СентябрРНП 26», null for
-    a dashboard addition — and the view shows only those, in sheet order,
-    under sheet labels. «Kengaytirilgan» (`?view=full`) is the full screen.
+    a dashboard addition. A sheet-only «Jadvaldagidek» view was built on
+    2026-09-29 and dropped the same day at the client's word («faqat
+    kengaytirilgan kerak»); the refs stay as documentation of the mapping.
   · September's column C plans are imported by migration (the ×10 «Средний
     чек факт 2», the plans derived from it and zero plans left out; Мафтуна's
     400 000 → 400 mln). The lead's value changes on **14.09**, from the

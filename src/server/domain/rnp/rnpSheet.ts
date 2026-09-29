@@ -64,8 +64,8 @@ export interface RnpRowDto {
   readonly planKey: RnpPlanKey | null
   /**
    * Where this row sits on the client's «РНП» sheet — its row number and its
-   * label there. The «Jadvaldagidek» view shows only the rows that have one,
-   * in that order, under that label; null = a dashboard addition.
+   * label there; null = a dashboard addition. Kept as the record of the
+   * mapping; the screen does not filter by it.
    */
   readonly sheet: RnpSheetRef | null
   /** This row's share of its column's total, in percent (the «Свод»). */
@@ -258,7 +258,7 @@ export const SHEET_TEAM_NAMES: Readonly<Record<string, string>> = Object.freeze(
  * Where each team's block starts on «СентябрРНП 26» — its «Продажа … факт1»
  * row (the 13-row template of spec §2.6) — and where its logistics block
  * starts (rows 269–334, five rows each). A team the sheet has no block for is
- * absent: the «Jadvaldagidek» view leaves it out, the company totals count it.
+ * absent: its rows get no sheet ref, the company totals still count it.
  */
 export const TEAM_SHEET_ROW: Readonly<Record<string, number>> = Object.freeze({
   Gulzora: 76,

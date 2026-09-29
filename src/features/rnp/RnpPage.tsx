@@ -5,7 +5,6 @@ import { useMemo, useRef, useState } from 'react'
 
 import { EmptyState, ErrorState } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
-import { SegmentedControl } from '@/components/ui/Controls'
 import { useCohortRop } from '@/features/cohort/useCohortRop'
 import { PageShell } from '@/features/shared/PageShell'
 import { type Status, muted } from '@/features/reklama/reklamaUi'
@@ -13,15 +12,13 @@ import { apiGet } from '@/lib/api'
 import { t } from '@/lib/messages'
 import { useReducedMotion } from '@/lib/useReducedMotion'
 
-import { RnpBlockTable } from './RnpBlockTable'
 import { ResetColumnWidths, RnpColumnScope } from './RnpColumnResizer'
 import { RnpCompanySkeleton, RnpCompanyView } from './RnpCompanyView'
 import { RnpPlanEditor } from './RnpPlanEditor'
 import { RnpRopRail, RnpRopRailSkeleton } from './RnpRopRail'
 import { RnpTeamView } from './RnpTeamView'
 import type { RnpOverviewDto } from './rnpApi'
-import { findRow, sheetBlocks, teamSummaries } from './rnpDerive'
-import { type RnpView, useRnpView } from './useRnpView'
+import { findRow, teamSummaries } from './rnpDerive'
 
 /**
  * «RNP jadvali» — the client's «СентябрРНП» sheet, one calendar month, every
@@ -43,17 +40,13 @@ import { type RnpView, useRnpView } from './useRnpView'
  * ITS OWN MONTH, not the dashboard preset: the sheet is a calendar month by
  * construction, the same reason «Sotuv · ROP» keeps its own.
  *
- * AND IT OPENS AS THE SHEET ITSELF (2026-09-29, the client: it must look
- * exactly like their Google Sheet). «Jadvaldagidek», the default, is only the
- * blocks and rows the sheet has (`sheet !== null`), in its row order, under
- * its labels, every block open — no cards, charts, funnel, ranking or rail.
- * «Kengaytirilgan» (`?view=full`) is the reading above, with the dashboard's
- * own rows and names. One payload for both: switching costs no request.
+ * ONE VIEW. A sheet-only «Jadvaldagidek» reading was built and then dropped
+ * the same day at the client's word («faqat kengaytirilgan kerak»): the rows'
+ * `sheet` refs stay in the payload, but nothing on screen filters by them.
  */
 export function RnpPage() {
   const [month, setMonth] = useState(() => thisMonth())
   const { rop, setRop } = useCohortRop()
-  const { view, setView } = useRnpView()
   const top = useRef<HTMLDivElement>(null)
   const reducedMotion = useReducedMotion()
 
@@ -69,7 +62,6 @@ export function RnpPage() {
   const at = teams.findIndex((s) => s.team.rop === rop)
   const selected = at >= 0 ? teams[at]! : null
   const missing = rop !== null && data !== undefined && selected === null
-  const sheet = useMemo(() => (data && view === 'sheet' ? sheetBlocks(data) : []), [data, view])
 
   /** From the ranking, far down the page: bring the reader back to the top of the team. */
   const openFromBelow = (next: string) => {
@@ -99,7 +91,6 @@ export function RnpPage() {
               style={{ background: 'var(--surface-raised)', borderColor: 'var(--border-strong)', color: 'var(--ink-primary)' }}
             />
           </label>
-          <SegmentedControl<RnpView> ariaLabel="Koʻrinish" value={view} options={VIEWS} onChange={setView} />
           <ResetColumnWidths />
         </>
       }
@@ -115,21 +106,13 @@ export function RnpPage() {
           </Card>
         ) : status === 'loading' || !data ? (
           <div className="flex flex-col gap-4" role="status" aria-label={t.state.loading}>
-            {view === 'sheet' ? (
-              <SheetSkeleton />
-            ) : (
-              <>
-                <RnpRopRailSkeleton />
-                <RnpCompanySkeleton />
-              </>
-            )}
+            <RnpRopRailSkeleton />
+            <RnpCompanySkeleton />
           </div>
-        ) : data.blocks.length === 0 || (view === 'sheet' && sheet.length === 0) ? (
+        ) : data.blocks.length === 0 ? (
           <Card className="p-5">
             <EmptyState title="Bu oy uchun jadval yoʻq" body="Bu oy uchun jadval hali yigʻilmagan — boshqa oyni tanlang." />
           </Card>
-        ) : view === 'sheet' ? (
-          sheet.map((b) => <RnpBlockTable key={b.id} block={b} days={data.days} today={data.today} />)
         ) : (
           <>
             <RnpRopRail teams={teams} company={findRow(data, 'co:fakt1')} value={selected?.team.rop ?? null} onChange={setRop} />
@@ -163,27 +146,6 @@ export function RnpPage() {
 }
 
 // ---------------------------------------------------------------------------
-
-const VIEWS = [
-  { value: 'sheet', label: 'Jadvaldagidek' },
-  { value: 'full', label: 'Kengaytirilgan' },
-] as const satisfies readonly { value: RnpView; label: string }[]
-
-/** Skeleton of the sheet view: two open blocks. */
-function SheetSkeleton() {
-  return (
-    <>
-      {Array.from({ length: 2 }).map((_, i) => (
-        <div key={i} className="card p-5" aria-hidden="true">
-          <div className="skeleton h-4 w-40" />
-          {Array.from({ length: 6 }).map((_, j) => (
-            <div key={j} className="skeleton mt-3 h-[30px] w-full" />
-          ))}
-        </div>
-      ))}
-    </>
-  )
-}
 
 function thisMonth(): string {
   // The reader's calendar month in Tashkent, where the floor works.

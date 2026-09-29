@@ -39,8 +39,7 @@ export interface RnpRowDto {
   readonly planKey: RnpPlanKey | null
   /**
    * Where this row sits on the client's «РНП» sheet — its row number and its
-   * label there. «Jadvaldagidek» shows only the rows that have one, in that
-   * order, under that label; null = a dashboard addition.
+   * label there; null = a dashboard addition. Not used on screen.
    */
   readonly sheet: RnpSheetRef | null
   /** This row's share of its column's total, in percent (the «Свод»). */
