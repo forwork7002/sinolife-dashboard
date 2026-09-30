@@ -561,7 +561,17 @@ Per-screen traps worth knowing before you touch one:
     keeps its place, empty and marked «Bitrix24ʼda yoʻq» (the client's
     choice). Teams the sheet lacks are added after its own teams, logistics
     and «Свод» rows, marked «jadvalda yoʻq jamoa»; every team the sheet has
-    is drawn even in a quiet month (zeros, not «missing»).
+    is drawn even in a quiet month (zeros, not «missing»). «ROP» (`?rop=`)
+    cuts the sheet to one team's block, logistics and «Свод» lines
+    (`ropLines`, each line carries `team`); «Barchasi» is the whole sheet.
+    The month follows the Tashkent calendar by itself unless one is picked.
+  · **THE DOLLAR RATE IS THE CENTRAL BANK'S, DAY BY DAY** (2026-09-30; it was
+    typed as 12 200 while the bank's ran ~11 800). `integrations/cbu/cbuRates`
+    reads cbu.uz for every day up to today (past days cached for good, today
+    for an hour, failures never cached); a day not answered converts at the
+    month's last known rate; no rate at all → the converted rows are empty.
+    Old `usd_rate` rows in `rnp_plan` are ignored, and the plans form no
+    longer offers the field.
   · **Where the sheet's own formulas are wrong, ours are:** its forecast
     multiplies by 31 (C1) in a 30-day month; its SUMIFS still read
     'ОТЧЕТ'/'роп', which stop in August, so FAKT 2, logistics and «Свод» are 0

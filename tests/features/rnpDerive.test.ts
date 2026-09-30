@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import type { RnpRowDto } from '@/features/rnp/rnpApi'
-import { dayMonth, dayMonthYear, dayTone, indexTone } from '@/features/rnp/rnpDerive'
+import type { RnpLine, RnpRowDto } from '@/features/rnp/rnpApi'
+import { dayMonth, dayMonthYear, dayTone, indexTone, ropLines } from '@/features/rnp/rnpDerive'
 
 /**
  * The grid's heat tint: a finished day of an additive row with a plan, read
@@ -55,5 +55,39 @@ describe('rnp tones', () => {
   it('writes a day as the sheet does', () => {
     expect(dayMonth('2026-09-01')).toBe('01.09')
     expect(dayMonthYear('2026-09-30')).toBe('30.09.2026')
+  })
+})
+
+describe('ropLines', () => {
+  const line = (key: string | null, team: string | null, row: number): RnpLine => ({
+    kind: 'value', row, team, label: `r${row}`, sub: null, tone: 'plain', fact: 'plain', bold: false, key,
+  })
+  const lines: RnpLine[] = [
+    { kind: 'title', row: 4, team: null, label: 'Маркетинг', sub: null, tone: 'section' },
+    line('reg:leads', null, 47),
+    line('team:Sevinch:reach', 'Sevinch', 89),
+    line('team:Sevinch:fakt1', 'Sevinch', 93),
+    line('team:Lola:fakt1', 'Lola', 106),
+    line('lg:Sevinch:fakt1', 'Sevinch', 274),
+    line('sv:fakt1:Sevinch', 'Sevinch', 353),
+    line('sv:fakt2:Sevinch', 'Sevinch', 365),
+  ]
+
+  it('is the whole sheet for «Barchasi»', () => {
+    expect(ropLines(lines, null, '')).toBe(lines)
+  })
+
+  it('gives one ROP its block, logistics and «Свод», each under a heading, the two «Свод» lines told apart', () => {
+    const got = ropLines(lines, 'Sevinch', 'Севинч РОП')
+    expect(got.map((l) => (l.kind === 'title' ? `# ${l.label}` : `${l.row}${l.sub ? ` ${l.sub}` : ''}`))).toEqual([
+      '# Севинч РОП — ROP bloki',
+      '89',
+      '93',
+      '# Логистика — Севинч РОП',
+      '274',
+      '# Свод — Севинч РОП',
+      '353 факт1',
+      '365 факт2',
+    ])
   })
 })

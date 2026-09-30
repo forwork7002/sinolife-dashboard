@@ -114,14 +114,14 @@ const FIXTURE: RnpOverviewDto = {
     },
   ],
   lines: [
-    { kind: 'title', row: 4, label: 'Маркетинг COLLAGEN', sub: 'Хаёт', tone: 'section' },
-    { kind: 'value', row: 9, label: 'Кол подпис tg', sub: null, tone: 'plain', fact: 'plain', bold: false, key: null },
-    { kind: 'value', row: 47, label: 'Количество лид', sub: 'Умида', tone: 'plain', fact: 'plain', bold: false, key: 'reg:leads' },
-    { kind: 'value', row: 48, label: 'Регистрация COLLAGEN', sub: null, tone: 'section', fact: 'rate', bold: true, key: 'reg:qualified' },
-    { kind: 'value', row: 89, label: 'Продажа (первичка) факт1', sub: 'Севинч РОП', tone: 'team', fact: 'plain', bold: true, key: 'reg:distributed' },
-    { kind: 'value', row: 90, label: 'Конверсия % от квал лид', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'team:Sevinch:conv1' },
+    { kind: 'title', row: 4, team: null, label: 'Маркетинг COLLAGEN', sub: 'Хаёт', tone: 'section' },
+    { kind: 'value', row: 9, team: null, label: 'Кол подпис tg', sub: null, tone: 'plain', fact: 'plain', bold: false, key: null },
+    { kind: 'value', row: 47, team: null, label: 'Количество лид', sub: 'Умида', tone: 'plain', fact: 'plain', bold: false, key: 'reg:leads' },
+    { kind: 'value', row: 48, team: null, label: 'Регистрация COLLAGEN', sub: null, tone: 'section', fact: 'rate', bold: true, key: 'reg:qualified' },
+    { kind: 'value', row: 89, team: 'Sevinch', label: 'Продажа (первичка) факт1', sub: 'Севинч РОП', tone: 'team', fact: 'plain', bold: true, key: 'reg:distributed' },
+    { kind: 'value', row: 90, team: 'Sevinch', label: 'Конверсия % от квал лид', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'team:Sevinch:conv1' },
   ] satisfies RnpLine[],
-  settings: { usdRate: null, leadValues: [], marketingPlanPct: null, targetologPct: null, marketerPct: null },
+  settings: { usdRate: null, usdRateDate: null, leadValues: [], marketingPlanPct: null, targetologPct: null, marketerPct: null },
   canEditPlans: false,
   registration: { registrars: [], groups: [], groupNames: ['Sevinch', 'Gulzora', 'Aziz', 'Maftuna', 'Lola', 'Saidaziz', 'Zextra'] },
 }
@@ -201,28 +201,41 @@ describe('RnpPage — the sheet', () => {
     const toolbar = screen.getByTestId('page-toolbar')
     expect(within(toolbar).getByLabelText('Oy')).toBeTruthy()
     expect(toolbar.textContent).toContain('Oʻtgan kunlar:1')
-    expect(toolbar.textContent).toContain('Dollar kursi:kiritilmagan')
+    expect(toolbar.textContent).toContain('Dollar kursi:Markaziy bankdan olinmadi')
     expect(toolbar.textContent).toContain('Bugun:02.09.2026')
-    expect(within(toolbar).getByRole('button', { name: 'Kengliklarni tiklash' })).toBeTruthy()
+    expect(within(toolbar).queryByRole('button', { name: 'Kengliklarni tiklash' })).toBeNull()
     // No «Rejalar» for an account that cannot edit plans.
     expect(screen.queryByRole('button', { name: 'Rejalar' })).toBeNull()
 
     cleanup()
-    fixture = { ...FIXTURE, settings: { ...FIXTURE.settings, usdRate: 12200 } }
+    fixture = { ...FIXTURE, settings: { ...FIXTURE.settings, usdRate: 11806.97, usdRateDate: '2026-09-02' } }
     await draw()
-    expect(screen.getByTestId('page-toolbar').textContent).toContain('Dollar kursi:12,200 soʻm')
+    // The Central Bank's rate, with its day — never a typed one.
+    expect(screen.getByTestId('page-toolbar').textContent).toContain('Dollar kursi (MB, 02.09):11,806.97 soʻm')
   })
 
   it('has none of the deleted extras — no ROP rail, cards, charts, funnel or ranking', async () => {
-    window.history.replaceState(null, '', '/rnp?rop=Sevinch')
     await draw()
     expect(screen.queryByRole('group', { name: 'ROP tanlash' })).toBeNull()
     expect(screen.queryByRole('list', { name: 'Lid voronkasi bosqichlari' })).toBeNull()
     expect(screen.queryByRole('heading', { name: 'Jamoalar reytingi' })).toBeNull()
     expect(screen.queryAllByRole('heading')).toHaveLength(0)
-    // `?rop=` narrows nothing: the whole sheet is drawn.
     expect(labels()).toHaveLength(6)
     expect(screen.getAllByRole('table')).toHaveLength(1)
+  })
+
+  it('cuts the sheet to one ROP from the «ROP» select, and back to «Barchasi»', async () => {
+    await draw()
+    const select = within(screen.getByTestId('page-toolbar')).getByLabelText('ROP') as HTMLSelectElement
+    // Only teams that have lines on the sheet are offered.
+    expect([...select.options].map((o) => o.textContent)).toEqual(['Barchasi', 'Sevinch'])
+    act(() => fireEvent.change(select, { target: { value: 'Sevinch' } }))
+    expect(window.location.search).toBe('?rop=Sevinch')
+    await waitFor(() => expect(labels()).toHaveLength(3)) // its heading and its two lines
+    expect(labels()[0]).toContain('Sevinch — ROP bloki')
+    act(() => fireEvent.change(select, { target: { value: '' } }))
+    await waitFor(() => expect(labels()).toHaveLength(6))
+    expect(window.location.search).toBe('')
   })
 
   it('says so when the month has no sheet, and offers a retry when the request fails', async () => {
@@ -256,6 +269,7 @@ describe('RnpPage — the sheet', () => {
       canEditPlans: true,
       settings: {
         usdRate: 12650,
+        usdRateDate: '2026-09-02',
         leadValues: [{ team: '', fromDay: 1, value: 50000 }],
         marketingPlanPct: 12,
         targetologPct: null,
@@ -300,7 +314,6 @@ describe('RnpPage — the sheet', () => {
       month: '2026-09',
       rows: [
         { team: '', metric: 'budget', fromDay: 1, value: 1500.5 },
-        { team: '', metric: 'usd_rate', fromDay: 1, value: 12650 },
         { team: '', metric: 'marketing_plan_pct', fromDay: 1, value: 12 },
         { team: '', metric: 'targetolog_pct', fromDay: 1, value: null },
         { team: '', metric: 'marketer_pct', fromDay: 1, value: null },

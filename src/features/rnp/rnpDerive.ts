@@ -5,7 +5,7 @@
  * server already built (`rnpSheet.ts`).
  */
 
-import type { RnpRowDto } from './rnpApi'
+import type { RnpLine, RnpRowDto } from './rnpApi'
 
 export type RnpTone = 'good' | 'warning' | 'critical' | 'neutral'
 
@@ -64,4 +64,29 @@ export function dayTone(row: RnpRowDto, value: number | null, day: string, today
   if (day >= today) return 'neutral'
   if (row.reliableFrom !== null && day < row.reliableFrom) return 'neutral'
   return indexTone((value / row.dayPlan) * 100, row.better)
+}
+
+/**
+ * One ROP's part of the sheet — its block, its logistics, its «Свод» lines —
+ * each part under a heading, since cut out of the sheet they lose the rows
+ * around them that said what they were. `rop` null = the whole sheet.
+ */
+export function ropLines(lines: readonly RnpLine[], rop: string | null, label: string): readonly RnpLine[] {
+  if (rop === null) return lines
+  const part = (key: string | null) => (key?.startsWith('lg:') ? 'logistics' : key?.startsWith('sv:') ? 'svod' : 'team')
+  const titles = { team: `${label} — ROP bloki`, logistics: `Логистика — ${label}`, svod: `Свод — ${label}` } as const
+  const tones = { team: 'team', logistics: 'section', svod: 'company' } as const
+  const out: RnpLine[] = []
+  let last: string | null = null
+  for (const l of lines) {
+    // The sheet's own headings (and an added team's) are replaced by the three below.
+    if (l.team !== rop || l.kind !== 'value') continue
+    const p = part(l.key)
+    if (p !== last) out.push({ kind: 'title', row: null, team: rop, label: titles[p], sub: null, tone: tones[p] })
+    last = p
+    // Cut out of the sheet, two «Свод» lines under one team name need the sheet's «факт1» / «факт2» to tell apart.
+    const svod = /^sv:(fakt[12]):/.exec(l.key ?? '')
+    out.push(svod ? { ...l, sub: svod[1] === 'fakt1' ? 'факт1' : 'факт2' } : l)
+  }
+  return out
 }

@@ -23,6 +23,7 @@
  *     are neither Collagen nor Zextra are not the sheet's money.
  */
 
+import type { CbuUsdRates } from '@/server/integrations/cbu/cbuRates'
 import { type RnpOverviewDto, buildRnpSheet } from '@/server/domain/rnp/rnpSheet'
 import { zonedDateKey } from '@/server/domain/period/period'
 import type { TargetProduct } from '@/server/domain/types'
@@ -126,22 +127,27 @@ export class RnpService {
     private readonly insights: InsightsRepository,
     private readonly repository: RnpRepository,
     private readonly reklama: ReklamaRepository,
+    /** The dollar's official rate per day — see `integrations/cbu/cbuRates.ts`. */
+    private readonly usd: Pick<CbuUsdRates, 'forDays'>,
   ) {}
 
   async overview(input: { month: string; timeZone: string; now: Date; canEditPlans: boolean }): Promise<RnpOverviewDto> {
     const days = monthDays(input.month)
     const from = days[0]!
     const to = days[days.length - 1]!
+    const today = zonedDateKey(input.now, input.timeZone)
     /* Plans and registrar groups are read fresh: what somebody just saved shows on the next load. */
-    const [rows, plans, registrarGroups] = await Promise.all([
+    const [rows, plans, registrarGroups, usdRates] = await Promise.all([
       monthCache.get(input.month, () => this.monthRows(input.month, from, to, input.timeZone, input.now)),
       this.repository.plans(input.month),
       this.repository.registrarGroups(input.month),
+      this.usd.forDays(days, today),
     ])
     return buildRnpSheet({
       month: input.month,
       days,
-      today: zonedDateKey(input.now, input.timeZone),
+      today,
+      usdRates,
       teams: rows.teams,
       fakt: rows.fakt,
       leads: rows.leads,

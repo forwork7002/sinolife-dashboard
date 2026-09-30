@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { RNP_PLAN_METRICS, SETTING_LEAD_VALUE, SETTING_USD_RATE } from '@/server/domain/rnp/rnpSheet'
+import { RNP_PLAN_METRICS, SETTING_LEAD_VALUE } from '@/server/domain/rnp/rnpSheet'
 import { can } from '@/server/auth/rbac'
 import { ApiError } from '@/server/http/errors'
 import { mutationHandler } from '@/server/http/handler'
@@ -46,11 +46,9 @@ const bodySchema = z.object({
         const problem =
           (r.metric === 'fakt1' || r.metric === 'fakt2') && r.team !== ''
             ? 'A team FAKT plan belongs in `fakt`'
-            : r.metric === SETTING_USD_RATE && r.team !== ''
-              ? 'The dollar rate is company-wide'
-              : r.metric !== SETTING_LEAD_VALUE && r.fromDay !== 1
-                ? 'Only a lead value may start after day 1'
-                : null
+            : r.metric !== SETTING_LEAD_VALUE && r.fromDay !== 1
+              ? 'Only a lead value may start after day 1'
+              : null
         if (problem) ctx.addIssue({ code: 'custom', message: problem, path: [i] })
       })
     }),

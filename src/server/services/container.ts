@@ -7,6 +7,7 @@
  * is a one-line change.
  */
 
+import { CbuUsdRates } from '@/server/integrations/cbu/cbuRates'
 import { prisma } from '@/server/db/prisma'
 import { DealRepository } from '@/server/repositories/dealRepository'
 import { InsightsRepository } from '@/server/repositories/insightsRepository'
@@ -107,7 +108,7 @@ export const salesTeamService = new SalesTeamService(insightsRepository, new Sal
   from the queue cohort (insightsRepository), Meta through the reklama
   repository, everything else and the plans from its own. See rnpService.ts.
 */
-export const rnpService = new RnpService(insightsRepository, new RnpRepository(prisma), reklamaRepository)
+export const rnpService = new RnpService(insightsRepository, new RnpRepository(prisma), reklamaRepository, new CbuUsdRates())
 /*
   «Lid kogortasi» (a tab of «Lidlar» since 2026-09-25) — arrival → distribution of routed leads. See leadCohortService.ts.
 */

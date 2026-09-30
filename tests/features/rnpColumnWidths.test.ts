@@ -11,7 +11,6 @@ import {
   parseWidths,
   reloadColumnWidths,
   resetColumnWidth,
-  resetColumnWidths,
   setColumnWidth,
   storedWidths,
   subscribeColumnWidths,
@@ -108,14 +107,14 @@ describe('the store', () => {
     off()
   })
 
-  it('resets one kind, then all of them, and leaves no key behind', () => {
+  it('resets one kind and leaves no key behind for the last one', () => {
     setColumnWidth('fact', 180)
     setColumnWidth('label', 300)
 
     resetColumnWidth('fact')
     expect(storedWidths()).toEqual({ label: 300 })
 
-    resetColumnWidths()
+    resetColumnWidth('label')
     expect(storedWidths()).toEqual({})
     expect(data.has(STORAGE_KEY)).toBe(false)
   })
@@ -145,7 +144,7 @@ describe('the store', () => {
 
     expect(() => setColumnWidth('day', 90)).not.toThrow()
     expect(storedWidths()).toEqual({ day: 90 })
-    expect(() => resetColumnWidths()).not.toThrow()
+    expect(() => resetColumnWidth('day')).not.toThrow()
     expect(storedWidths()).toEqual({})
   })
 

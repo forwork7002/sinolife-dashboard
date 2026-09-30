@@ -27,6 +27,8 @@ export type RnpLine =
       readonly kind: 'title'
       /** The sheet row, or null for an added team's heading. */
       readonly row: number | null
+      /** The ROP team the line belongs to — what «ROP» on the page filters by; null = company-wide. */
+      readonly team: string | null
       readonly label: string
       readonly sub: string | null
       readonly tone: RnpLabelTone
@@ -34,6 +36,7 @@ export type RnpLine =
   | {
       readonly kind: 'value'
       readonly row: number | null
+      readonly team: string | null
       readonly label: string
       readonly sub: string | null
       readonly tone: RnpLabelTone
@@ -53,6 +56,15 @@ const SVOD_FAKT2_END = 374
 
 const ADDED_TEAM_NOTE = 'jadvalda yoʻq jamoa'
 
+/** The team a row's key names: `team:<rop>:…`, `lg:<rop>:…`, `sv:fakt1:<rop>`, `sv:fakt2:<rop>`. Exported for its test. */
+export function teamOfKey(key: string | null): string | null {
+  if (key === null) return null
+  const block = /^(?:team|lg):(.+):[^:]+$/.exec(key)
+  if (block) return block[1]!
+  const svod = /^sv:fakt[12]:(.+)$/.exec(key)
+  return svod ? svod[1]! : null
+}
+
 export function sheetLines(blocks: readonly RnpBlockDto[]): RnpLine[] {
   const byRow = new Map<number, RnpRowDto>()
   for (const block of blocks) {
@@ -64,21 +76,23 @@ export function sheetLines(blocks: readonly RnpBlockDto[]): RnpLine[] {
   const lines: RnpLine[] = []
   for (const [row, label, sub, kind, bold, tone, fact] of RNP_SHEET_LAYOUT) {
     if (kind === 'title') {
-      lines.push({ kind: 'title', row, label, sub, tone })
+      lines.push({ kind: 'title', row, team: null, label, sub, tone })
       continue
     }
     const source = byRow.get(row)
     if (kind === 'helper') {
       // The sheet's unlabelled scratch rows: only the one Bitrix24 fills.
-      if (source) lines.push({ kind: 'value', row, label: source.sheet?.label ?? source.label, sub: null, tone, fact, bold, key: source.key })
+      if (source) lines.push({ kind: 'value', row, team: teamOfKey(source.key), label: source.sheet?.label ?? source.label, sub: null, tone, fact, bold, key: source.key })
       continue
     }
-    lines.push({ kind: 'value', row, label, sub, tone, fact, bold, key: source?.key ?? null })
+    const key = source?.key ?? null
+    lines.push({ kind: 'value', row, team: teamOfKey(key), label, sub, tone, fact, bold, key })
   }
 
   const valueLine = (r: RnpRowDto): RnpLine => ({
     kind: 'value',
     row: null,
+    team: teamOfKey(r.key),
     label: r.label,
     sub: null,
     tone: 'plain',
@@ -89,13 +103,13 @@ export function sheetLines(blocks: readonly RnpBlockDto[]): RnpLine[] {
   const addedTeams = blocks
     .filter((b) => b.kind === 'team' && b.sheet === null)
     .flatMap((b): RnpLine[] => [
-      { kind: 'title', row: null, label: b.title, sub: ADDED_TEAM_NOTE, tone: 'team' },
+      { kind: 'title', row: null, team: b.team, label: b.title, sub: ADDED_TEAM_NOTE, tone: 'team' },
       ...b.rows.map(valueLine),
     ])
   const addedLogistics = blocks
     .filter((b) => b.kind === 'logistics' && b.team !== null && b.sheet === null)
     .flatMap((b): RnpLine[] => [
-      { kind: 'title', row: null, label: b.title, sub: ADDED_TEAM_NOTE, tone: 'section' },
+      { kind: 'title', row: null, team: b.team, label: b.title, sub: ADDED_TEAM_NOTE, tone: 'section' },
       ...b.rows.map(valueLine),
     ])
   const registration = blocks.find((b) => b.kind === 'registration')?.rows ?? []

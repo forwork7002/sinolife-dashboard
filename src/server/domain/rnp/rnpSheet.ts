@@ -128,8 +128,9 @@ export interface RnpOverviewDto {
   /** The client's sheet, row by row, each line pointing at the block row that fills it. See `rnpSheetView.ts`. */
   readonly lines: readonly RnpLine[]
   readonly settings: {
-    /** Soʻm per dollar; null when nobody set it for the month. */
+    /** The Central Bank's soʻm-per-dollar rate on `usdRateDate` — the latest day it answered up to today; null when it never did. */
     readonly usdRate: number | null
+    readonly usdRateDate: string | null
     /** What one handed-out lead is worth, from each day it starts on. */
     readonly leadValues: readonly { readonly team: string; readonly fromDay: number; readonly value: number }[]
     /** The P&L's percentages (rows 407, 410, 416); null when nobody set them. */
@@ -199,6 +200,11 @@ export interface RnpSheetInput {
   readonly registrarKval: readonly { readonly day: string; readonly registrar: string | null; readonly qualified: number }[]
   /** The month's registrar → «guruh» assignments. */
   readonly registrarGroups: readonly { readonly registrar: string; readonly group: string }[]
+  /**
+   * The Central Bank's soʻm-per-dollar rate for each day of the month
+   * (`CbuUsdRates`); null for a day not reached or not answered. Nothing typed.
+   */
+  readonly usdRates: readonly (number | null)[]
   readonly plans: {
     readonly rows: readonly { team: string; metric: string; fromDay: number; valueCenti: bigint }[]
     readonly fakt: readonly { rop: string; fakt1Minor: bigint | null; fakt2Minor: bigint | null }[]
@@ -313,8 +319,7 @@ const LEAD_ROP_RELIABLE_FROM = '2026-09-16'
  */
 export const CALLS_RELIABLE_FROM = '2026-09-15'
 
-/** Metric keys of the company-wide settings, never a plan. */
-export const SETTING_USD_RATE = 'usd_rate'
+/** Metric key of the one company-wide setting that is not a plan. */
 export const SETTING_LEAD_VALUE = 'lead_value'
 
 /**
@@ -323,7 +328,6 @@ export const SETTING_LEAD_VALUE = 'lead_value'
  * `rnp_plan` with rows no screen reads.
  */
 export const RNP_PLAN_METRICS = [
-  SETTING_USD_RATE,
   SETTING_LEAD_VALUE,
   'budget',
   'budget_collagen',
@@ -601,15 +605,19 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   const at = new Map(days.map((d, i) => [d, i]))
   const clock = clockOf(days, input.today)
   const zeros = () => new Array<number>(n).fill(0)
+  /* A day the bank did not answer converts at the month's last known rate before it — never at a guess. */
+  const rates: (number | null)[] = []
+  for (let i = 0; i < n; i++) rates.push(input.usdRates[i] ?? (i > 0 ? rates[i - 1]! : null))
+  const rateKnown = rates.some((r) => r !== null)
+  const lastRateAt = rates.reduce<number>((at, r, i) => (r !== null && days[i]! <= input.today ? i : at), -1)
 
   // --- plans and settings -------------------------------------------------
   const planOf = new Map<string, number>()
   const leadValueRows: { team: string; fromDay: number; value: number }[] = []
-  let usdRate: number | null = null
   for (const r of input.plans.rows) {
     const value = Number(r.valueCenti) / 100
     if (r.metric === SETTING_LEAD_VALUE) leadValueRows.push({ team: r.team, fromDay: r.fromDay, value })
-    else if (r.metric === SETTING_USD_RATE && r.team === '' && r.fromDay === 1) usdRate = value
+    else if (r.metric === 'usd_rate') continue // typed until 2026-09-30; the bank's rate replaced it
     else if (r.fromDay === 1) planOf.set(`${r.team}|${r.metric}`, value)
   }
   for (const f of input.plans.fakt) {
@@ -775,7 +783,6 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       ratio(clock, { key: `meta:${k}:cpl`, label: `${p} · Лид нархи, $`, unit: 'usd', better: 'down', ...planned('', `cpl_${k}`), hint: CPL_HINT, sheet: sh(r + 2, `Цена лида ${p}`) }, meta[p].spend, meta[p].leads),
     ]
   }
-  const usdDays = days.map(() => usdRate ?? 0)
   blocks.push({
     id: 'marketing',
     kind: 'marketing',
@@ -798,11 +805,11 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
           unit: 'percent',
           better: 'down',
           ...planned('', 'marketing_share'),
-          hint: usdRate === null ? 'Dollar kursi kiritilmagan — «Rejalar» formasida belgilang.' : `Byudjet × ${usdRate} soʻm ÷ birlamchi FAKT 2 summasi. Jadvalda «ROMI» deb yozilgan, aslida xarajat ulushi.`,
+          hint: !rateKnown ? 'Markaziy bank kursi olinmadi.' : `Byudjet × shu kungi Markaziy bank kursi ÷ birlamchi FAKT 2 summasi. Jadvalda «ROMI» deb yozilgan, aslida xarajat ulushi.`,
           sheet: sh(12, 'ROMI %'),
         },
-        days.map((_, i) => spendAll[i]! * usdDays[i]!),
-        usdRate === null ? zeros() : fakt2Primary,
+        days.map((_, i) => spendAll[i]! * (rates[i] ?? 0)),
+        days.map((_, i) => (rates[i] === null ? 0 : fakt2Primary[i]!)),
         100,
       ),
     ],
@@ -1040,7 +1047,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     const r0 = b === 'Collagen' ? 394 : 421
     const at0 = (offset: number, label: string) => sh(r0 + offset, label)
     const spendUsd = meta[b].spend
-    const spendUzs = days.map((_, i) => (usdRate === null ? 0 : spendUsd[i]! * usdRate))
+    const spendUzs = days.map((_, i) => (rates[i] === null ? 0 : spendUsd[i]! * rates[i]!))
     const targetolog = spendUzs.map((v) => (targetologPct === null ? 0 : (v * targetologPct) / 100))
     const marketer = g.fakt2.map((v) => (marketerPct === null ? 0 : (v * marketerPct) / 100))
     const costPlan = g.fakt2.map((v) => (marketingPlanPct === null ? 0 : (v * marketingPlanPct) / 100))
@@ -1052,11 +1059,11 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       ruled out typed data on 2026-09-29.
     */
     const costFact = days.map((_, i) => spendUzs[i]! + targetolog[i]! + marketer[i]!)
-    const costUsd = costFact.map((v) => (usdRate === null || usdRate === 0 ? 0 : v / usdRate))
-    const rateHint = usdRate === null ? ' Dollar kursi kiritilmagan — «Rejalar» formasida belgilang.' : ''
+    const costUsd = costFact.map((v, i) => (rates[i] ? v / rates[i]! : 0))
+    const rateHint = rateKnown ? ' Har kun oʻz kursi — Markaziy bank (cbu.uz).' : ' Markaziy bank kursi olinmadi.'
     /* The whole cost needs the rate and both percentages; without one of them it is not «the cost», it is part of it. */
-    const costKnown = usdRate !== null && targetologPct !== null && marketerPct !== null
-    const missingHint = costKnown ? '' : ' Dollar kursi yoki foizlardan biri kiritilmagan — «Rejalar» formasida.'
+    const costKnown = rateKnown && targetologPct !== null && marketerPct !== null
+    const missingHint = costKnown ? '' : rateKnown ? ' Foizlardan biri kiritilmagan — «Rejalar» formasida.' : ' Markaziy bank kursi olinmadi.'
     const whenKnown = (known: boolean, row: RnpRowDto) => (known ? row : dashed(row))
     blocks.push({
       id: `project:${b.toLowerCase()}`,
@@ -1081,8 +1088,8 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
         ratio(clock, { key: `${k}:cheque2`, label: 'Ўртача чек', unit: 'uzs', ...planned(b, 'brand_cheque2'), sheet: at0(12, 'Средний чек') }, g.primaryFakt2, g.primaryOrders2),
         whenKnown(marketingPlanPct !== null, additive(clock, { sheet: at0(13, 'Маркетинг харажат план'), key: `${k}:cost_plan`, label: `Маркетинг харажат план (ФАКТ 2 × ${marketingPlanPct ?? '—'}%)`, unit: 'uzs', hint: marketingPlanPct === null ? 'Marketing rejasi foizi kiritilmagan — «Rejalar» formasida.' : null }, costPlan)),
         whenKnown(costKnown, additive(clock, { sheet: at0(14, 'Маркетинг харажат факт'), key: `${k}:cost_fact`, label: 'Маркетинг харажат факт', unit: 'uzs', tone: 'total', better: 'down', ...planned(b, 'brand_cost'), hint: `Target byudjeti (soʻm) + targetolog + marketolog ulushi. Jadvaldagi qoʻlda yoziladigan xarajatlar (blogger, nutritsiolog…) hisobga olinmaydi.${missingHint}` }, costFact)),
-        whenKnown(usdRate !== null, additive(clock, { key: `${k}:spend_uzs`, label: 'Таргет бюджет, soʻm', unit: 'uzs', better: 'down', hint: `Byudjet $ × dollar kursi.${rateHint}`, sheet: at0(15, 'Таргет бюджет') }, spendUzs)),
-        whenKnown(usdRate !== null && targetologPct !== null, additive(clock, { key: `${k}:cost_targetolog`, label: `Таргетолог ФОТ (${targetologPct ?? '—'}%)`, unit: 'uzs', better: 'down', sheet: at0(16, 'Таргетолог фот') }, targetolog)),
+        whenKnown(rateKnown, additive(clock, { key: `${k}:spend_uzs`, label: 'Таргет бюджет, soʻm', unit: 'uzs', better: 'down', hint: `Byudjet $ × dollar kursi.${rateHint}`, sheet: at0(15, 'Таргет бюджет') }, spendUzs)),
+        whenKnown(rateKnown && targetologPct !== null, additive(clock, { key: `${k}:cost_targetolog`, label: `Таргетолог ФОТ (${targetologPct ?? '—'}%)`, unit: 'uzs', better: 'down', sheet: at0(16, 'Таргетолог фот') }, targetolog)),
         whenKnown(marketerPct !== null, additive(clock, { key: `${k}:cost_marketer`, label: `Маркетолог ФОТ (${marketerPct ?? '—'}%)`, unit: 'uzs', better: 'down', sheet: at0(22, 'Маркетолог фот = 1%') }, marketer)),
         whenKnown(costKnown, ratio(clock, { sheet: at0(23, 'CAC $'), key: `${k}:cac`, label: 'CAC, $', unit: 'usd', better: 'down', ...planned(b, 'brand_cac'), hint: `Butun marketing xarajati ($) ÷ birlamchi yetkazilgan buyurtmalar.${missingHint}` }, costUsd, g.primaryOrders2)),
         whenKnown(costKnown, ratio(clock, { sheet: at0(24, '%'), key: `${k}:cost_share`, label: 'Маркетинг улуши, %', unit: 'percent', better: 'down', ...planned(b, 'brand_cost_share'), hint: missingHint || null }, costFact, g.fakt2, 100)),
@@ -1155,7 +1162,8 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     blocks: [...blocks.filter((b) => b.kind !== 'project'), ...blocks.filter((b) => b.kind === 'project')],
     lines: sheetLines(blocks),
     settings: {
-      usdRate,
+      usdRate: lastRateAt < 0 ? null : rates[lastRateAt]!,
+      usdRateDate: lastRateAt < 0 ? null : days[lastRateAt]!,
       leadValues: leadValueRows.sort((a, b) => a.team.localeCompare(b.team) || a.fromDay - b.fromDay),
       marketingPlanPct: plan('', 'marketing_plan_pct'),
       targetologPct: plan('', 'targetolog_pct'),

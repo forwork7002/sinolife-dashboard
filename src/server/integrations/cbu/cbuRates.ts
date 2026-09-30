@@ -1,0 +1,81 @@
+/**
+ * The dollar's official rate — the Central Bank of Uzbekistan (cbu.uz),
+ * one figure per day, soʻm per 1 USD.
+ *
+ * WHY THIS AND NOT A TYPED NUMBER. «RNP jadvali» turns Meta's dollar spend
+ * into soʻm (the P&L's «Таргет бюджет», ROMI, CAC). Until 2026-09-30 the rate
+ * was typed into «Rejalar» once a month — 12 200 for September, while the
+ * bank's rate that month ran ~11 800, so every converted figure was ~3 % off.
+ * The client's rule is that nothing on the sheet is typed by hand, so the
+ * rate is read from the bank for the very day it converts.
+ *
+ * The endpoint answers a date with the rate IN FORCE that day (a weekend
+ * gets Friday's), so each day is asked for itself. A past day's rate never
+ * changes and is kept for the life of the process; today's is kept an hour.
+ * A failed read is not cached: it is null, and the next request asks again.
+ */
+
+const ENDPOINT = 'https://cbu.uz/uz/arkhiv-kursov-valyut/json/USD'
+const REQUEST_TIMEOUT_MS = 5_000
+const TODAY_TTL_MS = 60 * 60_000
+/** Days asked in parallel on a cold month — the bank's site is not ours to hammer. */
+const CONCURRENCY = 5
+
+interface CbuRow {
+  readonly Ccy?: string
+  readonly Rate?: string
+  readonly Date?: string
+}
+
+/** The rate from the bank's answer, or null when it is not one. Exported for its test. */
+export function parseCbuRate(body: unknown): number | null {
+  if (!Array.isArray(body)) return null
+  const row = (body as CbuRow[]).find((r) => r?.Ccy === 'USD')
+  const rate = row?.Rate === undefined ? Number.NaN : Number.parseFloat(row.Rate)
+  // A dollar has cost between a few thousand and a few tens of thousands of soʻm; anything else is not a rate.
+  return Number.isFinite(rate) && rate > 1_000 && rate < 100_000 ? rate : null
+}
+
+type Fetcher = (url: string, init: { signal: AbortSignal }) => Promise<{ ok: boolean; json(): Promise<unknown> }>
+
+export class CbuUsdRates {
+  private readonly cache = new Map<string, { rate: number; at: number }>()
+
+  constructor(
+    private readonly fetcher: Fetcher = (url, init) => fetch(url, init),
+    private readonly clock: () => number = Date.now,
+  ) {}
+
+  /**
+   * The rate for each of `days` (`YYYY-MM-DD`) up to and including `today`;
+   * null for a later day, and for a day the bank did not answer.
+   */
+  async forDays(days: readonly string[], today: string): Promise<(number | null)[]> {
+    const out: (number | null)[] = days.map(() => null)
+    const wanted = days.flatMap((day, i) => (day <= today ? [{ day, i }] : []))
+    for (let at = 0; at < wanted.length; at += CONCURRENCY) {
+      await Promise.all(
+        wanted.slice(at, at + CONCURRENCY).map(async ({ day, i }) => {
+          out[i] = await this.forDay(day, day === today)
+        }),
+      )
+    }
+    return out
+  }
+
+  private async forDay(day: string, isToday: boolean): Promise<number | null> {
+    const hit = this.cache.get(day)
+    if (hit && (!isToday || this.clock() - hit.at < TODAY_TTL_MS)) return hit.rate
+    try {
+      const response = await this.fetcher(`${ENDPOINT}/${day}/`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+      if (!response.ok) return hit?.rate ?? null
+      const rate = parseCbuRate(await response.json())
+      if (rate === null) return hit?.rate ?? null
+      this.cache.set(day, { rate, at: this.clock() })
+      return rate
+    } catch {
+      // Unreachable bank: yesterday's answer for today if there is one, else nothing — never a guess.
+      return hit?.rate ?? null
+    }
+  }
+}

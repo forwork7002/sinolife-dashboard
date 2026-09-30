@@ -16,7 +16,6 @@ import {
   SETTING_MARKETER_PCT,
   SETTING_MARKETING_PLAN_PCT,
   SETTING_TARGETOLOG_PCT,
-  SETTING_USD_RATE,
   type SaveRnpPlansBody,
   type SaveRnpRegistrarsBody,
 } from './rnpApi'
@@ -122,7 +121,6 @@ function PlanDialog({ data, onClose }: { data: RnpOverviewDto; onClose: () => vo
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries([...fields.values()].map((f) => [f.id, f.initial])),
   )
-  const [usdRate, setUsdRate] = useState(() => toText(data.settings.usdRate, 'usd'))
   const initialLeadDays = data.settings.leadValues.filter((v) => v.team === '').map((v) => v.fromDay)
   const [leadRows, setLeadRows] = useState<LeadRow[]>(() =>
     data.settings.leadValues
@@ -166,7 +164,6 @@ function PlanDialog({ data, onClose }: { data: RnpOverviewDto; onClose: () => vo
   for (const f of fields.values()) {
     if (Number.isNaN(parse(values[f.id] ?? '', f.unit))) problems.push(`«${f.label}» — son notoʻgʻri`)
   }
-  if (Number.isNaN(parse(usdRate, 'usd'))) problems.push('Dollar kursi — son notoʻgʻri')
   for (const p of PCT_SETTINGS) {
     if (Number.isNaN(parse(pcts[p.metric], 'percent'))) problems.push(`${p.label} — son notoʻgʻri`)
   }
@@ -182,7 +179,7 @@ function PlanDialog({ data, onClose }: { data: RnpOverviewDto; onClose: () => vo
   const submit = () => {
     if (problems.length > 0) return
     save.mutate({
-      plans: bodyOf(data.month, fields, values, usdRate, leadRows, initialLeadDays, pcts),
+      plans: bodyOf(data.month, fields, values, leadRows, initialLeadDays, pcts),
       registrars: registrarsBodyOf(data.month, initialGroups, registrarGroups),
     })
   }
@@ -220,7 +217,9 @@ function PlanDialog({ data, onClose }: { data: RnpOverviewDto; onClose: () => vo
         <div className="flex flex-col gap-6 px-5 pb-4">
           <fieldset className="flex min-w-0 flex-col gap-3">
             <legend className="eyebrow mb-2">Sozlamalar</legend>
-            <NumberField label="Dollar kursi" unit="usd" suffix="soʻm / $" value={usdRate} onChange={setUsdRate} />
+            <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+              Dollar kursi qoʻlda kiritilmaydi: har kun Markaziy bankning oʻsha kungi rasmiy kursi olinadi.
+            </p>
             {PCT_SETTINGS.map((p) => (
               <NumberField
                 key={p.metric}
@@ -498,7 +497,6 @@ function bodyOf(
   month: string,
   fields: ReadonlyMap<string, PlanField>,
   values: Readonly<Record<string, string>>,
-  usdRate: string,
   leadRows: readonly LeadRow[],
   initialLeadDays: readonly number[],
   pcts: Readonly<Record<PctMetric, string>>,
@@ -523,7 +521,6 @@ function bodyOf(
     }
   }
 
-  put('', SETTING_USD_RATE, 1, parse(usdRate, 'usd'))
   for (const p of PCT_SETTINGS) put('', p.metric, 1, parse(pcts[p.metric], 'percent'))
   const kept = new Set<number>()
   for (const r of leadRows) {

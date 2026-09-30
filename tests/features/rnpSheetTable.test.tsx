@@ -2,10 +2,10 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ResetColumnWidths, RnpColumnScope } from '@/features/rnp/RnpColumnResizer'
+import { RnpColumnScope } from '@/features/rnp/RnpColumnResizer'
 import { RnpSheetTable } from '@/features/rnp/RnpSheetTable'
 import type { RnpBlockDto, RnpLine, RnpRowDto } from '@/features/rnp/rnpApi'
-import { DEFAULT_WIDTH, STORAGE_KEY, reloadColumnWidths, resetColumnWidths, storedWidths } from '@/features/rnp/rnpColumnWidths'
+import { DEFAULT_WIDTH, STORAGE_KEY, reloadColumnWidths, storedWidths } from '@/features/rnp/rnpColumnWidths'
 
 /**
  * «RNP jadvali» as the client's sheet: `lines` drawn in order with the
@@ -62,12 +62,12 @@ const BLOCKS: RnpBlockDto[] = [
 ]
 
 const LINES: RnpLine[] = [
-  { kind: 'title', row: 4, label: 'Маркетинг COLLAGEN', sub: 'Хаёт', tone: 'section' },
-  { kind: 'value', row: 9, label: 'Кол подпис tg', sub: null, tone: 'plain', fact: 'plain', bold: false, key: null },
-  { kind: 'value', row: 102, label: 'Продажа (первичка) факт1', sub: 'Лола РОП', tone: 'team', fact: 'plain', bold: true, key: 'lids' },
-  { kind: 'value', row: 106, label: 'Сумма факт 1 сум', sub: null, tone: 'plain', fact: 'fakt', bold: false, key: 'sum' },
-  { kind: 'title', row: null, label: 'Kompaniya РОП', sub: 'jadvalda yoʻq jamoa', tone: 'team' },
-  { kind: 'value', row: null, label: 'Буюртма сони', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'kompaniya' },
+  { kind: 'title', row: 4, team: null, label: 'Маркетинг COLLAGEN', sub: 'Хаёт', tone: 'section' },
+  { kind: 'value', row: 9, team: null, label: 'Кол подпис tg', sub: null, tone: 'plain', fact: 'plain', bold: false, key: null },
+  { kind: 'value', row: 102, team: null, label: 'Продажа (первичка) факт1', sub: 'Лола РОП', tone: 'team', fact: 'plain', bold: true, key: 'lids' },
+  { kind: 'value', row: 106, team: null, label: 'Сумма факт 1 сум', sub: null, tone: 'plain', fact: 'fakt', bold: false, key: 'sum' },
+  { kind: 'title', row: null, team: null, label: 'Kompaniya РОП', sub: 'jadvalda yoʻq jamoa', tone: 'team' },
+  { kind: 'value', row: null, team: null, label: 'Буюртма сони', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'kompaniya' },
 ]
 
 const DAYS = ['2026-09-01', '2026-09-02', '2026-09-03']
@@ -99,7 +99,6 @@ Object.defineProperty(window, 'localStorage', {
 function draw(lines: RnpLine[] = LINES) {
   return render(
     <RnpColumnScope>
-      <ResetColumnWidths />
       <RnpSheetTable lines={lines} blocks={BLOCKS} days={DAYS} today="2026-09-03" />
     </RnpColumnScope>,
   )
@@ -122,7 +121,8 @@ beforeEach(() => {
 })
 afterEach(() => {
   cleanup()
-  resetColumnWidths()
+  window.localStorage.clear()
+  reloadColumnWidths()
 })
 
 describe('RnpSheetTable — the sheet, row by row', () => {
@@ -313,28 +313,22 @@ describe('RnpSheetTable — resizable columns', () => {
     }
   })
 
-  it('puts a column back on double click, and every column back from the toolbar button', () => {
+  it('puts a column back on double click', () => {
     const { container } = draw()
-    const reset = screen.getByRole('button', { name: 'Kengliklarni tiklash' }) as HTMLButtonElement
-    expect(reset.disabled).toBe(true)
-
     const plan = screen.getByRole('separator', { name: 'Ustun kengligi: План обший' })
     const label = screen.getByRole('separator', { name: 'Ustun kengligi: Koʻrsatkich' })
     fireEvent.keyDown(plan, { key: 'ArrowRight' })
     fireEvent.keyDown(label, { key: 'ArrowRight' })
     expect(Object.keys(storedWidths()).sort()).toEqual(['label', 'plan'])
-    expect(reset.disabled).toBe(false)
 
     fireEvent.doubleClick(plan)
     expect(Object.keys(storedWidths())).toEqual(['label'])
     const scope = container.querySelector<HTMLElement>('[data-rnp-cols]')!
     expect(scope.style.getPropertyValue('--rnp-w-plan')).toBe('')
-
-    act(() => fireEvent.click(reset))
-    expect(storedWidths()).toEqual({})
-    expect(scope.style.getPropertyValue('--rnp-w-label')).toBe('')
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull()
+    // «Kengliklarni tiklash» was removed at the client's word; nothing offers it.
+    expect(screen.queryByRole('button', { name: 'Kengliklarni tiklash' })).toBeNull()
   })
+
 })
 
 describe('RnpSheetTable — drag to scroll', () => {

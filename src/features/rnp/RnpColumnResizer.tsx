@@ -2,7 +2,6 @@
 
 import { type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, type Ref, useMemo, useRef } from 'react'
 
-import { Button } from '@/components/ui/Button'
 
 import {
   DEFAULT_WIDTH,
@@ -12,7 +11,6 @@ import {
   maxWidth,
   minWidth,
   resetColumnWidth,
-  resetColumnWidths,
   setColumnWidth,
   useColumnWidths,
   minVar,
@@ -259,31 +257,5 @@ export function ColumnResizer({
         ].join(' ')}
       />
     </div>
-  )
-}
-
-/**
- * «Kengliklarni tiklash» — every column back to its default. Disabled while
- * nothing is stored, so it never offers to undo what was never done. Its own
- * component so the page does not re-render when a width is committed.
- */
-export function ResetColumnWidths() {
-  const widths = useColumnWidths()
-  const any = Object.keys(widths).length > 0
-  return (
-    <Button
-      variant="ghost"
-      className="max-sm:h-11"
-      disabled={!any}
-      onClick={() => {
-        // The drag writes the properties by hand; take those off with the stored ones.
-        for (const el of document.querySelectorAll<HTMLElement>('[data-rnp-cols], [data-rnp-grid]')) {
-          for (const kind of RNP_COLUMN_KINDS) el.style.removeProperty(widthVar(kind))
-        }
-        resetColumnWidths()
-      }}
-    >
-      Kengliklarni tiklash
-    </Button>
   )
 }

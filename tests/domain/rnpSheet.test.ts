@@ -37,6 +37,8 @@ function input(over: Partial<RnpSheetInput> = {}): RnpSheetInput {
     month: '2026-09',
     days,
     today: '2026-09-28',
+    // The Central Bank's rate for each day reached; none after today.
+    usdRates: days.map((d) => (d <= '2026-09-28' ? 12_200 : null)),
     teams: [
       { rop: 'Sevinch', head: 'Sevinch Usmonova' },
       { rop: 'Charos', head: 'Malika Rahmonova' },
@@ -72,7 +74,6 @@ function input(over: Partial<RnpSheetInput> = {}): RnpSheetInput {
     ],
     plans: {
       rows: [
-        { team: '', metric: 'usd_rate', fromDay: 1, valueCenti: 1_220_000n },
         { team: '', metric: 'lead_value', fromDay: 1, valueCenti: 40_000_000n },
         { team: '', metric: 'lead_value', fromDay: 19, valueCenti: 50_000_000n },
         { team: 'Sevinch', metric: 'leads', fromDay: 1, valueCenti: 30_000n },
@@ -208,13 +209,14 @@ describe('buildRnpSheet — company blocks', () => {
     expect(on(share, '2026-09-21')).toBeCloseTo((140 * 12_200 * 100) / 2_000_000, 6)
     expect(on(row(dto, 'marketing', 'meta:cac'), '2026-09-21')).toBe(140)
     expect(dto.settings.usdRate).toBe(12_200)
+    expect(dto.settings.usdRateDate).toBe('2026-09-28')
   })
 
-  it('says nothing about the marketing share when no rate is set', () => {
-    const dto = buildRnpSheet(input({ plans: { rows: [], fakt: [] } }))
+  it('says nothing about the marketing share when the bank gave no rate', () => {
+    const dto = buildRnpSheet(input({ usdRates: days.map(() => null) }))
     const share = row(dto, 'marketing', 'meta:share')
     expect(share.fact).toBeNull()
-    expect(share.hint).toMatch(/kursi kiritilmagan/)
+    expect(share.hint).toMatch(/Markaziy bank kursi olinmadi/)
   })
 
   it('shows the leads a ROP got against the registrar\'s kval, and the ones nobody got', () => {
@@ -443,7 +445,7 @@ describe('buildRnpSheet — the brand P&L (rows 394–445)', () => {
 
 describe('buildRnpSheet — review fixes', () => {
   it('draws dashes, not zeros, where the dollar rate is missing', () => {
-    const d = buildRnpSheet(input({ plans: { rows: [], fakt: [] } }))
+    const d = buildRnpSheet(input({ usdRates: days.map(() => null) }))
     const spend = row(d, 'project:collagen', 'pj:collagen:spend_uzs')
     expect(spend.fact).toBeNull()
     expect(on(spend, '2026-09-21')).toBeNull()
@@ -568,5 +570,50 @@ describe('buildRnpSheet — every sheet row claimed once, and on the layout', ()
     const i = x.lines.findIndex((l) => l.kind === 'value' && l.key === 'reg:group:none:qualified')
     expect(i).toBeGreaterThan(x.lines.findIndex((l) => l.row === 67))
     expect(i).toBeLessThan(x.lines.findIndex((l) => l.row === 69))
+  })
+})
+
+describe('buildRnpSheet — the dollar rate is the bank\'s, day by day', () => {
+  it('converts each day at its own rate and carries a missing day from the one before', () => {
+    const rates = days.map((d) => (d === '2026-09-21' ? 11_800 : d === '2026-09-22' ? null : d <= '2026-09-28' ? 12_000 : null))
+    const x = buildRnpSheet(input({ usdRates: rates }))
+    const spend21 = on(row(x, 'marketing', 'meta:spend'), '2026-09-21')!
+    const uzs21 = on(row(x, 'project:collagen', 'pj:collagen:spend_uzs'), '2026-09-21')
+    expect(uzs21).toBeCloseTo(on(row(x, 'project:collagen', 'pj:collagen:spend'), '2026-09-21')! * 11_800, 6)
+    expect(spend21).toBeGreaterThanOrEqual(0)
+    // 22.09 was not answered: it converts at 21.09's rate, not at nothing.
+    expect(on(row(x, 'project:collagen', 'pj:collagen:spend_uzs'), '2026-09-22')).toBeCloseTo(
+      on(row(x, 'project:collagen', 'pj:collagen:spend'), '2026-09-22')! * 11_800,
+      6,
+    )
+  })
+
+  it('draws the converted rows empty when the bank never answered', () => {
+    const x = buildRnpSheet(input({ usdRates: days.map(() => null) }))
+    expect(x.settings.usdRate).toBeNull()
+    expect(row(x, 'project:collagen', 'pj:collagen:spend_uzs').fact).toBeNull()
+  })
+})
+
+describe('buildRnpSheet — each line knows its ROP, for the page\'s ROP filter', () => {
+  it('names the team of a team, logistics or «Свод» line, and nothing else', async () => {
+    const { teamOfKey } = await import('@/server/domain/rnp/rnpSheetView')
+    expect(teamOfKey('team:Sevinch:fakt1')).toBe('Sevinch')
+    expect(teamOfKey('lg:Sevinch:refused')).toBe('Sevinch')
+    expect(teamOfKey('sv:fakt2:(ROP yoʻq)')).toBe('(ROP yoʻq)')
+    expect(teamOfKey('lg:fakt1')).toBeNull()
+    expect(teamOfKey('reg:leads')).toBeNull()
+    expect(teamOfKey(null)).toBeNull()
+  })
+
+  it('gives one ROP its block, its logistics and its «Свод» lines', () => {
+    const x = buildRnpSheet(input())
+    const sevinch = x.lines.filter((l) => l.team === 'Sevinch').map((l) => l.row)
+    expect(sevinch).toContain(89) // the ROP block
+    expect(sevinch).toContain(93)
+    expect(sevinch).toContain(274) // its logistics
+    expect(sevinch).toContain(353) // «Свод» FAKT 1
+    expect(sevinch).toContain(365) // «Свод» FAKT 2
+    expect(sevinch).not.toContain(76) // Gulzora's
   })
 })

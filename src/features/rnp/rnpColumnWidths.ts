@@ -212,11 +212,6 @@ export function resetColumnWidth(kind: RnpColumnKind): void {
   write(next)
 }
 
-/** Forget every width. */
-export function resetColumnWidths(): void {
-  write({})
-}
-
 // ---------------------------------------------------------------------------
 
 /** Every stored width, re-rendering only when one changes. */

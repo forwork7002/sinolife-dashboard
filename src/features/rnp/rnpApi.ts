@@ -88,6 +88,8 @@ export type RnpLine =
   | {
       readonly kind: 'title'
       readonly row: number | null
+      /** The ROP team the line belongs to (the page's ROP filter); null = company-wide. */
+      readonly team: string | null
       readonly label: string
       readonly sub: string | null
       readonly tone: RnpLabelTone
@@ -95,6 +97,7 @@ export type RnpLine =
   | {
       readonly kind: 'value'
       readonly row: number | null
+      readonly team: string | null
       readonly label: string
       /** The sheet's column-B text: the ROP on a team's first row, «без квал», «факт1» … */
       readonly sub: string | null
@@ -131,8 +134,9 @@ export interface RnpOverviewDto {
   /** The client's sheet, row by row, each line pointing at the block row that fills it. */
   readonly lines: readonly RnpLine[]
   readonly settings: {
-    /** Soʻm per dollar; null when nobody set it for the month. */
+    /** The Central Bank's soʻm-per-dollar rate on `usdRateDate` (the latest day it answered); null when it never did. */
     readonly usdRate: number | null
+    readonly usdRateDate: string | null
     /** What one handed-out lead is worth, from each day it starts on. */
     readonly leadValues: readonly { readonly team: string; readonly fromDay: number; readonly value: number }[]
     /** The brand P&L's percentages; null when nobody set them. */
@@ -151,10 +155,9 @@ export interface RnpOverviewDto {
   }
 }
 
-/** Metric keys of the company-wide settings, never a plan. */
-export const SETTING_USD_RATE = 'usd_rate'
+/** Metric key of the one company-wide setting that is not a plan. */
 export const SETTING_LEAD_VALUE = 'lead_value'
-/** The brand P&L's three percentages — company-wide, from day 1, like the dollar rate. */
+/** The brand P&L's three percentages — company-wide, from day 1. */
 export const SETTING_MARKETING_PLAN_PCT = 'marketing_plan_pct'
 export const SETTING_TARGETOLOG_PCT = 'targetolog_pct'
 export const SETTING_MARKETER_PCT = 'marketer_pct'
