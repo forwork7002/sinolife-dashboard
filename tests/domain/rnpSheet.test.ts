@@ -243,7 +243,7 @@ describe('buildRnpSheet — company blocks', () => {
 })
 
 describe('buildRnpSheet — days the portal did not record whole', () => {
-  it("draws the days before a row's reliableFrom but never pools or paces them", () => {
+  it('counts every day of the leads a ROP got, as the portal filter does, but divides no rate by the early ones', () => {
     const base = input()
     const dto = buildRnpSheet({
       ...base,
@@ -256,11 +256,12 @@ describe('buildRnpSheet — days the portal did not record whole', () => {
     expect(on(reach, '2026-09-05')).toBe(1)
     // The count is drawn; the rate over it is not — 500% is not a measurement.
     expect(on(conv, '2026-09-05')).toBeNull()
-    // The month reads 16.09 on: 7 leads, 5 orders — the 05.09 burst is not in it.
-    expect(reach.fact).toBe(7)
+    // The count is the portal's: every day, 05.09 included (the client, 2026-09-30).
+    expect(reach.fact).toBe(8)
+    expect(reach.reliableFrom).toBeNull()
+    expect(reach.forecast).toBeCloseTo((8 / 27) * 30, 6)
+    // The rate still reads 16.09 on: 7 leads, 5 orders — the 05.09 burst is not in it.
     expect(conv.fact).toBeCloseTo((5 / 7) * 100, 6)
-    // Paced over the 12 full days from 16.09 (16–27), not over 27.
-    expect(reach.forecast).toBeCloseTo((7 / 12) * 30, 6)
   })
 
   it('trusts calls from the day CALL_DATA_FLOOR names', () => {

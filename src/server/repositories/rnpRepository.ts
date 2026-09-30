@@ -112,9 +112,6 @@ export interface RnpTeamFaktPlan {
   readonly fakt2Minor: bigint | null
 }
 
-/** Первичный отдел, Тасдиклаш, Доставка — where a handed-out lead lives. */
-const LEAD_PIPELINES = ['12', '4', '6']
-
 const monthDate = (month: string) => new Date(`${month}-01T00:00:00Z`)
 
 /*
@@ -144,7 +141,6 @@ export class RnpRepository {
       RnpRepository.leadDaysSql(),
       from,
       to,
-      LEAD_PIPELINES,
     )
     return rows.map((r) => ({ day: r.day, rop: r.rop, leads: Number(r.leads) }))
   }
@@ -156,6 +152,11 @@ export class RnpRepository {
    * deputy filed inside a ROP department the second. Anyone else (user 10,
    * the registration desk's head, who holds leads not yet handed out) is
    * null: «Taqsimlanmagan».
+   *
+   * EVERY PIPELINE, as the client counts it (2026-09-30): Bitrix24's deal list
+   * filtered by «Лид таркатилган сана» and «РОП (Первичка)», nothing else — a
+   * handed-out lead now sitting in «База» or back in «Регистрация» still went
+   * to that ROP.
    */
   static leadDaysSql(): string {
     return `
@@ -173,7 +174,6 @@ export class RnpRepository {
         ) AS rop,
         count(*)::bigint AS leads
       FROM "deal" d
-      JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."externalId" = ANY($3::text[])
       LEFT JOIN "employee" e ON e."id" = d."leadRopEmployeeId"
       LEFT JOIN "department" dep ON dep."id" = e."departmentId"
       WHERE d."leadDistributedOn" BETWEEN $1::date AND $2::date

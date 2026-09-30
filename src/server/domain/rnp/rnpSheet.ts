@@ -302,9 +302,12 @@ const LOGISTICS_SHEET_ROW: Readonly<Record<string, number>> = Object.freeze({
 })
 
 /**
- * «РОП (Первичка)» is filled on every handed-out lead only from 16.09.2026;
- * before it about one lead in five carries it, so those days undercount and
- * are drawn muted rather than presented as the team's leads.
+ * «РОП (Первичка)» is filled on every handed-out lead only from 16.09.2026
+ * (measured on the portal: 1–14.09 almost none, 15.09 about half). The
+ * «Продажа … факт1» row itself counts EVERY day, exactly as the client's
+ * portal filter does (2026-09-30: «bugun erta kech barchasi»); what stays
+ * muted before this day are the rates divided by it — conversion and plan % —
+ * which a handful of leads would blow up.
  */
 const LEAD_ROP_RELIABLE_FROM = '2026-09-16'
 
@@ -908,7 +911,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     const reachLabel = baseTeam ? 'Дозвон (уланган қўнғироқ)' : 'РОП олган лид'
     const reachHint = baseTeam
       ? 'Jamoa xodimlarining ulangan kiruvchi va chiquvchi qoʻngʻiroqlari.'
-      : '«Лид таркатилган сана» shu kun, «РОП (Первичка)» shu jamoa boʻlgan bitimlar.'
+      : 'Bitrix24: «Лид таркатилган сана» shu kun va «РОП (Первичка)» shu jamoa rahbari boʻlgan barcha bitimlar (hamma voronkalar).'
     /* The team's block on the sheet: its «Продажа … факт1» row; the rest follow the 13-row template (spec §2.6). */
     const r0 = Object.hasOwn(TEAM_SHEET_ROW, rop) ? TEAM_SHEET_ROW[rop] : undefined
     const at0 = (offset: number, label: string) => (r0 === undefined ? null : sh(r0 + offset, label))
@@ -921,7 +924,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       team: rop,
       sheet: r0 === undefined ? null : sh(r0, labelOf(rop)),
       rows: [
-        additive(clock, { key: `${k}:reach`, label: reachLabel, unit: 'count', ...planned(rop, reachMetric), hint: reachHint, reliableFrom: reachFrom, sheet: at0(0, baseTeam ? 'Продажа (база) факт1 — дозвон' : 'Продажа (первичка) факт1 — квал лид') }, reach),
+        additive(clock, { key: `${k}:reach`, label: reachLabel, unit: 'count', ...planned(rop, reachMetric), hint: reachHint, reliableFrom: baseTeam ? reachFrom : null, sheet: at0(0, baseTeam ? 'Продажа (база) факт1 — дозвон' : 'Продажа (первичка) факт1 — квал лид') }, reach),
         ratio(clock, { key: `${k}:conv1`, label: baseTeam ? 'Конверсия % от дозвон' : 'Конверсия % от квал лид', unit: 'percent', ...planned(rop, 'conversion'), reliableFrom: reachFrom, sheet: at0(1, baseTeam ? 'Конверция % от дозвон' : 'Конверция % от квал лид') }, t.fakt1Orders, reach, 100),
         ratio(clock, { key: `${k}:cheque1`, label: 'Ўртача чек (ФАКТ 1)', unit: 'uzs', ...planned(rop, 'avg_cheque1'), sheet: at0(2, 'Средний чек факт 1') }, t.fakt1, t.fakt1Orders),
         additive(clock, { key: `${k}:orders1`, label: 'Буюртма сони (ФАКТ 1)', unit: 'count', ...planned(rop, 'orders'), sheet: at0(3, 'Буюртма сони') }, t.fakt1Orders),

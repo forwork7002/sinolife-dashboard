@@ -45,9 +45,9 @@ describe('rnpTeamDaysSql', () => {
 })
 
 describe('RnpRepository statements', () => {
-  it('reads handed-out leads from Первичный отдел / Тасдиклаш / Доставка and credits the team the ROP heads', () => {
+  it('reads handed-out leads from every pipeline, as the portal filter does, and credits the team the ROP heads', () => {
     const sql = bare(RnpRepository.leadDaysSql())
-    expect(sql).toContain(`p."externalId" = ANY($3::text[])`)
+    expect(sql).not.toContain('"pipeline"')
     expect(sql).toContain(`h."headId" = d."leadRopEmployeeId"`)
     expect(sql).toContain(`d."leadDistributedOn" BETWEEN $1::date AND $2::date`)
   })

@@ -521,12 +521,16 @@ Per-screen traps worth knowing before you touch one:
   from Первичный отдел on; 21.09: 338 deals in pipelines 12/4/6, two sharing a
   contact) — Sevinch 38, Saidaziz 41, Maftuna 27 that day. This does not
   contradict «Lid kogortasi»'s «up to three deals»: that fold is keyed on the
-  ARRIVAL, and pipeline 10 (База) is not read here, so do not «fix»
-  `leadDaysSql` into a fold without re-measuring. «РОП (Первичка)» is filled
-  on every lead only from 16.09 (`LEAD_ROP_RELIABLE_FROM`) and calls are
-  wrong before 15.09 (`CALLS_RELIABLE_FROM`, = `CALL_DATA_FLOOR`): days before
-  a row's `reliableFrom` are DRAWN muted but never enter its month cell, its
-  pooled rate or its forecast pace. «ИИ квал» is NOT a
+  ARRIVAL, so do not «fix» `leadDaysSql` into a fold without re-measuring.
+  SINCE 2026-09-30 the ROP's leads are the client's own portal filter —
+  «Лид таркатилган сана» + «РОП (Первичка)», EVERY pipeline (База included),
+  EVERY day of the month (September: 1–14.09 almost unfilled, 15.09 half,
+  full from 16.09 — Sevinch 646, Lola 688, Azizbek 1 629 for the month).
+  Only the rates divided by it (conversion, plan %) still start at
+  `LEAD_ROP_RELIABLE_FROM` (16.09). Calls are wrong before 15.09
+  (`CALLS_RELIABLE_FROM`, = `CALL_DATA_FLOOR`): days before a row's
+  `reliableFrom` are DRAWN muted but never enter its month cell, its pooled
+  rate or its forecast pace. «ИИ квал» is NOT a
   kval — the AI hands the deal back to Регистрация and the registrar's WON is
   the kval. БАЗА teams (`BASE_TEAMS`: Charos = «Малика БАЗА», Baza = «Фаррух
   БАЗА») are measured by connected calls, not leads.
