@@ -163,6 +163,22 @@ export class RnpService {
     })
   }
 
+  /**
+   * Builds the month that is `now` in `timeZone` into the memo — no reader
+   * waiting on it. `rnpWarmer` calls it every few minutes so the sheet is
+   * never cold: a first reader after a deploy or a quiet hour was waiting
+   * ~17 s for the month's scans (measured on production, 2026-09-30).
+   */
+  async warm(now: Date, timeZone: string): Promise<void> {
+    const today = zonedDateKey(now, timeZone)
+    const month = today.slice(0, 7)
+    const days = monthDays(month)
+    await Promise.all([
+      monthCache.get(month, () => this.monthRows(month, days[0]!, days[days.length - 1]!, timeZone, now)),
+      this.usd.forDays(days, today),
+    ])
+  }
+
   saveRegistrarGroups: RnpRepository['saveRegistrarGroups'] = async (month, rows, by) => {
     await this.repository.saveRegistrarGroups(month, rows, by)
   }

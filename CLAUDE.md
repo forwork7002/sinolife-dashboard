@@ -572,6 +572,12 @@ Per-screen traps worth knowing before you touch one:
     month's last known rate; no rate at all → the converted rows are empty.
     Old `usd_rate` rows in `rnp_plan` are ignored, and the plans form no
     longer offers the field.
+  · **THE SHEET IS KEPT WARM** (2026-09-30, «tezroq ochilish»). Cold, the
+    month's scans took ~17 s on production; served from the memo, ~0.1 s.
+    `src/instrumentation.ts` starts `rnpWarmer` in the Node runtime of a
+    production server: the current Tashkent month is built at start and every
+    4 minutes (under the memo's 10-minute hard limit), one build at a time,
+    failures logged at warn and retried on the next tick.
   · **Where the sheet's own formulas are wrong, ours are:** its forecast
     multiplies by 31 (C1) in a 30-day month; its SUMIFS still read
     'ОТЧЕТ'/'роп', which stop in August, so FAKT 2, logistics and «Свод» are 0
