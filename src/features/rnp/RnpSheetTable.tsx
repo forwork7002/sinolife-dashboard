@@ -35,8 +35,8 @@ import { useDragScroll } from './useDragScroll'
  *
  * THE ONE TYPED EXCEPTION (2026-09-30): a row with `manual` — the P&L's five
  * cost lines — wears a «qoʻlda» chip, and for an account that may edit plans
- * each of its days up to today is a `CostDayCell` (click, Enter or F2 to
- * type). Only those ~10 rows are interactive; every other cell stays a plain
+ * each of its days up to today is a `CostDayCell` — an always-open field,
+ * typed straight into. Only those ~10 rows are interactive; every other cell stays a plain
  * `<td>`. Its summary columns stay computed.
  *
  * ONE SCROLL BOX, FROZEN LIKE THE SHEET. The box takes the height the page
@@ -393,7 +393,6 @@ function ValueRow({
               line={row.manual.line}
               label={`${line.label || row.label}, ${dayMonth(day)}`}
               value={value}
-              display={figure(value, row.unit)}
               className={className}
               last={i === days.length - 1}
               style={style}

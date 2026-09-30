@@ -1,7 +1,7 @@
 'use client'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { type CSSProperties, type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { type CSSProperties, type KeyboardEvent, useId, useState } from 'react'
 
 import { apiWrite } from '@/lib/api'
 import { formatFullUzs } from '@/lib/format'
@@ -14,17 +14,15 @@ import type { RnpCostLine, RnpCostProject, SaveRnpCostsBody } from './rnpApi'
  * nutritionist, brand face, marketing costs, team; rows 411–415 / 438–442)
  * are typed in place, one day at a time, in whole soʻm.
  *
- * IDLE IS A BUTTON, nothing heavier: about three hundred of these sit on the
- * sheet, and only the one being typed in mounts `CostEditor` with its
- * mutation. Click, Enter or F2 opens it.
- *
- * THE EDITOR: Enter or leaving the field saves, Escape puts the figure back,
- * Tab saves and opens the next day. An emptied field clears the day
- * (`value: null`). A typo is refused in place — red, said why, nothing sent.
- * While the save is on its way the typed figure stays, muted; the sheet is
- * refetched (`['rnp-overview']`) so this row, «Маркетинг харажат факт», CAC
- * and the share all recompute, and only then does the editor close. A save
- * the server refuses keeps the typed text, red, with the server's words.
+ * ALWAYS OPEN, like a spreadsheet (the client: «qo'lda kiritiladigan joylar
+ * ochiq tursin»): every day of these rows is a field — click and type, no
+ * button to press first. Enter or leaving the field saves, Escape puts the
+ * saved figure back, Tab moves on as it does in any form. An emptied field
+ * clears the day (`value: null`). A typo is refused in place — red, said
+ * why, nothing sent. While the save is on its way the figure stays, muted;
+ * the sheet is refetched (`['rnp-overview']`) so this row, «Маркетинг
+ * харажат факт», CAC and the share all recompute. A save the server refuses
+ * keeps the typed text, red, with the server's words.
  */
 export function CostDayCell({
   month,
@@ -33,7 +31,6 @@ export function CostDayCell({
   line,
   label,
   value,
-  display,
   className,
   style,
   title,
@@ -43,62 +40,18 @@ export function CostDayCell({
   day: string
   project: RnpCostProject
   line: RnpCostLine
-  /** «Блогерлар, 21.09» — what the button and the input are called. */
+  /** «Блогерлар, 21.09» — what the field is called. */
   label: string
   value: number | null
-  display: ReactNode
   className: string
   style: CSSProperties
   title?: string
   /** The month's last day: the sheet's wider right edge. */
   last?: boolean
 }) {
-  const [active, setActive] = useState(false)
-  const button = useRef<HTMLButtonElement>(null)
-  // Set when the editor closes by the keyboard (Enter, Escape), so focus comes back here.
-  const refocus = useRef(false)
-
-  useEffect(() => {
-    if (!active && refocus.current) {
-      refocus.current = false
-      button.current?.focus()
-    }
-  }, [active])
-
   return (
-    <td data-cost-cell="" title={active ? undefined : title} className={`${className} relative p-0`} style={style}>
-      {active ? (
-        <CostEditor
-          month={month}
-          day={day}
-          project={project}
-          line={line}
-          label={label}
-          value={value}
-          last={last}
-          onClose={(keyboard) => {
-            refocus.current = keyboard
-            setActive(false)
-          }}
-        />
-      ) : (
-        <button
-          ref={button}
-          type="button"
-          data-cost-edit=""
-          aria-label={`${label} — tahrirlash`}
-          onClick={() => setActive(true)}
-          onKeyDown={(e) => {
-            if (e.key === 'F2') {
-              e.preventDefault()
-              setActive(true)
-            }
-          }}
-          className={`block h-9 w-full cursor-text py-1.5 pl-3 ${last ? 'pr-5' : 'pr-3'} text-right transition-colors hover:bg-[var(--accent-soft)] hover:shadow-[inset_0_0_0_1px_var(--accent-line)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]`}
-        >
-          {display}
-        </button>
-      )}
+    <td data-cost-cell="" title={title} className={`${className} relative p-0.5`} style={style}>
+      <CostField month={month} day={day} project={project} line={line} label={label} value={value} last={last} />
     </td>
   )
 }
@@ -119,7 +72,9 @@ function parseCost(text: string): number | null {
   return Number(clean)
 }
 
-function CostEditor({
+const shown = (value: number | null) => (value === null ? '' : formatFullUzs(value))
+
+function CostField({
   month,
   day,
   project,
@@ -127,7 +82,6 @@ function CostEditor({
   label,
   value,
   last,
-  onClose,
 }: {
   month: string
   day: string
@@ -136,15 +90,18 @@ function CostEditor({
   label: string
   value: number | null
   last: boolean
-  onClose: (keyboard: boolean) => void
 }) {
   const queryClient = useQueryClient()
-  const [text, setText] = useState(() => (value === null ? '' : formatFullUzs(value)))
+  const [text, setText] = useState(() => shown(value))
   const [problem, setProblem] = useState<{ message: string; text: string } | null>(null)
-  const input = useRef<HTMLInputElement>(null)
-  // Escape, or a save already under way: the blur that follows must not save (again).
-  const settled = useRef(false)
+  // The figure the field last showed from the server — a refetch that changes it refreshes an untouched field.
+  const [synced, setSynced] = useState(value)
+  const [focused, setFocused] = useState(false)
   const messageId = useId()
+  if (value !== synced && !focused) {
+    setSynced(value)
+    setText(shown(value))
+  }
 
   const save = useMutation({
     mutationFn: (next: number | null) => {
@@ -155,39 +112,34 @@ function CostEditor({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['rnp-overview'] }),
   })
 
-  useEffect(() => {
-    input.current?.focus()
-    input.current?.select()
-  }, [])
-
-  /** Save what is typed. False when it was refused in place (a typo) or is already on its way. */
-  const commit = (keyboard: boolean): boolean => {
-    if (save.isPending || settled.current) return false
+  /** Save what is typed, if it changed. Nothing is sent for a typo (refused in place) or while a save is on its way. */
+  const commit = (retry: boolean) => {
+    if (save.isPending) return
     const next = parseCost(text)
     if (next !== null && Number.isNaN(next)) {
       setProblem({ message: INVALID, text })
-      return false
+      return
     }
     if (next !== null && next > MAX_SUM) {
       setProblem({ message: TOO_BIG, text })
-      return false
+      return
     }
-    // A save the server refused, left as it was: leaving the field does not send it again.
-    if (!keyboard && problem !== null && problem.text === text) return false
-    settled.current = true
+    // A save the server refused, left as it was: leaving the field does not send it again; Enter does.
+    if (!retry && problem !== null && problem.text === text) return
     if (next === value) {
-      onClose(keyboard)
-      return true
+      setProblem(null)
+      setText(shown(value))
+      return
     }
     setProblem(null)
     save.mutate(next, {
-      onSuccess: () => onClose(keyboard),
-      onError: (error) => {
-        settled.current = false
-        setProblem({ message: error instanceof Error && error.message ? error.message : 'Saqlab boʻlmadi.', text })
+      // Written in full at once, even while the field still has focus.
+      onSuccess: () => {
+        setSynced(next)
+        setText(shown(next))
       },
+      onError: (error) => setProblem({ message: error instanceof Error && error.message ? error.message : 'Saqlab boʻlmadi.', text }),
     })
-    return true
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -197,16 +149,8 @@ function CostEditor({
     } else if (e.key === 'Escape') {
       e.preventDefault()
       if (save.isPending) return
-      settled.current = true
-      onClose(true)
-    } else if (e.key === 'Tab') {
-      // The neighbouring day in the same row, if it can be typed in; otherwise Tab goes on as usual.
-      const td = e.currentTarget.closest('td')
-      const sibling = e.shiftKey ? td?.previousElementSibling : td?.nextElementSibling
-      const next = sibling?.querySelector<HTMLButtonElement>('button[data-cost-edit]') ?? null
-      const invalid = Number.isNaN(parseCost(text)) || (parseCost(text) ?? 0) > MAX_SUM
-      if (next || invalid) e.preventDefault()
-      if (commit(false) && next) next.click()
+      setProblem(null)
+      setText(shown(value))
     }
   }
 
@@ -216,7 +160,6 @@ function CostEditor({
   return (
     <>
       <input
-        ref={input}
         type="text"
         inputMode="numeric"
         autoComplete="off"
@@ -232,15 +175,21 @@ function CostEditor({
           setText(e.target.value)
         }}
         onKeyDown={onKeyDown}
+        onFocus={(e) => {
+          setFocused(true)
+          e.currentTarget.select()
+        }}
         onBlur={() => {
+          setFocused(false)
           commit(false)
         }}
-        className={`tabular block h-9 w-full min-w-0 py-1.5 pl-3 text-right ${last ? 'pr-5' : 'pr-3'} outline-none transition-opacity ${pending ? 'opacity-60' : ''}`}
+        placeholder="—"
+        className={`tabular block h-8 w-full min-w-0 rounded-[5px] py-1 pl-2 text-right ${last ? 'pr-4' : 'pr-2'} outline-none transition-[opacity,box-shadow] placeholder:text-[var(--ink-muted)] focus:shadow-[inset_0_0_0_2px_var(--accent)] ${pending ? 'opacity-60' : ''}`}
         style={{
           background: wrong ? 'color-mix(in oklab, var(--status-critical) 12%, var(--surface-raised))' : 'var(--surface-raised)',
           color: 'var(--ink-primary)',
-          boxShadow: `inset 0 0 0 2px ${wrong ? 'var(--status-critical)' : 'var(--accent)'}`,
-          cursor: pending ? 'progress' : undefined,
+          boxShadow: wrong ? 'inset 0 0 0 2px var(--status-critical)' : 'inset 0 0 0 1px var(--border-strong)',
+          cursor: pending ? 'progress' : 'text',
         }}
       />
       {wrong && (

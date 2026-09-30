@@ -288,24 +288,24 @@ describe('RnpSheetTable — the typed P&L cost lines', () => {
     expect(screen.queryAllByRole('textbox')).toHaveLength(0)
   })
 
-  it('makes only the typed row’s days up to today editable, each named for its row and day', () => {
+  it('keeps the typed row’s days up to today open as fields, each named for its row and day', () => {
     const { container } = drawCosts('2026-09')
-    const buttons = screen.getAllByRole('button', { name: /tahrirlash$/ })
-    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['Блогерлар, 01.09 — tahrirlash', 'Блогерлар, 02.09 — tahrirlash'])
-    // Every other row stays plain cells: nothing else in the grid is a button but the tips and the handles.
+    const fields = screen.getAllByRole('textbox', { name: /soʻm$/ }) as HTMLInputElement[]
+    // Open at once — no button to press first (the client: «ochiq tursin»).
+    expect(fields.map((f) => f.getAttribute('aria-label'))).toEqual(['Блогерлар, 01.09 — soʻm', 'Блогерлар, 02.09 — soʻm'])
+    expect(fields[0]!.value).toBe('1,500,000')
+    expect(fields[1]!.value).toBe('')
+    expect(fields[0]!.inputMode).toBe('numeric')
+    // Every other row stays plain cells.
     for (const tr of bodyRows(container)) {
       if (tr.querySelector('th')!.textContent!.includes('Блогерлар')) continue
-      expect(tr.querySelectorAll('td button')).toHaveLength(0)
+      expect(tr.querySelectorAll('td input')).toHaveLength(0)
     }
     // The summary cells of the typed row stay read-only.
     const cells = [...rowNamed(container, 'Блогерлар').querySelectorAll('td')]
-    expect(cells.slice(0, 5).every((td) => td.querySelector('button') === null)).toBe(true)
-    // F2 on a focused day opens its labelled field with the full number.
-    fireEvent.keyDown(buttons[0]!, { key: 'F2' })
-    const input = screen.getByRole('textbox', { name: 'Блогерлар, 01.09 — soʻm' }) as HTMLInputElement
-    expect(input.value).toBe('1,500,000')
-    expect(input.inputMode).toBe('numeric')
+    expect(cells.slice(0, 5).every((td) => td.querySelector('input') === null)).toBe(true)
   })
+
 })
 
 describe('RnpSheetTable — resizable columns', () => {
