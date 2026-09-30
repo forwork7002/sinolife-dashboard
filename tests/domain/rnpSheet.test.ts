@@ -162,10 +162,10 @@ describe('buildRnpSheet — plan completion prices a lead by its own day', () =>
 describe('buildRnpSheet — teams', () => {
   it('measures a БАЗА team by its connected calls and a lead team by its leads', () => {
     const dto = buildRnpSheet(input())
-    expect(dto.teams.map((t) => [t.rop, t.isBase])).toEqual([
-      ['Sevinch', false],
-      ['Charos', true],
-    ])
+    const isBase = new Map(dto.teams.map((t) => [t.rop, t.isBase]))
+    expect(isBase.get('Sevinch')).toBe(false)
+    expect(isBase.get('Charos')).toBe(true)
+    expect(dto.teams[0]!.rop).toBe('Sevinch') // the month's FAKT 1 leads the order
     const charos = block(dto, 'team:Charos')
     expect(charos.title).toBe('Малика РОП – БАЗА')
     expect(charos.subtitle).toBe('Charos(ROP) · Malika Rahmonova')
@@ -357,6 +357,7 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
   it('counts a group\'s kval over its registrars — the sheet\'s 58 on 02.09', () => {
     const d = dto()
     expect(on(row(d, 'registration', 'reg:group:Sevinch:qualified'), '2026-09-02')).toBe(58)
+    expect(row(d, 'registration', 'reg:group:Sevinch:qualified').sheet).toEqual({ row: 51, label: 'Sevinch guruh — квал' })
   })
 
   it('splits the desk into Collagen and Zextra and names each Zextra registrar', () => {
@@ -364,6 +365,7 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
     expect(on(row(d, 'registration', 'reg:zextra:qualified'), '2026-09-02')).toBe(37)
     expect(on(row(d, 'registration', 'reg:qualified_collagen'), '2026-09-02')).toBe(150 - 37)
     expect(on(row(d, 'registration', 'reg:registrar:Рухшона'), '2026-09-02')).toBe(17)
+    expect(row(d, 'registration', 'reg:registrar:Ситора').sheet).toEqual({ row: 73, label: 'Ситора - 2' })
   })
 
   it('keeps the kval of an unassigned registrar visible so the rows still add up', () => {
@@ -456,9 +458,112 @@ describe('buildRnpSheet — review fixes', () => {
   })
 })
 
-describe('buildRnpSheet — nothing typed by hand (the client\'s rule of 2026-09-29)', () => {
+describe('buildRnpSheet — the sheet\'s own rows (the «Jadvaldagidek» view)', () => {
+  const d = () => buildRnpSheet(input({ teams: [...input().teams, { rop: 'Sadriddin', head: 'Mamayusupov Sadriddin' }] }))
+
+  it('puts each ROP row where the sheet has it, under the sheet\'s label', () => {
+    const x = d()
+    expect(block(x, 'team:Sevinch').sheet).toEqual({ row: 89, label: 'Севинч РОП' })
+    expect(row(x, 'team:Sevinch', 'team:Sevinch:fakt1').sheet).toEqual({ row: 93, label: 'Сумма факт 1 сум' })
+    expect(row(x, 'team:Charos', 'team:Charos:reach').sheet?.row).toBe(156)
+    expect(row(x, 'logistics:Sevinch', 'lg:Sevinch:refused').sheet).toEqual({ row: 278, label: 'Отказ сумма' })
+  })
+
+  it('leaves the dashboard\'s additions off the sheet', () => {
+    const x = d()
+    expect(row(x, 'registration', 'reg:duplicates').sheet).toBeNull()
+    expect(row(x, 'logistics:Sevinch', 'lg:Sevinch:open_pct').sheet).toBeNull()
+    expect(block(x, 'logistics').sheet).toBeNull()
+    expect(block(x, 'project:none').sheet).toBeNull()
+  })
+
+  it('numbers the «Свод» team rows in the sheet\'s order', () => {
+    const x = d()
+    expect(row(x, 'summary', 'sv:fakt1:Sevinch').sheet).toEqual({ row: 353, label: 'Севинч РОП факт1' })
+    expect(row(x, 'summary', 'sv:fakt2:Charos').sheet).toEqual({ row: 370, label: 'Малика РОП – БАЗА факт2' })
+    expect(row(x, 'summary', 'sv:difference').sheet?.row).toBe(379)
+  })
+
   it('has no typed rows at all', () => {
-    const x = buildRnpSheet(input())
+    const x = d()
     expect(x.blocks.some((b) => (b.kind as string) === 'social' || (b.kind as string) === 'hr')).toBe(false)
+  })
+})
+
+describe('buildRnpSheet — the page is the client\'s sheet, row by row', () => {
+  const lineAt = (dto: ReturnType<typeof buildRnpSheet>, sheetRow: number) => dto.lines.find((l) => l.row === sheetRow)
+
+  it('keeps every titled sheet row in its order, under the sheet\'s label', () => {
+    const x = buildRnpSheet(input())
+    const rows = x.lines.flatMap((l) => (l.row === null ? [] : [l.row]))
+    expect(rows).toEqual([...rows].sort((a, b) => a - b))
+    expect(lineAt(x, 4)).toMatchObject({ kind: 'title', label: 'Маркетинг COLLAGEN', sub: 'Хаёт' })
+    expect(lineAt(x, 93)).toMatchObject({ kind: 'value', label: 'Сумма факт 1 сум', key: 'team:Sevinch:fakt1' })
+    expect(lineAt(x, 47)).toMatchObject({ kind: 'value', key: 'reg:leads' })
+  })
+
+  it('leaves a row Bitrix24 cannot supply in place, empty', () => {
+    const x = buildRnpSheet(input())
+    expect(lineAt(x, 5)).toMatchObject({ kind: 'value', label: 'Кол подпис sinolife.otziv', key: null })
+    expect(lineAt(x, 337)).toMatchObject({ kind: 'value', key: null }) // HR
+    expect(lineAt(x, 50)).toMatchObject({ kind: 'value', sub: 'без квал', key: null })
+  })
+
+  it('fills a sheet team with zeros in a quiet month rather than calling it missing', () => {
+    const x = buildRnpSheet(input())
+    expect(lineAt(x, 170)).toMatchObject({ kind: 'value', key: 'team:Marjona:reach' })
+  })
+
+  it('shows an unlabelled helper row only when Bitrix24 fills it', () => {
+    const x = buildRnpSheet(input())
+    expect(lineAt(x, 278)).toMatchObject({ kind: 'value', key: 'lg:Sevinch:refused' })
+    expect(lineAt(x, 75)).toBeUndefined()
+  })
+
+  it('adds a team the sheet has no block for after the sheet\'s teams, so its sales are not lost', () => {
+    const x = buildRnpSheet(input())
+    const withNewTeam = buildRnpSheet(
+      input({ fakt: [...input().fakt, fakt('2026-09-21', 'Bosh', { fakt1Orders: 1, fakt1Minor: som(1_500_000) })] }),
+    )
+    const heading = withNewTeam.lines.findIndex((l) => l.kind === 'title' && l.sub === 'jadvalda yoʻq jamoa' && l.label.includes('Bosh'))
+    expect(heading).toBeGreaterThan(-1)
+    const lastTeamRow = withNewTeam.lines.findIndex((l) => l.row === 246)
+    const firstCompanyRow = withNewTeam.lines.findIndex((l) => l.row === 249)
+    // Only orders nobody's team claims are added in the plain fixture — and they are real money.
+    expect(x.lines.filter((l) => l.sub === 'jadvalda yoʻq jamoa').map((l) => l.label)).toEqual(['Логистика — (ROP yoʻq)'])
+    expect(heading).toBeGreaterThan(lastTeamRow)
+    expect(heading).toBeLessThan(firstCompanyRow)
+  })
+
+  it('points every filled line at a row the payload carries', () => {
+    const x = buildRnpSheet(input())
+    const keys = new Set(x.blocks.flatMap((b) => b.rows.map((r) => r.key)))
+    for (const l of x.lines) if (l.kind === 'value' && l.key !== null) expect(keys.has(l.key)).toBe(true)
+  })
+})
+
+describe('buildRnpSheet — every sheet row claimed once, and on the layout', () => {
+  it('never lets two rows claim one sheet row, nor claim a row the layout lacks', async () => {
+    const { RNP_SHEET_LAYOUT } = await import('@/server/domain/rnp/rnpSheetLayout')
+    const onLayout = new Set(RNP_SHEET_LAYOUT.map(([row]) => row))
+    const x = buildRnpSheet(input())
+    const claimed = x.blocks.flatMap((b) => b.rows.flatMap((r) => (r.sheet ? [r.sheet.row] : [])))
+    expect(new Set(claimed).size).toBe(claimed.length)
+    expect(claimed.filter((row) => !onLayout.has(row))).toEqual([])
+  })
+
+  it('draws a sheet team with no sales in logistics and «Свод» as zeros, not as missing', () => {
+    const x = buildRnpSheet(input())
+    const at = (row: number) => x.lines.find((l) => l.row === row)
+    expect(at(304)).toMatchObject({ kind: 'value', key: 'lg:Marjona:fakt1' })
+    expect(at(314)).toMatchObject({ kind: 'value', key: 'lg:Shohjaxon:fakt1' })
+    expect(at(361)).toMatchObject({ kind: 'value', key: 'sv:fakt1:Shohjaxon' })
+  })
+
+  it('keeps the kval of registrars in no group on the page, after the groups', () => {
+    const x = buildRnpSheet(input())
+    const i = x.lines.findIndex((l) => l.kind === 'value' && l.key === 'reg:group:none:qualified')
+    expect(i).toBeGreaterThan(x.lines.findIndex((l) => l.row === 67))
+    expect(i).toBeLessThan(x.lines.findIndex((l) => l.row === 69))
   })
 })

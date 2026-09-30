@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { RnpRowDto } from '@/features/rnp/rnpApi'
-import { dayTone, indexTone } from '@/features/rnp/rnpDerive'
+import { dayMonth, dayMonthYear, dayTone, indexTone } from '@/features/rnp/rnpDerive'
 
 /**
  * The grid's heat tint: a finished day of an additive row with a plan, read
@@ -20,6 +20,7 @@ const base: RnpRowDto = {
   index: null,
   days: [],
   planKey: null,
+  sheet: null,
   share: null,
   tone: 'plain',
   hint: null,
@@ -49,5 +50,10 @@ describe('rnp tones', () => {
     expect(dayTone({ ...base, reliableFrom: '2026-09-03' }, 1, '2026-09-01', '2026-09-05')).toBe('neutral')
     expect(dayTone({ ...base, additive: false }, 1, '2026-09-01', '2026-09-05')).toBe('neutral')
     expect(dayTone({ ...base, plan: null, dayPlan: null }, 1, '2026-09-01', '2026-09-05')).toBe('neutral')
+  })
+
+  it('writes a day as the sheet does', () => {
+    expect(dayMonth('2026-09-01')).toBe('01.09')
+    expect(dayMonthYear('2026-09-30')).toBe('30.09.2026')
   })
 })

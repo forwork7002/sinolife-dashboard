@@ -1,7 +1,7 @@
 /**
  * «RNP jadvali» — the wire shapes, restated for the client.
  *
- * Mirrors the DTOs of `src/server/domain/rnp/rnpSheet.ts`, and the bodies of
+ * Mirrors the DTOs of `src/server/domain/rnp/rnpSheet.ts` and `rnpSheetView.ts`, and the bodies of
  * `src/app/api/v1/rnp/plans/route.ts` and `…/registrars/route.ts`.
  * Nothing checks the mirror — edit both sides.
  */
@@ -37,6 +37,11 @@ export interface RnpRowDto {
   readonly days: readonly (number | null)[]
   /** What the plan form writes for this row; null when nothing is planned. */
   readonly planKey: RnpPlanKey | null
+  /**
+   * Where this row sits on the client's «РНП» sheet — its row number and its
+   * label there; null = a dashboard addition. Not used on screen.
+   */
+  readonly sheet: RnpSheetRef | null
   /** This row's share of its column's total, in percent (the «Свод»). */
   readonly share: number | null
   readonly tone: 'total' | 'plain'
@@ -44,6 +49,11 @@ export interface RnpRowDto {
   readonly hint: string | null
   /** Days before this are incomplete in Bitrix24, and are drawn muted. */
   readonly reliableFrom: string | null
+}
+
+export interface RnpSheetRef {
+  readonly row: number
+  readonly label: string
 }
 
 export type RnpBlockKind = 'marketing' | 'registration' | 'team' | 'company' | 'warehouse' | 'logistics' | 'project' | 'summary'
@@ -55,8 +65,48 @@ export interface RnpBlockDto {
   readonly subtitle: string | null
   /** The ROP team the block is about; null for a company block. */
   readonly team: string | null
+  /** The block's first row on the sheet and its title there; null = not on the sheet. */
+  readonly sheet: RnpSheetRef | null
   readonly rows: readonly RnpRowDto[]
 }
+
+/**
+ * How a line's label cell reads — the sheet's colours by meaning, not by hex:
+ * 'section' its orange headings, 'team' its blue team rows, 'company' the
+ * green company rows, 'brand' the light-blue P&L sub-rows, 'alert' the pink
+ * «Разница». Mirrors `src/server/domain/rnp/rnpSheetLayout.ts`.
+ */
+export type RnpLabelTone = 'section' | 'team' | 'company' | 'brand' | 'alert' | 'plain'
+/** How a line's fact column reads: FAKT sums, «План бажарилиши», ratios, key figures, budgets. */
+export type RnpFactTone = 'fakt' | 'plan' | 'rate' | 'key' | 'money' | 'alert' | 'plain'
+
+/**
+ * One row of «СентябрРНП 26», in the sheet's order (`rnpSheetView.ts`).
+ * `row` is the sheet row, null for a line added for a team the sheet lacks.
+ */
+export type RnpLine =
+  | {
+      readonly kind: 'title'
+      readonly row: number | null
+      readonly label: string
+      readonly sub: string | null
+      readonly tone: RnpLabelTone
+    }
+  | {
+      readonly kind: 'value'
+      readonly row: number | null
+      readonly label: string
+      /** The sheet's column-B text: the ROP on a team's first row, «без квал», «факт1» … */
+      readonly sub: string | null
+      readonly tone: RnpLabelTone
+      readonly fact: RnpFactTone
+      readonly bold: boolean
+      /** The `RnpRowDto.key` that fills it; null = Bitrix24 cannot supply this row. */
+      readonly key: string | null
+    }
+
+/** The `sub` of a heading added for a team the sheet has no block for (`ADDED_TEAM_NOTE`). */
+export const RNP_ADDED_TEAM_NOTE = 'jadvalda yoʻq jamoa'
 
 export interface RnpTeamDto {
   readonly rop: string
@@ -78,6 +128,8 @@ export interface RnpOverviewDto {
   readonly elapsedDays: number
   readonly teams: readonly RnpTeamDto[]
   readonly blocks: readonly RnpBlockDto[]
+  /** The client's sheet, row by row, each line pointing at the block row that fills it. */
+  readonly lines: readonly RnpLine[]
   readonly settings: {
     /** Soʻm per dollar; null when nobody set it for the month. */
     readonly usdRate: number | null

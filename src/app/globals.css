@@ -1592,7 +1592,11 @@ tr:hover > .tcol-sticky:not(.is-edge) {
   box-shadow: 1px 0 0 var(--border);
 }
 
-.tcol-sticky.is-edge.is-scrolled-x {
+/* `[data-scrolled-x]` is the same state set on the scroll box instead of on
+   each cell — the «RNP» sheet's ~370 pinned cells, which a React state would
+   redraw on the first sideways scroll (`RnpSheetTable.tsx`). */
+.tcol-sticky.is-edge.is-scrolled-x,
+[data-scrolled-x] .tcol-sticky.is-edge {
   box-shadow: 1px 0 0 var(--border-strong), 6px 0 12px -6px rgb(0 0 0 / 0.28);
 }
 

@@ -428,7 +428,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Qoʻngʻiroqlar | `/customers` | `calls/CallsPage` + `CallTable` | `/insights/calls` | Insights → Insights | `call_record."startedAt"` on the dashboard window, clamped below at `CALL_DATA_FLOOR` (2026-09-15 00:00 Tashkent). One clock, one request |
 | Reklama samarasi | `/marketing` | `reklama/ReklamaPage` — ONE page since 2026-09-25 (its «Sotuv · ROP» and «Lid kogortasi» tabs moved to «Lidlar»): `DmSection` + `FormSection` + `QualitySection` + `CampaignSection`, with `SideSection` beside them (xl) or above them — the client's narrow «HR · Kosmetika» day table, 2026-09-28: HR = every hiring campaign plus the HR Eldor account, Kosmetika = Kosmetika Eldor (`sideColumn` in `meta/accounts.ts`). The Roistat `marketing/MarketingPage` is held, not mounted | `/reklama/overview` (the Roistat `/marketing/*` three still answer, uncalled) | Reklama → Reklama | **two clocks, one Tashkent calendar day.** Meta: `meta_campaign_daily."date"`, the ad account's reporting day, split by `campaignChannel` (OUTCOME_LEADS → «Отчёт Т», OUTCOME_ENGAGEMENT → «DM», hiring campaigns → neither). Bitrix24: the Регистрация lead's `createdAtSource`, bucketed by the stage it sits in NOW (`leadQuality.ts`). Never joined — they meet on the day and the page |
 | Lidlar | `/leads` (section `leads`, 2026-09-25) | `leads/LeadsPage` — three tabs. «Lid manbalari»: `LeadSourcesSection`. «Lid kogortasi»: `LeadCohortSection`. «Sotuv · ROP»: `SalesTeamSection` + `PlanEditor` (the client's ROP sheets; plans typed in here, `seller_day_plan` / `team_month_plan`) | `/leads/overview`; `/lead-cohort/overview`; `/sales-team/overview`, `POST /sales-team/plans` (`analytics:read:all` at the gate, `kpi:manage` inside) | LeadSources (+ Reklama's Meta rows), LeadCohort, SalesTeam | «Lid manbalari» is on the dashboard period: Регистрация (role LEAD) and «ИИ обработка» (role AI_TRIAGE) by `createdAtSource`'s Tashkent day; Meta lead-form campaigns by `meta_campaign_daily."date"`, met on the targetolog, never joined per deal. «Lid kogortasi» takes its OWN day window (default the last 14): the row is `deal."leadArrivedAt"`'s Tashkent day, the column `"leadDistributedOn"` (a DATE, never zoned) minus it. «Sotuv · ROP» takes its OWN calendar month (not the preset): FAKT 1 / FAKT 2 on the sellers board's queue cohort (`salesTeamDays`), a seller's leads on Первичный отдел `createdAtSource` |
-| RNP jadvali | `/rnp` (section `rnp`, 2026-09-28) | `rnp/RnpPage` + `RnpPlanEditor` — the client's «СентябрРНП» sheet: a row per metric, a column per day, plan / day plan / fact / forecast / index before the days | `/rnp/overview`, `POST /rnp/plans` (`analytics:read:all` at the gate, `kpi:manage` inside) | Rnp → Insights (`rnpTeamDays`), Rnp, Reklama (Meta) | its OWN calendar month. FAKT 1 / FAKT 2 / refusals on the queue cohort (`queued_at`), team off the deal as on Logistika; handed-out leads on `leadDistributedOn`; Регистрация on `createdAtSource` (kval on `closedAt` of WON); calls on `startedAt`; Склад on Доставка stage history; Meta on `meta_campaign_daily."date"` |
+| RNP jadvali | `/rnp` (section `rnp`, 2026-09-28) | `rnp/RnpPage` + `RnpSheetTable` + `RnpPlanEditor` — the client's «СентябрРНП» sheet row by row (`lines`), nothing else: day plan / plan / fact / forecast / index before the days | `/rnp/overview`, `POST /rnp/plans` (`analytics:read:all` at the gate, `kpi:manage` inside) | Rnp → Insights (`rnpTeamDays`), Rnp, Reklama (Meta) | its OWN calendar month. FAKT 1 / FAKT 2 / refusals on the queue cohort (`queued_at`), team off the deal as on Logistika; handed-out leads on `leadDistributedOn`; Регистрация on `createdAtSource` (kval on `closedAt` of WON); calls on `startedAt`; Склад on Доставка stage history; Meta on `meta_campaign_daily."date"` |
 | Target tahlili | `/target` | `target/TargetPage` + `TargetGroupTable` + `TargetLeadTable` + `TargetMeta` | `/target/overview`, `/target/leads` | Target → Target | **the deal's creation, `createdAtSource`** — a lead on the day it was registered, a sale on the day the seller's deal was opened. The Meta block reads `meta_ad_daily."date"` over the same Tashkent calendar days |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
@@ -551,11 +551,24 @@ Per-screen traps worth knowing before you touch one:
     dropped on 2026-09-30 with the client's approval. Plans
     (column C) and the registrar→group mapping stay — targets and settings,
     not data.
-  · **One view (the extended one).** A sheet-only «Jadvaldagidek» view
-    (rows tagged with their sheet row and label) was built on 2026-09-29 and
-    dropped the same day at the client's word («faqat kengaytirilgan
-    kerak»); the row tags went with it on 2026-09-30 as dead code. The block
-    comments still name the sheet rows each block follows.
+  · **THE PAGE IS THE SHEET, AND ONLY THE SHEET (2026-09-30, final).** After
+    two reversals the client settled on «faqat jadval … to'liqligicha»: the
+    ROP rail, KPI cards, charts, funnel and ranking are deleted. Every row of
+    «СентябрРНП 26» is listed in `domain/rnp/rnpSheetLayout.ts` (generated
+    from the sheet's HTML export: label, column-B text, title/value/helper,
+    colour tones); `rnpSheetView.ts` turns it into `lines`, each pointing at
+    the block row whose `sheet.row` names it. A row Bitrix24 cannot supply
+    keeps its place, empty and marked «Bitrix24ʼda yoʻq» (the client's
+    choice). Teams the sheet lacks are added after its own teams, logistics
+    and «Свод» rows, marked «jadvalda yoʻq jamoa»; every team the sheet has
+    is drawn even in a quiet month (zeros, not «missing»).
+  · **Where the sheet's own formulas are wrong, ours are:** its forecast
+    multiplies by 31 (C1) in a 30-day month; its SUMIFS still read
+    'ОТЧЕТ'/'роп', which stop in August, so FAKT 2, logistics and «Свод» are 0
+    there; most September facts are typed by hand (FAKT 1 matched Bitrix on
+    167 of 239 team-days exactly). Its FAKT 2 average-check row is labelled
+    «Средний чек факт 1» — relabelled «факт 2» here. The day plan stays
+    C ÷ calendar days (the client's choice), not the sheet's C ÷ 27.
   · September's column C plans are imported by migration (the ×10 «Средний
     чек факт 2», the plans derived from it and zero plans left out; Мафтуна's
     400 000 → 400 mln). The lead's value changes on **14.09**, from the

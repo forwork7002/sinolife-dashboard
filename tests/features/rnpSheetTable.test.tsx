@@ -1,0 +1,408 @@
+// @vitest-environment jsdom
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { ResetColumnWidths, RnpColumnScope } from '@/features/rnp/RnpColumnResizer'
+import { RnpSheetTable } from '@/features/rnp/RnpSheetTable'
+import type { RnpBlockDto, RnpLine, RnpRowDto } from '@/features/rnp/rnpApi'
+import { DEFAULT_WIDTH, STORAGE_KEY, reloadColumnWidths, resetColumnWidths, storedWidths } from '@/features/rnp/rnpColumnWidths'
+
+/**
+ * «RNP jadvali» as the client's sheet: `lines` drawn in order with the
+ * sheet's labels, heading bands, a row Bitrix24 cannot supply kept empty and
+ * marked, an added team said so — and the grid's resizable columns, full
+ * numbers and drag-to-scroll.
+ */
+
+function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRowDto {
+  return {
+    unit: 'count',
+    additive: true,
+    better: 'up',
+    plan: null,
+    dayPlan: null,
+    fact: null,
+    forecast: null,
+    index: null,
+    days: [null, null, null],
+    planKey: null,
+    sheet: null,
+    share: null,
+    tone: 'plain',
+    hint: null,
+    reliableFrom: null,
+    ...over,
+  }
+}
+
+const BLOCKS: RnpBlockDto[] = [
+  {
+    id: 'team:Lola',
+    kind: 'team',
+    title: 'Лола РОП',
+    subtitle: null,
+    team: 'Lola',
+    sheet: null,
+    rows: [
+      row({ key: 'lids', label: 'Лидлар (dashboard)', plan: 300, dayPlan: 10, fact: 25, forecast: 280, index: 93.3, days: [12, 13, null] }),
+      row({
+        key: 'sum',
+        label: 'Сумма ФАКТ 1',
+        unit: 'uzs',
+        plan: 4_781_250_000,
+        dayPlan: 159_375_000,
+        fact: 3_589_815_001,
+        forecast: 4_821_429_000,
+        index: 100.8,
+        days: [1_250_000, 159_375_000, null],
+      }),
+      row({ key: 'kompaniya', label: 'Буюртма сони', fact: 7, days: [3, 4, null] }),
+    ],
+  },
+]
+
+const LINES: RnpLine[] = [
+  { kind: 'title', row: 4, label: 'Маркетинг COLLAGEN', sub: 'Хаёт', tone: 'section' },
+  { kind: 'value', row: 9, label: 'Кол подпис tg', sub: null, tone: 'plain', fact: 'plain', bold: false, key: null },
+  { kind: 'value', row: 102, label: 'Продажа (первичка) факт1', sub: 'Лола РОП', tone: 'team', fact: 'plain', bold: true, key: 'lids' },
+  { kind: 'value', row: 106, label: 'Сумма факт 1 сум', sub: null, tone: 'plain', fact: 'fakt', bold: false, key: 'sum' },
+  { kind: 'title', row: null, label: 'Kompaniya РОП', sub: 'jadvalda yoʻq jamoa', tone: 'team' },
+  { kind: 'value', row: null, label: 'Буюртма сони', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'kompaniya' },
+]
+
+const DAYS = ['2026-09-01', '2026-09-02', '2026-09-03']
+
+// jsdom has no PointerEvent; without one, clientX and pointerType never reach the handler.
+class FakePointerEvent extends MouseEvent {
+  pointerId: number
+  pointerType: string
+  constructor(type: string, init: PointerEventInit = {}) {
+    super(type, init)
+    this.pointerId = init.pointerId ?? 1
+    this.pointerType = init.pointerType ?? 'mouse'
+  }
+}
+Object.defineProperty(window, 'PointerEvent', { configurable: true, value: FakePointerEvent })
+
+// This jsdom has no `localStorage` (Node's own shadows it), so the page gets a Map.
+const stored = new Map<string, string>()
+Object.defineProperty(window, 'localStorage', {
+  configurable: true,
+  value: {
+    getItem: (k: string) => stored.get(k) ?? null,
+    setItem: (k: string, v: string) => void stored.set(k, v),
+    removeItem: (k: string) => void stored.delete(k),
+    clear: () => stored.clear(),
+  },
+})
+
+function draw(lines: RnpLine[] = LINES) {
+  return render(
+    <RnpColumnScope>
+      <ResetColumnWidths />
+      <RnpSheetTable lines={lines} blocks={BLOCKS} days={DAYS} today="2026-09-03" />
+    </RnpColumnScope>,
+  )
+}
+
+/** Every body row but the blank spacers between blocks. */
+function bodyRows(container: HTMLElement): HTMLTableRowElement[] {
+  return [...container.querySelectorAll<HTMLTableRowElement>('tbody tr:not([data-gap])')]
+}
+
+function rowNamed(container: HTMLElement, text: string): HTMLTableRowElement {
+  const found = bodyRows(container).find((tr) => tr.querySelector('th')?.textContent?.includes(text))
+  if (!found) throw new Error(`no row «${text}»`)
+  return found
+}
+
+beforeEach(() => {
+  window.localStorage.clear()
+  reloadColumnWidths()
+})
+afterEach(() => {
+  cleanup()
+  resetColumnWidths()
+})
+
+describe('RnpSheetTable — the sheet, row by row', () => {
+  it('draws every line in order under the sheet’s own labels, not the dashboard’s', () => {
+    const { container } = draw()
+    const labels = bodyRows(container).map((tr) => tr.querySelector('th')!.textContent)
+    expect(labels).toEqual([
+      'Маркетинг COLLAGENХаёт',
+      'Кол подпис tg',
+      'Лола РОППродажа (первичка) факт1',
+      'Сумма факт 1 сум',
+      'Kompaniya РОПjadvalda yoʻq jamoa',
+      'Буюртма сони',
+    ])
+    expect(container.textContent).not.toContain('Лидлар (dashboard)')
+    // Every label is a row header.
+    for (const tr of bodyRows(container)) expect(tr.querySelector('th')!.getAttribute('scope')).toBe('row')
+  })
+
+  it('heads the columns in the sheet’s order, a real header row', () => {
+    draw()
+    const headers = screen.getAllByRole('columnheader').map((th) => th.textContent)
+    expect(headers).toEqual([
+      'Koʻrsatkich, 01.09.2026 – 03.09.2026',
+      'Кунлик план',
+      'План обший',
+      'Факт',
+      'Прогноз',
+      'Индекс, %',
+      '01.09Se',
+      '02.09Ch',
+      '03.09Pa',
+    ])
+    expect(screen.getAllByRole('columnheader').every((th) => th.getAttribute('scope') === 'col')).toBe(true)
+    // Today's column is announced as the current date.
+    expect(screen.getAllByRole('columnheader').at(-1)!.getAttribute('aria-current')).toBe('date')
+  })
+
+  it('draws a heading as a band across the month, with its owner, and opens a gap after figures', () => {
+    const { container } = draw()
+    const title = rowNamed(container, 'Маркетинг COLLAGEN')
+    expect(title.dataset.line).toBe('title')
+    expect(title.dataset.tone).toBe('section')
+    const band = title.querySelectorAll('td')
+    expect(band).toHaveLength(1)
+    expect(band[0]!.colSpan).toBe(5 + DAYS.length)
+    expect(band[0]!.textContent).toBe('')
+    // The added team's heading follows a line of figures: a blank spacer row sits before it.
+    const added = rowNamed(container, 'Kompaniya РОП')
+    expect(added.previousElementSibling?.hasAttribute('data-gap')).toBe(true)
+    expect(added.previousElementSibling?.getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it('keeps a row Bitrix24 cannot supply in place, empty, with a named marker', () => {
+    const { container } = draw()
+    const missing = rowNamed(container, 'Кол подпис tg')
+    expect(missing.dataset.line).toBe('missing')
+    const cells = [...missing.querySelectorAll('td')]
+    // No figure — only the mark, in the empty span so the row stays one line.
+    expect(cells.map((td) => td.textContent)).toEqual(['Bitrix24ʼda yoʻq'])
+    expect(cells[0]!.colSpan).toBe(5 + DAYS.length)
+    const marker = within(missing).getByRole('note', { name: /^Bitrix24ʼda yoʻq/ })
+    expect(marker.getAttribute('aria-label')).toContain('Bu qator Bitrix24 da yoʻq — qoʻlda kiritilmaydi')
+    // Exactly one row is missing here.
+    expect(screen.getAllByRole('note')).toHaveLength(1)
+  })
+
+  it('names a team the sheet lacks with its chip', () => {
+    const { container } = draw()
+    const added = rowNamed(container, 'Kompaniya РОП')
+    expect(within(added).getByText('jadvalda yoʻq jamoa')).toBeTruthy()
+    // Its figures still print: nothing a team sold is dropped.
+    const orders = rowNamed(container, 'Буюртма сони')
+    expect([...orders.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['—', '—', '7', '—', '—', '3', '4', '—'])
+  })
+
+  it('puts the ROP first on a team’s row, and fills the columns in the sheet’s order', () => {
+    const { container } = draw()
+    const team = rowNamed(container, 'Лола РОП')
+    expect(team.dataset.tone).toBe('team')
+    expect(team.querySelector('th')!.textContent!.indexOf('Лола РОП')).toBe(0)
+    // Кунлик план, План, Факт, Прогноз, Индекс, then the days; a dash, never a zero.
+    expect([...team.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['10', '300', '25', '280', '93.3%', '12', '13', '—'])
+    expect(within(team).getByText('93.3%').className).toContain('rounded-full')
+  })
+
+  it('writes every soʻm in full, in the summary and in the days', () => {
+    const { container } = draw()
+    const sum = rowNamed(container, 'Сумма факт 1 сум')
+    expect([...sum.querySelectorAll('td')].map((td) => td.textContent)).toEqual([
+      '159,375,000',
+      '4,781,250,000',
+      '3,589,815,001',
+      '4,821,429,000',
+      '100.8%',
+      '1,250,000',
+      '159,375,000',
+      '—',
+    ])
+    expect(container.textContent).not.toMatch(/mln|mlrd|ming/)
+    // A FAKT row's fact cell is bold.
+    expect(sum.querySelectorAll('td')[2]!.className).toContain('font-semibold')
+  })
+})
+
+describe('RnpSheetTable — resizable columns', () => {
+  it('puts a labelled, valued separator on every header cell', () => {
+    draw()
+    const handles = screen.getAllByRole('separator')
+    // Koʻrsatkich + five summary columns + three days.
+    expect(handles).toHaveLength(1 + 5 + 3)
+    for (const h of handles) {
+      expect(h.getAttribute('aria-orientation')).toBe('vertical')
+      expect(h.getAttribute('aria-label')).toMatch(/^Ustun kengligi: /)
+      expect(Number(h.getAttribute('aria-valuemin'))).toBeGreaterThan(0)
+      expect(Number(h.getAttribute('aria-valuemax'))).toBeGreaterThan(Number(h.getAttribute('aria-valuemin')))
+    }
+    const fact = screen.getByRole('separator', { name: 'Ustun kengligi: Факт' })
+    expect(fact.getAttribute('aria-valuenow')).toBe(String(DEFAULT_WIDTH.fact))
+    expect(fact.closest('th')?.textContent).toBe('Факт')
+  })
+
+  it('lays the table out over a colgroup read from the scope variables, auto so no figure is cut', () => {
+    const { container } = draw()
+    const table = container.querySelector('table')!
+    expect(table.className).toContain('table-auto')
+    expect(container.querySelector('td.text-ellipsis, th.text-ellipsis, td.overflow-hidden')).toBeNull()
+    const cols = [...table.querySelectorAll('col')].map((c) => c.getAttribute('style'))
+    expect(cols).toHaveLength(1 + 5 + 3)
+    expect(cols[0]).toContain('--rnp-w-label')
+    expect(cols.at(-1)).toContain('--rnp-w-day')
+  })
+
+  it('drags on the <col> elements and the table width, then commits the variable on release', () => {
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      cb(0)
+      return 1
+    })
+    const { container } = draw()
+    const fact = screen.getByRole('separator', { name: 'Ustun kengligi: Факт' })
+    const col = container.querySelector<HTMLTableColElement>('col[data-col-kind="fact"]')!
+    const table = container.querySelector('table')!
+    const tableStyle = table.style.width
+    const colStyle = col.style.width
+
+    fireEvent.pointerDown(fact, { button: 0, clientX: 100, pointerId: 7 })
+    fireEvent.pointerMove(fact, { clientX: 160, pointerId: 7 })
+    const live = DEFAULT_WIDTH.fact + 60
+    expect(col.style.width).toBe(`${live}px`) // the cells' styles are not touched mid-drag
+    expect(table.style.width).toMatch(/px$/)
+    expect(fact.getAttribute('aria-valuenow')).toBe(String(live))
+
+    fireEvent.pointerUp(fact, { clientX: 160, pointerId: 7 })
+    expect(col.style.width).toBe(colStyle) // back to reading the variable
+    expect(table.style.width).toBe(tableStyle)
+    expect(storedWidths()).toEqual({ fact: live })
+    raf.mockRestore()
+  })
+
+  it('offers ONE day handle to the keyboard; all three still take a pointer', () => {
+    draw()
+    const days = screen.getAllByRole('separator', { name: 'Ustun kengligi: kunlar' })
+    expect(days.map((h) => h.tabIndex)).toEqual([0, -1, -1])
+  })
+
+  it('moves by 8px with the arrow keys, stores it, and sets the variable on the scope', () => {
+    const { container } = draw()
+    const fact = screen.getByRole('separator', { name: 'Ustun kengligi: Факт' })
+    fireEvent.keyDown(fact, { key: 'ArrowRight' })
+    fireEvent.keyDown(fact, { key: 'ArrowRight' })
+    fireEvent.keyDown(fact, { key: 'ArrowLeft' })
+
+    const expected = DEFAULT_WIDTH.fact + 8
+    expect(storedWidths()).toEqual({ fact: expected })
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual({ fact: expected })
+    expect(fact.getAttribute('aria-valuenow')).toBe(String(expected))
+    const scope = container.querySelector<HTMLElement>('[data-rnp-cols]')!
+    expect(scope.style.getPropertyValue('--rnp-w-fact')).toBe(`${expected}px`)
+  })
+
+  it('moves every day column with any day handle', () => {
+    draw()
+    const [, second] = screen.getAllByRole('separator', { name: 'Ustun kengligi: kunlar' })
+    fireEvent.keyDown(second!, { key: 'ArrowLeft' })
+    expect(storedWidths()).toEqual({ day: DEFAULT_WIDTH.day - 8 })
+    for (const h of screen.getAllByRole('separator', { name: 'Ustun kengligi: kunlar' })) {
+      expect(h.getAttribute('aria-valuenow')).toBe(String(DEFAULT_WIDTH.day - 8))
+    }
+  })
+
+  it('puts a column back on double click, and every column back from the toolbar button', () => {
+    const { container } = draw()
+    const reset = screen.getByRole('button', { name: 'Kengliklarni tiklash' }) as HTMLButtonElement
+    expect(reset.disabled).toBe(true)
+
+    const plan = screen.getByRole('separator', { name: 'Ustun kengligi: План обший' })
+    const label = screen.getByRole('separator', { name: 'Ustun kengligi: Koʻrsatkich' })
+    fireEvent.keyDown(plan, { key: 'ArrowRight' })
+    fireEvent.keyDown(label, { key: 'ArrowRight' })
+    expect(Object.keys(storedWidths()).sort()).toEqual(['label', 'plan'])
+    expect(reset.disabled).toBe(false)
+
+    fireEvent.doubleClick(plan)
+    expect(Object.keys(storedWidths())).toEqual(['label'])
+    const scope = container.querySelector<HTMLElement>('[data-rnp-cols]')!
+    expect(scope.style.getPropertyValue('--rnp-w-plan')).toBe('')
+
+    act(() => fireEvent.click(reset))
+    expect(storedWidths()).toEqual({})
+    expect(scope.style.getPropertyValue('--rnp-w-label')).toBe('')
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull()
+  })
+})
+
+describe('RnpSheetTable — drag to scroll', () => {
+  function grid() {
+    const { container } = render(<RnpSheetTable lines={LINES} blocks={BLOCKS} days={DAYS} today="2026-09-03" />)
+    const box = container.querySelector<HTMLElement>('[data-rnp-grid]')!
+    // jsdom lays nothing out: give the box a scroll position that remembers what it is set to.
+    let left = 200
+    Object.defineProperty(box, 'scrollLeft', { configurable: true, get: () => left, set: (v: number) => void (left = v) })
+    box.setPointerCapture = vi.fn()
+    box.releasePointerCapture = vi.fn()
+    const cell = box.querySelector('tr[data-line="value"] td')!
+    return { box, cell }
+  }
+
+  it('is one keyboard-reachable scroll region', () => {
+    const { box } = grid()
+    expect(box.getAttribute('role')).toBe('region')
+    expect(box.getAttribute('aria-label')).toBe('RNP jadvali')
+    expect(box.tabIndex).toBe(0)
+  })
+
+  it('pans the grid sideways once the mouse has moved past the threshold', () => {
+    const { box, cell } = grid()
+    fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, clientX: 500, pointerId: 1 })
+    fireEvent.pointerMove(cell, { pointerType: 'mouse', clientX: 460, pointerId: 1 })
+    expect(box.scrollLeft).toBe(240)
+    expect(box.hasAttribute('data-panning')).toBe(true)
+    expect(box.setPointerCapture).toHaveBeenCalledWith(1)
+    fireEvent.pointerMove(cell, { pointerType: 'mouse', clientX: 560, pointerId: 1 })
+    expect(box.scrollLeft).toBe(140)
+    fireEvent.pointerUp(cell, { pointerType: 'mouse', clientX: 560, pointerId: 1 })
+    expect(box.hasAttribute('data-panning')).toBe(false)
+  })
+
+  it('does nothing for a click that stays under the threshold', () => {
+    const { box, cell } = grid()
+    fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, clientX: 500, pointerId: 1 })
+    fireEvent.pointerMove(cell, { pointerType: 'mouse', clientX: 503, pointerId: 1 })
+    fireEvent.pointerUp(cell, { pointerType: 'mouse', clientX: 503, pointerId: 1 })
+    expect(box.scrollLeft).toBe(200)
+    expect(box.setPointerCapture).not.toHaveBeenCalled()
+  })
+
+  it('leaves touch, the resize handles and the row labels alone', () => {
+    const { box, cell } = grid()
+    fireEvent.pointerDown(cell, { pointerType: 'touch', button: 0, clientX: 500, pointerId: 2 })
+    fireEvent.pointerMove(cell, { pointerType: 'touch', clientX: 400, pointerId: 2 })
+    expect(box.scrollLeft).toBe(200)
+
+    const label = box.querySelector('tbody th')!
+    fireEvent.pointerDown(label, { pointerType: 'mouse', button: 0, clientX: 500, pointerId: 3 })
+    fireEvent.pointerMove(label, { pointerType: 'mouse', clientX: 400, pointerId: 3 })
+    expect(box.scrollLeft).toBe(200)
+    fireEvent.pointerUp(label, { pointerType: 'mouse', clientX: 400, pointerId: 3 })
+
+    const handle = box.querySelector('[role="separator"]')!
+    fireEvent.pointerDown(handle, { pointerType: 'mouse', button: 0, clientX: 500, pointerId: 4 })
+    fireEvent.pointerMove(box, { pointerType: 'mouse', clientX: 400, pointerId: 4 })
+    expect(box.scrollLeft).toBe(200)
+  })
+
+  it('marks the box once the days have moved, without redrawing a line', () => {
+    const { box } = grid()
+    fireEvent.scroll(box)
+    expect(box.hasAttribute('data-scrolled-x')).toBe(true)
+    Object.defineProperty(box, 'scrollLeft', { configurable: true, get: () => 0 })
+    fireEvent.scroll(box)
+    expect(box.hasAttribute('data-scrolled-x')).toBe(false)
+  })
+})

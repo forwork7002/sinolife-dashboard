@@ -17,6 +17,7 @@ import {
   useColumnWidths,
   minVar,
   useStoredWidth,
+  widthCss,
   widthVar,
 } from './rnpColumnWidths'
 
@@ -100,7 +101,15 @@ export function ColumnResizer({
   tabbable?: boolean
 }) {
   const stored = useStoredWidth(kind)
-  const drag = useRef<{ startX: number; startW: number; width: number; floor: number; frame: number } | null>(null)
+  const drag = useRef<{
+    startX: number
+    startW: number
+    width: number
+    floor: number
+    frame: number
+    /** The table's own width at the start, and the style it had — restored on release. */
+    table: { el: HTMLTableElement; startW: number; style: string } | null
+  } | null>(null)
 
   /**
    * The column's width as laid out now. Measured first: a stored width under
@@ -130,6 +139,30 @@ export function ColumnResizer({
     handle.setAttribute('aria-valuenow', String(px))
   }
 
+  /*
+    DURING A DRAG THE WIDTH GOES ON THE <col> ELEMENTS, NOT THE VARIABLE.
+    The variable sits on the page wrapper and every one of the sheet's ~9 700
+    cells inherits it, so changing it re-styles them all — 160–180 ms a frame
+    on the full sheet (measured 2026-09-30). A <col>'s own width re-lays the
+    table without touching a cell's style. The variable is written once, on
+    release, and the columns go back to reading it.
+  */
+  const colsOf = (handle: HTMLElement) =>
+    scopeOf(handle).querySelectorAll<HTMLTableColElement>(`col[data-col-kind="${kind}"]`)
+  const showLive = (handle: HTMLElement, px: number) => {
+    const cols = colsOf(handle)
+    for (const col of cols) col.style.width = `${px}px`
+    // The table's width is a sum of the variables; move it by hand too, or a
+    // narrower column only hands its space back to the others until release.
+    const t = drag.current?.table
+    if (t) t.el.style.width = `${t.startW + (px - (drag.current?.startW ?? px)) * cols.length}px`
+    handle.setAttribute('aria-valuenow', String(px))
+  }
+  const releaseCols = (handle: HTMLElement, table: { el: HTMLTableElement; style: string } | null) => {
+    for (const col of colsOf(handle)) col.style.width = widthCss(kind)
+    if (table) table.el.style.width = table.style
+  }
+
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     e.preventDefault()
@@ -137,7 +170,15 @@ export function ColumnResizer({
     const handle = e.currentTarget
     handle.setPointerCapture?.(e.pointerId)
     const startW = current(handle)
-    drag.current = { startX: e.clientX, startW, width: startW, floor: contentMin(handle), frame: 0 }
+    const el = scopeOf(handle).querySelector('table')
+    drag.current = {
+      startX: e.clientX,
+      startW,
+      width: startW,
+      floor: contentMin(handle),
+      frame: 0,
+      table: el ? { el, startW: el.getBoundingClientRect().width, style: el.style.width } : null,
+    }
     handle.dataset.dragging = ''
   }
 
@@ -150,7 +191,7 @@ export function ColumnResizer({
     if (d.frame) return
     d.frame = requestAnimationFrame(() => {
       d.frame = 0
-      show(handle, d.width)
+      showLive(handle, d.width)
     })
   }
 
@@ -165,6 +206,7 @@ export function ColumnResizer({
     // Always settle the page on the final width: a frame already painted may
     // hold a width the drag later came back from.
     show(handle, d.width)
+    releaseCols(handle, d.table)
     if (d.width === d.startW) return
     setColumnWidth(kind, d.width)
   }

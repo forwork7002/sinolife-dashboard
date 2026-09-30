@@ -1,55 +1,44 @@
 'use client'
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { useMemo, useRef, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 
-import { EmptyState, ErrorState } from '@/components/states/States'
+import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
-import { useCohortRop } from '@/features/cohort/useCohortRop'
 import { PageShell } from '@/features/shared/PageShell'
 import { type Status, muted } from '@/features/reklama/reklamaUi'
 import { apiGet } from '@/lib/api'
+import { formatNumber } from '@/lib/format'
 import { t } from '@/lib/messages'
-import { useReducedMotion } from '@/lib/useReducedMotion'
 
 import { ResetColumnWidths, RnpColumnScope } from './RnpColumnResizer'
-import { RnpCompanySkeleton, RnpCompanyView } from './RnpCompanyView'
 import { RnpPlanEditor } from './RnpPlanEditor'
-import { RnpRopRail, RnpRopRailSkeleton } from './RnpRopRail'
-import { RnpTeamView } from './RnpTeamView'
+import { RnpSheetTable } from './RnpSheetTable'
 import type { RnpOverviewDto } from './rnpApi'
-import { findRow, teamSummaries } from './rnpDerive'
+import { dayMonthYear } from './rnpDerive'
 import { canvasMeasure, contentMinWidths } from './rnpFigures'
 
 /**
- * «RNP jadvali» — the client's «СентябрРНП» sheet, one calendar month, every
- * row built on the server from Bitrix24 and Meta (`rnpSheet.ts`).
+ * «RNP jadvali» — the client's «СентябрРНП» sheet and nothing else, one
+ * calendar month, every row built on the server from Bitrix24 and Meta
+ * (`rnpSheet.ts`, laid out row by row in `rnpSheetView.ts`).
  *
- * TWO READINGS OF ONE PAYLOAD. With no team chosen it is the company: its
- * headline rows as cards, FAKT by day, the lead funnel, the teams ranked, and
- * the sheet's company blocks folded underneath. With a team chosen
- * («har bir ROP ga alohida») it is that team alone: its cards, its two
- * charts, its block and its logistics block. Everything is derived in the
- * browser from `/rnp/overview` (`rnpDerive.ts`) — choosing a team costs no
- * request.
+ * THE SHEET, FULLY, AND ONLY THE SHEET (the client, 2026-09-30: «faqat jadval
+ * … to'liqligicha … keraksiz narsalarni olib tashla»). The ROP rail and its
+ * `?rop=`, the KPI cards, the daily charts, the funnel, the ranking and the
+ * company / team views were deleted that day. What stays around the grid is
+ * the sheet's own rows 1–2 — the month, the days gone by, the dollar rate,
+ * today's date — and «Rejalar», where the plans (column C) are set.
  *
- * THE TEAM IS IN THE URL (`?rop=`), through the same hook and for the same
- * reasons as the cohort screen's team cut: it decides which answer is on
- * screen and it is what somebody sends a colleague a link to. A `?rop=` the
- * month does not have is SAID, not silently answered with the company.
+ * THE PAGE IS THE GRID. `fill` gives the grid every pixel under the header,
+ * and it scrolls inside its own box with the column headers and the label
+ * column frozen — the sheet's frozen row 3, over ~370 rows.
  *
  * ITS OWN MONTH, not the dashboard preset: the sheet is a calendar month by
  * construction, the same reason «Sotuv · ROP» keeps its own.
- *
- * ONE VIEW. A sheet-only «Jadvaldagidek» reading was built and then dropped
- * the same day at the client's word («faqat kengaytirilgan kerak»): the rows'
- * `sheet` refs stay in the payload, but nothing on screen filters by them.
  */
 export function RnpPage() {
   const [month, setMonth] = useState(() => thisMonth())
-  const { rop, setRop } = useCohortRop()
-  const top = useRef<HTMLDivElement>(null)
-  const reducedMotion = useReducedMotion()
 
   const overview = useQuery({
     queryKey: ['rnp-overview', { month }],
@@ -59,23 +48,12 @@ export function RnpPage() {
 
   const status: Status = overview.isPending ? 'loading' : overview.isError ? 'error' : 'ready'
   const data = overview.data?.data
-  const teams = useMemo(() => (data ? teamSummaries(data) : []), [data])
-  // How wide each column kind must be so that no figure on the page is cut — over
-  // EVERY block, so the columns stay in line when a team is picked. Data only
+  // How wide each column kind must be so that no figure is cut. Data only
   // exists in the browser, so the canvas is there when this runs.
   const minWidths = useMemo(
     () => (data ? contentMinWidths(data.blocks, canvasMeasure(getComputedStyle(document.body).fontFamily)) : undefined),
     [data],
   )
-  const at = teams.findIndex((s) => s.team.rop === rop)
-  const selected = at >= 0 ? teams[at]! : null
-  const missing = rop !== null && data !== undefined && selected === null
-
-  /** From the ranking, far down the page: bring the reader back to the top of the team. */
-  const openFromBelow = (next: string) => {
-    setRop(next)
-    top.current?.scrollIntoView?.({ block: 'start', behavior: reducedMotion ? 'auto' : 'smooth' })
-  }
 
   return (
     <PageShell
@@ -85,6 +63,7 @@ export function RnpPage() {
       meta={overview.data?.meta}
       stale={overview.isPlaceholderData}
       period={false}
+      fill
       actions={data?.canEditPlans ? <RnpPlanEditor key={data.month} data={data} /> : undefined}
       toolbar={
         <>
@@ -99,12 +78,13 @@ export function RnpPage() {
               style={{ background: 'var(--surface-raised)', borderColor: 'var(--border-strong)', color: 'var(--ink-primary)' }}
             />
           </label>
+          {data && <SheetFacts data={data} />}
           <ResetColumnWidths />
         </>
       }
     >
-      {/* Every grid below reads its column widths from here (`RnpColumnScope`). */}
-      <RnpColumnScope ref={top} minWidths={minWidths} className="flex min-w-0 scroll-mt-4 flex-col gap-4">
+      {/* The grid reads its column widths from here (`RnpColumnScope`). */}
+      <RnpColumnScope minWidths={minWidths} className="flex h-full min-h-0 flex-col">
         {status === 'error' ? (
           <Card className="p-5">
             <ErrorState
@@ -113,43 +93,54 @@ export function RnpPage() {
             />
           </Card>
         ) : status === 'loading' || !data ? (
-          <div className="flex flex-col gap-4" role="status" aria-label={t.state.loading}>
-            <RnpRopRailSkeleton />
-            <RnpCompanySkeleton />
-          </div>
+          <Card className="p-5">
+            <LoadingSkeleton rows={10} />
+          </Card>
         ) : data.blocks.length === 0 ? (
           <Card className="p-5">
             <EmptyState title="Bu oy uchun jadval yoʻq" body="Bu oy uchun jadval hali yigʻilmagan — boshqa oyni tanlang." />
           </Card>
         ) : (
-          <>
-            <RnpRopRail teams={teams} company={findRow(data, 'co:fakt1')} value={selected?.team.rop ?? null} onChange={setRop} />
-            {missing && (
-              <p
-                className="rounded-[var(--radius-panel-sm)] border px-3 py-2 text-xs"
-                role="status"
-                style={{ borderColor: 'var(--border)', background: 'var(--surface-sunken)', color: 'var(--ink-secondary)' }}
-              >
-                «{rop}» jamoasi bu oyda yoʻq — butun kompaniya koʻrsatilmoqda.
-              </p>
-            )}
-            {selected ? (
-              <RnpTeamView
-                key={selected.team.rop}
-                data={data}
-                summary={selected}
-                count={teams.length}
-                onSelect={setRop}
-                prev={teams[at - 1]?.team.rop ?? null}
-                next={teams[at + 1]?.team.rop ?? null}
-              />
-            ) : (
-              <RnpCompanyView data={data} teams={teams} onSelect={openFromBelow} />
-            )}
-          </>
+          // On a phone the header strip wraps to four lines and would leave the grid a
+          // letterbox; there the card is nearly a screen tall and the page scrolls the
+          // header away first (the confirmation board's floor, for the same reason).
+          <Card as="div" className="min-h-[320px] min-w-0 flex-1 overflow-hidden p-0 max-sm:min-h-[calc(100dvh-5rem)]">
+            <RnpSheetTable lines={data.lines} blocks={data.blocks} days={data.days} today={data.today} />
+          </Card>
         )}
       </RnpColumnScope>
     </PageShell>
+  )
+}
+
+/**
+ * The sheet's rows 1–2: «Неча иш куни ўтди», the dollar rate, today's date.
+ * A description list — each is a term and its value, not a control.
+ */
+function SheetFacts({ data }: { data: RnpOverviewDto }) {
+  const rate = data.settings.usdRate
+  return (
+    <dl className="flex flex-wrap items-center gap-2 text-xs">
+      <Fact term="Oʻtgan kunlar">{data.elapsedDays}</Fact>
+      <Fact term="Dollar kursi">
+        {rate === null ? <span className="font-normal" style={muted}>kiritilmagan</span> : `${formatNumber(rate)} soʻm`}
+      </Fact>
+      <Fact term="Bugun">{dayMonthYear(data.today)}</Fact>
+    </dl>
+  )
+}
+
+function Fact({ term, children }: { term: string; children: ReactNode }) {
+  return (
+    <div
+      className="flex h-8 items-center gap-1.5 rounded-[var(--radius-panel-sm)] border px-2.5"
+      style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
+    >
+      <dt style={muted}>{term}:</dt>
+      <dd className="tabular font-semibold" style={{ color: 'var(--ink-primary)' }}>
+        {children}
+      </dd>
+    </div>
   )
 }
 

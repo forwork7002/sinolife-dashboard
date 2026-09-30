@@ -76,7 +76,7 @@ export function ArrowDownGlyph(props: GlyphProps) {
   )
 }
 
-export function ChevronDownGlyph(props: GlyphProps) {
+function ChevronDownGlyph(props: GlyphProps) {
   return (
     <Glyph {...props}>
       <path d="M5.5 9l6.5 6.5L18.5 9" {...stroke} />

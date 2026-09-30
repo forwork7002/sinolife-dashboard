@@ -3,15 +3,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { RnpOverviewDto, RnpRowDto } from '@/features/rnp/rnpApi'
+import type { RnpLine, RnpOverviewDto, RnpRowDto } from '@/features/rnp/rnpApi'
 
 /**
- * «RNP jadvali» — what the sheet prints and what choosing a ROP leaves.
+ * «RNP jadvali» — the page is the client's sheet and nothing else.
  *
- * Promises nothing else checks: a day with no figure prints a dash and never
- * a zero, a rate prints as a percent, picking a team — by its chip or by its
- * line in the ranking — leaves that team's blocks and nothing else and puts
- * it in the URL, and the lead funnel sums its steps over one window.
+ * Promises nothing else checks: the sheet's lines are drawn in order under
+ * its own labels, the header strip carries the sheet's rows 1–2 (days gone
+ * by, dollar rate, today), a day with no figure prints a dash and never a
+ * zero, none of the deleted extras (ROP rail, KPI cards, charts, funnel,
+ * ranking) comes back, and «Rejalar» still saves plans and registrar groups.
  */
 
 vi.mock('next/navigation', () => ({
@@ -30,27 +31,6 @@ vi.mock('@/features/shared/PageShell', () => ({
   ),
 }))
 
-/*
-  jsdom has no `matchMedia` (AnimatedNumber and the charts ask it about
-  motion — «reduced» prints each figure once) and no `ResizeObserver`
-  (Recharts' ResponsiveContainer measures with one).
-*/
-window.matchMedia = ((query: string) => ({
-  matches: query.includes('prefers-reduced-motion'),
-  media: query,
-  onchange: null,
-  addEventListener: () => {},
-  removeEventListener: () => {},
-  addListener: () => {},
-  removeListener: () => {},
-  dispatchEvent: () => false,
-})) as unknown as typeof window.matchMedia
-globalThis.ResizeObserver ??= class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-} as unknown as typeof ResizeObserver
-
 const { RnpPage } = await import('@/features/rnp/RnpPage')
 
 function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRowDto {
@@ -65,6 +45,7 @@ function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRo
     index: null,
     days: [null, null, null],
     planKey: null,
+    sheet: null,
     share: null,
     tone: 'plain',
     hint: null,
@@ -89,6 +70,7 @@ const FIXTURE: RnpOverviewDto = {
       title: 'Регистрация',
       subtitle: null,
       team: null,
+      sheet: null,
       rows: [
         row({ key: 'reg:leads', label: 'Лидлар', fact: 12, days: [12, null, null] }),
         row({ key: 'reg:qualified', label: 'Квал лид', fact: 8, days: [2, 6, null] }),
@@ -101,6 +83,7 @@ const FIXTURE: RnpOverviewDto = {
       title: 'Sevinch РОП',
       subtitle: 'Sevinch Aliyeva',
       team: 'Sevinch',
+      sheet: null,
       rows: [
         row({
           key: 'team:Sevinch:conv1',
@@ -122,6 +105,7 @@ const FIXTURE: RnpOverviewDto = {
       title: 'Charos РОП — БАЗА',
       subtitle: 'Malika Rahmonova',
       team: 'Charos',
+      sheet: null,
       rows: [
         row({ key: 'team:Charos:reach', label: 'Дозвон', fact: 40, days: [40, null, null] }),
         // A БАЗА team's orders are not the leads' — the funnel leaves them out.
@@ -129,6 +113,14 @@ const FIXTURE: RnpOverviewDto = {
       ],
     },
   ],
+  lines: [
+    { kind: 'title', row: 4, label: 'Маркетинг COLLAGEN', sub: 'Хаёт', tone: 'section' },
+    { kind: 'value', row: 9, label: 'Кол подпис tg', sub: null, tone: 'plain', fact: 'plain', bold: false, key: null },
+    { kind: 'value', row: 47, label: 'Количество лид', sub: 'Умида', tone: 'plain', fact: 'plain', bold: false, key: 'reg:leads' },
+    { kind: 'value', row: 48, label: 'Регистрация COLLAGEN', sub: null, tone: 'section', fact: 'rate', bold: true, key: 'reg:qualified' },
+    { kind: 'value', row: 89, label: 'Продажа (первичка) факт1', sub: 'Севинч РОП', tone: 'team', fact: 'plain', bold: true, key: 'reg:distributed' },
+    { kind: 'value', row: 90, label: 'Конверсия % от квал лид', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'team:Sevinch:conv1' },
+  ] satisfies RnpLine[],
   settings: { usdRate: null, leadValues: [], marketingPlanPct: null, targetologPct: null, marketerPct: null },
   canEditPlans: false,
   registration: { registrars: [], groups: [], groupNames: ['Sevinch', 'Gulzora', 'Aziz', 'Maftuna', 'Lola', 'Saidaziz', 'Zextra'] },
@@ -167,114 +159,93 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function draw(first = 'Регистрация') {
+async function draw() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } })
   render(
     <QueryClientProvider client={client}>
       <RnpPage />
     </QueryClientProvider>,
   )
-  await waitFor(() => expect(screen.getByRole('heading', { name: first })).toBeTruthy())
+  await waitFor(() => expect(screen.getByRole('region', { name: 'RNP jadvali' })).toBeTruthy())
 }
 
-function chip(name: RegExp) {
-  const rail = screen.getByRole('group', { name: 'ROP tanlash' })
-  return within(rail).getByRole('button', { name })
+function labels(): string[] {
+  const grid = screen.getByRole('region', { name: 'RNP jadvali' })
+  return [...grid.querySelectorAll('tbody tr:not([data-gap]) th')].map((th) => th.textContent ?? '')
 }
 
-describe('RnpPage — Kengaytirilgan', () => {
-  beforeEach(() => window.history.replaceState(null, '', '/rnp'))
-
-  it('draws each block, a dash for a day with no figure, and a rate as a percent', async () => {
+describe('RnpPage — the sheet', () => {
+  it('draws the sheet’s lines in order, a dash for a day with no figure, a rate as a percent', async () => {
     await draw()
 
-    const toggle = screen.getByRole('button', { name: 'Регистрация' })
-    expect(toggle.getAttribute('aria-expanded')).toBe('false')
-    fireEvent.click(toggle)
-    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(labels()).toEqual([
+      'Маркетинг COLLAGENХаёт',
+      'Кол подпис tg',
+      'Количество лидУмида',
+      'Регистрация COLLAGEN',
+      'Севинч РОППродажа (первичка) факт1',
+      'Конверсия % от квал лид',
+    ])
 
-    const registration = screen.getByRole('heading', { name: 'Регистрация' }).closest('section')!
-    const leads = [...registration.querySelectorAll('tbody tr')].find((tr) => tr.querySelector('th')?.textContent === 'Лидлар')!
+    const grid = screen.getByRole('region', { name: 'RNP jadvali' })
+    const leads = [...grid.querySelectorAll('tbody tr')].find((tr) => tr.querySelector('th')?.textContent?.startsWith('Количество лид'))!
     const cells = [...leads.querySelectorAll('td')].map((td) => td.textContent)
-    // Reja, Kunlik reja, Fakt, Prognoz, Indeks, then the three days.
+    // Кунлик план, План, Факт, Прогноз, Индекс, then the three days.
     expect(cells).toEqual(['—', '—', '12', '—', '—', '12', '—', '—'])
     expect(cells).not.toContain('0')
-
-    // The company view has no team block; its rate lives in the ranking.
-    expect(screen.queryByRole('heading', { name: 'Sevinch РОП' })).toBeNull()
-    expect(screen.getAllByText('85.3%').length).toBeGreaterThan(0)
+    expect(within(grid).getAllByText('85.3%')).toHaveLength(2)
   })
 
-  it('narrows to one team when its chip is picked, and keeps it in the URL', async () => {
+  it('carries the sheet’s rows 1–2 above the grid: days gone by, the dollar rate, today', async () => {
     await draw()
+    const toolbar = screen.getByTestId('page-toolbar')
+    expect(within(toolbar).getByLabelText('Oy')).toBeTruthy()
+    expect(toolbar.textContent).toContain('Oʻtgan kunlar:1')
+    expect(toolbar.textContent).toContain('Dollar kursi:kiritilmagan')
+    expect(toolbar.textContent).toContain('Bugun:02.09.2026')
+    expect(within(toolbar).getByRole('button', { name: 'Kengliklarni tiklash' })).toBeTruthy()
+    // No «Rejalar» for an account that cannot edit plans.
+    expect(screen.queryByRole('button', { name: 'Rejalar' })).toBeNull()
 
-    const rail = screen.getByRole('group', { name: 'ROP tanlash' })
-    expect(within(rail).getAllByRole('button').map((b) => b.getAttribute('aria-label')?.split(' — ')[0])).toEqual([
-      'Butun kompaniya',
-      'Sevinch',
-      'Charos (БАЗА)',
-    ])
-    expect(chip(/^Butun kompaniya/).getAttribute('aria-pressed')).toBe('true')
-
-    await act(async () => {
-      fireEvent.click(chip(/^Charos/))
-    })
-
-    expect(chip(/^Charos/).getAttribute('aria-pressed')).toBe('true')
-    expect(new URL(window.location.href).searchParams.get('rop')).toBe('Charos')
-    expect(screen.getByRole('heading', { name: 'Charos РОП — БАЗА' })).toBeTruthy()
-    expect(screen.getByText('2-oʻrin / 2')).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: 'Sevinch РОП' })).toBeNull()
-    expect(screen.queryByRole('heading', { name: 'Регистрация' })).toBeNull()
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Butun kompaniya' }))
-    })
-    expect(new URL(window.location.href).searchParams.has('rop')).toBe(false)
-    expect(screen.getByRole('heading', { name: 'Регистрация' })).toBeTruthy()
+    cleanup()
+    fixture = { ...FIXTURE, settings: { ...FIXTURE.settings, usdRate: 12200 } }
+    await draw()
+    expect(screen.getByTestId('page-toolbar').textContent).toContain('Dollar kursi:12,200 soʻm')
   })
 
-  it('opens the team a shared ?rop= link names', async () => {
+  it('has none of the deleted extras — no ROP rail, cards, charts, funnel or ranking', async () => {
     window.history.replaceState(null, '', '/rnp?rop=Sevinch')
-    await draw('Sevinch РОП')
-    expect(screen.queryByRole('heading', { name: 'Регистрация' })).toBeNull()
+    await draw()
+    expect(screen.queryByRole('group', { name: 'ROP tanlash' })).toBeNull()
+    expect(screen.queryByRole('list', { name: 'Lid voronkasi bosqichlari' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Jamoalar reytingi' })).toBeNull()
+    expect(screen.queryAllByRole('heading')).toHaveLength(0)
+    // `?rop=` narrows nothing: the whole sheet is drawn.
+    expect(labels()).toHaveLength(6)
+    expect(screen.getAllByRole('table')).toHaveLength(1)
   })
 
-  it('says so when the link names a team the month does not have', async () => {
-    window.history.replaceState(null, '', '/rnp?rop=Nobody')
-    await draw()
-    expect(screen.getByText(/«Nobody» jamoasi bu oyda yoʻq/)).toBeTruthy()
-  })
+  it('says so when the month has no sheet, and offers a retry when the request fails', async () => {
+    fixture = { ...FIXTURE, blocks: [], lines: [] }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <RnpPage />
+      </QueryClientProvider>,
+    )
+    await waitFor(() => expect(screen.getByText('Bu oy uchun jadval yoʻq')).toBeTruthy())
+    cleanup()
 
-  it('selects the ROP whose line in the ranking is clicked', async () => {
-    await draw()
-
-    const ranking = screen.getByRole('heading', { name: 'Jamoalar reytingi' }).closest('section')!
-    const line = [...ranking.querySelectorAll('tbody tr')].find((tr) => tr.textContent?.includes('Sevinch'))!
-    await act(async () => {
-      fireEvent.click(line.querySelectorAll('td')[1]!)
-    })
-
-    expect(new URL(window.location.href).searchParams.get('rop')).toBe('Sevinch')
-    expect(screen.getByRole('heading', { name: 'Sevinch РОП' })).toBeTruthy()
-  })
-
-  it('sums the funnel over the reliable window and leaves БАЗА orders out', async () => {
-    await draw()
-
-    const funnel = screen.getByRole('list', { name: 'Lid voronkasi bosqichlari' })
-    const steps = within(funnel)
-      .getAllByRole('listitem')
-      .map((li) => li.textContent)
-    // From 02.09 (the distributed row's reliableFrom) to today, 02.09 — one day.
-    expect(steps).toEqual([
-      'Tushgan lid0',
-      '↓ — oldingi bosqichdanKval lid6',
-      '↓ 83.3% oldingi bosqichdanROP larga tarqatildi5',
-      '↓ 60.0% oldingi bosqichdanBuyurtma (FAKT 1)3',
-      '↓ 66.7% oldingi bosqichdanYetkazildi (FAKT 2)2',
-    ])
-    expect(screen.getByText(/02\.09 – 02\.09 · 1 kun/)).toBeTruthy()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500, json: async () => ({ error: { code: 'INTERNAL_ERROR', message: 'Server xatosi' } }) })),
+    )
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } })}>
+        <RnpPage />
+      </QueryClientProvider>,
+    )
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Qayta urinish' })).toBeTruthy())
   })
 
   it('saves a team’s FAKT 1 as a fakt pair, once, and a company plan as a row', async () => {
@@ -297,6 +268,7 @@ describe('RnpPage — Kengaytirilgan', () => {
           title: 'Маркетинг',
           subtitle: null,
           team: null,
+          sheet: null,
           rows: [row({ key: 'meta:spend', label: 'Жами бюджет, $', unit: 'usd', planKey: { team: '', metric: 'budget' } })],
         },
         {
@@ -305,15 +277,16 @@ describe('RnpPage — Kengaytirilgan', () => {
           title: 'Sevinch РОП',
           subtitle: null,
           team: 'Sevinch',
+          sheet: null,
           rows: [
             fakt1('Сумма ФАКТ 1', 100_000_000),
             row({ key: 'f2', label: 'Сумма ФАКТ 2', unit: 'uzs', plan: 80_000_000, planKey: { team: 'Sevinch', metric: 'fakt2' } }),
           ],
         },
-        { id: 'summary', kind: 'summary', title: 'Свод', subtitle: null, team: null, rows: [fakt1('ФАКТ 1 · Sevinch', 100_000_000)] },
+        { id: 'summary', kind: 'summary', title: 'Свод', subtitle: null, team: null, sheet: null, rows: [fakt1('ФАКТ 1 · Sevinch', 100_000_000)] },
       ],
     }
-    await draw('Маркетинг')
+    await draw()
 
     fireEvent.click(screen.getByRole('button', { name: 'Rejalar' }))
     fireEvent.change(screen.getByLabelText('Свод · ФАКТ 1 · Sevinch'), { target: { value: '120000000' } })
@@ -411,30 +384,5 @@ describe('RnpPage — Kengaytirilgan', () => {
       await waitFor(() => expect(posted).toHaveLength(1))
       expect(postedTo).toEqual(['/api/v1/rnp/plans'])
     })
-  })
-
-  it('folds a brand project to its FAKT 2, marketing cost and CAC', async () => {
-    fixture = {
-      ...FIXTURE,
-      blocks: [
-        ...FIXTURE.blocks,
-        {
-          id: 'project:collagen',
-          kind: 'project',
-          title: 'Коллаген проект',
-          subtitle: null,
-          team: null,
-          rows: [
-            row({ key: 'pj:collagen:fakt2', label: 'Сумма ФАКТ 2 (успешка)', unit: 'uzs', fact: 12_400_000 }),
-            row({ key: 'pj:collagen:cost_fact', label: 'Маркетинг харажат факт', unit: 'uzs', fact: 2_000_000 }),
-            row({ key: 'pj:collagen:cac', label: 'CAC, $', unit: 'usd', additive: false, fact: 15.5 }),
-          ],
-        },
-      ],
-    }
-    await draw('Коллаген проект')
-
-    const summaries = screen.getAllByText(/^ФАКТ 2 .+ soʻm · Маркетинг харажат .+ soʻm · CAC \$15\.5$/)
-    expect(summaries.length).toBeGreaterThan(0)
   })
 })
