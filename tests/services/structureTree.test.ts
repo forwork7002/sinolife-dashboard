@@ -145,7 +145,7 @@ describe('the org chart', () => {
   })
 
   it('badges only the units the reader actually sits in', async () => {
-    const tree = await service().structure({}, { viewerEmployeeId: 'e9' })
+    const tree = await service().structure({ viewerEmployeeId: 'e9' })
     const flat = flatten(tree) as { id: string; isViewerDepartment: boolean }[]
     expect(flat.filter((n) => n.isViewerDepartment).map((n) => n.id)).toEqual(['child'])
   })
@@ -171,7 +171,7 @@ describe('the org chart', () => {
         ],
       } as never)
 
-    const tree = await service().structure({}, { viewerEmployeeId: 'e9' })
+    const tree = await service().structure({ viewerEmployeeId: 'e9' })
     const flat = flatten(tree) as {
       id: string
       isViewerDepartment: boolean
@@ -191,13 +191,13 @@ describe('the org chart', () => {
         departmentsOfEmployee: async () => [{ departmentId: 'child', isPrimary: false }],
       } as never)
 
-    const tree = await service().structure({}, { viewerEmployeeId: 'e9' })
+    const tree = await service().structure({ viewerEmployeeId: 'e9' })
     const flat = flatten(tree) as { isViewerPrimaryDepartment: boolean }[]
     expect(flat.some((n) => n.isViewerPrimaryDepartment)).toBe(false)
   })
 
   it('badges nothing when the account is not linked to an employee', async () => {
-    const tree = await service().structure({}, { viewerEmployeeId: null })
+    const tree = await service().structure({ viewerEmployeeId: null })
     const flat = flatten(tree) as { isViewerDepartment: boolean }[]
     expect(flat.some((n) => n.isViewerDepartment)).toBe(false)
   })

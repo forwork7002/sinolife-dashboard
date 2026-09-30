@@ -21,10 +21,9 @@ const ACCESS = { permission: 'analytics:read:all', section: 'customers' } as con
  * to a CUSTOMER (99.3%) and to an EMPLOYEE (100%).
  *
  * `periodQuerySchema`, NOT `analyticsQuerySchema`. The filter half carries
- * employee, stage, product, source and `filial` — and `filial` has a non-empty
- * default, so the combined schema would hand this endpoint a branch narrowing
- * no column of `call_record` can honour. Savdo dinamikasi dropped two filters
- * for the same reason: a control that changes nothing is worse than none.
+ * employee, stage, product and source — narrowings no column of
+ * `call_record` can honour. Savdo dinamikasi dropped two filters for the same
+ * reason: a control that changes nothing is worse than none.
  *
  * IT HONOURS THE DASHBOARD WINDOW, AND «Bugun» IS A GOOD QUESTION HERE.
  * `/insights/customers` resolves its own ninety days because its

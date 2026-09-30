@@ -164,15 +164,6 @@ type QueueCount = { readonly pending: number; readonly overdue: number }
 const QUEUE_CACHE_TTL_MS = 60_000
 const queueCache = ttlCache<QueueCount>(QUEUE_CACHE_TTL_MS)
 
-/**
- * Test seam only. See `resetSellerBoardCache` for the failure this prevents —
- * no test drives this service today, and the seam is here so the first one
- * that does is not the one that discovers the problem.
- */
-export function resetAlertsQueueCache(): void {
-  queueCache.clear()
-}
-
 function cachedQueuePressure(
   insights: InsightsRepository,
   scope: RowScope,
@@ -185,7 +176,7 @@ function cachedQueuePressure(
     half of this key is a constant. It is written out in full anyway: the key
     has to name every argument that reaches the query, or the next person to
     give the bell a real window silently serves them the all-time answer.
-    (Same rule as `commandCentreCacheKey` — the preset is part of the key —
+    (Same rule as `ttlCache.ts` states — the preset is part of the key —
     satisfied here trivially rather than skipped.)
   */
   const key = [

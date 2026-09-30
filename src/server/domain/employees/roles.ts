@@ -40,9 +40,7 @@
  * If the suffix ever changes, it changes here and both evaluators follow.
  */
 
-export const EMPLOYEE_ROLES = ['SELLER', 'MANAGER', 'OTHER'] as const
-
-export type EmployeeRole = (typeof EMPLOYEE_ROLES)[number]
+export type EmployeeRole = 'SELLER' | 'MANAGER' | 'OTHER'
 
 /**
  * The suffix that marks a department as a sales team.

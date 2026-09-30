@@ -49,7 +49,6 @@ function node(over: Partial<StructureDto> = {}): StructureDto {
     sortOrder: 100,
     isViewerDepartment: false,
     isViewerPrimaryDepartment: false,
-    inScope: true,
     children: [],
     ...over,
   }

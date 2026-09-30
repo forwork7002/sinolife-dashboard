@@ -73,7 +73,7 @@ export const HALF_TIERS: readonly PayrollTier[] = Object.freeze([
   { floorMinor: 2_250_000_000n, fixedMinor: 50_000_000n },
 ])
 
-export function tiersFor(scheme: PayrollSchemeValue): readonly PayrollTier[] {
+function tiersFor(scheme: PayrollSchemeValue): readonly PayrollTier[] {
   return scheme === 'half' ? HALF_TIERS : MONTH_TIERS
 }
 
@@ -86,7 +86,7 @@ export function tiersFor(scheme: PayrollSchemeValue): readonly PayrollTier[] {
  * to earn one in, which is what «ragʻbatlantirish» means. If they ever say the
  * half-month figures are 20 / 25 mln, this is the one list to halve.
  */
-export const USD_TIERS: readonly { readonly floorMinor: bigint; readonly usd: number }[] =
+const USD_TIERS: readonly { readonly floorMinor: bigint; readonly usd: number }[] =
   Object.freeze([
     { floorMinor: 5_000_000_000n, usd: 100 },
     { floorMinor: 4_000_000_000n, usd: 50 },
@@ -103,7 +103,7 @@ export const USD_TIERS: readonly { readonly floorMinor: bigint; readonly usd: nu
 export const FIRST_PLACE_USD = 25
 
 /** The rank that earns `FIRST_PLACE_USD`. Named so the screen can say it. */
-export const FIRST_PLACE_RANK = 1
+const FIRST_PLACE_RANK = 1
 
 export interface PayrollInput {
   /** FAKT 2 for the period, in minor units. Never negative. */

@@ -33,7 +33,7 @@ const readIsApple = () =>
 const readIsAppleOnServer = () => false
 
 /** True on macOS / iOS. Exported for chrome that needs the same decision. */
-export function useApplePlatform(): boolean {
+function useApplePlatform(): boolean {
   return useSyncExternalStore(subscribeNever, readIsApple, readIsAppleOnServer)
 }
 

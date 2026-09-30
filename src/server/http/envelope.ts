@@ -29,19 +29,6 @@ export interface ResponseMeta {
   readonly correlationId?: string
   /** Entities the active provider cannot supply. The UI shows these as unavailable, not zero. */
   readonly unavailable?: readonly string[]
-  /**
-   * Which BOOK the figures come from, when it is not the CRM's.
-   *
-   * `dataSource` names the CRM provider behind the request and is typed as the
-   * database's own `ExternalSource` enum — widening that enum to hold
-   * 'ROISTAT' would be a lie about a column no marketing row ever fills. The
-   * marketing module reads a genuinely separate ledger (the client's Google
-   * Sheets plus Meta Ads, imported from their published Roistat page), so it
-   * says so here instead. A screen that sees this must not render the
-   * Bitrix24 provenance badge, and must never add these figures to a CRM
-   * total: two systems, two books, different definitions of revenue.
-   */
-  readonly ledger?: 'ROISTAT'
 }
 
 export interface SuccessEnvelope<T> {
@@ -115,7 +102,7 @@ export function isSuccess<T>(envelope: Envelope<T>): envelope is SuccessEnvelope
  * into a Number here would reintroduce exactly the precision loss the money
  * domain exists to prevent.
  */
-export function jsonReplacer(_key: string, value: unknown): unknown {
+function jsonReplacer(_key: string, value: unknown): unknown {
   return typeof value === 'bigint' ? value.toString() : value
 }
 

@@ -3,7 +3,7 @@
  *
  * Mirrors `src/server/services/targetService.ts`. Client code may not import
  * from `@/server/*`, so the DTOs are written out again here, the way
- * `marketingApi.ts` does for its ledger. Nothing checks the mirror — edit
+ * `src/lib/api.ts` does for the rest. Nothing checks the mirror — edit
  * both sides.
  */
 

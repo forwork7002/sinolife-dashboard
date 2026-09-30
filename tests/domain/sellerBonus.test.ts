@@ -58,8 +58,7 @@ describe('the floor number inside an operator name', () => {
   })
 
   it('refuses two numbers rather than guessing which is the badge', () => {
-    // The rule `marketingService.employeeCode()` already applies: an
-    // ambiguity is not a match. No production row has two today.
+    // An ambiguity is not a match. No production row has two today.
     expect(floorNumberOf('Karimova 173 Feruza 118')).toBeNull()
   })
 

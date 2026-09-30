@@ -70,14 +70,6 @@ export const SELLER_BOARD_BASES = ['queue', 'intake'] as const
 export type SellerBoardBasisValue = (typeof SELLER_BOARD_BASES)[number]
 
 // ---------------------------------------------------------------------------
-// The client's bonus ladder, quoted
-// ---------------------------------------------------------------------------
-
-// Re-exported so the ladder keeps one import path for callers that already
-// reach for it here; the rule itself lives in domain/analytics/sellerBonus.
-export { BONUS_TIERS } from '@/server/domain/analytics/sellerBonus'
-
-// ---------------------------------------------------------------------------
 // DTOs — mirrored in src/lib/api.ts, which the client imports instead.
 // ---------------------------------------------------------------------------
 
@@ -723,7 +715,7 @@ export class SellerBoardService {
    * derived from the preset, so on a Monday «Bugun» and «Shu hafta» resolve to
    * one window and demand different comparison rows; without the preset they
    * would share an entry and swap each other's deltas. That exact bug is
-   * documented, with its measured numbers, in `commandCentreCacheKey.ts`.
+   * documented, with its measured numbers, in `ttlCache.ts`.
    */
   async board(ctx: AnalyticsContext, basis: SellerBoardBasisValue = 'queue'): Promise<SellerBoardDto> {
     const filters = boardFilters(ctx)

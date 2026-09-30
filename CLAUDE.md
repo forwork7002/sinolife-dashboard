@@ -280,9 +280,8 @@ scope, which is only safe while this holds: narrow the board again and the
 memo has to gain the scope in the same commit or be deleted in it.
 
 Still company-only, and still refusing:
-logistics, margin, dispatch, cohort, concentration and **marketing** — the last
-was `ANALYTICS_READ` and had to be tightened, because the Roistat ledger has no
-employee dimension to narrow by at all.
+logistics, margin, cohort, concentration and **marketing** (the ad sheets have
+no employee dimension to narrow by at all).
 
 ### Client data flow
 
@@ -397,18 +396,19 @@ Two duplications the feature cannot avoid, both deliberate:
 
 ---
 
-## The thirteen screens, and what each one dates by
+## The screens, and what each one dates by
 
-**One of the thirteen is PAUSED and two screens were removed.** «Boshqaruv markazi»
-went entirely on 2026-09-10 («boshqaruv markazi boʻlimini toʻliq olib tashla»);
-«Joʻnatish nuqtalari» keeps its section, its nav entry and its endpoint but
-renders `shared/SectionPending` and issues no request («hozircha api qilmay
-tur… bitta bitta keyinchalik toʻgʻrilab chiqaman»). «Reklama samarasi» was
-paused the same day and came back on 2026-09-23 as a DIFFERENT screen — the
-client's own «DM», «Отчёт Т» and lead-quality sheets (`features/reklama`),
-not the Roistat ledger. The feature files under `features/warehouse` and
-`features/marketing` (Roistat) are HELD, not dead: switching one back on is an
-import and a `<Suspense>` in its `src/app/<name>/page.tsx`.
+**Three screens were removed.** «Boshqaruv markazi» went entirely on
+2026-09-10 («boshqaruv markazi boʻlimini toʻliq olib tashla»). «Joʻnatish
+nuqtalari» and the Roistat «Reklama samarasi» were paused the same day
+(«hozircha api qilmay tur») and DELETED as dead code on 2026-09-30 at the
+client's word («loyihada o'lik kod bo'lmasin») — screen, endpoints
+(`/insights/dispatch`, `/marketing/{overview,breakdown,verify}`), section id
+`warehouse`, nav entry. «Reklama samarasi» itself came back on 2026-09-23 as a
+DIFFERENT screen — the client's own «DM», «Отчёт Т» and lead-quality sheets
+(`features/reklama`). The Roistat IMPORT stays: `/target` reads
+`marketing_snapshot` for the UZS/USD rate (`marketing_daily` is written and no
+longer read).
 
 
 Every page is a thin shell under `src/app/`, the UI lives in
@@ -433,7 +433,6 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
 | Tasdiqlash navbati | `/confirmation` | `confirmation/ConfirmationPage` | `/insights/confirmations/orders` | Insights → Insights | **the arrival in `C4:NEW`** — the latest `deal_stage_history` row whose stage signals `CONFIRM_NEW`; `?queue=backlog` (where the bell lands) drops the window entirely |
-| Joʻnatish nuqtalari | `/warehouse` | **PAUSED** — `shared/SectionPending`; `warehouse/WarehousePage` is held, not mounted | none while paused (`/insights/dispatch` still answers) | Insights → Insights | `createdAtSource` — a creation cohort graded by the deal's **current** stage |
 | Sotuvchilar oyligi | `/payroll` | `payroll/PayrollPage` | `/payroll/sellers` | Payroll → Insights | **a payroll period — a calendar month or one half of it**, resolved on the server from `month` + `half`. No dashboard preset reaches it |
 | Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | the arrival in `C4:NEW` (`queued_at`) — the confirmation queue's own cohort. **The television board**: two podiums and two ranked lists (sellers left, teams right) — the sellers' seats and rows carry medals, the teams' carry none — and ONE control, the FAKT 1 / FAKT 2 switch in each heading; the FAKT 1 / FAKT 2 totals, conversion, bonus fund and ladder render on Savdo dinamikasi (`sales/ConfirmationFaktSection`), which is why the route lists both sections |
 | KPI rejalari | `/kpi` | `kpi/KpiPage` | `/kpi` | Kpi, Analytics → Reference, Deal | **the plan's own `periodStart`/`periodEnd`** — the dashboard window only *selects* which plan is live |
@@ -548,15 +547,15 @@ Per-screen traps worth knowing before you touch one:
     335–343, the P&L cost lines 411–415 / 438–442, a group's «без квал»,
     Zextra's lead count) are NOT on the screen, and a ROP's early leads stay
     muted rather than being filled from the sheet. `rnp_manual_day` and its
-    September import were built the same day and then retired: the table is
-    still in the database, unread (dropping it was not asked for). Plans
+    September import were built the same day and then retired; the table was
+    dropped on 2026-09-30 with the client's approval. Plans
     (column C) and the registrar→group mapping stay — targets and settings,
     not data.
-  · **One view (the extended one).** Every row and block carries
-    `sheet: { row, label }` — its place and label on «СентябрРНП 26», null for
-    a dashboard addition. A sheet-only «Jadvaldagidek» view was built on
-    2026-09-29 and dropped the same day at the client's word («faqat
-    kengaytirilgan kerak»); the refs stay as documentation of the mapping.
+  · **One view (the extended one).** A sheet-only «Jadvaldagidek» view
+    (rows tagged with their sheet row and label) was built on 2026-09-29 and
+    dropped the same day at the client's word («faqat kengaytirilgan
+    kerak»); the row tags went with it on 2026-09-30 as dead code. The block
+    comments still name the sheet rows each block follows.
   · September's column C plans are imported by migration (the ×10 «Средний
     чек факт 2», the plans derived from it and zero plans left out; Мафтуна's
     400 000 → 400 mln). The lead's value changes on **14.09**, from the
@@ -1110,7 +1109,7 @@ Per-screen traps worth knowing before you touch one:
   «(ROP)» stripped and non-ROP departments KEPT.
   **NOTHING OF IT RENDERS LOCALLY** — the demo seed has no calls — so
   `tests/features/callsPage.test.tsx` carries production figures.
-- **Kanallar** — the dashboard-wide `preset` and `filial` do **not** reach this
+- **Kanallar** — the dashboard-wide `preset` does **not** reach this
   screen; it resolves its own window from `from`/`to`/`today`.
 - **Yalpi marja** — discounts are split by sign in SQL; never net them or
   re-sum them client-side.
@@ -1195,8 +1194,6 @@ Per-screen traps worth knowing before you touch one:
   numbering and `/sellers` name teams exactly as before. The strip now has one
   home, `InsightsRepository.ropNameSql`, read by both bases; pinned by
   `tests/http/logisticsSql.test.ts` and `tests/http/confirmationQueueSql.test.ts`.
-- **Joʻnatish nuqtalari** — delivery rate's denominator is *resolved* orders;
-  in-flight is excluded and reported separately.
 - **Sotuvchilar reytingi** — company-wide on purpose, and it is the ONLY route
   that admits a narrowed caller without narrowing: it passes `ctx.query` and
   never `ctx.scope`, and `boardFilters` drops `restrictToEmployeeIds` a second
@@ -1466,18 +1463,13 @@ for r in $(find src/app/api/v1 -name route.ts | sed 's|.*api/v1/||;s|/route.ts||
 done
 ```
 
-**Two things were deliberately NOT removed** although nothing calls them, and
-both would look like oversights:
-
-- `src/server/repositories/enumParity.ts` — imported by nobody on purpose. It is
-  a compile-time assertion that the domain unions match the Prisma enums, and
-  `tsc` reads it because `tsconfig.json` includes `**/*.ts`.
-- `resetCrmProvider`, `resetAlertsQueueCache`, `marketingService.__internals` —
-  test seams whose own comments say no test drives them yet. They exist so the
-  first test that does is not the one that discovers the cache is shared.
-- `REVENUE_PIPELINES`, `REVENUE_RULE` and `PAYMENTS_AVAILABLE` in
-  `bitrix24/mapping.ts` — decision records with the measurements in their
-  comments. `countsAsRevenue` on the deal row is what the code actually reads.
+**One thing was deliberately NOT removed** although nothing imports it:
+`src/server/repositories/enumParity.ts` — a compile-time assertion that the
+domain unions match the Prisma enums; `tsc` reads it because `tsconfig.json`
+includes `**/*.ts`. (The 2026-09-30 sweep removed the unused test seams and
+the `REVENUE_PIPELINES` / `REVENUE_RULE` / `PAYMENTS_AVAILABLE` constants; their
+decision text stays as comments in `bitrix24/mapping.ts`. `countsAsRevenue` on
+the deal row is what the code reads.)
 
 **What the sweep exposed and did not fix:** the ⌘K «Mahsulotlar» group still
 links to `/analytics/sales?productIds=…`, and that screen has applied no product
@@ -1506,8 +1498,8 @@ All arithmetic in `env.APP_TIMEZONE`.
 
 **Cache and comparison keys must include the PRESET.** On a Monday, `today` and
 `this_week` resolve to the identical window but demand different comparisons.
-`commandCentreCacheKey.ts` keys on `preset | start | end | currency`; pinned by
-`tests/http/search.test.ts`.
+Every memo key names the preset (`ttlCache.ts` tells the 78-vs-103 story of
+the command centre's key that once left it out).
 
 **A deal has four date bases and they may not be substituted.** `*AtSource`
 columns are the CRM's timestamps and are what analytics uses; `createdAt` /
@@ -1515,9 +1507,10 @@ columns are the CRM's timestamps and are what analytics uses; `createdAt` /
 current period on a re-sync. Durations come from `deal_stage_history`, never
 from close-minus-create.
 
-**Delivered revenue and seller-close are two metrics, never blended.**
-`src/server/domain/analytics/sellerClose.ts` — 2 798 seller-stage entries vs
-3 729 Доставка-won in one month, only 1 152 shared. The row carries both.
+**Delivered revenue is not a seller's close.** In one month 2 798 deals
+entered the sellers' won stage and 3 729 Доставка-won, only 1 152 shared. The
+seller-close metric that measured the first was never wired to a screen and
+was deleted as dead code on 2026-09-30; money figures here are delivered.
 
 **A rate with no denominator is `null`, not `0`.** `rateBp` returns null over an
 empty denominator and deliberately does not round — `pct` rounds again for
@@ -1562,10 +1555,11 @@ tests `ids?.length`, so `[]` reads as "no filter" and silently widens to the
 whole company. Hence the sentinels `NO_EMPLOYEE_IN_SCOPE` and
 `__no_employee_linked__`.
 
-**Branch (`filial`) scoping is fully built and has zero callers.** Domain,
-schema, query param, service door, tests and a proof script all exist;
-`grep -rn scopedContext src/` returns only its own definition. Do not assume any
-screen is branch-scoped today.
+**Branch (`filial`) scoping was removed on 2026-09-30.** It had been fully built
+and had zero callers since 2026-09-11; the resolver, `?filial=`,
+`DASHBOARD_DEFAULT_BRANCH` and `branch:verify` went as dead code. What remains
+of `domain/employees/branches.ts` is the employee-scope contract
+(`ScopedWindow`, `NO_EMPLOYEE_IN_SCOPE`). No screen is branch-scoped.
 
 **Confirmation queue: cohorted by arrival in `C4:NEW`, not by Дата создания.**
 Five stages speak (`CONFIRMATION_SIGNAL_STAGES` in `mapping.ts`), every other
@@ -1950,7 +1944,7 @@ mixed `100vh` against a shell sized in `100dvh`.
 - **`STORES` AND `STOCK` ARE NOT SCHEDULED AT ALL SINCE 2026-09-16; `CALLS`
   WAS UNSCHEDULED THE SAME AFTERNOON AND PUT BACK THE SAME EVENING.**
   `store` and `stock_level` are written by the sync and read by NOTHING —
-  «Joʻnatish nuqtalari» is paused, and `catalog.storeproduct.list` returns
+  «Joʻnatish nuqtalari» was deleted, and `catalog.storeproduct.list` returns
   zero rows on this portal. `call_record` was in the same position at 15:32
   (`35a5354`) and gained a reader hours later: «Qoʻngʻiroqlar».
   So CALLS is back in `REFERENCE` — the path that commit's own comment

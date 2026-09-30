@@ -1030,17 +1030,6 @@ export interface MarginDto {
   readonly coverage: number
 }
 
-export interface DispatchDto {
-  readonly point: string
-  readonly orders: number
-  readonly delivered: number
-  readonly refused: number
-  /** Counted against the delivery rate; shown so the fraction is checkable. */
-  readonly cancelledEarly: number
-  readonly revenue: MoneyDto
-  readonly deliveryRate: number | null
-}
-
 /**
  * The unit's head, as the card prints them.
  *
@@ -1100,15 +1089,6 @@ export interface StructureDto {
    * each names a single unit and must not name an arbitrary one.
    */
   readonly isViewerPrimaryDepartment: boolean
-  /**
-   * Is this unit inside the active filial?
-   *
-   * The org chart keeps every unit even when the rest of the dashboard shows
-   * one branch — a map with half the country cut off is not a map — so this is
-   * how the page marks which subtree the other screens are counting. True
-   * everywhere when `filial=all`.
-   */
-  readonly inScope: boolean
   readonly children: readonly StructureDto[]
 }
 

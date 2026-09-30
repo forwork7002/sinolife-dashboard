@@ -6,7 +6,6 @@ import {
   closedIn,
   createdIn,
   openAsOf,
-  revenueTrend,
   summarizeDeals,
 } from '@/server/domain/analytics/sales'
 
@@ -150,36 +149,5 @@ describe('summarizeDeals on empty input', () => {
     expect(summary.dealsCreated).toBe(0)
     expect(summary.dealsWon).toBe(0)
     expect(summary.dealsOpen).toBe(0)
-  })
-})
-
-describe('revenueTrend', () => {
-  const deals = [
-    won('a', 10_000_00n, '2026-08-01T06:00:00.000Z'),
-    won('b', 20_000_00n, '2026-08-01T10:00:00.000Z'),
-    won('c', 30_000_00n, '2026-08-03T06:00:00.000Z'),
-  ]
-
-  const trend = revenueTrend(deals, august, UZS, 'day')
-
-  it('produces one point per day of the period', () => {
-    expect(trend).toHaveLength(23)
-  })
-
-  it('keeps empty buckets rather than dropping them', () => {
-    // 2 August had no activity; the point must still exist, at zero.
-    const secondOfAugust = trend[1]!
-    expect(secondOfAugust.revenue.amountMinor).toBe(0n)
-    expect(secondOfAugust.dealsWon).toBe(0)
-  })
-
-  it('sums deals falling in the same bucket', () => {
-    expect(trend[0]!.revenue.amountMinor).toBe(30_000_00n)
-    expect(trend[0]!.dealsWon).toBe(2)
-  })
-
-  it('reconciles exactly with the period total', () => {
-    const total = trend.reduce((sum, point) => sum + point.revenue.amountMinor, 0n)
-    expect(total).toBe(summarizeDeals(deals, august, UZS).revenue.amountMinor)
   })
 })

@@ -401,10 +401,6 @@ export function monthPeriod(month: string, timeZone: string, now: Date): Period 
 */
 const cohortCache = ttlCache<{ fakt: SalesTeamDayRow[]; leads: SellerLeadDayRow[] }>(60_000)
 
-export function resetSalesTeamCaches(): void {
-  cohortCache.clear()
-}
-
 export class SalesTeamService {
   constructor(
     private readonly insights: InsightsRepository,

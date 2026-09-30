@@ -50,7 +50,6 @@ import {
   NO_EMPLOYEE_IN_SCOPE,
   type ScopedWindow,
 } from '@/server/domain/employees/branches'
-import { deliveryRateBp } from '@/server/domain/analytics/rates'
 import type { Period } from '@/server/domain/period/period'
 import {
   CONFIRMATION_OUTCOMES,
@@ -954,16 +953,6 @@ export interface MarginSummary {
   readonly marginBp: number
   /** Share of revenue whose product has a purchase price, in basis points. */
   readonly coverageBp: number
-}
-
-export interface DispatchRow {
-  readonly point: string
-  readonly orders: number
-  readonly delivered: number
-  readonly refused: number
-  readonly cancelledEarly: number
-  readonly revenueMinor: bigint
-  readonly deliveryRateBp: number | null
 }
 
 export interface StructureNode {
@@ -6111,86 +6100,6 @@ export class InsightsRepository {
       marginBp: costedRevenue === 0n ? 0 : Number((gross * 10_000n) / costedRevenue),
       coverageBp: revenueMinor === 0n ? 0 : Number((costedRevenue * 10_000n) / revenueMinor),
     }
-  }
-
-  // -------------------------------------------------------------------------
-  // 6 — Call activity
-  // -------------------------------------------------------------------------
-
-  /**
-   * How much each person actually spoke to customers.
-   *
-   * Talk time counts connected calls only. Including the failed legs would
-   * reward dialling over conversation, which is the opposite of what the
-   * number is for.
-   */
-  // -------------------------------------------------------------------------
-  // 5 — Dispatch by fulfilment point
-  // -------------------------------------------------------------------------
-
-  /**
-   * What each warehouse, courier and marketplace actually shipped.
-   *
-   * This is NOT a stock report. The portal defines four stores and keeps no
-   * balances in any of them — `catalog.storeproduct.list` returns nothing and
-   * there are no inventory documents — so on-hand quantity genuinely does not
-   * exist to be shown. What the portal does record, on every order, is which
-   * point fulfils it, and that answers the question the stock page was wanted
-   * for: where volume goes and where it fails.
-   */
-  async dispatchPoints(period: Period): Promise<DispatchRow[]> {
-    const rows = await this.prisma.$queryRawUnsafe<
-      {
-        point: string
-        orders: bigint
-        delivered: bigint
-        refused: bigint
-        cancelled_early: bigint
-        revenue: MoneyText
-      }[]
-    >(
-      `
-      SELECT
-        COALESCE(d."fulfilmentPoint", 'Belgilanmagan') AS point,
-        count(*)::bigint AS orders,
-        count(*) FILTER (WHERE cur."logisticsRole" = 'DELIVERED')::bigint AS delivered,
-        count(*) FILTER (WHERE cur."logisticsRole" = 'REFUSED')::bigint AS refused,
-        count(*) FILTER (WHERE cur."logisticsRole" = 'CANCELLED_EARLY')::bigint AS cancelled_early,
-        sum(d."amountMinor") FILTER (WHERE d."status" = 'WON')::text AS revenue
-      FROM "deal" d
-      JOIN "deal_stage" cur ON cur."id" = d."stageId"
-      WHERE d."countsAsRevenue"
-        AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
-      GROUP BY 1
-      ORDER BY orders DESC
-      `,
-      period.start,
-      period.end,
-    )
-
-    return rows.map((r) => {
-      const delivered = int(r.delivered)
-      const refused = int(r.refused)
-      /*
-        Classified exactly as logisticsRoutes and logisticsRegions classify.
-    
-        This used to read status WON / LOST and pass 0 for cancelledEarly, so
-        the same orders produced a HIGHER delivery rate here than on the
-        Logistics page — the gap being precisely the cancelled-before-dispatch
-        share, which vanished from the denominator. Two screens, one column
-        heading, two quantities. One definition, in one helper, is the fix.
-      */
-      const cancelledEarly = int(r.cancelled_early)
-      return {
-        point: r.point,
-        orders: int(r.orders),
-        delivered,
-        refused,
-        cancelledEarly,
-        revenueMinor: money(r.revenue),
-        deliveryRateBp: deliveryRateBp(delivered, refused, cancelledEarly),
-      }
-    })
   }
 
   // -------------------------------------------------------------------------

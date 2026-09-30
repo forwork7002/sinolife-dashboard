@@ -40,7 +40,7 @@
 export const OPERATING_BUDGET_S = 480
 
 /** How long a basket lasts, used only when the portal sends no reset time. */
-export const OPERATING_WINDOW_MS = 600_000
+const OPERATING_WINDOW_MS = 600_000
 
 /**
  * Above this fraction of the basket we start pacing; above `HARD` we stop and

@@ -27,8 +27,8 @@ import { META_ACCOUNT_OWNERS } from './accounts'
 const GRAPH = 'https://graph.facebook.com/v21.0'
 
 /** Where the history starts: the sheet's first month. */
-export const META_HISTORY_FROM = '2026-07-01'
-export const META_REFRESH_DAYS = 7
+const META_HISTORY_FROM = '2026-07-01'
+const META_REFRESH_DAYS = 7
 
 const REQUEST_TIMEOUT_MS = 30_000
 

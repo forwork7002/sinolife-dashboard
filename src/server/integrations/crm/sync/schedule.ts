@@ -63,7 +63,7 @@ export interface DealsBackfill {
  * Shorter than `sync_log`'s 30-day retention on purpose: the success row that
  * settles a request must outlive the request, or a pruned log would re-run it.
  */
-export const BACKFILL_EXPIRES_MS = 14 * 86_400_000
+const BACKFILL_EXPIRES_MS = 14 * 86_400_000
 
 /**
  * The night hours a backfill may run in, Tashkent time: [01:00, 06:00).

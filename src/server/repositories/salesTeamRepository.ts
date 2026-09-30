@@ -48,7 +48,7 @@ export interface PlanRows {
 }
 
 /** How far back a Регистрация lead still explains a seller's new deal. */
-export const LEAD_LINK_DAYS = 14
+const LEAD_LINK_DAYS = 14
 
 const monthDate = (month: string) => new Date(`${month}-01T00:00:00Z`)
 

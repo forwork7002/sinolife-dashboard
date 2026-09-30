@@ -20,7 +20,7 @@ import { type DayRow, DayCell, type Status, TableCard, SlicePicker, count, dayRo
  * rule, shown, so a stage the client adds tomorrow is visible the day it
  * appears.
  */
-export const BUCKET_LABEL: Readonly<Record<LeadBucket, string>> = {
+const BUCKET_LABEL: Readonly<Record<LeadBucket, string>> = {
   noAnswer: 'Недозвон',
   lowQuality: 'Sifatsiz',
   success: 'Kval (успешный)',

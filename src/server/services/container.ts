@@ -30,7 +30,6 @@ import { PayrollService } from './payrollService'
 import { KpiService } from './kpiService'
 import { PulseService } from './pulseService'
 import { ConcentrationService } from './concentrationService'
-import { MarketingService } from './marketingService'
 import { SellerBoardService } from './sellerBoardService'
 import { ScopeService } from './scopeService'
 import { TargetService } from './targetService'
@@ -40,22 +39,21 @@ import { ReklamaService } from './reklamaService'
 import { RnpService } from './rnpService'
 import { SalesTeamService } from './salesTeamService'
 
-export const dealRepository = new DealRepository(prisma)
+const dealRepository = new DealRepository(prisma)
 export const referenceRepository = new ReferenceRepository(prisma)
-export const insightsRepository = new InsightsRepository(prisma)
-export const pulseRepository = new PulseRepository(prisma)
-export const concentrationRepository = new ConcentrationRepository(prisma)
+const insightsRepository = new InsightsRepository(prisma)
+const pulseRepository = new PulseRepository(prisma)
+const concentrationRepository = new ConcentrationRepository(prisma)
 /**
- * The second ledger.
+ * The Roistat snapshot — only its UZS/USD rate is read, by «Target tahlili».
  *
- * Reads `marketing_daily` / `marketing_snapshot`, which the Roistat importer
- * fills from the client's published page — Google Sheets plus Meta Ads, not
- * Bitrix24. It shares the Prisma client and nothing else: no CRM repository
- * feeds it, and its figures are never added to a Bitrix24 total.
+ * The Roistat importer fills `marketing_snapshot` from the client's published
+ * page — Google Sheets plus Meta Ads, not Bitrix24. It shares the Prisma client
+ * and nothing else: no CRM repository feeds it.
  */
-export const marketingRepository = new MarketingRepository(prisma)
-export const sellerBoardRepository = new SellerBoardRepository(prisma)
-export const searchRepository = new SearchRepository(prisma)
+const marketingRepository = new MarketingRepository(prisma)
+const sellerBoardRepository = new SellerBoardRepository(prisma)
+const searchRepository = new SearchRepository(prisma)
 /**
  * Answers one question and is asked it by `getHandler` on every request: who
  * may this caller read? Kept out of every other service's constructor because
@@ -77,13 +75,12 @@ export const payrollService = new PayrollService(insightsRepository)
 export const searchService = new SearchService(searchRepository)
 export const alertsService = new AlertsService(insightsRepository, referenceRepository)
 export const concentrationService = new ConcentrationService(concentrationRepository)
-export const marketingService = new MarketingService(marketingRepository)
 /*
-  «Target tahlili» reads the Bitrix24 leads through its own repository and the
-  ad ledger through `marketingService` — side by side, never added. See the
-  header of targetService.ts.
+  «Target tahlili» reads the Bitrix24 leads and the Meta spend through its own
+  repository and borrows the Roistat snapshot's UZS rate — side by side, never
+  added. See the header of targetService.ts.
 */
-export const targetRepository = new TargetRepository(prisma)
+const targetRepository = new TargetRepository(prisma)
 export const targetService = new TargetService(targetRepository, marketingRepository)
 
 /*

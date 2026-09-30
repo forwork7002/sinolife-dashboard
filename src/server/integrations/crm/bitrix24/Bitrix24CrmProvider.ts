@@ -248,7 +248,7 @@ const PORTAL_REQUEST_GRACE_MS = 5_000
  * no extra basket time worth measuring. Kept in `metadata.utm`, not promoted
  * to columns, until a measurement says they are filled at all.
  */
-export const DEAL_UTM_FIELDS = Object.freeze([
+const DEAL_UTM_FIELDS = Object.freeze([
   'UTM_SOURCE', 'UTM_MEDIUM', 'UTM_CAMPAIGN', 'UTM_CONTENT', 'UTM_TERM', 'SOURCE_DESCRIPTION',
 ] as const)
 
@@ -2274,7 +2274,7 @@ function parseHistoryCursor(cursor: string | undefined): { pass: number; afterId
 }
 
 /** A list method that returns a bare array. */
-export function asArray<T>(value: unknown): T[] {
+function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : []
 }
 
@@ -2373,7 +2373,7 @@ export function networkCause(error: unknown): string {
   return typeof code === 'string' && /^[A-Z_]{3,40}$/.test(code) ? ` [${code}]` : ''
 }
 
-export function redact(error: unknown): string {
+function redact(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
   return message
     .replace(/https:\/\/[^\s/]+\/rest\/\d+\/[^\s/]+/gi, 'https://<portal>/rest/<redacted>')

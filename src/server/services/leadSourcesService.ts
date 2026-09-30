@@ -434,11 +434,6 @@ export function leadSourcesOverview(input: {
 */
 const scanCache = ttlCache<{ registration: RegistrationDayRow[]; triage: TriageDayRow[] }>(60_000)
 
-/** Test seam. */
-export function resetLeadSourcesCaches(): void {
-  scanCache.clear()
-}
-
 export class LeadSourcesService {
   constructor(
     private readonly repository: LeadSourcesRepository,

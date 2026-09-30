@@ -285,8 +285,9 @@ const SHALLOW_ROUTES: ReadonlySet<string> = new Set([
   /*
     THE LAST FOUR, AND NOW IT IS EVERY WINDOWED SCREEN. Each checked against
     the one condition above: `grep searchParams src/app/{analytics/sales,
-    sellers,warehouse,marketing}/page.tsx` returns nothing — all four are
-    `requireSection` plus a client component.
+    sellers,marketing}/page.tsx` returns nothing — each is `requireSection`
+    plus a client component (the fourth, «Joʻnatish nuqtalari», was deleted
+    on 2026-09-30).
 
     Savdo dinamikasi is the one that mattered: it carries three filter controls
     and is the screen an analyst sits on, so it was paying the 521ms per
@@ -296,7 +297,6 @@ const SHALLOW_ROUTES: ReadonlySet<string> = new Set([
   */
   '/analytics/sales',
   '/sellers',
-  '/warehouse',
   '/marketing',
   /*
     «Qoʻngʻiroqlar» (URL `/customers`), checked against the same condition:

@@ -77,7 +77,7 @@ const PER_GROUP = 8
 const PER_ARM = 25
 
 /** Below this a trigram index cannot help, and the answer is too broad to read. */
-export const MIN_SEARCH_LENGTH = 3
+const MIN_SEARCH_LENGTH = 3
 
 export class SearchRepository {
   constructor(private readonly prisma: PrismaClient) {}

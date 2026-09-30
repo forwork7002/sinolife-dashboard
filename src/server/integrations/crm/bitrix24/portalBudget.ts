@@ -62,10 +62,10 @@ const WINDOW_MINUTES = 60
  * act a person is watching, so `scripts/import.ts` raises it rather than this
  * number being set high enough to cover a case that happens twice a year.
  */
-export const DEFAULT_HOURLY_INVOCATIONS = 15_000
+const DEFAULT_HOURLY_INVOCATIONS = 15_000
 
 /** Above this fraction of the ceiling, calls are paced rather than refused. */
-export const SOFT_FRACTION = 0.7
+const SOFT_FRACTION = 0.7
 
 export interface BudgetState {
   /** Invocations in the rolling window. */

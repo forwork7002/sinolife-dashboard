@@ -129,12 +129,12 @@ export interface LeadCohortOverviewDto {
 // ---------------------------------------------------------------------------
 
 /** Whole days from `a` to `b`, both `YYYY-MM-DD`. */
-export function dayDiff(a: string, b: string): number {
+function dayDiff(a: string, b: string): number {
   return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000)
 }
 
 /** Every day from `from` to `to` inclusive. */
-export function daysBetween(from: string, to: string): string[] {
+function daysBetween(from: string, to: string): string[] {
   const out: string[] = []
   for (let t = Date.parse(`${from}T00:00:00Z`), end = Date.parse(`${to}T00:00:00Z`); t <= end; t += 86_400_000) {
     out.push(new Date(t).toISOString().slice(0, 10))
@@ -200,7 +200,7 @@ function emptyRow(day: string): { day: string; arrived: number; byLag: number[];
 }
 
 /** One table: a row per day of `days`, every day drawn even when empty. */
-export function cohortTable(leads: readonly Lead[], days: readonly string[]): LeadCohortTableDto {
+function cohortTable(leads: readonly Lead[], days: readonly string[]): LeadCohortTableDto {
   const byDay = new Map(days.map((d) => [d, emptyRow(d)]))
   const total = emptyRow('')
   for (const lead of leads) {
@@ -219,7 +219,7 @@ export function cohortTable(leads: readonly Lead[], days: readonly string[]): Le
   return { rows: days.map((d) => byDay.get(d)!), total }
 }
 
-export const kindOf = (lead: Pick<Lead, 'repeat'>): LeadKind => (lead.repeat === null ? 'new' : 'repeat')
+const kindOf = (lead: Pick<Lead, 'repeat'>): LeadKind => (lead.repeat === null ? 'new' : 'repeat')
 
 /**
  * The whole screen from its rows.

@@ -45,7 +45,6 @@ const ALL_ROUTES = [
   '/logistics',
   '/analytics/sales',
   '/confirmation',
-  '/warehouse',
   '/kpi',
   '/structure',
   '/sellers',

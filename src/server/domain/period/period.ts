@@ -498,8 +498,7 @@ export function asOfInstant(period: Period): Date {
 // Trend bucketing
 // ---------------------------------------------------------------------------
 
-export const GRANULARITIES = ['day', 'week', 'month'] as const
-export type Granularity = (typeof GRANULARITIES)[number]
+export type Granularity = 'day' | 'week' | 'month'
 
 /**
  * Pick a sensible bucket size for a trend chart.

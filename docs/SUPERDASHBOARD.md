@@ -247,15 +247,11 @@ September close as well as an August one.
 | Did this seller do their job this month? | Seller-close | `closed_value`, `closed_deals` |
 | Is the delivery pipeline keeping up? | Both, compared | the gap between them |
 
-They must never be blended, averaged or quietly substituted. Each is its own
-metric, and every leaderboard row carries **both**, so a reader can see the gap
-rather than be handed whichever one flatters the page.
-
-**The limitation, stated rather than hidden.** `deal_stage_history` carries no
-amount, so `closedValue` sums the deal's **current** `amountMinor`, not the
-amount it carried when the seller closed it. An operator's later discount or
-corrected quantity moves the figure. No column would let it be otherwise; the
-response says so on every payload via `meta.sellerCloseBasis.amountBasis`.
+They must never be blended, averaged or quietly substituted. **Status,
+2026-09-30:** the seller-close metric was never wired to a screen and its
+module was deleted as dead code; every money figure on the dashboard today is
+the delivered basis. The measurements above stay as the reason a seller-close
+figure, if it is ever built again, must be its own column.
 
 ---
 

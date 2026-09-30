@@ -29,7 +29,7 @@ export interface ParetoSummary {
 }
 
 /** The Pareto question is always asked against this threshold. */
-export const PARETO_COVERAGE_PERCENT = 80
+const PARETO_COVERAGE_PERCENT = 80
 
 /**
  * Share of the total held by the `n` largest entries, in percent.

@@ -15,10 +15,10 @@
  * 50 have none at all. Anything that anchors at one end matches a sixth of the
  * roster.
  *
- * EXACTLY ONE standalone token, or nothing — the same rule
- * `marketingService.employeeCode()` uses to pair these people against the
- * Roistat sheet, proven there against a 24 541-row import. Two numbers in one
- * name is an ambiguity, not a match; no production row has two today.
+ * EXACTLY ONE standalone token, or nothing — the rule the Roistat screen
+ * (deleted 2026-09-30) used to pair these people against the client's sheet,
+ * proven there against a 24 541-row import. Two numbers in one name is an
+ * ambiguity, not a match; no production row has two today.
  */
 
 /** The badge, or null when the name does not carry exactly one. */

@@ -13,7 +13,7 @@ import { SKIP_LOOKBACK_MS } from './SyncEngine'
  * earlier, wound back 45 days and re-read 81 970 rows from the portal in one
  * tick — the redeploy cost this rule was written to stop.
  */
-export const HISTORY_IDLE_MS = 30 * 60_000 + (SKIP_LOOKBACK_MS.STAGE_HISTORY ?? 0)
+const HISTORY_IDLE_MS = 30 * 60_000 + (SKIP_LOOKBACK_MS.STAGE_HISTORY ?? 0)
 
 /**
  * Where the stage-history cursor should be wound back to at startup, if at all.

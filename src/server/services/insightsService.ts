@@ -32,7 +32,6 @@ import type {
   ConfirmationOutcomeMoneyMinor,
   ConfirmationOutcomeTotals,
   ConfirmationRopRow,
-  DispatchRow,
   CallActivityRow,
   InsightsRepository,
   LogisticsCut,
@@ -1011,16 +1010,6 @@ export interface StructureDto {
    * unit and must not name an arbitrary one.
    */
   readonly isViewerPrimaryDepartment: boolean
-  /**
-   * Is this unit inside the active filial?
-   *
-   * The org chart is the MAP of the company, so it keeps showing every unit
-   * even when the rest of the dashboard shows one branch — a map with half the
-   * country cut off is not a map. Marking the subtree instead is how the page
-   * stays honest about which part of it the other screens are counting. True
-   * everywhere when no branch is active.
-   */
-  readonly inScope: boolean
   readonly children: readonly StructureDto[]
 }
 
@@ -1052,19 +1041,6 @@ export interface DepartmentMemberDto {
 export interface StructureOptions {
   /** The reader's own employee id, from Principal. Null when unlinked. */
   readonly viewerEmployeeId?: string | null
-}
-
-/**
- * The FILIAL scope, as this service receives it.
- *
- * Resolved by `ReferenceRepository.resolveBranchScope` and already intersected
- * with the caller's authorisation scope, so one list carries both. The default
- * — an empty object — means unrestricted, which is what an endpoint that has
- * not been wired to the branch control yet still gets.
- */
-export interface InsightsScope extends EmployeeScopeFilter {
-  /** The branch's own department id, for the tree that marks its subtree. */
-  readonly branchDepartmentId?: string | null
 }
 
 export class InsightsService {
@@ -2221,21 +2197,6 @@ export class InsightsService {
     }
   }
 
-  async dispatch(period: Period, currency: string, scope: EmployeeScopeFilter = {}) {
-    const rows = await this.repository.dispatchPoints(this.window(period, scope))
-    return rows.map((r: DispatchRow) => ({
-      point: r.point,
-      orders: r.orders,
-      delivered: r.delivered,
-      refused: r.refused,
-      // In the denominator of the rate above, so it has to be visible beside
-      // it — a rate whose fraction the screen cannot show is unreadable.
-      cancelledEarly: r.cancelledEarly,
-      revenue: toMoneyDto(money(r.revenueMinor, currency)),
-      deliveryRate: pct(r.deliveryRateBp),
-    }))
-  }
-
   /**
    * The org chart, rolled up.
    *
@@ -2249,14 +2210,8 @@ export class InsightsService {
    * moved to «Boshqaruv markazi», the one place this dashboard was to state
    * money. That screen was removed on 2026-09-10; the figures did not return.
    */
-  async structure(
-    scope: InsightsScope = {},
-    options: StructureOptions = {},
-  ) {
-    // Deliberately UNSCOPED as data: the tree keeps every unit and every
-    // number, and `inScope` marks which subtree the branch-scoped screens are
-    // counting. Filtering the map would leave the reader unable to see that
-    // Операцион exists at all.
+  async structure(options: StructureOptions = {}) {
+    // Deliberately UNSCOPED: the tree keeps every unit and every number.
     const [nodes, viewerDepartmentIds] = await Promise.all([
       this.repository.structure(),
       options.viewerEmployeeId
@@ -2286,10 +2241,6 @@ export class InsightsService {
       children.set(node.parentId, siblings)
     }
 
-    // No branch active -> the whole company is in scope, which is the truth
-    // rather than a shrug: `filial=all` really does count every unit.
-    const branchId = scope.branchDepartmentId ?? null
-
     /**
      * The rollup travels beside the DTO, not inside it.
      *
@@ -2304,15 +2255,8 @@ export class InsightsService {
       readonly activeHeadcount: number
     }
 
-    const build = (
-      node: StructureNode,
-      depth: number,
-      inherited: boolean,
-    ): { dto: StructureDto; rolled: Rolled } => {
-      const inScope = branchId === null || inherited || node.id === branchId
-      const built = (children.get(node.id) ?? []).map((child) =>
-        build(child, depth + 1, inScope),
-      )
+    const build = (node: StructureNode, depth: number): { dto: StructureDto; rolled: Rolled } => {
+      const built = (children.get(node.id) ?? []).map((child) => build(child, depth + 1))
       const kids = built.map((b) => b.dto)
 
       /**
@@ -2369,14 +2313,13 @@ export class InsightsService {
         sortOrder: node.sortOrder,
         isViewerDepartment: viewerIn.has(node.id),
         isViewerPrimaryDepartment: viewerPrimary !== null && viewerPrimary === node.id,
-        inScope,
         children: kids,
       }
 
       return { dto, rolled }
     }
 
-    return (children.get(null) ?? []).map((root) => build(root, 0, false).dto)
+    return (children.get(null) ?? []).map((root) => build(root, 0).dto)
   }
 
   /**

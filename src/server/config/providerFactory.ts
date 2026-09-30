@@ -22,7 +22,7 @@ let cached: CrmProvider | null = null
  * `env` has already rejected the dangerous configuration — DATA_SOURCE=bitrix24
  * with no webhook URL — so by the time we get here the combination is coherent.
  */
-export function createCrmProvider(): CrmProvider {
+function createCrmProvider(): CrmProvider {
   switch (env.DATA_SOURCE) {
     case DataSource.Bitrix24:
       return new Bitrix24CrmProvider({
@@ -47,9 +47,4 @@ export function createCrmProvider(): CrmProvider {
 export function getCrmProvider(): CrmProvider {
   cached ??= createCrmProvider()
   return cached
-}
-
-/** Test seam only. */
-export function resetCrmProvider(): void {
-  cached = null
 }

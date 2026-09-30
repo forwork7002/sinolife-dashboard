@@ -94,7 +94,7 @@ export const MEDAL_METAL: Readonly<
  * qoidasi (`seatMedals`) va medallar tasnifining guruhlari (`MedalTasnif`,
  * «Nodir»); soya ham, `.rare` sinfi ham yo'q.
  */
-export const RARE_MEDALS: ReadonlySet<MedalCode> = new Set<MedalCode>([
+const RARE_MEDALS: ReadonlySet<MedalCode> = new Set<MedalCode>([
   'year-champion',
   'month-gold',
   'month-silver',

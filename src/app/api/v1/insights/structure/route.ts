@@ -24,10 +24,7 @@ const ACCESS = { permission: 'employees:read', section: 'structure' } as const
  * no period, so nothing downstream can mistake this answer for a dated one.
  */
 export const GET = getHandler(ACCESS, analyticsQuerySchema, async (ctx) => {
-  const data = await insightsService.structure(
-    {},
-    { viewerEmployeeId: ctx.principal.employeeId },
-  )
+  const data = await insightsService.structure({ viewerEmployeeId: ctx.principal.employeeId })
 
   return { data }
 })

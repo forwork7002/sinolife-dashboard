@@ -160,7 +160,7 @@ export const ROOKIE_PLACE = 10
  * sotuvchining fakti emas. Devor ochilgan oyda medal tarqatish uni faktdek
  * ko'rsatardi.
  */
-export const ROOKIE_FROM_MONTH = '2026-09'
+const ROOKIE_FROM_MONTH = '2026-09'
 
 interface Draft {
   readonly employeeId: string

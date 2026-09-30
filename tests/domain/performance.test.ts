@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { previousEquivalent, resolvePeriod } from '@/server/domain/period/period'
+import { resolvePeriod } from '@/server/domain/period/period'
 import type { AnalyticsDeal } from '@/server/domain/analytics/sales'
 import { summarizeDeals } from '@/server/domain/analytics/sales'
 import {
   type KpiDefinition,
   actualForMetric,
-  buildLeaderboard,
   classifyKpi,
-  employeePerformance,
   evaluateKpi,
   kpiWindow,
   overallAchievementPercent,
@@ -20,7 +18,6 @@ const UZS = 'UZS'
 const NOW = new Date('2026-08-23T09:30:00.000Z')
 
 const august = resolvePeriod('this_month', { timeZone: TZ, now: NOW })
-const julyEquivalent = previousEquivalent(august)
 
 function won(
   id: string,
@@ -69,130 +66,6 @@ function created(id: string, createdIso: string, employeeId: string): AnalyticsD
     createdAtSource: new Date(createdIso),
   }
 }
-
-describe('employeePerformance', () => {
-  const deals = [
-    // August
-    won('a1', 300_000_00n, '2026-08-10T06:00:00.000Z', 'emp-1'),
-    won('a2', 100_000_00n, '2026-08-12T06:00:00.000Z', 'emp-2'),
-    // July equivalent window (1-23 July)
-    won('j1', 200_000_00n, '2026-07-10T06:00:00.000Z', 'emp-1'),
-    won('j2', 200_000_00n, '2026-07-12T06:00:00.000Z', 'emp-2'),
-  ]
-
-  const rows = employeePerformance(deals, ['emp-1', 'emp-2', 'emp-3'], august, julyEquivalent, UZS)
-
-  it('returns a row per requested employee, including those with no deals', () => {
-    expect(rows.map((r) => r.employeeId)).toEqual(['emp-1', 'emp-2', 'emp-3'])
-  })
-
-  it('computes current and previous revenue per employee', () => {
-    const one = rows.find((r) => r.employeeId === 'emp-1')!
-    expect(one.current.revenue.amountMinor).toBe(300_000_00n)
-    expect(one.previous.revenue.amountMinor).toBe(200_000_00n)
-  })
-
-  it('computes growth against the equivalent previous window', () => {
-    const one = rows.find((r) => r.employeeId === 'emp-1')!
-    expect(one.revenueDelta).toEqual({ kind: 'change', percent: 50, direction: 'up' })
-
-    const two = rows.find((r) => r.employeeId === 'emp-2')!
-    expect(two.revenueDelta).toEqual({ kind: 'change', percent: -50, direction: 'down' })
-  })
-
-  it('reports no_data growth for an employee with nothing in either window', () => {
-    const three = rows.find((r) => r.employeeId === 'emp-3')!
-    // Both periods are a real, measured zero, so this is "unchanged".
-    expect(three.revenueDelta).toEqual({ kind: 'unchanged' })
-  })
-
-  it('computes team share', () => {
-    const one = rows.find((r) => r.employeeId === 'emp-1')!
-    expect(one.teamSharePercent).toBe(75)
-  })
-
-  it('compares each employee against the team average', () => {
-    // Team total 400 000 across 3 employees -> average 133 333.33
-    const one = rows.find((r) => r.employeeId === 'emp-1')!
-    expect(one.versusTeamAveragePercent).toBeCloseTo(225, 0)
-  })
-
-  it('returns null shares when the team earned nothing', () => {
-    const none = employeePerformance([], ['emp-1'], august, julyEquivalent, UZS)
-    expect(none[0]!.teamSharePercent).toBeNull()
-    expect(none[0]!.versusTeamAveragePercent).toBeNull()
-  })
-
-  it('ignores deals belonging to employees outside the requested set', () => {
-    const scoped = employeePerformance(deals, ['emp-1'], august, julyEquivalent, UZS)
-    expect(scoped).toHaveLength(1)
-    expect(scoped[0]!.teamSharePercent).toBe(100)
-  })
-})
-
-describe('buildLeaderboard', () => {
-  const deals = [
-    won('a', 300_000_00n, '2026-08-10T06:00:00.000Z', 'emp-1'),
-    won('b', 200_000_00n, '2026-08-11T06:00:00.000Z', 'emp-2'),
-    won('c', 200_000_00n, '2026-08-12T06:00:00.000Z', 'emp-3'),
-    lost('d', '2026-08-13T06:00:00.000Z', 'emp-2'),
-  ]
-
-  const perf = employeePerformance(
-    deals,
-    ['emp-1', 'emp-2', 'emp-3', 'emp-4'],
-    august,
-    julyEquivalent,
-    UZS,
-  )
-
-  it('ranks by revenue, descending', () => {
-    const board = buildLeaderboard(perf, 'revenue')
-    expect(board.map((e) => e.employeeId)).toEqual(['emp-1', 'emp-2', 'emp-3', 'emp-4'])
-    expect(board[0]!.rank).toBe(1)
-  })
-
-  it('gives tied entries the same rank and skips the next', () => {
-    // emp-2 and emp-3 both on 200 000 -> ranks 1, 2, 2, 4.
-    const board = buildLeaderboard(perf, 'revenue')
-    expect(board.map((e) => e.rank)).toEqual([1, 2, 2, 4])
-    expect(board[2]!.tied).toBe(true)
-  })
-
-  it('ranks by deals won', () => {
-    const board = buildLeaderboard(perf, 'deals_won')
-    expect(board[0]!.value).toBe(1)
-  })
-
-  it('sorts employees with no measurable value last', () => {
-    // emp-1 and emp-3 have no lost deals -> 100% conversion.
-    // emp-4 resolved nothing -> null conversion, and must not top the board.
-    const board = buildLeaderboard(perf, 'conversion')
-    expect(board.at(-1)!.employeeId).toBe('emp-4')
-    expect(board.at(-1)!.value).toBeNull()
-  })
-
-  it('ranks by externally supplied KPI achievement', () => {
-    const achievement = new Map<string, number | null>([
-      ['emp-1', 42],
-      ['emp-2', 91],
-      ['emp-3', null],
-      ['emp-4', 67],
-    ])
-    const board = buildLeaderboard(perf, 'kpi_achievement', achievement)
-    expect(board.map((e) => e.employeeId)).toEqual(['emp-2', 'emp-4', 'emp-1', 'emp-3'])
-  })
-
-  it('is stable for equal values', () => {
-    const first = buildLeaderboard(perf, 'revenue').map((e) => e.employeeId)
-    const second = buildLeaderboard(perf, 'revenue').map((e) => e.employeeId)
-    expect(first).toEqual(second)
-  })
-
-  it('handles an empty roster', () => {
-    expect(buildLeaderboard([], 'revenue')).toEqual([])
-  })
-})
 
 describe('periodElapsedFraction', () => {
   it('is zero at the start of the period', () => {

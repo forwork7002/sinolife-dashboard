@@ -1158,9 +1158,9 @@ model AdSpend {
 // SalesSource, and there must never be one. The two systems measure overlapping
 // things by different rules — Roistat attributes collected money to the LEAD's
 // date, Bitrix24 books a won deal on its close date — and a foreign key would
-// invite exactly the join that turns one company's revenue into two. Where the
-// numbers can be compared they are compared side by side and the divergence is
-// shown, by `scripts/verifyRoistat.ts` and the module's cross-check panel.
+// invite exactly the join that turns one company's revenue into two. (The
+// side-by-side reconciliation screen and script were deleted on 2026-09-30;
+// today only `/target` reads `marketing_snapshot`, for the UZS/USD rate.)
 //
 // CURRENCY, WHICH IS NOT UNIFORM HERE.
 // The source mixes two currencies in one row and so do we, because converting

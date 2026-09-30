@@ -21,8 +21,8 @@
  *   * THE PRESET IS PART OF THE QUESTION. On a Monday «Bugun» and «Shu hafta»
  *     resolve to the identical window and still demand different comparisons —
  *     keyed on the window alone they shared an entry and served each other's
- *     "oʻtgan davrda" line. `commandCentreCacheKey.ts` carries the full story
- *     and the measured numbers (78 where 103 was right, and the reverse).
+ *     "oʻtgan davrda" line: 78 where 103 was right, and the reverse — measured
+ *     on the old command centre, whose key once left the preset out.
  *   * A SCOPED ANSWER IS KEYED ON ITS SCOPE, OR IT IS NOT MEMOISED AT ALL.
  *     Every key this module is given is written by hand, and a caller that
  *     forgets to put the principal's scope in one turns a cache into a

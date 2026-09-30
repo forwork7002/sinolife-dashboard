@@ -27,7 +27,7 @@ const LEAD_COHORT_TTL_MS = 5 * 60_000
 export const LEAD_COHORT_MAX_DAYS = 92
 
 /** Days in the default window, today included. */
-export const LEAD_COHORT_DEFAULT_DAYS = 14
+const LEAD_COHORT_DEFAULT_DAYS = 14
 
 const rowsCache = ttlCache<{ rows: LeadDealRow[]; names: Map<string, string> }>(LEAD_COHORT_TTL_MS)
 

@@ -242,14 +242,10 @@ product narrowed to the sections the client asked for. `find src/app/api/v1
 | `GET` | `/insights/confirmations/orders` | `analytics:read:all` | The confirmation queue as orders, paginated |
 | `GET` | `/insights/confirmations/regions` | `analytics:read:all` | The РЕГИОН column filter's options, cut from the same cohort |
 | `GET` | `/insights/delivery` | analytics | The Доставка kanban — what is standing where, right now. **No window** |
-| `GET` | `/insights/dispatch` | `analytics:read:all` | Per-dispatch-point orders, delivery rate, revenue |
 | `GET` | `/insights/logistics` | `analytics:read:all` | The client’s logistics sheet: six columns over the Доставка funnel, daily rows, post offices, regions, all eighteen stages verbatim and the refusal reasons. Cohorted on the arrival in `C4:NEW`, so ЗАКАЗ is FAKT 1 and Успешно is FAKT 2 |
 | `GET` | `/insights/margin` | `analytics:read:all` | Gross margin per product and its coverage |
 | `GET` | `/insights/structure` | `employees:read` | The org chart. **Dateless, and no money on it** |
 | `GET` | `/insights/structure/roster` | `employees:read` | One unit's members |
-| `GET` | `/marketing/overview` | `analytics:read:all` | Roistat spend, leads and return |
-| `GET` | `/marketing/breakdown` | `analytics:read:all` | The same ledger cut by campaign / ad set / creative |
-| `GET` | `/marketing/verify` | `analytics:read:all` | Roistat's own totals against ours, for reconciliation |
 | `GET` | `/reklama/overview` | `analytics:read:all` | The client's «DM», «Отчёт Т» and lead-quality sheets: Meta campaign-days split by objective, beside the target pages' Регистрация leads per day and stage |
 | `GET` | `/sales-team/overview` | `analytics:read:all` | «Sotuv · ROP»: every ROP team's month day by day and one day seller by seller, against the typed-in plans (`?month=YYYY-MM&day=`) |
 | `POST` | `/sales-team/plans` | `analytics:read:all` + `kpi:manage` | Save one month's plans for a team: FAKT 1 / FAKT 2 month plan, each seller's day plan |
@@ -259,11 +255,9 @@ product narrowed to the sections the client asked for. `find src/app/api/v1
 | `GET`/`POST` | `/users` | `users:manage` | Account administration |
 | `GET`/`PATCH`/`DELETE` | `/users/:id` | `users:manage` | One account |
 
-The three `/marketing/*` routes still answer, but **nothing calls them**: the
-Roistat screen was paused on 2026-09-10, and since 2026-09-23 `/marketing`
-renders «Reklama samarasi» from `/reklama/overview` instead. The same is
-true of `/insights/dispatch`, whose screen renders `shared/SectionPending`. Both
-are held rather than removed, so switching either back on needs no server work.
+The Roistat `/marketing/{overview,breakdown,verify}` routes and
+`/insights/dispatch` were deleted on 2026-09-30 with their paused screens;
+`/marketing` renders «Reklama samarasi» from `/reklama/overview`.
 
 "analytics" means either `analytics:read:all` or `analytics:read:own` — access
 is the same question for both roles; how much data comes back is decided
@@ -279,7 +273,7 @@ widening a permission without threading the scope fails the gate.
 `/insights/concentration` is the one August 2026 indicator endpoint left;
 `pulse`, `flow` and `response` went with the screens that read them. The rest of
 `/insights/*` are the module endpoints — cohorts, logistics, confirmations,
-margin, dispatch, structure — whose payloads are described module-by-module in
+margin, structure — whose payloads are described module-by-module in
 [SUPERDASHBOARD.md](SUPERDASHBOARD.md).
 
 **Not built yet:** `/reports/:type`, `POST /sync/run`, `GET /sync/logs`. The
@@ -332,7 +326,7 @@ the old endpoint survives — it answered response-speed questions that need a
 call joined to a deal, and `call_record."dealId"` is set on 1 row of 366 300.
 
 **Takes the dashboard window** (`periodQuerySchema` only — not the filter half,
-because `filial` has a non-empty default no call column can honour), and the
+whose narrowings no call column can honour), and the
 repository clamps its lower bound to `CALL_DATA_FLOOR` in `src/lib/
 callQuality.ts`: everything imported before 2026-09-14 11:00 Tashkent carries
 a truncated duration and connected flag, and the floor is the next whole day.

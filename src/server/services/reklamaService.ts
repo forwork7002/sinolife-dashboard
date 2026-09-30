@@ -631,11 +631,6 @@ function orderedPages(named: readonly { externalId: string; name: string }[]) {
 */
 const leadCache = ttlCache<LeadStageDayRow[]>(60_000)
 
-/** Test seam. */
-export function resetReklamaCaches(): void {
-  leadCache.clear()
-}
-
 export class ReklamaService {
   constructor(private readonly repository: ReklamaRepository) {}
 

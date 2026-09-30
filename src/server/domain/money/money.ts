@@ -73,22 +73,6 @@ export function zeroMoney(currency: string): Money {
   return money(0n, currency)
 }
 
-function assertSameCurrency(a: Money, b: Money): void {
-  if (a.currency !== b.currency) {
-    throw new CurrencyMismatchError(a.currency, b.currency)
-  }
-}
-
-export function addMoney(a: Money, b: Money): Money {
-  assertSameCurrency(a, b)
-  return money(a.amountMinor + b.amountMinor, a.currency)
-}
-
-export function subtractMoney(a: Money, b: Money): Money {
-  assertSameCurrency(a, b)
-  return money(a.amountMinor - b.amountMinor, a.currency)
-}
-
 /**
  * Sum a collection.
  *
@@ -205,6 +189,3 @@ export function toMoneyDto(m: Money): MoneyDto {
   }
 }
 
-export function fromMoneyDto(dto: MoneyDto): Money {
-  return money(BigInt(dto.amountMinor), dto.currency)
-}

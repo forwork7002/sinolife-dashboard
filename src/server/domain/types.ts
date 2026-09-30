@@ -184,8 +184,7 @@ export const KPI_METRICS = [
 ] as const
 export type KpiMetricValue = (typeof KPI_METRICS)[number]
 
-export const KPI_PERIODS = ['MONTH', 'QUARTER', 'YEAR'] as const
-export type KpiPeriodValue = (typeof KPI_PERIODS)[number]
+export type KpiPeriodValue = 'MONTH' | 'QUARTER' | 'YEAR'
 
 export const KPI_STATUSES = ['ACHIEVED', 'ON_TRACK', 'AT_RISK', 'BEHIND'] as const
 export type KpiStatusValue = (typeof KPI_STATUSES)[number]

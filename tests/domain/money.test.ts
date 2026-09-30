@@ -2,14 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import {
   CurrencyMismatchError,
-  addMoney,
   averageMoney,
   currencyExponent,
   divideMoney,
-  fromMoneyDto,
   money,
   scaleMoney,
-  subtractMoney,
   sumMoney,
   toMajorNumber,
   toMoneyDto,
@@ -42,19 +39,12 @@ describe('exact arithmetic', () => {
   })
 
   it('represents the classic 0.1 + 0.2 case exactly', () => {
-    const sum = addMoney(money(10n, UZS), money(20n, UZS))
+    const sum = sumMoney([money(10n, UZS), money(20n, UZS)], UZS)
     expect(sum.amountMinor).toBe(30n)
     expect(toMajorNumber(sum)).toBe(0.3)
   })
 
-  it('subtracts into negative territory', () => {
-    expect(subtractMoney(money(100n, UZS), money(250n, UZS)).amountMinor).toBe(-150n)
-  })
-
   it('refuses to combine different currencies', () => {
-    expect(() => addMoney(money(1n, 'UZS'), money(1n, 'USD'))).toThrow(
-      CurrencyMismatchError,
-    )
     expect(() => sumMoney([money(1n, 'UZS'), money(1n, 'USD')], 'UZS')).toThrow(
       CurrencyMismatchError,
     )
@@ -127,14 +117,6 @@ describe('currency exponents', () => {
 })
 
 describe('transport', () => {
-  it('round-trips through the DTO without loss', () => {
-    // A realistic large SinoLife figure: 340 000 000.00 so'm
-    const original = money(34_000_000_000n, UZS)
-    const restored = fromMoneyDto(toMoneyDto(original))
-    expect(restored.amountMinor).toBe(original.amountMinor)
-    expect(restored.currency).toBe(original.currency)
-  })
-
   it('carries minor units as a string so JSON stays exact', () => {
     expect(toMoneyDto(money(34_000_000_000n, UZS)).amountMinor).toBe('34000000000')
   })
@@ -148,6 +130,6 @@ describe('transport', () => {
 describe('zeroMoney', () => {
   it('is additive identity', () => {
     const value = money(12_345n, UZS)
-    expect(addMoney(value, zeroMoney(UZS)).amountMinor).toBe(value.amountMinor)
+    expect(sumMoney([value, zeroMoney(UZS)], UZS).amountMinor).toBe(value.amountMinor)
   })
 })

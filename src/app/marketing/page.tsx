@@ -11,10 +11,9 @@ export const dynamic = 'force-dynamic'
  * sheets («DM», «Отчёт Т», lead quality) rather than the Roistat ledger it
  * was paused as on 2026-09-10 («hozircha api qilmay tur»).
  *
- * The Roistat screen is NOT deleted: `features/marketing/*` and
- * `/api/v1/marketing/{overview,breakdown,verify}` are intact and unmounted —
- * a second source the client is still reconciling, held rather than
- * abandoned. This page reads `/reklama/overview` instead. See
+ * The Roistat screen and its `/api/v1/marketing/*` endpoints were deleted on
+ * 2026-09-30; the section id and the URL stay `marketing` because ids are
+ * stored on account grants. This page reads `/reklama/overview`. See
  * `features/reklama/ReklamaPage.tsx`.
  */
 export default async function Page() {

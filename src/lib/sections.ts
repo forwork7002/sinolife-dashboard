@@ -45,7 +45,6 @@ export const SECTIONS = [
   { id: 'margin', route: '/margin', label: 'Yalpi marja', group: 'Tahlil' },
   { id: 'confirmation', route: '/confirmation', label: 'Tasdiqlash navbati', group: 'Bajarish' },
   { id: 'logistics', route: '/logistics', label: 'Logistika natijasi', group: 'Bajarish' },
-  { id: 'warehouse', route: '/warehouse', label: 'Joʻnatish nuqtalari', group: 'Bajarish' },
   { id: 'kpi', route: '/kpi', label: 'KPI rejalari', group: 'Jamoa' },
   { id: 'rnp', route: '/rnp', label: 'RNP jadvali', group: 'Jamoa' },
   { id: 'structure', route: '/structure', label: 'Kadrlar tuzilmasi', group: 'Jamoa' },
@@ -114,16 +113,14 @@ const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
     did: its funnel IS the confirmation cohort, and the standing parcels cut on
     the same operator. A ROP it was ticked for had never seen the link.
   */
-  'warehouse',
   /*
     «REKLAMA SAMARASI» JOINED THE SET WHEN «TASDIQLASH» LEFT IT.
 
-    Not because it aggregates — because it has nothing to aggregate BY. The
-    Roistat ledger is a second, unrelated source with no Bitrix24 employee on
-    any row (its `rop` and `seller` dimensions are names typed into a
-    spreadsheet, joined to our roster by nothing), so there is no column a
-    team scope could cut on. Its three endpoints ask for `analytics:read:all`
-    for exactly that reason.
+    Not because it aggregates — because it has nothing to aggregate BY. Its
+    Meta rows carry no Bitrix24 employee at all, and its Регистрация leads sit
+    with whichever registrar picked them up, so there is no column a team
+    scope could cut on. `/reklama/overview` asks for `analytics:read:all` for
+    exactly that reason.
   */
   'marketing',
   /*
@@ -143,7 +140,7 @@ const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
   /*
     «TARGET TAHLILI» FOR THE SAME REASON, TWICE OVER. Its leads sit in
     Регистрация with whichever registrar picked them up — nobody's sales team —
-    and half the screen is the Roistat ledger above. It also names customers
+    and half the screen is Meta spend, which no employee carries. It also names customers
     and their phone numbers, which no narrowed screen hands out.
   */
   'target',

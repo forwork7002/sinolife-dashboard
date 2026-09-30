@@ -25,7 +25,7 @@ import {
   money,
   sumMoney,
 } from '@/server/domain/money/money'
-import { type Period, containsInstant, enumerateBuckets } from '@/server/domain/period/period'
+import { type Period, containsInstant } from '@/server/domain/period/period'
 import type { DealStatusValue, StageCategoryValue } from '@/server/domain/types'
 import { conversionRate } from './metrics'
 
@@ -155,39 +155,3 @@ export interface TrendPoint {
   readonly dealsCreated: number
 }
 
-/**
- * Bucketed trend across the period.
- *
- * Buckets with no activity are RETAINED with zero values. Dropping them would
- * make a chart's x-axis skip quiet weeks and misrepresent the shape of the
- * business — a flat line and a missing line mean different things.
- */
-export function revenueTrend(
-  deals: readonly AnalyticsDeal[],
-  period: Period,
-  currency: string,
-  granularity?: Parameters<typeof enumerateBuckets>[1],
-): TrendPoint[] {
-  const buckets = enumerateBuckets(period, granularity)
-
-  return buckets.map((bucket) => {
-    const inBucket = (instant: Date | undefined): boolean =>
-      instant !== undefined &&
-      instant.getTime() >= bucket.start.getTime() &&
-      instant.getTime() < bucket.end.getTime()
-
-    const won = deals.filter((deal) => deal.status === 'WON' && inBucket(deal.closedAt))
-    const created = deals.filter((deal) => inBucket(deal.createdAtSource))
-
-    return {
-      bucketStart: bucket.start,
-      bucketEnd: bucket.end,
-      revenue: sumMoney(
-        won.map((deal) => money(deal.amountMinor, deal.currency)),
-        currency,
-      ),
-      dealsWon: won.length,
-      dealsCreated: created.length,
-    }
-  })
-}

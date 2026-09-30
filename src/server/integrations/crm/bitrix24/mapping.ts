@@ -22,8 +22,9 @@ import type { LeadSourceVocabulary } from '@/server/domain/leads/leadSources'
 // Pipelines
 // ---------------------------------------------------------------------------
 
-/**
- * Which Bitrix24 pipelines contribute revenue.
+/*
+ * DECISION RECORD — which Bitrix24 pipelines contribute revenue: Доставка
+ * (#6) and Ecommerce (#14). `PIPELINE_ROLE_BY_ID` below is what applies it.
  *
  * Доставка (#6) holds 16 283 deals, 99.8% carrying an amount, and is where the
  * money actually lands. Ecommerce (#14) is a genuinely separate channel — only
@@ -38,7 +39,6 @@ import type { LeadSourceVocabulary } from '@/server/domain/leads/leadSources'
  * (99.9% zero), Первичный отдел is lead qualification with zero won deals
  * ever, ИИ обработка has no amounts, HR is recruitment.
  */
-export const REVENUE_PIPELINES = [6, 14] as const
 
 /**
  * Every pipeline on the portal is imported, but only two of them are sales.
@@ -50,7 +50,7 @@ export const REVENUE_PIPELINES = [6, 14] as const
  * A pipeline missing from this table imports as IGNORED — a new воронка
  * someone creates next month cannot silently start counting as revenue.
  */
-export const PIPELINE_ROLE_BY_ID: Readonly<Record<number, PipelineRoleValue>> = Object.freeze({
+const PIPELINE_ROLE_BY_ID: Readonly<Record<number, PipelineRoleValue>> = Object.freeze({
   0: 'LEAD',           // Регистрация — 179 842 deals, 99.9% zero amount
   4: 'CONFIRMATION',   // Тасдиклаш — order confirmation calls
   6: 'REVENUE',        // Доставка — where money actually lands
@@ -262,7 +262,7 @@ export function logisticsRole(stageId: string): LogisticsRoleValue | undefined {
  * Bitrix автоматикаси ҳар доим бир хил қолдирмайди». Both are accepted here
  * for the same reason.
  */
-export const CONFIRMATION_SIGNAL_STAGES: Readonly<Record<string, ConfirmationSignalValue>> =
+const CONFIRMATION_SIGNAL_STAGES: Readonly<Record<string, ConfirmationSignalValue>> =
   Object.freeze({
     'C4:NEW': 'CONFIRM_NEW',          // Заказ тасдиклаш — the starting point
     'C4:UC_JQR9F1': 'NO_ANSWER',      // Недозвон смс
@@ -541,8 +541,9 @@ export function callDirection(category: string | undefined, type: string | undef
 // Revenue recognition — PROVISIONAL
 // ---------------------------------------------------------------------------
 
-/**
- * When a deal becomes revenue.
+/*
+ * DECISION RECORD — when a deal becomes revenue: when it is WON, dated by
+ * CLOSEDATE.
  *
  * NOT FINAL — pending confirmation from finance. For Доставка this means the
  * `Доставлено` stage, which is defensible for a delivery business and matches
@@ -550,13 +551,9 @@ export function callDirection(category: string | undefined, type: string | undef
  * is not recorded in Bitrix24 at all (see below), so that variant cannot be
  * implemented from this source.
  *
- * Kept as configuration so changing it is an edit plus a re-sync, never a code
- * change in the analytics layer.
+ * Nothing reads a constant for this any more (removed 2026-09-30 as dead
+ * code): the analytics SQL reads `status = 'WON'` and `closedAt` directly.
  */
-export const REVENUE_RULE = {
-  recognizeOn: 'WON' as const,
-  dateField: 'CLOSEDATE' as const,
-} as const
 
 // ---------------------------------------------------------------------------
 // Stage semantics
@@ -568,7 +565,7 @@ export const REVENUE_RULE = {
  * Using it instead of hand-mapping 100+ stage IDs means a stage nobody
  * remembered to mention still lands in the right bucket.
  */
-export function statusFromSemantic(semantic: string | undefined): DealStatusValue {
+function statusFromSemantic(semantic: string | undefined): DealStatusValue {
   switch (semantic) {
     case 'S':
       return 'WON'
@@ -734,7 +731,7 @@ export function extractOrderCode(title: unknown): string | undefined {
 // Capability notes
 // ---------------------------------------------------------------------------
 
-/**
+/*
  * PAYMENTS ARE NOT AVAILABLE — verified, not assumed.
  *
  * Deals expose only OPPORTUNITY, TAX_VALUE and PROBABILITY. `crm.invoice.list`
@@ -745,4 +742,3 @@ export function extractOrderCode(title: unknown): string | undefined {
  * So the finance page reports "not connected" rather than 0 so'm outstanding,
  * which would be false.
  */
-export const PAYMENTS_AVAILABLE = false

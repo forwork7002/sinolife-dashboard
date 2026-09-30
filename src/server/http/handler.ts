@@ -92,7 +92,7 @@ export interface Access {
  * and an account given one of the two should not be refused because it lacks
  * the other.
  */
-export function assertSection(principal: Principal, section: Access['section']): void {
+function assertSection(principal: Principal, section: Access['section']): void {
   if (section === null) return
 
   const wanted = Array.isArray(section) ? section : [section as SectionValue]

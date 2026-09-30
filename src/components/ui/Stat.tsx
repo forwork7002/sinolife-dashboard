@@ -175,7 +175,7 @@ export function StatTile({
  * for this operator" are different facts, and a zero would state the first
  * when the truth is the second.
  */
-export function StatValue({
+function StatValue({
   value,
   unit,
   money = 'compact',

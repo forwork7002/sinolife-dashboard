@@ -31,7 +31,6 @@ export const t = {
     logistics: 'Logistika natijasi',
     sales: 'Savdo dinamikasi',
     confirmation: 'Tasdiqlash navbati',
-    warehouse: 'Joʻnatish nuqtalari',
     kpi: 'KPI rejalari',
     rnp: 'RNP jadvali',
     structure: 'Kadrlar tuzilmasi',
@@ -160,14 +159,6 @@ export const t = {
       */
       lead: 'Mahsulot boʻyicha tushum, tannarx va yalpi foyda. Davr bitim YOPILGAN sana boʻyicha.',
     },
-    warehouse: {
-      title: 'Joʻnatish nuqtalari',
-      lead: 'Buyurtmalarni qaysi sklad, kuryer yoki marketpleys bajargani. Davr buyurtma OLINGAN sana boʻyicha.',
-    },
-    team: {
-      title: 'Jamoa',
-      lead: 'Kim qancha sotdi, kim qancha gaplashdi, kim qayerda turibdi.',
-    },
     /*
       NO LEAD LINE HERE EITHER — the same conclusion as the confirmation board
       above, reached by a different route and enforced by a different prop:
@@ -235,33 +226,7 @@ export const t = {
   },
 
   cards: {
-    revenue: 'Tushum',
-    /*
-      "Yutilgan", not "Yopilgan". Both call sites count WON deals only, but a
-      LOST deal is closed too — and on the sales page the tile printed 3,588
-      under "Yopilgan bitimlar" while its own conversion neighbour divided by
-      3,701 closed deals. Two numbers for one word on one screen. The tile's
-      own hints already said "yutilgan bitim"; the label now agrees with them.
-    */
-    dealsWon: 'Yutilgan bitimlar',
-    dealsCreated: 'Yangi bitimlar',
-    averageDeal: 'Oʻrtacha bitim',
-    /*
-      «Bitim konversiyasi», not a bare «Konversiya» — because Savdo dinamikasi
-      prints TWO of them and they are 25 points apart.
-
-      This one is won over resolved DEALS on the close date; the FAKT spine
-      above it prints delivery conversion over the confirmation queue's own
-      orders. Live on 2026-09-09 that was 97.4% here and 72.4% there, both
-      true, one word, one screen — the exact shape of `basis` below: "a number
-      names its basis when a sibling screen computes one differently", except
-      the sibling was the same screen.
-    */
-    conversion: 'Bitim konversiyasi',
-    dealsOpen: 'Ochiq bitimlar',
-    pipeline: 'Ochiq bitimlar qiymati',
     kpiAchievement: 'KPI bajarilishi',
-    activeEmployees: 'Faol xodimlar',
   },
 
   chart: {
@@ -303,35 +268,11 @@ export const t = {
       week: 'haftalar kesimida',
       month: 'oylar kesimida',
     },
-    funnel: 'Savdo voronkasi',
-    funnelHint: 'Davrda yaratilgan bitimlarning joriy bosqichi',
-    bySource: 'Manbalar boʻyicha',
-    byProduct: 'Mahsulotlar boʻyicha',
-    leaderboard: 'Eng yaxshi natijalar',
   },
 
   table: {
     employee: 'Xodim',
-    department: 'Boʻlim',
-    revenue: 'Tushum',
-    deals: 'Bitimlar',
-    dealsWon: 'Yopilgan',
-    /* The THIRD reading of the word on that one page — this column is won over
-       deals CLOSED in the window, per source. Named for its clock like the
-       other two. */
-    conversion: 'Yopilgan konversiya',
-    kpi: 'KPI',
-    growth: 'Oʻsish',
-    rank: 'Oʻrin',
-    deal: 'Bitim',
-    amount: 'Summa',
-    stage: 'Bosqich',
-    product: 'Mahsulot',
-    source: 'Manba',
-    created: 'Yaratilgan',
-    closed: 'Yopilgan',
     status: 'Holat',
-    share: 'Ulush',
   },
 
   status: {
@@ -378,113 +319,16 @@ export const t = {
     minutesAgo: 'daqiqa oldin',
     hoursAgo: 'soat oldin',
     daysAgo: 'kun oldin',
-    synced: 'Sinxronlangan',
-    stale: 'eskirgan',
-    pending: 'Navbatda kutmoqda · bugun',
-    alerts: 'Ogohlantirishlar',
-    noAlerts: 'Hammasi joyida',
-    refresh: 'Yangilash',
-    refreshing: 'Yangilanmoqda…',
   },
 
   /**
-   * The Reyting switcher's labels.
-   *
-   * Read by LeaderboardPage and nowhere else, which is why these may carry the
-   * BASIS in the label itself while `t.table.*` stays short for the screens
-   * that show one basis and cannot be misread.
-   *
-   * Four of these six rank what was DELIVERED and two rank what the SELLER
-   * CLOSED. Those are different sets of deals — last August 2 798 entered the
-   * seller's won stage, 3 729 entered Доставка's, and 1 152 were in both — so
-   * a bare "Tushum" beside a bare "Summa" reads as two words for one number
-   * when it is two numbers. The `Yetkazilgan…` / `Yopgan…` prefixes are the
-   * whole disambiguation and are the reason these strings are longer than a
-   * segmented control would prefer.
-   */
-  metric: {
-    revenue: 'Yetkazilgan tushum',
-    deals_won: 'Yetkazilgan bitimlar',
-    conversion: 'Konversiya',
-    kpi_achievement: 'KPI bajarilishi',
-    /** The seller-close basis — see `basis` below. */
-    closed_deals: 'Yopgan bitimlar',
-    closed_value: 'Yopgan summa',
-  },
-
-  /**
-   * WHICH EVENT a figure counts, said in one sentence.
-   *
-   * docs/DESIGN.md — "A number names its basis when a sibling screen computes
-   * one differently." This dashboard measures a seller two ways and they are
-   * not the same deals:
-   *
-   *   YETKAZILGAN  money that landed — `countsAsRevenue`, status WON, bucketed
-   *                by `closedAt`. The company's number.
-   *   YOPGAN       entries into the won stage of the sellers' own pipeline.
-   *                A robot empties that stage within seconds by moving the
-   *                deal to Доставка, so the stage history is the only trace
-   *                the sale leaves. The seller's own act.
-   *
-   * Neither is the "real" figure and neither may be substituted for the other.
-   * These strings live here rather than in the three pages that show them so
-   * that Reyting, Xodimlar and one person's own page cannot drift into
-   * describing the same column three different ways.
-   *
-   * The stage name is passed in rather than written out: it is resolved from
-   * the portal by role (`server/domain/analytics/sellerClose`), never matched
-   * on a hardcoded `C12:WON`, and a caption that spelled it out would keep
-   * claiming it after the portal was reconfigured.
+   * WHICH EVENT a figure counts: the KPI table's column headings say
+   * «Yetkazilgan» — money that landed (`countsAsRevenue`, status WON,
+   * bucketed by `closedAt`) — so they are never read as a seller's own close.
    */
   basis: {
-    /** Table headings. Long, because the two bases sit side by side there. */
     deliveredRevenueColumn: 'Yetkazilgan tushum',
     deliveredDealsColumn: 'Yetkazilgan bitim',
-    closedDealsColumn: 'Yopgan bitim',
-    closedValueColumn: 'Yopgan summa',
-
-    /** Tile and card labels on the person-level screens. */
-    closedDealsLabel: 'Sotuvchi yopgan bitimlar',
-    closedValueLabel: 'Sotuvchi yopgan summa',
-
-    /** What to call the stage when its real name is not to hand. */
-    stageFallback: 'sotuvchining yakuniy bosqichi',
-
-    deliveredRevenue: 'Yetkazib berilgan va tushum sifatida hisoblangan buyurtmalar puli.',
-    deliveredDeals: 'Yetkazib berilgan va tushum sifatida hisoblangan buyurtmalar soni.',
-    conversion: 'Yakunlangan bitimlarning qanchasi yutilgani.',
-    kpi: 'Belgilangan KPI rejasiga nisbatan bajarilish darajasi.',
-
-    closedDeals: (stage: string) => `Sotuvchi «${stage}» bosqichiga oʻtkazgan bitimlar soni.`,
-    closedValue: (stage: string) => `Sotuvchi «${stage}» bosqichiga oʻtkazgan bitimlar summasi.`,
-
-    /**
-     * The one caveat `closedValue` owes wherever it is printed: the stage
-     * history carries no amount, so the sum is the deal's amount TODAY.
-     */
-    amountCaveat: 'Summa bitimning bugungi qiymati boʻyicha olinadi.',
-
-    /**
-     * The explainer, once per page. States the mechanism and stops — a
-     * manager reading it should learn why two columns disagree, not be told
-     * which one to prefer.
-     */
-    explainer:
-      'Sotuvchining yopishi va yetkazib berish — bir hodisa emas: yopilgan bitimlarning bir qismi yetib borgunicha bekor qilinadi, yetkazilgan pulning bir qismi esa hech bir sotuvchi yopmagan takroriy buyurtmalardan keladi.',
-
-    /**
-     * When the seller pipeline's won stage resolved to nothing. Unmeasured is
-     * not zero, and a column of zeros here would read as a company that
-     * stopped selling.
-     */
-    unmeasured: 'Sotuvchining yakuniy bosqichi aniqlanmadi — yopgan bitimlar oʻlchanmadi.',
-
-    /**
-     * The same fact in one clause, for `StatTile.hint` — which is `truncate`,
-     * so a sentence that does not fit is not a shorter sentence, it is a
-     * clipped one. A caption that states half a basis is worse than none.
-     */
-    unmeasuredShort: 'Oʻlchanmadi — bosqich aniqlanmadi',
   },
 
   /**

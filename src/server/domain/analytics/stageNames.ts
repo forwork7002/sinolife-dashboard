@@ -30,7 +30,7 @@ export function stripPipelinePrefix(stageName: string, pipelineName: string): st
 }
 
 /** The one funnel this dashboard reads stage by stage. */
-export const DELIVERY_PIPELINE_NAME = 'Доставка'
+const DELIVERY_PIPELINE_NAME = 'Доставка'
 
 /** `stripPipelinePrefix` bound to the Доставка funnel, which is every caller today. */
 export function deliveryStageName(stageName: string): string {

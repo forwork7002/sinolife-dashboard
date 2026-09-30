@@ -44,7 +44,6 @@ function unit(
     sortOrder: 100,
     isViewerDepartment,
     isViewerPrimaryDepartment: false,
-    inScope: true,
     children,
   }
 }

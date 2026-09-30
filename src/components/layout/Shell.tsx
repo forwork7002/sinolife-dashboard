@@ -121,7 +121,6 @@ const NAV_GROUPS: readonly { readonly label: string | null; readonly items: read
     items: [
       { href: '/confirmation', label: t.nav.confirmation, icon: CheckIcon },
       { href: '/logistics', label: t.nav.logistics, icon: TruckIcon },
-      { href: '/warehouse', label: t.nav.warehouse, icon: WarehouseIcon },
     ],
   },
   {
@@ -406,7 +405,7 @@ export function Shell({
   /*
     A NARROWED ACCOUNT LOSES THE LINKS ITS SCOPE CANNOT OPEN.
 
-    Margin, dispatch, Mijoz qaytishi, marketing and payroll answer
+    Margin, Mijoz qaytishi, marketing and payroll answer
     only an ALL-scoped caller — they aggregate across the whole company and
     have no employee filter to narrow by, so their endpoints refuse rather than
     hand a ROP the firm's figures. An administrator can still TICK those
@@ -1833,15 +1832,6 @@ function CheckIcon() {
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.7" />
       <path d="M8.5 12.3l2.4 2.4 4.6-5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function WarehouseIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M3 10l9-5 9 5v10H3V10z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
-      <path d="M8 20v-6h8v6" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
     </svg>
   )
 }

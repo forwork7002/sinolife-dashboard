@@ -155,7 +155,6 @@ describe('the sidebar before the session has answered', () => {
         'margin',
         'confirmation',
         'logistics',
-        'warehouse',
         'kpi',
         'structure',
         'sellers',
@@ -166,7 +165,7 @@ describe('the sidebar before the session has answered', () => {
     })
 
     expect(railLinks()).toContain(t.nav.users)
-    expect(railLinks()).toHaveLength(11)
+    expect(railLinks()).toHaveLength(10)
   })
 })
 

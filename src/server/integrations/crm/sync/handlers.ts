@@ -1412,8 +1412,5 @@ export function createSyncHandlers(
   })
 }
 
-/** Re-exported so callers do not need to import the resolver separately. */
-export { IdResolver }
-
 /** Satisfies the unused-parameter contract for handlers that ignore batch typing. */
 export type { BatchOutcome }
