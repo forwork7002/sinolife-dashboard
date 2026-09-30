@@ -2,7 +2,7 @@
  * «RNP jadvali» — the wire shapes, restated for the client.
  *
  * Mirrors the DTOs of `src/server/domain/rnp/rnpSheet.ts` and `rnpSheetView.ts`, and the bodies of
- * `src/app/api/v1/rnp/plans/route.ts` and `…/registrars/route.ts`.
+ * `src/app/api/v1/rnp/plans/route.ts`, `…/registrars/route.ts` and `…/costs/route.ts`.
  * Nothing checks the mirror — edit both sides.
  */
 
@@ -42,14 +42,19 @@ export interface RnpRowDto {
    * label there; null = a dashboard addition. Not used on screen.
    */
   readonly sheet: RnpSheetRef | null
-  /** This row's share of its column's total, in percent (the «Свод»). */
-  readonly share: number | null
   readonly tone: 'total' | 'plain'
   /** One sentence saying where the number comes from. */
   readonly hint: string | null
+  /** A cell typed by hand (the P&L's cost lines): what the page saves each day under. Null = computed. */
+  readonly manual: { readonly project: RnpCostProject; readonly line: RnpCostLine } | null
   /** Days before this are incomplete in Bitrix24, and are drawn muted. */
   readonly reliableFrom: string | null
 }
+
+/** The brand P&L's five cost lines no system holds — typed in place (`RNP_COST_LINES`, rows 411–415 / 438–442). */
+export type RnpCostLine = 'bloggers' | 'nutritionist' | 'brandface' | 'marketing' | 'team'
+/** The two brands whose P&L carries them (`RNP_COST_PROJECTS`). */
+export type RnpCostProject = 'Collagen' | 'Zextra'
 
 export interface RnpSheetRef {
   readonly row: number
@@ -150,7 +155,7 @@ export interface RnpOverviewDto {
     /** Every registrar the month's kval names, and every one already assigned. */
     readonly registrars: readonly string[]
     readonly groups: readonly { readonly registrar: string; readonly group: string }[]
-    /** The groups the sheet has rows for, in its order, the Zextra desk last. */
+    /** The registration groups the sheet has rows for, in its order. */
     readonly groupNames: readonly string[]
   }
 }
@@ -177,4 +182,13 @@ export interface SaveRnpPlansBody {
 export interface SaveRnpRegistrarsBody {
   readonly month: string
   readonly rows: readonly { registrar: string; group: string | null }[]
+}
+
+/**
+ * What a typed P&L cost cell posts to `/rnp/costs`: whole soʻm per day,
+ * `day` inside `month`; null clears the cell.
+ */
+export interface SaveRnpCostsBody {
+  readonly month: string
+  readonly cells: readonly { day: string; project: RnpCostProject; line: RnpCostLine; value: number | null }[]
 }

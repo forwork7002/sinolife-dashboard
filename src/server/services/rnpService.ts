@@ -137,17 +137,20 @@ export class RnpService {
     const to = days[days.length - 1]!
     const today = zonedDateKey(input.now, input.timeZone)
     /* Plans and registrar groups are read fresh: what somebody just saved shows on the next load. */
-    const [rows, plans, registrarGroups, usdRates] = await Promise.all([
+    const [rows, plans, registrarGroups, usdRates, manualCosts] = await Promise.all([
       monthCache.get(input.month, () => this.monthRows(input.month, from, to, input.timeZone, input.now)),
       this.repository.plans(input.month),
       this.repository.registrarGroups(input.month),
       this.usd.forDays(days, today),
+      // Typed a moment ago, shown on the next load — never cached.
+      this.repository.manualCosts(from, to),
     ])
     return buildRnpSheet({
       month: input.month,
       days,
       today,
       usdRates,
+      manualCosts,
       teams: rows.teams,
       fakt: rows.fakt,
       leads: rows.leads,
@@ -177,6 +180,10 @@ export class RnpService {
       monthCache.get(month, () => this.monthRows(month, days[0]!, days[days.length - 1]!, timeZone, now)),
       this.usd.forDays(days, today),
     ])
+  }
+
+  saveManualCosts: RnpRepository['saveManualCosts'] = async (cells, by) => {
+    await this.repository.saveManualCosts(cells, by)
   }
 
   saveRegistrarGroups: RnpRepository['saveRegistrarGroups'] = async (month, rows, by) => {

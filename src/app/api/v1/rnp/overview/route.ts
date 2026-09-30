@@ -17,8 +17,15 @@ export const dynamic = 'force-dynamic'
 const ACCESS = { permission: 'analytics:read:all', section: 'rnp' } as const
 
 const querySchema = z.object({
-  /** `YYYY-MM`. The sheet is one calendar month by construction. */
-  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected YYYY-MM'),
+  /**
+   * `YYYY-MM`. The sheet is one calendar month by construction. Bounded: the
+   * portal's data starts in 2025, and each month asks the Central Bank for a
+   * rate per day — a request for 1900-01 is refused, not built.
+   */
+  month: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected YYYY-MM')
+    .refine((m) => m >= '2025-01' && m <= '2100-12', 'Month out of range'),
 })
 
 /** «RNP jadvali» — the client's «РНП» sheet for one month. See rnpService.ts. */

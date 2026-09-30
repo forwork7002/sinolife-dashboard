@@ -46,9 +46,9 @@ function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRo
     days: [null, null, null],
     planKey: null,
     sheet: null,
-    share: null,
     tone: 'plain',
     hint: null,
+    manual: null,
     reliableFrom: null,
     ...over,
   }
@@ -129,19 +129,22 @@ const FIXTURE: RnpOverviewDto = {
 let fixture: RnpOverviewDto = FIXTURE
 let posted: unknown[] = []
 let postedTo: string[] = []
+/** How many times the sheet was read — a save must read it again. */
+let reads = 0
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/rnp')
   fixture = FIXTURE
   posted = []
   postedTo = []
+  reads = 0
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === 'POST') {
         posted.push(JSON.parse(String(init.body)))
         postedTo.push(url)
-      }
+      } else reads += 1
       return {
         ok: true,
         status: 200,
@@ -190,8 +193,8 @@ describe('RnpPage — the sheet', () => {
     const grid = screen.getByRole('region', { name: 'RNP jadvali' })
     const leads = [...grid.querySelectorAll('tbody tr')].find((tr) => tr.querySelector('th')?.textContent?.startsWith('Количество лид'))!
     const cells = [...leads.querySelectorAll('td')].map((td) => td.textContent)
-    // Кунлик план, План, Факт, Прогноз, Индекс, then the three days.
-    expect(cells).toEqual(['—', '—', '12', '—', '—', '12', '—', '—'])
+    // План, Факт, Прогноз, Индекс, Кунлик план, then the three days.
+    expect(cells).toEqual(['—', '12', '—', '—', '—', '12', '—', '—'])
     expect(cells).not.toContain('0')
     expect(within(grid).getAllByText('85.3%')).toHaveLength(2)
   })
@@ -396,6 +399,160 @@ describe('RnpPage — the sheet', () => {
       })
       await waitFor(() => expect(posted).toHaveLength(1))
       expect(postedTo).toEqual(['/api/v1/rnp/plans'])
+    })
+  })
+
+  describe('typed P&L costs', () => {
+    const costRow = (days: (number | null)[]) =>
+      row({
+        key: 'project:collagen:cost_bloggers',
+        label: 'Блогерлар',
+        unit: 'uzs',
+        better: 'down',
+        fact: days.some((d) => d !== null) ? days.reduce<number>((a, d) => a + (d ?? 0), 0) : null,
+        days,
+        hint: 'Qoʻlda kiritiladi — katakni bosing.',
+        manual: { project: 'Collagen', line: 'bloggers' },
+      })
+    const withCosts = (canEditPlans: boolean, days: (number | null)[] = [1_500_000, null, null]): RnpOverviewDto => ({
+      ...FIXTURE,
+      canEditPlans,
+      blocks: [
+        ...FIXTURE.blocks,
+        { id: 'project:collagen', kind: 'project', title: 'Коллаген проект', subtitle: null, team: null, sheet: null, rows: [costRow(days)] },
+      ],
+      lines: [
+        ...FIXTURE.lines,
+        { kind: 'value', row: 411, team: null, label: 'Блогерлар', sub: null, tone: 'brand', fact: 'plain', bold: false, key: 'project:collagen:cost_bloggers' },
+      ],
+    })
+
+    const cell = (day: string) => screen.getByRole('button', { name: `Блогерлар, ${day} — tahrirlash` })
+    const field = (day: string) => screen.getByRole('textbox', { name: `Блогерлар, ${day} — soʻm` }) as HTMLInputElement
+
+    it('types a day in place, posts it to /rnp/costs and reads the sheet again', async () => {
+      fixture = withCosts(true)
+      await draw()
+      const before = reads
+      fireEvent.click(cell('02.09'))
+      const input = field('02.09')
+      expect(input.value).toBe('')
+      fireEvent.change(input, { target: { value: '2 500 000' } })
+      // The server now has the figure; the refetch draws it.
+      fixture = withCosts(true, [1_500_000, 2_500_000, null])
+      await act(async () => {
+        fireEvent.keyDown(input, { key: 'Enter' })
+      })
+
+      await waitFor(() => expect(posted).toHaveLength(1))
+      expect(postedTo).toEqual(['/api/v1/rnp/costs'])
+      expect(posted[0]).toEqual({ month: '2026-09', cells: [{ day: '2026-09-02', project: 'Collagen', line: 'bloggers', value: 2_500_000 }] })
+      await waitFor(() => expect(reads).toBeGreaterThan(before))
+      // Closed once the new figure is on the sheet, focus back on the cell.
+      await waitFor(() => expect(screen.queryByRole('textbox', { name: /soʻm$/ })).toBeNull())
+      expect(cell('02.09').textContent).toBe('2,500,000')
+      expect(document.activeElement).toBe(cell('02.09'))
+    })
+
+    it('clears a day with an emptied field — value null', async () => {
+      fixture = withCosts(true)
+      await draw()
+      fireEvent.click(cell('01.09'))
+      const input = field('01.09')
+      expect(input.value).toBe('1,500,000')
+      fireEvent.change(input, { target: { value: '' } })
+      await act(async () => {
+        fireEvent.keyDown(input, { key: 'Enter' })
+      })
+      await waitFor(() => expect(posted).toHaveLength(1))
+      expect(posted[0]).toEqual({ month: '2026-09', cells: [{ day: '2026-09-01', project: 'Collagen', line: 'bloggers', value: null }] })
+    })
+
+    it('puts the figure back on Escape and sends nothing', async () => {
+      fixture = withCosts(true)
+      await draw()
+      fireEvent.click(cell('01.09'))
+      fireEvent.change(field('01.09'), { target: { value: '9' } })
+      fireEvent.keyDown(field('01.09'), { key: 'Escape' })
+      expect(screen.queryByRole('textbox', { name: /soʻm$/ })).toBeNull()
+      expect(cell('01.09').textContent).toBe('1,500,000')
+      expect(document.activeElement).toBe(cell('01.09'))
+      await act(async () => {})
+      expect(posted).toHaveLength(0)
+    })
+
+    it('refuses a typo in place — marked, said why, nothing posted', async () => {
+      fixture = withCosts(true)
+      await draw()
+      fireEvent.click(cell('02.09'))
+      for (const typo of ['12.5', '-300', '12abc', '2000000000000']) {
+        fireEvent.change(field('02.09'), { target: { value: typo } })
+        fireEvent.keyDown(field('02.09'), { key: 'Enter' })
+        const input = field('02.09')
+        expect(input.getAttribute('aria-invalid')).toBe('true')
+        const message = document.getElementById(input.getAttribute('aria-describedby')!)!
+        expect(message.getAttribute('role')).toBe('alert')
+        expect(message.textContent).toMatch(/son|katta/)
+      }
+      // Leaving the field does not send a typo either.
+      fireEvent.blur(field('02.09'))
+      await act(async () => {})
+      expect(posted).toHaveLength(0)
+      // Thousands separated by spaces or commas are fine.
+      fireEvent.change(field('02.09'), { target: { value: '1,250 000' } })
+      expect(field('02.09').getAttribute('aria-invalid')).toBeNull()
+      await act(async () => {
+        fireEvent.keyDown(field('02.09'), { key: 'Enter' })
+      })
+      await waitFor(() => expect(posted).toHaveLength(1))
+      expect((posted[0] as { cells: { value: number }[] }).cells[0]!.value).toBe(1_250_000)
+    })
+
+    it('keeps the typed text and shows the server’s words when the save is refused', async () => {
+      fixture = withCosts(true)
+      await draw()
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (_url: string, init?: RequestInit) =>
+          init?.method === 'POST'
+            ? { ok: false, status: 403, json: async () => ({ error: { code: 'FORBIDDEN', message: 'Xarajatlarni faqat administrator kirita oladi.' }, meta: {} }) }
+            : { ok: true, status: 200, json: async () => ({ data: fixture, meta: { dataSource: 'DEMO', generatedAt: '2026-09-02T06:00:00.000Z' } }) },
+        ),
+      )
+      fireEvent.click(cell('02.09'))
+      fireEvent.change(field('02.09'), { target: { value: '700000' } })
+      await act(async () => {
+        fireEvent.keyDown(field('02.09'), { key: 'Enter' })
+      })
+      await waitFor(() => expect(field('02.09').getAttribute('aria-invalid')).toBe('true'))
+      expect(field('02.09').value).toBe('700000')
+      expect(screen.getByRole('alert').textContent).toBe('Xarajatlarni faqat administrator kirita oladi.')
+    })
+
+    it('saves on Tab and opens the next day', async () => {
+      fixture = withCosts(true)
+      await draw()
+      fireEvent.click(cell('01.09'))
+      fireEvent.change(field('01.09'), { target: { value: '1600000' } })
+      await act(async () => {
+        fireEvent.keyDown(field('01.09'), { key: 'Tab' })
+      })
+      await waitFor(() => expect(posted).toHaveLength(1))
+      expect((posted[0] as { cells: { day: string; value: number }[] }).cells).toEqual([
+        { day: '2026-09-01', project: 'Collagen', line: 'bloggers', value: 1_600_000 },
+      ])
+      expect(document.activeElement).toBe(field('02.09'))
+    })
+
+    it('shows the typed row read-only, with its chip, to an account that cannot edit plans', async () => {
+      fixture = withCosts(false)
+      await draw()
+      expect(screen.queryAllByRole('button', { name: /tahrirlash$/ })).toHaveLength(0)
+      expect(screen.queryAllByRole('textbox')).toHaveLength(0)
+      const grid = screen.getByRole('region', { name: 'RNP jadvali' })
+      const bloggers = [...grid.querySelectorAll<HTMLTableRowElement>('tbody tr')].find((tr) => tr.querySelector('th')?.textContent?.startsWith('Блогерлар'))!
+      expect(within(bloggers).getByText('qoʻlda')).toBeTruthy()
+      expect(bloggers.textContent).not.toContain('Bitrix24ʼda yoʻq')
     })
   })
 })

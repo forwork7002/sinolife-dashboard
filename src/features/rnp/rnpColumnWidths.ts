@@ -32,7 +32,7 @@ import { useMemo, useSyncExternalStore } from 'react'
  * a small annoyance while a page that will not render is not.
  */
 
-export type RnpColumnKind = 'label' | 'plan' | 'dayPlan' | 'fact' | 'forecast' | 'index' | 'share' | 'day'
+export type RnpColumnKind = 'label' | 'plan' | 'dayPlan' | 'fact' | 'forecast' | 'index' | 'day'
 
 export type RnpColumnWidths = Partial<Record<RnpColumnKind, number>>
 
@@ -43,7 +43,6 @@ export const RNP_COLUMN_KINDS: readonly RnpColumnKind[] = [
   'fact',
   'forecast',
   'index',
-  'share',
   'day',
 ]
 
@@ -55,7 +54,6 @@ export const DEFAULT_WIDTH: Readonly<Record<RnpColumnKind, number>> = {
   fact: 136,
   forecast: 136,
   index: 112,
-  share: 84,
   day: 84,
 }
 

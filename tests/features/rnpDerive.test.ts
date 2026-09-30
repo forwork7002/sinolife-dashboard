@@ -21,9 +21,9 @@ const base: RnpRowDto = {
   days: [],
   planKey: null,
   sheet: null,
-  share: null,
   tone: 'plain',
   hint: null,
+  manual: null,
   reliableFrom: null,
 }
 
@@ -69,15 +69,13 @@ describe('ropLines', () => {
     line('team:Sevinch:fakt1', 'Sevinch', 93),
     line('team:Lola:fakt1', 'Lola', 106),
     line('lg:Sevinch:fakt1', 'Sevinch', 274),
-    line('sv:fakt1:Sevinch', 'Sevinch', 353),
-    line('sv:fakt2:Sevinch', 'Sevinch', 365),
   ]
 
   it('is the whole sheet for «Barchasi»', () => {
     expect(ropLines(lines, null, '')).toBe(lines)
   })
 
-  it('gives one ROP its block, logistics and «Свод», each under a heading, the two «Свод» lines told apart', () => {
+  it('gives one ROP its block and its logistics, each under a heading', () => {
     const got = ropLines(lines, 'Sevinch', 'Севинч РОП')
     expect(got.map((l) => (l.kind === 'title' ? `# ${l.label}` : `${l.row}${l.sub ? ` ${l.sub}` : ''}`))).toEqual([
       '# Севинч РОП — ROP bloki',
@@ -85,9 +83,6 @@ describe('ropLines', () => {
       '93',
       '# Логистика — Севинч РОП',
       '274',
-      '# Свод — Севинч РОП',
-      '353 факт1',
-      '365 факт2',
     ])
   })
 })

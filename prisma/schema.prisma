@@ -1480,8 +1480,8 @@ model RnpPlan {
 /// registrars («Sevinch guruh» = Фарангиз + Назокат, measured 02–03.09.2026),
 /// and nothing in Bitrix24 holds that grouping, so it is typed here and can
 /// change month to month. `registrar` is the «Регистрация» enum label
-/// (deal.registrar); `group` is the sheet's group name, or 'Zextra' for the
-/// Zextra desk.
+/// (deal.registrar); `group` is one of the sheet's groups (`REGISTRATION_GROUPS`).
+/// Rows still naming the retired 'Zextra' desk count as no group.
 model RnpRegistrarGroup {
   id         String   @id @default(cuid())
   month      DateTime @db.Date
@@ -1492,6 +1492,26 @@ model RnpRegistrarGroup {
 
   @@unique([month, registrar])
   @@map("rnp_registrar_group")
+}
+
+/// «RNP jadvali» — a brand P&L cost typed by hand, soʻm per day: the five
+/// lines no system holds (Блогерлар, Нутрицолог, Брендфейс, Маркетинг
+/// харажатлар, Маркетинг команда). The client asked for them to be typed in
+/// place on 2026-09-30 — the one exception to «nothing typed». `project` is
+/// 'Collagen' or 'Zextra'; `line` is one of `RNP_COST_LINES`. A cell nobody
+/// typed has no row.
+model RnpManualCost {
+  id        String   @id @default(cuid())
+  day       DateTime @db.Date
+  project   String
+  line      String
+  amountSom BigInt
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@unique([day, project, line])
+  @@index([day])
+  @@map("rnp_manual_cost")
 }
 
 // ---------------------------------------------------------------------------

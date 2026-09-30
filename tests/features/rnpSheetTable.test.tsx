@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RnpColumnScope } from '@/features/rnp/RnpColumnResizer'
@@ -27,9 +28,9 @@ function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRo
     days: [null, null, null],
     planKey: null,
     sheet: null,
-    share: null,
     tone: 'plain',
     hint: null,
+    manual: null,
     reliableFrom: null,
     ...over,
   }
@@ -147,11 +148,12 @@ describe('RnpSheetTable — the sheet, row by row', () => {
     const headers = screen.getAllByRole('columnheader').map((th) => th.textContent)
     expect(headers).toEqual([
       'Koʻrsatkich, 01.09.2026 – 03.09.2026',
-      'Кунлик план',
       'План обший',
       'Факт',
       'Прогноз',
       'Индекс, %',
+      // After «Индекс» since the client reshaped the sheet (2026-09-30), beside the days.
+      'Кунлик план',
       '01.09Se',
       '02.09Ch',
       '03.09Pa',
@@ -196,7 +198,7 @@ describe('RnpSheetTable — the sheet, row by row', () => {
     expect(within(added).getByText('jadvalda yoʻq jamoa')).toBeTruthy()
     // Its figures still print: nothing a team sold is dropped.
     const orders = rowNamed(container, 'Буюртма сони')
-    expect([...orders.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['—', '—', '7', '—', '—', '3', '4', '—'])
+    expect([...orders.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['—', '7', '—', '—', '—', '3', '4', '—'])
   })
 
   it('puts the ROP first on a team’s row, and fills the columns in the sheet’s order', () => {
@@ -204,8 +206,8 @@ describe('RnpSheetTable — the sheet, row by row', () => {
     const team = rowNamed(container, 'Лола РОП')
     expect(team.dataset.tone).toBe('team')
     expect(team.querySelector('th')!.textContent!.indexOf('Лола РОП')).toBe(0)
-    // Кунлик план, План, Факт, Прогноз, Индекс, then the days; a dash, never a zero.
-    expect([...team.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['10', '300', '25', '280', '93.3%', '12', '13', '—'])
+    // План, Факт, Прогноз, Индекс, Кунлик план, then the days; a dash, never a zero.
+    expect([...team.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['300', '25', '280', '93.3%', '10', '12', '13', '—'])
     expect(within(team).getByText('93.3%').className).toContain('rounded-full')
   })
 
@@ -213,18 +215,96 @@ describe('RnpSheetTable — the sheet, row by row', () => {
     const { container } = draw()
     const sum = rowNamed(container, 'Сумма факт 1 сум')
     expect([...sum.querySelectorAll('td')].map((td) => td.textContent)).toEqual([
-      '159,375,000',
       '4,781,250,000',
       '3,589,815,001',
       '4,821,429,000',
       '100.8%',
+      '159,375,000',
       '1,250,000',
       '159,375,000',
       '—',
     ])
     expect(container.textContent).not.toMatch(/mln|mlrd|ming/)
     // A FAKT row's fact cell is bold.
-    expect(sum.querySelectorAll('td')[2]!.className).toContain('font-semibold')
+    expect(sum.querySelectorAll('td')[1]!.className).toContain('font-semibold')
+  })
+})
+
+describe('RnpSheetTable — the typed P&L cost lines', () => {
+  const COST_BLOCKS: RnpBlockDto[] = [
+    ...BLOCKS,
+    {
+      id: 'project:collagen',
+      kind: 'project',
+      title: 'Коллаген проект',
+      subtitle: null,
+      team: null,
+      sheet: null,
+      rows: [
+        row({
+          key: 'pc:cost_bloggers',
+          label: 'Блогерлар',
+          unit: 'uzs',
+          better: 'down',
+          fact: 1_500_000,
+          days: [1_500_000, null, null],
+          hint: 'Qoʻlda kiritiladi — katakni bosing.',
+          manual: { project: 'Collagen', line: 'bloggers' },
+        }),
+      ],
+    },
+  ]
+  const COST_LINES: RnpLine[] = [
+    ...LINES,
+    { kind: 'value', row: 411, team: null, label: 'Блогерлар', sub: null, tone: 'brand', fact: 'plain', bold: false, key: 'pc:cost_bloggers' },
+  ]
+
+  function drawCosts(editCostsFor: string | null) {
+    return render(
+      <QueryClientProvider client={new QueryClient()}>
+        <RnpSheetTable lines={COST_LINES} blocks={COST_BLOCKS} days={DAYS} today="2026-09-02" editCostsFor={editCostsFor} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('marks the typed row «qoʻlda», never «Bitrix24ʼda yoʻq»', () => {
+    const { container } = drawCosts(null)
+    const bloggers = rowNamed(container, 'Блогерлар')
+    expect(bloggers.dataset.line).toBe('value')
+    expect(within(bloggers).getByText('qoʻlda')).toBeTruthy()
+    expect(bloggers.textContent).not.toContain('Bitrix24ʼda yoʻq')
+    // The only «Bitrix24ʼda yoʻq» left is the row that really has no source.
+    expect(screen.getAllByRole('note')).toHaveLength(1)
+    expect(within(rowNamed(container, 'Кол подпис tg')).getByRole('note')).toBeTruthy()
+    // No other row wears the chip.
+    expect(screen.getAllByText('qoʻlda')).toHaveLength(1)
+    // Its figures print in the sheet's order, summary computed.
+    expect([...bloggers.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['—', '1,500,000', '—', '—', '—', '1,500,000', '—', '—'])
+  })
+
+  it('offers nothing to type to an account that cannot edit plans', () => {
+    drawCosts(null)
+    expect(screen.queryAllByRole('button', { name: /tahrirlash$/ })).toHaveLength(0)
+    expect(screen.queryAllByRole('textbox')).toHaveLength(0)
+  })
+
+  it('makes only the typed row’s days up to today editable, each named for its row and day', () => {
+    const { container } = drawCosts('2026-09')
+    const buttons = screen.getAllByRole('button', { name: /tahrirlash$/ })
+    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['Блогерлар, 01.09 — tahrirlash', 'Блогерлар, 02.09 — tahrirlash'])
+    // Every other row stays plain cells: nothing else in the grid is a button but the tips and the handles.
+    for (const tr of bodyRows(container)) {
+      if (tr.querySelector('th')!.textContent!.includes('Блогерлар')) continue
+      expect(tr.querySelectorAll('td button')).toHaveLength(0)
+    }
+    // The summary cells of the typed row stay read-only.
+    const cells = [...rowNamed(container, 'Блогерлар').querySelectorAll('td')]
+    expect(cells.slice(0, 5).every((td) => td.querySelector('button') === null)).toBe(true)
+    // F2 on a focused day opens its labelled field with the full number.
+    fireEvent.keyDown(buttons[0]!, { key: 'F2' })
+    const input = screen.getByRole('textbox', { name: 'Блогерлар, 01.09 — soʻm' }) as HTMLInputElement
+    expect(input.value).toBe('1,500,000')
+    expect(input.inputMode).toBe('numeric')
   })
 })
 

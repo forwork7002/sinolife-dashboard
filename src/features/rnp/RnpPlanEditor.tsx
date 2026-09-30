@@ -29,9 +29,9 @@ import { muted } from '@/features/reklama/reklamaUi'
  * the way the sheet prints it, so nobody converts in their head. An emptied
  * field removes the plan: «no plan» is no row, never a plan of zero.
  *
- * ONE PLAN, MANY ROWS. The «Свод» repeats each team's FAKT 1 and FAKT 2, so
- * the same plan key is drawn in two blocks; both inputs edit one value, and
- * the save sends it once.
+ * ONE PLAN, MANY ROWS. The «Свод» repeats the company's FAKT 1 and FAKT 2,
+ * so the same plan key is drawn in two blocks; both inputs edit one value,
+ * and the save sends it once.
  *
  * A TEAM'S FAKT 1 / FAKT 2 GO TO `fakt`, not `rows`: the server keeps them in
  * the plan «Sotuv · ROP» reads, so the two screens cannot disagree.

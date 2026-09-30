@@ -21,9 +21,9 @@ function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRo
     days: [null, null],
     planKey: null,
     sheet: null,
-    share: null,
     tone: 'plain',
     hint: null,
+    manual: null,
     reliableFrom: null,
     ...over,
   }

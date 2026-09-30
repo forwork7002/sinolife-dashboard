@@ -29,7 +29,9 @@ import { canvasMeasure, contentMinWidths } from './rnpFigures'
  * `?rop=`, the KPI cards, the daily charts, the funnel, the ranking and the
  * company / team views were deleted that day. What stays around the grid is
  * the sheet's own rows 1–2 — the month, the days gone by, the dollar rate,
- * today's date — and «Rejalar», where the plans (column C) are set.
+ * today's date — and «Rejalar», where the plans (column C) are set. The
+ * P&L's five cost lines are the one thing typed in the grid itself
+ * (`RnpCostCell.tsx`), and only by an account that may edit plans.
  *
  * THE PAGE IS THE GRID. `fill` gives the grid every pixel under the header,
  * and it scrolls inside its own box with the column headers and the label
@@ -42,7 +44,7 @@ import { canvasMeasure, contentMinWidths } from './rnpFigures'
  * another month to look at.
  *
  * «ROP» CUTS THE SHEET TO ONE TEAM (the client, 2026-09-30: «barchasi va
- * roplar bo'yicha ham»): its block, its logistics and its «Свод» lines, each
+ * roplar bo'yicha ham»): its block and its logistics, each
  * under a heading (`ropLines`). Kept in the URL (`?rop=`), so a link opens on
  * the team; no request — the whole sheet is already on the page.
  */
@@ -142,7 +144,14 @@ export function RnpPage() {
           // letterbox; there the card is nearly a screen tall and the page scrolls the
           // header away first (the confirmation board's floor, for the same reason).
           <Card as="div" className="min-h-[320px] min-w-0 flex-1 overflow-hidden p-0 max-sm:min-h-[calc(100dvh-5rem)]">
-            <RnpSheetTable lines={lines} blocks={data.blocks} days={data.days} today={data.today} />
+            <RnpSheetTable
+              lines={lines}
+              blocks={data.blocks}
+              days={data.days}
+              today={data.today}
+              // The P&L's typed cost lines are the one thing on the sheet an editor types in place.
+              editCostsFor={data.canEditPlans ? data.month : null}
+            />
           </Card>
         )}
       </RnpColumnScope>

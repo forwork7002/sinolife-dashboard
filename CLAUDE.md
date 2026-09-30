@@ -551,6 +551,21 @@ Per-screen traps worth knowing before you touch one:
     dropped on 2026-09-30 with the client's approval. Plans
     (column C) and the registrar→group mapping stay — targets and settings,
     not data.
+    ONE EXCEPTION, 2026-09-30 afternoon: the P&L's five cost lines no system
+    holds (Блогерлар, Нутрицолог, Брендфейс, Маркетинг харажатлар, Маркетинг
+    команда; both projects) are typed in place per day in soʻm — table
+    `rnp_manual_cost`, `POST /rnp/costs` (`kpi:manage`), rows carry
+    `manual: { project, line }` — and count into «Маркетинг харажат факт».
+  · **THE CLIENT RESHAPED THE SHEET (2026-09-30 afternoon)** — see the header
+    of `rnpSheetLayout.ts` (hand-kept since): «Таргет Collagen/Zextra», totals
+    above them, 47 under 48, Zextra registration → groups «Asliddin ROP» /
+    «Sadriddin ROP» (the retired 'Zextra' desk's registrars count as no group
+    until reassigned; «Регистрация COLLAGEN» is every kval), each ROP block
+    opens on «План бажарилиши» beside the ROP name and ends on its reach,
+    «Чарос РОП» → «Садриддин РОП», Саида / HR / БАЗА «Конверсия % факт2» /
+    per-ROP «Свод» / РОП-Регистрация-Разница removed, logistics named per ROP,
+    «Кунлик план» after «Индекс». Sections for appended lines are row SETS
+    (`rnpSheetView.ts`), since the layout is no longer in sheet-row order.
   · **THE PAGE IS THE SHEET, AND ONLY THE SHEET (2026-09-30, final).** After
     two reversals the client settled on «faqat jadval … to'liqligicha»: the
     ROP rail, KPI cards, charts, funnel and ranking are deleted. Every row of

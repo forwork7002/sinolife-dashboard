@@ -33,6 +33,7 @@ import { env } from '@/server/config/env'
 import { NOT_PACKED_STAGES } from '@/server/integrations/crm/bitrix24/mapping'
 
 import { InsightsRepository } from './insightsRepository'
+import type { RnpCostLine, RnpCostProject } from '@/server/domain/rnp/rnpSheet'
 
 /** Deals handed to one ROP on one day. `rop` null: not handed to a ROP team. */
 export interface RnpLeadDayRow {
@@ -94,6 +95,15 @@ export interface RnpRegistrarKvalRow {
 export interface RnpRegistrarGroupRow {
   readonly registrar: string
   readonly group: string
+}
+
+/** A P&L cost typed by hand (`rnp_manual_cost`). */
+export interface RnpManualCostRow {
+  readonly day: string
+  readonly project: RnpCostProject
+  readonly line: RnpCostLine
+  /** Soʻm. */
+  readonly amount: number
 }
 
 export interface RnpTeamFaktPlan {
@@ -474,6 +484,39 @@ export class RnpRepository {
             }),
       ),
     ])
+  }
+
+  /** The month's hand-typed P&L costs; `from` / `to` are inclusive `YYYY-MM-DD`. */
+  async manualCosts(from: string, to: string): Promise<RnpManualCostRow[]> {
+    const rows = await this.prisma.rnpManualCost.findMany({
+      where: { day: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) } },
+      select: { day: true, project: true, line: true, amountSom: true },
+    })
+    return rows.map((r) => ({
+      day: r.day.toISOString().slice(0, 10),
+      project: r.project as RnpCostProject,
+      line: r.line as RnpCostLine,
+      amount: Number(r.amountSom),
+    }))
+  }
+
+  /** Write typed cells: a number sets the day's cost, null clears it. One transaction. */
+  async saveManualCosts(
+    cells: readonly { day: string; project: RnpCostProject; line: RnpCostLine; value: number | null }[],
+    by: string,
+  ): Promise<void> {
+    await this.prisma.$transaction(
+      cells.map((c) => {
+        const day = new Date(`${c.day}T00:00:00Z`)
+        return c.value === null
+          ? this.prisma.rnpManualCost.deleteMany({ where: { day, project: c.project, line: c.line } })
+          : this.prisma.rnpManualCost.upsert({
+              where: { day_project_line: { day, project: c.project, line: c.line } },
+              create: { day, project: c.project, line: c.line, amountSom: BigInt(c.value), updatedBy: by },
+              update: { amountSom: BigInt(c.value), updatedBy: by },
+            })
+      }),
+    )
   }
 
   async plans(month: string): Promise<{ rows: RnpPlanRow[]; fakt: RnpTeamFaktPlan[] }> {

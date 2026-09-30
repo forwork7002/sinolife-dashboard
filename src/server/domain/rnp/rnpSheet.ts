@@ -69,11 +69,11 @@ export interface RnpRowDto {
    * mapping; the screen does not filter by it.
    */
   readonly sheet: RnpSheetRef | null
-  /** This row's share of its column's total, in percent (the «Свод»). */
-  readonly share: number | null
   readonly tone: 'total' | 'plain'
   /** One sentence saying where the number comes from. */
   readonly hint: string | null
+  /** A cell typed by hand (the P&L's cost lines): what the page saves each day under. Null = computed. */
+  readonly manual: { readonly project: RnpCostProject; readonly line: RnpCostLine } | null
   /** Days before this are incomplete in Bitrix24, and are drawn muted. */
   readonly reliableFrom: string | null
 }
@@ -144,7 +144,7 @@ export interface RnpOverviewDto {
     /** Every registrar the month's kval names, and every one already assigned. */
     readonly registrars: readonly string[]
     readonly groups: readonly { readonly registrar: string; readonly group: string }[]
-    /** The groups the sheet has rows for, in its order, the Zextra desk last. */
+    /** The registration groups the sheet has rows for, in its order. */
     readonly groupNames: readonly string[]
   }
 }
@@ -205,6 +205,8 @@ export interface RnpSheetInput {
    * (`CbuUsdRates`); null for a day not reached or not answered. Nothing typed.
    */
   readonly usdRates: readonly (number | null)[]
+  /** The P&L cost lines typed by hand (`rnp_manual_cost`), soʻm. */
+  readonly manualCosts: readonly { readonly day: string; readonly project: RnpCostProject; readonly line: RnpCostLine; readonly amount: number }[]
   readonly plans: {
     readonly rows: readonly { team: string; metric: string; fromDay: number; valueCenti: bigint }[]
     readonly fakt: readonly { rop: string; fakt1Minor: bigint | null; fakt2Minor: bigint | null }[]
@@ -242,7 +244,8 @@ const TEAM_ALIASES: Readonly<Record<string, string>> = Object.freeze({
 /**
  * What the client's «РНП» sheet calls each team, by department name. The
  * sheet names teams by their ROP as the floor knows them, which is not always
- * the department's name: «Чарос РОП» is the department «Sadriddin(ROP)»,
+ * the department's name: «Садриддин РОП» (the sheet's «Чарос РОП», renamed by
+ * the client on 2026-09-30) is the department «Sadriddin(ROP)»,
  * «Малика РОП – БАЗА» is «Charos(ROP)» (spec §3.4, 2026-09-28). A team the
  * sheet has no block for keeps its department name.
  */
@@ -252,7 +255,7 @@ const SHEET_TEAM_NAMES: Readonly<Record<string, string>> = Object.freeze({
   Lola: 'Лола РОП',
   Saidaziz: 'Саидазиз РОП',
   Asliddin: 'Аслиддин РОП',
-  Sadriddin: 'Чарос РОП',
+  Sadriddin: 'Садриддин РОП',
   Charos: 'Малика РОП – БАЗА',
   Marjona: 'Маржона РОП',
   Azizbek: 'Азизбек РОП',
@@ -280,7 +283,6 @@ const TEAM_SHEET_ROW: Readonly<Record<string, number>> = Object.freeze({
   Marjona: 170,
   Azizbek: 183,
   Maftuna: 196,
-  Saida: 209,
   Hayot: 222,
   Baza: 235,
 })
@@ -298,10 +300,6 @@ const LOGISTICS_SHEET_ROW: Readonly<Record<string, number>> = Object.freeze({
   Baza: 324,
   Maftuna: 330,
 })
-/** The «Свод» team rows (352–362 ФАКТ 1, 364–374 ФАКТ 2), in the sheet's order. */
-const SVOD_TEAMS: readonly string[] = Object.freeze([
-  'Gulzora', 'Sevinch', 'Saidaziz', 'Lola', 'Asliddin', 'Sadriddin', 'Charos', 'Marjona', 'Azizbek', 'Shohjaxon', 'Baza',
-])
 
 /**
  * «РОП (Первичка)» is filled on every handed-out lead only from 16.09.2026;
@@ -344,10 +342,6 @@ export const RNP_PLAN_METRICS = [
   'reg_qualified',
   'reg_qualified_pct',
   'reg_group_qualified',
-  'reg_group_pct',
-  'reg_zextra_qualified',
-  'reg_zextra_pct',
-  'reg_registrar_qualified',
   'marketing_plan_pct',
   'targetolog_pct',
   'marketer_pct',
@@ -391,12 +385,30 @@ export type RnpPlanMetric = (typeof RNP_PLAN_METRICS)[number]
 const UNDISTRIBUTED = 'Taqsimlanmagan'
 
 /**
- * The sheet's registration «guruh» rows, in its order (rows 50–67), and the
- * Zextra desk (rows 69–73). A group is a set of registrars, typed per month in
- * `rnp_registrar_group` — not the ROP team that receives the lead.
+ * The sheet's registration «guruh» rows, in its order (rows 50–67), then the
+ * two the client added on 2026-09-30 in place of the Zextra desk. A group is a
+ * set of registrars, typed per month in `rnp_registrar_group` — not the ROP
+ * team that receives the lead.
  */
-export const REGISTRATION_GROUPS = ['Sevinch', 'Gulzora', 'Aziz', 'Maftuna', 'Lola', 'Saidaziz'] as const
-export const ZEXTRA_DESK = 'Zextra'
+export const REGISTRATION_GROUPS = ['Sevinch', 'Gulzora', 'Aziz', 'Maftuna', 'Lola', 'Saidaziz', 'Asliddin', 'Sadriddin'] as const
+
+/**
+ * The brand P&L's hand-typed cost lines — the one exception to «nothing
+ * typed» (the client, 2026-09-30): no system holds them. In the sheet's
+ * order, with its labels and its row offsets from the project's first row
+ * (394 Collagen, 421 Zextra).
+ */
+export const RNP_COST_LINES = ['bloggers', 'nutritionist', 'brandface', 'marketing', 'team'] as const
+export type RnpCostLine = (typeof RNP_COST_LINES)[number]
+export const RNP_COST_PROJECTS = ['Collagen', 'Zextra'] as const
+export type RnpCostProject = (typeof RNP_COST_PROJECTS)[number]
+const COST_LINE_SHEET: Readonly<Record<RnpCostLine, { offset: number; label: string }>> = {
+  bloggers: { offset: 17, label: 'Блогерлар' },
+  nutritionist: { offset: 18, label: 'Нутрицолог' },
+  brandface: { offset: 19, label: 'Брендфейс' },
+  marketing: { offset: 20, label: 'Маркетинг харажатлар' },
+  team: { offset: 21, label: 'Маркетинг команда' },
+}
 
 /**
  * Every «Регистрация» label the portal offers (crm.deal.userfield.list,
@@ -479,6 +491,7 @@ interface RowOptions {
   readonly hint?: string | null
   readonly reliableFrom?: string | null
   readonly sheet?: RnpSheetRef | null
+  readonly manual?: RnpRowDto['manual']
 }
 
 function base(o: RowOptions) {
@@ -489,10 +502,10 @@ function base(o: RowOptions) {
     better: o.better ?? ('up' as const),
     planKey: o.planKey ?? null,
     sheet: o.sheet ?? null,
-    share: null,
     tone: o.tone ?? ('plain' as const),
     hint: o.hint ?? null,
     reliableFrom: o.reliableFrom ?? null,
+    manual: o.manual ?? null,
   }
 }
 
@@ -527,6 +540,11 @@ function additive(clock: Clock, o: RowOptions, values: readonly number[]): RnpRo
  */
 function dashed(row: RnpRowDto): RnpRowDto {
   return { ...row, fact: null, forecast: null, index: null, days: row.days.map(() => null) }
+}
+
+/** A row that cannot be measured at all — empty, and offering no plan in «Rejalar» either. */
+function unplanned(row: RnpRowDto): RnpRowDto {
+  return { ...dashed(row), plan: null, dayPlan: null, planKey: null }
 }
 
 /**
@@ -662,7 +680,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   for (const t of input.teams) teamOf(canonical(t.rop))
   // Every team the sheet has a block for is drawn, zeros and all: a quiet
   // month is a Bitrix24 answer (0), not a row Bitrix24 cannot supply.
-  for (const rop of [...Object.keys(TEAM_SHEET_ROW), ...Object.keys(LOGISTICS_SHEET_ROW), ...SVOD_TEAMS]) teamOf(rop)
+  for (const rop of [...Object.keys(TEAM_SHEET_ROW), ...Object.keys(LOGISTICS_SHEET_ROW)]) teamOf(rop)
 
   for (const r of input.fakt) {
     const i = at.get(r.day)
@@ -708,10 +726,8 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     .filter((rop) => rop !== input.noRop && (active(grid.get(rop)!) || Object.hasOwn(TEAM_SHEET_ROW, rop)))
     .sort((a, b) => monthFakt1(grid.get(b)!) - monthFakt1(grid.get(a)!) || a.localeCompare(b, 'ru'))
   const withNoRop = grid.has(input.noRop) ? [...teamNames, input.noRop] : teamNames
-  /* The sheet's logistics and «Свод» rows name some teams its ROP blocks do not (Шохжахон): drawn too, zeros and all. */
-  const alsoOnSheet = (names: readonly string[]) => [...withNoRop, ...names.filter((rop) => !withNoRop.includes(rop))]
-  const logisticsTeams = alsoOnSheet(Object.keys(LOGISTICS_SHEET_ROW))
-  const svodTeams = alsoOnSheet(SVOD_TEAMS)
+  /* The sheet's logistics rows name a team its ROP blocks do not (Шохжахон): drawn too, zeros and all. */
+  const logisticsTeams = [...withNoRop, ...Object.keys(LOGISTICS_SHEET_ROW).filter((rop) => !withNoRop.includes(rop))]
 
   // --- company totals -----------------------------------------------------
   const total = (pick: (t: TeamDays) => number[], only?: (rop: string) => boolean): number[] => {
@@ -830,14 +846,13 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   for (const r of input.registrarKval) {
     const i = at.get(r.day)
     if (i === undefined) continue
-    const g = r.registrar === null ? null : (groupOf.get(r.registrar) ?? null)
+    const assigned = r.registrar === null ? null : (groupOf.get(r.registrar) ?? null)
+    // A group the sheet no longer draws (the retired «Zextra» desk) counts as no group, so the rows still add up.
+    const g = assigned !== null && (REGISTRATION_GROUPS as readonly string[]).includes(assigned) ? assigned : null
     kvalOf(`r|${r.registrar ?? ''}`)[i]! += r.qualified
     kvalOf(`g|${g ?? ''}`)[i]! += r.qualified
   }
-  const zextraKval = kvalOf(`g|${ZEXTRA_DESK}`)
-  const collagenKval = days.map((_, i) => reg.qualified[i]! - zextraKval[i]!)
   const ungrouped = kvalOf('g|')
-  const zextraRegistrars = [...groupOf].filter(([, g]) => g === ZEXTRA_DESK).map(([r]) => r).sort((a, b) => a.localeCompare(b, 'ru'))
   const registrarNames = [
     ...new Set([
       ...KNOWN_REGISTRARS,
@@ -846,9 +861,8 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     ]),
   ].sort((a, b) => a.localeCompare(b, 'ru'))
   /* The sheet's «квал» row of each group (51, 54, … 66). Its «без квал» and «квал %» rows need a lead's registrar BEFORE it is qualified, which Bitrix24 does not record — they are not on this screen. */
-  const GROUP_SHEET_ROW: Readonly<Record<string, number>> = { Sevinch: 51, Gulzora: 54, Aziz: 57, Maftuna: 60, Lola: 63, Saidaziz: 66 }
-  /* The sheet's Zextra registrar rows. */
-  const REGISTRAR_SHEET_ROW: Readonly<Record<string, readonly [number, string]>> = { Рухшона: [72, 'Рухшона - 1'], Ситора: [73, 'Ситора - 2'] }
+  /* Asliddin and Sadriddin — the client's two groups added in place of the Zextra desk (2026-09-30) — have no sheet row; `rnpSheetLayout` numbers them 1002 / 1012. */
+  const GROUP_SHEET_ROW: Readonly<Record<string, number>> = { Sevinch: 51, Gulzora: 54, Aziz: 57, Maftuna: 60, Lola: 63, Saidaziz: 66, Asliddin: 1002, Sadriddin: 1012 }
   blocks.push({
     id: 'registration',
     kind: 'registration',
@@ -861,19 +875,14 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       additive(clock, { key: 'reg:duplicates', label: 'Дубликат', unit: 'count', better: 'down' }, reg.duplicates),
       additive(clock, { key: 'reg:ai', label: 'ИИ обработка мурожаатлари', unit: 'count', hint: '«ИИ обработка» voronkasida ochilgan suhbatlar.' }, reg.ai),
       additive(clock, { key: 'reg:qualified', label: 'Квал лид — жами (Сделка успешна)', unit: 'count', tone: 'total', hint: 'Registrator «Сделка успешна» ga oʻtkazgan lidlar — yopilgan kuni boʻyicha. Collagen + Zextra.' }, reg.qualified),
-      additive(clock, { key: 'reg:qualified_collagen', label: 'Регистрация COLLAGEN (квал)', unit: 'count', ...planned('', 'reg_qualified'), hint: 'Jami kval, Zextra registratorlarinikisiz.', sheet: sh(48, 'Регистрация COLLAGEN') }, collagenKval),
-      ratio(clock, { key: 'reg:qualified_pct', label: '% квал лид (Collagen)', unit: 'percent', ...planned('', 'reg_qualified_pct'), sheet: sh(49, '% квал лид') }, collagenKval, reg.leads, 100),
+      additive(clock, { key: 'reg:qualified_collagen', label: 'Регистрация COLLAGEN (квал)', unit: 'count', ...planned('', 'reg_qualified'), hint: 'Barcha registratorlarning kvali (Zextra registratsiyasi 2026-09-30 da olib tashlangan).', sheet: sh(48, 'Регистрация COLLAGEN') }, reg.qualified),
+      ratio(clock, { key: 'reg:qualified_pct', label: '% квал лид (Collagen)', unit: 'percent', ...planned('', 'reg_qualified_pct'), sheet: sh(49, '% квал лид') }, reg.qualified, reg.leads, 100),
       ...REGISTRATION_GROUPS.map((g) => {
         /* A group with no registrar assigned is not known to be zero — its cells stay empty («bilmagan joyni boʻsh qoldir»). */
         const row = additive(clock, { key: `reg:group:${g}:qualified`, label: `${g} guruh — квал`, unit: 'count', ...planned(g, 'reg_group_qualified'), hint: `Guruh registratorlarining «Сделка успешна» lari: ${[...groupOf].filter(([, x]) => x === g).map(([r]) => r).join(', ') || 'registrator biriktirilmagan — «Rejalar» → Registratorlar'}.`, sheet: sh(GROUP_SHEET_ROW[g]!, `${g} guruh — квал`) }, kvalOf(`g|${g}`))
         return [...groupOf.values()].includes(g) ? row : dashed(row)
       }),
       additive(clock, { key: 'reg:group:none:qualified', label: 'Guruhsiz registratorlar — квал', unit: 'count', better: 'down', hint: 'Hech bir guruhga biriktirilmagan registratorlar (yoki registrator maydoni hali yozilmagan bitimlar) kvali — «Rejalar» → Registratorlar.' }, ungrouped),
-      additive(clock, { key: 'reg:zextra:qualified', label: 'Регистрация ZEXTRA (квал)', unit: 'count', tone: 'total', ...planned('', 'reg_zextra_qualified'), sheet: sh(70, 'Регистрация ZEXTRA') }, zextraKval),
-      ...zextraRegistrars.map((r) => {
-        const ref = REGISTRAR_SHEET_ROW[r]
-        return additive(clock, { key: `reg:registrar:${r}`, label: `${r} (квал)`, unit: 'count', ...planned(r, 'reg_registrar_qualified'), sheet: ref ? sh(ref[0], ref[1]) : null }, kvalOf(`r|${r}`))
-      }),
       additive(clock, { key: 'reg:distributed', label: 'РОП ларга тарқатилди', unit: 'count', reliableFrom: LEAD_ROP_RELIABLE_FROM, hint: '«Лид таркатилган сана» shu kun va «РОП (Первичка)» ROP jamoasi boʻlgan bitimlar.' }, ropLeads),
       additive(clock, { key: 'reg:undistributed', label: UNDISTRIBUTED, unit: 'count', better: 'down', reliableFrom: LEAD_ROP_RELIABLE_FROM, hint: 'Tarqatilgan sanasi bor, lekin «РОП (Первичка)» da ROP emas (masalan Регистрация boshligʻi) yoki boʻsh.' }, undistributed),
       additive(clock, { key: 'reg:difference', label: 'Разница (РОП лид − квал лид)', unit: 'count', reliableFrom: LEAD_ROP_RELIABLE_FROM }, difference),
@@ -917,12 +926,14 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
         ratio(clock, { key: `${k}:cheque1`, label: 'Ўртача чек (ФАКТ 1)', unit: 'uzs', ...planned(rop, 'avg_cheque1'), sheet: at0(2, 'Средний чек факт 1') }, t.fakt1, t.fakt1Orders),
         additive(clock, { key: `${k}:orders1`, label: 'Буюртма сони (ФАКТ 1)', unit: 'count', ...planned(rop, 'orders'), sheet: at0(3, 'Буюртма сони') }, t.fakt1Orders),
         additive(clock, { key: `${k}:fakt1`, label: 'Сумма ФАКТ 1', unit: 'uzs', tone: 'total', ...planned(rop, 'fakt1'), hint: 'Tasdiqlandi + Tasdiqlanmay chiqdi — Tasdiqlash navbati kogortasi, jamoa bitimdagi «Организация сотрудника» boʻyicha.', sheet: at0(4, 'Сумма факт 1 сум') }, t.fakt1),
-        ...(baseTeam && !ownLeadValue ? [] : [ratio(clock, { key: `${k}:plan_pct`, label: 'План бажарилиши, %', unit: 'percent', ...planned(rop, 'plan_pct'), reliableFrom: reachFrom, hint: `ФАКТ 1 ÷ (${baseTeam ? 'дозвон' : 'lid'} × bitta lid qiymati). Lid qiymati «Rejalar» formasida.`, sheet: at0(5, 'План бажарилиши') }, t.fakt1, expected, 100)]),
+        /* The block's first line on the page (the ROP's name beside it) — so a БАЗА team without its own lead value gets it empty, not missing. */
+        (baseTeam && !ownLeadValue ? unplanned : (r: RnpRowDto) => r)(ratio(clock, { key: `${k}:plan_pct`, label: 'План бажарилиши, %', unit: 'percent', ...planned(rop, 'plan_pct'), reliableFrom: reachFrom, hint: `ФАКТ 1 ÷ (${baseTeam ? 'дозвон' : 'lid'} × bitta lid qiymati). Lid qiymati «Rejalar» formasida.`, sheet: at0(5, 'План бажарилиши') }, t.fakt1, expected, 100)),
         ...(baseTeam ? [ratio(clock, { key: `${k}:per_call`, label: 'Дозвонга ўртача сумма', unit: 'uzs', reliableFrom: reachFrom, sheet: at0(11, 'Средний сумма за дозвон') }, t.fakt1, reach)] : []),
         level(clock, { key: `${k}:headcount`, label: 'Ходим сони', unit: 'count', ...planned(rop, 'headcount'), reliableFrom: CALLS_RELIABLE_FROM, hint: 'Shu kuni kamida bitta ulangan qoʻngʻirogʻi boʻlgan xodimlar, ROP ning oʻzisiz. Oy ustuni — kunlik oʻrtacha.', sheet: at0(6, 'Ходим сони') }, headcount, 'mean'),
         additive(clock, { key: `${k}:fakt2`, label: 'Сумма ФАКТ 2 (Доставлено)', unit: 'uzs', tone: 'total', ...planned(rop, 'fakt2'), sheet: at0(7, 'Сумма факт 2 сум') }, t.fakt2),
         additive(clock, { key: `${k}:orders2`, label: 'Транзакция ФАКТ 2', unit: 'count', ...planned(rop, 'orders2'), sheet: at0(8, 'Транзакция факт 2') }, t.fakt2Orders),
-        ratio(clock, { key: `${k}:conv2`, label: 'Конверсия % ФАКТ 2', unit: 'percent', ...planned(rop, 'conversion2'), reliableFrom: reachFrom, sheet: at0(9, 'Конверция % факт2') }, t.fakt2Orders, reach, 100),
+        // Not for a БАЗА team: the client took «Конверсия % факт2» off Малика's and Фаррух's blocks (2026-09-30).
+        ...(baseTeam ? [] : [ratio(clock, { key: `${k}:conv2`, label: 'Конверсия % ФАКТ 2', unit: 'percent', ...planned(rop, 'conversion2'), reliableFrom: reachFrom, sheet: at0(9, 'Конверция % факт2') }, t.fakt2Orders, reach, 100)]),
         ratio(clock, { key: `${k}:cheque2`, label: 'Ўртача чек (ФАКТ 2)', unit: 'uzs', ...planned(rop, 'avg_cheque2'), sheet: at0(10, 'Средний чек факт 2') }, t.fakt2, t.fakt2Orders),
       ],
     })
@@ -1052,13 +1063,44 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     const marketer = g.fakt2.map((v) => (marketerPct === null ? 0 : (v * marketerPct) / 100))
     const costPlan = g.fakt2.map((v) => (marketingPlanPct === null ? 0 : (v * marketingPlanPct) / 100))
     /*
-      Only what Bitrix24, Meta and the month's settings give: the ad budget in
-      soʻm, the targetologist's share of it and the marketer's share of FAKT 2.
-      The sheet's typed lines (bloggers, nutritionist, brand face, team —
-      rows 411–415 / 438–442) have no source and are not counted: the client
-      ruled out typed data on 2026-09-29.
+      The ad budget in soʻm, the targetologist's share of it, the marketer's
+      share of FAKT 2 — and the five lines no system holds (bloggers,
+      nutritionist, brand face, marketing costs, team; rows 411–415 /
+      438–442), typed in place since the client asked on 2026-09-30.
     */
-    const costFact = days.map((_, i) => spendUzs[i]! + targetolog[i]! + marketer[i]!)
+    const typed = new Map(RNP_COST_LINES.map((line) => [line, days.map((): number | null => null)] as const))
+    for (const c of input.manualCosts) {
+      const i = at.get(c.day)
+      if (c.project === b && i !== undefined) typed.get(c.line)![i] = c.amount
+    }
+    const manualRows = RNP_COST_LINES.map((line) => {
+      const cells = typed.get(line)!
+      const { offset, label } = COST_LINE_SHEET[line]
+      const row = additive(
+        clock,
+        { key: `${k}:cost_${line}`, label, unit: 'uzs', better: 'down', hint: 'Qoʻlda kiritiladi — Bitrix24 da yoʻq xarajat.', sheet: at0(offset, label), manual: { project: b, line } },
+        cells.map((v) => v ?? 0),
+      )
+      // A day nobody typed is empty, not zero; the month is what was typed — and empty while nothing is.
+      if (cells.every((v) => v === null)) return dashed(row)
+      // A typed cost is a payment, not a pace: one 10 M payment on the 1st must not forecast 300 M.
+      return { ...row, forecast: null, index: null, days: row.days.map((v, i) => (cells[i] === null ? null : v)) }
+    })
+    const manualCost = days.map((_, i) => RNP_COST_LINES.reduce((sum, line) => sum + (typed.get(line)![i] ?? 0), 0))
+    const costFact = days.map((_, i) => spendUzs[i]! + targetolog[i]! + marketer[i]! + manualCost[i]!)
+    const computedCost = days.map((_, i) => costFact[i]! - manualCost[i]!)
+    /* «Маркетинг харажат факт»: the computed costs run at their pace; the typed ones are added as paid, never extrapolated. */
+    const withTyped = (row: RnpRowDto): RnpRowDto => {
+      const typedSoFar = sum(lived(clock, manualCost).map((v) => v ?? 0))
+      const forecast = row.forecast === null ? null : row.forecast + typedSoFar
+      return {
+        ...row,
+        fact: row.fact === null ? null : row.fact + typedSoFar,
+        forecast,
+        index: row.plan !== null && row.plan > 0 && forecast !== null ? (forecast / row.plan) * 100 : null,
+        days: row.days.map((v, i) => (v === null ? null : v + manualCost[i]!)),
+      }
+    }
     const costUsd = costFact.map((v, i) => (rates[i] ? v / rates[i]! : 0))
     const rateHint = rateKnown ? ' Har kun oʻz kursi — Markaziy bank (cbu.uz).' : ' Markaziy bank kursi olinmadi.'
     /* The whole cost needs the rate and both percentages; without one of them it is not «the cost», it is part of it. */
@@ -1087,9 +1129,10 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
         ratio(clock, { key: `${k}:conv_leads`, label: 'Конверсия, %', unit: 'percent', sheet: at0(11, 'Конверция') }, g.primaryOrders2, g.leads, 100),
         ratio(clock, { key: `${k}:cheque2`, label: 'Ўртача чек', unit: 'uzs', ...planned(b, 'brand_cheque2'), sheet: at0(12, 'Средний чек') }, g.primaryFakt2, g.primaryOrders2),
         whenKnown(marketingPlanPct !== null, additive(clock, { sheet: at0(13, 'Маркетинг харажат план'), key: `${k}:cost_plan`, label: `Маркетинг харажат план (ФАКТ 2 × ${marketingPlanPct ?? '—'}%)`, unit: 'uzs', hint: marketingPlanPct === null ? 'Marketing rejasi foizi kiritilmagan — «Rejalar» formasida.' : null }, costPlan)),
-        whenKnown(costKnown, additive(clock, { sheet: at0(14, 'Маркетинг харажат факт'), key: `${k}:cost_fact`, label: 'Маркетинг харажат факт', unit: 'uzs', tone: 'total', better: 'down', ...planned(b, 'brand_cost'), hint: `Target byudjeti (soʻm) + targetolog + marketolog ulushi. Jadvaldagi qoʻlda yoziladigan xarajatlar (blogger, nutritsiolog…) hisobga olinmaydi.${missingHint}` }, costFact)),
+        whenKnown(costKnown, withTyped(additive(clock, { sheet: at0(14, 'Маркетинг харажат факт'), key: `${k}:cost_fact`, label: 'Маркетинг харажат факт', unit: 'uzs', tone: 'total', better: 'down', ...planned(b, 'brand_cost'), hint: `Target byudjeti (soʻm) + targetolog + marketolog ulushi + qoʻlda kiritilgan xarajatlar (blogerlar, nutritsiolog, brendfeys, marketing xarajatlari, jamoa).${missingHint}` }, computedCost))),
         whenKnown(rateKnown, additive(clock, { key: `${k}:spend_uzs`, label: 'Таргет бюджет, soʻm', unit: 'uzs', better: 'down', hint: `Byudjet $ × dollar kursi.${rateHint}`, sheet: at0(15, 'Таргет бюджет') }, spendUzs)),
         whenKnown(rateKnown && targetologPct !== null, additive(clock, { key: `${k}:cost_targetolog`, label: `Таргетолог ФОТ (${targetologPct ?? '—'}%)`, unit: 'uzs', better: 'down', sheet: at0(16, 'Таргетолог фот') }, targetolog)),
+        ...manualRows,
         whenKnown(marketerPct !== null, additive(clock, { key: `${k}:cost_marketer`, label: `Маркетолог ФОТ (${marketerPct ?? '—'}%)`, unit: 'uzs', better: 'down', sheet: at0(22, 'Маркетолог фот = 1%') }, marketer)),
         whenKnown(costKnown, ratio(clock, { sheet: at0(23, 'CAC $'), key: `${k}:cac`, label: 'CAC, $', unit: 'usd', better: 'down', ...planned(b, 'brand_cac'), hint: `Butun marketing xarajati ($) ÷ birlamchi yetkazilgan buyurtmalar.${missingHint}` }, costUsd, g.primaryOrders2)),
         whenKnown(costKnown, ratio(clock, { sheet: at0(24, '%'), key: `${k}:cost_share`, label: 'Маркетинг улуши, %', unit: 'percent', better: 'down', ...planned(b, 'brand_cost_share'), hint: missingHint || null }, costFact, g.fakt2, 100)),
@@ -1117,38 +1160,19 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   // --- Свод -----------------------------------------------------------------
   const companyLeadValue = leadValueDays('')
   const companySalesPlan = days.map((_, i) => reg.qualified[i]! * companyLeadValue[i]!)
-  const monthTotal1 = sum(lived(clock, fakt1All))
-  const monthTotal2 = sum(lived(clock, fakt2All))
-  /* «(ROP yoʻq)» is not a team anyone plans for; a plan typed there would land in team_month_plan. */
-  const teamPlan = (rop: string, metric: RnpPlanMetric) => (rop === input.noRop ? {} : planned(rop, metric))
-  /* A team's «Свод» row on the sheet: its place in SVOD_TEAMS after the first row, under the sheet's name. */
-  const svodRef = (rop: string, first: number, suffix: string) => {
-    const i = SVOD_TEAMS.indexOf(rop)
-    return i < 0 ? null : sh(first + i, `${labelOf(rop)} ${suffix}`)
-  }
-  const shareOf = (row: RnpRowDto, whole: number): RnpRowDto => ({
-    ...row,
-    share: row.fact !== null && whole > 0 ? (row.fact / whole) * 100 : null,
-  })
   blocks.push({
     id: 'summary',
     kind: 'summary',
-    title: 'Свод — жамоалар бўйича',
-    subtitle: 'Har bir jamoaning ФАКТ 1 va ФАКТ 2 si va umumiydagi ulushi',
+    title: 'Свод',
+    subtitle: 'Kompaniya boʻyicha: kval lid, sotuv rejasi, ФАКТ 1, ФАКТ 2, byudjet',
     team: null,
     sheet: sh(346, 'Свод'),
     rows: [
       additive(clock, { key: 'sv:reg_qualified', label: 'Квал лид сони (Регистрация)', unit: 'count', ...planned('', 'reg_qualified'), sheet: sh(346, 'Квал лид сони') }, reg.qualified),
       additive(clock, { key: 'sv:sales_plan', label: 'План продаж (квал лид × лид қиймати)', unit: 'uzs', sheet: sh(347, 'План продаж'), hint: 'Jadvalning 347-qatori: registratsiya kval lidi × bitta lid qiymati (shu kundagi qiymat, «Rejalar» formasida).' }, companySalesPlan),
-      ratio(clock, { key: 'sv:sales_plan_pct', label: 'ФАКТ 1 ÷ План продаж, %', unit: 'percent' }, fakt1All, companySalesPlan, 100),
       additive(clock, { key: 'sv:fakt1', label: 'ФАКТ 1 — жами', unit: 'uzs', tone: 'total', ...planned('', 'fakt1'), sheet: sh(348, 'ФАКТ 1') }, fakt1All),
-      ...svodTeams.map((rop) => shareOf(additive(clock, { key: `sv:fakt1:${rop}`, label: `ФАКТ 1 · ${labelOf(rop)}`, unit: 'uzs', ...teamPlan(rop, 'fakt1'), sheet: svodRef(rop, 352, 'факт1') }, grid.get(rop)!.fakt1), monthTotal1)),
       additive(clock, { key: 'sv:fakt2', label: 'ФАКТ 2 — жами', unit: 'uzs', tone: 'total', ...planned('', 'fakt2'), sheet: sh(349, 'ФАКТ 2') }, fakt2All),
-      ...svodTeams.map((rop) => shareOf(additive(clock, { key: `sv:fakt2:${rop}`, label: `ФАКТ 2 · ${labelOf(rop)}`, unit: 'uzs', ...teamPlan(rop, 'fakt2'), sheet: svodRef(rop, 364, 'факт2') }, grid.get(rop)!.fakt2), monthTotal2)),
       additive(clock, { key: 'sv:budget', label: 'Бюджет (Meta), $', unit: 'usd', better: 'down', ...planned('', 'budget'), hint: 'Marketing blokidagi «Жами бюджет» bilan bir xil qator.', sheet: sh(350, 'Бюджет') }, spendAll),
-      additive(clock, { key: 'sv:rop_leads', label: 'РОП олган лид — жами', unit: 'count', reliableFrom: LEAD_ROP_RELIABLE_FROM, sheet: sh(377, 'РОП') }, ropLeads),
-      additive(clock, { key: 'sv:reg_qualified_2', label: 'Регистрация квал лид', unit: 'count', sheet: sh(378, 'Регистрация') }, reg.qualified),
-      additive(clock, { key: 'sv:difference', label: 'Разница', unit: 'count', reliableFrom: LEAD_ROP_RELIABLE_FROM, sheet: sh(379, 'Разница') }, difference),
     ],
   })
 
@@ -1173,7 +1197,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     registration: {
       registrars: registrarNames,
       groups: [...input.registrarGroups].sort((a, b) => a.registrar.localeCompare(b.registrar, 'ru')),
-      groupNames: [...REGISTRATION_GROUPS, ZEXTRA_DESK],
+      groupNames: [...REGISTRATION_GROUPS],
     },
   }
 }

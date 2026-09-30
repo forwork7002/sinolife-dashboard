@@ -67,7 +67,6 @@ export function contentMinWidths(
       if (row.fact !== null) keep('fact', figureText(row.fact, row.unit))
       if (row.forecast !== null) keep('forecast', figureText(row.forecast, row.unit))
       if (row.index !== null) keep('index', formatPercent(row.index))
-      if (row.share !== null) keep('share', formatPercent(row.share))
       for (const v of row.days) if (v !== null) keep('day', figureText(v, row.unit))
     }
   }

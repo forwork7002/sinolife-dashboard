@@ -4,16 +4,15 @@
  *
  * THE CLIENT'S DECISIONS OF 2026-09-30. The page is the sheet and nothing
  * else («faqat jadval … to'liqligicha»). A row Bitrix24 cannot supply —
- * followers, HR, the typed P&L cost lines, a group's «без квал» — keeps its
- * place with empty cells (`key: null`); nothing is typed in by hand.
+ * followers, a group's «без квал» — keeps its place with empty cells
+ * (`key: null`). The one thing typed by hand is the P&L's five cost lines
+ * (rows carrying `manual`), at the client's request of the same afternoon.
  *
  * NOTHING IS LOST. A team the sheet has no block for (a new ROP, «Kompaniya»,
  * «(ROP yoʻq)») still sold, and the company totals count it — so its block is
- * added after the sheet's own teams, its logistics after the sheet's
- * logistics and its «Свод» lines after the sheet's, each marked as an
- * addition. The same goes for kval the sheet's registration rows cannot hold:
- * registrars in no «guruh» (after the groups) and a Zextra registrar beyond
- * the sheet's two (after them) — or the group rows stop adding up to row 48. The dashboard's own extra rows (duplicates, AI triage, the
+ * added after the sheet's own teams and its logistics after the sheet's
+ * logistics, each marked as an addition. The same goes for the kval of registrars in no «guruh» (after the
+ * groups) — or the group rows stop adding up to row 48. The dashboard's own extra rows (duplicates, AI triage, the
  * no-brand P&L …) are not the sheet and are left out.
  *
  * Pure: blocks in, lines out.
@@ -46,23 +45,24 @@ export type RnpLine =
       readonly key: string | null
     }
 
-/** The last sheet row of each section extra rows are appended after. */
-const GROUPS_END = 67
-const REGISTRARS_END = 73
-const TEAMS_END = 246
-const LOGISTICS_END = 334
-const SVOD_FAKT1_END = 362
-const SVOD_FAKT2_END = 374
+/*
+  Where extra lines go — after the last line of a section. The client's
+  layout is no longer in sheet-row order (2026-09-30: plan % leads each ROP
+  block, totals above the targets …), so a section is its set of rows, not a
+  range: the registration groups end at «Sadriddin ROP · квал %» (1013), the
+  ROP blocks at Фаррух's last line, logistics at Мафтуна's.
+*/
+const inRange = (lo: number, hi: number) => (row: number) => row >= lo && row <= hi
+const GROUPS = (row: number) => inRange(47, 67)(row) || inRange(1001, 1013)(row)
+const TEAMS = inRange(75, 246)
+const LOGISTICS = inRange(269, 334)
 
 const ADDED_TEAM_NOTE = 'jadvalda yoʻq jamoa'
 
-/** The team a row's key names: `team:<rop>:…`, `lg:<rop>:…`, `sv:fakt1:<rop>`, `sv:fakt2:<rop>`. Exported for its test. */
+/** The team a row's key names: `team:<rop>:…` or `lg:<rop>:…`. Exported for its test. */
 export function teamOfKey(key: string | null): string | null {
-  if (key === null) return null
-  const block = /^(?:team|lg):(.+):[^:]+$/.exec(key)
-  if (block) return block[1]!
-  const svod = /^sv:fakt[12]:(.+)$/.exec(key)
-  return svod ? svod[1]! : null
+  const block = key === null ? null : /^(?:team|lg):(.+):[^:]+$/.exec(key)
+  return block ? block[1]! : null
 }
 
 export function sheetLines(blocks: readonly RnpBlockDto[]): RnpLine[] {
@@ -112,29 +112,19 @@ export function sheetLines(blocks: readonly RnpBlockDto[]): RnpLine[] {
       { kind: 'title', row: null, team: b.team, label: b.title, sub: ADDED_TEAM_NOTE, tone: 'section' },
       ...b.rows.map(valueLine),
     ])
-  const registration = blocks.find((b) => b.kind === 'registration')?.rows ?? []
-  const addedRegistration = (prefix: string) =>
-    registration.filter((r) => r.key.startsWith(prefix) && r.sheet === null).map(valueLine)
-  const svod = blocks.find((b) => b.kind === 'summary')?.rows ?? []
-  const addedSvod = (prefix: string) =>
-    svod.filter((r) => r.key.startsWith(prefix) && r.sheet === null).map(valueLine)
+  const ungrouped = (blocks.find((b) => b.kind === 'registration')?.rows ?? [])
+    .filter((r) => r.key === 'reg:group:none:qualified')
+    .map(valueLine)
 
-  // Inserted from the bottom up, so each index still points where it did.
-  insertAfter(lines, SVOD_FAKT2_END, addedSvod('sv:fakt2:'))
-  insertAfter(lines, SVOD_FAKT1_END, addedSvod('sv:fakt1:'))
-  insertAfter(lines, LOGISTICS_END, addedLogistics)
-  insertAfter(lines, TEAMS_END, addedTeams)
-  insertAfter(lines, REGISTRARS_END, addedRegistration('reg:registrar:'))
-  insertAfter(lines, GROUPS_END, addedRegistration('reg:group:none'))
+  insertAfter(lines, LOGISTICS, addedLogistics)
+  insertAfter(lines, TEAMS, addedTeams)
+  insertAfter(lines, GROUPS, ungrouped)
   return lines
 }
 
-/** After the last line whose sheet row is at or before `row`. */
-function insertAfter(lines: RnpLine[], row: number, extra: readonly RnpLine[]): void {
+/** After the last line whose layout row belongs to the section. */
+function insertAfter(lines: RnpLine[], section: (row: number) => boolean, extra: readonly RnpLine[]): void {
   if (extra.length === 0) return
-  let at = -1
-  lines.forEach((line, i) => {
-    if (line.row !== null && line.row <= row) at = i
-  })
+  const at = lines.findLastIndex((line) => line.row !== null && section(line.row))
   lines.splice(at + 1, 0, ...extra)
 }
