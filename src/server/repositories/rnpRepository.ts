@@ -170,18 +170,33 @@ export class RnpRepository {
       GROUP BY 1, 2`
   }
 
-  async registrationDays(from: string, to: string): Promise<RnpRegistrationDayRow[]> {
-    const rows = await this.prisma.$queryRawUnsafe<
-      {
-        day: string
-        source_id: string | null
-        form_title: string | null
-        leads: bigint
-        duplicates: bigint
-        qualified: bigint
-        ai: bigint
-      }[]
-    >(RnpRepository.registrationDaysSql(), from, to, this.tz)
+  /**
+   * `statementTimeoutMs` lifts the pool's 20 s limit for this one statement
+   * (SET LOCAL, inside its own transaction, so the pooled connection goes
+   * back unchanged). The month's history needs it: on production (2026-09-30)
+   * the scan took 6.7 s warm and ran past 20 s cold, beside the month's other
+   * reads on a one-core database — and a timeout there is a screen that fails.
+   */
+  async registrationDays(from: string, to: string, statementTimeoutMs?: number): Promise<RnpRegistrationDayRow[]> {
+    type Row = {
+      day: string
+      source_id: string | null
+      form_title: string | null
+      leads: bigint
+      duplicates: bigint
+      qualified: bigint
+      ai: bigint
+    }
+    const sql = RnpRepository.registrationDaysSql()
+    const rows = statementTimeoutMs
+      ? await this.prisma.$transaction(
+          async (tx) => {
+            await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = ${Math.trunc(statementTimeoutMs)}`)
+            return tx.$queryRawUnsafe<Row[]>(sql, from, to, this.tz)
+          },
+          { maxWait: 20_000, timeout: statementTimeoutMs + 5_000 },
+        )
+      : await this.prisma.$queryRawUnsafe<Row[]>(sql, from, to, this.tz)
     return rows.map((r) => ({
       day: r.day,
       sourceId: r.source_id,

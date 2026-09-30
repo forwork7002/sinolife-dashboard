@@ -83,12 +83,9 @@ const monthCache = staleWhileRevalidate<MonthRows>(60_000, Date.now, 10 * 60_000
   built behind them. Today is its own one-day read, inside `monthCache`.
 */
 const REGISTRATION_HISTORY_MS = 30 * 60_000
+/* Cold, beside the other reads, the scan ran past 20 s on 2026-09-30; see `registrationDays`. */
+const REGISTRATION_HISTORY_TIMEOUT_MS = 60_000
 const registrationHistory = staleWhileRevalidate<RnpRegistrationDayRow[]>(REGISTRATION_HISTORY_MS)
-
-export function resetRnpCaches(): void {
-  monthCache.clear()
-  registrationHistory.clear()
-}
 
 /**
  * A memo that, once its answer is older than `ttlMs`, still returns it at
@@ -120,9 +117,6 @@ export function staleWhileRevalidate<T>(ttlMs: number, clock: () => number = Dat
         )
       }
       return hit.value
-    },
-    clear(): void {
-      entries.clear()
     },
   }
 }
@@ -198,7 +192,9 @@ export class RnpService {
   private async registration(from: string, to: string, today: string, closedTo: string): Promise<RnpRegistrationDayRow[]> {
     const [closed, live] = await Promise.all([
       closedTo >= from
-        ? registrationHistory.get(`${from}|${closedTo}`, () => this.repository.registrationDays(from, closedTo))
+        ? registrationHistory.get(`${from}|${closedTo}`, () =>
+            this.repository.registrationDays(from, closedTo, REGISTRATION_HISTORY_TIMEOUT_MS),
+          )
         : Promise.resolve([]),
       today >= from && today <= to ? this.repository.registrationDays(today, today) : Promise.resolve([]),
     ])

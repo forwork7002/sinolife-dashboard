@@ -25,7 +25,6 @@ function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRo
     index: null,
     days: [null, null, null],
     planKey: null,
-    sheet: null,
     share: null,
     tone: 'plain',
     hint: null,
@@ -40,7 +39,6 @@ const BLOCK: RnpBlockDto = {
   title: 'Лола РОП',
   subtitle: null,
   team: 'Lola',
-  sheet: null,
   rows: [
     row({ key: 'a', label: 'Лидлар', plan: 300, dayPlan: 10, fact: 25, forecast: 280, index: 93.3, days: [12, 13, null] }),
     row({ key: 'b', label: 'ФАКТ 1', tone: 'total', fact: 5, days: [2, 3, null] }),

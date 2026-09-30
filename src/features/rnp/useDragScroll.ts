@@ -25,7 +25,7 @@ import { type MouseEvent, type PointerEvent, useRef } from 'react'
  * vertical scroll, and Shift+wheel and a trackpad's sideways swipe scroll the
  * box natively.
  */
-export const DRAG_THRESHOLD = 4
+const DRAG_THRESHOLD = 4
 
 const NO_PAN = '[role="separator"], button, a, input, select, textarea, label, [data-no-pan], th[scope="row"]'
 

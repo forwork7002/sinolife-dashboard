@@ -357,7 +357,6 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
   it('counts a group\'s kval over its registrars — the sheet\'s 58 on 02.09', () => {
     const d = dto()
     expect(on(row(d, 'registration', 'reg:group:Sevinch:qualified'), '2026-09-02')).toBe(58)
-    expect(row(d, 'registration', 'reg:group:Sevinch:qualified').sheet).toEqual({ row: 51, label: 'Sevinch guruh — квал' })
   })
 
   it('splits the desk into Collagen and Zextra and names each Zextra registrar', () => {
@@ -365,7 +364,6 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
     expect(on(row(d, 'registration', 'reg:zextra:qualified'), '2026-09-02')).toBe(37)
     expect(on(row(d, 'registration', 'reg:qualified_collagen'), '2026-09-02')).toBe(150 - 37)
     expect(on(row(d, 'registration', 'reg:registrar:Рухшона'), '2026-09-02')).toBe(17)
-    expect(row(d, 'registration', 'reg:registrar:Ситора').sheet).toEqual({ row: 73, label: 'Ситора - 2' })
   })
 
   it('keeps the kval of an unassigned registrar visible so the rows still add up', () => {
@@ -458,34 +456,9 @@ describe('buildRnpSheet — review fixes', () => {
   })
 })
 
-describe('buildRnpSheet — the sheet\'s own rows (the «Jadvaldagidek» view)', () => {
-  const d = () => buildRnpSheet(input({ teams: [...input().teams, { rop: 'Sadriddin', head: 'Mamayusupov Sadriddin' }] }))
-
-  it('puts each ROP row where the sheet has it, under the sheet\'s label', () => {
-    const x = d()
-    expect(block(x, 'team:Sevinch').sheet).toEqual({ row: 89, label: 'Севинч РОП' })
-    expect(row(x, 'team:Sevinch', 'team:Sevinch:fakt1').sheet).toEqual({ row: 93, label: 'Сумма факт 1 сум' })
-    expect(row(x, 'team:Charos', 'team:Charos:reach').sheet?.row).toBe(156)
-    expect(row(x, 'logistics:Sevinch', 'lg:Sevinch:refused').sheet).toEqual({ row: 278, label: 'Отказ сумма' })
-  })
-
-  it('leaves the dashboard\'s additions off the sheet', () => {
-    const x = d()
-    expect(row(x, 'registration', 'reg:duplicates').sheet).toBeNull()
-    expect(row(x, 'logistics:Sevinch', 'lg:Sevinch:open_pct').sheet).toBeNull()
-    expect(block(x, 'logistics').sheet).toBeNull()
-    expect(block(x, 'project:none').sheet).toBeNull()
-  })
-
-  it('numbers the «Свод» team rows in the sheet\'s order', () => {
-    const x = d()
-    expect(row(x, 'summary', 'sv:fakt1:Sevinch').sheet).toEqual({ row: 353, label: 'Севинч РОП факт1' })
-    expect(row(x, 'summary', 'sv:fakt2:Charos').sheet).toEqual({ row: 370, label: 'Малика РОП – БАЗА факт2' })
-    expect(row(x, 'summary', 'sv:difference').sheet?.row).toBe(379)
-  })
-
+describe('buildRnpSheet — nothing typed by hand (the client\'s rule of 2026-09-29)', () => {
   it('has no typed rows at all', () => {
-    const x = d()
+    const x = buildRnpSheet(input())
     expect(x.blocks.some((b) => (b.kind as string) === 'social' || (b.kind as string) === 'hr')).toBe(false)
   })
 })

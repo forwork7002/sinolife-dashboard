@@ -37,11 +37,6 @@ export interface RnpRowDto {
   readonly days: readonly (number | null)[]
   /** What the plan form writes for this row; null when nothing is planned. */
   readonly planKey: RnpPlanKey | null
-  /**
-   * Where this row sits on the client's «РНП» sheet — its row number and its
-   * label there; null = a dashboard addition. Not used on screen.
-   */
-  readonly sheet: RnpSheetRef | null
   /** This row's share of its column's total, in percent (the «Свод»). */
   readonly share: number | null
   readonly tone: 'total' | 'plain'
@@ -49,11 +44,6 @@ export interface RnpRowDto {
   readonly hint: string | null
   /** Days before this are incomplete in Bitrix24, and are drawn muted. */
   readonly reliableFrom: string | null
-}
-
-export interface RnpSheetRef {
-  readonly row: number
-  readonly label: string
 }
 
 export type RnpBlockKind = 'marketing' | 'registration' | 'team' | 'company' | 'warehouse' | 'logistics' | 'project' | 'summary'
@@ -65,8 +55,6 @@ export interface RnpBlockDto {
   readonly subtitle: string | null
   /** The ROP team the block is about; null for a company block. */
   readonly team: string | null
-  /** The block's first row on the sheet and its title there; null = not on the sheet. */
-  readonly sheet: RnpSheetRef | null
   readonly rows: readonly RnpRowDto[]
 }
 

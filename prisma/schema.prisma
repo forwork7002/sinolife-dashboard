@@ -1471,27 +1471,6 @@ model RnpPlan {
   @@map("rnp_plan")
 }
 
-/// «RNP jadvali» — a day cell a person types: Instagram followers, Telegram
-/// posts, the HR funnel, and a ROP's own leads, calls or headcount where
-/// Bitrix24 was not whole (before 16.09 / 15.09) or the ROP corrects it.
-/// `team` is the `ropNameSql` name, or '' for a company row; `metric` is one
-/// of `RNP_MANUAL_METRICS`. `valueCenti` is the figure × 100 and may be zero
-/// or NEGATIVE (a Telegram channel loses subscribers); a cell nobody typed
-/// has no row — the absence is what the screen prints as a dash.
-model RnpManualDay {
-  id         String   @id @default(cuid())
-  day        DateTime @db.Date
-  team       String   @default("")
-  metric     String
-  valueCenti BigInt
-  updatedAt  DateTime @updatedAt
-  updatedBy  String?
-
-  @@unique([day, team, metric])
-  @@index([day])
-  @@map("rnp_manual_day")
-}
-
 /// «RNP jadvali» — which registration «guruh» a registrar belongs to in a
 /// month. The client's sheet counts its registration rows per group of
 /// registrars («Sevinch guruh» = Фарангиз + Назокат, measured 02–03.09.2026),

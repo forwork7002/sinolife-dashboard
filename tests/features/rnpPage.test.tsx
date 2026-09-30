@@ -65,7 +65,6 @@ function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRo
     index: null,
     days: [null, null, null],
     planKey: null,
-    sheet: null,
     share: null,
     tone: 'plain',
     hint: null,
@@ -90,7 +89,6 @@ const FIXTURE: RnpOverviewDto = {
       title: 'Регистрация',
       subtitle: null,
       team: null,
-      sheet: null,
       rows: [
         row({ key: 'reg:leads', label: 'Лидлар', fact: 12, days: [12, null, null] }),
         row({ key: 'reg:qualified', label: 'Квал лид', fact: 8, days: [2, 6, null] }),
@@ -103,7 +101,6 @@ const FIXTURE: RnpOverviewDto = {
       title: 'Sevinch РОП',
       subtitle: 'Sevinch Aliyeva',
       team: 'Sevinch',
-      sheet: null,
       rows: [
         row({
           key: 'team:Sevinch:conv1',
@@ -125,7 +122,6 @@ const FIXTURE: RnpOverviewDto = {
       title: 'Charos РОП — БАЗА',
       subtitle: 'Malika Rahmonova',
       team: 'Charos',
-      sheet: null,
       rows: [
         row({ key: 'team:Charos:reach', label: 'Дозвон', fact: 40, days: [40, null, null] }),
         // A БАЗА team's orders are not the leads' — the funnel leaves them out.
@@ -301,7 +297,6 @@ describe('RnpPage — Kengaytirilgan', () => {
           title: 'Маркетинг',
           subtitle: null,
           team: null,
-          sheet: null,
           rows: [row({ key: 'meta:spend', label: 'Жами бюджет, $', unit: 'usd', planKey: { team: '', metric: 'budget' } })],
         },
         {
@@ -310,13 +305,12 @@ describe('RnpPage — Kengaytirilgan', () => {
           title: 'Sevinch РОП',
           subtitle: null,
           team: 'Sevinch',
-          sheet: null,
           rows: [
             fakt1('Сумма ФАКТ 1', 100_000_000),
             row({ key: 'f2', label: 'Сумма ФАКТ 2', unit: 'uzs', plan: 80_000_000, planKey: { team: 'Sevinch', metric: 'fakt2' } }),
           ],
         },
-        { id: 'summary', kind: 'summary', title: 'Свод', subtitle: null, team: null, sheet: null, rows: [fakt1('ФАКТ 1 · Sevinch', 100_000_000)] },
+        { id: 'summary', kind: 'summary', title: 'Свод', subtitle: null, team: null, rows: [fakt1('ФАКТ 1 · Sevinch', 100_000_000)] },
       ],
     }
     await draw('Маркетинг')
@@ -430,7 +424,6 @@ describe('RnpPage — Kengaytirilgan', () => {
           title: 'Коллаген проект',
           subtitle: null,
           team: null,
-          sheet: null,
           rows: [
             row({ key: 'pj:collagen:fakt2', label: 'Сумма ФАКТ 2 (успешка)', unit: 'uzs', fact: 12_400_000 }),
             row({ key: 'pj:collagen:cost_fact', label: 'Маркетинг харажат факт', unit: 'uzs', fact: 2_000_000 }),

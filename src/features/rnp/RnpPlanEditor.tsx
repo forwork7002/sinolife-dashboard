@@ -469,7 +469,7 @@ function registrarsOf(data: RnpOverviewDto): { registrars: string[]; initialGrou
 }
 
 /** Only the registrars whose group changed; «—» is null, out of every group. */
-export function registrarsBodyOf(
+function registrarsBodyOf(
   month: string,
   initial: Readonly<Record<string, string>>,
   current: Readonly<Record<string, string>>,
@@ -494,7 +494,7 @@ function nextFreeDay(rows: readonly LeadRow[], monthDays: number): number {
  * one `fakt` entry carrying BOTH figures — the server replaces the pair, so
  * sending one alone would erase the other.
  */
-export function bodyOf(
+function bodyOf(
   month: string,
   fields: ReadonlyMap<string, PlanField>,
   values: Readonly<Record<string, string>>,

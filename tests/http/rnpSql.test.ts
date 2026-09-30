@@ -116,3 +116,41 @@ describe('RnpRepository bounds', () => {
     expect(sql).not.toMatch(/\$\d+::timestamptz/)
   })
 })
+
+describe('registrationDays — the history scan gets its own statement timeout', () => {
+  const row = { day: '2026-09-02', source_id: 'CALL', form_title: null, leads: 3n, duplicates: 0n, qualified: 1n, ai: 0n }
+  function fakePrisma() {
+    const calls: string[] = []
+    const client = {
+      $queryRawUnsafe: async (sql: string) => {
+        calls.push(sql.includes('WITH arms') ? 'query' : sql)
+        return [row]
+      },
+      $executeRawUnsafe: async (sql: string) => {
+        calls.push(sql)
+        return 0
+      },
+      $transaction: async (fn: (tx: unknown) => Promise<unknown>, options: { timeout: number }) => {
+        calls.push(`tx:${options.timeout}`)
+        return fn(client)
+      },
+    }
+    return { client, calls }
+  }
+
+  it('reads plainly when no timeout is asked for', async () => {
+    const { client, calls } = fakePrisma()
+    const repo = new RnpRepository(client as never)
+    const rows = await repo.registrationDays('2026-09-01', '2026-09-29')
+    expect(calls).toEqual(['query'])
+    expect(rows[0]).toMatchObject({ day: '2026-09-02', leads: 3, qualified: 1 })
+  })
+
+  it('lifts the limit inside its own transaction, before the query', async () => {
+    const { client, calls } = fakePrisma()
+    const repo = new RnpRepository(client as never)
+    const rows = await repo.registrationDays('2026-09-01', '2026-09-29', 60_000)
+    expect(calls).toEqual(['tx:65000', 'SET LOCAL statement_timeout = 60000', 'query'])
+    expect(rows).toHaveLength(1)
+  })
+})

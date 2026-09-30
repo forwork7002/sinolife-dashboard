@@ -20,7 +20,6 @@ function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRo
     index: null,
     days: [null, null],
     planKey: null,
-    sheet: null,
     share: null,
     tone: 'plain',
     hint: null,
@@ -29,7 +28,7 @@ function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRo
   }
 }
 
-const block = (rows: RnpRowDto[]): RnpBlockDto => ({ id: 'b', kind: 'company', title: 'B', subtitle: null, team: null, sheet: null, rows })
+const block = (rows: RnpRowDto[]): RnpBlockDto => ({ id: 'b', kind: 'company', title: 'B', subtitle: null, team: null, rows })
 
 describe('figureText', () => {
   it('writes soʻm to the last soʻm, never compact', () => {

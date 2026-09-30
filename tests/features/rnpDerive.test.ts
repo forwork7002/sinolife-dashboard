@@ -20,7 +20,6 @@ const base: RnpRowDto = {
   index: null,
   days: [],
   planKey: null,
-  sheet: null,
   share: null,
   tone: 'plain',
   hint: null,

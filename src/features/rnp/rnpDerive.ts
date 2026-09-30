@@ -30,7 +30,7 @@ export const TONE_COLOR: Record<RnpTone, string> = {
   neutral: 'var(--ink-muted)',
 }
 
-export function blockById(data: RnpOverviewDto, id: string): RnpBlockDto | null {
+function blockById(data: RnpOverviewDto, id: string): RnpBlockDto | null {
   return data.blocks.find((b) => b.id === id) ?? null
 }
 

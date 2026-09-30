@@ -178,15 +178,3 @@ function PlanMeter({ row }: { row: RnpRowDto }) {
     </div>
   )
 }
-
-/** The tile's silhouette while the payload is on its way. */
-export function RnpKpiSkeleton() {
-  return (
-    <div className="card flex flex-col px-4 py-3.5" aria-hidden="true">
-      <div className="skeleton h-3 w-24" />
-      <div className="skeleton mt-3 h-[26px] w-2/3 sm:h-[30px]" />
-      <div className="skeleton mt-3 h-1.5 w-full" />
-      <div className="skeleton mt-2 h-3 w-32" />
-    </div>
-  )
-}
