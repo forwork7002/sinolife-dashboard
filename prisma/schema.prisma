@@ -919,6 +919,10 @@ model Deal {
   @@index([sourceId])
   @@index([customerId])
   @@index([pipelineId])
+  /// «RNP jadvali»'s registration scan reads two pipelines over a creation
+  /// month; with only the single-column indexes it ANDed two bitmaps and read
+  /// ~33 000 pages, past 20 s cold on production (2026-09-30).
+  @@index([pipelineId, createdAtSource])
   @@index([orderCode])
   // Every revenue query names countsAsRevenue first, so it leads the index.
   @@index([countsAsRevenue, status, closedAt])
