@@ -372,7 +372,10 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
     const d = dto()
     // Умида (no group yet) 40 + a WON deal with no registrar 15.
     expect(on(row(d, 'registration', 'reg:group:none:qualified'), '2026-09-02')).toBe(55)
-    expect(on(row(d, 'registration', 'reg:group:Gulzora:qualified'), '2026-09-02')).toBe(0)
+    // Nobody is assigned to Gulzora's group: not known to be zero, so empty.
+    expect(on(row(d, 'registration', 'reg:group:Gulzora:qualified'), '2026-09-02')).toBeNull()
+    expect(row(d, 'registration', 'reg:group:Gulzora:qualified').fact).toBeNull()
+    expect(on(row(d, 'registration', 'reg:group:Sevinch:qualified'), '2026-09-02')).toBe(58)
     expect(d.registration.registrars).toContain('Умида')
     expect(d.registration.groupNames).toEqual(['Sevinch', 'Gulzora', 'Aziz', 'Maftuna', 'Lola', 'Saidaziz', 'Zextra'])
   })

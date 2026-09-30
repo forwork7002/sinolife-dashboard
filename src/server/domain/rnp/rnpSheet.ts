@@ -856,9 +856,11 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       additive(clock, { key: 'reg:qualified', label: 'Квал лид — жами (Сделка успешна)', unit: 'count', tone: 'total', hint: 'Registrator «Сделка успешна» ga oʻtkazgan lidlar — yopilgan kuni boʻyicha. Collagen + Zextra.' }, reg.qualified),
       additive(clock, { key: 'reg:qualified_collagen', label: 'Регистрация COLLAGEN (квал)', unit: 'count', ...planned('', 'reg_qualified'), hint: 'Jami kval, Zextra registratorlarinikisiz.', sheet: sh(48, 'Регистрация COLLAGEN') }, collagenKval),
       ratio(clock, { key: 'reg:qualified_pct', label: '% квал лид (Collagen)', unit: 'percent', ...planned('', 'reg_qualified_pct'), sheet: sh(49, '% квал лид') }, collagenKval, reg.leads, 100),
-      ...REGISTRATION_GROUPS.map((g) =>
-        additive(clock, { key: `reg:group:${g}:qualified`, label: `${g} guruh — квал`, unit: 'count', ...planned(g, 'reg_group_qualified'), hint: `Guruh registratorlarining «Сделка успешна» lari: ${[...groupOf].filter(([, x]) => x === g).map(([r]) => r).join(', ') || 'registrator biriktirilmagan — «Rejalar» → Registratorlar'}.`, sheet: sh(GROUP_SHEET_ROW[g]!, `${g} guruh — квал`) }, kvalOf(`g|${g}`)),
-      ),
+      ...REGISTRATION_GROUPS.map((g) => {
+        /* A group with no registrar assigned is not known to be zero — its cells stay empty («bilmagan joyni boʻsh qoldir»). */
+        const row = additive(clock, { key: `reg:group:${g}:qualified`, label: `${g} guruh — квал`, unit: 'count', ...planned(g, 'reg_group_qualified'), hint: `Guruh registratorlarining «Сделка успешна» lari: ${[...groupOf].filter(([, x]) => x === g).map(([r]) => r).join(', ') || 'registrator biriktirilmagan — «Rejalar» → Registratorlar'}.`, sheet: sh(GROUP_SHEET_ROW[g]!, `${g} guruh — квал`) }, kvalOf(`g|${g}`))
+        return [...groupOf.values()].includes(g) ? row : dashed(row)
+      }),
       additive(clock, { key: 'reg:group:none:qualified', label: 'Guruhsiz registratorlar — квал', unit: 'count', better: 'down', hint: 'Hech bir guruhga biriktirilmagan registratorlar (yoki registrator maydoni hali yozilmagan bitimlar) kvali — «Rejalar» → Registratorlar.' }, ungrouped),
       additive(clock, { key: 'reg:zextra:qualified', label: 'Регистрация ZEXTRA (квал)', unit: 'count', tone: 'total', ...planned('', 'reg_zextra_qualified'), sheet: sh(70, 'Регистрация ZEXTRA') }, zextraKval),
       ...zextraRegistrars.map((r) => {
