@@ -587,12 +587,12 @@ describe('buildRnpSheet — the page is the client\'s sheet, row by row', () => 
     const withNewTeam = buildRnpSheet(
       input({ fakt: [...input().fakt, fakt('2026-09-21', 'Bosh', { fakt1Orders: 1, fakt1Minor: som(1_500_000) })] }),
     )
-    const heading = withNewTeam.lines.findIndex((l) => l.kind === 'title' && l.sub === 'jadvalda yoʻq jamoa' && l.label.includes('Bosh'))
+    const heading = withNewTeam.lines.findIndex((l) => l.kind === 'title' && l.sub === 'Bitrix24ʼdan · sheetda bloki yoʻq' && l.label.includes('Bosh'))
     expect(heading).toBeGreaterThan(-1)
     const lastTeamRow = withNewTeam.lines.findIndex((l) => l.row === 246)
     const warehouseRow = withNewTeam.lines.findIndex((l) => l.row === 264)
     // Only orders nobody's team claims are added in the plain fixture — and they are real money.
-    expect(x.lines.filter((l) => l.sub === 'jadvalda yoʻq jamoa').map((l) => l.label)).toEqual(['Логистика — (ROP yoʻq)'])
+    expect(x.lines.filter((l) => l.sub === 'Bitrix24ʼdan · sheetda bloki yoʻq').map((l) => l.label)).toEqual(['Логистика — (ROP yoʻq)'])
     expect(heading).toBeGreaterThan(lastTeamRow)
     expect(heading).toBeLessThan(warehouseRow)
   })

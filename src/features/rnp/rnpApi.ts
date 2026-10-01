@@ -111,7 +111,7 @@ export type RnpLine =
     }
 
 /** The `sub` of a heading added for a team the sheet has no block for (`ADDED_TEAM_NOTE`). */
-export const RNP_ADDED_TEAM_NOTE = 'jadvalda yoʻq jamoa'
+export const RNP_ADDED_TEAM_NOTE = 'Bitrix24ʼdan · sheetda bloki yoʻq'
 
 export interface RnpTeamDto {
   readonly rop: string

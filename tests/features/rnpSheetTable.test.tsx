@@ -66,7 +66,7 @@ const LINES: RnpLine[] = [
   { kind: 'value', row: 9, team: null, label: 'Кол подпис tg', sub: null, tone: 'plain', fact: 'plain', bold: false, key: null },
   { kind: 'value', row: 102, team: null, label: 'Продажа (первичка) факт1', sub: 'Лола РОП', tone: 'team', fact: 'plain', bold: true, key: 'lids' },
   { kind: 'value', row: 106, team: null, label: 'Сумма факт 1 сум', sub: null, tone: 'plain', fact: 'fakt', bold: false, key: 'sum' },
-  { kind: 'title', row: null, team: null, label: 'Kompaniya РОП', sub: 'jadvalda yoʻq jamoa', tone: 'team' },
+  { kind: 'title', row: null, team: null, label: 'Kompaniya РОП', sub: 'Bitrix24ʼdan · sheetda bloki yoʻq', tone: 'team' },
   { kind: 'value', row: null, team: null, label: 'Буюртма сони', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'kompaniya' },
 ]
 
@@ -134,7 +134,7 @@ describe('RnpSheetTable — the sheet, row by row', () => {
       'Кол подпис tg',
       'Лола РОППродажа (первичка) факт1',
       'Сумма факт 1 сум',
-      'Kompaniya РОПjadvalda yoʻq jamoa',
+      'Kompaniya РОПBitrix24ʼdan · sheetda bloki yoʻq',
       'Буюртма сони',
     ])
     expect(container.textContent).not.toContain('Лидлар (dashboard)')
@@ -194,7 +194,7 @@ describe('RnpSheetTable — the sheet, row by row', () => {
   it('names a team the sheet lacks with its chip', () => {
     const { container } = draw()
     const added = rowNamed(container, 'Kompaniya РОП')
-    expect(within(added).getByText('jadvalda yoʻq jamoa')).toBeTruthy()
+    expect(within(added).getByText('Bitrix24ʼdan · sheetda bloki yoʻq')).toBeTruthy()
     // Its figures still print: nothing a team sold is dropped.
     const orders = rowNamed(container, 'Буюртма сони')
     expect([...orders.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['—', '7', '—', '—', '—', '3', '4', '—'])

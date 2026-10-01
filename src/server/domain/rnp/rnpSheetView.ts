@@ -57,7 +57,7 @@ const GROUPS = (row: number) => inRange(47, 67)(row) || inRange(1001, 1013)(row)
 const TEAMS = inRange(75, 246)
 const LOGISTICS = inRange(269, 334)
 
-const ADDED_TEAM_NOTE = 'jadvalda yoʻq jamoa'
+const ADDED_TEAM_NOTE = 'Bitrix24ʼdan · sheetda bloki yoʻq'
 
 /** The team a row's key names: `team:<rop>:…` or `lg:<rop>:…`. Exported for its test. */
 export function teamOfKey(key: string | null): string | null {
