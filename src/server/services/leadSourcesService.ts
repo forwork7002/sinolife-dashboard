@@ -31,7 +31,7 @@ import {
   LEAD_SOURCE_BRAND,
   LEAD_SOURCE_VOCABULARY,
 } from '@/server/integrations/crm/bitrix24/mapping'
-import { type MetaProduct, campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
+import { type MetaProduct, adBudgetProduct, campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
 import {
   type LeadChannel,
   type LeadTile,
@@ -131,17 +131,37 @@ export interface LeadSourcesOverviewDto {
   /** When Meta's campaign grain was last read; null means never. */
   readonly importedAt: string | null
   readonly window: { readonly from: string; readonly to: string }
+  /**
+   * The tab's six headline tiles (the client's list, 2026-10-01): Жами /
+   * Янги / Дубль лидлар, Квал лидлар сони, Квал %, Квал лид нархи $.
+   * The RNP sheet's «Регистрация» block on the same day reads the same
+   * figures: leads by creation day, kval by the day it was WON, the ad
+   * budget as its «Жами бюджет».
+   */
+  readonly funnel: {
+    /** Every Регистрация deal created in the window, duplicates included. */
+    readonly total: number
+    /** `total` less the duplicates. */
+    readonly fresh: number
+    /** Created in the window and standing in a «Дубликат» stage now. */
+    readonly duplicates: number
+    /** Регистрация deals WON («Сделка успешна») in the window, by `closedAt`. */
+    readonly qualified: number
+    /**
+     * `qualified` ÷ `fresh`, the sheet's «% квал лид»; null with no new leads.
+     * Two clocks, as on the sheet (WON day over arrival day), so a short
+     * window can read above 100%.
+     */
+    readonly qualifiedPercent: number | null
+    /** Meta spend of Collagen + Zextra, hiring campaigns left out (`adBudgetProduct`). */
+    readonly spendUsd: number
+    readonly costPerQualifiedUsd: number | null
+  }
   readonly totals: {
     /** Every Регистрация deal created in the window. */
     readonly registration: LeadOutcomeDto
     /** «Факт1 мижоз» of the whole of Регистрация — distinct, so not the sum of the channels. */
     readonly fakt1Clients: number
-    /** Of those, the ad leads: forms plus the ad pages. */
-    readonly ads: LeadOutcomeDto
-    /** «ИИ обработка» deals — Instagram conversations. */
-    readonly conversations: number
-    readonly metaFormLeads: number
-    readonly formLeads: number
     readonly formReachPercent: number | null
   }
   readonly forms: {
@@ -235,6 +255,8 @@ export function leadSourcesOverview(input: {
   campaigns: readonly CampaignDayRow[]
   /** Leads that reached FAKT 1 (`InsightsRepository.leadFakt1Clients`). */
   fakt1: readonly LeadFakt1ClientRow[]
+  /** Регистрация deals WON in the window (`LeadSourcesRepository.qualifiedCount`). */
+  qualified: number
   importedAt: Date | null
 }): LeadSourcesOverviewDto {
   const days = calendarDays(input.window.from, input.window.to)
@@ -293,9 +315,7 @@ export function leadSourcesOverview(input: {
     `DM_PAGES` are pages whether or not anybody wrote that week; any other
     source that chats becomes one here, after them.
   */
-  let conversations = 0
   for (const row of input.triage) {
-    conversations += row.conversations
     const key = row.sourceId === null ? '' : pageKeyOf(row.sourceId)
     const page = pageAcc(key, row.source ?? (row.sourceId ? row.sourceId : 'Manbasiz'))
     page.conversations += row.conversations
@@ -449,21 +469,30 @@ export function leadSourcesOverview(input: {
       }
     })
 
-  const ads = outcomeZero()
-  addOutcome(ads, channels.get('form')!)
-  addOutcome(ads, channels.get('page')!)
   const formLeads = outcomeCells(formOutcome).leads
+
+  // --- the headline tiles
+  let adSpend = 0n
+  for (const row of input.campaigns) if (adBudgetProduct(row) !== null) adSpend += row.spendMicroUsd
+  const registrationCells = outcomeCells(registration)
+  const fresh = registrationCells.leads - registration.duplicate
 
   return {
     importedAt: input.importedAt?.toISOString() ?? null,
     window: input.window,
+    funnel: {
+      total: registrationCells.leads,
+      fresh,
+      duplicates: registration.duplicate,
+      qualified: input.qualified,
+      qualifiedPercent: percent(input.qualified, fresh),
+      spendUsd: usd(adSpend),
+      /* No spend read (Meta not imported yet, or down that day) is «unknown», never a free kval. */
+      costPerQualifiedUsd: adSpend > 0n ? perUnit(adSpend, input.qualified) : null,
+    },
     totals: {
-      registration: outcomeCells(registration),
+      registration: registrationCells,
       fakt1Clients: fakt1All.size,
-      ads: outcomeCells(ads),
-      conversations,
-      metaFormLeads,
-      formLeads,
       formReachPercent: percent(formLeads, metaFormLeads),
     },
     forms: {
@@ -508,6 +537,7 @@ const scanCache = ttlCache<{
   registration: RegistrationDayRow[]
   triage: TriageDayRow[]
   fakt1: LeadFakt1ClientRow[]
+  qualified: number
 }>(60_000)
 
 export class LeadSourcesService {
@@ -526,12 +556,13 @@ export class LeadSourcesService {
 
     const [scans, campaigns, importedAt] = await Promise.all([
       scanCache.get(key, async () => {
-        const [registration, triage, fakt1] = await Promise.all([
+        const [registration, triage, fakt1, qualified] = await Promise.all([
           this.repository.registrationDays(period),
           this.repository.triageDays(period),
           this.insights.leadFakt1Clients(period),
+          this.repository.qualifiedCount(period),
         ])
-        return { registration, triage, fakt1 }
+        return { registration, triage, fakt1, qualified }
       }),
       this.meta.campaignDays(window.from, window.to),
       this.meta.campaignsImportedAt(),

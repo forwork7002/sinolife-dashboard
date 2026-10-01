@@ -18,7 +18,7 @@
  *   ROP blocks, logistics, summary — `InsightsRepository.rnpTeamDays`.
  *   Leads, registration, calls, warehouse, plans — `RnpRepository`.
  *   Маркетинг — Meta campaign days (`ReklamaRepository.campaignDays`), split
- *     by product at read time (`ownerOf`); hiring campaigns and accounts that
+ *     by product at read time (`adBudgetProduct`); hiring campaigns and accounts that
  *     are neither Collagen nor Zextra are not the sheet's money.
  */
 
@@ -28,7 +28,7 @@ import { type Period, resolvePeriod, zonedDateKey } from '@/server/domain/period
 import type { TargetProduct } from '@/server/domain/types'
 import { formNameOf, formOwner } from '@/server/domain/leads/leadSources'
 import { LEAD_SOURCE_BRAND } from '@/server/integrations/crm/bitrix24/mapping'
-import { campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
+import { adBudgetProduct } from '@/server/integrations/meta/accounts'
 import { InsightsRepository, type RnpTeamDayRow } from '@/server/repositories/insightsRepository'
 import type { ReklamaRepository } from '@/server/repositories/reklamaRepository'
 import type {
@@ -235,9 +235,8 @@ export class RnpService {
     ])
     const meta: MonthRows['meta'] = []
     for (const c of campaigns) {
-      const { product } = ownerOf(c.accountId, c.accountName)
-      if (product === 'Boshqa') continue
-      if (campaignChannel(c.objective, c.campaignName, c.accountId) === 'hiring') continue
+      const product = adBudgetProduct(c)
+      if (product === null) continue
       meta.push({ day: c.date, product, spendMicroUsd: c.spendMicroUsd, leads: c.leads })
     }
     return { fakt, leads, registration, registrarKval, calls, warehouse, meta, teams }

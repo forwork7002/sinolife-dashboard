@@ -70,6 +70,7 @@ function separators(text: string): string {
 const integerFormat = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0 })
 const numberFormat = new Intl.NumberFormat(LOCALE)
 const trimFormat = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 1 })
+const centsFormat = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 const percentFormats = new Map<number, Intl.NumberFormat>()
 
@@ -134,6 +135,11 @@ export function formatUzs(amount: number): string {
 
 export function formatNumber(value: number): string {
   return separators(numberFormat.format(value))
+}
+
+/** Always two decimals — a unit cost in dollars («4.20»), where the cents are the point. */
+export function formatCents(value: number): string {
+  return separators(centsFormat.format(value))
 }
 
 /**

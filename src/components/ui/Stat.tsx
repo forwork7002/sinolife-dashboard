@@ -7,6 +7,7 @@ import { DotGlyph, RingGlyph, SquareGlyph, TriangleGlyph } from '@/components/ui
 import { Tooltip } from '@/components/ui/Tooltip'
 import {
   NO_VALUE,
+  formatCents,
   formatCompactUzs,
   formatDuration,
   formatFullUzs,
@@ -40,7 +41,7 @@ export function StatTile({
 }: {
   label: string
   value: number | null
-  unit: 'money' | 'count' | 'percent' | 'hours' | 'days' | 'duration' | 'raw'
+  unit: 'money' | 'usd' | 'count' | 'percent' | 'hours' | 'days' | 'duration' | 'raw'
   hint?: string
   context?: ReactNode
   tone?: 'neutral' | 'good' | 'warning' | 'critical'
@@ -181,7 +182,7 @@ function StatValue({
   money = 'compact',
 }: {
   value: number | null
-  unit: 'money' | 'count' | 'percent' | 'hours' | 'days' | 'duration' | 'raw'
+  unit: 'money' | 'usd' | 'count' | 'percent' | 'hours' | 'days' | 'duration' | 'raw'
   money?: 'compact' | 'full'
 }) {
   if (value === null) return <>{NO_VALUE}</>
@@ -199,6 +200,15 @@ function StatValue({
           />
           <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
             soʻm
+          </span>
+        </>
+      )
+    case 'usd':
+      return (
+        <>
+          <AnimatedNumber value={value} format={formatCents} />
+          <span className="ml-1 text-xs font-normal" style={{ color: 'var(--ink-muted)' }}>
+            $
           </span>
         </>
       )

@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/Card'
 import { type Column, DataTable } from '@/components/ui/DataTable'
 import { SectionHeader, StatTile } from '@/components/ui/Stat'
 import { NO_VALUE, formatDateTime, formatNumber, formatPercent } from '@/lib/format'
-import { PRODUCT_LABEL, PRODUCT_TONE } from '@/features/target/targetTheme'
+import { PRODUCT_LABEL, PRODUCT_TONE, usd } from '@/features/target/targetTheme'
 import {
   type DayRow,
   DayCell,
@@ -61,7 +61,7 @@ const CHANNEL_LABEL: Readonly<Record<LeadChannel, string>> = {
 export function LeadSourcesSection({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
   return (
     <>
-      <Tiles data={data} status={status} />
+      <FunnelTiles data={data} status={status} />
       <ChannelTiles data={data} status={status} />
       <FormsBlock data={data} status={status} />
       <DmBlock data={data} status={status} />
@@ -72,48 +72,58 @@ export function LeadSourcesSection({ data, status }: { data: LeadSourcesOverview
 
 // --- tiles ------------------------------------------------------------------
 
-function Tiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
-  const t = data?.totals
+/**
+ * The client's six figures (2026-10-01), in their order: Жами / Янги / Дубль
+ * лидлар, Квал лидлар сони, Квал %, Квал лид нархи $. The same day on the
+ * RNP sheet's «Регистрация» block reads the same numbers — `funnel` says how.
+ */
+export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
+  const f = data?.funnel
+  const shareOfTotal = (n: number) => (f && f.total > 0 ? ` · ${formatPercent((n / f.total) * 100)}` : '')
   return (
     <section className="flex min-w-0 flex-col gap-3">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <StatTile
           status={status}
-          label="Регистрация lidlari"
-          value={t?.registration.leads ?? null}
+          label="Жами лидлар"
+          value={f?.total ?? null}
           unit="count"
-          hint={t ? `barcha manbalar · ${formatNumber(t.registration.success)} kval` : undefined}
+          hint="Регистрация — dubllar bilan"
         />
         <StatTile
           status={status}
-          label="Reklama lidlari"
-          value={t?.ads.leads ?? null}
+          label="Янги лидлар"
+          value={f?.fresh ?? null}
           unit="count"
-          hint={t ? `lid-forma + reklama sahifalari · ${formatNumber(t.ads.success)} kval` : undefined}
+          hint={f ? `dublsiz${shareOfTotal(f.fresh)}` : undefined}
         />
         <StatTile
           status={status}
-          label="Reklama lid → kval"
-          value={t?.ads.successPercent ?? null}
+          label="Дубль лидлар"
+          value={f?.duplicates ?? null}
+          unit="count"
+          hint={f ? `«Дубликат» bosqichida${shareOfTotal(f.duplicates)}` : undefined}
+        />
+        <StatTile
+          status={status}
+          label="Квал лидлар сони"
+          value={f?.qualified ?? null}
+          unit="count"
+          hint="«Сделка успешна» — yopilgan kuni"
+        />
+        <StatTile
+          status={status}
+          label="Квал %"
+          value={f?.qualifiedPercent ?? null}
           unit="percent"
-          hint="«Сделка успешна» ÷ reklama lidlari"
+          hint="квал ÷ янги лидлар"
         />
         <StatTile
           status={status}
-          label="DM murojaat"
-          value={t?.conversations ?? null}
-          unit="count"
-          hint="«ИИ обработка» — Instagramga yozgan har bir odam"
-        />
-        <StatTile
-          status={status}
-          label="Formadan yetib kelgan"
-          value={t?.formReachPercent ?? null}
-          unit="percent"
-          tone={t?.formReachPercent != null && t.formReachPercent < 60 ? 'warning' : 'neutral'}
-          hint={
-            t ? `Meta ${formatNumber(t.metaFormLeads)} liddan Bitrix24 ga ${formatNumber(t.formLeads)} tasi tushgan` : undefined
-          }
+          label="Квал лид нархи $"
+          value={f?.costPerQualifiedUsd ?? null}
+          unit="usd"
+          hint={f ? `Meta byudjeti ${usd(f.spendUsd)} ÷ квал` : undefined}
         />
       </div>
       {data?.importedAt && (

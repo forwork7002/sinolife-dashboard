@@ -113,6 +113,24 @@ export function campaignChannel(objective: string, name: string, accountId: stri
 }
 
 /**
+ * The product a campaign's money counts towards in the ad budget, or null
+ * when it counts towards none: an unmapped («Boshqa») account, or a hiring
+ * campaign. The RNP sheet's «Жами бюджет» and the «Квал лид нархи» tile on
+ * «Lidlar» both divide this, so the two screens cannot price a kval apart.
+ */
+export function adBudgetProduct(c: {
+  readonly accountId: string
+  readonly accountName: string
+  readonly objective: string
+  readonly campaignName: string
+}): TargetProduct | null {
+  const { product } = ownerOf(c.accountId, c.accountName)
+  if (product === 'Boshqa') return null
+  if (campaignChannel(c.objective, c.campaignName, c.accountId) === 'hiring') return null
+  return product
+}
+
+/**
  * The Instagram page a product's DM money is shown against, by portal
  * SOURCE_ID. The «DM» sheet puts all of Collagen's DM spend on «sinolifeuz»
  * and none on «sinolife_otziv». It leaves «zextrauzb» at 0 $, though Umar

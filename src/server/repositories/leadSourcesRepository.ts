@@ -105,6 +105,26 @@ export class LeadSourcesRepository {
     }))
   }
 
+  /**
+   * Регистрация leads a registrar qualified («Сделка успешна») in the window —
+   * by the day the deal was WON (`closedAt`), not the day it arrived. The RNP
+   * sheet's «Регистрация» kval is the same count (`registrationDaysSql`'s
+   * second arm), and it is the portal's own CLOSEDATE filter.
+   */
+  async qualifiedCount(period: Period): Promise<number> {
+    const rows = await this.prisma.$queryRawUnsafe<{ qualified: bigint }[]>(
+      `
+      SELECT count(*)::bigint AS qualified
+      FROM "deal" d
+      JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
+      WHERE d."status" = 'WON' AND d."closedAt" >= $1 AND d."closedAt" < $2
+      `,
+      period.start,
+      period.end,
+    )
+    return Number(rows[0]?.qualified ?? 0n)
+  }
+
   async triageDays(period: Period): Promise<TriageDayRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<
       { day: string; source_id: string | null; source: string | null; conversations: bigint }[]

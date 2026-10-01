@@ -99,6 +99,8 @@ describe('leadSourcesOverview', () => {
       campaign({ objective: 'OUTCOME_ENGAGEMENT', campaignName: 'DM', leads: 0, conversations: 99, spendMicroUsd: 9_000_000n }),
       // An account nobody mapped still gets a row, under its own name.
       campaign({ accountId: '1306271057053174', accountName: 'Newgen_davi01', leads: 4, spendMicroUsd: 1_000_000n }),
+      // Recruiting staff: in no ad budget.
+      campaign({ objective: 'OUTCOME_ENGAGEMENT', campaignName: 'EX - Sinolife (vakansiya) - DM', spendMicroUsd: 7_000_000n }),
     ],
     fakt1: [
       // One client, two of Umar's leads: one client on that line.
@@ -109,13 +111,38 @@ describe('leadSourcesOverview', () => {
       fakt1({ sourceId: 'UC_1X1J24', source: 'sinolifeuz', formTitle: null }),
       fakt1({ sourceId: 'CALL', source: 'Входящий', formTitle: null, client: '935550000' }),
     ],
+    qualified: 6,
+  })
+
+  it('reads the six headline figures', () => {
+    expect(data.funnel).toEqual({
+      total: 26,
+      fresh: 25,
+      duplicates: 1,
+      qualified: 6,
+      qualifiedPercent: (6 / 25) * 100,
+      // Umar's form 20 + 5 and his DM 9; the unmapped account and the hiring campaign are left out.
+      spendUsd: 34,
+      costPerQualifiedUsd: 34 / 6,
+    })
+  })
+
+  it('prices nothing when nobody was qualified or nothing arrived', () => {
+    const empty = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [], triage: [], campaigns: [], fakt1: [], qualified: 0 })
+    expect(empty.funnel).toMatchObject({ total: 0, fresh: 0, qualified: 0, qualifiedPercent: null, costPerQualifiedUsd: null })
+  })
+
+  it('leaves the kval price unknown, not free, when no Meta spend was read', () => {
+    const noMeta = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [reg({})], triage: [], campaigns: [], fakt1: [], qualified: 5 })
+    expect(noMeta.funnel.costPerQualifiedUsd).toBeNull()
   })
 
   it('counts every Регистрация lead, and splits the ad ones out', () => {
     expect(data.totals.registration.leads).toBe(26)
     // forms (5) + the ad page (4); calls, «Ген лид» by hand and collagen.sinolife are not ads.
-    expect(data.totals.ads.leads).toBe(9)
-    expect(data.totals.ads.success).toBe(4)
+    const ads = (['form', 'page'] as const).map((ch) => data.channels.find((c) => c.channel === ch)!.outcome)
+    expect(ads[0]!.leads + ads[1]!.leads).toBe(9)
+    expect(ads[0]!.success + ads[1]!.success).toBe(4)
     expect(data.channels.find((c) => c.channel === 'outbound')!.outcome.lowQuality).toBe(7)
     expect(data.channels.find((c) => c.channel === 'manual')!.outcome.leads).toBe(2)
     const summed = data.sources.reduce((n, s) => n + s.outcome.leads, 0)
@@ -180,12 +207,13 @@ describe('leadSourcesOverview', () => {
     expect(ai.metaLeads).toBe(4)
     expect(ai.outcome.leads).toBe(0)
     expect(ai.reachPercent).toBe(0)
-    expect(data.totals.metaFormLeads).toBe(14)
-    expect(data.totals.formLeads).toBe(5)
+    expect(data.forms.metaLeads).toBe(14)
+    expect(data.forms.outcome.leads).toBe(5)
+    expect(data.totals.formReachPercent).toBe((5 / 14) * 100)
   })
 
   it('reads DM from «ИИ обработка», and a chatting non-ad page is a page', () => {
-    expect(data.totals.conversations).toBe(105)
+    expect(data.dm.conversations).toBe(105)
     const uz = data.dm.pages.find((p) => p.key === 'UC_1X1J24')!
     expect(uz.conversations).toBe(100)
     expect(uz.outcome.leads).toBe(4)
@@ -245,6 +273,7 @@ describe('leadSourcesOverview', () => {
       ],
       campaigns: [],
       fakt1: [],
+      qualified: 0,
     }).dm
     expect(dm.pages.some((p) => p.key === '46|NEXTBOT')).toBe(false)
     const zs = dm.pages.find((p) => p.key === 'UC_LBSZDU')!

@@ -76,14 +76,20 @@ export interface SourceRowDto {
 export interface LeadSourcesOverviewDto {
   readonly importedAt: string | null
   readonly window: { readonly from: string; readonly to: string }
+  /** The six headline tiles — leads by creation day, kval by the day it was WON. */
+  readonly funnel: {
+    readonly total: number
+    readonly fresh: number
+    readonly duplicates: number
+    readonly qualified: number
+    readonly qualifiedPercent: number | null
+    readonly spendUsd: number
+    readonly costPerQualifiedUsd: number | null
+  }
   readonly totals: {
     readonly registration: LeadOutcomeDto
     /** Distinct over the whole of Регистрация — not the sum of the channels. */
     readonly fakt1Clients: number
-    readonly ads: LeadOutcomeDto
-    readonly conversations: number
-    readonly metaFormLeads: number
-    readonly formLeads: number
     readonly formReachPercent: number | null
   }
   readonly forms: {
