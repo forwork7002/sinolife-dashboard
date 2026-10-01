@@ -126,7 +126,7 @@ export function RnpSheetTable({
                 key={i}
                 line={line}
                 row={row}
-                gap={i > 0 && startsBlock(line, lines[i - 1]!)}
+                gap={i > 0 ? gapBefore(line, lines[i - 1]!) : null}
                 days={days}
                 today={today}
                 span={span}
@@ -163,11 +163,20 @@ function rowsByKey(blocks: readonly RnpBlockDto[]): Map<string, RnpRowDto> {
  * opens with a gap — a title band, a team's first row, or an orange section
  * row that does not follow the row before it on the sheet («Коллаген
  * проект», «Регистрация COLLAGEN»).
+ *
+ * A ROP's block — its team block or its logistics block — opens with a wider,
+ * ruled, sunken gap, even where the sheet runs one ROP's rows into the next, so each ROP reads as its own table
+ * inside the one grid (the client, 2026-10-01: «bir jadval bo'lsin … faqat
+ * bir biridan sal ajralib turishi kerak»).
  */
-function startsBlock(line: RnpLine, prev: RnpLine): boolean {
-  if (prev.kind !== 'value' || prev.tone === 'team') return false
-  if (line.kind === 'title' || line.tone === 'team') return true
-  return line.tone === 'section' && line.row !== null && prev.row !== null && line.row - prev.row > 1
+type Gap = 'block' | 'rop'
+
+function gapBefore(line: RnpLine, prev: RnpLine): Gap | null {
+  if (prev.kind !== 'value' || prev.tone === 'team') return null
+  // A new ROP's rows — where the sheet has no blank row too, as between the logistics blocks.
+  if (line.kind === 'value' && line.team !== null && line.team !== prev.team) return 'rop'
+  const opens = line.kind === 'title' || line.tone === 'team' || (line.tone === 'section' && line.row !== null && prev.row !== null && line.row - prev.row > 1)
+  return opens ? 'block' : null
 }
 
 // ---------------------------------------------------------------------------
@@ -264,7 +273,7 @@ const Line = memo(function Line({
 }: {
   line: RnpLine
   row: RnpRowDto | null
-  gap: boolean
+  gap: Gap | null
   days: readonly string[]
   today: string
   span: number
@@ -273,9 +282,14 @@ const Line = memo(function Line({
 }) {
   return (
     <>
-      {gap && (
+      {gap === 'block' && (
         <tr aria-hidden="true" data-gap="">
           <td colSpan={span + 1} className="h-3 p-0" />
+        </tr>
+      )}
+      {gap === 'rop' && (
+        <tr aria-hidden="true" data-gap="rop">
+          <td colSpan={span + 1} className="h-6 border-y border-[var(--border-strong)] p-0" style={{ background: 'var(--surface-sunken)' }} />
         </tr>
       )}
       {line.kind === 'title' ? (

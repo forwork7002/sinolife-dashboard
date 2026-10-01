@@ -225,6 +225,25 @@ describe('RnpSheetTable — the sheet, row by row', () => {
     expect(within(rowNamed(container, 'Конверция % от квал лид')).getByText('93,3%').className).toContain('rounded-full')
   })
 
+  it('sets each ROP apart with a ruled gap, also where the sheet runs one ROP into the next', () => {
+    const lg = (team: string, row: number): RnpLine => ({ kind: 'value', row, team, label: 'Логистика  Сумма факт1', sub: `${team} РОП`, tone: 'section', fact: 'fakt', bold: true, key: 'sum' })
+    const { container } = draw([
+      { kind: 'value', row: 94, team: 'Sevinch', label: 'План бажарилиши', sub: 'Севинч РОП', tone: 'team', fact: 'plan', bold: true, key: 'lids' },
+      { kind: 'value', row: 96, team: 'Sevinch', label: 'Сумма факт 2 сум', sub: null, tone: 'plain', fact: 'fakt', bold: false, key: 'kompaniya' },
+      { kind: 'value', row: 107, team: 'Lola', label: 'План бажарилиши', sub: 'Лола РОП', tone: 'team', fact: 'plan', bold: true, key: 'lids' },
+      { kind: 'value', row: 109, team: 'Lola', label: 'Сумма факт 2 сум', sub: null, tone: 'plain', fact: 'fakt', bold: false, key: 'kompaniya' },
+      lg('Sevinch', 274),
+      { kind: 'value', row: 275, team: 'Sevinch', label: 'Успешка сумма факт 2', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'kompaniya' },
+      lg('Lola', 279),
+    ])
+    const order = [...container.querySelectorAll<HTMLTableRowElement>('tbody tr')].map((tr) => tr.dataset.gap ?? tr.querySelector('th')!.textContent)
+    expect(order.filter((x) => x === 'rop')).toHaveLength(3)
+    expect(order.indexOf('rop', 2)).toBe(order.findIndex((x) => x?.startsWith('Лола РОП')) - 1)
+    // The rows inside one ROP are not split.
+    expect(order.at(-1)).toContain('Логистика')
+    expect(order.at(-2)).toBe('rop')
+  })
+
   it('writes every soʻm in full, in the summary and in the days', () => {
     const { container } = draw()
     const sum = rowNamed(container, 'Сумма факт 1 сум')
