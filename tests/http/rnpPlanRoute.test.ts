@@ -19,8 +19,9 @@ describe('POST /rnp/plan — the body', () => {
 
   it('refuses a bad month, an empty save and a flood', () => {
     expect(planBodySchema.safeParse(body([cell()], '2026-13')).success).toBe(false)
+    expect(planBodySchema.safeParse(body([cell()], '0001-01')).success).toBe(false)
     expect(planBodySchema.safeParse(body([])).success).toBe(false)
-    expect(planBodySchema.safeParse(body(Array.from({ length: 501 }, () => cell()))).success).toBe(false)
+    expect(planBodySchema.safeParse(body(Array.from({ length: 51 }, () => cell()))).success).toBe(false)
   })
 })
 

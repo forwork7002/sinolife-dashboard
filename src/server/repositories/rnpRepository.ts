@@ -584,7 +584,7 @@ export class RnpRepository {
             update: { valueCenti: centi(c.value), updatedBy: by },
           })
       }
-    })
+    }, { timeout: 15_000 })
   }
 }
 

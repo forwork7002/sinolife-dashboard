@@ -9,7 +9,11 @@ import { calendarDay } from '../costs/schema'
 
 export const headcountBodySchema = z
   .object({
-    month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected YYYY-MM'),
+    // Bounded as `/rnp/overview` is: each month a save names is built in full to check its teams.
+    month: z
+      .string()
+      .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected YYYY-MM')
+      .refine((m) => m >= '2025-01' && m <= '2100-12', 'Month out of range'),
     cells: z
       .array(
         z.object({

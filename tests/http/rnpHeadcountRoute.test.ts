@@ -14,6 +14,7 @@ describe('POST /rnp/headcount — the body', () => {
     expect(headcountBodySchema.safeParse(body([cell({ day: '2026-10-01' })])).success).toBe(false)
     expect(headcountBodySchema.safeParse(body([cell({ day: '2026-09-31' })])).success).toBe(false)
     expect(headcountBodySchema.safeParse(body([cell({ day: '2026-99-99' })])).success).toBe(false)
+    expect(headcountBodySchema.safeParse(body([cell({ day: '0001-01-21' })], '0001-01')).success).toBe(false)
   })
 
   it('refuses a fraction, a negative, an absurd count and an empty or overlong team', () => {

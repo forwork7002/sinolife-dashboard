@@ -8,7 +8,11 @@ import { RNP_PLAN_METRICS } from '@/server/domain/rnp/rnpSheet'
 */
 
 export const planBodySchema = z.object({
-  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected YYYY-MM'),
+  // Bounded as `/rnp/overview` is: each month a save names is built in full to check its cells.
+  month: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected YYYY-MM')
+    .refine((m) => m >= '2025-01' && m <= '2100-12', 'Month out of range'),
   cells: z
     .array(
       z.object({
@@ -25,5 +29,6 @@ export const planBodySchema = z.object({
       }),
     )
     .min(1)
-    .max(500),
+    // The grid saves one cell at a time; a few dozen is room for a script, not for a flood.
+    .max(50),
 })
