@@ -1600,6 +1600,25 @@ tr:hover > .tcol-sticky:not(.is-edge) {
   box-shadow: 1px 0 0 var(--border-strong), 6px 0 12px -6px rgb(0 0 0 / 0.28);
 }
 
+/* The «RNP» sheet pins План обший, Факт and Прогноз beside its label, each at
+   a measured `--rnp-left-*`, while the box is wide enough — `[data-pin-wide]`
+   (`usePinnedSummary`, RnpSheetTable.tsx). Narrower, `left: auto` lets them
+   scroll (a sticky cell with no inset does not stick) and the label is the
+   edge again. Specific enough to beat the bleed and its hover above. */
+[data-rnp-grid]:not([data-pin-wide]) .rnp-pin {
+  left: auto;
+}
+
+[data-rnp-grid]:not([data-pin-wide]) .tcol-sticky.rnp-label,
+[data-rnp-grid][data-pin-wide] .tcol-sticky.rnp-edge {
+  box-shadow: 1px 0 0 var(--border);
+}
+
+[data-rnp-grid][data-scrolled-x]:not([data-pin-wide]) .tcol-sticky.rnp-label,
+[data-rnp-grid][data-scrolled-x][data-pin-wide] .tcol-sticky.rnp-edge {
+  box-shadow: 1px 0 0 var(--border-strong), 6px 0 12px -6px rgb(0 0 0 / 0.28);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .tcol-sticky.is-edge {
     transition: box-shadow 150ms var(--ease-out);
