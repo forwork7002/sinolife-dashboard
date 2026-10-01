@@ -3,12 +3,12 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { ChannelTiles } from '@/features/leads/LeadSourcesSection'
-import type { LeadOutcomeDto, LeadSourcesOverviewDto, LeadTile } from '@/features/leads/leadSourcesApi'
+import type { ChannelTileDto, LeadSourcesOverviewDto, LeadTile } from '@/features/leads/leadSourcesApi'
 
 /*
   «Boshqa kanallar lidlari» — the client's list of 2026-10-01: Ген лид,
-  Входящий, Телеграм, Сммщик ии, Веб сайт, Сарафан and their «Jami». «Boshqa»
-  and «Исход» have no tile any more.
+  Входящий, Телеграм, Сммщик ии, Веб сайт, Сарафан, then Исход and Boshqa
+  (asked back the same day) and their «Jami» — «Жами лидлар» whole.
 
   Reduced motion, so `AnimatedNumber` prints the final figure rather than the
   frame the assertion happened to catch (the stub faktQueueBand.test.tsx uses).
@@ -26,30 +26,29 @@ window.matchMedia = ((query: string) => ({
 
 afterEach(cleanup)
 
-const outcome = (leads: number, success: number): LeadOutcomeDto => ({
+const cells = (leads: number, qualified: number, duplicates = 0): ChannelTileDto => ({
   leads,
-  success,
-  noAnswer: 0,
-  lowQuality: 0,
-  duplicate: 0,
-  open: leads - success,
-  successPercent: leads > 0 ? (success / leads) * 100 : null,
+  fresh: leads - duplicates,
+  qualified,
+  qualifiedPercent: leads - duplicates > 0 ? (qualified / (leads - duplicates)) * 100 : null,
 })
 
 // 24–30.09.2026 off the portal, rounded.
-const TILES: Record<LeadTile, LeadOutcomeDto> = {
-  generated: outcome(2278, 700),
-  inbound: outcome(473, 100),
-  telegram: outcome(27, 13),
-  aiSmm: outcome(445, 150),
-  web: outcome(1, 1),
-  sarafan: outcome(0, 0),
+const TILES: Record<LeadTile, ChannelTileDto> = {
+  generated: cells(2278, 700),
+  inbound: cells(473, 100),
+  telegram: cells(27, 13),
+  aiSmm: cells(445, 150),
+  web: cells(1, 1),
+  sarafan: cells(0, 0),
+  outbound: cells(2410, 40),
+  other: cells(100, 10),
 }
 
 const data = {
   tiles: {
-    rows: (Object.keys(TILES) as LeadTile[]).map((tile) => ({ tile, outcome: TILES[tile] })),
-    total: outcome(3224, 964),
+    rows: (Object.keys(TILES) as LeadTile[]).map((tile) => ({ tile, ...TILES[tile] })),
+    total: cells(5734, 1014, 60),
   },
 } as unknown as LeadSourcesOverviewDto
 
@@ -57,7 +56,7 @@ const data = {
 const tile = (label: string) => screen.getByText(label, { selector: 'p' }).closest('.card') as HTMLElement
 
 describe('ChannelTiles', () => {
-  it('prints the client\'s six channels with their kval and rate', () => {
+  it('prints the client\'s channels with their kval and rate', () => {
     render(<ChannelTiles data={data} status="ready" />)
 
     expect(screen.getByRole('heading', { name: 'Boshqa kanallar lidlari' })).toBeTruthy()
@@ -69,6 +68,8 @@ describe('ChannelTiles', () => {
     expect(within(tile('Сммщик ии')).getByText('445')).toBeTruthy()
     expect(within(tile('Сммщик ии')).getByText('«ИИ квал сана» toʻldirilgan · 14.09.2026 dan')).toBeTruthy()
     expect(within(tile('Веб сайт')).getByText('1')).toBeTruthy()
+    expect(within(tile('Исход')).getByText('2,410')).toBeTruthy()
+    expect(within(tile('Boshqa')).getByText('100')).toBeTruthy()
   })
 
   it('shows a quiet channel at 0, with a dash for its rate', () => {
@@ -84,25 +85,18 @@ describe('ChannelTiles', () => {
     const total = screen.getByTestId('lead-channel-total')
     expect(total.parentElement!.firstElementChild).toBe(total)
     expect(within(total).getByText('Jami')).toBeTruthy()
-    expect(within(total).getByText('3,224')).toBeTruthy()
-    expect(within(total).getByText('964 kval · 29.9%')).toBeTruthy()
-    expect(within(total).getByText('6 kanal yigʻindisi · Исход kirmaydi · forma va ИИ lidlari Reklamada ham bor')).toBeTruthy()
-  })
-
-  it('has no «Boshqa» or «Исход» tile any more', () => {
-    render(<ChannelTiles data={data} status="ready" />)
-
-    expect(screen.queryByText('Boshqa')).toBeNull()
-    expect(screen.queryByText('Исход (chiquvchi)')).toBeNull()
-    expect(screen.queryByTestId('lead-channel-outbound')).toBeNull()
+    expect(within(total).getByText('5,734')).toBeTruthy()
+    // kval ÷ yangi (5 674), as the headline «Квал %».
+    expect(within(total).getByText('1,014 kval · 17.9%')).toBeTruthy()
+    expect(within(total).getByText('= Жами лидлар · kval yopilgan kuni')).toBeTruthy()
   })
 
   it('says loading and failure on every tile rather than printing zeros', () => {
     const { unmount } = render(<ChannelTiles data={undefined} status="loading" />)
-    expect(screen.getAllByRole('status')).toHaveLength(7)
+    expect(screen.getAllByRole('status')).toHaveLength(9)
     unmount()
 
     render(<ChannelTiles data={undefined} status="error" />)
-    expect(screen.getAllByText('Olinmadi')).toHaveLength(7)
+    expect(screen.getAllByText('Olinmadi')).toHaveLength(9)
   })
 })

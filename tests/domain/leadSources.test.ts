@@ -101,8 +101,8 @@ describe('leadChannel', () => {
 describe('leadTile', () => {
   const v = LEAD_SOURCE_VOCABULARY
 
-  it('reads the client\'s six channels off the portal\'s sources', () => {
-    expect(LEAD_TILES).toEqual(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'sarafan'])
+  it('reads the client\'s channels off the portal\'s sources', () => {
+    expect(LEAD_TILES).toEqual(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'sarafan', 'outbound', 'other'])
     expect(leadTile('REPEAT_SALE', false, v)).toBe('generated') // forms and by hand alike
     expect(leadTile('CALL', false, v)).toBe('inbound')
     expect(leadTile('UC_CKXAZS', false, v)).toBe('inbound') // Входящий collagen
@@ -112,6 +112,7 @@ describe('leadTile', () => {
     expect(leadTile('UC_Z1OF0D', false, v)).toBe('telegram') // sinolif_tg
     expect(leadTile('WEB', false, v)).toBe('web') // Веб-сайт
     expect(leadTile('UC_9SNG04', false, v)).toBe('sarafan') // Сарафан маркетинг
+    expect(leadTile('UC_KPZA32', false, v)).toBe('outbound') // Исход
   })
 
   it('puts every lead the AI qualified on «Сммщик ии», whatever its source', () => {
@@ -123,10 +124,10 @@ describe('leadTile', () => {
     expect(leadTile('UC_KPZA32', true, v)).toBe('aiSmm')
   })
 
-  it('gives «Исход», the unqualified ad pages, the human SMM and the rest no tile', () => {
-    for (const id of ['UC_KPZA32', 'UC_1X1J24', 'UC_5JW4YK', 'UC_HCZ9YU', 'UC_NBCV5K', 'WEBFORM', 'UC_MXY08O']) {
-      expect(leadTile(id, false, v)).toBeNull()
+  it('puts the unqualified ad pages, the human SMM, no source and the rest on «Boshqa»', () => {
+    for (const id of ['UC_1X1J24', 'UC_5JW4YK', 'UC_HCZ9YU', 'UC_NBCV5K', 'WEBFORM', 'UC_MXY08O']) {
+      expect(leadTile(id, false, v)).toBe('other')
     }
-    expect(leadTile(null, false, v)).toBeNull()
+    expect(leadTile(null, false, v)).toBe('other')
   })
 })

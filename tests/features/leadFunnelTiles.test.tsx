@@ -36,7 +36,20 @@ const data = {
     spendUsd: 1200,
     costPerQualifiedUsd: 4,
   },
-  tiles: { rows: [], total: { leads: 3224 } },
+  // «Бошка лидлар» sums the first six; Исход and Boshqa stay out of it.
+  tiles: {
+    rows: [
+      { tile: 'generated', leads: 2278 },
+      { tile: 'inbound', leads: 473 },
+      { tile: 'telegram', leads: 27 },
+      { tile: 'aiSmm', leads: 445 },
+      { tile: 'web', leads: 1 },
+      { tile: 'sarafan', leads: 0 },
+      { tile: 'outbound', leads: 2410 },
+      { tile: 'other', leads: 100 },
+    ],
+    total: { leads: 5734 },
+  },
 } as unknown as LeadSourcesOverviewDto
 
 const tile = (label: string) => screen.getByText(label, { selector: 'p' }).closest('.card') as HTMLElement

@@ -22,6 +22,7 @@ import {
 import type {
   DmDayDto,
   DmPageDto,
+  ChannelTileDto,
   FormDayDto,
   FormOwnerDto,
   LeadChannel,
@@ -76,12 +77,17 @@ export function LeadSourcesSection({ data, status }: { data: LeadSourcesOverview
  * The client's seven figures (2026-10-01), in their order: Жами / Янги / Дубль
  * / Бошка лидлар, Квал лидлар сони, Квал %, Квал лид нархи $. The same day on
  * the RNP sheet's «Регистрация» block reads the same numbers — `funnel` says
- * how. «Бошка лидлар» is the channel row's Jami below, repeated up here; Янги
- * is washed green and Дубль red, as the client asked.
+ * how. «Бошка лидлар» is the channel row's first six tiles (Ген лид … Сарафан)
+ * summed — the row's Jami is «Жами лидлар» itself since Исход and Boshqa came
+ * back; Янги is washed green and Дубль red, as the client asked.
  */
+/** «Бошка лидлар» — the six channels the client listed on 2026-10-01; Исход and Boshqa are not in it. */
+const OTHER_LEAD_TILES: ReadonlySet<LeadTile> = new Set(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'sarafan'])
+
 export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
   const f = data?.funnel
   const shareOfTotal = (n: number) => (f && f.total > 0 ? ` · ${formatPercent((n / f.total) * 100)}` : '')
+  const otherLeads = data ? data.tiles.rows.filter((r) => OTHER_LEAD_TILES.has(r.tile)).reduce((n, r) => n + r.leads, 0) : null
   return (
     <section className="flex min-w-0 flex-col gap-3">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
@@ -115,7 +121,7 @@ export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | u
           compact
           status={status}
           label="Бошка лидлар"
-          value={data?.tiles.total.leads ?? null}
+          value={otherLeads}
           unit="count"
           hint="Ген лид … Сарафан yigʻindisi"
         />
@@ -163,6 +169,8 @@ const TILE_LABEL: Readonly<Record<LeadTile, string>> = {
   aiSmm: 'Сммщик ии',
   web: 'Веб сайт',
   sarafan: 'Сарафан',
+  outbound: 'Исход',
+  other: 'Boshqa',
 }
 
 /** The client's order, as the server's `LEAD_TILES` — kept here too so the loading state can draw labelled tiles. */
@@ -172,11 +180,12 @@ const TILES = Object.keys(TILE_LABEL) as LeadTile[]
 const TILE_NOTE: Partial<Record<LeadTile, string>> = {
   generated: 'lid-forma + qoʻlda kiritilgan',
   aiSmm: '«ИИ квал сана» toʻldirilgan · 14.09.2026 dan',
+  other: 'reklama sahifalari (ИИ kval qilmagan), SMM va manbasiz',
 }
 
-/** «N kval · X%» — a dash for the rate when the channel had no leads. */
-const kvalHint = (o: LeadOutcomeDto) =>
-  `${formatNumber(o.success)} kval · ${o.leads > 0 ? formatPercent(o.successPercent) : NO_VALUE}`
+/** «N kval · X%» — kval ÷ yangi, as «Квал %»; a dash for the rate when the channel had no new leads. */
+const kvalHint = (o: ChannelTileDto) =>
+  `${formatNumber(o.qualified)} kval · ${o.qualifiedPercent !== null ? formatPercent(o.qualifiedPercent) : NO_VALUE}`
 
 const note = (text: string) => (
   <p className="text-[11px] leading-snug" style={muted}>
@@ -186,13 +195,14 @@ const note = (text: string) => (
 
 /**
  * The client's lead channels (2026-10-01), one tile each, and their «Jami»
- * (summed on the server, `tiles.total`). A cut of its own that overlaps
+ * (summed on the server, `tiles.total`) — every Регистрация deal is on one
+ * tile, so «Jami» is «Жами лидлар» and its kval «Квал лидлар сони». A cut of its own that overlaps
  * «Reklama lidlari» on purpose: «Ген лид» holds every lead-form lead and
  * «Сммщик ии» every lead the AI qualified, mostly off the ad pages. Every tile is on the wire even at zero, so a
  * quiet channel reads 0.
  */
 export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
-  const byTile = new Map(data?.tiles.rows.map((r) => [r.tile, r.outcome]))
+  const byTile = new Map(data?.tiles.rows.map((r) => [r.tile, r]))
   const total = data?.tiles.total
 
   return (
@@ -200,7 +210,7 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
       <h2 id="lead-channel-tiles" className="eyebrow">
         Boshqa kanallar lidlari
       </h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
         {/* The total leads the row (the client's order, 2026-10-01) and wears a
             ring in the page's accent, so the eye finds the sum first. */}
         <div
@@ -214,7 +224,7 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
             value={total?.leads ?? null}
             unit="count"
             hint={total ? kvalHint(total) : undefined}
-            context={note(`${TILES.length} kanal yigʻindisi · Исход kirmaydi · forma va ИИ lidlari Reklamada ham bor`)}
+            context={note('= Жами лидлар · kval yopilgan kuni')}
           />
         </div>
         {TILES.map((tile) => {

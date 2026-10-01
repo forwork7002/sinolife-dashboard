@@ -48,33 +48,45 @@ export const LEAD_CHANNELS: readonly LeadChannel[] = Object.freeze([
 
 /**
  * «Boshqa kanallar lidlari» — the client's list of 2026-10-01, one tile each
- * and their «Jami»: Ген лид, Входящий, Телеграм, Сммщик ии, Веб сайт, Сарафан.
- * A cut of Регистрация of its own, beside the channels above rather than made
- * of them: the client asked for «Ген лид» whole (forms and by hand), and for
- * «Сммщик ии» as every lead the AI qualified out of the DMs — which mostly
- * come in on the ad pages, so this row and «Reklama lidlari» overlap by
- * design. «Исход», the ad pages the AI did not qualify, the human SMM sources
- * and the rest have no tile, and «Jami» is the six tiles' sum.
+ * and their «Jami»: Ген лид, Входящий, Телеграм, Сммщик ии, Веб сайт, Сарафан,
+ * and (asked back the same day, so «Jami» meets «Жами лидлар») Исход and
+ * Boshqa. A cut of Регистрация of its own, beside the channels above rather
+ * than made of them: the client asked for «Ген лид» whole (forms and by hand),
+ * and for «Сммщик ии» as every lead the AI qualified out of the DMs — which
+ * mostly come in on the ad pages, so this row and «Reklama lidlari» overlap
+ * by design. Every deal lands on exactly one tile — the ad pages the AI did
+ * not qualify, the human SMM sources and a deal with no source on «Boshqa» —
+ * so «Jami» is the whole of Регистрация.
  */
-export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'sarafan'
+export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'sarafan' | 'outbound' | 'other'
 
-export const LEAD_TILES: readonly LeadTile[] = Object.freeze(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'sarafan'])
+export const LEAD_TILES: readonly LeadTile[] = Object.freeze([
+  'generated',
+  'inbound',
+  'telegram',
+  'aiSmm',
+  'web',
+  'sarafan',
+  'outbound',
+  'other',
+])
 
 /**
- * The tile a Регистрация deal counts on, or null when it has none. The AI's
- * mark wins over every source, «Ген лид» included, so a qualified sinolif_tg
- * chat is «Сммщик ии», not «Телеграм» — no lead is counted twice in «Jami».
- * The portal fills the mark since 2026-09-14; before that the tile reads 0.
+ * The tile a Регистрация deal counts on. The AI's mark wins over every source,
+ * «Ген лид» included, so a qualified sinolif_tg chat is «Сммщик ии», not
+ * «Телеграм» — no lead is counted twice in «Jami». The portal fills the mark
+ * since 2026-09-14; before that the tile reads 0.
  */
-export function leadTile(sourceId: string | null, aiQualified: boolean, vocabulary: LeadSourceVocabulary): LeadTile | null {
+export function leadTile(sourceId: string | null, aiQualified: boolean, vocabulary: LeadSourceVocabulary): LeadTile {
   if (aiQualified) return 'aiSmm'
-  if (sourceId === null) return null
+  if (sourceId === null) return 'other'
   if (sourceId === vocabulary.generated) return 'generated'
   if (vocabulary.inbound.has(sourceId)) return 'inbound'
   if (vocabulary.telegram.has(sourceId)) return 'telegram'
   if (vocabulary.web.has(sourceId)) return 'web'
   if (vocabulary.sarafan.has(sourceId)) return 'sarafan'
-  return null
+  if (vocabulary.outbound.has(sourceId)) return 'outbound'
+  return 'other'
 }
 
 /**

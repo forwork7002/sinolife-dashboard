@@ -46,7 +46,12 @@ import { LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/rekla
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
 import type { TargetProduct } from '@/server/domain/types'
 import type { InsightsRepository, LeadFakt1ClientRow } from '@/server/repositories/insightsRepository'
-import type { LeadSourcesRepository, RegistrationDayRow, TriageDayRow } from '@/server/repositories/leadSourcesRepository'
+import type {
+  LeadSourcesRepository,
+  QualifiedSourceRow,
+  RegistrationDayRow,
+  TriageDayRow,
+} from '@/server/repositories/leadSourcesRepository'
 import type { CampaignDayRow, ReklamaRepository } from '@/server/repositories/reklamaRepository'
 
 import { calendarDays } from './reklamaService'
@@ -127,6 +132,22 @@ export interface SourceRowDto {
   readonly fakt1Clients: number
 }
 
+/**
+ * One channel tile, read as the headline tiles read Регистрация: leads by the
+ * day they arrived, kval by the day it was WON — so the tiles' «Jami» is
+ * «Жами лидлар» and «Квал лидлар сони» to the lead.
+ */
+export interface ChannelTileDto {
+  /** Created in the window, duplicates included. */
+  readonly leads: number
+  /** `leads` less the duplicates. */
+  readonly fresh: number
+  /** WON in the window, whenever it arrived. */
+  readonly qualified: number
+  /** qualified ÷ fresh — «Квал %» of the headline. */
+  readonly qualifiedPercent: number | null
+}
+
 export interface LeadSourcesOverviewDto {
   /** When Meta's campaign grain was last read; null means never. */
   readonly importedAt: string | null
@@ -185,11 +206,11 @@ export interface LeadSourcesOverviewDto {
   }[]
   /**
    * «Boshqa kanallar lidlari»: every tile of `LEAD_TILES`, in its order and
-   * at zero when quiet, and «Jami» — their sum, «Исход» not in it.
+   * at zero when quiet, and «Jami» — their sum, which is `funnel` whole.
    */
   readonly tiles: {
-    readonly rows: readonly { readonly tile: LeadTile; readonly outcome: LeadOutcomeDto }[]
-    readonly total: LeadOutcomeDto
+    readonly rows: readonly ({ readonly tile: LeadTile } & ChannelTileDto)[]
+    readonly total: ChannelTileDto
   }
   readonly sources: readonly SourceRowDto[]
 }
@@ -221,6 +242,19 @@ function addOutcome(into: OutcomeAcc, from: OutcomeAcc): void {
 function outcomeCells(a: OutcomeAcc): LeadOutcomeDto {
   const leads = LEAD_BUCKETS.reduce((n, b) => n + a[b], 0)
   return { leads, ...a, successPercent: percent(a.success, leads) }
+}
+
+interface TileAcc {
+  leads: number
+  duplicates: number
+  qualified: number
+}
+
+const tileZero = (): TileAcc => ({ leads: 0, duplicates: 0, qualified: 0 })
+
+function tileCells(a: TileAcc): ChannelTileDto {
+  const fresh = a.leads - a.duplicates
+  return { leads: a.leads, fresh, qualified: a.qualified, qualifiedPercent: percent(a.qualified, fresh) }
 }
 
 const PRODUCT_ORDER: readonly MetaProduct[] = ['Collagen', 'Zextra', 'Boshqa']
@@ -255,8 +289,8 @@ export function leadSourcesOverview(input: {
   campaigns: readonly CampaignDayRow[]
   /** Leads that reached FAKT 1 (`InsightsRepository.leadFakt1Clients`). */
   fakt1: readonly LeadFakt1ClientRow[]
-  /** Регистрация deals WON in the window (`LeadSourcesRepository.qualifiedCount`). */
-  qualified: number
+  /** Регистрация deals WON in the window, by source (`LeadSourcesRepository.qualifiedSources`). */
+  qualified: readonly QualifiedSourceRow[]
   importedAt: Date | null
 }): LeadSourcesOverviewDto {
   const days = calendarDays(input.window.from, input.window.to)
@@ -305,8 +339,7 @@ export function leadSourcesOverview(input: {
   const pageKeyOf = (sourceId: string) => DM_PAGE_ALIAS[sourceId] ?? sourceId
   const sources = new Map<string, SourceAcc>()
   const channels = new Map<LeadChannel, OutcomeAcc>(LEAD_CHANNELS.map((c) => [c, outcomeZero()]))
-  const tiles = new Map<LeadTile, OutcomeAcc>(LEAD_TILES.map((t) => [t, outcomeZero()]))
-  const tilesTotal = outcomeZero()
+  const tiles = new Map<LeadTile, TileAcc>(LEAD_TILES.map((t) => [t, tileZero()]))
   const registration = outcomeZero()
 
   /*
@@ -331,11 +364,9 @@ export function leadSourcesOverview(input: {
 
     addOutcome(registration, one)
     addOutcome(channels.get(channel)!, one)
-    const tile = leadTile(row.sourceId, row.aiQualified, LEAD_SOURCE_VOCABULARY)
-    if (tile !== null) {
-      addOutcome(tiles.get(tile)!, one)
-      addOutcome(tilesTotal, one)
-    }
+    const tile = tiles.get(leadTile(row.sourceId, row.aiQualified, LEAD_SOURCE_VOCABULARY))!
+    tile.leads += row.leads
+    if (bucket === 'duplicate') tile.duplicates += row.leads
     const sourceKey = sourceKeyOf(form, row.sourceId)
     const source = mapGet(sources, sourceKey, () => ({
       key: sourceKey,
@@ -471,6 +502,19 @@ export function leadSourcesOverview(input: {
 
   const formLeads = outcomeCells(formOutcome).leads
 
+  // --- kval by the day it was WON, onto the same tiles as the leads
+  let qualified = 0
+  for (const row of input.qualified) {
+    tiles.get(leadTile(row.sourceId, row.aiQualified, LEAD_SOURCE_VOCABULARY))!.qualified += row.qualified
+    qualified += row.qualified
+  }
+  const tilesTotal = tileZero()
+  for (const t of tiles.values()) {
+    tilesTotal.leads += t.leads
+    tilesTotal.duplicates += t.duplicates
+    tilesTotal.qualified += t.qualified
+  }
+
   // --- the headline tiles
   let adSpend = 0n
   for (const row of input.campaigns) if (adBudgetProduct(row) !== null) adSpend += row.spendMicroUsd
@@ -484,11 +528,11 @@ export function leadSourcesOverview(input: {
       total: registrationCells.leads,
       fresh,
       duplicates: registration.duplicate,
-      qualified: input.qualified,
-      qualifiedPercent: percent(input.qualified, fresh),
+      qualified,
+      qualifiedPercent: percent(qualified, fresh),
       spendUsd: usd(adSpend),
       /* No spend read (Meta not imported yet, or down that day) is «unknown», never a free kval. */
-      costPerQualifiedUsd: adSpend > 0n ? perUnit(adSpend, input.qualified) : null,
+      costPerQualifiedUsd: adSpend > 0n ? perUnit(adSpend, qualified) : null,
     },
     totals: {
       registration: registrationCells,
@@ -509,8 +553,8 @@ export function leadSourcesOverview(input: {
       fakt1Clients: fakt1Channels.get(channel)!.size,
     })),
     tiles: {
-      rows: LEAD_TILES.map((tile) => ({ tile, outcome: outcomeCells(tiles.get(tile)!) })),
-      total: outcomeCells(tilesTotal),
+      rows: LEAD_TILES.map((tile) => ({ tile, ...tileCells(tiles.get(tile)!) })),
+      total: tileCells(tilesTotal),
     },
     sources: [...sources.values()]
       .map((s) => ({
@@ -537,7 +581,7 @@ const scanCache = ttlCache<{
   registration: RegistrationDayRow[]
   triage: TriageDayRow[]
   fakt1: LeadFakt1ClientRow[]
-  qualified: number
+  qualified: QualifiedSourceRow[]
 }>(60_000)
 
 export class LeadSourcesService {
@@ -560,7 +604,7 @@ export class LeadSourcesService {
           this.repository.registrationDays(period),
           this.repository.triageDays(period),
           this.insights.leadFakt1Clients(period),
-          this.repository.qualifiedCount(period),
+          this.repository.qualifiedSources(period),
         ])
         return { registration, triage, fakt1, qualified }
       }),
