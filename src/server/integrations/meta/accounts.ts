@@ -55,6 +55,11 @@ export const META_ACCOUNT_OWNERS: Readonly<Record<string, MetaAccountOwner>> = O
   '1356045995688768': { product: 'Zextra', targetolog: 'Kamron' }, // Zextra Kamron 3
   '1592588735796463': { product: 'Zextra', targetolog: 'Umar' }, // Zextra Umar 3
   /*
+    Umar's fourth Zextra account (BM 000), seen on 2026-10-01: unmapped, it
+    showed on «Lidlar» as a «Boshqa» row of its own beside Umar · Zextra.
+  */
+  '1766424904604300': { product: 'Zextra', targetolog: 'Umar' }, // Umar (Zextra)
+  /*
     The client's own AI targetolog (2026-09-25: «collagen ai targetolog men bir
     ai targetolog yaratdim … hali uni ishlatmadim») — not running yet, so it
     spends nothing; named now so its first dollar lands on its own row.

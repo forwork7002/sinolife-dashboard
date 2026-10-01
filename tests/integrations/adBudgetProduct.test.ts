@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { adBudgetProduct } from '@/server/integrations/meta/accounts'
+import { adBudgetProduct, ownerOf } from '@/server/integrations/meta/accounts'
 
 /*
   The one filter behind two screens' ad budget: the RNP sheet's «Жами бюджет»
@@ -18,6 +18,11 @@ describe('adBudgetProduct', () => {
   it('counts a mapped account’s lead-form and DM money under its product', () => {
     expect(adBudgetProduct(row())).toBe('Collagen')
     expect(adBudgetProduct(row({ objective: 'OUTCOME_ENGAGEMENT', campaignName: 'DM' }))).toBe('Collagen')
+  })
+
+  it('puts the «Umar (Zextra)» account on Umar · Zextra, not a row of its own', () => {
+    expect(ownerOf('1766424904604300', 'Umar (Zextra)')).toEqual({ product: 'Zextra', targetolog: 'Umar' })
+    expect(adBudgetProduct(row({ accountId: '1766424904604300', accountName: 'Umar (Zextra)' }))).toBe('Zextra')
   })
 
   it('leaves out a hiring campaign, wherever it runs', () => {
