@@ -42,3 +42,25 @@ export const splitBodySchema = z.object({
     .min(1)
     .max(40),
 })
+
+/** The most a seller's day plan can be, in whole soʻm: a trillion, far past any day. */
+export const MAX_DAY_PLAN_SOM = 1_000_000_000_000
+
+export const sellerPlanBodySchema = z.object({
+  /** `YYYY-MM` — the month the day plans apply to, every day of it. */
+  month: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected YYYY-MM')
+    .refine((m) => m >= '2025-01' && m <= '2100-12', 'Month out of range'),
+  sellers: z
+    .array(
+      z.object({
+        employeeId: z.string().trim().min(1).max(64),
+        /** Whole soʻm; null or 0 removes the plan. */
+        dayPlan: z.number().int().min(0).max(MAX_DAY_PLAN_SOM).nullable(),
+      }),
+    )
+    .min(1)
+    .max(400)
+    .refine((rows) => new Set(rows.map((r) => r.employeeId)).size === rows.length, 'A seller is sent twice'),
+})

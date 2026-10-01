@@ -580,6 +580,7 @@ model Employee {
   /// Every unit this person belongs to. `departmentId` above is only the first
   /// of them. See DepartmentMember.
   memberships DepartmentMember[]
+  dayPlans    SellerDayPlan[]
 
   @@unique([externalSource, externalId])
   @@index([departmentId])
@@ -1512,6 +1513,25 @@ model RnpManualHeadcount {
   @@unique([day, rop])
   @@index([day])
   @@map("rnp_manual_headcount")
+}
+
+/// «Registratsiya · ROP otchet» — a seller's plan for every day of one month,
+/// in soʻm minor units (the «ПЛАН» column of the client's group sheet, asked
+/// for on 2026-10-01). `month` is the month's first day. «No plan» is no row,
+/// never a plan of zero, which the sheet would read as «missed it entirely».
+model SellerDayPlan {
+  id          String   @id @default(cuid())
+  month       DateTime @db.Date
+  employeeId  String
+  amountMinor BigInt
+  updatedAt   DateTime @updatedAt
+  /// The account that last saved it — its user id.
+  updatedBy   String?
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([month, employeeId])
+  @@map("seller_day_plan")
 }
 
 /// «Registratsiya» — the administrator's split of one day's handed-out leads

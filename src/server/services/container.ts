@@ -106,9 +106,10 @@ export const leadSourcesService = new LeadSourcesService(new LeadSourcesReposito
 export const rnpService = new RnpService(insightsRepository, new RnpRepository(prisma), reklamaRepository, new CbuUsdRates())
 /*
   «Registratsiya» (2026-10-01) — the day's handed-out leads per ROP against the
-  administrator's split. See registrationService.ts.
+  administrator's split, and «ROP otchet» seller by seller (FAKT from the
+  queue cohort, insightsRepository). See registrationService.ts.
 */
-export const registrationService = new RegistrationService(new RegistrationRepository(prisma))
+export const registrationService = new RegistrationService(new RegistrationRepository(prisma), insightsRepository)
 /*
   «Lid kogortasi» (a tab of «Lidlar» since 2026-09-25) — arrival → distribution of routed leads. See leadCohortService.ts.
 */

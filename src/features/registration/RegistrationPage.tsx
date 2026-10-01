@@ -15,6 +15,8 @@ import { APP_TIME_ZONE, formatDate, formatDateShort, formatDateTime, formatNumbe
 import { t } from '@/lib/messages'
 
 import { type LeadSplitDto, type LeadSplitRopDto, type SaveSplitBody, SHARE_TOTAL_BP, type SplitShare } from './registrationApi'
+import { ROP_COLORS } from './ropColors'
+import { RopReport } from './RopReport'
 
 /**
  * «Registratsiya» — how one day's handed-out leads are shared among the ROPs.
@@ -25,21 +27,12 @@ import { type LeadSplitDto, type LeadSplitRopDto, type SaveSplitBody, SHARE_TOTA
  * (the portal's «Лид таркатилган сана» + «РОП (Первичка)» filter, as
  * «РОП олган лид» on /rnp). The definitions are in
  * `server/domain/registration/leadSplit.ts`.
+ *
+ * Under the split, «ROP otchet» (`RopReport`): the same day seller by seller.
+ * It took the split table's place on 2026-10-01 at the client's request; the
+ * split's form moved onto the bars card.
  */
 
-// Nine teams against seven usable series slots (--series-8 sits on --status-critical): the
-// last two are mixes, picked by eye in both themes to stand apart from the seven.
-const ROP_COLORS = [
-  'var(--series-1)',
-  'var(--series-2)',
-  'var(--series-3)',
-  'var(--series-4)',
-  'var(--series-5)',
-  'var(--series-7)',
-  'var(--series-6)',
-  'color-mix(in oklab, var(--series-8) 50%, var(--series-7))',
-  'color-mix(in oklab, var(--series-5) 45%, var(--series-6))',
-]
 const UNASSIGNED_COLOR = 'var(--ink-muted)'
 const muted = { color: 'var(--ink-muted)' } as const
 
@@ -173,23 +166,9 @@ export function RegistrationPage() {
 
             <ChartCard
               title="Lidlar qanday boʻlinadi"
-              hint="Yuqorida — administrator belgilagan reja (yangi lidlardan), pastda — ROPʼlar haqiqatda olgani (jami tarqatilgandan)."
-            >
-              {data ? <SplitBars data={data} rows={rows} /> : <LoadingSkeleton rows={2} />}
-            </ChartCard>
-
-            <Card className="reveal">
-              <header className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4 pb-3">
-                <div className="min-w-0">
-                  <h2 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
-                    ROPʼlar boʻyicha taqsimot
-                  </h2>
-                  <p className="mt-0.5 text-xs" style={muted}>
-                    Reja — yangi lidlarning ulushi. «Olgan lid» — Bitrix24: «Лид таркатилган сана» shu kun va «РОП (Первичка)» shu ROP. Farq va bajarilish
-                    dublikatsiz hisoblanadi.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
+              hint="Yuqorida — administrator belgilagan reja (yangi lidlardan), pastda — ROPʼlar haqiqatda olgani (jami tarqatilgandan). «Olgan lid» — Bitrix24: «Лид таркатилган сана» shu kun va «РОП (Первичка)» shu ROP."
+              action={
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   {data?.split && !editing && <StatusChip tone="good">Belgilangan · {formatDateTime(data.split.updatedAt)}</StatusChip>}
                   {data && !data.split && !editing && <StatusChip tone="warning">Bu kunga taqsimot belgilanmagan</StatusChip>}
                   {data?.canEdit && !editing && !overview.isPlaceholderData && data.day === day && (
@@ -198,17 +177,18 @@ export function RegistrationPage() {
                     </Button>
                   )}
                 </div>
-              </header>
-              <div className="px-5 pb-5">
-                {!data ? (
-                  <LoadingSkeleton rows={6} />
-                ) : editing ? (
-                  <PlanEditor key={data.day} data={data} rows={rows} onDone={() => setEditing(false)} />
-                ) : (
-                  <ShareTable data={data} rows={rows} />
-                )}
-              </div>
-            </Card>
+              }
+            >
+              {!data ? (
+                <LoadingSkeleton rows={2} />
+              ) : editing ? (
+                <PlanEditor key={data.day} data={data} rows={rows} onDone={() => setEditing(false)} />
+              ) : (
+                <SplitBars data={data} rows={rows} />
+              )}
+            </ChartCard>
+
+            <RopReport day={day} colors={new Map(rows.map((r) => [r.rop, r.color]))} />
 
             <ChartCard
               title="Kimga qancha lid kelayapti"
@@ -341,7 +321,6 @@ const th = 'eyebrow px-3 py-2 text-left font-[550] whitespace-nowrap'
 const thR = `${th} text-right`
 const td = 'px-3 py-2.5 whitespace-nowrap'
 const tdR = `${td} tabular text-right`
-const dash = <span style={muted}>—</span>
 
 function RopCell({ row }: { row: Row }) {
   return (
@@ -351,104 +330,6 @@ function RopCell({ row }: { row: Row }) {
         {row.rop}
       </span>
     </th>
-  )
-}
-
-function ShareTable({ data, rows }: { data: LeadSplitDto; rows: readonly Row[] }) {
-  const planned = data.split !== null
-  const totals = rows.reduce(
-    (acc, r) => ({ bp: acc.bp + (r.shareBp ?? 0), plan: acc.plan + (r.planLeads ?? 0), got: acc.got + r.received, gotFresh: acc.gotFresh + r.receivedFresh }),
-    { bp: 0, plan: 0, got: 0, gotFresh: 0 },
-  )
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] border-collapse text-sm">
-        <thead>
-          <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
-            <th className={th}>ROP</th>
-            <th className={thR}>Ulush (reja)</th>
-            <th className={thR}>Lid soni (reja)</th>
-            <th className={thR}>Olgan lid</th>
-            <th className={thR}>Farq</th>
-            <th className={`${th} w-[28%]`}>Bajarilishi</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.rop} className="border-b" style={{ borderColor: 'var(--border)' }}>
-              <RopCell row={r} />
-              <td className={tdR}>{r.shareBp === null ? dash : shareText(r.shareBp)}</td>
-              <td className={tdR}>{r.planLeads === null ? dash : formatNumber(r.planLeads)}</td>
-              <td className={`${tdR} font-semibold`} style={{ color: 'var(--ink-primary)' }}>
-                {formatNumber(r.received)}
-                {r.received > r.receivedFresh && (
-                  <span className="ml-1.5 text-[11px] font-normal" style={{ color: 'var(--status-warning)' }} title="Shu kuni ikkinchi marta kelgan kontaktlar — reja bilan solishtirilmaydi">
-                    {formatNumber(r.received - r.receivedFresh)} dubl
-                  </span>
-                )}
-              </td>
-              <td className={tdR}>{r.planLeads === null ? dash : <Diff value={r.receivedFresh - r.planLeads} />}</td>
-              <td className={td}>
-                <Progress value={r.planLeads ? (r.receivedFresh / r.planLeads) * 100 : null} color={r.color} />
-              </td>
-            </tr>
-          ))}
-          {data.unassigned > 0 && (
-            <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
-              <th scope="row" className={`${td} text-left font-normal`} style={muted}>
-                <span className="inline-flex items-center gap-2">
-                  <Dot color={UNASSIGNED_COLOR} />
-                  Hech kimga berilmagan
-                </span>
-              </th>
-              <td className={tdR} />
-              <td className={tdR} />
-              <td className={tdR} style={muted}>
-                {formatNumber(data.unassigned)}
-              </td>
-              <td className={tdR} />
-              <td className={td} />
-            </tr>
-          )}
-        </tbody>
-        <tfoot>
-          <tr style={{ background: 'var(--accent-soft)' }}>
-            <th scope="row" className={`${td} text-left font-semibold`} style={{ color: 'var(--ink-primary)' }}>
-              Umumiy
-            </th>
-            <td className={`${tdR} font-semibold`}>{planned ? shareText(totals.bp) : dash}</td>
-            <td className={`${tdR} font-semibold`}>{planned ? formatNumber(totals.plan) : dash}</td>
-            <td className={`${tdR} font-semibold`} style={{ color: 'var(--ink-primary)' }}>
-              {formatNumber(totals.got)}
-            </td>
-            <td className={tdR}>{planned ? <Diff value={totals.gotFresh - totals.plan} /> : null}</td>
-            <td className={td}>
-              <Progress value={planned && totals.plan > 0 ? (totals.gotFresh / totals.plan) * 100 : null} color="var(--accent)" />
-            </td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-  )
-}
-
-function Diff({ value }: { value: number }) {
-  if (value === 0) return <span style={muted}>0</span>
-  const color = value > 0 ? 'var(--status-warning)' : 'var(--status-critical)'
-  return <span style={{ color }}>{value > 0 ? `+${formatNumber(value)}` : `−${formatNumber(-value)}`}</span>
-}
-
-function Progress({ value, color }: { value: number | null; color: string }) {
-  if (value === null) return dash
-  return (
-    <div className="flex items-center gap-2">
-      <div className="h-2 flex-1 overflow-hidden rounded-full" style={{ background: 'var(--grid)' }}>
-        <div className="h-full rounded-full" style={{ width: `${Math.min(100, value)}%`, background: color }} />
-      </div>
-      <span className="tabular w-12 text-right text-xs" style={{ color: 'var(--ink-secondary)' }}>
-        {formatPercent(value, 0)}
-      </span>
-    </div>
   )
 }
 

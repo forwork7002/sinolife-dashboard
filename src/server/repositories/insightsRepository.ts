@@ -1046,6 +1046,19 @@ export interface DepartmentMemberRow {
   readonly isHead: boolean
 }
 
+/** One seller's queue day in one ROP team, as `sellerFaktDays` reads it. */
+export interface SellerFaktDayRow {
+  /** `YYYY-MM-DD`, Tashkent. */
+  readonly day: string
+  readonly employeeId: string
+  /** The team as «RNP jadvali» reads it, or null when neither the deal nor the operator names one. */
+  readonly rop: string | null
+  readonly fakt1Orders: number
+  readonly fakt1Minor: bigint
+  readonly fakt2Orders: number
+  readonly fakt2Minor: bigint
+}
+
 /** One ROP team's queue day, as `rnpTeamDays` reads it. */
 export interface RnpTeamDayRow {
   /** `YYYY-MM-DD`, Tashkent. */
@@ -5295,6 +5308,57 @@ export class InsightsRepository {
       refusedOrders: int(r.refused_orders),
       refusedMinor: money(r.refused),
     }))
+  }
+
+  /**
+   * FAKT 1 and FAKT 2 per queue day × seller × ROP team — «ROP otchet» on
+   * «Registratsiya», the client's group sheet seller by seller.
+   *
+   * «RNP jadvali»'s cut one way finer: the same `queueSql` prelude, the same
+   * `FAKT1_OUTCOMES` and `faktDeliveredSql`, and the same team (the deal's
+   * «Организация сотрудника», else the operator's department), so a group's
+   * total here is its «Сумма факт 1» on /rnp for the day, to the soʻm. The
+   * seller is the queue's operator, as on Sotuvchilar reytingi.
+   */
+  async sellerFaktDays(period: Period): Promise<SellerFaktDayRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        day: string
+        employee_id: string
+        rop: string | null
+        fakt1_orders: bigint
+        fakt1: MoneyText
+        fakt2_orders: bigint
+        fakt2: MoneyText
+      }[]
+    >(`${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.sellerFaktDaysSql()}`, period.start, period.end, null)
+    return rows.map((r) => ({
+      day: r.day,
+      employeeId: r.employee_id,
+      rop: r.rop,
+      fakt1Orders: int(r.fakt1_orders),
+      fakt1Minor: money(r.fakt1),
+      fakt2Orders: int(r.fakt2_orders),
+      fakt2Minor: money(r.fakt2),
+    }))
+  }
+
+  /** Isolated so a test can pin it against the board's own predicates. */
+  static sellerFaktDaysSql(): string {
+    const fakt2 = InsightsRepository.faktDeliveredSql('ds."logisticsRole"')
+    return `
+       SELECT
+         (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS day,
+         c.operator_id AS employee_id,
+         COALESCE(${InsightsRepository.ropNameSql('d."operatorTeamSource"')}, c.rop) AS rop,
+         count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS fakt1_orders,
+         COALESCE(sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}), 0)::text AS fakt1,
+         count(*) FILTER (WHERE ${fakt2})::bigint AS fakt2_orders,
+         COALESCE(sum(d."amountMinor") FILTER (WHERE ${fakt2}), 0)::text AS fakt2
+       FROM scoped c
+       JOIN "deal" d ON d."id" = c.deal_id
+       LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
+       GROUP BY 1, 2, 3`
   }
 
   /**

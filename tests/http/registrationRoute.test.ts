@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { overviewQuerySchema, splitBodySchema } from '@/app/api/v1/registration/schema'
+import { overviewQuerySchema, sellerPlanBodySchema, splitBodySchema } from '@/app/api/v1/registration/schema'
 
 describe('registration request schemas', () => {
   it('takes an optional real calendar day', () => {
@@ -19,6 +19,30 @@ describe('registration request schemas', () => {
     expect(splitBodySchema.safeParse({ ...ok, rows: [] }).success).toBe(false)
     expect(splitBodySchema.safeParse({ ...ok, rows: [{ rop: 'Sevinch\u0000', shareBp: 100 }] }).success).toBe(false)
     expect(splitBodySchema.safeParse({ ...ok, rows: [{ rop: 'Saidazizxoʻja (ROP)', shareBp: 100 }] }).success).toBe(true)
+  })
+})
+
+describe('sellerPlanBodySchema', () => {
+  const ok = { month: '2026-10', sellers: [{ employeeId: 'e1', dayPlan: 5_000_000 }] }
+  it('takes a month and whole soʻm per seller, null removing a plan', () => {
+    expect(sellerPlanBodySchema.safeParse(ok).success).toBe(true)
+    expect(sellerPlanBodySchema.safeParse({ ...ok, sellers: [{ employeeId: 'e1', dayPlan: null }] }).success).toBe(true)
+  })
+  it('refuses a fraction, a negative, a bad month and a seller sent twice', () => {
+    expect(sellerPlanBodySchema.safeParse({ ...ok, sellers: [{ employeeId: 'e1', dayPlan: 1.5 }] }).success).toBe(false)
+    expect(sellerPlanBodySchema.safeParse({ ...ok, sellers: [{ employeeId: 'e1', dayPlan: -1 }] }).success).toBe(false)
+    expect(sellerPlanBodySchema.safeParse({ ...ok, month: '2026-13' }).success).toBe(false)
+    expect(sellerPlanBodySchema.safeParse({ ...ok, sellers: [] }).success).toBe(false)
+    expect(sellerPlanBodySchema.safeParse({ ...ok, sellers: [ok.sellers[0], ok.sellers[0]] }).success).toBe(false)
+  })
+})
+
+describe('POST /registration/plan — the gate', () => {
+  it('asks for kpi:manage inside the registration gate and refuses an unknown seller', async () => {
+    const source = await import('node:fs').then((fs) => fs.readFileSync('src/app/api/v1/registration/plan/route.ts', 'utf8'))
+    expect(source).toContain("{ permission: 'analytics:read:all', section: 'registration' }")
+    expect(source).toContain("can(ctx.principal, 'kpi:manage')")
+    expect(source).toContain('ApiError.validation')
   })
 })
 

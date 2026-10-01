@@ -5,6 +5,7 @@
 
 import type { PrismaClient } from '@/generated/prisma/client'
 import { canonicalRop, type DistributedDayRow, type SavedSplit, type SplitShare } from '@/server/domain/registration/leadSplit'
+import type { RosterMember, SellerLeadRow, SellerPlanInput, SellerPlanRow } from '@/server/domain/registration/ropReport'
 
 import { InsightsRepository } from './insightsRepository'
 
@@ -45,25 +46,12 @@ export class RegistrationRepository {
       WITH dist AS (
         SELECT
           d."leadDistributedOn" AS day,
-          COALESCE(
-            (SELECT ${InsightsRepository.ropNameSql('h."name"')}
-               FROM "department" h
-              WHERE h."headId" = d."leadRopEmployeeId" AND h."isActive"
-                AND ${InsightsRepository.ropNameSql('h."name"')} IS NOT NULL
-              ORDER BY h."name"
-              LIMIT 1),
-            ${InsightsRepository.ropNameSql('dep."name"')}
-          ) AS rop,
+          ${RegistrationRepository.leadRopSql()} AS rop,
           row_number() OVER (
             PARTITION BY d."leadDistributedOn", COALESCE(d."customerId", d."id")
             ORDER BY d."createdAtSource", d."id"
           ) AS nth
-        FROM "deal" d
-        LEFT JOIN "pipeline" p ON p."id" = d."pipelineId"
-        LEFT JOIN "employee" e ON e."id" = d."leadRopEmployeeId"
-        LEFT JOIN "department" dep ON dep."id" = e."departmentId"
-        WHERE d."leadDistributedOn" BETWEEN $1::date AND $2::date
-          AND (p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL)
+        ${RegistrationRepository.handedOutSql('BETWEEN $1::date AND $2::date')}
       )
       SELECT
         /* ::text — a bare DATE is built at LOCAL midnight by node-postgres. */
@@ -73,6 +61,124 @@ export class RegistrationRepository {
         count(*) FILTER (WHERE nth > 1)::bigint AS duplicates
       FROM dist
       GROUP BY 1, 2`
+  }
+
+  /**
+   * The ROP a handed-out deal went to: the team the «РОП (Первичка)» person
+   * heads, then the team they sit in, else null. Reads `d` and `dep` from
+   * `handedOutSql`.
+   */
+  private static leadRopSql(): string {
+    return `COALESCE(
+            (SELECT ${InsightsRepository.ropNameSql('h."name"')}
+               FROM "department" h
+              WHERE h."headId" = d."leadRopEmployeeId" AND h."isActive"
+                AND ${InsightsRepository.ropNameSql('h."name"')} IS NOT NULL
+              ORDER BY h."name"
+              LIMIT 1),
+            ${InsightsRepository.ropNameSql('dep."name"')}
+          )`
+  }
+
+  /** The handed-out deals whose «Лид таркатилган сана» matches `dayPredicate`; see `distributedDaysSql`. */
+  private static handedOutSql(dayPredicate: string): string {
+    return `FROM "deal" d
+        LEFT JOIN "pipeline" p ON p."id" = d."pipelineId"
+        LEFT JOIN "employee" e ON e."id" = d."leadRopEmployeeId"
+        LEFT JOIN "department" dep ON dep."id" = e."departmentId"
+        WHERE d."leadDistributedOn" ${dayPredicate}
+          AND (p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL)`
+  }
+
+  /** One day's handed-out leads per ROP team × seller. */
+  async sellerLeads(day: string): Promise<SellerLeadRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<{ rop: string | null; employee_id: string | null; leads: bigint }[]>(
+      RegistrationRepository.sellerLeadsSql(),
+      day,
+    )
+    return rows.map((r) => ({ rop: r.rop, employeeId: r.employee_id, leads: Number(r.leads) }))
+  }
+
+  /**
+   * «Лид сони» of «ROP otchet»: the deals `distributedDaysSql` counts — the
+   * same rows, the same team — cut by the person the deal is with, the
+   * operator the portal stamped or else its owner, exactly the person the
+   * sellers board credits the order to. So a group's leads sum to its «Olgan
+   * lid», duplicates included, as the portal counts them.
+   */
+  static sellerLeadsSql(): string {
+    return `
+      SELECT
+        ${RegistrationRepository.leadRopSql()} AS rop,
+        COALESCE(d."operatorEmployeeId", d."employeeId") AS employee_id,
+        count(*)::bigint AS leads
+      ${RegistrationRepository.handedOutSql('= $1::date')}
+      GROUP BY 1, 2`
+  }
+
+  /**
+   * Every active person in a ROP team — the team's head and everybody whose
+   * PRIMARY unit it is — so a seller with no lead and no order today is still
+   * a row, as on the client's sheet. Primary, never `department_member`: this
+   * is a money table, and a person in two units would sit on two teams' rows.
+   * A head is in the team they head (the first by name, if several).
+   */
+  async roster(): Promise<RosterMember[]> {
+    const rows = await this.prisma.$queryRawUnsafe<{ employee_id: string; full_name: string; rop: string; is_head: boolean }[]>(`
+      SELECT DISTINCT ON (x.employee_id) x.employee_id, e."fullName" AS full_name, x.rop, x.is_head
+        FROM (
+          SELECT h."headId" AS employee_id, ${InsightsRepository.ropNameSql('h."name"')} AS rop, true AS is_head, 0 AS rank, h."name"
+            FROM "department" h
+           WHERE h."isActive" AND h."headId" IS NOT NULL
+          UNION ALL
+          SELECT m."id", ${InsightsRepository.ropNameSql('dep."name"')}, false, 1, dep."name"
+            FROM "employee" m
+            JOIN "department" dep ON dep."id" = m."departmentId" AND dep."isActive"
+        ) x
+        JOIN "employee" e ON e."id" = x.employee_id AND e."isActive"
+       WHERE x.rop IS NOT NULL
+       ORDER BY x.employee_id, x.rank, x."name"`)
+    return rows.map((r) => ({ employeeId: r.employee_id, fullName: r.full_name, rop: r.rop, isHead: r.is_head }))
+  }
+
+  /** Names for people credited with leads or orders who are on no roster. */
+  async names(ids: readonly string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map()
+    const rows = await this.prisma.employee.findMany({ where: { id: { in: [...ids] } }, select: { id: true, fullName: true } })
+    return new Map(rows.map((r) => [r.id, r.fullName]))
+  }
+
+  /** The sellers' day plans for one month (`YYYY-MM`). */
+  async sellerPlans(month: string): Promise<SellerPlanRow[]> {
+    return this.prisma.sellerDayPlan.findMany({
+      where: { month: dateOf(`${month}-01`) },
+      select: { employeeId: true, amountMinor: true },
+    })
+  }
+
+  /** How many of `ids` are active people — a plan for anybody else is refused, not a 500. */
+  async countEmployees(ids: readonly string[]): Promise<number> {
+    return this.prisma.employee.count({ where: { id: { in: [...ids] }, isActive: true } })
+  }
+
+  /**
+   * Set the month's day plan of each seller sent, in ONE transaction. A null
+   * amount deletes the row: «no plan» is no row, never a plan of zero.
+   * Sellers not sent are left as they are.
+   */
+  async saveSellerPlans(month: string, rows: readonly SellerPlanInput[], by: string): Promise<void> {
+    const m = dateOf(`${month}-01`)
+    await this.prisma.$transaction(
+      rows.map((r) =>
+        r.amountMinor === null
+          ? this.prisma.sellerDayPlan.deleteMany({ where: { month: m, employeeId: r.employeeId } })
+          : this.prisma.sellerDayPlan.upsert({
+              where: { month_employeeId: { month: m, employeeId: r.employeeId } },
+              create: { month: m, employeeId: r.employeeId, amountMinor: r.amountMinor, updatedBy: by },
+              update: { amountMinor: r.amountMinor, updatedBy: by },
+            }),
+      ),
+    )
   }
 
   async split(day: string): Promise<SavedSplit | null> {

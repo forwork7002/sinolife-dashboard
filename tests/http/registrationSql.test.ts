@@ -36,3 +36,36 @@ describe('distributedDaysSql', () => {
     expect(sql).toContain(`count(*) FILTER (WHERE nth > 1)`)
   })
 })
+
+describe('sellerLeadsSql', () => {
+  const sql = bare(RegistrationRepository.sellerLeadsSql())
+  const distributed = bare(RegistrationRepository.distributedDaysSql())
+
+  it('counts the same handed-out deals as «Olgan lid», on one day', () => {
+    expect(sql).toContain(`d."leadDistributedOn" = $1::date`)
+    expect(sql).toContain(`(p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL)`)
+  })
+
+  it('names the team exactly as the split does', () => {
+    const team = (s: string) => s.slice(s.indexOf('COALESCE('), s.indexOf(') AS rop') + ') AS rop'.length).replace(/\s+/g, ' ')
+    expect(team(sql)).toBe(team(distributed))
+  })
+
+  it('credits the person the sellers board credits — the operator, else the owner', () => {
+    expect(sql).toContain(`COALESCE(d."operatorEmployeeId", d."employeeId") AS employee_id`)
+  })
+})
+
+describe('sellerFaktDaysSql', () => {
+  it('reads FAKT 1 / FAKT 2 by the board\'s predicates and /rnp\'s team, per operator', async () => {
+    const { InsightsRepository } = await import('@/server/repositories/insightsRepository')
+    const sql = bare(InsightsRepository.sellerFaktDaysSql())
+    const rnp = bare(InsightsRepository.rnpTeamDaysSql())
+    expect(sql).toContain('c.operator_id AS employee_id')
+    expect(sql).toContain(`= 'DELIVERED'`)
+    const fakt1 = (s: string) => s.slice(s.indexOf('count(*) FILTER (WHERE'), s.indexOf('::bigint AS fakt1_orders'))
+    expect(fakt1(sql)).toBe(fakt1(rnp))
+    expect(sql).toContain(`COALESCE(CASE`)
+    expect(rnp).toContain(`COALESCE(CASE`)
+  })
+})
