@@ -575,7 +575,6 @@ model Employee {
   /// Leads the portal routed to this person as ROP. See Deal.leadRopEmployeeId.
   routedLeads Deal[]     @relation("DealLeadRop")
   kpis       Kpi[]
-  dayPlans   SellerDayPlan[]
   calls      CallRecord[]
   heads      Department[] @relation("DepartmentHead")
   /// Every unit this person belongs to. `departmentId` above is only the first
@@ -1405,35 +1404,18 @@ model MetaCampaignDaily {
 // ---------------------------------------------------------------------------
 // Sales plans — FAKT 1 / FAKT 2 month plans are typed in on «RNP jadvali»
 //
-// The client's ROP sheets carry two plans the portal knows nothing about: a
-// seller's plan for ONE day (5 000 000, 3 500 000 — set by the seller's
-// grade) and a ROP team's plan for the MONTH, once for FAKT 1 and once for
-// FAKT 2. Neither fits `kpi`, whose periods are months and up and whose team
-// rows have no team to name, so they are their own two tables.
+// The client's ROP sheets carry a ROP team's plan for the MONTH, once for
+// FAKT 1 and once for FAKT 2, which the portal knows nothing about. It does
+// not fit `kpi`, whose periods are months and up and whose team rows have no
+// team to name, so it is its own table.
 //
 // A month is its first day (`YYYY-MM-01`), a bare date. A team is the name
 // `ropNameSql` gives it — «Husniddin», not the department id — because that
 // is the key every sales screen groups by; a department renamed in Bitrix24
 // starts a new plan row rather than silently inheriting another team's.
+//
+// The sellers' day plans went with «Sotuv · ROP» on 2026-10-01.
 // ---------------------------------------------------------------------------
-
-/// One seller's plan for each day of one month, in soʻm minor units.
-/// Unused since 2026-10-01 («Sotuv · ROP» removed): nothing reads or writes
-/// it. Kept until a separate, approved migration drops it.
-model SellerDayPlan {
-  id          String   @id @default(cuid())
-  month       DateTime @db.Date
-  employeeId  String
-  amountMinor BigInt
-  updatedAt   DateTime @updatedAt
-  /// The account that last saved it — its user id.
-  updatedBy   String?
-
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-
-  @@unique([month, employeeId])
-  @@map("seller_day_plan")
-}
 
 /// One ROP team's plan for one month, FAKT 1 and FAKT 2, in soʻm minor units.
 model TeamMonthPlan {
