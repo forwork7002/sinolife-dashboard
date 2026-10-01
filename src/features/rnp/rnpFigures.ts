@@ -9,29 +9,54 @@ import type { RnpColumnKind } from './rnpColumnWidths'
  *
  * FULL NUMBERS, EVERYWHERE (the client, 2026-09-29: «sonlar to'liq yozilishi
  * kerak … maksimal cho'zilsa ham farqi yo'q»). Soʻm is written to the last
- * soʻm in every grid cell, KPI card and team chip — «3,589,815,001», never
- * «3.6 mlrd». Only a chart's axis ticks stay compact, for the axis's room;
+ * soʻm in every grid cell, KPI card and team chip — «3.589.815.001», never
+ * «3,6 mlrd». Only a chart's axis ticks stay compact, for the axis's room;
  * their tooltips are full. Nothing is re-rounded here: the rules below are
  * the ones the grid always used (a count to a whole number, dollars and
  * rates to one decimal).
  */
 
-/** Dollars to one decimal, «$1,234.5». */
+/**
+ * THE RNP SCREEN'S OWN SEPARATORS (the client, 2026-10-01: «vergul bilan
+ * emas, nuqta bilan»): a dot between thousands and a comma before the
+ * decimals — «3.589.815.001», «25,0%». The rest of the dashboard keeps the
+ * house «3,589,815,001» (`@/lib/format`), so this swaps the two marks of its
+ * output rather than changing it there.
+ */
+export function rnpSeparators(text: string): string {
+  return text.replaceAll(',', '\u0000').replaceAll('.', ',').replaceAll('\u0000', '.')
+}
+
+/** Whole soʻm, «3.589.815.001». */
+export function rnpUzs(value: number): string {
+  return rnpSeparators(formatFullUzs(value))
+}
+
+export function rnpNumber(value: number): string {
+  return rnpSeparators(formatNumber(value))
+}
+
+/** One decimal, «25,0%»; null is «—». */
+export function rnpPercent(value: number | null): string {
+  return rnpSeparators(formatPercent(value))
+}
+
+/** Dollars to one decimal, «$1.234,5». */
 export function formatUsd(value: number): string {
-  return `$${formatNumber(Math.round(value * 10) / 10)}`
+  return `$${rnpNumber(Math.round(value * 10) / 10)}`
 }
 
 /** A figure in its unit, in full. */
 export function figureText(value: number, unit: RnpUnit): string {
   switch (unit) {
     case 'uzs':
-      return formatFullUzs(value)
+      return rnpUzs(value)
     case 'usd':
       return formatUsd(value)
     case 'percent':
-      return formatPercent(value)
+      return rnpPercent(value)
     case 'count':
-      return formatNumber(Math.round(value))
+      return rnpNumber(Math.round(value))
   }
 }
 
@@ -66,7 +91,7 @@ export function contentMinWidths(
       if (row.dayPlan !== null) keep('dayPlan', figureText(row.dayPlan, row.unit))
       if (row.fact !== null) keep('fact', figureText(row.fact, row.unit))
       if (row.forecast !== null) keep('forecast', figureText(row.forecast, row.unit))
-      if (row.index !== null) keep('index', formatPercent(row.index))
+      if (row.index !== null) keep('index', rnpPercent(row.index))
       for (const v of row.days) if (v !== null) keep('day', figureText(v, row.unit))
     }
   }

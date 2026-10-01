@@ -196,7 +196,7 @@ describe('RnpPage — the sheet', () => {
     // План, Факт, Прогноз, Индекс, Кунлик план, then the three days.
     expect(cells).toEqual(['—', '12', '—', '—', '—', '12', '—', '—'])
     expect(cells).not.toContain('0')
-    expect(within(grid).getAllByText('85.3%')).toHaveLength(2)
+    expect(within(grid).getAllByText('85,3%')).toHaveLength(2)
   })
 
   it('carries the sheet’s rows 1–2 above the grid: days gone by, the dollar rate, today', async () => {
@@ -214,7 +214,7 @@ describe('RnpPage — the sheet', () => {
     fixture = { ...FIXTURE, settings: { ...FIXTURE.settings, usdRate: 11806.97, usdRateDate: '2026-09-02' } }
     await draw()
     // The Central Bank's rate, with its day — never a typed one.
-    expect(screen.getByTestId('page-toolbar').textContent).toContain('Dollar kursi (MB, 02.09):11,806.97 soʻm')
+    expect(screen.getByTestId('page-toolbar').textContent).toContain('Dollar kursi (MB, 02.09):11.806,97 soʻm')
   })
 
   it('has none of the deleted extras — no ROP rail, cards, charts, funnel or ranking', async () => {
@@ -448,7 +448,7 @@ describe('RnpPage — the sheet', () => {
       await waitFor(() => expect(reads).toBeGreaterThan(before))
       // Leaving the field once the sheet is back shows the server's figure, written in full.
       fireEvent.blur(input)
-      await waitFor(() => expect(field('02.09').value).toBe('2,500,000'))
+      await waitFor(() => expect(field('02.09').value).toBe('2.500.000'))
       expect(posted).toHaveLength(1) // the blur after Enter sends nothing more
     })
 
@@ -456,7 +456,7 @@ describe('RnpPage — the sheet', () => {
       fixture = withCosts(true)
       await draw()
       const input = field('01.09')
-      expect(input.value).toBe('1,500,000')
+      expect(input.value).toBe('1.500.000')
       fireEvent.focus(input)
       fireEvent.change(input, { target: { value: '' } })
       await act(async () => {
@@ -472,7 +472,7 @@ describe('RnpPage — the sheet', () => {
       fireEvent.focus(field('01.09'))
       fireEvent.change(field('01.09'), { target: { value: '9' } })
       fireEvent.keyDown(field('01.09'), { key: 'Escape' })
-      expect(field('01.09').value).toBe('1,500,000')
+      expect(field('01.09').value).toBe('1.500.000')
       fireEvent.blur(field('01.09'))
       await act(async () => {})
       expect(posted).toHaveLength(0)
@@ -482,7 +482,7 @@ describe('RnpPage — the sheet', () => {
       fixture = withCosts(true)
       await draw()
       fireEvent.focus(field('02.09'))
-      for (const typo of ['12.5', '-300', '12abc', '2000000000000']) {
+      for (const typo of ['12.5', '1.2345', '-300', '12abc', '2000000000000']) {
         fireEvent.change(field('02.09'), { target: { value: typo } })
         fireEvent.keyDown(field('02.09'), { key: 'Enter' })
         const input = field('02.09')
@@ -495,9 +495,9 @@ describe('RnpPage — the sheet', () => {
       fireEvent.blur(field('02.09'))
       await act(async () => {})
       expect(posted).toHaveLength(0)
-      // Thousands separated by spaces or commas are fine.
+      // Thousands separated by dots (as the field shows them), spaces or commas are fine.
       fireEvent.focus(field('02.09'))
-      fireEvent.change(field('02.09'), { target: { value: '1,250 000' } })
+      fireEvent.change(field('02.09'), { target: { value: '1.250 000' } })
       expect(field('02.09').getAttribute('aria-invalid')).toBeNull()
       await act(async () => {
         fireEvent.keyDown(field('02.09'), { key: 'Enter' })

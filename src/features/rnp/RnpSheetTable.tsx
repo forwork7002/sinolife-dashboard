@@ -3,7 +3,6 @@
 import { type ReactNode, type UIEvent, memo, useMemo } from 'react'
 
 import { InfoTip, Tooltip } from '@/components/ui/Tooltip'
-import { formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
 import {
   RNP_ADDED_TEAM_NOTE,
@@ -18,7 +17,7 @@ import { CostDayCell } from './RnpCostCell'
 import { ColumnResizer } from './RnpColumnResizer'
 import { type RnpColumnKind, widthCss } from './rnpColumnWidths'
 import { type RnpTone, TONE_COLOR, dayMonth, dayMonthYear, dayTone, indexTone, isSunday, weekday } from './rnpDerive'
-import { figureText, formatUsd } from './rnpFigures'
+import { figureText, formatUsd, rnpNumber, rnpPercent, rnpUzs } from './rnpFigures'
 import { useDragScroll } from './useDragScroll'
 
 /**
@@ -641,7 +640,7 @@ const TINT: Record<Exclude<RnpTone, 'neutral'>, string> = {
 
 const dash = <span style={{ color: 'var(--ink-muted)' }}>—</span>
 
-/** Any figure of the grid, in full («3,589,815,001», never «3.6 mlrd»): `rnpFigures.ts`. */
+/** Any figure of the grid, in full («3.589.815.001», never «3,6 mlrd»): `rnpFigures.ts`. */
 function figure(value: number | null, unit: RnpUnit): ReactNode {
   return value === null ? dash : figureText(value, unit)
 }
@@ -650,13 +649,13 @@ function figure(value: number | null, unit: RnpUnit): ReactNode {
 function plain(value: number, unit: RnpUnit): string {
   switch (unit) {
     case 'uzs':
-      return `${formatFullUzs(value)} soʻm`
+      return `${rnpUzs(value)} soʻm`
     case 'usd':
       return formatUsd(value)
     case 'percent':
-      return formatPercent(value)
+      return rnpPercent(value)
     case 'count':
-      return formatNumber(Math.round(value * 10) / 10)
+      return rnpNumber(Math.round(value * 10) / 10)
   }
 }
 
@@ -672,7 +671,7 @@ function index(value: number | null, better: 'up' | 'down'): ReactNode {
       className="inline-block rounded-full px-2 py-0.5 text-[13px] leading-5 font-semibold"
       style={{ color: tone, background: mix(tone, 14) }}
     >
-      {formatPercent(value)}
+      {rnpPercent(value)}
     </span>
   )
 }

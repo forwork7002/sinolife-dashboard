@@ -4,9 +4,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { type CSSProperties, type KeyboardEvent, useId, useState } from 'react'
 
 import { apiWrite } from '@/lib/api'
-import { formatFullUzs } from '@/lib/format'
 
 import type { RnpCostLine, RnpCostProject, SaveRnpCostsBody } from './rnpApi'
+import { rnpUzs } from './rnpFigures'
 
 /**
  * A typed P&L cost cell — the ONE exception to «nothing is typed by hand»
@@ -57,22 +57,23 @@ export function CostDayCell({
 }
 
 const MAX_SUM = 1_000_000_000_000
-const INVALID = 'Butun musbat son kiriting (soʻm), masalan 1 250 000.'
+const INVALID = 'Butun musbat son kiriting (soʻm), masalan 1.250.000.'
 const TOO_BIG = 'Juda katta son — 1 000 000 000 000 soʻmdan oshmasin.'
 
 /**
  * What the field holds, read: '' is null (clear the day); digits with
- * spaces or commas between the thousands are whole soʻm; anything else —
- * a minus, a decimal, a letter — is NaN, refused before anything is sent.
+ * spaces between them, or dots or commas between the thousands, are whole
+ * soʻm («1.250.000», the way the field shows it); anything else — a minus,
+ * a decimal («12.5»), a letter — is NaN, refused before anything is sent.
  */
 function parseCost(text: string): number | null {
-  const clean = text.replace(/[\s,  ]/g, '')
+  const clean = text.replace(/[\s\u00a0\u202f]/g, ' ').trim()
   if (clean === '') return null
-  if (!/^\d+$/.test(clean)) return Number.NaN
-  return Number(clean)
+  if (!/^\d[\d .,]*$/.test(clean) || /[.,](?!\d{3}(?:\D|$))/.test(clean)) return Number.NaN
+  return Number(clean.replace(/\D/g, ''))
 }
 
-const shown = (value: number | null) => (value === null ? '' : formatFullUzs(value))
+const shown = (value: number | null) => (value === null ? '' : rnpUzs(value))
 
 function CostField({
   month,

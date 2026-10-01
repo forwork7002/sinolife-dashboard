@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { TrashGlyph } from '@/components/ui/Icons'
 import { apiWrite } from '@/lib/api'
-import { formatFullUzs } from '@/lib/format'
 
 import {
   type RnpOverviewDto,
@@ -19,6 +18,7 @@ import {
   type SaveRnpPlansBody,
   type SaveRnpRegistrarsBody,
 } from './rnpApi'
+import { rnpUzs } from './rnpFigures'
 import { muted } from '@/features/reklama/reklamaUi'
 
 /**
@@ -258,7 +258,7 @@ function PlanDialog({ data, onClose }: { data: RnpOverviewDto; onClose: () => vo
                   </label>
                   <input
                     inputMode="numeric"
-                    value={r.value === '' ? '' : formatFullUzs(Number(r.value))}
+                    value={r.value === '' ? '' : rnpUzs(Number(r.value))}
                     onChange={(e) =>
                       setLeadRows((rows) =>
                         rows.map((x) => (x.id === r.id ? { ...x, value: e.target.value.replace(/\D/g, '').slice(0, 13) } : x)),
@@ -416,7 +416,7 @@ function NumberField({
   onChange: (v: string) => void
 }) {
   // Soʻm is grouped as it is typed, so 5000000 cannot be misread as 500000.
-  const shown = unit === 'uzs' && value !== '' ? formatFullUzs(Number(value)) : value
+  const shown = unit === 'uzs' && value !== '' ? rnpUzs(Number(value)) : value
   return (
     <label className="flex min-w-0 items-center justify-between gap-3 text-xs">
       <span className="min-w-0 truncate" style={{ color: 'var(--ink-secondary)' }} title={label}>

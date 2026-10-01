@@ -9,7 +9,6 @@ import { useCohortRop } from '@/features/cohort/useCohortRop'
 import { PageShell } from '@/features/shared/PageShell'
 import { type Status, muted } from '@/features/reklama/reklamaUi'
 import { apiGet } from '@/lib/api'
-import { formatNumber } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 import { RnpColumnScope } from './RnpColumnResizer'
@@ -17,7 +16,7 @@ import { RnpPlanEditor } from './RnpPlanEditor'
 import { RnpSheetTable } from './RnpSheetTable'
 import type { RnpOverviewDto } from './rnpApi'
 import { dayMonth, dayMonthYear, ropLines } from './rnpDerive'
-import { canvasMeasure, contentMinWidths } from './rnpFigures'
+import { canvasMeasure, contentMinWidths, rnpNumber } from './rnpFigures'
 
 /**
  * «RNP jadvali» — the client's «СентябрРНП» sheet and nothing else, one
@@ -173,7 +172,7 @@ function SheetFacts({ data }: { data: RnpOverviewDto }) {
         term={on ? `Dollar kursi (MB, ${dayMonth(on)})` : 'Dollar kursi'}
         title="Oʻzbekiston Respublikasi Markaziy banki rasmiy kursi (cbu.uz). Jadval har kunni oʻsha kungi kurs bilan hisoblaydi."
       >
-        {rate === null ? <span className="font-normal" style={muted}>Markaziy bankdan olinmadi</span> : `${formatNumber(rate)} soʻm`}
+        {rate === null ? <span className="font-normal" style={muted}>Markaziy bankdan olinmadi</span> : `${rnpNumber(rate)} soʻm`}
       </Fact>
       <Fact term="Bugun">{dayMonthYear(data.today)}</Fact>
     </dl>

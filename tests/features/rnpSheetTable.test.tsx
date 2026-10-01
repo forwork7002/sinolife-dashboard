@@ -207,21 +207,21 @@ describe('RnpSheetTable — the sheet, row by row', () => {
     expect(team.dataset.tone).toBe('team')
     expect(team.querySelector('th')!.textContent!.indexOf('Лола РОП')).toBe(0)
     // План, Факт, Прогноз, Индекс, Кунлик план, then the days; a dash, never a zero.
-    expect([...team.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['300', '25', '280', '93.3%', '10', '12', '13', '—'])
-    expect(within(team).getByText('93.3%').className).toContain('rounded-full')
+    expect([...team.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['300', '25', '280', '93,3%', '10', '12', '13', '—'])
+    expect(within(team).getByText('93,3%').className).toContain('rounded-full')
   })
 
   it('writes every soʻm in full, in the summary and in the days', () => {
     const { container } = draw()
     const sum = rowNamed(container, 'Сумма факт 1 сум')
     expect([...sum.querySelectorAll('td')].map((td) => td.textContent)).toEqual([
-      '4,781,250,000',
-      '3,589,815,001',
-      '4,821,429,000',
-      '100.8%',
-      '159,375,000',
-      '1,250,000',
-      '159,375,000',
+      '4.781.250.000',
+      '3.589.815.001',
+      '4.821.429.000',
+      '100,8%',
+      '159.375.000',
+      '1.250.000',
+      '159.375.000',
       '—',
     ])
     expect(container.textContent).not.toMatch(/mln|mlrd|ming/)
@@ -279,7 +279,7 @@ describe('RnpSheetTable — the typed P&L cost lines', () => {
     // No other row wears the chip.
     expect(screen.getAllByText('qoʻlda')).toHaveLength(1)
     // Its figures print in the sheet's order, summary computed.
-    expect([...bloggers.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['—', '1,500,000', '—', '—', '—', '1,500,000', '—', '—'])
+    expect([...bloggers.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['—', '1.500.000', '—', '—', '—', '1.500.000', '—', '—'])
   })
 
   it('offers nothing to type to an account that cannot edit plans', () => {
@@ -293,7 +293,7 @@ describe('RnpSheetTable — the typed P&L cost lines', () => {
     const fields = screen.getAllByRole('textbox', { name: /soʻm$/ }) as HTMLInputElement[]
     // Open at once — no button to press first (the client: «ochiq tursin»).
     expect(fields.map((f) => f.getAttribute('aria-label'))).toEqual(['Блогерлар, 01.09 — soʻm', 'Блогерлар, 02.09 — soʻm'])
-    expect(fields[0]!.value).toBe('1,500,000')
+    expect(fields[0]!.value).toBe('1.500.000')
     expect(fields[1]!.value).toBe('')
     expect(fields[0]!.inputMode).toBe('numeric')
     // Every other row stays plain cells.

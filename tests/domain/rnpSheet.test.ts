@@ -499,12 +499,13 @@ describe('buildRnpSheet — the page is the client\'s sheet, row by row', () => 
     const rows = x.lines.flatMap((l) => (l.row === null ? [] : [l.row]))
     const before = (a: number, b: number) => expect(rows.indexOf(a)).toBeLessThan(rows.indexOf(b))
     // The client's order (2026-09-30): totals above the targets, 47 under 48,
-    // the new groups after Saidaziz, plan % first and the reach last in a ROP block.
+    // the new groups after Saidaziz, plan % first in a ROP block; then (2026-10-01)
+    // the reach right under it, as «Квал лид сони».
     before(44, 13)
     before(48, 47)
     before(67, 1001)
-    before(81, 77)
-    before(86, 76)
+    before(81, 76)
+    before(76, 77)
     expect(lineAt(x, 13)).toMatchObject({ kind: 'title', label: 'Таргет Collagen' })
     expect(lineAt(x, 37)).toMatchObject({ kind: 'title', label: 'Таргет Zextra' })
     expect(lineAt(x, 94)).toMatchObject({ kind: 'value', sub: 'Севинч РОП', key: 'team:Sevinch:plan_pct' })
@@ -512,6 +513,8 @@ describe('buildRnpSheet — the page is the client\'s sheet, row by row', () => 
     expect(lineAt(x, 4)).toMatchObject({ kind: 'title', label: 'Маркетинг COLLAGEN', sub: 'Хаёт' })
     expect(lineAt(x, 93)).toMatchObject({ kind: 'value', label: 'Сумма факт 1 сум', key: 'team:Sevinch:fakt1' })
     expect(lineAt(x, 47)).toMatchObject({ kind: 'value', key: 'reg:leads' })
+    expect(lineAt(x, 89)).toMatchObject({ kind: 'value', label: 'Квал лид сони', key: 'team:Sevinch:reach' })
+    expect(lineAt(x, 156)).toMatchObject({ kind: 'value', label: 'Дозвон сони', key: 'team:Charos:reach' })
   })
 
   it('leaves a row Bitrix24 cannot supply in place, empty', () => {
