@@ -7,7 +7,6 @@ import { InfoTip, Tooltip } from '@/components/ui/Tooltip'
 import {
   RNP_ADDED_TEAM_NOTE,
   type RnpBlockDto,
-  type RnpFactTone,
   type RnpLabelTone,
   type RnpLine,
   type RnpRowDto,
@@ -53,13 +52,16 @@ import { useDragScroll } from './useDragScroll'
  * CSS variables set once on `RnpColumnScope`: a column drag re-lays the table
  * and re-renders no cell.
  *
- * THE SHEET'S COLOURS BY MEANING, in the product's tokens so both themes
- * carry them: orange section bands, blue team rows with the ROP named first,
- * green company rows, a soft blue label on the brand P&L sub-rows, and the
- * fact column tinted by what it holds — FAKT sums green and bold, «План
- * бажарилиши» purple, ratios soft green, CAC yellow, budgets amber,
- * «Разница» red. Every tint is a `color-mix`, opaque over the card in the
- * pinned column so the days cannot show through it.
+ * COLOUR ONLY WHERE IT IS READ (the client, 2026-10-01: «plan bajarish,
+ * fakt 1, konversiya shularga rang berilsin, qolganiga rang kerak emas»):
+ * the headings keep the sheet's bands (orange section, blue team, green
+ * company), and of the figure rows only three kinds are tinted — «План
+ * бажарилиши» blue with its plan figures violet, «Сумма факт 1» green, every
+ * «Конверсия» teal — with their index pill and their days against the day
+ * plan. Every other row is plain ink on the card. Today's and Sunday's
+ * columns stay marked: they are where in the month, not a row's colour.
+ * Every tint is a `color-mix`, opaque over the card in the pinned column so
+ * the days cannot show through it.
  *
  * PERFORMANCE. ~370 lines × ~36 cells. Each line is memoised on its line
  * object and its row object, both stable for one payload, so nothing but a
@@ -315,7 +317,7 @@ function MissingRow({ line, span }: { line: ValueLine; span: number }) {
       <th
         scope="row"
         className={`tcol-sticky is-edge ${RULE} py-1.5 pr-3 pl-4 text-left text-[13px] leading-snug font-medium sm:pl-5`}
-        style={{ left: 0, ...labelStyle(line) }}
+        style={{ left: 0, ...labelStyle(accentOf(line)) }}
       >
         <LabelBody line={line} />
       </th>
@@ -341,38 +343,40 @@ function ValueRow({
   editMonth: string | null
 }) {
   const bold = line.bold || line.fact === 'fakt' || line.tone === 'team'
-  const band = line.tone === 'team' ? mix('var(--series-1)', 8) : undefined
+  const accent = accentOf(line)
+  const band = accent ? ACCENT[accent].band : undefined
   const unreliable = row.reliableFrom ? `Bitrix24 da bu maydon ${dayMonth(row.reliableFrom)} dan toʻliq` : undefined
-  const planTint = line.fact === 'plan' ? FACT_TINT.plan : undefined
+  const planTint = accent === 'plan' ? ACCENT.plan.fact : undefined
 
   return (
     <tr
       data-line="value"
       data-tone={line.tone}
+      data-accent={accent ?? undefined}
       className={`transition-colors hover:bg-[var(--surface-sunken)] ${bold ? 'font-semibold' : ''}`}
       style={band ? { background: band } : undefined}
     >
       <th
         scope="row"
         className={`tcol-sticky is-edge ${RULE} py-1.5 pr-3 pl-4 text-left text-[13px] leading-snug sm:pl-5 ${bold ? 'font-semibold' : 'font-medium'}`}
-        style={{ left: 0, ...labelStyle(line) }}
+        style={{ left: 0, ...labelStyle(accent) }}
       >
-        {line.tone === 'team' && <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px]" style={{ background: 'var(--series-1)' }} />}
+        {accent && <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px]" style={{ background: ACCENT[accent].hue }} />}
         <LabelBody line={line} hint={row.hint} manual={row.manual !== null} />
       </th>
       <Cell tint={planTint} strong={planTint !== undefined}>
         {figure(row.plan, row.unit)}
       </Cell>
-      <Cell tint={FACT_TINT[line.fact]} strong>
+      <Cell tint={accent ? ACCENT[accent].fact : undefined} strong>
         {figure(row.fact, row.unit)}
       </Cell>
       <Cell>{figure(row.forecast, row.unit)}</Cell>
-      <Cell>{index(row.index, row.better)}</Cell>
+      <Cell>{index(row.index, row.better, accent !== null)}</Cell>
       <Cell last>{figure(row.dayPlan, row.unit)}</Cell>
       {row.days.map((value, i) => {
         const day = days[i] ?? ''
         const early = row.reliableFrom !== null && day < row.reliableFrom
-        const tone = dayTone(row, value, day, today)
+        const tone = accent ? dayTone(row, value, day, today) : 'neutral'
         const isToday = day === today
         const title = early ? unreliable : tone !== 'neutral' && row.dayPlan !== null ? `Kunlik reja: ${plain(row.dayPlan, row.unit)}` : undefined
         const className = `tabular ${RULE} ${VRULE} h-9 text-right whitespace-nowrap`
@@ -583,23 +587,34 @@ function hueOf(tone: RnpLabelTone): string | null {
   return tone === 'plain' ? null : HUE[tone]
 }
 
-/** The pinned label cell of a value line: opaque over the card, so the days never show through. */
-function labelStyle(line: ValueLine): { background?: string; color: string } {
-  const hue = hueOf(line.tone)
-  if (!hue) return { color: 'var(--ink-primary)' }
-  const strength = line.tone === 'brand' ? 9 : 16
-  return { background: mix(hue, strength, 'var(--surface-raised)'), color: line.tone === 'brand' ? 'var(--ink-primary)' : inkOf(hue) }
+/** The three kinds of figure row that carry colour; every other row is plain. */
+type RowAccent = 'plan' | 'fakt1' | 'conversion'
+
+/**
+ * Which of them a line is, by the sheet's label (or the server's, on a team
+ * the sheet has no block for): «План бажарилиши» is the team row, «Сумма
+ * факт 1» / «Логистика Сумма факт1» / «Сумма ФАКТ 1», and any «Конверция» /
+ * «Конверсия». Not «Средний чек факт 1» — the client named the sum.
+ */
+function accentOf(line: ValueLine): RowAccent | null {
+  if (line.tone === 'team' || /План бажарилиши/.test(line.label)) return 'plan'
+  if (/Сумма (?:факт|ФАКТ) ?1/.test(line.label)) return 'fakt1'
+  if (/Конвер[цс]/.test(line.label)) return 'conversion'
+  return null
 }
 
-/** The fact column by what it holds — the sheet's colour coding of column D. */
-const FACT_TINT: Record<RnpFactTone, string> = {
-  fakt: mix('var(--status-good)', 22),
-  plan: mix('var(--series-7)', 20),
-  rate: mix('var(--status-good)', 10),
-  key: mix('var(--series-4)', 24),
-  money: mix('var(--series-4)', 12),
-  alert: mix('var(--status-critical)', 14),
-  plain: mix('var(--series-1)', 7),
+/** Each accent's hue, the soft band across its row, and its fact column. */
+const ACCENT: Record<RowAccent, { hue: string; band: string; fact: string }> = {
+  plan: { hue: 'var(--series-1)', band: mix('var(--series-1)', 8), fact: mix('var(--series-7)', 20) },
+  fakt1: { hue: 'var(--status-good)', band: mix('var(--status-good)', 7), fact: mix('var(--status-good)', 22) },
+  conversion: { hue: 'var(--series-3)', band: mix('var(--series-3)', 7), fact: mix('var(--series-3)', 18) },
+}
+
+/** The pinned label cell of a value line: opaque over the card, so the days never show through. */
+function labelStyle(accent: RowAccent | null): { background?: string; color: string } {
+  if (!accent) return { color: 'var(--ink-primary)' }
+  const { hue } = ACCENT[accent]
+  return { background: mix(hue, 16, 'var(--surface-raised)'), color: inkOf(hue) }
 }
 
 /** Every cell's rule: separate borders travel with a sticky cell, collapsed ones do not. */
@@ -660,11 +675,12 @@ function plain(value: number, unit: RnpUnit): string {
 }
 
 /**
- * The index, coloured by which way is good. A cost (`better: 'down'`) under
- * its plan is on track; over it by a fifth is the alarm.
+ * The index, coloured by which way is good — on a coloured row only. A cost
+ * (`better: 'down'`) under its plan is on track; over it by a fifth is the alarm.
  */
-function index(value: number | null, better: 'up' | 'down'): ReactNode {
+function index(value: number | null, better: 'up' | 'down', coloured: boolean): ReactNode {
   if (value === null) return dash
+  if (!coloured) return rnpPercent(value)
   const tone = TONE_COLOR[indexTone(value, better)]
   return (
     <span

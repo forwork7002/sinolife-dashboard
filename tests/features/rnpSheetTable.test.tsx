@@ -211,6 +211,20 @@ describe('RnpSheetTable — the sheet, row by row', () => {
     expect(within(team).getByText('93,3%').className).toContain('rounded-full')
   })
 
+  it('colours only «План бажарилиши», «Сумма факт 1» and «Конверсия» rows (the client, 2026-10-01)', () => {
+    const plainLine: RnpLine = { kind: 'value', row: 108, team: null, label: 'Ходим сони', sub: null, tone: 'plain', fact: 'fakt', bold: false, key: 'lids' }
+    const convLine: RnpLine = { kind: 'value', row: 103, team: null, label: 'Конверция % от квал лид 📌', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'lids' }
+    const { container } = draw([...LINES, plainLine, convLine])
+    expect(rowNamed(container, 'Лола РОП').dataset.accent).toBe('plan')
+    expect(rowNamed(container, 'Сумма факт 1 сум').dataset.accent).toBe('fakt1')
+    expect(rowNamed(container, 'Конверция % от квал лид').dataset.accent).toBe('conversion')
+    const plainRow = rowNamed(container, 'Ходим сони')
+    expect(plainRow.dataset.accent).toBeUndefined()
+    // Its index is plain text, not a coloured pill.
+    expect(within(plainRow).getByText('93,3%').className).not.toContain('rounded-full')
+    expect(within(rowNamed(container, 'Конверция % от квал лид')).getByText('93,3%').className).toContain('rounded-full')
+  })
+
   it('writes every soʻm in full, in the summary and in the days', () => {
     const { container } = draw()
     const sum = rowNamed(container, 'Сумма факт 1 сум')
