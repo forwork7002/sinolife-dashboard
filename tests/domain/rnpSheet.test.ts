@@ -55,9 +55,9 @@ function input(over: Partial<RnpSheetInput> = {}): RnpSheetInput {
       fakt('2026-09-21', '(ROP yoʻq)', { fakt1Orders: 1, fakt1Minor: som(200_000) }),
     ],
     leads: [
-      { day: '2026-09-17', rop: 'Sevinch', leads: 4 },
-      { day: '2026-09-21', rop: 'Sevinch', leads: 3 },
-      { day: '2026-09-21', rop: null, leads: 1 },
+      { day: '2026-09-17', rop: 'Sevinch', registrar: null, leads: 4 },
+      { day: '2026-09-21', rop: 'Sevinch', registrar: null, leads: 3 },
+      { day: '2026-09-21', rop: null, registrar: null, leads: 1 },
     ],
     registration: [{ day: '2026-09-21', leads: 4, duplicates: 1, qualified: 2, aiConversations: 2 }],
     calls: [
@@ -313,7 +313,7 @@ describe('buildRnpSheet — days the portal did not record whole', () => {
     const dto = buildRnpSheet({
       ...base,
       // 1–15.09: «РОП (Первичка)» on one lead in five, orders counted in full.
-      leads: [...base.leads, { day: '2026-09-05', rop: 'Sevinch', leads: 1 }],
+      leads: [...base.leads, { day: '2026-09-05', rop: 'Sevinch', registrar: null, leads: 1 }],
       fakt: [...base.fakt, fakt('2026-09-05', 'Sevinch', { fakt1Orders: 5, fakt1Minor: som(5_000_000) })],
     })
     const reach = row(dto, 'team:Sevinch', 'team:Sevinch:reach')
@@ -432,13 +432,19 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
     buildRnpSheet(
       input({
         registration: [{ day: '2026-09-02', leads: 819, duplicates: 0, qualified: 150, aiConversations: 0 }],
-        registrarKval: [
-          { day: '2026-09-02', registrar: 'Фарангиз', qualified: 33 },
-          { day: '2026-09-02', registrar: 'Назокат', qualified: 25 },
-          { day: '2026-09-02', registrar: 'Рухшона', qualified: 17 },
-          { day: '2026-09-02', registrar: 'Ситора', qualified: 20 },
-          { day: '2026-09-02', registrar: 'Умида', qualified: 40 },
-          { day: '2026-09-02', registrar: null, qualified: 15 },
+        // «Сделка успешна» by its closing day — row 48 only, never the groups.
+        registrarKval: [{ day: '2026-09-02', registrar: 'Фарангиз', qualified: 999 }],
+        // The leads handed to the ROPs that day, by the registrar on the deal.
+        leads: [
+          { day: '2026-09-02', rop: 'Sevinch', registrar: 'Фарангиз', leads: 20 },
+          { day: '2026-09-02', rop: 'Aziz', registrar: 'Фарангиз', leads: 13 },
+          { day: '2026-09-02', rop: 'Lola', registrar: 'Назокат', leads: 25 },
+          { day: '2026-09-02', rop: 'Sevinch', registrar: 'Рухшона', leads: 17 },
+          { day: '2026-09-02', rop: 'Sevinch', registrar: 'Ситора', leads: 20 },
+          { day: '2026-09-02', rop: 'Saidaziz', registrar: 'Умида', leads: 40 },
+          { day: '2026-09-02', rop: 'Saidaziz', registrar: null, leads: 15 },
+          // Not handed to a ROP team (the Регистрация copy, the desk head): no group counts it.
+          { day: '2026-09-02', rop: null, registrar: 'Фарангиз', leads: 50 },
         ],
         registrarGroups: [
           { registrar: 'Фарангиз', group: 'Sevinch' },
@@ -449,25 +455,30 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
       }),
     )
 
-  it('counts a group\'s kval over its registrars — the sheet\'s 58 on 02.09', () => {
+  it('counts a group\'s kval as the leads its registrars handed to the ROPs, by «Лид таркатилган сана»', () => {
     const d = dto()
     expect(on(row(d, 'registration', 'reg:group:Sevinch:qualified'), '2026-09-02')).toBe(58)
+    expect(on(row(d, 'registration', 'reg:qualified_collagen'), '2026-09-02')).toBe(999)
     expect(row(d, 'registration', 'reg:group:Sevinch:qualified').sheet).toEqual({ row: 51, label: 'Sevinch guruh — квал' })
   })
 
   it('has no Zextra desk any more: «Регистрация COLLAGEN» is every kval, and Asliddin / Sadriddin are groups', () => {
     const d = dto()
     expect(d.blocks.flatMap((b) => b.rows).some((r) => r.key.startsWith('reg:zextra') || r.key.startsWith('reg:registrar:'))).toBe(false)
-    expect(on(row(d, 'registration', 'reg:qualified_collagen'), '2026-09-02')).toBe(150)
+    expect(on(row(d, 'registration', 'reg:qualified_collagen'), '2026-09-02')).toBe(999)
     expect(row(d, 'registration', 'reg:group:Asliddin:qualified').sheet?.row).toBe(1002)
     expect(row(d, 'registration', 'reg:group:Sadriddin:qualified').sheet?.row).toBe(1012)
   })
 
-  it('keeps the kval of an unassigned registrar visible so the rows still add up', () => {
+  it('keeps the leads of an unassigned registrar visible so the groups add up to «РОП ларга тарқатилди»', () => {
     const d = dto()
-    // Умида (no group yet) 40 + a WON deal with no registrar 15 + Рухшона 17 and Ситора 20,
+    // Умида (no group yet) 40 + a deal with no registrar 15 + Рухшона 17 and Ситора 20,
     // whose «Zextra» desk the sheet no longer draws — until the form puts them in a group.
     expect(on(row(d, 'registration', 'reg:group:none:qualified'), '2026-09-02')).toBe(92)
+    const groups = d.blocks.find((b) => b.id === 'registration')!.rows.filter((r) => r.key.startsWith('reg:group:'))
+    const sum = groups.reduce((acc, r) => acc + (on(r, '2026-09-02') ?? 0), 0)
+    expect(sum).toBe(150)
+    expect(on(row(d, 'registration', 'reg:distributed'), '2026-09-02')).toBe(150)
     // Nobody is assigned to Gulzora's group: not known to be zero, so empty.
     expect(on(row(d, 'registration', 'reg:group:Gulzora:qualified'), '2026-09-02')).toBeNull()
     expect(row(d, 'registration', 'reg:group:Gulzora:qualified').fact).toBeNull()

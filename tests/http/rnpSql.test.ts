@@ -51,6 +51,12 @@ describe('RnpRepository statements', () => {
     expect(sql).toContain(`d."leadDistributedOn" BETWEEN $1::date AND $2::date`)
   })
 
+  it('splits the handed-out leads by the registrar on the deal, for the «guruh» kval rows', () => {
+    const sql = bare(RnpRepository.leadDaysSql())
+    expect(sql).toContain(`d."registrar",`)
+    expect(sql).toMatch(/GROUP BY 1, 2, 3\s*$/)
+  })
+
   it('reads leads and kval in one UNION of two arms, summed per day × source × form', () => {
     const sql = bare(RnpRepository.registrationDaysSql())
     expect(sql).toContain('UNION ALL')

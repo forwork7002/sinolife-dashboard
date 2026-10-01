@@ -167,7 +167,8 @@ export interface RnpSheetInput {
   readonly today: string
   readonly teams: readonly { readonly rop: string; readonly head: string | null }[]
   readonly fakt: readonly RnpFaktDay[]
-  readonly leads: readonly { readonly day: string; readonly rop: string | null; readonly leads: number }[]
+  /** Deals handed out per day × ROP × registrar («Лид таркатилган сана»); `rop` null: not handed to a ROP team. */
+  readonly leads: readonly { readonly day: string; readonly rop: string | null; readonly registrar: string | null; readonly leads: number }[]
   readonly registration: readonly {
     readonly day: string
     /** The lead's brand (source, then form); null when nothing ties it to one. */
@@ -844,14 +845,19 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     }
     return v
   }
-  for (const r of input.registrarKval) {
+  /*
+    A GROUP'S KVAL IS WHAT IT HANDED TO THE ROPs (client, 2026-10-01): the
+    leads of «РОП ларга тарқатилди» — by «Лид таркатилган сана», the same
+    deals the ROP blocks' «Квал лид сони» count — split by the registrar
+    on the deal. Groups + guruhsiz = «РОП ларга тарқатилди», day by day.
+  */
+  for (const r of input.leads) {
     const i = at.get(r.day)
-    if (i === undefined) continue
+    if (i === undefined || r.rop === null) continue
     const assigned = r.registrar === null ? null : (groupOf.get(r.registrar) ?? null)
     // A group the sheet no longer draws (the retired «Zextra» desk) counts as no group, so the rows still add up.
     const g = assigned !== null && (REGISTRATION_GROUPS as readonly string[]).includes(assigned) ? assigned : null
-    kvalOf(`r|${r.registrar ?? ''}`)[i]! += r.qualified
-    kvalOf(`g|${g ?? ''}`)[i]! += r.qualified
+    kvalOf(`g|${g ?? ''}`)[i]! += r.leads
   }
   const ungrouped = kvalOf('g|')
   /* The sheet's «квал» row of each group (51, 54, … 66). Its «без квал» and «квал %» rows need a lead's registrar BEFORE it is qualified, which Bitrix24 does not record — they are not on this screen. */
@@ -873,10 +879,10 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       ratio(clock, { key: 'reg:qualified_pct', label: '% квал лид (Collagen)', unit: 'percent', ...planned('', 'reg_qualified_pct'), sheet: sh(49, '% квал лид') }, reg.qualified, reg.leads, 100),
       ...REGISTRATION_GROUPS.map((g) => {
         /* A group with no registrar assigned is not known to be zero — its cells stay empty («bilmagan joyni boʻsh qoldir»). */
-        const row = additive(clock, { key: `reg:group:${g}:qualified`, label: `${g} guruh — квал`, unit: 'count', ...planned(g, 'reg_group_qualified'), hint: `Guruh registratorlarining «Сделка успешна» lari: ${[...groupOf].filter(([, x]) => x === g).map(([r]) => r).join(', ') || 'registrator biriktirilmagan'}.`, sheet: sh(GROUP_SHEET_ROW[g]!, `${g} guruh — квал`) }, kvalOf(`g|${g}`))
+        const row = additive(clock, { key: `reg:group:${g}:qualified`, label: `${g} guruh — квал`, unit: 'count', ...planned(g, 'reg_group_qualified'), hint: `Guruh registratorlari ROP larga tarqatgan lidlar — «Лид таркатилган сана» boʻyicha: ${[...groupOf].filter(([, x]) => x === g).map(([r]) => r).join(', ') || 'registrator biriktirilmagan'}.`, sheet: sh(GROUP_SHEET_ROW[g]!, `${g} guruh — квал`) }, kvalOf(`g|${g}`))
         return [...groupOf.values()].includes(g) ? row : dashed(row)
       }),
-      additive(clock, { key: 'reg:group:none:qualified', label: 'Guruhsiz registratorlar — квал', unit: 'count', better: 'down', hint: 'Hech bir guruhga biriktirilmagan registratorlar (yoki registrator maydoni hali yozilmagan bitimlar) kvali.' }, ungrouped),
+      additive(clock, { key: 'reg:group:none:qualified', label: 'Guruhsiz registratorlar — квал', unit: 'count', better: 'down', hint: 'ROP larga tarqatilgan lidlar, registratori hech bir guruhga biriktirilmagan (yoki registrator maydoni boʻsh) — «Лид таркатилган сана» boʻyicha.' }, ungrouped),
       additive(clock, { key: 'reg:distributed', label: 'РОП ларга тарқатилди', unit: 'count', reliableFrom: LEAD_ROP_RELIABLE_FROM, hint: '«Лид таркатилган сана» shu kun va «РОП (Первичка)» ROP jamoasi boʻlgan bitimlar.' }, ropLeads),
       additive(clock, { key: 'reg:undistributed', label: UNDISTRIBUTED, unit: 'count', better: 'down', reliableFrom: LEAD_ROP_RELIABLE_FROM, hint: 'Tarqatilgan sanasi bor, lekin «РОП (Первичка)» da ROP emas (masalan Регистрация boshligʻi) yoki boʻsh.' }, undistributed),
       additive(clock, { key: 'reg:difference', label: 'Разница (РОП лид − квал лид)', unit: 'count', reliableFrom: LEAD_ROP_RELIABLE_FROM }, difference),
