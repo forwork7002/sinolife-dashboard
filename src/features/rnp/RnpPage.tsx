@@ -28,7 +28,7 @@ import { canvasMeasure, contentMinWidths, rnpNumber } from './rnpFigures'
  * company / team views were deleted that day. What stays around the grid is
  * the sheet's own rows 1–2 — the month, the days gone by, the dollar rate,
  * today's date. «Rejalar», the plans form, was taken off on 2026-10-01 (the
- * client: «butunlay olib tashla»); plans already saved are still read. The
+ * client: «butunlay olib tashla»): the plans the sheet types in column C, the
  * P&L's five cost lines and each ROP's «Ходим сони» are typed in the grid
  * itself (`RnpCostCell.tsx`), and only by a `kpi:manage` account.
  *

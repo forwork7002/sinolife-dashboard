@@ -89,7 +89,7 @@ function parseHeads(text: string): number | null {
  * the way the sheet writes them) or a dot («12.5»), thousands grouped by
  * dots («1.200,5»); anything else is NaN.
  */
-function parseDecimal(text: string): number | null {
+export function parseDecimal(text: string): number | null {
   const clean = text.replace(/[\s\u00a0\u202f]/g, '').trim()
   if (clean === '') return null
   if (/^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(clean)) return Number(clean.replaceAll('.', '').replace(',', '.'))
@@ -105,9 +105,11 @@ interface KindSpec {
   readonly tooBig: string
   /** The field's unit, in its accessible name. */
   readonly unit: string
+  /** `decimal` where a comma is typed — a phone's numeric pad has none. */
+  readonly inputMode: 'numeric' | 'decimal'
 }
 
-const COST: KindSpec = { parse: parseCost, show: rnpUzs, max: MAX_SUM, invalid: INVALID, tooBig: TOO_BIG, unit: 'soʻm' }
+const COST: KindSpec = { parse: parseCost, show: rnpUzs, max: MAX_SUM, invalid: INVALID, tooBig: TOO_BIG, unit: 'soʻm', inputMode: 'numeric' }
 const HEADCOUNT: KindSpec = {
   parse: parseHeads,
   show: (v) => String(v),
@@ -115,12 +117,14 @@ const HEADCOUNT: KindSpec = {
   invalid: 'Butun son kiriting (kishi), masalan 12.',
   tooBig: 'Juda katta son — 1000 kishidan oshmasin.',
   unit: 'kishi',
+  inputMode: 'numeric',
 }
 const PLAN: Readonly<Record<RnpUnit, KindSpec>> = {
   uzs: { ...COST, unit: 'reja, soʻm' },
   count: { ...COST, show: (v) => rnpNumber(v), invalid: 'Butun son kiriting, masalan 1.400.', tooBig: 'Juda katta son.', unit: 'reja' },
-  percent: { parse: parseDecimal, show: (v) => rnpNumber(Math.round(v * 100) / 100), max: 100_000, invalid: 'Son kiriting, masalan 80 yoki 12,5.', tooBig: 'Juda katta son.', unit: 'reja, %' },
-  usd: { parse: parseDecimal, show: (v) => rnpNumber(Math.round(v * 100) / 100), max: MAX_SUM, invalid: 'Son kiriting, masalan 36.000 yoki 0,8.', tooBig: 'Juda katta son.', unit: 'reja, $' },
+  // «80.000» is 80 thousand, not 80: a percent past 1 000 is a typo, refused rather than saved.
+  percent: { parse: parseDecimal, show: (v) => rnpNumber(Math.round(v * 100) / 100), max: 1000, invalid: 'Son kiriting, masalan 80 yoki 12,5.', tooBig: 'Juda katta foiz — 1 000% dan oshmasin.', unit: 'reja, %', inputMode: 'decimal' },
+  usd: { parse: parseDecimal, show: (v) => rnpNumber(Math.round(v * 100) / 100), max: 10_000_000, invalid: 'Son kiriting, masalan 36.000 yoki 0,8.', tooBig: 'Juda katta son — 10 mln $ dan oshmasin.', unit: 'reja, $', inputMode: 'decimal' },
 }
 
 /** Each kind of typed cell: how it is read, shown, checked and saved. */
@@ -191,7 +195,8 @@ function CostField({
     }
     // A save the server refused, left as it was: leaving the field does not send it again; Enter does.
     if (!retry && problem !== null && problem.text === text) return
-    if (next === value) {
+    // Unchanged as the field writes it: a 233 333,33 saved elsewhere is not rounded away by a tab-through.
+    if (next === value || (next !== null && value !== null && kind.show(next) === kind.show(value))) {
       setProblem(null)
       setText(shown(value))
       return
@@ -226,7 +231,7 @@ function CostField({
     <>
       <input
         type="text"
-        inputMode="numeric"
+        inputMode={kind.inputMode}
         autoComplete="off"
         spellCheck={false}
         aria-label={`${label} — ${kind.unit}`}

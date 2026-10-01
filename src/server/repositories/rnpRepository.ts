@@ -523,29 +523,26 @@ export class RnpRepository {
       }),
       this.inheritedLeadValues(month),
     ])
-    return { rows: rows.some((r) => r.metric === SETTING_LEAD_VALUE) ? rows : [...rows, ...inherited], fakt }
+    const own = new Set(rows.filter((r) => r.metric === SETTING_LEAD_VALUE).map((r) => r.team))
+    return { rows: [...rows, ...inherited.filter((r) => !own.has(r.team))], fakt }
   }
 
   /**
    * A lead's value is the sheet's constant (400 000, then 500 000 from the
-   * 14th of September), not a plan: a month nobody gave one keeps the last
-   * value in force — each team's last row of the latest earlier month that
-   * has any, from day 1. No form writes it since «Rejalar» was removed.
+   * 14th of September), not a plan: a team (or the company, '') the month
+   * gave none keeps the last value it had in force — its latest earlier
+   * month's last row, from day 1. No form writes it since «Rejalar» was
+   * removed. The month's own rows win, team by team (`plans`).
    */
   private async inheritedLeadValues(month: string): Promise<RnpPlanRow[]> {
-    const previous = await this.prisma.rnpPlan.findFirst({
-      where: { month: { lt: monthDate(month) }, metric: SETTING_LEAD_VALUE },
-      orderBy: { month: 'desc' },
-      select: { month: true },
-    })
-    if (!previous) return []
     const rows = await this.prisma.rnpPlan.findMany({
-      where: { month: previous.month, metric: SETTING_LEAD_VALUE },
-      orderBy: { fromDay: 'asc' },
+      where: { month: { lt: monthDate(month) }, metric: SETTING_LEAD_VALUE },
+      orderBy: [{ month: 'desc' }, { fromDay: 'desc' }],
       select: { team: true, metric: true, fromDay: true, valueCenti: true },
     })
-    const last = new Map(rows.map((r) => [r.team, r]))
-    return [...last.values()].map((r) => ({ ...r, fromDay: 1 }))
+    const last = new Map<string, RnpPlanRow>()
+    for (const r of rows) if (!last.has(r.team)) last.set(r.team, { ...r, fromDay: 1 })
+    return [...last.values()]
   }
 
   /**

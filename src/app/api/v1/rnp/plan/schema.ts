@@ -24,7 +24,8 @@ export const planBodySchema = z.object({
           .number()
           .min(0)
           .max(1_000_000_000_000)
-          .refine((v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-6, 'At most two decimals')
+          // Relative to the value: a float's error grows with it, and 123 456 789 012,34 is two decimals.
+          .refine((v) => Math.abs(v * 100 - Math.round(v * 100)) <= 1e-6 * Math.max(1, v * 100), 'At most two decimals')
           .nullable(),
       }),
     )

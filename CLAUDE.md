@@ -428,7 +428,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Qoʻngʻiroqlar | `/customers` | `calls/CallsPage` + `CallTable` | `/insights/calls` | Insights → Insights | `call_record."startedAt"` on the dashboard window, clamped below at `CALL_DATA_FLOOR` (2026-09-15 00:00 Tashkent). One clock, one request |
 | Reklama samarasi | `/marketing` | `reklama/ReklamaPage` — ONE page since 2026-09-25 (its «Sotuv · ROP» and «Lid kogortasi» tabs moved to «Lidlar»; «Sotuv · ROP» removed 2026-10-01): `DmSection` + `FormSection` + `QualitySection` + `CampaignSection`, with `SideSection` beside them (xl) or above them — the client's narrow «HR · Kosmetika» day table, 2026-09-28: HR = every hiring campaign plus the HR Eldor account, Kosmetika = Kosmetika Eldor (`sideColumn` in `meta/accounts.ts`). The Roistat `marketing/MarketingPage` is held, not mounted | `/reklama/overview` (the Roistat `/marketing/*` three still answer, uncalled) | Reklama → Reklama | **two clocks, one Tashkent calendar day.** Meta: `meta_campaign_daily."date"`, the ad account's reporting day, split by `campaignChannel` (OUTCOME_LEADS → «Отчёт Т», OUTCOME_ENGAGEMENT → «DM», hiring campaigns → neither). Bitrix24: the Регистрация lead's `createdAtSource`, bucketed by the stage it sits in NOW (`leadQuality.ts`). Never joined — they meet on the day and the page |
 | Lidlar | `/leads` (section `leads`, 2026-09-25) | `leads/LeadsPage` — two tabs. «Lid manbalari»: `LeadSourcesSection`. «Lid kogortasi»: `LeadCohortSection`. («Sotuv · ROP» was removed 2026-10-01 at the user's request.) | `/leads/overview`; `/lead-cohort/overview` | LeadSources (+ Reklama's Meta rows, + Insights' queue cohort for «Факт1 мижоз»), LeadCohort | «Lid manbalari» is on the dashboard period: Регистрация (role LEAD) and «ИИ обработка» (role AI_TRIAGE) by `createdAtSource`'s Tashkent day; Meta lead-form campaigns by `meta_campaign_daily."date"`, met on the targetolog, never joined per deal. «Факт1 мижоз» (2026-10-01) is the one per-deal join: a lead's phone (last 9 digits) against FAKT 1 orders whose `queued_at` is in the same window and whose deal was created after the lead (`leadFakt1Clients`), distinct clients per line. «Lid kogortasi» takes its OWN day window (default the last 14): the row is `deal."leadArrivedAt"`'s Tashkent day, the column `"leadDistributedOn"` (a DATE, never zoned) minus it. |
-| RNP jadvali | `/rnp` (section `rnp`, 2026-09-28) | `rnp/RnpPage` + `RnpSheetTable` + `RnpCostCell` — the client's «СентябрРНП» sheet row by row (`lines`), nothing else: day plan / plan / fact / forecast / index before the days | `/rnp/overview`, `POST /rnp/costs`, `POST /rnp/headcount` (`analytics:read:all` at the gate, `kpi:manage` inside) | Rnp → Insights (`rnpTeamDays`), Rnp, Reklama (Meta) | its OWN calendar month. FAKT 1 / FAKT 2 / refusals on the queue cohort (`queued_at`), team off the deal as on Logistika; handed-out leads on `leadDistributedOn`; Регистрация on `createdAtSource` (kval on `closedAt` of WON); calls on `startedAt`; Склад on Доставка stage history; Meta on `meta_campaign_daily."date"` |
+| RNP jadvali | `/rnp` (section `rnp`, 2026-09-28) | `rnp/RnpPage` + `RnpSheetTable` + `RnpCostCell` — the client's «СентябрРНП» sheet row by row (`lines`), nothing else: day plan / plan / fact / forecast / index before the days | `/rnp/overview`, `POST /rnp/plan`, `POST /rnp/costs`, `POST /rnp/headcount` (`analytics:read:all` at the gate, `kpi:manage` inside) | Rnp → Insights (`rnpTeamDays`), Rnp, Reklama (Meta) | its OWN calendar month. FAKT 1 / FAKT 2 / refusals on the queue cohort (`queued_at`), team off the deal as on Logistika; handed-out leads on `leadDistributedOn`; Регистрация on `createdAtSource` (kval on `closedAt` of WON); calls on `startedAt`; Склад on Доставка stage history; Meta on `meta_campaign_daily."date"` |
 | Registratsiya | `/registration` (section `registration`, 2026-10-01) | `registration/RegistrationPage` — the day's handed-out leads per ROP against the administrator's daily split (plan bars, table, 7-day grid, `PlanEditor` in % or leads) | `/registration/overview?day=`, `POST /registration/split` (`analytics:read:all` at the gate, `kpi:manage` inside) | Registration → Registration (`distributedDaysSql`) | ONE Tashkent calendar day (`?day=`, default today) and the six before it for the grid: `deal."leadDistributedOn"`, Регистрация (role LEAD) copies left out, ROP named exactly as `leadDaysSql`; a duplicate is the same contact handed out again that day |
 | Target tahlili | `/target` | `target/TargetPage` + `TargetGroupTable` + `TargetLeadTable` + `TargetMeta` | `/target/overview`, `/target/leads` | Target → Target | **the deal's creation, `createdAtSource`** — a lead on the day it was registered, a sale on the day the seller's deal was opened. The Meta block reads `meta_ad_daily."date"` over the same Tashkent calendar days |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
@@ -513,10 +513,13 @@ Per-screen traps worth knowing before you touch one:
   `lead_value` with a `fromDay`) are `rnp_plan`,
   values × 100; rows with no Bitrix24 / Meta source (followers, HR, bloggers)
   are NOT on the screen; a team is its department name plus its head.
-  **The sheet's arithmetic is not copied** (its own audit found 27 errors):
-  the forecast is the fact through the last FULL day ÷ those days × the
-  month's real length, every rate is ΣA ÷ ΣB for a day and the month alike,
-  a snapshot row (headcount, «не собран») is never summed.
+  **The sheet's formulas ARE copied (the client, 2026-10-01: «har bir
+  formula … huddi shunday»), a broken one by what it meant:** the forecast
+  is the sheet's `=D/$C$2*$C$1` — the fact so far ÷ today's day of the month
+  (today counted, = «Oʻtgan kunlar») × the month's REAL length (the sheet
+  types 31); a summed row's day plan is `=C/27`; every rate is ΣA ÷ ΣB for a
+  day and the month alike; a snapshot row (headcount, «не собран») is never
+  summed.
   **Portal facts it rests on**, measured 2026-09-28 through the MCP: for a
   COUNT BY DISTRIBUTION DAY a handed-out lead is ONE deal (it keeps its id
   from Первичный отдел on; 21.09: 338 deals in pipelines 12/4/6, two sharing a
@@ -570,8 +573,17 @@ Per-screen traps worth knowing before you touch one:
     «REJALAR» IS GONE (2026-10-01, the client: «butunlay olib tashla»): the
     plans form, `POST /rnp/plans` and `POST /rnp/registrars` were deleted.
     Plans and registrar groups already saved are still READ (`rnp_plan`,
-    `team_month_plan`, `rnp_registrar_group` inherits the previous month);
-    a new month has no `rnp_plan` rows, so its plan / index cells are empty.
+    `team_month_plan`, `rnp_registrar_group` inherits the previous month).
+    PLANS ARE TYPED IN THE GRID since (2026-10-01): where the sheet types a
+    column-C cell the row carries `planInput` and the cell is an open field
+    (`POST /rnp/plan`, `kpi:manage`, only cells the month leaves open; a
+    team's FAKT 1/2 → `team_month_plan`, the rest → `rnp_plan` from day 1).
+    Where the sheet computes C the plan is derived, never typed: orders =
+    FAKT ÷ cheque, conversion = orders ÷ leads, row 47 = kval ÷ kval %,
+    «Отказ %» = 100 − success. The P&L percentages are the sheet's constants
+    (marketing plan 11 %, targetolog 10 %, marketolog 1 %) unless a month saved
+    its own; `lead_value` is inherited team by team from the last month that
+    had one.
   · **THE CLIENT RESHAPED THE SHEET (2026-09-30 afternoon)** — see the header
     of `rnpSheetLayout.ts` (hand-kept since): «Таргет Collagen/Zextra», totals
     above them, 47 under 48, Zextra registration → groups «Asliddin ROP» /
@@ -614,8 +626,8 @@ Per-screen traps worth knowing before you touch one:
     'ОТЧЕТ'/'роп', which stop in August, so FAKT 2, logistics and «Свод» are 0
     there; most September facts are typed by hand (FAKT 1 matched Bitrix on
     167 of 239 team-days exactly). Its FAKT 2 average-check row is labelled
-    «Средний чек факт 1» — relabelled «факт 2» here. The day plan stays
-    C ÷ calendar days (the client's choice), not the sheet's C ÷ 27.
+    «Средний чек факт 1» — relabelled «факт 2» here. «Отказ %» is the
+    sheet's 1 − «Успешкность %» (still in flight counts), unclamped.
   · September's column C plans are imported by migration (the ×10 «Средний
     чек факт 2», the plans derived from it and zero plans left out; Мафтуна's
     400 000 → 400 mln). The lead's value changes on **14.09**, from the
@@ -628,9 +640,11 @@ Per-screen traps worth knowing before you touch one:
     `DEALS_BACKFILL` since 2026-09-01), grouped per month in
     `rnp_registrar_group` (no form since 2026-10-01; the last month's
     groups carry forward). Gulzora and Maftuna groups were never assigned.
-  · Brand P&L: an ORDER's brand is its most expensive `deal_item` line's
-    product name (zextra / collagen) — «Товары» is filled on 5 of 90 sales;
-    a LEAD's brand is its source (`LEAD_SOURCE_BRAND`), else its CRM form
+  · Brand P&L: an ORDER's brand is its SELLING TEAM's, by the sheet's
+    SUMIFS lists (`BRAND_TEAMS`: Collagen = Sevinch, Gulzora, Azizbek, Lola,
+    Saidaziz, Maftuna, Marjona, Baza, Shohjaxon; Zextra = Asliddin,
+    Sadriddin (+Sevinchxon), Charos (+Malika)) — 2026-10-01, was the
+    product line; a LEAD's brand is its source (`LEAD_SOURCE_BRAND`), else its CRM form
     («zextra» in the name, or a Kamron form), else none. A «Brendsiz» block
     carries what neither brand claims, so the three add up to the company.
 - **Registratsiya** — added 2026-10-01 from the client's Excel («Jami /

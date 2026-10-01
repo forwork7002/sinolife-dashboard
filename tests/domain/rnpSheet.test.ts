@@ -119,6 +119,13 @@ describe('buildRnpSheet — the forecast', () => {
     expect(f1.dayPlan).toBeCloseTo(30_000_000 / 27, 6)
   })
 
+  it('paces a row trusted only from a later day over the days since then', () => {
+    // Charos's calls are trusted from 15.09: 14 days counted by the 28th, today included.
+    const reach = row(buildRnpSheet(input()), 'team:Charos', 'team:Charos:reach')
+    expect(reach.reliableFrom).toBe(CALLS_RELIABLE_FROM)
+    expect(reach.forecast).toBeCloseTo((reach.fact! / 14) * 30, 6)
+  })
+
   it('forecasts from the first day, and equals the fact once the month is over', () => {
     const first = buildRnpSheet(input({ today: '2026-09-01' }))
     const day1 = row(first, 'team:Sevinch', 'team:Sevinch:fakt1')
@@ -283,6 +290,17 @@ describe('buildRnpSheet — company blocks', () => {
     const success = on(row(dto, 'logistics', 'lg:success'), '2026-09-21')!
     expect(on(row(dto, 'logistics', 'lg:refused_pct'), '2026-09-21')).toBeCloseTo(100 - success, 6)
     expect(row(dto, 'logistics', 'lg:refused_pct').fact).toBeCloseTo(100 - row(dto, 'logistics', 'lg:success').fact!, 6)
+    // A day whose FAKT 2 runs past its FAKT 1 still keeps the month at exactly 100 − success.
+    const over = buildRnpSheet(
+      input({
+        fakt: [
+          fakt('2026-09-20', 'Sevinch', { fakt1Orders: 1, fakt1Minor: som(100), fakt2Orders: 1, fakt2Minor: som(120) }),
+          fakt('2026-09-21', 'Sevinch', { fakt1Orders: 1, fakt1Minor: som(100), fakt2Orders: 1, fakt2Minor: som(50) }),
+        ],
+      }),
+    )
+    expect(row(over, 'logistics:Sevinch', 'lg:Sevinch:success').fact).toBeCloseTo(85, 6)
+    expect(row(over, 'logistics:Sevinch', 'lg:Sevinch:refused_pct').fact).toBeCloseTo(15, 6)
     const open = row(dto, 'logistics', 'lg:open_pct')
     // 21.09: 3 500 000 + 1 000 000 + 200 000 ordered, 2 000 000 delivered, 1 000 000 refused.
     expect(on(open, '2026-09-21')).toBeCloseTo((1_700_000 / 4_700_000) * 100, 6)
@@ -520,6 +538,22 @@ describe('buildRnpSheet — the brand P&L (rows 394–445)', () => {
     expect(d21(d, 'pj:collagen:cost_plan')).toBe(2_000_000 * 0.11)
     expect(d21(d, 'pj:collagen:cost_targetolog')).toBe(spendUzs * 0.1)
     expect(d21(d, 'pj:collagen:cost_marketer')).toBe(2_000_000 * 0.01)
+  })
+
+  it('counts «Malika(ROP)» as Charos (Zextra) and an order with no ROP as «Brendsiz»', () => {
+    const d = buildRnpSheet(
+      input({
+        fakt: [
+          fakt('2026-09-21', 'Malika', { fakt1Orders: 1, fakt1Minor: som(700_000), fakt2Orders: 1, fakt2Minor: som(700_000) }),
+          fakt('2026-09-21', '(ROP yoʻq)', { fakt1Orders: 1, fakt1Minor: som(300_000) }),
+        ],
+      }),
+    )
+    expect(d21(d, 'pj:zextra:fakt1')).toBe(700_000)
+    // Charos is the БАЗА team of the Zextra list: base, not первичка.
+    expect(d21(d, 'pj:zextra:base_fakt2')).toBe(700_000)
+    expect(d21(d, 'pj:zextra:primary_fakt2')).toBe(0)
+    expect(on(row(d, 'project:none', 'pj:none:fakt1'), '2026-09-21')).toBe(300_000)
   })
 
   it('counts leads by brand and puts the P&L after «Свод»', () => {

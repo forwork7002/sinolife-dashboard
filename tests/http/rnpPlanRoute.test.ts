@@ -13,6 +13,7 @@ describe('POST /rnp/plan — the body', () => {
   it('refuses an unknown metric, three decimals, a negative and an absurd value', () => {
     expect(planBodySchema.safeParse(body([cell({ metric: 'rent' })])).success).toBe(false)
     expect(planBodySchema.safeParse(body([cell({ value: 1.005 })])).success).toBe(false)
+    expect(planBodySchema.safeParse(body([cell({ value: 123_456_789_012.34 })])).success).toBe(true)
     expect(planBodySchema.safeParse(body([cell({ value: -1 })])).success).toBe(false)
     expect(planBodySchema.safeParse(body([cell({ value: 2_000_000_000_000 })])).success).toBe(false)
   })

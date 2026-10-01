@@ -227,7 +227,9 @@ const BASE_TEAMS: ReadonlySet<string> = new Set(['Charos', 'Baza'])
  * (rows 394 / 421, by department): an order belongs to the brand of the team
  * that sold it. «Первичка усп» (396 / 423) is the same list without the БАЗА
  * team (`BASE_TEAMS`). The sheet's «Sevinchxon(ROP)» is folded into
- * Sadriddin (`TEAM_ALIASES`); a team on neither list (Hayot) is «Brendsiz».
+ * Sadriddin (`TEAM_ALIASES`). The alias also folds «Malika(ROP)» into
+ * Charos — so Malika's old deals count as Zextra, though the sheet's list
+ * does not name her. A team on neither list (Hayot) is «Brendsiz».
  */
 const BRAND_TEAMS: Readonly<Record<'Collagen' | 'Zextra', ReadonlySet<string>>> = {
   Collagen: new Set(['Sevinch', 'Gulzora', 'Azizbek', 'Lola', 'Saidaziz', 'Maftuna', 'Marjona', 'Baza', 'Shohjaxon']),
@@ -332,8 +334,9 @@ export const SETTING_LEAD_VALUE = 'lead_value'
 
 /**
  * Every key a plan can be stored under — the rows below name them, and the
- * plans route accepts nothing else, so a typo in a script cannot fill
- * `rnp_plan` with rows no screen reads.
+ * plan route accepts nothing else, so a typo in a script cannot fill
+ * `rnp_plan` with rows no screen reads. Plans the sheet computes (orders,
+ * conversions, «Отказ %», row 47) are not keys: nothing stores them.
  */
 export const RNP_PLAN_METRICS = [
   SETTING_LEAD_VALUE,
@@ -348,7 +351,6 @@ export const RNP_PLAN_METRICS = [
   'cpl_zextra',
   'cac',
   'marketing_share',
-  'reg_leads',
   'reg_qualified',
   'reg_qualified_pct',
   'reg_group_qualified',
@@ -371,22 +373,13 @@ export const RNP_PLAN_METRICS = [
   'brand_cost_share',
   'leads',
   'calls',
-  'conversion',
-  'conversion2',
   'avg_cheque1',
   'avg_cheque2',
-  'orders',
-  'orders2',
   'fakt1',
   'fakt2',
   'headcount',
   'plan_pct',
   'success_rate',
-  'refusal_rate',
-  'primary_orders2',
-  'primary_fakt2',
-  'primary_conversion',
-  'base_fakt2',
   'warehouse_orders',
 ] as const
 
@@ -452,16 +445,14 @@ interface Clock {
   readonly todayIndex: number
   /** Days lived, TODAY COUNTED — the sheet's C2. */
   readonly elapsed: number
-  /** Whether the month is still running (the forecast means something). */
-  readonly running: boolean
 }
 
 function clockOf(days: readonly string[], today: string): Clock {
   const n = days.length
-  if (today < days[0]!) return { days, n, todayIndex: -1, elapsed: 0, running: false }
-  if (today > days[n - 1]!) return { days, n, todayIndex: n, elapsed: n, running: false }
+  if (today < days[0]!) return { days, n, todayIndex: -1, elapsed: 0 }
+  if (today > days[n - 1]!) return { days, n, todayIndex: n, elapsed: n }
   const i = days.indexOf(today)
-  return { days, n, todayIndex: i, elapsed: i + 1, running: true }
+  return { days, n, todayIndex: i, elapsed: i + 1 }
 }
 
 /**
@@ -540,13 +531,12 @@ function additive(clock: Clock, o: RowOptions, values: readonly number[]): RnpRo
 }
 
 /**
- * A row whose inputs are missing (no dollar rate, no percentage set): every
- * cell a dash, never a 0 that reads as «nothing was spent».
+ * A row whose inputs are missing (no dollar rate, no registrar in a group):
+ * every cell a dash, never a 0 that reads as «nothing was spent».
  */
 function dashed(row: RnpRowDto): RnpRowDto {
   return { ...row, fact: null, forecast: null, index: null, days: row.days.map(() => null) }
 }
-
 
 /**
  * A ratio row: every cell is Σnumerator ÷ Σdenominator × scale — the day's
@@ -929,7 +919,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
         additive(clock, { key: `${k}:orders1`, label: 'Буюртма сони (ФАКТ 1)', unit: 'count', ...derived(ordersPlan), sheet: at0(3, 'Буюртма сони') }, t.fakt1Orders),
         additive(clock, { key: `${k}:fakt1`, label: 'Сумма ФАКТ 1', unit: 'uzs', tone: 'total', ...planned(rop, 'fakt1'), hint: 'Tasdiqlandi + Tasdiqlanmay chiqdi — Tasdiqlash navbati kogortasi, jamoa bitimdagi «Организация сотрудника» boʻyicha.', sheet: at0(4, 'Сумма факт 1 сум') }, t.fakt1),
         /* The block's first line on the page (the ROP's name beside it) — so a БАЗА team without its own lead value gets it empty, not missing. */
-        ratio(clock, { key: `${k}:plan_pct`, label: 'План бажарилиши, %', unit: 'percent', ...planned(rop, 'plan_pct'), reliableFrom: reachFrom, hint: `ФАКТ 1 ÷ (${baseTeam ? 'дозвон' : 'lid'} × bitta lid qiymati). Lid qiymati kiritilmagan oyda boʻsh.`, sheet: at0(5, 'План бажарилиши') }, t.fakt1, expected, 100),
+        ratio(clock, { key: `${k}:plan_pct`, label: 'План бажарилиши, %', unit: 'percent', ...planned(rop, 'plan_pct'), reliableFrom: reachFrom, hint: `ФАКТ 1 ÷ (${baseTeam ? 'дозвон' : 'lid'} × bitta lid qiymati). Lid qiymati — jadvaldagi doimiy (400 000, 14.09 dan 500 000); yangi oy oxirgisini oladi.`, sheet: at0(5, 'План бажарилиши') }, t.fakt1, expected, 100),
         ...(baseTeam ? [ratio(clock, { key: `${k}:per_call`, label: 'Дозвонга ўртача сумма', unit: 'uzs', reliableFrom: reachFrom, sheet: at0(11, 'Средний сумма за дозвон') }, t.fakt1, reach)] : []),
         level(clock, { key: `${k}:headcount`, label: 'Ходим сони', unit: 'count', ...planned(rop, 'headcount'), hint: 'Qoʻlda kiritiladi — har kuni jamoadagi xodimlar soni. Oy ustuni — kiritilgan kunlarning oʻrtachasi (0 yozilgan kun hisobga olinmaydi).', sheet: at0(6, 'Ходим сони'), manual: { kind: 'headcount', rop } }, headcount, 'mean'),
         additive(clock, { key: `${k}:fakt2`, label: 'Сумма ФАКТ 2 (Доставлено)', unit: 'uzs', tone: 'total', ...planned(rop, 'fakt2'), sheet: at0(7, 'Сумма факт 2 сум') }, t.fakt2),
@@ -967,7 +957,8 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   // --- Логистика (sheet rows 269–334) ----------------------------------------
   const logisticsRows = (k: string, t: { fakt1: number[]; fakt2: number[]; refused: number[] }, tone: 'total' | 'plain', team: string, r0: number | undefined): RnpRowDto[] => {
     const open = days.map((_, i) => Math.max(0, t.fakt1[i]! - t.fakt2[i]! - t.refused[i]!))
-    const unsuccessful = days.map((_, i) => Math.max(0, t.fakt1[i]! - t.fakt2[i]!))
+    // Not clamped: FAKT 2 is not bounded by FAKT 1 on a day, and only the unclamped difference keeps «Отказ» = 100 − «Успешность» for the month.
+    const unsuccessful = days.map((_, i) => t.fakt1[i]! - t.fakt2[i]!)
     // The sheet's C272 is typed as 1 − C271: the refusal plan follows the success plan.
     const successPlan = team === input.noRop ? null : plan(team, 'success_rate')
     const at0 = (offset: number, label: string) => (r0 === undefined ? null : sh(r0 + offset, label))
@@ -1040,6 +1031,8 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   const marketingPlanPct = pct('marketing_plan_pct', 11)
   const targetologPct = pct('targetolog_pct', 10)
   const marketerPct = pct('marketer_pct', 1)
+  /** A percent in a label, as the screen writes numbers: a decimal comma. */
+  const pctText = (v: number) => String(v).replace('.', ',')
   for (const b of ['Collagen', 'Zextra'] as const) {
     const g = brandGrid(b)
     const k = `pj:${b.toLowerCase()}`
@@ -1093,8 +1086,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     const costUsd = costFact.map((v, i) => (rates[i] ? v / rates[i]! : 0))
     const rateHint = rateKnown ? ' Har kun oʻz kursi — Markaziy bank (cbu.uz).' : ' Markaziy bank kursi olinmadi.'
     /* The whole cost needs the dollar rate; without it it is not «the cost», it is part of it. */
-    const costKnown = rateKnown
-    const missingHint = costKnown ? '' : ' Markaziy bank kursi olinmadi.'
+    const missingHint = rateKnown ? '' : ' Markaziy bank kursi olinmadi.'
     const whenKnown = (known: boolean, row: RnpRowDto) => (known ? row : dashed(row))
     blocks.push({
       id: `project:${b.toLowerCase()}`,
@@ -1117,14 +1109,14 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
         ratio(clock, { key: `${k}:conv_qualified`, label: 'Конверсия от квал, %', unit: 'percent', ...planned(b, 'brand_conversion'), sheet: at0(10, 'Конверция от квал') }, g.primaryOrders2, g.qualified, 100),
         ratio(clock, { key: `${k}:conv_leads`, label: 'Конверсия, %', unit: 'percent', sheet: at0(11, 'Конверция') }, g.primaryOrders2, g.leads, 100),
         ratio(clock, { key: `${k}:cheque2`, label: 'Ўртача чек', unit: 'uzs', ...planned(b, 'brand_cheque2'), sheet: at0(12, 'Средний чек') }, g.primaryFakt2, g.primaryOrders2),
-        additive(clock, { sheet: at0(13, 'Маркетинг харажат план'), key: `${k}:cost_plan`, label: `Маркетинг харажат план (ФАКТ 2 × ${marketingPlanPct}%)`, unit: 'uzs' }, costPlan),
-        whenKnown(costKnown, withTyped(additive(clock, { sheet: at0(14, 'Маркетинг харажат факт'), key: `${k}:cost_fact`, label: 'Маркетинг харажат факт', unit: 'uzs', tone: 'total', better: 'down', ...planned(b, 'brand_cost'), hint: `Target byudjeti (soʻm) + targetolog + marketolog ulushi + qoʻlda kiritilgan xarajatlar (blogerlar, nutritsiolog, brendfeys, marketing xarajatlari, jamoa).${missingHint}` }, computedCost))),
+        additive(clock, { sheet: at0(13, 'Маркетинг харажат план'), key: `${k}:cost_plan`, label: `Маркетинг харажат план (ФАКТ 2 × ${pctText(marketingPlanPct)}%)`, unit: 'uzs' }, costPlan),
+        whenKnown(rateKnown, withTyped(additive(clock, { sheet: at0(14, 'Маркетинг харажат факт'), key: `${k}:cost_fact`, label: 'Маркетинг харажат факт', unit: 'uzs', tone: 'total', better: 'down', ...planned(b, 'brand_cost'), hint: `Target byudjeti (soʻm) + targetolog + marketolog ulushi + qoʻlda kiritilgan xarajatlar (blogerlar, nutritsiolog, brendfeys, marketing xarajatlari, jamoa).${missingHint}` }, computedCost))),
         whenKnown(rateKnown, additive(clock, { key: `${k}:spend_uzs`, label: 'Таргет бюджет, soʻm', unit: 'uzs', better: 'down', hint: `Byudjet $ × dollar kursi.${rateHint}`, sheet: at0(15, 'Таргет бюджет') }, spendUzs)),
-        whenKnown(rateKnown, additive(clock, { key: `${k}:cost_targetolog`, label: `Таргетолог ФОТ (${targetologPct}%)`, unit: 'uzs', better: 'down', sheet: at0(16, 'Таргетолог фот') }, targetolog)),
+        whenKnown(rateKnown, additive(clock, { key: `${k}:cost_targetolog`, label: `Таргетолог ФОТ (${pctText(targetologPct)}%)`, unit: 'uzs', better: 'down', sheet: at0(16, 'Таргетолог фот') }, targetolog)),
         ...manualRows,
-        additive(clock, { key: `${k}:cost_marketer`, label: `Маркетолог ФОТ (${marketerPct}%)`, unit: 'uzs', better: 'down', sheet: at0(22, 'Маркетолог фот = 1%') }, marketer),
-        whenKnown(costKnown, ratio(clock, { sheet: at0(23, 'CAC $'), key: `${k}:cac`, label: 'CAC, $', unit: 'usd', better: 'down', ...planned(b, 'brand_cac'), hint: `Butun marketing xarajati ($) ÷ birlamchi yetkazilgan buyurtmalar.${missingHint}` }, costUsd, g.primaryOrders2)),
-        whenKnown(costKnown, ratio(clock, { sheet: at0(24, '%'), key: `${k}:cost_share`, label: 'Маркетинг улуши, %', unit: 'percent', better: 'down', ...planned(b, 'brand_cost_share'), hint: missingHint || null }, costFact, g.fakt2, 100)),
+        additive(clock, { key: `${k}:cost_marketer`, label: `Маркетолог ФОТ (${pctText(marketerPct)}%)`, unit: 'uzs', better: 'down', sheet: at0(22, 'Маркетолог фот = 1%') }, marketer),
+        whenKnown(rateKnown, ratio(clock, { sheet: at0(23, 'CAC $'), key: `${k}:cac`, label: 'CAC, $', unit: 'usd', better: 'down', ...planned(b, 'brand_cac'), hint: `Butun marketing xarajati ($) ÷ birlamchi yetkazilgan buyurtmalar.${missingHint}` }, costUsd, g.primaryOrders2)),
+        whenKnown(rateKnown, ratio(clock, { sheet: at0(24, '%'), key: `${k}:cost_share`, label: 'Маркетинг улуши, %', unit: 'percent', better: 'down', ...planned(b, 'brand_cost_share'), hint: missingHint || null }, costFact, g.fakt2, 100)),
       ],
     })
   }
@@ -1134,7 +1126,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       id: 'project:none',
       kind: 'project',
       title: 'Brendsiz',
-      subtitle: 'Mahsulot qatori yoʻq yoki Collagen/Zextra emas buyurtmalar va manbasi brendga bogʻlanmagan lidlar — jami ikki loyiha + shu = kompaniya',
+      subtitle: 'Jadvalning Collagen / Zextra roʻyxatida yoʻq jamoalar sotgan buyurtmalar va manbasi brendga bogʻlanmagan lidlar — jami ikki loyiha + shu = kompaniya',
       team: null,
       sheet: null,
       rows: [
