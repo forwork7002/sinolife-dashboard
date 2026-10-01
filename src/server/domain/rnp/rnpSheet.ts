@@ -236,7 +236,7 @@ const BASE_TEAMS: ReadonlySet<string> = new Set(['Charos', 'Baza'])
  * «Charos(ROP)». Applied to every source row before anything is summed, so a
  * folded team's money can only be counted once.
  */
-const TEAM_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+export const TEAM_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   Sevinchxon: 'Sadriddin',
   Malika: 'Charos',
 })

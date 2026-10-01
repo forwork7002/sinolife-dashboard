@@ -138,6 +138,7 @@ const NAV_GROUPS: readonly { readonly label: string | null; readonly items: read
     items: [
       { href: '/marketing', label: t.nav.marketing, icon: MegaphoneIcon },
       { href: '/leads', label: t.nav.leads, icon: InboxIcon },
+      { href: '/registration', label: t.nav.registration, icon: SplitIcon },
       { href: '/target', label: t.nav.target, icon: FunnelIcon },
     ],
   },
@@ -1683,6 +1684,15 @@ function InboxIcon() {
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M4 13l2.2-7.2A1.5 1.5 0 017.6 4.8h8.8a1.5 1.5 0 011.4 1L20 13" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
       <path d="M4 13v5a1.5 1.5 0 001.5 1.5h13A1.5 1.5 0 0020 18v-5h-4.5l-1.2 2h-4.6l-1.2-2H4z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/** «Registratsiya» — one stream of leads splitting into several. */
+function SplitIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 12h6M10 12c3 0 4-6 8-6M10 12c3 0 4 6 8 6M10 12h8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
     </svg>
   )
 }

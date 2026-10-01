@@ -1514,6 +1514,23 @@ model RnpManualCost {
   @@map("rnp_manual_cost")
 }
 
+/// «Registratsiya» — the administrator's split of one day's handed-out leads
+/// among the ROP teams (the client, 2026-10-01: one company-wide split, set
+/// every day). `rop` is the team as `ropNameSql` names it; `shareBp` is basis
+/// points, 15 % = 1 500, and a day's rows sum to 10 000. Saving a day replaces
+/// all of its rows; a day nobody set has none.
+model RegistrationSplit {
+  id        String   @id @default(cuid())
+  day       DateTime @db.Date
+  rop       String
+  shareBp   Int
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@unique([day, rop])
+  @@map("registration_split")
+}
+
 // ---------------------------------------------------------------------------
 // KPI
 // ---------------------------------------------------------------------------
