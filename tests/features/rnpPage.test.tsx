@@ -12,7 +12,7 @@ import type { RnpLine, RnpOverviewDto, RnpRowDto } from '@/features/rnp/rnpApi'
  * its own labels, the header strip carries the sheet's rows 1–2 (days gone
  * by, dollar rate, today), a day with no figure prints a dash and never a
  * zero, none of the deleted extras (ROP rail, KPI cards, charts, funnel,
- * ranking) comes back, and «Rejalar» still saves plans and registrar groups.
+ * ranking) comes back, and «Rejalar» is gone (the client, 2026-10-01).
  */
 
 vi.mock('next/navigation', () => ({
@@ -44,7 +44,6 @@ function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRo
     forecast: null,
     index: null,
     days: [null, null, null],
-    planKey: null,
     sheet: null,
     tone: 'plain',
     hint: null,
@@ -121,9 +120,8 @@ const FIXTURE: RnpOverviewDto = {
     { kind: 'value', row: 89, team: 'Sevinch', label: 'Продажа (первичка) факт1', sub: 'Севинч РОП', tone: 'team', fact: 'plain', bold: true, key: 'reg:distributed' },
     { kind: 'value', row: 90, team: 'Sevinch', label: 'Конверсия % от квал лид', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'team:Sevinch:conv1' },
   ] satisfies RnpLine[],
-  settings: { usdRate: null, usdRateDate: null, leadValues: [], marketingPlanPct: null, targetologPct: null, marketerPct: null },
+  settings: { usdRate: null, usdRateDate: null },
   canEditPlans: false,
-  registration: { registrars: [], groups: [], groupNames: ['Sevinch', 'Gulzora', 'Aziz', 'Maftuna', 'Lola', 'Saidaziz', 'Zextra'] },
 }
 
 let fixture: RnpOverviewDto = FIXTURE
@@ -207,7 +205,11 @@ describe('RnpPage — the sheet', () => {
     expect(toolbar.textContent).toContain('Dollar kursi:Markaziy bankdan olinmadi')
     expect(toolbar.textContent).toContain('Bugun:02.09.2026')
     expect(within(toolbar).queryByRole('button', { name: 'Kengliklarni tiklash' })).toBeNull()
-    // No «Rejalar» for an account that cannot edit plans.
+    // No «Rejalar» on the page (the client took it off, 2026-10-01).
+    expect(screen.queryByRole('button', { name: 'Rejalar' })).toBeNull()
+    cleanup()
+    fixture = { ...FIXTURE, canEditPlans: true }
+    await draw()
     expect(screen.queryByRole('button', { name: 'Rejalar' })).toBeNull()
 
     cleanup()
@@ -264,144 +266,6 @@ describe('RnpPage — the sheet', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Qayta urinish' })).toBeTruthy())
   })
 
-  it('saves a team’s FAKT 1 as a fakt pair, once, and a company plan as a row', async () => {
-    const fakt1 = (label: string, plan: number | null) =>
-      row({ key: label, label, unit: 'uzs', plan, planKey: { team: 'Sevinch', metric: 'fakt1' } })
-    fixture = {
-      ...FIXTURE,
-      canEditPlans: true,
-      settings: {
-        usdRate: 12650,
-        usdRateDate: '2026-09-02',
-        leadValues: [{ team: '', fromDay: 1, value: 50000 }],
-        marketingPlanPct: 12,
-        targetologPct: null,
-        marketerPct: null,
-      },
-      blocks: [
-        {
-          id: 'marketing',
-          kind: 'marketing',
-          title: 'Маркетинг',
-          subtitle: null,
-          team: null,
-          sheet: null,
-          rows: [row({ key: 'meta:spend', label: 'Жами бюджет, $', unit: 'usd', planKey: { team: '', metric: 'budget' } })],
-        },
-        {
-          id: 'team:Sevinch',
-          kind: 'team',
-          title: 'Sevinch РОП',
-          subtitle: null,
-          team: 'Sevinch',
-          sheet: null,
-          rows: [
-            fakt1('Сумма ФАКТ 1', 100_000_000),
-            row({ key: 'f2', label: 'Сумма ФАКТ 2', unit: 'uzs', plan: 80_000_000, planKey: { team: 'Sevinch', metric: 'fakt2' } }),
-          ],
-        },
-        { id: 'summary', kind: 'summary', title: 'Свод', subtitle: null, team: null, sheet: null, rows: [fakt1('ФАКТ 1 · Sevinch', 100_000_000)] },
-      ],
-    }
-    await draw()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Rejalar' }))
-    fireEvent.change(screen.getByLabelText('Свод · ФАКТ 1 · Sevinch'), { target: { value: '120000000' } })
-    fireEvent.change(screen.getByLabelText('Маркетинг · Жами бюджет, $'), { target: { value: '1500.5' } })
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Saqlash' }))
-    })
-
-    await waitFor(() => expect(posted).toHaveLength(1))
-    expect(posted[0]).toEqual({
-      month: '2026-09',
-      rows: [
-        { team: '', metric: 'budget', fromDay: 1, value: 1500.5 },
-        { team: '', metric: 'marketing_plan_pct', fromDay: 1, value: 12 },
-        { team: '', metric: 'targetolog_pct', fromDay: 1, value: null },
-        { team: '', metric: 'marketer_pct', fromDay: 1, value: null },
-        { team: '', metric: 'lead_value', fromDay: 1, value: 50000 },
-      ],
-      fakt: [{ rop: 'Sevinch', fakt1: 120_000_000, fakt2: 80_000_000 }],
-    })
-  })
-
-  it('prefills the P&L percentages and saves a typed one as a company row', async () => {
-    fixture = { ...FIXTURE, canEditPlans: true }
-    await draw()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Rejalar' }))
-    const targetolog = screen.getByRole('textbox', { name: /^Targetolog ФОТ, % byudjetdan/ }) as HTMLInputElement
-    expect(targetolog.value).toBe('')
-    fireEvent.change(targetolog, { target: { value: '10,5' } })
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Saqlash' }))
-    })
-
-    await waitFor(() => expect(posted).toHaveLength(1))
-    expect((posted[0] as { rows: unknown[] }).rows).toContainEqual({ team: '', metric: 'targetolog_pct', fromDay: 1, value: 10.5 })
-  })
-
-  describe('registrar groups', () => {
-    const withRegistrars: RnpOverviewDto = {
-      ...FIXTURE,
-      canEditPlans: true,
-      registration: {
-        registrars: ['Aziza', 'Dilnoza'],
-        // «Eski» is only in a group this month — still offered.
-        groups: [
-          { registrar: 'Aziza', group: 'Sevinch' },
-          { registrar: 'Eski', group: 'Lola' },
-        ],
-        groupNames: ['Sevinch', 'Gulzora', 'Aziz', 'Maftuna', 'Lola', 'Saidaziz', 'Zextra'],
-      },
-    }
-
-    async function openForm() {
-      fixture = withRegistrars
-      await draw()
-      fireEvent.click(screen.getByRole('button', { name: 'Rejalar' }))
-    }
-
-    const select = (name: string) => screen.getByRole('combobox', { name: `${name} — guruh` }) as HTMLSelectElement
-
-    it('prefills each registrar and posts only the changed row', async () => {
-      await openForm()
-      expect(select('Aziza').value).toBe('Sevinch')
-      expect(select('Dilnoza').value).toBe('')
-      expect(select('Eski').value).toBe('Lola')
-
-      fireEvent.change(select('Dilnoza'), { target: { value: 'Maftuna' } })
-      await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: 'Saqlash' }))
-      })
-
-      await waitFor(() => expect(posted).toHaveLength(2))
-      expect(postedTo).toEqual(['/api/v1/rnp/plans', '/api/v1/rnp/registrars'])
-      expect(posted[1]).toEqual({ month: '2026-09', rows: [{ registrar: 'Dilnoza', group: 'Maftuna' }] })
-    })
-
-    it('sends null for «—», and nothing to /rnp/registrars when no group changed', async () => {
-      await openForm()
-      fireEvent.change(select('Eski'), { target: { value: '' } })
-      await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: 'Saqlash' }))
-      })
-      await waitFor(() => expect(posted).toHaveLength(2))
-      expect(posted[1]).toEqual({ month: '2026-09', rows: [{ registrar: 'Eski', group: null }] })
-
-      cleanup()
-      posted = []
-      postedTo = []
-      await openForm()
-      await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: 'Saqlash' }))
-      })
-      await waitFor(() => expect(posted).toHaveLength(1))
-      expect(postedTo).toEqual(['/api/v1/rnp/plans'])
-    })
-  })
-
   describe('typed P&L costs', () => {
     const costRow = (days: (number | null)[]) =>
       row({
@@ -412,7 +276,7 @@ describe('RnpPage — the sheet', () => {
         fact: days.some((d) => d !== null) ? days.reduce<number>((a, d) => a + (d ?? 0), 0) : null,
         days,
         hint: 'Qoʻlda kiritiladi — Bitrix24 da yoʻq xarajat.',
-        manual: { project: 'Collagen', line: 'bloggers' },
+        manual: { kind: 'cost', project: 'Collagen', line: 'bloggers' },
       })
     const withCosts = (canEditPlans: boolean, days: (number | null)[] = [1_500_000, null, null]): RnpOverviewDto => ({
       ...FIXTURE,
@@ -427,7 +291,7 @@ describe('RnpPage — the sheet', () => {
       ],
     })
 
-    const field = (day: string) => screen.getByRole('textbox', { name: `Блогерлар, ${day} — soʻm` }) as HTMLInputElement
+    const field = (day: string) => screen.getByRole('textbox', { name: `Collagen · Блогерлар, ${day} — soʻm` }) as HTMLInputElement
 
     it('types a day straight into its open field, posts it to /rnp/costs and reads the sheet again', async () => {
       fixture = withCosts(true)
@@ -535,6 +399,60 @@ describe('RnpPage — the sheet', () => {
       const bloggers = [...grid.querySelectorAll<HTMLTableRowElement>('tbody tr')].find((tr) => tr.querySelector('th')?.textContent?.startsWith('Блогерлар'))!
       expect(within(bloggers).getByText('qoʻlda')).toBeTruthy()
       expect(bloggers.textContent).not.toContain('Bitrix24ʼda yoʻq')
+    })
+  })
+
+  describe('typed «Ходим сони» (2026-10-01)', () => {
+    const withHeads = (days: (number | null)[] = [6, null, null]): RnpOverviewDto => ({
+      ...FIXTURE,
+      canEditPlans: true,
+      blocks: [
+        ...FIXTURE.blocks,
+        ...['Lola', 'Aziz'].map((rop) => ({
+          id: `team:${rop}`,
+          kind: 'team' as const,
+          title: `${rop} РОП`,
+          subtitle: null,
+          team: rop,
+          sheet: null,
+          rows: [row({ key: `team:${rop}:headcount`, label: 'Ходим сони', additive: false, fact: 6, days, manual: { kind: 'headcount', rop } })],
+        })),
+      ],
+      lines: [
+        ...FIXTURE.lines,
+        ...['Lola', 'Aziz'].map((rop): RnpLine => ({ kind: 'value', row: null, team: rop, label: 'Ходим сони', sub: null, tone: 'plain', fact: 'fakt', bold: false, key: `team:${rop}:headcount` })),
+      ],
+    })
+    // Two teams, two «Ходим сони» rows: each field is named for its team.
+    const field = (day: string) => screen.getByRole('textbox', { name: `Lola · Ходим сони, ${day} — kishi` }) as HTMLInputElement
+
+    it('types a team’s headcount into its open field and posts it to /rnp/headcount', async () => {
+      fixture = withHeads()
+      await draw()
+      expect(field('01.09').value).toBe('6')
+      fireEvent.focus(field('02.09'))
+      fireEvent.change(field('02.09'), { target: { value: '8' } })
+      fixture = withHeads([6, 8, null])
+      await act(async () => {
+        fireEvent.keyDown(field('02.09'), { key: 'Enter' })
+      })
+      await waitFor(() => expect(posted).toHaveLength(1))
+      expect(postedTo).toEqual(['/api/v1/rnp/headcount'])
+      expect(posted[0]).toEqual({ month: '2026-09', cells: [{ day: '2026-09-02', rop: 'Lola', value: 8 }] })
+    })
+
+    it('refuses a fraction or a thousand-plus in place, and sends nothing', async () => {
+      fixture = withHeads()
+      await draw()
+      fireEvent.focus(field('02.09'))
+      for (const typo of ['7.5', '-1', 'ab', '1001']) {
+        fireEvent.change(field('02.09'), { target: { value: typo } })
+        fireEvent.keyDown(field('02.09'), { key: 'Enter' })
+        expect(field('02.09').getAttribute('aria-invalid')).toBe('true')
+      }
+      fireEvent.blur(field('02.09'))
+      await act(async () => {})
+      expect(posted).toHaveLength(0)
     })
   })
 })

@@ -1515,6 +1515,23 @@ model RnpManualCost {
   @@map("rnp_manual_cost")
 }
 
+/// «RNP jadvali» — a ROP team's «Ходим сони» (headcount) typed by hand, one
+/// number per team per day (the client, 2026-10-01: «xodim soni qo'lda
+/// kiritiladi»). `rop` is the team as the sheet's ROP blocks name it
+/// (`team:<rop>`). A day nobody typed has no row and shows empty.
+model RnpManualHeadcount {
+  id        String   @id @default(cuid())
+  day       DateTime @db.Date
+  rop       String
+  heads     Int
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@unique([day, rop])
+  @@index([day])
+  @@map("rnp_manual_headcount")
+}
+
 /// «Registratsiya» — the administrator's split of one day's handed-out leads
 /// among the ROP teams (the client, 2026-10-01: one company-wide split, set
 /// every day). `rop` is the team as `ropNameSql` names it; `shareBp` is basis

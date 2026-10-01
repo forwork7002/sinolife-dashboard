@@ -154,13 +154,14 @@ export class RnpService {
     const to = days[days.length - 1]!
     const today = zonedDateKey(input.now, input.timeZone)
     /* Plans and registrar groups are read fresh: what somebody just saved shows on the next load. */
-    const [rows, plans, registrarGroups, usdRates, manualCosts] = await Promise.all([
+    const [rows, plans, registrarGroups, usdRates, manualCosts, manualHeadcount] = await Promise.all([
       monthCache.get(input.month, () => this.monthRows(input.month, from, to, input.timeZone, input.now)),
       this.repository.plans(input.month),
       this.repository.registrarGroups(input.month),
       this.usd.forDays(days, today),
       // Typed a moment ago, shown on the next load — never cached.
       this.repository.manualCosts(from, to),
+      this.repository.manualHeadcount(from, to),
     ])
     return buildRnpSheet({
       month: input.month,
@@ -168,6 +169,7 @@ export class RnpService {
       today,
       usdRates,
       manualCosts,
+      manualHeadcount,
       teams: rows.teams,
       fakt: rows.fakt,
       leads: rows.leads,
@@ -203,13 +205,20 @@ export class RnpService {
     await this.repository.saveManualCosts(cells, by)
   }
 
-  saveRegistrarGroups: RnpRepository['saveRegistrarGroups'] = async (month, rows, by) => {
-    await this.repository.saveRegistrarGroups(month, rows, by)
+  saveManualHeadcount: RnpRepository['saveManualHeadcount'] = async (cells, by) => {
+    await this.repository.saveManualHeadcount(cells, by)
   }
 
-  savePlans: RnpRepository['savePlans'] = async (month, input, by) => {
-    await this.repository.savePlans(month, input, by)
+  /**
+   * The teams whose «Ходим сони» the month's sheet draws — the only names a
+   * typed headcount may carry. Canonical names only: a row saved under an
+   * alias would sit beside the canonical one, and either could show.
+   */
+  async headcountTeams(input: { month: string; timeZone: string; now: Date }): Promise<ReadonlySet<string>> {
+    const sheet = await this.overview({ ...input, canEditPlans: false })
+    return new Set(sheet.blocks.flatMap((b) => b.rows).flatMap((r) => (r.manual?.kind === 'headcount' ? [r.manual.rop] : [])))
   }
+
 
   private async monthRows(month: string, from: string, to: string, timeZone: string, now: Date): Promise<MonthRows> {
     const today = zonedDateKey(now, timeZone)

@@ -8,7 +8,7 @@ import { RNP_COST_LINES, RNP_COST_PROJECTS } from '@/server/domain/rnp/rnpSheet'
 */
 
 /** A real calendar day of `month`, `YYYY-MM-DD` — «2026-02-30» is refused, not rolled over. */
-const calendarDay = z
+export const calendarDay = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
   .refine((d) => {

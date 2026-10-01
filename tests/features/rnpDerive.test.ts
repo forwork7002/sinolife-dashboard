@@ -19,7 +19,6 @@ const base: RnpRowDto = {
   forecast: null,
   index: null,
   days: [],
-  planKey: null,
   sheet: null,
   tone: 'plain',
   hint: null,

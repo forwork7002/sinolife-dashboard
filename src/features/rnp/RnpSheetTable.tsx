@@ -31,11 +31,12 @@ import { useDragScroll } from './useDragScroll'
  * label (with column B's text — the ROP, «без квал», «факт1» — beside it),
  * then План обший, Факт, Прогноз, Индекс, Кунлик план, then every day.
  *
- * THE ONE TYPED EXCEPTION (2026-09-30): a row with `manual` — the P&L's five
- * cost lines — wears a «qoʻlda» chip, and for an account that may edit plans
- * each of its days up to today is a `CostDayCell` — an always-open field,
- * typed straight into. Only those ~10 rows are interactive; every other cell stays a plain
- * `<td>`. Its summary columns stay computed.
+ * THE TYPED EXCEPTIONS: a row with `manual` — the P&L's five cost lines
+ * (2026-09-30) and each ROP's «Ходим сони» (2026-10-01) — wears a «qoʻlda»
+ * chip, and for a `kpi:manage` account each of its days up to today is a
+ * `CostDayCell` — an always-open field, typed straight into. Only those ~22
+ * rows are interactive; every other cell stays a plain `<td>`. Their summary
+ * columns stay computed.
  *
  * ONE SCROLL BOX, FROZEN LIKE THE SHEET. The box takes the height the page
  * leaves it (`PageShell`'s `fill`) and scrolls both ways inside it: the
@@ -406,9 +407,9 @@ function ValueRow({
               key={day}
               month={editMonth}
               day={day}
-              project={row.manual.project}
-              line={row.manual.line}
-              label={`${line.label || row.label}, ${dayMonth(day)}`}
+              manual={row.manual}
+              // Twelve «Ходим сони» rows and two «Блогерлар» rows: the owner tells their fields apart.
+              label={`${row.manual.kind === 'headcount' ? row.manual.rop : row.manual.project} · ${line.label || row.label}, ${dayMonth(day)}`}
               value={value}
               className={className}
               last={i === days.length - 1}

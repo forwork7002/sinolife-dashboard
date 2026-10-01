@@ -428,7 +428,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Qoʻngʻiroqlar | `/customers` | `calls/CallsPage` + `CallTable` | `/insights/calls` | Insights → Insights | `call_record."startedAt"` on the dashboard window, clamped below at `CALL_DATA_FLOOR` (2026-09-15 00:00 Tashkent). One clock, one request |
 | Reklama samarasi | `/marketing` | `reklama/ReklamaPage` — ONE page since 2026-09-25 (its «Sotuv · ROP» and «Lid kogortasi» tabs moved to «Lidlar»; «Sotuv · ROP» removed 2026-10-01): `DmSection` + `FormSection` + `QualitySection` + `CampaignSection`, with `SideSection` beside them (xl) or above them — the client's narrow «HR · Kosmetika» day table, 2026-09-28: HR = every hiring campaign plus the HR Eldor account, Kosmetika = Kosmetika Eldor (`sideColumn` in `meta/accounts.ts`). The Roistat `marketing/MarketingPage` is held, not mounted | `/reklama/overview` (the Roistat `/marketing/*` three still answer, uncalled) | Reklama → Reklama | **two clocks, one Tashkent calendar day.** Meta: `meta_campaign_daily."date"`, the ad account's reporting day, split by `campaignChannel` (OUTCOME_LEADS → «Отчёт Т», OUTCOME_ENGAGEMENT → «DM», hiring campaigns → neither). Bitrix24: the Регистрация lead's `createdAtSource`, bucketed by the stage it sits in NOW (`leadQuality.ts`). Never joined — they meet on the day and the page |
 | Lidlar | `/leads` (section `leads`, 2026-09-25) | `leads/LeadsPage` — two tabs. «Lid manbalari»: `LeadSourcesSection`. «Lid kogortasi»: `LeadCohortSection`. («Sotuv · ROP» was removed 2026-10-01 at the user's request.) | `/leads/overview`; `/lead-cohort/overview` | LeadSources (+ Reklama's Meta rows), LeadCohort | «Lid manbalari» is on the dashboard period: Регистрация (role LEAD) and «ИИ обработка» (role AI_TRIAGE) by `createdAtSource`'s Tashkent day; Meta lead-form campaigns by `meta_campaign_daily."date"`, met on the targetolog, never joined per deal. «Lid kogortasi» takes its OWN day window (default the last 14): the row is `deal."leadArrivedAt"`'s Tashkent day, the column `"leadDistributedOn"` (a DATE, never zoned) minus it. |
-| RNP jadvali | `/rnp` (section `rnp`, 2026-09-28) | `rnp/RnpPage` + `RnpSheetTable` + `RnpPlanEditor` — the client's «СентябрРНП» sheet row by row (`lines`), nothing else: day plan / plan / fact / forecast / index before the days | `/rnp/overview`, `POST /rnp/plans` (`analytics:read:all` at the gate, `kpi:manage` inside) | Rnp → Insights (`rnpTeamDays`), Rnp, Reklama (Meta) | its OWN calendar month. FAKT 1 / FAKT 2 / refusals on the queue cohort (`queued_at`), team off the deal as on Logistika; handed-out leads on `leadDistributedOn`; Регистрация on `createdAtSource` (kval on `closedAt` of WON); calls on `startedAt`; Склад on Доставка stage history; Meta on `meta_campaign_daily."date"` |
+| RNP jadvali | `/rnp` (section `rnp`, 2026-09-28) | `rnp/RnpPage` + `RnpSheetTable` + `RnpCostCell` — the client's «СентябрРНП» sheet row by row (`lines`), nothing else: day plan / plan / fact / forecast / index before the days | `/rnp/overview`, `POST /rnp/costs`, `POST /rnp/headcount` (`analytics:read:all` at the gate, `kpi:manage` inside) | Rnp → Insights (`rnpTeamDays`), Rnp, Reklama (Meta) | its OWN calendar month. FAKT 1 / FAKT 2 / refusals on the queue cohort (`queued_at`), team off the deal as on Logistika; handed-out leads on `leadDistributedOn`; Регистрация on `createdAtSource` (kval on `closedAt` of WON); calls on `startedAt`; Склад on Доставка stage history; Meta on `meta_campaign_daily."date"` |
 | Registratsiya | `/registration` (section `registration`, 2026-10-01) | `registration/RegistrationPage` — the day's handed-out leads per ROP against the administrator's daily split (plan bars, table, 7-day grid, `PlanEditor` in % or leads) | `/registration/overview?day=`, `POST /registration/split` (`analytics:read:all` at the gate, `kpi:manage` inside) | Registration → Registration (`distributedDaysSql`) | ONE Tashkent calendar day (`?day=`, default today) and the six before it for the grid: `deal."leadDistributedOn"`, Регистрация (role LEAD) copies left out, ROP named exactly as `leadDaysSql`; a duplicate is the same contact handed out again that day |
 | Target tahlili | `/target` | `target/TargetPage` + `TargetGroupTable` + `TargetLeadTable` + `TargetMeta` | `/target/overview`, `/target/leads` | Target → Target | **the deal's creation, `createdAtSource`** — a lead on the day it was registered, a sale on the day the seller's deal was opened. The Meta block reads `meta_ad_daily."date"` over the same Tashkent calendar days |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
@@ -560,7 +560,18 @@ Per-screen traps worth knowing before you touch one:
     holds (Блогерлар, Нутрицолог, Брендфейс, Маркетинг харажатлар, Маркетинг
     команда; both projects) are typed in place per day in soʻm — table
     `rnp_manual_cost`, `POST /rnp/costs` (`kpi:manage`), rows carry
-    `manual: { project, line }` — and count into «Маркетинг харажат факт».
+    `manual: { kind: 'cost', project, line }` — and count into «Маркетинг
+    харажат факт».
+    SECOND EXCEPTION, 2026-10-01: each ROP team's «Ходим сони» is typed per
+    day (no longer counted from calls) — table `rnp_manual_headcount`,
+    `POST /rnp/headcount` (`kpi:manage`; only a team the month's sheet draws,
+    canonical names), rows carry `manual: { kind: 'headcount', rop }`; the
+    month column is the mean of the typed days above 0.
+    «REJALAR» IS GONE (2026-10-01, the client: «butunlay olib tashla»): the
+    plans form, `POST /rnp/plans` and `POST /rnp/registrars` were deleted.
+    Plans and registrar groups already saved are still READ (`rnp_plan`,
+    `team_month_plan`, `rnp_registrar_group` inherits the previous month);
+    a new month has no `rnp_plan` rows, so its plan / index cells are empty.
   · **THE CLIENT RESHAPED THE SHEET (2026-09-30 afternoon)** — see the header
     of `rnpSheetLayout.ts` (hand-kept since): «Таргет Collagen/Zextra», totals
     above them, 47 under 48, Zextra registration → groups «Asliddin ROP» /
@@ -615,8 +626,8 @@ Per-screen traps worth knowing before you touch one:
   · Registration «guruh» rows = groups of REGISTRARS by the «Регистрация»
     enum (`deal.registrar`, UF_CRM_1747975291848, set at WON only; one-off
     `DEALS_BACKFILL` since 2026-09-01), grouped per month in
-    `rnp_registrar_group` (`POST /rnp/registrars`). Gulzora and Maftuna
-    groups were left for the client to assign.
+    `rnp_registrar_group` (no form since 2026-10-01; the last month's
+    groups carry forward). Gulzora and Maftuna groups were never assigned.
   · Brand P&L: an ORDER's brand is its most expensive `deal_item` line's
     product name (zextra / collagen) — «Товары» is filled on 5 of 90 sales;
     a LEAD's brand is its source (`LEAD_SOURCE_BRAND`), else its CRM form

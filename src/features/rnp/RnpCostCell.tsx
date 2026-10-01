@@ -5,14 +5,15 @@ import { type CSSProperties, type KeyboardEvent, useId, useState } from 'react'
 
 import { apiWrite } from '@/lib/api'
 
-import type { RnpCostLine, RnpCostProject, SaveRnpCostsBody } from './rnpApi'
+import type { RnpManual, SaveRnpCostsBody, SaveRnpHeadcountBody } from './rnpApi'
 import { rnpUzs } from './rnpFigures'
 
 /**
- * A typed P&L cost cell — the ONE exception to «nothing is typed by hand»
- * (the client, 2026-09-30): the five cost lines no system holds (bloggers,
- * nutritionist, brand face, marketing costs, team; rows 411–415 / 438–442)
- * are typed in place, one day at a time, in whole soʻm.
+ * A typed day cell — the exceptions to «nothing is typed by hand»: the P&L's
+ * five cost lines no system holds (bloggers, nutritionist, brand face,
+ * marketing costs, team; rows 411–415 / 438–442 — the client, 2026-09-30),
+ * in whole soʻm, and each ROP team's «Ходим сони» (2026-10-01), in whole
+ * people. Typed in place, one day at a time.
  *
  * ALWAYS OPEN, like a spreadsheet (the client: «qo'lda kiritiladigan joylar
  * ochiq tursin»): every day of these rows is a field — click and type, no
@@ -27,8 +28,7 @@ import { rnpUzs } from './rnpFigures'
 export function CostDayCell({
   month,
   day,
-  project,
-  line,
+  manual,
   label,
   value,
   className,
@@ -38,8 +38,8 @@ export function CostDayCell({
 }: {
   month: string
   day: string
-  project: RnpCostProject
-  line: RnpCostLine
+  /** What the day saves under: a cost line or a team's headcount. */
+  manual: RnpManual
   /** «Блогерлар, 21.09» — what the field is called. */
   label: string
   value: number | null
@@ -51,7 +51,7 @@ export function CostDayCell({
 }) {
   return (
     <td data-cost-cell="" title={title} className={`${className} relative p-0.5`} style={style}>
-      <CostField month={month} day={day} project={project} line={line} label={label} value={value} last={last} />
+      <CostField month={month} day={day} manual={manual} label={label} value={value} last={last} />
     </td>
   )
 }
@@ -73,26 +73,50 @@ function parseCost(text: string): number | null {
   return Number(clean.replace(/\D/g, ''))
 }
 
-const shown = (value: number | null) => (value === null ? '' : rnpUzs(value))
+/** Whole people: digits only; anything else is NaN, refused before anything is sent. */
+function parseHeads(text: string): number | null {
+  const clean = text.trim()
+  if (clean === '') return null
+  return /^\d+$/.test(clean) ? Number(clean) : Number.NaN
+}
+
+/** Each kind of typed cell: how it is read, shown, checked and saved. */
+const KIND = {
+  cost: { parse: parseCost, show: rnpUzs, max: MAX_SUM, invalid: INVALID, tooBig: TOO_BIG, unit: 'soʻm' },
+  headcount: {
+    parse: parseHeads,
+    show: (v: number) => String(v),
+    max: 1000,
+    invalid: 'Butun son kiriting (kishi), masalan 12.',
+    tooBig: 'Juda katta son — 1000 kishidan oshmasin.',
+    unit: 'kishi',
+  },
+} as const
+
+function request(month: string, day: string, manual: RnpManual, value: number | null): { path: string; body: SaveRnpCostsBody | SaveRnpHeadcountBody } {
+  return manual.kind === 'cost'
+    ? { path: '/rnp/costs', body: { month, cells: [{ day, project: manual.project, line: manual.line, value }] } }
+    : { path: '/rnp/headcount', body: { month, cells: [{ day, rop: manual.rop, value }] } }
+}
 
 function CostField({
   month,
   day,
-  project,
-  line,
+  manual,
   label,
   value,
   last,
 }: {
   month: string
   day: string
-  project: RnpCostProject
-  line: RnpCostLine
+  manual: RnpManual
   label: string
   value: number | null
   last: boolean
 }) {
   const queryClient = useQueryClient()
+  const kind = KIND[manual.kind]
+  const shown = (v: number | null) => (v === null ? '' : kind.show(v))
   const [text, setText] = useState(() => shown(value))
   const [problem, setProblem] = useState<{ message: string; text: string } | null>(null)
   // The figure the field last showed from the server — a refetch that changes it refreshes an untouched field.
@@ -106,8 +130,8 @@ function CostField({
 
   const save = useMutation({
     mutationFn: (next: number | null) => {
-      const body: SaveRnpCostsBody = { month, cells: [{ day, project, line, value: next }] }
-      return apiWrite<{ saved: boolean }>('POST', '/rnp/costs', body)
+      const { path, body } = request(month, day, manual, next)
+      return apiWrite<{ saved: boolean }>('POST', path, body)
     },
     // Closed only once the sheet has the new figure, so the cell never flashes the old one.
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['rnp-overview'] }),
@@ -116,13 +140,13 @@ function CostField({
   /** Save what is typed, if it changed. Nothing is sent for a typo (refused in place) or while a save is on its way. */
   const commit = (retry: boolean) => {
     if (save.isPending) return
-    const next = parseCost(text)
+    const next = kind.parse(text)
     if (next !== null && Number.isNaN(next)) {
-      setProblem({ message: INVALID, text })
+      setProblem({ message: kind.invalid, text })
       return
     }
-    if (next !== null && next > MAX_SUM) {
-      setProblem({ message: TOO_BIG, text })
+    if (next !== null && next > kind.max) {
+      setProblem({ message: kind.tooBig, text })
       return
     }
     // A save the server refused, left as it was: leaving the field does not send it again; Enter does.
@@ -165,7 +189,7 @@ function CostField({
         inputMode="numeric"
         autoComplete="off"
         spellCheck={false}
-        aria-label={`${label} — soʻm`}
+        aria-label={`${label} — ${kind.unit}`}
         aria-invalid={wrong || undefined}
         aria-describedby={wrong ? messageId : undefined}
         aria-busy={pending || undefined}

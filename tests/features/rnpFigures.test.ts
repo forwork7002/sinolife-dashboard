@@ -19,7 +19,6 @@ function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRo
     forecast: null,
     index: null,
     days: [null, null],
-    planKey: null,
     sheet: null,
     tone: 'plain',
     hint: null,

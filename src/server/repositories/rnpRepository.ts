@@ -56,12 +56,10 @@ export interface RnpRegistrationDayRow {
   readonly aiConversations: number
 }
 
-/** One person's connected calls on one day, with the team they sit in. */
+/** One team's connected calls on one day. */
 export interface RnpCallDayRow {
   readonly day: string
   readonly rop: string
-  readonly employeeId: string
-  readonly isHead: boolean
   readonly connected: number
 }
 
@@ -104,6 +102,13 @@ export interface RnpManualCostRow {
   readonly line: RnpCostLine
   /** Soʻm. */
   readonly amount: number
+}
+
+/** A ROP team's «Ходим сони» typed by hand (`rnp_manual_headcount`). */
+export interface RnpManualHeadcountRow {
+  readonly day: string
+  readonly rop: string
+  readonly heads: number
 }
 
 export interface RnpTeamFaktPlan {
@@ -279,19 +284,13 @@ export class RnpRepository {
 
   async callDays(from: string, to: string): Promise<RnpCallDayRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<
-      { day: string; rop: string; employee_id: string; is_head: boolean; connected: bigint }[]
+      { day: string; rop: string; connected: bigint }[]
     >(RnpRepository.callDaysSql(), from, to, this.tz)
-    return rows.map((r) => ({
-      day: r.day,
-      rop: r.rop,
-      employeeId: r.employee_id,
-      isHead: r.is_head,
-      connected: Number(r.connected),
-    }))
+    return rows.map((r) => ({ day: r.day, rop: r.rop, connected: Number(r.connected) }))
   }
 
   /**
-   * Connected calls per person per day, for the people of ROP teams only.
+   * Connected calls per team per day, for the people of ROP teams only.
    * Inbound and outbound; a callback leg is the portal ringing an operator,
    * not a conversation with a customer. The team is the PRIMARY department,
    * as on «Qoʻngʻiroqlar».
@@ -301,8 +300,6 @@ export class RnpRepository {
       SELECT
         (c."startedAt" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day,
         t.rop,
-        e."id" AS employee_id,
-        COALESCE(dep."headId" = e."id", false) AS is_head,
         count(*)::bigint AS connected
       FROM "call_record" c
       JOIN "employee" e ON e."id" = c."employeeId"
@@ -313,7 +310,7 @@ export class RnpRepository {
         AND c."startedAt" >= (($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
         AND c."startedAt" < (($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
         AND t.rop IS NOT NULL
-      GROUP BY 1, 2, 3, 4`
+      GROUP BY 1, 2`
   }
 
   async warehouseDays(from: string, to: string, now: Date): Promise<RnpWarehouseDayRow[]> {
@@ -456,36 +453,6 @@ export class RnpRepository {
     })
   }
 
-  /** Replace what the form names; a null group removes the registrar from every group. */
-  async saveRegistrarGroups(
-    month: string,
-    rows: readonly { registrar: string; group: string | null }[],
-    by: string,
-  ): Promise<void> {
-    const m = monthDate(month)
-    /*
-      The form sends only what changed. On a month still reading the previous
-      month's groups, write those down first — or the one change saved would
-      become the month's only row and every inherited group would vanish.
-    */
-    const hasOwn = (await this.prisma.rnpRegistrarGroup.count({ where: { month: m } })) > 0
-    const inherited = hasOwn ? [] : await this.registrarGroups(month)
-    await this.prisma.$transaction([
-      ...inherited.map((g) =>
-        this.prisma.rnpRegistrarGroup.create({ data: { month: m, registrar: g.registrar, group: g.group, updatedBy: by } }),
-      ),
-      ...rows.map((r) =>
-        r.group === null
-          ? this.prisma.rnpRegistrarGroup.deleteMany({ where: { month: m, registrar: r.registrar } })
-          : this.prisma.rnpRegistrarGroup.upsert({
-              where: { month_registrar: { month: m, registrar: r.registrar } },
-              create: { month: m, registrar: r.registrar, group: r.group, updatedBy: by },
-              update: { group: r.group, updatedBy: by },
-            }),
-      ),
-    ])
-  }
-
   /** The month's hand-typed P&L costs; `from` / `to` are inclusive `YYYY-MM-DD`. */
   async manualCosts(from: string, to: string): Promise<RnpManualCostRow[]> {
     const rows = await this.prisma.rnpManualCost.findMany({
@@ -519,6 +486,31 @@ export class RnpRepository {
     )
   }
 
+  /** The month's hand-typed «Ходим сони»; `from` / `to` are inclusive `YYYY-MM-DD`. */
+  async manualHeadcount(from: string, to: string): Promise<RnpManualHeadcountRow[]> {
+    const rows = await this.prisma.rnpManualHeadcount.findMany({
+      where: { day: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) } },
+      select: { day: true, rop: true, heads: true },
+    })
+    return rows.map((r) => ({ day: r.day.toISOString().slice(0, 10), rop: r.rop, heads: r.heads }))
+  }
+
+  /** Write typed headcounts: a number sets the team's day, null clears it. One transaction. */
+  async saveManualHeadcount(cells: readonly { day: string; rop: string; value: number | null }[], by: string): Promise<void> {
+    await this.prisma.$transaction(
+      cells.map((c) => {
+        const day = new Date(`${c.day}T00:00:00Z`)
+        return c.value === null
+          ? this.prisma.rnpManualHeadcount.deleteMany({ where: { day, rop: c.rop } })
+          : this.prisma.rnpManualHeadcount.upsert({
+              where: { day_rop: { day, rop: c.rop } },
+              create: { day, rop: c.rop, heads: c.value, updatedBy: by },
+              update: { heads: c.value, updatedBy: by },
+            })
+      }),
+    )
+  }
+
   async plans(month: string): Promise<{ rows: RnpPlanRow[]; fakt: RnpTeamFaktPlan[] }> {
     const [rows, fakt] = await Promise.all([
       this.prisma.rnpPlan.findMany({
@@ -531,48 +523,6 @@ export class RnpRepository {
       }),
     ])
     return { rows, fakt }
-  }
-
-  /**
-   * Replace what the form names, in ONE transaction. FAKT 1 / FAKT 2 go to
-   * `team_month_plan`, so a team never holds two different plans for one
-   * month. A null value deletes: «no plan» is the absence of a row, never a
-   * plan of zero.
-   */
-  async savePlans(
-    month: string,
-    input: {
-      rows: readonly { team: string; metric: string; fromDay: number; valueCenti: bigint | null }[]
-      fakt: readonly RnpTeamFaktPlan[]
-    },
-    by: string,
-  ): Promise<void> {
-    const m = monthDate(month)
-    const positive = (v: bigint | null) => (v !== null && v > 0n ? v : null)
-    await this.prisma.$transaction([
-      ...input.rows.map((r) => {
-        const value = positive(r.valueCenti)
-        const key = { month: m, team: r.team, metric: r.metric, fromDay: r.fromDay }
-        return value === null
-          ? this.prisma.rnpPlan.deleteMany({ where: key })
-          : this.prisma.rnpPlan.upsert({
-              where: { month_team_metric_fromDay: key },
-              create: { ...key, valueCenti: value, updatedBy: by },
-              update: { valueCenti: value, updatedBy: by },
-            })
-      }),
-      ...input.fakt.map((t) => {
-        const fakt1 = positive(t.fakt1Minor)
-        const fakt2 = positive(t.fakt2Minor)
-        return fakt1 === null && fakt2 === null
-          ? this.prisma.teamMonthPlan.deleteMany({ where: { month: m, rop: t.rop } })
-          : this.prisma.teamMonthPlan.upsert({
-              where: { month_rop: { month: m, rop: t.rop } },
-              create: { month: m, rop: t.rop, fakt1Minor: fakt1, fakt2Minor: fakt2, updatedBy: by },
-              update: { fakt1Minor: fakt1, fakt2Minor: fakt2, updatedBy: by },
-            })
-      }),
-    ])
   }
 }
 

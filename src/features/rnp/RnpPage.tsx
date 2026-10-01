@@ -12,7 +12,6 @@ import { apiGet } from '@/lib/api'
 import { t } from '@/lib/messages'
 
 import { RnpColumnScope } from './RnpColumnResizer'
-import { RnpPlanEditor } from './RnpPlanEditor'
 import { RnpSheetTable } from './RnpSheetTable'
 import type { RnpOverviewDto } from './rnpApi'
 import { dayMonth, dayMonthYear, ropLines } from './rnpDerive'
@@ -28,9 +27,10 @@ import { canvasMeasure, contentMinWidths, rnpNumber } from './rnpFigures'
  * `?rop=`, the KPI cards, the daily charts, the funnel, the ranking and the
  * company / team views were deleted that day. What stays around the grid is
  * the sheet's own rows 1–2 — the month, the days gone by, the dollar rate,
- * today's date — and «Rejalar», where the plans (column C) are set. The
- * P&L's five cost lines are the one thing typed in the grid itself
- * (`RnpCostCell.tsx`), and only by an account that may edit plans.
+ * today's date. «Rejalar», the plans form, was taken off on 2026-10-01 (the
+ * client: «butunlay olib tashla»); plans already saved are still read. The
+ * P&L's five cost lines and each ROP's «Ходим сони» are typed in the grid
+ * itself (`RnpCostCell.tsx`), and only by a `kpi:manage` account.
  *
  * THE PAGE IS THE GRID. `fill` gives the grid every pixel under the header,
  * and it scrolls inside its own box with the column headers and the label
@@ -85,7 +85,6 @@ export function RnpPage() {
       stale={overview.isPlaceholderData}
       period={false}
       fill
-      actions={data?.canEditPlans ? <RnpPlanEditor key={data.month} data={data} /> : undefined}
       toolbar={
         <>
           <label className="flex items-center gap-2 text-xs" style={muted}>

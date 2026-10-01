@@ -2,18 +2,12 @@
  * «RNP jadvali» — the wire shapes, restated for the client.
  *
  * Mirrors the DTOs of `src/server/domain/rnp/rnpSheet.ts` and `rnpSheetView.ts`, and the bodies of
- * `src/app/api/v1/rnp/plans/route.ts`, `…/registrars/route.ts` and `…/costs/route.ts`.
+ * `src/app/api/v1/rnp/costs/schema.ts` and `…/headcount/schema.ts`.
  * Nothing checks the mirror — edit both sides.
  */
 
 /** How a row's numbers read. Money is whole soʻm (or dollars) as a number. */
 export type RnpUnit = 'count' | 'uzs' | 'usd' | 'percent'
-
-export interface RnpPlanKey {
-  /** The ROP team, or '' for a company-wide plan. */
-  readonly team: string
-  readonly metric: string
-}
 
 export interface RnpRowDto {
   readonly key: string
@@ -35,8 +29,6 @@ export interface RnpRowDto {
   readonly index: number | null
   /** One value per day of the month; null for a day not lived or undefined. */
   readonly days: readonly (number | null)[]
-  /** What the plan form writes for this row; null when nothing is planned. */
-  readonly planKey: RnpPlanKey | null
   /**
    * Where this row sits on the client's «РНП» sheet — its row number and its
    * label there; null = a dashboard addition. Not used on screen.
@@ -45,8 +37,8 @@ export interface RnpRowDto {
   readonly tone: 'total' | 'plain'
   /** One sentence saying where the number comes from. */
   readonly hint: string | null
-  /** A cell typed by hand (the P&L's cost lines): what the page saves each day under. Null = computed. */
-  readonly manual: { readonly project: RnpCostProject; readonly line: RnpCostLine } | null
+  /** A cell typed by hand: what the page saves each day under (`RnpManual`). Null = computed. */
+  readonly manual: RnpManual | null
   /** Days before this are incomplete in Bitrix24, and are drawn muted. */
   readonly reliableFrom: string | null
 }
@@ -55,6 +47,11 @@ export interface RnpRowDto {
 export type RnpCostLine = 'bloggers' | 'nutritionist' | 'brandface' | 'marketing' | 'team'
 /** The two brands whose P&L carries them (`RNP_COST_PROJECTS`). */
 export type RnpCostProject = 'Collagen' | 'Zextra'
+
+/** A typed row: a P&L cost line (`/rnp/costs`) or a ROP team's «Ходим сони» (`/rnp/headcount`). */
+export type RnpManual =
+  | { readonly kind: 'cost'; readonly project: RnpCostProject; readonly line: RnpCostLine }
+  | { readonly kind: 'headcount'; readonly rop: string }
 
 export interface RnpSheetRef {
   readonly row: number
@@ -142,46 +139,9 @@ export interface RnpOverviewDto {
     /** The Central Bank's soʻm-per-dollar rate on `usdRateDate` (the latest day it answered); null when it never did. */
     readonly usdRate: number | null
     readonly usdRateDate: string | null
-    /** What one handed-out lead is worth, from each day it starts on. */
-    readonly leadValues: readonly { readonly team: string; readonly fromDay: number; readonly value: number }[]
-    /** The brand P&L's percentages; null when nobody set them. */
-    readonly marketingPlanPct: number | null
-    readonly targetologPct: number | null
-    readonly marketerPct: number | null
   }
+  /** May type the hand-typed cells (P&L costs, «Ходим сони») — `kpi:manage`. */
   readonly canEditPlans: boolean
-  /** What the registrar → «guruh» form edits. */
-  readonly registration: {
-    /** Every registrar the month's kval names, and every one already assigned. */
-    readonly registrars: readonly string[]
-    readonly groups: readonly { readonly registrar: string; readonly group: string }[]
-    /** The registration groups the sheet has rows for, in its order. */
-    readonly groupNames: readonly string[]
-  }
-}
-
-/** Metric key of the one company-wide setting that is not a plan. */
-export const SETTING_LEAD_VALUE = 'lead_value'
-/** The brand P&L's three percentages — company-wide, from day 1. */
-export const SETTING_MARKETING_PLAN_PCT = 'marketing_plan_pct'
-export const SETTING_TARGETOLOG_PCT = 'targetolog_pct'
-export const SETTING_MARKETER_PCT = 'marketer_pct'
-
-/**
- * What the «Rejalar» form posts. `rows` carry the row's own unit, up to two
- * decimals; `fakt` is a team's FAKT 1 / FAKT 2 in whole soʻm, kept in
- * `team_month_plan`. Null removes.
- */
-export interface SaveRnpPlansBody {
-  readonly month: string
-  readonly rows: readonly { team: string; metric: string; fromDay: number; value: number | null }[]
-  readonly fakt: readonly { rop: string; fakt1: number | null; fakt2: number | null }[]
-}
-
-/** What the registrar → «guruh» form posts to `/rnp/registrars`: changed rows only; null takes the registrar out of every group. */
-export interface SaveRnpRegistrarsBody {
-  readonly month: string
-  readonly rows: readonly { registrar: string; group: string | null }[]
 }
 
 /**
@@ -191,4 +151,9 @@ export interface SaveRnpRegistrarsBody {
 export interface SaveRnpCostsBody {
   readonly month: string
   readonly cells: readonly { day: string; project: RnpCostProject; line: RnpCostLine; value: number | null }[]
+}
+
+export interface SaveRnpHeadcountBody {
+  readonly month: string
+  readonly cells: readonly { day: string; rop: string; value: number | null }[]
 }

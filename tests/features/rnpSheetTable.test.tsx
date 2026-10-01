@@ -26,7 +26,6 @@ function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRo
     forecast: null,
     index: null,
     days: [null, null, null],
-    planKey: null,
     sheet: null,
     tone: 'plain',
     hint: null,
@@ -282,7 +281,7 @@ describe('RnpSheetTable — the typed P&L cost lines', () => {
           fact: 1_500_000,
           days: [1_500_000, null, null],
           hint: 'Qoʻlda kiritiladi — katakni bosing.',
-          manual: { project: 'Collagen', line: 'bloggers' },
+          manual: { kind: 'cost', project: 'Collagen', line: 'bloggers' },
         }),
       ],
     },
@@ -325,7 +324,7 @@ describe('RnpSheetTable — the typed P&L cost lines', () => {
     const { container } = drawCosts('2026-09')
     const fields = screen.getAllByRole('textbox', { name: /soʻm$/ }) as HTMLInputElement[]
     // Open at once — no button to press first (the client: «ochiq tursin»).
-    expect(fields.map((f) => f.getAttribute('aria-label'))).toEqual(['Блогерлар, 01.09 — soʻm', 'Блогерлар, 02.09 — soʻm'])
+    expect(fields.map((f) => f.getAttribute('aria-label'))).toEqual(['Collagen · Блогерлар, 01.09 — soʻm', 'Collagen · Блогерлар, 02.09 — soʻm'])
     expect(fields[0]!.value).toBe('1.500.000')
     expect(fields[1]!.value).toBe('')
     expect(fields[0]!.inputMode).toBe('numeric')
