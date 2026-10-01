@@ -129,7 +129,7 @@ export interface RnpOverviewDto {
   readonly days: readonly string[]
   /** `YYYY-MM-DD`, Tashkent. */
   readonly today: string
-  /** Full days of the month already over — the forecast's denominator. */
+  /** The sheet's C2 «Неча иш куни ўтди»: today's day of the month, today counted — the forecast's denominator. */
   readonly elapsedDays: number
   readonly teams: readonly RnpTeamDto[]
   readonly blocks: readonly RnpBlockDto[]

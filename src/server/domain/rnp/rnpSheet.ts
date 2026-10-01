@@ -2,15 +2,17 @@
  * «RNP jadvali» — the client's «СентябрРНП 26» sheet, built from rows the
  * database already holds. Pure: no framework, no database.
  *
- * THE SHEET'S SHAPE IS KEPT: a row per metric, a column per day, and before
- * the days the month's plan (C), the daily plan (B), the fact (D), the
- * forecast (E) and the index (F). What is NOT kept is the sheet's arithmetic,
- * which the client's own audit (2026-09-28, 27 findings) showed wrong in
- * ways that move real figures:
+ * THE SHEET'S SHAPE AND ITS FORMULAS (the client, 2026-10-01: «sheets dagi
+ * har bir formula qanday hisoblangan bo'lsa huddi shunday»): a row per
+ * metric, a column per day, and before the days the month's plan (C), the
+ * daily plan (B), the fact (D), the forecast (E) and the index (F).
  *
- *   - The forecast divided by a typed-in 31 for a 30-day month and by today's
- *     date, today's unfinished day included. Here it is the fact through the
- *     last FULL day, over the full days lived, times the month's real length.
+ *   - The forecast is the sheet's `=D/$C$2*$C$1`: the fact so far ÷ today's
+ *     day of the month (today counted) × the days in the month — the
+ *     month's REAL length, where the sheet typed 31 (the client chose it).
+ *   - The daily plan of a summed row is the sheet's `=C/27`.
+ *   - Where the sheet's own formula is broken (a wrong range, a `#REF!`, a
+ *     dead source tab) the row computes what the formula meant to.
  *   - Rates were typed per day and sometimes averaged. Here every rate is
  *     ΣA ÷ ΣB — for a day and for the month alike — never a mean of rates.
  *   - Totals summed half a month (`SUM(G14:U14)`) or a `#REF!`. Here a month
@@ -117,7 +119,7 @@ export interface RnpOverviewDto {
   readonly days: readonly string[]
   /** `YYYY-MM-DD`, Tashkent. */
   readonly today: string
-  /** Full days of the month already over — the forecast's denominator. */
+  /** The sheet's C2 «Неча иш куни ўтди»: today's day of the month, today counted — the forecast's denominator. */
   readonly elapsedDays: number
   readonly teams: readonly RnpTeamDto[]
   readonly blocks: readonly RnpBlockDto[]
@@ -139,8 +141,6 @@ export interface RnpOverviewDto {
 export interface RnpFaktDay {
   readonly day: string
   readonly rop: string
-  /** The order's brand, from its biggest product line; null when neither. */
-  readonly brand?: TargetProduct | null
   readonly fakt1Orders: number
   readonly fakt1Minor: bigint
   readonly fakt2Orders: number
@@ -209,6 +209,18 @@ export interface RnpSheetInput {
  * 130 on 02.09), «Фаррух БАЗА» is «Baza(ROP)». By ropNameSql name.
  */
 const BASE_TEAMS: ReadonlySet<string> = new Set(['Charos', 'Baza'])
+
+/**
+ * The brand P&L's teams, as the sheet's SUMIFS list them over 'Otchot 2'
+ * (rows 394 / 421, by department): an order belongs to the brand of the team
+ * that sold it. «Первичка усп» (396 / 423) is the same list without the БАЗА
+ * team (`BASE_TEAMS`). The sheet's «Sevinchxon(ROP)» is folded into
+ * Sadriddin (`TEAM_ALIASES`); a team on neither list (Hayot) is «Brendsiz».
+ */
+const BRAND_TEAMS: Readonly<Record<'Collagen' | 'Zextra', ReadonlySet<string>>> = {
+  Collagen: new Set(['Sevinch', 'Gulzora', 'Azizbek', 'Lola', 'Saidaziz', 'Maftuna', 'Marjona', 'Baza', 'Shohjaxon']),
+  Zextra: new Set(['Asliddin', 'Sadriddin', 'Charos']),
+}
 
 /**
  * Team names the deals still carry from before a department was renamed,
@@ -426,7 +438,7 @@ interface Clock {
   readonly n: number
   /** Index of today in the month; -1 before it, n after it. */
   readonly todayIndex: number
-  /** Full days over. */
+  /** Days lived, TODAY COUNTED — the sheet's C2. */
   readonly elapsed: number
   /** Whether the month is still running (the forecast means something). */
   readonly running: boolean
@@ -437,7 +449,7 @@ function clockOf(days: readonly string[], today: string): Clock {
   if (today < days[0]!) return { days, n, todayIndex: -1, elapsed: 0, running: false }
   if (today > days[n - 1]!) return { days, n, todayIndex: n, elapsed: n, running: false }
   const i = days.indexOf(today)
-  return { days, n, todayIndex: i, elapsed: i, running: true }
+  return { days, n, todayIndex: i, elapsed: i + 1, running: true }
 }
 
 /**
@@ -484,24 +496,28 @@ function base(o: RowOptions) {
   }
 }
 
+/** The sheet's daily plan of a summed row: `=C/27`, whatever the month's length. */
+export const DAY_PLAN_DIVISOR = 27
+
 /** A summed row: the month is its days added, the forecast its pace. */
 function additive(clock: Clock, o: RowOptions, values: readonly number[]): RnpRowDto {
   const days = lived(clock, values)
   const s = startOf(clock, o)
   const fact = clock.todayIndex < s ? null : sum(days.slice(s))
   /*
-    The pace of the full days the row can be trusted on, over the whole
-    month. With nothing unreliable and the month over, it IS the fact.
+    The sheet's `=D/$C$2*$C$1`: the fact so far over the days so far, TODAY
+    COUNTED, times the month's length. Days before `reliableFrom` are in
+    neither. With the month over it IS the fact.
   */
-  const paced = clock.elapsed - s
-  const forecast = clock.todayIndex >= 0 && paced > 0 ? (sum(values.slice(s, clock.elapsed)) / paced) * clock.n : null
+  const counted = clock.elapsed - s
+  const forecast = fact !== null && counted > 0 ? (fact / counted) * clock.n : null
   const plan = o.plan ?? null
   const measured = forecast
   return {
     ...base(o),
     additive: true,
     plan,
-    dayPlan: plan === null ? null : plan / clock.n,
+    dayPlan: plan === null ? null : plan / DAY_PLAN_DIVISOR,
     fact,
     forecast,
     index: plan !== null && plan > 0 && measured !== null ? (measured / plan) * 100 : null,
@@ -517,10 +533,6 @@ function dashed(row: RnpRowDto): RnpRowDto {
   return { ...row, fact: null, forecast: null, index: null, days: row.days.map(() => null) }
 }
 
-/** A row that cannot be measured at all — empty, its plan too. */
-function unplanned(row: RnpRowDto): RnpRowDto {
-  return { ...dashed(row), plan: null, dayPlan: null }
-}
 
 /**
  * A ratio row: every cell is Σnumerator ÷ Σdenominator × scale — the day's
@@ -792,6 +804,8 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       additive(clock, { key: 'meta:leads', label: 'Жами лид (Meta)', unit: 'count', tone: 'total', ...planned('', 'meta_leads'), sheet: sh(43, 'Количество лид') }, metaLeadsAll),
       ratio(clock, { key: 'meta:cpl', label: 'CPL, $', unit: 'usd', better: 'down', ...planned('', 'cpl'), hint: CPL_HINT, sheet: sh(44, 'CPL $ цена лида') }, spendAll, metaLeadsAll),
       ratio(clock, { key: 'meta:cac', label: 'CAC (мижоз нарҳи), $', unit: 'usd', better: 'down', ...planned('', 'cac'), hint: 'Jami byudjet ÷ birlamchi jamoalarning FAKT 2 buyurtmalari (БАЗА jamoalarisiz).', sheet: sh(11, 'САС (мижоз нарҳи), $') }, spendAll, fakt2OrdersPrimary),
+      // The sheet's unlabelled row 45, `=IFERROR(G42/G47,0)`: what one lead that reached Регистрация cost.
+      ratio(clock, { key: 'meta:cost_per_reg_lead', label: 'Регистрация лид нархи, $', unit: 'usd', better: 'down', hint: 'Jadvalning 45-qatori: jami byudjet ÷ Регистрация lidlari.', sheet: sh(45, 'Регистрация лид нархи, $') }, spendAll, reg.leads),
       ratio(
         clock,
         {
@@ -868,12 +882,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     const reach = baseTeam ? t.calls : t.leads
     const reachMetric: RnpPlanMetric = baseTeam ? 'calls' : 'leads'
     const reachFrom = baseTeam ? CALLS_RELIABLE_FROM : LEAD_ROP_RELIABLE_FROM
-    /*
-      A БАЗА team's «План бажарилиши» prices a CALL, and a call is not a lead:
-      the sheet multiplied its calls by the lead's 400 000 and printed 11–18%.
-      The row is drawn only once somebody sets that team its own value.
-    */
-    const ownLeadValue = leadValueRows.some((r) => r.team === rop)
+    /* A БАЗА team's «План бажарилиши» prices each connected call at the lead's value, as the sheet's `=G160/(G156*400000)` does. */
     const leadValue = leadValueDays(rop)
     const expected = days.map((_, i) => reach[i]! * leadValue[i]!)
     const headcount = typedHeads.get(rop) ?? days.map(() => null)
@@ -899,7 +908,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
         additive(clock, { key: `${k}:orders1`, label: 'Буюртма сони (ФАКТ 1)', unit: 'count', ...planned(rop, 'orders'), sheet: at0(3, 'Буюртма сони') }, t.fakt1Orders),
         additive(clock, { key: `${k}:fakt1`, label: 'Сумма ФАКТ 1', unit: 'uzs', tone: 'total', ...planned(rop, 'fakt1'), hint: 'Tasdiqlandi + Tasdiqlanmay chiqdi — Tasdiqlash navbati kogortasi, jamoa bitimdagi «Организация сотрудника» boʻyicha.', sheet: at0(4, 'Сумма факт 1 сум') }, t.fakt1),
         /* The block's first line on the page (the ROP's name beside it) — so a БАЗА team without its own lead value gets it empty, not missing. */
-        (baseTeam && !ownLeadValue ? unplanned : (r: RnpRowDto) => r)(ratio(clock, { key: `${k}:plan_pct`, label: 'План бажарилиши, %', unit: 'percent', ...planned(rop, 'plan_pct'), reliableFrom: reachFrom, hint: `ФАКТ 1 ÷ (${baseTeam ? 'дозвон' : 'lid'} × bitta lid qiymati). Lid qiymati kiritilmagan oyda boʻsh.`, sheet: at0(5, 'План бажарилиши') }, t.fakt1, expected, 100)),
+        ratio(clock, { key: `${k}:plan_pct`, label: 'План бажарилиши, %', unit: 'percent', ...planned(rop, 'plan_pct'), reliableFrom: reachFrom, hint: `ФАКТ 1 ÷ (${baseTeam ? 'дозвон' : 'lid'} × bitta lid qiymati). Lid qiymati kiritilmagan oyda boʻsh.`, sheet: at0(5, 'План бажарилиши') }, t.fakt1, expected, 100),
         ...(baseTeam ? [ratio(clock, { key: `${k}:per_call`, label: 'Дозвонга ўртача сумма', unit: 'uzs', reliableFrom: reachFrom, sheet: at0(11, 'Средний сумма за дозвон') }, t.fakt1, reach)] : []),
         level(clock, { key: `${k}:headcount`, label: 'Ходим сони', unit: 'count', ...planned(rop, 'headcount'), hint: 'Qoʻlda kiritiladi — har kuni jamoadagi xodimlar soni. Oy ustuni — kiritilgan kunlarning oʻrtachasi (0 yozilgan kun hisobga olinmaydi).', sheet: at0(6, 'Ходим сони'), manual: { kind: 'headcount', rop } }, headcount, 'mean'),
         additive(clock, { key: `${k}:fakt2`, label: 'Сумма ФАКТ 2 (Доставлено)', unit: 'uzs', tone: 'total', ...planned(rop, 'fakt2'), sheet: at0(7, 'Сумма факт 2 сум') }, t.fakt2),
@@ -937,13 +946,15 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   // --- Логистика (sheet rows 269–334) ----------------------------------------
   const logisticsRows = (k: string, t: { fakt1: number[]; fakt2: number[]; refused: number[] }, tone: 'total' | 'plain', team: string, r0: number | undefined): RnpRowDto[] => {
     const open = days.map((_, i) => Math.max(0, t.fakt1[i]! - t.fakt2[i]! - t.refused[i]!))
+    const unsuccessful = days.map((_, i) => Math.max(0, t.fakt1[i]! - t.fakt2[i]!))
     const at0 = (offset: number, label: string) => (r0 === undefined ? null : sh(r0 + offset, label))
     return [
       additive(clock, { key: `${k}:fakt1`, label: 'Сумма ФАКТ 1', unit: 'uzs', tone, sheet: at0(0, 'Сумма факт1') }, t.fakt1),
       additive(clock, { key: `${k}:fakt2`, label: 'Успешка сумма ФАКТ 2', unit: 'uzs', tone, sheet: at0(1, 'Успешка сумма факт 2') }, t.fakt2),
       ratio(clock, { key: `${k}:success`, label: 'Успешность, %', unit: 'percent', ...(team === input.noRop ? {} : planned(team, 'success_rate')), sheet: at0(2, 'Успешкность %') }, t.fakt2, t.fakt1, 100),
       additive(clock, { key: `${k}:refused`, label: 'Отказ сумма', unit: 'uzs', better: 'down', sheet: at0(4, 'Отказ сумма') }, t.refused),
-      ratio(clock, { key: `${k}:refused_pct`, label: 'Отказ, %', unit: 'percent', better: 'down', ...(team === input.noRop ? {} : planned(team, 'refusal_rate')), hint: 'Возврат получен + Отказ (Logistika «Отказ» ustuni) ÷ ФАКТ 1.', sheet: at0(3, 'Отказ %') }, t.refused, t.fakt1, 100),
+      // The sheet's `=1-D(успешкность)`: everything of FAKT 1 not yet «Успешно» — refused, and still on its way.
+      ratio(clock, { key: `${k}:refused_pct`, label: 'Отказ, %', unit: 'percent', better: 'down', ...(team === input.noRop ? {} : planned(team, 'refusal_rate')), hint: 'Jadvaldagidek: 100% − Успешность % — ФАКТ 1 ning hali «Успешно» boʻlmagan qismi (rad etilgan va yoʻldagi).', sheet: at0(3, 'Отказ %') }, unsuccessful, t.fakt1, 100),
       ratio(clock, { key: `${k}:open_pct`, label: 'Жараёнда, %', unit: 'percent', better: 'down', hint: 'Hali yetkazilmagan va rad etilmagan (yoʻlda, pochtada) buyurtmalar ulushi.' }, open, t.fakt1, 100),
     ]
   }
@@ -976,8 +987,10 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     const g = { fakt1: zeros(), fakt2: zeros(), primaryFakt2: zeros(), primaryOrders2: zeros(), baseFakt2: zeros(), leads: zeros(), qualified: zeros() }
     for (const r of input.fakt) {
       const i = at.get(r.day)
-      if (i === undefined || (r.brand ?? null) !== b) continue
-      const base = isBase(canonical(r.rop))
+      const team = canonical(r.rop)
+      const brand = BRAND_TEAMS.Collagen.has(team) ? 'Collagen' : BRAND_TEAMS.Zextra.has(team) ? 'Zextra' : null
+      if (i === undefined || brand !== b) continue
+      const base = isBase(team)
       g.fakt1[i]! += minorToSom(r.fakt1Minor)
       g.fakt2[i]! += minorToSom(r.fakt2Minor)
       if (base) g.baseFakt2[i]! += minorToSom(r.fakt2Minor)

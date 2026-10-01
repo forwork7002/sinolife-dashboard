@@ -33,10 +33,9 @@ describe('rnpTeamDaysSql', () => {
     expect(sql).toContain(`= 'REFUSED'`)
   })
 
-  it('brands an order by its most expensive product line and still groups day × team × brand', () => {
-    expect(sql).toMatch(/LEFT JOIN LATERAL \([\s\S]*FROM "deal_item" i[\s\S]*ORDER BY i\."totalMinor" DESC, i\."id"[\s\S]*LIMIT 1\s*\) b ON true/)
-    expect(sql).toContain(`pr."name" ~* 'zextra'`)
-    expect(sql).toMatch(/GROUP BY 1, 2, 3\s*$/)
+  it('groups day × team only — the brand is the team\'s, decided in the domain as the sheet does', () => {
+    expect(sql).not.toContain('"deal_item"')
+    expect(sql).toMatch(/GROUP BY 1, 2\s*$/)
   })
 
   it('buckets by the Tashkent queue day', () => {

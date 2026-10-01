@@ -104,22 +104,24 @@ const row = (dto: ReturnType<typeof buildRnpSheet>, id: string, key: string): Rn
 const on = (r: RnpRowDto, day: string) => r.days[days.indexOf(day)]
 
 describe('buildRnpSheet — the forecast', () => {
-  it('runs the fact through the last FULL day at its pace over the real month', () => {
+  it('forecasts as the sheet does: the fact so far ÷ today\'s day (today counted) × the real month', () => {
     const dto = buildRnpSheet(input())
-    expect(dto.elapsedDays).toBe(27)
+    expect(dto.elapsedDays).toBe(28)
     const f1 = row(dto, 'team:Sevinch', 'team:Sevinch:fakt1')
-    // Fact includes today's 9 000 000; the pace does not.
+    // Today is the 28th: `=D/$C$2*$C$1` with C2 = 28 and the month's 30 days (the sheet typed 31).
     expect(f1.fact).toBe(15_500_000)
-    expect(f1.forecast).toBeCloseTo((6_500_000 / 27) * 30, 6)
+    expect(f1.forecast).toBeCloseTo((15_500_000 / 28) * 30, 6)
     // The index is the forecast against the plan, never the fact.
     expect(f1.plan).toBe(30_000_000)
-    expect(f1.index).toBeCloseTo(((6_500_000 / 27) * 30 * 100) / 30_000_000, 6)
-    expect(f1.dayPlan).toBe(1_000_000)
+    expect(f1.index).toBeCloseTo(((15_500_000 / 28) * 30 * 100) / 30_000_000, 6)
+    // The sheet's `=C/27`.
+    expect(f1.dayPlan).toBeCloseTo(30_000_000 / 27, 6)
   })
 
-  it('has no forecast on the first day of a month and equals the fact once the month is over', () => {
+  it('forecasts from the first day, and equals the fact once the month is over', () => {
     const first = buildRnpSheet(input({ today: '2026-09-01' }))
-    expect(row(first, 'team:Sevinch', 'team:Sevinch:fakt1').forecast).toBeNull()
+    const day1 = row(first, 'team:Sevinch', 'team:Sevinch:fakt1')
+    expect(day1.forecast).toBe(day1.fact! * 30)
     const after = buildRnpSheet(input({ today: '2026-10-03' }))
     const f1 = row(after, 'team:Sevinch', 'team:Sevinch:fakt1')
     expect(after.elapsedDays).toBe(30)
@@ -244,6 +246,9 @@ describe('buildRnpSheet — company blocks', () => {
     const share = row(dto, 'marketing', 'meta:share')
     expect(on(share, '2026-09-21')).toBeCloseTo((140 * 12_200 * 100) / 2_000_000, 6)
     expect(on(row(dto, 'marketing', 'meta:cac'), '2026-09-21')).toBe(140)
+    // The sheet's row 45, `=IFERROR(G42/G47,0)`: the budget over the Регистрация leads (140 $ ÷ 4).
+    expect(on(row(dto, 'marketing', 'meta:cost_per_reg_lead'), '2026-09-21')).toBe(35)
+    expect(dto.lines.find((l) => l.row === 45)).toMatchObject({ kind: 'value', key: 'meta:cost_per_reg_lead' })
     expect(dto.settings.usdRate).toBe(12_200)
     expect(dto.settings.usdRateDate).toBe('2026-09-28')
   })
@@ -273,6 +278,10 @@ describe('buildRnpSheet — company blocks', () => {
   it('splits a team\'s FAKT 1 into delivered, refused and still in flight', () => {
     const dto = buildRnpSheet(input())
     expect(row(dto, 'logistics:Charos', 'lg:Charos:refused_pct').fact).toBe(100)
+    // The sheet's «Отказ %» = 1 − «Успешкность %»: what is still on its way counts too (the client, 2026-10-01).
+    const success = on(row(dto, 'logistics', 'lg:success'), '2026-09-21')!
+    expect(on(row(dto, 'logistics', 'lg:refused_pct'), '2026-09-21')).toBeCloseTo(100 - success, 6)
+    expect(row(dto, 'logistics', 'lg:refused_pct').fact).toBeCloseTo(100 - row(dto, 'logistics', 'lg:success').fact!, 6)
     const open = row(dto, 'logistics', 'lg:open_pct')
     // 21.09: 3 500 000 + 1 000 000 + 200 000 ordered, 2 000 000 delivered, 1 000 000 refused.
     expect(on(open, '2026-09-21')).toBeCloseTo((1_700_000 / 4_700_000) * 100, 6)
@@ -296,7 +305,7 @@ describe('buildRnpSheet — days the portal did not record whole', () => {
     // The count is the portal's: every day, 05.09 included (the client, 2026-09-30).
     expect(reach.fact).toBe(8)
     expect(reach.reliableFrom).toBeNull()
-    expect(reach.forecast).toBeCloseTo((8 / 27) * 30, 6)
+    expect(reach.forecast).toBeCloseTo((8 / 28) * 30, 6)
     // The rate still reads 16.09 on: 7 leads, 5 orders — the 05.09 burst is not in it.
     expect(conv.fact).toBeCloseTo((5 / 7) * 100, 6)
   })
@@ -310,12 +319,11 @@ describe('buildRnpSheet — days the portal did not record whole', () => {
 })
 
 describe('buildRnpSheet — plans nobody can mean', () => {
-  it("prices a БАЗА team's calls only once it has a lead value of its own", () => {
+  it("prices a БАЗА team's calls at the lead's value, as the sheet does — its own value when it has one", () => {
     const without = buildRnpSheet(input())
-    // Drawn (it is the block's first line, beside the ROP's name) but empty.
-    const empty = row(without, 'team:Charos', 'team:Charos:plan_pct')
-    expect(empty.fact).toBeNull()
-    expect(empty.days.every((v) => v === null)).toBe(true)
+    // The sheet's `=G160/(G156*400000)`: 1 000 000 over 4 calls × the company's 500 000 (from the 19th).
+    const pctCompany = row(without, 'team:Charos', 'team:Charos:plan_pct')
+    expect(on(pctCompany, '2026-09-21')).toBeCloseTo((1_000_000 / (4 * 500_000)) * 100, 6)
     const base = input()
     const withOwn = buildRnpSheet({
       ...base,
@@ -428,10 +436,14 @@ describe('buildRnpSheet — the brand P&L (rows 394–445)', () => {
     return buildRnpSheet({
       ...base,
       fakt: [
-        fakt('2026-09-21', 'Sevinch', { brand: 'Collagen', fakt1Orders: 2, fakt1Minor: som(3_000_000), fakt2Orders: 1, fakt2Minor: som(2_000_000) }),
-        fakt('2026-09-21', 'Charos', { brand: 'Collagen', fakt1Orders: 1, fakt1Minor: som(1_000_000), fakt2Orders: 1, fakt2Minor: som(1_000_000) }),
-        fakt('2026-09-21', 'Sevinch', { brand: 'Zextra', fakt1Orders: 1, fakt1Minor: som(1_500_000) }),
-        fakt('2026-09-21', 'Sevinch', { brand: null, fakt1Orders: 1, fakt1Minor: som(500_000) }),
+        // The brand is the selling team's, as the sheet's SUMIFS lists them (Baza is Collagen's БАЗА).
+        fakt('2026-09-21', 'Sevinch', { fakt1Orders: 2, fakt1Minor: som(3_000_000), fakt2Orders: 1, fakt2Minor: som(2_000_000) }),
+        fakt('2026-09-21', 'Baza', { fakt1Orders: 1, fakt1Minor: som(1_000_000), fakt2Orders: 1, fakt2Minor: som(1_000_000) }),
+        fakt('2026-09-21', 'Asliddin', { fakt1Orders: 1, fakt1Minor: som(1_000_000) }),
+        // «Sevinchxon(ROP)» is on the sheet's Zextra list — folded into Sadriddin, still Zextra.
+        fakt('2026-09-21', 'Sevinchxon', { fakt1Orders: 1, fakt1Minor: som(500_000) }),
+        // Hayot is on neither list.
+        fakt('2026-09-21', 'Hayot', { fakt1Orders: 1, fakt1Minor: som(500_000) }),
       ],
       registration: [
         { day: '2026-09-21', brand: 'Collagen', leads: 10, duplicates: 0, qualified: 4, aiConversations: 0 },
@@ -450,7 +462,7 @@ describe('buildRnpSheet — the brand P&L (rows 394–445)', () => {
   }
   const d21 = (d: ReturnType<typeof buildRnpSheet>, key: string) => on(row(d, key.split(':').slice(0, 2).join(':').replace('pj:', 'project:'), key), '2026-09-21')
 
-  it('splits the money by the order\'s brand, первичка from БАЗА', () => {
+  it('splits the money by the selling team\'s brand, первичка from БАЗА', () => {
     const d = dto()
     expect(d21(d, 'pj:collagen:fakt1')).toBe(4_000_000)
     expect(d21(d, 'pj:collagen:primary_fakt2')).toBe(2_000_000)
@@ -738,7 +750,7 @@ describe('buildRnpSheet — review fixes of 2026-09-30', () => {
     expect(fact.forecast! - base.forecast!).toBeCloseTo(10_000_000, 6) // not 10 M × 30 / 27
   })
 
-  it('offers no plan on a БАЗА team\'s empty «План бажарилиши»', () => {
+  it('offers no plan on a БАЗА team\'s «План бажарилиши» nobody planned', () => {
     const r = row(buildRnpSheet(input()), 'team:Charos', 'team:Charos:plan_pct')
     expect(r.plan).toBeNull()
     expect(r.dayPlan).toBeNull()
