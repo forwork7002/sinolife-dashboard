@@ -168,10 +168,11 @@ describe('RnpSheetTable — the sheet, row by row', () => {
     const title = rowNamed(container, 'Маркетинг COLLAGEN')
     expect(title.dataset.line).toBe('title')
     expect(title.dataset.tone).toBe('section')
-    const band = title.querySelectorAll('td')
-    expect(band).toHaveLength(1)
-    expect(band[0]!.colSpan).toBe(5 + DAYS.length)
-    expect(band[0]!.textContent).toBe('')
+    // Two pieces: the one under the pinned План/Факт/Прогноз, and the rest of the month.
+    const band = [...title.querySelectorAll('td')]
+    expect(band.map((td) => td.colSpan)).toEqual([3, 2 + DAYS.length])
+    expect(band[0]!.classList.contains('rnp-pin')).toBe(true)
+    expect(band.every((td) => td.textContent === '')).toBe(true)
     // The added team's heading follows a line of figures: a blank spacer row sits before it.
     const added = rowNamed(container, 'Kompaniya РОП')
     expect(added.previousElementSibling?.hasAttribute('data-gap')).toBe(true)
@@ -184,8 +185,10 @@ describe('RnpSheetTable — the sheet, row by row', () => {
     expect(missing.dataset.line).toBe('missing')
     const cells = [...missing.querySelectorAll('td')]
     // No figure — only the mark, in the empty span so the row stays one line.
-    expect(cells.map((td) => td.textContent)).toEqual(['Bitrix24ʼda yoʻq'])
-    expect(cells[0]!.colSpan).toBe(5 + DAYS.length)
+    expect(cells.map((td) => td.textContent)).toEqual(['Bitrix24ʼda yoʻq', ''])
+    // The mark sits under the pinned summary, so it stays in sight across the month.
+    expect(cells.map((td) => td.colSpan)).toEqual([3, 2 + DAYS.length])
+    expect(cells[0]!.classList.contains('rnp-pin')).toBe(true)
     const marker = within(missing).getByRole('note', { name: /^Bitrix24ʼda yoʻq/ })
     expect(marker.getAttribute('aria-label')).toContain('Bu qator Bitrix24 da yoʻq — qoʻlda kiritilmaydi')
     // Exactly one row is missing here.
@@ -442,6 +445,70 @@ describe('RnpSheetTable — resizable columns', () => {
     expect(screen.queryByRole('button', { name: 'Kengliklarni tiklash' })).toBeNull()
   })
 
+})
+
+describe('RnpSheetTable — План обший, Факт and Прогноз pinned beside the label', () => {
+  const observers: { cb: () => void }[] = []
+
+  beforeEach(() => {
+    observers.length = 0
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        cb: () => void
+        constructor(cb: () => void) {
+          this.cb = cb
+          observers.push(this)
+        }
+        observe() {}
+        disconnect() {}
+      },
+    )
+    // jsdom lays nothing out: every header cell is 100px wide.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 100 } as DOMRect)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  function grid(boxWidth: number) {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(boxWidth)
+    const { container } = render(<RnpSheetTable lines={LINES} blocks={BLOCKS} days={DAYS} today="2026-09-03" />)
+    return container.querySelector<HTMLElement>('[data-rnp-grid]')!
+  }
+
+  it('pins exactly those three columns, the last carrying the divider', () => {
+    grid(1200)
+    const heads = screen.getAllByRole('columnheader')
+    expect(heads.slice(1, 6).map((th) => th.classList.contains('rnp-pin'))).toEqual([true, true, true, false, false])
+    expect(heads.slice(1, 6).map((th) => th.classList.contains('rnp-edge'))).toEqual([false, false, true, false, false])
+    const orders = rowNamed(document.body, 'Буюртма сони')
+    expect([...orders.querySelectorAll('td')].slice(0, 5).map((td) => td.classList.contains('rnp-pin'))).toEqual([
+      true,
+      true,
+      true,
+      false,
+      false,
+    ])
+  })
+
+  it('offsets each one by the measured widths before it, while the box has room for days', () => {
+    const box = grid(1200)
+    expect(box.style.getPropertyValue('--rnp-left-plan')).toBe('100px')
+    expect(box.style.getPropertyValue('--rnp-left-fact')).toBe('200px')
+    expect(box.style.getPropertyValue('--rnp-left-forecast')).toBe('300px')
+    expect(box.hasAttribute('data-pin-wide')).toBe(true)
+  })
+
+  it('pins only the label on a box too narrow to leave days beside them, and re-measures on resize', () => {
+    const box = grid(375)
+    expect(box.hasAttribute('data-pin-wide')).toBe(false)
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1200)
+    for (const o of observers) o.cb()
+    expect(box.hasAttribute('data-pin-wide')).toBe(true)
+  })
 })
 
 describe('RnpSheetTable — drag to scroll', () => {

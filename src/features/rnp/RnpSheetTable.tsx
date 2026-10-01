@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode, type UIEvent, memo, useMemo } from 'react'
+import { type ReactNode, type UIEvent, memo, useLayoutEffect, useMemo, useRef } from 'react'
 
 import { InfoTip, Tooltip } from '@/components/ui/Tooltip'
 
@@ -44,6 +44,14 @@ import { useDragScroll } from './useDragScroll'
  * label column stays on the left over thirty days. It borrows DataTable's
  * `.thead-sticky` / `.tcol-sticky` so it pins and hovers like every table in
  * the product.
+ *
+ * План обший, Факт and Прогноз pin beside the label too (the client,
+ * 2026-10-01: «plan obshiy va fakt va prognoz gacha zakrepit qilish kerak»),
+ * so a day far to the right still reads against its month. Their `left`
+ * offsets are MEASURED from the header (`usePinnedSummary`) — a column grows
+ * with its widest figure, so the declared widths are not the answer — and
+ * they pin only while the box has room for days beside them; on a phone the
+ * four would cover the screen, so there only the label pins, as before.
  *
  * NO FIGURE IS EVER CUT (2026-09-29, «sonlar to'liq yozilishi kerak»). Every
  * number is written in full (`rnpFigures.ts`); each column is at least as
@@ -95,9 +103,12 @@ export function RnpSheetTable({
   )
   const span = SUMMARY.length + days.length
   const dragScroll = useDragScroll<HTMLDivElement>()
+  const box = useRef<HTMLDivElement>(null)
+  usePinnedSummary(box)
 
   return (
     <div
+      ref={box}
       data-rnp-grid=""
       role="region"
       aria-label="RNP jadvali"
@@ -146,14 +157,67 @@ export function RnpSheetTable({
 }
 
 /**
- * The pinned column's divider deepens once the days have moved under it —
- * `[data-scrolled-x]` on the box, read by `.tcol-sticky.is-edge` in
+ * The pinned block's divider deepens once the days have moved under it —
+ * `[data-scrolled-x]` on the box, read by `.rnp-edge` / `.rnp-label` in
  * globals.css. An attribute and not state: state would redraw every line.
  */
 function markScrolledX(e: UIEvent<HTMLDivElement>) {
   const box = e.currentTarget
   const scrolled = box.scrollLeft > 0
   if (scrolled !== box.hasAttribute('data-scrolled-x')) box.toggleAttribute('data-scrolled-x', scrolled)
+}
+
+/**
+ * The summary columns that pin beside the label, and the CSS that places them:
+ * each `left` is a custom property `usePinnedSummary` writes on the box. Class
+ * strings in full, so Tailwind sees them.
+ */
+const PINNED = ['plan', 'fact', 'forecast'] as const
+type PinnedKey = (typeof PINNED)[number]
+const PIN_LEFT: Record<PinnedKey, string> = {
+  plan: 'left-[var(--rnp-left-plan)]',
+  fact: 'left-[var(--rnp-left-fact)]',
+  forecast: 'left-[var(--rnp-left-forecast)]',
+}
+
+function isPinned(key: RnpColumnKind): key is PinnedKey {
+  return (PINNED as readonly string[]).includes(key)
+}
+
+/** A pinned summary cell's classes; the last of them carries the divider (`.rnp-edge` in globals.css). */
+function pinClass(key: PinnedKey): string {
+  return `tcol-sticky rnp-pin ${PIN_LEFT[key]}${key === PINNED.at(-1) ? ' rnp-edge' : ''}`
+}
+
+/** Room the pinned block must leave for days, about three of them; less and only the label pins. */
+const ROOM_FOR_DAYS = 280
+
+/**
+ * Measures the label and the pinned summary headers and writes their running
+ * offsets on the box (`--rnp-left-*`), and `data-pin-wide` when the box is
+ * wide enough to pin them. Straight onto the DOM, like `markScrolledX`: a
+ * column drag or a window resize re-measures without redrawing a cell.
+ */
+function usePinnedSummary(ref: { readonly current: HTMLDivElement | null }) {
+  useLayoutEffect(() => {
+    const box = ref.current
+    if (!box || typeof ResizeObserver === 'undefined') return
+    const heads = Array.from(box.querySelectorAll<HTMLElement>('thead th')).slice(0, 1 + PINNED.length)
+    const measure = () => {
+      let left = 0
+      heads.forEach((th, i) => {
+        if (i > 0) box.style.setProperty(`--rnp-left-${PINNED[i - 1]}`, `${left}px`)
+        left += th.getBoundingClientRect().width
+      })
+      const wide = left + ROOM_FOR_DAYS <= box.clientWidth
+      if (wide !== box.hasAttribute('data-pin-wide')) box.toggleAttribute('data-pin-wide', wide)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(box)
+    for (const th of heads) observer.observe(th)
+    return () => observer.disconnect()
+  }, [ref])
 }
 
 function rowsByKey(blocks: readonly RnpBlockDto[]): Map<string, RnpRowDto> {
@@ -204,7 +268,7 @@ const Head = memo(function Head({ days, today }: { days: readonly string[]; toda
       <tr style={{ color: 'var(--ink-secondary)' }}>
         <th
           scope="col"
-          className={`thead-sticky tcol-sticky is-edge ${RULE} h-12 py-2 pr-3 pl-4 text-left text-[12px] leading-tight font-bold sm:pl-5 sm:whitespace-nowrap`}
+          className={`thead-sticky tcol-sticky rnp-label ${RULE} h-12 py-2 pr-3 pl-4 text-left text-[12px] leading-tight font-bold sm:pl-5 sm:whitespace-nowrap`}
           // `.tcol-sticky` paints the card; the corner belongs to the header band.
           style={{ left: 0, background: 'var(--surface-sunken)', color: 'var(--ink-primary)' }}
         >
@@ -216,7 +280,7 @@ const Head = memo(function Head({ days, today }: { days: readonly string[]; toda
           <th
             key={c.key}
             scope="col"
-            className={`thead-sticky ${RULE} px-3 py-2 text-right text-[12px] font-semibold whitespace-nowrap`}
+            className={`thead-sticky ${isPinned(c.key) ? pinClass(c.key) : ''} ${RULE} px-3 py-2 text-right text-[12px] font-semibold whitespace-nowrap`}
             style={{
               background: SUMMARY_HEAD,
               color: c.key === 'fact' ? 'var(--ink-primary)' : undefined,
@@ -317,13 +381,19 @@ function TitleRow({ line, span }: { line: TitleLine; span: number }) {
     <tr data-line="title" data-tone={line.tone}>
       <th
         scope="row"
-        className={`tcol-sticky is-edge ${RULE} py-2 pr-3 pl-4 text-left leading-snug sm:pl-5`}
+        className={`tcol-sticky rnp-label ${RULE} py-2 pr-3 pl-4 text-left leading-snug sm:pl-5`}
         style={{ left: 0, background: mix(hue, 18, 'var(--surface-raised)'), color: inkOf(hue) }}
       >
         <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px]" style={{ background: hue }} />
         <LabelBody line={line} heading />
       </th>
-      <td colSpan={span} className={RULE} style={{ background: mix(hue, 9) }} />
+      {/* The band under the pinned summary pins with it, opaque, so the days pass beneath. */}
+      <td
+        colSpan={PINNED.length}
+        className={`${pinClass('plan')} rnp-edge ${RULE}`}
+        style={{ backgroundColor: 'var(--surface-raised)', backgroundImage: layers(mix(hue, 9)) }}
+      />
+      <td colSpan={span - PINNED.length} className={RULE} style={{ background: mix(hue, 9) }} />
     </tr>
   )
 }
@@ -334,15 +404,16 @@ function MissingRow({ line, span }: { line: ValueLine; span: number }) {
     <tr data-line="missing" data-tone={line.tone}>
       <th
         scope="row"
-        className={`tcol-sticky is-edge ${RULE} py-1.5 pr-3 pl-4 text-left text-[13px] leading-snug font-medium sm:pl-5`}
+        className={`tcol-sticky rnp-label ${RULE} py-1.5 pr-3 pl-4 text-left text-[13px] leading-snug font-medium sm:pl-5`}
         style={{ left: 0, ...labelStyle(accentOf(line)) }}
       >
         <LabelBody line={line} />
       </th>
       {/* The mark sits in the empty span, not under the label, so the row stays one line tall. */}
-      <td colSpan={span} className={`${RULE} px-3 py-1.5`} style={{ background: HATCH }}>
+      <td colSpan={PINNED.length} className={`${pinClass('plan')} rnp-edge ${RULE} px-3 py-1.5`} style={{ backgroundImage: HATCH }}>
         <MissingChip />
       </td>
+      <td colSpan={span - PINNED.length} className={RULE} style={{ background: HATCH }} />
     </tr>
   )
 }
@@ -376,7 +447,7 @@ function ValueRow({
     >
       <th
         scope="row"
-        className={`tcol-sticky is-edge ${RULE} py-1.5 pr-3 pl-4 text-left text-[13px] leading-snug sm:pl-5 ${bold ? 'font-semibold' : 'font-medium'}`}
+        className={`tcol-sticky rnp-label ${RULE} py-1.5 pr-3 pl-4 text-left text-[13px] leading-snug sm:pl-5 ${bold ? 'font-semibold' : 'font-medium'}`}
         style={{ left: 0, ...labelStyle(accent) }}
       >
         {accent === 'plan' && (
@@ -392,18 +463,20 @@ function ValueRow({
           manual={{ kind: 'plan', team: row.planInput.team, metric: row.planInput.metric, unit: row.unit }}
           label={`${row.planInput.team || 'Kompaniya'} · ${line.label || row.label}`}
           value={row.plan}
-          className={`tabular ${RULE} ${VRULE} h-9 text-right whitespace-nowrap ${planTint !== undefined ? 'font-semibold' : ''}`}
-          style={{ color: 'var(--ink-primary)', background: planTint ?? SUMMARY_CELL }}
+          className={`${pinClass('plan')} tabular ${RULE} ${VRULE} h-9 text-right whitespace-nowrap ${planTint !== undefined ? 'font-semibold' : ''}`}
+          style={{ color: 'var(--ink-primary)', backgroundImage: layers(planTint ?? SUMMARY_CELL, band) }}
         />
       ) : (
-        <Cell tint={planTint} strong={planTint !== undefined}>
+        <Cell pin="plan" band={band} tint={planTint} strong={planTint !== undefined}>
           {figure(row.plan, row.unit)}
         </Cell>
       )}
-      <Cell tint={accent ? ACCENT[accent].fact : undefined} strong>
+      <Cell pin="fact" band={band} tint={accent ? ACCENT[accent].fact : undefined} strong>
         {figure(row.fact, row.unit)}
       </Cell>
-      <Cell>{figure(row.forecast, row.unit)}</Cell>
+      <Cell pin="forecast" band={band}>
+        {figure(row.forecast, row.unit)}
+      </Cell>
       <Cell>{index(row.index, row.better, accent !== null)}</Cell>
       <Cell last>{figure(row.dayPlan, row.unit)}</Cell>
       {row.days.map((value, i) => {
@@ -446,13 +519,33 @@ function ValueRow({
   )
 }
 
-function Cell({ children, tint, strong = false, last = false }: { children: ReactNode; tint?: string; strong?: boolean; last?: boolean }) {
+/**
+ * A summary cell. A pinned one (`pin`) is opaque — the card under its tint and
+ * its row's `band`, painted as layers so `.tcol-sticky`'s hover still reaches
+ * the card colour beneath them.
+ */
+function Cell({
+  children,
+  tint,
+  strong = false,
+  last = false,
+  pin,
+  band,
+}: {
+  children: ReactNode
+  tint?: string
+  strong?: boolean
+  last?: boolean
+  pin?: PinnedKey
+  band?: string
+}) {
+  const fill = tint ?? SUMMARY_CELL
   return (
     <td
-      className={`tabular ${RULE} ${VRULE} h-9 px-3 py-1.5 text-right whitespace-nowrap ${strong ? 'font-semibold' : ''}`}
+      className={`${pin ? pinClass(pin) : ''} tabular ${RULE} ${VRULE} h-9 px-3 py-1.5 text-right whitespace-nowrap ${strong ? 'font-semibold' : ''}`}
       style={{
         color: strong ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-        background: tint ?? SUMMARY_CELL,
+        ...(pin ? { backgroundImage: layers(fill, band) } : { background: fill }),
         boxShadow: last ? DIVIDER_RIGHT : undefined,
       }}
     >
@@ -601,6 +694,14 @@ function AddedChip() {
 
 function mix(color: string, pct: number, base = 'transparent'): string {
   return `color-mix(in oklab, ${color} ${pct}%, ${base})`
+}
+
+/** Colours stacked as background layers, the first on top — over a pinned cell's own card colour. */
+function layers(...colors: (string | undefined)[]): string {
+  return colors
+    .filter((c): c is string => c !== undefined)
+    .map((c) => `linear-gradient(${c}, ${c})`)
+    .join(', ')
 }
 
 /** Text in a tone's hue, pulled towards the ink so it reads on its own tint in either theme. */
