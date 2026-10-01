@@ -113,9 +113,26 @@ export const SKIP_LOOKBACK_MS: Partial<Record<SyncEntityValue, number>> = {
  * 15 000-an-hour `portalBudget`. The upsert overwrites
  * `durationSec`, `connected` and `failedCode` on conflict (only `createdAt` is
  * insert-only in `CALL_COLUMNS`), so the second read corrects the row.
+ *
+ * DEALS AND STAGE_HISTORY OVERLAP BY THREE MINUTES, FOR THE WATERMARK'S OWN
+ * SECOND. Bitrix24 filters `>DATE_MODIFY` / `>CREATED_TIME` in WHOLE SECONDS,
+ * STRICTLY GREATER, and `isoLocal` drops the milliseconds. A row stamped in
+ * the same second the run started, but not yet visible when the run read, is
+ * therefore excluded by every later run — no skip, no failure, nothing
+ * logged. Production, 2026-10-01: deal 1050732 was created straight into
+ * C4:NEW at 06:15:07 UTC; the STAGE_HISTORY run that started at 06:15:07.054
+ * read 8 rows, skipped none, and stored 06:15:07 as the cursor. The arrival
+ * was never read again, so the order was missing from Тасдиқлаш навбати and
+ * from FAKT 1 while the client's board showed it as Тасдиқланди. One row in
+ * 3 339 C4:NEW arrivals from 1 September to 1 October, which is why nothing
+ * else caught it.
+ * Three minutes is more than one tick, and every write is an idempotent
+ * upsert, so the re-read costs a page and changes nothing that was right.
  */
 const SETTLE_LOOKBACK_MS: Partial<Record<SyncEntityValue, number>> = {
   CALLS: 3 * 60 * 60_000,
+  DEALS: 3 * 60_000,
+  STAGE_HISTORY: 3 * 60_000,
 }
 
 /**

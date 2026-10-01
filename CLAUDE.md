@@ -1931,6 +1931,13 @@ mixed `100vh` against a shell sized in `100dvh`.
   `SKIP_LOOKBACK_MS` in `SyncEngine.ts` — applied only after a run that skipped,
   and always derived from that run's own start, so it advances every tick
   regardless.
+- **…and `DEALS` / `STAGE_HISTORY` re-read the last three minutes on EVERY
+  run — 2026-10-01.** The portal filters `>DATE_MODIFY` / `>CREATED_TIME` in
+  whole seconds, strictly greater, so a row stamped in the watermark's own
+  second that was not yet visible at the read is excluded forever, with no skip
+  to trigger the rewind above. Deal 1050732 (C4:NEW at 06:15:07 UTC, the run
+  started 06:15:07.054) was missing from Тасдиқлаш and FAKT 1 that way — one
+  arrival in 3 339 since 1 September. `SETTLE_LOOKBACK_MS` in `SyncEngine.ts`.
 - **The upsert may not rewrite a row's primary key.** `rowId()` mints a fresh
   id per batch and the conflict target is the EXTERNAL key, so `id` has to be
   `insertOnly` — without it the update set carried `"id" = EXCLUDED."id"` and

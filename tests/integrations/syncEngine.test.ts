@@ -604,8 +604,8 @@ describe('watermark after a run that skipped records', () => {
     expect(nextWatermark('DEALS', NOW, 1).getTime()).toBe(NOW.getTime() - 95 * 60_000)
   })
 
-  it('does not rewind a clean run, so the common case is unchanged', () => {
-    expect(nextWatermark('STAGE_HISTORY', NOW, 0)).toEqual(NOW)
+  it('does not apply the skip window to a clean run — only the settle overlap', () => {
+    expect(nextWatermark('STAGE_HISTORY', NOW, 0).getTime()).toBe(NOW.getTime() - 3 * 60_000)
   })
 
   it('leaves entities that cannot lose the race exactly where they were', () => {
@@ -663,7 +663,9 @@ describe('watermark after a run that skipped records', () => {
     // THE POINT: the arrival is on the board, without a full re-read of the
     // history table and without the watermark ever standing still.
     expect(table.rows.has('h-1')).toBe(true)
-    expect((await store.getCursor('DEMO', 'STAGE_HISTORY'))!.getTime()).toBe(NOW.getTime())
+    expect((await store.getCursor('DEMO', 'STAGE_HISTORY'))!.getTime()).toBe(
+      NOW.getTime() - 3 * 60_000,
+    )
   })
 })
 
@@ -689,7 +691,49 @@ describe('watermark for a record that settles after it is first read', () => {
 
   it('leaves an entity with no settle lookback alone on a clean run', () => {
     expect(nextWatermark('CUSTOMERS', NOW, 0)).toEqual(NOW)
-    expect(nextWatermark('DEALS', NOW, 0)).toEqual(NOW)
+  })
+
+  it('overlaps DEALS and STAGE_HISTORY by three minutes on every run', () => {
+    expect(nextWatermark('DEALS', NOW, 0).getTime()).toBe(NOW.getTime() - 3 * 60_000)
+    expect(nextWatermark('STAGE_HISTORY', NOW, 0).getTime()).toBe(NOW.getTime() - 3 * 60_000)
+  })
+
+  /*
+    Production, 2026-10-01: deal 1050732 was created straight into C4:NEW at
+    06:15:07 UTC. The STAGE_HISTORY run that started at 06:15:07.054 did not
+    see the row, stored that start as the cursor, and the next run asked for
+    >CREATED_TIME 06:15:07 — whole seconds, strictly greater. The arrival was
+    never offered again and the order never reached the confirmation board.
+  */
+  it('re-reads a row stamped in the same second as the cursor that appeared after the read', async () => {
+    const table = new FakeTable()
+    const arrival: Row = { externalId: 'h-arrival', value: 'C4:NEW', updatedAtSource: NOW }
+    let visible = false
+
+    const handler = makeHandler('STAGE_HISTORY', [], table, {
+      // Bitrix24's filter: whole seconds, strictly greater.
+      async fetch(_provider: CrmProvider, options: FetchOptions): Promise<Page<Row>> {
+        const since = options.updatedSince
+          ? Math.floor(options.updatedSince.getTime() / 1000) * 1000
+          : -Infinity
+        const items = [arrival].filter(
+          (r) => visible && r.updatedAtSource!.getTime() > since,
+        )
+        return { items }
+      },
+    })
+    const store = new FakeStore()
+    await store.setCursor('DEMO', 'STAGE_HISTORY', new Date(NOW.getTime() - 2 * 60_000))
+    const { engine } = engineWith([handler], store, { STAGE_HISTORY: true })
+
+    await engine.runEntity('STAGE_HISTORY', 'INCREMENTAL')
+    expect(table.rows.has('h-arrival')).toBe(false)
+
+    // Committed a moment after the first read, still stamped NOW.
+    visible = true
+    await engine.runEntity('STAGE_HISTORY', 'INCREMENTAL')
+
+    expect(table.rows.has('h-arrival')).toBe(true)
   })
 
   it('takes the LARGER lookback when both apply, never their sum', () => {
@@ -697,7 +741,7 @@ describe('watermark for a record that settles after it is first read', () => {
       They are two reasons to re-read the same stretch. Adding them would widen
       the window for no extra record.
     */
-    // DEALS skipping wants 95 minutes and has no settle lookback.
+    // DEALS skipping wants 95 minutes against a three-minute settle overlap.
     expect(nextWatermark('DEALS', NOW, 3).getTime()).toBe(NOW.getTime() - 95 * 60_000)
     // CALLS never skips, and three hours applies whether it did or not.
     expect(nextWatermark('CALLS', NOW, 3).getTime()).toBe(NOW.getTime() - 3 * 60 * 60_000)
