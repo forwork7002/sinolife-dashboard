@@ -116,8 +116,8 @@ const FIXTURE: RnpOverviewDto = {
   lines: [
     { kind: 'title', row: 4, team: null, label: 'Маркетинг COLLAGEN', sub: 'Хаёт', tone: 'section' },
     { kind: 'value', row: 9, team: null, label: 'Кол подпис tg', sub: null, tone: 'plain', fact: 'plain', bold: false, key: null },
-    { kind: 'value', row: 47, team: null, label: 'Количество лид', sub: 'Умида', tone: 'plain', fact: 'plain', bold: false, key: 'reg:leads' },
-    { kind: 'value', row: 48, team: null, label: 'Регистрация COLLAGEN', sub: null, tone: 'section', fact: 'rate', bold: true, key: 'reg:qualified' },
+    { kind: 'value', row: 47, team: null, label: 'Жами лид сони', sub: null, tone: 'section', fact: 'plain', bold: true, key: 'reg:leads' },
+    { kind: 'value', row: 48, team: null, label: 'Жами квал сони', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'reg:qualified' },
     { kind: 'value', row: 89, team: 'Sevinch', label: 'Продажа (первичка) факт1', sub: 'Севинч РОП', tone: 'team', fact: 'plain', bold: true, key: 'reg:distributed' },
     { kind: 'value', row: 90, team: 'Sevinch', label: 'Конверсия % от квал лид', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'team:Sevinch:conv1' },
   ] satisfies RnpLine[],
@@ -183,14 +183,14 @@ describe('RnpPage — the sheet', () => {
     expect(labels()).toEqual([
       'Маркетинг COLLAGENХаёт',
       'Кол подпис tg',
-      'Количество лидУмида',
-      'Регистрация COLLAGEN',
+      'Жами лид сони',
+      'Жами квал сони',
       'Севинч РОППродажа (первичка) факт1',
       'Конверсия % от квал лид',
     ])
 
     const grid = screen.getByRole('region', { name: 'RNP jadvali' })
-    const leads = [...grid.querySelectorAll('tbody tr')].find((tr) => tr.querySelector('th')?.textContent?.startsWith('Количество лид'))!
+    const leads = [...grid.querySelectorAll('tbody tr')].find((tr) => tr.querySelector('th')?.textContent?.startsWith('Жами лид сони'))!
     const cells = [...leads.querySelectorAll('td')].map((td) => td.textContent)
     // План, Факт, Прогноз, Индекс, Кунлик план, then the three days.
     expect(cells).toEqual(['—', '12', '—', '—', '—', '12', '—', '—'])

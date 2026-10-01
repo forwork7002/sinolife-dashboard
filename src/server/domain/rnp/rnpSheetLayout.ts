@@ -17,6 +17,9 @@
  * 2026-10-01: the Sinolife «Продажа (первичка) факт2» and «(первичка+база)
  * факт2» blocks (249–262) are gone too.
  *
+ * 2026-10-01: the registration totals read «Жами лид сони» (47) over «Жами
+ * квал сони» (48, was «Регистрация COLLAGEN»), above «% квал лид».
+ *
  * 2026-10-01: each ROP block's «Продажа … факт1» (the leads the ROP was
  * given) sits right under «План бажарилиши», above the conversion it is the
  * base of, and reads «Квал лид сони» — «Дозвон сони» in the БАЗА blocks,
@@ -79,8 +82,8 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [39, 'Колич Zextra лид', null, 'value', false, 'plain', 'plain'],
   [40, 'Цена лида Zextra', null, 'value', false, 'plain', 'rate'],
   [45, '', null, 'helper', true, 'plain', 'rate'],
-  [48, 'Регистрация COLLAGEN', null, 'value', true, 'section', 'rate'],
-  [47, 'Количество лид', 'Умида', 'value', false, 'plain', 'plain'],
+  [47, 'Жами лид сони', null, 'value', true, 'section', 'plain'],
+  [48, 'Жами квал сони', null, 'value', false, 'plain', 'plain'],
   [49, '% квал лид', null, 'value', false, 'plain', 'rate'],
   [50, 'Sevinch guruh', 'без квал', 'value', false, 'plain', 'plain'],
   [51, '', 'квал', 'value', false, 'plain', 'plain'],

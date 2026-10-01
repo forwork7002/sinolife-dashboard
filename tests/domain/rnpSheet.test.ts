@@ -619,9 +619,10 @@ describe('buildRnpSheet — the page is the client\'s sheet, row by row', () => 
     const before = (a: number, b: number) => expect(rows.indexOf(a)).toBeLessThan(rows.indexOf(b))
     // The client's order (2026-09-30): totals above the targets, 47 under 48,
     // the new groups after Saidaziz, plan % first in a ROP block; then (2026-10-01)
-    // the reach right under it, as «Квал лид сони».
+    // the reach right under it, as «Квал лид сони»; «Жами лид сони» over «Жами квал сони».
     before(44, 13)
-    before(48, 47)
+    before(47, 48)
+    before(48, 49)
     before(67, 1001)
     before(81, 76)
     before(76, 77)
@@ -631,7 +632,8 @@ describe('buildRnpSheet — the page is the client\'s sheet, row by row', () => 
     expect(lineAt(x, 274)).toMatchObject({ sub: 'Севинч РОП' }) // was «Бунёд»
     expect(lineAt(x, 4)).toMatchObject({ kind: 'title', label: 'Маркетинг COLLAGEN', sub: 'Хаёт' })
     expect(lineAt(x, 93)).toMatchObject({ kind: 'value', label: 'Сумма факт 1 сум', key: 'team:Sevinch:fakt1' })
-    expect(lineAt(x, 47)).toMatchObject({ kind: 'value', key: 'reg:leads' })
+    expect(lineAt(x, 47)).toMatchObject({ kind: 'value', label: 'Жами лид сони', key: 'reg:leads' })
+    expect(lineAt(x, 48)).toMatchObject({ kind: 'value', label: 'Жами квал сони', key: 'reg:qualified_collagen' })
     expect(lineAt(x, 89)).toMatchObject({ kind: 'value', label: 'Квал лид сони', key: 'team:Sevinch:reach' })
     expect(lineAt(x, 156)).toMatchObject({ kind: 'value', label: 'Дозвон сони', key: 'team:Charos:reach' })
   })
