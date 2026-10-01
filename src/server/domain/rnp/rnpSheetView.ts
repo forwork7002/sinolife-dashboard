@@ -12,7 +12,7 @@
  * «(ROP yoʻq)») still sold, and the company totals count it — so its block is
  * added after the sheet's own teams and its logistics after the sheet's
  * logistics, each marked as an addition. The same goes for the kval of registrars in no «guruh» (after the
- * groups) — or the group rows stop adding up to row 48. The dashboard's own extra rows (duplicates, AI triage, the
+ * groups) — or the group rows stop adding up to the leads handed to the ROPs. The dashboard's own extra rows (duplicates, AI triage, the
  * no-brand P&L …) are not the sheet and are left out.
  *
  * Pure: blocks in, lines out.

@@ -39,6 +39,8 @@ import { type RnpCostLine, type RnpCostProject, SETTING_LEAD_VALUE } from '@/ser
 export interface RnpLeadDayRow {
   readonly day: string
   readonly rop: string | null
+  /** The deal's «Регистрация» label — the registrar who qualified the lead; null when the portal has none. */
+  readonly registrar: string | null
   readonly leads: number
 }
 
@@ -142,12 +144,12 @@ export class RnpRepository {
 
   /** `from` / `to` are inclusive `YYYY-MM-DD`. */
   async leadDays(from: string, to: string): Promise<RnpLeadDayRow[]> {
-    const rows = await this.prisma.$queryRawUnsafe<{ day: string; rop: string | null; leads: bigint }[]>(
+    const rows = await this.prisma.$queryRawUnsafe<{ day: string; rop: string | null; registrar: string | null; leads: bigint }[]>(
       RnpRepository.leadDaysSql(),
       from,
       to,
     )
-    return rows.map((r) => ({ day: r.day, rop: r.rop, leads: Number(r.leads) }))
+    return rows.map((r) => ({ day: r.day, rop: r.rop, registrar: r.registrar, leads: Number(r.leads) }))
   }
 
   /**
@@ -162,6 +164,10 @@ export class RnpRepository {
    * filtered by «Лид таркатилган сана» and «РОП (Первичка)», nothing else — a
    * handed-out lead now sitting in «База» or back in «Регистрация» still went
    * to that ROP.
+   *
+   * The registrar rides along: the Первичный отдел deal carries the
+   * «Регистрация» label copied from the Регистрация deal (29.09: 340 of 343
+   * handed-out deals named one), and the «guruh» kval rows count by it.
    */
   static leadDaysSql(): string {
     return `
@@ -177,12 +183,13 @@ export class RnpRepository {
             LIMIT 1),
           ${InsightsRepository.ropNameSql('dep."name"')}
         ) AS rop,
+        d."registrar",
         count(*)::bigint AS leads
       FROM "deal" d
       LEFT JOIN "employee" e ON e."id" = d."leadRopEmployeeId"
       LEFT JOIN "department" dep ON dep."id" = e."departmentId"
       WHERE d."leadDistributedOn" BETWEEN $1::date AND $2::date
-      GROUP BY 1, 2`
+      GROUP BY 1, 2, 3`
   }
 
   /**
