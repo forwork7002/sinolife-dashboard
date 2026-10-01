@@ -12,6 +12,8 @@ import type { TargetProduct } from '@/features/reklama/reklamaApi'
 
 export type LeadChannel = 'form' | 'page' | 'inbound' | 'manual' | 'telegram' | 'smm' | 'other' | 'outbound'
 
+export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'sarafan'
+
 export interface LeadOutcomeDto {
   readonly leads: number
   readonly success: number
@@ -79,8 +81,6 @@ export interface LeadSourcesOverviewDto {
     /** Distinct over the whole of Регистрация — not the sum of the channels. */
     readonly fakt1Clients: number
     readonly ads: LeadOutcomeDto
-    /** inbound + manual + telegram + smm + other — not the ads, not «Исход». */
-    readonly nonAd: LeadOutcomeDto
     readonly conversations: number
     readonly metaFormLeads: number
     readonly formLeads: number
@@ -104,5 +104,10 @@ export interface LeadSourcesOverviewDto {
     readonly outcome: LeadOutcomeDto
     readonly fakt1Clients: number
   }[]
+  /** «Boshqa kanallar lidlari» — every tile in the server's order, and their sum. */
+  readonly tiles: {
+    readonly rows: readonly { readonly tile: LeadTile; readonly outcome: LeadOutcomeDto }[]
+    readonly total: LeadOutcomeDto
+  }
   readonly sources: readonly SourceRowDto[]
 }

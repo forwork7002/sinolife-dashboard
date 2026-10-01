@@ -34,11 +34,13 @@ import {
 import { type MetaProduct, campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
 import {
   type LeadChannel,
+  type LeadTile,
   LEAD_CHANNELS,
+  LEAD_TILES,
   formNameOf,
   formOwner,
   leadChannel,
-  nonAdTotal,
+  leadTile,
 } from '@/server/domain/leads/leadSources'
 import { LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
@@ -136,11 +138,6 @@ export interface LeadSourcesOverviewDto {
     readonly fakt1Clients: number
     /** Of those, the ad leads: forms plus the ad pages. */
     readonly ads: LeadOutcomeDto
-    /**
-     * The leads nobody paid for: Ген лид by hand, incoming calls, Telegram,
-     * SMM and the rest (`NON_AD_CHANNELS`). Not «Исход» — see there.
-     */
-    readonly nonAd: LeadOutcomeDto
     /** «ИИ обработка» deals — Instagram conversations. */
     readonly conversations: number
     readonly metaFormLeads: number
@@ -166,6 +163,14 @@ export interface LeadSourcesOverviewDto {
     readonly outcome: LeadOutcomeDto
     readonly fakt1Clients: number
   }[]
+  /**
+   * «Boshqa kanallar lidlari»: every tile of `LEAD_TILES`, in its order and
+   * at zero when quiet, and «Jami» — their sum, «Исход» not in it.
+   */
+  readonly tiles: {
+    readonly rows: readonly { readonly tile: LeadTile; readonly outcome: LeadOutcomeDto }[]
+    readonly total: LeadOutcomeDto
+  }
   readonly sources: readonly SourceRowDto[]
 }
 
@@ -278,6 +283,8 @@ export function leadSourcesOverview(input: {
   const pageKeyOf = (sourceId: string) => DM_PAGE_ALIAS[sourceId] ?? sourceId
   const sources = new Map<string, SourceAcc>()
   const channels = new Map<LeadChannel, OutcomeAcc>(LEAD_CHANNELS.map((c) => [c, outcomeZero()]))
+  const tiles = new Map<LeadTile, OutcomeAcc>(LEAD_TILES.map((t) => [t, outcomeZero()]))
+  const tilesTotal = outcomeZero()
   const registration = outcomeZero()
 
   /*
@@ -304,6 +311,11 @@ export function leadSourcesOverview(input: {
 
     addOutcome(registration, one)
     addOutcome(channels.get(channel)!, one)
+    const tile = leadTile(row.sourceId, row.aiQualified, LEAD_SOURCE_VOCABULARY)
+    if (tile !== null) {
+      addOutcome(tiles.get(tile)!, one)
+      addOutcome(tilesTotal, one)
+    }
     const sourceKey = sourceKeyOf(form, row.sourceId)
     const source = mapGet(sources, sourceKey, () => ({
       key: sourceKey,
@@ -449,7 +461,6 @@ export function leadSourcesOverview(input: {
       registration: outcomeCells(registration),
       fakt1Clients: fakt1All.size,
       ads: outcomeCells(ads),
-      nonAd: outcomeCells(nonAdTotal(channels, LEAD_BUCKETS)),
       conversations,
       metaFormLeads,
       formLeads,
@@ -468,6 +479,10 @@ export function leadSourcesOverview(input: {
       outcome: outcomeCells(channels.get(channel)!),
       fakt1Clients: fakt1Channels.get(channel)!.size,
     })),
+    tiles: {
+      rows: LEAD_TILES.map((tile) => ({ tile, outcome: outcomeCells(tiles.get(tile)!) })),
+      total: outcomeCells(tilesTotal),
+    },
     sources: [...sources.values()]
       .map((s) => ({
         key: s.key,

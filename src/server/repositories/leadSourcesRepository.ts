@@ -20,6 +20,8 @@ export interface RegistrationDayRow {
   readonly stage: string
   /** DealStatus: OPEN, WON or LOST. */
   readonly status: string
+  /** The AI qualified it out of the DMs («ИИ квал сана» is filled). */
+  readonly aiQualified: boolean
   readonly leads: number
 }
 
@@ -56,6 +58,7 @@ export class LeadSourcesRepository {
         form_title: string | null
         stage: string | null
         status: string
+        ai_qualified: boolean
         leads: bigint
       }[]
     >(
@@ -77,13 +80,14 @@ export class LeadSourcesRepository {
         CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END AS form_title,
         st."name" AS stage,
         d."status"::text AS status,
+        (d."aiQualifiedAt" IS NOT NULL) AS ai_qualified,
         count(*)::bigint AS leads
       FROM "deal" d
       JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
       LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
       LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
       WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2
-      GROUP BY 1, 2, 3, 4, 5, 6
+      GROUP BY 1, 2, 3, 4, 5, 6, 7
       `,
       period.start,
       period.end,
@@ -96,6 +100,7 @@ export class LeadSourcesRepository {
       formTitle: r.form_title,
       stage: r.stage ?? '—',
       status: r.status,
+      aiQualified: r.ai_qualified,
       leads: Number(r.leads),
     }))
   }

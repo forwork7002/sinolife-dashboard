@@ -531,6 +531,10 @@ export const DM_PAGE_ALIAS: Readonly<Record<string, string>> = Object.freeze({
  * «Telegram - Открытая линия», UC_Z1OF0D «sinolif_tg»; UC_5JW4YK «Сммщик
  * sinolifeuz», UC_HCZ9YU «Сммщик sinolife_sedana». The Telegram AD pages
  * (UC_A4WINR, UC_U9KZG8) are pages above and stay so — a page wins first.
+ *
+ * WEB «Веб-сайт» and UC_9SNG04 «Сарафан маркетинг» joined on 2026-10-01 for
+ * the client's channel tiles. Both are rare in Регистрация (September: 6 WEB
+ * deals, no Сарафан); they mostly open deals in the sales pipelines.
  */
 export const LEAD_SOURCE_VOCABULARY: LeadSourceVocabulary = Object.freeze({
   pages: new Set(TARGET_SOURCE_IDS),
@@ -538,6 +542,8 @@ export const LEAD_SOURCE_VOCABULARY: LeadSourceVocabulary = Object.freeze({
   outbound: new Set(['UC_KPZA32']),
   telegram: new Set(['UC_8NZNYM', '2|TELEGRAM', 'UC_Z1OF0D']),
   smm: new Set(['UC_5JW4YK', 'UC_HCZ9YU']),
+  web: new Set(['WEB']),
+  sarafan: new Set(['UC_9SNG04']),
   generated: 'REPEAT_SALE',
 })
 

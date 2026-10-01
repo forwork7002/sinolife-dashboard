@@ -26,6 +26,7 @@ const reg = (over: Partial<RegistrationDayRow>): RegistrationDayRow => ({
   formTitle: null,
   stage: 'Сделка успешна',
   status: 'WON',
+  aiQualified: false,
   leads: 1,
   ...over,
 })
@@ -69,8 +70,8 @@ describe('leadSourcesOverview', () => {
       // Umar's form: 3 kval on the 18th, 2 недозвон on the 19th.
       reg({ formTitle: UMAR_FORM, leads: 3 }),
       reg({ formTitle: UMAR_FORM, day: '2026-09-19', stage: 'Недозвон', status: 'OPEN', leads: 2 }),
-      // sinolifeuz: 4 leads, 1 kval, 1 duplicate.
-      reg({ sourceId: 'UC_1X1J24', source: 'sinolifeuz', leads: 1 }),
+      // sinolifeuz: 4 leads, 1 kval (the one the AI qualified), 1 duplicate.
+      reg({ sourceId: 'UC_1X1J24', source: 'sinolifeuz', aiQualified: true, leads: 1 }),
       reg({ sourceId: 'UC_1X1J24', source: 'sinolifeuz', stage: 'Дубликат (лид)', status: 'OPEN', leads: 1 }),
       reg({ sourceId: 'UC_1X1J24', source: 'sinolifeuz', stage: 'Обработка', status: 'OPEN', leads: 2 }),
       // Not ad leads, but Регистрация: outgoing calls and a hand-typed «Ген лид».
@@ -82,6 +83,9 @@ describe('leadSourcesOverview', () => {
       reg({ sourceId: 'CALL', source: 'Входящий', stage: 'Недозвон', status: 'OPEN', leads: 3 }),
       reg({ sourceId: 'UC_8NZNYM', source: 'Телеграмм', leads: 1 }),
       reg({ sourceId: 'UC_8NZNYM', source: 'Телеграмм', stage: 'Обработка', status: 'OPEN', leads: 1 }),
+      // The site and word of mouth, the client's tiles of 2026-10-01.
+      reg({ sourceId: 'WEB', source: 'Веб-сайт', leads: 1 }),
+      reg({ sourceId: 'UC_9SNG04', source: 'Сарафан маркетинг', stage: 'Обработка', status: 'OPEN', leads: 1 }),
     ],
     triage: [
       triage({ conversations: 40 }),
@@ -108,7 +112,7 @@ describe('leadSourcesOverview', () => {
   })
 
   it('counts every Регистрация lead, and splits the ad ones out', () => {
-    expect(data.totals.registration.leads).toBe(24)
+    expect(data.totals.registration.leads).toBe(26)
     // forms (5) + the ad page (4); calls, «Ген лид» by hand and collagen.sinolife are not ads.
     expect(data.totals.ads.leads).toBe(9)
     expect(data.totals.ads.success).toBe(4)
@@ -137,15 +141,19 @@ describe('leadSourcesOverview', () => {
     expect(data.sources.find((s) => s.key === 'source|UC_8NZNYM')!.channel).toBe('telegram')
   })
 
-  it('totals the non-ad channels without the ads and without «Исход»', () => {
-    // inbound 3 + manual 2 + telegram 2 + smm 0 + other (collagen.sinolife) 1
-    expect(data.totals.nonAd.leads).toBe(8)
-    // manual 2 WON + telegram 1 + collagen.sinolife 1
-    expect(data.totals.nonAd.success).toBe(4)
-    expect(data.totals.nonAd.noAnswer).toBe(3)
-    expect(data.totals.nonAd.successPercent).toBe(50)
-    const outbound = data.channels.find((c) => c.channel === 'outbound')!.outcome.leads
-    expect(data.totals.ads.leads + data.totals.nonAd.leads + outbound).toBe(data.totals.registration.leads)
+  it('fills the client\'s channel tiles, and sums them without «Исход»', () => {
+    const tile = (t: string) => data.tiles.rows.find((r) => r.tile === t)!.outcome
+    expect(data.tiles.rows.map((r) => r.tile)).toEqual(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'sarafan'])
+    // Umar's form (5) and the hand-typed «Ген лид» (2): «Ген лид» whole.
+    expect(tile('generated')).toMatchObject({ leads: 7, success: 5, noAnswer: 2 })
+    expect(tile('inbound')).toMatchObject({ leads: 3, success: 0 })
+    expect(tile('telegram')).toMatchObject({ leads: 2, success: 1 })
+    // Only the sinolifeuz lead the AI qualified, not the page's other three.
+    expect(tile('aiSmm')).toMatchObject({ leads: 1, success: 1 })
+    expect(tile('web')).toMatchObject({ leads: 1, success: 1 })
+    expect(tile('sarafan')).toMatchObject({ leads: 1, success: 0, open: 1 })
+    expect(data.tiles.total).toMatchObject({ leads: 15, success: 8 })
+    expect(data.tiles.total.leads).toBe(data.tiles.rows.reduce((n, r) => n + r.outcome.leads, 0))
   })
 
   it('puts the form and the Meta account on one targetolog, and reads the reach', () => {

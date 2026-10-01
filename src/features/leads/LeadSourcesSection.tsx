@@ -27,6 +27,7 @@ import type {
   LeadChannel,
   LeadOutcomeDto,
   LeadSourcesOverviewDto,
+  LeadTile,
   SourceRowDto,
 } from './leadSourcesApi'
 
@@ -125,44 +126,65 @@ function Tiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; sta
   )
 }
 
-// --- the channels no ad paid for --------------------------------------------
+// --- the client's channel tiles ---------------------------------------------
 
-/** The channels «Jami» adds up (the server's `NON_AD_CHANNELS`), one tile each; «Jami» follows them. */
-const NON_AD_TILES: readonly LeadChannel[] = ['manual', 'inbound', 'telegram', 'smm', 'other']
+const TILE_LABEL: Readonly<Record<LeadTile, string>> = {
+  generated: 'Ген лид',
+  inbound: 'Входящий',
+  telegram: 'Телеграм',
+  aiSmm: 'Сммщик ии',
+  web: 'Веб сайт',
+  sarafan: 'Сарафан',
+}
+
+/** The client's order, as the server's `LEAD_TILES` — kept here too so the loading state can draw labelled tiles. */
+const TILES = Object.keys(TILE_LABEL) as LeadTile[]
+
+/** What a tile counts, where its name alone does not say it. */
+const TILE_NOTE: Partial<Record<LeadTile, string>> = {
+  generated: 'lid-forma + qoʻlda kiritilgan',
+  aiSmm: '«ИИ квал сана» toʻldirilgan · 14.09.2026 dan',
+}
 
 /** «N kval · X%» — a dash for the rate when the channel had no leads. */
 const kvalHint = (o: LeadOutcomeDto) =>
   `${formatNumber(o.success)} kval · ${o.leads > 0 ? formatPercent(o.successPercent) : NO_VALUE}`
 
+const note = (text: string) => (
+  <p className="text-[11px] leading-snug" style={muted}>
+    {text}
+  </p>
+)
+
 /**
- * Every lead that did not come from an ad, by channel, and their total.
- *
- * «Исход» is set apart on purpose: the client decided (2026-09-29) that an
- * operator's own outgoing call is not a lead that came in, so it has its own
- * tile and «Jami» (`totals.nonAd`, summed on the server) leaves it out.
- * Every channel is on the wire even at zero, so a quiet channel reads 0.
+ * The client's lead channels (2026-10-01), one tile each, and their «Jami»
+ * (summed on the server, `tiles.total`). A cut of its own that overlaps
+ * «Reklama lidlari» on purpose: «Ген лид» holds every lead-form lead and
+ * «Сммщик ии» every lead the AI qualified, mostly off the ad pages. Every tile is on the wire even at zero, so a
+ * quiet channel reads 0.
  */
 export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
-  const byChannel = new Map(data?.channels.map((c) => [c.channel, c.outcome]))
-  const outbound = byChannel.get('outbound')
-  const nonAd = data?.totals.nonAd
+  const byTile = new Map(data?.tiles.rows.map((r) => [r.tile, r.outcome]))
+  const total = data?.tiles.total
 
   return (
     <section className="flex min-w-0 flex-col gap-3" aria-labelledby="lead-channel-tiles">
       <h2 id="lead-channel-tiles" className="eyebrow">
         Boshqa kanallar lidlari
       </h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        {NON_AD_TILES.map((channel) => {
-          const o = byChannel.get(channel)
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
+        {TILES.map((tile) => {
+          const o = byTile.get(tile)
+          const text = TILE_NOTE[tile]
           return (
             <StatTile
-              key={channel}
+              key={tile}
               status={status}
-              label={CHANNEL_LABEL[channel]}
+              label={TILE_LABEL[tile]}
               value={o?.leads ?? null}
               unit="count"
               hint={o ? kvalHint(o) : undefined}
+              context={text ? note(text) : undefined}
             />
           )
         })}
@@ -175,31 +197,10 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
           <StatTile
             status={status}
             label="Jami"
-            value={nonAd?.leads ?? null}
+            value={total?.leads ?? null}
             unit="count"
-            hint={nonAd ? kvalHint(nonAd) : undefined}
-            context={
-              <p className="text-[11px] leading-snug" style={muted}>
-                Reklama va Исход kirmaydi
-              </p>
-            }
-          />
-        </div>
-      </div>
-      {/* Its own row, two tiles wide, so it reads as apart from the sum above rather than a seventh term of it. */}
-      <div className="mt-1 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6" data-testid="lead-channel-outbound">
-        <div className="col-span-2 grid">
-          <StatTile
-            status={status}
-            label={CHANNEL_LABEL.outbound}
-            value={outbound?.leads ?? null}
-            unit="count"
-            hint={outbound ? kvalHint(outbound) : undefined}
-            context={
-              <p className="text-[11px] leading-snug" style={muted}>
-                operator oʻzi qoʻngʻiroq qilgan · Jamiga kirmaydi
-              </p>
-            }
+            hint={total ? kvalHint(total) : undefined}
+            context={note(`${TILES.length} kanal yigʻindisi · Исход kirmaydi · forma va ИИ lidlari Reklamada ham bor`)}
           />
         </div>
       </div>

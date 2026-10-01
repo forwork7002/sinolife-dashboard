@@ -31,9 +31,9 @@ import type { TargetProduct } from '../types'
 export type LeadChannel = 'form' | 'page' | 'inbound' | 'manual' | 'telegram' | 'smm' | 'other' | 'outbound'
 
 /**
- * In the order the screen reads them: the ad channels, then the ones nobody
- * paid for, then «Исход» last — an operator's own call is not a lead that
- * came in, so it stands apart from both (and from the non-ad total below).
+ * In the order «Barcha manbalar» reads them: the ad channels, then the ones
+ * nobody paid for, then «Исход» last — an operator's own call is not a lead
+ * that came in, so it stands apart from both.
  */
 export const LEAD_CHANNELS: readonly LeadChannel[] = Object.freeze([
   'form',
@@ -47,27 +47,34 @@ export const LEAD_CHANNELS: readonly LeadChannel[] = Object.freeze([
 ])
 
 /**
- * The channels «Boshqa kanallar · Jami» adds up: every lead that came in on
- * its own. Not `form` or `page` — those are «Reklama lidlari» already — and
- * not `outbound`: the client decided on 2026-09-29 that «Исход» gets its own
- * tile and stays out of this total, since the operator dialled it.
+ * «Boshqa kanallar lidlari» — the client's list of 2026-10-01, one tile each
+ * and their «Jami»: Ген лид, Входящий, Телеграм, Сммщик ии, Веб сайт, Сарафан.
+ * A cut of Регистрация of its own, beside the channels above rather than made
+ * of them: the client asked for «Ген лид» whole (forms and by hand), and for
+ * «Сммщик ии» as every lead the AI qualified out of the DMs — which mostly
+ * come in on the ad pages, so this row and «Reklama lidlari» overlap by
+ * design. «Исход», the ad pages the AI did not qualify, the human SMM sources
+ * and the rest have no tile, and «Jami» is the six tiles' sum.
  */
-export const NON_AD_CHANNELS: readonly LeadChannel[] = Object.freeze(['inbound', 'manual', 'telegram', 'smm', 'other'])
+export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'sarafan'
+
+export const LEAD_TILES: readonly LeadTile[] = Object.freeze(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'sarafan'])
 
 /**
- * The non-ad total from per-channel counts, bucket by bucket. A channel
- * missing from the map counts as zero, so the total is always whole.
+ * The tile a Регистрация deal counts on, or null when it has none. The AI's
+ * mark wins over every source, «Ген лид» included, so a qualified sinolif_tg
+ * chat is «Сммщик ии», not «Телеграм» — no lead is counted twice in «Jami».
+ * The portal fills the mark since 2026-09-14; before that the tile reads 0.
  */
-export function nonAdTotal<B extends string>(
-  byChannel: ReadonlyMap<LeadChannel, Readonly<Record<B, number>>>,
-  buckets: readonly B[],
-): Record<B, number> {
-  const total = Object.fromEntries(buckets.map((b) => [b, 0])) as Record<B, number>
-  for (const channel of NON_AD_CHANNELS) {
-    const counts = byChannel.get(channel)
-    if (counts) for (const b of buckets) total[b] += counts[b]
-  }
-  return total
+export function leadTile(sourceId: string | null, aiQualified: boolean, vocabulary: LeadSourceVocabulary): LeadTile | null {
+  if (aiQualified) return 'aiSmm'
+  if (sourceId === null) return null
+  if (sourceId === vocabulary.generated) return 'generated'
+  if (vocabulary.inbound.has(sourceId)) return 'inbound'
+  if (vocabulary.telegram.has(sourceId)) return 'telegram'
+  if (vocabulary.web.has(sourceId)) return 'web'
+  if (vocabulary.sarafan.has(sourceId)) return 'sarafan'
+  return null
 }
 
 /**
@@ -86,6 +93,10 @@ export interface LeadSourceVocabulary {
   readonly telegram: ReadonlySet<string>
   /** Leads the SMM managers («Сммщик») bring in from the brand's pages. */
   readonly smm: ReadonlySet<string>
+  /** «Веб-сайт» — the brands' own sites. */
+  readonly web: ReadonlySet<string>
+  /** «Сарафан маркетинг» — word of mouth. */
+  readonly sarafan: ReadonlySet<string>
   /** «Ген лид» — what a CRM form writes, and what operators type leads under by hand. */
   readonly generated: string
 }
