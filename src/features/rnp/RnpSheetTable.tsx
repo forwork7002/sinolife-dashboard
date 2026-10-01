@@ -134,8 +134,8 @@ export function RnpSheetTable({
                 days={days}
                 today={today}
                 span={span}
-                // Only a typed row gets the month, so every other line's memo is untouched by it.
-                editMonth={row?.manual ? editCostsFor : null}
+                // Only a row with a typed cell gets the month, so every other line's memo is untouched by it.
+                editMonth={row?.manual || row?.planInput ? editCostsFor : null}
               />
             )
           })}
@@ -384,9 +384,22 @@ function ValueRow({
         )}
         <LabelBody line={line} hint={row.hint} manual={row.manual !== null} />
       </th>
-      <Cell tint={planTint} strong={planTint !== undefined}>
-        {figure(row.plan, row.unit)}
-      </Cell>
+      {editMonth !== null && row.planInput !== null ? (
+        // One of the sheet's typed plans (column C): an open field, like the typed days.
+        <CostDayCell
+          month={editMonth}
+          day=""
+          manual={{ kind: 'plan', team: row.planInput.team, metric: row.planInput.metric, unit: row.unit }}
+          label={`${row.planInput.team || 'Kompaniya'} · ${line.label || row.label}`}
+          value={row.plan}
+          className={`tabular ${RULE} ${VRULE} h-9 text-right whitespace-nowrap ${planTint !== undefined ? 'font-semibold' : ''}`}
+          style={{ color: 'var(--ink-primary)', background: planTint ?? SUMMARY_CELL }}
+        />
+      ) : (
+        <Cell tint={planTint} strong={planTint !== undefined}>
+          {figure(row.plan, row.unit)}
+        </Cell>
+      )}
       <Cell tint={accent ? ACCENT[accent].fact : undefined} strong>
         {figure(row.fact, row.unit)}
       </Cell>

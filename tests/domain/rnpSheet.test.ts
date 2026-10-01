@@ -79,7 +79,8 @@ function input(over: Partial<RnpSheetInput> = {}): RnpSheetInput {
         { team: '', metric: 'lead_value', fromDay: 1, valueCenti: 40_000_000n },
         { team: '', metric: 'lead_value', fromDay: 19, valueCenti: 50_000_000n },
         { team: 'Sevinch', metric: 'leads', fromDay: 1, valueCenti: 30_000n },
-        { team: 'Sevinch', metric: 'conversion', fromDay: 1, valueCenti: 5_000n },
+        // 200 000 a cheque: 30 M ÷ 200 000 = 150 orders planned, 150 ÷ 300 leads = a 50% conversion plan.
+        { team: 'Sevinch', metric: 'avg_cheque1', fromDay: 1, valueCenti: 20_000_000n },
       ],
       fakt: [{ rop: 'Sevinch', fakt1Minor: som(30_000_000), fakt2Minor: null }],
     },
@@ -363,14 +364,40 @@ describe('buildRnpSheet — the sheet\'s own names and plans', () => {
     expect(dto.teams.find((t) => t.rop === 'Sadriddin')?.label).toBe('Садриддин РОП')
   })
 
-  it('lets «План бажарилиши» and «Отказ %» carry a plan', () => {
+  it('lets «План бажарилиши» carry a typed plan, and «Отказ %» follow the success plan as the sheet\'s 1 − C271', () => {
     const rows = [
       { team: 'Sevinch', metric: 'plan_pct', fromDay: 1, valueCenti: 8_000n },
-      { team: 'Sevinch', metric: 'refusal_rate', fromDay: 1, valueCenti: 1_000n },
+      { team: 'Sevinch', metric: 'success_rate', fromDay: 1, valueCenti: 9_000n },
     ]
     const dto = buildRnpSheet(input({ plans: { rows, fakt: [] } }))
     expect(row(dto, 'team:Sevinch', 'team:Sevinch:plan_pct').plan).toBe(80)
+    expect(row(dto, 'team:Sevinch', 'team:Sevinch:plan_pct').planInput).toEqual({ team: 'Sevinch', metric: 'plan_pct' })
     expect(row(dto, 'logistics:Sevinch', 'lg:Sevinch:refused_pct').plan).toBe(10)
+    expect(row(dto, 'logistics:Sevinch', 'lg:Sevinch:refused_pct').planInput).toBeNull()
+  })
+
+  it('derives the plans the sheet computes and leaves only the typed ones open', () => {
+    const rows = [
+      { team: 'Sevinch', metric: 'leads', fromDay: 1, valueCenti: 30_000n },
+      { team: 'Sevinch', metric: 'avg_cheque1', fromDay: 1, valueCenti: 20_000_000n },
+      { team: 'Sevinch', metric: 'avg_cheque2', fromDay: 1, valueCenti: 25_000_000n },
+      { team: '', metric: 'reg_qualified', fromDay: 1, valueCenti: 1_735_000n },
+      { team: '', metric: 'reg_qualified_pct', fromDay: 1, valueCenti: 5_000n },
+    ]
+    const dto = buildRnpSheet(input({ plans: { rows, fakt: [{ rop: 'Sevinch', fakt1Minor: som(30_000_000), fakt2Minor: som(20_000_000) }] } }))
+    const r = (key: string) => row(dto, 'team:Sevinch', `team:Sevinch:${key}`)
+    // C92 `=C93/C91`, C90 `=C92/C89`, C97 `=C96/C99`, C98 `=C97/C89`.
+    expect(r('orders1').plan).toBe(150)
+    expect(r('conv1').plan).toBe(50)
+    expect(r('orders2').plan).toBe(80)
+    expect(r('conv2').plan).toBeCloseTo((80 / 300) * 100, 6)
+    for (const key of ['orders1', 'conv1', 'orders2', 'conv2']) expect(r(key).planInput).toBeNull()
+    for (const [key, metric] of [['reach', 'leads'], ['cheque1', 'avg_cheque1'], ['fakt1', 'fakt1'], ['plan_pct', 'plan_pct'], ['headcount', 'headcount'], ['fakt2', 'fakt2'], ['cheque2', 'avg_cheque2']] as const) {
+      expect(r(key).planInput).toEqual({ team: 'Sevinch', metric })
+    }
+    // C47 `=C48/C49`: 17 350 kval at 50% is 34 700 leads.
+    expect(row(dto, 'registration', 'reg:leads').plan).toBe(34_700)
+    expect(row(dto, 'registration', 'reg:leads').planInput).toBeNull()
   })
 
   it('prices the registrar\'s kval by the day\'s lead value in «План продаж» (row 347)', () => {
@@ -484,6 +511,15 @@ describe('buildRnpSheet — the brand P&L (rows 394–445)', () => {
     expect(row(d, 'project:collagen', 'pj:collagen:cost_bloggers').manual).toEqual({ kind: 'cost', project: 'Collagen', line: 'bloggers' })
     // CAC in dollars over the первичка orders delivered.
     expect(d21(d, 'pj:collagen:cac')).toBeCloseTo((spendUzs * 1.1 + 30_000) / 12_200 / 1, 6)
+  })
+
+  it('takes the sheet\'s own percentages when the month has none saved: plan 11 %, targetolog 10 %, marketolog 1 %', () => {
+    const base = input()
+    const d = buildRnpSheet({ ...base, fakt: [fakt('2026-09-21', 'Sevinch', { fakt1Orders: 1, fakt1Minor: som(3_000_000), fakt2Orders: 1, fakt2Minor: som(2_000_000) })] })
+    const spendUzs = 100 * 12_200
+    expect(d21(d, 'pj:collagen:cost_plan')).toBe(2_000_000 * 0.11)
+    expect(d21(d, 'pj:collagen:cost_targetolog')).toBe(spendUzs * 0.1)
+    expect(d21(d, 'pj:collagen:cost_marketer')).toBe(2_000_000 * 0.01)
   })
 
   it('counts leads by brand and puts the P&L after «Свод»', () => {

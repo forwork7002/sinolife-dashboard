@@ -23,6 +23,7 @@ function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRo
     tone: 'plain',
     hint: null,
     manual: null,
+    planInput: null,
     reliableFrom: null,
     ...over,
   }

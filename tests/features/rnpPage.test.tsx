@@ -48,6 +48,7 @@ function row(over: Partial<RnpRowDto> & Pick<RnpRowDto, 'key' | 'label'>): RnpRo
     tone: 'plain',
     hint: null,
     manual: null,
+    planInput: null,
     reliableFrom: null,
     ...over,
   }
@@ -399,6 +400,58 @@ describe('RnpPage — the sheet', () => {
       const bloggers = [...grid.querySelectorAll<HTMLTableRowElement>('tbody tr')].find((tr) => tr.querySelector('th')?.textContent?.startsWith('Блогерлар'))!
       expect(within(bloggers).getByText('qoʻlda')).toBeTruthy()
       expect(bloggers.textContent).not.toContain('Bitrix24ʼda yoʻq')
+    })
+  })
+
+  describe('typed plans — the sheet\'s column C (2026-10-01)', () => {
+    const withPlans = (canEditPlans: boolean): RnpOverviewDto => ({
+      ...FIXTURE,
+      canEditPlans,
+      blocks: [
+        ...FIXTURE.blocks,
+        {
+          id: 'team:Lola',
+          kind: 'team',
+          title: 'Lola РОП',
+          subtitle: null,
+          team: 'Lola',
+          sheet: null,
+          rows: [
+            row({ key: 'team:Lola:plan_pct', label: 'План бажарилиши, %', unit: 'percent', additive: false, plan: 80, planInput: { team: 'Lola', metric: 'plan_pct' } }),
+            row({ key: 'team:Lola:orders1', label: 'Буюртма сони', plan: 625 }),
+          ],
+        },
+      ],
+      lines: [
+        ...FIXTURE.lines,
+        { kind: 'value', row: 107, team: 'Lola', label: 'План бажарилиши', sub: 'Лола РОП', tone: 'team', fact: 'plan', bold: true, key: 'team:Lola:plan_pct' },
+        { kind: 'value', row: 105, team: 'Lola', label: 'Буюртма сони', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'team:Lola:orders1' },
+      ],
+    })
+    const plan = () => screen.getByRole('textbox', { name: 'Lola · План бажарилиши — reja, %' }) as HTMLInputElement
+
+    it('types a plan the sheet types, with a decimal comma, and posts it to /rnp/plan', async () => {
+      fixture = withPlans(true)
+      await draw()
+      expect(plan().value).toBe('80')
+      fireEvent.focus(plan())
+      fireEvent.change(plan(), { target: { value: '82,5' } })
+      await act(async () => {
+        fireEvent.keyDown(plan(), { key: 'Enter' })
+      })
+      await waitFor(() => expect(posted).toHaveLength(1))
+      expect(postedTo).toEqual(['/api/v1/rnp/plan'])
+      expect(posted[0]).toEqual({ month: '2026-09', cells: [{ team: 'Lola', metric: 'plan_pct', value: 82.5 }] })
+    })
+
+    it('leaves a plan the sheet computes as a figure, and every plan read-only without kpi:manage', async () => {
+      fixture = withPlans(true)
+      await draw()
+      expect(screen.queryByRole('textbox', { name: /Буюртма сони — reja/ })).toBeNull()
+      cleanup()
+      fixture = withPlans(false)
+      await draw()
+      expect(screen.queryAllByRole('textbox')).toHaveLength(0)
     })
   })
 

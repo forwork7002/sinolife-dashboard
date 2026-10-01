@@ -33,7 +33,7 @@ import { env } from '@/server/config/env'
 import { NOT_PACKED_STAGES } from '@/server/integrations/crm/bitrix24/mapping'
 
 import { InsightsRepository } from './insightsRepository'
-import type { RnpCostLine, RnpCostProject } from '@/server/domain/rnp/rnpSheet'
+import { type RnpCostLine, type RnpCostProject, SETTING_LEAD_VALUE } from '@/server/domain/rnp/rnpSheet'
 
 /** Deals handed to one ROP on one day. `rop` null: not handed to a ROP team. */
 export interface RnpLeadDayRow {
@@ -512,7 +512,7 @@ export class RnpRepository {
   }
 
   async plans(month: string): Promise<{ rows: RnpPlanRow[]; fakt: RnpTeamFaktPlan[] }> {
-    const [rows, fakt] = await Promise.all([
+    const [rows, fakt, inherited] = await Promise.all([
       this.prisma.rnpPlan.findMany({
         where: { month: monthDate(month) },
         select: { team: true, metric: true, fromDay: true, valueCenti: true },
@@ -521,8 +521,70 @@ export class RnpRepository {
         where: { month: monthDate(month) },
         select: { rop: true, fakt1Minor: true, fakt2Minor: true },
       }),
+      this.inheritedLeadValues(month),
     ])
-    return { rows, fakt }
+    return { rows: rows.some((r) => r.metric === SETTING_LEAD_VALUE) ? rows : [...rows, ...inherited], fakt }
+  }
+
+  /**
+   * A lead's value is the sheet's constant (400 000, then 500 000 from the
+   * 14th of September), not a plan: a month nobody gave one keeps the last
+   * value in force — each team's last row of the latest earlier month that
+   * has any, from day 1. No form writes it since «Rejalar» was removed.
+   */
+  private async inheritedLeadValues(month: string): Promise<RnpPlanRow[]> {
+    const previous = await this.prisma.rnpPlan.findFirst({
+      where: { month: { lt: monthDate(month) }, metric: SETTING_LEAD_VALUE },
+      orderBy: { month: 'desc' },
+      select: { month: true },
+    })
+    if (!previous) return []
+    const rows = await this.prisma.rnpPlan.findMany({
+      where: { month: previous.month, metric: SETTING_LEAD_VALUE },
+      orderBy: { fromDay: 'asc' },
+      select: { team: true, metric: true, fromDay: true, valueCenti: true },
+    })
+    const last = new Map(rows.map((r) => [r.team, r]))
+    return [...last.values()].map((r) => ({ ...r, fromDay: 1 }))
+  }
+
+  /**
+   * Write typed plan cells: a number sets the month's plan (from day 1), null
+   * clears it. A team's FAKT 1 / FAKT 2 live in `team_month_plan` (one row
+   * per team, both columns); every other plan in `rnp_plan`. One transaction.
+   */
+  async savePlanCells(
+    month: string,
+    cells: readonly { team: string; metric: string; value: number | null }[],
+    by: string,
+  ): Promise<void> {
+    const m = monthDate(month)
+    const centi = (v: number) => BigInt(Math.round(v * 100))
+    await this.prisma.$transaction(async (tx) => {
+      for (const c of cells) {
+        if (c.team !== '' && (c.metric === 'fakt1' || c.metric === 'fakt2')) {
+          const column = c.metric === 'fakt1' ? 'fakt1Minor' : 'fakt2Minor'
+          const value = c.value === null ? null : centi(c.value)
+          const row = await tx.teamMonthPlan.upsert({
+            where: { month_rop: { month: m, rop: c.team } },
+            create: { month: m, rop: c.team, [column]: value, updatedBy: by },
+            update: { [column]: value, updatedBy: by },
+            select: { fakt1Minor: true, fakt2Minor: true },
+          })
+          // «No plan» is the absence of a row, never a row of two nulls.
+          if (row.fakt1Minor === null && row.fakt2Minor === null) await tx.teamMonthPlan.delete({ where: { month_rop: { month: m, rop: c.team } } })
+          continue
+        }
+        const key = { month: m, team: c.team, metric: c.metric, fromDay: 1 }
+        if (c.value === null) await tx.rnpPlan.deleteMany({ where: key })
+        else
+          await tx.rnpPlan.upsert({
+            where: { month_team_metric_fromDay: key },
+            create: { ...key, valueCenti: centi(c.value), updatedBy: by },
+            update: { valueCenti: centi(c.value), updatedBy: by },
+          })
+      }
+    })
   }
 }
 

@@ -5,15 +5,19 @@ import { type CSSProperties, type KeyboardEvent, useId, useState } from 'react'
 
 import { apiWrite } from '@/lib/api'
 
-import type { RnpManual, SaveRnpCostsBody, SaveRnpHeadcountBody } from './rnpApi'
-import { rnpUzs } from './rnpFigures'
+import type { RnpManual, RnpUnit, SaveRnpCostsBody, SaveRnpHeadcountBody, SaveRnpPlanBody } from './rnpApi'
+import { rnpNumber, rnpUzs } from './rnpFigures'
+
+/** What a typed cell saves: a typed row's day (`RnpManual`), or a typed plan cell (column C, `planInput`). */
+export type RnpTyped = RnpManual | { readonly kind: 'plan'; readonly team: string; readonly metric: string; readonly unit: RnpUnit }
 
 /**
  * A typed day cell — the exceptions to «nothing is typed by hand»: the P&L's
  * five cost lines no system holds (bloggers, nutritionist, brand face,
  * marketing costs, team; rows 411–415 / 438–442 — the client, 2026-09-30),
  * in whole soʻm, and each ROP team's «Ходим сони» (2026-10-01), in whole
- * people. Typed in place, one day at a time.
+ * people, typed in place one day at a time — and every plan the sheet types
+ * in column C (2026-10-01, `planInput`), in the row's own unit.
  *
  * ALWAYS OPEN, like a spreadsheet (the client: «qo'lda kiritiladigan joylar
  * ochiq tursin»): every day of these rows is a field — click and type, no
@@ -38,8 +42,8 @@ export function CostDayCell({
 }: {
   month: string
   day: string
-  /** What the day saves under: a cost line or a team's headcount. */
-  manual: RnpManual
+  /** What the cell saves under: a cost line's or a team's headcount's day, or a plan. */
+  manual: RnpTyped
   /** «Блогерлар, 21.09» — what the field is called. */
   label: string
   value: number | null
@@ -80,23 +84,59 @@ function parseHeads(text: string): number | null {
   return /^\d+$/.test(clean) ? Number(clean) : Number.NaN
 }
 
-/** Each kind of typed cell: how it is read, shown, checked and saved. */
-const KIND = {
-  cost: { parse: parseCost, show: rnpUzs, max: MAX_SUM, invalid: INVALID, tooBig: TOO_BIG, unit: 'soʻm' },
-  headcount: {
-    parse: parseHeads,
-    show: (v: number) => String(v),
-    max: 1000,
-    invalid: 'Butun son kiriting (kishi), masalan 12.',
-    tooBig: 'Juda katta son — 1000 kishidan oshmasin.',
-    unit: 'kishi',
-  },
-} as const
+/**
+ * A plan in percent or dollars: up to two decimals after a comma («12,5»,
+ * the way the sheet writes them) or a dot («12.5»), thousands grouped by
+ * dots («1.200,5»); anything else is NaN.
+ */
+function parseDecimal(text: string): number | null {
+  const clean = text.replace(/[\s\u00a0\u202f]/g, '').trim()
+  if (clean === '') return null
+  if (/^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(clean)) return Number(clean.replaceAll('.', '').replace(',', '.'))
+  if (/^\d+([.,]\d{1,2})?$/.test(clean)) return Number(clean.replace(',', '.'))
+  return Number.NaN
+}
 
-function request(month: string, day: string, manual: RnpManual, value: number | null): { path: string; body: SaveRnpCostsBody | SaveRnpHeadcountBody } {
-  return manual.kind === 'cost'
-    ? { path: '/rnp/costs', body: { month, cells: [{ day, project: manual.project, line: manual.line, value }] } }
-    : { path: '/rnp/headcount', body: { month, cells: [{ day, rop: manual.rop, value }] } }
+interface KindSpec {
+  readonly parse: (text: string) => number | null
+  readonly show: (value: number) => string
+  readonly max: number
+  readonly invalid: string
+  readonly tooBig: string
+  /** The field's unit, in its accessible name. */
+  readonly unit: string
+}
+
+const COST: KindSpec = { parse: parseCost, show: rnpUzs, max: MAX_SUM, invalid: INVALID, tooBig: TOO_BIG, unit: 'soʻm' }
+const HEADCOUNT: KindSpec = {
+  parse: parseHeads,
+  show: (v) => String(v),
+  max: 1000,
+  invalid: 'Butun son kiriting (kishi), masalan 12.',
+  tooBig: 'Juda katta son — 1000 kishidan oshmasin.',
+  unit: 'kishi',
+}
+const PLAN: Readonly<Record<RnpUnit, KindSpec>> = {
+  uzs: { ...COST, unit: 'reja, soʻm' },
+  count: { ...COST, show: (v) => rnpNumber(v), invalid: 'Butun son kiriting, masalan 1.400.', tooBig: 'Juda katta son.', unit: 'reja' },
+  percent: { parse: parseDecimal, show: (v) => rnpNumber(Math.round(v * 100) / 100), max: 100_000, invalid: 'Son kiriting, masalan 80 yoki 12,5.', tooBig: 'Juda katta son.', unit: 'reja, %' },
+  usd: { parse: parseDecimal, show: (v) => rnpNumber(Math.round(v * 100) / 100), max: MAX_SUM, invalid: 'Son kiriting, masalan 36.000 yoki 0,8.', tooBig: 'Juda katta son.', unit: 'reja, $' },
+}
+
+/** Each kind of typed cell: how it is read, shown, checked and saved. */
+function specOf(manual: RnpTyped): KindSpec {
+  return manual.kind === 'cost' ? COST : manual.kind === 'headcount' ? HEADCOUNT : PLAN[manual.unit]
+}
+
+function request(month: string, day: string, manual: RnpTyped, value: number | null): { path: string; body: SaveRnpCostsBody | SaveRnpHeadcountBody | SaveRnpPlanBody } {
+  switch (manual.kind) {
+    case 'cost':
+      return { path: '/rnp/costs', body: { month, cells: [{ day, project: manual.project, line: manual.line, value }] } }
+    case 'headcount':
+      return { path: '/rnp/headcount', body: { month, cells: [{ day, rop: manual.rop, value }] } }
+    case 'plan':
+      return { path: '/rnp/plan', body: { month, cells: [{ team: manual.team, metric: manual.metric, value }] } }
+  }
 }
 
 function CostField({
@@ -109,13 +149,13 @@ function CostField({
 }: {
   month: string
   day: string
-  manual: RnpManual
+  manual: RnpTyped
   label: string
   value: number | null
   last: boolean
 }) {
   const queryClient = useQueryClient()
-  const kind = KIND[manual.kind]
+  const kind = specOf(manual)
   const shown = (v: number | null) => (v === null ? '' : kind.show(v))
   const [text, setText] = useState(() => shown(value))
   const [problem, setProblem] = useState<{ message: string; text: string } | null>(null)

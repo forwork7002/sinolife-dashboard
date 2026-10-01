@@ -2,7 +2,7 @@
  * «RNP jadvali» — the wire shapes, restated for the client.
  *
  * Mirrors the DTOs of `src/server/domain/rnp/rnpSheet.ts` and `rnpSheetView.ts`, and the bodies of
- * `src/app/api/v1/rnp/costs/schema.ts` and `…/headcount/schema.ts`.
+ * `src/app/api/v1/rnp/costs/schema.ts`, `…/headcount/schema.ts` and `…/plan/schema.ts`.
  * Nothing checks the mirror — edit both sides.
  */
 
@@ -29,6 +29,8 @@ export interface RnpRowDto {
   readonly index: number | null
   /** One value per day of the month; null for a day not lived or undefined. */
   readonly days: readonly (number | null)[]
+  /** The plan cell is typed by hand and saved under this key (`/rnp/plan`); null = computed or none. */
+  readonly planInput: RnpPlanInput | null
   /**
    * Where this row sits on the client's «РНП» sheet — its row number and its
    * label there; null = a dashboard addition. Not used on screen.
@@ -47,6 +49,12 @@ export interface RnpRowDto {
 export type RnpCostLine = 'bloggers' | 'nutritionist' | 'brandface' | 'marketing' | 'team'
 /** The two brands whose P&L carries them (`RNP_COST_PROJECTS`). */
 export type RnpCostProject = 'Collagen' | 'Zextra'
+
+/** What a typed plan cell is saved under (`RnpPlanInput` on the server): '' = company-wide. */
+export interface RnpPlanInput {
+  readonly team: string
+  readonly metric: string
+}
 
 /** A typed row: a P&L cost line (`/rnp/costs`) or a ROP team's «Ходим сони» (`/rnp/headcount`). */
 export type RnpManual =
@@ -151,6 +159,12 @@ export interface RnpOverviewDto {
 export interface SaveRnpCostsBody {
   readonly month: string
   readonly cells: readonly { day: string; project: RnpCostProject; line: RnpCostLine; value: number | null }[]
+}
+
+/** What a typed plan cell posts to `/rnp/plan`: the value in the row's own unit, up to two decimals; null clears it. */
+export interface SaveRnpPlanBody {
+  readonly month: string
+  readonly cells: readonly { team: string; metric: string; value: number | null }[]
 }
 
 export interface SaveRnpHeadcountBody {

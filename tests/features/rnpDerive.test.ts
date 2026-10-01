@@ -23,6 +23,7 @@ const base: RnpRowDto = {
   tone: 'plain',
   hint: null,
   manual: null,
+  planInput: null,
   reliableFrom: null,
 }
 

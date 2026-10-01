@@ -205,6 +205,20 @@ export class RnpService {
     await this.repository.saveManualCosts(cells, by)
   }
 
+  savePlanCells: RnpRepository['savePlanCells'] = async (month, cells, by) => {
+    await this.repository.savePlanCells(month, cells, by)
+  }
+
+  /**
+   * The plan cells the month's sheet leaves open (`planInput`), as
+   * `team|metric` — the only cells a typed plan may name. A plan the sheet
+   * computes (orders, conversions, «Отказ %», row 47) is not among them.
+   */
+  async planInputs(input: { month: string; timeZone: string; now: Date }): Promise<ReadonlySet<string>> {
+    const sheet = await this.overview({ ...input, canEditPlans: false })
+    return new Set(sheet.blocks.flatMap((b) => b.rows).flatMap((r) => (r.planInput ? [`${r.planInput.team}|${r.planInput.metric}`] : [])))
+  }
+
   saveManualHeadcount: RnpRepository['saveManualHeadcount'] = async (cells, by) => {
     await this.repository.saveManualHeadcount(cells, by)
   }
