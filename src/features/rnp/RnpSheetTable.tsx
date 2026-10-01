@@ -61,6 +61,9 @@ import { useDragScroll } from './useDragScroll'
  * «Конверсия» teal — with their index pill and their days against the day
  * plan. Every other row is plain ink on the card. Today's and Sunday's
  * columns stay marked: they are where in the month, not a row's colour.
+ * The pinned label column stays plain on «Сумма факт 1» and «Конверсия» —
+ * only their figures are tinted («chapdagi panel boʻyalmasin», 2026-10-01);
+ * the ROP's «План бажарилиши» heading keeps its label tint.
  * Every tint is a `color-mix`, opaque over the card in the pinned column so
  * the days cannot show through it.
  *
@@ -376,7 +379,9 @@ function ValueRow({
         className={`tcol-sticky is-edge ${RULE} py-1.5 pr-3 pl-4 text-left text-[13px] leading-snug sm:pl-5 ${bold ? 'font-semibold' : 'font-medium'}`}
         style={{ left: 0, ...labelStyle(accent) }}
       >
-        {accent && <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px]" style={{ background: ACCENT[accent].hue }} />}
+        {accent === 'plan' && (
+          <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px]" style={{ background: ACCENT.plan.hue }} />
+        )}
         <LabelBody line={line} hint={row.hint} manual={row.manual !== null} />
       </th>
       <Cell tint={planTint} strong={planTint !== undefined}>
@@ -625,9 +630,12 @@ const ACCENT: Record<RowAccent, { hue: string; band: string; fact: string }> = {
   conversion: { hue: 'var(--series-3)', band: mix('var(--series-3)', 7), fact: mix('var(--series-3)', 18) },
 }
 
-/** The pinned label cell of a value line: opaque over the card, so the days never show through. */
+/**
+ * The pinned label cell of a value line: only the ROP's heading row is tinted,
+ * opaque over the card so the days never show through.
+ */
 function labelStyle(accent: RowAccent | null): { background?: string; color: string } {
-  if (!accent) return { color: 'var(--ink-primary)' }
+  if (accent !== 'plan') return { color: 'var(--ink-primary)' }
   const { hue } = ACCENT[accent]
   return { background: mix(hue, 16, 'var(--surface-raised)'), color: inkOf(hue) }
 }
