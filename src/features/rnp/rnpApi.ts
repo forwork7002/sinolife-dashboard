@@ -169,8 +169,8 @@ export const SETTING_MARKETER_PCT = 'marketer_pct'
 
 /**
  * What the «Rejalar» form posts. `rows` carry the row's own unit, up to two
- * decimals; `fakt` is a team's FAKT 1 / FAKT 2 in whole soʻm, the plan
- * «Sotuv · ROP» reads too. Null removes.
+ * decimals; `fakt` is a team's FAKT 1 / FAKT 2 in whole soʻm, kept in
+ * `team_month_plan`. Null removes.
  */
 export interface SaveRnpPlansBody {
   readonly month: string

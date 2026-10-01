@@ -535,9 +535,9 @@ export class RnpRepository {
 
   /**
    * Replace what the form names, in ONE transaction. FAKT 1 / FAKT 2 go to
-   * `team_month_plan` — the plan «Sotuv · ROP» reads — so the two screens
-   * cannot hold two different plans for one team. A null value deletes: «no
-   * plan» is the absence of a row, never a plan of zero.
+   * `team_month_plan`, so a team never holds two different plans for one
+   * month. A null value deletes: «no plan» is the absence of a row, never a
+   * plan of zero.
    */
   async savePlans(
     month: string,

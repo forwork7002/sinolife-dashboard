@@ -83,7 +83,7 @@ export const t = {
     },
     leads: {
       title: 'Lidlar',
-      lead: 'Bitrix24 ga tushgan har bir lid — qaysi manbadan kelgani, qanchasi kval boʻlgani, qachon tarqatilgani va ROP jamoalari rejasi. Kunlar Toshkent vaqti boʻyicha.',
+      lead: 'Bitrix24 ga tushgan har bir lid — qaysi manbadan kelgani, qanchasi kval boʻlgani va qachon tarqatilgani. Kunlar Toshkent vaqti boʻyicha.',
     },
     registration: {
       title: 'Registratsiya',

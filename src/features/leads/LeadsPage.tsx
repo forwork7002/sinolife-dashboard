@@ -14,14 +14,13 @@ import { t } from '@/lib/messages'
 
 import { LeadCohortSection } from './LeadCohortSection'
 import { LeadSourcesSection } from './LeadSourcesSection'
-import { SalesTeamSection } from './SalesTeamSection'
 import type { LeadSourcesOverviewDto } from './leadSourcesApi'
 
 /**
  * «Lidlar» — everything about a lead once Bitrix24 has it, in one section.
  *
  * Asked for on 2026-09-25 («yangi bir boʻlim ochamiz lidlar deb, oʻsha yerga
- * koʻchiramiz lid kogortasini ham … Sotuv ROP ni ham»). Three tabs, each on
+ * koʻchiramiz lid kogortasini ham … Sotuv ROP ni ham»). Two tabs, each on
  * its own clock:
  *
  *   «Lid manbalari» — every Регистрация lead by source, the lead forms per
@@ -29,16 +28,16 @@ import type { LeadSourcesOverviewDto } from './leadSourcesApi'
  *     period (`LeadSourcesSection`).
  *   «Lid kogortasi» — arrival day × distribution day, on its own fourteen-day
  *     window (`LeadCohortSection`, moved from «Reklama samarasi»).
- *   «Sotuv · ROP» — the client's ROP sheets, on its own calendar month
- *     (`SalesTeamSection`, moved from «Reklama samarasi»).
+ *
+ * «Sotuv · ROP» was removed on 2026-10-01 at the user's request.
  *
  * «Reklama samarasi» kept the Meta side — spend, campaigns, the client's
  * «DM» / «Отчёт Т» sheets.
  *
- * ONE REQUEST PER TAB: the sources request does not go out while another tab
- * is open, and the other tabs fetch inside their own sections.
+ * ONE REQUEST PER TAB: the sources request does not go out while the cohort
+ * tab is open, and the cohort tab fetches inside its own section.
  */
-type Tab = 'sources' | 'cohort' | 'sales'
+type Tab = 'sources' | 'cohort'
 
 export function LeadsPage() {
   const { apiParams } = useDashboardFilters()
@@ -75,15 +74,12 @@ export function LeadsPage() {
           options={[
             { value: 'sources', label: 'Lid manbalari' },
             { value: 'cohort', label: 'Lid kogortasi' },
-            { value: 'sales', label: 'Sotuv · ROP' },
           ]}
         />
       }
     >
       <div className="flex min-w-0 flex-col gap-6">
-        {tab === 'sales' ? (
-          <SalesTeamSection />
-        ) : tab === 'cohort' ? (
+        {tab === 'cohort' ? (
           <LeadCohortSection />
         ) : status === 'error' ? (
           <Card className="p-5">

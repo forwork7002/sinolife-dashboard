@@ -125,11 +125,11 @@ const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
   */
   'marketing',
   /*
-    «LIDLAR» (2026-09-25) FOR THE SAME REASON. Its three tabs moved here from
+    «LIDLAR» (2026-09-25) FOR THE SAME REASON. Its tabs moved here from
     «Reklama samarasi» or were built for it: a Регистрация lead sits with
     the registrar who picked it up, a conversation with the bot, Meta rows
-    with nobody — and «Sotuv · ROP» / «Lid kogortasi» set every team side by
-    side on purpose. Its endpoints ask for `analytics:read:all`.
+    with nobody — and «Lid kogortasi» sets every team side by side on
+    purpose. Its endpoints ask for `analytics:read:all`.
   */
   'leads',
   /*

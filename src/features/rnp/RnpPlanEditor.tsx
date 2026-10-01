@@ -34,7 +34,7 @@ import { muted } from '@/features/reklama/reklamaUi'
  * and the save sends it once.
  *
  * A TEAM'S FAKT 1 / FAKT 2 GO TO `fakt`, not `rows`: the server keeps them in
- * the plan «Sotuv · ROP» reads, so the two screens cannot disagree.
+ * `team_month_plan`, one row per team and month.
  *
  * REGISTRARS → «GURUH» is the month's grouping of the Регистрация desk, which
  * nothing in Bitrix24 holds either. It posts to `/rnp/registrars`, after the

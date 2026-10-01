@@ -31,7 +31,7 @@ import { SideSection } from './SideSection'
  * totals and a table of days, the way the sheets read, then every campaign.
  *
  * THE TWO OTHER TABS MOVED ON 2026-09-25 to their own section, «Lidlar»
- * (`features/leads`): «Sotuv · ROP», the client's ROP sheets, and «Lid
+ * (`features/leads`): «Sotuv · ROP» (removed 2026-10-01) and «Lid
  * kogortasi». This page is the Meta side alone now, and one request.
  *
  * Every ad table is built from the same Meta rows and the same lead scan, so

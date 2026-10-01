@@ -37,10 +37,9 @@ import { canvasMeasure, contentMinWidths, rnpNumber } from './rnpFigures'
  * column frozen — the sheet's frozen row 3, over ~370 rows.
  *
  * ITS OWN MONTH, not the dashboard preset: the sheet is a calendar month by
- * construction, the same reason «Sotuv · ROP» keeps its own. It opens on the
- * month it is today in Tashkent and follows the calendar on its own — a page
- * left open over the 1st moves to the new month — unless somebody picked
- * another month to look at.
+ * construction. It opens on the month it is today in Tashkent and follows
+ * the calendar on its own — a page left open over the 1st moves to the new
+ * month — unless somebody picked another month to look at.
  *
  * «ROP» CUTS THE SHEET TO ONE TEAM (the client, 2026-09-30: «barchasi va
  * roplar bo'yicha ham»): its block and its logistics, each

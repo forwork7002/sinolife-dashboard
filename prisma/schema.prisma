@@ -1403,7 +1403,7 @@ model MetaCampaignDaily {
 }
 
 // ---------------------------------------------------------------------------
-// Sales plans — typed in by an administrator on «Reklama samarasi · Sotuv»
+// Sales plans — FAKT 1 / FAKT 2 month plans are typed in on «RNP jadvali»
 //
 // The client's ROP sheets carry two plans the portal knows nothing about: a
 // seller's plan for ONE day (5 000 000, 3 500 000 — set by the seller's
@@ -1418,6 +1418,8 @@ model MetaCampaignDaily {
 // ---------------------------------------------------------------------------
 
 /// One seller's plan for each day of one month, in soʻm minor units.
+/// Unused since 2026-10-01 («Sotuv · ROP» removed): nothing reads or writes
+/// it. Kept until a separate, approved migration drops it.
 model SellerDayPlan {
   id          String   @id @default(cuid())
   month       DateTime @db.Date
@@ -1451,8 +1453,7 @@ model TeamMonthPlan {
 /// its C column (the month's plan per row) and the two figures the sheet
 /// types into its header — the dollar rate and what one lead is worth.
 ///
-/// FAKT 1 and FAKT 2 plans are NOT here: they stay in `team_month_plan`, so
-/// «Sotuv · ROP» and «RNP» read one plan and cannot disagree.
+/// FAKT 1 and FAKT 2 plans are NOT here: they stay in `team_month_plan`.
 ///
 /// `team` is the `ropNameSql` name, or '' for a company-wide row. `metric` is
 /// the row's key (`leads`, `orders`, `usd_rate`, `lead_value` …). `fromDay`

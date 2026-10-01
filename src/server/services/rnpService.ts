@@ -9,8 +9,7 @@
  *     spec's «качонки сделка» date — so this screen and Savdo dinamikasi,
  *     Sotuvchilar reytingi and Logistika can never disagree on a team's money.
  *     The team is the one the deal names, as on Logistika.
- *   - Plans are typed in here; FAKT 1 / FAKT 2 plans are the ones «Sotuv · ROP»
- *     already keeps (`team_month_plan`).
+ *   - Plans are typed in here; FAKT 1 / FAKT 2 plans live in `team_month_plan`.
  *   - Rows with no source in Bitrix24 or Meta (followers, HR, bloggers) are
  *     not on the screen.
  *   - A team is its Bitrix24 department name plus its head, every ROP team.
@@ -25,7 +24,7 @@
 
 import type { CbuUsdRates } from '@/server/integrations/cbu/cbuRates'
 import { type RnpOverviewDto, buildRnpSheet } from '@/server/domain/rnp/rnpSheet'
-import { zonedDateKey } from '@/server/domain/period/period'
+import { type Period, resolvePeriod, zonedDateKey } from '@/server/domain/period/period'
 import type { TargetProduct } from '@/server/domain/types'
 import { formNameOf, formOwner } from '@/server/domain/leads/leadSources'
 import { LEAD_SOURCE_BRAND } from '@/server/integrations/crm/bitrix24/mapping'
@@ -42,7 +41,25 @@ import type {
   RnpWarehouseDayRow,
 } from '@/server/repositories/rnpRepository'
 
-import { monthDays, monthPeriod } from './salesTeamService'
+/** Every day of a `YYYY-MM` month, as `YYYY-MM-DD`. */
+export function monthDays(month: string): string[] {
+  const out: string[] = []
+  for (let d = new Date(`${month}-01T00:00:00Z`); d.toISOString().startsWith(month); d = new Date(d.getTime() + 86_400_000)) {
+    out.push(d.toISOString().slice(0, 10))
+  }
+  return out
+}
+
+/** The month as a dashboard Period — its first to its last Tashkent day. */
+function monthPeriod(month: string, timeZone: string, now: Date): Period {
+  const days = monthDays(month)
+  return resolvePeriod('custom', {
+    timeZone,
+    now,
+    customStart: new Date(`${days[0]}T00:00:00Z`),
+    customEnd: new Date(`${days[days.length - 1]}T00:00:00Z`),
+  })
+}
 
 interface MonthRows {
   fakt: RnpTeamDayRow[]

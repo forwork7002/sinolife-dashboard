@@ -21,7 +21,6 @@ import { LeadSourcesRepository } from '@/server/repositories/leadSourcesReposito
 import { ReklamaRepository } from '@/server/repositories/reklamaRepository'
 import { RegistrationRepository } from '@/server/repositories/registrationRepository'
 import { RnpRepository } from '@/server/repositories/rnpRepository'
-import { SalesTeamRepository } from '@/server/repositories/salesTeamRepository'
 import { ScopeRepository } from '@/server/repositories/scopeRepository'
 import { AlertsService } from '@/server/services/alertsService'
 import { SearchService } from '@/server/services/searchService'
@@ -40,7 +39,6 @@ import { LeadSourcesService } from './leadSourcesService'
 import { ReklamaService } from './reklamaService'
 import { RegistrationService } from './registrationService'
 import { RnpService } from './rnpService'
-import { SalesTeamService } from './salesTeamService'
 
 const dealRepository = new DealRepository(prisma)
 export const referenceRepository = new ReferenceRepository(prisma)
@@ -99,12 +97,6 @@ export const reklamaService = new ReklamaService(reklamaRepository)
   conversations. See leadSourcesService.ts.
 */
 export const leadSourcesService = new LeadSourcesService(new LeadSourcesRepository(prisma), reklamaRepository)
-/*
-  «Sotuv · ROP» (a tab of «Lidlar» since 2026-09-25) — the client's ROP sheets. FAKT 1 / FAKT 2 from the sellers
-  board's own cohort (insightsRepository), leads and plans from its own
-  repository. See salesTeamService.ts.
-*/
-export const salesTeamService = new SalesTeamService(insightsRepository, new SalesTeamRepository(prisma))
 /*
   «RNP jadvali» (2026-09-28) — the client's «СентябрРНП» sheet. FAKT 1 / FAKT 2
   from the queue cohort (insightsRepository), Meta through the reklama

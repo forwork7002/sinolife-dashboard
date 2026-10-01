@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 
 /**
  * «Lidlar» — opened on 2026-09-25: «Lid manbalari», and the «Lid kogortasi»
- * and «Sotuv · ROP» tabs moved here from «Reklama samarasi». See
+ * tab moved here from «Reklama samarasi». See
  * `features/leads/LeadsPage.tsx`.
  */
 export default async function Page() {

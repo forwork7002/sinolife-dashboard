@@ -5,7 +5,7 @@ process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
 process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
-const { staleWhileRevalidate } = await import('@/server/services/rnpService')
+const { staleWhileRevalidate, monthDays } = await import('@/server/services/rnpService')
 
 /*
   The registration desk's closed days are a 7–10 s read on production, so a
@@ -65,5 +65,13 @@ describe('leadBrand', () => {
     // Kamron runs only Zextra accounts; his form names no product.
     expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы «Kamron 6 etap filt forma 05.07»')).toBe('Zextra')
     expect(leadBrand('UC_KPZA32', null)).toBeNull()
+  })
+})
+
+describe('monthDays', () => {
+  it('lists a month, including a leap February', () => {
+    expect(monthDays('2026-09')).toHaveLength(30)
+    expect(monthDays('2028-02')).toHaveLength(29)
+    expect(monthDays('2026-12').at(-1)).toBe('2026-12-31')
   })
 })

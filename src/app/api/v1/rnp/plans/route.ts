@@ -9,7 +9,7 @@ import { rnpService } from '@/server/services/container'
 export const dynamic = 'force-dynamic'
 
 /**
- * Who may change a plan — the same two conditions as «Sotuv · ROP»'s form:
+ * Who may change a plan — two conditions:
  * `analytics:read:all` at the gate (the plans are every team's), and
  * `kpi:manage` inside (administrators and managers only).
  */
@@ -37,8 +37,8 @@ const bodySchema = z.object({
     .max(2000)
     /*
       One home per figure. A team's FAKT 1 / FAKT 2 plan lives in
-      team_month_plan (shared with «Sotuv · ROP») and arrives in `fakt`; a
-      copy in rnp_plan would be a second plan the other screen never sees.
+      team_month_plan and arrives in `fakt`; a copy in rnp_plan would be a
+      second plan for the same figure.
       Only a lead's value changes mid-month — every other row starts on day 1.
     */
     .superRefine((rows, ctx) => {
