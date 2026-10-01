@@ -228,7 +228,7 @@ describe('buildRnpSheet — teams', () => {
     expect(dto.blocks.some((b) => b.id === 'team:Bosh')).toBe(false)
     expect(dto.blocks.some((b) => b.id === 'team:(ROP yoʻq)')).toBe(false)
     expect(dto.blocks.some((b) => b.id === 'logistics:(ROP yoʻq)')).toBe(true)
-    expect(row(dto, 'company', 'co:fakt1').fact).toBe(15_500_000 + 1_000_000 + 200_000)
+    expect(row(dto, 'summary', 'sv:fakt1').fact).toBe(15_500_000 + 1_000_000 + 200_000)
   })
 
   it('reads the FAKT plans from team_month_plan', () => {
@@ -239,10 +239,8 @@ describe('buildRnpSheet — teams', () => {
 })
 
 describe('buildRnpSheet — company blocks', () => {
-  it('splits первичка from БАЗА and prices the marketing on the dollar rate', () => {
+  it('prices the marketing on the dollar rate', () => {
     const dto = buildRnpSheet(input())
-    expect(row(dto, 'company', 'co:primary_fakt2').fact).toBe(3_000_000)
-    expect(row(dto, 'company', 'co:base_fakt2').fact).toBe(0)
     const share = row(dto, 'marketing', 'meta:share')
     expect(on(share, '2026-09-21')).toBeCloseTo((140 * 12_200 * 100) / 2_000_000, 6)
     expect(on(row(dto, 'marketing', 'meta:cac'), '2026-09-21')).toBe(140)
@@ -353,7 +351,7 @@ describe('buildRnpSheet — the sheet\'s own names and plans', () => {
     expect(sadriddin.title).toBe('Садриддин РОП') // the sheet's «Чарос РОП», renamed by the client
     expect(on(row(dto, 'team:Sadriddin', 'team:Sadriddin:fakt1'), '2026-09-21')).toBe(5_000_000)
     // The company total counts the folded order once.
-    expect(on(row(dto, 'company', 'co:fakt1'), '2026-09-21')).toBe(3_500_000 + 1_000_000 + 200_000 + 5_000_000)
+    expect(on(row(dto, 'summary', 'sv:fakt1'), '2026-09-21')).toBe(3_500_000 + 1_000_000 + 200_000 + 5_000_000)
     expect(dto.teams.find((t) => t.rop === 'Sadriddin')?.label).toBe('Садриддин РОП')
   })
 
@@ -578,6 +576,12 @@ describe('buildRnpSheet — the page is the client\'s sheet, row by row', () => 
     expect(lineAt(x, 75)).toBeUndefined()
   })
 
+  it('leaves out the Sinolife первичка / первичка+база ФАКТ 2 blocks (rows 249–262)', () => {
+    const x = buildRnpSheet(input())
+    for (let r = 249; r <= 262; r++) expect(lineAt(x, r)).toBeUndefined()
+    expect(x.blocks.some((b) => b.id === 'company')).toBe(false)
+  })
+
   it('adds a team the sheet has no block for after the sheet\'s teams, so its sales are not lost', () => {
     const x = buildRnpSheet(input())
     const withNewTeam = buildRnpSheet(
@@ -586,11 +590,11 @@ describe('buildRnpSheet — the page is the client\'s sheet, row by row', () => 
     const heading = withNewTeam.lines.findIndex((l) => l.kind === 'title' && l.sub === 'jadvalda yoʻq jamoa' && l.label.includes('Bosh'))
     expect(heading).toBeGreaterThan(-1)
     const lastTeamRow = withNewTeam.lines.findIndex((l) => l.row === 246)
-    const firstCompanyRow = withNewTeam.lines.findIndex((l) => l.row === 249)
+    const warehouseRow = withNewTeam.lines.findIndex((l) => l.row === 264)
     // Only orders nobody's team claims are added in the plain fixture — and they are real money.
     expect(x.lines.filter((l) => l.sub === 'jadvalda yoʻq jamoa').map((l) => l.label)).toEqual(['Логистика — (ROP yoʻq)'])
     expect(heading).toBeGreaterThan(lastTeamRow)
-    expect(heading).toBeLessThan(firstCompanyRow)
+    expect(heading).toBeLessThan(warehouseRow)
   })
 
   it('points every filled line at a row the payload carries', () => {

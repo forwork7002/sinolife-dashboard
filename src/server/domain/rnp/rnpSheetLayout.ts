@@ -14,6 +14,9 @@
  * the per-ROP «Свод» (352–374) and «РОП / Регистрация / Разница» (377–379)
  * are gone; each logistics block names its ROP where the sheet wrote «Бунёд».
  *
+ * 2026-10-01: the Sinolife «Продажа (первичка) факт2» and «(первичка+база)
+ * факт2» blocks (249–262) are gone too.
+ *
  * 2026-10-01: each ROP block's «Продажа … факт1» (the leads the ROP was
  * given) sits right under «План бажарилиши», above the conversion it is the
  * base of, and reads «Квал лид сони» — «Дозвон сони» in the БАЗА blocks,
@@ -249,19 +252,6 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [243, 'Транзакция факт 2', null, 'value', false, 'plain', 'plain'],
   [245, 'Средний чек факт 2 📌', null, 'value', false, 'plain', 'plain'],
   [246, 'Средний сумма за дозвон', null, 'value', false, 'plain', 'plain'],
-  [249, 'Продажа (первичка) факт2', 'Sinolife', 'title', true, 'company', 'plain'],
-  [250, 'Буюртма сони', null, 'value', false, 'plain', 'plain'],
-  [251, 'Конверция %', null, 'value', false, 'plain', 'plain'],
-  [252, 'Конверция % от квал лид 📌', null, 'value', false, 'plain', 'plain'],
-  [253, 'Сумма факт 2 сум', null, 'value', false, 'plain', 'plain'],
-  [254, 'Средний чек факт 2 📌', null, 'value', false, 'plain', 'plain'],
-  [256, '(первичка+база) факт2', 'Sinolife', 'title', true, 'company', 'plain'],
-  [257, 'Продажа (успешка)', null, 'value', false, 'plain', 'fakt'],
-  [258, 'Сумма факт1', null, 'value', false, 'plain', 'plain'],
-  [259, 'Транзакция факт2', null, 'value', false, 'plain', 'plain'],
-  [260, 'Сумма базы факт2', null, 'value', false, 'plain', 'money'],
-  [261, 'Процент продаж базы', null, 'value', false, 'plain', 'fakt'],
-  [262, 'Процент продаж нович', null, 'value', false, 'plain', 'plain'],
   [264, 'Склад и упаковка', 'Жавохир', 'title', true, 'section', 'plain'],
   [265, 'Жами заказ сони 📌', null, 'value', false, 'plain', 'plain'],
   [266, 'Не собран', null, 'value', false, 'plain', 'plain'],

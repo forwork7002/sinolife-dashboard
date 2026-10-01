@@ -725,12 +725,9 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   const primary = (rop: string) => !isBase(rop)
 
   const fakt1All = total((t) => t.fakt1)
-  const fakt1OrdersAll = total((t) => t.fakt1Orders)
   const fakt2All = total((t) => t.fakt2)
-  const fakt2OrdersAll = total((t) => t.fakt2Orders)
   const fakt2Primary = total((t) => t.fakt2, primary)
   const fakt2OrdersPrimary = total((t) => t.fakt2Orders, primary)
-  const fakt2Base = total((t) => t.fakt2, isBase)
   const refusedAll = total((t) => t.refused)
   const ropLeads = total((t) => t.leads)
 
@@ -913,31 +910,6 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       ],
     })
   }
-
-  // --- Sinolife umumiy (sheet rows 249–262) ----------------------------------
-  blocks.push({
-    id: 'company',
-    kind: 'company',
-    title: 'Sinolife — umumiy',
-    subtitle: 'Barcha jamoalar',
-    team: null,
-    sheet: sh(249, 'Sinolife'),
-    rows: [
-      additive(clock, { key: 'co:orders1', label: 'Буюртма сони (ФАКТ 1)', unit: 'count', ...planned('', 'orders') }, fakt1OrdersAll),
-      additive(clock, { key: 'co:fakt1', label: 'Сумма ФАКТ 1', unit: 'uzs', tone: 'total', ...planned('', 'fakt1'), sheet: sh(258, 'Сумма факт1') }, fakt1All),
-      additive(clock, { key: 'co:orders2', label: 'Транзакция ФАКТ 2', unit: 'count', ...planned('', 'orders2'), sheet: sh(259, 'Транзакция факт2') }, fakt2OrdersAll),
-      additive(clock, { key: 'co:fakt2', label: 'Сумма ФАКТ 2 (Успешка)', unit: 'uzs', tone: 'total', ...planned('', 'fakt2'), sheet: sh(257, 'Продажа (успешка)') }, fakt2All),
-      ratio(clock, { key: 'co:success', label: 'Успешность, % (ФАКТ 2 ÷ ФАКТ 1)', unit: 'percent', ...planned('', 'success_rate') }, fakt2All, fakt1All, 100),
-      additive(clock, { key: 'co:primary_orders2', label: 'Первичка — транзакция ФАКТ 2', unit: 'count', ...planned('', 'primary_orders2'), hint: 'БАЗА jamoalaridan (Charos, Baza) tashqari hamma jamoa.', sheet: sh(250, 'Буюртма сони (первичка факт2)') }, fakt2OrdersPrimary),
-      ratio(clock, { key: 'co:primary_conv_leads', label: 'Конверсия % (первичка ÷ тушган лид)', unit: 'percent', sheet: sh(251, 'Конверция %') }, fakt2OrdersPrimary, reg.leads, 100),
-      additive(clock, { key: 'co:primary_fakt2', label: 'Первичка — сумма ФАКТ 2', unit: 'uzs', ...planned('', 'primary_fakt2'), sheet: sh(253, 'Сумма факт 2 сум') }, fakt2Primary),
-      ratio(clock, { key: 'co:primary_conv', label: 'Конверсия % от квал лид (первичка)', unit: 'percent', ...planned('', 'primary_conversion'), sheet: sh(252, 'Конверция % от квал лид') }, fakt2OrdersPrimary, reg.qualified, 100),
-      ratio(clock, { key: 'co:primary_cheque', label: 'Ўртача чек ФАКТ 2 (первичка)', unit: 'uzs', sheet: sh(254, 'Средний чек факт 2') }, fakt2Primary, fakt2OrdersPrimary),
-      additive(clock, { key: 'co:base_fakt2', label: 'База — сумма ФАКТ 2', unit: 'uzs', ...planned('', 'base_fakt2'), sheet: sh(260, 'Сумма базы факт2') }, fakt2Base),
-      ratio(clock, { key: 'co:base_share', label: '% базы', unit: 'percent', sheet: sh(261, 'Процент продаж базы') }, fakt2Base, fakt2All, 100),
-      ratio(clock, { key: 'co:new_share', label: '% новичков', unit: 'percent', sheet: sh(262, 'Процент продаж новичков') }, fakt2Primary, fakt2All, 100),
-    ],
-  })
 
   // --- Склад (sheet rows 264–267) --------------------------------------------
   const entered = zeros()
