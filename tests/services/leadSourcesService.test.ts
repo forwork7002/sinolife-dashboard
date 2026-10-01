@@ -187,8 +187,6 @@ describe('leadSourcesOverview', () => {
     const cs = data.dm.pages.find((p) => p.key === 'UC_NBCV5K')!
     expect(cs.product).toBeNull()
     expect(cs.outcome.leads).toBe(1)
-    // The ad page is listed first.
-    expect(data.dm.pages[0]!.key).toBe('UC_1X1J24')
     expect(data.dm.days.map((d) => d.conversations)).toEqual([45, 60])
   })
 
@@ -204,5 +202,49 @@ describe('leadSourcesOverview', () => {
     expect(channel('outbound')).toBe(0)
     // 901234567 is on two lines and counted once.
     expect(data.totals.fakt1Clients).toBe(3)
+  })
+
+  it('lists every DM page in the portal order, a quiet one at zero', () => {
+    expect(data.dm.pages.map((p) => p.name)).toEqual([
+      'sinolif_tg',
+      'sinolife_otziv',
+      'sinolifeuz',
+      'zextra.uz',
+      'zextra.sinolife',
+      'zextra_life',
+      'sinogummy',
+      'collagen.sinolife',
+      'collagen.marine',
+    ])
+    const quiet = data.dm.pages.find((p) => p.key === 'UC_KX2114')!
+    expect(quiet.conversations).toBe(0)
+    expect(quiet.outcome.leads).toBe(0)
+    expect(quiet.days.map((d) => d.conversations)).toEqual([0, 0])
+  })
+
+  it('folds the second zextra.sinolife bot into the page, and keeps an unlisted chatting source last', () => {
+    const dm = leadSourcesOverview({
+      window: WINDOW,
+      importedAt: null,
+      registration: [
+        reg({ sourceId: '46|NEXTBOT', source: 'NEXTBOT - zextra.sinolife', leads: 2 }),
+        reg({ sourceId: 'UC_LBSZDU', source: 'zextra.sinolife', stage: 'Обработка', status: 'OPEN', leads: 1 }),
+      ],
+      triage: [
+        triage({ sourceId: '46|NEXTBOT', source: 'NEXTBOT - zextra.sinolife', conversations: 3 }),
+        triage({ sourceId: 'UC_LBSZDU', source: 'zextra.sinolife', conversations: 4 }),
+        triage({ sourceId: 'UC_MXY08O', source: 'Instagram', conversations: 1 }),
+      ],
+      campaigns: [],
+      fakt1: [],
+    }).dm
+    expect(dm.pages.some((p) => p.key === '46|NEXTBOT')).toBe(false)
+    const zs = dm.pages.find((p) => p.key === 'UC_LBSZDU')!
+    expect(zs.name).toBe('zextra.sinolife')
+    expect(zs.conversations).toBe(7)
+    expect(zs.outcome.leads).toBe(3)
+    expect(zs.outcome.success).toBe(2)
+    expect(dm.pages.at(-1)!.name).toBe('Instagram')
+    expect(dm.conversations).toBe(8)
   })
 })

@@ -25,7 +25,12 @@
  * (0 of 2 892). They meet on the targetolog and the Tashkent day.
  */
 
-import { LEAD_SOURCE_VOCABULARY, TARGET_SOURCE_PRODUCT } from '@/server/integrations/crm/bitrix24/mapping'
+import {
+  DM_PAGES,
+  DM_PAGE_ALIAS,
+  LEAD_SOURCE_BRAND,
+  LEAD_SOURCE_VOCABULARY,
+} from '@/server/integrations/crm/bitrix24/mapping'
 import { type MetaProduct, campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
 import {
   type LeadChannel,
@@ -269,20 +274,22 @@ export function leadSourcesOverview(input: {
   const pages = new Map<string, PageAcc>()
   const pageAcc = (key: string, name: string) =>
     mapGet(pages, key, () => ({ key, name, conversations: 0, outcome: outcomeZero(), days: new Map() }))
+  for (const p of DM_PAGES) pageAcc(p.id, p.name)
+  const pageKeyOf = (sourceId: string) => DM_PAGE_ALIAS[sourceId] ?? sourceId
   const sources = new Map<string, SourceAcc>()
   const channels = new Map<LeadChannel, OutcomeAcc>(LEAD_CHANNELS.map((c) => [c, outcomeZero()]))
   const registration = outcomeZero()
 
   /*
     ИИ обработка FIRST: a page is anything people write to, and the
-    Регистрация pass below needs to know which sources those are. The ad
-    pages are pages whether or not anybody wrote that week; a non-ad page
-    that chats (collagen.sinolife, sinolif_tg) becomes one here.
+    Регистрация pass below needs to know which sources those are. The
+    `DM_PAGES` are pages whether or not anybody wrote that week; any other
+    source that chats becomes one here, after them.
   */
   let conversations = 0
   for (const row of input.triage) {
     conversations += row.conversations
-    const key = row.sourceId ?? ''
+    const key = row.sourceId === null ? '' : pageKeyOf(row.sourceId)
     const page = pageAcc(key, row.source ?? (row.sourceId ? row.sourceId : 'Manbasiz'))
     page.conversations += row.conversations
     mapGet(page.days, row.day, () => ({ conversations: 0, leads: 0, success: 0 })).conversations += row.conversations
@@ -313,8 +320,8 @@ export function leadSourcesOverview(input: {
       const day = mapGet(acc.days, row.day, () => ({ metaLeads: 0, leads: 0, success: 0 }))
       day.leads += row.leads
       if (bucket === 'success') day.success += row.leads
-    } else if (row.sourceId !== null && (channel === 'page' || pages.has(row.sourceId))) {
-      const page = pageAcc(row.sourceId, row.source ?? row.sourceId)
+    } else if (row.sourceId !== null && (channel === 'page' || pages.has(pageKeyOf(row.sourceId)))) {
+      const page = pageAcc(pageKeyOf(row.sourceId), row.source ?? row.sourceId)
       addOutcome(page.outcome, one)
       const day = mapGet(page.days, row.day, () => ({ conversations: 0, leads: 0, success: 0 }))
       day.leads += row.leads
@@ -391,15 +398,19 @@ export function leadSourcesOverview(input: {
       }
     })
 
-  // --- DM block: the ad pages first (in the sheet's order), then any other page that chats
-  const productOf = (key: string): TargetProduct | null => TARGET_SOURCE_PRODUCT[key] ?? null
+  // --- DM block: `DM_PAGES` in the portal's order, then any other page that chats
+  const productOf = (key: string): TargetProduct | null => LEAD_SOURCE_BRAND[key] ?? null
+  const dmRank = (key: string) => {
+    const i = DM_PAGES.findIndex((p) => p.id === key)
+    return i < 0 ? DM_PAGES.length : i
+  }
   const dmDays = days.map((date) => ({ date, conversations: 0, leads: 0, success: 0 }))
   const dmOutcome = outcomeZero()
   let dmConversations = 0
   const dmPages: DmPageDto[] = [...pages.values()]
     .sort(
       (a, b) =>
-        Number(productOf(b.key) !== null) - Number(productOf(a.key) !== null) ||
+        dmRank(a.key) - dmRank(b.key) ||
         b.conversations - a.conversations ||
         outcomeCells(b.outcome).leads - outcomeCells(a.outcome).leads ||
         a.name.localeCompare(b.name, 'ru'),

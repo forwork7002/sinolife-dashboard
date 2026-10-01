@@ -538,11 +538,6 @@ const pageColumns: readonly Column<{ key: string; page: DmPageDto | null; conver
             style={{ background: r.page.product ? PRODUCT_TONE[r.page.product] : 'var(--axis)' }}
           />
           {r.page.name}
-          {r.page.product === null && (
-            <span className="text-[11px] font-normal" style={muted}>
-              · reklama sahifasi emas
-            </span>
-          )}
         </span>
       ),
   },

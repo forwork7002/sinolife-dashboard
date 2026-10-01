@@ -490,6 +490,33 @@ export const LEAD_SOURCE_BRAND: Readonly<Record<string, TargetProduct>> = Object
 })
 
 /**
+ * «Lid manbalari»'s DM pages: the rows of its «DM sahifalar» table, always
+ * all of them and in this order. The client pointed at the tail of the
+ * portal's SOURCE list (SORT 220–300, read off crm.status.list on 2026-10-01)
+ * and said the table is these pages, as the portal orders them.
+ */
+export const DM_PAGES: readonly { readonly id: string; readonly name: string }[] = Object.freeze([
+  { id: 'UC_Z1OF0D', name: 'sinolif_tg' },
+  { id: 'UC_0FMQ5Q', name: 'sinolife_otziv' },
+  { id: 'UC_1X1J24', name: 'sinolifeuz' },
+  { id: 'UC_A8LE21', name: 'zextra.uz' },
+  { id: 'UC_LBSZDU', name: 'zextra.sinolife' },
+  { id: '38|NEXTBOT', name: 'zextra_life' },
+  { id: 'UC_KX2114', name: 'sinogummy' },
+  { id: 'UC_NBCV5K', name: 'collagen.sinolife' },
+  { id: 'UC_MWIKOC', name: 'collagen.marine' },
+])
+
+/**
+ * A source that is another door to one of `DM_PAGES` — its conversations and
+ * leads are that page's. «NEXTBOT - zextra.sinolife» is the page's second bot
+ * (client, 2026-10-01).
+ */
+export const DM_PAGE_ALIAS: Readonly<Record<string, string>> = Object.freeze({
+  '46|NEXTBOT': 'UC_LBSZDU',
+})
+
+/**
  * The rest of Регистрация's sources, by what they mean — «Lid manbalari»
  * shows every lead in the pipeline, not just the ad pages, so the total reads
  * whole. Read off `crm.status.list` (ENTITY_ID SOURCE) on 2026-09-25:
