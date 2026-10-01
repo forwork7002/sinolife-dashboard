@@ -16,7 +16,10 @@
  *             0% where it is not.
  *   dm      — per page: conversations («ИИ обработка» deals), the page's
  *             Регистрация leads and their kval.
- *   sources — every Регистрация source, ad or not, so the total reads whole.
+ *   sources — every Регистрация source, ad or not, so the total reads whole,
+ *             with «Факт1 мижоз»: the distinct clients whose number reached a
+ *             FAKT 1 order in the same window (`InsightsRepository.leadFakt1Clients`,
+ *             the queue cohort — the one join by phone on this tab).
  *
  * Meta and Bitrix24 are never joined deal by deal — no deal carries a UTM
  * (0 of 2 892). They meet on the targetolog and the Tashkent day.
@@ -35,6 +38,7 @@ import {
 import { LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
 import type { TargetProduct } from '@/server/domain/types'
+import type { InsightsRepository, LeadFakt1ClientRow } from '@/server/repositories/insightsRepository'
 import type { LeadSourcesRepository, RegistrationDayRow, TriageDayRow } from '@/server/repositories/leadSourcesRepository'
 import type { CampaignDayRow, ReklamaRepository } from '@/server/repositories/reklamaRepository'
 
@@ -112,6 +116,8 @@ export interface SourceRowDto {
   readonly channel: LeadChannel
   readonly name: string
   readonly outcome: LeadOutcomeDto
+  /** Distinct clients (by phone) of these leads with a FAKT 1 order in the window — «Факт1 мижоз». */
+  readonly fakt1Clients: number
 }
 
 export interface LeadSourcesOverviewDto {
@@ -121,6 +127,8 @@ export interface LeadSourcesOverviewDto {
   readonly totals: {
     /** Every Регистрация deal created in the window. */
     readonly registration: LeadOutcomeDto
+    /** «Факт1 мижоз» of the whole of Регистрация — distinct, so not the sum of the channels. */
+    readonly fakt1Clients: number
     /** Of those, the ad leads: forms plus the ad pages. */
     readonly ads: LeadOutcomeDto
     /**
@@ -148,7 +156,11 @@ export interface LeadSourcesOverviewDto {
     readonly outcome: LeadOutcomeDto
   }
   /** Every channel of `LEAD_CHANNELS`, in its order — a channel with no leads is there at zero. */
-  readonly channels: readonly { readonly channel: LeadChannel; readonly outcome: LeadOutcomeDto }[]
+  readonly channels: readonly {
+    readonly channel: LeadChannel
+    readonly outcome: LeadOutcomeDto
+    readonly fakt1Clients: number
+  }[]
   readonly sources: readonly SourceRowDto[]
 }
 
@@ -199,6 +211,10 @@ function ownerOfForm(form: string): { key: string; targetolog: string; product: 
     : { key: `form|${form}`, targetolog: form, product: 'Boshqa' }
 }
 
+/** The line a lead is counted on — a form by its name, anything else by its source. */
+const sourceKeyOf = (form: string | null, sourceId: string | null): string =>
+  form !== null ? `form|${form}` : `source|${sourceId ?? ''}`
+
 /**
  * The whole tab from the three ledgers' rows. Exported for its test.
  */
@@ -207,6 +223,8 @@ export function leadSourcesOverview(input: {
   registration: readonly RegistrationDayRow[]
   triage: readonly TriageDayRow[]
   campaigns: readonly CampaignDayRow[]
+  /** Leads that reached FAKT 1 (`InsightsRepository.leadFakt1Clients`). */
+  fakt1: readonly LeadFakt1ClientRow[]
   importedAt: Date | null
 }): LeadSourcesOverviewDto {
   const days = calendarDays(input.window.from, input.window.to)
@@ -279,7 +297,7 @@ export function leadSourcesOverview(input: {
 
     addOutcome(registration, one)
     addOutcome(channels.get(channel)!, one)
-    const sourceKey = form !== null ? `form|${form}` : `source|${row.sourceId ?? ''}`
+    const sourceKey = sourceKeyOf(form, row.sourceId)
     const source = mapGet(sources, sourceKey, () => ({
       key: sourceKey,
       channel,
@@ -302,6 +320,23 @@ export function leadSourcesOverview(input: {
       day.leads += row.leads
       if (bucket === 'success') day.success += row.leads
     }
+  }
+
+  /*
+    «Факт1 мижоз»: the same source key and channel as the lead's row above, so
+    a client lands on the line their lead is counted on. A SET per line — one
+    client who left three leads is one client — which is also why a channel's
+    figure can be less than the sum of its sources.
+  */
+  const fakt1Sources = new Map<string, Set<string>>()
+  const fakt1Channels = new Map<LeadChannel, Set<string>>(LEAD_CHANNELS.map((c) => [c, new Set<string>()]))
+  const fakt1All = new Set<string>()
+  for (const row of input.fakt1) {
+    const form = formNameOf(row.formTitle)
+    const sourceKey = sourceKeyOf(form, row.sourceId)
+    mapGet(fakt1Sources, sourceKey, () => new Set<string>()).add(row.client)
+    fakt1Channels.get(leadChannel(row.sourceId, form, LEAD_SOURCE_VOCABULARY))!.add(row.client)
+    fakt1All.add(row.client)
   }
 
   // --- Meta: lead-form campaigns only, onto the owner their account maps to
@@ -401,6 +436,7 @@ export function leadSourcesOverview(input: {
     window: input.window,
     totals: {
       registration: outcomeCells(registration),
+      fakt1Clients: fakt1All.size,
       ads: outcomeCells(ads),
       nonAd: outcomeCells(nonAdTotal(channels, LEAD_BUCKETS)),
       conversations,
@@ -416,9 +452,19 @@ export function leadSourcesOverview(input: {
       outcome: outcomeCells(formOutcome),
     },
     dm: { pages: dmPages, days: dmDays, conversations: dmConversations, outcome: outcomeCells(dmOutcome) },
-    channels: LEAD_CHANNELS.map((channel) => ({ channel, outcome: outcomeCells(channels.get(channel)!) })),
+    channels: LEAD_CHANNELS.map((channel) => ({
+      channel,
+      outcome: outcomeCells(channels.get(channel)!),
+      fakt1Clients: fakt1Channels.get(channel)!.size,
+    })),
     sources: [...sources.values()]
-      .map((s) => ({ key: s.key, channel: s.channel, name: s.name, outcome: outcomeCells(s.outcome) }))
+      .map((s) => ({
+        key: s.key,
+        channel: s.channel,
+        name: s.name,
+        outcome: outcomeCells(s.outcome),
+        fakt1Clients: fakt1Sources.get(s.key)?.size ?? 0,
+      }))
       .sort(
         (a, b) =>
           LEAD_CHANNELS.indexOf(a.channel) - LEAD_CHANNELS.indexOf(b.channel) ||
@@ -429,15 +475,20 @@ export function leadSourcesOverview(input: {
 }
 
 /*
-  One memo per window in front of the two deal scans. Company-wide by
+  One memo per window in front of the three deal scans. Company-wide by
   construction — the route refuses a narrowed account — so no scope reaches it.
 */
-const scanCache = ttlCache<{ registration: RegistrationDayRow[]; triage: TriageDayRow[] }>(60_000)
+const scanCache = ttlCache<{
+  registration: RegistrationDayRow[]
+  triage: TriageDayRow[]
+  fakt1: LeadFakt1ClientRow[]
+}>(60_000)
 
 export class LeadSourcesService {
   constructor(
     private readonly repository: LeadSourcesRepository,
     private readonly meta: ReklamaRepository,
+    private readonly insights: InsightsRepository,
   ) {}
 
   async overview(period: Period, timeZone: string): Promise<LeadSourcesOverviewDto> {
@@ -449,11 +500,12 @@ export class LeadSourcesService {
 
     const [scans, campaigns, importedAt] = await Promise.all([
       scanCache.get(key, async () => {
-        const [registration, triage] = await Promise.all([
+        const [registration, triage, fakt1] = await Promise.all([
           this.repository.registrationDays(period),
           this.repository.triageDays(period),
+          this.insights.leadFakt1Clients(period),
         ])
-        return { registration, triage }
+        return { registration, triage, fakt1 }
       }),
       this.meta.campaignDays(window.from, window.to),
       this.meta.campaignsImportedAt(),

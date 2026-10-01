@@ -67,6 +67,8 @@ export interface SourceRowDto {
   readonly channel: LeadChannel
   readonly name: string
   readonly outcome: LeadOutcomeDto
+  /** Distinct clients (by phone) of these leads with a FAKT 1 order in the window. */
+  readonly fakt1Clients: number
 }
 
 export interface LeadSourcesOverviewDto {
@@ -74,6 +76,8 @@ export interface LeadSourcesOverviewDto {
   readonly window: { readonly from: string; readonly to: string }
   readonly totals: {
     readonly registration: LeadOutcomeDto
+    /** Distinct over the whole of Регистрация — not the sum of the channels. */
+    readonly fakt1Clients: number
     readonly ads: LeadOutcomeDto
     /** inbound + manual + telegram + smm + other — not the ads, not «Исход». */
     readonly nonAd: LeadOutcomeDto
@@ -95,6 +99,10 @@ export interface LeadSourcesOverviewDto {
     readonly conversations: number
     readonly outcome: LeadOutcomeDto
   }
-  readonly channels: readonly { readonly channel: LeadChannel; readonly outcome: LeadOutcomeDto }[]
+  readonly channels: readonly {
+    readonly channel: LeadChannel
+    readonly outcome: LeadOutcomeDto
+    readonly fakt1Clients: number
+  }[]
   readonly sources: readonly SourceRowDto[]
 }

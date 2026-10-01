@@ -1055,6 +1055,17 @@ export interface RnpTeamDayRow {
   readonly refusedMinor: bigint
 }
 
+/** One Регистрация lead whose phone reached FAKT 1, as `leadFakt1Clients` reads it. */
+export interface LeadFakt1ClientRow {
+  /** Portal SOURCE_ID of the lead, or null for a lead with no source. */
+  readonly sourceId: string | null
+  readonly source: string | null
+  /** The lead's title when it names a CRM form — `RegistrationDayRow.formTitle`'s rule. */
+  readonly formTitle: string | null
+  /** The matched phone's last nine digits: one client, however many contacts carry it. */
+  readonly client: string
+}
+
 export class InsightsRepository {
   private readonly tz: string
 
@@ -5247,6 +5258,68 @@ export class InsightsRepository {
       refusedOrders: int(r.refused_orders),
       refusedMinor: money(r.refused),
     }))
+  }
+
+  /**
+   * «Факт1 мижоз» on «Barcha manbalar · Регистрация»: every Регистрация lead
+   * created in the window whose phone belongs to a FAKT 1 order of the same
+   * window — the client's ask of 2026-10-01, «шу номерлардан».
+   *
+   * BOTH SIDES IN THE WINDOW (the user chose it): the lead by its creation, the
+   * order by its queue arrival — the board's own cohort and `FAKT1_OUTCOMES`,
+   * so the orders are exactly the ones Savdo dinamikasi counts as FAKT 1. The
+   * order DEAL must be created after the lead: an order that existed first was
+   * not this lead's doing, even when it is queued (or re-queued, 🔁) later.
+   * Numbers of one repeated digit (000000000, 999999999) are placeholders the
+   * floor types, never a client, and are left out.
+   *
+   * One client is one number: a buyer matched through two different numbers
+   * by two leads counts twice. Rare, and it errs high by that much only.
+   *
+   * BY PHONE, NOT BY CONTACT. Measured on the portal for 29.09: 54 leads reach
+   * a Доставка order through the same contact, 60 through the same number —
+   * the other six came back as a new contact. Numbers are stored as the floor
+   * typed them, so both sides compare on their last nine digits.
+   */
+  async leadFakt1Clients(period: Period): Promise<LeadFakt1ClientRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { source_id: string | null; source: string | null; form_title: string | null; client: string }[]
+    >(
+      `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.leadFakt1ClientsSql()}`,
+      period.start,
+      period.end,
+      null,
+    )
+    return rows.map((r) => ({ sourceId: r.source_id, source: r.source, formTitle: r.form_title, client: r.client }))
+  }
+
+  /** Isolated so a test can pin it against the board's own predicates. */
+  static leadFakt1ClientsSql(): string {
+    const nine = (phone: string) => `right(regexp_replace(${phone}, '[^0-9]', '', 'g'), 9)`
+    return `,
+    fakt1_phone AS MATERIALIZED (
+      SELECT ${nine('x.phone')} AS phone, max(c.created_at) AS created_at
+        FROM scoped c
+        JOIN "deal" o ON o."id" = c.deal_id
+        JOIN "customer" cu ON cu."id" = o."customerId"
+        CROSS JOIN LATERAL unnest(cu."phones" || cu."phone") AS x(phone)
+       WHERE ${InsightsRepository.FAKT1_OUTCOMES}
+         AND length(${nine('x.phone')}) = 9
+         AND ${nine('x.phone')} !~ '^([0-9])\\1{8}$'
+       GROUP BY 1
+    )
+    SELECT s."externalId" AS source_id,
+           s."name" AS source,
+           CASE WHEN l."title" LIKE '%CRM-форм%' THEN l."title" END AS form_title,
+           min(f.phone) AS client
+      FROM "deal" l
+      JOIN "pipeline" p ON p."id" = l."pipelineId" AND p."role" = 'LEAD'
+      JOIN "customer" cu ON cu."id" = l."customerId"
+      CROSS JOIN LATERAL unnest(cu."phones" || cu."phone") AS x(phone)
+      JOIN fakt1_phone f ON f.phone = ${nine('x.phone')} AND f.created_at > l."createdAtSource"
+      LEFT JOIN "sales_source" s ON s."id" = l."sourceId"
+     WHERE l."createdAtSource" >= $1 AND l."createdAtSource" < $2
+     GROUP BY l."id", s."externalId", s."name", l."title"`
   }
 
   /** Isolated so a test can pin it against the board's own predicates. */

@@ -601,24 +601,48 @@ const dmDayColumns: readonly Column<DayRow<DmDayDto>>[] = [
 // --- every source -----------------------------------------------------------
 
 function SourcesBlock({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
-  type Row = { key: string; channel: LeadChannel | null; name: string; outcome: LeadOutcomeDto; subtotal: boolean }
+  type Row = {
+    key: string
+    channel: LeadChannel | null
+    name: string
+    outcome: LeadOutcomeDto
+    fakt1Clients: number
+    subtotal: boolean
+  }
   const rows: Row[] = []
   if (data && data.totals.registration.leads > 0) {
     for (const c of data.channels) {
       if (c.outcome.leads === 0) continue
-      rows.push({ key: `channel|${c.channel}`, channel: c.channel, name: CHANNEL_LABEL[c.channel], outcome: c.outcome, subtotal: true })
+      rows.push({
+        key: `channel|${c.channel}`,
+        channel: c.channel,
+        name: CHANNEL_LABEL[c.channel],
+        outcome: c.outcome,
+        fakt1Clients: c.fakt1Clients,
+        subtotal: true,
+      })
       for (const s of data.sources.filter((x: SourceRowDto) => x.channel === c.channel)) {
-        rows.push({ key: s.key, channel: s.channel, name: s.name, outcome: s.outcome, subtotal: false })
+        rows.push({ key: s.key, channel: s.channel, name: s.name, outcome: s.outcome, fakt1Clients: s.fakt1Clients, subtotal: false })
       }
     }
-    rows.push({ key: 'total', channel: null, name: 'Jami', outcome: data.totals.registration, subtotal: true })
+    rows.push({
+      key: 'total',
+      channel: null,
+      name: 'Jami',
+      outcome: data.totals.registration,
+      fakt1Clients: data.totals.fakt1Clients,
+      subtotal: true,
+    })
   }
+  // «Факт1 мижоз» right after Kval %: lead → kval → a client who bought.
+  const outcome = outcomeColumns<Row>((r) => r.outcome)
+  const afterKval = outcome.findIndex((c) => c.key === 'successPercent') + 1
 
   return (
     <section className="flex min-w-0 flex-col gap-3">
       <SectionHeader
         title="Barcha manbalar · Регистрация"
-        hint="Регистрация voronkasiga tushgan har bir bitim — reklamadan boʻlmaganlari ham. Qalin qator — kanal jami, ostida uning manbalari."
+        hint="Регистрация voronkasiga tushgan har bir bitim — reklamadan boʻlmaganlari ham. Qalin qator — kanal jami, ostida uning manbalari. Факт1 мижоз — shu lidlarning telefon raqamidan davr ichida, liddan keyin FAKT 1 buyurtma qilgan mijozlar soni (bir raqam — bir mijoz)."
       />
       <Card className="min-w-0 p-0">
         <DataTable<Row>
@@ -643,13 +667,21 @@ function SourcesBlock({ data, status }: { data: LeadSourcesOverviewDto | undefin
               numeric: true,
               render: (r) => <span className={r.subtotal ? 'font-semibold' : undefined}>{count(r.outcome.leads)}</span>,
             },
-            ...outcomeColumns<Row>((r) => r.outcome),
+            ...outcome.slice(0, afterKval),
+            {
+              key: 'fakt1Clients',
+              header: 'Факт1 мижоз',
+              align: 'right',
+              numeric: true,
+              render: (r) => <span className={r.subtotal ? 'font-semibold' : 'font-medium'}>{count(r.fakt1Clients)}</span>,
+            },
+            ...outcome.slice(afterKval),
           ]}
           rows={rows}
           rowKey={(r) => r.key}
           status={status}
           emptyTitle="Bu davrda Регистрация ga lid tushmagan"
-          minWidth={860}
+          minWidth={960}
           maxHeight="70dvh"
           stickyColumns={1}
           stickyLastRow

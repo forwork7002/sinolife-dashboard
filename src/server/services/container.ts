@@ -94,9 +94,10 @@ export const reklamaService = new ReklamaService(reklamaRepository)
   «Lid manbalari» (the first tab of «Lidlar») — every Регистрация lead by
   source, the lead forms per targetolog against Meta's lead count (Meta rows
   through the reklama repository), and the DM pages' «ИИ обработка»
-  conversations. See leadSourcesService.ts.
+  conversations. «Факт1 мижоз» reads the queue cohort through insightsRepository.
+  See leadSourcesService.ts.
 */
-export const leadSourcesService = new LeadSourcesService(new LeadSourcesRepository(prisma), reklamaRepository)
+export const leadSourcesService = new LeadSourcesService(new LeadSourcesRepository(prisma), reklamaRepository, insightsRepository)
 /*
   «RNP jadvali» (2026-09-28) — the client's «СентябрРНП» sheet. FAKT 1 / FAKT 2
   from the queue cohort (insightsRepository), Meta through the reklama

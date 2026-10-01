@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import type { LeadFakt1ClientRow } from '@/server/repositories/insightsRepository'
 import type { CampaignDayRow } from '@/server/repositories/reklamaRepository'
 import type { RegistrationDayRow, TriageDayRow } from '@/server/repositories/leadSourcesRepository'
 
@@ -41,6 +42,14 @@ const campaign = (over: Partial<CampaignDayRow>): CampaignDayRow => ({
   clicks: 0,
   leads: 0,
   conversations: 0,
+  ...over,
+})
+
+const fakt1 = (over: Partial<LeadFakt1ClientRow>): LeadFakt1ClientRow => ({
+  sourceId: 'REPEAT_SALE',
+  source: 'Ген лид',
+  formTitle: UMAR_FORM,
+  client: '901234567',
   ...over,
 })
 
@@ -86,6 +95,15 @@ describe('leadSourcesOverview', () => {
       campaign({ objective: 'OUTCOME_ENGAGEMENT', campaignName: 'DM', leads: 0, conversations: 99, spendMicroUsd: 9_000_000n }),
       // An account nobody mapped still gets a row, under its own name.
       campaign({ accountId: '1306271057053174', accountName: 'Newgen_davi01', leads: 4, spendMicroUsd: 1_000_000n }),
+    ],
+    fakt1: [
+      // One client, two of Umar's leads: one client on that line.
+      fakt1({}),
+      fakt1({}),
+      fakt1({ client: '907654321' }),
+      // The same client also wrote to sinolifeuz: one there too, still one in the total.
+      fakt1({ sourceId: 'UC_1X1J24', source: 'sinolifeuz', formTitle: null }),
+      fakt1({ sourceId: 'CALL', source: 'Входящий', formTitle: null, client: '935550000' }),
     ],
   })
 
@@ -172,5 +190,19 @@ describe('leadSourcesOverview', () => {
     // The ad page is listed first.
     expect(data.dm.pages[0]!.key).toBe('UC_1X1J24')
     expect(data.dm.days.map((d) => d.conversations)).toEqual([45, 60])
+  })
+
+  it('counts «Факт1 мижоз» as distinct clients on each line, its channel and the whole', () => {
+    expect(data.sources.find((s) => s.key === 'form|Sinolife (UMAR) 777')!.fakt1Clients).toBe(2)
+    expect(data.sources.find((s) => s.key === 'source|UC_1X1J24')!.fakt1Clients).toBe(1)
+    expect(data.sources.find((s) => s.key === 'source|CALL')!.fakt1Clients).toBe(1)
+    expect(data.sources.find((s) => s.key === 'source|UC_KPZA32')!.fakt1Clients).toBe(0)
+    const channel = (c: string) => data.channels.find((x) => x.channel === c)!.fakt1Clients
+    expect(channel('form')).toBe(2)
+    expect(channel('page')).toBe(1)
+    expect(channel('inbound')).toBe(1)
+    expect(channel('outbound')).toBe(0)
+    // 901234567 is on two lines and counted once.
+    expect(data.totals.fakt1Clients).toBe(3)
   })
 })

@@ -1,0 +1,49 @@
+import { describe, expect, it } from 'vitest'
+
+/*
+  Same preamble as the other SQL-shape tests: the repositories read `env` at
+  module scope, and `env` refuses to load without a complete configuration.
+*/
+process.env.DATABASE_URL ??= 'postgresql://test@127.0.0.1:5432/test'
+process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
+process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
+process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
+
+const { InsightsRepository } = await import('@/server/repositories/insightsRepository')
+
+/*
+  «Факт1 мижоз» on «Barcha manbalar · Регистрация». Run against a local
+  PostgreSQL with portal-shaped rows on 2026-10-01; these pin what that run
+  proved.
+*/
+describe('leadFakt1ClientsSql', () => {
+  const sql = InsightsRepository.leadFakt1ClientsSql()
+
+  it('continues the queue prelude and takes FAKT 1 with the board\'s own predicate', () => {
+    expect(sql.trimStart().startsWith(',')).toBe(true)
+    expect(sql).toContain('FROM scoped c')
+    expect(sql).toContain(`c.outcome IN ('CONFIRMED', 'UNCONFIRMED_SHIPPED')`)
+  })
+
+  it('matches every number of both contacts on its last nine digits', () => {
+    expect(sql.match(/unnest\(cu\."phones" \|\| cu\."phone"\)/g)).toHaveLength(2)
+    expect(sql).toContain(`f.phone = right(regexp_replace(x.phone, '[^0-9]', '', 'g'), 9)`)
+    expect(sql).toContain(`length(right(regexp_replace(x.phone, '[^0-9]', '', 'g'), 9)) = 9`)
+  })
+
+  it('leaves out placeholder numbers of one repeated digit', () => {
+    expect(sql).toContain(`!~ '^([0-9])\\1{8}$'`)
+  })
+
+  it('reads Регистрация leads created in the window, and only orders created after the lead', () => {
+    expect(sql).toContain(`p."role" = 'LEAD'`)
+    expect(sql).toContain(`l."createdAtSource" >= $1 AND l."createdAtSource" < $2`)
+    expect(sql).toContain(`max(c.created_at) AS created_at`)
+    expect(sql).toContain(`f.created_at > l."createdAtSource"`)
+  })
+
+  it('names the form exactly as the registration scan does, one row per lead', () => {
+    expect(sql).toContain(`CASE WHEN l."title" LIKE '%CRM-форм%' THEN l."title" END AS form_title`)
+    expect(sql).toMatch(/GROUP BY l\."id", s\."externalId", s\."name", l\."title"\s*$/)
+  })
+})
