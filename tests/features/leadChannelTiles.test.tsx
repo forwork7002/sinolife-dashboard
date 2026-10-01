@@ -78,10 +78,11 @@ describe('ChannelTiles', () => {
     expect(within(tile('Сарафан')).getByText('0 kval · —')).toBeTruthy()
   })
 
-  it('prints the server’s Jami, set apart as the total', () => {
+  it('prints the server’s Jami first, set apart as the total', () => {
     render(<ChannelTiles data={data} status="ready" />)
 
     const total = screen.getByTestId('lead-channel-total')
+    expect(total.parentElement!.firstElementChild).toBe(total)
     expect(within(total).getByText('Jami')).toBeTruthy()
     expect(within(total).getByText('3,224')).toBeTruthy()
     expect(within(total).getByText('964 kval · 29.9%')).toBeTruthy()

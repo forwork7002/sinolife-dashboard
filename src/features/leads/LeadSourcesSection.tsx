@@ -73,17 +73,20 @@ export function LeadSourcesSection({ data, status }: { data: LeadSourcesOverview
 // --- tiles ------------------------------------------------------------------
 
 /**
- * The client's six figures (2026-10-01), in their order: Жами / Янги / Дубль
- * лидлар, Квал лидлар сони, Квал %, Квал лид нархи $. The same day on the
- * RNP sheet's «Регистрация» block reads the same numbers — `funnel` says how.
+ * The client's seven figures (2026-10-01), in their order: Жами / Янги / Дубль
+ * / Бошка лидлар, Квал лидлар сони, Квал %, Квал лид нархи $. The same day on
+ * the RNP sheet's «Регистрация» block reads the same numbers — `funnel` says
+ * how. «Бошка лидлар» is the channel row's Jami below, repeated up here; Янги
+ * is washed green and Дубль red, as the client asked.
  */
 export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
   const f = data?.funnel
   const shareOfTotal = (n: number) => (f && f.total > 0 ? ` · ${formatPercent((n / f.total) * 100)}` : '')
   return (
     <section className="flex min-w-0 flex-col gap-3">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
         <StatTile
+          compact
           status={status}
           label="Жами лидлар"
           value={f?.total ?? null}
@@ -91,6 +94,8 @@ export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | u
           hint="Регистрация — dubllar bilan"
         />
         <StatTile
+          compact
+          fill="good"
           status={status}
           label="Янги лидлар"
           value={f?.fresh ?? null}
@@ -98,6 +103,8 @@ export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | u
           hint={f ? `dublsiz${shareOfTotal(f.fresh)}` : undefined}
         />
         <StatTile
+          compact
+          fill="critical"
           status={status}
           label="Дубль лидлар"
           value={f?.duplicates ?? null}
@@ -105,6 +112,15 @@ export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | u
           hint={f ? `«Дубликат» bosqichida${shareOfTotal(f.duplicates)}` : undefined}
         />
         <StatTile
+          compact
+          status={status}
+          label="Бошка лидлар"
+          value={data?.tiles.total.leads ?? null}
+          unit="count"
+          hint="Ген лид … Сарафан yigʻindisi"
+        />
+        <StatTile
+          compact
           status={status}
           label="Квал лидлар сони"
           value={f?.qualified ?? null}
@@ -112,6 +128,7 @@ export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | u
           hint="«Сделка успешна» — yopilgan kuni"
         />
         <StatTile
+          compact
           status={status}
           label="Квал %"
           value={f?.qualifiedPercent ?? null}
@@ -119,6 +136,7 @@ export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | u
           hint="квал ÷ янги лидлар"
         />
         <StatTile
+          compact
           status={status}
           label="Квал лид нархи $"
           value={f?.costPerQualifiedUsd ?? null}
@@ -183,6 +201,22 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
         Boshqa kanallar lidlari
       </h2>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
+        {/* The total leads the row (the client's order, 2026-10-01) and wears a
+            ring in the page's accent, so the eye finds the sum first. */}
+        <div
+          className="grid rounded-[var(--radius-panel)]"
+          style={{ boxShadow: '0 0 0 1.5px var(--accent-line)' }}
+          data-testid="lead-channel-total"
+        >
+          <StatTile
+            status={status}
+            label="Jami"
+            value={total?.leads ?? null}
+            unit="count"
+            hint={total ? kvalHint(total) : undefined}
+            context={note(`${TILES.length} kanal yigʻindisi · Исход kirmaydi · forma va ИИ lidlari Reklamada ham bor`)}
+          />
+        </div>
         {TILES.map((tile) => {
           const o = byTile.get(tile)
           const text = TILE_NOTE[tile]
@@ -198,21 +232,6 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
             />
           )
         })}
-        {/* The total wears a ring in the page's accent, so the eye finds the sum of the row. */}
-        <div
-          className="grid rounded-[var(--radius-panel)]"
-          style={{ boxShadow: '0 0 0 1.5px var(--accent-line)' }}
-          data-testid="lead-channel-total"
-        >
-          <StatTile
-            status={status}
-            label="Jami"
-            value={total?.leads ?? null}
-            unit="count"
-            hint={total ? kvalHint(total) : undefined}
-            context={note(`${TILES.length} kanal yigʻindisi · Исход kirmaydi · forma va ИИ lidlari Reklamada ham bor`)}
-          />
-        </div>
       </div>
     </section>
   )

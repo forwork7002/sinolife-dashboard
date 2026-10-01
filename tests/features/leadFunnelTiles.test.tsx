@@ -6,7 +6,7 @@ import { FunnelTiles } from '@/features/leads/LeadSourcesSection'
 import type { LeadSourcesOverviewDto } from '@/features/leads/leadSourcesApi'
 
 /*
-  The six headline tiles on «Lid manbalari» — the client's list of
+  The seven headline tiles on «Lid manbalari» — the client's list of
   2026-10-01, in its order and with its labels.
 
   Reduced motion, so `AnimatedNumber` prints the final figure (the stub
@@ -36,15 +36,16 @@ const data = {
     spendUsd: 1200,
     costPerQualifiedUsd: 4,
   },
+  tiles: { rows: [], total: { leads: 3224 } },
 } as unknown as LeadSourcesOverviewDto
 
 const tile = (label: string) => screen.getByText(label, { selector: 'p' }).closest('.card') as HTMLElement
 
 describe('FunnelTiles', () => {
-  it('prints the six figures in the client’s order', () => {
+  it('prints the seven figures in the client’s order', () => {
     render(<FunnelTiles data={data} status="ready" />)
 
-    const labels = ['Жами лидлар', 'Янги лидлар', 'Дубль лидлар', 'Квал лидлар сони', 'Квал %', 'Квал лид нархи $']
+    const labels = ['Жами лидлар', 'Янги лидлар', 'Дубль лидлар', 'Бошка лидлар', 'Квал лидлар сони', 'Квал %', 'Квал лид нархи $']
     const cards = [...document.querySelectorAll('.card')].map((c) => c.querySelector('p')!.textContent)
     expect(cards).toEqual(labels)
 
@@ -52,6 +53,7 @@ describe('FunnelTiles', () => {
     expect(within(tile('Янги лидлар')).getByText('940')).toBeTruthy()
     expect(within(tile('Янги лидлар')).getByText('dublsiz · 94.0%')).toBeTruthy()
     expect(within(tile('Дубль лидлар')).getByText('60')).toBeTruthy()
+    expect(within(tile('Бошка лидлар')).getByText('3,224')).toBeTruthy()
     expect(within(tile('Квал лидлар сони')).getByText('300')).toBeTruthy()
     expect(within(tile('Квал %')).getByText('31.9%')).toBeTruthy()
     expect(within(tile('Квал лид нархи $')).getByText('4.00')).toBeTruthy()
@@ -62,10 +64,20 @@ describe('FunnelTiles', () => {
     const quiet = {
       importedAt: null,
       funnel: { total: 0, fresh: 0, duplicates: 0, qualified: 0, qualifiedPercent: null, spendUsd: 0, costPerQualifiedUsd: null },
+      tiles: { rows: [], total: { leads: 0 } },
     } as unknown as LeadSourcesOverviewDto
     render(<FunnelTiles data={quiet} status="ready" />)
 
     expect(within(tile('Квал %')).getByText('—')).toBeTruthy()
     expect(within(tile('Квал лид нархи $')).getByText('—')).toBeTruthy()
+  })
+
+  it('washes Янги green and Дубль red, and only those two', () => {
+    render(<FunnelTiles data={data} status="ready" />)
+
+    expect(tile('Янги лидлар').style.background).toContain('--status-good')
+    expect(tile('Дубль лидлар').style.background).toContain('--status-critical')
+    expect(tile('Жами лидлар').style.background).toBe('')
+    expect(tile('Бошка лидлар').style.background).toBe('')
   })
 })

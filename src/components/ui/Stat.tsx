@@ -35,6 +35,8 @@ export function StatTile({
   hint,
   context,
   tone = 'neutral',
+  fill,
+  compact = false,
   accent,
   money = 'compact',
   status = 'ready',
@@ -45,6 +47,14 @@ export function StatTile({
   hint?: string
   context?: ReactNode
   tone?: 'neutral' | 'good' | 'warning' | 'critical'
+  /**
+   * Tints the whole card, for a tile the client wants found at a glance
+   * («Янги лидлар» green, «Дубль лидлар» red on /leads). A wash, not a
+   * colour on the figure — the number stays in primary ink.
+   */
+  fill?: 'good' | 'critical'
+  /** A smaller figure and tighter padding, for a band of seven or more tiles on one row. */
+  compact?: boolean
   /**
    * How much of a soʻm figure the tile prints.
    *
@@ -79,8 +89,21 @@ export function StatTile({
           ? 'var(--status-critical)'
           : 'var(--ink-primary)'
 
+  const fillColor = fill === 'good' ? 'var(--status-good)' : fill === 'critical' ? 'var(--status-critical)' : null
+  const figureSize = compact ? 'text-[22px] sm:text-[24px]' : 'text-[26px] sm:text-[30px]'
+
   return (
-    <div className="card flex flex-col px-4 py-3.5">
+    <div
+      className={`card flex min-w-0 flex-col ${compact ? 'px-3 py-3' : 'px-4 py-3.5'}`}
+      style={
+        fillColor
+          ? {
+              background: `color-mix(in oklab, ${fillColor} 12%, var(--surface-raised))`,
+              borderColor: `color-mix(in oklab, ${fillColor} 30%, var(--border))`,
+            }
+          : undefined
+      }
+    >
       <div className="flex items-center gap-1.5">
         {accent && (
           <span
@@ -105,7 +128,7 @@ export function StatTile({
         // role="status", because aria-label on a bare div names nothing.
         // Sized to the figure below at each breakpoint, so ready never reflows loading.
         <div
-          className="skeleton mt-2 h-[26px] w-2/3 sm:h-[30px]"
+          className={`skeleton mt-2 w-2/3 ${compact ? 'h-[22px] sm:h-[24px]' : 'h-[26px] sm:h-[30px]'}`}
           /* The full reading is smaller on a narrow tile, so the placeholder
              it reflows into has to shrink with it — same token, one source. */
           style={unit === 'money' && money === 'full' ? { height: 'var(--figure-sum-size)' } : undefined}
@@ -115,7 +138,7 @@ export function StatTile({
         </div>
       ) : status === 'error' ? (
         <p
-          className="figure mt-2 text-[26px] sm:text-[30px] leading-none font-semibold"
+          className={`figure mt-2 ${figureSize} leading-none font-semibold`}
           style={{ color: 'var(--status-critical)' }}
           // Decorative title — it only repeats the visible word, so it may
           // stay native. Data-carrying titles ride the Tooltip primitive.
@@ -139,7 +162,7 @@ export function StatTile({
           <Tooltip content={<span className="tabular">{formatUzs(value)}</span>}>
             <span
               tabIndex={0}
-              className="focusable figure figure-wrap block rounded-[var(--radius-panel-sm)] text-[26px] sm:text-[30px] leading-none font-semibold"
+              className={`focusable figure figure-wrap block rounded-[var(--radius-panel-sm)] ${figureSize} leading-none font-semibold`}
               style={{ color: toneColor }}
             >
               <StatValue value={value} unit={unit} />
@@ -149,7 +172,7 @@ export function StatTile({
       ) : (
         <p
           className={`figure figure-wrap mt-2 leading-none font-semibold ${
-            unit === 'money' && money === 'full' ? 'figure-sum' : 'text-[26px] sm:text-[30px]'
+            unit === 'money' && money === 'full' ? 'figure-sum' : figureSize
           }`}
           style={{ color: toneColor }}
         >
