@@ -1,5 +1,5 @@
 import { resolvePeriod } from '@/server/domain/period/period'
-import { addDays, buildLeadSplit, type LeadSplitDto, type SplitShare, WEEK_DAYS } from '@/server/domain/registration/leadSplit'
+import { addDays, buildLeadSplit, type LeadSplitDto, type SplitShare, GRID_DAYS } from '@/server/domain/registration/leadSplit'
 import { buildRopReport, type RopReportDto, type SellerPlanInput } from '@/server/domain/registration/ropReport'
 import type { InsightsRepository, SellerFaktDayRow } from '@/server/repositories/insightsRepository'
 import type { RegistrationRepository } from '@/server/repositories/registrationRepository'
@@ -27,7 +27,7 @@ export class RegistrationService {
 
   async overview(input: { day: string; canEdit: boolean }): Promise<LeadSplitDto> {
     const [rows, split, previous] = await Promise.all([
-      this.repository.distributedDays(addDays(input.day, -(WEEK_DAYS - 1)), input.day),
+      this.repository.distributedDays(addDays(input.day, -(GRID_DAYS - 1)), input.day),
       this.repository.split(input.day),
       this.repository.previousSplit(input.day),
     ])

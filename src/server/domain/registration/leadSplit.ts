@@ -47,7 +47,8 @@ export const SPLIT_ROPS: readonly string[] = Object.freeze([
 /** A share is in basis points: 15 % = 1 500; a day's split sums to this. */
 export const SHARE_TOTAL_BP = 10_000
 
-export const WEEK_DAYS = 7
+/** «Kimga qancha lid kelayapti» — a month back from the day, scrolled sideways (the client, 2026-10-02: «1 haftalik emas oy boʻyicha»). */
+export const GRID_DAYS = 31
 
 export interface DistributedDayRow {
   readonly day: string
@@ -114,7 +115,7 @@ export function buildLeadSplit(input: {
   previous: { day: string; rows: readonly SplitShare[] } | null
   canEdit: boolean
 }): LeadSplitDto {
-  const days = Array.from({ length: WEEK_DAYS }, (_, i) => addDays(input.day, i - (WEEK_DAYS - 1)))
+  const days = Array.from({ length: GRID_DAYS }, (_, i) => addDays(input.day, i - (GRID_DAYS - 1)))
   const at = new Map(days.map((d, i) => [d, i]))
 
   const byRop = new Map<string, number[]>()
@@ -148,7 +149,7 @@ export function buildLeadSplit(input: {
   const names = [...SPLIT_ROPS, ...extra]
 
   const plan = input.split ? apportion(fresh, names.map((rop) => shares.get(rop) ?? 0)) : null
-  const last = WEEK_DAYS - 1
+  const last = GRID_DAYS - 1
 
   return {
     day: input.day,

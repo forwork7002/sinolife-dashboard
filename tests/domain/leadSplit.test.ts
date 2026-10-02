@@ -29,7 +29,7 @@ describe('buildLeadSplit', () => {
     { day, rop: 'Lola', leads: 29, duplicates: 0 },
     { day, rop: null, leads: 10, duplicates: 0 },
     { day: '2026-09-24', rop: 'Lola', leads: 31, duplicates: 0 },
-    { day: '2026-09-23', rop: 'Lola', leads: 99, duplicates: 0 },
+    { day: '2026-08-30', rop: 'Lola', leads: 99, duplicates: 0 },
     { day, rop: 'Marjona', leads: 3, duplicates: 0 },
   ]
 
@@ -46,11 +46,15 @@ describe('buildLeadSplit', () => {
     expect(dto.rops.find((r) => r.rop === 'Sadriddin')!.received).toBe(2)
   })
 
-  it('keeps seven days ending on the day, and nothing older', () => {
+  it('keeps a month of days ending on the day, and nothing older', () => {
     const dto = buildLeadSplit({ day, rows, split: null, previous: null, canEdit: false })
-    expect(dto.week.days).toEqual(['2026-09-24', '2026-09-25', '2026-09-26', '2026-09-27', '2026-09-28', '2026-09-29', day])
-    expect(dto.rops.find((r) => r.rop === 'Lola')!.week).toEqual([31, 0, 0, 0, 0, 0, 29])
-    expect(dto.week.unassigned).toEqual([0, 0, 0, 0, 0, 0, 10])
+    expect(dto.week.days).toHaveLength(31)
+    expect(dto.week.days[0]).toBe('2026-08-31')
+    expect(dto.week.days.at(-1)).toBe(day)
+    const lola = dto.rops.find((r) => r.rop === 'Lola')!.week
+    expect(lola.slice(-7)).toEqual([31, 0, 0, 0, 0, 0, 29])
+    expect(lola.reduce((a, b) => a + b, 0)).toBe(31 + 29)
+    expect(dto.week.unassigned.reduce((a, b) => a + b, 0)).toBe(10)
   })
 
   it('leaves the plan empty when nobody set the day', () => {

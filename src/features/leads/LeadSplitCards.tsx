@@ -1,7 +1,7 @@
 'use client'
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 
 import { ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
@@ -151,13 +151,13 @@ export function LeadSplitCard({ day, onDay }: { day: string; onDay: (day: string
   )
 }
 
-/** «Kimga qancha lid kelayapti» — the seven days up to the chosen one. */
+/** «Kimga qancha lid kelayapti» — the month up to the chosen day. */
 export function LeadWeekCard({ day }: { day: string }) {
   const { overview, data, rows } = useLeadSplit(day)
   return (
     <ChartCard
       title="Kimga qancha lid kelayapti"
-      hint={`Har bir ROP ${formatDate(day)} gacha 7 kunda olgan lidlar soni (Bitrix24, «РОП (Первичка)»). Rang qanchalik toʻq boʻlsa — shuncha koʻp.`}
+      hint={`Har bir ROP ${formatDate(day)} gacha bir oyda olgan lidlar soni (Bitrix24, «РОП (Первичка)»). Rang qanchalik toʻq boʻlsa — shuncha koʻp. Oldingi kunlar — chapga suring.`}
     >
       {overview.isError && !data ? <SplitError overview={overview} /> : data ? <WeekGrid data={data} rows={rows} /> : <LoadingSkeleton rows={6} />}
     </ChartCard>
@@ -282,10 +282,13 @@ const th = 'eyebrow px-3 py-2 text-left font-[550] whitespace-nowrap'
 const thR = `${th} text-right`
 const td = 'px-3 py-2.5 whitespace-nowrap'
 const tdR = `${td} tabular text-right`
+/** The month grid's ROP column and its total, held while the days scroll beneath. */
+const pinL = 'tcol-sticky is-edge left-0'
+const pinR = 'tcol-sticky right-0'
 
-function RopCell({ row }: { row: Row }) {
+function RopCell({ row, className = '' }: { row: Row; className?: string }) {
   return (
-    <th scope="row" className={`${td} text-left font-medium`} style={{ color: 'var(--ink-primary)' }}>
+    <th scope="row" className={`${td} ${className} text-left font-medium`} style={{ color: 'var(--ink-primary)' }}>
       <span className="inline-flex items-center gap-2">
         <Dot color={row.color} />
         {row.rop}
@@ -457,16 +460,25 @@ function PlanEditor({ data, rows, onDone }: { data: LeadSplitDto; rows: readonly
   )
 }
 
-/** ROP × the last seven days, each cell tinted by its share of the grid's busiest cell. */
+/**
+ * ROP × the month up to the day, each cell tinted by its share of the grid's
+ * busiest cell. It opens on the latest days; the ROP column and the total stay
+ * put while the days scroll left.
+ */
 function WeekGrid({ data, rows }: { data: LeadSplitDto; rows: readonly Row[] }) {
   const days = data.week.days
   const max = Math.max(1, ...rows.flatMap((r) => r.week))
   const dayTotals = days.map((_, i) => rows.reduce((sum, r) => sum + (r.week[i] ?? 0), 0) + (data.week.unassigned[i] ?? 0))
   const anyUnassigned = data.week.unassigned.some((v) => v > 0)
+  const scroller = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const el = scroller.current
+    if (el) el.scrollLeft = el.scrollWidth
+  }, [data.day])
   const cell = (v: number, color: string, key: string) => (
     <td
       key={key}
-      className="tabular rounded-md px-2 py-2 text-center"
+      className="tabular min-w-[3.25rem] rounded-md px-2 py-2 text-center"
       style={{
         background: v > 0 ? `color-mix(in oklab, ${color} ${Math.round(10 + (Math.min(v, max) / max) * 45)}%, transparent)` : 'transparent',
         color: v > 0 ? 'var(--ink-primary)' : 'var(--ink-muted)',
@@ -476,39 +488,39 @@ function WeekGrid({ data, rows }: { data: LeadSplitDto; rows: readonly Row[] }) 
     </td>
   )
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] border-separate border-spacing-1 text-sm">
+    <div ref={scroller} className="overflow-x-auto">
+      <table className="w-full min-w-max border-separate border-spacing-1 text-sm">
         <thead>
           <tr>
-            <th className={th}>ROP</th>
+            <th className={`${th} ${pinL}`}>ROP</th>
             {days.map((d) => (
               <th key={d} className={`${th} text-center`}>
                 {formatDateShort(d)}
               </th>
             ))}
-            <th className={thR}>7 kun</th>
+            <th className={`${thR} ${pinR}`}>{days.length} kun</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.rop}>
-              <RopCell row={r} />
+              <RopCell row={r} className={pinL} />
               {r.week.map((v, i) => cell(v, r.color, days[i]!))}
-              <td className={`${tdR} font-semibold`} style={{ color: 'var(--ink-primary)' }}>
+              <td className={`${tdR} ${pinR} font-semibold`} style={{ color: 'var(--ink-primary)' }}>
                 {formatNumber(r.week.reduce((a, b) => a + b, 0))}
               </td>
             </tr>
           ))}
           {anyUnassigned && (
             <tr>
-              <th scope="row" className={`${td} text-left font-normal`} style={muted}>
+              <th scope="row" className={`${td} ${pinL} text-left font-normal`} style={muted}>
                 <span className="inline-flex items-center gap-2">
                   <Dot color={UNASSIGNED_COLOR} />
                   Berilmagan
                 </span>
               </th>
               {data.week.unassigned.map((v, i) => cell(v, UNASSIGNED_COLOR, days[i]!))}
-              <td className={tdR} style={muted}>
+              <td className={`${tdR} ${pinR}`} style={muted}>
                 {formatNumber(data.week.unassigned.reduce((a, b) => a + b, 0))}
               </td>
             </tr>
@@ -516,7 +528,7 @@ function WeekGrid({ data, rows }: { data: LeadSplitDto; rows: readonly Row[] }) 
         </tbody>
         <tfoot>
           <tr>
-            <th scope="row" className={`${td} text-left font-semibold`} style={{ color: 'var(--ink-primary)' }}>
+            <th scope="row" className={`${td} ${pinL} text-left font-semibold`} style={{ color: 'var(--ink-primary)' }}>
               Jami
             </th>
             {dayTotals.map((v, i) => (
@@ -524,7 +536,7 @@ function WeekGrid({ data, rows }: { data: LeadSplitDto; rows: readonly Row[] }) 
                 {formatNumber(v)}
               </td>
             ))}
-            <td className={`${tdR} font-semibold`} style={{ color: 'var(--ink-primary)' }}>
+            <td className={`${tdR} ${pinR} font-semibold`} style={{ color: 'var(--ink-primary)' }}>
               {formatNumber(dayTotals.reduce((a, b) => a + b, 0))}
             </td>
           </tr>
