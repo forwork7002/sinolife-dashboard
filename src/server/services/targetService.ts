@@ -81,7 +81,7 @@ export interface TargetStageDto {
 }
 
 export interface TargetOverviewDto {
-  /** The seven ad pages' names, as the portal spells them — what «target» means. */
+  /** The ad pages' names, as the portal spells them — what «target» means. */
   readonly targetSources: readonly string[]
   readonly total: TargetCountersDto
   readonly bySource: readonly TargetGroupDto[]

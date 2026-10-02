@@ -143,7 +143,10 @@ export function adBudgetProduct(c: {
  * «zextrauzb» rather than dropped. The ads cannot say which page they ran on
  * without the `ads_management` budget (see metaImport.ts), so the page is
  * stated here. An unmapped account's DM money has no page and is reported
- * as such, never folded into one.
+ * as such, never folded into one. «collagen.marine», an ad page since
+ * 2026-10-02, carries no DM money here either: its row shows its Bitrix24
+ * leads and kval, like «sinolife_otziv». Which page Collagen's DM campaigns
+ * point at is the client's to say; until then the money stays on sinolifeuz.
  */
 export const DM_PAGE_OF_PRODUCT: Readonly<Record<TargetProduct, string>> = Object.freeze({
   Collagen: 'UC_1X1J24', // sinolifeuz

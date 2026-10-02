@@ -111,7 +111,7 @@ function Tiles({ data, status }: { data: ReklamaOverviewDto | undefined; status:
   const outside = spend ? spend.hiringUsd + spend.otherUsd : 0
   /*
     Over the pages that CARRY the DM money only: a page with no DM spend
-    (sinolife_otziv, the Telegram pages) would add its qualified leads to the
+    (sinolife_otziv, collagen.marine, the Telegram pages) would add its qualified leads to the
     denominator and make every DM lead look cheaper than it was. The sheet's
     «Итог» does the same — its «Цена за квал» is sinolifeuz's.
   */

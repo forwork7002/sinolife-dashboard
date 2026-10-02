@@ -59,6 +59,7 @@ const { leadBrand } = await import('@/server/services/rnpService')
 describe('leadBrand', () => {
   it('takes the page first, then the form', () => {
     expect(leadBrand('UC_1X1J24', null)).toBe('Collagen')
+    expect(leadBrand('UC_MWIKOC', null)).toBe('Collagen') // collagen.marine, through the ad pages
     expect(leadBrand('UC_AA84D0', null)).toBe('Zextra')
     expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы «Sinolife Collagen - 30.04 Eldor»')).toBe('Collagen')
     expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы «Zextra Umar 3»')).toBe('Zextra')

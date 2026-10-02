@@ -21,7 +21,7 @@ const ACCESS = { permission: 'analytics:read:all', section: 'target' } as const
  * Dated by the deal's CREATION in Bitrix24 (`createdAtSource`): a lead on the
  * day it was registered, and a sale on the day the seller's deal was opened —
  * normally the same day or the next. `?scope=all` counts every source instead
- * of the seven target pages. The `meta` block is Meta Ads spend per targetolog
+ * of the target pages. The `meta` block is Meta Ads spend per targetolog
  * over the same calendar days (Tashkent), from `meta_ad_daily`.
  */
 export const GET = getHandler(ACCESS, targetOverviewQuerySchema, async (ctx) => {

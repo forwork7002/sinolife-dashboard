@@ -452,7 +452,10 @@ Per-screen traps worth knowing before you touch one:
   boʻlayapti koʻrish uchun… pul maʼlumotlari… toʻliq leadlar haqida»). The
   client's «Target» Google Sheet is private and was never read; the screen is
   built from what that sheet is built from (`~/bitrix-sheets/Bitrix24Sync.gs`):
-  deals on the seven `TARGET_SOURCE_IDS` in `mapping.ts`.
+  deals on the `TARGET_SOURCE_IDS` in `mapping.ts` — that export's seven, plus
+  «collagen.marine» (UC_MWIKOC, Collagen) since 2026-10-02 at the user's word.
+  The export does not carry it, so the client's sheet runs below this
+  screen's Collagen by exactly that page's deals; do not "fix" the list back.
   **A LEAD AND ITS SALE ARE TWO DEALS.** The lead is the Регистрация (LEAD)
   deal; «Сделка успешна» makes the portal open a SECOND deal for the same
   contact in Первичный отдел, copying SOURCE_ID and the targetolog, and that

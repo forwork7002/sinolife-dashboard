@@ -274,7 +274,7 @@ export function searchParamsToObject(params: URLSearchParams): Record<string, st
 // «Target tahlili»
 // ---------------------------------------------------------------------------
 
-/** «Faqat target» by default — the screen is about the seven ad pages. */
+/** «Faqat target» by default — the screen is about the ad pages (`TARGET_SOURCE_IDS`). */
 const targetScope = z.enum(TARGET_SCOPES).default('target')
 
 /**

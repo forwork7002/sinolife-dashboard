@@ -122,7 +122,7 @@ export const CONFIRMATION_QUEUE_MODES = ['window', 'backlog'] as const
 export type ConfirmationQueueMode = (typeof CONFIRMATION_QUEUE_MODES)[number]
 
 /**
- * Which leads «Target tahlili» counts: the seven SOURCE_IDs paid targeting
+ * Which leads «Target tahlili» counts: the SOURCE_IDs paid targeting
  * points at (`TARGET_SOURCE_IDS`), or every source the portal names — the
  * second is how a reader checks the first against the whole inflow.
  */

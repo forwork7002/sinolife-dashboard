@@ -47,7 +47,8 @@ const PAGE_SIZE = 50
  * uchun… pul maʼlumotlari va boshqalar toʻliq leadlar haqida maʼlumotlar». The
  * client's «Target» sheet could not be read (it is private), so the screen is
  * built from what that sheet is itself built from: the portal's Регистрация
- * deals on the seven target SOURCE_IDs, with the targetolog, creative and
+ * deals on the target SOURCE_IDs (that sheet's seven, and collagen.marine since
+ * 2026-10-02), with the targetolog, creative and
  * first-source fields the target team fills in — and, below them, Meta Ads
  * spend per targetolog.
  *

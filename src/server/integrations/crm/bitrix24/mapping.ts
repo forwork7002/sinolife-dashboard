@@ -447,10 +447,20 @@ export const NOT_PACKED_STAGES: readonly string[] = Object.freeze(['C6:NEW', 'C6
  *
  * Taken from the client's own Bitrix24 → Google Sheets export
  * (`Bitrix24Sync.gs`, the sheet the target team works from), which filters on
- * exactly these seven: the Instagram and Telegram pages the ads point at. Every
+ * seven of these: the Instagram and Telegram pages the ads point at. Every
  * other source on the portal — Входящий, Ген лид, repeat-customer re-entries —
  * is somebody who arrived WITHOUT an ad, and counting them would hand the
  * targetologists leads they did not buy.
+ *
+ * «collagen.marine» (UC_MWIKOC) joined on 2026-10-02 at the user's word
+ * («collagen.marine ni reklama sahifalariga qoʻsh»). It is not in that export,
+ * so the client's sheet runs below these screens by exactly its deals — on
+ * purpose, do not take it back out to match the sheet. The page opened on
+ * 28.09 and was the busiest DM page by 01.10 (314 conversations, 25
+ * Регистрация leads that day; 22% of the ad pages' leads 28.09–01.10), and its
+ * ads are paid from «Collagen marine Eldor», whose spend `META_ACCOUNT_OWNERS`
+ * already counts as Collagen — so before it joined, Collagen's spend was
+ * divided by leads that left this page's out.
  *
  * Ids, not names: a page renamed next month keeps its id, and the name is read
  * from `sales_source` at query time.
@@ -460,14 +470,16 @@ export const TARGET_SOURCE_PRODUCT: Readonly<Record<string, TargetProduct>> = Ob
   UC_1X1J24: 'Collagen', // sinolifeuz
   UC_A4WINR: 'Collagen', // sinolifeuzb (Telegram)
   UC_U9KZG8: 'Collagen', // sinolifeofficial (Telegram)
+  UC_MWIKOC: 'Collagen', // collagen.marine — since 2026-10-02, not in Bitrix24Sync.gs
   UC_A8LE21: 'Zextra', // zextrauzb
   UC_LBSZDU: 'Zextra', // zextra.sinolife
   '38|NEXTBOT': 'Zextra', // zextrasure.uz
 })
 
 /**
- * The same seven ids as a list. Which product each page sells is the map
- * above: the Sinolife pages advertise the collagen, the Zextra pages Zextra —
+ * The same ids as a list. Which product each page sells is the map above:
+ * the Sinolife pages and collagen.marine advertise the collagen, the Zextra
+ * pages Zextra —
  * the split the «Лид база» sheet makes, so a product's Meta spend can stand
  * beside the leads its own pages brought in.
  */
@@ -475,16 +487,15 @@ export const TARGET_SOURCE_IDS: readonly string[] = Object.freeze(Object.keys(TA
 
 /**
  * A Регистрация lead's brand by where it came in, for «RNP jadvali»'s P&L
- * (sheet rows 399 / 426). The ad pages of `TARGET_SOURCE_PRODUCT`, plus the
- * two brands' own inbound lines and the pages added since («collagen.marine»
- * UC_MWIKOC, the second Zextra bot 46|NEXTBOT — read off crm.status.list on
- * 2026-09-28). A source outside this map decides nothing; the lead's form, if
- * any, is asked next (see rnpService).
+ * (sheet rows 399 / 426). The ad pages of `TARGET_SOURCE_PRODUCT`
+ * («collagen.marine» UC_MWIKOC among them since 2026-10-02), plus the two
+ * brands' own inbound lines and the second Zextra bot 46|NEXTBOT (read off
+ * crm.status.list on 2026-09-28). A source outside this map decides nothing;
+ * the lead's form, if any, is asked next (see rnpService).
  */
 export const LEAD_SOURCE_BRAND: Readonly<Record<string, TargetProduct>> = Object.freeze({
   ...TARGET_SOURCE_PRODUCT,
   UC_CKXAZS: 'Collagen', // Входящий collagen
-  UC_MWIKOC: 'Collagen', // collagen.marine
   UC_AA84D0: 'Zextra', // Входящий zextra
   '46|NEXTBOT': 'Zextra', // NEXTBOT - zextra.sinolife
 })

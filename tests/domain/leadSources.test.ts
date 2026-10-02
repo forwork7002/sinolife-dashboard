@@ -76,6 +76,7 @@ describe('leadChannel', () => {
   it('reads the ad pages, the calls and hand-typed «Ген лид»', () => {
     expect(leadChannel('UC_1X1J24', null, v)).toBe('page') // sinolifeuz
     expect(leadChannel('38|NEXTBOT', null, v)).toBe('page')
+    expect(leadChannel('UC_MWIKOC', null, v)).toBe('page') // collagen.marine — an ad page since 2026-10-02
     expect(leadChannel('CALL', null, v)).toBe('inbound')
     expect(leadChannel('UC_CKXAZS', null, v)).toBe('inbound') // Входящий collagen
     expect(leadChannel('UC_AA84D0', null, v)).toBe('inbound') // Входящий zextra

@@ -113,7 +113,7 @@ describe('TargetService.overview', () => {
     service = new TargetService(repository, marketing)
   })
 
-  it('counts the seven target pages by default and every source when asked', async () => {
+  it('counts the target pages by default and every source when asked', async () => {
     await service.overview(PERIOD, 'target', 'all', 'Asia/Tashkent')
     await service.overview(PERIOD, 'all', 'all', 'Asia/Tashkent')
     expect(asked.map((w) => w.sourceIds)).toEqual([TARGET_SOURCE_IDS, null])
@@ -123,7 +123,8 @@ describe('TargetService.overview', () => {
     await service.overview(PERIOD, 'all', 'Zextra', 'Asia/Tashkent')
     await service.overview(PERIOD, 'target', 'Collagen', 'Asia/Tashkent')
     expect([...asked[0]!.sourceIds!].sort()).toEqual(['38|NEXTBOT', 'UC_A8LE21', 'UC_LBSZDU'])
-    expect([...asked[1]!.sourceIds!].sort()).toEqual(['UC_0FMQ5Q', 'UC_1X1J24', 'UC_A4WINR', 'UC_U9KZG8'])
+    // collagen.marine joined the Collagen pages on 2026-10-02.
+    expect([...asked[1]!.sourceIds!].sort()).toEqual(['UC_0FMQ5Q', 'UC_1X1J24', 'UC_A4WINR', 'UC_MWIKOC', 'UC_U9KZG8'])
   })
 
   it('keys the memo on the scope — «all» never serves the target answer', async () => {

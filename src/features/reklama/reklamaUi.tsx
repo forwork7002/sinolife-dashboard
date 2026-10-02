@@ -56,7 +56,7 @@ export function pct(value: number | null): ReactNode {
 }
 
 /**
- * Which slice a day table shows. A SegmentedControl in a scroll box, so seven
+ * Which slice a day table shows. A SegmentedControl in a scroll box, so the
  * pages fit a phone without wrapping into a second row of buttons.
  */
 export function SlicePicker<T extends string>({
