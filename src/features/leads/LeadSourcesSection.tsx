@@ -12,7 +12,6 @@ import {
   DayCell,
   type Status,
   SlicePicker,
-  TableCard,
   count,
   money,
   muted,
@@ -39,7 +38,8 @@ import type {
  * the period sum to the tiles above it. Their kval is the cohort's — what the
  * period's leads have become by now — while the tiles count kval by the day it
  * was WON, so the two kvals differ and the «Barcha manbalar» hint says so. The
- * ROP cards placed in the slots read their own day:
+ * ROP cards placed in the slots read their own day. «Targetologlar» and «DM
+ * sahifalar» share one card, a switch at its top choosing the table:
  *
  *   Targetologlar — each targetolog's lead forms: what Meta counted, what
  *     reached Регистрация, and what that became. «Yetib keldi» low means the
@@ -89,8 +89,7 @@ export function LeadSourcesSection({
       <ChannelTiles data={data} status={status} />
       {slots.afterChannels}
       {slots.beforeForms}
-      <FormsBlock data={data} status={status} />
-      <DmBlock data={data} status={status} />
+      <TablesBlock data={data} status={status} />
       <SourcesBlock data={data} status={status} />
     </>
   )
@@ -342,17 +341,80 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
   )
 }
 
+// --- forms and DM pages: one card, one switch -------------------------------
+
+type TableView = 'forms' | 'formDays' | 'dm' | 'dmDays'
+
+const TABLE_VIEWS: readonly { value: TableView; label: string }[] = [
+  { value: 'forms', label: 'Targetologlar' },
+  { value: 'formDays', label: 'Targetologlar · kunlik' },
+  { value: 'dm', label: 'DM sahifalar' },
+  { value: 'dmDays', label: 'DM sahifalar · kunlik' },
+]
+
+/** What one view of the card draws: its heading, an optional picker under it, the table, a footnote. */
+interface TableViewParts {
+  title: string
+  hint: string
+  picker?: ReactNode
+  footer?: string
+  table: ReactNode
+}
+
+/**
+ * «Targetologlar» and «DM sahifalar», over the period and day by day — four
+ * tables in ONE card behind one switch at its top (the client, 2026-10-02:
+ * four cards stacked ran the page too long). A day view keeps its own
+ * targetolog / page picker; both choices live here, so flipping the switch
+ * away and back does not lose them.
+ */
+export function TablesBlock({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
+  const [view, setView] = useState<TableView>('forms')
+  const [formSlice, setFormSlice] = useState<string>('total')
+  const [dmSlice, setDmSlice] = useState<string>('total')
+  const parts =
+    view === 'forms'
+      ? formsView(data, status)
+      : view === 'formDays'
+        ? formDaysView(data, status, formSlice, setFormSlice)
+        : view === 'dm'
+          ? dmView(data, status)
+          : dmDaysView(data, status, dmSlice, setDmSlice)
+
+  return (
+    <section className="flex min-w-0 flex-col gap-3">
+      <Card className="min-w-0 p-0">
+        <header className="flex min-w-0 flex-col gap-3 px-5 pt-4 pb-3">
+          <SlicePicker<TableView> ariaLabel="Targetolog yoki DM jadvali" value={view} onChange={setView} options={TABLE_VIEWS} />
+          <div>
+            <h3 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
+              {parts.title}
+            </h3>
+            <p className="mt-0.5 text-xs" style={muted}>
+              {parts.hint}
+            </p>
+          </div>
+          {parts.picker}
+        </header>
+        {parts.table}
+        {parts.footer && (
+          <footer className="px-5 pt-2 pb-4 text-[11px]" style={muted}>
+            {parts.footer}
+          </footer>
+        )}
+      </Card>
+    </section>
+  )
+}
+
 // --- forms ------------------------------------------------------------------
 
 const ownerLabel = (o: FormOwnerDto) =>
   o.product === 'Boshqa' ? o.targetolog : `${o.targetolog} · ${PRODUCT_LABEL[o.product]}`
 
-function FormsBlock({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
-  const [slice, setSlice] = useState<string>('total')
-  const owners = data?.forms.owners ?? []
-  const chosen = owners.find((o) => o.key === slice)
-
+function formsView(data: LeadSourcesOverviewDto | undefined, status: Status): TableViewParts {
   type OwnerRow = { key: string; owner: FormOwnerDto | null; cells: FormTotals }
+  const owners = data?.forms.owners ?? []
   const rows: OwnerRow[] =
     data && owners.length > 0
       ? [
@@ -373,6 +435,34 @@ function FormsBlock({ data, status }: { data: LeadSourcesOverviewDto | undefined
         ]
       : []
 
+  return {
+    title: 'Targetologlar · lid-forma — davr boʻyicha',
+    hint: 'Meta hisoblagan lidlar va shu targetologning CRM-formasi Bitrix24 Регистрация ga ochgan bitimlar — keyin ular nima boʻlgani. Targetolog forma nomidan olinadi («Sinolife (UMAR) 777», «… Eldor»). «Yetib keldi» — Bitrix24 lid ÷ Meta lid; past boʻlsa, Meta formasi Bitrix24 ga ulanmagan boʻlishi mumkin.',
+    footer: 'Lid va kval narxi — lid-forma sarfi ÷ Bitrix24 dagi lid (yoki kval). Meta lid narxi «Reklama samarasi» boʻlimida.',
+    table: (
+      <DataTable<OwnerRow>
+        columns={ownerColumns}
+        rows={rows}
+        rowKey={(r) => r.key}
+        status={status}
+        emptyTitle="Bu davrda lid-forma lidi yoʻq"
+        minWidth={1260}
+        maxHeight="none"
+        stickyColumns={1}
+        stickyLastRow
+      />
+    ),
+  }
+}
+
+function formDaysView(
+  data: LeadSourcesOverviewDto | undefined,
+  status: Status,
+  slice: string,
+  onSlice: (slice: string) => void,
+): TableViewParts {
+  const owners = data?.forms.owners ?? []
+  const chosen = owners.find((o) => o.key === slice)
   const days = chosen ? chosen.days : data?.forms.days
   const dayTotal: FormDayDto | undefined = chosen
     ? { date: '', metaLeads: chosen.metaLeads, leads: chosen.outcome.leads, success: chosen.outcome.success }
@@ -380,55 +470,31 @@ function FormsBlock({ data, status }: { data: LeadSourcesOverviewDto | undefined
       ? { date: '', metaLeads: data.forms.metaLeads, leads: data.forms.outcome.leads, success: data.forms.outcome.success }
       : undefined
 
-  return (
-    <section className="flex min-w-0 flex-col gap-3">
-      <SectionHeader
-        title="Targetologlar · lid-forma"
-        hint="Meta hisoblagan lidlar va shu targetologning CRM-formasi Bitrix24 Регистрация ga ochgan bitimlar — keyin ular nima boʻlgani. Targetolog forma nomidan olinadi («Sinolife (UMAR) 777», «… Eldor»)."
+  return {
+    title: `Targetologlar · kunlik — ${chosen ? ownerLabel(chosen) : 'barcha targetologlar'}`,
+    hint: 'Har kun alohida qator, oxirida davr jami. Meta kuni — akkauntning hisobot kuni.',
+    picker: (
+      <SlicePicker
+        ariaLabel="Qaysi targetolog"
+        value={chosen ? slice : 'total'}
+        onChange={onSlice}
+        options={[{ value: 'total', label: 'Jami' }, ...owners.map((o) => ({ value: o.key, label: ownerLabel(o) }))]}
       />
-      <TableCard
-        title="Targetologlar — davr boʻyicha"
-        hint="«Yetib keldi» — Bitrix24 lid ÷ Meta lid. Past boʻlsa, Meta formasi Bitrix24 ga ulanmagan boʻlishi mumkin."
-        footer="Lid va kval narxi — lid-forma sarfi ÷ Bitrix24 dagi lid (yoki kval). Meta lid narxi «Reklama samarasi» boʻlimida."
-      >
-        <DataTable<OwnerRow>
-          columns={ownerColumns}
-          rows={rows}
-          rowKey={(r) => r.key}
-          status={status}
-          emptyTitle="Bu davrda lid-forma lidi yoʻq"
-          minWidth={1260}
-          maxHeight="none"
-          stickyColumns={1}
-          stickyLastRow
-        />
-      </TableCard>
-      <TableCard
-        title={`Kunlik — ${chosen ? ownerLabel(chosen) : 'barcha targetologlar'}`}
-        hint="Har kun alohida qator, oxirida davr jami. Meta kuni — akkauntning hisobot kuni."
-        action={
-          <SlicePicker
-            ariaLabel="Qaysi targetolog"
-            value={chosen ? slice : 'total'}
-            onChange={setSlice}
-            options={[{ value: 'total', label: 'Jami' }, ...owners.map((o) => ({ value: o.key, label: ownerLabel(o) }))]}
-          />
-        }
-      >
-        <DataTable<DayRow<FormDayDto>>
-          columns={formDayColumns}
-          rows={owners.length > 0 ? dayRowsOf(days, dayTotal) : []}
-          rowKey={(r) => r.key}
-          status={status}
-          emptyTitle="Bu davrda lid-forma lidi yoʻq"
-          minWidth={620}
-          maxHeight="60dvh"
-          stickyColumns={1}
-          stickyLastRow
-        />
-      </TableCard>
-    </section>
-  )
+    ),
+    table: (
+      <DataTable<DayRow<FormDayDto>>
+        columns={formDayColumns}
+        rows={owners.length > 0 ? dayRowsOf(days, dayTotal) : []}
+        rowKey={(r) => r.key}
+        status={status}
+        emptyTitle="Bu davrda lid-forma lidi yoʻq"
+        minWidth={620}
+        maxHeight="60dvh"
+        stickyColumns={1}
+        stickyLastRow
+      />
+    ),
+  }
 }
 
 interface FormTotals {
@@ -590,12 +656,10 @@ const formDayColumns: readonly Column<DayRow<FormDayDto>>[] = [
 
 // --- DM ---------------------------------------------------------------------
 
-function DmBlock({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
-  const [slice, setSlice] = useState<string>('total')
-  const pages = data?.dm.pages ?? []
-  const chosen = pages.find((p) => p.key === slice)
+type PageRow = { key: string; page: DmPageDto | null; conversations: number; outcome: LeadOutcomeDto }
 
-  type PageRow = { key: string; page: DmPageDto | null; conversations: number; outcome: LeadOutcomeDto }
+function dmView(data: LeadSourcesOverviewDto | undefined, status: Status): TableViewParts {
+  const pages = data?.dm.pages ?? []
   const rows: PageRow[] =
     data && pages.length > 0
       ? [
@@ -604,6 +668,33 @@ function DmBlock({ data, status }: { data: LeadSourcesOverviewDto | undefined; s
         ]
       : []
 
+  return {
+    title: 'DM sahifalar — davr boʻyicha',
+    hint: 'Murojaat — sahifaga Instagram’da yozgan har bir odam (Bitrix24 «ИИ обработка» voronkasi). Lid — shu sahifadan Регистрация ga tushgan bitimlar. Murojaat → lid % — yozganlarning qanchasi lid boʻlib tushgani.',
+    table: (
+      <DataTable<PageRow>
+        columns={pageColumns}
+        rows={rows}
+        rowKey={(r) => r.key}
+        status={status}
+        emptyTitle="Bu davrda murojaat ham, sahifa lidi ham yoʻq"
+        minWidth={1080}
+        maxHeight="none"
+        stickyColumns={1}
+        stickyLastRow
+      />
+    ),
+  }
+}
+
+function dmDaysView(
+  data: LeadSourcesOverviewDto | undefined,
+  status: Status,
+  slice: string,
+  onSlice: (slice: string) => void,
+): TableViewParts {
+  const pages = data?.dm.pages ?? []
+  const chosen = pages.find((p) => p.key === slice)
   const days = chosen ? chosen.days : data?.dm.days
   const dayTotal: DmDayDto | undefined = chosen
     ? { date: '', conversations: chosen.conversations, leads: chosen.outcome.leads, success: chosen.outcome.success }
@@ -611,53 +702,34 @@ function DmBlock({ data, status }: { data: LeadSourcesOverviewDto | undefined; s
       ? { date: '', conversations: data.dm.conversations, leads: data.dm.outcome.leads, success: data.dm.outcome.success }
       : undefined
 
-  return (
-    <section className="flex min-w-0 flex-col gap-3">
-      <SectionHeader
-        title="DM sahifalar"
-        hint="Murojaat — sahifaga Instagram’da yozgan har bir odam (Bitrix24 «ИИ обработка» voronkasi). Lid — shu sahifadan Регистрация ga tushgan bitimlar."
+  return {
+    title: `DM sahifalar · kunlik — ${chosen ? chosen.name : 'barcha sahifalar'}`,
+    hint: 'Har kun alohida qator, oxirida davr jami.',
+    picker: (
+      <SlicePicker
+        ariaLabel="Qaysi sahifa"
+        value={chosen ? slice : 'total'}
+        onChange={onSlice}
+        options={[{ value: 'total', label: 'Jami' }, ...pages.map((p) => ({ value: p.key, label: p.name }))]}
       />
-      <TableCard title="Sahifalar — davr boʻyicha" hint="Murojaat → lid % — yozganlarning qanchasi Регистрация ga lid boʻlib tushgani.">
-        <DataTable<PageRow>
-          columns={pageColumns}
-          rows={rows}
-          rowKey={(r) => r.key}
-          status={status}
-          emptyTitle="Bu davrda murojaat ham, sahifa lidi ham yoʻq"
-          minWidth={1080}
-          maxHeight="none"
-          stickyColumns={1}
-          stickyLastRow
-        />
-      </TableCard>
-      <TableCard
-        title={`Kunlik — ${chosen ? chosen.name : 'barcha sahifalar'}`}
-        action={
-          <SlicePicker
-            ariaLabel="Qaysi sahifa"
-            value={chosen ? slice : 'total'}
-            onChange={setSlice}
-            options={[{ value: 'total', label: 'Jami' }, ...pages.map((p) => ({ value: p.key, label: p.name }))]}
-          />
-        }
-      >
-        <DataTable<DayRow<DmDayDto>>
-          columns={dmDayColumns}
-          rows={pages.length > 0 ? dayRowsOf(days, dayTotal) : []}
-          rowKey={(r) => r.key}
-          status={status}
-          emptyTitle="Bu davrda murojaat yoʻq"
-          minWidth={620}
-          maxHeight="60dvh"
-          stickyColumns={1}
-          stickyLastRow
-        />
-      </TableCard>
-    </section>
-  )
+    ),
+    table: (
+      <DataTable<DayRow<DmDayDto>>
+        columns={dmDayColumns}
+        rows={pages.length > 0 ? dayRowsOf(days, dayTotal) : []}
+        rowKey={(r) => r.key}
+        status={status}
+        emptyTitle="Bu davrda murojaat yoʻq"
+        minWidth={620}
+        maxHeight="60dvh"
+        stickyColumns={1}
+        stickyLastRow
+      />
+    ),
+  }
 }
 
-const pageColumns: readonly Column<{ key: string; page: DmPageDto | null; conversations: number; outcome: LeadOutcomeDto }>[] = [
+const pageColumns: readonly Column<PageRow>[] = [
   {
     key: 'page',
     header: 'Sahifa',
