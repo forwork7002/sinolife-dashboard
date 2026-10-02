@@ -42,10 +42,10 @@ const data = {
 const tile = (label: string) => screen.getByText(label, { selector: 'p' }).closest('.card') as HTMLElement
 
 describe('FunnelTiles', () => {
-  it('prints the seven figures in the client’s order', () => {
+  it('prints the six figures in the client’s order, «Бошка лидлар» gone (2026-10-02)', () => {
     render(<FunnelTiles data={data} status="ready" />)
 
-    const labels = ['Жами лидлар', 'Янги лидлар', 'Дубль лидлар', 'Бошка лидлар', 'Квал лидлар сони', 'Квал %', 'Квал лид нархи $']
+    const labels = ['Жами лидлар', 'Янги лидлар', 'Дубль лидлар', 'Квал лидлар сони', 'Квал %', 'Квал лид нархи $']
     const cards = [...document.querySelectorAll('.card')].map((c) => c.querySelector('p')!.textContent)
     expect(cards).toEqual(labels)
 
@@ -53,7 +53,6 @@ describe('FunnelTiles', () => {
     expect(within(tile('Янги лидлар')).getByText('940')).toBeTruthy()
     expect(within(tile('Янги лидлар')).getByText('dublsiz · 94.0%')).toBeTruthy()
     expect(within(tile('Дубль лидлар')).getByText('60')).toBeTruthy()
-    expect(within(tile('Бошка лидлар')).getByText('3,224')).toBeTruthy()
     expect(within(tile('Квал лидлар сони')).getByText('300')).toBeTruthy()
     expect(within(tile('Квал %')).getByText('31.9%')).toBeTruthy()
     expect(within(tile('Квал лид нархи $')).getByText('4.00')).toBeTruthy()
@@ -78,6 +77,5 @@ describe('FunnelTiles', () => {
     expect(tile('Янги лидлар').style.background).toContain('--status-good')
     expect(tile('Дубль лидлар').style.background).toContain('--status-critical')
     expect(tile('Жами лидлар').style.background).toBe('')
-    expect(tile('Бошка лидлар').style.background).toBe('')
   })
 })

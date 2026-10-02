@@ -96,19 +96,19 @@ export function LeadSourcesSection({
 // --- tiles ------------------------------------------------------------------
 
 /**
- * The client's seven figures (2026-10-01), in their order: Жами / Янги / Дубль
- * / Бошка лидлар, Квал лидлар сони, Квал %, Квал лид нархи $. The same day on
- * the RNP sheet's «Регистрация» block reads the same numbers — `funnel` says
- * how. «Бошка лидлар» is the channel row's Jami below, repeated up here (since
- * 2026-10-02 that row covers every lead, so it equals «Жами лидлар»); Янги
- * is washed green and Дубль red, as the client asked.
+ * The client's headline figures (2026-10-01), in their order: Жами / Янги /
+ * Дубль, Квал лидлар сони, Квал %, Квал лид нархи $. The same day on the RNP
+ * sheet's «Регистрация» block reads the same numbers — `funnel` says how. Янги
+ * is washed green and Дубль red, as the client asked. «Бошка лидлар» stood
+ * after Дубль until 2026-10-02: once the channel row covered every lead it
+ * equalled «Жами лидлар», and the client had it removed.
  */
 export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
   const f = data?.funnel
   const shareOfTotal = (n: number) => (f && f.total > 0 ? ` · ${formatPercent((n / f.total) * 100)}` : '')
   return (
     <section className="flex min-w-0 flex-col gap-3">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <StatTile
           compact
           status={status}
@@ -134,14 +134,6 @@ export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | u
           value={f?.duplicates ?? null}
           unit="count"
           hint={f ? `«Дубликат» bosqichida${shareOfTotal(f.duplicates)}` : undefined}
-        />
-        <StatTile
-          compact
-          status={status}
-          label="Бошка лидлар"
-          value={data?.tiles.total.leads ?? null}
-          unit="count"
-          hint="barcha kanallar yigʻindisi"
         />
         <StatTile
           compact
