@@ -111,7 +111,13 @@ describe('leadSourcesOverview', () => {
       fakt1({ sourceId: 'UC_1X1J24', source: 'sinolifeuz', formTitle: null }),
       fakt1({ sourceId: 'CALL', source: 'Входящий', formTitle: null, client: '935550000' }),
     ],
-    qualified: 6,
+    // WON in the window, whenever the deal arrived — 6 in all.
+    qualified: [
+      { sourceId: 'REPEAT_SALE', aiQualified: false, qualified: 3 },
+      { sourceId: 'UC_1X1J24', aiQualified: true, qualified: 1 },
+      { sourceId: 'UC_KPZA32', aiQualified: false, qualified: 1 },
+      { sourceId: null, aiQualified: false, qualified: 1 },
+    ],
   })
 
   it('reads the six headline figures', () => {
@@ -128,12 +134,12 @@ describe('leadSourcesOverview', () => {
   })
 
   it('prices nothing when nobody was qualified or nothing arrived', () => {
-    const empty = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [], triage: [], campaigns: [], fakt1: [], qualified: 0 })
+    const empty = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [], triage: [], campaigns: [], fakt1: [], qualified: [] })
     expect(empty.funnel).toMatchObject({ total: 0, fresh: 0, qualified: 0, qualifiedPercent: null, costPerQualifiedUsd: null })
   })
 
   it('leaves the kval price unknown, not free, when no Meta spend was read', () => {
-    const noMeta = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [reg({})], triage: [], campaigns: [], fakt1: [], qualified: 5 })
+    const noMeta = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [reg({})], triage: [], campaigns: [], fakt1: [], qualified: [{ sourceId: 'REPEAT_SALE', aiQualified: false, qualified: 5 }] })
     expect(noMeta.funnel.costPerQualifiedUsd).toBeNull()
   })
 
@@ -168,19 +174,27 @@ describe('leadSourcesOverview', () => {
     expect(data.sources.find((s) => s.key === 'source|UC_8NZNYM')!.channel).toBe('telegram')
   })
 
-  it('fills the client\'s channel tiles, «Исход» and «Boshqa» included, so «Jami» is Регистрация whole', () => {
-    const tile = (t: string) => data.tiles.rows.find((r) => r.tile === t)!.outcome
+  it('fills the client\'s channel tiles, «Исход» and «Boshqa» included, and sums them to the headline', () => {
+    const tile = (t: string) => data.tiles.rows.find((r) => r.tile === t)!
     expect(data.tiles.rows.map((r) => r.tile)).toEqual(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'sarafan', 'outbound', 'other'])
-    // Umar's form (5) and the hand-typed «Ген лид» (2): «Ген лид» whole.
-    expect(tile('generated')).toMatchObject({ leads: 7, success: 5, noAnswer: 2 })
-    expect(tile('inbound')).toMatchObject({ leads: 3, success: 0 })
-    expect(tile('telegram')).toMatchObject({ leads: 2, success: 1 })
+    // Umar's form (5) and the hand-typed «Ген лид» (2): «Ген лид» whole; kval by the day it was WON.
+    expect(tile('generated')).toMatchObject({ leads: 7, fresh: 7, qualified: 3, qualifiedPercent: (3 / 7) * 100 })
+    expect(tile('inbound')).toMatchObject({ leads: 3, qualified: 0, qualifiedPercent: 0 })
+    expect(tile('telegram')).toMatchObject({ leads: 2, qualified: 0 })
     // Only the sinolifeuz lead the AI qualified, not the page's other three.
-    expect(tile('aiSmm')).toMatchObject({ leads: 1, success: 1 })
-    expect(tile('web')).toMatchObject({ leads: 1, success: 1 })
-    expect(tile('sarafan')).toMatchObject({ leads: 1, success: 0, open: 1 })
-    expect(data.tiles.total).toEqual(data.totals.registration)
-    expect(data.tiles.total.leads).toBe(data.tiles.rows.reduce((n, r) => n + r.outcome.leads, 0))
+    expect(tile('aiSmm')).toMatchObject({ leads: 1, qualified: 1 })
+    expect(tile('web')).toMatchObject({ leads: 1, qualified: 0 })
+    expect(tile('sarafan')).toMatchObject({ leads: 1, qualified: 0 })
+    expect(tile('outbound')).toMatchObject({ leads: 7, qualified: 1 })
+    // The page's unqualified three (one a duplicate), collagen.sinolife, and the kval with no source.
+    expect(tile('other')).toMatchObject({ leads: 4, fresh: 3, qualified: 1 })
+    expect(data.tiles.total).toEqual({
+      leads: data.funnel.total,
+      fresh: data.funnel.fresh,
+      qualified: data.funnel.qualified,
+      qualifiedPercent: data.funnel.qualifiedPercent,
+    })
+    expect(data.tiles.total.leads).toBe(data.tiles.rows.reduce((n, r) => n + r.leads, 0))
   })
 
   it('puts the form and the Meta account on one targetolog, and reads the reach', () => {
@@ -273,7 +287,7 @@ describe('leadSourcesOverview', () => {
       ],
       campaigns: [],
       fakt1: [],
-      qualified: 0,
+      qualified: [],
     }).dm
     expect(dm.pages.some((p) => p.key === '46|NEXTBOT')).toBe(false)
     const zs = dm.pages.find((p) => p.key === 'UC_LBSZDU')!

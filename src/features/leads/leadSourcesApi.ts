@@ -14,6 +14,15 @@ export type LeadChannel = 'form' | 'page' | 'inbound' | 'manual' | 'telegram' | 
 
 export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'sarafan' | 'outbound' | 'other'
 
+/** Leads by the day they arrived, kval by the day it was WON — as the headline tiles. */
+export interface ChannelTileDto {
+  readonly leads: number
+  readonly fresh: number
+  readonly qualified: number
+  /** qualified ÷ fresh. */
+  readonly qualifiedPercent: number | null
+}
+
 export interface LeadOutcomeDto {
   readonly leads: number
   readonly success: number
@@ -110,10 +119,10 @@ export interface LeadSourcesOverviewDto {
     readonly outcome: LeadOutcomeDto
     readonly fakt1Clients: number
   }[]
-  /** «Boshqa kanallar lidlari» — every tile in the server's order, and their sum. */
+  /** «Boshqa kanallar lidlari» — every tile in the server's order, and their sum (= `funnel`). */
   readonly tiles: {
-    readonly rows: readonly { readonly tile: LeadTile; readonly outcome: LeadOutcomeDto }[]
-    readonly total: LeadOutcomeDto
+    readonly rows: readonly ({ readonly tile: LeadTile } & ChannelTileDto)[]
+    readonly total: ChannelTileDto
   }
   readonly sources: readonly SourceRowDto[]
 }

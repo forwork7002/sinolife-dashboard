@@ -11,24 +11,31 @@ const { LeadSourcesRepository } = await import('@/server/repositories/leadSource
   «Квал лидлар сони» on «Lidlar» — a Регистрация deal WON in the window, by
   the day it was won: the RNP sheet's kval and the portal's CLOSEDATE filter.
 */
-describe('LeadSourcesRepository.qualifiedCount', () => {
-  it('counts WON Регистрация deals by closedAt over the half-open window', async () => {
+describe('LeadSourcesRepository.qualifiedSources', () => {
+  it('counts WON Регистрация deals by closedAt over the half-open window, by source', async () => {
     const seen: { sql: string; params: unknown[] }[] = []
     const client = {
       $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
         seen.push({ sql, params })
-        return [{ qualified: 222n }]
+        return [
+          { source_id: 'REPEAT_SALE', ai_qualified: false, qualified: 200n },
+          { source_id: null, ai_qualified: true, qualified: 40n },
+        ]
       },
     }
     const start = new Date('2026-09-29T19:00:00Z')
     const end = new Date('2026-09-30T19:00:00Z')
-    const n = await new LeadSourcesRepository(client as never).qualifiedCount({ start, end } as never)
+    const rows = await new LeadSourcesRepository(client as never).qualifiedSources({ start, end } as never)
 
-    expect(n).toBe(222)
+    expect(rows).toEqual([
+      { sourceId: 'REPEAT_SALE', aiQualified: false, qualified: 200 },
+      { sourceId: null, aiQualified: true, qualified: 40 },
+    ])
     const { sql, params } = seen[0]!
     expect(sql).toMatch(/p\."role" = 'LEAD'/)
     expect(sql).toMatch(/d\."status" = 'WON'/)
     expect(sql).toMatch(/d\."closedAt" >= \$1 AND d\."closedAt" < \$2/)
+    expect(sql).toMatch(/d\."aiQualifiedAt" IS NOT NULL/)
     expect(sql).not.toMatch(/createdAtSource/)
     expect(params).toEqual([start, end])
   })

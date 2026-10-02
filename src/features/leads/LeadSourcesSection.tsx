@@ -20,6 +20,7 @@ import {
 } from '@/features/reklama/reklamaUi'
 
 import type {
+  ChannelTileDto,
   DmDayDto,
   DmPageDto,
   FormDayDto,
@@ -194,9 +195,9 @@ const TILE_NOTE: Partial<Record<LeadTile, string>> = {
   other: 'qolgan manbalar: ИИ kval qilmagan reklama sahifalari, Сммщик, Instagram, manbasiz',
 }
 
-/** «N kval · X%» — a dash for the rate when the channel had no leads. */
-const kvalHint = (o: LeadOutcomeDto) =>
-  `${formatNumber(o.success)} kval · ${o.leads > 0 ? formatPercent(o.successPercent) : NO_VALUE}`
+/** «N kval · X%» — kval ÷ new leads, as «Квал %» above; a dash when the channel had no new lead. */
+const kvalHint = (t: ChannelTileDto) =>
+  `${formatNumber(t.qualified)} kval · ${t.qualifiedPercent === null ? NO_VALUE : formatPercent(t.qualifiedPercent)}`
 
 const note = (text: string) => (
   <p className="text-[11px] leading-snug" style={muted}>
@@ -206,13 +207,15 @@ const note = (text: string) => (
 
 /**
  * The client's lead channels (2026-10-01), one tile each, and their «Jami»
- * (summed on the server, `tiles.total`). A cut of its own that overlaps
- * «Reklama lidlari» on purpose: «Ген лид» holds every lead-form lead and
- * «Сммщик ии» every lead the AI qualified, mostly off the ad pages. Every tile is on the wire even at zero, so a
- * quiet channel reads 0.
+ * (summed on the server, `tiles.total`). A cut of its own that overlaps the
+ * tables below on purpose: «Ген лид» holds every lead-form lead
+ * («Targetologlar») and «Сммщик ии» every lead the AI qualified, mostly off
+ * the DM pages. Every tile is on the wire even at zero, so a quiet channel
+ * reads 0. A tile's kval is counted as «Квал лидлар сони» above it — by the
+ * day it was WON, over new leads — so «Jami» reads the headline's figures.
  */
 export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
-  const byTile = new Map(data?.tiles.rows.map((r) => [r.tile, r.outcome]))
+  const byTile = new Map<LeadTile, ChannelTileDto>(data?.tiles.rows.map((r) => [r.tile, r]))
   const total = data?.tiles.total
 
   return (

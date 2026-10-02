@@ -3,12 +3,13 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { ChannelTiles } from '@/features/leads/LeadSourcesSection'
-import type { LeadOutcomeDto, LeadSourcesOverviewDto, LeadTile } from '@/features/leads/leadSourcesApi'
+import type { ChannelTileDto, LeadSourcesOverviewDto, LeadTile } from '@/features/leads/leadSourcesApi'
 
 /*
   «Boshqa kanallar lidlari» — the client's list of 2026-10-01: Ген лид,
-  Входящий, Телеграм, Сммщик ии, Веб сайт, Сарафан and their «Jami». «Boshqa»
-  and «Исход» have no tile any more.
+  Входящий, Телеграм, Сммщик ии, Веб сайт, Сарафан, and since 2026-10-02
+  «Исход» and «Boshqa», with their «Jami». Kval as «Квал лидлар сони» counts
+  it: by the day it was WON, over new leads.
 
   Reduced motion, so `AnimatedNumber` prints the final figure rather than the
   frame the assertion happened to catch (the stub faktQueueBand.test.tsx uses).
@@ -26,32 +27,29 @@ window.matchMedia = ((query: string) => ({
 
 afterEach(cleanup)
 
-const outcome = (leads: number, success: number): LeadOutcomeDto => ({
+const cells = (leads: number, qualified: number, duplicates = 0): ChannelTileDto => ({
   leads,
-  success,
-  noAnswer: 0,
-  lowQuality: 0,
-  duplicate: 0,
-  open: leads - success,
-  successPercent: leads > 0 ? (success / leads) * 100 : null,
+  fresh: leads - duplicates,
+  qualified,
+  qualifiedPercent: leads - duplicates > 0 ? (qualified / (leads - duplicates)) * 100 : null,
 })
 
 // 24–30.09.2026 off the portal, rounded.
-const TILES: Record<LeadTile, LeadOutcomeDto> = {
-  generated: outcome(2278, 700),
-  inbound: outcome(473, 100),
-  telegram: outcome(27, 13),
-  aiSmm: outcome(445, 150),
-  web: outcome(1, 1),
-  sarafan: outcome(0, 0),
-  outbound: outcome(2410, 0),
-  other: outcome(120, 10),
+const TILES: Record<LeadTile, ChannelTileDto> = {
+  generated: cells(2278, 700),
+  inbound: cells(473, 100),
+  telegram: cells(27, 13),
+  aiSmm: cells(445, 150),
+  web: cells(1, 1),
+  sarafan: cells(0, 0),
+  outbound: cells(2410, 0),
+  other: cells(120, 10),
 }
 
 const data = {
   tiles: {
-    rows: (Object.keys(TILES) as LeadTile[]).map((tile) => ({ tile, outcome: TILES[tile] })),
-    total: outcome(3224, 964),
+    rows: (Object.keys(TILES) as LeadTile[]).map((tile) => ({ tile, ...TILES[tile] })),
+    total: cells(3224, 964, 40),
   },
 } as unknown as LeadSourcesOverviewDto
 
@@ -87,7 +85,8 @@ describe('ChannelTiles', () => {
     expect(total.parentElement!.firstElementChild).toBe(total)
     expect(within(total).getByText('Jami')).toBeTruthy()
     expect(within(total).getByText('3,224')).toBeTruthy()
-    expect(within(total).getByText('964 kval · 29.9%')).toBeTruthy()
+    // Over the new leads, as «Квал %»: 964 ÷ (3 224 − 40).
+    expect(within(total).getByText('964 kval · 30.3%')).toBeTruthy()
     expect(within(total).getByText('8 kanal yigʻindisi = «Жами лидлар» · forma va ИИ lidlari Reklamada ham bor')).toBeTruthy()
   })
 

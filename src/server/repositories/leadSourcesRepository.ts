@@ -25,6 +25,13 @@ export interface RegistrationDayRow {
   readonly leads: number
 }
 
+/** Регистрация deals WON in a window, by source and the AI's mark. */
+export interface QualifiedSourceRow {
+  readonly sourceId: string | null
+  readonly aiQualified: boolean
+  readonly qualified: number
+}
+
 /** «ИИ обработка» deals — one per Instagram conversation — per day per page. */
 export interface TriageDayRow {
   readonly day: string
@@ -34,7 +41,8 @@ export interface TriageDayRow {
 }
 
 /**
- * «Lid manbalari» — two grouped scans over one creation window.
+ * «Lid manbalari» — two grouped scans over one creation window, and the
+ * window's kval by the day it was WON (`qualifiedSources`).
  *
  * Pipelines by ROLE here, unlike «Lid kogortasi»: the question is «every lead
  * the portal registered», and LEAD / AI_TRIAGE are exactly Регистрация and
@@ -109,20 +117,26 @@ export class LeadSourcesRepository {
    * Регистрация leads a registrar qualified («Сделка успешна») in the window —
    * by the day the deal was WON (`closedAt`), not the day it arrived. The RNP
    * sheet's «Регистрация» kval is the same count (`registrationDaysSql`'s
-   * second arm), and it is the portal's own CLOSEDATE filter.
+   * second arm), and it is the portal's own CLOSEDATE filter. Grouped by the
+   * source and the AI's mark, so the channel tiles split the same count.
    */
-  async qualifiedCount(period: Period): Promise<number> {
-    const rows = await this.prisma.$queryRawUnsafe<{ qualified: bigint }[]>(
+  async qualifiedSources(period: Period): Promise<QualifiedSourceRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<{ source_id: string | null; ai_qualified: boolean; qualified: bigint }[]>(
       `
-      SELECT count(*)::bigint AS qualified
+      SELECT
+        s."externalId" AS source_id,
+        (d."aiQualifiedAt" IS NOT NULL) AS ai_qualified,
+        count(*)::bigint AS qualified
       FROM "deal" d
       JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
+      LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
       WHERE d."status" = 'WON' AND d."closedAt" >= $1 AND d."closedAt" < $2
+      GROUP BY 1, 2
       `,
       period.start,
       period.end,
     )
-    return Number(rows[0]?.qualified ?? 0n)
+    return rows.map((r) => ({ sourceId: r.source_id, aiQualified: r.ai_qualified, qualified: Number(r.qualified) }))
   }
 
   async triageDays(period: Period): Promise<TriageDayRow[]> {
