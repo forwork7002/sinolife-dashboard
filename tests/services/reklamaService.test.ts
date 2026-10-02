@@ -87,6 +87,13 @@ describe('campaignChannel — which sheet a campaign belongs on', () => {
     )
   })
 
+  it('reads the English «Vacancy» as hiring too — the client\'s «HR» 21–26.09 (2026-10-02)', () => {
+    expect(campaignChannel('OUTCOME_ENGAGEMENT', 'EX - TOF - Vacancy - 19.09', '1794735288825705')).toBe('hiring')
+    expect(campaignChannel('OUTCOME_ENGAGEMENT', 'EX - TOF - Vacancy - 19.09 — Копия', '1794735288825705')).toBe('hiring')
+    // Selling with an ambassador is not hiring one.
+    expect(campaignChannel('OUTCOME_LEADS', 'EX-TOF-Collagen (Ambassador)-IF-15.01', '1794735288825705')).toBe('form')
+  })
+
   it('files every campaign on HR Eldor as hiring, whatever it is called', () => {
     expect(campaignChannel('OUTCOME_LEADS', 'IF - 28.09', '1657709689205277')).toBe('hiring')
   })

@@ -27,6 +27,7 @@ describe('adBudgetProduct', () => {
 
   it('leaves out a hiring campaign, wherever it runs', () => {
     expect(adBudgetProduct(row({ objective: 'OUTCOME_ENGAGEMENT', campaignName: 'EX - Sinolife (vakansiya) - DM' }))).toBeNull()
+    expect(adBudgetProduct(row({ objective: 'OUTCOME_ENGAGEMENT', campaignName: 'EX - TOF - Vacancy - 19.09' }))).toBeNull()
     expect(adBudgetProduct(row({ accountId: '1657709689205277', accountName: 'HR Eldor' }))).toBeNull()
   })
 

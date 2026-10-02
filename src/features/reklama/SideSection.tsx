@@ -11,9 +11,9 @@ import { DayCell, type Status, TableCard, money } from './reklamaUi'
  * period's total heads the table, the way the sheet reads, not at its foot.
  *
  * HR is every hiring campaign on any account (the «vakansiya» DM campaign on
- * Sinolife family Eldor as well as HR Eldor itself); Kosmetika is Kosmetika
- * Eldor's other campaigns. Neither is in the DM sheet; Kosmetika's lead forms
- * are also in «Отчёт Т» under «Boshqa».
+ * Sinolife family Eldor, Collagen Eldor's «Vacancy» ones, and HR Eldor
+ * itself); Kosmetika is Kosmetika Eldor's other campaigns. Neither is in the
+ * DM sheet; Kosmetika's lead forms are also in «Отчёт Т» under «Boshqa».
  */
 export function SideSection({ side, status }: { side: readonly SideColumnDto[] | undefined; status: Status }) {
   const columns = side ?? []

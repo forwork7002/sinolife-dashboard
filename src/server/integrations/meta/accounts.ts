@@ -93,10 +93,14 @@ export function ownerOf(accountId: string, accountName: string): MetaAccountOwne
  *            campaign is 142.6 / 232.8 / 185.1 / 159.5 $ against the sheet's
  *            142.7 / 231.7 / 184.7 / 159.0 $ — within Meta's own later
  *            revisions of a day.
- *   hiring — a DM campaign that recruits staff, not customers
- *            («EX - Sinolife (vakansiya) - DM»). On neither sheet; that one
- *            campaign is exactly the gap between Meta's DM total and the
- *            sheet's on 01.08 (7.4 $).
+ *   hiring — a campaign that recruits staff, not customers
+ *            («EX - Sinolife (vakansiya) - DM», and since 19.09 Collagen
+ *            Eldor's English «EX - TOF - Vacancy - 19.09»). On neither sheet;
+ *            the first is exactly the gap between Meta's DM total and the
+ *            sheet's on 01.08 (7.4 $). The name list was checked against all
+ *            1 200 campaigns of the 21 readable accounts on 2026-10-02: it
+ *            catches the 8 that recruit and nothing else — «Ambassador»
+ *            campaigns sell the collagen and stay out.
  *   other  — traffic, awareness, sales objectives: on neither sheet, still
  *            counted in the grand total so no dollar vanishes.
  *
@@ -105,7 +109,7 @@ export function ownerOf(accountId: string, accountName: string): MetaAccountOwne
  */
 export type CampaignChannel = 'form' | 'dm' | 'hiring' | 'other'
 
-const HIRING = /vakans|вакан|ishga\s+olish|\bhr\b/i
+const HIRING = /vakans|вакан|vacanc|ishga\s+olish|\bhr\b/i
 
 /** Accounts that only ever recruit — every campaign on them is hiring, whatever its name. */
 const HIRING_ACCOUNTS: ReadonlySet<string> = new Set(['1657709689205277']) // HR Eldor
@@ -158,8 +162,9 @@ export const DM_PAGE_OF_PRODUCT: Readonly<Record<TargetProduct, string>> = Objec
  * («Сентябрь 269,0$ / Навой HR», one row a day). Checked 2026-09-28: the
  * sheet's «Навой HR» 02–18.09 is «EX - Sinolife (vakansiya) - DM - 23.04» on
  * Sinolife family Eldor to within a dollar a day (169,7 $ both); 21–26.09
- * (100 $) is on no account the Meta MCP could read that day — HR Eldor had
- * never spent.
+ * (100 $) is Collagen Eldor's «EX - TOF - Vacancy - 19.09» and its copy
+ * (103,38 $), which read as DM until `HIRING` learned the English «vacanc»
+ * on 2026-10-02 — HR Eldor had never spent.
  *
  *   hr        — every hiring campaign on any account (`campaignChannel`).
  *   kosmetika — Kosmetika Eldor's other campaigns; its «Vakansiya» ones are HR.
