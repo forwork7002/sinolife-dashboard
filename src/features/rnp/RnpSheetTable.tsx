@@ -282,7 +282,8 @@ const Head = memo(function Head({ days, today }: { days: readonly string[]; toda
             scope="col"
             className={`thead-sticky ${isPinned(c.key) ? pinClass(c.key) : ''} ${RULE} px-3 py-2 text-right text-[12px] font-semibold whitespace-nowrap`}
             style={{
-              background: SUMMARY_HEAD,
+              // Only the pinned panel wears the band; Индекс and Кунлик план scroll with the days and look like them.
+              background: isPinned(c.key) ? SUMMARY_HEAD : undefined,
               color: c.key === 'fact' ? 'var(--ink-primary)' : undefined,
               boxShadow: i === SUMMARY.length - 1 ? DIVIDER_RIGHT : undefined,
             }}
@@ -539,7 +540,7 @@ function Cell({
   pin?: PinnedKey
   band?: string
 }) {
-  const fill = tint ?? SUMMARY_CELL
+  const fill = tint ?? (pin ? SUMMARY_CELL : undefined)
   return (
     <td
       className={`${pin ? pinClass(pin) : ''} tabular ${RULE} ${VRULE} h-9 px-3 py-1.5 text-right whitespace-nowrap ${strong ? 'font-semibold' : ''}`}
@@ -759,9 +760,9 @@ const RULE = 'border-b border-[var(--border)]'
 /** The faint column rule between figures, for reading down a day. */
 const VRULE = 'border-r border-r-[var(--grid)]'
 
-/** The summary columns' header band: the page accent over the header's own recess, opaque. */
+/** The pinned summary columns' header band: the page accent over the header's own recess, opaque. */
 const SUMMARY_HEAD = mix('var(--accent)', 12, 'var(--surface-sunken)')
-/** …and their cells: a whisper of ink, so B…F read as one block beside the days. */
+/** …and their cells: a whisper of ink, so the pinned panel (B…D) reads as one block beside the scrolling columns. */
 const SUMMARY_CELL = mix('var(--ink-muted)', 5)
 /** The rule between the summary block and the days. A shadow, not a border: see `.tcol-sticky`. */
 const DIVIDER_RIGHT = 'inset -1px 0 0 var(--border-strong)'
