@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
  * money side by side. A ROP given TEAM scope is refused rather than handed
  * the other teams.
  */
-const ACCESS = { permission: 'analytics:read:all', section: 'registration' } as const
+const ACCESS = { permission: 'analytics:read:all', section: 'leads' } as const
 
 /** «ROP otchet» — one day, every ROP team seller by seller. See ropReport.ts. */
 export const GET = getHandler(ACCESS, overviewQuerySchema, async (ctx) => {

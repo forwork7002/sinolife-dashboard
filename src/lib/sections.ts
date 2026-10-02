@@ -52,7 +52,6 @@ export const SECTIONS = [
   { id: 'payroll', route: '/payroll', label: 'Sotuvchilar oyligi', group: 'Jamoa' },
   { id: 'marketing', route: '/marketing', label: 'Reklama samarasi', group: 'Marketing' },
   { id: 'leads', route: '/leads', label: 'Lidlar', group: 'Marketing' },
-  { id: 'registration', route: '/registration', label: 'Registratsiya', group: 'Marketing' },
   { id: 'target', route: '/target', label: 'Target tahlili', group: 'Marketing' },
 ] as const satisfies readonly {
   id: string
@@ -132,11 +131,6 @@ const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
     purpose. Its endpoints ask for `analytics:read:all`.
   */
   'leads',
-  /*
-    «REGISTRATSIYA» (2026-10-01) FOR THE SAME REASON: it sets every ROP's
-    share of the day's leads side by side.
-  */
-  'registration',
   /*
     «RNP JADVALI» (2026-09-28) FOR THE SAME REASON: the client's «СентябрРНП»
     sheet sets every ROP team, the registration desk and the Meta spend side

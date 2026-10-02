@@ -5,21 +5,21 @@ import { useState } from 'react'
 
 import { ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
-import { Card, ChartCard } from '@/components/ui/Card'
+import { ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
-import { StatTile, StatusChip } from '@/components/ui/Stat'
-import { PageShell } from '@/features/shared/PageShell'
+import { StatusChip } from '@/components/ui/Stat'
 import { apiGet, apiWrite } from '@/lib/api'
 import { apportion } from '@/lib/apportion'
 import { APP_TIME_ZONE, formatDate, formatDateShort, formatDateTime, formatNumber, formatPercent } from '@/lib/format'
-import { t } from '@/lib/messages'
 
-import { type LeadSplitDto, type LeadSplitRopDto, type SaveSplitBody, SHARE_TOTAL_BP, type SplitShare } from './registrationApi'
+import { type LeadSplitDto, type LeadSplitRopDto, type SaveSplitBody, SHARE_TOTAL_BP, type SplitShare } from './leadSplitApi'
 import { ROP_COLORS } from './ropColors'
-import { RopReport } from './RopReport'
 
 /**
- * «Registratsiya» — how one day's handed-out leads are shared among the ROPs.
+ * How one day's handed-out leads are shared among the ROPs — the cards that
+ * were «Registratsiya» until 2026-10-02, when the client folded that section
+ * into «Lidlar» («registratsiya boʻlimi toʻliqligicha oʻchiramiz, ichidagi
+ * maʼlumotlarni boshqa joyga oʻtkazamiz»).
  *
  * Asked for on 2026-10-01 from the client's Excel («Jami / yangi / dubl» and
  * a ROP → % → лид сони table). One company-wide split, set every day by an
@@ -28,9 +28,10 @@ import { RopReport } from './RopReport'
  * «РОП олган лид» on /rnp). The definitions are in
  * `server/domain/registration/leadSplit.ts`.
  *
- * Under the split, «ROP otchet» (`RopReport`): the same day seller by seller.
- * It took the split table's place on 2026-10-01 at the client's request; the
- * split's form moved onto the bars card.
+ * ONE DAY, NOT THE PAGE'S PERIOD. The split is set per day, so these cards and
+ * «ROP otchet» share their own day (`DayPicker`, held by `LeadsPage`); the
+ * rest of «Lid manbalari» stays on the dashboard period. Both cards read one
+ * query (`useLeadSplit`), so they cannot disagree.
  */
 
 const UNASSIGNED_COLOR = 'var(--ink-muted)'
@@ -44,7 +45,7 @@ interface Row extends LeadSplitRopDto {
 
 const TASHKENT_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: APP_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' })
 
-function today(): string {
+export function today(): string {
   return TASHKENT_DAY.format(new Date())
 }
 
@@ -58,148 +59,108 @@ const pctOfBp = (bp: number) => bp / 100
 /** The API's first day; the arrows and the picker stop there rather than earn a 400. */
 const FIRST_DAY = '2025-01-01'
 
-export function RegistrationPage() {
-  const [day, setDay] = useState(today)
-  const [editing, setEditing] = useState(false)
+/** ‹ day › and «Bugun» — the one control the day cards and «ROP otchet» share. */
+export function DayPicker({ day, onChange }: { day: string; onChange: (day: string) => void }) {
   const goTo = (next: string) => {
-    if (next < FIRST_DAY) return
-    setDay(next)
-    setEditing(false)
+    if (next >= FIRST_DAY) onChange(next)
   }
+  return (
+    <div className="flex items-center gap-1.5">
+      <Button size="sm" variant="ghost" aria-label="Oldingi kun" onClick={() => goTo(shiftDay(day, -1))}>
+        ‹
+      </Button>
+      <label className="flex items-center gap-2 text-xs" style={muted}>
+        Kun
+        <input
+          type="date"
+          value={day}
+          min={FIRST_DAY}
+          max={shiftDay(today(), 7)}
+          onChange={(e) => {
+            if (e.target.value) goTo(e.target.value)
+          }}
+          className="focusable rounded-[var(--radius-panel-sm)] border px-2 py-1 text-xs"
+          style={{ background: 'var(--surface-raised)', borderColor: 'var(--border-strong)', color: 'var(--ink-primary)' }}
+        />
+      </label>
+      <Button size="sm" variant="ghost" aria-label="Keyingi kun" onClick={() => goTo(shiftDay(day, 1))}>
+        ›
+      </Button>
+      {day !== today() && (
+        <Button size="sm" variant="ghost" onClick={() => goTo(today())}>
+          Bugun
+        </Button>
+      )}
+    </div>
+  )
+}
 
+/** The day's split and handed-out leads, each team with its colour. */
+export function useLeadSplit(day: string, enabled = true) {
   const overview = useQuery({
     queryKey: ['registration-overview', day],
+    enabled,
     queryFn: ({ signal }) => apiGet<LeadSplitDto>('/registration/overview', { day }, signal),
     placeholderData: keepPreviousData,
   })
   const data = overview.data?.data
-  const status = overview.isPending ? 'loading' : overview.isError ? 'error' : 'ready'
-
   const rows: Row[] = (data?.rops ?? []).map((r, i) => ({ ...r, color: ROP_COLORS[i % ROP_COLORS.length]! }))
-  const assigned = data ? data.total - data.unassigned : null
+  return { overview, data, rows, colors: new Map(rows.map((r) => [r.rop, r.color])) }
+}
+
+function SplitError({ overview }: { overview: ReturnType<typeof useLeadSplit>['overview'] }) {
+  return <ErrorState message={overview.error instanceof Error ? overview.error.message : undefined} onRetry={() => void overview.refetch()} />
+}
+
+/** «Lidlar qanday boʻlinadi» — plan and actual as bars, with the administrator's form. */
+export function LeadSplitCard({ day, onDay }: { day: string; onDay: (day: string) => void }) {
+  const { overview, data, rows } = useLeadSplit(day)
+  // The day the form was opened for: another day closes it.
+  const [editingDay, setEditingDay] = useState<string | null>(null)
+  if (editingDay !== null && editingDay !== day) setEditingDay(null)
+  const editing = editingDay === day
 
   return (
-    <PageShell
-      title={t.modules.registration.title}
-      description={t.modules.registration.lead}
-      accent="var(--series-3)"
-      period={false}
-      stale={overview.isPlaceholderData}
-      toolbar={
-        <div className="flex items-center gap-1.5">
-          <Button size="sm" variant="ghost" aria-label="Oldingi kun" onClick={() => goTo(shiftDay(day, -1))}>
-            ‹
-          </Button>
-          <label className="flex items-center gap-2 text-xs" style={muted}>
-            Kun
-            <input
-              type="date"
-              value={day}
-              min={FIRST_DAY}
-              max={shiftDay(today(), 7)}
-              onChange={(e) => {
-                if (e.target.value) goTo(e.target.value)
-              }}
-              className="focusable rounded-[var(--radius-panel-sm)] border px-2 py-1 text-xs"
-              style={{ background: 'var(--surface-raised)', borderColor: 'var(--border-strong)', color: 'var(--ink-primary)' }}
-            />
-          </label>
-          <Button size="sm" variant="ghost" aria-label="Keyingi kun" onClick={() => goTo(shiftDay(day, 1))}>
-            ›
-          </Button>
-          {day !== today() && (
-            <Button size="sm" variant="ghost" onClick={() => goTo(today())}>
-              Bugun
+    <ChartCard
+      title={`Lidlar qanday boʻlinadi${data ? ` · ${formatDate(data.day)}` : ''}`}
+      hint="Bir kunlik: yuqorida — administrator belgilagan reja (yangi lidlardan), pastda — ROPʼlar haqiqatda olgani (jami tarqatilgandan). «Olgan lid» — Bitrix24: «Лид таркатилган сана» shu kun va «РОП (Первичка)» shu ROP. Kun «ROP otchet» bilan umumiy."
+    >
+      {/* Under the title rather than beside it: a phone keeps the title on one line. */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <DayPicker day={day} onChange={onDay} />
+        <div className="flex flex-wrap items-center gap-2">
+          {data?.split && !editing && <StatusChip tone="good">Belgilangan · {formatDateTime(data.split.updatedAt)}</StatusChip>}
+          {data && !data.split && !editing && <StatusChip tone="warning">Bu kunga taqsimot belgilanmagan</StatusChip>}
+          {data?.canEdit && !editing && !overview.isPlaceholderData && data.day === day && (
+            <Button size="sm" variant="primary" onClick={() => setEditingDay(day)}>
+              {data.split ? 'Taqsimotni oʻzgartirish' : 'Taqsimotni belgilash'}
             </Button>
           )}
         </div>
-      }
-    >
-      <div className="flex min-w-0 flex-col gap-6">
-        {status === 'error' && !data ? (
-          <Card className="p-5">
-            <ErrorState
-              message={overview.error instanceof Error ? overview.error.message : undefined}
-              onRetry={() => void overview.refetch()}
-            />
-          </Card>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <StatTile
-                label="Jami tarqatilgan lid"
-                value={data?.total ?? null}
-                unit="count"
-                status={status}
-                context={data ? formatDate(data.day) : undefined}
-              />
-              <StatTile
-                label="Yangi lid"
-                value={data?.fresh ?? null}
-                unit="count"
-                tone="good"
-                status={status}
-                context={data && data.total > 0 ? `${formatPercent((data.fresh / data.total) * 100)} — taqsimlanadi` : 'taqsimlanadi'}
-              />
-              <StatTile
-                label="Dublikat"
-                value={data?.duplicates ?? null}
-                unit="count"
-                tone={data && data.duplicates > 0 ? 'warning' : 'neutral'}
-                status={status}
-                context="bir kontakt shu kuni ikkinchi marta"
-              />
-              <StatTile
-                label="ROPʼlarga berildi"
-                value={assigned}
-                unit="count"
-                status={status}
-                context={
-                  data
-                    ? data.unassigned > 0
-                      ? `${formatNumber(data.unassigned)} tasi hech kimga berilmagan`
-                      : 'hammasi ROPʼlarga berilgan'
-                    : undefined
-                }
-              />
-            </div>
-
-            <ChartCard
-              title="Lidlar qanday boʻlinadi"
-              hint="Yuqorida — administrator belgilagan reja (yangi lidlardan), pastda — ROPʼlar haqiqatda olgani (jami tarqatilgandan). «Olgan lid» — Bitrix24: «Лид таркатилган сана» shu kun va «РОП (Первичка)» shu ROP."
-              action={
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  {data?.split && !editing && <StatusChip tone="good">Belgilangan · {formatDateTime(data.split.updatedAt)}</StatusChip>}
-                  {data && !data.split && !editing && <StatusChip tone="warning">Bu kunga taqsimot belgilanmagan</StatusChip>}
-                  {data?.canEdit && !editing && !overview.isPlaceholderData && data.day === day && (
-                    <Button size="sm" variant="primary" onClick={() => setEditing(true)}>
-                      {data.split ? 'Taqsimotni oʻzgartirish' : 'Taqsimotni belgilash'}
-                    </Button>
-                  )}
-                </div>
-              }
-            >
-              {!data ? (
-                <LoadingSkeleton rows={2} />
-              ) : editing ? (
-                <PlanEditor key={data.day} data={data} rows={rows} onDone={() => setEditing(false)} />
-              ) : (
-                <SplitBars data={data} rows={rows} />
-              )}
-            </ChartCard>
-
-            <RopReport day={day} colors={new Map(rows.map((r) => [r.rop, r.color]))} />
-
-            <ChartCard
-              title="Kimga qancha lid kelayapti"
-              hint="Har bir ROP oxirgi 7 kunda olgan lidlar soni (Bitrix24, «РОП (Первичка)»). Rang qanchalik toʻq boʻlsa — shuncha koʻp."
-            >
-              {data ? <WeekGrid data={data} rows={rows} /> : <LoadingSkeleton rows={6} />}
-            </ChartCard>
-          </>
-        )}
       </div>
-    </PageShell>
+      {overview.isError && !data ? (
+        <SplitError overview={overview} />
+      ) : !data ? (
+        <LoadingSkeleton rows={2} />
+      ) : editing ? (
+        <PlanEditor key={data.day} data={data} rows={rows} onDone={() => setEditingDay(null)} />
+      ) : (
+        <SplitBars data={data} rows={rows} />
+      )}
+    </ChartCard>
+  )
+}
+
+/** «Kimga qancha lid kelayapti» — the seven days up to the chosen one. */
+export function LeadWeekCard({ day }: { day: string }) {
+  const { overview, data, rows } = useLeadSplit(day)
+  return (
+    <ChartCard
+      title="Kimga qancha lid kelayapti"
+      hint={`Har bir ROP ${formatDate(day)} gacha 7 kunda olgan lidlar soni (Bitrix24, «РОП (Первичка)»). Rang qanchalik toʻq boʻlsa — shuncha koʻp.`}
+    >
+      {overview.isError && !data ? <SplitError overview={overview} /> : data ? <WeekGrid data={data} rows={rows} /> : <LoadingSkeleton rows={6} />}
+    </ChartCard>
   )
 }
 

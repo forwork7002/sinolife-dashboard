@@ -11,9 +11,9 @@ export const dynamic = 'force-dynamic'
  * COMPANY-WIDE: every ROP team's share of the day's leads side by side. A ROP
  * given TEAM scope is refused rather than handed the other teams.
  */
-const ACCESS = { permission: 'analytics:read:all', section: 'registration' } as const
+const ACCESS = { permission: 'analytics:read:all', section: 'leads' } as const
 
-/** «Registratsiya» — one day's handed-out leads per ROP against the day's split. See registrationService.ts. */
+/** One day's handed-out leads per ROP against the day's split (on «Lidlar» since 2026-10-02). See registrationService.ts. */
 export const GET = getHandler(ACCESS, overviewQuerySchema, async (ctx) => {
   const data = await registrationService.overview({
     day: ctx.query.day ?? zonedDateKey(ctx.now, ctx.timeZone),

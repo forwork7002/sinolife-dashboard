@@ -9,11 +9,14 @@ import { Card } from '@/components/ui/Card'
 import { type MoneyDto, apiGet, apiWrite } from '@/lib/api'
 import { formatDate, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
+import { DayPicker } from './LeadSplitCards'
 import { ROP_COLORS } from './ropColors'
-import type { RopReportCellsDto, RopReportDto, RopReportGroupDto, RopReportSellerDto, SaveSellerPlansBody } from './registrationApi'
+import type { RopReportCellsDto, RopReportDto, RopReportGroupDto, RopReportSellerDto, SaveSellerPlansBody } from './leadSplitApi'
 
 /**
- * «ROP otchet» — the client's group sheet for the chosen day: every ROP team,
+ * «ROP otchet» — the client's group sheet for the chosen day (on «Lidlar»
+ * since 2026-10-02, below «Targetologlar»; its day is shared with the split
+ * cards above): every ROP team,
  * seller by seller, with the team's «Umumiy» under it and the company's at the
  * foot. Asked for on 2026-10-01 in place of the split table, «Лид руч» left
  * out. The definitions are in `server/domain/registration/ropReport.ts`.
@@ -42,7 +45,7 @@ function groupColor(rop: string | null, index: number, colors: ReadonlyMap<strin
 const minor = (m: MoneyDto | null) => (m ? BigInt(m.amountMinor) : null)
 const som = (m: MoneyDto) => formatFullUzs(m.amount)
 
-export function RopReport({ day, colors }: { day: string; colors: ReadonlyMap<string, string> }) {
+export function RopReport({ day, onDay, colors }: { day: string; onDay: (day: string) => void; colors: ReadonlyMap<string, string> }) {
   // The day the form was opened for: another day closes it, so a draft never outlives the figures beside it.
   const [editingDay, setEditingDay] = useState<string | null>(null)
   if (editingDay !== null && editingDay !== day) setEditingDay(null)
@@ -69,11 +72,14 @@ export function RopReport({ day, colors }: { day: string; colors: ReadonlyMap<st
             kunlik rejasi, oy boʻyi bir xil.
           </p>
         </div>
-        {data?.canEdit && !editing && fresh && data.groups.length > 0 && (
-          <Button size="sm" variant="primary" onClick={() => setEditing(true)}>
-            Rejani kiritish
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <DayPicker day={day} onChange={onDay} />
+          {data?.canEdit && !editing && fresh && data.groups.length > 0 && (
+            <Button size="sm" variant="primary" onClick={() => setEditing(true)}>
+              Rejani kiritish
+            </Button>
+          )}
+        </div>
       </header>
       <div className="px-5 pb-5">
         {report.isError && !data ? (

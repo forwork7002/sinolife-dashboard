@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import { Card } from '@/components/ui/Card'
 import { type Column, DataTable } from '@/components/ui/DataTable'
@@ -58,12 +58,35 @@ const CHANNEL_LABEL: Readonly<Record<LeadChannel, string>> = {
   outbound: 'Исход (chiquvchi)',
 }
 
-export function LeadSourcesSection({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
+/**
+ * Where the one-day ROP cards sit among the period's blocks (2026-10-02, the
+ * client's placement when «Registratsiya» folded in here): the split under
+ * the channel tiles, the seven-day grid above «Targetologlar», «ROP otchet»
+ * below it. `LeadsPage` builds them; this section only places them.
+ */
+export interface LeadSourcesSlots {
+  readonly afterChannels?: ReactNode
+  readonly beforeForms?: ReactNode
+  readonly afterForms?: ReactNode
+}
+
+export function LeadSourcesSection({
+  data,
+  status,
+  slots = {},
+}: {
+  data: LeadSourcesOverviewDto | undefined
+  status: Status
+  slots?: LeadSourcesSlots
+}) {
   return (
     <>
       <FunnelTiles data={data} status={status} />
       <ChannelTiles data={data} status={status} />
+      {slots.afterChannels}
+      {slots.beforeForms}
       <FormsBlock data={data} status={status} />
+      {slots.afterForms}
       <DmBlock data={data} status={status} />
       <SourcesBlock data={data} status={status} />
     </>

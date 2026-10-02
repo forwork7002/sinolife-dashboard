@@ -1,5 +1,5 @@
 /**
- * «Registratsiya» — the wire shapes, restated for the client.
+ * The day's ROP cards on «Lidlar» (once «Registratsiya») — the wire shapes, restated for the client.
  *
  * Mirrors `LeadSplitDto` in `src/server/domain/registration/leadSplit.ts` and
  * the body of `src/app/api/v1/registration/split/route.ts`. Nothing checks

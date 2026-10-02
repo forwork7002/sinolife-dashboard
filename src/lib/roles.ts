@@ -50,13 +50,10 @@ const ALL_ROUTES = [
   '/sellers',
   '/margin',
   '/marketing',
-  // Leads by source, the lead cohort and the ROP sheets. ADMIN and MANAGER
+  // Leads by source, the lead cohort, the day's split among the ROPs and «ROP otchet». ADMIN and MANAGER
   // only by default, and the endpoints refuse any account that is not
   // company-wide.
   '/leads',
-  // How the day's leads are shared among the ROPs. ADMIN and MANAGER only by
-  // default.
-  '/registration',
   // The client's «РНП» sheet, day by day, every team. ADMIN and MANAGER only
   // by default; the endpoints refuse any account that is not company-wide.
   '/rnp',

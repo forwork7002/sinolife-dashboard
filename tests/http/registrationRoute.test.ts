@@ -38,18 +38,18 @@ describe('sellerPlanBodySchema', () => {
 })
 
 describe('POST /registration/plan — the gate', () => {
-  it('asks for kpi:manage inside the registration gate and refuses an unknown seller', async () => {
+  it('asks for kpi:manage inside the leads gate and refuses an unknown seller', async () => {
     const source = await import('node:fs').then((fs) => fs.readFileSync('src/app/api/v1/registration/plan/route.ts', 'utf8'))
-    expect(source).toContain("{ permission: 'analytics:read:all', section: 'registration' }")
+    expect(source).toContain("{ permission: 'analytics:read:all', section: 'leads' }")
     expect(source).toContain("can(ctx.principal, 'kpi:manage')")
     expect(source).toContain('ApiError.validation')
   })
 })
 
 describe('POST /registration/split — the gate', () => {
-  it('asks for kpi:manage inside the registration gate and checks the sum on the server', async () => {
+  it('asks for kpi:manage inside the leads gate and checks the sum on the server', async () => {
     const source = await import('node:fs').then((fs) => fs.readFileSync('src/app/api/v1/registration/split/route.ts', 'utf8'))
-    expect(source).toContain("{ permission: 'analytics:read:all', section: 'registration' }")
+    expect(source).toContain("{ permission: 'analytics:read:all', section: 'leads' }")
     expect(source).toContain("can(ctx.principal, 'kpi:manage')")
     expect(source).toContain('splitProblem(ctx.body.rows)')
   })

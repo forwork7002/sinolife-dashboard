@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
  * Who may set the day's split — the same two conditions as «RNP jadvali»'s
  * plans: `analytics:read:all` at the gate, `kpi:manage` inside.
  */
-const ACCESS = { permission: 'analytics:read:all', section: 'registration' } as const
+const ACCESS = { permission: 'analytics:read:all', section: 'leads' } as const
 
 /** Replace one day's split of handed-out leads among the ROPs. */
 export const POST = mutationHandler(ACCESS, splitBodySchema, async (ctx) => {

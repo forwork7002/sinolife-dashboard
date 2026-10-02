@@ -3,10 +3,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { LeadSplitDto, RopReportDto } from '@/features/registration/registrationApi'
+import { useState } from 'react'
+
+import type { LeadSplitDto, RopReportDto } from '@/features/leads/leadSplitApi'
 
 /**
- * «Registratsiya» — the administrator's daily split. Pins the form's promises:
+ * The day's ROP cards on «Lidlar» (once «Registratsiya») — the administrator's daily split. Pins the form's promises:
  * a split saved in leads (basis points that are not whole tenths of a
  * percent) can be reopened and copied to the next day and saved again, leads
  * typed «Sonda» become shares summing to exactly 100 %, and plan and actual
@@ -14,15 +16,6 @@ import type { LeadSplitDto, RopReportDto } from '@/features/registration/registr
  * group per team with its «Umumiy», deviation and conversion as the sheet
  * computes them, and the day plan typed in place.
  */
-
-vi.mock('@/features/shared/PageShell', () => ({
-  PageShell: ({ toolbar, children }: { toolbar?: unknown; children?: unknown }) => (
-    <div>
-      <div data-testid="page-toolbar">{toolbar as React.ReactNode}</div>
-      <div>{children as React.ReactNode}</div>
-    </div>
-  ),
-}))
 
 // jsdom has no `matchMedia`; `AnimatedNumber` in the concentration tiles asks
 // it whether the reader wants motion.
@@ -38,7 +31,21 @@ window.matchMedia = ((query: string) => ({
 })) as unknown as typeof window.matchMedia
 
 
-const { RegistrationPage } = await import('@/features/registration/RegistrationPage')
+const { LeadSplitCard, LeadWeekCard, useLeadSplit } = await import('@/features/leads/LeadSplitCards')
+const { RopReport } = await import('@/features/leads/RopReport')
+
+/** The three cards as `LeadsPage` places them, on one shared day. */
+function Cards() {
+  const [day, setDay] = useState(TODAY)
+  const { colors } = useLeadSplit(day)
+  return (
+    <>
+      <LeadSplitCard day={day} onDay={setDay} />
+      <LeadWeekCard day={day} />
+      <RopReport day={day} onDay={setDay} colors={colors} />
+    </>
+  )
+}
 
 const TODAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 const NINE = ['Sevinch', 'Gulzora', 'Saidaziz', 'Azizbek', 'Maftuna', 'Lola', 'Shohjaxon', 'Asliddin', 'Sadriddin']
@@ -135,7 +142,7 @@ afterEach(() => {
 async function draw() {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } })}>
-      <RegistrationPage />
+      <Cards />
     </QueryClientProvider>,
   )
   await waitFor(() => expect(screen.getAllByText('Sevinch').length).toBeGreaterThan(0))
@@ -228,7 +235,7 @@ describe('RegistrationPage', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Rejani kiritish' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Rejani kiritish' }))
     expect(screen.getByLabelText('Sardor Davlatov — kunlik reja')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Oldingi kun' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Oldingi kun' })[0]!)
     expect(screen.queryByLabelText('Sardor Davlatov — kunlik reja')).toBeNull()
   })
 })

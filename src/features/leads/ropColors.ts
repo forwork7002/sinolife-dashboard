@@ -1,5 +1,5 @@
 /**
- * The ROP teams' colours on «Registratsiya»: the split's bars and grid and
+ * The ROP teams' colours on «Lidlar»'s day cards: the split's bars and grid and
  * «ROP otchet» read the same list, so a team is one colour on the page.
  *
  * Nine teams against seven usable series slots (--series-8 sits on

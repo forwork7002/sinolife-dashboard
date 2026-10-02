@@ -13,7 +13,9 @@ import { apiGet } from '@/lib/api'
 import { t } from '@/lib/messages'
 
 import { LeadCohortSection } from './LeadCohortSection'
+import { LeadSplitCard, LeadWeekCard, today, useLeadSplit } from './LeadSplitCards'
 import { LeadSourcesSection } from './LeadSourcesSection'
+import { RopReport } from './RopReport'
 import type { LeadSourcesOverviewDto } from './leadSourcesApi'
 
 /**
@@ -31,6 +33,10 @@ import type { LeadSourcesOverviewDto } from './leadSourcesApi'
  *
  * «Sotuv · ROP» was removed on 2026-10-01 at the user's request.
  *
+ * «Registratsiya» was folded into «Lid manbalari» on 2026-10-02: the split
+ * card, the seven-day grid and «ROP otchet» sit among its blocks on their own
+ * shared day (`LeadSplitCards.tsx`), while everything else keeps the period.
+ *
  * «Reklama samarasi» kept the Meta side — spend, campaigns, the client's
  * «DM» / «Отчёт Т» sheets.
  *
@@ -42,6 +48,9 @@ type Tab = 'sources' | 'cohort'
 export function LeadsPage() {
   const { apiParams } = useDashboardFilters()
   const [tab, setTab] = useState<Tab>('sources')
+  // The ROP cards' day — one, so the split, the grid and «ROP otchet» always show the same day.
+  const [day, setDay] = useState(today)
+  const { colors } = useLeadSplit(day, tab === 'sources')
 
   const params = useMemo(() => {
     const out: Record<string, string | number> = { preset: apiParams.preset }
@@ -89,7 +98,15 @@ export function LeadsPage() {
             />
           </Card>
         ) : (
-          <LeadSourcesSection data={overview.data?.data} status={status} />
+          <LeadSourcesSection
+            data={overview.data?.data}
+            status={status}
+            slots={{
+              afterChannels: <LeadSplitCard day={day} onDay={setDay} />,
+              beforeForms: <LeadWeekCard day={day} />,
+              afterForms: <RopReport day={day} onDay={setDay} colors={colors} />,
+            }}
+          />
         )}
       </div>
     </PageShell>

@@ -39,7 +39,6 @@ export const t = {
     margin: 'Yalpi marja',
     marketing: 'Reklama samarasi',
     leads: 'Lidlar',
-    registration: 'Registratsiya',
     target: 'Target tahlili',
     /** Not one of the nine: account administration, shown only to an admin. */
     users: 'Foydalanuvchilar',
@@ -84,10 +83,6 @@ export const t = {
     leads: {
       title: 'Lidlar',
       lead: 'Bitrix24 ga tushgan har bir lid — qaysi manbadan kelgani, qanchasi kval boʻlgani va qachon tarqatilgani. Kunlar Toshkent vaqti boʻyicha.',
-    },
-    registration: {
-      title: 'Registratsiya',
-      lead: 'Kunning yangi lidlari ROPʼlarga qanday boʻlinadi — administrator belgilagan ulush va har bir ROP haqiqatda olgan lid. Kunlar Toshkent vaqti boʻyicha.',
     },
     target: {
       title: 'Target tahlili',
