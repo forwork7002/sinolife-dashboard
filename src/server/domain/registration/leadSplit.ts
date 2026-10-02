@@ -1,6 +1,7 @@
 /**
- * «Registratsiya» — how one day's handed-out leads are shared among the ROPs:
- * the administrator's split against what each ROP actually got.
+ * «Lidlar qanday boʻlinadi» on «Lidlar» (the «Registratsiya» section until
+ * 2026-10-02) — how one day's handed-out leads are shared among the ROPs: the
+ * administrator's split against what each ROP actually got.
  *
  * THE CLIENT'S DECISIONS OF 2026-10-01. One split for the whole company, set
  * every day, in percent or in leads. «Jami» is the day's HANDED-OUT leads —
@@ -20,9 +21,8 @@
  * 10, the registration desk's head — has `rop: null`, «hech kimga
  * berilmagan».
  *
- * PLAN AGAINST ACTUAL ON ONE BASIS. The plan divides the NEW leads, so a
- * team's actual is compared without its own same-day duplicates
- * (`receivedFresh`); «Olgan lid» itself stays the portal's count.
+ * The plan divides the NEW leads (`fresh`); «Haqiqatda olgan» is the portal's
+ * count, duplicates included.
  *
  * Pure: rows in, a DTO out.
  */
@@ -75,8 +75,6 @@ export interface LeadSplitRopDto {
   readonly planLeads: number | null
   /** Leads the team actually got that day — the portal's count. */
   readonly received: number
-  /** `received` less the team's same-day duplicates: what the plan is compared with. */
-  readonly receivedFresh: number
   /** Leads the team got on each of `week.days`. */
   readonly week: readonly number[]
 }
@@ -84,8 +82,7 @@ export interface LeadSplitRopDto {
 export interface LeadSplitDto {
   readonly day: string
   readonly total: number
-  readonly duplicates: number
-  /** `total − duplicates`: what the split divides. */
+  /** `total` less the day's duplicates: what the split divides. */
   readonly fresh: number
   /** Leads handed out to nobody's team (empty ROP field, or a person who heads none). */
   readonly unassigned: number
@@ -121,7 +118,6 @@ export function buildLeadSplit(input: {
   const at = new Map(days.map((d, i) => [d, i]))
 
   const byRop = new Map<string, number[]>()
-  const dupByRop = new Map<string, number>()
   const unassignedWeek = days.map(() => 0)
   let total = 0
   let duplicates = 0
@@ -137,7 +133,6 @@ export function buildLeadSplit(input: {
       continue
     }
     const rop = canonicalRop(r.rop)
-    if (r.day === input.day) dupByRop.set(rop, (dupByRop.get(rop) ?? 0) + r.duplicates)
     const counts = byRop.get(rop) ?? days.map(() => 0)
     counts[i]! += r.leads
     byRop.set(rop, counts)
@@ -158,14 +153,12 @@ export function buildLeadSplit(input: {
   return {
     day: input.day,
     total,
-    duplicates,
     fresh,
     unassigned: unassignedWeek[last]!,
     rops: names.map((rop, i) => {
       const week = byRop.get(rop) ?? days.map(() => 0)
       const shareBp = input.split ? (shares.get(rop) ?? 0) : null
-      const received = week[last]!
-      return { rop, shareBp, planLeads: plan ? plan[i]! : null, received, receivedFresh: received - (dupByRop.get(rop) ?? 0), week }
+      return { rop, shareBp, planLeads: plan ? plan[i]! : null, received: week[last]!, week }
     }),
     week: { days, unassigned: unassignedWeek },
     split: input.split ? { updatedAt: input.split.updatedAt } : null,

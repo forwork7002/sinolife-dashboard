@@ -115,10 +115,6 @@ export interface DmPageDto {
   readonly product: TargetProduct | null
   readonly conversations: number
   readonly outcome: LeadOutcomeDto
-  /** leads ÷ conversations. */
-  readonly leadPercent: number | null
-  /** kval ÷ conversations. */
-  readonly conversationToSuccessPercent: number | null
   readonly days: readonly DmDayDto[]
 }
 
@@ -151,7 +147,6 @@ export interface ChannelTileDto {
 export interface LeadSourcesOverviewDto {
   /** When Meta's campaign grain was last read; null means never. */
   readonly importedAt: string | null
-  readonly window: { readonly from: string; readonly to: string }
   /**
    * The tab's six headline tiles (the client's list, 2026-10-01): Жами /
    * Янги / Дубль лидлар, Квал лидлар сони, Квал %, Квал лид нархи $.
@@ -490,8 +485,6 @@ export function leadSourcesOverview(input: {
         product: productOf(p.key),
         conversations: p.conversations,
         outcome,
-        leadPercent: percent(outcome.leads, p.conversations),
-        conversationToSuccessPercent: percent(outcome.success, p.conversations),
         days: days.map((date, i) => {
           const cell = p.days.get(date) ?? { conversations: 0, leads: 0, success: 0 }
           dmDays[i]!.conversations += cell.conversations
@@ -531,7 +524,6 @@ export function leadSourcesOverview(input: {
 
   return {
     importedAt: input.importedAt?.toISOString() ?? null,
-    window: input.window,
     funnel: {
       total: registrationCells.leads,
       fresh,

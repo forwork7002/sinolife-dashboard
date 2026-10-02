@@ -35,8 +35,9 @@ import type {
 /**
  * «Lid manbalari» — every lead Bitrix24 registered, by where it came from.
  *
- * Three questions, one request (`/leads/overview`), so every table sums to
- * the tiles above it:
+ * Three questions, one request (`/leads/overview`), so every table on the
+ * period sums to the tiles above it — the ROP cards placed in its slots read
+ * their own day:
  *
  *   Targetologlar — each targetolog's lead forms: what Meta counted, what
  *     reached Регистрация, and what that became. «Yetib keldi» low means the

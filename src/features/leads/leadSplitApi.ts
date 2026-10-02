@@ -21,14 +21,12 @@ export interface LeadSplitRopDto {
   readonly shareBp: number | null
   readonly planLeads: number | null
   readonly received: number
-  readonly receivedFresh: number
   readonly week: readonly number[]
 }
 
 export interface LeadSplitDto {
   readonly day: string
   readonly total: number
-  readonly duplicates: number
   readonly fresh: number
   readonly unassigned: number
   readonly rops: readonly LeadSplitRopDto[]

@@ -232,7 +232,6 @@ describe('leadSourcesOverview', () => {
     expect(uz.conversations).toBe(100)
     expect(uz.outcome.leads).toBe(4)
     expect(uz.outcome.success).toBe(1)
-    expect(uz.leadPercent).toBe(4)
     expect(uz.product).toBe('Collagen')
     const cs = data.dm.pages.find((p) => p.key === 'UC_NBCV5K')!
     expect(cs.product).toBeNull()

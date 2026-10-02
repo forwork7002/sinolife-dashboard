@@ -68,8 +68,6 @@ export interface DmPageDto {
   readonly product: TargetProduct | null
   readonly conversations: number
   readonly outcome: LeadOutcomeDto
-  readonly leadPercent: number | null
-  readonly conversationToSuccessPercent: number | null
   readonly days: readonly DmDayDto[]
 }
 
@@ -84,7 +82,6 @@ export interface SourceRowDto {
 
 export interface LeadSourcesOverviewDto {
   readonly importedAt: string | null
-  readonly window: { readonly from: string; readonly to: string }
   /** The six headline tiles — leads by creation day, kval by the day it was WON. */
   readonly funnel: {
     readonly total: number

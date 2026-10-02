@@ -40,8 +40,9 @@ import type { LeadSourcesOverviewDto } from './leadSourcesApi'
  * «Reklama samarasi» kept the Meta side — spend, campaigns, the client's
  * «DM» / «Отчёт Т» sheets.
  *
- * ONE REQUEST PER TAB: the sources request does not go out while the cohort
- * tab is open, and the cohort tab fetches inside its own section.
+ * NOTHING ON A HIDDEN TAB ASKS: the sources tab's requests (`/leads/overview`
+ * and the ROP cards' `/registration/*` two) do not go out while the cohort tab
+ * is open, and the cohort tab fetches inside its own section.
  */
 type Tab = 'sources' | 'cohort'
 

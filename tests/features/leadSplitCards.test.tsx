@@ -11,8 +11,7 @@ import type { LeadSplitDto, RopReportDto } from '@/features/leads/leadSplitApi'
  * The day's ROP cards on «Lidlar» (once «Registratsiya») — the administrator's daily split. Pins the form's promises:
  * a split saved in leads (basis points that are not whole tenths of a
  * percent) can be reopened and copied to the next day and saved again, leads
- * typed «Sonda» become shares summing to exactly 100 %, and plan and actual
- * are compared without the day's duplicates. And «ROP otchet» under it: one
+ * typed «Sonda» become shares summing to exactly 100 %. And «ROP otchet» under it: one
  * group per team with its «Umumiy», deviation and conversion as the sheet
  * computes them, and the day plan typed in place.
  */
@@ -57,7 +56,6 @@ function fixture(over: Partial<LeadSplitDto> = {}): LeadSplitDto {
   return {
     day: TODAY,
     total: 291,
-    duplicates: 2,
     fresh: 289,
     unassigned: 0,
     rops: NINE.map((rop, i) => ({
@@ -65,7 +63,6 @@ function fixture(over: Partial<LeadSplitDto> = {}): LeadSplitDto {
       shareBp: split ? IN_LEADS[i]! : null,
       planLeads: split ? [35, 35, 35, 46, 49, 29, 20, 20, 20][i]! : null,
       received: i === 0 ? 37 : [35, 35, 35, 46, 49, 29, 20, 20, 20][i]!,
-      receivedFresh: [35, 35, 35, 46, 49, 29, 20, 20, 20][i]!,
       week: [0, 0, 0, 0, 0, 0, 0],
     })),
     week: { days: Array.from({ length: 7 }, (_, i) => `2026-09-${String(24 + i).padStart(2, '0')}`), unassigned: [0, 0, 0, 0, 0, 0, 0] },
@@ -150,7 +147,7 @@ async function draw() {
 
 const sum = (rows: { shareBp: number }[]) => rows.reduce((a, r) => a + r.shareBp, 0)
 
-describe('RegistrationPage', () => {
+describe('LeadSplitCards', () => {
   it('reopens a split saved in leads and saves it unchanged', async () => {
     data = fixture({ split: { updatedAt: '2026-10-01T04:00:00.000Z' } })
     await draw()

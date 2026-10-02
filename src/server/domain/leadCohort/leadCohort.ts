@@ -32,7 +32,6 @@ export const LEAD_COHORT_START = '2026-09-14'
 
 /** The three pipelines a routed lead lives in, as portal CATEGORY_IDs. */
 export const LEAD_PIPELINES = [12, 4, 6] as const
-export type LeadPipeline = (typeof LEAD_PIPELINES)[number]
 
 /** D+0 … D+6, then one bucket for a week or more. */
 export const LAG_BUCKETS = 8

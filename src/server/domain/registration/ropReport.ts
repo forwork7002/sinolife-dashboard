@@ -1,5 +1,5 @@
 /**
- * «ROP otchet» on «Registratsiya» — the client's group sheet for one day:
+ * «ROP otchet» on «Lidlar» («Registratsiya» until 2026-10-02) — the client's group sheet for one day:
  * every ROP team, seller by seller, «Лид сони · План · Факт-1 ПР ·
  * Отклонение · Транз-1 · Конверсия · Факт-2 ПР · Транз-2» and the team's
  * «ОБЩИЙ». Asked for on 2026-10-01 in place of the split table, without the

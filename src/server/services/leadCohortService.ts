@@ -1,5 +1,5 @@
 /**
- * «Lid kogortasi» on «Reklama samarasi» — see `domain/leadCohort/leadCohort.ts`
+ * «Lid kogortasi» on «Lidlar» (on «Reklama samarasi» until 2026-09-25) — see `domain/leadCohort/leadCohort.ts`
  * for what the table means and how a lead is counted.
  *
  * The window is the screen's OWN (default: the last 14 days), not the

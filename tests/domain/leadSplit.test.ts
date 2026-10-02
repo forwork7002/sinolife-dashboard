@@ -36,7 +36,6 @@ describe('buildLeadSplit', () => {
   it('counts the day: Jami is every handed-out lead, new is Jami less the same-day repeats', () => {
     const dto = buildLeadSplit({ day, rows, split: null, previous: null, canEdit: false })
     expect(dto.total).toBe(38 + 2 + 29 + 10 + 3)
-    expect(dto.duplicates).toBe(2)
     expect(dto.fresh).toBe(dto.total - 2)
     expect(dto.unassigned).toBe(10)
   })
@@ -73,12 +72,7 @@ describe('buildLeadSplit', () => {
   })
 })
 
-describe('buildLeadSplit — on one basis', () => {
-  it('keeps a team\'s own duplicates out of what is compared with the plan', () => {
-    const dto = buildLeadSplit({ day, rows: [{ day, rop: 'Sevinch', leads: 38, duplicates: 2 }], split: null, previous: null, canEdit: false })
-    expect(dto.rops[0]).toMatchObject({ rop: 'Sevinch', received: 38, receivedFresh: 36 })
-  })
-
+describe('buildLeadSplit — the previous split', () => {
   it('hands the previous split back under today\'s team names, and lists a team only it names', () => {
     const previous = { day: '2026-09-29', rows: [{ rop: 'Sevinchxon', shareBp: 6000 }, { rop: 'Marjona', shareBp: 4000 }] }
     const dto = buildLeadSplit({ day, rows: [], split: null, previous, canEdit: true })

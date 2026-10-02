@@ -52,8 +52,8 @@ export const LEAD_CHANNELS: readonly LeadChannel[] = Object.freeze([
  * A cut of Регистрация of its own, beside the channels above rather than made
  * of them: the client asked for «Ген лид» whole (forms and by hand), and for
  * «Сммщик ии» as every lead the AI qualified out of the DMs — which mostly
- * come in on the ad pages, so this row and «Reklama lidlari» overlap by
- * design.
+ * come in on the DM pages, so this row overlaps «Targetologlar» and «DM
+ * sahifalar» by design.
  *
  * «ИСХОД» AND «BOSHQA» CAME BACK ON 2026-10-02. Without them «Jami» fell
  * short of «Жами лидлар» above it and the client read it as a miscount
