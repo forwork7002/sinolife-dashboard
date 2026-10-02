@@ -87,6 +87,8 @@ export const LEAD_TILES_APART: ReadonlySet<LeadTile> = new Set<LeadTile>(['outbo
  * every source, «Ген лид» and «Исход» included, so a qualified sinolif_tg chat
  * is «Сммщик ии», not «Телеграм» — no lead is counted twice in «Jami». The
  * portal fills the mark since 2026-09-14; before that the tile reads 0.
+ * «Сммщик ии»'s own count is not these leads: since 2026-10-02 it is the
+ * portal's «ИИ квал сана» filter (`aiQualifiedStages`), as the client checks it.
  */
 export function leadTile(sourceId: string | null, aiQualified: boolean, vocabulary: LeadSourceVocabulary): LeadTile {
   if (aiQualified) return 'aiSmm'

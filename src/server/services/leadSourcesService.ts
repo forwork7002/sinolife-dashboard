@@ -49,6 +49,7 @@ import type { TargetProduct } from '@/server/domain/types'
 import type { InsightsRepository, LeadFakt1ClientRow } from '@/server/repositories/insightsRepository'
 import type {
   LeadSourcesRepository,
+  AiQualifiedStageRow,
   QualifiedSourceRow,
   RegistrationDayRow,
   TriageDayRow,
@@ -288,6 +289,8 @@ export function leadSourcesOverview(input: {
   fakt1: readonly LeadFakt1ClientRow[]
   /** Регистрация deals WON in the window, by source (`LeadSourcesRepository.qualifiedSources`). */
   qualified: readonly QualifiedSourceRow[]
+  /** Deals whose «ИИ квал сана» is in the window, any pipeline (`LeadSourcesRepository.aiQualifiedStages`). */
+  aiQualified: readonly AiQualifiedStageRow[]
   importedAt: Date | null
 }): LeadSourcesOverviewDto {
   const days = calendarDays(input.window.from, input.window.to)
@@ -362,11 +365,13 @@ export function leadSourcesOverview(input: {
 
     addOutcome(registration, one)
     addOutcome(channels.get(channel)!, one)
-    const tile = tiles.get(leadTile(row.sourceId, row.aiQualified, LEAD_SOURCE_VOCABULARY))!
-    tile.leads += row.leads
-    if (isLeadDuplicate(row.stage)) {
-      tile.duplicates += row.leads
-      leadDuplicates += row.leads
+    if (isLeadDuplicate(row.stage)) leadDuplicates += row.leads
+    const tileKey = leadTile(row.sourceId, row.aiQualified, LEAD_SOURCE_VOCABULARY)
+    // «Сммщик ии» counts by the AI's date, not the day the lead arrived — below.
+    if (tileKey !== 'aiSmm') {
+      const tile = tiles.get(tileKey)!
+      tile.leads += row.leads
+      if (isLeadDuplicate(row.stage)) tile.duplicates += row.leads
     }
     const sourceKey = sourceKeyOf(form, row.sourceId)
     const source = mapGet(sources, sourceKey, () => ({
@@ -508,6 +513,18 @@ export function leadSourcesOverview(input: {
     the lead's other outcomes; on the tiles it read 189 against the headline's
     240 on 01.10.
   */
+  /*
+    «Сммщик ии» is the portal's «ИИ квал сана» filter on the window — any
+    pipeline, any creation day — so it reads what the client sees in Bitrix24
+    (01.10: 89, where the arrival cohort read 60). Its kval stays the
+    Регистрация WON by close date below, like every other tile.
+  */
+  const aiTile = tiles.get('aiSmm')!
+  for (const row of input.aiQualified) {
+    aiTile.leads += row.leads
+    if (isLeadDuplicate(row.stage)) aiTile.duplicates += row.leads
+  }
+
   let qualifiedTotal = 0
   for (const row of input.qualified) {
     tiles.get(leadTile(row.sourceId, row.aiQualified, LEAD_SOURCE_VOCABULARY))!.qualified += row.qualified
@@ -587,6 +604,7 @@ const scanCache = ttlCache<{
   triage: TriageDayRow[]
   fakt1: LeadFakt1ClientRow[]
   qualified: QualifiedSourceRow[]
+  aiQualified: AiQualifiedStageRow[]
 }>(60_000)
 
 export class LeadSourcesService {
@@ -605,13 +623,14 @@ export class LeadSourcesService {
 
     const [scans, campaigns, importedAt] = await Promise.all([
       scanCache.get(key, async () => {
-        const [registration, triage, fakt1, qualified] = await Promise.all([
+        const [registration, triage, fakt1, qualified, aiQualified] = await Promise.all([
           this.repository.registrationDays(period),
           this.repository.triageDays(period),
           this.insights.leadFakt1Clients(period),
           this.repository.qualifiedSources(period),
+          this.repository.aiQualifiedStages(period),
         ])
-        return { registration, triage, fakt1, qualified }
+        return { registration, triage, fakt1, qualified, aiQualified }
       }),
       this.meta.campaignDays(window.from, window.to),
       this.meta.campaignsImportedAt(),

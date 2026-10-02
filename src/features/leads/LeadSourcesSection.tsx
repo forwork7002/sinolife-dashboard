@@ -189,14 +189,18 @@ const TILE_LABEL: Readonly<Record<LeadTile, string>> = {
 /** The client's order, as the server's `LEAD_TILES` — kept here too so the loading state can draw labelled tiles. */
 const TILES = Object.keys(TILE_LABEL) as LeadTile[]
 
-/** On a row of their own beneath, outside «Jami» — the server's `LEAD_TILES_APART` (the client, 2026-10-02). */
-const TILES_APART: readonly LeadTile[] = ['outbound', 'other']
-const TILES_IN_TOTAL = TILES.filter((t) => !TILES_APART.includes(t))
+/**
+ * Beneath, outside «Jami» — the server's `LEAD_TILES_APART` (the client,
+ * 2026-10-02). One card with a picker between the two, the client's ask.
+ */
+const TILES_APART = ['outbound', 'other'] as const satisfies readonly LeadTile[]
+type ApartTile = (typeof TILES_APART)[number]
+const TILES_IN_TOTAL = TILES.filter((t) => !(TILES_APART as readonly LeadTile[]).includes(t))
 
 /** What a tile counts, where its name alone does not say it. */
 const TILE_NOTE: Partial<Record<LeadTile, string>> = {
   generated: 'lid-forma + qoʻlda kiritilgan',
-  aiSmm: '«ИИ квал сана» toʻldirilgan · 14.09.2026 dan',
+  aiSmm: '«ИИ квал сана» shu davrda · barcha voronkalar · 14.09.2026 dan',
   outbound: 'operatorning chiquvchi qoʻngʻirogʻi',
   other: 'qolgan manbalar: ИИ kval qilmagan reklama sahifalari, Сммщик, Instagram, manbasiz',
 }
@@ -218,13 +222,14 @@ const note = (text: string) => (
  * («Targetologlar») and «Сммщик ии» every lead the AI qualified, mostly off
  * the DM pages. Every tile is on the wire even at zero, so a quiet channel
  * reads 0. A tile's kval is counted as «Квал лидлар сони» above it — by the
- * day it was WON, over new leads. «Исход» and «Boshqa» sit on a row of their
- * own beneath, outside «Jami» (the client, 2026-10-02).
+ * day it was WON, over new leads. «Исход» and «Boshqa» share one card
+ * beneath, outside «Jami», picked by a filter (the client, 2026-10-02).
  */
 export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
+  const [apart, setApart] = useState<ApartTile>('outbound')
   const byTile = new Map<LeadTile, ChannelTileDto>(data?.tiles.rows.map((r) => [r.tile, r]))
   const total = data?.tiles.total
-  const channelTile = (tile: LeadTile) => {
+  const channelTile = (tile: LeadTile, extra?: ReactNode) => {
     const o = byTile.get(tile)
     const text = TILE_NOTE[tile]
     return (
@@ -236,7 +241,14 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
         value={o?.leads ?? null}
         unit="count"
         hint={o ? kvalHint(o) : undefined}
-        context={text ? note(text) : undefined}
+        context={
+          text || extra ? (
+            <>
+              {text && note(text)}
+              {extra}
+            </>
+          ) : undefined
+        }
       />
     )
   }
@@ -267,19 +279,31 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
             )}
           />
         </div>
-        {TILES_IN_TOTAL.map(channelTile)}
+        {TILES_IN_TOTAL.map((t) => channelTile(t))}
       </div>
       <h3 className="eyebrow" id="lead-channel-apart">
         Jamiga kirmaydi
       </h3>
-      {/* The same columns as the row above, so the two tiles keep its width. */}
+      {/* The row above's columns, two wide, so the card has room for its picker. */}
       <div
         className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7"
         role="group"
         aria-labelledby="lead-channel-apart"
         data-testid="lead-channel-apart"
       >
-        {TILES_APART.map(channelTile)}
+        <div className="col-span-2 grid">
+          {channelTile(
+            apart,
+            <div className="mt-2">
+              <SlicePicker<ApartTile>
+                ariaLabel="Jamiga kirmaydigan manba"
+                value={apart}
+                onChange={setApart}
+                options={TILES_APART.map((t) => ({ value: t, label: TILE_LABEL[t] }))}
+              />
+            </div>,
+          )}
+        </div>
       </div>
     </section>
   )

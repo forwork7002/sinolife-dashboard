@@ -43,3 +43,36 @@ describe('LeadSourcesRepository.qualifiedSources', () => {
     expect(params).toEqual([start, end])
   })
 })
+
+/*
+  «Сммщик ии» — the portal's «ИИ квал сана» filter: every pipeline, every
+  creation day, the AI's own date in the half-open window.
+*/
+describe('LeadSourcesRepository.aiQualifiedStages', () => {
+  it('counts deals by aiQualifiedAt in any pipeline, by the stage they sit in now', async () => {
+    const seen: { sql: string; params: unknown[] }[] = []
+    const client = {
+      $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
+        seen.push({ sql, params })
+        return [
+          { stage: 'Дубликат (лид)', status: 'OPEN', leads: 14n },
+          { stage: null, status: 'WON', leads: 3n },
+        ]
+      },
+    }
+    const start = new Date('2026-09-30T19:00:00Z')
+    const end = new Date('2026-10-01T19:00:00Z')
+    const rows = await new LeadSourcesRepository(client as never).aiQualifiedStages({ start, end } as never)
+
+    expect(rows).toEqual([
+      { stage: 'Дубликат (лид)', status: 'OPEN', leads: 14 },
+      { stage: '—', status: 'WON', leads: 3 },
+    ])
+    const { sql, params } = seen[0]!
+    expect(sql).toMatch(/d\."aiQualifiedAt" >= \$1 AND d\."aiQualifiedAt" < \$2/)
+    // Not Регистрация alone: the portal's filter reads every pipeline (01.10: 72 of 89 there).
+    expect(sql).not.toMatch(/pipeline/)
+    expect(sql).not.toMatch(/createdAtSource/)
+    expect(params).toEqual([start, end])
+  })
+})

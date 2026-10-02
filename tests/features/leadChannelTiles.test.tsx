@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { ChannelTiles } from '@/features/leads/LeadSourcesSection'
@@ -68,7 +68,7 @@ describe('ChannelTiles', () => {
     expect(within(tile('Телеграм')).getByText('27')).toBeTruthy()
     expect(within(tile('Телеграм')).getByText('13 kval · 48.1%')).toBeTruthy()
     expect(within(tile('Сммщик ии')).getByText('445')).toBeTruthy()
-    expect(within(tile('Сммщик ии')).getByText('«ИИ квал сана» toʻldirilgan · 14.09.2026 dan')).toBeTruthy()
+    expect(within(tile('Сммщик ии')).getByText('«ИИ квал сана» shu davrda · barcha voronkalar · 14.09.2026 dan')).toBeTruthy()
     expect(within(tile('Веб сайт')).getByText('1')).toBeTruthy()
   })
 
@@ -94,24 +94,26 @@ describe('ChannelTiles', () => {
     expect(total.parentElement!.children).toHaveLength(7)
   })
 
-  it('puts «Исход» and «Boshqa» on a row of their own, outside «Jami» (2026-10-02)', () => {
+  it('puts «Исход» and «Boshqa» on one card beneath, outside «Jami», picked by a filter (2026-10-02)', () => {
     render(<ChannelTiles data={data} status="ready" />)
 
     const apart = screen.getByRole('group', { name: 'Jamiga kirmaydi' })
-    expect(apart.children).toHaveLength(2)
-    expect(within(apart).getByText('Исход')).toBeTruthy()
-    expect(within(apart).getByText('Boshqa')).toBeTruthy()
+    expect(apart.querySelectorAll('.card')).toHaveLength(1)
+    // «Исход» first, the picker on the card.
     expect(within(tile('Исход')).getByText('2,410')).toBeTruthy()
+    expect(within(tile('Исход')).getByText('operatorning chiquvchi qoʻngʻirogʻi')).toBeTruthy()
+    fireEvent.click(within(apart).getByRole('button', { name: 'Boshqa' }))
     expect(within(tile('Boshqa')).getByText('120')).toBeTruthy()
-    expect(within(screen.getByTestId('lead-channel-total').parentElement!).queryByText('Исход')).toBeNull()
+    expect(screen.queryByText('Исход', { selector: 'p' })).toBeNull()
+    expect(within(screen.getByTestId('lead-channel-total').parentElement!).queryByText('Boshqa')).toBeNull()
   })
 
   it('says loading and failure on every tile rather than printing zeros', () => {
     const { unmount } = render(<ChannelTiles data={undefined} status="loading" />)
-    expect(screen.getAllByRole('status')).toHaveLength(9)
+    expect(screen.getAllByRole('status')).toHaveLength(8)
     unmount()
 
     render(<ChannelTiles data={undefined} status="error" />)
-    expect(screen.getAllByText('Olinmadi')).toHaveLength(9)
+    expect(screen.getAllByText('Olinmadi')).toHaveLength(8)
   })
 })

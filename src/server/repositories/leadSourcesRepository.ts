@@ -32,6 +32,14 @@ export interface QualifiedSourceRow {
   readonly qualified: number
 }
 
+/** Deals the AI qualified in a window, in any pipeline, by the stage each sits in now. */
+export interface AiQualifiedStageRow {
+  readonly stage: string
+  /** DealStatus: OPEN, WON or LOST. */
+  readonly status: string
+  readonly leads: number
+}
+
 /** «ИИ обработка» deals — one per Instagram conversation — per day per page. */
 export interface TriageDayRow {
   readonly day: string
@@ -137,6 +145,28 @@ export class LeadSourcesRepository {
       period.end,
     )
     return rows.map((r) => ({ sourceId: r.source_id, aiQualified: r.ai_qualified, qualified: Number(r.qualified) }))
+  }
+
+  /**
+   * «Сммщик ии» as the portal counts it: every deal whose «ИИ квал сана» falls
+   * in the window, whatever its pipeline or creation day — the portal's own
+   * filter on that field (01.10.2026: 89 = 72 Регистрация + 13 Первичный
+   * отдел + 4 Доставка). No index on the column: a sequential scan of
+   * `deal`, behind the overview's 60-second memo.
+   */
+  async aiQualifiedStages(period: Period): Promise<AiQualifiedStageRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<{ stage: string | null; status: string; leads: bigint }[]>(
+      `
+      SELECT st."name" AS stage, d."status"::text AS status, count(*)::bigint AS leads
+      FROM "deal" d
+      LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
+      WHERE d."aiQualifiedAt" >= $1 AND d."aiQualifiedAt" < $2
+      GROUP BY 1, 2
+      `,
+      period.start,
+      period.end,
+    )
+    return rows.map((r) => ({ stage: r.stage ?? '—', status: r.status, leads: Number(r.leads) }))
   }
 
   async triageDays(period: Period): Promise<TriageDayRow[]> {
