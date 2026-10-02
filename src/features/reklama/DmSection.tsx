@@ -12,8 +12,8 @@ import { type DayRow, DayCell, type Status, TableCard, SlicePicker, count, dayRo
 /**
  * «DM» — the client's sheet of Instagram-message advertising, per page.
  *
- * The sheet puts every page side by side, five columns each; seven pages of
- * that is thirty-five columns nobody can read on a laptop. So the pages are
+ * The sheet puts every page side by side, five columns each; every ad page
+ * that way is more columns than anybody can read on a laptop. So the pages are
  * one table of totals, and the days are one page at a time — «Jami» first,
  * which is the sheet's «Итог» block.
  *

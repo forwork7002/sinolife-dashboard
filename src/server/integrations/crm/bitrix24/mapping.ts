@@ -457,10 +457,10 @@ export const NOT_PACKED_STAGES: readonly string[] = Object.freeze(['C6:NEW', 'C6
  * so the client's sheet runs below these screens by exactly its deals — on
  * purpose, do not take it back out to match the sheet. The page opened on
  * 28.09 and was the busiest DM page by 01.10 (314 conversations, 25
- * Регистрация leads that day; 22% of the ad pages' leads 28.09–01.10), and its
- * ads are paid from «Collagen marine Eldor», whose spend `META_ACCOUNT_OWNERS`
- * already counts as Collagen — so before it joined, Collagen's spend was
- * divided by leads that left this page's out.
+ * Регистрация leads that day; 41 of the eight ad pages' 223 leads, 18%, over
+ * 28.09–01.10), and its ads are paid from «Collagen marine Eldor», whose spend
+ * `META_ACCOUNT_OWNERS` already counts as Collagen — so before it joined,
+ * Collagen's spend was divided by leads that left this page's out.
  *
  * Ids, not names: a page renamed next month keeps its id, and the name is read
  * from `sales_source` at query time.
