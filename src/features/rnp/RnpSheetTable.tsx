@@ -71,7 +71,8 @@ import { useDragScroll } from './useDragScroll'
  * columns stay marked: they are where in the month, not a row's colour.
  * The pinned label column stays plain on «Сумма факт 1» and «Конверсия» —
  * only their figures are tinted («chapdagi panel boʻyalmasin», 2026-10-01);
- * the ROP's «План бажарилиши» heading keeps its label tint.
+ * the ROP's «План бажарилиши» heading keeps its label tint, and each
+ * logistics block's heading takes its green, ROP chip too (2026-10-02).
  * Every tint is a `color-mix`, opaque over the card in the pinned column so
  * the days cannot show through it.
  *
@@ -413,9 +414,9 @@ function MissingRow({ line, span }: { line: ValueLine; span: number }) {
       <th
         scope="row"
         className={`tcol-sticky rnp-label ${RULE} py-1.5 pr-3 pl-4 text-left text-[13px] leading-snug font-medium sm:pl-5`}
-        style={{ left: 0, ...labelStyle(accentOf(line)) }}
+        style={{ left: 0, ...labelStyle(headHue(line)) }}
       >
-        <LabelBody line={line} />
+        <LabelBody line={line} chipHue={logisticsHue(line)} />
       </th>
       {/* The mark sits in the empty span, not under the label, so the row stays one line tall. */}
       <td colSpan={PINNED.length} className={`${pinClass('plan')} rnp-edge ${RULE} px-3 py-1.5`} style={{ backgroundImage: HATCH }}>
@@ -444,6 +445,7 @@ function ValueRow({
   const band = accent ? ACCENT[accent].band : undefined
   const unreliable = row.reliableFrom ? `Bitrix24 da bu maydon ${dayMonth(row.reliableFrom)} dan toʻliq` : undefined
   const planTint = accent === 'plan' ? ACCENT.plan.fact : undefined
+  const head = headHue(line)
 
   return (
     <tr
@@ -456,12 +458,10 @@ function ValueRow({
       <th
         scope="row"
         className={`tcol-sticky rnp-label ${RULE} py-1.5 pr-3 pl-4 text-left text-[13px] leading-snug sm:pl-5 ${bold ? 'font-semibold' : 'font-medium'}`}
-        style={{ left: 0, ...labelStyle(accent) }}
+        style={{ left: 0, ...labelStyle(head) }}
       >
-        {accent === 'plan' && (
-          <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px]" style={{ background: ACCENT.plan.hue }} />
-        )}
-        <LabelBody line={line} hint={row.hint} manual={row.manual !== null} />
+        {head !== null && <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px]" style={{ background: head }} />}
+        <LabelBody line={line} hint={row.hint} manual={row.manual !== null} chipHue={logisticsHue(line)} />
       </th>
       {editMonth !== null && row.planInput !== null ? (
         // One of the sheet's typed plans (column C): an open field, like the typed days.
@@ -577,12 +577,15 @@ function LabelBody({
   heading = false,
   hint = null,
   manual = false,
+  chipHue = null,
 }: {
   line: RnpLine
   heading?: boolean
   hint?: string | null
   /** A row typed by hand (`RnpRowDto.manual`): says so with a chip. */
   manual?: boolean
+  /** The owner chip's colour; plain when null. */
+  chipHue?: string | null
 }) {
   const added = line.sub === RNP_ADDED_TEAM_NOTE
   const sub = added ? null : line.sub
@@ -640,8 +643,12 @@ function LabelBody({
       <span>{line.label}</span>
       {sub && (
         <span
-          className="rounded-[5px] border px-1.5 text-[11px] leading-[18px] font-medium"
-          style={{ borderColor: 'var(--border-strong)', color: 'var(--ink-secondary)' }}
+          className={`rounded-[5px] border px-1.5 text-[11px] leading-[18px] ${chipHue ? 'font-semibold' : 'font-medium'}`}
+          style={
+            chipHue
+              ? { borderColor: mix(chipHue, 50, 'var(--border)'), background: mix(chipHue, 20), color: inkOf(chipHue) }
+              : { borderColor: 'var(--border-strong)', color: 'var(--ink-secondary)' }
+          }
         >
           {sub}
         </span>
@@ -753,12 +760,22 @@ const ACCENT: Record<RowAccent, { hue: string; band: string; fact: string }> = {
 }
 
 /**
- * The pinned label cell of a value line: only the ROP's heading row is tinted,
- * opaque over the card so the days never show through.
+ * A logistics block's heading, «Логистика Сумма факт1» beside its ROP: its
+ * label and its ROP chip take the row's green (the client, 2026-10-02:
+ * «logistika boʻlimiga rang berilsin … rop ismi ham rangli boʻlsin»).
  */
-function labelStyle(accent: RowAccent | null): { background?: string; color: string } {
-  if (accent !== 'plan') return { color: 'var(--ink-primary)' }
-  const { hue } = ACCENT[accent]
+function logisticsHue(line: ValueLine): string | null {
+  return /^Логистика/.test(line.label) ? ACCENT.fakt1.hue : null
+}
+
+/** The hue of a value line's pinned label: the ROP's «План бажарилиши» and the logistics heading; null — plain. */
+function headHue(line: ValueLine): string | null {
+  return accentOf(line) === 'plan' ? ACCENT.plan.hue : logisticsHue(line)
+}
+
+/** The pinned label cell of a value line: a heading's tint, opaque over the card so the days never show through. */
+function labelStyle(hue: string | null): { background?: string; color: string } {
+  if (hue === null) return { color: 'var(--ink-primary)' }
   return { background: mix(hue, 16, 'var(--surface-raised)'), color: inkOf(hue) }
 }
 
