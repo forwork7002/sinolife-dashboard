@@ -189,6 +189,10 @@ const TILE_LABEL: Readonly<Record<LeadTile, string>> = {
 /** The client's order, as the server's `LEAD_TILES` — kept here too so the loading state can draw labelled tiles. */
 const TILES = Object.keys(TILE_LABEL) as LeadTile[]
 
+/** On a row of their own beneath, outside «Jami» — the server's `LEAD_TILES_APART` (the client, 2026-10-02). */
+const TILES_APART: readonly LeadTile[] = ['outbound', 'other']
+const TILES_IN_TOTAL = TILES.filter((t) => !TILES_APART.includes(t))
+
 /** What a tile counts, where its name alone does not say it. */
 const TILE_NOTE: Partial<Record<LeadTile, string>> = {
   generated: 'lid-forma + qoʻlda kiritilgan',
@@ -214,19 +218,36 @@ const note = (text: string) => (
  * («Targetologlar») and «Сммщик ии» every lead the AI qualified, mostly off
  * the DM pages. Every tile is on the wire even at zero, so a quiet channel
  * reads 0. A tile's kval is counted as «Квал лидлар сони» above it — by the
- * day it was WON, over new leads — so «Jami» reads the headline's figures.
+ * day it was WON, over new leads. «Исход» and «Boshqa» sit on a row of their
+ * own beneath, outside «Jami» (the client, 2026-10-02).
  */
 export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
   const byTile = new Map<LeadTile, ChannelTileDto>(data?.tiles.rows.map((r) => [r.tile, r]))
   const total = data?.tiles.total
+  const channelTile = (tile: LeadTile) => {
+    const o = byTile.get(tile)
+    const text = TILE_NOTE[tile]
+    return (
+      <StatTile
+        key={tile}
+        compact
+        status={status}
+        label={TILE_LABEL[tile]}
+        value={o?.leads ?? null}
+        unit="count"
+        hint={o ? kvalHint(o) : undefined}
+        context={text ? note(text) : undefined}
+      />
+    )
+  }
 
   return (
     <section className="flex min-w-0 flex-col gap-3" aria-labelledby="lead-channel-tiles">
       <h2 id="lead-channel-tiles" className="eyebrow">
         Boshqa kanallar lidlari
       </h2>
-      {/* Nine tiles on one row from xl, compact like the headline row above. */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
+      {/* Seven tiles on one row from xl, compact like the headline row above. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
         {/* The total leads the row (the client's order, 2026-10-01) and wears a
             ring in the page's accent, so the eye finds the sum first. */}
         <div
@@ -241,25 +262,24 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
             value={total?.leads ?? null}
             unit="count"
             hint={total ? kvalHint(total) : undefined}
-            context={note(`${TILES.length} kanal yigʻindisi = «Жами лидлар» · forma va ИИ lidlari Reklamada ham bor`)}
+            context={note(
+              `${TILES_IN_TOTAL.length} kanal yigʻindisi · Исход va Boshqa kirmaydi · forma va ИИ lidlari Reklamada ham bor`,
+            )}
           />
         </div>
-        {TILES.map((tile) => {
-          const o = byTile.get(tile)
-          const text = TILE_NOTE[tile]
-          return (
-            <StatTile
-              key={tile}
-              compact
-              status={status}
-              label={TILE_LABEL[tile]}
-              value={o?.leads ?? null}
-              unit="count"
-              hint={o ? kvalHint(o) : undefined}
-              context={text ? note(text) : undefined}
-            />
-          )
-        })}
+        {TILES_IN_TOTAL.map(channelTile)}
+      </div>
+      <h3 className="eyebrow" id="lead-channel-apart">
+        Jamiga kirmaydi
+      </h3>
+      {/* The same columns as the row above, so the two tiles keep its width. */}
+      <div
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7"
+        role="group"
+        aria-labelledby="lead-channel-apart"
+        data-testid="lead-channel-apart"
+      >
+        {TILES_APART.map(channelTile)}
       </div>
     </section>
   )

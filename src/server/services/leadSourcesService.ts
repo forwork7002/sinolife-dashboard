@@ -37,6 +37,7 @@ import {
   type LeadTile,
   LEAD_CHANNELS,
   LEAD_TILES,
+  LEAD_TILES_APART,
   formNameOf,
   formOwner,
   leadChannel,
@@ -201,9 +202,8 @@ export interface LeadSourcesOverviewDto {
   }[]
   /**
    * «Boshqa kanallar lidlari»: every tile of `LEAD_TILES`, in its order and
-   * at zero when quiet, and «Jami» — their sum, which is `funnel` whole
-   * (every lead has one tile since 2026-10-02, and every kval since the
-   * tiles count it by the day it was WON).
+   * at zero when quiet, and «Jami» — the sum of all but `LEAD_TILES_APART`
+   * («Исход», «Boshqa»), so `funnel` less those two.
    */
   readonly tiles: {
     readonly rows: readonly ({ readonly tile: LeadTile } & ChannelTileDto)[]
@@ -514,7 +514,8 @@ export function leadSourcesOverview(input: {
     qualifiedTotal += row.qualified
   }
   const tilesTotal = tileZero()
-  for (const t of tiles.values()) {
+  for (const [tile, t] of tiles) {
+    if (LEAD_TILES_APART.has(tile)) continue
     tilesTotal.leads += t.leads
     tilesTotal.duplicates += t.duplicates
     tilesTotal.qualified += t.qualified

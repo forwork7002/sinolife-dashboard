@@ -193,7 +193,7 @@ describe('leadSourcesOverview', () => {
     expect(data.sources.find((s) => s.key === 'source|UC_8NZNYM')!.channel).toBe('telegram')
   })
 
-  it('fills the client\'s channel tiles, «Исход» and «Boshqa» included, and sums them to the headline', () => {
+  it('fills the client\'s channel tiles, «Исход» and «Boshqa» included, and sums all but those two', () => {
     const tile = (t: string) => data.tiles.rows.find((r) => r.tile === t)!
     expect(data.tiles.rows.map((r) => r.tile)).toEqual(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'sarafan', 'outbound', 'other'])
     // Umar's form (5) and the hand-typed «Ген лид» (2): «Ген лид» whole; kval by the day it was WON.
@@ -207,13 +207,15 @@ describe('leadSourcesOverview', () => {
     expect(tile('outbound')).toMatchObject({ leads: 7, qualified: 1 })
     // The page's unqualified three (one a duplicate), collagen.sinolife, and the kval with no source.
     expect(tile('other')).toMatchObject({ leads: 4, fresh: 3, qualified: 1 })
+    // «Jami» is the headline less «Исход» (7 · 1 kval) and «Boshqa» (4, one a duplicate · 1 kval).
     expect(data.tiles.total).toEqual({
-      leads: data.funnel.total,
-      fresh: data.funnel.fresh,
-      qualified: data.funnel.qualified,
-      qualifiedPercent: data.funnel.qualifiedPercent,
+      leads: data.funnel.total - 11,
+      fresh: data.funnel.fresh - 10,
+      qualified: data.funnel.qualified - 2,
+      qualifiedPercent: ((data.funnel.qualified - 2) / (data.funnel.fresh - 10)) * 100,
     })
-    expect(data.tiles.total.leads).toBe(data.tiles.rows.reduce((n, r) => n + r.leads, 0))
+    const inTotal = data.tiles.rows.filter((r) => r.tile !== 'outbound' && r.tile !== 'other')
+    expect(data.tiles.total.leads).toBe(inTotal.reduce((n, r) => n + r.leads, 0))
   })
 
   it('puts the form and the Meta account on one targetolog, and reads the reach', () => {

@@ -60,7 +60,11 @@ export const LEAD_CHANNELS: readonly LeadChannel[] = Object.freeze([
  * («Жами тугри келмаяпти»): 01.10 had 897 Регистрация leads, 741 on the six
  * tiles, 154 «Исход» and 2 Instagram. So every lead now has exactly one tile —
  * the ad pages the AI did not qualify, the human SMM sources, a lead with no
- * source and the rest are «Boshqa» — and «Jami» is Регистрация whole.
+ * source and the rest are «Boshqa».
+ *
+ * THEY LEFT «JAMI» LATER THAT DAY: the client asked for «Jami» to be the six
+ * channels alone, with «Исход» and «Boshqa» on a row of their own beneath —
+ * see `LEAD_TILES_APART`. Every lead still has exactly one tile.
  */
 export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'sarafan' | 'outbound' | 'other'
 
@@ -74,6 +78,9 @@ export const LEAD_TILES: readonly LeadTile[] = Object.freeze([
   'outbound',
   'other',
 ])
+
+/** The tiles shown on their own row and left out of «Jami» (the client, 2026-10-02). */
+export const LEAD_TILES_APART: ReadonlySet<LeadTile> = new Set<LeadTile>(['outbound', 'other'])
 
 /**
  * The tile a Регистрация deal counts on — one, always. The AI's mark wins over

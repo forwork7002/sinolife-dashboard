@@ -116,7 +116,7 @@ export interface LeadSourcesOverviewDto {
     readonly outcome: LeadOutcomeDto
     readonly fakt1Clients: number
   }[]
-  /** «Boshqa kanallar lidlari» — every tile in the server's order, and their sum (= `funnel`). */
+  /** «Boshqa kanallar lidlari» — every tile in the server's order, and the sum of all but «Исход» and «Boshqa». */
   readonly tiles: {
     readonly rows: readonly ({ readonly tile: LeadTile } & ChannelTileDto)[]
     readonly total: ChannelTileDto

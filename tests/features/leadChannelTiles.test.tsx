@@ -8,7 +8,7 @@ import type { ChannelTileDto, LeadSourcesOverviewDto, LeadTile } from '@/feature
 /*
   «Boshqa kanallar lidlari» — the client's list of 2026-10-01: Ген лид,
   Входящий, Телеграм, Сммщик ии, Веб сайт, Сарафан, and since 2026-10-02
-  «Исход» and «Boshqa», with their «Jami». Kval as «Квал лидлар сони» counts
+  «Исход» and «Boshqa» — those two on a row of their own, outside «Jami». Kval as «Квал лидлар сони» counts
   it: by the day it was WON, over new leads.
 
   Reduced motion, so `AnimatedNumber` prints the final figure rather than the
@@ -49,8 +49,8 @@ const TILES: Record<LeadTile, ChannelTileDto> = {
 const data = {
   tiles: {
     rows: (Object.keys(TILES) as LeadTile[]).map((tile) => ({ tile, ...TILES[tile] })),
-    // The rows' sum, as the server builds it.
-    total: cells(5754, 974, 40),
+    // The six channels' sum, as the server builds it — «Исход» and «Boshqa» left out.
+    total: cells(3224, 964, 40),
   },
 } as unknown as LeadSourcesOverviewDto
 
@@ -85,17 +85,25 @@ describe('ChannelTiles', () => {
     const total = screen.getByTestId('lead-channel-total')
     expect(total.parentElement!.firstElementChild).toBe(total)
     expect(within(total).getByText('Jami')).toBeTruthy()
-    expect(within(total).getByText('5,754')).toBeTruthy()
-    // Over the new leads, as «Квал %»: 974 ÷ (5 754 − 40).
-    expect(within(total).getByText('974 kval · 17.0%')).toBeTruthy()
-    expect(within(total).getByText('8 kanal yigʻindisi = «Жами лидлар» · forma va ИИ lidlari Reklamada ham bor')).toBeTruthy()
+    expect(within(total).getByText('3,224')).toBeTruthy()
+    // Over the new leads, as «Квал %»: 964 ÷ (3 224 − 40).
+    expect(within(total).getByText('964 kval · 30.3%')).toBeTruthy()
+    expect(
+      within(total).getByText('6 kanal yigʻindisi · Исход va Boshqa kirmaydi · forma va ИИ lidlari Reklamada ham bor'),
+    ).toBeTruthy()
+    expect(total.parentElement!.children).toHaveLength(7)
   })
 
-  it('prints «Исход» and «Boshqa», so «Jami» is «Жами лидлар» (2026-10-02)', () => {
+  it('puts «Исход» and «Boshqa» on a row of their own, outside «Jami» (2026-10-02)', () => {
     render(<ChannelTiles data={data} status="ready" />)
 
+    const apart = screen.getByRole('group', { name: 'Jamiga kirmaydi' })
+    expect(apart.children).toHaveLength(2)
+    expect(within(apart).getByText('Исход')).toBeTruthy()
+    expect(within(apart).getByText('Boshqa')).toBeTruthy()
     expect(within(tile('Исход')).getByText('2,410')).toBeTruthy()
     expect(within(tile('Boshqa')).getByText('120')).toBeTruthy()
+    expect(within(screen.getByTestId('lead-channel-total').parentElement!).queryByText('Исход')).toBeNull()
   })
 
   it('says loading and failure on every tile rather than printing zeros', () => {
