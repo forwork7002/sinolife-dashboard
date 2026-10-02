@@ -168,9 +168,9 @@ describe('leadSourcesOverview', () => {
     expect(data.sources.find((s) => s.key === 'source|UC_8NZNYM')!.channel).toBe('telegram')
   })
 
-  it('fills the client\'s channel tiles, and sums them without «Исход»', () => {
+  it('fills the client\'s channel tiles, «Исход» and «Boshqa» included, so «Jami» is Регистрация whole', () => {
     const tile = (t: string) => data.tiles.rows.find((r) => r.tile === t)!.outcome
-    expect(data.tiles.rows.map((r) => r.tile)).toEqual(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'sarafan'])
+    expect(data.tiles.rows.map((r) => r.tile)).toEqual(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'sarafan', 'outbound', 'other'])
     // Umar's form (5) and the hand-typed «Ген лид» (2): «Ген лид» whole.
     expect(tile('generated')).toMatchObject({ leads: 7, success: 5, noAnswer: 2 })
     expect(tile('inbound')).toMatchObject({ leads: 3, success: 0 })
@@ -179,7 +179,7 @@ describe('leadSourcesOverview', () => {
     expect(tile('aiSmm')).toMatchObject({ leads: 1, success: 1 })
     expect(tile('web')).toMatchObject({ leads: 1, success: 1 })
     expect(tile('sarafan')).toMatchObject({ leads: 1, success: 0, open: 1 })
-    expect(data.tiles.total).toMatchObject({ leads: 15, success: 8 })
+    expect(data.tiles.total).toEqual(data.totals.registration)
     expect(data.tiles.total.leads).toBe(data.tiles.rows.reduce((n, r) => n + r.outcome.leads, 0))
   })
 

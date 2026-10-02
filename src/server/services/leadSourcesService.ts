@@ -185,7 +185,8 @@ export interface LeadSourcesOverviewDto {
   }[]
   /**
    * «Boshqa kanallar lidlari»: every tile of `LEAD_TILES`, in its order and
-   * at zero when quiet, and «Jami» — their sum, «Исход» not in it.
+   * at zero when quiet, and «Jami» — their sum, which is Регистрация whole
+   * (every lead has one tile since 2026-10-02).
    */
   readonly tiles: {
     readonly rows: readonly { readonly tile: LeadTile; readonly outcome: LeadOutcomeDto }[]
@@ -331,11 +332,8 @@ export function leadSourcesOverview(input: {
 
     addOutcome(registration, one)
     addOutcome(channels.get(channel)!, one)
-    const tile = leadTile(row.sourceId, row.aiQualified, LEAD_SOURCE_VOCABULARY)
-    if (tile !== null) {
-      addOutcome(tiles.get(tile)!, one)
-      addOutcome(tilesTotal, one)
-    }
+    addOutcome(tiles.get(leadTile(row.sourceId, row.aiQualified, LEAD_SOURCE_VOCABULARY))!, one)
+    addOutcome(tilesTotal, one)
     const sourceKey = sourceKeyOf(form, row.sourceId)
     const source = mapGet(sources, sourceKey, () => ({
       key: sourceKey,

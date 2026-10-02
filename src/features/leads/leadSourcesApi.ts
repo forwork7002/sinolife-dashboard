@@ -12,7 +12,7 @@ import type { TargetProduct } from '@/features/reklama/reklamaApi'
 
 export type LeadChannel = 'form' | 'page' | 'inbound' | 'manual' | 'telegram' | 'smm' | 'other' | 'outbound'
 
-export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'sarafan'
+export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'sarafan' | 'outbound' | 'other'
 
 export interface LeadOutcomeDto {
   readonly leads: number

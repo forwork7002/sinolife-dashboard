@@ -53,28 +53,44 @@ export const LEAD_CHANNELS: readonly LeadChannel[] = Object.freeze([
  * of them: the client asked for «Ген лид» whole (forms and by hand), and for
  * «Сммщик ии» as every lead the AI qualified out of the DMs — which mostly
  * come in on the ad pages, so this row and «Reklama lidlari» overlap by
- * design. «Исход», the ad pages the AI did not qualify, the human SMM sources
- * and the rest have no tile, and «Jami» is the six tiles' sum.
+ * design.
+ *
+ * «ИСХОД» AND «BOSHQA» CAME BACK ON 2026-10-02. Without them «Jami» fell
+ * short of «Жами лидлар» above it and the client read it as a miscount
+ * («Жами тугри келмаяпти»): 01.10 had 897 Регистрация leads, 741 on the six
+ * tiles, 154 «Исход» and 2 Instagram. So every lead now has exactly one tile —
+ * the ad pages the AI did not qualify, the human SMM sources, a lead with no
+ * source and the rest are «Boshqa» — and «Jami» is Регистрация whole.
  */
-export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'sarafan'
+export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'sarafan' | 'outbound' | 'other'
 
-export const LEAD_TILES: readonly LeadTile[] = Object.freeze(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'sarafan'])
+export const LEAD_TILES: readonly LeadTile[] = Object.freeze([
+  'generated',
+  'inbound',
+  'telegram',
+  'aiSmm',
+  'web',
+  'sarafan',
+  'outbound',
+  'other',
+])
 
 /**
- * The tile a Регистрация deal counts on, or null when it has none. The AI's
- * mark wins over every source, «Ген лид» included, so a qualified sinolif_tg
- * chat is «Сммщик ии», not «Телеграм» — no lead is counted twice in «Jami».
- * The portal fills the mark since 2026-09-14; before that the tile reads 0.
+ * The tile a Регистрация deal counts on — one, always. The AI's mark wins over
+ * every source, «Ген лид» and «Исход» included, so a qualified sinolif_tg chat
+ * is «Сммщик ии», not «Телеграм» — no lead is counted twice in «Jami». The
+ * portal fills the mark since 2026-09-14; before that the tile reads 0.
  */
-export function leadTile(sourceId: string | null, aiQualified: boolean, vocabulary: LeadSourceVocabulary): LeadTile | null {
+export function leadTile(sourceId: string | null, aiQualified: boolean, vocabulary: LeadSourceVocabulary): LeadTile {
   if (aiQualified) return 'aiSmm'
-  if (sourceId === null) return null
+  if (sourceId === null) return 'other'
   if (sourceId === vocabulary.generated) return 'generated'
   if (vocabulary.inbound.has(sourceId)) return 'inbound'
   if (vocabulary.telegram.has(sourceId)) return 'telegram'
   if (vocabulary.web.has(sourceId)) return 'web'
   if (vocabulary.sarafan.has(sourceId)) return 'sarafan'
-  return null
+  if (vocabulary.outbound.has(sourceId)) return 'outbound'
+  return 'other'
 }
 
 /**

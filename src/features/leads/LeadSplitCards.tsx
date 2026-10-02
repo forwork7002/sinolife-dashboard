@@ -80,7 +80,7 @@ export function DayPicker({ day, onChange }: { day: string; onChange: (day: stri
             if (e.target.value) goTo(e.target.value)
           }}
           className="focusable rounded-[var(--radius-panel-sm)] border px-2 py-1 text-xs"
-          style={{ background: 'var(--surface-raised)', borderColor: 'var(--border-strong)', color: 'var(--ink-primary)' }}
+          style={{ backgroundColor: 'var(--surface-raised)', borderColor: 'var(--border-strong)', color: 'var(--ink-primary)' }}
         />
       </label>
       <Button size="sm" variant="ghost" aria-label="Keyingi kun" onClick={() => goTo(shiftDay(day, 1))}>

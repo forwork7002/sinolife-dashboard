@@ -99,7 +99,8 @@ export function LeadSourcesSection({
  * The client's seven figures (2026-10-01), in their order: Жами / Янги / Дубль
  * / Бошка лидлар, Квал лидлар сони, Квал %, Квал лид нархи $. The same day on
  * the RNP sheet's «Регистрация» block reads the same numbers — `funnel` says
- * how. «Бошка лидлар» is the channel row's Jami below, repeated up here; Янги
+ * how. «Бошка лидлар» is the channel row's Jami below, repeated up here (since
+ * 2026-10-02 that row covers every lead, so it equals «Жами лидлар»); Янги
  * is washed green and Дубль red, as the client asked.
  */
 export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
@@ -140,7 +141,7 @@ export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | u
           label="Бошка лидлар"
           value={data?.tiles.total.leads ?? null}
           unit="count"
-          hint="Ген лид … Сарафан yigʻindisi"
+          hint="barcha kanallar yigʻindisi"
         />
         <StatTile
           compact
@@ -186,6 +187,8 @@ const TILE_LABEL: Readonly<Record<LeadTile, string>> = {
   aiSmm: 'Сммщик ии',
   web: 'Веб сайт',
   sarafan: 'Сарафан',
+  outbound: 'Исход',
+  other: 'Boshqa',
 }
 
 /** The client's order, as the server's `LEAD_TILES` — kept here too so the loading state can draw labelled tiles. */
@@ -195,6 +198,8 @@ const TILES = Object.keys(TILE_LABEL) as LeadTile[]
 const TILE_NOTE: Partial<Record<LeadTile, string>> = {
   generated: 'lid-forma + qoʻlda kiritilgan',
   aiSmm: '«ИИ квал сана» toʻldirilgan · 14.09.2026 dan',
+  outbound: 'operatorning chiquvchi qoʻngʻirogʻi',
+  other: 'qolgan manbalar: ИИ kval qilmagan reklama sahifalari, Сммщик, Instagram, manbasiz',
 }
 
 /** «N kval · X%» — a dash for the rate when the channel had no leads. */
@@ -223,7 +228,8 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
       <h2 id="lead-channel-tiles" className="eyebrow">
         Boshqa kanallar lidlari
       </h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
+      {/* Nine tiles on one row from xl, compact like the headline row above. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
         {/* The total leads the row (the client's order, 2026-10-01) and wears a
             ring in the page's accent, so the eye finds the sum first. */}
         <div
@@ -233,11 +239,12 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
         >
           <StatTile
             status={status}
+            compact
             label="Jami"
             value={total?.leads ?? null}
             unit="count"
             hint={total ? kvalHint(total) : undefined}
-            context={note(`${TILES.length} kanal yigʻindisi · Исход kirmaydi · forma va ИИ lidlari Reklamada ham bor`)}
+            context={note(`${TILES.length} kanal yigʻindisi = «Жами лидлар» · forma va ИИ lidlari Reklamada ham bor`)}
           />
         </div>
         {TILES.map((tile) => {
@@ -246,6 +253,7 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
           return (
             <StatTile
               key={tile}
+              compact
               status={status}
               label={TILE_LABEL[tile]}
               value={o?.leads ?? null}

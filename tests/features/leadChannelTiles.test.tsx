@@ -44,6 +44,8 @@ const TILES: Record<LeadTile, LeadOutcomeDto> = {
   aiSmm: outcome(445, 150),
   web: outcome(1, 1),
   sarafan: outcome(0, 0),
+  outbound: outcome(2410, 0),
+  other: outcome(120, 10),
 }
 
 const data = {
@@ -86,23 +88,22 @@ describe('ChannelTiles', () => {
     expect(within(total).getByText('Jami')).toBeTruthy()
     expect(within(total).getByText('3,224')).toBeTruthy()
     expect(within(total).getByText('964 kval · 29.9%')).toBeTruthy()
-    expect(within(total).getByText('6 kanal yigʻindisi · Исход kirmaydi · forma va ИИ lidlari Reklamada ham bor')).toBeTruthy()
+    expect(within(total).getByText('8 kanal yigʻindisi = «Жами лидлар» · forma va ИИ lidlari Reklamada ham bor')).toBeTruthy()
   })
 
-  it('has no «Boshqa» or «Исход» tile any more', () => {
+  it('prints «Исход» and «Boshqa», so «Jami» is «Жами лидлар» (2026-10-02)', () => {
     render(<ChannelTiles data={data} status="ready" />)
 
-    expect(screen.queryByText('Boshqa')).toBeNull()
-    expect(screen.queryByText('Исход (chiquvchi)')).toBeNull()
-    expect(screen.queryByTestId('lead-channel-outbound')).toBeNull()
+    expect(within(tile('Исход')).getByText('2,410')).toBeTruthy()
+    expect(within(tile('Boshqa')).getByText('120')).toBeTruthy()
   })
 
   it('says loading and failure on every tile rather than printing zeros', () => {
     const { unmount } = render(<ChannelTiles data={undefined} status="loading" />)
-    expect(screen.getAllByRole('status')).toHaveLength(7)
+    expect(screen.getAllByRole('status')).toHaveLength(9)
     unmount()
 
     render(<ChannelTiles data={undefined} status="error" />)
-    expect(screen.getAllByText('Olinmadi')).toHaveLength(7)
+    expect(screen.getAllByText('Olinmadi')).toHaveLength(9)
   })
 })
