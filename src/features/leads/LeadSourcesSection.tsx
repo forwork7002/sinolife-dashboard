@@ -136,7 +136,7 @@ export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | u
           label="Дубль лидлар"
           value={f?.duplicates ?? null}
           unit="count"
-          hint={f ? `«Дубликат» bosqichida${shareOfTotal(f.duplicates)}` : undefined}
+          hint={f ? `«Дубликат (лид)» bosqichida${shareOfTotal(f.duplicates)}` : undefined}
         />
         <StatTile
           compact

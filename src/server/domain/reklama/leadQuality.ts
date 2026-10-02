@@ -45,3 +45,13 @@ export function leadBucket(stageName: string, status: string): LeadBucket {
   if (status === 'LOST' || LOW_QUALITY.test(stageName)) return 'lowQuality'
   return 'open'
 }
+
+/**
+ * «Дубль лидлар» on «Lid manbalari»: only «Дубликат (лид)» (UC_GV19A1, the
+ * yellow stage near the start), not the red «Дубликат» (UC_V1NS34) at the
+ * end — the client's rule, 2026-10-02. The red one stays a duplicate in the
+ * outcome buckets above.
+ */
+export function isLeadDuplicate(stageName: string): boolean {
+  return /дубл[^(]*\(\s*лид\s*\)/i.test(stageName)
+}

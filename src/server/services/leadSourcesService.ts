@@ -42,7 +42,7 @@ import {
   leadChannel,
   leadTile,
 } from '@/server/domain/leads/leadSources'
-import { LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
+import { isLeadDuplicate, LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
 import type { TargetProduct } from '@/server/domain/types'
 import type { InsightsRepository, LeadFakt1ClientRow } from '@/server/repositories/insightsRepository'
@@ -159,7 +159,7 @@ export interface LeadSourcesOverviewDto {
     readonly total: number
     /** `total` less the duplicates. */
     readonly fresh: number
-    /** Created in the window and standing in a «Дубликат» stage now. */
+    /** Created in the window and standing in «Дубликат (лид)» now (not the red «Дубликат»). */
     readonly duplicates: number
     /** Регистрация deals WON («Сделка успешна») in the window, by `closedAt`. */
     readonly qualified: number
@@ -338,6 +338,7 @@ export function leadSourcesOverview(input: {
   const channels = new Map<LeadChannel, OutcomeAcc>(LEAD_CHANNELS.map((c) => [c, outcomeZero()]))
   const tiles = new Map<LeadTile, TileAcc>(LEAD_TILES.map((t) => [t, tileZero()]))
   const registration = outcomeZero()
+  let leadDuplicates = 0
 
   /*
     ИИ обработка FIRST: a page is anything people write to, and the
@@ -363,7 +364,10 @@ export function leadSourcesOverview(input: {
     addOutcome(channels.get(channel)!, one)
     const tile = tiles.get(leadTile(row.sourceId, row.aiQualified, LEAD_SOURCE_VOCABULARY))!
     tile.leads += row.leads
-    if (bucket === 'duplicate') tile.duplicates += row.leads
+    if (isLeadDuplicate(row.stage)) {
+      tile.duplicates += row.leads
+      leadDuplicates += row.leads
+    }
     const sourceKey = sourceKeyOf(form, row.sourceId)
     const source = mapGet(sources, sourceKey, () => ({
       key: sourceKey,
@@ -520,14 +524,14 @@ export function leadSourcesOverview(input: {
   let adSpend = 0n
   for (const row of input.campaigns) if (adBudgetProduct(row) !== null) adSpend += row.spendMicroUsd
   const registrationCells = outcomeCells(registration)
-  const fresh = registrationCells.leads - registration.duplicate
+  const fresh = registrationCells.leads - leadDuplicates
 
   return {
     importedAt: input.importedAt?.toISOString() ?? null,
     funnel: {
       total: registrationCells.leads,
       fresh,
-      duplicates: registration.duplicate,
+      duplicates: leadDuplicates,
       qualified: qualifiedTotal,
       qualifiedPercent: percent(qualifiedTotal, fresh),
       spendUsd: usd(adSpend),

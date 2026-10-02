@@ -133,6 +133,25 @@ describe('leadSourcesOverview', () => {
     })
   })
 
+  it('counts only «Дубликат (лид)» as Дубль, not the red «Дубликат» at the end', () => {
+    const d = leadSourcesOverview({
+      window: WINDOW,
+      importedAt: null,
+      registration: [
+        reg({ stage: 'Дубликат (лид)', status: 'OPEN', leads: 16 }),
+        reg({ stage: 'Дубликат', status: 'OPEN', leads: 10 }),
+        reg({ stage: 'Обработка', status: 'OPEN', leads: 74 }),
+      ],
+      triage: [],
+      campaigns: [],
+      fakt1: [],
+      qualified: [],
+    })
+    expect(d.funnel).toMatchObject({ total: 100, duplicates: 16, fresh: 84 })
+    // The channel tiles read the same Дубль, so their Jami stays the headline's.
+    expect(d.tiles.total).toMatchObject({ leads: 100, fresh: 84 })
+  })
+
   it('prices nothing when nobody was qualified or nothing arrived', () => {
     const empty = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [], triage: [], campaigns: [], fakt1: [], qualified: [] })
     expect(empty.funnel).toMatchObject({ total: 0, fresh: 0, qualified: 0, qualifiedPercent: null, costPerQualifiedUsd: null })
