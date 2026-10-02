@@ -43,19 +43,23 @@ export interface SaveSplitBody {
 
 /*
   «ROP otchet» — mirrors `RopReportDto` in
-  `src/server/domain/registration/ropReport.ts` and the body of
-  `src/app/api/v1/registration/plan/route.ts`. Nothing checks the mirror.
+  `src/server/domain/registration/ropReport.ts`. Nothing checks the mirror.
 */
 
 export interface RopReportCellsDto {
   readonly leads: number
-  readonly plan: MoneyDto | null
+  readonly plan: MoneyDto
   readonly fakt1: MoneyDto
-  readonly deviation: MoneyDto | null
+  /** План − Факт-1: above zero, short of plan. */
+  readonly deviation: MoneyDto
   readonly fakt1Orders: number
   readonly conversionPercent: number | null
   readonly fakt2: MoneyDto
   readonly fakt2Orders: number
+  /** Дозвон; null before the call data floor. */
+  readonly connectedCalls: number | null
+  /** Длительность, seconds; null with `connectedCalls`. */
+  readonly talkSec: number | null
 }
 
 export interface RopReportSellerDto extends RopReportCellsDto {
@@ -74,14 +78,6 @@ export interface RopReportGroupDto {
 
 export interface RopReportDto {
   readonly day: string
-  readonly month: string
   readonly groups: readonly RopReportGroupDto[]
   readonly total: RopReportCellsDto
-  readonly canEdit: boolean
-}
-
-/** Whole soʻm; null or 0 removes the plan. */
-export interface SaveSellerPlansBody {
-  readonly month: string
-  readonly sellers: readonly { employeeId: string; dayPlan: number | null }[]
 }

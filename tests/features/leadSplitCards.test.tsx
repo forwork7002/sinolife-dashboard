@@ -13,7 +13,7 @@ import type { LeadSplitDto, RopReportDto } from '@/features/leads/leadSplitApi'
  * percent) can be reopened and copied to the next day and saved again, leads
  * typed «Sonda» become shares summing to exactly 100 %. And «ROP otchet» under it: one
  * group per team with its «Umumiy», deviation and conversion as the sheet
- * computes them, and the day plan typed in place.
+ * computes them (plan 500 000 per lead, ✅ / 🔴), and the call columns.
  */
 
 // jsdom has no `matchMedia`; `AnimatedNumber` in the concentration tiles asks
@@ -74,51 +74,48 @@ function fixture(over: Partial<LeadSplitDto> = {}): LeadSplitDto {
 }
 
 const money = (som: number) => ({ amountMinor: String(som * 100), currency: 'UZS', amount: som })
-const cells = (leads: number, plan: number | null, fakt1: number, orders: number) => ({
+const cells = (leads: number, fakt1: number, orders: number, connectedCalls: number | null = 0, talkSec: number | null = 0) => ({
   leads,
-  plan: plan === null ? null : money(plan),
+  plan: money(leads * 500_000),
   fakt1: money(fakt1),
-  deviation: plan === null ? null : money(fakt1 - plan),
+  deviation: money(leads * 500_000 - fakt1),
   fakt1Orders: orders,
   conversionPercent: leads > 0 ? (orders / leads) * 100 : null,
   fakt2: money(0),
   fakt2Orders: 0,
+  connectedCalls,
+  talkSec,
 })
 
 function reportFixture(): RopReportDto {
   return {
     day: TODAY,
-    month: TODAY.slice(0, 7),
     groups: [
       {
         rop: 'Asliddin',
         sellers: [
-          { employeeId: 'e1', fullName: 'Asliddin Karimberdiyev', isHead: true, onRoster: true, ...cells(2, null, 4_050_000, 2) },
-          { employeeId: 'e2', fullName: 'Sardor Davlatov', isHead: false, onRoster: true, ...cells(7, 5_000_000, 4_800_000, 2) },
+          { employeeId: 'e1', fullName: 'Asliddin Karimberdiyev', isHead: true, onRoster: true, ...cells(2, 4_050_000, 2, 14, 3_725) },
+          { employeeId: 'e2', fullName: 'Sardor Davlatov', isHead: false, onRoster: true, ...cells(12, 4_800_000, 2, 0, 0) },
         ],
-        total: cells(9, 5_000_000, 8_850_000, 4),
+        total: cells(14, 8_850_000, 4, 14, 3_725),
       },
     ],
-    total: cells(9, 5_000_000, 8_850_000, 4),
-    canEdit: true,
+    total: cells(14, 8_850_000, 4, 14, 3_725),
   }
 }
 
 let data: LeadSplitDto
 let report: RopReportDto
 let posted: { day: string; rows: { rop: string; shareBp: number }[] }[] = []
-let postedPlans: { month: string; sellers: { employeeId: string; dayPlan: number | null }[] }[] = []
 
 beforeEach(() => {
   posted = []
-  postedPlans = []
   report = reportFixture()
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
       const isReport = String(url).includes('/registration/report')
-      const isPlan = String(url).includes('/registration/plan')
-      if (init?.method === 'POST') (isPlan ? postedPlans : posted).push(JSON.parse(String(init.body)))
+      if (init?.method === 'POST') posted.push(JSON.parse(String(init.body)))
       return {
         ok: true,
         status: 200,
@@ -195,44 +192,28 @@ describe('LeadSplitCards', () => {
     expect(screen.getByText('Foiz koʻpi bilan ikki kasr bilan')).toBeTruthy()
   })
 
-  it('draws «ROP otchet» group by group, with deviation and conversion as the sheet computes them', async () => {
+  it('draws «ROP otchet» group by group: plan 500 000 per lead, ✅ / 🔴 deviation, conversion and calls', async () => {
     data = fixture()
     await draw()
     await waitFor(() => expect(screen.getByText('Asliddin guruhi')).toBeTruthy())
-    expect(screen.getByText('Sardor Davlatov')).toBeTruthy()
     expect(within(screen.getByText('Asliddin Karimberdiyev').closest('th')!).getByText('ROP')).toBeTruthy()
-    // 4 800 000 against a plan of 5 000 000; 2 orders of 7 leads.
-    expect(screen.getByText(/−200[\s,.\u00a0]?000/)).toBeTruthy()
-    expect(screen.getByText('29%')).toBeTruthy()
-    // The sheet's «Лид руч» column is left out at the client's request.
+    const row = (name: string) => screen.getByText(name).closest('tr')!
+    // Sardor: 12 leads → plan 6 000 000, fact 4 800 000 → 1 200 000 short, red.
+    const sardor = row('Sardor Davlatov')
+    expect(within(sardor).getByText(/6[\s,.\u00a0]?000[\s,.\u00a0]?000/)).toBeTruthy()
+    expect(within(sardor).getByText('🔴')).toBeTruthy()
+    expect(within(sardor).getByText(/^1[\s,.\u00a0]?200[\s,.\u00a0]?000$/)).toBeTruthy()
+    expect(within(sardor).getByText('17%')).toBeTruthy()
+    // The head: 2 leads → plan 1 000 000, fact 4 050 000 → ahead, green, below zero.
+    const head = row('Asliddin Karimberdiyev')
+    expect(within(head).getByText('✅')).toBeTruthy()
+    expect(within(head).getByText(/−3[\s,.\u00a0]?050[\s,.\u00a0]?000/)).toBeTruthy()
+    expect(within(head).getByText('14')).toBeTruthy()
+    expect(within(head).getByText('1 soat 2 daq')).toBeTruthy()
+    expect(screen.getByText('Дозвон')).toBeTruthy()
+    expect(screen.getByText('Длительность')).toBeTruthy()
+    // The plan is computed, not typed; the sheet's «Лид руч» column is left out at the client's request.
+    expect(screen.queryByRole('button', { name: 'Rejani kiritish' })).toBeNull()
     expect(screen.queryByText('Лид руч')).toBeNull()
-  })
-
-  it('saves only the day plans that changed, in whole soʻm, and an emptied one as null', async () => {
-    data = fixture()
-    await draw()
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Rejani kiritish' })).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: 'Rejani kiritish' }))
-    fireEvent.change(screen.getByLabelText('Asliddin Karimberdiyev — kunlik reja'), { target: { value: '3 000 000' } })
-    fireEvent.change(screen.getByLabelText('Sardor Davlatov — kunlik reja'), { target: { value: '' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Saqlash' }))
-    await waitFor(() => expect(postedPlans).toHaveLength(1))
-    expect(postedPlans[0]).toEqual({
-      month: TODAY.slice(0, 7),
-      sellers: [
-        { employeeId: 'e1', dayPlan: 3_000_000 },
-        { employeeId: 'e2', dayPlan: null },
-      ],
-    })
-  })
-
-  it('closes the plan form when the day changes', async () => {
-    data = fixture()
-    await draw()
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Rejani kiritish' })).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: 'Rejani kiritish' }))
-    expect(screen.getByLabelText('Sardor Davlatov — kunlik reja')).toBeTruthy()
-    fireEvent.click(screen.getAllByRole('button', { name: 'Oldingi kun' })[0]!)
-    expect(screen.queryByLabelText('Sardor Davlatov — kunlik reja')).toBeNull()
   })
 })

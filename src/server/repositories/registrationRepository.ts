@@ -5,7 +5,7 @@
 
 import type { PrismaClient } from '@/generated/prisma/client'
 import { canonicalRop, type DistributedDayRow, type SavedSplit, type SplitShare } from '@/server/domain/registration/leadSplit'
-import type { RosterMember, SellerLeadRow, SellerPlanInput, SellerPlanRow } from '@/server/domain/registration/ropReport'
+import type { RosterMember, SellerCallRow, SellerLeadRow } from '@/server/domain/registration/ropReport'
 
 import { InsightsRepository } from './insightsRepository'
 
@@ -148,37 +148,33 @@ export class RegistrationRepository {
     return new Map(rows.map((r) => [r.id, r.fullName]))
   }
 
-  /** The sellers' day plans for one month (`YYYY-MM`). */
-  async sellerPlans(month: string): Promise<SellerPlanRow[]> {
-    return this.prisma.sellerDayPlan.findMany({
-      where: { month: dateOf(`${month}-01`) },
-      select: { employeeId: true, amountMinor: true },
-    })
-  }
-
-  /** How many of `ids` are active people — a plan for anybody else is refused, not a 500. */
-  async countEmployees(ids: readonly string[]): Promise<number> {
-    return this.prisma.employee.count({ where: { id: { in: [...ids] }, isActive: true } })
+  /** One day's connected calls per person; `start` / `end` are the day's instants, end exclusive. */
+  async sellerCalls(start: Date, end: Date): Promise<SellerCallRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<{ employee_id: string; connected: bigint; talk_sec: bigint }[]>(
+      RegistrationRepository.sellerCallsSql(),
+      start,
+      end,
+    )
+    return rows.map((r) => ({ employeeId: r.employee_id, connected: Number(r.connected), talkSec: Number(r.talk_sec) }))
   }
 
   /**
-   * Set the month's day plan of each seller sent, in ONE transaction. A null
-   * amount deletes the row: «no plan» is no row, never a plan of zero.
-   * Sellers not sent are left as they are.
+   * «Дозвон» and «Длительность» of «ROP otchet»: the «Ulangan» and «Suhbat
+   * vaqti» `InsightsRepository.callActivity` gives the same person — every
+   * direction, talk time over connected legs only — so the two screens never
+   * disagree about one seller's day. Read off the (employeeId, startedAt) index.
    */
-  async saveSellerPlans(month: string, rows: readonly SellerPlanInput[], by: string): Promise<void> {
-    const m = dateOf(`${month}-01`)
-    await this.prisma.$transaction(
-      rows.map((r) =>
-        r.amountMinor === null
-          ? this.prisma.sellerDayPlan.deleteMany({ where: { month: m, employeeId: r.employeeId } })
-          : this.prisma.sellerDayPlan.upsert({
-              where: { month_employeeId: { month: m, employeeId: r.employeeId } },
-              create: { month: m, employeeId: r.employeeId, amountMinor: r.amountMinor, updatedBy: by },
-              update: { amountMinor: r.amountMinor, updatedBy: by },
-            }),
-      ),
-    )
+  static sellerCallsSql(): string {
+    return `
+      SELECT
+        c."employeeId" AS employee_id,
+        count(*)::bigint AS connected,
+        COALESCE(sum(c."durationSec"), 0)::bigint AS talk_sec
+      FROM "call_record" c
+      WHERE c."connected"
+        AND c."employeeId" IS NOT NULL
+        AND c."startedAt" >= $1 AND c."startedAt" < $2
+      GROUP BY 1`
   }
 
   async split(day: string): Promise<SavedSplit | null> {

@@ -56,6 +56,20 @@ describe('sellerLeadsSql', () => {
   })
 })
 
+describe('sellerCallsSql', () => {
+  const sql = bare(RegistrationRepository.sellerCallsSql())
+
+  it('counts connected calls and their talk time per person, the day end-exclusive', () => {
+    expect(sql).toContain(`WHERE c."connected"`)
+    expect(sql).toContain(`c."startedAt" >= $1 AND c."startedAt" < $2`)
+    expect(sql).toContain(`COALESCE(sum(c."durationSec"), 0)::bigint AS talk_sec`)
+  })
+
+  it('takes every direction, as «Qoʻngʻiroqlar» does', () => {
+    expect(sql).not.toContain('direction')
+  })
+})
+
 describe('sellerFaktDaysSql', () => {
   it('reads FAKT 1 / FAKT 2 by the board\'s predicates and /rnp\'s team, per operator', async () => {
     const { InsightsRepository } = await import('@/server/repositories/insightsRepository')

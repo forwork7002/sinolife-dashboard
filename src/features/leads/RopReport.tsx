@@ -1,17 +1,15 @@
 'use client'
 
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { type ReactNode, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import { ErrorState, LoadingSkeleton } from '@/components/states/States'
-import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { type MoneyDto, apiGet, apiWrite } from '@/lib/api'
-import { formatDate, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
+import { type MoneyDto, apiGet } from '@/lib/api'
+import { formatDate, formatDuration, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
 import { DayPicker } from './LeadSplitCards'
 import { ROP_COLORS } from './ropColors'
-import type { RopReportCellsDto, RopReportDto, RopReportGroupDto, RopReportSellerDto, SaveSellerPlansBody } from './leadSplitApi'
+import type { RopReportCellsDto, RopReportDto, RopReportGroupDto } from './leadSplitApi'
 
 /**
  * «ROP otchet» — the client's group sheet for the chosen day (on «Lidlar»
@@ -21,9 +19,9 @@ import type { RopReportCellsDto, RopReportDto, RopReportGroupDto, RopReportSelle
  * foot. Asked for on 2026-10-01 in place of the split table, «Лид руч» left
  * out. The definitions are in `server/domain/registration/ropReport.ts`.
  *
- * «План» is typed here, per seller, once for a month: the same day plan for
- * every day of it. An emptied field removes the plan — «no plan» prints a
- * dash, never a zero, which would read as «missed it entirely».
+ * «План» is 500 000 soʻm per lead, computed on the server (it was typed per
+ * seller until 2026-10-02). «Отклонение» is План − Факт-1 as the client
+ * writes it, marked ✅ when Факт-1 reached the plan and 🔴 when it fell short.
  */
 
 const NOBODY = '∅'
@@ -34,7 +32,7 @@ const td = 'tabular px-3 py-2 text-right whitespace-nowrap'
 /** The pinned name column: opaque, so the figures scroll under it on a phone. */
 const pin = 'sticky left-0 z-[1] text-left'
 
-const COLUMNS = ['Лид сони', 'План', 'Факт-1 ПР', 'Отклонение', 'Транз-1', 'Конверсия', 'Факт-2 ПР', 'Транз-2'] as const
+const COLUMNS = ['Лид сони', 'План', 'Факт-1 ПР', 'Отклонение', 'Транз-1', 'Конверсия', 'Факт-2 ПР', 'Транз-2', 'Дозвон', 'Длительность'] as const
 
 /** The split's colour for a team it has; a team it lacks takes the next unused slot, the no-team group grey. */
 function groupColor(rop: string | null, index: number, colors: ReadonlyMap<string, string>): string {
@@ -42,22 +40,15 @@ function groupColor(rop: string | null, index: number, colors: ReadonlyMap<strin
   return colors.get(rop) ?? ROP_COLORS[(colors.size + index) % ROP_COLORS.length]!
 }
 
-const minor = (m: MoneyDto | null) => (m ? BigInt(m.amountMinor) : null)
 const som = (m: MoneyDto) => formatFullUzs(m.amount)
 
 export function RopReport({ day, onDay, colors }: { day: string; onDay: (day: string) => void; colors: ReadonlyMap<string, string> }) {
-  // The day the form was opened for: another day closes it, so a draft never outlives the figures beside it.
-  const [editingDay, setEditingDay] = useState<string | null>(null)
-  if (editingDay !== null && editingDay !== day) setEditingDay(null)
-  const editing = editingDay === day
-  const setEditing = (on: boolean) => setEditingDay(on ? day : null)
   const report = useQuery({
     queryKey: ['registration-report', day],
     queryFn: ({ signal }) => apiGet<RopReportDto>('/registration/report', { day }, signal),
     placeholderData: keepPreviousData,
   })
   const data = report.data?.data
-  const fresh = data !== undefined && data.day === day && !report.isPlaceholderData
 
   return (
     <Card className="reveal">
@@ -68,17 +59,13 @@ export function RopReport({ day, onDay, colors }: { day: string; onDay: (day: st
           </h2>
           <p className="mt-0.5 max-w-3xl text-xs" style={muted}>
             Лид сони — shu kuni tarqatilgan lidlar («Лид таркатилган сана»), bitim kimda boʻlsa oʻsha sotuvchiga. Факт-1 / Факт-2 — Sotuvchilar
-            reytingidagi hisob (tasdiqlash navbatiga kelgan kun). Конверсия = Транз-1 ÷ Лид сони. Отклонение = Факт-1 − План; план — sotuvchining
-            kunlik rejasi, oy boʻyi bir xil.
+            reytingidagi hisob (tasdiqlash navbatiga kelgan kun). План = 500 000 × Лид сони. Отклонение = План − Факт-1: ✅ Факт-1 rejaga yetdi,
+            🔴 kam. Конверсия = Транз-1 ÷ Лид сони. Дозвон — shu kuni ulangan qoʻngʻiroqlar, Длительность — ularning suhbat vaqti («Qoʻngʻiroqlar»
+            bilan bir xil).
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <DayPicker day={day} onChange={onDay} />
-          {data?.canEdit && !editing && fresh && data.groups.length > 0 && (
-            <Button size="sm" variant="primary" onClick={() => setEditing(true)}>
-              Rejani kiritish
-            </Button>
-          )}
         </div>
       </header>
       <div className="px-5 pb-5">
@@ -94,96 +81,18 @@ export function RopReport({ day, onDay, colors }: { day: string; onDay: (day: st
             Bu kunda ROP jamoalarida hech kim yoʻq — lid ham, buyurtma ham.
           </p>
         ) : (
-          // A fresh form each time it opens, so the draft starts from the saved plans.
-          <ReportTable key={editing ? `edit-${data.day}` : 'view'} data={data} colors={colors} editing={editing && fresh} onDone={() => setEditing(false)} />
+          <ReportTable data={data} colors={colors} />
         )}
       </div>
     </Card>
   )
 }
 
-function ReportTable({
-  data,
-  colors,
-  editing,
-  onDone,
-}: {
-  data: RopReportDto
-  colors: ReadonlyMap<string, string>
-  editing: boolean
-  onDone: () => void
-}) {
-  const queryClient = useQueryClient()
-  const editable = data.groups.flatMap((g) => g.sellers).filter((s) => s.employeeId !== NOBODY)
-  // Whole soʻm as typed digits, frozen when the form opens.
-  const [draft, setDraft] = useState<Record<string, string>>(() =>
-    Object.fromEntries(editable.map((s) => [s.employeeId, s.plan ? String(BigInt(s.plan.amountMinor) / 100n) : ''])),
-  )
-  const [initial] = useState(draft)
-
-  const save = useMutation({
-    mutationFn: (body: SaveSellerPlansBody) => apiWrite<{ saved: boolean }>('POST', '/registration/plan', body),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['registration-report'] })
-      onDone()
-    },
-  })
-
-  const submit = () => {
-    // Only what changed: a seller listed twice (two teams) is one plan, and an untouched row is not re-stamped.
-    const changed = Object.keys(draft).filter((id) => draft[id] !== initial[id])
-    if (changed.length === 0) return onDone()
-    save.mutate({
-      month: data.month,
-      sellers: changed.map((id) => {
-        const digits = draft[id] ?? ''
-        return { employeeId: id, dayPlan: digits === '' || Number(digits) === 0 ? null : Number(digits) }
-      }),
-    })
-  }
-
-  const planInput = (s: RopReportSellerDto) => (
-    <input
-      inputMode="numeric"
-      aria-label={`${s.fullName} — kunlik reja`}
-      value={draft[s.employeeId] ? formatFullUzs(Number(draft[s.employeeId])) : ''}
-      onChange={(e) => {
-        const digits = e.target.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 12)
-        setDraft((d) => ({ ...d, [s.employeeId]: digits }))
-      }}
-      placeholder="—"
-      className="focusable tabular w-32 rounded-[var(--radius-panel-sm)] border px-2 py-1 text-right text-sm"
-      style={{ background: 'var(--surface-raised)', borderColor: 'var(--border-strong)', color: 'var(--ink-primary)' }}
-    />
-  )
-
+function ReportTable({ data, colors }: { data: RopReportDto; colors: ReadonlyMap<string, string> }) {
   return (
     <div className="flex flex-col gap-3">
-      {editing && (
-        <div
-          className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-panel-sm)] border px-3 py-2"
-          style={{ borderColor: 'var(--border-strong)', background: 'var(--accent-soft)' }}
-        >
-          <span className="text-xs" style={{ color: 'var(--ink-secondary)' }}>
-            Kunlik reja, soʻmda — {data.month} oyining har kuni uchun. Boʻsh maydon rejani olib tashlaydi.
-          </span>
-          <span className="flex items-center gap-2">
-            {save.isError && (
-              <span className="text-xs" role="alert" style={{ color: 'var(--status-critical)' }}>
-                {save.error instanceof Error ? save.error.message : 'Saqlab boʻlmadi.'}
-              </span>
-            )}
-            <Button size="sm" variant="ghost" onClick={onDone} disabled={save.isPending}>
-              Bekor qilish
-            </Button>
-            <Button size="sm" variant="primary" onClick={submit} disabled={save.isPending}>
-              {save.isPending ? 'Saqlanmoqda…' : 'Saqlash'}
-            </Button>
-          </span>
-        </div>
-      )}
       <div className="overflow-x-auto rounded-[var(--radius-panel-sm)] border" style={{ borderColor: 'var(--border)' }}>
-        <table className="w-full min-w-[960px] border-separate border-spacing-0 text-sm">
+        <table className="w-full min-w-[1120px] border-separate border-spacing-0 text-sm">
           <thead>
             <tr style={{ background: 'var(--surface-sunken)' }}>
               <th className={`eyebrow ${pin} min-w-[200px] border-b px-3 py-2.5 font-[550] whitespace-nowrap`} style={{ background: 'var(--surface-raised)', borderColor: 'var(--border)' }}>
@@ -197,7 +106,7 @@ function ReportTable({
             </tr>
           </thead>
           {data.groups.map((g, i) => (
-            <Group key={g.rop ?? NOBODY} group={g} color={groupColor(g.rop, i, colors)} plan={editing ? planInput : null} />
+            <Group key={g.rop ?? NOBODY} group={g} color={groupColor(g.rop, i, colors)} />
           ))}
           <tfoot>
             <TotalRow label="Jami · barcha guruhlar" cells={data.total} tint="var(--accent)" strong />
@@ -208,15 +117,7 @@ function ReportTable({
   )
 }
 
-function Group({
-  group,
-  color,
-  plan,
-}: {
-  group: RopReportGroupDto
-  color: string
-  plan: ((s: RopReportSellerDto) => ReactNode) | null
-}) {
+function Group({ group, color }: { group: RopReportGroupDto; color: string }) {
   return (
     <tbody>
       <tr>
@@ -263,7 +164,7 @@ function Group({
               )}
             </span>
           </th>
-          <Cells cells={s} plan={plan && s.employeeId !== NOBODY ? plan(s) : null} />
+          <Cells cells={s} />
         </tr>
       ))}
       <TotalRow label="Umumiy" cells={group.total} tint={color} />
@@ -282,12 +183,12 @@ function TotalRow({ label, cells, tint, strong = false }: { label: string; cells
       >
         {label}
       </th>
-      <Cells cells={cells} plan={null} total />
+      <Cells cells={cells} total />
     </tr>
   )
 }
 
-function Cells({ cells, plan, total = false }: { cells: RopReportCellsDto; plan: ReactNode | null; total?: boolean }) {
+function Cells({ cells, total = false }: { cells: RopReportCellsDto; total?: boolean }) {
   const border = { borderColor: total ? 'var(--border-strong)' : 'var(--border)' }
   const count = (n: number) => (n === 0 ? <span style={muted}>0</span> : formatNumber(n))
   const money = (m: MoneyDto) => (m.amountMinor === '0' ? <span style={muted}>0</span> : som(m))
@@ -297,13 +198,13 @@ function Cells({ cells, plan, total = false }: { cells: RopReportCellsDto; plan:
         {count(cells.leads)}
       </td>
       <td className={`${td} border-b`} style={border}>
-        {plan ?? (cells.plan ? som(cells.plan) : <span style={muted}>—</span>)}
+        {money(cells.plan)}
       </td>
       <td className={`${td} border-b`} style={{ ...border, color: 'var(--ink-primary)' }}>
         {money(cells.fakt1)}
       </td>
       <td className={`${td} border-b`} style={border}>
-        <Deviation value={cells.deviation} />
+        <Deviation cells={cells} />
       </td>
       <td className={`${td} border-b`} style={border}>
         {count(cells.fakt1Orders)}
@@ -317,23 +218,36 @@ function Cells({ cells, plan, total = false }: { cells: RopReportCellsDto; plan:
       <td className={`${td} border-b`} style={border}>
         {count(cells.fakt2Orders)}
       </td>
+      <td className={`${td} border-b`} style={border}>
+        {cells.connectedCalls === null ? <span style={muted}>—</span> : count(cells.connectedCalls)}
+      </td>
+      <td className={`${td} border-b`} style={border}>
+        {cells.talkSec === null ? <span style={muted}>—</span> : cells.talkSec === 0 ? <span style={muted}>0</span> : formatDuration(cells.talkSec)}
+      </td>
     </>
   )
 }
 
-/** Ahead of plan green, behind it red — the sheet's own two colours, as a pill rather than a filled cell. */
-function Deviation({ value }: { value: MoneyDto | null }) {
-  const v = minor(value)
-  if (v === null || value === null) return <span style={muted}>—</span>
-  if (v === 0n) return <span style={muted}>0</span>
-  const tone = v > 0n ? 'var(--status-good)' : 'var(--status-critical)'
+/**
+ * План − Факт-1, the client's sign: a shortfall is positive. ✅ green when
+ * Факт-1 reached the plan, 🔴 red when it did not; a row with neither plan
+ * nor fact is a muted zero, not a pass.
+ */
+function Deviation({ cells }: { cells: RopReportCellsDto }) {
+  const v = BigInt(cells.deviation.amountMinor)
+  if (cells.plan.amountMinor === '0' && cells.fakt1.amountMinor === '0') return <span style={muted}>0</span>
+  const met = v <= 0n
+  const tone = met ? 'var(--status-good)' : 'var(--status-critical)'
   return (
     <span
-      className="inline-block rounded-md px-2 py-0.5"
+      className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5"
       style={{ background: `color-mix(in oklab, ${tone} 16%, transparent)`, color: `color-mix(in oklab, ${tone} 75%, var(--ink-primary))` }}
+      title={met ? 'Факт-1 rejaga yetdi' : 'Факт-1 rejadan kam'}
     >
-      {v > 0n ? '+' : '−'}
-      {formatFullUzs(Math.abs(value.amount))}
+      <span aria-hidden>{met ? '✅' : '🔴'}</span>
+      <span className="sr-only">{met ? 'rejaga yetdi:' : 'rejadan kam:'}</span>
+      {v < 0n ? '−' : ''}
+      {formatFullUzs(Math.abs(cells.deviation.amount))}
     </span>
   )
 }

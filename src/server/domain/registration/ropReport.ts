@@ -1,9 +1,10 @@
 /**
  * «ROP otchet» on «Lidlar» («Registratsiya» until 2026-10-02) — the client's group sheet for one day:
  * every ROP team, seller by seller, «Лид сони · План · Факт-1 ПР ·
- * Отклонение · Транз-1 · Конверсия · Факт-2 ПР · Транз-2» and the team's
- * «ОБЩИЙ». Asked for on 2026-10-01 in place of the split table, without the
- * sheet's «Лид руч» column.
+ * Отклонение · Транз-1 · Конверсия · Факт-2 ПР · Транз-2 · Дозвон ·
+ * Длительность» and the team's «ОБЩИЙ». Asked for on 2026-10-01 in place of
+ * the split table, without the sheet's «Лид руч» column; the plan rule and
+ * the two call columns on 2026-10-02.
  *
  * WHERE EACH NUMBER COMES FROM.
  *   Лид сони — the day's handed-out leads (`RegistrationRepository.sellerLeadsSql`):
@@ -11,9 +12,15 @@
  *   Факт-1 / Транз-1, Факт-2 / Транз-2 — the sellers board's cohort on its
  *     queue day (`InsightsRepository.sellerFaktDaysSql`), the team as /rnp
  *     reads it.
- *   План — the seller's day plan for the month, typed on this screen.
- *   Отклонение — Факт-1 − План; Конверсия — Транз-1 ÷ Лид сони, the sheet's
- *     own formula with «Лид руч» gone from it.
+ *   План — 500 000 soʻm per lead: `PLAN_PER_LEAD` × Лид сони. It replaced the
+ *     day plan typed per seller (2026-10-01) on 2026-10-02.
+ *   Отклонение — План − Факт-1, the client's sign: above zero the row is
+ *     short of plan. Конверсия — Транз-1 ÷ Лид сони, the sheet's own formula
+ *     with «Лид руч» gone from it.
+ *   Дозвон / Длительность — the day's connected calls and their talk time
+ *     (`RegistrationRepository.sellerCallsSql`), the «Ulangan» and «Suhbat
+ *     vaqti» of «Qoʻngʻiroqlar» for the same person and day. Null before
+ *     `CALL_DATA_FLOOR`, whose calls carry truncated durations.
  *
  * Who is a row: everybody on a ROP team's roster, at zero if the day passed
  * them by, plus anybody else credited with a lead or an order that day under
@@ -28,6 +35,9 @@ import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import { canonicalRop, SPLIT_ROPS } from './leadSplit'
 
 const CURRENCY = 'UZS'
+
+/** «план = 500.000 * лид сони», in minor units. */
+export const PLAN_PER_LEAD_MINOR = 500_000n * 100n
 
 export interface SellerLeadRow {
   readonly rop: string | null
@@ -53,29 +63,28 @@ export interface RosterMember {
   readonly isHead: boolean
 }
 
-export interface SellerPlanRow {
+export interface SellerCallRow {
   readonly employeeId: string
-  readonly amountMinor: bigint
-}
-
-export interface SellerPlanInput {
-  readonly employeeId: string
-  /** Null removes the plan. */
-  readonly amountMinor: bigint | null
+  readonly connected: number
+  readonly talkSec: number
 }
 
 export interface RopReportCellsDto {
   readonly leads: number
-  /** Null: no plan typed. */
-  readonly plan: MoneyDto | null
+  /** `PLAN_PER_LEAD_MINOR` × leads. */
+  readonly plan: MoneyDto
   readonly fakt1: MoneyDto
-  /** Факт-1 − План; null without a plan. */
-  readonly deviation: MoneyDto | null
+  /** План − Факт-1: above zero, short of plan. */
+  readonly deviation: MoneyDto
   readonly fakt1Orders: number
   /** Транз-1 ÷ Лид сони × 100; null with no lead. */
   readonly conversionPercent: number | null
   readonly fakt2: MoneyDto
   readonly fakt2Orders: number
+  /** Дозвон — connected calls; null when the day's calls cannot be trusted. */
+  readonly connectedCalls: number | null
+  /** Длительность — their talk time, seconds; null with `connectedCalls`. */
+  readonly talkSec: number | null
 }
 
 export interface RopReportSellerDto extends RopReportCellsDto {
@@ -96,47 +105,47 @@ export interface RopReportGroupDto {
 
 export interface RopReportDto {
   readonly day: string
-  /** `YYYY-MM` — the month whose day plans the column shows. */
-  readonly month: string
   readonly groups: readonly RopReportGroupDto[]
   readonly total: RopReportCellsDto
-  readonly canEdit: boolean
 }
 
 interface Acc {
   leads: number
-  plan: bigint
-  planned: boolean
   fakt1: bigint
   fakt1Orders: number
   fakt2: bigint
   fakt2Orders: number
+  connected: number
+  talkSec: number
 }
 
-const zero = (): Acc => ({ leads: 0, plan: 0n, planned: false, fakt1: 0n, fakt1Orders: 0, fakt2: 0n, fakt2Orders: 0 })
+const zero = (): Acc => ({ leads: 0, fakt1: 0n, fakt1Orders: 0, fakt2: 0n, fakt2Orders: 0, connected: 0, talkSec: 0 })
 
 function add(into: Acc, from: Acc): void {
   into.leads += from.leads
-  into.plan += from.plan
-  into.planned ||= from.planned
   into.fakt1 += from.fakt1
   into.fakt1Orders += from.fakt1Orders
   into.fakt2 += from.fakt2
   into.fakt2Orders += from.fakt2Orders
+  into.connected += from.connected
+  into.talkSec += from.talkSec
 }
 
 const uzs = (minor: bigint): MoneyDto => toMoneyDto(money(minor, CURRENCY))
 
-function cells(a: Acc): RopReportCellsDto {
+function cells(a: Acc, callsKnown: boolean): RopReportCellsDto {
+  const plan = PLAN_PER_LEAD_MINOR * BigInt(a.leads)
   return {
     leads: a.leads,
-    plan: a.planned ? uzs(a.plan) : null,
+    plan: uzs(plan),
     fakt1: uzs(a.fakt1),
-    deviation: a.planned ? uzs(a.fakt1 - a.plan) : null,
+    deviation: uzs(plan - a.fakt1),
     fakt1Orders: a.fakt1Orders,
     conversionPercent: a.leads > 0 ? (a.fakt1Orders / a.leads) * 100 : null,
     fakt2: uzs(a.fakt2),
     fakt2Orders: a.fakt2Orders,
+    connectedCalls: callsKnown ? a.connected : null,
+    talkSec: callsKnown ? a.talkSec : null,
   }
 }
 
@@ -151,6 +160,9 @@ function groupOrder(a: string | null, b: string | null): number {
 
 const NOBODY = '∅'
 
+/** Off the roster, a row is drawn only when the day credited them with something. */
+const credited = (a: Acc): boolean => a.leads > 0 || a.fakt1Orders > 0 || a.fakt2Orders > 0
+
 export function buildRopReport(input: {
   day: string
   leads: readonly SellerLeadRow[]
@@ -158,10 +170,10 @@ export function buildRopReport(input: {
   roster: readonly RosterMember[]
   /** Names for people on no roster. */
   names: ReadonlyMap<string, string>
-  plans: readonly SellerPlanRow[]
-  canEdit: boolean
+  /** Null: the day is before `CALL_DATA_FLOOR`, the call columns print a dash. */
+  calls: readonly SellerCallRow[] | null
 }): RopReportDto {
-  const plan = new Map(input.plans.map((p) => [p.employeeId, p.amountMinor]))
+  const callsKnown = input.calls !== null
   const rosterOf = new Map(input.roster.map((m) => [m.employeeId, { ...m, rop: canonicalRop(m.rop) }]))
 
   // team (null = none) → person → Acc
@@ -186,26 +198,27 @@ export function buildRopReport(input: {
   }
 
   /*
-    ONE ROW CARRIES A PERSON'S PLAN. A seller can be a row in two groups — a
-    lead that names no team, an order sold under another team — and crediting
-    the plan to both would count it twice in every total. It sits on the
-    roster row; off every roster, on the group where they earned the most.
-    A plan whose person is on no row today (left the team, a quiet day off
-    the roster) is not drawn and not counted.
+    ONE ROW CARRIES A PERSON'S CALLS. A call names no team, and a seller can
+    be a row in two groups — a lead that names no team, an order sold under
+    another team — so crediting the calls to both would count them twice in
+    every total. They sit on the roster row; off every roster, on the group
+    where the person earned the most. Calls of somebody who is no row today
+    (the registration desk, a quiet day off the roster) are not drawn and not
+    counted. The plan needs no such rule: it follows the row's own leads.
   */
-  const planHome = new Map<string, string | null>()
-  for (const id of plan.keys()) {
-    const member = rosterOf.get(id)
-    if (member) {
-      planHome.set(id, member.rop)
-      continue
+  for (const c of input.calls ?? []) {
+    const member = rosterOf.get(c.employeeId)
+    let home: Acc | undefined = member ? grid.get(member.rop)?.get(c.employeeId) : undefined
+    if (!home) {
+      for (const people of grid.values()) {
+        const a = people.get(c.employeeId)
+        if (a && credited(a) && (!home || a.fakt1 > home.fakt1 || (a.fakt1 === home.fakt1 && a.leads > home.leads))) home = a
+      }
     }
-    let best: { rop: string | null; a: Acc } | null = null
-    for (const [rop, people] of grid) {
-      const a = people.get(id)
-      if (a && (!best || a.fakt1 > best.a.fakt1 || (a.fakt1 === best.a.fakt1 && a.leads > best.a.leads))) best = { rop, a }
+    if (home) {
+      home.connected += c.connected
+      home.talkSec += c.talkSec
     }
-    if (best) planHome.set(id, best.rop)
   }
 
   const total = zero()
@@ -216,15 +229,9 @@ export function buildRopReport(input: {
         .map(([id, a]) => {
           const member = rosterOf.get(id)
           const onRoster = member !== undefined && member.rop === rop
-          const p = planHome.has(id) && planHome.get(id) === rop ? plan.get(id) : undefined
-          if (p !== undefined) {
-            a.plan = p
-            a.planned = true
-          }
           return { id, a, onRoster, isHead: onRoster && member.isHead }
         })
-        // Off the roster only when the day credited them with something.
-        .filter((s) => s.onRoster || s.a.leads > 0 || s.a.fakt1Orders > 0 || s.a.fakt2Orders > 0)
+        .filter((s) => s.onRoster || credited(s.a))
         .map((s): RopReportSellerDto => {
           add(groupTotal, s.a)
           return {
@@ -233,7 +240,7 @@ export function buildRopReport(input: {
               s.id === NOBODY ? 'Hech kimga biriktirilmagan' : (rosterOf.get(s.id)?.fullName ?? input.names.get(s.id) ?? s.id),
             isHead: s.isHead,
             onRoster: s.onRoster,
-            ...cells(s.a),
+            ...cells(s.a, callsKnown),
           }
         })
         .sort(
@@ -244,10 +251,10 @@ export function buildRopReport(input: {
             a.fullName.localeCompare(b.fullName, 'ru'),
         )
       add(total, groupTotal)
-      return { rop, sellers, total: cells(groupTotal) }
+      return { rop, sellers, total: cells(groupTotal, callsKnown) }
     })
     .filter((g) => g.sellers.length > 0)
     .sort((a, b) => groupOrder(a.rop, b.rop))
 
-  return { day: input.day, month: input.day.slice(0, 7), groups, total: cells(total), canEdit: input.canEdit }
+  return { day: input.day, groups, total: cells(total, callsKnown) }
 }

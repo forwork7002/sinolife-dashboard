@@ -1519,6 +1519,8 @@ model RnpManualHeadcount {
 /// in soʻm minor units (the «ПЛАН» column of the client's group sheet, asked
 /// for on 2026-10-01). `month` is the month's first day. «No plan» is no row,
 /// never a plan of zero, which the sheet would read as «missed it entirely».
+/// UNREAD since 2026-10-02: the plan became 500 000 soʻm × Лид сони and the
+/// form that wrote this table was removed. Kept until a drop is approved.
 model SellerDayPlan {
   id          String   @id @default(cuid())
   month       DateTime @db.Date

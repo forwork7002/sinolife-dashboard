@@ -1,4 +1,3 @@
-import { can } from '@/server/auth/rbac'
 import { zonedDateKey } from '@/server/domain/period/period'
 import { getHandler } from '@/server/http/handler'
 import { registrationService } from '@/server/services/container'
@@ -20,7 +19,6 @@ export const GET = getHandler(ACCESS, overviewQuerySchema, async (ctx) => {
     day: ctx.query.day ?? zonedDateKey(ctx.now, ctx.timeZone),
     timeZone: ctx.timeZone,
     now: ctx.now,
-    canEdit: can(ctx.principal, 'kpi:manage'),
   })
   return { data }
 })
