@@ -36,6 +36,9 @@ describe('LeadSourcesRepository.qualifiedSources', () => {
     expect(sql).toMatch(/d\."status" = 'WON'/)
     expect(sql).toMatch(/d\."closedAt" >= \$1 AND d\."closedAt" < \$2/)
     expect(sql).toMatch(/d\."aiQualifiedAt" IS NOT NULL/)
+    // A LEFT join: the headline is the sum of these rows, so a kval with no source must not drop out.
+    expect(sql).toMatch(/LEFT JOIN "sales_source" s ON s\."id" = d\."sourceId"/)
+    expect(sql).toMatch(/s\."externalId" AS source_id/)
     expect(sql).not.toMatch(/createdAtSource/)
     expect(params).toEqual([start, end])
   })

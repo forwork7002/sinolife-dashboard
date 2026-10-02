@@ -504,10 +504,10 @@ export function leadSourcesOverview(input: {
     the lead's other outcomes; on the tiles it read 189 against the headline's
     240 on 01.10.
   */
-  let qualified = 0
+  let qualifiedTotal = 0
   for (const row of input.qualified) {
     tiles.get(leadTile(row.sourceId, row.aiQualified, LEAD_SOURCE_VOCABULARY))!.qualified += row.qualified
-    qualified += row.qualified
+    qualifiedTotal += row.qualified
   }
   const tilesTotal = tileZero()
   for (const t of tiles.values()) {
@@ -528,11 +528,11 @@ export function leadSourcesOverview(input: {
       total: registrationCells.leads,
       fresh,
       duplicates: registration.duplicate,
-      qualified,
-      qualifiedPercent: percent(qualified, fresh),
+      qualified: qualifiedTotal,
+      qualifiedPercent: percent(qualifiedTotal, fresh),
       spendUsd: usd(adSpend),
       /* No spend read (Meta not imported yet, or down that day) is «unknown», never a free kval. */
-      costPerQualifiedUsd: adSpend > 0n ? perUnit(adSpend, qualified) : null,
+      costPerQualifiedUsd: adSpend > 0n ? perUnit(adSpend, qualifiedTotal) : null,
     },
     totals: {
       registration: registrationCells,

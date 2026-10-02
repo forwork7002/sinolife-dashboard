@@ -35,9 +35,11 @@ import type {
 /**
  * «Lid manbalari» — every lead Bitrix24 registered, by where it came from.
  *
- * Three questions, one request (`/leads/overview`), so every table on the
- * period sums to the tiles above it — the ROP cards placed in its slots read
- * their own day:
+ * Three questions, one request (`/leads/overview`), so every table's leads on
+ * the period sum to the tiles above it. Their kval is the cohort's — what the
+ * period's leads have become by now — while the tiles count kval by the day it
+ * was WON, so the two kvals differ and the «Barcha manbalar» hint says so. The
+ * ROP cards placed in the slots read their own day:
  *
  *   Targetologlar — each targetolog's lead forms: what Meta counted, what
  *     reached Регистрация, and what that became. «Yetib keldi» low means the
@@ -694,7 +696,7 @@ function SourcesBlock({ data, status }: { data: LeadSourcesOverviewDto | undefin
     <section className="flex min-w-0 flex-col gap-3">
       <SectionHeader
         title="Barcha manbalar · Регистрация"
-        hint="Регистрация voronkasiga tushgan har bir bitim — reklamadan boʻlmaganlari ham. Qalin qator — kanal jami, ostida uning manbalari. Факт1 мижоз — shu lidlarning telefon raqamidan davr ichida, liddan keyin FAKT 1 buyurtma qilgan mijozlar soni (bir raqam — bir mijoz)."
+        hint="Регистрация voronkasiga tushgan har bir bitim — reklamadan boʻlmaganlari ham. Qalin qator — kanal jami, ostida uning manbalari. Kval — shu davrda kelgan lidlardan hozirgacha «Сделка успешна» boʻlganlari; yuqoridagi «Квал лидлар сони» esa davr ichida yopilganlarni sanaydi, shuning uchun ikkisi farq qiladi. Факт1 мижоз — shu lidlarning telefon raqamidan davr ichida, liddan keyin FAKT 1 buyurtma qilgan mijozlar soni (bir raqam — bir mijoz)."
       />
       <Card className="min-w-0 p-0">
         <DataTable<Row>

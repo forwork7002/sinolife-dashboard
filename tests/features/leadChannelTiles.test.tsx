@@ -49,7 +49,8 @@ const TILES: Record<LeadTile, ChannelTileDto> = {
 const data = {
   tiles: {
     rows: (Object.keys(TILES) as LeadTile[]).map((tile) => ({ tile, ...TILES[tile] })),
-    total: cells(3224, 964, 40),
+    // The rows' sum, as the server builds it.
+    total: cells(5754, 974, 40),
   },
 } as unknown as LeadSourcesOverviewDto
 
@@ -84,9 +85,9 @@ describe('ChannelTiles', () => {
     const total = screen.getByTestId('lead-channel-total')
     expect(total.parentElement!.firstElementChild).toBe(total)
     expect(within(total).getByText('Jami')).toBeTruthy()
-    expect(within(total).getByText('3,224')).toBeTruthy()
-    // Over the new leads, as «Квал %»: 964 ÷ (3 224 − 40).
-    expect(within(total).getByText('964 kval · 30.3%')).toBeTruthy()
+    expect(within(total).getByText('5,754')).toBeTruthy()
+    // Over the new leads, as «Квал %»: 974 ÷ (5 754 − 40).
+    expect(within(total).getByText('974 kval · 17.0%')).toBeTruthy()
     expect(within(total).getByText('8 kanal yigʻindisi = «Жами лидлар» · forma va ИИ lidlari Reklamada ham bor')).toBeTruthy()
   })
 
