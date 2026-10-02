@@ -1,9 +1,11 @@
 import { callFloorApplied } from '@/lib/callQuality'
 import { resolvePeriod } from '@/server/domain/period/period'
+import { buildGroupIntake, type GroupIntakeDto } from '@/server/domain/registration/groupIntake'
 import { addDays, buildLeadSplit, type LeadSplitDto, type SplitShare, GRID_DAYS } from '@/server/domain/registration/leadSplit'
 import { buildRopReport, type RopReportDto } from '@/server/domain/registration/ropReport'
 import type { InsightsRepository, SellerFaktDayRow } from '@/server/repositories/insightsRepository'
 import type { RegistrationRepository } from '@/server/repositories/registrationRepository'
+import type { RnpRepository } from '@/server/repositories/rnpRepository'
 
 import { ttlCache } from './ttlCache'
 
@@ -24,6 +26,7 @@ export class RegistrationService {
   constructor(
     private readonly repository: RegistrationRepository,
     private readonly insights: InsightsRepository,
+    private readonly rnp: RnpRepository,
   ) {}
 
   async overview(input: { day: string; canEdit: boolean }): Promise<LeadSplitDto> {
@@ -56,5 +59,19 @@ export class RegistrationService {
     const strangers = new Set([...fakt.map((r) => r.employeeId), ...leads.flatMap((r) => (r.employeeId ? [r.employeeId] : []))])
     const names = await this.repository.names([...strangers].filter((id) => !rostered.has(id)))
     return buildRopReport({ day: input.day, leads, fakt, roster, names, calls })
+  }
+
+  /** «Guruhlar · безквал / квал» — one day. See groupIntake.ts. */
+  async groupIntake(input: { day: string; canEdit: boolean }): Promise<GroupIntakeDto> {
+    const [handedOut, registrarGroups, intake] = await Promise.all([
+      this.rnp.leadDays(input.day, input.day),
+      this.rnp.registrarGroups(input.day.slice(0, 7)),
+      this.repository.groupIntake(input.day),
+    ])
+    return buildGroupIntake({ day: input.day, handedOut, registrarGroups, intake, canEdit: input.canEdit })
+  }
+
+  async saveGroupIntake(day: string, rows: readonly { group: string; leads: number | null }[], by: string): Promise<void> {
+    await this.repository.saveGroupIntake(day, rows, by)
   }
 }

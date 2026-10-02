@@ -81,3 +81,33 @@ export interface RopReportDto {
   readonly groups: readonly RopReportGroupDto[]
   readonly total: RopReportCellsDto
 }
+
+/*
+  «Guruhlar · безквал / квал» — mirrors `GroupIntakeDto` in
+  `src/server/domain/registration/groupIntake.ts` and the body of
+  `src/app/api/v1/registration/groups/route.ts`. Nothing checks the mirror.
+*/
+
+export interface GroupIntakeRowDto {
+  readonly group: string
+  readonly registrars: readonly string[]
+  /** Null: nobody typed it. */
+  readonly intake: number | null
+  /** Null: no registrar in the group, so not known. */
+  readonly qualified: number | null
+  readonly conversionPercent: number | null
+}
+
+export interface GroupIntakeDto {
+  readonly day: string
+  readonly groups: readonly GroupIntakeRowDto[]
+  readonly total: { readonly intake: number; readonly qualified: number; readonly conversionPercent: number | null }
+  readonly ungroupedQualified: number
+  readonly canEdit: boolean
+}
+
+/** Null removes the typed number. */
+export interface SaveGroupIntakeBody {
+  readonly day: string
+  readonly rows: readonly { group: string; leads: number | null }[]
+}

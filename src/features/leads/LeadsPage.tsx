@@ -12,6 +12,7 @@ import type { Status } from '@/features/reklama/reklamaUi'
 import { apiGet } from '@/lib/api'
 import { t } from '@/lib/messages'
 
+import { GroupIntakeCard } from './GroupIntakeCard'
 import { LeadCohortSection } from './LeadCohortSection'
 import { LeadSplitCard, LeadWeekCard, today, useLeadSplit } from './LeadSplitCards'
 import { LeadSourcesSection } from './LeadSourcesSection'
@@ -33,12 +34,15 @@ import type { LeadSourcesOverviewDto } from './leadSourcesApi'
  *   «ROP otchet» — the client's group sheet (`RopReport`), on the ROP cards'
  *     day. Its own tab since 2026-10-02 («ROP otchet degan narsani yangi
  *     boʻlimcha qilasan»); it sat below «Targetologlar» before.
+ *   «Guruhlar» — the client's daily group report, «безквал / квал» per
+ *     registration group (`GroupIntakeCard`), on the same day. Its own tab
+ *     from the start (2026-10-02, «yangi boʻlimcha qoʻshasanmi lid boʻlimiga»).
  *
  * «Sotuv · ROP» was removed on 2026-10-01 at the user's request.
  *
  * «Registratsiya» was folded into «Lid manbalari» on 2026-10-02: the split
  * card and the seven-day grid sit among its blocks on their own day, shared
- * with «ROP otchet» (`LeadSplitCards.tsx`), while everything else keeps the
+ * with «ROP otchet» and «Guruhlar» (`LeadSplitCards.tsx`), while everything else keeps the
  * period.
  *
  * «Reklama samarasi» kept the Meta side — spend, campaigns, the client's
@@ -47,14 +51,15 @@ import type { LeadSourcesOverviewDto } from './leadSourcesApi'
  * NOTHING ON A HIDDEN TAB ASKS: the sources tab's requests (`/leads/overview`
  * and the split cards' `/registration/overview`) do not go out while another
  * tab is open; the cohort tab fetches inside its own section, «ROP otchet»
- * asks `/registration/report` plus the split for its team colours.
+ * asks `/registration/report` plus the split for its team colours, «Guruhlar»
+ * asks `/registration/groups`.
  */
-type Tab = 'sources' | 'cohort' | 'rop'
+type Tab = 'sources' | 'cohort' | 'rop' | 'groups'
 
 export function LeadsPage() {
   const { apiParams } = useDashboardFilters()
   const [tab, setTab] = useState<Tab>('sources')
-  // The ROP cards' day — one, so the split, the grid and «ROP otchet» always show the same day.
+  // The ROP cards' day — one, so the split, the grid, «ROP otchet» and «Guruhlar» always show the same day.
   const [day, setDay] = useState(today)
   // «ROP otchet» paints its teams in the split's colours.
   const { colors } = useLeadSplit(day, tab === 'rop')
@@ -91,6 +96,7 @@ export function LeadsPage() {
             { value: 'sources', label: 'Lid manbalari' },
             { value: 'cohort', label: 'Lid kogortasi' },
             { value: 'rop', label: 'ROP otchet' },
+            { value: 'groups', label: 'Guruhlar' },
           ]}
         />
       }
@@ -100,6 +106,8 @@ export function LeadsPage() {
           <LeadCohortSection />
         ) : tab === 'rop' ? (
           <RopReport day={day} onDay={setDay} colors={colors} />
+        ) : tab === 'groups' ? (
+          <GroupIntakeCard day={day} onDay={setDay} />
         ) : status === 'error' ? (
           <Card className="p-5">
             <ErrorState

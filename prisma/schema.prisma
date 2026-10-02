@@ -1553,6 +1553,22 @@ model RegistrationSplit {
   @@map("registration_split")
 }
 
+/// «Lidlar · Guruhlar» — a registration group's «безквал» (the leads the group
+/// took in that day), typed by hand: no Bitrix24 field names a lead's
+/// registrar before it is qualified (the client, 2026-10-02). `group` is one
+/// of `INTAKE_GROUPS`. A day nobody typed has no row and shows empty.
+model RegistrationGroupIntake {
+  id        String   @id @default(cuid())
+  day       DateTime @db.Date
+  group     String
+  leads     Int
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@unique([day, group])
+  @@map("registration_group_intake")
+}
+
 // ---------------------------------------------------------------------------
 // KPI
 // ---------------------------------------------------------------------------
