@@ -120,6 +120,8 @@ export interface LeadSourcesOverviewDto {
   readonly tiles: {
     readonly rows: readonly ({ readonly tile: LeadTile } & ChannelTileDto)[]
     readonly total: ChannelTileDto
+    /** total.leads + outbound + other + ai = funnel.total — what «Jami» lacks of «Жами лидлар». */
+    readonly toHeadline: { readonly outbound: number; readonly other: number; readonly ai: number }
   }
   readonly sources: readonly SourceRowDto[]
 }

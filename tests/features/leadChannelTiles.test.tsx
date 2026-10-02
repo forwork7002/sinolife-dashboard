@@ -47,10 +47,13 @@ const TILES: Record<LeadTile, ChannelTileDto> = {
 }
 
 const data = {
+  // The headline: the six channels' 3 224, «Исход» 2 410 and «Boshqa» 120, less the AI's 40.
+  funnel: { total: 5714 },
   tiles: {
     rows: (Object.keys(TILES) as LeadTile[]).map((tile) => ({ tile, ...TILES[tile] })),
     // The six channels' sum, as the server builds it — «Исход» and «Boshqa» left out.
     total: cells(3224, 964, 40),
+    toHeadline: { outbound: 2410, other: 120, ai: -40 },
   },
 } as unknown as LeadSourcesOverviewDto
 
@@ -88,10 +91,39 @@ describe('ChannelTiles', () => {
     expect(within(total).getByText('3,224')).toBeTruthy()
     // Over the new leads, as «Квал %»: 964 ÷ (3 224 − 40).
     expect(within(total).getByText('964 kval · 30.3%')).toBeTruthy()
-    expect(
-      within(total).getByText('6 kanal yigʻindisi · Исход va Boshqa kirmaydi · forma va ИИ lidlari Reklamada ham bor'),
-    ).toBeTruthy()
     expect(total.parentElement!.children).toHaveLength(7)
+  })
+
+  it('says, quietly, what takes «Jami» to «Жами лидлар» (2026-10-02)', () => {
+    render(<ChannelTiles data={data} status="ready" />)
+
+    const total = screen.getByTestId('lead-channel-total')
+    // 3 224 + 2 410 + 120 − 40 = 5 714, the headline.
+    expect(within(total).getByText('+2,490 → 5,714 «Жами лидлар»')).toBeTruthy()
+    const parts = within(total).getByText('Исход +2,410 · Boshqa +120 · ИИ farqi −40')
+    expect(parts.getAttribute('title')).toMatch(/«ИИ квал сана»/)
+  })
+
+  it('names only the parts that add something', () => {
+    const quiet = {
+      funnel: { total: 3344 },
+      tiles: { ...data.tiles, toHeadline: { outbound: 0, other: 120, ai: 0 } },
+    } as unknown as LeadSourcesOverviewDto
+    render(<ChannelTiles data={quiet} status="ready" />)
+
+    const total = screen.getByTestId('lead-channel-total')
+    expect(within(total).getByText('+120 → 3,344 «Жами лидлар»')).toBeTruthy()
+    expect(within(total).getByText('Boshqa +120').getAttribute('title')).toBeNull()
+  })
+
+  it('says «= Жами лидлар» when nothing is apart', () => {
+    const even = {
+      funnel: { total: 3224 },
+      tiles: { ...data.tiles, toHeadline: { outbound: 0, other: 0, ai: 0 } },
+    } as unknown as LeadSourcesOverviewDto
+    render(<ChannelTiles data={even} status="ready" />)
+
+    expect(within(screen.getByTestId('lead-channel-total')).getByText('= «Жами лидлар»')).toBeTruthy()
   })
 
   it('puts «Исход» and «Boshqa» on one card beneath, outside «Jami», picked by a filter (2026-10-02)', () => {

@@ -228,6 +228,19 @@ describe('leadSourcesOverview', () => {
     expect(data.tiles.total.leads).toBe(inTotal.reduce((n, r) => n + r.leads, 0))
   })
 
+  it('says what takes «Jami» to «Жами лидлар», to the lead (the client, 2026-10-02)', () => {
+    // «Исход» 7, «Boshqa» 4, and the AI: 1 window lead carried the mark, «Сммщик ии» reads 6.
+    expect(data.tiles.toHeadline).toEqual({ outbound: 7, other: 4, ai: 1 - 6 })
+    const { outbound, other, ai } = data.tiles.toHeadline
+    expect(data.tiles.total.leads + outbound + other + ai).toBe(data.funnel.total)
+  })
+
+  it('keeps the identity on an empty window', () => {
+    const empty = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [], triage: [], campaigns: [], fakt1: [], qualified: [], aiQualified: [] })
+    expect(empty.tiles.toHeadline).toEqual({ outbound: 0, other: 0, ai: 0 })
+    expect(empty.tiles.total.leads).toBe(empty.funnel.total)
+  })
+
   it('puts the form and the Meta account on one targetolog, and reads the reach', () => {
     const umar = data.forms.owners.find((o) => o.key === 'Collagen|Umar')!
     expect(umar.forms).toEqual(['Sinolife (UMAR) 777'])

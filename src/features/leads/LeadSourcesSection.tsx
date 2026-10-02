@@ -209,11 +209,46 @@ const TILE_NOTE: Partial<Record<LeadTile, string>> = {
 const kvalHint = (t: ChannelTileDto) =>
   `${formatNumber(t.qualified)} kval · ${t.qualifiedPercent === null ? NO_VALUE : formatPercent(t.qualifiedPercent)}`
 
-const note = (text: string) => (
-  <p className="text-[11px] leading-snug" style={muted}>
+const note = (text: string, title?: string) => (
+  <p className="text-[11px] leading-snug" style={muted} title={title}>
     {text}
   </p>
 )
+
+const signed = (n: number) => `${n < 0 ? '−' : '+'}${formatNumber(Math.abs(n))}`
+
+/**
+ * «+128 → 899 «Жами лидлар»» under «Jami», quietly, with what makes up the
+ * difference — the client, 2026-10-02: the row's «Jami» has to visibly meet
+ * the headline. The parts are the server's identity (`tiles.toHeadline`), not
+ * a remainder taken here, so a label can never name a gap it did not cause.
+ */
+function headlineNote(data: LeadSourcesOverviewDto): ReactNode {
+  const { outbound, other, ai } = data.tiles.toHeadline
+  const gap = outbound + other + ai
+  // A part that adds nothing is not named.
+  const parts = (
+    [
+      [TILE_LABEL.outbound, outbound],
+      [TILE_LABEL.other, other],
+      ['ИИ farqi', ai],
+    ] as const
+  )
+    .filter(([, n]) => n !== 0)
+    .map(([label, n]) => `${label} ${signed(n)}`)
+  return (
+    <>
+      {note(gap === 0 ? '= «Жами лидлар»' : `${signed(gap)} → ${formatNumber(data.funnel.total)} «Жами лидлар»`)}
+      {gap !== 0 &&
+        note(
+          parts.join(' · '),
+          ai !== 0
+            ? '«ИИ farqi»: «Сммщик ии» shu davrdagi «ИИ квал сана» boʻyicha, barcha voronkalardan sanaladi; «Жами лидлар»da esa shu davrda Регистрацияga kelgan ИИ lidlari.'
+            : undefined,
+        )}
+    </>
+  )
+}
 
 /**
  * The client's lead channels (2026-10-01), one tile each, and their «Jami»
@@ -274,9 +309,7 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
             value={total?.leads ?? null}
             unit="count"
             hint={total ? kvalHint(total) : undefined}
-            context={note(
-              `${TILES_IN_TOTAL.length} kanal yigʻindisi · Исход va Boshqa kirmaydi · forma va ИИ lidlari Reklamada ham bor`,
-            )}
+            context={data ? headlineNote(data) : undefined}
           />
         </div>
         {TILES_IN_TOTAL.map((t) => channelTile(t))}

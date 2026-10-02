@@ -209,6 +209,16 @@ export interface LeadSourcesOverviewDto {
   readonly tiles: {
     readonly rows: readonly ({ readonly tile: LeadTile } & ChannelTileDto)[]
     readonly total: ChannelTileDto
+    /**
+     * What takes `total.leads` to `funnel.total` (the client, 2026-10-02:
+     * «Jami» must visibly meet «Жами лидлар»). An identity, not a remainder:
+     * total.leads + outbound + other + ai = funnel.total, always.
+     *   outbound, other — the two tiles kept out of «Jami».
+     *   ai — Регистрация leads of the window carrying the AI mark, less
+     *        «Сммщик ии» (the «ИИ квал сана» filter, any pipeline, any
+     *        creation day): 01.10 read 60 − 89 = −29.
+     */
+    readonly toHeadline: { readonly outbound: number; readonly other: number; readonly ai: number }
   }
   readonly sources: readonly SourceRowDto[]
 }
@@ -342,6 +352,8 @@ export function leadSourcesOverview(input: {
   const tiles = new Map<LeadTile, TileAcc>(LEAD_TILES.map((t) => [t, tileZero()]))
   const registration = outcomeZero()
   let leadDuplicates = 0
+  // Регистрация leads carrying the AI mark — what «Сммщик ии» held before it read the AI's date.
+  let aiArrived = 0
 
   /*
     ИИ обработка FIRST: a page is anything people write to, and the
@@ -372,6 +384,8 @@ export function leadSourcesOverview(input: {
       const tile = tiles.get(tileKey)!
       tile.leads += row.leads
       if (isLeadDuplicate(row.stage)) tile.duplicates += row.leads
+    } else {
+      aiArrived += row.leads
     }
     const sourceKey = sourceKeyOf(form, row.sourceId)
     const source = mapGet(sources, sourceKey, () => ({
@@ -577,6 +591,11 @@ export function leadSourcesOverview(input: {
     tiles: {
       rows: LEAD_TILES.map((tile) => ({ tile, ...tileCells(tiles.get(tile)!) })),
       total: tileCells(tilesTotal),
+      toHeadline: {
+        outbound: tiles.get('outbound')!.leads,
+        other: tiles.get('other')!.leads,
+        ai: aiArrived - aiTile.leads,
+      },
     },
     sources: [...sources.values()]
       .map((s) => ({
