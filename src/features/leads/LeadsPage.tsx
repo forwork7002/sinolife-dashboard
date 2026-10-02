@@ -30,28 +30,34 @@ import type { LeadSourcesOverviewDto } from './leadSourcesApi'
  *     period (`LeadSourcesSection`).
  *   «Lid kogortasi» — arrival day × distribution day, on its own fourteen-day
  *     window (`LeadCohortSection`, moved from «Reklama samarasi»).
+ *   «ROP otchet» — the client's group sheet (`RopReport`), on the ROP cards'
+ *     day. Its own tab since 2026-10-02 («ROP otchet degan narsani yangi
+ *     boʻlimcha qilasan»); it sat below «Targetologlar» before.
  *
  * «Sotuv · ROP» was removed on 2026-10-01 at the user's request.
  *
  * «Registratsiya» was folded into «Lid manbalari» on 2026-10-02: the split
- * card, the seven-day grid and «ROP otchet» sit among its blocks on their own
- * shared day (`LeadSplitCards.tsx`), while everything else keeps the period.
+ * card and the seven-day grid sit among its blocks on their own day, shared
+ * with «ROP otchet» (`LeadSplitCards.tsx`), while everything else keeps the
+ * period.
  *
  * «Reklama samarasi» kept the Meta side — spend, campaigns, the client's
  * «DM» / «Отчёт Т» sheets.
  *
  * NOTHING ON A HIDDEN TAB ASKS: the sources tab's requests (`/leads/overview`
- * and the ROP cards' `/registration/*` two) do not go out while the cohort tab
- * is open, and the cohort tab fetches inside its own section.
+ * and the split cards' `/registration/overview`) do not go out while another
+ * tab is open; the cohort tab fetches inside its own section, «ROP otchet»
+ * asks `/registration/report` plus the split for its team colours.
  */
-type Tab = 'sources' | 'cohort'
+type Tab = 'sources' | 'cohort' | 'rop'
 
 export function LeadsPage() {
   const { apiParams } = useDashboardFilters()
   const [tab, setTab] = useState<Tab>('sources')
   // The ROP cards' day — one, so the split, the grid and «ROP otchet» always show the same day.
   const [day, setDay] = useState(today)
-  const { colors } = useLeadSplit(day, tab === 'sources')
+  // «ROP otchet» paints its teams in the split's colours.
+  const { colors } = useLeadSplit(day, tab === 'rop')
 
   const params = useMemo(() => {
     const out: Record<string, string | number> = { preset: apiParams.preset }
@@ -84,6 +90,7 @@ export function LeadsPage() {
           options={[
             { value: 'sources', label: 'Lid manbalari' },
             { value: 'cohort', label: 'Lid kogortasi' },
+            { value: 'rop', label: 'ROP otchet' },
           ]}
         />
       }
@@ -91,6 +98,8 @@ export function LeadsPage() {
       <div className="flex min-w-0 flex-col gap-6">
         {tab === 'cohort' ? (
           <LeadCohortSection />
+        ) : tab === 'rop' ? (
+          <RopReport day={day} onDay={setDay} colors={colors} />
         ) : status === 'error' ? (
           <Card className="p-5">
             <ErrorState
@@ -105,7 +114,6 @@ export function LeadsPage() {
             slots={{
               afterChannels: <LeadSplitCard day={day} onDay={setDay} />,
               beforeForms: <LeadWeekCard day={day} />,
-              afterForms: <RopReport day={day} onDay={setDay} colors={colors} />,
             }}
           />
         )}

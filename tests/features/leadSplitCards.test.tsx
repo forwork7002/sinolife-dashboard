@@ -33,7 +33,7 @@ window.matchMedia = ((query: string) => ({
 const { LeadSplitCard, LeadWeekCard, useLeadSplit } = await import('@/features/leads/LeadSplitCards')
 const { RopReport } = await import('@/features/leads/RopReport')
 
-/** The three cards as `LeadsPage` places them, on one shared day. */
+/** The three cards on one shared day, as `LeadsPage` shares it across its tabs. */
 function Cards() {
   const [day, setDay] = useState(TODAY)
   const { colors } = useLeadSplit(day)

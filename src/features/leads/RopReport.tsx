@@ -15,8 +15,8 @@ import type { RopReportCellsDto, RopReportDto, RopReportGroupDto, RopReportSelle
 
 /**
  * «ROP otchet» — the client's group sheet for the chosen day (on «Lidlar»
- * since 2026-10-02, below «Targetologlar»; its day is shared with the split
- * cards above): every ROP team,
+ * since 2026-10-02, its own tab there; its day is shared with the split
+ * cards on «Lid manbalari»): every ROP team,
  * seller by seller, with the team's «Umumiy» under it and the company's at the
  * foot. Asked for on 2026-10-01 in place of the split table, «Лид руч» left
  * out. The definitions are in `server/domain/registration/ropReport.ts`.
