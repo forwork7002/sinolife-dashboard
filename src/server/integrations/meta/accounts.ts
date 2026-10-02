@@ -61,10 +61,15 @@ export const META_ACCOUNT_OWNERS: Readonly<Record<string, MetaAccountOwner>> = O
   '1766424904604300': { product: 'Zextra', targetolog: 'Umar' }, // Umar (Zextra)
   /*
     The client's own AI targetolog (2026-09-25: «collagen ai targetolog men bir
-    ai targetolog yaratdim … hali uni ishlatmadim») — not running yet, so it
-    spends nothing; named now so its first dollar lands on its own row.
+    ai targetolog yaratdim … hali uni ishlatmadim»). It runs on «Collagen AI
+    Targetolog» (1052133867828964): Collagen lead forms since 29.09, 12.07 $ by
+    02.10, which read as «Boshqa» — out of Collagen's ad budget — while the map
+    named 4016900891780426. That account, «Collagen AI targetolog» on
+    2026-09-25, is «Zapas Collagen» now with no campaigns at all, so it is left
+    unmapped: should it ever spend, it shows as «Boshqa» under its own name
+    until the client says whose it is.
   */
-  '4016900891780426': { product: 'Collagen', targetolog: 'AI targetolog' }, // Collagen AI targetolog
+  '1052133867828964': { product: 'Collagen', targetolog: 'AI targetolog' }, // Collagen AI Targetolog
   /*
     Eldor's two accounts outside Collagen and Zextra, asked for on 2026-09-28
     («HR Eldor … kosmetika eldor shu larni tortaan … hr jadvalcha»). Neither

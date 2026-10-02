@@ -25,6 +25,13 @@ describe('adBudgetProduct', () => {
     expect(adBudgetProduct(row({ accountId: '1766424904604300', accountName: 'Umar (Zextra)' }))).toBe('Zextra')
   })
 
+  it('puts the client\'s AI targetolog on Collagen, not «Boshqa» (2026-10-02)', () => {
+    expect(ownerOf('1052133867828964', 'Collagen AI Targetolog')).toEqual({ product: 'Collagen', targetolog: 'AI targetolog' })
+    expect(adBudgetProduct(row({ accountId: '1052133867828964', accountName: 'Collagen AI Targetolog' }))).toBe('Collagen')
+    // The account the map once named for it is a reserve now, and nobody's yet.
+    expect(ownerOf('4016900891780426', 'Zapas Collagen')).toEqual({ product: 'Boshqa', targetolog: 'Zapas Collagen' })
+  })
+
   it('leaves out a hiring campaign, wherever it runs', () => {
     expect(adBudgetProduct(row({ objective: 'OUTCOME_ENGAGEMENT', campaignName: 'EX - Sinolife (vakansiya) - DM' }))).toBeNull()
     expect(adBudgetProduct(row({ objective: 'OUTCOME_ENGAGEMENT', campaignName: 'EX - TOF - Vacancy - 19.09' }))).toBeNull()
