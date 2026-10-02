@@ -540,7 +540,10 @@ Per-screen traps worth knowing before you touch one:
   kval — the AI hands the deal back to Регистрация and the registrar's WON is
   the kval. БАЗА teams (`BASE_TEAMS`: Charos = «Малика БАЗА», Baza = «Фаррух
   БАЗА») are measured by connected calls, not leads.
-  **A duplicate stage is matched `~ '[Дд]убл'`, never `~*`**: Cyrillic case
+  **A duplicate is «Дубликат (лид)» ONLY** (UC_GV19A1, the client's rule of
+  2026-10-02 — the red «Дубликат» UC_V1NS34 at the pipeline's end is a lead
+  in «Тушган лид»), the same as «Дубль лидлар» on /leads (`isLeadDuplicate`).
+  Matched `~ '[Дд]убл[^(]*\([[:space:]]*[Лл]ид'`, never `~*`: Cyrillic case
   folding follows the ctype, and under a C locale every duplicate was a lead.
   Compared with production on 2026-09-28: FAKT 1 to the soʻm on 27 of 27
   days, handed-out leads per team per day, registration and calls all match

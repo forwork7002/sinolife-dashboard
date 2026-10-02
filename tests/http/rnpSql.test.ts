@@ -66,7 +66,7 @@ describe('RnpRepository statements', () => {
 
   it('spells the duplicate stage\'s case out rather than trusting the locale', () => {
     const sql = bare(RnpRepository.registrationDaysSql())
-    expect(sql).toContain(`!~ '[Дд]убл'`)
+    expect(sql).toContain(`NOT COALESCE(st."name", '') ~ '[Дд]убл[^(]*\\([[:space:]]*[Лл]ид'`)
     expect(sql).not.toContain('~*')
     expect(sql).toMatch(/d\."status" = 'WON' AND d\."closedAt"/)
   })

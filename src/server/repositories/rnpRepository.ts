@@ -14,8 +14,8 @@
  *     counted, not folded. The portal's figures for 21.09 — Sevinch 38,
  *     Saidaziz 41, Maftuna 27 — are the sheet's. Filled on every deal only
  *     from 16.09; the screen says so.
- *   Регистрация — Регистрация (role LEAD) deals by creation day, «Дубликат»
- *     stages apart; the kval lead is the registrar's «Сделка успешна» (WON),
+ *   Регистрация — Регистрация (role LEAD) deals by creation day, «Дубликат
+ *     (лид)» apart (the red «Дубликат» is a lead); the kval lead is the registrar's «Сделка успешна» (WON),
  *     by the day it was closed. «ИИ квал» is NOT a kval: the AI hands the
  *     deal back to Регистрация (200 of 263 on 21.09 sat there), where the
  *     registrar decides.
@@ -49,7 +49,7 @@ export interface RnpRegistrationDayRow {
   /** The lead's SOURCE_ID, and the CRM form's full title when it came from one — what decides its brand. */
   readonly sourceId: string | null
   readonly formTitle: string | null
-  /** Регистрация deals created, «Дубликат» stages excluded. */
+  /** Регистрация deals created, «Дубликат (лид)» excluded (the red «Дубликат» is a lead). */
   readonly leads: number
   readonly duplicates: number
   /** «Сделка успешна», by the day it was closed. */
@@ -233,8 +233,10 @@ export class RnpRepository {
   /**
    * Three clocks, one day column: a lead on the day it was registered, a
    * kval on the day the registrar closed it, a conversation on the day it
-   * opened. A duplicate is a stage whose NAME says so — the same reading as
-   * `leadBucket` on «Lid manbalari», so the two screens agree on what one is.
+   * opened. A duplicate is «Дубликат (лид)» only, read by NAME — the same
+   * rule as `isLeadDuplicate` on «Lid manbalari», so the two screens agree on
+   * what one is. The red «Дубликат» at the end of the pipeline is a lead here
+   * (the client's rule, 2026-10-02).
    *
    * THE CASE IS SPELLED OUT, NOT `~*`: case-insensitive matching of Cyrillic
    * follows the database's ctype, and under a C locale «Дубликат» does not
@@ -254,13 +256,14 @@ export class RnpRepository {
       IS NOT DISTINCT FROM.
     */
     const form = `CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END`
+    const duplicate = `COALESCE(st."name", '') ~ '[Дд]убл[^(]*\\([[:space:]]*[Лл]ид'`
     return `
       WITH arms AS (
         SELECT ${day('d."createdAtSource"')} AS day,
                s."externalId" AS source_id,
                ${form} AS form_title,
-               count(*) FILTER (WHERE p."role" = 'LEAD' AND COALESCE(st."name", '') !~ '[Дд]убл') AS leads,
-               count(*) FILTER (WHERE p."role" = 'LEAD' AND COALESCE(st."name", '') ~ '[Дд]убл') AS duplicates,
+               count(*) FILTER (WHERE p."role" = 'LEAD' AND NOT ${duplicate}) AS leads,
+               count(*) FILTER (WHERE p."role" = 'LEAD' AND ${duplicate}) AS duplicates,
                0::bigint AS qualified,
                count(*) FILTER (WHERE p."role" = 'AI_TRIAGE') AS ai
         FROM "deal" d
