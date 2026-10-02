@@ -247,6 +247,26 @@ describe('RnpSheetTable — the sheet, row by row', () => {
     expect(order.at(-2)).toBe('rop')
   })
 
+  it('sets «Свод», «Коллаген проект» and «Зехтра проект» apart like the ROPs, not their rows', () => {
+    const v = (row: number, label: string, tone: RnpLine['tone'] = 'plain'): RnpLine => ({ kind: 'value', row, team: null, label, sub: null, tone, fact: 'plain', bold: false, key: 'kompaniya' })
+    const { container } = draw([
+      { kind: 'value', row: 334, team: 'Lola', label: 'Отказ %', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'kompaniya' },
+      v(346, 'Квал лид сони', 'section'),
+      v(350, 'Бюджет'),
+      v(394, 'Коллаген проект', 'section'),
+      v(418, '%'),
+      v(421, 'Зехтра проект', 'section'),
+      v(422, 'Сумма факт2 (успешка)'),
+      v(443, 'Маркетолог фот = 1%'),
+    ])
+    const order = [...container.querySelectorAll<HTMLTableRowElement>('tbody tr')].map((tr) => tr.dataset.gap ?? tr.querySelector('th')!.textContent)
+    for (const opener of ['Квал лид сони', 'Коллаген проект', 'Зехтра проект']) {
+      expect(order[order.findIndex((x) => x?.startsWith(opener)) - 1]).toBe('rop')
+    }
+    expect(order.filter((x) => x === 'rop')).toHaveLength(3)
+    expect(order.filter((x) => x === '')).toHaveLength(0)
+  })
+
   it('writes every soʻm in full, in the summary and in the days', () => {
     const { container } = draw()
     const sum = rowNamed(container, 'Сумма факт 1 сум')

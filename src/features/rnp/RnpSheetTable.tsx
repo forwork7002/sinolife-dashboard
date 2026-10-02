@@ -236,13 +236,20 @@ function rowsByKey(blocks: readonly RnpBlockDto[]): Map<string, RnpRowDto> {
  * ruled, sunken gap, even where the sheet runs one ROP's rows into the next, so each ROP reads as its own table
  * inside the one grid (the client, 2026-10-01: «bir jadval bo'lsin … faqat
  * bir biridan sal ajralib turishi kerak»).
+ *
+ * So does each company-wide table under them — «Свод», «Коллаген проект»,
+ * «Зехтра проект» (the client, 2026-10-02: «bitta joy qilib ajratib bersin»).
  */
 type Gap = 'block' | 'rop'
+
+/** The sheet rows that open «Свод», «Коллаген проект» and «Зехтра проект». */
+const OWN_TABLE_ROWS: ReadonlySet<number> = new Set([346, 394, 421])
 
 function gapBefore(line: RnpLine, prev: RnpLine): Gap | null {
   if (prev.kind !== 'value' || prev.tone === 'team') return null
   // A new ROP's rows — where the sheet has no blank row too, as between the logistics blocks.
   if (line.kind === 'value' && line.team !== null && line.team !== prev.team) return 'rop'
+  if (line.row !== null && OWN_TABLE_ROWS.has(line.row)) return 'rop'
   const opens = line.kind === 'title' || line.tone === 'team' || (line.tone === 'section' && line.row !== null && prev.row !== null && line.row - prev.row > 1)
   return opens ? 'block' : null
 }
