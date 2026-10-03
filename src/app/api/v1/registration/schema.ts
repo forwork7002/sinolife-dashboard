@@ -1,6 +1,5 @@
 import { z } from 'zod'
 
-import { INTAKE_GROUPS } from '@/server/domain/registration/groupIntake'
 import { SHARE_TOTAL_BP } from '@/server/domain/registration/leadSplit'
 
 /*
@@ -42,22 +41,4 @@ export const splitBodySchema = z.object({
     )
     .min(1)
     .max(40),
-})
-
-/** The most leads one group can take in a day — far past any real day (the portal's busiest is ~1 200 in all). */
-export const MAX_GROUP_INTAKE = 100_000
-
-export const groupIntakeBodySchema = z.object({
-  day: calendarDay,
-  rows: z
-    .array(
-      z.object({
-        group: z.enum(INTAKE_GROUPS),
-        /** Null removes the typed number. */
-        leads: z.number().int().min(0).max(MAX_GROUP_INTAKE).nullable(),
-      }),
-    )
-    .min(1)
-    .max(INTAKE_GROUPS.length)
-    .refine((rows) => new Set(rows.map((r) => r.group)).size === rows.length, 'A group is sent twice'),
 })

@@ -4,7 +4,6 @@
  */
 
 import type { PrismaClient } from '@/generated/prisma/client'
-import type { IntakeRow } from '@/server/domain/registration/groupIntake'
 import { canonicalRop, type DistributedDayRow, type SavedSplit, type SplitShare } from '@/server/domain/registration/leadSplit'
 import type { RosterMember, SellerCallRow, SellerLeadRow } from '@/server/domain/registration/ropReport'
 
@@ -95,11 +94,12 @@ export class RegistrationRepository {
           AND (p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL)`
   }
 
-  /** One day's handed-out leads per ROP team × seller. */
-  async sellerLeads(day: string): Promise<SellerLeadRow[]> {
+  /** The handed-out leads of `from`…`to` (inclusive) per ROP team × seller. */
+  async sellerLeads(from: string, to: string): Promise<SellerLeadRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<{ rop: string | null; employee_id: string | null; leads: bigint }[]>(
       RegistrationRepository.sellerLeadsSql(),
-      day,
+      from,
+      to,
     )
     return rows.map((r) => ({ rop: r.rop, employeeId: r.employee_id, leads: Number(r.leads) }))
   }
@@ -117,7 +117,7 @@ export class RegistrationRepository {
         ${RegistrationRepository.leadRopSql()} AS rop,
         COALESCE(d."operatorEmployeeId", d."employeeId") AS employee_id,
         count(*)::bigint AS leads
-      ${RegistrationRepository.handedOutSql('= $1::date')}
+      ${RegistrationRepository.handedOutSql('BETWEEN $1::date AND $2::date')}
       GROUP BY 1, 2`
   }
 
@@ -230,29 +230,5 @@ export class RegistrationRepository {
         data: rows.map((r) => ({ day: date, rop: canonicalRop(r.rop), shareBp: r.shareBp, updatedBy: by })),
       })
     })
-  }
-
-  /** The day's typed «безквал», one row per group somebody typed. */
-  async groupIntake(day: string): Promise<IntakeRow[]> {
-    return this.prisma.registrationGroupIntake.findMany({ where: { day: dateOf(day) }, select: { group: true, leads: true } })
-  }
-
-  /**
-   * Set each group sent, in ONE transaction. A null deletes the row: «nobody
-   * typed it» is no row, never a zero. Groups not sent are left as they are.
-   */
-  async saveGroupIntake(day: string, rows: readonly { group: string; leads: number | null }[], by: string): Promise<void> {
-    const date = dateOf(day)
-    await this.prisma.$transaction(
-      rows.map((r) =>
-        r.leads === null
-          ? this.prisma.registrationGroupIntake.deleteMany({ where: { day: date, group: r.group } })
-          : this.prisma.registrationGroupIntake.upsert({
-              where: { day_group: { day: date, group: r.group } },
-              create: { day: date, group: r.group, leads: r.leads, updatedBy: by },
-              update: { leads: r.leads, updatedBy: by },
-            }),
-      ),
-    )
   }
 }

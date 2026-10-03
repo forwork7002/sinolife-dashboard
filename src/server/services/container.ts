@@ -110,7 +110,7 @@ export const rnpService = new RnpService(insightsRepository, rnpRepository, rekl
   administrator's split, and «ROP otchet» seller by seller (FAKT from the
   queue cohort, insightsRepository). See registrationService.ts.
 */
-export const registrationService = new RegistrationService(new RegistrationRepository(prisma), insightsRepository, rnpRepository)
+export const registrationService = new RegistrationService(new RegistrationRepository(prisma), insightsRepository)
 /*
   «Lid kogortasi» (a tab of «Lidlar» since 2026-09-25) — arrival → distribution of routed leads. See leadCohortService.ts.
 */

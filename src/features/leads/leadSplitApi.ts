@@ -83,31 +83,40 @@ export interface RopReportDto {
 }
 
 /*
-  «Guruhlar · безквал / квал» — mirrors `GroupIntakeDto` in
-  `src/server/domain/registration/groupIntake.ts` and the body of
-  `src/app/api/v1/registration/groups/route.ts`. Nothing checks the mirror.
+  «Guruhlar» — mirrors `GroupPlanDto` in
+  `src/server/domain/registration/groupPlan.ts`. Nothing checks the mirror.
 */
 
-export interface GroupIntakeRowDto {
-  readonly group: string
-  /** The ROP team whose handed-out leads are the group's kval. */
-  readonly team: string
-  /** Null: nobody typed it. */
-  readonly intake: number | null
-  readonly qualified: number
-  readonly conversionPercent: number | null
+export interface GroupPlanCellsDto {
+  /** Usp soni — kval leads handed to the seller. */
+  readonly leads: number
+  /** Reja (Avto) — 500 000 × leads. */
+  readonly plan: MoneyDto
+  /** Buyurtma summasi — Факт-1. */
+  readonly orders: MoneyDto
+  /** Bajarilish % — null with no plan. */
+  readonly percent: number | null
+  /** Qarz — orders − plan: above zero, ahead. */
+  readonly debt: MoneyDto
 }
 
-export interface GroupIntakeDto {
-  readonly day: string
-  readonly groups: readonly GroupIntakeRowDto[]
-  readonly total: { readonly intake: number; readonly qualified: number; readonly conversionPercent: number | null }
-  readonly ungroupedQualified: number
-  readonly canEdit: boolean
+export interface GroupPlanSellerDto extends GroupPlanCellsDto {
+  readonly employeeId: string
+  readonly fullName: string
+  /** Dostup; null on the «Hech kimga biriktirilmagan» row. */
+  readonly mayTakeLeads: boolean | null
 }
 
-/** Null removes the typed number. */
-export interface SaveGroupIntakeBody {
-  readonly day: string
-  readonly rows: readonly { group: string; leads: number | null }[]
+export interface GroupPlanGroupDto {
+  /** Null: the leads and orders that name no team. */
+  readonly rop: string | null
+  readonly sellers: readonly GroupPlanSellerDto[]
+  readonly total: GroupPlanCellsDto
+}
+
+export interface GroupPlanDto {
+  readonly from: string
+  readonly to: string
+  readonly groups: readonly GroupPlanGroupDto[]
+  readonly total: GroupPlanCellsDto
 }

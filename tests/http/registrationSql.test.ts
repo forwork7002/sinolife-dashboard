@@ -41,8 +41,8 @@ describe('sellerLeadsSql', () => {
   const sql = bare(RegistrationRepository.sellerLeadsSql())
   const distributed = bare(RegistrationRepository.distributedDaysSql())
 
-  it('counts the same handed-out deals as «Olgan lid», on one day', () => {
-    expect(sql).toContain(`d."leadDistributedOn" = $1::date`)
+  it('counts the same handed-out deals as «Olgan lid», inclusive bounds', () => {
+    expect(sql).toContain(`d."leadDistributedOn" BETWEEN $1::date AND $2::date`)
     expect(sql).toContain(`(p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL)`)
   })
 

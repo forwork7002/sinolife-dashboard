@@ -12,7 +12,7 @@ import type { Status } from '@/features/reklama/reklamaUi'
 import { apiGet } from '@/lib/api'
 import { t } from '@/lib/messages'
 
-import { GroupIntakeCard } from './GroupIntakeCard'
+import { GroupPlanCard } from './GroupPlanCard'
 import { LeadCohortSection } from './LeadCohortSection'
 import { LeadSplitCard, LeadWeekCard, today, useLeadSplit } from './LeadSplitCards'
 import { LeadSourcesSection } from './LeadSourcesSection'
@@ -34,9 +34,10 @@ import type { LeadSourcesOverviewDto } from './leadSourcesApi'
  *   «ROP otchet» — the client's group sheet (`RopReport`), on the ROP cards'
  *     day. Its own tab since 2026-10-02 («ROP otchet degan narsani yangi
  *     boʻlimcha qilasan»); it sat below «Targetologlar» before.
- *   «Guruhlar» — the client's daily group report, «безквал / квал» per
- *     registration group (`GroupIntakeCard`), on the same day. Its own tab
- *     from the start (2026-10-02, «yangi boʻlimcha qoʻshasanmi lid boʻlimiga»).
+ *   «Guruhlar» — the client's seller sheet (`GroupPlanCard`): kval leads,
+ *     500 000 a lead, Факт-1 and the debt, from the first of the same day's
+ *     month. Its own tab from the start (2026-10-02); it held the «безквал /
+ *     квал» group report until 2026-10-03.
  *
  * «Sotuv · ROP» was removed on 2026-10-01 at the user's request.
  *
@@ -107,7 +108,7 @@ export function LeadsPage() {
         ) : tab === 'rop' ? (
           <RopReport day={day} onDay={setDay} colors={colors} />
         ) : tab === 'groups' ? (
-          <GroupIntakeCard day={day} onDay={setDay} />
+          <GroupPlanCard day={day} onDay={setDay} />
         ) : status === 'error' ? (
           <Card className="p-5">
             <ErrorState
