@@ -4,7 +4,7 @@ import { type ReactNode, useState } from 'react'
 
 import { Card } from '@/components/ui/Card'
 import { type Column, DataTable } from '@/components/ui/DataTable'
-import { SectionHeader, StatTile } from '@/components/ui/Stat'
+import { StatTile } from '@/components/ui/Stat'
 import { NO_VALUE, formatDateTime, formatNumber, formatPercent } from '@/lib/format'
 import { PRODUCT_LABEL, PRODUCT_TONE, usd } from '@/features/target/targetTheme'
 import {
@@ -38,8 +38,8 @@ import type {
  * the period sum to the tiles above it. Their kval is the cohort's — what the
  * period's leads have become by now — while the tiles count kval by the day it
  * was WON, so the two kvals differ and the «Barcha manbalar» hint says so. The
- * ROP cards placed in the slots read their own day. «Targetologlar» and «DM
- * sahifalar» share one card, a switch at its top choosing the table:
+ * ROP cards placed in the slots read their own day. The three tables below
+ * share one card, a switch at its top choosing the table:
  *
  *   Targetologlar — each targetolog's lead forms: what Meta counted, what
  *     reached Регистрация, and what that became. «Yetib keldi» low means the
@@ -90,7 +90,6 @@ export function LeadSourcesSection({
       {slots.afterChannels}
       {slots.beforeForms}
       <TablesBlock data={data} status={status} />
-      <SourcesBlock data={data} status={status} />
     </>
   )
 }
@@ -359,15 +358,16 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
   )
 }
 
-// --- forms and DM pages: one card, one switch -------------------------------
+// --- forms, DM pages and every source: one card, one switch ----------------
 
-type TableView = 'forms' | 'formDays' | 'dm' | 'dmDays'
+type TableView = 'forms' | 'formDays' | 'dm' | 'dmDays' | 'sources'
 
 const TABLE_VIEWS: readonly { value: TableView; label: string }[] = [
   { value: 'forms', label: 'Targetologlar' },
   { value: 'formDays', label: 'Targetologlar · kunlik' },
   { value: 'dm', label: 'DM sahifalar' },
   { value: 'dmDays', label: 'DM sahifalar · kunlik' },
+  { value: 'sources', label: 'Barcha manbalar' },
 ]
 
 /** What one view of the card draws: its heading, an optional picker under it, the table, a footnote. */
@@ -380,9 +380,10 @@ interface TableViewParts {
 }
 
 /**
- * «Targetologlar» and «DM sahifalar», over the period and day by day — four
- * tables in ONE card behind one switch at its top (the client, 2026-10-02:
- * four cards stacked ran the page too long). A day view keeps its own
+ * «Targetologlar» and «DM sahifalar», over the period and day by day, and
+ * «Barcha manbalar» — five tables in ONE card behind one switch at its top
+ * (the client, 2026-10-02: the cards stacked ran the page too long; «Barcha
+ * manbalar» joined on 2026-10-03). A day view keeps its own
  * targetolog / page picker; both choices live here, so flipping the switch
  * away and back does not lose them.
  */
@@ -397,7 +398,9 @@ export function TablesBlock({ data, status }: { data: LeadSourcesOverviewDto | u
         ? formDaysView(data, status, formSlice, setFormSlice)
         : view === 'dm'
           ? dmView(data, status)
-          : dmDaysView(data, status, dmSlice, setDmSlice)
+          : view === 'dmDays'
+            ? dmDaysView(data, status, dmSlice, setDmSlice)
+            : sourcesView(data, status)
 
   return (
     <section className="flex min-w-0 flex-col gap-3">
@@ -820,7 +823,7 @@ const dmDayColumns: readonly Column<DayRow<DmDayDto>>[] = [
 
 // --- every source -----------------------------------------------------------
 
-function SourcesBlock({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
+function sourcesView(data: LeadSourcesOverviewDto | undefined, status: Status): TableViewParts {
   type Row = {
     key: string
     channel: LeadChannel | null
@@ -858,56 +861,51 @@ function SourcesBlock({ data, status }: { data: LeadSourcesOverviewDto | undefin
   const outcome = outcomeColumns<Row>((r) => r.outcome)
   const afterKval = outcome.findIndex((c) => c.key === 'successPercent') + 1
 
-  return (
-    <section className="flex min-w-0 flex-col gap-3">
-      <SectionHeader
-        title="Barcha manbalar · Регистрация"
-        hint="Регистрация voronkasiga tushgan har bir bitim — reklamadan boʻlmaganlari ham. Qalin qator — kanal jami, ostida uning manbalari. Kval — shu davrda kelgan lidlardan hozirgacha «Сделка успешна» boʻlganlari; yuqoridagi «Квал лидлар сони» esa davr ichida yopilganlarni sanaydi, shuning uchun ikkisi farq qiladi. Факт1 мижоз — shu lidlarning telefon raqamidan davr ichida, liddan keyin FAKT 1 buyurtma qilgan mijozlar soni (bir raqam — bir mijoz)."
+  return {
+    title: 'Barcha manbalar · Регистрация',
+    hint: 'Регистрация voronkasiga tushgan har bir bitim — reklamadan boʻlmaganlari ham. Qalin qator — kanal jami, ostida uning manbalari. Kval — shu davrda kelgan lidlardan hozirgacha «Сделка успешна» boʻlganlari; yuqoridagi «Квал лидлар сони» esa davr ichida yopilganlarni sanaydi, shuning uchun ikkisi farq qiladi. Факт1 мижоз — shu lidlarning telefon raqamidan davr ichida, liddan keyin FAKT 1 buyurtma qilgan mijozlar soni (bir raqam — bir mijoz).',
+    table: (
+      <DataTable<Row>
+        columns={[
+          {
+            key: 'name',
+            header: 'Manba',
+            rowHeader: true,
+            render: (r) =>
+              r.channel === null ? (
+                <span className="eyebrow">Jami</span>
+              ) : r.subtotal ? (
+                <span className="font-semibold">{r.name}</span>
+              ) : (
+                <span className="pl-3">{r.name}</span>
+              ),
+          },
+          {
+            key: 'leads',
+            header: 'Lid',
+            align: 'right',
+            numeric: true,
+            render: (r) => <span className={r.subtotal ? 'font-semibold' : undefined}>{count(r.outcome.leads)}</span>,
+          },
+          ...outcome.slice(0, afterKval),
+          {
+            key: 'fakt1Clients',
+            header: 'Факт1 мижоз',
+            align: 'right',
+            numeric: true,
+            render: (r) => <span className={r.subtotal ? 'font-semibold' : 'font-medium'}>{count(r.fakt1Clients)}</span>,
+          },
+          ...outcome.slice(afterKval),
+        ]}
+        rows={rows}
+        rowKey={(r) => r.key}
+        status={status}
+        emptyTitle="Bu davrda Регистрация ga lid tushmagan"
+        minWidth={960}
+        maxHeight="70dvh"
+        stickyColumns={1}
+        stickyLastRow
       />
-      <Card className="min-w-0 p-0">
-        <DataTable<Row>
-          columns={[
-            {
-              key: 'name',
-              header: 'Manba',
-              rowHeader: true,
-              render: (r) =>
-                r.channel === null ? (
-                  <span className="eyebrow">Jami</span>
-                ) : r.subtotal ? (
-                  <span className="font-semibold">{r.name}</span>
-                ) : (
-                  <span className="pl-3">{r.name}</span>
-                ),
-            },
-            {
-              key: 'leads',
-              header: 'Lid',
-              align: 'right',
-              numeric: true,
-              render: (r) => <span className={r.subtotal ? 'font-semibold' : undefined}>{count(r.outcome.leads)}</span>,
-            },
-            ...outcome.slice(0, afterKval),
-            {
-              key: 'fakt1Clients',
-              header: 'Факт1 мижоз',
-              align: 'right',
-              numeric: true,
-              render: (r) => <span className={r.subtotal ? 'font-semibold' : 'font-medium'}>{count(r.fakt1Clients)}</span>,
-            },
-            ...outcome.slice(afterKval),
-          ]}
-          rows={rows}
-          rowKey={(r) => r.key}
-          status={status}
-          emptyTitle="Bu davrda Регистрация ga lid tushmagan"
-          minWidth={960}
-          maxHeight="70dvh"
-          stickyColumns={1}
-          stickyLastRow
-        />
-      </Card>
-    </section>
-  )
+    ),
+  }
 }
-
