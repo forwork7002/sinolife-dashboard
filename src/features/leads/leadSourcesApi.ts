@@ -116,12 +116,12 @@ export interface LeadSourcesOverviewDto {
     readonly outcome: LeadOutcomeDto
     readonly fakt1Clients: number
   }[]
-  /** «Boshqa kanallar lidlari» — every tile in the server's order, and the sum of all but «Исход» and «Boshqa». */
+  /** «Boshqa kanallar lidlari» — every tile in the server's order, and «Jami»: every Регистрация lead, as `funnel`. */
   readonly tiles: {
     readonly rows: readonly ({ readonly tile: LeadTile } & ChannelTileDto)[]
     readonly total: ChannelTileDto
-    /** total.leads + outbound + other + ai = funnel.total — what «Jami» lacks of «Жами лидлар». */
-    readonly toHeadline: { readonly outbound: number; readonly other: number; readonly ai: number }
+    /** «Сммщик ии»'s share of «Jami» — its Регистрация leads, where its tile reads the portal's AI-date filter. */
+    readonly aiInTotal: number
   }
   readonly sources: readonly SourceRowDto[]
 }
