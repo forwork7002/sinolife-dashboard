@@ -195,6 +195,8 @@ export interface RnpSheetInput {
     readonly day: string
     readonly product: TargetProduct
     readonly spendMicroUsd: bigint
+    readonly impressions: number
+    readonly clicks: number
     readonly leads: number
   }[]
   /** Kval per day per «Регистрация» label; null = a WON deal with no registrar yet. */
@@ -350,7 +352,9 @@ export const SETTING_LEAD_VALUE = 'lead_value'
  * plan route accepts nothing else, so a typo in a script cannot fill
  * `rnp_plan` with rows no screen reads. Plans the sheet computes (orders,
  * conversions, «Отказ %», row 47, the brand P&L's 395/397 shares) are not
- * keys: nothing stores them.
+ * keys: nothing stores them. The «Маркетинг COLLAGEN» funnel's `funnel_*`
+ * rates are the exception — the client's template has no formula in C, so
+ * they are typed (2026-10-03).
  */
 export const RNP_PLAN_METRICS = [
   SETTING_LEAD_VALUE,
@@ -383,6 +387,14 @@ export const RNP_PLAN_METRICS = [
   'brand_cost',
   'brand_cac',
   'brand_cost_share',
+  'funnel_impressions',
+  'funnel_clicks',
+  'funnel_orders1',
+  'funnel_ctr',
+  'funnel_lead_per_click',
+  'funnel_conv_qualified',
+  'funnel_conv_total',
+  'funnel_fakt2',
   'leads',
   'calls',
   'avg_cheque1',
@@ -835,14 +847,16 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   }
 
   const meta = {
-    Collagen: { spend: zeros(), leads: zeros() },
-    Zextra: { spend: zeros(), leads: zeros() },
+    Collagen: { spend: zeros(), leads: zeros(), impressions: zeros(), clicks: zeros() },
+    Zextra: { spend: zeros(), leads: zeros(), impressions: zeros(), clicks: zeros() },
   }
   for (const r of input.meta) {
     const i = at.get(r.day)
     if (i === undefined) continue
     meta[r.product].spend[i]! += Number(r.spendMicroUsd) / 1_000_000
     meta[r.product].leads[i]! += r.leads
+    meta[r.product].impressions[i]! += r.impressions
+    meta[r.product].clicks[i]! += r.clicks
   }
   const spendAll = days.map((_, i) => meta.Collagen.spend[i]! + meta.Zextra.spend[i]!)
   const metaLeadsAll = days.map((_, i) => meta.Collagen.leads[i]! + meta.Zextra.leads[i]!)
@@ -1119,7 +1133,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
 
   // --- Loyiha P&L: Коллаген / Зехтра (sheet rows 394–445) --------------------
   const brandGrid = (b: 'Collagen' | 'Zextra' | null) => {
-    const g = { fakt1: zeros(), fakt2: zeros(), primaryFakt2: zeros(), primaryOrders2: zeros(), baseFakt2: zeros(), leads: zeros(), qualified: zeros() }
+    const g = { fakt1: zeros(), fakt2: zeros(), primaryFakt2: zeros(), primaryOrders1: zeros(), primaryOrders2: zeros(), baseFakt2: zeros(), leads: zeros(), qualified: zeros() }
     for (const r of input.fakt) {
       const i = at.get(r.day)
       const team = canonical(r.rop)
@@ -1131,6 +1145,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       if (base) g.baseFakt2[i]! += minorToSom(r.fakt2Minor)
       else {
         g.primaryFakt2[i]! += minorToSom(r.fakt2Minor)
+        g.primaryOrders1[i]! += r.fakt1Orders
         g.primaryOrders2[i]! += r.fakt2Orders
       }
     }
@@ -1268,6 +1283,60 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
         additive(clock, { key: 'pj:none:fakt2', label: 'Сумма ФАКТ 2', unit: 'uzs' }, g.fakt2),
         additive(clock, { key: 'pj:none:leads', label: 'Кол лид', unit: 'count' }, g.leads),
         additive(clock, { key: 'pj:none:qualified', label: 'Квал лид', unit: 'count' }, g.qualified),
+      ],
+    })
+  }
+
+  // --- Маркетинг COLLAGEN — the funnel (layout rows 2001–2017) --------------
+  /*
+    THE CLIENT, 2026-10-03: the six follower rows under «Маркетинг COLLAGEN ·
+    Хаёт» (sheet rows 5–10, which no system holds) became their funnel
+    template — views to money, day by day, Collagen only. The user approved
+    each definition: views and clicks are Meta's (the Collagen accounts, hiring
+    campaigns left out, as the budget); leads and kval are the Регистрация
+    leads by brand, as «Коллаген проект»; new transactions are the Collagen
+    primary teams' FAKT 1 orders and the successful ones their FAKT 2 (БАЗА
+    left out); «Сумма общий успешка» is every Collagen team's FAKT 2, БАЗА
+    included. «Кол подписчиков» (2003) stays unfilled: Meta's ads API reports
+    no follows. Plans are shared with the P&L where the row is the same figure.
+  */
+  {
+    const g = brandGrid('Collagen')
+    const m = meta.Collagen
+    const k = 'fn:collagen'
+    const spendUzs = days.map((_, i) => (rates[i] === null ? 0 : m.spend[i]! * rates[i]!))
+    const roi = ratio(
+      clock,
+      // No typed plan: the grid refuses a percent plan past 1 000 %, and Collagen's ROI runs about there.
+      { key: `${k}:roi`, label: 'ROI', unit: 'percent', hint: 'Taʼrif: (Сумма первичка успешка − бюджет × Markaziy bank kursi) ÷ (бюджет × kurs).', sheet: sh(2016, 'ROI') },
+      days.map((_, i) => g.primaryFakt2[i]! - spendUzs[i]!),
+      spendUzs,
+      100,
+    )
+    blocks.push({
+      id: 'funnel:collagen',
+      kind: 'marketing',
+      title: 'Маркетинг COLLAGEN',
+      subtitle: 'Meta Ads → Регистрация → ФАКТ, faqat Collagen',
+      team: null,
+      sheet: null,
+      rows: [
+        additive(clock, { key: `${k}:impressions`, label: 'Колич просмотр', unit: 'count', ...planned('Collagen', 'funnel_impressions'), hint: 'Meta Ads: Collagen akkauntlari koʻrsatilishi (impressions), ishga olish kampaniyalarisiz.', sheet: sh(2001, 'Колич просмотр') }, m.impressions),
+        additive(clock, { key: `${k}:clicks`, label: 'Колич клик', unit: 'count', ...planned('Collagen', 'funnel_clicks'), hint: 'Meta Ads: Collagen akkauntlaridagi kliklar.', sheet: sh(2002, 'Колич клик') }, m.clicks),
+        additive(clock, { key: `${k}:leads`, label: 'Колич лидов', unit: 'count', ...planned('Collagen', 'brand_leads'), hint: 'Регистрация lidlari, Collagen manba yoki CRM-forma boʻyicha.', sheet: sh(2004, 'Колич лидов') }, g.leads),
+        additive(clock, { key: `${k}:qualified`, label: 'Колич квал лидов', unit: 'count', ...planned('Collagen', 'brand_qualified'), hint: 'Shu lidlardan «Сделка успешна» (kval).', sheet: sh(2005, 'Колич квал лидов') }, g.qualified),
+        additive(clock, { key: `${k}:orders1`, label: 'Колич новых транзак', unit: 'count', ...planned('Collagen', 'funnel_orders1'), hint: 'Collagen birlamchi jamoalarining FAKT 1 buyurtmalari (БАЗА jamoasisiz).', sheet: sh(2006, 'Колич новых транзак') }, g.primaryOrders1),
+        additive(clock, { key: `${k}:orders2`, label: 'Колич новых тран усп', unit: 'count', ...planned('Collagen', 'brand_orders2'), hint: 'Oʻsha jamoalarning FAKT 2 (yetkazilgan) buyurtmalari.', sheet: sh(2007, 'Колич новых тран усп') }, g.primaryOrders2),
+        ratio(clock, { key: `${k}:ctr`, label: 'CTR %', unit: 'percent', ...planned('Collagen', 'funnel_ctr'), hint: 'Колич клик ÷ Колич просмотр. Meta «clicks» — barcha kliklar (CTR all), faqat havola emas.', sheet: sh(2008, 'CTR %') }, m.clicks, m.impressions, 100),
+        ratio(clock, { key: `${k}:lead_per_click`, label: 'Лид / клик %', unit: 'percent', ...planned('Collagen', 'funnel_lead_per_click'), hint: 'Колич лидов ÷ Колич клик. Lidlar — barcha Collagen Регистрация lidlari (organik va DM ham), kliklar — faqat Meta.', sheet: sh(2009, 'Лид / клик %') }, g.leads, m.clicks, 100),
+        ratio(clock, { key: `${k}:qualified_pct`, label: 'Квал лид %', unit: 'percent', ...planned('Collagen', 'brand_qualified_pct'), hint: 'Колич квал лидов ÷ Колич лидов.', sheet: sh(2010, 'Квал лид %') }, g.qualified, g.leads, 100),
+        ratio(clock, { key: `${k}:conv_qualified`, label: 'Конверсия от квал %', unit: 'percent', ...planned('Collagen', 'funnel_conv_qualified'), hint: 'Колич новых транзак ÷ Колич квал лидов.', sheet: sh(2011, 'Конверсия от квал %') }, g.primaryOrders1, g.qualified, 100),
+        ratio(clock, { key: `${k}:conv_total`, label: 'Конверсия общ %', unit: 'percent', ...planned('Collagen', 'funnel_conv_total'), hint: 'Колич новых тран усп ÷ Колич лидов.', sheet: sh(2012, 'Конверсия общ %') }, g.primaryOrders2, g.leads, 100),
+        additive(clock, { key: `${k}:spend`, label: 'Бюджет, $', unit: 'usd', better: 'down', ...planned('', 'budget_collagen'), hint: 'Meta Ads: Collagen akkauntlarining sarfi, ishga olish kampaniyalarisiz — «Бюджет Collagen» bilan bir xil.', sheet: sh(2013, 'Бюджет') }, m.spend),
+        additive(clock, { key: `${k}:primary_fakt2`, label: 'Сумма первичка успешка', unit: 'uzs', ...planned('Collagen', 'brand_primary_fakt2'), hint: 'Collagen birlamchi jamoalarining FAKT 2 summasi (БАЗА siz) — «Первичка усп» bilan bir xil.', sheet: sh(2014, 'Сумма первичка успешка') }, g.primaryFakt2),
+        ratio(clock, { key: `${k}:cheque2`, label: 'Средний чек', unit: 'uzs', ...planned('Collagen', 'brand_cheque2'), hint: 'Сумма первичка успешка ÷ Колич новых тран усп.', sheet: sh(2015, 'Средний чек') }, g.primaryFakt2, g.primaryOrders2),
+        rateKnown ? roi : { ...dashed(roi), hint: 'Markaziy bank kursi olinmadi.' },
+        additive(clock, { key: `${k}:fakt2`, label: 'Сумма общий успешка', unit: 'uzs', ...planned('Collagen', 'funnel_fakt2'), hint: 'Collagen jamoalarining butun FAKT 2 summasi — birlamchi + БАЗА.', sheet: sh(2017, 'Сумма общий успешка') }, g.fakt2),
       ],
     })
   }

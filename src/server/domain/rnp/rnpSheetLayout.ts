@@ -25,6 +25,11 @@
  * base of, and reads «Квал лид сони» — «Дозвон сони» in the БАЗА blocks,
  * whose base is connected calls, not leads.
  *
+ * 2026-10-03: the six follower rows under «Маркетинг COLLAGEN» (5–10, which
+ * no system holds) are the client's funnel template instead (ids 2001–2017,
+ * no sheet row): views → clicks → followers → leads → kval → transactions,
+ * its rates, budget, money and ROI. «Кол подписчиков» (2003) stays unfilled.
+ *
  * 2026-10-02: row 45 (the company's «Регистрация лид нархи», the sheet's
  * `=G42/G47`) sits under the totals 42–44 it is computed from, as on the
  * sheet — left after «Цена лида Zextra» it read as Zextra's own. Row 346's
@@ -73,12 +78,23 @@ export type RnpLayoutRow = readonly [
 
 export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [4, 'Маркетинг COLLAGEN', 'Хаёт', 'title', true, 'section', 'plain'],
-  [5, 'Кол подпис sinolife.otziv', null, 'value', false, 'plain', 'plain'],
-  [6, 'Кол подпис sinolife.uz', null, 'value', false, 'plain', 'plain'],
-  [7, 'Кол подпис collagen.sinolife', null, 'value', false, 'plain', 'plain'],
-  [8, 'Кол пост телеграм', null, 'value', false, 'plain', 'plain'],
-  [9, 'Кол подпис tg', null, 'value', false, 'plain', 'plain'],
-  [10, 'Кол сторисов общий', null, 'value', false, 'plain', 'plain'],
+  [2001, 'Колич просмотр', null, 'value', false, 'plain', 'plain'],
+  [2002, 'Колич клик', null, 'value', false, 'plain', 'plain'],
+  [2003, 'Кол подписчиков', null, 'value', false, 'plain', 'plain'],
+  [2004, 'Колич лидов', null, 'value', false, 'plain', 'plain'],
+  [2005, 'Колич квал лидов', null, 'value', false, 'plain', 'plain'],
+  [2006, 'Колич новых транзак', null, 'value', false, 'plain', 'plain'],
+  [2007, 'Колич новых тран усп', null, 'value', false, 'plain', 'plain'],
+  [2008, 'CTR %', null, 'value', false, 'plain', 'plain'],
+  [2009, 'Лид / клик %', null, 'value', false, 'plain', 'plain'],
+  [2010, 'Квал лид %', null, 'value', false, 'plain', 'plain'],
+  [2011, 'Конверсия от квал %', null, 'value', false, 'plain', 'plain'],
+  [2012, 'Конверсия общ %', null, 'value', false, 'plain', 'plain'],
+  [2013, 'Бюджет', null, 'value', false, 'plain', 'money'],
+  [2014, 'Сумма первичка успешка', null, 'value', false, 'plain', 'fakt'],
+  [2015, 'Средний чек', null, 'value', false, 'plain', 'plain'],
+  [2016, 'ROI', null, 'value', false, 'plain', 'plain'],
+  [2017, 'Сумма общий успешка', null, 'value', false, 'plain', 'fakt'],
   [11, 'САС (мижоз нарҳи), $', null, 'value', false, 'plain', 'plain'],
   [12, 'ROMI %', null, 'value', false, 'plain', 'plain'],
   [42, 'Бюджет', null, 'value', true, 'plain', 'money'],

@@ -70,7 +70,7 @@ interface MonthRows {
   registrarKval: RnpRegistrarKvalRow[]
   calls: RnpCallDayRow[]
   warehouse: RnpWarehouseDayRow[]
-  meta: { day: string; product: TargetProduct; spendMicroUsd: bigint; leads: number }[]
+  meta: { day: string; product: TargetProduct; spendMicroUsd: bigint; impressions: number; clicks: number; leads: number }[]
   teams: RnpTeam[]
 }
 
@@ -315,7 +315,7 @@ export class RnpService {
     for (const c of campaigns) {
       const product = adBudgetProduct(c)
       if (product === null) continue
-      meta.push({ day: c.date, product, spendMicroUsd: c.spendMicroUsd, leads: c.leads })
+      meta.push({ day: c.date, product, spendMicroUsd: c.spendMicroUsd, impressions: c.impressions, clicks: c.clicks, leads: c.leads })
     }
     return { fakt, leads, registration, registrarKval, calls, warehouse, meta, teams }
   }

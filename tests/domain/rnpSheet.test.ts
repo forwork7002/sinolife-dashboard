@@ -72,8 +72,8 @@ function input(over: Partial<RnpSheetInput> = {}): RnpSheetInput {
       { day: '2026-09-22', entered: 0, notPacked: 1 },
     ],
     meta: [
-      { day: '2026-09-21', product: 'Collagen', spendMicroUsd: 100_000_000n, leads: 50 },
-      { day: '2026-09-21', product: 'Zextra', spendMicroUsd: 40_000_000n, leads: 10 },
+      { day: '2026-09-21', product: 'Collagen', spendMicroUsd: 100_000_000n, impressions: 20_000, clicks: 400, leads: 50 },
+      { day: '2026-09-21', product: 'Zextra', spendMicroUsd: 40_000_000n, impressions: 9_000, clicks: 90, leads: 10 },
     ],
     plans: {
       rows: [
@@ -655,7 +655,8 @@ describe('buildRnpSheet — the page is the client\'s sheet, row by row', () => 
 
   it('leaves a row Bitrix24 cannot supply in place, empty', () => {
     const x = buildRnpSheet(input())
-    expect(lineAt(x, 5)).toMatchObject({ kind: 'value', label: 'Кол подпис sinolife.otziv', key: null })
+    expect(lineAt(x, 2003)).toMatchObject({ kind: 'value', label: 'Кол подписчиков', key: null })
+    expect(lineAt(x, 5)).toBeUndefined() // the follower rows — the funnel took their place
     expect(lineAt(x, 337)).toBeUndefined() // HR — removed by the client
     expect(lineAt(x, 70)).toBeUndefined() // the Zextra registration — removed
     expect(lineAt(x, 210)).toBeUndefined() // Саида — removed
@@ -743,6 +744,75 @@ describe('buildRnpSheet — «Баҳо», the day\'s grade from its FAKT 1 (2026
     expect(at('team:Charos:grade')).toBe(at('team:Charos:fakt1') + 1)
     expect(x.lines[at('team:Sevinch:grade')]).toMatchObject({ label: 'Баҳо', row: 2089, team: 'Sevinch' })
     expect(at('team:Bosh:grade')).toBe(at('team:Bosh:fakt1') + 1)
+  })
+})
+
+describe('buildRnpSheet — «Маркетинг COLLAGEN» funnel (the client, 2026-10-03)', () => {
+  const dto = () =>
+    buildRnpSheet(
+      input({
+        fakt: [
+          fakt('2026-09-21', 'Sevinch', { fakt1Orders: 4, fakt1Minor: som(6_000_000), fakt2Orders: 2, fakt2Minor: som(4_000_000) }),
+          // БАЗА: in «Сумма общий успешка» only, never a new transaction.
+          fakt('2026-09-21', 'Baza', { fakt1Orders: 1, fakt1Minor: som(1_000_000), fakt2Orders: 1, fakt2Minor: som(1_000_000) }),
+          // Zextra's team: not Collagen's funnel.
+          fakt('2026-09-21', 'Asliddin', { fakt1Orders: 3, fakt1Minor: som(3_000_000), fakt2Orders: 3, fakt2Minor: som(3_000_000) }),
+        ],
+        registration: [
+          { day: '2026-09-21', brand: 'Collagen', leads: 20, duplicates: 0, qualified: 8, aiConversations: 0 },
+          { day: '2026-09-21', brand: 'Zextra', leads: 5, duplicates: 0, qualified: 5, aiConversations: 0 },
+        ],
+      }),
+    )
+  const f = (d: ReturnType<typeof buildRnpSheet>, metric: string) => row(d, 'funnel:collagen', `fn:collagen:${metric}`)
+
+  it('runs from Meta views to Collagen money, day and month alike', () => {
+    const d = dto()
+    expect(on(f(d, 'impressions'), '2026-09-21')).toBe(20_000)
+    expect(on(f(d, 'clicks'), '2026-09-21')).toBe(400)
+    expect(on(f(d, 'leads'), '2026-09-21')).toBe(20)
+    expect(on(f(d, 'qualified'), '2026-09-21')).toBe(8)
+    expect(on(f(d, 'orders1'), '2026-09-21')).toBe(4)
+    expect(on(f(d, 'orders2'), '2026-09-21')).toBe(2)
+    expect(f(d, 'ctr').fact).toBe(2) // 400 ÷ 20 000
+    expect(f(d, 'lead_per_click').fact).toBe(5) // 20 ÷ 400
+    expect(f(d, 'qualified_pct').fact).toBe(40) // 8 ÷ 20
+    expect(f(d, 'conv_qualified').fact).toBe(50) // 4 ÷ 8
+    expect(f(d, 'conv_total').fact).toBe(10) // 2 ÷ 20
+    expect(f(d, 'spend').fact).toBe(100)
+    expect(f(d, 'primary_fakt2').fact).toBe(4_000_000)
+    expect(f(d, 'cheque2').fact).toBe(2_000_000)
+    expect(f(d, 'fakt2').fact).toBe(5_000_000)
+    // (4 000 000 − 100 $ × 12 200) ÷ (100 $ × 12 200)
+    expect(f(d, 'roi').fact).toBeCloseTo(((4_000_000 - 1_220_000) / 1_220_000) * 100, 6)
+  })
+
+  it('fills the follower rows\' place, «Кол подписчиков» left unfilled', () => {
+    const d = dto()
+    const at = (r: number) => d.lines.find((l) => l.row === r)
+    expect(at(2001)).toMatchObject({ kind: 'value', label: 'Колич просмотр', key: 'fn:collagen:impressions' })
+    expect(at(2003)).toMatchObject({ kind: 'value', key: null })
+    expect(at(2016)).toMatchObject({ kind: 'value', label: 'ROI', key: 'fn:collagen:roi' })
+    const i = d.lines.findIndex((l) => l.row === 2001)
+    expect(d.lines[i - 1]).toMatchObject({ kind: 'title', row: 4 })
+    expect(d.lines.findIndex((l) => l.row === 2017)).toBeLessThan(d.lines.findIndex((l) => l.row === 11))
+  })
+
+  it('shares a plan with the P&L where the row is the same figure', () => {
+    const d = dto()
+    expect(f(d, 'leads').planInput).toEqual(row(d, 'project:collagen', 'pj:collagen:leads').planInput)
+    expect(f(d, 'spend').planInput).toEqual({ team: '', metric: 'budget_collagen' })
+  })
+
+  it('reads a day with spend and no money as −100 % ROI', () => {
+    const d = buildRnpSheet(input({ fakt: [] }))
+    expect(on(f(d, 'roi'), '2026-09-21')).toBe(-100)
+    expect(f(d, 'roi').planInput).toBeNull()
+  })
+
+  it('prints no ROI without the bank\'s rate', () => {
+    const d = buildRnpSheet(input({ usdRates: days.map(() => null) }))
+    expect(f(d, 'roi').fact).toBeNull()
   })
 })
 
@@ -1007,7 +1077,7 @@ describe('buildRnpSheet — the audit fixes of 2026-10-02', () => {
 
   it("converts the month's first days, before the bank's first answer, at that first answer — never at 0", () => {
     const rates = days.map((d) => (d < '2026-09-03' ? null : d <= '2026-09-28' ? 11_900 : null))
-    const x = buildRnpSheet(input({ usdRates: rates, meta: [{ day: '2026-09-01', product: 'Collagen', spendMicroUsd: 100_000_000n, leads: 1 }] }))
+    const x = buildRnpSheet(input({ usdRates: rates, meta: [{ day: '2026-09-01', product: 'Collagen', spendMicroUsd: 100_000_000n, impressions: 0, clicks: 0, leads: 1 }] }))
     expect(on(row(x, 'project:collagen', 'pj:collagen:spend_uzs'), '2026-09-01')).toBe(100 * 11_900)
     expect(row(x, 'project:collagen', 'pj:collagen:spend_uzs').fact).toBe(100 * 11_900)
   })

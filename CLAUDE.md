@@ -807,6 +807,19 @@ Per-screen traps worth knowing before you touch one:
     The client wrote Zextra's 4 as «45–60 M» after «25–40 M»; the gap is
     closed at 40 M. A team with no scale (Kompaniya, a new ROP) draws the line
     empty. No sheet row: layout id = the block's first row + `GRADE_ROW_OFFSET`.
+  · **THE FOLLOWER ROWS ARE A COLLAGEN FUNNEL (2026-10-03, the client's
+    template).** Rows 5–10 under «Маркетинг COLLAGEN · Хаёт» are gone; ids
+    2001–2017 (block `funnel:collagen`, keys `fn:collagen:*`) take their
+    place, day by day, Collagen only, each definition approved by the user:
+    views / clicks = Meta impressions / clicks (all clicks) of the Collagen
+    accounts, hiring left out (`adBudgetProduct`); leads / kval = Регистрация
+    by brand (as «Коллаген проект»); new transactions = the Collagen PRIMARY
+    teams' FAKT 1 orders, successful = their FAKT 2 (БАЗА out); «Сумма общий
+    успешка» = every Collagen team's FAKT 2, БАЗА in; ROI = (primary FAKT 2 −
+    budget × CBU rate) ÷ (budget × rate), no typed plan (the grid caps a
+    percent plan at 1 000 %). «Кол подписчиков» (2003) stays unfilled: Meta's
+    ads API reports no follows. Plans shared with the P&L where the figure is
+    the same (`brand_*`, `budget_collagen`); the rest are `funnel_*` keys.
 - **Registratsiya** (FOLDED INTO «Lidlar» on 2026-10-02 — «registratsiya boʻlimi toʻliqligicha oʻchiramiz»: section id, `/registration` page and nav entry deleted; its four stat tiles were dropped; the split card and the 7-day grid live on «Lid manbalari», «ROP otchet» on its own «Lidlar» tab, all on one shared day; the endpoints kept their `/registration/*` paths and now gate on section `leads`) — added 2026-10-01 from the client's Excel («Jami /
   yangi / dubl», ROP → % → лид сони). ONE company-wide split, set EVERY day
   (`registration_split`, basis points, a day's rows sum to 10 000, saving

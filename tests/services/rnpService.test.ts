@@ -281,3 +281,43 @@ describe('monthDays', () => {
     expect(monthDays('2026-12').at(-1)).toBe('2026-12-31')
   })
 })
+
+describe('RnpService — the Collagen funnel reads Meta views and clicks (2026-10-03)', () => {
+  it('passes impressions and clicks through, hiring campaigns left out', async () => {
+    const none = async () => []
+    const repository = {
+      leadDays: none,
+      registrationDays: none,
+      registrarKvalDays: none,
+      callDays: none,
+      warehouseDays: none,
+      teams: none,
+      plans: async () => ({ rows: [], fakt: [] }),
+      manualCosts: none,
+      manualHeadcount: none,
+    }
+    const campaign = (o: { campaignName: string; impressions: number; clicks: number }) => ({
+      date: '2025-03-10',
+      accountId: '1383613729264521', // Collagen marine Eldor
+      accountName: 'Collagen marine Eldor',
+      campaignId: o.campaignName,
+      objective: 'OUTCOME_ENGAGEMENT',
+      spendMicroUsd: 1_000_000n,
+      leads: 0,
+      conversations: 0,
+      ...o,
+    })
+    const reklama = {
+      campaignDays: async () => [
+        campaign({ campaignName: 'DM', impressions: 5_000, clicks: 70 }),
+        campaign({ campaignName: 'EX - Sinolife (vakansiya) - DM', impressions: 900, clicks: 9 }),
+      ],
+    }
+    const usd = { forDays: async (days: readonly string[]) => days.map(() => 12_000) }
+    const service = new RnpService({ rnpTeamDays: none } as never, repository as never, reklama as never, usd)
+    const sheet = await service.overview({ month: '2025-03', timeZone: TZ, now: new Date(Date.now()), canEditPlans: false })
+    const rows = sheet.blocks.find((b) => b.id === 'funnel:collagen')!.rows
+    expect(rows.find((r) => r.key === 'fn:collagen:impressions')!.fact).toBe(5_000)
+    expect(rows.find((r) => r.key === 'fn:collagen:clicks')!.fact).toBe(70)
+  })
+})
