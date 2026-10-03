@@ -1,5 +1,7 @@
 /**
- * «Oyliklar» — what each seller is owed for a payroll period.
+ * «Oyliklar» — what each seller is owed for a payroll period: a month, half a
+ * month, or (since 2026-10-03) a week. The three are one computation over a
+ * different window and a different table; see `domain/payroll/sellerPayroll`.
  *
  * ONE MEASUREMENT AND ONE RULE, kept apart. The measurement is FAKT 2 per
  * seller over the payroll window, read from the SAME query the sellers board
@@ -47,7 +49,12 @@ export interface PayrollSellerDto {
   /** FAKT 2 — delivered money, and the only basis this screen pays on. */
   readonly fakt2: MoneyDto
   readonly fakt2Orders: number
-  /** 8% of FAKT 2. */
+  /**
+   * The rate this row was paid at, in per cent: always 8 for a month or a
+   * half, 0 / 5 / 8 / 10 / 12 for a week, where the rate is the tier.
+   */
+  readonly percentRate: number
+  /** `percentRate` of FAKT 2. */
   readonly percent: MoneyDto
   /** The tier's fixed part. Zero below the first floor, never null. */
   readonly fixed: MoneyDto
@@ -59,18 +66,10 @@ export interface PayrollSellerDto {
   readonly nextFloor: MoneyDto | null
   /** How much more FAKT 2 the next tier needs. Null with `nextFloor`. */
   readonly toNext: MoneyDto | null
-  /** The dollar tier alone — 0, 50 or 100. */
-  readonly tierUsd: number
-  /** 25 for the leader of this period, 0 for everybody else. */
-  readonly firstPlaceUsd: number
-  readonly bonusUsd: number
 }
 
 export interface PayrollDto {
-  /** `YYYY-MM`, as asked for. */
-  readonly month: string
-  readonly half: PayrollHalfValue
-  /** Which of the client's two tables was applied. */
+  /** Which of the client's tables was applied. */
   readonly scheme: PayrollSchemeValue
   /**
    * Whether the period is still running.
@@ -89,14 +88,13 @@ export interface PayrollDto {
     readonly fixed: MoneyDto
     /** The payroll fund for the period — what the office pays out in soʻm. */
     readonly total: MoneyDto
-    readonly bonusUsd: number
   }
 }
 
 /**
  * Sixty seconds, the same as every other memo here and the sync worker's tick.
  *
- * Keyed on the whole question — month, half and currency. There is no scope in
+ * Keyed on the whole question — scheme, window and currency. There is no scope in
  * the key because there is no scope in the answer: the endpoint asks for
  * `analytics:read:all`, so a narrowed account is refused rather than served a
  * narrowed payroll. If this screen is ever opened to a ROP, the scope goes in
@@ -107,26 +105,47 @@ const payrollCache = ttlCache<PayrollDto>(60_000)
 export class PayrollService {
   constructor(private readonly insights: InsightsRepository) {}
 
+  /** The monthly payroll: the whole month, or one half of it. */
   async sellers(
     period: Period,
-    month: string,
     half: PayrollHalfValue,
     currency: string,
     now: Date,
   ): Promise<PayrollDto> {
-    const key = [month, half, keyPart(currency)].join('|')
-    return payrollCache.get(key, () => this.build(period, month, half, currency, now))
+    return this.cached(half === 'full' ? 'month' : 'half', period, currency, now)
+  }
+
+  /** The weekly income, Monday to Sunday — «HAFTALIK DAROMAD». */
+  async weekly(period: Period, currency: string, now: Date): Promise<PayrollDto> {
+    return this.cached('week', period, currency, now)
+  }
+
+  private cached(
+    scheme: PayrollSchemeValue,
+    period: Period,
+    currency: string,
+    now: Date,
+  ): Promise<PayrollDto> {
+    /*
+      The window's start alone does not name the period — a month, its first
+      half and the week that opens on the 1st can share it — so the scheme and
+      the end are in the key as well.
+    */
+    const key = [
+      scheme,
+      period.start.toISOString(),
+      period.end.toISOString(),
+      keyPart(currency),
+    ].join('|')
+    return payrollCache.get(key, () => this.build(scheme, period, currency, now))
   }
 
   private async build(
+    scheme: PayrollSchemeValue,
     period: Period,
-    month: string,
-    half: PayrollHalfValue,
     currency: string,
     now: Date,
   ): Promise<PayrollDto> {
-    const scheme: PayrollSchemeValue = half === 'full' ? 'month' : 'half'
-
     /*
       COMPANY-WIDE, EXPLICITLY. `restrictToEmployeeIds: null` is the value the
       repository reads as "everybody", and it is written here rather than left
@@ -177,7 +196,7 @@ export class PayrollService {
 
     const sellers = ordered.map<PayrollSellerDto>((row, index) => {
       const rank = rankOf[index]!
-      const pay = sellerPayroll({ basisMinor: row.deliveredMinor, scheme, rank })
+      const pay = sellerPayroll({ basisMinor: row.deliveredMinor, scheme })
 
       return {
         rank,
@@ -186,15 +205,13 @@ export class PayrollService {
         rop: row.rop,
         fakt2: cash(row.deliveredMinor),
         fakt2Orders: row.deliveredOrders,
+        percentRate: Number(pay.percentBp) / 100,
         percent: cash(pay.percentMinor),
         fixed: cash(pay.fixedMinor),
         total: cash(pay.totalMinor),
         tierFloor: pay.tierFloorMinor === null ? null : cash(pay.tierFloorMinor),
         nextFloor: pay.nextFloorMinor === null ? null : cash(pay.nextFloorMinor),
         toNext: pay.toNextMinor === null ? null : cash(pay.toNextMinor),
-        tierUsd: pay.tierUsd,
-        firstPlaceUsd: pay.firstPlaceUsd,
-        bonusUsd: pay.bonusUsd,
       }
     })
 
@@ -209,8 +226,6 @@ export class PayrollService {
       sellers.reduce((acc, row) => acc + BigInt(pick(row).amountMinor), 0n)
 
     return {
-      month,
-      half,
       scheme,
       open: period.end.getTime() > now.getTime(),
       sellers,
@@ -220,7 +235,6 @@ export class PayrollService {
         percent: cash(sum((row) => row.percent)),
         fixed: cash(sum((row) => row.fixed)),
         total: cash(sum((row) => row.total)),
-        bonusUsd: sellers.reduce((acc, row) => acc + row.bonusUsd, 0),
       },
     }
   }

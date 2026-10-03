@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  FIRST_PLACE_USD,
   HALF_TIERS,
   MONTH_TIERS,
   PERCENT_BP,
+  WEEK_TIERS,
   sellerPayroll,
 } from '@/server/domain/payroll/sellerPayroll'
-import { payrollPeriod } from '@/server/domain/period/period'
+import { payrollPeriod, payrollWeekPeriod } from '@/server/domain/period/period'
+import { payrollWeekQuerySchema } from '@/server/http/queryParams'
 
 const som = (major: number) => BigInt(major) * 100n
 const mln = (major: number) => som(major * 1_000_000)
@@ -23,10 +24,10 @@ const TZ = 'Asia/Tashkent'
  * of the suite but fails one of these has changed what somebody is paid.
  */
 describe('the pay scheme, against the client’s own table', () => {
-  const month = (major: number, rank = 9) =>
-    sellerPayroll({ basisMinor: mln(major), scheme: 'month', rank })
-  const half = (major: number, rank = 9) =>
-    sellerPayroll({ basisMinor: mln(major), scheme: 'half', rank })
+  const month = (major: number) =>
+    sellerPayroll({ basisMinor: mln(major), scheme: 'month' })
+  const half = (major: number) =>
+    sellerPayroll({ basisMinor: mln(major), scheme: 'half' })
 
   it('pays 8% and no fixed part at 30 mln for a month', () => {
     const pay = month(30)
@@ -81,34 +82,34 @@ describe('the pay scheme, against the client’s own table', () => {
     expect(month(12).totalMinor).toBe(som(960_000))
     expect(month(12).fixedMinor).toBe(0n)
     expect(half(8).totalMinor).toBe(som(640_000))
-    expect(sellerPayroll({ basisMinor: 0n, scheme: 'month', rank: 40 }).totalMinor).toBe(0n)
+    expect(sellerPayroll({ basisMinor: 0n, scheme: 'month' }).totalMinor).toBe(0n)
   })
 })
 
 describe('the tier boundaries', () => {
   it('pays the HIGHEST cleared tier, never the first match', () => {
     // Descending order is the mechanism; ascending would pay 500 000 here.
-    expect(sellerPayroll({ basisMinor: mln(80), scheme: 'month', rank: 3 }).fixedMinor).toBe(
+    expect(sellerPayroll({ basisMinor: mln(80), scheme: 'month' }).fixedMinor).toBe(
       som(1_000_000),
     )
   })
 
   it('is inclusive on the floor and exclusive just under it', () => {
-    expect(sellerPayroll({ basisMinor: mln(45), scheme: 'month', rank: 3 }).fixedMinor).toBe(
+    expect(sellerPayroll({ basisMinor: mln(45), scheme: 'month' }).fixedMinor).toBe(
       som(500_000),
     )
     expect(
-      sellerPayroll({ basisMinor: mln(45) - 100n, scheme: 'month', rank: 3 }).fixedMinor,
+      sellerPayroll({ basisMinor: mln(45) - 100n, scheme: 'month' }).fixedMinor,
     ).toBe(0n)
   })
 
   it('names the NEXT rung up, and the lowest one at that', () => {
-    const under = sellerPayroll({ basisMinor: mln(38), scheme: 'month', rank: 12 })
+    const under = sellerPayroll({ basisMinor: mln(38), scheme: 'month' })
     expect(under.nextFloorMinor).toBe(mln(45))
     expect(under.toNextMinor).toBe(mln(7))
     expect(under.tierFloorMinor).toBeNull()
 
-    const top = sellerPayroll({ basisMinor: mln(90), scheme: 'month', rank: 1 })
+    const top = sellerPayroll({ basisMinor: mln(90), scheme: 'month' })
     expect(top.nextFloorMinor).toBeNull()
     expect(top.toNextMinor).toBeNull()
     expect(top.tierFloorMinor).toBe(mln(70))
@@ -116,35 +117,91 @@ describe('the tier boundaries', () => {
 
   it('keeps the two tables apart', () => {
     // 30 mln is nothing in a month and the middle rung in a fortnight.
-    expect(sellerPayroll({ basisMinor: mln(30), scheme: 'month', rank: 5 }).fixedMinor).toBe(0n)
-    expect(sellerPayroll({ basisMinor: mln(30), scheme: 'half', rank: 5 }).fixedMinor).toBe(
+    expect(sellerPayroll({ basisMinor: mln(30), scheme: 'month' }).fixedMinor).toBe(0n)
+    expect(sellerPayroll({ basisMinor: mln(30), scheme: 'half' }).fixedMinor).toBe(
       som(750_000),
     )
     expect(MONTH_TIERS).toHaveLength(HALF_TIERS.length)
   })
 })
 
-describe('the dollar incentives', () => {
-  it('pays 50$ from 40 mln and 100$ from 50 mln', () => {
-    expect(sellerPayroll({ basisMinor: mln(39), scheme: 'month', rank: 4 }).tierUsd).toBe(0)
-    expect(sellerPayroll({ basisMinor: mln(40), scheme: 'month', rank: 4 }).tierUsd).toBe(50)
-    expect(sellerPayroll({ basisMinor: mln(49), scheme: 'month', rank: 4 }).tierUsd).toBe(50)
-    expect(sellerPayroll({ basisMinor: mln(50), scheme: 'month', rank: 4 }).tierUsd).toBe(100)
-    expect(sellerPayroll({ basisMinor: mln(120), scheme: 'month', rank: 4 }).tierUsd).toBe(100)
+/**
+ * «HAFTALIK DAROMAD FORMULASI», 2026-10-03 — every worked example the
+ * document prints, typed out. The rate is the tier and applies to the WHOLE
+ * figure; under 15 mln nothing is paid.
+ */
+describe('the weekly income, against the client’s own table', () => {
+  const week = (soms: number) => sellerPayroll({ basisMinor: som(soms), scheme: 'week' })
+
+  it('pays nothing under 15 mln', () => {
+    expect(week(14_999_999).totalMinor).toBe(0n)
+    expect(week(14_999_999).percentBp).toBe(0n)
+    expect(week(0).totalMinor).toBe(0n)
   })
 
-  it('adds 25$ for first place, on top of whatever the tier paid', () => {
-    expect(sellerPayroll({ basisMinor: mln(55), scheme: 'month', rank: 1 }).bonusUsd).toBe(125)
-    expect(sellerPayroll({ basisMinor: mln(45), scheme: 'month', rank: 1 }).bonusUsd).toBe(75)
-    expect(sellerPayroll({ basisMinor: mln(10), scheme: 'month', rank: 1 }).bonusUsd).toBe(
-      FIRST_PLACE_USD,
-    )
-    expect(sellerPayroll({ basisMinor: mln(55), scheme: 'month', rank: 2 }).bonusUsd).toBe(100)
+  it('24 900 000 × 5% = 1 245 000', () => {
+    const pay = week(24_900_000)
+    expect(pay.percentBp).toBe(500n)
+    expect(pay.fixedMinor).toBe(0n)
+    expect(pay.totalMinor).toBe(som(1_245_000))
+    expect(week(15_000_000).totalMinor).toBe(som(750_000))
   })
 
-  it('leaves the soʻm alone — the bonus is a second currency, never converted', () => {
-    const leader = sellerPayroll({ basisMinor: mln(55), scheme: 'month', rank: 1 })
-    expect(leader.totalMinor).toBe(leader.percentMinor + leader.fixedMinor)
+  it('34 900 000 × 8% + 300 000 = 3 092 000', () => {
+    const pay = week(34_900_000)
+    expect(pay.percentMinor).toBe(som(2_792_000))
+    expect(pay.fixedMinor).toBe(som(300_000))
+    expect(pay.totalMinor).toBe(som(3_092_000))
+  })
+
+  it('49 900 000 × 10% + 600 000 = 5 590 000', () => {
+    const pay = week(49_900_000)
+    expect(pay.percentMinor).toBe(som(4_990_000))
+    expect(pay.totalMinor).toBe(som(5_590_000))
+  })
+
+  it('50 000 000 × 12% + 1 200 000 = 7 200 000', () => {
+    const pay = week(50_000_000)
+    expect(pay.percentBp).toBe(1_200n)
+    expect(pay.totalMinor).toBe(som(7_200_000))
+    expect(pay.nextFloorMinor).toBeNull()
+  })
+
+  it('applies the rate to the whole figure, not the part above the floor', () => {
+    // 25 mln: 8% of all 25 mln (2 000 000) + 300 000.
+    expect(week(25_000_000).totalMinor).toBe(som(2_300_000))
+  })
+
+  it('changes tier exactly on each floor, never a tiyin early', () => {
+    expect(week(25_000_000).totalMinor).toBe(som(2_300_000))
+    const below25 = sellerPayroll({ basisMinor: som(25_000_000) - 1n, scheme: 'week' })
+    expect(below25.percentBp).toBe(500n)
+    expect(below25.fixedMinor).toBe(0n)
+
+    expect(week(35_000_000).totalMinor).toBe(som(4_100_000))
+    const below35 = sellerPayroll({ basisMinor: som(35_000_000) - 1n, scheme: 'week' })
+    expect(below35.percentBp).toBe(800n)
+    expect(below35.fixedMinor).toBe(som(300_000))
+
+    const below50 = sellerPayroll({ basisMinor: som(50_000_000) - 1n, scheme: 'week' })
+    expect(below50.percentBp).toBe(1_000n)
+    expect(below50.fixedMinor).toBe(som(600_000))
+  })
+
+  it('keeps every table strictly descending, floor 0 last', () => {
+    for (const tiers of [WEEK_TIERS, MONTH_TIERS, HALF_TIERS]) {
+      for (let i = 1; i < tiers.length; i++) {
+        expect(tiers[i]!.floorMinor < tiers[i - 1]!.floorMinor).toBe(true)
+      }
+      expect(tiers[tiers.length - 1]!.floorMinor).toBe(0n)
+    }
+  })
+
+  it('points a seller under 15 mln at 15 mln', () => {
+    const pay = week(9_000_000)
+    expect(pay.tierFloorMinor).toBeNull()
+    expect(pay.nextFloorMinor).toBe(mln(15))
+    expect(pay.toNextMinor).toBe(mln(6))
   })
 })
 
@@ -152,10 +209,10 @@ describe('the eight per cent itself', () => {
   it('is integer arithmetic, rounded half up', () => {
     expect(PERCENT_BP).toBe(800n)
     // 12 345 678 soʻm -> 987 654.24 -> 987 654 soʻm and 24 tiyin, exactly.
-    expect(sellerPayroll({ basisMinor: som(12_345_678), scheme: 'month', rank: 7 }).percentMinor)
+    expect(sellerPayroll({ basisMinor: som(12_345_678), scheme: 'month' }).percentMinor)
       .toBe(98_765_424n)
     // A half-tiyin rounds away from zero, like every other money helper here.
-    expect(sellerPayroll({ basisMinor: 1_234n, scheme: 'month', rank: 7 }).percentMinor).toBe(99n)
+    expect(sellerPayroll({ basisMinor: 1_234n, scheme: 'month' }).percentMinor).toBe(99n)
   })
 })
 
@@ -194,5 +251,42 @@ describe('the payroll window', () => {
   it('refuses a month it cannot read', () => {
     expect(() => payrollPeriod('2026-13', 'full', TZ)).toThrow()
     expect(() => payrollPeriod('sentabr', 'full', TZ)).toThrow()
+  })
+})
+
+describe('the weekly window', () => {
+  const iso = (date: Date) => date.toISOString()
+
+  it('runs Monday 00:00 to the next Monday 00:00, Tashkent', () => {
+    const week = payrollWeekPeriod('2026-09-28', TZ)
+    expect(iso(week.start)).toBe('2026-09-27T19:00:00.000Z')
+    expect(iso(week.end)).toBe('2026-10-04T19:00:00.000Z')
+  })
+
+  it('tiles: one week ends where the next begins, across a month', () => {
+    const a = payrollWeekPeriod('2026-09-28', TZ)
+    const b = payrollWeekPeriod('2026-10-05', TZ)
+    expect(iso(a.end)).toBe(iso(b.start))
+  })
+
+  it('keeps the Monday in a zone east of UTC+12', () => {
+    const week = payrollWeekPeriod('2026-09-28', 'Pacific/Kiritimati')
+    expect(iso(week.start)).toBe('2026-09-27T10:00:00.000Z')
+    expect(iso(week.end)).toBe('2026-10-04T10:00:00.000Z')
+  })
+
+  it('refuses a date that is not a Monday, or not a date', () => {
+    expect(() => payrollWeekPeriod('2026-09-30', TZ)).toThrow()
+    expect(() => payrollWeekPeriod('2026-02-30', TZ)).toThrow()
+    expect(() => payrollWeekPeriod('28-09-2026', TZ)).toThrow()
+  })
+
+  it('is refused at the query string as a 400, not a 500', () => {
+    expect(payrollWeekQuerySchema.safeParse({ week: '2026-09-28' }).success).toBe(true)
+    expect(payrollWeekQuerySchema.safeParse({ week: '2026-09-30' }).success).toBe(false)
+    expect(payrollWeekQuerySchema.safeParse({ week: '2026-02-30' }).success).toBe(false)
+    // Date.UTC would read year 0 as 1900, a Monday on 1 January.
+    expect(payrollWeekQuerySchema.safeParse({ week: '0000-01-01' }).success).toBe(false)
+    expect(payrollWeekQuerySchema.safeParse({}).success).toBe(false)
   })
 })

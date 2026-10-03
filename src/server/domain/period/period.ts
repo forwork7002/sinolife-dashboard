@@ -485,6 +485,46 @@ export function payrollPeriod(
 }
 
 /**
+ * A WEEKLY payroll window: Monday 00:00 to the next Monday 00:00, Tashkent.
+ *
+ * «HAFTALIK DAROMAD» (2026-10-03) is paid per calendar week, Monday to Sunday —
+ * the Uzbek convention and the one `resolvePeriod`'s «this_week» already uses.
+ * The week is named by its Monday, and a date that is not a Monday is refused
+ * rather than rounded: a request for «the week of Wednesday» would otherwise
+ * quietly mean two different weeks depending on who rounded which way.
+ *
+ * Not clipped to `now`, for the reason `payrollPeriod` gives.
+ *
+ * @param mondayIso `YYYY-MM-DD`, a Monday, read in `timeZone`.
+ */
+export function payrollWeekPeriod(mondayIso: string, timeZone: string): Period {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(mondayIso)
+  if (!match) throw new InvalidPeriodError(`${mondayIso} is not a YYYY-MM-DD date`)
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  // The zone's own midnight, built from the calendar parts — no UTC instant in
+  // between that a +12/+13 zone could carry over into the next day.
+  const start = startOfDay(new TZDate(year, month - 1, day, timeZone))
+  if (
+    start.getFullYear() !== year ||
+    start.getMonth() !== month - 1 ||
+    start.getDate() !== day
+  ) {
+    throw new InvalidPeriodError(`${mondayIso} is not a date`)
+  }
+  if (start.getDay() !== 1) throw new InvalidPeriodError(`${mondayIso} is not a Monday`)
+
+  return Object.freeze({
+    start: toInstant(start),
+    end: toInstant(addWeeks(start, 1)),
+    timeZone,
+    preset: 'custom' as const,
+  })
+}
+
+/**
  * The instant a period is measured "as of" — its last representable moment.
  *
  * Because periods are half-open, `end` itself belongs to the NEXT period. Using

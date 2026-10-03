@@ -721,10 +721,6 @@ export interface LogisticsStageDto {
  * HAND-MIRRORED from `PayrollSellerDto` in `payrollService`, like every other
  * DTO here: client code may not import from `@/server/*`, and nothing checks
  * the mirror — edit both sides.
- *
- * Money is soʻm; `bonusUsd` is DOLLARS and is deliberately not converted. This
- * application has no exchange rate and inventing one would turn a fixed 100$
- * incentive into a figure that moves with whatever rate was hardcoded.
  */
 export interface PayrollSellerDto {
   readonly rank: number
@@ -734,25 +730,22 @@ export interface PayrollSellerDto {
   /** FAKT 2 — delivered money, the only basis the pay is computed from. */
   readonly fakt2: MoneyDto
   readonly fakt2Orders: number
-  /** 8% of FAKT 2. */
+  /** The rate paid, in per cent: 8 for a month, 0/5/8/10/12 for a week. */
+  readonly percentRate: number
+  /** `percentRate` of FAKT 2. */
   readonly percent: MoneyDto
-  /** The tier's fixed part. Zero below the first floor, never null. */
+  /** The tier's fixed part (fiksa / haftalik oklad). Zero below the first paying floor. */
   readonly fixed: MoneyDto
   readonly total: MoneyDto
   readonly tierFloor: MoneyDto | null
   readonly nextFloor: MoneyDto | null
   readonly toNext: MoneyDto | null
-  readonly tierUsd: number
-  readonly firstPlaceUsd: number
-  readonly bonusUsd: number
 }
 
 export type PayrollHalf = 'full' | 'first' | 'second'
 
 export interface PayrollDto {
-  readonly month: string
-  readonly half: PayrollHalf
-  readonly scheme: 'month' | 'half'
+  readonly scheme: 'month' | 'half' | 'week'
   /** True while the period is still running — the totals are partial. */
   readonly open: boolean
   readonly sellers: readonly PayrollSellerDto[]
@@ -762,7 +755,6 @@ export interface PayrollDto {
     readonly percent: MoneyDto
     readonly fixed: MoneyDto
     readonly total: MoneyDto
-    readonly bonusUsd: number
   }
 }
 

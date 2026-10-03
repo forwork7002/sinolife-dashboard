@@ -26,12 +26,6 @@ export const GET = getHandler(ACCESS, payrollQuerySchema, async (ctx) => {
     out. `payrollPeriod` carries the reason at length.
   */
   const period = payrollPeriod(ctx.query.month, ctx.query.half, ctx.timeZone)
-  const data = await payrollService.sellers(
-    period,
-    ctx.query.month,
-    ctx.query.half,
-    ctx.currency,
-    ctx.now,
-  )
+  const data = await payrollService.sellers(period, ctx.query.half, ctx.currency, ctx.now)
   return { data, meta: { period: toPeriodDto(period) } }
 })

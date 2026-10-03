@@ -148,6 +148,36 @@ export const payrollQuerySchema = z.object({
 })
 
 /**
+ * «Haftalik daromad» — a payroll WEEK, named by its Monday (`YYYY-MM-DD`).
+ *
+ * The same reasoning as `payrollQuerySchema`: the browser names the week, the
+ * server builds the window in Tashkent (`payrollWeekPeriod`). No filters, no
+ * preset.
+ */
+export const payrollWeekQuerySchema = z.object({
+  week: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a Monday in YYYY-MM-DD format')
+    /*
+      Checked here as well as in `payrollWeekPeriod`, so a wrong date is a 400
+      naming the field rather than a 500. A calendar date's weekday does not
+      depend on the zone, so UTC is enough for the question.
+    */
+    .refine((value) => {
+      const [year, month, day] = value.split('-').map(Number)
+      // setUTCFullYear, not Date.UTC: the latter reads years 0–99 as 1900–1999.
+      const date = new Date(0)
+      date.setUTCFullYear(year!, month! - 1, day!)
+      return (
+        date.getUTCFullYear() === year &&
+        date.getUTCMonth() === month! - 1 &&
+        date.getUTCDate() === day &&
+        date.getUTCDay() === 1
+      )
+    }, 'Expected a date that is a Monday'),
+})
+
+/**
  * One department's roster, for the panel the org chart opens.
  *
  * `departmentId` is REQUIRED rather than optional-with-a-default. An optional
