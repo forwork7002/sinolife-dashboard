@@ -247,12 +247,10 @@ describe('RnpSheetTable — the sheet, row by row', () => {
     expect(order.at(-2)).toBe('rop')
   })
 
-  it('sets «Свод», «Коллаген проект» and «Зехтра проект» apart like the ROPs, not their rows', () => {
+  it('sets «Коллаген проект» and «Зехтра проект» apart like the ROPs, not their rows', () => {
     const v = (row: number, label: string, tone: RnpLine['tone'] = 'plain'): RnpLine => ({ kind: 'value', row, team: null, label, sub: null, tone, fact: 'plain', bold: false, key: 'kompaniya' })
     const { container } = draw([
       { kind: 'value', row: 334, team: 'Lola', label: 'Отказ %', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'kompaniya' },
-      v(346, 'Квал лид сони', 'section'),
-      v(350, 'Бюджет'),
       v(394, 'Коллаген проект', 'section'),
       v(418, '%'),
       v(421, 'Зехтра проект', 'section'),
@@ -260,10 +258,10 @@ describe('RnpSheetTable — the sheet, row by row', () => {
       v(443, 'Маркетолог фот = 1%'),
     ])
     const order = [...container.querySelectorAll<HTMLTableRowElement>('tbody tr')].map((tr) => tr.dataset.gap ?? tr.querySelector('th')!.textContent)
-    for (const opener of ['Квал лид сони', 'Коллаген проект', 'Зехтра проект']) {
+    for (const opener of ['Коллаген проект', 'Зехтра проект']) {
       expect(order[order.findIndex((x) => x?.startsWith(opener)) - 1]).toBe('rop')
     }
-    expect(order.filter((x) => x === 'rop')).toHaveLength(3)
+    expect(order.filter((x) => x === 'rop')).toHaveLength(2)
     expect(order.filter((x) => x === '')).toHaveLength(0)
   })
 
@@ -285,15 +283,15 @@ describe('RnpSheetTable — the sheet, row by row', () => {
     expect(sum.querySelectorAll('td')[1]!.className).toContain('font-semibold')
   })
 
-  it('opens «Свод» with a gap after an added team’s logistics, which has no sheet row (2026-10-02)', () => {
+  it('opens «Коллаген проект» with a gap after an added team’s logistics, which has no sheet row (2026-10-02)', () => {
     const { container } = draw([
       { kind: 'value', row: null, team: 'Kompaniya', label: 'Логистика  Сумма факт1', sub: 'Kompaniya РОП', tone: 'section', fact: 'plain', bold: true, key: 'sum', added: true },
       { kind: 'value', row: null, team: 'Kompaniya', label: 'Отказ сумма', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'kompaniya' },
-      { kind: 'value', row: 346, team: null, label: 'Квал лид сони', sub: 'ОКТЯБРЬ', tone: 'section', fact: 'plain', bold: true, key: 'lids' },
+      { kind: 'value', row: 394, team: null, label: 'Коллаген проект', sub: 'Сумма факт1', tone: 'section', fact: 'plain', bold: true, key: 'lids' },
     ])
-    const svod = rowNamed(container, 'Квал лид сони')
-    // «Свод» opens its own table with the wide gap (0a32b03); any other section after a row-less line gets the block gap.
-    expect(svod.previousElementSibling?.getAttribute('data-gap')).toBe('rop')
+    const project = rowNamed(container, 'Коллаген проект')
+    // A project opens its own table with the wide gap (0a32b03); any other section after a row-less line gets the block gap.
+    expect(project.previousElementSibling?.getAttribute('data-gap')).toBe('rop')
     const other = draw([
       { kind: 'value', row: null, team: 'Kompaniya', label: 'Отказ сумма', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'kompaniya' },
       { kind: 'value', row: 350, team: null, label: 'Квал лид сони', sub: null, tone: 'section', fact: 'plain', bold: true, key: 'lids' },
