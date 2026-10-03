@@ -12,7 +12,10 @@
  *     leads handed («Лид таркатилган сана», «РОП (Первичка)») to the ROP team
  *     the group is named after (`GROUP_TEAM`; the client's decision of
  *     2026-10-02 — it was the group of each lead's registrar, a map nothing
- *     could edit any more). 0 is a measurement.
+ *     could edit any more). 0 is a measurement. Like /rnp it counts only FRESH
+ *     hand-outs (`leadDaysSql`: created ≤ 30 days before), so on a re-stamp
+ *     day the groups + «Boshqa» can read below «Lid manbalari»'s unbounded
+ *     split «Jami».
  *   Конвер — квал ÷ безквал.
  *
  * Leads handed to any other ROP team are shown apart and stay out of
@@ -21,20 +24,25 @@
  * Pure: rows in, a DTO out.
  */
 
-import { TEAM_ALIASES } from '@/server/domain/rnp/rnpSheet'
+import { GROUP_TEAM as RNP_GROUP_TEAM, sheetTeamLabel, TEAM_ALIASES } from '@/server/domain/rnp/rnpSheet'
 
 /** The client's rows, in the client's order. */
 export const INTAKE_GROUPS = ['Aziz', 'Gulzora', 'Lola', 'Saidaziz', 'Sevinch', 'Maftuna', 'Marjona'] as const
 export type IntakeGroup = (typeof INTAKE_GROUPS)[number]
 
-/** Each group's ROP team, as /rnp names it — «Aziz» is Azizbek's team. */
+/**
+ * Each group's ROP team — /rnp's own map («Aziz» is Azizbek's team), so the
+ * two screens cannot drift. «Marjona» has no /rnp group row (there her leads
+ * are in «Boshqa jamoalar»); here she is her own team, Marjona, which the
+ * portal's «РОП (Первичка)» rarely names — her kval reads near 0.
+ */
 export const GROUP_TEAM: Readonly<Record<IntakeGroup, string>> = Object.freeze({
-  Aziz: 'Azizbek',
-  Gulzora: 'Gulzora',
-  Lola: 'Lola',
-  Saidaziz: 'Saidaziz',
-  Sevinch: 'Sevinch',
-  Maftuna: 'Maftuna',
+  Aziz: RNP_GROUP_TEAM.Aziz,
+  Gulzora: RNP_GROUP_TEAM.Gulzora,
+  Lola: RNP_GROUP_TEAM.Lola,
+  Saidaziz: RNP_GROUP_TEAM.Saidaziz,
+  Sevinch: RNP_GROUP_TEAM.Sevinch,
+  Maftuna: RNP_GROUP_TEAM.Maftuna,
   Marjona: 'Marjona',
 })
 
@@ -52,7 +60,7 @@ export interface IntakeRow {
 
 export interface GroupIntakeRowDto {
   readonly group: IntakeGroup
-  /** The ROP team whose handed-out leads are the group's kval. */
+  /** The ROP team whose handed-out leads are the group's kval, as /rnp names it («Азизбек РОП»). */
   readonly team: string
   /** Null: nobody typed it. */
   readonly intake: number | null
@@ -93,7 +101,7 @@ export function buildGroupIntake(input: {
     const qualified = kval.get(group) ?? 0
     return {
       group,
-      team: GROUP_TEAM[group],
+      team: sheetTeamLabel(GROUP_TEAM[group]),
       intake,
       qualified,
       conversionPercent: intake !== null ? percent(qualified, intake) : null,

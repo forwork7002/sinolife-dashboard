@@ -1460,7 +1460,8 @@ model RnpPlan {
 }
 
 /// «RNP jadvali» — which registration «guruh» a registrar belongs to in a
-/// month. The client's sheet counts its registration rows per group of
+/// month. NOT READ since 2026-10-02 (a group's kval is now its ROP team's
+/// handed-out leads); kept for its history. The client's sheet counts its registration rows per group of
 /// registrars («Sevinch guruh» = Фарангиз + Назокат, measured 02–03.09.2026),
 /// and nothing in Bitrix24 holds that grouping, so it is typed here and can
 /// change month to month. `registrar` is the «Регистрация» enum label

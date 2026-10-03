@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { buildGroupIntake, GROUP_TEAM, INTAKE_GROUPS } from '@/server/domain/registration/groupIntake'
+import { sheetTeamLabel } from '@/server/domain/rnp/rnpSheet'
 
 const build = (over: Partial<Parameters<typeof buildGroupIntake>[0]> = {}) =>
   buildGroupIntake({ day: '2026-09-28', handedOut: [], intake: [], canEdit: false, ...over })
@@ -24,7 +25,7 @@ describe('buildGroupIntake', () => {
       ],
     })
     const by = new Map(dto.groups.map((g) => [g.group, g]))
-    expect(by.get('Aziz')).toMatchObject({ team: GROUP_TEAM.Aziz, qualified: 20 })
+    expect(by.get('Aziz')).toMatchObject({ team: sheetTeamLabel(GROUP_TEAM.Aziz), qualified: 20 })
     expect(by.get('Lola')?.qualified).toBe(27)
     expect(dto.ungroupedQualified).toBe(6)
     expect(dto.total.qualified).toBe(47)

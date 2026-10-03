@@ -281,6 +281,9 @@ const SHEET_TEAM_NAMES: Readonly<Record<string, string>> = Object.freeze({
   Shohjaxon: 'Шохжахон РОП',
 })
 
+/** A team as the sheet names it; one it does not name is «<department> РОП». */
+export const sheetTeamLabel = (rop: string): string => SHEET_TEAM_NAMES[rop] ?? `${rop} РОП`
+
 /**
  * Where each team's block starts on «СентябрРНП 26» — its «Продажа … факт1»
  * row (the 13-row template of spec §2.6) — and where its logistics block
@@ -406,7 +409,7 @@ const UNDISTRIBUTED = 'Taqsimlanmagan'
  * (kept: dropping it would destroy the history).
  */
 export const REGISTRATION_GROUPS = ['Sevinch', 'Gulzora', 'Aziz', 'Maftuna', 'Lola', 'Saidaziz', 'Asliddin', 'Sadriddin'] as const
-const GROUP_TEAM: Readonly<Record<(typeof REGISTRATION_GROUPS)[number], string>> = Object.freeze({
+export const GROUP_TEAM: Readonly<Record<(typeof REGISTRATION_GROUPS)[number], string>> = Object.freeze({
   Sevinch: 'Sevinch',
   Gulzora: 'Gulzora',
   Aziz: 'Azizbek',
@@ -758,7 +761,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
    * and «Kompaniya» before): the sheet's, else «<department> РОП».
    * «(ROP yoʻq)» is not a team and keeps its own.
    */
-  const labelOf = (rop: string) => SHEET_TEAM_NAMES[rop] ?? (rop === input.noRop ? rop : `${rop} РОП`)
+  const labelOf = (rop: string) => (rop === input.noRop && !(rop in SHEET_TEAM_NAMES) ? rop : sheetTeamLabel(rop))
   /** The department behind a sheet name, and its head: «Sadriddin(ROP) · Mamayusupov Sadriddin». */
   const subtitleOf = (rop: string) => [`${rop}(ROP)`, heads.get(rop)].filter(Boolean).join(' · ')
   const active = (t: TeamDays) => sum(t.fakt1Orders) + sum(t.fakt2Orders) + sum(t.leads) + sum(t.calls) > 0
