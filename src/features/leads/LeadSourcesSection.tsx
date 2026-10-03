@@ -214,6 +214,15 @@ const note = (text: string, title?: string) => (
   </p>
 )
 
+/**
+ * «shundan N dubl», quietly — the client, 2026-10-03: a duplicate is counted
+ * in the big number and said under it, never left for the reader to guess.
+ */
+const dublNote = (t: ChannelTileDto | undefined) => {
+  const dubl = t ? t.leads - t.fresh : 0
+  return dubl > 0 ? note(`shundan ${formatNumber(dubl)} dubl`, '«Дубликат (лид)» bosqichidagi lidlar — katta songa kirgan') : null
+}
+
 const signed = (n: number) => `${n < 0 ? '−' : '+'}${formatNumber(Math.abs(n))}`
 
 /**
@@ -266,6 +275,7 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
   const channelTile = (tile: LeadTile, extra?: ReactNode) => {
     const o = byTile.get(tile)
     const text = TILE_NOTE[tile]
+    const dubl = dublNote(o)
     return (
       <StatTile
         key={tile}
@@ -276,8 +286,9 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
         unit="count"
         hint={o ? kvalHint(o) : undefined}
         context={
-          text || extra ? (
+          text || extra || dubl ? (
             <>
+              {dubl}
               {text && note(text)}
               {extra}
             </>
@@ -308,7 +319,14 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
             value={total?.leads ?? null}
             unit="count"
             hint={total ? kvalHint(total) : undefined}
-            context={data ? headlineNote(data) : undefined}
+            context={
+              data ? (
+                <>
+                  {dublNote(total)}
+                  {headlineNote(data)}
+                </>
+              ) : undefined
+            }
           />
         </div>
         {TILES_IN_TOTAL.map((t) => channelTile(t))}

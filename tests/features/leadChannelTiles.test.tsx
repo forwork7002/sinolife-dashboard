@@ -36,7 +36,7 @@ const cells = (leads: number, qualified: number, duplicates = 0): ChannelTileDto
 
 // 24–30.09.2026 off the portal, rounded.
 const TILES: Record<LeadTile, ChannelTileDto> = {
-  generated: cells(2278, 700),
+  generated: cells(2278, 700, 30),
   inbound: cells(473, 100),
   telegram: cells(27, 13),
   aiSmm: cells(445, 150),
@@ -138,6 +138,14 @@ describe('ChannelTiles', () => {
     expect(within(tile('Boshqa')).getByText('120')).toBeTruthy()
     expect(screen.queryByText('Исход', { selector: 'p' })).toBeNull()
     expect(within(screen.getByTestId('lead-channel-total').parentElement!).queryByText('Boshqa')).toBeNull()
+  })
+
+  it('says each tile\'s duplicates quietly, and only where there are some (2026-10-03)', () => {
+    render(<ChannelTiles data={data} status="ready" />)
+
+    expect(within(screen.getByTestId('lead-channel-total')).getByText('shundan 40 dubl')).toBeTruthy()
+    expect(within(tile('Ген лид')).getByText('shundan 30 dubl')).toBeTruthy()
+    expect(within(tile('Входящий')).queryByText(/dubl/)).toBeNull()
   })
 
   it('says loading and failure on every tile rather than printing zeros', () => {
