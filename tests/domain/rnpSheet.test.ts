@@ -703,6 +703,49 @@ describe('buildRnpSheet — the page is the client\'s sheet, row by row', () => 
   })
 })
 
+describe('buildRnpSheet — «Баҳо», the day\'s grade from its FAKT 1 (2026-10-03)', () => {
+  const graded = () =>
+    buildRnpSheet(
+      input({
+        fakt: [
+          fakt('2026-09-10', 'Sevinch', { fakt1Orders: 9, fakt1Minor: som(20_000_000) }),
+          fakt('2026-09-11', 'Sevinch', { fakt1Orders: 20, fakt1Minor: som(50_000_000) }),
+          fakt('2026-09-11', 'Charos', { fakt1Orders: 9, fakt1Minor: som(15_000_000) }),
+          fakt('2026-09-11', 'Bosh', { fakt1Orders: 1, fakt1Minor: som(90_000_000) }),
+        ],
+      }),
+    )
+
+  it('grades each day on the team\'s own scale, leaves a day with no sale empty, and averages the graded days', () => {
+    const x = graded()
+    const sevinch = row(x, 'team:Sevinch', 'team:Sevinch:grade')
+    expect(on(sevinch, '2026-09-10')).toBe(3)
+    expect(on(sevinch, '2026-09-11')).toBe(5)
+    expect(on(sevinch, '2026-09-12')).toBeNull()
+    expect(on(sevinch, '2026-09-29')).toBeNull() // not lived yet
+    expect(sevinch.fact).toBe(4)
+    expect(sevinch).toMatchObject({ unit: 'grade', plan: null, forecast: null, index: null })
+    // Малика's БАЗА scale: 15 M is a 3 there, a 2 on Севинч's.
+    expect(on(row(x, 'team:Charos', 'team:Charos:grade'), '2026-09-11')).toBe(3)
+  })
+
+  it('leaves a team with no scale empty, and says so', () => {
+    const bosh = row(graded(), 'team:Bosh', 'team:Bosh:grade')
+    expect(bosh.days.every((v) => v === null)).toBe(true)
+    expect(bosh.fact).toBeNull()
+    expect(bosh.hint).toMatch(/shkalasi belgilanmagan/)
+  })
+
+  it('sits right under «Сумма факт 1 сум» in every sheet block, and in an added one', () => {
+    const x = graded()
+    const at = (key: string) => x.lines.findIndex((l) => l.kind === 'value' && l.key === key)
+    expect(at('team:Sevinch:grade')).toBe(at('team:Sevinch:fakt1') + 1)
+    expect(at('team:Charos:grade')).toBe(at('team:Charos:fakt1') + 1)
+    expect(x.lines[at('team:Sevinch:grade')]).toMatchObject({ label: 'Баҳо', row: 2089, team: 'Sevinch' })
+    expect(at('team:Bosh:grade')).toBe(at('team:Bosh:fakt1') + 1)
+  })
+})
+
 describe('buildRnpSheet — every sheet row claimed once, and on the layout', () => {
   it('never lets two rows claim one sheet row, nor claim a row the layout lacks', async () => {
     const { RNP_SHEET_LAYOUT } = await import('@/server/domain/rnp/rnpSheetLayout')

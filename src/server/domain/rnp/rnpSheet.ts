@@ -23,6 +23,7 @@
  * measurement.
  */
 
+import { RNP_GRADE_SCALES, rnpDayGrade, rnpGradeScaleText } from './rnpGrade'
 import { type RnpLine, sheetLines } from './rnpSheetView'
 import type { TargetProduct } from '../types'
 
@@ -35,7 +36,7 @@ import type { TargetProduct } from '../types'
  * the whole company is ~4·10⁹ soʻm, far inside 2⁵³, and this is a display
  * grid, not a ledger — the ledger stays BigInt minor units up to the row.
  */
-export type RnpUnit = 'count' | 'uzs' | 'usd' | 'percent'
+export type RnpUnit = 'count' | 'uzs' | 'usd' | 'percent' | 'grade'
 
 /** What a typed plan cell is saved under: the team ('' = company-wide, or a brand / registration group) and the metric. */
 export interface RnpPlanInput {
@@ -304,6 +305,9 @@ const TEAM_SHEET_ROW: Readonly<Record<string, number>> = Object.freeze({
   Hayot: 222,
   Baza: 235,
 })
+/** A ROP block's «Баҳо» line is on no sheet row; the layout lists it as the block's first row + this. */
+export const GRADE_ROW_OFFSET = 2000
+
 const LOGISTICS_SHEET_ROW: Readonly<Record<string, number>> = Object.freeze({
   Gulzora: 269,
   Sevinch: 274,
@@ -984,6 +988,8 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     /* The team's block on the sheet: its «Продажа … факт1» row; the rest follow the 13-row template (spec §2.6). */
     const r0 = Object.hasOwn(TEAM_SHEET_ROW, rop) ? TEAM_SHEET_ROW[rop] : undefined
     const at0 = (offset: number, label: string) => (r0 === undefined ? null : sh(r0 + offset, label))
+    /* «Баҳо» (2026-10-03) is no sheet row: its layout id is the block's first row + GRADE_ROW_OFFSET. */
+    const scale = Object.hasOwn(RNP_GRADE_SCALES, rop) ? RNP_GRADE_SCALES[rop]! : null
     const k = `team:${rop}`
     blocks.push({
       id: k,
@@ -998,6 +1004,21 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
         ratio(clock, { key: `${k}:cheque1`, label: 'Ўртача чек (ФАКТ 1)', unit: 'uzs', ...planned(rop, 'avg_cheque1'), sheet: at0(2, 'Средний чек факт 1') }, t.fakt1, t.fakt1Orders),
         additive(clock, { key: `${k}:orders1`, label: 'Буюртма сони (ФАКТ 1)', unit: 'count', ...derived(ordersPlan), sheet: at0(3, 'Буюртма сони') }, t.fakt1Orders),
         additive(clock, { key: `${k}:fakt1`, label: 'Сумма ФАКТ 1', unit: 'uzs', tone: 'total', ...planned(rop, 'fakt1'), hint: 'Tasdiqlandi + Tasdiqlanmay chiqdi — Tasdiqlash navbati kogortasi, jamoa bitimdagi «Организация сотрудника» boʻyicha.', sheet: at0(4, 'Сумма факт 1 сум') }, t.fakt1),
+        level(
+          clock,
+          {
+            key: `${k}:grade`,
+            label: 'Баҳо',
+            unit: 'grade',
+            hint:
+              scale === null
+                ? 'Bu jamoa uchun baho shkalasi belgilanmagan.'
+                : `Kunlik «Сумма факт 1» boʻyicha: ${rnpGradeScaleText(scale)}. Sotuv boʻlmagan kun baholanmaydi; oy ustuni — baholangan kunlar oʻrtachasi.`,
+            sheet: r0 === undefined ? null : sh(r0 + GRADE_ROW_OFFSET, 'Баҳо'),
+          },
+          t.fakt1.map((v) => (scale === null ? null : rnpDayGrade(v, scale))),
+          'mean',
+        ),
         /* The block's first line on the page, the ROP's name beside it. */
         unlessTooFew(
           ratio(

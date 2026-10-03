@@ -6,7 +6,7 @@ import { type CSSProperties, type KeyboardEvent, useId, useState } from 'react'
 import { apiWrite } from '@/lib/api'
 
 import type { RnpManual, RnpUnit, SaveRnpCostsBody, SaveRnpHeadcountBody, SaveRnpPlanBody } from './rnpApi'
-import { formatUsd, rnpNumber, rnpUzs } from './rnpFigures'
+import { formatUsd, rnpGrade, rnpNumber, rnpUzs } from './rnpFigures'
 
 /** What a typed cell saves: a typed row's day (`RnpManual`), or a typed plan cell (column C, `planInput`). */
 export type RnpTyped = RnpManual | { readonly kind: 'plan'; readonly team: string; readonly metric: string; readonly unit: RnpUnit }
@@ -170,6 +170,8 @@ const PLAN: Readonly<Record<RnpUnit, KindSpec>> = {
   // Shown with the sign the figures beside them carry («80%», «$36.000»), and read back with it.
   percent: { parse: (t) => parseDecimal(t, '%'), show: (v) => `${rnpNumber(Math.round(v * 100) / 100)}%`, max: 1000, invalid: 'Son kiriting, masalan 80 yoki 12,5.', tooBig: 'Juda katta foiz — 1 000% dan oshmasin.', unit: 'reja, %', inputMode: 'decimal' },
   usd: { parse: (t) => parseDecimal(t, '$'), show: showUsd, max: 10_000_000, invalid: 'Son kiriting, masalan 36.000 yoki 0,8.', tooBig: 'Juda katta son — 10 mln $ dan oshmasin.', unit: 'reja, $', inputMode: 'decimal' },
+  // No «Баҳо» row offers a plan cell today; a grade is 2–5.
+  grade: { parse: (t) => parseDecimal(t), show: rnpGrade, max: 5, invalid: 'Son kiriting, masalan 4 yoki 4,5.', tooBig: 'Baho 5 dan oshmasin.', unit: 'reja, baho', inputMode: 'decimal' },
 }
 
 /** Each kind of typed cell: how it is read, shown, checked and saved. */

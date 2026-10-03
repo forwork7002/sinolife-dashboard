@@ -799,6 +799,14 @@ Per-screen traps worth knowing before you touch one:
     builds the month that ended, once. A rebuild that fails behind a reader
     is logged («rnp rebuild failed; serving the previous answer») — it used
     to vanish while the old rows were served.
+  · **«Баҳо» (2026-10-03, the client's scales)**: every ROP block has a grade
+    line under «Сумма факт 1 сум» — the day's FAKT 1 graded 2–5 on the team's
+    scale (`domain/rnp/rnpGrade.ts`: Collagen первичка 20/35/50 M, Zextra
+    25/40/60 M, both БАЗА 15/25/35 M; a bound is the higher grade), a day with
+    no FAKT 1 ungraded, the month the mean of the graded days (unit `grade`).
+    The client wrote Zextra's 4 as «45–60 M» after «25–40 M»; the gap is
+    closed at 40 M. A team with no scale (Kompaniya, a new ROP) draws the line
+    empty. No sheet row: layout id = the block's first row + `GRADE_ROW_OFFSET`.
 - **Registratsiya** (FOLDED INTO «Lidlar» on 2026-10-02 — «registratsiya boʻlimi toʻliqligicha oʻchiramiz»: section id, `/registration` page and nav entry deleted; its four stat tiles were dropped; the split card and the 7-day grid live on «Lid manbalari», «ROP otchet» on its own «Lidlar» tab, all on one shared day; the endpoints kept their `/registration/*` paths and now gate on section `leads`) — added 2026-10-01 from the client's Excel («Jami /
   yangi / dubl», ROP → % → лид сони). ONE company-wide split, set EVERY day
   (`registration_split`, basis points, a day's rows sum to 10 000, saving

@@ -65,7 +65,14 @@ export function figureText(value: number, unit: RnpUnit): string {
       return rnpPercent(value)
     case 'count':
       return rnpNumber(Math.round(value))
+    case 'grade':
+      return rnpGrade(value)
   }
+}
+
+/** «Баҳо»: a day's grade whole («4»), the month's mean to one decimal («3,4»). */
+export function rnpGrade(value: number): string {
+  return Number.isInteger(value) ? String(value) : rnpSeparators((Math.round(value * 10) / 10).toFixed(1))
 }
 
 // ---------------------------------------------------------------------------

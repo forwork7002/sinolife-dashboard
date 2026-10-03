@@ -7,7 +7,7 @@
  */
 
 /** How a row's numbers read. Money is whole soʻm (or dollars) as a number. */
-export type RnpUnit = 'count' | 'uzs' | 'usd' | 'percent'
+export type RnpUnit = 'count' | 'uzs' | 'usd' | 'percent' | 'grade'
 
 export interface RnpRowDto {
   readonly key: string

@@ -32,6 +32,10 @@
  * month (`rnpSheetView`). The logistics «Отказ сумма» is plain in every
  * block (283 and 288 had copied the bold of an empty sheet cell).
  *
+ * 2026-10-03: each ROP block has «Баҳо» under «Сумма факт 1 сум» — the
+ * day's grade from its FAKT 1 (`rnpGrade.ts`). The sheet has no such row; its
+ * id is the block's first row + 2000 (`GRADE_ROW_OFFSET` in `rnpSheet.ts`).
+ *
  * Each entry: [row, label (column A), sub (column B when it holds text — the
  * person responsible, «без квал», «факт1» …), kind, bold, tone of the label
  * cell, tone of the fact cell].
@@ -123,6 +127,7 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [78, 'Средний чек факт 1 📌', null, 'value', false, 'plain', 'plain'],
   [79, 'Буюртма сони', null, 'value', false, 'plain', 'plain'],
   [80, 'Сумма факт 1 сум', null, 'value', false, 'plain', 'fakt'],
+  [2076, 'Баҳо', null, 'value', true, 'plain', 'plain'],
   [82, 'Ходим сони', null, 'value', false, 'plain', 'fakt'],
   [83, 'Сумма факт 2 сум', null, 'value', false, 'plain', 'fakt'],
   [84, 'Транзакция факт 2', null, 'value', false, 'plain', 'plain'],
@@ -135,6 +140,7 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [91, 'Средний чек факт 1 📌', null, 'value', false, 'plain', 'plain'],
   [92, 'Буюртма сони', null, 'value', false, 'plain', 'plain'],
   [93, 'Сумма факт 1 сум', null, 'value', false, 'plain', 'fakt'],
+  [2089, 'Баҳо', null, 'value', true, 'plain', 'plain'],
   [95, 'Ходим сони', null, 'value', false, 'plain', 'fakt'],
   [96, 'Сумма факт 2 сум', null, 'value', false, 'plain', 'fakt'],
   [97, 'Транзакция факт 2', null, 'value', false, 'plain', 'plain'],
@@ -147,6 +153,7 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [104, 'Средний чек факт 1 📌', null, 'value', false, 'plain', 'plain'],
   [105, 'Буюртма сони', null, 'value', false, 'plain', 'plain'],
   [106, 'Сумма факт 1 сум', null, 'value', false, 'plain', 'fakt'],
+  [2102, 'Баҳо', null, 'value', true, 'plain', 'plain'],
   [108, 'Ходим сони', null, 'value', false, 'plain', 'fakt'],
   [109, 'Сумма факт 2 сум', null, 'value', false, 'plain', 'fakt'],
   [110, 'Транзакция факт 2', null, 'value', false, 'plain', 'plain'],
@@ -159,6 +166,7 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [117, 'Средний чек факт 1 📌', null, 'value', false, 'plain', 'plain'],
   [118, 'Буюртма сони', null, 'value', false, 'plain', 'plain'],
   [119, 'Сумма факт 1 сум', null, 'value', false, 'plain', 'fakt'],
+  [2115, 'Баҳо', null, 'value', true, 'plain', 'plain'],
   [121, 'Ходим сони', null, 'value', false, 'plain', 'fakt'],
   [122, 'Сумма факт 2 сум', null, 'value', false, 'plain', 'fakt'],
   [123, 'Транзакция факт 2', null, 'value', false, 'plain', 'plain'],
@@ -172,6 +180,7 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [131, 'Средний чек факт 1 📌', null, 'value', false, 'plain', 'plain'],
   [132, 'Буюртма сони', null, 'value', false, 'plain', 'plain'],
   [133, 'Сумма факт 1 сум', null, 'value', false, 'plain', 'fakt'],
+  [2129, 'Баҳо', null, 'value', true, 'plain', 'plain'],
   [135, 'Ходим сони', null, 'value', false, 'plain', 'fakt'],
   [136, 'Сумма факт 2 сум', null, 'value', false, 'plain', 'fakt'],
   [137, 'Транзакция факт 2', null, 'value', false, 'plain', 'plain'],
@@ -185,6 +194,7 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [145, 'Средний чек факт 1 📌', null, 'value', false, 'plain', 'plain'],
   [146, 'Буюртма сони', null, 'value', false, 'plain', 'plain'],
   [147, 'Сумма факт 1 сум', null, 'value', false, 'plain', 'fakt'],
+  [2143, 'Баҳо', null, 'value', true, 'plain', 'plain'],
   [149, 'Ходим сони', null, 'value', false, 'plain', 'fakt'],
   [150, 'Сумма факт 2 сум', null, 'value', false, 'plain', 'fakt'],
   [151, 'Транзакция факт 2', null, 'value', false, 'plain', 'plain'],
@@ -197,6 +207,7 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [158, 'Средний чек факт 1 📌', null, 'value', false, 'plain', 'plain'],
   [159, 'Буюртма сони', null, 'value', false, 'plain', 'plain'],
   [160, 'Сумма факт 1 сум', null, 'value', false, 'plain', 'fakt'],
+  [2156, 'Баҳо', null, 'value', true, 'plain', 'plain'],
   [162, 'Ходим сони', null, 'value', false, 'plain', 'fakt'],
   [163, 'Сумма факт 2 сум', null, 'value', false, 'plain', 'fakt'],
   [164, 'Транзакция факт 2', null, 'value', false, 'plain', 'plain'],
@@ -209,6 +220,7 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [172, 'Средний чек факт 1 📌', null, 'value', false, 'plain', 'plain'],
   [173, 'Буюртма сони', null, 'value', false, 'plain', 'plain'],
   [174, 'Сумма факт 1 сум', null, 'value', false, 'plain', 'fakt'],
+  [2170, 'Баҳо', null, 'value', true, 'plain', 'plain'],
   [176, 'Ходим сони', null, 'value', false, 'plain', 'fakt'],
   [177, 'Сумма факт 2 сум', null, 'value', false, 'plain', 'fakt'],
   [178, 'Транзакция факт 2', null, 'value', false, 'plain', 'plain'],
@@ -221,6 +233,7 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [185, 'Средний чек факт 1 📌', null, 'value', false, 'plain', 'plain'],
   [186, 'Буюртма сони', null, 'value', false, 'plain', 'plain'],
   [187, 'Сумма факт 1 сум', null, 'value', false, 'plain', 'fakt'],
+  [2183, 'Баҳо', null, 'value', true, 'plain', 'plain'],
   [189, 'Ходим сони', null, 'value', false, 'plain', 'fakt'],
   [190, 'Сумма факт 2 сум', null, 'value', false, 'plain', 'fakt'],
   [191, 'Транзакция факт 2', null, 'value', false, 'plain', 'plain'],
@@ -233,6 +246,7 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [198, 'Средний чек факт 1 📌', null, 'value', false, 'plain', 'plain'],
   [199, 'Буюртма сони', null, 'value', false, 'plain', 'plain'],
   [200, 'Сумма факт 1 сум', null, 'value', false, 'plain', 'fakt'],
+  [2196, 'Баҳо', null, 'value', true, 'plain', 'plain'],
   [202, 'Ходим сони', null, 'value', false, 'plain', 'fakt'],
   [203, 'Сумма факт 2 сум', null, 'value', false, 'plain', 'fakt'],
   [204, 'Транзакция факт 2', null, 'value', false, 'plain', 'plain'],
@@ -245,6 +259,7 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [224, 'Средний чек факт 1 📌', null, 'value', false, 'plain', 'plain'],
   [225, 'Буюртма сони', null, 'value', false, 'plain', 'plain'],
   [226, 'Сумма факт 1 сум', null, 'value', false, 'plain', 'fakt'],
+  [2222, 'Баҳо', null, 'value', true, 'plain', 'plain'],
   [228, 'Ходим сони', null, 'value', false, 'plain', 'fakt'],
   [229, 'Сумма факт 2 сум', null, 'value', false, 'plain', 'fakt'],
   [230, 'Транзакция факт 2', null, 'value', false, 'plain', 'plain'],
@@ -257,6 +272,7 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [237, 'Средний чек факт 1 📌', null, 'value', false, 'plain', 'plain'],
   [238, 'Буюртма сони', null, 'value', false, 'plain', 'plain'],
   [239, 'Сумма факт 1 сум', null, 'value', false, 'plain', 'fakt'],
+  [2235, 'Баҳо', null, 'value', true, 'plain', 'plain'],
   [241, 'Ходим сони', null, 'value', false, 'plain', 'fakt'],
   [242, 'Сумма факт 2 сум', null, 'value', false, 'plain', 'fakt'],
   [243, 'Транзакция факт 2', null, 'value', false, 'plain', 'plain'],

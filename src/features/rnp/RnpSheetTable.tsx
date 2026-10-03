@@ -17,7 +17,7 @@ import { CostDayCell } from './RnpCostCell'
 import { ColumnResizer } from './RnpColumnResizer'
 import { type RnpColumnKind, widthCss } from './rnpColumnWidths'
 import { type RnpTone, TONE_COLOR, dayMonth, dayMonthYear, dayTone, indexTone, isSunday, weekday } from './rnpDerive'
-import { figureText, formatUsd, rnpNumber, rnpPercent, rnpUzs } from './rnpFigures'
+import { figureText, formatUsd, rnpGrade, rnpNumber, rnpPercent, rnpUzs } from './rnpFigures'
 import { useDragScroll } from './useDragScroll'
 
 /**
@@ -877,6 +877,8 @@ function plain(value: number, unit: RnpUnit): string {
       return rnpPercent(value)
     case 'count':
       return rnpNumber(Math.round(value * 10) / 10)
+    case 'grade':
+      return rnpGrade(value)
   }
 }
 
