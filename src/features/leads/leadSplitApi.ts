@@ -90,11 +90,11 @@ export interface RopReportDto {
 
 export interface GroupIntakeRowDto {
   readonly group: string
-  readonly registrars: readonly string[]
+  /** The ROP team whose handed-out leads are the group's kval. */
+  readonly team: string
   /** Null: nobody typed it. */
   readonly intake: number | null
-  /** Null: no registrar in the group, so not known. */
-  readonly qualified: number | null
+  readonly qualified: number
   readonly conversionPercent: number | null
 }
 

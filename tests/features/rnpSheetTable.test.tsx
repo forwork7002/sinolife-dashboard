@@ -292,7 +292,13 @@ describe('RnpSheetTable — the sheet, row by row', () => {
       { kind: 'value', row: 346, team: null, label: 'Квал лид сони', sub: 'ОКТЯБРЬ', tone: 'section', fact: 'plain', bold: true, key: 'lids' },
     ])
     const svod = rowNamed(container, 'Квал лид сони')
-    expect(svod.previousElementSibling?.getAttribute('data-gap')).toBe('')
+    // «Свод» opens its own table with the wide gap (0a32b03); any other section after a row-less line gets the block gap.
+    expect(svod.previousElementSibling?.getAttribute('data-gap')).toBe('rop')
+    const other = draw([
+      { kind: 'value', row: null, team: 'Kompaniya', label: 'Отказ сумма', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'kompaniya' },
+      { kind: 'value', row: 350, team: null, label: 'Квал лид сони', sub: null, tone: 'section', fact: 'plain', bold: true, key: 'lids' },
+    ]).container
+    expect(rowNamed(other, 'Квал лид сони').previousElementSibling?.getAttribute('data-gap')).toBe('')
   })
 
   it('marks an added team on its block’s first line, and still on an older payload’s heading', () => {

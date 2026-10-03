@@ -19,8 +19,8 @@ import type { GroupIntakeDto, GroupIntakeRowDto, SaveGroupIntakeBody } from './l
  * /rnp «guruh — квал» count), «Общий» and «Конвер» at the foot. The
  * definitions are in `server/domain/registration/groupIntake.ts`.
  *
- * An empty «безквал» prints a dash, never a zero; a group with no registrar
- * assigned prints a dash for its kval.
+ * An empty «безквал» prints a dash, never a zero; kval is always a count
+ * (the group's ROP team got nothing: 0).
  */
 
 const muted = { color: 'var(--ink-muted)' } as const
@@ -173,7 +173,7 @@ function IntakeTable({ data, editing, onDone }: { data: GroupIntakeDto; editing:
                   </span>
                   {/* Under the name on a phone, so the figures stay on screen. */}
                   <span className="block text-[11px] font-normal sm:ml-2 sm:inline" style={muted}>
-                    {g.registrars.length > 0 ? g.registrars.join(', ') : 'registrator biriktirilmagan'}
+                    {g.team} jamoasiga tarqatilgan
                   </span>
                 </th>
                 <td className={td} style={border}>
@@ -208,8 +208,8 @@ function IntakeTable({ data, editing, onDone }: { data: GroupIntakeDto; editing:
       </div>
       {data.ungroupedQualified > 0 && (
         <p className="text-xs" style={muted}>
-          Guruhsiz registratorlar kvali — {formatNumber(data.ungroupedQualified)} ta (registratori yuqoridagi guruhlarning hech biriga biriktirilmagan yoki
-          boʻsh); «Общий» ga kirmaydi.
+          Boshqa ROP jamoalariga tarqatilgan — {formatNumber(data.ungroupedQualified)} ta (yuqoridagi guruhlarning jamoasi emas); «Общий» ga
+          kirmaydi.
         </p>
       )}
     </div>

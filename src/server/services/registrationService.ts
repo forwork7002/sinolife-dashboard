@@ -63,12 +63,8 @@ export class RegistrationService {
 
   /** «Guruhlar · безквал / квал» — one day. See groupIntake.ts. */
   async groupIntake(input: { day: string; canEdit: boolean }): Promise<GroupIntakeDto> {
-    const [handedOut, registrarGroups, intake] = await Promise.all([
-      this.rnp.leadDays(input.day, input.day),
-      this.rnp.registrarGroups(input.day.slice(0, 7)),
-      this.repository.groupIntake(input.day),
-    ])
-    return buildGroupIntake({ day: input.day, handedOut, registrarGroups, intake, canEdit: input.canEdit })
+    const [handedOut, intake] = await Promise.all([this.rnp.leadDays(input.day, input.day), this.repository.groupIntake(input.day)])
+    return buildGroupIntake({ day: input.day, handedOut, intake, canEdit: input.canEdit })
   }
 
   async saveGroupIntake(day: string, rows: readonly { group: string; leads: number | null }[], by: string): Promise<void> {

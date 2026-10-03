@@ -50,8 +50,8 @@ describe('adBudgetProduct', () => {
   it("counts the client's AI targetolog account under Collagen (2026-10-02)", () => {
     expect(ownerOf('1052133867828964', 'Collagen AI Targetolog')).toEqual({ product: 'Collagen', targetolog: 'AI targetolog' })
     expect(adBudgetProduct(row({ accountId: '1052133867828964', accountName: 'Collagen AI Targetolog', campaignName: "Sinolife | Collagen | Barter blogger kakaoli ta'm | 29.09" }))).toBe('Collagen')
-    // The id first mapped as its account is the spare «Zapas Collagen» — still Collagen.
-    expect(ownerOf('4016900891780426', 'Zapas Collagen').product).toBe('Collagen')
+    // The id first mapped as its account is the spare «Zapas Collagen»: left unmapped until the client says whose it is.
+    expect(ownerOf('4016900891780426', 'Zapas Collagen').product).toBe('Boshqa')
   })
 
   it('leaves out an account that is neither Collagen nor Zextra', () => {
