@@ -9,6 +9,7 @@ import {
   type RnpBlockDto,
   type RnpLabelTone,
   type RnpLine,
+  type RnpManual,
   type RnpRowDto,
   type RnpUnit,
 } from './rnpApi'
@@ -66,8 +67,10 @@ import { useDragScroll } from './useDragScroll'
  * the headings keep the sheet's bands (orange section, blue team, green
  * company), and of the figure rows only three kinds are tinted — «План
  * бажарилиши» blue with its plan figures violet, «Сумма факт 1» green, every
- * «Конверсия» teal — with their index pill and their days against the day
- * plan. Every other row is plain ink on the card. Today's and Sunday's
+ * «Конверсия» teal — with their index pill; of them only a summed row
+ * («Сумма факт 1») also tints its days against the day plan (`dayTone`), a
+ * ratio row («План бажарилиши», «Конверсия») carries the pill alone. Every
+ * other row is plain ink on the card. Today's and Sunday's
  * columns stay marked: they are where in the month, not a row's colour.
  * The pinned label column stays plain on «Сумма факт 1» and «Конверсия» —
  * only their figures are tinted («chapdagi panel boʻyalmasin», 2026-10-01);
@@ -198,6 +201,10 @@ const ROOM_FOR_DAYS = 280
  * offsets on the box (`--rnp-left-*`), and `data-pin-wide` when the box is
  * wide enough to pin them. Straight onto the DOM, like `markScrolledX`: a
  * column drag or a window resize re-measures without redrawing a cell.
+ *
+ * The frozen parts are the box's scroll padding too (2026-10-02): a field Tab
+ * reaches is scrolled clear of the pinned block (the label alone when narrow)
+ * and of the header row, not merely into the box, under them.
  */
 function usePinnedSummary(ref: { readonly current: HTMLDivElement | null }) {
   useLayoutEffect(() => {
@@ -212,6 +219,9 @@ function usePinnedSummary(ref: { readonly current: HTMLDivElement | null }) {
       })
       const wide = left + ROOM_FOR_DAYS <= box.clientWidth
       if (wide !== box.hasAttribute('data-pin-wide')) box.toggleAttribute('data-pin-wide', wide)
+      const corner = heads[0]?.getBoundingClientRect()
+      box.style.scrollPaddingLeft = `${wide ? left : (corner?.width ?? 0)}px`
+      box.style.scrollPaddingTop = `${corner?.height ?? 0}px`
     }
     measure()
     const observer = new ResizeObserver(measure)
@@ -219,6 +229,19 @@ function usePinnedSummary(ref: { readonly current: HTMLDivElement | null }) {
     for (const th of heads) observer.observe(th)
     return () => observer.disconnect()
   }, [ref])
+}
+
+/**
+ * Scrolls the grid so today's column sits just right of the frozen block —
+ * the toolbar's «Bugun» (2026-10-02), for the 25th, when today is twenty-odd
+ * columns to the right. The frozen width is the scroll padding
+ * `usePinnedSummary` keeps. A month without today has nothing to scroll to.
+ */
+export function scrollToToday(box: HTMLElement): void {
+  const today = box.querySelector<HTMLElement>('thead th[aria-current="date"]')
+  if (!today) return
+  const frozen = Number.parseFloat(box.style.scrollPaddingLeft) || 0
+  box.scrollLeft = Math.max(0, box.scrollLeft + today.getBoundingClientRect().left - box.getBoundingClientRect().left - frozen)
 }
 
 function rowsByKey(blocks: readonly RnpBlockDto[]): Map<string, RnpRowDto> {
@@ -231,7 +254,8 @@ function rowsByKey(blocks: readonly RnpBlockDto[]): Map<string, RnpRowDto> {
  * The sheet leaves blank rows between its blocks: a heading after figures
  * opens with a gap — a title band, a team's first row, or an orange section
  * row that does not follow the row before it on the sheet («Коллаген
- * проект», «Регистрация COLLAGEN»).
+ * проект», «Регистрация COLLAGEN») or follows a line the sheet does not have
+ * at all («Свод» after an added team's logistics, 2026-10-02).
  *
  * A ROP's block — its team block or its logistics block — opens with a wider,
  * ruled, sunken gap, even where the sheet runs one ROP's rows into the next, so each ROP reads as its own table
@@ -251,7 +275,8 @@ function gapBefore(line: RnpLine, prev: RnpLine): Gap | null {
   // A new ROP's rows — where the sheet has no blank row too, as between the logistics blocks.
   if (line.kind === 'value' && line.team !== null && line.team !== prev.team) return 'rop'
   if (line.row !== null && OWN_TABLE_ROWS.has(line.row)) return 'rop'
-  const opens = line.kind === 'title' || line.tone === 'team' || (line.tone === 'section' && line.row !== null && prev.row !== null && line.row - prev.row > 1)
+  const opens =
+    line.kind === 'title' || line.tone === 'team' || (line.tone === 'section' && line.row !== null && (prev.row === null || line.row - prev.row > 1))
   return opens ? 'block' : null
 }
 
@@ -259,14 +284,18 @@ function gapBefore(line: RnpLine, prev: RnpLine): Gap | null {
 // Header — the sheet's frozen row 3
 // ---------------------------------------------------------------------------
 
-/** The sheet's order since 2026-09-30: «Кунлик план» after «Индекс», beside the days it is the plan of. */
+/**
+ * The sheet's order since 2026-09-30: «Кунлик план» after «Индекс», beside the
+ * days it is the plan of. Each header says its formula on hover (2026-10-02),
+ * so «why ×30 is not the plan» is answered without asking (`rnpSheet.ts`).
+ */
 const SUMMARY = [
-  { key: 'plan', header: 'План обший' },
-  { key: 'fact', header: 'Факт' },
-  { key: 'forecast', header: 'Прогноз' },
-  { key: 'index', header: 'Индекс, %' },
-  { key: 'dayPlan', header: 'Кунлик план' },
-] as const satisfies readonly { key: RnpColumnKind; header: string }[]
+  { key: 'plan', header: 'План обший', hint: 'Oy rejasi (jadvalning C ustuni)' },
+  { key: 'fact', header: 'Факт', hint: 'Oy boshidan bugungacha, bugun ham hisobda' },
+  { key: 'forecast', header: 'Прогноз', hint: 'Fakt ÷ oʻtgan kunlar × oydagi kunlar' },
+  { key: 'index', header: 'Индекс, %', hint: 'Prognoz ÷ reja; foizli qatorda — fakt ÷ reja' },
+  { key: 'dayPlan', header: 'Кунлик план', hint: 'Reja ÷ 27; foizli qatorda — oy rejasining oʻzi' },
+] as const satisfies readonly { key: RnpColumnKind; header: string; hint: string }[]
 
 const Head = memo(function Head({ days, today }: { days: readonly string[]; today: string }) {
   const first = days[0]
@@ -288,6 +317,7 @@ const Head = memo(function Head({ days, today }: { days: readonly string[]; toda
           <th
             key={c.key}
             scope="col"
+            title={c.hint}
             className={`thead-sticky ${isPinned(c.key) ? pinClass(c.key) : ''} ${RULE} px-3 py-2 text-right text-[12px] font-semibold whitespace-nowrap`}
             style={{
               // Only the pinned panel wears the band; Индекс and Кунлик план scroll with the days and look like them.
@@ -443,7 +473,9 @@ function ValueRow({
   const bold = line.bold || line.fact === 'fakt' || line.tone === 'team'
   const accent = accentOf(line)
   const band = accent ? ACCENT[accent].band : undefined
-  const unreliable = row.reliableFrom ? `Bitrix24 da bu maydon ${dayMonth(row.reliableFrom)} dan toʻliq` : undefined
+  const unreliable = row.reliableFrom
+    ? `Bitrix24 da bu maydon ${dayMonth(row.reliableFrom)} dan toʻliq — bu kun oy fakti va prognoziga kirmaydi`
+    : undefined
   const planTint = accent === 'plan' ? ACCENT.plan.fact : undefined
   const head = headHue(line)
 
@@ -453,7 +485,8 @@ function ValueRow({
       data-tone={line.tone}
       data-accent={accent ?? undefined}
       className={`transition-colors hover:bg-[var(--surface-sunken)] ${bold ? 'font-semibold' : ''}`}
-      style={band ? { background: band } : undefined}
+      // An image, not the colour: an inline colour beat the hover class, and the days of a tinted row never lit up.
+      style={band ? { backgroundImage: layers(band) } : undefined}
     >
       <th
         scope="row"
@@ -461,14 +494,16 @@ function ValueRow({
         style={{ left: 0, ...labelStyle(head) }}
       >
         {head !== null && <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px]" style={{ background: head }} />}
-        <LabelBody line={line} hint={row.hint} manual={row.manual !== null} chipHue={logisticsHue(line)} />
+        <LabelBody line={line} hint={row.hint} manual={row.manual?.kind ?? null} chipHue={logisticsHue(line)} />
       </th>
       {editMonth !== null && row.planInput !== null ? (
-        // One of the sheet's typed plans (column C): an open field, like the typed days.
+        // One of the sheet's typed plans (column C): an open field, like the typed days. Keyed by what it
+        // saves, so a field's typed text never outlives a month or a ROP switch into another plan.
         <CostDayCell
+          key={`${editMonth}:${row.key}`}
           month={editMonth}
           day=""
-          manual={{ kind: 'plan', team: row.planInput.team, metric: row.planInput.metric, unit: row.unit }}
+          manual={{ kind: 'plan', team: row.planInput.team, metric: row.planInput.metric, unit: row.planUnit ?? row.unit }}
           label={`${row.planInput.team || 'Kompaniya'} · ${line.label || row.label}`}
           value={row.plan}
           className={`${pinClass('plan')} tabular ${RULE} ${VRULE} h-9 text-right whitespace-nowrap ${planTint !== undefined ? 'font-semibold' : ''}`}
@@ -476,7 +511,8 @@ function ValueRow({
         />
       ) : (
         <Cell pin="plan" band={band} tint={planTint} strong={planTint !== undefined}>
-          {figure(row.plan, row.unit)}
+          {/* A plan may be in its own unit: the brand P&L's success share over a soʻm row. */}
+          {figure(row.plan, row.planUnit ?? row.unit)}
         </Cell>
       )}
       <Cell pin="fact" band={band} tint={accent ? ACCENT[accent].fact : undefined} strong>
@@ -503,7 +539,7 @@ function ValueRow({
         if (editMonth !== null && row.manual !== null && day !== '' && day <= today) {
           return (
             <CostDayCell
-              key={day}
+              key={`${row.key}:${day}`}
               month={editMonth}
               day={day}
               manual={row.manual}
@@ -576,23 +612,25 @@ function LabelBody({
   line,
   heading = false,
   hint = null,
-  manual = false,
+  manual = null,
   chipHue = null,
 }: {
   line: RnpLine
   heading?: boolean
   hint?: string | null
-  /** A row typed by hand (`RnpRowDto.manual`): says so with a chip. */
-  manual?: boolean
+  /** A row typed by hand (`RnpRowDto.manual`): says so, and what is typed, with a chip. */
+  manual?: RnpManual['kind'] | null
   /** The owner chip's colour; plain when null. */
   chipHue?: string | null
 }) {
-  const added = line.sub === RNP_ADDED_TEAM_NOTE
-  const sub = added ? null : line.sub
+  // An added team's block says so on its first line (`added`); an older payload's heading carried the note as its sub.
+  const legacy = line.sub === RNP_ADDED_TEAM_NOTE
+  const added = legacy || line.added === true
+  const sub = legacy ? null : line.sub
   const extras = (
     <>
       {added && <AddedChip />}
-      {manual && <ManualChip />}
+      {manual && <ManualChip kind={manual} />}
       {hint && <InfoTip content={hint} label={`${line.label || line.sub || ''} — izoh`} className="-my-0.5" />}
     </>
   )
@@ -605,7 +643,7 @@ function LabelBody({
           {extras}
         </span>
         {line.label && (
-          <span className="text-[11px] font-medium tracking-wide uppercase opacity-80">{line.label}</span>
+          <span className="text-[11px] font-medium tracking-wide uppercase">{line.label}</span>
         )}
       </span>
     )
@@ -614,7 +652,8 @@ function LabelBody({
   if (heading) {
     return (
       <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className={`text-[12.5px] font-bold tracking-wide ${line.tone === 'team' ? '' : 'uppercase'}`}>{line.label}</span>
+        {/* Upper case like the sheet's headings, «Таргет Zextra» (blue) too; a ROP's own heading (no sheet row) keeps its case. */}
+        <span className={`text-[12.5px] font-bold tracking-wide ${line.tone === 'team' && line.row === null ? '' : 'uppercase'}`}>{line.label}</span>
         {sub && (
           <span
             className="rounded-[5px] px-1.5 py-px text-[11.5px] font-semibold"
@@ -676,22 +715,27 @@ function MissingChip() {
   )
 }
 
-const MANUAL_NOTE = 'Bitrix24 dan emas — kunlik summa qoʻlda kiritiladi'
+/** What a typed row's chip says is typed: a cost line's soʻm, a team's head count. */
+const MANUAL_NOTE: Record<RnpManual['kind'], string> = {
+  cost: 'Bitrix24 dan emas — kunlik summa qoʻlda kiritiladi',
+  headcount: 'Bitrix24 dan emas — har kuni xodimlar soni qoʻlda kiritiladi',
+}
 
-/** «qoʻlda» — the P&L cost lines are typed in, not read from Bitrix24. */
-function ManualChip() {
+/** «qoʻlda» — the P&L cost lines and «Ходим сони» are typed in, not read from Bitrix24. */
+function ManualChip({ kind }: { kind: RnpManual['kind'] }) {
+  const note = MANUAL_NOTE[kind]
   return (
     <span
-      title={MANUAL_NOTE}
+      title={note}
       className="inline-flex items-center rounded-[5px] border px-1.5 text-[10.5px] leading-[17px] font-medium whitespace-nowrap"
       style={{ borderColor: mix('var(--accent)', 45, 'var(--border)'), color: inkOf('var(--accent)') }}
     >
-      qoʻlda<span className="sr-only">, {MANUAL_NOTE}</span>
+      qoʻlda<span className="sr-only">, {note}</span>
     </span>
   )
 }
 
-/** A team the sheet has no block for: added after the sheet's own, and said so. */
+/** A team the sheet has no block for: added after the sheet's own, and said so on its block's first line. */
 function AddedChip() {
   return (
     <span
@@ -839,15 +883,19 @@ function plain(value: number, unit: RnpUnit): string {
 /**
  * The index, coloured by which way is good — on a coloured row only. A cost
  * (`better: 'down'`) under its plan is on track; over it by a fifth is the alarm.
+ *
+ * Graded on the figure as printed, to one decimal, so a «100,0%» is never amber
+ * nor an «80,0%» red; its digits in the tone's ink, which reads on the tint, and
+ * on the column's right edge (`-mr-2`: the pill's tint takes the cell's padding).
  */
 function index(value: number | null, better: 'up' | 'down', coloured: boolean): ReactNode {
   if (value === null) return dash
   if (!coloured) return rnpPercent(value)
-  const tone = TONE_COLOR[indexTone(value, better)]
+  const tone = TONE_COLOR[indexTone(Math.round(value * 10) / 10, better)]
   return (
     <span
-      className="inline-block rounded-full px-2 py-0.5 text-[13px] leading-5 font-semibold"
-      style={{ color: tone, background: mix(tone, 14) }}
+      className="-mr-2 inline-block rounded-full px-2 py-0.5 text-[13px] leading-5 font-semibold"
+      style={{ color: inkOf(tone), background: mix(tone, 14) }}
     >
       {rnpPercent(value)}
     </span>

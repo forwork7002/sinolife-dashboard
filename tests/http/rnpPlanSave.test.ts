@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseDecimal } from '@/features/rnp/RnpCostCell'
+import { parseCost, parseDecimal, pastedCells } from '@/features/rnp/RnpCostCell'
 
 /* The repositories read `env` at module scope (same preamble as `rnpSql.test.ts`). */
 process.env.DATABASE_URL ??= 'postgresql://test@127.0.0.1:5432/test'
@@ -78,6 +78,75 @@ describe('the plan field — parseDecimal', () => {
 
   it('refuses a third decimal, a minus and text', () => {
     for (const typo of ['1,234', '-1', '12a', '1.2.3']) expect(parseDecimal(typo)).toBeNaN()
+  })
+
+  it('groups thousands only after a non-zero digit: «0.850» is a typo, not 850', () => {
+    expect(parseDecimal('0.850')).toBeNaN()
+    expect(parseDecimal('000.500')).toBeNaN()
+    expect(parseDecimal('0.85')).toBe(0.85)
+    expect(parseDecimal('10.000')).toBe(10_000)
+  })
+
+  it('reads the row’s own sign back — as the field shows it and the client’s sheet writes it (2026-10-02)', () => {
+    // A dollar plan: one «$» before or after it.
+    expect(parseDecimal('$36.000', '$')).toBe(36_000)
+    expect(parseDecimal('16 000$', '$')).toBe(16_000)
+    expect(parseDecimal('0,80$', '$')).toBe(0.8)
+    expect(parseDecimal('$ 1.200,5', '$')).toBe(1200.5)
+    // A percent: one «%» after it.
+    expect(parseDecimal('80%', '%')).toBe(80)
+    expect(parseDecimal('12,5 %', '%')).toBe(12.5)
+    // The sign alone is not an empty cell, and another row's sign is a slip.
+    for (const [typo, sign] of [['$', '$'], ['%', '%'], ['$36.000$', '$'], ['80%', '$'], ['$80', '%'], ['%80', '%'], ['$36', undefined]] as const) {
+      expect(parseDecimal(typo, sign)).toBeNaN()
+    }
+  })
+})
+
+/*
+  One field, one figure (2026-10-02). A sheet's row pasted into a typed cell
+  arrives with a TAB between its cells, a column with line breaks, and the
+  old reading dropped every separator: «5 075 000⇥0» (a cost and its empty
+  neighbour) was saved as 50 750 000, «8⇥5» as an 85 % plan, a mistyped
+  «1 25 000» as 125 000.
+*/
+describe('a typed cell reads ONE figure — parseCost, parseDecimal, pastedCells', () => {
+  it('refuses several cells and a misplaced group instead of gluing them into one number', () => {
+    expect(parseCost('5 075 000\t0')).toBeNaN()
+    expect(parseCost('5 075 000\n3 560 000')).toBeNaN()
+    expect(parseCost('1 25 000')).toBeNaN()
+    expect(parseCost('1.250 000')).toBeNaN() // groups split by two different separators
+    expect(parseCost('0.500')).toBeNaN() // a grouped number starts non-zero
+    expect(parseDecimal('8\t5', '%')).toBeNaN()
+    expect(parseDecimal('1 25 000', '$')).toBeNaN()
+    expect(parseDecimal('1 200.5', '$')).toBeNaN() // grouped: the decimals follow a comma
+  })
+
+  it('reads one figure as it is typed or copied from a spreadsheet — NBSP and narrow NBSP are spaces', () => {
+    expect(parseCost('1 200 000')).toBe(1_200_000)
+    expect(parseCost('1\u00a0200\u00a0000')).toBe(1_200_000)
+    expect(parseCost('1\u202f200\u202f000')).toBe(1_200_000)
+    expect(parseCost('1.250.000')).toBe(1_250_000)
+    expect(parseCost('1,250,000')).toBe(1_250_000)
+    expect(parseCost('36.000')).toBe(36_000)
+    expect(parseCost('5075000')).toBe(5_075_000)
+    expect(parseCost(' ')).toBeNull()
+    expect(parseDecimal('36.000', '$')).toBe(36_000)
+    expect(parseDecimal('1\u00a0200,5', '$')).toBe(1200.5)
+    expect(parseDecimal('0,80')).toBe(0.8)
+    // The row's own sign still comes with it (B15).
+    expect(parseDecimal('$0,80', '$')).toBe(0.8)
+    expect(parseDecimal('80%', '%')).toBe(80)
+  })
+
+  it('keeps a pasted row or column apart, so the field refuses it — one copied cell pastes as usual', () => {
+    expect(pastedCells('5 075 000\t0')).toBe('5 075 000\t0')
+    // A browser pastes a line break as a space: «500 000 300 000» would be a valid figure.
+    expect(pastedCells('500 000\r\n300 000\r\n')).toBe('500 000\t300 000')
+    expect(parseCost(pastedCells('500 000\n300 000')!)).toBeNaN()
+    // Excel ends one copied cell with a line break.
+    expect(pastedCells('1 200 000\r\n')).toBeNull()
+    expect(pastedCells('1 200 000')).toBeNull()
   })
 })
 

@@ -278,7 +278,8 @@ describe('leadSourcesOverview', () => {
     expect(uz.outcome.success).toBe(1)
     expect(uz.product).toBe('Collagen')
     const cs = data.dm.pages.find((p) => p.key === 'UC_NBCV5K')!
-    expect(cs.product).toBeNull()
+    // «collagen.sinolife» is a Collagen page in `LEAD_SOURCE_BRAND` since 2026-10-02 (the RNP P&L's lead brand).
+    expect(cs.product).toBe('Collagen')
     expect(cs.outcome.leads).toBe(1)
     expect(data.dm.days.map((d) => d.conversations)).toEqual([45, 60])
   })

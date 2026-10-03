@@ -30,6 +30,12 @@ describe('POST /rnp/costs — the body', () => {
     expect(costsBodySchema.safeParse(body([])).success).toBe(false)
     expect(costsBodySchema.safeParse(body(Array.from({ length: 501 }, () => cell()))).success).toBe(false)
   })
+
+  it('bounds the month as the overview, the plans and the headcount do', () => {
+    expect(costsBodySchema.safeParse(body([cell({ day: '1990-01-05' })], '1990-01')).success).toBe(false)
+    expect(costsBodySchema.safeParse(body([cell({ day: '2101-01-05' })], '2101-01')).success).toBe(false)
+    expect(costsBodySchema.safeParse(body([cell({ day: '2025-01-05' })], '2025-01')).success).toBe(true)
+  })
 })
 
 describe('POST /rnp/costs — the gate', () => {

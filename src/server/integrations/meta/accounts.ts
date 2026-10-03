@@ -14,7 +14,9 @@
  * Read at query time, never stored: correcting a row here corrects history
  * without a re-import. An account missing from this list is still counted —
  * under «Boshqa», by its own name — so a new account cannot silently vanish
- * from the spend total.
+ * from the spend total. The product budgets are another matter: RNP's and
+ * «Lidlar»'s count only Collagen and Zextra (`adBudgetProduct`), so a new
+ * product account reaches them only once it is mapped here.
  *
  * The sheet also has columns no account behind this token covers: Аббос
  * (Zextra), Sobirjon's July Collagen spend, «Organic» and «Telegram».

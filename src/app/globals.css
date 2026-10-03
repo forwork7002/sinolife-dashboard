@@ -1609,6 +1609,33 @@ tr:hover > .tcol-sticky:not(.is-edge) {
   left: auto;
 }
 
+/* …and, not pinned, they pass UNDER the label, which still pins (2026-10-02):
+   sticky still, at its z-index and later in the row, they slid OVER it on a
+   phone's or a 1024px laptop's sideways scroll, and the row names went. The
+   header ones stay over the body's labels and under the corner (3). */
+[data-rnp-grid]:not([data-pin-wide]) td.rnp-pin {
+  z-index: 0;
+}
+
+[data-rnp-grid]:not([data-pin-wide]) th.rnp-pin {
+  z-index: 2;
+}
+
+/* A typed cell holding a refusal lifts it over the rows below. A pinned plan
+   cell is sticky — its own stacking context — so the message's `z-20` alone
+   stays under the next row's pinned cells. Same weight as the rule above and
+   after it, so it wins narrow too; still under the header's corner (3). */
+[data-rnp-grid] td[data-cost-cell]:has([role="alert"]) {
+  z-index: 2;
+}
+
+/* The grid's keyboard ring, drawn on its card: the card clips the box's own
+   (`.focusable`, a shadow outside it), so focus never showed. */
+[data-rnp-cols] div:has(> [data-rnp-grid]:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 [data-rnp-grid]:not([data-pin-wide]) .tcol-sticky.rnp-label,
 [data-rnp-grid][data-pin-wide] .tcol-sticky.rnp-edge {
   box-shadow: 1px 0 0 var(--border);

@@ -9,9 +9,15 @@
  * (2026-09-30). The client asked for the section to open fast.
  *
  * THE CADENCE, 4 MINUTES: under the memo's 10-minute hard limit, so an idle
- * sheet is never older than that and never cold; well over the 60-second
- * rebuild a reader triggers anyway, so an active sheet costs nothing extra.
- * One build at a time — a slow tick is skipped over, never stacked.
+ * sheet is never older than that and never cold. One build at a time — a
+ * slow tick is skipped over, never stacked.
+ *
+ * EACH TICK IS A REAL BUILD, WAITED FOR (`RnpService.warm`, 2026-10-02): it
+ * used to take the memo's answer and rebuild behind it, so «rnp warmed»
+ * logged 0 ms and a failed build was never heard of. Now `ms` is the build's
+ * own time and a failure is the warn below. In a month's first week the
+ * month that just ended is built once too: a closed month has no hard limit
+ * (it is served however old, and rebuilt behind its reader).
  *
  * Started once per server by `src/instrumentation.ts`, Node runtime only.
  */

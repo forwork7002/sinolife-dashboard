@@ -11,7 +11,8 @@
  *     The team is the one the deal names, as on Logistika.
  *   - Plans are typed in here; FAKT 1 / FAKT 2 plans live in `team_month_plan`.
  *   - Rows with no source in Bitrix24 or Meta (followers, HR, bloggers) are
- *     not on the screen.
+ *     not on the screen. (Reversed on 2026-09-30: such a row keeps its place,
+ *     empty and hatched; HR went with the client's own reshape.)
  *   - A team is its Bitrix24 department name plus its head, every ROP team.
  *
  * WHERE EACH BLOCK COMES FROM:
@@ -29,6 +30,7 @@ import type { TargetProduct } from '@/server/domain/types'
 import { formNameOf, formOwner } from '@/server/domain/leads/leadSources'
 import { LEAD_SOURCE_BRAND } from '@/server/integrations/crm/bitrix24/mapping'
 import { adBudgetProduct } from '@/server/integrations/meta/accounts'
+import { logger } from '@/server/logging/logger'
 import { InsightsRepository, type RnpTeamDayRow } from '@/server/repositories/insightsRepository'
 import type { ReklamaRepository } from '@/server/repositories/reklamaRepository'
 import type {
@@ -85,8 +87,20 @@ interface MonthRows {
   gets the new rows. Rows older than ten minutes (a quiet night) are not
   handed out at all — their «today» and live cells would be wrong — so that
   reader waits for a fresh build, as the first reader after a deploy does.
+
+  A MONTH THAT ENDED BEFORE TODAY HAS NO LIVE CELLS, so it has no hard limit
+  (`pastMonthCache`, 2026-10-02): its last answer is handed out however old
+  and rebuilt behind the reader. Held to the ten minutes, September read in
+  October waited for a cold build (~17 s on production) after every quiet
+  spell — the warmer keeps only the current month. A rebuild that fails
+  behind a reader is logged (`warnRebuild`); the reader keeps the old answer.
 */
-const monthCache = staleWhileRevalidate<MonthRows>(60_000, Date.now, 10 * 60_000)
+const monthCache = staleWhileRevalidate<MonthRows>(60_000, Date.now, 10 * 60_000, warnRebuild)
+const pastMonthCache = staleWhileRevalidate<MonthRows>(60_000, Date.now, Infinity, warnRebuild)
+
+function warnRebuild(key: string, err: unknown): void {
+  logger.warn({ err, key }, 'rnp rebuild failed; serving the previous answer')
+}
 
 /*
   THE REGISTRATION DESK'S CLOSED DAYS, KEPT HALF AN HOUR AND SERVED STALE.
@@ -103,40 +117,77 @@ const monthCache = staleWhileRevalidate<MonthRows>(60_000, Date.now, 10 * 60_000
 const REGISTRATION_HISTORY_MS = 30 * 60_000
 /* Cold, beside the other reads, the scan ran past 20 s on 2026-09-30; see `registrationDays`. */
 const REGISTRATION_HISTORY_TIMEOUT_MS = 60_000
-const registrationHistory = staleWhileRevalidate<RnpRegistrationDayRow[]>(REGISTRATION_HISTORY_MS)
+const registrationHistory = staleWhileRevalidate<RnpRegistrationDayRow[]>(REGISTRATION_HISTORY_MS, Date.now, Infinity, warnRebuild)
 
 /**
  * A memo that, once its answer is older than `ttlMs`, still returns it at
  * once and rebuilds it in the background; a failed rebuild keeps the old
- * answer. Only the very first reader of a key waits. Exported for its test.
+ * answer and goes to `onError`. Only the very first reader of a key waits.
+ * `refresh` is the warmer's: a real rebuild, waited for. One rebuild of a
+ * key at a time — whoever asks while one runs shares it. Exported for its test.
  */
-export function staleWhileRevalidate<T>(ttlMs: number, clock: () => number = Date.now, maxStaleMs = Infinity) {
-  const entries = new Map<string, { at: number; value: Promise<T>; refreshing: boolean }>()
-  return {
+export function staleWhileRevalidate<T>(
+  ttlMs: number,
+  clock: () => number = Date.now,
+  maxStaleMs = Infinity,
+  onError?: (key: string, error: unknown) => void,
+) {
+  type Entry = { at: number; value: Promise<T>; rebuilding: Promise<void> | null }
+  const entries = new Map<string, Entry>()
+  const rebuild = (key: string, hit: Entry, build: () => Promise<T>): Promise<void> =>
+    (hit.rebuilding ??= build().then(
+      (fresh) => {
+        entries.set(key, { at: clock(), value: Promise.resolve(fresh), rebuilding: null })
+      },
+      (error: unknown) => {
+        hit.rebuilding = null
+        throw error
+      },
+    ))
+  const memo = {
     get(key: string, build: () => Promise<T>): Promise<T> {
       const found = entries.get(key)
       // Too old to show even while rebuilding: drop it and build in the open.
       const hit = found && clock() - found.at >= maxStaleMs ? undefined : found
       if (!hit) {
         const value = build()
-        entries.set(key, { at: clock(), value, refreshing: false })
-        value.catch(() => {
-          if (entries.get(key)?.value === value) entries.delete(key)
-        })
-        return value
-      }
-      if (clock() - hit.at >= ttlMs && !hit.refreshing) {
-        hit.refreshing = true
-        build().then(
-          (fresh) => entries.set(key, { at: clock(), value: Promise.resolve(fresh), refreshing: false }),
+        const entry: Entry = { at: clock(), value, rebuilding: null }
+        // The key's one build on its way: a refresh, or a reader past the ttl, shares it rather than starting another.
+        entry.rebuilding = value.then(
           () => {
-            hit.refreshing = false
+            entry.rebuilding = null
+          },
+          (error: unknown) => {
+            if (entries.get(key) === entry) entries.delete(key)
+            throw error
           },
         )
+        entry.rebuilding.catch(() => undefined) // its reader hears of a failure through `value`
+        entries.set(key, entry)
+        return value
+      }
+      if (clock() - hit.at >= ttlMs && !hit.rebuilding) {
+        // Nobody waits on it, so nobody would hear of its failure: report it.
+        rebuild(key, hit, build).catch((error: unknown) => onError?.(key, error))
       }
       return hit.value
     },
+    /**
+     * Builds `key` now and resolves once the new answer is in; a failure
+     * rejects and the old answer stays. With nothing to hand out yet it is a
+     * first build, which a reader who comes meanwhile shares.
+     */
+    async refresh(key: string, build: () => Promise<T>): Promise<void> {
+      const found = entries.get(key)
+      if (!found || clock() - found.at >= maxStaleMs) await memo.get(key, build)
+      else await rebuild(key, found, build)
+    },
+    /** Whether `key` has an answer, or its first build on the way. */
+    has(key: string): boolean {
+      return entries.has(key)
+    },
   }
+  return memo
 }
 
 export class RnpService {
@@ -153,11 +204,11 @@ export class RnpService {
     const from = days[0]!
     const to = days[days.length - 1]!
     const today = zonedDateKey(input.now, input.timeZone)
-    /* Plans and registrar groups are read fresh: what somebody just saved shows on the next load. */
-    const [rows, plans, registrarGroups, usdRates, manualCosts, manualHeadcount] = await Promise.all([
-      monthCache.get(input.month, () => this.monthRows(input.month, from, to, input.timeZone, input.now)),
+    const memo = to < today ? pastMonthCache : monthCache
+    /* Plans are read fresh: what somebody just saved shows on the next load. */
+    const [rows, plans, usdRates, manualCosts, manualHeadcount] = await Promise.all([
+      memo.get(input.month, () => this.monthRows(input.month, from, to, input.timeZone, input.now)),
       this.repository.plans(input.month),
-      this.repository.registrarGroups(input.month),
       this.usd.forDays(days, today),
       // Typed a moment ago, shown on the next load — never cached.
       this.repository.manualCosts(from, to),
@@ -175,7 +226,6 @@ export class RnpService {
       leads: rows.leads,
       registration: rows.registration.map((r) => ({ ...r, brand: leadBrand(r.sourceId, r.formTitle) })),
       registrarKval: rows.registrarKval,
-      registrarGroups,
       calls: rows.calls,
       warehouse: rows.warehouse,
       meta: rows.meta,
@@ -190,14 +240,28 @@ export class RnpService {
    * waiting on it. `rnpWarmer` calls it every few minutes so the sheet is
    * never cold: a first reader after a deploy or a quiet hour was waiting
    * ~17 s for the month's scans (measured on production, 2026-09-30).
+   *
+   * A real rebuild, waited for (`refresh`, 2026-10-02): it used to hand back
+   * the memo's answer and rebuild behind it, so «rnp warmed» logged 0 ms
+   * and a failed build was never heard of. In a month's first week the
+   * month that just ended is built too, once — after the current one, never
+   * beside it (two cold months at once would fill the pool) — so its first
+   * reader after a deploy or on the 1st does not wait; readers keep it fresh.
    */
   async warm(now: Date, timeZone: string): Promise<void> {
     const today = zonedDateKey(now, timeZone)
     const month = today.slice(0, 7)
     const days = monthDays(month)
     await Promise.all([
-      monthCache.get(month, () => this.monthRows(month, days[0]!, days[days.length - 1]!, timeZone, now)),
+      monthCache.refresh(month, () => this.monthRows(month, days[0]!, days[days.length - 1]!, timeZone, now)),
       this.usd.forDays(days, today),
+    ])
+    const last = previousDay(days[0]!).slice(0, 7)
+    if (Number(today.slice(8)) > 7 || pastMonthCache.has(last)) return
+    const lastDays = monthDays(last)
+    await Promise.all([
+      pastMonthCache.refresh(last, () => this.monthRows(last, lastDays[0]!, lastDays[lastDays.length - 1]!, timeZone, now)),
+      this.usd.forDays(lastDays, today),
     ])
   }
 
@@ -277,11 +341,14 @@ export class RnpService {
 
 /**
  * A Регистрация lead's brand: its source when the source is a brand's page or
- * line; else its CRM form's — «zextra» in the name, or a Kamron form (his
- * Meta accounts are all Zextra; «Kamron 6 etap filt forma» names no product);
- * any other form sold the collagen (every form of 18–24.09 without «zextra»
- * did). Null: a lead nothing ties to a brand (an operator's outgoing call, a
- * lead typed in by hand) — the P&L prints those as «brendsiz».
+ * line; else its CRM form's — «zextra» or «collagen» in the name, then a
+ * Kamron form (his Meta accounts are all Zextra; «Kamron 6 etap filt forma»
+ * names no product); any other form sold the collagen (every form of
+ * 18–24.09 without «zextra» did). A name that says «collagen» outranks its
+ * owner: the forms read «<targetolog>-collagen / -zextra» (01.10), so a
+ * «Kamron-collagen» form must not turn Zextra. Null: a lead nothing ties to a
+ * brand (an operator's outgoing call, a lead typed in by hand) — the P&L
+ * prints those as «brendsiz».
  */
 export function leadBrand(sourceId: string | null, formTitle: string | null): TargetProduct | null {
   const bySource = sourceId === null ? undefined : LEAD_SOURCE_BRAND[sourceId]
@@ -289,6 +356,7 @@ export function leadBrand(sourceId: string | null, formTitle: string | null): Ta
   const form = formNameOf(formTitle)
   if (form === null) return null
   if (/zextra/i.test(form)) return 'Zextra'
+  if (/collagen|коллаген/i.test(form)) return 'Collagen'
   const owner = formOwner(form)
   if (owner?.targetolog === 'Kamron') return 'Zextra'
   return 'Collagen'

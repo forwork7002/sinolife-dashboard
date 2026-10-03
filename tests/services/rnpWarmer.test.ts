@@ -6,6 +6,7 @@ process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
 const { RNP_WARM_EVERY_MS, startRnpWarmer } = await import('@/server/services/rnpWarmer')
+const { logger } = await import('@/server/logging/logger')
 
 function fakeTimers() {
   const scheduled: { fn: () => void; ms: number; unref: ReturnType<typeof vi.fn> }[] = []
@@ -55,5 +56,25 @@ describe('startRnpWarmer', () => {
     scheduled[0]!.fn()
     await tick()
     expect(warm).toHaveBeenCalledTimes(2)
+  })
+
+  it('logs the time of the build it waited for, and a failed build at warn (2026-10-02)', async () => {
+    const info = vi.spyOn(logger, 'info').mockImplementation(() => undefined)
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
+    const timeout = new Error('canceling statement due to statement timeout')
+    const warm = vi
+      .fn<() => Promise<void>>()
+      .mockImplementationOnce(() => new Promise((resolve) => setTimeout(resolve, 40)))
+      .mockRejectedValueOnce(timeout)
+    const { scheduled, timers } = fakeTimers()
+    const tick = startRnpWarmer(warm, timers)
+    await tick()
+    expect(info).toHaveBeenCalledWith({ ms: expect.any(Number) }, 'rnp warmed')
+    expect((info.mock.calls[0]![0] as unknown as { ms: number }).ms).toBeGreaterThanOrEqual(35)
+    scheduled[0]!.fn()
+    await tick()
+    expect(warn).toHaveBeenCalledWith({ err: timeout }, 'rnp warm-up failed; the next tick tries again')
+    info.mockRestore()
+    warn.mockRestore()
   })
 })

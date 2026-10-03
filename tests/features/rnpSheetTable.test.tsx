@@ -4,8 +4,8 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RnpColumnScope } from '@/features/rnp/RnpColumnResizer'
-import { RnpSheetTable } from '@/features/rnp/RnpSheetTable'
-import type { RnpBlockDto, RnpLine, RnpRowDto } from '@/features/rnp/rnpApi'
+import { RnpSheetTable, scrollToToday } from '@/features/rnp/RnpSheetTable'
+import { RNP_ADDED_TEAM_NOTE, type RnpBlockDto, type RnpLine, type RnpRowDto } from '@/features/rnp/rnpApi'
 import { DEFAULT_WIDTH, STORAGE_KEY, reloadColumnWidths, storedWidths } from '@/features/rnp/rnpColumnWidths'
 
 /**
@@ -284,6 +284,148 @@ describe('RnpSheetTable — the sheet, row by row', () => {
     // A FAKT row's fact cell is bold.
     expect(sum.querySelectorAll('td')[1]!.className).toContain('font-semibold')
   })
+
+  it('opens «Свод» with a gap after an added team’s logistics, which has no sheet row (2026-10-02)', () => {
+    const { container } = draw([
+      { kind: 'value', row: null, team: 'Kompaniya', label: 'Логистика  Сумма факт1', sub: 'Kompaniya РОП', tone: 'section', fact: 'plain', bold: true, key: 'sum', added: true },
+      { kind: 'value', row: null, team: 'Kompaniya', label: 'Отказ сумма', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'kompaniya' },
+      { kind: 'value', row: 346, team: null, label: 'Квал лид сони', sub: 'ОКТЯБРЬ', tone: 'section', fact: 'plain', bold: true, key: 'lids' },
+    ])
+    const svod = rowNamed(container, 'Квал лид сони')
+    expect(svod.previousElementSibling?.getAttribute('data-gap')).toBe('')
+  })
+
+  it('marks an added team on its block’s first line, and still on an older payload’s heading', () => {
+    const { container } = draw([
+      { kind: 'value', row: null, team: 'Kompaniya', label: 'План бажарилиши', sub: 'Kompaniya РОП', tone: 'team', fact: 'plan', bold: true, key: 'lids', added: true },
+      { kind: 'value', row: null, team: 'Kompaniya', label: 'Квал лид сони', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'kompaniya' },
+      ...LINES.slice(4, 5),
+    ])
+    const marked = bodyRows(container).filter((tr) => tr.textContent?.includes(RNP_ADDED_TEAM_NOTE))
+    expect(marked.map((tr) => tr.dataset.line)).toEqual(['value', 'title'])
+    // The ROP's name first, the chip beside it, the sheet's label under it — like a sheet block.
+    expect(marked[0]!.querySelector('th')!.textContent).toBe(`Kompaniya РОП${RNP_ADDED_TEAM_NOTE}План бажарилиши`)
+    // Only the first line: the rest of the block reads like the sheet's.
+    expect(within(rowNamed(container, 'Квал лид сони')).queryByText(RNP_ADDED_TEAM_NOTE)).toBeNull()
+    // The old form: the note as a heading's sub, drawn as the chip and not as an owner pill.
+    expect(marked[1]!.querySelector('th')!.textContent).toBe(`Kompaniya РОП${RNP_ADDED_TEAM_NOTE}`)
+    expect(within(marked[1]!).getByText(RNP_ADDED_TEAM_NOTE).className).toContain('normal-case')
+  })
+
+  it('says what a typed row’s chip means: a day’s soʻm on a cost line, the head count on «Ходим сони»', () => {
+    const typed: RnpBlockDto = {
+      ...BLOCKS[0]!,
+      rows: [
+        row({ key: 'heads', label: 'Ходим сони', additive: false, manual: { kind: 'headcount', rop: 'Lola' } }),
+        row({ key: 'bloggers', label: 'Блогерлар', unit: 'uzs', manual: { kind: 'cost', project: 'Collagen', line: 'bloggers' } }),
+      ],
+    }
+    const { container } = render(
+      <RnpSheetTable
+        lines={[
+          { kind: 'value', row: 108, team: 'Lola', label: 'Ходим сони', sub: null, tone: 'plain', fact: 'fakt', bold: false, key: 'heads' },
+          { kind: 'value', row: 411, team: null, label: 'Блогерлар', sub: null, tone: 'brand', fact: 'plain', bold: false, key: 'bloggers' },
+        ]}
+        blocks={[typed]}
+        days={DAYS}
+        today="2026-09-03"
+      />,
+    )
+    expect(within(rowNamed(container, 'Ходим сони')).getByText('qoʻlda').getAttribute('title')).toBe('Bitrix24 dan emas — har kuni xodimlar soni qoʻlda kiritiladi')
+    expect(within(rowNamed(container, 'Блогерлар')).getByText('qoʻlda').getAttribute('title')).toBe('Bitrix24 dan emas — kunlik summa qoʻlda kiritiladi')
+  })
+
+  it('grades an index pill on the figure it prints, in its tone’s ink, on the column’s edge', () => {
+    const graded: RnpBlockDto = {
+      ...BLOCKS[0]!,
+      rows: [
+        row({ key: 'f1', label: 'Сумма ФАКТ 1', unit: 'uzs', index: 99.96 }),
+        row({ key: 'cv', label: 'Конверсия', unit: 'percent', additive: false, index: 79.96 }),
+      ],
+    }
+    const { container } = render(
+      <RnpSheetTable
+        lines={[
+          { kind: 'value', row: 80, team: null, label: 'Сумма факт 1 сум', sub: null, tone: 'plain', fact: 'fakt', bold: false, key: 'f1' },
+          { kind: 'value', row: 77, team: null, label: 'Конверция % от квал лид 📌', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'cv' },
+        ]}
+        blocks={[graded]}
+        days={DAYS}
+        today="2026-09-03"
+      />,
+    )
+    // «100,0%» on track, never amber; «80,0%» a look, never red.
+    const full = within(rowNamed(container, 'Сумма факт 1 сум')).getByText('100,0%')
+    expect(full.style.color).toContain('var(--status-good)')
+    expect(full.style.color).toContain('var(--ink-primary)')
+    expect(full.className).toContain('-mr-2')
+    expect(within(rowNamed(container, 'Конверция')).getByText('80,0%').style.color).toContain('var(--status-warning)')
+  })
+
+  it('paints a tinted row’s band as an image, so the row’s hover still reaches its days', () => {
+    const { container } = draw()
+    const sum = rowNamed(container, 'Сумма факт 1 сум')
+    expect(sum.style.backgroundImage).toContain('linear-gradient')
+    expect(sum.style.backgroundColor).toBe('')
+    expect(sum.className).toContain('hover:bg-[var(--surface-sunken)]')
+    expect(rowNamed(container, 'Буюртма сони').getAttribute('style')).toBeNull()
+  })
+
+  it('says each summary column’s formula on its header', () => {
+    draw()
+    expect(screen.getAllByRole('columnheader').slice(1, 6).map((th) => th.title)).toEqual([
+      'Oy rejasi (jadvalning C ustuni)',
+      'Oy boshidan bugungacha, bugun ham hisobda',
+      'Fakt ÷ oʻtgan kunlar × oydagi kunlar',
+      'Prognoz ÷ reja; foizli qatorda — fakt ÷ reja',
+      'Reja ÷ 27; foizli qatorda — oy rejasining oʻzi',
+    ])
+  })
+
+  it('says a muted early day is left out of the month’s fact and forecast', () => {
+    const early: RnpBlockDto = { ...BLOCKS[0]!, rows: [row({ key: 'calls', label: 'Дозвон', fact: 2, days: [5, 2, null], reliableFrom: '2026-09-02' })] }
+    const { container } = render(
+      <RnpSheetTable
+        lines={[{ kind: 'value', row: 157, team: 'Charos', label: 'Дозвон сони', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'calls' }]}
+        blocks={[early]}
+        days={DAYS}
+        today="2026-09-03"
+      />,
+    )
+    const [, , , , , first] = [...rowNamed(container, 'Дозвон сони').querySelectorAll('td')]
+    expect(first!.title).toBe('Bitrix24 da bu maydon 02.09 dan toʻliq — bu kun oy fakti va prognoziga kirmaydi')
+  })
+
+  it('writes «План бажарилиши» under a ROP’s name at full strength, and every sheet heading in capitals', () => {
+    const { container } = draw([
+      ...LINES,
+      { kind: 'title', row: 37, team: null, label: 'Таргет Zextra', sub: null, tone: 'team' },
+      { kind: 'title', row: null, team: 'Lola', label: 'Лола РОП — ROP bloki', sub: null, tone: 'team' },
+    ])
+    expect(rowNamed(container, 'Лола РОППродажа').querySelector('th span.uppercase')!.className).not.toContain('opacity')
+    // «Таргет Zextra» is the sheet's blue (team) heading, and upper case like «ТАРГЕТ COLLAGEN».
+    expect(within(rowNamed(container, 'Таргет Zextra')).getByText('Таргет Zextra').className).toContain('uppercase')
+    expect(within(rowNamed(container, 'Маркетинг COLLAGEN')).getByText('Маркетинг COLLAGEN').className).toContain('uppercase')
+    // A ROP's own heading, which the sheet does not have, keeps its case.
+    expect(within(rowNamed(container, 'ROP bloki')).getByText('Лола РОП — ROP bloki').className).not.toContain('uppercase')
+  })
+
+  it('prints a plan in its own unit — the brand P&L’s success share over a soʻm row (`planUnit`)', () => {
+    const brand: RnpBlockDto = {
+      ...BLOCKS[0]!,
+      rows: [row({ key: 'pj:collagen:fakt2', label: 'Сумма ФАКТ 2', unit: 'uzs', plan: 80.61, planUnit: 'percent', fact: 1_000_000 })],
+    }
+    const { container } = render(
+      <RnpSheetTable
+        lines={[{ kind: 'value', row: 395, team: null, label: 'Сумма факт2 (успешка)', sub: null, tone: 'plain', fact: 'fakt', bold: false, key: 'pj:collagen:fakt2' }]}
+        blocks={[brand]}
+        days={DAYS}
+        today="2026-09-03"
+      />,
+    )
+    const cells = [...rowNamed(container, 'Сумма факт2').querySelectorAll('td')].map((td) => td.textContent)
+    expect(cells.slice(0, 2)).toEqual(['80,6%', '1.000.000'])
+  })
 })
 
 describe('RnpSheetTable — the typed P&L cost lines', () => {
@@ -362,6 +504,71 @@ describe('RnpSheetTable — the typed P&L cost lines', () => {
     expect(cells.slice(0, 5).every((td) => td.querySelector('input') === null)).toBe(true)
   })
 
+  it('keys a typed field by what it saves: a refused text survives neither a month switch nor a reorder (2026-10-02)', () => {
+    const plans: RnpBlockDto[] = [
+      {
+        ...BLOCKS[0]!,
+        rows: [
+          row({ key: 'meta:collagen:budget', label: 'Бюджет', unit: 'usd', planInput: { team: '', metric: 'budget_collagen' } }),
+          row({ key: 'meta:collagen:leads', label: 'Лид', planInput: { team: '', metric: 'meta_leads_collagen' } }),
+        ],
+      },
+    ]
+    const budgetLine: RnpLine = { kind: 'value', row: 14, team: null, label: 'Бюджет Collagen', sub: null, tone: 'plain', fact: 'money', bold: false, key: 'meta:collagen:budget' }
+    const leadsLine: RnpLine = { kind: 'value', row: 15, team: null, label: 'Колич Collagen лид', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'meta:collagen:leads' }
+    const client = new QueryClient()
+    const view = (month: string, lines: RnpLine[]) => (
+      <QueryClientProvider client={client}>
+        <RnpSheetTable lines={lines} blocks={plans} days={DAYS} today="2026-09-02" editCostsFor={month} />
+      </QueryClientProvider>
+    )
+    const budget = () => screen.getByRole('textbox', { name: 'Kompaniya · Бюджет Collagen — reja, $' }) as HTMLInputElement
+    const leads = () => screen.getByRole('textbox', { name: 'Kompaniya · Колич Collagen лид — reja' }) as HTMLInputElement
+    const refuse = (field: HTMLInputElement) => {
+      fireEvent.focus(field)
+      fireEvent.change(field, { target: { value: 'abc' } })
+      fireEvent.keyDown(field, { key: 'Enter' })
+      expect(field.getAttribute('aria-invalid')).toBe('true')
+    }
+
+    const { rerender } = render(view('2026-09', [budgetLine, leadsLine]))
+    refuse(budget())
+    // Another month, the same row: a fresh field, not September's red «abc».
+    rerender(view('2026-10', [budgetLine, leadsLine]))
+    expect(budget().value).toBe('')
+    expect(budget().getAttribute('aria-invalid')).toBeNull()
+    // The lines reordered under the same positions (as a ROP cut does): nothing moves into the other plan.
+    refuse(budget())
+    rerender(view('2026-10', [leadsLine, budgetLine]))
+    expect(leads().value).toBe('')
+    expect(leads().getAttribute('aria-invalid')).toBeNull()
+  })
+
+  it('keys a typed day by its row and day: two teams’ «Ходим сони» trading places keep their own text', () => {
+    const heads: RnpBlockDto[] = [
+      {
+        ...BLOCKS[0]!,
+        rows: ['Lola', 'Aziz'].map((rop) => row({ key: `team:${rop}:headcount`, label: 'Ходим сони', additive: false, manual: { kind: 'headcount', rop } })),
+      },
+    ]
+    const line = (rop: string): RnpLine => ({ kind: 'value', row: null, team: rop, label: 'Ходим сони', sub: null, tone: 'plain', fact: 'fakt', bold: false, key: `team:${rop}:headcount` })
+    const client = new QueryClient()
+    const view = (lines: RnpLine[]) => (
+      <QueryClientProvider client={client}>
+        <RnpSheetTable lines={lines} blocks={heads} days={DAYS} today="2026-09-02" editCostsFor="2026-09" />
+      </QueryClientProvider>
+    )
+    const field = (rop: string) => screen.getByRole('textbox', { name: `${rop} · Ходим сони, 02.09 — kishi` }) as HTMLInputElement
+    const { rerender } = render(view([line('Lola'), line('Aziz')]))
+    fireEvent.focus(field('Lola'))
+    fireEvent.change(field('Lola'), { target: { value: '7.5' } })
+    fireEvent.keyDown(field('Lola'), { key: 'Enter' })
+    expect(field('Lola').getAttribute('aria-invalid')).toBe('true')
+    rerender(view([line('Aziz'), line('Lola')]))
+    // Aziz now stands where Lola's refused «7.5» was typed: his field is his own.
+    expect(field('Aziz').value).toBe('')
+    expect(field('Aziz').getAttribute('aria-invalid')).toBeNull()
+  })
 })
 
 describe('RnpSheetTable — resizable columns', () => {
@@ -529,6 +736,41 @@ describe('RnpSheetTable — План обший, Факт and Прогноз pin
     for (const o of observers) o.cb()
     expect(box.hasAttribute('data-pin-wide')).toBe(true)
   })
+
+  it('keeps the frozen parts as the box’s scroll padding, so Tab never lands a field under them (2026-10-02)', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 100, height: 48 } as DOMRect)
+    const box = grid(1200)
+    // The label and the three pinned columns, and the header row.
+    expect(box.style.scrollPaddingLeft).toBe('400px')
+    expect(box.style.scrollPaddingTop).toBe('48px')
+    // Narrow, only the label is frozen.
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(375)
+    for (const o of observers) o.cb()
+    expect(box.style.scrollPaddingLeft).toBe('100px')
+  })
+
+  it('brings today’s column just right of the frozen block — the toolbar’s «Bugun»', () => {
+    const box = grid(1200)
+    let left = 100
+    Object.defineProperty(box, 'scrollLeft', { configurable: true, get: () => left, set: (v: number) => void (left = v) })
+    const today = screen.getAllByRole('columnheader').find((th) => th.getAttribute('aria-current') === 'date')!
+    // One spy for every element (vitest hands back the prototype's): the box at 20px, today's header at 1 520px.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { width: 100, left: this === box ? 20 : this === today ? 1520 : 0 } as DOMRect
+    })
+    scrollToToday(box)
+    // 1 500px into the box, less the 400px frozen: today sits at the frozen block's edge.
+    expect(box.scrollLeft).toBe(100 + 1500 - 400)
+  })
+
+  it('leaves a month without today where it is', () => {
+    const { container } = render(<RnpSheetTable lines={LINES} blocks={BLOCKS} days={DAYS} today="2026-10-02" />)
+    const box = container.querySelector<HTMLElement>('[data-rnp-grid]')!
+    let left = 100
+    Object.defineProperty(box, 'scrollLeft', { configurable: true, get: () => left, set: (v: number) => void (left = v) })
+    scrollToToday(box)
+    expect(box.scrollLeft).toBe(100)
+  })
 })
 
 describe('RnpSheetTable — drag to scroll', () => {
@@ -553,12 +795,12 @@ describe('RnpSheetTable — drag to scroll', () => {
 
   it('pans the grid sideways once the mouse has moved past the threshold', () => {
     const { box, cell } = grid()
-    fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, clientX: 500, pointerId: 1 })
-    fireEvent.pointerMove(cell, { pointerType: 'mouse', clientX: 460, pointerId: 1 })
+    fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, buttons: 1, clientX: 500, pointerId: 1 })
+    fireEvent.pointerMove(cell, { pointerType: 'mouse', buttons: 1, clientX: 460, pointerId: 1 })
     expect(box.scrollLeft).toBe(240)
     expect(box.hasAttribute('data-panning')).toBe(true)
     expect(box.setPointerCapture).toHaveBeenCalledWith(1)
-    fireEvent.pointerMove(cell, { pointerType: 'mouse', clientX: 560, pointerId: 1 })
+    fireEvent.pointerMove(cell, { pointerType: 'mouse', buttons: 1, clientX: 560, pointerId: 1 })
     expect(box.scrollLeft).toBe(140)
     fireEvent.pointerUp(cell, { pointerType: 'mouse', clientX: 560, pointerId: 1 })
     expect(box.hasAttribute('data-panning')).toBe(false)
@@ -566,28 +808,41 @@ describe('RnpSheetTable — drag to scroll', () => {
 
   it('does nothing for a click that stays under the threshold', () => {
     const { box, cell } = grid()
-    fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, clientX: 500, pointerId: 1 })
-    fireEvent.pointerMove(cell, { pointerType: 'mouse', clientX: 503, pointerId: 1 })
+    fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, buttons: 1, clientX: 500, pointerId: 1 })
+    fireEvent.pointerMove(cell, { pointerType: 'mouse', buttons: 1, clientX: 503, pointerId: 1 })
     fireEvent.pointerUp(cell, { pointerType: 'mouse', clientX: 503, pointerId: 1 })
     expect(box.scrollLeft).toBe(200)
     expect(box.setPointerCapture).not.toHaveBeenCalled()
   })
 
+  it('forgets a press released outside the box: a hover with no button held never pans (2026-10-02)', () => {
+    const { box, cell } = grid()
+    // Pressed, moved straight up out of the grid and released over the page — the box never heard the release.
+    fireEvent.pointerDown(cell, { pointerType: 'mouse', button: 0, buttons: 1, clientX: 500, pointerId: 1 })
+    fireEvent.pointerMove(cell, { pointerType: 'mouse', buttons: 0, clientX: 400, pointerId: 1 })
+    expect(box.scrollLeft).toBe(200)
+    expect(box.hasAttribute('data-panning')).toBe(false)
+    expect(box.setPointerCapture).not.toHaveBeenCalled()
+    // And the press is gone, not waiting for the button to come back.
+    fireEvent.pointerMove(cell, { pointerType: 'mouse', buttons: 1, clientX: 300, pointerId: 1 })
+    expect(box.scrollLeft).toBe(200)
+  })
+
   it('leaves touch, the resize handles and the row labels alone', () => {
     const { box, cell } = grid()
-    fireEvent.pointerDown(cell, { pointerType: 'touch', button: 0, clientX: 500, pointerId: 2 })
-    fireEvent.pointerMove(cell, { pointerType: 'touch', clientX: 400, pointerId: 2 })
+    fireEvent.pointerDown(cell, { pointerType: 'touch', button: 0, buttons: 1, clientX: 500, pointerId: 2 })
+    fireEvent.pointerMove(cell, { pointerType: 'touch', buttons: 1, clientX: 400, pointerId: 2 })
     expect(box.scrollLeft).toBe(200)
 
     const label = box.querySelector('tbody th')!
-    fireEvent.pointerDown(label, { pointerType: 'mouse', button: 0, clientX: 500, pointerId: 3 })
-    fireEvent.pointerMove(label, { pointerType: 'mouse', clientX: 400, pointerId: 3 })
+    fireEvent.pointerDown(label, { pointerType: 'mouse', button: 0, buttons: 1, clientX: 500, pointerId: 3 })
+    fireEvent.pointerMove(label, { pointerType: 'mouse', buttons: 1, clientX: 400, pointerId: 3 })
     expect(box.scrollLeft).toBe(200)
     fireEvent.pointerUp(label, { pointerType: 'mouse', clientX: 400, pointerId: 3 })
 
     const handle = box.querySelector('[role="separator"]')!
-    fireEvent.pointerDown(handle, { pointerType: 'mouse', button: 0, clientX: 500, pointerId: 4 })
-    fireEvent.pointerMove(box, { pointerType: 'mouse', clientX: 400, pointerId: 4 })
+    fireEvent.pointerDown(handle, { pointerType: 'mouse', button: 0, buttons: 1, clientX: 500, pointerId: 4 })
+    fireEvent.pointerMove(box, { pointerType: 'mouse', buttons: 1, clientX: 400, pointerId: 4 })
     expect(box.scrollLeft).toBe(200)
   })
 

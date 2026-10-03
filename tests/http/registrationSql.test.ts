@@ -70,6 +70,14 @@ describe('sellerCallsSql', () => {
   })
 })
 
+describe('rosterSql', () => {
+  it('puts a head of two ROP units in the one they sit in, as the leads are read (2026-10-02)', () => {
+    const sql = bare(RegistrationRepository.rosterSql())
+    expect(sql).toMatch(/ORDER BY x\.employee_id, x\.rank, \(x\.unit_id = e\."departmentId"\) DESC, x\."name"\s*$/)
+    expect(bare(RegistrationRepository.distributedDaysSql())).toContain(`ORDER BY (h."id" = e."departmentId") DESC, h."name"`)
+  })
+})
+
 describe('sellerFaktDaysSql', () => {
   it('reads FAKT 1 / FAKT 2 by the board\'s predicates and /rnp\'s team, per operator', async () => {
     const { InsightsRepository } = await import('@/server/repositories/insightsRepository')

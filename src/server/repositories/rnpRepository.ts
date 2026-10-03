@@ -13,7 +13,8 @@
  *     moves on (21.09: 338 deals, two sharing a contact), so deals are
  *     counted, not folded. The portal's figures for 21.09 — Sevinch 38,
  *     Saidaziz 41, Maftuna 27 — are the sheet's. Filled on every deal only
- *     from 16.09; the screen says so.
+ *     from 16.09; the screen says so. Only a FRESH hand-out counts (since
+ *     2026-10-02): see `leadDaysSql`.
  *   Регистрация — Регистрация (role LEAD) deals by creation day, «Дубликат
  *     (лид)» apart (the red «Дубликат» is a lead); the kval lead is the registrar's «Сделка успешна» (WON),
  *     by the day it was closed. «ИИ квал» is NOT a kval: the AI hands the
@@ -39,8 +40,6 @@ import { type RnpCostLine, type RnpCostProject, SETTING_LEAD_VALUE } from '@/ser
 export interface RnpLeadDayRow {
   readonly day: string
   readonly rop: string | null
-  /** The deal's «Регистрация» label — the registrar who qualified the lead; null when the portal has none. */
-  readonly registrar: string | null
   readonly leads: number
 }
 
@@ -92,11 +91,6 @@ export interface RnpRegistrarKvalRow {
   readonly qualified: number
 }
 
-export interface RnpRegistrarGroupRow {
-  readonly registrar: string
-  readonly group: string
-}
-
 /** A P&L cost typed by hand (`rnp_manual_cost`). */
 export interface RnpManualCostRow {
   readonly day: string
@@ -144,12 +138,12 @@ export class RnpRepository {
 
   /** `from` / `to` are inclusive `YYYY-MM-DD`. */
   async leadDays(from: string, to: string): Promise<RnpLeadDayRow[]> {
-    const rows = await this.prisma.$queryRawUnsafe<{ day: string; rop: string | null; registrar: string | null; leads: bigint }[]>(
+    const rows = await this.prisma.$queryRawUnsafe<{ day: string; rop: string | null; leads: bigint }[]>(
       RnpRepository.leadDaysSql(),
       from,
       to,
     )
-    return rows.map((r) => ({ day: r.day, rop: r.rop, registrar: r.registrar, leads: Number(r.leads) }))
+    return rows.map((r) => ({ day: r.day, rop: r.rop, leads: Number(r.leads) }))
   }
 
   /**
@@ -158,16 +152,26 @@ export class RnpRepository {
    * «РОП (Первичка)» holds the head, so headship is the first reading, and a
    * deputy filed inside a ROP department the second. Anyone else (user 10,
    * the registration desk's head, who holds leads not yet handed out) is
-   * null: «Taqsimlanmagan».
+   * null: «Taqsimlanmagan». A person heading TWO ROP units counts in the one
+   * they sit in (2026-10-02): Shohjaxon also headed «Saida(ROP)» on
+   * production, and the first by name filed all his leads under «Саида РОП».
    *
    * EVERY PIPELINE, as the client counts it (2026-09-30): Bitrix24's deal list
    * filtered by «Лид таркатилган сана» and «РОП (Первичка)», nothing else — a
    * handed-out lead now sitting in «База» or back in «Регистрация» still went
    * to that ROP.
    *
-   * The registrar rides along: the Первичный отдел deal carries the
-   * «Регистрация» label copied from the Регистрация deal (29.09: 340 of 343
-   * handed-out deals named one), and the «guruh» kval rows count by it.
+   * ONLY A FRESH HAND-OUT (the client's decision of 2026-10-02): a deal
+   * created at most 30 days before «Лид таркатилган сана». On 26.09 the
+   * portal re-stamped the date on 1 704 old Первичный отдел deals (June
+   * 2025–January 2026, 715 of them to Azizbek), and every one counted as a
+   * lead handed out that day: Azizbek read 752 where the client's sheet
+   * typed 37 — the fresh ones, exactly, as on 17.09 (47). The bound is
+   * `createdAtSource`, not «Лид тушган сана», which is empty before 14.09.
+   * Its five hours of zone at the 30-day edge are immaterial: a re-stamped
+   * deal is months past it. «Lidlar» counts its hand-outs without this bound
+   * (`RegistrationRepository.handedOutSql`), so the two can differ on a day
+   * like 26.09.
    */
   static leadDaysSql(): string {
     return `
@@ -179,17 +183,17 @@ export class RnpRepository {
              FROM "department" h
             WHERE h."headId" = d."leadRopEmployeeId" AND h."isActive"
               AND ${InsightsRepository.ropNameSql('h."name"')} IS NOT NULL
-            ORDER BY h."name"
+            ORDER BY (h."id" = e."departmentId") DESC, h."name"
             LIMIT 1),
           ${InsightsRepository.ropNameSql('dep."name"')}
         ) AS rop,
-        d."registrar",
         count(*)::bigint AS leads
       FROM "deal" d
       LEFT JOIN "employee" e ON e."id" = d."leadRopEmployeeId"
       LEFT JOIN "department" dep ON dep."id" = e."departmentId"
       WHERE d."leadDistributedOn" BETWEEN $1::date AND $2::date
-      GROUP BY 1, 2, 3`
+        AND d."createdAtSource" >= d."leadDistributedOn" - interval '30 days'
+      GROUP BY 1, 2`
   }
 
   /**
@@ -301,9 +305,10 @@ export class RnpRepository {
 
   /**
    * Connected calls per team per day, for the people of ROP teams only.
-   * Inbound and outbound; a callback leg is the portal ringing an operator,
-   * not a conversation with a customer. The team is the PRIMARY department,
-   * as on «Qoʻngʻiroqlar».
+   * Inbound and outbound (`callDirection`, by Bitrix24's CALL_TYPE since
+   * 2026-10-02); a callback leg (CALL_TYPE 4) is left out — the portal has
+   * logged none since 15.09, so the choice has never moved a number. The
+   * team is the PRIMARY department, as on «Qoʻngʻiroqlar».
    */
   static callDaysSql(): string {
     return `
@@ -371,10 +376,16 @@ export class RnpRepository {
 
   /**
    * Every stay in a packing stage that overlaps the month: those that began
-   * in the 62 days before it or inside it, plus the stays still open on a
-   * deal standing there now however old — an order parked since spring is
-   * «не собран» on every day of this month, and a lower bound alone would
-   * lose it.
+   * in the 62 days before it or inside it and were left in it or after it,
+   * plus the stays still open on a deal standing there now however old — an
+   * order parked since spring is «не собран» on every day of this month, and
+   * a lower bound alone would lose it.
+   *
+   * AN OPEN STAY COMES ONLY FROM THE SECOND ARM (2026-10-02). `leftAt` is
+   * written from the deal's next SYNCED row, and stage history is synced for
+   * some pipelines only: a deal that left packing for one of the others keeps
+   * an open stay for good, and the first arm counted it «не собран» every day
+   * for up to 62 days. The second arm asks the deal where it stands now.
    */
   static packingStaysSql(): string {
     const lo = `(($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
@@ -387,7 +398,7 @@ export class RnpRepository {
       FROM "deal_stage_history" h
       WHERE h."stageId" IN (SELECT "id" FROM packing)
         AND h."enteredAt" >= ${lo} - interval '62 days' AND h."enteredAt" < ${hi}
-        AND (h."leftAt" IS NULL OR h."leftAt" >= ${lo})
+        AND h."leftAt" >= ${lo}
       UNION
       SELECT h."dealId", h."enteredAt", h."leftAt"
       FROM "deal" d
@@ -436,31 +447,6 @@ export class RnpRepository {
         AND d."closedAt" >= (($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
         AND d."closedAt" < (($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
       GROUP BY 1, 2`
-  }
-
-  /**
-   * The month's registrar → «guruh» assignments — or, for a month nobody has
-   * grouped yet, the latest earlier month's: the desk does not reshuffle on
-   * the 1st, and without this every October kval would fall to «Guruhsiz»
-   * until somebody retyped September's groups. Saving the form writes the
-   * month's own rows, which then win.
-   */
-  async registrarGroups(month: string): Promise<RnpRegistrarGroupRow[]> {
-    const own = await this.prisma.rnpRegistrarGroup.findMany({
-      where: { month: monthDate(month) },
-      select: { registrar: true, group: true },
-    })
-    if (own.length > 0) return own
-    const previous = await this.prisma.rnpRegistrarGroup.findFirst({
-      where: { month: { lt: monthDate(month) } },
-      orderBy: { month: 'desc' },
-      select: { month: true },
-    })
-    if (!previous) return []
-    return this.prisma.rnpRegistrarGroup.findMany({
-      where: { month: previous.month },
-      select: { registrar: true, group: true },
-    })
   }
 
   /** The month's hand-typed P&L costs; `from` / `to` are inclusive `YYYY-MM-DD`. */

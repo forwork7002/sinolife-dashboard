@@ -12,12 +12,18 @@
  * The endpoint answers a date with the rate IN FORCE that day (a weekend
  * gets Friday's), so each day is asked for itself. A past day's rate never
  * changes and is kept for the life of the process; today's is kept an hour.
- * A failed read is not cached: it is null, and the next request asks again.
+ *
+ * A FAILED READ IS REMEMBERED FOR TEN MINUTES (2026-10-02), and the day
+ * answers what it had — today's older rate, or null — without asking. It
+ * was asked again on every request: while the bank hung, every /rnp load,
+ * plan save and headcount save waited out the timeout — 5 s, or 30 s for a
+ * month not read yet (30 days, five at a time).
  */
 
 const ENDPOINT = 'https://cbu.uz/uz/arkhiv-kursov-valyut/json/USD'
 const REQUEST_TIMEOUT_MS = 5_000
 const TODAY_TTL_MS = 60 * 60_000
+const RETRY_AFTER_MS = 10 * 60_000
 /** Days asked in parallel on a cold month — the bank's site is not ours to hammer. */
 const CONCURRENCY = 5
 
@@ -40,6 +46,8 @@ type Fetcher = (url: string, init: { signal: AbortSignal }) => Promise<{ ok: boo
 
 export class CbuUsdRates {
   private readonly cache = new Map<string, { rate: number; at: number }>()
+  /** When a day's last read failed — it is not asked again before `RETRY_AFTER_MS`. */
+  private readonly failedAt = new Map<string, number>()
 
   constructor(
     private readonly fetcher: Fetcher = (url, init) => fetch(url, init),
@@ -66,16 +74,23 @@ export class CbuUsdRates {
   private async forDay(day: string, isToday: boolean): Promise<number | null> {
     const hit = this.cache.get(day)
     if (hit && (!isToday || this.clock() - hit.at < TODAY_TTL_MS)) return hit.rate
+    const failed = this.failedAt.get(day)
+    if (failed !== undefined && this.clock() - failed < RETRY_AFTER_MS) return hit?.rate ?? null
     try {
       const response = await this.fetcher(`${ENDPOINT}/${day}/`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
-      if (!response.ok) return hit?.rate ?? null
-      const rate = parseCbuRate(await response.json())
-      if (rate === null) return hit?.rate ?? null
+      const rate = response.ok ? parseCbuRate(await response.json()) : null
+      if (rate === null) return this.failed(day, hit)
+      this.failedAt.delete(day)
       this.cache.set(day, { rate, at: this.clock() })
       return rate
     } catch {
-      // Unreachable bank: yesterday's answer for today if there is one, else nothing — never a guess.
-      return hit?.rate ?? null
+      return this.failed(day, hit)
     }
+  }
+
+  /** Unreachable bank: the day's older answer if there is one, else nothing — never a guess — and no new ask for a while. */
+  private failed(day: string, hit: { rate: number } | undefined): number | null {
+    this.failedAt.set(day, this.clock())
+    return hit?.rate ?? null
   }
 }

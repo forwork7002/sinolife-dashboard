@@ -19,6 +19,8 @@ export interface RnpRowDto {
   readonly better: 'up' | 'down'
   /** C — the month's plan. */
   readonly plan: number | null
+  /** The plan's own unit, when it is not the row's — the brand P&L's «Сумма факт2» / «База усп» carry a share (%) over a soʻm row. Absent: `unit`. */
+  readonly planUnit?: RnpUnit
   /** B — the day's share of it (a rate's plan is the same every day). */
   readonly dayPlan: number | null
   /** D — the month so far. */
@@ -82,9 +84,10 @@ export interface RnpBlockDto {
 
 /**
  * How a line's label cell reads — the sheet's colours by meaning, not by hex:
- * 'section' its orange headings, 'team' its blue team rows, 'company' the
- * green company rows, 'brand' the light-blue P&L sub-rows, 'alert' the pink
- * «Разница». Mirrors `src/server/domain/rnp/rnpSheetLayout.ts`.
+ * 'section' its orange headings, 'team' its blue team rows, 'brand' the
+ * light-blue P&L sub-rows. 'company' (green) and 'alert' (pink «Разница») are
+ * the sheet's palette for rows the client removed on 2026-09-30 — no line
+ * carries them now. Mirrors `src/server/domain/rnp/rnpSheetLayout.ts`.
  */
 export type RnpLabelTone = 'section' | 'team' | 'company' | 'brand' | 'alert' | 'plain'
 /** How a line's fact column reads: FAKT sums, «План бажарилиши», ratios, key figures, budgets. */
@@ -103,6 +106,8 @@ export type RnpLine =
       readonly label: string
       readonly sub: string | null
       readonly tone: RnpLabelTone
+      /** The first line of a team the sheet has no block for: draw `RNP_ADDED_TEAM_NOTE` beside it. */
+      readonly added?: true
     }
   | {
       readonly kind: 'value'
@@ -116,9 +121,15 @@ export type RnpLine =
       readonly bold: boolean
       /** The `RnpRowDto.key` that fills it; null = Bitrix24 cannot supply this row. */
       readonly key: string | null
+      /** The first line of a team the sheet has no block for: draw `RNP_ADDED_TEAM_NOTE` beside it. */
+      readonly added?: true
     }
 
-/** The `sub` of a heading added for a team the sheet has no block for (`ADDED_TEAM_NOTE`). */
+/**
+ * The chip beside the first line of a team the sheet has no block for. Since
+ * 2026-10-02 such a block is drawn on the sheet's own template and its first
+ * line carries `added`; an older payload put this text in a heading's `sub`.
+ */
 export const RNP_ADDED_TEAM_NOTE = 'Bitrix24ʼdan · sheetda bloki yoʻq'
 
 export interface RnpTeamDto {

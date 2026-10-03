@@ -489,13 +489,18 @@ export const TARGET_SOURCE_IDS: readonly string[] = Object.freeze(Object.keys(TA
  * A Регистрация lead's brand by where it came in, for «RNP jadvali»'s P&L
  * (sheet rows 399 / 426). The ad pages of `TARGET_SOURCE_PRODUCT`
  * («collagen.marine» UC_MWIKOC among them since 2026-10-02), plus the two
- * brands' own inbound lines and the second Zextra bot 46|NEXTBOT (read off
- * crm.status.list on 2026-09-28). A source outside this map decides nothing;
- * the lead's form, if any, is asked next (see rnpService).
+ * brands' own inbound lines, the second Zextra bot 46|NEXTBOT (read off
+ * crm.status.list on 2026-09-28), and «collagen.sinolife» UC_NBCV5K and
+ * «Сммщик sinolifeuz» UC_5JW4YK, a Sinolife page's SMM, on 2026-10-02 — 20
+ * Регистрация leads 01.09–01.10 that fell to «Brendsiz». A source outside
+ * this map decides nothing; the lead's form, if any, is asked next (see
+ * rnpService).
  */
 export const LEAD_SOURCE_BRAND: Readonly<Record<string, TargetProduct>> = Object.freeze({
   ...TARGET_SOURCE_PRODUCT,
   UC_CKXAZS: 'Collagen', // Входящий collagen
+  UC_NBCV5K: 'Collagen', // collagen.sinolife
+  UC_5JW4YK: 'Collagen', // Сммщик sinolifeuz
   UC_AA84D0: 'Zextra', // Входящий zextra
   '46|NEXTBOT': 'Zextra', // NEXTBOT - zextra.sinolife
 })
@@ -574,10 +579,20 @@ export function confirmStatusFromLabel(label: string | undefined): ConfirmStatus
   return undefined
 }
 
-/** voximplant.statistic.get reports the leg, not the intent. */
+/**
+ * A call's direction, by `voximplant.statistic.get`'s CALL_TYPE as Bitrix24
+ * documents it: 1 outgoing, 2 incoming, 3 incoming with redirection, 4
+ * callback, 5 informational. Until 2026-10-02 this read 1 as INBOUND and 3 as
+ * CALLBACK — so the floor's 338 467 outgoing legs were stored as «inbound»,
+ * and the comments explained it away as «the leg, not the intent». Rows
+ * written before then keep the old label until a CALLS pass re-reads them
+ * (the upsert rewrites `direction`); nothing splits by it, and «RNP
+ * jadvali»'s БАЗА calls count both directions. CALL_CATEGORY is 'external' on
+ * every leg seen; its two names are kept for a portal that sends them.
+ */
 export function callDirection(category: string | undefined, type: string | undefined): CallDirectionValue {
-  if (type === '1' || category === 'incoming') return 'INBOUND'
-  if (type === '3' || category === 'callback') return 'CALLBACK'
+  if (type === '2' || type === '3' || category === 'incoming') return 'INBOUND'
+  if (type === '4' || category === 'callback') return 'CALLBACK'
   return 'OUTBOUND'
 }
 

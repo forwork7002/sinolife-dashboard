@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { RnpLine, RnpRowDto } from '@/features/rnp/rnpApi'
-import { dayMonth, dayMonthYear, dayTone, indexTone, ropLines } from '@/features/rnp/rnpDerive'
+import { RNP_FIRST_MONTH, dayMonth, dayMonthYear, dayTone, indexTone, rnpMonthIn, ropLines } from '@/features/rnp/rnpDerive'
 
 /**
  * The grid's heat tint: a finished day of an additive row with a plan, read
@@ -84,5 +84,21 @@ describe('ropLines', () => {
       '# Логистика — Севинч РОП',
       '274',
     ])
+  })
+})
+
+describe('rnpMonthIn — a month the sheet can open on', () => {
+  it('takes a whole month from the overview’s floor to the current one', () => {
+    expect(RNP_FIRST_MONTH).toBe('2025-01')
+    expect(rnpMonthIn('2025-01', '2026-10')).toBe('2025-01')
+    expect(rnpMonthIn('2026-09', '2026-10')).toBe('2026-09')
+    expect(rnpMonthIn('2026-10', '2026-10')).toBe('2026-10')
+  })
+
+  it('refuses a half-typed year, a future month, one before the floor and anything malformed', () => {
+    // What a month box sends while a year is typed digit by digit: never requested.
+    for (const v of ['0002-10', '0020-10', '0202-10', '2027-10', '2026-11', '2024-12', '2026-13', '2026-00', '2026-9', '2026-09-01', '', 'abc', null]) {
+      expect(rnpMonthIn(v, '2026-10')).toBeNull()
+    }
   })
 })

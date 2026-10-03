@@ -28,7 +28,11 @@ export class RegistrationRepository {
   /**
    * The ROP is read exactly as «RNP jadvali»'s `leadDaysSql` reads it — the
    * team the person heads, then the team they sit in, else null — so the two
-   * screens agree on every team's leads.
+   * screens agree on every team's leads. Except on a day the portal re-stamps
+   * old deals as handed out (26.09: 1 704): since 2026-10-02 /rnp counts only
+   * a deal created at most 30 days before, and this screen still counts them
+   * all — the bound was decided for /rnp's «Квал лид сони»; «Lidlar» was
+   * left as it was, pending its own decision.
    *
    * NOT THE REGISTRATION DEAL. When a lead is handed out the portal stamps
    * «Лид таркатилган сана» on the Регистрация deal too (29.09: 54 of 343 deals
@@ -66,8 +70,8 @@ export class RegistrationRepository {
 
   /**
    * The ROP a handed-out deal went to: the team the «РОП (Первичка)» person
-   * heads, then the team they sit in, else null. Reads `d` and `dep` from
-   * `handedOutSql`.
+   * heads — of two, the one they sit in — then the team they sit in, else
+   * null. Reads `d`, `e` and `dep` from `handedOutSql`.
    */
   private static leadRopSql(): string {
     return `COALESCE(
@@ -75,7 +79,7 @@ export class RegistrationRepository {
                FROM "department" h
               WHERE h."headId" = d."leadRopEmployeeId" AND h."isActive"
                 AND ${InsightsRepository.ropNameSql('h."name"')} IS NOT NULL
-              ORDER BY h."name"
+              ORDER BY (h."id" = e."departmentId") DESC, h."name"
               LIMIT 1),
             ${InsightsRepository.ropNameSql('dep."name"')}
           )`
@@ -122,24 +126,32 @@ export class RegistrationRepository {
    * PRIMARY unit it is — so a seller with no lead and no order today is still
    * a row, as on the client's sheet. Primary, never `department_member`: this
    * is a money table, and a person in two units would sit on two teams' rows.
-   * A head is in the team they head (the first by name, if several).
+   * A head is in the team they head — of several, the one they sit in, as
+   * `leadRopSql` reads it, then the first by name.
    */
   async roster(): Promise<RosterMember[]> {
-    const rows = await this.prisma.$queryRawUnsafe<{ employee_id: string; full_name: string; rop: string; is_head: boolean }[]>(`
+    const rows = await this.prisma.$queryRawUnsafe<{ employee_id: string; full_name: string; rop: string; is_head: boolean }[]>(
+      RegistrationRepository.rosterSql(),
+    )
+    return rows.map((r) => ({ employeeId: r.employee_id, fullName: r.full_name, rop: r.rop, isHead: r.is_head }))
+  }
+
+  /** `roster`'s statement. Exported for its test. */
+  static rosterSql(): string {
+    return `
       SELECT DISTINCT ON (x.employee_id) x.employee_id, e."fullName" AS full_name, x.rop, x.is_head
         FROM (
-          SELECT h."headId" AS employee_id, ${InsightsRepository.ropNameSql('h."name"')} AS rop, true AS is_head, 0 AS rank, h."name"
+          SELECT h."headId" AS employee_id, ${InsightsRepository.ropNameSql('h."name"')} AS rop, true AS is_head, 0 AS rank, h."id" AS unit_id, h."name"
             FROM "department" h
            WHERE h."isActive" AND h."headId" IS NOT NULL
           UNION ALL
-          SELECT m."id", ${InsightsRepository.ropNameSql('dep."name"')}, false, 1, dep."name"
+          SELECT m."id", ${InsightsRepository.ropNameSql('dep."name"')}, false, 1, dep."id", dep."name"
             FROM "employee" m
             JOIN "department" dep ON dep."id" = m."departmentId" AND dep."isActive"
         ) x
         JOIN "employee" e ON e."id" = x.employee_id AND e."isActive"
        WHERE x.rop IS NOT NULL
-       ORDER BY x.employee_id, x.rank, x."name"`)
-    return rows.map((r) => ({ employeeId: r.employee_id, fullName: r.full_name, rop: r.rop, isHead: r.is_head }))
+       ORDER BY x.employee_id, x.rank, (x.unit_id = e."departmentId") DESC, x."name"`
   }
 
   /** Names for people credited with leads or orders who are on no roster. */

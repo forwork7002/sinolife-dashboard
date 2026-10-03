@@ -256,7 +256,14 @@ export function createSyncHandlers(
             externalSource_externalId: { externalSource: source, externalId: record.externalId },
           },
           create: { ...data, externalSource: source, externalId: record.externalId },
-          update: data,
+          /*
+            A HEAD THE PORTAL NO LONGER NAMES IS CLEARED HERE; one it names is
+            linked after the employee pass, below. It used to be only ever set:
+            «Saida(ROP)» kept Shohjaxon as its head after the portal cleared
+            UF_HEAD, and every lead naming him went to «Саида РОП» on /rnp and
+            «Lidlar» (2026-10-02) — and the stale head kept its row scope.
+          */
+          update: record.headExternalId ? data : { ...data, headId: null },
         })
 
         if (record.headExternalId) pendingHeads.set(record.externalId, record.headExternalId)

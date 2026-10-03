@@ -25,6 +25,13 @@
  * base of, and reads «Квал лид сони» — «Дозвон сони» in the БАЗА blocks,
  * whose base is connected calls, not leads.
  *
+ * 2026-10-02: row 45 (the company's «Регистрация лид нархи», the sheet's
+ * `=G42/G47`) sits under the totals 42–44 it is computed from, as on the
+ * sheet — left after «Цена лида Zextra» it read as Zextra's own. Row 346's
+ * column B («ИЮЛЬ», the sheet's stale month name) is printed as the page's
+ * month (`rnpSheetView`). The logistics «Отказ сумма» is plain in every
+ * block (283 and 288 had copied the bold of an empty sheet cell).
+ *
  * Each entry: [row, label (column A), sub (column B when it holds text — the
  * person responsible, «без квал», «факт1» …), kind, bold, tone of the label
  * cell, tone of the fact cell].
@@ -73,6 +80,7 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [42, 'Бюджет', null, 'value', true, 'plain', 'money'],
   [43, 'Количество лид', null, 'value', true, 'plain', 'plain'],
   [44, 'CPL $   цена лида', null, 'value', true, 'plain', 'rate'],
+  [45, '', null, 'helper', true, 'plain', 'rate'],
   [13, 'Таргет Collagen', null, 'title', true, 'section', 'plain'],
   [14, 'Бюджет Collagen', null, 'value', false, 'plain', 'money'],
   [15, 'Колич Collagen лид', null, 'value', false, 'plain', 'plain'],
@@ -81,7 +89,6 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [38, 'Бюджет Zextra', null, 'value', false, 'plain', 'money'],
   [39, 'Колич Zextra лид', null, 'value', false, 'plain', 'plain'],
   [40, 'Цена лида Zextra', null, 'value', false, 'plain', 'rate'],
-  [45, '', null, 'helper', true, 'plain', 'rate'],
   [47, 'Жами лид сони', null, 'value', true, 'section', 'plain'],
   [48, 'Жами квал сони', null, 'value', false, 'plain', 'plain'],
   [49, '% квал лид', null, 'value', false, 'plain', 'rate'],
@@ -273,12 +280,12 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [280, 'Успешка сумма факт 2', null, 'value', false, 'plain', 'fakt'],
   [281, 'Успешкность % 📌', null, 'value', false, 'plain', 'plain'],
   [282, 'Отказ %', null, 'value', false, 'plain', 'plain'],
-  [283, '', null, 'helper', true, 'plain', 'plain'],
+  [283, '', null, 'helper', false, 'plain', 'plain'],
   [284, 'Логистика  Сумма факт1', 'Лола РОП', 'value', true, 'section', 'plain'],
   [285, 'Успешка сумма факт 2', null, 'value', false, 'plain', 'fakt'],
   [286, 'Успешкность % 📌', null, 'value', false, 'plain', 'plain'],
   [287, 'Отказ %', null, 'value', false, 'plain', 'plain'],
-  [288, '', null, 'helper', true, 'plain', 'plain'],
+  [288, '', null, 'helper', false, 'plain', 'plain'],
   [289, 'Логистика  Сумма факт1', 'Аслиддин РОП', 'value', true, 'section', 'plain'],
   [290, 'Успешка сумма факт 2', null, 'value', false, 'plain', 'fakt'],
   [291, 'Успешкность % 📌', null, 'value', false, 'plain', 'plain'],
@@ -320,7 +327,7 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [332, 'Успешкность % 📌', null, 'value', false, 'plain', 'plain'],
   [333, 'Отказ %', null, 'value', false, 'plain', 'plain'],
   [334, '', null, 'helper', false, 'plain', 'plain'],
-  [346, 'Квал лид сони', 'ИЮЛЬ', 'value', true, 'section', 'plain'],
+  [346, 'Квал лид сони', 'ИЮЛЬ', 'value', true, 'section', 'plain'], // B346: printed as the page's own month (`rnpSheetView`)
   [347, 'План продаж', null, 'value', true, 'plain', 'plain'],
   [348, 'ФАКТ 1', null, 'value', true, 'plain', 'plain'],
   [349, 'ФАКТ 2', null, 'value', true, 'plain', 'fakt'],

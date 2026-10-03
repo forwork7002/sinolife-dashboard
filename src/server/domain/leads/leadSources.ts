@@ -126,7 +126,12 @@ export interface LeadSourceVocabulary {
   readonly generated: string
 }
 
-const FORM_TITLE = /CRM-формы\s*[«"“]([^»"”]+)[»"”]/
+/*
+  The closing quote is optional (2026-10-02): a title can arrive without it,
+  and deal 1038510 («Заполнение CRM-формы "Sinolifecollgen marine», a kval of
+  01.10) lost its form — and with it its brand — to the missing quote.
+*/
+const FORM_TITLE = /CRM-формы\s*[«"“]([^»"”]+)(?:[»"”]|$)/
 
 /** The CRM form's name from a deal title, or null when the deal was not a form. */
 export function formNameOf(title: string | null | undefined): string | null {

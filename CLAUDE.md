@@ -428,7 +428,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Qoʻngʻiroqlar | `/customers` | `calls/CallsPage` + `CallTable` | `/insights/calls` | Insights → Insights | `call_record."startedAt"` on the dashboard window, clamped below at `CALL_DATA_FLOOR` (2026-09-15 00:00 Tashkent). One clock, one request |
 | Reklama samarasi | `/marketing` | `reklama/ReklamaPage` — ONE page since 2026-09-25 (its «Sotuv · ROP» and «Lid kogortasi» tabs moved to «Lidlar»; «Sotuv · ROP» removed 2026-10-01): `DmSection` + `FormSection` + `QualitySection` + `CampaignSection`, with `SideSection` beside them (xl) or above them — the client's narrow «HR · Kosmetika» day table, 2026-09-28: HR = every hiring campaign plus the HR Eldor account, Kosmetika = Kosmetika Eldor (`sideColumn` in `meta/accounts.ts`). The Roistat `marketing/MarketingPage` is held, not mounted | `/reklama/overview` (the Roistat `/marketing/*` three still answer, uncalled) | Reklama → Reklama | **two clocks, one Tashkent calendar day.** Meta: `meta_campaign_daily."date"`, the ad account's reporting day, split by `campaignChannel` (OUTCOME_LEADS → «Отчёт Т», OUTCOME_ENGAGEMENT → «DM», hiring campaigns → neither). Bitrix24: the Регистрация lead's `createdAtSource`, bucketed by the stage it sits in NOW (`leadQuality.ts`). Never joined — they meet on the day and the page |
 | Lidlar | `/leads` (section `leads`, 2026-09-25) | `leads/LeadsPage` — four tabs. «Lid manbalari»: `LeadSourcesSection`. «Lid kogortasi»: `LeadCohortSection`. «ROP otchet» (own tab since 2026-10-02): `RopReport`. «Guruhlar» (2026-10-02): `GroupIntakeCard` — a registration group's «безквал» typed per day (`registration_group_intake`), its kval = /rnp's «guruh — квал» (`domain/registration/groupIntake.ts`). («Sotuv · ROP» was removed 2026-10-01 at the user's request.) Since 2026-10-02 «Lid manbalari» also carries the old «Registratsiya» split cards (`LeadSplitCards`), placed through `LeadSourcesSlots`: the split under the channel tiles, the 7-day grid above «Targetologlar» | `/leads/overview`; `/lead-cohort/overview`; `/registration/{overview,report,groups}?day=`, `POST /registration/{split,groups}` (section `leads`, `kpi:manage` inside for the POSTs) | LeadSources (+ Reklama's Meta rows, + Insights' queue cohort for «Факт1 мижоз»), LeadCohort | «Lid manbalari» is on the dashboard period: Регистрация (role LEAD) and «ИИ обработка» (role AI_TRIAGE) by `createdAtSource`'s Tashkent day — except kval on the headline AND the channel tiles, which is WON by `closedAt` (the portal's CLOSEDATE; `qualifiedSources`, split onto the tiles by source since 2026-10-02 — the tables below keep the arrival cohort's outcome). The tiles' «Jami» is the six channels: «Исход» and «Boshqa» sit apart and «Сммщик ии» reads «ИИ квал сана» across every pipeline (both the client's, 2026-10-02), so it is NOT «Жами лидлар»; its note says what takes it there, «+128 → 899 «Жами лидлар» · Исход +154 · Boshqa +3 · ИИ farqi −29» (01.10), from `tiles.toHeadline` — an identity the server keeps, never a remainder the client takes; Meta lead-form campaigns by `meta_campaign_daily."date"`, met on the targetolog, never joined per deal. «Факт1 мижоз» (2026-10-01) is the one per-deal join: a lead's phone (last 9 digits) against FAKT 1 orders whose `queued_at` is in the same window and whose deal was created after the lead (`leadFakt1Clients`), distinct clients per line. «Lid kogortasi» takes its OWN day window (default the last 14): the row is `deal."leadArrivedAt"`'s Tashkent day, the column `"leadDistributedOn"` (a DATE, never zoned) minus it. The ROP cards take their OWN shared day (`?day=`, default today), see *Registratsiya* below. |
-| RNP jadvali | `/rnp` (section `rnp`, 2026-09-28) | `rnp/RnpPage` + `RnpSheetTable` + `RnpCostCell` — the client's «СентябрРНП» sheet row by row (`lines`), nothing else: day plan / plan / fact / forecast / index before the days | `/rnp/overview`, `POST /rnp/plan`, `POST /rnp/costs`, `POST /rnp/headcount` (`analytics:read:all` at the gate, `kpi:manage` inside) | Rnp → Insights (`rnpTeamDays`), Rnp, Reklama (Meta) | its OWN calendar month. FAKT 1 / FAKT 2 / refusals on the queue cohort (`queued_at`), team off the deal as on Logistika; handed-out leads on `leadDistributedOn`; Регистрация on `createdAtSource` (kval on `closedAt` of WON); calls on `startedAt`; Склад on Доставка stage history; Meta on `meta_campaign_daily."date"` |
+| RNP jadvali | `/rnp` (section `rnp`, 2026-09-28) | `rnp/RnpPage` + `RnpSheetTable` + `RnpCostCell` — the client's «СентябрРНП» sheet row by row (`lines`), nothing else: day plan / plan / fact / forecast / index before the days | `/rnp/overview`, `POST /rnp/plan`, `POST /rnp/costs`, `POST /rnp/headcount` (`analytics:read:all` at the gate, `kpi:manage` inside) | Rnp → Insights (`rnpTeamDays`), Rnp, Reklama (Meta) | its OWN calendar month. FAKT 1 / FAKT 2 / refusals on the queue cohort (`queued_at`), team off the deal as on Logistika; handed-out leads on `leadDistributedOn` (fresh hand-outs only since 2026-10-02: created ≤ 30 days before it); Регистрация on `createdAtSource` (kval on `closedAt` of WON); calls on `startedAt`; Склад on Доставка stage history; Meta on `meta_campaign_daily."date"` |
 | Target tahlili | `/target` | `target/TargetPage` + `TargetGroupTable` + `TargetLeadTable` + `TargetMeta` | `/target/overview`, `/target/leads` | Target → Target | **the deal's creation, `createdAtSource`** — a lead on the day it was registered, a sale on the day the seller's deal was opened. The Meta block reads `meta_ad_daily."date"` over the same Tashkent calendar days |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
@@ -514,7 +514,8 @@ Per-screen traps worth knowing before you touch one:
   `team_month_plan`, every other plan and the header settings (`usd_rate`,
   `lead_value` with a `fromDay`) are `rnp_plan`,
   values × 100; rows with no Bitrix24 / Meta source (followers, HR, bloggers)
-  are NOT on the screen; a team is its department name plus its head.
+  were left off the screen (reversed 2026-09-30: such a row keeps its place,
+  empty and hatched); a team is its department name plus its head.
   **The sheet's formulas ARE copied (the client, 2026-10-01: «har bir
   formula … huddi shunday»), a broken one by what it meant:** the forecast
   is the sheet's `=D/$C$2*$C$1` — the fact so far ÷ today's day of the month
@@ -558,12 +559,14 @@ Per-screen traps worth knowing before you touch one:
     qilib hisoblangan»). A day of the sheet is shown only if Bitrix24 or Meta
     can compute it; the sheet's typed rows (Instagram/Telegram 5–10, HR
     335–343, the P&L cost lines 411–415 / 438–442, a group's «без квал»,
-    Zextra's lead count) are NOT on the screen, and a ROP's early leads stay
-    muted rather than being filled from the sheet. `rnp_manual_day` and its
+    Zextra's lead count) are NOT filled from the sheet — they keep their place
+    empty and hatched (HR was later removed, the cost lines became typed, see
+    below) — and a ROP's early leads stay muted rather than being filled from
+    the sheet. `rnp_manual_day` and its
     September import were built the same day and then retired; the table was
     dropped on 2026-09-30 with the client's approval. Plans
-    (column C) and the registrar→group mapping stay — targets and settings,
-    not data.
+    (column C) stay — targets and settings, not data (the registrar→group
+    mapping stayed too, until 2026-10-02, see «guruh» below).
     ONE EXCEPTION, 2026-09-30 afternoon: the P&L's five cost lines no system
     holds (Блогерлар, Нутрицолог, Брендфейс, Маркетинг харажатлар, Маркетинг
     команда; both projects) are typed in place per day in soʻm — table
@@ -577,23 +580,41 @@ Per-screen traps worth knowing before you touch one:
     month column is the mean of the typed days above 0.
     «REJALAR» IS GONE (2026-10-01, the client: «butunlay olib tashla»): the
     plans form, `POST /rnp/plans` and `POST /rnp/registrars` were deleted.
-    Plans and registrar groups already saved are still READ (`rnp_plan`,
-    `team_month_plan`, `rnp_registrar_group` inherits the previous month).
+    Plans already saved are still READ (`rnp_plan`, `team_month_plan`);
+    `rnp_registrar_group` is not read since 2026-10-02 (kept, not dropped).
+    OCTOBER'S PLANS ARE SEPTEMBER'S (2026-10-02, the client's decision):
+    migration `20261002120000_rnp_october_plans` copies every September plan
+    the screen reads (not `lead_value` / `usd_rate`, not the old form's dead
+    keys) and every `team_month_plan` row into 2026-10, with the two values
+    the client's «Октябр» tab changed — Collagen budget 16 000 $, Collagen
+    Meta leads 18 000 — written first; ON CONFLICT DO NOTHING, so a typed
+    cell is never overwritten. The tab's ×10 cheque and Мафтуна typos are
+    not taken from it; its plan % differs because an admin saved 100 on 01.10.
+    A later month still opens empty until it is typed.
     PLANS ARE TYPED IN THE GRID since (2026-10-01): where the sheet types a
     column-C cell the row carries `planInput` and the cell is an open field
     (`POST /rnp/plan`, `kpi:manage`, only cells the month leaves open; a
     team's FAKT 1/2 → `team_month_plan`, the rest → `rnp_plan` from day 1).
     Where the sheet computes C the plan is derived, never typed: orders =
     FAKT ÷ cheque, conversion = orders ÷ leads, row 47 = kval ÷ kval %,
-    «Отказ %» = 100 − success. The P&L percentages are the sheet's constants
-    (marketing plan 11 %, targetolog 10 %, marketolog 1 %) unless a month saved
-    its own; `lead_value` is inherited team by team from the last month that
-    had one.
+    «Отказ %» = 100 − success, and (2026-10-02) the brand P&L's 395/397 and
+    422/424 — the sheet's `=D395/D394` and `=IFERROR(D397/D395,0)`: «Сумма
+    факт2» as a share of «Сумма факт1» and «База усп» of «Сумма факт2», a
+    percent over a soʻm row (`RnpRowDto.planUnit`), no day plan, no index;
+    `brand_fakt2` / `brand_base_fakt2` are no plan keys any more. The P&L
+    percentages are the sheet's constants (marketing plan 11 %, targetolog
+    10 %, marketolog 1 %) unless a month saved its own; `lead_value` is
+    inherited team by team from the last month that had one. A БАЗА team
+    prices a connected call at ITS OWN `lead_value` (2026-10-02, migration
+    `20261002120100_rnp_base_lead_value`): the sheet divides Малика's calls by
+    400 000 and Фаррух's by 400 000, then 200 000 from 27.09 — not by the
+    company's 500 000 — and October is written out (400 000 both), else it
+    would inherit Фаррух's 200 000. The plan % hint names the schedule in
+    force.
   · **THE CLIENT RESHAPED THE SHEET (2026-09-30 afternoon)** — see the header
     of `rnpSheetLayout.ts` (hand-kept since): «Таргет Collagen/Zextra», totals
     above them, 47 under 48, Zextra registration → groups «Asliddin ROP» /
-    «Sadriddin ROP» (the retired 'Zextra' desk's registrars count as no group
-    until reassigned; «Регистрация COLLAGEN» is every kval), each ROP block
+    «Sadriddin ROP» («Регистрация COLLAGEN» is every kval), each ROP block
     opens on «План бажарилиши» beside the ROP name and ends on its reach,
     «Чарос РОП» → «Садриддин РОП», Саида / HR / БАЗА «Конверсия % факт2» /
     per-ROP «Свод» / РОП-Регистрация-Разница removed, logistics named per ROP,
@@ -607,17 +628,38 @@ Per-screen traps worth knowing before you touch one:
     colour tones); `rnpSheetView.ts` turns it into `lines`, each pointing at
     the block row whose `sheet.row` names it. A row Bitrix24 cannot supply
     keeps its place, empty and marked «Bitrix24ʼda yoʻq» (the client's
-    choice). Teams the sheet lacks are added after its own teams, logistics
-    and «Свод» rows, marked «jadvalda yoʻq jamoa»; every team the sheet has
-    is drawn even in a quiet month (zeros, not «missing»). «ROP» (`?rop=`)
-    cuts the sheet to one team's block, logistics and «Свод» lines
-    (`ropLines`, each line carries `team`); «Barchasi» is the whole sheet.
+    choice). Teams the sheet lacks are added after its own teams and after
+    its logistics, DRAWN ON A SHEET BLOCK'S TEMPLATE since 2026-10-02 — the
+    lines of the first sheet block of the same shape (lead team / БАЗА team /
+    logistics), its labels, bold, tones and order, the team's name on the
+    first line — whose first line carries `added: true`, drawn as the chip
+    «Bitrix24ʼdan · sheetda bloki yoʻq» (no heading band any more; «Жараёнда,
+    %» stays in the payload, off the page); every team the sheet has is drawn
+    even in a quiet month (zeros, not «missing»). «ROP» (`?rop=`) cuts the
+    sheet to one team's block and its logistics (`ropLines`, each line carries
+    `team`; «Свод» has no per-ROP lines since 2026-09-30); «Barchasi» is the
+    whole sheet. Its list (2026-10-02) offers every team that has lines, in
+    the order their lines first appear — the sheet's — a logistics-only one
+    too (Шохжахон, «(ROP yoʻq)»), named by `teams`, else its first team /
+    section line's column-B text; a `?rop=` the month has no lines for is
+    kept, not cleared, and applies again in a month that has the team.
     The month follows the Tashkent calendar by itself unless one is picked.
+    A picked month rides in the URL (`?month=`, `replaceState` like `?rop=`,
+    2026-10-02), stripped for the current month and ignored unless it is a
+    whole month in [2025-01, current] (`rnpMonthIn`; `RNP_FIRST_MONTH` is the
+    overview schema's floor). The month box requests only such a month: a
+    half-typed or out-of-range value stays in the box (`draft`) until it is
+    one, and a blur puts the shown month back — a box that reverted every
+    keystroke would make a year untypable in Chrome (0002 → 0020 → …).
   · **THE DOLLAR RATE IS THE CENTRAL BANK'S, DAY BY DAY** (2026-09-30; it was
     typed as 12 200 while the bank's ran ~11 800). `integrations/cbu/cbuRates`
     reads cbu.uz for every day up to today (past days cached for good, today
-    for an hour, failures never cached); a day not answered converts at the
-    month's last known rate; no rate at all → the converted rows are empty.
+    for an hour; a failed read is remembered ten minutes, so a hanging bank
+    does not cost every load its timeout — 2026-10-02); a day not answered
+    converts at the last answered day's rate, the month's first days before
+    any answer at the month's first answered rate (never at 0); no rate at
+    all → the converted rows are empty. The header names the latest day the
+    bank ANSWERED.
     Old `usd_rate` rows in `rnp_plan` are ignored, and the plans form no
     longer offers the field.
   · **THE SHEET IS KEPT WARM** (2026-09-30, «tezroq ochilish»). Cold, the
@@ -635,23 +677,128 @@ Per-screen traps worth knowing before you touch one:
     sheet's 1 − «Успешкность %» (still in flight counts), unclamped.
   · September's column C plans are imported by migration (the ×10 «Средний
     чек факт 2», the plans derived from it and zero plans left out; Мафтуна's
-    400 000 → 400 mln). The lead's value changes on **14.09**, from the
-    sheet's column T.
-  · Teams read as the sheet names them (`SHEET_TEAM_NAMES`), and
-    `TEAM_ALIASES` folds old snapshot names — Sevinchxon → Sadriddin,
-    Malika → Charos — BEFORE anything is summed.
-  · Registration «guruh» rows = groups of REGISTRARS by the «Регистрация»
-    enum (`deal.registrar`, UF_CRM_1747975291848, set at WON only; one-off
-    `DEALS_BACKFILL` since 2026-09-01), grouped per month in
-    `rnp_registrar_group` (no form since 2026-10-01; the last month's
-    groups carry forward). Gulzora and Maftuna groups were never assigned.
+    400 000 → 400 mln), October's copied from September (above). The lead's
+    value changes on **14.09**, from the sheet's column T.
+  · Teams read as the sheet names them (`SHEET_TEAM_NAMES`, «Малика РОП -
+    БАЗА» with the sheet's hyphen), and `TEAM_ALIASES` folds old snapshot
+    names — Sevinchxon → Sadriddin, Malika → Charos — BEFORE anything is
+    summed. ONE NAME PER TEAM (2026-10-02): a team the sheet does not name is
+    «<department> РОП» on its block, its logistics and in the ROP list alike
+    (`labelOf`; «(ROP yoʻq)» keeps its own). Teams come in THE SHEET'S ORDER
+    (`TEAM_SHEET_ROW`, then `LOGISTICS_SHEET_ROW`), the rest by name — it was
+    the month's FAKT 1, so the added blocks and the ROP list reshuffled.
+  · Registration «guruh — квал» rows = THE LEADS HANDED TO THE ROP TEAM THE
+    GROUP IS NAMED AFTER (`GROUP_TEAM`, «Aziz» = Azizbek; the client's
+    decision of 2026-10-02) — the very series of that team's «Квал лид сони»,
+    never dashed. They were groups of REGISTRARS (`deal.registrar` grouped in
+    `rnp_registrar_group`), but nothing could edit that map after «Rejalar»
+    went, the desk reshuffled from 22.09 («Sevinch guruh» ~0 while her team
+    got 46–61 a day), four groups had nobody, and the Zextra desk's two
+    registrars feed Asliddin AND Sadriddin. The table is no longer read
+    (kept), nor `leadDaysSql`'s registrar column. The appended «Boshqa
+    jamoalar — квал» (key `reg:group:none:qualified`, was «Guruhsiz») holds
+    every other team's (Шохжахон, Маржона, Ҳаёт, Kompaniya, the БАЗА heads),
+    named in its hint, so the rows add up to «РОП ларга тарқатилди». Row 48
+    stays the registrars' WON by close day: the two differ by definition
+    (01.10: 240 kval, 233 handed out); its hint says so.
   · Brand P&L: an ORDER's brand is its SELLING TEAM's, by the sheet's
     SUMIFS lists (`BRAND_TEAMS`: Collagen = Sevinch, Gulzora, Azizbek, Lola,
     Saidaziz, Maftuna, Marjona, Baza, Shohjaxon; Zextra = Asliddin,
     Sadriddin (+Sevinchxon), Charos (+Malika)) — 2026-10-01, was the
-    product line; a LEAD's brand is its source (`LEAD_SOURCE_BRAND`), else its CRM form
-    («zextra» in the name, or a Kamron form), else none. A «Brendsiz» block
-    carries what neither brand claims, so the three add up to the company.
+    product line; a LEAD's brand is its source (`LEAD_SOURCE_BRAND`, +
+    collagen.sinolife and «Сммщик sinolifeuz» since 2026-10-02 — the map also
+    marks «Lidlar»'s DM page rows), else its CRM form («zextra» in the name,
+    then «collagen» — before the owner rule since 2026-10-02 — then a Kamron
+    form), else none; a form title missing its
+    closing quote still names its form. A «Brendsiz» block carries what
+    neither brand claims, so the three add up to the company; it is not drawn,
+    so the projects' «Сумма факт1» hint names the teams on neither list
+    (Kompaniya, Ҳаёт, «(ROP yoʻq)») that are in «Свод» but in no project.
+  · **THE AUDIT OF 2026-10-02** (prod vs portal, 282 checks): what it changed
+    besides the above, each with its reason in the code.
+    THE ROP OF A LEAD — a person heading TWO ROP units counts in the one they
+    sit in (`ORDER BY (h."id" = e."departmentId") DESC, h."name"` in
+    `leadDaysSql`, `RegistrationRepository.leadRopSql` and its roster): prod's
+    «Saida(ROP)» still had Shohjaxon as head after the portal cleared it, and
+    the first by name filed all his leads under «Саида РОП». The department
+    sync now CLEARS a head the portal no longer names (`headId: null`; one it
+    names is linked after the employee pass as before).
+    FRESH HAND-OUTS ONLY (the client's decision): «Квал лид сони» and
+    everything built on `leadDays` counts a deal created at most 30 days
+    before its «Лид таркатилган сана» (`createdAtSource`; «Лид тушган сана» is
+    empty before 14.09). On 26.09 the portal re-stamped 1 704 old deals
+    (715 to Azizbek, who read 752 where the sheet typed the 37 fresh ones).
+    «Lidlar» (`handedOutSql`) does NOT apply this bound — the two can differ
+    on such a day.
+    A RATE OVER TOO FEW LEADS IS «—»: when a lead team's leads over the rates'
+    days are fewer than its FAKT 1 orders, its conversions and plan % print
+    «—» day and month, with a hint (Маржона: 1 lead, 53 orders → 5.300 % /
+    16.660 %); the counts stay. No definition changed.
+    ON THE PAGE: row 45 sits under 42–44 (it is `=G42/G47`); row 346 prints
+    the month's own name (the sheet kept «ИЮЛЬ»); a month wholly before a
+    row's `reliableFrom` prints «—», not 0 (August's БАЗА calls); a closed
+    month's row with `reliableFrom` keeps its reliable days' pace (September's
+    БАЗА calls: 16 days, not 30); the undrawn «Логистика — жами» opens no plan
+    cell; the БАЗА reach hint says calls arrive about every 3 hours.
+    ELSEWHERE: the hiring rule reads English «Vacancy» too (`HIRING` in
+    `meta/accounts.ts` — 123 $ of September HR sat in Collagen's budget; the
+    «HR» side column on «Reklama samarasi» gains it); «Collagen AI
+    Targetolog» (1052133867828964) is mapped to Collagen; `callDirection`
+    follows Bitrix24's CALL_TYPE (1 outgoing, 2/3 incoming, 4 callback — it
+    read 1 as inbound); a packing stay with no synced leaving is not
+    «не собран» for 62 days (only a deal standing there now is open); the
+    costs body bounds its month like the others.
+    IN THE GRID (front end): a failed BACKGROUND refetch keeps the sheet and
+    any half-typed cell — the error card is for no data at all. A typed field
+    untouched since the server last filled it takes a refetched figure on
+    blur / Enter and sends nothing (it wrote the old figure back over another
+    editor's save); typed cells are keyed by what they save (plan
+    `${month}:${row.key}`, day `${row.key}:${day}`). Plan fields show their
+    row's sign («80%», «$36.000», «$0,80») and take it typed or pasted
+    («16 000$», «0,80$»): one «$» before or after a dollar plan, one «%»
+    after a percent; the other row's sign, a lone sign or «0.850» (grouping
+    after a 0) is refused in place. A dollar figure under $10 prints to the
+    cent («$0,77»: to one decimal a 0,77 fact and its 0,80 plan both read
+    «$0,8»), larger ones to one decimal, 0 as «$0» (`formatUsd`). The index
+    pill is graded on the printed one-decimal value (a «100,0%» is never
+    amber), its digits in the tone's ink (`inkOf`), `-mr-2` so they share the
+    column's right edge; typed fields pad 10px (18px on the last day) for the
+    same edge. The toolbar's «Bugun» is a button on a month that has today
+    (`scrollToToday`: today's column to the frozen block's edge); the page
+    still opens on the first day. Summary headers carry the sheet's formula
+    as a `title`; a heading with a sheet row is upper case whatever its tone
+    («ТАРГЕТ ZEXTRA»), a ROP's own heading keeps its case; the «qoʻlda» chip
+    names what is typed (soʻm on a cost line, the head count on «Ходим
+    сони»); a tinted row paints its band as a background IMAGE, so the row's
+    hover reaches its day cells; drag-to-scroll forgets a press when a move
+    arrives with no primary button; an orange section line after a line with
+    no sheet row («Свод» after an added team's logistics) opens with the
+    block gap. The page lead says plans, P&L costs and «Ходим сони» are typed
+    in the grid.
+    STACKING (`globals.css`, pinned by `tests/features/rnpGridCss.test.ts`):
+    not `data-pin-wide`, the unpinned summary cells sit at z 0, so they pass
+    UNDER the frozen label (they slid over it on a phone's or a 1024px
+    laptop's sideways scroll), and their headers at z 2, under the corner's
+    3; a typed cell holding a refusal is z 2, so its message shows over the
+    rows below — that rule must stay AFTER the narrow one, which has the same
+    specificity. The grid's keyboard ring is drawn on its Card, which clips
+    the box's own. The box's scroll padding is the frozen width (the pinned
+    block, or the label when narrow) and the header's height, so Tab never
+    parks a field under them.
+    THE AUDIT'S CRITIC (2026-10-02). A typed cell reads ONE figure: a TAB or
+    a line break — a sheet's row or column pasted at once; checked on the
+    paste itself, since a field turns a line break into a space — is refused
+    («bitta katakni nusxalang»), and grouped thousands are threes under one
+    separator (NBSP / narrow NBSP are spaces): «5 075 000⇥0» was saved as
+    50 750 000, «8⇥5» as 85 %, «1 25 000» as 125 000. A month that ended
+    before today has no hard limit in the memo (`pastMonthCache`: served
+    however old, rebuilt behind the reader) — it has no live cells, and
+    September read in October waited a cold ~17 s after every ten quiet
+    minutes. The warmer's tick is a real rebuild, waited for (`refresh`), so
+    «rnp warmed {ms}» is the build's time; in a month's first week it also
+    builds the month that ended, once. A rebuild that fails behind a reader
+    is logged («rnp rebuild failed; serving the previous answer») — it used
+    to vanish while the old rows were served.
 - **Registratsiya** (FOLDED INTO «Lidlar» on 2026-10-02 — «registratsiya boʻlimi toʻliqligicha oʻchiramiz»: section id, `/registration` page and nav entry deleted; its four stat tiles were dropped; the split card and the 7-day grid live on «Lid manbalari», «ROP otchet» on its own «Lidlar» tab, all on one shared day; the endpoints kept their `/registration/*` paths and now gate on section `leads`) — added 2026-10-01 from the client's Excel («Jami /
   yangi / dubl», ROP → % → лид сони). ONE company-wide split, set EVERY day
   (`registration_split`, basis points, a day's rows sum to 10 000, saving
@@ -678,6 +825,8 @@ Per-screen traps worth knowing before you touch one:
   as «Qoʻngʻiroqlar» counts them, on the person's roster row (off-roster: the
   group where they earned most), a dash before `CALL_DATA_FLOOR`. Roster = team heads +
   PRIMARY department members; leads/orders naming no team form «Jamoasiz».
+  A person heading two ROP units belongs to the unit they sit in, for the
+  leads and the roster alike (2026-10-02, as on «RNP jadvali»).
 - **Lidlar** — a section of its own since 2026-09-25 («yangi bir boʻlim ochamiz
   lidlar deb, oʻsha yerga koʻchiramiz lid kogortasini ham … Sotuv ROP ni ham»).
   Migration `20260925120000_leads_section` grants `leads` to every account
@@ -687,9 +836,10 @@ Per-screen traps worth knowing before you touch one:
   through the read-only Bitrix24 MCP in `~/Work/bitrix24-mcp`);
   `domain/leads/leadSources.ts` carries the numbers. A Meta lead form lands
   in Регистрация as «Ген лид» (`REPEAT_SALE`) titled «Заполнение CRM-формы
-  "<form>"», and the FORM NAME carries the targetolog («… Eldor», «(UMAR)
-  777», «Kamron …»): the per-targetolog лид / кв лид of the client's «Отчёт
-  Т», which the 5%-filled targetolog field never could give. **Only
+  "<form>"» (a title missing its closing quote still names its form since
+  2026-10-02 — deal 1038510), and the FORM NAME carries the targetolog («…
+  Eldor», «(UMAR) 777», «Kamron …»): the per-targetolog лид / кв лид of the
+  client's «Отчёт Т», which the 5%-filled targetolog field never could give. **Only
   Регистрация is read**: the same title is copied onto a Первичный отдел deal
   once the lead is WON (263 of 263), so reading both counts every kval twice.
   Every Instagram conversation is a deal in «ИИ обработка» on the page's
