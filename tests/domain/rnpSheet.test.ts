@@ -795,7 +795,8 @@ describe('buildRnpSheet — «Маркетинг COLLAGEN» funnel (the client, 
     expect(at(2016)).toMatchObject({ kind: 'value', label: 'ROI', key: 'fn:collagen:roi' })
     const i = d.lines.findIndex((l) => l.row === 2001)
     expect(d.lines[i - 1]).toMatchObject({ kind: 'title', row: 4 })
-    expect(d.lines.findIndex((l) => l.row === 2017)).toBeLessThan(d.lines.findIndex((l) => l.row === 11))
+    // САС and ROMI (11–12) moved up into «Основные показатели» (2026-10-03); the funnel ends the block.
+    expect(d.lines.findIndex((l) => l.row === 2017)).toBe(d.lines.findIndex((l) => l.row === 13) - 1)
   })
 
   it('shares a plan with the P&L where the row is the same figure', () => {
