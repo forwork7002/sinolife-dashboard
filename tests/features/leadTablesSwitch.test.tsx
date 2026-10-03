@@ -6,9 +6,9 @@ import { TablesBlock } from '@/features/leads/LeadSourcesSection'
 import type { LeadOutcomeDto, LeadSourcesOverviewDto } from '@/features/leads/leadSourcesApi'
 
 /*
-  «Targetologlar» and «DM sahifalar», period and day by day: four tables in
-  one card behind one switch (the client, 2026-10-02 — four cards ran the
-  page too long). One table on screen at a time, and a day view's picker
+  «Targetologlar» and «DM sahifalar», period and day by day, and «Barcha
+  manbalar»: five tables in one card behind one switch (the client,
+  2026-10-02 — the cards ran the page too long; «Barcha manbalar» 2026-10-03). One table on screen at a time, and a day view's picker
   keeps its choice across the switch.
 */
 afterEach(cleanup)
@@ -35,7 +35,9 @@ const outcome = (leads: number, success: number): LeadOutcomeDto => ({
 })
 
 const data = {
-  totals: { formReachPercent: 63.6 },
+  totals: { formReachPercent: 63.6, registration: outcome(899, 240), fakt1Clients: 31 },
+  channels: [{ channel: 'form', outcome: outcome(91, 23), fakt1Clients: 4 }],
+  sources: [{ key: 'REPEAT_SALE', channel: 'form', name: 'Ген лид', outcome: outcome(91, 23), fakt1Clients: 4 }],
   forms: {
     spendUsd: 167.48,
     metaLeads: 130,
@@ -89,6 +91,7 @@ describe('TablesBlock', () => {
       'Targetologlar · kunlik',
       'DM sahifalar',
       'DM sahifalar · kunlik',
+      'Barcha manbalar',
     ])
     expect(screen.getByRole('heading', { name: 'Targetologlar · lid-forma — davr boʻyicha' })).toBeTruthy()
     expect(screen.getByText('Sobirjon')).toBeTruthy()
@@ -102,6 +105,17 @@ describe('TablesBlock', () => {
     expect(screen.getByRole('heading', { name: 'DM sahifalar — davr boʻyicha' })).toBeTruthy()
     expect(screen.getByText('collagen.marine')).toBeTruthy()
     expect(screen.queryByText('Sobirjon')).toBeNull()
+    expect(screen.getAllByRole('table')).toHaveLength(1)
+  })
+
+  it('carries «Barcha manbalar» as the fifth table', () => {
+    render(<TablesBlock data={data} status="ready" />)
+
+    view('Barcha manbalar')
+    expect(screen.getByRole('heading', { name: 'Barcha manbalar · Регистрация' })).toBeTruthy()
+    expect(screen.getByText('Lid-forma')).toBeTruthy()
+    expect(screen.getByText('Ген лид')).toBeTruthy()
+    expect(screen.getByRole('columnheader', { name: 'Факт1 мижоз' })).toBeTruthy()
     expect(screen.getAllByRole('table')).toHaveLength(1)
   })
 
