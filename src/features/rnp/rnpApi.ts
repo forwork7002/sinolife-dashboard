@@ -130,7 +130,7 @@ export type RnpLine =
  * 2026-10-02 such a block is drawn on the sheet's own template and its first
  * line carries `added`; an older payload put this text in a heading's `sub`.
  */
-export const RNP_ADDED_TEAM_NOTE = 'Bitrix24ʼdan · sheetda bloki yoʻq'
+export const RNP_ADDED_TEAM_NOTE = 'sheetda bloki yoʻq'
 
 export interface RnpTeamDto {
   readonly rop: string

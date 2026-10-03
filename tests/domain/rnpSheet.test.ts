@@ -256,8 +256,8 @@ describe('buildRnpSheet — company blocks', () => {
     const share = row(dto, 'marketing', 'meta:share')
     expect(on(share, '2026-09-21')).toBeCloseTo((140 * 12_200 * 100) / 2_000_000, 6)
     expect(on(row(dto, 'marketing', 'meta:cac'), '2026-09-21')).toBe(140)
-    // The sheet's row 45, `=IFERROR(G42/G47,0)`: the budget over the Регистрация leads (140 $ ÷ 4).
-    expect(on(row(dto, 'marketing', 'meta:cost_per_reg_lead'), '2026-09-21')).toBe(35)
+    // Row 45, «Цена квал лида» (2026-10-03): the budget over the Регистрация kval leads (140 $ ÷ 2).
+    expect(on(row(dto, 'marketing', 'meta:cost_per_reg_lead'), '2026-09-21')).toBe(70)
     expect(dto.lines.find((l) => l.row === 45)).toMatchObject({ kind: 'value', key: 'meta:cost_per_reg_lead' })
     expect(dto.settings.usdRate).toBe(12_200)
     expect(dto.settings.usdRateDate).toBe('2026-09-28')
@@ -420,10 +420,18 @@ describe('buildRnpSheet — the sheet\'s own names and plans', () => {
     expect(row(dto, 'registration', 'reg:leads').planInput).toBeNull()
   })
 
-  it('prices the registrar\'s kval by the day\'s lead value in «План продаж» (row 347)', () => {
-    const dto = buildRnpSheet(input())
+  it('prices every kval lead at a flat 500 000 in «План продаж» (row 347), whatever the lead value', () => {
+    const dto = buildRnpSheet(
+      input({
+        registration: [
+          { day: '2026-09-02', leads: 5, duplicates: 0, qualified: 3, aiConversations: 0 },
+          { day: '2026-09-21', leads: 4, duplicates: 1, qualified: 2, aiConversations: 2 },
+        ],
+      }),
+    )
     const plan = row(dto, 'summary', 'sv:sales_plan')
-    // 21.09: 2 kval × 500 000 (the value from the 19th in this fixture).
+    // 02.09: the fixture's lead value is still 400 000 — the plan is not.
+    expect(on(plan, '2026-09-02')).toBe(1_500_000)
     expect(on(plan, '2026-09-21')).toBe(1_000_000)
     expect(row(dto, 'summary', 'sv:budget').fact).toBe(140)
   })
@@ -775,7 +783,6 @@ describe('buildRnpSheet — «Маркетинг COLLAGEN» funnel (the client, 
     expect(on(f(d, 'orders1'), '2026-09-21')).toBe(4)
     expect(on(f(d, 'orders2'), '2026-09-21')).toBe(2)
     expect(f(d, 'ctr').fact).toBe(2) // 400 ÷ 20 000
-    expect(f(d, 'lead_per_click').fact).toBe(5) // 20 ÷ 400
     expect(f(d, 'qualified_pct').fact).toBe(40) // 8 ÷ 20
     expect(f(d, 'conv_qualified').fact).toBe(50) // 4 ÷ 8
     expect(f(d, 'conv_total').fact).toBe(10) // 2 ÷ 20
@@ -1038,6 +1045,16 @@ describe('buildRnpSheet — the audit fixes of 2026-10-02', () => {
     const rows = buildRnpSheet(input()).lines.map((l) => l.row)
     expect(rows.indexOf(45)).toBe(rows.indexOf(44) + 1)
     expect(rows.indexOf(47)).toBe(rows.indexOf(40) + 1)
+  })
+
+  it('heads the registration groups «Регистрация лид → квал» and drops «Лид / клик %» (2026-10-03)', () => {
+    const x = buildRnpSheet(input())
+    const rows = x.lines.map((l) => l.row)
+    expect(x.lines[rows.indexOf(3001)]).toMatchObject({ kind: 'title', label: 'Регистрация лид → квал' })
+    expect(rows.indexOf(3001)).toBe(rows.indexOf(49) + 1)
+    expect(rows.indexOf(50)).toBe(rows.indexOf(3001) + 1)
+    expect(rows).not.toContain(2009)
+    expect(x.lines.find((l) => l.row === 45)).toMatchObject({ label: 'Цена квал лида, $' })
   })
 
   it('draws «Отказ сумма» alike in every logistics block', () => {

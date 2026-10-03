@@ -346,6 +346,8 @@ export const CALLS_RELIABLE_FROM = '2026-09-15'
 
 /** Metric key of the one company-wide setting that is not a plan. */
 export const SETTING_LEAD_VALUE = 'lead_value'
+/** «План продаж» (row 347): what one Регистрация kval lead is worth, soʻm — fixed by the client (2026-10-03). */
+const SALES_PLAN_PER_QUALIFIED = 500_000
 
 /**
  * Every key a plan can be stored under — the rows below name them, and the
@@ -391,7 +393,6 @@ export const RNP_PLAN_METRICS = [
   'funnel_clicks',
   'funnel_orders1',
   'funnel_ctr',
-  'funnel_lead_per_click',
   'funnel_conv_qualified',
   'funnel_conv_total',
   'funnel_fakt2',
@@ -889,8 +890,8 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       additive(clock, { key: 'meta:leads', label: 'Жами лид (Meta)', unit: 'count', tone: 'total', ...planned('', 'meta_leads'), sheet: sh(43, 'Количество лид') }, metaLeadsAll),
       ratio(clock, { key: 'meta:cpl', label: 'CPL, $', unit: 'usd', better: 'down', ...planned('', 'cpl'), hint: CPL_HINT, sheet: sh(44, 'CPL $ цена лида') }, spendAll, metaLeadsAll),
       ratio(clock, { key: 'meta:cac', label: 'CAC (мижоз нарҳи), $', unit: 'usd', better: 'down', ...planned('', 'cac'), hint: 'Jami byudjet ÷ birlamchi jamoalarning FAKT 2 buyurtmalari (БАЗА jamoalarisiz).', sheet: sh(11, 'САС (мижоз нарҳи), $') }, spendAll, fakt2OrdersPrimary),
-      // The sheet's unlabelled row 45, `=IFERROR(G42/G47,0)`: what one lead that reached Регистрация cost.
-      ratio(clock, { key: 'meta:cost_per_reg_lead', label: 'Регистрация лид нархи, $', unit: 'usd', better: 'down', hint: 'Jadvalning 45-qatori: jami byudjet ÷ Регистрация lidlari.', sheet: sh(45, 'Регистрация лид нархи, $') }, spendAll, reg.leads),
+      // The sheet's unlabelled row 45, once `=IFERROR(G42/G47,0)`; the client renamed it «Цена квал лида» (2026-10-03): what one kval lead cost.
+      ratio(clock, { key: 'meta:cost_per_reg_lead', label: 'Цена квал лида, $', unit: 'usd', better: 'down', hint: 'Jami byudjet ÷ «Жами квал сони» (Регистрация kval lidlari).', sheet: sh(45, 'Цена квал лида, $') }, spendAll, reg.qualified),
       ratio(
         clock,
         {
@@ -1328,7 +1329,6 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
         additive(clock, { key: `${k}:orders1`, label: 'Колич новых транзак', unit: 'count', ...planned('Collagen', 'funnel_orders1'), hint: 'Collagen birlamchi jamoalarining FAKT 1 buyurtmalari (БАЗА jamoasisiz).', sheet: sh(2006, 'Колич новых транзак') }, g.primaryOrders1),
         additive(clock, { key: `${k}:orders2`, label: 'Колич новых тран усп', unit: 'count', ...planned('Collagen', 'brand_orders2'), hint: 'Oʻsha jamoalarning FAKT 2 (yetkazilgan) buyurtmalari.', sheet: sh(2007, 'Колич новых тран усп') }, g.primaryOrders2),
         ratio(clock, { key: `${k}:ctr`, label: 'CTR %', unit: 'percent', ...planned('Collagen', 'funnel_ctr'), hint: 'Колич клик ÷ Колич просмотр. Meta «clicks» — barcha kliklar (CTR all), faqat havola emas.', sheet: sh(2008, 'CTR %') }, m.clicks, m.impressions, 100),
-        ratio(clock, { key: `${k}:lead_per_click`, label: 'Лид / клик %', unit: 'percent', ...planned('Collagen', 'funnel_lead_per_click'), hint: 'Колич лидов ÷ Колич клик. Lidlar — barcha Collagen Регистрация lidlari (organik va DM ham), kliklar — faqat Meta.', sheet: sh(2009, 'Лид / клик %') }, g.leads, m.clicks, 100),
         ratio(clock, { key: `${k}:qualified_pct`, label: 'Квал лид %', unit: 'percent', ...planned('Collagen', 'brand_qualified_pct'), hint: 'Колич квал лидов ÷ Колич лидов.', sheet: sh(2010, 'Квал лид %') }, g.qualified, g.leads, 100),
         ratio(clock, { key: `${k}:conv_qualified`, label: 'Конверсия от квал %', unit: 'percent', ...planned('Collagen', 'funnel_conv_qualified'), hint: 'Колич новых транзак ÷ Колич квал лидов.', sheet: sh(2011, 'Конверсия от квал %') }, g.primaryOrders1, g.qualified, 100),
         ratio(clock, { key: `${k}:conv_total`, label: 'Конверсия общ %', unit: 'percent', ...planned('Collagen', 'funnel_conv_total'), hint: 'Колич новых тран усп ÷ Колич лидов.', sheet: sh(2012, 'Конверсия общ %') }, g.primaryOrders2, g.leads, 100),
@@ -1342,8 +1342,8 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   }
 
   // --- Свод -----------------------------------------------------------------
-  const companyLeadValue = leadValueDays('')
-  const companySalesPlan = days.map((_, i) => reg.qualified[i]! * companyLeadValue[i]!)
+  // The client's rule (2026-10-03): every kval lead is worth a flat 500 000 here, whatever the month's lead_value says.
+  const companySalesPlan = days.map((_, i) => reg.qualified[i]! * SALES_PLAN_PER_QUALIFIED)
   blocks.push({
     id: 'summary',
     kind: 'summary',
@@ -1353,7 +1353,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     sheet: sh(346, 'Свод'),
     rows: [
       additive(clock, { key: 'sv:reg_qualified', label: 'Квал лид сони (Регистрация)', unit: 'count', ...planned('', 'reg_qualified'), sheet: sh(346, 'Квал лид сони') }, reg.qualified),
-      additive(clock, { key: 'sv:sales_plan', label: 'План продаж (квал лид × лид қиймати)', unit: 'uzs', sheet: sh(347, 'План продаж'), hint: 'Jadvalning 347-qatori: registratsiya kval lidi × bitta lid qiymati (shu kundagi qiymat).' }, companySalesPlan),
+      additive(clock, { key: 'sv:sales_plan', label: 'План продаж (квал лид × 500.000)', unit: 'uzs', sheet: sh(347, 'План продаж'), hint: 'Jadvalning 347-qatori: «Квал лид сони» × 500.000 soʻm.' }, companySalesPlan),
       additive(clock, { key: 'sv:fakt1', label: 'ФАКТ 1 — жами', unit: 'uzs', tone: 'total', ...planned('', 'fakt1'), sheet: sh(348, 'ФАКТ 1') }, fakt1All),
       additive(clock, { key: 'sv:fakt2', label: 'ФАКТ 2 — жами', unit: 'uzs', tone: 'total', ...planned('', 'fakt2'), sheet: sh(349, 'ФАКТ 2') }, fakt2All),
       additive(clock, { key: 'sv:budget', label: 'Бюджет (Meta), $', unit: 'usd', better: 'down', ...planned('', 'budget'), hint: 'Marketing blokidagi «Жами бюджет» bilan bir xil qator.' }, spendAll), // no sheet row: 350 repeated 42 in «Основные показатели» (2026-10-03)

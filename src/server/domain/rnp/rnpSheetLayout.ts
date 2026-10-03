@@ -47,6 +47,11 @@
  * (346–349). «Свод»'s «Бюджет» (350) is left out: it is row 42 again, two
  * lines above it. Row 346 no longer opens a block, so it is plain.
  *
+ * 2026-10-03: «Лид / клик %» (2009) left the funnel; the registration
+ * groups (50–1013) sit under their own heading, «Регистрация лид → квал»
+ * (id 3001, no sheet row); row 45 reads «Цена квал лида» — the budget over
+ * the kval leads, no longer over all of them.
+ *
  * Each entry: [row, label (column A), sub (column B when it holds text — the
  * person responsible, «без квал», «факт1» …), kind, bold, tone of the label
  * cell, tone of the fact cell].
@@ -103,7 +108,6 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [2006, 'Колич новых транзак', null, 'value', false, 'plain', 'plain'],
   [2007, 'Колич новых тран усп', null, 'value', false, 'plain', 'plain'],
   [2008, 'CTR %', null, 'value', false, 'plain', 'plain'],
-  [2009, 'Лид / клик %', null, 'value', false, 'plain', 'plain'],
   [2010, 'Квал лид %', null, 'value', false, 'plain', 'plain'],
   [2011, 'Конверсия от квал %', null, 'value', false, 'plain', 'plain'],
   [2012, 'Конверсия общ %', null, 'value', false, 'plain', 'plain'],
@@ -123,6 +127,7 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [47, 'Жами лид сони', null, 'value', true, 'section', 'plain'],
   [48, 'Жами квал сони', null, 'value', false, 'plain', 'plain'],
   [49, '% квал лид', null, 'value', false, 'plain', 'rate'],
+  [3001, 'Регистрация лид → квал', null, 'title', true, 'section', 'plain'],
   [50, 'Sevinch guruh', 'без квал', 'value', false, 'plain', 'plain'],
   [51, '', 'квал', 'value', false, 'plain', 'plain'],
   [52, '', 'квал %', 'value', false, 'plain', 'plain'],
