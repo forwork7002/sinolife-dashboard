@@ -620,6 +620,10 @@ Per-screen traps worth knowing before you touch one:
     per-ROP «Свод» / РОП-Регистрация-Разница removed, logistics named per ROP,
     «Кунлик план» after «Индекс». Sections for appended lines are row SETS
     (`rnpSheetView.ts`), since the layout is no longer in sheet-row order.
+    2026-10-03 («тепага чикариб берасиз, основный показатели»): the page
+    opens on «Основные показатели» (title id 3000) — САС, ROMI, 42–45, then
+    «Свод» 346–349; «Свод»'s «Бюджет» (350) is off the page (it was row 42
+    again), and 346 no longer opens a ruled table gap.
   · **THE PAGE IS THE SHEET, AND ONLY THE SHEET (2026-09-30, final).** After
     two reversals the client settled on «faqat jadval … to'liqligicha»: the
     ROP rail, KPI cards, charts, funnel and ranking are deleted. Every row of

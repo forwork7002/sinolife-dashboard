@@ -41,6 +41,12 @@
  * day's grade from its FAKT 1 (`rnpGrade.ts`). The sheet has no such row; its
  * id is the block's first row + 2000 (`GRADE_ROW_OFFSET` in `rnpSheet.ts`).
  *
+ * 2026-10-03: the company's headline rows open the page under their own
+ * heading, «Основные показатели» (id 3000, no sheet row) — the client's «тепага
+ * чикариб берасиз»: САС and ROMI (11–12), the totals 42–45, then «Свод»
+ * (346–349). «Свод»'s «Бюджет» (350) is left out: it is row 42 again, two
+ * lines above it. Row 346 no longer opens a block, so it is plain.
+ *
  * Each entry: [row, label (column A), sub (column B when it holds text — the
  * person responsible, «без квал», «факт1» …), kind, bold, tone of the label
  * cell, tone of the fact cell].
@@ -77,6 +83,17 @@ export type RnpLayoutRow = readonly [
 ]
 
 export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
+  [3000, 'Основные показатели', null, 'title', true, 'section', 'plain'],
+  [11, 'САС (мижоз нарҳи), $', null, 'value', false, 'plain', 'plain'],
+  [12, 'ROMI %', null, 'value', false, 'plain', 'plain'],
+  [42, 'Бюджет', null, 'value', true, 'plain', 'money'],
+  [43, 'Количество лид', null, 'value', true, 'plain', 'plain'],
+  [44, 'CPL $   цена лида', null, 'value', true, 'plain', 'rate'],
+  [45, '', null, 'helper', true, 'plain', 'rate'],
+  [346, 'Квал лид сони', 'ИЮЛЬ', 'value', true, 'plain', 'plain'], // B346: printed as the page's own month (`rnpSheetView`)
+  [347, 'План продаж', null, 'value', true, 'plain', 'plain'],
+  [348, 'ФАКТ 1', null, 'value', true, 'plain', 'plain'],
+  [349, 'ФАКТ 2', null, 'value', true, 'plain', 'fakt'],
   [4, 'Маркетинг COLLAGEN', 'Хаёт', 'title', true, 'section', 'plain'],
   [2001, 'Колич просмотр', null, 'value', false, 'plain', 'plain'],
   [2002, 'Колич клик', null, 'value', false, 'plain', 'plain'],
@@ -95,12 +112,6 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [2015, 'Средний чек', null, 'value', false, 'plain', 'plain'],
   [2016, 'ROI', null, 'value', false, 'plain', 'plain'],
   [2017, 'Сумма общий успешка', null, 'value', false, 'plain', 'fakt'],
-  [11, 'САС (мижоз нарҳи), $', null, 'value', false, 'plain', 'plain'],
-  [12, 'ROMI %', null, 'value', false, 'plain', 'plain'],
-  [42, 'Бюджет', null, 'value', true, 'plain', 'money'],
-  [43, 'Количество лид', null, 'value', true, 'plain', 'plain'],
-  [44, 'CPL $   цена лида', null, 'value', true, 'plain', 'rate'],
-  [45, '', null, 'helper', true, 'plain', 'rate'],
   [13, 'Таргет Collagen', null, 'title', true, 'section', 'plain'],
   [14, 'Бюджет Collagen', null, 'value', false, 'plain', 'money'],
   [15, 'Колич Collagen лид', null, 'value', false, 'plain', 'plain'],
@@ -359,11 +370,6 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [332, 'Успешкность % 📌', null, 'value', false, 'plain', 'plain'],
   [333, 'Отказ %', null, 'value', false, 'plain', 'plain'],
   [334, '', null, 'helper', false, 'plain', 'plain'],
-  [346, 'Квал лид сони', 'ИЮЛЬ', 'value', true, 'section', 'plain'], // B346: printed as the page's own month (`rnpSheetView`)
-  [347, 'План продаж', null, 'value', true, 'plain', 'plain'],
-  [348, 'ФАКТ 1', null, 'value', true, 'plain', 'plain'],
-  [349, 'ФАКТ 2', null, 'value', true, 'plain', 'fakt'],
-  [350, 'Бюджет', null, 'value', true, 'plain', 'rate'],
   [394, 'Коллаген проект', 'Сумма факт1', 'value', true, 'section', 'plain'],
   [395, 'Сумма факт2 (успешка)', null, 'value', false, 'plain', 'fakt'],
   [396, 'Первичка усп', null, 'value', false, 'plain', 'plain'],

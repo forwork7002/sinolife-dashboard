@@ -255,20 +255,22 @@ function rowsByKey(blocks: readonly RnpBlockDto[]): Map<string, RnpRowDto> {
  * opens with a gap — a title band, a team's first row, or an orange section
  * row that does not follow the row before it on the sheet («Коллаген
  * проект», «Регистрация COLLAGEN») or follows a line the sheet does not have
- * at all («Свод» after an added team's logistics, 2026-10-02).
+ * at all (an added team's logistics, 2026-10-02).
  *
  * A ROP's block — its team block or its logistics block — opens with a wider,
  * ruled, sunken gap, even where the sheet runs one ROP's rows into the next, so each ROP reads as its own table
  * inside the one grid (the client, 2026-10-01: «bir jadval bo'lsin … faqat
  * bir biridan sal ajralib turishi kerak»).
  *
- * So does each company-wide table under them — «Свод», «Коллаген проект»,
- * «Зехтра проект» (the client, 2026-10-02: «bitta joy qilib ajratib bersin»).
+ * So does each company-wide table under them — «Коллаген проект», «Зехтра
+ * проект» (the client, 2026-10-02: «bitta joy qilib ajratib bersin»). «Свод»
+ * was one too until 2026-10-03, when its rows moved up into «Основные
+ * показатели», the page's first table.
  */
 type Gap = 'block' | 'rop'
 
-/** The sheet rows that open «Свод», «Коллаген проект» and «Зехтра проект». */
-const OWN_TABLE_ROWS: ReadonlySet<number> = new Set([346, 394, 421])
+/** The sheet rows that open «Коллаген проект» and «Зехтра проект». */
+const OWN_TABLE_ROWS: ReadonlySet<number> = new Set([394, 421])
 
 function gapBefore(line: RnpLine, prev: RnpLine): Gap | null {
   if (prev.kind !== 'value' || prev.tone === 'team') return null

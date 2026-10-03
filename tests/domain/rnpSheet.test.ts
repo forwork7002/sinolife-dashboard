@@ -1023,6 +1023,16 @@ describe('buildRnpSheet — the audit fixes of 2026-10-02', () => {
     expect(sheetLines(x.blocks, { month: '2026-10', teamName: (rop) => rop }).find((l) => l.row === 346)).toMatchObject({ sub: 'ОКТЯБРЬ' })
   })
 
+  it('opens the page on «Основные показатели»: САС, ROMI, the totals, then «Свод» (2026-10-03)', () => {
+    const x = buildRnpSheet(input())
+    const rows = x.lines.slice(0, 11).map((l) => l.row)
+    expect(x.lines[0]).toMatchObject({ kind: 'title', label: 'Основные показатели' })
+    expect(rows).toEqual([3000, 11, 12, 42, 43, 44, 45, 346, 347, 348, 349])
+    expect(x.lines[11]).toMatchObject({ kind: 'title', row: 4, label: 'Маркетинг COLLAGEN' })
+    // «Свод»'s «Бюджет» repeated row 42 two lines above it.
+    expect(x.lines.some((l) => l.row === 350)).toBe(false)
+  })
+
   it('keeps row 45 under the totals it is computed from, not under «Цена лида Zextra»', () => {
     const rows = buildRnpSheet(input()).lines.map((l) => l.row)
     expect(rows.indexOf(45)).toBe(rows.indexOf(44) + 1)
