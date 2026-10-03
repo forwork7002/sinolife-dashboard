@@ -198,7 +198,7 @@ const TILES_IN_TOTAL = TILES.filter((t) => !(TILES_APART as readonly LeadTile[])
 /** What a tile counts, where its name alone does not say it. */
 const TILE_NOTE: Partial<Record<LeadTile, string>> = {
   generated: 'lid-forma + qoʻlda kiritilgan',
-  aiSmm: '«ИИ квал сана» shu davrda · barcha voronkalar · 14.09.2026 dan',
+  aiSmm: '«ИИ квал сана» shu davrda · faqat Регистрация · 14.09.2026 dan',
   outbound: 'operatorning chiquvchi qoʻngʻirogʻi',
   other: 'qolgan manbalar: ИИ kval qilmagan reklama sahifalari, Сммщик, Instagram, manbasiz',
 }
@@ -221,6 +221,22 @@ const dublNote = (t: ChannelTileDto | undefined) => {
   const dubl = t ? t.leads - t.fresh : 0
   return dubl > 0 ? note(`shundan ${formatNumber(dubl)} dubl`, '«Дубликат (лид)» bosqichidagi lidlar — katta songa kirgan') : null
 }
+
+/**
+ * Under «Сммщик ии», quieter still: AI-qualified deals that have already left
+ * Регистрация (Первичный отдел, Доставка, …) — the client, 2026-10-03: a
+ * repeat of a lead counted before, said as «dubl» but summed nowhere.
+ */
+const aiElsewhereNote = (n: number) =>
+  n > 0 ? (
+    <p
+      className="text-[10px] leading-snug"
+      style={muted}
+      title="«ИИ квал сана» shu davrda, lekin bitim Регистрацияdan oʻtib ketgan (Первичный отдел, Доставка …) — avval sanalgan lidning takrori; hech qaysi kartaga va «Jami»ga kirmaydi"
+    >
+      +{formatNumber(n)} dubl · Первичный / Доставка · sanalmagan
+    </p>
+  ) : null
 
 const signed = (n: number) => `${n < 0 ? '−' : '+'}${formatNumber(Math.abs(n))}`
 
@@ -250,7 +266,7 @@ function headlineNote(data: LeadSourcesOverviewDto): ReactNode {
         note(
           parts.join(' · '),
           ai !== 0
-            ? '«ИИ farqi»: «Сммщик ии» shu davrdagi «ИИ квал сана» boʻyicha, barcha voronkalardan sanaladi; «Жами лидлар»da esa shu davrda Регистрацияga kelgan ИИ lidlari.'
+            ? '«ИИ farqi»: «Сммщик ии» shu davrdagi «ИИ квал сана» boʻyicha sanaladi (Регистрацияdagilar, istalgan kuni kelgan); «Жами лидлар»da esa shu davrda Регистрацияga kelgan ИИ lidlari.'
             : undefined,
         )}
     </>
@@ -328,7 +344,7 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
             }
           />
         </div>
-        {TILES_IN_TOTAL.map((t) => channelTile(t))}
+        {TILES_IN_TOTAL.map((t) => channelTile(t, t === 'aiSmm' && data ? aiElsewhereNote(data.tiles.aiElsewhere) : undefined))}
       </div>
       <h3 className="eyebrow" id="lead-channel-apart">
         Jamiga kirmaydi

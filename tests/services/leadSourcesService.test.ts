@@ -118,13 +118,16 @@ describe('leadSourcesOverview', () => {
       { sourceId: 'UC_KPZA32', aiQualified: false, qualified: 1 },
       { sourceId: null, aiQualified: false, qualified: 1 },
     ],
-    // «ИИ квал сана» in the window, any pipeline and creation day — 5 in all, one a duplicate.
+    // «ИИ квал сана» in the window, any creation day — 6 in Регистрация (one a duplicate), 3 moved on.
     aiQualified: [
-      { stage: 'Сделка успешна', status: 'WON', leads: 1 },
-      { stage: 'Обработка', status: 'OPEN', leads: 3 },
-      { stage: 'Дубликат (лид)', status: 'OPEN', leads: 1 },
+      { registration: true, stage: 'Сделка успешна', status: 'WON', leads: 1 },
+      { registration: true, stage: 'Обработка', status: 'OPEN', leads: 3 },
+      { registration: true, stage: 'Дубликат (лид)', status: 'OPEN', leads: 1 },
       // The red «Дубликат» is no «Дубль лид» (the client, 2026-10-02): still a fresh lead here.
-      { stage: 'Дубликат', status: 'OPEN', leads: 1 },
+      { registration: true, stage: 'Дубликат', status: 'OPEN', leads: 1 },
+      // Already in Первичный отдел / Доставка: a repeat, counted on no tile (the client, 2026-10-03).
+      { registration: false, stage: 'Новая', status: 'OPEN', leads: 2 },
+      { registration: false, stage: 'Сделка успешна', status: 'WON', leads: 1 },
     ],
   })
 
@@ -209,8 +212,9 @@ describe('leadSourcesOverview', () => {
     expect(tile('generated')).toMatchObject({ leads: 7, fresh: 7, qualified: 3, qualifiedPercent: (3 / 7) * 100 })
     expect(tile('inbound')).toMatchObject({ leads: 3, qualified: 0, qualifiedPercent: 0 })
     expect(tile('telegram')).toMatchObject({ leads: 2, qualified: 0 })
-    // By «ИИ квал сана», as the portal's filter counts it — not the one window lead the AI marked.
+    // By «ИИ квал сана», Регистрация only — not the one window lead the AI marked, nor the 3 moved on.
     expect(tile('aiSmm')).toMatchObject({ leads: 6, fresh: 5, qualified: 1, qualifiedPercent: 20 })
+    expect(data.tiles.aiElsewhere).toBe(3)
     expect(tile('web')).toMatchObject({ leads: 1, qualified: 0 })
     expect(tile('sarafan')).toMatchObject({ leads: 1, qualified: 0 })
     expect(tile('outbound')).toMatchObject({ leads: 7, qualified: 1 })
@@ -238,6 +242,7 @@ describe('leadSourcesOverview', () => {
   it('keeps the identity on an empty window', () => {
     const empty = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [], triage: [], campaigns: [], fakt1: [], qualified: [], aiQualified: [] })
     expect(empty.tiles.toHeadline).toEqual({ outbound: 0, other: 0, ai: 0 })
+    expect(empty.tiles.aiElsewhere).toBe(0)
     expect(empty.tiles.total.leads).toBe(empty.funnel.total)
   })
 

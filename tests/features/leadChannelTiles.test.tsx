@@ -54,6 +54,7 @@ const data = {
     // The six channels' sum, as the server builds it — «Исход» and «Boshqa» left out.
     total: cells(3224, 964, 40),
     toHeadline: { outbound: 2410, other: 120, ai: -40 },
+    aiElsewhere: 17,
   },
 } as unknown as LeadSourcesOverviewDto
 
@@ -71,8 +72,23 @@ describe('ChannelTiles', () => {
     expect(within(tile('Телеграм')).getByText('27')).toBeTruthy()
     expect(within(tile('Телеграм')).getByText('13 kval · 48.1%')).toBeTruthy()
     expect(within(tile('Сммщик ии')).getByText('445')).toBeTruthy()
-    expect(within(tile('Сммщик ии')).getByText('«ИИ квал сана» shu davrda · barcha voronkalar · 14.09.2026 dan')).toBeTruthy()
+    expect(within(tile('Сммщик ии')).getByText('«ИИ квал сана» shu davrda · faqat Регистрация · 14.09.2026 dan')).toBeTruthy()
     expect(within(tile('Веб сайт')).getByText('1')).toBeTruthy()
+  })
+
+  it('says under «Сммщик ии», quietly, the AI kval already past Регистрация — a dubl summed nowhere (2026-10-03)', () => {
+    render(<ChannelTiles data={data} status="ready" />)
+
+    const line = within(tile('Сммщик ии')).getByText('+17 dubl · Первичный / Доставка · sanalmagan')
+    expect(line.getAttribute('title')).toMatch(/«Jami»ga kirmaydi/)
+    expect(within(tile('Сммщик ии')).getByText('445')).toBeTruthy()
+    expect(within(screen.getByTestId('lead-channel-total')).getByText('3,224')).toBeTruthy()
+  })
+
+  it('says nothing past Регистрация when nothing is', () => {
+    render(<ChannelTiles data={{ ...data, tiles: { ...data.tiles, aiElsewhere: 0 } }} status="ready" />)
+
+    expect(within(tile('Сммщик ии')).queryByText(/Первичный \/ Доставка/)).toBeNull()
   })
 
   it('shows a quiet channel at 0, with a dash for its rate', () => {

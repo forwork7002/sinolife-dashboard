@@ -215,10 +215,16 @@ export interface LeadSourcesOverviewDto {
      * total.leads + outbound + other + ai = funnel.total, always.
      *   outbound, other — the two tiles kept out of «Jami».
      *   ai — Регистрация leads of the window carrying the AI mark, less
-     *        «Сммщик ии» (the «ИИ квал сана» filter, any pipeline, any
-     *        creation day): 01.10 read 60 − 89 = −29.
+     *        «Сммщик ии» (the «ИИ квал сана» filter on Регистрация, any
+     *        creation day): 01.10 read 60 − 72 = −12.
      */
     readonly toHeadline: { readonly outbound: number; readonly other: number; readonly ai: number }
+    /**
+     * Deals the AI qualified in the window that sit outside Регистрация now
+     * (Первичный отдел, Доставка, …) — the client, 2026-10-03: shown under
+     * «Сммщик ии» as duplicates, counted in no tile and not in «Jami».
+     */
+    readonly aiElsewhere: number
   }
   readonly sources: readonly SourceRowDto[]
 }
@@ -299,7 +305,7 @@ export function leadSourcesOverview(input: {
   fakt1: readonly LeadFakt1ClientRow[]
   /** Регистрация deals WON in the window, by source (`LeadSourcesRepository.qualifiedSources`). */
   qualified: readonly QualifiedSourceRow[]
-  /** Deals whose «ИИ квал сана» is in the window, any pipeline (`LeadSourcesRepository.aiQualifiedStages`). */
+  /** Deals whose «ИИ квал сана» is in the window, any pipeline, flagged Регистрация or not (`LeadSourcesRepository.aiQualifiedStages`). */
   aiQualified: readonly AiQualifiedStageRow[]
   importedAt: Date | null
 }): LeadSourcesOverviewDto {
@@ -528,13 +534,20 @@ export function leadSourcesOverview(input: {
     240 on 01.10.
   */
   /*
-    «Сммщик ии» is the portal's «ИИ квал сана» filter on the window — any
-    pipeline, any creation day — so it reads what the client sees in Bitrix24
-    (01.10: 89, where the arrival cohort read 60). Its kval stays the
-    Регистрация WON by close date below, like every other tile.
+    «Сммщик ии» is the portal's «ИИ квал сана» filter on the window, any
+    creation day, but only what is in Регистрация (the client, 2026-10-03;
+    01.10: 72 of the filter's 89). A deal already moved on to Первичный отдел
+    or Доставка is a repeat of a lead counted before: said apart, as
+    `aiElsewhere`, and summed nowhere. Its kval stays the Регистрация WON by
+    close date below, like every other tile.
   */
   const aiTile = tiles.get('aiSmm')!
+  let aiElsewhere = 0
   for (const row of input.aiQualified) {
+    if (!row.registration) {
+      aiElsewhere += row.leads
+      continue
+    }
     aiTile.leads += row.leads
     if (isLeadDuplicate(row.stage)) aiTile.duplicates += row.leads
   }
@@ -596,6 +609,7 @@ export function leadSourcesOverview(input: {
         other: tiles.get('other')!.leads,
         ai: aiArrived - aiTile.leads,
       },
+      aiElsewhere,
     },
     sources: [...sources.values()]
       .map((s) => ({

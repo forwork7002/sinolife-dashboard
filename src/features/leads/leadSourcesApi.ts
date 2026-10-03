@@ -122,6 +122,8 @@ export interface LeadSourcesOverviewDto {
     readonly total: ChannelTileDto
     /** total.leads + outbound + other + ai = funnel.total — what «Jami» lacks of «Жами лидлар». */
     readonly toHeadline: { readonly outbound: number; readonly other: number; readonly ai: number }
+    /** AI-qualified in the window but outside Регистрация now — shown under «Сммщик ии» as duplicates, summed nowhere. */
+    readonly aiElsewhere: number
   }
   readonly sources: readonly SourceRowDto[]
 }
