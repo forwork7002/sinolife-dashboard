@@ -37,6 +37,7 @@ import {
   type LeadTile,
   LEAD_CHANNELS,
   LEAD_TILES,
+  LEAD_TILES_APART,
   formNameOf,
   formOwner,
   leadChannel,
@@ -202,23 +203,22 @@ export interface LeadSourcesOverviewDto {
   }[]
   /**
    * «Boshqa kanallar lidlari»: every tile of `LEAD_TILES`, in its order and
-   * at zero when quiet, and «Jami» — EVERY Регистрация lead of the window,
-   * duplicates and kval included, so `total` equals `funnel` (the client,
-   * 2026-10-03: «Jami» and «Жами лидлар» are one number). «Исход» and
-   * «Boshqa» (`LEAD_TILES_APART`) have no card of their own; they are in
-   * «Jami» and named under it.
+   * at zero when quiet, and «Jami» — the sum of all but `LEAD_TILES_APART`
+   * («Исход», «Boshqa»), so `funnel` less those two.
    */
   readonly tiles: {
     readonly rows: readonly ({ readonly tile: LeadTile } & ChannelTileDto)[]
     readonly total: ChannelTileDto
     /**
-     * What «Сммщик ии» puts into «Jami»: the Регистрация leads of the window
-     * carrying the AI mark. Its own tile reads the portal's «ИИ квал сана»
-     * filter instead (any pipeline, any creation day — 01.10: 89 against 60),
-     * so the two differ and the screen says so. An identity:
-     * Σ rows except aiSmm + aiInTotal = total.leads = funnel.total.
+     * What takes `total.leads` to `funnel.total` (the client, 2026-10-02:
+     * «Jami» must visibly meet «Жами лидлар»). An identity, not a remainder:
+     * total.leads + outbound + other + ai = funnel.total, always.
+     *   outbound, other — the two tiles kept out of «Jami».
+     *   ai — Регистрация leads of the window carrying the AI mark, less
+     *        «Сммщик ии» (the «ИИ квал сана» filter, any pipeline, any
+     *        creation day): 01.10 read 60 − 89 = −29.
      */
-    readonly aiInTotal: number
+    readonly toHeadline: { readonly outbound: number; readonly other: number; readonly ai: number }
   }
   readonly sources: readonly SourceRowDto[]
 }
@@ -544,6 +544,13 @@ export function leadSourcesOverview(input: {
     tiles.get(leadTile(row.sourceId, row.aiQualified, LEAD_SOURCE_VOCABULARY))!.qualified += row.qualified
     qualifiedTotal += row.qualified
   }
+  const tilesTotal = tileZero()
+  for (const [tile, t] of tiles) {
+    if (LEAD_TILES_APART.has(tile)) continue
+    tilesTotal.leads += t.leads
+    tilesTotal.duplicates += t.duplicates
+    tilesTotal.qualified += t.qualified
+  }
 
   // --- the headline tiles
   let adSpend = 0n
@@ -583,9 +590,12 @@ export function leadSourcesOverview(input: {
     })),
     tiles: {
       rows: LEAD_TILES.map((tile) => ({ tile, ...tileCells(tiles.get(tile)!) })),
-      // «Jami» IS the headline: every Регистрация lead, its duplicates, its kval.
-      total: tileCells({ leads: registrationCells.leads, duplicates: leadDuplicates, qualified: qualifiedTotal }),
-      aiInTotal: aiArrived,
+      total: tileCells(tilesTotal),
+      toHeadline: {
+        outbound: tiles.get('outbound')!.leads,
+        other: tiles.get('other')!.leads,
+        ai: aiArrived - aiTile.leads,
+      },
     },
     sources: [...sources.values()]
       .map((s) => ({

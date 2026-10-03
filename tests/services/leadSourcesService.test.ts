@@ -202,7 +202,7 @@ describe('leadSourcesOverview', () => {
     expect(data.sources.find((s) => s.key === 'source|UC_8NZNYM')!.channel).toBe('telegram')
   })
 
-  it('fills the client\'s channel tiles, «Исход» and «Boshqa» included, and makes «Jami» the headline', () => {
+  it('fills the client\'s channel tiles, «Исход» and «Boshqa» included, and sums all but those two', () => {
     const tile = (t: string) => data.tiles.rows.find((r) => r.tile === t)!
     expect(data.tiles.rows.map((r) => r.tile)).toEqual(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'sarafan', 'outbound', 'other'])
     // Umar's form (5) and the hand-typed «Ген лид» (2): «Ген лид» whole; kval by the day it was WON.
@@ -216,27 +216,29 @@ describe('leadSourcesOverview', () => {
     expect(tile('outbound')).toMatchObject({ leads: 7, qualified: 1 })
     // The page's unqualified three (one a duplicate), collagen.sinolife, and the kval with no source.
     expect(tile('other')).toMatchObject({ leads: 4, fresh: 3, qualified: 1 })
-    // «Jami» IS «Жами лидлар» (the client, 2026-10-03): every Регистрация lead,
-    // «Исход» and «Boshqa» included, duplicates and kval as the headline counts them.
+    // «Jami» is the headline less «Исход» (7 · 1 kval) and «Boshqa» (4, one a duplicate · 1 kval),
+    // with «Сммщик ии» on its own date: 6 (one «Дубликат (лид)») where the window held 1.
     expect(data.tiles.total).toEqual({
-      leads: data.funnel.total,
-      fresh: data.funnel.fresh,
-      qualified: data.funnel.qualified,
-      qualifiedPercent: data.funnel.qualifiedPercent,
+      leads: data.funnel.total - 11 - 1 + 6,
+      fresh: data.funnel.fresh - 10 - 1 + 5,
+      qualified: data.funnel.qualified - 2,
+      qualifiedPercent: ((data.funnel.qualified - 2) / (data.funnel.fresh - 10 - 1 + 5)) * 100,
     })
+    const inTotal = data.tiles.rows.filter((r) => r.tile !== 'outbound' && r.tile !== 'other')
+    expect(data.tiles.total.leads).toBe(inTotal.reduce((n, r) => n + r.leads, 0))
   })
 
-  it('puts «Сммщик ии» into «Jami» with its Регистрация leads, not its AI-date count', () => {
-    // One window lead carried the mark; the tile reads 6 by «ИИ квал сана».
-    expect(data.tiles.aiInTotal).toBe(1)
-    const rest = data.tiles.rows.filter((r) => r.tile !== 'aiSmm').reduce((n, r) => n + r.leads, 0)
-    expect(rest + data.tiles.aiInTotal).toBe(data.tiles.total.leads)
+  it('says what takes «Jami» to «Жами лидлар», to the lead (the client, 2026-10-02)', () => {
+    // «Исход» 7, «Boshqa» 4, and the AI: 1 window lead carried the mark, «Сммщик ии» reads 6.
+    expect(data.tiles.toHeadline).toEqual({ outbound: 7, other: 4, ai: 1 - 6 })
+    const { outbound, other, ai } = data.tiles.toHeadline
+    expect(data.tiles.total.leads + outbound + other + ai).toBe(data.funnel.total)
   })
 
-  it('keeps «Jami» the headline on an empty window', () => {
+  it('keeps the identity on an empty window', () => {
     const empty = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [], triage: [], campaigns: [], fakt1: [], qualified: [], aiQualified: [] })
-    expect(empty.tiles.aiInTotal).toBe(0)
-    expect(empty.tiles.total).toMatchObject({ leads: 0, fresh: 0, qualified: 0, qualifiedPercent: null })
+    expect(empty.tiles.toHeadline).toEqual({ outbound: 0, other: 0, ai: 0 })
+    expect(empty.tiles.total.leads).toBe(empty.funnel.total)
   })
 
   it('puts the form and the Meta account on one targetolog, and reads the reach', () => {

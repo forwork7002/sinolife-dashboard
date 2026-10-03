@@ -189,16 +189,19 @@ const TILE_LABEL: Readonly<Record<LeadTile, string>> = {
 const TILES = Object.keys(TILE_LABEL) as LeadTile[]
 
 /**
- * No card of their own — the server's `LEAD_TILES_APART`. They are counted in
- * «Jami» and named on a quiet line under it (the client, 2026-10-03).
+ * Beneath, outside «Jami» — the server's `LEAD_TILES_APART` (the client,
+ * 2026-10-02). One card with a picker between the two, the client's ask.
  */
 const TILES_APART = ['outbound', 'other'] as const satisfies readonly LeadTile[]
-const TILES_IN_ROW = TILES.filter((t) => !(TILES_APART as readonly LeadTile[]).includes(t))
+type ApartTile = (typeof TILES_APART)[number]
+const TILES_IN_TOTAL = TILES.filter((t) => !(TILES_APART as readonly LeadTile[]).includes(t))
 
 /** What a tile counts, where its name alone does not say it. */
 const TILE_NOTE: Partial<Record<LeadTile, string>> = {
   generated: 'lid-forma + qoʻlda kiritilgan',
   aiSmm: '«ИИ квал сана» shu davrda · barcha voronkalar · 14.09.2026 dan',
+  outbound: 'operatorning chiquvchi qoʻngʻirogʻi',
+  other: 'qolgan manbalar: ИИ kval qilmagan reklama sahifalari, Сммщик, Instagram, manbasiz',
 }
 
 /** «N kval · X%» — kval ÷ new leads, as «Квал %» above; a dash when the channel had no new lead. */
@@ -211,68 +214,58 @@ const note = (text: string, title?: string) => (
   </p>
 )
 
-/**
- * «shundan N dubl», quietly — the client, 2026-10-03: a duplicate is counted
- * in the big number and said under it, never left for the reader to guess.
- */
-const dublNote = (t: ChannelTileDto | undefined) => {
-  const dubl = t ? t.leads - t.fresh : 0
-  return dubl > 0 ? note(`shundan ${formatNumber(dubl)} dubl`, '«Дубликат (лид)» bosqichidagi lidlar — katta songa kirgan') : null
-}
+const signed = (n: number) => `${n < 0 ? '−' : '+'}${formatNumber(Math.abs(n))}`
 
 /**
- * Under «Jami»: its duplicates, the two sources with no card of their own, and
- * that it IS «Жами лидлар» — the server builds `tiles.total` from the same
- * Регистрация rows as `funnel`, so the two cannot disagree.
+ * «+128 → 899 «Жами лидлар»» under «Jami», quietly, with what makes up the
+ * difference — the client, 2026-10-02: the row's «Jami» has to visibly meet
+ * the headline. The parts are the server's identity (`tiles.toHeadline`), not
+ * a remainder taken here, so a label can never name a gap it did not cause.
  */
-function totalNote(data: LeadSourcesOverviewDto): ReactNode {
-  const byTile = new Map(data.tiles.rows.map((r) => [r.tile, r.leads]))
-  const apart = TILES_APART.map((t) => [TILE_LABEL[t], byTile.get(t) ?? 0] as const).filter(([, n]) => n > 0)
+function headlineNote(data: LeadSourcesOverviewDto): ReactNode {
+  const { outbound, other, ai } = data.tiles.toHeadline
+  const gap = outbound + other + ai
+  // A part that adds nothing is not named.
+  const parts = (
+    [
+      [TILE_LABEL.outbound, outbound],
+      [TILE_LABEL.other, other],
+      ['ИИ farqi', ai],
+    ] as const
+  )
+    .filter(([, n]) => n !== 0)
+    .map(([label, n]) => `${label} ${signed(n)}`)
   return (
     <>
-      {dublNote(data.tiles.total)}
-      {apart.length > 0 &&
+      {note(gap === 0 ? '= «Жами лидлар»' : `${signed(gap)} → ${formatNumber(data.funnel.total)} «Жами лидлар»`)}
+      {gap !== 0 &&
         note(
-          apart.map(([label, n]) => `${label} ${formatNumber(n)}`).join(' · '),
-          'Alohida kartasi yoʻq, lekin «Jami»ga kiradi: Исход — operatorning chiquvchi qoʻngʻirogʻi; Boshqa — ИИ kval qilmagan reklama sahifalari, Сммщик, Instagram, manbasiz',
+          parts.join(' · '),
+          ai !== 0
+            ? '«ИИ farqi»: «Сммщик ии» shu davrdagi «ИИ квал сана» boʻyicha, barcha voronkalardan sanaladi; «Жами лидлар»da esa shu davrda Регистрацияga kelgan ИИ lidlari.'
+            : undefined,
         )}
-      {note(data.tiles.total.leads === data.funnel.total ? '= «Жами лидлар»' : `«Жами лидлар»: ${formatNumber(data.funnel.total)}`)}
     </>
   )
 }
 
 /**
- * «Сммщик ии» reads the portal's «ИИ квал сана» filter (any pipeline), but
- * puts only its Регистрация leads into «Jami» — said on the tile when the two
- * differ, so nobody sums the row and finds «Jami» wrong.
- */
-function aiNote(data: LeadSourcesOverviewDto | undefined, tile: ChannelTileDto | undefined): ReactNode {
-  if (!data || !tile || data.tiles.aiInTotal === tile.leads) return null
-  return note(
-    `«Jami»da ${formatNumber(data.tiles.aiInTotal)}`,
-    'Karta Bitrix24dagi «ИИ квал сана» filtri bilan barcha voronkalardan sanaydi; «Jami» va «Жами лидлар»ga faqat shu davrda Регистрацияga kelgan ИИ lidlari kiradi.',
-  )
-}
-
-/**
- * The client's lead channels (2026-10-01), one tile each, and their «Jami».
- * «Jami» is every Регистрация lead of the window — «Жами лидлар» itself
- * (the client, 2026-10-03) — so it is NOT the row summed: «Исход» and
- * «Boshqa» are in it without a card, and «Сммщик ии» enters it with its
- * Регистрация leads only. A cut of its own that overlaps the tables below on
- * purpose: «Ген лид» holds every lead-form lead («Targetologlar») and «Сммщик
- * ии» every lead the AI qualified, mostly off the DM pages. Every tile is on
- * the wire even at zero, so a quiet channel reads 0. A tile's kval is counted
- * as «Квал лидлар сони» above it — by the day it was WON, over new leads.
+ * The client's lead channels (2026-10-01), one tile each, and their «Jami»
+ * (summed on the server, `tiles.total`). A cut of its own that overlaps the
+ * tables below on purpose: «Ген лид» holds every lead-form lead
+ * («Targetologlar») and «Сммщик ии» every lead the AI qualified, mostly off
+ * the DM pages. Every tile is on the wire even at zero, so a quiet channel
+ * reads 0. A tile's kval is counted as «Квал лидлар сони» above it — by the
+ * day it was WON, over new leads. «Исход» and «Boshqa» share one card
+ * beneath, outside «Jami», picked by a filter (the client, 2026-10-02).
  */
 export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
+  const [apart, setApart] = useState<ApartTile>('outbound')
   const byTile = new Map<LeadTile, ChannelTileDto>(data?.tiles.rows.map((r) => [r.tile, r]))
   const total = data?.tiles.total
-  const channelTile = (tile: LeadTile) => {
+  const channelTile = (tile: LeadTile, extra?: ReactNode) => {
     const o = byTile.get(tile)
     const text = TILE_NOTE[tile]
-    const dubl = dublNote(o)
-    const ai = tile === 'aiSmm' ? aiNote(data, o) : null
     return (
       <StatTile
         key={tile}
@@ -283,11 +276,10 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
         unit="count"
         hint={o ? kvalHint(o) : undefined}
         context={
-          text || dubl || ai ? (
+          text || extra ? (
             <>
-              {dubl}
-              {ai}
               {text && note(text)}
+              {extra}
             </>
           ) : undefined
         }
@@ -316,10 +308,34 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
             value={total?.leads ?? null}
             unit="count"
             hint={total ? kvalHint(total) : undefined}
-            context={data ? totalNote(data) : undefined}
+            context={data ? headlineNote(data) : undefined}
           />
         </div>
-        {TILES_IN_ROW.map((t) => channelTile(t))}
+        {TILES_IN_TOTAL.map((t) => channelTile(t))}
+      </div>
+      <h3 className="eyebrow" id="lead-channel-apart">
+        Jamiga kirmaydi
+      </h3>
+      {/* The row above's columns, two wide, so the card has room for its picker. */}
+      <div
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7"
+        role="group"
+        aria-labelledby="lead-channel-apart"
+        data-testid="lead-channel-apart"
+      >
+        <div className="col-span-2 grid">
+          {channelTile(
+            apart,
+            <div className="mt-2">
+              <SlicePicker<ApartTile>
+                ariaLabel="Jamiga kirmaydigan manba"
+                value={apart}
+                onChange={setApart}
+                options={TILES_APART.map((t) => ({ value: t, label: TILE_LABEL[t] }))}
+              />
+            </div>,
+          )}
+        </div>
       </div>
     </section>
   )

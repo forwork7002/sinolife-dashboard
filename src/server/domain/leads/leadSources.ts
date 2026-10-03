@@ -63,11 +63,8 @@ export const LEAD_CHANNELS: readonly LeadChannel[] = Object.freeze([
  * source and the rest are «Boshqa».
  *
  * THEY LEFT «JAMI» LATER THAT DAY: the client asked for «Jami» to be the six
- * channels alone, with «Исход» and «Boshqa» on a row of their own beneath.
- * On 2026-10-03 «Jami» became the whole of «Жами лидлар» again («ikkala jami
- * teng bo'lishi kerak»), with «Исход» and «Boshqa» counted in it but drawn
- * only as a quiet line under it, no card of their own — `LEAD_TILES_APART`.
- * Every lead still has exactly one tile.
+ * channels alone, with «Исход» and «Boshqa» on a row of their own beneath —
+ * see `LEAD_TILES_APART`. Every lead still has exactly one tile.
  */
 export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'sarafan' | 'outbound' | 'other'
 
@@ -82,7 +79,7 @@ export const LEAD_TILES: readonly LeadTile[] = Object.freeze([
   'other',
 ])
 
-/** The tiles with no card of their own: counted in «Jami» and named under it (the client, 2026-10-03). */
+/** The tiles shown on their own row and left out of «Jami» (the client, 2026-10-02). */
 export const LEAD_TILES_APART: ReadonlySet<LeadTile> = new Set<LeadTile>(['outbound', 'other'])
 
 /**
