@@ -81,12 +81,15 @@ export interface TtlCacheOptions {
    * month's scans took 10–20 s and often hit the 20 s statement timeout. With
    * a 60 s TTL and a 60 s client poll, about every second poll paid that build
    * in front of the reader. Behind the reader it costs the database the same
-   * and the screen nothing — the answer is at most one rebuild old.
+   * and the screen nothing.
    *
    * A failed rebuild keeps the old answer (until it ages past `ttlMs +
-   * staleMs`); only a reader with nothing to show is told of a failure.
+   * staleMs`) and goes to `onError`; only a reader with nothing to show is
+   * told of a failure. An answer is therefore at most `ttlMs + staleMs` old.
    */
   readonly staleMs?: number
+  /** Hears of a rebuild that failed behind its readers — nobody else does. */
+  readonly onError?: (key: string, error: unknown) => void
 }
 
 /**
@@ -105,7 +108,23 @@ export function ttlCache<T>(ttlMs: number, options: TtlCacheOptions = {}): TtlCa
 
   const fresh = (key: string, now: number, build: () => Promise<T>): Promise<T> => {
     const value = build()
-    entries.set(key, { at: now, value, rebuilding: null })
+    const entry: Entry<T> = { at: now, value, rebuilding: null }
+    /*
+      A first build still running counts as this key's rebuild: a reader who
+      arrives past the TTL while it runs shares it rather than starting a
+      second one beside it.
+    */
+    if (staleMs > 0) {
+      entry.rebuilding = value.then(
+        () => {
+          entry.rebuilding = null
+        },
+        () => {
+          entry.rebuilding = null
+        },
+      )
+    }
+    entries.set(key, entry)
     value.catch(() => {
       // Only if it is still OURS. A later build may already have replaced
       // this entry, and deleting that one would evict a good answer.
@@ -143,8 +162,9 @@ export function ttlCache<T>(ttlMs: number, options: TtlCacheOptions = {}): TtlCa
           (value) => {
             if (entries.get(key) === hit) entries.set(key, { at: Date.now(), value: Promise.resolve(value), rebuilding: null })
           },
-          () => {
+          (error: unknown) => {
             hit.rebuilding = null
+            options.onError?.(key, error)
           },
         )
         return hit.value
@@ -165,10 +185,24 @@ export function ttlCache<T>(ttlMs: number, options: TtlCacheOptions = {}): TtlCa
 
 /**
  * The options every live screen's memo takes since 2026-10-05: good for its
- * TTL (120 s, the production sync tick), then handed out for up to fifteen
+ * TTL (120 s, the production sync tick), then handed out for up to five
  * minutes more while ONE rebuild runs behind the reader. See `staleMs`.
+ *
+ * Five, not more: a poller every 120 s needs about one TTL of grace, and a
+ * longer window only shows the first reader after a quiet spell numbers that
+ * old under a freshness chip that says «1 daqiqa oldin».
  */
-export const LIVE_CACHE: TtlCacheOptions = { staleMs: 15 * 60_000 }
+export const LIVE_CACHE: TtlCacheOptions = {
+  staleMs: 5 * 60_000,
+  /*
+    Loaded when it is needed: the logger reads the validated environment at
+    import, and this module is imported by every service and its tests.
+  */
+  onError: (key, error) =>
+    void import('@/server/logging/logger').then(({ logger }) =>
+      logger.warn({ err: error, key }, 'memo rebuild failed; serving the previous answer'),
+    ),
+}
 
 /**
  * A stable string for a list that reaches a query as a filter.

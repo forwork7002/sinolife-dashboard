@@ -159,5 +159,30 @@ describe('ttlCache with staleMs (stale-while-revalidate)', () => {
     vi.advanceTimersByTime(121_000)
     expect(await cache.get('k', async () => 2)).toBe(2)
   })
-})
 
+  it('reports a rebuild that failed behind its readers', async () => {
+    const errors: unknown[] = []
+    const cache = ttlCache<number>(60_000, { staleMs: 600_000, onError: (_key, error) => errors.push(error) })
+    await cache.get('k', async () => 1)
+    vi.advanceTimersByTime(61_000)
+    const timeout = new Error('timeout')
+    expect(await cache.get('k', async () => Promise.reject(timeout))).toBe(1)
+    await vi.runAllTimersAsync()
+    expect(errors).toEqual([timeout])
+  })
+
+  it('does not start a second build beside a first one still running past the TTL', async () => {
+    const cache = ttlCache<number>(60_000, { staleMs: 600_000 })
+    let builds = 0
+    let release!: (n: number) => void
+    const first = cache.get('k', () => {
+      builds++
+      return new Promise<number>((resolve) => (release = resolve))
+    })
+    vi.advanceTimersByTime(61_000)
+    const second = cache.get('k', async () => ++builds)
+    release(1)
+    expect(await Promise.all([first, second])).toEqual([1, 1])
+    expect(builds).toBe(1)
+  })
+})

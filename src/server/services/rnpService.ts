@@ -83,10 +83,10 @@ interface MonthRows {
   SERVED STALE, REBUILT BEHIND THE READER. A month's rows take seconds to
   build (the queue cohort, a month of leads, calls and stage history), and
   the sheet is read all day by people who open it and wait. After the first
-  build a reader always gets the last answer at once; once it is a minute old
-  the next reader triggers a rebuild in the background and the one after
-  gets the new rows. Rows older than ten minutes (a quiet night) are not
-  handed out at all — their «today» and live cells would be wrong — so that
+  build a reader always gets the last answer at once; once it is older than
+  the warmer's tick the next reader triggers a rebuild in the background and
+  the one after gets the new rows. Rows older than half an hour (a quiet
+  night) are not handed out at all — their «today» and live cells would be wrong — so that
   reader waits for a fresh build, as the first reader after a deploy does.
 
   A MONTH THAT ENDED BEFORE TODAY HAS NO LIVE CELLS, so it has no hard limit

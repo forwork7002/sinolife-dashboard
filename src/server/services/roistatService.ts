@@ -199,7 +199,8 @@ export class RoistatService {
     previous cohort's age, which two minutes cannot change in substance.
   */
   async overview(period: Period, query: RoistatQuery, now: Date): Promise<RoistatOverviewDto> {
-    const key = [period.preset, period.start.toISOString(), period.end.toISOString(), query.dim, query.parent ?? '', query.brand ?? 'all'].join('|')
+    const parent = query.dim === 'adset' || query.dim === 'ad' ? (query.parent ?? '') : ''
+    const key = [period.preset, period.start.toISOString(), period.end.toISOString(), query.dim, parent, query.brand ?? 'all'].join('|')
     return overviewCache.get(key, () => this.buildOverview(period, query, now))
   }
 

@@ -8,7 +8,7 @@
  * quiet minutes past the memo's hard limit — it took ~17 s on production
  * (2026-09-30). The client asked for the section to open fast.
  *
- * THE CADENCE, 4 MINUTES: under the memo's 10-minute hard limit, so an idle
+ * THE CADENCE, 4 MINUTES: the memo's TTL, well under its 30-minute hard limit, so an idle
  * sheet is never older than that and never cold. One build at a time — a
  * slow tick is skipped over, never stacked.
  *

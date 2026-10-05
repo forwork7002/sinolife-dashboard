@@ -35,7 +35,7 @@ import {
 import type { RefusalClass } from '@/server/integrations/crm/bitrix24/refusal'
 import type { InsightsRepository } from '@/server/repositories/insightsRepository'
 import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
-import { keyPart, ttlCache } from './ttlCache'
+import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
 
 export interface AlertsDto {
   /** The last successful sync, or null when none has ever completed. */
@@ -144,10 +144,10 @@ type QueueCount = { readonly pending: number; readonly overdue: number }
  * theirs, so the entry count is the number of distinct teams reading at once —
  * about sixteen on this portal — not the number of readers.
  *
- * THE TTL IS 60 SECONDS, NOT 45. The command centre uses 45 against a screen
- * whose readers arrive together; this is polled on a fixed 60-second interval
- * by every tab, so a 45-second entry is missed by every solo reader and buys
- * no freshness for it — the data behind it moves once a minute either way.
+ * THE TTL IS THREE MINUTES, served stale for ten more while it rebuilds
+ * (2026-10-05; it was 60 s). Polled once a minute by every tab, a 60 s entry
+ * was rebuilt on almost every poll, and each rebuild — an all-time cohort —
+ * measured 23.4 s on the saturated production database that day.
  *
  * WHAT IS DELIBERATELY NOT CACHED:
  *
@@ -169,7 +169,7 @@ type QueueCount = { readonly pending: number; readonly overdue: number }
   it, or a database it saturates, is not.
 */
 const QUEUE_CACHE_TTL_MS = 3 * 60_000
-const queueCache = ttlCache<QueueCount>(QUEUE_CACHE_TTL_MS, { staleMs: 15 * 60_000 })
+const queueCache = ttlCache<QueueCount>(QUEUE_CACHE_TTL_MS, { ...LIVE_CACHE, staleMs: 10 * 60_000 })
 
 function cachedQueuePressure(
   insights: InsightsRepository,
