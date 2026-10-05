@@ -38,7 +38,8 @@ interface View {
  * «Roistat — skvoznaya analitika»: Meta Ads spend to Bitrix24 sales, end to end.
  *
  * Modelled on the client's static Roistat page (rustamov0277-cmd.github.io/
- * roistat) — the same tiles, the same twelve cuts, the same columns, badges
+ * roistat) — the same tiles, its cuts (bar «Дни», now «Kunlar boʻyicha» on
+ * Savdo dinamikasi), the same columns, badges
  * and thresholds — drawn in this dashboard's own design system and fed by
  * `/roistat/overview` instead of a 5.5 MB literal.
  *
@@ -267,7 +268,7 @@ function RateLine({ rate, status }: { rate: RoistatOverviewDto['rate']; status: 
   )
 }
 
-/** The twelve cuts. Scrolls sideways on a phone rather than wrapping into a wall of buttons. */
+/** The eleven cuts. Scrolls sideways on a phone rather than wrapping into a wall of buttons. */
 function DimTabs({ value, onChange }: { value: RoistatDim; onChange: (dim: RoistatDim) => void }) {
   return (
     <div className="-mx-1 max-w-full overflow-x-auto px-1 pb-1">

@@ -259,6 +259,13 @@ export const TEAM_ALIASES: Readonly<Record<string, string>> = Object.freeze({
 })
 
 /**
+ * Whether a team, as `ropNameSql` names it, is a БАЗА team — alias folded
+ * first, so «Malika» reads as the «Charos» it is. Every other team, the
+ * no-team bucket included, is «Первичка».
+ */
+export const isBaseTeam = (rop: string): boolean => BASE_TEAMS.has(TEAM_ALIASES[rop] ?? rop)
+
+/**
  * What the client's «РНП» sheet calls each team, by department name. The
  * sheet names teams by their ROP as the floor knows them, which is not always
  * the department's name: «Садриддин РОП» (the sheet's «Чарос РОП», renamed by

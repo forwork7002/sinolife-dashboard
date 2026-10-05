@@ -1,8 +1,11 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 import { ErrorState } from "@/components/states/States";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { RankBadge, StatTile } from "@/components/ui/Stat";
+import { AdSalesDaysTable } from "@/features/sales/AdSalesDaysTable";
 import { useFaktBoard } from "@/features/sales/ConfirmationFaktSection";
 import { QUEUE_BASIS } from "@/features/shared/faktVocabulary";
 import type { SellerBoardDto, SellerBoardRowDto } from "@/lib/api";
@@ -12,6 +15,7 @@ import {
   formatFullUzs,
   formatPercent,
 } from "@/lib/format";
+import { useServerViewer } from "@/lib/viewer";
 
 /**
  * PROGNOZ — where this period lands if the floor keeps the pace it has set.
@@ -49,6 +53,13 @@ import {
  */
 export function ForecastSection() {
   const { query, data, status } = useFaktBoard();
+  /*
+    «Kunlar boʻyicha» sits directly above the sellers' table (the client,
+    2026-10-05). Company-wide accounts only: its endpoint cannot narrow Meta
+    money and refuses anyone else, so a ROP is not shown an error card.
+  */
+  const companyWide = useServerViewer()?.dataScope === "ALL";
+  const days = companyWide ? <AdSalesDaysTable /> : undefined;
 
   return (
     <section
@@ -70,12 +81,16 @@ export function ForecastSection() {
       </div>
 
       {status === "error" ? (
-        <ErrorState
-          message={(query.error as Error | null)?.message}
-          onRetry={() => void query.refetch()}
-        />
+        <>
+          <ErrorState
+            message={(query.error as Error | null)?.message}
+            onRetry={() => void query.refetch()}
+          />
+          {/* Its own request: a failed board does not take the day table with it. */}
+          {days}
+        </>
       ) : (
-        <ForecastBand data={data} status={status} />
+        <ForecastBand data={data} status={status} beforeSellers={days} />
       )}
     </section>
   );
@@ -94,9 +109,12 @@ export function ForecastSection() {
 export function ForecastBand({
   data,
   status,
+  beforeSellers,
 }: {
   data: SellerBoardDto | undefined;
   status: "loading" | "error" | "ready";
+  /** Drawn between the tiles and the sellers' table — «Kunlar boʻyicha». */
+  beforeSellers?: ReactNode;
 }) {
   const forecast = data?.forecast;
   const totals = data?.totals;
@@ -216,6 +234,8 @@ export function ForecastBand({
           hint={projecting ? "prognoz minus hozirgi" : undefined}
         />
       </div>
+
+      {beforeSellers}
 
       <SellersForecastTable
         rows={data?.rows ?? []}

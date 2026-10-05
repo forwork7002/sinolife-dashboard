@@ -19,8 +19,9 @@ import { type RoistatCurrency, type RoistatMetrics, deriveMetrics, fromUsd, from
  *
  * SORTING IS LOCAL. Every row is on the payload, so a header press re-ranks
  * in the browser — no request, no cache key. Defaults as the reference:
- * «Продажи» descending, «Дни» newest first. A row with no answer (null
- * ratio) sinks to the bottom in either direction rather than ranking as zero.
+ * «Продажи» descending. A row with no answer (null ratio) sinks to the
+ * bottom in either direction rather than ranking as zero. The reference's
+ * «Дни» cut moved to Savdo dinamikasi («Kunlar boʻyicha», 2026-10-05).
  *
  * The ИТОГО row is the server's `total`, ratios taken from its sums, and is
  * pinned to the bottom of the scroll box (`stickyLastRow`). Headers stay in
@@ -37,7 +38,6 @@ type Line = {
   readonly rank: number
   readonly c: RoistatCountersDto
   readonly m: RoistatMetrics
-  readonly fresh: boolean
 }
 
 interface Spec {
@@ -62,7 +62,6 @@ export const DIM_LABEL: Readonly<Record<RoistatDim, string>> = {
   rop: 'РОП',
   seller: 'Продавец',
   registrator: 'Регистратор',
-  days: 'Дни',
 }
 
 const muted = { color: 'var(--ink-muted)' }
@@ -175,8 +174,7 @@ function buildSpecs(cols: RoistatColumnsDto, currency: RoistatCurrency, rate: nu
 }
 
 /** The reference's default: «Продажи» descending — or the first column this cut has. */
-function defaultSort(dim: RoistatDim, specs: readonly Spec[]): string {
-  if (dim === 'days') return 'name'
+function defaultSort(specs: readonly Spec[]): string {
   for (const key of ['sold', 'leads', 'spend', 'impressions']) {
     if (specs.some((s) => s.key === key)) return key
   }
@@ -209,11 +207,10 @@ export function RoistatTable({
   const [order, setOrder] = useState<'asc' | 'desc'>('desc')
   const activeSort = sortKey !== null && (sortKey === 'name' || specs.some((s) => s.key === sortKey))
     ? sortKey
-    : defaultSort(dim, specs)
+    : defaultSort(specs)
 
   const lines: Line[] = useMemo(() => {
     if (!data || data.rows.length === 0) return []
-    const freshFrom = data.freshFrom
     const rows: Line[] = data.rows.map((row) => ({
       key: row.key,
       label: row.label,
@@ -221,15 +218,11 @@ export function RoistatTable({
       rank: 0,
       c: row,
       m: deriveMetrics(row, rate),
-      fresh: dim === 'days' && row.key >= freshFrom,
     }))
 
     const sign = order === 'asc' ? 1 : -1
     if (activeSort === 'name') {
-      // Days sort by their ISO key, which is chronological; names alphabetically.
-      rows.sort((a, b) =>
-        sign * (dim === 'days' ? a.key.localeCompare(b.key) : a.label.localeCompare(b.label, 'ru')),
-      )
+      rows.sort((a, b) => sign * a.label.localeCompare(b.label, 'ru'))
     } else {
       const spec = specs.find((s) => s.key === activeSort)
       if (spec) {
@@ -254,10 +247,9 @@ export function RoistatTable({
         rank: 0,
         c: data.total,
         m: deriveMetrics(data.total, rate),
-        fresh: false,
       },
     ]
-  }, [data, rate, dim, activeSort, order, specs])
+  }, [data, rate, activeSort, order, specs])
 
   const sortBy = (key: string) => {
     if (key === activeSort) setOrder((o) => (o === 'asc' ? 'desc' : 'asc'))
@@ -345,19 +337,6 @@ function NameCell({
   onDrill: (dim: RoistatDim, key: string) => void
 }) {
   if (line.kind === 'total') return <span className="eyebrow">ИТОГО</span>
-
-  if (dim === 'days') {
-    return (
-      <span className="whitespace-nowrap">
-        {dayLabel(line.key)}
-        {line.fresh && (
-          <span className="ml-1" title="Kun hali yopilmagan — sotuvlar keyinroq tushadi">
-            ⏳<span className="sr-only"> hali toʻliq emas</span>
-          </span>
-        )}
-      </span>
-    )
-  }
 
   if (!drillable) {
     return (

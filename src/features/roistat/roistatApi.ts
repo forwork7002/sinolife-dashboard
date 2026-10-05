@@ -29,7 +29,6 @@ export type RoistatDim =
   | 'rop'
   | 'seller'
   | 'registrator'
-  | 'days'
 
 export const ROISTAT_DIMS: readonly RoistatDim[] = Object.freeze([
   'camp',
@@ -43,7 +42,6 @@ export const ROISTAT_DIMS: readonly RoistatDim[] = Object.freeze([
   'rop',
   'seller',
   'registrator',
-  'days',
 ])
 
 /** Additive counters for one row, one total, or one day. */
