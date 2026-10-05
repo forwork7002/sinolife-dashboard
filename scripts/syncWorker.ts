@@ -1359,7 +1359,7 @@ async function main() {
           zonedDateKey(new Date(), WORKER_TIME_ZONE),
         )
         console.log(
-          `  ${stamp()} meta: ${r.accounts} akkaunt, ${r.rows} kun-qator, ${r.campaignRows} kampaniya-kun (${r.since} – ${r.until})` +
+          `  ${stamp()} meta: ${r.accounts} akkaunt, ${r.rows} kun-qator, ${r.campaignRows} kampaniya-kun, ${r.adRows} eʼlon-kun (${r.since} – ${r.until})` +
             `  (${((Date.now() - metaStarted) / 1000).toFixed(1)}s)`,
         )
         for (const refused of r.failed) console.warn(`  ${stamp()} meta akkaunt oʻqilmadi — ${refused}`)

@@ -3,7 +3,8 @@
  *
  *     META_ACCESS_TOKEN=… npm run meta:import
  *
- * Read-only against Meta (GET only); writes `meta_ad_daily`. See metaImport.ts.
+ * Read-only against Meta (GET only); writes `meta_ad_daily`,
+ * `meta_campaign_daily` and `meta_ad_insight_daily`. See metaImport.ts.
  */
 
 import 'dotenv/config'
@@ -31,7 +32,7 @@ async function main() {
     const today = zonedDateKey(new Date(), process.env.APP_TIMEZONE ?? 'Asia/Tashkent')
     const r = await importMetaSpend(prisma, token!, today)
     console.log(
-      `\n  Meta: ${r.accounts} akkaunt, ${r.rows} kun-qator, ${r.campaignRows} kampaniya-kun (${r.since} – ${r.until})` +
+      `\n  Meta: ${r.accounts} akkaunt, ${r.rows} kun-qator, ${r.campaignRows} kampaniya-kun, ${r.adRows} eʼlon-kun (${r.since} – ${r.until})` +
         `  ${((Date.now() - started) / 1000).toFixed(1)}s\n`,
     )
     for (const refused of r.failed) console.warn(`  ✗ oʻqilmadi — ${refused}`)

@@ -1402,6 +1402,47 @@ model MetaCampaignDaily {
   @@map("meta_campaign_daily")
 }
 
+/// One Meta AD on one day, with its ad set and campaign — what «Roistat»
+/// drills Кампании → Адсеты → Объявления from.
+///
+/// AD-DAY GRAIN, read at query time and never joined to a Bitrix24 row, like
+/// the two tables above. The campaign and ad set ride every row as they were
+/// last imported: a renamed ad set carries its newest name only on the days
+/// re-read since, so group by the ids and take a name, never the other way
+/// round. `reach` is Meta's PER-DAY unique reach — summing days counts a
+/// person once per day they saw the ad, which overstates the period's unique
+/// reach; a window's true reach is a separate Insights question.
+model MetaAdInsightDaily {
+  id           String   @id @default(cuid())
+  /// `account_id` without the `act_` prefix.
+  accountId    String
+  accountName  String
+  campaignId   String
+  campaignName String
+  /// Meta's objective, e.g. OUTCOME_LEADS, OUTCOME_ENGAGEMENT.
+  objective    String
+  adsetId      String
+  adsetName    String
+  adId         String
+  adName       String
+  date         DateTime @db.Date
+  spendMicroUsd BigInt  @default(0)
+  impressions   BigInt  @default(0)
+  /// Unique people that day — not additive across days (see above).
+  reach         BigInt  @default(0)
+  clicks        BigInt  @default(0)
+  /// The `lead` action — Meta's own count.
+  leads         Int     @default(0)
+  importedAt    DateTime @default(now())
+
+  @@unique([adId, date])
+  @@index([date])
+  @@index([accountId, date])
+  @@index([campaignId, date])
+  @@index([adsetId, date])
+  @@map("meta_ad_insight_daily")
+}
+
 // ---------------------------------------------------------------------------
 // Sales plans — FAKT 1 / FAKT 2 month plans are typed in on «RNP jadvali»
 //

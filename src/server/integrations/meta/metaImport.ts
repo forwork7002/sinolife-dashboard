@@ -1,19 +1,27 @@
 /**
- * Meta Ads spend, per ad account per day, into `meta_ad_daily`.
+ * Meta Ads spend, per ad account per day, into `meta_ad_daily` — and the same
+ * spend per campaign (`meta_campaign_daily`) and per ad, with its ad set and
+ * campaign (`meta_ad_insight_daily`).
  *
  * READ-ONLY BY CONSTRUCTION. The token the client handed over carries
  * `ads_management` as well as `ads_read`; this module issues GET requests and
  * nothing else — there is no code path here that could pause a campaign or
  * change a budget, and `get()` is the only function that touches the network.
  *
- * WHAT IT COSTS META. One `me/adaccounts` call and, per account, two Insights
- * calls per page of daily rows — the account grain and the campaign grain —
- * about forty requests an hour for eighteen accounts. Both are the
- * `ads_insights` budget. Nothing here reads `/ads` or `/campaigns`: those are
- * the `ads_management` budget, which this app holds at development tier, and
- * one pass over the ads' creatives exhausted it on 2026-09-23 («too many calls
- * to this ad-account»). Everything the screen needs — objective, name,
- * conversations — comes back on the Insights row itself.
+ * WHAT IT COSTS META. One `me/adaccounts` call and, per account, three
+ * Insights calls per page of daily rows — the account grain, the campaign
+ * grain and the ad grain — about sixty requests an hour for eighteen to
+ * twenty-two accounts, plus a few more per account while the ad grain is
+ * backfilled (fourteen-day slices from the history start, about seven — the
+ * first pass after the deploy reads ~150 of them inline, so that tick's
+ * Bitrix24 pass waits a few minutes). An account that has never spent is not
+ * asked for its ads at all. All
+ * three are the `ads_insights` budget, all GET. Nothing here reads `/ads`,
+ * `/adsets` or `/campaigns`: those are the `ads_management` budget, which this
+ * app holds at development tier, and one pass over the ads' creatives
+ * exhausted it on 2026-09-23 («too many calls to this ad-account»). Everything
+ * the screens need — objective, the campaign / ad set / ad names,
+ * conversations, reach — comes back on the Insights row itself.
  *
  * WHICH DAYS. An empty table reads from `META_HISTORY_FROM`; after that the
  * last `META_REFRESH_DAYS` days are re-read every run, because Meta keeps
@@ -48,8 +56,13 @@ interface InsightRow {
   readonly campaign_id?: string
   readonly campaign_name?: string
   readonly objective?: string
+  readonly adset_id?: string
+  readonly adset_name?: string
+  readonly ad_id?: string
+  readonly ad_name?: string
   readonly spend?: string
   readonly impressions?: string
+  readonly reach?: string
   readonly clicks?: string
   readonly actions?: readonly { readonly action_type: string; readonly value: string }[]
 }
@@ -100,6 +113,13 @@ export function metaConversations(row: InsightRow): number {
 }
 
 const CAMPAIGN_SLICE_DAYS = 31
+/*
+  Ad × day is the widest request this module makes — an account running
+  eighty ads answers ~1 100 rows a fortnight — so the ad grain reads half the
+  campaign grain's month, to stay well clear of Meta's «reduce the amount of
+  data» 500.
+*/
+const AD_SLICE_DAYS = 14
 
 /**
  * `[since, until]` cut into consecutive inclusive windows of at most `days`
@@ -119,8 +139,9 @@ export function dateSlices(since: string, until: string, days: number): { since:
 }
 
 /**
- * Where each account's CAMPAIGN rows start being read — per account, never
- * one date for all.
+ * Where each account's rows of a FINER grain start being read — the campaign
+ * grain (`meta_campaign_daily`) and the ad grain (`meta_ad_insight_daily`),
+ * each called with its own table's spans. Per account, never one date for all.
  *
  * One table-wide «latest» broke the first backfill on 2026-09-23: the hourly
  * pass started it at 07:06 UTC, a deploy killed the worker at 07:08 with some
@@ -128,25 +149,28 @@ export function dateSlices(since: string, until: string, days: number): { since:
  * a non-empty table and read one week for everybody. The untouched accounts
  * would never have had their history.
  *
- * So an account whose campaign rows begin LATER than its own account-grain
+ * So an account whose grain rows begin LATER than its own account-grain
  * rows (`meta_ad_daily`, which has the full history) and span only one
- * refresh window is missing its start and is read from there; one with no campaign rows at all from the history
- * start; anyone else refreshes its last week, as before.
+ * refresh window is missing its start and is read from there; one with no
+ * grain rows at all from the history start; anyone else refreshes its last
+ * week, as before. The ad grain arrived on 2026-10-05 into an empty table, so
+ * its first pass is exactly the «no rows» case: every account from its own
+ * history start.
  */
-export function campaignStarts(
+export function grainStarts(
   adMin: ReadonlyMap<string, Date | null>,
-  campaigns: ReadonlyMap<string, { min: Date | null; max: Date | null }>,
+  grain: ReadonlyMap<string, { min: Date | null; max: Date | null }>,
 ): (accountId: string) => string {
   const day = (d: Date) => d.toISOString().slice(0, 10)
   return (accountId) => {
-    const have = campaigns.get(accountId)
+    const have = grain.get(accountId)
     const adStart = adMin.get(accountId) ?? null
     const historyStart = adStart && day(adStart) > META_HISTORY_FROM ? day(adStart) : META_HISTORY_FROM
     if (!have?.min || !have.max) return historyStart
     /*
       ONLY THE INTERRUPTED-RUN SIGNATURE: rows that start late AND cover no
-      more than one refresh window. An account whose older campaigns Meta no
-      longer reports at campaign level (deleted ones) also starts late, but
+      more than one refresh window. An account whose older campaigns (or ads)
+      Meta no longer reports at that level (deleted ones) also starts late, but
       after one backfill its span is long — without the span test it would be
       re-read from July every hour, forever.
     */
@@ -169,7 +193,13 @@ export interface MetaImportResult {
   readonly rows: number
   /** Campaign-day rows written into `meta_campaign_daily`. */
   readonly campaignRows: number
-  /** Accounts Meta refused this run, with its message — stale until the next. */
+  /** Ad-day rows written into `meta_ad_insight_daily`. */
+  readonly adRows: number
+  /**
+   * Accounts Meta refused this run, with its message — stale until the next.
+   * An ad-grain refusal is listed on its own line («… · eʼlon darajasi»): that
+   * account's account and campaign rows were still written.
+   */
   readonly failed: readonly string[]
   readonly since: string
   readonly until: string
@@ -180,28 +210,34 @@ export async function importMetaSpend(
   token: string,
   today: string,
 ): Promise<MetaImportResult> {
-  const [latest, adSpans, campaignSpans] = await Promise.all([
+  const [latest, adSpans, campaignSpans, adInsightSpans] = await Promise.all([
     prisma.metaAdDaily.aggregate({ _max: { date: true } }),
     prisma.metaAdDaily.groupBy({ by: ['accountId'], _min: { date: true } }),
     prisma.metaCampaignDaily.groupBy({ by: ['accountId'], _min: { date: true }, _max: { date: true } }),
+    prisma.metaAdInsightDaily.groupBy({ by: ['accountId'], _min: { date: true }, _max: { date: true } }),
   ])
   const from = sinceOf(latest._max.date)
-  const campaignFromOf = campaignStarts(
-    new Map(adSpans.map((a) => [a.accountId, a._min.date])),
-    new Map(campaignSpans.map((c) => [c.accountId, { min: c._min.date, max: c._max.date }])),
-  )
+  const adMin = new Map(adSpans.map((a) => [a.accountId, a._min.date]))
+  const spans = (grain: typeof campaignSpans) =>
+    new Map(grain.map((c) => [c.accountId, { min: c._min.date, max: c._max.date }]))
+  const campaignFromOf = grainStarts(adMin, spans(campaignSpans))
+  const adFromOf = grainStarts(adMin, spans(adInsightSpans))
 
   const accounts = await listAccounts(prisma, token)
   const failed: string[] = []
 
   let rows = 0
   let campaignRows = 0
+  let adRows = 0
+  let unread = 0
   for (const account of accounts) {
+    let spentNow = false
     try {
       const campaignFrom = campaignFromOf(account.account_id)
       const imported = await importAccount(prisma, token, account, { from, campaignFrom, today })
       rows += imported.rows
       campaignRows += imported.campaignRows
+      spentNow = imported.rows > 0
     } catch (error) {
       /*
         One account refused is one account stale for an hour, not every
@@ -209,13 +245,35 @@ export async function importMetaSpend(
         its own transaction.
       */
       failed.push(`${account.name}: ${(error as Error).message}`)
+      unread += 1
+      continue
+    }
+
+    /*
+      The ad grain AFTER the other two have committed, and in a try of its
+      own: it is the widest request and the likeliest to be refused, and a
+      refusal here must not cost the account its spend and campaign rows,
+      which /target, «Reklama samarasi», «Lidlar» and RNP read. Not counted
+      in `unread` — the account WAS read.
+    */
+    /*
+      AN ACCOUNT THAT HAS NEVER SPENT IS NOT ASKED FOR ITS ADS. Its ad rows
+      would start nowhere, so every hour would re-read it from the history
+      start — seven empty slices for «Zapas Collagen» and Newgen_davi01,
+      forever. It is asked the hour its account grain first shows a day.
+    */
+    if (!adMin.get(account.account_id) && !spentNow) continue
+    try {
+      adRows += await importAccountAds(prisma, token, account, { from: adFromOf(account.account_id), today })
+    } catch (error) {
+      failed.push(`${account.name} · eʼlon darajasi: ${(error as Error).message}`)
     }
   }
 
-  if (failed.length === accounts.length && accounts.length > 0) {
+  if (unread === accounts.length && accounts.length > 0) {
     throw new Error(`hech bir akkaunt oʻqilmadi — ${failed[0]}`)
   }
-  return { accounts: accounts.length, rows, campaignRows, failed, since: from, until: today }
+  return { accounts: accounts.length, rows, campaignRows, adRows, failed, since: from, until: today }
 }
 
 /**
@@ -346,4 +404,73 @@ async function importAccount(
   ])
 
   return { rows: insights.length, campaignRows: campaigns.length }
+}
+
+/**
+ * One ad-grain Insights row as a `meta_ad_insight_daily` row — or null for a
+ * row Meta sent without an `ad_id`, which has no key to be stored under.
+ */
+export function adInsightRow(account: Account, row: InsightRow) {
+  if (!row.ad_id) return null
+  return {
+    accountId: account.account_id,
+    accountName: account.name,
+    campaignId: row.campaign_id ?? '',
+    campaignName: row.campaign_name ?? '',
+    objective: row.objective ?? '',
+    adsetId: row.adset_id ?? '',
+    adsetName: row.adset_name ?? '',
+    adId: row.ad_id,
+    adName: row.ad_name ?? '',
+    date: new Date(`${row.date_start}T00:00:00Z`),
+    spendMicroUsd: microUsd(row.spend),
+    impressions: BigInt(row.impressions || '0'),
+    // Per day: summing it over a window overstates unique reach (schema.prisma).
+    reach: BigInt(row.reach || '0'),
+    clicks: BigInt(row.clicks || '0'),
+    leads: metaLeads(row),
+  }
+}
+
+/** The ad grain for one account, `[from, today]`, replacing that window. */
+async function importAccountAds(
+  prisma: PrismaClient,
+  token: string,
+  account: Account,
+  window: { from: string; today: string },
+): Promise<number> {
+  const { from, today } = window
+
+  // Every slice read before anything is deleted: a refusal halfway through
+  // leaves the previous run's rows standing rather than a hole.
+  const ads: InsightRow[] = []
+  for (const slice of dateSlices(from, today, AD_SLICE_DAYS)) {
+    ads.push(
+      ...(await getAll<InsightRow>(
+        `${GRAPH}/act_${account.account_id}/insights?${query(
+          {
+            level: 'ad',
+            fields:
+              'campaign_id,campaign_name,objective,adset_id,adset_name,ad_id,ad_name,spend,impressions,reach,clicks,actions',
+            time_range: JSON.stringify(slice),
+            time_increment: '1',
+            limit: '500',
+          },
+          token,
+        )}`,
+      )),
+    )
+  }
+
+  const data = ads.flatMap((row) => adInsightRow(account, row) ?? [])
+  await prisma.$transaction([
+    prisma.metaAdInsightDaily.deleteMany({
+      where: {
+        accountId: account.account_id,
+        date: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${today}T00:00:00Z`) },
+      },
+    }),
+    prisma.metaAdInsightDaily.createMany({ data }),
+  ])
+  return data.length
 }

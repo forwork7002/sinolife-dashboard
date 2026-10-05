@@ -3,8 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PrismaClient } from '@/generated/prisma/client'
 
 import {
-  campaignStarts,
+  adInsightRow,
   dateSlices,
+  grainStarts,
   importMetaSpend,
   metaConversations,
   metaLeads,
@@ -86,7 +87,11 @@ describe('importMetaSpend — one refused account does not stop the rest', () =>
     const prisma = {
       metaAdDaily: {
         aggregate: async () => ({ _max: { date: new Date('2026-09-20T00:00:00Z') } }),
-        groupBy: async () => [],
+        // Two accounts that have spent before — the ad grain only asks those (and any spending now).
+        groupBy: async () => [
+          { accountId: '990016692137088', _min: { date: new Date('2026-07-01T00:00:00Z') } },
+          { accountId: '1356045995688768', _min: { date: new Date('2026-07-01T00:00:00Z') } },
+        ],
         findMany: async () => [
           { accountId: '990016692137088', accountName: 'Umar - 64' },
           { accountId: '440073592484616', accountName: 'Zextra Umar' },
@@ -97,6 +102,11 @@ describe('importMetaSpend — one refused account does not stop the rest', () =>
       metaCampaignDaily: {
         groupBy: async () => [],
         deleteMany: (args: { where: { accountId: string } }) => `delete ${args.where.accountId}`,
+        createMany: () => 'create',
+      },
+      metaAdInsightDaily: {
+        groupBy: async () => [],
+        deleteMany: (args: { where: { accountId: string } }) => `delete-ads ${args.where.accountId}`,
         createMany: () => 'create',
       },
       $transaction: async (ops: string[]) => {
@@ -154,6 +164,122 @@ describe('importMetaSpend — one refused account does not stop the rest', () =>
     expect(written).not.toContain('delete 1356045995688768')
   })
 
+  it('keeps an account\'s spend and campaign rows when only its ad grain is refused', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/me/adaccounts')) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                { account_id: '990016692137088', name: 'Umar - 64' },
+                { account_id: '1356045995688768', name: 'Zextra Kamron 3' },
+              ],
+            }),
+          )
+        }
+        if (url.includes('act_1356045995688768') && url.includes('level=ad&')) {
+          return new Response(JSON.stringify(refusal), { status: 400 })
+        }
+        return new Response(JSON.stringify({ data: [] }))
+      }),
+    )
+    const { prisma, written } = fakePrisma()
+    const r = await importMetaSpend(prisma, 'token', '2026-09-23')
+
+    // Account and campaign grains of the refused account were written…
+    expect(written.filter((op) => op === 'delete 1356045995688768')).toHaveLength(2)
+    // …its ad window was left alone, the other account's was replaced…
+    expect(written).not.toContain('delete-ads 1356045995688768')
+    expect(written).toContain('delete-ads 990016692137088')
+    // …and the refusal is still reported, named as the ad grain's.
+    expect(r.failed).toEqual([expect.stringContaining('Zextra Kamron 3 · eʼlon darajasi')])
+  })
+
+  it('does not call the run a total failure when only the ad grain is refused everywhere', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/me/adaccounts')) {
+          return new Response(JSON.stringify({ data: [{ account_id: '990016692137088', name: 'Umar - 64' }] }))
+        }
+        if (url.includes('level=ad&')) return new Response(JSON.stringify(refusal), { status: 400 })
+        return new Response(JSON.stringify({ data: [] }))
+      }),
+    )
+    const { prisma } = fakePrisma()
+    const r = await importMetaSpend(prisma, 'token', '2026-09-23')
+    expect(r.failed).toHaveLength(1)
+    expect(r.adRows).toBe(0)
+  })
+
+  it('does not ask an account that has never spent for its ads — it would re-read July every hour', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('/me/adaccounts')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              { account_id: '4016900891780426', name: 'Zapas Collagen' }, // no history, no spend now
+              { account_id: '1592588735796463', name: 'Zextra Umar 3' }, // no history, spends today
+            ],
+          }),
+        )
+      }
+      if (url.includes('act_1592588735796463') && url.includes('level=account')) {
+        return new Response(JSON.stringify({ data: [{ date_start: '2026-09-23', spend: '4.0' }] }))
+      }
+      return new Response(JSON.stringify({ data: [] }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { prisma } = fakePrisma()
+    await importMetaSpend(prisma, 'token', '2026-09-23')
+
+    const adAccounts = fetchMock.mock.calls
+      .map(([url]) => new URL(url))
+      .filter((u) => u.searchParams.get('level') === 'ad')
+      .map((u) => u.pathname.split('/').find((part) => part.startsWith('act_')))
+    expect(new Set(adAccounts)).toEqual(new Set(['act_1592588735796463']))
+  })
+
+  it('reads the ad grain from the history start in fourteen-day slices, GET only', async () => {
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url.includes('/me/adaccounts')) {
+        return new Response(JSON.stringify({ data: [{ account_id: '990016692137088', name: 'Umar - 64' }] }))
+      }
+      if (url.includes('level=ad&')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              { date_start: '2026-09-22', ad_id: '120001', adset_id: '110001', campaign_id: '100001', spend: '1.5' },
+              { date_start: '2026-09-22', campaign_id: '100001', spend: '9.0' }, // no ad_id: skipped
+            ],
+          }),
+        )
+      }
+      return new Response(JSON.stringify({ data: [] }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { prisma } = fakePrisma()
+    const r = await importMetaSpend(prisma, 'token', '2026-10-05')
+
+    const adCalls = fetchMock.mock.calls
+      .map(([url]) => new URL(url))
+      .filter((u) => u.searchParams.get('level') === 'ad')
+    const ranges = adCalls.map((u) => JSON.parse(u.searchParams.get('time_range')!) as { since: string; until: string })
+    // An empty table: 2026-07-01 → 2026-10-05 is 97 days, seven slices.
+    expect(ranges).toHaveLength(7)
+    expect(ranges[0]).toEqual({ since: '2026-07-01', until: '2026-07-14' })
+    expect(ranges.at(-1)).toEqual({ since: '2026-09-23', until: '2026-10-05' })
+    expect(adCalls[0]!.searchParams.get('fields')).toBe(
+      'campaign_id,campaign_name,objective,adset_id,adset_name,ad_id,ad_name,spend,impressions,reach,clicks,actions',
+    )
+    expect(adCalls[0]!.searchParams.get('time_increment')).toBe('1')
+    // Every request of the pass is a plain GET — no init, no method.
+    expect(fetchMock.mock.calls.every(([, init]) => init?.method === undefined)).toBe(true)
+    // One row per slice answered, the ad_id-less one dropped each time.
+    expect(r.adRows).toBe(7)
+  })
+
   it('still fails loudly when no account at all could be read', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(refusal), { status: 400 })))
     const { prisma } = fakePrisma()
@@ -161,7 +287,7 @@ describe('importMetaSpend — one refused account does not stop the rest', () =>
   })
 })
 
-describe('campaignStarts — every account gets its whole campaign history, even after an interrupted run', () => {
+describe('grainStarts — every account gets its whole campaign history, even after an interrupted run', () => {
   const d = (iso: string) => new Date(`${iso}T00:00:00Z`)
   const adMin = new Map([
     ['full', d('2026-07-01')],
@@ -169,7 +295,7 @@ describe('campaignStarts — every account gets its whole campaign history, even
     ['new', d('2026-07-01')],
     ['young', d('2026-08-15')],
   ])
-  const from = campaignStarts(
+  const from = grainStarts(
     adMin,
     new Map([
       // Backfilled before the 07:08 deploy killed the worker.
@@ -190,7 +316,7 @@ describe('campaignStarts — every account gets its whole campaign history, even
   })
 
   it('does not re-read forever an account whose early campaigns Meta no longer reports', () => {
-    const f = campaignStarts(
+    const f = grainStarts(
       new Map([['old', d('2026-07-01')]]),
       // Backfilled once; Meta returned nothing before 10 August.
       new Map([['old', { min: d('2026-08-10'), max: d('2026-09-23') }]]),
@@ -201,5 +327,119 @@ describe('campaignStarts — every account gets its whole campaign history, even
   it('reads an account with no campaign rows from the history start', () => {
     expect(from('new')).toBe('2026-07-01')
     expect(from('never-seen')).toBe('2026-07-01')
+  })
+})
+
+describe('grainStarts — the ad grain, on the table it fills', () => {
+  const d = (iso: string) => new Date(`${iso}T00:00:00Z`)
+  const adMin = new Map([
+    ['umar', d('2026-07-01')],
+    ['kamron3', d('2026-09-10')],
+  ])
+
+  it('backfills every account from its own history start while the table is empty', () => {
+    const from = grainStarts(adMin, new Map())
+    expect(from('umar')).toBe('2026-07-01')
+    expect(from('kamron3')).toBe('2026-09-10')
+    expect(from('never-seen')).toBe('2026-07-01')
+  })
+
+  it('refreshes the last week once the backfill is in', () => {
+    const from = grainStarts(
+      adMin,
+      new Map([
+        ['umar', { min: d('2026-07-01'), max: d('2026-10-05') }],
+        ['kamron3', { min: d('2026-09-10'), max: d('2026-10-05') }],
+      ]),
+    )
+    expect(from('umar')).toBe('2026-09-28')
+    expect(from('kamron3')).toBe('2026-09-28')
+  })
+
+  it('re-reads from the start an account whose first backfill was cut off after a week', () => {
+    const from = grainStarts(adMin, new Map([['umar', { min: d('2026-09-28'), max: d('2026-10-05') }]]))
+    expect(from('umar')).toBe('2026-07-01')
+  })
+})
+
+describe('dateSlices — the ad grain, a fortnight at a time', () => {
+  it('cuts the backfill into fourteen-day slices with no day lost or repeated', () => {
+    const slices = dateSlices('2026-07-01', '2026-10-05', 14)
+    expect(slices).toHaveLength(7)
+    expect(slices.slice(0, 2)).toEqual([
+      { since: '2026-07-01', until: '2026-07-14' },
+      { since: '2026-07-15', until: '2026-07-28' },
+    ])
+    expect(slices.at(-1)).toEqual({ since: '2026-09-23', until: '2026-10-05' })
+    const days = (s: { since: string; until: string }) =>
+      (Date.parse(`${s.until}T00:00:00Z`) - Date.parse(`${s.since}T00:00:00Z`)) / 86_400_000 + 1
+    expect(slices.every((s) => days(s) <= 14)).toBe(true)
+    expect(slices.reduce((n, s) => n + days(s), 0)).toBe(97)
+  })
+
+  it('is one slice for the hourly refresh', () => {
+    expect(dateSlices('2026-09-28', '2026-10-05', 14)).toEqual([{ since: '2026-09-28', until: '2026-10-05' }])
+  })
+})
+
+describe('adInsightRow — one ad on one day', () => {
+  const account = { account_id: '990016692137088', name: 'Umar - 64' }
+
+  it('keeps the ad, its ad set and campaign, and reads reach and the lead action', () => {
+    expect(
+      adInsightRow(account, {
+        date_start: '2026-10-04',
+        campaign_id: '100001',
+        campaign_name: 'IF-15.01 lead',
+        objective: 'OUTCOME_LEADS',
+        adset_id: '110001',
+        adset_name: 'Toshkent 25-45',
+        ad_id: '120001',
+        ad_name: 'Video 3',
+        spend: '12.34',
+        impressions: '5120',
+        reach: '3987',
+        clicks: '141',
+        actions: [
+          { action_type: 'link_click', value: '120' },
+          { action_type: 'lead', value: '9' },
+        ],
+      }),
+    ).toEqual({
+      accountId: '990016692137088',
+      accountName: 'Umar - 64',
+      campaignId: '100001',
+      campaignName: 'IF-15.01 lead',
+      objective: 'OUTCOME_LEADS',
+      adsetId: '110001',
+      adsetName: 'Toshkent 25-45',
+      adId: '120001',
+      adName: 'Video 3',
+      date: new Date('2026-10-04T00:00:00Z'),
+      spendMicroUsd: 12_340_000n,
+      impressions: 5120n,
+      reach: 3987n,
+      clicks: 141n,
+      leads: 9,
+    })
+  })
+
+  it('reads a missing or empty count as zero and a missing name as empty', () => {
+    const row = adInsightRow(account, { date_start: '2026-10-04', ad_id: '120002', reach: '' })
+    expect(row).toMatchObject({
+      adId: '120002',
+      adName: '',
+      adsetId: '',
+      campaignName: '',
+      reach: 0n,
+      impressions: 0n,
+      clicks: 0n,
+      spendMicroUsd: 0n,
+      leads: 0,
+    })
+  })
+
+  it('skips a row without an ad id', () => {
+    expect(adInsightRow(account, { date_start: '2026-10-04', campaign_id: '100001', spend: '3.00' })).toBeNull()
   })
 })
