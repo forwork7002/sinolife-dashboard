@@ -760,6 +760,12 @@ export interface ConfirmationSellerRatingFilters {
    * caller's own pick narrows the scope, it never widens it.
    */
   readonly restrictToEmployeeIds?: readonly string[] | null
+  /**
+   * ROP teams by name (`c.rop`, the deal's team snapshot) — the Collagen /
+   * Zextra switch, as `brandTeams` lists a brand's teams. Undefined or empty
+   * means every team, and orders on no team.
+   */
+  readonly teams?: readonly string[]
 }
 
 /**
@@ -3430,6 +3436,21 @@ export class InsightsRepository {
   }
 
   /**
+   * A deal's ROP team read off the deal row alone — `c.rop`'s rule (the
+   * «Организация сотрудника» snapshot, then the operator's department) for
+   * readers outside the confirmation cohort, so a team filter means the same
+   * team on every board.
+   */
+  static dealTeamSql(alias: string): string {
+    return `COALESCE(
+          ${InsightsRepository.ropNameSql(`${alias}."operatorTeamSource"`)},
+          (SELECT ${InsightsRepository.ropNameSql('tdep."name"')}
+             FROM "employee" te JOIN "department" tdep ON tdep."id" = te."departmentId"
+            WHERE te."id" = COALESCE(${alias}."operatorEmployeeId", ${alias}."employeeId"))
+        )`
+  }
+
+  /**
    * The ROP predicate, written once so the four readings cannot drift.
    *
    * A LIST SINCE 2026-09-09, when the control became a column filter rather
@@ -4717,6 +4738,10 @@ export class InsightsRepository {
     if (filters.sourceIds?.length) {
       params.push(filters.sourceIds.join(','))
       conditions.push(`d."sourceId" = ANY(string_to_array($${params.length}, ','))`)
+    }
+    if (filters.teams?.length) {
+      params.push([...filters.teams])
+      conditions.push(`c.rop = ANY($${params.length}::text[])`)
     }
 
     return conditions.length === 0 ? '' : ` AND ${conditions.join(' AND ')}`

@@ -24,6 +24,7 @@ import { stripPipelinePrefix } from '@/server/domain/analytics/stageNames'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import type { PulseDealFilters, PulseRepository } from '@/server/repositories/pulseRepository'
 import type { AnalyticsContext } from './analyticsService'
+import { brandTeamsOf } from './sellerBoardService'
 import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
 
 const deliveryCache = ttlCache<Awaited<ReturnType<PulseRepository['deliveryBoard']>>>(120_000, LIVE_CACHE)
@@ -71,6 +72,7 @@ function pulseFilters(ctx: AnalyticsContext): PulseDealFilters {
     employeeIds: ctx.filters.employeeIds,
     departmentIds: ctx.filters.departmentIds,
     sourceIds: ctx.filters.sourceIds,
+    teams: brandTeamsOf(ctx),
     restrictToEmployeeIds: ctx.filters.restrictToEmployeeIds,
   }
 }
@@ -106,6 +108,7 @@ export class PulseService {
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
       keyPart(filters.restrictToEmployeeIds),
+      keyPart(filters.teams),
     ].join('|')
     const rows = await deliveryCache.get(key, () => this.repo.deliveryBoard(filters))
     const pipelineName = rows[0]?.pipelineName ?? null

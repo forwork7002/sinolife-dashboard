@@ -25,8 +25,10 @@ import { formatFullUzs } from '@/lib/format'
  * sits on its origin lead's day, so «Продажи» here is not FAKT 1 and the
  * caption says so.
  *
- * THE WINDOW ONLY. Meta money has no employee, department or source, so the
- * page's filters do not reach this table. Rendered for a company-wide account
+ * THE WINDOW AND THE BRAND ONLY. Meta money has no employee, department or
+ * source, so the page's other filters do not reach this table; the Collagen /
+ * Zextra switch does (Roistat's rule — the ad account, the lead's brand, the
+ * selling team). Rendered for a company-wide account
  * only — the endpoint refuses a narrowed one (`ForecastSection` decides).
  */
 export function AdSalesDaysTable() {
@@ -36,8 +38,9 @@ export function AdSalesDaysTable() {
     const out: Record<string, string | number> = { preset: apiParams.preset }
     if (apiParams.from !== undefined) out.from = apiParams.from
     if (apiParams.to !== undefined) out.to = apiParams.to
+    if (apiParams.brand !== undefined) out.brand = apiParams.brand
     return out
-  }, [apiParams.preset, apiParams.from, apiParams.to])
+  }, [apiParams.preset, apiParams.from, apiParams.to, apiParams.brand])
 
   const query = useQuery({
     queryKey: ['sales-days', params],

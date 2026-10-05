@@ -19,6 +19,7 @@
 
 import { type Period, previousEquivalent, toPeriodDto } from '@/server/domain/period/period'
 import type { EmployeeScopeFilter } from '@/server/domain/employees/branches'
+import type { TargetProductFilter } from '@/server/domain/types'
 import type { DealFilters } from '@/server/repositories/dealRepository'
 
 /**
@@ -31,7 +32,10 @@ import type { DealFilters } from '@/server/repositories/dealRepository'
  * lists with `?.length` and an empty one would read as "no filter" and widen
  * the query to the whole company. See `NO_EMPLOYEE_IN_SCOPE`.
  */
-export interface AnalyticsFilters extends DealFilters, EmployeeScopeFilter {}
+export interface AnalyticsFilters extends DealFilters, EmployeeScopeFilter {
+  /** The Collagen / Zextra switch, on the screens that honour it; both when absent. */
+  readonly brand?: TargetProductFilter
+}
 
 export interface AnalyticsContext {
   readonly period: Period
