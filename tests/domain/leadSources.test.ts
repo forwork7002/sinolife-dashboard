@@ -37,10 +37,12 @@ describe('formOwner', () => {
   it('names the targetolog as META_ACCOUNT_OWNERS spells them', () => {
     expect(formOwner('Sinolife Collagen - 30.04 Eldor')).toEqual({ targetolog: 'Элдор', product: 'Collagen' })
     expect(formOwner('Sinolife (UMAR) 777')).toEqual({ targetolog: 'Umar', product: 'Collagen' })
-    expect(formOwner('Kamron 6 etap filt forma 05.07')).toEqual({ targetolog: 'Kamron', product: 'Collagen' })
+    // Kamron's accounts are all Zextra — leadBrand's rule — unless the name says collagen.
+    expect(formOwner('Kamron 6 etap filt forma 05.07')).toEqual({ targetolog: 'Kamron', product: 'Zextra' })
+    expect(formOwner('Kamron-collagen 01.10')).toEqual({ targetolog: 'Kamron', product: 'Collagen' })
   })
 
-  it('is Zextra only when the name says so', () => {
+  it('is Zextra when the name says so', () => {
     expect(formOwner('Zextra form Eldor')).toEqual({ targetolog: 'Элдор', product: 'Zextra' })
     expect(formOwner('Eldor zextra 10/05')).toEqual({ targetolog: 'Элдор', product: 'Zextra' })
   })

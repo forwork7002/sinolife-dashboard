@@ -191,11 +191,22 @@ const FORM_TARGETOLOGS: readonly (readonly [RegExp, string])[] = [
 /**
  * Whose form this is, from its name — or null when the name names nobody.
  *
- * The product is Zextra only when the name says so: every form that week
- * without «zextra» in it sold the collagen.
+ * The product is RNP's `leadBrand` rule for a form: what the name says
+ * («zextra», then «collagen»), else Zextra for a Kamron form (his Meta
+ * accounts are all Zextra), else the collagen — every other form that week
+ * without «zextra» in it sold the collagen. Until 2026-10-05 a Kamron form
+ * fell to Collagen here, so its leads sat on a «Collagen · Kamron» owner
+ * apart from his own Zextra spend.
  */
 export function formOwner(formName: string): FormOwner | null {
   const hit = FORM_TARGETOLOGS.find(([pattern]) => pattern.test(formName))
   if (!hit) return null
-  return { targetolog: hit[1], product: /zextra/i.test(formName) ? 'Zextra' : 'Collagen' }
+  const product = /zextra/i.test(formName)
+    ? 'Zextra'
+    : /collagen|коллаген/i.test(formName)
+      ? 'Collagen'
+      : hit[1] === 'Kamron'
+        ? 'Zextra'
+        : 'Collagen'
+  return { targetolog: hit[1], product }
 }

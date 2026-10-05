@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card'
 import { SectionHeader } from '@/components/ui/Stat'
 import type { FormDayDto, FormOwnerDto, LeadSourcesOverviewDto } from '@/features/leads/leadSourcesApi'
 import { formatUsd, rnpNumber, rnpPercent } from '@/features/rnp/rnpFigures'
+import type { DashboardBrand } from '@/features/shared/useDashboardFilters'
 import type { MetaProduct } from '@/features/target/targetApi'
 import { PRODUCT_LABEL, PRODUCT_TONE } from '@/features/target/targetTheme'
 import { apiGet } from '@/lib/api'
@@ -53,7 +54,7 @@ const LEAD_TINT = 'color-mix(in oklab, var(--status-warning) 16%, transparent)'
 const HEAD_TINT = 'color-mix(in oklab, var(--accent) 10%, var(--surface-raised))'
 const TOTAL_TINT = 'color-mix(in oklab, var(--status-good) 14%, var(--surface-raised))'
 
-export function TargetologDaySection({ params }: { params: Params }) {
+export function TargetologDaySection({ params, brand }: { params: Params; brand: DashboardBrand }) {
   const query = useQuery({
     queryKey: ['reklama-targetologs', params],
     queryFn: ({ signal }) => apiGet<Data>('/reklama/targetologs', params, signal),
@@ -62,8 +63,9 @@ export function TargetologDaySection({ params }: { params: Params }) {
 
   const owners = query.data?.data.forms.owners ?? []
   const products = (['Collagen', 'Zextra', 'Boshqa'] as const).filter((p) => owners.some((o) => o.product === p))
+  // The page's brand switch wins over this picker, which then steps aside — two switches would contradict.
   // The product picked may have no targetolog this period: fall back to the first that has one.
-  const product = products.includes(picked) ? picked : (products[0] ?? picked)
+  const product = brand !== 'all' ? brand : products.includes(picked) ? picked : (products[0] ?? picked)
   // The biggest spender first, as the sheet opens on Eldor.
   const shown = owners.filter((o) => o.product === product).sort((a, b) => b.spendUsd - a.spendUsd)
 
@@ -73,7 +75,7 @@ export function TargetologDaySection({ params }: { params: Params }) {
         title="Targetologlar · kunlik"
         hint="Har targetolog alohida, kunma-kun: $ — lid-forma kampaniyalari sarfi (Meta); Meta лид — Meta hisoblagan lidlar; Bitrix лид — uning CRM-formalari Bitrix24 Регистрация ga ochgan lidlar; кв лид — ulardan kval boʻlgani. лид $ = $ ÷ Meta лид, % = кв лид ÷ Bitrix лид, кв лид $ = $ ÷ кв лид. Bitrix лид 0 boʻlsa — formasi Bitrix24 ga ulanmagan."
       />
-      {products.length > 1 && (
+      {brand === 'all' && products.length > 1 && (
         <SlicePicker<MetaProduct>
           ariaLabel="Qaysi mahsulot"
           value={product}

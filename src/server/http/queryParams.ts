@@ -329,6 +329,9 @@ const targetProduct = z.enum(TARGET_PRODUCT_FILTERS).default('all')
  */
 export const brandFilter = z.enum(TARGET_PRODUCT_FILTERS).default('all')
 
+/** «Reklama samarasi»: the window and the brand switch. */
+export const reklamaOverviewQuerySchema = periodQuerySchema.and(z.object({ brand: brandFilter }))
+
 /** Free text reaching a WHERE clause: trimmed, bounded, empty means absent. */
 const optionalText = (max: number) =>
   z

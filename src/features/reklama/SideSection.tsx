@@ -1,6 +1,8 @@
 'use client'
 
+import { EmptyState } from '@/components/states/States'
 import { type Column, DataTable } from '@/components/ui/DataTable'
+import type { DashboardBrand } from '@/features/shared/useDashboardFilters'
 
 import type { SideColumnDto } from './reklamaApi'
 import { DayCell, type Status, TableCard, money } from './reklamaUi'
@@ -14,8 +16,27 @@ import { DayCell, type Status, TableCard, money } from './reklamaUi'
  * Sinolife family Eldor, Collagen Eldor's «Vacancy» ones, and HR Eldor
  * itself); Kosmetika is Kosmetika Eldor's other campaigns. Neither is in the
  * DM sheet; Kosmetika's lead forms are also in «Отчёт Т» under «Boshqa».
+ *
+ * Neither belongs to Collagen or Zextra, so with one brand picked the table
+ * says so instead of printing the brand-narrowed rows (partial HR money).
  */
-export function SideSection({ side, status }: { side: readonly SideColumnDto[] | undefined; status: Status }) {
+export function SideSection({
+  side,
+  status,
+  brand,
+}: {
+  side: readonly SideColumnDto[] | undefined
+  status: Status
+  brand: DashboardBrand
+}) {
+  if (brand !== 'all') {
+    return (
+      <TableCard title="HR · Kosmetika" hint="Meta sarfi, kunma-kun. HR — barcha vakansiya kampaniyalari va HR Eldor akkaunti.">
+        <EmptyState title="Brend boʻyicha ajratilmaydi" body="HR va Kosmetika na Collagen, na Zextra — «Hammasi» da koʻrinadi." />
+      </TableCard>
+    )
+  }
+
   const columns = side ?? []
 
   type Row = { key: string; date: string | null; spend: readonly number[] }
