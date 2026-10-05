@@ -29,6 +29,8 @@ export interface RegistrationDayRow {
 /** Регистрация deals WON in a window, by source and the AI's mark. */
 export interface QualifiedSourceRow {
   readonly sourceId: string | null
+  /** The deal's title when it names a CRM form — what the Collagen / Zextra switch reads after the source. */
+  readonly formTitle: string | null
   readonly aiQualified: boolean
   readonly qualified: number
 }
@@ -37,6 +39,9 @@ export interface QualifiedSourceRow {
 export interface AiQualifiedStageRow {
   /** In Регистрация (pipeline role LEAD); the rest have moved on to Первичный отдел, Доставка, … */
   readonly registration: boolean
+  /** Source and CRM-form title — for the Collagen / Zextra switch (`leadBrand`). */
+  readonly sourceId: string | null
+  readonly formTitle: string | null
   readonly stage: string
   /** DealStatus: OPEN, WON or LOST. */
   readonly status: string
@@ -137,25 +142,35 @@ export class LeadSourcesRepository {
    * by the day the deal was WON (`closedAt`), not the day it arrived. The RNP
    * sheet's «Регистрация» kval is the same count (`registrationDaysSql`'s
    * second arm), and it is the portal's own CLOSEDATE filter. Grouped by the
-   * source and the AI's mark, so the channel tiles split the same count.
+   * source and the AI's mark, so the channel tiles split the same count,
+   * and by the form title, so the Collagen / Zextra switch can read a form
+   * kval's brand (its source is «Ген лид», which names none).
    */
   async qualifiedSources(period: Period): Promise<QualifiedSourceRow[]> {
-    const rows = await this.prisma.$queryRawUnsafe<{ source_id: string | null; ai_qualified: boolean; qualified: bigint }[]>(
+    const rows = await this.prisma.$queryRawUnsafe<
+      { source_id: string | null; form_title: string | null; ai_qualified: boolean; qualified: bigint }[]
+    >(
       `
       SELECT
         s."externalId" AS source_id,
+        CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END AS form_title,
         (d."aiQualifiedAt" IS NOT NULL) AS ai_qualified,
         count(*)::bigint AS qualified
       FROM "deal" d
       JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
       LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
       WHERE d."status" = 'WON' AND d."closedAt" >= $1 AND d."closedAt" < $2
-      GROUP BY 1, 2
+      GROUP BY 1, 2, 3
       `,
       period.start,
       period.end,
     )
-    return rows.map((r) => ({ sourceId: r.source_id, aiQualified: r.ai_qualified, qualified: Number(r.qualified) }))
+    return rows.map((r) => ({
+      sourceId: r.source_id,
+      formTitle: r.form_title,
+      aiQualified: r.ai_qualified,
+      qualified: Number(r.qualified),
+    }))
   }
 
   /**
@@ -212,21 +227,37 @@ export class LeadSourcesRepository {
    */
   async aiQualifiedStages(period: Period): Promise<AiQualifiedStageRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<
-      { registration: boolean; stage: string | null; status: string; leads: bigint }[]
+      {
+        registration: boolean
+        source_id: string | null
+        form_title: string | null
+        stage: string | null
+        status: string
+        leads: bigint
+      }[]
     >(
       `
-      SELECT COALESCE(p."role" = 'LEAD', false) AS registration, st."name" AS stage, d."status"::text AS status, count(*)::bigint AS leads
+      SELECT
+        COALESCE(p."role" = 'LEAD', false) AS registration,
+        s."externalId" AS source_id,
+        CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END AS form_title,
+        st."name" AS stage,
+        d."status"::text AS status,
+        count(*)::bigint AS leads
       FROM "deal" d
       LEFT JOIN "pipeline" p ON p."id" = d."pipelineId"
       LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
+      LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
       WHERE d."aiQualifiedAt" >= $1 AND d."aiQualifiedAt" < $2
-      GROUP BY 1, 2, 3
+      GROUP BY 1, 2, 3, 4, 5
       `,
       period.start,
       period.end,
     )
     return rows.map((r) => ({
       registration: r.registration,
+      sourceId: r.source_id,
+      formTitle: r.form_title,
       stage: r.stage ?? '—',
       status: r.status,
       leads: Number(r.leads),

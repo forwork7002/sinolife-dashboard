@@ -4,6 +4,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import { ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
+import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type MoneyDto, apiGet } from '@/lib/api'
 import { formatDate, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
@@ -31,9 +32,11 @@ const GOOD = 'var(--status-good)'
 const BAD = 'var(--status-critical)'
 
 export function GroupPlanCard({ day, onDay }: { day: string; onDay: (day: string) => void }) {
+  const { apiParams } = useDashboardFilters()
+  const params = apiParams.brand !== undefined ? { day, brand: apiParams.brand } : { day }
   const report = useQuery({
-    queryKey: ['registration-groups', day],
-    queryFn: ({ signal }) => apiGet<GroupPlanDto>('/registration/groups', { day }, signal),
+    queryKey: ['registration-groups', params],
+    queryFn: ({ signal }) => apiGet<GroupPlanDto>('/registration/groups', params, signal),
     placeholderData: keepPreviousData,
   })
   const data = report.data?.data

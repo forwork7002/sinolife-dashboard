@@ -201,7 +201,7 @@ const FORM_TARGETOLOGS: readonly (readonly [RegExp, string])[] = [
 export function formOwner(formName: string): FormOwner | null {
   const hit = FORM_TARGETOLOGS.find(([pattern]) => pattern.test(formName))
   if (!hit) return null
-  const product = /zextra/i.test(formName)
+  const product: TargetProduct = /zextra/i.test(formName)
     ? 'Zextra'
     : /collagen|коллаген/i.test(formName)
       ? 'Collagen'

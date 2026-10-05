@@ -47,7 +47,7 @@ import {
 } from '@/server/domain/leads/leadSources'
 import { isLeadDuplicate, LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
-import type { TargetProduct } from '@/server/domain/types'
+import type { TargetProduct, TargetProductFilter } from '@/server/domain/types'
 import type { InsightsRepository, LeadFakt1ClientRow } from '@/server/repositories/insightsRepository'
 import type {
   LeadSourcesRepository,
@@ -60,6 +60,7 @@ import type {
 import type { CampaignDayRow, ReklamaRepository } from '@/server/repositories/reklamaRepository'
 
 import { calendarDays } from './reklamaService'
+import { leadBrand } from './rnpService'
 import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 // ---------------------------------------------------------------------------
@@ -152,6 +153,13 @@ export interface ChannelTileDto {
 }
 
 export interface LeadSourcesOverviewDto {
+  /**
+   * The Collagen / Zextra switch the figures were narrowed by. Under one
+   * brand «Сарафан» (Ecommerce deals, no brand on them) and the inbound
+   * calls cannot be split: the screen prints them as «brend boʻyicha
+   * ajratilmaydi», not as a zero.
+   */
+  readonly brand: TargetProductFilter
   /** When Meta's campaign grain was last read; null means never. */
   readonly importedAt: string | null
   /**
@@ -321,10 +329,39 @@ function ownerOfForm(form: string): { key: string; targetolog: string; product: 
 const sourceKeyOf = (form: string | null, sourceId: string | null): string =>
   form !== null ? `form|${form}` : `source|${sourceId ?? ''}`
 
+/** What a page's chats and leads sell — the page's own brand, the second bot folded into its page. */
+const pageBrand = (sourceId: string | null): TargetProduct | null =>
+  sourceId === null ? null : (LEAD_SOURCE_BRAND[DM_PAGE_ALIAS[sourceId] ?? sourceId] ?? LEAD_SOURCE_BRAND[sourceId] ?? null)
+
+type LeadSourcesInput = Parameters<typeof leadSourcesOverview>[0]
+
+/**
+ * The tab's inputs narrowed to one brand — RNP's rules, so the switch agrees
+ * with RNP's «Коллаген / Зехтра проект»: a lead (and its kval, its FAKT 1
+ * client, the AI's mark) by `leadBrand` — its source, then its form; a chat
+ * by its page; Meta money by its ad account (`adBudgetProduct`). A lead
+ * nothing ties to a brand (an outgoing call, a hand-typed lead) is in
+ * neither. «Сарафан» and the inbound calls carry no brand at all.
+ */
+function ofBrand(input: LeadSourcesInput, brand: TargetProduct): LeadSourcesInput {
+  const lead = (row: { sourceId: string | null; formTitle: string | null }) => leadBrand(row.sourceId, row.formTitle) === brand
+  return {
+    ...input,
+    registration: input.registration.filter(lead),
+    triage: input.triage.filter((row) => pageBrand(row.sourceId) === brand),
+    campaigns: input.campaigns.filter((row) => adBudgetProduct(row) === brand),
+    fakt1: input.fakt1.filter(lead),
+    qualified: input.qualified.filter(lead),
+    aiQualified: input.aiQualified.filter(lead),
+    sarafan: { leads: 0, qualified: 0 },
+    inboundCalls: null,
+  }
+}
+
 /**
  * The whole tab from the three ledgers' rows. Exported for its test.
  */
-export function leadSourcesOverview(input: {
+export function leadSourcesOverview(all: {
   window: { from: string; to: string }
   registration: readonly RegistrationDayRow[]
   triage: readonly TriageDayRow[]
@@ -340,7 +377,11 @@ export function leadSourcesOverview(input: {
   importedAt: Date | null
   /** `LeadSourcesRepository.inboundCallCount`; absent reads as null. */
   inboundCalls?: number | null
+  /** The Collagen / Zextra switch; both when absent. */
+  brand?: TargetProductFilter
 }): LeadSourcesOverviewDto {
+  const brand = all.brand ?? 'all'
+  const input = brand === 'all' ? all : ofBrand(all, brand)
   const days = calendarDays(input.window.from, input.window.to)
 
   // --- Регистрация: every row into its source, channel and (for a form) its owner
@@ -384,7 +425,8 @@ export function leadSourcesOverview(input: {
   const pages = new Map<string, PageAcc>()
   const pageAcc = (key: string, name: string) =>
     mapGet(pages, key, () => ({ key, name, conversations: 0, outcome: outcomeZero(), days: new Map() }))
-  for (const p of DM_PAGES) pageAcc(p.id, p.name)
+  // Under one brand, only its pages: a page no brand claims (sinolif_tg, sinogummy) is in neither.
+  for (const p of DM_PAGES) if (brand === 'all' || pageBrand(p.id) === brand) pageAcc(p.id, p.name)
   const pageKeyOf = (sourceId: string) => DM_PAGE_ALIAS[sourceId] ?? sourceId
   const sources = new Map<string, SourceAcc>()
   const channels = new Map<LeadChannel, OutcomeAcc>(LEAD_CHANNELS.map((c) => [c, outcomeZero()]))
@@ -613,6 +655,7 @@ export function leadSourcesOverview(input: {
   const fresh = registrationCells.leads - leadDuplicates
 
   return {
+    brand,
     importedAt: input.importedAt?.toISOString() ?? null,
     inboundCalls: input.inboundCalls ?? null,
     funnel: {
@@ -692,7 +735,7 @@ export class LeadSourcesService {
     private readonly insights: InsightsRepository,
   ) {}
 
-  async overview(period: Period, timeZone: string): Promise<LeadSourcesOverviewDto> {
+  async overview(period: Period, timeZone: string, brand: TargetProductFilter = 'all'): Promise<LeadSourcesOverviewDto> {
     const window = {
       from: zonedDateKey(period.start, timeZone),
       to: zonedDateKey(new Date(period.end.getTime() - 1), timeZone),
@@ -716,6 +759,7 @@ export class LeadSourcesService {
       this.meta.campaignsImportedAt(),
     ])
 
-    return leadSourcesOverview({ window, ...scans, campaigns, importedAt })
+    // Narrowed after the memo: one scan serves both brands and the whole.
+    return leadSourcesOverview({ window, ...scans, campaigns, importedAt, brand })
   }
 }

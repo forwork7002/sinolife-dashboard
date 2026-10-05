@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { StatusChip } from '@/components/ui/Stat'
+import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { apiGet, apiWrite } from '@/lib/api'
 import { apportion } from '@/lib/apportion'
 import { APP_TIME_ZONE, formatDate, formatDateShort, formatDateTime, formatNumber, formatPercent } from '@/lib/format'
@@ -97,10 +98,12 @@ export function DayPicker({ day, onChange }: { day: string; onChange: (day: stri
 
 /** The day's split and handed-out leads, each team with its colour. */
 export function useLeadSplit(day: string, enabled = true) {
+  const { apiParams } = useDashboardFilters()
+  const params = apiParams.brand !== undefined ? { day, brand: apiParams.brand } : { day }
   const overview = useQuery({
-    queryKey: ['registration-overview', day],
+    queryKey: ['registration-overview', params],
     enabled,
-    queryFn: ({ signal }) => apiGet<LeadSplitDto>('/registration/overview', { day }, signal),
+    queryFn: ({ signal }) => apiGet<LeadSplitDto>('/registration/overview', params, signal),
     placeholderData: keepPreviousData,
   })
   const data = overview.data?.data

@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react'
 import { ErrorState } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
+import { DashboardBrandSwitch } from '@/features/shared/BrandSwitch'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import type { Status } from '@/features/reklama/reklamaUi'
@@ -69,8 +70,9 @@ export function LeadsPage() {
     const out: Record<string, string | number> = { preset: apiParams.preset }
     if (apiParams.from !== undefined) out.from = apiParams.from
     if (apiParams.to !== undefined) out.to = apiParams.to
+    if (apiParams.brand !== undefined) out.brand = apiParams.brand
     return out
-  }, [apiParams.preset, apiParams.from, apiParams.to])
+  }, [apiParams.preset, apiParams.from, apiParams.to, apiParams.brand])
 
   const overview = useQuery({
     queryKey: ['leads-overview', params],
@@ -89,17 +91,21 @@ export function LeadsPage() {
       stale={tab === 'sources' && overview.isPlaceholderData}
       period={tab === 'sources'}
       toolbar={
-        <SegmentedControl<Tab>
-          ariaLabel="Qaysi jadvallar"
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: 'sources', label: 'Lid manbalari' },
-            { value: 'cohort', label: 'Lid kogortasi' },
-            { value: 'rop', label: 'ROP otchet' },
-            { value: 'groups', label: 'Guruhlar' },
-          ]}
-        />
+        <>
+          <SegmentedControl<Tab>
+            ariaLabel="Qaysi jadvallar"
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: 'sources', label: 'Lid manbalari' },
+              { value: 'cohort', label: 'Lid kogortasi' },
+              { value: 'rop', label: 'ROP otchet' },
+              { value: 'groups', label: 'Guruhlar' },
+            ]}
+          />
+          {/* Every tab follows it: leads by source and form, the team tables by team (see the services). */}
+          <DashboardBrandSwitch />
+        </>
       }
     >
       <div className="flex min-w-0 flex-col gap-6">

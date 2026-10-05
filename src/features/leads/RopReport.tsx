@@ -4,6 +4,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import { ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
+import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type MoneyDto, apiGet } from '@/lib/api'
 import { formatDate, formatDuration, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
@@ -43,9 +44,11 @@ function groupColor(rop: string | null, index: number, colors: ReadonlyMap<strin
 const som = (m: MoneyDto) => formatFullUzs(m.amount)
 
 export function RopReport({ day, onDay, colors }: { day: string; onDay: (day: string) => void; colors: ReadonlyMap<string, string> }) {
+  const { apiParams } = useDashboardFilters()
+  const params = apiParams.brand !== undefined ? { day, brand: apiParams.brand } : { day }
   const report = useQuery({
-    queryKey: ['registration-report', day],
-    queryFn: ({ signal }) => apiGet<RopReportDto>('/registration/report', { day }, signal),
+    queryKey: ['registration-report', params],
+    queryFn: ({ signal }) => apiGet<RopReportDto>('/registration/report', params, signal),
     placeholderData: keepPreviousData,
   })
   const data = report.data?.data

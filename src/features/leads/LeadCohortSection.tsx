@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card'
 import { MultiSelect, SegmentedControl } from '@/components/ui/Controls'
 import { type Column, DataTable } from '@/components/ui/DataTable'
 import { SectionHeader, StatTile } from '@/components/ui/Stat'
+import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { apiGet } from '@/lib/api'
 import { formatDate, formatNumber, formatPercent } from '@/lib/format'
 
@@ -41,6 +42,8 @@ type Reading = 'count' | 'percent'
 const ALL_PIPELINES = LEAD_PIPELINE_OPTIONS.map((p) => p.id)
 
 export function LeadCohortSection() {
+  const { filters } = useDashboardFilters()
+  const brand = filters.brand === 'all' ? undefined : filters.brand
   const [from, setFrom] = useState<string | undefined>(undefined)
   const [to, setTo] = useState<string | undefined>(undefined)
   const [pipelines, setPipelines] = useState<string[]>(ALL_PIPELINES)
@@ -54,8 +57,9 @@ export function LeadCohortSection() {
     if (to) out.to = to
     if (pipelines.length > 0 && pipelines.length < ALL_PIPELINES.length) out.pipelines = [...pipelines].sort().join(',')
     if (rop) out.rop = rop
+    if (brand !== undefined) out.brand = brand
     return out
-  }, [from, to, pipelines, rop])
+  }, [from, to, pipelines, rop, brand])
 
   const overview = useQuery({
     queryKey: ['lead-cohort', params],
@@ -95,7 +99,7 @@ export function LeadCohortSection() {
         onRop={setRop}
       />
 
-      <Tiles data={data} status={status} ropName={ropName} />
+      <Tiles brand={brand} data={data} status={status} ropName={ropName} />
 
       <section className="flex min-w-0 flex-col gap-3">
         <SectionHeader
@@ -221,7 +225,18 @@ function share(part: number, whole: number): string | undefined {
   return whole > 0 ? formatPercent((part / whole) * 100) : undefined
 }
 
-function Tiles({ data, status, ropName }: { data: LeadCohortOverviewDto | undefined; status: Status; ropName: string | null }) {
+function Tiles({
+  data,
+  status,
+  ropName,
+  brand,
+}: {
+  data: LeadCohortOverviewDto | undefined
+  status: Status
+  ropName: string | null
+  /** The Collagen / Zextra switch, when one brand is on. */
+  brand: string | undefined
+}) {
   const k = data?.kpi
   const of = ropName ? ` · ${ropName}` : ''
   return (
@@ -250,10 +265,17 @@ function Tiles({ data, status, ropName }: { data: LeadCohortOverviewDto | undefi
       <StatTile
         status={status}
         label="Tarqatilmagan qoldiq"
-        value={k?.undistributed ?? null}
+        // Under one brand a lead is its team's: one not yet handed out has no team, so no brand.
+        value={brand !== undefined ? null : (k?.undistributed ?? null)}
         unit="count"
-        tone={k && k.undistributed > 0 ? 'warning' : 'neutral'}
-        hint={k ? `tushgan, lekin «Лид таркатилган сана» boʻsh · ${share(k.undistributed, k.arrived) ?? '—'}` : undefined}
+        tone={brand === undefined && k && k.undistributed > 0 ? 'warning' : 'neutral'}
+        hint={
+          brand !== undefined
+            ? 'Brend boʻyicha ajratilmaydi — tarqatilmagan lid hali hech qaysi jamoaga berilmagan'
+            : k
+              ? `tushgan, lekin «Лид таркатилган сана» boʻsh · ${share(k.undistributed, k.arrived) ?? '—'}`
+              : undefined
+        }
       />
       <StatTile
         status={status}
