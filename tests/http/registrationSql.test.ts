@@ -37,6 +37,28 @@ describe('distributedDaysSql', () => {
   })
 })
 
+describe('bezkvalDaysSql', () => {
+  const sql = bare(RegistrationRepository.bezkvalDaysSql())
+
+  it('reads Регистрация deals by the Tashkent day they were created, end-exclusive', () => {
+    expect(sql).toContain(`JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'`)
+    expect(sql).toContain(`(d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day`)
+    expect(sql).toContain(`d."createdAtSource" >= (($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`)
+    expect(sql).toContain(`d."createdAtSource" < (($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`)
+  })
+
+  it('credits only a team the owner HEADS, the head read as the split reads one', () => {
+    expect(sql).toContain(`WHERE h."headId" = d."employeeId" AND h."isActive"`)
+    expect(sql).toContain(`ORDER BY (h."id" = e."departmentId") DESC, h."name"`)
+    expect(sql).not.toContain('dep."name"')
+  })
+
+  it('counts every stage, as the portal filter does', () => {
+    expect(sql).not.toContain('stage')
+    expect(sql).not.toContain('status')
+  })
+})
+
 describe('sellerLeadsSql', () => {
   const sql = bare(RegistrationRepository.sellerLeadsSql())
   const distributed = bare(RegistrationRepository.distributedDaysSql())

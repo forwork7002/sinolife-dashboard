@@ -34,20 +34,20 @@ describe('buildLeadSplit', () => {
   ]
 
   it('counts the day: Jami is every handed-out lead, new is Jami less the same-day repeats', () => {
-    const dto = buildLeadSplit({ day, rows, split: null, previous: null, canEdit: false })
+    const dto = buildLeadSplit({ day, rows, bezkval: [], split: null, previous: null, canEdit: false })
     expect(dto.total).toBe(38 + 2 + 29 + 10 + 3)
     expect(dto.fresh).toBe(dto.total - 2)
     expect(dto.unassigned).toBe(10)
   })
 
   it('lists the client\'s nine in their order, then any other team that got leads, folding old names', () => {
-    const dto = buildLeadSplit({ day, rows, split: null, previous: null, canEdit: false })
+    const dto = buildLeadSplit({ day, rows, bezkval: [], split: null, previous: null, canEdit: false })
     expect(dto.rops.map((r) => r.rop)).toEqual([...SPLIT_ROPS, 'Marjona'])
     expect(dto.rops.find((r) => r.rop === 'Sadriddin')!.received).toBe(2)
   })
 
   it('keeps a month of days ending on the day, and nothing older', () => {
-    const dto = buildLeadSplit({ day, rows, split: null, previous: null, canEdit: false })
+    const dto = buildLeadSplit({ day, rows, bezkval: [], split: null, previous: null, canEdit: false })
     expect(dto.week.days).toHaveLength(31)
     expect(dto.week.days[0]).toBe('2026-08-31')
     expect(dto.week.days.at(-1)).toBe(day)
@@ -58,7 +58,7 @@ describe('buildLeadSplit', () => {
   })
 
   it('leaves the plan empty when nobody set the day', () => {
-    const dto = buildLeadSplit({ day, rows, split: null, previous: null, canEdit: true })
+    const dto = buildLeadSplit({ day, rows, bezkval: [], split: null, previous: null, canEdit: true })
     expect(dto.split).toBeNull()
     expect(dto.rops.every((r) => r.shareBp === null && r.planLeads === null)).toBe(true)
   })
@@ -68,7 +68,7 @@ describe('buildLeadSplit', () => {
       rows: SPLIT_ROPS.map((rop, i) => ({ rop, shareBp: [1200, 1200, 1200, 1600, 1700, 1000, 700, 700, 700][i]! })),
       updatedAt: '2026-09-30T04:09:00.000Z',
     }
-    const dto = buildLeadSplit({ day, rows, split, previous: null, canEdit: true })
+    const dto = buildLeadSplit({ day, rows, bezkval: [], split, previous: null, canEdit: true })
     const planned = dto.rops.reduce((a, r) => a + (r.planLeads ?? 0), 0)
     expect(planned).toBe(dto.fresh)
     // A team outside the split is planned nothing, not left blank.
@@ -79,9 +79,35 @@ describe('buildLeadSplit', () => {
 describe('buildLeadSplit — the previous split', () => {
   it('hands the previous split back under today\'s team names, and lists a team only it names', () => {
     const previous = { day: '2026-09-29', rows: [{ rop: 'Sevinchxon', shareBp: 6000 }, { rop: 'Marjona', shareBp: 4000 }] }
-    const dto = buildLeadSplit({ day, rows: [], split: null, previous, canEdit: true })
+    const dto = buildLeadSplit({ day, rows: [], bezkval: [], split: null, previous, canEdit: true })
     expect(dto.previous!.rows).toEqual([{ rop: 'Sadriddin', shareBp: 6000 }, { rop: 'Marjona', shareBp: 4000 }])
     expect(dto.rops.map((r) => r.rop)).toContain('Marjona')
+  })
+})
+
+describe('buildLeadSplit — безквал', () => {
+  const bezkval = [
+    { day, rop: 'Azizbek', leads: 275 },
+    { day, rop: 'Sevinchxon', leads: 4 },
+    { day: '2026-09-29', rop: 'Azizbek', leads: 120 },
+    { day, rop: 'Davlat', leads: 61 },
+    { day, rop: null, leads: 330 },
+    { day: '2026-08-30', rop: 'Azizbek', leads: 999 },
+  ]
+
+  it('counts each team\'s Регистрация deals by day over the same month, folding old names', () => {
+    const dto = buildLeadSplit({ day, rows: [], bezkval, split: null, previous: null, canEdit: false })
+    expect(dto.bezkval.rops.map((r) => r.rop)).toEqual([...SPLIT_ROPS, 'Davlat'])
+    expect(dto.bezkval.rops.find((r) => r.rop === 'Azizbek')!.week.slice(-2)).toEqual([120, 275])
+    expect(dto.bezkval.rops.find((r) => r.rop === 'Sadriddin')!.week.at(-1)).toBe(4)
+    expect(dto.bezkval.unassigned.at(-1)).toBe(330)
+    expect(dto.bezkval.rops.flatMap((r) => r.week).reduce((a, b) => a + b, 0)).toBe(275 + 4 + 120 + 61)
+  })
+
+  it('leaves the handed-out leads alone: a team only безквал names gets no kval row', () => {
+    const dto = buildLeadSplit({ day, rows: [], bezkval, split: null, previous: null, canEdit: false })
+    expect(dto.rops.map((r) => r.rop)).toEqual([...SPLIT_ROPS])
+    expect(dto.total).toBe(0)
   })
 })
 

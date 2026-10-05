@@ -31,6 +31,11 @@ export interface LeadSplitDto {
   readonly unassigned: number
   readonly rops: readonly LeadSplitRopDto[]
   readonly week: { readonly days: readonly string[]; readonly unassigned: readonly number[] }
+  /** «Безквал»: Регистрация deals whose «Ответственный» heads the team, by creation day over `week.days`. */
+  readonly bezkval: {
+    readonly rops: readonly { readonly rop: string; readonly week: readonly number[] }[]
+    readonly unassigned: readonly number[]
+  }
   readonly split: { readonly updatedAt: string } | null
   readonly previous: { readonly day: string; readonly rows: readonly SplitShare[] } | null
   readonly canEdit: boolean

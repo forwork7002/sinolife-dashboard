@@ -24,6 +24,16 @@
  * The plan divides the NEW leads (`fresh`); «Haqiqatda olgan» is the portal's
  * count, duplicates included.
  *
+ * «БЕЗКВАЛ» (the client, 2026-10-05: «Без квал лидларни хам куришимиз керак
+ * хар бир ропларга Регистрациядан ответсвенный РОП белгиланганлари»). The
+ * registration desk makes the ROP the «Ответственный» of a Регистрация deal
+ * (04.10: 921 created, Azizbek 275, Saidaziz 38, Sevinch 24 …; the rest sit
+ * with the desk's head, the registrars or the admin). A ROP's безквал leads
+ * are the Регистрация deals created that day whose owner HEADS that team,
+ * every stage — the portal's own filter (Воронка, Дата создания,
+ * Ответственный). A deal owned by anyone who heads no team — a registrar
+ * included, though she may sit in a ROP's unit — is «ROP belgilanmagan».
+ *
  * Pure: rows in, a DTO out.
  */
 
@@ -58,6 +68,13 @@ export interface DistributedDayRow {
   readonly duplicates: number
 }
 
+/** Регистрация deals created on `day`, by the team their owner heads (null: the owner heads none). */
+export interface BezkvalDayRow {
+  readonly day: string
+  readonly rop: string | null
+  readonly leads: number
+}
+
 export interface SplitShare {
   readonly rop: string
   readonly shareBp: number
@@ -89,6 +106,11 @@ export interface LeadSplitDto {
   readonly unassigned: number
   readonly rops: readonly LeadSplitRopDto[]
   readonly week: { readonly days: readonly string[]; readonly unassigned: readonly number[] }
+  /** «Безквал» over `week.days`: each team's Регистрация deals it owns, then those no ROP owns. */
+  readonly bezkval: {
+    readonly rops: readonly { readonly rop: string; readonly week: readonly number[] }[]
+    readonly unassigned: readonly number[]
+  }
   /** Null: nobody has set this day's split yet. */
   readonly split: { readonly updatedAt: string } | null
   /** The latest earlier day with a split — what «Kechagi taqsimotni olish» copies. */
@@ -108,9 +130,16 @@ export function canonicalRop(rop: string): string {
   return TEAM_ALIASES[rop] ?? rop
 }
 
+/** The client's nine in their order, then any other team, by name. */
+function teamOrder(teams: Iterable<string>): string[] {
+  const extra = [...new Set(teams)].filter((rop) => !SPLIT_ROPS.includes(rop)).sort((a, b) => a.localeCompare(b, 'ru'))
+  return [...SPLIT_ROPS, ...extra]
+}
+
 export function buildLeadSplit(input: {
   day: string
   rows: readonly DistributedDayRow[]
+  bezkval: readonly BezkvalDayRow[]
   split: SavedSplit | null
   previous: { day: string; rows: readonly SplitShare[] } | null
   canEdit: boolean
@@ -143,10 +172,22 @@ export function buildLeadSplit(input: {
   const shares = new Map((input.split?.rows ?? []).map((s) => [canonicalRop(s.rop), s.shareBp]))
   const previous = input.previous ? { day: input.previous.day, rows: input.previous.rows.map((s) => ({ rop: canonicalRop(s.rop), shareBp: s.shareBp })) } : null
   // The client's nine first, in their order; then any other team either split names or that got leads this week.
-  const extra = [...new Set([...shares.keys(), ...(previous?.rows.map((s) => s.rop) ?? []), ...byRop.keys()])]
-    .filter((rop) => !SPLIT_ROPS.includes(rop))
-    .sort((a, b) => a.localeCompare(b, 'ru'))
-  const names = [...SPLIT_ROPS, ...extra]
+  const names = teamOrder([...shares.keys(), ...(previous?.rows.map((s) => s.rop) ?? []), ...byRop.keys()])
+
+  const bezkvalByRop = new Map<string, number[]>()
+  const bezkvalUnassigned = days.map(() => 0)
+  for (const r of input.bezkval) {
+    const i = at.get(r.day)
+    if (i === undefined) continue
+    if (r.rop === null) {
+      bezkvalUnassigned[i]! += r.leads
+      continue
+    }
+    const rop = canonicalRop(r.rop)
+    const counts = bezkvalByRop.get(rop) ?? days.map(() => 0)
+    counts[i]! += r.leads
+    bezkvalByRop.set(rop, counts)
+  }
 
   const plan = input.split ? apportion(fresh, names.map((rop) => shares.get(rop) ?? 0)) : null
   const last = GRID_DAYS - 1
@@ -162,6 +203,10 @@ export function buildLeadSplit(input: {
       return { rop, shareBp, planLeads: plan ? plan[i]! : null, received: week[last]!, week }
     }),
     week: { days, unassigned: unassignedWeek },
+    bezkval: {
+      rops: teamOrder(bezkvalByRop.keys()).map((rop) => ({ rop, week: bezkvalByRop.get(rop) ?? days.map(() => 0) })),
+      unassigned: bezkvalUnassigned,
+    },
     split: input.split ? { updatedAt: input.split.updatedAt } : null,
     previous,
     canEdit: input.canEdit,

@@ -17,6 +17,7 @@ const ACCESS = { permission: 'analytics:read:all', section: 'leads' } as const
 export const GET = getHandler(ACCESS, overviewQuerySchema, async (ctx) => {
   const data = await registrationService.overview({
     day: ctx.query.day ?? zonedDateKey(ctx.now, ctx.timeZone),
+    timeZone: ctx.timeZone,
     canEdit: can(ctx.principal, 'kpi:manage'),
   })
   return { data }

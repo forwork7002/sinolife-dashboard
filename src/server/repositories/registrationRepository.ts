@@ -4,7 +4,7 @@
  */
 
 import type { PrismaClient } from '@/generated/prisma/client'
-import { canonicalRop, type DistributedDayRow, type SavedSplit, type SplitShare } from '@/server/domain/registration/leadSplit'
+import { type BezkvalDayRow, canonicalRop, type DistributedDayRow, type SavedSplit, type SplitShare } from '@/server/domain/registration/leadSplit'
 import type { RosterMember, SellerCallRow, SellerLeadRow } from '@/server/domain/registration/ropReport'
 
 import { InsightsRepository } from './insightsRepository'
@@ -92,6 +92,44 @@ export class RegistrationRepository {
         LEFT JOIN "department" dep ON dep."id" = e."departmentId"
         WHERE d."leadDistributedOn" ${dayPredicate}
           AND (p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL)`
+  }
+
+  /** «Безквал»: `from` / `to` are inclusive `YYYY-MM-DD` in `timeZone`. */
+  async bezkvalDays(from: string, to: string, timeZone: string): Promise<BezkvalDayRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<{ day: string; rop: string | null; leads: bigint }[]>(
+      RegistrationRepository.bezkvalDaysSql(),
+      from,
+      to,
+      timeZone,
+    )
+    return rows.map((r) => ({ day: r.day, rop: r.rop, leads: Number(r.leads) }))
+  }
+
+  /**
+   * The Регистрация deals created each day, by the team their «Ответственный»
+   * heads — of two, the one they sit in, as `leadRopSql` reads a head — else
+   * null. Only a HEAD: a registrar sitting in a ROP's unit owns the deal as
+   * the desk, not as that ROP. Every stage, «Дубликат (лид)» included: the
+   * portal's filter. Served by the (pipelineId, createdAtSource) index.
+   */
+  static bezkvalDaysSql(): string {
+    const lo = `(($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
+    const hi = `(($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
+    return `
+      SELECT
+        (d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day,
+        (SELECT ${InsightsRepository.ropNameSql('h."name"')}
+           FROM "department" h
+          WHERE h."headId" = d."employeeId" AND h."isActive"
+            AND ${InsightsRepository.ropNameSql('h."name"')} IS NOT NULL
+          ORDER BY (h."id" = e."departmentId") DESC, h."name"
+          LIMIT 1) AS rop,
+        count(*)::bigint AS leads
+      FROM "deal" d
+      JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
+      LEFT JOIN "employee" e ON e."id" = d."employeeId"
+      WHERE d."createdAtSource" >= ${lo} AND d."createdAtSource" < ${hi}
+      GROUP BY 1, 2`
   }
 
   /** The handed-out leads of `from`…`to` (inclusive) per ROP team × seller. */
