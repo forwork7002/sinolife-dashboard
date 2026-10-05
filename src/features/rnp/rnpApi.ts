@@ -97,6 +97,9 @@ export type RnpFactTone = 'fakt' | 'plan' | 'rate' | 'key' | 'money' | 'alert' |
  * One row of «СентябрРНП 26», in the sheet's order (`rnpSheetView.ts`).
  * `row` is the sheet row, null for a line added for a team the sheet lacks.
  */
+/** `both`: a heading each brand keeps over its own rows. */
+export type RnpLineBrand = 'Collagen' | 'Zextra' | 'both'
+
 export type RnpLine =
   | {
       readonly kind: 'title'
@@ -108,6 +111,8 @@ export type RnpLine =
       readonly tone: RnpLabelTone
       /** The first line of a team the sheet has no block for: draw `RNP_ADDED_TEAM_NOTE` beside it. */
       readonly added?: true
+      /** Its brand on the Collagen / Zextra switch; absent = company-wide (not shown under one brand). */
+      readonly brand?: RnpLineBrand
     }
   | {
       readonly kind: 'value'
@@ -123,6 +128,8 @@ export type RnpLine =
       readonly key: string | null
       /** The first line of a team the sheet has no block for: draw `RNP_ADDED_TEAM_NOTE` beside it. */
       readonly added?: true
+      /** Its brand on the Collagen / Zextra switch; absent = company-wide (not shown under one brand). */
+      readonly brand?: RnpLineBrand
     }
 
 /**

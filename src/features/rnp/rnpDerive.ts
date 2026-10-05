@@ -103,3 +103,20 @@ export function ropLines(lines: readonly RnpLine[], rop: string | null, label: s
   }
   return out
 }
+
+/**
+ * The sheet narrowed to one brand — the Collagen / Zextra switch
+ * (2026-10-05, «zextraga qancha, collagenga qancha»). Kept: the lines the
+ * server tags with that brand (its marketing, its registration groups under
+ * their heading, its teams' blocks and logistics — `lineBrand`), with the
+ * brand's P&L («Коллаген / Зехтра проект») moved to the top, where «Основные
+ * показатели» opens the whole sheet: it is the brand's FAKT, budget, leads
+ * and CAC. Company-wide lines no brand can claim are left out. 'all' = the
+ * whole sheet.
+ */
+export function brandLines(lines: readonly RnpLine[], brand: 'all' | 'Collagen' | 'Zextra'): readonly RnpLine[] {
+  if (brand === 'all') return lines
+  const own = lines.filter((l) => l.brand === brand || l.brand === 'both')
+  const isProject = (l: RnpLine) => l.kind === 'value' && l.key !== null && l.key.startsWith('pj:')
+  return [...own.filter(isProject), ...own.filter((l) => !isProject(l))]
+}

@@ -8,6 +8,7 @@ import {
   type RnpRowDto,
   type RnpSheetInput,
   buildRnpSheet,
+  lineBrand,
   teamBrand,
 } from '@/server/domain/rnp/rnpSheet'
 
@@ -1225,5 +1226,26 @@ describe('teamBrand', () => {
     expect(teamBrand('Baza')).toBe('Collagen')
     expect(teamBrand('Hayot')).toBeNull()
     expect(teamBrand(null)).toBeNull()
+  })
+})
+
+describe('lineBrand', () => {
+  const value = (row: number | null, team: string | null = null) =>
+    ({ kind: 'value', row, team, label: '', sub: null, tone: 'plain', fact: 'plain', bold: false, key: null }) as const
+
+  it('follows the team, then the group\'s ROP, then the brand\'s own rows', () => {
+    expect(lineBrand(value(132, 'Asliddin'))).toBe('Zextra')
+    expect(lineBrand(value(274, 'Sevinch'))).toBe('Collagen')
+    expect(lineBrand(value(227, 'Hayot'))).toBeUndefined()
+    // Sevinch guruh 50–52, Aziz guruh (Azizbek) 56–58, Sadriddin ROP 1011–1013.
+    expect([50, 51, 52, 56, 1011, 1013].map((r) => lineBrand(value(r)))).toEqual(['Collagen', 'Collagen', 'Collagen', 'Collagen', 'Zextra', 'Zextra'])
+    expect([4, 2005, 14, 394, 418].map((r) => lineBrand(value(r)))).toEqual(Array(5).fill('Collagen'))
+    expect([38, 421, 445].map((r) => lineBrand(value(r)))).toEqual(Array(3).fill('Zextra'))
+    expect(lineBrand({ kind: 'title', row: 3001, team: null, label: '', sub: null, tone: 'section' })).toBe('both')
+  })
+
+  it('claims no company-wide line', () => {
+    expect([3000, 11, 42, 346, 349, 47, 48, 49, 264, 265].map((r) => lineBrand(value(r)))).toEqual(Array(10).fill(undefined))
+    expect(lineBrand(value(null))).toBeUndefined()
   })
 })

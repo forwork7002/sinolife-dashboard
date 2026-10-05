@@ -270,6 +270,35 @@ export function teamBrand(team: string | null): 'Collagen' | 'Zextra' | null {
   return BRAND_TEAMS.Collagen.has(canonical) ? 'Collagen' : BRAND_TEAMS.Zextra.has(canonical) ? 'Zextra' : null
 }
 
+const between = (row: number, lo: number, hi: number) => row >= lo && row <= hi
+
+/**
+ * Which brand a sheet line belongs to, for the page's Collagen / Zextra
+ * switch (2026-10-05) — absent: a company-wide line no brand can claim
+ * («Основные показатели», the registration totals 47–49, «Склад и упаковка»,
+ * «Boshqa jamoalar»), or a team on neither list (`teamBrand`). A team's block
+ * and logistics follow its team; a registration group its ROP's team
+ * (`GROUP_TEAM`, the three rows around its «квал» row); the marketing rows
+ * and the P&L their own brand. `both`: the groups' heading, which each brand
+ * keeps above its own groups.
+ */
+export function lineBrand(line: RnpLine): RnpLine['brand'] {
+  if (line.team !== null) return teamBrand(line.team) ?? undefined
+  const row = line.row
+  if (row === null) return undefined
+  if (row === 3001) return 'both'
+  const group = REGISTRATION_GROUPS.find((g) => Math.abs(GROUP_SHEET_ROW[g]! - row) <= 1)
+  if (group) return teamBrand(GROUP_TEAM[group]) ?? undefined
+  if (row === 4 || between(row, 2001, 2017) || between(row, 13, 16) || between(row, 394, 418)) return 'Collagen'
+  if (between(row, 37, 40) || between(row, 421, 445)) return 'Zextra'
+  return undefined
+}
+
+function withLineBrand(line: RnpLine): RnpLine {
+  const brand = lineBrand(line)
+  return brand === undefined ? line : { ...line, brand }
+}
+
 /**
  * Every team name `teamBrand` files under `brand` — its own teams and the old
  * department names folded into them — for a SQL `rop = ANY(...)`, so a query
@@ -458,6 +487,10 @@ export const GROUP_TEAM: Readonly<Record<(typeof REGISTRATION_GROUPS)[number], s
   Asliddin: 'Asliddin',
   Sadriddin: 'Sadriddin',
 })
+
+/* The sheet's «квал» row of each group (51, 54, … 66). Its «без квал» and «квал %» rows count leads before they are qualified, per group, which Bitrix24 does not record — they keep their place, empty. */
+/* Asliddin and Sadriddin — the client's two groups added in place of the Zextra desk (2026-09-30) — have no sheet row; `rnpSheetLayout` numbers them 1002 / 1012. */
+const GROUP_SHEET_ROW: Readonly<Record<string, number>> = { Sevinch: 51, Gulzora: 54, Aziz: 57, Maftuna: 60, Lola: 63, Saidaziz: 66, Asliddin: 1002, Sadriddin: 1012 }
 
 /**
  * The brand P&L's hand-typed cost lines — the one exception to «nothing
@@ -1015,9 +1048,6 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   const handedTo = (rop: string) => grid.get(rop)?.leads ?? zeros()
   const otherTeams = total((t) => t.leads, (rop) => !groupTeams.has(rop))
   const otherNames = teamNames.filter((rop) => !groupTeams.has(rop) && sum(grid.get(rop)!.leads) > 0).map(labelOf)
-  /* The sheet's «квал» row of each group (51, 54, … 66). Its «без квал» and «квал %» rows count leads before they are qualified, per group, which Bitrix24 does not record — they keep their place, empty. */
-  /* Asliddin and Sadriddin — the client's two groups added in place of the Zextra desk (2026-09-30) — have no sheet row; `rnpSheetLayout` numbers them 1002 / 1012. */
-  const GROUP_SHEET_ROW: Readonly<Record<string, number>> = { Sevinch: 51, Gulzora: 54, Aziz: 57, Maftuna: 60, Lola: 63, Saidaziz: 66, Asliddin: 1002, Sadriddin: 1012 }
   blocks.push({
     id: 'registration',
     kind: 'registration',
@@ -1406,7 +1436,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     teams: teamNames.map((rop) => ({ rop, label: labelOf(rop), head: heads.get(rop) ?? null, isBase: isBase(rop) })),
     // The sheet's order: its brand P&L (rows 394–445) comes after «Свод».
     blocks: [...blocks.filter((b) => b.kind !== 'project'), ...blocks.filter((b) => b.kind === 'project')],
-    lines: sheetLines(blocks, { month: input.month, teamName: labelOf }),
+    lines: sheetLines(blocks, { month: input.month, teamName: labelOf }).map(withLineBrand),
     settings: {
       usdRate: lastRateAt < 0 ? null : rates[lastRateAt]!,
       usdRateDate: lastRateAt < 0 ? null : days[lastRateAt]!,
