@@ -89,11 +89,11 @@ describe('rereadClosedTriageDeals', () => {
       async () => [{ pipeline: '0' }, { pipeline: '20' }],
       async (deals) => {
         written.push(...deals)
-        return { failed: 0 }
+        return { failed: 0, skipped: 1 }
       },
       isTriage,
     )
-    expect(r).toEqual({ checked: 3, moved: 1 })
+    expect(r).toEqual({ checked: 3, moved: 1, skipped: 1 })
     expect(written).toHaveLength(2)
   })
 
@@ -105,16 +105,16 @@ describe('rereadClosedTriageDeals', () => {
         asked = true
         return []
       },
-      async () => ({ failed: 0 }),
+      async () => ({ failed: 0, skipped: 0 }),
       isTriage,
     )
-    expect(r).toEqual({ checked: 0, moved: 0 })
+    expect(r).toEqual({ checked: 0, moved: 0, skipped: 0 })
     expect(asked).toBe(false)
   })
 
   it('says so when a deal could not be written', async () => {
     await expect(
-      rereadClosedTriageDeals(['1'], async () => [{ pipeline: '0' }], async () => ({ failed: 1 }), isTriage),
+      rereadClosedTriageDeals(['1'], async () => [{ pipeline: '0' }], async () => ({ failed: 1, skipped: 0 }), isTriage),
     ).rejects.toThrow(/yozilmadi/)
   })
 })

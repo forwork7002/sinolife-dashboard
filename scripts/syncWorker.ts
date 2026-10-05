@@ -1340,10 +1340,11 @@ async function main() {
           (deal) => deal.metadata?.pipelineRole === 'AI_TRIAGE',
         )
         // Quiet when nothing moved: the near reach runs 288 times a day.
-        if (r.moved > 0) {
+        if (r.moved > 0 || r.skipped > 0) {
           console.log(
             `  ${stamp()} ИИ обработка (${reach.label}): ${r.checked} bitim qayta oʻqildi,` +
-              ` ${r.moved} tasi boshqa voronkaga koʻchgan — yangilandi`,
+              ` ${r.moved} tasi boshqa voronkada` +
+              (r.skipped > 0 ? `, ${r.skipped} tasi yozilmadi (bosqich/xodim hali yoʻq — keyingi safar)` : ''),
           )
         }
       } catch (error) {

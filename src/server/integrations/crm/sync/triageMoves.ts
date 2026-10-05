@@ -44,6 +44,8 @@ export interface TriageRereadResult {
   readonly checked: number
   /** In Регистрация (or any pipeline but «ИИ обработка») after the re-read. */
   readonly moved: number
+  /** Not written — a stage or person the reference pass has not brought yet; tried again next time. */
+  readonly skipped: number
 }
 
 /**
@@ -54,13 +56,13 @@ export interface TriageRereadResult {
 export async function rereadClosedTriageDeals<D>(
   candidates: readonly string[],
   fetch: (ids: readonly string[]) => Promise<readonly D[]>,
-  persist: (deals: readonly D[]) => Promise<{ failed: number }>,
+  persist: (deals: readonly D[]) => Promise<{ failed: number; skipped: number }>,
   isTriage: (deal: D) => boolean,
 ): Promise<TriageRereadResult> {
-  if (candidates.length === 0) return { checked: 0, moved: 0 }
+  if (candidates.length === 0) return { checked: 0, moved: 0, skipped: 0 }
   const deals = await fetch(candidates)
   const moved = deals.filter((d) => !isTriage(d)).length
-  const { failed } = await persist(deals)
+  const { failed, skipped } = await persist(deals)
   if (failed > 0) throw new Error(`${failed} ta bitim yozilmadi`)
-  return { checked: candidates.length, moved }
+  return { checked: candidates.length, moved, skipped }
 }
