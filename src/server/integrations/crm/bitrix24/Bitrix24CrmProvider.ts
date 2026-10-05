@@ -1586,8 +1586,42 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * abort the whole check before anything is deleted.
    */
   async existingDealIds(ids: readonly string[]): Promise<Set<string>> {
+    const rows = await this.dealsById<{ ID?: unknown }>(ids, ['ID'], 'ID tekshiruvi')
+    return new Set(rows.map((row) => String(row.ID)))
+  }
+
+  /**
+   * THESE deals, read in full, as `fetchDeals` reads them — see
+   * `triageMoves.ts` for why.
+   *
+   * A deal the portal moved from «ИИ обработка» to Регистрация keeps its
+   * DATE_MODIFY, so the incremental pass never reads it again; asking for it by
+   * id is the only way to learn where it went. A deal not returned (deleted,
+   * or moved to a pipeline we do not import) is simply absent: the deletion
+   * sweeps own that question.
+   */
+  async fetchDealsByIds(ids: readonly string[]): Promise<RawDeal[]> {
+    await this.loadEnumLabels()
+    const rows = await this.dealsById<Record<string, string>>(ids, DEAL_SELECT, 'qayta oʻqish')
+    return rows.map((d) => this.toRawDeal(d))
+  }
+
+  /**
+   * The rows of THESE deal ids, one `crm.deal.list` per 50 ids, filtered by ID
+   * and by the imported pipelines, so «gone» means the same as in `listDealIds`.
+   *
+   * THROWS RATHER THAN GUESSING: `existingDealIds`' caller deletes whatever is
+   * not returned. A refused command, a missing answer, or a row outside the
+   * ids asked for — the last is what a silently ignored ID filter looks like —
+   * all abort the whole read.
+   */
+  private async dealsById<T extends { ID?: unknown }>(
+    ids: readonly string[],
+    select: readonly string[],
+    label: string,
+  ): Promise<T[]> {
     const wanted = [...new Set(ids)]
-    const live = new Set<string>()
+    const found: T[] = []
     const method = 'crm.deal.list'
 
     const chunks: string[][] = []
@@ -1599,7 +1633,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
       part.forEach((chunk, k) => {
         const query = encodeParams({
           filter: { ID: chunk, CATEGORY_ID: [...this.pipelines] },
-          select: ['ID'],
+          select: [...select],
         })
         // `start=-1` skips the row count, as in `batchWalk`; 50 ids can never
         // need a second page.
@@ -1621,7 +1655,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
           // Same as `batchWalk`: a refusal buried in `result_error` is told to
           // the gate with its code and method, then thrown.
           const refusal = new Bitrix24Error(
-            `Bitrix24 ${method} (ID tekshiruvi) rad etdi: ${JSON.stringify(error).slice(0, 200)}`,
+            `Bitrix24 ${method} (${label}) rad etdi: ${JSON.stringify(error).slice(0, 200)}`,
             undefined,
             false,
             typeof error.error === 'string' && error.error.length > 0 ? error.error : undefined,
@@ -1633,25 +1667,25 @@ export class Bitrix24CrmProvider implements CrmProvider {
 
         const answer = results[`c${k}`]
         if (!Array.isArray(answer)) {
-          throw new Bitrix24Error(`Bitrix24 ${method} (ID tekshiruvi) javobsiz qoldi: c${k}`, undefined, false)
+          throw new Bitrix24Error(`Bitrix24 ${method} (${label}) javobsiz qoldi: c${k}`, undefined, false)
         }
 
         const asked = new Set(chunk)
-        for (const row of answer as { ID?: unknown }[]) {
+        for (const row of answer as T[]) {
           const id = String(row?.ID ?? '')
           if (!asked.has(id)) {
             throw new Bitrix24Error(
-              `Bitrix24 ${method} (ID tekshiruvi) soʻralmagan bitimni qaytardi: ${id} — filtr eʼtiborsiz qoldi`,
+              `Bitrix24 ${method} (${label}) soʻralmagan bitimni qaytardi: ${id} — filtr eʼtiborsiz qoldi`,
               undefined,
               false,
             )
           }
-          live.add(id)
+          found.push(row)
         }
       })
     }
 
-    return live
+    return found
   }
 
   async fetchDeals(options: FetchOptions = {}): Promise<Page<RawDeal>> {
@@ -1674,88 +1708,9 @@ export class Bitrix24CrmProvider implements CrmProvider {
     const deals: RawDeal[] = []
 
     for (const d of rows) {
-      const id = String(d.ID)
-      const categoryId = Number(d.CATEGORY_ID ?? 0)
-      const role = pipelineRole(categoryId)
-      const status = dealStatus(d.STAGE_SEMANTIC_ID, d.STAGE_ID)
-
       // Money, not pipeline: see `itemDealIds`.
-      if (toMinorUnits(d.OPPORTUNITY) > 0n) this.itemDealIds.push(id)
-
-      deals.push({
-        externalId: id,
-        title: d.TITLE || `Bitim ${id}`,
-        amountMinor: toMinorUnits(d.OPPORTUNITY),
-        currency: d.CURRENCY_ID || 'UZS',
-        stageExternalId: d.STAGE_ID!,
-        status,
-        employeeExternalId: String(d.ASSIGNED_BY_ID ?? ''),
-        customerExternalId: d.CONTACT_ID ? String(d.CONTACT_ID) : undefined,
-        sourceExternalId: d.SOURCE_ID || undefined,
-        pipelineExternalId: String(categoryId),
-        orderCode: extractOrderCode(d.TITLE),
-        // The single flag every revenue query filters on. Set from the
-        // pipeline's role so a retention copy of a delivered order can never
-        // reach a total, whatever else goes wrong downstream.
-        countsAsRevenue: role === 'REVENUE',
-        region: this.label(UF.REGION, d[UF.REGION]),
-        fulfilmentPoint: this.label(UF.FULFILMENT_POINT, d[UF.FULFILMENT_POINT]),
-        // Raw, NOT through label(): it is free text, and label() would return
-        // undefined for every value that is not an enumeration item id.
-        deliveryAddress: nonEmpty(d[UF.ADDRESS]),
-        confirmStatus: confirmStatusFromLabel(this.label(UF.CONFIRM_STATUS, d[UF.CONFIRM_STATUS])),
-        refusalReason: this.label(UF.REFUSAL_REASON, d[UF.REFUSAL_REASON]),
-        paymentMethodRaw: this.label(UF.PAYMENT_METHOD, d[UF.PAYMENT_METHOD]),
-        productLine: this.label(UF.PRODUCT_LINE, d[UF.PRODUCT_LINE]),
-        customerGrade: this.label(UF.CUSTOMER_GRADE, d[UF.CUSTOMER_GRADE]),
-        // Free text, so raw — `label()` resolves enumeration ids and would
-        // return undefined for every one of these. Same trap as ADDRESS.
-        operatorNameSource: nonEmpty(d[UF.OPERATOR_NAME]),
-        operatorTeamSource: nonEmpty(d[UF.OPERATOR_TEAM]),
-        targetolog: this.label(UF.TARGETOLOG, d[UF.TARGETOLOG]),
-        registrar: this.label(UF.REGISTRAR, d[UF.REGISTRAR]),
-        creative: this.labelOrText(UF.CREATIVE, d[UF.CREATIVE]),
-        primarySource: this.labelOrText(UF.PRIMARY_SOURCE, d[UF.PRIMARY_SOURCE]),
-        // «Lid kogortasi». Datetimes arrive with the portal's +03:00 and
-        // `toDate` keeps the instant; the Tashkent day is taken at query time.
-        leadArrivedAt: toDate(d[UF.LEAD_ARRIVED_AT]),
-        leadDistributedOn: calendarDate(d[UF.LEAD_DISTRIBUTED_ON]),
-        aiQualifiedAt: toDate(d[UF.AI_QUALIFIED_AT]),
-        leadRopExternalId: portalUserId(d[UF.LEAD_ROP]),
-        repeatLead: repeatLeadKind(d[UF.REPEAT_LEAD], this.label(UF.REPEAT_LEAD, d[UF.REPEAT_LEAD])),
-        isReturnCustomer: d.IS_RETURN_CUSTOMER === 'Y',
-        createdAtSource: toDate(d.DATE_CREATE) ?? new Date(),
-        updatedAtSource: toDate(d.DATE_MODIFY),
-        /**
-         * Only trust CLOSEDATE when Bitrix24 says the deal is actually closed.
-         *
-         * A pre-dispatch cancellation has none — the portal still thinks the
-         * deal is open — so it falls back to when the deal last moved, which
-         * is when someone put it in that stage. Without a date it would be
-         * absent from every period-scoped loss figure while still counting in
-         * the totals, and the two would never reconcile.
-         */
-        closedAt:
-          status === 'OPEN' ? undefined : (toDate(d.CLOSEDATE) ?? toDate(d.DATE_MODIFY)),
-        metadata: {
-          pipelineId: categoryId,
-          pipelineName: PIPELINE_NAMES[categoryId] ?? null,
-          pipelineRole: role,
-          stageSemantic: d.STAGE_SEMANTIC_ID ?? null,
-          /**
-           * The contact this deal points at, kept as the SOURCE id.
-           *
-           * Deals are written before their contacts exist — the deal pass is
-           * what discovers which contacts are worth fetching — so `customerId`
-           * is null on the first write. Keeping the source id here lets the
-           * customer pass close the link with one UPDATE instead of re-reading
-           * 415 591 deals from the portal a second time.
-           */
-          contactId: d.CONTACT_ID ? String(d.CONTACT_ID) : null,
-          /** See `DEAL_UTM_FIELDS`. Null when the portal sent none. */
-          utm: dealUtm(d),
-        },
-      })
+      if (toMinorUnits(d.OPPORTUNITY) > 0n) this.itemDealIds.push(String(d.ID))
+      deals.push(this.toRawDeal(d))
     }
 
     this.dealsRead += rows.length
@@ -1764,6 +1719,89 @@ export class Bitrix24CrmProvider implements CrmProvider {
     return {
       items: deals,
       nextCursor: done ? undefined : (rows[rows.length - 1]?.ID ?? undefined),
+    }
+  }
+
+  /** One `crm.deal.list` row as a RawDeal — shared by `fetchDeals` and `fetchDealsByIds`. */
+  private toRawDeal(d: Record<string, string>): RawDeal {
+    const id = String(d.ID)
+    const categoryId = Number(d.CATEGORY_ID ?? 0)
+    const role = pipelineRole(categoryId)
+    const status = dealStatus(d.STAGE_SEMANTIC_ID, d.STAGE_ID)
+
+    return {
+      externalId: id,
+      title: d.TITLE || `Bitim ${id}`,
+      amountMinor: toMinorUnits(d.OPPORTUNITY),
+      currency: d.CURRENCY_ID || 'UZS',
+      stageExternalId: d.STAGE_ID!,
+      status,
+      employeeExternalId: String(d.ASSIGNED_BY_ID ?? ''),
+      customerExternalId: d.CONTACT_ID ? String(d.CONTACT_ID) : undefined,
+      sourceExternalId: d.SOURCE_ID || undefined,
+      pipelineExternalId: String(categoryId),
+      orderCode: extractOrderCode(d.TITLE),
+      // The single flag every revenue query filters on. Set from the
+      // pipeline's role so a retention copy of a delivered order can never
+      // reach a total, whatever else goes wrong downstream.
+      countsAsRevenue: role === 'REVENUE',
+      region: this.label(UF.REGION, d[UF.REGION]),
+      fulfilmentPoint: this.label(UF.FULFILMENT_POINT, d[UF.FULFILMENT_POINT]),
+      // Raw, NOT through label(): it is free text, and label() would return
+      // undefined for every value that is not an enumeration item id.
+      deliveryAddress: nonEmpty(d[UF.ADDRESS]),
+      confirmStatus: confirmStatusFromLabel(this.label(UF.CONFIRM_STATUS, d[UF.CONFIRM_STATUS])),
+      refusalReason: this.label(UF.REFUSAL_REASON, d[UF.REFUSAL_REASON]),
+      paymentMethodRaw: this.label(UF.PAYMENT_METHOD, d[UF.PAYMENT_METHOD]),
+      productLine: this.label(UF.PRODUCT_LINE, d[UF.PRODUCT_LINE]),
+      customerGrade: this.label(UF.CUSTOMER_GRADE, d[UF.CUSTOMER_GRADE]),
+      // Free text, so raw — `label()` resolves enumeration ids and would
+      // return undefined for every one of these. Same trap as ADDRESS.
+      operatorNameSource: nonEmpty(d[UF.OPERATOR_NAME]),
+      operatorTeamSource: nonEmpty(d[UF.OPERATOR_TEAM]),
+      targetolog: this.label(UF.TARGETOLOG, d[UF.TARGETOLOG]),
+      registrar: this.label(UF.REGISTRAR, d[UF.REGISTRAR]),
+      creative: this.labelOrText(UF.CREATIVE, d[UF.CREATIVE]),
+      primarySource: this.labelOrText(UF.PRIMARY_SOURCE, d[UF.PRIMARY_SOURCE]),
+      // «Lid kogortasi». Datetimes arrive with the portal's +03:00 and
+      // `toDate` keeps the instant; the Tashkent day is taken at query time.
+      leadArrivedAt: toDate(d[UF.LEAD_ARRIVED_AT]),
+      leadDistributedOn: calendarDate(d[UF.LEAD_DISTRIBUTED_ON]),
+      aiQualifiedAt: toDate(d[UF.AI_QUALIFIED_AT]),
+      leadRopExternalId: portalUserId(d[UF.LEAD_ROP]),
+      repeatLead: repeatLeadKind(d[UF.REPEAT_LEAD], this.label(UF.REPEAT_LEAD, d[UF.REPEAT_LEAD])),
+      isReturnCustomer: d.IS_RETURN_CUSTOMER === 'Y',
+      createdAtSource: toDate(d.DATE_CREATE) ?? new Date(),
+      updatedAtSource: toDate(d.DATE_MODIFY),
+      /**
+       * Only trust CLOSEDATE when Bitrix24 says the deal is actually closed.
+       *
+       * A pre-dispatch cancellation has none — the portal still thinks the
+       * deal is open — so it falls back to when the deal last moved, which
+       * is when someone put it in that stage. Without a date it would be
+       * absent from every period-scoped loss figure while still counting in
+       * the totals, and the two would never reconcile.
+       */
+      closedAt:
+        status === 'OPEN' ? undefined : (toDate(d.CLOSEDATE) ?? toDate(d.DATE_MODIFY)),
+      metadata: {
+        pipelineId: categoryId,
+        pipelineName: PIPELINE_NAMES[categoryId] ?? null,
+        pipelineRole: role,
+        stageSemantic: d.STAGE_SEMANTIC_ID ?? null,
+        /**
+         * The contact this deal points at, kept as the SOURCE id.
+         *
+         * Deals are written before their contacts exist — the deal pass is
+         * what discovers which contacts are worth fetching — so `customerId`
+         * is null on the first write. Keeping the source id here lets the
+         * customer pass close the link with one UPDATE instead of re-reading
+         * 415 591 deals from the portal a second time.
+         */
+        contactId: d.CONTACT_ID ? String(d.CONTACT_ID) : null,
+        /** See `DEAL_UTM_FIELDS`. Null when the portal sent none. */
+        utm: dealUtm(d),
+      },
     }
   }
 

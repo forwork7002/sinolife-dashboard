@@ -781,3 +781,23 @@ describe('BACKFILL — the windowed re-read after a new column lands', () => {
     expect(store.runs).toHaveLength(0)
   })
 })
+
+describe('persistRecords — the by-id re-read of «ИИ обработка» moves', () => {
+  it('writes the records through the handler and leaves no run and no cursor behind', async () => {
+    const table = new FakeTable()
+    const store = new FakeStore()
+    const { engine } = engineWith([makeHandler('DEALS', [], table)], store)
+
+    const outcome = await engine.persistRecords('DEALS', rows(3))
+
+    expect(outcome).toEqual({ created: 3, updated: 0, skipped: 0, failed: 0 })
+    // A DEALS / BACKFILL row here would settle the one-off backfill.
+    expect(store.runs).toHaveLength(0)
+    expect(await store.getCursor('DEMO', 'DEALS')).toBeUndefined()
+  })
+
+  it('refuses a handler that needs its finalize', async () => {
+    const { engine } = engineWith([makeHandler('DEALS', [], new FakeTable(), { finalize: async () => {} })])
+    await expect(engine.persistRecords('DEALS', rows(1))).rejects.toThrow(/finalize/)
+  })
+})

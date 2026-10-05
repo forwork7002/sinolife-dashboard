@@ -59,6 +59,7 @@ import { SyncEngine } from '../src/server/integrations/crm/sync/SyncEngine'
 import { historyBackfillCursor } from '../src/server/integrations/crm/sync/backfill'
 import { relinkDealContacts } from '../src/server/integrations/crm/sync/contactRelink'
 import { sweepRecentConfirmations } from '../src/server/integrations/crm/sync/recentDeletions'
+import { closedTriageDealIds, rereadClosedTriageDeals } from '../src/server/integrations/crm/sync/triageMoves'
 import { importMetaSpend } from '../src/server/integrations/meta/metaImport'
 import { zonedDateKey } from '../src/server/domain/period/period'
 import {
@@ -200,6 +201,22 @@ const SWEEP_EVERY = Number(process.env.SYNC_SWEEP_EVERY ?? 1440)
 const RECENT_SWEEPS = [
   { label: 'yaqin', days: 2, everyMs: Number(process.env.SYNC_RECENT_SWEEP_MIN ?? 5) * 60_000 },
   { label: 'keng', days: 62, everyMs: Number(process.env.SYNC_WIDE_SWEEP_MIN ?? 60) * 60_000 },
+] as const
+
+/**
+ * «ИИ ОБРАБОТКА» DEALS THE PORTAL MOVED TO РЕГИСТРАЦИЯ — see `triageMoves.ts`.
+ * The move leaves DATE_MODIFY alone, so these are re-read by id:
+ *
+ *   near   closed in «ИИ обработка» in the last 2 days, every 5 minutes —
+ *          a handful of ids, one invocation;
+ *   wide   every closed one (~500), hourly — ~10 invocations. The first wide
+ *          pass also repairs the moves made before this shipped.
+ *
+ * Minutes; 0 switches a reach off.
+ */
+const TRIAGE_REREADS = [
+  { label: 'yaqin', days: 2 as number | null, everyMs: Number(process.env.SYNC_TRIAGE_NEAR_MIN ?? 5) * 60_000 },
+  { label: 'keng', days: null, everyMs: Number(process.env.SYNC_TRIAGE_WIDE_MIN ?? 60) * 60_000 },
 ] as const
 
 /**
@@ -812,6 +829,7 @@ async function main() {
   let lastSweepFailedAt: Date | null = null
   // In memory only: a restart costs one near and one wide check, ~150 invocations.
   const recentSweepAt = new Map<string, Date>()
+  const triageRereadAt = new Map<string, Date>()
   try {
     const now = Date.now()
     const [reference, sweep] = await Promise.all([
@@ -1288,6 +1306,48 @@ async function main() {
         }
       } catch (error) {
         console.warn(`  ${stamp()} tasdiqlash tozalash (${reach.label}) muvaffaqiyatsiz: ${(error as Error).message}`)
+      }
+    }
+
+    /*
+      «ИИ ОБРАБОТКА» → РЕГИСТРАЦИЯ MOVES, RE-READ BY ID — see `TRIAGE_REREADS`.
+      The same guards as the queue's check above; written through the deal
+      handler with no run around it, so no `DEALS` / BACKFILL row settles the
+      one-off backfill below. A failure changes nothing and waits its interval.
+    */
+    for (const reach of TRIAGE_REREADS) {
+      const reachNow = new Date()
+      if (
+        !isPassDue(triageRereadAt.get(reach.label) ?? null, reachNow, reach.everyMs) ||
+        tick === 0 ||
+        calm !== 0 ||
+        provider.gate.isOpen() ||
+        stopping
+      ) {
+        continue
+      }
+      triageRereadAt.set(reach.label, reachNow)
+      try {
+        const candidates = await closedTriageDealIds(
+          prisma,
+          'BITRIX24',
+          reach.days === null ? null : new Date(reachNow.getTime() - reach.days * 86_400_000),
+        )
+        const r = await rereadClosedTriageDeals(
+          candidates,
+          (ids) => provider.fetchDealsByIds(ids),
+          (deals) => engine.persistRecords('DEALS', deals),
+          (deal) => deal.metadata?.pipelineRole === 'AI_TRIAGE',
+        )
+        // Quiet when nothing moved: the near reach runs 288 times a day.
+        if (r.moved > 0) {
+          console.log(
+            `  ${stamp()} ИИ обработка (${reach.label}): ${r.checked} bitim qayta oʻqildi,` +
+              ` ${r.moved} tasi boshqa voronkaga koʻchgan — yangilandi`,
+          )
+        }
+      } catch (error) {
+        console.warn(`  ${stamp()} ИИ обработка qayta oʻqish (${reach.label}) muvaffaqiyatsiz: ${(error as Error).message}`)
       }
     }
 

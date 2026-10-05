@@ -496,6 +496,23 @@ export class SyncEngine {
   }
 
   /**
+   * Write records the caller already read — the by-id re-read of
+   * `triageMoves.ts`. The same upsert as a run, with no run around it: no
+   * `sync_log` row (a `DEALS` BACKFILL row would settle the one-off backfill),
+   * no watermark, no sweep. Only for a handler with no `finalize`.
+   */
+  async persistRecords(
+    entity: SyncEntityValue,
+    items: readonly unknown[],
+  ): Promise<BatchOutcome & { failed: number }> {
+    const handler = this.handlers.get(entity)
+    if (!handler) throw new Error(`No handler registered for ${entity}`)
+    if (handler.finalize) throw new Error(`persistRecords: ${entity} needs its finalize — use runEntity`)
+    if (items.length === 0) return { created: 0, updated: 0, skipped: 0, failed: 0 }
+    return this.persistBatch(handler, items)
+  }
+
+  /**
    * Persist one page, isolating bad records.
    *
    * The batch is tried whole first, because that is one round trip instead of
