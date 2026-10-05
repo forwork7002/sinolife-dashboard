@@ -53,7 +53,7 @@ const GROUP_LABEL: Record<Group, string> = {
 }
 
 const GROUP_RULE: Record<Group, string> = {
-  fresh: 'Qoʻngʻiroq paytida raqam Bitrix24da yoʻq edi — kontakt shu qoʻngʻiroq bilan (±5 daqiqa) yaratilgan.',
+  fresh: 'Qoʻngʻiroq paytida raqam Bitrix24da yoʻq edi — kontakt birinchi qoʻngʻiroqdan 5 daqiqa oldin yoki undan keyin yaratilgan.',
   notReached: 'Kontakt avval bor, sdelkalari hanuz Регистрацияda — sotuv boʻlimiga hech qachon oʻtmagan.',
   talkedNoBuy: 'Первичка yoki Тасдиклашga oʻtgan sdelkasi bor (yoki Регистрацияda «Сделка успешна»), lekin xarid yoʻq.',
   buyer: 'Доставка yoki База voronkasida sdelkasi bor.',

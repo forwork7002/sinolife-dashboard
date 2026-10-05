@@ -123,18 +123,26 @@ interface Callers {
 /** `calls` must be in start order: the first one seen per number is its first call. */
 function callers(calls: readonly InboundCall[], contacts: ReadonlyMap<string, ContactHistory>): Callers {
   const first = new Map<string, InboundCall>()
+  /*
+    The number's contact: the first one ANY of its calls names. A first call
+    the sync could not link yet must not make a known buyer «fresh» when a
+    later call of the same number is linked.
+  */
+  const contactOf = new Map<string, string>()
   const talked = new Set<string>()
   calls.forEach((call, index) => {
     // A call with no usable number is its own caller rather than everybody's.
     const key = phoneKey(call.phone) ?? `#${index}`
     if (!first.has(key)) first.set(key, call)
+    if (call.customerId && !contactOf.has(key)) contactOf.set(key, call.customerId)
     if (call.durationSec > 0) talked.add(key)
   })
 
   const groups = zeroGroups()
   const unreached = zeroGroups()
   for (const [key, call] of first) {
-    const group = inboundGroup(call.startedAt, call.customerId ? contacts.get(call.customerId) : undefined)
+    const customerId = contactOf.get(key)
+    const group = inboundGroup(call.startedAt, customerId ? contacts.get(customerId) : undefined)
     groups[group] += 1
     if (!talked.has(key)) unreached[group] += 1
   }

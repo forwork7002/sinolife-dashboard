@@ -682,6 +682,7 @@ const scanCache = ttlCache<{
   qualified: QualifiedSourceRow[]
   aiQualified: AiQualifiedStageRow[]
   sarafan: PipelineSourceCount
+  inboundCalls: number | null
 }>(60_000)
 
 export class LeadSourcesService {

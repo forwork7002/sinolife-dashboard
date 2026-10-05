@@ -94,6 +94,15 @@ describe('inboundReport', () => {
     expect(r.total.groups).toMatchObject({ fresh: 1, buyer: 1, noDeal: 0 })
   })
 
+  it('takes the contact from a later call when the first one was not linked yet', () => {
+    const linkedLater = [
+      call('+998935554433', min(10), 0, 'buyer', '2026-10-01'),
+      call('+998935554433', min(20), 0, 'buyer', '2026-10-01'),
+    ].map((c, i) => (i === 0 ? { ...c, customerId: null } : c))
+    const r = inboundReport(linkedLater, contacts, new Map(), ['2026-10-01'])
+    expect(r.total.groups).toMatchObject({ fresh: 0, buyer: 1 })
+  })
+
   it('counts a number as unreached only when no call in the window had a second of talk', () => {
     const r = inboundReport(calls, contacts, new Map(), ['2026-10-01', '2026-10-02'])
     expect(r.total.unreached).toMatchObject({ fresh: 0, buyer: 1 })

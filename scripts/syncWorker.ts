@@ -440,6 +440,9 @@ const ONE_OFF_READS: readonly {
   },
 ]
 
+/** What a one-off read may need of the hourly budget: the contacts' ~7 600 and some room. */
+const ONE_OFF_HEADROOM = 8_000
+
 const WORKER_TIME_ZONE = process.env.APP_TIMEZONE ?? 'Asia/Tashkent'
 
 /** How recent a logged refusal must be to start the next worker already closed. */
@@ -1429,6 +1432,8 @@ async function main() {
       isBackfillDue(DEALS_BACKFILL, backfillSettled, backfillNow, WORKER_TIME_ZONE, backfillFailedAt)
     ) {
       const backfillStarted = Date.now()
+      // An expensive night read: the one-off reads below keep their hour from it.
+      lastOneOffAt = new Date()
       console.log(
         `  ${stamp()} backfill: ${DEALS_BACKFILL.since.toISOString().slice(0, 10)} dan beri` +
           ' oʻzgargan bitimlar qayta oʻqilmoqda',
@@ -1449,9 +1454,18 @@ async function main() {
 
     /*
       THE ONE-OFF READS — see `ONE_OFF_READS`. The deals backfill's guards, one
-      read per tick, and an hour between two of them.
+      read per tick, an hour between two of them (the deals backfill counts),
+      and never beside the daily sweep: the sweep's ~9 300 invocations and the
+      contacts' ~7 600 together pass the 15 000 hourly ceiling, and a refused
+      ceiling freezes every hot tick until the hour drains. So an hour clear of
+      the sweep either side, and ONE_OFF_HEADROOM left in the budget.
     */
     const oneOffNow = new Date()
+    const oneOffBudget = provider.budget.state(oneOffNow)
+    const sweepNear =
+      SWEEP_MS > 0 &&
+      ((lastSweepAt !== null && oneOffNow.getTime() - lastSweepAt.getTime() < SWEEP_RETRY_MS) ||
+        isPassDue(lastSweepAt, new Date(oneOffNow.getTime() + SWEEP_RETRY_MS), SWEEP_MS))
     const oneOff = ONE_OFF_READS.find((read) =>
       isBackfillDue(
         read.request,
@@ -1467,6 +1481,8 @@ async function main() {
       calm === 0 &&
       !provider.gate.isOpen() &&
       !stopping &&
+      !sweepNear &&
+      oneOffBudget.ceiling - oneOffBudget.spent >= ONE_OFF_HEADROOM &&
       (lastOneOffAt === null || oneOffNow.getTime() - lastOneOffAt.getTime() >= SWEEP_RETRY_MS)
     ) {
       lastOneOffAt = oneOffNow
