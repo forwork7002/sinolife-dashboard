@@ -15,6 +15,7 @@ import {
   formatFullUzs,
   formatPercent,
 } from "@/lib/format";
+import { readsCompanyWide } from "@/lib/sections";
 import { useServerViewer } from "@/lib/viewer";
 
 /**
@@ -55,10 +56,12 @@ export function ForecastSection() {
   const { query, data, status } = useFaktBoard();
   /*
     «Kunlar boʻyicha» sits directly above the sellers' table (the client,
-    2026-10-05). Company-wide accounts only: its endpoint cannot narrow Meta
-    money and refuses anyone else, so a ROP is not shown an error card.
+    2026-10-05). Accounts reading this screen company-wide only — ALL, or a
+    ROP given «Butun kompaniya» on it: its endpoint cannot narrow Meta money
+    and refuses anyone else, so a ROP is not shown an error card.
   */
-  const companyWide = useServerViewer()?.dataScope === "ALL";
+  const viewer = useServerViewer();
+  const companyWide = viewer !== null && readsCompanyWide(viewer, "sales");
   const days = companyWide ? <AdSalesDaysTable /> : undefined;
 
   return (

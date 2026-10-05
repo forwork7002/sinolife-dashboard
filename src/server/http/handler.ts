@@ -12,8 +12,14 @@ import { NextResponse } from 'next/server'
 import { ZodError, type ZodType } from 'zod'
 
 import type { SectionValue } from '@/lib/sections'
-import { type Permission, type Principal, type RowScope, canSeeSection } from '@/server/auth/rbac'
-import { requirePermission } from '@/server/auth/session'
+import {
+  type Permission,
+  type Principal,
+  type RowScope,
+  canSeeSection,
+  widenForSection,
+} from '@/server/auth/rbac'
+import { assertPermission, requirePrincipal } from '@/server/auth/session'
 import { TRUSTED_ORIGINS } from '@/server/auth/auth'
 import { env } from '@/server/config/env'
 import { getCrmProvider } from '@/server/config/providerFactory'
@@ -101,6 +107,27 @@ function assertSection(principal: Principal, section: Access['section']): void {
   throw ApiError.forbidden('Bu boʻlim sizga berilmagan.')
 }
 
+/**
+ * Resolve the caller and pass both gates.
+ *
+ * The principal is WIDENED for this endpoint's section before the permission
+ * is asked: a narrowed account whose administrator chose «Butun kompaniya» for
+ * the screen reads it as ALL — permission, `ctx.scope` and all — and keeps its
+ * own scope everywhere else. See `widenForSection`.
+ */
+async function authorise(
+  request: Request,
+  access: Access,
+  mode: 'read' | 'write',
+): Promise<Principal> {
+  const resolved = await requirePrincipal(request)
+  // A write is judged on the STORED scope, always — see `widenForSection`.
+  const principal = mode === 'read' ? widenForSection(resolved, access.section) : resolved
+  assertPermission(principal, access.permission)
+  assertSection(principal, access.section)
+  return principal
+}
+
 export interface HandlerContext<Q> {
   readonly query: Q
   readonly correlationId: string
@@ -146,8 +173,7 @@ export function getHandler<Q>(
     const meta = baseMeta(correlationId)
 
     try {
-      const principal = await requirePermission(request, access.permission)
-      assertSection(principal, access.section)
+      const principal = await authorise(request, access, 'read')
 
       const url = new URL(request.url)
       const raw = searchParamsToObject(url.searchParams)
@@ -233,8 +259,7 @@ export function mutationHandler<B>(
         throw ApiError.forbidden('Soʻrov ishonchsiz manzildan keldi.')
       }
 
-      const principal = await requirePermission(request, access.permission)
-      assertSection(principal, access.section)
+      const principal = await authorise(request, access, 'write')
 
       let raw: unknown
       try {

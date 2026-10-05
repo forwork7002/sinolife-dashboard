@@ -34,7 +34,8 @@ export const GET = getHandler(ACCESS, querySchema, async (ctx) => {
     month: ctx.query.month,
     timeZone: ctx.timeZone,
     now: ctx.now,
-    canEditPlans: can(ctx.principal, 'kpi:manage'),
+    // Not on a widened read: the write is judged on the stored scope and refused.
+    canEditPlans: can(ctx.principal, 'kpi:manage') && !ctx.principal.widened,
   })
   return { data }
 })

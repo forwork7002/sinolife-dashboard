@@ -101,6 +101,11 @@ export const LANDING_ROUTE = '/sellers'
  * asked for. Leaving them here would have gone on warning an administrator
  * away from the two screens the scope was built to serve.
  *
+ * TICKED IS WIDE SINCE 2026-10-05: a narrowed account that holds one of these
+ * reads it company-wide (`user.wideSections`, see `readsCompanyWide` below),
+ * so «refuse» now applies only to a screen that reaches a narrowed account
+ * through its ROLE defaults, untouched by the per-section choice.
+ *
  * PRESENTATION ONLY, and a mirror rather than the rule — the refusal happens
  * at the endpoint. Naming them here is what lets the admin screen say so
  * BEFORE the account is saved, instead of the administrator hearing it from a
@@ -187,6 +192,77 @@ export function companyWideSections(ids: readonly string[]): readonly SectionSpe
 /** True when this screen's endpoint refuses an account that is not company-wide. */
 export function isCompanyWideSection(id: string): boolean {
   return COMPANY_WIDE.has(id)
+}
+
+/**
+ * The screens that answer EVERY account with the company's rows already.
+ *
+ * «Sotuvchilar reytingi» by the client's decision of 2026-09-08 (see
+ * routeAccess.test.ts, `COMPANY_WIDE` there), «Kadrlar tuzilmasi» because it
+ * prints who reports to whom and nothing a scope could cut. A per-section
+ * scope choice has nothing to change on either, so the admin screen states it
+ * instead of offering a switch that does nothing.
+ */
+const OPEN_TO_EVERYONE: ReadonlySet<string> = new Set<SectionValue>(['sellers', 'structure'])
+
+export function isOpenToEveryoneSection(id: string): boolean {
+  return OPEN_TO_EVERYONE.has(id)
+}
+
+/**
+ * Whether a narrowed account reads this screen company-wide.
+ *
+ * PER-SECTION SCOPE (2026-10-05). The client asked to hand a ROP some screens
+ * for their own team and others for the whole company — «hohlagan boʻlimimni
+ * oʻz boʻlimi boʻyicha va butun kompaniya boʻyicha» — so a TEAM or OWN account
+ * carries `wideSections`, the ticks that read as ALL. Everything else it holds
+ * stays narrowed. An ALL account reads every screen company-wide anyway.
+ *
+ * Presentation here; `widenForSection` in rbac.ts is the same rule on the
+ * server, where it is enforced.
+ */
+export function readsCompanyWide(
+  viewer: { readonly dataScope: string; readonly wideSections?: readonly string[] },
+  id: string,
+): boolean {
+  return viewer.dataScope === 'ALL' || (viewer.wideSections ?? []).includes(id)
+}
+
+/**
+ * The wide ticks worth STORING, judged against the account as it will be saved.
+ *
+ * An ALL account stores none — a stale list would spring back to life the day
+ * somebody narrows the account. A narrowed one keeps only what the
+ * administrator SENT, among its own ticked sections: never added here, so an
+ * unrelated edit (a password reset on an OWN seller whose stale ticks include
+ * payroll) can never widen anything (security review, 2026-10-05). The form
+ * sends a ticked company-only screen as wide, beside the «Butun kompaniya»
+ * chip the administrator is looking at when they save.
+ */
+export function wideSectionsToStore(
+  sent: readonly string[] | null | undefined,
+  sections: readonly string[],
+  dataScope: string,
+): SectionValue[] {
+  if (dataScope === 'ALL' || !sent) return []
+  return sections.filter(
+    (id): id is SectionValue =>
+      BY_ID.has(id) && !OPEN_TO_EVERYONE.has(id) && sent.includes(id),
+  )
+}
+
+/**
+ * The wide ticks an account really holds: only known ids, only ids among its
+ * own sections. A wide tick on a screen the account cannot open grants
+ * nothing, and an unknown id must not keep granting after a section is gone.
+ */
+export function effectiveWideSections(
+  sections: readonly string[],
+  stored: readonly string[] | null | undefined,
+): readonly SectionValue[] {
+  return (stored ?? []).filter(
+    (id): id is SectionValue => BY_ID.has(id) && sections.includes(id),
+  )
 }
 
 /**

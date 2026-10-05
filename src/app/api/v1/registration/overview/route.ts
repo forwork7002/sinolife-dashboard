@@ -18,7 +18,8 @@ export const GET = getHandler(ACCESS, overviewQuerySchema, async (ctx) => {
   const data = await registrationService.overview({
     day: ctx.query.day ?? zonedDateKey(ctx.now, ctx.timeZone),
     timeZone: ctx.timeZone,
-    canEdit: can(ctx.principal, 'kpi:manage'),
+    // Not on a widened read: the write is judged on the stored scope and refused.
+    canEdit: can(ctx.principal, 'kpi:manage') && !ctx.principal.widened,
     brand: ctx.query.brand,
   })
   return { data }

@@ -36,6 +36,14 @@ export const GET = getHandler(ACCESS, z.object({}), async (ctx) => {
     referenceRepository.findSources(),
   ])
 
+  /*
+    A narrowed account holding ANY screen company-wide gets the whole roster:
+    the pickers are shared across screens, and on that screen it may filter
+    by anybody. Names only — every account already reads them on
+    «Sotuvchilar reytingi».
+  */
+  const readsAnyScreenWide = (ctx.principal.wideSections ?? []).length > 0
+
   return {
     data: {
       /*
@@ -46,9 +54,10 @@ export const GET = getHandler(ACCESS, z.object({}), async (ctx) => {
         an account whose rows are fifteen. Filtering it here is presentation;
         the SQL scope behind each endpoint is the boundary.
       */
-      employees: ctx.scope.restrictToEmployeeIds
-        ? employees.filter((e) => ctx.scope.restrictToEmployeeIds!.includes(e.id))
-        : employees,
+      employees:
+        ctx.scope.restrictToEmployeeIds && !readsAnyScreenWide
+          ? employees.filter((e) => ctx.scope.restrictToEmployeeIds!.includes(e.id))
+          : employees,
       departments,
       sources,
       /*

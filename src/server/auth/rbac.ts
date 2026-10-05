@@ -29,7 +29,12 @@
  * Framework-free and pure, so the whole matrix is unit testable.
  */
 
-import { effectiveSections, type SectionValue } from '@/lib/sections'
+import {
+  effectiveSections,
+  effectiveWideSections,
+  isOpenToEveryoneSection,
+  type SectionValue,
+} from '@/lib/sections'
 import type { DataScopeValue, RoleValue } from '@/server/domain/types'
 
 export const PERMISSIONS = [
@@ -139,6 +144,20 @@ export interface Principal {
    * reads one list and none of them can implement the fallback differently.
    */
   readonly sections: readonly SectionValue[]
+  /**
+   * The granted sections a narrowed account reads COMPANY-WIDE.
+   *
+   * Already resolved (`wideSectionsFor`): a subset of `sections`. Ignored on
+   * an ALL account. Absent is empty — the narrow reading, so a principal built
+   * without it fails closed. See `widenForSection`.
+   */
+  readonly wideSections?: readonly SectionValue[]
+  /**
+   * True on a principal `widenForSection` lifted to ALL for one read. It READS
+   * the company there and must not be offered anything else the stored scope
+   * withholds — the edit controls a company-wide account sees, above all.
+   */
+  readonly widened?: boolean
 }
 
 /**
@@ -164,6 +183,56 @@ export function sectionsFor(
   stored: readonly string[] | null | undefined,
 ): readonly SectionValue[] {
   return effectiveSections(role, stored)
+}
+
+/** Resolve the stored wide ticks against the sections the account holds. */
+export function wideSectionsFor(
+  sections: readonly SectionValue[],
+  stored: readonly string[] | null | undefined,
+): readonly SectionValue[] {
+  return effectiveWideSections(sections, stored)
+}
+
+/**
+ * The principal an endpoint should answer, given the screens it feeds.
+ *
+ * PER-SECTION SCOPE. A narrowed account whose administrator chose «Butun
+ * kompaniya» for a screen reads that screen as an ALL account would — the
+ * permission check, `ctx.scope` and every memo keyed by it all see ALL — and
+ * every other screen it holds stays narrowed. Asked BEFORE the permission, so
+ * a company-only endpoint (`analytics:read:all`) admits the widened caller.
+ *
+ * AN ENDPOINT FEEDING SEVERAL SCREENS WIDENS ONLY IF EVERY ONE OF THEM THIS
+ * ACCOUNT HOLDS IS WIDE. The request does not say which screen sent it, so
+ * widening on ANY would let a screen granted for one team read the company's
+ * rows through an endpoint it shares with a wide one.
+ *
+ * `null` (no screen: the filter payload, search, the header) never widens.
+ *
+ * READS ONLY. `mutationHandler` never calls this: the RNP plan / cost /
+ * headcount and the lead split POSTs are gated on `analytics:read:all` plus
+ * the role's `kpi:manage`, and a team-scoped MANAGER widened there would
+ * overwrite every team's plans (security review, 2026-10-05).
+ */
+export function widenForSection(
+  principal: Principal,
+  section: SectionValue | readonly SectionValue[] | null,
+): Principal {
+  if (section === null || principal.dataScope === 'ALL' || !principal.isActive) return principal
+
+  const wide = principal.wideSections ?? []
+  if (wide.length === 0) return principal
+
+  const wanted: readonly SectionValue[] = Array.isArray(section)
+    ? section
+    : [section as SectionValue]
+  const held = wanted.filter((id) => canSeeSection(principal, id))
+  // «Sotuvchilar reytingi» / «Kadrlar tuzilmasi» answer everybody the company
+  // already, so they count as wide here and are never stored as a choice.
+  const isWide = (id: SectionValue) => wide.includes(id) || isOpenToEveryoneSection(id)
+  if (held.length === 0 || !held.every(isWide)) return principal
+
+  return { ...principal, dataScope: 'ALL', widened: true }
 }
 
 export function can(principal: Principal, permission: Permission): boolean {

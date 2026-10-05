@@ -81,6 +81,7 @@ const createSchema = z.object({
   role: z.enum(ROLES),
   dataScope: z.enum(DATA_SCOPES).optional(),
   sections: z.array(z.enum(SECTION_IDS as unknown as [string, ...string[]])).max(50).optional(),
+  wideSections: z.array(z.enum(SECTION_IDS as unknown as [string, ...string[]])).max(50).optional(),
   employeeId: z.string().trim().min(1).max(64).nullable().optional(),
 })
 

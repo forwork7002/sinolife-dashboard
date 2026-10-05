@@ -1,7 +1,8 @@
 import { z } from 'zod'
 
+import { widenForSection } from '@/server/auth/rbac'
 import { getHandler } from '@/server/http/handler'
-import { alertsService } from '@/server/services/container'
+import { alertsService, scopeService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,5 +17,16 @@ export const dynamic = 'force-dynamic'
 const ACCESS = { permission: 'analytics:read:own', section: null } as const
 
 export const GET = getHandler(ACCESS, z.object({}), async (ctx) => ({
-  data: await alertsService.load(ctx.principal, ctx.scope, ctx.now, ctx.timeZone),
+  /*
+    The scope here only cuts the bell, which counts the Tasdiqlash backlog —
+    so it is the scope THAT SCREEN reads. A ROP given «Butun kompaniya» on
+    Tasdiqlash sees the company's queue behind the link; a bell counting their
+    team's would describe a different set of rows from the page it opens.
+  */
+  data: await alertsService.load(
+    ctx.principal,
+    await scopeService.resolve(widenForSection(ctx.principal, 'confirmation')),
+    ctx.now,
+    ctx.timeZone,
+  ),
 }))

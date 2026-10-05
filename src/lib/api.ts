@@ -245,6 +245,11 @@ export interface UserRowDto {
    * its role. The screen has to show that difference, so it gets the raw value.
    */
   readonly sections: readonly string[]
+  /**
+   * The ticked sections a narrowed (TEAM / OWN) account reads COMPANY-WIDE —
+   * «Butun kompaniya» beside a tick. Empty on an ALL account.
+   */
+  readonly wideSections: readonly string[]
   /** How much of each granted section this account reads. */
   readonly dataScope: DataScopeValue
   readonly employeeId: string | null

@@ -330,6 +330,14 @@ model User {
   /// still cannot read finance, because the endpoint checks the role's
   /// permission first and SALES has none.
   sections   String[] @default([])
+  /// The granted sections a narrowed (TEAM / OWN) account reads COMPANY-WIDE.
+  ///
+  /// Per-section scope, 2026-10-05: a ROP reads «Tasdiqlash» for their own
+  /// team and «RNP» for the whole company. Only ids also in `sections` count
+  /// (`effectiveWideSections`); ignored on an ALL account. Empty = every
+  /// granted screen follows `dataScope`, which is how every account read
+  /// before this column.
+  wideSections String[] @default([])
   /// How much of each granted section this account reads.
   ///
   /// ALL by default, because an account an administrator has just created and

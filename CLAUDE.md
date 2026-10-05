@@ -249,6 +249,33 @@ kept, in `HeadPicker`.
   are read together. `minWidth` 1120 → 860, which is what took the horizontal
   scrollbar off the office laptop.
 
+**PER-SECTION SCOPE — `user.wideSections`, 2026-10-05** («ROP larga
+bo'limlarini … hohlagan bo'limimni o'z bo'limi va butun kompaniya bo'yicha»).
+A ROP who ticked RNP was refused it: one `dataScope` covered every screen.
+Now a narrowed account carries the ticks it reads COMPANY-WIDE, and
+`getHandler` runs `widenForSection` BEFORE the permission check — on a wide
+screen the principal is ALL (permission, `ctx.scope`, memo keys), everywhere
+else it keeps TEAM/OWN. An endpoint feeding several screens widens only if
+EVERY one of them the account holds is wide (`/analytics/sellers` feeds
+`sellers` + `sales`; `sellers` / `structure` count as wide); `section: null`
+never widens — except that `/meta/alerts` resolves the bell's scope as
+`confirmation` reads it, so the bell and the page behind it agree. On the form each tick on a narrowed account shows
+«Oʻz boʻlimi | Butun kompaniya» (Tasdiqlash, Logistika, Savdo dinamikasi,
+KPI), or the fixed «Butun kompaniya» for the `COMPANY_WIDE` screens — the
+FORM sends a ticked one as wide; the server stores only what was sent
+(`cleanWideSections` never adds) and rewrites the list only when the body
+touches sections / scope / wide — or «Hammaga toʻliq» for `sellers` /
+`structure`, which answer everybody already. The sidebar, the page guard and
+`ForecastSection` read `readsCompanyWide`. **WIDENING IS READ-ONLY**:
+`mutationHandler` judges on the stored scope (a TEAM MANAGER widened on the
+RNP plan POST would rewrite every team's plans), and a widened principal
+carries `widened: true` so `canEditPlans` / `canEdit` stay false. Migration
+`20261006090000_user_wide_sections` backfilled ONLY `rnp` as wide on TEAM
+accounts that hold it (the client named it); every other company-only tick —
+several were added by earlier migrations, not by a decision — waits for an
+administrator to re-save the account. `/meta/filters` hands an account with ANY wide
+screen the whole roster (names only).
+
 **Which endpoints admit a narrowed account is pinned by
 `tests/http/routeAccess.test.ts`.** Declaring `permission: 'analytics:read:all'`
 is how an endpoint says *"I cannot narrow my rows — refuse a ROP rather than

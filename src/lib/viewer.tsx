@@ -34,6 +34,11 @@ export interface Viewer {
   readonly role: RoleValue
   readonly sections: readonly SectionValue[]
   readonly dataScope: DataScopeValue
+  /**
+   * The granted screens a narrowed account reads company-wide. Absent is
+   * empty — the narrow reading. See `readsCompanyWide` in sections.ts.
+   */
+  readonly wideSections?: readonly SectionValue[]
   readonly canManageUsers: boolean
 }
 

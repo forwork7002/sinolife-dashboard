@@ -27,6 +27,7 @@ const updateSchema = z
     dataScope: z.enum(DATA_SCOPES).optional(),
     isActive: z.boolean().optional(),
     sections: z.array(z.enum(SECTION_IDS as unknown as [string, ...string[]])).max(50).optional(),
+    wideSections: z.array(z.enum(SECTION_IDS as unknown as [string, ...string[]])).max(50).optional(),
     employeeId: z.string().trim().min(1).max(64).nullable().optional(),
     password: z.string().min(MIN_PASSWORD_LENGTH).max(MAX_PASSWORD_LENGTH).optional(),
   })

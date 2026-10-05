@@ -32,6 +32,7 @@ import {
   type SectionSpec,
   type SectionValue,
   isCompanyWideSection,
+  readsCompanyWide,
 } from '@/lib/sections'
 import { optionalPrincipal } from './session'
 import { can, canSeeSection, type Principal } from './rbac'
@@ -65,9 +66,9 @@ function firstServableSection(
   principal: Principal,
   prefer?: string,
 ): SectionSpec | undefined {
-  const narrowed = principal.dataScope !== 'ALL'
   const servable = (spec: SectionSpec) =>
-    canSeeSection(principal, spec.id) && !(narrowed && isCompanyWideSection(spec.id))
+    canSeeSection(principal, spec.id) &&
+    (readsCompanyWide(principal, spec.id) || !isCompanyWideSection(spec.id))
 
   const preferred = prefer
     ? SECTIONS.find((spec) => spec.route === prefer && servable(spec))

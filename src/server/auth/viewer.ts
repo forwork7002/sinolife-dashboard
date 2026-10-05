@@ -26,6 +26,8 @@ export function viewerOf(principal: Principal): Viewer {
     role: principal.role,
     sections: principal.sections,
     dataScope: principal.dataScope,
+    // The screens a narrowed account reads company-wide (per-section scope).
+    wideSections: principal.wideSections ?? [],
     /*
       Asked of `can`, not compared against 'ADMIN'.
 

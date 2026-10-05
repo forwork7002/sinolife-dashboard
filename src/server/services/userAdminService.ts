@@ -23,7 +23,7 @@
  */
 
 import { checkPassword } from '@/lib/passwordPolicy'
-import { SECTION_IDS, type SectionValue } from '@/lib/sections'
+import { SECTION_IDS, type SectionValue, wideSectionsToStore } from '@/lib/sections'
 import { prisma } from '@/server/db/prisma'
 import type { DataScopeValue, RoleValue } from '@/server/domain/types'
 import { ApiError } from '@/server/http/errors'
@@ -46,6 +46,8 @@ export interface UserRow {
   readonly role: RoleValue
   readonly isActive: boolean
   readonly sections: readonly SectionValue[]
+  /** The ticked sections a narrowed account reads company-wide. */
+  readonly wideSections: readonly SectionValue[]
   /** How much of each granted section this account reads. */
   readonly dataScope: DataScopeValue
   readonly employeeId: string | null
@@ -63,6 +65,7 @@ const SELECT = {
   role: true,
   isActive: true,
   sections: true,
+  wideSections: true,
   dataScope: true,
   employeeId: true,
   twoFactorEnabled: true,
@@ -79,6 +82,7 @@ function toRow(u: {
   role: RoleValue
   isActive: boolean
   sections: string[]
+  wideSections: string[]
   dataScope: DataScopeValue
   employeeId: string | null
   twoFactorEnabled: boolean
@@ -99,6 +103,9 @@ function toRow(u: {
     // look configured — the admin would then "save" the defaults and freeze
     // them, so the account stops following its role.
     sections: u.sections.filter((s): s is SectionValue =>
+      (SECTION_IDS as readonly string[]).includes(s),
+    ),
+    wideSections: u.wideSections.filter((s): s is SectionValue =>
       (SECTION_IDS as readonly string[]).includes(s),
     ),
     dataScope: u.dataScope,
@@ -282,6 +289,15 @@ function cleanSections(sections: readonly string[] | undefined): string[] {
   return [...new Set(sections.filter((s) => (SECTION_IDS as readonly string[]).includes(s)))]
 }
 
+/** See `wideSectionsToStore` — the rule is pure and lives beside the sections. */
+function cleanWideSections(
+  wide: readonly string[] | undefined,
+  sections: readonly string[],
+  dataScope: DataScopeValue,
+): string[] {
+  return wideSectionsToStore(wide, sections, dataScope)
+}
+
 /**
  * A scope that resolves to nothing is a mistake, not a setting.
  *
@@ -400,6 +416,8 @@ export interface CreateInput {
   readonly password: string
   readonly role: RoleValue
   readonly sections?: readonly string[]
+  /** The ticked sections a narrowed account reads company-wide. */
+  readonly wideSections?: readonly string[]
   /** Defaults to ALL — a new account is meant to see what it was given. */
   readonly dataScope?: DataScopeValue
   readonly employeeId?: string | null
@@ -438,9 +456,14 @@ export async function createUser(
     employeeId: input.employeeId ?? null,
   })
 
+  const sections = cleanSections(input.sections)
   const saved = await prisma.user.update({
     where: { id: result.id },
-    data: { sections: cleanSections(input.sections), dataScope },
+    data: {
+      sections,
+      wideSections: cleanWideSections(input.wideSections, sections, dataScope),
+      dataScope,
+    },
     select: SELECT,
   })
 
@@ -457,6 +480,7 @@ export async function createUser(
           username: saved.username,
           role: saved.role,
           sections: saved.sections,
+          wideSections: saved.wideSections,
           dataScope: saved.dataScope,
           employeeId: saved.employeeId,
         },
@@ -476,6 +500,7 @@ export interface UpdateInput {
   readonly role?: RoleValue
   readonly isActive?: boolean
   readonly sections?: readonly string[]
+  readonly wideSections?: readonly string[]
   readonly dataScope?: DataScopeValue
   readonly employeeId?: string | null
   readonly password?: string
@@ -569,6 +594,24 @@ export async function updateUser(
     await setPassword(targetId, input.password)
   }
 
+  /*
+    The wide ticks are judged against the account AFTER the patch, and only
+    when the patch touches what they depend on: unticking a section or
+    widening the whole account must take its wide tick with it, while a
+    rename or a password reset leaves them exactly as they were.
+  */
+  const touchesScope =
+    input.sections !== undefined ||
+    input.dataScope !== undefined ||
+    input.wideSections !== undefined
+  const nextSections =
+    input.sections !== undefined ? cleanSections(input.sections) : before.sections
+  const nextWide = cleanWideSections(
+    input.wideSections ?? before.wideSections,
+    nextSections,
+    input.dataScope ?? before.dataScope,
+  )
+
   const after = await prisma.user.update({
     where: { id: targetId },
     data: {
@@ -582,7 +625,8 @@ export async function updateUser(
       ...(nextEmail !== undefined ? { email: nextEmail } : {}),
       ...(input.role !== undefined ? { role: input.role } : {}),
       ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
-      ...(input.sections !== undefined ? { sections: cleanSections(input.sections) } : {}),
+      ...(input.sections !== undefined ? { sections: nextSections } : {}),
+      ...(touchesScope ? { wideSections: nextWide } : {}),
       ...(input.dataScope !== undefined ? { dataScope: input.dataScope } : {}),
       ...(input.employeeId !== undefined ? { employeeId: input.employeeId } : {}),
     },
@@ -602,6 +646,7 @@ export async function updateUser(
           role: before.role,
           isActive: before.isActive,
           sections: before.sections,
+          wideSections: before.wideSections,
           dataScope: before.dataScope,
           employeeId: before.employeeId,
         },
@@ -611,6 +656,7 @@ export async function updateUser(
           role: after.role,
           isActive: after.isActive,
           sections: after.sections,
+          wideSections: after.wideSections,
           dataScope: after.dataScope,
           employeeId: after.employeeId,
         },

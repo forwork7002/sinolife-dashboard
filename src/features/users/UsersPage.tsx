@@ -32,7 +32,13 @@ import {
   type DataScopeValue,
 } from '@/lib/dataScope'
 import { ROLE_HINTS, ROLE_LABELS, ROLE_VALUES, type RoleValue } from '@/lib/roles'
-import { SECTIONS, companyWideSections, defaultSectionsFor } from '@/lib/sections'
+import {
+  SECTIONS,
+  companyWideSections,
+  defaultSectionsFor,
+  isCompanyWideSection,
+  isOpenToEveryoneSection,
+} from '@/lib/sections'
 
 /**
  * Account administration.
@@ -153,6 +159,12 @@ export function UsersPage() {
         ) : (
           <span className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
             {row.sections.length} ta tanlangan
+            {/* Per-section scope: how many of them a narrowed account reads company-wide. */}
+            {row.dataScope !== 'ALL' && row.wideSections.length > 0 && (
+              <span className="block" style={{ color: 'var(--ink-muted)' }}>
+                {row.wideSections.length} tasi butun kompaniya
+              </span>
+            )}
           </span>
         ),
     },
@@ -354,6 +366,14 @@ function UserDialog({
   const [employeeId, setEmployeeId] = useState<string>(user?.employeeId ?? '')
   const [isActive, setIsActive] = useState(user?.isActive ?? true)
   const [sections, setSections] = useState<string[]>([...(user?.sections ?? [])])
+  /*
+    «Butun kompaniya» beside a tick, for a narrowed account (2026-10-05: «hohlagan
+    boʻlimimni … oʻz boʻlimi va butun kompaniya boʻyicha»). Holds the CHOICES
+    only — the screens that cannot narrow are company-wide whenever ticked, and
+    are added on save (`wideToSave`), so this list never has to be kept in step
+    with the ticks.
+  */
+  const [wideSections, setWideSections] = useState<string[]>([...(user?.wideSections ?? [])])
 
   // The roster the filter bar already loaded, reused rather than refetched.
   const employees = useFilterOptions().data?.data.employees ?? []
@@ -416,6 +436,7 @@ function UserDialog({
     setEmployeeId('')
     setDataScope(next === 'rop' ? 'TEAM' : 'ALL')
     setSections(next === 'rop' ? ['confirmation', 'logistics', 'sellers'] : [])
+    setWideSections([])
   }
 
   /*
@@ -433,6 +454,21 @@ function UserDialog({
     setUsername(loginSuggestion(picked.fullName))
   }
 
+  /*
+    What is sent as `wideSections`: the choices on screens that can narrow, and
+    every ticked screen that cannot — those only ever open company-wide. The
+    server applies the same rule (`cleanWideSections`), so this is the form
+    saying out loud what will be stored rather than the rule itself.
+  */
+  const wideToSave =
+    dataScope === 'ALL'
+      ? []
+      : sections.filter(
+          (id) =>
+            !isOpenToEveryoneSection(id) &&
+            (isCompanyWideSection(id) || wideSections.includes(id)),
+        )
+
   const save = useMutation({
     mutationFn: async () => {
       if (password && password !== confirm) {
@@ -444,6 +480,7 @@ function UserDialog({
           role,
           isActive,
           sections,
+          wideSections: wideToSave,
           dataScope,
           // Empty means "no link", which is a legitimate state for a
           // company-wide account and is stored as null rather than ''.
@@ -463,6 +500,7 @@ function UserDialog({
         password,
         role,
         sections,
+        wideSections: wideToSave,
         dataScope,
         employeeId: employeeId === '' ? null : employeeId,
       })
@@ -475,17 +513,28 @@ function UserDialog({
     onSuccess: onSaved,
   })
 
-  const toggle = (id: string) =>
+  const toggle = (id: string) => {
+    // Unticking takes the scope choice with it, so a re-tick opens on «Oʻz boʻlimi».
+    if (sections.includes(id)) setWideSections((current) => current.filter((s) => s !== id))
     setSections((current) =>
       current.includes(id) ? current.filter((s) => s !== id) : [...current, id],
     )
+  }
 
   const groups = [...new Set(SECTIONS.map((s) => s.group))]
   const roleDefaults = defaultSectionsFor(role)
   // What the ticks resolve to: an empty list follows the role, and the
   // warning has to judge what the account will ACTUALLY hold.
-  const effective = sections.length > 0 ? sections : roleDefaults
-  const blockedByScope = companyWideSections(effective)
+  /*
+    Only an UNTICKED list can still hand a narrowed account a screen it cannot
+    open: a ticked company-only screen is company-wide now (`wideToSave`), but
+    the role's defaults carry no scope choice at all.
+  */
+  const blockedByScope = sections.length > 0 ? [] : companyWideSections(roleDefaults)
+  const setWide = (id: string, wide: boolean) =>
+    setWideSections((current) =>
+      wide ? [...new Set([...current, id])] : current.filter((s) => s !== id),
+    )
   /*
     BOTH NARROWED SCOPES NEED THE LINK, and for the same reason.
 
@@ -811,7 +860,21 @@ function UserDialog({
             </Button>
           </div>
 
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {/*
+            PER-SECTION SCOPE, said once above the list and then on each tick.
+            Two columns while it shows, so «Oʻz boʻlimi | Butun kompaniya» fits
+            beside a label without wrapping.
+          */}
+          {scopeIsNarrowed && (
+            <p className="mt-3 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              Har bir belgilangan boʻlim uchun tanlang: «Oʻz boʻlimi» — faqat{' '}
+              {dataScope === 'OWN' ? 'oʻz natijalari' : 'oʻz jamoasi'}, «Butun kompaniya» — hamma.
+            </p>
+          )}
+
+          <div
+            className={`mt-3 grid gap-3 ${scopeIsNarrowed ? 'sm:grid-cols-2' : 'sm:grid-cols-2 lg:grid-cols-3'}`}
+          >
             {groups.map((group) => (
               <div key={group}>
                 <p
@@ -822,9 +885,9 @@ function UserDialog({
                 </p>
                 <ul className="space-y-1">
                   {SECTIONS.filter((s) => s.group === group).map((spec) => (
-                    <li key={spec.id}>
+                    <li key={spec.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <label
-                        className="flex items-center gap-2 text-[13px]"
+                        className="flex min-h-7 items-center gap-2 text-[13px]"
                         style={{ color: 'var(--ink-primary)' }}
                       >
                         <input
@@ -834,6 +897,14 @@ function UserDialog({
                         />
                         {spec.label}
                       </label>
+                      {scopeIsNarrowed && sections.includes(spec.id) && (
+                        <SectionScope
+                          label={spec.label}
+                          id={spec.id}
+                          wide={wideSections.includes(spec.id)}
+                          onChange={(wide) => setWide(spec.id, wide)}
+                        />
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -857,10 +928,10 @@ function UserDialog({
                 color: 'var(--status-warning)',
               }}
             >
-              Bu boʻlimlar faqat kompaniya boʻyicha hisoblanadi va «
-              {DATA_SCOPE_LABELS[dataScope]}» doirasida ochilmaydi:{' '}
-              {blockedByScope.map((spec) => spec.label).join(', ')}. Yo doirani «Butun kompaniya»
-              qiling, yo bu boʻlimlarni olib tashlang.
+              Hech narsa belgilanmagan, shuning uchun rol boʻyicha boʻlimlar koʻrinadi — ulardan
+              bular «{DATA_SCOPE_LABELS[dataScope]}» doirasida ochilmaydi:{' '}
+              {blockedByScope.map((spec) => spec.label).join(', ')}. Kerakli boʻlimlarni belgilang —
+              bular belgilansa butun kompaniya boʻyicha ochiladi.
             </p>
           )}
         </section>
@@ -945,6 +1016,57 @@ function UserDialog({
     </div>
   )
 }
+
+/**
+ * How much of ONE ticked screen a narrowed account reads.
+ *
+ * Three cases, because the screens are not alike. «Sotuvchilar reytingi» and
+ * «Kadrlar tuzilmasi» answer every account with the company's rows already, so
+ * there is nothing to choose and the line says so. The screens with no
+ * employee to cut on (RNP, Lidlar, Oylik, …) only exist company-wide, so a tick
+ * IS «Butun kompaniya» — stated, not offered. Everything else (Tasdiqlash,
+ * Logistika, Savdo dinamikasi, KPI) is the administrator's choice, opening on
+ * «Oʻz boʻlimi».
+ */
+function SectionScope({
+  id,
+  label,
+  wide,
+  onChange,
+}: {
+  id: string
+  label: string
+  wide: boolean
+  onChange: (wide: boolean) => void
+}) {
+  if (isOpenToEveryoneSection(id) || isCompanyWideSection(id)) {
+    return (
+      <span
+        className="rounded-md px-2 py-0.5 text-[11px]"
+        style={{
+          background: 'var(--grid)',
+          color: 'var(--ink-secondary)',
+        }}
+      >
+        {isOpenToEveryoneSection(id) ? 'Hammaga toʻliq' : 'Butun kompaniya'}
+      </span>
+    )
+  }
+
+  return (
+    <SegmentedControl
+      value={wide ? 'wide' : 'own'}
+      options={SCOPE_CHOICES}
+      onChange={(value) => onChange(value === 'wide')}
+      ariaLabel={`${label}: maʼlumot doirasi`}
+    />
+  )
+}
+
+const SCOPE_CHOICES: readonly { readonly value: 'own' | 'wide'; readonly label: string }[] = [
+  { value: 'own', label: 'Oʻz boʻlimi' },
+  { value: 'wide', label: 'Butun kompaniya' },
+]
 
 /**
  * The department heads, and what anchoring an account to one actually buys.

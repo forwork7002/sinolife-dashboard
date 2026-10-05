@@ -9,7 +9,7 @@ import { prisma } from '@/server/db/prisma'
 import { DATA_SCOPES, ROLES, type DataScopeValue, type RoleValue } from '@/server/domain/types'
 import { ApiError } from '@/server/http/errors'
 import { auth } from './auth'
-import { type Permission, type Principal, can, sectionsFor } from './rbac'
+import { type Permission, type Principal, can, sectionsFor, wideSectionsFor } from './rbac'
 
 /**
  * Resolve the caller, or throw UNAUTHENTICATED.
@@ -58,6 +58,7 @@ export async function requirePrincipal(request: Request): Promise<Principal> {
       employeeId: true,
       dataScope: true,
       sections: true,
+      wideSections: true,
     },
   })
 
@@ -90,13 +91,15 @@ export async function requirePrincipal(request: Request): Promise<Principal> {
     ? (live.dataScope as DataScopeValue)
     : 'OWN'
 
+  const sections = sectionsFor(role, live.sections)
   const principal: Principal = {
     userId: user.id,
     role,
     isActive: live.isActive,
     employeeId: live.employeeId,
     dataScope,
-    sections: sectionsFor(role, live.sections),
+    sections,
+    wideSections: wideSectionsFor(sections, live.wideSections),
   }
 
   if (!principal.isActive) {
@@ -120,13 +123,26 @@ export async function requirePermission(
   permission: Permission | readonly Permission[],
 ): Promise<Principal> {
   const principal = await requirePrincipal(request)
+  assertPermission(principal, permission)
+  return principal
+}
+
+/**
+ * Assert a permission on a principal already resolved.
+ *
+ * `getHandler` resolves first, widens for the endpoint's section
+ * (`widenForSection`), and only then asks — so a narrowed account given
+ * «Butun kompaniya» on a screen passes that screen's `analytics:read:all`.
+ */
+export function assertPermission(
+  principal: Principal,
+  permission: Permission | readonly Permission[],
+): void {
   const required = Array.isArray(permission) ? permission : [permission as Permission]
 
   if (!required.some((p) => can(principal, p))) {
     throw ApiError.forbidden()
   }
-
-  return principal
 }
 
 /** Non-throwing variant, for pages that render differently when signed out. */

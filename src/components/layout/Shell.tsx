@@ -32,7 +32,12 @@ import { useNewBuildAvailable } from '@/lib/buildVersion'
 import { formatCompactUzs, formatDateTime, syncFailureScope } from '@/lib/format'
 import { ROLE_LABELS, canSeeHref, type RoleValue } from '@/lib/roles'
 import { useServerViewer } from '@/lib/viewer'
-import { isCompanyWideSection, sectionSpec, type SectionValue } from '@/lib/sections'
+import {
+  isCompanyWideSection,
+  readsCompanyWide,
+  sectionSpec,
+  type SectionValue,
+} from '@/lib/sections'
 import { setTheme, useResolvedTheme } from '@/lib/theme'
 import { useFilterOptions } from '@/features/shared/PageShell'
 import { t } from '@/lib/messages'
@@ -430,7 +435,7 @@ export function Shell({
   */
   const grantedRoutes = viewer
     ? viewer.sections
-        .filter((id: SectionValue) => viewer.dataScope === 'ALL' || !isCompanyWideSection(id))
+        .filter((id: SectionValue) => readsCompanyWide(viewer, id) || !isCompanyWideSection(id))
         .map((id: SectionValue) => sectionSpec(id)?.route)
         .filter((route): route is string => route !== undefined)
     : undefined

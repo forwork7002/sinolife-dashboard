@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -230,6 +230,46 @@ describe('opening a ROP account', () => {
     expect(write.body.employeeId).toBe('emp-rop')
     expect(write.body.role).toBe('SALES')
     expect(write.body.sections).toEqual(['confirmation', 'logistics', 'sellers'])
+  })
+
+  /*
+    PER-SECTION SCOPE (2026-10-05): «hohlagan boʻlimimni … oʻz boʻlimi va butun
+    kompaniya boʻyicha». A narrowable screen opens on «Oʻz boʻlimi» and can be
+    switched; a screen that only exists company-wide is wide the moment it is
+    ticked (it used to be ticked and then refused); the board that answers
+    everybody the same is never sent as a choice at all.
+  */
+  it('sends which ticked screens the ROP reads for the whole company', async () => {
+    await openRopForm()
+    chooseHead('emp-rop')
+
+    const logistics = screen.getByRole('group', { name: 'Logistika natijasi: maʼlumot doirasi' })
+    expect(
+      within(logistics).getByRole('button', { name: 'Oʻz boʻlimi' }).getAttribute('aria-pressed'),
+    ).toBe('true')
+    fireEvent.click(within(logistics).getByRole('button', { name: 'Butun kompaniya' }))
+    fireEvent.click(screen.getByLabelText('RNP jadvali'))
+    fireEvent.click(screen.getByLabelText('Kadrlar tuzilmasi'))
+
+    fireEvent.change(screen.getByLabelText('Parol'), { target: { value: 'Salom-Dunyo-42' } })
+    fireEvent.change(screen.getByLabelText('Parolni takrorlang'), {
+      target: { value: 'Salom-Dunyo-42' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Yaratish' }))
+
+    await waitFor(() => expect(api.writes).toHaveLength(1))
+    const body = api.writes[0].body
+
+    expect(body.sections).toEqual(['confirmation', 'logistics', 'sellers', 'rnp', 'structure'])
+    expect(body.wideSections).toEqual(['logistics', 'rnp'])
+  })
+
+  it('no longer warns that a ticked company-wide screen will not open', async () => {
+    await openRopForm()
+    fireEvent.click(screen.getByLabelText('RNP jadvali'))
+
+    expect(screen.queryByText(/doirasida ochilmaydi/)).toBeNull()
+    expect(screen.getAllByText('Butun kompaniya').length).toBeGreaterThan(0)
   })
 
   /*

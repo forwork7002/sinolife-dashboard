@@ -9,8 +9,10 @@ import {
   permissionsFor,
   rowScopeFor,
   scopeNeedsTeam,
+  wideSectionsFor,
+  widenForSection,
 } from '@/server/auth/rbac'
-import { defaultSectionsFor } from '@/lib/sections'
+import { defaultSectionsFor, wideSectionsToStore } from '@/lib/sections'
 
 /*
   Fixtures across BOTH axes, because the two are independent now.
@@ -283,5 +285,93 @@ describe('employee detail visibility', () => {
     expect(canViewEmployee(ropManager, 'emp-9')).toBe(false)
     // A company-wide manager is unchanged: null scope, role decides.
     expect(canViewEmployee(manager, 'emp-9')).toBe(true)
+  })
+})
+
+/*
+  PER-SECTION SCOPE (2026-10-05). A ROP reads «Tasdiqlash» for their own team
+  and «RNP» for the whole company: the endpoint behind a wide screen sees an
+  ALL principal, every other endpoint sees the TEAM one.
+*/
+describe('widenForSection', () => {
+  const rop: Principal = {
+    userId: 'u-rop', role: 'SALES', isActive: true, employeeId: 'emp-rop',
+    dataScope: 'TEAM',
+    sections: ['confirmation', 'logistics', 'sellers', 'sales', 'rnp'],
+    wideSections: ['rnp', 'sellers'],
+  }
+
+  it('reads a wide screen as the whole company, and nothing else', () => {
+    const onRnp = widenForSection(rop, 'rnp')
+    expect(onRnp.dataScope).toBe('ALL')
+    expect(onRnp.widened).toBe(true)
+    expect(can(onRnp, 'analytics:read:all')).toBe(true)
+    expect(rowScopeFor(onRnp).restrictToEmployeeIds).toBeNull()
+
+    const onQueue = widenForSection(rop, 'confirmation')
+    expect(onQueue.dataScope).toBe('TEAM')
+    expect(can(onQueue, 'analytics:read:all')).toBe(false)
+  })
+
+  it('never widens an endpoint that belongs to no screen', () => {
+    expect(widenForSection(rop, null)).toBe(rop)
+  })
+
+  /*
+    `/analytics/sellers` feeds «Sotuvchilar reytingi» AND Savdo dinamikasi.
+    The request does not say which screen sent it, so one wide and one narrow
+    must stay narrow — or Savdo dinamikasi would read the company through it.
+  */
+  it('widens a shared endpoint only when every screen it feeds is wide', () => {
+    expect(widenForSection(rop, ['sellers', 'sales']).dataScope).toBe('TEAM')
+    expect(
+      widenForSection({ ...rop, wideSections: ['sellers', 'sales'] }, ['sellers', 'sales'])
+        .dataScope,
+    ).toBe('ALL')
+    // «Sotuvchilar reytingi» answers everybody the company, so it counts as wide.
+    expect(
+      widenForSection({ ...rop, wideSections: ['sales'] }, ['sellers', 'sales']).dataScope,
+    ).toBe('ALL')
+    // A screen the account does not hold does not count against it.
+    expect(widenForSection({ ...rop, sections: ['sellers'] }, ['sellers', 'sales']).dataScope).toBe(
+      'ALL',
+    )
+  })
+
+  it('does nothing for a deactivated account or one with no wide screens', () => {
+    expect(widenForSection({ ...rop, isActive: false }, 'rnp').dataScope).toBe('TEAM')
+    expect(widenForSection({ ...rop, wideSections: undefined }, 'rnp').dataScope).toBe('TEAM')
+  })
+
+  it('counts a wide tick only on a screen the account holds', () => {
+    expect(wideSectionsFor(['confirmation', 'rnp'], ['rnp', 'leads', 'nonsense'])).toEqual(['rnp'])
+    expect(wideSectionsFor(['confirmation'], null)).toEqual([])
+  })
+})
+
+describe('wideSectionsToStore', () => {
+  it('stores only what the administrator sent, among the account’s own ticks', () => {
+    expect(wideSectionsToStore(['rnp', 'logistics', 'margin'], ['confirmation', 'logistics', 'rnp'], 'TEAM')).toEqual([
+      'logistics',
+      'rnp',
+    ])
+  })
+
+  /*
+    Never added on the server: a password reset on an OWN seller whose stale
+    ticks include payroll used to widen it (security review, 2026-10-05).
+  */
+  it('never adds a ticked company-only screen nobody sent', () => {
+    expect(wideSectionsToStore([], ['payroll', 'rnp'], 'OWN')).toEqual([])
+    expect(wideSectionsToStore(undefined, ['payroll', 'rnp'], 'TEAM')).toEqual([])
+  })
+
+  it('stores nothing on an ALL account and nothing for the screens open to everyone', () => {
+    expect(wideSectionsToStore(['rnp'], ['rnp'], 'ALL')).toEqual([])
+    expect(wideSectionsToStore(['sellers', 'structure'], ['sellers', 'structure'], 'TEAM')).toEqual([])
+  })
+
+  it('drops a wide tick whose section was unticked', () => {
+    expect(wideSectionsToStore(['rnp', 'logistics'], ['logistics'], 'TEAM')).toEqual(['logistics'])
   })
 })
