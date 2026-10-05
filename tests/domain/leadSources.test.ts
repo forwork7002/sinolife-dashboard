@@ -117,7 +117,8 @@ describe('leadTile', () => {
     expect(leadTile('2|TELEGRAM', false, v)).toBe('telegram')
     expect(leadTile('UC_Z1OF0D', false, v)).toBe('telegram') // sinolif_tg
     expect(leadTile('WEB', false, v)).toBe('web') // Веб-сайт
-    expect(leadTile('UC_9SNG04', false, v)).toBe('sarafan') // Сарафан маркетинг
+    // Сарафан маркетинг: the tile reads Ecommerce since 2026-10-05, so in Регистрация it is «Boshqa».
+    expect(leadTile('UC_9SNG04', false, v)).toBe('other')
   })
 
   it('puts every lead the AI qualified on «Сммщик ии», whatever its source', () => {

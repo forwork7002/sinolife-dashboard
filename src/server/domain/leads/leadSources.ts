@@ -83,6 +83,14 @@ export const LEAD_TILES: readonly LeadTile[] = Object.freeze([
 export const LEAD_TILES_APART: ReadonlySet<LeadTile> = new Set<LeadTile>(['outbound', 'other'])
 
 /**
+ * «Сарафан» is NOT Регистрация since 2026-10-05: the client asked for it to
+ * count «Сарафан маркетинг» deals in the Ecommerce pipeline alone. They are
+ * no lead of «Жами лидлар», so the tile stays in its place but out of «Jami»,
+ * and a Регистрация lead on that source counts under «Boshqa» (`leadTile`).
+ */
+export const LEAD_TILES_OUTSIDE_REGISTRATION: ReadonlySet<LeadTile> = new Set<LeadTile>(['sarafan'])
+
+/**
  * The tile a Регистрация deal counts on — one, always. The AI's mark wins over
  * every source, «Ген лид» and «Исход» included, so a qualified sinolif_tg chat
  * is «Сммщик ии», not «Телеграм» — no lead is counted twice in «Jami». The
@@ -97,7 +105,7 @@ export function leadTile(sourceId: string | null, aiQualified: boolean, vocabula
   if (vocabulary.inbound.has(sourceId)) return 'inbound'
   if (vocabulary.telegram.has(sourceId)) return 'telegram'
   if (vocabulary.web.has(sourceId)) return 'web'
-  if (vocabulary.sarafan.has(sourceId)) return 'sarafan'
+  // «Сарафан маркетинг» in Регистрация is «Boshqa»: the tile reads Ecommerce (`LEAD_TILES_OUTSIDE_REGISTRATION`).
   if (vocabulary.outbound.has(sourceId)) return 'outbound'
   return 'other'
 }

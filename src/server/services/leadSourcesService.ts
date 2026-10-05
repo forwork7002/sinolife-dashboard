@@ -30,6 +30,7 @@ import {
   DM_PAGE_ALIAS,
   LEAD_SOURCE_BRAND,
   LEAD_SOURCE_VOCABULARY,
+  SARAFAN_PIPELINE_ID,
 } from '@/server/integrations/crm/bitrix24/mapping'
 import { type MetaProduct, adBudgetProduct, campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
 import {
@@ -38,6 +39,7 @@ import {
   LEAD_CHANNELS,
   LEAD_TILES,
   LEAD_TILES_APART,
+  LEAD_TILES_OUTSIDE_REGISTRATION,
   formNameOf,
   formOwner,
   leadChannel,
@@ -50,6 +52,7 @@ import type { InsightsRepository, LeadFakt1ClientRow } from '@/server/repositori
 import type {
   LeadSourcesRepository,
   AiQualifiedStageRow,
+  PipelineSourceCount,
   QualifiedSourceRow,
   RegistrationDayRow,
   TriageDayRow,
@@ -206,7 +209,8 @@ export interface LeadSourcesOverviewDto {
   /**
    * «Boshqa kanallar lidlari»: every tile of `LEAD_TILES`, in its order and
    * at zero when quiet, and «Jami» — the sum of all but `LEAD_TILES_APART`
-   * («Исход», «Boshqa»), so `funnel` less those two.
+   * («Исход», «Boshqa») and `LEAD_TILES_OUTSIDE_REGISTRATION` («Сарафан»,
+   * Ecommerce deals since 2026-10-05), so `funnel` less «Исход» and «Boshqa».
    */
   readonly tiles: {
     readonly rows: readonly ({ readonly tile: LeadTile } & ChannelTileDto)[]
@@ -325,6 +329,8 @@ export function leadSourcesOverview(input: {
   qualified: readonly QualifiedSourceRow[]
   /** Deals whose «ИИ квал сана» is in the window, any pipeline, flagged Регистрация or not (`LeadSourcesRepository.aiQualifiedStages`). */
   aiQualified: readonly AiQualifiedStageRow[]
+  /** «Сарафан маркетинг» deals in Ecommerce (`LeadSourcesRepository.pipelineSourceCount`) — the «Сарафан» tile. */
+  sarafan: PipelineSourceCount
   importedAt: Date | null
 }): LeadSourcesOverviewDto {
   const days = calendarDays(input.window.from, input.window.to)
@@ -579,9 +585,14 @@ export function leadSourcesOverview(input: {
     tiles.get(leadTile(row.sourceId, row.aiQualified, LEAD_SOURCE_VOCABULARY))!.qualified += row.qualified
     qualifiedTotal += row.qualified
   }
+  // Ecommerce deals, no Регистрация lead: no duplicate stage there, and outside «Jami» below.
+  const sarafanTile = tiles.get('sarafan')!
+  sarafanTile.leads = input.sarafan.leads
+  sarafanTile.qualified = input.sarafan.qualified
+
   const tilesTotal = tileZero()
   for (const [tile, t] of tiles) {
-    if (LEAD_TILES_APART.has(tile)) continue
+    if (LEAD_TILES_APART.has(tile) || LEAD_TILES_OUTSIDE_REGISTRATION.has(tile)) continue
     tilesTotal.leads += t.leads
     tilesTotal.duplicates += t.duplicates
     tilesTotal.qualified += t.qualified
@@ -661,6 +672,7 @@ const scanCache = ttlCache<{
   fakt1: LeadFakt1ClientRow[]
   qualified: QualifiedSourceRow[]
   aiQualified: AiQualifiedStageRow[]
+  sarafan: PipelineSourceCount
 }>(60_000)
 
 export class LeadSourcesService {
@@ -679,14 +691,15 @@ export class LeadSourcesService {
 
     const [scans, campaigns, importedAt] = await Promise.all([
       scanCache.get(key, async () => {
-        const [registration, triage, fakt1, qualified, aiQualified] = await Promise.all([
+        const [registration, triage, fakt1, qualified, aiQualified, sarafan] = await Promise.all([
           this.repository.registrationDays(period),
           this.repository.triageDays(period),
           this.insights.leadFakt1Clients(period),
           this.repository.qualifiedSources(period),
           this.repository.aiQualifiedStages(period),
+          this.repository.pipelineSourceCount(period, SARAFAN_PIPELINE_ID, [...LEAD_SOURCE_VOCABULARY.sarafan]),
         ])
-        return { registration, triage, fakt1, qualified, aiQualified }
+        return { registration, triage, fakt1, qualified, aiQualified, sarafan }
       }),
       this.meta.campaignDays(window.from, window.to),
       this.meta.campaignsImportedAt(),

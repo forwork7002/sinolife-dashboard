@@ -199,8 +199,9 @@ const TILES_IN_TOTAL = TILES.filter((t) => !(TILES_APART as readonly LeadTile[])
 const TILE_NOTE: Partial<Record<LeadTile, string>> = {
   generated: 'lid-forma + qoʻlda kiritilgan',
   aiSmm: '«ИИ квал сана» shu davrda · faqat Регистрация',
+  sarafan: 'faqat Ecommerce voronkasi · «Jami»ga kirmaydi',
   outbound: 'operatorning chiquvchi qoʻngʻirogʻi',
-  other: 'qolgan manbalar: ИИ kval qilmagan reklama sahifalari, Сммщик, Instagram, manbasiz',
+  other: 'qolgan manbalar: ИИ kval qilmagan reklama sahifalari, Сммщик, Instagram, Сарафан маркетинг, manbasiz',
 }
 
 /**
@@ -209,6 +210,8 @@ const TILE_NOTE: Partial<Record<LeadTile, string>> = {
  */
 const TILE_NOTE_TITLE: Partial<Record<LeadTile, string>> = {
   aiSmm: 'Tanlangan davr boʻyicha sanaladi. Portal «ИИ квал сана» maydonini 14.09.2026 dan toʻldiradi — undan oldingi kunlarda 0.',
+  sarafan:
+    'Ecommerce voronkasidagi «Сарафан маркетинг» manbali bitimlar: shu davrda ochilgani, kval — shu davrda «Доставлен» boʻlgani. Регистрация lidi emas, shuning uchun «Jami»ga kirmaydi; Регистрацияdagi «Сарафан маркетинг» lidlari «Boshqa»da.',
 }
 
 /** «N kval · X%» — kval ÷ new leads, as «Квал %» above; a dash when the channel had no new lead. */
