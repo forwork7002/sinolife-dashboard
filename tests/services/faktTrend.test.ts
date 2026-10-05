@@ -1,11 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import { previousEquivalent, resolvePeriod } from '@/server/domain/period/period'
 import type { InsightsRepository } from '@/server/repositories/insightsRepository'
 import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import type { AnalyticsContext } from '@/server/services/analyticsService'
-import { SellerBoardService } from '@/server/services/sellerBoardService'
+import { resetFaktTrendCache, SellerBoardService } from '@/server/services/sellerBoardService'
+
+// Every case builds its own answer; the service memo would hand the first one to the rest.
+beforeEach(() => resetFaktTrendCache())
 
 /**
  * The FAKT 1 / FAKT 2 lines drawn over the revenue area on Savdo dinamikasi.

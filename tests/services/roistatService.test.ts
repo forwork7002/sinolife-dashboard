@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import type { PrismaClient } from '@/generated/prisma/client'
 import type { Period } from '@/server/domain/period/period'
@@ -14,7 +14,9 @@ process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
 process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
-const { RoistatService } = await import('@/server/services/roistatService')
+const { RoistatService, resetRoistatCaches } = await import('@/server/services/roistatService')
+
+beforeEach(() => resetRoistatCaches())
 const { RoistatRepository } = await import('@/server/repositories/roistatRepository')
 
 const PERIOD: Period = {

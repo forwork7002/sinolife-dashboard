@@ -41,6 +41,7 @@ import type { ReklamaRepository } from '@/server/repositories/reklamaRepository'
 import type { RoistatMetaRow, RoistatRepository } from '@/server/repositories/roistatRepository'
 
 import { leadBrand } from './rnpService'
+import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 /** How many trailing days are still settling: sales and returns close later. */
 const FRESH_DAYS = 7
@@ -150,6 +151,15 @@ export interface RoistatQuery {
   readonly parent?: string
 }
 
+const overviewCache = ttlCache<RoistatOverviewDto>(120_000, LIVE_CACHE)
+const daysCache = ttlCache<RoistatDaysDto>(120_000, LIVE_CACHE)
+
+/** Test seam: each case builds its own answer, and the memo would hand the first one to the rest. */
+export function resetRoistatCaches(): void {
+  overviewCache.clear()
+  daysCache.clear()
+}
+
 export class RoistatService {
   constructor(
     private readonly repository: RoistatRepository,
@@ -157,7 +167,25 @@ export class RoistatService {
     private readonly usd: Pick<CbuUsdRates, 'forDays'>,
   ) {}
 
+  /*
+    Both memoised (2026-10-05): each build runs the lead cohort with a LATERAL
+    origin-lead probe per sales deal (the overview twice — this window and the
+    previous one), and «Kunlar boʻyicha» is polled on Savdo dinamikasi with no
+    memo. Company-wide (no scope reaches the SQL), so the key is the question:
+    the window, the cut and its parent. `now` moves the «today» cells and the
+    previous cohort's age, which two minutes cannot change in substance.
+  */
   async overview(period: Period, query: RoistatQuery, now: Date): Promise<RoistatOverviewDto> {
+    const key = [period.preset, period.start.toISOString(), period.end.toISOString(), query.dim, query.parent ?? ''].join('|')
+    return overviewCache.get(key, () => this.buildOverview(period, query, now))
+  }
+
+  async days(period: Period, now: Date): Promise<RoistatDaysDto> {
+    const key = [period.preset, period.start.toISOString(), period.end.toISOString()].join('|')
+    return daysCache.get(key, () => this.buildDays(period, now))
+  }
+
+  private async buildOverview(period: Period, query: RoistatQuery, now: Date): Promise<RoistatOverviewDto> {
     const { dim } = query
     const parent = dim === 'adset' || dim === 'ad' ? (query.parent ?? null) : null
     const today = zonedDateKey(now, period.timeZone)
@@ -216,7 +244,7 @@ export class RoistatService {
   }
 
   /** The «Дни» table — the same rows `overview(period, { dim: 'days' })` draws, newest day first. */
-  async days(period: Period, now: Date): Promise<RoistatDaysDto> {
+  private async buildDays(period: Period, now: Date): Promise<RoistatDaysDto> {
     const today = zonedDateKey(now, period.timeZone)
     const window = dayRange(period)
     const rateDay = window.to < today ? window.to : today

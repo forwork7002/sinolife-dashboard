@@ -6,14 +6,14 @@ import { buildRopReport, type RopReportDto } from '@/server/domain/registration/
 import type { InsightsRepository, SellerFaktDayRow } from '@/server/repositories/insightsRepository'
 import type { RegistrationRepository } from '@/server/repositories/registrationRepository'
 
-import { ttlCache } from './ttlCache'
+import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 /*
   The window's queue cohort, memoised a minute — the sync worker's cadence. It is
   the one heavy read here (the sellers board's whole queue prelude); the leads,
   the roster and the calls are read fresh.
 */
-const faktCache = ttlCache<SellerFaktDayRow[]>(60_000)
+const faktCache = ttlCache<SellerFaktDayRow[]>(120_000, LIVE_CACHE)
 
 /**
  * «Registratsiya» — one day's handed-out leads per ROP and the day's split,

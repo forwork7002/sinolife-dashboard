@@ -41,7 +41,7 @@ import type {
   ConfirmationSellerRatingRow,
   InsightsRepository,
 } from '@/server/repositories/insightsRepository'
-import { keyPart, ttlCache } from './ttlCache'
+import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
 
 // ---------------------------------------------------------------------------
 // DTOs — mirrored in src/lib/api.ts, which the client imports instead.
@@ -164,7 +164,7 @@ export interface PayrollDto {
  * narrowed payroll. If this screen is ever opened to a ROP, the scope goes in
  * this key in the same commit or the memo goes.
  */
-const payrollCache = ttlCache<PayrollDto>(60_000)
+const payrollCache = ttlCache<PayrollDto>(120_000, LIVE_CACHE)
 
 export class PayrollService {
   constructor(private readonly insights: InsightsRepository) {}

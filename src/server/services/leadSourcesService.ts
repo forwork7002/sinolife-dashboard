@@ -60,7 +60,7 @@ import type {
 import type { CampaignDayRow, ReklamaRepository } from '@/server/repositories/reklamaRepository'
 
 import { calendarDays } from './reklamaService'
-import { ttlCache } from './ttlCache'
+import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 // ---------------------------------------------------------------------------
 // DTOs — mirrored in `src/features/leads/leadSourcesApi.ts`
@@ -683,7 +683,7 @@ const scanCache = ttlCache<{
   aiQualified: AiQualifiedStageRow[]
   sarafan: PipelineSourceCount
   inboundCalls: number | null
-}>(60_000)
+}>(120_000, LIVE_CACHE)
 
 export class LeadSourcesService {
   constructor(

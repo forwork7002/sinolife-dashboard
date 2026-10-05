@@ -39,17 +39,23 @@ export function Providers({
             /**
              * The dashboard keeps itself current.
              *
-             * A sync worker pulls from Bitrix24 every minute, so the browser
-             * asks again on the same cadence. Someone watching the screen sees
-             * today's orders arrive without touching anything, which is the
-             * whole point of leaving it open on a wall.
+             * The sync worker pulls from Bitrix24 every 120 s in production
+             * (`SYNC_INTERVAL_SEC`), so the browser asks again on the same
+             * cadence. Someone watching the screen sees today's orders arrive
+             * without touching anything, which is the whole point of leaving
+             * it open on a wall.
+             *
+             * It was 60 s against that 120 s tick until 2026-10-05: every
+             * second poll could not find anything new, and on a database
+             * measured at 1.6× its one vCPU that day, half of every screen's
+             * polling was load with no answer behind it.
              *
              * `staleTime` sits just under the interval so a navigation between
              * pages reuses the cache instead of re-issuing every query, while
              * the timer still fires on schedule.
              */
-            refetchInterval: 60_000,
-            staleTime: 55_000,
+            refetchInterval: 120_000,
+            staleTime: 115_000,
 
             /**
              * Not while the tab is hidden.

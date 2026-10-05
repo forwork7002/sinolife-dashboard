@@ -116,3 +116,48 @@ describe('keyPart', () => {
     expect(keyPart('a,b')).not.toBe(keyPart(['a', 'b']))
   })
 })
+
+describe('ttlCache with staleMs (stale-while-revalidate)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('hands out the expired answer at once and rebuilds once behind it', async () => {
+    const cache = ttlCache<number>(60_000, { staleMs: 600_000 })
+    let builds = 0
+    const build = async () => ++builds
+
+    expect(await cache.get('k', build)).toBe(1)
+    vi.advanceTimersByTime(61_000)
+
+    // Two readers past the TTL: both get the old answer, one rebuild runs.
+    expect(await Promise.all([cache.get('k', build), cache.get('k', build)])).toEqual([1, 1])
+    await vi.runAllTimersAsync()
+    expect(builds).toBe(2)
+    expect(await cache.get('k', build)).toBe(2)
+  })
+
+  it('keeps the old answer when the rebuild fails, and tries again later', async () => {
+    const cache = ttlCache<number>(60_000, { staleMs: 600_000 })
+    expect(await cache.get('k', async () => 1)).toBe(1)
+    vi.advanceTimersByTime(61_000)
+
+    expect(await cache.get('k', async () => Promise.reject(new Error('timeout')))).toBe(1)
+    await vi.runAllTimersAsync()
+    expect(await cache.get('k', async () => 3)).toBe(1)
+    await vi.runAllTimersAsync()
+    expect(await cache.get('k', async () => 4)).toBe(3)
+  })
+
+  it('makes the reader wait once the answer is older than ttl + staleMs', async () => {
+    const cache = ttlCache<number>(60_000, { staleMs: 60_000 })
+    expect(await cache.get('k', async () => 1)).toBe(1)
+    vi.advanceTimersByTime(121_000)
+    expect(await cache.get('k', async () => 2)).toBe(2)
+  })
+})
+

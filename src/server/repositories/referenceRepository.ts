@@ -298,15 +298,24 @@ export class ReferenceRepository {
    * pass that cannot have talked to the portal is not.
    */
   async findLastSuccessfulSync(): Promise<Date | null> {
-    const row = await this.prisma.syncLog.findFirst({
-      where: {
-        status: { in: ['SUCCESS', 'PARTIAL'] },
-        finishedAt: { not: null },
-        entity: { in: [...FRESHNESS_ENTITIES] },
-      },
-      orderBy: { finishedAt: 'desc' },
-      select: { finishedAt: true },
-    })
-    return row?.finishedAt ?? null
+    /*
+      ONE QUERY PER STATUS, NEVER `status IN (…)`. With the two values in one
+      predicate Postgres cannot walk `[status, finishedAt DESC]` in order, so it
+      fell back to a sequential scan of the whole log plus a sort: measured on
+      production 2026-10-05 at 10.3 s for 124 000 rows on a saturated database —
+      the single largest statement of that hour, 41 calls in ten minutes,
+      because every open tab asks it once a minute. Asked once per status, each
+      is a backwards index walk that stops at its first matching row: 62 ms and
+      5 ms under the same load. The newer of the two is the answer.
+    */
+    const latest = (status: 'SUCCESS' | 'PARTIAL') =>
+      this.prisma.syncLog.findFirst({
+        where: { status, finishedAt: { not: null }, entity: { in: [...FRESHNESS_ENTITIES] } },
+        orderBy: { finishedAt: 'desc' },
+        select: { finishedAt: true },
+      })
+    const [success, partial] = await Promise.all([latest('SUCCESS'), latest('PARTIAL')])
+    const times = [success?.finishedAt, partial?.finishedAt].filter((t): t is Date => t instanceof Date)
+    return times.length ? new Date(Math.max(...times.map((t) => t.getTime()))) : null
   }
 }

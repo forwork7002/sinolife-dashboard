@@ -43,7 +43,7 @@ import { deliveryRateBp, moneyRateBp, rateBp } from '@/server/domain/analytics/r
 import type { ConfirmationOutcomeValue, ConfirmationQueueMode } from '@/server/domain/types'
 import { callFloorApplied } from '@/lib/callQuality'
 import { CUSTOMER_STATES } from '@/lib/customerStates'
-import { keyPart, ttlCache } from './ttlCache'
+import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
 
 /**
  * One build of the confirmation board's ROP breakdown per cohort per minute.
@@ -53,7 +53,7 @@ import { keyPart, ttlCache } from './ttlCache'
  * reason every memo here is: readers arriving together on one screen is the
  * case that breaks a small pool, and collapsing them needs one map.
  */
-const confirmationRopCache = ttlCache<ConfirmationRopRow[]>(60_000)
+const confirmationRopCache = ttlCache<ConfirmationRopRow[]>(120_000, LIVE_CACHE)
 
 /**
  * Test seam, and the hazard is real rather than theoretical.
@@ -97,11 +97,23 @@ const customerStatesCache = ttlCache<Awaited<ReturnType<InsightsRepository['cust
  * calls land through the three-hourly reference pass, and a reader re-asking
  * inside a minute is asking the same question.
  */
-const callActivityCache = ttlCache<Awaited<ReturnType<InsightsRepository['callActivity']>>>(60_000)
+const callActivityCache = ttlCache<Awaited<ReturnType<InsightsRepository['callActivity']>>>(120_000, LIVE_CACHE)
+const logisticsCache = ttlCache<
+  [
+    Awaited<ReturnType<InsightsRepository['logisticsCohort']>>,
+    Awaited<ReturnType<InsightsRepository['logisticsStanding']>>,
+    Awaited<ReturnType<InsightsRepository['logisticsStandingOrders']>>,
+  ]
+>(120_000, LIVE_CACHE)
 
 /** Test seam, same hazard as `resetConfirmationRopCache` above. */
 export function resetCallActivityCaches(): void {
   callActivityCache.clear()
+}
+
+/** Test seam for `logistics`'s memo, same hazard as `resetConfirmationRopCache`. */
+export function resetLogisticsCache(): void {
+  logisticsCache.clear()
 }
 
 /**
@@ -1515,12 +1527,25 @@ export class InsightsService {
       ones, and those are the ones worth a phone call. It costs 48 ms and
       runs beside the cohort rather than after it.
     */
-    const [cuts, standing, standingOrders] = await Promise.all([
-      this.repository.logisticsCohort(this.window(period, scope)),
-      // Not windowed, but narrowed: a ROP's standing parcels are their team's.
-      this.repository.logisticsStanding(this.window(period, scope)),
-      this.repository.logisticsStandingOrders(this.window(period, scope)),
-    ])
+    /*
+      Memoised (2026-10-05): a queue cohort plus two standing-parcel reads,
+      polled with no memo, measured on production that day at 5–9 s each on a
+      saturated database. The scope is in the key.
+    */
+    const key = [
+      period.preset,
+      period.start.toISOString(),
+      period.end.toISOString(),
+      keyPart(scope.restrictToEmployeeIds ?? undefined),
+    ].join('|')
+    const [cuts, standing, standingOrders] = await logisticsCache.get(key, () =>
+      Promise.all([
+        this.repository.logisticsCohort(this.window(period, scope)),
+        // Not windowed, but narrowed: a ROP's standing parcels are their team's.
+        this.repository.logisticsStanding(this.window(period, scope)),
+        this.repository.logisticsStandingOrders(this.window(period, scope)),
+      ]),
+    )
 
     const cash = (minor: bigint): MoneyDto => toMoneyDto(money(minor, currency))
     const days1 = (value: number | null): number | null =>

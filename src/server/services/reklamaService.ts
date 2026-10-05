@@ -42,7 +42,7 @@ import type {
   ReklamaRepository,
 } from '@/server/repositories/reklamaRepository'
 
-import { ttlCache } from './ttlCache'
+import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 // ---------------------------------------------------------------------------
 // DTOs — mirrored in `src/features/reklama/reklamaApi.ts`
@@ -629,7 +629,7 @@ function orderedPages(named: readonly { externalId: string; name: string }[]) {
   A memo in front of the lead scan, keyed by the window. Company-wide by
   construction — the route refuses a narrowed account — so no scope reaches it.
 */
-const leadCache = ttlCache<LeadStageDayRow[]>(60_000)
+const leadCache = ttlCache<LeadStageDayRow[]>(120_000, LIVE_CACHE)
 
 export class ReklamaService {
   constructor(private readonly repository: ReklamaRepository) {}

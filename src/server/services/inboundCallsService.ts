@@ -7,7 +7,7 @@ import {
 } from '@/server/domain/calls/inboundCalls'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
 import type { InboundCallsRepository } from '@/server/repositories/inboundCallsRepository'
-import { ttlCache } from './ttlCache'
+import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 export interface InboundDayDto extends InboundDay {
   /** Talked numbers ÷ numbers, one decimal; null over a silent day. */
@@ -28,7 +28,7 @@ export interface InboundCallsDto {
 
 export type { GroupCounts }
 
-const reportCache = ttlCache<InboundCallsDto>(60_000)
+const reportCache = ttlCache<InboundCallsDto>(120_000, LIVE_CACHE)
 
 function percent(part: number, whole: number): number | null {
   return whole === 0 ? null : Math.round((part / whole) * 1000) / 10

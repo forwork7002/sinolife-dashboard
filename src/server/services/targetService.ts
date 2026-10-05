@@ -32,7 +32,7 @@ import {
 import type { TargetProductFilter, TargetScope } from '@/server/domain/types'
 
 import type { MarketingRepository } from '@/server/repositories/marketingRepository'
-import { keyPart, ttlCache } from './ttlCache'
+import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
 
 // ---------------------------------------------------------------------------
 // DTOs — mirrored in `src/lib/api.ts`
@@ -530,7 +530,7 @@ function leadDto(row: TargetLeadRow): TargetLeadDto {
   preset and the source scope. Company-wide by construction — the route refuses
   a narrowed account — so no employee scope reaches it.
 */
-const summaryCache = ttlCache<Awaited<ReturnType<TargetRepository['summary']>>>(60_000)
+const summaryCache = ttlCache<Awaited<ReturnType<TargetRepository['summary']>>>(120_000, LIVE_CACHE)
 
 /** Test seam: module-level, so shared between test files inside one worker. */
 export function resetTargetCaches(): void {

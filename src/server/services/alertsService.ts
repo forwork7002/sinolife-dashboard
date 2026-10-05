@@ -161,8 +161,15 @@ type QueueCount = { readonly pending: number; readonly overdue: number }
  *  * A REJECTION. Caching a timeout would turn one bad minute into sixty
  *    seconds of them, which is the opposite of the point.
  */
-const QUEUE_CACHE_TTL_MS = 60_000
-const queueCache = ttlCache<QueueCount>(QUEUE_CACHE_TTL_MS)
+/*
+  Three minutes, and handed out stale while it rebuilds (2026-10-05). The
+  backlog is an all-time cohort: measured on production that day at 23.4 s
+  under load — past the 20 s statement timeout — once a minute, for every open
+  tab. A bell a few minutes behind is still the bell; a header that waits on
+  it, or a database it saturates, is not.
+*/
+const QUEUE_CACHE_TTL_MS = 3 * 60_000
+const queueCache = ttlCache<QueueCount>(QUEUE_CACHE_TTL_MS, { staleMs: 15 * 60_000 })
 
 function cachedQueuePressure(
   insights: InsightsRepository,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import { resolvePeriod } from '@/server/domain/period/period'
 import type {
@@ -6,7 +6,10 @@ import type {
   LogisticsCohort,
   LogisticsCut,
 } from '@/server/repositories/insightsRepository'
-import { InsightsService } from '@/server/services/insightsService'
+import { resetLogisticsCache, InsightsService } from '@/server/services/insightsService'
+
+// Every case builds its own answer; the service memo would hand the first one to the rest.
+beforeEach(() => resetLogisticsCache())
 
 /**
  * THE CLIENT'S SHEET, AND THE FOUR PROPERTIES THAT MAKE IT READABLE.

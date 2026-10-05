@@ -42,6 +42,7 @@ import type {
   RnpTeam,
   RnpWarehouseDayRow,
 } from '@/server/repositories/rnpRepository'
+import { RNP_WARM_EVERY_MS } from './rnpWarmer'
 
 /** Every day of a `YYYY-MM` month, as `YYYY-MM-DD`. */
 export function monthDays(month: string): string[] {
@@ -95,8 +96,18 @@ interface MonthRows {
   spell — the warmer keeps only the current month. A rebuild that fails
   behind a reader is logged (`warnRebuild`); the reader keeps the old answer.
 */
-const monthCache = staleWhileRevalidate<MonthRows>(60_000, Date.now, 10 * 60_000, warnRebuild)
-const pastMonthCache = staleWhileRevalidate<MonthRows>(60_000, Date.now, Infinity, warnRebuild)
+/*
+  2026-10-05: the TTL is the warmer's cadence, not a minute, and the hard limit
+  is half an hour. Measured on production that day, one month build cost
+  ~80 s of database time across its eight scans; with a 60 s TTL every open
+  /rnp tab's poll set one off behind the warmer's, and on a saturated
+  database the warmer then failed its builds («rnp warm-up failed»), the rows
+  aged past ten minutes and the next reader waited 17 s or hit the 20 s
+  statement timeout — the «RNP juda sekin ochilayapti» the client reported.
+  The warmer alone keeps the current month at most one tick old.
+*/
+const monthCache = staleWhileRevalidate<MonthRows>(RNP_WARM_EVERY_MS, Date.now, 30 * 60_000, warnRebuild)
+const pastMonthCache = staleWhileRevalidate<MonthRows>(30 * 60_000, Date.now, Infinity, warnRebuild)
 
 function warnRebuild(key: string, err: unknown): void {
   logger.warn({ err, key }, 'rnp rebuild failed; serving the previous answer')
@@ -301,16 +312,26 @@ export class RnpService {
   private async monthRows(month: string, from: string, to: string, timeZone: string, now: Date): Promise<MonthRows> {
     const today = zonedDateKey(now, timeZone)
     const closedTo = today > to ? to : previousDay(today)
-    const [fakt, leads, registration, registrarKval, calls, warehouse, campaigns, teams] = await Promise.all([
+    /*
+      TWO AT A TIME, not eight (2026-10-05). All eight at once (ten
+      statements, with registration's and the warehouse's second ones) took
+      every connection the web pool has, so every other screen queued behind
+      a background warm-up for its duration. The build is behind the reader
+      either way; a few seconds longer there costs nobody anything.
+    */
+    const [fakt, leads] = await Promise.all([
       this.insights.rnpTeamDays(monthPeriod(month, timeZone, now)),
       this.repository.leadDays(from, to),
+    ])
+    const [registration, registrarKval] = await Promise.all([
       this.registration(from, to, today, closedTo),
       this.repository.registrarKvalDays(from, to),
+    ])
+    const [calls, warehouse] = await Promise.all([
       this.repository.callDays(from, to),
       this.repository.warehouseDays(from, to, now),
-      this.reklama.campaignDays(from, to),
-      this.repository.teams(),
     ])
+    const [campaigns, teams] = await Promise.all([this.reklama.campaignDays(from, to), this.repository.teams()])
     const meta: MonthRows['meta'] = []
     for (const c of campaigns) {
       const product = adBudgetProduct(c)

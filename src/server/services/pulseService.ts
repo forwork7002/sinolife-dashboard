@@ -24,6 +24,9 @@ import { stripPipelinePrefix } from '@/server/domain/analytics/stageNames'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import type { PulseDealFilters, PulseRepository } from '@/server/repositories/pulseRepository'
 import type { AnalyticsContext } from './analyticsService'
+import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
+
+const deliveryCache = ttlCache<Awaited<ReturnType<PulseRepository['deliveryBoard']>>>(120_000, LIVE_CACHE)
 
 /**
  * One column of the Доставка kanban.
@@ -92,7 +95,19 @@ export class PulseService {
    * column; anything computed on top is a number the portal does not show.
    */
   async deliveryBoard(ctx: AnalyticsContext): Promise<DeliveryBoardDto> {
-    const rows = await this.repo.deliveryBoard(pulseFilters(ctx))
+    /*
+      Memoised (2026-10-05): measured on production that day at ~5.8 s a
+      build on a saturated database, polled on Savdo dinamikasi with no memo.
+      Every filter the SQL honours is in the key, the scope included.
+    */
+    const filters = pulseFilters(ctx)
+    const key = [
+      keyPart(filters.employeeIds),
+      keyPart(filters.departmentIds),
+      keyPart(filters.sourceIds),
+      keyPart(filters.restrictToEmployeeIds),
+    ].join('|')
+    const rows = await deliveryCache.get(key, () => this.repo.deliveryBoard(filters))
     const pipelineName = rows[0]?.pipelineName ?? null
 
     const stages = rows.map<DeliveryStageDto>((row) => ({

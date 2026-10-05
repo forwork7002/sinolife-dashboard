@@ -57,6 +57,8 @@
 interface Entry<T> {
   readonly at: number
   readonly value: Promise<T>
+  /** A rebuild running behind this entry's readers (stale-while-revalidate). */
+  rebuilding: Promise<void> | null
 }
 
 export interface TtlCache<T> {
@@ -68,18 +70,49 @@ export interface TtlCache<T> {
   size(): number
 }
 
+export interface TtlCacheOptions {
+  /**
+   * STALE-WHILE-REVALIDATE: how long past `ttlMs` an answer may still be HANDED
+   * OUT while ONE rebuild runs behind the reader. 0 (the default) is the old
+   * behaviour — an expired entry makes its reader wait for the whole build.
+   *
+   * Measured on production 2026-10-05: the database (1 vCPU, 1 GB) ran 982 s of
+   * statements in a 600 s window, so a cold build of a queue cohort or a
+   * month's scans took 10–20 s and often hit the 20 s statement timeout. With
+   * a 60 s TTL and a 60 s client poll, about every second poll paid that build
+   * in front of the reader. Behind the reader it costs the database the same
+   * and the screen nothing — the answer is at most one rebuild old.
+   *
+   * A failed rebuild keeps the old answer (until it ages past `ttlMs +
+   * staleMs`); only a reader with nothing to show is told of a failure.
+   */
+  readonly staleMs?: number
+}
+
 /**
  * @param ttlMs How long an answer stays good.
  *
  *   Match it to the cadence of the data behind it, not to how fresh you wish
  *   the screen were. Everything on this dashboard moves when the sync worker
- *   ticks, once a minute, so 60_000 is the honest default for anything reading
- *   deals — a shorter TTL buys no freshness at all and only adds misses. Where
- *   a screen's own client polls on a fixed interval, a TTL BELOW that interval
- *   is worse than useless: a solo reader misses every single time.
+ *   ticks (every 120 s in production), so a shorter TTL buys no freshness at
+ *   all and only adds builds. Where a screen's own client polls on a fixed
+ *   interval, a TTL BELOW that interval is worse than useless: a solo reader
+ *   misses every single time.
  */
-export function ttlCache<T>(ttlMs: number): TtlCache<T> {
+export function ttlCache<T>(ttlMs: number, options: TtlCacheOptions = {}): TtlCache<T> {
+  const staleMs = options.staleMs ?? 0
   const entries = new Map<string, Entry<T>>()
+
+  const fresh = (key: string, now: number, build: () => Promise<T>): Promise<T> => {
+    const value = build()
+    entries.set(key, { at: now, value, rebuilding: null })
+    value.catch(() => {
+      // Only if it is still OURS. A later build may already have replaced
+      // this entry, and deleting that one would evict a good answer.
+      if (entries.get(key)?.value === value) entries.delete(key)
+    })
+    return value
+  }
 
   return {
     get(key, build) {
@@ -97,18 +130,27 @@ export function ttlCache<T>(ttlMs: number): TtlCache<T> {
         that runs for weeks between deploys.
       */
       for (const [k, entry] of entries) {
-        if (now - entry.at >= ttlMs) entries.delete(k)
+        if (now - entry.at >= ttlMs + staleMs && !entry.rebuilding) entries.delete(k)
       }
 
-      const value = build()
-      entries.set(key, { at: now, value })
-      value.catch(() => {
-        // Only if it is still OURS. A later build may already have replaced
-        // this entry, and deleting that one would evict a good answer.
-        if (entries.get(key)?.value === value) entries.delete(key)
-      })
+      if (hit && staleMs > 0 && now - hit.at < ttlMs + staleMs) {
+        /*
+          Expired but still showable: hand the old answer out and rebuild ONCE
+          behind it. The old value only counts if it resolved — a rejected one
+          was already evicted above by its own catch.
+        */
+        hit.rebuilding ??= build().then(
+          (value) => {
+            if (entries.get(key) === hit) entries.set(key, { at: Date.now(), value: Promise.resolve(value), rebuilding: null })
+          },
+          () => {
+            hit.rebuilding = null
+          },
+        )
+        return hit.value
+      }
 
-      return value
+      return fresh(key, now, build)
     },
 
     clear() {
@@ -120,6 +162,13 @@ export function ttlCache<T>(ttlMs: number): TtlCache<T> {
     },
   }
 }
+
+/**
+ * The options every live screen's memo takes since 2026-10-05: good for its
+ * TTL (120 s, the production sync tick), then handed out for up to fifteen
+ * minutes more while ONE rebuild runs behind the reader. See `staleMs`.
+ */
+export const LIVE_CACHE: TtlCacheOptions = { staleMs: 15 * 60_000 }
 
 /**
  * A stable string for a list that reaches a query as a filter.

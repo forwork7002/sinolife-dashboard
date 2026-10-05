@@ -55,7 +55,7 @@ import type {
   ConfirmationSourceRatingRow,
   InsightsRepository,
 } from '@/server/repositories/insightsRepository'
-import { keyPart, ttlCache } from './ttlCache'
+import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
 import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type {
   SellerBoardFilters,
@@ -502,7 +502,7 @@ export interface FaktTrendPointDto {
  * same minute clock, which means a TTL any shorter is missed by every solo
  * reader while buying them nothing.
  */
-const boardCache = ttlCache<SellerBoardDto>(60_000)
+const boardCache = ttlCache<SellerBoardDto>(120_000, LIVE_CACHE)
 
 /**
  * Test seam only — and it is not optional in a test that builds two boards.
@@ -519,6 +519,11 @@ const boardCache = ttlCache<SellerBoardDto>(60_000)
  */
 export function resetSellerBoardCache(): void {
   boardCache.clear()
+}
+
+/** Test seam for `faktTrend`'s memo, same hazard as `resetSellerBoardCache`. */
+export function resetFaktTrendCache(): void {
+  faktDaysCache.clear()
 }
 
 /**
@@ -653,7 +658,8 @@ export function resetSellerRecordsCache(): void {
  * The sources table moves on the board's clock — same cohort, same sync tick —
  * so it keeps the board's sixty seconds.
  */
-const sourcesCache = ttlCache<readonly SellerSourceRowDto[]>(60_000)
+const sourcesCache = ttlCache<readonly SellerSourceRowDto[]>(120_000, LIVE_CACHE)
+const faktDaysCache = ttlCache<Awaited<ReturnType<InsightsRepository['confirmationFaktDays']>>>(120_000, LIVE_CACHE)
 
 /** Test seam only — see `resetSellerBoardCache`, same hazard. */
 export function resetSellerSourcesCache(): void {
@@ -1183,9 +1189,22 @@ export class SellerBoardService {
    */
   async faktTrend(ctx: AnalyticsContext): Promise<readonly FaktTrendPointDto[]> {
     const filters = boardFilters(ctx)
-    const days = await this.insights.confirmationFaktDays(
-      scopedPeriod(ctx.period, filters),
-      filters,
+    /*
+      Memoised like the board beside it (2026-10-05): it rebuilds the same
+      queue cohort, polled with it, and had no memo at all. Company-wide by the
+      same rule as the board (`boardFilters` drops the scope), so the key is the
+      window and the filters.
+    */
+    const key = [
+      ctx.period.preset,
+      ctx.period.start.toISOString(),
+      ctx.period.end.toISOString(),
+      keyPart(filters.employeeIds),
+      keyPart(filters.departmentIds),
+      keyPart(filters.sourceIds),
+    ].join('|')
+    const days = await faktDaysCache.get(key, () =>
+      this.insights.confirmationFaktDays(scopedPeriod(ctx.period, filters), filters),
     )
 
     return enumerateBuckets(ctx.period).map((bucket) => {

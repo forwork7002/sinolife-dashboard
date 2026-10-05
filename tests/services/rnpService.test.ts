@@ -171,7 +171,7 @@ describe('RnpService — the month memo (2026-10-02)', () => {
     movedNow = null
   })
 
-  it('serves a month that ended before today at once 11 minutes later, and rebuilds it behind the reader', async () => {
+  it('serves a month that ended before today at once 31 minutes later, and rebuilds it behind the reader', async () => {
     const scans: string[] = []
     let hold = Promise.resolve()
     const service = serviceOver((month) => {
@@ -180,7 +180,7 @@ describe('RnpService — the month memo (2026-10-02)', () => {
     })
     movedNow = T0
     await read(service, '2026-07')
-    movedNow = T0 + 11 * 60_000
+    movedNow = T0 + 31 * 60_000
     let release!: () => void
     hold = new Promise((resolve) => (release = resolve))
     expect(await servedAtOnce(read(service, '2026-07'))).toBe(true)
@@ -188,12 +188,12 @@ describe('RnpService — the month memo (2026-10-02)', () => {
     release()
   })
 
-  it('still holds the month that has today to its ten minutes: past them, the reader waits for a fresh build', async () => {
+  it('still holds the month that has today to its half hour: past it, the reader waits for a fresh build', async () => {
     let hold = Promise.resolve()
     const service = serviceOver(() => hold)
     movedNow = T0
     await read(service, '2026-10')
-    movedNow = T0 + 11 * 60_000
+    movedNow = T0 + 31 * 60_000
     let release!: () => void
     hold = new Promise((resolve) => (release = resolve))
     const reading = read(service, '2026-10')
@@ -211,7 +211,7 @@ describe('RnpService — the month memo (2026-10-02)', () => {
     })
     movedNow = T0
     await read(service, '2026-06')
-    movedNow = T0 + 2 * 60_000
+    movedNow = T0 + 31 * 60_000
     fail = true
     await read(service, '2026-06')
     await flush()
