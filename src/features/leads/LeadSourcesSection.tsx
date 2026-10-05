@@ -249,6 +249,23 @@ const aiElsewhereNote = (n: number) =>
     </p>
   ) : null
 
+/**
+ * Under «Входящий»: how many inbound CALLS the window had (the client,
+ * 2026-10-05). The big number stays the leads a call opened, which is what
+ * «Jami» sums; the calls are said beside it, never added to it. The whole
+ * report is on «Qoʻngʻiroqlar».
+ */
+const inboundCallsNote = (n: number | null) =>
+  n === null ? null : (
+    <p
+      className="text-xs font-semibold leading-snug tabular-nums"
+      title="Telefoniyadagi barcha kiruvchi qoʻngʻiroqlar shu davrda (har bir qoʻngʻiroq, takrorlari bilan). Toʻliq hisobot — «Qoʻngʻiroqlar» boʻlimida."
+      data-testid="inbound-calls-note"
+    >
+      📞 {formatNumber(n)} kiruvchi qoʻngʻiroq
+    </p>
+  )
+
 const signed = (n: number) => `${n < 0 ? '−' : '+'}${formatNumber(Math.abs(n))}`
 
 /**
@@ -355,7 +372,18 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
             }
           />
         </div>
-        {TILES_IN_TOTAL.map((t) => channelTile(t, t === 'aiSmm' && data ? aiElsewhereNote(data.tiles.aiElsewhere) : undefined))}
+        {TILES_IN_TOTAL.map((t) =>
+          channelTile(
+            t,
+            !data
+              ? undefined
+              : t === 'aiSmm'
+                ? aiElsewhereNote(data.tiles.aiElsewhere)
+                : t === 'inbound'
+                  ? inboundCallsNote(data.inboundCalls)
+                  : undefined,
+          ),
+        )}
       </div>
       <h3 className="eyebrow" id="lead-channel-apart">
         Jamiga kirmaydi

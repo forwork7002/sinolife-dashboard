@@ -75,6 +75,7 @@ import {
 } from '../src/server/integrations/crm/bitrix24/refusal'
 import type { RefusalClass } from '../src/server/integrations/crm/bitrix24/refusal'
 import { FRESHNESS_ENTITIES } from '../src/server/repositories/referenceRepository'
+import { CALL_DATA_FLOOR } from '../src/lib/callQuality'
 
 const DATABASE_URL = process.env.DATABASE_URL
 const WEBHOOK_URL = process.env.BITRIX24_WEBHOOK_URL
@@ -402,6 +403,42 @@ const DEALS_BACKFILL: DealsBackfill | null = {
   since: new Date('2026-09-01T00:00:00+05:00'),
   requestedAt: new Date('2026-09-29T00:00:00+05:00'),
 }
+
+/**
+ * THE ONE-OFF READS «Kiruvchi qoʻngʻiroqlar» needs, requested 2026-10-05.
+ * Same night window, guards and settling as `DEALS_BACKFILL`, at most one
+ * per hour so the two never share the portal's hourly ceiling.
+ *
+ * - CUSTOMERS / FULL: `customer.createdAtSource` (DATE_CREATE) is new, and the
+ *   minute sync only fills contacts the portal touches again. «Соф янги» —
+ *   a contact born with the call — is unreadable without it. FULL, not
+ *   BACKFILL, because CUSTOMERS / BACKFILL is the contact relink's own row
+ *   (see the sweep below) and would settle this request the night it is made;
+ *   nothing in the worker writes CUSTOMERS / FULL. ~381 000 contacts, ~7 600
+ *   invocations.
+ * - CALLS / BACKFILL since `CALL_DATA_FLOOR`: rows written before the
+ *   2026-10-02 `callDirection` fix carry outgoing legs as INBOUND, and the
+ *   minute pass only looks three hours back. Re-reading rewrites `direction`.
+ */
+const ONE_OFF_READS: readonly {
+  readonly label: string
+  readonly entity: 'CUSTOMERS' | 'CALLS'
+  readonly mode: 'FULL' | 'BACKFILL'
+  readonly request: DealsBackfill
+}[] = [
+  {
+    label: 'kontaktlar (DATE_CREATE)',
+    entity: 'CUSTOMERS',
+    mode: 'FULL',
+    request: { since: new Date('2026-10-05T00:00:00+05:00'), requestedAt: new Date('2026-10-05T00:00:00+05:00') },
+  },
+  {
+    label: 'qoʻngʻiroqlar (yoʻnalish)',
+    entity: 'CALLS',
+    mode: 'BACKFILL',
+    request: { since: CALL_DATA_FLOOR, requestedAt: new Date('2026-10-05T00:00:00+05:00') },
+  },
+]
 
 const WORKER_TIME_ZONE = process.env.APP_TIMEZONE ?? 'Asia/Tashkent'
 
@@ -907,6 +944,29 @@ async function main() {
     }
   }
 
+  // Same «unknown reads as not settled» rule as the deals backfill.
+  const oneOffSettled = new Map<string, boolean>()
+  const oneOffFailedAt = new Map<string, Date | null>()
+  let lastOneOffAt: Date | null = null
+  for (const read of ONE_OFF_READS) {
+    oneOffSettled.set(read.label, false)
+    oneOffFailedAt.set(read.label, null)
+    try {
+      const done = await prisma.syncLog.findFirst({
+        where: {
+          entity: read.entity,
+          mode: read.mode,
+          status: { in: ['SUCCESS', 'PARTIAL'] },
+          startedAt: { gte: read.request.requestedAt },
+        },
+        select: { id: true },
+      })
+      oneOffSettled.set(read.label, done !== null)
+    } catch (error) {
+      console.warn(`  ${stamp()} ! ${read.label} qayta oʻqish holati oʻqilmadi:`, error)
+    }
+  }
+
   console.log(
     `  Sinxronizatsiya har ${INTERVAL_SEC}s. Maʼlumotnomalar har ${REFERENCE_EVERY} tsiklda` +
       ` (oxirgisi: ${lastReferenceAt?.toISOString() ?? 'yozilmagan'}).` +
@@ -1384,6 +1444,51 @@ async function main() {
       } else {
         backfillFailedAt = new Date()
         console.warn(`  ${stamp()} backfill muvaffaqiyatsiz: ${r.errorMessage ?? r.status} — bir soatdan keyin`)
+      }
+    }
+
+    /*
+      THE ONE-OFF READS — see `ONE_OFF_READS`. The deals backfill's guards, one
+      read per tick, and an hour between two of them.
+    */
+    const oneOffNow = new Date()
+    const oneOff = ONE_OFF_READS.find((read) =>
+      isBackfillDue(
+        read.request,
+        oneOffSettled.get(read.label) ?? false,
+        oneOffNow,
+        WORKER_TIME_ZONE,
+        oneOffFailedAt.get(read.label) ?? null,
+      ),
+    )
+    if (
+      oneOff &&
+      tick > 0 &&
+      calm === 0 &&
+      !provider.gate.isOpen() &&
+      !stopping &&
+      (lastOneOffAt === null || oneOffNow.getTime() - lastOneOffAt.getTime() >= SWEEP_RETRY_MS)
+    ) {
+      lastOneOffAt = oneOffNow
+      const started = Date.now()
+      console.log(`  ${stamp()} bir martalik qayta oʻqish: ${oneOff.label}`)
+      const r = await engine.runEntity(
+        oneOff.entity,
+        oneOff.mode,
+        oneOff.mode === 'BACKFILL' ? { updatedSince: oneOff.request.since } : {},
+      )
+      if (r.status === 'SUCCESS' || r.status === 'PARTIAL') {
+        oneOffSettled.set(oneOff.label, true)
+        console.log(
+          `  ${stamp()} ${oneOff.label} tugadi: ${r.recordsRead} oʻqildi, ${r.recordsUpdated} yangilandi` +
+            `  (${((Date.now() - started) / 1000).toFixed(1)}s,` +
+            ` soatlik ${provider.budget.state(new Date()).spent}/${provider.budget.state(new Date()).ceiling})`,
+        )
+      } else {
+        oneOffFailedAt.set(oneOff.label, new Date())
+        console.warn(
+          `  ${stamp()} ${oneOff.label} muvaffaqiyatsiz: ${r.errorMessage ?? r.status} — bir soatdan keyin`,
+        )
       }
     }
 

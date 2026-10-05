@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@/generated/prisma/client'
 import { env } from '@/server/config/env'
+import { CALL_DATA_FLOOR, callWindowStart } from '@/lib/callQuality'
 import type { Period } from '@/server/domain/period/period'
 
 /**
@@ -181,6 +182,25 @@ export class LeadSourcesRepository {
       [...sourceIds],
     )
     return { leads: Number(row?.leads ?? 0), qualified: Number(row?.qualified ?? 0) }
+  }
+
+  /**
+   * Inbound calls in the window — «Входящий»'s second line, the same count
+   * «Qoʻngʻiroqlar» → «Kiruvchi qoʻngʻiroqlar» prints. Null for a window that
+   * ends before `CALL_DATA_FLOOR`: call data is wrong there, not zero.
+   */
+  async inboundCallCount(period: Period): Promise<number | null> {
+    if (period.end <= CALL_DATA_FLOOR) return null
+    const [row] = await this.prisma.$queryRawUnsafe<{ calls: bigint }[]>(
+      `
+      SELECT count(*)::bigint AS calls
+      FROM "call_record" r
+      WHERE r."direction" = 'INBOUND' AND r."startedAt" >= $1 AND r."startedAt" < $2
+      `,
+      callWindowStart(period.start),
+      period.end,
+    )
+    return Number(row?.calls ?? 0)
   }
 
   /**

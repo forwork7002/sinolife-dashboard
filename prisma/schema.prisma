@@ -689,6 +689,11 @@ model Customer {
   /// which on a confirmation desk is a call that never gets made.
   phones         String[]       @default([])
   region         String?
+  /// When the contact was created IN BITRIX24 (DATE_CREATE). `createdAt` is
+  /// our row's. «Kiruvchi qoʻngʻiroqlar» calls a number «Соф янги» when its
+  /// contact was born with the call, which only the portal's clock can tell.
+  /// Null on rows no sync has re-read since the column landed.
+  createdAtSource DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 

@@ -652,6 +652,7 @@ export function createSyncHandlers(
     { name: 'phone' },
     { name: 'phones', cast: 'text[]' },
     { name: 'region' },
+    { name: 'createdAtSource', cast: 'timestamp' },
     ...lifecycleColumns(),
   ]
 
@@ -685,6 +686,7 @@ export function createSyncHandlers(
           r.phone ?? null,
           r.phones ? [...r.phones] : [],
           r.region ?? null,
+          ts(r.createdAtSource),
           now,
           now,
         ]),

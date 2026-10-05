@@ -9,6 +9,7 @@ import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/State
 import { ChartCard } from '@/components/ui/Card'
 import { StatTile } from '@/components/ui/Stat'
 import { CallTable } from '@/features/calls/CallTable'
+import { InboundCallsSection } from '@/features/calls/InboundCallsSection'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type CallActivityDto, type PeriodDto, apiGet } from '@/lib/api'
@@ -78,13 +79,17 @@ export function CallsPage() {
       meta={calls.data?.meta}
       stale={calls.isPlaceholderData}
     >
-      <CallActivity
-        data={calls.data?.data}
-        period={calls.data?.meta.period}
-        status={status}
-        errorMessage={calls.error instanceof Error ? calls.error.message : undefined}
-        onRetry={() => void calls.refetch()}
-      />
+      <div className="flex flex-col gap-6">
+        {/* The client's inbound report (2026-10-05) opens the page: who rang us. */}
+        <InboundCallsSection windowParams={windowParams} />
+        <CallActivity
+          data={calls.data?.data}
+          period={calls.data?.meta.period}
+          status={status}
+          errorMessage={calls.error instanceof Error ? calls.error.message : undefined}
+          onRetry={() => void calls.refetch()}
+        />
+      </div>
     </PageShell>
   )
 }

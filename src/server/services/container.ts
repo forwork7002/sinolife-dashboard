@@ -8,6 +8,7 @@
  */
 
 import { CbuUsdRates } from '@/server/integrations/cbu/cbuRates'
+import { env } from '@/server/config/env'
 import { prisma } from '@/server/db/prisma'
 import { DealRepository } from '@/server/repositories/dealRepository'
 import { InsightsRepository } from '@/server/repositories/insightsRepository'
@@ -22,6 +23,7 @@ import { ReklamaRepository } from '@/server/repositories/reklamaRepository'
 import { RegistrationRepository } from '@/server/repositories/registrationRepository'
 import { RnpRepository } from '@/server/repositories/rnpRepository'
 import { RoistatRepository } from '@/server/repositories/roistatRepository'
+import { InboundCallsRepository } from '@/server/repositories/inboundCallsRepository'
 import { ScopeRepository } from '@/server/repositories/scopeRepository'
 import { AlertsService } from '@/server/services/alertsService'
 import { SearchService } from '@/server/services/searchService'
@@ -41,6 +43,7 @@ import { ReklamaService } from './reklamaService'
 import { RegistrationService } from './registrationService'
 import { RnpService } from './rnpService'
 import { RoistatService } from './roistatService'
+import { InboundCallsService } from './inboundCallsService'
 
 const dealRepository = new DealRepository(prisma)
 export const referenceRepository = new ReferenceRepository(prisma)
@@ -67,6 +70,11 @@ export const scopeRepository = new ScopeRepository(prisma)
 export const scopeService = new ScopeService(scopeRepository)
 export const kpiService = new KpiService(dealRepository, referenceRepository)
 export const insightsService = new InsightsService(insightsRepository)
+/*
+  «Kiruvchi qoʻngʻiroqlar» (2026-10-05) on «Qoʻngʻiroqlar»: inbound callers by
+  number, grouped by what the CRM held for them. See inboundCallsService.ts.
+*/
+export const inboundCallsService = new InboundCallsService(new InboundCallsRepository(prisma), env.APP_TIMEZONE)
 export const pulseService = new PulseService(pulseRepository)
 /*
   «Oyliklar» reads the confirmation cohort's per-seller rating — the same query

@@ -83,6 +83,8 @@ export interface SourceRowDto {
 
 export interface LeadSourcesOverviewDto {
   readonly importedAt: string | null
+  /** Inbound calls in the window, under «Входящий»; null before the call data floor. */
+  readonly inboundCalls: number | null
   /** The six headline tiles — leads by creation day, kval by the day it was WON. */
   readonly funnel: {
     readonly total: number

@@ -174,6 +174,8 @@ export interface RawCustomer extends ExternalRecord {
   /** Every number the source holds, in its own order. */
   readonly phones?: readonly string[]
   readonly region?: string
+  /** When the source created the contact — not when we first saw it. */
+  readonly createdAtSource?: Date
 }
 
 export interface RawDeal extends ExternalRecord {

@@ -155,6 +155,12 @@ export interface LeadSourcesOverviewDto {
   /** When Meta's campaign grain was last read; null means never. */
   readonly importedAt: string | null
   /**
+   * Inbound CALLS in the window (`call_record`, direction INBOUND) — printed
+   * under «Входящий», whose big number stays the Регистрация leads from a
+   * call source. Null before `CALL_DATA_FLOOR`.
+   */
+  readonly inboundCalls: number | null
+  /**
    * The tab's six headline tiles (the client's list, 2026-10-01): Жами /
    * Янги / Дубль лидлар, Квал лидлар сони, Квал %, Квал лид нархи $.
    * The RNP sheet's «Регистрация» block on the same day reads the same
@@ -332,6 +338,8 @@ export function leadSourcesOverview(input: {
   /** «Сарафан маркетинг» deals in Ecommerce (`LeadSourcesRepository.pipelineSourceCount`) — the «Сарафан» tile. */
   sarafan: PipelineSourceCount
   importedAt: Date | null
+  /** `LeadSourcesRepository.inboundCallCount`; absent reads as null. */
+  inboundCalls?: number | null
 }): LeadSourcesOverviewDto {
   const days = calendarDays(input.window.from, input.window.to)
 
@@ -606,6 +614,7 @@ export function leadSourcesOverview(input: {
 
   return {
     importedAt: input.importedAt?.toISOString() ?? null,
+    inboundCalls: input.inboundCalls ?? null,
     funnel: {
       total: registrationCells.leads,
       fresh,
@@ -691,15 +700,16 @@ export class LeadSourcesService {
 
     const [scans, campaigns, importedAt] = await Promise.all([
       scanCache.get(key, async () => {
-        const [registration, triage, fakt1, qualified, aiQualified, sarafan] = await Promise.all([
+        const [registration, triage, fakt1, qualified, aiQualified, sarafan, inboundCalls] = await Promise.all([
           this.repository.registrationDays(period),
           this.repository.triageDays(period),
           this.insights.leadFakt1Clients(period),
           this.repository.qualifiedSources(period),
           this.repository.aiQualifiedStages(period),
           this.repository.pipelineSourceCount(period, SARAFAN_PIPELINE_ID, [...LEAD_SOURCE_VOCABULARY.sarafan]),
+          this.repository.inboundCallCount(period),
         ])
-        return { registration, triage, fakt1, qualified, aiQualified, sarafan }
+        return { registration, triage, fakt1, qualified, aiQualified, sarafan, inboundCalls }
       }),
       this.meta.campaignDays(window.from, window.to),
       this.meta.campaignsImportedAt(),

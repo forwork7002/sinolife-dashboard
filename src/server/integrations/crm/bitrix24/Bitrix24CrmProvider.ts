@@ -1835,12 +1835,13 @@ export class Bitrix24CrmProvider implements CrmProvider {
       PHONE?: { VALUE: string }[]
       EMAIL?: { VALUE: string }[]
       ADDRESS_CITY?: string
+      DATE_CREATE?: string
       DATE_MODIFY?: string
     }>(
       'crm.contact.list',
       {
         filter,
-        select: ['ID', 'NAME', 'LAST_NAME', 'SECOND_NAME', 'PHONE', 'EMAIL', 'ADDRESS_CITY', 'DATE_MODIFY'],
+        select: ['ID', 'NAME', 'LAST_NAME', 'SECOND_NAME', 'PHONE', 'EMAIL', 'ADDRESS_CITY', 'DATE_CREATE', 'DATE_MODIFY'],
       },
       afterId,
     )
@@ -1876,6 +1877,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
       ],
       email: c.EMAIL?.[0]?.VALUE,
       region: c.ADDRESS_CITY || undefined,
+      createdAtSource: toDate(c.DATE_CREATE),
       updatedAtSource: toDate(c.DATE_MODIFY),
     }))
 
