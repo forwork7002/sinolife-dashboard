@@ -740,6 +740,29 @@ export interface PayrollSellerDto {
   readonly tierFloor: MoneyDto | null
   readonly nextFloor: MoneyDto | null
   readonly toNext: MoneyDto | null
+  /** The same person in the comparison window, same table. Null = delivered nothing then. */
+  readonly previous: { readonly fakt2: MoneyDto; readonly total: MoneyDto } | null
+  readonly fakt2Delta: DeltaDto
+  readonly totalDelta: DeltaDto
+}
+
+/** One ROP card — its sellers summed, now and in the comparison window. */
+export interface PayrollTeamDto {
+  /** Null for sellers in no (ROP) department. */
+  readonly rop: string | null
+  readonly sellers: number
+  readonly fakt2: MoneyDto
+  readonly percent: MoneyDto
+  readonly fixed: MoneyDto
+  readonly total: MoneyDto
+  /** Null when nobody was paid under this name in the comparison window. */
+  readonly previous: {
+    readonly sellers: number
+    readonly fakt2: MoneyDto
+    readonly total: MoneyDto
+  } | null
+  readonly fakt2Delta: DeltaDto
+  readonly totalDelta: DeltaDto
 }
 
 export type PayrollHalf = 'full' | 'first' | 'second'
@@ -755,6 +778,24 @@ export interface PayrollDto {
     readonly percent: MoneyDto
     readonly fixed: MoneyDto
     readonly total: MoneyDto
+  }
+  /** Per ROP, biggest fund first, «ROP yoʻq» last. Σ = `totals`. */
+  readonly teams: readonly PayrollTeamDto[]
+  /** The comparison window (`meta.comparisonPeriod`), by the same table. */
+  readonly previous: {
+    readonly sellers: number
+    /** Delivered money then, no row now — counted, since nothing else shows them. */
+    readonly gone: number
+    readonly fakt2: MoneyDto
+    readonly percent: MoneyDto
+    readonly fixed: MoneyDto
+    readonly total: MoneyDto
+  }
+  readonly deltas: {
+    readonly fakt2: DeltaDto
+    readonly percent: DeltaDto
+    readonly fixed: DeltaDto
+    readonly total: DeltaDto
   }
 }
 

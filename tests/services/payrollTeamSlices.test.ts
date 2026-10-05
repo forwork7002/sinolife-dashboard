@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { payrollPeriod, payrollWeekPeriod } from '@/server/domain/period/period'
+import {
+  comparablePayrollPeriod,
+  payrollPeriod,
+  payrollWeekPeriod,
+} from '@/server/domain/period/period'
 import type { ConfirmationSellerRatingRow, InsightsRepository } from '@/server/repositories/insightsRepository'
 import { PayrollService } from '@/server/services/payrollService'
 
@@ -50,7 +54,9 @@ describe('payroll over per-team slices', () => {
     } as unknown as InsightsRepository
     const service = new PayrollService(insights)
     const period = payrollPeriod('2026-08', 'full', 'Asia/Tashkent')
-    const dto = await service.sellers(period, 'full', 'UZS', new Date('2026-09-26T06:00:00Z'))
+    const now = new Date('2026-09-26T06:00:00Z')
+    const previous = comparablePayrollPeriod(period, payrollPeriod('2026-07', 'full', 'Asia/Tashkent'), now)
+    const dto = await service.sellers(period, previous, 'full', 'UZS', now)
 
     expect(dto.sellers.map((s) => s.employeeId)).toEqual(['moved', 'other'])
     const moved = dto.sellers[0]!
@@ -72,7 +78,9 @@ describe('payroll over per-team slices', () => {
     } as unknown as InsightsRepository
     const service = new PayrollService(insights)
     const period = payrollWeekPeriod('2026-09-28', 'Asia/Tashkent')
-    const dto = await service.weekly(period, 'UZS', new Date('2026-10-03T06:00:00Z'))
+    const now = new Date('2026-10-03T06:00:00Z')
+    const previous = comparablePayrollPeriod(period, payrollWeekPeriod('2026-09-21', 'Asia/Tashkent'), now)
+    const dto = await service.weekly(period, previous, 'UZS', now)
 
     expect(dto.scheme).toBe('week')
     expect(dto.open).toBe(true)
@@ -82,5 +90,158 @@ describe('payroll over per-team slices', () => {
     expect(b!.percentRate).toBe(0)
     expect(b!.total.amount).toBe(0)
     expect(dto.totals.total.amount).toBe(3_092_000)
+  })
+})
+
+/**
+ * «KIM QANCHAGA OʻSGAN» (2026-10-05): the comparison window is read through
+ * the same query, paid by the same table, and summed per ROP under the label
+ * each seller wore THEN.
+ */
+describe('payroll growth and ROP cards', () => {
+  const TZ = 'Asia/Tashkent'
+  const now = new Date('2026-10-05T06:00:00Z')
+
+  /*
+    Each case asks for its OWN month: the service's 60-second memo is module
+    state and keyed on the window, so two cases on one window would read each
+    other's answer.
+  */
+  function setup(month: string, monthBefore: string) {
+    const period = payrollPeriod(month, 'first', TZ)
+    const previous = comparablePayrollPeriod(period, payrollPeriod(monthBefore, 'first', TZ), now)
+    const service = (current: ConfirmationSellerRatingRow[], then: ConfirmationSellerRatingRow[]) =>
+      new PayrollService({
+        confirmationSellerRating: async (window: { start: Date }) =>
+          window.start.getTime() === period.start.getTime() ? current : then,
+      } as unknown as InsightsRepository)
+    return { period, previous, service }
+  }
+
+  it('pays the previous half by the half table and states the change', async () => {
+    const { period, previous, service } = setup('2026-06', '2026-05')
+    const dto = await service(
+      [slice('a', 'Lola', 30, 10), slice('b', 'Lola', 10, 10), slice('new', 'Aziz', 5, 10)],
+      [slice('a', 'Lola', 20, 5), slice('b', 'Lola', 20, 5)],
+    ).sellers(period, previous, 'first', 'UZS', now)
+
+    const [a, b, fresh] = dto.sellers
+    // 30 mln in a half clears 30 → 2 400 000 + 750 000; 20 mln is 8% only.
+    expect(a!.total.amount).toBe(3_150_000)
+    expect(a!.previous?.fakt2.amount).toBe(20_000_000)
+    expect(a!.previous?.total.amount).toBe(1_600_000)
+    expect(a!.fakt2Delta).toEqual({ kind: 'change', percent: 50, direction: 'up' })
+    expect(b!.fakt2Delta).toEqual({ kind: 'change', percent: -50, direction: 'down' })
+    // Nobody delivered under this id then: no row, and no percentage off zero.
+    expect(fresh!.previous).toBeNull()
+    expect(fresh!.fakt2Delta.kind).toBe('no_baseline')
+
+    expect(dto.previous.sellers).toBe(2)
+    expect(dto.previous.fakt2.amount).toBe(40_000_000)
+    expect(dto.previous.total.amount).toBe(3_200_000)
+    expect(dto.deltas.fakt2).toEqual({ kind: 'change', percent: 12.5, direction: 'up' })
+  })
+
+  it('adds the ROP cards up to the fund, ROP yoʻq last', async () => {
+    const { period, previous, service } = setup('2026-04', '2026-03')
+    const dto = await service(
+      [
+        { ...slice('x', 'Lola', 22.5, 10) },
+        { ...slice('y', 'Aziz', 40, 10) },
+        { ...slice('z', 'Lola', 3, 10) },
+        { ...slice('lone', 'Lola', 1, 10), rop: null },
+      ],
+      [slice('x', 'Aziz', 10, 5), slice('y', 'Aziz', 30, 5)],
+    ).sellers(period, previous, 'first', 'UZS', now)
+
+    expect(dto.teams.map((t) => t.rop)).toEqual(['Aziz', 'Lola', null])
+    const sum = (pick: (t: (typeof dto.teams)[number]) => { amountMinor: string }) =>
+      dto.teams.reduce((acc, t) => acc + BigInt(pick(t).amountMinor), 0n)
+    expect(sum((t) => t.total)).toBe(BigInt(dto.totals.total.amountMinor))
+    expect(sum((t) => t.fakt2)).toBe(BigInt(dto.totals.fakt2.amountMinor))
+    expect(dto.teams.reduce((acc, t) => acc + t.sellers, 0)).toBe(dto.totals.sellers)
+
+    const [aziz, lola, none] = dto.teams
+    // Then, x sold under Aziz: Aziz's previous is both sellers, Lola had nobody.
+    expect(aziz!.previous).toEqual(
+      expect.objectContaining({ sellers: 2 }),
+    )
+    expect(aziz!.previous?.fakt2.amount).toBe(40_000_000)
+    expect(lola!.previous).toBeNull()
+    expect(lola!.sellers).toBe(2)
+    expect(none!.sellers).toBe(1)
+  })
+
+  it('reads a seller whose orders were all in flight then as new, not as a baseline of 0', async () => {
+    const { period, previous, service } = setup('2026-02', '2026-01')
+    const dto = await service(
+      [slice('a', 'Lola', 12, 10), slice('b', 'Lola', 9, 10)],
+      [{ ...slice('a', 'Lola', 5, 5), deliveredMinor: 0n }, slice('b', 'Lola', 10, 5)],
+    ).sellers(period, previous, 'first', 'UZS', now)
+    const a = dto.sellers.find((s) => s.employeeId === 'a')!
+    expect(a.previous).toBeNull()
+    expect(a.fakt2Delta.kind).toBe('no_baseline')
+    // The team's baseline is b's 10 mln alone.
+    expect(dto.teams[0]!.previous?.fakt2.amount).toBe(10_000_000)
+  })
+
+  it('keeps a team paid then and empty now at zero, and counts the sellers gone', async () => {
+    const { period, previous, service } = setup('2025-12', '2025-11')
+    const dto = await service(
+      [slice('a', 'Lola', 12, 10)],
+      [slice('a', 'Lola', 10, 5), slice('gone', 'Aziz', 8, 5)],
+    ).sellers(period, previous, 'first', 'UZS', now)
+    expect(dto.teams.map((t) => t.rop)).toEqual(['Lola', 'Aziz'])
+    const aziz = dto.teams[1]!
+    expect(aziz.sellers).toBe(0)
+    expect(aziz.total.amount).toBe(0)
+    expect(aziz.previous?.fakt2.amount).toBe(8_000_000)
+    expect(aziz.fakt2Delta).toEqual({ kind: 'change', percent: -100, direction: 'down' })
+    // Σ over the cards is both funds.
+    const sum = (pick: (t: (typeof dto.teams)[number]) => bigint) => dto.teams.reduce((acc, t) => acc + pick(t), 0n)
+    expect(sum((t) => BigInt(t.previous?.total.amountMinor ?? '0'))).toBe(BigInt(dto.previous.total.amountMinor))
+    expect(sum((t) => BigInt(t.total.amountMinor))).toBe(BigInt(dto.totals.total.amountMinor))
+    expect(dto.previous.gone).toBe(1)
+  })
+
+  it('states a «small base» pair in soʻm, not tiyin', async () => {
+    const { period, previous, service } = setup('2025-10', '2025-09')
+    const dto = await service(
+      [slice('a', 'Lola', 9, 10)],
+      [slice('a', 'Lola', 0.4, 5)],
+    ).sellers(period, previous, 'first', 'UZS', now)
+    expect(dto.sellers[0]!.fakt2Delta).toEqual({ kind: 'small_base', current: 9_000_000, previous: 400_000 })
+  })
+
+  it('does not serve one comparison window’s answer for another', async () => {
+    const TZ_ = 'Asia/Tashkent'
+    const period = payrollPeriod('2025-08', 'first', TZ_)
+    const whole = comparablePayrollPeriod(period, payrollPeriod('2025-07', 'first', TZ_), now)
+    const cut = comparablePayrollPeriod(period, payrollPeriod('2025-07', 'first', TZ_), new Date('2025-08-05T06:00:00Z'))
+    const service = new PayrollService({
+      confirmationSellerRating: async (window: { start: Date; end: Date }) =>
+        window.start.getTime() === period.start.getTime()
+          ? [slice('a', 'Lola', 10, 10)]
+          : [slice('a', 'Lola', window.end.getTime() === whole.end.getTime() ? 20 : 5, 5)],
+    } as unknown as InsightsRepository)
+    const first = await service.sellers(period, whole, 'first', 'UZS', now)
+    const second = await service.sellers(period, cut, 'first', 'UZS', now)
+    expect(first.previous.fakt2.amount).toBe(20_000_000)
+    expect(second.previous.fakt2.amount).toBe(5_000_000)
+  })
+
+  it('does not ask for a comparison window that is empty', async () => {
+    let calls = 0
+    const insights = {
+      confirmationSellerRating: async () => {
+        calls += 1
+        return [slice('a', 'Lola', 1, 10)]
+      },
+    } as unknown as InsightsRepository
+    const week = payrollWeekPeriod('2026-10-12', TZ)
+    const empty = comparablePayrollPeriod(week, payrollWeekPeriod('2026-10-05', TZ), now)
+    const dto = await new PayrollService(insights).weekly(week, empty, 'UZS', now)
+    expect(calls).toBe(1)
+    expect(dto.previous.sellers).toBe(0)
   })
 })

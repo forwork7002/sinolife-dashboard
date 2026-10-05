@@ -525,6 +525,62 @@ export function payrollWeekPeriod(mondayIso: string, timeZone: string): Period {
 }
 
 /**
+ * «KIM QANCHAGA OʻSGAN» (2026-10-05) — the payroll period a period is set
+ * against is the LIKE one before it: the month before, the same half of the
+ * month before, the week before. These two name it in the words the
+ * endpoints already take, so the previous window is built by the very
+ * functions above and cannot disagree with them about where a half ends.
+ */
+export function previousPayrollMonth(yearMonth: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(yearMonth)
+  if (!match) throw new InvalidPeriodError(`${yearMonth} is not a YYYY-MM month`)
+  const index = Number(match[1]) * 12 + Number(match[2]) - 2
+  return `${String(Math.floor(index / 12)).padStart(4, '0')}-${String((index % 12) + 1).padStart(2, '0')}`
+}
+
+/** The Monday seven calendar days before `mondayIso`. Pure date arithmetic, no zone. */
+export function previousPayrollMonday(mondayIso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(mondayIso)
+  if (!match) throw new InvalidPeriodError(`${mondayIso} is not a YYYY-MM-DD date`)
+  const date = new Date(0)
+  // setUTCFullYear, not Date.UTC: the latter reads years 0–99 as 1900–1999.
+  date.setUTCFullYear(Number(match[1]), Number(match[2]) - 1, Number(match[3]) - 7)
+  return date.toISOString().slice(0, 10)
+}
+
+/**
+ * The previous payroll period, cut to be COMPARABLE with `current` at `now`.
+ *
+ * A closed period is compared whole with whole. A RUNNING one is compared
+ * with the same elapsed time of the previous one — the 1st to the 5th of
+ * October against the 1st to the 5th of September — because the window is
+ * deliberately not clipped to now (see `payrollPeriod`), and five days set
+ * against a whole month would print every seller as a collapse.
+ *
+ * The elapsed time is FLOORED TO THE MINUTE, so the window — and the memo key
+ * built from it — holds still for a minute rather than changing on every
+ * request. The cut never runs past the previous period's own end (a 16-day
+ * second half of March against February's 13), and a period that has not
+ * started yet is compared with nothing: an empty window at the previous start.
+ */
+export function comparablePayrollPeriod(current: Period, previous: Period, now: Date): Period {
+  assertValidDate(now, 'now')
+  const minute = 60_000
+  const elapsed = Math.floor((now.getTime() - current.start.getTime()) / minute) * minute
+  const open = now.getTime() < current.end.getTime()
+  const end = !open
+    ? previous.end.getTime()
+    : Math.min(previous.start.getTime() + Math.max(0, elapsed), previous.end.getTime())
+
+  return Object.freeze({
+    start: previous.start,
+    end: new Date(end),
+    timeZone: previous.timeZone,
+    preset: 'custom' as const,
+  })
+}
+
+/**
  * The instant a period is measured "as of" — its last representable moment.
  *
  * Because periods are half-open, `end` itself belongs to the NEXT period. Using

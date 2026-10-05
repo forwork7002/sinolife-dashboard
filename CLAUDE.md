@@ -434,7 +434,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
 | Tasdiqlash navbati | `/confirmation` | `confirmation/ConfirmationPage` | `/insights/confirmations/orders` | Insights → Insights | **the arrival in `C4:NEW`** — the latest `deal_stage_history` row whose stage signals `CONFIRM_NEW`; `?queue=backlog` (where the bell lands) drops the window entirely |
-| Sotuvchilar oyligi | `/payroll` | `payroll/PayrollPage` — two tabs, «Haftalik» and «Oylik» (2026-10-03) | `/payroll/weekly`, `/payroll/sellers` | Payroll → Insights | **a payroll period** — a Monday-to-Sunday week (`week`, its Monday) or a calendar month / one half of it (`month` + `half`), resolved on the server. No dashboard preset reaches it |
+| Sotuvchilar oyligi | `/payroll` | `payroll/PayrollPage` + `PayrollTeams` — three tabs, «Haftalik», «15 kunlik» (1–15 / 16–oxiri) and «Oylik» (2026-10-05); sellers in one card per ROP, every figure against the like period before | `/payroll/weekly`, `/payroll/sellers` | Payroll → Insights | **a payroll period** — a Monday-to-Sunday week (`week`, its Monday) or a calendar month / one half of it (`month` + `half`), resolved on the server. No dashboard preset reaches it |
 | Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | the arrival in `C4:NEW` (`queued_at`) — the confirmation queue's own cohort. **The television board**: two podiums and two ranked lists (sellers left, teams right) — the sellers' seats and rows carry medals, the teams' carry none — and ONE control, the FAKT 1 / FAKT 2 switch in each heading; the FAKT 1 / FAKT 2 totals, conversion, bonus fund and ladder render on Savdo dinamikasi (`sales/ConfirmationFaktSection`), which is why the route lists both sections |
 | KPI rejalari | `/kpi` | `kpi/KpiPage` | `/kpi` | Kpi, Analytics → Reference, Deal | **the plan's own `periodStart`/`periodEnd`** — the dashboard window only *selects* which plan is live |
 | Struktura | `/structure` | `structure/StructurePage` | `/insights/structure`, `/insights/structure/roster` | Insights → Insights | **nothing — the screen is DATELESS.** `period={false}`, no window control, and neither endpoint takes one |
@@ -1713,6 +1713,17 @@ Per-screen traps worth knowing before you touch one:
   Tashkent to fra1, not the database — a lesson worth keeping for the next
   probe: time a query from something that sits beside the database, or time
   the endpoint.
+  **BY ROP, WITH GROWTH — 2026-10-05** («ROP larga ajratilsin … kim qanchaga
+  oʻsganligi … grafiklar bilan»). Tabs «Haftalik | 15 kunlik | Oylik»; one
+  card per ROP (`teams`, summed on the server from the printed rows, so the
+  cards add up to the fund); every figure set against the LIKE period before
+  — the week before, the same half of the month before, the month before —
+  built by `comparablePayrollPeriod`, which cuts it to the same elapsed time
+  (floored to the minute) while the period runs and is echoed as
+  `meta.comparisonPeriod`. The previous window is paid by the same table; a
+  seller absent then reads «yangi», and a team's previous figure groups the
+  previous sellers by the label they wore THEN. Mid-period growth reads low by
+  construction: the newer cohort's FAKT 2 is still being delivered.
 - **KPI rejalari** — the preset picks the plan but does not slice it. «Bugun»
   and «Shu oy» give identical numbers inside one plan.
 - **Struktura** — **no money and no reporting window, and both are load-bearing

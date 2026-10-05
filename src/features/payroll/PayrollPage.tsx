@@ -7,15 +7,34 @@ import { Button } from '@/components/ui/Button'
 import { ChartCard } from '@/components/ui/Card'
 import { SearchInput, SegmentedControl } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
+import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import { PageShell } from '@/features/shared/PageShell'
-import { type PayrollDto, type PayrollHalf, type PayrollSellerDto, apiGet } from '@/lib/api'
-import { NO_VALUE, formatCompactUzs, formatFullUzs, formatNumber } from '@/lib/format'
+import {
+  type DeltaDto,
+  type PayrollDto,
+  type PayrollSellerDto,
+  type PayrollTeamDto,
+  type PeriodDto,
+  apiGet,
+} from '@/lib/api'
+import {
+  NO_VALUE,
+  formatCompactUzs,
+  formatDateShort,
+  formatDateTime,
+  formatFullUzs,
+  formatNumber,
+} from '@/lib/format'
+
+import { NO_ROP, NewChip, PayrollMovers, RopCards, RopCompareChart } from './PayrollTeams'
 
 /**
- * «Sotuvchilar oyligi» — what the office owes each seller, in TWO SECTIONS.
+ * «Sotuvchilar oyligi» — what the office owes each seller, in THREE TABS.
  *
  * «Haftalik» and «Oylik», one tab each (2026-10-03, «ikkita boʻlim boʻladi.
- * haftalik alohida va oylik alohida»). They are the client's two Word files
+ * haftalik alohida va oylik alohida»), and «15 kunlik» beside them since
+ * 2026-10-05 («15 kunlik ni ham tanla … oyning 1 chi kunidan»): the half
+ * table, 1–15 or 16–end, which used to hide behind the month tab. They are the client's two Word files
  * on one screen: the weekly income — a rate that rises with the tier (5 / 8 /
  * 10 / 12%) plus a weekly oklad, and nothing under 15 mln — and the monthly
  * payroll — 8% from the first soʻm plus a fixed part per tier, for the whole
@@ -35,9 +54,15 @@ import { NO_VALUE, formatCompactUzs, formatFullUzs, formatNumber } from '@/lib/f
  * showing what the fund is made of; a search box, because the office looks up
  * one person by name out of a hundred; a bar in the fixed-part column for «who
  * is close to the next rung»; the rule itself, with how many people stand on
- * each rung; a per-ROP summary, because the money is handed out through the
- * team leaders; and a copy button, because the last step of a payroll is
- * pasting it to somebody.
+ * each rung; and a copy button, because the last step of a payroll is pasting
+ * it to somebody.
+ *
+ * BY ROP, WITH GROWTH (2026-10-05, «ROP larga ajratilsin … kim qanchaga
+ * oʻsganligi … grafiklar bilan»). The money is handed out through the team
+ * leaders, so the sellers sit in one card per ROP; every figure is set against
+ * the like period before (`meta.comparisonPeriod`, cut to the same elapsed
+ * time while this one runs); a bar per ROP and the five biggest movers each
+ * way sit above the cards. See `PayrollTeams`.
  *
  * THE PERIOD IS A CALENDAR FACT, not the dashboard's window: a Monday-to-
  * Sunday week, or 1–15 / 16–end / the whole month. This screen carries its own
@@ -58,25 +83,31 @@ export function PayrollPage() {
   const [view, setView] = useState<PayrollView>('week')
   const [week, setWeek] = useState(() => currentMonday())
   const [month, setMonth] = useState(() => currentMonth())
-  const [half, setHalf] = useState<PayrollHalf>('full')
+  /* Which half on the «15 kunlik» tab — from the 1st by default, as asked. */
+  const [half, setHalf] = useState<HalfOfMonth>('first')
   const [search, setSearch] = useState('')
 
+  const monthHalf = view === 'half' ? half : 'full'
   const query = useQuery({
-    queryKey: view === 'week' ? ['payroll', 'week', week] : ['payroll', 'month', month, half],
+    queryKey: view === 'week' ? ['payroll', 'week', week] : ['payroll', 'month', month, monthHalf],
     queryFn: ({ signal }) =>
       view === 'week'
         ? apiGet<PayrollDto>('/payroll/weekly', { week }, signal)
-        : apiGet<PayrollDto>('/payroll/sellers', { month, half }, signal),
+        : apiGet<PayrollDto>('/payroll/sellers', { month, half: monthHalf }, signal),
   })
 
   const viewStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
   const errorMessage = (query.error as Error | null)?.message
   const retry = () => void query.refetch()
 
-  const scheme: Scheme = view === 'week' ? 'week' : half === 'full' ? 'month' : 'half'
+  const scheme: Scheme = view
   const words = WORDS[scheme]
   const periodText =
-    view === 'week' ? weekLabel(week) : `${monthLabel(month)} · ${halfLabel(half)}`
+    view === 'week'
+      ? weekLabel(week)
+      : view === 'half'
+        ? `${monthLabel(month)} · ${halfLabel(half)}`
+        : monthLabel(month)
 
   /*
     A week's rows never sit under the month's headings, not even for a frame:
@@ -84,36 +115,40 @@ export function PayrollPage() {
   */
   const data = query.data?.data.scheme === scheme ? query.data.data : undefined
   const totals = data?.totals
+  const comparison = data ? query.data?.meta.comparisonPeriod : undefined
+  const comparisonLabel = comparison ? comparisonText(comparison, data?.open ?? false) : null
+  /* A delta over an empty comparison window (a period not started) says nothing. */
+  const compared = Boolean(comparison && comparison.start !== comparison.end)
+  /*
+    Ended less than RECENT_DAYS ago (or still running): the comparison cohort
+    has had more time to be delivered, see the note under the hero.
+  */
+  const meta = data ? query.data?.meta : undefined
+  // Measured against the answer's own clock, not the browser's.
+  const recent = meta?.period
+    ? Date.parse(meta.period.end) > Date.parse(meta.generatedAt) - RECENT_DAYS * 86_400_000
+    : false
   /*
     Memoised because the groupings below depend on it: `data?.sellers ?? []`
     mints a fresh empty array on every render while the request is in flight.
   */
   const sellers = useMemo(() => data?.sellers ?? EMPTY_SELLERS, [data])
 
+  const teams = data?.teams ?? EMPTY_TEAMS
   /*
-    THE SEARCH NARROWS THE TABLE AND NOTHING ELSE. The hero and the ЖАМИ row
-    keep stating the whole period. Matching runs over the name AND the team,
-    because «Sevinch» is how a floor manager asks for eleven people at once.
+    THE SEARCH NARROWS THE CARDS AND NOTHING ELSE. The hero keeps stating the
+    whole period. Matching runs over the name AND the team, because «Sevinch»
+    is how a floor manager asks for eleven people at once.
   */
-  const visible = useMemo(() => {
-    const needle = search.trim().toLowerCase()
-    if (!needle) return sellers
-    return sellers.filter(
-      (row) =>
-        row.fullName.toLowerCase().includes(needle) ||
-        (row.rop ?? '').toLowerCase().includes(needle),
-    )
-  }, [sellers, search])
-
-  const lines: PayrollLine[] = [
-    ...visible.map((row): PayrollLine => ({ kind: 'seller', row })),
-    // The footer states the PERIOD, so it is dropped while a search is on
-    // rather than left standing over a subset it does not describe.
-    ...(data && !search.trim() ? [{ kind: 'total' as const, row: totalLine(data) }] : []),
+  const searching = search.trim() !== ''
+  const toLines = (rows: readonly PayrollSellerDto[], team: PayrollTeamDto): PayrollLine[] => [
+    ...rows.map((row): PayrollLine => ({ kind: 'seller', row })),
+    // The footer states the TEAM's period, so it is dropped while a search is
+    // on rather than left standing over a subset it does not describe.
+    ...(searching ? [] : [{ kind: 'total' as const, row: teamLine(team) }]),
   ]
 
-  const teams = useMemo(() => teamRows(sellers), [sellers])
-  const columns = useMemo(() => payrollColumns(scheme), [scheme])
+  const columns = useMemo(() => payrollColumns(scheme, compared), [scheme, compared])
   const rules = RULES[scheme]
   const onRung = useMemo(() => rungCounts(rules, sellers), [rules, sellers])
   const paid = sellers.filter((row) => row.percent.amount > 0).length
@@ -132,6 +167,7 @@ export function PayrollPage() {
             ariaLabel="Boʻlim"
             options={[
               { value: 'week', label: 'Haftalik' },
+              { value: 'half', label: '15 kunlik' },
               { value: 'month', label: 'Oylik' },
             ]}
           />
@@ -186,20 +222,26 @@ export function PayrollPage() {
                   ›
                 </Button>
               </div>
-              <SegmentedControl<PayrollHalf>
-                value={half}
-                onChange={setHalf}
-                ariaLabel="Toʻlov davri"
-                options={[
-                  { value: 'full', label: 'Butun oy' },
-                  { value: 'first', label: '1–15' },
-                  { value: 'second', label: '16–oxiri' },
-                ]}
-              />
+              {view === 'half' && (
+                <SegmentedControl<HalfOfMonth>
+                  value={half}
+                  onChange={setHalf}
+                  ariaLabel="Oyning qaysi yarmi"
+                  options={[
+                    { value: 'first', label: '1–15' },
+                    { value: 'second', label: '16–oxiri' },
+                  ]}
+                />
+              )}
             </>
           )}
           <SearchInput value={search} onChange={setSearch} placeholder="Ism yoki ROP…" />
-          <CopyButton rows={sellers} title={`${words.section} · ${periodText}`} words={words} />
+          <CopyButton
+            rows={sellers}
+            teams={teams}
+            title={`${words.section} · ${periodText}`}
+            words={words}
+          />
         </>
       }
     >
@@ -230,8 +272,16 @@ export function PayrollPage() {
                 soʻm
               </span>
             </p>
-            <p className="mt-2 text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
+            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
               {words.fund}
+              {data && compared && (
+                <>
+                  <TrendIndicator delta={data.deltas.total} />
+                  <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                    {comparisonLabel} bilan · oldin {formatFullUzs(data.previous.total.amount)} soʻm
+                  </span>
+                </>
+              )}
             </p>
 
             {totals && totals.total.amount > 0 && (
@@ -270,18 +320,21 @@ export function PayrollPage() {
               term="FAKT 2 · Успешно"
               value={totals ? formatFullUzs(totals.fakt2.amount) : NO_VALUE}
               note={totals ? `${formatNumber(totals.sellers)} ta sotuvchi` : undefined}
+              delta={compared ? data?.deltas.fakt2 : undefined}
             />
             <Figure
               term={`Foiz · ${words.rate}`}
               value={totals ? formatFullUzs(totals.percent.amount) : NO_VALUE}
               note={totals ? `${formatNumber(paid)} kishiga` : undefined}
               swatch="var(--series-3)"
+              delta={compared ? data?.deltas.percent : undefined}
             />
             <Figure
               term={words.fixed}
               value={totals ? formatFullUzs(totals.fixed.amount) : NO_VALUE}
               note={totals ? `${formatNumber(sellers.filter((s) => s.fixed.amount > 0).length)} kishiga` : undefined}
               swatch="var(--series-4)"
+              delta={compared ? data?.deltas.fixed : undefined}
             />
           </dl>
         </div>
@@ -298,36 +351,81 @@ export function PayrollPage() {
             oxirigacha oʻsadi.
           </p>
         )}
-      </section>
 
-      <ChartCard title="Hisob-kitob · har bir sotuvchi" hint={words.tableHint}>
-        {search.trim() && (
-          <p className="mb-3 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-            «{search.trim()}» boʻyicha {formatNumber(visible.length)} ta sotuvchi. Yuqoridagi
-            yigʻma butun davrniki.
+        {compared && recent && (
+          /*
+            THE GROWTH IS MEASURED ON TWO COHORTS OF DIFFERENT AGE. FAKT 2 is the
+            order's delivery status TODAY, and the comparison window's orders
+            have had a whole period longer to arrive — so while this period is
+            running, and for a fortnight after it closes, the change reads LOW.
+            The figures are not wrong; the comparison is younger on one side.
+          */
+          <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            Oʻsish haqida: FAKT 2 — buyurtmaning bugungi holati. Oʻtgan davr buyurtmalari
+            yetkazilishga koʻproq vaqt olgan, shuning uchun hozircha oʻsish biroz past koʻrinadi
+            — yangi buyurtmalar yetib borgani sari tenglashadi.
           </p>
         )}
-        <DataTable<PayrollLine>
-          columns={columns}
-          rows={lines}
-          rowKey={(line) => (line.kind === 'total' ? TOTAL_ROW_KEY : line.row.employeeId)}
-          status={viewStatus}
-          errorMessage={errorMessage}
-          onRetry={retry}
-          emptyTitle={search.trim() ? 'Topilmadi' : 'Maʼlumot yoʻq'}
-          emptyBody={
-            search.trim()
-              ? 'Bu ism yoki ROP boʻyicha sotuvchi yoʻq. Boshqa yozib koʻring.'
-              : 'Bu davrda yetkazib berilgan buyurtma topilmadi.'
-          }
-          minWidth={920}
-          /*
-            EVERY SELLER AT ONCE. This is a payroll: a scrollbar inside the card
-            hides people who are owed money.
-          */
-          maxHeight="none"
-          stickyColumns={1}
-        />
+      </section>
+
+      {/*
+        THE TWO PICTURES OF «WHO GREW», above the cards they summarise: per ROP,
+        then per person. Drawn only once there is a payload — a bar chart of
+        nothing is not a loading state.
+      */}
+      {data && teams.length > 0 && (
+        /*
+          STACKED, NOT SIDE BY SIDE: the movers are two lists of names, and at
+          half a laptop's width each list had ~200px — every name truncated.
+        */
+        <div className="flex flex-col gap-4">
+          <ChartCard
+            title="ROP lar taqqoslash"
+            hint={
+              compared
+                ? 'Har bir ROP jamoasi: shu davr va oʻtgan davr, bitta shkalada.'
+                : 'Har bir ROP jamoasining shu davrdagi toʻlovi.'
+            }
+          >
+            <RopCompareChart teams={teams} comparisonLabel={compared ? comparisonLabel : null} />
+          </ChartCard>
+          {compared && (
+            <ChartCard
+              title="Kim qanchaga oʻsdi"
+              hint={`FAKT 2 ning oʻzgarishi, soʻmda — ${comparisonLabel} bilan solishtirilgan.`}
+            >
+              <PayrollMovers sellers={sellers} gone={data.previous.gone} />
+            </ChartCard>
+          )}
+        </div>
+      )}
+
+      <ChartCard title="Hisob-kitob · ROP lar boʻyicha" hint={words.tableHint}>
+        {viewStatus === 'ready' && data && sellers.length > 0 ? (
+          <RopCards<PayrollLine>
+            teams={teams}
+            sellers={sellers}
+            search={search}
+            columns={columns}
+            toLines={toLines}
+            rowKey={(line) => (line.kind === 'total' ? TOTAL_ROW_KEY : line.row.employeeId)}
+            comparisonLabel={compared ? comparisonLabel : null}
+          />
+        ) : (
+          /* Loading, error and the empty period keep the table's own states. */
+          <DataTable<PayrollLine>
+            columns={columns}
+            rows={[]}
+            rowKey={(line) => line.row.employeeId}
+            status={viewStatus}
+            errorMessage={errorMessage}
+            onRetry={retry}
+            emptyTitle="Maʼlumot yoʻq"
+            emptyBody="Bu davrda yetkazib berilgan buyurtma topilmadi."
+            minWidth={940}
+            maxHeight="none"
+          />
+        )}
       </ChartCard>
 
       {/*
@@ -357,30 +455,6 @@ export function PayrollPage() {
         </div>
       </ChartCard>
 
-      {/*
-        THE MONEY IS HANDED OUT THROUGH THE ROPs, so it is added up that way
-        too — grouped in the browser from the rows the table above prints, so
-        it cannot drift from it.
-      */}
-      <ChartCard
-        title="ROP lar boʻyicha"
-        hint="Har bir jamoaning davr uchun toʻlovi. Yuqoridagi jadvalning ROP boʻyicha yigʻmasi."
-      >
-        <div className="max-w-[680px]">
-          <DataTable<TeamRow>
-            columns={TEAM_COLUMNS}
-            rows={teams}
-            rowKey={(row) => row.rop}
-            status={viewStatus}
-            errorMessage={errorMessage}
-            onRetry={retry}
-            emptyTitle="ROP topilmadi"
-            emptyBody="Bu davrda yetkazib berilgan buyurtma topilmadi."
-            minWidth={620}
-            maxHeight="none"
-          />
-        </div>
-      </ChartCard>
     </PageShell>
   )
 }
@@ -389,8 +463,10 @@ export function PayrollPage() {
 // The two sections' words
 // ---------------------------------------------------------------------------
 
-type PayrollView = 'week' | 'month'
+/** The three tabs ARE the three schemes. */
+type PayrollView = PayrollDto['scheme']
 type Scheme = PayrollDto['scheme']
+type HalfOfMonth = 'first' | 'second'
 
 interface SchemeWords {
   readonly section: string
@@ -431,7 +507,7 @@ const WORDS: Record<Scheme, SchemeWords> = {
       'Hujjatda: 30 mln dan past — xodim ishdan ketadi, 30 mln da 8% faqat yangi xodimga 1 oy. Ekranda hamma uchun 8% hisoblanadi, chegara faqat maʼlumot uchun.',
   },
   half: {
-    section: 'Oylik maosh',
+    section: '15 kunlik maosh',
     fund: '15 kun uchun jami toʻlov',
     rate: '8%',
     fixed: 'Fiksa',
@@ -453,12 +529,15 @@ function Figure({
   value,
   note,
   swatch,
+  delta,
 }: {
   term: string
   value: string
   note?: string
   /** Ties the figure to its segment in the rail. Only the two that have one. */
   swatch?: string
+  /** Against the comparison window. Absent when there is none. */
+  delta?: DeltaDto
 }) {
   return (
     <div>
@@ -478,6 +557,11 @@ function Figure({
       >
         {value}
       </dd>
+      {delta && (
+        <dd className="mt-1">
+          <TrendIndicator delta={delta} />
+        </dd>
+      )}
       {note && (
         <dd className="mt-0.5 text-[10px]" style={{ color: 'var(--ink-muted)' }}>
           {note}
@@ -506,32 +590,53 @@ function sharePercent(part: number, whole: number): number {
  */
 function CopyButton({
   rows,
+  teams,
   title,
   words,
 }: {
   rows: readonly PayrollSellerDto[]
+  teams: readonly PayrollTeamDto[]
   title: string
   words: SchemeWords
 }) {
   const [state, setState] = useState<'idle' | 'done' | 'failed'>('idle')
 
   const copy = async () => {
-    const header = ['Oʻrin', 'Sotuvchi', 'ROP', 'FAKT 2', 'Foiz %', 'Foiz', words.fixed, 'JAMI'].join(
-      '\t',
+    const header = [
+      'Oʻrin',
+      'Sotuvchi',
+      'ROP',
+      'FAKT 2',
+      'Foiz %',
+      'Foiz',
+      words.fixed,
+      'JAMI',
+      'Oʻtgan davr FAKT 2',
+      'Oʻtgan davr JAMI',
+    ].join('\t')
+    /*
+      IN THE CARDS' ORDER — ROP by ROP, the company rank inside each — because
+      the money is handed out team by team and the sheet is read that way.
+    */
+    const order = new Map(teams.map((team, index) => [team.rop, index]))
+    const grouped = [...rows].sort(
+      (a, b) => (order.get(a.rop) ?? teams.length) - (order.get(b.rop) ?? teams.length) || a.rank - b.rank,
     )
-    const body = rows.map((row) =>
+    const body = grouped.map((row) =>
       [
         row.rank,
-        row.fullName,
-        row.rop ?? '',
+        tsvCell(row.fullName),
+        tsvCell(row.rop ?? NO_ROP),
         row.fakt2.amount,
         row.percentRate,
         row.percent.amount,
         row.fixed.amount,
         row.total.amount,
+        row.previous?.fakt2.amount ?? '',
+        row.previous?.total.amount ?? '',
       ].join('\t'),
     )
-    const text = [title, header, ...body].join('\n')
+    const text = [tsvCell(title), header, ...body].join('\n')
 
     try {
       await navigator.clipboard.writeText(text)
@@ -550,12 +655,31 @@ function CopyButton({
   )
 }
 
+/**
+ * A text cell a spreadsheet will take as TEXT. Names come from Bitrix24, and a
+ * name that opens with = + - @ is run as a formula by Excel and Sheets on
+ * paste; a tab or a line break inside one shifts every column after it. A
+ * leading apostrophe is the spreadsheets' own «this is text» mark.
+ */
+function tsvCell(value: string): string {
+  const flat = value.replace(/[\t\r\n]+/g, ' ')
+  return /^[=+\-@]/.test(flat) ? `'${flat}` : flat
+}
+
 // ---------------------------------------------------------------------------
 // The table
 // ---------------------------------------------------------------------------
 
+/**
+ * How long after a period closes its growth still reads low. A fortnight
+ * covers the bulk of delivery: most orders arrive within days, the slow tail
+ * within two weeks (Logistika's wait bands).
+ */
+const RECENT_DAYS = 14
+
 /** One identity for "no rows yet", so a pending render is not a new array. */
 const EMPTY_SELLERS: readonly PayrollSellerDto[] = []
+const EMPTY_TEAMS: readonly PayrollTeamDto[] = []
 
 type PayrollLine = { readonly kind: 'seller' | 'total'; readonly row: PayrollSellerDto }
 
@@ -563,27 +687,31 @@ type PayrollLine = { readonly kind: 'seller' | 'total'; readonly row: PayrollSel
 const TOTAL_ROW_KEY = '__jami__'
 
 /**
- * The footer, built from the SERVER's own totals rather than summed here.
+ * A ROP card's footer, built from the SERVER's own team sums rather than
+ * summed here.
  *
  * The same rule every table in this product keeps: a footer computed in the
  * browser is a second definition of the payroll fund, and the two would agree
  * until a row was filtered or rounded differently.
  */
-function totalLine(data: PayrollDto): PayrollSellerDto {
+function teamLine(team: PayrollTeamDto): PayrollSellerDto {
   return {
     rank: 0,
     employeeId: TOTAL_ROW_KEY,
     fullName: 'ЖАМИ',
-    rop: null,
-    fakt2: data.totals.fakt2,
+    rop: team.rop,
+    fakt2: team.fakt2,
     fakt2Orders: 0,
     percentRate: 0,
-    percent: data.totals.percent,
-    fixed: data.totals.fixed,
-    total: data.totals.total,
+    percent: team.percent,
+    fixed: team.fixed,
+    total: team.total,
     tierFloor: null,
     nextFloor: null,
     toNext: null,
+    previous: team.previous ? { fakt2: team.previous.fakt2, total: team.previous.total } : null,
+    fakt2Delta: team.fakt2Delta,
+    totalDelta: team.totalDelta,
   }
 }
 
@@ -591,14 +719,14 @@ function totalLine(data: PayrollDto): PayrollSellerDto {
  * The table's columns for one scheme. Only the headers move — a week's rate
  * is the tier and is printed per row, a month's is always 8%.
  */
-function payrollColumns(scheme: Scheme): Column<PayrollLine>[] {
+function payrollColumns(scheme: Scheme, compared: boolean): Column<PayrollLine>[] {
   const words = WORDS[scheme]
   return [
     {
       key: 'seller',
       header: 'Sotuvchi',
       rowHeader: true,
-      width: '250px',
+      width: '210px',
       render: (line) =>
         line.kind === 'total' ? (
           <span className="inline-flex items-baseline gap-1.5">
@@ -606,7 +734,7 @@ function payrollColumns(scheme: Scheme): Column<PayrollLine>[] {
               ЖАМИ
             </span>
             <span className="text-[10px]" style={{ color: 'var(--ink-muted)' }}>
-              barcha sotuvchi
+              jamoa
             </span>
           </span>
         ) : (
@@ -633,7 +761,7 @@ function payrollColumns(scheme: Scheme): Column<PayrollLine>[] {
                 {line.row.fullName}
               </span>
               <span className="block text-[10px] leading-tight" style={{ color: 'var(--ink-muted)' }}>
-                {line.row.rop ?? 'ROP yoʻq'}
+                kompaniyada {line.row.rank}-oʻrin
               </span>
             </span>
           </span>
@@ -644,7 +772,7 @@ function payrollColumns(scheme: Scheme): Column<PayrollLine>[] {
       header: 'FAKT 2 · Успешно',
       align: 'right',
       numeric: true,
-      width: '190px',
+      width: '165px',
       render: (line) => (
         <span className="tabular inline-flex items-baseline justify-end gap-1.5 whitespace-nowrap">
           <span className="text-[12.5px]" style={{ color: 'var(--ink-primary)' }}>
@@ -663,7 +791,7 @@ function payrollColumns(scheme: Scheme): Column<PayrollLine>[] {
       header: scheme === 'week' ? 'Foiz' : '8% — foiz',
       align: 'right',
       numeric: true,
-      width: '170px',
+      width: '145px',
       /*
         THE RATE SITS BESIDE THE MONEY in a week, because there it IS the tier:
         «8%» next to 2 792 000 is the whole working of that cell.
@@ -695,7 +823,7 @@ function payrollColumns(scheme: Scheme): Column<PayrollLine>[] {
       header: `${words.fixed} · bosqich`,
       align: 'right',
       numeric: true,
-      width: '200px',
+      width: '180px',
       /*
         THE TIER IS DRAWN, NOT DESCRIBED.
 
@@ -760,12 +888,38 @@ function payrollColumns(scheme: Scheme): Column<PayrollLine>[] {
       header: 'JAMI',
       align: 'right',
       numeric: true,
-      width: '190px',
+      width: '125px',
       render: (line) => (
         <span className="tabular text-[13px] font-semibold" style={{ color: 'var(--ink-primary)' }}>
           {formatFullUzs(line.row.total.amount)}
         </span>
       ),
+    },
+    {
+      key: 'growth',
+      header: 'Oʻsish · FAKT 2',
+      align: 'right',
+      numeric: true,
+      width: '115px',
+      /*
+        THE CHANGE AND WHAT IT IS OFF. A pill alone hides whether +40% was 2 mln
+        becoming 3 or 20 becoming 28; the previous FAKT 2 beside it says which.
+        Nobody in the comparison window reads «yangi», never «+∞%».
+      */
+      render: (line) =>
+        // An empty comparison window (a period's first minute) compares nothing.
+        !compared ? (
+          <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
+        ) : line.row.previous ? (
+          <span className="flex flex-col items-end gap-0.5">
+            <TrendIndicator delta={line.row.fakt2Delta} />
+            <span className="tabular text-[10px] whitespace-nowrap" style={{ color: 'var(--ink-muted)' }}>
+              oldin {formatCompactUzs(line.row.previous.fakt2.amount)}
+            </span>
+          </span>
+        ) : (
+          <NewChip team={line.kind === 'total'} />
+        ),
     },
   ]
 }
@@ -785,75 +939,6 @@ function tierProgress(row: PayrollSellerDto): number {
   if (next <= floor) return 0
   return Math.max(0, Math.min(100, ((row.fakt2.amount - floor) / (next - floor)) * 100))
 }
-
-// ---------------------------------------------------------------------------
-// Per ROP
-// ---------------------------------------------------------------------------
-
-interface TeamRow {
-  readonly rop: string
-  readonly sellers: number
-  readonly fakt2: number
-  readonly total: number
-}
-
-/** Grouped in the browser, from the rows the table above prints. */
-function teamRows(rows: readonly PayrollSellerDto[]): TeamRow[] {
-  const byRop = new Map<string, TeamRow>()
-  for (const row of rows) {
-    const key = row.rop ?? 'ROP yoʻq'
-    const held = byRop.get(key)
-    byRop.set(key, {
-      rop: key,
-      sellers: (held?.sellers ?? 0) + 1,
-      fakt2: (held?.fakt2 ?? 0) + row.fakt2.amount,
-      total: (held?.total ?? 0) + row.total.amount,
-    })
-  }
-  return [...byRop.values()].sort((a, b) => b.total - a.total)
-}
-
-const TEAM_COLUMNS: Column<TeamRow>[] = [
-  {
-    key: 'rop',
-    header: 'ROP',
-    rowHeader: true,
-    width: '160px',
-    render: (row) => (
-      <span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
-        {row.rop}
-      </span>
-    ),
-  },
-  {
-    key: 'sellers',
-    header: 'Sotuvchi',
-    align: 'right',
-    numeric: true,
-    width: '110px',
-    render: (row) => formatNumber(row.sellers),
-  },
-  {
-    key: 'fakt2',
-    header: 'FAKT 2',
-    align: 'right',
-    numeric: true,
-    width: '170px',
-    render: (row) => formatFullUzs(row.fakt2),
-  },
-  {
-    key: 'total',
-    header: 'Toʻlov',
-    align: 'right',
-    numeric: true,
-    width: '180px',
-    render: (row) => (
-      <span className="tabular font-semibold" style={{ color: 'var(--ink-primary)' }}>
-        {formatFullUzs(row.total)}
-      </span>
-    ),
-  },
-]
 
 // ---------------------------------------------------------------------------
 // The rule, printed
@@ -1110,8 +1195,20 @@ function monthLabel(yearMonth: string): string {
   return `${MONTH_NAMES[(month ?? 1) - 1]} ${year}`
 }
 
-function halfLabel(half: PayrollHalf): string {
-  return half === 'first' ? '1–15-kunlar' : half === 'second' ? '16-kundan oy oxirigacha' : 'Butun oy'
+function halfLabel(half: HalfOfMonth): string {
+  return half === 'first' ? '1–15-kunlar' : '16-kundan oy oxirigacha'
+}
+
+/**
+ * The comparison window in words: «1-sen – 15-sen», or, while the period runs
+ * and the window is cut to the same elapsed time, «1-sen – 5-sen, 11:30 gacha».
+ * The end is exclusive, so a closed window names its last day, not the next.
+ */
+function comparisonText(window: PeriodDto, open: boolean): string {
+  const lastDay = new Date(new Date(window.end).getTime() - 1).toISOString()
+  return open
+    ? `${formatDateShort(window.start)} – ${formatDateTime(window.end)} gacha`
+    : `${formatDateShort(window.start)} – ${formatDateShort(lastDay)}`
 }
 
 // ---------------------------------------------------------------------------

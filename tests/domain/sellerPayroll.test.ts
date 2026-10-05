@@ -7,8 +7,14 @@ import {
   WEEK_TIERS,
   sellerPayroll,
 } from '@/server/domain/payroll/sellerPayroll'
-import { payrollPeriod, payrollWeekPeriod } from '@/server/domain/period/period'
-import { payrollWeekQuerySchema } from '@/server/http/queryParams'
+import {
+  comparablePayrollPeriod,
+  payrollPeriod,
+  payrollWeekPeriod,
+  previousPayrollMonday,
+  previousPayrollMonth,
+} from '@/server/domain/period/period'
+import { payrollQuerySchema, payrollWeekQuerySchema } from '@/server/http/queryParams'
 
 const som = (major: number) => BigInt(major) * 100n
 const mln = (major: number) => som(major * 1_000_000)
@@ -288,5 +294,68 @@ describe('the weekly window', () => {
     // Date.UTC would read year 0 as 1900, a Monday on 1 January.
     expect(payrollWeekQuerySchema.safeParse({ week: '0000-01-01' }).success).toBe(false)
     expect(payrollWeekQuerySchema.safeParse({}).success).toBe(false)
+    // 0000-01-03 is a Monday, but the week before it has no YYYY to name it.
+    expect(payrollWeekQuerySchema.safeParse({ week: '0000-01-03' }).success).toBe(false)
+    expect(payrollQuerySchema.safeParse({ month: '0000-01' }).success).toBe(false)
+    expect(payrollQuerySchema.safeParse({ month: '0001-01' }).success).toBe(true)
+  })
+})
+
+/**
+ * «KIM QANCHAGA OʻSGAN» — the window a payroll period is compared against.
+ *
+ * The like period before it (2026-10-05): a week against the week before, a
+ * half against the same half of the month before, a month against the month
+ * before. While the period is still running the previous one is cut to the
+ * same elapsed time, or 5 days of October would be set against all of
+ * September and every seller would read as a collapse.
+ */
+describe('the comparison window', () => {
+  const iso = (date: Date) => date.toISOString()
+
+  it('names the month before, across a year', () => {
+    expect(previousPayrollMonth('2026-10')).toBe('2026-09')
+    expect(previousPayrollMonth('2026-01')).toBe('2025-12')
+  })
+
+  it('names the Monday a week earlier, across a month', () => {
+    expect(previousPayrollMonday('2026-10-05')).toBe('2026-09-28')
+    expect(previousPayrollMonday('2026-03-02')).toBe('2026-02-23')
+    expect(previousPayrollMonday('2026-01-05')).toBe('2025-12-29')
+  })
+
+  it('compares a closed period with the whole previous one', () => {
+    const current = payrollPeriod('2026-09', 'first', TZ)
+    const previous = payrollPeriod('2026-08', 'first', TZ)
+    const now = new Date('2026-10-05T06:00:00Z')
+    const compared = comparablePayrollPeriod(current, previous, now)
+    expect(iso(compared.start)).toBe(iso(previous.start))
+    expect(iso(compared.end)).toBe(iso(previous.end))
+  })
+
+  it('cuts the previous period to the elapsed time while this one runs, to the minute', () => {
+    const current = payrollPeriod('2026-10', 'full', TZ)
+    const previous = payrollPeriod('2026-09', 'full', TZ)
+    // 4 days, 11 hours, 30 minutes and 42 seconds into October, Tashkent.
+    const now = new Date('2026-10-05T06:30:42.500Z')
+    const compared = comparablePayrollPeriod(current, previous, now)
+    expect(iso(compared.start)).toBe('2026-08-31T19:00:00.000Z')
+    expect(iso(compared.end)).toBe('2026-09-05T06:30:00.000Z')
+  })
+
+  it('never runs the cut past the previous period’s own end', () => {
+    // 16–31 March against 16–28 February: 15½ days in, February's 13 are all there is.
+    const current = payrollPeriod('2026-03', 'second', TZ)
+    const previous = payrollPeriod('2026-02', 'second', TZ)
+    const now = new Date('2026-03-31T12:00:00Z')
+    const compared = comparablePayrollPeriod(current, previous, now)
+    expect(iso(compared.end)).toBe(iso(previous.end))
+  })
+
+  it('gives a period that has not started an empty previous window', () => {
+    const current = payrollWeekPeriod('2026-10-12', TZ)
+    const previous = payrollWeekPeriod('2026-10-05', TZ)
+    const compared = comparablePayrollPeriod(current, previous, new Date('2026-10-05T06:00:00Z'))
+    expect(iso(compared.end)).toBe(iso(compared.start))
   })
 })

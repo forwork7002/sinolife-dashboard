@@ -144,7 +144,12 @@ export const analyticsQuerySchema = periodQuerySchema.and(filterQuerySchema)
 export const payrollQuerySchema = z.object({
   month: z
     .string()
-    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected a month in YYYY-MM format'),
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected a month in YYYY-MM format')
+    /*
+      Year 0001 at the earliest: the comparison window is the month BEFORE,
+      and year 0000 has none a YYYY-MM can name — a 400 here, not a 500 there.
+    */
+    .refine((value) => !value.startsWith('0000'), 'Expected a year from 0001'),
   half: z.enum(PAYROLL_HALVES).default('full'),
 })
 
@@ -175,7 +180,9 @@ export const payrollWeekQuerySchema = z.object({
         date.getUTCDate() === day &&
         date.getUTCDay() === 1
       )
-    }, 'Expected a date that is a Monday'),
+    }, 'Expected a date that is a Monday')
+    // The comparison week is seven days earlier; year 0000 cannot name it.
+    .refine((value) => !value.startsWith('0000'), 'Expected a year from 0001'),
 })
 
 /**

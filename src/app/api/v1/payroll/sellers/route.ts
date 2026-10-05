@@ -1,4 +1,9 @@
-import { payrollPeriod, toPeriodDto } from '@/server/domain/period/period'
+import {
+  comparablePayrollPeriod,
+  payrollPeriod,
+  previousPayrollMonth,
+  toPeriodDto,
+} from '@/server/domain/period/period'
 import { payrollQuerySchema } from '@/server/http/queryParams'
 import { getHandler } from '@/server/http/handler'
 import { payrollService } from '@/server/services/container'
@@ -26,6 +31,18 @@ export const GET = getHandler(ACCESS, payrollQuerySchema, async (ctx) => {
     out. `payrollPeriod` carries the reason at length.
   */
   const period = payrollPeriod(ctx.query.month, ctx.query.half, ctx.timeZone)
-  const data = await payrollService.sellers(period, ctx.query.half, ctx.currency, ctx.now)
-  return { data, meta: { period: toPeriodDto(period) } }
+  /*
+    «KIM QANCHAGA OʻSGAN»: the same half (or the whole month) of the month
+    before, cut to the elapsed time while this period runs.
+  */
+  const previous = comparablePayrollPeriod(
+    period,
+    payrollPeriod(previousPayrollMonth(ctx.query.month), ctx.query.half, ctx.timeZone),
+    ctx.now,
+  )
+  const data = await payrollService.sellers(period, previous, ctx.query.half, ctx.currency, ctx.now)
+  return {
+    data,
+    meta: { period: toPeriodDto(period), comparisonPeriod: toPeriodDto(previous) },
+  }
 })
