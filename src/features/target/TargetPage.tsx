@@ -9,6 +9,7 @@ import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/State
 import { Card, ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { SectionHeader, StatTile } from '@/components/ui/Stat'
+import { BrandSwitch } from '@/features/shared/BrandSwitch'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { apiGet } from '@/lib/api'
@@ -27,7 +28,6 @@ import type {
   TargetScope,
   TargetStageDto,
 } from './targetApi'
-import { PRODUCT_FILTER_OPTIONS, PRODUCT_TONE } from './targetTheme'
 
 /** recharts rides with the chart, not with the page — see CallsPage. */
 const TargetDailyChart = dynamic(
@@ -130,7 +130,7 @@ export function TargetPage() {
       stale={overview.isPlaceholderData}
       toolbar={
         <>
-          <ProductSwitch
+          <BrandSwitch
             value={product}
             onChange={(next) => {
               setProduct(next)
@@ -307,56 +307,6 @@ export function TargetPage() {
         </section>
       </div>
     </PageShell>
-  )
-}
-
-/**
- * «Hammasi · Collagen · Zextra» — narrows the whole screen to one product.
- *
- * The house segmented control, with each product's identity colour as a dot,
- * so the switch already speaks the colour the comparison and the charts use.
- */
-function ProductSwitch({
-  value,
-  onChange,
-}: {
-  value: TargetProductFilter
-  onChange: (next: TargetProductFilter) => void
-}) {
-  return (
-    <div
-      role="group"
-      aria-label="Mahsulot"
-      className="flex items-center gap-0.5 rounded-lg p-0.5"
-      style={{ background: 'var(--grid)' }}
-    >
-      {PRODUCT_FILTER_OPTIONS.map((option) => {
-        const active = option.value === value
-        return (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onChange(option.value)}
-            className="focusable inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors"
-            style={{
-              background: active ? 'var(--surface-raised)' : 'transparent',
-              boxShadow: active ? 'var(--shadow-card)' : 'none',
-              color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-            }}
-          >
-            {option.value !== 'all' && (
-              <span
-                aria-hidden
-                className="inline-block h-2 w-2 rounded-sm"
-                style={{ background: PRODUCT_TONE[option.value] }}
-              />
-            )}
-            {option.label}
-          </button>
-        )
-      })}
-    </div>
   )
 }
 

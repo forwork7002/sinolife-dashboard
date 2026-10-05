@@ -32,13 +32,16 @@ import {
   daysBetween,
   emptyCounters,
   mergeCuts,
+  narrowBitrix,
   spendCut,
   spendTotal,
 } from '@/server/domain/roistat/roistatCuts'
+import { teamBrand } from '@/server/domain/rnp/rnpSheet'
+import type { TargetProductFilter } from '@/server/domain/types'
 import type { CbuUsdRates } from '@/server/integrations/cbu/cbuRates'
 import { adBudgetProduct, campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
 import type { ReklamaRepository } from '@/server/repositories/reklamaRepository'
-import type { RoistatMetaRow, RoistatRepository } from '@/server/repositories/roistatRepository'
+import type { RoistatBitrixRow, RoistatMetaRow, RoistatRepository } from '@/server/repositories/roistatRepository'
 
 import { leadBrand } from './rnpService'
 import { LIVE_CACHE, ttlCache } from './ttlCache'
@@ -149,6 +152,26 @@ export interface RoistatQuery {
   readonly dim: RoistatDim
   /** Campaign id under `adset`, adset id under `ad`. */
   readonly parent?: string
+  /** The Collagen / Zextra switch; both when absent. */
+  readonly brand?: TargetProductFilter
+}
+
+/**
+ * The Bitrix scan narrowed to one brand: a lead by RNP's `leadBrand` (its
+ * source, then its form), a sale by the team that sold it (`teamBrand`) — the
+ * P&L's split, so the switch and RNP's «Коллаген / Зехтра проект» agree.
+ * Rows of a brand-keyed scan only (`RoistatRepository.bitrix`'s `brandKeys`).
+ */
+function bitrixOfBrand(rows: readonly RoistatBitrixRow[], brand: TargetProductFilter): Parameters<typeof bitrixCut>[1] {
+  if (brand === 'all') return rows
+  return narrowBitrix(rows, (row) =>
+    (row.brandTeam !== null ? teamBrand(row.brandTeam) : leadBrand(row.brandSource, row.brandForm)) === brand,
+  )
+}
+
+/** Meta money narrowed to one brand's ad budget. */
+function spendOfBrand(days: readonly SpendDay[], brand: TargetProductFilter): readonly SpendDay[] {
+  return brand === 'all' ? days : days.filter((d) => d.product === brand)
 }
 
 const overviewCache = ttlCache<RoistatOverviewDto>(120_000, LIVE_CACHE)
@@ -172,21 +195,23 @@ export class RoistatService {
     origin-lead probe per sales deal (the overview twice — this window and the
     previous one), and «Kunlar boʻyicha» is polled on Savdo dinamikasi with no
     memo. Company-wide (no scope reaches the SQL), so the key is the question:
-    the window, the cut and its parent. `now` moves the «today» cells and the
+    the window, the cut, its parent and the brand. `now` moves the «today» cells and the
     previous cohort's age, which two minutes cannot change in substance.
   */
   async overview(period: Period, query: RoistatQuery, now: Date): Promise<RoistatOverviewDto> {
-    const key = [period.preset, period.start.toISOString(), period.end.toISOString(), query.dim, query.parent ?? ''].join('|')
+    const key = [period.preset, period.start.toISOString(), period.end.toISOString(), query.dim, query.parent ?? '', query.brand ?? 'all'].join('|')
     return overviewCache.get(key, () => this.buildOverview(period, query, now))
   }
 
-  async days(period: Period, now: Date): Promise<RoistatDaysDto> {
-    const key = [period.preset, period.start.toISOString(), period.end.toISOString()].join('|')
-    return daysCache.get(key, () => this.buildDays(period, now))
+  async days(period: Period, now: Date, brand: TargetProductFilter = 'all'): Promise<RoistatDaysDto> {
+    const key = [period.preset, period.start.toISOString(), period.end.toISOString(), brand].join('|')
+    return daysCache.get(key, () => this.buildDays(period, now, brand))
   }
 
   private async buildOverview(period: Period, query: RoistatQuery, now: Date): Promise<RoistatOverviewDto> {
     const { dim } = query
+    const brand = query.brand ?? 'all'
+    const keyed = brand !== 'all'
     const parent = dim === 'adset' || dim === 'ad' ? (query.parent ?? null) : null
     const today = zonedDateKey(now, period.timeZone)
     const window = dayRange(period)
@@ -194,8 +219,8 @@ export class RoistatService {
     const previousWindow = dayRange(previous)
     const rateDay = window.to < today ? window.to : today
 
-    const [bitrix, bitrixPrevious, spend, spendPrevious, metaRows, rates, importedAt, parentName] = await Promise.all([
-      this.repository.bitrix(period, now),
+    const [bitrixRows, bitrixPreviousRows, spendAll, spendPreviousAll, metaRowsAll, rates, importedAt, parentName] = await Promise.all([
+      this.repository.bitrix(period, now, 'all', keyed),
       /*
         THE PREVIOUS COHORT AT THE SAME AGE. Read as of now, last month's
         leads have had thirty days to become sales and this month's a few,
@@ -204,7 +229,7 @@ export class RoistatService {
         window's start. (Kval is the registrar's verdict as of now and keeps
         a smaller form of the same lean.)
       */
-      this.repository.bitrix(previous, new Date(now.getTime() - (period.start.getTime() - previous.start.getTime())), 'total'),
+      this.repository.bitrix(previous, new Date(now.getTime() - (period.start.getTime() - previous.start.getTime())), 'total', keyed),
       this.spendDays(window.from, window.to),
       this.spendDays(previousWindow.from, previousWindow.to),
       dim === 'camp' || dim === 'adset' || dim === 'ad'
@@ -214,6 +239,11 @@ export class RoistatService {
       this.repository.metaImportedAt(),
       parent ? this.repository.metaName(dim === 'adset' ? 'campaign' : 'adset', parent) : Promise.resolve(null),
     ])
+    const bitrix = bitrixOfBrand(bitrixRows, brand)
+    const bitrixPrevious = bitrixOfBrand(bitrixPreviousRows, brand)
+    const spend = spendOfBrand(spendAll, brand)
+    const spendPrevious = spendOfBrand(spendPreviousAll, brand)
+    const metaRows = keyed ? metaRowsAll.filter((row) => adBudgetProduct(row) === brand) : metaRowsAll
 
     const kpi = addCounters(bitrixTotal(bitrix), spendTotal(spend))
 
@@ -244,16 +274,16 @@ export class RoistatService {
   }
 
   /** The «Дни» table — the same rows `overview(period, { dim: 'days' })` draws, newest day first. */
-  private async buildDays(period: Period, now: Date): Promise<RoistatDaysDto> {
+  private async buildDays(period: Period, now: Date, brand: TargetProductFilter): Promise<RoistatDaysDto> {
     const today = zonedDateKey(now, period.timeZone)
     const window = dayRange(period)
     const rateDay = window.to < today ? window.to : today
     const [bitrix, spend, rates] = await Promise.all([
-      this.repository.bitrix(period, now, 'days'),
+      this.repository.bitrix(period, now, 'days', brand !== 'all'),
       this.spendDays(window.from, window.to),
       this.usd.forDays([rateDay], today),
     ])
-    return this.table('days', bitrix, spend, [], rates[0], rateDay, today)
+    return this.table('days', bitrixOfBrand(bitrix, brand), spendOfBrand(spend, brand), [], rates[0], rateDay, today)
   }
 
   /** One cut's table — the part `overview` and `days` share, so the two cannot drift. */

@@ -41,6 +41,9 @@ function bitrixRow(set: RoistatBitrixRow['set'], fields: Partial<RoistatBitrixRo
     rop: null,
     seller: null,
     registrar: null,
+    brandSource: null,
+    brandForm: null,
+    brandTeam: null,
     leads: 0,
     clean: 0,
     kval: 0,
@@ -214,6 +217,87 @@ describe('RoistatService.days — «Kunlar boʻyicha» on Savdo dinamikasi', () 
   })
 })
 
+describe('RoistatService — the Collagen / Zextra switch', () => {
+  /*
+    A brand-keyed scan: leads split by source and form, sales by team. Zextra
+    is the zextrauzb page's lead, the Kamron form's lead (Kamron sells
+    Zextra), Asliddin's sale and Malika's (folded into Charos, a Zextra team);
+    the Sinolife page's lead, Sevinch's sale and Hayot's (no brand) are not.
+  */
+  function keyedHarness() {
+    const calls: { shape: string; keyed: boolean }[] = []
+    const lead = (set: RoistatBitrixRow['set'], brandSource: string | null, brandForm: string | null, leads: number, extra: Partial<RoistatBitrixRow> = {}) =>
+      bitrixRow(set, { brandSource, brandForm, leads, ...extra })
+    const sale = (set: RoistatBitrixRow['set'], brandTeam: string, soldMinor: bigint, extra: Partial<RoistatBitrixRow> = {}) =>
+      bitrixRow(set, { brandTeam, sold: 1, soldMinor, ...extra })
+    const kamron = 'Заполнение CRM-формы «Kamron 6 etap filt forma»'
+    const repository = {
+      bitrix: async (_period: Period, _now: Date, shape = 'all', keyed = false) => {
+        calls.push({ shape, keyed })
+        const day = { day: '2026-10-01' }
+        return [
+          lead('total', 'UC_A8LE21', null, 10),
+          lead('total', null, kamron, 3),
+          lead('total', 'UC_1X1J24', null, 20),
+          sale('total', 'Asliddin', 4_000_000_00n),
+          sale('total', 'Malika', 1_000_000_00n),
+          sale('total', 'Sevinch', 9_000_000_00n),
+          sale('total', 'Hayot', 2_000_000_00n),
+          ...(shape === 'total'
+            ? []
+            : [
+                lead('day', 'UC_A8LE21', null, 10, day),
+                lead('day', null, kamron, 3, day),
+                lead('day', 'UC_1X1J24', null, 20, day),
+                sale('day', 'Asliddin', 4_000_000_00n, day),
+                sale('day', 'Malika', 1_000_000_00n, day),
+                sale('day', 'Sevinch', 9_000_000_00n, day),
+              ]),
+        ]
+      },
+      meta: async () => [
+        metaRow({ campaignId: '100', spendMicroUsd: 30_000_000n }),
+        metaRow({ accountId: '440073592484616', accountName: 'Zextra Umar', campaignId: '400', spendMicroUsd: 8_000_000n }),
+      ],
+      metaName: async () => null,
+      metaImportedAt: async () => null,
+    }
+    const reklama = {
+      campaignDays: async () => [
+        campaignDay({ spendMicroUsd: 30_000_000n }),
+        campaignDay({ accountId: '440073592484616', accountName: 'Zextra Umar', spendMicroUsd: 8_000_000n }),
+      ],
+    }
+    const usd = { forDays: async (days: readonly string[]) => days.map(() => 12_000) }
+    return { service: new RoistatService(repository as never, reklama, usd), calls }
+  }
+
+  it('keeps one brand: leads by source then form, sales by team, money by ad account', async () => {
+    const { service, calls } = keyedHarness()
+    const r = await service.overview(PERIOD, { dim: 'days', brand: 'Zextra' }, NOW)
+    expect(calls).toEqual([{ shape: 'all', keyed: true }, { shape: 'total', keyed: true }])
+    expect(r.kpi).toMatchObject({ leads: 13, sold: 2, soldUzs: 5_000_000, spendUsd: 8 })
+    expect(r.kpiPrevious).toMatchObject({ leads: 13, sold: 2 })
+    expect(r.rows).toHaveLength(1)
+    expect(r.rows[0]).toMatchObject({ key: '2026-10-01', leads: 13, soldUzs: 5_000_000, spendUsd: 8 })
+    expect(r.daily[0]).toEqual({ date: '2026-10-01', spendUsd: 8, soldUzs: 5_000_000 })
+  })
+
+  it('narrows the Meta cut to the brand\'s ad accounts', async () => {
+    const { service } = keyedHarness()
+    const r = await service.overview(PERIOD, { dim: 'camp', brand: 'Collagen' }, NOW)
+    expect(r.rows.map((row) => row.key)).toEqual(['100'])
+    expect(r.kpi).toMatchObject({ leads: 20, sold: 1, soldUzs: 9_000_000, spendUsd: 30 })
+  })
+
+  it('asks for the brand keys only when one brand is picked', async () => {
+    const { service, calls } = keyedHarness()
+    await service.overview(PERIOD, { dim: 'days', brand: 'all' }, NOW)
+    await service.days(PERIOD, NOW, 'Zextra')
+    expect(calls.map((c) => c.keyed)).toEqual([false, false, true])
+  })
+})
+
 describe('RoistatRepository.bitrix — which set a row is', () => {
   /** A raw row with every flag rolled up except the named ones. */
   function raw(grouped: readonly string[], fields: Record<string, unknown> = {}) {
@@ -249,5 +333,20 @@ describe('RoistatRepository.bitrix — which set a row is', () => {
     const prisma = { $queryRawUnsafe: async () => answer } as unknown as PrismaClient
     const rows = await new RoistatRepository(prisma).bitrix(PERIOD, NOW)
     expect(rows.map((r) => r.set)).toEqual(['total', 'day', 'form', 'source', 'product', 'region', 'rop', 'seller', 'registrar'])
+  })
+
+  it('splits every grouping set by the brand inputs only when asked', async () => {
+    const sql: string[] = []
+    const prisma = {
+      $queryRawUnsafe: async (text: string) => {
+        sql.push(text)
+        return [raw([])]
+      },
+    } as unknown as PrismaClient
+    const repository = new RoistatRepository(prisma)
+    await repository.bitrix(PERIOD, NOW, 'days')
+    await repository.bitrix(PERIOD, NOW, 'days', true)
+    expect(sql[0]).toMatch(/GROUPING SETS \(\(\),\s*\(day\)\)/)
+    expect(sql[1]).toMatch(/GROUPING SETS \(\(b_source, b_form, b_team\),\s*\(day, b_source, b_form, b_team\)\)/)
   })
 })

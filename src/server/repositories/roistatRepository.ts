@@ -69,6 +69,16 @@ export interface RoistatBitrixRow extends RoistatBitrixCounters {
   readonly rop: string | null
   readonly seller: string | null
   readonly registrar: string | null
+  /**
+   * What the Collagen / Zextra switch files the row by — filled only when the
+   * scan was asked for them (`brandKeys`), null otherwise. A lead row carries
+   * its own source and form (`brandTeam` null); a sale row carries the team
+   * that sold it (`brandTeam` set, the other two null). Every grouping set is
+   * then split by these, so one key row can come back several times.
+   */
+  readonly brandSource: string | null
+  readonly brandForm: string | null
+  readonly brandTeam: string | null
 }
 
 /** One Meta ad (or adset, or campaign) over the window, hiring not yet removed. */
@@ -117,23 +127,39 @@ export class RoistatRepository {
    * previous window's tiles), `days` the () and (day) sets («Kunlar
    * boʻyicha», polled by every open Savdo dinamikasi tab — the seven other
    * cuts would be computed and thrown away).
+   *
+   * `brandKeys` adds the brand inputs to every grouping set, for a screen
+   * narrowed to one brand: the rule (RNP's `leadBrand` for a lead, the
+   * selling team for a sale) lives in TypeScript, and a copy of its form
+   * regexes in SQL would drift from it.
    */
-  async bitrix(period: Period, now: Date, shape: 'all' | 'days' | 'total' = 'all'): Promise<RoistatBitrixRow[]> {
+  async bitrix(
+    period: Period,
+    now: Date,
+    shape: 'all' | 'days' | 'total' = 'all',
+    brandKeys = false,
+  ): Promise<RoistatBitrixRow[]> {
     // Sales deals open after their lead; none can belong to the window once a month has passed.
     const scanEnd = new Date(Math.min(now.getTime(), period.end.getTime() + ORIGIN_LEAD_DAYS * 86_400_000))
-    const sets = shape === 'total'
-      ? '()'
+    const brandColumns = ['b_source', 'b_form', 'b_team']
+    const setColumns: readonly (readonly string[])[] = shape === 'total'
+      ? [[]]
       : shape === 'days'
-        ? '(), (day)'
-        : `(),
-        (day),
-        (form_title, targetolog),
-        (source_id, source_name),
-        (source_id, form_title, product_line),
-        (region),
-        (rop),
-        (seller),
-        (registrar)`
+        ? [[], ['day']]
+        : [
+            [],
+            ['day'],
+            ['form_title', 'targetolog'],
+            ['source_id', 'source_name'],
+            ['source_id', 'form_title', 'product_line'],
+            ['region'],
+            ['rop'],
+            ['seller'],
+            ['registrar'],
+          ]
+    const sets = setColumns
+      .map((columns) => `(${[...columns, ...(brandKeys ? brandColumns : [])].join(', ')})`)
+      .join(', ')
     /*
       GROUPING() may only name columns the GROUP BY groups, so a narrowed
       read answers every other flag as «rolled up» and every other key as
@@ -156,6 +182,7 @@ export class RoistatRepository {
     const columns = [
       ...flags.map(([alias, column]) => `${grouped(column) ? `GROUPING(${column})::int` : '1'} AS ${alias},`),
       ...keys.map((key) => `${grouped(key) ? key : `NULL::text AS ${key}`},`),
+      ...brandColumns.map((key) => `${brandKeys ? key : `NULL::text AS ${key}`},`),
     ].join('\n        ')
 
     const rows = await this.prisma.$queryRawUnsafe<
@@ -180,6 +207,9 @@ export class RoistatRepository {
         rop: string | null
         seller: string | null
         registrar: string | null
+        b_source: string | null
+        b_form: string | null
+        b_team: string | null
         leads: bigint
         clean: bigint
         kval: bigint
@@ -220,7 +250,10 @@ export class RoistatRepository {
           0 AS ordered, 0::bigint AS ordered_minor,
           0 AS sold, 0::bigint AS sold_minor,
           0 AS new_customer,
-          NULL::double precision AS deal_days
+          NULL::double precision AS deal_days,
+          s."externalId" AS b_source,
+          CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END AS b_form,
+          NULL::text AS b_team
         FROM "deal" d
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
         LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
@@ -289,7 +322,15 @@ export class RoistatRepository {
           CASE
             WHEN sb.role = 'REVENUE' AND sb.status = 'WON' AND o.created IS NOT NULL AND sb."closedAt" IS NOT NULL
             THEN GREATEST(EXTRACT(EPOCH FROM (sb."closedAt" - o.created)) / 86400.0, 0)::double precision
-          END AS deal_days
+          END AS deal_days,
+          NULL::text AS b_source,
+          NULL::text AS b_form,
+          -- The rop column again: a sale's brand is its team's (rnpSheet teamBrand).
+          COALESCE(
+            ${InsightsRepository.ropNameSql('sb."operatorTeamSource"')},
+            ${InsightsRepository.ropNameSql('dep."name"')},
+            '${InsightsRepository.NO_ROP}'
+          ) AS b_team
         FROM sale_base sb
         LEFT JOIN "sales_source" ss ON ss."id" = sb."sourceId"
         LEFT JOIN "employee" e ON e."id" = sb."operatorEmployeeId"
@@ -377,6 +418,9 @@ export class RoistatRepository {
         rop: r.rop,
         seller: r.seller,
         registrar: r.registrar,
+        brandSource: r.b_source ?? null,
+        brandForm: r.b_form ?? null,
+        brandTeam: r.b_team ?? null,
         leads: int(r.leads),
         clean: int(r.clean),
         kval: int(r.kval),

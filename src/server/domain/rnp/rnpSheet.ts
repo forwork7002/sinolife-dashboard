@@ -259,6 +259,18 @@ export const TEAM_ALIASES: Readonly<Record<string, string>> = Object.freeze({
 })
 
 /**
+ * The brand of the team that sold an order — the P&L's rule (`BRAND_TEAMS`),
+ * a renamed department folded first (`TEAM_ALIASES`). Null for a team on
+ * neither list (Hayot, Kompaniya, «(ROP yoʻq)»). Every screen's Collagen /
+ * Zextra switch files a SALE by this, so the screens agree with the P&L.
+ */
+export function teamBrand(team: string | null): 'Collagen' | 'Zextra' | null {
+  if (team === null) return null
+  const canonical = TEAM_ALIASES[team] ?? team
+  return BRAND_TEAMS.Collagen.has(canonical) ? 'Collagen' : BRAND_TEAMS.Zextra.has(canonical) ? 'Zextra' : null
+}
+
+/**
  * What the client's «РНП» sheet calls each team, by department name. The
  * sheet names teams by their ROP as the floor knows them, which is not always
  * the department's name: «Садриддин РОП» (the sheet's «Чарос РОП», renamed by
@@ -867,7 +879,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     for (const r of input.fakt) {
       const i = at.get(r.day)
       const team = canonical(r.rop)
-      const brand = BRAND_TEAMS.Collagen.has(team) ? 'Collagen' : BRAND_TEAMS.Zextra.has(team) ? 'Zextra' : null
+      const brand = teamBrand(team)
       if (i === undefined || brand !== b) continue
       const base = isBase(team)
       g.fakt1[i]! += minorToSom(r.fakt1Minor)

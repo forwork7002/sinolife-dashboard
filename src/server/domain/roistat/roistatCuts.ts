@@ -286,6 +286,47 @@ export function bitrixTotal(rows: readonly BitrixCutRow[]): RoistatCounters {
   return addCounters(emptyCounters(), total)
 }
 
+/**
+ * The scan narrowed to the rows `keep` accepts — one brand, on the Collagen /
+ * Zextra switch. A brand-keyed scan returns each grouping set split by the
+ * brand inputs, so a cut's label repeats; `bitrixCut` sums by label and takes
+ * that as it is. The grand total is the one set read as a single row, so its
+ * kept pieces are folded back into one (a zero row when none is kept).
+ */
+export function narrowBitrix<R extends BitrixCutRow>(rows: readonly R[], keep: (row: R) => boolean): BitrixCutRow[] {
+  const total = emptyCounters()
+  const out: BitrixCutRow[] = []
+  for (const row of rows) {
+    if (!keep(row)) continue
+    if (row.set === 'total') addCounters(total, row)
+    else out.push(row)
+  }
+  out.push({
+    set: 'total',
+    day: null,
+    sourceId: null,
+    sourceName: null,
+    formTitle: null,
+    targetolog: null,
+    productLine: null,
+    region: null,
+    rop: null,
+    seller: null,
+    registrar: null,
+    leads: total.leads,
+    clean: total.clean,
+    kval: total.kval,
+    orders: total.orders,
+    orderedMinor: total.orderedMinor,
+    sold: total.sold,
+    soldMinor: total.soldMinor,
+    newCustomers: total.newCustomers,
+    dealDaysSum: total.dealDaysSum,
+    dealCount: total.dealCount,
+  })
+  return out
+}
+
 /** Ad-budget spend (and Meta's own counts) placed on a cut that can carry it. */
 export function spendCut(dim: RoistatDim, days: readonly SpendDay[]): Map<string, RoistatCounters> {
   const out = new Map<string, RoistatCounters>()
