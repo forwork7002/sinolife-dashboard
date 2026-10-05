@@ -72,7 +72,7 @@ describe('ChannelTiles', () => {
     expect(within(tile('Телеграм')).getByText('27')).toBeTruthy()
     expect(within(tile('Телеграм')).getByText('13 kval · 48.1%')).toBeTruthy()
     expect(within(tile('Сммщик ии')).getByText('445')).toBeTruthy()
-    expect(within(tile('Сммщик ии')).getByText('«ИИ квал сана» shu davrda · faqat Регистрация · 14.09.2026 dan')).toBeTruthy()
+    expect(within(tile('Сммщик ии')).getByText('«ИИ квал сана» shu davrda · faqat Регистрация').getAttribute('title')).toContain('14.09.2026')
     expect(within(tile('Веб сайт')).getByText('1')).toBeTruthy()
   })
 

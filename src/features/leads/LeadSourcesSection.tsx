@@ -198,9 +198,17 @@ const TILES_IN_TOTAL = TILES.filter((t) => !(TILES_APART as readonly LeadTile[])
 /** What a tile counts, where its name alone does not say it. */
 const TILE_NOTE: Partial<Record<LeadTile, string>> = {
   generated: 'lid-forma + qoʻlda kiritilgan',
-  aiSmm: '«ИИ квал сана» shu davrda · faqat Регистрация · 14.09.2026 dan',
+  aiSmm: '«ИИ квал сана» shu davrda · faqat Регистрация',
   outbound: 'operatorning chiquvchi qoʻngʻirogʻi',
   other: 'qolgan manbalar: ИИ kval qilmagan reklama sahifalari, Сммщик, Instagram, manbasiz',
+}
+
+/**
+ * On hover only — the client, 2026-10-05, read «14.09.2026 dan» on the card
+ * as the day the count starts; it is only when the portal began the mark.
+ */
+const TILE_NOTE_TITLE: Partial<Record<LeadTile, string>> = {
+  aiSmm: 'Tanlangan davr boʻyicha sanaladi. Portal «ИИ квал сана» maydonini 14.09.2026 dan toʻldiradi — undan oldingi kunlarda 0.',
 }
 
 /** «N kval · X%» — kval ÷ new leads, as «Квал %» above; a dash when the channel had no new lead. */
@@ -304,7 +312,7 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
           text || extra || dubl ? (
             <>
               {dubl}
-              {text && note(text)}
+              {text && note(text, TILE_NOTE_TITLE[tile])}
               {extra}
             </>
           ) : undefined
