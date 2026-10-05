@@ -1206,6 +1206,7 @@ export class SellerBoardService {
       keyPart(filters.employeeIds),
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
+      keyPart(filters.teams),
     ].join('|')
     const days = await faktDaysCache.get(key, () =>
       this.insights.confirmationFaktDays(scopedPeriod(ctx.period, filters), filters),
