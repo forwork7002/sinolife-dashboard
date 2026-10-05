@@ -8,6 +8,7 @@ import {
   type RnpRowDto,
   type RnpSheetInput,
   buildRnpSheet,
+  teamBrand,
 } from '@/server/domain/rnp/rnpSheet'
 
 /*
@@ -1212,5 +1213,17 @@ describe('buildRnpSheet — the audit fixes of 2026-10-02', () => {
     // A team with leads enough keeps its rates; a БАЗА team is measured by calls and never guarded.
     expect(row(x, 'team:Sevinch', 'team:Sevinch:conv1').fact).toBeCloseTo((5 / 7) * 100, 6)
     expect(on(row(x, 'team:Charos', 'team:Charos:conv1'), '2026-09-21')).toBe(25)
+  })
+})
+
+describe('teamBrand', () => {
+  it('files a sale by its team, a renamed department folded first', () => {
+    expect(teamBrand('Asliddin')).toBe('Zextra')
+    expect(teamBrand('Malika')).toBe('Zextra') // → Charos
+    expect(teamBrand('Sevinchxon')).toBe('Zextra') // → Sadriddin
+    expect(teamBrand('Sevinch')).toBe('Collagen')
+    expect(teamBrand('Baza')).toBe('Collagen')
+    expect(teamBrand('Hayot')).toBeNull()
+    expect(teamBrand(null)).toBeNull()
   })
 })

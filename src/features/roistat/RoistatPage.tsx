@@ -10,6 +10,7 @@ import { Card, ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { StatTile } from '@/components/ui/Stat'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
+import { DashboardBrandSwitch } from '@/features/shared/BrandSwitch'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { apiGet } from '@/lib/api'
@@ -66,8 +67,9 @@ export function RoistatPage() {
     if (apiParams.from !== undefined) out.from = apiParams.from
     if (apiParams.to !== undefined) out.to = apiParams.to
     if (view.parent !== null) out.parent = view.parent
+    if (apiParams.brand !== undefined) out.brand = apiParams.brand
     return out
-  }, [apiParams.preset, apiParams.from, apiParams.to, view.dim, view.parent])
+  }, [apiParams.preset, apiParams.from, apiParams.to, apiParams.brand, view.dim, view.parent])
 
   const overview = useQuery({
     queryKey: ['roistat-overview', params],
@@ -112,6 +114,7 @@ export function RoistatPage() {
       stale={overview.isPlaceholderData}
       toolbar={
         <>
+          <DashboardBrandSwitch />
           <SegmentedControl<RoistatCurrency>
             ariaLabel="Valyuta"
             value={currency}

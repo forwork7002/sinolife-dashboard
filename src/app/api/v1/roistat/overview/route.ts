@@ -27,6 +27,10 @@ const ACCESS = { permission: 'analytics:read:all', section: 'roistat' } as const
  */
 export const GET = getHandler(ACCESS, roistatOverviewQuerySchema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
-  const data = await roistatService.overview(period, { dim: ctx.query.dim, parent: ctx.query.parent }, ctx.now)
+  const data = await roistatService.overview(
+    period,
+    { dim: ctx.query.dim, parent: ctx.query.parent, brand: ctx.query.brand },
+    ctx.now,
+  )
   return { data, meta: { period: toPeriodDto(period) } }
 })

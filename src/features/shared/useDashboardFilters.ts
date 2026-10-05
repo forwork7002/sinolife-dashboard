@@ -90,6 +90,15 @@ export interface DashboardFilters {
    * clear, and this is not something clearing filters may take away.
    */
   readonly queue: 'window' | 'backlog'
+  /**
+   * The Collagen / Zextra switch on the main screens — both, or one brand.
+   *
+   * A MODE OF THE SCREEN, like `queue`: the switch itself shows what is on,
+   * so it is not in `activeCount` and «Filtrlarni tozalash» keeps it. Sent
+   * to the API only when one brand is picked, so every other request stays
+   * byte-identical and its react-query cache untouched.
+   */
+  readonly brand: DashboardBrand
   readonly q?: string
   /**
    * Which rendering of the org chart is on screen — the chart or the table.
@@ -124,6 +133,9 @@ export interface DashboardFilters {
  * screen has always had, kept because it is the only one that shows every
  * column at once and the only one that prints.
  */
+export const DASHBOARD_BRANDS = ['all', 'Collagen', 'Zextra'] as const
+export type DashboardBrand = (typeof DASHBOARD_BRANDS)[number]
+
 export const STRUCTURE_VIEWS = ['chart', 'list'] as const
 export type StructureView = (typeof STRUCTURE_VIEWS)[number]
 
@@ -147,6 +159,7 @@ const DEFAULTS: DashboardFilters = {
   rops: [],
   regions: [],
   queue: 'window',
+  brand: 'all',
   view: 'chart',
   page: 1,
   pageSize: 25,
@@ -353,6 +366,8 @@ export function useDashboardFilters() {
         is the one the bell links to.
       */
       queue: params.get('queue') === 'backlog' ? 'backlog' : DEFAULTS.queue,
+      // A brand this application has, or both — an unknown one is a 400.
+      brand: DASHBOARD_BRANDS.find((brand) => brand === params.get('brand')) ?? DEFAULTS.brand,
       q: params.get('q') ?? undefined,
       // Same rule as `queue` above: a name this application has, or the
       // default. An unrecognised one used to be a blank region of page with
@@ -522,6 +537,7 @@ export function useDashboardFilters() {
       'from',
       'to',
       'queue',
+      'brand',
       'view',
       'sort',
       'order',
@@ -557,6 +573,7 @@ export function useDashboardFilters() {
     // Only when it is not the default: every other screen's requests stay
     // byte-identical, so their react-query caches are untouched by this.
     if (filters.queue === 'backlog') out.queue = filters.queue
+    if (filters.brand !== 'all') out.brand = filters.brand
     if (filters.q) out.q = filters.q
     return out
   }, [filters])

@@ -11,6 +11,7 @@ import {
   columnsOf,
   daysBetween,
   mergeCuts,
+  narrowBitrix,
   productOfLine,
   spendCut,
   spendTotal,
@@ -198,5 +199,26 @@ describe('helpers', () => {
 
   it('lists every day of a window, inclusive', () => {
     expect(daysBetween('2026-09-29', '2026-10-02')).toEqual(['2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02'])
+  })
+})
+
+describe('narrowBitrix', () => {
+  it('keeps the accepted rows and folds the split grand total back into one', () => {
+    const rows = [
+      row('total', { leads: 3, sold: 1, soldMinor: 100n }),
+      row('total', { leads: 5, sold: 2, soldMinor: 700n, formTitle: 'x' }),
+      row('total', { leads: 2, dealDaysSum: 4, dealCount: 1 }),
+      row('day', { day: '2026-10-01', leads: 3 }),
+      row('day', { day: '2026-10-01', leads: 5, formTitle: 'x' }),
+    ]
+    const kept = narrowBitrix(rows, (r) => r.formTitle === null)
+    expect(kept.filter((r) => r.set === 'total')).toHaveLength(1)
+    expect(bitrixTotal(kept)).toMatchObject({ leads: 5, sold: 1, soldMinor: 100n, dealDaysSum: 4, dealCount: 1 })
+    expect(kept.filter((r) => r.set === 'day').map((r) => r.leads)).toEqual([3])
+  })
+
+  it('answers a zero total when nothing is kept, so the tiles still render', () => {
+    const kept = narrowBitrix([row('total', { leads: 9 })], () => false)
+    expect(bitrixTotal(kept)).toMatchObject({ leads: 0, sold: 0, soldMinor: 0n })
   })
 })

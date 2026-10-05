@@ -322,6 +322,13 @@ const targetScope = z.enum(TARGET_SCOPES).default('target')
  */
 const targetProduct = z.enum(TARGET_PRODUCT_FILTERS).default('all')
 
+/**
+ * The Collagen / Zextra switch every main screen carries (`?brand=`): both,
+ * or one. A lead is filed by RNP's `leadBrand`, a sale by the team that sold
+ * it (`teamBrand`), Meta money by its ad account (`adBudgetProduct`).
+ */
+export const brandFilter = z.enum(TARGET_PRODUCT_FILTERS).default('all')
+
 /** Free text reaching a WHERE clause: trimmed, bounded, empty means absent. */
 const optionalText = (max: number) =>
   z
@@ -363,6 +370,7 @@ export const targetLeadsQuerySchema = periodQuerySchema.and(
 export const roistatOverviewQuerySchema = periodQuerySchema.and(
   z.object({
     dim: z.enum(ROISTAT_DIMS).default('camp'),
+    brand: brandFilter,
     parent: z
       .string()
       .trim()
