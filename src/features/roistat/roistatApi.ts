@@ -80,6 +80,8 @@ export interface RoistatRowDto extends RoistatCountersDto {
   /** Stable id: the Meta id on `camp`/`adset`/`ad`, `YYYY-MM-DD` on `days`, else the label. */
   readonly key: string
   readonly label: string
+  /** The Meta ad account (cabinet) name — set on `ad` only, else null. */
+  readonly account: string | null
 }
 
 /** Which column groups the table shows for this cut. */

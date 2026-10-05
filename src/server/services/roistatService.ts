@@ -201,7 +201,7 @@ export class RoistatService {
       grandParent:
         dim === 'ad' && parentName ? { key: parentName.campaignId, label: parentName.campaignName } : null,
       columns: columnsOf(dim),
-      rows: rows.map((row) => ({ key: row.key, label: row.label, ...toCountersDto(row.counters) })),
+      rows: rows.map((row) => ({ key: row.key, label: row.label, account: row.account, ...toCountersDto(row.counters) })),
       total: toCountersDto(total),
       kpi: toCountersDto(kpi),
       kpiPrevious: toCountersDto(kpiPrevious),
@@ -220,13 +220,15 @@ export class RoistatService {
     bitrix: Parameters<typeof bitrixCut>[1],
     spend: readonly SpendDay[],
     metaRows: readonly RoistatMetaRow[],
-  ): { key: string; label: string; counters: RoistatCounters }[] {
+  ): { key: string; label: string; account: string | null; counters: RoistatCounters }[] {
     if (dim === 'camp' || dim === 'adset' || dim === 'ad') {
       return metaRows
         .filter((row) => adBudgetProduct(row) !== null)
         .map((row) => {
           const key = (dim === 'ad' ? row.adId : dim === 'adset' ? row.adsetId : row.campaignId) ?? ''
           const label = (dim === 'ad' ? row.adName : dim === 'adset' ? row.adsetName : row.campaignName) || key
+          // Creatives are reused across cabinets under the same name — the cabinet tells them apart.
+          const account = dim === 'ad' ? row.accountName || null : null
           const counters = addCounters(emptyCounters(), {
             spendMicroUsd: row.spendMicroUsd,
             impressions: row.impressions,
@@ -234,14 +236,14 @@ export class RoistatService {
             clicks: row.clicks,
             metaLeads: row.leads,
           })
-          return { key, label, counters }
+          return { key, label, account, counters }
         })
         .sort((a, b) => (b.counters.spendMicroUsd > a.counters.spendMicroUsd ? 1 : b.counters.spendMicroUsd < a.counters.spendMicroUsd ? -1 : 0))
     }
     const merged = mergeCuts(bitrixCut(dim, bitrix, leadBrand), spendCut(dim, spend))
     return [...merged.entries()]
       .filter(([, c]) => c.leads > 0 || c.orders > 0 || c.sold > 0 || c.spendMicroUsd > 0n)
-      .map(([label, counters]) => ({ key: label, label, counters }))
+      .map(([label, counters]) => ({ key: label, label, account: null, counters }))
       .sort((a, b) =>
         dim === 'days'
           ? b.key.localeCompare(a.key)

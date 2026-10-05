@@ -34,6 +34,8 @@ import { type RoistatCurrency, type RoistatMetrics, deriveMetrics, fromUsd, from
 type Line = {
   readonly key: string
   readonly label: string
+  /** The ad's cabinet, shown before its name on `ad`. */
+  readonly account: string | null
   readonly kind: 'row' | 'total'
   readonly rank: number
   readonly c: RoistatCountersDto
@@ -214,6 +216,7 @@ export function RoistatTable({
     const rows: Line[] = data.rows.map((row) => ({
       key: row.key,
       label: row.label,
+      account: row.account,
       kind: 'row',
       rank: 0,
       c: row,
@@ -243,6 +246,7 @@ export function RoistatTable({
       {
         key: '__total__',
         label: 'ИТОГО',
+        account: null,
         kind: 'total',
         rank: 0,
         c: data.total,
@@ -339,6 +343,14 @@ function NameCell({
   if (line.kind === 'total') return <span className="eyebrow">ИТОГО</span>
 
   if (!drillable) {
+    if (line.account) {
+      return (
+        <span className="block max-w-[260px]" title={`${line.account} · ${line.label}`}>
+          <span className="block truncate text-xs" style={muted}>{line.account}</span>
+          <span className="block truncate">{line.label}</span>
+        </span>
+      )
+    }
     return (
       <span className="block max-w-[260px] truncate" title={line.label}>
         {line.label}
