@@ -16,6 +16,13 @@ import type { LeadSplitDto, RopReportDto } from '@/features/leads/leadSplitApi'
  * computes them (plan 500 000 per lead, ✅ / 🔴), and the call columns.
  */
 
+// The cards read the Collagen / Zextra switch from the address.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace: () => {}, push: () => {} }),
+  usePathname: () => '/leads',
+  useSearchParams: () => new URLSearchParams(window.location.search),
+}))
+
 // jsdom has no `matchMedia`; `AnimatedNumber` in the concentration tiles asks
 // it whether the reader wants motion.
 window.matchMedia = ((query: string) => ({

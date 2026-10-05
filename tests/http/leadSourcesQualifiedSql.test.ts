@@ -18,8 +18,8 @@ describe('LeadSourcesRepository.qualifiedSources', () => {
       $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
         seen.push({ sql, params })
         return [
-          { source_id: 'REPEAT_SALE', ai_qualified: false, qualified: 200n },
-          { source_id: null, ai_qualified: true, qualified: 40n },
+          { source_id: 'REPEAT_SALE', form_title: 'Заполнение CRM-формы «Kamron 6 etap»', ai_qualified: false, qualified: 200n },
+          { source_id: null, form_title: null, ai_qualified: true, qualified: 40n },
         ]
       },
     }
@@ -28,8 +28,8 @@ describe('LeadSourcesRepository.qualifiedSources', () => {
     const rows = await new LeadSourcesRepository(client as never).qualifiedSources({ start, end } as never)
 
     expect(rows).toEqual([
-      { sourceId: 'REPEAT_SALE', aiQualified: false, qualified: 200 },
-      { sourceId: null, aiQualified: true, qualified: 40 },
+      { sourceId: 'REPEAT_SALE', formTitle: 'Заполнение CRM-формы «Kamron 6 etap»', aiQualified: false, qualified: 200 },
+      { sourceId: null, formTitle: null, aiQualified: true, qualified: 40 },
     ])
     const { sql, params } = seen[0]!
     expect(sql).toMatch(/p\."role" = 'LEAD'/)
@@ -39,6 +39,8 @@ describe('LeadSourcesRepository.qualifiedSources', () => {
     // A LEFT join: the headline is the sum of these rows, so a kval with no source must not drop out.
     expect(sql).toMatch(/LEFT JOIN "sales_source" s ON s\."id" = d\."sourceId"/)
     expect(sql).toMatch(/s\."externalId" AS source_id/)
+    // The form title, so the Collagen / Zextra switch reads a form kval's brand.
+    expect(sql).toMatch(/CASE WHEN d\."title" LIKE '%CRM-форм%' THEN d\."title" END AS form_title/)
     expect(sql).not.toMatch(/createdAtSource/)
     expect(params).toEqual([start, end])
   })
@@ -55,8 +57,8 @@ describe('LeadSourcesRepository.aiQualifiedStages', () => {
       $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
         seen.push({ sql, params })
         return [
-          { registration: true, stage: 'Дубликат (лид)', status: 'OPEN', leads: 14n },
-          { registration: false, stage: null, status: 'WON', leads: 3n },
+          { registration: true, source_id: 'UC_A8LE21', form_title: null, stage: 'Дубликат (лид)', status: 'OPEN', leads: 14n },
+          { registration: false, source_id: null, form_title: null, stage: null, status: 'WON', leads: 3n },
         ]
       },
     }
@@ -65,8 +67,8 @@ describe('LeadSourcesRepository.aiQualifiedStages', () => {
     const rows = await new LeadSourcesRepository(client as never).aiQualifiedStages({ start, end } as never)
 
     expect(rows).toEqual([
-      { registration: true, stage: 'Дубликат (лид)', status: 'OPEN', leads: 14 },
-      { registration: false, stage: '—', status: 'WON', leads: 3 },
+      { registration: true, sourceId: 'UC_A8LE21', formTitle: null, stage: 'Дубликат (лид)', status: 'OPEN', leads: 14 },
+      { registration: false, sourceId: null, formTitle: null, stage: '—', status: 'WON', leads: 3 },
     ])
     const { sql, params } = seen[0]!
     expect(sql).toMatch(/d\."aiQualifiedAt" >= \$1 AND d\."aiQualifiedAt" < \$2/)

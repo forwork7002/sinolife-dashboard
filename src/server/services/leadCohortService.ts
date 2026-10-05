@@ -16,6 +16,8 @@ import {
   leadCohortOverview,
 } from '@/server/domain/leadCohort/leadCohort'
 import { resolvePeriod, zonedDateKey } from '@/server/domain/period/period'
+import { teamBrand } from '@/server/domain/rnp/rnpSheet'
+import type { TargetProductFilter } from '@/server/domain/types'
 import type { LeadCohortRepository } from '@/server/repositories/leadCohortRepository'
 
 import { ttlCache } from './ttlCache'
@@ -29,7 +31,7 @@ export const LEAD_COHORT_MAX_DAYS = 92
 /** Days in the default window, today included. */
 const LEAD_COHORT_DEFAULT_DAYS = 14
 
-const rowsCache = ttlCache<{ rows: LeadDealRow[]; names: Map<string, string> }>(LEAD_COHORT_TTL_MS)
+const rowsCache = ttlCache<{ rows: LeadDealRow[]; names: Map<string, string>; teams: Map<string, string> }>(LEAD_COHORT_TTL_MS)
 
 export function resetLeadCohortCaches(): void {
   rowsCache.clear()
@@ -61,6 +63,8 @@ export class LeadCohortService {
     to?: string
     pipelines: readonly number[]
     rop: string | null
+    /** The Collagen / Zextra switch: leads routed to one brand's teams (`teamBrand`), or all. */
+    brand?: TargetProductFilter
     timeZone: string
     now: Date
   }): Promise<LeadCohortOverviewDto> {
@@ -74,14 +78,26 @@ export class LeadCohortService {
     })
 
     // `today` is in the key: the query reads «distributed today» by name.
-    const { rows, names } = await rowsCache.get(`${from}|${to}|${today}`, async () => {
+    const { rows, names, teams } = await rowsCache.get(`${from}|${to}|${today}`, async () => {
       const rows = await this.repository.deals({ start: period.start, end: period.end, from, to, today })
       const ropIds = [...new Set(rows.map((r) => r.ropEmployeeId).filter((id): id is string => id !== null))]
-      return { rows, names: await this.repository.names(ropIds) }
+      const [names, teams] = await Promise.all([this.repository.names(ropIds), this.repository.teams(ropIds)])
+      return { rows, names, teams }
     })
 
+    /*
+      A brand keeps the leads routed to its teams — after the memo, so a
+      switch costs no query. A lead not yet routed names no team and so no
+      brand: under one brand the table reads «handed to this brand's teams».
+    */
+    const brand = input.brand ?? 'all'
+    const branded =
+      brand === 'all'
+        ? rows
+        : rows.filter((r) => r.ropEmployeeId !== null && teamBrand(teams.get(r.ropEmployeeId) ?? null) === brand)
+
     return leadCohortOverview({
-      rows,
+      rows: branded,
       from,
       to,
       today,

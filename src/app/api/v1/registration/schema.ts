@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { SHARE_TOTAL_BP } from '@/server/domain/registration/leadSplit'
+import { brandFilter } from '@/server/http/queryParams'
 
 /*
   The query and body of `/api/v1/registration/*`, kept beside the routes (a
@@ -21,6 +22,8 @@ export const calendarDay = z
 export const overviewQuerySchema = z.object({
   /** Omitted: today, on the Tashkent calendar. */
   day: calendarDay.optional(),
+  /** The Collagen / Zextra switch: one brand's teams, or every team. */
+  brand: brandFilter,
 })
 
 export const splitBodySchema = z.object({

@@ -1,6 +1,8 @@
+import { z } from 'zod'
+
 import { toPeriodDto } from '@/server/domain/period/period'
 import { getHandler, periodFrom } from '@/server/http/handler'
-import { periodQuerySchema } from '@/server/http/queryParams'
+import { brandFilter, periodQuerySchema } from '@/server/http/queryParams'
 import { leadSourcesService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
@@ -20,8 +22,8 @@ const ACCESS = { permission: 'analytics:read:all', section: 'leads' } as const
  * targetolog against Meta, and the DM pages' conversations, over the
  * dashboard period, one row per Tashkent day. See leadSourcesService.ts.
  */
-export const GET = getHandler(ACCESS, periodQuerySchema, async (ctx) => {
+export const GET = getHandler(ACCESS, periodQuerySchema.and(z.object({ brand: brandFilter })), async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
-  const data = await leadSourcesService.overview(period, ctx.timeZone)
+  const data = await leadSourcesService.overview(period, ctx.timeZone, ctx.query.brand)
   return { data, meta: { period: toPeriodDto(period) } }
 })

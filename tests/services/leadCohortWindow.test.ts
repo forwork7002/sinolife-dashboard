@@ -47,6 +47,7 @@ describe('LeadCohortService', () => {
         return []
       },
       names: async () => new Map<string, string>(),
+      teams: async () => new Map<string, string>(),
     } as unknown as InstanceType<typeof LeadCohortRepository>
     const service = new LeadCohortService(repository)
     const now = new Date('2026-09-24T07:00:00Z')
@@ -59,6 +60,49 @@ describe('LeadCohortService', () => {
 
     await service.overview({ ...base, pipelines: [12, 4, 6], from: '2026-09-20' })
     expect(reads).toBe(2)
+  })
+
+  it('keeps one brand\'s leads by the team their ROP stands for, from the same read', async () => {
+    resetLeadCohortCaches()
+    let reads = 0
+    const deal = (dealId: string, ropEmployeeId: string | null) => ({
+      dealId,
+      customerId: dealId,
+      pipeline: 12,
+      arrivedAt: new Date('2026-09-22T06:00:00Z'),
+      distributedOn: ropEmployeeId === null ? null : '2026-09-22',
+      aiQualifiedAt: null,
+      ropEmployeeId,
+      repeat: null,
+      createdDay: '2026-09-22',
+    })
+    const repository = {
+      deals: async () => {
+        reads++
+        return [deal('1', 'asliddin'), deal('2', 'malika'), deal('3', 'sevinch'), deal('4', 'hayot'), deal('5', null)]
+      },
+      names: async () => new Map<string, string>(),
+      // Malika's department folds into Charos, a Zextra team; Hayot is on neither list.
+      teams: async () => new Map([['asliddin', 'Asliddin'], ['malika', 'Malika'], ['sevinch', 'Sevinch'], ['hayot', 'Hayot']]),
+    } as unknown as InstanceType<typeof LeadCohortRepository>
+    const service = new LeadCohortService(repository)
+    const base = { timeZone: 'Asia/Tashkent', now: new Date('2026-09-24T07:00:00Z'), rop: null, pipelines: [12, 4, 6] }
+
+    const all = await service.overview(base)
+    const zextra = await service.overview({ ...base, brand: 'Zextra' })
+    const collagen = await service.overview({ ...base, brand: 'Collagen' })
+    expect(reads).toBe(1)
+    expect(all.kpi.arrived).toBe(5)
+    expect(zextra.kpi.arrived).toBe(2)
+    expect(zextra.rops.map((r) => r.employeeId).sort()).toEqual(['asliddin', 'malika'])
+    expect(collagen.kpi.arrived).toBe(1)
+  })
+
+  it('names each ROP\'s team by the department they head, else their own', () => {
+    const sql = LeadCohortRepository.teamsSql()
+    expect(sql).toMatch(/h\."headId" = e\."id"/)
+    expect(sql).toMatch(/e\."id" = ANY\(\$1::text\[\]\)/)
+    expect(sql).toMatch(/DISTINCT ON \(e\."id"\)/)
   })
 
   it('reads the deal SQL with the three windows and the three pipelines', () => {

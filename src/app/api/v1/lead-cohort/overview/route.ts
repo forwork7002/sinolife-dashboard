@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { LEAD_PIPELINES } from '@/server/domain/leadCohort/leadCohort'
 import { getHandler } from '@/server/http/handler'
+import { brandFilter } from '@/server/http/queryParams'
 import { leadCohortService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
@@ -37,6 +38,8 @@ const querySchema = z.object({
     }),
   /** An employee id — the ROP the leads were routed to. */
   rop: z.string().min(1).max(64).optional(),
+  /** The Collagen / Zextra switch. */
+  brand: brandFilter,
 })
 
 /**
@@ -49,6 +52,7 @@ export const GET = getHandler(ACCESS, querySchema, async (ctx) => {
     to: ctx.query.to,
     pipelines: ctx.query.pipelines,
     rop: ctx.query.rop ?? null,
+    brand: ctx.query.brand,
     timeZone: ctx.timeZone,
     now: ctx.now,
   })

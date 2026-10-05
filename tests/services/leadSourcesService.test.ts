@@ -115,21 +115,21 @@ describe('leadSourcesOverview', () => {
     ],
     // WON in the window, whenever the deal arrived — 6 in all.
     qualified: [
-      { sourceId: 'REPEAT_SALE', aiQualified: false, qualified: 3 },
-      { sourceId: 'UC_1X1J24', aiQualified: true, qualified: 1 },
-      { sourceId: 'UC_KPZA32', aiQualified: false, qualified: 1 },
-      { sourceId: null, aiQualified: false, qualified: 1 },
+      { sourceId: 'REPEAT_SALE', formTitle: null, aiQualified: false, qualified: 3 },
+      { sourceId: 'UC_1X1J24', formTitle: null, aiQualified: true, qualified: 1 },
+      { sourceId: 'UC_KPZA32', formTitle: null, aiQualified: false, qualified: 1 },
+      { sourceId: null, formTitle: null, aiQualified: false, qualified: 1 },
     ],
     // «ИИ квал сана» in the window, any creation day — 6 in Регистрация (one a duplicate), 3 moved on.
     aiQualified: [
-      { registration: true, stage: 'Сделка успешна', status: 'WON', leads: 1 },
-      { registration: true, stage: 'Обработка', status: 'OPEN', leads: 3 },
-      { registration: true, stage: 'Дубликат (лид)', status: 'OPEN', leads: 1 },
+      { registration: true, sourceId: null, formTitle: null, stage: 'Сделка успешна', status: 'WON', leads: 1 },
+      { registration: true, sourceId: null, formTitle: null, stage: 'Обработка', status: 'OPEN', leads: 3 },
+      { registration: true, sourceId: null, formTitle: null, stage: 'Дубликат (лид)', status: 'OPEN', leads: 1 },
       // The red «Дубликат» is no «Дубль лид» (the client, 2026-10-02): still a fresh lead here.
-      { registration: true, stage: 'Дубликат', status: 'OPEN', leads: 1 },
+      { registration: true, sourceId: null, formTitle: null, stage: 'Дубликат', status: 'OPEN', leads: 1 },
       // Already in Первичный отдел / Доставка: a repeat, counted on no tile (the client, 2026-10-03).
-      { registration: false, stage: 'Новая', status: 'OPEN', leads: 2 },
-      { registration: false, stage: 'Сделка успешна', status: 'WON', leads: 1 },
+      { registration: false, sourceId: null, formTitle: null, stage: 'Новая', status: 'OPEN', leads: 2 },
+      { registration: false, sourceId: null, formTitle: null, stage: 'Сделка успешна', status: 'WON', leads: 1 },
     ],
     // «Сарафан маркетинг» in Ecommerce: 3 created, 2 delivered (the client, 2026-10-05).
     sarafan: { leads: 3, qualified: 2 },
@@ -175,7 +175,7 @@ describe('leadSourcesOverview', () => {
   })
 
   it('leaves the kval price unknown, not free, when no Meta spend was read', () => {
-    const noMeta = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [reg({})], triage: [], campaigns: [], fakt1: [], qualified: [{ sourceId: 'REPEAT_SALE', aiQualified: false, qualified: 5 }], aiQualified: [], sarafan: NO_SARAFAN })
+    const noMeta = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [reg({})], triage: [], campaigns: [], fakt1: [], qualified: [{ sourceId: 'REPEAT_SALE', formTitle: null, aiQualified: false, qualified: 5 }], aiQualified: [], sarafan: NO_SARAFAN })
     expect(noMeta.funnel.costPerQualifiedUsd).toBeNull()
   })
 
@@ -361,5 +361,73 @@ describe('leadSourcesOverview', () => {
     expect(zs.outcome.success).toBe(2)
     expect(dm.pages.at(-1)!.name).toBe('Instagram')
     expect(dm.conversations).toBe(8)
+  })
+})
+
+describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
+  const KAMRON_FORM = 'Заполнение CRM-формы "Kamron 6 etap filt forma"'
+  const input = {
+    window: WINDOW,
+    importedAt: null,
+    registration: [
+      reg({ sourceId: 'UC_A8LE21', source: 'zextrauzb', stage: 'Обработка', status: 'OPEN', leads: 4 }),
+      // A Kamron form that names no product: Zextra, as RNP's leadBrand reads it.
+      reg({ formTitle: KAMRON_FORM, leads: 3 }),
+      reg({ sourceId: 'UC_1X1J24', source: 'sinolifeuz', stage: 'Обработка', status: 'OPEN', leads: 5 }),
+      // An outgoing call: no brand, in neither.
+      reg({ sourceId: 'UC_KPZA32', source: 'Исход', stage: 'Отказ', status: 'LOST', leads: 7 }),
+    ],
+    triage: [
+      triage({ sourceId: 'UC_A8LE21', source: 'zextrauzb', conversations: 10 }),
+      triage({ conversations: 20 }),
+      triage({ sourceId: 'UC_Z1OF0D', source: 'sinolif_tg', conversations: 3 }),
+    ],
+    campaigns: [
+      campaign({ leads: 5, spendMicroUsd: 20_000_000n }),
+      campaign({ accountId: '440073592484616', accountName: 'Zextra Umar', leads: 2, spendMicroUsd: 8_000_000n }),
+    ],
+    fakt1: [fakt1({ formTitle: KAMRON_FORM }), fakt1({ sourceId: 'UC_1X1J24', formTitle: null, client: '907654321' })],
+    qualified: [
+      { sourceId: 'REPEAT_SALE', formTitle: KAMRON_FORM, aiQualified: false, qualified: 2 },
+      { sourceId: 'UC_1X1J24', formTitle: null, aiQualified: false, qualified: 1 },
+    ],
+    aiQualified: [
+      { registration: true, sourceId: 'UC_A8LE21', formTitle: null, stage: 'Обработка', status: 'OPEN', leads: 1 },
+      { registration: true, sourceId: null, formTitle: null, stage: 'Обработка', status: 'OPEN', leads: 2 },
+    ],
+    sarafan: { leads: 3, qualified: 2 },
+    inboundCalls: 9,
+  }
+  const all = leadSourcesOverview(input)
+  const zextra = leadSourcesOverview({ ...input, brand: 'Zextra' })
+  const collagen = leadSourcesOverview({ ...input, brand: 'Collagen' })
+
+  it('narrows leads by source then form, kval and FAKT 1 clients alike, and money by ad account', () => {
+    expect(all.brand).toBe('all')
+    expect(zextra.brand).toBe('Zextra')
+    expect(zextra.funnel).toMatchObject({ total: 7, qualified: 2, spendUsd: 8 })
+    expect(collagen.funnel).toMatchObject({ total: 5, qualified: 1, spendUsd: 20 })
+    // The outgoing call is the brandless remainder: the two brands and it make the whole.
+    expect(all.funnel.total).toBe(zextra.funnel.total + collagen.funnel.total + 7)
+    expect(zextra.totals.fakt1Clients).toBe(1)
+  })
+
+  it('puts the Kamron form on a Zextra row, beside his Zextra account', () => {
+    expect(zextra.forms.owners.map((o) => [o.targetolog, o.product])).toContainEqual(['Kamron', 'Zextra'])
+    expect(collagen.forms.owners.some((o) => o.targetolog === 'Kamron')).toBe(false)
+  })
+
+  it('lists only the brand\'s DM pages, and reads the AI\'s mark by its source', () => {
+    expect(zextra.dm.pages.map((p) => p.key)).toEqual(['UC_A8LE21', 'UC_LBSZDU', '38|NEXTBOT'])
+    expect(zextra.dm.conversations).toBe(10)
+    expect(collagen.dm.pages.some((p) => p.key === 'UC_Z1OF0D')).toBe(false)
+    expect(zextra.tiles.rows.find((r) => r.tile === 'aiSmm')!.leads).toBe(1)
+  })
+
+  it('cannot split «Сарафан» or the inbound calls, and does not pretend to', () => {
+    expect(all.tiles.rows.find((r) => r.tile === 'sarafan')!.leads).toBe(3)
+    expect(zextra.tiles.rows.find((r) => r.tile === 'sarafan')!.leads).toBe(0)
+    expect(all.inboundCalls).toBe(9)
+    expect(zextra.inboundCalls).toBeNull()
   })
 })

@@ -214,6 +214,21 @@ const TILE_NOTE_TITLE: Partial<Record<LeadTile, string>> = {
     'Ecommerce voronkasidagi «Сарафан маркетинг» manbali bitimlar: shu davrda ochilgani, kval — shu davrda «Доставлен» boʻlgani. Регистрация lidi emas, shuning uchun «Jami»ga kirmaydi; Регистрацияdagi «Сарафан маркетинг» lidlari «Boshqa»da.',
 }
 
+/**
+ * Under one brand, for what carries none — «Сарафан» (Ecommerce deals) and
+ * the inbound calls: a dash and this, never the company's figure and never a
+ * zero that reads as «nothing came in».
+ */
+const unsplitNote = (what: string, prefix?: string) => (
+  <p
+    className="text-[11px] leading-snug"
+    style={muted}
+    title={`${what} hech qaysi brendga bogʻlanmaydi — faqat «Hammasi»da koʻrinadi.`}
+  >
+    {prefix ? `${prefix} · ` : ''}Brend boʻyicha ajratilmaydi
+  </p>
+)
+
 /** «N kval · X%» — kval ÷ new leads, as «Квал %» above; a dash when the channel had no new lead. */
 const kvalHint = (t: ChannelTileDto) =>
   `${formatNumber(t.qualified)} kval · ${t.qualifiedPercent === null ? NO_VALUE : formatPercent(t.qualifiedPercent)}`
@@ -316,6 +331,19 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
   const byTile = new Map<LeadTile, ChannelTileDto>(data?.tiles.rows.map((r) => [r.tile, r]))
   const total = data?.tiles.total
   const channelTile = (tile: LeadTile, extra?: ReactNode) => {
+    if (tile === 'sarafan' && data !== undefined && data.brand !== 'all') {
+      return (
+        <StatTile
+          key={tile}
+          compact
+          status={status}
+          label={TILE_LABEL[tile]}
+          value={null}
+          unit="count"
+          context={unsplitNote('Ecommerce voronkasidagi «Сарафан» bitimlari')}
+        />
+      )
+    }
     const o = byTile.get(tile)
     const text = TILE_NOTE[tile]
     const dubl = dublNote(o)
@@ -380,7 +408,9 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
               : t === 'aiSmm'
                 ? aiElsewhereNote(data.tiles.aiElsewhere)
                 : t === 'inbound'
-                  ? inboundCallsNote(data.inboundCalls)
+                  ? data.brand !== 'all'
+                    ? unsplitNote('Kiruvchi qoʻngʻiroqlar', '📞 qoʻngʻiroqlar')
+                    : inboundCallsNote(data.inboundCalls)
                   : undefined,
           ),
         )}

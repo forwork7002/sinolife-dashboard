@@ -17,6 +17,8 @@ import type { PrismaClient } from '@/generated/prisma/client'
 import { LEAD_PIPELINES, type LeadDealRow, type RepeatKind } from '@/server/domain/leadCohort/leadCohort'
 import { env } from '@/server/config/env'
 
+import { InsightsRepository } from './insightsRepository'
+
 export class LeadCohortRepository {
   private readonly tz: string
 
@@ -96,5 +98,32 @@ export class LeadCohortRepository {
       select: { id: true, fullName: true },
     })
     return new Map(rows.map((r) => [r.id, r.fullName]))
+  }
+
+  /**
+   * The team each ROP the window names stands for (`ropNameSql`) — the
+   * department they head, else their own — for the Collagen / Zextra switch,
+   * which files a lead by the team it was routed to (`teamBrand`).
+   */
+  async teams(ids: readonly string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map()
+    const rows = await this.prisma.$queryRawUnsafe<{ employee_id: string; rop: string | null }[]>(
+      LeadCohortRepository.teamsSql(),
+      [...ids],
+    )
+    return new Map(rows.flatMap((r) => (r.rop === null ? [] : [[r.employee_id, r.rop] as const])))
+  }
+
+  /** `teams`' statement. Exported for its test. */
+  static teamsSql(): string {
+    const headed = InsightsRepository.ropNameSql('h."name"')
+    return `
+      SELECT DISTINCT ON (e."id") e."id" AS employee_id,
+             COALESCE(${headed}, ${InsightsRepository.ropNameSql('dep."name"')}) AS rop
+        FROM "employee" e
+        LEFT JOIN "department" h ON h."headId" = e."id" AND h."isActive"
+        LEFT JOIN "department" dep ON dep."id" = e."departmentId"
+       WHERE e."id" = ANY($1::text[])
+       ORDER BY e."id", (${headed}) IS NULL, h."name"`
   }
 }

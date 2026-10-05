@@ -7,7 +7,7 @@
  * checks the mirror — edit both sides.
  */
 
-import type { MetaProduct } from '@/features/target/targetApi'
+import type { MetaProduct, TargetProductFilter } from '@/features/target/targetApi'
 import type { TargetProduct } from '@/features/reklama/reklamaApi'
 
 export type LeadChannel = 'form' | 'page' | 'inbound' | 'manual' | 'telegram' | 'smm' | 'other' | 'outbound'
@@ -82,8 +82,10 @@ export interface SourceRowDto {
 }
 
 export interface LeadSourcesOverviewDto {
+  /** The Collagen / Zextra switch the figures were narrowed by. One brand: «Сарафан» and the inbound calls are not split. */
+  readonly brand: TargetProductFilter
   readonly importedAt: string | null
-  /** Inbound calls in the window, under «Входящий»; null before the call data floor. */
+  /** Inbound calls in the window, under «Входящий»; null before the call data floor or under one brand. */
   readonly inboundCalls: number | null
   /** The six headline tiles — leads by creation day, kval by the day it was WON. */
   readonly funnel: {

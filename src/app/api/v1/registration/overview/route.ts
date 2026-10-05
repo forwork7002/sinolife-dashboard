@@ -19,6 +19,7 @@ export const GET = getHandler(ACCESS, overviewQuerySchema, async (ctx) => {
     day: ctx.query.day ?? zonedDateKey(ctx.now, ctx.timeZone),
     timeZone: ctx.timeZone,
     canEdit: can(ctx.principal, 'kpi:manage'),
+    brand: ctx.query.brand,
   })
   return { data }
 })

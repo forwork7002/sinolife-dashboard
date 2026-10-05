@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import { apportion } from '@/lib/apportion'
-import { addDays, buildLeadSplit, SPLIT_ROPS, splitProblem } from '@/server/domain/registration/leadSplit'
+import {
+  addDays,
+  buildLeadSplit,
+  leadSplitOfBrand,
+  SPLIT_ROPS,
+  splitProblem,
+  teamRowsOfBrand,
+} from '@/server/domain/registration/leadSplit'
 
 describe('apportion', () => {
   it('splits so the parts sum to the whole exactly', () => {
@@ -127,5 +134,43 @@ describe('addDays', () => {
   it('moves across a month and a year on the calendar', () => {
     expect(addDays('2026-10-01', -1)).toBe('2026-09-30')
     expect(addDays('2026-12-31', 1)).toBe('2027-01-01')
+  })
+})
+
+describe('the Collagen / Zextra switch on the team tables', () => {
+  const rows = [
+    { day, rop: 'Sevinch', leads: 38, duplicates: 2 },
+    // Sevinchxon folds into Sadriddin, a Zextra team.
+    { day, rop: 'Sevinchxon', leads: 2, duplicates: 0 },
+    { day, rop: 'Lola', leads: 29, duplicates: 0 },
+    { day, rop: null, leads: 10, duplicates: 0 },
+    { day, rop: 'Hayot', leads: 4, duplicates: 0 },
+  ]
+
+  it('keeps the rows of the brand\'s teams, a renamed team folded, a teamless one in neither', () => {
+    expect(teamRowsOfBrand(rows, 'Zextra').map((r) => r.rop)).toEqual(['Sevinchxon'])
+    expect(teamRowsOfBrand(rows, 'Collagen').map((r) => r.rop)).toEqual(['Sevinch', 'Lola'])
+    expect(teamRowsOfBrand(rows, 'all')).toBe(rows)
+  })
+
+  it('re-bases the split card on the brand\'s teams, each keeping its plan, and locks it', () => {
+    const split = {
+      rows: SPLIT_ROPS.map((rop) => ({ rop, shareBp: rop === 'Sevinch' ? 5000 : rop === 'Lola' ? 3000 : rop === 'Sadriddin' ? 2000 : 0 })),
+      updatedAt: '2026-09-30T04:09:00.000Z',
+    }
+    const whole = buildLeadSplit({ day, rows, bezkval: [{ day, rop: 'Lola', leads: 5 }, { day, rop: null, leads: 1 }], split, previous: null, canEdit: true })
+    const collagen = leadSplitOfBrand(whole, 'Collagen')
+    expect(collagen.rops.filter((r) => r.received > 0).map((r) => r.rop)).toEqual(['Sevinch', 'Lola'])
+    expect(collagen.total).toBe(67)
+    const plan = (rop: string) => whole.rops.find((r) => r.rop === rop)!.planLeads!
+    expect(collagen.fresh).toBe(collagen.rops.reduce((n, r) => n + (r.planLeads ?? 0), 0))
+    expect(collagen.rops.find((r) => r.rop === 'Sevinch')!.planLeads).toBe(plan('Sevinch'))
+    expect(collagen.unassigned).toBe(0)
+    // The grid keeps the client's teams of the brand, quiet ones at zero; no Zextra team.
+    expect(collagen.bezkval.rops.map((r) => r.rop)).toEqual(['Sevinch', 'Gulzora', 'Saidaziz', 'Azizbek', 'Maftuna', 'Lola', 'Shohjaxon'])
+    expect(leadSplitOfBrand(whole, 'Zextra').bezkval.rops.map((r) => r.rop)).toEqual(['Asliddin', 'Sadriddin'])
+    expect(collagen.bezkval.unassigned.every((n) => n === 0)).toBe(true)
+    expect(collagen.canEdit).toBe(false)
+    expect(leadSplitOfBrand(whole, 'all')).toBe(whole)
   })
 })

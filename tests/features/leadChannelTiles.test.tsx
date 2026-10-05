@@ -48,6 +48,7 @@ const TILES: Record<LeadTile, ChannelTileDto> = {
 
 const data = {
   // The headline: the six channels' 3 224, «Исход» 2 410 and «Boshqa» 120, less the AI's 40.
+  brand: 'all',
   funnel: { total: 5714 },
   tiles: {
     rows: (Object.keys(TILES) as LeadTile[]).map((tile) => ({ tile, ...TILES[tile] })),
@@ -74,6 +75,17 @@ describe('ChannelTiles', () => {
     expect(within(tile('Сммщик ии')).getByText('445')).toBeTruthy()
     expect(within(tile('Сммщик ии')).getByText('«ИИ квал сана» shu davrda · faqat Регистрация').getAttribute('title')).toContain('14.09.2026')
     expect(within(tile('Веб сайт')).getByText('1')).toBeTruthy()
+  })
+
+  it('under one brand, says «Сарафан» and the inbound calls are not split instead of printing a figure', () => {
+    render(<ChannelTiles data={{ ...data, brand: 'Zextra', inboundCalls: null } as LeadSourcesOverviewDto} status="ready" />)
+
+    const sarafan = tile('Сарафан')
+    expect(within(sarafan).getByText('Brend boʻyicha ajratilmaydi')).toBeTruthy()
+    expect(within(sarafan).queryByText('faqat Ecommerce voronkasi · «Jami»ga kirmaydi')).toBeNull()
+    expect(within(tile('Входящий')).getByText('📞 qoʻngʻiroqlar · Brend boʻyicha ajratilmaydi')).toBeTruthy()
+    // The brand's own channels still print their figures.
+    expect(within(tile('Входящий')).getByText('473')).toBeTruthy()
   })
 
   it('says under «Сммщик ии», quietly, the AI kval already past Регистрация — a dubl summed nowhere (2026-10-03)', () => {
@@ -122,6 +134,7 @@ describe('ChannelTiles', () => {
 
   it('names only the parts that add something', () => {
     const quiet = {
+      brand: 'all',
       funnel: { total: 3344 },
       tiles: { ...data.tiles, toHeadline: { outbound: 0, other: 120, ai: 0 } },
     } as unknown as LeadSourcesOverviewDto
@@ -134,6 +147,7 @@ describe('ChannelTiles', () => {
 
   it('says «= Жами лидлар» when nothing is apart', () => {
     const even = {
+      brand: 'all',
       funnel: { total: 3224 },
       tiles: { ...data.tiles, toHeadline: { outbound: 0, other: 0, ai: 0 } },
     } as unknown as LeadSourcesOverviewDto

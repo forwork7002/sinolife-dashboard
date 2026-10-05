@@ -39,7 +39,8 @@
 
 import { apportion } from '@/lib/apportion'
 
-import { TEAM_ALIASES } from '../rnp/rnpSheet'
+import { TEAM_ALIASES, teamBrand } from '../rnp/rnpSheet'
+import type { TargetProductFilter } from '../types'
 
 /** The teams the client splits leads among (2026-10-01: their six plus Shohjaxon, Asliddin, Sadriddin). */
 export const SPLIT_ROPS: readonly string[] = Object.freeze([
@@ -225,4 +226,37 @@ export function splitProblem(rows: readonly SplitShare[]): string | null {
   const sum = rows.reduce((a, r) => a + r.shareBp, 0)
   if (sum !== SHARE_TOTAL_BP) return `Ulushlar jami 100% boʻlishi kerak (hozir ${(sum / 100).toFixed(2)}%).`
   return null
+}
+
+/**
+ * Team rows narrowed to one brand by the team they name (`teamBrand`, the
+ * P&L's split) — the Collagen / Zextra switch on «Lidlar»'s team tables. A
+ * row that names no team, or a team on neither list (Hayot), is in neither.
+ */
+export function teamRowsOfBrand<R extends { readonly rop: string | null }>(rows: readonly R[], brand: TargetProductFilter): readonly R[] {
+  return brand === 'all' ? rows : rows.filter((r) => teamBrand(r.rop) === brand)
+}
+
+/**
+ * The split card narrowed to one brand's teams. Each team keeps its plan —
+ * its share of the whole day, which is what the administrator set — and the
+ * card's two bars are re-based on the brand's teams alone, so «Reja» and
+ * «Haqiqatda olgan» read as that brand's split. Leads given to no team carry
+ * no brand and leave. Read-only: a split is set for every team at once, and
+ * a brand's slice of it cannot sum to 100 %.
+ */
+export function leadSplitOfBrand(split: LeadSplitDto, brand: TargetProductFilter): LeadSplitDto {
+  if (brand === 'all') return split
+  const rops = teamRowsOfBrand(split.rops, brand)
+  const zeros = split.week.days.map(() => 0)
+  return {
+    ...split,
+    total: rops.reduce((n, r) => n + r.received, 0),
+    fresh: rops.reduce((n, r) => n + (r.planLeads ?? 0), 0),
+    unassigned: 0,
+    rops,
+    week: { days: split.week.days, unassigned: zeros },
+    bezkval: { rops: teamRowsOfBrand(split.bezkval.rops, brand), unassigned: zeros },
+    canEdit: false,
+  }
 }
