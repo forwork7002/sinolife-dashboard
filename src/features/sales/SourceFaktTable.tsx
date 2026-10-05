@@ -97,15 +97,8 @@ export function SourceTable({
         row.name ?? <span style={{ color: 'var(--ink-muted)' }}>Manba koʻrsatilmagan</span>,
     },
     {
-      key: 'sellers',
-      header: 'Sotuvchi',
-      align: 'right',
-      numeric: true,
-      render: (row) => formatNumber(row.sellers),
-    },
-    {
       key: 'cohort',
-      header: 'Navbatga tushgan',
+      header: 'FAKT 0',
       align: 'right',
       numeric: true,
       render: (row) => `${formatNumber(row.cohortOrders)} ta`,
@@ -203,9 +196,9 @@ export function SourceTable({
       errorMessage={errorMessage}
       onRetry={onRetry}
       emptyTitle="Bu davrda manba boʻyicha maʼlumot yoʻq"
-      // Fifteen columns, six of them money in full digits; below this the
+      // Fourteen columns, six of them money in full digits; below this the
       // table scrolls sideways inside its own box.
-      minWidth={1640}
+      minWidth={1540}
       // The whole list, as on the teams table: «kim oldinda» is not answered
       // inside a scroll box with the last sources below the fold.
       maxHeight="none"

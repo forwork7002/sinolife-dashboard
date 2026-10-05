@@ -72,8 +72,7 @@ describe('SourceTable', () => {
     expect(headers).toEqual([
       'Oʻrin',
       'Manba',
-      'Sotuvchi',
-      'Navbatga tushgan',
+      'FAKT 0',
       'FAKT 1',
       'Tasdiqlangan',
       'FAKT 1 prognoz',
@@ -99,7 +98,7 @@ describe('SourceTable', () => {
 
     const [r] = cells()
     // FAKT 2 prognoz, Konversiya, FAKT 2 ulushi.
-    expect([r![8], r![12], r![14]]).toEqual(['—', '—', '—'])
+    expect([r![7], r![11], r![13]]).toEqual(['—', '—', '—'])
   })
 
   it('says so when the period has no sources at all', () => {
