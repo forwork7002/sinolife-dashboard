@@ -66,6 +66,8 @@ export interface RoistatCountersDto {
 export interface RoistatRowDto extends RoistatCountersDto {
   readonly key: string
   readonly label: string
+  /** The Meta ad account (cabinet) name — set on `ad` only, else null. */
+  readonly account: string | null
 }
 
 export interface RoistatOverviewDto {
@@ -90,6 +92,13 @@ export interface RoistatOverviewDto {
    */
   readonly campaignSpendUsd: number
 }
+
+/**
+ * The «Дни» cut alone — «Kunlar boʻyicha» on Savdo dinamikasi (2026-10-05:
+ * «dashboarddagi Дни qanday boʻlsa, shunday»). The overview's `days` table,
+ * row for row, without its tiles, chart or previous window.
+ */
+export type RoistatDaysDto = Pick<RoistatOverviewDto, 'dim' | 'columns' | 'rows' | 'total' | 'rate' | 'freshFrom'>
 
 /** Micro-dollars to dollars, cents kept. */
 function dollars(micro: bigint): number {
@@ -167,7 +176,7 @@ export class RoistatService {
         window's start. (Kval is the registrar's verdict as of now and keeps
         a smaller form of the same lean.)
       */
-      this.repository.bitrix(previous, new Date(now.getTime() - (period.start.getTime() - previous.start.getTime())), true),
+      this.repository.bitrix(previous, new Date(now.getTime() - (period.start.getTime() - previous.start.getTime())), 'total'),
       this.spendDays(window.from, window.to),
       this.spendDays(previousWindow.from, previousWindow.to),
       dim === 'camp' || dim === 'adset' || dim === 'ad'
@@ -182,8 +191,6 @@ export class RoistatService {
 
     const kpiPrevious = addCounters(bitrixTotal(bitrixPrevious), spendTotal(spendPrevious))
 
-    const rows = this.rows(dim, bitrix, spend, metaRows)
-    const total = rows.reduce((sum, row) => addCounters(sum, row.counters), emptyCounters())
     const budget = spendTotal(spend)
 
     const spendByDay = spendCut('days', spend)
@@ -194,23 +201,52 @@ export class RoistatService {
       soldUzs: soms(soldByDay.get(date)?.soldMinor ?? 0n),
     }))
 
-    const rate = rates[0]
     return {
-      dim,
+      ...this.table(dim, bitrix, spend, metaRows, rates[0], rateDay, today),
       parent: parent ? { key: parent, label: parentName?.name ?? parent } : null,
       grandParent:
         dim === 'ad' && parentName ? { key: parentName.campaignId, label: parentName.campaignName } : null,
-      columns: columnsOf(dim),
-      rows: rows.map((row) => ({ key: row.key, label: row.label, account: row.account, ...toCountersDto(row.counters) })),
-      total: toCountersDto(total),
       kpi: toCountersDto(kpi),
       kpiPrevious: toCountersDto(kpiPrevious),
       previousPeriod: toPeriodDto(previous),
       daily,
-      rate: rate === null || rate === undefined ? null : { uzsPerUsd: rate, date: rateDay },
-      freshFrom: shiftDay(today, -(FRESH_DAYS - 1)),
       metaImportedAt: importedAt ? importedAt.toISOString() : null,
       campaignSpendUsd: dollars(budget.spendMicroUsd),
+    }
+  }
+
+  /** The «Дни» table — the same rows `overview(period, { dim: 'days' })` draws, newest day first. */
+  async days(period: Period, now: Date): Promise<RoistatDaysDto> {
+    const today = zonedDateKey(now, period.timeZone)
+    const window = dayRange(period)
+    const rateDay = window.to < today ? window.to : today
+    const [bitrix, spend, rates] = await Promise.all([
+      this.repository.bitrix(period, now, 'days'),
+      this.spendDays(window.from, window.to),
+      this.usd.forDays([rateDay], today),
+    ])
+    return this.table('days', bitrix, spend, [], rates[0], rateDay, today)
+  }
+
+  /** One cut's table — the part `overview` and `days` share, so the two cannot drift. */
+  private table(
+    dim: RoistatDim,
+    bitrix: Parameters<typeof bitrixCut>[1],
+    spend: readonly SpendDay[],
+    metaRows: readonly RoistatMetaRow[],
+    rate: number | null | undefined,
+    rateDay: string,
+    today: string,
+  ): RoistatDaysDto {
+    const rows = this.rows(dim, bitrix, spend, metaRows)
+    const total = rows.reduce((sum, row) => addCounters(sum, row.counters), emptyCounters())
+    return {
+      dim,
+      columns: columnsOf(dim),
+      rows: rows.map((row) => ({ key: row.key, label: row.label, account: row.account, ...toCountersDto(row.counters) })),
+      total: toCountersDto(total),
+      rate: rate === null || rate === undefined ? null : { uzsPerUsd: rate, date: rateDay },
+      freshFrom: shiftDay(today, -(FRESH_DAYS - 1)),
     }
   }
 

@@ -27,7 +27,6 @@ import { AlertsService } from '@/server/services/alertsService'
 import { SearchService } from '@/server/services/searchService'
 import { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import { ReferenceRepository } from '@/server/repositories/referenceRepository'
-import { AdSalesDaysService } from './adSalesDaysService'
 import { InsightsService } from './insightsService'
 import { PayrollService } from './payrollService'
 import { KpiService } from './kpiService'
@@ -119,12 +118,6 @@ export const rnpService = new RnpService(insightsRepository, rnpRepository, rekl
   for the money through the reklama repository. See roistatService.ts.
 */
 export const roistatService = new RoistatService(new RoistatRepository(prisma), reklamaRepository, cbuUsdRates)
-/*
-  «Kunlar boʻyicha» on Savdo dinamikasi (2026-10-05, Roistat's «Дни» moved
-  there): /rnp's FAKT 1 per team-day and its Meta ad budget, day by day. See
-  adSalesDaysService.ts.
-*/
-export const adSalesDaysService = new AdSalesDaysService(insightsRepository, reklamaRepository)
 /*
   «Registratsiya» (2026-10-01) — the day's handed-out leads per ROP against the
   administrator's split, and «ROP otchet» seller by seller (FAKT from the

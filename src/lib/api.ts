@@ -1559,32 +1559,6 @@ export interface FaktTrendPointDto {
   readonly cohortOrders: number
 }
 
-/**
- * «Kunlar boʻyicha» on Savdo dinamikasi — `/analytics/ad-sales-days`.
- * Mirrors `AdSalesDays` in `src/server/domain/sales/adSalesDays.ts`.
- * Первичка + База = FAKT 1 on every row.
- */
-export interface AdSalesDayDto {
-  /** `YYYY-MM-DD`, Tashkent. */
-  readonly date: string
-  /** Meta ad budget (Collagen + Zextra, hiring out), dollars with cents. */
-  readonly spendUsd: number
-  /** FAKT 1 — the queue cohort, whole soʻm. */
-  readonly fakt1: number
-  /** FAKT 1 of every team but БАЗА. */
-  readonly primary: number
-  /** FAKT 1 of the БАЗА teams. */
-  readonly base: number
-}
-
-export interface AdSalesDaysDto {
-  /** Oldest day first, as a sheet reads. */
-  readonly rows: readonly AdSalesDayDto[]
-  readonly total: Omit<AdSalesDayDto, 'date'>
-  /** Today, when it is a row: its Meta money and FAKT 1 are still arriving. */
-  readonly openDay: string | null
-}
-
 // ---------------------------------------------------------------------------
 // The Доставка kanban — `/insights/delivery`.
 // Mirrors the DTOs in `src/server/services/pulseService.ts`.
